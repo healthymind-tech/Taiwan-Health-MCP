@@ -1,0 +1,249 @@
+site_name: Taiwan ICD10 Health MCP
+site_description: 台灣醫療健康資料整合 MCP 伺服器 - 技術文件
+site_author: Taiwan-ICD10-Health-MCP Team
+site_url: https://yourusername.github.io/Taiwan-ICD10-Health-MCP
+
+# Repository
+repo_name: Taiwan-ICD10-Health-MCP
+repo_url: https://github.com/yourusername/Taiwan-ICD10-Health-MCP
+edit_uri: edit/main/docs/
+
+# Copyright
+copyright: Copyright &copy; 2024 Taiwan-ICD10-Health-MCP Team
+
+# Configuration
+theme:
+  name: material
+  language: zh-TW
+
+  # Color scheme
+  palette:
+    # Light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: blue
+      toggle:
+        icon: material/brightness-7
+        name: 切換至深色模式
+
+    # Dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: blue
+      toggle:
+        icon: material/brightness-4
+        name: 切換至淺色模式
+
+  # Features
+  features:
+    - navigation.instant        # 即時載入
+    - navigation.tracking       # 追蹤 URL
+    - navigation.tabs           # 頂部分頁
+    - navigation.tabs.sticky    # 固定分頁
+    - navigation.sections       # 章節導航
+    - navigation.expand         # 展開側邊欄
+    - navigation.indexes        # 索引頁面
+    - navigation.top            # 回到頂部按鈕
+    - search.suggest            # 搜尋建議
+    - search.highlight          # 搜尋高亮
+    - search.share              # 搜尋分享
+    - content.code.copy         # 複製程式碼按鈕
+    - content.code.annotate     # 程式碼註解
+    - content.tabs.link         # 連結分頁
+    - toc.follow                # 目錄跟隨
+
+  # Logo and icons
+  logo: assets/logo.png
+  favicon: assets/favicon.png
+  icon:
+    repo: fontawesome/brands/github
+    admonition:
+      note: octicons/tag-16
+      abstract: octicons/checklist-16
+      info: octicons/info-16
+      tip: octicons/squirrel-16
+      success: octicons/check-16
+      question: octicons/question-16
+      warning: octicons/alert-16
+      failure: octicons/x-circle-16
+      danger: octicons/zap-16
+      bug: octicons/bug-16
+      example: octicons/beaker-16
+      quote: octicons/quote-16
+
+# Plugins
+plugins:
+  - search:
+      lang:
+        - zh
+        - en
+      separator: '[\s\-\.]+'
+  - tags:
+      tags_file: tags.md
+  - minify:
+      minify_html: true
+
+# Extensions
+markdown_extensions:
+  # Python Markdown
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - toc:
+      permalink: true
+      toc_depth: 3
+
+  # Python Markdown Extensions
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.betterem:
+      smart_enable: all
+  - pymdownx.caret
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.mark
+  - pymdownx.smartsymbols
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.tilde
+
+# Customization
+extra:
+  version:
+    provider: mike
+
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/yourusername/Taiwan-ICD10-Health-MCP
+      name: GitHub Repository
+    - icon: fontawesome/solid/globe
+      link: https://data.fda.gov.tw/
+      name: 台灣 FDA 開放資料
+
+  analytics:
+    provider: google
+    property: G-XXXXXXXXXX
+
+  consent:
+    title: Cookie 同意
+    description: >-
+      我們使用 cookies 來識別您的重複訪問和偏好設定，以及衡量我們文件的有效性和用戶是否找到他們要搜尋的內容。
+      在您同意的情況下，您可以幫助我們改善文件。
+
+# Navigation
+nav:
+  - 首頁:
+    - index.md
+    - 快速開始: getting-started.md
+    - 版本資訊: changelog.md
+
+  - 架構設計:
+    - architecture/index.md
+    - 系統架構: architecture/system-architecture.md
+    - 資料流程: architecture/data-flow.md
+    - 模組關係: architecture/module-relations.md
+    - 部署架構: architecture/deployment.md
+
+  - 服務模組:
+    - modules/index.md
+    - ICD Service: modules/icd-service.md
+    - Drug Service: modules/drug-service.md
+    - Health Food Service: modules/health-food-service.md
+    - Food Nutrition Service: modules/food-nutrition-service.md
+    - FHIR Condition Service: modules/fhir-condition-service.md
+    - FHIR Medication Service: modules/fhir-medication-service.md
+    - Lab Service: modules/lab-service.md
+    - Clinical Guideline Service: modules/clinical-guideline-service.md
+
+  - MCP 工具:
+    - tools/index.md
+    - ICD-10 工具: tools/icd-tools.md
+    - 藥品工具: tools/drug-tools.md
+    - 健康食品工具: tools/health-food-tools.md
+    - 營養工具: tools/nutrition-tools.md
+    - FHIR 工具: tools/fhir-tools.md
+    - 檢驗工具: tools/lab-tools.md
+    - 臨床指引工具: tools/guideline-tools.md
+
+  - FHIR 整合:
+    - fhir/index.md
+    - FHIR R4 概述: fhir/overview.md
+    - Condition 資源: fhir/condition.md
+    - Medication 資源: fhir/medication.md
+    - MedicationKnowledge 資源: fhir/medication-knowledge.md
+    - 驗證與測試: fhir/validation.md
+
+  - 使用指南:
+    - guides/index.md
+    - 完整診療流程: guides/complete-workflow.md
+    - 藥品查詢與識別: guides/drug-identification.md
+    - 檢驗結果判讀: guides/lab-interpretation.md
+    - LOINC 整合: guides/loinc-integration.md
+    - 臨床路徑規劃: guides/clinical-pathway.md
+
+  - API 參考:
+    - api/index.md
+    - ICD Service API: api/icd-service.md
+    - Drug Service API: api/drug-service.md
+    - FHIR Services API: api/fhir-services.md
+    - Lab Service API: api/lab-service.md
+    - Guideline Service API: api/guideline-service.md
+
+  - 資料來源:
+    - data-sources/index.md
+    - 台灣 FDA 資料: data-sources/taiwan-fda.md
+    - LOINC 資料: data-sources/loinc.md
+    - ICD-10 資料: data-sources/icd10.md
+    - 臨床指引資料: data-sources/guidelines.md
+
+  - 開發指南:
+    - development/index.md
+    - 環境設置: development/setup.md
+    - 專案結構: development/project-structure.md
+    - 測試: development/testing.md
+    - 貢獻指南: development/contributing.md
+    - 程式碼規範: development/code-style.md
+
+  - 部署:
+    - deployment/index.md
+    - Docker 部署: deployment/docker.md
+    - 環境配置: deployment/configuration.md
+    - 效能優化: deployment/performance.md
+    - 監控與日誌: deployment/monitoring.md
+
+  - 常見問題:
+    - faq/index.md
+    - 安裝問題: faq/installation.md
+    - 使用問題: faq/usage.md
+    - FHIR 相關: faq/fhir.md
+    - LOINC 相關: faq/loinc.md
+
+# Extra CSS
+extra_css:
+  - stylesheets/extra.css
+
+# Extra JavaScript
+extra_javascript:
+  - javascripts/extra.js
+  - https://polyfill.io/v3/polyfill.min.js?features=es6
+  - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
