@@ -90,6 +90,14 @@ docker-compose up -d
 - **FHIR MedicationKnowledge** - 藥品知識庫
 - 符合國際醫療資訊交換標準
 
+> ⚠️ **FHIR 實現局限**
+>
+> - **FHIR Condition**: 核心結構完整，但驗證不涵蓋所有 R4 約束規則（僅檢查必要欄位）
+> - **FHIR Medication**: 支援基本結構，成分含量單位硬編碼為 "mg"，未支援複雜單位轉換
+> - **驗證功能**: 基礎驗證（必要欄位、資源類型），不涵蓋高級驗證和術語綁定完整檢查
+> - **生產環境**: 若用於生產醫療系統，建議集成 [HL7 FHIR Validator](https://www.hl7.org/fhir/validation.html) 進行完整驗證
+> - **應用場景**: 適合演示、MCP 集成、研究用途；生產醫療系統需額外驗證層
+
 ---
 
 ## 🛠️ MCP 工具清單
@@ -326,6 +334,10 @@ Taiwan-ICD10-Health-MCP/
 - ✨ 新增 FHIR MedicationKnowledge 支援
 - ✨ 新增 4 個 FHIR Medication MCP 工具
 - 📚 新增完整模組說明文件
+- ⚠️ **FHIR 實現注記**:
+  - FHIR Condition: 核心資源完整，基礎驗證就位
+  - FHIR Medication: 支援 Medication 與 MedicationKnowledge，外觀識別整合
+  - 驗證層級: 適合演示與研究，生產環境需補充完整 FHIR 驗證
 
 ### v1.0.0 (2024-12-20)
 - ✨ 初始發布
