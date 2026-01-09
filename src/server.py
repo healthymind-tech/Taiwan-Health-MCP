@@ -498,6 +498,7 @@ def validate_fhir_condition(condition_json: str) -> str:
         result = fhir_condition_service.validate_condition(condition)
         return fhir_condition_service.to_json_string(result, indent=2)
     except json.JSONDecodeError as e:
+        log_error(f"JSON decode error in validate_fhir_condition: {e}")
         return fhir_condition_service.to_json_string({
             "valid": False,
             "errors": [f"Invalid JSON format: {str(e)}"]
@@ -634,6 +635,7 @@ def batch_interpret_lab_results(results_json: str, age: int, gender: str = "all"
         results = json.loads(results_json)
         return lab_service.batch_interpret_results(results, age, gender)
     except json.JSONDecodeError as e:
+        log_error(f"JSON decode error in batch_interpret_lab_results: {e}")
         return json.dumps({
             "error": f"Invalid JSON format: {str(e)}"
         }, ensure_ascii=False)
@@ -774,7 +776,8 @@ def suggest_clinical_pathway(icd_code: str, patient_context_json: str = None) ->
     if patient_context_json:
         try:
             patient_context = json.loads(patient_context_json)
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as e:
+            log_error(f"JSON decode error in suggest_clinical_pathway: {e}")
             pass
 
     return guideline_service.suggest_clinical_pathway(icd_code, patient_context)

@@ -63,7 +63,8 @@ class FoodNutritionService:
                             should_update = True
                 else:
                     should_update = True
-            except Exception:
+            except Exception as e:
+                log_error(f"Error checking food nutrition DB update status: {e}")
                 should_update = True
 
         if should_update:
