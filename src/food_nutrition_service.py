@@ -1,19 +1,23 @@
-import sqlite3
-import requests
+from datetime import datetime, timedelta
+import io
 import json
 import os
+import sqlite3
 import threading
 import zipfile
-import io
-from datetime import datetime, timedelta
+
 from apscheduler.schedulers.background import BackgroundScheduler
-from utils import log_info, log_error
+import requests
+
+from utils import log_error, log_info
+
 
 class FoodNutritionService:
     """
     食品營養與原料管理服務
     負責管理一般食品的營養成分資料和合法食品原料資訊
     """
+
     def __init__(self, data_dir: str):
         self.data_dir = data_dir
         self.db_path = os.path.join(data_dir, "food_nutrition.db")
@@ -24,13 +28,15 @@ class FoodNutritionService:
         # 4: Food Ingredients Platform Dataset (食品原料整合查詢平臺資料集)
         self.API_SOURCES = {
             "nutrition": "https://data.fda.gov.tw/data/opendata/export/20/json",
-            "ingredients": "https://data.fda.gov.tw/data/opendata/export/4/json"
+            "ingredients": "https://data.fda.gov.tw/data/opendata/export/4/json",
         }
 
         # Initialize the scheduler
         self.scheduler = BackgroundScheduler()
         # Schedule the update to run every Monday at 00:00
-        self.scheduler.add_job(self._update_all_data, 'cron', day_of_week='mon', hour=0, minute=0)
+        self.scheduler.add_job(
+            self._update_all_data, "cron", day_of_week="mon", hour=0, minute=0
+        )
         self.scheduler.start()
 
         # Check if we need to run an initial update on startup
@@ -55,15 +61,18 @@ class FoodNutritionService:
         else:
             try:
                 if os.path.exists(self.meta_path):
-                    with open(self.meta_path, 'r') as f:
+                    with open(self.meta_path, "r") as f:
                         meta = json.load(f)
                         last_updated = datetime.fromisoformat(meta.get("last_updated"))
                         if last_updated < self._get_last_monday():
-                            log_info("Food Nutrition DB is outdated. Scheduling update...")
+                            log_info(
+                                "Food Nutrition DB is outdated. Scheduling update..."
+                            )
                             should_update = True
                 else:
                     should_update = True
-            except Exception:
+            except Exception as e:
+                log_error(f"Error checking food nutrition DB update status: {e}")
                 should_update = True
 
         if should_update:
@@ -79,15 +88,17 @@ class FoodNutritionService:
         try:
             response = requests.get(url, stream=True, timeout=60)
             if response.status_code != 200:
-                log_error(f"Failed to download {table_name}: HTTP {response.status_code}")
+                log_error(
+                    f"Failed to download {table_name}: HTTP {response.status_code}"
+                )
                 return
 
             # Check if response is a ZIP file
-            content_type = response.headers.get('Content-Type', '')
-            if 'zip' in content_type or url.endswith('.zip'):
+            content_type = response.headers.get("Content-Type", "")
+            if "zip" in content_type or url.endswith(".zip"):
                 log_info(f"Detected ZIP file for {table_name}, extracting...")
                 zip_file = zipfile.ZipFile(io.BytesIO(response.content))
-                json_files = [f for f in zip_file.namelist() if f.endswith('.json')]
+                json_files = [f for f in zip_file.namelist() if f.endswith(".json")]
                 if not json_files:
                     log_error(f"No JSON file found in ZIP for {table_name}")
                     return
@@ -106,13 +117,21 @@ class FoodNutritionService:
 
             # Prepare Insert Statement
             placeholders = ", ".join(["?" for _ in cols])
-            insert_sql = f"INSERT INTO {table_name} ({', '.join(cols)}) VALUES ({placeholders})"
+            insert_sql = (
+                f"INSERT INTO {table_name} ({', '.join(cols)}) VALUES ({placeholders})"
+            )
 
             # Process Data
             rows_to_insert = []
             for item in data:
-                row = [str(item.get(json_key, "")) if item.get(json_key) is not None else ""
-                       for db_col, json_key in columns_map.items()]
+                row = [
+                    (
+                        str(item.get(json_key, ""))
+                        if item.get(json_key) is not None
+                        else ""
+                    )
+                    for db_col, json_key in columns_map.items()
+                ]
                 rows_to_insert.append(tuple(row))
 
             # Bulk Insert
@@ -152,8 +171,8 @@ class FoodNutritionService:
                     "std_deviation": "標準差",
                     "content_per_unit": "每單位含量",
                     "unit_weight": "每單位重",
-                    "unit_weight_content": "每單位重含量"
-                }
+                    "unit_weight_content": "每單位重含量",
+                },
             )
 
             # 2. Food Ingredients Platform Dataset (ID 4)
@@ -169,20 +188,28 @@ class FoodNutritionService:
                     "name_en": "英文名稱",
                     "scientific_name": "英文學名",
                     "part": "部位",
-                    "note": "備註"
-                }
+                    "note": "備註",
+                },
             )
 
             # Create useful indexes
             cursor = conn.cursor()
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_nutrition_name ON nutrition(sample_name)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_nutrition_category ON nutrition(food_category)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_ingredients_name ON food_ingredients(name_zh)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_ingredients_category ON food_ingredients(major_category)")
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_nutrition_name ON nutrition(sample_name)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_nutrition_category ON nutrition(food_category)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_ingredients_name ON food_ingredients(name_zh)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_ingredients_category ON food_ingredients(major_category)"
+            )
             conn.commit()
 
             # Update Metadata
-            with open(self.meta_path, 'w') as f:
+            with open(self.meta_path, "w") as f:
                 json.dump({"last_updated": datetime.now().isoformat()}, f)
 
             log_info("Food nutrition datasets updated successfully.")
@@ -243,9 +270,7 @@ class FoodNutritionService:
         for food_name, data in foods_data.items():
             nutrients_str = "\n".join(data["nutrients"][:10])
             results.append(
-                f"【{food_name}】\n"
-                f"分類: {data['category']}\n"
-                f"{nutrients_str}"
+                f"【{food_name}】\n" f"分類: {data['category']}\n" f"{nutrients_str}"
             )
 
         return "\n\n".join(results[:5])
@@ -398,4 +423,4 @@ class FoodNutritionService:
             nutrition_data = self.get_detailed_nutrition(food)
             results.append(nutrition_data)
 
-        return "\n\n" + "="*50 + "\n\n".join(results)
+        return "\n\n" + "=" * 50 + "\n\n".join(results)

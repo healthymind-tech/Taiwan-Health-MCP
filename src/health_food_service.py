@@ -1,13 +1,16 @@
-import sqlite3
-import requests
+from datetime import datetime, timedelta
+import io
 import json
 import os
+import sqlite3
 import threading
 import zipfile
-import io
-from datetime import datetime, timedelta
+
 from apscheduler.schedulers.background import BackgroundScheduler
-from utils import log_info, log_error
+import requests
+
+from utils import log_error, log_info
+
 
 class HealthFoodService:
     """
@@ -15,6 +18,7 @@ class HealthFoodService:
     負責管理台灣 FDA 核可的健康食品資料
     依據《健康食品管理法》規範
     """
+
     def __init__(self, data_dir: str):
         self.data_dir = data_dir
         self.db_path = os.path.join(data_dir, "health_foods.db")
@@ -33,12 +37,10 @@ class HealthFoodService:
             "E78": ["調節血脂", "不易形成體脂肪"],  # 高血脂症
             "E66": ["不易形成體脂肪", "調節血脂"],  # 肥胖
             "E79": ["調節尿酸"],  # 痛風
-
             # 心血管疾病
             "I10": ["調節血脂", "心血管保健"],  # 高血壓
             "I25": ["調節血脂", "心血管保健"],  # 缺血性心臟病
             "I21": ["調節血脂", "心血管保健"],  # 心肌梗塞
-
             # 肝膽疾病
             "K70": ["護肝"],  # 酒精性肝病
             "K71": ["護肝"],  # 毒性肝病
@@ -46,34 +48,27 @@ class HealthFoodService:
             "K73": ["護肝"],  # 慢性肝炎
             "K74": ["護肝"],  # 肝纖維化和肝硬化
             "K76": ["護肝"],  # 其他肝臟疾病
-
             # 骨骼肌肉系統
             "M80": ["骨質保健", "促進鈣吸收"],  # 有病理性骨折的骨質疏鬆症
             "M81": ["骨質保健", "促進鈣吸收"],  # 無病理性骨折的骨質疏鬆症
             "M15": ["關節保健"],  # 多發性關節病
             "M17": ["關節保健"],  # 膝關節病
-
             # 消化系統
             "K59": ["胃腸功能改善", "促進腸道有益菌增生"],  # 功能性腸道疾患
             "K29": ["胃腸功能改善"],  # 胃炎和十二指腸炎
             "K21": ["胃腸功能改善"],  # 胃食道逆流
-
             # 免疫系統
             "D84": ["免疫調節"],  # 其他免疫缺陷
             "J06": ["免疫調節"],  # 急性上呼吸道感染
-
             # 眼科疾病
             "H52": ["護眼保健", "調節視覺"],  # 屈光不正和調節障礙
             "H53": ["護眼保健"],  # 視覺障礙
-
             # 泌尿系統
             "N40": ["促進泌尿道保健"],  # 攝護腺增大
             "N39": ["促進泌尿道保健"],  # 泌尿系統其他疾患
-
             # 牙齒保健
             "K02": ["牙齒保健", "促進釋放齒垢"],  # 齲齒
             "K05": ["牙齒保健"],  # 牙齦炎和牙周病
-
             # 皮膚
             "L70": ["調節免疫", "皮膚保健"],  # 痤瘡
         }
@@ -105,7 +100,9 @@ class HealthFoodService:
         # Initialize the scheduler
         self.scheduler = BackgroundScheduler()
         # Schedule the update to run every Monday at 00:00
-        self.scheduler.add_job(self._update_data, 'cron', day_of_week='mon', hour=0, minute=0)
+        self.scheduler.add_job(
+            self._update_data, "cron", day_of_week="mon", hour=0, minute=0
+        )
         self.scheduler.start()
 
         # Check if we need to run an initial update on startup
@@ -130,7 +127,7 @@ class HealthFoodService:
         else:
             try:
                 if os.path.exists(self.meta_path):
-                    with open(self.meta_path, 'r') as f:
+                    with open(self.meta_path, "r") as f:
                         meta = json.load(f)
                         last_updated = datetime.fromisoformat(meta.get("last_updated"))
                         if last_updated < self._get_last_monday():
@@ -138,7 +135,8 @@ class HealthFoodService:
                             should_update = True
                 else:
                     should_update = True
-            except Exception:
+            except Exception as e:
+                log_error(f"Error checking health food DB update status: {e}")
                 should_update = True
 
         if should_update:
@@ -156,15 +154,17 @@ class HealthFoodService:
             response = requests.get(self.API_SOURCE, stream=True, timeout=60)
 
             if response.status_code != 200:
-                log_error(f"Failed to download health foods: HTTP {response.status_code}")
+                log_error(
+                    f"Failed to download health foods: HTTP {response.status_code}"
+                )
                 return
 
             # Check if response is a ZIP file
-            content_type = response.headers.get('Content-Type', '')
-            if 'zip' in content_type or self.API_SOURCE.endswith('.zip'):
+            content_type = response.headers.get("Content-Type", "")
+            if "zip" in content_type or self.API_SOURCE.endswith(".zip"):
                 log_info("Detected ZIP file, extracting...")
                 zip_file = zipfile.ZipFile(io.BytesIO(response.content))
-                json_files = [f for f in zip_file.namelist() if f.endswith('.json')]
+                json_files = [f for f in zip_file.namelist() if f.endswith(".json")]
                 if not json_files:
                     log_error("No JSON file found in ZIP")
                     return
@@ -177,7 +177,8 @@ class HealthFoodService:
 
             # Create health_foods table
             cursor.execute("DROP TABLE IF EXISTS health_foods")
-            cursor.execute("""
+            cursor.execute(
+                """
                 CREATE TABLE health_foods (
                     license_number TEXT,
                     category TEXT,
@@ -192,7 +193,8 @@ class HealthFoodService:
                     precautions TEXT,
                     url TEXT
                 )
-            """)
+            """
+            )
 
             # Insert data
             rows_to_insert = []
@@ -209,23 +211,30 @@ class HealthFoodService:
                     str(item.get("保健功效宣稱", "")),
                     str(item.get("警語", "")),
                     str(item.get("注意事項", "")),
-                    str(item.get("網址", ""))
+                    str(item.get("網址", "")),
                 )
                 rows_to_insert.append(row)
 
-            cursor.executemany("""
+            cursor.executemany(
+                """
                 INSERT INTO health_foods VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, rows_to_insert)
+            """,
+                rows_to_insert,
+            )
 
             # Create indexes
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_health_foods_name ON health_foods(name_zh)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_health_foods_benefit ON health_foods(health_benefit)")
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_health_foods_name ON health_foods(name_zh)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_health_foods_benefit ON health_foods(health_benefit)"
+            )
 
             conn.commit()
             log_info(f"Updated health_foods: {len(rows_to_insert)} rows.")
 
             # Update metadata
-            with open(self.meta_path, 'w') as f:
+            with open(self.meta_path, "w") as f:
                 json.dump({"last_updated": datetime.now().isoformat()}, f)
 
             log_info("Health food dataset updated successfully.")
@@ -284,7 +293,9 @@ class HealthFoodService:
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
 
-        cursor.execute("SELECT * FROM health_foods WHERE license_number = ?", (license_number,))
+        cursor.execute(
+            "SELECT * FROM health_foods WHERE license_number = ?", (license_number,)
+        )
         food = cursor.fetchone()
         conn.close()
 
@@ -326,11 +337,13 @@ class HealthFoodService:
         """Extract ICD code from diagnosis keyword."""
         diagnosis_keyword = diagnosis_keyword.strip().upper()
         if len(diagnosis_keyword) >= 2 and diagnosis_keyword[0].isalpha():
-            parts = diagnosis_keyword.split('.')
+            parts = diagnosis_keyword.split(".")
             return parts[0]
         return None
 
-    def analyze_health_support_for_condition(self, diagnosis_keyword: str, icd_service=None, food_nutrition_service=None):
+    def analyze_health_support_for_condition(
+        self, diagnosis_keyword: str, icd_service=None, food_nutrition_service=None
+    ):
         """
         【綜合分析】根據疾病診斷，推薦適合的健康食品與飲食建議。
 
@@ -344,7 +357,9 @@ class HealthFoodService:
         icd_code = None
 
         if icd_service:
-            diagnosis_info = icd_service.search_codes(diagnosis_keyword, type="diagnosis")
+            diagnosis_info = icd_service.search_codes(
+                diagnosis_keyword, type="diagnosis"
+            )
             icd_code = self._extract_icd_code(diagnosis_keyword)
         else:
             diagnosis_info = f"診斷關鍵字: {diagnosis_keyword}\n（ICD Service 未啟用，無法提供詳細疾病資訊）"
@@ -368,7 +383,11 @@ class HealthFoodService:
             if "找不到" not in result:
                 health_foods_results.append(f"\n【保健功效: {benefit}】\n{result}")
 
-        health_foods_section = "\n".join(health_foods_results) if health_foods_results else "未找到相關健康食品"
+        health_foods_section = (
+            "\n".join(health_foods_results)
+            if health_foods_results
+            else "未找到相關健康食品"
+        )
 
         # Step 4: 提供飲食建議（從飲食營養服務獲取）
         dietary_suggestions = self._get_dietary_suggestions(icd_code, diagnosis_keyword)
@@ -418,20 +437,16 @@ class HealthFoodService:
             "E78": "建議攝取富含Omega-3脂肪酸的魚類、堅果、燕麥、蔬菜水果。\n避免：飽和脂肪、反式脂肪、內臟類食物、油炸食品。",
             "E66": "建議攝取高纖維食物、瘦肉蛋白、大量蔬菜、適量水果。\n避免：高熱量食物、油炸食品、含糖飲料、精緻澱粉。",
             "E79": "建議攝取低普林食物（蔬菜、水果、全穀類）、充足水分。\n避免：高普林食物（內臟、海鮮、肉湯）、酒精。",
-
             # 心血管疾病
             "I10": "建議採用得舒飲食（DASH）：蔬菜、水果、全穀類、低脂乳製品、瘦肉。\n避免：高鈉食物、加工食品、醃製品。",
             "I25": "建議攝取富含Omega-3的魚類、堅果、橄欖油、蔬菜水果。\n避免：飽和脂肪、反式脂肪、高鈉食物。",
-
             # 肝膽疾病
             "K70": "建議攝取優質蛋白質、新鮮蔬果、全穀類、適量好油。\n嚴格避免：酒精。",
             "K74": "建議攝取優質蛋白質（豆類、魚類）、抗氧化蔬果（深綠色蔬菜、莓果）。\n避免：酒精、高脂肪食物、加工食品。",
-
             # 骨骼系統
             "M80": "建議攝取高鈣食物（牛奶、豆腐、小魚乾）、維生素D（鮭魚、蛋黃）、適度日曬。",
             "M81": "建議攝取高鈣食物、維生素D、維生素K（綠葉蔬菜）、適量蛋白質。",
             "M17": "建議攝取富含Omega-3的魚類、抗氧化蔬果、維生素C（柑橘類）。",
-
             # 消化系統
             "K59": "建議攝取高纖維食物、益生菌（優格、味噌）、充足水分。\n避免：刺激性食物、油膩食物。",
             "K29": "建議攝取溫和易消化食物、避免空腹、規律進食。\n避免：辛辣、酸性、油膩食物、咖啡、酒精。",
