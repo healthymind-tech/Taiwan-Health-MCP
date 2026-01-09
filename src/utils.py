@@ -1,5 +1,6 @@
-import sys
 import datetime
+import sys
+
 
 def log_info(message: str):
     """
@@ -8,6 +9,7 @@ def log_info(message: str):
     """
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     sys.stderr.write(f"[INFO][{timestamp}] {message}\n")
+
 
 def log_error(message: str):
     """

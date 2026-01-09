@@ -2,12 +2,13 @@
 Laboratory Service - LOINC 碼對照與檢驗參考值查詢
 整合台灣常用檢驗項目、LOINC 標準碼、參考值範圍
 """
-import sqlite3
-import os
+
 import json
-from typing import Dict, List, Optional, Literal
-from datetime import datetime
-from utils import log_info, log_error
+import os
+import sqlite3
+from typing import Dict, List, Literal, Optional
+
+from utils import log_error, log_info
 
 
 class LabService:
@@ -43,7 +44,8 @@ class LabService:
 
         try:
             # 1. LOINC 對照表
-            cursor.execute("""
+            cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS loinc_mapping (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     loinc_code TEXT NOT NULL UNIQUE,
@@ -56,10 +58,12 @@ class LabService:
                     method TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
-            """)
+            """
+            )
 
             # 2. 參考值表
-            cursor.execute("""
+            cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS reference_ranges (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     loinc_code TEXT NOT NULL,
@@ -73,16 +77,25 @@ class LabService:
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (loinc_code) REFERENCES loinc_mapping(loinc_code)
                 )
-            """)
+            """
+            )
 
             # 3. 插入台灣常用檢驗項目資料
             self._populate_taiwan_common_tests(cursor)
 
             # 4. 建立索引
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_loinc_code ON loinc_mapping(loinc_code)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_loinc_name_zh ON loinc_mapping(loinc_name_zh)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_category ON loinc_mapping(category)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_ref_loinc ON reference_ranges(loinc_code)")
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_loinc_code ON loinc_mapping(loinc_code)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_loinc_name_zh ON loinc_mapping(loinc_name_zh)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_category ON loinc_mapping(category)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_ref_loinc ON reference_ranges(loinc_code)"
+            )
 
             conn.commit()
             log_info("Lab database initialized successfully")
@@ -107,7 +120,7 @@ class LabService:
                 "category": "血液常規",
                 "specimen_type": "全血",
                 "unit": "10^3/uL",
-                "method": "自動血球計數儀"
+                "method": "自動血球計數儀",
             },
             {
                 "loinc_code": "789-8",
@@ -117,7 +130,7 @@ class LabService:
                 "category": "血液常規",
                 "specimen_type": "全血",
                 "unit": "10^6/uL",
-                "method": "自動血球計數儀"
+                "method": "自動血球計數儀",
             },
             {
                 "loinc_code": "718-7",
@@ -127,7 +140,7 @@ class LabService:
                 "category": "血液常規",
                 "specimen_type": "全血",
                 "unit": "g/dL",
-                "method": "自動血球計數儀"
+                "method": "自動血球計數儀",
             },
             {
                 "loinc_code": "4544-3",
@@ -137,7 +150,7 @@ class LabService:
                 "category": "血液常規",
                 "specimen_type": "全血",
                 "unit": "%",
-                "method": "自動血球計數儀"
+                "method": "自動血球計數儀",
             },
             {
                 "loinc_code": "777-3",
@@ -147,9 +160,8 @@ class LabService:
                 "category": "血液常規",
                 "specimen_type": "全血",
                 "unit": "10^3/uL",
-                "method": "自動血球計數儀"
+                "method": "自動血球計數儀",
             },
-
             # === 生化檢驗 - 血糖相關 ===
             {
                 "loinc_code": "1558-6",
@@ -159,7 +171,7 @@ class LabService:
                 "category": "生化檢驗-血糖",
                 "specimen_type": "血清/血漿",
                 "unit": "mg/dL",
-                "method": "酵素法"
+                "method": "酵素法",
             },
             {
                 "loinc_code": "2345-7",
@@ -169,7 +181,7 @@ class LabService:
                 "category": "生化檢驗-血糖",
                 "specimen_type": "血清/血漿",
                 "unit": "mg/dL",
-                "method": "酵素法"
+                "method": "酵素法",
             },
             {
                 "loinc_code": "4548-4",
@@ -179,9 +191,8 @@ class LabService:
                 "category": "生化檢驗-血糖",
                 "specimen_type": "全血",
                 "unit": "%",
-                "method": "HPLC"
+                "method": "HPLC",
             },
-
             # === 生化檢驗 - 血脂肪 ===
             {
                 "loinc_code": "2093-3",
@@ -191,7 +202,7 @@ class LabService:
                 "category": "生化檢驗-血脂",
                 "specimen_type": "血清/血漿",
                 "unit": "mg/dL",
-                "method": "酵素法"
+                "method": "酵素法",
             },
             {
                 "loinc_code": "2571-8",
@@ -201,7 +212,7 @@ class LabService:
                 "category": "生化檢驗-血脂",
                 "specimen_type": "血清/血漿",
                 "unit": "mg/dL",
-                "method": "酵素法"
+                "method": "酵素法",
             },
             {
                 "loinc_code": "2085-9",
@@ -211,7 +222,7 @@ class LabService:
                 "category": "生化檢驗-血脂",
                 "specimen_type": "血清/血漿",
                 "unit": "mg/dL",
-                "method": "直接法"
+                "method": "直接法",
             },
             {
                 "loinc_code": "2089-1",
@@ -221,9 +232,8 @@ class LabService:
                 "category": "生化檢驗-血脂",
                 "specimen_type": "血清/血漿",
                 "unit": "mg/dL",
-                "method": "計算法/直接法"
+                "method": "計算法/直接法",
             },
-
             # === 生化檢驗 - 肝功能 ===
             {
                 "loinc_code": "1742-6",
@@ -233,7 +243,7 @@ class LabService:
                 "category": "生化檢驗-肝功能",
                 "specimen_type": "血清/血漿",
                 "unit": "U/L",
-                "method": "酵素法"
+                "method": "酵素法",
             },
             {
                 "loinc_code": "1920-8",
@@ -243,7 +253,7 @@ class LabService:
                 "category": "生化檢驗-肝功能",
                 "specimen_type": "血清/血漿",
                 "unit": "U/L",
-                "method": "酵素法"
+                "method": "酵素法",
             },
             {
                 "loinc_code": "1975-2",
@@ -253,9 +263,8 @@ class LabService:
                 "category": "生化檢驗-肝功能",
                 "specimen_type": "血清/血漿",
                 "unit": "mg/dL",
-                "method": "化學法"
+                "method": "化學法",
             },
-
             # === 生化檢驗 - 腎功能 ===
             {
                 "loinc_code": "2160-0",
@@ -265,7 +274,7 @@ class LabService:
                 "category": "生化檢驗-腎功能",
                 "specimen_type": "血清/血漿",
                 "unit": "mg/dL",
-                "method": "Jaffe法/酵素法"
+                "method": "Jaffe法/酵素法",
             },
             {
                 "loinc_code": "3094-0",
@@ -275,7 +284,7 @@ class LabService:
                 "category": "生化檢驗-腎功能",
                 "specimen_type": "血清/血漿",
                 "unit": "mg/dL",
-                "method": "酵素法"
+                "method": "酵素法",
             },
             {
                 "loinc_code": "33914-3",
@@ -285,9 +294,8 @@ class LabService:
                 "category": "生化檢驗-腎功能",
                 "specimen_type": "血清/血漿",
                 "unit": "mL/min/1.73m2",
-                "method": "CKD-EPI 公式計算"
+                "method": "CKD-EPI 公式計算",
             },
-
             # === 生化檢驗 - 電解質 ===
             {
                 "loinc_code": "2951-2",
@@ -297,7 +305,7 @@ class LabService:
                 "category": "生化檢驗-電解質",
                 "specimen_type": "血清/血漿",
                 "unit": "mmol/L",
-                "method": "離子選擇電極法"
+                "method": "離子選擇電極法",
             },
             {
                 "loinc_code": "2823-3",
@@ -307,7 +315,7 @@ class LabService:
                 "category": "生化檢驗-電解質",
                 "specimen_type": "血清/血漿",
                 "unit": "mmol/L",
-                "method": "離子選擇電極法"
+                "method": "離子選擇電極法",
             },
             {
                 "loinc_code": "2075-0",
@@ -317,9 +325,8 @@ class LabService:
                 "category": "生化檢驗-電解質",
                 "specimen_type": "血清/血漿",
                 "unit": "mmol/L",
-                "method": "離子選擇電極法"
+                "method": "離子選擇電極法",
             },
-
             # === 甲狀腺功能 ===
             {
                 "loinc_code": "3016-3",
@@ -329,7 +336,7 @@ class LabService:
                 "category": "內分泌-甲狀腺",
                 "specimen_type": "血清/血漿",
                 "unit": "uIU/mL",
-                "method": "化學冷光免疫分析"
+                "method": "化學冷光免疫分析",
             },
             {
                 "loinc_code": "3053-6",
@@ -339,9 +346,8 @@ class LabService:
                 "category": "內分泌-甲狀腺",
                 "specimen_type": "血清/血漿",
                 "unit": "ng/dL",
-                "method": "化學冷光免疫分析"
+                "method": "化學冷光免疫分析",
             },
-
             # === 凝血功能 ===
             {
                 "loinc_code": "5902-2",
@@ -351,7 +357,7 @@ class LabService:
                 "category": "凝血功能",
                 "specimen_type": "檸檬酸鈉血漿",
                 "unit": "sec",
-                "method": "凝固法"
+                "method": "凝固法",
             },
             {
                 "loinc_code": "6301-6",
@@ -361,7 +367,7 @@ class LabService:
                 "category": "凝血功能",
                 "specimen_type": "檸檬酸鈉血漿",
                 "unit": "ratio",
-                "method": "凝固法計算"
+                "method": "凝固法計算",
             },
             {
                 "loinc_code": "3173-2",
@@ -371,9 +377,8 @@ class LabService:
                 "category": "凝血功能",
                 "specimen_type": "檸檬酸鈉血漿",
                 "unit": "sec",
-                "method": "凝固法"
+                "method": "凝固法",
             },
-
             # === 發炎指標 ===
             {
                 "loinc_code": "1988-5",
@@ -383,104 +388,398 @@ class LabService:
                 "category": "發炎指標",
                 "specimen_type": "血清/血漿",
                 "unit": "mg/dL",
-                "method": "免疫比濁法"
+                "method": "免疫比濁法",
             },
         ]
 
         # 插入檢驗項目
         for test in common_tests:
-            cursor.execute("""
+            cursor.execute(
+                """
                 INSERT OR IGNORE INTO loinc_mapping
                 (loinc_code, loinc_name_en, loinc_name_zh, common_name_zh, category, specimen_type, unit, method)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                test["loinc_code"],
-                test["loinc_name_en"],
-                test["loinc_name_zh"],
-                test["common_name_zh"],
-                test["category"],
-                test["specimen_type"],
-                test["unit"],
-                test["method"]
-            ))
+            """,
+                (
+                    test["loinc_code"],
+                    test["loinc_name_en"],
+                    test["loinc_name_zh"],
+                    test["common_name_zh"],
+                    test["category"],
+                    test["specimen_type"],
+                    test["unit"],
+                    test["method"],
+                ),
+            )
 
         # 插入參考值範圍
         reference_ranges = [
             # 白血球 (成人)
-            {"loinc_code": "6690-2", "age_min": 18, "age_max": 120, "gender": "all", "range_low": 4.0, "range_high": 10.0, "unit": "10^3/uL", "interpretation": "成人參考值"},
+            {
+                "loinc_code": "6690-2",
+                "age_min": 18,
+                "age_max": 120,
+                "gender": "all",
+                "range_low": 4.0,
+                "range_high": 10.0,
+                "unit": "10^3/uL",
+                "interpretation": "成人參考值",
+            },
             # 紅血球
-            {"loinc_code": "789-8", "age_min": 18, "age_max": 120, "gender": "M", "range_low": 4.5, "range_high": 5.9, "unit": "10^6/uL", "interpretation": "成人男性"},
-            {"loinc_code": "789-8", "age_min": 18, "age_max": 120, "gender": "F", "range_low": 4.0, "range_high": 5.2, "unit": "10^6/uL", "interpretation": "成人女性"},
+            {
+                "loinc_code": "789-8",
+                "age_min": 18,
+                "age_max": 120,
+                "gender": "M",
+                "range_low": 4.5,
+                "range_high": 5.9,
+                "unit": "10^6/uL",
+                "interpretation": "成人男性",
+            },
+            {
+                "loinc_code": "789-8",
+                "age_min": 18,
+                "age_max": 120,
+                "gender": "F",
+                "range_low": 4.0,
+                "range_high": 5.2,
+                "unit": "10^6/uL",
+                "interpretation": "成人女性",
+            },
             # 血紅素
-            {"loinc_code": "718-7", "age_min": 18, "age_max": 120, "gender": "M", "range_low": 13.5, "range_high": 17.5, "unit": "g/dL", "interpretation": "成人男性"},
-            {"loinc_code": "718-7", "age_min": 18, "age_max": 120, "gender": "F", "range_low": 12.0, "range_high": 16.0, "unit": "g/dL", "interpretation": "成人女性"},
+            {
+                "loinc_code": "718-7",
+                "age_min": 18,
+                "age_max": 120,
+                "gender": "M",
+                "range_low": 13.5,
+                "range_high": 17.5,
+                "unit": "g/dL",
+                "interpretation": "成人男性",
+            },
+            {
+                "loinc_code": "718-7",
+                "age_min": 18,
+                "age_max": 120,
+                "gender": "F",
+                "range_low": 12.0,
+                "range_high": 16.0,
+                "unit": "g/dL",
+                "interpretation": "成人女性",
+            },
             # 血球容積比
-            {"loinc_code": "4544-3", "age_min": 18, "age_max": 120, "gender": "M", "range_low": 39, "range_high": 52, "unit": "%", "interpretation": "成人男性"},
-            {"loinc_code": "4544-3", "age_min": 18, "age_max": 120, "gender": "F", "range_low": 36, "range_high": 46, "unit": "%", "interpretation": "成人女性"},
+            {
+                "loinc_code": "4544-3",
+                "age_min": 18,
+                "age_max": 120,
+                "gender": "M",
+                "range_low": 39,
+                "range_high": 52,
+                "unit": "%",
+                "interpretation": "成人男性",
+            },
+            {
+                "loinc_code": "4544-3",
+                "age_min": 18,
+                "age_max": 120,
+                "gender": "F",
+                "range_low": 36,
+                "range_high": 46,
+                "unit": "%",
+                "interpretation": "成人女性",
+            },
             # 血小板
-            {"loinc_code": "777-3", "age_min": 18, "age_max": 120, "gender": "all", "range_low": 150, "range_high": 400, "unit": "10^3/uL", "interpretation": "成人參考值"},
+            {
+                "loinc_code": "777-3",
+                "age_min": 18,
+                "age_max": 120,
+                "gender": "all",
+                "range_low": 150,
+                "range_high": 400,
+                "unit": "10^3/uL",
+                "interpretation": "成人參考值",
+            },
             # 空腹血糖
-            {"loinc_code": "1558-6", "age_min": 18, "age_max": 120, "gender": "all", "range_low": 70, "range_high": 100, "unit": "mg/dL", "interpretation": "正常範圍"},
+            {
+                "loinc_code": "1558-6",
+                "age_min": 18,
+                "age_max": 120,
+                "gender": "all",
+                "range_low": 70,
+                "range_high": 100,
+                "unit": "mg/dL",
+                "interpretation": "正常範圍",
+            },
             # 糖化血色素
-            {"loinc_code": "4548-4", "age_min": 18, "age_max": 120, "gender": "all", "range_low": 4.0, "range_high": 5.6, "unit": "%", "interpretation": "正常範圍"},
+            {
+                "loinc_code": "4548-4",
+                "age_min": 18,
+                "age_max": 120,
+                "gender": "all",
+                "range_low": 4.0,
+                "range_high": 5.6,
+                "unit": "%",
+                "interpretation": "正常範圍",
+            },
             # 總膽固醇
-            {"loinc_code": "2093-3", "age_min": 18, "age_max": 120, "gender": "all", "range_low": 0, "range_high": 200, "unit": "mg/dL", "interpretation": "理想值"},
+            {
+                "loinc_code": "2093-3",
+                "age_min": 18,
+                "age_max": 120,
+                "gender": "all",
+                "range_low": 0,
+                "range_high": 200,
+                "unit": "mg/dL",
+                "interpretation": "理想值",
+            },
             # 三酸甘油酯
-            {"loinc_code": "2571-8", "age_min": 18, "age_max": 120, "gender": "all", "range_low": 0, "range_high": 150, "unit": "mg/dL", "interpretation": "正常值"},
+            {
+                "loinc_code": "2571-8",
+                "age_min": 18,
+                "age_max": 120,
+                "gender": "all",
+                "range_low": 0,
+                "range_high": 150,
+                "unit": "mg/dL",
+                "interpretation": "正常值",
+            },
             # HDL
-            {"loinc_code": "2085-9", "age_min": 18, "age_max": 120, "gender": "M", "range_low": 40, "range_high": 999, "unit": "mg/dL", "interpretation": "成人男性（越高越好）"},
-            {"loinc_code": "2085-9", "age_min": 18, "age_max": 120, "gender": "F", "range_low": 50, "range_high": 999, "unit": "mg/dL", "interpretation": "成人女性（越高越好）"},
+            {
+                "loinc_code": "2085-9",
+                "age_min": 18,
+                "age_max": 120,
+                "gender": "M",
+                "range_low": 40,
+                "range_high": 999,
+                "unit": "mg/dL",
+                "interpretation": "成人男性（越高越好）",
+            },
+            {
+                "loinc_code": "2085-9",
+                "age_min": 18,
+                "age_max": 120,
+                "gender": "F",
+                "range_low": 50,
+                "range_high": 999,
+                "unit": "mg/dL",
+                "interpretation": "成人女性（越高越好）",
+            },
             # LDL
-            {"loinc_code": "2089-1", "age_min": 18, "age_max": 120, "gender": "all", "range_low": 0, "range_high": 130, "unit": "mg/dL", "interpretation": "理想值"},
+            {
+                "loinc_code": "2089-1",
+                "age_min": 18,
+                "age_max": 120,
+                "gender": "all",
+                "range_low": 0,
+                "range_high": 130,
+                "unit": "mg/dL",
+                "interpretation": "理想值",
+            },
             # ALT (GPT)
-            {"loinc_code": "1742-6", "age_min": 18, "age_max": 120, "gender": "M", "range_low": 0, "range_high": 40, "unit": "U/L", "interpretation": "成人男性"},
-            {"loinc_code": "1742-6", "age_min": 18, "age_max": 120, "gender": "F", "range_low": 0, "range_high": 35, "unit": "U/L", "interpretation": "成人女性"},
+            {
+                "loinc_code": "1742-6",
+                "age_min": 18,
+                "age_max": 120,
+                "gender": "M",
+                "range_low": 0,
+                "range_high": 40,
+                "unit": "U/L",
+                "interpretation": "成人男性",
+            },
+            {
+                "loinc_code": "1742-6",
+                "age_min": 18,
+                "age_max": 120,
+                "gender": "F",
+                "range_low": 0,
+                "range_high": 35,
+                "unit": "U/L",
+                "interpretation": "成人女性",
+            },
             # AST (GOT)
-            {"loinc_code": "1920-8", "age_min": 18, "age_max": 120, "gender": "all", "range_low": 0, "range_high": 40, "unit": "U/L", "interpretation": "成人參考值"},
+            {
+                "loinc_code": "1920-8",
+                "age_min": 18,
+                "age_max": 120,
+                "gender": "all",
+                "range_low": 0,
+                "range_high": 40,
+                "unit": "U/L",
+                "interpretation": "成人參考值",
+            },
             # 總膽紅素
-            {"loinc_code": "1975-2", "age_min": 18, "age_max": 120, "gender": "all", "range_low": 0.2, "range_high": 1.2, "unit": "mg/dL", "interpretation": "成人參考值"},
+            {
+                "loinc_code": "1975-2",
+                "age_min": 18,
+                "age_max": 120,
+                "gender": "all",
+                "range_low": 0.2,
+                "range_high": 1.2,
+                "unit": "mg/dL",
+                "interpretation": "成人參考值",
+            },
             # 肌酸酐
-            {"loinc_code": "2160-0", "age_min": 18, "age_max": 120, "gender": "M", "range_low": 0.7, "range_high": 1.3, "unit": "mg/dL", "interpretation": "成人男性"},
-            {"loinc_code": "2160-0", "age_min": 18, "age_max": 120, "gender": "F", "range_low": 0.6, "range_high": 1.1, "unit": "mg/dL", "interpretation": "成人女性"},
+            {
+                "loinc_code": "2160-0",
+                "age_min": 18,
+                "age_max": 120,
+                "gender": "M",
+                "range_low": 0.7,
+                "range_high": 1.3,
+                "unit": "mg/dL",
+                "interpretation": "成人男性",
+            },
+            {
+                "loinc_code": "2160-0",
+                "age_min": 18,
+                "age_max": 120,
+                "gender": "F",
+                "range_low": 0.6,
+                "range_high": 1.1,
+                "unit": "mg/dL",
+                "interpretation": "成人女性",
+            },
             # BUN
-            {"loinc_code": "3094-0", "age_min": 18, "age_max": 120, "gender": "all", "range_low": 7, "range_high": 20, "unit": "mg/dL", "interpretation": "成人參考值"},
+            {
+                "loinc_code": "3094-0",
+                "age_min": 18,
+                "age_max": 120,
+                "gender": "all",
+                "range_low": 7,
+                "range_high": 20,
+                "unit": "mg/dL",
+                "interpretation": "成人參考值",
+            },
             # eGFR
-            {"loinc_code": "33914-3", "age_min": 18, "age_max": 120, "gender": "all", "range_low": 90, "range_high": 999, "unit": "mL/min/1.73m2", "interpretation": "正常腎功能"},
+            {
+                "loinc_code": "33914-3",
+                "age_min": 18,
+                "age_max": 120,
+                "gender": "all",
+                "range_low": 90,
+                "range_high": 999,
+                "unit": "mL/min/1.73m2",
+                "interpretation": "正常腎功能",
+            },
             # 鈉
-            {"loinc_code": "2951-2", "age_min": 18, "age_max": 120, "gender": "all", "range_low": 136, "range_high": 145, "unit": "mmol/L", "interpretation": "成人參考值"},
+            {
+                "loinc_code": "2951-2",
+                "age_min": 18,
+                "age_max": 120,
+                "gender": "all",
+                "range_low": 136,
+                "range_high": 145,
+                "unit": "mmol/L",
+                "interpretation": "成人參考值",
+            },
             # 鉀
-            {"loinc_code": "2823-3", "age_min": 18, "age_max": 120, "gender": "all", "range_low": 3.5, "range_high": 5.1, "unit": "mmol/L", "interpretation": "成人參考值"},
+            {
+                "loinc_code": "2823-3",
+                "age_min": 18,
+                "age_max": 120,
+                "gender": "all",
+                "range_low": 3.5,
+                "range_high": 5.1,
+                "unit": "mmol/L",
+                "interpretation": "成人參考值",
+            },
             # 氯
-            {"loinc_code": "2075-0", "age_min": 18, "age_max": 120, "gender": "all", "range_low": 98, "range_high": 107, "unit": "mmol/L", "interpretation": "成人參考值"},
+            {
+                "loinc_code": "2075-0",
+                "age_min": 18,
+                "age_max": 120,
+                "gender": "all",
+                "range_low": 98,
+                "range_high": 107,
+                "unit": "mmol/L",
+                "interpretation": "成人參考值",
+            },
             # TSH
-            {"loinc_code": "3016-3", "age_min": 18, "age_max": 120, "gender": "all", "range_low": 0.27, "range_high": 4.2, "unit": "uIU/mL", "interpretation": "成人參考值"},
+            {
+                "loinc_code": "3016-3",
+                "age_min": 18,
+                "age_max": 120,
+                "gender": "all",
+                "range_low": 0.27,
+                "range_high": 4.2,
+                "unit": "uIU/mL",
+                "interpretation": "成人參考值",
+            },
             # Free T4
-            {"loinc_code": "3053-6", "age_min": 18, "age_max": 120, "gender": "all", "range_low": 0.93, "range_high": 1.7, "unit": "ng/dL", "interpretation": "成人參考值"},
+            {
+                "loinc_code": "3053-6",
+                "age_min": 18,
+                "age_max": 120,
+                "gender": "all",
+                "range_low": 0.93,
+                "range_high": 1.7,
+                "unit": "ng/dL",
+                "interpretation": "成人參考值",
+            },
             # PT
-            {"loinc_code": "5902-2", "age_min": 18, "age_max": 120, "gender": "all", "range_low": 9.5, "range_high": 12.5, "unit": "sec", "interpretation": "成人參考值"},
+            {
+                "loinc_code": "5902-2",
+                "age_min": 18,
+                "age_max": 120,
+                "gender": "all",
+                "range_low": 9.5,
+                "range_high": 12.5,
+                "unit": "sec",
+                "interpretation": "成人參考值",
+            },
             # INR
-            {"loinc_code": "6301-6", "age_min": 18, "age_max": 120, "gender": "all", "range_low": 0.8, "range_high": 1.2, "unit": "ratio", "interpretation": "未服用抗凝血劑"},
+            {
+                "loinc_code": "6301-6",
+                "age_min": 18,
+                "age_max": 120,
+                "gender": "all",
+                "range_low": 0.8,
+                "range_high": 1.2,
+                "unit": "ratio",
+                "interpretation": "未服用抗凝血劑",
+            },
             # aPTT
-            {"loinc_code": "3173-2", "age_min": 18, "age_max": 120, "gender": "all", "range_low": 25, "range_high": 35, "unit": "sec", "interpretation": "成人參考值"},
+            {
+                "loinc_code": "3173-2",
+                "age_min": 18,
+                "age_max": 120,
+                "gender": "all",
+                "range_low": 25,
+                "range_high": 35,
+                "unit": "sec",
+                "interpretation": "成人參考值",
+            },
             # CRP
-            {"loinc_code": "1988-5", "age_min": 18, "age_max": 120, "gender": "all", "range_low": 0, "range_high": 0.5, "unit": "mg/dL", "interpretation": "正常值"},
+            {
+                "loinc_code": "1988-5",
+                "age_min": 18,
+                "age_max": 120,
+                "gender": "all",
+                "range_low": 0,
+                "range_high": 0.5,
+                "unit": "mg/dL",
+                "interpretation": "正常值",
+            },
         ]
 
         for ref in reference_ranges:
-            cursor.execute("""
+            cursor.execute(
+                """
                 INSERT INTO reference_ranges
                 (loinc_code, age_min, age_max, gender, range_low, range_high, unit, interpretation)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                ref["loinc_code"],
-                ref["age_min"],
-                ref["age_max"],
-                ref["gender"],
-                ref["range_low"],
-                ref["range_high"],
-                ref["unit"],
-                ref["interpretation"]
-            ))
+            """,
+                (
+                    ref["loinc_code"],
+                    ref["age_min"],
+                    ref["age_max"],
+                    ref["gender"],
+                    ref["range_low"],
+                    ref["range_high"],
+                    ref["unit"],
+                    ref["interpretation"],
+                ),
+            )
 
         log_info(f"Populated {len(common_tests)} Taiwan common lab tests")
         log_info(f"Populated {len(reference_ranges)} reference ranges")
@@ -533,22 +832,23 @@ class LabService:
         results = self._query_db(sql, tuple(params))
 
         if not results:
-            return json.dumps({
-                "message": f"找不到符合 '{keyword}' 的檢驗項目",
-                "suggestion": "請嘗試使用檢驗的中文名稱、英文名稱或常用縮寫"
-            }, ensure_ascii=False)
+            return json.dumps(
+                {
+                    "message": f"找不到符合 '{keyword}' 的檢驗項目",
+                    "suggestion": "請嘗試使用檢驗的中文名稱、英文名稱或常用縮寫",
+                },
+                ensure_ascii=False,
+            )
 
-        return json.dumps({
-            "keyword": keyword,
-            "total_found": len(results),
-            "results": results
-        }, ensure_ascii=False)
+        return json.dumps(
+            {"keyword": keyword, "total_found": len(results), "results": results},
+            ensure_ascii=False,
+        )
 
     def get_loinc_by_code(self, loinc_code: str) -> Dict:
         """取得特定 LOINC 碼的完整資訊"""
         results = self._query_db(
-            "SELECT * FROM loinc_mapping WHERE loinc_code = ?",
-            (loinc_code,)
+            "SELECT * FROM loinc_mapping WHERE loinc_code = ?", (loinc_code,)
         )
         return results[0] if results else None
 
@@ -558,20 +858,17 @@ class LabService:
             "SELECT DISTINCT category FROM loinc_mapping ORDER BY category"
         )
         categories = [r["category"] for r in results]
-        return json.dumps({
-            "total_categories": len(categories),
-            "categories": categories
-        }, ensure_ascii=False)
+        return json.dumps(
+            {"total_categories": len(categories), "categories": categories},
+            ensure_ascii=False,
+        )
 
     # ==========================================
     # 檢驗參考值查詢功能
     # ==========================================
 
     def get_reference_range(
-        self,
-        loinc_code: str,
-        age: int,
-        gender: Literal["M", "F", "all"] = "all"
+        self, loinc_code: str, age: int, gender: Literal["M", "F", "all"] = "all"
     ) -> str:
         """
         查詢檢驗參考值範圍
@@ -587,9 +884,9 @@ class LabService:
         # 先取得檢驗項目資訊
         test_info = self.get_loinc_by_code(loinc_code)
         if not test_info:
-            return json.dumps({
-                "error": f"找不到 LOINC 碼: {loinc_code}"
-            }, ensure_ascii=False)
+            return json.dumps(
+                {"error": f"找不到 LOINC 碼: {loinc_code}"}, ensure_ascii=False
+            )
 
         # 查詢參考值（優先找特定性別，找不到則找 all）
         sql = """
@@ -606,38 +903,48 @@ class LabService:
         ref_range = self._query_db(sql, (loinc_code, age, age, gender, gender))
 
         if not ref_range:
-            return json.dumps({
+            return json.dumps(
+                {
+                    "loinc_code": loinc_code,
+                    "test_name_zh": test_info["loinc_name_zh"],
+                    "test_name_en": test_info["loinc_name_en"],
+                    "message": f"找不到適用於年齡 {age} 歲、性別 {gender} 的參考值",
+                    "unit": test_info["unit"],
+                },
+                ensure_ascii=False,
+            )
+
+        ref = ref_range[0]
+        return json.dumps(
+            {
                 "loinc_code": loinc_code,
                 "test_name_zh": test_info["loinc_name_zh"],
                 "test_name_en": test_info["loinc_name_en"],
-                "message": f"找不到適用於年齡 {age} 歲、性別 {gender} 的參考值",
-                "unit": test_info["unit"]
-            }, ensure_ascii=False)
-
-        ref = ref_range[0]
-        return json.dumps({
-            "loinc_code": loinc_code,
-            "test_name_zh": test_info["loinc_name_zh"],
-            "test_name_en": test_info["loinc_name_en"],
-            "common_name": test_info["common_name_zh"],
-            "reference_range": {
-                "low": ref["range_low"],
-                "high": ref["range_high"],
-                "unit": ref["unit"],
-                "interpretation": ref["interpretation"]
+                "common_name": test_info["common_name_zh"],
+                "reference_range": {
+                    "low": ref["range_low"],
+                    "high": ref["range_high"],
+                    "unit": ref["unit"],
+                    "interpretation": ref["interpretation"],
+                },
+                "applicable_to": {
+                    "age_range": f"{ref['age_min']}-{ref['age_max']} 歲",
+                    "gender": (
+                        "男性"
+                        if ref["gender"] == "M"
+                        else "女性" if ref["gender"] == "F" else "不分性別"
+                    ),
+                },
             },
-            "applicable_to": {
-                "age_range": f"{ref['age_min']}-{ref['age_max']} 歲",
-                "gender": "男性" if ref["gender"] == "M" else "女性" if ref["gender"] == "F" else "不分性別"
-            }
-        }, ensure_ascii=False)
+            ensure_ascii=False,
+        )
 
     def interpret_lab_result(
         self,
         loinc_code: str,
         value: float,
         age: int,
-        gender: Literal["M", "F", "all"] = "all"
+        gender: Literal["M", "F", "all"] = "all",
     ) -> str:
         """
         判讀檢驗結果
@@ -675,30 +982,33 @@ class LabService:
             flag = "N"
             clinical_significance = "數值在正常範圍內"
 
-        return json.dumps({
-            "loinc_code": loinc_code,
-            "test_name_zh": ref_data["test_name_zh"],
-            "test_name_en": ref_data["test_name_en"],
-            "result": {
-                "value": value,
-                "unit": ref_range["unit"],
-                "status": status,
-                "flag": flag
+        return json.dumps(
+            {
+                "loinc_code": loinc_code,
+                "test_name_zh": ref_data["test_name_zh"],
+                "test_name_en": ref_data["test_name_en"],
+                "result": {
+                    "value": value,
+                    "unit": ref_range["unit"],
+                    "status": status,
+                    "flag": flag,
+                },
+                "reference_range": {
+                    "low": low,
+                    "high": high,
+                    "unit": ref_range["unit"],
+                },
+                "interpretation": clinical_significance,
+                "applicable_to": ref_data["applicable_to"],
             },
-            "reference_range": {
-                "low": low,
-                "high": high,
-                "unit": ref_range["unit"]
-            },
-            "interpretation": clinical_significance,
-            "applicable_to": ref_data["applicable_to"]
-        }, ensure_ascii=False)
+            ensure_ascii=False,
+        )
 
     def batch_interpret_results(
         self,
         results: List[Dict[str, any]],
         age: int,
-        gender: Literal["M", "F", "all"] = "all"
+        gender: Literal["M", "F", "all"] = "all",
     ) -> str:
         """
         批次判讀多個檢驗結果
@@ -721,20 +1031,29 @@ class LabService:
             if not loinc_code or value is None:
                 continue
 
-            interp = json.loads(self.interpret_lab_result(loinc_code, value, age, gender))
+            interp = json.loads(
+                self.interpret_lab_result(loinc_code, value, age, gender)
+            )
 
             if "error" not in interp and "message" not in interp:
                 interpretations.append(interp)
                 if interp["result"]["flag"] != "N":
                     abnormal_count += 1
 
-        return json.dumps({
-            "total_tests": len(interpretations),
-            "abnormal_count": abnormal_count,
-            "normal_count": len(interpretations) - abnormal_count,
-            "patient_info": {
-                "age": age,
-                "gender": "男性" if gender == "M" else "女性" if gender == "F" else "不分性別"
+        return json.dumps(
+            {
+                "total_tests": len(interpretations),
+                "abnormal_count": abnormal_count,
+                "normal_count": len(interpretations) - abnormal_count,
+                "patient_info": {
+                    "age": age,
+                    "gender": (
+                        "男性"
+                        if gender == "M"
+                        else "女性" if gender == "F" else "不分性別"
+                    ),
+                },
+                "results": interpretations,
             },
-            "results": interpretations
-        }, ensure_ascii=False)
+            ensure_ascii=False,
+        )

@@ -64,7 +64,7 @@ python test_lab_and_guideline.py
 
 # 或直接測試搜尋
 python -c "
-from src.lab_service import LabService
+from lab_service import LabService
 s = LabService('data')
 print(s.search_loinc_code('glucose'))
 "

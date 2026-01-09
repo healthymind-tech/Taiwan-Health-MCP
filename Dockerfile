@@ -7,13 +7,8 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 3. 複製資料 (這會放在 /app/data)
-COPY data/ ./data/
-
-# 4. 複製程式碼 (這會放在 /app/src)
-COPY src/ ./src/
-
-# 5. 【關鍵修改】切換工作目錄進入 /app/src
+# 3. 【關鍵修改】切換工作目錄進入 /app/src
+# 注意：data/ 和 src/ 會在運行時透過 volume mount 掛載，不需要在構建時複製
 WORKDIR /app/src
 
 # 6. 設定環境變數

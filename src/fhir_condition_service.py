@@ -2,11 +2,13 @@
 FHIR Condition Service
 將 ICD-10 診斷碼轉換為符合 FHIR R4 標準的 Condition 資源
 """
-import json
+
 from datetime import datetime
-from typing import Dict, List, Optional, Literal
+import json
+from typing import Dict, List, Literal, Optional
 from uuid import uuid4
-from utils import log_info, log_error
+
+from utils import log_error, log_info
 
 
 class FHIRConditionService:
@@ -18,8 +20,12 @@ class FHIRConditionService:
     # FHIR 標準 Code Systems
     FHIR_ICD10_CM_SYSTEM = "http://hl7.org/fhir/sid/icd-10-cm"
     FHIR_SNOMED_SYSTEM = "http://snomed.info/sct"
-    FHIR_CLINICAL_STATUS_SYSTEM = "http://terminology.hl7.org/CodeSystem/condition-clinical"
-    FHIR_VERIFICATION_STATUS_SYSTEM = "http://terminology.hl7.org/CodeSystem/condition-ver-status"
+    FHIR_CLINICAL_STATUS_SYSTEM = (
+        "http://terminology.hl7.org/CodeSystem/condition-clinical"
+    )
+    FHIR_VERIFICATION_STATUS_SYSTEM = (
+        "http://terminology.hl7.org/CodeSystem/condition-ver-status"
+    )
     FHIR_CATEGORY_SYSTEM = "http://terminology.hl7.org/CodeSystem/condition-category"
     FHIR_SEVERITY_SYSTEM = "http://snomed.info/sct"
 
@@ -37,13 +43,19 @@ class FHIRConditionService:
         self,
         icd_code: str,
         patient_id: str,
-        clinical_status: Literal["active", "inactive", "resolved", "remission"] = "active",
-        verification_status: Literal["confirmed", "provisional", "differential", "refuted"] = "confirmed",
-        category: Literal["problem-list-item", "encounter-diagnosis"] = "encounter-diagnosis",
+        clinical_status: Literal[
+            "active", "inactive", "resolved", "remission"
+        ] = "active",
+        verification_status: Literal[
+            "confirmed", "provisional", "differential", "refuted"
+        ] = "confirmed",
+        category: Literal[
+            "problem-list-item", "encounter-diagnosis"
+        ] = "encounter-diagnosis",
         severity: Optional[Literal["mild", "moderate", "severe"]] = None,
         onset_date: Optional[str] = None,
         recorded_date: Optional[str] = None,
-        additional_notes: Optional[str] = None
+        additional_notes: Optional[str] = None,
     ) -> Dict:
         """
         建立 FHIR Condition 資源
@@ -79,7 +91,7 @@ class FHIRConditionService:
                 log_error(f"ICD code not found: {icd_code}")
                 return {
                     "error": f"ICD-10 code '{icd_code}' not found in database",
-                    "suggestion": "Please verify the code or use search_medical_codes tool"
+                    "suggestion": "Please verify the code or use search_medical_codes tool",
                 }
 
             # 2. 建立 FHIR Condition 資源結構
@@ -87,34 +99,32 @@ class FHIRConditionService:
                 "resourceType": "Condition",
                 "id": self._generate_id(icd_code, patient_id),
                 "meta": {
-                    "profile": [
-                        "http://hl7.org/fhir/StructureDefinition/Condition"
-                    ],
-                    "lastUpdated": self._get_current_timestamp()
+                    "profile": ["http://hl7.org/fhir/StructureDefinition/Condition"],
+                    "lastUpdated": self._get_current_timestamp(),
                 },
                 "clinicalStatus": self._create_codeable_concept(
                     system=self.FHIR_CLINICAL_STATUS_SYSTEM,
                     code=clinical_status,
-                    display=self._get_clinical_status_display(clinical_status)
+                    display=self._get_clinical_status_display(clinical_status),
                 ),
                 "verificationStatus": self._create_codeable_concept(
                     system=self.FHIR_VERIFICATION_STATUS_SYSTEM,
                     code=verification_status,
-                    display=self._get_verification_status_display(verification_status)
+                    display=self._get_verification_status_display(verification_status),
                 ),
                 "category": [
                     self._create_codeable_concept(
                         system=self.FHIR_CATEGORY_SYSTEM,
                         code=category,
-                        display=self._get_category_display(category)
+                        display=self._get_category_display(category),
                     )
                 ],
                 "code": self._create_condition_code(icd_info),
                 "subject": {
                     "reference": f"Patient/{patient_id}",
-                    "display": f"患者 {patient_id}"
+                    "display": f"患者 {patient_id}",
                 },
-                "recordedDate": recorded_date or self._get_current_timestamp()
+                "recordedDate": recorded_date or self._get_current_timestamp(),
             }
 
             # 3. 添加可選欄位
@@ -125,10 +135,9 @@ class FHIRConditionService:
                 condition["onsetDateTime"] = onset_date
 
             if additional_notes:
-                condition["note"] = [{
-                    "text": additional_notes,
-                    "time": self._get_current_timestamp()
-                }]
+                condition["note"] = [
+                    {"text": additional_notes, "time": self._get_current_timestamp()}
+                ]
 
             log_info(f"FHIR Condition created successfully for ICD code: {icd_code}")
             return condition
@@ -138,14 +147,11 @@ class FHIRConditionService:
             return {
                 "error": f"Failed to create FHIR Condition: {str(e)}",
                 "icd_code": icd_code,
-                "patient_id": patient_id
+                "patient_id": patient_id,
             }
 
     def create_condition_from_search(
-        self,
-        keyword: str,
-        patient_id: str,
-        **kwargs
+        self, keyword: str, patient_id: str, **kwargs
     ) -> Dict:
         """
         從關鍵字搜尋並建立 FHIR Condition
@@ -166,7 +172,7 @@ class FHIRConditionService:
             if "diagnoses" not in search_data or not search_data["diagnoses"]:
                 return {
                     "error": f"No diagnosis found for keyword: {keyword}",
-                    "search_results": search_data
+                    "search_results": search_data,
                 }
 
             # 使用第一個搜尋結果建立 Condition
@@ -174,28 +180,23 @@ class FHIRConditionService:
             icd_code = first_result["code"]
 
             condition = self.create_condition(
-                icd_code=icd_code,
-                patient_id=patient_id,
-                **kwargs
+                icd_code=icd_code, patient_id=patient_id, **kwargs
             )
 
             return {
                 "search_results": search_data,
                 "selected_code": icd_code,
-                "fhir_condition": condition
+                "fhir_condition": condition,
             }
 
         except Exception as e:
             log_error(f"Failed to create condition from search: {e}")
-            return {
-                "error": str(e),
-                "keyword": keyword
-            }
+            return {"error": str(e), "keyword": keyword}
 
     def create_condition_bundle(
         self,
         conditions: List[Dict],
-        bundle_type: Literal["collection", "document", "transaction"] = "collection"
+        bundle_type: Literal["collection", "document", "transaction"] = "collection",
     ) -> Dict:
         """
         建立 FHIR Bundle（包含多個 Condition 資源）
@@ -213,15 +214,17 @@ class FHIRConditionService:
             "type": bundle_type,
             "timestamp": self._get_current_timestamp(),
             "total": len(conditions),
-            "entry": []
+            "entry": [],
         }
 
         for condition in conditions:
             if "error" not in condition:
-                bundle["entry"].append({
-                    "fullUrl": f"Condition/{condition.get('id', 'unknown')}",
-                    "resource": condition
-                })
+                bundle["entry"].append(
+                    {
+                        "fullUrl": f"Condition/{condition.get('id', 'unknown')}",
+                        "resource": condition,
+                    }
+                )
 
         log_info(f"FHIR Bundle created with {len(bundle['entry'])} conditions")
         return bundle
@@ -236,11 +239,7 @@ class FHIRConditionService:
         Returns:
             Dict: 驗證結果
         """
-        validation_results = {
-            "valid": True,
-            "errors": [],
-            "warnings": []
-        }
+        validation_results = {"valid": True, "errors": [], "warnings": []}
 
         # 必要欄位檢查
         required_fields = ["resourceType", "code", "subject"]
@@ -267,26 +266,15 @@ class FHIRConditionService:
     def _get_icd_info(self, icd_code: str) -> Optional[Dict]:
         """從 ICD Service 獲取診斷碼資訊"""
         results = self.icd_service._query_db(
-            "SELECT code, name_zh, name_en FROM diagnoses WHERE code = ?",
-            (icd_code,)
+            "SELECT code, name_zh, name_en FROM diagnoses WHERE code = ?", (icd_code,)
         )
         return results[0] if results else None
 
     def _create_codeable_concept(
-        self,
-        system: str,
-        code: str,
-        display: str,
-        text: Optional[str] = None
+        self, system: str, code: str, display: str, text: Optional[str] = None
     ) -> Dict:
         """建立 CodeableConcept 結構"""
-        concept = {
-            "coding": [{
-                "system": system,
-                "code": code,
-                "display": display
-            }]
-        }
+        concept = {"coding": [{"system": system, "code": code, "display": display}]}
         if text:
             concept["text"] = text
         return concept
@@ -298,10 +286,10 @@ class FHIRConditionService:
                 {
                     "system": self.FHIR_ICD10_CM_SYSTEM,
                     "code": icd_info["code"],
-                    "display": icd_info.get("name_en", "")
+                    "display": icd_info.get("name_en", ""),
                 }
             ],
-            "text": icd_info.get("name_zh", icd_info.get("name_en", ""))
+            "text": icd_info.get("name_zh", icd_info.get("name_en", "")),
         }
 
     def _create_severity(self, severity: str) -> Dict:
@@ -309,14 +297,14 @@ class FHIRConditionService:
         severity_map = {
             "mild": {"code": "255604002", "display": "Mild"},
             "moderate": {"code": "6736007", "display": "Moderate"},
-            "severe": {"code": "24484000", "display": "Severe"}
+            "severe": {"code": "24484000", "display": "Severe"},
         }
 
         severity_info = severity_map.get(severity, severity_map["moderate"])
         return self._create_codeable_concept(
             system=self.FHIR_SEVERITY_SYSTEM,
             code=severity_info["code"],
-            display=severity_info["display"]
+            display=severity_info["display"],
         )
 
     def _generate_id(self, icd_code: str, patient_id: str) -> str:
@@ -333,7 +321,7 @@ class FHIRConditionService:
             "active": "Active",
             "inactive": "Inactive",
             "resolved": "Resolved",
-            "remission": "Remission"
+            "remission": "Remission",
         }
         return status_map.get(code, code)
 
@@ -344,7 +332,7 @@ class FHIRConditionService:
             "provisional": "Provisional",
             "differential": "Differential",
             "refuted": "Refuted",
-            "entered-in-error": "Entered in Error"
+            "entered-in-error": "Entered in Error",
         }
         return status_map.get(code, code)
 
@@ -352,7 +340,7 @@ class FHIRConditionService:
         """獲取分類顯示名稱"""
         category_map = {
             "problem-list-item": "Problem List Item",
-            "encounter-diagnosis": "Encounter Diagnosis"
+            "encounter-diagnosis": "Encounter Diagnosis",
         }
         return category_map.get(code, code)
 

@@ -1,24 +1,26 @@
-from mcp.server.fastmcp import FastMCP
-import os
 import glob
-from utils import log_info, log_error
-from icd_service import ICDService
+import os
+
+from mcp.server.fastmcp import FastMCP
+
+from clinical_guideline_service import ClinicalGuidelineService
 from drug_service import DrugService
-from health_food_service import HealthFoodService
-from food_nutrition_service import FoodNutritionService
 from fhir_condition_service import FHIRConditionService
 from fhir_medication_service import FHIRMedicationService
+from food_nutrition_service import FoodNutritionService
+from health_food_service import HealthFoodService
+from icd_service import ICDService
 from lab_service import LabService
-from clinical_guideline_service import ClinicalGuidelineService
+from utils import log_error, log_info
 
 # 1. Initialize the MCP Server
-mcp = FastMCP("taiwanHealthMcp")
+mcp = FastMCP("taiwanHealthMcp", host="0.0.0.0")
 
 # 2. Configure data paths
 # In Docker, we mount or copy data to /app/data
 DATA_DIR = "/app/data"
 
-# Automatically find the ICD-10 Excel file. 
+# Automatically find the ICD-10 Excel file.
 # This handles the long filename issue dynamically.
 excel_files = glob.glob(os.path.join(DATA_DIR, "*.xlsx"))
 if excel_files:
@@ -65,11 +67,12 @@ except Exception as e:
 # Group 1: ICD-10 Tools (Diagnosis & Procedures)
 # ==========================================
 
+
 @mcp.tool()
 def search_medical_codes(keyword: str, type: str = "all") -> str:
     """
     Search for ICD-10-CM (Diagnosis) or ICD-10-PCS (Procedure) codes.
-    
+
     Args:
         keyword: Search term (e.g., 'Diabetes', 'E11', 'Appendectomy', '子宮內膜異位').
         type: Filter by 'diagnosis', 'procedure', or 'all'. Default is 'all'.
@@ -77,29 +80,32 @@ def search_medical_codes(keyword: str, type: str = "all") -> str:
     log_info(f"Tool called: search_medical_codes with query='{keyword}', type='{type}'")
     return icd_service.search_codes(keyword, type)
 
+
 @mcp.tool()
 def infer_complications(code: str) -> str:
     """
     Infers potential complications or specific sub-conditions based on ICD hierarchy.
     Example: Input 'E11' (Type 2 Diabetes) -> Returns specific codes like E11.9, E11.2 (with kidney complications).
-    
+
     Args:
         code: The base diagnosis code (e.g., 'E11', 'N80').
     """
     log_info(f"Tool called: infer_complications with code='{code}'")
     return icd_service.infer_complications(code)
 
+
 @mcp.tool()
 def get_nearby_codes(code: str) -> str:
     """
     Retrieves codes immediately preceding and following the target code.
     Useful for differential diagnosis context or seeing related severity levels.
-    
+
     Args:
         code: The target diagnosis code.
     """
     log_info(f"Tool called: get_nearby_codes with code='{code}'")
     return icd_service.get_nearby_codes(code)
+
 
 @mcp.tool()
 def check_medical_conflict(diagnosis_code: str, procedure_code: str) -> str:
@@ -124,42 +130,48 @@ def check_medical_conflict(diagnosis_code: str, procedure_code: str) -> str:
     Returns:
         JSON with both diagnosis and procedure details for comparison and conflict analysis.
     """
-    log_info(f"Tool called: check_medical_conflict ({diagnosis_code} vs {procedure_code})")
+    log_info(
+        f"Tool called: check_medical_conflict ({diagnosis_code} vs {procedure_code})"
+    )
     return icd_service.get_conflict_info(diagnosis_code, procedure_code)
+
 
 # ==========================================
 # Group 2: Drug Tools (Taiwan FDA Data)
 # ==========================================
+
 
 @mcp.tool()
 def search_drug_info(keyword: str) -> str:
     """
     Search for Taiwan FDA approved drugs by name (Chinese/English) or indication.
     Returns basic information including License ID, Name, and Indication.
-    
+
     Args:
         keyword: Drug name or symptom (e.g., 'Panadol', '普拿疼', '頭痛').
     """
     log_info(f"Tool called: search_drug_info with query='{keyword}'")
     return drug_service.search_drug(keyword)
 
+
 @mcp.tool()
 def get_drug_details(license_id: str) -> str:
     """
     Get comprehensive details for a specific drug license ID.
     Includes: Ingredients, Usage, Appearance (shape/color), and Package Insert links.
-    
+
     Args:
         license_id: The specific license ID found via search (e.g., '衛部藥製字第058498號').
     """
     log_info(f"Tool called: get_drug_details for ID='{license_id}'")
     return drug_service.get_details(license_id)
 
+
 @mcp.tool()
 def identify_unknown_pill(features: str) -> str:
     """
     Identify a pill based on visual features using the appearance database.
-    
+
     Args:
         features: Keywords describing the pill (e.g., 'white circle YP', 'oval pink').
                   Include shape, color, and markings if visible.
@@ -167,28 +179,32 @@ def identify_unknown_pill(features: str) -> str:
     log_info(f"Tool called: identify_unknown_pill with features='{features}'")
     return drug_service.identify_pill(features)
 
+
 # ==========================================
 # Group 3: Composite Analysis (The "Doctor Brain")
 # ==========================================
+
 
 @mcp.tool()
 def analyze_treatment_plan(diagnosis_keyword: str, drug_keyword: str) -> str:
     """
     [Advanced] Analyze the correlation between a diagnosis and a drug.
     Fetches data from both ICD-10 and FDA Drug databases to help evaluate treatment appropriateness.
-    
+
     Args:
         diagnosis_keyword: The condition or disease name/code (e.g., 'Diabetes', 'E11').
         drug_keyword: The medication name (e.g., 'Metformin').
     """
-    log_info(f"Tool called: analyze_treatment with diagnosis='{diagnosis_keyword}', drug='{drug_keyword}'")
-    
+    log_info(
+        f"Tool called: analyze_treatment with diagnosis='{diagnosis_keyword}', drug='{drug_keyword}'"
+    )
+
     # 1. Search ICD (broad search first)
     icd_result = icd_service.search_codes(diagnosis_keyword, type="diagnosis")
-    
+
     # 2. Search Drug
     drug_result = drug_service.search_drug(drug_keyword)
-    
+
     # 3. Combine results for the LLM to process
     return f"""
 === Comprehensive Analysis Context ===
@@ -213,9 +229,11 @@ Based on the above retrieved data, please analyze:
 3. Provide a brief summary for a healthcare professional.
 """
 
+
 # ==========================================
 # Group 4: Health Food Tools (Taiwan FDA)
 # ==========================================
+
 
 @mcp.tool()
 def search_health_food(keyword: str) -> str:
@@ -229,6 +247,7 @@ def search_health_food(keyword: str) -> str:
     log_info(f"Tool called: search_health_food with query='{keyword}'")
     return health_food_service.search_health_food(keyword)
 
+
 @mcp.tool()
 def get_health_food_details(license_number: str) -> str:
     """
@@ -241,9 +260,11 @@ def get_health_food_details(license_number: str) -> str:
     log_info(f"Tool called: get_health_food_details for license='{license_number}'")
     return health_food_service.get_health_food_details(license_number)
 
+
 # ==========================================
 # Group 5: Nutrition & Dietary Management Tools
 # ==========================================
+
 
 @mcp.tool()
 def search_food_nutrition(food_name: str, nutrient: str = None) -> str:
@@ -254,8 +275,11 @@ def search_food_nutrition(food_name: str, nutrient: str = None) -> str:
         food_name: Name of the food (e.g., '白米', '雞蛋', '蘋果', 'chicken breast').
         nutrient: Optional - specific nutrient to filter (e.g., '蛋白質', '維生素C', '鈣').
     """
-    log_info(f"Tool called: search_food_nutrition with food='{food_name}', nutrient='{nutrient}'")
+    log_info(
+        f"Tool called: search_food_nutrition with food='{food_name}', nutrient='{nutrient}'"
+    )
     return food_nutrition_service.search_nutrition(food_name, nutrient)
+
 
 @mcp.tool()
 def get_detailed_nutrition(food_name: str) -> str:
@@ -269,6 +293,7 @@ def get_detailed_nutrition(food_name: str) -> str:
     log_info(f"Tool called: get_detailed_nutrition for food='{food_name}'")
     return food_nutrition_service.get_detailed_nutrition(food_name)
 
+
 @mcp.tool()
 def search_food_ingredient(keyword: str) -> str:
     """
@@ -281,6 +306,7 @@ def search_food_ingredient(keyword: str) -> str:
     log_info(f"Tool called: search_food_ingredient with query='{keyword}'")
     return food_nutrition_service.search_food_ingredient(keyword)
 
+
 @mcp.tool()
 def get_ingredients_by_category(category: str) -> str:
     """
@@ -291,6 +317,7 @@ def get_ingredients_by_category(category: str) -> str:
     """
     log_info(f"Tool called: get_ingredients_by_category for category='{category}'")
     return food_nutrition_service.get_ingredients_by_category(category)
+
 
 @mcp.tool()
 def analyze_meal_nutrition(foods: list) -> str:
@@ -303,9 +330,11 @@ def analyze_meal_nutrition(foods: list) -> str:
     log_info(f"Tool called: analyze_meal_nutrition with foods={foods}")
     return food_nutrition_service.analyze_diet_plan(foods)
 
+
 # ==========================================
 # Group 6: Comprehensive Health Analysis (疾病與保健整合分析)
 # ==========================================
+
 
 @mcp.tool()
 def analyze_health_support_for_condition(diagnosis_keyword: str) -> str:
@@ -351,18 +380,22 @@ def analyze_health_support_for_condition(diagnosis_keyword: str) -> str:
     - analyze_health_support_for_condition("糖尿病")  # 使用中文查詢
     - analyze_health_support_for_condition("高血壓")  # 查詢高血壓
     """
-    log_info(f"Tool called: analyze_health_support_for_condition with diagnosis='{diagnosis_keyword}'")
+    log_info(
+        f"Tool called: analyze_health_support_for_condition with diagnosis='{diagnosis_keyword}'"
+    )
 
     # 傳入 icd_service 和 food_nutrition_service 以整合疾病資訊和飲食建議
     return health_food_service.analyze_health_support_for_condition(
         diagnosis_keyword=diagnosis_keyword,
         icd_service=icd_service,
-        food_nutrition_service=food_nutrition_service
+        food_nutrition_service=food_nutrition_service,
     )
+
 
 # ==========================================
 # Group 7: FHIR Interoperability Tools
 # ==========================================
+
 
 @mcp.tool()
 def create_fhir_condition(
@@ -374,7 +407,7 @@ def create_fhir_condition(
     severity: str = None,
     onset_date: str = None,
     recorded_date: str = None,
-    additional_notes: str = None
+    additional_notes: str = None,
 ) -> str:
     """
     將 ICD-10-CM 診斷碼轉換為符合 FHIR R4 標準的 Condition 資源。
@@ -415,7 +448,9 @@ def create_fhir_condition(
             onset_date="2024-01-15"
         )
     """
-    log_info(f"Tool called: create_fhir_condition for ICD={icd_code}, Patient={patient_id}")
+    log_info(
+        f"Tool called: create_fhir_condition for ICD={icd_code}, Patient={patient_id}"
+    )
 
     result = fhir_condition_service.create_condition(
         icd_code=icd_code,
@@ -426,10 +461,11 @@ def create_fhir_condition(
         severity=severity,
         onset_date=onset_date,
         recorded_date=recorded_date,
-        additional_notes=additional_notes
+        additional_notes=additional_notes,
     )
 
     return fhir_condition_service.to_json_string(result, indent=2)
+
 
 @mcp.tool()
 def create_fhir_condition_from_diagnosis(
@@ -437,7 +473,7 @@ def create_fhir_condition_from_diagnosis(
     patient_id: str,
     clinical_status: str = "active",
     verification_status: str = "confirmed",
-    severity: str = None
+    severity: str = None,
 ) -> str:
     """
     從疾病關鍵字搜尋並建立 FHIR Condition 資源（自動查找 ICD-10 編碼）。
@@ -462,17 +498,20 @@ def create_fhir_condition_from_diagnosis(
             severity="moderate"
         )
     """
-    log_info(f"Tool called: create_fhir_condition_from_diagnosis for '{diagnosis_keyword}'")
+    log_info(
+        f"Tool called: create_fhir_condition_from_diagnosis for '{diagnosis_keyword}'"
+    )
 
     result = fhir_condition_service.create_condition_from_search(
         keyword=diagnosis_keyword,
         patient_id=patient_id,
         clinical_status=clinical_status,
         verification_status=verification_status,
-        severity=severity
+        severity=severity,
     )
 
     return fhir_condition_service.to_json_string(result, indent=2)
+
 
 @mcp.tool()
 def validate_fhir_condition(condition_json: str) -> str:
@@ -493,19 +532,22 @@ def validate_fhir_condition(condition_json: str) -> str:
     log_info("Tool called: validate_fhir_condition")
 
     import json
+
     try:
         condition = json.loads(condition_json)
         result = fhir_condition_service.validate_condition(condition)
         return fhir_condition_service.to_json_string(result, indent=2)
     except json.JSONDecodeError as e:
-        return fhir_condition_service.to_json_string({
-            "valid": False,
-            "errors": [f"Invalid JSON format: {str(e)}"]
-        }, indent=2)
+        log_error(f"JSON decode error in validate_fhir_condition: {e}")
+        return fhir_condition_service.to_json_string(
+            {"valid": False, "errors": [f"Invalid JSON format: {str(e)}"]}, indent=2
+        )
+
 
 # ==========================================
 # Group 8: Laboratory & LOINC Tools
 # ==========================================
+
 
 @mcp.tool()
 def search_loinc_code(keyword: str, category: str = None) -> str:
@@ -533,8 +575,11 @@ def search_loinc_code(keyword: str, category: str = None) -> str:
         - search_loinc_code("HbA1c")  # 查詢糖化血色素
         - search_loinc_code("肝功能", category="生化檢驗-肝功能")
     """
-    log_info(f"Tool called: search_loinc_code with keyword='{keyword}', category='{category}'")
+    log_info(
+        f"Tool called: search_loinc_code with keyword='{keyword}', category='{category}'"
+    )
     return lab_service.search_loinc_code(keyword, category)
+
 
 @mcp.tool()
 def list_lab_categories() -> str:
@@ -546,6 +591,7 @@ def list_lab_categories() -> str:
     """
     log_info("Tool called: list_lab_categories")
     return lab_service.list_categories()
+
 
 @mcp.tool()
 def get_reference_range(loinc_code: str, age: int, gender: str = "all") -> str:
@@ -570,11 +616,16 @@ def get_reference_range(loinc_code: str, age: int, gender: str = "all") -> str:
         - get_reference_range("1558-6", age=45, gender="M")  # 45歲男性空腹血糖參考值
         - get_reference_range("718-7", age=30, gender="F")   # 30歲女性血紅素參考值
     """
-    log_info(f"Tool called: get_reference_range for LOINC={loinc_code}, age={age}, gender={gender}")
+    log_info(
+        f"Tool called: get_reference_range for LOINC={loinc_code}, age={age}, gender={gender}"
+    )
     return lab_service.get_reference_range(loinc_code, age, gender)
 
+
 @mcp.tool()
-def interpret_lab_result(loinc_code: str, value: float, age: int, gender: str = "all") -> str:
+def interpret_lab_result(
+    loinc_code: str, value: float, age: int, gender: str = "all"
+) -> str:
     """
     判讀檢驗結果（自動比對參考值，判斷是否異常）
 
@@ -601,8 +652,11 @@ def interpret_lab_result(loinc_code: str, value: float, age: int, gender: str = 
     log_info(f"Tool called: interpret_lab_result for LOINC={loinc_code}, value={value}")
     return lab_service.interpret_lab_result(loinc_code, value, age, gender)
 
+
 @mcp.tool()
-def batch_interpret_lab_results(results_json: str, age: int, gender: str = "all") -> str:
+def batch_interpret_lab_results(
+    results_json: str, age: int, gender: str = "all"
+) -> str:
     """
     批次判讀多個檢驗結果
 
@@ -630,17 +684,21 @@ def batch_interpret_lab_results(results_json: str, age: int, gender: str = "all"
     """
     log_info(f"Tool called: batch_interpret_lab_results for age={age}, gender={gender}")
     import json
+
     try:
         results = json.loads(results_json)
         return lab_service.batch_interpret_results(results, age, gender)
     except json.JSONDecodeError as e:
-        return json.dumps({
-            "error": f"Invalid JSON format: {str(e)}"
-        }, ensure_ascii=False)
+        log_error(f"JSON decode error in batch_interpret_lab_results: {e}")
+        return json.dumps(
+            {"error": f"Invalid JSON format: {str(e)}"}, ensure_ascii=False
+        )
+
 
 # ==========================================
 # Group 9: Clinical Guideline Tools
 # ==========================================
+
 
 @mcp.tool()
 def search_clinical_guideline(keyword: str) -> str:
@@ -662,6 +720,7 @@ def search_clinical_guideline(keyword: str) -> str:
     """
     log_info(f"Tool called: search_clinical_guideline with keyword='{keyword}'")
     return guideline_service.search_guideline(keyword)
+
 
 @mcp.tool()
 def get_complete_guideline(icd_code: str) -> str:
@@ -687,6 +746,7 @@ def get_complete_guideline(icd_code: str) -> str:
     log_info(f"Tool called: get_complete_guideline for ICD={icd_code}")
     return guideline_service.get_complete_guideline(icd_code)
 
+
 @mcp.tool()
 def get_medication_recommendations(icd_code: str) -> str:
     """
@@ -705,6 +765,7 @@ def get_medication_recommendations(icd_code: str) -> str:
     """
     log_info(f"Tool called: get_medication_recommendations for ICD={icd_code}")
     return guideline_service.get_medication_recommendations(icd_code)
+
 
 @mcp.tool()
 def get_test_recommendations(icd_code: str) -> str:
@@ -725,6 +786,7 @@ def get_test_recommendations(icd_code: str) -> str:
     log_info(f"Tool called: get_test_recommendations for ICD={icd_code}")
     return guideline_service.get_test_recommendations(icd_code)
 
+
 @mcp.tool()
 def get_treatment_goals(icd_code: str) -> str:
     """
@@ -743,6 +805,7 @@ def get_treatment_goals(icd_code: str) -> str:
     """
     log_info(f"Tool called: get_treatment_goals for ICD={icd_code}")
     return guideline_service.get_treatment_goals(icd_code)
+
 
 @mcp.tool()
 def suggest_clinical_pathway(icd_code: str, patient_context_json: str = None) -> str:
@@ -770,24 +833,26 @@ def suggest_clinical_pathway(icd_code: str, patient_context_json: str = None) ->
     log_info(f"Tool called: suggest_clinical_pathway for ICD={icd_code}")
 
     import json
+
     patient_context = None
     if patient_context_json:
         try:
             patient_context = json.loads(patient_context_json)
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as e:
+            log_error(f"JSON decode error in suggest_clinical_pathway: {e}")
             pass
 
     return guideline_service.suggest_clinical_pathway(icd_code, patient_context)
+
 
 # ==========================================
 # Group 10: FHIR Medication Tools
 # ==========================================
 
+
 @mcp.tool()
 def create_fhir_medication(
-    license_id: str,
-    include_ingredients: bool = True,
-    include_appearance: bool = True
+    license_id: str, include_ingredients: bool = True, include_appearance: bool = True
 ) -> str:
     """
     將台灣 FDA 藥品許可證資料轉換為符合 FHIR R4 標準的 Medication 資源。
@@ -820,10 +885,11 @@ def create_fhir_medication(
     result = fhir_medication_service.create_medication(
         license_id=license_id,
         include_ingredients=include_ingredients,
-        include_appearance=include_appearance
+        include_appearance=include_appearance,
     )
 
     return fhir_medication_service.to_json_string(result, indent=2)
+
 
 @mcp.tool()
 def create_fhir_medication_knowledge(license_id: str) -> str:
@@ -853,16 +919,18 @@ def create_fhir_medication_knowledge(license_id: str) -> str:
     Example:
         create_fhir_medication_knowledge("衛署藥製字第058498號")
     """
-    log_info(f"Tool called: create_fhir_medication_knowledge for license_id={license_id}")
+    log_info(
+        f"Tool called: create_fhir_medication_knowledge for license_id={license_id}"
+    )
 
     result = fhir_medication_service.create_medication_knowledge(license_id)
 
     return fhir_medication_service.to_json_string(result, indent=2)
 
+
 @mcp.tool()
 def create_fhir_medication_from_name(
-    drug_name: str,
-    resource_type: str = "Medication"
+    drug_name: str, resource_type: str = "Medication"
 ) -> str:
     """
     從藥品名稱搜尋並建立 FHIR 資源（自動查找許可證）。
@@ -886,20 +954,20 @@ def create_fhir_medication_from_name(
             resource_type="Medication"
         )
     """
-    log_info(f"Tool called: create_fhir_medication_from_name for drug_name='{drug_name}'")
+    log_info(
+        f"Tool called: create_fhir_medication_from_name for drug_name='{drug_name}'"
+    )
 
     result = fhir_medication_service.create_medication_from_search(
-        keyword=drug_name,
-        resource_type=resource_type
+        keyword=drug_name, resource_type=resource_type
     )
 
     return fhir_medication_service.to_json_string(result, indent=2)
 
+
 @mcp.tool()
 def identify_pill_to_fhir(
-    shape: str = None,
-    color: str = None,
-    marking: str = None
+    shape: str = None, color: str = None, marking: str = None
 ) -> str:
     """
     從藥品外觀識別並建立 FHIR Medication 資源。
@@ -928,17 +996,18 @@ def identify_pill_to_fhir(
             marking="500"
         )
     """
-    log_info(f"Tool called: identify_pill_to_fhir with shape={shape}, color={color}, marking={marking}")
+    log_info(
+        f"Tool called: identify_pill_to_fhir with shape={shape}, color={color}, marking={marking}"
+    )
 
     result = fhir_medication_service.create_medication_from_appearance(
-        shape=shape,
-        color=color,
-        marking=marking
+        shape=shape, color=color, marking=marking
     )
 
     return fhir_medication_service.to_json_string(result, indent=2)
 
+
 # --- Start Server ---
 if __name__ == "__main__":
     log_info("Server is starting...")
-    mcp.run()
+    mcp.run('sse')

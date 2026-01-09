@@ -187,7 +187,7 @@ python scripts/integrate_loinc.py
 
 ```bash
 python -c "
-from src.icd_service import ICDService
+from icd_service import ICDService
 
 icd = ICDService('data/icd_file.xlsx', 'data')
 result = icd.search_codes('糖尿病', type='diagnosis')
@@ -214,8 +214,8 @@ python test_lab_and_guideline.py
 建立一個簡單的 Python 腳本來查詢藥品並轉換為 FHIR：
 
 ```python title="my_first_example.py"
-from src.drug_service import DrugService
-from src.fhir_medication_service import FHIRMedicationService
+from drug_service import DrugService
+from fhir_medication_service import FHIRMedicationService
 
 # 1. 初始化服務
 drug = DrugService('data')
