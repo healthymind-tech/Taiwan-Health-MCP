@@ -44,6 +44,22 @@ python src/server.py
 docker-compose up -d
 ```
 
+### MCP 配置
+
+在您的 MCP 客戶端配置檔案中加入以下設定：
+
+```json
+{
+  "mcpServers": {
+    "taiwan_icd10": {
+      "transport": "sse",
+      "enabled": true,
+      "url": "http://localhost:8008/sse",
+    }
+  }
+}
+```
+
 ---
 
 ## 📋 核心功能
