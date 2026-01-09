@@ -7,6 +7,7 @@
 [![Python](https://img.shields.io/badge/Python-3.8+-green)](https://www.python.org/)
 [![MCP](https://img.shields.io/badge/MCP-1.0-orange)](https://modelcontextprotocol.io)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
+[![Docs](https://img.shields.io/badge/Docs-GitHub%20Pages-informational)](https://audi0417.github.io/Taiwan-Health-MCP)
 
 ---
 
@@ -44,21 +45,10 @@ python src/server.py
 docker-compose up -d
 ```
 
-### MCP 配置
+### 📖 完整文檔
 
-在您的 MCP 客戶端配置檔案中加入以下設定：
-
-```json
-{
-  "mcpServers": {
-    "taiwan_icd10": {
-      "transport": "sse",
-      "enabled": true,
-      "url": "http://localhost:8000/sse"
-    }
-  }
-}
-```
+- **[GitHub Pages 文檔網站](https://audi0417.github.io/Taiwan-Health-MCP)** - 完整的架構、API、使用指南
+- **[本地 MkDocs](docs/)** - 離線開發文檔
 
 ---
 
@@ -154,8 +144,8 @@ docker-compose up -d
 
 ## 📚 詳細文件
 
-- **[src/README.md](src/README.md)** - 完整模組說明、API 參考、使用範例
-- **[docs/](docs/)** - MkDocs 文檔網站（架構、指南、API）
+- **[在線文檔網站](https://audi0417.github.io/Taiwan-Health-MCP)** ⭐ - MkDocs 完整文檔（架構、指南、API、FAQ）
+- **[src/README.md](src/README.md)** - 模組說明與開發參考
 
 ---
 
