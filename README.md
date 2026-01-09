@@ -54,7 +54,7 @@ docker-compose up -d
     "taiwan_icd10": {
       "transport": "sse",
       "enabled": true,
-      "url": "http://localhost:8008/sse",
+      "url": "http://localhost:8000/sse"
     }
   }
 }
