@@ -8,9 +8,6 @@ on:
       - 'docs/**'
       - 'mkdocs.yml'
       - '.github/workflows/deploy-docs.yml'
-  pull_request:
-    branches:
-      - main
 
 jobs:
   deploy:
