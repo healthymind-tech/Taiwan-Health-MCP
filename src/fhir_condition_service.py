@@ -8,7 +8,7 @@ import json
 from typing import Dict, List, Literal, Optional
 from uuid import uuid4
 
-from src.utils import log_error, log_info
+from utils import log_error, log_info
 
 
 class FHIRConditionService:

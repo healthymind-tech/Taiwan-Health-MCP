@@ -207,9 +207,9 @@ graph TB
 ### 範例 1: 完整診療流程
 
 ```python
-from src.icd_service import ICDService
-from src.fhir_condition_service import FHIRConditionService
-from src.clinical_guideline_service import ClinicalGuidelineService
+from icd_service import ICDService
+from fhir_condition_service import FHIRConditionService
+from clinical_guideline_service import ClinicalGuidelineService
 
 # 1. 搜尋診斷
 icd = ICDService('data/icd.xlsx', 'data')
@@ -231,8 +231,8 @@ pathway = guideline.suggest_clinical_pathway("E11")
 ### 範例 2: 藥品查詢與 FHIR 轉換
 
 ```python
-from src.drug_service import DrugService
-from src.fhir_medication_service import FHIRMedicationService
+from drug_service import DrugService
+from fhir_medication_service import FHIRMedicationService
 
 # 1. 搜尋藥品
 drug = DrugService('data')

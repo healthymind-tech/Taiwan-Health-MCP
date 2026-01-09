@@ -8,7 +8,7 @@ import os
 import sqlite3
 from typing import Dict, List, Literal, Optional
 
-from src.utils import log_error, log_info
+from utils import log_error, log_info
 
 
 class LabService:

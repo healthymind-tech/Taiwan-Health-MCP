@@ -9,7 +9,7 @@ import zipfile
 from apscheduler.schedulers.background import BackgroundScheduler
 import requests
 
-from src.utils import log_error, log_info
+from utils import log_error, log_info
 
 
 class HealthFoodService:

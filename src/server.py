@@ -3,22 +3,22 @@ import os
 
 from mcp.server.fastmcp import FastMCP
 
-from src.clinical_guideline_service import ClinicalGuidelineService
-from src.drug_service import DrugService
-from src.fhir_condition_service import FHIRConditionService
-from src.fhir_medication_service import FHIRMedicationService
-from src.food_nutrition_service import FoodNutritionService
-from src.health_food_service import HealthFoodService
-from src.icd_service import ICDService
-from src.lab_service import LabService
-from src.utils import log_error, log_info
+from clinical_guideline_service import ClinicalGuidelineService
+from drug_service import DrugService
+from fhir_condition_service import FHIRConditionService
+from fhir_medication_service import FHIRMedicationService
+from food_nutrition_service import FoodNutritionService
+from health_food_service import HealthFoodService
+from icd_service import ICDService
+from lab_service import LabService
+from utils import log_error, log_info
 
 # 1. Initialize the MCP Server
 mcp = FastMCP("taiwanHealthMcp")
 
 # 2. Configure data paths
 # In Docker, we mount or copy data to /app/data
-DATA_DIR = "/app/data"
+DATA_DIR = "/home/k1dave6412/Taiwan-Health-MCP/data"
 
 # Automatically find the ICD-10 Excel file.
 # This handles the long filename issue dynamically.

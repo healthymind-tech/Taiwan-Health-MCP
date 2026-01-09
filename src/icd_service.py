@@ -4,7 +4,7 @@ import sqlite3
 
 import pandas as pd
 
-from src.utils import log_error, log_info
+from utils import log_error, log_info
 
 
 class ICDService:

@@ -11,7 +11,7 @@ import sys
 
 import pandas as pd
 
-from src.utils import log_error
+from utils import log_error
 
 
 class LOINCIntegrator:
@@ -397,7 +397,7 @@ def main():
     print("\n下一步:")
     print("  1. 執行測試: python test_lab_and_guideline.py")
     print(
-        "  2. 搜尋檢驗: python -c \"from src.lab_service import LabService; s=LabService('data'); print(s.search_loinc_code('glucose'))\""
+        "  2. 搜尋檢驗: python -c \"from lab_service import LabService; s=LabService('data'); print(s.search_loinc_code('glucose'))\""
     )
 
     return 0

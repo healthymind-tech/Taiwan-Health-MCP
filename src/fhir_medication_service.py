@@ -7,7 +7,7 @@ from datetime import datetime
 import json
 from typing import Dict, List, Optional
 
-from src.utils import log_error, log_info
+from utils import log_error, log_info
 
 
 class FHIRMedicationService:
