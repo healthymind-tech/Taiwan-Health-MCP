@@ -14,11 +14,11 @@ from lab_service import LabService
 from utils import log_error, log_info
 
 # 1. Initialize the MCP Server
-mcp = FastMCP("taiwanHealthMcp")
+mcp = FastMCP("taiwanHealthMcp", host="0.0.0.0")
 
 # 2. Configure data paths
 # In Docker, we mount or copy data to /app/data
-DATA_DIR = "/home/k1dave6412/Taiwan-Health-MCP/data"
+DATA_DIR = "/app/data"
 
 # Automatically find the ICD-10 Excel file.
 # This handles the long filename issue dynamically.
@@ -1010,4 +1010,4 @@ def identify_pill_to_fhir(
 # --- Start Server ---
 if __name__ == "__main__":
     log_info("Server is starting...")
-    mcp.run()
+    mcp.run('sse')
