@@ -80,10 +80,6 @@ plugins:
         - zh
         - en
       separator: '[\s\-\.]+'
-  - tags:
-      tags_file: tags.md
-  - minify:
-      minify_html: true
 
 # Extensions
 markdown_extensions:
