@@ -4040,7 +4040,7 @@
 <h2 id="_9">✅ 驗證安裝<a class="headerlink" href="#_9" title="Permanent link">&para;</a></h2>
 <h3 id="1">測試 1: 基本功能測試<a class="headerlink" href="#1" title="Permanent link">&para;</a></h3>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>python<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;</span>
-</span><span id="__span-13-2"><a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="s2">from src.icd_service import ICDService</span>
+</span><span id="__span-13-2"><a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="s2">from icd_service import ICDService</span>
 </span><span id="__span-13-3"><a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>
 </span><span id="__span-13-4"><a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="s2">icd = ICDService(&#39;data/icd_file.xlsx&#39;, &#39;data&#39;)</span>
 </span><span id="__span-13-5"><a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a><span class="s2">result = icd.search_codes(&#39;糖尿病&#39;, type=&#39;diagnosis&#39;)</span>
@@ -4056,8 +4056,8 @@
 <hr />
 <h2 id="_10">🎯 第一個範例<a class="headerlink" href="#_10" title="Permanent link">&para;</a></h2>
 <p>建立一個簡單的 Python 腳本來查詢藥品並轉換為 FHIR：</p>
-<div class="language-python highlight"><span class="filename">my_first_example.py</span><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">src.drug_service</span><span class="w"> </span><span class="kn">import</span> <span class="n">DrugService</span>
-</span><span id="__span-16-2"><a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">src.fhir_medication_service</span><span class="w"> </span><span class="kn">import</span> <span class="n">FHIRMedicationService</span>
+<div class="language-python highlight"><span class="filename">my_first_example.py</span><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">drug_service</span><span class="w"> </span><span class="kn">import</span> <span class="n">DrugService</span>
+</span><span id="__span-16-2"><a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">fhir_medication_service</span><span class="w"> </span><span class="kn">import</span> <span class="n">FHIRMedicationService</span>
 </span><span id="__span-16-3"><a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>
 </span><span id="__span-16-4"><a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a><span class="c1"># 1. 初始化服務</span>
 </span><span id="__span-16-5"><a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a><span class="n">drug</span> <span class="o">=</span> <span class="n">DrugService</span><span class="p">(</span><span class="s1">&#39;data&#39;</span><span class="p">)</span>
