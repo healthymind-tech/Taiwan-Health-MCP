@@ -47,7 +47,7 @@ docker-compose up -d
 
 ### 📖 完整文檔
 
-- **[GitHub Pages 文檔網站](https://audi0417.github.io/Taiwan-Health-MCP)** - 完整的架構、API、使用指南
+- **[GitHub Pages 文檔網站](https://healthymind-tech.github.io/Taiwan-Health-MCP/)** - 完整的架構、API、使用指南
 - **[本地 MkDocs](docs/)** - 離線開發文檔
 
 ---
