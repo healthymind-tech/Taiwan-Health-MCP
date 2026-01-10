@@ -17,11 +17,18 @@ from utils import log_error, log_info
 mcp = FastMCP("taiwanHealthMcp", host="0.0.0.0")
 
 # 2. Configure data paths
-# In Docker, we mount or copy data to /app/data
-DATA_DIR = "/app/data"
+# Automatically detect if running in Google Colab or Docker
+if os.path.exists("/content/Taiwan-Health-MCP/data"):
+    DATA_DIR = "/content/Taiwan-Health-MCP/data"
+elif os.path.exists("/app/data"):
+    DATA_DIR = "/app/data"
+else:
+    # Fallback to local data directory
+    DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
+
+log_info(f"Using DATA_DIR: {DATA_DIR}")
 
 # Automatically find the ICD-10 Excel file.
-# This handles the long filename issue dynamically.
 excel_files = glob.glob(os.path.join(DATA_DIR, "*.xlsx"))
 if excel_files:
     ICD_FILE_PATH = excel_files[0]
@@ -30,38 +37,59 @@ else:
     ICD_FILE_PATH = os.path.join(DATA_DIR, "default.xlsx")
     log_error("No Excel file found in data directory!")
 
-# 3. Initialize Services
-# We pass the paths so the services can manage their own SQLite databases.
+# 3. Initialize Services with individual try-except blocks to ensure maximum availability
 log_info("Initializing Services...")
 
+icd_service = None
+drug_service = None
+health_food_service = None
+food_nutrition_service = None
+fhir_condition_service = None
+fhir_medication_service = None
+lab_service = None
+guideline_service = None
+
 try:
-    # ICD Service: Handles diagnosis and procedure codes (Excel -> SQLite)
     icd_service = ICDService(ICD_FILE_PATH, DATA_DIR)
-
-    # Drug Service: Handles FDA APIs (JSON -> SQLite ETL)
-    drug_service = DrugService(DATA_DIR)
-
-    # Health Food Service: Handles health foods (保健品) - 依據《健康食品管理法》
-    health_food_service = HealthFoodService(DATA_DIR)
-
-    # Food Nutrition Service: Handles general food nutrition and ingredients
-    food_nutrition_service = FoodNutritionService(DATA_DIR)
-
-    # FHIR Service: Converts ICD-10 codes to FHIR Condition resources
-    fhir_condition_service = FHIRConditionService(icd_service)
-
-    # FHIR Medication Service: Converts Taiwan FDA drug data to FHIR Medication resources
-    fhir_medication_service = FHIRMedicationService(drug_service)
-
-    # Lab Service: Handles LOINC code mapping and reference ranges
-    lab_service = LabService(DATA_DIR)
-
-    # Clinical Guideline Service: Provides clinical practice guidelines
-    guideline_service = ClinicalGuidelineService(DATA_DIR)
-
 except Exception as e:
-    log_error(f"Critical error initializing services: {e}")
-    # We continue, but tools might fail if services aren't ready
+    log_error(f"ICDService failed: {e}")
+
+try:
+    drug_service = DrugService(DATA_DIR)
+except Exception as e:
+    log_error(f"DrugService failed: {e}")
+
+try:
+    health_food_service = HealthFoodService(DATA_DIR)
+except Exception as e:
+    log_error(f"HealthFoodService failed: {e}")
+
+try:
+    food_nutrition_service = FoodNutritionService(DATA_DIR)
+except Exception as e:
+    log_error(f"FoodNutritionService failed: {e}")
+
+try:
+    if icd_service:
+        fhir_condition_service = FHIRConditionService(icd_service)
+except Exception as e:
+    log_error(f"FHIRConditionService failed: {e}")
+
+try:
+    if drug_service:
+        fhir_medication_service = FHIRMedicationService(drug_service)
+except Exception as e:
+    log_error(f"FHIRMedicationService failed: {e}")
+
+try:
+    lab_service = LabService(DATA_DIR)
+except Exception as e:
+    log_error(f"LabService failed: {e}")
+
+try:
+    guideline_service = ClinicalGuidelineService(DATA_DIR)
+except Exception as e:
+    log_error(f"ClinicalGuidelineService failed: {e}")
 
 # ==========================================
 # Group 1: ICD-10 Tools (Diagnosis & Procedures)
@@ -320,7 +348,7 @@ def get_ingredients_by_category(category: str) -> str:
 
 
 @mcp.tool()
-def analyze_meal_nutrition(foods: list) -> str:
+def analyze_meal_nutrition(foods: list[str]) -> str:
     """
     Analyze the combined nutritional composition of multiple foods (meal planning).
 
