@@ -214,6 +214,15 @@ python test_lab_and_guideline.py
 建立一個簡單的 Python 腳本來查詢藥品並轉換為 FHIR：
 
 ```python title="my_first_example.py"
+import os
+import sys
+
+# 將 src 加進模組搜尋路徑
+BASE_DIR = os.path.dirname(__file__)
+SRC_DIR = os.path.join(BASE_DIR, "src")
+if SRC_DIR not in sys.path:
+    sys.path.append(SRC_DIR)
+
 from drug_service import DrugService
 from fhir_medication_service import FHIRMedicationService
 
@@ -223,7 +232,7 @@ fhir_med = FHIRMedicationService(drug)
 
 # 2. 搜尋藥品
 print("搜尋藥品: 普拿疼")
-search_result = drug.search_drugs("普拿疼")
+search_result = drug.search_drug("普拿疼")
 print(search_result)
 
 # 3. 建立 FHIR Medication

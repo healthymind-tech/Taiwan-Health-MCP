@@ -236,7 +236,7 @@ from fhir_medication_service import FHIRMedicationService
 
 # 1. 搜尋藥品
 drug = DrugService('data')
-result = drug.search_drugs("普拿疼")
+result = drug.search_drug("普拿疼")
 
 # 2. 建立 FHIR Medication
 fhir_med = FHIRMedicationService(drug)

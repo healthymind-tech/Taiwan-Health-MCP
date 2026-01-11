@@ -266,7 +266,7 @@ class FHIRMedicationService:
         """
         try:
             # 搜尋藥品
-            search_results = self.drug_service.search_drugs(keyword)
+            search_results = self.drug_service.search_drug(keyword)
             search_data = json.loads(search_results)
 
             if "error" in search_data or not search_data.get("results"):

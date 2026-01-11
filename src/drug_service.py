@@ -254,19 +254,19 @@ class DrugService:
     def search_drug(self, keyword: str):
         """
         Search for drugs by name (ZH/EN) or indication.
-        Returns basic info + indication.
+        Returns JSON with search results.
         """
         if not os.path.exists(self.db_path):
-            return "DB initializing..."
+            return json.dumps({"error": "DB initializing..."})
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
         query = f"%{keyword}%"
         # Search specifically in the Master License table
         sql = """
-            SELECT name_zh, name_en, indication, license_id, category 
-            FROM licenses 
-            WHERE name_zh LIKE ? OR name_en LIKE ? OR indication LIKE ? 
+            SELECT name_zh, name_en, indication, license_id, category
+            FROM licenses
+            WHERE name_zh LIKE ? OR name_en LIKE ? OR indication LIKE ?
             LIMIT 8
         """
         cursor.execute(sql, (query, query, query))
@@ -274,15 +274,19 @@ class DrugService:
         conn.close()
 
         if not rows:
-            return f"No results found for '{keyword}'."
+            return json.dumps({"error": f"No results found for '{keyword}'.", "results": []})
 
         results = []
         for r in rows:
-            results.append(
-                f"[{r[3]}] {r[0]} ({r[1]})\n   類別: {r[4]}\n   適應症: {r[2][:100]}..."
-            )  # Truncate indication if too long
+            results.append({
+                "license_id": r[3],
+                "name_zh": r[0],
+                "name_en": r[1],
+                "indication": r[2],
+                "category": r[4]
+            })
 
-        return "\n\n".join(results)
+        return json.dumps({"results": results}, ensure_ascii=False)
 
     def get_details(self, license_id: str):
         """
@@ -348,6 +352,105 @@ class DrugService:
 仿單連結: {doc['insert_url'] if doc and doc['insert_url'] else "無"}
 """
         return output
+
+    def get_drug_details_by_license(self, license_id: str) -> str:
+        """
+        Get comprehensive drug details as JSON by license ID.
+        Used by FHIR Medication Service.
+        """
+        if not os.path.exists(self.db_path):
+            return json.dumps({"error": "DB initializing..."})
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        try:
+            # 1. Get Master Data
+            cursor.execute("SELECT * FROM licenses WHERE license_id = ?", (license_id,))
+            lic = cursor.fetchone()
+            if not lic:
+                return json.dumps({"error": f"License ID not found: {license_id}"})
+
+            # 2. Get Ingredients
+            cursor.execute(
+                "SELECT ingredient_name, content, unit FROM ingredients WHERE license_id = ?",
+                (license_id,),
+            )
+            ingredients_rows = cursor.fetchall()
+            ingredients = []
+            for ing in ingredients_rows:
+                ingredients.append({
+                    "ingredient_name": ing["ingredient_name"],
+                    "content": ing["content"],
+                    "unit": ing["unit"]
+                })
+
+            # 3. Get Appearance
+            cursor.execute(
+                "SELECT shape, color, marking, image_url FROM appearance WHERE license_id = ?",
+                (license_id,),
+            )
+            app = cursor.fetchone()
+            appearance = {}
+            if app:
+                appearance = {
+                    "shape": app["shape"],
+                    "color": app["color"],
+                    "marking": app["marking"],
+                    "image_url": app["image_url"]
+                }
+
+            # 4. Get ATC Codes
+            cursor.execute(
+                "SELECT atc_code, atc_name_zh, atc_name_en FROM atc WHERE license_id = ?",
+                (license_id,),
+            )
+            atc_rows = cursor.fetchall()
+            atc = []
+            for a in atc_rows:
+                atc.append({
+                    "atc_code": a["atc_code"],
+                    "atc_name_zh": a["atc_name_zh"],
+                    "atc_name_en": a["atc_name_en"]
+                })
+
+            # 5. Get Documents
+            cursor.execute(
+                "SELECT insert_url, box_url FROM documents WHERE license_id = ?",
+                (license_id,),
+            )
+            doc = cursor.fetchone()
+            documents = {}
+            if doc:
+                documents = {
+                    "insert_url": doc["insert_url"],
+                    "box_url": doc["box_url"]
+                }
+
+            # Format as JSON
+            result = {
+                "license_id": lic["license_id"],
+                "name_zh": lic["name_zh"],
+                "name_en": lic["name_en"],
+                "indication": lic["indication"],
+                "usage": lic["usage"],
+                "form": lic["form"],
+                "package": lic["package"],
+                "category": lic["category"],
+                "manufacturer": lic["manufacturer"],
+                "valid_date": lic["valid_date"],
+                "ingredients": ingredients,
+                "appearance": appearance,
+                "atc": atc,
+                "documents": documents
+            }
+
+            return json.dumps(result, ensure_ascii=False)
+
+        except Exception as e:
+            return json.dumps({"error": str(e)})
+        finally:
+            conn.close()
 
     def identify_pill(self, features: str):
         """
