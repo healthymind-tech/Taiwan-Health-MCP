@@ -3944,7 +3944,7 @@
     class DrugService {
         +data_dir: str
         +db_path: str
-        +search_drugs(keyword) dict
+        +search_drug(keyword) dict
         +get_drug_details_by_license(license_id) dict
         +identify_pill_by_appearance(features) dict
     }</code></pre>
@@ -4245,7 +4245,7 @@
     MCP--&gt;&gt;User: 完整指引
 
     User-&gt;&gt;MCP: 搜尋建議藥品
-    MCP-&gt;&gt;Drug: search_drugs("Metformin")
+    MCP-&gt;&gt;Drug: search_drug("Metformin")
     Drug--&gt;&gt;MCP: 藥品清單
     MCP--&gt;&gt;User: 搜尋結果
 
