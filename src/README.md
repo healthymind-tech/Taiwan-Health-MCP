@@ -127,7 +127,7 @@ conflict = icd.get_conflict_info("K35.80", "0DTJ0ZZ")
 
 ### 📥 輸入格式
 
-#### `search_drugs(keyword)`
+#### `search_drug(keyword)`
 ```python
 keyword: str  # 藥品名稱、適應症（中文/英文）
 ```
@@ -201,7 +201,7 @@ from drug_service import DrugService
 drug = DrugService('data')
 
 # 搜尋藥品
-results = drug.search_drugs("普拿疼")
+results = drug.search_drug("普拿疼")
 
 # 取得詳細資訊
 details = drug.get_drug_details_by_license("衛署藥製字第058498號")
@@ -949,7 +949,7 @@ guideline = guideline_service.get_complete_guideline("E11")
 medications = guideline_service.get_medication_recommendations("E11")
 
 # 5. 搜尋對應藥品
-drug_result = drug_service.search_drugs("Metformin")
+drug_result = drug_service.search_drug("Metformin")
 
 # 6. 建立 FHIR Medication
 medication = fhir_medication_service.create_medication_from_search(
