@@ -142,13 +142,6 @@ docker-compose up -d
 
 ---
 
-## 📚 詳細文件
-
-- **[在線文檔網站](https://audi0417.github.io/Taiwan-Health-MCP)** ⭐ - MkDocs 完整文檔（架構、指南、API、FAQ）
-- **[src/README.md](src/README.md)** - 模組說明與開發參考
-
----
-
 ## 📊 資料來源
 
 ### 台灣官方資料
