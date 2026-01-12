@@ -132,14 +132,6 @@ docker-compose up -d
 | FHIR 藥品 | 4 | Medication 資源轉換 |
 | 綜合分析 | 1 | 疾病與保健整合分析 |
 
-詳細工具列表請參閱 [src/README.md](src/README.md) 中的完整說明。
-
----
-
-## 💡 快速範例
-
-更多範例請參閱 [src/README.md](src/README.md)
-
 ---
 
 ## 📊 資料來源
@@ -169,12 +161,11 @@ docker-compose up -d
 
 歡迎貢獻！詳見 [CONTRIBUTING.md](CONTRIBUTING.md) 了解詳細步驟和方向。
 
-### 主要貢獻方向
+<a href="https://github.com/healthymind-tech/Taiwan-Health-MCP/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=healthymind-tech/Taiwan-Health-MCP" />
+</a>
 
-- LOINC 中文對照擴充
-- 臨床指引資料補充
-- FHIR 資源實作
-- 效能優化與快取機制
+Made with [contrib.rocks](https://contrib.rocks).
 
 ---
 
@@ -207,3 +198,22 @@ docker-compose up -d
 ---
 
 **⭐ 如果這個專案對您有幫助，請給我們一個 Star！**
+
+<picture>
+  <source
+    media="(prefers-color-scheme: dark)"
+    srcset="
+      https://api.star-history.com/svg?repos=healthymind-tech/Taiwan-Health-MCP&type=Date&theme=dark
+    "
+  />
+  <source
+    media="(prefers-color-scheme: light)"
+    srcset="
+      https://api.star-history.com/svg?repos=healthymind-tech/Taiwan-Health-MCP&type=Date
+    "
+  />
+  <img
+    alt="Star History Chart"
+    src="https://api.star-history.com/svg?repos=healthymind-tech/Taiwan-Health-MCP&type=Date"
+  />
+</picture>
