@@ -5,10 +5,14 @@ services:
     build: .
     container_name: taiwanHealthMcp
     ports:
-      - "8000:8000"
+      - "${MCP_PORT:-8000}:${MCP_PORT:-8000}"
     volumes:
       - ./data:/app/data
       - ./src:/app/src
     environment:
+      - MCP_TRANSPORT=${MCP_TRANSPORT:-http}
+      - MCP_HOST=${MCP_HOST:-0.0.0.0}
+      - MCP_PORT=${MCP_PORT:-8000}
+      - MCP_PATH=${MCP_PATH:-/mcp}
       - PYTHONUNBUFFERED=1
     restart: unless-stopped
