@@ -6,45 +6,105 @@
 
 ## 快速啟動
 
-### 1. 取得映像檔
-您可以直接從 GitHub Container Registry 拉取，或自行建置。
+### 1. 準備環境配置
+
+複製 `.env.example` 為 `.env` 並根據需求調整：
 
 ```bash
-# 自行建置
-git clone https://github.com/audi0417/Taiwan-Health-MCP.git
-cd Taiwan-Health-MCP
+cp .env.example .env
+```
+
+**生產環境建議配置（HTTP 模式）：**
+
+```env
+# .env
+MCP_TRANSPORT=http
+MCP_HOST=0.0.0.0
+MCP_PORT=8000
+MCP_PATH=/mcp
+```
+
+**本地開發配置（STDIO 模式）：**
+
+```env
+# .env
+MCP_TRANSPORT=stdio
+```
+
+### 2. 使用 Docker Compose（推薦）
+
+專案根目錄已包含 `docker-compose.yml`，支援環境變數配置：
+
+```bash
+# 啟動服務（使用 .env 檔案）
+docker-compose up -d
+
+# 查看日誌
+docker-compose logs -f
+
+# 停止服務
+docker-compose down
+```
+
+Docker Compose 會自動：
+- 讀取 `.env` 檔案的配置
+- 掛載 `./data` 和 `./src` 目錄
+- 根據 `MCP_PORT` 動態映射埠號
+
+### 3. 手動建置與執行
+
+如果您需要自行建置映像檔：
+
+```bash
+# 建置映像檔
 docker build -t taiwan-health-mcp .
-```
 
-### 2. 準備資料卷 (Data Volume)
-為了持久化儲存 SQLite 資料庫，建議掛載本地目錄。
-
-```bash
-mkdir -p ./data
-```
-
-### 3. 執行容器
-```bash
+# 執行容器（HTTP 模式）
 docker run -d \
   --name health-mcp \
   -v $(pwd)/data:/app/data \
+  -v $(pwd)/src:/app/src \
   -p 8000:8000 \
-  -e LOG_LEVEL=INFO \
+  -e MCP_TRANSPORT=http \
+  -e MCP_HOST=0.0.0.0 \
+  -e MCP_PORT=8000 \
+  -e MCP_PATH=/mcp \
   taiwan-health-mcp
 ```
 
-## Docker Compose
-專案根目錄已包含 `docker-compose.yml`，可直接使用：
+## 傳輸模式說明
 
-```bash
-docker-compose up -d
-```
+系統支援三種 MCP 傳輸模式：
+
+| 模式 | 適用場景 | 連線方式 |
+| :--- | :--- | :--- |
+| **http** ✨ | Docker 生產部署 | `http://localhost:8000/mcp` |
+| **stdio** | Claude Desktop 本地整合 | 標準輸入輸出 |
+| **sse** | Colab + Ngrok（向後相容） | `http://localhost:8000/sse` |
 
 ## 驗證部署
-檢查容器日誌以確認服務已成功初始化：
 
+### 檢查容器狀態
 ```bash
-docker logs -f health-mcp
+docker ps | grep taiwan-health-mcp
 ```
 
-若看到 `MCP Server initialized successfully` 字樣，即代表服務運作正常。
+### 查看啟動日誌
+```bash
+docker logs -f taiwanHealthMcp
+```
+
+成功啟動時會顯示：
+
+```
+==================================================
+Taiwan Health MCP Server
+==================================================
+Transport: http | http://0.0.0.0:8000/mcp
+Server is starting...
+```
+
+### 測試連線（HTTP 模式）
+```bash
+curl http://localhost:8000/mcp
+```
