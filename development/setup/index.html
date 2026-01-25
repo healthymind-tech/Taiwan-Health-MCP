@@ -704,7 +704,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../changelog.md" class="md-nav__link">
+      <a href="../../changelog/" class="md-nav__link">
         
   
   
@@ -2634,10 +2634,49 @@
   <a href="#5" class="md-nav__link">
     <span class="md-ellipsis">
       
-        5. 準備資料
+        5. 環境配置
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="5. 環境配置">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        複製環境變數範本
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        設定傳輸模式
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        環境變數說明
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -2645,7 +2684,18 @@
   <a href="#6" class="md-nav__link">
     <span class="md-ellipsis">
       
-        6. 啟動開發伺服器
+        6. 準備資料
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. 啟動開發伺服器
       
     </span>
   </a>
@@ -3246,10 +3296,49 @@
   <a href="#5" class="md-nav__link">
     <span class="md-ellipsis">
       
-        5. 準備資料
+        5. 環境配置
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="5. 環境配置">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        複製環境變數範本
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        設定傳輸模式
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        環境變數說明
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -3257,7 +3346,18 @@
   <a href="#6" class="md-nav__link">
     <span class="md-ellipsis">
       
-        6. 啟動開發伺服器
+        6. 準備資料
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. 啟動開發伺服器
       
     </span>
   </a>
@@ -3305,12 +3405,70 @@
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>pip<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </span>requirements.txt
 </span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>pip<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </span>requirements-docs.txt<span class="w">  </span><span class="c1"># 若需撰寫文件</span>
 </span></code></pre></div>
-<h2 id="5">5. 準備資料<a class="headerlink" href="#5" title="Permanent link">&para;</a></h2>
-<p>從您的資料來源取得 <code>icd10cm_pcs_xxxx.xlsx</code> 並放入 <code>data/</code> 資料夾。</p>
-<h2 id="6">6. 啟動開發伺服器<a class="headerlink" href="#6" title="Permanent link">&para;</a></h2>
-<p><div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>python<span class="w"> </span>src/server.py
+<h2 id="5">5. 環境配置<a class="headerlink" href="#5" title="Permanent link">&para;</a></h2>
+<h3 id="_2">複製環境變數範本<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h3>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>cp<span class="w"> </span>.env.example<span class="w"> </span>.env
 </span></code></pre></div>
-注意：MCP 伺服器預設使用 Stdio 通訊，直接執行可能不會看到太多輸出，建議搭配 MCP Inspector 進行除錯。</p>
+<h3 id="_3">設定傳輸模式<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h3>
+<p>編輯 <code>.env</code> 檔案，根據開發需求選擇模式：</p>
+<p><strong>本地開發（Claude Desktop 整合）：</strong>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>MCP_TRANSPORT=stdio
+</span></code></pre></div></p>
+<p><strong>本地測試伺服器（HTTP）：</strong>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>MCP_TRANSPORT=http
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>MCP_HOST=127.0.0.1
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>MCP_PORT=8000
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>MCP_PATH=/mcp
+</span></code></pre></div></p>
+<p><strong>Colab 開發（SSE）：</strong>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>MCP_TRANSPORT=sse
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>MCP_HOST=0.0.0.0
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>MCP_PORT=8000
+</span></code></pre></div></p>
+<h3 id="_4">環境變數說明<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">變數</th>
+<th style="text-align: left;">預設值</th>
+<th style="text-align: left;">說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>MCP_TRANSPORT</code></td>
+<td style="text-align: left;"><code>stdio</code></td>
+<td style="text-align: left;">傳輸模式：stdio/http/sse</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>MCP_HOST</code></td>
+<td style="text-align: left;"><code>0.0.0.0</code></td>
+<td style="text-align: left;">監聽主機</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>MCP_PORT</code></td>
+<td style="text-align: left;"><code>8000</code></td>
+<td style="text-align: left;">監聽埠號</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>MCP_PATH</code></td>
+<td style="text-align: left;"><code>/mcp</code></td>
+<td style="text-align: left;">HTTP 端點路徑</td>
+</tr>
+</tbody>
+</table>
+<h2 id="6">6. 準備資料<a class="headerlink" href="#6" title="Permanent link">&para;</a></h2>
+<p>從您的資料來源取得 <code>icd10cm_pcs_xxxx.xlsx</code> 並放入 <code>data/</code> 資料夾。</p>
+<h2 id="7">7. 啟動開發伺服器<a class="headerlink" href="#7" title="Permanent link">&para;</a></h2>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>python<span class="w"> </span>src/server.py
+</span></code></pre></div>
+<p>啟動後會顯示配置資訊：
+```
+==================================================
+Taiwan Health MCP Server
+==================================================
+Transport: stdio
+Server is starting...</p>
 
 
 

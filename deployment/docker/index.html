@@ -704,7 +704,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../changelog.md" class="md-nav__link">
+      <a href="../../changelog/" class="md-nav__link">
         
   
   
@@ -2837,7 +2837,7 @@
   <a href="#1" class="md-nav__link">
     <span class="md-ellipsis">
       
-        1. 取得映像檔
+        1. 準備環境配置
       
     </span>
   </a>
@@ -2845,10 +2845,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#2-data-volume" class="md-nav__link">
+  <a href="#2-docker-compose" class="md-nav__link">
     <span class="md-ellipsis">
       
-        2. 準備資料卷 (Data Volume)
+        2. 使用 Docker Compose（推薦）
       
     </span>
   </a>
@@ -2859,7 +2859,7 @@
   <a href="#3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        3. 執行容器
+        3. 手動建置與執行
       
     </span>
   </a>
@@ -2872,10 +2872,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#docker-compose" class="md-nav__link">
+  <a href="#_3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Docker Compose
+        傳輸模式說明
       
     </span>
   </a>
@@ -2883,13 +2883,52 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_3" class="md-nav__link">
+  <a href="#_4" class="md-nav__link">
     <span class="md-ellipsis">
       
         驗證部署
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="驗證部署">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        檢查容器狀態
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        查看啟動日誌
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#http" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        測試連線（HTTP 模式）
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -3242,7 +3281,7 @@
   <a href="#1" class="md-nav__link">
     <span class="md-ellipsis">
       
-        1. 取得映像檔
+        1. 準備環境配置
       
     </span>
   </a>
@@ -3250,10 +3289,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#2-data-volume" class="md-nav__link">
+  <a href="#2-docker-compose" class="md-nav__link">
     <span class="md-ellipsis">
       
-        2. 準備資料卷 (Data Volume)
+        2. 使用 Docker Compose（推薦）
       
     </span>
   </a>
@@ -3264,7 +3303,7 @@
   <a href="#3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        3. 執行容器
+        3. 手動建置與執行
       
     </span>
   </a>
@@ -3277,10 +3316,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#docker-compose" class="md-nav__link">
+  <a href="#_3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Docker Compose
+        傳輸模式說明
       
     </span>
   </a>
@@ -3288,13 +3327,52 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_3" class="md-nav__link">
+  <a href="#_4" class="md-nav__link">
     <span class="md-ellipsis">
       
         驗證部署
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="驗證部署">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        檢查容器狀態
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        查看啟動日誌
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#http" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        測試連線（HTTP 模式）
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -3325,34 +3403,98 @@
 <li>建議預留至少 2GB RAM 給容器使用（因需載入大量 ICD 與藥品資料）。</li>
 </ul>
 <h2 id="_2">快速啟動<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
-<h3 id="1">1. 取得映像檔<a class="headerlink" href="#1" title="Permanent link">&para;</a></h3>
-<p>您可以直接從 GitHub Container Registry 拉取，或自行建置。</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># 自行建置</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/audi0417/Taiwan-Health-MCP.git
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="nb">cd</span><span class="w"> </span>Taiwan-Health-MCP
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>docker<span class="w"> </span>build<span class="w"> </span>-t<span class="w"> </span>taiwan-health-mcp<span class="w"> </span>.
+<h3 id="1">1. 準備環境配置<a class="headerlink" href="#1" title="Permanent link">&para;</a></h3>
+<p>複製 <code>.env.example</code> 為 <code>.env</code> 並根據需求調整：</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>cp<span class="w"> </span>.env.example<span class="w"> </span>.env
 </span></code></pre></div>
-<h3 id="2-data-volume">2. 準備資料卷 (Data Volume)<a class="headerlink" href="#2-data-volume" title="Permanent link">&para;</a></h3>
-<p>為了持久化儲存 SQLite 資料庫，建議掛載本地目錄。</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>mkdir<span class="w"> </span>-p<span class="w"> </span>./data
+<p><strong>生產環境建議配置（HTTP 模式）：</strong></p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a># .env
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>MCP_TRANSPORT=http
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>MCP_HOST=0.0.0.0
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>MCP_PORT=8000
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>MCP_PATH=/mcp
 </span></code></pre></div>
-<h3 id="3">3. 執行容器<a class="headerlink" href="#3" title="Permanent link">&para;</a></h3>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>docker<span class="w"> </span>run<span class="w"> </span>-d<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span>--name<span class="w"> </span>health-mcp<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">  </span>-v<span class="w"> </span><span class="k">$(</span><span class="nb">pwd</span><span class="k">)</span>/data:/app/data<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">  </span>-p<span class="w"> </span><span class="m">8000</span>:8000<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">  </span>-e<span class="w"> </span><span class="nv">LOG_LEVEL</span><span class="o">=</span>INFO<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="w">  </span>taiwan-health-mcp
+<p><strong>本地開發配置（STDIO 模式）：</strong></p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a># .env
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>MCP_TRANSPORT=stdio
 </span></code></pre></div>
-<h2 id="docker-compose">Docker Compose<a class="headerlink" href="#docker-compose" title="Permanent link">&para;</a></h2>
-<p>專案根目錄已包含 <code>docker-compose.yml</code>，可直接使用：</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>docker-compose<span class="w"> </span>up<span class="w"> </span>-d
+<h3 id="2-docker-compose">2. 使用 Docker Compose（推薦）<a class="headerlink" href="#2-docker-compose" title="Permanent link">&para;</a></h3>
+<p>專案根目錄已包含 <code>docker-compose.yml</code>，支援環境變數配置：</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># 啟動服務（使用 .env 檔案）</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>docker-compose<span class="w"> </span>up<span class="w"> </span>-d
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="c1"># 查看日誌</span>
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>docker-compose<span class="w"> </span>logs<span class="w"> </span>-f
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>
+</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="c1"># 停止服務</span>
+</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>docker-compose<span class="w"> </span>down
 </span></code></pre></div>
-<h2 id="_3">驗證部署<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
-<p>檢查容器日誌以確認服務已成功初始化：</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>docker<span class="w"> </span>logs<span class="w"> </span>-f<span class="w"> </span>health-mcp
+<p>Docker Compose 會自動：
+- 讀取 <code>.env</code> 檔案的配置
+- 掛載 <code>./data</code> 和 <code>./src</code> 目錄
+- 根據 <code>MCP_PORT</code> 動態映射埠號</p>
+<h3 id="3">3. 手動建置與執行<a class="headerlink" href="#3" title="Permanent link">&para;</a></h3>
+<p>如果您需要自行建置映像檔：</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="c1"># 建置映像檔</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>docker<span class="w"> </span>build<span class="w"> </span>-t<span class="w"> </span>taiwan-health-mcp<span class="w"> </span>.
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="c1"># 執行容器（HTTP 模式）</span>
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>docker<span class="w"> </span>run<span class="w"> </span>-d<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="w">  </span>--name<span class="w"> </span>health-mcp<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="w">  </span>-v<span class="w"> </span><span class="k">$(</span><span class="nb">pwd</span><span class="k">)</span>/data:/app/data<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="w">  </span>-v<span class="w"> </span><span class="k">$(</span><span class="nb">pwd</span><span class="k">)</span>/src:/app/src<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="w">  </span>-p<span class="w"> </span><span class="m">8000</span>:8000<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-4-10"><a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="w">  </span>-e<span class="w"> </span><span class="nv">MCP_TRANSPORT</span><span class="o">=</span>http<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-4-11"><a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="w">  </span>-e<span class="w"> </span><span class="nv">MCP_HOST</span><span class="o">=</span><span class="m">0</span>.0.0.0<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-4-12"><a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a><span class="w">  </span>-e<span class="w"> </span><span class="nv">MCP_PORT</span><span class="o">=</span><span class="m">8000</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-4-13"><a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a><span class="w">  </span>-e<span class="w"> </span><span class="nv">MCP_PATH</span><span class="o">=</span>/mcp<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-4-14"><a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a><span class="w">  </span>taiwan-health-mcp
 </span></code></pre></div>
-<p>若看到 <code>MCP Server initialized successfully</code> 字樣，即代表服務運作正常。</p>
+<h2 id="_3">傳輸模式說明<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
+<p>系統支援三種 MCP 傳輸模式：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">模式</th>
+<th style="text-align: left;">適用場景</th>
+<th style="text-align: left;">連線方式</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>http</strong> ✨</td>
+<td style="text-align: left;">Docker 生產部署</td>
+<td style="text-align: left;"><code>http://localhost:8000/mcp</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>stdio</strong></td>
+<td style="text-align: left;">Claude Desktop 本地整合</td>
+<td style="text-align: left;">標準輸入輸出</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>sse</strong></td>
+<td style="text-align: left;">Colab + Ngrok（向後相容）</td>
+<td style="text-align: left;"><code>http://localhost:8000/sse</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="_4">驗證部署<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
+<h3 id="_5">檢查容器狀態<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h3>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>docker<span class="w"> </span>ps<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>taiwan-health-mcp
+</span></code></pre></div>
+<h3 id="_6">查看啟動日誌<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h3>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>docker<span class="w"> </span>logs<span class="w"> </span>-f<span class="w"> </span>taiwanHealthMcp
+</span></code></pre></div>
+<p>成功啟動時會顯示：</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>==================================================
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>Taiwan Health MCP Server
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>==================================================
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>Transport: http | http://0.0.0.0:8000/mcp
+</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>Server is starting...
+</span></code></pre></div>
+<h3 id="http">測試連線（HTTP 模式）<a class="headerlink" href="#http" title="Permanent link">&para;</a></h3>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>curl<span class="w"> </span>http://localhost:8000/mcp
+</span></code></pre></div>
 
 
 

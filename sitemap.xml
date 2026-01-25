@@ -2,226 +2,230 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
          <loc>https://audi0417.github.io/Taiwan-Health-MCP/</loc>
-         <lastmod>2026-01-11</lastmod>
+         <lastmod>2026-01-25</lastmod>
+    </url>
+    <url>
+         <loc>https://audi0417.github.io/Taiwan-Health-MCP/changelog/</loc>
+         <lastmod>2026-01-25</lastmod>
     </url>
     <url>
          <loc>https://audi0417.github.io/Taiwan-Health-MCP/getting-started/</loc>
-         <lastmod>2026-01-11</lastmod>
+         <lastmod>2026-01-25</lastmod>
     </url>
     <url>
          <loc>https://audi0417.github.io/Taiwan-Health-MCP/api/</loc>
-         <lastmod>2026-01-11</lastmod>
+         <lastmod>2026-01-25</lastmod>
     </url>
     <url>
          <loc>https://audi0417.github.io/Taiwan-Health-MCP/api/drug-service/</loc>
-         <lastmod>2026-01-11</lastmod>
+         <lastmod>2026-01-25</lastmod>
     </url>
     <url>
          <loc>https://audi0417.github.io/Taiwan-Health-MCP/api/fhir-services/</loc>
-         <lastmod>2026-01-11</lastmod>
+         <lastmod>2026-01-25</lastmod>
     </url>
     <url>
          <loc>https://audi0417.github.io/Taiwan-Health-MCP/api/guideline-service/</loc>
-         <lastmod>2026-01-11</lastmod>
+         <lastmod>2026-01-25</lastmod>
     </url>
     <url>
          <loc>https://audi0417.github.io/Taiwan-Health-MCP/api/icd-service/</loc>
-         <lastmod>2026-01-11</lastmod>
+         <lastmod>2026-01-25</lastmod>
     </url>
     <url>
          <loc>https://audi0417.github.io/Taiwan-Health-MCP/api/lab-service/</loc>
-         <lastmod>2026-01-11</lastmod>
+         <lastmod>2026-01-25</lastmod>
     </url>
     <url>
          <loc>https://audi0417.github.io/Taiwan-Health-MCP/architecture/</loc>
-         <lastmod>2026-01-11</lastmod>
+         <lastmod>2026-01-25</lastmod>
     </url>
     <url>
          <loc>https://audi0417.github.io/Taiwan-Health-MCP/architecture/data-flow/</loc>
-         <lastmod>2026-01-11</lastmod>
+         <lastmod>2026-01-25</lastmod>
     </url>
     <url>
          <loc>https://audi0417.github.io/Taiwan-Health-MCP/architecture/deployment/</loc>
-         <lastmod>2026-01-11</lastmod>
+         <lastmod>2026-01-25</lastmod>
     </url>
     <url>
          <loc>https://audi0417.github.io/Taiwan-Health-MCP/architecture/module-relations/</loc>
-         <lastmod>2026-01-11</lastmod>
+         <lastmod>2026-01-25</lastmod>
     </url>
     <url>
          <loc>https://audi0417.github.io/Taiwan-Health-MCP/architecture/system-architecture/</loc>
-         <lastmod>2026-01-11</lastmod>
+         <lastmod>2026-01-25</lastmod>
     </url>
     <url>
          <loc>https://audi0417.github.io/Taiwan-Health-MCP/data-sources/</loc>
-         <lastmod>2026-01-11</lastmod>
+         <lastmod>2026-01-25</lastmod>
     </url>
     <url>
          <loc>https://audi0417.github.io/Taiwan-Health-MCP/data-sources/guidelines/</loc>
-         <lastmod>2026-01-11</lastmod>
+         <lastmod>2026-01-25</lastmod>
     </url>
     <url>
          <loc>https://audi0417.github.io/Taiwan-Health-MCP/data-sources/icd10/</loc>
-         <lastmod>2026-01-11</lastmod>
+         <lastmod>2026-01-25</lastmod>
     </url>
     <url>
          <loc>https://audi0417.github.io/Taiwan-Health-MCP/data-sources/loinc/</loc>
-         <lastmod>2026-01-11</lastmod>
+         <lastmod>2026-01-25</lastmod>
     </url>
     <url>
          <loc>https://audi0417.github.io/Taiwan-Health-MCP/data-sources/taiwan-fda/</loc>
-         <lastmod>2026-01-11</lastmod>
+         <lastmod>2026-01-25</lastmod>
     </url>
     <url>
          <loc>https://audi0417.github.io/Taiwan-Health-MCP/deployment/</loc>
-         <lastmod>2026-01-11</lastmod>
+         <lastmod>2026-01-25</lastmod>
     </url>
     <url>
          <loc>https://audi0417.github.io/Taiwan-Health-MCP/deployment/configuration/</loc>
-         <lastmod>2026-01-11</lastmod>
+         <lastmod>2026-01-25</lastmod>
     </url>
     <url>
          <loc>https://audi0417.github.io/Taiwan-Health-MCP/deployment/docker/</loc>
-         <lastmod>2026-01-11</lastmod>
+         <lastmod>2026-01-25</lastmod>
     </url>
     <url>
          <loc>https://audi0417.github.io/Taiwan-Health-MCP/deployment/monitoring/</loc>
-         <lastmod>2026-01-11</lastmod>
+         <lastmod>2026-01-25</lastmod>
     </url>
     <url>
          <loc>https://audi0417.github.io/Taiwan-Health-MCP/deployment/performance/</loc>
-         <lastmod>2026-01-11</lastmod>
+         <lastmod>2026-01-25</lastmod>
     </url>
     <url>
          <loc>https://audi0417.github.io/Taiwan-Health-MCP/development/</loc>
-         <lastmod>2026-01-11</lastmod>
+         <lastmod>2026-01-25</lastmod>
     </url>
     <url>
          <loc>https://audi0417.github.io/Taiwan-Health-MCP/development/code-style/</loc>
-         <lastmod>2026-01-11</lastmod>
+         <lastmod>2026-01-25</lastmod>
     </url>
     <url>
          <loc>https://audi0417.github.io/Taiwan-Health-MCP/development/contributing/</loc>
-         <lastmod>2026-01-11</lastmod>
+         <lastmod>2026-01-25</lastmod>
     </url>
     <url>
          <loc>https://audi0417.github.io/Taiwan-Health-MCP/development/project-structure/</loc>
-         <lastmod>2026-01-11</lastmod>
+         <lastmod>2026-01-25</lastmod>
     </url>
     <url>
          <loc>https://audi0417.github.io/Taiwan-Health-MCP/development/setup/</loc>
-         <lastmod>2026-01-11</lastmod>
+         <lastmod>2026-01-25</lastmod>
     </url>
     <url>
          <loc>https://audi0417.github.io/Taiwan-Health-MCP/development/testing/</loc>
-         <lastmod>2026-01-11</lastmod>
+         <lastmod>2026-01-25</lastmod>
     </url>
     <url>
          <loc>https://audi0417.github.io/Taiwan-Health-MCP/faq/</loc>
-         <lastmod>2026-01-11</lastmod>
+         <lastmod>2026-01-25</lastmod>
     </url>
     <url>
          <loc>https://audi0417.github.io/Taiwan-Health-MCP/faq/fhir/</loc>
-         <lastmod>2026-01-11</lastmod>
+         <lastmod>2026-01-25</lastmod>
     </url>
     <url>
          <loc>https://audi0417.github.io/Taiwan-Health-MCP/faq/installation/</loc>
-         <lastmod>2026-01-11</lastmod>
+         <lastmod>2026-01-25</lastmod>
     </url>
     <url>
          <loc>https://audi0417.github.io/Taiwan-Health-MCP/faq/loinc/</loc>
-         <lastmod>2026-01-11</lastmod>
+         <lastmod>2026-01-25</lastmod>
     </url>
     <url>
          <loc>https://audi0417.github.io/Taiwan-Health-MCP/faq/usage/</loc>
-         <lastmod>2026-01-11</lastmod>
+         <lastmod>2026-01-25</lastmod>
     </url>
     <url>
          <loc>https://audi0417.github.io/Taiwan-Health-MCP/guides/</loc>
-         <lastmod>2026-01-11</lastmod>
+         <lastmod>2026-01-25</lastmod>
     </url>
     <url>
          <loc>https://audi0417.github.io/Taiwan-Health-MCP/guides/clinical-pathway/</loc>
-         <lastmod>2026-01-11</lastmod>
+         <lastmod>2026-01-25</lastmod>
     </url>
     <url>
          <loc>https://audi0417.github.io/Taiwan-Health-MCP/guides/complete-workflow/</loc>
-         <lastmod>2026-01-11</lastmod>
+         <lastmod>2026-01-25</lastmod>
     </url>
     <url>
          <loc>https://audi0417.github.io/Taiwan-Health-MCP/guides/drug-identification/</loc>
-         <lastmod>2026-01-11</lastmod>
+         <lastmod>2026-01-25</lastmod>
     </url>
     <url>
          <loc>https://audi0417.github.io/Taiwan-Health-MCP/guides/lab-interpretation/</loc>
-         <lastmod>2026-01-11</lastmod>
+         <lastmod>2026-01-25</lastmod>
     </url>
     <url>
          <loc>https://audi0417.github.io/Taiwan-Health-MCP/guides/loinc-integration/</loc>
-         <lastmod>2026-01-11</lastmod>
+         <lastmod>2026-01-25</lastmod>
     </url>
     <url>
          <loc>https://audi0417.github.io/Taiwan-Health-MCP/modules/clinical-guideline-service/</loc>
-         <lastmod>2026-01-11</lastmod>
+         <lastmod>2026-01-25</lastmod>
     </url>
     <url>
          <loc>https://audi0417.github.io/Taiwan-Health-MCP/modules/drug-service/</loc>
-         <lastmod>2026-01-11</lastmod>
+         <lastmod>2026-01-25</lastmod>
     </url>
     <url>
          <loc>https://audi0417.github.io/Taiwan-Health-MCP/modules/fhir-condition-service/</loc>
-         <lastmod>2026-01-11</lastmod>
+         <lastmod>2026-01-25</lastmod>
     </url>
     <url>
          <loc>https://audi0417.github.io/Taiwan-Health-MCP/modules/fhir-medication-service/</loc>
-         <lastmod>2026-01-11</lastmod>
+         <lastmod>2026-01-25</lastmod>
     </url>
     <url>
          <loc>https://audi0417.github.io/Taiwan-Health-MCP/modules/food-nutrition-service/</loc>
-         <lastmod>2026-01-11</lastmod>
+         <lastmod>2026-01-25</lastmod>
     </url>
     <url>
          <loc>https://audi0417.github.io/Taiwan-Health-MCP/modules/health-food-service/</loc>
-         <lastmod>2026-01-11</lastmod>
+         <lastmod>2026-01-25</lastmod>
     </url>
     <url>
          <loc>https://audi0417.github.io/Taiwan-Health-MCP/modules/icd-service/</loc>
-         <lastmod>2026-01-11</lastmod>
+         <lastmod>2026-01-25</lastmod>
     </url>
     <url>
          <loc>https://audi0417.github.io/Taiwan-Health-MCP/modules/lab-service/</loc>
-         <lastmod>2026-01-11</lastmod>
+         <lastmod>2026-01-25</lastmod>
     </url>
     <url>
          <loc>https://audi0417.github.io/Taiwan-Health-MCP/tools/</loc>
-         <lastmod>2026-01-11</lastmod>
+         <lastmod>2026-01-25</lastmod>
     </url>
     <url>
          <loc>https://audi0417.github.io/Taiwan-Health-MCP/tools/drug-tools/</loc>
-         <lastmod>2026-01-11</lastmod>
+         <lastmod>2026-01-25</lastmod>
     </url>
     <url>
          <loc>https://audi0417.github.io/Taiwan-Health-MCP/tools/fhir-tools/</loc>
-         <lastmod>2026-01-11</lastmod>
+         <lastmod>2026-01-25</lastmod>
     </url>
     <url>
          <loc>https://audi0417.github.io/Taiwan-Health-MCP/tools/guideline-tools/</loc>
-         <lastmod>2026-01-11</lastmod>
+         <lastmod>2026-01-25</lastmod>
     </url>
     <url>
          <loc>https://audi0417.github.io/Taiwan-Health-MCP/tools/health-food-tools/</loc>
-         <lastmod>2026-01-11</lastmod>
+         <lastmod>2026-01-25</lastmod>
     </url>
     <url>
          <loc>https://audi0417.github.io/Taiwan-Health-MCP/tools/icd-tools/</loc>
-         <lastmod>2026-01-11</lastmod>
+         <lastmod>2026-01-25</lastmod>
     </url>
     <url>
          <loc>https://audi0417.github.io/Taiwan-Health-MCP/tools/lab-tools/</loc>
-         <lastmod>2026-01-11</lastmod>
+         <lastmod>2026-01-25</lastmod>
     </url>
     <url>
          <loc>https://audi0417.github.io/Taiwan-Health-MCP/tools/nutrition-tools/</loc>
-         <lastmod>2026-01-11</lastmod>
+         <lastmod>2026-01-25</lastmod>
     </url>
 </urlset>
