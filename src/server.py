@@ -3,6 +3,7 @@ import os
 
 from mcp.server.fastmcp import FastMCP
 
+from config import MCPConfig  # Import at top level
 from clinical_guideline_service import ClinicalGuidelineService
 from drug_service import DrugService
 from fhir_condition_service import FHIRConditionService
@@ -13,8 +14,17 @@ from icd_service import ICDService
 from lab_service import LabService
 from utils import log_error, log_info
 
+# 0. Load Configuration
+config = MCPConfig.from_env()
+
 # 1. Initialize the MCP Server
-mcp = FastMCP("taiwanHealthMcp")
+# Pass host and port here, as run() does not accept them in newer versions
+mcp = FastMCP(
+    "taiwanHealthMcp",
+    host=config.host,
+    port=config.port,
+    dependencies=["uvicorn"],
+)
 
 # 2. Configure data paths
 # Automatically detect if running in Google Colab or Docker

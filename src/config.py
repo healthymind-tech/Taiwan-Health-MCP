@@ -3,7 +3,7 @@ MCP Server 配置管理模組
 
 此模組提供統一的配置管理，支援三種傳輸模式：
 - stdio: 標準輸入輸出（Claude Desktop）
-- http: Streamable HTTP（生產部署）
+- streamable-http: Streamable HTTP（生產部署）
 - sse: Server-Sent Events（向後相容）
 """
 
@@ -46,7 +46,7 @@ class MCPConfig:
         transport = os.getenv("MCP_TRANSPORT", "stdio").lower()
 
         # 驗證 transport 類型
-        valid_transports = ("stdio", "http", "sse")
+        valid_transports = ("stdio", "sse", "streamable-http")
         if transport not in valid_transports:
             transport = "stdio"
 
@@ -65,25 +65,14 @@ class MCPConfig:
         """
         if self.transport == "stdio":
             return {"transport": "stdio"}
-        elif self.transport == "http":
-            return {
-                "transport": "http",
-                "host": self.host,
-                "port": self.port,
-                "path": self.path,
-            }
-        else:  # sse
-            return {
-                "transport": "sse",
-                "host": self.host,
-                "port": self.port,
-            }
+        else:  # streamable-http 或 sse
+            return {"transport": self.transport}
 
     def __str__(self) -> str:
         """格式化輸出配置資訊"""
         if self.transport == "stdio":
             return f"Transport: {self.transport}"
-        elif self.transport == "http":
+        elif self.transport == "streamable-http":
             return f"Transport: {self.transport} | http://{self.host}:{self.port}{self.path}"
-        else:
+        else:  # sse
             return f"Transport: {self.transport} | http://{self.host}:{self.port}/sse"
