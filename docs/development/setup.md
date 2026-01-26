@@ -26,58 +26,11 @@ pip install -r requirements.txt
 pip install -r requirements-docs.txt  # 若需撰寫文件
 ```
 
-## 5. 環境配置
-
-### 複製環境變數範本
-```bash
-cp .env.example .env
-```
-
-### 設定傳輸模式
-
-編輯 `.env` 檔案，根據開發需求選擇模式：
-
-**本地開發（Claude Desktop 整合）：**
-```env
-MCP_TRANSPORT=stdio
-```
-
-**本地測試伺服器（HTTP）：**
-```env
-MCP_TRANSPORT=http
-MCP_HOST=127.0.0.1
-MCP_PORT=8000
-MCP_PATH=/mcp
-```
-
-**Colab 開發（SSE）：**
-```env
-MCP_TRANSPORT=sse
-MCP_HOST=0.0.0.0
-MCP_PORT=8000
-```
-
-### 環境變數說明
-
-| 變數 | 預設值 | 說明 |
-| :--- | :--- | :--- |
-| `MCP_TRANSPORT` | `stdio` | 傳輸模式：stdio/http/sse |
-| `MCP_HOST` | `0.0.0.0` | 監聽主機 |
-| `MCP_PORT` | `8000` | 監聽埠號 |
-| `MCP_PATH` | `/mcp` | HTTP 端點路徑 |
-
-## 6. 準備資料
+## 5. 準備資料
 從您的資料來源取得 `icd10cm_pcs_xxxx.xlsx` 並放入 `data/` 資料夾。
 
-## 7. 啟動開發伺服器
+## 6. 啟動開發伺服器
 ```bash
 python src/server.py
 ```
-
-啟動後會顯示配置資訊：
-```
-==================================================
-Taiwan Health MCP Server
-==================================================
-Transport: stdio
-Server is starting...
+注意：MCP 伺服器預設使用 Stdio 通訊，直接執行可能不會看到太多輸出，建議搭配 MCP Inspector 進行除錯。

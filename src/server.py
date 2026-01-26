@@ -14,7 +14,7 @@ from lab_service import LabService
 from utils import log_error, log_info
 
 # 1. Initialize the MCP Server
-mcp = FastMCP("taiwanHealthMcp")
+mcp = FastMCP("taiwanHealthMcp", host="0.0.0.0")
 
 # 2. Configure data paths
 # Automatically detect if running in Google Colab or Docker
@@ -1037,17 +1037,5 @@ def identify_pill_to_fhir(
 
 # --- Start Server ---
 if __name__ == "__main__":
-    from config import MCPConfig
-
-    # 載入配置
-    config = MCPConfig.from_env()
-
-    # 輸出啟動資訊
-    log_info("=" * 50)
-    log_info("Taiwan Health MCP Server")
-    log_info("=" * 50)
-    log_info(str(config))
     log_info("Server is starting...")
-
-    # 啟動服務
-    mcp.run(**config.get_run_kwargs())
+    mcp.run('sse')
