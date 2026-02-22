@@ -167,17 +167,7 @@ docker-compose up -d
 
 Made with [contrib.rocks](https://contrib.rocks).
 
----
-
-## 📝 授權
-
-**MIT License** - 詳見 [LICENSE](LICENSE) 檔案
-
-使用的開放資料和標準：
-- 台灣政府開放資料 - 政府資料開放授權條款
-- LOINC & FHIR & ICD - 免費用於臨床、研究、教育
-
----
+--- 
 
 ## 📞 聯絡資訊
 
@@ -194,6 +184,8 @@ Made with [contrib.rocks](https://contrib.rocks).
 - Regenstrief Institute（LOINC）
 - HL7 International（FHIR）
 - WHO（ICD、ATC）
+- Twinkle AI([官方網站](https://twinkleai.tw/)) 加入社群，一同參與開源正體中文語言模型的研究～也感謝社群串接本專案打造Twinkle Health Agent！
+<img width="1920" height="515" alt="twinkle-title-1920x" src="https://github.com/user-attachments/assets/aeca333b-70ce-4fdd-a15e-ca92d55bb65d" />
 
 ---
 
