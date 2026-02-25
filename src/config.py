@@ -11,7 +11,7 @@ import os
 from dataclasses import dataclass
 from typing import Literal
 
-TransportType = Literal["stdio", "http", "sse"]
+TransportType = Literal["stdio", "streamable-http", "sse"]
 
 
 @dataclass

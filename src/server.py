@@ -12,6 +12,7 @@ from food_nutrition_service import FoodNutritionService
 from health_food_service import HealthFoodService
 from icd_service import ICDService
 from lab_service import LabService
+from twcore_service import TWCoreService
 from utils import log_error, log_info
 
 # 0. Load Configuration
@@ -58,6 +59,7 @@ fhir_condition_service = None
 fhir_medication_service = None
 lab_service = None
 guideline_service = None
+twcore_service = None
 
 try:
     icd_service = ICDService(ICD_FILE_PATH, DATA_DIR)
@@ -100,6 +102,11 @@ try:
     guideline_service = ClinicalGuidelineService(DATA_DIR)
 except Exception as e:
     log_error(f"ClinicalGuidelineService failed: {e}")
+
+try:
+    twcore_service = TWCoreService(DATA_DIR)
+except Exception as e:
+    log_error(f"TWCoreService failed: {e}")
 
 # ==========================================
 # Group 1: ICD-10 Tools (Diagnosis & Procedures)
@@ -1043,6 +1050,159 @@ def identify_pill_to_fhir(
     )
 
     return fhir_medication_service.to_json_string(result, indent=2)
+
+
+# ==========================================
+# Group 11: TWCore IG Tools (臺灣核心實作指引即時查詢)
+# ==========================================
+
+
+@mcp.tool()
+def list_twcore_codesystems(category: str = "all") -> str:
+    """
+    列出臺灣核心實作指引 (TW Core IG) 所有可用的 CodeSystem 清單
+
+    提供完整的 TWCore CodeSystem sitemap，包含 30 個官方標準代碼系統，
+    涵蓋藥品、診斷、醫療機構、行政等分類。
+
+    Args:
+        category: 篩選分類（可選）
+            - 'all': 全部（預設）
+            - 'medication': 藥品相關（使用頻率、給藥途徑、品項、ATC碼）
+            - 'diagnosis': 診斷分類（ICD-10-CM/PCS、ICD-9）
+            - 'organization': 醫療機構/人員（科別、機構、給付項目）
+            - 'administrative': 行政/人口（郵遞區號、婚姻、職業）
+            - 'technical': 系統/技術（照護計畫、識別碼）
+
+    Returns:
+        JSON 含各分類的 CodeSystem 清單、ID、JSON 端點 URL
+    """
+    log_info(f"Tool called: list_twcore_codesystems with category='{category}'")
+    return twcore_service.list_codesystems(category)
+
+
+@mcp.tool()
+def search_twcore_medication(keyword: str) -> str:
+    """
+    搜尋 TWCore 藥品相關標準代碼（即時從官方 IG 取得最新資料）
+
+    涵蓋 7 個 CodeSystem：
+    - 藥品使用頻率（QD、BID、TID、AC、PC、PRN 等）
+    - 給藥途徑（口服、注射、外用等）
+    - 健保用藥品項
+    - 中藥用藥品項
+    - 食藥署藥品許可證
+    - 醫療器材許可證
+    - ATC 藥理治療分類碼
+
+    資料來源: https://twcore.mohw.gov.tw/ig/twcore/
+
+    Args:
+        keyword: 搜尋關鍵字（代碼或中文說明）
+            範例: 'BID', '每日', '口服', 'IV', '中藥', 'ATC'
+
+    Returns:
+        JSON 含匹配的代碼、中文說明、所屬 CodeSystem、FHIR system URL
+    """
+    log_info(f"Tool called: search_twcore_medication with keyword='{keyword}'")
+    return twcore_service.search_medication(keyword)
+
+
+@mcp.tool()
+def search_twcore_diagnosis(keyword: str) -> str:
+    """
+    搜尋 TWCore 診斷/處置分類標準代碼（即時從官方 IG 取得最新資料）
+
+    涵蓋 7 個 CodeSystem：
+    - ICD-10-CM 2023/2021/2014 版（疾病診斷碼）
+    - ICD-10-PCS 2023/2021/2014 版（處置碼）
+    - ICD-9-CM 2001 版
+
+    資料來源: https://twcore.mohw.gov.tw/ig/twcore/
+
+    Args:
+        keyword: 搜尋關鍵字（ICD 碼或疾病名稱）
+            範例: 'E11', '糖尿病', 'diabetes', 'K35', '闌尾炎'
+
+    Returns:
+        JSON 含匹配的 ICD 代碼、中文名稱、所屬版本、FHIR system URL
+    """
+    log_info(f"Tool called: search_twcore_diagnosis with keyword='{keyword}'")
+    return twcore_service.search_diagnosis(keyword)
+
+
+@mcp.tool()
+def search_twcore_organization(keyword: str) -> str:
+    """
+    搜尋 TWCore 醫療機構/人員/科別標準代碼（即時從官方 IG 取得最新資料）
+
+    涵蓋 5 個 CodeSystem：
+    - 醫事人員類別（醫師、護理師、藥師等）
+    - 醫事機構代碼
+    - 就醫科別（門診掛號科別）
+    - 診療科別
+    - 醫療服務給付項目
+
+    資料來源: https://twcore.mohw.gov.tw/ig/twcore/
+
+    Args:
+        keyword: 搜尋關鍵字
+            範例: '內科', '家醫科', '藥師', '護理', '復健'
+
+    Returns:
+        JSON 含匹配的代碼、中文名稱、所屬 CodeSystem
+    """
+    log_info(f"Tool called: search_twcore_organization with keyword='{keyword}'")
+    return twcore_service.search_organization(keyword)
+
+
+@mcp.tool()
+def search_twcore_administrative(keyword: str) -> str:
+    """
+    搜尋 TWCore 行政/人口統計標準代碼（即時從官方 IG 取得最新資料）
+
+    涵蓋 7 個 CodeSystem：
+    - 郵遞區號（3碼/5碼/6碼）
+    - 婚姻狀態
+    - 行業分類（主計總處）
+    - 職業分類（壽險公會、勞動部）
+
+    資料來源: https://twcore.mohw.gov.tw/ig/twcore/
+
+    Args:
+        keyword: 搜尋關鍵字
+            範例: '台北', '100', '已婚', '資訊業', '工程師'
+
+    Returns:
+        JSON 含匹配的代碼、中文名稱、所屬 CodeSystem
+    """
+    log_info(f"Tool called: search_twcore_administrative with keyword='{keyword}'")
+    return twcore_service.search_administrative(keyword)
+
+
+@mcp.tool()
+def lookup_twcore_code(code: str, codesystem_id: str) -> str:
+    """
+    精確查詢 TWCore CodeSystem 中的單一代碼（含 FHIR Coding 輸出）
+
+    輸入代碼和 CodeSystem ID，取得完整資訊及 FHIR Coding 格式。
+    可透過 list_twcore_codesystems 取得所有可用的 CodeSystem ID。
+
+    Args:
+        code: 代碼（大小寫不敏感）
+            範例: 'BID', 'E11', '01', 'AD'
+        codesystem_id: CodeSystem ID
+            常用 ID:
+            - 'medication-frequency-nhi-tw': 藥品使用頻率
+            - 'medication-path-tw': 給藥途徑
+            - 'medical-consultation-department-nhi-tw': 就醫科別
+            - 'icd-10-cm-2023-tw': ICD-10-CM 2023版
+
+    Returns:
+        JSON 含代碼詳情、屬性、版本、FHIR Coding 物件
+    """
+    log_info(f"Tool called: lookup_twcore_code with code='{code}', cs='{codesystem_id}'")
+    return twcore_service.lookup_code(code, codesystem_id)
 
 
 # --- Start Server ---
