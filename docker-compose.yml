@@ -10,7 +10,7 @@ services:
       - ./data:/app/data
       - ./src:/app/src
     environment:
-      - MCP_TRANSPORT=${MCP_TRANSPORT:-http}
+      - MCP_TRANSPORT=${MCP_TRANSPORT:-streamable-http}
       - MCP_HOST=${MCP_HOST:-0.0.0.0}
       - MCP_PORT=${MCP_PORT:-8000}
       - MCP_PATH=${MCP_PATH:-/mcp}
