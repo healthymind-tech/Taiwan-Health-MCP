@@ -124,6 +124,10 @@ class HealthFoodService:
         if not os.path.exists(self.db_path):
             log_info("Health Food DB not found. Initializing full download...")
             should_update = True
+        elif os.path.getsize(self.db_path) == 0:
+            log_info("Health Food DB is empty. Removing and re-initializing...")
+            os.remove(self.db_path)
+            should_update = True
         else:
             try:
                 if os.path.exists(self.meta_path):
@@ -241,6 +245,11 @@ class HealthFoodService:
 
         except Exception as e:
             log_error(f"Health food update failed: {e}")
+            conn.close()
+            if os.path.exists(self.db_path):
+                os.remove(self.db_path)
+                log_info(f"Removed incomplete database: {self.db_path}")
+            return
         finally:
             conn.close()
 

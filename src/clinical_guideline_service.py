@@ -30,8 +30,12 @@ class ClinicalGuidelineService:
     def _initialize_database(self):
         """初始化資料庫，建立臨床指引資料表"""
         if os.path.exists(self.db_path):
-            log_info(f"Clinical guideline database found at: {self.db_path}")
-            return
+            if os.path.getsize(self.db_path) == 0:
+                log_info("Clinical guideline database is empty. Removing and re-initializing...")
+                os.remove(self.db_path)
+            else:
+                log_info(f"Clinical guideline database found at: {self.db_path}")
+                return
 
         log_info("Initializing Clinical Guideline database...")
         conn = sqlite3.connect(self.db_path)
@@ -136,6 +140,11 @@ class ClinicalGuidelineService:
         except Exception as e:
             log_error(f"Failed to initialize clinical guideline database: {e}")
             conn.rollback()
+            conn.close()
+            if os.path.exists(self.db_path):
+                os.remove(self.db_path)
+                log_info(f"Removed incomplete database: {self.db_path}")
+            raise
         finally:
             conn.close()
 

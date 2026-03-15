@@ -21,14 +21,18 @@ class ICDService:
         Parses ICD-10-CM and ICD-10-PCS sheets and builds indices for hierarchical queries.
         """
         if os.path.exists(self.db_path):
-            log_info(f"ICD Database found at: {self.db_path}")
-            return
+            if os.path.getsize(self.db_path) == 0:
+                log_info("ICD Database is empty. Removing and re-initializing...")
+                os.remove(self.db_path)
+            else:
+                log_info(f"ICD Database found at: {self.db_path}")
+                return
 
         log_info(f"Initializing database from Excel: {self.excel_path}")
 
         if not os.path.exists(self.excel_path):
             log_error(f"Excel file not found at: {self.excel_path}")
-            return
+            raise FileNotFoundError(f"Excel file not found at: {self.excel_path}")
 
         conn = sqlite3.connect(self.db_path)
         try:
@@ -81,6 +85,11 @@ class ICDService:
 
         except Exception as e:
             log_error(f"Database initialization failed: {e}")
+            conn.close()
+            if os.path.exists(self.db_path):
+                os.remove(self.db_path)
+                log_info(f"Removed incomplete database: {self.db_path}")
+            raise
         finally:
             conn.close()
 
