@@ -19,11 +19,12 @@ from utils import log_error, log_info
 config = MCPConfig.from_env()
 
 # 1. Initialize the MCP Server
-# Pass host and port here, as run() does not accept them in newer versions
+# host, port, streamable_http_path must be set in __init__ (not in run())
 mcp = FastMCP(
     "taiwanHealthMcp",
     host=config.host,
     port=config.port,
+    streamable_http_path=config.path,
     dependencies=["uvicorn"],
 )
 

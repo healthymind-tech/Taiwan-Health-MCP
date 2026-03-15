@@ -35,8 +35,12 @@ class LabService:
     def _initialize_database(self):
         """初始化資料庫，建立 LOINC 對照表與參考值表"""
         if os.path.exists(self.db_path):
-            log_info(f"Lab database found at: {self.db_path}")
-            return
+            if os.path.getsize(self.db_path) == 0:
+                log_info("Lab database is empty. Removing and re-initializing...")
+                os.remove(self.db_path)
+            else:
+                log_info(f"Lab database found at: {self.db_path}")
+                return
 
         log_info("Initializing Lab database with Taiwan common lab tests...")
         conn = sqlite3.connect(self.db_path)
@@ -103,6 +107,11 @@ class LabService:
         except Exception as e:
             log_error(f"Failed to initialize lab database: {e}")
             conn.rollback()
+            conn.close()
+            if os.path.exists(self.db_path):
+                os.remove(self.db_path)
+                log_info(f"Removed incomplete database: {self.db_path}")
+            raise
         finally:
             conn.close()
 
