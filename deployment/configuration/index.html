@@ -25,7 +25,7 @@
       
       
       <link rel="icon" href="../../assets/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.1">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.5">
     
     
       
@@ -2873,10 +2873,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#http" class="md-nav__link">
+  <a href="#streamable-http" class="md-nav__link">
     <span class="md-ellipsis">
       
-        http 模式（生產部署）✨ 推薦
+        streamable-http 模式（生產部署）✨ 推薦
       
     </span>
   </a>
@@ -3289,10 +3289,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#http" class="md-nav__link">
+  <a href="#streamable-http" class="md-nav__link">
     <span class="md-ellipsis">
       
-        http 模式（生產部署）✨ 推薦
+        streamable-http 模式（生產部署）✨ 推薦
       
     </span>
   </a>
@@ -3409,9 +3409,9 @@
 <p>適用於 Claude Desktop 等本地整合環境：</p>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nv">MCP_TRANSPORT</span><span class="o">=</span>stdio
 </span></code></pre></div>
-<h3 id="http">http 模式（生產部署）✨ 推薦<a class="headerlink" href="#http" title="Permanent link">&para;</a></h3>
+<h3 id="streamable-http">streamable-http 模式（生產部署）✨ 推薦<a class="headerlink" href="#streamable-http" title="Permanent link">&para;</a></h3>
 <p>適用於 Docker 生產環境，使用 Streamable HTTP 協定：</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nv">MCP_TRANSPORT</span><span class="o">=</span>http
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nv">MCP_TRANSPORT</span><span class="o">=</span>streamable-http
 </span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nv">MCP_HOST</span><span class="o">=</span><span class="m">0</span>.0.0.0
 </span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="nv">MCP_PORT</span><span class="o">=</span><span class="m">8000</span>
 </span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="nv">MCP_PATH</span><span class="o">=</span>/mcp
@@ -3438,22 +3438,22 @@
 <tr>
 <td style="text-align: left;"><code>MCP_TRANSPORT</code></td>
 <td style="text-align: left;"><code>stdio</code></td>
-<td style="text-align: left;">傳輸模式：<code>stdio</code> | <code>http</code> | <code>sse</code></td>
+<td style="text-align: left;">傳輸模式：<code>stdio</code> | <code>streamable-http</code> | <code>sse</code></td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>MCP_HOST</code></td>
 <td style="text-align: left;"><code>0.0.0.0</code></td>
-<td style="text-align: left;">監聽主機（僅 http/sse 模式）</td>
+<td style="text-align: left;">監聽主機（僅 streamable-http/sse 模式）</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>MCP_PORT</code></td>
 <td style="text-align: left;"><code>8000</code></td>
-<td style="text-align: left;">監聽埠號（僅 http/sse 模式）</td>
+<td style="text-align: left;">監聽埠號（僅 streamable-http/sse 模式）</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>MCP_PATH</code></td>
 <td style="text-align: left;"><code>/mcp</code></td>
-<td style="text-align: left;">HTTP 端點路徑（僅 http 模式）</td>
+<td style="text-align: left;">HTTP 端點路徑（僅 streamable-http 模式）</td>
 </tr>
 </tbody>
 </table>
