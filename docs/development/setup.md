@@ -42,9 +42,9 @@ cp .env.example .env
 MCP_TRANSPORT=stdio
 ```
 
-**本地測試伺服器（HTTP）：**
+**本地測試伺服器（Streamable HTTP）：**
 ```env
-MCP_TRANSPORT=http
+MCP_TRANSPORT=streamable-http
 MCP_HOST=127.0.0.1
 MCP_PORT=8000
 MCP_PATH=/mcp
@@ -61,7 +61,7 @@ MCP_PORT=8000
 
 | 變數 | 預設值 | 說明 |
 | :--- | :--- | :--- |
-| `MCP_TRANSPORT` | `stdio` | 傳輸模式：stdio/http/sse |
+| `MCP_TRANSPORT` | `stdio` | 傳輸模式：stdio/streamable-http/sse |
 | `MCP_HOST` | `0.0.0.0` | 監聽主機 |
 | `MCP_PORT` | `8000` | 監聽埠號 |
 | `MCP_PATH` | `/mcp` | HTTP 端點路徑 |

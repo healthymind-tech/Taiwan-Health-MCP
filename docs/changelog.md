@@ -12,7 +12,7 @@
 - 新增 `src/config.py` 模組，提供統一的 MCP 配置管理
 - 支援三種傳輸模式：
   - **stdio**：標準輸入輸出（Claude Desktop 本地開發）
-  - **http**：Streamable HTTP（Docker 生產部署，推薦）
+  - **streamable-http**：Streamable HTTP（Docker 生產部署，推薦）
   - **sse**：Server-Sent Events（Colab + Ngrok，向後相容）
 
 #### 環境變數配置
