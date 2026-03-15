@@ -23,11 +23,11 @@ cp .env.example .env
 MCP_TRANSPORT=stdio
 ```
 
-### http 模式（生產部署）✨ 推薦
+### streamable-http 模式（生產部署）✨ 推薦
 適用於 Docker 生產環境，使用 Streamable HTTP 協定：
 
 ```bash
-MCP_TRANSPORT=http
+MCP_TRANSPORT=streamable-http
 MCP_HOST=0.0.0.0
 MCP_PORT=8000
 MCP_PATH=/mcp
@@ -52,10 +52,10 @@ MCP_PORT=8000
 
 | 變數名稱 | 預設值 | 說明 |
 | :--- | :--- | :--- |
-| `MCP_TRANSPORT` | `stdio` | 傳輸模式：`stdio` \| `http` \| `sse` |
-| `MCP_HOST` | `0.0.0.0` | 監聽主機（僅 http/sse 模式） |
-| `MCP_PORT` | `8000` | 監聽埠號（僅 http/sse 模式） |
-| `MCP_PATH` | `/mcp` | HTTP 端點路徑（僅 http 模式） |
+| `MCP_TRANSPORT` | `stdio` | 傳輸模式：`stdio` \| `streamable-http` \| `sse` |
+| `MCP_HOST` | `0.0.0.0` | 監聽主機（僅 streamable-http/sse 模式） |
+| `MCP_PORT` | `8000` | 監聽埠號（僅 streamable-http/sse 模式） |
+| `MCP_PATH` | `/mcp` | HTTP 端點路徑（僅 streamable-http 模式） |
 
 ### 系統配置
 

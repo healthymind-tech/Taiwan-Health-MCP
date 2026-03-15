@@ -14,11 +14,11 @@
 cp .env.example .env
 ```
 
-**生產環境建議配置（HTTP 模式）：**
+**生產環境建議配置（Streamable HTTP 模式）：**
 
 ```env
 # .env
-MCP_TRANSPORT=http
+MCP_TRANSPORT=streamable-http
 MCP_HOST=0.0.0.0
 MCP_PORT=8000
 MCP_PATH=/mcp
@@ -59,13 +59,13 @@ Docker Compose 會自動：
 # 建置映像檔
 docker build -t taiwan-health-mcp .
 
-# 執行容器（HTTP 模式）
+# 執行容器（Streamable HTTP 模式）
 docker run -d \
   --name health-mcp \
   -v $(pwd)/data:/app/data \
   -v $(pwd)/src:/app/src \
   -p 8000:8000 \
-  -e MCP_TRANSPORT=http \
+  -e MCP_TRANSPORT=streamable-http \
   -e MCP_HOST=0.0.0.0 \
   -e MCP_PORT=8000 \
   -e MCP_PATH=/mcp \
@@ -78,7 +78,7 @@ docker run -d \
 
 | 模式 | 適用場景 | 連線方式 |
 | :--- | :--- | :--- |
-| **http** ✨ | Docker 生產部署 | `http://localhost:8000/mcp` |
+| **streamable-http** ✨ | Docker 生產部署 | `http://localhost:8000/mcp` |
 | **stdio** | Claude Desktop 本地整合 | 標準輸入輸出 |
 | **sse** | Colab + Ngrok（向後相容） | `http://localhost:8000/sse` |
 
@@ -100,11 +100,11 @@ docker logs -f taiwanHealthMcp
 ==================================================
 Taiwan Health MCP Server
 ==================================================
-Transport: http | http://0.0.0.0:8000/mcp
+Transport: streamable-http | http://0.0.0.0:8000/mcp
 Server is starting...
 ```
 
-### 測試連線（HTTP 模式）
+### 測試連線（Streamable HTTP 模式）
 ```bash
 curl http://localhost:8000/mcp
 ```

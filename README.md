@@ -45,6 +45,9 @@ python src/server.py
 docker-compose up -d
 ```
 
+> 預設 Docker 部署使用 `MCP_TRANSPORT=streamable-http`（端點：`/mcp`）。
+> 若設為 `http`，系統會視為無效值並回退到 `stdio`。
+
 ### 📖 完整文檔
 
 - **[GitHub Pages 文檔網站](https://healthymind-tech.github.io/Taiwan-Health-MCP/)** - 完整的架構、API、使用指南
