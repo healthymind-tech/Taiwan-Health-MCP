@@ -1,9 +1,9 @@
 # 開發環境設置
 
 ## 1. 系統需求
-- Python 3.10 或更高版本
+- Python 3.12 或更高版本
+- Docker + Docker Compose（推薦；PostgreSQL/Redis 透過 Docker 啟動）
 - Git
-- SQLite3 (通常 Python 已內建)
 
 ## 2. 下載程式碼
 ```bash

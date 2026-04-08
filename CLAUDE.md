@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Taiwan Health MCP Server — a [FastMCP](https://github.com/jlowin/fastmcp)-based Model Context Protocol server providing **46 tools** for Taiwan medical and health data. Designed for production SaaS deployment with hundreds of requests/second throughput.
+Taiwan Health MCP Server — a [FastMCP](https://github.com/jlowin/fastmcp)-based Model Context Protocol server providing **56 tools** for Taiwan medical and health data. Designed for production SaaS deployment with hundreds of requests/second throughput.
 
 **Datasets**: ICD-10-CM 2025, LOINC 2.80, SNOMED CT International, RxNorm, Taiwan FDA drugs/health foods/nutrition, TWCore IG v1.0.0, Taiwan clinical guidelines.
 
@@ -34,6 +34,10 @@ docker compose --profile loader run --rm data-loader --twcore
 docker compose --profile loader run --rm data-loader --guideline
 docker compose --profile loader run --rm data-loader --snomed   # large, 5-15 min
 docker compose --profile loader run --rm data-loader --rxnorm
+docker compose --profile loader run --rm data-loader --fda          # all Taiwan FDA API datasets
+docker compose --profile loader run --rm data-loader --drug
+docker compose --profile loader run --rm data-loader --health-food
+docker compose --profile loader run --rm data-loader --food-nutrition
 
 # Run tests
 pip install pytest pytest-asyncio
@@ -51,7 +55,7 @@ pytest tests/ -v
 | Prometheus | Metrics on `METRICS_PORT` (default 9090) |
 
 ### Entry point
-`src/server.py` — FastMCP server with all 46 tool definitions. Startup uses `asynccontextmanager lifespan`:
+`src/server.py` — FastMCP server with all 56 tool definitions. Startup uses `asynccontextmanager lifespan`:
 1. Start Prometheus metrics server
 2. Init asyncpg pool through pgBouncer (`statement_cache_size=0` required for transaction mode)
 3. Init Redis client

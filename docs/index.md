@@ -7,7 +7,7 @@
 **整合 ICD-10、SNOMED CT、RxNorm、LOINC、FDA 藥品/保健食品/營養、TWCore IG、臨床指引，支援 FHIR R4 標準**
 
 [![FHIR](https://img.shields.io/badge/FHIR-R4-blue)](http://hl7.org/fhir/R4/)
-[![Python](https://img.shields.io/badge/Python-3.8+-green)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/Python-3.12-green)](https://www.python.org/)
 [![MCP](https://img.shields.io/badge/MCP-1.0-orange)](https://modelcontextprotocol.io)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](https://github.com/yourusername/Taiwan-ICD10-Health-MCP/blob/main/LICENSE)
 

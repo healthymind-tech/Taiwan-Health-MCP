@@ -5,7 +5,7 @@
 ## 支援環境
 - **作業系統**：Linux (Ubuntu/CentOS), macOS, Windows (WSL2)
 - **容器平台**：Docker, Kubernetes, Podman
-- **Python 版本**：3.10+ (若需裸機部署)
+- **Python 版本**：3.12+ (若需裸機部署)
 
 ## 部署選項
 

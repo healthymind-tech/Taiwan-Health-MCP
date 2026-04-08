@@ -3,29 +3,26 @@
 ```mermaid
 graph TD
     User[End User] --> Client[MCP Client]
-    
-    subgraph "Docker Container"
-        Server[MCP Server Process]
-        
-        subgraph "In-Process Memory"
-            Services[Service Instances]
-        end
-        
-        subgraph "Persistent Volume Data"
-            DB1[(ICD DB)]
-            DB2[(Drug DB)]
-            Files[Raw Files]
-        end
-        
-        Server <--> Services
-        Services <--> DB1
-        Services <--> DB2
+
+    subgraph "Docker Compose Stack"
+        Server["app (MCP Server / FastMCP, port 8000)"]
+        PGB["pgbouncer (transaction mode, port 5432)"]
+        PG["postgres:16 (port 5432 internal)"]
+        RD["redis:7 (port 6379)"]
+        PM["Prometheus metrics (port 9090)"]
+        LDR["data-loader (profiles: loader, restart: no)"]
     end
-    
-    Client -- Stdio or SSE --> Server
+
+    Client -- "streamable-http / stdio" --> Server
+    Server --> PGB --> PG
+    Server --> RD
+    Server --> PM
+    LDR --> PG
 ```
 
 ## 關鍵考量
 
-1. **資料持久性**：Raw Files (Excel) 與 SQLite DB 均位於 `/data` Volume，確保容器重啟後無需重新進行 ETL。
-2. **通訊模式**：目前預設使用 `stdio` 模式，這意味著 MCP Server 與 Client 需在同一台機器上運行（或是 Client 透過 `docker exec` 呼叫）。若需遠端部署，需改用 SSE (Server-Sent Events) 模式（目前 FastMCP 支援）。
+1. **資料持久性**：PostgreSQL 資料存放於 Docker Volume，容器重啟後資料保留，無需重新執行 data-loader。
+2. **通訊模式**：生產環境使用 `streamable-http`（port 8000）；本地 Claude Desktop 整合使用 `stdio` 模式。可透過 `MCP_TRANSPORT` 環境變數切換。
+3. **pgBouncer transaction mode**：不相容 `LISTEN/NOTIFY` 和 named prepared statements，asyncpg 需設 `statement_cache_size=0`。
+4. **data-loader 容器**：`profiles: [loader]`，`restart: "no"`，直接連接 PostgreSQL（繞過 pgBouncer）以進行大量寫入。

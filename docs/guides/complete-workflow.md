@@ -50,15 +50,16 @@ get_drug_details(license_id="衛署藥輸字第021938號")
 
 ## 步驟四：開立處方與衝突檢查
 
-假設醫師決定開立 Metformin，並想確認與患者原本服用的藥物是否有交互作用（可使用 analyze_treatment_plan）。這裡我們檢查診斷與處方是否一致。
+假設醫師決定開立 Metformin，並想確認與患者原本服用的藥物是否有交互作用。可先透過 `search_drug_by_ingredient` 找到含 Metformin 的藥品，再使用 `check_drug_interactions` 確認交互作用。
 
 **呼叫工具**：
 ```python
-analyze_treatment_plan(diagnosis_keyword="E11", drug_keyword="Glucophage")
+search_drug_by_ingredient(ingredient_name="Metformin")
+check_drug_interactions(drug_names=["Metformin", "Warfarin"])
 ```
 
 **預期結果**：
-系統確認適應症符合。
+系統列出含 Metformin 的藥品清單，並回傳交互作用查詢結果。
 
 ## 步驟五：生成 FHIR 病歷紀錄
 

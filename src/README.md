@@ -9,16 +9,16 @@
 | 檔案 | 服務 | MCP 工具數 |
 |------|------|-----------|
 | `server.py` | 入口點（FastMCP + lifespan） | 56 |
-| `icd_service.py` | ICD-10-CM/PCS 診斷與手術碼 | 4 |
-| `drug_service.py` | 台灣 FDA 藥品 | 3 |
-| `health_food_service.py` | 台灣 FDA 健康食品 | 2+1 |
-| `food_nutrition_service.py` | 食品營養成分 | 4 |
+| `icd_service.py` | ICD-10-CM/PCS 診斷與手術碼 | 5 |
+| `drug_service.py` | 台灣 FDA 藥品 | 5 |
+| `health_food_service.py` | 台灣 FDA 健康食品 | 3 |
+| `food_nutrition_service.py` | 食品營養成分 | 6 |
 | `fhir_condition_service.py` | FHIR R4 Condition | 3 |
 | `fhir_medication_service.py` | FHIR R4 Medication | 4 |
-| `lab_service.py` | LOINC 檢驗碼與參考值 | 5 |
-| `clinical_guideline_service.py` | 臨床診療指引 | 5 |
+| `lab_service.py` | LOINC 檢驗碼與參考值 | 8 |
+| `clinical_guideline_service.py` | 臨床診療指引 | 8 |
 | `twcore_service.py` | TWCore IG CodeSystem | 3 |
-| `snomed_service.py` | SNOMED CT International | 6 |
+| `snomed_service.py` | SNOMED CT International | 7 |
 | `drug_interaction_service.py` | RxNorm 藥物交互作用 | 3 |
 
 ### 跨切面模組
@@ -42,6 +42,7 @@
 - `search_codes(keyword, type)` — 全文搜尋診斷碼/手術碼
 - `infer_complications(code)` — 依 ICD 階層推論併發症
 - `get_nearby_codes(code)` — 取得前後相鄰碼
+- `browse_category(category, limit)` — 依類別瀏覽診斷碼
 - `get_conflict_info(diagnosis_code, procedure_code)` — 衝突分析
 
 **注意**: `_pcs_available` flag — PCS 資料未載入時工具自動降級，回傳提示訊息而非錯誤。PCS 2025（78,948 筆）已內建於 `fhir-code/icd10pcs/`，`--icd` 自動同時載入。
@@ -54,8 +55,10 @@
 
 **主要方法**:
 - `search_drug(keyword)` — FTS 搜尋藥品名稱/適應症
-- `get_drug_details_by_license(license_id)` — 完整藥品資訊
+- `get_drug_details_by_license(license_id)` — 完整藥品資訊（含模糊匹配三層解析）
 - `identify_pill(features)` — 依外觀識別藥錠
+- `search_by_atc(query)` — 依 ATC 代碼或藥理分類搜尋
+- `search_by_ingredient(ingredient_name)` — 依有效成分搜尋
 
 **同步**: 啟動時若資料為空或過期（>7天）自動觸發；排程每週二 02:00 UTC。
 
@@ -92,6 +95,8 @@
 - `search_nutrition(food_name, nutrient)` — 搜尋食品營養成分
 - `get_detailed_nutrition(food_name)` — 完整營養分析
 - `search_food_ingredient(keyword)` — 搜尋食品原料
+- `get_ingredients_by_category(category)` — 依分類查詢食品原料
+- `search_foods_by_nutrient(nutrient, limit)` — 依特定營養素排名食品
 - `analyze_meal_nutrition(foods)` — 膳食組合分析
 
 **排程**: 每週一 03:00 UTC
@@ -130,6 +135,9 @@
 - `list_categories()` — 列出所有分類
 - `get_reference_range(loinc_code, age, gender)` — 參考值
 - `interpret_lab_result(loinc_code, value, age, gender)` — 結果判讀
+- `search_by_specimen(specimen_type)` — 依檢體類型搜尋
+- `find_related_tests(component)` — 找相同 analyte 的相關檢驗
+- `get_patient_friendly_name(loinc_num)` — 取得 LOINC 完整概念細節
 - `batch_interpret_results(results, age, gender)` — 批次判讀
 
 ---
@@ -144,6 +152,8 @@
 - `get_medication_recommendations(icd_code)` — 用藥建議
 - `get_test_recommendations(icd_code)` — 建議檢查
 - `get_treatment_goals(icd_code)` — 治療目標
+- `check_medication_contraindications(icd_code, medication_class)` — 用藥禁忌檢查
+- `link_guideline_to_drugs(icd_code)` — 指引建議連結至台灣 FDA 藥品
 - `suggest_clinical_pathway(icd_code, context)` — 臨床路徑
 
 ---
@@ -168,6 +178,7 @@
 - `get_concept(concept_id)` — FSN、同義詞、父概念、ICD-10 對應
 - `get_children(concept_id, limit)` — 直接子概念（IS-A）
 - `get_ancestors(concept_id, max_depth)` — 所有祖先（遞迴 CTE）
+- `get_snomed_relationships(concept_id, relationship_type)` — 非 IS-A 屬性與關聯查詢
 - `map_icd_to_snomed(icd_code)` — ICD-10 → SNOMED
 - `map_snomed_to_icd(concept_id)` — SNOMED → ICD-10
 

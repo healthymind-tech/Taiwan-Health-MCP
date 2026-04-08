@@ -2,26 +2,29 @@
 
 ## class `ICDService`
 
-### `__init__(self, excel_path: str, data_dir: str)`
-初始化 ICD 服務，載入或建立 SQLite 資料庫。
+### `__init__(self, pool)`
+初始化 ICD 服務，接受 asyncpg 連線池（透過 pgBouncer）。
 
-- **excel_path**: 原始 ICD-10 Excel 檔案的路徑。
-- **data_dir**: 資料目錄，用於儲存轉換後的 SQLite db。
+- **pool**: asyncpg 連線池，由 `server.py` lifespan 注入。
 
-### `search_codes(self, keyword: str, type: str = "all") -> str`
-搜尋 ICD 代碼。
+### `async initialize(self)`
+檢查 `icd.procedures` 資料表是否有資料，設定 `_pcs_available` flag。
 
-- **keyword**: 搜尋字串。
-- **type**: "diagnosis", "procedure" 或 "all"。
-- **Returns**: 格式化的文字結果。
+### `async search_codes(self, keyword: str, type: str = "all") -> str`
+全文搜尋 ICD-10-CM 診斷碼或 ICD-10-PCS 手術碼。
 
-### `infer_complications(self, code: str) -> str`
-推論併發症代碼。
+- **keyword**: 搜尋字串（支援中英文）。
+- **type**: `"diagnosis"`, `"procedure"` 或 `"all"`。
+- **Returns**: 格式化文字結果。
 
-- **code**: 父代碼 (如 E11)。
+### `async infer_complications(self, code: str) -> str`
+依 ICD 階層推論潛在併發症，從父代碼（如 E11）列出子代碼（如 E11.2）。
 
-### `get_nearby_codes(self, code: str) -> str`
-取得相鄰的代碼。
+### `async get_nearby_codes(self, code: str) -> str`
+取得目標碼在分類中的前後相鄰碼。
 
-### `get_conflict_info(self, diagnosis_code: str, procedure_code: str) -> dict`
-取得用於衝突檢查的詳細資訊。
+### `async browse_category(self, category: str = None, limit: int = 50) -> str`
+依前三碼類別瀏覽診斷碼清單。
+
+### `async get_conflict_info(self, diagnosis_code: str, procedure_code: str) -> dict`
+取得用於診斷碼與手術碼衝突分析的詳細資訊。
