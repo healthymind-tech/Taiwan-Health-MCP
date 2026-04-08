@@ -3397,12 +3397,11 @@
 <h3 id="fhir">支援的 FHIR 資源類型<a class="headerlink" href="#fhir" title="Permanent link">&para;</a></h3>
 <ol>
 <li><strong>Medication</strong>：描述藥品本身的定義（成分、劑型）。</li>
-<li><strong>MedicationRequest</strong>：描述醫師的處方行為（串接時使用）。</li>
-<li><strong>MedicationKnowledge</strong>：描述藥品的詳細藥學特性與法規資訊。</li>
+<li><strong>MedicationKnowledge</strong>：描述藥品的詳細藥學特性與法規資訊（含 ATC 分類、適應症）。</li>
 </ol>
 <h3 id="_4">在地化挑戰與解決<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h3>
 <ul>
-<li><strong>編碼系統</strong>：台灣目前尚無全面導入 RxNorm，因此本系統使用自定義的 CodeSystem URI (<code>http://tw-fda.gov.tw/product-license</code>) 來標識台灣藥證。</li>
+<li><strong>編碼系統</strong>：台灣目前尚無全面導入 RxNorm，因此本系統使用官方 CodeSystem URI <code>https://data.fda.gov.tw/cfdatwn/license</code> 標識台灣藥證，ATC 代碼則使用 <code>http://www.whocc.no/atc</code>。</li>
 <li><strong>中文相容性</strong>：確保所有中文藥名與適應症在 JSON 序列化過程中正確編碼。</li>
 </ul>
 <h2 id="_5">應用場景<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>

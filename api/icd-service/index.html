@@ -2177,10 +2177,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#__init__self-excel_path-str-data_dir-str" class="md-nav__link">
+  <a href="#__init__self-pool" class="md-nav__link">
     <span class="md-ellipsis">
       
-        __init__(self, excel_path: str, data_dir: str)
+        __init__(self, pool)
       
     </span>
   </a>
@@ -2188,10 +2188,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#search_codesself-keyword-str-type-str-all-str" class="md-nav__link">
+  <a href="#async-initializeself" class="md-nav__link">
     <span class="md-ellipsis">
       
-        search_codes(self, keyword: str, type: str = "all") -&gt; str
+        async initialize(self)
       
     </span>
   </a>
@@ -2199,10 +2199,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#infer_complicationsself-code-str-str" class="md-nav__link">
+  <a href="#async-search_codesself-keyword-str-type-str-all-str" class="md-nav__link">
     <span class="md-ellipsis">
       
-        infer_complications(self, code: str) -&gt; str
+        async search_codes(self, keyword: str, type: str = "all") -&gt; str
       
     </span>
   </a>
@@ -2210,10 +2210,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#get_nearby_codesself-code-str-str" class="md-nav__link">
+  <a href="#async-infer_complicationsself-code-str-str" class="md-nav__link">
     <span class="md-ellipsis">
       
-        get_nearby_codes(self, code: str) -&gt; str
+        async infer_complications(self, code: str) -&gt; str
       
     </span>
   </a>
@@ -2221,10 +2221,32 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#get_conflict_infoself-diagnosis_code-str-procedure_code-str-dict" class="md-nav__link">
+  <a href="#async-get_nearby_codesself-code-str-str" class="md-nav__link">
     <span class="md-ellipsis">
       
-        get_conflict_info(self, diagnosis_code: str, procedure_code: str) -&gt; dict
+        async get_nearby_codes(self, code: str) -&gt; str
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#async-browse_categoryself-category-str-none-limit-int-50-str" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        async browse_category(self, category: str = None, limit: int = 50) -&gt; str
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#async-get_conflict_infoself-diagnosis_code-str-procedure_code-str-dict" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        async get_conflict_info(self, diagnosis_code: str, procedure_code: str) -&gt; dict
       
     </span>
   </a>
@@ -3217,10 +3239,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#__init__self-excel_path-str-data_dir-str" class="md-nav__link">
+  <a href="#__init__self-pool" class="md-nav__link">
     <span class="md-ellipsis">
       
-        __init__(self, excel_path: str, data_dir: str)
+        __init__(self, pool)
       
     </span>
   </a>
@@ -3228,10 +3250,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#search_codesself-keyword-str-type-str-all-str" class="md-nav__link">
+  <a href="#async-initializeself" class="md-nav__link">
     <span class="md-ellipsis">
       
-        search_codes(self, keyword: str, type: str = "all") -&gt; str
+        async initialize(self)
       
     </span>
   </a>
@@ -3239,10 +3261,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#infer_complicationsself-code-str-str" class="md-nav__link">
+  <a href="#async-search_codesself-keyword-str-type-str-all-str" class="md-nav__link">
     <span class="md-ellipsis">
       
-        infer_complications(self, code: str) -&gt; str
+        async search_codes(self, keyword: str, type: str = "all") -&gt; str
       
     </span>
   </a>
@@ -3250,10 +3272,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#get_nearby_codesself-code-str-str" class="md-nav__link">
+  <a href="#async-infer_complicationsself-code-str-str" class="md-nav__link">
     <span class="md-ellipsis">
       
-        get_nearby_codes(self, code: str) -&gt; str
+        async infer_complications(self, code: str) -&gt; str
       
     </span>
   </a>
@@ -3261,10 +3283,32 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#get_conflict_infoself-diagnosis_code-str-procedure_code-str-dict" class="md-nav__link">
+  <a href="#async-get_nearby_codesself-code-str-str" class="md-nav__link">
     <span class="md-ellipsis">
       
-        get_conflict_info(self, diagnosis_code: str, procedure_code: str) -&gt; dict
+        async get_nearby_codes(self, code: str) -&gt; str
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#async-browse_categoryself-category-str-none-limit-int-50-str" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        async browse_category(self, category: str = None, limit: int = 50) -&gt; str
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#async-get_conflict_infoself-diagnosis_code-str-procedure_code-str-dict" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        async get_conflict_info(self, diagnosis_code: str, procedure_code: str) -&gt; dict
       
     </span>
   </a>
@@ -3298,28 +3342,28 @@
 
 <h1 id="icd-service-api">ICD Service API<a class="headerlink" href="#icd-service-api" title="Permanent link">&para;</a></h1>
 <h2 id="class-icdservice">class <code>ICDService</code><a class="headerlink" href="#class-icdservice" title="Permanent link">&para;</a></h2>
-<h3 id="__init__self-excel_path-str-data_dir-str"><code>__init__(self, excel_path: str, data_dir: str)</code><a class="headerlink" href="#__init__self-excel_path-str-data_dir-str" title="Permanent link">&para;</a></h3>
-<p>初始化 ICD 服務，載入或建立 SQLite 資料庫。</p>
+<h3 id="__init__self-pool"><code>__init__(self, pool)</code><a class="headerlink" href="#__init__self-pool" title="Permanent link">&para;</a></h3>
+<p>初始化 ICD 服務，接受 asyncpg 連線池（透過 pgBouncer）。</p>
 <ul>
-<li><strong>excel_path</strong>: 原始 ICD-10 Excel 檔案的路徑。</li>
-<li><strong>data_dir</strong>: 資料目錄，用於儲存轉換後的 SQLite db。</li>
+<li><strong>pool</strong>: asyncpg 連線池，由 <code>server.py</code> lifespan 注入。</li>
 </ul>
-<h3 id="search_codesself-keyword-str-type-str-all-str"><code>search_codes(self, keyword: str, type: str = "all") -&gt; str</code><a class="headerlink" href="#search_codesself-keyword-str-type-str-all-str" title="Permanent link">&para;</a></h3>
-<p>搜尋 ICD 代碼。</p>
+<h3 id="async-initializeself"><code>async initialize(self)</code><a class="headerlink" href="#async-initializeself" title="Permanent link">&para;</a></h3>
+<p>檢查 <code>icd.procedures</code> 資料表是否有資料，設定 <code>_pcs_available</code> flag。</p>
+<h3 id="async-search_codesself-keyword-str-type-str-all-str"><code>async search_codes(self, keyword: str, type: str = "all") -&gt; str</code><a class="headerlink" href="#async-search_codesself-keyword-str-type-str-all-str" title="Permanent link">&para;</a></h3>
+<p>全文搜尋 ICD-10-CM 診斷碼或 ICD-10-PCS 手術碼。</p>
 <ul>
-<li><strong>keyword</strong>: 搜尋字串。</li>
-<li><strong>type</strong>: "diagnosis", "procedure" 或 "all"。</li>
-<li><strong>Returns</strong>: 格式化的文字結果。</li>
+<li><strong>keyword</strong>: 搜尋字串（支援中英文）。</li>
+<li><strong>type</strong>: <code>"diagnosis"</code>, <code>"procedure"</code> 或 <code>"all"</code>。</li>
+<li><strong>Returns</strong>: 格式化文字結果。</li>
 </ul>
-<h3 id="infer_complicationsself-code-str-str"><code>infer_complications(self, code: str) -&gt; str</code><a class="headerlink" href="#infer_complicationsself-code-str-str" title="Permanent link">&para;</a></h3>
-<p>推論併發症代碼。</p>
-<ul>
-<li><strong>code</strong>: 父代碼 (如 E11)。</li>
-</ul>
-<h3 id="get_nearby_codesself-code-str-str"><code>get_nearby_codes(self, code: str) -&gt; str</code><a class="headerlink" href="#get_nearby_codesself-code-str-str" title="Permanent link">&para;</a></h3>
-<p>取得相鄰的代碼。</p>
-<h3 id="get_conflict_infoself-diagnosis_code-str-procedure_code-str-dict"><code>get_conflict_info(self, diagnosis_code: str, procedure_code: str) -&gt; dict</code><a class="headerlink" href="#get_conflict_infoself-diagnosis_code-str-procedure_code-str-dict" title="Permanent link">&para;</a></h3>
-<p>取得用於衝突檢查的詳細資訊。</p>
+<h3 id="async-infer_complicationsself-code-str-str"><code>async infer_complications(self, code: str) -&gt; str</code><a class="headerlink" href="#async-infer_complicationsself-code-str-str" title="Permanent link">&para;</a></h3>
+<p>依 ICD 階層推論潛在併發症，從父代碼（如 E11）列出子代碼（如 E11.2）。</p>
+<h3 id="async-get_nearby_codesself-code-str-str"><code>async get_nearby_codes(self, code: str) -&gt; str</code><a class="headerlink" href="#async-get_nearby_codesself-code-str-str" title="Permanent link">&para;</a></h3>
+<p>取得目標碼在分類中的前後相鄰碼。</p>
+<h3 id="async-browse_categoryself-category-str-none-limit-int-50-str"><code>async browse_category(self, category: str = None, limit: int = 50) -&gt; str</code><a class="headerlink" href="#async-browse_categoryself-category-str-none-limit-int-50-str" title="Permanent link">&para;</a></h3>
+<p>依前三碼類別瀏覽診斷碼清單。</p>
+<h3 id="async-get_conflict_infoself-diagnosis_code-str-procedure_code-str-dict"><code>async get_conflict_info(self, diagnosis_code: str, procedure_code: str) -&gt; dict</code><a class="headerlink" href="#async-get_conflict_infoself-diagnosis_code-str-procedure_code-str-dict" title="Permanent link">&para;</a></h3>
+<p>取得用於診斷碼與手術碼衝突分析的詳細資訊。</p>
 
 
 

@@ -3178,29 +3178,26 @@
 <pre class="mermaid"><code>graph TD
     User[End User] --&gt; Client[MCP Client]
 
-    subgraph "Docker Container"
-        Server[MCP Server Process]
-
-        subgraph "In-Process Memory"
-            Services[Service Instances]
-        end
-
-        subgraph "Persistent Volume Data"
-            DB1[(ICD DB)]
-            DB2[(Drug DB)]
-            Files[Raw Files]
-        end
-
-        Server &lt;--&gt; Services
-        Services &lt;--&gt; DB1
-        Services &lt;--&gt; DB2
+    subgraph "Docker Compose Stack"
+        Server["app (MCP Server / FastMCP, port 8000)"]
+        PGB["pgbouncer (transaction mode, port 5432)"]
+        PG["postgres:16 (port 5432 internal)"]
+        RD["redis:7 (port 6379)"]
+        PM["Prometheus metrics (port 9090)"]
+        LDR["data-loader (profiles: loader, restart: no)"]
     end
 
-    Client -- Stdio or SSE --&gt; Server</code></pre>
+    Client -- "streamable-http / stdio" --&gt; Server
+    Server --&gt; PGB --&gt; PG
+    Server --&gt; RD
+    Server --&gt; PM
+    LDR --&gt; PG</code></pre>
 <h2 id="_2">關鍵考量<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
 <ol>
-<li><strong>資料持久性</strong>：Raw Files (Excel) 與 SQLite DB 均位於 <code>/data</code> Volume，確保容器重啟後無需重新進行 ETL。</li>
-<li><strong>通訊模式</strong>：目前預設使用 <code>stdio</code> 模式，這意味著 MCP Server 與 Client 需在同一台機器上運行（或是 Client 透過 <code>docker exec</code> 呼叫）。若需遠端部署，需改用 SSE (Server-Sent Events) 模式（目前 FastMCP 支援）。</li>
+<li><strong>資料持久性</strong>：PostgreSQL 資料存放於 Docker Volume，容器重啟後資料保留，無需重新執行 data-loader。</li>
+<li><strong>通訊模式</strong>：生產環境使用 <code>streamable-http</code>（port 8000）；本地 Claude Desktop 整合使用 <code>stdio</code> 模式。可透過 <code>MCP_TRANSPORT</code> 環境變數切換。</li>
+<li><strong>pgBouncer transaction mode</strong>：不相容 <code>LISTEN/NOTIFY</code> 和 named prepared statements，asyncpg 需設 <code>statement_cache_size=0</code>。</li>
+<li><strong>data-loader 容器</strong>：<code>profiles: [loader]</code>，<code>restart: "no"</code>，直接連接 PostgreSQL（繞過 pgBouncer）以進行大量寫入。</li>
 </ol>
 
 

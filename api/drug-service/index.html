@@ -2205,10 +2205,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#__init__self-data_dir-str" class="md-nav__link">
+  <a href="#__init__self-pool" class="md-nav__link">
     <span class="md-ellipsis">
       
-        __init__(self, data_dir: str)
+        __init__(self, pool)
       
     </span>
   </a>
@@ -2216,10 +2216,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#search_drugself-keyword-str-str" class="md-nav__link">
+  <a href="#async-search_drugself-keyword-str-str" class="md-nav__link">
     <span class="md-ellipsis">
       
-        search_drug(self, keyword: str) -&gt; str
+        async search_drug(self, keyword: str) -&gt; str
       
     </span>
   </a>
@@ -2227,10 +2227,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#get_detailsself-license_id-str-str" class="md-nav__link">
+  <a href="#async-get_drug_details_by_licenseself-license_id-str-str" class="md-nav__link">
     <span class="md-ellipsis">
       
-        get_details(self, license_id: str) -&gt; str
+        async get_drug_details_by_license(self, license_id: str) -&gt; str
       
     </span>
   </a>
@@ -2238,10 +2238,32 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#identify_pillself-features-str-str" class="md-nav__link">
+  <a href="#async-identify_pillself-features-str-str" class="md-nav__link">
     <span class="md-ellipsis">
       
-        identify_pill(self, features: str) -&gt; str
+        async identify_pill(self, features: str) -&gt; str
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#async-search_by_atcself-query-str-str" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        async search_by_atc(self, query: str) -&gt; str
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#async-search_by_ingredientself-ingredient_name-str-str" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        async search_by_ingredient(self, ingredient_name: str) -&gt; str
       
     </span>
   </a>
@@ -3206,10 +3228,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#__init__self-data_dir-str" class="md-nav__link">
+  <a href="#__init__self-pool" class="md-nav__link">
     <span class="md-ellipsis">
       
-        __init__(self, data_dir: str)
+        __init__(self, pool)
       
     </span>
   </a>
@@ -3217,10 +3239,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#search_drugself-keyword-str-str" class="md-nav__link">
+  <a href="#async-search_drugself-keyword-str-str" class="md-nav__link">
     <span class="md-ellipsis">
       
-        search_drug(self, keyword: str) -&gt; str
+        async search_drug(self, keyword: str) -&gt; str
       
     </span>
   </a>
@@ -3228,10 +3250,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#get_detailsself-license_id-str-str" class="md-nav__link">
+  <a href="#async-get_drug_details_by_licenseself-license_id-str-str" class="md-nav__link">
     <span class="md-ellipsis">
       
-        get_details(self, license_id: str) -&gt; str
+        async get_drug_details_by_license(self, license_id: str) -&gt; str
       
     </span>
   </a>
@@ -3239,10 +3261,32 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#identify_pillself-features-str-str" class="md-nav__link">
+  <a href="#async-identify_pillself-features-str-str" class="md-nav__link">
     <span class="md-ellipsis">
       
-        identify_pill(self, features: str) -&gt; str
+        async identify_pill(self, features: str) -&gt; str
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#async-search_by_atcself-query-str-str" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        async search_by_atc(self, query: str) -&gt; str
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#async-search_by_ingredientself-ingredient_name-str-str" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        async search_by_ingredient(self, ingredient_name: str) -&gt; str
       
     </span>
   </a>
@@ -3276,20 +3320,21 @@
 
 <h1 id="drug-service-api">Drug Service API<a class="headerlink" href="#drug-service-api" title="Permanent link">&para;</a></h1>
 <h2 id="class-drugservice">class <code>DrugService</code><a class="headerlink" href="#class-drugservice" title="Permanent link">&para;</a></h2>
-<h3 id="__init__self-data_dir-str"><code>__init__(self, data_dir: str)</code><a class="headerlink" href="#__init__self-data_dir-str" title="Permanent link">&para;</a></h3>
-<p>初始化藥品服務。</p>
-<h3 id="search_drugself-keyword-str-str"><code>search_drug(self, keyword: str) -&gt; str</code><a class="headerlink" href="#search_drugself-keyword-str-str" title="Permanent link">&para;</a></h3>
-<p>搜尋藥品。</p>
+<h3 id="__init__self-pool"><code>__init__(self, pool)</code><a class="headerlink" href="#__init__self-pool" title="Permanent link">&para;</a></h3>
+<p>初始化藥品服務，接受 asyncpg 連線池。</p>
+<h3 id="async-search_drugself-keyword-str-str"><code>async search_drug(self, keyword: str) -&gt; str</code><a class="headerlink" href="#async-search_drugself-keyword-str-str" title="Permanent link">&para;</a></h3>
+<p>FTS 搜尋藥品名稱或適應症。</p>
 <ul>
-<li><strong>keyword</strong>: 藥名或適應症。</li>
+<li><strong>keyword</strong>: 藥名（中/英）或適應症關鍵字。</li>
 </ul>
-<h3 id="get_detailsself-license_id-str-str"><code>get_details(self, license_id: str) -&gt; str</code><a class="headerlink" href="#get_detailsself-license_id-str-str" title="Permanent link">&para;</a></h3>
-<p>取得詳細藥品資料。</p>
-<h3 id="identify_pillself-features-str-str"><code>identify_pill(self, features: str) -&gt; str</code><a class="headerlink" href="#identify_pillself-features-str-str" title="Permanent link">&para;</a></h3>
-<p>辨識藥丸。</p>
-<ul>
-<li><strong>features</strong>: 外觀描述字串。</li>
-</ul>
+<h3 id="async-get_drug_details_by_licenseself-license_id-str-str"><code>async get_drug_details_by_license(self, license_id: str) -&gt; str</code><a class="headerlink" href="#async-get_drug_details_by_licenseself-license_id-str-str" title="Permanent link">&para;</a></h3>
+<p>依許可證字號取得完整藥品資料，含三層模糊匹配回退。</p>
+<h3 id="async-identify_pillself-features-str-str"><code>async identify_pill(self, features: str) -&gt; str</code><a class="headerlink" href="#async-identify_pillself-features-str-str" title="Permanent link">&para;</a></h3>
+<p>依外觀特徵辨識藥錠（顏色、形狀、刻痕）。</p>
+<h3 id="async-search_by_atcself-query-str-str"><code>async search_by_atc(self, query: str) -&gt; str</code><a class="headerlink" href="#async-search_by_atcself-query-str-str" title="Permanent link">&para;</a></h3>
+<p>依 ATC 代碼或藥理分類名稱搜尋藥品。</p>
+<h3 id="async-search_by_ingredientself-ingredient_name-str-str"><code>async search_by_ingredient(self, ingredient_name: str) -&gt; str</code><a class="headerlink" href="#async-search_by_ingredientself-ingredient_name-str-str" title="Permanent link">&para;</a></h3>
+<p>依有效成分名稱搜尋含有該成分的藥品。</p>
 
 
 

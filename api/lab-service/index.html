@@ -2261,10 +2261,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#__init__self-data_dir-str" class="md-nav__link">
+  <a href="#__init__self-pool" class="md-nav__link">
     <span class="md-ellipsis">
       
-        __init__(self, data_dir: str)
+        __init__(self, pool)
       
     </span>
   </a>
@@ -2272,10 +2272,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#search_loinc_codeself-keyword-str-category-str-none-str" class="md-nav__link">
+  <a href="#async-search_loinc_codeself-keyword-str-category-str-none-str" class="md-nav__link">
     <span class="md-ellipsis">
       
-        search_loinc_code(self, keyword: str, category: str = None) -&gt; str
+        async search_loinc_code(self, keyword: str, category: str = None) -&gt; str
       
     </span>
   </a>
@@ -2283,10 +2283,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#get_reference_rangeself-loinc_code-str-age-int-gender-str-str" class="md-nav__link">
+  <a href="#async-list_categoriesself-str" class="md-nav__link">
     <span class="md-ellipsis">
       
-        get_reference_range(self, loinc_code: str, age: int, gender: str) -&gt; str
+        async list_categories(self) -&gt; str
       
     </span>
   </a>
@@ -2294,10 +2294,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#interpret_lab_resultself-loinc_code-str-value-float-str" class="md-nav__link">
+  <a href="#async-get_reference_rangeself-loinc_num-str-age-int-gender-str-all-str" class="md-nav__link">
     <span class="md-ellipsis">
       
-        interpret_lab_result(self, loinc_code: str, value: float, ...) -&gt; str
+        async get_reference_range(self, loinc_num: str, age: int, gender: str = "all") -&gt; str
       
     </span>
   </a>
@@ -2305,10 +2305,54 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#batch_interpret_resultsself-results-list-str" class="md-nav__link">
+  <a href="#async-interpret_lab_resultself-loinc_num-str-value-float-age-int-gender-str-all-str" class="md-nav__link">
     <span class="md-ellipsis">
       
-        batch_interpret_results(self, results: list, ...) -&gt; str
+        async interpret_lab_result(self, loinc_num: str, value: float, age: int, gender: str = "all") -&gt; str
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#async-search_by_specimenself-specimen_type-str-str" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        async search_by_specimen(self, specimen_type: str) -&gt; str
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#async-find_related_testsself-component-str-str" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        async find_related_tests(self, component: str) -&gt; str
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#async-get_patient_friendly_nameself-loinc_num-str-str" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        async get_patient_friendly_name(self, loinc_num: str) -&gt; str
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#async-batch_interpret_resultsself-results-list-age-int-gender-str-all-str" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        async batch_interpret_results(self, results: list, age: int, gender: str = "all") -&gt; str
       
     </span>
   </a>
@@ -3217,10 +3261,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#__init__self-data_dir-str" class="md-nav__link">
+  <a href="#__init__self-pool" class="md-nav__link">
     <span class="md-ellipsis">
       
-        __init__(self, data_dir: str)
+        __init__(self, pool)
       
     </span>
   </a>
@@ -3228,10 +3272,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#search_loinc_codeself-keyword-str-category-str-none-str" class="md-nav__link">
+  <a href="#async-search_loinc_codeself-keyword-str-category-str-none-str" class="md-nav__link">
     <span class="md-ellipsis">
       
-        search_loinc_code(self, keyword: str, category: str = None) -&gt; str
+        async search_loinc_code(self, keyword: str, category: str = None) -&gt; str
       
     </span>
   </a>
@@ -3239,10 +3283,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#get_reference_rangeself-loinc_code-str-age-int-gender-str-str" class="md-nav__link">
+  <a href="#async-list_categoriesself-str" class="md-nav__link">
     <span class="md-ellipsis">
       
-        get_reference_range(self, loinc_code: str, age: int, gender: str) -&gt; str
+        async list_categories(self) -&gt; str
       
     </span>
   </a>
@@ -3250,10 +3294,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#interpret_lab_resultself-loinc_code-str-value-float-str" class="md-nav__link">
+  <a href="#async-get_reference_rangeself-loinc_num-str-age-int-gender-str-all-str" class="md-nav__link">
     <span class="md-ellipsis">
       
-        interpret_lab_result(self, loinc_code: str, value: float, ...) -&gt; str
+        async get_reference_range(self, loinc_num: str, age: int, gender: str = "all") -&gt; str
       
     </span>
   </a>
@@ -3261,10 +3305,54 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#batch_interpret_resultsself-results-list-str" class="md-nav__link">
+  <a href="#async-interpret_lab_resultself-loinc_num-str-value-float-age-int-gender-str-all-str" class="md-nav__link">
     <span class="md-ellipsis">
       
-        batch_interpret_results(self, results: list, ...) -&gt; str
+        async interpret_lab_result(self, loinc_num: str, value: float, age: int, gender: str = "all") -&gt; str
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#async-search_by_specimenself-specimen_type-str-str" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        async search_by_specimen(self, specimen_type: str) -&gt; str
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#async-find_related_testsself-component-str-str" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        async find_related_tests(self, component: str) -&gt; str
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#async-get_patient_friendly_nameself-loinc_num-str-str" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        async get_patient_friendly_name(self, loinc_num: str) -&gt; str
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#async-batch_interpret_resultsself-results-list-age-int-gender-str-all-str" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        async batch_interpret_results(self, results: list, age: int, gender: str = "all") -&gt; str
       
     </span>
   </a>
@@ -3298,16 +3386,24 @@
 
 <h1 id="lab-service-api">Lab Service API<a class="headerlink" href="#lab-service-api" title="Permanent link">&para;</a></h1>
 <h2 id="class-labservice">class <code>LabService</code><a class="headerlink" href="#class-labservice" title="Permanent link">&para;</a></h2>
-<h3 id="__init__self-data_dir-str"><code>__init__(self, data_dir: str)</code><a class="headerlink" href="#__init__self-data_dir-str" title="Permanent link">&para;</a></h3>
-<p>初始化檢驗服務。</p>
-<h3 id="search_loinc_codeself-keyword-str-category-str-none-str"><code>search_loinc_code(self, keyword: str, category: str = None) -&gt; str</code><a class="headerlink" href="#search_loinc_codeself-keyword-str-category-str-none-str" title="Permanent link">&para;</a></h3>
-<p>搜尋 LOINC 代碼。</p>
-<h3 id="get_reference_rangeself-loinc_code-str-age-int-gender-str-str"><code>get_reference_range(self, loinc_code: str, age: int, gender: str) -&gt; str</code><a class="headerlink" href="#get_reference_rangeself-loinc_code-str-age-int-gender-str-str" title="Permanent link">&para;</a></h3>
-<p>取得參考值範圍。</p>
-<h3 id="interpret_lab_resultself-loinc_code-str-value-float-str"><code>interpret_lab_result(self, loinc_code: str, value: float, ...) -&gt; str</code><a class="headerlink" href="#interpret_lab_resultself-loinc_code-str-value-float-str" title="Permanent link">&para;</a></h3>
-<p>判讀單一檢驗數值。</p>
-<h3 id="batch_interpret_resultsself-results-list-str"><code>batch_interpret_results(self, results: list, ...) -&gt; str</code><a class="headerlink" href="#batch_interpret_resultsself-results-list-str" title="Permanent link">&para;</a></h3>
-<p>批次判讀檢驗結果。</p>
+<h3 id="__init__self-pool"><code>__init__(self, pool)</code><a class="headerlink" href="#__init__self-pool" title="Permanent link">&para;</a></h3>
+<p>初始化檢驗服務，接受 asyncpg 連線池。</p>
+<h3 id="async-search_loinc_codeself-keyword-str-category-str-none-str"><code>async search_loinc_code(self, keyword: str, category: str = None) -&gt; str</code><a class="headerlink" href="#async-search_loinc_codeself-keyword-str-category-str-none-str" title="Permanent link">&para;</a></h3>
+<p>搜尋 LOINC 代碼（87,000+ 碼，含中文名稱）。</p>
+<h3 id="async-list_categoriesself-str"><code>async list_categories(self) -&gt; str</code><a class="headerlink" href="#async-list_categoriesself-str" title="Permanent link">&para;</a></h3>
+<p>列出所有檢驗分類。</p>
+<h3 id="async-get_reference_rangeself-loinc_num-str-age-int-gender-str-all-str"><code>async get_reference_range(self, loinc_num: str, age: int, gender: str = "all") -&gt; str</code><a class="headerlink" href="#async-get_reference_rangeself-loinc_num-str-age-int-gender-str-all-str" title="Permanent link">&para;</a></h3>
+<p>依年齡、性別取得 LOINC 參考值範圍。</p>
+<h3 id="async-interpret_lab_resultself-loinc_num-str-value-float-age-int-gender-str-all-str"><code>async interpret_lab_result(self, loinc_num: str, value: float, age: int, gender: str = "all") -&gt; str</code><a class="headerlink" href="#async-interpret_lab_resultself-loinc_num-str-value-float-age-int-gender-str-all-str" title="Permanent link">&para;</a></h3>
+<p>判讀單一檢驗數值，標記正常/偏高/偏低並說明臨床意義。</p>
+<h3 id="async-search_by_specimenself-specimen_type-str-str"><code>async search_by_specimen(self, specimen_type: str) -&gt; str</code><a class="headerlink" href="#async-search_by_specimenself-specimen_type-str-str" title="Permanent link">&para;</a></h3>
+<p>依檢體類型（血液、尿液等）搜尋 LOINC 檢驗項目。</p>
+<h3 id="async-find_related_testsself-component-str-str"><code>async find_related_tests(self, component: str) -&gt; str</code><a class="headerlink" href="#async-find_related_testsself-component-str-str" title="Permanent link">&para;</a></h3>
+<p>找出相同 analyte 的所有相關 LOINC 檢驗。</p>
+<h3 id="async-get_patient_friendly_nameself-loinc_num-str-str"><code>async get_patient_friendly_name(self, loinc_num: str) -&gt; str</code><a class="headerlink" href="#async-get_patient_friendly_nameself-loinc_num-str-str" title="Permanent link">&para;</a></h3>
+<p>取得 LOINC 完整概念細節（含中文病患友善名稱）。</p>
+<h3 id="async-batch_interpret_resultsself-results-list-age-int-gender-str-all-str"><code>async batch_interpret_results(self, results: list, age: int, gender: str = "all") -&gt; str</code><a class="headerlink" href="#async-batch_interpret_resultsself-results-list-age-int-gender-str-all-str" title="Permanent link">&para;</a></h3>
+<p>批次判讀多項檢驗結果。</p>
 
 
 

@@ -1344,7 +1344,29 @@
   <a href="#3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        3. 風險評估工具整合
+        3. 用藥禁忌檢查
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-fda" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. 指引連結 FDA 藥品
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. 臨床路徑規劃
       
     </span>
   </a>
@@ -3264,7 +3286,29 @@
   <a href="#3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        3. 風險評估工具整合
+        3. 用藥禁忌檢查
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-fda" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. 指引連結 FDA 藥品
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. 臨床路徑規劃
       
     </span>
   </a>
@@ -3332,14 +3376,24 @@
 - <strong>初步評估</strong>：建議必要的理學檢查與病史詢問重點。
 - <strong>診斷檢查</strong>：建議優先安排的實驗室檢查或影像學檢查。
 - <strong>治療策略</strong>：分階段的藥物治療或非藥物治療建議。</p>
-<h3 id="3">3. 風險評估工具整合<a class="headerlink" href="#3" title="Permanent link">&para;</a></h3>
-<p>整合常見的臨床風險計算邏輯（若指引中有包含），例如：
-- 心血管風險評估。
-- 糖尿病併發症風險因子檢核。</p>
+<h3 id="3">3. 用藥禁忌檢查<a class="headerlink" href="#3" title="Permanent link">&para;</a></h3>
+<p>針對特定疾病（ICD 碼）與藥物分類，檢查是否有禁忌或需特別注意的用藥組合：
+- <strong>禁忌識別</strong>：查詢指引中記載的用藥禁忌。
+- <strong>類別查詢</strong>：依藥物分類（如 ACE inhibitor、Metformin）查詢。</p>
+<h3 id="4-fda">4. 指引連結 FDA 藥品<a class="headerlink" href="#4-fda" title="Permanent link">&para;</a></h3>
+<p>將指引中的用藥建議自動對應至台灣 FDA 核准藥品清單：
+- <strong>真實藥品</strong>：回傳含許可證字號、成分、劑型的實際藥品。
+- <strong>跨服務整合</strong>：橋接 Clinical Guideline Service 與 Drug Service。</p>
+<h3 id="5">5. 臨床路徑規劃<a class="headerlink" href="#5" title="Permanent link">&para;</a></h3>
+<p>依指引與病患背景生成結構化的臨床路徑建議：
+- <strong>評估步驟</strong>：必要的問診重點與理學檢查。
+- <strong>診斷檢查</strong>：優先安排的實驗室或影像學檢查。
+- <strong>治療策略</strong>：分階段藥物與非藥物治療建議。</p>
 <h2 id="_3">資料來源<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
 <ul>
-<li>國內：衛生福利部、各專科醫學會發布之臨床指引。</li>
-<li>國際：WHO、CDC 及國際權威醫學會之公開指引摘要。</li>
+<li><strong>主要來源</strong>：台灣醫學會臨床診療指引（種子資料），由 data-loader <code>--guideline</code> 載入至 <code>guideline.*</code> schema。</li>
+<li><strong>資料庫表格</strong>：<code>disease_guidelines</code>、<code>diagnostic_recommendations</code>、<code>medication_recommendations</code>、<code>test_recommendations</code>、<code>treatment_goals</code>。</li>
+<li>國際參考：WHO、CDC 及國際權威醫學會之公開指引摘要。</li>
 </ul>
 <h2 id="_4">應用場景<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
 <ol>

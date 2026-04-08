@@ -1323,6 +1323,50 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. 依檢體類型搜尋
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. 相關檢驗查詢
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-loinc" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. LOINC 完整概念細節
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. 批次結果判讀
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -3271,6 +3315,50 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. 依檢體類型搜尋
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. 相關檢驗查詢
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-loinc" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. LOINC 完整概念細節
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. 批次結果判讀
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -3336,13 +3424,18 @@
 <p>不只是提供數字，更提供初步的臨床意義說明：
 - <strong>數值偏高</strong>：提示可能相關的病理狀態（如：白血球過高可能表示感染）。
 - <strong>數值偏低</strong>：提示可能的營養缺乏或功能低下。</p>
+<h3 id="4">4. 依檢體類型搜尋<a class="headerlink" href="#4" title="Permanent link">&para;</a></h3>
+<p>依血液、尿液、糞便等檢體類型篩選 LOINC 檢驗項目。</p>
+<h3 id="5">5. 相關檢驗查詢<a class="headerlink" href="#5" title="Permanent link">&para;</a></h3>
+<p>找出相同 analyte（分析物）的所有相關 LOINC 檢驗，協助選擇最適合的檢驗方法。</p>
+<h3 id="6-loinc">6. LOINC 完整概念細節<a class="headerlink" href="#6-loinc" title="Permanent link">&para;</a></h3>
+<p>取得單一 LOINC 碼的完整資訊，包含中文病患友善名稱、單位、檢體、方法等。</p>
+<h3 id="7">7. 批次結果判讀<a class="headerlink" href="#7" title="Permanent link">&para;</a></h3>
+<p>一次傳入多項檢驗值，批次取得所有異常標記與解釋，適合健康檢查報告自動分析。</p>
 <h2 id="_3">技術架構<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>資料來源</strong>：<ul>
-<li>台灣檢驗參考值數據集。</li>
-<li>LOINC 官方資料庫（台灣版本映對）。</li>
-</ul>
-</li>
+<li><strong>資料來源</strong>：LOINC 2.80（87,000+ 碼，由 data-loader <code>--loinc</code> 載入），以及台灣常用檢驗種子資料（<code>loinc_taiwan_seed.py</code>，約 30 筆）。</li>
+<li><strong>資料庫</strong>：PostgreSQL 16，<code>loinc.concepts</code>（LOINC 碼）與 <code>loinc.reference_ranges</code>（年齡/性別分層參考值）。</li>
 <li><strong>結構化輸出</strong>：回傳資料可直接用於產生 FHIR Observation 資源。</li>
 </ul>
 <h2 id="_4">應用場景<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>

@@ -3224,10 +3224,11 @@
 <li><strong>來源網址</strong>：<a href="https://data.gov.tw/dataset/9189">政府資料開放平臺 - 西藥許可證</a></li>
 <li><strong>內容</strong>：包含所有經衛生福利部核准之西藥許可證資料，如中文品名、英文品名、適應症、劑型、包裝、藥商名稱、製造廠名稱等。</li>
 <li><strong>處理方式</strong>：<ol>
-<li>透過 API 下載 JSON 格式資料。</li>
-<li>清洗資料（移除無效字元、統一全半形）。</li>
-<li>提取有效成分與含量。</li>
-<li>存入 <code>drugs.db</code> SQLite 資料庫。</li>
+<li>透過 FDA Open Data API 下載 JSON 格式資料（5 個端點：主資料、外觀、成分、ATC、仿單）。</li>
+<li>清洗資料（移除無效字元、對 <code>license_id</code> 去重）。</li>
+<li>以兩階段寫入：先完整抓取，再以單一 <code>TRUNCATE + INSERT</code> transaction 原子寫入。</li>
+<li>存入 PostgreSQL 16，<code>drug.*</code> schema（licenses / appearance / ingredients / atc / documents / sync_meta）。</li>
+<li>自動排程：每週二 02:00 UTC；啟動時資料過期（&gt; 7 天）自動觸發。</li>
 </ol>
 </li>
 </ul>

@@ -2289,10 +2289,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#__init__self-data_dir-str" class="md-nav__link">
+  <a href="#__init__self-pool" class="md-nav__link">
     <span class="md-ellipsis">
       
-        __init__(self, data_dir: str)
+        __init__(self, pool)
       
     </span>
   </a>
@@ -2300,10 +2300,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#search_guidelineself-keyword-str-str" class="md-nav__link">
+  <a href="#async-search_guidelineself-keyword-str-str" class="md-nav__link">
     <span class="md-ellipsis">
       
-        search_guideline(self, keyword: str) -&gt; str
+        async search_guideline(self, keyword: str) -&gt; str
       
     </span>
   </a>
@@ -2311,10 +2311,76 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#get_complete_guidelineself-icd_code-str-str" class="md-nav__link">
+  <a href="#async-get_complete_guidelineself-icd_code-str-str" class="md-nav__link">
     <span class="md-ellipsis">
       
-        get_complete_guideline(self, icd_code: str) -&gt; str
+        async get_complete_guideline(self, icd_code: str) -&gt; str
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#async-get_medication_recommendationsself-icd_code-str-str" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        async get_medication_recommendations(self, icd_code: str) -&gt; str
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#async-get_test_recommendationsself-icd_code-str-str" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        async get_test_recommendations(self, icd_code: str) -&gt; str
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#async-get_treatment_goalsself-icd_code-str-str" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        async get_treatment_goals(self, icd_code: str) -&gt; str
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#async-check_medication_contraindicationsself-icd_code-str-medication_class-str-str" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        async check_medication_contraindications(self, icd_code: str, medication_class: str) -&gt; str
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#async-link_guideline_to_drugsself-icd_code-str-str" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        async link_guideline_to_drugs(self, icd_code: str) -&gt; str
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#async-suggest_clinical_pathwayself-icd_code-str-patient_context_json-str-none-str" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        async suggest_clinical_pathway(self, icd_code: str, patient_context_json: str = None) -&gt; str
       
     </span>
   </a>
@@ -3195,10 +3261,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#__init__self-data_dir-str" class="md-nav__link">
+  <a href="#__init__self-pool" class="md-nav__link">
     <span class="md-ellipsis">
       
-        __init__(self, data_dir: str)
+        __init__(self, pool)
       
     </span>
   </a>
@@ -3206,10 +3272,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#search_guidelineself-keyword-str-str" class="md-nav__link">
+  <a href="#async-search_guidelineself-keyword-str-str" class="md-nav__link">
     <span class="md-ellipsis">
       
-        search_guideline(self, keyword: str) -&gt; str
+        async search_guideline(self, keyword: str) -&gt; str
       
     </span>
   </a>
@@ -3217,10 +3283,76 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#get_complete_guidelineself-icd_code-str-str" class="md-nav__link">
+  <a href="#async-get_complete_guidelineself-icd_code-str-str" class="md-nav__link">
     <span class="md-ellipsis">
       
-        get_complete_guideline(self, icd_code: str) -&gt; str
+        async get_complete_guideline(self, icd_code: str) -&gt; str
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#async-get_medication_recommendationsself-icd_code-str-str" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        async get_medication_recommendations(self, icd_code: str) -&gt; str
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#async-get_test_recommendationsself-icd_code-str-str" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        async get_test_recommendations(self, icd_code: str) -&gt; str
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#async-get_treatment_goalsself-icd_code-str-str" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        async get_treatment_goals(self, icd_code: str) -&gt; str
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#async-check_medication_contraindicationsself-icd_code-str-medication_class-str-str" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        async check_medication_contraindications(self, icd_code: str, medication_class: str) -&gt; str
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#async-link_guideline_to_drugsself-icd_code-str-str" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        async link_guideline_to_drugs(self, icd_code: str) -&gt; str
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#async-suggest_clinical_pathwayself-icd_code-str-patient_context_json-str-none-str" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        async suggest_clinical_pathway(self, icd_code: str, patient_context_json: str = None) -&gt; str
       
     </span>
   </a>
@@ -3254,12 +3386,24 @@
 
 <h1 id="guideline-service-api">Guideline Service API<a class="headerlink" href="#guideline-service-api" title="Permanent link">&para;</a></h1>
 <h2 id="class-clinicalguidelineservice">class <code>ClinicalGuidelineService</code><a class="headerlink" href="#class-clinicalguidelineservice" title="Permanent link">&para;</a></h2>
-<h3 id="__init__self-data_dir-str"><code>__init__(self, data_dir: str)</code><a class="headerlink" href="#__init__self-data_dir-str" title="Permanent link">&para;</a></h3>
-<p>初始化指引服務。</p>
-<h3 id="search_guidelineself-keyword-str-str"><code>search_guideline(self, keyword: str) -&gt; str</code><a class="headerlink" href="#search_guidelineself-keyword-str-str" title="Permanent link">&para;</a></h3>
-<p>搜尋臨床指引標題。</p>
-<h3 id="get_complete_guidelineself-icd_code-str-str"><code>get_complete_guideline(self, icd_code: str) -&gt; str</code><a class="headerlink" href="#get_complete_guidelineself-icd_code-str-str" title="Permanent link">&para;</a></h3>
-<p>取得完整結構化指引內容。</p>
+<h3 id="__init__self-pool"><code>__init__(self, pool)</code><a class="headerlink" href="#__init__self-pool" title="Permanent link">&para;</a></h3>
+<p>初始化指引服務，接受 asyncpg 連線池。資料由 data-loader <code>--guideline</code> 預先載入至 <code>guideline.*</code> schema。</p>
+<h3 id="async-search_guidelineself-keyword-str-str"><code>async search_guideline(self, keyword: str) -&gt; str</code><a class="headerlink" href="#async-search_guidelineself-keyword-str-str" title="Permanent link">&para;</a></h3>
+<p>搜尋臨床指引標題與 ICD 碼。</p>
+<h3 id="async-get_complete_guidelineself-icd_code-str-str"><code>async get_complete_guideline(self, icd_code: str) -&gt; str</code><a class="headerlink" href="#async-get_complete_guidelineself-icd_code-str-str" title="Permanent link">&para;</a></h3>
+<p>取得疾病完整指引（診斷、用藥、檢查、治療目標）。</p>
+<h3 id="async-get_medication_recommendationsself-icd_code-str-str"><code>async get_medication_recommendations(self, icd_code: str) -&gt; str</code><a class="headerlink" href="#async-get_medication_recommendationsself-icd_code-str-str" title="Permanent link">&para;</a></h3>
+<p>取得指引中的用藥建議。</p>
+<h3 id="async-get_test_recommendationsself-icd_code-str-str"><code>async get_test_recommendations(self, icd_code: str) -&gt; str</code><a class="headerlink" href="#async-get_test_recommendationsself-icd_code-str-str" title="Permanent link">&para;</a></h3>
+<p>取得指引中的建議檢查項目。</p>
+<h3 id="async-get_treatment_goalsself-icd_code-str-str"><code>async get_treatment_goals(self, icd_code: str) -&gt; str</code><a class="headerlink" href="#async-get_treatment_goalsself-icd_code-str-str" title="Permanent link">&para;</a></h3>
+<p>取得指引中的治療目標。</p>
+<h3 id="async-check_medication_contraindicationsself-icd_code-str-medication_class-str-str"><code>async check_medication_contraindications(self, icd_code: str, medication_class: str) -&gt; str</code><a class="headerlink" href="#async-check_medication_contraindicationsself-icd_code-str-medication_class-str-str" title="Permanent link">&para;</a></h3>
+<p>檢查特定疾病下的用藥禁忌。</p>
+<h3 id="async-link_guideline_to_drugsself-icd_code-str-str"><code>async link_guideline_to_drugs(self, icd_code: str) -&gt; str</code><a class="headerlink" href="#async-link_guideline_to_drugsself-icd_code-str-str" title="Permanent link">&para;</a></h3>
+<p>將指引建議對應至台灣 FDA 核准藥品清單。</p>
+<h3 id="async-suggest_clinical_pathwayself-icd_code-str-patient_context_json-str-none-str"><code>async suggest_clinical_pathway(self, icd_code: str, patient_context_json: str = None) -&gt; str</code><a class="headerlink" href="#async-suggest_clinical_pathwayself-icd_code-str-patient_context_json-str-none-str" title="Permanent link">&para;</a></h3>
+<p>依指引與病患背景生成臨床路徑建議。</p>
 
 
 

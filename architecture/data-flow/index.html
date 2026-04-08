@@ -918,10 +918,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#etl" class="md-nav__link">
+  <a href="#data-loader" class="md-nav__link">
     <span class="md-ellipsis">
       
-        資料初始化流程 (ETL)
+        資料初始化流程 (Data Loader)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#fda-auto-sync" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        FDA 動態同步流程 (Auto Sync)
       
     </span>
   </a>
@@ -3166,10 +3177,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#etl" class="md-nav__link">
+  <a href="#data-loader" class="md-nav__link">
     <span class="md-ellipsis">
       
-        資料初始化流程 (ETL)
+        資料初始化流程 (Data Loader)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#fda-auto-sync" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        FDA 動態同步流程 (Auto Sync)
       
     </span>
   </a>
@@ -3211,26 +3233,32 @@
 </span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">  </span><span class="p">}</span>
 </span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="p">}</span>
 </span></code></pre></div></li>
-<li><strong>Server (<code>server.py</code>)</strong> 接收並路由至 <code>search_medical_codes</code> 函式。</li>
-<li><strong>Service (<code>icd_service.py</code>)</strong> 建構 SQL 查詢：
-   <div class="language-sql highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="k">SELECT</span><span class="w"> </span><span class="n">code</span><span class="p">,</span><span class="w"> </span><span class="n">description</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">diagnosis</span><span class="w"> </span>
-</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="k">WHERE</span><span class="w"> </span><span class="n">description</span><span class="w"> </span><span class="k">LIKE</span><span class="w"> </span><span class="s1">&#39;%糖尿病%&#39;</span>
+<li><strong>Server (<code>server.py</code>)</strong> 接收後，<code>@audited</code> 裝飾器記錄 SHA-256(params) 至 <code>audit.query_log</code>，<code>@cached</code> 裝飾器先查詢 Redis 快取。</li>
+<li>若快取命中，直接回傳快取結果。</li>
+<li>若快取未命中，<strong>Service (<code>icd_service.py</code>)</strong> 透過 asyncpg 透過 pgBouncer 建構 FTS 查詢：
+   <div class="language-sql highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="k">SELECT</span><span class="w"> </span><span class="n">code</span><span class="p">,</span><span class="w"> </span><span class="n">description</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">icd</span><span class="p">.</span><span class="n">diagnoses</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="k">WHERE</span><span class="w"> </span><span class="n">to_tsvector</span><span class="p">(</span><span class="s1">&#39;simple&#39;</span><span class="p">,</span><span class="w"> </span><span class="n">description</span><span class="p">)</span><span class="w"> </span><span class="o">@@</span><span class="w"> </span><span class="n">plainto_tsquery</span><span class="p">(</span><span class="s1">&#39;simple&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;糖尿病&#39;</span><span class="p">)</span>
 </span></code></pre></div></li>
-<li><strong>Database (<code>icd.db</code>)</strong> 執行查詢並回傳 Rows。</li>
-<li><strong>Service</strong> 將 Rows 轉換為格式化字串。</li>
-<li><strong>Server</strong> 封裝回應回傳 Client。</li>
+<li><strong>PostgreSQL 16</strong> 執行查詢並回傳 Rows。</li>
+<li><strong>Service</strong> 將 Rows 轉換為格式化字串，結果存入 Redis 快取（TTL 86400s）。</li>
+<li><strong>Server</strong> 封裝回應回傳 Client，Prometheus 計數器更新。</li>
 </ol>
-<h2 id="etl">資料初始化流程 (ETL)<a class="headerlink" href="#etl" title="Permanent link">&para;</a></h2>
-<p>當容器啟動時：</p>
+<h2 id="data-loader">資料初始化流程 (Data Loader)<a class="headerlink" href="#data-loader" title="Permanent link">&para;</a></h2>
+<p>術語資料由獨立的 data-loader 容器載入，不在伺服器啟動時進行：</p>
 <ol>
-<li><strong>Server</strong> 檢查 <code>/data</code> 目錄下的 DB 檔案是否存在。</li>
-<li>若不存在，<strong>Service (<code>__init__</code>)</strong> 啟動 ETL 程序：</li>
-<li>讀取原始 Excel/JSON (e.g., <code>icd10cm.xlsx</code>)。</li>
-<li>使用 Pandas 進行資料清洗 (Drop NA, Rename Columns)。</li>
-<li>建立 SQLite Table Schema。</li>
-<li>批次寫入 (Batch Insert) 資料。</li>
-<li>建立索引 (Create Index) 以優化搜尋。</li>
-<li>初始化完成，服務準備就緒。</li>
+<li>執行 <code>docker compose --profile loader run --rm data-loader --icd</code>（或其他旗標）。</li>
+<li><strong>loader/main.py</strong> 直接連接 PostgreSQL（繞過 pgBouncer），讀取 <code>config/datasets.yaml</code> 取得原始檔案路徑。</li>
+<li>各 loader（<code>icd_loader.py</code>、<code>loinc_loader.py</code> 等）解析原始 zip 檔，批次寫入對應 schema。</li>
+<li>載入完成後重啟 MCP server，服務初始化時連接已有資料的 PostgreSQL。</li>
+</ol>
+<h2 id="fda-auto-sync">FDA 動態同步流程 (Auto Sync)<a class="headerlink" href="#fda-auto-sync" title="Permanent link">&para;</a></h2>
+<p>藥品/健康食品/營養資料由各服務的排程器自動同步：</p>
+<ol>
+<li>伺服器啟動後，Drug/HealthFood/FoodNutrition service 排程器啟動。</li>
+<li>排程到時（或資料過期 &gt; 7 天）觸發同步：</li>
+<li><strong>Phase 1</strong>：透過 <code>httpx.AsyncClient</code> 抓取所有 FDA API 端點資料（在 DB 連線外）。</li>
+<li><strong>Phase 2</strong>：對來源資料去重（<code>seen_ids</code>），以單一 <code>TRUNCATE + INSERT</code> transaction 原子寫入。</li>
+<li>更新 <code>sync_meta</code> 紀錄同步時間。</li>
 </ol>
 
 

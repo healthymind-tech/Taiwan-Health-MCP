@@ -1559,15 +1559,15 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#analyze_treatment_plan" class="md-nav__link">
+  <a href="#search_drug_by_atc" class="md-nav__link">
     <span class="md-ellipsis">
       
-        analyze_treatment_plan
+        search_drug_by_atc
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="analyze_treatment_plan">
+    <nav class="md-nav" aria-label="search_drug_by_atc">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -1583,6 +1583,45 @@
         
           <li class="md-nav__item">
   <a href="#_8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        用途
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#search_drug_by_ingredient" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        search_drug_by_ingredient
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="search_drug_by_ingredient">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_9" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        參數
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_10" class="md-nav__link">
     <span class="md-ellipsis">
       
         用途
@@ -3406,15 +3445,15 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#analyze_treatment_plan" class="md-nav__link">
+  <a href="#search_drug_by_atc" class="md-nav__link">
     <span class="md-ellipsis">
       
-        analyze_treatment_plan
+        search_drug_by_atc
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="analyze_treatment_plan">
+    <nav class="md-nav" aria-label="search_drug_by_atc">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -3430,6 +3469,45 @@
         
           <li class="md-nav__item">
   <a href="#_8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        用途
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#search_drug_by_ingredient" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        search_drug_by_ingredient
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="search_drug_by_ingredient">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_9" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        參數
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_10" class="md-nav__link">
     <span class="md-ellipsis">
       
         用途
@@ -3554,8 +3632,8 @@
 <h3 id="_6">用途<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h3>
 <p>當使用者持有不明藥物，僅能描述外觀時使用。</p>
 <hr />
-<h2 id="analyze_treatment_plan">analyze_treatment_plan<a class="headerlink" href="#analyze_treatment_plan" title="Permanent link">&para;</a></h2>
-<p><strong>【綜合分析】</strong> 分析診斷與用藥的關聯性。</p>
+<h2 id="search_drug_by_atc">search_drug_by_atc<a class="headerlink" href="#search_drug_by_atc" title="Permanent link">&para;</a></h2>
+<p><strong>【ATC 分類查詢】</strong> 依 WHO ATC 代碼或藥理分類搜尋藥品。</p>
 <h3 id="_7">參數<a class="headerlink" href="#_7" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
@@ -3569,25 +3647,42 @@
 </thead>
 <tbody>
 <tr>
-<td style="text-align: left;"><code>diagnosis_keyword</code></td>
+<td style="text-align: left;"><code>query</code></td>
 <td style="text-align: left;">string</td>
 <td style="text-align: left;">是</td>
-<td style="text-align: left;">疾病名稱或代碼</td>
-<td style="text-align: left;"><code>"糖尿病"</code>, <code>"E11"</code></td>
-</tr>
-<tr>
-<td style="text-align: left;"><code>drug_keyword</code></td>
-<td style="text-align: left;">string</td>
-<td style="text-align: left;">是</td>
-<td style="text-align: left;">藥品名稱</td>
-<td style="text-align: left;"><code>"Metformin"</code></td>
+<td style="text-align: left;">ATC 代碼或藥理分類名稱</td>
+<td style="text-align: left;"><code>"A10BA02"</code>, <code>"降血糖"</code></td>
 </tr>
 </tbody>
 </table>
 <h3 id="_8">用途<a class="headerlink" href="#_8" title="Permanent link">&para;</a></h3>
-<p>此工具會同時調用 ICD 資料庫與藥品資料庫，並將兩者資訊合併，以利 LLM 進行以下分析：
-1. 該藥品是否適用於該疾病？
-2. 是否有明顯的類別禁忌？</p>
+<p>透過 ATC 分類系統找出同類藥品，適合藥理分類比較與替代藥物查詢。</p>
+<hr />
+<h2 id="search_drug_by_ingredient">search_drug_by_ingredient<a class="headerlink" href="#search_drug_by_ingredient" title="Permanent link">&para;</a></h2>
+<p><strong>【成分查詢】</strong> 依有效成分名稱搜尋含有該成分的所有藥品。</p>
+<h3 id="_9">參數<a class="headerlink" href="#_9" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">參數名</th>
+<th style="text-align: left;">型別</th>
+<th style="text-align: left;">必填</th>
+<th style="text-align: left;">說明</th>
+<th style="text-align: left;">範例</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>ingredient_name</code></td>
+<td style="text-align: left;">string</td>
+<td style="text-align: left;">是</td>
+<td style="text-align: left;">有效成分名稱（中/英文）</td>
+<td style="text-align: left;"><code>"Metformin"</code>, <code>"二甲雙胍"</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="_10">用途<a class="headerlink" href="#_10" title="Permanent link">&para;</a></h3>
+<p>查詢市面上含特定成分的所有藥品（品牌藥 + 學名藥），協助用藥安全確認。</p>
 
 
 

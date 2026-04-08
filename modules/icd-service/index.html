@@ -1156,10 +1156,21 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#4-conflict-detection" class="md-nav__link">
+  <a href="#4-category-browse" class="md-nav__link">
     <span class="md-ellipsis">
       
-        4. 診斷與處置衝突檢測 (Conflict Detection)
+        4. 類別瀏覽 (Category Browse)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-conflict-detection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. 診斷與處置衝突檢測 (Conflict Detection)
       
     </span>
   </a>
@@ -3283,10 +3294,21 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#4-conflict-detection" class="md-nav__link">
+  <a href="#4-category-browse" class="md-nav__link">
     <span class="md-ellipsis">
       
-        4. 診斷與處置衝突檢測 (Conflict Detection)
+        4. 類別瀏覽 (Category Browse)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-conflict-detection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. 診斷與處置衝突檢測 (Conflict Detection)
       
     </span>
   </a>
@@ -3357,16 +3379,21 @@
 <p>提供目標代碼在編碼列表中的前後文資訊，有助於：
 - <strong>鑑別診斷</strong>：比較相近的病況描述。
 - <strong>嚴重度評估</strong>：查看同一類別中不同嚴重程度的編碼。</p>
-<h3 id="4-conflict-detection">4. 診斷與處置衝突檢測 (Conflict Detection)<a class="headerlink" href="#4-conflict-detection" title="Permanent link">&para;</a></h3>
+<h3 id="4-category-browse">4. 類別瀏覽 (Category Browse)<a class="headerlink" href="#4-category-browse" title="Permanent link">&para;</a></h3>
+<p>依 ICD 類別瀏覽所有診斷碼：
+- <strong>類別清單</strong>：依前三碼分類（如 E11.x、I10.x）
+- <strong>診斷碼列舉</strong>：回傳指定類別下所有診斷碼與名稱</p>
+<h3 id="5-conflict-detection">5. 診斷與處置衝突檢測 (Conflict Detection)<a class="headerlink" href="#5-conflict-detection" title="Permanent link">&para;</a></h3>
 <p>這是本模組的高級功能，用於驗證「診斷」與「處置」之間的邏輯相容性。
 - <strong>適應症檢查</strong>：確認該處置是否適用於該診斷。
 - <strong>禁忌症警示</strong>：標示出醫療上不合理的組合（例如：男性診斷代碼配對子宮手術）。
 - <strong>結構化分析</strong>：同時回傳雙方的詳細資訊以供比對。</p>
 <h2 id="_3">技術架構<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>資料來源</strong>：基於標準 ICD-10 Excel 資料檔（位於 <code>data/</code> 目錄）。</li>
-<li><strong>資料庫</strong>：使用 SQLite 進行高效能的本地查詢優化。</li>
-<li><strong>初始化流程</strong>：系統啟動時自動載入 Excel 數據並轉換為關聯式資料庫結構，確保查詢速度。</li>
+<li><strong>資料來源</strong>：ICD-10-CM 2025（NLM）及 ICD-10-PCS 2025（CMS），由 data-loader <code>--icd</code> 載入。</li>
+<li><strong>資料庫</strong>：PostgreSQL 16，<code>icd.diagnoses</code>（診斷碼）與 <code>icd.procedures</code>（手術碼）兩張資料表。</li>
+<li><strong>PCS 降級</strong>：<code>_pcs_available</code> flag — ICD-10-PCS 未載入時工具自動降級，回傳提示訊息而非錯誤。PCS 2025（78,948 筆）已內建於 <code>fhir-code/icd10pcs/</code>，<code>--icd</code> 自動同時載入。</li>
+<li><strong>全文搜尋</strong>：各表建有 FTS index，支援中英文關鍵字搜尋。</li>
 </ul>
 <h2 id="_4">依賴關係<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
 <p>本模組為獨立基礎模組，但被以下進階服務所依賴：
