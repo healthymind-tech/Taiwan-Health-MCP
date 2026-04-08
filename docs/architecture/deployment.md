@@ -2,7 +2,7 @@
 
 ```mermaid
 graph TD
-    User[End User] --> Client[MCP Client (Claude/IDE)]
+    User[End User] --> Client[MCP Client]
     
     subgraph "Docker Container"
         Server[MCP Server Process]
@@ -11,7 +11,7 @@ graph TD
             Services[Service Instances]
         end
         
-        subgraph "Persistent Volume /data"
+        subgraph "Persistent Volume Data"
             DB1[(ICD DB)]
             DB2[(Drug DB)]
             Files[Raw Files]
@@ -22,7 +22,7 @@ graph TD
         Services <--> DB2
     end
     
-    Client -- Stdio / SSE --> Server
+    Client -- Stdio or SSE --> Server
 ```
 
 ## 關鍵考量

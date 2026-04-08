@@ -14,10 +14,10 @@ graph TB
     end
 
     subgraph "MCP Server (port 8000)"
-        B[FastMCP / uvicorn<br/>56 個工具]
-        AUD[audit.py<br/>@audited 裝飾器]
-        CAC[cache.py<br/>@cached 裝飾器]
-        MET[metrics.py<br/>Prometheus]
+        B["FastMCP uvicorn 56 個工具"]
+        AUD["audit.py audited decorator"]
+        CAC["cache.py cached decorator"]
+        MET["metrics.py Prometheus"]
     end
 
     subgraph "Service Layer 服務層 (11 個服務)"
@@ -35,19 +35,19 @@ graph TB
     end
 
     subgraph "Infrastructure 基礎架構"
-        PGB[pgBouncer<br/>transaction mode<br/>500 client → 30 PG]
-        PG[(PostgreSQL 16<br/>10 個 schema)]
-        RD[(Redis 7<br/>TTL 快取)]
-        PM[Prometheus<br/>port 9090]
+        PGB["pgBouncer transaction mode 500 client to 30 PG"]
+        PG["PostgreSQL 16 10 schemas"]
+        RD["Redis 7 TTL cache"]
+        PM["Prometheus port 9090"]
     end
 
     subgraph "Data Loader 資料載入器"
-        L[loader/main.py<br/>一次性執行]
-        FC[fhir-code/<br/>ZIP 原始資料]
+        L["loader/main.py one-shot run"]
+        FC["fhir-code ZIP raw files"]
     end
 
     subgraph "External 外部資料源"
-        E1[台灣 FDA Open Data API<br/>藥品/健康食品/營養]
+        E1["Taiwan FDA Open Data API"]
     end
 
     A1 --> B
@@ -55,14 +55,36 @@ graph TB
     B --> AUD
     B --> CAC
     B --> MET
-    B --> S1 & S2 & S3 & S4 & S5 & S6 & S7 & S8 & S9 & S10 & S11
-    S1 & S2 & S3 & S4 & S5 & S6 & S7 & S8 & S9 & S10 & S11 --> PGB
+    B --> S1
+    B --> S2
+    B --> S3
+    B --> S4
+    B --> S5
+    B --> S6
+    B --> S7
+    B --> S8
+    B --> S9
+    B --> S10
+    B --> S11
+    S1 --> PGB
+    S2 --> PGB
+    S3 --> PGB
+    S4 --> PGB
+    S5 --> PGB
+    S6 --> PGB
+    S7 --> PGB
+    S8 --> PGB
+    S9 --> PGB
+    S10 --> PGB
+    S11 --> PGB
     PGB --> PG
     CAC --> RD
     MET --> PM
     L --> FC
     L --> PG
-    S2 & S3 & S4 -.->|每週自動同步| E1
+    S2 -.->|每週自動同步| E1
+    S3 -.->|每週自動同步| E1
+    S4 -.->|每週自動同步| E1
 ```
 
 ---

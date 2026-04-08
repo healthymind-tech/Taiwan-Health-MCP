@@ -7,12 +7,12 @@
 **整合 ICD-10、SNOMED CT、RxNorm、LOINC、FDA 藥品/保健食品/營養、TWCore IG、臨床指引，支援 FHIR R4 標準**
 
 [![FHIR](https://img.shields.io/badge/FHIR-R4-blue)](http://hl7.org/fhir/R4/)
-[![Python](https://img.shields.io/badge/Python-3.12-green)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/Python-3.8+-green)](https://www.python.org/)
 [![MCP](https://img.shields.io/badge/MCP-1.0-orange)](https://modelcontextprotocol.io)
-[![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
+[![License](https://img.shields.io/badge/License-MIT-yellow)](https://github.com/yourusername/Taiwan-ICD10-Health-MCP/blob/main/LICENSE)
 
 [快速開始](getting-started.md){ .md-button .md-button--primary }
-[查看 GitHub](https://github.com/healthymind-tech/Taiwan-Health-MCP){ .md-button }
+[查看 GitHub](https://github.com/yourusername/Taiwan-ICD10-Health-MCP){ .md-button }
 
 </div>
 
@@ -108,43 +108,58 @@
 
 ```mermaid
 graph TB
-    subgraph "Client Layer"
-        A1[Claude AI]
-        A2[其他 MCP 客戶端]
+    subgraph "使用者層"
+        A[Claude AI]
     end
 
-    subgraph "MCP Server (56 Tools)"
-        B[FastMCP / uvicorn<br/>port 8000]
+    subgraph "MCP 協議層"
+        B[MCP Server<br/>56 個工具]
     end
 
-    subgraph "Infrastructure"
-        PG[(PostgreSQL 16<br/>主要資料庫)]
-        PGB[pgBouncer<br/>連線池]
-        RD[(Redis 7<br/>回應快取)]
-        PM[Prometheus<br/>port 9090]
+    subgraph "服務層"
+        C1[ICD Service]
+        C2[Drug Service]
+        C3[FHIR Service]
+        C4[Lab Service]
+        C5[Guideline Service]
     end
 
-    subgraph "Services (11)"
-        S1[ICD] S2[Drug] S3[HealthFood]
-        S4[FoodNutrition] S5[Lab] S6[Guideline]
-        S7[FHIRCondition] S8[FHIRMedication]
-        S9[TWCore] S10[SNOMED] S11[DrugInteraction]
+    subgraph "資料層"
+        D1[(ICD-10 DB)]
+        D2[(Drug DB)]
+        D3[(LOINC DB)]
+        D4[(Guideline DB)]
     end
 
-    subgraph "Data Loader (一次性)"
-        L[loader/main.py]
-        F[fhir-code/ ZIP 檔]
+    subgraph "外部資料源"
+        E1[台灣 FDA API]
+        E2[LOINC 官方]
+        E3[衛福部 ICD-10]
     end
 
-    A1 --> B
-    A2 --> B
-    B --> S1 & S2 & S3 & S4 & S5 & S6 & S7 & S8 & S9 & S10 & S11
-    S1 & S2 & S3 & S4 & S5 & S6 & S7 & S8 & S9 & S10 & S11 --> PGB
-    PGB --> PG
-    B --> RD
-    B --> PM
-    L --> F
-    L --> PG
+    A --> B
+    B --> C1
+    B --> C2
+    B --> C3
+    B --> C4
+    B --> C5
+
+    C1 --> D1
+    C2 --> D2
+    C4 --> D3
+    C5 --> D4
+
+    E1 -.->|同步| D2
+    E2 -.->|整合| D3
+    E3 -.->|匯入| D1
+
+    style A fill:#e1f5ff
+    style B fill:#fff3e0
+    style C1 fill:#f3e5f5
+    style C2 fill:#f3e5f5
+    style C3 fill:#f3e5f5
+    style C4 fill:#f3e5f5
+    style C5 fill:#f3e5f5
 ```
 
 [查看詳細架構](architecture/system-architecture.md){ .md-button }
@@ -196,7 +211,7 @@ graph TB
 
 ## 🛠️ MCP 工具清單
 
-本服務提供 **56 個 MCP 工具**，包含 **55 個領域工具** 與 `health_check`，主要分為 12 個群組：
+本服務提供 **56 個 MCP 工具**，包含 **56 個領域工具** 與 `health_check`，主要分為 12 個群組：
 
 | 群組 | 工具數 | 主要功能 |
 |------|--------|---------|
