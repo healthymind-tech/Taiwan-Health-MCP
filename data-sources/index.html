@@ -3191,15 +3191,15 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#fda" class="md-nav__link">
+  <a href="#fda-data-loader-app" class="md-nav__link">
     <span class="md-ellipsis">
       
-        動態 FDA 資料（自動同步）
+        動態 FDA 資料（可由 data-loader 初始化，app 亦會自動同步）
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="動態 FDA 資料（自動同步）">
+    <nav class="md-nav" aria-label="動態 FDA 資料（可由 data-loader 初始化，app 亦會自動同步）">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -3214,7 +3214,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#fda_1" class="md-nav__link">
+  <a href="#fda" class="md-nav__link">
     <span class="md-ellipsis">
       
         台灣 FDA 健康食品
@@ -3225,7 +3225,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#fda_2" class="md-nav__link">
+  <a href="#fda_1" class="md-nav__link">
     <span class="md-ellipsis">
       
         台灣 FDA 食品營養
@@ -3350,21 +3350,21 @@
 <td>Taiwan FDA 藥品</td>
 <td>每週更新</td>
 <td>公開 (FDA)</td>
-<td>自動（app 啟動時）</td>
+<td><code>data-loader --drug/--fda</code> 或 app 自動同步</td>
 <td>66,000+ 許可證</td>
 </tr>
 <tr>
 <td>Taiwan FDA 健康食品</td>
 <td>每週更新</td>
 <td>公開 (FDA)</td>
-<td>自動（app 啟動時）</td>
+<td><code>data-loader --health-food/--fda</code> 或 app 自動同步</td>
 <td>數百項</td>
 </tr>
 <tr>
 <td>Taiwan FDA 營養</td>
 <td>每週更新</td>
 <td>公開 (FDA)</td>
-<td>自動（app 啟動時）</td>
+<td><code>data-loader --food-nutrition/--fda</code> 或 app 自動同步</td>
 <td>200,000+ 筆測量</td>
 </tr>
 </tbody>
@@ -3425,7 +3425,7 @@
 <li><strong>注意</strong>: 未經正式醫學審核，不適合直接用於臨床決策</li>
 </ul>
 <hr />
-<h2 id="fda">動態 FDA 資料（自動同步）<a class="headerlink" href="#fda" title="Permanent link">&para;</a></h2>
+<h2 id="fda-data-loader-app">動態 FDA 資料（可由 data-loader 初始化，app 亦會自動同步）<a class="headerlink" href="#fda-data-loader-app" title="Permanent link">&para;</a></h2>
 <h3 id="fda-5-api">台灣 FDA 藥品（5 個 API）<a class="headerlink" href="#fda-5-api" title="Permanent link">&para;</a></h3>
 <p>MCP app 啟動時若資料為空或超過 7 天未更新，自動觸發同步；之後每週二 02:00 UTC 定期更新。</p>
 <table>
@@ -3465,12 +3465,12 @@
 </tbody>
 </table>
 <p><strong>去重注意</strong>：FDA 原始資料偶爾含重複 <code>license_id</code>，系統在寫入前自動去重。</p>
-<h3 id="fda_1">台灣 FDA 健康食品<a class="headerlink" href="#fda_1" title="Permanent link">&para;</a></h3>
+<h3 id="fda">台灣 FDA 健康食品<a class="headerlink" href="#fda" title="Permanent link">&para;</a></h3>
 <ul>
 <li>端點：<code>export/19/json</code></li>
 <li>排程：每週一 02:30 UTC</li>
 </ul>
-<h3 id="fda_2">台灣 FDA 食品營養<a class="headerlink" href="#fda_2" title="Permanent link">&para;</a></h3>
+<h3 id="fda_1">台灣 FDA 食品營養<a class="headerlink" href="#fda_1" title="Permanent link">&para;</a></h3>
 <ul>
 <li>端點：<code>export/20/json</code>（營養成分）+ <code>export/4/json</code>（食品原料）</li>
 <li>排程：每週一 03:00 UTC</li>
