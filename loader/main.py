@@ -266,6 +266,21 @@ async def load_rxnorm(pool: asyncpg.Pool) -> None:
     await _load(pool, zip_path)
 
 
+async def load_drug(pool: asyncpg.Pool) -> None:
+    from loaders.drug_loader import load_drug as _load
+    await _load(pool)
+
+
+async def load_health_food(pool: asyncpg.Pool) -> None:
+    from loaders.health_food_loader import load_health_food as _load
+    await _load(pool)
+
+
+async def load_food_nutrition(pool: asyncpg.Pool) -> None:
+    from loaders.food_nutrition_loader import load_food_nutrition as _load
+    await _load(pool)
+
+
 async def main():
     parser = argparse.ArgumentParser(description="Taiwan Health MCP Data Loader")
     parser.add_argument("--all",       action="store_true", help="Load all datasets")
@@ -275,10 +290,15 @@ async def main():
     parser.add_argument("--guideline", action="store_true", help="Clinical guidelines seed data")
     parser.add_argument("--snomed",    action="store_true", help="SNOMED CT International RF2")
     parser.add_argument("--rxnorm",    action="store_true", help="RxNorm full release")
+    parser.add_argument("--drug",      action="store_true", help="Taiwan FDA drug datasets")
+    parser.add_argument("--health-food", action="store_true", help="Taiwan FDA health food dataset")
+    parser.add_argument("--food-nutrition", action="store_true", help="Taiwan FDA food nutrition datasets")
+    parser.add_argument("--fda",       action="store_true", help="Load all Taiwan FDA API datasets")
     args = parser.parse_args()
 
     run_all = args.all or not any([
-        args.icd, args.loinc, args.twcore, args.guideline, args.snomed, args.rxnorm
+        args.icd, args.loinc, args.twcore, args.guideline, args.snomed, args.rxnorm,
+        args.drug, args.health_food, args.food_nutrition, args.fda,
     ])
 
     pool = await get_pool()
@@ -307,6 +327,18 @@ async def main():
         if run_all or args.rxnorm:
             print("=== Loading RxNorm ===")
             await load_rxnorm(pool)
+
+        if run_all or args.fda or args.drug:
+            print("=== Loading Taiwan FDA drug datasets ===")
+            await load_drug(pool)
+
+        if run_all or args.fda or args.health_food:
+            print("=== Loading Taiwan FDA health food dataset ===")
+            await load_health_food(pool)
+
+        if run_all or args.fda or args.food_nutrition:
+            print("=== Loading Taiwan FDA food nutrition datasets ===")
+            await load_food_nutrition(pool)
 
         print("\n=== Data loading complete ===")
     finally:

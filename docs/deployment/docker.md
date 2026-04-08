@@ -66,7 +66,7 @@ docker compose logs -f app
 
 ### 4. 載入術語資料
 
-FDA 藥品、健康食品、營養資料會在首次啟動時自動從 FDA Open Data API 下載。
+FDA 藥品、健康食品、營養資料可透過 `data-loader --fda` 預先初始化；若未預先載入，app 在首次啟動或資料過期時也會自動從 FDA Open Data API 同步。
 
 其他術語資料（ICD、LOINC、SNOMED CT 等）需要先從官方來源合法取得，再於
 `config/datasets.yaml` 指定原始檔案位置後執行 data-loader：
@@ -76,6 +76,12 @@ FDA 藥品、健康食品、營養資料會在首次啟動時自動從 FDA Open 
 
 # 全部載入（建議首次部署）
 docker compose --profile loader run --rm data-loader --all
+
+# 或只載入 FDA 動態資料
+docker compose --profile loader run --rm data-loader --fda
+docker compose --profile loader run --rm data-loader --drug
+docker compose --profile loader run --rm data-loader --health-food
+docker compose --profile loader run --rm data-loader --food-nutrition
 
 # 或單獨載入
 docker compose --profile loader run --rm data-loader --icd

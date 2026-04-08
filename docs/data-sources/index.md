@@ -15,9 +15,9 @@ Taiwan Health MCP Server 整合以下七類資料集。靜態術語資料透過 
 | RxNorm | 2024-06-03 (NLM) | UMLS License | data-loader `--rxnorm` | 數十萬藥品/關係 |
 | TWCore IG | v1.0.0 (MOHW) | 公開 | data-loader `--twcore` | 30+ CodeSystem |
 | 臨床指引 | 自整理 | — | data-loader `--guideline` | 種子資料 |
-| Taiwan FDA 藥品 | 每週更新 | 公開 (FDA) | 自動（app 啟動時） | 66,000+ 許可證 |
-| Taiwan FDA 健康食品 | 每週更新 | 公開 (FDA) | 自動（app 啟動時） | 數百項 |
-| Taiwan FDA 營養 | 每週更新 | 公開 (FDA) | 自動（app 啟動時） | 200,000+ 筆測量 |
+| Taiwan FDA 藥品 | 每週更新 | 公開 (FDA) | `data-loader --drug/--fda` 或 app 自動同步 | 66,000+ 許可證 |
+| Taiwan FDA 健康食品 | 每週更新 | 公開 (FDA) | `data-loader --health-food/--fda` 或 app 自動同步 | 數百項 |
+| Taiwan FDA 營養 | 每週更新 | 公開 (FDA) | `data-loader --food-nutrition/--fda` 或 app 自動同步 | 200,000+ 筆測量 |
 
 ---
 
@@ -78,7 +78,7 @@ Taiwan Health MCP Server 整合以下七類資料集。靜態術語資料透過 
 
 ---
 
-## 動態 FDA 資料（自動同步）
+## 動態 FDA 資料（可由 data-loader 初始化，app 亦會自動同步）
 
 ### 台灣 FDA 藥品（5 個 API）
 

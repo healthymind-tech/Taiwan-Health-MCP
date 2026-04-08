@@ -55,6 +55,12 @@ docker compose up -d
 # 全部載入（建議首次部署）
 docker compose --profile loader run --rm data-loader --all
 
+# 僅初始化 FDA 動態資料
+docker compose --profile loader run --rm data-loader --fda
+docker compose --profile loader run --rm data-loader --drug
+docker compose --profile loader run --rm data-loader --health-food
+docker compose --profile loader run --rm data-loader --food-nutrition
+
 # 或依需求單項載入
 docker compose --profile loader run --rm data-loader --icd        # ICD-10-CM 2025
 docker compose --profile loader run --rm data-loader --loinc      # LOINC 2.80
@@ -67,7 +73,8 @@ docker compose --profile loader run --rm data-loader --rxnorm     # RxNorm
 `DATASETS_CONFIG` 預設為 `/app/config/datasets.yaml`。若未設定，loader 會回退到舊的
 `/app/fhir-code` 目錄規則。新部署建議使用 `config/datasets.yaml`，避免依賴固定檔名與固定目錄結構。
 
-> FDA 藥品/保健食品/營養資料會在伺服器首次啟動時自動從 FDA Open Data API 下載，無需手動載入。
+> `--all` 現在也會初始化 Taiwan FDA 藥品、健康食品、營養資料。
+> app 仍會在首次啟動或資料過期時自動同步，但若想在部署階段先灌資料，請使用 `data-loader --all` 或 `--fda`。
 
 ### 4. 確認服務正常
 

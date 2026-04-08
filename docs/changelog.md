@@ -21,7 +21,7 @@
 
 #### 資料載入器（Data Loader）
 - 新增獨立 Docker 容器（`profiles: [loader]`）
-- 支援 `--icd`、`--loinc`、`--twcore`、`--guideline`、`--snomed`、`--rxnorm`、`--all`
+- 支援 `--icd`、`--loinc`、`--twcore`、`--guideline`、`--snomed`、`--rxnorm`、`--drug`、`--health-food`、`--food-nutrition`、`--fda`、`--all`
 - 直接連接 PostgreSQL（繞過 pgBouncer）適合大量寫入
 
 #### 新增資料集
