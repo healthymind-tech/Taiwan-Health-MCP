@@ -336,6 +336,49 @@ class TestFoodNutritionService:
         assert abs(result["combined_totals_per_100g_each"]["粗蛋白"] - 14.2) < 0.01
 
 
+class TestHealthFoodService:
+    @pytest.mark.asyncio
+    async def test_analyze_health_support_resolves_text_diagnosis_to_icd(self):
+        from health_food_service import HealthFoodService
+
+        conn = _make_conn(fetch_return=[_row(permit_no="A001", name="產品A", benefit_claims="調節血糖")])
+        pool = _make_pool(conn)
+        svc = HealthFoodService(pool)
+
+        icd_service = MagicMock()
+        icd_service.search_codes = AsyncMock(return_value=json.dumps({
+            "diagnoses": [
+                {"code": "E11.9", "name_zh": "第二型糖尿病", "name_en": "Type 2 diabetes mellitus"}
+            ]
+        }, ensure_ascii=False))
+
+        result = json.loads(
+            await svc.analyze_health_support_for_condition("第二型糖尿病", icd_service=icd_service)
+        )
+
+        assert result["icd_code"] == "E11"
+        assert "調節血糖" in result["recommended_benefits"]
+        assert len(result["health_foods"]) == 1
+
+    @pytest.mark.asyncio
+    async def test_analyze_health_support_keeps_free_text_when_no_icd_match(self):
+        from health_food_service import HealthFoodService
+
+        conn = _make_conn(fetch_return=[])
+        pool = _make_pool(conn)
+        svc = HealthFoodService(pool)
+
+        icd_service = MagicMock()
+        icd_service.search_codes = AsyncMock(return_value=json.dumps({"diagnoses": []}, ensure_ascii=False))
+
+        result = json.loads(
+            await svc.analyze_health_support_for_condition("第二型糖尿病", icd_service=icd_service)
+        )
+
+        assert result["icd_code"] is None
+        assert result["recommended_benefits"] == ["第二型糖尿病"]
+
+
 # ── ClinicalGuidelineService ──────────────────────────────────────────────────
 
 class TestClinicalGuidelineService:

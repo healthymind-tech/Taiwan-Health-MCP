@@ -7,6 +7,7 @@ Sync strategy: fetch data first, then write in one transaction.
 
 import asyncio
 import json
+import re
 from datetime import datetime, timedelta, timezone
 
 import asyncpg
@@ -160,10 +161,48 @@ class HealthFoodService:
             return json.dumps({"error": f"找不到許可證字號: {permit_no}"}, ensure_ascii=False)
         return json.dumps(dict(row), ensure_ascii=False)
 
+    async def _resolve_icd_code(
+        self, diagnosis_keyword: str, icd_service=None
+    ) -> str | None:
+        keyword = diagnosis_keyword.strip() if diagnosis_keyword else ""
+        if not keyword:
+            return None
+
+        # Direct ICD inputs such as E11 or E11.9
+        if re.match(r"^[A-Z][0-9][0-9](?:\.[A-Z0-9]+)?$", keyword.upper()):
+            return keyword.upper().split(".")[0]
+
+        if icd_service is None:
+            return None
+
+        try:
+            raw = await icd_service.search_codes(keyword, "diagnosis")
+            payload = json.loads(raw)
+            diagnoses = payload.get("diagnoses", [])
+            if not diagnoses:
+                return None
+
+            normalized = keyword.casefold()
+            for row in diagnoses:
+                name_zh = str(row.get("name_zh", "")).casefold()
+                name_en = str(row.get("name_en", "")).casefold()
+                if normalized in (name_zh, name_en):
+                    code = row.get("code")
+                    if code:
+                        return str(code).upper().split(".")[0]
+
+            first_code = diagnoses[0].get("code")
+            if first_code:
+                return str(first_code).upper().split(".")[0]
+        except Exception:
+            return None
+
+        return None
+
     async def analyze_health_support_for_condition(
         self, diagnosis_keyword: str, icd_service=None
     ) -> str:
-        icd_code = diagnosis_keyword.strip().upper().split(".")[0] if diagnosis_keyword else None
+        icd_code = await self._resolve_icd_code(diagnosis_keyword, icd_service=icd_service)
         recommended_benefits = DISEASE_BENEFIT_MAPPING.get(icd_code, [diagnosis_keyword])
 
         foods: list[dict] = []

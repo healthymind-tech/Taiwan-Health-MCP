@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 import json
 from contextlib import asynccontextmanager
 
@@ -21,7 +22,7 @@ from icd_service import ICDService
 from lab_service import LabService
 from snomed_service import SNOMEDService
 from twcore_service import TWCoreService
-from utils import configure_log_level, log_error, log_info
+from utils import configure_log_level, log_error, log_info, log_warning
 
 config = AppConfig.from_env()
 configure_log_level(config.log_level)
@@ -157,6 +158,107 @@ mcp = FastMCP(
     dependencies=["uvicorn"],
     lifespan=lifespan,
 )
+
+
+class ApiErrorLoggingMiddleware:
+    """Log request details for HTTP API responses with error status codes."""
+
+    def __init__(self, app, max_body_chars: int = 2000):
+        self.app = app
+        self.max_body_chars = max_body_chars
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        body_chunks: list[bytes] = []
+
+        async def wrapped_receive():
+            message = await receive()
+            if message["type"] == "http.request":
+                chunk = message.get("body", b"")
+                if chunk:
+                    body_chunks.append(chunk)
+            return message
+
+        async def wrapped_send(message):
+            if message["type"] == "http.response.start":
+                status = int(message["status"])
+                if status >= 400:
+                    raw_body = b"".join(body_chunks)
+                    try:
+                        body_text = raw_body.decode("utf-8", errors="replace")
+                    except Exception:
+                        body_text = repr(raw_body)
+                    if len(body_text) > self.max_body_chars:
+                        body_text = body_text[:self.max_body_chars] + "...(truncated)"
+
+                    headers = {
+                        k.decode("latin-1").lower(): v.decode("latin-1")
+                        for k, v in scope.get("headers", [])
+                    }
+                    log_warning(
+                        "HTTP API error response",
+                        status_code=status,
+                        method=scope.get("method"),
+                        path=scope.get("path"),
+                        query_string=scope.get("query_string", b"").decode("latin-1"),
+                        content_type=headers.get("content-type"),
+                        accept=headers.get("accept"),
+                        mcp_session_id=headers.get("mcp-session-id"),
+                        request_body=body_text,
+                    )
+            await send(message)
+
+        try:
+            await self.app(scope, wrapped_receive, wrapped_send)
+        except Exception as e:
+            raw_body = b"".join(body_chunks)
+            body_text = raw_body.decode("utf-8", errors="replace")
+            if len(body_text) > self.max_body_chars:
+                body_text = body_text[:self.max_body_chars] + "...(truncated)"
+            log_error(
+                "Unhandled HTTP API exception",
+                method=scope.get("method"),
+                path=scope.get("path"),
+                query_string=scope.get("query_string", b"").decode("latin-1"),
+                request_body=body_text,
+                error=str(e),
+            )
+            raise
+
+
+def _call_http_factory(factory, **kwargs):
+    """Call a FastMCP HTTP app factory with best-effort compatibility."""
+    try:
+        sig = inspect.signature(factory)
+        accepted = {k: v for k, v in kwargs.items() if k in sig.parameters}
+    except (TypeError, ValueError):
+        accepted = kwargs
+
+    try:
+        return factory(**accepted)
+    except TypeError:
+        return factory()
+
+
+def build_http_app():
+    """Build an ASGI app for HTTP transports and wrap it with error logging."""
+    transport = "sse" if config.transport == "sse" else "streamable-http"
+
+    if hasattr(mcp, "http_app"):
+        app = _call_http_factory(mcp.http_app, path=config.path, transport=transport)
+    elif transport == "streamable-http" and hasattr(mcp, "streamable_http_app"):
+        app = _call_http_factory(mcp.streamable_http_app, path=config.path)
+    elif transport == "sse" and hasattr(mcp, "sse_app"):
+        app = _call_http_factory(mcp.sse_app, path=config.path)
+    elif hasattr(mcp, "app"):
+        app = mcp.app
+    else:
+        raise RuntimeError("FastMCP does not expose an HTTP ASGI app")
+
+    return ApiErrorLoggingMiddleware(app)
 
 
 # ============================================================
@@ -1190,4 +1292,14 @@ async def get_drug_ingredients_rxnorm(rxcui: str) -> str:
 # ============================================================
 
 if __name__ == "__main__":
-    mcp.run(**config.get_run_kwargs())
+    if config.transport == "stdio":
+        mcp.run(**config.get_run_kwargs())
+    else:
+        import uvicorn
+
+        uvicorn.run(
+            build_http_app(),
+            host=config.host,
+            port=config.port,
+            log_level=config.log_level.lower(),
+        )
