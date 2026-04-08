@@ -3454,6 +3454,7 @@
 </span></code></pre></div>
 <h3 id="2">步驟 2 — 設定環境變數<a class="headerlink" href="#2" title="Permanent link">&para;</a></h3>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>cp<span class="w"> </span>.env.example<span class="w"> </span>.env
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>cp<span class="w"> </span>config/datasets.example.yaml<span class="w"> </span>config/datasets.yaml
 </span></code></pre></div>
 <p>編輯 <code>.env</code>：</p>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a># 必填
@@ -3468,6 +3469,7 @@
 </span><span id="__span-2-10"><a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>MCP_PATH=/mcp
 </span><span id="__span-2-11"><a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>LOG_LEVEL=INFO
 </span><span id="__span-2-12"><a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>METRICS_PORT=9090
+</span><span id="__span-2-13"><a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>DATASETS_CONFIG=/app/config/datasets.yaml
 </span></code></pre></div>
 <h3 id="3">步驟 3 — 啟動服務<a class="headerlink" href="#3" title="Permanent link">&para;</a></h3>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>up<span class="w"> </span>-d
@@ -3486,7 +3488,8 @@
 <p>FDA 藥品、健康食品、營養資料會在 MCP server **首次收到連線時**自動從 FDA API 同步，無需手動操作。</p>
 <p>其他術語資料（ICD-10、LOINC、SNOMED CT、RxNorm、TWCore IG、臨床指引）需要：</p>
 <ol>
-<li>從官方來源申請並下載原始資料後放置到 <code>fhir-code/</code> 目錄（詳見 <code>fhir-code/README.md</code>）</li>
+<li>複製並編輯 <code>config/datasets.yaml</code></li>
+<li>從官方來源申請並下載原始資料，並在 <code>config/datasets.yaml</code> 指定實際檔案位置</li>
 <li>執行 data-loader：</li>
 </ol>
 <blockquote>
@@ -3503,6 +3506,7 @@
 </span><span id="__span-6-9"><a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>docker<span class="w"> </span>compose<span class="w"> </span>--profile<span class="w"> </span>loader<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>data-loader<span class="w"> </span>--snomed<span class="w">    </span><span class="c1"># 需 5-15 分鐘</span>
 </span><span id="__span-6-10"><a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a>docker<span class="w"> </span>compose<span class="w"> </span>--profile<span class="w"> </span>loader<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>data-loader<span class="w"> </span>--rxnorm
 </span></code></pre></div>
+<p>若未設定 <code>DATASETS_CONFIG</code>，loader 仍會回退到舊的 <code>FHIR_CODE_DIR</code> 目錄規則；新部署建議使用 <code>config/datasets.yaml</code>。</p>
 <h3 id="5">步驟 5 — 驗證服務<a class="headerlink" href="#5" title="Permanent link">&para;</a></h3>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1"># 建立 MCP session</span>
 </span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="nv">SESSION</span><span class="o">=</span><span class="k">$(</span>curl<span class="w"> </span>-si<span class="w"> </span>http://localhost:8000/mcp<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span><span class="se">\</span>
@@ -3548,7 +3552,7 @@
 </span><span id="__span-9-7"><a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="w">  </span><span class="p">}</span>
 </span><span id="__span-9-8"><a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a><span class="p">}</span>
 </span></code></pre></div>
-<p>儲存後重啟 Claude Desktop，即可在對話中使用所有 46 個醫療工具。</p>
+<p>儲存後重啟 Claude Desktop，即可在對話中使用所有 56 個醫療工具。</p>
 <hr />
 <h2 id="_4">🛠️ 本地開發模式<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
 <p>若不使用 Docker，需要本地安裝 PostgreSQL 16 和 Redis 7：</p>

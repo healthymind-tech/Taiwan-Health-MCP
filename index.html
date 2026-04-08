@@ -3306,7 +3306,7 @@
 <p>FHIR R4、ICD-10-CM 2025、LOINC 2.80、SNOMED CT、RxNorm、ATC</p>
 </li>
 <li>
-<p><img alt="📊" class="twemoji" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@16.0.1/assets/svg/1f4ca.svg" title=":bar_chart:" /> <strong>46 個 MCP 工具</strong></p>
+<p><img alt="📊" class="twemoji" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@16.0.1/assets/svg/1f4ca.svg" title=":bar_chart:" /> <strong>56 個 MCP 工具</strong></p>
 <hr />
 <p>涵蓋診斷、藥品、術語、檢驗、指引、藥物交互作用</p>
 </li>
@@ -3380,7 +3380,7 @@
         A2[其他 MCP 客戶端]
     end
 
-    subgraph "MCP Server (46 Tools)"
+    subgraph "MCP Server (56 Tools)"
         B[FastMCP / uvicorn&lt;br/&gt;port 8000]
     end
 
@@ -3422,16 +3422,18 @@
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/healthymind-tech/Taiwan-Health-MCP.git
 </span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="nb">cd</span><span class="w"> </span>Taiwan-Health-MCP
 </span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>cp<span class="w"> </span>.env.example<span class="w"> </span>.env
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="c1"># 編輯 .env，設定 POSTGRES_PASSWORD</span>
-</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>
-</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="c1"># 2. 啟動所有服務</span>
-</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>docker<span class="w"> </span>compose<span class="w"> </span>up<span class="w"> </span>-d
-</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>
-</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="c1"># 3. 載入術語資料（需先準備 fhir-code/ 目錄）</span>
-</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>docker<span class="w"> </span>compose<span class="w"> </span>--profile<span class="w"> </span>loader<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>data-loader<span class="w"> </span>--all
-</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>
-</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="c1"># 4. 查看日誌</span>
-</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>docker<span class="w"> </span>compose<span class="w"> </span>logs<span class="w"> </span>-f<span class="w"> </span>app
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>cp<span class="w"> </span>config/datasets.example.yaml<span class="w"> </span>config/datasets.yaml
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="c1"># 編輯 .env，設定 POSTGRES_PASSWORD</span>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="c1"># 編輯 config/datasets.yaml，指定各資料集實際檔案位置</span>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="c1"># 2. 啟動所有服務</span>
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>docker<span class="w"> </span>compose<span class="w"> </span>up<span class="w"> </span>-d
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="c1"># 3. 載入術語資料（需先在 config/datasets.yaml 指定檔案位置）</span>
+</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>docker<span class="w"> </span>compose<span class="w"> </span>--profile<span class="w"> </span>loader<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>data-loader<span class="w"> </span>--all
+</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>
+</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="c1"># 4. 查看日誌</span>
+</span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>docker<span class="w"> </span>compose<span class="w"> </span>logs<span class="w"> </span>-f<span class="w"> </span>app
 </span></code></pre></div>
 </div>
 <div class="tabbed-block">
@@ -3453,7 +3455,7 @@
 <p><a class="md-button md-button--primary" href="getting-started/">詳細安裝說明</a></p>
 <hr />
 <h2 id="mcp">🛠️ MCP 工具清單<a class="headerlink" href="#mcp" title="Permanent link">&para;</a></h2>
-<p>本服務提供 <strong>46 個 MCP 工具</strong>，分為 12 個群組：</p>
+<p>本服務提供 <strong>56 個 MCP 工具</strong>，包含 <strong>55 個領域工具</strong> 與 <code>health_check</code>，主要分為 12 個群組：</p>
 <table>
 <thead>
 <tr>
@@ -3465,13 +3467,13 @@
 <tbody>
 <tr>
 <td>ICD-10</td>
-<td>4</td>
-<td>診斷/手術碼搜尋、併發症推論、衝突檢查</td>
+<td>5</td>
+<td>診斷/手術碼搜尋、併發症推論、衝突檢查、分類瀏覽</td>
 </tr>
 <tr>
 <td>藥品 (FDA)</td>
-<td>3</td>
-<td>藥品查詢、詳細資訊、外觀識別</td>
+<td>5</td>
+<td>藥品查詢、詳細資訊、外觀識別、ATC/成分查詢</td>
 </tr>
 <tr>
 <td>健康食品 (FDA)</td>
@@ -3480,8 +3482,8 @@
 </tr>
 <tr>
 <td>營養 (FDA)</td>
-<td>4</td>
-<td>營養成分、膳食分析、食品原料</td>
+<td>6</td>
+<td>營養成分、膳食分析、食品原料、營養排序</td>
 </tr>
 <tr>
 <td>健康食品+ICD 整合</td>
@@ -3500,13 +3502,13 @@
 </tr>
 <tr>
 <td>檢驗 (LOINC)</td>
-<td>5</td>
-<td>LOINC 查詢、參考值、結果判讀</td>
+<td>8</td>
+<td>LOINC 查詢、參考值、結果判讀、細節與同類檢驗</td>
 </tr>
 <tr>
 <td>臨床指引</td>
-<td>5</td>
-<td>指引查詢、路徑規劃</td>
+<td>8</td>
+<td>指引查詢、路徑規劃、禁忌與藥品連結</td>
 </tr>
 <tr>
 <td>TWCore IG</td>
@@ -3515,8 +3517,8 @@
 </tr>
 <tr>
 <td>SNOMED CT</td>
-<td>6</td>
-<td>概念搜尋、階層、ICD-10 對應</td>
+<td>7</td>
+<td>概念搜尋、階層、關聯、ICD-10 對應</td>
 </tr>
 <tr>
 <td>RxNorm</td>

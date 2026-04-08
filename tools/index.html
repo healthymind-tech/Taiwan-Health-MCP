@@ -3089,6 +3089,17 @@
   <a href="#_1" class="md-nav__link">
     <span class="md-ellipsis">
       
+        基礎工具
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
         工具分類索引
       
     </span>
@@ -3098,10 +3109,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#1-icd-10-4" class="md-nav__link">
+  <a href="#1-icd-10-5" class="md-nav__link">
     <span class="md-ellipsis">
       
-        群組 1 — ICD-10 診斷與手術碼（4 個工具）
+        群組 1 — ICD-10 診斷與手術碼（5 個工具）
       
     </span>
   </a>
@@ -3109,10 +3120,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#2-fda-3" class="md-nav__link">
+  <a href="#2-fda-5" class="md-nav__link">
     <span class="md-ellipsis">
       
-        群組 2 — 台灣 FDA 藥品（3 個工具）
+        群組 2 — 台灣 FDA 藥品（5 個工具）
       
     </span>
   </a>
@@ -3131,10 +3142,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#4-4" class="md-nav__link">
+  <a href="#4-6" class="md-nav__link">
     <span class="md-ellipsis">
       
-        群組 4 — 食品營養（4 個工具）
+        群組 4 — 食品營養（6 個工具）
       
     </span>
   </a>
@@ -3175,10 +3186,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#8-loinc5" class="md-nav__link">
+  <a href="#8-loinc8" class="md-nav__link">
     <span class="md-ellipsis">
       
-        群組 8 — 檢驗 / LOINC（5 個工具）
+        群組 8 — 檢驗 / LOINC（8 個工具）
       
     </span>
   </a>
@@ -3186,10 +3197,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#9-5" class="md-nav__link">
+  <a href="#9-8" class="md-nav__link">
     <span class="md-ellipsis">
       
-        群組 9 — 臨床診療指引（5 個工具）
+        群組 9 — 臨床診療指引（8 個工具）
       
     </span>
   </a>
@@ -3208,10 +3219,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#11-snomed-ct6" class="md-nav__link">
+  <a href="#11-snomed-ct7" class="md-nav__link">
     <span class="md-ellipsis">
       
-        群組 11 — SNOMED CT（6 個工具）
+        群組 11 — SNOMED CT（7 個工具）
       
     </span>
   </a>
@@ -3235,7 +3246,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_2" class="md-nav__link">
+  <a href="#_3" class="md-nav__link">
     <span class="md-ellipsis">
       
         如何呼叫工具
@@ -3246,7 +3257,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_3" class="md-nav__link">
+  <a href="#_4" class="md-nav__link">
     <span class="md-ellipsis">
       
         服務降級
@@ -3277,10 +3288,26 @@
 
 
 <h1 id="mcp">MCP 工具概覽<a class="headerlink" href="#mcp" title="Permanent link">&para;</a></h1>
-<p>Taiwan Health MCP Server 提供 <strong>46 個 MCP 工具</strong>，分為 12 個群組。</p>
+<p>Taiwan Health MCP Server 提供 <strong>56 個 MCP 工具</strong>，其中包含 1 個 <code>health_check</code> 基礎工具，以及 12 個主要領域群組共 55 個工具。</p>
 <hr />
-<h2 id="_1">工具分類索引<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
-<h3 id="1-icd-10-4">群組 1 — ICD-10 診斷與手術碼（4 個工具）<a class="headerlink" href="#1-icd-10-4" title="Permanent link">&para;</a></h3>
+<h2 id="_1">基礎工具<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>工具</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>health_check</code></td>
+<td>檢查資料庫、快取與各服務初始化狀態</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_2">工具分類索引<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
+<h3 id="1-icd-10-5">群組 1 — ICD-10 診斷與手術碼（5 個工具）<a class="headerlink" href="#1-icd-10-5" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
 <tr>
@@ -3305,11 +3332,15 @@
 <td><code>check_medical_conflict</code></td>
 <td>診斷碼與手術碼衝突分析</td>
 </tr>
+<tr>
+<td><code>browse_icd_category</code></td>
+<td>依 ICD 類別瀏覽診斷碼</td>
+</tr>
 </tbody>
 </table>
 <p><a href="icd-tools/">詳細說明</a></p>
 <hr />
-<h3 id="2-fda-3">群組 2 — 台灣 FDA 藥品（3 個工具）<a class="headerlink" href="#2-fda-3" title="Permanent link">&para;</a></h3>
+<h3 id="2-fda-5">群組 2 — 台灣 FDA 藥品（5 個工具）<a class="headerlink" href="#2-fda-5" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
 <tr>
@@ -3329,6 +3360,14 @@
 <tr>
 <td><code>identify_unknown_pill</code></td>
 <td>依外觀特徵（形狀、顏色、刻痕）識別藥錠</td>
+</tr>
+<tr>
+<td><code>search_drug_by_atc</code></td>
+<td>依 ATC 代碼或藥理分類搜尋藥品</td>
+</tr>
+<tr>
+<td><code>search_drug_by_ingredient</code></td>
+<td>依有效成分搜尋藥品</td>
 </tr>
 </tbody>
 </table>
@@ -3355,7 +3394,7 @@
 </table>
 <p><a href="health-food-tools/">詳細說明</a></p>
 <hr />
-<h3 id="4-4">群組 4 — 食品營養（4 個工具）<a class="headerlink" href="#4-4" title="Permanent link">&para;</a></h3>
+<h3 id="4-6">群組 4 — 食品營養（6 個工具）<a class="headerlink" href="#4-6" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
 <tr>
@@ -3375,6 +3414,14 @@
 <tr>
 <td><code>search_food_ingredient</code></td>
 <td>搜尋食品原料/添加物</td>
+</tr>
+<tr>
+<td><code>get_ingredients_by_category</code></td>
+<td>依分類查詢食品原料</td>
+</tr>
+<tr>
+<td><code>search_foods_by_nutrient</code></td>
+<td>依特定營養素排名食品</td>
 </tr>
 <tr>
 <td><code>analyze_meal_nutrition</code></td>
@@ -3454,7 +3501,7 @@
 </table>
 <p><a href="fhir-tools/">詳細說明</a></p>
 <hr />
-<h3 id="8-loinc5">群組 8 — 檢驗 / LOINC（5 個工具）<a class="headerlink" href="#8-loinc5" title="Permanent link">&para;</a></h3>
+<h3 id="8-loinc8">群組 8 — 檢驗 / LOINC（8 個工具）<a class="headerlink" href="#8-loinc8" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
 <tr>
@@ -3480,6 +3527,18 @@
 <td>判讀單項檢驗結果</td>
 </tr>
 <tr>
+<td><code>search_loinc_by_specimen</code></td>
+<td>依檢體類型搜尋 LOINC</td>
+</tr>
+<tr>
+<td><code>find_related_loinc_tests</code></td>
+<td>找出相同 analyte 的相關檢驗</td>
+</tr>
+<tr>
+<td><code>get_loinc_detail</code></td>
+<td>取得 LOINC 完整概念細節</td>
+</tr>
+<tr>
 <td><code>batch_interpret_lab_results</code></td>
 <td>批次判讀多項檢驗</td>
 </tr>
@@ -3487,7 +3546,7 @@
 </table>
 <p><a href="lab-tools/">詳細說明</a></p>
 <hr />
-<h3 id="9-5">群組 9 — 臨床診療指引（5 個工具）<a class="headerlink" href="#9-5" title="Permanent link">&para;</a></h3>
+<h3 id="9-8">群組 9 — 臨床診療指引（8 個工具）<a class="headerlink" href="#9-8" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
 <tr>
@@ -3515,6 +3574,14 @@
 <tr>
 <td><code>get_treatment_goals</code></td>
 <td>取得治療目標</td>
+</tr>
+<tr>
+<td><code>check_medication_contraindications</code></td>
+<td>檢查特定疾病下的用藥禁忌</td>
+</tr>
+<tr>
+<td><code>link_guideline_to_drugs</code></td>
+<td>將指引建議連到台灣 FDA 藥品</td>
 </tr>
 <tr>
 <td><code>suggest_clinical_pathway</code></td>
@@ -3548,7 +3615,7 @@
 </tbody>
 </table>
 <hr />
-<h3 id="11-snomed-ct6">群組 11 — SNOMED CT（6 個工具）<a class="headerlink" href="#11-snomed-ct6" title="Permanent link">&para;</a></h3>
+<h3 id="11-snomed-ct7">群組 11 — SNOMED CT（7 個工具）<a class="headerlink" href="#11-snomed-ct7" title="Permanent link">&para;</a></h3>
 <blockquote>
 <p>需先執行 <code>docker compose --profile loader run --rm data-loader --snomed</code></p>
 </blockquote>
@@ -3575,6 +3642,10 @@
 <tr>
 <td><code>get_snomed_ancestors</code></td>
 <td>取得所有祖先概念</td>
+</tr>
+<tr>
+<td><code>get_snomed_relationships</code></td>
+<td>取得非 IS-A 的屬性與關聯</td>
 </tr>
 <tr>
 <td><code>map_icd_to_snomed</code></td>
@@ -3614,7 +3685,7 @@
 </tbody>
 </table>
 <hr />
-<h2 id="_2">如何呼叫工具<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
+<h2 id="_3">如何呼叫工具<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
 <p>本伺服器遵循 Model Context Protocol (MCP) 標準，使用 JSON-RPC 2.0 格式。</p>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># 建立 session</span>
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>curl<span class="w"> </span>http://localhost:8000/mcp<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span><span class="se">\</span>
@@ -3637,7 +3708,7 @@
 </span><span id="__span-0-19"><a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a><span class="s1">  }}&#39;</span>
 </span></code></pre></div>
 <hr />
-<h2 id="_3">服務降級<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
+<h2 id="_4">服務降級<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
 <p>SNOMED CT 和 RxNorm 工具在資料未載入時會回傳結構化錯誤，而非拋出例外：</p>
 <div class="language-json highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="p">{</span>
 </span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="nt">&quot;error&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;SNOMED CT service is not available&quot;</span><span class="p">,</span>

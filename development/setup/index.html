@@ -3408,6 +3408,7 @@
 <h2 id="5">5. 環境配置<a class="headerlink" href="#5" title="Permanent link">&para;</a></h2>
 <h3 id="_2">複製環境變數範本<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h3>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>cp<span class="w"> </span>.env.example<span class="w"> </span>.env
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>cp<span class="w"> </span>config/datasets.example.yaml<span class="w"> </span>config/datasets.yaml
 </span></code></pre></div>
 <h3 id="_3">設定傳輸模式<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h3>
 <p>編輯 <code>.env</code> 檔案，根據開發需求選擇模式：</p>
@@ -3455,12 +3456,26 @@
 <td style="text-align: left;"><code>/mcp</code></td>
 <td style="text-align: left;">HTTP 端點路徑</td>
 </tr>
+<tr>
+<td style="text-align: left;"><code>DATASETS_CONFIG</code></td>
+<td style="text-align: left;"><code>/app/config/datasets.yaml</code></td>
+<td style="text-align: left;">data-loader 的 dataset 設定檔路徑</td>
+</tr>
 </tbody>
 </table>
 <h2 id="6">6. 準備資料<a class="headerlink" href="#6" title="Permanent link">&para;</a></h2>
-<p>從您的資料來源取得 <code>icd10cm_pcs_xxxx.xlsx</code> 並放入 <code>data/</code> 資料夾。</p>
+<p>編輯 <code>config/datasets.yaml</code>，指定各資料集的實際檔案位置，例如 ICD、LOINC、
+TWCore、SNOMED CT、RxNorm。若未設定 <code>DATASETS_CONFIG</code>，loader 會回退到舊的
+<code>FHIR_CODE_DIR</code> 目錄規則。</p>
+<p>範例：</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="nt">datasets</span><span class="p">:</span>
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">  </span><span class="nt">icd10cm</span><span class="p">:</span>
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">    </span><span class="nt">path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/data/icd/icd10cm_2025.zip</span>
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">  </span><span class="nt">snomed_ct</span><span class="p">:</span>
+</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="w">    </span><span class="nt">pattern</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/secure/snomed/*.zip</span>
+</span></code></pre></div>
 <h2 id="7">7. 啟動開發伺服器<a class="headerlink" href="#7" title="Permanent link">&para;</a></h2>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>python<span class="w"> </span>src/server.py
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>python<span class="w"> </span>src/server.py
 </span></code></pre></div>
 <p>啟動後會顯示配置資訊：
 ```
