@@ -148,8 +148,8 @@ curl http://localhost:8000/mcp -X POST \
 |--------|------|------|------|
 | ICD-10-CM | 2025 (NLM) | 公開 | 診斷碼 |
 | ICD-10-PCS | 2025 (CMS) | 公開 | 手術/處置碼（78,948 筆，`--icd` 同時載入） |
-| LOINC | 2.80 | LOINC License（免費） | 87,000+ 檢驗碼 |
-| SNOMED CT International | 20250601 | SNOMED License（免費） | 370,000+ 臨床概念、IS-A 階層 |
+| LOINC | 2.80 | LOINC License | 87,000+ 檢驗碼 |
+| SNOMED CT International | 20250601 | SNOMED License | 370,000+ 臨床概念、IS-A 階層 |
 | RxNorm | 2024-06-03 | 公開 (NLM) | 藥品命名、藥物交互作用 |
 | TWCore IG | v1.0.0 | 公開 (MOHW) | 30+ 台灣健保 CodeSystem |
 | Taiwan FDA 藥品 | 每週更新 | 公開 (FDA) | 66,000+ 藥品許可證 |
