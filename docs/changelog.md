@@ -1,80 +1,95 @@
 # 更新日誌
 
-本頁面記錄 Taiwan Health MCP Server 的重要版本更新與變更內容。
-
 ---
 
-## [未發布] - 2026-01-21
+## [v2.0.0] — 2026-04-08（當前版本）
 
 ### ✨ 新增功能
 
-#### 統一配置管理系統
-- 新增 `src/config.py` 模組，提供統一的 MCP 配置管理
-- 支援三種傳輸模式：
-  - **stdio**：標準輸入輸出（Claude Desktop 本地開發）
-  - **streamable-http**：Streamable HTTP（Docker 生產部署，推薦）
-  - **sse**：Server-Sent Events（Colab + Ngrok，向後相容）
+#### 基礎架構全面升級（PostgreSQL + pgBouncer + Redis + Prometheus）
+- 從 SQLite 遷移至 **PostgreSQL 16**，支援生產環境高並發
+- 新增 **pgBouncer** 連線池（transaction mode，500 client → 30 PG 連線）
+- 新增 **Redis 7** 回應快取（`@cached` 裝飾器，TTL 策略）
+- 新增 **Prometheus** 指標（`mcp_tool_requests_total`、`mcp_tool_duration_seconds` 等）
+- 新增結構化 JSON 日誌（`src/utils.py`，輸出至 stderr）
+- 新增稽核日誌（`src/audit.py`，`@audited` 裝飾器，SHA-256 參數雜湊，HIPAA 合規）
 
-#### 環境變數配置
-- 新增 `.env.example` 範本檔案，提供完整的配置範例
-- 支援透過環境變數動態配置傳輸模式與網路設定
-- 新增環境變數：
-  - `MCP_TRANSPORT`：傳輸模式選擇
-  - `MCP_HOST`：監聽主機
-  - `MCP_PORT`：監聽埠號
-  - `MCP_PATH`：HTTP 端點路徑
+#### 新增服務與工具（+14 個 MCP 工具，共 46 個）
+- **SNOMED CT Service**（6 個工具）— 概念搜尋、IS-A 階層、ICD-10 雙向對應
+- **RxNorm Drug Interaction Service**（3 個工具）— 藥物交互作用檢查、名稱解析、成分查詢
+- **TWCore IG Service**（3 個工具）— 30+ 台灣健保 CodeSystem 查詢
 
-### 🔄 變更
+#### 資料載入器（Data Loader）
+- 新增獨立 Docker 容器（`profiles: [loader]`）
+- 支援 `--icd`、`--loinc`、`--twcore`、`--guideline`、`--snomed`、`--rxnorm`、`--all`
+- 直接連接 PostgreSQL（繞過 pgBouncer）適合大量寫入
 
-#### Docker 部署優化
-- 更新 `docker-compose.yml`，支援環境變數動態配置
-- 埠號映射支援透過 `MCP_PORT` 環境變數設定
-- 自動讀取 `.env` 檔案進行配置
+#### 新增資料集
+- **SNOMED CT International RF2**（20250601，370,000+ 概念）
+- **RxNorm Full Release**（2024-06-03）
+- **TWCore IG v1.0.0**（衛福部，30+ CodeSystem）
+- **ICD-10-CM 2025**（NLM）
+- **LOINC 2.80**（Regenstrief Institute）
 
-#### 伺服器啟動優化
-- 更新 `src/server.py`，使用新的配置管理系統
-- 啟動時顯示配置資訊，提升可見性
-- 移除硬編碼的 `sse` 傳輸模式，改為動態配置
+### 🔧 修復
+
+#### FDA 藥品同步去重（Bug Fix）
+- FDA Open Data 原始資料包含重複 `license_id`，導致 `DUPLICATE KEY` 錯誤
+- 修復：寫入前使用 `seen_ids` set 去重，確保每個 license_id 只寫入一次
+- 現可成功同步 66,266 筆不重複藥品許可證
+
+#### FastMCP Lifespan-per-Session 冪等性修復（Bug Fix）
+- FastMCP `streamable-http` 模式對每個 MCP session 執行 lifespan，導致：
+  - Prometheus port 重複綁定（Address already in use）
+  - 多個 DrugService 實例同時執行 sync，觸發 duplicate key
+  - 多個 scheduler 實例同時啟動
+- 修復：
+  - `server.py`：`_init_lock + _initialized` 全域 flag，只有第一個 session 執行初始化
+  - `database.init_pool()`、`cache.init_client()`：idempotent，已初始化則回傳現有實例
+  - `metrics.start_metrics_server()`：`_metrics_server_started` flag
+  - 各 sync service：`asyncio.Lock` 防並發，`if not scheduler.running` 防重複啟動
+
+#### FDA 同步兩階段寫入（架構改善）
+- 重寫 DrugService、HealthFoodService、FoodNutritionService
+- 所有 HTTP 請求完成後才開始 DB transaction（防止部分寫入狀態）
+- 使用共享 `httpx.AsyncClient` 提升效率
+
+#### ICD-10-PCS 整合
+- 從 CMS 下載 `icd10pcs_tables_2025.zip`（78,948 筆手術碼）
+- `--icd` loader 同時載入 ICD-10-CM（診斷碼）和 ICD-10-PCS（手術碼）
+- `icd_loader.py` 新增 `load_icd10pcs()`，解析 CMS flat codes 格式（7碼 + 說明）
+- file picker 優先排除 addenda 差異表，選取主要碼表
+- `ICDService._pcs_available` flag：PCS 未載入時工具回傳說明性訊息而非錯誤
+
+### 🏗️ 架構變更
+
+- **Docker Compose** 新增 pgBouncer 服務（`edoburu/pgbouncer`）
+- **Dockerfile** 改為多階段建置（builder + runtime），非 root 使用者執行
+- **fhir-code/** 目錄整理：所有子目錄改為小寫，各資料集歸類至獨立子目錄
+- **data-loader** 移至獨立 Docker 容器（`Dockerfile.loader`）
 
 ### 📖 文件更新
-
-- 更新 [環境配置文件](deployment/configuration.md)，新增 MCP 傳輸模式說明
-- 更新 [Docker 部署指南](deployment/docker.md)，說明 `.env` 檔案使用方式
-- 更新 [開發環境設置](development/setup.md)，新增環境變數配置步驟
-
-### 🔧 技術細節
-
-- 使用 Python `dataclass` 實現配置類別
-- 支援環境變數驗證與預設值
-- 提供 `get_run_kwargs()` 方法，簡化 `mcp.run()` 參數傳遞
+- 完整重寫 `README.md`、`CLAUDE.md`、`src/README.md`
+- 更新 `docs/` 下所有主要文件（架構、部署、工具清單、資料來源）
+- 新增 `fhir-code/README.md`（資料集說明與授權連結）
 
 ---
 
-## [v0.1.0] - 2024-XX-XX
+## [v1.1.0] — 2026-01-21
 
-### 初始版本
-- 實作 ICD-10 診斷碼查詢服務
-- 實作台灣藥品資料查詢服務
-- 實作 FHIR R4 整合功能
-- 實作檢驗數據 LOINC 映射
-- 實作臨床指引查詢服務
-- 提供 Docker 容器化部署
-- 建立完整 MkDocs 技術文件
+### ✨ 新增功能
+- 統一配置管理系統（`src/config.py`）
+- 支援 `streamable-http` 傳輸模式
+- `.env.example` 範本檔案
+- TWCore IG Service（初版）
 
 ---
 
-## 版本命名規則
+## [v1.0.0] — 初始版本
 
-本專案遵循 [語義化版本](https://semver.org/lang/zh-TW/) 規範：
-
-- **主版本號 (MAJOR)**：不相容的 API 修改
-- **次版本號 (MINOR)**：向下相容的功能性新增
-- **修訂號 (PATCH)**：向下相容的問題修正
-
----
-
-## 相關連結
-
-- [GitHub Repository](https://github.com/audi0417/Taiwan-Health-MCP)
-- [問題回報](https://github.com/audi0417/Taiwan-Health-MCP/issues)
-- [貢獻指南](../CONTRIBUTING.md)
+- ICD-10 診斷與手術碼查詢（SQLite）
+- 台灣 FDA 藥品、健康食品、營養資料
+- LOINC 檢驗碼
+- FHIR R4 Condition/Medication 轉換
+- 台灣臨床診療指引
+- 32 個 MCP 工具

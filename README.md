@@ -1,214 +1,189 @@
-# Taiwan ICD10 Health MCP Server
+# Taiwan Health MCP Server
 
 > 🇹🇼 台灣醫療健康資料整合 MCP 伺服器
-> 整合 ICD-10、FDA 藥品、保健食品、營養資料、LOINC 檢驗、臨床指引，支援 FHIR R4 標準
+> 整合 ICD-10-CM、SNOMED CT、RxNorm、LOINC、FDA 藥品/保健食品/營養、TWCore IG、臨床指引，支援 FHIR R4 標準
 
 [![FHIR](https://img.shields.io/badge/FHIR-R4-blue)](http://hl7.org/fhir/R4/)
-[![Python](https://img.shields.io/badge/Python-3.8+-green)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/Python-3.12-green)](https://www.python.org/)
 [![MCP](https://img.shields.io/badge/MCP-1.0-orange)](https://modelcontextprotocol.io)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
-[![Docs](https://img.shields.io/badge/Docs-GitHub%20Pages-informational)](https://healthymind-tech.github.io/Taiwan-Health-MCP)
 
 ---
 
 ## ✨ 專案特色
 
-- 🇹🇼 **台灣在地化** - 專為台灣醫療環境設計，支援繁體中文
-- 🔗 **標準化整合** - 符合國際 FHIR R4、LOINC、ICD-10、ATC 標準
-- 📊 **官方資料** - 整合台灣 FDA、衛福部官方開放資料
-- 🤖 **AI 整合** - 透過 MCP 協議與 Claude 無縫對接
-- 🔄 **持續更新** - 資料可自動同步最新資訊
+- 🇹🇼 **台灣在地化** — 整合台灣 FDA、衛福部官方開放資料，支援繁體中文
+- 🔗 **國際標準** — 符合 FHIR R4、ICD-10-CM 2025、LOINC 2.80、SNOMED CT、RxNorm、ATC
+- 🏥 **46 個 MCP 工具** — 涵蓋診斷、藥品、檢驗、指引、術語、藥物交互作用
+- 🏗️ **生產就緒** — PostgreSQL 16 + pgBouncer + Redis + Prometheus，支援每秒數百請求
+- 🔄 **自動同步** — FDA 藥品/保健食品/營養資料每週自動更新
 
 ---
 
 ## 🚀 快速開始
 
-### 安裝
+### 前置需求
+
+- Docker + Docker Compose
+- 至少 4 GB 可用記憶體
+
+### 1. 準備環境
 
 ```bash
-# 1. Clone 專案
-git clone https://github.com/audi0417/Taiwan-Health-MCP.git
+git clone https://github.com/healthymind-tech/Taiwan-Health-MCP.git
 cd Taiwan-Health-MCP
-
-# 2. 安裝相依套件
-pip install -r requirements.txt
-
-# 3. 準備資料（下載 ICD-10 Excel 檔案到 data/ 目錄）
-
-# 4. 啟動服務
-python src/server.py
+cp .env.example .env
+# 編輯 .env，至少設定 POSTGRES_PASSWORD
 ```
 
-### Docker 啟動（推薦）
+### 2. 啟動服務
 
 ```bash
-docker-compose up -d
+docker compose up -d
 ```
 
-> 預設 Docker 部署使用 `MCP_TRANSPORT=streamable-http`（端點：`/mcp`）。
-> 若設為 `http`，系統會視為無效值並回退到 `stdio`。
+這會啟動四個容器：`postgres`、`pgbouncer`、`redis`、`app`（MCP server）。
 
-### 📖 完整文檔
+### 3. 載入術語資料
 
-- **[GitHub Pages 文檔網站](https://healthymind-tech.github.io/Taiwan-Health-MCP/)** - 完整的架構、API、使用指南
-- **[本地 MkDocs](docs/)** - 離線開發文檔
+術語資料（ICD、LOINC、SNOMED CT 等）需手動下載並放置後執行 loader：
 
----
+```bash
+# 全部載入（建議首次部署）
+docker compose --profile loader run --rm data-loader --all
 
-## 📋 核心功能
+# 或依需求單項載入
+docker compose --profile loader run --rm data-loader --icd        # ICD-10-CM 2025
+docker compose --profile loader run --rm data-loader --loinc      # LOINC 2.80
+docker compose --profile loader run --rm data-loader --twcore     # TWCore IG
+docker compose --profile loader run --rm data-loader --guideline  # 臨床指引
+docker compose --profile loader run --rm data-loader --snomed     # SNOMED CT（5-15 分鐘）
+docker compose --profile loader run --rm data-loader --rxnorm     # RxNorm
+```
 
-### 1. ICD-10 診斷與手術碼查詢
-- 診斷碼（ICD-10-CM）與手術碼（ICD-10-PCS）搜尋
-- 診斷併發症推論
-- 診斷與手術碼衝突檢查
-- 轉換為 **FHIR Condition** 資源
+> FDA 藥品/保健食品/營養資料會在伺服器首次啟動時自動從 FDA Open Data API 下載，無需手動載入。
 
-### 2. 台灣 FDA 藥品資料整合
-整合 5 個官方資料集：
-- 藥品許可證（名稱、適應症、製造商）
-- 藥品外觀識別（形狀、顏色、刻痕、圖片）
-- 藥品成分（有效成分、含量）
-- ATC 藥物分類（WHO 標準）
-- 藥品仿單/說明書
-- 轉換為 **FHIR Medication/MedicationKnowledge** 資源
+### 4. 確認服務正常
 
-### 3. 健康食品管理
-- 台灣 FDA 核可健康食品查詢
-- 健康聲稱（Health Claims）查詢
-- 疾病與保健食品關聯分析
+```bash
+# 查看服務狀態
+docker compose ps
 
-### 4. 營養與食品管理
-- 食品營養成分查詢
-- 膳食營養分析
-- 食品原料/添加物查詢
+# 健康檢查（需先建立 MCP session）
+curl http://localhost:8000/mcp -X POST \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}'
+```
 
-### 5. LOINC 檢驗碼整合
-- LOINC 碼對照（台灣常用 30+ 項，可擴展至 87,000+ 項）
-- 檢驗參考值查詢（依年齡、性別）
-- 檢驗結果自動判讀
-- 批次判讀多項檢驗
+### 5. 連接 Claude Desktop
 
-### 6. 臨床診療指引
-- 台灣醫學會臨床指引查詢
-- 診斷建議、用藥建議、檢查建議
-- 治療目標與臨床路徑規劃
+在 `claude_desktop_config.json` 加入：
 
-### 7. FHIR R4 標準轉換
-- **FHIR Condition** - ICD-10 診斷資源
-- **FHIR Medication** - 藥品資源
-- **FHIR MedicationKnowledge** - 藥品知識庫
-- 符合國際醫療資訊交換標準
-
-> ⚠️ **FHIR 實現局限**
->
-> - **FHIR Condition**: 核心結構完整，但驗證不涵蓋所有 R4 約束規則（僅檢查必要欄位）
-> - **FHIR Medication**: 支援基本結構，成分含量單位硬編碼為 "mg"，未支援複雜單位轉換
-> - **驗證功能**: 基礎驗證（必要欄位、資源類型），不涵蓋高級驗證和術語綁定完整檢查
-> - **生產環境**: 若用於生產醫療系統，建議集成 [HL7 FHIR Validator](https://www.hl7.org/fhir/validation.html) 進行完整驗證
-> - **應用場景**: 適合演示、MCP 集成、研究用途；生產醫療系統需額外驗證層
-
-> ⚠️ **健康食品與飲食建議注意事項**
-> 本服務的健康食品分析和飲食建議功能（含 `疾病與保健食品關聯分析` 和 `飲食營養建議`）**仍在開發測試階段**，具體說明如下：
->
-> - **數據來源**: 疾病代碼與保健功效的對應關係、飲食建議內容目前為**開發者整理**，未經過專業醫學/營養師正式審核
-> - **專業驗證必需**: 任何使用此功能產出的建議，在應用於實際醫療或健康指導前，**必須經過持證營養師、醫師或相關醫療專業人士的審核和簽名**
-> - **法規遵循**: 健康食品依據《健康食品管理法》受台灣衛福部管制，本服務提供的推薦內容不構成醫療診斷、治療或處方
-> - **開發階段**: 疾病-保健功效對應表（見 `src/health_food_service.py` 第 29-79 行）需驗證是否符合台灣 FDA 核可的功效清單；飲食建議內容（見 `src/health_food_service.py` 第 414-438 行）需經營養專家確認細節準確性
-> - **適用場景**: 當前適合開發者測試、演示和教育用途；**不適合用於生產醫療系統或直接面向患者**
-> - **貢獻方式**: 歡迎提交 Issue 或 Pull Request，幫助補充或驗證醫療專業知識，詳見 [CONTRIBUTING.md](CONTRIBUTING.md)
+```json
+{
+  "mcpServers": {
+    "taiwan-health": {
+      "url": "http://localhost:8000/mcp",
+      "transport": "streamable-http"
+    }
+  }
+}
+```
 
 ---
 
-## 🛠️ MCP 工具清單
+## 🏗️ 基礎架構
 
-本服務提供 **32 個 MCP 工具**：
+| 元件 | 版本 | 用途 |
+|------|------|------|
+| PostgreSQL | 16-alpine | 主要資料庫（所有術語資料） |
+| pgBouncer | edoburu/latest | 連線池（transaction mode，500 client → 30 PG 連線） |
+| Redis | 7-alpine | 回應快取（TTL 策略，`@cached` 裝飾器） |
+| Prometheus | — | 指標監控（預設 port 9090） |
+| FastMCP | 1.x | MCP server 框架 |
+| asyncpg | — | 高效能 PostgreSQL 非同步驅動 |
 
-| 類別 | 數量 | 功能 |
-| --- | --- | --- |
-| ICD-10 | 4 | 診斷/手術碼搜尋、推論、衝突檢查 |
-| 藥品 | 3 | FDA 藥品查詢、外觀識別 |
-| 健康食品 | 2 | 健康食品查詢、保健分析 |
-| 營養 | 5 | 營養成分、膳食分析 |
-| FHIR 互操作性 | 3 | Condition 資源轉換、驗證 |
-| 檢驗 (LOINC) | 5 | 檢驗碼、參考值、結果判讀 |
-| 臨床指引 | 5 | 指引查詢、診療路徑 |
-| FHIR 藥品 | 4 | Medication 資源轉換 |
-| 綜合分析 | 1 | 疾病與保健整合分析 |
+### PostgreSQL Schema
 
----
-
-## 📊 資料來源
-
-### 台灣官方資料
-- 衛福部 ICD-10 中文化資料
-- FDA 藥品資料（5 個 API）
-- FDA 健康食品資料
-
-### 國際標準
-- **FHIR R4** - HL7 International
-- **LOINC** - Regenstrief Institute
-- **ICD-10** - WHO
-- **ATC** - WHO
+`audit` | `icd` | `drug` | `health_food` | `food_nutrition` | `loinc` | `guideline` | `twcore` | `snomed` | `rxnorm`
 
 ---
 
-## 📦 版本
+## 📋 核心功能（46 個 MCP 工具）
 
-**v1.1.0** - 完整的台灣醫療健康資料整合 MCP 伺服器
+| 群組 | 工具數 | 功能 |
+|------|--------|------|
+| ICD-10 | 4 | ICD-10-CM 診斷碼搜尋、併發症推論、衝突檢查 |
+| 藥品 (FDA) | 3 | 藥品查詢、詳細資訊、外觀識別 |
+| 健康食品 (FDA) | 2 | 健康食品查詢、保健分析 |
+| 營養 (FDA) | 4 | 營養成分、膳食分析、食品原料 |
+| 健康食品+ICD 整合 | 1 | 疾病-保健食品對應分析 |
+| FHIR Condition | 3 | ICD-10 → FHIR R4 Condition 轉換、驗證 |
+| FHIR Medication | 4 | 藥品 → FHIR R4 Medication/MedicationKnowledge |
+| 檢驗 (LOINC) | 5 | LOINC 碼查詢、參考值、結果判讀、批次判讀 |
+| 臨床指引 | 5 | 指引查詢、用藥/檢查建議、治療目標、臨床路徑 |
+| TWCore IG | 3 | 台灣核心 CodeSystem 查詢（30+ 健保碼系統） |
+| SNOMED CT | 6 | 概念搜尋、階層查詢、ICD-10 雙向對應 |
+| RxNorm | 3 | 藥物交互作用檢查、藥品名稱解析、成分查詢 |
 
-詳見 Git 提交歷史或 [src/README.md](src/README.md) 了解功能詳情。
+---
+
+## 📦 資料集
+
+| 資料集 | 版本 | 授權 | 說明 |
+|--------|------|------|------|
+| ICD-10-CM | 2025 (NLM) | 公開 | 診斷碼 |
+| ICD-10-PCS | 2025 (CMS) | 公開 | 手術/處置碼（78,948 筆，`--icd` 同時載入） |
+| LOINC | 2.80 | LOINC License（免費） | 87,000+ 檢驗碼 |
+| SNOMED CT International | 20250601 | SNOMED License（免費） | 370,000+ 臨床概念、IS-A 階層 |
+| RxNorm | 2024-06-03 | 公開 (NLM) | 藥品命名、藥物交互作用 |
+| TWCore IG | v1.0.0 | 公開 (MOHW) | 30+ 台灣健保 CodeSystem |
+| Taiwan FDA 藥品 | 每週更新 | 公開 (FDA) | 66,000+ 藥品許可證 |
+| Taiwan FDA 健康食品 | 每週更新 | 公開 (FDA) | 核可健康食品 |
+| Taiwan FDA 營養 | 每週更新 | 公開 (FDA) | 食品營養成分資料庫 |
+| 臨床指引 | 自整理 | — | 台灣醫學會指引（種子資料） |
+
+---
+
+## ⚠️ 重要限制
+
+- **健康食品疾病對應** — 開發者整理，未經醫學驗證，不適合直接面向患者
+- **FHIR 驗證** — 僅檢查必要欄位；生產環境請使用 HL7 FHIR Validator
+- **ICD-10-PCS** — 已內建 2025 版（78,948 筆），`--icd` 自動同時載入 CM 和 PCS；`icd.procedures` 未載入時工具自動降級
+- **SNOMED CT** — 需有效的 SNOMED International 授權（多數用途免費）
+- **藥物交互作用** — RxNorm `interacts_with` 不含嚴重程度評級，須由臨床醫師確認
+- **pgBouncer transaction mode** — 不相容於 `LISTEN/NOTIFY` 和 named prepared statements（asyncpg 已設 `statement_cache_size=0`）
 
 ---
 
 ## 🤝 貢獻
 
-歡迎貢獻！詳見 [CONTRIBUTING.md](CONTRIBUTING.md) 了解詳細步驟和方向。
+歡迎貢獻！詳見 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
-<a href="https://github.com/healthymind-tech/Taiwan-Health-MCP/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=healthymind-tech/Taiwan-Health-MCP" />
-</a>
+主要需求：
+- 補充/驗證臨床指引種子資料
+- 新增 LOINC 中文對照
+- 補充健康食品疾病對應（需醫學審核）
+- 補充/驗證臨床指引種子資料
 
-Made with [contrib.rocks](https://contrib.rocks).
+---
 
---- 
+## 📞 聯絡
 
-## 📞 聯絡資訊
-
-- **GitHub Issues**: [回報問題](https://github.com/audi0417/Taiwan-Health-MCP/issues)
+- **GitHub Issues**: [回報問題](https://github.com/healthymind-tech/Taiwan-Health-MCP/issues)
 - **Email**: [support@healthymind-tech.com](mailto:support@healthymind-tech.com)
-- **文件**: 參閱 [src/README.md](src/README.md)
 
 ---
 
 ## 🙏 致謝
 
-感謝提供開放資料和標準的組織：
-- 台灣衛福部、TFDA（ICD、藥品、健康食品資料）
+- 台灣衛生福利部、TFDA（ICD、藥品、健康食品、營養資料）
 - Regenstrief Institute（LOINC）
+- SNOMED International（SNOMED CT）
+- National Library of Medicine（RxNorm、ICD-10-CM）
 - HL7 International（FHIR）
 - WHO（ICD、ATC）
-- Twinkle AI([官方網站](https://twinkleai.tw/)) 加入社群，一同參與開源正體中文語言模型的研究～也感謝社群串接本專案打造Twinkle Health Agent！
-<img width="1920" height="515" alt="twinkle-title-1920x" src="https://github.com/user-attachments/assets/aeca333b-70ce-4fdd-a15e-ca92d55bb65d" />
-
----
+- Twinkle AI — 感謝社群串接本專案打造 Twinkle Health Agent
 
 **⭐ 如果這個專案對您有幫助，請給我們一個 Star！**
-
-<picture>
-  <source
-    media="(prefers-color-scheme: dark)"
-    srcset="
-      https://api.star-history.com/svg?repos=healthymind-tech/Taiwan-Health-MCP&type=Date&theme=dark
-    "
-  />
-  <source
-    media="(prefers-color-scheme: light)"
-    srcset="
-      https://api.star-history.com/svg?repos=healthymind-tech/Taiwan-Health-MCP&type=Date
-    "
-  />
-  <img
-    alt="Star History Chart"
-    src="https://api.star-history.com/svg?repos=healthymind-tech/Taiwan-Health-MCP&type=Date"
-  />
-</picture>

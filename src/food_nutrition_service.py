@@ -1,435 +1,291 @@
-from datetime import datetime, timedelta
-import io
+"""
+Food Nutrition Service — Taiwan FDA food composition database.
+Syncs from FDA Open Data every Monday via APScheduler.
+
+Sync strategy: fetch both endpoints first, then write in one transaction.
+"""
+
+import asyncio
 import json
-import os
-import sqlite3
-import threading
-import zipfile
+from datetime import datetime, timedelta, timezone
 
-from apscheduler.schedulers.background import BackgroundScheduler
-import requests
+import asyncpg
+import httpx
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
+from cache import cached
 from utils import log_error, log_info
+
+API_SOURCES = {
+    "nutrition":   "https://data.fda.gov.tw/data/opendata/export/20/json",
+    "ingredients": "https://data.fda.gov.tw/data/opendata/export/4/json",
+}
+
+STALE_AFTER_DAYS = 7
 
 
 class FoodNutritionService:
-    """
-    食品營養與原料管理服務
-    負責管理一般食品的營養成分資料和合法食品原料資訊
-    """
+    def __init__(self, pool: asyncpg.Pool):
+        self.pool = pool
+        self._scheduler = AsyncIOScheduler()
+        self._sync_lock = asyncio.Lock()
 
-    def __init__(self, data_dir: str):
-        self.data_dir = data_dir
-        self.db_path = os.path.join(data_dir, "food_nutrition.db")
-        self.meta_path = os.path.join(data_dir, "food_nutrition_meta.json")
-
-        # Define API Sources for Food Nutrition Data
-        # 20: Food Nutrition Dataset (食品營養成分資料集)
-        # 4: Food Ingredients Platform Dataset (食品原料整合查詢平臺資料集)
-        self.API_SOURCES = {
-            "nutrition": "https://data.fda.gov.tw/data/opendata/export/20/json",
-            "ingredients": "https://data.fda.gov.tw/data/opendata/export/4/json",
-        }
-
-        # Initialize the scheduler
-        self.scheduler = BackgroundScheduler()
-        # Schedule the update to run every Monday at 00:00
-        self.scheduler.add_job(
-            self._update_all_data, "cron", day_of_week="mon", hour=0, minute=0
-        )
-        self.scheduler.start()
-
-        # Check if we need to run an initial update on startup
-        self._check_startup_update()
-
-    def _get_last_monday(self):
-        """Calculates the date of the most recent Monday."""
-        now = datetime.now()
-        today_weekday = now.weekday()
-        days_diff = today_weekday % 7
-        if days_diff == 0 and now.hour == 0 and now.minute == 0:
-            return now
-        last_monday = now - timedelta(days=days_diff)
-        return last_monday.replace(hour=0, minute=0, second=0, microsecond=0)
-
-    def _check_startup_update(self):
-        """Checks on startup if the database is missing or outdated."""
-        should_update = False
-        if not os.path.exists(self.db_path):
-            log_info("Food Nutrition DB not found. Initializing full download...")
-            should_update = True
-        elif os.path.getsize(self.db_path) == 0:
-            log_info("Food Nutrition DB is empty. Removing and re-initializing...")
-            os.remove(self.db_path)
-            should_update = True
+    async def initialize(self) -> None:
+        count = await self.pool.fetchval("SELECT COUNT(*) FROM food_nutrition.measurements")
+        if count == 0:
+            log_info("Food nutrition DB empty — starting initial sync")
+            asyncio.create_task(self._sync())
         else:
-            try:
-                if os.path.exists(self.meta_path):
-                    with open(self.meta_path, "r") as f:
-                        meta = json.load(f)
-                        last_updated = datetime.fromisoformat(meta.get("last_updated"))
-                        if last_updated < self._get_last_monday():
-                            log_info(
-                                "Food Nutrition DB is outdated. Scheduling update..."
-                            )
-                            should_update = True
-                else:
-                    should_update = True
-            except Exception as e:
-                log_error(f"Error checking food nutrition DB update status: {e}")
-                should_update = True
-
-        if should_update:
-            # Run in a separate thread to avoid blocking server startup
-            t = threading.Thread(target=self._update_all_data)
-            t.start()
-
-    def _download_and_insert(self, url, table_name, conn, columns_map):
-        """
-        Generic helper to download JSON (or ZIP containing JSON) and insert into SQLite.
-        """
-        log_info(f"Downloading {table_name} data from {url}...")
-        try:
-            response = requests.get(url, stream=True, timeout=60)
-            if response.status_code != 200:
-                log_error(
-                    f"Failed to download {table_name}: HTTP {response.status_code}"
-                )
-                return
-
-            # Check if response is a ZIP file
-            content_type = response.headers.get("Content-Type", "")
-            if "zip" in content_type or url.endswith(".zip"):
-                log_info(f"Detected ZIP file for {table_name}, extracting...")
-                zip_file = zipfile.ZipFile(io.BytesIO(response.content))
-                json_files = [f for f in zip_file.namelist() if f.endswith(".json")]
-                if not json_files:
-                    log_error(f"No JSON file found in ZIP for {table_name}")
-                    return
-                with zip_file.open(json_files[0]) as json_file:
-                    data = json.load(json_file)
+            last = await self._get_last_synced()
+            if last is None or (datetime.now(tz=timezone.utc) - last).days >= STALE_AFTER_DAYS:
+                log_info("Food nutrition DB stale — syncing")
+                asyncio.create_task(self._sync())
             else:
-                data = response.json()
+                log_info("Food Nutrition Service ready", measurements=count)
 
-            cursor = conn.cursor()
+        if not self._scheduler.running:
+            self._scheduler.add_job(self._sync, "cron", day_of_week="mon", hour=3, minute=0)
+            self._scheduler.start()
 
-            # Create Table
-            cols = list(columns_map.keys())
-            col_defs = [f"{c} TEXT" for c in cols]
-            cursor.execute(f"DROP TABLE IF EXISTS {table_name}")
-            cursor.execute(f"CREATE TABLE {table_name} ({', '.join(col_defs)})")
+    async def shutdown(self) -> None:
+        self._scheduler.shutdown(wait=False)
 
-            # Prepare Insert Statement
-            placeholders = ", ".join(["?" for _ in cols])
-            insert_sql = (
-                f"INSERT INTO {table_name} ({', '.join(cols)}) VALUES ({placeholders})"
-            )
+    async def _get_last_synced(self) -> datetime | None:
+        row = await self.pool.fetchrow(
+            "SELECT value FROM food_nutrition.sync_meta WHERE key = 'last_updated'"
+        )
+        if row:
+            try:
+                return datetime.fromisoformat(row["value"])
+            except ValueError:
+                pass
+        return None
 
-            # Process Data
-            rows_to_insert = []
-            for item in data:
-                row = [
-                    (
-                        str(item.get(json_key, ""))
-                        if item.get(json_key) is not None
-                        else ""
-                    )
-                    for db_col, json_key in columns_map.items()
-                ]
-                rows_to_insert.append(tuple(row))
+    async def _fetch_json(self, client: httpx.AsyncClient, url: str) -> list:
+        resp = await client.get(url)
+        resp.raise_for_status()
+        ct = resp.headers.get("content-type", "")
+        if "zip" in ct:
+            import io, zipfile
+            zf = zipfile.ZipFile(io.BytesIO(resp.content))
+            names = [n for n in zf.namelist() if n.endswith(".json")]
+            return json.loads(zf.read(names[0])) if names else []
+        return resp.json()
 
-            # Bulk Insert
-            cursor.executemany(insert_sql, rows_to_insert)
-            conn.commit()
-
-            log_info(f"Updated {table_name}: {len(rows_to_insert)} rows.")
-
-        except Exception as e:
-            log_error(f"Failed to update {table_name}: {e}")
-
-    def _update_all_data(self):
-        """Main ETL process to update food nutrition datasets."""
-        log_info("Starting Food Nutrition Database Update...")
-        conn = sqlite3.connect(self.db_path)
-
-        try:
-            # 1. Food Nutrition Dataset (ID 20)
-            self._download_and_insert(
-                self.API_SOURCES["nutrition"],
-                "nutrition",
-                conn,
-                {
-                    "food_category": "食品分類",
-                    "data_type": "資料類別",
-                    "integration_number": "整合編號",
-                    "sample_name": "樣品名稱",
-                    "common_name": "俗名",
-                    "english_name": "樣品英文名稱",
-                    "content_description": "內容物描述",
-                    "waste_rate": "廢棄率",
-                    "nutrient_category": "分析項分類",
-                    "nutrient_item": "分析項",
-                    "content_unit": "含量單位",
-                    "content_per_100g": "每100克含量",
-                    "sample_count": "樣本數",
-                    "std_deviation": "標準差",
-                    "content_per_unit": "每單位含量",
-                    "unit_weight": "每單位重",
-                    "unit_weight_content": "每單位重含量",
-                },
-            )
-
-            # 2. Food Ingredients Platform Dataset (ID 4)
-            self._download_and_insert(
-                self.API_SOURCES["ingredients"],
-                "food_ingredients",
-                conn,
-                {
-                    "regulation_note": "法條版面說明",
-                    "major_category": "大分類",
-                    "sub_category": "次分類",
-                    "name_zh": "中文名稱",
-                    "name_en": "英文名稱",
-                    "scientific_name": "英文學名",
-                    "part": "部位",
-                    "note": "備註",
-                },
-            )
-
-            # Create useful indexes
-            cursor = conn.cursor()
-            cursor.execute(
-                "CREATE INDEX IF NOT EXISTS idx_nutrition_name ON nutrition(sample_name)"
-            )
-            cursor.execute(
-                "CREATE INDEX IF NOT EXISTS idx_nutrition_category ON nutrition(food_category)"
-            )
-            cursor.execute(
-                "CREATE INDEX IF NOT EXISTS idx_ingredients_name ON food_ingredients(name_zh)"
-            )
-            cursor.execute(
-                "CREATE INDEX IF NOT EXISTS idx_ingredients_category ON food_ingredients(major_category)"
-            )
-            conn.commit()
-
-            # Update Metadata
-            with open(self.meta_path, "w") as f:
-                json.dump({"last_updated": datetime.now().isoformat()}, f)
-
-            log_info("Food nutrition datasets updated successfully.")
-
-        except Exception as e:
-            log_error(f"Food nutrition update failed: {e}")
-            conn.close()
-            if os.path.exists(self.db_path):
-                os.remove(self.db_path)
-                log_info(f"Removed incomplete database: {self.db_path}")
+    async def _sync(self) -> None:
+        if self._sync_lock.locked():
+            log_info("Food nutrition sync already in progress — skipping duplicate run")
             return
-        finally:
-            conn.close()
+        async with self._sync_lock:
+            await self._do_sync()
 
-    # --- Query Features for Food Nutrition ---
+    async def _do_sync(self) -> None:
+        log_info("Food nutrition sync started")
+        try:
+            # Step 1: fetch both endpoints
+            async with httpx.AsyncClient(timeout=60) as client:
+                nutrition_data   = await self._fetch_json(client, API_SOURCES["nutrition"])
+                ingredients_data = await self._fetch_json(client, API_SOURCES["ingredients"])
 
-    def search_nutrition(self, food_name: str, nutrient: str = None):
-        """
-        Search for nutritional information of foods.
-        """
-        if not os.path.exists(self.db_path):
-            return "資料庫初始化中，請稍候..."
+            measurement_rows = [
+                (r.get("食品分類",""), r.get("樣品名稱",""), r.get("俗名",""),
+                 r.get("樣品英文名稱",""), r.get("分析項",""),
+                 str(r.get("每100克含量","")), r.get("含量單位",""),
+                 r.get("分析項分類",""))
+                for r in nutrition_data
+            ]
+            ingredient_rows = [
+                (r.get("中文名稱",""), r.get("英文名稱",""), r.get("大分類",""),
+                 r.get("次分類",""), r.get("備註",""))
+                for r in ingredients_data
+            ]
 
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
+            # Step 2: write atomically
+            BATCH = 5000
+            async with self.pool.acquire() as conn:
+                async with conn.transaction():
+                    await conn.execute("TRUNCATE food_nutrition.ingredients, food_nutrition.measurements")
 
-        query = f"%{food_name}%"
+                    for i in range(0, len(measurement_rows), BATCH):
+                        await conn.executemany(
+                            """INSERT INTO food_nutrition.measurements
+                               (food_category, sample_name, common_name, english_name,
+                                nutrient_item, content_per_100g, content_unit, nutrient_category)
+                               VALUES ($1,$2,$3,$4,$5,$6,$7,$8)""",
+                            measurement_rows[i:i+BATCH],
+                        )
 
-        if nutrient:
-            nutrient_query = f"%{nutrient}%"
-            sql = """
-                SELECT sample_name, common_name, nutrient_item, content_per_100g, content_unit, food_category
-                FROM nutrition
-                WHERE (sample_name LIKE ? OR common_name LIKE ? OR english_name LIKE ?)
-                AND nutrient_item LIKE ?
-                LIMIT 20
-            """
-            cursor.execute(sql, (query, query, query, nutrient_query))
-        else:
-            sql = """
-                SELECT sample_name, common_name, nutrient_item, content_per_100g, content_unit, food_category
-                FROM nutrition
-                WHERE sample_name LIKE ? OR common_name LIKE ? OR english_name LIKE ?
-                LIMIT 30
-            """
-            cursor.execute(sql, (query, query, query))
+                    for i in range(0, len(ingredient_rows), BATCH):
+                        await conn.executemany(
+                            """INSERT INTO food_nutrition.ingredients
+                               (name_zh, name_en, major_category, sub_category, note)
+                               VALUES ($1,$2,$3,$4,$5)""",
+                            ingredient_rows[i:i+BATCH],
+                        )
 
-        rows = cursor.fetchall()
-        conn.close()
+                    await conn.execute(
+                        """INSERT INTO food_nutrition.sync_meta (key, value, updated_at)
+                           VALUES ('last_updated', $1, NOW())
+                           ON CONFLICT (key) DO UPDATE SET value=$1, updated_at=NOW()""",
+                        datetime.now(tz=timezone.utc).isoformat(),
+                    )
+            log_info("Food nutrition sync completed",
+                     measurements=len(measurement_rows), ingredients=len(ingredient_rows))
+        except Exception as e:
+            log_error("Food nutrition sync failed", error=str(e))
 
-        if not rows:
-            return f"找不到 '{food_name}' 的營養資料。"
+    # ── query methods ────────────────────────────────────────────────────────
 
-        # Group by food name
-        foods_data = {}
-        for r in rows:
-            food_key = f"{r[0]} ({r[1]})" if r[1] else r[0]
-            if food_key not in foods_data:
-                foods_data[food_key] = {"category": r[5], "nutrients": []}
-            foods_data[food_key]["nutrients"].append(f"  {r[2]}: {r[3]} {r[4]}")
-
-        results = []
-        for food_name, data in foods_data.items():
-            nutrients_str = "\n".join(data["nutrients"][:10])
-            results.append(
-                f"【{food_name}】\n" f"分類: {data['category']}\n" f"{nutrients_str}"
-            )
-
-        return "\n\n".join(results[:5])
-
-    def get_detailed_nutrition(self, food_name: str):
-        """
-        Get comprehensive nutritional breakdown for a specific food.
-        """
-        if not os.path.exists(self.db_path):
-            return "資料庫初始化中，請稍候..."
-
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        query = f"%{food_name}%"
-        sql = """
-            SELECT DISTINCT sample_name, common_name, english_name, food_category,
-                   content_description, waste_rate, integration_number
-            FROM nutrition
-            WHERE sample_name LIKE ? OR common_name LIKE ?
-            LIMIT 1
-        """
-        cursor.execute(sql, (query, query))
-        food_info = cursor.fetchone()
-
-        if not food_info:
-            conn.close()
-            return f"找不到 '{food_name}' 的詳細資料。"
-
-        # Get all nutrients for this food
-        sql_nutrients = """
-            SELECT nutrient_category, nutrient_item, content_per_100g, content_unit,
-                   sample_count, std_deviation
-            FROM nutrition
-            WHERE sample_name = ?
-            ORDER BY nutrient_category, nutrient_item
-        """
-        cursor.execute(sql_nutrients, (food_info[0],))
-        nutrients = cursor.fetchall()
-        conn.close()
-
-        # Group nutrients by category
-        nutrient_groups = {}
-        for n in nutrients:
-            category = n[0]
-            if category not in nutrient_groups:
-                nutrient_groups[category] = []
-            nutrient_groups[category].append(f"  {n[1]}: {n[2]} {n[3]}")
-
-        nutrients_output = []
-        for cat, items in nutrient_groups.items():
-            nutrients_output.append(f"\n【{cat}】")
-            nutrients_output.extend(items)
-
-        output = f"""
-=== 食品營養成分詳情 ===
-樣品名稱: {food_info[0]}
-俗名: {food_info[1] if food_info[1] else '無'}
-英文名稱: {food_info[2] if food_info[2] else '無'}
-食品分類: {food_info[3]}
-內容物描述: {food_info[4] if food_info[4] else '無'}
-廢棄率: {food_info[5]}%
-
-【營養成分 (每100克)】
-{''.join(nutrients_output)}
-"""
-        return output
-
-    # --- Query Features for Food Ingredients ---
-
-    def search_food_ingredient(self, keyword: str):
-        """
-        Search for food ingredients/materials in the regulatory database.
-        """
-        if not os.path.exists(self.db_path):
-            return "資料庫初始化中，請稍候..."
-
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        query = f"%{keyword}%"
-        sql = """
-            SELECT name_zh, name_en, scientific_name, major_category, sub_category, part, note
-            FROM food_ingredients
-            WHERE name_zh LIKE ? OR name_en LIKE ? OR scientific_name LIKE ?
-            LIMIT 15
-        """
-        cursor.execute(sql, (query, query, query))
-        rows = cursor.fetchall()
-        conn.close()
+    @cached(ttl=86400, prefix="fn.search")
+    async def search_nutrition(self, food_name: str, nutrient: str | None = None) -> str:
+        async with self.pool.acquire() as conn:
+            if nutrient:
+                rows = await conn.fetch(
+                    """SELECT sample_name, common_name, nutrient_item, content_per_100g, content_unit, food_category
+                       FROM food_nutrition.measurements
+                       WHERE to_tsvector('simple', COALESCE(sample_name,'') || ' ' || COALESCE(common_name,''))
+                             @@ plainto_tsquery('simple', $1)
+                         AND nutrient_item ILIKE $2
+                       LIMIT 20""",
+                    food_name, f"%{nutrient}%",
+                )
+            else:
+                rows = await conn.fetch(
+                    """SELECT sample_name, common_name, nutrient_item, content_per_100g, content_unit, food_category
+                       FROM food_nutrition.measurements
+                       WHERE to_tsvector('simple',
+                               COALESCE(sample_name,'') || ' ' || COALESCE(common_name,'') || ' ' || COALESCE(english_name,''))
+                             @@ plainto_tsquery('simple', $1)
+                       LIMIT 30""",
+                    food_name,
+                )
 
         if not rows:
-            return f"找不到 '{keyword}' 相關的食品原料資料。"
+            return json.dumps({"error": f"找不到 '{food_name}' 的營養資料。"}, ensure_ascii=False)
 
-        results = []
+        foods: dict[str, dict] = {}
         for r in rows:
-            results.append(
-                f"【{r[0]}】\n"
-                f"   英文名稱: {r[1] if r[1] else '無'}\n"
-                f"   學名: {r[2] if r[2] else '無'}\n"
-                f"   分類: {r[3]} > {r[4]}\n"
-                f"   使用部位: {r[5] if r[5] else '無'}\n"
-                f"   備註: {r[6][:100] if r[6] else '無'}"
+            key = f"{r['sample_name']} ({r['common_name']})" if r["common_name"] else r["sample_name"]
+            if key not in foods:
+                foods[key] = {"category": r["food_category"], "nutrients": []}
+            foods[key]["nutrients"].append(
+                {"item": r["nutrient_item"], "value": r["content_per_100g"], "unit": r["content_unit"]}
             )
 
-        return "\n\n".join(results)
+        return json.dumps([{"food": k, **v} for k, v in foods.items()], ensure_ascii=False)
 
-    def get_ingredients_by_category(self, category: str):
-        """
-        Get all approved ingredients in a specific category.
-        """
-        if not os.path.exists(self.db_path):
-            return "資料庫初始化中，請稍候..."
-
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        query = f"%{category}%"
-        sql = """
-            SELECT name_zh, name_en, sub_category, part, regulation_note
-            FROM food_ingredients
-            WHERE major_category LIKE ? OR sub_category LIKE ?
-            LIMIT 20
-        """
-        cursor.execute(sql, (query, query))
-        rows = cursor.fetchall()
-        conn.close()
-
+    @cached(ttl=86400, prefix="fn.detail")
+    async def get_detailed_nutrition(self, food_name: str) -> str:
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch(
+                """SELECT sample_name, common_name, food_category, nutrient_category,
+                          nutrient_item, content_per_100g, content_unit
+                   FROM food_nutrition.measurements
+                   WHERE sample_name ILIKE $1 OR common_name ILIKE $1
+                   ORDER BY nutrient_category, nutrient_item""",
+                f"%{food_name}%",
+            )
         if not rows:
-            return f"找不到 '{category}' 分類的食品原料。"
+            return json.dumps({"error": f"找不到 '{food_name}' 的詳細營養資料。"}, ensure_ascii=False)
+        return json.dumps([dict(r) for r in rows], ensure_ascii=False)
 
-        results = []
-        for r in rows:
-            results.append(
-                f"• {r[0]} ({r[1] if r[1] else ''})\n"
-                f"  次分類: {r[2]}, 部位: {r[3] if r[3] else '全部'}"
+    @cached(ttl=86400, prefix="fn.ing")
+    async def search_food_ingredient(self, keyword: str) -> str:
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch(
+                """SELECT name_zh, name_en, major_category, sub_category, note
+                   FROM food_nutrition.ingredients
+                   WHERE to_tsvector('simple', COALESCE(name_zh,'') || ' ' || COALESCE(name_en,''))
+                         @@ plainto_tsquery('simple', $1)
+                   LIMIT 20""",
+                keyword,
+            )
+        if not rows:
+            return json.dumps({"error": f"找不到與 '{keyword}' 相關的食品原料。"}, ensure_ascii=False)
+        return json.dumps([dict(r) for r in rows], ensure_ascii=False)
+
+    @cached(ttl=86400, prefix="fn.cat")
+    async def get_ingredients_by_category(self, category: str) -> str:
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch(
+                """SELECT name_zh, name_en, major_category, sub_category
+                   FROM food_nutrition.ingredients
+                   WHERE major_category ILIKE $1 OR sub_category ILIKE $1
+                   LIMIT 50""",
+                f"%{category}%",
+            )
+        if not rows:
+            return json.dumps({"error": f"找不到分類 '{category}' 的原料資料。"}, ensure_ascii=False)
+        return json.dumps([dict(r) for r in rows], ensure_ascii=False)
+
+    @cached(ttl=86400, prefix="fn.bynutrient")
+    async def search_foods_by_nutrient(self, nutrient: str, limit: int = 20) -> str:
+        """Find foods ranked by content of a specific nutrient (per 100g)."""
+        async with self.pool.acquire() as conn:
+            # Find matching nutrient items first
+            nutrient_items = await conn.fetch(
+                """SELECT DISTINCT nutrient_item FROM food_nutrition.measurements
+                   WHERE nutrient_item ILIKE $1 LIMIT 10""",
+                f"%{nutrient}%",
+            )
+            if not nutrient_items:
+                return json.dumps(
+                    {"error": f"找不到營養素 '{nutrient}'。請嘗試中文名稱，如：蛋白質、鈣、鐵、維生素C"},
+                    ensure_ascii=False,
+                )
+
+            matched_nutrient = nutrient_items[0]["nutrient_item"]
+            rows = await conn.fetch(
+                """SELECT sample_name, common_name, food_category, nutrient_item,
+                          content_per_100g, content_unit
+                   FROM food_nutrition.measurements
+                   WHERE nutrient_item = $1
+                     AND TRIM(content_per_100g) ~ '^[0-9]+[.]?[0-9]*$'
+                   ORDER BY CAST(TRIM(content_per_100g) AS FLOAT) DESC
+                   LIMIT $2""",
+                matched_nutrient, min(limit, 50),
             )
 
-        return f"=== {category} 分類食品原料 ===\n\n" + "\n".join(results)
+        return json.dumps(
+            {
+                "nutrient": matched_nutrient,
+                "unit": rows[0]["content_unit"] if rows else "",
+                "total": len(rows),
+                "note": "數值為每 100 克含量",
+                "foods": [
+                    {"name": r["sample_name"],
+                     "common_name": r["common_name"],
+                     "category": r["food_category"],
+                     "content_per_100g": r["content_per_100g"],
+                     "unit": r["content_unit"]}
+                    for r in rows
+                ],
+            },
+            ensure_ascii=False,
+        )
 
-    def analyze_diet_plan(self, foods: list):
-        """
-        Analyze nutritional composition of a meal/diet plan.
-        """
-        if not os.path.exists(self.db_path):
-            return "資料庫初始化中，請稍候..."
+    async def analyze_meal_nutrition(self, foods: list[str]) -> str:
+        totals: dict[str, float] = {}
+        details: dict[str, list] = {}
 
-        results = []
-        for food in foods:
-            nutrition_data = self.get_detailed_nutrition(food)
-            results.append(nutrition_data)
+        async with self.pool.acquire() as conn:
+            for food in foods:
+                rows = await conn.fetch(
+                    """SELECT nutrient_item, content_per_100g, content_unit
+                       FROM food_nutrition.measurements
+                       WHERE sample_name ILIKE $1 OR common_name ILIKE $1
+                       LIMIT 20""",
+                    f"%{food}%",
+                )
+                details[food] = [dict(r) for r in rows]
+                for r in rows:
+                    try:
+                        val = float(r["content_per_100g"])
+                        totals[r["nutrient_item"]] = totals.get(r["nutrient_item"], 0) + val
+                    except (ValueError, TypeError):
+                        pass
 
-        return "\n\n" + "=" * 50 + "\n\n".join(results)
+        return json.dumps(
+            {"meal_components": details, "combined_totals_per_100g_each": totals},
+            ensure_ascii=False,
+        )

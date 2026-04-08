@@ -9,17 +9,14 @@ venv/
 # 忽略生成的資料庫 (因為每次都可以由 Excel 重建)
 *.db
 
-# 忽略 metadata JSON (保留配置 JSON)
-data/*_meta.json
-
 # 忽略 LOINC 官方資料（檔案太大且有授權限制）
-data/loinc_official/Loinc.csv
-data/loinc_official/LOINC_*.zip
-data/loinc_official/*.txt
+fhir-code/loinc/Loinc.csv
+fhir-code/loinc/LOINC_*.zip
+fhir-code/loinc/*.txt
 
-# 保留 LOINC 設定檔
-!data/loinc_official/README.md
-!data/loinc_official/loinc_taiwan_mapping.csv
+# 保留 LOINC 台灣設定檔（輕量，納入版控）
+!fhir-code/loinc/taiwan_mapping.csv
+!fhir-code/loinc/lab_reference_ranges.csv
 
 # 忽略作業系統縮圖
 .DS_Store
@@ -31,3 +28,11 @@ site/
 
 # 忽略 MkDocs 快取
 .cache/
+
+# 忽略需授權申請的原始資料（不可再散佈，請至官方申請後自行下載）
+fhir-code/snomed/
+fhir-code/rxnorm/
+fhir-code/umls/
+fhir-code/snomed/SnomedCT_InternationalRF2_PRODUCTION_*.zip
+fhir-code/rxnorm/RxNorm_full_*.zip
+fhir-code/umls/umls-*-metathesaurus-full.zip

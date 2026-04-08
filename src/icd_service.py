@@ -1,209 +1,179 @@
+"""
+ICD-10-CM / ICD-10-PCS Service.
+Data is pre-loaded into PostgreSQL by the data-loader (see loader/).
+
+ICD-10-CM diagnoses are loaded from icd10cm-table-index-2025.zip.
+ICD-10-PCS procedures are loaded separately if icd10pcs_tables_<year>.zip
+is available — the icd.procedures table exists but may be empty.
+"""
+
 import json
-import os
-import sqlite3
 
-import pandas as pd
+import asyncpg
 
+from cache import cached
 from utils import log_error, log_info
 
 
 class ICDService:
-    def __init__(self, excel_path: str, data_dir: str):
-        self.excel_path = excel_path
-        self.db_path = os.path.join(data_dir, "icd10_smart.db")
+    def __init__(self, pool: asyncpg.Pool):
+        self.pool = pool
+        self._pcs_available = False
 
-        # Initialize the database immediately upon class instantiation
-        self._initialize_database()
+    async def initialize(self) -> None:
+        async with self.pool.acquire() as conn:
+            diag_count = await conn.fetchval("SELECT COUNT(*) FROM icd.diagnoses")
+            proc_count = await conn.fetchval("SELECT COUNT(*) FROM icd.procedures")
 
-    def _initialize_database(self):
+        self._pcs_available = proc_count > 0
+
+        if diag_count == 0:
+            log_error("ICD diagnoses table is empty — run data-loader (--icd) first")
+        else:
+            log_info("ICD Service ready", diagnoses=diag_count, procedures=proc_count)
+
+    @cached(ttl=86400, prefix="icd.search")
+    async def search_codes(self, keyword: str, type: str = "all") -> str:
+        query = """
+            SELECT code, name_zh, name_en
+            FROM {table}
+            WHERE to_tsvector('simple', code || ' ' || COALESCE(name_zh,'') || ' ' || COALESCE(name_en,''))
+                  @@ plainto_tsquery('simple', $1)
+               OR code ILIKE $2
+            ORDER BY code
+            LIMIT 10
         """
-        Checks if the SQLite database exists. If not, creates it by reading the raw Excel file.
-        Parses ICD-10-CM and ICD-10-PCS sheets and builds indices for hierarchical queries.
-        """
-        if os.path.exists(self.db_path):
-            if os.path.getsize(self.db_path) == 0:
-                log_info("ICD Database is empty. Removing and re-initializing...")
-                os.remove(self.db_path)
-            else:
-                log_info(f"ICD Database found at: {self.db_path}")
-                return
+        term = f"{keyword}%"
+        results: dict = {}
 
-        log_info(f"Initializing database from Excel: {self.excel_path}")
+        async with self.pool.acquire() as conn:
+            if type in ("diagnosis", "all"):
+                rows = await conn.fetch(query.format(table="icd.diagnoses"), keyword, term)
+                results["diagnoses"] = [dict(r) for r in rows]
 
-        if not os.path.exists(self.excel_path):
-            log_error(f"Excel file not found at: {self.excel_path}")
-            raise FileNotFoundError(f"Excel file not found at: {self.excel_path}")
+            if type in ("procedure", "all"):
+                if self._pcs_available:
+                    rows = await conn.fetch(query.format(table="icd.procedures"), keyword, term)
+                    results["procedures"] = [dict(r) for r in rows]
+                else:
+                    results["procedures"] = []
+                    results["procedures_note"] = (
+                        "ICD-10-PCS data not loaded. "
+                        "Add icd10pcs_tables_<year>.zip to fhir-code/icd10pcs/ and re-run data-loader."
+                    )
 
-        conn = sqlite3.connect(self.db_path)
-        try:
-            xls = pd.ExcelFile(self.excel_path)
-
-            # 1. Process ICD-10-CM (Diagnoses)
-            # Logic: Find sheet with 'CM' in name, excluding 'deleted' sheets
-            sheet_cm = next(
-                (s for s in xls.sheet_names if "CM" in s and "刪除" not in s), None
-            )
-            if sheet_cm:
-                log_info(f"Processing Diagnoses sheet: {sheet_cm}")
-                df = pd.read_excel(xls, sheet_name=sheet_cm)
-
-                # Select specific columns: Code, English Name, Chinese Name
-                # Assumes columns [0, 2, 3] based on your specific Excel structure
-                df = df.iloc[:, [0, 2, 3]]
-                df.columns = ["code", "name_en", "name_zh"]
-                df = df.dropna(subset=["code"])
-
-                # Feature Engineering: Create 'category' (first 3 chars) for hierarchical logic
-                df["category"] = df["code"].astype(str).str[:3]
-
-                df.to_sql("diagnoses", conn, index=False, if_exists="replace")
-
-            # 2. Process ICD-10-PCS (Procedures)
-            sheet_pcs = next(
-                (s for s in xls.sheet_names if "PCS" in s and "刪除" not in s), None
-            )
-            if sheet_pcs:
-                log_info(f"Processing Procedures sheet: {sheet_pcs}")
-                df = pd.read_excel(xls, sheet_name=sheet_pcs)
-                df = df.iloc[:, [0, 2, 3]]
-                df.columns = ["code", "name_en", "name_zh"]
-                df = df.dropna(subset=["code"])
-                df.to_sql("procedures", conn, index=False, if_exists="replace")
-
-            # Create indices for performance
-            indices = [
-                "CREATE INDEX IF NOT EXISTS idx_diag_code ON diagnoses(code)",
-                "CREATE INDEX IF NOT EXISTS idx_diag_cat ON diagnoses(category)",
-                "CREATE INDEX IF NOT EXISTS idx_diag_name_zh ON diagnoses(name_zh)",
-                "CREATE INDEX IF NOT EXISTS idx_proc_code ON procedures(code)",
-                "CREATE INDEX IF NOT EXISTS idx_proc_name_zh ON procedures(name_zh)",
-            ]
-            for sql in indices:
-                conn.execute(sql)
-
-            log_info("Database initialization complete.")
-
-        except Exception as e:
-            log_error(f"Database initialization failed: {e}")
-            conn.close()
-            if os.path.exists(self.db_path):
-                os.remove(self.db_path)
-                log_info(f"Removed incomplete database: {self.db_path}")
-            raise
-        finally:
-            conn.close()
-
-    def _query_db(self, sql: str, params: tuple = ()) -> list:
-        """Helper function to execute SQL queries and return results as a list of dicts."""
-        if not os.path.exists(self.db_path):
-            log_error(f"Database not found at: {self.db_path}")
-            return []
-
-        try:
-            conn = sqlite3.connect(self.db_path)
-            conn.row_factory = sqlite3.Row
-            cursor = conn.cursor()
-            cursor.execute(sql, params)
-            rows = [dict(row) for row in cursor.fetchall()]
-            conn.close()
-            log_info(f"Query executed successfully, returned {len(rows)} rows")
-            return rows
-        except Exception as e:
-            log_error(f"Database query failed: {e}")
-            log_error(f"SQL: {sql}, Params: {params}")
-            return []
-
-    # --- Core Functionalities (Ported from your original code) ---
-
-    def search_codes(self, keyword: str, type: str = "all") -> str:
-        """
-        Search for ICD-10 diagnosis or procedure codes.
-        """
-        term = f"%{keyword}%"
-        results = {}
-
-        if type in ["diagnosis", "all"]:
-            sql = "SELECT code, name_zh, name_en FROM diagnoses WHERE code LIKE ? OR name_zh LIKE ? OR name_en LIKE ? LIMIT 10"
-            results["diagnoses"] = self._query_db(sql, (term, term, term))
-
-        if type in ["procedure", "all"]:
-            sql = "SELECT code, name_zh, name_en FROM procedures WHERE code LIKE ? OR name_zh LIKE ? OR name_en LIKE ? LIMIT 10"
-            results["procedures"] = self._query_db(sql, (term, term, term))
-
-        if not results.get("diagnoses") and not results.get("procedures"):
-            return f"No results found for '{keyword}'."
+        if not results.get("diagnoses") and not results.get("procedures") and "procedures_note" not in results:
+            return json.dumps({"error": f"No results found for '{keyword}'."}, ensure_ascii=False)
 
         return json.dumps(results, ensure_ascii=False)
 
-    def infer_complications(self, code: str) -> str:
-        """
-        Infers potential complications by finding child codes.
-        """
-        # Strategy 1: Find codes starting with the input code (Parent -> Children relationship)
-        sql_children = "SELECT code, name_zh FROM diagnoses WHERE code LIKE ? AND code != ? ORDER BY code LIMIT 15"
-        children = self._query_db(sql_children, (f"{code}%", code))
+    @cached(ttl=86400, prefix="icd.complications")
+    async def infer_complications(self, code: str) -> str:
+        async with self.pool.acquire() as conn:
+            children = await conn.fetch(
+                "SELECT code, name_zh FROM icd.diagnoses WHERE code LIKE $1 AND code != $2 ORDER BY code LIMIT 15",
+                f"{code}%", code,
+            )
+            if children:
+                return json.dumps(
+                    {"base_code": code, "potential_complications_or_specifics": [dict(r) for r in children]},
+                    ensure_ascii=False,
+                )
 
-        # Strategy 2: If no children found, looks for siblings in the same category
-        if not children:
             category = code.split(".")[0] if "." in code else code[:3]
-            sql_siblings = "SELECT code, name_zh FROM diagnoses WHERE category = ? AND code != ? LIMIT 10"
-            children = self._query_db(sql_siblings, (category, code))
+            siblings = await conn.fetch(
+                "SELECT code, name_zh FROM icd.diagnoses WHERE category = $1 AND code != $2 LIMIT 10",
+                category, code,
+            )
             return json.dumps(
                 {
                     "message": f"Code {code} is specific. Showing related codes in category {category}:",
-                    "related_codes": children,
+                    "related_codes": [dict(r) for r in siblings],
                 },
                 ensure_ascii=False,
             )
 
+    @cached(ttl=86400, prefix="icd.nearby")
+    async def get_nearby_codes(self, code: str) -> str:
+        async with self.pool.acquire() as conn:
+            prev_rows = await conn.fetch(
+                "SELECT code, name_zh, 'prev' AS rel FROM icd.diagnoses WHERE code < $1 ORDER BY code DESC LIMIT 2",
+                code,
+            )
+            next_rows = await conn.fetch(
+                "SELECT code, name_zh, 'next' AS rel FROM icd.diagnoses WHERE code > $1 ORDER BY code ASC LIMIT 2",
+                code,
+            )
+        neighbors = [dict(r) for r in prev_rows] + [dict(r) for r in next_rows]
+        neighbors.sort(key=lambda r: r["code"])
+        return json.dumps({"target": code, "nearby_options": neighbors}, ensure_ascii=False)
+
+    @cached(ttl=86400, prefix="icd.category")
+    async def browse_category(self, category: str | None = None, limit: int = 50) -> str:
+        """List ICD-10-CM codes within a category, or list all distinct categories."""
+        async with self.pool.acquire() as conn:
+            if not category:
+                rows = await conn.fetch(
+                    """SELECT category,
+                              MIN(name_zh) FILTER (WHERE LENGTH(code)=3) AS category_name_zh,
+                              MIN(name_en) FILTER (WHERE LENGTH(code)=3) AS category_name_en,
+                              COUNT(*) AS code_count
+                       FROM icd.diagnoses
+                       GROUP BY category
+                       ORDER BY category"""
+                )
+                return json.dumps(
+                    {"total_categories": len(rows),
+                     "categories": [dict(r) for r in rows]},
+                    ensure_ascii=False,
+                )
+
+            rows = await conn.fetch(
+                """SELECT code, name_zh, name_en
+                   FROM icd.diagnoses
+                   WHERE category = $1
+                   ORDER BY code
+                   LIMIT $2""",
+                category.upper(), min(limit, 200),
+            )
+        if not rows:
+            return json.dumps(
+                {"error": f"找不到 category '{category}'。使用 category=null 可列出所有分類。"},
+                ensure_ascii=False,
+            )
         return json.dumps(
-            {"base_code": code, "potential_complications_or_specifics": children},
+            {"category": category.upper(), "total": len(rows),
+             "codes": [dict(r) for r in rows]},
             ensure_ascii=False,
         )
 
-    def get_nearby_codes(self, code: str) -> str:
-        """
-        Retrieves codes immediately preceding and following the target code.
-        """
-        sql = """
-        SELECT * FROM (
-            SELECT code, name_zh, 'prev' as rel FROM diagnoses WHERE code < ? ORDER BY code DESC LIMIT 2
-        ) UNION
-        SELECT * FROM (
-            SELECT code, name_zh, 'next' as rel FROM diagnoses WHERE code > ? ORDER BY code ASC LIMIT 2
-        )
-        ORDER BY code
-        """
-        neighbors = self._query_db(sql, (code, code))
-        return json.dumps(
-            {"target": code, "nearby_options": neighbors}, ensure_ascii=False
-        )
-
-    def get_conflict_info(self, diagnosis_code: str, procedure_code: str) -> str:
-        """
-        Retrieves definitions for a diagnosis and a procedure to help analyze conflicts.
-        """
+    @cached(ttl=86400, prefix="icd.conflict")
+    async def get_conflict_info(self, diagnosis_code: str, procedure_code: str) -> str:
         try:
-            diag = self._query_db(
-                "SELECT * FROM diagnoses WHERE code = ?", (diagnosis_code,)
-            )
-            proc = self._query_db(
-                "SELECT * FROM procedures WHERE code = ?", (procedure_code,)
-            )
+            async with self.pool.acquire() as conn:
+                diag = await conn.fetchrow(
+                    "SELECT * FROM icd.diagnoses WHERE code = $1", diagnosis_code
+                )
+                proc = None
+                proc_note = None
+                if self._pcs_available:
+                    proc = await conn.fetchrow(
+                        "SELECT * FROM icd.procedures WHERE code = $1", procedure_code
+                    )
+                else:
+                    proc_note = "ICD-10-PCS data not loaded — procedure lookup unavailable."
 
-            result = {
-                "diagnosis_info": diag[0] if diag else "Diagnosis not found",
-                "procedure_info": proc[0] if proc else "Procedure not found",
-                "instruction": "Analyze the above for potential contraindications or medical conflicts.",
-            }
-            return json.dumps(result, ensure_ascii=False)
-        except Exception as e:
-            log_error(f"Error in get_conflict_info: {e}")
             return json.dumps(
                 {
-                    "error": f"Failed to retrieve conflict information: {str(e)}",
-                    "diagnosis_code": diagnosis_code,
-                    "procedure_code": procedure_code,
+                    "diagnosis_info": dict(diag) if diag else f"Diagnosis {diagnosis_code} not found",
+                    "procedure_info": dict(proc) if proc else (proc_note or f"Procedure {procedure_code} not found"),
+                    "instruction": "Analyze the above for potential contraindications or medical conflicts.",
                 },
+                ensure_ascii=False,
+            )
+        except Exception as e:
+            log_error("get_conflict_info error", error=str(e))
+            return json.dumps(
+                {"error": str(e), "diagnosis_code": diagnosis_code, "procedure_code": procedure_code},
                 ensure_ascii=False,
             )

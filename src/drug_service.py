@@ -1,507 +1,392 @@
-from datetime import datetime, timedelta
-import io
+"""
+Drug Service — Taiwan FDA medication database.
+Data is synced from FDA Open Data API and stored in PostgreSQL.
+Sync runs on startup (if stale) and every Tuesday via APScheduler.
+
+Sync strategy: fetch ALL endpoints first, then write everything in one
+transaction so a failed network call never leaves the DB in a partial state.
+"""
+
+import asyncio
 import json
-import os
-import sqlite3
-import threading
-import zipfile
+import re
+from datetime import datetime, timedelta, timezone
 
-from apscheduler.schedulers.background import BackgroundScheduler
-import requests
+import asyncpg
+import httpx
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
+from cache import cached
 from utils import log_error, log_info
+
+API_SOURCES = {
+    "master":      "https://data.fda.gov.tw/data/opendata/export/36/json",
+    "appearance":  "https://data.fda.gov.tw/data/opendata/export/42/json",
+    "ingredients": "https://data.fda.gov.tw/data/opendata/export/43/json",
+    "atc":         "https://data.fda.gov.tw/data/opendata/export/41/json",
+    "documents":   "https://data.fda.gov.tw/data/opendata/export/39/json",
+}
+
+STALE_AFTER_DAYS = 7
 
 
 class DrugService:
-    def __init__(self, data_dir: str):
-        self.data_dir = data_dir
-        self.db_path = os.path.join(data_dir, "drugs.db")
-        self.meta_path = os.path.join(data_dir, "drug_meta.json")
+    def __init__(self, pool: asyncpg.Pool):
+        self.pool = pool
+        self._scheduler = AsyncIOScheduler()
+        self._sync_lock = asyncio.Lock()
 
-        # Define API Sources based on TFDA Open Data IDs
-        # 36: Master License Data (Core) - Contains Name, Indication, Usage
-        # 42: Appearance (Shape, Color)
-        # 43: Ingredients (Composition)
-        # 41: ATC Codes (Classification)
-        # 39: Documents (Package Inserts/Box Images)
-        self.API_SOURCES = {
-            "master": "https://data.fda.gov.tw/data/opendata/export/36/json",
-            "appearance": "https://data.fda.gov.tw/data/opendata/export/42/json",
-            "ingredients": "https://data.fda.gov.tw/data/opendata/export/43/json",
-            "atc": "https://data.fda.gov.tw/data/opendata/export/41/json",
-            "documents": "https://data.fda.gov.tw/data/opendata/export/39/json",
-        }
-
-        # Initialize the scheduler
-        self.scheduler = BackgroundScheduler()
-        # Schedule the update to run every Tuesday at 00:00
-        self.scheduler.add_job(
-            self._update_all_data, "cron", day_of_week="tue", hour=0, minute=0
-        )
-        self.scheduler.start()
-
-        # Check if we need to run an initial update on startup
-        self._check_startup_update()
-
-    def _get_last_tuesday(self):
-        """Calculates the date of the most recent Tuesday."""
-        now = datetime.now()
-        today_weekday = now.weekday()
-        days_diff = (today_weekday - 1) % 7
-        if days_diff == 0 and now.hour == 0 and now.minute == 0:
-            return now
-        last_tuesday = now - timedelta(days=days_diff)
-        return last_tuesday.replace(hour=0, minute=0, second=0, microsecond=0)
-
-    def _check_startup_update(self):
-        """Checks on startup if the database is missing or outdated."""
-        should_update = False
-        if not os.path.exists(self.db_path):
-            log_info("Drug DB not found. Initializing full download...")
-            should_update = True
-        elif os.path.getsize(self.db_path) == 0:
-            log_info("Drug DB is empty. Removing and re-initializing...")
-            os.remove(self.db_path)
-            should_update = True
+    async def initialize(self) -> None:
+        count = await self.pool.fetchval("SELECT COUNT(*) FROM drug.licenses")
+        if count == 0:
+            log_info("Drug DB empty — starting initial sync in background")
+            asyncio.create_task(self._sync_all())
         else:
-            try:
-                if os.path.exists(self.meta_path):
-                    with open(self.meta_path, "r") as f:
-                        meta = json.load(f)
-                        last_updated = datetime.fromisoformat(meta.get("last_updated"))
-                        if last_updated < self._get_last_tuesday():
-                            log_info("Drug DB is outdated. Scheduling update...")
-                            should_update = True
-                else:
-                    should_update = True
-            except Exception as e:
-                log_error(f"Error checking drug DB update status: {e}")
-                should_update = True
-
-        if should_update:
-            # Run in a separate thread to avoid blocking server startup
-            t = threading.Thread(target=self._update_all_data)
-            t.start()
-
-    def _download_and_insert(self, url, table_name, conn, columns_map, pk_col=None):
-        """
-        Generic helper to download JSON (or ZIP containing JSON) and insert into SQLite.
-
-        Args:
-            url: API endpoint
-            table_name: SQLite table name
-            conn: SQLite connection object
-            columns_map: Dict mapping { "DB_COLUMN": "JSON_KEY" }
-            pk_col: (Optional) Primary key column name for creating table
-        """
-        log_info(f"Downloading {table_name} data from {url}...")
-        try:
-            response = requests.get(url, stream=True, timeout=30)
-            if response.status_code != 200:
-                log_error(
-                    f"Failed to download {table_name}: HTTP {response.status_code}"
-                )
-                return
-
-            # Check if response is a ZIP file
-            content_type = response.headers.get("Content-Type", "")
-            if "zip" in content_type or url.endswith(".zip"):
-                # Handle ZIP file
-                log_info(f"Detected ZIP file for {table_name}, extracting...")
-                zip_file = zipfile.ZipFile(io.BytesIO(response.content))
-
-                # Find the JSON file inside (usually only one file)
-                json_files = [f for f in zip_file.namelist() if f.endswith(".json")]
-                if not json_files:
-                    log_error(f"No JSON file found in ZIP for {table_name}")
-                    return
-
-                # Read the first JSON file
-                with zip_file.open(json_files[0]) as json_file:
-                    data = json.load(json_file)
+            last = await self._get_last_synced()
+            if last is None or (datetime.now(tz=timezone.utc) - last).days >= STALE_AFTER_DAYS:
+                log_info("Drug DB stale — starting background sync")
+                asyncio.create_task(self._sync_all())
             else:
-                # Direct JSON response
-                data = response.json()
-            cursor = conn.cursor()
+                log_info(f"Drug Service ready", licenses=count)
 
-            # 1. Create Table Dynamically
-            cols = list(columns_map.keys())
-            col_defs = []
-            for c in cols:
-                # Basic text type for everything for simplicity in SQLite
-                col_defs.append(f"{c} TEXT")
+        if not self._scheduler.running:
+            self._scheduler.add_job(self._sync_all, "cron", day_of_week="tue", hour=2, minute=0)
+            self._scheduler.start()
 
-            cursor.execute(f"DROP TABLE IF EXISTS {table_name}")
-            cursor.execute(f"CREATE TABLE {table_name} ({', '.join(col_defs)})")
+    async def shutdown(self) -> None:
+        self._scheduler.shutdown(wait=False)
 
-            # 2. Prepare Insert Statement
-            placeholders = ", ".join(["?" for _ in cols])
-            insert_sql = (
-                f"INSERT INTO {table_name} ({', '.join(cols)}) VALUES ({placeholders})"
+    # ── sync helpers ────────────────────────────────────────────────────────
+
+    async def _get_last_synced(self) -> datetime | None:
+        row = await self.pool.fetchrow(
+            "SELECT value FROM drug.sync_meta WHERE key = 'last_updated'"
+        )
+        if row:
+            try:
+                return datetime.fromisoformat(row["value"])
+            except ValueError:
+                pass
+        return None
+
+    async def _fetch_json(self, client: httpx.AsyncClient, url: str) -> list:
+        resp = await client.get(url)
+        resp.raise_for_status()
+        ct = resp.headers.get("content-type", "")
+        if "zip" in ct or url.endswith(".zip"):
+            import io, zipfile
+            zf = zipfile.ZipFile(io.BytesIO(resp.content))
+            names = [n for n in zf.namelist() if n.endswith(".json")]
+            return json.loads(zf.read(names[0])) if names else []
+        return resp.json()
+
+    async def _sync_all(self) -> None:
+        if self._sync_lock.locked():
+            log_info("Drug DB sync already in progress — skipping duplicate run")
+            return
+        async with self._sync_lock:
+            await self._do_sync()
+
+    async def _do_sync(self) -> None:
+        log_info("Drug DB sync started — fetching all endpoints")
+        try:
+            # Step 1: fetch ALL data before touching the database
+            async with httpx.AsyncClient(timeout=120) as client:
+                master      = await self._fetch_json(client, API_SOURCES["master"])
+                appearance  = await self._fetch_json(client, API_SOURCES["appearance"])
+                ingredients = await self._fetch_json(client, API_SOURCES["ingredients"])
+                atc         = await self._fetch_json(client, API_SOURCES["atc"])
+                documents   = await self._fetch_json(client, API_SOURCES["documents"])
+
+            log_info("Drug data fetched — writing to DB",
+                     licenses=len(master), appearance=len(appearance),
+                     ingredients=len(ingredients), atc=len(atc), documents=len(documents))
+
+            # Step 2: write everything atomically
+            async with self.pool.acquire() as conn:
+                async with conn.transaction():
+                    await conn.execute(
+                        "TRUNCATE drug.documents, drug.atc, drug.ingredients, drug.appearance, drug.licenses"
+                    )
+
+                    BATCH = 2000
+                    # Deduplicate by license_id — FDA source occasionally has duplicate rows
+                    seen_ids: set[str] = set()
+                    license_rows = []
+                    for r in master:
+                        lid = r.get("許可證字號", "")
+                        if lid and lid not in seen_ids:
+                            seen_ids.add(lid)
+                            license_rows.append((
+                                lid, r.get("中文品名",""), r.get("英文品名",""),
+                                r.get("適應症",""), r.get("劑型",""), r.get("包裝",""),
+                                r.get("藥品類別",""), r.get("申請商名稱",""), r.get("有效日期",""),
+                                r.get("用法用量",""),
+                            ))
+                    for i in range(0, len(license_rows), BATCH):
+                        await conn.executemany(
+                            """INSERT INTO drug.licenses
+                               (license_id,name_zh,name_en,indication,form,package,
+                                category,manufacturer,valid_date,usage)
+                               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)""",
+                            license_rows[i:i+BATCH],
+                        )
+
+                    # Build set of valid license IDs to skip orphan rows
+                    valid_ids = {r[0] for r in license_rows if r[0]}
+
+                    app_rows = [
+                        (r.get("許可證字號",""), r.get("形狀",""), r.get("顏色",""),
+                         r.get("刻痕",""), r.get("外觀圖檔連結",""))
+                        for r in appearance if r.get("許可證字號") in valid_ids
+                    ]
+                    for i in range(0, len(app_rows), BATCH):
+                        await conn.executemany(
+                            "INSERT INTO drug.appearance (license_id,shape,color,marking,image_url) VALUES ($1,$2,$3,$4,$5)",
+                            app_rows[i:i+BATCH],
+                        )
+
+                    ing_rows = [
+                        (r.get("許可證字號",""), r.get("成分名稱",""), r.get("含量",""), r.get("含量單位",""))
+                        for r in ingredients if r.get("許可證字號") in valid_ids
+                    ]
+                    for i in range(0, len(ing_rows), BATCH):
+                        await conn.executemany(
+                            "INSERT INTO drug.ingredients (license_id,ingredient_name,ingredient_qty,ingredient_unit) VALUES ($1,$2,$3,$4)",
+                            ing_rows[i:i+BATCH],
+                        )
+
+                    atc_rows = [
+                        (r.get("許可證字號",""), r.get("代碼",""),
+                         r.get("中文分類名稱","") or r.get("英文分類名稱",""))
+                        for r in atc if r.get("許可證字號") in valid_ids
+                    ]
+                    for i in range(0, len(atc_rows), BATCH):
+                        await conn.executemany(
+                            "INSERT INTO drug.atc (license_id,atc_code,atc_name) VALUES ($1,$2,$3)",
+                            atc_rows[i:i+BATCH],
+                        )
+
+                    doc_rows = [
+                        (r.get("許可證字號",""), "insert", r.get("仿單圖檔連結",""))
+                        for r in documents if r.get("許可證字號") in valid_ids
+                    ]
+                    for i in range(0, len(doc_rows), BATCH):
+                        await conn.executemany(
+                            "INSERT INTO drug.documents (license_id,doc_type,doc_url) VALUES ($1,$2,$3)",
+                            doc_rows[i:i+BATCH],
+                        )
+
+                    await conn.execute(
+                        """INSERT INTO drug.sync_meta (key, value, updated_at)
+                           VALUES ('last_updated', $1, NOW())
+                           ON CONFLICT (key) DO UPDATE SET value=$1, updated_at=NOW()""",
+                        datetime.now(tz=timezone.utc).isoformat(),
+                    )
+
+            log_info("Drug DB sync completed", licenses=len(license_rows))
+        except Exception as e:
+            log_error(f"Drug DB sync failed", error=str(e))
+
+    # ── query methods ────────────────────────────────────────────────────────
+
+    @cached(ttl=3600, prefix="drug.search")
+    async def search_drug(self, keyword: str) -> str:
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch(
+                """SELECT license_id, name_zh, name_en, indication, category
+                   FROM drug.licenses
+                   WHERE to_tsvector('simple',
+                           COALESCE(name_zh,'') || ' ' || COALESCE(name_en,'') || ' ' || COALESCE(indication,''))
+                         @@ plainto_tsquery('simple', $1)
+                   LIMIT 8""",
+                keyword,
             )
+        if not rows:
+            return json.dumps({"error": f"No results found for '{keyword}'.", "results": []}, ensure_ascii=False)
+        return json.dumps({"results": [dict(r) for r in rows]}, ensure_ascii=False)
 
-            # 3. Process Data
-            rows_to_insert = []
-            for item in data:
-                row = []
-                for db_col, json_key in columns_map.items():
-                    val = item.get(json_key, "")
-                    # Convert list/dict to string if necessary, otherwise stringify
-                    row.append(str(val) if val is not None else "")
-                rows_to_insert.append(tuple(row))
+    @cached(ttl=3600, prefix="drug.details")
+    async def _fuzzy_license_lookup(self, conn, license_id: str):
+        """
+        Resolve a license_id with three-tier fallback:
+          1. Exact match
+          2. ILIKE '%<input>%'  (handles wrong prefix like 衛署→衛部, or partial string)
+          3. Digits-only extract → ILIKE '%<digits>%'  (handles bare numbers like '058498')
+        Returns (record_or_None, candidates_list).
+        candidates is non-empty only when multiple fuzzy hits are found and we cannot
+        auto-resolve — caller should surface them to the user.
+        """
+        # 1. Exact
+        lic = await conn.fetchrow(
+            "SELECT * FROM drug.licenses WHERE license_id = $1", license_id
+        )
+        if lic:
+            return lic, []
 
-            # Bulk Insert
-            cursor.executemany(insert_sql, rows_to_insert)
-            conn.commit()
+        # 2. ILIKE on full input (e.g. user typed '衛署藥製字第058498號')
+        rows = await conn.fetch(
+            "SELECT * FROM drug.licenses WHERE license_id ILIKE $1 LIMIT 6",
+            f"%{license_id}%",
+        )
+        if len(rows) == 1:
+            return rows[0], []
+        if len(rows) > 1:
+            return None, list(rows)
 
-            # Create Index on License ID (Common linking key)
-            if "license_id" in cols:
-                cursor.execute(
-                    f"CREATE INDEX IF NOT EXISTS idx_{table_name}_lid ON {table_name}(license_id)"
+        # 3. Extract consecutive digits and retry
+        digits = re.search(r"\d+", license_id)
+        if digits:
+            rows = await conn.fetch(
+                "SELECT * FROM drug.licenses WHERE license_id ILIKE $1 LIMIT 6",
+                f"%{digits.group()}%",
+            )
+            if len(rows) == 1:
+                return rows[0], []
+            if len(rows) > 1:
+                return None, list(rows)
+
+        return None, []
+
+    async def get_drug_details_by_license(self, license_id: str) -> str:
+        async with self.pool.acquire() as conn:
+            lic, candidates = await self._fuzzy_license_lookup(conn, license_id)
+
+            if candidates:
+                return json.dumps(
+                    {
+                        "error": f"找不到精確匹配 '{license_id}'，找到多筆相似許可證，請確認後重新查詢。",
+                        "candidates": [
+                            {"license_id": r["license_id"], "name_zh": r["name_zh"], "name_en": r["name_en"]}
+                            for r in candidates
+                        ],
+                    },
+                    ensure_ascii=False,
                 )
 
-            log_info(f"Updated {table_name}: {len(rows_to_insert)} rows.")
-
-        except Exception as e:
-            log_error(f"Failed to update {table_name}: {e}")
-
-    def _update_all_data(self):
-        """Main ETL process to update all 5 datasets."""
-        log_info("Starting Full Drug Database Update...")
-        conn = sqlite3.connect(self.db_path)
-
-        try:
-            # 1. Master Licenses (ID 36) - The Backbone
-            self._download_and_insert(
-                self.API_SOURCES["master"],
-                "licenses",
-                conn,
-                {
-                    "license_id": "許可證字號",
-                    "name_zh": "中文品名",
-                    "name_en": "英文品名",
-                    "indication": "適應症",
-                    "form": "劑型",
-                    "package": "包裝",
-                    "category": "藥品類別",  # e.g., 須由醫師處方使用
-                    "manufacturer": "申請商名稱",
-                    "valid_date": "有效日期",
-                    "usage": "用法用量",
-                },
-            )
-
-            # 2. Appearance (ID 42)
-            self._download_and_insert(
-                self.API_SOURCES["appearance"],
-                "appearance",
-                conn,
-                {
-                    "license_id": "許可證字號",
-                    "shape": "形狀",
-                    "color": "顏色",
-                    "marking": "刻痕",
-                    "image_url": "外觀圖檔連結",
-                },
-            )
-
-            # 3. Ingredients (ID 43)
-            self._download_and_insert(
-                self.API_SOURCES["ingredients"],
-                "ingredients",
-                conn,
-                {
-                    "license_id": "許可證字號",
-                    "ingredient_name": "成分名稱",
-                    "content": "含量",
-                    "unit": "含量單位",
-                },
-            )
-
-            # 4. ATC Codes (ID 41)
-            self._download_and_insert(
-                self.API_SOURCES["atc"],
-                "atc",
-                conn,
-                {
-                    "license_id": "許可證字號",
-                    "atc_code": "代碼",
-                    "atc_name_zh": "中文分類名稱",
-                    "atc_name_en": "英文分類名稱",
-                },
-            )
-
-            # 5. Documents/Inserts (ID 39)
-            self._download_and_insert(
-                self.API_SOURCES["documents"],
-                "documents",
-                conn,
-                {
-                    "license_id": "許可證字號",
-                    "insert_url": "仿單圖檔連結",
-                    "box_url": "外盒圖檔連結",
-                },
-            )
-
-            # Update Metadata
-            with open(self.meta_path, "w") as f:
-                json.dump({"last_updated": datetime.now().isoformat()}, f)
-
-            log_info("All drug datasets updated successfully.")
-
-        except Exception as e:
-            log_error(f"Global update failed: {e}")
-            conn.close()
-            if os.path.exists(self.db_path):
-                os.remove(self.db_path)
-                log_info(f"Removed incomplete database: {self.db_path}")
-            return
-        finally:
-            conn.close()
-
-    # --- Query Features ---
-
-    def search_drug(self, keyword: str):
-        """
-        Search for drugs by name (ZH/EN) or indication.
-        Returns JSON with search results.
-        """
-        if not os.path.exists(self.db_path):
-            return json.dumps({"error": "DB initializing..."})
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        query = f"%{keyword}%"
-        # Search specifically in the Master License table
-        sql = """
-            SELECT name_zh, name_en, indication, license_id, category
-            FROM licenses
-            WHERE name_zh LIKE ? OR name_en LIKE ? OR indication LIKE ?
-            LIMIT 8
-        """
-        cursor.execute(sql, (query, query, query))
-        rows = cursor.fetchall()
-        conn.close()
-
-        if not rows:
-            return json.dumps({"error": f"No results found for '{keyword}'.", "results": []})
-
-        results = []
-        for r in rows:
-            results.append({
-                "license_id": r[3],
-                "name_zh": r[0],
-                "name_en": r[1],
-                "indication": r[2],
-                "category": r[4]
-            })
-
-        return json.dumps({"results": results}, ensure_ascii=False)
-
-    def get_details(self, license_id: str):
-        """
-        Get comprehensive details by joining all tables.
-        """
-        if not os.path.exists(self.db_path):
-            return "DB initializing..."
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-
-        # 1. Get Master Data
-        cursor.execute("SELECT * FROM licenses WHERE license_id = ?", (license_id,))
-        lic = cursor.fetchone()
-        if not lic:
-            conn.close()
-            return "License ID not found."
-
-        # 2. Get Ingredients
-        cursor.execute(
-            "SELECT ingredient_name, content, unit FROM ingredients WHERE license_id = ?",
-            (license_id,),
-        )
-        ingredients = cursor.fetchall()
-
-        # 3. Get Appearance
-        cursor.execute(
-            "SELECT shape, color, marking, image_url FROM appearance WHERE license_id = ?",
-            (license_id,),
-        )
-        app = cursor.fetchone()
-
-        # 4. Get Documents
-        cursor.execute(
-            "SELECT insert_url FROM documents WHERE license_id = ?", (license_id,)
-        )
-        doc = cursor.fetchone()
-
-        conn.close()
-
-        # Format Output
-        ing_list = ", ".join(
-            [f"{i['ingredient_name']} {i['content']}{i['unit']}" for i in ingredients]
-        )
-
-        output = f"""
-=== 藥品詳情 (License: {license_id}) ===
-名稱 (中): {lic['name_zh']}
-名稱 (英): {lic['name_en']}
-適應症: {lic['indication']}
-用法用量: {lic['usage']}
-劑型: {lic['form']} / {lic['package']}
-廠商: {lic['manufacturer']}
-
-[成分組成]
-{ing_list}
-
-[外觀特徵]
-{f"形狀: {app['shape']}, 顏色: {app['color']}, 刻痕: {app['marking']}" if app else "無外觀資料"}
-圖片連結: {app['image_url'] if app and app['image_url'] else "無"}
-
-[相關文件]
-仿單連結: {doc['insert_url'] if doc and doc['insert_url'] else "無"}
-"""
-        return output
-
-    def get_drug_details_by_license(self, license_id: str) -> str:
-        """
-        Get comprehensive drug details as JSON by license ID.
-        Used by FHIR Medication Service.
-        """
-        if not os.path.exists(self.db_path):
-            return json.dumps({"error": "DB initializing..."})
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-
-        try:
-            # 1. Get Master Data
-            cursor.execute("SELECT * FROM licenses WHERE license_id = ?", (license_id,))
-            lic = cursor.fetchone()
             if not lic:
-                return json.dumps({"error": f"License ID not found: {license_id}"})
+                return json.dumps({"error": f"License ID not found: {license_id}"}, ensure_ascii=False)
 
-            # 2. Get Ingredients
-            cursor.execute(
-                "SELECT ingredient_name, content, unit FROM ingredients WHERE license_id = ?",
-                (license_id,),
+            resolved_id = lic["license_id"]   # use the DB-resolved ID for all sub-queries
+            ingredients = await conn.fetch(
+                "SELECT ingredient_name, ingredient_qty, ingredient_unit FROM drug.ingredients WHERE license_id = $1",
+                resolved_id,
             )
-            ingredients_rows = cursor.fetchall()
-            ingredients = []
-            for ing in ingredients_rows:
-                ingredients.append({
-                    "ingredient_name": ing["ingredient_name"],
-                    "content": ing["content"],
-                    "unit": ing["unit"]
-                })
-
-            # 3. Get Appearance
-            cursor.execute(
-                "SELECT shape, color, marking, image_url FROM appearance WHERE license_id = ?",
-                (license_id,),
+            app = await conn.fetchrow(
+                "SELECT shape, color, marking, image_url FROM drug.appearance WHERE license_id = $1",
+                resolved_id,
             )
-            app = cursor.fetchone()
-            appearance = {}
-            if app:
-                appearance = {
-                    "shape": app["shape"],
-                    "color": app["color"],
-                    "marking": app["marking"],
-                    "image_url": app["image_url"]
-                }
-
-            # 4. Get ATC Codes
-            cursor.execute(
-                "SELECT atc_code, atc_name_zh, atc_name_en FROM atc WHERE license_id = ?",
-                (license_id,),
+            atc_rows = await conn.fetch(
+                "SELECT atc_code, atc_name FROM drug.atc WHERE license_id = $1", resolved_id
             )
-            atc_rows = cursor.fetchall()
-            atc = []
-            for a in atc_rows:
-                atc.append({
-                    "atc_code": a["atc_code"],
-                    "atc_name_zh": a["atc_name_zh"],
-                    "atc_name_en": a["atc_name_en"]
-                })
-
-            # 5. Get Documents
-            cursor.execute(
-                "SELECT insert_url, box_url FROM documents WHERE license_id = ?",
-                (license_id,),
+            doc = await conn.fetchrow(
+                "SELECT doc_url FROM drug.documents WHERE license_id = $1 AND doc_type = 'insert'",
+                resolved_id,
             )
-            doc = cursor.fetchone()
-            documents = {}
-            if doc:
-                documents = {
-                    "insert_url": doc["insert_url"],
-                    "box_url": doc["box_url"]
-                }
 
-            # Format as JSON
-            result = {
+        return json.dumps(
+            {
                 "license_id": lic["license_id"],
-                "name_zh": lic["name_zh"],
-                "name_en": lic["name_en"],
+                "name_zh":    lic["name_zh"],
+                "name_en":    lic["name_en"],
                 "indication": lic["indication"],
-                "usage": lic["usage"],
-                "form": lic["form"],
-                "package": lic["package"],
-                "category": lic["category"],
+                "usage":      lic["usage"],
+                "form":       lic["form"],
+                "package":    lic["package"],
+                "category":   lic["category"],
                 "manufacturer": lic["manufacturer"],
                 "valid_date": lic["valid_date"],
-                "ingredients": ingredients,
-                "appearance": appearance,
-                "atc": atc,
-                "documents": documents
-            }
+                "ingredients": [dict(r) for r in ingredients],
+                "appearance":  dict(app) if app else {},
+                "atc":         [dict(r) for r in atc_rows],
+                "insert_url":  doc["doc_url"] if doc else None,
+            },
+            ensure_ascii=False,
+        )
 
-            return json.dumps(result, ensure_ascii=False)
-
-        except Exception as e:
-            return json.dumps({"error": str(e)})
-        finally:
-            conn.close()
-
-    def identify_pill(self, features: str):
-        """
-        Identify pill based on visual description (Shape, Color, Marking).
-        """
-        if not os.path.exists(self.db_path):
-            return "DB initializing..."
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        # Simple keyword matching across visual fields
-        # Ideally, features should be split (e.g., "white", "circle")
+    @cached(ttl=3600, prefix="drug.pill")
+    async def identify_pill(self, features: str) -> str:
         keywords = features.split()
-        conditions = []
+        if not keywords:
+            return json.dumps({"error": "Please provide visual features (shape, color, marking)."}, ensure_ascii=False)
+
+        conditions = " AND ".join(
+            f"(shape ILIKE ${i*3+1} OR color ILIKE ${i*3+2} OR marking ILIKE ${i*3+3})"
+            for i in range(len(keywords))
+        )
         params = []
-
         for k in keywords:
-            term = f"%{k}%"
-            # Check shape, color, or marking matches
-            conditions.append("(shape LIKE ? OR color LIKE ? OR marking LIKE ?)")
-            params.extend([term, term, term])
+            params.extend([f"%{k}%", f"%{k}%", f"%{k}%"])
 
-        where_clause = " AND ".join(conditions)
-
-        sql = f"""
-            SELECT l.name_zh, l.name_en, a.shape, a.color, a.marking, l.license_id 
-            FROM appearance a
-            JOIN licenses l ON a.license_id = l.license_id
-            WHERE {where_clause}
-            LIMIT 5
-        """
-
-        cursor.execute(sql, tuple(params))
-        rows = cursor.fetchall()
-        conn.close()
-
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch(
+                f"""SELECT l.name_zh, l.name_en, a.shape, a.color, a.marking, a.image_url, l.license_id
+                    FROM drug.appearance a
+                    JOIN drug.licenses l ON a.license_id = l.license_id
+                    WHERE {conditions}
+                    LIMIT 5""",
+                *params,
+            )
         if not rows:
-            return "No matching pills found based on description."
+            return json.dumps({"error": "No matching pills found based on description."}, ensure_ascii=False)
+        return json.dumps(
+            [{"name_zh": r["name_zh"], "name_en": r["name_en"],
+              "shape": r["shape"], "color": r["color"], "marking": r["marking"],
+              "image_url": r["image_url"], "license_id": r["license_id"]} for r in rows],
+            ensure_ascii=False,
+        )
 
-        return "\n".join(
-            [
-                f"藥名: {r[0]} ({r[1]})\n   特徵: {r[3]} {r[2]} (刻痕: {r[4]})"
-                for r in rows
-            ]
+    @cached(ttl=3600, prefix="drug.byatc")
+    async def search_by_atc(self, query: str) -> str:
+        """Search drugs by ATC code or therapeutic class name."""
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT DISTINCT l.license_id, l.name_zh, l.name_en, l.indication, l.category,
+                       a.atc_code, a.atc_name
+                FROM drug.atc a
+                JOIN drug.licenses l ON l.license_id = a.license_id
+                WHERE a.atc_code ILIKE $1
+                   OR to_tsvector('simple', COALESCE(a.atc_name,'')) @@ plainto_tsquery('simple', $2)
+                ORDER BY a.atc_code, l.name_zh
+                LIMIT 20
+                """,
+                f"{query}%", query,
+            )
+        if not rows:
+            return json.dumps(
+                {"error": f"找不到與 ATC '{query}' 相關的藥品。", "results": []},
+                ensure_ascii=False,
+            )
+        return json.dumps(
+            {"query": query, "total": len(rows),
+             "results": [dict(r) for r in rows]},
+            ensure_ascii=False,
+        )
+
+    @cached(ttl=3600, prefix="drug.bying")
+    async def search_by_ingredient(self, ingredient_name: str) -> str:
+        """Search drugs containing a specific ingredient."""
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT DISTINCT l.license_id, l.name_zh, l.name_en, l.indication, l.form,
+                       i.ingredient_name, i.ingredient_qty, i.ingredient_unit
+                FROM drug.ingredients i
+                JOIN drug.licenses l ON l.license_id = i.license_id
+                WHERE i.ingredient_name ILIKE $1
+                ORDER BY i.ingredient_name, l.name_zh
+                LIMIT 20
+                """,
+                f"%{ingredient_name}%",
+            )
+        if not rows:
+            return json.dumps(
+                {"error": f"找不到含有 '{ingredient_name}' 成分的藥品。", "results": []},
+                ensure_ascii=False,
+            )
+        return json.dumps(
+            {"ingredient": ingredient_name, "total": len(rows),
+             "results": [dict(r) for r in rows]},
+            ensure_ascii=False,
         )

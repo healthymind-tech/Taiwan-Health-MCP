@@ -1,19 +1,69 @@
-import datetime
+"""
+Structured JSON logging.
+All output goes to stderr so it never interferes with the MCP stdio transport on stdout.
+"""
+
+import json
+import logging
 import sys
+from typing import Any
 
 
-def log_info(message: str):
-    """
-    Writes info messages to standard error (stderr).
-    This avoids interfering with MCP's standard output (stdout) communication.
-    """
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    sys.stderr.write(f"[INFO][{timestamp}] {message}\n")
+class _JsonFormatter(logging.Formatter):
+    """Emit one JSON object per log record."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        payload: dict[str, Any] = {
+            "ts":      self.formatTime(record, "%Y-%m-%dT%H:%M:%S"),
+            "level":   record.levelname,
+            "logger":  record.name,
+            "msg":     record.getMessage(),
+        }
+        if record.exc_info:
+            payload["exc"] = self.formatException(record.exc_info)
+        # Any extra fields attached via `extra=`
+        for key, val in record.__dict__.items():
+            if key not in (
+                "msg", "args", "levelname", "levelno", "pathname", "filename",
+                "module", "exc_info", "exc_text", "stack_info", "lineno",
+                "funcName", "created", "msecs", "relativeCreated", "thread",
+                "threadName", "processName", "process", "name", "message",
+            ):
+                payload[key] = val
+        return json.dumps(payload, ensure_ascii=False, default=str)
 
 
-def log_error(message: str):
-    """
-    Writes error messages to standard error (stderr).
-    """
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    sys.stderr.write(f"[ERROR][{timestamp}] {message}\n")
+def _build_logger() -> logging.Logger:
+    logger = logging.getLogger("taiwan_health_mcp")
+    if logger.handlers:          # already configured (e.g. module re-imported)
+        return logger
+
+    handler = logging.StreamHandler(sys.stderr)
+    handler.setFormatter(_JsonFormatter())
+    logger.addHandler(handler)
+    logger.propagate = False
+    return logger
+
+
+_logger = _build_logger()
+
+
+def configure_log_level(level: str) -> None:
+    """Call once at startup with the level from AppConfig."""
+    _logger.setLevel(getattr(logging, level.upper(), logging.INFO))
+
+
+def log_info(message: str, **extra: Any) -> None:
+    _logger.info(message, extra=extra)
+
+
+def log_warning(message: str, **extra: Any) -> None:
+    _logger.warning(message, extra=extra)
+
+
+def log_error(message: str, **extra: Any) -> None:
+    _logger.error(message, extra=extra)
+
+
+def log_debug(message: str, **extra: Any) -> None:
+    _logger.debug(message, extra=extra)

@@ -1,89 +1,160 @@
 # 環境配置
 
-本系統主要透過環境變數 (Environment Variables) 進行配置。
-
-## 快速開始
-
-專案根目錄提供了 `.env.example` 範本檔案，請複製並修改：
+系統透過環境變數進行配置。複製 `.env.example` 為 `.env` 後修改：
 
 ```bash
 cp .env.example .env
 ```
 
-然後根據您的部署環境編輯 `.env` 檔案。
+---
 
-## MCP 傳輸模式配置
+## 完整環境變數清單
 
-系統支援三種 MCP 傳輸模式，透過 `MCP_TRANSPORT` 環境變數設定：
+### PostgreSQL
 
-### stdio 模式（本地開發）
-適用於 Claude Desktop 等本地整合環境：
+| 變數 | 預設值 | 說明 |
+|------|--------|------|
+| `POSTGRES_PASSWORD` | **必填** | PostgreSQL 密碼 |
+| `POSTGRES_DB` | `taiwan_health` | 資料庫名稱 |
+| `POSTGRES_USER` | `mcp` | 資料庫使用者 |
 
-```bash
-MCP_TRANSPORT=stdio
-```
+### MCP 傳輸
 
-### streamable-http 模式（生產部署）✨ 推薦
-適用於 Docker 生產環境，使用 Streamable HTTP 協定：
+| 變數 | 預設值 | 說明 |
+|------|--------|------|
+| `MCP_TRANSPORT` | `streamable-http` | 傳輸模式：`streamable-http` \| `stdio` |
+| `MCP_HOST` | `0.0.0.0` | 監聽主機（HTTP 模式） |
+| `MCP_PORT` | `8000` | 監聽埠號（HTTP 模式） |
+| `MCP_PATH` | `/mcp` | HTTP 端點路徑（streamable-http 模式） |
 
-```bash
+### 資料庫連線（由 docker-compose.yml 自動組合）
+
+| 變數 | 說明 |
+|------|------|
+| `DATABASE_URL` | App 連接 pgBouncer：`postgresql://mcp:{pass}@pgbouncer:5432/taiwan_health` |
+
+> App 透過 pgBouncer（port 5432 內部）連線，data-loader 直接連接 PostgreSQL（`@postgres:5432`）以支援大量寫入。
+
+### Redis
+
+| 變數 | 預設值 | 說明 |
+|------|--------|------|
+| `REDIS_URL` | `redis://redis:6379/0` | Redis 連線 URL |
+
+### 監控
+
+| 變數 | 預設值 | 說明 |
+|------|--------|------|
+| `METRICS_PORT` | `9090` | Prometheus 指標端點埠號 |
+| `LOG_LEVEL` | `INFO` | 日誌等級：`DEBUG` \| `INFO` \| `WARNING` \| `ERROR` |
+
+---
+
+## MCP 傳輸模式
+
+### streamable-http（生產環境，推薦）
+
+```env
 MCP_TRANSPORT=streamable-http
 MCP_HOST=0.0.0.0
 MCP_PORT=8000
 MCP_PATH=/mcp
 ```
 
-連線 URL：`http://localhost:8000/mcp`
+Claude Desktop 連線設定：
 
-### sse 模式（向後相容）
-適用於 Colab + Ngrok 等場景，使用 Server-Sent Events：
+```json
+{
+  "mcpServers": {
+    "taiwan-health": {
+      "url": "http://localhost:8000/mcp",
+      "transport": "streamable-http"
+    }
+  }
+}
+```
 
-```bash
-MCP_TRANSPORT=sse
+### stdio（本地開發 / Claude Desktop 直接啟動）
+
+```env
+MCP_TRANSPORT=stdio
+```
+
+Claude Desktop 設定：
+
+```json
+{
+  "mcpServers": {
+    "taiwan-health": {
+      "command": "python",
+      "args": ["src/server.py"],
+      "env": {
+        "DATABASE_URL": "postgresql://mcp:pass@localhost:5432/taiwan_health",
+        "REDIS_URL": "redis://localhost:6379/0",
+        "MCP_TRANSPORT": "stdio"
+      }
+    }
+  }
+}
+```
+
+---
+
+## .env.example 完整範本
+
+```env
+# ── PostgreSQL ─────────────────────────────────────────────────
+POSTGRES_DB=taiwan_health
+POSTGRES_USER=mcp
+POSTGRES_PASSWORD=change_me_please
+
+# ── MCP Server ─────────────────────────────────────────────────
+MCP_TRANSPORT=streamable-http
 MCP_HOST=0.0.0.0
 MCP_PORT=8000
+MCP_PATH=/mcp
+
+# ── Monitoring ─────────────────────────────────────────────────
+LOG_LEVEL=INFO
+METRICS_PORT=9090
 ```
 
-連線 URL：`http://localhost:8000/sse`
+---
 
-## 完整環境變數清單
+## 資源限制建議（生產環境）
 
-### MCP 傳輸配置
-
-| 變數名稱 | 預設值 | 說明 |
-| :--- | :--- | :--- |
-| `MCP_TRANSPORT` | `stdio` | 傳輸模式：`stdio` \| `streamable-http` \| `sse` |
-| `MCP_HOST` | `0.0.0.0` | 監聽主機（僅 streamable-http/sse 模式） |
-| `MCP_PORT` | `8000` | 監聽埠號（僅 streamable-http/sse 模式） |
-| `MCP_PATH` | `/mcp` | HTTP 端點路徑（僅 streamable-http 模式） |
-
-### 系統配置
-
-| 變數名稱 | 預設值 | 說明 |
-| :--- | :--- | :--- |
-| `DATA_DIR` | `/app/data` | 資料檔案儲存路徑 (包含 Excel, SQLite) |
-| `LOG_LEVEL` | `INFO` | 日誌層級 (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |
-
-## 資料目錄結構
-`DATA_DIR` 指向的路徑應包含以下檔案結構（容器啟動時會自動檢查或生成部分檔案）：
-
-```text
-/data
-├── icd10cm_pcs_xxxx.xlsx  (原始 ICD 資料)
-├── drugs.db               (藥品資料庫 - 自動生成)
-├── icd.db                 (ICD 資料庫 - 自動生成)
-└── ...
-```
-
-## 調整記憶體限制
-若在 Docker 中運行，建議透過資源限制參數保護宿主機：
+在 `docker-compose.override.yml` 加入資源限制：
 
 ```yaml
-# docker-compose.yml
 services:
-  mcp-server:
+  app:
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+  postgres:
     deploy:
       resources:
         limits:
           memory: 4G
+  redis:
+    deploy:
+      resources:
+        limits:
+          memory: 512M
 ```
+
+---
+
+## pgBouncer 進階設定
+
+pgBouncer 透過 `edoburu/pgbouncer` image 的環境變數設定，重要參數（見 `docker-compose.yml`）：
+
+| 參數 | 值 | 說明 |
+|------|-----|------|
+| `POOL_MODE` | `transaction` | 每次查詢後釋放連線（最高效率） |
+| `MAX_CLIENT_CONN` | `500` | 最多 500 個客戶端連線 |
+| `DEFAULT_POOL_SIZE` | `30` | 最多 30 個 PostgreSQL 連線 |
+| `MIN_POOL_SIZE` | `5` | 預熱連線數 |
+| `AUTH_TYPE` | `scram-sha-256` | 安全驗證方式 |
+| `IGNORE_STARTUP_PARAMETERS` | `extra_float_digits` | asyncpg 相容性設定 |

@@ -1,450 +1,522 @@
-import glob
-import os
+import asyncio
+import json
+from contextlib import asynccontextmanager
 
 from mcp.server.fastmcp import FastMCP
 
-from config import MCPConfig  # Import at top level
+import audit
+import cache as cache_module
+import database
+import metrics
+from audit import audited
 from clinical_guideline_service import ClinicalGuidelineService
+from config import AppConfig
 from drug_service import DrugService
 from fhir_condition_service import FHIRConditionService
 from fhir_medication_service import FHIRMedicationService
 from food_nutrition_service import FoodNutritionService
 from health_food_service import HealthFoodService
+from drug_interaction_service import DrugInteractionService
 from icd_service import ICDService
 from lab_service import LabService
+from snomed_service import SNOMEDService
 from twcore_service import TWCoreService
-from utils import log_error, log_info
+from utils import configure_log_level, log_error, log_info
 
-# 0. Load Configuration
-config = MCPConfig.from_env()
+config = AppConfig.from_env()
+configure_log_level(config.log_level)
 
-# 1. Initialize the MCP Server
-# host, port, streamable_http_path must be set in __init__ (not in run())
+# Services (populated once on first lifespan run)
+icd_service: ICDService | None                       = None
+drug_service: DrugService | None                     = None
+health_food_service: HealthFoodService | None        = None
+food_nutrition_service: FoodNutritionService | None  = None
+fhir_condition_service: FHIRConditionService | None  = None
+fhir_medication_service: FHIRMedicationService | None = None
+lab_service: LabService | None                       = None
+guideline_service: ClinicalGuidelineService | None   = None
+twcore_service: TWCoreService | None                 = None
+snomed_service: SNOMEDService | None                 = None
+drug_interaction_service: DrugInteractionService | None = None
+
+# FastMCP (streamable-http mode) runs the lifespan once per session, not per
+# process.  Guard all one-time initialization behind a lock + flag so that
+# the second session simply reuses the already-initialized resources.
+_init_lock: asyncio.Lock | None = None   # created lazily inside async context
+_initialized: bool = False
+_db_stats_task: asyncio.Task | None = None
+
+
+@asynccontextmanager
+async def lifespan(server):
+    global icd_service, drug_service, health_food_service, food_nutrition_service
+    global fhir_condition_service, fhir_medication_service, lab_service, guideline_service, twcore_service
+    global snomed_service, drug_interaction_service
+    global _init_lock, _initialized, _db_stats_task
+
+    # Lazily create the lock (must happen inside the running event loop)
+    if _init_lock is None:
+        _init_lock = asyncio.Lock()
+
+    async with _init_lock:
+        if not _initialized:
+            log_info(f"Starting Taiwan Health MCP — {config}")
+
+            # ── Prometheus metrics server ─────────────────────────────────
+            if config.transport != "stdio":
+                metrics.start_metrics_server()
+
+            # ── Infrastructure ────────────────────────────────────────────
+            # statement_cache_size=0 required for pgBouncer transaction-mode
+            pool = await database.init_pool(
+                config.database_url, min_size=5, max_size=20, statement_cache_size=0
+            )
+            await cache_module.init_client(config.redis_url)
+
+            # ── Start DB pool stats collector ─────────────────────────────
+            _db_stats_task = await metrics.start_db_stats_collector(database.get_pool)
+
+            # ── Services ──────────────────────────────────────────────────
+            for name, factory in [
+                ("ICDService",               lambda: ICDService(pool)),
+                ("DrugService",              lambda: DrugService(pool)),
+                ("HealthFoodService",        lambda: HealthFoodService(pool)),
+                ("FoodNutritionService",     lambda: FoodNutritionService(pool)),
+                ("FHIRConditionService",     lambda: FHIRConditionService(pool)),
+                ("FHIRMedicationService",    lambda: FHIRMedicationService(drug_service)),
+                ("LabService",               lambda: LabService(pool)),
+                ("ClinicalGuidelineService", lambda: ClinicalGuidelineService(pool)),
+                ("TWCoreService",            lambda: TWCoreService(pool)),
+                ("SNOMEDService",            lambda: SNOMEDService(pool)),
+                ("DrugInteractionService",   lambda: DrugInteractionService(pool)),
+            ]:
+                try:
+                    svc = factory()
+                    await svc.initialize()
+                    if name == "ICDService":               icd_service = svc
+                    elif name == "DrugService":            drug_service = svc
+                    elif name == "HealthFoodService":      health_food_service = svc
+                    elif name == "FoodNutritionService":   food_nutrition_service = svc
+                    elif name == "FHIRConditionService":   fhir_condition_service = svc
+                    elif name == "FHIRMedicationService":  fhir_medication_service = svc
+                    elif name == "LabService":             lab_service = svc
+                    elif name == "ClinicalGuidelineService": guideline_service = svc
+                    elif name == "TWCoreService":          twcore_service = svc
+                    elif name == "SNOMEDService":          snomed_service = svc
+                    elif name == "DrugInteractionService": drug_interaction_service = svc
+                except Exception as e:
+                    log_error(f"{name} failed to initialize", error=str(e))
+
+            # ── Redis warm-up ─────────────────────────────────────────────
+            await _warm_up_cache()
+
+            _initialized = True
+            log_info("All services initialized — server ready")
+
+    yield
+
+    # Session teardown — do NOT close shared resources; the process may still
+    # be serving other sessions.  Resources are reclaimed when the process exits.
+
+
+async def _warm_up_cache() -> None:
+    """Pre-warm the most frequently accessed, slow-changing data."""
+    warmed = 0
+    try:
+        if lab_service:
+            result = await lab_service.list_categories()
+            warmed += await cache_module.warm_up([("mcp:lab:categories:warm", result, 86400)])
+        if twcore_service:
+            result = await twcore_service.list_codesystems("all")
+            warmed += await cache_module.warm_up([("mcp:twcore:list:warm", result, 86400)])
+        if guideline_service:
+            for code in ("E11", "I10", "E78", "N18"):
+                result = await guideline_service.get_complete_guideline(code)
+                warmed += await cache_module.warm_up([(f"mcp:guideline:warm:{code}", result, 86400)])
+        log_info(f"Cache warm-up complete", keys_written=warmed)
+    except Exception as e:
+        log_error(f"Cache warm-up failed (non-fatal)", error=str(e))
+
+
+def _svc_unavailable(name: str) -> str:
+    """Return a standard JSON error when a service is not yet initialized."""
+    return json.dumps(
+        {
+            "error": f"{name} service is not available",
+            "hint": "Run the data-loader to populate this dataset, then restart the server.",
+        },
+        ensure_ascii=False,
+    )
+
+
 mcp = FastMCP(
     "taiwanHealthMcp",
     host=config.host,
     port=config.port,
     streamable_http_path=config.path,
     dependencies=["uvicorn"],
+    lifespan=lifespan,
 )
 
-# 2. Configure data paths
-# Automatically detect if running in Google Colab or Docker
-if os.path.exists("/content/Taiwan-Health-MCP/data"):
-    DATA_DIR = "/content/Taiwan-Health-MCP/data"
-elif os.path.exists("/app/data"):
-    DATA_DIR = "/app/data"
-else:
-    # Fallback to local data directory
-    DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
 
-log_info(f"Using DATA_DIR: {DATA_DIR}")
-
-# Automatically find the ICD-10 Excel file.
-excel_files = glob.glob(os.path.join(DATA_DIR, "*.xlsx"))
-if excel_files:
-    ICD_FILE_PATH = excel_files[0]
-    log_info(f"Found ICD Excel file: {ICD_FILE_PATH}")
-else:
-    ICD_FILE_PATH = os.path.join(DATA_DIR, "default.xlsx")
-    log_error("No Excel file found in data directory!")
-
-# 3. Initialize Services with individual try-except blocks to ensure maximum availability
-log_info("Initializing Services...")
-
-icd_service = None
-drug_service = None
-health_food_service = None
-food_nutrition_service = None
-fhir_condition_service = None
-fhir_medication_service = None
-lab_service = None
-guideline_service = None
-twcore_service = None
-
-try:
-    icd_service = ICDService(ICD_FILE_PATH, DATA_DIR)
-except Exception as e:
-    log_error(f"ICDService failed: {e}")
-
-try:
-    drug_service = DrugService(DATA_DIR)
-except Exception as e:
-    log_error(f"DrugService failed: {e}")
-
-try:
-    health_food_service = HealthFoodService(DATA_DIR)
-except Exception as e:
-    log_error(f"HealthFoodService failed: {e}")
-
-try:
-    food_nutrition_service = FoodNutritionService(DATA_DIR)
-except Exception as e:
-    log_error(f"FoodNutritionService failed: {e}")
-
-try:
-    if icd_service:
-        fhir_condition_service = FHIRConditionService(icd_service)
-except Exception as e:
-    log_error(f"FHIRConditionService failed: {e}")
-
-try:
-    if drug_service:
-        fhir_medication_service = FHIRMedicationService(drug_service)
-except Exception as e:
-    log_error(f"FHIRMedicationService failed: {e}")
-
-try:
-    lab_service = LabService(DATA_DIR)
-except Exception as e:
-    log_error(f"LabService failed: {e}")
-
-try:
-    guideline_service = ClinicalGuidelineService(DATA_DIR)
-except Exception as e:
-    log_error(f"ClinicalGuidelineService failed: {e}")
-
-try:
-    twcore_service = TWCoreService(DATA_DIR)
-except Exception as e:
-    log_error(f"TWCoreService failed: {e}")
-
-# ==========================================
-# Group 1: ICD-10 Tools (Diagnosis & Procedures)
-# ==========================================
-
+# ============================================================
+# Health check
+# ============================================================
 
 @mcp.tool()
-def search_medical_codes(keyword: str, type: str = "all") -> str:
+async def health_check() -> str:
+    """Returns server health status and which services are available."""
+    pool = database.get_pool()
+    db_ok = False
+    try:
+        async with pool.acquire() as conn:
+            await conn.fetchval("SELECT 1")
+        db_ok = True
+    except Exception:
+        pass
+
+    cache_ok = False
+    try:
+        client = cache_module.get_client()
+        await client.ping()
+        cache_ok = True
+    except Exception:
+        pass
+
+    return json.dumps({
+        "status": "ok" if db_ok else "degraded",
+        "database": "ok" if db_ok else "error",
+        "cache": "ok" if cache_ok else "error",
+        "services": {
+            "icd":              icd_service is not None,
+            "drug":             drug_service is not None,
+            "health_food":      health_food_service is not None,
+            "food_nutrition":   food_nutrition_service is not None,
+            "fhir_condition":   fhir_condition_service is not None,
+            "fhir_medication":  fhir_medication_service is not None,
+            "lab":              lab_service is not None,
+            "guideline":        guideline_service is not None,
+            "twcore":              twcore_service is not None,
+            "snomed":              snomed_service is not None,
+            "drug_interactions":   drug_interaction_service is not None,
+        },
+    }, ensure_ascii=False)
+
+
+# ============================================================
+# Group 1: ICD-10
+# ============================================================
+
+@mcp.tool()
+@audited("search_medical_codes")
+async def search_medical_codes(keyword: str, type: str = "all") -> str:
     """
     Search for ICD-10-CM (Diagnosis) or ICD-10-PCS (Procedure) codes.
 
     Args:
-        keyword: Search term (e.g., 'Diabetes', 'E11', 'Appendectomy', '子宮內膜異位').
+        keyword: Search term (e.g., 'Diabetes', 'E11', '子宮內膜異位').
         type: Filter by 'diagnosis', 'procedure', or 'all'. Default is 'all'.
     """
-    log_info(f"Tool called: search_medical_codes with query='{keyword}', type='{type}'")
-    return icd_service.search_codes(keyword, type)
+    if icd_service is None:
+        return _svc_unavailable("ICD Service")
+    return await icd_service.search_codes(keyword, type)
 
 
 @mcp.tool()
-def infer_complications(code: str) -> str:
+@audited("infer_complications")
+async def infer_complications(code: str) -> str:
     """
     Infers potential complications or specific sub-conditions based on ICD hierarchy.
-    Example: Input 'E11' (Type 2 Diabetes) -> Returns specific codes like E11.9, E11.2 (with kidney complications).
 
     Args:
         code: The base diagnosis code (e.g., 'E11', 'N80').
     """
-    log_info(f"Tool called: infer_complications with code='{code}'")
-    return icd_service.infer_complications(code)
+    if icd_service is None:
+        return _svc_unavailable("ICD Service")
+    return await icd_service.infer_complications(code)
 
 
 @mcp.tool()
-def get_nearby_codes(code: str) -> str:
+@audited("get_nearby_codes")
+async def get_nearby_codes(code: str) -> str:
     """
     Retrieves codes immediately preceding and following the target code.
-    Useful for differential diagnosis context or seeing related severity levels.
 
     Args:
         code: The target diagnosis code.
     """
-    log_info(f"Tool called: get_nearby_codes with code='{code}'")
-    return icd_service.get_nearby_codes(code)
+    if icd_service is None:
+        return _svc_unavailable("ICD Service")
+    return await icd_service.get_nearby_codes(code)
 
 
 @mcp.tool()
-def check_medical_conflict(diagnosis_code: str, procedure_code: str) -> str:
+@audited("check_medical_conflict")
+async def check_medical_conflict(diagnosis_code: str, procedure_code: str) -> str:
     """
-    **IMPORTANT: Use this tool when you need to verify if a diagnosis and procedure combination is medically appropriate.**
-
-    This tool simultaneously retrieves and compares:
-    - Full details of the diagnosis code (ICD-10-CM)
-    - Full details of the procedure code (ICD-10-PCS)
-    - Provides structured data for conflict analysis
-
-    Use this when the user asks about:
-    - "Are these codes compatible?"
-    - "Does X diagnosis match Y procedure?"
-    - "Check if this procedure is appropriate for this diagnosis"
-    - "Is there a conflict between these codes?"
+    Retrieves and compares a diagnosis code (ICD-10-CM) and a procedure code (ICD-10-PCS)
+    to provide structured data for medical conflict analysis.
 
     Args:
-        diagnosis_code: ICD-10-CM diagnosis code (e.g., 'K35.80', 'N80.A0').
-        procedure_code: ICD-10-PCS procedure code (e.g., '0DTJ0ZZ', '0UT90ZZ').
-
-    Returns:
-        JSON with both diagnosis and procedure details for comparison and conflict analysis.
+        diagnosis_code: ICD-10-CM diagnosis code (e.g., 'K35.80').
+        procedure_code: ICD-10-PCS procedure code (e.g., '0DTJ0ZZ').
     """
-    log_info(
-        f"Tool called: check_medical_conflict ({diagnosis_code} vs {procedure_code})"
-    )
-    return icd_service.get_conflict_info(diagnosis_code, procedure_code)
+    if icd_service is None:
+        return _svc_unavailable("ICD Service")
+    return await icd_service.get_conflict_info(diagnosis_code, procedure_code)
 
 
-# ==========================================
-# Group 2: Drug Tools (Taiwan FDA Data)
-# ==========================================
-
+# ============================================================
+# Group 1b: ICD-10 category browser
+# ============================================================
 
 @mcp.tool()
-def search_drug_info(keyword: str) -> str:
+@audited("browse_icd_category")
+async def browse_icd_category(category: str | None = None, limit: int = 50) -> str:
+    """
+    Browse ICD-10-CM diagnosis codes by category.
+    Call with no arguments to list all categories; provide a category code to list its codes.
+
+    Args:
+        category: 3-character ICD category (e.g., 'E11', 'I10'). Omit to list all categories.
+        limit: Max codes to return per category (default 50, max 200).
+    """
+    if icd_service is None:
+        return _svc_unavailable("ICD Service")
+    return await icd_service.browse_category(category, limit)
+
+
+# ============================================================
+# Group 2: Drug (Taiwan FDA)
+# ============================================================
+
+@mcp.tool()
+@audited("search_drug_info")
+async def search_drug_info(keyword: str) -> str:
     """
     Search for Taiwan FDA approved drugs by name (Chinese/English) or indication.
-    Returns basic information including License ID, Name, and Indication.
 
     Args:
         keyword: Drug name or symptom (e.g., 'Panadol', '普拿疼', '頭痛').
     """
-    log_info(f"Tool called: search_drug_info with query='{keyword}'")
-    return drug_service.search_drug(keyword)
+    if drug_service is None:
+        return _svc_unavailable("Drug Service")
+    return await drug_service.search_drug(keyword)
 
 
 @mcp.tool()
-def get_drug_details(license_id: str) -> str:
+@audited("get_drug_details")
+async def get_drug_details(license_id: str) -> str:
     """
-    Get comprehensive details for a specific drug license ID.
-    Includes: Ingredients, Usage, Appearance (shape/color), and Package Insert links.
+    Get comprehensive details for a specific drug license ID including ingredients,
+    usage, appearance, and package insert links.
 
     Args:
-        license_id: The specific license ID found via search (e.g., '衛部藥製字第058498號').
+        license_id: The license ID from search results (e.g., '衛部藥製字第058498號').
     """
-    log_info(f"Tool called: get_drug_details for ID='{license_id}'")
-    return drug_service.get_details(license_id)
+    if drug_service is None:
+        return _svc_unavailable("Drug Service")
+    return await drug_service.get_drug_details_by_license(license_id)
 
 
 @mcp.tool()
-def identify_unknown_pill(features: str) -> str:
+@audited("identify_unknown_pill")
+async def identify_unknown_pill(features: str) -> str:
     """
-    Identify a pill based on visual features using the appearance database.
+    Identify a pill based on visual features (shape, color, markings).
 
     Args:
         features: Keywords describing the pill (e.g., 'white circle YP', 'oval pink').
-                  Include shape, color, and markings if visible.
     """
-    log_info(f"Tool called: identify_unknown_pill with features='{features}'")
-    return drug_service.identify_pill(features)
-
-
-# ==========================================
-# Group 3: Composite Analysis (The "Doctor Brain")
-# ==========================================
+    if drug_service is None:
+        return _svc_unavailable("Drug Service")
+    return await drug_service.identify_pill(features)
 
 
 @mcp.tool()
-def analyze_treatment_plan(diagnosis_keyword: str, drug_keyword: str) -> str:
+@audited("search_drug_by_atc")
+async def search_drug_by_atc(query: str) -> str:
     """
-    [Advanced] Analyze the correlation between a diagnosis and a drug.
-    Fetches data from both ICD-10 and FDA Drug databases to help evaluate treatment appropriateness.
+    Search Taiwan FDA approved drugs by ATC (Anatomical Therapeutic Chemical) code or class name.
 
     Args:
-        diagnosis_keyword: The condition or disease name/code (e.g., 'Diabetes', 'E11').
-        drug_keyword: The medication name (e.g., 'Metformin').
+        query: ATC code prefix (e.g., 'A10', 'C09') or therapeutic class name
+               (e.g., 'paracetamol', 'metformin', 'antihypertensives').
     """
-    log_info(
-        f"Tool called: analyze_treatment with diagnosis='{diagnosis_keyword}', drug='{drug_keyword}'"
-    )
-
-    # 1. Search ICD (broad search first)
-    icd_result = icd_service.search_codes(diagnosis_keyword, type="diagnosis")
-
-    # 2. Search Drug
-    drug_result = drug_service.search_drug(drug_keyword)
-
-    # 3. Combine results for the LLM to process
-    return f"""
-=== Comprehensive Analysis Context ===
-
-[Context 1: Diagnosis Data (ICD-10)]
-Query: {diagnosis_keyword}
-Results:
-{icd_result}
-
--------------------
-
-[Context 2: Medication Data (Taiwan FDA)]
-Query: {drug_keyword}
-Results:
-{drug_result}
-
--------------------
-SYSTEM INSTRUCTION:
-Based on the above retrieved data, please analyze:
-1. Does the medication's indication match the diagnosis?
-2. Are there any obvious contraindications based on the drug category?
-3. Provide a brief summary for a healthcare professional.
-"""
-
-
-# ==========================================
-# Group 4: Health Food Tools (Taiwan FDA)
-# ==========================================
+    if drug_service is None:
+        return _svc_unavailable("Drug Service")
+    return await drug_service.search_by_atc(query)
 
 
 @mcp.tool()
-def search_health_food(keyword: str) -> str:
+@audited("search_drug_by_ingredient")
+async def search_drug_by_ingredient(ingredient_name: str) -> str:
+    """
+    Find Taiwan FDA approved drugs containing a specific active ingredient.
+
+    Args:
+        ingredient_name: Ingredient name in Chinese or English
+                         (e.g., 'metformin', '二甲雙胍', 'aspirin', '阿斯匹林').
+    """
+    if drug_service is None:
+        return _svc_unavailable("Drug Service")
+    return await drug_service.search_by_ingredient(ingredient_name)
+
+
+# ============================================================
+# Group 3: Health Food (Taiwan FDA)
+# ============================================================
+
+@mcp.tool()
+@audited("search_health_food")
+async def search_health_food(keyword: str) -> str:
     """
     Search for Taiwan FDA approved health foods by name or health benefit.
-    Returns information including license number, category, health benefits, and claims.
 
     Args:
         keyword: Product name or health benefit (e.g., '靈芝', '調節血脂', '護肝').
     """
-    log_info(f"Tool called: search_health_food with query='{keyword}'")
-    return health_food_service.search_health_food(keyword)
+    if health_food_service is None:
+        return _svc_unavailable("Health Food Service")
+    return await health_food_service.search_health_food(keyword)
 
 
 @mcp.tool()
-def get_health_food_details(license_number: str) -> str:
+@audited("get_health_food_details")
+async def get_health_food_details(permit_no: str) -> str:
     """
-    Get comprehensive details for a specific health food by license number.
-    Includes functional components, health benefits, claims, warnings, and precautions.
+    Get comprehensive details for a specific health food by permit number.
 
     Args:
-        license_number: The specific license number (e.g., '衛部健食字第A00123號').
+        permit_no: The permit number from search results (e.g., '衛部健食字第A00123號').
     """
-    log_info(f"Tool called: get_health_food_details for license='{license_number}'")
-    return health_food_service.get_health_food_details(license_number)
+    if health_food_service is None:
+        return _svc_unavailable("Health Food Service")
+    return await health_food_service.get_health_food_details(permit_no)
 
 
-# ==========================================
-# Group 5: Nutrition & Dietary Management Tools
-# ==========================================
-
+# ============================================================
+# Group 4: Food Nutrition
+# ============================================================
 
 @mcp.tool()
-def search_food_nutrition(food_name: str, nutrient: str = None) -> str:
+@audited("search_food_nutrition")
+async def search_food_nutrition(food_name: str, nutrient: str | None = None) -> str:
     """
-    Search for nutritional information of foods from Taiwan's food nutrition database.
+    Search for nutritional information of foods from Taiwan's food composition database.
 
     Args:
-        food_name: Name of the food (e.g., '白米', '雞蛋', '蘋果', 'chicken breast').
-        nutrient: Optional - specific nutrient to filter (e.g., '蛋白質', '維生素C', '鈣').
+        food_name: Name of the food (e.g., '白米', '雞蛋', 'chicken breast').
+        nutrient: Optional specific nutrient filter (e.g., '粗蛋白', '鈣').
     """
-    log_info(
-        f"Tool called: search_food_nutrition with food='{food_name}', nutrient='{nutrient}'"
-    )
-    return food_nutrition_service.search_nutrition(food_name, nutrient)
+    if food_nutrition_service is None:
+        return _svc_unavailable("Food Nutrition Service")
+    return await food_nutrition_service.search_nutrition(food_name, nutrient)
 
 
 @mcp.tool()
-def get_detailed_nutrition(food_name: str) -> str:
+@audited("get_detailed_nutrition")
+async def get_detailed_nutrition(food_name: str) -> str:
     """
     Get comprehensive nutritional breakdown for a specific food item.
-    Returns all available nutrients organized by category (e.g., macronutrients, vitamins, minerals).
 
     Args:
         food_name: The specific food name (e.g., '糙米', '雞胸肉').
     """
-    log_info(f"Tool called: get_detailed_nutrition for food='{food_name}'")
-    return food_nutrition_service.get_detailed_nutrition(food_name)
+    if food_nutrition_service is None:
+        return _svc_unavailable("Food Nutrition Service")
+    return await food_nutrition_service.get_detailed_nutrition(food_name)
 
 
 @mcp.tool()
-def search_food_ingredient(keyword: str) -> str:
+@audited("search_food_ingredient")
+async def search_food_ingredient(keyword: str) -> str:
     """
     Search for food ingredients/materials in Taiwan's regulatory database.
-    Useful for checking if an ingredient is approved for food use.
 
     Args:
-        keyword: Ingredient name in Chinese or English (e.g., '薑黃', 'turmeric', '人參').
+        keyword: Ingredient name in Chinese or English (e.g., '薑黃', 'turmeric').
     """
-    log_info(f"Tool called: search_food_ingredient with query='{keyword}'")
-    return food_nutrition_service.search_food_ingredient(keyword)
+    if food_nutrition_service is None:
+        return _svc_unavailable("Food Nutrition Service")
+    return await food_nutrition_service.search_food_ingredient(keyword)
 
 
 @mcp.tool()
-def get_ingredients_by_category(category: str) -> str:
+@audited("get_ingredients_by_category")
+async def get_ingredients_by_category(category: str) -> str:
     """
     Get all approved food ingredients in a specific category.
 
     Args:
-        category: Category name (e.g., '香料植物', '食品添加物', '著色劑').
+        category: Category name (e.g., '香料植物', '食品添加物').
     """
-    log_info(f"Tool called: get_ingredients_by_category for category='{category}'")
-    return food_nutrition_service.get_ingredients_by_category(category)
+    if food_nutrition_service is None:
+        return _svc_unavailable("Food Nutrition Service")
+    return await food_nutrition_service.get_ingredients_by_category(category)
 
 
 @mcp.tool()
-def analyze_meal_nutrition(foods: list[str]) -> str:
+@audited("search_foods_by_nutrient")
+async def search_foods_by_nutrient(nutrient: str, limit: int = 20) -> str:
     """
-    Analyze the combined nutritional composition of multiple foods (meal planning).
+    Find foods ranked by content of a specific nutrient (per 100g), from Taiwan's
+    food composition database. Note: nutrient names follow Taiwan FDA naming convention
+    (e.g., '粗蛋白' for protein, '粗脂肪' for fat, '鈣', '鐵', '維生素C').
 
     Args:
-        foods: List of food names to analyze together (e.g., ['白米', '雞胸肉', '青花菜']).
+        nutrient: Nutrient name (e.g., '粗蛋白', '鈣', '鐵', '膳食纖維', '鉀', 'EPA', 'DHA').
+        limit: Number of foods to return (default 20, max 50).
     """
-    log_info(f"Tool called: analyze_meal_nutrition with foods={foods}")
-    return food_nutrition_service.analyze_diet_plan(foods)
-
-
-# ==========================================
-# Group 6: Comprehensive Health Analysis (疾病與保健整合分析)
-# ==========================================
+    if food_nutrition_service is None:
+        return _svc_unavailable("Food Nutrition Service")
+    return await food_nutrition_service.search_foods_by_nutrient(nutrient, limit)
 
 
 @mcp.tool()
-def analyze_health_support_for_condition(diagnosis_keyword: str) -> str:
+@audited("analyze_meal_nutrition")
+async def analyze_meal_nutrition(foods: list[str]) -> str:
     """
-    **【綜合分析工具】疾病與健康食品輔助保健分析**
-
-    根據疾病診斷，提供適合的健康食品推薦與飲食建議。
-
-    ⚠️ **重要法規聲明**：
-    - 健康食品非藥品，不具治療疾病之效能
-    - 此功能僅供「輔助保健參考」，不可取代正規醫療
-    - 所有建議必須在醫師指導下使用
-
-    **功能說明**：
-    1. 查詢疾病的 ICD-10 診斷資訊
-    2. 根據疾病對應適合的保健功效
-    3. 推薦台灣 FDA 核可的相關健康食品
-    4. 提供基於實證的飲食營養建議
-    5. 包含完整醫療免責聲明
-
-    **適用場景**：
-    - 慢性病患者尋求輔助保健建議
-    - 了解特定疾病可參考的健康食品
-    - 整合性健康管理規劃
+    Analyze the combined nutritional composition of multiple foods.
 
     Args:
-        diagnosis_keyword: 疾病名稱或 ICD-10 碼
-                          Examples:
-                          - ICD 碼: 'E11' (第二型糖尿病), 'I10' (高血壓), 'K74' (肝硬化)
-                          - 中文: '糖尿病', '高血脂', '骨質疏鬆'
-                          - 英文: 'diabetes', 'hypertension', 'osteoporosis'
-
-    Returns:
-        完整的綜合分析報告，包含：
-        - 疾病診斷資訊（來自 ICD-10）
-        - 建議的保健功效類別
-        - 相關健康食品列表（台灣 FDA 核可）
-        - 飲食營養建議
-        - 醫療安全聲明
-
-    **使用範例**：
-    - analyze_health_support_for_condition("E11")  # 查詢第二型糖尿病
-    - analyze_health_support_for_condition("糖尿病")  # 使用中文查詢
-    - analyze_health_support_for_condition("高血壓")  # 查詢高血壓
+        foods: List of food names (e.g., ['白米', '雞胸肉', '青花菜']).
     """
-    log_info(
-        f"Tool called: analyze_health_support_for_condition with diagnosis='{diagnosis_keyword}'"
-    )
+    if food_nutrition_service is None:
+        return _svc_unavailable("Food Nutrition Service")
+    return await food_nutrition_service.analyze_meal_nutrition(foods)
 
-    # 傳入 icd_service 和 food_nutrition_service 以整合疾病資訊和飲食建議
-    return health_food_service.analyze_health_support_for_condition(
-        diagnosis_keyword=diagnosis_keyword,
-        icd_service=icd_service,
-        food_nutrition_service=food_nutrition_service,
+
+# ============================================================
+# Group 5: Health Food + ICD integrated analysis
+# ============================================================
+
+@mcp.tool()
+@audited("analyze_health_support_for_condition")
+async def analyze_health_support_for_condition(diagnosis_keyword: str) -> str:
+    """
+    Integrated analysis: given a diagnosis, recommend Taiwan FDA-approved health foods
+    and relevant dietary notes.
+
+    ⚠️ Health foods are NOT medicine and cannot replace medical treatment.
+
+    Args:
+        diagnosis_keyword: Disease name or ICD-10 code (e.g., 'E11', '糖尿病', 'hypertension').
+    """
+    if health_food_service is None:
+        return _svc_unavailable("Health Food Service")
+    return await health_food_service.analyze_health_support_for_condition(
+        diagnosis_keyword, icd_service=icd_service
     )
 
 
-# ==========================================
-# Group 7: FHIR Interoperability Tools
-# ==========================================
-
+# ============================================================
+# Group 6: FHIR Condition
+# ============================================================
 
 @mcp.tool()
-def create_fhir_condition(
+@audited("create_fhir_condition")
+async def create_fhir_condition(
     icd_code: str,
     patient_id: str,
     clinical_status: str = "active",
@@ -456,769 +528,666 @@ def create_fhir_condition(
     additional_notes: str = None,
 ) -> str:
     """
-    將 ICD-10-CM 診斷碼轉換為符合 FHIR R4 標準的 Condition 資源。
-
-    FHIR (Fast Healthcare Interoperability Resources) 是全球醫療資訊交換標準，
-    此工具可生成符合台灣醫療系統的 FHIR Condition 資源。
+    Convert an ICD-10-CM code to a FHIR R4 Condition resource.
 
     Args:
-        icd_code: ICD-10-CM 診斷碼（例如: "E11.9" 表示第二型糖尿病）
-        patient_id: 患者識別碼（例如: "patient-001"）
-        clinical_status: 臨床狀態，可選值:
-            - "active": 活動中（症狀持續存在）
-            - "inactive": 非活動（無症狀但未完全治癒）
-            - "resolved": 已解決（完全治癒）
-            - "remission": 緩解期（癌症等疾病的緩解狀態）
-        verification_status: 驗證狀態，可選值:
-            - "confirmed": 已確診（經檢查確認）
-            - "provisional": 臨時診斷（初步診斷，需進一步確認）
-            - "differential": 鑑別診斷（多個可能診斷之一）
-            - "refuted": 已排除（排除此診斷）
-        category: 診斷分類，可選值:
-            - "encounter-diagnosis": 就診診斷（本次就醫的診斷）
-            - "problem-list-item": 問題清單項目（長期追蹤的健康問題）
-        severity: 嚴重程度（可選），可選值: "mild"（輕度）, "moderate"（中度）, "severe"（重度）
-        onset_date: 發病日期（可選），格式: YYYY-MM-DD（例如: "2024-01-15"）
-        recorded_date: 記錄日期時間（可選），格式: YYYY-MM-DDTHH:MM:SS+08:00
-        additional_notes: 額外備註（可選），任何補充說明
-
-    Returns:
-        符合 FHIR R4 標準的 Condition 資源（JSON 格式字串）
-
-    Example:
-        create_fhir_condition(
-            icd_code="E11.9",
-            patient_id="patient-001",
-            clinical_status="active",
-            severity="moderate",
-            onset_date="2024-01-15"
-        )
+        icd_code: ICD-10-CM code (e.g., 'E11.9').
+        patient_id: Patient identifier (e.g., 'patient-001').
+        clinical_status: active | inactive | resolved | remission
+        verification_status: confirmed | provisional | differential | refuted
+        category: encounter-diagnosis | problem-list-item
+        severity: mild | moderate | severe (optional)
+        onset_date: YYYY-MM-DD (optional)
+        recorded_date: YYYY-MM-DDTHH:MM:SS+08:00 (optional)
+        additional_notes: Free text note (optional)
     """
-    log_info(
-        f"Tool called: create_fhir_condition for ICD={icd_code}, Patient={patient_id}"
+    if fhir_condition_service is None:
+        return _svc_unavailable("FHIR Condition Service")
+    result = await fhir_condition_service.create_condition(
+        icd_code=icd_code, patient_id=patient_id,
+        clinical_status=clinical_status, verification_status=verification_status,
+        category=category, severity=severity, onset_date=onset_date,
+        recorded_date=recorded_date, additional_notes=additional_notes,
     )
-
-    result = fhir_condition_service.create_condition(
-        icd_code=icd_code,
-        patient_id=patient_id,
-        clinical_status=clinical_status,
-        verification_status=verification_status,
-        category=category,
-        severity=severity,
-        onset_date=onset_date,
-        recorded_date=recorded_date,
-        additional_notes=additional_notes,
-    )
-
     return fhir_condition_service.to_json_string(result, indent=2)
 
 
 @mcp.tool()
-def create_fhir_condition_from_diagnosis(
+@audited("create_fhir_condition_from_diagnosis")
+async def create_fhir_condition_from_diagnosis(
     diagnosis_keyword: str,
     patient_id: str,
     clinical_status: str = "active",
     verification_status: str = "confirmed",
-    severity: str = None,
+    severity: str | None = None,
 ) -> str:
     """
-    從疾病關鍵字搜尋並建立 FHIR Condition 資源（自動查找 ICD-10 編碼）。
-
-    此工具會先搜尋符合關鍵字的診斷碼，然後自動建立 FHIR Condition 資源。
-    適合用於不確定 ICD-10 編碼但知道疾病名稱的情況。
+    Search by disease keyword and auto-create a FHIR Condition resource.
 
     Args:
-        diagnosis_keyword: 疾病關鍵字（中文或英文），例如: "糖尿病", "高血壓", "Diabetes"
-        patient_id: 患者識別碼
-        clinical_status: 臨床狀態（預設: "active"）
-        verification_status: 驗證狀態（預設: "confirmed"）
-        severity: 嚴重程度（可選）
-
-    Returns:
-        包含搜尋結果和 FHIR Condition 資源的 JSON 字串
-
-    Example:
-        create_fhir_condition_from_diagnosis(
-            diagnosis_keyword="第二型糖尿病",
-            patient_id="patient-001",
-            severity="moderate"
-        )
+        diagnosis_keyword: Disease name or keyword (e.g., '第二型糖尿病', 'Diabetes').
+        patient_id: Patient identifier.
+        clinical_status: active | inactive | resolved | remission
+        verification_status: confirmed | provisional | differential | refuted
+        severity: mild | moderate | severe (optional)
     """
-    log_info(
-        f"Tool called: create_fhir_condition_from_diagnosis for '{diagnosis_keyword}'"
-    )
-
-    result = fhir_condition_service.create_condition_from_search(
-        keyword=diagnosis_keyword,
-        patient_id=patient_id,
-        clinical_status=clinical_status,
-        verification_status=verification_status,
+    if fhir_condition_service is None:
+        return _svc_unavailable("FHIR Condition Service")
+    result = await fhir_condition_service.create_condition_from_search(
+        keyword=diagnosis_keyword, patient_id=patient_id,
+        clinical_status=clinical_status, verification_status=verification_status,
         severity=severity,
     )
-
     return fhir_condition_service.to_json_string(result, indent=2)
 
 
 @mcp.tool()
-def validate_fhir_condition(condition_json: str) -> str:
+@audited("validate_fhir_condition")
+async def validate_fhir_condition(condition_json: str) -> str:
     """
-    驗證 FHIR Condition 資源是否符合 FHIR R4 標準規範。
-
-    此工具會檢查 Condition 資源的必要欄位、資料格式和邏輯正確性。
+    Validate a FHIR R4 Condition resource against required field rules.
 
     Args:
-        condition_json: FHIR Condition 資源的 JSON 字串
-
-    Returns:
-        驗證結果，包含錯誤和警告訊息
-
-    Example:
-        validate_fhir_condition('{"resourceType": "Condition", ...}')
+        condition_json: JSON string of the FHIR Condition resource.
     """
-    log_info("Tool called: validate_fhir_condition")
-
-    import json
-
+    if fhir_condition_service is None:
+        return _svc_unavailable("FHIR Condition Service")
     try:
         condition = json.loads(condition_json)
         result = fhir_condition_service.validate_condition(condition)
         return fhir_condition_service.to_json_string(result, indent=2)
     except json.JSONDecodeError as e:
-        log_error(f"JSON decode error in validate_fhir_condition: {e}")
-        return fhir_condition_service.to_json_string(
-            {"valid": False, "errors": [f"Invalid JSON format: {str(e)}"]}, indent=2
-        )
+        return json.dumps({"valid": False, "errors": [f"Invalid JSON: {e}"]}, ensure_ascii=False)
 
 
-# ==========================================
-# Group 8: Laboratory & LOINC Tools
-# ==========================================
-
+# ============================================================
+# Group 7: FHIR Medication
+# ============================================================
 
 @mcp.tool()
-def search_loinc_code(keyword: str, category: str = None) -> str:
+@audited("search_medication_fhir")
+async def search_medication_fhir(keyword: str, resource_type: str = "Medication") -> str:
     """
-    搜尋 LOINC 碼（台灣檢驗項目對照國際標準）
-
-    LOINC (Logical Observation Identifiers Names and Codes) 是全球醫療檢驗項目的標準編碼系統。
-    本工具提供台灣常用檢驗項目與 LOINC 碼的對照查詢。
+    Search drugs and auto-create a FHIR Medication or MedicationKnowledge resource.
 
     Args:
-        keyword: 搜尋關鍵字（檢驗名稱、LOINC 碼、常用縮寫）
-            - 支援中文：例如 "血糖"、"肝功能"、"糖化血色素"
-            - 支援英文：例如 "Glucose"、"HbA1c"
-            - 支援縮寫：例如 "WBC"、"RBC"、"ALT"、"Cr"
-        category: 分類篩選（可選）
-            - "血液常規"、"生化檢驗-血糖"、"生化檢驗-血脂"
-            - "生化檢驗-肝功能"、"生化檢驗-腎功能"
-            - "內分泌-甲狀腺"、"凝血功能"、"發炎指標"
-
-    Returns:
-        LOINC 碼、檢驗名稱（中英文）、檢體類型、單位、檢測方法
-
-    Examples:
-        - search_loinc_code("血糖")  # 查詢血糖相關檢驗
-        - search_loinc_code("HbA1c")  # 查詢糖化血色素
-        - search_loinc_code("肝功能", category="生化檢驗-肝功能")
+        keyword: Drug name (e.g., 'Metformin', '二甲雙胍').
+        resource_type: 'Medication' or 'MedicationKnowledge'
     """
-    log_info(
-        f"Tool called: search_loinc_code with keyword='{keyword}', category='{category}'"
+    if fhir_medication_service is None:
+        return _svc_unavailable("FHIR Medication Service")
+    return json.dumps(
+        await fhir_medication_service.create_medication_from_search(keyword, resource_type),
+        ensure_ascii=False, indent=2,
     )
-    return lab_service.search_loinc_code(keyword, category)
 
 
 @mcp.tool()
-def list_lab_categories() -> str:
+@audited("create_fhir_medication")
+async def create_fhir_medication(license_id: str) -> str:
     """
-    列出所有檢驗分類
-
-    Returns:
-        所有可用的檢驗分類清單
-    """
-    log_info("Tool called: list_lab_categories")
-    return lab_service.list_categories()
-
-
-@mcp.tool()
-def get_reference_range(loinc_code: str, age: int, gender: str = "all") -> str:
-    """
-    查詢檢驗參考值範圍（依年齡、性別）
-
-    每個檢驗項目都有正常參考值範圍，且會因年齡、性別而異。
-    本工具提供台灣醫療機構常用的參考值標準。
+    Create a FHIR R4 Medication resource from a Taiwan FDA license ID.
 
     Args:
-        loinc_code: LOINC 碼（可使用 search_loinc_code 工具查詢）
-        age: 患者年齡（歲）
-        gender: 性別
-            - "M": 男性
-            - "F": 女性
-            - "all": 不分性別（預設）
-
-    Returns:
-        檢驗項目資訊、參考值範圍（上限/下限）、適用對象
-
-    Examples:
-        - get_reference_range("1558-6", age=45, gender="M")  # 45歲男性空腹血糖參考值
-        - get_reference_range("718-7", age=30, gender="F")   # 30歲女性血紅素參考值
+        license_id: Taiwan FDA drug license ID (e.g., '衛部藥製字第058498號').
     """
-    log_info(
-        f"Tool called: get_reference_range for LOINC={loinc_code}, age={age}, gender={gender}"
-    )
-    return lab_service.get_reference_range(loinc_code, age, gender)
+    if fhir_medication_service is None:
+        return _svc_unavailable("FHIR Medication Service")
+    result = await fhir_medication_service.create_medication(license_id)
+    return fhir_medication_service.to_json_string(result, indent=2)
 
 
 @mcp.tool()
-def interpret_lab_result(
-    loinc_code: str, value: float, age: int, gender: str = "all"
-) -> str:
+@audited("create_fhir_medication_knowledge")
+async def create_fhir_medication_from_drug(license_id: str) -> str:
     """
-    判讀檢驗結果（自動比對參考值，判斷是否異常）
-
-    輸入檢驗數值，系統會自動與參考值比對，判斷是否偏高、偏低或正常。
+    Create a FHIR R4 MedicationKnowledge resource (includes ATC, dosage, indication).
 
     Args:
-        loinc_code: LOINC 碼
-        value: 檢驗數值
-        age: 患者年齡（歲）
-        gender: 性別（"M"=男性, "F"=女性, "all"=不分性別）
-
-    Returns:
-        檢驗結果判讀：
-        - 數值狀態（正常/偏高/偏低）
-        - 參考值範圍
-        - 臨床意義
-
-    Examples:
-        - interpret_lab_result("1558-6", value=126, age=50, gender="M")
-          # 判讀空腹血糖 126 mg/dL
-        - interpret_lab_result("4548-4", value=7.5, age=60, gender="F")
-          # 判讀 HbA1c 7.5%
+        license_id: Taiwan FDA drug license ID.
     """
-    log_info(f"Tool called: interpret_lab_result for LOINC={loinc_code}, value={value}")
-    return lab_service.interpret_lab_result(loinc_code, value, age, gender)
+    if fhir_medication_service is None:
+        return _svc_unavailable("FHIR Medication Service")
+    result = await fhir_medication_service.create_medication_knowledge(license_id)
+    return fhir_medication_service.to_json_string(result, indent=2)
 
 
 @mcp.tool()
-def batch_interpret_lab_results(
-    results_json: str, age: int, gender: str = "all"
-) -> str:
+@audited("validate_fhir_medication")
+async def validate_fhir_medication(medication_json: str) -> str:
     """
-    批次判讀多個檢驗結果
-
-    一次判讀多個檢驗項目，快速找出異常項目。
+    Validate a FHIR Medication or MedicationKnowledge resource.
 
     Args:
-        results_json: 檢驗結果 JSON 字串
-            格式: [{"loinc_code": "1558-6", "value": 126}, ...]
-        age: 患者年齡
-        gender: 性別
-
-    Returns:
-        批次判讀結果摘要、異常項目統計、各項目詳細判讀
-
-    Example:
-        batch_interpret_lab_results(
-            results_json='[
-                {"loinc_code": "1558-6", "value": 126},
-                {"loinc_code": "4548-4", "value": 7.2},
-                {"loinc_code": "2093-3", "value": 220}
-            ]',
-            age=55,
-            gender="M"
-        )
+        medication_json: JSON string of the FHIR resource.
     """
-    log_info(f"Tool called: batch_interpret_lab_results for age={age}, gender={gender}")
-    import json
+    if fhir_medication_service is None:
+        return _svc_unavailable("FHIR Medication Service")
+    try:
+        resource = json.loads(medication_json)
+        result = fhir_medication_service.validate_medication(resource)
+        return fhir_medication_service.to_json_string(result, indent=2)
+    except json.JSONDecodeError as e:
+        return json.dumps({"valid": False, "errors": [f"Invalid JSON: {e}"]}, ensure_ascii=False)
 
+
+# ============================================================
+# Group 8: Lab / LOINC
+# ============================================================
+
+@mcp.tool()
+@audited("search_loinc_code")
+async def search_loinc_code(keyword: str, category: str | None = None) -> str:
+    """
+    Search LOINC codes (Taiwan lab tests mapped to international standard).
+
+    Args:
+        keyword: Test name or abbreviation (e.g., '血糖', 'HbA1c', 'WBC', 'Glucose').
+        category: Optional class filter (e.g., '血液常規', 'CHEM').
+    """
+    if lab_service is None:
+        return _svc_unavailable("Lab Service")
+    return await lab_service.search_loinc_code(keyword, category)
+
+
+@mcp.tool()
+@audited("list_lab_categories")
+async def list_lab_categories() -> str:
+    """List all available lab test categories."""
+    if lab_service is None:
+        return _svc_unavailable("Lab Service")
+    return await lab_service.list_categories()
+
+
+@mcp.tool()
+@audited("get_reference_range")
+async def get_reference_range(loinc_code: str, age: int, gender: str = "all") -> str:
+    """
+    Get lab reference range for a specific LOINC code, age, and gender.
+
+    Args:
+        loinc_code: LOINC code (e.g., '1558-6' for fasting glucose).
+        age: Patient age in years.
+        gender: 'M' (male) | 'F' (female) | 'all' (default)
+    """
+    if lab_service is None:
+        return _svc_unavailable("Lab Service")
+    return await lab_service.get_reference_range(loinc_code, age, gender)
+
+
+@mcp.tool()
+@audited("interpret_lab_result")
+async def interpret_lab_result(loinc_code: str, value: float, age: int, gender: str = "all") -> str:
+    """
+    Interpret a lab result by comparing to reference range (high/normal/low).
+
+    Args:
+        loinc_code: LOINC code.
+        value: Measured value.
+        age: Patient age.
+        gender: 'M' | 'F' | 'all'
+    """
+    if lab_service is None:
+        return _svc_unavailable("Lab Service")
+    return await lab_service.interpret_lab_result(loinc_code, value, age, gender)
+
+
+@mcp.tool()
+@audited("search_loinc_by_specimen")
+async def search_loinc_by_specimen(specimen_type: str) -> str:
+    """
+    Find LOINC lab tests by specimen/sample type.
+
+    Args:
+        specimen_type: Specimen type in Chinese or English
+                       (e.g., '血清/血漿', '全血', 'Urine', 'Ser/Plas', 'Bld').
+    """
+    if lab_service is None:
+        return _svc_unavailable("Lab Service")
+    return await lab_service.search_by_specimen(specimen_type)
+
+
+@mcp.tool()
+@audited("find_related_loinc_tests")
+async def find_related_loinc_tests(component: str) -> str:
+    """
+    Find all LOINC tests that measure the same analyte (component), grouped by specimen system.
+    Useful for discovering all variants of a test (e.g., all glucose measurements across
+    different timing and specimen types).
+
+    Args:
+        component: Analyte/component name (e.g., 'Glucose', 'Creatinine', 'Hemoglobin',
+                   'Cholesterol', 'Sodium').
+    """
+    if lab_service is None:
+        return _svc_unavailable("Lab Service")
+    return await lab_service.find_related_tests(component)
+
+
+@mcp.tool()
+@audited("get_loinc_detail")
+async def get_loinc_detail(loinc_num: str) -> str:
+    """
+    Get full LOINC concept detail including all axes: component, property, time_aspect,
+    system, scale_type, method_type, specimen_type, and patient-friendly display name.
+
+    Args:
+        loinc_num: LOINC code (e.g., '2345-7' for serum glucose).
+    """
+    if lab_service is None:
+        return _svc_unavailable("Lab Service")
+    return await lab_service.get_patient_friendly_name(loinc_num)
+
+
+@mcp.tool()
+@audited("batch_interpret_lab_results")
+async def batch_interpret_lab_results(results_json: str, age: int, gender: str = "all") -> str:
+    """
+    Batch-interpret multiple lab results at once.
+
+    Args:
+        results_json: JSON array: [{"loinc_code": "1558-6", "value": 126}, ...]
+        age: Patient age.
+        gender: 'M' | 'F' | 'all'
+    """
+    if lab_service is None:
+        return _svc_unavailable("Lab Service")
     try:
         results = json.loads(results_json)
-        return lab_service.batch_interpret_results(results, age, gender)
+        return await lab_service.batch_interpret_results(results, age, gender)
     except json.JSONDecodeError as e:
-        log_error(f"JSON decode error in batch_interpret_lab_results: {e}")
-        return json.dumps(
-            {"error": f"Invalid JSON format: {str(e)}"}, ensure_ascii=False
-        )
+        return json.dumps({"error": f"Invalid JSON: {e}"}, ensure_ascii=False)
 
 
-# ==========================================
-# Group 9: Clinical Guideline Tools
-# ==========================================
+# ============================================================
+# Group 9: Clinical Guidelines
+# ============================================================
+
+@mcp.tool()
+@audited("search_clinical_guideline")
+async def search_clinical_guideline(keyword: str) -> str:
+    """
+    Search Taiwan Medical Society clinical practice guidelines.
+
+    Args:
+        keyword: Disease name or ICD-10 code (e.g., '糖尿病', 'E11').
+    """
+    if guideline_service is None:
+        return _svc_unavailable("Clinical Guideline Service")
+    return await guideline_service.search_guideline(keyword)
 
 
 @mcp.tool()
-def search_clinical_guideline(keyword: str) -> str:
+@audited("get_complete_guideline")
+async def get_complete_guideline(icd_code: str) -> str:
     """
-    搜尋臨床診療指引
-
-    提供台灣各醫學會發布的臨床診療指引，包含診斷、治療、用藥建議。
+    Get the full clinical guideline for a disease: diagnosis, medications,
+    lab tests, and treatment goals.
 
     Args:
-        keyword: 疾病名稱或 ICD-10 編碼
-            - 例如："糖尿病"、"高血壓"、"E11"、"I10"
-
-    Returns:
-        診療指引清單（標題、來源醫學會、發布年份）
-
-    Examples:
-        - search_clinical_guideline("糖尿病")
-        - search_clinical_guideline("E11")
+        icd_code: ICD-10 code (e.g., 'E11').
     """
-    log_info(f"Tool called: search_clinical_guideline with keyword='{keyword}'")
-    return guideline_service.search_guideline(keyword)
+    if guideline_service is None:
+        return _svc_unavailable("Clinical Guideline Service")
+    return await guideline_service.get_complete_guideline(icd_code)
 
 
 @mcp.tool()
-def get_complete_guideline(icd_code: str) -> str:
+@audited("get_medication_recommendations")
+async def get_medication_recommendations(icd_code: str) -> str:
     """
-    取得完整診療指引（診斷、用藥、檢查、治療目標）
-
-    提供特定疾病的完整診療指引，包含：
-    - 診斷建議（檢查流程、診斷標準）
-    - 用藥建議（第一線/第二線藥物、劑量、禁忌症）
-    - 檢查建議（追蹤項目、頻率）
-    - 治療目標（血糖/血壓/血脂等控制目標）
+    Get medication recommendations for a specific diagnosis.
 
     Args:
-        icd_code: ICD-10 編碼（例如: "E11" 糖尿病, "I10" 高血壓）
-
-    Returns:
-        完整診療指引（結構化資料）
-
-    Examples:
-        - get_complete_guideline("E11")  # 糖尿病完整指引
-        - get_complete_guideline("I10")  # 高血壓完整指引
+        icd_code: ICD-10 code (e.g., 'I10' for hypertension).
     """
-    log_info(f"Tool called: get_complete_guideline for ICD={icd_code}")
-    return guideline_service.get_complete_guideline(icd_code)
+    if guideline_service is None:
+        return _svc_unavailable("Clinical Guideline Service")
+    return await guideline_service.get_medication_recommendations(icd_code)
 
 
 @mcp.tool()
-def get_medication_recommendations(icd_code: str) -> str:
+@audited("get_test_recommendations")
+async def get_test_recommendations(icd_code: str) -> str:
     """
-    取得用藥建議（根據診療指引）
-
-    提供特定疾病的標準用藥建議，包含第一線、第二線藥物選擇。
+    Get recommended lab tests and examinations for a specific diagnosis.
 
     Args:
-        icd_code: ICD-10 編碼
-
-    Returns:
-        用藥建議清單（藥物分類、範例藥品、劑量指引、禁忌症、證據等級）
-
-    Example:
-        get_medication_recommendations("E11")  # 糖尿病用藥建議
+        icd_code: ICD-10 code.
     """
-    log_info(f"Tool called: get_medication_recommendations for ICD={icd_code}")
-    return guideline_service.get_medication_recommendations(icd_code)
+    if guideline_service is None:
+        return _svc_unavailable("Clinical Guideline Service")
+    return await guideline_service.get_test_recommendations(icd_code)
 
 
 @mcp.tool()
-def get_test_recommendations(icd_code: str) -> str:
+@audited("get_treatment_goals")
+async def get_treatment_goals(icd_code: str) -> str:
     """
-    取得檢查建議（根據診療指引）
-
-    提供特定疾病的檢查建議，包含檢查項目、頻率、適應症。
+    Get treatment targets and goals for a specific diagnosis.
 
     Args:
-        icd_code: ICD-10 編碼
-
-    Returns:
-        檢查建議清單（檢查名稱、LOINC 碼、頻率、適應症、證據等級）
-
-    Example:
-        get_test_recommendations("E11")  # 糖尿病檢查建議
+        icd_code: ICD-10 code.
     """
-    log_info(f"Tool called: get_test_recommendations for ICD={icd_code}")
-    return guideline_service.get_test_recommendations(icd_code)
+    if guideline_service is None:
+        return _svc_unavailable("Clinical Guideline Service")
+    return await guideline_service.get_treatment_goals(icd_code)
 
 
 @mcp.tool()
-def get_treatment_goals(icd_code: str) -> str:
+@audited("check_medication_contraindications")
+async def check_medication_contraindications(icd_code: str, medication_class: str) -> str:
     """
-    取得治療目標（根據診療指引）
+    Check guideline contraindications for a specific medication class in the context
+    of a diagnosis. Returns matching recommendations and all contraindications for that disease.
 
-    提供特定疾病的治療目標，例如血糖/血壓/血脂的控制目標值。
+    ⚠️ Always verify with a licensed clinician before making prescribing decisions.
 
     Args:
-        icd_code: ICD-10 編碼
-
-    Returns:
-        治療目標清單（目標類型、參數、目標值、時間範圍）
-
-    Example:
-        get_treatment_goals("E11")  # 糖尿病治療目標（HbA1c <7% 等）
+        icd_code: Diagnosis ICD-10 code (e.g., 'E11' for type 2 diabetes).
+        medication_class: Medication class or drug name to check
+                          (e.g., 'SGLT2抑制劑', 'Metformin', 'ACE抑制劑').
     """
-    log_info(f"Tool called: get_treatment_goals for ICD={icd_code}")
-    return guideline_service.get_treatment_goals(icd_code)
+    if guideline_service is None:
+        return _svc_unavailable("Clinical Guideline Service")
+    return await guideline_service.check_medication_contraindications(icd_code, medication_class)
 
 
 @mcp.tool()
-def suggest_clinical_pathway(icd_code: str, patient_context_json: str = None) -> str:
+@audited("link_guideline_to_drugs")
+async def link_guideline_to_drugs(icd_code: str) -> str:
     """
-    建議臨床路徑（完整治療流程）
-
-    根據診療指引，提供從診斷到治療的完整臨床路徑建議。
+    Cross-reference clinical guideline medication recommendations with Taiwan FDA
+    approved drug licenses. Shows which guideline-recommended drugs have licensed
+    products available in Taiwan.
 
     Args:
-        icd_code: ICD-10 編碼
-        patient_context_json: 患者背景資訊（可選）
-            格式: {"age": 60, "gender": "M", "comorbidities": ["高血壓", "高血脂"]}
-
-    Returns:
-        結構化臨床路徑：
-        - 步驟1: 診斷確認
-        - 步驟2: 基礎檢查
-        - 步驟3: 治療啟始
-        - 步驟4: 追蹤監測
-        - 步驟5: 治療目標
-
-    Example:
-        suggest_clinical_pathway("E11")  # 糖尿病臨床路徑
+        icd_code: ICD-10 code (e.g., 'E11', 'I10', 'E78').
     """
-    log_info(f"Tool called: suggest_clinical_pathway for ICD={icd_code}")
+    if guideline_service is None:
+        return _svc_unavailable("Clinical Guideline Service")
+    return await guideline_service.link_guideline_to_drugs(icd_code)
 
-    import json
 
-    patient_context = None
+@mcp.tool()
+@audited("suggest_clinical_pathway")
+async def suggest_clinical_pathway(icd_code: str, patient_context_json: str | None = None) -> str:
+    """
+    Suggest a step-by-step clinical pathway based on Taiwan guidelines.
+
+    Args:
+        icd_code: ICD-10 code.
+        patient_context_json: Optional JSON with patient context (age, comorbidities, etc.).
+    """
+    if guideline_service is None:
+        return _svc_unavailable("Clinical Guideline Service")
+    context = None
     if patient_context_json:
         try:
-            patient_context = json.loads(patient_context_json)
-        except json.JSONDecodeError as e:
-            log_error(f"JSON decode error in suggest_clinical_pathway: {e}")
+            context = json.loads(patient_context_json)
+        except json.JSONDecodeError:
             pass
+    return await guideline_service.suggest_clinical_pathway(icd_code, context)
 
-    return guideline_service.suggest_clinical_pathway(icd_code, patient_context)
 
+# ============================================================
+# Group 10: TWCore IG
+# ============================================================
 
-# ==========================================
-# Group 10: FHIR Medication Tools
-# ==========================================
+@mcp.tool()
+@audited("list_twcore_codesystems")
+async def list_twcore_codesystems(category: str = "all") -> str:
+    """
+    List all available TWCore IG CodeSystems.
+
+    Args:
+        category: all | medication | diagnosis | organization | administrative
+    """
+    if twcore_service is None:
+        return _svc_unavailable("TWCore Service")
+    return await twcore_service.list_codesystems(category)
 
 
 @mcp.tool()
-def create_fhir_medication(
-    license_id: str, include_ingredients: bool = True, include_appearance: bool = True
+@audited("search_twcore_code")
+async def search_twcore_code(keyword: str, codesystem_ids: list[str]) -> str:
+    """
+    Search for a code across one or more TWCore CodeSystems.
+
+    Args:
+        keyword: Code or display term to search.
+        codesystem_ids: List of CodeSystem IDs to search (from list_twcore_codesystems).
+    """
+    if twcore_service is None:
+        return _svc_unavailable("TWCore Service")
+    return await twcore_service.search_code(keyword, codesystem_ids)
+
+
+@mcp.tool()
+@audited("lookup_twcore_code")
+async def lookup_twcore_code(code: str, codesystem_id: str) -> str:
+    """
+    Exact lookup of a single code in a TWCore CodeSystem.
+    Returns a FHIR Coding object.
+
+    Args:
+        code: The code to look up.
+        codesystem_id: The CodeSystem ID (e.g., 'medication-frequency-nhi-tw').
+    """
+    if twcore_service is None:
+        return _svc_unavailable("TWCore Service")
+    return await twcore_service.lookup_code(code, codesystem_id)
+
+
+# ============================================================
+# Group 11: SNOMED CT
+# ============================================================
+
+@mcp.tool()
+@audited("search_snomed_concept")
+async def search_snomed_concept(
+    query: str,
+    limit: int = 20,
+    hierarchy_filter: int = None,
 ) -> str:
     """
-    將台灣 FDA 藥品許可證資料轉換為符合 FHIR R4 標準的 Medication 資源。
-
-    FHIR Medication 資源用於描述藥品的基本資訊，包含：
-    - 藥品識別資訊（許可證字號、藥品名稱）
-    - 製造商資訊
-    - 劑型（錠劑、膠囊、注射劑等）
-    - 成分資訊（有效成分與含量）
-    - 外觀描述（形狀、顏色、刻痕）
+    Search SNOMED CT International edition concepts by English term.
 
     Args:
-        license_id: 台灣 FDA 藥品許可證字號
-            範例: "衛署藥製字第012345號", "衛部藥輸字第026123號"
-        include_ingredients: 是否包含成分資訊（預設: True）
-        include_appearance: 是否包含外觀描述（預設: True）
-
-    Returns:
-        符合 FHIR R4 標準的 Medication 資源（JSON 格式字串）
-
-    Example:
-        create_fhir_medication(
-            license_id="衛署藥製字第058498號",
-            include_ingredients=True,
-            include_appearance=True
-        )
+        query: Search term (e.g., 'diabetes mellitus', 'myocardial infarction').
+        limit: Maximum results (default 20, max 100).
+        hierarchy_filter: Optional SNOMED concept ID to restrict results to that
+                          hierarchy (e.g., 404684003 for Clinical findings).
     """
-    log_info(f"Tool called: create_fhir_medication for license_id={license_id}")
-
-    result = fhir_medication_service.create_medication(
-        license_id=license_id,
-        include_ingredients=include_ingredients,
-        include_appearance=include_appearance,
+    if snomed_service is None:
+        return _svc_unavailable("SNOMED CT")
+    results = await snomed_service.search_concepts(
+        query, min(limit, 100), hierarchy_filter
     )
-
-    return fhir_medication_service.to_json_string(result, indent=2)
+    return json.dumps(results, ensure_ascii=False, indent=2)
 
 
 @mcp.tool()
-def create_fhir_medication_knowledge(license_id: str) -> str:
+@audited("get_snomed_concept")
+async def get_snomed_concept(concept_id: int) -> str:
     """
-    建立 FHIR MedicationKnowledge 資源（藥品知識庫）。
-
-    MedicationKnowledge 提供比 Medication 更詳細的藥品知識，包含：
-    - 適應症（Indication）
-    - 用法用量（Dosage Guidelines）
-    - ATC 藥物分類（Anatomical Therapeutic Chemical Classification）
-    - 包裝資訊
-    - 藥品類別（處方藥/非處方藥）
-    - 藥品特性（顏色、形狀、刻痕、外觀圖片）
-
-    適用於：
-    - 藥品資訊系統整合
-    - 臨床決策支援系統
-    - 藥品知識庫建立
-    - 與國際醫療系統對接
+    Get full details for a SNOMED CT concept: FSN, synonyms, parents, ICD-10 mappings.
 
     Args:
-        license_id: 台灣 FDA 藥品許可證字號
-
-    Returns:
-        符合 FHIR R4 標準的 MedicationKnowledge 資源（JSON 格式字串）
-
-    Example:
-        create_fhir_medication_knowledge("衛署藥製字第058498號")
+        concept_id: SNOMED CT concept ID (e.g., 73211009 for 'Diabetes mellitus').
     """
-    log_info(
-        f"Tool called: create_fhir_medication_knowledge for license_id={license_id}"
-    )
-
-    result = fhir_medication_service.create_medication_knowledge(license_id)
-
-    return fhir_medication_service.to_json_string(result, indent=2)
+    if snomed_service is None:
+        return _svc_unavailable("SNOMED CT")
+    result = await snomed_service.get_concept(concept_id)
+    if result is None:
+        return json.dumps({"error": f"Concept {concept_id} not found"}, ensure_ascii=False)
+    return json.dumps(result, ensure_ascii=False, indent=2)
 
 
 @mcp.tool()
-def create_fhir_medication_from_name(
-    drug_name: str, resource_type: str = "Medication"
+@audited("get_snomed_children")
+async def get_snomed_children(concept_id: int, limit: int = 50) -> str:
+    """
+    Get direct child concepts (IS-A relationships pointing to this concept).
+
+    Args:
+        concept_id: SNOMED CT concept ID.
+        limit: Maximum children to return (default 50).
+    """
+    if snomed_service is None:
+        return _svc_unavailable("SNOMED CT")
+    results = await snomed_service.get_children(concept_id, min(limit, 200))
+    return json.dumps(
+        {"concept_id": concept_id, "children_count": len(results), "children": results},
+        ensure_ascii=False, indent=2,
+    )
+
+
+@mcp.tool()
+@audited("get_snomed_ancestors")
+async def get_snomed_ancestors(concept_id: int, max_depth: int = 10) -> str:
+    """
+    Get all ancestor concepts by following IS-A relationships upward.
+
+    Args:
+        concept_id: SNOMED CT concept ID.
+        max_depth: Maximum traversal depth (default 10).
+    """
+    if snomed_service is None:
+        return _svc_unavailable("SNOMED CT")
+    results = await snomed_service.get_ancestors(concept_id, min(max_depth, 20))
+    return json.dumps(
+        {"concept_id": concept_id, "ancestor_count": len(results), "ancestors": results},
+        ensure_ascii=False, indent=2,
+    )
+
+
+@mcp.tool()
+@audited("get_snomed_relationships")
+async def get_snomed_relationships(
+    concept_id: int,
+    relationship_type_id: int = None,
 ) -> str:
     """
-    從藥品名稱搜尋並建立 FHIR 資源（自動查找許可證）。
-
-    此工具會先搜尋符合名稱的藥品，然後自動建立 FHIR 資源。
-    適合用於不確定許可證字號但知道藥品名稱的情況。
+    Get all non-IS-A relationships for a SNOMED CT concept (attributes that describe
+    clinical meaning: finding site, causative agent, associated morphology, has ingredient, etc.).
 
     Args:
-        drug_name: 藥品名稱（中文或英文）
-            範例: "普拿疼", "Panadol", "立普妥"
-        resource_type: FHIR 資源類型
-            - "Medication": 基本藥品資源（預設）
-            - "MedicationKnowledge": 完整藥品知識庫
+        concept_id: SNOMED CT concept ID.
+        relationship_type_id: Optional SNOMED relationship type concept ID to filter
+                              (e.g., 246075003 = Causative agent,
+                                     127489000 = Has active ingredient,
+                                     363698007 = Finding site,
+                                     116676008 = Associated morphology).
+    """
+    if snomed_service is None:
+        return _svc_unavailable("SNOMED CT")
+    results = await snomed_service.get_relationships(concept_id, relationship_type_id)
+    return json.dumps(
+        {"concept_id": concept_id, "relationship_count": sum(len(r["targets"]) for r in results),
+         "relationships": results},
+        ensure_ascii=False, indent=2,
+    )
 
-    Returns:
-        包含搜尋結果和 FHIR 資源的 JSON 字串
 
-    Example:
-        create_fhir_medication_from_name(
-            drug_name="普拿疼",
-            resource_type="Medication"
+@mcp.tool()
+@audited("map_icd_to_snomed")
+async def map_icd_to_snomed(icd_code: str) -> str:
+    """
+    Find SNOMED CT concepts that map to a given ICD-10 code (via extended map).
+
+    Args:
+        icd_code: ICD-10 code (e.g., 'E11.9', 'I10').
+    """
+    if snomed_service is None:
+        return _svc_unavailable("SNOMED CT")
+    results = await snomed_service.map_icd_to_snomed(icd_code)
+    return json.dumps(
+        {"icd_code": icd_code.upper(), "snomed_concepts": results},
+        ensure_ascii=False, indent=2,
+    )
+
+
+@mcp.tool()
+@audited("map_snomed_to_icd")
+async def map_snomed_to_icd(concept_id: int) -> str:
+    """
+    Get all ICD-10 codes that a SNOMED CT concept maps to.
+
+    Args:
+        concept_id: SNOMED CT concept ID.
+    """
+    if snomed_service is None:
+        return _svc_unavailable("SNOMED CT")
+    results = await snomed_service.map_snomed_to_icd(concept_id)
+    return json.dumps(
+        {"concept_id": concept_id, "icd10_mappings": results},
+        ensure_ascii=False, indent=2,
+    )
+
+
+# ============================================================
+# Group 12: Drug Interactions (RxNorm)
+# ============================================================
+
+@mcp.tool()
+@audited("check_drug_interactions")
+async def check_drug_interactions(drug_names: list[str]) -> str:
+    """
+    Check for drug-drug interactions among a list of drugs using RxNorm data.
+
+    Args:
+        drug_names: List of drug names (generic or brand; e.g., ['warfarin', 'aspirin', 'metformin']).
+    """
+    if drug_interaction_service is None:
+        return _svc_unavailable("Drug Interactions (RxNorm)")
+    if not drug_names or len(drug_names) < 2:
+        return json.dumps(
+            {"error": "Provide at least 2 drug names to check for interactions"},
+            ensure_ascii=False,
         )
+    result = await drug_interaction_service.check_interactions(drug_names)
+    return json.dumps(result, ensure_ascii=False, indent=2)
+
+
+@mcp.tool()
+@audited("resolve_rxnorm_drug")
+async def resolve_rxnorm_drug(drug_name: str) -> str:
     """
-    log_info(
-        f"Tool called: create_fhir_medication_from_name for drug_name='{drug_name}'"
+    Resolve a drug name to its RxNorm concepts (RXCUI and term type).
+
+    Args:
+        drug_name: Drug name in English (generic or brand; e.g., 'atorvastatin', 'Lipitor').
+    """
+    if drug_interaction_service is None:
+        return _svc_unavailable("Drug Interactions (RxNorm)")
+    results = await drug_interaction_service.resolve_drug(drug_name)
+    return json.dumps(
+        {"query": drug_name, "rxnorm_concepts": results},
+        ensure_ascii=False, indent=2,
     )
 
-    result = fhir_medication_service.create_medication_from_search(
-        keyword=drug_name, resource_type=resource_type
-    )
-
-    return fhir_medication_service.to_json_string(result, indent=2)
-
 
 @mcp.tool()
-def identify_pill_to_fhir(
-    shape: str = None, color: str = None, marking: str = None
-) -> str:
+@audited("get_drug_ingredients_rxnorm")
+async def get_drug_ingredients_rxnorm(rxcui: str) -> str:
     """
-    從藥品外觀識別並建立 FHIR Medication 資源。
-
-    利用藥品外觀特徵（形狀、顏色、刻痕）識別藥品，並轉換為 FHIR 資源。
-    適用於：
-    - 未知藥品的識別
-    - 藥品查驗登記
-    - 用藥安全確認
+    Get a drug's ingredient components via RxNorm.
 
     Args:
-        shape: 形狀（可選）
-            範例: "圓形", "橢圓形", "菱形", "長方形", "circle", "oval"
-        color: 顏色（可選）
-            範例: "白色", "粉紅色", "藍色", "white", "pink", "blue"
-        marking: 刻痕/標記（可選）
-            範例: "YP", "500", "分割線"
-
-    Returns:
-        包含識別結果和 FHIR Medication 資源的 JSON 字串
-
-    Example:
-        identify_pill_to_fhir(
-            shape="圓形",
-            color="白色",
-            marking="500"
-        )
+        rxcui: RxNorm concept unique identifier (from resolve_rxnorm_drug).
     """
-    log_info(
-        f"Tool called: identify_pill_to_fhir with shape={shape}, color={color}, marking={marking}"
-    )
-
-    result = fhir_medication_service.create_medication_from_appearance(
-        shape=shape, color=color, marking=marking
-    )
-
-    return fhir_medication_service.to_json_string(result, indent=2)
+    if drug_interaction_service is None:
+        return _svc_unavailable("Drug Interactions (RxNorm)")
+    result = await drug_interaction_service.get_drug_ingredients(rxcui)
+    if result is None:
+        return json.dumps({"error": f"RXCUI {rxcui} not found"}, ensure_ascii=False)
+    return json.dumps(result, ensure_ascii=False, indent=2)
 
 
-# ==========================================
-# Group 11: TWCore IG Tools (臺灣核心實作指引即時查詢)
-# ==========================================
+# ============================================================
+# Entry point
+# ============================================================
 
-
-@mcp.tool()
-def list_twcore_codesystems(category: str = "all") -> str:
-    """
-    列出臺灣核心實作指引 (TW Core IG) 所有可用的 CodeSystem 清單
-
-    提供完整的 TWCore CodeSystem sitemap，包含 30 個官方標準代碼系統，
-    涵蓋藥品、診斷、醫療機構、行政等分類。
-
-    Args:
-        category: 篩選分類（可選）
-            - 'all': 全部（預設）
-            - 'medication': 藥品相關（使用頻率、給藥途徑、品項、ATC碼）
-            - 'diagnosis': 診斷分類（ICD-10-CM/PCS、ICD-9）
-            - 'organization': 醫療機構/人員（科別、機構、給付項目）
-            - 'administrative': 行政/人口（郵遞區號、婚姻、職業）
-            - 'technical': 系統/技術（照護計畫、識別碼）
-
-    Returns:
-        JSON 含各分類的 CodeSystem 清單、ID、JSON 端點 URL
-    """
-    log_info(f"Tool called: list_twcore_codesystems with category='{category}'")
-    return twcore_service.list_codesystems(category)
-
-
-@mcp.tool()
-def search_twcore_medication(keyword: str) -> str:
-    """
-    搜尋 TWCore 藥品相關標準代碼（即時從官方 IG 取得最新資料）
-
-    涵蓋 7 個 CodeSystem：
-    - 藥品使用頻率（QD、BID、TID、AC、PC、PRN 等）
-    - 給藥途徑（口服、注射、外用等）
-    - 健保用藥品項
-    - 中藥用藥品項
-    - 食藥署藥品許可證
-    - 醫療器材許可證
-    - ATC 藥理治療分類碼
-
-    資料來源: https://twcore.mohw.gov.tw/ig/twcore/
-
-    Args:
-        keyword: 搜尋關鍵字（代碼或中文說明）
-            範例: 'BID', '每日', '口服', 'IV', '中藥', 'ATC'
-
-    Returns:
-        JSON 含匹配的代碼、中文說明、所屬 CodeSystem、FHIR system URL
-    """
-    log_info(f"Tool called: search_twcore_medication with keyword='{keyword}'")
-    return twcore_service.search_medication(keyword)
-
-
-@mcp.tool()
-def search_twcore_diagnosis(keyword: str) -> str:
-    """
-    搜尋 TWCore 診斷/處置分類標準代碼（即時從官方 IG 取得最新資料）
-
-    涵蓋 7 個 CodeSystem：
-    - ICD-10-CM 2023/2021/2014 版（疾病診斷碼）
-    - ICD-10-PCS 2023/2021/2014 版（處置碼）
-    - ICD-9-CM 2001 版
-
-    資料來源: https://twcore.mohw.gov.tw/ig/twcore/
-
-    Args:
-        keyword: 搜尋關鍵字（ICD 碼或疾病名稱）
-            範例: 'E11', '糖尿病', 'diabetes', 'K35', '闌尾炎'
-
-    Returns:
-        JSON 含匹配的 ICD 代碼、中文名稱、所屬版本、FHIR system URL
-    """
-    log_info(f"Tool called: search_twcore_diagnosis with keyword='{keyword}'")
-    return twcore_service.search_diagnosis(keyword)
-
-
-@mcp.tool()
-def search_twcore_organization(keyword: str) -> str:
-    """
-    搜尋 TWCore 醫療機構/人員/科別標準代碼（即時從官方 IG 取得最新資料）
-
-    涵蓋 5 個 CodeSystem：
-    - 醫事人員類別（醫師、護理師、藥師等）
-    - 醫事機構代碼
-    - 就醫科別（門診掛號科別）
-    - 診療科別
-    - 醫療服務給付項目
-
-    資料來源: https://twcore.mohw.gov.tw/ig/twcore/
-
-    Args:
-        keyword: 搜尋關鍵字
-            範例: '內科', '家醫科', '藥師', '護理', '復健'
-
-    Returns:
-        JSON 含匹配的代碼、中文名稱、所屬 CodeSystem
-    """
-    log_info(f"Tool called: search_twcore_organization with keyword='{keyword}'")
-    return twcore_service.search_organization(keyword)
-
-
-@mcp.tool()
-def search_twcore_administrative(keyword: str) -> str:
-    """
-    搜尋 TWCore 行政/人口統計標準代碼（即時從官方 IG 取得最新資料）
-
-    涵蓋 7 個 CodeSystem：
-    - 郵遞區號（3碼/5碼/6碼）
-    - 婚姻狀態
-    - 行業分類（主計總處）
-    - 職業分類（壽險公會、勞動部）
-
-    資料來源: https://twcore.mohw.gov.tw/ig/twcore/
-
-    Args:
-        keyword: 搜尋關鍵字
-            範例: '台北', '100', '已婚', '資訊業', '工程師'
-
-    Returns:
-        JSON 含匹配的代碼、中文名稱、所屬 CodeSystem
-    """
-    log_info(f"Tool called: search_twcore_administrative with keyword='{keyword}'")
-    return twcore_service.search_administrative(keyword)
-
-
-@mcp.tool()
-def lookup_twcore_code(code: str, codesystem_id: str) -> str:
-    """
-    精確查詢 TWCore CodeSystem 中的單一代碼（含 FHIR Coding 輸出）
-
-    輸入代碼和 CodeSystem ID，取得完整資訊及 FHIR Coding 格式。
-    可透過 list_twcore_codesystems 取得所有可用的 CodeSystem ID。
-
-    Args:
-        code: 代碼（大小寫不敏感）
-            範例: 'BID', 'E11', '01', 'AD'
-        codesystem_id: CodeSystem ID
-            常用 ID:
-            - 'medication-frequency-nhi-tw': 藥品使用頻率
-            - 'medication-path-tw': 給藥途徑
-            - 'medical-consultation-department-nhi-tw': 就醫科別
-            - 'icd-10-cm-2023-tw': ICD-10-CM 2023版
-
-    Returns:
-        JSON 含代碼詳情、屬性、版本、FHIR Coding 物件
-    """
-    log_info(f"Tool called: lookup_twcore_code with code='{code}', cs='{codesystem_id}'")
-    return twcore_service.lookup_code(code, codesystem_id)
-
-
-# --- Start Server ---
 if __name__ == "__main__":
-    from config import MCPConfig
-
-    # 載入配置
-    config = MCPConfig.from_env()
-
-    # 輸出啟動資訊
-    log_info("=" * 50)
-    log_info("Taiwan Health MCP Server")
-    log_info("=" * 50)
-    log_info(str(config))
-    log_info("Server is starting...")
-
-    # 啟動服務
     mcp.run(**config.get_run_kwargs())
