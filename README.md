@@ -127,17 +127,17 @@ curl http://localhost:8000/mcp -X POST \
 
 | 群組 | 工具數 | 功能 |
 |------|--------|------|
-| ICD-10 | 4 | ICD-10-CM 診斷碼搜尋、併發症推論、衝突檢查 |
-| 藥品 (FDA) | 3 | 藥品查詢、詳細資訊、外觀識別 |
+| ICD-10 | 5 | ICD-10-CM 診斷碼搜尋、併發症推論、衝突檢查、分類瀏覽 |
+| 藥品 (FDA) | 5 | 藥品查詢、詳細資訊、外觀識別、ATC/成分查詢 |
 | 健康食品 (FDA) | 2 | 健康食品查詢、保健分析 |
-| 營養 (FDA) | 4 | 營養成分、膳食分析、食品原料 |
+| 營養 (FDA) | 6 | 營養成分、膳食分析、食品原料、營養排序 |
 | 健康食品+ICD 整合 | 1 | 疾病-保健食品對應分析 |
 | FHIR Condition | 3 | ICD-10 → FHIR R4 Condition 轉換、驗證 |
 | FHIR Medication | 4 | 藥品 → FHIR R4 Medication/MedicationKnowledge |
-| 檢驗 (LOINC) | 5 | LOINC 碼查詢、參考值、結果判讀、批次判讀 |
-| 臨床指引 | 5 | 指引查詢、用藥/檢查建議、治療目標、臨床路徑 |
+| 檢驗 (LOINC) | 8 | LOINC 碼查詢、參考值、結果判讀、細節與同類檢驗 |
+| 臨床指引 | 8 | 指引查詢、用藥/檢查建議、治療目標、臨床路徑、禁忌與藥品連結 |
 | TWCore IG | 3 | 台灣核心 CodeSystem 查詢（30+ 健保碼系統） |
-| SNOMED CT | 6 | 概念搜尋、階層查詢、ICD-10 雙向對應 |
+| SNOMED CT | 7 | 概念搜尋、階層查詢、關聯查詢、ICD-10 雙向對應 |
 | RxNorm | 3 | 藥物交互作用檢查、藥品名稱解析、成分查詢 |
 
 ---
@@ -189,6 +189,16 @@ curl http://localhost:8000/mcp -X POST \
 
 ---
 
+## 👥 Contributors
+
+<a href="https://github.com/healthymind-tech/Taiwan-Health-MCP/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=healthymind-tech/Taiwan-Health-MCP" />
+</a>
+
+Made with [contrib.rocks](https://contrib.rocks).
+
+---
+
 ## 🙏 致謝
 
 - 台灣衛生福利部、TFDA（ICD、藥品、健康食品、營養資料）
@@ -200,3 +210,23 @@ curl http://localhost:8000/mcp -X POST \
 - Twinkle AI — 感謝社群串接本專案打造 Twinkle Health Agent
 
 **⭐ 如果這個專案對您有幫助，請給我們一個 Star！**
+## ⭐ Star History
+
+<picture>
+  <source
+    media="(prefers-color-scheme: dark)"
+    srcset="
+      https://api.star-history.com/svg?repos=healthymind-tech/Taiwan-Health-MCP&type=Date&theme=dark
+    "
+  />
+  <source
+    media="(prefers-color-scheme: light)"
+    srcset="
+      https://api.star-history.com/svg?repos=healthymind-tech/Taiwan-Health-MCP&type=Date
+    "
+  />
+  <img
+    alt="Star History Chart"
+    src="https://api.star-history.com/svg?repos=healthymind-tech/Taiwan-Health-MCP&type=Date"
+  />
+</picture>
