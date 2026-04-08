@@ -3176,7 +3176,7 @@
 
 <h1 id="_1">部署架構圖<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h1>
 <pre class="mermaid"><code>graph TD
-    User[End User] --&gt; Client[MCP Client (Claude/IDE)]
+    User[End User] --&gt; Client[MCP Client]
 
     subgraph "Docker Container"
         Server[MCP Server Process]
@@ -3185,7 +3185,7 @@
             Services[Service Instances]
         end
 
-        subgraph "Persistent Volume /data"
+        subgraph "Persistent Volume Data"
             DB1[(ICD DB)]
             DB2[(Drug DB)]
             Files[Raw Files]
@@ -3196,7 +3196,7 @@
         Services &lt;--&gt; DB2
     end
 
-    Client -- Stdio / SSE --&gt; Server</code></pre>
+    Client -- Stdio or SSE --&gt; Server</code></pre>
 <h2 id="_2">關鍵考量<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
 <ol>
 <li><strong>資料持久性</strong>：Raw Files (Excel) 與 SQLite DB 均位於 <code>/data</code> Volume，確保容器重啟後無需重新進行 ETL。</li>

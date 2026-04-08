@@ -3282,12 +3282,12 @@
 **整合 ICD-10、SNOMED CT、RxNorm、LOINC、FDA 藥品/保健食品/營養、TWCore IG、臨床指引，支援 FHIR R4 標準**
 
 [![FHIR](https://img.shields.io/badge/FHIR-R4-blue)](http://hl7.org/fhir/R4/)
-[![Python](https://img.shields.io/badge/Python-3.12-green)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/Python-3.8+-green)](https://www.python.org/)
 [![MCP](https://img.shields.io/badge/MCP-1.0-orange)](https://modelcontextprotocol.io)
-[![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
+[![License](https://img.shields.io/badge/License-MIT-yellow)](https://github.com/yourusername/Taiwan-ICD10-Health-MCP/blob/main/LICENSE)
 
 [快速開始](getting-started.md){ .md-button .md-button--primary }
-[查看 GitHub](https://github.com/healthymind-tech/Taiwan-Health-MCP){ .md-button }
+[查看 GitHub](https://github.com/yourusername/Taiwan-ICD10-Health-MCP){ .md-button }
 
 </div>
 
@@ -3375,43 +3375,58 @@
 <hr />
 <h2 id="_3">📊 系統架構<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
 <pre class="mermaid"><code>graph TB
-    subgraph "Client Layer"
-        A1[Claude AI]
-        A2[其他 MCP 客戶端]
+    subgraph "使用者層"
+        A[Claude AI]
     end
 
-    subgraph "MCP Server (56 Tools)"
-        B[FastMCP / uvicorn&lt;br/&gt;port 8000]
+    subgraph "MCP 協議層"
+        B[MCP Server&lt;br/&gt;56 個工具]
     end
 
-    subgraph "Infrastructure"
-        PG[(PostgreSQL 16&lt;br/&gt;主要資料庫)]
-        PGB[pgBouncer&lt;br/&gt;連線池]
-        RD[(Redis 7&lt;br/&gt;回應快取)]
-        PM[Prometheus&lt;br/&gt;port 9090]
+    subgraph "服務層"
+        C1[ICD Service]
+        C2[Drug Service]
+        C3[FHIR Service]
+        C4[Lab Service]
+        C5[Guideline Service]
     end
 
-    subgraph "Services (11)"
-        S1[ICD] S2[Drug] S3[HealthFood]
-        S4[FoodNutrition] S5[Lab] S6[Guideline]
-        S7[FHIRCondition] S8[FHIRMedication]
-        S9[TWCore] S10[SNOMED] S11[DrugInteraction]
+    subgraph "資料層"
+        D1[(ICD-10 DB)]
+        D2[(Drug DB)]
+        D3[(LOINC DB)]
+        D4[(Guideline DB)]
     end
 
-    subgraph "Data Loader (一次性)"
-        L[loader/main.py]
-        F[fhir-code/ ZIP 檔]
+    subgraph "外部資料源"
+        E1[台灣 FDA API]
+        E2[LOINC 官方]
+        E3[衛福部 ICD-10]
     end
 
-    A1 --&gt; B
-    A2 --&gt; B
-    B --&gt; S1 &amp; S2 &amp; S3 &amp; S4 &amp; S5 &amp; S6 &amp; S7 &amp; S8 &amp; S9 &amp; S10 &amp; S11
-    S1 &amp; S2 &amp; S3 &amp; S4 &amp; S5 &amp; S6 &amp; S7 &amp; S8 &amp; S9 &amp; S10 &amp; S11 --&gt; PGB
-    PGB --&gt; PG
-    B --&gt; RD
-    B --&gt; PM
-    L --&gt; F
-    L --&gt; PG</code></pre>
+    A --&gt; B
+    B --&gt; C1
+    B --&gt; C2
+    B --&gt; C3
+    B --&gt; C4
+    B --&gt; C5
+
+    C1 --&gt; D1
+    C2 --&gt; D2
+    C4 --&gt; D3
+    C5 --&gt; D4
+
+    E1 -.-&gt;|同步| D2
+    E2 -.-&gt;|整合| D3
+    E3 -.-&gt;|匯入| D1
+
+    style A fill:#e1f5ff
+    style B fill:#fff3e0
+    style C1 fill:#f3e5f5
+    style C2 fill:#f3e5f5
+    style C3 fill:#f3e5f5
+    style C4 fill:#f3e5f5
+    style C5 fill:#f3e5f5</code></pre>
 <p><a class="md-button" href="architecture/system-architecture/">查看詳細架構</a></p>
 <hr />
 <h2 id="_4">🚀 快速開始<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
@@ -3455,7 +3470,7 @@
 <p><a class="md-button md-button--primary" href="getting-started/">詳細安裝說明</a></p>
 <hr />
 <h2 id="mcp">🛠️ MCP 工具清單<a class="headerlink" href="#mcp" title="Permanent link">&para;</a></h2>
-<p>本服務提供 <strong>56 個 MCP 工具</strong>，包含 <strong>55 個領域工具</strong> 與 <code>health_check</code>，主要分為 12 個群組：</p>
+<p>本服務提供 <strong>56 個 MCP 工具</strong>，包含 <strong>56 個領域工具</strong> 與 <code>health_check</code>，主要分為 12 個群組：</p>
 <table>
 <thead>
 <tr>

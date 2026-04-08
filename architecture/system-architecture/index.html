@@ -3495,10 +3495,10 @@
     end
 
     subgraph "MCP Server (port 8000)"
-        B[FastMCP / uvicorn&lt;br/&gt;56 個工具]
-        AUD[audit.py&lt;br/&gt;@audited 裝飾器]
-        CAC[cache.py&lt;br/&gt;@cached 裝飾器]
-        MET[metrics.py&lt;br/&gt;Prometheus]
+        B["FastMCP uvicorn 56 個工具"]
+        AUD["audit.py audited decorator"]
+        CAC["cache.py cached decorator"]
+        MET["metrics.py Prometheus"]
     end
 
     subgraph "Service Layer 服務層 (11 個服務)"
@@ -3516,19 +3516,19 @@
     end
 
     subgraph "Infrastructure 基礎架構"
-        PGB[pgBouncer&lt;br/&gt;transaction mode&lt;br/&gt;500 client → 30 PG]
-        PG[(PostgreSQL 16&lt;br/&gt;10 個 schema)]
-        RD[(Redis 7&lt;br/&gt;TTL 快取)]
-        PM[Prometheus&lt;br/&gt;port 9090]
+        PGB["pgBouncer transaction mode 500 client to 30 PG"]
+        PG["PostgreSQL 16 10 schemas"]
+        RD["Redis 7 TTL cache"]
+        PM["Prometheus port 9090"]
     end
 
     subgraph "Data Loader 資料載入器"
-        L[loader/main.py&lt;br/&gt;一次性執行]
-        FC[fhir-code/&lt;br/&gt;ZIP 原始資料]
+        L["loader/main.py one-shot run"]
+        FC["fhir-code ZIP raw files"]
     end
 
     subgraph "External 外部資料源"
-        E1[台灣 FDA Open Data API&lt;br/&gt;藥品/健康食品/營養]
+        E1["Taiwan FDA Open Data API"]
     end
 
     A1 --&gt; B
@@ -3536,14 +3536,36 @@
     B --&gt; AUD
     B --&gt; CAC
     B --&gt; MET
-    B --&gt; S1 &amp; S2 &amp; S3 &amp; S4 &amp; S5 &amp; S6 &amp; S7 &amp; S8 &amp; S9 &amp; S10 &amp; S11
-    S1 &amp; S2 &amp; S3 &amp; S4 &amp; S5 &amp; S6 &amp; S7 &amp; S8 &amp; S9 &amp; S10 &amp; S11 --&gt; PGB
+    B --&gt; S1
+    B --&gt; S2
+    B --&gt; S3
+    B --&gt; S4
+    B --&gt; S5
+    B --&gt; S6
+    B --&gt; S7
+    B --&gt; S8
+    B --&gt; S9
+    B --&gt; S10
+    B --&gt; S11
+    S1 --&gt; PGB
+    S2 --&gt; PGB
+    S3 --&gt; PGB
+    S4 --&gt; PGB
+    S5 --&gt; PGB
+    S6 --&gt; PGB
+    S7 --&gt; PGB
+    S8 --&gt; PGB
+    S9 --&gt; PGB
+    S10 --&gt; PGB
+    S11 --&gt; PGB
     PGB --&gt; PG
     CAC --&gt; RD
     MET --&gt; PM
     L --&gt; FC
     L --&gt; PG
-    S2 &amp; S3 &amp; S4 -.-&gt;|每週自動同步| E1</code></pre>
+    S2 -.-&gt;|每週自動同步| E1
+    S3 -.-&gt;|每週自動同步| E1
+    S4 -.-&gt;|每週自動同步| E1</code></pre>
 <hr />
 <h2 id="_3">🏗️ 基礎架構元件<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
 <table>
