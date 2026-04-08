@@ -25,7 +25,7 @@
       
       
       <link rel="icon" href="../../assets/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.5">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
       
@@ -2895,22 +2895,33 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#_2" class="md-nav__link">
+  <a href="#prometheus" class="md-nav__link">
     <span class="md-ellipsis">
       
-        日誌管理
+        Prometheus 指標
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="日誌管理">
+    <nav class="md-nav" aria-label="Prometheus 指標">
       <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        可用指標
+      
+    </span>
+  </a>
+  
+</li>
         
           <li class="md-nav__item">
   <a href="#_3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        檢視方式
+        查詢範例
       
     </span>
   </a>
@@ -2923,13 +2934,163 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#health-check" class="md-nav__link">
+  <a href="#_4" class="md-nav__link">
     <span class="md-ellipsis">
       
-        健康檢查 (Health Check)
+        結構化日誌
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="結構化日誌">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        日誌格式
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        查看日誌
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        日誌等級
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        稽核日誌
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_9" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        健康檢查
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="健康檢查">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#mcp-health_check" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCP health_check 工具
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#docker" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Docker 容器狀態
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        資料庫資料量確認
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_11" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        常見問題排查
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="常見問題排查">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#drug-db-sync-failed-duplicate-key" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Drug DB sync failed - duplicate key
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#prometheus-port-already-in-use" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prometheus port already in use
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#false" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        服務顯示 false
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -3172,22 +3333,33 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#_2" class="md-nav__link">
+  <a href="#prometheus" class="md-nav__link">
     <span class="md-ellipsis">
       
-        日誌管理
+        Prometheus 指標
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="日誌管理">
+    <nav class="md-nav" aria-label="Prometheus 指標">
       <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        可用指標
+      
+    </span>
+  </a>
+  
+</li>
         
           <li class="md-nav__item">
   <a href="#_3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        檢視方式
+        查詢範例
       
     </span>
   </a>
@@ -3200,13 +3372,163 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#health-check" class="md-nav__link">
+  <a href="#_4" class="md-nav__link">
     <span class="md-ellipsis">
       
-        健康檢查 (Health Check)
+        結構化日誌
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="結構化日誌">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        日誌格式
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        查看日誌
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        日誌等級
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        稽核日誌
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_9" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        健康檢查
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="健康檢查">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#mcp-health_check" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCP health_check 工具
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#docker" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Docker 容器狀態
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        資料庫資料量確認
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_11" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        常見問題排查
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="常見問題排查">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#drug-db-sync-failed-duplicate-key" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Drug DB sync failed - duplicate key
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#prometheus-port-already-in-use" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prometheus port already in use
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#false" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        服務顯示 false
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -3231,20 +3553,199 @@
 
 
 <h1 id="_1">監控與日誌<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h1>
-<h2 id="_2">日誌管理<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
-<p>系統日誌分為兩大類：
-1. <strong>系統日誌 (System Logs)</strong>：服務啟動、錯誤堆疊 (Stack trace)。
-2. <strong>工具呼叫日誌 (Audit Logs)</strong>：記錄每次工具呼叫的參數與執行時間 (如 <code>Tool called: search_medical_codes...</code>)。</p>
-<h3 id="_3">檢視方式<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h3>
-<ul>
-<li><strong>Docker</strong>：<code>docker logs health-mcp</code></li>
-<li><strong>Stdio</strong>：若以 Stdio 模式運行，日誌會輸出至 <code>stderr</code>，不會干擾 <code>stdout</code> 的 JSON-RPC 通訊。</li>
-</ul>
-<h2 id="health-check">健康檢查 (Health Check)<a class="headerlink" href="#health-check" title="Permanent link">&para;</a></h2>
-<p>目前版本尚未內建特定 Health Check API Endpoint (因 MCP 主要為工具介面)。
-建議監控容器狀態：
-- Check if process is running.
-- Check if <code>drugs.db</code> and <code>icd.db</code> files exist and are readable.</p>
+<hr />
+<h2 id="prometheus">Prometheus 指標<a class="headerlink" href="#prometheus" title="Permanent link">&para;</a></h2>
+<p>Prometheus 指標端點預設在 <code>http://localhost:9090/metrics</code>，由 app 容器在非 stdio 模式啟動時自動開啟。</p>
+<h3 id="_2">可用指標<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>指標名稱</th>
+<th>類型</th>
+<th>標籤</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>mcp_tool_requests_total</code></td>
+<td>Counter</td>
+<td><code>tool</code>, <code>status</code></td>
+<td>工具呼叫總次數（status: success/error）</td>
+</tr>
+<tr>
+<td><code>mcp_tool_duration_seconds</code></td>
+<td>Histogram</td>
+<td><code>tool</code></td>
+<td>工具執行延遲（buckets: 10ms ~ 10s）</td>
+</tr>
+<tr>
+<td><code>mcp_cache_operations_total</code></td>
+<td>Counter</td>
+<td><code>prefix</code>, <code>result</code></td>
+<td>快取操作（result: hit/miss/error）</td>
+</tr>
+<tr>
+<td><code>mcp_db_pool_size</code></td>
+<td>Gauge</td>
+<td>—</td>
+<td>asyncpg pool 總連線數</td>
+</tr>
+<tr>
+<td><code>mcp_db_pool_checked_out</code></td>
+<td>Gauge</td>
+<td>—</td>
+<td>目前使用中的連線數</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_3">查詢範例<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h3>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># 工具呼叫統計</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>curl<span class="w"> </span>-s<span class="w"> </span>http://localhost:9090/metrics<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>mcp_tool_requests
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="c1"># 平均延遲（各工具）</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>curl<span class="w"> </span>-s<span class="w"> </span>http://localhost:9090/metrics<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>mcp_tool_duration
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="c1"># 快取命中率</span>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>curl<span class="w"> </span>-s<span class="w"> </span>http://localhost:9090/metrics<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>mcp_cache
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="c1"># DB pool 使用率</span>
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>curl<span class="w"> </span>-s<span class="w"> </span>http://localhost:9090/metrics<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>mcp_db_pool
+</span></code></pre></div>
+<hr />
+<h2 id="_4">結構化日誌<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
+<p>App 輸出 JSON 格式日誌至 <strong>stderr</strong>（stdout 保留給 MCP stdio transport）。</p>
+<h3 id="_5">日誌格式<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h3>
+<p>每行一個 JSON 物件：</p>
+<div class="language-json highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="p">{</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="nt">&quot;ts&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2026-04-08T03:04:29&quot;</span><span class="p">,</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">  </span><span class="nt">&quot;level&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;INFO&quot;</span><span class="p">,</span>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">  </span><span class="nt">&quot;logger&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;taiwan_health_mcp&quot;</span><span class="p">,</span>
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">  </span><span class="nt">&quot;msg&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Drug DB sync completed&quot;</span><span class="p">,</span>
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">  </span><span class="nt">&quot;licenses&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">66266</span><span class="p">,</span>
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">  </span><span class="nt">&quot;taskName&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Task-15&quot;</span>
+</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="p">}</span>
+</span></code></pre></div>
+<h3 id="_6">查看日誌<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h3>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="c1"># 即時追蹤 app 日誌</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>docker<span class="w"> </span>compose<span class="w"> </span>logs<span class="w"> </span>-f<span class="w"> </span>app
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="c1"># 篩選特定等級</span>
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>docker<span class="w"> </span>compose<span class="w"> </span>logs<span class="w"> </span>app<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span><span class="s1">&#39;&quot;level&quot;: &quot;ERROR&quot;&#39;</span>
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="c1"># 篩選特定服務</span>
+</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>docker<span class="w"> </span>compose<span class="w"> </span>logs<span class="w"> </span>app<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span><span class="s2">&quot;Drug DB&quot;</span>
+</span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>
+</span><span id="__span-2-10"><a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="c1"># 查看所有服務日誌</span>
+</span><span id="__span-2-11"><a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>docker<span class="w"> </span>compose<span class="w"> </span>logs<span class="w"> </span>-f
+</span></code></pre></div>
+<h3 id="_7">日誌等級<a class="headerlink" href="#_7" title="Permanent link">&para;</a></h3>
+<p>透過 <code>LOG_LEVEL</code> 環境變數設定：</p>
+<table>
+<thead>
+<tr>
+<th>等級</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>DEBUG</code></td>
+<td>詳細除錯資訊</td>
+</tr>
+<tr>
+<td><code>INFO</code></td>
+<td>正常操作訊息（預設）</td>
+</tr>
+<tr>
+<td><code>WARNING</code></td>
+<td>非致命異常</td>
+</tr>
+<tr>
+<td><code>ERROR</code></td>
+<td>服務初始化失敗、同步失敗</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_8">稽核日誌<a class="headerlink" href="#_8" title="Permanent link">&para;</a></h2>
+<p>所有工具呼叫都會被 <code>@audited</code> 裝飾器記錄到 PostgreSQL <code>audit.query_log</code> 表：</p>
+<div class="language-sql highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1">-- 查看最近 20 筆工具呼叫</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="k">SELECT</span><span class="w"> </span><span class="n">tool_name</span><span class="p">,</span><span class="w"> </span><span class="n">status</span><span class="p">,</span><span class="w"> </span><span class="n">duration_ms</span><span class="p">,</span><span class="w"> </span><span class="n">params_hash</span><span class="p">,</span><span class="w"> </span><span class="n">called_at</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="k">FROM</span><span class="w"> </span><span class="n">audit</span><span class="p">.</span><span class="n">query_log</span>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="k">ORDER</span><span class="w"> </span><span class="k">BY</span><span class="w"> </span><span class="n">called_at</span><span class="w"> </span><span class="k">DESC</span>
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="k">LIMIT</span><span class="w"> </span><span class="mi">20</span><span class="p">;</span>
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>
+</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="c1">-- 各工具呼叫統計</span>
+</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="k">SELECT</span><span class="w"> </span><span class="n">tool_name</span><span class="p">,</span><span class="w"> </span><span class="k">COUNT</span><span class="p">(</span><span class="o">*</span><span class="p">),</span><span class="w"> </span><span class="k">AVG</span><span class="p">(</span><span class="n">duration_ms</span><span class="p">)</span>
+</span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="k">FROM</span><span class="w"> </span><span class="n">audit</span><span class="p">.</span><span class="n">query_log</span>
+</span><span id="__span-3-10"><a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="k">GROUP</span><span class="w"> </span><span class="k">BY</span><span class="w"> </span><span class="n">tool_name</span>
+</span><span id="__span-3-11"><a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a><span class="k">ORDER</span><span class="w"> </span><span class="k">BY</span><span class="w"> </span><span class="k">COUNT</span><span class="p">(</span><span class="o">*</span><span class="p">)</span><span class="w"> </span><span class="k">DESC</span><span class="p">;</span>
+</span></code></pre></div>
+<blockquote>
+<p>注意：<code>params_hash</code> 為 SHA-256(params)，絕不儲存原始參數值（HIPAA 合規）。</p>
+</blockquote>
+<hr />
+<h2 id="_9">健康檢查<a class="headerlink" href="#_9" title="Permanent link">&para;</a></h2>
+<h3 id="mcp-health_check">MCP health_check 工具<a class="headerlink" href="#mcp-health_check" title="Permanent link">&para;</a></h3>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nv">SESSION</span><span class="o">=</span><span class="k">$(</span>curl<span class="w"> </span>-si<span class="w"> </span>http://localhost:8000/mcp<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span>-H<span class="w"> </span><span class="s2">&quot;Content-Type: application/json&quot;</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">  </span>-H<span class="w"> </span><span class="s2">&quot;Accept: application/json, text/event-stream&quot;</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">  </span>-d<span class="w"> </span><span class="s1">&#39;{&quot;jsonrpc&quot;:&quot;2.0&quot;,&quot;id&quot;:1,&quot;method&quot;:&quot;initialize&quot;,&quot;params&quot;:{</span>
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="s1">    &quot;protocolVersion&quot;:&quot;2024-11-05&quot;,&quot;capabilities&quot;:{},</span>
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="s1">    &quot;clientInfo&quot;:{&quot;name&quot;:&quot;monitor&quot;,&quot;version&quot;:&quot;1&quot;}</span>
+</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="s1">  }}&#39;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>mcp-session-id<span class="w"> </span><span class="p">|</span><span class="w"> </span>awk<span class="w"> </span><span class="s1">&#39;{print $2}&#39;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>tr<span class="w"> </span>-d<span class="w"> </span><span class="s1">&#39;\r&#39;</span><span class="k">)</span>
+</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>
+</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>curl<span class="w"> </span>-s<span class="w"> </span>http://localhost:8000/mcp<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-4-10"><a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="w">  </span>-H<span class="w"> </span><span class="s2">&quot;Content-Type: application/json&quot;</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-4-11"><a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="w">  </span>-H<span class="w"> </span><span class="s2">&quot;Accept: application/json, text/event-stream&quot;</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-4-12"><a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a><span class="w">  </span>-H<span class="w"> </span><span class="s2">&quot;mcp-session-id: </span><span class="nv">$SESSION</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-4-13"><a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a><span class="w">  </span>-d<span class="w"> </span><span class="s1">&#39;{&quot;jsonrpc&quot;:&quot;2.0&quot;,&quot;id&quot;:2,&quot;method&quot;:&quot;tools/call&quot;,&quot;params&quot;:{&quot;name&quot;:&quot;health_check&quot;,&quot;arguments&quot;:{}}}&#39;</span>
+</span></code></pre></div>
+<p>回應示例（全部正常）：</p>
+<div class="language-json highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="p">{</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">  </span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;ok&quot;</span><span class="p">,</span>
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">  </span><span class="nt">&quot;database&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;ok&quot;</span><span class="p">,</span>
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">  </span><span class="nt">&quot;cache&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;ok&quot;</span><span class="p">,</span>
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="w">  </span><span class="nt">&quot;services&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="w">    </span><span class="nt">&quot;icd&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;drug&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;health_food&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="w">    </span><span class="nt">&quot;food_nutrition&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;fhir_condition&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+</span><span id="__span-5-8"><a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="w">    </span><span class="nt">&quot;fhir_medication&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;lab&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;guideline&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+</span><span id="__span-5-9"><a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="w">    </span><span class="nt">&quot;twcore&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;snomed&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;drug_interactions&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+</span><span id="__span-5-10"><a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a><span class="w">  </span><span class="p">}</span>
+</span><span id="__span-5-11"><a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a><span class="p">}</span>
+</span></code></pre></div>
+<h3 id="docker">Docker 容器狀態<a class="headerlink" href="#docker" title="Permanent link">&para;</a></h3>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="c1"># 查看所有容器健康狀態</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>docker<span class="w"> </span>compose<span class="w"> </span>ps
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="c1"># PostgreSQL 健康檢查</span>
+</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>docker<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>taiwanHealthMcp_postgres<span class="w"> </span>pg_isready<span class="w"> </span>-U<span class="w"> </span>mcp<span class="w"> </span>-d<span class="w"> </span>taiwan_health
+</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>
+</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="c1"># Redis 健康檢查</span>
+</span><span id="__span-6-8"><a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>docker<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>taiwanHealthMcp_redis<span class="w"> </span>redis-cli<span class="w"> </span>ping
+</span><span id="__span-6-9"><a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>
+</span><span id="__span-6-10"><a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="c1"># pgBouncer 連線狀態</span>
+</span><span id="__span-6-11"><a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a>docker<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>taiwanHealthMcp_pgbouncer<span class="w"> </span>nc<span class="w"> </span>-z<span class="w"> </span><span class="m">127</span>.0.0.1<span class="w"> </span><span class="m">5432</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;OK&quot;</span>
+</span></code></pre></div>
+<h3 id="_10">資料庫資料量確認<a class="headerlink" href="#_10" title="Permanent link">&para;</a></h3>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>docker<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>taiwanHealthMcp_postgres<span class="w"> </span>psql<span class="w"> </span>-U<span class="w"> </span>mcp<span class="w"> </span>-d<span class="w"> </span>taiwan_health<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;</span>
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="s2">SELECT schemaname, tablename, n_live_tup AS rows</span>
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="s2">FROM pg_stat_user_tables</span>
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="s2">WHERE n_live_tup &gt; 0</span>
+</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="s2">ORDER BY n_live_tup DESC;&quot;</span>
+</span></code></pre></div>
+<hr />
+<h2 id="_11">常見問題排查<a class="headerlink" href="#_11" title="Permanent link">&para;</a></h2>
+<h3 id="drug-db-sync-failed-duplicate-key">Drug DB sync failed - duplicate key<a class="headerlink" href="#drug-db-sync-failed-duplicate-key" title="Permanent link">&para;</a></h3>
+<p>FDA 原始資料含重複 <code>license_id</code>。v2+ 版本已在寫入前自動去重（<code>seen_ids</code> set），此錯誤不應再出現。若仍出現，請確認使用最新版本的 <code>drug_service.py</code>。</p>
+<h3 id="prometheus-port-already-in-use">Prometheus port already in use<a class="headerlink" href="#prometheus-port-already-in-use" title="Permanent link">&para;</a></h3>
+<p>FastMCP 在 streamable-http 模式下對每個 session 執行 lifespan。<code>metrics.start_metrics_server()</code> 已加入 <code>_metrics_server_started</code> flag 防止重複綁定。若仍出現此錯誤，請更新 <code>src/metrics.py</code>。</p>
+<h3 id="false">服務顯示 false<a class="headerlink" href="#false" title="Permanent link">&para;</a></h3>
+<p>對應術語資料未載入。執行相應的 data-loader 指令後重啟 app：</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>--profile<span class="w"> </span>loader<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>data-loader<span class="w"> </span>--snomed
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>docker<span class="w"> </span>compose<span class="w"> </span>restart<span class="w"> </span>app
+</span></code></pre></div>
 
 
 

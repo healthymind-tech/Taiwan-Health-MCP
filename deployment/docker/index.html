@@ -25,7 +25,7 @@
       
       
       <link rel="icon" href="../../assets/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.5">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
       
@@ -2845,10 +2845,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#2-docker-compose" class="md-nav__link">
+  <a href="#2" class="md-nav__link">
     <span class="md-ellipsis">
       
-        2. 使用 Docker Compose（推薦）
+        2. 啟動所有服務
       
     </span>
   </a>
@@ -2859,7 +2859,18 @@
   <a href="#3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        3. 手動建置與執行
+        3. 確認服務狀態
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. 載入術語資料
       
     </span>
   </a>
@@ -2875,10 +2886,77 @@
   <a href="#_3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        傳輸模式說明
+        服務架構說明
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="服務架構說明">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#pgbouncer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        pgBouncer（連線池）
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#redis" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Redis（快取）
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#prometheus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prometheus（監控）
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#claude-desktop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        連接 Claude Desktop
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="連接 Claude Desktop">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#stdio" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        STDIO 模式（本地直接執行）
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -2886,30 +2964,41 @@
   <a href="#_4" class="md-nav__link">
     <span class="md-ellipsis">
       
-        驗證部署
+        資料持久化
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="驗證部署">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
+</li>
+      
+        <li class="md-nav__item">
   <a href="#_5" class="md-nav__link">
     <span class="md-ellipsis">
       
-        檢查容器狀態
+        常用操作
       
     </span>
   </a>
   
 </li>
-        
-          <li class="md-nav__item">
+      
+        <li class="md-nav__item">
   <a href="#_6" class="md-nav__link">
     <span class="md-ellipsis">
       
-        查看啟動日誌
+        故障排除
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="故障排除">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#app" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        App 無法連接資料庫
       
     </span>
   </a>
@@ -2917,10 +3006,32 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#streamable-http" class="md-nav__link">
+  <a href="#_7" class="md-nav__link">
     <span class="md-ellipsis">
       
-        測試連線（Streamable HTTP 模式）
+        術語資料未載入
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        健康檢查失敗
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#prometheus_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prometheus 指標
       
     </span>
   </a>
@@ -3289,10 +3400,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#2-docker-compose" class="md-nav__link">
+  <a href="#2" class="md-nav__link">
     <span class="md-ellipsis">
       
-        2. 使用 Docker Compose（推薦）
+        2. 啟動所有服務
       
     </span>
   </a>
@@ -3303,7 +3414,18 @@
   <a href="#3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        3. 手動建置與執行
+        3. 確認服務狀態
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. 載入術語資料
       
     </span>
   </a>
@@ -3319,10 +3441,77 @@
   <a href="#_3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        傳輸模式說明
+        服務架構說明
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="服務架構說明">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#pgbouncer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        pgBouncer（連線池）
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#redis" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Redis（快取）
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#prometheus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prometheus（監控）
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#claude-desktop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        連接 Claude Desktop
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="連接 Claude Desktop">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#stdio" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        STDIO 模式（本地直接執行）
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -3330,30 +3519,41 @@
   <a href="#_4" class="md-nav__link">
     <span class="md-ellipsis">
       
-        驗證部署
+        資料持久化
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="驗證部署">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
+</li>
+      
+        <li class="md-nav__item">
   <a href="#_5" class="md-nav__link">
     <span class="md-ellipsis">
       
-        檢查容器狀態
+        常用操作
       
     </span>
   </a>
   
 </li>
-        
-          <li class="md-nav__item">
+      
+        <li class="md-nav__item">
   <a href="#_6" class="md-nav__link">
     <span class="md-ellipsis">
       
-        查看啟動日誌
+        故障排除
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="故障排除">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#app" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        App 無法連接資料庫
       
     </span>
   </a>
@@ -3361,10 +3561,32 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#streamable-http" class="md-nav__link">
+  <a href="#_7" class="md-nav__link">
     <span class="md-ellipsis">
       
-        測試連線（Streamable HTTP 模式）
+        術語資料未載入
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        健康檢查失敗
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#prometheus_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prometheus 指標
       
     </span>
   </a>
@@ -3396,104 +3618,214 @@
   
 
 
-<h1 id="docker">Docker 部署 (推薦)<a class="headerlink" href="#docker" title="Permanent link">&para;</a></h1>
+<h1 id="docker">Docker 部署指南<a class="headerlink" href="#docker" title="Permanent link">&para;</a></h1>
 <h2 id="_1">前置需求<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
 <ul>
-<li>已安裝 <a href="https://www.docker.com/products/docker-desktop">Docker Desktop</a> 或 Docker Engine。</li>
-<li>建議預留至少 2GB RAM 給容器使用（因需載入大量 ICD 與藥品資料）。</li>
+<li>Docker Engine 24+ 和 Docker Compose v2</li>
+<li>至少 4 GB 可用 RAM（SNOMED CT 載入期間需更多）</li>
+<li>至少 10 GB 磁碟空間（含術語資料）</li>
 </ul>
+<hr />
 <h2 id="_2">快速啟動<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
 <h3 id="1">1. 準備環境配置<a class="headerlink" href="#1" title="Permanent link">&para;</a></h3>
-<p>複製 <code>.env.example</code> 為 <code>.env</code> 並根據需求調整：</p>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>cp<span class="w"> </span>.env.example<span class="w"> </span>.env
 </span></code></pre></div>
-<p><strong>生產環境建議配置（Streamable HTTP 模式）：</strong></p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a># .env
-</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>MCP_TRANSPORT=streamable-http
-</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>MCP_HOST=0.0.0.0
-</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>MCP_PORT=8000
-</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>MCP_PATH=/mcp
+<p>編輯 <code>.env</code>，**必要**欄位：</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a># 必填 — 資料庫密碼
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>POSTGRES_PASSWORD=your_secure_password_here
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a># 可選 — 以下為預設值
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>POSTGRES_DB=taiwan_health
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>POSTGRES_USER=mcp
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>MCP_TRANSPORT=streamable-http
+</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>MCP_HOST=0.0.0.0
+</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>MCP_PORT=8000
+</span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>MCP_PATH=/mcp
+</span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>LOG_LEVEL=INFO
+</span><span id="__span-1-12"><a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>METRICS_PORT=9090
 </span></code></pre></div>
-<p><strong>本地開發配置（STDIO 模式）：</strong></p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a># .env
-</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>MCP_TRANSPORT=stdio
+<h3 id="2">2. 啟動所有服務<a class="headerlink" href="#2" title="Permanent link">&para;</a></h3>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>up<span class="w"> </span>-d
 </span></code></pre></div>
-<h3 id="2-docker-compose">2. 使用 Docker Compose（推薦）<a class="headerlink" href="#2-docker-compose" title="Permanent link">&para;</a></h3>
-<p>專案根目錄已包含 <code>docker-compose.yml</code>，支援環境變數配置：</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># 啟動服務（使用 .env 檔案）</span>
-</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>docker-compose<span class="w"> </span>up<span class="w"> </span>-d
-</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>
-</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="c1"># 查看日誌</span>
-</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>docker-compose<span class="w"> </span>logs<span class="w"> </span>-f
-</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>
-</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="c1"># 停止服務</span>
-</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>docker-compose<span class="w"> </span>down
-</span></code></pre></div>
-<p>Docker Compose 會自動：
-- 讀取 <code>.env</code> 檔案的配置
-- 掛載 <code>./data</code> 和 <code>./src</code> 目錄
-- 根據 <code>MCP_PORT</code> 動態映射埠號</p>
-<h3 id="3">3. 手動建置與執行<a class="headerlink" href="#3" title="Permanent link">&para;</a></h3>
-<p>如果您需要自行建置映像檔：</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="c1"># 建置映像檔</span>
-</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>docker<span class="w"> </span>build<span class="w"> </span>-t<span class="w"> </span>taiwan-health-mcp<span class="w"> </span>.
-</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>
-</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="c1"># 執行容器（Streamable HTTP 模式）</span>
-</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>docker<span class="w"> </span>run<span class="w"> </span>-d<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="w">  </span>--name<span class="w"> </span>health-mcp<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="w">  </span>-v<span class="w"> </span><span class="k">$(</span><span class="nb">pwd</span><span class="k">)</span>/data:/app/data<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="w">  </span>-v<span class="w"> </span><span class="k">$(</span><span class="nb">pwd</span><span class="k">)</span>/src:/app/src<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="w">  </span>-p<span class="w"> </span><span class="m">8000</span>:8000<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-4-10"><a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="w">  </span>-e<span class="w"> </span><span class="nv">MCP_TRANSPORT</span><span class="o">=</span>streamable-http<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-4-11"><a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="w">  </span>-e<span class="w"> </span><span class="nv">MCP_HOST</span><span class="o">=</span><span class="m">0</span>.0.0.0<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-4-12"><a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a><span class="w">  </span>-e<span class="w"> </span><span class="nv">MCP_PORT</span><span class="o">=</span><span class="m">8000</span><span class="w"> </span><span class="se">\</span>
-</span><span id="__span-4-13"><a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a><span class="w">  </span>-e<span class="w"> </span><span class="nv">MCP_PATH</span><span class="o">=</span>/mcp<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-4-14"><a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a><span class="w">  </span>taiwan-health-mcp
-</span></code></pre></div>
-<h2 id="_3">傳輸模式說明<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
-<p>系統支援三種 MCP 傳輸模式：</p>
+<p>這會啟動以下容器：</p>
 <table>
 <thead>
 <tr>
-<th style="text-align: left;">模式</th>
-<th style="text-align: left;">適用場景</th>
-<th style="text-align: left;">連線方式</th>
+<th>容器</th>
+<th>說明</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td style="text-align: left;"><strong>streamable-http</strong> ✨</td>
-<td style="text-align: left;">Docker 生產部署</td>
-<td style="text-align: left;"><code>http://localhost:8000/mcp</code></td>
+<td><code>taiwanHealthMcp_postgres</code></td>
+<td>PostgreSQL 16 資料庫</td>
 </tr>
 <tr>
-<td style="text-align: left;"><strong>stdio</strong></td>
-<td style="text-align: left;">Claude Desktop 本地整合</td>
-<td style="text-align: left;">標準輸入輸出</td>
+<td><code>taiwanHealthMcp_pgbouncer</code></td>
+<td>pgBouncer 連線池</td>
 </tr>
 <tr>
-<td style="text-align: left;"><strong>sse</strong></td>
-<td style="text-align: left;">Colab + Ngrok（向後相容）</td>
-<td style="text-align: left;"><code>http://localhost:8000/sse</code></td>
+<td><code>taiwanHealthMcp_redis</code></td>
+<td>Redis 快取</td>
+</tr>
+<tr>
+<td><code>taiwanHealthMcp</code></td>
+<td>MCP Server（app）</td>
 </tr>
 </tbody>
 </table>
-<h2 id="_4">驗證部署<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
-<h3 id="_5">檢查容器狀態<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h3>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>docker<span class="w"> </span>ps<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>taiwan-health-mcp
+<h3 id="3">3. 確認服務狀態<a class="headerlink" href="#3" title="Permanent link">&para;</a></h3>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>ps
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="c1"># 所有服務應顯示 &quot;healthy&quot; 或 &quot;running&quot;</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>docker<span class="w"> </span>compose<span class="w"> </span>logs<span class="w"> </span>-f<span class="w"> </span>app
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="c1"># 查看 MCP server 日誌</span>
 </span></code></pre></div>
-<h3 id="_6">查看啟動日誌<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h3>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>docker<span class="w"> </span>logs<span class="w"> </span>-f<span class="w"> </span>taiwanHealthMcp
+<h3 id="4">4. 載入術語資料<a class="headerlink" href="#4" title="Permanent link">&para;</a></h3>
+<p>FDA 藥品、健康食品、營養資料會在首次啟動時自動從 FDA Open Data API 下載。</p>
+<p>其他術語資料（ICD、LOINC、SNOMED CT 等）需要先從官方來源合法取得，再手動放置原始檔案並執行 data-loader：</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="c1"># 準備 fhir-code/ 目錄下的原始資料後（見 fhir-code/README.md）</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="c1"># 全部載入（建議首次部署）</span>
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>docker<span class="w"> </span>compose<span class="w"> </span>--profile<span class="w"> </span>loader<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>data-loader<span class="w"> </span>--all
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="c1"># 或單獨載入</span>
+</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>docker<span class="w"> </span>compose<span class="w"> </span>--profile<span class="w"> </span>loader<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>data-loader<span class="w"> </span>--icd
+</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>docker<span class="w"> </span>compose<span class="w"> </span>--profile<span class="w"> </span>loader<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>data-loader<span class="w"> </span>--loinc
+</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>docker<span class="w"> </span>compose<span class="w"> </span>--profile<span class="w"> </span>loader<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>data-loader<span class="w"> </span>--twcore
+</span><span id="__span-4-10"><a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>docker<span class="w"> </span>compose<span class="w"> </span>--profile<span class="w"> </span>loader<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>data-loader<span class="w"> </span>--guideline
+</span><span id="__span-4-11"><a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>docker<span class="w"> </span>compose<span class="w"> </span>--profile<span class="w"> </span>loader<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>data-loader<span class="w"> </span>--snomed<span class="w">    </span><span class="c1"># 約 5-15 分鐘</span>
+</span><span id="__span-4-12"><a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a>docker<span class="w"> </span>compose<span class="w"> </span>--profile<span class="w"> </span>loader<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>data-loader<span class="w"> </span>--rxnorm<span class="w">    </span><span class="c1"># 約 5-10 分鐘</span>
 </span></code></pre></div>
-<p>成功啟動時會顯示：</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>==================================================
-</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>Taiwan Health MCP Server
-</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>==================================================
-</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>Transport: streamable-http | http://0.0.0.0:8000/mcp
-</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>Server is starting...
+<blockquote>
+<p>注意：受授權限制的 SNOMED CT、RxNorm、UMLS 原始檔不得提交至 git，也不得在文件中提供 Google Drive 或其他鏡像下載點。</p>
+</blockquote>
+<hr />
+<h2 id="_3">服務架構說明<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
+<h3 id="pgbouncer">pgBouncer（連線池）<a class="headerlink" href="#pgbouncer" title="Permanent link">&para;</a></h3>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nt">POOL_MODE</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">transaction</span><span class="w">          </span><span class="c1"># asyncpg 需設定 statement_cache_size=0</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="nt">MAX_CLIENT_CONN</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">500</span><span class="w">            </span><span class="c1"># 最多 500 個 MCP 客戶端連線</span>
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="nt">DEFAULT_POOL_SIZE</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">30</span><span class="w">           </span><span class="c1"># 最多 30 個 PostgreSQL 連線</span>
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="nt">AUTH_TYPE</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">scram-sha-256</span><span class="w">        </span><span class="c1"># 安全驗證</span>
 </span></code></pre></div>
-<h3 id="streamable-http">測試連線（Streamable HTTP 模式）<a class="headerlink" href="#streamable-http" title="Permanent link">&para;</a></h3>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>curl<span class="w"> </span>http://localhost:8000/mcp
+<p>App 連接 pgBouncer（<code>@pgbouncer:5432</code>），data-loader 直接連接 PostgreSQL（<code>@postgres:5432</code>）以支援大量寫入。</p>
+<h3 id="redis">Redis（快取）<a class="headerlink" href="#redis" title="Permanent link">&para;</a></h3>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nt">maxmemory</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">512mb</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="nt">maxmemory-policy</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">allkeys-lru</span><span class="w">   </span><span class="c1"># LRU 淘汰策略</span>
+</span></code></pre></div>
+<p>Redis 快取所有工具的查詢回應，大幅提升重複查詢的效能。</p>
+<h3 id="prometheus">Prometheus（監控）<a class="headerlink" href="#prometheus" title="Permanent link">&para;</a></h3>
+<p>Prometheus 指標端點預設在 <code>http://localhost:9090/metrics</code>，提供：
+- 工具呼叫次數與延遲
+- 快取命中率
+- DB pool 使用率</p>
+<hr />
+<h2 id="claude-desktop">連接 Claude Desktop<a class="headerlink" href="#claude-desktop" title="Permanent link">&para;</a></h2>
+<p>在 <code>claude_desktop_config.json</code> 加入：</p>
+<div class="language-json highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="p">{</span>
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">  </span><span class="nt">&quot;mcpServers&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">    </span><span class="nt">&quot;taiwan-health&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">      </span><span class="nt">&quot;url&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;http://localhost:8000/mcp&quot;</span><span class="p">,</span>
+</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="w">      </span><span class="nt">&quot;transport&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;streamable-http&quot;</span>
+</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="w">    </span><span class="p">}</span>
+</span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="w">  </span><span class="p">}</span>
+</span><span id="__span-7-8"><a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a><span class="p">}</span>
+</span></code></pre></div>
+<h3 id="stdio">STDIO 模式（本地直接執行）<a class="headerlink" href="#stdio" title="Permanent link">&para;</a></h3>
+<p>若要以 stdio 模式搭配 Claude Desktop 使用：</p>
+<div class="language-json highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="p">{</span>
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="w">  </span><span class="nt">&quot;mcpServers&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">    </span><span class="nt">&quot;taiwan-health&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="w">      </span><span class="nt">&quot;command&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;docker&quot;</span><span class="p">,</span>
+</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="w">      </span><span class="nt">&quot;args&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+</span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="w">        </span><span class="s2">&quot;compose&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;-f&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;/path/to/Taiwan-Health-MCP/docker-compose.yml&quot;</span><span class="p">,</span>
+</span><span id="__span-8-7"><a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="w">        </span><span class="s2">&quot;run&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;--rm&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;-e&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;MCP_TRANSPORT=stdio&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;app&quot;</span>
+</span><span id="__span-8-8"><a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="w">      </span><span class="p">]</span>
+</span><span id="__span-8-9"><a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a><span class="w">    </span><span class="p">}</span>
+</span><span id="__span-8-10"><a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a><span class="w">  </span><span class="p">}</span>
+</span><span id="__span-8-11"><a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a><span class="p">}</span>
+</span></code></pre></div>
+<hr />
+<h2 id="_4">資料持久化<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
+<p>Docker volumes：</p>
+<table>
+<thead>
+<tr>
+<th>Volume</th>
+<th>內容</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>postgres_data</code></td>
+<td>PostgreSQL 資料（術語資料庫）</td>
+</tr>
+<tr>
+<td><code>redis_data</code></td>
+<td>Redis 持久化資料</td>
+</tr>
+</tbody>
+</table>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="c1"># 清除所有資料（謹慎操作）</span>
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>docker<span class="w"> </span>compose<span class="w"> </span>down<span class="w"> </span>-v
+</span></code></pre></div>
+<hr />
+<h2 id="_5">常用操作<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="c1"># 重啟 app（不影響資料庫）</span>
+</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>docker<span class="w"> </span>compose<span class="w"> </span>restart<span class="w"> </span>app
+</span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>
+</span><span id="__span-10-4"><a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="c1"># 重建映像</span>
+</span><span id="__span-10-5"><a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>docker<span class="w"> </span>compose<span class="w"> </span>build<span class="w"> </span>app
+</span><span id="__span-10-6"><a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>docker<span class="w"> </span>compose<span class="w"> </span>up<span class="w"> </span>-d<span class="w"> </span>app
+</span><span id="__span-10-7"><a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a>
+</span><span id="__span-10-8"><a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="c1"># 查看即時日誌</span>
+</span><span id="__span-10-9"><a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a>docker<span class="w"> </span>compose<span class="w"> </span>logs<span class="w"> </span>-f<span class="w"> </span>app
+</span><span id="__span-10-10"><a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a>
+</span><span id="__span-10-11"><a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a><span class="c1"># 進入 PostgreSQL</span>
+</span><span id="__span-10-12"><a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a>docker<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>-it<span class="w"> </span>taiwanHealthMcp_postgres<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-10-13"><a id="__codelineno-10-13" name="__codelineno-10-13" href="#__codelineno-10-13"></a><span class="w">  </span>psql<span class="w"> </span>-U<span class="w"> </span>mcp<span class="w"> </span>-d<span class="w"> </span>taiwan_health
+</span><span id="__span-10-14"><a id="__codelineno-10-14" name="__codelineno-10-14" href="#__codelineno-10-14"></a>
+</span><span id="__span-10-15"><a id="__codelineno-10-15" name="__codelineno-10-15" href="#__codelineno-10-15"></a><span class="c1"># 手動觸發藥品同步（不需重啟）</span>
+</span><span id="__span-10-16"><a id="__codelineno-10-16" name="__codelineno-10-16" href="#__codelineno-10-16"></a><span class="c1"># 等待下次排程（週二 02:00 UTC）或重啟 app 觸發 stale 檢查</span>
+</span><span id="__span-10-17"><a id="__codelineno-10-17" name="__codelineno-10-17" href="#__codelineno-10-17"></a>
+</span><span id="__span-10-18"><a id="__codelineno-10-18" name="__codelineno-10-18" href="#__codelineno-10-18"></a><span class="c1"># 停止所有服務</span>
+</span><span id="__span-10-19"><a id="__codelineno-10-19" name="__codelineno-10-19" href="#__codelineno-10-19"></a>docker<span class="w"> </span>compose<span class="w"> </span>down
+</span><span id="__span-10-20"><a id="__codelineno-10-20" name="__codelineno-10-20" href="#__codelineno-10-20"></a>
+</span><span id="__span-10-21"><a id="__codelineno-10-21" name="__codelineno-10-21" href="#__codelineno-10-21"></a><span class="c1"># 停止並刪除 volumes（資料將遺失）</span>
+</span><span id="__span-10-22"><a id="__codelineno-10-22" name="__codelineno-10-22" href="#__codelineno-10-22"></a>docker<span class="w"> </span>compose<span class="w"> </span>down<span class="w"> </span>-v
+</span></code></pre></div>
+<hr />
+<h2 id="_6">故障排除<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h2>
+<h3 id="app">App 無法連接資料庫<a class="headerlink" href="#app" title="Permanent link">&para;</a></h3>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="c1"># 確認 pgBouncer 健康狀態</span>
+</span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>docker<span class="w"> </span>compose<span class="w"> </span>ps<span class="w"> </span>pgbouncer
+</span><span id="__span-11-3"><a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>
+</span><span id="__span-11-4"><a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="c1"># 確認環境變數</span>
+</span><span id="__span-11-5"><a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>docker<span class="w"> </span>compose<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>app<span class="w"> </span>env<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>DATABASE_URL
+</span></code></pre></div>
+<h3 id="_7">術語資料未載入<a class="headerlink" href="#_7" title="Permanent link">&para;</a></h3>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="c1"># 確認 fhir-code/ 目錄下有對應的 ZIP 檔</span>
+</span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>ls<span class="w"> </span>fhir-code/
+</span><span id="__span-12-3"><a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>
+</span><span id="__span-12-4"><a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="c1"># 重新執行 loader</span>
+</span><span id="__span-12-5"><a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>docker<span class="w"> </span>compose<span class="w"> </span>--profile<span class="w"> </span>loader<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>data-loader<span class="w"> </span>--icd
+</span></code></pre></div>
+<h3 id="_8">健康檢查失敗<a class="headerlink" href="#_8" title="Permanent link">&para;</a></h3>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="c1"># 建立 session 並呼叫 health_check 工具</span>
+</span><span id="__span-13-2"><a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="nv">SESSION</span><span class="o">=</span><span class="k">$(</span>curl<span class="w"> </span>-si<span class="w"> </span>http://localhost:8000/mcp<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-13-3"><a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="w">  </span>-H<span class="w"> </span><span class="s2">&quot;Content-Type: application/json&quot;</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-13-4"><a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="w">  </span>-H<span class="w"> </span><span class="s2">&quot;Accept: application/json, text/event-stream&quot;</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-13-5"><a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a><span class="w">  </span>-d<span class="w"> </span><span class="s1">&#39;{&quot;jsonrpc&quot;:&quot;2.0&quot;,&quot;id&quot;:1,&quot;method&quot;:&quot;initialize&quot;,&quot;params&quot;:{&quot;protocolVersion&quot;:&quot;2024-11-05&quot;,&quot;capabilities&quot;:{},&quot;clientInfo&quot;:{&quot;name&quot;:&quot;test&quot;,&quot;version&quot;:&quot;1&quot;}}}&#39;</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-13-6"><a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a><span class="w">  </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>mcp-session-id<span class="w"> </span><span class="p">|</span><span class="w"> </span>awk<span class="w"> </span><span class="s1">&#39;{print $2}&#39;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>tr<span class="w"> </span>-d<span class="w"> </span><span class="s1">&#39;\r&#39;</span><span class="k">)</span>
+</span><span id="__span-13-7"><a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a>
+</span><span id="__span-13-8"><a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a>curl<span class="w"> </span>http://localhost:8000/mcp<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-13-9"><a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a><span class="w">  </span>-H<span class="w"> </span><span class="s2">&quot;Content-Type: application/json&quot;</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-13-10"><a id="__codelineno-13-10" name="__codelineno-13-10" href="#__codelineno-13-10"></a><span class="w">  </span>-H<span class="w"> </span><span class="s2">&quot;Accept: application/json, text/event-stream&quot;</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-13-11"><a id="__codelineno-13-11" name="__codelineno-13-11" href="#__codelineno-13-11"></a><span class="w">  </span>-H<span class="w"> </span><span class="s2">&quot;mcp-session-id: </span><span class="nv">$SESSION</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-13-12"><a id="__codelineno-13-12" name="__codelineno-13-12" href="#__codelineno-13-12"></a><span class="w">  </span>-d<span class="w"> </span><span class="s1">&#39;{&quot;jsonrpc&quot;:&quot;2.0&quot;,&quot;id&quot;:2,&quot;method&quot;:&quot;tools/call&quot;,&quot;params&quot;:{&quot;name&quot;:&quot;health_check&quot;,&quot;arguments&quot;:{}}}&#39;</span>
+</span></code></pre></div>
+<h3 id="prometheus_1">Prometheus 指標<a class="headerlink" href="#prometheus_1" title="Permanent link">&para;</a></h3>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>curl<span class="w"> </span>http://localhost:9090/metrics<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>mcp_
 </span></code></pre></div>
 
 

@@ -25,7 +25,7 @@
       
       
       <link rel="icon" href="../../assets/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.5">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
       
@@ -893,19 +893,19 @@
   <a href="#_3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        🏗️ 分層架構
+        🏗️ 基礎架構元件
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="🏗️ 分層架構">
+    <nav class="md-nav" aria-label="🏗️ 基礎架構元件">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#1-client-layer" class="md-nav__link">
+  <a href="#pgbouncer" class="md-nav__link">
     <span class="md-ellipsis">
       
-        1. Client Layer (使用者層)
+        pgBouncer 設定要點
       
     </span>
   </a>
@@ -913,43 +913,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#2-protocol-layer-mcp" class="md-nav__link">
+  <a href="#postgresql-schema" class="md-nav__link">
     <span class="md-ellipsis">
       
-        2. Protocol Layer (MCP 協議層)
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#3-service-layer" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        3. Service Layer (服務層)
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#4-data-access-layer" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        4. Data Access Layer (資料存取層)
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#5-external-data-sources" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        5. External Data Sources (外部資料源)
+        PostgreSQL Schema
       
     </span>
   </a>
@@ -962,22 +929,77 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_6" class="md-nav__link">
+  <a href="#11" class="md-nav__link">
     <span class="md-ellipsis">
       
-        🔄 資料流程
+        🔧 服務層（11 個服務）
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="🔄 資料流程">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cross-cutting-concerns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔁 跨切面關注點（Cross-cutting Concerns）
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="🔁 跨切面關注點（Cross-cutting Concerns）">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#_7" class="md-nav__link">
+  <a href="#srcauditpy" class="md-nav__link">
     <span class="md-ellipsis">
       
-        完整診療流程
+        src/audit.py — 查詢稽核
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#srccachepy-redis" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        src/cache.py — Redis 快取
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#srcmetricspy-prometheus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        src/metrics.py — Prometheus 指標
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#srcutilspy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        src/utils.py — 結構化日誌
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#srcdatabasepy-asyncpg-pool" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        src/database.py — asyncpg Pool 單例
       
     </span>
   </a>
@@ -990,177 +1012,32 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_8" class="md-nav__link">
+  <a href="#fastmcp-lifespan" class="md-nav__link">
     <span class="md-ellipsis">
       
-        🔒 安全性設計
+        ⚡ FastMCP Lifespan 行為（重要）
       
     </span>
   </a>
-  
-    <nav class="md-nav" aria-label="🔒 安全性設計">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#_9" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        資料隱私
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#api" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        API 安全
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#_10" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        資料完整性
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#_11" class="md-nav__link">
+  <a href="#fda-two-phase-pattern" class="md-nav__link">
     <span class="md-ellipsis">
       
-        ⚡ 效能優化
+        🔄 FDA 同步策略（Two-Phase Pattern）
       
     </span>
   </a>
-  
-    <nav class="md-nav" aria-label="⚡ 效能優化">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#_12" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        快取策略
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#_13" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        資料庫優化
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#_14" class="md-nav__link">
+  <a href="#data-loader" class="md-nav__link">
     <span class="md-ellipsis">
       
-        📊 擴展性設計
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="📊 擴展性設計">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#_15" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        水平擴展
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#_16" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        垂直擴展
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#_17" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        🔮 未來架構規劃
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="🔮 未來架構規劃">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#phase-2" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Phase 2: 微服務化
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#phase-3" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Phase 3: 雲端部署
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#_18" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        📖 相關文件
+        📦 資料載入器（Data Loader）
       
     </span>
   </a>
@@ -3436,19 +3313,19 @@
   <a href="#_3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        🏗️ 分層架構
+        🏗️ 基礎架構元件
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="🏗️ 分層架構">
+    <nav class="md-nav" aria-label="🏗️ 基礎架構元件">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#1-client-layer" class="md-nav__link">
+  <a href="#pgbouncer" class="md-nav__link">
     <span class="md-ellipsis">
       
-        1. Client Layer (使用者層)
+        pgBouncer 設定要點
       
     </span>
   </a>
@@ -3456,43 +3333,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#2-protocol-layer-mcp" class="md-nav__link">
+  <a href="#postgresql-schema" class="md-nav__link">
     <span class="md-ellipsis">
       
-        2. Protocol Layer (MCP 協議層)
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#3-service-layer" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        3. Service Layer (服務層)
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#4-data-access-layer" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        4. Data Access Layer (資料存取層)
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#5-external-data-sources" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        5. External Data Sources (外部資料源)
+        PostgreSQL Schema
       
     </span>
   </a>
@@ -3505,22 +3349,77 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_6" class="md-nav__link">
+  <a href="#11" class="md-nav__link">
     <span class="md-ellipsis">
       
-        🔄 資料流程
+        🔧 服務層（11 個服務）
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="🔄 資料流程">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cross-cutting-concerns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        🔁 跨切面關注點（Cross-cutting Concerns）
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="🔁 跨切面關注點（Cross-cutting Concerns）">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#_7" class="md-nav__link">
+  <a href="#srcauditpy" class="md-nav__link">
     <span class="md-ellipsis">
       
-        完整診療流程
+        src/audit.py — 查詢稽核
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#srccachepy-redis" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        src/cache.py — Redis 快取
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#srcmetricspy-prometheus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        src/metrics.py — Prometheus 指標
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#srcutilspy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        src/utils.py — 結構化日誌
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#srcdatabasepy-asyncpg-pool" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        src/database.py — asyncpg Pool 單例
       
     </span>
   </a>
@@ -3533,177 +3432,32 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_8" class="md-nav__link">
+  <a href="#fastmcp-lifespan" class="md-nav__link">
     <span class="md-ellipsis">
       
-        🔒 安全性設計
+        ⚡ FastMCP Lifespan 行為（重要）
       
     </span>
   </a>
-  
-    <nav class="md-nav" aria-label="🔒 安全性設計">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#_9" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        資料隱私
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#api" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        API 安全
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#_10" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        資料完整性
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#_11" class="md-nav__link">
+  <a href="#fda-two-phase-pattern" class="md-nav__link">
     <span class="md-ellipsis">
       
-        ⚡ 效能優化
+        🔄 FDA 同步策略（Two-Phase Pattern）
       
     </span>
   </a>
-  
-    <nav class="md-nav" aria-label="⚡ 效能優化">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#_12" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        快取策略
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#_13" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        資料庫優化
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#_14" class="md-nav__link">
+  <a href="#data-loader" class="md-nav__link">
     <span class="md-ellipsis">
       
-        📊 擴展性設計
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="📊 擴展性設計">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#_15" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        水平擴展
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#_16" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        垂直擴展
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#_17" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        🔮 未來架構規劃
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="🔮 未來架構規劃">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#phase-2" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Phase 2: 微服務化
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#phase-3" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Phase 3: 雲端部署
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#_18" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        📖 相關文件
+        📦 資料載入器（Data Loader）
       
     </span>
   </a>
@@ -3731,7 +3485,7 @@
 
 
 <h1 id="_1">系統架構<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h1>
-<p>本文件說明 Taiwan ICD10 Health MCP 的完整系統架構設計。</p>
+<p>Taiwan Health MCP Server 採用 PostgreSQL 作為主要資料庫，透過 pgBouncer 連線池、Redis 快取、Prometheus 監控，支援生產環境高並發需求。</p>
 <hr />
 <h2 id="_2">📐 整體架構<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
 <pre class="mermaid"><code>graph TB
@@ -3740,618 +3494,333 @@
         A2[其他 MCP 客戶端]
     end
 
-    subgraph "Protocol Layer MCP 協議層"
-        B[MCP Server&lt;br/&gt;32 MCP Tools]
+    subgraph "MCP Server (port 8000)"
+        B[FastMCP / uvicorn&lt;br/&gt;46 個工具]
+        AUD[audit.py&lt;br/&gt;@audited 裝飾器]
+        CAC[cache.py&lt;br/&gt;@cached 裝飾器]
+        MET[metrics.py&lt;br/&gt;Prometheus]
     end
 
-    subgraph "Service Layer 服務層"
-        C1[ICD Service]
-        C2[Drug Service]
-        C3[Health Food Service]
-        C4[Food Nutrition Service]
-        C5[FHIR Condition Service]
-        C6[FHIR Medication Service]
-        C7[Lab Service]
-        C8[Clinical Guideline Service]
+    subgraph "Service Layer 服務層 (11 個服務)"
+        S1[ICD Service]
+        S2[Drug Service]
+        S3[HealthFood Service]
+        S4[FoodNutrition Service]
+        S5[Lab Service]
+        S6[Guideline Service]
+        S7[FHIRCondition Service]
+        S8[FHIRMedication Service]
+        S9[TWCore Service]
+        S10[SNOMED Service]
+        S11[DrugInteraction Service]
     end
 
-    subgraph "Data Access Layer 資料存取層"
-        D1[(ICD-10 DB&lt;br/&gt;SQLite)]
-        D2[(Drugs DB&lt;br/&gt;SQLite)]
-        D3[(Health Foods DB&lt;br/&gt;SQLite)]
-        D4[(Nutrition DB&lt;br/&gt;SQLite)]
-        D5[(Lab Tests DB&lt;br/&gt;SQLite)]
-        D6[(Guidelines DB&lt;br/&gt;SQLite)]
+    subgraph "Infrastructure 基礎架構"
+        PGB[pgBouncer&lt;br/&gt;transaction mode&lt;br/&gt;500 client → 30 PG]
+        PG[(PostgreSQL 16&lt;br/&gt;10 個 schema)]
+        RD[(Redis 7&lt;br/&gt;TTL 快取)]
+        PM[Prometheus&lt;br/&gt;port 9090]
     end
 
-    subgraph "External Data Sources 外部資料源"
-        E1[台灣 FDA API&lt;br/&gt;5 個資料集]
-        E2[LOINC Official&lt;br/&gt;87,000+ 項]
-        E3[衛福部 ICD-10&lt;br/&gt;Excel]
-        E4[Taiwan Nutrition DB&lt;br/&gt;食品營養資料]
+    subgraph "Data Loader 資料載入器"
+        L[loader/main.py&lt;br/&gt;一次性執行]
+        FC[fhir-code/&lt;br/&gt;ZIP 原始資料]
+    end
+
+    subgraph "External 外部資料源"
+        E1[台灣 FDA Open Data API&lt;br/&gt;藥品/健康食品/營養]
     end
 
     A1 --&gt; B
     A2 --&gt; B
-
-    B --&gt; C1
-    B --&gt; C2
-    B --&gt; C3
-    B --&gt; C4
-    B --&gt; C5
-    B --&gt; C6
-    B --&gt; C7
-    B --&gt; C8
-
-    C1 --&gt; D1
-    C2 --&gt; D2
-    C3 --&gt; D3
-    C4 --&gt; D4
-    C7 --&gt; D5
-    C8 --&gt; D6
-
-    C5 -.依賴.-&gt; C1
-    C6 -.依賴.-&gt; C2
-
-    E1 -.同步.-&gt; D2
-    E2 -.整合.-&gt; D5
-    E3 -.匯入.-&gt; D1
-    E4 -.匯入.-&gt; D4
-
-    style A1 fill:#e1f5ff
-    style A2 fill:#e1f5ff
-    style B fill:#fff3e0
-    style C1 fill:#f3e5f5
-    style C2 fill:#f3e5f5
-    style C3 fill:#f3e5f5
-    style C4 fill:#f3e5f5
-    style C5 fill:#e8f5e9
-    style C6 fill:#e8f5e9
-    style C7 fill:#f3e5f5
-    style C8 fill:#f3e5f5
-    style D1 fill:#fff9c4
-    style D2 fill:#fff9c4
-    style D3 fill:#fff9c4
-    style D4 fill:#fff9c4
-    style D5 fill:#fff9c4
-    style D6 fill:#fff9c4
-    style E1 fill:#ffebee
-    style E2 fill:#ffebee
-    style E3 fill:#ffebee
-    style E4 fill:#ffebee</code></pre>
+    B --&gt; AUD
+    B --&gt; CAC
+    B --&gt; MET
+    B --&gt; S1 &amp; S2 &amp; S3 &amp; S4 &amp; S5 &amp; S6 &amp; S7 &amp; S8 &amp; S9 &amp; S10 &amp; S11
+    S1 &amp; S2 &amp; S3 &amp; S4 &amp; S5 &amp; S6 &amp; S7 &amp; S8 &amp; S9 &amp; S10 &amp; S11 --&gt; PGB
+    PGB --&gt; PG
+    CAC --&gt; RD
+    MET --&gt; PM
+    L --&gt; FC
+    L --&gt; PG
+    S2 &amp; S3 &amp; S4 -.-&gt;|每週自動同步| E1</code></pre>
 <hr />
-<h2 id="_3">🏗️ 分層架構<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
-<h3 id="1-client-layer">1. Client Layer (使用者層)<a class="headerlink" href="#1-client-layer" title="Permanent link">&para;</a></h3>
-<p>負責與 MCP Server 進行通訊的客戶端。</p>
+<h2 id="_3">🏗️ 基礎架構元件<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
 <tr>
-<th>客戶端</th>
+<th>元件</th>
+<th>版本</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>PostgreSQL</td>
+<td>16-alpine</td>
+<td>主要資料庫，存放所有術語資料</td>
+</tr>
+<tr>
+<td>pgBouncer</td>
+<td>edoburu/latest</td>
+<td>連線池（transaction mode）；500 client 連線 → 30 PG 連線</td>
+</tr>
+<tr>
+<td>Redis</td>
+<td>7-alpine</td>
+<td>回應快取（TTL 策略），<code>@cached</code> 裝飾器</td>
+</tr>
+<tr>
+<td>Prometheus</td>
+<td>—</td>
+<td>工具呼叫計數器、延遲 histogram、DB pool 指標（port 9090）</td>
+</tr>
+</tbody>
+</table>
+<h3 id="pgbouncer">pgBouncer 設定要點<a class="headerlink" href="#pgbouncer" title="Permanent link">&para;</a></h3>
+<ul>
+<li>模式：<code>transaction</code> — 每次查詢結束後釋放 PG 連線，支援最高並發</li>
+<li>asyncpg 必須設定 <code>statement_cache_size=0</code> — transaction mode 不支援 named prepared statements</li>
+<li>不相容：<code>LISTEN/NOTIFY</code>、server-side cursors</li>
+</ul>
+<h3 id="postgresql-schema">PostgreSQL Schema<a class="headerlink" href="#postgresql-schema" title="Permanent link">&para;</a></h3>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>audit          -- 查詢稽核日誌（SHA-256 參數雜湊）
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>icd            -- ICD-10-CM 診斷碼、ICD-10-PCS 手術碼
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>drug           -- 台灣 FDA 藥品（licenses/appearance/ingredients/atc/documents）
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>health_food    -- 台灣 FDA 核可健康食品
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>food_nutrition -- 食品營養成分、食品原料
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>loinc          -- LOINC 2.80 檢驗碼、參考值
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>guideline      -- 台灣臨床診療指引
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>twcore         -- TWCore IG v1.0.0 CodeSystem
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>snomed         -- SNOMED CT International RF2
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>rxnorm         -- RxNorm 藥品命名與交互作用
+</span></code></pre></div>
+<p>完整 DDL：<code>db/schema.sql</code>（PostgreSQL 容器首次啟動時自動套用）</p>
+<hr />
+<h2 id="11">🔧 服務層（11 個服務）<a class="headerlink" href="#11" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>服務</th>
+<th>檔案</th>
+<th>資料來源</th>
+<th>同步方式</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ICD Service</td>
+<td><code>icd_service.py</code></td>
+<td><code>icd.diagnoses</code> / <code>icd.procedures</code></td>
+<td>data-loader（靜態）</td>
+</tr>
+<tr>
+<td>Drug Service</td>
+<td><code>drug_service.py</code></td>
+<td><code>drug.*</code></td>
+<td>FDA Open Data，每週二 02:00 UTC</td>
+</tr>
+<tr>
+<td>Health Food Service</td>
+<td><code>health_food_service.py</code></td>
+<td><code>health_food.items</code></td>
+<td>FDA Open Data，每週一 02:30 UTC</td>
+</tr>
+<tr>
+<td>Food Nutrition Service</td>
+<td><code>food_nutrition_service.py</code></td>
+<td><code>food_nutrition.*</code></td>
+<td>FDA Open Data，每週一 03:00 UTC</td>
+</tr>
+<tr>
+<td>Lab Service</td>
+<td><code>lab_service.py</code></td>
+<td><code>loinc.*</code></td>
+<td>data-loader（LOINC 2.80 zip）</td>
+</tr>
+<tr>
+<td>Clinical Guideline Service</td>
+<td><code>clinical_guideline_service.py</code></td>
+<td><code>guideline.*</code></td>
+<td>data-loader（種子資料）</td>
+</tr>
+<tr>
+<td>FHIR Condition Service</td>
+<td><code>fhir_condition_service.py</code></td>
+<td>讀取 <code>icd.diagnoses</code></td>
+<td>—</td>
+</tr>
+<tr>
+<td>FHIR Medication Service</td>
+<td><code>fhir_medication_service.py</code></td>
+<td>讀取 DrugService</td>
+<td>—</td>
+</tr>
+<tr>
+<td>TWCore Service</td>
+<td><code>twcore_service.py</code></td>
+<td><code>twcore.*</code></td>
+<td>data-loader + 即時抓取備援</td>
+</tr>
+<tr>
+<td>SNOMED Service</td>
+<td><code>snomed_service.py</code></td>
+<td><code>snomed.*</code></td>
+<td>data-loader（RF2 zip）</td>
+</tr>
+<tr>
+<td>Drug Interaction Service</td>
+<td><code>drug_interaction_service.py</code></td>
+<td><code>rxnorm.*</code></td>
+<td>data-loader（RxNorm zip）</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="cross-cutting-concerns">🔁 跨切面關注點（Cross-cutting Concerns）<a class="headerlink" href="#cross-cutting-concerns" title="Permanent link">&para;</a></h2>
+<h3 id="srcauditpy"><code>src/audit.py</code> — 查詢稽核<a class="headerlink" href="#srcauditpy" title="Permanent link">&para;</a></h3>
+<p><div class="language-python highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nd">@audited</span><span class="p">(</span><span class="s2">&quot;tool_name&quot;</span><span class="p">)</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">my_tool</span><span class="p">(</span><span class="o">...</span><span class="p">):</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    <span class="o">...</span>
+</span></code></pre></div>
+- 記錄 SHA-256(params)、工具名稱、執行時間、狀態到 <code>audit.query_log</code>
+- 絕不記錄原始參數值（HIPAA 合規）
+- 自動呼叫 <code>metrics.record_tool_call()</code></p>
+<h3 id="srccachepy-redis"><code>src/cache.py</code> — Redis 快取<a class="headerlink" href="#srccachepy-redis" title="Permanent link">&para;</a></h3>
+<p><div class="language-python highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nd">@cached</span><span class="p">(</span><span class="n">ttl</span><span class="o">=</span><span class="mi">3600</span><span class="p">,</span> <span class="n">prefix</span><span class="o">=</span><span class="s2">&quot;icd&quot;</span><span class="p">)</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">search_codes</span><span class="p">(</span><span class="o">...</span><span class="p">):</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>    <span class="o">...</span>
+</span></code></pre></div>
+- 快取鍵：<code>mcp:{prefix}:{sha256(args)[:16]}</code>
+- Fail-open：Redis 錯誤時直接執行原始函數
+- 自動呼叫 <code>metrics.record_cache_op()</code></p>
+<h3 id="srcmetricspy-prometheus"><code>src/metrics.py</code> — Prometheus 指標<a class="headerlink" href="#srcmetricspy-prometheus" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>指標名稱</th>
+<th>類型</th>
 <th>說明</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><strong>Claude AI</strong></td>
-<td>主要客戶端，透過 MCP 協議調用工具</td>
+<td><code>mcp_tool_requests_total</code></td>
+<td>Counter</td>
+<td>工具呼叫次數（依工具名稱和狀態）</td>
 </tr>
 <tr>
-<td><strong>其他 MCP 客戶端</strong></td>
-<td>任何支援 MCP 協議的應用程式</td>
+<td><code>mcp_tool_duration_seconds</code></td>
+<td>Histogram</td>
+<td>工具執行延遲</td>
+</tr>
+<tr>
+<td><code>mcp_cache_operations_total</code></td>
+<td>Counter</td>
+<td>快取命中/未命中/錯誤</td>
+</tr>
+<tr>
+<td><code>mcp_db_pool_size</code></td>
+<td>Gauge</td>
+<td>asyncpg pool 總連線數</td>
+</tr>
+<tr>
+<td><code>mcp_db_pool_checked_out</code></td>
+<td>Gauge</td>
+<td>目前使用中的連線數</td>
 </tr>
 </tbody>
 </table>
-<p><strong>特點</strong>:</p>
+<h3 id="srcutilspy"><code>src/utils.py</code> — 結構化日誌<a class="headerlink" href="#srcutilspy" title="Permanent link">&para;</a></h3>
 <ul>
-<li>✅ 標準化 MCP 協議</li>
-<li>✅ 支援多客戶端同時連線</li>
-<li>✅ 即時回應</li>
+<li>輸出至 <code>stderr</code>（stdout 保留給 MCP stdio transport）</li>
+<li>每行一個 JSON 物件：<code>{"ts", "level", "logger", "msg", ...extra}</code></li>
+<li>日誌等級透過 <code>LOG_LEVEL</code> 環境變數設定</li>
+</ul>
+<h3 id="srcdatabasepy-asyncpg-pool"><code>src/database.py</code> — asyncpg Pool 單例<a class="headerlink" href="#srcdatabasepy-asyncpg-pool" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>init_pool()</code> 冪等（Idempotent）：若已初始化則回傳現有 pool</li>
+<li><code>statement_cache_size=0</code> 必須設定（pgBouncer transaction mode 要求）</li>
 </ul>
 <hr />
-<h3 id="2-protocol-layer-mcp">2. Protocol Layer (MCP 協議層)<a class="headerlink" href="#2-protocol-layer-mcp" title="Permanent link">&para;</a></h3>
-<p>實作 Model Context Protocol (MCP) 標準。</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># MCP Server 初始化</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="n">mcp</span> <span class="o">=</span> <span class="n">FastMCP</span><span class="p">(</span><span class="s2">&quot;taiwanHealthMcp&quot;</span><span class="p">)</span>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="c1"># 工具註冊範例</span>
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="nd">@mcp</span><span class="o">.</span><span class="n">tool</span><span class="p">()</span>
-</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="k">def</span><span class="w"> </span><span class="nf">search_medical_codes</span><span class="p">(</span><span class="n">keyword</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="nb">type</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;all&quot;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;搜尋 ICD-10 診斷/手術碼&quot;&quot;&quot;</span>
-</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="k">return</span> <span class="n">icd_service</span><span class="o">.</span><span class="n">search_codes</span><span class="p">(</span><span class="n">keyword</span><span class="p">,</span> <span class="nb">type</span><span class="p">)</span>
+<h2 id="fastmcp-lifespan">⚡ FastMCP Lifespan 行為（重要）<a class="headerlink" href="#fastmcp-lifespan" title="Permanent link">&para;</a></h2>
+<p>在 <code>streamable-http</code> 模式下，FastMCP 對每個新的 MCP session 執行一次 lifespan context manager，而非只在程序啟動時執行一次。</p>
+<p><code>server.py</code> 使用以下機制確保只初始化一次：</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">_init_lock</span><span class="p">:</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">Lock</span>   <span class="c1"># lazily created on first session</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">_initialized</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="k">async</span> <span class="k">with</span> <span class="n">_init_lock</span><span class="p">:</span>
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">_initialized</span><span class="p">:</span>
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>        <span class="c1"># 所有初始化邏輯...</span>
+</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>        <span class="n">_initialized</span> <span class="o">=</span> <span class="kc">True</span>
+</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="c1"># yield 在 lock 外</span>
 </span></code></pre></div>
-<p><strong>功能</strong>:</p>
-<ul>
-<li>🔹 32 個 MCP Tools</li>
-<li>🔹 工具註冊與管理</li>
-<li>🔹 參數驗證</li>
-<li>🔹 錯誤處理</li>
-<li>🔹 日誌記錄</li>
-</ul>
-<p><strong>工具分組</strong>:</p>
-<table>
-<thead>
-<tr>
-<th>群組</th>
-<th>數量</th>
-<th>說明</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>ICD-10 工具</td>
-<td>4</td>
-<td>診斷/手術碼相關</td>
-</tr>
-<tr>
-<td>藥品工具</td>
-<td>3</td>
-<td>FDA 藥品資料</td>
-</tr>
-<tr>
-<td>健康食品工具</td>
-<td>2</td>
-<td>健康食品管理</td>
-</tr>
-<tr>
-<td>營養工具</td>
-<td>5</td>
-<td>食品營養分析</td>
-</tr>
-<tr>
-<td>FHIR 工具</td>
-<td>7</td>
-<td>FHIR 資源轉換</td>
-</tr>
-<tr>
-<td>檢驗工具</td>
-<td>5</td>
-<td>LOINC 與檢驗判讀</td>
-</tr>
-<tr>
-<td>臨床指引工具</td>
-<td>5</td>
-<td>診療指引查詢</td>
-</tr>
-<tr>
-<td>綜合分析工具</td>
-<td>1</td>
-<td>跨模組整合</td>
-</tr>
-</tbody>
-</table>
+<p>各元件也各自具備冪等保護：
+- <code>database.init_pool()</code> — 檢查 <code>_pool is not None</code>
+- <code>cache.init_client()</code> — 檢查 <code>_client is not None</code>
+- <code>metrics.start_metrics_server()</code> — <code>_metrics_server_started</code> flag
+- 各 sync service — <code>asyncio.Lock</code> 防止並發同步，<code>if not scheduler.running</code> 防止重複啟動</p>
 <hr />
-<h3 id="3-service-layer">3. Service Layer (服務層)<a class="headerlink" href="#3-service-layer" title="Permanent link">&para;</a></h3>
-<p>核心業務邏輯實作層。</p>
-<h4 id="31-icd-service">3.1 ICD Service<a class="headerlink" href="#31-icd-service" title="Permanent link">&para;</a></h4>
-<pre class="mermaid"><code>classDiagram
-    class ICDService {
-        +excel_path: str
-        +data_dir: str
-        +db_path: str
-        +search_codes(keyword, type) dict
-        +infer_complications(code) dict
-        +get_nearby_codes(code) dict
-        +get_conflict_info(diag_code, proc_code) dict
-    }</code></pre>
-<p><strong>職責</strong>:</p>
-<ul>
-<li>ICD-10-CM/PCS 資料管理</li>
-<li>診斷碼搜尋與推論</li>
-<li>FTS5 全文檢索</li>
-</ul>
-<h4 id="32-drug-service">3.2 Drug Service<a class="headerlink" href="#32-drug-service" title="Permanent link">&para;</a></h4>
-<pre class="mermaid"><code>classDiagram
-    class DrugService {
-        +data_dir: str
-        +db_path: str
-        +search_drug(keyword) dict
-        +get_drug_details_by_license(license_id) dict
-        +identify_pill_by_appearance(features) dict
-    }</code></pre>
-<p><strong>職責</strong>:</p>
-<ul>
-<li>整合 5 個 FDA API</li>
-<li>藥品資料管理</li>
-<li>外觀識別</li>
-</ul>
-<h4 id="33-fhir-services">3.3 FHIR Services<a class="headerlink" href="#33-fhir-services" title="Permanent link">&para;</a></h4>
-<pre class="mermaid"><code>classDiagram
-    class FHIRConditionService {
-        +icd_service: ICDService
-        +create_condition(...) dict
-        +validate_condition(condition) dict
-    }
-
-    class FHIRMedicationService {
-        +drug_service: DrugService
-        +create_medication(...) dict
-        +create_medication_knowledge(...) dict
-    }
-
-    FHIRConditionService --&gt; ICDService
-    FHIRMedicationService --&gt; DrugService</code></pre>
-<p><strong>職責</strong>:</p>
-<ul>
-<li>FHIR R4 資源轉換</li>
-<li>資源驗證</li>
-<li>標準化輸出</li>
-</ul>
-<h4 id="34-lab-service">3.4 Lab Service<a class="headerlink" href="#34-lab-service" title="Permanent link">&para;</a></h4>
-<pre class="mermaid"><code>classDiagram
-    class LabService {
-        +data_dir: str
-        +db_path: str
-        +search_loinc_code(keyword) dict
-        +get_reference_range(loinc_code, age, gender) dict
-        +interpret_lab_result(...) dict
-    }</code></pre>
-<p><strong>職責</strong>:</p>
-<ul>
-<li>LOINC 碼管理</li>
-<li>參考值查詢</li>
-<li>結果判讀</li>
-</ul>
-<h4 id="35-clinical-guideline-service">3.5 Clinical Guideline Service<a class="headerlink" href="#35-clinical-guideline-service" title="Permanent link">&para;</a></h4>
-<pre class="mermaid"><code>classDiagram
-    class ClinicalGuidelineService {
-        +data_dir: str
-        +db_path: str
-        +search_guideline(keyword) dict
-        +get_complete_guideline(icd_code) dict
-        +suggest_clinical_pathway(...) dict
-    }</code></pre>
-<p><strong>職責</strong>:</p>
-<ul>
-<li>臨床指引管理</li>
-<li>用藥建議</li>
-<li>臨床路徑規劃</li>
-</ul>
-<hr />
-<h3 id="4-data-access-layer">4. Data Access Layer (資料存取層)<a class="headerlink" href="#4-data-access-layer" title="Permanent link">&para;</a></h3>
-<p>使用 SQLite 資料庫儲存與管理資料。</p>
-<h4 id="_4">資料庫架構<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h4>
-<pre class="mermaid"><code>erDiagram
-    ICD10_DB ||--o{ DIAGNOSIS : contains
-    ICD10_DB ||--o{ PROCEDURE : contains
-
-    DRUGS_DB ||--o{ LICENSES : contains
-    DRUGS_DB ||--o{ APPEARANCE : contains
-    DRUGS_DB ||--o{ INGREDIENTS : contains
-    DRUGS_DB ||--o{ ATC : contains
-    DRUGS_DB ||--o{ DOCUMENTS : contains
-
-    LAB_TESTS_DB ||--o{ LOINC_MAPPING : contains
-    LAB_TESTS_DB ||--o{ REFERENCE_RANGES : contains
-
-    GUIDELINES_DB ||--o{ DISEASE_GUIDELINES : contains
-    GUIDELINES_DB ||--o{ MEDICATION_RECOMMENDATIONS : contains</code></pre>
-<h4 id="_5">資料表結構<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h4>
-<div class="tabbed-set tabbed-alternate" data-tabs="1:4"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><input id="__tabbed_1_3" name="__tabbed_1" type="radio" /><input id="__tabbed_1_4" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">ICD-10 DB</label><label for="__tabbed_1_2">Drugs DB</label><label for="__tabbed_1_3">Lab Tests DB</label><label for="__tabbed_1_4">Guidelines DB</label></div>
-<div class="tabbed-content">
-<div class="tabbed-block">
-<table>
-<thead>
-<tr>
-<th>表名</th>
-<th>主要欄位</th>
-<th>索引</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>diagnosis</code></td>
-<td>code, name_zh, name_en</td>
-<td>code, FTS5</td>
-</tr>
-<tr>
-<td><code>procedure</code></td>
-<td>code, name_zh, name_en</td>
-<td>code, FTS5</td>
-</tr>
-</tbody>
-</table>
-</div>
-<div class="tabbed-block">
-<table>
-<thead>
-<tr>
-<th>表名</th>
-<th>主要欄位</th>
-<th>索引</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>licenses</code></td>
-<td>license_id, name_zh, indication</td>
-<td>license_id, FTS5</td>
-</tr>
-<tr>
-<td><code>appearance</code></td>
-<td>license_id, shape, color, marking</td>
-<td>license_id</td>
-</tr>
-<tr>
-<td><code>ingredients</code></td>
-<td>license_id, ingredient_name, content</td>
-<td>license_id</td>
-</tr>
-<tr>
-<td><code>atc</code></td>
-<td>license_id, atc_code</td>
-<td>atc_code</td>
-</tr>
-</tbody>
-</table>
-</div>
-<div class="tabbed-block">
-<table>
-<thead>
-<tr>
-<th>表名</th>
-<th>主要欄位</th>
-<th>索引</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>loinc_mapping</code></td>
-<td>loinc_code, loinc_name_zh, category</td>
-<td>loinc_code, FTS5</td>
-</tr>
-<tr>
-<td><code>reference_ranges</code></td>
-<td>loinc_code, age_min, age_max, gender, range_low, range_high</td>
-<td>loinc_code</td>
-</tr>
-</tbody>
-</table>
-</div>
-<div class="tabbed-block">
-<table>
-<thead>
-<tr>
-<th>表名</th>
-<th>主要欄位</th>
-<th>索引</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>disease_guidelines</code></td>
-<td>icd_code, title, publisher</td>
-<td>icd_code</td>
-</tr>
-<tr>
-<td><code>medication_recommendations</code></td>
-<td>icd_code, drug_class, dosage</td>
-<td>icd_code</td>
-</tr>
-<tr>
-<td><code>test_recommendations</code></td>
-<td>icd_code, loinc_code, frequency</td>
-<td>icd_code</td>
-</tr>
-</tbody>
-</table>
-</div>
-</div>
-</div>
-<hr />
-<h3 id="5-external-data-sources">5. External Data Sources (外部資料源)<a class="headerlink" href="#5-external-data-sources" title="Permanent link">&para;</a></h3>
-<h4 id="fda-api">台灣 FDA API<a class="headerlink" href="#fda-api" title="Permanent link">&para;</a></h4>
-<pre class="mermaid"><code>sequenceDiagram
-    participant DS as Drug Service
-    participant API as FDA API
-    participant DB as Drugs DB
-
-    DS-&gt;&gt;API: GET /api/36 (許可證)
-    API--&gt;&gt;DS: JSON Data
-    DS-&gt;&gt;API: GET /api/42 (外觀)
-    API--&gt;&gt;DS: JSON Data
-    DS-&gt;&gt;API: GET /api/43 (成分)
-    API--&gt;&gt;DS: JSON Data
-    DS-&gt;&gt;API: GET /api/41 (ATC)
-    API--&gt;&gt;DS: JSON Data
-    DS-&gt;&gt;API: GET /api/39 (仿單)
-    API--&gt;&gt;DS: JSON Data
-
-    DS-&gt;&gt;DB: INSERT/UPDATE
-    DB--&gt;&gt;DS: Success</code></pre>
-<p><strong>API 列表</strong>:</p>
-<table>
-<thead>
-<tr>
-<th>API</th>
-<th>內容</th>
-<th>更新頻率</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>API 36</td>
-<td>藥品許可證基本資料</td>
-<td>每日</td>
-</tr>
-<tr>
-<td>API 42</td>
-<td>藥品外觀資料</td>
-<td>每週</td>
-</tr>
-<tr>
-<td>API 43</td>
-<td>藥品成分資料</td>
-<td>每日</td>
-</tr>
-<tr>
-<td>API 41</td>
-<td>ATC 藥物分類</td>
-<td>每月</td>
-</tr>
-<tr>
-<td>API 39</td>
-<td>藥品仿單/說明書</td>
-<td>每週</td>
-</tr>
-</tbody>
-</table>
-<h4 id="loinc-official">LOINC Official<a class="headerlink" href="#loinc-official" title="Permanent link">&para;</a></h4>
-<pre class="mermaid"><code>sequenceDiagram
-    participant User as 使用者
-    participant Script as integrate_loinc.py
-    participant LOINC as LOINC CSV
-    participant Mapping as Taiwan Mapping
-    participant DB as Lab Tests DB
-
-    User-&gt;&gt;LOINC: 下載 Loinc.csv
-    LOINC--&gt;&gt;User: 200 MB CSV
-
-    User-&gt;&gt;Script: 執行整合腳本
-    Script-&gt;&gt;LOINC: 讀取官方資料
-    Script-&gt;&gt;Mapping: 讀取台灣對照
-    Script-&gt;&gt;Script: 合併資料
-    Script-&gt;&gt;DB: 建立資料庫
-    DB--&gt;&gt;Script: Success
-
-    Script--&gt;&gt;User: 整合完成</code></pre>
-<hr />
-<h2 id="_6">🔄 資料流程<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h2>
-<h3 id="_7">完整診療流程<a class="headerlink" href="#_7" title="Permanent link">&para;</a></h3>
-<pre class="mermaid"><code>sequenceDiagram
-    participant User as 使用者 (Claude)
-    participant MCP as MCP Server
-    participant ICD as ICD Service
-    participant FHIR1 as FHIR Condition
-    participant GL as Guideline Service
-    participant Drug as Drug Service
-    participant FHIR2 as FHIR Medication
-    participant Lab as Lab Service
-
-    User-&gt;&gt;MCP: 搜尋診斷: "糖尿病"
-    MCP-&gt;&gt;ICD: search_codes("糖尿病")
-    ICD--&gt;&gt;MCP: E11.9 第二型糖尿病
-    MCP--&gt;&gt;User: 診斷結果
-
-    User-&gt;&gt;MCP: 建立 FHIR Condition
-    MCP-&gt;&gt;FHIR1: create_condition(E11.9)
-    FHIR1-&gt;&gt;ICD: get_diagnosis_info(E11.9)
-    ICD--&gt;&gt;FHIR1: 診斷詳細資訊
-    FHIR1--&gt;&gt;MCP: FHIR Condition 資源
-    MCP--&gt;&gt;User: FHIR JSON
-
-    User-&gt;&gt;MCP: 查詢臨床指引
-    MCP-&gt;&gt;GL: get_complete_guideline(E11)
-    GL--&gt;&gt;MCP: 診斷建議、用藥建議、檢查建議
-    MCP--&gt;&gt;User: 完整指引
-
-    User-&gt;&gt;MCP: 搜尋建議藥品
-    MCP-&gt;&gt;Drug: search_drug("Metformin")
-    Drug--&gt;&gt;MCP: 藥品清單
-    MCP--&gt;&gt;User: 搜尋結果
-
-    User-&gt;&gt;MCP: 建立 FHIR Medication
-    MCP-&gt;&gt;FHIR2: create_medication_from_search("Metformin")
-    FHIR2-&gt;&gt;Drug: get_drug_details()
-    Drug--&gt;&gt;FHIR2: 藥品詳細資訊
-    FHIR2--&gt;&gt;MCP: FHIR Medication 資源
-    MCP--&gt;&gt;User: FHIR JSON
-
-    User-&gt;&gt;MCP: 判讀檢驗結果
-    MCP-&gt;&gt;Lab: interpret_lab_result(HbA1c, 7.2)
-    Lab--&gt;&gt;MCP: 偏高，需調整用藥
-    MCP--&gt;&gt;User: 判讀結果</code></pre>
-<hr />
-<h2 id="_8">🔒 安全性設計<a class="headerlink" href="#_8" title="Permanent link">&para;</a></h2>
-<h3 id="_9">資料隱私<a class="headerlink" href="#_9" title="Permanent link">&para;</a></h3>
-<ul>
-<li>✅ 不儲存患者個人資料</li>
-<li>✅ FHIR 資源使用假名化 ID</li>
-<li>✅ 本地資料庫，不上傳雲端</li>
-</ul>
-<h3 id="api">API 安全<a class="headerlink" href="#api" title="Permanent link">&para;</a></h3>
-<ul>
-<li>✅ 公開 API 資料（FDA, LOINC）</li>
-<li>✅ 無需 API Key</li>
-<li>✅ Rate Limiting 機制</li>
-</ul>
-<h3 id="_10">資料完整性<a class="headerlink" href="#_10" title="Permanent link">&para;</a></h3>
-<ul>
-<li>✅ SQLite ACID 特性</li>
-<li>✅ 資料驗證機制</li>
-<li>✅ 錯誤處理與日誌</li>
-</ul>
-<hr />
-<h2 id="_11">⚡ 效能優化<a class="headerlink" href="#_11" title="Permanent link">&para;</a></h2>
-<h3 id="_12">快取策略<a class="headerlink" href="#_12" title="Permanent link">&para;</a></h3>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># FTS5 全文檢索索引</span>
-</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">CREATE</span> <span class="n">VIRTUAL</span> <span class="n">TABLE</span> <span class="n">diagnosis_fts</span> <span class="n">USING</span> <span class="n">fts5</span><span class="p">(</span>
-</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    <span class="n">code</span><span class="p">,</span> <span class="n">name_zh</span><span class="p">,</span> <span class="n">name_en</span>
-</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="p">);</span>
-</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>
-</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="c1"># 一般索引</span>
-</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="n">CREATE</span> <span class="n">INDEX</span> <span class="n">idx_license_id</span> <span class="n">ON</span> <span class="n">licenses</span><span class="p">(</span><span class="n">license_id</span><span class="p">);</span>
-</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="n">CREATE</span> <span class="n">INDEX</span> <span class="n">idx_loinc_code</span> <span class="n">ON</span> <span class="n">loinc_mapping</span><span class="p">(</span><span class="n">loinc_code</span><span class="p">);</span>
+<h2 id="fda-two-phase-pattern">🔄 FDA 同步策略（Two-Phase Pattern）<a class="headerlink" href="#fda-two-phase-pattern" title="Permanent link">&para;</a></h2>
+<p>所有 FDA 同步函式遵循此模式防止資料庫進入部分寫入狀態：</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>Phase 1: 先抓取所有 HTTP 資料（在 DB 連線外）
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>Phase 2: 單一 transaction 寫入（TRUNCATE + INSERT）
 </span></code></pre></div>
-<h3 id="_13">資料庫優化<a class="headerlink" href="#_13" title="Permanent link">&para;</a></h3>
-<ul>
-<li>✅ FTS5 全文檢索</li>
-<li>✅ 適當的索引設計</li>
-<li>✅ 查詢優化</li>
-<li>✅ 連線池管理</li>
-</ul>
+<p><strong>原始資料去重</strong>：FDA API 偶爾包含重複的主鍵（如 <code>license_id</code>）。各服務在 INSERT 前以 <code>seen_ids</code> set 去重。</p>
+<p>**絕不**在 transaction 內進行 HTTP 請求。</p>
 <hr />
-<h2 id="_14">📊 擴展性設計<a class="headerlink" href="#_14" title="Permanent link">&para;</a></h2>
-<h3 id="_15">水平擴展<a class="headerlink" href="#_15" title="Permanent link">&para;</a></h3>
-<pre class="mermaid"><code>graph LR
-    LB[Load Balancer] --&gt; S1[MCP Server 1]
-    LB --&gt; S2[MCP Server 2]
-    LB --&gt; S3[MCP Server 3]
-
-    S1 --&gt; DB[(Shared DB)]
-    S2 --&gt; DB
-    S3 --&gt; DB</code></pre>
-<h3 id="_16">垂直擴展<a class="headerlink" href="#_16" title="Permanent link">&para;</a></h3>
+<h2 id="data-loader">📦 資料載入器（Data Loader）<a class="headerlink" href="#data-loader" title="Permanent link">&para;</a></h2>
+<p><code>loader/main.py</code> — 獨立 Docker 容器（<code>profiles: [loader]</code>，<code>restart: "no"</code>）</p>
 <ul>
-<li>增加記憶體 → 更大的快取</li>
-<li>增加 CPU → 更快的查詢</li>
-<li>SSD 硬碟 → 更快的 I/O</li>
+<li>直接連接 PostgreSQL（繞過 pgBouncer）適合大量寫入</li>
+<li>來源檔案掛載於 <code>/app/fhir-code/</code>（唯讀）</li>
 </ul>
-<hr />
-<h2 id="_17">🔮 未來架構規劃<a class="headerlink" href="#_17" title="Permanent link">&para;</a></h2>
-<h3 id="phase-2">Phase 2: 微服務化<a class="headerlink" href="#phase-2" title="Permanent link">&para;</a></h3>
-<pre class="mermaid"><code>graph TB
-    Gateway[API Gateway]
-
-    Gateway --&gt; ICD[ICD Service]
-    Gateway --&gt; Drug[Drug Service]
-    Gateway --&gt; FHIR[FHIR Service]
-    Gateway --&gt; Lab[Lab Service]
-
-    ICD --&gt; Cache1[(Redis Cache)]
-    Drug --&gt; Cache2[(Redis Cache)]
-
-    ICD --&gt; DB1[(PostgreSQL)]
-    Drug --&gt; DB2[(PostgreSQL)]</code></pre>
-<h3 id="phase-3">Phase 3: 雲端部署<a class="headerlink" href="#phase-3" title="Permanent link">&para;</a></h3>
-<ul>
-<li>☁️ Kubernetes 編排</li>
-<li>🔄 自動擴展</li>
-<li>📊 分散式追蹤</li>
-<li>🔐 進階安全機制</li>
-</ul>
-<hr />
-<h2 id="_18">📖 相關文件<a class="headerlink" href="#_18" title="Permanent link">&para;</a></h2>
-<ul>
-<li><a href="../data-flow/">資料流程圖</a></li>
-<li><a href="../module-relations/">模組關係圖</a></li>
-<li><a href="../deployment/">部署架構</a></li>
-</ul>
-<hr />
-<div class="admonition info">
-<p class="admonition-title">架構演進</p>
-<p>本架構設計支援從單機部署到雲端微服務的平滑演進。</p>
-<p>當前版本專注於功能完整性與標準化，未來將逐步引入更多企業級特性。</p>
-</div>
+<table>
+<thead>
+<tr>
+<th>參數</th>
+<th>資料集</th>
+<th>預估時間</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--icd</code></td>
+<td>ICD-10-CM 2025</td>
+<td>&lt; 1 分鐘</td>
+</tr>
+<tr>
+<td><code>--loinc</code></td>
+<td>LOINC 2.80</td>
+<td>1-3 分鐘</td>
+</tr>
+<tr>
+<td><code>--twcore</code></td>
+<td>TWCore IG v1.0.0</td>
+<td>&lt; 1 分鐘</td>
+</tr>
+<tr>
+<td><code>--guideline</code></td>
+<td>臨床指引種子資料</td>
+<td>&lt; 1 分鐘</td>
+</tr>
+<tr>
+<td><code>--snomed</code></td>
+<td>SNOMED CT International RF2</td>
+<td>5-15 分鐘</td>
+</tr>
+<tr>
+<td><code>--rxnorm</code></td>
+<td>RxNorm Full Release</td>
+<td>5-10 分鐘</td>
+</tr>
+<tr>
+<td><code>--all</code></td>
+<td>全部</td>
+<td>15-30 分鐘</td>
+</tr>
+</tbody>
+</table>
 
 
 

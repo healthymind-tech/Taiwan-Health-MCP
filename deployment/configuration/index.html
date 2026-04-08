@@ -25,7 +25,7 @@
       
       
       <link rel="icon" href="../../assets/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.5">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
       
@@ -2842,67 +2842,6 @@
   <a href="#_2" class="md-nav__link">
     <span class="md-ellipsis">
       
-        快速開始
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#mcp" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        MCP 傳輸模式配置
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="MCP 傳輸模式配置">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#stdio" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        stdio 模式（本地開發）
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#streamable-http" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        streamable-http 模式（生產部署）✨ 推薦
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#sse" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        sse 模式（向後相容）
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#_3" class="md-nav__link">
-    <span class="md-ellipsis">
-      
         完整環境變數清單
       
     </span>
@@ -2912,10 +2851,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#mcp_1" class="md-nav__link">
+  <a href="#postgresql" class="md-nav__link">
     <span class="md-ellipsis">
       
-        MCP 傳輸配置
+        PostgreSQL
       
     </span>
   </a>
@@ -2923,10 +2862,43 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#_4" class="md-nav__link">
+  <a href="#mcp" class="md-nav__link">
     <span class="md-ellipsis">
       
-        系統配置
+        MCP 傳輸
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#docker-composeyml" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        資料庫連線（由 docker-compose.yml 自動組合）
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#redis" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Redis
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        監控
       
     </span>
   </a>
@@ -2939,10 +2911,49 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_5" class="md-nav__link">
+  <a href="#mcp_1" class="md-nav__link">
     <span class="md-ellipsis">
       
-        資料目錄結構
+        MCP 傳輸模式
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="MCP 傳輸模式">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#streamable-http" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        streamable-http（生產環境，推薦）
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#stdio-claude-desktop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        stdio（本地開發 / Claude Desktop 直接啟動）
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#envexample" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        .env.example 完整範本
       
     </span>
   </a>
@@ -2950,10 +2961,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_6" class="md-nav__link">
+  <a href="#_4" class="md-nav__link">
     <span class="md-ellipsis">
       
-        調整記憶體限制
+        資源限制建議（生產環境）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pgbouncer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        pgBouncer 進階設定
       
     </span>
   </a>
@@ -3258,67 +3280,6 @@
   <a href="#_2" class="md-nav__link">
     <span class="md-ellipsis">
       
-        快速開始
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#mcp" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        MCP 傳輸模式配置
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="MCP 傳輸模式配置">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#stdio" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        stdio 模式（本地開發）
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#streamable-http" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        streamable-http 模式（生產部署）✨ 推薦
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#sse" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        sse 模式（向後相容）
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#_3" class="md-nav__link">
-    <span class="md-ellipsis">
-      
         完整環境變數清單
       
     </span>
@@ -3328,10 +3289,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#mcp_1" class="md-nav__link">
+  <a href="#postgresql" class="md-nav__link">
     <span class="md-ellipsis">
       
-        MCP 傳輸配置
+        PostgreSQL
       
     </span>
   </a>
@@ -3339,10 +3300,43 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#_4" class="md-nav__link">
+  <a href="#mcp" class="md-nav__link">
     <span class="md-ellipsis">
       
-        系統配置
+        MCP 傳輸
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#docker-composeyml" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        資料庫連線（由 docker-compose.yml 自動組合）
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#redis" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Redis
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        監控
       
     </span>
   </a>
@@ -3355,10 +3349,49 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_5" class="md-nav__link">
+  <a href="#mcp_1" class="md-nav__link">
     <span class="md-ellipsis">
       
-        資料目錄結構
+        MCP 傳輸模式
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="MCP 傳輸模式">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#streamable-http" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        streamable-http（生產環境，推薦）
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#stdio-claude-desktop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        stdio（本地開發 / Claude Desktop 直接啟動）
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#envexample" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        .env.example 完整範本
       
     </span>
   </a>
@@ -3366,10 +3399,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_6" class="md-nav__link">
+  <a href="#_4" class="md-nav__link">
     <span class="md-ellipsis">
       
-        調整記憶體限制
+        資源限制建議（生產環境）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pgbouncer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        pgBouncer 進階設定
       
     </span>
   </a>
@@ -3397,106 +3441,244 @@
 
 
 <h1 id="_1">環境配置<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h1>
-<p>本系統主要透過環境變數 (Environment Variables) 進行配置。</p>
-<h2 id="_2">快速開始<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
-<p>專案根目錄提供了 <code>.env.example</code> 範本檔案，請複製並修改：</p>
+<p>系統透過環境變數進行配置。複製 <code>.env.example</code> 為 <code>.env</code> 後修改：</p>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>cp<span class="w"> </span>.env.example<span class="w"> </span>.env
 </span></code></pre></div>
-<p>然後根據您的部署環境編輯 <code>.env</code> 檔案。</p>
-<h2 id="mcp">MCP 傳輸模式配置<a class="headerlink" href="#mcp" title="Permanent link">&para;</a></h2>
-<p>系統支援三種 MCP 傳輸模式，透過 <code>MCP_TRANSPORT</code> 環境變數設定：</p>
-<h3 id="stdio">stdio 模式（本地開發）<a class="headerlink" href="#stdio" title="Permanent link">&para;</a></h3>
-<p>適用於 Claude Desktop 等本地整合環境：</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nv">MCP_TRANSPORT</span><span class="o">=</span>stdio
-</span></code></pre></div>
-<h3 id="streamable-http">streamable-http 模式（生產部署）✨ 推薦<a class="headerlink" href="#streamable-http" title="Permanent link">&para;</a></h3>
-<p>適用於 Docker 生產環境，使用 Streamable HTTP 協定：</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nv">MCP_TRANSPORT</span><span class="o">=</span>streamable-http
-</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nv">MCP_HOST</span><span class="o">=</span><span class="m">0</span>.0.0.0
-</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="nv">MCP_PORT</span><span class="o">=</span><span class="m">8000</span>
-</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="nv">MCP_PATH</span><span class="o">=</span>/mcp
-</span></code></pre></div>
-<p>連線 URL：<code>http://localhost:8000/mcp</code></p>
-<h3 id="sse">sse 模式（向後相容）<a class="headerlink" href="#sse" title="Permanent link">&para;</a></h3>
-<p>適用於 Colab + Ngrok 等場景，使用 Server-Sent Events：</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nv">MCP_TRANSPORT</span><span class="o">=</span>sse
-</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="nv">MCP_HOST</span><span class="o">=</span><span class="m">0</span>.0.0.0
-</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="nv">MCP_PORT</span><span class="o">=</span><span class="m">8000</span>
-</span></code></pre></div>
-<p>連線 URL：<code>http://localhost:8000/sse</code></p>
-<h2 id="_3">完整環境變數清單<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
-<h3 id="mcp_1">MCP 傳輸配置<a class="headerlink" href="#mcp_1" title="Permanent link">&para;</a></h3>
+<hr />
+<h2 id="_2">完整環境變數清單<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
+<h3 id="postgresql">PostgreSQL<a class="headerlink" href="#postgresql" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
 <tr>
-<th style="text-align: left;">變數名稱</th>
-<th style="text-align: left;">預設值</th>
-<th style="text-align: left;">說明</th>
+<th>變數</th>
+<th>預設值</th>
+<th>說明</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td style="text-align: left;"><code>MCP_TRANSPORT</code></td>
-<td style="text-align: left;"><code>stdio</code></td>
-<td style="text-align: left;">傳輸模式：<code>stdio</code> | <code>streamable-http</code> | <code>sse</code></td>
+<td><code>POSTGRES_PASSWORD</code></td>
+<td><strong>必填</strong></td>
+<td>PostgreSQL 密碼</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>MCP_HOST</code></td>
-<td style="text-align: left;"><code>0.0.0.0</code></td>
-<td style="text-align: left;">監聽主機（僅 streamable-http/sse 模式）</td>
+<td><code>POSTGRES_DB</code></td>
+<td><code>taiwan_health</code></td>
+<td>資料庫名稱</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>MCP_PORT</code></td>
-<td style="text-align: left;"><code>8000</code></td>
-<td style="text-align: left;">監聽埠號（僅 streamable-http/sse 模式）</td>
-</tr>
-<tr>
-<td style="text-align: left;"><code>MCP_PATH</code></td>
-<td style="text-align: left;"><code>/mcp</code></td>
-<td style="text-align: left;">HTTP 端點路徑（僅 streamable-http 模式）</td>
+<td><code>POSTGRES_USER</code></td>
+<td><code>mcp</code></td>
+<td>資料庫使用者</td>
 </tr>
 </tbody>
 </table>
-<h3 id="_4">系統配置<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h3>
+<h3 id="mcp">MCP 傳輸<a class="headerlink" href="#mcp" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
 <tr>
-<th style="text-align: left;">變數名稱</th>
-<th style="text-align: left;">預設值</th>
-<th style="text-align: left;">說明</th>
+<th>變數</th>
+<th>預設值</th>
+<th>說明</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td style="text-align: left;"><code>DATA_DIR</code></td>
-<td style="text-align: left;"><code>/app/data</code></td>
-<td style="text-align: left;">資料檔案儲存路徑 (包含 Excel, SQLite)</td>
+<td><code>MCP_TRANSPORT</code></td>
+<td><code>streamable-http</code></td>
+<td>傳輸模式：<code>streamable-http</code> | <code>stdio</code></td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>LOG_LEVEL</code></td>
-<td style="text-align: left;"><code>INFO</code></td>
-<td style="text-align: left;">日誌層級 (<code>DEBUG</code>, <code>INFO</code>, <code>WARNING</code>, <code>ERROR</code>)</td>
+<td><code>MCP_HOST</code></td>
+<td><code>0.0.0.0</code></td>
+<td>監聽主機（HTTP 模式）</td>
+</tr>
+<tr>
+<td><code>MCP_PORT</code></td>
+<td><code>8000</code></td>
+<td>監聽埠號（HTTP 模式）</td>
+</tr>
+<tr>
+<td><code>MCP_PATH</code></td>
+<td><code>/mcp</code></td>
+<td>HTTP 端點路徑（streamable-http 模式）</td>
 </tr>
 </tbody>
 </table>
-<h2 id="_5">資料目錄結構<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>
-<p><code>DATA_DIR</code> 指向的路徑應包含以下檔案結構（容器啟動時會自動檢查或生成部分檔案）：</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>/data
-</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>├── icd10cm_pcs_xxxx.xlsx  (原始 ICD 資料)
-</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>├── drugs.db               (藥品資料庫 - 自動生成)
-</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>├── icd.db                 (ICD 資料庫 - 自動生成)
-</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>└── ...
+<h3 id="docker-composeyml">資料庫連線（由 docker-compose.yml 自動組合）<a class="headerlink" href="#docker-composeyml" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>變數</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>DATABASE_URL</code></td>
+<td>App 連接 pgBouncer：<code>postgresql://mcp:{pass}@pgbouncer:5432/taiwan_health</code></td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>App 透過 pgBouncer（port 5432 內部）連線，data-loader 直接連接 PostgreSQL（<code>@postgres:5432</code>）以支援大量寫入。</p>
+</blockquote>
+<h3 id="redis">Redis<a class="headerlink" href="#redis" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>變數</th>
+<th>預設值</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>REDIS_URL</code></td>
+<td><code>redis://redis:6379/0</code></td>
+<td>Redis 連線 URL</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_3">監控<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>變數</th>
+<th>預設值</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>METRICS_PORT</code></td>
+<td><code>9090</code></td>
+<td>Prometheus 指標端點埠號</td>
+</tr>
+<tr>
+<td><code>LOG_LEVEL</code></td>
+<td><code>INFO</code></td>
+<td>日誌等級：<code>DEBUG</code> | <code>INFO</code> | <code>WARNING</code> | <code>ERROR</code></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="mcp_1">MCP 傳輸模式<a class="headerlink" href="#mcp_1" title="Permanent link">&para;</a></h2>
+<h3 id="streamable-http">streamable-http（生產環境，推薦）<a class="headerlink" href="#streamable-http" title="Permanent link">&para;</a></h3>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>MCP_TRANSPORT=streamable-http
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>MCP_HOST=0.0.0.0
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>MCP_PORT=8000
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>MCP_PATH=/mcp
 </span></code></pre></div>
-<h2 id="_6">調整記憶體限制<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h2>
-<p>若在 Docker 中運行，建議透過資源限制參數保護宿主機：</p>
-<div class="language-yaml highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="c1"># docker-compose.yml</span>
-</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="nt">services</span><span class="p">:</span>
-</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">  </span><span class="nt">mcp-server</span><span class="p">:</span>
-</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">    </span><span class="nt">deploy</span><span class="p">:</span>
-</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="w">      </span><span class="nt">resources</span><span class="p">:</span>
-</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="w">        </span><span class="nt">limits</span><span class="p">:</span>
-</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="w">          </span><span class="nt">memory</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">4G</span>
+<p>Claude Desktop 連線設定：</p>
+<div class="language-json highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="p">{</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span><span class="nt">&quot;mcpServers&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">    </span><span class="nt">&quot;taiwan-health&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">      </span><span class="nt">&quot;url&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;http://localhost:8000/mcp&quot;</span><span class="p">,</span>
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">      </span><span class="nt">&quot;transport&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;streamable-http&quot;</span>
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="w">    </span><span class="p">}</span>
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="w">  </span><span class="p">}</span>
+</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="p">}</span>
 </span></code></pre></div>
+<h3 id="stdio-claude-desktop">stdio（本地開發 / Claude Desktop 直接啟動）<a class="headerlink" href="#stdio-claude-desktop" title="Permanent link">&para;</a></h3>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>MCP_TRANSPORT=stdio
+</span></code></pre></div>
+<p>Claude Desktop 設定：</p>
+<div class="language-json highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="p">{</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span><span class="nt">&quot;mcpServers&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">    </span><span class="nt">&quot;taiwan-health&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">      </span><span class="nt">&quot;command&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;python&quot;</span><span class="p">,</span>
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="w">      </span><span class="nt">&quot;args&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;src/server.py&quot;</span><span class="p">],</span>
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="w">      </span><span class="nt">&quot;env&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="w">        </span><span class="nt">&quot;DATABASE_URL&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;postgresql://mcp:pass@localhost:5432/taiwan_health&quot;</span><span class="p">,</span>
+</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="w">        </span><span class="nt">&quot;REDIS_URL&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;redis://localhost:6379/0&quot;</span><span class="p">,</span>
+</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="w">        </span><span class="nt">&quot;MCP_TRANSPORT&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;stdio&quot;</span>
+</span><span id="__span-4-10"><a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="w">      </span><span class="p">}</span>
+</span><span id="__span-4-11"><a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="w">    </span><span class="p">}</span>
+</span><span id="__span-4-12"><a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a><span class="w">  </span><span class="p">}</span>
+</span><span id="__span-4-13"><a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a><span class="p">}</span>
+</span></code></pre></div>
+<hr />
+<h2 id="envexample">.env.example 完整範本<a class="headerlink" href="#envexample" title="Permanent link">&para;</a></h2>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a># ── PostgreSQL ─────────────────────────────────────────────────
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>POSTGRES_DB=taiwan_health
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>POSTGRES_USER=mcp
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>POSTGRES_PASSWORD=change_me_please
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>
+</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a># ── MCP Server ─────────────────────────────────────────────────
+</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>MCP_TRANSPORT=streamable-http
+</span><span id="__span-5-8"><a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>MCP_HOST=0.0.0.0
+</span><span id="__span-5-9"><a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>MCP_PORT=8000
+</span><span id="__span-5-10"><a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>MCP_PATH=/mcp
+</span><span id="__span-5-11"><a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a>
+</span><span id="__span-5-12"><a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a># ── Monitoring ─────────────────────────────────────────────────
+</span><span id="__span-5-13"><a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a>LOG_LEVEL=INFO
+</span><span id="__span-5-14"><a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a>METRICS_PORT=9090
+</span></code></pre></div>
+<hr />
+<h2 id="_4">資源限制建議（生產環境）<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
+<p>在 <code>docker-compose.override.yml</code> 加入資源限制：</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nt">services</span><span class="p">:</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">  </span><span class="nt">app</span><span class="p">:</span>
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">    </span><span class="nt">deploy</span><span class="p">:</span>
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">      </span><span class="nt">resources</span><span class="p">:</span>
+</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="w">        </span><span class="nt">limits</span><span class="p">:</span>
+</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="w">          </span><span class="nt">memory</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2G</span>
+</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="w">  </span><span class="nt">postgres</span><span class="p">:</span>
+</span><span id="__span-6-8"><a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="w">    </span><span class="nt">deploy</span><span class="p">:</span>
+</span><span id="__span-6-9"><a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="w">      </span><span class="nt">resources</span><span class="p">:</span>
+</span><span id="__span-6-10"><a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="w">        </span><span class="nt">limits</span><span class="p">:</span>
+</span><span id="__span-6-11"><a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a><span class="w">          </span><span class="nt">memory</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">4G</span>
+</span><span id="__span-6-12"><a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a><span class="w">  </span><span class="nt">redis</span><span class="p">:</span>
+</span><span id="__span-6-13"><a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a><span class="w">    </span><span class="nt">deploy</span><span class="p">:</span>
+</span><span id="__span-6-14"><a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a><span class="w">      </span><span class="nt">resources</span><span class="p">:</span>
+</span><span id="__span-6-15"><a id="__codelineno-6-15" name="__codelineno-6-15" href="#__codelineno-6-15"></a><span class="w">        </span><span class="nt">limits</span><span class="p">:</span>
+</span><span id="__span-6-16"><a id="__codelineno-6-16" name="__codelineno-6-16" href="#__codelineno-6-16"></a><span class="w">          </span><span class="nt">memory</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">512M</span>
+</span></code></pre></div>
+<hr />
+<h2 id="pgbouncer">pgBouncer 進階設定<a class="headerlink" href="#pgbouncer" title="Permanent link">&para;</a></h2>
+<p>pgBouncer 透過 <code>edoburu/pgbouncer</code> image 的環境變數設定，重要參數（見 <code>docker-compose.yml</code>）：</p>
+<table>
+<thead>
+<tr>
+<th>參數</th>
+<th>值</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>POOL_MODE</code></td>
+<td><code>transaction</code></td>
+<td>每次查詢後釋放連線（最高效率）</td>
+</tr>
+<tr>
+<td><code>MAX_CLIENT_CONN</code></td>
+<td><code>500</code></td>
+<td>最多 500 個客戶端連線</td>
+</tr>
+<tr>
+<td><code>DEFAULT_POOL_SIZE</code></td>
+<td><code>30</code></td>
+<td>最多 30 個 PostgreSQL 連線</td>
+</tr>
+<tr>
+<td><code>MIN_POOL_SIZE</code></td>
+<td><code>5</code></td>
+<td>預熱連線數</td>
+</tr>
+<tr>
+<td><code>AUTH_TYPE</code></td>
+<td><code>scram-sha-256</code></td>
+<td>安全驗證方式</td>
+</tr>
+<tr>
+<td><code>IGNORE_STARTUP_PARAMETERS</code></td>
+<td><code>extra_float_digits</code></td>
+<td>asyncpg 相容性設定</td>
+</tr>
+</tbody>
+</table>
 
 
 

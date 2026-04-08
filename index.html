@@ -23,11 +23,11 @@
       
       
       <link rel="icon" href="assets/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.5">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
       
-        <title>Taiwan ICD10 Health MCP - Taiwan ICD10 Health MCP</title>
+        <title>Taiwan Health MCP Server - Taiwan ICD10 Health MCP</title>
       
     
     
@@ -155,7 +155,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#taiwan-icd10-health-mcp" class="md-skip">
+        <a href="#taiwan-health-mcp-server" class="md-skip">
           跳轉到
         </a>
       
@@ -194,7 +194,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Taiwan ICD10 Health MCP
+              Taiwan Health MCP Server
             
           </span>
         </div>
@@ -3121,7 +3121,7 @@
   <a href="#2-fda" class="md-nav__link">
     <span class="md-ellipsis">
       
-        2. 台灣 FDA 藥品資料整合
+        2. 台灣 FDA 藥品資料
       
     </span>
   </a>
@@ -3129,10 +3129,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#3-loinc" class="md-nav__link">
+  <a href="#3-snomed-ct" class="md-nav__link">
     <span class="md-ellipsis">
       
-        3. LOINC 檢驗碼整合
+        3. SNOMED CT 臨床術語
       
     </span>
   </a>
@@ -3140,10 +3140,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#4" class="md-nav__link">
+  <a href="#4-rxnorm" class="md-nav__link">
     <span class="md-ellipsis">
       
-        4. 臨床診療指引
+        4. RxNorm 藥物交互作用
       
     </span>
   </a>
@@ -3151,10 +3151,32 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#5-fhir-r4" class="md-nav__link">
+  <a href="#5-loinc" class="md-nav__link">
     <span class="md-ellipsis">
       
-        5. FHIR R4 標準轉換
+        5. LOINC 檢驗碼
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. 臨床診療指引
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#7-twcore-ig" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. TWCore IG
       
     </span>
   </a>
@@ -3189,45 +3211,6 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_5" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        💡 使用範例
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="💡 使用範例">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#1" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        範例 1: 完整診療流程
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#2-fhir" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        範例 2: 藥品查詢與 FHIR 轉換
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#mcp" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3239,7 +3222,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_6" class="md-nav__link">
+  <a href="#_5" class="md-nav__link">
     <span class="md-ellipsis">
       
         📚 文件導覽
@@ -3250,7 +3233,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_7" class="md-nav__link">
+  <a href="#_6" class="md-nav__link">
     <span class="md-ellipsis">
       
         📊 資料來源
@@ -3258,60 +3241,10 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="📊 資料來源">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#_8" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        台灣官方資料
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#_9" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        國際標準
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
 </li>
       
         <li class="md-nav__item">
-  <a href="#_10" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        🤝 貢獻
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#_11" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        📝 授權
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#_12" class="md-nav__link">
+  <a href="#_7" class="md-nav__link">
     <span class="md-ellipsis">
       
         🙏 致謝
@@ -3341,20 +3274,20 @@
   
 
 
-<h1 id="taiwan-icd10-health-mcp">Taiwan ICD10 Health MCP<a class="headerlink" href="#taiwan-icd10-health-mcp" title="Permanent link">&para;</a></h1>
+<h1 id="taiwan-health-mcp-server">Taiwan Health MCP Server<a class="headerlink" href="#taiwan-health-mcp-server" title="Permanent link">&para;</a></h1>
 <div align="center">
 
 # 🇹🇼 台灣醫療健康資料整合 MCP 伺服器
 
-**整合 ICD-10、FDA 藥品、保健食品、營養資料、LOINC 檢驗、臨床指引，支援 FHIR R4 標準**
+**整合 ICD-10、SNOMED CT、RxNorm、LOINC、FDA 藥品/保健食品/營養、TWCore IG、臨床指引，支援 FHIR R4 標準**
 
 [![FHIR](https://img.shields.io/badge/FHIR-R4-blue)](http://hl7.org/fhir/R4/)
-[![Python](https://img.shields.io/badge/Python-3.8+-green)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/Python-3.12-green)](https://www.python.org/)
 [![MCP](https://img.shields.io/badge/MCP-1.0-orange)](https://modelcontextprotocol.io)
-[![License](https://img.shields.io/badge/License-MIT-yellow)](https://github.com/yourusername/Taiwan-ICD10-Health-MCP/blob/main/LICENSE)
+[![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
 
 [快速開始](getting-started.md){ .md-button .md-button--primary }
-[查看 GitHub](https://github.com/yourusername/Taiwan-ICD10-Health-MCP){ .md-button }
+[查看 GitHub](https://github.com/healthymind-tech/Taiwan-Health-MCP){ .md-button }
 
 </div>
 
@@ -3365,17 +3298,17 @@
 <li>
 <p><img alt="🇹🇼" class="twemoji" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@16.0.1/assets/svg/1f1f9-1f1fc.svg" title=":flag_tw:" /> <strong>台灣在地化</strong></p>
 <hr />
-<p>專為台灣醫療環境設計，支援繁體中文，整合台灣官方資料</p>
+<p>整合台灣 FDA、衛福部官方開放資料，支援繁體中文</p>
 </li>
 <li>
-<p><img alt="🔗" class="twemoji" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@16.0.1/assets/svg/1f517.svg" title=":link:" /> <strong>標準化整合</strong></p>
+<p><img alt="🔗" class="twemoji" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@16.0.1/assets/svg/1f517.svg" title=":link:" /> <strong>國際標準</strong></p>
 <hr />
-<p>符合國際 FHIR R4、LOINC、ICD-10、ATC 標準</p>
+<p>FHIR R4、ICD-10-CM 2025、LOINC 2.80、SNOMED CT、RxNorm、ATC</p>
 </li>
 <li>
-<p><img alt="📊" class="twemoji" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@16.0.1/assets/svg/1f4ca.svg" title=":bar_chart:" /> <strong>官方資料</strong></p>
+<p><img alt="📊" class="twemoji" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@16.0.1/assets/svg/1f4ca.svg" title=":bar_chart:" /> <strong>46 個 MCP 工具</strong></p>
 <hr />
-<p>整合台灣 FDA、衛福部官方開放資料平台</p>
+<p>涵蓋診斷、藥品、術語、檢驗、指引、藥物交互作用</p>
 </li>
 <li>
 <p><img alt="🤖" class="twemoji" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@16.0.1/assets/svg/1f916.svg" title=":robot:" /> <strong>AI 整合</strong></p>
@@ -3383,14 +3316,14 @@
 <p>透過 MCP 協議與 Claude 無縫對接</p>
 </li>
 <li>
-<p><img alt="🔄" class="twemoji" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@16.0.1/assets/svg/1f504.svg" title=":arrows_counterclockwise:" /> <strong>持續更新</strong></p>
+<p><img alt="🔄" class="twemoji" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@16.0.1/assets/svg/1f504.svg" title=":arrows_counterclockwise:" /> <strong>自動同步</strong></p>
 <hr />
-<p>資料可自動同步台灣 FDA API 最新資訊</p>
+<p>FDA 藥品/保健食品/營養每週自動更新</p>
 </li>
 <li>
-<p><img alt="🧪" class="twemoji" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@16.0.1/assets/svg/1f9ea.svg" title=":test_tube:" /> <strong>完整測試</strong></p>
+<p><img alt="🛡" class="twemoji" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@16.0.1/assets/svg/1f6e1.svg" title=":shield:" /> <strong>生產就緒</strong></p>
 <hr />
-<p>提供完整的測試腳本與使用範例</p>
+<p>PostgreSQL + pgBouncer + Redis + Prometheus，支援高並發</p>
 </li>
 </ul>
 </div>
@@ -3398,124 +3331,120 @@
 <h2 id="_2">🎯 核心功能<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
 <h3 id="1-icd-10">1. ICD-10 診斷與手術碼查詢<a class="headerlink" href="#1-icd-10" title="Permanent link">&para;</a></h3>
 <ul>
-<li>✅ 診斷碼（ICD-10-CM）與手術碼（ICD-10-PCS）搜尋</li>
+<li>✅ ICD-10-CM 診斷碼搜尋（2025 版）</li>
+<li>✅ ICD-10-PCS 手術碼搜尋（需下載 PCS zip）</li>
 <li>✅ 診斷併發症推論</li>
 <li>✅ 診斷與手術碼衝突檢查</li>
-<li>✅ 轉換為 <strong>FHIR Condition</strong> 資源</li>
 </ul>
-<h3 id="2-fda">2. 台灣 FDA 藥品資料整合<a class="headerlink" href="#2-fda" title="Permanent link">&para;</a></h3>
-<p>整合 5 個官方資料集：</p>
+<h3 id="2-fda">2. 台灣 FDA 藥品資料<a class="headerlink" href="#2-fda" title="Permanent link">&para;</a></h3>
+<p>整合 5 個官方資料集，66,000+ 藥品許可證：
+- ✅ 藥品名稱、適應症、製造商
+- ✅ 外觀識別（形狀、顏色、刻痕）
+- ✅ 有效成分與含量
+- ✅ ATC 藥物分類（WHO 標準）
+- ✅ 轉換為 FHIR Medication/MedicationKnowledge</p>
+<h3 id="3-snomed-ct">3. SNOMED CT 臨床術語<a class="headerlink" href="#3-snomed-ct" title="Permanent link">&para;</a></h3>
 <ul>
-<li>✅ 藥品許可證（名稱、適應症、製造商）</li>
-<li>✅ 藥品外觀識別（形狀、顏色、刻痕、圖片）</li>
-<li>✅ 藥品成分（有效成分、含量）</li>
-<li>✅ ATC 藥物分類（WHO 標準）</li>
-<li>✅ 藥品仿單/說明書</li>
-<li>✅ 轉換為 <strong>FHIR Medication/MedicationKnowledge</strong> 資源</li>
+<li>✅ 370,000+ 概念全文搜尋</li>
+<li>✅ IS-A 階層查詢（ancestors/children）</li>
+<li>✅ ICD-10 ↔ SNOMED 雙向對應</li>
 </ul>
-<h3 id="3-loinc">3. LOINC 檢驗碼整合<a class="headerlink" href="#3-loinc" title="Permanent link">&para;</a></h3>
+<h3 id="4-rxnorm">4. RxNorm 藥物交互作用<a class="headerlink" href="#4-rxnorm" title="Permanent link">&para;</a></h3>
 <ul>
-<li>✅ LOINC 碼對照（台灣常用 30+ 項，可擴展至 87,000+ 項）</li>
-<li>✅ 檢驗參考值查詢（依年齡、性別）</li>
-<li>✅ 檢驗結果自動判讀</li>
-<li>✅ 批次判讀多項檢驗</li>
+<li>✅ 多藥交互作用檢查</li>
+<li>✅ 藥品名稱 → RXCUI 解析</li>
+<li>✅ 藥物成分查詢</li>
 </ul>
-<h3 id="4">4. 臨床診療指引<a class="headerlink" href="#4" title="Permanent link">&para;</a></h3>
+<h3 id="5-loinc">5. LOINC 檢驗碼<a class="headerlink" href="#5-loinc" title="Permanent link">&para;</a></h3>
+<ul>
+<li>✅ 87,000+ LOINC 碼搜尋</li>
+<li>✅ 參考值查詢（依年齡、性別）</li>
+<li>✅ 檢驗結果自動判讀、批次判讀</li>
+</ul>
+<h3 id="6">6. 臨床診療指引<a class="headerlink" href="#6" title="Permanent link">&para;</a></h3>
 <ul>
 <li>✅ 台灣醫學會臨床指引查詢</li>
-<li>✅ 診斷建議、用藥建議、檢查建議</li>
-<li>✅ 治療目標與臨床路徑規劃</li>
+<li>✅ 用藥建議、檢查建議、治療目標</li>
+<li>✅ 臨床路徑規劃</li>
 </ul>
-<h3 id="5-fhir-r4">5. FHIR R4 標準轉換<a class="headerlink" href="#5-fhir-r4" title="Permanent link">&para;</a></h3>
+<h3 id="7-twcore-ig">7. TWCore IG<a class="headerlink" href="#7-twcore-ig" title="Permanent link">&para;</a></h3>
 <ul>
-<li>✅ <strong>FHIR Condition</strong> - ICD-10 診斷資源</li>
-<li>✅ <strong>FHIR Medication</strong> - 藥品資源</li>
-<li>✅ <strong>FHIR MedicationKnowledge</strong> - 藥品知識庫</li>
-<li>✅ 符合國際醫療資訊交換標準</li>
+<li>✅ 30+ 台灣健保 CodeSystem</li>
+<li>✅ 給藥途徑、科別、健保碼查詢</li>
 </ul>
 <hr />
 <h2 id="_3">📊 系統架構<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
 <pre class="mermaid"><code>graph TB
-    subgraph "使用者層"
-        A[Claude AI]
+    subgraph "Client Layer"
+        A1[Claude AI]
+        A2[其他 MCP 客戶端]
     end
 
-    subgraph "MCP 協議層"
-        B[MCP Server&lt;br/&gt;32 個工具]
+    subgraph "MCP Server (46 Tools)"
+        B[FastMCP / uvicorn&lt;br/&gt;port 8000]
     end
 
-    subgraph "服務層"
-        C1[ICD Service]
-        C2[Drug Service]
-        C3[FHIR Service]
-        C4[Lab Service]
-        C5[Guideline Service]
+    subgraph "Infrastructure"
+        PG[(PostgreSQL 16&lt;br/&gt;主要資料庫)]
+        PGB[pgBouncer&lt;br/&gt;連線池]
+        RD[(Redis 7&lt;br/&gt;回應快取)]
+        PM[Prometheus&lt;br/&gt;port 9090]
     end
 
-    subgraph "資料層"
-        D1[(ICD-10 DB)]
-        D2[(Drug DB)]
-        D3[(LOINC DB)]
-        D4[(Guideline DB)]
+    subgraph "Services (11)"
+        S1[ICD] S2[Drug] S3[HealthFood]
+        S4[FoodNutrition] S5[Lab] S6[Guideline]
+        S7[FHIRCondition] S8[FHIRMedication]
+        S9[TWCore] S10[SNOMED] S11[DrugInteraction]
     end
 
-    subgraph "外部資料源"
-        E1[台灣 FDA API]
-        E2[LOINC 官方]
-        E3[衛福部 ICD-10]
+    subgraph "Data Loader (一次性)"
+        L[loader/main.py]
+        F[fhir-code/ ZIP 檔]
     end
 
-    A --&gt; B
-    B --&gt; C1
-    B --&gt; C2
-    B --&gt; C3
-    B --&gt; C4
-    B --&gt; C5
-
-    C1 --&gt; D1
-    C2 --&gt; D2
-    C4 --&gt; D3
-    C5 --&gt; D4
-
-    E1 -.-&gt;|同步| D2
-    E2 -.-&gt;|整合| D3
-    E3 -.-&gt;|匯入| D1
-
-    style A fill:#e1f5ff
-    style B fill:#fff3e0
-    style C1 fill:#f3e5f5
-    style C2 fill:#f3e5f5
-    style C3 fill:#f3e5f5
-    style C4 fill:#f3e5f5
-    style C5 fill:#f3e5f5</code></pre>
+    A1 --&gt; B
+    A2 --&gt; B
+    B --&gt; S1 &amp; S2 &amp; S3 &amp; S4 &amp; S5 &amp; S6 &amp; S7 &amp; S8 &amp; S9 &amp; S10 &amp; S11
+    S1 &amp; S2 &amp; S3 &amp; S4 &amp; S5 &amp; S6 &amp; S7 &amp; S8 &amp; S9 &amp; S10 &amp; S11 --&gt; PGB
+    PGB --&gt; PG
+    B --&gt; RD
+    B --&gt; PM
+    L --&gt; F
+    L --&gt; PG</code></pre>
 <p><a class="md-button" href="architecture/system-architecture/">查看詳細架構</a></p>
 <hr />
 <h2 id="_4">🚀 快速開始<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
-<div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">使用 Docker（推薦）</label><label for="__tabbed_1_2">手動安裝</label></div>
+<div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">Docker（推薦）</label><label for="__tabbed_1_2">本地開發</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># Clone 專案</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/yourusername/Taiwan-ICD10-Health-MCP.git
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="nb">cd</span><span class="w"> </span>Taiwan-ICD10-Health-MCP
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="c1"># 啟動服務</span>
-</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>docker-compose<span class="w"> </span>up<span class="w"> </span>-d
-</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>
-</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="c1"># 查看日誌</span>
-</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>docker-compose<span class="w"> </span>logs<span class="w"> </span>-f
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># 1. Clone 並準備環境</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/healthymind-tech/Taiwan-Health-MCP.git
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="nb">cd</span><span class="w"> </span>Taiwan-Health-MCP
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>cp<span class="w"> </span>.env.example<span class="w"> </span>.env
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="c1"># 編輯 .env，設定 POSTGRES_PASSWORD</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="c1"># 2. 啟動所有服務</span>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>docker<span class="w"> </span>compose<span class="w"> </span>up<span class="w"> </span>-d
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="c1"># 3. 載入術語資料（需先準備 fhir-code/ 目錄）</span>
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>docker<span class="w"> </span>compose<span class="w"> </span>--profile<span class="w"> </span>loader<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>data-loader<span class="w"> </span>--all
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>
+</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="c1"># 4. 查看日誌</span>
+</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>docker<span class="w"> </span>compose<span class="w"> </span>logs<span class="w"> </span>-f<span class="w"> </span>app
 </span></code></pre></div>
 </div>
 <div class="tabbed-block">
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># Clone 專案</span>
-</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/yourusername/Taiwan-ICD10-Health-MCP.git
-</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="nb">cd</span><span class="w"> </span>Taiwan-ICD10-Health-MCP
-</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>
-</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="c1"># 安裝相依套件</span>
-</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>pip<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </span>requirements.txt
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>pip<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </span>requirements.txt
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="c1"># stdio 模式（Claude Desktop）</span>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="nv">DATABASE_URL</span><span class="o">=</span>postgresql://mcp:pass@localhost:5432/taiwan_health<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="nv">REDIS_URL</span><span class="o">=</span>redis://localhost:6379/0<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>python<span class="w"> </span>src/server.py
 </span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>
-</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="c1"># 準備資料（下載 ICD-10 Excel 檔案到 data/ 目錄）</span>
-</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>
-</span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="c1"># 啟動服務</span>
+</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="c1"># HTTP 模式</span>
+</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="nv">MCP_TRANSPORT</span><span class="o">=</span>streamable-http<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="nv">DATABASE_URL</span><span class="o">=</span>postgresql://...<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>python<span class="w"> </span>src/server.py
 </span></code></pre></div>
 </div>
@@ -3523,114 +3452,89 @@
 </div>
 <p><a class="md-button md-button--primary" href="getting-started/">詳細安裝說明</a></p>
 <hr />
-<h2 id="_5">💡 使用範例<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>
-<h3 id="1">範例 1: 完整診療流程<a class="headerlink" href="#1" title="Permanent link">&para;</a></h3>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">icd_service</span><span class="w"> </span><span class="kn">import</span> <span class="n">ICDService</span>
-</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">fhir_condition_service</span><span class="w"> </span><span class="kn">import</span> <span class="n">FHIRConditionService</span>
-</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">clinical_guideline_service</span><span class="w"> </span><span class="kn">import</span> <span class="n">ClinicalGuidelineService</span>
-</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>
-</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="c1"># 1. 搜尋診斷</span>
-</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="n">icd</span> <span class="o">=</span> <span class="n">ICDService</span><span class="p">(</span><span class="s1">&#39;data/icd.xlsx&#39;</span><span class="p">,</span> <span class="s1">&#39;data&#39;</span><span class="p">)</span>
-</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="n">result</span> <span class="o">=</span> <span class="n">icd</span><span class="o">.</span><span class="n">search_codes</span><span class="p">(</span><span class="s2">&quot;糖尿病&quot;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="s2">&quot;diagnosis&quot;</span><span class="p">)</span>
-</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>
-</span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="c1"># 2. 建立 FHIR Condition</span>
-</span><span id="__span-2-10"><a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="n">fhir</span> <span class="o">=</span> <span class="n">FHIRConditionService</span><span class="p">(</span><span class="n">icd</span><span class="p">)</span>
-</span><span id="__span-2-11"><a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="n">condition</span> <span class="o">=</span> <span class="n">fhir</span><span class="o">.</span><span class="n">create_condition</span><span class="p">(</span>
-</span><span id="__span-2-12"><a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>    <span class="n">icd_code</span><span class="o">=</span><span class="s2">&quot;E11.9&quot;</span><span class="p">,</span>
-</span><span id="__span-2-13"><a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>    <span class="n">patient_id</span><span class="o">=</span><span class="s2">&quot;patient-001&quot;</span><span class="p">,</span>
-</span><span id="__span-2-14"><a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a>    <span class="n">clinical_status</span><span class="o">=</span><span class="s2">&quot;active&quot;</span>
-</span><span id="__span-2-15"><a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a><span class="p">)</span>
-</span><span id="__span-2-16"><a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a>
-</span><span id="__span-2-17"><a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a><span class="c1"># 3. 查詢臨床指引</span>
-</span><span id="__span-2-18"><a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a><span class="n">guideline</span> <span class="o">=</span> <span class="n">ClinicalGuidelineService</span><span class="p">(</span><span class="s1">&#39;data&#39;</span><span class="p">)</span>
-</span><span id="__span-2-19"><a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a><span class="n">pathway</span> <span class="o">=</span> <span class="n">guideline</span><span class="o">.</span><span class="n">suggest_clinical_pathway</span><span class="p">(</span><span class="s2">&quot;E11&quot;</span><span class="p">)</span>
-</span></code></pre></div>
-<h3 id="2-fhir">範例 2: 藥品查詢與 FHIR 轉換<a class="headerlink" href="#2-fhir" title="Permanent link">&para;</a></h3>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">drug_service</span><span class="w"> </span><span class="kn">import</span> <span class="n">DrugService</span>
-</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">fhir_medication_service</span><span class="w"> </span><span class="kn">import</span> <span class="n">FHIRMedicationService</span>
-</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>
-</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="c1"># 1. 搜尋藥品</span>
-</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="n">drug</span> <span class="o">=</span> <span class="n">DrugService</span><span class="p">(</span><span class="s1">&#39;data&#39;</span><span class="p">)</span>
-</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="n">result</span> <span class="o">=</span> <span class="n">drug</span><span class="o">.</span><span class="n">search_drug</span><span class="p">(</span><span class="s2">&quot;普拿疼&quot;</span><span class="p">)</span>
-</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>
-</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="c1"># 2. 建立 FHIR Medication</span>
-</span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="n">fhir_med</span> <span class="o">=</span> <span class="n">FHIRMedicationService</span><span class="p">(</span><span class="n">drug</span><span class="p">)</span>
-</span><span id="__span-3-10"><a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="n">medication</span> <span class="o">=</span> <span class="n">fhir_med</span><span class="o">.</span><span class="n">create_medication_from_search</span><span class="p">(</span>
-</span><span id="__span-3-11"><a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>    <span class="n">keyword</span><span class="o">=</span><span class="s2">&quot;普拿疼&quot;</span><span class="p">,</span>
-</span><span id="__span-3-12"><a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a>    <span class="n">resource_type</span><span class="o">=</span><span class="s2">&quot;Medication&quot;</span>
-</span><span id="__span-3-13"><a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a><span class="p">)</span>
-</span></code></pre></div>
-<p><a class="md-button" href="guides/complete-workflow/">更多範例</a></p>
-<hr />
 <h2 id="mcp">🛠️ MCP 工具清單<a class="headerlink" href="#mcp" title="Permanent link">&para;</a></h2>
-<p>本服務提供 <strong>32 個 MCP 工具</strong>，分為 10 個群組：</p>
+<p>本服務提供 <strong>46 個 MCP 工具</strong>，分為 12 個群組：</p>
 <table>
 <thead>
 <tr>
 <th>群組</th>
-<th>工具數量</th>
+<th>工具數</th>
 <th>主要功能</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>ICD-10 工具</td>
+<td>ICD-10</td>
 <td>4</td>
-<td>診斷/手術碼查詢、併發症推論</td>
+<td>診斷/手術碼搜尋、併發症推論、衝突檢查</td>
 </tr>
 <tr>
-<td>藥品工具</td>
+<td>藥品 (FDA)</td>
 <td>3</td>
-<td>藥品查詢、外觀識別</td>
+<td>藥品查詢、詳細資訊、外觀識別</td>
 </tr>
 <tr>
-<td>健康食品工具</td>
+<td>健康食品 (FDA)</td>
 <td>2</td>
-<td>健康食品查詢、分析</td>
+<td>健康食品查詢</td>
 </tr>
 <tr>
-<td>營養工具</td>
+<td>營養 (FDA)</td>
+<td>4</td>
+<td>營養成分、膳食分析、食品原料</td>
+</tr>
+<tr>
+<td>健康食品+ICD 整合</td>
+<td>1</td>
+<td>疾病-保健食品對應分析</td>
+</tr>
+<tr>
+<td>FHIR Condition</td>
+<td>3</td>
+<td>ICD-10 → FHIR R4 Condition</td>
+</tr>
+<tr>
+<td>FHIR Medication</td>
+<td>4</td>
+<td>藥品 → FHIR Medication/MedicationKnowledge</td>
+</tr>
+<tr>
+<td>檢驗 (LOINC)</td>
 <td>5</td>
-<td>營養成分查詢、膳食分析</td>
+<td>LOINC 查詢、參考值、結果判讀</td>
 </tr>
 <tr>
-<td>FHIR 工具</td>
-<td>7</td>
-<td>FHIR 資源轉換、驗證</td>
-</tr>
-<tr>
-<td>檢驗工具</td>
-<td>5</td>
-<td>LOINC 查詢、結果判讀</td>
-</tr>
-<tr>
-<td>臨床指引工具</td>
+<td>臨床指引</td>
 <td>5</td>
 <td>指引查詢、路徑規劃</td>
 </tr>
 <tr>
-<td>綜合分析工具</td>
-<td>1</td>
-<td>跨模組整合分析</td>
+<td>TWCore IG</td>
+<td>3</td>
+<td>台灣健保 CodeSystem</td>
+</tr>
+<tr>
+<td>SNOMED CT</td>
+<td>6</td>
+<td>概念搜尋、階層、ICD-10 對應</td>
+</tr>
+<tr>
+<td>RxNorm</td>
+<td>3</td>
+<td>藥物交互作用、名稱解析</td>
 </tr>
 </tbody>
 </table>
 <p><a class="md-button" href="tools/">查看完整工具清單</a></p>
 <hr />
-<h2 id="_6">📚 文件導覽<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h2>
+<h2 id="_5">📚 文件導覽<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>
 <div class="grid cards">
 <ul>
 <li>
 <p><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 9h5.5L13 3.5zM6 2h8l6 6v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4c0-1.11.89-2 2-2m9 16v-2H6v2zm3-4v-2H6v2z"/></svg></span> <strong>架構設計</strong></p>
 <hr />
-<p>了解系統架構、資料流程、模組關係</p>
+<p>系統架構、資料流程、模組關係</p>
 <p><a href="architecture/"><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13.22 19.03a.75.75 0 0 1 0-1.06L18.19 13H3.75a.75.75 0 0 1 0-1.5h14.44l-4.97-4.97a.749.749 0 0 1 .326-1.275.75.75 0 0 1 .734.215l6.25 6.25a.75.75 0 0 1 0 1.06l-6.25 6.25a.75.75 0 0 1-1.06 0"/></svg></span> 查看架構文件</a></p>
-</li>
-<li>
-<p><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M8 3a2 2 0 0 0-2 2v4a2 2 0 0 1-2 2H3v2h1a2 2 0 0 1 2 2v4a2 2 0 0 0 2 2h2v-2H8v-5a2 2 0 0 0-2-2 2 2 0 0 0 2-2V5h2V3m6 0a2 2 0 0 1 2 2v4a2 2 0 0 0 2 2h1v2h-1a2 2 0 0 0-2 2v4a2 2 0 0 1-2 2h-2v-2h2v-5a2 2 0 0 1 2-2 2 2 0 0 1-2-2V5h-2V3z"/></svg></span> <strong>服務模組</strong></p>
-<hr />
-<p>深入了解 8 個核心服務模組的實作</p>
-<p><a href="modules/index.md"><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13.22 19.03a.75.75 0 0 1 0-1.06L18.19 13H3.75a.75.75 0 0 1 0-1.5h14.44l-4.97-4.97a.749.749 0 0 1 .326-1.275.75.75 0 0 1 .734.215l6.25 6.25a.75.75 0 0 1 0 1.06l-6.25 6.25a.75.75 0 0 1-1.06 0"/></svg></span> 查看模組文件</a></p>
 </li>
 <li>
 <p><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M7 7H5a2 2 0 0 0-2 2v8h2v-4h2v4h2V9a2 2 0 0 0-2-2m0 4H5V9h2m7-2h-4v10h2v-4h2a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2m0 4h-2V9h2m6 0v6h1v2h-4v-2h1V9h-1V7h4v2Z"/></svg></span> <strong>API 參考</strong></p>
@@ -3639,16 +3543,16 @@
 <p><a href="api/"><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13.22 19.03a.75.75 0 0 1 0-1.06L18.19 13H3.75a.75.75 0 0 1 0-1.5h14.44l-4.97-4.97a.749.749 0 0 1 .326-1.275.75.75 0 0 1 .734.215l6.25 6.25a.75.75 0 0 1 0 1.06l-6.25 6.25a.75.75 0 0 1-1.06 0"/></svg></span> 查看 API 文件</a></p>
 </li>
 <li>
+<p><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21.81 10.25c-.06-.04-.56-.43-1.64-.43-.28 0-.56.03-.84.08-.21-1.4-1.38-2.11-1.43-2.14l-.29-.17-.18.27c-.24.36-.43.77-.51 1.19-.2.8-.08 1.56.33 2.21-.49.28-1.29.35-1.46.35H2.62c-.34 0-.62.28-.62.63 0 1.15.18 2.3.58 3.38.45 1.19 1.13 2.07 2 2.61.98.6 2.59.94 4.42.94.79 0 1.61-.07 2.42-.22 1.12-.2 2.2-.59 3.19-1.16A8.3 8.3 0 0 0 16.78 16c1.05-1.17 1.67-2.5 2.12-3.65h.19c1.14 0 1.85-.46 2.24-.85.26-.24.45-.53.59-.87l.08-.24zm-17.96.99h1.76c.08 0 .16-.07.16-.16V9.5c0-.08-.07-.16-.16-.16H3.85c-.09 0-.16.07-.16.16v1.58c.01.09.07.16.16.16m2.43 0h1.76c.08 0 .16-.07.16-.16V9.5c0-.08-.07-.16-.16-.16H6.28c-.09 0-.16.07-.16.16v1.58c.01.09.07.16.16.16m2.47 0h1.75c.1 0 .17-.07.17-.16V9.5c0-.08-.06-.16-.17-.16H8.75c-.08 0-.15.07-.15.16v1.58c0 .09.06.16.15.16m2.44 0h1.77c.08 0 .15-.07.15-.16V9.5c0-.08-.06-.16-.15-.16h-1.77c-.08 0-.15.07-.15.16v1.58c0 .09.07.16.15.16M6.28 9h1.76c.08 0 .16-.09.16-.18V7.25c0-.09-.07-.16-.16-.16H6.28c-.09 0-.16.06-.16.16v1.57c.01.09.07.18.16.18m2.47 0h1.75c.1 0 .17-.09.17-.18V7.25c0-.09-.06-.16-.17-.16H8.75c-.08 0-.15.06-.15.16v1.57c0 .09.06.18.15.18m2.44 0h1.77c.08 0 .15-.09.15-.18V7.25c0-.09-.07-.16-.15-.16h-1.77c-.08 0-.15.06-.15.16v1.57c0 .09.07.18.15.18m0-2.28h1.77c.08 0 .15-.07.15-.16V5c0-.1-.07-.17-.15-.17h-1.77c-.08 0-.15.06-.15.17v1.56c0 .08.07.16.15.16m2.46 4.52h1.76c.09 0 .16-.07.16-.16V9.5c0-.08-.07-.16-.16-.16h-1.76c-.08 0-.15.07-.15.16v1.58c0 .09.07.16.15.16"/></svg></span> <strong>部署指南</strong></p>
+<hr />
+<p>Docker 部署、環境配置、監控</p>
+<p><a href="deployment/"><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13.22 19.03a.75.75 0 0 1 0-1.06L18.19 13H3.75a.75.75 0 0 1 0-1.5h14.44l-4.97-4.97a.749.749 0 0 1 .326-1.275.75.75 0 0 1 .734.215l6.25 6.25a.75.75 0 0 1 0 1.06l-6.25 6.25a.75.75 0 0 1-1.06 0"/></svg></span> 查看部署文件</a></p>
+</li>
+<li>
 <p><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 21.5c-1.35-.85-3.8-1.5-5.5-1.5-1.65 0-3.35.3-4.75 1.05-.1.05-.15.05-.25.05-.25 0-.5-.25-.5-.5V6c.6-.45 1.25-.75 2-1 1.11-.35 2.33-.5 3.5-.5 1.95 0 4.05.4 5.5 1.5 1.45-1.1 3.55-1.5 5.5-1.5 1.17 0 2.39.15 3.5.5.75.25 1.4.55 2 1v14.6c0 .25-.25.5-.5.5-.1 0-.15 0-.25-.05-1.4-.75-3.1-1.05-4.75-1.05-1.7 0-4.15.65-5.5 1.5M12 8v11.5c1.35-.85 3.8-1.5 5.5-1.5 1.2 0 2.4.15 3.5.5V7c-1.1-.35-2.3-.5-3.5-.5-1.7 0-4.15.65-5.5 1.5m1 3.5c1.11-.68 2.6-1 4.5-1 .91 0 1.76.09 2.5.28V9.23c-.87-.15-1.71-.23-2.5-.23q-2.655 0-4.5.84zm4.5.17c-1.71 0-3.21.26-4.5.79v1.69c1.11-.65 2.6-.99 4.5-.99 1.04 0 1.88.08 2.5.24v-1.5c-.87-.16-1.71-.23-2.5-.23m2.5 2.9c-.87-.16-1.71-.24-2.5-.24-1.83 0-3.33.27-4.5.8v1.69c1.11-.66 2.6-.99 4.5-.99 1.04 0 1.88.08 2.5.24z"/></svg></span> <strong>使用指南</strong></p>
 <hr />
 <p>實用的使用指南與最佳實踐</p>
 <p><a href="guides/"><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13.22 19.03a.75.75 0 0 1 0-1.06L18.19 13H3.75a.75.75 0 0 1 0-1.5h14.44l-4.97-4.97a.749.749 0 0 1 .326-1.275.75.75 0 0 1 .734.215l6.25 6.25a.75.75 0 0 1 0 1.06l-6.25 6.25a.75.75 0 0 1-1.06 0"/></svg></span> 查看使用指南</a></p>
-</li>
-<li>
-<p><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M18 14h-4v4h-4v-4H6v-4h4V6h4v4h4m1-7H5c-1.11 0-2 .89-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2"/></svg></span> <strong>FHIR 整合</strong></p>
-<hr />
-<p>FHIR R4 標準整合說明</p>
-<p><a href="fhir/index.md"><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13.22 19.03a.75.75 0 0 1 0-1.06L18.19 13H3.75a.75.75 0 0 1 0-1.5h14.44l-4.97-4.97a.749.749 0 0 1 .326-1.275.75.75 0 0 1 .734.215l6.25 6.25a.75.75 0 0 1 0 1.06l-6.25 6.25a.75.75 0 0 1-1.06 0"/></svg></span> 查看 FHIR 文件</a></p>
 </li>
 <li>
 <p><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m13.78 15.3 6 6 2.11-2.16-6-6zm3.72-5.2c-.39 0-.81-.05-1.14-.19L4.97 21.25l-2.11-2.11 7.41-7.4L8.5 9.96l-.72.7-1.45-1.41v2.86l-.7.7-3.52-3.56.7-.7h2.81l-1.4-1.41 3.56-3.56a2.976 2.976 0 0 1 4.22 0L9.89 5.74l1.41 1.4-.71.71 1.79 1.78 1.82-1.88c-.14-.33-.2-.75-.2-1.12a3.49 3.49 0 0 1 3.5-3.52c.59 0 1.11.14 1.58.42L16.41 6.2l1.5 1.5 2.67-2.67c.28.47.42.97.42 1.6 0 1.92-1.55 3.47-3.5 3.47"/></svg></span> <strong>開發指南</strong></p>
@@ -3659,50 +3563,69 @@
 </ul>
 </div>
 <hr />
-<h2 id="_7">📊 資料來源<a class="headerlink" href="#_7" title="Permanent link">&para;</a></h2>
-<h3 id="_8">台灣官方資料<a class="headerlink" href="#_8" title="Permanent link">&para;</a></h3>
-<ul>
-<li>🇹🇼 衛福部 ICD-10 中文化資料</li>
-<li>🇹🇼 FDA 藥品資料（5 個 API）</li>
-<li>🇹🇼 FDA 健康食品資料</li>
-</ul>
-<h3 id="_9">國際標準<a class="headerlink" href="#_9" title="Permanent link">&para;</a></h3>
-<ul>
-<li>🌍 <strong>FHIR R4</strong> - HL7 International</li>
-<li>🌍 <strong>LOINC</strong> - Regenstrief Institute</li>
-<li>🌍 <strong>ICD-10</strong> - WHO</li>
-<li>🌍 <strong>ATC</strong> - WHO</li>
-</ul>
+<h2 id="_6">📊 資料來源<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>資料集</th>
+<th>版本</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ICD-10-CM</td>
+<td>2025 (NLM)</td>
+<td>診斷碼</td>
+</tr>
+<tr>
+<td>LOINC</td>
+<td>2.80</td>
+<td>檢驗碼</td>
+</tr>
+<tr>
+<td>SNOMED CT International</td>
+<td>20250601</td>
+<td>臨床術語階層</td>
+</tr>
+<tr>
+<td>RxNorm</td>
+<td>2024-06-03</td>
+<td>藥物交互作用</td>
+</tr>
+<tr>
+<td>TWCore IG</td>
+<td>v1.0.0</td>
+<td>台灣健保碼系統</td>
+</tr>
+<tr>
+<td>Taiwan FDA</td>
+<td>每週更新</td>
+<td>藥品/健康食品/營養</td>
+</tr>
+<tr>
+<td>臨床指引</td>
+<td>自整理</td>
+<td>台灣醫學會指引</td>
+</tr>
+</tbody>
+</table>
 <p><a class="md-button" href="data-sources/">查看資料來源詳情</a></p>
 <hr />
-<h2 id="_10">🤝 貢獻<a class="headerlink" href="#_10" title="Permanent link">&para;</a></h2>
-<p>歡迎貢獻！我們需要：</p>
+<h2 id="_7">🙏 致謝<a class="headerlink" href="#_7" title="Permanent link">&para;</a></h2>
 <ul>
-<li>🔹 新增更多 LOINC 中文對照</li>
-<li>🔹 補充臨床診療指引資料</li>
-<li>🔹 實作更多 FHIR 資源</li>
-<li>🔹 改善效能與快取機制</li>
+<li>台灣衛生福利部、TFDA（ICD、藥品、健康食品、營養）</li>
+<li>Regenstrief Institute（LOINC）</li>
+<li>SNOMED International（SNOMED CT）</li>
+<li>National Library of Medicine（RxNorm、ICD-10-CM）</li>
+<li>HL7 International（FHIR）</li>
+<li>Twinkle AI — 感謝社群串接本專案打造 Twinkle Health Agent</li>
 </ul>
-<p><a class="md-button" href="development/contributing/">查看貢獻指南</a></p>
-<hr />
-<h2 id="_11">📝 授權<a class="headerlink" href="#_11" title="Permanent link">&para;</a></h2>
-<p>本專案採用 <strong>MIT License</strong> - 詳見 <a href="https://github.com/yourusername/Taiwan-ICD10-Health-MCP/blob/main/LICENSE">LICENSE</a></p>
-<hr />
-<h2 id="_12">🙏 致謝<a class="headerlink" href="#_12" title="Permanent link">&para;</a></h2>
-<p>感謝以下組織提供開放資料：</p>
-<ul>
-<li>🇹🇼 中華民國衛生福利部</li>
-<li>🇹🇼 台灣食品藥物管理署 (TFDA)</li>
-<li>🌍 Regenstrief Institute (LOINC)</li>
-<li>🌍 HL7 International (FHIR)</li>
-<li>🌍 World Health Organization (ICD, ATC)</li>
-</ul>
-<hr />
 <div align="center">
 
 **⭐ 如果這個專案對您有幫助，請給我們一個 Star！**
 
-[GitHub](https://github.com/yourusername/Taiwan-ICD10-Health-MCP){ .md-button .md-button--primary }
+[GitHub](https://github.com/healthymind-tech/Taiwan-Health-MCP){ .md-button .md-button--primary }
 
 </div>
 

@@ -25,7 +25,7 @@
       
       
       <link rel="icon" href="../assets/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.5">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
       
@@ -3098,10 +3098,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#1-icd-10" class="md-nav__link">
+  <a href="#1-icd-10-4" class="md-nav__link">
     <span class="md-ellipsis">
       
-        1. ICD-10 診斷與處置工具
+        群組 1 — ICD-10 診斷與手術碼（4 個工具）
       
     </span>
   </a>
@@ -3109,10 +3109,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#2" class="md-nav__link">
+  <a href="#2-fda-3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        2. 藥品查詢與識別工具
+        群組 2 — 台灣 FDA 藥品（3 個工具）
       
     </span>
   </a>
@@ -3120,10 +3120,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#3" class="md-nav__link">
+  <a href="#3-fda-2" class="md-nav__link">
     <span class="md-ellipsis">
       
-        3. 健康食品工具
+        群組 3 — 台灣 FDA 健康食品（2 個工具）
       
     </span>
   </a>
@@ -3131,10 +3131,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#4" class="md-nav__link">
+  <a href="#4-4" class="md-nav__link">
     <span class="md-ellipsis">
       
-        4. 營養與飲食工具
+        群組 4 — 食品營養（4 個工具）
       
     </span>
   </a>
@@ -3142,10 +3142,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#5-fhir" class="md-nav__link">
+  <a href="#5-icd-1" class="md-nav__link">
     <span class="md-ellipsis">
       
-        5. FHIR 互通性工具
+        群組 5 — 健康食品 + ICD 整合（1 個工具）
       
     </span>
   </a>
@@ -3153,10 +3153,76 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#6" class="md-nav__link">
+  <a href="#6-fhir-condition3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        6. 綜合分析工具
+        群組 6 — FHIR Condition（3 個工具）
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#7-fhir-medication4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        群組 7 — FHIR Medication（4 個工具）
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#8-loinc5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        群組 8 — 檢驗 / LOINC（5 個工具）
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#9-5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        群組 9 — 臨床診療指引（5 個工具）
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#10-twcore-ig3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        群組 10 — TWCore IG（3 個工具）
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#11-snomed-ct6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        群組 11 — SNOMED CT（6 個工具）
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#12-rxnorm-3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        群組 12 — RxNorm 藥物交互作用（3 個工具）
       
     </span>
   </a>
@@ -3173,6 +3239,17 @@
     <span class="md-ellipsis">
       
         如何呼叫工具
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        服務降級
       
     </span>
   </a>
@@ -3200,30 +3277,374 @@
 
 
 <h1 id="mcp">MCP 工具概覽<a class="headerlink" href="#mcp" title="Permanent link">&para;</a></h1>
-<p>本頁面列出 Taiwan Health MCP 伺服器所提供的所有工具函數。這些工具設計用於讓大型語言模型 (LLM) 或其他客戶端程式呼叫，以獲取結構化的醫療數據或執行特定的分析任務。</p>
+<p>Taiwan Health MCP Server 提供 <strong>46 個 MCP 工具</strong>，分為 12 個群組。</p>
+<hr />
 <h2 id="_1">工具分類索引<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
-<h3 id="1-icd-10">1. ICD-10 診斷與處置工具<a class="headerlink" href="#1-icd-10" title="Permanent link">&para;</a></h3>
-<p>用於查詢標準化得疾病與手術編碼。
-- <a href="icd-tools/">詳細說明</a></p>
-<h3 id="2">2. 藥品查詢與識別工具<a class="headerlink" href="#2" title="Permanent link">&para;</a></h3>
-<p>用於查詢台灣 FDA 核准藥品及辨識外觀。
-- <a href="drug-tools/">詳細說明</a></p>
-<h3 id="3">3. 健康食品工具<a class="headerlink" href="#3" title="Permanent link">&para;</a></h3>
-<p>用於查詢具有保健功效的健康食品。
-- <a href="health-food-tools/">詳細說明</a></p>
-<h3 id="4">4. 營養與飲食工具<a class="headerlink" href="#4" title="Permanent link">&para;</a></h3>
-<p>用於食品營養成分查詢與飲食分析。
-- <a href="nutrition-tools/">詳細說明</a></p>
-<h3 id="5-fhir">5. FHIR 互通性工具<a class="headerlink" href="#5-fhir" title="Permanent link">&para;</a></h3>
-<p>用於產生符合國際標準的 FHIR 資源。
-- <a href="fhir-tools/">詳細說明</a></p>
-<h3 id="6">6. 綜合分析工具<a class="headerlink" href="#6" title="Permanent link">&para;</a></h3>
-<p>結合多種資料來源進行深度分析（如：疾病與健康食品的對應）。
-- 請參閱各分類文件中的進階工具說明。</p>
+<h3 id="1-icd-10-4">群組 1 — ICD-10 診斷與手術碼（4 個工具）<a class="headerlink" href="#1-icd-10-4" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>工具</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>search_medical_codes</code></td>
+<td>搜尋 ICD-10-CM 診斷碼或 ICD-10-PCS 手術碼</td>
+</tr>
+<tr>
+<td><code>infer_complications</code></td>
+<td>依據 ICD 階層推論潛在併發症</td>
+</tr>
+<tr>
+<td><code>get_nearby_codes</code></td>
+<td>取得目標碼的前後相鄰碼</td>
+</tr>
+<tr>
+<td><code>check_medical_conflict</code></td>
+<td>診斷碼與手術碼衝突分析</td>
+</tr>
+</tbody>
+</table>
+<p><a href="icd-tools/">詳細說明</a></p>
+<hr />
+<h3 id="2-fda-3">群組 2 — 台灣 FDA 藥品（3 個工具）<a class="headerlink" href="#2-fda-3" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>工具</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>search_drug_info</code></td>
+<td>以中英文名稱或適應症搜尋 FDA 核准藥品</td>
+</tr>
+<tr>
+<td><code>get_drug_details</code></td>
+<td>依許可證字號取得完整藥品資訊</td>
+</tr>
+<tr>
+<td><code>identify_unknown_pill</code></td>
+<td>依外觀特徵（形狀、顏色、刻痕）識別藥錠</td>
+</tr>
+</tbody>
+</table>
+<p><a href="drug-tools/">詳細說明</a></p>
+<hr />
+<h3 id="3-fda-2">群組 3 — 台灣 FDA 健康食品（2 個工具）<a class="headerlink" href="#3-fda-2" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>工具</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>search_health_food</code></td>
+<td>搜尋 FDA 核可健康食品</td>
+</tr>
+<tr>
+<td><code>get_health_food_details</code></td>
+<td>依許可證號取得健康食品完整資訊</td>
+</tr>
+</tbody>
+</table>
+<p><a href="health-food-tools/">詳細說明</a></p>
+<hr />
+<h3 id="4-4">群組 4 — 食品營養（4 個工具）<a class="headerlink" href="#4-4" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>工具</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>search_food_nutrition</code></td>
+<td>搜尋食品營養成分</td>
+</tr>
+<tr>
+<td><code>get_detailed_nutrition</code></td>
+<td>取得特定食品完整營養分析</td>
+</tr>
+<tr>
+<td><code>search_food_ingredient</code></td>
+<td>搜尋食品原料/添加物</td>
+</tr>
+<tr>
+<td><code>analyze_meal_nutrition</code></td>
+<td>分析多種食品組合的整體營養</td>
+</tr>
+</tbody>
+</table>
+<p><a href="nutrition-tools/">詳細說明</a></p>
+<hr />
+<h3 id="5-icd-1">群組 5 — 健康食品 + ICD 整合（1 個工具）<a class="headerlink" href="#5-icd-1" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>工具</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>analyze_health_support_for_condition</code></td>
+<td>依診斷推薦 FDA 核可保健食品</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="6-fhir-condition3">群組 6 — FHIR Condition（3 個工具）<a class="headerlink" href="#6-fhir-condition3" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>工具</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>create_fhir_condition</code></td>
+<td>ICD-10-CM 碼 → FHIR R4 Condition 資源</td>
+</tr>
+<tr>
+<td><code>create_fhir_condition_from_diagnosis</code></td>
+<td>依關鍵字自動搜尋並建立 FHIR Condition</td>
+</tr>
+<tr>
+<td><code>validate_fhir_condition</code></td>
+<td>驗證 FHIR R4 Condition 資源</td>
+</tr>
+</tbody>
+</table>
+<p><a href="fhir-tools/">詳細說明</a></p>
+<hr />
+<h3 id="7-fhir-medication4">群組 7 — FHIR Medication（4 個工具）<a class="headerlink" href="#7-fhir-medication4" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>工具</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>search_medication_fhir</code></td>
+<td>搜尋藥品並建立 FHIR Medication 資源</td>
+</tr>
+<tr>
+<td><code>create_fhir_medication</code></td>
+<td>依許可證字號建立 FHIR Medication</td>
+</tr>
+<tr>
+<td><code>create_fhir_medication_from_drug</code></td>
+<td>依許可證字號建立 FHIR MedicationKnowledge</td>
+</tr>
+<tr>
+<td><code>validate_fhir_medication</code></td>
+<td>驗證 FHIR Medication/MedicationKnowledge</td>
+</tr>
+</tbody>
+</table>
+<p><a href="fhir-tools/">詳細說明</a></p>
+<hr />
+<h3 id="8-loinc5">群組 8 — 檢驗 / LOINC（5 個工具）<a class="headerlink" href="#8-loinc5" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>工具</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>search_loinc_code</code></td>
+<td>搜尋 LOINC 碼（含中文名稱）</td>
+</tr>
+<tr>
+<td><code>list_lab_categories</code></td>
+<td>列出所有檢驗分類</td>
+</tr>
+<tr>
+<td><code>get_reference_range</code></td>
+<td>依 LOINC 碼、年齡、性別取得參考值</td>
+</tr>
+<tr>
+<td><code>interpret_lab_result</code></td>
+<td>判讀單項檢驗結果</td>
+</tr>
+<tr>
+<td><code>batch_interpret_lab_results</code></td>
+<td>批次判讀多項檢驗</td>
+</tr>
+</tbody>
+</table>
+<p><a href="lab-tools/">詳細說明</a></p>
+<hr />
+<h3 id="9-5">群組 9 — 臨床診療指引（5 個工具）<a class="headerlink" href="#9-5" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>工具</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>search_clinical_guideline</code></td>
+<td>搜尋台灣醫學會臨床指引</td>
+</tr>
+<tr>
+<td><code>get_complete_guideline</code></td>
+<td>取得疾病完整指引（診斷、用藥、檢查、目標）</td>
+</tr>
+<tr>
+<td><code>get_medication_recommendations</code></td>
+<td>取得用藥建議</td>
+</tr>
+<tr>
+<td><code>get_test_recommendations</code></td>
+<td>取得建議檢查項目</td>
+</tr>
+<tr>
+<td><code>get_treatment_goals</code></td>
+<td>取得治療目標</td>
+</tr>
+<tr>
+<td><code>suggest_clinical_pathway</code></td>
+<td>依指引規劃臨床路徑</td>
+</tr>
+</tbody>
+</table>
+<p><a href="guideline-tools/">詳細說明</a></p>
+<hr />
+<h3 id="10-twcore-ig3">群組 10 — TWCore IG（3 個工具）<a class="headerlink" href="#10-twcore-ig3" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>工具</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>list_twcore_codesystems</code></td>
+<td>列出所有 TWCore IG CodeSystem</td>
+</tr>
+<tr>
+<td><code>search_twcore_code</code></td>
+<td>跨 CodeSystem 搜尋代碼</td>
+</tr>
+<tr>
+<td><code>lookup_twcore_code</code></td>
+<td>精確查詢單一代碼（回傳 FHIR Coding）</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="11-snomed-ct6">群組 11 — SNOMED CT（6 個工具）<a class="headerlink" href="#11-snomed-ct6" title="Permanent link">&para;</a></h3>
+<blockquote>
+<p>需先執行 <code>docker compose --profile loader run --rm data-loader --snomed</code></p>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th>工具</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>search_snomed_concept</code></td>
+<td>以英文詞彙搜尋 SNOMED CT 概念</td>
+</tr>
+<tr>
+<td><code>get_snomed_concept</code></td>
+<td>取得概念完整資訊（FSN、同義詞、父概念、ICD-10 對應）</td>
+</tr>
+<tr>
+<td><code>get_snomed_children</code></td>
+<td>取得直接子概念（IS-A 關係）</td>
+</tr>
+<tr>
+<td><code>get_snomed_ancestors</code></td>
+<td>取得所有祖先概念</td>
+</tr>
+<tr>
+<td><code>map_icd_to_snomed</code></td>
+<td>ICD-10 碼 → SNOMED CT 概念</td>
+</tr>
+<tr>
+<td><code>map_snomed_to_icd</code></td>
+<td>SNOMED CT 概念 → ICD-10 碼</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="12-rxnorm-3">群組 12 — RxNorm 藥物交互作用（3 個工具）<a class="headerlink" href="#12-rxnorm-3" title="Permanent link">&para;</a></h3>
+<blockquote>
+<p>需先執行 <code>docker compose --profile loader run --rm data-loader --rxnorm</code></p>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th>工具</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>check_drug_interactions</code></td>
+<td>檢查多種藥物間的交互作用</td>
+</tr>
+<tr>
+<td><code>resolve_rxnorm_drug</code></td>
+<td>藥品名稱 → RxNorm RXCUI</td>
+</tr>
+<tr>
+<td><code>get_drug_ingredients_rxnorm</code></td>
+<td>依 RXCUI 取得藥物成分</td>
+</tr>
+</tbody>
+</table>
+<hr />
 <h2 id="_2">如何呼叫工具<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
-<p>本伺服器遵循 Model Context Protocol (MCP) 標準。
-客戶端應通過標準的 JSON-RPC 格式發送工具呼叫請求。
-請確保傳入的參數名稱與型別完全符合文件定義。</p>
+<p>本伺服器遵循 Model Context Protocol (MCP) 標準，使用 JSON-RPC 2.0 格式。</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># 建立 session</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>curl<span class="w"> </span>http://localhost:8000/mcp<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">  </span>-H<span class="w"> </span><span class="s2">&quot;Content-Type: application/json&quot;</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span>-H<span class="w"> </span><span class="s2">&quot;Accept: application/json, text/event-stream&quot;</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span>-d<span class="w"> </span><span class="s1">&#39;{&quot;jsonrpc&quot;:&quot;2.0&quot;,&quot;id&quot;:1,&quot;method&quot;:&quot;initialize&quot;,&quot;params&quot;:{</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="s1">    &quot;protocolVersion&quot;:&quot;2024-11-05&quot;,</span>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="s1">    &quot;capabilities&quot;:{},</span>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="s1">    &quot;clientInfo&quot;:{&quot;name&quot;:&quot;my-client&quot;,&quot;version&quot;:&quot;1&quot;}</span>
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="s1">  }}&#39;</span>
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="c1"># 呼叫工具（使用上面取得的 mcp-session-id）</span>
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>curl<span class="w"> </span>http://localhost:8000/mcp<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="w">  </span>-H<span class="w"> </span><span class="s2">&quot;Content-Type: application/json&quot;</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="w">  </span>-H<span class="w"> </span><span class="s2">&quot;Accept: application/json, text/event-stream&quot;</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="w">  </span>-H<span class="w"> </span><span class="s2">&quot;mcp-session-id: &lt;SESSION_ID&gt;&quot;</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="w">  </span>-d<span class="w"> </span><span class="s1">&#39;{&quot;jsonrpc&quot;:&quot;2.0&quot;,&quot;id&quot;:2,&quot;method&quot;:&quot;tools/call&quot;,&quot;params&quot;:{</span>
+</span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a><span class="s1">    &quot;name&quot;:&quot;search_medical_codes&quot;,</span>
+</span><span id="__span-0-18"><a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a><span class="s1">    &quot;arguments&quot;:{&quot;keyword&quot;:&quot;糖尿病&quot;,&quot;type&quot;:&quot;diagnosis&quot;}</span>
+</span><span id="__span-0-19"><a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a><span class="s1">  }}&#39;</span>
+</span></code></pre></div>
+<hr />
+<h2 id="_3">服務降級<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
+<p>SNOMED CT 和 RxNorm 工具在資料未載入時會回傳結構化錯誤，而非拋出例外：</p>
+<div class="language-json highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="p">{</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="nt">&quot;error&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;SNOMED CT service is not available&quot;</span><span class="p">,</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">  </span><span class="nt">&quot;hint&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Run the data-loader to populate this dataset, then restart the server.&quot;</span>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="p">}</span>
+</span></code></pre></div>
+<p>其他所有工具（ICD、藥品、LOINC 等）在初始化失敗時同樣降級為錯誤訊息。</p>
 
 
 
