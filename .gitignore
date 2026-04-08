@@ -29,6 +29,9 @@ site/
 # 忽略 MkDocs 快取
 .cache/
 
+# Ignore local dataset configuration; keep the example template in version control
+config/datasets.yaml
+
 # 忽略需授權申請的原始資料（不可再散佈，請至官方申請後自行下載）
 fhir-code/snomed/
 fhir-code/rxnorm/

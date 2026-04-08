@@ -14,7 +14,7 @@
 
 - 🇹🇼 **台灣在地化** — 整合台灣 FDA、衛福部官方開放資料，支援繁體中文
 - 🔗 **國際標準** — 符合 FHIR R4、ICD-10-CM 2025、LOINC 2.80、SNOMED CT、RxNorm、ATC
-- 🏥 **46 個 MCP 工具** — 涵蓋診斷、藥品、檢驗、指引、術語、藥物交互作用
+- 🏥 **56 個 MCP 工具** — 涵蓋診斷、藥品、檢驗、指引、術語、藥物交互作用
 - 🏗️ **生產就緒** — PostgreSQL 16 + pgBouncer + Redis + Prometheus，支援每秒數百請求
 - 🔄 **自動同步** — FDA 藥品/保健食品/營養資料每週自動更新
 
@@ -33,7 +33,9 @@
 git clone https://github.com/healthymind-tech/Taiwan-Health-MCP.git
 cd Taiwan-Health-MCP
 cp .env.example .env
+cp config/datasets.example.yaml config/datasets.yaml
 # 編輯 .env，至少設定 POSTGRES_PASSWORD
+# 視部署環境編輯 config/datasets.yaml，指定各 dataset 的實際檔案位置
 ```
 
 ### 2. 啟動服務
@@ -46,7 +48,8 @@ docker compose up -d
 
 ### 3. 載入術語資料
 
-術語資料（ICD、LOINC、SNOMED CT 等）需手動下載並放置後執行 loader：
+術語資料（ICD、LOINC、SNOMED CT 等）需手動下載後，在 `config/datasets.yaml`
+設定檔案位置，再執行 loader：
 
 ```bash
 # 全部載入（建議首次部署）
@@ -60,6 +63,9 @@ docker compose --profile loader run --rm data-loader --guideline  # 臨床指引
 docker compose --profile loader run --rm data-loader --snomed     # SNOMED CT（5-15 分鐘）
 docker compose --profile loader run --rm data-loader --rxnorm     # RxNorm
 ```
+
+`DATASETS_CONFIG` 預設為 `/app/config/datasets.yaml`。若未設定，loader 會回退到舊的
+`/app/fhir-code` 目錄規則。新部署建議使用 `config/datasets.yaml`，避免依賴固定檔名與固定目錄結構。
 
 > FDA 藥品/保健食品/營養資料會在伺服器首次啟動時自動從 FDA Open Data API 下載，無需手動載入。
 
@@ -110,7 +116,7 @@ curl http://localhost:8000/mcp -X POST \
 
 ---
 
-## 📋 核心功能（46 個 MCP 工具）
+## 📋 核心功能（56 個 MCP 工具）
 
 | 群組 | 工具數 | 功能 |
 |------|--------|------|

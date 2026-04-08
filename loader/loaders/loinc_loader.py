@@ -34,7 +34,12 @@ LOINC_COLS = {
 }
 
 
-async def load_loinc_full(pool: asyncpg.Pool, zip_path: str) -> None:
+async def load_loinc_full(
+    pool: asyncpg.Pool,
+    zip_path: str,
+    mapping_csv_path: str | None = None,
+    reference_ranges_csv_path: str | None = None,
+) -> None:
     print(f"Parsing {zip_path} ...")
 
     records: list[tuple] = []
@@ -104,4 +109,8 @@ async def load_loinc_full(pool: asyncpg.Pool, zip_path: str) -> None:
 
     # Apply Taiwan-specific Chinese names and reference ranges
     from loaders.loinc_taiwan_seed import apply_taiwan_seed
-    await apply_taiwan_seed(pool)
+    await apply_taiwan_seed(
+        pool,
+        mapping_csv_path=mapping_csv_path,
+        reference_ranges_csv_path=reference_ranges_csv_path,
+    )

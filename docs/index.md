@@ -34,7 +34,7 @@
 
     FHIR R4、ICD-10-CM 2025、LOINC 2.80、SNOMED CT、RxNorm、ATC
 
--   :bar_chart: __46 個 MCP 工具__
+-   :bar_chart: __56 個 MCP 工具__
 
     ---
 
@@ -113,7 +113,7 @@ graph TB
         A2[其他 MCP 客戶端]
     end
 
-    subgraph "MCP Server (46 Tools)"
+    subgraph "MCP Server (56 Tools)"
         B[FastMCP / uvicorn<br/>port 8000]
     end
 
@@ -160,12 +160,14 @@ graph TB
     git clone https://github.com/healthymind-tech/Taiwan-Health-MCP.git
     cd Taiwan-Health-MCP
     cp .env.example .env
+    cp config/datasets.example.yaml config/datasets.yaml
     # 編輯 .env，設定 POSTGRES_PASSWORD
+    # 編輯 config/datasets.yaml，指定各資料集實際檔案位置
 
     # 2. 啟動所有服務
     docker compose up -d
 
-    # 3. 載入術語資料（需先準備 fhir-code/ 目錄）
+    # 3. 載入術語資料（需先在 config/datasets.yaml 指定檔案位置）
     docker compose --profile loader run --rm data-loader --all
 
     # 4. 查看日誌
@@ -194,21 +196,21 @@ graph TB
 
 ## 🛠️ MCP 工具清單
 
-本服務提供 **46 個 MCP 工具**，分為 12 個群組：
+本服務提供 **56 個 MCP 工具**，包含 **55 個領域工具** 與 `health_check`，主要分為 12 個群組：
 
 | 群組 | 工具數 | 主要功能 |
 |------|--------|---------|
-| ICD-10 | 4 | 診斷/手術碼搜尋、併發症推論、衝突檢查 |
-| 藥品 (FDA) | 3 | 藥品查詢、詳細資訊、外觀識別 |
+| ICD-10 | 5 | 診斷/手術碼搜尋、併發症推論、衝突檢查、分類瀏覽 |
+| 藥品 (FDA) | 5 | 藥品查詢、詳細資訊、外觀識別、ATC/成分查詢 |
 | 健康食品 (FDA) | 2 | 健康食品查詢 |
-| 營養 (FDA) | 4 | 營養成分、膳食分析、食品原料 |
+| 營養 (FDA) | 6 | 營養成分、膳食分析、食品原料、營養排序 |
 | 健康食品+ICD 整合 | 1 | 疾病-保健食品對應分析 |
 | FHIR Condition | 3 | ICD-10 → FHIR R4 Condition |
 | FHIR Medication | 4 | 藥品 → FHIR Medication/MedicationKnowledge |
-| 檢驗 (LOINC) | 5 | LOINC 查詢、參考值、結果判讀 |
-| 臨床指引 | 5 | 指引查詢、路徑規劃 |
+| 檢驗 (LOINC) | 8 | LOINC 查詢、參考值、結果判讀、細節與同類檢驗 |
+| 臨床指引 | 8 | 指引查詢、路徑規劃、禁忌與藥品連結 |
 | TWCore IG | 3 | 台灣健保 CodeSystem |
-| SNOMED CT | 6 | 概念搜尋、階層、ICD-10 對應 |
+| SNOMED CT | 7 | 概念搜尋、階層、關聯、ICD-10 對應 |
 | RxNorm | 3 | 藥物交互作用、名稱解析 |
 
 [查看完整工具清單](tools/index.md){ .md-button }

@@ -19,9 +19,9 @@ _REPO_ROOT = Path(__file__).parent.parent.parent
 LOINC_DIR = Path(os.getenv("FHIR_CODE_DIR", str(_REPO_ROOT / "fhir-code"))) / "loinc"
 
 
-def _load_mapping_csv() -> list[tuple]:
+def _load_mapping_csv(path: str | Path | None = None) -> list[tuple]:
     """Return list of (loinc_num, name_zh, common_name_zh, specimen_type, unit)."""
-    path = LOINC_DIR / "taiwan_mapping.csv"
+    path = Path(path) if path is not None else (LOINC_DIR / "taiwan_mapping.csv")
     if not path.exists():
         raise FileNotFoundError(f"LOINC mapping CSV not found: {path}")
     rows = []
@@ -37,9 +37,9 @@ def _load_mapping_csv() -> list[tuple]:
     return rows
 
 
-def _load_ranges_csv() -> list[tuple]:
+def _load_ranges_csv(path: str | Path | None = None) -> list[tuple]:
     """Return list of (loinc_num, age_min, age_max, gender, range_low, range_high, unit, interpretation)."""
-    path = LOINC_DIR / "lab_reference_ranges.csv"
+    path = Path(path) if path is not None else (LOINC_DIR / "lab_reference_ranges.csv")
     if not path.exists():
         raise FileNotFoundError(f"Reference ranges CSV not found: {path}")
     rows = []
@@ -58,10 +58,23 @@ def _load_ranges_csv() -> list[tuple]:
     return rows
 
 
-async def apply_taiwan_seed(pool: asyncpg.Pool) -> None:
+async def apply_taiwan_seed(
+    pool: asyncpg.Pool,
+    mapping_csv_path: str | None = None,
+    reference_ranges_csv_path: str | None = None,
+) -> None:
     print("  Applying Taiwan LOINC Chinese names ...")
-    taiwan_tests = _load_mapping_csv()
-    reference_ranges = _load_ranges_csv()
+    if mapping_csv_path == "":
+        print("  Taiwan mapping CSV not configured/resolved — skipping Chinese names")
+        taiwan_tests = []
+    else:
+        taiwan_tests = _load_mapping_csv(mapping_csv_path)
+
+    if reference_ranges_csv_path == "":
+        print("  Taiwan reference ranges CSV not configured/resolved — skipping reference ranges")
+        reference_ranges = []
+    else:
+        reference_ranges = _load_ranges_csv(reference_ranges_csv_path)
 
     async with pool.acquire() as conn:
         for loinc_num, name_zh, common_name_zh, specimen_type, unit in taiwan_tests:
@@ -84,10 +97,11 @@ async def apply_taiwan_seed(pool: asyncpg.Pool) -> None:
         if skipped:
             missing = {r[0] for r in reference_ranges} - existing
             print(f"  WARNING: skipping {skipped} range rows — LOINC codes not in concepts: {missing}")
-        await conn.executemany(
-            """INSERT INTO loinc.reference_ranges
-               (loinc_num, age_min, age_max, gender, range_low, range_high, unit, interpretation)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,$8)""",
-            ranges_to_insert,
-        )
+        if ranges_to_insert:
+            await conn.executemany(
+                """INSERT INTO loinc.reference_ranges
+                   (loinc_num, age_min, age_max, gender, range_low, range_high, unit, interpretation)
+                   VALUES ($1,$2,$3,$4,$5,$6,$7,$8)""",
+                ranges_to_insert,
+            )
     print(f"  Taiwan seed applied: {len(taiwan_tests)} names, {len(ranges_to_insert)} ranges.")

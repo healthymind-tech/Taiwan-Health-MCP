@@ -23,6 +23,8 @@ import sys
 
 import asyncpg
 from dotenv import load_dotenv
+from dataset_config import DatasetConfig, DatasetDefaults, DatasetEntry, get_dataset_config_path, load_dataset_config
+from dataset_resolver import DATASET_GROUPS, format_resolution_line, resolve_group
 
 load_dotenv()
 
@@ -43,77 +45,223 @@ def _find_file(pattern: str) -> str | None:
     return matches[0] if matches else None
 
 
+def _legacy_dataset_config() -> DatasetConfig:
+    base = FHIR_CODE_DIR
+    return DatasetConfig(
+        version=1,
+        defaults=DatasetDefaults(base_dir=base),
+        datasets={
+            "icd10cm": DatasetEntry(
+                key="icd10cm",
+                enabled=True,
+                required=True,
+                source_type="file",
+                path=os.path.join(base, "icd", "10", "icd10cm", "icd10cm-table-index-2025.zip"),
+                pattern=None,
+                label="ICD-10-CM",
+                version="2025",
+            ),
+            "icd10pcs": DatasetEntry(
+                key="icd10pcs",
+                enabled=True,
+                required=False,
+                source_type="glob",
+                path=None,
+                pattern=os.path.join(base, "icd", "10", "icd10pcs", "*.zip"),
+                label="ICD-10-PCS",
+                version="2025",
+            ),
+            "icd_zh_tw": DatasetEntry(
+                key="icd_zh_tw",
+                enabled=True,
+                required=False,
+                source_type="glob",
+                path=None,
+                pattern=os.path.join(base, "icd", "10", "*.xlsx"),
+                label="Taiwan ICD bilingual names",
+            ),
+            "loinc": DatasetEntry(
+                key="loinc",
+                enabled=True,
+                required=True,
+                source_type="file",
+                path=os.path.join(base, "loinc", "2.80", "Loinc_2.80.zip"),
+                pattern=None,
+                label="LOINC",
+                version="2.80",
+            ),
+            "loinc_taiwan_mapping": DatasetEntry(
+                key="loinc_taiwan_mapping",
+                enabled=True,
+                required=False,
+                source_type="file",
+                path=os.path.join(base, "loinc", "taiwan_mapping.csv"),
+                pattern=None,
+                label="LOINC Taiwan mapping",
+            ),
+            "loinc_reference_ranges": DatasetEntry(
+                key="loinc_reference_ranges",
+                enabled=True,
+                required=False,
+                source_type="file",
+                path=os.path.join(base, "loinc", "lab_reference_ranges.csv"),
+                pattern=None,
+                label="LOINC reference ranges",
+            ),
+            "twcore": DatasetEntry(
+                key="twcore",
+                enabled=True,
+                required=True,
+                source_type="glob",
+                path=None,
+                pattern=os.path.join(base, "twcoreig", "**", "package.tgz"),
+                label="TWCore IG",
+                version="1.0.0",
+            ),
+            "guideline_seed": DatasetEntry(
+                key="guideline_seed",
+                enabled=True,
+                required=True,
+                source_type="internal",
+                path=None,
+                pattern=None,
+                label="Clinical guideline seed",
+            ),
+            "snomed_ct": DatasetEntry(
+                key="snomed_ct",
+                enabled=True,
+                required=False,
+                source_type="glob",
+                path=None,
+                pattern=os.path.join(base, "snomed", "SnomedCT_InternationalRF2_PRODUCTION_*.zip"),
+                label="SNOMED CT",
+            ),
+            "rxnorm": DatasetEntry(
+                key="rxnorm",
+                enabled=True,
+                required=False,
+                source_type="glob",
+                path=None,
+                pattern=os.path.join(base, "rxnorm", "RxNorm_full_*.zip"),
+                label="RxNorm",
+            ),
+        },
+    )
+
+
+def get_effective_dataset_config() -> DatasetConfig:
+    path = get_dataset_config_path()
+    if path:
+        return load_dataset_config(path)
+    return _legacy_dataset_config()
+
+
+def _print_resolution_summary(group: str, resolved: dict) -> None:
+    print(f"=== Dataset resolution: {group} ===")
+    for result in resolved.values():
+        print(format_resolution_line(result))
+
+
+def _ensure_required_datasets(resolved: dict) -> None:
+    missing_required = [
+        result for result in resolved.values()
+        if result.required and result.status not in ("ok", "internal", "disabled")
+    ]
+    if missing_required:
+        messages = "; ".join(
+            f"{item.key}: {'; '.join(item.diagnostics) or item.status}"
+            for item in missing_required
+        )
+        raise FileNotFoundError(f"Required datasets missing: {messages}")
+
+
 async def load_icd(pool: asyncpg.Pool) -> None:
     from loaders.icd_loader import load_icd10cm, load_icd10pcs, parse_icd_chinese_xlsx
+    resolved = resolve_group(get_effective_dataset_config(), "icd")
+    _print_resolution_summary("icd", resolved)
+    _ensure_required_datasets(resolved)
 
-    icd_base = os.path.join(FHIR_CODE_DIR, "icd", "10")
-
-    # Chinese names from Taiwan MOHW Excel (optional but recommended)
-    xlsx_match = _find_file(os.path.join(icd_base, "*.xlsx"))
+    xlsx_match = resolved["icd_zh_tw"].resolved_path
     if xlsx_match:
         cm_zh, pcs_zh = parse_icd_chinese_xlsx(xlsx_match)
     else:
-        print(f"  No Chinese names xlsx found under {icd_base}/ — loading English only")
+        print("  No Chinese names xlsx configured/found — loading English only")
         cm_zh, pcs_zh = {}, {}
 
-    # ICD-10-CM (diagnoses) — required
-    cm_path = os.path.join(icd_base, "icd10cm", "icd10cm-table-index-2025.zip")
-    if not os.path.exists(cm_path):
-        print(f"ICD-10-CM ZIP not found: {cm_path}")
+    cm_path = resolved["icd10cm"].resolved_path
+    if cm_path is None:
+        print("ICD-10-CM ZIP not resolved")
     else:
         await load_icd10cm(pool, cm_path, name_zh_map=cm_zh)
 
-    # ICD-10-PCS (procedures) — optional
-    pcs_matches = _find_file(os.path.join(icd_base, "icd10pcs", "*.zip"))
-    if pcs_matches is None:
-        print(f"ICD-10-PCS ZIP not found under {icd_base}/icd10pcs/ — skipping procedure codes")
+    pcs_path = resolved["icd10pcs"].resolved_path
+    if pcs_path is None:
+        print("ICD-10-PCS ZIP not resolved — skipping procedure codes")
     else:
-        await load_icd10pcs(pool, pcs_matches, name_zh_map=pcs_zh)
+        await load_icd10pcs(pool, pcs_path, name_zh_map=pcs_zh)
 
 
 async def load_loinc(pool: asyncpg.Pool) -> None:
     from loaders.loinc_loader import load_loinc_full
-    zip_path = os.path.join(FHIR_CODE_DIR, "loinc", "2.80", "Loinc_2.80.zip")
-    if not os.path.exists(zip_path):
-        print(f"LOINC ZIP not found: {zip_path}")
+    resolved = resolve_group(get_effective_dataset_config(), "loinc")
+    _print_resolution_summary("loinc", resolved)
+    _ensure_required_datasets(resolved)
+
+    zip_path = resolved["loinc"].resolved_path
+    if zip_path is None:
+        print("LOINC ZIP not resolved")
         return
-    await load_loinc_full(pool, zip_path)
+    await load_loinc_full(
+        pool,
+        zip_path,
+        mapping_csv_path=resolved["loinc_taiwan_mapping"].resolved_path or "",
+        reference_ranges_csv_path=resolved["loinc_reference_ranges"].resolved_path or "",
+    )
 
 
 async def load_twcore(pool: asyncpg.Pool) -> None:
     from loaders.twcore_loader import load_twcore_package
-    # Support both flat and versioned layouts:
-    #   twcoreig/package.tgz  (old)
-    #   twcoreig/v1.0.0/package.tgz  (new)
-    tgz_path = _find_file(os.path.join(FHIR_CODE_DIR, "twcoreig", "package.tgz")) \
-            or _find_file(os.path.join(FHIR_CODE_DIR, "twcoreig", "*", "package.tgz"))
+    resolved = resolve_group(get_effective_dataset_config(), "twcore")
+    _print_resolution_summary("twcore", resolved)
+    _ensure_required_datasets(resolved)
+
+    tgz_path = resolved["twcore"].resolved_path
     if tgz_path is None:
-        print(f"TWCore package not found under {FHIR_CODE_DIR}/twcoreig/")
+        print("TWCore package not resolved")
         return
     await load_twcore_package(pool, tgz_path)
 
 
 async def load_guideline(pool: asyncpg.Pool) -> None:
     from loaders.guideline_seed import seed_guidelines
+    resolved = resolve_group(get_effective_dataset_config(), "guideline")
+    _print_resolution_summary("guideline", resolved)
+    _ensure_required_datasets(resolved)
     await seed_guidelines(pool)
 
 
 async def load_snomed(pool: asyncpg.Pool) -> None:
     from loaders.snomed_loader import load_snomed as _load
-    zip_path = _find_file(
-        os.path.join(FHIR_CODE_DIR, "snomed", "SnomedCT_InternationalRF2_PRODUCTION_*.zip")
-    )
+    resolved = resolve_group(get_effective_dataset_config(), "snomed")
+    _print_resolution_summary("snomed", resolved)
+    _ensure_required_datasets(resolved)
+
+    zip_path = resolved["snomed_ct"].resolved_path
     if zip_path is None:
-        print(f"SNOMED CT zip not found under {FHIR_CODE_DIR}/snomed/")
+        print("SNOMED CT zip not resolved")
         return
     await _load(pool, zip_path)
 
 
 async def load_rxnorm(pool: asyncpg.Pool) -> None:
     from loaders.rxnorm_loader import load_rxnorm as _load
-    zip_path = _find_file(os.path.join(FHIR_CODE_DIR, "rxnorm", "RxNorm_full_*.zip"))
+    resolved = resolve_group(get_effective_dataset_config(), "rxnorm")
+    _print_resolution_summary("rxnorm", resolved)
+    _ensure_required_datasets(resolved)
+
+    zip_path = resolved["rxnorm"].resolved_path
     if zip_path is None:
-        print(f"RxNorm zip not found under {FHIR_CODE_DIR}/rxnorm/")
+        print("RxNorm zip not resolved")
         return
     await _load(pool, zip_path)
 

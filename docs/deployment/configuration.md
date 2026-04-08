@@ -27,7 +27,7 @@ cp .env.example .env
 | `MCP_PORT` | `8000` | 監聽埠號（HTTP 模式） |
 | `MCP_PATH` | `/mcp` | HTTP 端點路徑（streamable-http 模式） |
 
-### 資料庫連線（由 docker-compose.yml 自動組合）
+### 資料庫連線（由 compose.yaml 自動組合）
 
 | 變數 | 說明 |
 |------|------|
@@ -148,7 +148,7 @@ services:
 
 ## pgBouncer 進階設定
 
-pgBouncer 透過 `edoburu/pgbouncer` image 的環境變數設定，重要參數（見 `docker-compose.yml`）：
+pgBouncer 透過 `edoburu/pgbouncer` image 的環境變數設定，重要參數（見 `compose.yaml`）：
 
 | 參數 | 值 | 說明 |
 |------|-----|------|

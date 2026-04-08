@@ -1,0 +1,82 @@
+version: 1
+
+defaults:
+  base_dir: /app/fhir-code
+  missing_policy: warn
+  resolve_mode: first_match
+
+datasets:
+  icd10cm:
+    enabled: true
+    required: true
+    source_type: file
+    path: /data/icd/icd10cm_2025.zip
+    label: ICD-10-CM
+    version: "2025"
+
+  icd10pcs:
+    enabled: true
+    required: false
+    source_type: glob
+    pattern: /data/icd/pcs/*.zip
+    label: ICD-10-PCS
+    version: "2025"
+
+  icd_zh_tw:
+    enabled: true
+    required: false
+    source_type: glob
+    pattern: /data/icd/*ICD-10-CM_PCS*.xlsx
+    label: Taiwan ICD bilingual names
+
+  loinc:
+    enabled: true
+    required: true
+    source_type: file
+    path: /data/loinc/Loinc_2.80.zip
+    label: LOINC
+    version: "2.80"
+
+  loinc_taiwan_mapping:
+    enabled: true
+    required: false
+    source_type: file
+    path: /data/loinc/taiwan_mapping.csv
+    label: LOINC Taiwan mapping
+
+  loinc_reference_ranges:
+    enabled: true
+    required: false
+    source_type: file
+    path: /data/loinc/lab_reference_ranges.csv
+    label: LOINC reference ranges
+
+  twcore:
+    enabled: true
+    required: true
+    source_type: glob
+    pattern: /data/twcore/**/package.tgz
+    label: TWCore IG
+    version: "1.0.0"
+
+  guideline_seed:
+    enabled: true
+    required: true
+    source_type: internal
+    label: Clinical guideline seed
+
+  snomed_ct:
+    enabled: true
+    required: false
+    source_type: glob
+    pattern: /secure/snomed/*.zip
+    label: SNOMED CT
+    version: "20250601"
+
+  rxnorm:
+    enabled: true
+    required: false
+    source_type: glob
+    pattern: /secure/rxnorm/*.zip
+    label: RxNorm
+    version: "2024-06-03"

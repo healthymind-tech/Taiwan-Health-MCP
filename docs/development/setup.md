@@ -31,6 +31,7 @@ pip install -r requirements-docs.txt  # 若需撰寫文件
 ### 複製環境變數範本
 ```bash
 cp .env.example .env
+cp config/datasets.example.yaml config/datasets.yaml
 ```
 
 ### 設定傳輸模式
@@ -65,9 +66,22 @@ MCP_PORT=8000
 | `MCP_HOST` | `0.0.0.0` | 監聽主機 |
 | `MCP_PORT` | `8000` | 監聽埠號 |
 | `MCP_PATH` | `/mcp` | HTTP 端點路徑 |
+| `DATASETS_CONFIG` | `/app/config/datasets.yaml` | data-loader 的 dataset 設定檔路徑 |
 
 ## 6. 準備資料
-從您的資料來源取得 `icd10cm_pcs_xxxx.xlsx` 並放入 `data/` 資料夾。
+編輯 `config/datasets.yaml`，指定各資料集的實際檔案位置，例如 ICD、LOINC、
+TWCore、SNOMED CT、RxNorm。若未設定 `DATASETS_CONFIG`，loader 會回退到舊的
+`FHIR_CODE_DIR` 目錄規則。
+
+範例：
+
+```yaml
+datasets:
+  icd10cm:
+    path: /data/icd/icd10cm_2025.zip
+  snomed_ct:
+    pattern: /secure/snomed/*.zip
+```
 
 ## 7. 啟動開發伺服器
 ```bash

@@ -1,12 +1,20 @@
 # MCP 工具概覽
 
-Taiwan Health MCP Server 提供 **46 個 MCP 工具**，分為 12 個群組。
+Taiwan Health MCP Server 提供 **56 個 MCP 工具**，其中包含 1 個 `health_check` 基礎工具，以及 12 個主要領域群組共 55 個工具。
+
+---
+
+## 基礎工具
+
+| 工具 | 說明 |
+|------|------|
+| `health_check` | 檢查資料庫、快取與各服務初始化狀態 |
 
 ---
 
 ## 工具分類索引
 
-### 群組 1 — ICD-10 診斷與手術碼（4 個工具）
+### 群組 1 — ICD-10 診斷與手術碼（5 個工具）
 
 | 工具 | 說明 |
 |------|------|
@@ -14,18 +22,21 @@ Taiwan Health MCP Server 提供 **46 個 MCP 工具**，分為 12 個群組。
 | `infer_complications` | 依據 ICD 階層推論潛在併發症 |
 | `get_nearby_codes` | 取得目標碼的前後相鄰碼 |
 | `check_medical_conflict` | 診斷碼與手術碼衝突分析 |
+| `browse_icd_category` | 依 ICD 類別瀏覽診斷碼 |
 
 [詳細說明](icd-tools.md)
 
 ---
 
-### 群組 2 — 台灣 FDA 藥品（3 個工具）
+### 群組 2 — 台灣 FDA 藥品（5 個工具）
 
 | 工具 | 說明 |
 |------|------|
 | `search_drug_info` | 以中英文名稱或適應症搜尋 FDA 核准藥品 |
 | `get_drug_details` | 依許可證字號取得完整藥品資訊 |
 | `identify_unknown_pill` | 依外觀特徵（形狀、顏色、刻痕）識別藥錠 |
+| `search_drug_by_atc` | 依 ATC 代碼或藥理分類搜尋藥品 |
+| `search_drug_by_ingredient` | 依有效成分搜尋藥品 |
 
 [詳細說明](drug-tools.md)
 
@@ -42,13 +53,15 @@ Taiwan Health MCP Server 提供 **46 個 MCP 工具**，分為 12 個群組。
 
 ---
 
-### 群組 4 — 食品營養（4 個工具）
+### 群組 4 — 食品營養（6 個工具）
 
 | 工具 | 說明 |
 |------|------|
 | `search_food_nutrition` | 搜尋食品營養成分 |
 | `get_detailed_nutrition` | 取得特定食品完整營養分析 |
 | `search_food_ingredient` | 搜尋食品原料/添加物 |
+| `get_ingredients_by_category` | 依分類查詢食品原料 |
+| `search_foods_by_nutrient` | 依特定營養素排名食品 |
 | `analyze_meal_nutrition` | 分析多種食品組合的整體營養 |
 
 [詳細說明](nutrition-tools.md)
@@ -88,7 +101,7 @@ Taiwan Health MCP Server 提供 **46 個 MCP 工具**，分為 12 個群組。
 
 ---
 
-### 群組 8 — 檢驗 / LOINC（5 個工具）
+### 群組 8 — 檢驗 / LOINC（8 個工具）
 
 | 工具 | 說明 |
 |------|------|
@@ -96,13 +109,16 @@ Taiwan Health MCP Server 提供 **46 個 MCP 工具**，分為 12 個群組。
 | `list_lab_categories` | 列出所有檢驗分類 |
 | `get_reference_range` | 依 LOINC 碼、年齡、性別取得參考值 |
 | `interpret_lab_result` | 判讀單項檢驗結果 |
+| `search_loinc_by_specimen` | 依檢體類型搜尋 LOINC |
+| `find_related_loinc_tests` | 找出相同 analyte 的相關檢驗 |
+| `get_loinc_detail` | 取得 LOINC 完整概念細節 |
 | `batch_interpret_lab_results` | 批次判讀多項檢驗 |
 
 [詳細說明](lab-tools.md)
 
 ---
 
-### 群組 9 — 臨床診療指引（5 個工具）
+### 群組 9 — 臨床診療指引（8 個工具）
 
 | 工具 | 說明 |
 |------|------|
@@ -111,6 +127,8 @@ Taiwan Health MCP Server 提供 **46 個 MCP 工具**，分為 12 個群組。
 | `get_medication_recommendations` | 取得用藥建議 |
 | `get_test_recommendations` | 取得建議檢查項目 |
 | `get_treatment_goals` | 取得治療目標 |
+| `check_medication_contraindications` | 檢查特定疾病下的用藥禁忌 |
+| `link_guideline_to_drugs` | 將指引建議連到台灣 FDA 藥品 |
 | `suggest_clinical_pathway` | 依指引規劃臨床路徑 |
 
 [詳細說明](guideline-tools.md)
@@ -127,7 +145,7 @@ Taiwan Health MCP Server 提供 **46 個 MCP 工具**，分為 12 個群組。
 
 ---
 
-### 群組 11 — SNOMED CT（6 個工具）
+### 群組 11 — SNOMED CT（7 個工具）
 
 > 需先執行 `docker compose --profile loader run --rm data-loader --snomed`
 
@@ -137,6 +155,7 @@ Taiwan Health MCP Server 提供 **46 個 MCP 工具**，分為 12 個群組。
 | `get_snomed_concept` | 取得概念完整資訊（FSN、同義詞、父概念、ICD-10 對應） |
 | `get_snomed_children` | 取得直接子概念（IS-A 關係） |
 | `get_snomed_ancestors` | 取得所有祖先概念 |
+| `get_snomed_relationships` | 取得非 IS-A 的屬性與關聯 |
 | `map_icd_to_snomed` | ICD-10 碼 → SNOMED CT 概念 |
 | `map_snomed_to_icd` | SNOMED CT 概念 → ICD-10 碼 |
 

@@ -8,7 +8,7 @@
 
 | 檔案 | 服務 | MCP 工具數 |
 |------|------|-----------|
-| `server.py` | 入口點（FastMCP + lifespan） | 46 |
+| `server.py` | 入口點（FastMCP + lifespan） | 56 |
 | `icd_service.py` | ICD-10-CM/PCS 診斷與手術碼 | 4 |
 | `drug_service.py` | 台灣 FDA 藥品 | 3 |
 | `health_food_service.py` | 台灣 FDA 健康食品 | 2+1 |

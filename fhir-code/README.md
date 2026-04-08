@@ -2,7 +2,7 @@
 
 本目錄存放 Taiwan Health MCP Server 所需的原始術語資料檔案。
 **所有檔案為唯讀**，由 data-loader 讀取後寫入 PostgreSQL。
-部分資料受授權限制，只能由使用者自行向官方申請下載；不可提交至 git，也不可提供 Google Drive 或其他鏡像連結。
+部分資料受授權限制，只能由使用者自行向官方申請下載。
 
 ---
 

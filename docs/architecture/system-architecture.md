@@ -14,7 +14,7 @@ graph TB
     end
 
     subgraph "MCP Server (port 8000)"
-        B[FastMCP / uvicorn<br/>46 個工具]
+        B[FastMCP / uvicorn<br/>56 個工具]
         AUD[audit.py<br/>@audited 裝飾器]
         CAC[cache.py<br/>@cached 裝飾器]
         MET[metrics.py<br/>Prometheus]
