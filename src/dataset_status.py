@@ -12,8 +12,11 @@ from datetime import datetime, timedelta
 from typing import Any, Callable
 
 import asyncpg
+from mcp.types import ToolAnnotations
 
 from utils import log_info, log_warning
+
+_READ_ONLY = ToolAnnotations(readOnlyHint=True)
 
 CACHE_TTL = timedelta(minutes=5)
 
@@ -83,7 +86,7 @@ class DatasetStatusManager:
             if is_available and not was_enabled:
                 for fn, name in tools:
                     try:
-                        mcp.add_tool(fn, name=name)
+                        mcp.add_tool(fn, name=name, annotations=_READ_ONLY)
                     except Exception as exc:
                         log_warning("add_tool failed", tool=name, error=str(exc))
                 self._enabled.add(key)

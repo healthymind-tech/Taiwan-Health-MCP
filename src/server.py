@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from typing import Callable
 
 from mcp.server.fastmcp import FastMCP
+from mcp.types import ToolAnnotations
 
 import audit
 import cache as cache_module
@@ -301,9 +302,19 @@ def build_http_app():
 # ============================================================
 
 
-@mcp.tool()
+_READ_ONLY = ToolAnnotations(readOnlyHint=True)
+
+
+@mcp.tool(annotations=_READ_ONLY)
 async def health_check() -> str:
-    """Returns server health status and which services are available."""
+    """
+    Returns server health status and dataset availability for all services.
+
+    Reports database and cache connectivity, plus which of the 11 service
+    datasets are loaded and ready (ICD, Drug, Health Food, Food Nutrition,
+    FHIR Condition, FHIR Medication, Lab/LOINC, Clinical Guideline, TWCore,
+    SNOMED CT, RxNorm). Always available regardless of dataset load status.
+    """
     pool = database.get_pool()
     db_ok = False
     try:
@@ -352,11 +363,17 @@ async def health_check() -> str:
 @audited("search_medical_codes")
 async def search_medical_codes(keyword: str, type: str = "all") -> str:
     """
-    Search for ICD-10-CM (Diagnosis) or ICD-10-PCS (Procedure) codes.
+    Search ICD-10-CM 2025 diagnosis codes and ICD-10-PCS 2025 procedure codes.
+
+    Searches by keyword (English or Chinese), code prefix, or partial match.
+    Returns a list of matching codes with their descriptions. Data source:
+    ICD-10-CM 2025 (NLM) and ICD-10-PCS 2025 (CMS), Taiwan region.
 
     Args:
-        keyword: Search term (e.g., 'Diabetes', 'E11', '子宮內膜異位').
-        type: Filter by 'diagnosis', 'procedure', or 'all'. Default is 'all'.
+        keyword: Search term — English name, Chinese name, or code prefix
+                 (e.g., 'Diabetes', 'E11', '子宮內膜異位', '0DTJ').
+        type: 'diagnosis' (ICD-10-CM only) | 'procedure' (ICD-10-PCS only)
+              | 'all' (both, default).
     """
     if icd_service is None:
         return _svc_unavailable("ICD Service")
@@ -366,10 +383,16 @@ async def search_medical_codes(keyword: str, type: str = "all") -> str:
 @audited("infer_complications")
 async def infer_complications(code: str) -> str:
     """
-    Infers potential complications or specific sub-conditions based on ICD hierarchy.
+    List specific sub-codes and child diagnoses under a given ICD-10-CM category.
+
+    Traverses the ICD-10-CM hierarchy to return all more-specific codes that
+    fall under the given category code. Useful for understanding the full scope
+    of a diagnosis or finding the most specific code for billing/documentation.
+    Note: this is a hierarchical lookup, not AI-based clinical inference.
 
     Args:
-        code: The base diagnosis code (e.g., 'E11', 'N80').
+        code: ICD-10-CM category or code prefix (e.g., 'E11' for type 2 diabetes,
+              'N80' for endometriosis). 3–7 characters.
     """
     if icd_service is None:
         return _svc_unavailable("ICD Service")
@@ -379,10 +402,14 @@ async def infer_complications(code: str) -> str:
 @audited("get_nearby_codes")
 async def get_nearby_codes(code: str) -> str:
     """
-    Retrieves codes immediately preceding and following the target code.
+    Retrieve ICD-10-CM codes adjacent to a given code in the classification order.
+
+    Returns the codes immediately before and after the target code within the
+    ICD-10-CM tabular order. Useful for exploring neighbouring diagnoses and
+    understanding classification context (e.g., similar conditions coded nearby).
 
     Args:
-        code: The target diagnosis code.
+        code: ICD-10-CM diagnosis code (e.g., 'E11.9', 'I10').
     """
     if icd_service is None:
         return _svc_unavailable("ICD Service")
@@ -392,12 +419,18 @@ async def get_nearby_codes(code: str) -> str:
 @audited("check_medical_conflict")
 async def check_medical_conflict(diagnosis_code: str, procedure_code: str) -> str:
     """
-    Retrieves and compares a diagnosis code (ICD-10-CM) and a procedure code (ICD-10-PCS)
-    to provide structured data for medical conflict analysis.
+    Retrieve structured data for a diagnosis-procedure pair to support conflict analysis.
+
+    Returns the full description and metadata for both an ICD-10-CM diagnosis code
+    and an ICD-10-PCS procedure code side-by-side. The returned data (body site,
+    procedure type, diagnosis category) enables the calling model to reason about
+    whether the procedure is clinically appropriate for the diagnosis.
+    This tool does not perform automatic conflict detection — it provides the raw
+    data needed for the model to make that determination.
 
     Args:
-        diagnosis_code: ICD-10-CM diagnosis code (e.g., 'K35.80').
-        procedure_code: ICD-10-PCS procedure code (e.g., '0DTJ0ZZ').
+        diagnosis_code: ICD-10-CM diagnosis code (e.g., 'K35.80' for acute appendicitis).
+        procedure_code: ICD-10-PCS procedure code (e.g., '0DTJ0ZZ' for appendectomy).
     """
     if icd_service is None:
         return _svc_unavailable("ICD Service")
@@ -412,12 +445,17 @@ async def check_medical_conflict(diagnosis_code: str, procedure_code: str) -> st
 @audited("browse_icd_category")
 async def browse_icd_category(category: str | None = None, limit: int = 50) -> str:
     """
-    Browse ICD-10-CM diagnosis codes by category.
-    Call with no arguments to list all categories; provide a category code to list its codes.
+    Browse ICD-10-CM diagnosis codes by top-level chapter or 3-character category.
+
+    Call with no arguments to list all ICD-10-CM chapters and 3-character categories.
+    Provide a category code to list all specific codes within that category.
+    Useful for exploring the classification structure or generating a pick-list
+    of codes for a specific disease area.
 
     Args:
-        category: 3-character ICD category (e.g., 'E11', 'I10'). Omit to list all categories.
-        limit: Max codes to return per category (default 50, max 200).
+        category: 3-character ICD-10-CM category code (e.g., 'E11', 'I10', 'N80').
+                  Omit to list all top-level categories.
+        limit: Maximum number of codes to return (default 50, max 200).
     """
     if icd_service is None:
         return _svc_unavailable("ICD Service")
@@ -432,10 +470,16 @@ async def browse_icd_category(category: str | None = None, limit: int = 50) -> s
 @audited("search_drug_info")
 async def search_drug_info(keyword: str) -> str:
     """
-    Search for Taiwan FDA approved drugs by name (Chinese/English) or indication.
+    Search Taiwan FDA approved drugs (66,000+ licenses) by name or indication.
+
+    Searches across Chinese trade name, English trade name, generic ingredient name,
+    and indication fields. Data source: Taiwan FDA open data, updated weekly.
+    Returns license ID, trade name, manufacturer, and dosage form for each match.
+    Use get_drug_details to retrieve full information for a specific result.
 
     Args:
-        keyword: Drug name or symptom (e.g., 'Panadol', '普拿疼', '頭痛').
+        keyword: Drug trade name, generic name, or indication in Chinese or English
+                 (e.g., 'Panadol', '普拿疼', 'aspirin', '阿斯匹林', 'hypertension').
     """
     if drug_service is None:
         return _svc_unavailable("Drug Service")
@@ -445,11 +489,16 @@ async def search_drug_info(keyword: str) -> str:
 @audited("get_drug_details")
 async def get_drug_details(license_id: str) -> str:
     """
-    Get comprehensive details for a specific drug license ID including ingredients,
-    usage, appearance, and package insert links.
+    Get full details for a Taiwan FDA drug license: ingredients, dosage, usage, appearance.
+
+    Returns all available fields for the license: trade name (Chinese/English),
+    manufacturer, active ingredients with strengths, dosage form, administration
+    route, indication, contraindications, storage conditions, appearance description
+    (color/shape/markings), and NHI reimbursement status.
 
     Args:
-        license_id: The license ID from search results (e.g., '衛部藥製字第058498號').
+        license_id: Taiwan FDA drug license ID from search_drug_info results
+                    (e.g., '衛部藥製字第058498號').
     """
     if drug_service is None:
         return _svc_unavailable("Drug Service")
@@ -459,10 +508,18 @@ async def get_drug_details(license_id: str) -> str:
 @audited("identify_unknown_pill")
 async def identify_unknown_pill(features: str) -> str:
     """
-    Identify a pill based on visual features (shape, color, markings).
+    Identify a Taiwan FDA drug by pill appearance (color, shape, imprint markings).
+
+    Searches the appearance fields in the Taiwan FDA drug database. For best results
+    use Chinese color/shape terms as they appear in the database. Returns matching
+    drugs with license ID, trade name, and appearance description.
+
+    ⚠️ For reference only — always confirm pill identity with a licensed pharmacist.
 
     Args:
-        features: Keywords describing the pill (e.g., 'white circle YP', 'oval pink').
+        features: Space-separated appearance keywords in Chinese or English
+                  (e.g., '白 圓形', '橙色 橢圓', 'white round YP',
+                   '粉紅 菱形 PFIZER').
     """
     if drug_service is None:
         return _svc_unavailable("Drug Service")
@@ -472,11 +529,16 @@ async def identify_unknown_pill(features: str) -> str:
 @audited("search_drug_by_atc")
 async def search_drug_by_atc(query: str) -> str:
     """
-    Search Taiwan FDA approved drugs by ATC (Anatomical Therapeutic Chemical) code or class name.
+    Search Taiwan FDA approved drugs by WHO ATC code or therapeutic class name.
+
+    The ATC (Anatomical Therapeutic Chemical) classification organises drugs by
+    therapeutic use and chemical properties. Supports prefix search on ATC codes
+    (up to 7 levels) and free-text search on ATC class names.
 
     Args:
-        query: ATC code prefix (e.g., 'A10', 'C09') or therapeutic class name
-               (e.g., 'paracetamol', 'metformin', 'antihypertensives').
+        query: ATC code prefix (e.g., 'A10' for diabetes drugs, 'C09' for ACE
+               inhibitors/ARBs, 'N02BE' for paracetamol) or class name in English
+               (e.g., 'antihypertensives', 'metformin', 'statins').
     """
     if drug_service is None:
         return _svc_unavailable("Drug Service")
@@ -486,11 +548,16 @@ async def search_drug_by_atc(query: str) -> str:
 @audited("search_drug_by_ingredient")
 async def search_drug_by_ingredient(ingredient_name: str) -> str:
     """
-    Find Taiwan FDA approved drugs containing a specific active ingredient.
+    Find Taiwan FDA approved drugs that contain a specific active ingredient.
+
+    Searches the ingredient field of all licensed drug products. Useful for
+    finding all brand-name products that contain a given generic ingredient,
+    or for checking which drugs in the Taiwan market share the same active component.
 
     Args:
-        ingredient_name: Ingredient name in Chinese or English
-                         (e.g., 'metformin', '二甲雙胍', 'aspirin', '阿斯匹林').
+        ingredient_name: Active ingredient in Chinese or English, generic or INN name
+                         (e.g., 'metformin', '二甲雙胍', 'aspirin', '阿斯匹林',
+                          'atorvastatin', '阿托伐他汀').
     """
     if drug_service is None:
         return _svc_unavailable("Drug Service")
@@ -505,10 +572,17 @@ async def search_drug_by_ingredient(ingredient_name: str) -> str:
 @audited("search_health_food")
 async def search_health_food(keyword: str) -> str:
     """
-    Search for Taiwan FDA approved health foods by name or health benefit.
+    Search Taiwan FDA certified health foods (健康食品) by name or approved health benefit.
+
+    Health foods (健康食品) in Taiwan are products that have received an official
+    health benefit certification from the Taiwan FDA — they are distinct from
+    ordinary food supplements. Returns permit number, product name, manufacturer,
+    and certified health claims. Use get_health_food_details for full information.
+    Data source: Taiwan FDA open data, updated weekly.
 
     Args:
-        keyword: Product name or health benefit (e.g., '靈芝', '調節血脂', '護肝').
+        keyword: Product name, brand, or certified health benefit claim in Chinese
+                 (e.g., '靈芝', '調節血脂', '護肝', '益生菌', '葡萄糖胺').
     """
     if health_food_service is None:
         return _svc_unavailable("Health Food Service")
@@ -518,10 +592,15 @@ async def search_health_food(keyword: str) -> str:
 @audited("get_health_food_details")
 async def get_health_food_details(permit_no: str) -> str:
     """
-    Get comprehensive details for a specific health food by permit number.
+    Get full details for a Taiwan FDA certified health food by permit number.
+
+    Returns all available fields: product name, manufacturer, certified health
+    benefit claims, main ingredients, recommended dosage, cautions, and permit
+    validity status.
 
     Args:
-        permit_no: The permit number from search results (e.g., '衛部健食字第A00123號').
+        permit_no: Taiwan FDA health food permit number from search_health_food
+                   results (e.g., '衛部健食字第A00123號').
     """
     if health_food_service is None:
         return _svc_unavailable("Health Food Service")
@@ -536,11 +615,18 @@ async def get_health_food_details(permit_no: str) -> str:
 @audited("search_food_nutrition")
 async def search_food_nutrition(food_name: str, nutrient: str | None = None) -> str:
     """
-    Search for nutritional information of foods from Taiwan's food composition database.
+    Search Taiwan FDA food composition database for nutritional content per 100 g.
+
+    Returns energy (kcal), macronutrients (protein, fat, carbohydrate, dietary fibre),
+    and key micronutrients for matching foods. Nutrient names follow Taiwan FDA
+    convention (e.g., '粗蛋白' for protein, '粗脂肪' for fat). Data source:
+    Taiwan FDA Food Composition Database, updated weekly.
 
     Args:
-        food_name: Name of the food (e.g., '白米', '雞蛋', 'chicken breast').
-        nutrient: Optional specific nutrient filter (e.g., '粗蛋白', '鈣').
+        food_name: Food name in Chinese or English (e.g., '白米', '雞蛋', '豆腐',
+                   'chicken breast', 'salmon').
+        nutrient: Optional nutrient name to filter and display (e.g., '粗蛋白', '鈣',
+                  '維生素C', '膳食纖維'). Returns all nutrients if omitted.
     """
     if food_nutrition_service is None:
         return _svc_unavailable("Food Nutrition Service")
@@ -550,10 +636,17 @@ async def search_food_nutrition(food_name: str, nutrient: str | None = None) -> 
 @audited("get_detailed_nutrition")
 async def get_detailed_nutrition(food_name: str) -> str:
     """
-    Get comprehensive nutritional breakdown for a specific food item.
+    Get the complete nutritional profile for a food (per 100 g) from Taiwan's database.
+
+    Returns the full nutrient panel: energy, water content, protein, fat,
+    carbohydrates, dietary fibre, ash, vitamins (A, B1, B2, B6, B12, C, D, E, K,
+    niacin, folate), minerals (Ca, P, Fe, Na, K, Mg, Zn, Mn, Cu, Se, I),
+    fatty acid profile (saturated, monounsaturated, polyunsaturated, EPA, DHA),
+    cholesterol, and trans fats where available.
 
     Args:
-        food_name: The specific food name (e.g., '糙米', '雞胸肉').
+        food_name: Exact or near-exact food name in Chinese (e.g., '糙米', '雞胸肉',
+                   '全脂牛奶', '大西洋鮭魚').
     """
     if food_nutrition_service is None:
         return _svc_unavailable("Food Nutrition Service")
@@ -563,10 +656,15 @@ async def get_detailed_nutrition(food_name: str) -> str:
 @audited("search_food_ingredient")
 async def search_food_ingredient(keyword: str) -> str:
     """
-    Search for food ingredients/materials in Taiwan's regulatory database.
+    Search Taiwan FDA food ingredient classification database by ingredient name.
+
+    Returns ingredient category, permitted uses, and regulatory status for matching
+    food ingredients/raw materials. Data covers additives, natural ingredients,
+    flavourings, and processing aids as classified by Taiwan FDA.
 
     Args:
-        keyword: Ingredient name in Chinese or English (e.g., '薑黃', 'turmeric').
+        keyword: Ingredient name in Chinese or English (e.g., '薑黃', 'turmeric',
+                 '卡拉膠', 'carrageenan', '山梨酸', 'sorbic acid').
     """
     if food_nutrition_service is None:
         return _svc_unavailable("Food Nutrition Service")
@@ -576,10 +674,14 @@ async def search_food_ingredient(keyword: str) -> str:
 @audited("get_ingredients_by_category")
 async def get_ingredients_by_category(category: str) -> str:
     """
-    Get all approved food ingredients in a specific category.
+    List all Taiwan FDA approved food ingredients within a specific category.
+
+    Returns a complete list of ingredients belonging to the given classification
+    category. Use search_food_ingredient first to discover category names.
 
     Args:
-        category: Category name (e.g., '香料植物', '食品添加物').
+        category: Exact category name as stored in the Taiwan FDA ingredient database
+                  (e.g., '香料植物及其製品', '食品添加物', '水產品', '穀類及其製品').
     """
     if food_nutrition_service is None:
         return _svc_unavailable("Food Nutrition Service")
@@ -605,10 +707,16 @@ async def search_foods_by_nutrient(nutrient: str, limit: int = 20) -> str:
 @audited("analyze_meal_nutrition")
 async def analyze_meal_nutrition(foods: list[str]) -> str:
     """
-    Analyze the combined nutritional composition of multiple foods.
+    Calculate the combined nutritional totals for a multi-food meal (per 100 g each).
+
+    Looks up each food in the Taiwan FDA composition database and sums all nutrients
+    across the listed foods. Returns per-food breakdown and aggregate totals for
+    energy, macronutrients, and key micronutrients.
+    Note: values assume 100 g of each food; adjust manually for actual serving sizes.
 
     Args:
-        foods: List of food names (e.g., ['白米', '雞胸肉', '青花菜']).
+        foods: List of food names in Chinese (e.g., ['白米飯', '雞胸肉', '青花菜',
+               '豆腐']). Each name should match a food in the database.
     """
     if food_nutrition_service is None:
         return _svc_unavailable("Food Nutrition Service")
@@ -623,13 +731,19 @@ async def analyze_meal_nutrition(foods: list[str]) -> str:
 @audited("analyze_health_support_for_condition")
 async def analyze_health_support_for_condition(diagnosis_keyword: str) -> str:
     """
-    Integrated analysis: given a diagnosis, recommend Taiwan FDA-approved health foods
-    and relevant dietary notes.
+    Map a diagnosis to relevant Taiwan FDA certified health foods and dietary notes.
 
-    ⚠️ Health foods are NOT medicine and cannot replace medical treatment.
+    Cross-references the diagnosis against a curated disease-to-health-food mapping,
+    then retrieves matching certified health food products. Also includes general
+    dietary considerations associated with the condition.
+
+    ⚠️ This mapping is developer-curated and NOT medically validated. Health foods
+    are NOT medicine and cannot replace prescription treatment. Not suitable for
+    direct patient-facing use without expert clinical review.
 
     Args:
-        diagnosis_keyword: Disease name or ICD-10 code (e.g., 'E11', '糖尿病', 'hypertension').
+        diagnosis_keyword: Disease name in Chinese/English or ICD-10 code
+                           (e.g., 'E11', 'E78', '糖尿病', '高血脂', 'hypertension').
     """
     if health_food_service is None:
         return _svc_unavailable("Health Food Service")
@@ -656,18 +770,27 @@ async def create_fhir_condition(
     additional_notes: str = None,
 ) -> str:
     """
-    Convert an ICD-10-CM code to a FHIR R4 Condition resource.
+    Build a FHIR R4 Condition resource from an ICD-10-CM code.
+
+    Looks up the ICD-10-CM code description and constructs a valid FHIR R4
+    Condition JSON resource. The resource includes the TWCore IG profile reference
+    and uses the Taiwan FHIR coding system. Does not persist to any FHIR server —
+    returns the resource JSON for downstream use.
 
     Args:
-        icd_code: ICD-10-CM code (e.g., 'E11.9').
-        patient_id: Patient identifier (e.g., 'patient-001').
-        clinical_status: active | inactive | resolved | remission
-        verification_status: confirmed | provisional | differential | refuted
-        category: encounter-diagnosis | problem-list-item
-        severity: mild | moderate | severe (optional)
-        onset_date: YYYY-MM-DD (optional)
-        recorded_date: YYYY-MM-DDTHH:MM:SS+08:00 (optional)
-        additional_notes: Free text note (optional)
+        icd_code: ICD-10-CM diagnosis code (e.g., 'E11.9' for type 2 diabetes
+                  without complications).
+        patient_id: Patient reference identifier (e.g., 'patient-001').
+        clinical_status: 'active' | 'inactive' | 'resolved' | 'remission'
+                         (default: 'active').
+        verification_status: 'confirmed' | 'provisional' | 'differential'
+                             | 'refuted' (default: 'confirmed').
+        category: 'encounter-diagnosis' | 'problem-list-item'
+                  (default: 'encounter-diagnosis').
+        severity: 'mild' | 'moderate' | 'severe' (optional).
+        onset_date: Date of onset in YYYY-MM-DD format (optional).
+        recorded_date: Recording timestamp in YYYY-MM-DDTHH:MM:SS+08:00 (optional).
+        additional_notes: Free-text clinical note to attach (optional).
     """
     if fhir_condition_service is None:
         return _svc_unavailable("FHIR Condition Service")
@@ -694,14 +817,23 @@ async def create_fhir_condition_from_diagnosis(
     severity: str | None = None,
 ) -> str:
     """
-    Search by disease keyword and auto-create a FHIR Condition resource.
+    Search by disease keyword and auto-create a FHIR R4 Condition resource.
+
+    Searches the ICD-10-CM database for the best-matching code, then builds
+    a FHIR R4 Condition resource using that code. Use create_fhir_condition
+    if you already have the exact ICD-10-CM code.
+    Does not persist to any FHIR server — returns the resource JSON.
 
     Args:
-        diagnosis_keyword: Disease name or keyword (e.g., '第二型糖尿病', 'Diabetes').
-        patient_id: Patient identifier.
-        clinical_status: active | inactive | resolved | remission
-        verification_status: confirmed | provisional | differential | refuted
-        severity: mild | moderate | severe (optional)
+        diagnosis_keyword: Disease name in Chinese or English
+                           (e.g., '第二型糖尿病', 'Diabetes mellitus type 2',
+                            '高血壓', 'hypertension').
+        patient_id: Patient reference identifier (e.g., 'patient-001').
+        clinical_status: 'active' | 'inactive' | 'resolved' | 'remission'
+                         (default: 'active').
+        verification_status: 'confirmed' | 'provisional' | 'differential'
+                             | 'refuted' (default: 'confirmed').
+        severity: 'mild' | 'moderate' | 'severe' (optional).
     """
     if fhir_condition_service is None:
         return _svc_unavailable("FHIR Condition Service")
@@ -718,10 +850,18 @@ async def create_fhir_condition_from_diagnosis(
 @audited("validate_fhir_condition")
 async def validate_fhir_condition(condition_json: str) -> str:
     """
-    Validate a FHIR R4 Condition resource against required field rules.
+    Validate a FHIR R4 Condition resource for required fields and value-set compliance.
+
+    Checks for the presence and format of required fields (resourceType, subject,
+    code with ICD-10-CM coding, clinicalStatus, verificationStatus) and validates
+    status values against allowed value-sets. Returns a validation result with
+    a list of errors if any.
+
+    ⚠️ This is a basic structural validation only. For production use, validate
+    with the official HL7 FHIR Validator or Taiwan TWCore IG validator.
 
     Args:
-        condition_json: JSON string of the FHIR Condition resource.
+        condition_json: JSON string of the FHIR R4 Condition resource to validate.
     """
     if fhir_condition_service is None:
         return _svc_unavailable("FHIR Condition Service")
@@ -745,11 +885,18 @@ async def search_medication_fhir(
     keyword: str, resource_type: str = "Medication"
 ) -> str:
     """
-    Search drugs and auto-create a FHIR Medication or MedicationKnowledge resource.
+    Search Taiwan FDA drugs by name and return a FHIR R4 Medication resource.
+
+    Finds the best-matching drug in the Taiwan FDA database and builds a FHIR
+    Medication or MedicationKnowledge resource. Use create_fhir_medication if
+    you already have the license ID. Does not persist to any FHIR server.
 
     Args:
-        keyword: Drug name (e.g., 'Metformin', '二甲雙胍').
-        resource_type: 'Medication' or 'MedicationKnowledge'
+        keyword: Drug name in Chinese or English (e.g., 'Metformin', '二甲雙胍',
+                 '普拿疼', 'atorvastatin').
+        resource_type: 'Medication' (basic — code, form, ingredient) |
+                       'MedicationKnowledge' (extended — adds ATC class,
+                       dosage instructions, indications).
     """
     if fhir_medication_service is None:
         return _svc_unavailable("FHIR Medication Service")
@@ -765,10 +912,15 @@ async def search_medication_fhir(
 @audited("create_fhir_medication")
 async def create_fhir_medication(license_id: str) -> str:
     """
-    Create a FHIR R4 Medication resource from a Taiwan FDA license ID.
+    Build a FHIR R4 Medication resource from a Taiwan FDA drug license ID.
+
+    Retrieves the drug record and constructs a FHIR R4 Medication resource with
+    code (using Taiwan FDA license system), dosage form, and active ingredients.
+    Does not persist to any FHIR server — returns the resource JSON.
 
     Args:
-        license_id: Taiwan FDA drug license ID (e.g., '衛部藥製字第058498號').
+        license_id: Taiwan FDA drug license ID from search_drug_info results
+                    (e.g., '衛部藥製字第058498號').
     """
     if fhir_medication_service is None:
         return _svc_unavailable("FHIR Medication Service")
@@ -779,10 +931,15 @@ async def create_fhir_medication(license_id: str) -> str:
 @audited("create_fhir_medication_knowledge")
 async def create_fhir_medication_from_drug(license_id: str) -> str:
     """
-    Create a FHIR R4 MedicationKnowledge resource (includes ATC, dosage, indication).
+    Build a FHIR R4 MedicationKnowledge resource from a Taiwan FDA drug license ID.
+
+    Extends the basic Medication resource with knowledge-level detail: ATC
+    classification, available dosage forms, administration routes, indications,
+    contraindications, and storage conditions. Does not persist to any FHIR server.
 
     Args:
-        license_id: Taiwan FDA drug license ID.
+        license_id: Taiwan FDA drug license ID from search_drug_info results
+                    (e.g., '衛部藥製字第058498號').
     """
     if fhir_medication_service is None:
         return _svc_unavailable("FHIR Medication Service")
@@ -793,10 +950,18 @@ async def create_fhir_medication_from_drug(license_id: str) -> str:
 @audited("validate_fhir_medication")
 async def validate_fhir_medication(medication_json: str) -> str:
     """
-    Validate a FHIR Medication or MedicationKnowledge resource.
+    Validate a FHIR R4 Medication or MedicationKnowledge resource for required fields.
+
+    Checks for resourceType, code with valid coding system, and ingredient list.
+    Returns a validation result with a list of errors if any field is missing
+    or malformed.
+
+    ⚠️ This is a basic structural validation only. For production use, validate
+    with the official HL7 FHIR Validator or Taiwan TWCore IG validator.
 
     Args:
-        medication_json: JSON string of the FHIR resource.
+        medication_json: JSON string of the FHIR R4 Medication or
+                         MedicationKnowledge resource to validate.
     """
     if fhir_medication_service is None:
         return _svc_unavailable("FHIR Medication Service")
@@ -818,11 +983,19 @@ async def validate_fhir_medication(medication_json: str) -> str:
 @audited("search_loinc_code")
 async def search_loinc_code(keyword: str, category: str | None = None) -> str:
     """
-    Search LOINC codes (Taiwan lab tests mapped to international standard).
+    Search LOINC 2.80 codes (87,000+ codes) by test name or abbreviation.
+
+    Returns matching LOINC codes with long common name, component (analyte),
+    specimen type, and scale. Use get_loinc_detail for the full LOINC axes
+    breakdown of a specific code. Use list_lab_categories to see available
+    category filters.
 
     Args:
-        keyword: Test name or abbreviation (e.g., '血糖', 'HbA1c', 'WBC', 'Glucose').
-        category: Optional class filter (e.g., '血液常規', 'CHEM').
+        keyword: Test name, abbreviation, or analyte in Chinese or English
+                 (e.g., '血糖', 'HbA1c', 'WBC', 'Glucose', 'creatinine',
+                  'TSH', '甲狀腺刺激素').
+        category: Optional LOINC class filter (e.g., 'CHEM', 'HEM/BC',
+                  'SERO', 'UA'). Use list_lab_categories to discover values.
     """
     if lab_service is None:
         return _svc_unavailable("Lab Service")
@@ -831,7 +1004,13 @@ async def search_loinc_code(keyword: str, category: str | None = None) -> str:
 
 @audited("list_lab_categories")
 async def list_lab_categories() -> str:
-    """List all available lab test categories."""
+    """
+    List all LOINC class categories available in the database.
+
+    Returns category codes and names that can be used as the `category` filter
+    in search_loinc_code. Categories follow the LOINC CLASS axis
+    (e.g., CHEM, HEM/BC, SERO, UA, MICRO, COAG).
+    """
     if lab_service is None:
         return _svc_unavailable("Lab Service")
     return await lab_service.list_categories()
@@ -840,12 +1019,18 @@ async def list_lab_categories() -> str:
 @audited("get_reference_range")
 async def get_reference_range(loinc_code: str, age: int, gender: str = "all") -> str:
     """
-    Get lab reference range for a specific LOINC code, age, and gender.
+    Get the clinical reference range for a LOINC lab test, stratified by age and gender.
+
+    Returns lower bound, upper bound, unit, and the age-gender stratum that matched.
+    Reference ranges are drawn from the local database (populated from standard
+    clinical references). Not all LOINC codes have reference ranges — returns
+    an appropriate message when none is available.
 
     Args:
-        loinc_code: LOINC code (e.g., '1558-6' for fasting glucose).
-        age: Patient age in years.
-        gender: 'M' (male) | 'F' (female) | 'all' (default)
+        loinc_code: LOINC code (e.g., '1558-6' for fasting plasma glucose,
+                    '4548-4' for HbA1c).
+        age: Patient age in years (integer).
+        gender: 'M' (male) | 'F' (female) | 'all' (gender-neutral, default).
     """
     if lab_service is None:
         return _svc_unavailable("Lab Service")
@@ -857,13 +1042,22 @@ async def interpret_lab_result(
     loinc_code: str, value: float, age: int, gender: str = "all"
 ) -> str:
     """
-    Interpret a lab result by comparing to reference range (high/normal/low).
+    Interpret a single lab result as High / Normal / Low against its reference range.
+
+    Returns the interpretation flag, the applicable reference range (lower/upper bound,
+    unit), and the LOINC test name. Uses age- and gender-stratified reference ranges
+    where available. For batch interpretation of multiple results, use
+    batch_interpret_lab_results.
+
+    ⚠️ Reference values are for general guidance. Always interpret in clinical context
+    with a licensed healthcare professional.
 
     Args:
-        loinc_code: LOINC code.
-        value: Measured value.
-        age: Patient age.
-        gender: 'M' | 'F' | 'all'
+        loinc_code: LOINC code for the test (e.g., '1558-6' for fasting glucose,
+                    '718-7' for haemoglobin).
+        value: The measured numeric result value (in the test's standard unit).
+        age: Patient age in years (integer).
+        gender: 'M' (male) | 'F' (female) | 'all' (gender-neutral, default).
     """
     if lab_service is None:
         return _svc_unavailable("Lab Service")
@@ -873,11 +1067,15 @@ async def interpret_lab_result(
 @audited("search_loinc_by_specimen")
 async def search_loinc_by_specimen(specimen_type: str) -> str:
     """
-    Find LOINC lab tests by specimen/sample type.
+    Find LOINC lab tests by specimen or sample type.
+
+    Searches the LOINC System axis for tests collected from the specified specimen.
+    Specimen names in this database follow Chinese conventions used in Taiwan.
 
     Args:
-        specimen_type: Specimen type in Chinese or English
-                       (e.g., '血清/血漿', '全血', 'Urine', 'Ser/Plas', 'Bld').
+        specimen_type: Specimen type in Chinese (preferred) or LOINC system code
+                       (e.g., '血清/血漿', '全血', '尿液', '脊髓液',
+                        '糞便', 'Ser/Plas', 'BLD', 'Urine').
     """
     if lab_service is None:
         return _svc_unavailable("Lab Service")
@@ -903,11 +1101,17 @@ async def find_related_loinc_tests(component: str) -> str:
 @audited("get_loinc_detail")
 async def get_loinc_detail(loinc_num: str) -> str:
     """
-    Get full LOINC concept detail including all axes: component, property, time_aspect,
-    system, scale_type, method_type, specimen_type, and patient-friendly display name.
+    Get the complete LOINC concept record for a single LOINC code.
+
+    Returns all six LOINC axes (Component, Property, Time Aspect, System,
+    Scale Type, Method Type), specimen type, long common name, short name,
+    display name, LOINC class, and status (active/deprecated). Useful when
+    you need to understand exactly what a LOINC code measures and how.
 
     Args:
-        loinc_num: LOINC code (e.g., '2345-7' for serum glucose).
+        loinc_num: LOINC code in 'NNNNN-N' format
+                   (e.g., '2345-7' for glucose in serum/plasma,
+                    '4548-4' for HbA1c, '718-7' for haemoglobin in blood).
     """
     if lab_service is None:
         return _svc_unavailable("Lab Service")
@@ -919,12 +1123,23 @@ async def batch_interpret_lab_results(
     results_json: str, age: int, gender: str = "all"
 ) -> str:
     """
-    Batch-interpret multiple lab results at once.
+    Interpret multiple lab results at once against their reference ranges.
+
+    Processes a list of LOINC code + value pairs and returns High/Normal/Low
+    interpretation for each, along with the applicable reference range. More
+    efficient than calling interpret_lab_result repeatedly.
+
+    ⚠️ Reference values are for general guidance. Always interpret in clinical
+    context with a licensed healthcare professional.
 
     Args:
-        results_json: JSON array: [{"loinc_code": "1558-6", "value": 126}, ...]
-        age: Patient age.
-        gender: 'M' | 'F' | 'all'
+        results_json: JSON array of result objects, each with 'loinc_code' (str)
+                      and 'value' (number). Example:
+                      [{"loinc_code": "1558-6", "value": 126},
+                       {"loinc_code": "4548-4", "value": 7.2},
+                       {"loinc_code": "718-7",  "value": 13.5}]
+        age: Patient age in years (integer).
+        gender: 'M' (male) | 'F' (female) | 'all' (gender-neutral, default).
     """
     if lab_service is None:
         return _svc_unavailable("Lab Service")
@@ -943,10 +1158,17 @@ async def batch_interpret_lab_results(
 @audited("search_clinical_guideline")
 async def search_clinical_guideline(keyword: str) -> str:
     """
-    Search Taiwan Medical Society clinical practice guidelines.
+    Search Taiwan clinical practice guidelines by disease name or ICD-10 code.
+
+    Returns matching guidelines with their associated ICD-10 code, guideline title,
+    and issuing medical society. Data is sourced from Taiwan Medical Society
+    guidelines (seed data — manually curated, covers common chronic conditions
+    such as diabetes, hypertension, dyslipidaemia, CKD).
+    Use get_complete_guideline to retrieve the full content for a specific guideline.
 
     Args:
-        keyword: Disease name or ICD-10 code (e.g., '糖尿病', 'E11').
+        keyword: Disease name in Chinese or English, or ICD-10 code
+                 (e.g., '糖尿病', 'E11', '高血壓', 'I10', 'dyslipidaemia', 'E78').
     """
     if guideline_service is None:
         return _svc_unavailable("Clinical Guideline Service")
@@ -956,11 +1178,16 @@ async def search_clinical_guideline(keyword: str) -> str:
 @audited("get_complete_guideline")
 async def get_complete_guideline(icd_code: str) -> str:
     """
-    Get the full clinical guideline for a disease: diagnosis, medications,
-    lab tests, and treatment goals.
+    Get the complete Taiwan clinical guideline for a disease by ICD-10 code.
+
+    Returns the full guideline in one call: diagnostic criteria, first-line
+    and second-line medication recommendations (with drug classes and notes),
+    recommended lab tests and monitoring schedule, and treatment targets.
+    Use search_clinical_guideline to find the correct ICD-10 code first.
 
     Args:
-        icd_code: ICD-10 code (e.g., 'E11').
+        icd_code: ICD-10 code for the disease (e.g., 'E11' for type 2 diabetes,
+                  'I10' for hypertension, 'E78' for dyslipidaemia, 'N18' for CKD).
     """
     if guideline_service is None:
         return _svc_unavailable("Clinical Guideline Service")
@@ -970,10 +1197,17 @@ async def get_complete_guideline(icd_code: str) -> str:
 @audited("get_medication_recommendations")
 async def get_medication_recommendations(icd_code: str) -> str:
     """
-    Get medication recommendations for a specific diagnosis.
+    Get Taiwan guideline medication recommendations for a specific diagnosis.
+
+    Returns drug classes, individual drugs, line of therapy (first-line,
+    second-line, add-on), dosing notes, and special population considerations
+    as documented in the Taiwan clinical guideline for that condition.
+
+    ⚠️ Always verify with a licensed clinician before making prescribing decisions.
 
     Args:
-        icd_code: ICD-10 code (e.g., 'I10' for hypertension).
+        icd_code: ICD-10 code (e.g., 'I10' for hypertension, 'E11' for type 2
+                  diabetes, 'E78' for dyslipidaemia).
     """
     if guideline_service is None:
         return _svc_unavailable("Clinical Guideline Service")
@@ -983,10 +1217,15 @@ async def get_medication_recommendations(icd_code: str) -> str:
 @audited("get_test_recommendations")
 async def get_test_recommendations(icd_code: str) -> str:
     """
-    Get recommended lab tests and examinations for a specific diagnosis.
+    Get recommended lab tests and examinations for a diagnosis per Taiwan guidelines.
+
+    Returns a list of recommended investigations including lab tests (with LOINC
+    codes where available), imaging studies, and other examinations, along with
+    their recommended frequency/timing as documented in the Taiwan guideline.
 
     Args:
-        icd_code: ICD-10 code.
+        icd_code: ICD-10 code (e.g., 'E11' for type 2 diabetes, 'N18' for CKD,
+                  'I10' for hypertension).
     """
     if guideline_service is None:
         return _svc_unavailable("Clinical Guideline Service")
@@ -996,10 +1235,17 @@ async def get_test_recommendations(icd_code: str) -> str:
 @audited("get_treatment_goals")
 async def get_treatment_goals(icd_code: str) -> str:
     """
-    Get treatment targets and goals for a specific diagnosis.
+    Get quantitative treatment targets for a diagnosis per Taiwan clinical guidelines.
+
+    Returns specific numeric targets (e.g., HbA1c < 7%, BP < 130/80 mmHg,
+    LDL-C < 70 mg/dL) and qualitative goals documented in the Taiwan guideline
+    for the given condition. Targets may differ by subgroup or comorbidity.
+
+    ⚠️ Individual treatment targets should be determined by a licensed clinician.
 
     Args:
-        icd_code: ICD-10 code.
+        icd_code: ICD-10 code (e.g., 'E11' for type 2 diabetes, 'I10' for
+                  hypertension, 'E78' for dyslipidaemia, 'N18' for CKD).
     """
     if guideline_service is None:
         return _svc_unavailable("Clinical Guideline Service")
@@ -1011,15 +1257,24 @@ async def check_medication_contraindications(
     icd_code: str, medication_class: str
 ) -> str:
     """
-    Check guideline contraindications for a specific medication class in the context
-    of a diagnosis. Returns matching recommendations and all contraindications for that disease.
+    Check Taiwan guideline contraindications for a medication class given a diagnosis.
 
-    ⚠️ Always verify with a licensed clinician before making prescribing decisions.
+    Searches the guideline for the given diagnosis and returns:
+    (1) any recommendation entries that mention the queried medication class
+    (including both recommended and contraindicated uses), and
+    (2) all absolute contraindication entries for the disease regardless of
+    medication class. Useful for verifying whether a specific drug class is
+    appropriate or contraindicated for a patient with a given diagnosis.
+
+    ⚠️ Always verify with a licensed clinician before making any prescribing
+    or deprescribing decisions.
 
     Args:
-        icd_code: Diagnosis ICD-10 code (e.g., 'E11' for type 2 diabetes).
-        medication_class: Medication class or drug name to check
-                          (e.g., 'SGLT2抑制劑', 'Metformin', 'ACE抑制劑').
+        icd_code: Diagnosis ICD-10 code (e.g., 'E11' for type 2 diabetes,
+                  'N18' for CKD, 'I50' for heart failure).
+        medication_class: Medication class or drug name to query in Chinese or
+                          English (e.g., 'SGLT2抑制劑', 'Metformin', 'ACE抑制劑',
+                          'NSAIDs', '磺醯尿素類').
     """
     if guideline_service is None:
         return _svc_unavailable("Clinical Guideline Service")
@@ -1031,12 +1286,16 @@ async def check_medication_contraindications(
 @audited("link_guideline_to_drugs")
 async def link_guideline_to_drugs(icd_code: str) -> str:
     """
-    Cross-reference clinical guideline medication recommendations with Taiwan FDA
-    approved drug licenses. Shows which guideline-recommended drugs have licensed
-    products available in Taiwan.
+    Cross-reference Taiwan guideline drug recommendations with FDA licensed products.
+
+    For each drug class or drug name mentioned in the guideline for the given
+    diagnosis, searches the Taiwan FDA drug database to find licensed products
+    available in Taiwan. Returns the guideline recommendation alongside matching
+    Taiwan FDA license records.
 
     Args:
-        icd_code: ICD-10 code (e.g., 'E11', 'I10', 'E78').
+        icd_code: ICD-10 code (e.g., 'E11' for type 2 diabetes, 'I10' for
+                  hypertension, 'E78' for dyslipidaemia).
     """
     if guideline_service is None:
         return _svc_unavailable("Clinical Guideline Service")
@@ -1048,11 +1307,26 @@ async def suggest_clinical_pathway(
     icd_code: str, patient_context_json: str | None = None
 ) -> str:
     """
-    Suggest a step-by-step clinical pathway based on Taiwan guidelines.
+    Suggest a step-by-step clinical management pathway based on Taiwan guidelines.
+
+    Generates an ordered clinical pathway (initial assessment → diagnosis →
+    first-line treatment → monitoring → escalation) by synthesising the guideline
+    content for the given diagnosis. Optionally personalises the pathway when
+    patient context is provided (e.g., adjusts drug recommendations based on
+    comorbidities or age).
+
+    ⚠️ For clinical decision support only. All management decisions must be made
+    by a licensed healthcare professional.
 
     Args:
-        icd_code: ICD-10 code.
-        patient_context_json: Optional JSON with patient context (age, comorbidities, etc.).
+        icd_code: ICD-10 code (e.g., 'E11' for type 2 diabetes, 'I10' for
+                  hypertension).
+        patient_context_json: Optional JSON string with patient details to
+                              personalise the pathway. Supported fields:
+                              {"age": 65, "gender": "M",
+                               "comorbidities": ["CKD", "心衰竭"],
+                               "current_medications": ["metformin"],
+                               "allergies": ["sulfonamides"]}
     """
     if guideline_service is None:
         return _svc_unavailable("Clinical Guideline Service")
@@ -1073,10 +1347,16 @@ async def suggest_clinical_pathway(
 @audited("list_twcore_codesystems")
 async def list_twcore_codesystems(category: str = "all") -> str:
     """
-    List all available TWCore IG CodeSystems.
+    List all CodeSystems defined in the Taiwan Core FHIR Implementation Guide (TWCore IG).
+
+    TWCore IG v1.0.0 defines 30+ CodeSystems covering Taiwan NHI-specific code sets
+    including drug frequency codes, diagnosis category codes, organization types,
+    administrative divisions, and medical specialty codes used in Taiwan's national
+    health information exchange infrastructure.
 
     Args:
-        category: all | medication | diagnosis | organization | administrative
+        category: Filter by category — 'all' (default) | 'medication' |
+                  'diagnosis' | 'organization' | 'administrative'.
     """
     if twcore_service is None:
         return _svc_unavailable("TWCore Service")
@@ -1086,11 +1366,20 @@ async def list_twcore_codesystems(category: str = "all") -> str:
 @audited("search_twcore_code")
 async def search_twcore_code(keyword: str, codesystem_ids: list[str]) -> str:
     """
-    Search for a code across one or more TWCore CodeSystems.
+    Search for a code or display term across one or more TWCore IG CodeSystems.
+
+    Performs a case-insensitive search across both code values and display names
+    within the specified CodeSystems. Returns matching codes with their system URL,
+    code, and display name as a FHIR Coding object. Use list_twcore_codesystems
+    to find available CodeSystem IDs.
 
     Args:
-        keyword: Code or display term to search.
-        codesystem_ids: List of CodeSystem IDs to search (from list_twcore_codesystems).
+        keyword: Code value or display term to search for
+                 (e.g., 'QD', '每天一次', 'HOSP', '醫院').
+        codesystem_ids: List of CodeSystem IDs to search within, obtained from
+                        list_twcore_codesystems (e.g.,
+                        ['medication-frequency-nhi-tw',
+                         'organization-identifier-tw']).
     """
     if twcore_service is None:
         return _svc_unavailable("TWCore Service")
@@ -1100,12 +1389,16 @@ async def search_twcore_code(keyword: str, codesystem_ids: list[str]) -> str:
 @audited("lookup_twcore_code")
 async def lookup_twcore_code(code: str, codesystem_id: str) -> str:
     """
-    Exact lookup of a single code in a TWCore CodeSystem.
-    Returns a FHIR Coding object.
+    Exact lookup of a single code in a TWCore IG CodeSystem. Returns a FHIR Coding.
+
+    Retrieves the FHIR Coding object (system URL, code, display) for an exact
+    code match. Use this when you have a known code and need the full FHIR
+    representation for inclusion in a FHIR resource.
 
     Args:
-        code: The code to look up.
-        codesystem_id: The CodeSystem ID (e.g., 'medication-frequency-nhi-tw').
+        code: The exact code value to look up (e.g., 'QD', 'BID', 'HOSP').
+        codesystem_id: TWCore IG CodeSystem ID from list_twcore_codesystems
+                       (e.g., 'medication-frequency-nhi-tw').
     """
     if twcore_service is None:
         return _svc_unavailable("TWCore Service")
@@ -1124,13 +1417,23 @@ async def search_snomed_concept(
     hierarchy_filter: int = None,
 ) -> str:
     """
-    Search SNOMED CT International edition concepts by English term.
+    Search SNOMED CT International edition (20250601, 370,000+ concepts) by English term.
+
+    Performs full-text search across all SNOMED descriptions (FSNs and synonyms),
+    ranking Fully Specified Names (FSNs) above synonyms. Results include concept ID,
+    preferred term, term type (FSN/Synonym), and active status.
+    Use get_snomed_concept for full details (parents, mappings) of a specific result.
 
     Args:
-        query: Search term (e.g., 'diabetes mellitus', 'myocardial infarction').
-        limit: Maximum results (default 20, max 100).
-        hierarchy_filter: Optional SNOMED concept ID to restrict results to that
-                          hierarchy (e.g., 404684003 for Clinical findings).
+        query: English clinical term (e.g., 'diabetes mellitus', 'myocardial
+               infarction', 'hypertension', 'fracture of femur').
+        limit: Maximum number of results to return (default 20, max 100).
+        hierarchy_filter: Optional SNOMED concept ID to restrict search to a
+                          specific hierarchy. Common roots:
+                          404684003 (Clinical finding),
+                          71388002 (Procedure),
+                          373873005 (Pharmaceutical/biologic product),
+                          123037004 (Body structure).
     """
     if snomed_service is None:
         return _svc_unavailable("SNOMED CT")
@@ -1145,10 +1448,17 @@ async def search_snomed_concept(
 @audited("get_snomed_concept")
 async def get_snomed_concept(concept_id: int) -> str:
     """
-    Get full details for a SNOMED CT concept: FSN, synonyms, parents, ICD-10 mappings.
+    Get full details for a SNOMED CT concept by concept ID.
+
+    Returns: Fully Specified Name (FSN), all active synonyms, active status,
+    direct parent concepts (IS-A relationships, up to 20), and all ICD-10
+    extended map entries (map target code, map rule, map group/priority).
 
     Args:
-        concept_id: SNOMED CT concept ID (e.g., 73211009 for 'Diabetes mellitus').
+        concept_id: SNOMED CT concept ID (integer)
+                    (e.g., 73211009 for 'Diabetes mellitus',
+                     38341003 for 'Hypertensive disorder',
+                     22298006 for 'Myocardial infarction').
     """
     if snomed_service is None:
         return _svc_unavailable("SNOMED CT")
@@ -1165,11 +1475,17 @@ async def get_snomed_concept(concept_id: int) -> str:
 @audited("get_snomed_children")
 async def get_snomed_children(concept_id: int, limit: int = 50) -> str:
     """
-    Get direct child concepts (IS-A relationships pointing to this concept).
+    Get the direct child concepts of a SNOMED CT concept in the IS-A hierarchy.
+
+    Returns concepts that have an active IS-A relationship pointing to the given
+    concept — i.e., concepts that are a subtype of this concept. Useful for
+    navigating from a general concept to more specific subtypes.
 
     Args:
-        concept_id: SNOMED CT concept ID.
-        limit: Maximum children to return (default 50).
+        concept_id: SNOMED CT concept ID of the parent concept
+                    (e.g., 73211009 for 'Diabetes mellitus' to get its subtypes
+                     such as type 1, type 2, gestational diabetes).
+        limit: Maximum number of child concepts to return (default 50, max 200).
     """
     if snomed_service is None:
         return _svc_unavailable("SNOMED CT")
@@ -1184,11 +1500,18 @@ async def get_snomed_children(concept_id: int, limit: int = 50) -> str:
 @audited("get_snomed_ancestors")
 async def get_snomed_ancestors(concept_id: int, max_depth: int = 10) -> str:
     """
-    Get all ancestor concepts by following IS-A relationships upward.
+    Get all ancestor concepts of a SNOMED CT concept by traversing IS-A upward.
+
+    Follows IS-A relationships from the given concept toward the SNOMED root,
+    returning all ancestors up to `max_depth` levels up. Each ancestor includes
+    its depth relative to the starting concept. Useful for understanding the
+    full classification path and finding parent categories for grouping.
 
     Args:
-        concept_id: SNOMED CT concept ID.
-        max_depth: Maximum traversal depth (default 10).
+        concept_id: SNOMED CT concept ID (e.g., 44054006 for 'Diabetes mellitus
+                    type 2' to see its full hierarchy up to 'Clinical finding').
+        max_depth: Maximum number of IS-A hops to traverse upward
+                   (default 10, max 20).
     """
     if snomed_service is None:
         return _svc_unavailable("SNOMED CT")
@@ -1210,16 +1533,27 @@ async def get_snomed_relationships(
     relationship_type_id: int = None,
 ) -> str:
     """
-    Get all non-IS-A relationships for a SNOMED CT concept (attributes that describe
-    clinical meaning: finding site, causative agent, associated morphology, has ingredient, etc.).
+    Get the clinical attribute relationships (non-IS-A) for a SNOMED CT concept.
+
+    Returns relationships that define the clinical meaning of a concept, grouped
+    by relationship type. These attributes describe properties such as the
+    anatomical site involved, the causative agent, the associated morphology,
+    or the active ingredient. Results are grouped by relationship type with a
+    human-readable label and list of target concepts for each type.
 
     Args:
-        concept_id: SNOMED CT concept ID.
-        relationship_type_id: Optional SNOMED relationship type concept ID to filter
-                              (e.g., 246075003 = Causative agent,
-                                     127489000 = Has active ingredient,
-                                     363698007 = Finding site,
-                                     116676008 = Associated morphology).
+        concept_id: SNOMED CT concept ID
+                    (e.g., 22298006 for 'Myocardial infarction' to get
+                     Finding site → Heart structure,
+                     Associated morphology → Infarct).
+        relationship_type_id: Optional SNOMED concept ID of a specific relationship
+                              type to filter results. Common type IDs:
+                              363698007 = Finding site,
+                              116676008 = Associated morphology,
+                              246075003 = Causative agent,
+                              127489000 = Has active ingredient,
+                              411116001 = Has dose form.
+                              Omit to return all relationship types.
     """
     if snomed_service is None:
         return _svc_unavailable("SNOMED CT")
@@ -1240,10 +1574,16 @@ async def get_snomed_relationships(
 @audited("map_icd_to_snomed")
 async def map_icd_to_snomed(icd_code: str) -> str:
     """
-    Find SNOMED CT concepts that map to a given ICD-10 code (via extended map).
+    Find SNOMED CT concepts that map to a given ICD-10 code via SNOMED extended map.
+
+    Uses the SNOMED CT ICD-10 extended map (part of the International release)
+    to find all SNOMED concepts whose map target includes the given ICD-10 code.
+    Each result includes the SNOMED concept ID, FSN, and map rule/advice that
+    defines when the mapping applies.
 
     Args:
-        icd_code: ICD-10 code (e.g., 'E11.9', 'I10').
+        icd_code: ICD-10-CM or ICD-10 code to reverse-map from
+                  (e.g., 'E11.9', 'I10', 'E78.5'). Case-insensitive.
     """
     if snomed_service is None:
         return _svc_unavailable("SNOMED CT")
@@ -1258,10 +1598,16 @@ async def map_icd_to_snomed(icd_code: str) -> str:
 @audited("map_snomed_to_icd")
 async def map_snomed_to_icd(concept_id: int) -> str:
     """
-    Get all ICD-10 codes that a SNOMED CT concept maps to.
+    Get all ICD-10 codes that a SNOMED CT concept maps to via the extended map.
+
+    Returns all map entries for the concept including map target (ICD-10 code),
+    map rule (condition under which the mapping applies, e.g., 'TRUE', or a
+    clinical condition), map advice, and map group/priority for complex mappings
+    where multiple rules must be evaluated in sequence.
 
     Args:
-        concept_id: SNOMED CT concept ID.
+        concept_id: SNOMED CT concept ID (e.g., 73211009 for 'Diabetes mellitus',
+                    38341003 for 'Hypertensive disorder').
     """
     if snomed_service is None:
         return _svc_unavailable("SNOMED CT")
@@ -1281,10 +1627,20 @@ async def map_snomed_to_icd(concept_id: int) -> str:
 @audited("check_drug_interactions")
 async def check_drug_interactions(drug_names: list[str]) -> str:
     """
-    Check for drug-drug interactions among a list of drugs using RxNorm data.
+    Check for drug-drug interactions among a list of drugs using RxNorm interaction data.
+
+    Resolves each drug name to its RxCUI, then queries RxNorm
+    `interacts_with` relationships to identify known interaction pairs.
+    Returns each interacting pair with the RxNorm interaction concept.
+
+    ⚠️ RxNorm interaction data indicates potential interactions but does NOT include
+    severity ratings or clinical significance. All findings must be verified by
+    a licensed pharmacist or clinician before clinical use.
 
     Args:
-        drug_names: List of drug names (generic or brand; e.g., ['warfarin', 'aspirin', 'metformin']).
+        drug_names: List of 2 or more drug names in English — generic (INN) or
+                    brand name (e.g., ['warfarin', 'aspirin', 'metformin'],
+                    ['Lipitor', 'amiodarone']). Minimum 2 drugs required.
     """
     if drug_interaction_service is None:
         return _svc_unavailable("Drug Interactions (RxNorm)")
@@ -1302,10 +1658,17 @@ async def check_drug_interactions(drug_names: list[str]) -> str:
 @audited("resolve_rxnorm_drug")
 async def resolve_rxnorm_drug(drug_name: str) -> str:
     """
-    Resolve a drug name to its RxNorm concepts (RXCUI and term type).
+    Resolve a drug name to its RxNorm concepts (RXCUI, term type, synonym variants).
+
+    Searches the RxNorm database (NLM) for concepts matching the drug name.
+    Returns a list of matching RxNorm concepts with RXCUI identifiers and term
+    types (IN = ingredient, BN = brand name, SCD = clinical drug, etc.).
+    Use the RXCUI from this result with get_drug_ingredients_rxnorm or
+    check_drug_interactions. Supports English names only (generic or brand).
 
     Args:
-        drug_name: Drug name in English (generic or brand; e.g., 'atorvastatin', 'Lipitor').
+        drug_name: Drug name in English — generic (INN) or brand name
+                   (e.g., 'atorvastatin', 'Lipitor', 'metformin', 'Glucophage').
     """
     if drug_interaction_service is None:
         return _svc_unavailable("Drug Interactions (RxNorm)")
@@ -1320,10 +1683,17 @@ async def resolve_rxnorm_drug(drug_name: str) -> str:
 @audited("get_drug_ingredients_rxnorm")
 async def get_drug_ingredients_rxnorm(rxcui: str) -> str:
     """
-    Get a drug's ingredient components via RxNorm.
+    Get the active ingredient components of a drug concept via RxNorm relationships.
+
+    Follows RxNorm `has_ingredient` and `has_precise_ingredient` relationships
+    to list all ingredient concepts associated with the given RXCUI. Useful for
+    determining the active substances in a multi-ingredient product or for
+    verifying that two drugs share the same ingredient.
 
     Args:
-        rxcui: RxNorm concept unique identifier (from resolve_rxnorm_drug).
+        rxcui: RxNorm Concept Unique Identifier (string) obtained from
+               resolve_rxnorm_drug (e.g., '41493' for atorvastatin,
+               '6809' for metformin).
     """
     if drug_interaction_service is None:
         return _svc_unavailable("Drug Interactions (RxNorm)")
