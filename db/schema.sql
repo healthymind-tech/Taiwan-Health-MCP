@@ -2,6 +2,11 @@
 -- Run automatically by postgres container on first init
 
 -- ============================================================
+-- PGVECTOR EXTENSION (required for semantic / hybrid search)
+-- ============================================================
+CREATE EXTENSION IF NOT EXISTS vector;
+
+-- ============================================================
 -- AUDIT
 -- ============================================================
 CREATE SCHEMA IF NOT EXISTS audit;
@@ -106,6 +111,15 @@ CREATE INDEX IF NOT EXISTS idx_drug_lic_fts  ON drug.licenses
     USING GIN (to_tsvector('simple',
         COALESCE(name_zh,'') || ' ' || COALESCE(name_en,'') || ' ' || COALESCE(indication,'')));
 
+-- Embedding table for hybrid search
+CREATE TABLE IF NOT EXISTS drug.license_embeddings (
+    license_id  TEXT PRIMARY KEY,
+    embedding   vector(1024),
+    embedded_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_drug_emb_hnsw ON drug.license_embeddings
+    USING hnsw (embedding vector_cosine_ops);
+
 
 -- ============================================================
 -- HEALTH FOOD (Taiwan FDA)
@@ -131,6 +145,15 @@ CREATE TABLE IF NOT EXISTS health_food.sync_meta (
 CREATE INDEX IF NOT EXISTS idx_hf_fts ON health_food.items
     USING GIN (to_tsvector('simple',
         COALESCE(name,'') || ' ' || COALESCE(benefit_claims,'')));
+
+-- Embedding table for hybrid search
+CREATE TABLE IF NOT EXISTS health_food.item_embeddings (
+    permit_no   TEXT PRIMARY KEY,
+    embedding   vector(1024),
+    embedded_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_hf_emb_hnsw ON health_food.item_embeddings
+    USING hnsw (embedding vector_cosine_ops);
 
 
 -- ============================================================
@@ -172,6 +195,25 @@ CREATE INDEX IF NOT EXISTS idx_fn_fts ON food_nutrition.measurements
         COALESCE(sample_name,'') || ' ' || COALESCE(common_name,'') || ' ' || COALESCE(english_name,'')));
 CREATE INDEX IF NOT EXISTS idx_fn_ing_fts ON food_nutrition.ingredients
     USING GIN (to_tsvector('simple', COALESCE(name_zh,'') || ' ' || COALESCE(name_en,'')));
+
+-- Embedding table for hybrid search (food-level, not measurement-level)
+-- Dimension 1024 = qwen3-embedding:0.6b  |  upgrade: DROP TABLE + recreate + re-run --embed
+CREATE TABLE IF NOT EXISTS food_nutrition.food_embeddings (
+    sample_name  TEXT PRIMARY KEY,
+    embedding    vector(1024),
+    embedded_at  TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_fn_emb_hnsw ON food_nutrition.food_embeddings
+    USING hnsw (embedding vector_cosine_ops);
+
+-- Embedding table for food_nutrition.ingredients
+CREATE TABLE IF NOT EXISTS food_nutrition.ingredient_embeddings (
+    id           INTEGER PRIMARY KEY,
+    embedding    vector(1024),
+    embedded_at  TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_fn_ing_emb_hnsw ON food_nutrition.ingredient_embeddings
+    USING hnsw (embedding vector_cosine_ops);
 
 
 -- ============================================================

@@ -1,6 +1,6 @@
 """
 Health Food Service — Taiwan FDA approved health foods.
-Syncs from FDA Open Data every Monday via APScheduler.
+Data is loaded via data-loader (--health-food or --fda flag). No auto-sync.
 
 Sync strategy: fetch data first, then write in one transaction.
 """
@@ -8,18 +8,16 @@ Sync strategy: fetch data first, then write in one transaction.
 import asyncio
 import json
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 import asyncpg
 import httpx
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from cache import cached
+from embedding_service import EmbeddingService
 from utils import log_error, log_info
 
 API_SOURCE = "https://data.fda.gov.tw/data/opendata/export/19/json"
-
-STALE_AFTER_DAYS = 7
 
 DISEASE_BENEFIT_MAPPING = {
     "E11": ["調節血糖", "延緩血糖上升"],
@@ -46,41 +44,20 @@ DISEASE_BENEFIT_MAPPING = {
 
 
 class HealthFoodService:
-    def __init__(self, pool: asyncpg.Pool):
+    def __init__(self, pool: asyncpg.Pool, embedding_svc: EmbeddingService | None = None):
         self.pool = pool
-        self._scheduler = AsyncIOScheduler()
+        self._embedding_svc = embedding_svc
         self._sync_lock = asyncio.Lock()
 
     async def initialize(self) -> None:
         count = await self.pool.fetchval("SELECT COUNT(*) FROM health_food.items")
         if count == 0:
-            log_info("Health food DB empty — starting initial sync")
-            asyncio.create_task(self._sync())
+            log_info("Health food DB empty — run data-loader --health-food to load data")
         else:
-            last = await self._get_last_synced()
-            if last is None or (datetime.now(tz=timezone.utc) - last).days >= STALE_AFTER_DAYS:
-                log_info("Health food DB stale — starting background sync")
-                asyncio.create_task(self._sync())
-            else:
-                log_info("Health Food Service ready", items=count)
-
-        if not self._scheduler.running:
-            self._scheduler.add_job(self._sync, "cron", day_of_week="mon", hour=2, minute=30)
-            self._scheduler.start()
+            log_info("Health Food Service ready", items=count)
 
     async def shutdown(self) -> None:
-        self._scheduler.shutdown(wait=False)
-
-    async def _get_last_synced(self) -> datetime | None:
-        row = await self.pool.fetchrow(
-            "SELECT value FROM health_food.sync_meta WHERE key = 'last_updated'"
-        )
-        if row:
-            try:
-                return datetime.fromisoformat(row["value"])
-            except ValueError:
-                pass
-        return None
+        pass
 
     async def _sync(self) -> None:
         if self._sync_lock.locked():
@@ -131,8 +108,43 @@ class HealthFoodService:
                         datetime.now(tz=timezone.utc).isoformat(),
                     )
             log_info("Health food sync completed", items=len(rows))
+            if self._embedding_svc and self._embedding_svc.enabled:
+                asyncio.create_task(self._generate_embeddings())
         except Exception as e:
             log_error("Health food sync failed", error=str(e))
+
+    async def _generate_embeddings(self) -> None:
+        """Embed all health food items into pgvector table (background task)."""
+        if not self._embedding_svc:
+            return
+        svc = self._embedding_svc
+        try:
+            async with self.pool.acquire() as conn:
+                items = await conn.fetch("SELECT permit_no, name, benefit_claims FROM health_food.items")
+            log_info("Health food: embedding items", count=len(items))
+            from embedding_service import BATCH_SIZE
+            for i in range(0, len(items), BATCH_SIZE):
+                batch = items[i:i + BATCH_SIZE]
+                texts = [
+                    " ".join(filter(None, [r["name"], r["benefit_claims"]])) for r in batch
+                ]
+                vecs = await svc.embed_batch(texts)
+                rows = [
+                    (batch[j]["permit_no"], f"[{','.join(str(x) for x in vecs[j])}]")
+                    for j in range(len(batch)) if vecs[j] is not None
+                ]
+                if rows:
+                    async with self.pool.acquire() as conn:
+                        await conn.executemany(
+                            """INSERT INTO health_food.item_embeddings (permit_no, embedding)
+                               VALUES ($1, $2::vector)
+                               ON CONFLICT (permit_no) DO UPDATE
+                               SET embedding=EXCLUDED.embedding, embedded_at=NOW()""",
+                            rows,
+                        )
+            log_info("Health food: embeddings done", total=len(items))
+        except Exception as exc:
+            log_error("Health food embedding generation failed", error=str(exc))
 
     # ── query methods ────────────────────────────────────────────────────────
 
@@ -147,15 +159,47 @@ class HealthFoodService:
         Returns:
             JSON string with a ``results`` list of matching health food records.
         """
+        vec = await self._embedding_svc.embed(keyword) if self._embedding_svc else None
+        vec_str = f"[{','.join(str(x) for x in vec)}]" if vec else None
+
         async with self.pool.acquire() as conn:
-            rows = await conn.fetch(
-                """SELECT permit_no, name, category, benefit_claims, applicant, valid_from
-                   FROM health_food.items
-                   WHERE to_tsvector('simple', COALESCE(name,'') || ' ' || COALESCE(benefit_claims,''))
-                         @@ plainto_tsquery('simple', $1)
-                   LIMIT 10""",
-                keyword,
-            )
+            if vec_str:
+                rows = await conn.fetch(
+                    """WITH fts AS (
+                           SELECT i.permit_no,
+                                  ROW_NUMBER() OVER (ORDER BY ts_rank_cd(
+                                      to_tsvector('simple', COALESCE(i.name,'') || ' ' || COALESCE(i.benefit_claims,'')),
+                                      plainto_tsquery('simple', $1)) DESC) AS rank
+                           FROM health_food.items i
+                           WHERE to_tsvector('simple', COALESCE(i.name,'') || ' ' || COALESCE(i.benefit_claims,''))
+                                 @@ plainto_tsquery('simple', $1)
+                           LIMIT 20
+                       ),
+                       vec AS (
+                           SELECT permit_no,
+                                  ROW_NUMBER() OVER (ORDER BY embedding <=> $2::vector) AS rank
+                           FROM health_food.item_embeddings
+                           ORDER BY embedding <=> $2::vector LIMIT 20
+                       ),
+                       rrf AS (
+                           SELECT COALESCE(f.permit_no, v.permit_no) AS permit_no,
+                                  COALESCE(1.0/(60+f.rank), 0.0) + COALESCE(1.0/(60+v.rank), 0.0) AS score
+                           FROM fts f FULL OUTER JOIN vec v ON f.permit_no = v.permit_no
+                       )
+                       SELECT i.permit_no, i.name, i.category, i.benefit_claims, i.applicant, i.valid_from
+                       FROM rrf JOIN health_food.items i ON i.permit_no = rrf.permit_no
+                       ORDER BY rrf.score DESC LIMIT 10""",
+                    keyword, vec_str,
+                )
+            else:
+                rows = await conn.fetch(
+                    """SELECT permit_no, name, category, benefit_claims, applicant, valid_from
+                       FROM health_food.items
+                       WHERE to_tsvector('simple', COALESCE(name,'') || ' ' || COALESCE(benefit_claims,''))
+                             @@ plainto_tsquery('simple', $1)
+                       LIMIT 10""",
+                    keyword,
+                )
         if not rows:
             return json.dumps({"error": f"找不到與 '{keyword}' 相關的健康食品。", "results": []}, ensure_ascii=False)
         return json.dumps({"results": [dict(r) for r in rows]}, ensure_ascii=False)

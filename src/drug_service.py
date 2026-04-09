@@ -1,7 +1,6 @@
 """
 Drug Service — Taiwan FDA medication database.
-Data is synced from FDA Open Data API and stored in PostgreSQL.
-Sync runs on startup (if stale) and every Tuesday via APScheduler.
+Data is loaded via data-loader (--drug or --fda flag). No auto-sync.
 
 Sync strategy: fetch ALL endpoints first, then write everything in one
 transaction so a failed network call never leaves the DB in a partial state.
@@ -10,13 +9,13 @@ transaction so a failed network call never leaves the DB in a partial state.
 import asyncio
 import json
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 import asyncpg
 import httpx
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from cache import cached
+from embedding_service import EmbeddingService
 from utils import log_error, log_info
 
 API_SOURCES = {
@@ -27,47 +26,24 @@ API_SOURCES = {
     "documents": "https://data.fda.gov.tw/data/opendata/export/39/json",
 }
 
-STALE_AFTER_DAYS = 7
-
 
 class DrugService:
-    def __init__(self, pool: asyncpg.Pool):
+    def __init__(self, pool: asyncpg.Pool, embedding_svc: EmbeddingService | None = None):
         self.pool = pool
-        self._scheduler = AsyncIOScheduler()
+        self._embedding_svc = embedding_svc
         self._sync_lock = asyncio.Lock()
 
     async def initialize(self) -> None:
         count = await self.pool.fetchval("SELECT COUNT(*) FROM drug.licenses")
         if count == 0:
-            log_info("Drug DB empty — starting initial sync in background")
-            asyncio.create_task(self._sync_all())
+            log_info("Drug DB empty — run data-loader --drug to load data")
         else:
-            last = await self._get_last_synced()
-            if last is None or (datetime.now(tz=timezone.utc) - last).days >= STALE_AFTER_DAYS:
-                log_info("Drug DB stale — starting background sync")
-                asyncio.create_task(self._sync_all())
-            else:
-                log_info(f"Drug Service ready", licenses=count)
-
-        if not self._scheduler.running:
-            self._scheduler.add_job(self._sync_all, "cron", day_of_week="tue", hour=2, minute=0)
-            self._scheduler.start()
+            log_info("Drug Service ready", licenses=count)
 
     async def shutdown(self) -> None:
-        self._scheduler.shutdown(wait=False)
+        pass
 
     # ── sync helpers ────────────────────────────────────────────────────────
-
-    async def _get_last_synced(self) -> datetime | None:
-        row = await self.pool.fetchrow(
-            "SELECT value FROM drug.sync_meta WHERE key = 'last_updated'"
-        )
-        if row:
-            try:
-                return datetime.fromisoformat(row["value"])
-            except ValueError:
-                pass
-        return None
 
     async def _fetch_json(self, client: httpx.AsyncClient, url: str) -> list:
         resp = await client.get(url)
@@ -185,8 +161,46 @@ class DrugService:
                     )
 
             log_info("Drug DB sync completed", licenses=len(license_rows))
+            if self._embedding_svc and self._embedding_svc.enabled:
+                asyncio.create_task(self._generate_embeddings())
         except Exception as e:
             log_error(f"Drug DB sync failed", error=str(e))
+
+    async def _generate_embeddings(self) -> None:
+        """Embed all drug licenses into pgvector table (background task)."""
+        if not self._embedding_svc:
+            return
+        svc = self._embedding_svc
+        try:
+            async with self.pool.acquire() as conn:
+                drugs = await conn.fetch(
+                    "SELECT license_id, name_zh, name_en, indication FROM drug.licenses"
+                )
+            log_info("Drug: embedding licenses", count=len(drugs))
+            from embedding_service import BATCH_SIZE
+            for i in range(0, len(drugs), BATCH_SIZE):
+                batch = drugs[i:i + BATCH_SIZE]
+                texts = [
+                    " ".join(filter(None, [r["name_zh"], r["name_en"], r["indication"]]))
+                    for r in batch
+                ]
+                vecs = await svc.embed_batch(texts)
+                rows = [
+                    (batch[j]["license_id"], f"[{','.join(str(x) for x in vecs[j])}]")
+                    for j in range(len(batch)) if vecs[j] is not None
+                ]
+                if rows:
+                    async with self.pool.acquire() as conn:
+                        await conn.executemany(
+                            """INSERT INTO drug.license_embeddings (license_id, embedding)
+                               VALUES ($1, $2::vector)
+                               ON CONFLICT (license_id) DO UPDATE
+                               SET embedding=EXCLUDED.embedding, embedded_at=NOW()""",
+                            rows,
+                        )
+            log_info("Drug: license embeddings done", total=len(drugs))
+        except Exception as exc:
+            log_error("Drug embedding generation failed", error=str(exc))
 
     # ── query methods ────────────────────────────────────────────────────────
 
@@ -201,16 +215,51 @@ class DrugService:
         Returns:
             JSON string with a ``results`` list of matching license records.
         """
+        vec = await self._embedding_svc.embed(keyword) if self._embedding_svc else None
+        vec_str = f"[{','.join(str(x) for x in vec)}]" if vec else None
+
         async with self.pool.acquire() as conn:
-            rows = await conn.fetch(
-                """SELECT license_id, name_zh, name_en, indication, category
-                   FROM drug.licenses
-                   WHERE to_tsvector('simple',
-                           COALESCE(name_zh,'') || ' ' || COALESCE(name_en,'') || ' ' || COALESCE(indication,''))
-                         @@ plainto_tsquery('simple', $1)
-                   LIMIT 8""",
-                keyword,
-            )
+            if vec_str:
+                rows = await conn.fetch(
+                    """WITH fts AS (
+                           SELECT l.license_id,
+                                  ROW_NUMBER() OVER (ORDER BY ts_rank_cd(
+                                      to_tsvector('simple', COALESCE(l.name_zh,'') || ' ' ||
+                                                            COALESCE(l.name_en,'') || ' ' ||
+                                                            COALESCE(l.indication,'')),
+                                      plainto_tsquery('simple', $1)) DESC) AS rank
+                           FROM drug.licenses l
+                           WHERE to_tsvector('simple',
+                                   COALESCE(l.name_zh,'') || ' ' || COALESCE(l.name_en,'') || ' ' || COALESCE(l.indication,''))
+                                 @@ plainto_tsquery('simple', $1)
+                           LIMIT 20
+                       ),
+                       vec AS (
+                           SELECT license_id,
+                                  ROW_NUMBER() OVER (ORDER BY embedding <=> $2::vector) AS rank
+                           FROM drug.license_embeddings
+                           ORDER BY embedding <=> $2::vector LIMIT 20
+                       ),
+                       rrf AS (
+                           SELECT COALESCE(f.license_id, v.license_id) AS license_id,
+                                  COALESCE(1.0/(60+f.rank), 0.0) + COALESCE(1.0/(60+v.rank), 0.0) AS score
+                           FROM fts f FULL OUTER JOIN vec v ON f.license_id = v.license_id
+                       )
+                       SELECT l.license_id, l.name_zh, l.name_en, l.indication, l.category
+                       FROM rrf JOIN drug.licenses l ON l.license_id = rrf.license_id
+                       ORDER BY rrf.score DESC LIMIT 8""",
+                    keyword, vec_str,
+                )
+            else:
+                rows = await conn.fetch(
+                    """SELECT license_id, name_zh, name_en, indication, category
+                       FROM drug.licenses
+                       WHERE to_tsvector('simple',
+                               COALESCE(name_zh,'') || ' ' || COALESCE(name_en,'') || ' ' || COALESCE(indication,''))
+                             @@ plainto_tsquery('simple', $1)
+                       LIMIT 8""",
+                    keyword,
+                )
         if not rows:
             return json.dumps({"error": f"No results found for '{keyword}'.", "results": []}, ensure_ascii=False)
         return json.dumps({"results": [dict(r) for r in rows]}, ensure_ascii=False)

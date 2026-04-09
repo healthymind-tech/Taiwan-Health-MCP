@@ -281,6 +281,16 @@ async def load_food_nutrition(pool: asyncpg.Pool) -> None:
     await _load(pool)
 
 
+async def generate_embeddings(pool: asyncpg.Pool, services: list[str]) -> None:
+    from loaders.embedding_loader import embed_drug, embed_food_nutrition, embed_health_food
+    if "food_nutrition" in services:
+        await embed_food_nutrition(pool)
+    if "health_food" in services:
+        await embed_health_food(pool)
+    if "drug" in services:
+        await embed_drug(pool)
+
+
 async def main():
     parser = argparse.ArgumentParser(description="Taiwan Health MCP Data Loader")
     parser.add_argument("--all",       action="store_true", help="Load all datasets")
@@ -294,11 +304,12 @@ async def main():
     parser.add_argument("--health-food", action="store_true", help="Taiwan FDA health food dataset")
     parser.add_argument("--food-nutrition", action="store_true", help="Taiwan FDA food nutrition datasets")
     parser.add_argument("--fda",       action="store_true", help="Load all Taiwan FDA API datasets")
+    parser.add_argument("--embed",     action="store_true", help="Generate pgvector embeddings (food, health food, drug)")
     args = parser.parse_args()
 
     run_all = args.all or not any([
         args.icd, args.loinc, args.twcore, args.guideline, args.snomed, args.rxnorm,
-        args.drug, args.health_food, args.food_nutrition, args.fda,
+        args.drug, args.health_food, args.food_nutrition, args.fda, args.embed,
     ])
 
     pool = await get_pool()
@@ -339,6 +350,18 @@ async def main():
         if run_all or args.fda or args.food_nutrition:
             print("=== Loading Taiwan FDA food nutrition datasets ===")
             await load_food_nutrition(pool)
+
+        # Auto-embed after FDA or full load; also runs on explicit --embed
+        embed_services: list[str] = []
+        if run_all or args.fda or args.food_nutrition or args.embed:
+            embed_services.append("food_nutrition")
+        if run_all or args.fda or args.health_food or args.embed:
+            embed_services.append("health_food")
+        if run_all or args.fda or args.drug or args.embed:
+            embed_services.append("drug")
+
+        if embed_services:
+            await generate_embeddings(pool, embed_services)
 
         print("\n=== Data loading complete ===")
     finally:

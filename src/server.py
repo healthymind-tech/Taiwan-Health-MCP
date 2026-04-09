@@ -24,6 +24,7 @@ from health_food_service import HealthFoodService
 from icd_service import ICDService
 from lab_service import LabService
 from snomed_service import SNOMEDService
+from embedding_service import EmbeddingService
 from twcore_service import TWCoreService
 from utils import configure_log_level, log_error, log_info, log_warning
 
@@ -81,12 +82,16 @@ async def lifespan(server):
             # ── Start DB pool stats collector ─────────────────────────────
             _db_stats_task = await metrics.start_db_stats_collector(database.get_pool)
 
+            # ── Embedding (semantic search) ───────────────────────────────
+            embedding_svc = EmbeddingService()
+            await embedding_svc.initialize()
+
             # ── Services ──────────────────────────────────────────────────
             for name, factory in [
                 ("ICDService", lambda: ICDService(pool)),
-                ("DrugService", lambda: DrugService(pool)),
-                ("HealthFoodService", lambda: HealthFoodService(pool)),
-                ("FoodNutritionService", lambda: FoodNutritionService(pool)),
+                ("DrugService", lambda: DrugService(pool, embedding_svc)),
+                ("HealthFoodService", lambda: HealthFoodService(pool, embedding_svc)),
+                ("FoodNutritionService", lambda: FoodNutritionService(pool, embedding_svc)),
                 ("FHIRConditionService", lambda: FHIRConditionService(pool)),
                 ("FHIRMedicationService", lambda: FHIRMedicationService(drug_service)),
                 ("LabService", lambda: LabService(pool)),
