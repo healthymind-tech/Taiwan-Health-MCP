@@ -3223,7 +3223,7 @@
 <p>本系統在伺服器啟動時直接連接 PostgreSQL，資料已預先載入，無需每次 ETL。
 - <strong>首次部署</strong>：需先執行 data-loader 載入術語資料（ICD 約 1 分鐘，SNOMED CT 約 5-15 分鐘）。
 - <strong>後續啟動</strong>：服務直接連接 PostgreSQL，啟動時間秒級完成。
-- <strong>FastMCP lifespan-per-session</strong>：<code>streamable-http</code> 模式下每個 MCP session 觸發一次 lifespan，但 <code>_init_lock + _initialized</code> 確保只有第一個 session 執行初始化，後續 session 重用已建立的連線池與 Redis。</p>
+- <strong>mcp SDK lifespan-per-session</strong>：<code>streamable-http</code> 模式下每個 MCP session 觸發一次 lifespan，但 <code>_init_lock + _initialized</code> 確保只有第一個 session 執行初始化，後續 session 重用已建立的連線池與 Redis。</p>
 <p><strong>建議</strong>：確保 PostgreSQL 資料 Volume 持久化（<code>compose.yaml</code> 預設已設定），以保留已載入的術語資料。</p>
 <h2 id="_3">查詢效能<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
 <ul>
@@ -3233,7 +3233,7 @@
 <li><strong>asyncpg</strong>：非同步 PostgreSQL 驅動，<code>statement_cache_size=0</code> 支援 pgBouncer transaction mode。</li>
 </ul>
 <h2 id="_4">併發處理<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
-<p>MCP Server 基於 FastMCP（uvicorn/asyncio）框架。若需處理大量請求：
+<p>MCP Server 基於 <code>mcp</code> SDK（uvicorn/asyncio）框架。若需處理大量請求：
 1. 調整 pgBouncer <code>max_client_conn</code>（預設 500）與 <code>default_pool_size</code>（預設 30）。
 2. Redis 快取命中率可透過 Prometheus 監控（<code>mcp_cache_operations_total</code>）。
 3. 多個容器實例可共用同一 PostgreSQL 與 Redis。</p>

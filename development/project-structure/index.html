@@ -3199,44 +3199,46 @@
 <h1 id="_1">專案結構<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h1>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>.
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>├── src/                        # MCP server 與所有 service 模組
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>│   ├── server.py               # 入口點，註冊 56 個 MCP 工具
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>│   ├── *_service.py            # ICD / Drug / Lab / Guideline / SNOMED / TWCore 等服務
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>│   ├── database.py             # asyncpg pool 單例
-</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>│   ├── cache.py                # Redis 快取裝飾器
-</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>│   ├── audit.py                # 稽核日誌裝飾器
-</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>│   ├── metrics.py              # Prometheus 指標
-</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>│   └── utils.py                # 結構化日誌與共用工具
-</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>├── loader/                     # data-loader 入口與各資料載入器
-</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>│   ├── main.py                 # CLI：--all / --icd / --fda / --snomed ...
-</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>│   ├── dataset_config.py       # datasets.yaml 解析
-</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>│   ├── dataset_resolver.py     # dataset 路徑解析與 fallback
-</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>│   └── loaders/                # ICD / LOINC / TWCore / SNOMED / RxNorm / FDA loaders
-</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>├── config/                     # 設定檔範本
-</span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>│   ├── datasets.example.yaml   # dataset 路徑設定範本
-</span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>│   └── datasets.yaml           # 本機部署用設定（建議不納入版控）
-</span><span id="__span-0-18"><a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>├── fhir-code/                  # 術語原始資料與 seed 檔
-</span><span id="__span-0-19"><a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>│   ├── icd/                    # ICD-10-CM / PCS / 中文對照 Excel
-</span><span id="__span-0-20"><a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>│   ├── loinc/                  # LOINC zip 與台灣對照 CSV
-</span><span id="__span-0-21"><a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>│   ├── twcoreig/               # TWCore package.tgz
-</span><span id="__span-0-22"><a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>│   ├── snomed/                 # SNOMED CT 授權 zip
-</span><span id="__span-0-23"><a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>│   ├── rxnorm/                 # RxNorm 授權 zip
-</span><span id="__span-0-24"><a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>│   └── umls/                   # UMLS 授權 zip（預留）
-</span><span id="__span-0-25"><a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>├── db/                         # PostgreSQL schema 與 seed SQL
-</span><span id="__span-0-26"><a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>├── docs/                       # MkDocs 文件原始碼
-</span><span id="__span-0-27"><a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a>├── tests/                      # pytest 測試
-</span><span id="__span-0-28"><a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a>├── compose.yaml                # Docker Compose 主設定
-</span><span id="__span-0-29"><a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a>├── Dockerfile                  # app image
-</span><span id="__span-0-30"><a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a>├── Dockerfile.loader           # data-loader image
-</span><span id="__span-0-31"><a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a>├── mkdocs.yml                  # 文件站設定
-</span><span id="__span-0-32"><a id="__codelineno-0-32" name="__codelineno-0-32" href="#__codelineno-0-32"></a>├── requirements.txt            # 執行環境依賴
-</span><span id="__span-0-33"><a id="__codelineno-0-33" name="__codelineno-0-33" href="#__codelineno-0-33"></a>└── requirements-dev.txt        # 測試依賴
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>│   ├── server.py               # 入口點，DynamicFastMCP + 56 個 MCP 工具定義
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>│   ├── dataset_status.py       # DatasetStatusManager — 動態工具啟用/停用（5 分鐘 TTL）
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>│   ├── *_service.py            # ICD / Drug / Lab / Guideline / SNOMED / TWCore 等服務
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>│   ├── database.py             # asyncpg pool 單例
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>│   ├── cache.py                # Redis 快取裝飾器
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>│   ├── audit.py                # 稽核日誌裝飾器
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>│   ├── metrics.py              # Prometheus 指標
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>│   └── utils.py                # 結構化日誌與共用工具
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>├── loader/                     # data-loader 入口與各資料載入器
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>│   ├── main.py                 # CLI：--all / --icd / --fda / --snomed ...
+</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>│   ├── dataset_config.py       # datasets.yaml 解析
+</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>│   ├── dataset_resolver.py     # dataset 路徑解析與 fallback
+</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>│   └── loaders/                # ICD / LOINC / TWCore / SNOMED / RxNorm / FDA loaders
+</span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>├── config/                     # 設定檔範本
+</span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>│   ├── datasets.example.yaml   # dataset 路徑設定範本
+</span><span id="__span-0-18"><a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>│   └── datasets.yaml           # 本機部署用設定（建議不納入版控）
+</span><span id="__span-0-19"><a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>├── fhir-code/                  # 術語原始資料與 seed 檔
+</span><span id="__span-0-20"><a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>│   ├── icd/                    # ICD-10-CM / PCS / 中文對照 Excel
+</span><span id="__span-0-21"><a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>│   ├── loinc/                  # LOINC zip 與台灣對照 CSV
+</span><span id="__span-0-22"><a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>│   ├── twcoreig/               # TWCore package.tgz
+</span><span id="__span-0-23"><a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>│   ├── snomed/                 # SNOMED CT 授權 zip
+</span><span id="__span-0-24"><a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>│   ├── rxnorm/                 # RxNorm 授權 zip
+</span><span id="__span-0-25"><a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>│   └── umls/                   # UMLS 授權 zip（預留）
+</span><span id="__span-0-26"><a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>├── db/                         # PostgreSQL schema 與 seed SQL
+</span><span id="__span-0-27"><a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a>├── docs/                       # MkDocs 文件原始碼
+</span><span id="__span-0-28"><a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a>├── tests/                      # pytest 測試
+</span><span id="__span-0-29"><a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a>├── compose.yaml                # Docker Compose 主設定
+</span><span id="__span-0-30"><a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a>├── Dockerfile                  # app image
+</span><span id="__span-0-31"><a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a>├── Dockerfile.loader           # data-loader image
+</span><span id="__span-0-32"><a id="__codelineno-0-32" name="__codelineno-0-32" href="#__codelineno-0-32"></a>├── mkdocs.yml                  # 文件站設定
+</span><span id="__span-0-33"><a id="__codelineno-0-33" name="__codelineno-0-33" href="#__codelineno-0-33"></a>├── requirements.txt            # 執行環境依賴
+</span><span id="__span-0-34"><a id="__codelineno-0-34" name="__codelineno-0-34" href="#__codelineno-0-34"></a>└── requirements-dev.txt        # 測試依賴
 </span></code></pre></div>
 <h2 id="_2">設計模式<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
 <p>本專案採用以 <strong>Service Layer</strong> 為中心的結構：</p>
 <ul>
 <li><strong>Services</strong> (<code>src/*_service.py</code>)：封裝查詢、FHIR 轉換、FDA 同步與術語邏輯。</li>
 <li><strong>Infrastructure</strong> (<code>database.py</code>、<code>cache.py</code>、<code>audit.py</code>、<code>metrics.py</code>)：處理 PostgreSQL、Redis、稽核與監控。</li>
-<li><strong>MCP Entry</strong> (<code>src/server.py</code>)：負責註冊工具、初始化服務、管理 transport 與 HTTP 錯誤 logging。</li>
+<li><strong>MCP Entry</strong> (<code>src/server.py</code>)：定義工具函式、初始化服務、管理 transport 與 HTTP 錯誤 logging；<code>DynamicFastMCP</code> 子類覆寫 <code>list_tools</code> 以觸發動態工具同步。</li>
+<li><strong>Dataset Status</strong> (<code>src/dataset_status.py</code>)：查詢各 schema 的資料量，與門檻比對後透過 <code>add_tool</code>/<code>remove_tool</code> 動態控制工具可見性；快取 5 分鐘。</li>
 <li><strong>Data Loader</strong> (<code>loader/</code>)：負責將靜態術語資料與 FDA API 資料寫入 PostgreSQL。</li>
 </ul>
 <h2 id="_3">設定與部署<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>

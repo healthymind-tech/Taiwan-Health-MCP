@@ -1012,10 +1012,71 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#fastmcp-lifespan" class="md-nav__link">
+  <a href="#_4" class="md-nav__link">
     <span class="md-ellipsis">
       
-        ⚡ FastMCP Lifespan 行為（重要）
+        🔀 動態工具啟用/停用
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="🔀 動態工具啟用/停用">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        機制
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        服務與門檻對照
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        門檻的作用
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        永遠可見的工具
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mcp-sdk-lifespan" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ⚡ mcp SDK Lifespan 行為（重要）
       
     </span>
   </a>
@@ -3432,10 +3493,71 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#fastmcp-lifespan" class="md-nav__link">
+  <a href="#_4" class="md-nav__link">
     <span class="md-ellipsis">
       
-        ⚡ FastMCP Lifespan 行為（重要）
+        🔀 動態工具啟用/停用
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="🔀 動態工具啟用/停用">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        機制
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        服務與門檻對照
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        門檻的作用
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        永遠可見的工具
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mcp-sdk-lifespan" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ⚡ mcp SDK Lifespan 行為（重要）
       
     </span>
   </a>
@@ -3495,7 +3617,8 @@
     end
 
     subgraph "MCP Server (port 8000)"
-        B["FastMCP uvicorn 56 個工具"]
+        B["DynamicFastMCP uvicorn 最多 56 個工具"]
+        DSM["dataset_status.py DatasetStatusManager 5 分鐘 TTL"]
         AUD["audit.py audited decorator"]
         CAC["cache.py cached decorator"]
         MET["metrics.py Prometheus"]
@@ -3533,6 +3656,8 @@
 
     A1 --&gt; B
     A2 --&gt; B
+    B --&gt; DSM
+    DSM --&gt;|tools/list 觸發| PGB
     B --&gt; AUD
     B --&gt; CAC
     B --&gt; MET
@@ -3765,17 +3890,112 @@
 <li><code>statement_cache_size=0</code> 必須設定（pgBouncer transaction mode 要求）</li>
 </ul>
 <hr />
-<h2 id="fastmcp-lifespan">⚡ FastMCP Lifespan 行為（重要）<a class="headerlink" href="#fastmcp-lifespan" title="Permanent link">&para;</a></h2>
-<p>在 <code>streamable-http</code> 模式下，FastMCP 對每個新的 MCP session 執行一次 lifespan context manager，而非只在程序啟動時執行一次。</p>
+<h2 id="_4">🔀 動態工具啟用/停用<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
+<p>MCP 工具清單依資料集載入狀態動態變化，未載入的資料集對應工具完全不出現在 <code>tools/list</code> 回應中。</p>
+<h3 id="_5">機制<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h3>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>client 呼叫 tools/list
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    └─→ DynamicFastMCP.list_tools()
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>            └─→ DatasetStatusManager.refresh_if_stale_and_sync()
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>                    ├─ 快取仍新鮮（&lt; 5 分鐘）→ 直接略過
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>                    └─ 快取過期 → 查詢各 schema COUNT(*)
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>                            ├─ 資料量 ≥ 門檻 → 服務可用 → add_tool()
+</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>                            └─ 資料量 &lt; 門檻 → 服務不可用 → remove_tool()
+</span></code></pre></div>
+<h3 id="_6">服務與門檻對照<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>服務</th>
+<th>查詢表</th>
+<th>最低門檻</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ICD</td>
+<td><code>icd.diagnoses</code></td>
+<td>10,000</td>
+<td>ICD-10-CM 完整載入約 46,000 筆</td>
+</tr>
+<tr>
+<td>Drug</td>
+<td><code>drug.licenses</code></td>
+<td>100</td>
+<td>FDA 藥品通常 &gt; 60,000 筆</td>
+</tr>
+<tr>
+<td>Health Food</td>
+<td><code>health_food.items</code></td>
+<td>10</td>
+<td>—</td>
+</tr>
+<tr>
+<td>Food Nutrition</td>
+<td><code>food_nutrition.measurements</code></td>
+<td>10</td>
+<td>—</td>
+</tr>
+<tr>
+<td>Lab</td>
+<td><code>loinc.concepts</code></td>
+<td>1,000</td>
+<td>LOINC 2.80 約 100,000 筆</td>
+</tr>
+<tr>
+<td>Guideline</td>
+<td><code>guideline.disease_guidelines</code></td>
+<td>1</td>
+<td>—</td>
+</tr>
+<tr>
+<td>TWCore</td>
+<td><code>twcore.codesystems</code></td>
+<td>1</td>
+<td>—</td>
+</tr>
+<tr>
+<td>SNOMED CT</td>
+<td><code>snomed.concepts</code></td>
+<td>100,000</td>
+<td>完整約 370,000 筆</td>
+</tr>
+<tr>
+<td>RxNorm</td>
+<td><code>rxnorm.concepts</code></td>
+<td>10,000</td>
+<td>—</td>
+</tr>
+<tr>
+<td>FHIR Condition</td>
+<td>—</td>
+<td>—</td>
+<td>跟隨 ICD 服務</td>
+</tr>
+<tr>
+<td>FHIR Medication</td>
+<td>—</td>
+<td>—</td>
+<td>跟隨 Drug 服務</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_7">門檻的作用<a class="headerlink" href="#_7" title="Permanent link">&para;</a></h3>
+<p>門檻設計用於防止 data-loader 執行中途（資料尚不完整）就開放工具。FDA 同步服務（Drug/HealthFood/FoodNutrition）採用 <code>TRUNCATE + INSERT</code> transaction，同步期間資料量為 0，自然被過濾。</p>
+<h3 id="_8">永遠可見的工具<a class="headerlink" href="#_8" title="Permanent link">&para;</a></h3>
+<p><code>health_check</code> 透過 <code>@mcp.tool()</code> 靜態註冊，不受動態機制控制，任何情況下都出現在 tool list。</p>
+<hr />
+<h2 id="mcp-sdk-lifespan">⚡ mcp SDK Lifespan 行為（重要）<a class="headerlink" href="#mcp-sdk-lifespan" title="Permanent link">&para;</a></h2>
+<p>在 <code>streamable-http</code> 模式下，<code>mcp</code> SDK 的 <code>FastMCP</code> 對每個新的 MCP session 執行一次 lifespan context manager，而非只在程序啟動時執行一次。</p>
 <p><code>server.py</code> 使用以下機制確保只初始化一次：</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">_init_lock</span><span class="p">:</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">Lock</span>   <span class="c1"># lazily created on first session</span>
-</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">_initialized</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
-</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>
-</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="k">async</span> <span class="k">with</span> <span class="n">_init_lock</span><span class="p">:</span>
-</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">_initialized</span><span class="p">:</span>
-</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>        <span class="c1"># 所有初始化邏輯...</span>
-</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>        <span class="n">_initialized</span> <span class="o">=</span> <span class="kc">True</span>
-</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="c1"># yield 在 lock 外</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">_init_lock</span><span class="p">:</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">Lock</span>   <span class="c1"># lazily created on first session</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="n">_initialized</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="k">async</span> <span class="k">with</span> <span class="n">_init_lock</span><span class="p">:</span>
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">_initialized</span><span class="p">:</span>
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>        <span class="c1"># 所有初始化邏輯...</span>
+</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>        <span class="n">_initialized</span> <span class="o">=</span> <span class="kc">True</span>
+</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="c1"># yield 在 lock 外</span>
 </span></code></pre></div>
 <p>各元件也各自具備冪等保護：
 - <code>database.init_pool()</code> — 檢查 <code>_pool is not None</code>
@@ -3785,8 +4005,8 @@
 <hr />
 <h2 id="fda-two-phase-pattern">🔄 FDA 同步策略（Two-Phase Pattern）<a class="headerlink" href="#fda-two-phase-pattern" title="Permanent link">&para;</a></h2>
 <p>所有 FDA 同步函式遵循此模式防止資料庫進入部分寫入狀態：</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>Phase 1: 先抓取所有 HTTP 資料（在 DB 連線外）
-</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>Phase 2: 單一 transaction 寫入（TRUNCATE + INSERT）
+<div class="language-text highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>Phase 1: 先抓取所有 HTTP 資料（在 DB 連線外）
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>Phase 2: 單一 transaction 寫入（TRUNCATE + INSERT）
 </span></code></pre></div>
 <p><strong>原始資料去重</strong>：FDA API 偶爾包含重複的主鍵（如 <code>license_id</code>）。各服務在 INSERT 前以 <code>seen_ids</code> set 去重。</p>
 <p>**絕不**在 transaction 內進行 HTTP 請求。</p>

@@ -929,6 +929,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#dynamic-tool-registration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        動態工具啟用流程 (Dynamic Tool Registration)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#fda-auto-sync" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3188,6 +3199,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#dynamic-tool-registration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        動態工具啟用流程 (Dynamic Tool Registration)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#fda-auto-sync" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3251,6 +3273,19 @@
 <li>各 loader（<code>icd_loader.py</code>、<code>loinc_loader.py</code> 等）解析原始 zip 檔，批次寫入對應 schema。</li>
 <li>載入完成後重啟 MCP server，服務初始化時連接已有資料的 PostgreSQL。</li>
 </ol>
+<h2 id="dynamic-tool-registration">動態工具啟用流程 (Dynamic Tool Registration)<a class="headerlink" href="#dynamic-tool-registration" title="Permanent link">&para;</a></h2>
+<p>工具清單依資料集可用性動態變化，client 呼叫 <code>tools/list</code> 時觸發檢查：</p>
+<ol>
+<li><strong>Client</strong> 發送 <code>tools/list</code> 請求。</li>
+<li><strong><code>DynamicFastMCP.list_tools()</code></strong> 被呼叫，先觸發 <code>DatasetStatusManager.refresh_if_stale_and_sync()</code>。</li>
+<li><strong>快取判斷</strong>：距上次查詢 &lt; 5 分鐘 → 略過，直接回傳目前已註冊工具。</li>
+<li><strong>快取過期</strong>：對每個 service 執行 <code>SELECT COUNT(*) FROM &lt;table&gt;</code>（透過 pgBouncer）。</li>
+<li><strong>比對差異</strong>：</li>
+<li>資料量 ≥ 門檻 且尚未啟用 → <code>mcp.add_tool(fn, name=...)</code> 逐一註冊工具</li>
+<li>資料量 &lt; 門檻 且已啟用 → <code>mcp.remove_tool(name)</code> 逐一移除工具</li>
+<li><strong>回傳</strong>：目前已註冊的工具清單（最多 56 個，不含未載入資料集的工具）。</li>
+</ol>
+<p><strong>首次初始化</strong>：lifespan 完成服務初始化後立即執行一次同步，確保 server ready 時工具清單即正確。</p>
 <h2 id="fda-auto-sync">FDA 動態同步流程 (Auto Sync)<a class="headerlink" href="#fda-auto-sync" title="Permanent link">&para;</a></h2>
 <p>藥品/健康食品/營養資料由各服務的排程器自動同步：</p>
 <ol>

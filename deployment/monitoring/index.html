@@ -3740,7 +3740,7 @@
 <h3 id="drug-db-sync-failed-duplicate-key">Drug DB sync failed - duplicate key<a class="headerlink" href="#drug-db-sync-failed-duplicate-key" title="Permanent link">&para;</a></h3>
 <p>FDA 原始資料含重複 <code>license_id</code>。v2+ 版本已在寫入前自動去重（<code>seen_ids</code> set），此錯誤不應再出現。若仍出現，請確認使用最新版本的 <code>drug_service.py</code>。</p>
 <h3 id="prometheus-port-already-in-use">Prometheus port already in use<a class="headerlink" href="#prometheus-port-already-in-use" title="Permanent link">&para;</a></h3>
-<p>FastMCP 在 streamable-http 模式下對每個 session 執行 lifespan。<code>metrics.start_metrics_server()</code> 已加入 <code>_metrics_server_started</code> flag 防止重複綁定。若仍出現此錯誤，請更新 <code>src/metrics.py</code>。</p>
+<p><code>mcp</code> SDK 在 streamable-http 模式下對每個 session 執行 lifespan。<code>metrics.start_metrics_server()</code> 已加入 <code>_metrics_server_started</code> flag 防止重複綁定。若仍出現此錯誤，請更新 <code>src/metrics.py</code>。</p>
 <h3 id="false">服務顯示 false<a class="headerlink" href="#false" title="Permanent link">&para;</a></h3>
 <p>對應術語資料未載入。執行相應的 data-loader 指令後重啟 app：</p>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>--profile<span class="w"> </span>loader<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>data-loader<span class="w"> </span>--snomed
