@@ -265,6 +265,134 @@ class ApiErrorLoggingMiddleware:
             raise
 
 
+_PRIVACY_HTML = """\
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privacy Policy – Taiwan Health MCP Server</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 800px; margin: 40px auto;
+           padding: 0 24px; line-height: 1.7; color: #222; }
+    h1 { font-size: 1.6rem; } h2 { font-size: 1.15rem; margin-top: 2rem; }
+    p, li { font-size: 0.97rem; } code { background: #f4f4f4; padding: 1px 5px;
+    border-radius: 3px; font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+<h1>Privacy Policy – Taiwan Health MCP Server</h1>
+<p><em>Effective date: 2025-01-01 &nbsp;|&nbsp; Last updated: 2026-04-09</em></p>
+
+<h2>1. Overview</h2>
+<p>Taiwan Health MCP Server is an open-source Model Context Protocol (MCP) server
+that provides read-only access to Taiwan FDA, ICD-10, LOINC, SNOMED CT, RxNorm,
+and Taiwan clinical guideline data. All underlying datasets are publicly available;
+this service does not collect, store, or process personal health information.</p>
+
+<h2>2. Data We Collect</h2>
+<p>We do <strong>not</strong> collect any personally identifiable information (PII).
+The server maintains an internal audit log (<code>audit.query_log</code>) for
+operational monitoring purposes. Each audit record contains:</p>
+<ul>
+  <li>Tool name (e.g., <code>search_medical_codes</code>)</li>
+  <li>SHA-256 hash of the tool parameters — <strong>not</strong> the raw values</li>
+  <li>Request duration and status (success / error)</li>
+  <li>Timestamp</li>
+</ul>
+<p>Raw parameter values are <strong>never</strong> written to logs. This design
+ensures that patient-identifiable query terms cannot be reconstructed from the
+audit trail.</p>
+
+<h2>3. Data Sources</h2>
+<p>All medical terminology data served by this API originates from publicly
+available datasets:</p>
+<ul>
+  <li>ICD-10-CM / ICD-10-PCS — U.S. National Library of Medicine / CMS (public domain)</li>
+  <li>LOINC 2.80 — Regenstrief Institute (LOINC License, free for most uses)</li>
+  <li>SNOMED CT International — SNOMED International (SNOMED License)</li>
+  <li>RxNorm — U.S. National Library of Medicine (public domain)</li>
+  <li>Taiwan FDA drug, health food, and nutrition data — Taiwan FDA open data</li>
+  <li>TWCore IG — Taiwan Ministry of Health and Welfare (public)</li>
+</ul>
+
+<h2>4. How Data Is Used</h2>
+<p>Query results are returned directly to the requesting MCP client (Claude).
+We do not use query data for training, profiling, advertising, or any purpose
+other than fulfilling the immediate API request.</p>
+
+<h2>5. Third-Party Data Processing</h2>
+<p>When this server is accessed through Anthropic's Claude products, Anthropic
+may collect telemetry on tool calls (including parameters and responses) per
+their own privacy policy. Please refer to
+<a href="https://www.anthropic.com/privacy">Anthropic's Privacy Policy</a>
+for details.</p>
+<p>This server does not share data with any other third parties.</p>
+
+<h2>6. Data Retention</h2>
+<p>Audit log records (SHA-256 hashes only) are retained for up to 90 days and
+then deleted. Redis cache entries expire per configured TTL (1–24 hours).</p>
+
+<h2>7. No Authentication Required</h2>
+<p>This service does not require user accounts or authentication. We do not
+store session tokens, cookies, or user identifiers of any kind.</p>
+
+<h2>8. Your Rights</h2>
+<p>Because we do not collect PII, there is no personal data to access, correct,
+or delete. If you believe this server has inadvertently processed personal data,
+please contact us at the address below.</p>
+
+<h2>9. Changes to This Policy</h2>
+<p>We may update this policy from time to time. The effective date at the top of
+this page will reflect the most recent revision.</p>
+
+<h2>10. Contact</h2>
+<p>For privacy-related questions, please open an issue at
+<a href="https://github.com/healthymind-tech/Taiwan-Health-MCP/issues">
+github.com/healthymind-tech/Taiwan-Health-MCP</a> or email
+<a href="mailto:support@healthymind-tech.com">support@healthymind-tech.com</a>.</p>
+</body>
+</html>
+"""
+
+_PRIVACY_HTML_BYTES = _PRIVACY_HTML.encode("utf-8")
+
+
+class PrivacyPageMiddleware:
+    """Serve a static privacy policy page at GET /privacy."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http" and scope.get("method") == "GET":
+            path = scope.get("path", "")
+            if path == "/privacy" or path == "/privacy/":
+                await send(
+                    {
+                        "type": "http.response.start",
+                        "status": 200,
+                        "headers": [
+                            (b"content-type", b"text/html; charset=utf-8"),
+                            (
+                                b"content-length",
+                                str(len(_PRIVACY_HTML_BYTES)).encode(),
+                            ),
+                            (b"cache-control", b"public, max-age=86400"),
+                        ],
+                    }
+                )
+                await send(
+                    {
+                        "type": "http.response.body",
+                        "body": _PRIVACY_HTML_BYTES,
+                        "more_body": False,
+                    }
+                )
+                return
+        await self.app(scope, receive, send)
+
+
 def _call_http_factory(factory, **kwargs):
     """Call a FastMCP HTTP app factory with best-effort compatibility."""
     try:
@@ -294,7 +422,7 @@ def build_http_app():
     else:
         raise RuntimeError("FastMCP does not expose an HTTP ASGI app")
 
-    return ApiErrorLoggingMiddleware(app)
+    return PrivacyPageMiddleware(ApiErrorLoggingMiddleware(app))
 
 
 # ============================================================

@@ -17,3 +17,6 @@
 
 ### [效能與監控](performance.md)
 針對高併發場景的優化建議與日誌管理策略。
+
+### [隱私政策頁面](privacy.md)
+`/privacy` 端點說明，供 Anthropic Connectors Directory 審核使用。
