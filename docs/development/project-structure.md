@@ -3,7 +3,8 @@
 ```text
 .
 ├── src/                        # MCP server 與所有 service 模組
-│   ├── server.py               # 入口點，註冊 56 個 MCP 工具
+│   ├── server.py               # 入口點，DynamicFastMCP + 56 個 MCP 工具定義
+│   ├── dataset_status.py       # DatasetStatusManager — 動態工具啟用/停用（5 分鐘 TTL）
 │   ├── *_service.py            # ICD / Drug / Lab / Guideline / SNOMED / TWCore 等服務
 │   ├── database.py             # asyncpg pool 單例
 │   ├── cache.py                # Redis 快取裝飾器
@@ -41,7 +42,8 @@
 
 - **Services** (`src/*_service.py`)：封裝查詢、FHIR 轉換、FDA 同步與術語邏輯。
 - **Infrastructure** (`database.py`、`cache.py`、`audit.py`、`metrics.py`)：處理 PostgreSQL、Redis、稽核與監控。
-- **MCP Entry** (`src/server.py`)：負責註冊工具、初始化服務、管理 transport 與 HTTP 錯誤 logging。
+- **MCP Entry** (`src/server.py`)：定義工具函式、初始化服務、管理 transport 與 HTTP 錯誤 logging；`DynamicFastMCP` 子類覆寫 `list_tools` 以觸發動態工具同步。
+- **Dataset Status** (`src/dataset_status.py`)：查詢各 schema 的資料量，與門檻比對後透過 `add_tool`/`remove_tool` 動態控制工具可見性；快取 5 分鐘。
 - **Data Loader** (`loader/`)：負責將靜態術語資料與 FDA API 資料寫入 PostgreSQL。
 
 ## 設定與部署

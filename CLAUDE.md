@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Taiwan Health MCP Server — a [FastMCP](https://github.com/jlowin/fastmcp)-based Model Context Protocol server providing **56 tools** for Taiwan medical and health data. Designed for production SaaS deployment with hundreds of requests/second throughput.
+Taiwan Health MCP Server — a Model Context Protocol server built on the official **`mcp` SDK** (`mcp.server.fastmcp.FastMCP`) providing **56 tools** for Taiwan medical and health data. Designed for production SaaS deployment with hundreds of requests/second throughput.
 
 **Datasets**: ICD-10-CM 2025, LOINC 2.80, SNOMED CT International, RxNorm, Taiwan FDA drugs/health foods/nutrition, TWCore IG v1.0.0, Taiwan clinical guidelines.
 
@@ -55,13 +55,14 @@ pytest tests/ -v
 | Prometheus | Metrics on `METRICS_PORT` (default 9090) |
 
 ### Entry point
-`src/server.py` — FastMCP server with all 56 tool definitions. Startup uses `asynccontextmanager lifespan`:
+`src/server.py` — `DynamicFastMCP` server (subclass of FastMCP) with up to 56 tool definitions. Startup uses `asynccontextmanager lifespan`:
 1. Start Prometheus metrics server
 2. Init asyncpg pool through pgBouncer (`statement_cache_size=0` required for transaction mode)
 3. Init Redis client
 4. Start DB pool stats collector (background task)
 5. Initialize each service in try/except — failing service degrades gracefully
 6. Run Redis warm-up cache for common queries
+7. Run initial dataset status sync — registers only tools whose datasets meet the row-count threshold
 
 ### Services
 
@@ -94,6 +95,7 @@ pytest tests/ -v
 ### Cross-cutting concerns
 - **`src/audit.py`** — `@audited("tool_name")` decorator: logs SHA-256(params), tool name, duration, status to `audit.query_log`. Never logs raw parameter values (HIPAA).
 - **`src/cache.py`** — `@cached(ttl, prefix)` decorator: Redis-backed, fail-open (cache error → function executes normally). Records hit/miss metrics.
+- **`src/dataset_status.py`** — `DatasetStatusManager`: queries each schema's row count against a minimum threshold; calls `mcp.add_tool()`/`mcp.remove_tool()` to dynamically show/hide tools based on dataset availability. 5-minute TTL cache. Triggered on every `tools/list` call via `DynamicFastMCP.list_tools()` override.
 - **`src/metrics.py`** — Prometheus counters/histograms. `record_tool_call()` called by `@audited`. `record_cache_op()` called by `@cached`.
 - **`src/utils.py`** — Structured JSON logging to stderr (never stdout, which belongs to MCP stdio transport). Configure level via `LOG_LEVEL` env var.
 - **`src/database.py`** — asyncpg pool singleton. `statement_cache_size=0` is set to support pgBouncer transaction mode.
@@ -120,9 +122,9 @@ All FDA sync functions (`_sync_all`, `_sync`) follow this pattern to prevent par
 
 Never interleave HTTP fetches with DB writes inside a transaction.
 
-## FastMCP lifespan-per-session (important)
+## mcp SDK lifespan-per-session (important)
 
-In `streamable-http` mode, FastMCP runs the `lifespan` context manager **once per MCP session**, not once per process. All one-time initialization is guarded by:
+In `streamable-http` mode, the `mcp` SDK's `FastMCP` runs the `lifespan` context manager **once per MCP session**, not once per process. All one-time initialization is guarded by:
 - `_init_lock: asyncio.Lock` + `_initialized: bool` in `server.py` — only the first session runs the full setup
 - `database.init_pool()` and `cache.init_client()` — idempotent; return existing singleton if already created
 - `metrics.start_metrics_server()` — `_metrics_server_started` flag prevents duplicate port binding

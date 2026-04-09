@@ -14,7 +14,8 @@ graph TB
     end
 
     subgraph "MCP Server (port 8000)"
-        B["FastMCP uvicorn 56 個工具"]
+        B["DynamicFastMCP uvicorn 最多 56 個工具"]
+        DSM["dataset_status.py DatasetStatusManager 5 分鐘 TTL"]
         AUD["audit.py audited decorator"]
         CAC["cache.py cached decorator"]
         MET["metrics.py Prometheus"]
@@ -52,6 +53,8 @@ graph TB
 
     A1 --> B
     A2 --> B
+    B --> DSM
+    DSM -->|tools/list 觸發| PGB
     B --> AUD
     B --> CAC
     B --> MET
@@ -184,9 +187,51 @@ async def search_codes(...):
 
 ---
 
-## ⚡ FastMCP Lifespan 行為（重要）
+## 🔀 動態工具啟用/停用
 
-在 `streamable-http` 模式下，FastMCP 對每個新的 MCP session 執行一次 lifespan context manager，而非只在程序啟動時執行一次。
+MCP 工具清單依資料集載入狀態動態變化，未載入的資料集對應工具完全不出現在 `tools/list` 回應中。
+
+### 機制
+
+```
+client 呼叫 tools/list
+    └─→ DynamicFastMCP.list_tools()
+            └─→ DatasetStatusManager.refresh_if_stale_and_sync()
+                    ├─ 快取仍新鮮（< 5 分鐘）→ 直接略過
+                    └─ 快取過期 → 查詢各 schema COUNT(*)
+                            ├─ 資料量 ≥ 門檻 → 服務可用 → add_tool()
+                            └─ 資料量 < 門檻 → 服務不可用 → remove_tool()
+```
+
+### 服務與門檻對照
+
+| 服務 | 查詢表 | 最低門檻 | 說明 |
+|------|--------|---------|------|
+| ICD | `icd.diagnoses` | 10,000 | ICD-10-CM 完整載入約 46,000 筆 |
+| Drug | `drug.licenses` | 100 | FDA 藥品通常 > 60,000 筆 |
+| Health Food | `health_food.items` | 10 | — |
+| Food Nutrition | `food_nutrition.measurements` | 10 | — |
+| Lab | `loinc.concepts` | 1,000 | LOINC 2.80 約 100,000 筆 |
+| Guideline | `guideline.disease_guidelines` | 1 | — |
+| TWCore | `twcore.codesystems` | 1 | — |
+| SNOMED CT | `snomed.concepts` | 100,000 | 完整約 370,000 筆 |
+| RxNorm | `rxnorm.concepts` | 10,000 | — |
+| FHIR Condition | — | — | 跟隨 ICD 服務 |
+| FHIR Medication | — | — | 跟隨 Drug 服務 |
+
+### 門檻的作用
+
+門檻設計用於防止 data-loader 執行中途（資料尚不完整）就開放工具。FDA 同步服務（Drug/HealthFood/FoodNutrition）採用 `TRUNCATE + INSERT` transaction，同步期間資料量為 0，自然被過濾。
+
+### 永遠可見的工具
+
+`health_check` 透過 `@mcp.tool()` 靜態註冊，不受動態機制控制，任何情況下都出現在 tool list。
+
+---
+
+## ⚡ mcp SDK Lifespan 行為（重要）
+
+在 `streamable-http` 模式下，`mcp` SDK 的 `FastMCP` 對每個新的 MCP session 執行一次 lifespan context manager，而非只在程序啟動時執行一次。
 
 `server.py` 使用以下機制確保只初始化一次：
 

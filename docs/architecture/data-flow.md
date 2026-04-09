@@ -37,6 +37,21 @@
 3. 各 loader（`icd_loader.py`、`loinc_loader.py` 等）解析原始 zip 檔，批次寫入對應 schema。
 4. 載入完成後重啟 MCP server，服務初始化時連接已有資料的 PostgreSQL。
 
+## 動態工具啟用流程 (Dynamic Tool Registration)
+
+工具清單依資料集可用性動態變化，client 呼叫 `tools/list` 時觸發檢查：
+
+1. **Client** 發送 `tools/list` 請求。
+2. **`DynamicFastMCP.list_tools()`** 被呼叫，先觸發 `DatasetStatusManager.refresh_if_stale_and_sync()`。
+3. **快取判斷**：距上次查詢 < 5 分鐘 → 略過，直接回傳目前已註冊工具。
+4. **快取過期**：對每個 service 執行 `SELECT COUNT(*) FROM <table>`（透過 pgBouncer）。
+5. **比對差異**：
+   - 資料量 ≥ 門檻 且尚未啟用 → `mcp.add_tool(fn, name=...)` 逐一註冊工具
+   - 資料量 < 門檻 且已啟用 → `mcp.remove_tool(name)` 逐一移除工具
+6. **回傳**：目前已註冊的工具清單（最多 56 個，不含未載入資料集的工具）。
+
+**首次初始化**：lifespan 完成服務初始化後立即執行一次同步，確保 server ready 時工具清單即正確。
+
 ## FDA 動態同步流程 (Auto Sync)
 
 藥品/健康食品/營養資料由各服務的排程器自動同步：

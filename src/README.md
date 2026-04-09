@@ -8,7 +8,7 @@
 
 | 檔案 | 服務 | MCP 工具數 |
 |------|------|-----------|
-| `server.py` | 入口點（FastMCP + lifespan） | 56 |
+| `server.py` | 入口點（`mcp` SDK DynamicFastMCP + lifespan） | 最多 56 |
 | `icd_service.py` | ICD-10-CM/PCS 診斷與手術碼 | 5 |
 | `drug_service.py` | 台灣 FDA 藥品 | 5 |
 | `health_food_service.py` | 台灣 FDA 健康食品 | 3 |
@@ -28,6 +28,7 @@
 | `audit.py` | `@audited` 裝飾器 — 稽核日誌（SHA-256 參數雜湊） |
 | `cache.py` | `@cached` 裝飾器 — Redis TTL 快取 |
 | `database.py` | asyncpg pool 單例（`statement_cache_size=0`） |
+| `dataset_status.py` | `DatasetStatusManager` — 依資料集載入狀態動態啟用/停用 MCP 工具 |
 | `metrics.py` | Prometheus 指標（Counter/Histogram/Gauge） |
 | `utils.py` | 結構化 JSON 日誌（輸出至 stderr） |
 | `config.py` | `AppConfig.from_env()` — 環境變數讀取 |
@@ -201,7 +202,7 @@
 
 ## server.py — 入口點
 
-`FastMCP` 實例化後掛載 lifespan，lifespan 使用 `_init_lock + _initialized` 確保只在第一個 session 時執行初始化（FastMCP streamable-http 模式對每個 session 執行 lifespan）。
+`DynamicFastMCP`（`mcp.server.fastmcp.FastMCP` 子類別）實例化後掛載 lifespan，lifespan 使用 `_init_lock + _initialized` 確保只在第一個 session 時執行初始化（`mcp` SDK streamable-http 模式對每個 session 執行 lifespan）。
 
 啟動順序：
 1. Prometheus metrics server（非 stdio 模式）
@@ -210,3 +211,4 @@
 4. DB pool stats collector（background task）
 5. 11 個服務初始化（各自 try/except，失敗服務降級）
 6. Redis warm-up cache
+7. Dataset status 初始同步（依資料量啟用對應工具）

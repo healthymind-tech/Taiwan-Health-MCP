@@ -114,7 +114,7 @@ curl http://localhost:8000/mcp -X POST \
 | pgBouncer | edoburu/latest | 連線池（transaction mode，500 client → 30 PG 連線） |
 | Redis | 7-alpine | 回應快取（TTL 策略，`@cached` 裝飾器） |
 | Prometheus | — | 指標監控（預設 port 9090） |
-| FastMCP | 1.x | MCP server 框架 |
+| mcp SDK | 1.25 | 官方 MCP SDK（`mcp.server.fastmcp.FastMCP`） |
 | asyncpg | — | 高效能 PostgreSQL 非同步驅動 |
 
 ### PostgreSQL Schema

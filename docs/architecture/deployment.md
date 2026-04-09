@@ -5,7 +5,7 @@ graph TD
     User[End User] --> Client[MCP Client]
 
     subgraph "Docker Compose Stack"
-        Server["app (MCP Server / FastMCP, port 8000)"]
+        Server["app (MCP Server / mcp SDK, port 8000)"]
         PGB["pgbouncer (transaction mode, port 5432)"]
         PG["postgres:16 (port 5432 internal)"]
         RD["redis:7 (port 6379)"]

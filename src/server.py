@@ -2,8 +2,11 @@ import asyncio
 import inspect
 import json
 from contextlib import asynccontextmanager
+from typing import Callable
 
 from mcp.server.fastmcp import FastMCP
+
+from dataset_status import DatasetStatusManager
 
 import audit
 import cache as cache_module
@@ -46,6 +49,7 @@ drug_interaction_service: DrugInteractionService | None = None
 _init_lock: asyncio.Lock | None = None   # created lazily inside async context
 _initialized: bool = False
 _db_stats_task: asyncio.Task | None = None
+_dataset_status = DatasetStatusManager()
 
 
 @asynccontextmanager
@@ -111,6 +115,9 @@ async def lifespan(server):
             # ── Redis warm-up ─────────────────────────────────────────────
             await _warm_up_cache()
 
+            # ── Initial tool registration based on available datasets ────────
+            await _dataset_status.refresh_if_stale_and_sync(pool, SERVICE_TOOLS, mcp)
+
             _initialized = True
             log_info("All services initialized — server ready")
 
@@ -150,7 +157,19 @@ def _svc_unavailable(name: str) -> str:
     )
 
 
-mcp = FastMCP(
+class DynamicFastMCP(FastMCP):
+    """FastMCP subclass that refreshes dataset-based tool availability on every tools/list."""
+
+    async def list_tools(self) -> list:
+        try:
+            pool = database.get_pool()
+            await _dataset_status.refresh_if_stale_and_sync(pool, SERVICE_TOOLS, self)
+        except RuntimeError:
+            pass  # pool not yet initialized — return whatever tools are registered
+        return await super().list_tools()
+
+
+mcp = DynamicFastMCP(
     "taiwanHealthMcp",
     host=config.host,
     port=config.port,
@@ -309,7 +328,6 @@ async def health_check() -> str:
 # Group 1: ICD-10
 # ============================================================
 
-@mcp.tool()
 @audited("search_medical_codes")
 async def search_medical_codes(keyword: str, type: str = "all") -> str:
     """
@@ -324,7 +342,6 @@ async def search_medical_codes(keyword: str, type: str = "all") -> str:
     return await icd_service.search_codes(keyword, type)
 
 
-@mcp.tool()
 @audited("infer_complications")
 async def infer_complications(code: str) -> str:
     """
@@ -338,7 +355,6 @@ async def infer_complications(code: str) -> str:
     return await icd_service.infer_complications(code)
 
 
-@mcp.tool()
 @audited("get_nearby_codes")
 async def get_nearby_codes(code: str) -> str:
     """
@@ -352,7 +368,6 @@ async def get_nearby_codes(code: str) -> str:
     return await icd_service.get_nearby_codes(code)
 
 
-@mcp.tool()
 @audited("check_medical_conflict")
 async def check_medical_conflict(diagnosis_code: str, procedure_code: str) -> str:
     """
@@ -372,7 +387,6 @@ async def check_medical_conflict(diagnosis_code: str, procedure_code: str) -> st
 # Group 1b: ICD-10 category browser
 # ============================================================
 
-@mcp.tool()
 @audited("browse_icd_category")
 async def browse_icd_category(category: str | None = None, limit: int = 50) -> str:
     """
@@ -392,7 +406,6 @@ async def browse_icd_category(category: str | None = None, limit: int = 50) -> s
 # Group 2: Drug (Taiwan FDA)
 # ============================================================
 
-@mcp.tool()
 @audited("search_drug_info")
 async def search_drug_info(keyword: str) -> str:
     """
@@ -406,7 +419,6 @@ async def search_drug_info(keyword: str) -> str:
     return await drug_service.search_drug(keyword)
 
 
-@mcp.tool()
 @audited("get_drug_details")
 async def get_drug_details(license_id: str) -> str:
     """
@@ -421,7 +433,6 @@ async def get_drug_details(license_id: str) -> str:
     return await drug_service.get_drug_details_by_license(license_id)
 
 
-@mcp.tool()
 @audited("identify_unknown_pill")
 async def identify_unknown_pill(features: str) -> str:
     """
@@ -435,7 +446,6 @@ async def identify_unknown_pill(features: str) -> str:
     return await drug_service.identify_pill(features)
 
 
-@mcp.tool()
 @audited("search_drug_by_atc")
 async def search_drug_by_atc(query: str) -> str:
     """
@@ -450,7 +460,6 @@ async def search_drug_by_atc(query: str) -> str:
     return await drug_service.search_by_atc(query)
 
 
-@mcp.tool()
 @audited("search_drug_by_ingredient")
 async def search_drug_by_ingredient(ingredient_name: str) -> str:
     """
@@ -469,7 +478,6 @@ async def search_drug_by_ingredient(ingredient_name: str) -> str:
 # Group 3: Health Food (Taiwan FDA)
 # ============================================================
 
-@mcp.tool()
 @audited("search_health_food")
 async def search_health_food(keyword: str) -> str:
     """
@@ -483,7 +491,6 @@ async def search_health_food(keyword: str) -> str:
     return await health_food_service.search_health_food(keyword)
 
 
-@mcp.tool()
 @audited("get_health_food_details")
 async def get_health_food_details(permit_no: str) -> str:
     """
@@ -501,7 +508,6 @@ async def get_health_food_details(permit_no: str) -> str:
 # Group 4: Food Nutrition
 # ============================================================
 
-@mcp.tool()
 @audited("search_food_nutrition")
 async def search_food_nutrition(food_name: str, nutrient: str | None = None) -> str:
     """
@@ -516,7 +522,6 @@ async def search_food_nutrition(food_name: str, nutrient: str | None = None) -> 
     return await food_nutrition_service.search_nutrition(food_name, nutrient)
 
 
-@mcp.tool()
 @audited("get_detailed_nutrition")
 async def get_detailed_nutrition(food_name: str) -> str:
     """
@@ -530,7 +535,6 @@ async def get_detailed_nutrition(food_name: str) -> str:
     return await food_nutrition_service.get_detailed_nutrition(food_name)
 
 
-@mcp.tool()
 @audited("search_food_ingredient")
 async def search_food_ingredient(keyword: str) -> str:
     """
@@ -544,7 +548,6 @@ async def search_food_ingredient(keyword: str) -> str:
     return await food_nutrition_service.search_food_ingredient(keyword)
 
 
-@mcp.tool()
 @audited("get_ingredients_by_category")
 async def get_ingredients_by_category(category: str) -> str:
     """
@@ -558,7 +561,6 @@ async def get_ingredients_by_category(category: str) -> str:
     return await food_nutrition_service.get_ingredients_by_category(category)
 
 
-@mcp.tool()
 @audited("search_foods_by_nutrient")
 async def search_foods_by_nutrient(nutrient: str, limit: int = 20) -> str:
     """
@@ -575,7 +577,6 @@ async def search_foods_by_nutrient(nutrient: str, limit: int = 20) -> str:
     return await food_nutrition_service.search_foods_by_nutrient(nutrient, limit)
 
 
-@mcp.tool()
 @audited("analyze_meal_nutrition")
 async def analyze_meal_nutrition(foods: list[str]) -> str:
     """
@@ -593,7 +594,6 @@ async def analyze_meal_nutrition(foods: list[str]) -> str:
 # Group 5: Health Food + ICD integrated analysis
 # ============================================================
 
-@mcp.tool()
 @audited("analyze_health_support_for_condition")
 async def analyze_health_support_for_condition(diagnosis_keyword: str) -> str:
     """
@@ -616,7 +616,6 @@ async def analyze_health_support_for_condition(diagnosis_keyword: str) -> str:
 # Group 6: FHIR Condition
 # ============================================================
 
-@mcp.tool()
 @audited("create_fhir_condition")
 async def create_fhir_condition(
     icd_code: str,
@@ -654,7 +653,6 @@ async def create_fhir_condition(
     return fhir_condition_service.to_json_string(result, indent=2)
 
 
-@mcp.tool()
 @audited("create_fhir_condition_from_diagnosis")
 async def create_fhir_condition_from_diagnosis(
     diagnosis_keyword: str,
@@ -683,7 +681,6 @@ async def create_fhir_condition_from_diagnosis(
     return fhir_condition_service.to_json_string(result, indent=2)
 
 
-@mcp.tool()
 @audited("validate_fhir_condition")
 async def validate_fhir_condition(condition_json: str) -> str:
     """
@@ -706,7 +703,6 @@ async def validate_fhir_condition(condition_json: str) -> str:
 # Group 7: FHIR Medication
 # ============================================================
 
-@mcp.tool()
 @audited("search_medication_fhir")
 async def search_medication_fhir(keyword: str, resource_type: str = "Medication") -> str:
     """
@@ -724,7 +720,6 @@ async def search_medication_fhir(keyword: str, resource_type: str = "Medication"
     )
 
 
-@mcp.tool()
 @audited("create_fhir_medication")
 async def create_fhir_medication(license_id: str) -> str:
     """
@@ -739,7 +734,6 @@ async def create_fhir_medication(license_id: str) -> str:
     return fhir_medication_service.to_json_string(result, indent=2)
 
 
-@mcp.tool()
 @audited("create_fhir_medication_knowledge")
 async def create_fhir_medication_from_drug(license_id: str) -> str:
     """
@@ -754,7 +748,6 @@ async def create_fhir_medication_from_drug(license_id: str) -> str:
     return fhir_medication_service.to_json_string(result, indent=2)
 
 
-@mcp.tool()
 @audited("validate_fhir_medication")
 async def validate_fhir_medication(medication_json: str) -> str:
     """
@@ -777,7 +770,6 @@ async def validate_fhir_medication(medication_json: str) -> str:
 # Group 8: Lab / LOINC
 # ============================================================
 
-@mcp.tool()
 @audited("search_loinc_code")
 async def search_loinc_code(keyword: str, category: str | None = None) -> str:
     """
@@ -792,7 +784,6 @@ async def search_loinc_code(keyword: str, category: str | None = None) -> str:
     return await lab_service.search_loinc_code(keyword, category)
 
 
-@mcp.tool()
 @audited("list_lab_categories")
 async def list_lab_categories() -> str:
     """List all available lab test categories."""
@@ -801,7 +792,6 @@ async def list_lab_categories() -> str:
     return await lab_service.list_categories()
 
 
-@mcp.tool()
 @audited("get_reference_range")
 async def get_reference_range(loinc_code: str, age: int, gender: str = "all") -> str:
     """
@@ -817,7 +807,6 @@ async def get_reference_range(loinc_code: str, age: int, gender: str = "all") ->
     return await lab_service.get_reference_range(loinc_code, age, gender)
 
 
-@mcp.tool()
 @audited("interpret_lab_result")
 async def interpret_lab_result(loinc_code: str, value: float, age: int, gender: str = "all") -> str:
     """
@@ -834,7 +823,6 @@ async def interpret_lab_result(loinc_code: str, value: float, age: int, gender: 
     return await lab_service.interpret_lab_result(loinc_code, value, age, gender)
 
 
-@mcp.tool()
 @audited("search_loinc_by_specimen")
 async def search_loinc_by_specimen(specimen_type: str) -> str:
     """
@@ -849,7 +837,6 @@ async def search_loinc_by_specimen(specimen_type: str) -> str:
     return await lab_service.search_by_specimen(specimen_type)
 
 
-@mcp.tool()
 @audited("find_related_loinc_tests")
 async def find_related_loinc_tests(component: str) -> str:
     """
@@ -866,7 +853,6 @@ async def find_related_loinc_tests(component: str) -> str:
     return await lab_service.find_related_tests(component)
 
 
-@mcp.tool()
 @audited("get_loinc_detail")
 async def get_loinc_detail(loinc_num: str) -> str:
     """
@@ -881,7 +867,6 @@ async def get_loinc_detail(loinc_num: str) -> str:
     return await lab_service.get_patient_friendly_name(loinc_num)
 
 
-@mcp.tool()
 @audited("batch_interpret_lab_results")
 async def batch_interpret_lab_results(results_json: str, age: int, gender: str = "all") -> str:
     """
@@ -905,7 +890,6 @@ async def batch_interpret_lab_results(results_json: str, age: int, gender: str =
 # Group 9: Clinical Guidelines
 # ============================================================
 
-@mcp.tool()
 @audited("search_clinical_guideline")
 async def search_clinical_guideline(keyword: str) -> str:
     """
@@ -919,7 +903,6 @@ async def search_clinical_guideline(keyword: str) -> str:
     return await guideline_service.search_guideline(keyword)
 
 
-@mcp.tool()
 @audited("get_complete_guideline")
 async def get_complete_guideline(icd_code: str) -> str:
     """
@@ -934,7 +917,6 @@ async def get_complete_guideline(icd_code: str) -> str:
     return await guideline_service.get_complete_guideline(icd_code)
 
 
-@mcp.tool()
 @audited("get_medication_recommendations")
 async def get_medication_recommendations(icd_code: str) -> str:
     """
@@ -948,7 +930,6 @@ async def get_medication_recommendations(icd_code: str) -> str:
     return await guideline_service.get_medication_recommendations(icd_code)
 
 
-@mcp.tool()
 @audited("get_test_recommendations")
 async def get_test_recommendations(icd_code: str) -> str:
     """
@@ -962,7 +943,6 @@ async def get_test_recommendations(icd_code: str) -> str:
     return await guideline_service.get_test_recommendations(icd_code)
 
 
-@mcp.tool()
 @audited("get_treatment_goals")
 async def get_treatment_goals(icd_code: str) -> str:
     """
@@ -976,7 +956,6 @@ async def get_treatment_goals(icd_code: str) -> str:
     return await guideline_service.get_treatment_goals(icd_code)
 
 
-@mcp.tool()
 @audited("check_medication_contraindications")
 async def check_medication_contraindications(icd_code: str, medication_class: str) -> str:
     """
@@ -995,7 +974,6 @@ async def check_medication_contraindications(icd_code: str, medication_class: st
     return await guideline_service.check_medication_contraindications(icd_code, medication_class)
 
 
-@mcp.tool()
 @audited("link_guideline_to_drugs")
 async def link_guideline_to_drugs(icd_code: str) -> str:
     """
@@ -1011,7 +989,6 @@ async def link_guideline_to_drugs(icd_code: str) -> str:
     return await guideline_service.link_guideline_to_drugs(icd_code)
 
 
-@mcp.tool()
 @audited("suggest_clinical_pathway")
 async def suggest_clinical_pathway(icd_code: str, patient_context_json: str | None = None) -> str:
     """
@@ -1036,7 +1013,6 @@ async def suggest_clinical_pathway(icd_code: str, patient_context_json: str | No
 # Group 10: TWCore IG
 # ============================================================
 
-@mcp.tool()
 @audited("list_twcore_codesystems")
 async def list_twcore_codesystems(category: str = "all") -> str:
     """
@@ -1050,7 +1026,6 @@ async def list_twcore_codesystems(category: str = "all") -> str:
     return await twcore_service.list_codesystems(category)
 
 
-@mcp.tool()
 @audited("search_twcore_code")
 async def search_twcore_code(keyword: str, codesystem_ids: list[str]) -> str:
     """
@@ -1065,7 +1040,6 @@ async def search_twcore_code(keyword: str, codesystem_ids: list[str]) -> str:
     return await twcore_service.search_code(keyword, codesystem_ids)
 
 
-@mcp.tool()
 @audited("lookup_twcore_code")
 async def lookup_twcore_code(code: str, codesystem_id: str) -> str:
     """
@@ -1085,7 +1059,6 @@ async def lookup_twcore_code(code: str, codesystem_id: str) -> str:
 # Group 11: SNOMED CT
 # ============================================================
 
-@mcp.tool()
 @audited("search_snomed_concept")
 async def search_snomed_concept(
     query: str,
@@ -1109,7 +1082,6 @@ async def search_snomed_concept(
     return json.dumps(results, ensure_ascii=False, indent=2)
 
 
-@mcp.tool()
 @audited("get_snomed_concept")
 async def get_snomed_concept(concept_id: int) -> str:
     """
@@ -1126,7 +1098,6 @@ async def get_snomed_concept(concept_id: int) -> str:
     return json.dumps(result, ensure_ascii=False, indent=2)
 
 
-@mcp.tool()
 @audited("get_snomed_children")
 async def get_snomed_children(concept_id: int, limit: int = 50) -> str:
     """
@@ -1145,7 +1116,6 @@ async def get_snomed_children(concept_id: int, limit: int = 50) -> str:
     )
 
 
-@mcp.tool()
 @audited("get_snomed_ancestors")
 async def get_snomed_ancestors(concept_id: int, max_depth: int = 10) -> str:
     """
@@ -1164,7 +1134,6 @@ async def get_snomed_ancestors(concept_id: int, max_depth: int = 10) -> str:
     )
 
 
-@mcp.tool()
 @audited("get_snomed_relationships")
 async def get_snomed_relationships(
     concept_id: int,
@@ -1192,7 +1161,6 @@ async def get_snomed_relationships(
     )
 
 
-@mcp.tool()
 @audited("map_icd_to_snomed")
 async def map_icd_to_snomed(icd_code: str) -> str:
     """
@@ -1210,7 +1178,6 @@ async def map_icd_to_snomed(icd_code: str) -> str:
     )
 
 
-@mcp.tool()
 @audited("map_snomed_to_icd")
 async def map_snomed_to_icd(concept_id: int) -> str:
     """
@@ -1232,7 +1199,6 @@ async def map_snomed_to_icd(concept_id: int) -> str:
 # Group 12: Drug Interactions (RxNorm)
 # ============================================================
 
-@mcp.tool()
 @audited("check_drug_interactions")
 async def check_drug_interactions(drug_names: list[str]) -> str:
     """
@@ -1252,7 +1218,6 @@ async def check_drug_interactions(drug_names: list[str]) -> str:
     return json.dumps(result, ensure_ascii=False, indent=2)
 
 
-@mcp.tool()
 @audited("resolve_rxnorm_drug")
 async def resolve_rxnorm_drug(drug_name: str) -> str:
     """
@@ -1270,7 +1235,6 @@ async def resolve_rxnorm_drug(drug_name: str) -> str:
     )
 
 
-@mcp.tool()
 @audited("get_drug_ingredients_rxnorm")
 async def get_drug_ingredients_rxnorm(rxcui: str) -> str:
     """
@@ -1285,6 +1249,92 @@ async def get_drug_ingredients_rxnorm(rxcui: str) -> str:
     if result is None:
         return json.dumps({"error": f"RXCUI {rxcui} not found"}, ensure_ascii=False)
     return json.dumps(result, ensure_ascii=False, indent=2)
+
+
+# ============================================================
+# Service → tool mapping (used by DynamicFastMCP for add/remove)
+# health_check is always registered via @mcp.tool() and is excluded here.
+# ============================================================
+
+SERVICE_TOOLS: dict[str, list[tuple[Callable, str]]] = {
+    "icd": [
+        (search_medical_codes, "search_medical_codes"),
+        (infer_complications, "infer_complications"),
+        (get_nearby_codes, "get_nearby_codes"),
+        (check_medical_conflict, "check_medical_conflict"),
+        (browse_icd_category, "browse_icd_category"),
+    ],
+    "drug": [
+        (search_drug_info, "search_drug_info"),
+        (get_drug_details, "get_drug_details"),
+        (identify_unknown_pill, "identify_unknown_pill"),
+        (search_drug_by_atc, "search_drug_by_atc"),
+        (search_drug_by_ingredient, "search_drug_by_ingredient"),
+    ],
+    "health_food": [
+        (search_health_food, "search_health_food"),
+        (get_health_food_details, "get_health_food_details"),
+        (analyze_health_support_for_condition, "analyze_health_support_for_condition"),
+    ],
+    "food_nutrition": [
+        (search_food_nutrition, "search_food_nutrition"),
+        (get_detailed_nutrition, "get_detailed_nutrition"),
+        (search_food_ingredient, "search_food_ingredient"),
+        (get_ingredients_by_category, "get_ingredients_by_category"),
+        (search_foods_by_nutrient, "search_foods_by_nutrient"),
+        (analyze_meal_nutrition, "analyze_meal_nutrition"),
+    ],
+    "fhir_condition": [
+        (create_fhir_condition, "create_fhir_condition"),
+        (create_fhir_condition_from_diagnosis, "create_fhir_condition_from_diagnosis"),
+        (validate_fhir_condition, "validate_fhir_condition"),
+    ],
+    "fhir_medication": [
+        (search_medication_fhir, "search_medication_fhir"),
+        (create_fhir_medication, "create_fhir_medication"),
+        (create_fhir_medication_from_drug, "create_fhir_medication_from_drug"),
+        (validate_fhir_medication, "validate_fhir_medication"),
+    ],
+    "lab": [
+        (search_loinc_code, "search_loinc_code"),
+        (list_lab_categories, "list_lab_categories"),
+        (get_reference_range, "get_reference_range"),
+        (interpret_lab_result, "interpret_lab_result"),
+        (search_loinc_by_specimen, "search_loinc_by_specimen"),
+        (find_related_loinc_tests, "find_related_loinc_tests"),
+        (get_loinc_detail, "get_loinc_detail"),
+        (batch_interpret_lab_results, "batch_interpret_lab_results"),
+    ],
+    "guideline": [
+        (search_clinical_guideline, "search_clinical_guideline"),
+        (get_complete_guideline, "get_complete_guideline"),
+        (get_medication_recommendations, "get_medication_recommendations"),
+        (get_test_recommendations, "get_test_recommendations"),
+        (get_treatment_goals, "get_treatment_goals"),
+        (check_medication_contraindications, "check_medication_contraindications"),
+        (link_guideline_to_drugs, "link_guideline_to_drugs"),
+        (suggest_clinical_pathway, "suggest_clinical_pathway"),
+    ],
+    "twcore": [
+        (list_twcore_codesystems, "list_twcore_codesystems"),
+        (search_twcore_code, "search_twcore_code"),
+        (lookup_twcore_code, "lookup_twcore_code"),
+    ],
+    "snomed": [
+        (search_snomed_concept, "search_snomed_concept"),
+        (get_snomed_concept, "get_snomed_concept"),
+        (get_snomed_children, "get_snomed_children"),
+        (get_snomed_ancestors, "get_snomed_ancestors"),
+        (get_snomed_relationships, "get_snomed_relationships"),
+        (map_icd_to_snomed, "map_icd_to_snomed"),
+        (map_snomed_to_icd, "map_snomed_to_icd"),
+    ],
+    "rxnorm": [
+        (check_drug_interactions, "check_drug_interactions"),
+        (resolve_rxnorm_drug, "resolve_rxnorm_drug"),
+        (get_drug_ingredients_rxnorm, "get_drug_ingredients_rxnorm"),
+    ],
+}
 
 
 # ============================================================
