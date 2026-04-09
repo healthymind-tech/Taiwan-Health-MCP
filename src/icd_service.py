@@ -34,6 +34,15 @@ class ICDService:
 
     @cached(ttl=86400, prefix="icd.search")
     async def search_codes(self, keyword: str, type: str = "all") -> str:
+        """Search ICD-10-CM diagnoses and/or ICD-10-PCS procedures by keyword.
+
+        Args:
+            keyword: Free-text search term (Chinese or English) or code prefix.
+            type: Scope — ``"diagnosis"``, ``"procedure"``, or ``"all"``.
+
+        Returns:
+            JSON string with ``diagnoses`` and/or ``procedures`` lists.
+        """
         query = """
             SELECT code, name_zh, name_en
             FROM {table}
@@ -69,6 +78,18 @@ class ICDService:
 
     @cached(ttl=86400, prefix="icd.complications")
     async def infer_complications(self, code: str) -> str:
+        """Infer potential complications or specifics for an ICD-10 code.
+
+        Uses the code hierarchy — expands parent codes to child codes and,
+        if the code is already specific, lists sibling codes in the same category.
+
+        Args:
+            code: An ICD-10-CM code (e.g. ``"E11"`` or ``"E11.9"``).
+
+        Returns:
+            JSON string with ``potential_complications_or_specifics`` or
+            ``related_codes`` depending on whether sub-codes were found.
+        """
         async with self.pool.acquire() as conn:
             children = await conn.fetch(
                 "SELECT code, name_zh FROM icd.diagnoses WHERE code LIKE $1 AND code != $2 ORDER BY code LIMIT 15",
@@ -95,6 +116,15 @@ class ICDService:
 
     @cached(ttl=86400, prefix="icd.nearby")
     async def get_nearby_codes(self, code: str) -> str:
+        """Return the two preceding and two following ICD-10-CM codes.
+
+        Args:
+            code: The target ICD-10-CM code.
+
+        Returns:
+            JSON string with ``target`` and a ``nearby_options`` list
+            containing codes sorted in alphabetical order.
+        """
         async with self.pool.acquire() as conn:
             prev_rows = await conn.fetch(
                 "SELECT code, name_zh, 'prev' AS rel FROM icd.diagnoses WHERE code < $1 ORDER BY code DESC LIMIT 2",
@@ -110,7 +140,18 @@ class ICDService:
 
     @cached(ttl=86400, prefix="icd.category")
     async def browse_category(self, category: str | None = None, limit: int = 50) -> str:
-        """List ICD-10-CM codes within a category, or list all distinct categories."""
+        """List ICD-10-CM codes within a category, or enumerate all categories.
+
+        Args:
+            category: Three-character category prefix (e.g. ``"E11"``).
+                Pass ``None`` to list all distinct categories with counts.
+            limit: Maximum codes to return when browsing a specific category
+                (capped at 200).
+
+        Returns:
+            JSON string. Without *category*: ``{"total_categories", "categories"}``.
+            With *category*: ``{"category", "total", "codes"}``.
+        """
         async with self.pool.acquire() as conn:
             if not category:
                 rows = await conn.fetch(
@@ -149,6 +190,19 @@ class ICDService:
 
     @cached(ttl=86400, prefix="icd.conflict")
     async def get_conflict_info(self, diagnosis_code: str, procedure_code: str) -> str:
+        """Fetch full details for both a diagnosis and a procedure code for conflict analysis.
+
+        Provides structured data so an LLM can identify clinical contraindications
+        (e.g. a male-specific procedure code paired with a female diagnosis).
+
+        Args:
+            diagnosis_code: An ICD-10-CM code.
+            procedure_code: An ICD-10-PCS code.
+
+        Returns:
+            JSON string with ``diagnosis_info``, ``procedure_info``, and an
+            ``instruction`` field prompting the caller to analyse conflicts.
+        """
         try:
             async with self.pool.acquire() as conn:
                 diag = await conn.fetchrow(

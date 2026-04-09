@@ -13,9 +13,9 @@ import httpx
 from cache import cached
 from utils import log_error, log_info
 
-TWCORE_BASE_URL   = "https://twcore.mohw.gov.tw/ig/twcore"
+TWCORE_BASE_URL = "https://twcore.mohw.gov.tw/ig/twcore"
 TWCORE_BACKUP_URL = "https://build.fhir.org/ig/cctwFHIRterm/MOHW_TWCoreIG_Build"
-REQUEST_TIMEOUT   = 15
+REQUEST_TIMEOUT = 15
 
 # CodeSystem registry (metadata only — actual concepts stored in PostgreSQL)
 CODESYSTEM_REGISTRY: List[Dict] = [
@@ -103,6 +103,16 @@ class TWCoreService:
 
     @cached(ttl=86400, prefix="tc.list")
     async def list_codesystems(self, category: str = "all") -> str:
+        """List all registered TWCore CodeSystems, optionally filtered by category.
+
+        Args:
+            category: Category filter — ``"medication"``, ``"diagnosis"``,
+                ``"organization"``, ``"administrative"``, or ``"all"``.
+
+        Returns:
+            JSON string with ``total`` count and a ``categories`` dict grouping
+            CodeSystems by localised category name.
+        """
         groups: dict = {}
         for entry in CODESYSTEM_REGISTRY:
             if category != "all" and entry["category"] != category:
@@ -119,6 +129,21 @@ class TWCoreService:
 
     @cached(ttl=3600, prefix="tc.search")
     async def search_code(self, keyword: str, codesystem_ids: List[str], limit: int = 30) -> str:
+        """Search for a code across one or more TWCore CodeSystems.
+
+        If a CodeSystem is not yet cached in the DB, a live fetch is attempted
+        automatically before the search.
+
+        Args:
+            keyword: Code value or display name fragment to search for.
+            codesystem_ids: List of CodeSystem IDs to search (e.g.
+                ``["medication-path-tw", "medication-frequency-nhi-tw"]``).
+            limit: Maximum total results to return across all CodeSystems.
+
+        Returns:
+            JSON string with ``count`` and a ``results`` list, each item
+            containing ``cs_id``, ``cs_name``, ``code``, and ``display``.
+        """
         results = []
         async with self.pool.acquire() as conn:
             for cs_id in codesystem_ids:
@@ -150,6 +175,20 @@ class TWCoreService:
 
     @cached(ttl=86400, prefix="tc.lookup")
     async def lookup_code(self, code: str, codesystem_id: str) -> str:
+        """Exact lookup of a single code within a specific CodeSystem.
+
+        Returns a FHIR ``Coding`` object if found. Performs a live fetch if
+        the CodeSystem is not yet in the database.
+
+        Args:
+            code: The exact code value to look up (case-insensitive).
+            codesystem_id: The TWCore CodeSystem ID
+                (e.g. ``"medication-path-tw"``).
+
+        Returns:
+            JSON string. On success: ``{"status": "success", "fhir_coding": {...}}``.
+            On not-found: ``{"status": "not_found", "message": ...}``.
+        """
         async with self.pool.acquire() as conn:
             exists = await conn.fetchval("SELECT 1 FROM twcore.codesystems WHERE cs_id = $1", codesystem_id)
             if not exists:

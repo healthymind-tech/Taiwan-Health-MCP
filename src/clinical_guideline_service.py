@@ -26,6 +26,14 @@ class ClinicalGuidelineService:
 
     @cached(ttl=86400, prefix="gl.search")
     async def search_guideline(self, keyword: str) -> str:
+        """Search clinical guidelines by disease name or ICD code.
+
+        Args:
+            keyword: ICD code prefix or Chinese/English disease name.
+
+        Returns:
+            JSON string with ``keyword``, ``total_found``, and ``guidelines`` list.
+        """
         async with self.pool.acquire() as conn:
             rows = await conn.fetch(
                 """SELECT id, icd_code, disease_name_zh, disease_name_en,
@@ -50,6 +58,19 @@ class ClinicalGuidelineService:
 
     @cached(ttl=86400, prefix="gl.full")
     async def get_complete_guideline(self, icd_code: str) -> str:
+        """Retrieve the full structured guideline for a disease by ICD code.
+
+        Includes diagnostic recommendations, medication recommendations,
+        test recommendations, and treatment goals in a single response.
+
+        Args:
+            icd_code: ICD-10 code or prefix (e.g. ``"E11"``).
+
+        Returns:
+            JSON string with ``guideline_info``, ``diagnostic_recommendations``,
+            ``medication_recommendations``, ``test_recommendations``, and
+            ``treatment_goals``.
+        """
         async with self.pool.acquire() as conn:
             guideline = await conn.fetchrow(
                 "SELECT * FROM guideline.disease_guidelines WHERE icd_code = $1 OR icd_code ILIKE $2",
@@ -93,6 +114,15 @@ class ClinicalGuidelineService:
 
     @cached(ttl=86400, prefix="gl.meds")
     async def get_medication_recommendations(self, icd_code: str) -> str:
+        """Return guideline-recommended medications for a given ICD code.
+
+        Args:
+            icd_code: ICD-10 code or prefix.
+
+        Returns:
+            JSON string with ``icd_code``, ``total_recommendations``, and
+            ``medications`` list ordered by line of therapy.
+        """
         async with self.pool.acquire() as conn:
             rows = await conn.fetch(
                 """SELECT mr.* FROM guideline.medication_recommendations mr
@@ -110,6 +140,15 @@ class ClinicalGuidelineService:
 
     @cached(ttl=86400, prefix="gl.tests")
     async def get_test_recommendations(self, icd_code: str) -> str:
+        """Return guideline-recommended diagnostic tests for a given ICD code.
+
+        Args:
+            icd_code: ICD-10 code or prefix.
+
+        Returns:
+            JSON string with ``icd_code``, ``total_recommendations``, and
+            ``tests`` list ordered by test category.
+        """
         async with self.pool.acquire() as conn:
             rows = await conn.fetch(
                 """SELECT tr.* FROM guideline.test_recommendations tr
@@ -127,6 +166,14 @@ class ClinicalGuidelineService:
 
     @cached(ttl=86400, prefix="gl.goals")
     async def get_treatment_goals(self, icd_code: str) -> str:
+        """Return guideline treatment targets/goals for a given ICD code.
+
+        Args:
+            icd_code: ICD-10 code or prefix.
+
+        Returns:
+            JSON string with ``icd_code``, ``total_goals``, and ``goals`` list.
+        """
         async with self.pool.acquire() as conn:
             rows = await conn.fetch(
                 """SELECT tg.* FROM guideline.treatment_goals tg
@@ -146,9 +193,20 @@ class ClinicalGuidelineService:
     async def check_medication_contraindications(
         self, icd_code: str, medication_class: str
     ) -> str:
-        """
-        Given a diagnosis ICD code and a medication class, return all matching
-        guideline recommendations and flag any contraindications.
+        """Return guideline recommendations and contraindications for a drug class.
+
+        Queries the guideline for a given ICD code and filters entries that
+        match *medication_class*, then also returns all contraindications for
+        that diagnosis to provide broader clinical context.
+
+        Args:
+            icd_code: ICD-10 code or prefix (e.g. ``"E11"``).
+            medication_class: Drug class or example name to query
+                (e.g. ``"Metformin"``, ``"ACE inhibitor"``).
+
+        Returns:
+            JSON string with ``matched_recommendations``,
+            ``all_contraindications_for_diagnosis``, and a safety ``warning``.
         """
         async with self.pool.acquire() as conn:
             rows = await conn.fetch(
@@ -190,9 +248,18 @@ class ClinicalGuidelineService:
 
     @cached(ttl=86400, prefix="gl.linkdrugs")
     async def link_guideline_to_drugs(self, icd_code: str) -> str:
-        """
-        Cross-reference guideline medication examples with Taiwan FDA approved drugs.
-        Returns guideline-recommended drug classes matched to actual licensed products.
+        """Cross-reference guideline medication examples with Taiwan FDA approved drugs.
+
+        For each medication example in the guideline for *icd_code*, performs a
+        full-text search against ``drug.licenses`` to find matching licensed products.
+
+        Args:
+            icd_code: ICD-10 code or prefix.
+
+        Returns:
+            JSON string with a ``medications`` list. Each entry includes
+            ``fda_approved_matches`` linking guideline recommendations to real
+            Taiwan FDA licensed products.
         """
         async with self.pool.acquire() as conn:
             med_rows = await conn.fetch(
@@ -249,6 +316,20 @@ class ClinicalGuidelineService:
     async def suggest_clinical_pathway(
         self, icd_code: str, patient_context: Optional[Dict] = None
     ) -> str:
+        """Generate a structured five-step clinical pathway from guideline data.
+
+        The pathway covers: diagnosis confirmation → baseline tests →
+        treatment initiation → monitoring → treatment goals.
+
+        Args:
+            icd_code: ICD-10 code or prefix.
+            patient_context: Optional dict of patient-specific context
+                (e.g. comorbidities, allergies) appended to the output.
+
+        Returns:
+            JSON string with a ``pathway`` dict keyed by step name, plus
+            ``guideline_source`` and ``guideline_year``.
+        """
         guideline_data = json.loads(await self.get_complete_guideline(icd_code))
         if "error" in guideline_data:
             return json.dumps(guideline_data, ensure_ascii=False)

@@ -16,6 +16,16 @@ _client: Optional[redis.Redis] = None
 
 
 async def init_client(url: str) -> redis.Redis:
+    """Create (or return the existing) Redis client and verify connectivity.
+
+    Idempotent — safe to call from multiple FastMCP session lifespans.
+
+    Args:
+        url: Redis connection URL (e.g. ``redis://localhost:6379/0``).
+
+    Returns:
+        The initialised ``redis.asyncio.Redis`` singleton.
+    """
     global _client
     if _client is not None:
         return _client
@@ -25,6 +35,7 @@ async def init_client(url: str) -> redis.Redis:
 
 
 async def close_client() -> None:
+    """Close the Redis connection and reset the singleton to ``None``."""
     global _client
     if _client:
         await _client.aclose()
@@ -32,6 +43,14 @@ async def close_client() -> None:
 
 
 def get_client() -> redis.Redis:
+    """Return the active Redis client.
+
+    Returns:
+        The ``redis.asyncio.Redis`` singleton.
+
+    Raises:
+        RuntimeError: If ``init_client()`` has not been called yet.
+    """
     if _client is None:
         raise RuntimeError("Redis client not initialized — call init_client() first")
     return _client

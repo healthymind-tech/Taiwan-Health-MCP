@@ -33,6 +33,14 @@ class AppConfig:
 
     @classmethod
     def from_env(cls) -> "AppConfig":
+        """Build an ``AppConfig`` from environment variables.
+
+        Returns:
+            A fully populated ``AppConfig`` instance.
+
+        Raises:
+            ValueError: If ``DATABASE_URL`` is not set.
+        """
         transport = os.getenv("MCP_TRANSPORT", "stdio").lower()
         if transport not in ("stdio", "sse", "streamable-http"):
             transport = "stdio"
@@ -52,11 +60,17 @@ class AppConfig:
         )
 
     def get_run_kwargs(self) -> dict:
+        """Return the keyword arguments to pass to ``mcp.run()``.
+
+        Returns:
+            A dict containing at minimum ``{"transport": ...}``.
+        """
         if self.transport == "stdio":
             return {"transport": "stdio"}
         return {"transport": self.transport}
 
     def __str__(self) -> str:
+        """Return a human-readable summary of the active transport configuration."""
         if self.transport == "stdio":
             return f"Transport: {self.transport}"
         if self.transport == "streamable-http":

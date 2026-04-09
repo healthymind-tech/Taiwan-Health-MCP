@@ -16,10 +16,10 @@ from cache import cached
 from utils import log_error, log_info
 
 # RxNorm term type constants
-TTY_IN   = "IN"   # Ingredient
-TTY_PIN  = "PIN"  # Precise Ingredient
-TTY_MIN  = "MIN"  # Multiple Ingredients
-TTY_BN   = "BN"   # Brand Name
+TTY_IN = "IN"  # Ingredient
+TTY_PIN = "PIN"  # Precise Ingredient
+TTY_MIN = "MIN"  # Multiple Ingredients
+TTY_BN = "BN"  # Brand Name
 
 # TTY hierarchy for ingredient resolution: IN > PIN > others
 INGREDIENT_TTY = {"IN", "PIN", "MIN"}
@@ -161,15 +161,15 @@ class DrugInteractionService:
                                 )
                                 interactions.append({
                                     "drug_a": {
-                                        "input":      drug_a["input"],
-                                        "rxcui":      drug_a["rxcui"],
-                                        "name":       drug_a["name"],
+                                        "input": drug_a["input"],
+                                        "rxcui": drug_a["rxcui"],
+                                        "name": drug_a["name"],
                                         "ingredient": {"rxcui": ing_a, "name": name_a},
                                     },
                                     "drug_b": {
-                                        "input":      drug_b["input"],
-                                        "rxcui":      drug_b["rxcui"],
-                                        "name":       drug_b["name"],
+                                        "input": drug_b["input"],
+                                        "rxcui": drug_b["rxcui"],
+                                        "name": drug_b["name"],
                                         "ingredient": {"rxcui": ing_b, "name": name_b},
                                     },
                                     "interaction_type": "interacts_with",

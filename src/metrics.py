@@ -16,7 +16,7 @@ Metrics exposed:
 import asyncio
 import os
 import time
-from typing import Callable, Any
+from typing import Any, Callable
 
 from prometheus_client import (
     Counter,
@@ -63,18 +63,34 @@ db_pool_checked_out = Gauge(
 # ── helpers called from other modules ────────────────────────────────────────
 
 def record_tool_call(tool: str, status: str, duration_s: float) -> None:
-    """Record one tool invocation. status: 'success' | 'error'"""
+    """Increment request counter and record latency for one tool invocation.
+
+    Args:
+        tool: MCP tool name (e.g. ``"search_medical_codes"``).
+        status: Outcome — ``"success"`` or ``"error"``.
+        duration_s: Wall-clock execution time in seconds.
+    """
     tool_requests.labels(tool=tool, status=status).inc()
     tool_duration.labels(tool=tool).observe(duration_s)
 
 
 def record_cache_op(prefix: str, result: str) -> None:
-    """Record a cache operation. result: 'hit' | 'miss' | 'error'"""
+    """Increment the cache operations counter for one cache event.
+
+    Args:
+        prefix: Cache namespace / prefix string.
+        result: Outcome — ``"hit"``, ``"miss"``, or ``"error"``.
+    """
     cache_ops.labels(prefix=prefix, result=result).inc()
 
 
-def update_db_pool_stats(pool) -> None:
-    """Update pool gauges from an asyncpg Pool object."""
+def update_db_pool_stats(pool: Any) -> None:
+    """Refresh DB pool Prometheus gauges from a live asyncpg Pool object.
+
+    Args:
+        pool: An ``asyncpg.Pool`` instance (typed as ``Any`` to avoid a
+            hard dependency on asyncpg in this module).
+    """
     try:
         db_pool_size.set(pool.get_size())
         db_pool_checked_out.set(pool.get_size() - pool.get_idle_size())

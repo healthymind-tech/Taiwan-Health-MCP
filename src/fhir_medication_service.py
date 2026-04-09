@@ -10,10 +10,10 @@ from utils import log_error, log_info
 
 
 class FHIRMedicationService:
-    FHIR_ATC_SYSTEM             = "http://www.whocc.no/atc"
-    FHIR_TAIWAN_LICENSE_SYSTEM  = "https://data.fda.gov.tw/cfdatwn/license"
+    FHIR_ATC_SYSTEM = "http://www.whocc.no/atc"
+    FHIR_TAIWAN_LICENSE_SYSTEM = "https://data.fda.gov.tw/cfdatwn/license"
 
-    def __init__(self, drug_service):
+    def __init__(self, drug_service: "DrugService") -> None:  # type: ignore[name-defined]
         self.drug_service = drug_service
         log_info("FHIR Medication Service initialized")
 
@@ -31,6 +31,19 @@ class FHIRMedicationService:
         include_ingredients: bool = True,
         include_appearance: bool = True,
     ) -> Dict:
+        """Build a FHIR R4 Medication resource from a Taiwan FDA license record.
+
+        Args:
+            license_id: Taiwan FDA drug license number
+                (e.g. ``"衛部藥製字第012345號"``).
+            include_ingredients: Whether to populate the ``ingredient`` array.
+            include_appearance: Whether to add the appearance extension
+                (shape, colour, marking).
+
+        Returns:
+            A dict representing the FHIR R4 Medication resource,
+            or ``{"error": ...}`` if the license is not found.
+        """
         try:
             drug = await self._get_drug_info(license_id)
             if not drug:
@@ -78,6 +91,18 @@ class FHIRMedicationService:
             return {"error": str(e), "license_id": license_id}
 
     async def create_medication_knowledge(self, license_id: str) -> Dict:
+        """Build a FHIR R4 MedicationKnowledge resource from a Taiwan FDA license record.
+
+        Includes indication, administration guidelines, and ATC coding in
+        addition to basic medication identity fields.
+
+        Args:
+            license_id: Taiwan FDA drug license number.
+
+        Returns:
+            A dict representing the FHIR R4 MedicationKnowledge resource,
+            or ``{"error": ...}`` if the license is not found.
+        """
         try:
             drug = await self._get_drug_info(license_id)
             if not drug:
@@ -120,6 +145,17 @@ class FHIRMedicationService:
             return {"error": str(e), "license_id": license_id}
 
     async def create_medication_from_search(self, keyword: str, resource_type: str = "Medication") -> Dict:
+        """Search for a drug by keyword and create a FHIR resource for the top result.
+
+        Args:
+            keyword: Drug name (Chinese or English) to search for.
+            resource_type: ``"Medication"`` or ``"MedicationKnowledge"``.
+
+        Returns:
+            A dict with ``search_results``, ``selected_drug``, and either
+            ``fhir_medication`` or ``fhir_medicationknowledge``,
+            or ``{"error": ...}`` if no drug is found.
+        """
         search_str = await self.drug_service.search_drug(keyword)
         search_data = json.loads(search_str)
         if "error" in search_data or not search_data.get("results"):
@@ -136,6 +172,14 @@ class FHIRMedicationService:
                 f"fhir_{resource_type.lower()}": resource}
 
     def validate_medication(self, medication: Dict) -> Dict:
+        """Perform basic validation on a FHIR Medication or MedicationKnowledge resource.
+
+        Args:
+            medication: A dict representing the FHIR resource to validate.
+
+        Returns:
+            A dict with ``valid`` (bool), ``errors`` list, and ``warnings`` list.
+        """
         errors, warnings = [], []
         rt = medication.get("resourceType")
         if rt not in ("Medication", "MedicationKnowledge"):
@@ -145,6 +189,15 @@ class FHIRMedicationService:
         return {"valid": len(errors) == 0, "errors": errors, "warnings": warnings}
 
     def to_json_string(self, resource: Dict, indent: int = 2) -> str:
+        """Serialise a FHIR Medication/MedicationKnowledge resource dict to JSON.
+
+        Args:
+            resource: FHIR resource dict.
+            indent: JSON indentation level (default ``2``).
+
+        Returns:
+            Pretty-printed JSON string with full Unicode support.
+        """
         return json.dumps(resource, ensure_ascii=False, indent=indent)
 
     def _medication_code(self, drug: Dict) -> Dict:

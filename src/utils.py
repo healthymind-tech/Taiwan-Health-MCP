@@ -14,10 +14,10 @@ class _JsonFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         payload: dict[str, Any] = {
-            "ts":      self.formatTime(record, "%Y-%m-%dT%H:%M:%S"),
-            "level":   record.levelname,
-            "logger":  record.name,
-            "msg":     record.getMessage(),
+            "ts": self.formatTime(record, "%Y-%m-%dT%H:%M:%S"),
+            "level": record.levelname,
+            "logger": record.name,
+            "msg": record.getMessage(),
         }
         if record.exc_info:
             payload["exc"] = self.formatException(record.exc_info)
@@ -49,21 +49,50 @@ _logger = _build_logger()
 
 
 def configure_log_level(level: str) -> None:
-    """Call once at startup with the level from AppConfig."""
+    """Set the logger level from a string name.
+
+    Args:
+        level: Log level name (e.g. "INFO", "DEBUG", "WARNING").
+            Defaults to INFO if the name is unrecognised.
+    """
     _logger.setLevel(getattr(logging, level.upper(), logging.INFO))
 
 
 def log_info(message: str, **extra: Any) -> None:
+    """Emit an INFO-level structured log entry.
+
+    Args:
+        message: Human-readable log message.
+        **extra: Additional key-value pairs appended to the JSON payload.
+    """
     _logger.info(message, extra=extra)
 
 
 def log_warning(message: str, **extra: Any) -> None:
+    """Emit a WARNING-level structured log entry.
+
+    Args:
+        message: Human-readable log message.
+        **extra: Additional key-value pairs appended to the JSON payload.
+    """
     _logger.warning(message, extra=extra)
 
 
 def log_error(message: str, **extra: Any) -> None:
+    """Emit an ERROR-level structured log entry.
+
+    Args:
+        message: Human-readable log message.
+        **extra: Additional key-value pairs appended to the JSON payload.
+    """
     _logger.error(message, extra=extra)
 
 
 def log_debug(message: str, **extra: Any) -> None:
+    """Emit a DEBUG-level structured log entry.
+
+    Args:
+        message: Human-readable log message.
+        **extra: Additional key-value pairs appended to the JSON payload.
+    """
     _logger.debug(message, extra=extra)

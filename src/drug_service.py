@@ -20,11 +20,11 @@ from cache import cached
 from utils import log_error, log_info
 
 API_SOURCES = {
-    "master":      "https://data.fda.gov.tw/data/opendata/export/36/json",
-    "appearance":  "https://data.fda.gov.tw/data/opendata/export/42/json",
+    "master": "https://data.fda.gov.tw/data/opendata/export/36/json",
+    "appearance": "https://data.fda.gov.tw/data/opendata/export/42/json",
     "ingredients": "https://data.fda.gov.tw/data/opendata/export/43/json",
-    "atc":         "https://data.fda.gov.tw/data/opendata/export/41/json",
-    "documents":   "https://data.fda.gov.tw/data/opendata/export/39/json",
+    "atc": "https://data.fda.gov.tw/data/opendata/export/41/json",
+    "documents": "https://data.fda.gov.tw/data/opendata/export/39/json",
 }
 
 STALE_AFTER_DAYS = 7
@@ -92,11 +92,11 @@ class DrugService:
         try:
             # Step 1: fetch ALL data before touching the database
             async with httpx.AsyncClient(timeout=120) as client:
-                master      = await self._fetch_json(client, API_SOURCES["master"])
-                appearance  = await self._fetch_json(client, API_SOURCES["appearance"])
+                master = await self._fetch_json(client, API_SOURCES["master"])
+                appearance = await self._fetch_json(client, API_SOURCES["appearance"])
                 ingredients = await self._fetch_json(client, API_SOURCES["ingredients"])
-                atc         = await self._fetch_json(client, API_SOURCES["atc"])
-                documents   = await self._fetch_json(client, API_SOURCES["documents"])
+                atc = await self._fetch_json(client, API_SOURCES["atc"])
+                documents = await self._fetch_json(client, API_SOURCES["documents"])
 
             log_info("Drug data fetched — writing to DB",
                      licenses=len(master), appearance=len(appearance),
@@ -192,6 +192,15 @@ class DrugService:
 
     @cached(ttl=3600, prefix="drug.search")
     async def search_drug(self, keyword: str) -> str:
+        """Search Taiwan FDA approved drugs by name or indication keyword.
+
+        Args:
+            keyword: Chinese or English drug name, or indication phrase
+                (e.g. ``"普拿疼"``, ``"Panadol"``, ``"頭痛"``).
+
+        Returns:
+            JSON string with a ``results`` list of matching license records.
+        """
         async with self.pool.acquire() as conn:
             rows = await conn.fetch(
                 """SELECT license_id, name_zh, name_en, indication, category
@@ -249,6 +258,22 @@ class DrugService:
         return None, []
 
     async def get_drug_details_by_license(self, license_id: str) -> str:
+        """Return full drug details for a given Taiwan FDA license number.
+
+        Applies a three-tier fuzzy lookup: exact match → ILIKE on full input →
+        digit-only extract ILIKE, to handle common input variants (wrong prefix,
+        missing punctuation, bare numbers).
+
+        Args:
+            license_id: Taiwan FDA license number (e.g.
+                ``"衛部藥製字第012345號"``).
+
+        Returns:
+            JSON string with the full license record including ``ingredients``,
+            ``appearance``, ``atc``, and ``insert_url``.
+            On ambiguous fuzzy match: ``{"error": ..., "candidates": [...]}``.
+            On not-found: ``{"error": ...}``.
+        """
         async with self.pool.acquire() as conn:
             lic, candidates = await self._fuzzy_license_lookup(conn, license_id)
 
@@ -267,7 +292,7 @@ class DrugService:
             if not lic:
                 return json.dumps({"error": f"License ID not found: {license_id}"}, ensure_ascii=False)
 
-            resolved_id = lic["license_id"]   # use the DB-resolved ID for all sub-queries
+            resolved_id = lic["license_id"]  # use the DB-resolved ID for all sub-queries
             ingredients = await conn.fetch(
                 "SELECT ingredient_name, ingredient_qty, ingredient_unit FROM drug.ingredients WHERE license_id = $1",
                 resolved_id,
@@ -287,25 +312,38 @@ class DrugService:
         return json.dumps(
             {
                 "license_id": lic["license_id"],
-                "name_zh":    lic["name_zh"],
-                "name_en":    lic["name_en"],
+                "name_zh": lic["name_zh"],
+                "name_en": lic["name_en"],
                 "indication": lic["indication"],
-                "usage":      lic["usage"],
-                "form":       lic["form"],
-                "package":    lic["package"],
-                "category":   lic["category"],
+                "usage": lic["usage"],
+                "form": lic["form"],
+                "package": lic["package"],
+                "category": lic["category"],
                 "manufacturer": lic["manufacturer"],
                 "valid_date": lic["valid_date"],
                 "ingredients": [dict(r) for r in ingredients],
-                "appearance":  dict(app) if app else {},
-                "atc":         [dict(r) for r in atc_rows],
-                "insert_url":  doc["doc_url"] if doc else None,
+                "appearance": dict(app) if app else {},
+                "atc": [dict(r) for r in atc_rows],
+                "insert_url": doc["doc_url"] if doc else None,
             },
             ensure_ascii=False,
         )
 
     @cached(ttl=3600, prefix="drug.pill")
     async def identify_pill(self, features: str) -> str:
+        """Identify an unknown pill by visual appearance features.
+
+        Each space-separated keyword is matched against shape, colour, and
+        marking fields.  All keywords must match (AND logic).
+
+        Args:
+            features: Space-separated visual feature keywords
+                (e.g. ``"白色 圓形 YP"``).
+
+        Returns:
+            JSON list of up to 5 matching drug records with name, appearance,
+            image URL, and license ID.
+        """
         keywords = features.split()
         if not keywords:
             return json.dumps({"error": "Please provide visual features (shape, color, marking)."}, ensure_ascii=False)
@@ -338,7 +376,17 @@ class DrugService:
 
     @cached(ttl=3600, prefix="drug.byatc")
     async def search_by_atc(self, query: str) -> str:
-        """Search drugs by ATC code or therapeutic class name."""
+        """Search Taiwan FDA drugs by WHO ATC code or therapeutic class name.
+
+        Matches ATC code prefix (e.g. ``"A10BA"``) or performs full-text
+        search on ATC class names (e.g. ``"降血糖"``).
+
+        Args:
+            query: ATC code prefix or therapeutic class name keyword.
+
+        Returns:
+            JSON string with ``query``, ``total``, and ``results`` list.
+        """
         async with self.pool.acquire() as conn:
             rows = await conn.fetch(
                 """
@@ -366,7 +414,16 @@ class DrugService:
 
     @cached(ttl=3600, prefix="drug.bying")
     async def search_by_ingredient(self, ingredient_name: str) -> str:
-        """Search drugs containing a specific ingredient."""
+        """Search Taiwan FDA drugs that contain a specific active ingredient.
+
+        Args:
+            ingredient_name: Ingredient name in Chinese or English
+                (e.g. ``"Metformin"``, ``"二甲雙胍"``).
+
+        Returns:
+            JSON string with ``ingredient``, ``total``, and ``results`` list
+            including ingredient quantity and unit for each match.
+        """
         async with self.pool.acquire() as conn:
             rows = await conn.fetch(
                 """

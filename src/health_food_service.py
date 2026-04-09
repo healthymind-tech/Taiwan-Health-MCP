@@ -138,6 +138,15 @@ class HealthFoodService:
 
     @cached(ttl=3600, prefix="hf.search")
     async def search_health_food(self, keyword: str) -> str:
+        """Search Taiwan FDA approved health foods by name or claimed benefit.
+
+        Args:
+            keyword: Product name or benefit keyword
+                (e.g. ``"魚油"``, ``"調節血脂"``).
+
+        Returns:
+            JSON string with a ``results`` list of matching health food records.
+        """
         async with self.pool.acquire() as conn:
             rows = await conn.fetch(
                 """SELECT permit_no, name, category, benefit_claims, applicant, valid_from
@@ -153,6 +162,16 @@ class HealthFoodService:
 
     @cached(ttl=3600, prefix="hf.details")
     async def get_health_food_details(self, permit_no: str) -> str:
+        """Return full details for a Taiwan FDA approved health food by permit number.
+
+        Args:
+            permit_no: FDA health food permit number
+                (e.g. ``"衛部健食字第A00001號"``).
+
+        Returns:
+            JSON string with all fields from ``health_food.items``,
+            or ``{"error": ...}`` if not found.
+        """
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow(
                 "SELECT * FROM health_food.items WHERE permit_no = $1", permit_no
@@ -162,7 +181,7 @@ class HealthFoodService:
         return json.dumps(dict(row), ensure_ascii=False)
 
     async def _resolve_icd_code(
-        self, diagnosis_keyword: str, icd_service=None
+        self, diagnosis_keyword: str, icd_service: "ICDService | None" = None  # type: ignore[name-defined]
     ) -> str | None:
         keyword = diagnosis_keyword.strip() if diagnosis_keyword else ""
         if not keyword:
@@ -200,8 +219,26 @@ class HealthFoodService:
         return None
 
     async def analyze_health_support_for_condition(
-        self, diagnosis_keyword: str, icd_service=None
+        self, diagnosis_keyword: str, icd_service: "ICDService | None" = None  # type: ignore[name-defined]
     ) -> str:
+        """Recommend FDA-approved health foods relevant to a given diagnosis.
+
+        Resolves *diagnosis_keyword* to an ICD prefix, maps it to relevant
+        health benefit categories via ``DISEASE_BENEFIT_MAPPING``, then
+        searches ``health_food.items`` for matching products.
+
+        Args:
+            diagnosis_keyword: Chinese/English disease name or ICD-10 code
+                (e.g. ``"糖尿病"``, ``"E11"``).
+            icd_service: Optional :class:`ICDService` instance used to resolve
+                keyword to an ICD code.  If ``None``, only direct code inputs
+                work.
+
+        Returns:
+            JSON string with ``diagnosis_keyword``, ``resolved_icd_code``,
+            ``recommended_benefits``, ``total_products``, ``products`` list,
+            and a developer-curated ``disclaimer``.
+        """
         icd_code = await self._resolve_icd_code(diagnosis_keyword, icd_service=icd_service)
         recommended_benefits = DISEASE_BENEFIT_MAPPING.get(icd_code, [diagnosis_keyword])
 

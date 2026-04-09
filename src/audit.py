@@ -22,6 +22,17 @@ async def log_query(
     status: str,
     error_msg: str | None = None,
 ) -> None:
+    """Persist one audit record to ``audit.query_log``.
+
+    No raw parameter values are stored — only the SHA-256 hash.
+
+    Args:
+        tool_name: Name of the MCP tool that was invoked.
+        params_hash: First 16 hex chars of SHA-256(params JSON).
+        duration_ms: Wall-clock execution time in milliseconds.
+        status: ``"success"`` or ``"error"``.
+        error_msg: Truncated error message (max 500 chars) or ``None``.
+    """
     try:
         pool = get_pool()
         async with pool.acquire() as conn:

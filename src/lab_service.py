@@ -30,6 +30,16 @@ class LabService:
 
     @cached(ttl=86400, prefix="lab.search")
     async def search_loinc_code(self, keyword: str, category: Optional[str] = None) -> str:
+        """Search LOINC concepts by keyword and optional category filter.
+
+        Args:
+            keyword: Free-text search term or LOINC number prefix.
+            category: Optional LOINC ``class`` value to restrict results
+                (e.g. ``"CHEM"``, ``"HEM/BC"``).
+
+        Returns:
+            JSON string with ``keyword``, ``total_found``, and ``results`` list.
+        """
         async with self.pool.acquire() as conn:
             if category:
                 rows = await conn.fetch(
@@ -71,6 +81,11 @@ class LabService:
 
     @cached(ttl=86400, prefix="lab.categories")
     async def list_categories(self) -> str:
+        """Return all distinct LOINC class values present in the database.
+
+        Returns:
+            JSON string with ``total_categories`` and ``categories`` list.
+        """
         async with self.pool.acquire() as conn:
             rows = await conn.fetch(
                 "SELECT DISTINCT class FROM loinc.concepts WHERE class IS NOT NULL ORDER BY class"
@@ -89,6 +104,17 @@ class LabService:
     async def get_reference_range(
         self, loinc_num: str, age: int, gender: Literal["M", "F", "all"] = "all"
     ) -> str:
+        """Look up the reference range for a LOINC test given patient demographics.
+
+        Args:
+            loinc_num: LOINC code (e.g. ``"2345-7"``).
+            age: Patient age in years, used to select age-stratified ranges.
+            gender: ``"M"``, ``"F"``, or ``"all"`` (gender-neutral).
+
+        Returns:
+            JSON string with test name, ``reference_range`` bounds and unit,
+            and ``applicable_to`` demographic context.
+        """
         async with self.pool.acquire() as conn:
             concept = await conn.fetchrow(
                 "SELECT loinc_num, long_common_name, name_zh, common_name_zh, unit FROM loinc.concepts WHERE loinc_num = $1",
@@ -145,6 +171,18 @@ class LabService:
     async def interpret_lab_result(
         self, loinc_num: str, value: float, age: int, gender: Literal["M", "F", "all"] = "all"
     ) -> str:
+        """Interpret a single lab result against the age/gender-appropriate reference range.
+
+        Args:
+            loinc_num: LOINC code identifying the test.
+            value: Numeric result value.
+            age: Patient age in years.
+            gender: ``"M"``, ``"F"``, or ``"all"``.
+
+        Returns:
+            JSON string with ``result`` (value, unit, status flag) and
+            plain-language ``interpretation``.
+        """
         ref_data = json.loads(await self.get_reference_range(loinc_num, age, gender))
         if "error" in ref_data or "message" in ref_data:
             return json.dumps(ref_data, ensure_ascii=False)
@@ -262,6 +300,21 @@ class LabService:
         age: int,
         gender: Literal["M", "F", "all"] = "all",
     ) -> str:
+        """Interpret multiple lab results in a single call.
+
+        Each item in *results* must contain ``loinc_code`` (or ``loinc_num``)
+        and ``value`` keys. Items missing either key are silently skipped.
+
+        Args:
+            results: List of dicts, each with ``loinc_code``/``loinc_num``
+                and ``value`` keys.
+            age: Patient age in years.
+            gender: ``"M"``, ``"F"``, or ``"all"``.
+
+        Returns:
+            JSON string summarising ``total_tests``, ``abnormal_count``,
+            ``normal_count``, patient info, and per-test interpretations.
+        """
         interpretations = []
         abnormal_count = 0
 
