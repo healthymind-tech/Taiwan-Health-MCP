@@ -267,12 +267,33 @@ class FoodNutritionService:
                           nutrient_item, content_per_100g, content_unit
                    FROM food_nutrition.measurements
                    WHERE sample_name ILIKE $1 OR common_name ILIKE $1
-                   ORDER BY nutrient_category, nutrient_item""",
+                   ORDER BY sample_name, nutrient_category, nutrient_item""",
                 f"%{food_name}%",
             )
         if not rows:
             return json.dumps({"error": f"找不到 '{food_name}' 的詳細營養資料。"}, ensure_ascii=False)
-        return json.dumps([dict(r) for r in rows], ensure_ascii=False)
+
+        # Group by sample_name: one object per food variant, nutrients nested by category
+        foods: dict[str, dict] = {}
+        for r in rows:
+            key = r["sample_name"]
+            if key not in foods:
+                foods[key] = {
+                    "sample_name": r["sample_name"],
+                    "common_name": r["common_name"],
+                    "food_category": r["food_category"],
+                    "nutrients": {},
+                }
+            cat = r["nutrient_category"] or "其他"
+            if cat not in foods[key]["nutrients"]:
+                foods[key]["nutrients"][cat] = []
+            foods[key]["nutrients"][cat].append({
+                "item": r["nutrient_item"],
+                "value": r["content_per_100g"].strip() if r["content_per_100g"] else None,
+                "unit": r["content_unit"],
+            })
+
+        return json.dumps(list(foods.values()), ensure_ascii=False)
 
     @cached(ttl=86400, prefix="fn.ing")
     async def search_food_ingredient(self, keyword: str) -> str:
