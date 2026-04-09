@@ -6,8 +6,6 @@ from typing import Callable
 
 from mcp.server.fastmcp import FastMCP
 
-from dataset_status import DatasetStatusManager
-
 import audit
 import cache as cache_module
 import database
@@ -15,12 +13,13 @@ import metrics
 from audit import audited
 from clinical_guideline_service import ClinicalGuidelineService
 from config import AppConfig
+from dataset_status import DatasetStatusManager
+from drug_interaction_service import DrugInteractionService
 from drug_service import DrugService
 from fhir_condition_service import FHIRConditionService
 from fhir_medication_service import FHIRMedicationService
 from food_nutrition_service import FoodNutritionService
 from health_food_service import HealthFoodService
-from drug_interaction_service import DrugInteractionService
 from icd_service import ICDService
 from lab_service import LabService
 from snomed_service import SNOMEDService
@@ -31,22 +30,22 @@ config = AppConfig.from_env()
 configure_log_level(config.log_level)
 
 # Services (populated once on first lifespan run)
-icd_service: ICDService | None                       = None
-drug_service: DrugService | None                     = None
-health_food_service: HealthFoodService | None        = None
-food_nutrition_service: FoodNutritionService | None  = None
-fhir_condition_service: FHIRConditionService | None  = None
+icd_service: ICDService | None = None
+drug_service: DrugService | None = None
+health_food_service: HealthFoodService | None = None
+food_nutrition_service: FoodNutritionService | None = None
+fhir_condition_service: FHIRConditionService | None = None
 fhir_medication_service: FHIRMedicationService | None = None
-lab_service: LabService | None                       = None
-guideline_service: ClinicalGuidelineService | None   = None
-twcore_service: TWCoreService | None                 = None
-snomed_service: SNOMEDService | None                 = None
+lab_service: LabService | None = None
+guideline_service: ClinicalGuidelineService | None = None
+twcore_service: TWCoreService | None = None
+snomed_service: SNOMEDService | None = None
 drug_interaction_service: DrugInteractionService | None = None
 
 # FastMCP (streamable-http mode) runs the lifespan once per session, not per
 # process.  Guard all one-time initialization behind a lock + flag so that
 # the second session simply reuses the already-initialized resources.
-_init_lock: asyncio.Lock | None = None   # created lazily inside async context
+_init_lock: asyncio.Lock | None = None  # created lazily inside async context
 _initialized: bool = False
 _db_stats_task: asyncio.Task | None = None
 _dataset_status = DatasetStatusManager()
@@ -83,32 +82,43 @@ async def lifespan(server):
 
             # ── Services ──────────────────────────────────────────────────
             for name, factory in [
-                ("ICDService",               lambda: ICDService(pool)),
-                ("DrugService",              lambda: DrugService(pool)),
-                ("HealthFoodService",        lambda: HealthFoodService(pool)),
-                ("FoodNutritionService",     lambda: FoodNutritionService(pool)),
-                ("FHIRConditionService",     lambda: FHIRConditionService(pool)),
-                ("FHIRMedicationService",    lambda: FHIRMedicationService(drug_service)),
-                ("LabService",               lambda: LabService(pool)),
+                ("ICDService", lambda: ICDService(pool)),
+                ("DrugService", lambda: DrugService(pool)),
+                ("HealthFoodService", lambda: HealthFoodService(pool)),
+                ("FoodNutritionService", lambda: FoodNutritionService(pool)),
+                ("FHIRConditionService", lambda: FHIRConditionService(pool)),
+                ("FHIRMedicationService", lambda: FHIRMedicationService(drug_service)),
+                ("LabService", lambda: LabService(pool)),
                 ("ClinicalGuidelineService", lambda: ClinicalGuidelineService(pool)),
-                ("TWCoreService",            lambda: TWCoreService(pool)),
-                ("SNOMEDService",            lambda: SNOMEDService(pool)),
-                ("DrugInteractionService",   lambda: DrugInteractionService(pool)),
+                ("TWCoreService", lambda: TWCoreService(pool)),
+                ("SNOMEDService", lambda: SNOMEDService(pool)),
+                ("DrugInteractionService", lambda: DrugInteractionService(pool)),
             ]:
                 try:
                     svc = factory()
                     await svc.initialize()
-                    if name == "ICDService":               icd_service = svc
-                    elif name == "DrugService":            drug_service = svc
-                    elif name == "HealthFoodService":      health_food_service = svc
-                    elif name == "FoodNutritionService":   food_nutrition_service = svc
-                    elif name == "FHIRConditionService":   fhir_condition_service = svc
-                    elif name == "FHIRMedicationService":  fhir_medication_service = svc
-                    elif name == "LabService":             lab_service = svc
-                    elif name == "ClinicalGuidelineService": guideline_service = svc
-                    elif name == "TWCoreService":          twcore_service = svc
-                    elif name == "SNOMEDService":          snomed_service = svc
-                    elif name == "DrugInteractionService": drug_interaction_service = svc
+                    if name == "ICDService":
+                        icd_service = svc
+                    elif name == "DrugService":
+                        drug_service = svc
+                    elif name == "HealthFoodService":
+                        health_food_service = svc
+                    elif name == "FoodNutritionService":
+                        food_nutrition_service = svc
+                    elif name == "FHIRConditionService":
+                        fhir_condition_service = svc
+                    elif name == "FHIRMedicationService":
+                        fhir_medication_service = svc
+                    elif name == "LabService":
+                        lab_service = svc
+                    elif name == "ClinicalGuidelineService":
+                        guideline_service = svc
+                    elif name == "TWCoreService":
+                        twcore_service = svc
+                    elif name == "SNOMEDService":
+                        snomed_service = svc
+                    elif name == "DrugInteractionService":
+                        drug_interaction_service = svc
                 except Exception as e:
                     log_error(f"{name} failed to initialize", error=str(e))
 
@@ -133,14 +143,20 @@ async def _warm_up_cache() -> None:
     try:
         if lab_service:
             result = await lab_service.list_categories()
-            warmed += await cache_module.warm_up([("mcp:lab:categories:warm", result, 86400)])
+            warmed += await cache_module.warm_up(
+                [("mcp:lab:categories:warm", result, 86400)]
+            )
         if twcore_service:
             result = await twcore_service.list_codesystems("all")
-            warmed += await cache_module.warm_up([("mcp:twcore:list:warm", result, 86400)])
+            warmed += await cache_module.warm_up(
+                [("mcp:twcore:list:warm", result, 86400)]
+            )
         if guideline_service:
             for code in ("E11", "I10", "E78", "N18"):
                 result = await guideline_service.get_complete_guideline(code)
-                warmed += await cache_module.warm_up([(f"mcp:guideline:warm:{code}", result, 86400)])
+                warmed += await cache_module.warm_up(
+                    [(f"mcp:guideline:warm:{code}", result, 86400)]
+                )
         log_info(f"Cache warm-up complete", keys_written=warmed)
     except Exception as e:
         log_error(f"Cache warm-up failed (non-fatal)", error=str(e))
@@ -211,7 +227,7 @@ class ApiErrorLoggingMiddleware:
                     except Exception:
                         body_text = repr(raw_body)
                     if len(body_text) > self.max_body_chars:
-                        body_text = body_text[:self.max_body_chars] + "...(truncated)"
+                        body_text = body_text[: self.max_body_chars] + "...(truncated)"
 
                     headers = {
                         k.decode("latin-1").lower(): v.decode("latin-1")
@@ -236,7 +252,7 @@ class ApiErrorLoggingMiddleware:
             raw_body = b"".join(body_chunks)
             body_text = raw_body.decode("utf-8", errors="replace")
             if len(body_text) > self.max_body_chars:
-                body_text = body_text[:self.max_body_chars] + "...(truncated)"
+                body_text = body_text[: self.max_body_chars] + "...(truncated)"
             log_error(
                 "Unhandled HTTP API exception",
                 method=scope.get("method"),
@@ -284,6 +300,7 @@ def build_http_app():
 # Health check
 # ============================================================
 
+
 @mcp.tool()
 async def health_check() -> str:
     """Returns server health status and which services are available."""
@@ -304,29 +321,33 @@ async def health_check() -> str:
     except Exception:
         pass
 
-    return json.dumps({
-        "status": "ok" if db_ok else "degraded",
-        "database": "ok" if db_ok else "error",
-        "cache": "ok" if cache_ok else "error",
-        "services": {
-            "icd":              icd_service is not None,
-            "drug":             drug_service is not None,
-            "health_food":      health_food_service is not None,
-            "food_nutrition":   food_nutrition_service is not None,
-            "fhir_condition":   fhir_condition_service is not None,
-            "fhir_medication":  fhir_medication_service is not None,
-            "lab":              lab_service is not None,
-            "guideline":        guideline_service is not None,
-            "twcore":              twcore_service is not None,
-            "snomed":              snomed_service is not None,
-            "drug_interactions":   drug_interaction_service is not None,
+    return json.dumps(
+        {
+            "status": "ok" if db_ok else "degraded",
+            "database": "ok" if db_ok else "error",
+            "cache": "ok" if cache_ok else "error",
+            "services": {
+                "icd": icd_service is not None,
+                "drug": drug_service is not None,
+                "health_food": health_food_service is not None,
+                "food_nutrition": food_nutrition_service is not None,
+                "fhir_condition": fhir_condition_service is not None,
+                "fhir_medication": fhir_medication_service is not None,
+                "lab": lab_service is not None,
+                "guideline": guideline_service is not None,
+                "twcore": twcore_service is not None,
+                "snomed": snomed_service is not None,
+                "drug_interactions": drug_interaction_service is not None,
+            },
         },
-    }, ensure_ascii=False)
+        ensure_ascii=False,
+    )
 
 
 # ============================================================
 # Group 1: ICD-10
 # ============================================================
+
 
 @audited("search_medical_codes")
 async def search_medical_codes(keyword: str, type: str = "all") -> str:
@@ -387,6 +408,7 @@ async def check_medical_conflict(diagnosis_code: str, procedure_code: str) -> st
 # Group 1b: ICD-10 category browser
 # ============================================================
 
+
 @audited("browse_icd_category")
 async def browse_icd_category(category: str | None = None, limit: int = 50) -> str:
     """
@@ -405,6 +427,7 @@ async def browse_icd_category(category: str | None = None, limit: int = 50) -> s
 # ============================================================
 # Group 2: Drug (Taiwan FDA)
 # ============================================================
+
 
 @audited("search_drug_info")
 async def search_drug_info(keyword: str) -> str:
@@ -478,6 +501,7 @@ async def search_drug_by_ingredient(ingredient_name: str) -> str:
 # Group 3: Health Food (Taiwan FDA)
 # ============================================================
 
+
 @audited("search_health_food")
 async def search_health_food(keyword: str) -> str:
     """
@@ -507,6 +531,7 @@ async def get_health_food_details(permit_no: str) -> str:
 # ============================================================
 # Group 4: Food Nutrition
 # ============================================================
+
 
 @audited("search_food_nutrition")
 async def search_food_nutrition(food_name: str, nutrient: str | None = None) -> str:
@@ -594,6 +619,7 @@ async def analyze_meal_nutrition(foods: list[str]) -> str:
 # Group 5: Health Food + ICD integrated analysis
 # ============================================================
 
+
 @audited("analyze_health_support_for_condition")
 async def analyze_health_support_for_condition(diagnosis_keyword: str) -> str:
     """
@@ -615,6 +641,7 @@ async def analyze_health_support_for_condition(diagnosis_keyword: str) -> str:
 # ============================================================
 # Group 6: FHIR Condition
 # ============================================================
+
 
 @audited("create_fhir_condition")
 async def create_fhir_condition(
@@ -645,10 +672,15 @@ async def create_fhir_condition(
     if fhir_condition_service is None:
         return _svc_unavailable("FHIR Condition Service")
     result = await fhir_condition_service.create_condition(
-        icd_code=icd_code, patient_id=patient_id,
-        clinical_status=clinical_status, verification_status=verification_status,
-        category=category, severity=severity, onset_date=onset_date,
-        recorded_date=recorded_date, additional_notes=additional_notes,
+        icd_code=icd_code,
+        patient_id=patient_id,
+        clinical_status=clinical_status,
+        verification_status=verification_status,
+        category=category,
+        severity=severity,
+        onset_date=onset_date,
+        recorded_date=recorded_date,
+        additional_notes=additional_notes,
     )
     return fhir_condition_service.to_json_string(result, indent=2)
 
@@ -674,8 +706,10 @@ async def create_fhir_condition_from_diagnosis(
     if fhir_condition_service is None:
         return _svc_unavailable("FHIR Condition Service")
     result = await fhir_condition_service.create_condition_from_search(
-        keyword=diagnosis_keyword, patient_id=patient_id,
-        clinical_status=clinical_status, verification_status=verification_status,
+        keyword=diagnosis_keyword,
+        patient_id=patient_id,
+        clinical_status=clinical_status,
+        verification_status=verification_status,
         severity=severity,
     )
     return fhir_condition_service.to_json_string(result, indent=2)
@@ -696,15 +730,20 @@ async def validate_fhir_condition(condition_json: str) -> str:
         result = fhir_condition_service.validate_condition(condition)
         return fhir_condition_service.to_json_string(result, indent=2)
     except json.JSONDecodeError as e:
-        return json.dumps({"valid": False, "errors": [f"Invalid JSON: {e}"]}, ensure_ascii=False)
+        return json.dumps(
+            {"valid": False, "errors": [f"Invalid JSON: {e}"]}, ensure_ascii=False
+        )
 
 
 # ============================================================
 # Group 7: FHIR Medication
 # ============================================================
 
+
 @audited("search_medication_fhir")
-async def search_medication_fhir(keyword: str, resource_type: str = "Medication") -> str:
+async def search_medication_fhir(
+    keyword: str, resource_type: str = "Medication"
+) -> str:
     """
     Search drugs and auto-create a FHIR Medication or MedicationKnowledge resource.
 
@@ -715,8 +754,11 @@ async def search_medication_fhir(keyword: str, resource_type: str = "Medication"
     if fhir_medication_service is None:
         return _svc_unavailable("FHIR Medication Service")
     return json.dumps(
-        await fhir_medication_service.create_medication_from_search(keyword, resource_type),
-        ensure_ascii=False, indent=2,
+        await fhir_medication_service.create_medication_from_search(
+            keyword, resource_type
+        ),
+        ensure_ascii=False,
+        indent=2,
     )
 
 
@@ -763,12 +805,15 @@ async def validate_fhir_medication(medication_json: str) -> str:
         result = fhir_medication_service.validate_medication(resource)
         return fhir_medication_service.to_json_string(result, indent=2)
     except json.JSONDecodeError as e:
-        return json.dumps({"valid": False, "errors": [f"Invalid JSON: {e}"]}, ensure_ascii=False)
+        return json.dumps(
+            {"valid": False, "errors": [f"Invalid JSON: {e}"]}, ensure_ascii=False
+        )
 
 
 # ============================================================
 # Group 8: Lab / LOINC
 # ============================================================
+
 
 @audited("search_loinc_code")
 async def search_loinc_code(keyword: str, category: str | None = None) -> str:
@@ -808,7 +853,9 @@ async def get_reference_range(loinc_code: str, age: int, gender: str = "all") ->
 
 
 @audited("interpret_lab_result")
-async def interpret_lab_result(loinc_code: str, value: float, age: int, gender: str = "all") -> str:
+async def interpret_lab_result(
+    loinc_code: str, value: float, age: int, gender: str = "all"
+) -> str:
     """
     Interpret a lab result by comparing to reference range (high/normal/low).
 
@@ -868,7 +915,9 @@ async def get_loinc_detail(loinc_num: str) -> str:
 
 
 @audited("batch_interpret_lab_results")
-async def batch_interpret_lab_results(results_json: str, age: int, gender: str = "all") -> str:
+async def batch_interpret_lab_results(
+    results_json: str, age: int, gender: str = "all"
+) -> str:
     """
     Batch-interpret multiple lab results at once.
 
@@ -889,6 +938,7 @@ async def batch_interpret_lab_results(results_json: str, age: int, gender: str =
 # ============================================================
 # Group 9: Clinical Guidelines
 # ============================================================
+
 
 @audited("search_clinical_guideline")
 async def search_clinical_guideline(keyword: str) -> str:
@@ -957,7 +1007,9 @@ async def get_treatment_goals(icd_code: str) -> str:
 
 
 @audited("check_medication_contraindications")
-async def check_medication_contraindications(icd_code: str, medication_class: str) -> str:
+async def check_medication_contraindications(
+    icd_code: str, medication_class: str
+) -> str:
     """
     Check guideline contraindications for a specific medication class in the context
     of a diagnosis. Returns matching recommendations and all contraindications for that disease.
@@ -971,7 +1023,9 @@ async def check_medication_contraindications(icd_code: str, medication_class: st
     """
     if guideline_service is None:
         return _svc_unavailable("Clinical Guideline Service")
-    return await guideline_service.check_medication_contraindications(icd_code, medication_class)
+    return await guideline_service.check_medication_contraindications(
+        icd_code, medication_class
+    )
 
 
 @audited("link_guideline_to_drugs")
@@ -990,7 +1044,9 @@ async def link_guideline_to_drugs(icd_code: str) -> str:
 
 
 @audited("suggest_clinical_pathway")
-async def suggest_clinical_pathway(icd_code: str, patient_context_json: str | None = None) -> str:
+async def suggest_clinical_pathway(
+    icd_code: str, patient_context_json: str | None = None
+) -> str:
     """
     Suggest a step-by-step clinical pathway based on Taiwan guidelines.
 
@@ -1012,6 +1068,7 @@ async def suggest_clinical_pathway(icd_code: str, patient_context_json: str | No
 # ============================================================
 # Group 10: TWCore IG
 # ============================================================
+
 
 @audited("list_twcore_codesystems")
 async def list_twcore_codesystems(category: str = "all") -> str:
@@ -1059,6 +1116,7 @@ async def lookup_twcore_code(code: str, codesystem_id: str) -> str:
 # Group 11: SNOMED CT
 # ============================================================
 
+
 @audited("search_snomed_concept")
 async def search_snomed_concept(
     query: str,
@@ -1079,6 +1137,8 @@ async def search_snomed_concept(
     results = await snomed_service.search_concepts(
         query, min(limit, 100), hierarchy_filter
     )
+    if isinstance(results, str):
+        return results  # Already JSON string from cache
     return json.dumps(results, ensure_ascii=False, indent=2)
 
 
@@ -1094,7 +1154,11 @@ async def get_snomed_concept(concept_id: int) -> str:
         return _svc_unavailable("SNOMED CT")
     result = await snomed_service.get_concept(concept_id)
     if result is None:
-        return json.dumps({"error": f"Concept {concept_id} not found"}, ensure_ascii=False)
+        return json.dumps(
+            {"error": f"Concept {concept_id} not found"}, ensure_ascii=False
+        )
+    if isinstance(result, str):
+        return result  # Already JSON string from cache
     return json.dumps(result, ensure_ascii=False, indent=2)
 
 
@@ -1112,7 +1176,8 @@ async def get_snomed_children(concept_id: int, limit: int = 50) -> str:
     results = await snomed_service.get_children(concept_id, min(limit, 200))
     return json.dumps(
         {"concept_id": concept_id, "children_count": len(results), "children": results},
-        ensure_ascii=False, indent=2,
+        ensure_ascii=False,
+        indent=2,
     )
 
 
@@ -1129,8 +1194,13 @@ async def get_snomed_ancestors(concept_id: int, max_depth: int = 10) -> str:
         return _svc_unavailable("SNOMED CT")
     results = await snomed_service.get_ancestors(concept_id, min(max_depth, 20))
     return json.dumps(
-        {"concept_id": concept_id, "ancestor_count": len(results), "ancestors": results},
-        ensure_ascii=False, indent=2,
+        {
+            "concept_id": concept_id,
+            "ancestor_count": len(results),
+            "ancestors": results,
+        },
+        ensure_ascii=False,
+        indent=2,
     )
 
 
@@ -1154,10 +1224,16 @@ async def get_snomed_relationships(
     if snomed_service is None:
         return _svc_unavailable("SNOMED CT")
     results = await snomed_service.get_relationships(concept_id, relationship_type_id)
+    if isinstance(results, str):
+        return results  # Already JSON string from cache
     return json.dumps(
-        {"concept_id": concept_id, "relationship_count": sum(len(r["targets"]) for r in results),
-         "relationships": results},
-        ensure_ascii=False, indent=2,
+        {
+            "concept_id": concept_id,
+            "relationship_count": sum(len(r["targets"]) for r in results),
+            "relationships": results,
+        },
+        ensure_ascii=False,
+        indent=2,
     )
 
 
@@ -1174,7 +1250,8 @@ async def map_icd_to_snomed(icd_code: str) -> str:
     results = await snomed_service.map_icd_to_snomed(icd_code)
     return json.dumps(
         {"icd_code": icd_code.upper(), "snomed_concepts": results},
-        ensure_ascii=False, indent=2,
+        ensure_ascii=False,
+        indent=2,
     )
 
 
@@ -1191,13 +1268,15 @@ async def map_snomed_to_icd(concept_id: int) -> str:
     results = await snomed_service.map_snomed_to_icd(concept_id)
     return json.dumps(
         {"concept_id": concept_id, "icd10_mappings": results},
-        ensure_ascii=False, indent=2,
+        ensure_ascii=False,
+        indent=2,
     )
 
 
 # ============================================================
 # Group 12: Drug Interactions (RxNorm)
 # ============================================================
+
 
 @audited("check_drug_interactions")
 async def check_drug_interactions(drug_names: list[str]) -> str:
@@ -1215,6 +1294,8 @@ async def check_drug_interactions(drug_names: list[str]) -> str:
             ensure_ascii=False,
         )
     result = await drug_interaction_service.check_interactions(drug_names)
+    if isinstance(result, str):
+        return result  # Already JSON string from cache
     return json.dumps(result, ensure_ascii=False, indent=2)
 
 
@@ -1231,7 +1312,8 @@ async def resolve_rxnorm_drug(drug_name: str) -> str:
     results = await drug_interaction_service.resolve_drug(drug_name)
     return json.dumps(
         {"query": drug_name, "rxnorm_concepts": results},
-        ensure_ascii=False, indent=2,
+        ensure_ascii=False,
+        indent=2,
     )
 
 
@@ -1248,6 +1330,8 @@ async def get_drug_ingredients_rxnorm(rxcui: str) -> str:
     result = await drug_interaction_service.get_drug_ingredients(rxcui)
     if result is None:
         return json.dumps({"error": f"RXCUI {rxcui} not found"}, ensure_ascii=False)
+    if isinstance(result, str):
+        return result  # Already JSON string from cache
     return json.dumps(result, ensure_ascii=False, indent=2)
 
 

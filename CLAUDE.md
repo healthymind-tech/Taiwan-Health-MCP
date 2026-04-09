@@ -39,9 +39,12 @@ docker compose --profile loader run --rm data-loader --drug
 docker compose --profile loader run --rm data-loader --health-food
 docker compose --profile loader run --rm data-loader --food-nutrition
 
-# Run tests
+# Run tests (unit + API integration)
 pip install pytest pytest-asyncio
-pytest tests/ -v
+python -m pytest tests/ -v
+
+# Run only API integration tests (server must be running)
+python -m pytest tests/test_api_integration.py -v
 ```
 
 ## Architecture

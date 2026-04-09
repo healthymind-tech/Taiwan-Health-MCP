@@ -12,27 +12,27 @@ from cache import cached
 from utils import log_error, log_info
 
 # SNOMED type constants
-FSN_TYPE     = 900000000000003001  # Fully Specified Name
+FSN_TYPE = 900000000000003001  # Fully Specified Name
 SYNONYM_TYPE = 900000000000013009  # Synonym
-IS_A_TYPE    = 116680003           # Is-a relationship
+IS_A_TYPE = 116680003  # Is-a relationship
 
 # Well-known top-level hierarchy concept IDs
 HIERARCHY_ROOTS = {
-    138875005:  "SNOMED CT Concept",
-    404684003:  "Clinical finding",
-    71388002:   "Procedure",
-    123037004:  "Body structure",
-    410607006:  "Organism",
-    105590001:  "Substance",
-    123038009:  "Specimen",
-    48176007:   "Social context",
-    243796009:  "Situation with explicit context",
-    272379006:  "Event",
+    138875005: "SNOMED CT Concept",
+    404684003: "Clinical finding",
+    71388002: "Procedure",
+    123037004: "Body structure",
+    410607006: "Organism",
+    105590001: "Substance",
+    123038009: "Specimen",
+    48176007: "Social context",
+    243796009: "Situation with explicit context",
+    272379006: "Event",
     900000000000441003: "SNOMED CT Model Component",
-    373873005:  "Pharmaceutical / biologic product",
-    254291000:  "Staging and scales",
-    370115009:  "Special concept",
-    308916002:  "Environment or geographical location",
+    373873005: "Pharmaceutical / biologic product",
+    254291000: "Staging and scales",
+    370115009: "Special concept",
+    308916002: "Environment or geographical location",
 }
 
 
@@ -70,7 +70,7 @@ class SNOMEDService:
                         JOIN descendants d ON r.destination_id = d.concept_id
                         WHERE r.type_id = $4 AND r.active = TRUE
                     )
-                    SELECT DISTINCT
+                    SELECT
                         d.concept_id,
                         d.term AS preferred_term,
                         d.type_id,
@@ -85,12 +85,16 @@ class SNOMEDService:
                         ts_rank(to_tsvector('english', d.term), plainto_tsquery('english', $1)) DESC
                     LIMIT $2
                     """,
-                    query, limit, hierarchy_filter, IS_A_TYPE, FSN_TYPE,
+                    query,
+                    limit,
+                    hierarchy_filter,
+                    IS_A_TYPE,
+                    FSN_TYPE,
                 )
             else:
                 rows = await conn.fetch(
                     """
-                    SELECT DISTINCT
+                    SELECT
                         d.concept_id,
                         d.term AS preferred_term,
                         d.type_id,
@@ -104,7 +108,9 @@ class SNOMEDService:
                         ts_rank(to_tsvector('english', d.term), plainto_tsquery('english', $1)) DESC
                     LIMIT $2
                     """,
-                    query, limit, FSN_TYPE,
+                    query,
+                    limit,
+                    FSN_TYPE,
                 )
 
         # Deduplicate to one result per concept_id (prefer FSN)
@@ -137,7 +143,8 @@ class SNOMEDService:
                 """SELECT term, type_id FROM snomed.descriptions
                    WHERE concept_id = $1 AND active = TRUE
                    ORDER BY CASE WHEN type_id = $2 THEN 0 ELSE 1 END""",
-                concept_id, FSN_TYPE,
+                concept_id,
+                FSN_TYPE,
             )
 
             # Parents (direct IS-A destinations)
@@ -148,7 +155,9 @@ class SNOMEDService:
                        AND d.type_id = $2 AND d.active = TRUE
                    WHERE r.source_id = $1 AND r.type_id = $3 AND r.active = TRUE
                    LIMIT 20""",
-                concept_id, FSN_TYPE, IS_A_TYPE,
+                concept_id,
+                FSN_TYPE,
+                IS_A_TYPE,
             )
 
             # ICD-10 mappings
@@ -169,8 +178,7 @@ class SNOMEDService:
             "synonyms": synonyms,
             "active": concept["active"],
             "parents": [
-                {"concept_id": p["parent_id"], "fsn": p["parent_term"]}
-                for p in parents
+                {"concept_id": p["parent_id"], "fsn": p["parent_term"]} for p in parents
             ],
             "icd10_maps": [
                 {
@@ -187,7 +195,9 @@ class SNOMEDService:
     # ── hierarchy traversal ─────────────────────────────────────────────────
 
     @cached(ttl=7200, prefix="snomed:children")
-    async def get_children(self, concept_id: int, limit: int = 50) -> list[dict[str, Any]]:
+    async def get_children(
+        self, concept_id: int, limit: int = 50
+    ) -> list[dict[str, Any]]:
         """Return direct children (concepts with IS-A relationship to this concept)."""
         async with self.pool.acquire() as conn:
             rows = await conn.fetch(
@@ -197,7 +207,10 @@ class SNOMEDService:
                        AND d.type_id = $2 AND d.active = TRUE
                    WHERE r.destination_id = $1 AND r.type_id = $3 AND r.active = TRUE
                    LIMIT $4""",
-                concept_id, FSN_TYPE, IS_A_TYPE, limit,
+                concept_id,
+                FSN_TYPE,
+                IS_A_TYPE,
+                limit,
             )
         return [{"concept_id": r["child_id"], "fsn": r["child_term"]} for r in rows]
 
@@ -225,7 +238,10 @@ class SNOMEDService:
                     AND d.type_id = $4 AND d.active = TRUE
                 ORDER BY a.depth, a.concept_id
                 """,
-                concept_id, max_depth, IS_A_TYPE, FSN_TYPE,
+                concept_id,
+                max_depth,
+                IS_A_TYPE,
+                FSN_TYPE,
             )
         return [
             {"concept_id": r["concept_id"], "fsn": r["fsn"], "depth": r["depth"]}
@@ -261,7 +277,10 @@ class SNOMEDService:
                     ORDER BY r.type_id, r.destination_id
                     LIMIT 100
                     """,
-                    concept_id, relationship_type_id, IS_A_TYPE, FSN_TYPE,
+                    concept_id,
+                    relationship_type_id,
+                    IS_A_TYPE,
+                    FSN_TYPE,
                 )
             else:
                 rows = await conn.fetch(
@@ -278,22 +297,32 @@ class SNOMEDService:
                     ORDER BY r.type_id, r.destination_id
                     LIMIT 100
                     """,
-                    concept_id, IS_A_TYPE, FSN_TYPE,
+                    concept_id,
+                    IS_A_TYPE,
+                    FSN_TYPE,
                 )
 
         # Group by relationship type
         by_type: dict[str, list] = {}
         for r in rows:
             type_name = r["relationship_type"] or str(r["type_id"])
-            by_type.setdefault(type_name, []).append({
-                "concept_id": r["destination_id"],
-                "term": r["target_term"],
-            })
+            by_type.setdefault(type_name, []).append(
+                {
+                    "concept_id": r["destination_id"],
+                    "term": r["target_term"],
+                }
+            )
 
         return [
-            {"relationship_type": k, "type_concept_id": next(
-                r["type_id"] for r in rows if (r["relationship_type"] or str(r["type_id"])) == k
-            ), "targets": v}
+            {
+                "relationship_type": k,
+                "type_concept_id": next(
+                    r["type_id"]
+                    for r in rows
+                    if (r["relationship_type"] or str(r["type_id"])) == k
+                ),
+                "targets": v,
+            }
             for k, v in by_type.items()
         ]
 
@@ -314,7 +343,8 @@ class SNOMEDService:
                 WHERE m.map_target = $1 AND m.active = TRUE
                 ORDER BY m.map_group, m.map_priority
                 """,
-                icd_code.upper(), FSN_TYPE,
+                icd_code.upper(),
+                FSN_TYPE,
             )
         return [
             {
