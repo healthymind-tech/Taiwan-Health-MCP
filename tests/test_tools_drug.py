@@ -35,11 +35,18 @@ class TestSearchDrugInfo:
         assert "Drug Service" in result["error"]
 
     @pytest.mark.asyncio
-    async def test_delegates_keyword(self):
+    async def test_delegates_keyword_with_default_limit(self):
         mock_svc = _drug_mock()
         with patch.object(server, "drug_service", mock_svc):
             await server.search_drug_info(keyword="普拿疼")
-        mock_svc.search_drug.assert_called_once_with("普拿疼")
+        mock_svc.search_drug.assert_called_once_with("普拿疼", limit=3)
+
+    @pytest.mark.asyncio
+    async def test_custom_limit_forwarded(self):
+        mock_svc = _drug_mock()
+        with patch.object(server, "drug_service", mock_svc):
+            await server.search_drug_info(keyword="aspirin", limit=5)
+        mock_svc.search_drug.assert_called_once_with("aspirin", limit=5)
 
     @pytest.mark.asyncio
     async def test_returns_service_result(self):
@@ -68,6 +75,14 @@ class TestGetDrugDetails:
             await server.get_drug_details(license_id="衛部藥製字第058498號")
         mock_svc.get_drug_details_by_license.assert_called_once_with("衛部藥製字第058498號")
 
+    @pytest.mark.asyncio
+    async def test_accepts_partial_license_id(self):
+        """Fuzzy lookup: bare numbers and partial IDs are forwarded to the service."""
+        mock_svc = _drug_mock()
+        with patch.object(server, "drug_service", mock_svc):
+            await server.get_drug_details(license_id="058498")
+        mock_svc.get_drug_details_by_license.assert_called_once_with("058498")
+
 
 # ── identify_unknown_pill ─────────────────────────────────────────────────────
 
@@ -85,6 +100,14 @@ class TestIdentifyUnknownPill:
         with patch.object(server, "drug_service", mock_svc):
             await server.identify_unknown_pill(features="white oval YP")
         mock_svc.identify_pill.assert_called_once_with("white oval YP")
+
+    @pytest.mark.asyncio
+    async def test_multiple_keywords_forwarded_as_one_string(self):
+        """Space-separated keywords are passed as a single features string (AND logic)."""
+        mock_svc = _drug_mock()
+        with patch.object(server, "drug_service", mock_svc):
+            await server.identify_unknown_pill(features="粉紅 菱形 PFIZER")
+        mock_svc.identify_pill.assert_called_once_with("粉紅 菱形 PFIZER")
 
     @pytest.mark.asyncio
     async def test_returns_matches_from_service(self):
@@ -107,18 +130,25 @@ class TestSearchDrugByAtc:
         assert "Drug Service" in result["error"]
 
     @pytest.mark.asyncio
-    async def test_delegates_query(self):
+    async def test_delegates_atc_code_with_default_limit(self):
         mock_svc = _drug_mock()
         with patch.object(server, "drug_service", mock_svc):
             await server.search_drug_by_atc(query="C09")
-        mock_svc.search_by_atc.assert_called_once_with("C09")
+        mock_svc.search_by_atc.assert_called_once_with("C09", limit=3)
 
     @pytest.mark.asyncio
-    async def test_delegates_atc_name_query(self):
+    async def test_delegates_class_name_query_with_default_limit(self):
         mock_svc = _drug_mock()
         with patch.object(server, "drug_service", mock_svc):
             await server.search_drug_by_atc(query="metformin")
-        mock_svc.search_by_atc.assert_called_once_with("metformin")
+        mock_svc.search_by_atc.assert_called_once_with("metformin", limit=3)
+
+    @pytest.mark.asyncio
+    async def test_custom_limit_forwarded(self):
+        mock_svc = _drug_mock()
+        with patch.object(server, "drug_service", mock_svc):
+            await server.search_drug_by_atc(query="A10", limit=8)
+        mock_svc.search_by_atc.assert_called_once_with("A10", limit=8)
 
 
 # ── search_drug_by_ingredient ─────────────────────────────────────────────────
@@ -132,11 +162,18 @@ class TestSearchDrugByIngredient:
         assert "Drug Service" in result["error"]
 
     @pytest.mark.asyncio
-    async def test_delegates_ingredient_name(self):
+    async def test_delegates_ingredient_name_with_default_limit(self):
         mock_svc = _drug_mock()
         with patch.object(server, "drug_service", mock_svc):
             await server.search_drug_by_ingredient(ingredient_name="阿斯匹林")
-        mock_svc.search_by_ingredient.assert_called_once_with("阿斯匹林")
+        mock_svc.search_by_ingredient.assert_called_once_with("阿斯匹林", limit=3)
+
+    @pytest.mark.asyncio
+    async def test_custom_limit_forwarded(self):
+        mock_svc = _drug_mock()
+        with patch.object(server, "drug_service", mock_svc):
+            await server.search_drug_by_ingredient(ingredient_name="metformin", limit=6)
+        mock_svc.search_by_ingredient.assert_called_once_with("metformin", limit=6)
 
     @pytest.mark.asyncio
     async def test_returns_service_result(self):

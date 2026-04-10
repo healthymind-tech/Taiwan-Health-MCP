@@ -41,11 +41,25 @@ class TestSearchClinicalGuideline:
         assert "Clinical Guideline Service" in result["error"]
 
     @pytest.mark.asyncio
-    async def test_delegates_keyword(self):
+    async def test_delegates_keyword_with_default_limit(self):
         mock_svc = _guideline_mock()
         with patch.object(server, "guideline_service", mock_svc):
             await server.search_clinical_guideline(keyword="E11")
-        mock_svc.search_guideline.assert_called_once_with("E11")
+        mock_svc.search_guideline.assert_called_once_with("E11", limit=3)
+
+    @pytest.mark.asyncio
+    async def test_custom_limit_forwarded(self):
+        mock_svc = _guideline_mock()
+        with patch.object(server, "guideline_service", mock_svc):
+            await server.search_clinical_guideline(keyword="高血壓", limit=5)
+        mock_svc.search_guideline.assert_called_once_with("高血壓", limit=5)
+
+    @pytest.mark.asyncio
+    async def test_english_keyword_forwarded(self):
+        mock_svc = _guideline_mock()
+        with patch.object(server, "guideline_service", mock_svc):
+            await server.search_clinical_guideline(keyword="dyslipidaemia")
+        mock_svc.search_guideline.assert_called_once_with("dyslipidaemia", limit=3)
 
     @pytest.mark.asyncio
     async def test_returns_service_result(self):
@@ -150,6 +164,15 @@ class TestCheckMedicationContraindications:
             )
         mock_svc.check_medication_contraindications.assert_called_once_with("E11", "SGLT2抑制劑")
 
+    @pytest.mark.asyncio
+    async def test_english_medication_class_forwarded(self):
+        mock_svc = _guideline_mock()
+        with patch.object(server, "guideline_service", mock_svc):
+            await server.check_medication_contraindications(
+                icd_code="N18", medication_class="NSAIDs"
+            )
+        mock_svc.check_medication_contraindications.assert_called_once_with("N18", "NSAIDs")
+
 
 # ── link_guideline_to_drugs ───────────────────────────────────────────────────
 
@@ -212,3 +235,18 @@ class TestSuggestClinicalPathway:
         with patch.object(server, "guideline_service", mock_svc):
             await server.suggest_clinical_pathway(icd_code="E11", patient_context_json=None)
         mock_svc.suggest_clinical_pathway.assert_called_once_with("E11", None)
+
+    @pytest.mark.asyncio
+    async def test_full_patient_context_forwarded(self):
+        mock_svc = _guideline_mock()
+        ctx = {
+            "age": 65, "gender": "M",
+            "comorbidities": ["CKD", "心衰竭"],
+            "current_medications": ["metformin"],
+            "allergies": ["sulfonamides"],
+        }
+        with patch.object(server, "guideline_service", mock_svc):
+            await server.suggest_clinical_pathway(
+                icd_code="E11", patient_context_json=json.dumps(ctx)
+            )
+        mock_svc.suggest_clinical_pathway.assert_called_once_with("E11", ctx)

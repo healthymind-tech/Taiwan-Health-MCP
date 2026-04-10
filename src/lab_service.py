@@ -10,12 +10,14 @@ from typing import Dict, List, Literal, Optional
 import asyncpg
 
 from cache import cached
+from embedding_service import EmbeddingService
 from utils import log_error, log_info
 
 
 class LabService:
-    def __init__(self, pool: asyncpg.Pool):
+    def __init__(self, pool: asyncpg.Pool, embedding_svc: EmbeddingService | None = None):
         self.pool = pool
+        self._embedding_svc = embedding_svc
 
     async def initialize(self) -> None:
         count = await self.pool.fetchval("SELECT COUNT(*) FROM loinc.concepts")
@@ -29,43 +31,77 @@ class LabService:
     # ------------------------------------------------------------------ #
 
     @cached(ttl=86400, prefix="lab.search")
-    async def search_loinc_code(self, keyword: str, category: Optional[str] = None) -> str:
+    async def search_loinc_code(self, keyword: str, category: Optional[str] = None, limit: int = 3) -> str:
         """Search LOINC concepts by keyword and optional category filter.
 
         Args:
             keyword: Free-text search term or LOINC number prefix.
             category: Optional LOINC ``class`` value to restrict results
                 (e.g. ``"CHEM"``, ``"HEM/BC"``).
+            limit: Number of closest matches to return (default 3, max 10).
 
         Returns:
             JSON string with ``keyword``, ``total_found``, and ``results`` list.
         """
+        limit = min(max(1, limit), 10)
+        vec = await self._embedding_svc.embed(keyword) if self._embedding_svc else None
+        vec_str = f"[{','.join(str(x) for x in vec)}]" if vec else None
+
+        _fts_cols = """loinc_num, long_common_name, shortname, name_zh, common_name_zh,
+                       class, specimen_type, unit"""
+        _fts_vector = """to_tsvector('simple',
+                           COALESCE(loinc_num,'') || ' ' || COALESCE(long_common_name,'') || ' ' ||
+                           COALESCE(shortname,'') || ' ' || COALESCE(name_zh,'') || ' ' || COALESCE(common_name_zh,''))"""
+
         async with self.pool.acquire() as conn:
-            if category:
+            if vec_str:
+                cat_filter = "AND c.class ILIKE $5" if category else ""
                 rows = await conn.fetch(
-                    """SELECT loinc_num, long_common_name, shortname, name_zh, common_name_zh,
-                              class, specimen_type, unit
+                    f"""WITH fts AS (
+                           SELECT loinc_num,
+                                  ROW_NUMBER() OVER (ORDER BY ts_rank_cd(
+                                      {_fts_vector},
+                                      plainto_tsquery('simple', $1)) DESC) AS rank
+                           FROM loinc.concepts
+                           WHERE ({_fts_vector} @@ plainto_tsquery('simple', $1)
+                              OR loinc_num ILIKE $2)
+                           LIMIT 20
+                       ),
+                       vec AS (
+                           SELECT loinc_num,
+                                  ROW_NUMBER() OVER (ORDER BY embedding <=> $3::vector) AS rank
+                           FROM loinc.concept_embeddings
+                           ORDER BY embedding <=> $3::vector LIMIT 20
+                       ),
+                       rrf AS (
+                           SELECT COALESCE(f.loinc_num, v.loinc_num) AS loinc_num,
+                                  COALESCE(1.0/(60+f.rank), 0.0) + COALESCE(1.0/(60+v.rank), 0.0) AS score
+                           FROM fts f FULL OUTER JOIN vec v ON f.loinc_num = v.loinc_num
+                       )
+                       SELECT c.{_fts_cols}
+                       FROM rrf JOIN loinc.concepts c ON c.loinc_num = rrf.loinc_num
+                       {cat_filter}
+                       ORDER BY rrf.score DESC LIMIT $4""",
+                    keyword, f"%{keyword}%", vec_str, limit,
+                    *([f"%{category}%"] if category else []),
+                )
+            elif category:
+                rows = await conn.fetch(
+                    f"""SELECT {_fts_cols}
                        FROM loinc.concepts
-                       WHERE to_tsvector('simple',
-                               COALESCE(loinc_num,'') || ' ' || COALESCE(long_common_name,'') || ' ' ||
-                               COALESCE(shortname,'') || ' ' || COALESCE(name_zh,'') || ' ' || COALESCE(common_name_zh,''))
-                             @@ plainto_tsquery('simple', $1)
+                       WHERE {_fts_vector} @@ plainto_tsquery('simple', $1)
                          AND class ILIKE $2
-                       ORDER BY loinc_num LIMIT 20""",
-                    keyword, f"%{category}%",
+                       ORDER BY loinc_num LIMIT $3""",
+                    keyword, f"%{category}%", limit,
                 )
             else:
                 rows = await conn.fetch(
-                    """SELECT loinc_num, long_common_name, shortname, name_zh, common_name_zh,
-                              class, specimen_type, unit
+                    f"""SELECT {_fts_cols}
                        FROM loinc.concepts
-                       WHERE to_tsvector('simple',
-                               COALESCE(loinc_num,'') || ' ' || COALESCE(long_common_name,'') || ' ' ||
-                               COALESCE(shortname,'') || ' ' || COALESCE(name_zh,'') || ' ' || COALESCE(common_name_zh,''))
-                             @@ plainto_tsquery('simple', $1)
+                       WHERE {_fts_vector} @@ plainto_tsquery('simple', $1)
                           OR loinc_num ILIKE $2
-                       ORDER BY loinc_num LIMIT 20""",
-                    keyword, f"%{keyword}%",
+                       ORDER BY loinc_num LIMIT $3""",
+                    keyword, f"%{keyword}%", limit,
                 )
 
         if not rows:
@@ -211,19 +247,63 @@ class LabService:
         )
 
     @cached(ttl=86400, prefix="lab.specimen")
-    async def search_by_specimen(self, specimen_type: str) -> str:
-        """Find LOINC tests by specimen type (e.g., 血清/血漿, 全血, Urine, Ser/Plas)."""
+    async def search_by_specimen(self, specimen_type: str, limit: int = 3) -> str:
+        """Find LOINC tests by specimen type (e.g., 血清/血漿, 全血, Urine, Ser/Plas).
+
+        Uses hybrid BM25 + semantic similarity to find closest matches —
+        e.g., querying '血液' also finds tests with specimen_type 'Ser/Plas' or '全血'.
+        Returns top *limit* closest matching test records (default 3, max 10).
+        """
+        limit = min(max(1, limit), 10)
+        vec = await self._embedding_svc.embed(specimen_type) if self._embedding_svc else None
+        vec_str = f"[{','.join(str(x) for x in vec)}]" if vec else None
+
         async with self.pool.acquire() as conn:
-            rows = await conn.fetch(
-                """SELECT loinc_num, long_common_name, name_zh, common_name_zh,
-                          specimen_type, component, class, unit
-                   FROM loinc.concepts
-                   WHERE specimen_type ILIKE $1
-                     AND status = 'ACTIVE'
-                   ORDER BY class, loinc_num
-                   LIMIT 50""",
-                f"%{specimen_type}%",
-            )
+            if vec_str:
+                rows = await conn.fetch(
+                    """WITH fts AS (
+                           SELECT loinc_num,
+                                  ROW_NUMBER() OVER (ORDER BY ts_rank_cd(
+                                      to_tsvector('simple',
+                                          COALESCE(specimen_type,'') || ' ' || COALESCE(long_common_name,'') || ' ' ||
+                                          COALESCE(name_zh,'')),
+                                      plainto_tsquery('simple', $1)) DESC) AS rank
+                           FROM loinc.concepts
+                           WHERE specimen_type ILIKE $2
+                              OR to_tsvector('simple',
+                                     COALESCE(specimen_type,'') || ' ' || COALESCE(long_common_name,''))
+                                 @@ plainto_tsquery('simple', $1)
+                           LIMIT 20
+                       ),
+                       vec AS (
+                           SELECT loinc_num,
+                                  ROW_NUMBER() OVER (ORDER BY embedding <=> $3::vector) AS rank
+                           FROM loinc.concept_embeddings
+                           ORDER BY embedding <=> $3::vector LIMIT 20
+                       ),
+                       rrf AS (
+                           SELECT COALESCE(f.loinc_num, v.loinc_num) AS loinc_num,
+                                  COALESCE(1.0/(60+f.rank), 0.0) + COALESCE(1.0/(60+v.rank), 0.0) AS score
+                           FROM fts f FULL OUTER JOIN vec v ON f.loinc_num = v.loinc_num
+                       )
+                       SELECT c.loinc_num, c.long_common_name, c.name_zh, c.common_name_zh,
+                              c.specimen_type, c.component, c.class, c.unit
+                       FROM rrf JOIN loinc.concepts c ON c.loinc_num = rrf.loinc_num
+                       WHERE c.status = 'ACTIVE'
+                       ORDER BY rrf.score DESC LIMIT $4""",
+                    specimen_type, f"%{specimen_type}%", vec_str, limit,
+                )
+            else:
+                rows = await conn.fetch(
+                    """SELECT loinc_num, long_common_name, name_zh, common_name_zh,
+                              specimen_type, component, class, unit
+                       FROM loinc.concepts
+                       WHERE specimen_type ILIKE $1
+                         AND status = 'ACTIVE'
+                       ORDER BY class, loinc_num
+                       LIMIT $2""",
+                    f"%{specimen_type}%", limit,
+                )
         if not rows:
             return json.dumps(
                 {"message": f"找不到檢體類型 '{specimen_type}' 的檢驗項目",
@@ -237,18 +317,58 @@ class LabService:
         )
 
     @cached(ttl=86400, prefix="lab.related")
-    async def find_related_tests(self, component: str) -> str:
-        """Find all LOINC tests sharing the same component (analyte), grouped by system."""
+    async def find_related_tests(self, component: str, limit: int = 3) -> str:
+        """Find LOINC tests for a component (analyte), grouped by system.
+
+        Uses hybrid BM25 + semantic similarity — e.g., querying 'blood sugar'
+        also surfaces tests for 'glucose'. Returns top *limit* closest matching
+        test records grouped by biological system (default 3, max 10).
+        """
+        limit = min(max(1, limit), 10)
+        vec = await self._embedding_svc.embed(component) if self._embedding_svc else None
+        vec_str = f"[{','.join(str(x) for x in vec)}]" if vec else None
+
         async with self.pool.acquire() as conn:
-            rows = await conn.fetch(
-                """SELECT loinc_num, component, property, time_aspect, system,
-                          scale_type, method_type, long_common_name, name_zh, unit
-                   FROM loinc.concepts
-                   WHERE component ILIKE $1
-                   ORDER BY system, time_aspect, method_type
-                   LIMIT 60""",
-                f"%{component}%",
-            )
+            if vec_str:
+                rows = await conn.fetch(
+                    """WITH fts AS (
+                           SELECT loinc_num,
+                                  ROW_NUMBER() OVER (ORDER BY ts_rank_cd(
+                                      to_tsvector('simple', COALESCE(component,'')),
+                                      plainto_tsquery('simple', $1)) DESC) AS rank
+                           FROM loinc.concepts
+                           WHERE component ILIKE $2
+                              OR to_tsvector('simple', COALESCE(component,''))
+                                 @@ plainto_tsquery('simple', $1)
+                           LIMIT 20
+                       ),
+                       vec AS (
+                           SELECT loinc_num,
+                                  ROW_NUMBER() OVER (ORDER BY embedding <=> $3::vector) AS rank
+                           FROM loinc.concept_embeddings
+                           ORDER BY embedding <=> $3::vector LIMIT 20
+                       ),
+                       rrf AS (
+                           SELECT COALESCE(f.loinc_num, v.loinc_num) AS loinc_num,
+                                  COALESCE(1.0/(60+f.rank), 0.0) + COALESCE(1.0/(60+v.rank), 0.0) AS score
+                           FROM fts f FULL OUTER JOIN vec v ON f.loinc_num = v.loinc_num
+                       )
+                       SELECT c.loinc_num, c.component, c.property, c.time_aspect, c.system,
+                              c.scale_type, c.method_type, c.long_common_name, c.name_zh, c.unit
+                       FROM rrf JOIN loinc.concepts c ON c.loinc_num = rrf.loinc_num
+                       ORDER BY rrf.score DESC LIMIT $4""",
+                    component, f"%{component}%", vec_str, limit,
+                )
+            else:
+                rows = await conn.fetch(
+                    """SELECT loinc_num, component, property, time_aspect, system,
+                              scale_type, method_type, long_common_name, name_zh, unit
+                       FROM loinc.concepts
+                       WHERE component ILIKE $1
+                       ORDER BY system, time_aspect, method_type
+                       LIMIT $2""",
+                    f"%{component}%", limit,
+                )
         if not rows:
             return json.dumps(
                 {"message": f"找不到含有 '{component}' 的 LOINC 檢驗項目"},

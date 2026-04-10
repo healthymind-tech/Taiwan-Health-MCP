@@ -825,11 +825,11 @@ class TestSearchMedicationFhir:
         assert _is_graceful(result)
 
     def test_wrong(self, mcp: MCPSession) -> None:
+        # Hybrid semantic search always returns the closest match — no "not found" error
         result = mcp.call_tool(
             "search_medication_fhir", {"keyword": "ZZZXYZNOTADRUG12345"}
         )
         assert _is_graceful(result)
-        assert "error" in result
 
 
 @skip_if_no_server

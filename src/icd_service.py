@@ -12,12 +12,14 @@ import json
 import asyncpg
 
 from cache import cached
+from embedding_service import EmbeddingService
 from utils import log_error, log_info
 
 
 class ICDService:
-    def __init__(self, pool: asyncpg.Pool):
+    def __init__(self, pool: asyncpg.Pool, embedding_svc: EmbeddingService | None = None):
         self.pool = pool
+        self._embedding_svc = embedding_svc
         self._pcs_available = False
 
     async def initialize(self) -> None:
@@ -33,36 +35,76 @@ class ICDService:
             log_info("ICD Service ready", diagnoses=diag_count, procedures=proc_count)
 
     @cached(ttl=86400, prefix="icd.search")
-    async def search_codes(self, keyword: str, type: str = "all") -> str:
+    async def search_codes(self, keyword: str, type: str = "all", limit: int = 3) -> str:
         """Search ICD-10-CM diagnoses and/or ICD-10-PCS procedures by keyword.
 
         Args:
             keyword: Free-text search term (Chinese or English) or code prefix.
             type: Scope — ``"diagnosis"``, ``"procedure"``, or ``"all"``.
+            limit: Number of closest matches per type to return (default 3, max 10).
 
         Returns:
             JSON string with ``diagnoses`` and/or ``procedures`` lists.
         """
-        query = """
-            SELECT code, name_zh, name_en
-            FROM {table}
-            WHERE to_tsvector('simple', code || ' ' || COALESCE(name_zh,'') || ' ' || COALESCE(name_en,''))
-                  @@ plainto_tsquery('simple', $1)
-               OR code ILIKE $2
-            ORDER BY code
-            LIMIT 10
-        """
-        term = f"{keyword}%"
+        limit = min(max(1, limit), 10)
+        vec = await self._embedding_svc.embed(keyword) if self._embedding_svc else None
+        vec_str = f"[{','.join(str(x) for x in vec)}]" if vec else None
         results: dict = {}
 
         async with self.pool.acquire() as conn:
             if type in ("diagnosis", "all"):
-                rows = await conn.fetch(query.format(table="icd.diagnoses"), keyword, term)
+                if vec_str:
+                    rows = await conn.fetch(
+                        """WITH fts AS (
+                               SELECT code,
+                                      ROW_NUMBER() OVER (ORDER BY ts_rank_cd(
+                                          to_tsvector('simple', code || ' ' || COALESCE(name_zh,'') || ' ' || COALESCE(name_en,'')),
+                                          plainto_tsquery('simple', $1)) DESC) AS rank
+                               FROM icd.diagnoses
+                               WHERE to_tsvector('simple', code || ' ' || COALESCE(name_zh,'') || ' ' || COALESCE(name_en,''))
+                                     @@ plainto_tsquery('simple', $1)
+                                  OR code ILIKE $2
+                               LIMIT 20
+                           ),
+                           vec AS (
+                               SELECT code,
+                                      ROW_NUMBER() OVER (ORDER BY embedding <=> $3::vector) AS rank
+                               FROM icd.diagnosis_embeddings
+                               ORDER BY embedding <=> $3::vector LIMIT 20
+                           ),
+                           rrf AS (
+                               SELECT COALESCE(f.code, v.code) AS code,
+                                      COALESCE(1.0/(60+f.rank), 0.0) + COALESCE(1.0/(60+v.rank), 0.0) AS score
+                               FROM fts f FULL OUTER JOIN vec v ON f.code = v.code
+                           )
+                           SELECT d.code, d.name_zh, d.name_en
+                           FROM rrf JOIN icd.diagnoses d ON d.code = rrf.code
+                           ORDER BY rrf.score DESC LIMIT $4""",
+                        keyword, f"{keyword}%", vec_str, limit,
+                    )
+                else:
+                    rows = await conn.fetch(
+                        """SELECT code, name_zh, name_en
+                           FROM icd.diagnoses
+                           WHERE to_tsvector('simple', code || ' ' || COALESCE(name_zh,'') || ' ' || COALESCE(name_en,''))
+                                 @@ plainto_tsquery('simple', $1)
+                              OR code ILIKE $2
+                           ORDER BY code LIMIT $3""",
+                        keyword, f"{keyword}%", limit,
+                    )
                 results["diagnoses"] = [dict(r) for r in rows]
 
             if type in ("procedure", "all"):
                 if self._pcs_available:
-                    rows = await conn.fetch(query.format(table="icd.procedures"), keyword, term)
+                    rows = await conn.fetch(
+                        """SELECT code, name_zh, name_en
+                           FROM icd.procedures
+                           WHERE to_tsvector('simple', code || ' ' || COALESCE(name_zh,'') || ' ' || COALESCE(name_en,''))
+                                 @@ plainto_tsquery('simple', $1)
+                              OR code ILIKE $2
+                           ORDER BY code LIMIT $3""",
+                        keyword, f"{keyword}%", limit,
+                    )
                     results["procedures"] = [dict(r) for r in rows]
                 else:
                     results["procedures"] = []

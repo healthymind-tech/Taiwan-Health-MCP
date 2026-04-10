@@ -40,11 +40,19 @@ class TestSearchSnomedConcept:
         assert "SNOMED CT" in result["error"]
 
     @pytest.mark.asyncio
-    async def test_delegates_query_and_default_limit(self):
+    async def test_delegates_query_with_default_limit(self):
+        """Default limit is 3; passed positionally as min(3, 100) = 3."""
         mock_svc = _snomed_mock()
         with patch.object(server, "snomed_service", mock_svc):
             await server.search_snomed_concept(query="myocardial infarction")
-        mock_svc.search_concepts.assert_called_once_with("myocardial infarction", 20, None)
+        mock_svc.search_concepts.assert_called_once_with("myocardial infarction", 3, None)
+
+    @pytest.mark.asyncio
+    async def test_custom_limit_forwarded(self):
+        mock_svc = _snomed_mock()
+        with patch.object(server, "snomed_service", mock_svc):
+            await server.search_snomed_concept(query="diabetes", limit=7)
+        mock_svc.search_concepts.assert_called_once_with("diabetes", 7, None)
 
     @pytest.mark.asyncio
     async def test_caps_limit_at_100(self):
@@ -59,9 +67,9 @@ class TestSearchSnomedConcept:
         mock_svc = _snomed_mock()
         with patch.object(server, "snomed_service", mock_svc):
             await server.search_snomed_concept(
-                query="diabetes", limit=10, hierarchy_filter=404684003
+                query="diabetes", limit=5, hierarchy_filter=404684003
             )
-        mock_svc.search_concepts.assert_called_once_with("diabetes", 10, 404684003)
+        mock_svc.search_concepts.assert_called_once_with("diabetes", 5, 404684003)
 
     @pytest.mark.asyncio
     async def test_result_is_json_string(self):
@@ -71,6 +79,16 @@ class TestSearchSnomedConcept:
         parsed = json.loads(result)
         assert isinstance(parsed, list)
         assert parsed[0]["concept_id"] == 73211009
+
+    @pytest.mark.asyncio
+    async def test_already_json_string_returned_verbatim(self):
+        """If service returns a cached JSON string, it must be passed through unchanged."""
+        cached = '[{"concept_id":73211009,"preferred_term":"Diabetes mellitus"}]'
+        mock_svc = _snomed_mock()
+        mock_svc.search_concepts = AsyncMock(return_value=cached)
+        with patch.object(server, "snomed_service", mock_svc):
+            result = await server.search_snomed_concept(query="diabetes")
+        assert result == cached
 
 
 # ── get_snomed_concept ────────────────────────────────────────────────────────
@@ -108,6 +126,15 @@ class TestGetSnomedConcept:
             result = json.loads(await server.get_snomed_concept(concept_id=73211009))
         assert result["concept_id"] == 73211009
         assert result["fsn"] == "Diabetes mellitus (disorder)"
+
+    @pytest.mark.asyncio
+    async def test_cached_string_returned_verbatim(self):
+        cached = '{"concept_id":73211009,"fsn":"Diabetes mellitus (disorder)"}'
+        mock_svc = _snomed_mock()
+        mock_svc.get_concept = AsyncMock(return_value=cached)
+        with patch.object(server, "snomed_service", mock_svc):
+            result = await server.get_snomed_concept(concept_id=73211009)
+        assert result == cached
 
 
 # ── get_snomed_children ───────────────────────────────────────────────────────
@@ -246,15 +273,22 @@ class TestMapIcdToSnomed:
         mock_svc.map_icd_to_snomed.assert_called_once_with("E11.9")
 
     @pytest.mark.asyncio
-    async def test_response_wraps_in_object(self):
+    async def test_response_uppercases_icd_code(self):
         concepts = [{"concept_id": 44054006, "fsn": "Type 2 diabetes mellitus (disorder)"}]
         mock_svc = _snomed_mock()
         mock_svc.map_icd_to_snomed = AsyncMock(return_value=concepts)
         with patch.object(server, "snomed_service", mock_svc):
             result = json.loads(await server.map_icd_to_snomed(icd_code="e11.9"))
-        # Tool uppercases the code in the response
         assert result["icd_code"] == "E11.9"
         assert len(result["snomed_concepts"]) == 1
+
+    @pytest.mark.asyncio
+    async def test_response_wraps_in_object(self):
+        mock_svc = _snomed_mock()
+        with patch.object(server, "snomed_service", mock_svc):
+            result = json.loads(await server.map_icd_to_snomed(icd_code="I10"))
+        assert "icd_code" in result
+        assert "snomed_concepts" in result
 
 
 # ── map_snomed_to_icd ─────────────────────────────────────────────────────────

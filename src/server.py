@@ -88,16 +88,16 @@ async def lifespan(server):
 
             # ── Services ──────────────────────────────────────────────────
             for name, factory in [
-                ("ICDService", lambda: ICDService(pool)),
+                ("ICDService", lambda: ICDService(pool, embedding_svc)),
                 ("DrugService", lambda: DrugService(pool, embedding_svc)),
                 ("HealthFoodService", lambda: HealthFoodService(pool, embedding_svc)),
                 ("FoodNutritionService", lambda: FoodNutritionService(pool, embedding_svc)),
                 ("FHIRConditionService", lambda: FHIRConditionService(pool)),
                 ("FHIRMedicationService", lambda: FHIRMedicationService(drug_service)),
-                ("LabService", lambda: LabService(pool)),
-                ("ClinicalGuidelineService", lambda: ClinicalGuidelineService(pool)),
+                ("LabService", lambda: LabService(pool, embedding_svc)),
+                ("ClinicalGuidelineService", lambda: ClinicalGuidelineService(pool, embedding_svc)),
                 ("TWCoreService", lambda: TWCoreService(pool)),
-                ("SNOMEDService", lambda: SNOMEDService(pool)),
+                ("SNOMEDService", lambda: SNOMEDService(pool, embedding_svc)),
                 ("DrugInteractionService", lambda: DrugInteractionService(pool)),
             ]:
                 try:
@@ -444,9 +444,10 @@ async def health_check() -> str:
     Returns server health status and dataset availability for all services.
 
     Reports database and cache connectivity, plus which of the 11 service
-    datasets are loaded and ready (ICD, Drug, Health Food, Food Nutrition,
-    FHIR Condition, FHIR Medication, Lab/LOINC, Clinical Guideline, TWCore,
-    SNOMED CT, RxNorm). Always available regardless of dataset load status.
+    datasets are loaded and ready. Services reported: icd, drug, health_food,
+    food_nutrition, fhir_condition, fhir_medication, lab, guideline, twcore,
+    snomed, drug_interactions (RxNorm). Always available regardless of dataset
+    load status.
     """
     pool = database.get_pool()
     db_ok = False
@@ -494,38 +495,50 @@ async def health_check() -> str:
 
 
 @audited("search_medical_codes")
-async def search_medical_codes(keyword: str, type: str = "all") -> str:
+async def search_medical_codes(keyword: str, type: str = "all", limit: int = 3) -> str:
     """
     Search ICD-10-CM 2025 diagnosis codes and ICD-10-PCS 2025 procedure codes.
 
-    Searches by keyword (English or Chinese), code prefix, or partial match.
-    Returns a list of matching codes with their descriptions. Data source:
-    ICD-10-CM 2025 (NLM) and ICD-10-PCS 2025 (CMS), Taiwan region.
+    Diagnosis search uses hybrid BM25 + semantic similarity (vector search) to
+    return the top closest matching codes — not just exact keyword matches.
+    For example, querying '糖尿病' also surfaces 'Type 2 diabetes mellitus'.
+    Procedure search uses BM25 full-text only (no vector search).
+    Data source: ICD-10-CM 2025 (NLM) and ICD-10-PCS 2025 (CMS).
+
+    Output: returns the top `limit` results ranked by semantic similarity score,
+    not keyword-filtered records. The tool always returns up to `limit` items
+    even when no exact match exists — treat results as the closest approximations
+    found in the database, not confirmed matches.
 
     Args:
         keyword: Search term — English name, Chinese name, or code prefix
                  (e.g., 'Diabetes', 'E11', '子宮內膜異位', '0DTJ').
         type: 'diagnosis' (ICD-10-CM only) | 'procedure' (ICD-10-PCS only)
               | 'all' (both, default).
+        limit: Number of closest-matching results to return per type (default 3,
+               max 10). Increase only when you need more candidate codes to review.
     """
     if icd_service is None:
         return _svc_unavailable("ICD Service")
-    return await icd_service.search_codes(keyword, type)
+    return await icd_service.search_codes(keyword, type, limit=limit)
 
 
 @audited("infer_complications")
 async def infer_complications(code: str) -> str:
     """
-    List specific sub-codes and child diagnoses under a given ICD-10-CM category.
+    Explore the ICD-10-CM hierarchy for a given code.
 
-    Traverses the ICD-10-CM hierarchy to return all more-specific codes that
-    fall under the given category code. Useful for understanding the full scope
-    of a diagnosis or finding the most specific code for billing/documentation.
-    Note: this is a hierarchical lookup, not AI-based clinical inference.
+    Two behaviours depending on the input:
+    - If the code has more-specific child codes (e.g., 'E11' → E11.0, E11.1 …):
+      returns those child codes as "potential_complications_or_specifics".
+    - If the code has no children (already a leaf code): returns sibling codes
+      in the same 3-character category as "related_codes".
+    Useful for finding the most-specific billable code or exploring diagnosis variants.
+    Note: hierarchical lookup only — not AI-based clinical inference.
 
     Args:
-        code: ICD-10-CM category or code prefix (e.g., 'E11' for type 2 diabetes,
-              'N80' for endometriosis). 3–7 characters.
+        code: ICD-10-CM code or category prefix (e.g., 'E11' for type 2 diabetes,
+              'E11.9' for a leaf code, 'N80' for endometriosis). 3–7 characters.
     """
     if icd_service is None:
         return _svc_unavailable("ICD Service")
@@ -537,9 +550,9 @@ async def get_nearby_codes(code: str) -> str:
     """
     Retrieve ICD-10-CM codes adjacent to a given code in the classification order.
 
-    Returns the codes immediately before and after the target code within the
-    ICD-10-CM tabular order. Useful for exploring neighbouring diagnoses and
-    understanding classification context (e.g., similar conditions coded nearby).
+    Returns up to 2 codes before and 2 codes after the target code in
+    ICD-10-CM tabular order (up to 4 total). Useful for exploring neighbouring
+    diagnoses and understanding classification context.
 
     Args:
         code: ICD-10-CM diagnosis code (e.g., 'E11.9', 'I10').
@@ -601,22 +614,27 @@ async def browse_icd_category(category: str | None = None, limit: int = 50) -> s
 
 
 @audited("search_drug_info")
-async def search_drug_info(keyword: str) -> str:
+async def search_drug_info(keyword: str, limit: int = 3) -> str:
     """
     Search Taiwan FDA approved drugs (66,000+ licenses) by name or indication.
 
     Searches across Chinese trade name, English trade name, generic ingredient name,
-    and indication fields. Data source: Taiwan FDA open data, updated weekly.
-    Returns license ID, trade name, manufacturer, and dosage form for each match.
+    and indication fields using hybrid BM25 + semantic similarity (vector search).
     Use get_drug_details to retrieve full information for a specific result.
+    Data source: Taiwan FDA open data.
+
+    Output: returns the top `limit` results ranked by semantic similarity score,
+    not keyword-filtered records. Results are the closest matches in the database —
+    they may be semantically related even when the exact term is absent.
 
     Args:
         keyword: Drug trade name, generic name, or indication in Chinese or English
                  (e.g., 'Panadol', '普拿疼', 'aspirin', '阿斯匹林', 'hypertension').
+        limit: Number of closest-matching results to return (default 3, max 10).
     """
     if drug_service is None:
         return _svc_unavailable("Drug Service")
-    return await drug_service.search_drug(keyword)
+    return await drug_service.search_drug(keyword, limit=limit)
 
 
 @audited("get_drug_details")
@@ -625,13 +643,15 @@ async def get_drug_details(license_id: str) -> str:
     Get full details for a Taiwan FDA drug license: ingredients, dosage, usage, appearance.
 
     Returns all available fields for the license: trade name (Chinese/English),
-    manufacturer, active ingredients with strengths, dosage form, administration
-    route, indication, contraindications, storage conditions, appearance description
-    (color/shape/markings), and NHI reimbursement status.
+    manufacturer, drug category, active ingredients with strengths, dosage form,
+    administration route, indication, usage instructions, appearance description
+    (color/shape/markings), ATC classification, and package insert URL.
+    Applies fuzzy license ID matching — bare numbers or partial IDs are accepted.
 
     Args:
         license_id: Taiwan FDA drug license ID from search_drug_info results
-                    (e.g., '衛部藥製字第058498號').
+                    (e.g., '衛部藥製字第058498號'). Partial or numeric-only IDs
+                    are also accepted (e.g., '058498').
     """
     if drug_service is None:
         return _svc_unavailable("Drug Service")
@@ -643,16 +663,18 @@ async def identify_unknown_pill(features: str) -> str:
     """
     Identify a Taiwan FDA drug by pill appearance (color, shape, imprint markings).
 
-    Searches the appearance fields in the Taiwan FDA drug database. For best results
-    use Chinese color/shape terms as they appear in the database. Returns matching
-    drugs with license ID, trade name, and appearance description.
+    Searches the appearance fields (shape, color, marking) in the Taiwan FDA drug
+    database. All keywords must match (AND logic) — more keywords = narrower results.
+    For best results use Chinese color/shape terms. Returns up to 5 matching drugs
+    with license ID, trade name, and appearance description.
 
     ⚠️ For reference only — always confirm pill identity with a licensed pharmacist.
 
     Args:
         features: Space-separated appearance keywords in Chinese or English
                   (e.g., '白 圓形', '橙色 橢圓', 'white round YP',
-                   '粉紅 菱形 PFIZER').
+                   '粉紅 菱形 PFIZER'). Each keyword is matched against shape,
+                  color, and marking fields independently.
     """
     if drug_service is None:
         return _svc_unavailable("Drug Service")
@@ -660,41 +682,51 @@ async def identify_unknown_pill(features: str) -> str:
 
 
 @audited("search_drug_by_atc")
-async def search_drug_by_atc(query: str) -> str:
+async def search_drug_by_atc(query: str, limit: int = 3) -> str:
     """
     Search Taiwan FDA approved drugs by WHO ATC code or therapeutic class name.
 
     The ATC (Anatomical Therapeutic Chemical) classification organises drugs by
     therapeutic use and chemical properties. Supports prefix search on ATC codes
-    (up to 7 levels) and free-text search on ATC class names.
+    and uses hybrid BM25 + semantic similarity for class name queries — so
+    '降血糖' also surfaces 'Biguanides' and related ATC categories.
+
+    Output: returns the top `limit` results ranked by semantic similarity score,
+    not keyword-filtered records. Results are the most similar ATC-mapped drugs
+    found in the database, not only drugs whose ATC name contains the exact term.
 
     Args:
         query: ATC code prefix (e.g., 'A10' for diabetes drugs, 'C09' for ACE
-               inhibitors/ARBs, 'N02BE' for paracetamol) or class name in English
-               (e.g., 'antihypertensives', 'metformin', 'statins').
+               inhibitors/ARBs, 'N02BE' for paracetamol) or class name in Chinese
+               or English (e.g., '降血糖', 'antihypertensives', 'statins').
+        limit: Number of closest-matching results to return (default 3, max 10).
     """
     if drug_service is None:
         return _svc_unavailable("Drug Service")
-    return await drug_service.search_by_atc(query)
+    return await drug_service.search_by_atc(query, limit=limit)
 
 
 @audited("search_drug_by_ingredient")
-async def search_drug_by_ingredient(ingredient_name: str) -> str:
+async def search_drug_by_ingredient(ingredient_name: str, limit: int = 3) -> str:
     """
     Find Taiwan FDA approved drugs that contain a specific active ingredient.
 
-    Searches the ingredient field of all licensed drug products. Useful for
-    finding all brand-name products that contain a given generic ingredient,
-    or for checking which drugs in the Taiwan market share the same active component.
+    Uses hybrid BM25 + semantic similarity — e.g., '二甲雙胍' also surfaces
+    drugs with ingredient 'Metformin Hydrochloride'.
+
+    Output: returns the top `limit` results ranked by semantic similarity score,
+    not keyword-filtered records. Results are the most similar ingredient-matched
+    drugs in the database, not only drugs whose ingredient name contains the exact term.
 
     Args:
         ingredient_name: Active ingredient in Chinese or English, generic or INN name
                          (e.g., 'metformin', '二甲雙胍', 'aspirin', '阿斯匹林',
                           'atorvastatin', '阿托伐他汀').
+        limit: Number of closest-matching results to return (default 3, max 10).
     """
     if drug_service is None:
         return _svc_unavailable("Drug Service")
-    return await drug_service.search_by_ingredient(ingredient_name)
+    return await drug_service.search_by_ingredient(ingredient_name, limit=limit)
 
 
 # ============================================================
@@ -703,23 +735,28 @@ async def search_drug_by_ingredient(ingredient_name: str) -> str:
 
 
 @audited("search_health_food")
-async def search_health_food(keyword: str) -> str:
+async def search_health_food(keyword: str, limit: int = 3) -> str:
     """
     Search Taiwan FDA certified health foods (健康食品) by name or approved health benefit.
 
     Health foods (健康食品) in Taiwan are products that have received an official
     health benefit certification from the Taiwan FDA — they are distinct from
-    ordinary food supplements. Returns permit number, product name, manufacturer,
-    and certified health claims. Use get_health_food_details for full information.
-    Data source: Taiwan FDA open data, updated weekly.
+    ordinary food supplements. Uses hybrid BM25 + semantic similarity (vector search).
+    Use get_health_food_details for full information.
+    Data source: Taiwan FDA open data.
+
+    Output: returns the top `limit` results ranked by semantic similarity score,
+    not keyword-filtered records. Results are the closest matches in the database —
+    they may include semantically related products even when the exact term is absent.
 
     Args:
         keyword: Product name, brand, or certified health benefit claim in Chinese
                  (e.g., '靈芝', '調節血脂', '護肝', '益生菌', '葡萄糖胺').
+        limit: Number of closest-matching results to return (default 3, max 10).
     """
     if health_food_service is None:
         return _svc_unavailable("Health Food Service")
-    return await health_food_service.search_health_food(keyword)
+    return await health_food_service.search_health_food(keyword, limit=limit)
 
 
 @audited("get_health_food_details")
@@ -746,24 +783,29 @@ async def get_health_food_details(permit_no: str) -> str:
 
 
 @audited("search_food_nutrition")
-async def search_food_nutrition(food_name: str, nutrient: str | None = None) -> str:
+async def search_food_nutrition(food_name: str, nutrient: str | None = None, limit: int = 3) -> str:
     """
     Search Taiwan FDA food composition database for nutritional content per 100 g.
 
-    Returns energy (kcal), macronutrients (protein, fat, carbohydrate, dietary fibre),
-    and key micronutrients for matching foods. Nutrient names follow Taiwan FDA
-    convention (e.g., '粗蛋白' for protein, '粗脂肪' for fat). Data source:
-    Taiwan FDA Food Composition Database, updated weekly.
+    Uses hybrid BM25 + semantic similarity (vector search) to find the closest
+    matching foods — e.g., querying '白米' may surface '蓬萊米' or '米飯'.
+    Data source: Taiwan FDA Food Composition Database.
+
+    Output: returns the top `limit` food variants ranked by semantic similarity
+    score, not keyword-filtered records. Results are the closest food names found
+    in the database even when an exact entry does not exist.
 
     Args:
         food_name: Food name in Chinese or English (e.g., '白米', '雞蛋', '豆腐',
                    'chicken breast', 'salmon').
-        nutrient: Optional nutrient name to filter and display (e.g., '粗蛋白', '鈣',
-                  '維生素C', '膳食纖維'). Returns all nutrients if omitted.
+        nutrient: Optional nutrient name to filter results. Accepts partial names
+                  and Taiwan FDA convention (e.g., '粗蛋白', '蛋白', '鈣', '維生素C',
+                  '膳食纖維'). Returns all nutrients if omitted.
+        limit: Number of closest-matching food variants to return (default 3, max 10).
     """
     if food_nutrition_service is None:
         return _svc_unavailable("Food Nutrition Service")
-    return await food_nutrition_service.search_nutrition(food_name, nutrient)
+    return await food_nutrition_service.search_nutrition(food_name, nutrient, limit=limit)
 
 
 @audited("get_detailed_nutrition")
@@ -771,15 +813,17 @@ async def get_detailed_nutrition(food_name: str) -> str:
     """
     Get the complete nutritional profile for a food (per 100 g) from Taiwan's database.
 
-    Returns the full nutrient panel: energy, water content, protein, fat,
-    carbohydrates, dietary fibre, ash, vitamins (A, B1, B2, B6, B12, C, D, E, K,
-    niacin, folate), minerals (Ca, P, Fe, Na, K, Mg, Zn, Mn, Cu, Se, I),
-    fatty acid profile (saturated, monounsaturated, polyunsaturated, EPA, DHA),
-    cholesterol, and trans fats where available.
+    Uses ILIKE partial matching — partial names work (e.g., '鮭魚' matches
+    '大西洋鮭魚'). May return multiple matching food variants when the name is
+    ambiguous. Returns the full nutrient panel grouped by category: energy,
+    water, protein, fat, carbohydrates, dietary fibre, vitamins (A, B1, B2, B6,
+    B12, C, D, E, K, niacin, folate), minerals (Ca, P, Fe, Na, K, Mg, Zn, Mn,
+    Cu, Se, I), fatty acids (saturated, mono, poly, EPA, DHA), cholesterol,
+    and trans fats where available.
 
     Args:
-        food_name: Exact or near-exact food name in Chinese (e.g., '糙米', '雞胸肉',
-                   '全脂牛奶', '大西洋鮭魚').
+        food_name: Food name in Chinese (partial names accepted — e.g., '糙米',
+                   '雞胸', '全脂牛奶', '鮭魚').
     """
     if food_nutrition_service is None:
         return _svc_unavailable("Food Nutrition Service")
@@ -787,21 +831,29 @@ async def get_detailed_nutrition(food_name: str) -> str:
 
 
 @audited("search_food_ingredient")
-async def search_food_ingredient(keyword: str) -> str:
+async def search_food_ingredient(keyword: str, limit: int = 3) -> str:
     """
     Search Taiwan FDA food ingredient classification database by ingredient name.
 
-    Returns ingredient category, permitted uses, and regulatory status for matching
-    food ingredients/raw materials. Data covers additives, natural ingredients,
-    flavourings, and processing aids as classified by Taiwan FDA.
+    Uses hybrid BM25 + semantic similarity (vector search) to return the top
+    closest matching ingredients — not just exact keyword matches. Returns
+    ingredient category, permitted uses, and regulatory status.
+    Data covers additives, natural ingredients, flavourings, and processing aids
+    as classified by Taiwan FDA.
 
     Args:
         keyword: Ingredient name in Chinese or English (e.g., '薑黃', 'turmeric',
                  '卡拉膠', 'carrageenan', '山梨酸', 'sorbic acid').
+        limit: Number of closest-matching results to return (default 3, max 10).
+
+    Output: returns the top `limit` results ranked by semantic similarity score,
+    not keyword-filtered records. The tool always returns up to `limit` items
+    even when no exact match exists — treat results as the closest approximations
+    found in the database, not confirmed matches.
     """
     if food_nutrition_service is None:
         return _svc_unavailable("Food Nutrition Service")
-    return await food_nutrition_service.search_food_ingredient(keyword)
+    return await food_nutrition_service.search_food_ingredient(keyword, limit=limit)
 
 
 @audited("get_ingredients_by_category")
@@ -824,12 +876,18 @@ async def get_ingredients_by_category(category: str) -> str:
 @audited("search_foods_by_nutrient")
 async def search_foods_by_nutrient(nutrient: str, limit: int = 20) -> str:
     """
-    Find foods ranked by content of a specific nutrient (per 100g), from Taiwan's
-    food composition database. Note: nutrient names follow Taiwan FDA naming convention
-    (e.g., '粗蛋白' for protein, '粗脂肪' for fat, '鈣', '鐵', '維生素C').
+    Find foods ranked by content of a specific nutrient (highest first, per 100 g),
+    from Taiwan's food composition database.
+
+    Accepts common synonyms via a built-in alias map — e.g., '蛋白質' → '粗蛋白',
+    '維他命C' → '維生素C', 'protein' → '粗蛋白', 'calcium' → '鈣', 'fat' → '粗脂肪'.
+    Falls back to partial ILIKE matching and then semantic embedding if no alias match.
+    Results are sorted by nutrient content descending (highest content first).
 
     Args:
-        nutrient: Nutrient name (e.g., '粗蛋白', '鈣', '鐵', '膳食纖維', '鉀', 'EPA', 'DHA').
+        nutrient: Nutrient name in Chinese or English — aliases and common synonyms
+                  are accepted (e.g., '粗蛋白', '蛋白質', 'protein', '鈣', 'calcium',
+                  '維生素C', '維他命C', 'vitamin c', '膳食纖維', 'fiber', 'EPA', 'DHA').
         limit: Number of foods to return (default 20, max 50).
     """
     if food_nutrition_service is None:
@@ -842,14 +900,14 @@ async def analyze_meal_nutrition(foods: list[str]) -> str:
     """
     Calculate the combined nutritional totals for a multi-food meal (per 100 g each).
 
-    Looks up each food in the Taiwan FDA composition database and sums all nutrients
-    across the listed foods. Returns per-food breakdown and aggregate totals for
-    energy, macronutrients, and key micronutrients.
+    Looks up each food in the Taiwan FDA composition database (partial name ILIKE
+    matching) and sums all nutrients across the listed foods. Returns per-food
+    breakdown and aggregate totals for energy, macronutrients, and key micronutrients.
     Note: values assume 100 g of each food; adjust manually for actual serving sizes.
 
     Args:
         foods: List of food names in Chinese (e.g., ['白米飯', '雞胸肉', '青花菜',
-               '豆腐']). Each name should match a food in the database.
+               '豆腐']). Partial names are accepted (e.g., '雞胸' matches '雞胸肉').
     """
     if food_nutrition_service is None:
         return _svc_unavailable("Food Nutrition Service")
@@ -1020,9 +1078,9 @@ async def search_medication_fhir(
     """
     Search Taiwan FDA drugs by name and return a FHIR R4 Medication resource.
 
-    Finds the best-matching drug in the Taiwan FDA database and builds a FHIR
-    Medication or MedicationKnowledge resource. Use create_fhir_medication if
-    you already have the license ID. Does not persist to any FHIR server.
+    Uses hybrid BM25 + semantic similarity to find the closest-matching drug,
+    then builds a FHIR resource for that top result. Use create_fhir_medication
+    if you already have the exact license ID. Does not persist to any FHIR server.
 
     Args:
         keyword: Drug name in Chinese or English (e.g., 'Metformin', '二甲雙胍',
@@ -1114,14 +1172,14 @@ async def validate_fhir_medication(medication_json: str) -> str:
 
 
 @audited("search_loinc_code")
-async def search_loinc_code(keyword: str, category: str | None = None) -> str:
+async def search_loinc_code(keyword: str, category: str | None = None, limit: int = 3) -> str:
     """
     Search LOINC 2.80 codes (87,000+ codes) by test name or abbreviation.
 
-    Returns matching LOINC codes with long common name, component (analyte),
-    specimen type, and scale. Use get_loinc_detail for the full LOINC axes
-    breakdown of a specific code. Use list_lab_categories to see available
-    category filters.
+    Uses hybrid BM25 + semantic similarity to return the top closest matching
+    LOINC codes — not just exact keyword matches. For example, '血糖' also
+    surfaces glucose-related tests, and 'WBC' surfaces leukocyte count codes.
+    Use get_loinc_detail for the full LOINC axes breakdown of a specific code.
 
     Args:
         keyword: Test name, abbreviation, or analyte in Chinese or English
@@ -1129,10 +1187,16 @@ async def search_loinc_code(keyword: str, category: str | None = None) -> str:
                   'TSH', '甲狀腺刺激素').
         category: Optional LOINC class filter (e.g., 'CHEM', 'HEM/BC',
                   'SERO', 'UA'). Use list_lab_categories to discover values.
+        limit: Number of closest-matching results to return (default 3, max 10).
+
+    Output: returns the top `limit` results ranked by semantic similarity score,
+    not keyword-filtered records. The tool always returns up to `limit` items
+    even when no exact match exists — treat results as the closest approximations
+    found in the database, not confirmed matches.
     """
     if lab_service is None:
         return _svc_unavailable("Lab Service")
-    return await lab_service.search_loinc_code(keyword, category)
+    return await lab_service.search_loinc_code(keyword, category, limit=limit)
 
 
 @audited("list_lab_categories")
@@ -1198,37 +1262,53 @@ async def interpret_lab_result(
 
 
 @audited("search_loinc_by_specimen")
-async def search_loinc_by_specimen(specimen_type: str) -> str:
+async def search_loinc_by_specimen(specimen_type: str, limit: int = 3) -> str:
     """
     Find LOINC lab tests by specimen or sample type.
 
-    Searches the LOINC System axis for tests collected from the specified specimen.
-    Specimen names in this database follow Chinese conventions used in Taiwan.
+    Uses hybrid BM25 + semantic similarity — e.g., querying '血液' also finds
+    tests with specimen_type 'Ser/Plas' or '血清/血漿'. Returns the top closest
+    matching test records (default 3, max 10).
 
     Args:
         specimen_type: Specimen type in Chinese (preferred) or LOINC system code
                        (e.g., '血清/血漿', '全血', '尿液', '脊髓液',
                         '糞便', 'Ser/Plas', 'BLD', 'Urine').
+        limit: Number of closest-matching results to return (default 3, max 10).
+
+    Output: returns the top `limit` results ranked by semantic similarity score,
+    not keyword-filtered records. The tool always returns up to `limit` items
+    even when no exact match exists — treat results as the closest approximations
+    found in the database, not confirmed matches.
     """
     if lab_service is None:
         return _svc_unavailable("Lab Service")
-    return await lab_service.search_by_specimen(specimen_type)
+    return await lab_service.search_by_specimen(specimen_type, limit=limit)
 
 
 @audited("find_related_loinc_tests")
-async def find_related_loinc_tests(component: str) -> str:
+async def find_related_loinc_tests(component: str, limit: int = 3) -> str:
     """
-    Find all LOINC tests that measure the same analyte (component), grouped by specimen system.
-    Useful for discovering all variants of a test (e.g., all glucose measurements across
-    different timing and specimen types).
+    Find LOINC tests that measure the same analyte (component), grouped by specimen system.
+
+    Uses hybrid BM25 + semantic similarity — e.g., 'blood sugar' also surfaces
+    glucose measurement codes. Returns top closest matches (default 3, max 10)
+    grouped by biological system to show test variants across specimen types.
 
     Args:
-        component: Analyte/component name (e.g., 'Glucose', 'Creatinine', 'Hemoglobin',
-                   'Cholesterol', 'Sodium').
+        component: Analyte/component name in English or Chinese
+                   (e.g., 'Glucose', '血糖', 'Creatinine', 'Hemoglobin',
+                    'Cholesterol', 'Sodium').
+        limit: Number of closest-matching results to return (default 3, max 10).
+
+    Output: returns the top `limit` results ranked by semantic similarity score,
+    not keyword-filtered records. The tool always returns up to `limit` items
+    even when no exact match exists — treat results as the closest approximations
+    found in the database, not confirmed matches.
     """
     if lab_service is None:
         return _svc_unavailable("Lab Service")
-    return await lab_service.find_related_tests(component)
+    return await lab_service.find_related_tests(component, limit=limit)
 
 
 @audited("get_loinc_detail")
@@ -1289,23 +1369,28 @@ async def batch_interpret_lab_results(
 
 
 @audited("search_clinical_guideline")
-async def search_clinical_guideline(keyword: str) -> str:
+async def search_clinical_guideline(keyword: str, limit: int = 3) -> str:
     """
     Search Taiwan clinical practice guidelines by disease name or ICD-10 code.
 
-    Returns matching guidelines with their associated ICD-10 code, guideline title,
-    and issuing medical society. Data is sourced from Taiwan Medical Society
-    guidelines (seed data — manually curated, covers common chronic conditions
-    such as diabetes, hypertension, dyslipidaemia, CKD).
+    Uses hybrid BM25 + semantic similarity — e.g., '高血壓' also surfaces
+    hypertension guidelines, and 'diabetes' surfaces '糖尿病' guidelines.
+    Returns the top closest matching guidelines (default 3, max 10).
     Use get_complete_guideline to retrieve the full content for a specific guideline.
 
     Args:
         keyword: Disease name in Chinese or English, or ICD-10 code
                  (e.g., '糖尿病', 'E11', '高血壓', 'I10', 'dyslipidaemia', 'E78').
+        limit: Number of closest-matching results to return (default 3, max 10).
+
+    Output: returns the top `limit` results ranked by semantic similarity score,
+    not keyword-filtered records. The tool always returns up to `limit` items
+    even when no exact match exists — treat results as the closest approximations
+    found in the database, not confirmed matches.
     """
     if guideline_service is None:
         return _svc_unavailable("Clinical Guideline Service")
-    return await guideline_service.search_guideline(keyword)
+    return await guideline_service.search_guideline(keyword, limit=limit)
 
 
 @audited("get_complete_guideline")
@@ -1502,9 +1587,10 @@ async def search_twcore_code(keyword: str, codesystem_ids: list[str]) -> str:
     Search for a code or display term across one or more TWCore IG CodeSystems.
 
     Performs a case-insensitive search across both code values and display names
-    within the specified CodeSystems. Returns matching codes with their system URL,
-    code, and display name as a FHIR Coding object. Use list_twcore_codesystems
-    to find available CodeSystem IDs.
+    within the specified CodeSystems. If a CodeSystem is not yet cached in the
+    database, it is fetched automatically from the TWCore IG package first.
+    Returns a list of matching entries with cs_id, cs_name, code, and display.
+    Use list_twcore_codesystems to find available CodeSystem IDs.
 
     Args:
         keyword: Code value or display term to search for
@@ -1525,8 +1611,10 @@ async def lookup_twcore_code(code: str, codesystem_id: str) -> str:
     Exact lookup of a single code in a TWCore IG CodeSystem. Returns a FHIR Coding.
 
     Retrieves the FHIR Coding object (system URL, code, display) for an exact
-    code match. Use this when you have a known code and need the full FHIR
-    representation for inclusion in a FHIR resource.
+    code match (case-insensitive). If the CodeSystem is not yet cached in the
+    database, it is fetched automatically from the TWCore IG package first.
+    Use this when you have a known code and need the full FHIR representation
+    for inclusion in a FHIR resource.
 
     Args:
         code: The exact code value to look up (e.g., 'QD', 'BID', 'HOSP').
@@ -1546,27 +1634,33 @@ async def lookup_twcore_code(code: str, codesystem_id: str) -> str:
 @audited("search_snomed_concept")
 async def search_snomed_concept(
     query: str,
-    limit: int = 20,
+    limit: int = 3,
     hierarchy_filter: int = None,
 ) -> str:
     """
-    Search SNOMED CT International edition (20250601, 370,000+ concepts) by English term.
+    Search SNOMED CT International edition (370,000+ concepts) by English term.
 
-    Performs full-text search across all SNOMED descriptions (FSNs and synonyms),
-    ranking Fully Specified Names (FSNs) above synonyms. Results include concept ID,
-    preferred term, term type (FSN/Synonym), and active status.
-    Use get_snomed_concept for full details (parents, mappings) of a specific result.
+    Uses hybrid BM25 + semantic similarity to return the top closest matching
+    concepts — not just exact keyword matches. For example, 'heart attack' also
+    surfaces 'Myocardial infarction (disorder)'. Results include concept ID,
+    preferred FSN, term type, and active status.
+    Use get_snomed_concept for full details (parents, synonyms, ICD-10 mappings).
 
     Args:
         query: English clinical term (e.g., 'diabetes mellitus', 'myocardial
                infarction', 'hypertension', 'fracture of femur').
-        limit: Maximum number of results to return (default 20, max 100).
+        limit: Number of closest-matching results to return (default 3, max 10).
         hierarchy_filter: Optional SNOMED concept ID to restrict search to a
                           specific hierarchy. Common roots:
                           404684003 (Clinical finding),
                           71388002 (Procedure),
                           373873005 (Pharmaceutical/biologic product),
                           123037004 (Body structure).
+
+    Output: returns the top `limit` results ranked by semantic similarity score,
+    not keyword-filtered records. The tool always returns up to `limit` items
+    even when no exact match exists — treat results as the closest approximations
+    found in the database, not confirmed matches.
     """
     if snomed_service is None:
         return _svc_unavailable("SNOMED CT")
@@ -1793,11 +1887,13 @@ async def resolve_rxnorm_drug(drug_name: str) -> str:
     """
     Resolve a drug name to its RxNorm concepts (RXCUI, term type, synonym variants).
 
-    Searches the RxNorm database (NLM) for concepts matching the drug name.
-    Returns a list of matching RxNorm concepts with RXCUI identifiers and term
-    types (IN = ingredient, BN = brand name, SCD = clinical drug, etc.).
+    Searches the local RxNorm database (loaded from NLM) for concepts matching
+    the drug name using English full-text search. Results are prioritised by
+    term type: ingredient (IN) > precise ingredient (PIN) > multi-ingredient (MIN)
+    > brand name (BN) > other types; shorter names rank higher within each type.
+    Returns up to 10 matching concepts with RXCUI identifiers and term types.
     Use the RXCUI from this result with get_drug_ingredients_rxnorm or
-    check_drug_interactions. Supports English names only (generic or brand).
+    check_drug_interactions. English names only (generic or brand).
 
     Args:
         drug_name: Drug name in English — generic (INN) or brand name
@@ -1818,10 +1914,9 @@ async def get_drug_ingredients_rxnorm(rxcui: str) -> str:
     """
     Get the active ingredient components of a drug concept via RxNorm relationships.
 
-    Follows RxNorm `has_ingredient` and `has_precise_ingredient` relationships
-    to list all ingredient concepts associated with the given RXCUI. Useful for
-    determining the active substances in a multi-ingredient product or for
-    verifying that two drugs share the same ingredient.
+    Follows RxNorm `has_ingredient` relationships to list all ingredient concepts
+    associated with the given RXCUI. Useful for determining the active substances
+    in a product or for verifying that two drugs share the same ingredient.
 
     Args:
         rxcui: RxNorm Concept Unique Identifier (string) obtained from

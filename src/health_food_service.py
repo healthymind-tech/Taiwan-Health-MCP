@@ -149,16 +149,20 @@ class HealthFoodService:
     # ── query methods ────────────────────────────────────────────────────────
 
     @cached(ttl=3600, prefix="hf.search")
-    async def search_health_food(self, keyword: str) -> str:
+    async def search_health_food(self, keyword: str, limit: int = 3) -> str:
         """Search Taiwan FDA approved health foods by name or claimed benefit.
 
         Args:
             keyword: Product name or benefit keyword
                 (e.g. ``"魚油"``, ``"調節血脂"``).
+            limit: Maximum number of results to return (default 3, max 10).
+                   Returns the top *limit* closest matches ranked by hybrid
+                   BM25 + semantic similarity — not just keyword matches.
 
         Returns:
-            JSON string with a ``results`` list of matching health food records.
+            JSON string with a ``results`` list of the closest matching health food records.
         """
+        limit = min(max(1, limit), 10)
         vec = await self._embedding_svc.embed(keyword) if self._embedding_svc else None
         vec_str = f"[{','.join(str(x) for x in vec)}]" if vec else None
 
@@ -188,8 +192,8 @@ class HealthFoodService:
                        )
                        SELECT i.permit_no, i.name, i.category, i.benefit_claims, i.applicant, i.valid_from
                        FROM rrf JOIN health_food.items i ON i.permit_no = rrf.permit_no
-                       ORDER BY rrf.score DESC LIMIT 10""",
-                    keyword, vec_str,
+                       ORDER BY rrf.score DESC LIMIT $3""",
+                    keyword, vec_str, limit,
                 )
             else:
                 rows = await conn.fetch(
@@ -197,8 +201,8 @@ class HealthFoodService:
                        FROM health_food.items
                        WHERE to_tsvector('simple', COALESCE(name,'') || ' ' || COALESCE(benefit_claims,''))
                              @@ plainto_tsquery('simple', $1)
-                       LIMIT 10""",
-                    keyword,
+                       LIMIT $2""",
+                    keyword, limit,
                 )
         if not rows:
             return json.dumps({"error": f"找不到與 '{keyword}' 相關的健康食品。", "results": []}, ensure_ascii=False)

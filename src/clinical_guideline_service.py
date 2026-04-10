@@ -10,12 +10,14 @@ from typing import Dict, Optional
 import asyncpg
 
 from cache import cached
+from embedding_service import EmbeddingService
 from utils import log_error, log_info
 
 
 class ClinicalGuidelineService:
-    def __init__(self, pool: asyncpg.Pool):
+    def __init__(self, pool: asyncpg.Pool, embedding_svc: EmbeddingService | None = None):
         self.pool = pool
+        self._embedding_svc = embedding_svc
 
     async def initialize(self) -> None:
         count = await self.pool.fetchval("SELECT COUNT(*) FROM guideline.disease_guidelines")
@@ -25,26 +27,66 @@ class ClinicalGuidelineService:
             log_info(f"Clinical Guideline Service ready ({count} guidelines)")
 
     @cached(ttl=86400, prefix="gl.search")
-    async def search_guideline(self, keyword: str) -> str:
+    async def search_guideline(self, keyword: str, limit: int = 3) -> str:
         """Search clinical guidelines by disease name or ICD code.
+
+        Uses hybrid BM25 + semantic similarity to find the closest matching
+        guidelines — e.g., '高血壓' also surfaces hypertension guidelines.
+        Returns top *limit* closest matching guidelines (default 3, max 10).
 
         Args:
             keyword: ICD code prefix or Chinese/English disease name.
+            limit: Number of closest matches to return (default 3, max 10).
 
         Returns:
             JSON string with ``keyword``, ``total_found``, and ``guidelines`` list.
         """
+        limit = min(max(1, limit), 10)
+        vec = await self._embedding_svc.embed(keyword) if self._embedding_svc else None
+        vec_str = f"[{','.join(str(x) for x in vec)}]" if vec else None
+
         async with self.pool.acquire() as conn:
-            rows = await conn.fetch(
-                """SELECT id, icd_code, disease_name_zh, disease_name_en,
-                          guideline_title, guideline_source, publication_year
-                   FROM guideline.disease_guidelines
-                   WHERE icd_code ILIKE $1
-                      OR to_tsvector('simple', COALESCE(disease_name_zh,'') || ' ' || COALESCE(disease_name_en,''))
-                         @@ plainto_tsquery('simple', $2)
-                   ORDER BY publication_year DESC""",
-                f"%{keyword}%", keyword,
-            )
+            if vec_str:
+                rows = await conn.fetch(
+                    """WITH fts AS (
+                           SELECT id,
+                                  ROW_NUMBER() OVER (ORDER BY ts_rank_cd(
+                                      to_tsvector('simple', COALESCE(disease_name_zh,'') || ' ' || COALESCE(disease_name_en,'')),
+                                      plainto_tsquery('simple', $2)) DESC) AS rank
+                           FROM guideline.disease_guidelines
+                           WHERE icd_code ILIKE $1
+                              OR to_tsvector('simple', COALESCE(disease_name_zh,'') || ' ' || COALESCE(disease_name_en,''))
+                                 @@ plainto_tsquery('simple', $2)
+                           LIMIT 20
+                       ),
+                       vec AS (
+                           SELECT id,
+                                  ROW_NUMBER() OVER (ORDER BY embedding <=> $3::vector) AS rank
+                           FROM guideline.guideline_embeddings
+                           ORDER BY embedding <=> $3::vector LIMIT 20
+                       ),
+                       rrf AS (
+                           SELECT COALESCE(f.id, v.id) AS id,
+                                  COALESCE(1.0/(60+f.rank), 0.0) + COALESCE(1.0/(60+v.rank), 0.0) AS score
+                           FROM fts f FULL OUTER JOIN vec v ON f.id = v.id
+                       )
+                       SELECT g.id, g.icd_code, g.disease_name_zh, g.disease_name_en,
+                              g.guideline_title, g.guideline_source, g.publication_year
+                       FROM rrf JOIN guideline.disease_guidelines g ON g.id = rrf.id
+                       ORDER BY rrf.score DESC LIMIT $4""",
+                    f"%{keyword}%", keyword, vec_str, limit,
+                )
+            else:
+                rows = await conn.fetch(
+                    """SELECT id, icd_code, disease_name_zh, disease_name_en,
+                              guideline_title, guideline_source, publication_year
+                       FROM guideline.disease_guidelines
+                       WHERE icd_code ILIKE $1
+                          OR to_tsvector('simple', COALESCE(disease_name_zh,'') || ' ' || COALESCE(disease_name_en,''))
+                             @@ plainto_tsquery('simple', $2)
+                       ORDER BY publication_year DESC LIMIT $3""",
+                    f"%{keyword}%", keyword, limit,
+                )
         if not rows:
             return json.dumps(
                 {"message": f"找不到符合 '{keyword}' 的診療指引",

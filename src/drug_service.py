@@ -205,16 +205,20 @@ class DrugService:
     # ── query methods ────────────────────────────────────────────────────────
 
     @cached(ttl=3600, prefix="drug.search")
-    async def search_drug(self, keyword: str) -> str:
+    async def search_drug(self, keyword: str, limit: int = 3) -> str:
         """Search Taiwan FDA approved drugs by name or indication keyword.
 
         Args:
             keyword: Chinese or English drug name, or indication phrase
                 (e.g. ``"普拿疼"``, ``"Panadol"``, ``"頭痛"``).
+            limit: Maximum number of results to return (default 3, max 10).
+                   Returns the top *limit* closest matches ranked by hybrid
+                   BM25 + semantic similarity — not just keyword matches.
 
         Returns:
-            JSON string with a ``results`` list of matching license records.
+            JSON string with a ``results`` list of the closest matching license records.
         """
+        limit = min(max(1, limit), 10)
         vec = await self._embedding_svc.embed(keyword) if self._embedding_svc else None
         vec_str = f"[{','.join(str(x) for x in vec)}]" if vec else None
 
@@ -247,8 +251,8 @@ class DrugService:
                        )
                        SELECT l.license_id, l.name_zh, l.name_en, l.indication, l.category
                        FROM rrf JOIN drug.licenses l ON l.license_id = rrf.license_id
-                       ORDER BY rrf.score DESC LIMIT 8""",
-                    keyword, vec_str,
+                       ORDER BY rrf.score DESC LIMIT $3""",
+                    keyword, vec_str, limit,
                 )
             else:
                 rows = await conn.fetch(
@@ -257,8 +261,8 @@ class DrugService:
                        WHERE to_tsvector('simple',
                                COALESCE(name_zh,'') || ' ' || COALESCE(name_en,'') || ' ' || COALESCE(indication,''))
                              @@ plainto_tsquery('simple', $1)
-                       LIMIT 8""",
-                    keyword,
+                       LIMIT $2""",
+                    keyword, limit,
                 )
         if not rows:
             return json.dumps({"error": f"No results found for '{keyword}'.", "results": []}, ensure_ascii=False)
@@ -424,75 +428,172 @@ class DrugService:
         )
 
     @cached(ttl=3600, prefix="drug.byatc")
-    async def search_by_atc(self, query: str) -> str:
+    async def search_by_atc(self, query: str, limit: int = 3) -> str:
         """Search Taiwan FDA drugs by WHO ATC code or therapeutic class name.
 
-        Matches ATC code prefix (e.g. ``"A10BA"``) or performs full-text
-        search on ATC class names (e.g. ``"降血糖"``).
+        Matches ATC code prefix (e.g. ``"A10BA"``) or uses hybrid BM25 +
+        semantic similarity on ATC class names (e.g. ``"降血糖"``).
+        Returns top *limit* closest matching drug records (default 3, max 10).
 
         Args:
             query: ATC code prefix or therapeutic class name keyword.
+            limit: Number of closest matches to return (default 3, max 10).
 
         Returns:
             JSON string with ``query``, ``total``, and ``results`` list.
         """
+        limit = min(max(1, limit), 10)
+        vec = await self._embedding_svc.embed(query) if self._embedding_svc else None
+        vec_str = f"[{','.join(str(x) for x in vec)}]" if vec else None
+
         async with self.pool.acquire() as conn:
-            rows = await conn.fetch(
-                """
-                SELECT DISTINCT l.license_id, l.name_zh, l.name_en, l.indication, l.category,
-                       a.atc_code, a.atc_name
-                FROM drug.atc a
-                JOIN drug.licenses l ON l.license_id = a.license_id
-                WHERE a.atc_code ILIKE $1
-                   OR to_tsvector('simple', COALESCE(a.atc_name,'')) @@ plainto_tsquery('simple', $2)
-                ORDER BY a.atc_code, l.name_zh
-                LIMIT 20
-                """,
-                f"{query}%", query,
-            )
+            if vec_str:
+                rows = await conn.fetch(
+                    """WITH fts_atc AS (
+                           SELECT DISTINCT a.atc_code,
+                                  ROW_NUMBER() OVER (ORDER BY MAX(ts_rank_cd(
+                                      to_tsvector('simple', COALESCE(a.atc_name,'')),
+                                      plainto_tsquery('simple', $1))) DESC) AS rank
+                           FROM drug.atc a
+                           WHERE a.atc_code ILIKE $2
+                              OR to_tsvector('simple', COALESCE(a.atc_name,'')) @@ plainto_tsquery('simple', $1)
+                           GROUP BY a.atc_code
+                           LIMIT 20
+                       ),
+                       vec_atc AS (
+                           SELECT atc_code,
+                                  ROW_NUMBER() OVER (ORDER BY embedding <=> $3::vector) AS rank
+                           FROM drug.atc_embeddings
+                           ORDER BY embedding <=> $3::vector LIMIT 20
+                       ),
+                       rrf_atc AS (
+                           SELECT COALESCE(f.atc_code, v.atc_code) AS atc_code,
+                                  COALESCE(1.0/(60+f.rank), 0.0) + COALESCE(1.0/(60+v.rank), 0.0) AS score
+                           FROM fts_atc f FULL OUTER JOIN vec_atc v ON f.atc_code = v.atc_code
+                       )
+                       SELECT * FROM (
+                           SELECT DISTINCT ON (l.license_id)
+                                  l.license_id, l.name_zh, l.name_en, l.indication, l.category,
+                                  a.atc_code, a.atc_name, r.score
+                           FROM rrf_atc r
+                           JOIN drug.atc a ON a.atc_code = r.atc_code
+                           JOIN drug.licenses l ON l.license_id = a.license_id
+                           ORDER BY l.license_id, r.score DESC
+                       ) sub
+                       ORDER BY score DESC LIMIT $4""",
+                    query, f"{query}%", vec_str, limit,
+                )
+            else:
+                rows = await conn.fetch(
+                    """SELECT DISTINCT l.license_id, l.name_zh, l.name_en, l.indication, l.category,
+                              a.atc_code, a.atc_name
+                       FROM drug.atc a
+                       JOIN drug.licenses l ON l.license_id = a.license_id
+                       WHERE a.atc_code ILIKE $1
+                          OR to_tsvector('simple', COALESCE(a.atc_name,'')) @@ plainto_tsquery('simple', $2)
+                       ORDER BY a.atc_code, l.name_zh
+                       LIMIT $3""",
+                    f"{query}%", query, limit,
+                )
         if not rows:
             return json.dumps(
                 {"error": f"找不到與 ATC '{query}' 相關的藥品。", "results": []},
                 ensure_ascii=False,
             )
+        def _row_atc(r):
+            d = dict(r)
+            if "score" in d and d["score"] is not None:
+                d["score"] = float(d["score"])
+            return d
+
         return json.dumps(
             {"query": query, "total": len(rows),
-             "results": [dict(r) for r in rows]},
+             "results": [_row_atc(r) for r in rows]},
             ensure_ascii=False,
         )
 
     @cached(ttl=3600, prefix="drug.bying")
-    async def search_by_ingredient(self, ingredient_name: str) -> str:
+    async def search_by_ingredient(self, ingredient_name: str, limit: int = 3) -> str:
         """Search Taiwan FDA drugs that contain a specific active ingredient.
+
+        Uses hybrid BM25 + semantic similarity — e.g., '二甲雙胍' also
+        surfaces drugs with ingredient 'Metformin Hydrochloride'.
+        Returns top *limit* closest matching drug records (default 3, max 10).
 
         Args:
             ingredient_name: Ingredient name in Chinese or English
                 (e.g. ``"Metformin"``, ``"二甲雙胍"``).
+            limit: Number of closest matches to return (default 3, max 10).
 
         Returns:
             JSON string with ``ingredient``, ``total``, and ``results`` list
             including ingredient quantity and unit for each match.
         """
+        limit = min(max(1, limit), 10)
+        vec = await self._embedding_svc.embed(ingredient_name) if self._embedding_svc else None
+        vec_str = f"[{','.join(str(x) for x in vec)}]" if vec else None
+
         async with self.pool.acquire() as conn:
-            rows = await conn.fetch(
-                """
-                SELECT DISTINCT l.license_id, l.name_zh, l.name_en, l.indication, l.form,
-                       i.ingredient_name, i.ingredient_qty, i.ingredient_unit
-                FROM drug.ingredients i
-                JOIN drug.licenses l ON l.license_id = i.license_id
-                WHERE i.ingredient_name ILIKE $1
-                ORDER BY i.ingredient_name, l.name_zh
-                LIMIT 20
-                """,
-                f"%{ingredient_name}%",
-            )
+            if vec_str:
+                rows = await conn.fetch(
+                    """WITH fts AS (
+                           SELECT DISTINCT ingredient_name,
+                                  ROW_NUMBER() OVER (ORDER BY MAX(ts_rank_cd(
+                                      to_tsvector('simple', COALESCE(ingredient_name,'')),
+                                      plainto_tsquery('simple', $1))) DESC) AS rank
+                           FROM drug.ingredients
+                           WHERE ingredient_name ILIKE $2
+                              OR to_tsvector('simple', COALESCE(ingredient_name,'')) @@ plainto_tsquery('simple', $1)
+                           GROUP BY ingredient_name
+                           LIMIT 20
+                       ),
+                       vec AS (
+                           SELECT ingredient_name,
+                                  ROW_NUMBER() OVER (ORDER BY embedding <=> $3::vector) AS rank
+                           FROM drug.ingredient_name_embeddings
+                           ORDER BY embedding <=> $3::vector LIMIT 20
+                       ),
+                       rrf AS (
+                           SELECT COALESCE(f.ingredient_name, v.ingredient_name) AS ingredient_name,
+                                  COALESCE(1.0/(60+f.rank), 0.0) + COALESCE(1.0/(60+v.rank), 0.0) AS score
+                           FROM fts f FULL OUTER JOIN vec v ON f.ingredient_name = v.ingredient_name
+                       )
+                       SELECT * FROM (
+                           SELECT DISTINCT ON (l.license_id)
+                                  l.license_id, l.name_zh, l.name_en, l.indication, l.form,
+                                  i.ingredient_name, i.ingredient_qty, i.ingredient_unit, r.score
+                           FROM rrf r
+                           JOIN drug.ingredients i ON i.ingredient_name = r.ingredient_name
+                           JOIN drug.licenses l ON l.license_id = i.license_id
+                           ORDER BY l.license_id, r.score DESC
+                       ) sub
+                       ORDER BY score DESC LIMIT $4""",
+                    ingredient_name, f"%{ingredient_name}%", vec_str, limit,
+                )
+            else:
+                rows = await conn.fetch(
+                    """SELECT DISTINCT l.license_id, l.name_zh, l.name_en, l.indication, l.form,
+                              i.ingredient_name, i.ingredient_qty, i.ingredient_unit
+                       FROM drug.ingredients i
+                       JOIN drug.licenses l ON l.license_id = i.license_id
+                       WHERE i.ingredient_name ILIKE $1
+                       ORDER BY i.ingredient_name, l.name_zh
+                       LIMIT $2""",
+                    f"%{ingredient_name}%", limit,
+                )
         if not rows:
             return json.dumps(
                 {"error": f"找不到含有 '{ingredient_name}' 成分的藥品。", "results": []},
                 ensure_ascii=False,
             )
+        def _row_ing(r):
+            d = dict(r)
+            if "score" in d and d["score"] is not None:
+                d["score"] = float(d["score"])
+            return d
+
         return json.dumps(
             {"ingredient": ingredient_name, "total": len(rows),
-             "results": [dict(r) for r in rows]},
+             "results": [_row_ing(r) for r in rows]},
             ensure_ascii=False,
         )

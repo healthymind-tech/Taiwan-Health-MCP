@@ -39,18 +39,32 @@ class TestSearchLoincCode:
         assert "Lab Service" in result["error"]
 
     @pytest.mark.asyncio
-    async def test_delegates_keyword_no_category(self):
+    async def test_delegates_keyword_no_category_default_limit(self):
         mock_svc = _lab_mock()
         with patch.object(server, "lab_service", mock_svc):
             await server.search_loinc_code(keyword="HbA1c")
-        mock_svc.search_loinc_code.assert_called_once_with("HbA1c", None)
+        mock_svc.search_loinc_code.assert_called_once_with("HbA1c", None, limit=3)
 
     @pytest.mark.asyncio
-    async def test_delegates_keyword_with_category(self):
+    async def test_delegates_keyword_with_category_default_limit(self):
         mock_svc = _lab_mock()
         with patch.object(server, "lab_service", mock_svc):
             await server.search_loinc_code(keyword="glucose", category="CHEM")
-        mock_svc.search_loinc_code.assert_called_once_with("glucose", "CHEM")
+        mock_svc.search_loinc_code.assert_called_once_with("glucose", "CHEM", limit=3)
+
+    @pytest.mark.asyncio
+    async def test_custom_limit_forwarded(self):
+        mock_svc = _lab_mock()
+        with patch.object(server, "lab_service", mock_svc):
+            await server.search_loinc_code(keyword="WBC", limit=8)
+        mock_svc.search_loinc_code.assert_called_once_with("WBC", None, limit=8)
+
+    @pytest.mark.asyncio
+    async def test_category_and_custom_limit(self):
+        mock_svc = _lab_mock()
+        with patch.object(server, "lab_service", mock_svc):
+            await server.search_loinc_code(keyword="TSH", category="CHEM", limit=5)
+        mock_svc.search_loinc_code.assert_called_once_with("TSH", "CHEM", limit=5)
 
 
 # ── list_lab_categories ───────────────────────────────────────────────────────
@@ -141,11 +155,18 @@ class TestSearchLoincBySpecimen:
         assert "Lab Service" in result["error"]
 
     @pytest.mark.asyncio
-    async def test_delegates_specimen_type(self):
+    async def test_delegates_specimen_type_default_limit(self):
         mock_svc = _lab_mock()
         with patch.object(server, "lab_service", mock_svc):
             await server.search_loinc_by_specimen(specimen_type="血清/血漿")
-        mock_svc.search_by_specimen.assert_called_once_with("血清/血漿")
+        mock_svc.search_by_specimen.assert_called_once_with("血清/血漿", limit=3)
+
+    @pytest.mark.asyncio
+    async def test_custom_limit_forwarded(self):
+        mock_svc = _lab_mock()
+        with patch.object(server, "lab_service", mock_svc):
+            await server.search_loinc_by_specimen(specimen_type="尿液", limit=7)
+        mock_svc.search_by_specimen.assert_called_once_with("尿液", limit=7)
 
 
 # ── find_related_loinc_tests ──────────────────────────────────────────────────
@@ -159,11 +180,18 @@ class TestFindRelatedLoincTests:
         assert "Lab Service" in result["error"]
 
     @pytest.mark.asyncio
-    async def test_delegates_component(self):
+    async def test_delegates_component_default_limit(self):
         mock_svc = _lab_mock()
         with patch.object(server, "lab_service", mock_svc):
             await server.find_related_loinc_tests(component="Creatinine")
-        mock_svc.find_related_tests.assert_called_once_with("Creatinine")
+        mock_svc.find_related_tests.assert_called_once_with("Creatinine", limit=3)
+
+    @pytest.mark.asyncio
+    async def test_custom_limit_forwarded(self):
+        mock_svc = _lab_mock()
+        with patch.object(server, "lab_service", mock_svc):
+            await server.find_related_loinc_tests(component="Hemoglobin", limit=6)
+        mock_svc.find_related_tests.assert_called_once_with("Hemoglobin", limit=6)
 
 
 # ── get_loinc_detail ──────────────────────────────────────────────────────────
@@ -230,3 +258,17 @@ class TestBatchInterpretLabResults:
         mock_svc.batch_interpret_results.assert_called_once_with(
             [{"loinc_code": "2345-7", "value": 5.5}], 40, "all"
         )
+
+    @pytest.mark.asyncio
+    async def test_multiple_results_parsed_correctly(self):
+        mock_svc = _lab_mock()
+        results = [
+            {"loinc_code": "1558-6", "value": 126},
+            {"loinc_code": "4548-4", "value": 7.2},
+            {"loinc_code": "718-7",  "value": 13.5},
+        ]
+        with patch.object(server, "lab_service", mock_svc):
+            await server.batch_interpret_lab_results(
+                results_json=json.dumps(results), age=55, gender="F"
+            )
+        mock_svc.batch_interpret_results.assert_called_once_with(results, 55, "F")

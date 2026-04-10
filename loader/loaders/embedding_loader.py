@@ -2,13 +2,19 @@
 Embedding Loader — generate pgvector embeddings for hybrid search.
 
 Calls Ollama /api/embed in batches and upserts into:
-  - food_nutrition.food_embeddings        (~2181 unique foods)
-  - food_nutrition.ingredient_embeddings  (~1702 ingredients)
-  - health_food.item_embeddings           (~555 items)
-  - drug.license_embeddings               (~66k licenses)
+  - food_nutrition.food_embeddings            (~2181 unique foods)
+  - food_nutrition.ingredient_embeddings      (~1702 ingredients)
+  - health_food.item_embeddings               (~555 items)
+  - drug.license_embeddings                   (~66k licenses)
+  - drug.atc_embeddings                       (~10k ATC codes)
+  - drug.ingredient_name_embeddings           (~50k+ unique ingredient names)
+  - icd.diagnosis_embeddings                  (~73k ICD-10-CM codes)
+  - loinc.concept_embeddings                  (~87k LOINC concepts)
+  - guideline.guideline_embeddings            (~50 guidelines)
+  - snomed.concept_embeddings                 (~360k concepts — slow, 1-2+ hours)
 
 Supports resuming: ON CONFLICT DO UPDATE means already-embedded rows
-are refreshed without skipping. Run --embed after --fda or --all.
+are refreshed without skipping. Run --embed after data loaders.
 
 Config env vars:
   OLLAMA_BASE_URL, OLLAMA_EMBED_MODEL, OLLAMA_EMBED_TIMEOUT, OLLAMA_EMBED_BATCH_SIZE
@@ -181,6 +187,7 @@ async def embed_drug(pool: asyncpg.Pool) -> None:
     if not await _check_ollama():
         return
 
+    # ── Licenses ─────────────────────────────────────────────────────────────
     async with pool.acquire() as conn:
         drugs = await conn.fetch(
             "SELECT license_id, name_zh, name_en, indication FROM drug.licenses"
@@ -189,7 +196,7 @@ async def embed_drug(pool: asyncpg.Pool) -> None:
     batches = [drugs[i:i + _BATCH_SIZE] for i in range(0, len(drugs), _BATCH_SIZE)]
     total_ok = 0
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-        for batch in _progress(batches, "Drugs"):
+        for batch in _progress(batches, "Drug licenses"):
             texts = [
                 " ".join(filter(None, [r["name_zh"], r["name_en"], r["indication"]]))
                 for r in batch
@@ -207,4 +214,202 @@ async def embed_drug(pool: asyncpg.Pool) -> None:
                 rows,
             )
             total_ok += len(rows)
-    print(f"  Drug done: {total_ok}/{len(drugs)} embedded")
+    print(f"  Drug licenses done: {total_ok}/{len(drugs)} embedded")
+
+    # ── Distinct ATC codes ────────────────────────────────────────────────────
+    async with pool.acquire() as conn:
+        atc_rows = await conn.fetch(
+            "SELECT DISTINCT ON (atc_code) atc_code, atc_name FROM drug.atc WHERE atc_name IS NOT NULL"
+        )
+    print(f"  ATC codes: {len(atc_rows)}")
+    batches = [atc_rows[i:i + _BATCH_SIZE] for i in range(0, len(atc_rows), _BATCH_SIZE)]
+    total_ok = 0
+    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+        for batch in _progress(batches, "Drug ATC"):
+            texts = [r["atc_name"] for r in batch]
+            vecs = await _embed_batch(client, texts)
+            rows = [
+                (batch[j]["atc_code"], f"[{','.join(str(x) for x in vecs[j])}]")
+                for j in range(len(batch)) if vecs[j] is not None
+            ]
+            await _upsert(pool,
+                """INSERT INTO drug.atc_embeddings (atc_code, embedding)
+                   VALUES ($1, $2::vector)
+                   ON CONFLICT (atc_code) DO UPDATE
+                   SET embedding=EXCLUDED.embedding, embedded_at=NOW()""",
+                rows,
+            )
+            total_ok += len(rows)
+    print(f"  Drug ATC done: {total_ok}/{len(atc_rows)} embedded")
+
+    # ── Distinct ingredient names ─────────────────────────────────────────────
+    async with pool.acquire() as conn:
+        ing_rows = await conn.fetch(
+            "SELECT DISTINCT ingredient_name FROM drug.ingredients WHERE ingredient_name IS NOT NULL AND ingredient_name <> ''"
+        )
+    print(f"  Ingredient names: {len(ing_rows)}")
+    batches = [ing_rows[i:i + _BATCH_SIZE] for i in range(0, len(ing_rows), _BATCH_SIZE)]
+    total_ok = 0
+    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+        for batch in _progress(batches, "Drug ingredients"):
+            texts = [r["ingredient_name"] for r in batch]
+            vecs = await _embed_batch(client, texts)
+            rows = [
+                (batch[j]["ingredient_name"], f"[{','.join(str(x) for x in vecs[j])}]")
+                for j in range(len(batch)) if vecs[j] is not None
+            ]
+            await _upsert(pool,
+                """INSERT INTO drug.ingredient_name_embeddings (ingredient_name, embedding)
+                   VALUES ($1, $2::vector)
+                   ON CONFLICT (ingredient_name) DO UPDATE
+                   SET embedding=EXCLUDED.embedding, embedded_at=NOW()""",
+                rows,
+            )
+            total_ok += len(rows)
+    print(f"  Drug ingredients done: {total_ok}/{len(ing_rows)} embedded")
+
+
+async def embed_icd(pool: asyncpg.Pool) -> None:
+    print("\n=== Embedding: icd.diagnoses (~73k codes) ===")
+    if not await _check_ollama():
+        return
+
+    async with pool.acquire() as conn:
+        rows = await conn.fetch("SELECT code, name_zh, name_en FROM icd.diagnoses")
+    print(f"  Diagnoses: {len(rows)}")
+    batches = [rows[i:i + _BATCH_SIZE] for i in range(0, len(rows), _BATCH_SIZE)]
+    total_ok = 0
+    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+        for batch in _progress(batches, "ICD diagnoses"):
+            texts = [
+                " ".join(filter(None, [r["code"], r["name_zh"], r["name_en"]]))
+                for r in batch
+            ]
+            vecs = await _embed_batch(client, texts)
+            rows_out = [
+                (batch[j]["code"], f"[{','.join(str(x) for x in vecs[j])}]")
+                for j in range(len(batch)) if vecs[j] is not None
+            ]
+            await _upsert(pool,
+                """INSERT INTO icd.diagnosis_embeddings (code, embedding)
+                   VALUES ($1, $2::vector)
+                   ON CONFLICT (code) DO UPDATE
+                   SET embedding=EXCLUDED.embedding, embedded_at=NOW()""",
+                rows_out,
+            )
+            total_ok += len(rows_out)
+    print(f"  ICD done: {total_ok}/{len(rows)} embedded")
+
+
+async def embed_loinc(pool: asyncpg.Pool) -> None:
+    print("\n=== Embedding: loinc.concepts (~87k concepts) ===")
+    if not await _check_ollama():
+        return
+
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """SELECT loinc_num, long_common_name, shortname, name_zh, common_name_zh,
+                      component, specimen_type
+               FROM loinc.concepts"""
+        )
+    print(f"  LOINC concepts: {len(rows)}")
+    batches = [rows[i:i + _BATCH_SIZE] for i in range(0, len(rows), _BATCH_SIZE)]
+    total_ok = 0
+    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+        for batch in _progress(batches, "LOINC"):
+            texts = [
+                " ".join(filter(None, [
+                    r["long_common_name"], r["shortname"], r["name_zh"],
+                    r["common_name_zh"], r["component"], r["specimen_type"],
+                ]))
+                for r in batch
+            ]
+            vecs = await _embed_batch(client, texts)
+            rows_out = [
+                (batch[j]["loinc_num"], f"[{','.join(str(x) for x in vecs[j])}]")
+                for j in range(len(batch)) if vecs[j] is not None
+            ]
+            await _upsert(pool,
+                """INSERT INTO loinc.concept_embeddings (loinc_num, embedding)
+                   VALUES ($1, $2::vector)
+                   ON CONFLICT (loinc_num) DO UPDATE
+                   SET embedding=EXCLUDED.embedding, embedded_at=NOW()""",
+                rows_out,
+            )
+            total_ok += len(rows_out)
+    print(f"  LOINC done: {total_ok}/{len(rows)} embedded")
+
+
+async def embed_guideline(pool: asyncpg.Pool) -> None:
+    print("\n=== Embedding: guideline.disease_guidelines ===")
+    if not await _check_ollama():
+        return
+
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT id, disease_name_zh, disease_name_en, guideline_title, guideline_summary FROM guideline.disease_guidelines"
+        )
+    print(f"  Guidelines: {len(rows)}")
+    if not rows:
+        print("  No guidelines found — run data-loader --guideline first")
+        return
+    batches = [rows[i:i + _BATCH_SIZE] for i in range(0, len(rows), _BATCH_SIZE)]
+    total_ok = 0
+    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+        for batch in _progress(batches, "Guidelines"):
+            texts = [
+                " ".join(filter(None, [
+                    r["disease_name_zh"], r["disease_name_en"],
+                    r["guideline_title"], r["guideline_summary"],
+                ]))
+                for r in batch
+            ]
+            vecs = await _embed_batch(client, texts)
+            rows_out = [
+                (batch[j]["id"], f"[{','.join(str(x) for x in vecs[j])}]")
+                for j in range(len(batch)) if vecs[j] is not None
+            ]
+            await _upsert(pool,
+                """INSERT INTO guideline.guideline_embeddings (id, embedding)
+                   VALUES ($1, $2::vector)
+                   ON CONFLICT (id) DO UPDATE
+                   SET embedding=EXCLUDED.embedding, embedded_at=NOW()""",
+                rows_out,
+            )
+            total_ok += len(rows_out)
+    print(f"  Guidelines done: {total_ok}/{len(rows)} embedded")
+
+
+async def embed_snomed(pool: asyncpg.Pool) -> None:
+    print("\n=== Embedding: snomed.concept_embeddings (~360k FSNs — expect 1-2+ hours) ===")
+    if not await _check_ollama():
+        return
+
+    # Embed one FSN per active concept
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """SELECT DISTINCT ON (concept_id) concept_id, term
+               FROM snomed.descriptions
+               WHERE active = TRUE AND type_id = 900000000000003001  -- FSN type
+               ORDER BY concept_id"""
+        )
+    print(f"  SNOMED active concepts (FSN): {len(rows)}")
+    batches = [rows[i:i + _BATCH_SIZE] for i in range(0, len(rows), _BATCH_SIZE)]
+    total_ok = 0
+    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+        for batch in _progress(batches, "SNOMED"):
+            texts = [r["term"] for r in batch]
+            vecs = await _embed_batch(client, texts)
+            rows_out = [
+                (batch[j]["concept_id"], f"[{','.join(str(x) for x in vecs[j])}]")
+                for j in range(len(batch)) if vecs[j] is not None
+            ]
+            await _upsert(pool,
+                """INSERT INTO snomed.concept_embeddings (concept_id, embedding)
+                   VALUES ($1, $2::vector)
+                   ON CONFLICT (concept_id) DO UPDATE
+                   SET embedding=EXCLUDED.embedding, embedded_at=NOW()""",
+                rows_out,
+            )
+            total_ok += len(rows_out)
+    print(f"  SNOMED done: {total_ok}/{len(rows)} embedded")

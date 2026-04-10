@@ -9,6 +9,7 @@ from typing import Any
 import asyncpg
 
 from cache import cached
+from embedding_service import EmbeddingService
 from utils import log_error, log_info
 
 # SNOMED type constants
@@ -37,8 +38,9 @@ HIERARCHY_ROOTS = {
 
 
 class SNOMEDService:
-    def __init__(self, pool: asyncpg.Pool):
+    def __init__(self, pool: asyncpg.Pool, embedding_svc: EmbeddingService | None = None):
         self.pool = pool
+        self._embedding_svc = embedding_svc
 
     async def initialize(self) -> None:
         count = await self.pool.fetchval("SELECT COUNT(*) FROM snomed.concepts")
@@ -53,65 +55,142 @@ class SNOMEDService:
     async def search_concepts(
         self,
         query: str,
-        limit: int = 20,
+        limit: int = 3,
         hierarchy_filter: int | None = None,
     ) -> list[dict[str, Any]]:
-        """Full-text search across SNOMED CT descriptions."""
+        """Full-text + semantic search across SNOMED CT descriptions.
+
+        Returns the top *limit* closest matching concepts ranked by hybrid
+        BM25 + vector similarity (default 3, max 10). Results include
+        synonyms so 'heart attack' surfaces 'Myocardial infarction'.
+        """
+        limit = min(max(1, limit), 10)
+        vec = await self._embedding_svc.embed(query) if self._embedding_svc else None
+        vec_str = f"[{','.join(str(x) for x in vec)}]" if vec else None
+
         async with self.pool.acquire() as conn:
             if hierarchy_filter:
-                # Filter to descendants of a given concept (via recursive IS-A closure)
-                rows = await conn.fetch(
-                    """
-                    WITH RECURSIVE descendants AS (
-                        SELECT concept_id FROM snomed.concepts WHERE concept_id = $3
-                        UNION ALL
-                        SELECT r.source_id
-                        FROM snomed.relationships r
-                        JOIN descendants d ON r.destination_id = d.concept_id
-                        WHERE r.type_id = $4 AND r.active = TRUE
+                # Filter to descendants — vector search scoped via descendant join
+                if vec_str:
+                    rows = await conn.fetch(
+                        """
+                        WITH RECURSIVE descendants AS (
+                            SELECT concept_id FROM snomed.concepts WHERE concept_id = $3
+                            UNION ALL
+                            SELECT r.source_id
+                            FROM snomed.relationships r
+                            JOIN descendants d ON r.destination_id = d.concept_id
+                            WHERE r.type_id = $4 AND r.active = TRUE
+                        ),
+                        fts AS (
+                            SELECT d.concept_id,
+                                   ROW_NUMBER() OVER (ORDER BY
+                                       ts_rank(to_tsvector('english', d.term),
+                                               plainto_tsquery('english', $1)) DESC) AS rank
+                            FROM snomed.descriptions d
+                            JOIN descendants desc ON desc.concept_id = d.concept_id
+                            WHERE d.active = TRUE
+                              AND to_tsvector('english', d.term) @@ plainto_tsquery('english', $1)
+                            LIMIT 20
+                        ),
+                        vec AS (
+                            SELECT e.concept_id,
+                                   ROW_NUMBER() OVER (ORDER BY e.embedding <=> $5::vector) AS rank
+                            FROM snomed.concept_embeddings e
+                            JOIN descendants desc ON desc.concept_id = e.concept_id
+                            ORDER BY e.embedding <=> $5::vector LIMIT 20
+                        ),
+                        rrf AS (
+                            SELECT COALESCE(f.concept_id, v.concept_id) AS concept_id,
+                                   COALESCE(1.0/(60+f.rank), 0.0) + COALESCE(1.0/(60+v.rank), 0.0) AS score
+                            FROM fts f FULL OUTER JOIN vec v ON f.concept_id = v.concept_id
+                        )
+                        SELECT d.concept_id, d.term AS preferred_term, d.type_id, c.active
+                        FROM rrf
+                        JOIN snomed.descriptions d ON d.concept_id = rrf.concept_id
+                            AND d.active = TRUE
+                        JOIN snomed.concepts c ON c.concept_id = rrf.concept_id
+                        ORDER BY rrf.score DESC,
+                                 CASE WHEN d.type_id = $6 THEN 0 ELSE 1 END
+                        LIMIT $2
+                        """,
+                        query, limit, hierarchy_filter, IS_A_TYPE, vec_str, FSN_TYPE,
                     )
-                    SELECT
-                        d.concept_id,
-                        d.term AS preferred_term,
-                        d.type_id,
-                        c.active
-                    FROM snomed.descriptions d
-                    JOIN snomed.concepts c ON c.concept_id = d.concept_id
-                    JOIN descendants desc ON desc.concept_id = d.concept_id
-                    WHERE d.active = TRUE
-                      AND to_tsvector('english', d.term) @@ plainto_tsquery('english', $1)
-                    ORDER BY
-                        CASE WHEN d.type_id = $5 THEN 0 ELSE 1 END,
-                        ts_rank(to_tsvector('english', d.term), plainto_tsquery('english', $1)) DESC
-                    LIMIT $2
-                    """,
-                    query,
-                    limit,
-                    hierarchy_filter,
-                    IS_A_TYPE,
-                    FSN_TYPE,
-                )
+                else:
+                    rows = await conn.fetch(
+                        """
+                        WITH RECURSIVE descendants AS (
+                            SELECT concept_id FROM snomed.concepts WHERE concept_id = $3
+                            UNION ALL
+                            SELECT r.source_id
+                            FROM snomed.relationships r
+                            JOIN descendants d ON r.destination_id = d.concept_id
+                            WHERE r.type_id = $4 AND r.active = TRUE
+                        )
+                        SELECT d.concept_id, d.term AS preferred_term, d.type_id, c.active
+                        FROM snomed.descriptions d
+                        JOIN snomed.concepts c ON c.concept_id = d.concept_id
+                        JOIN descendants desc ON desc.concept_id = d.concept_id
+                        WHERE d.active = TRUE
+                          AND to_tsvector('english', d.term) @@ plainto_tsquery('english', $1)
+                        ORDER BY
+                            CASE WHEN d.type_id = $5 THEN 0 ELSE 1 END,
+                            ts_rank(to_tsvector('english', d.term), plainto_tsquery('english', $1)) DESC
+                        LIMIT $2
+                        """,
+                        query, limit, hierarchy_filter, IS_A_TYPE, FSN_TYPE,
+                    )
             else:
-                rows = await conn.fetch(
-                    """
-                    SELECT
-                        d.concept_id,
-                        d.term AS preferred_term,
-                        d.type_id,
-                        c.active
-                    FROM snomed.descriptions d
-                    JOIN snomed.concepts c ON c.concept_id = d.concept_id
-                    WHERE d.active = TRUE
-                      AND to_tsvector('english', d.term) @@ plainto_tsquery('english', $1)
-                    ORDER BY
-                        CASE WHEN d.type_id = $3 THEN 0 ELSE 1 END,
-                        ts_rank(to_tsvector('english', d.term), plainto_tsquery('english', $1)) DESC
-                    LIMIT $2
-                    """,
-                    query,
-                    limit,
-                    FSN_TYPE,
-                )
+                if vec_str:
+                    rows = await conn.fetch(
+                        """
+                        WITH fts AS (
+                            SELECT d.concept_id,
+                                   ROW_NUMBER() OVER (ORDER BY
+                                       ts_rank(to_tsvector('english', d.term),
+                                               plainto_tsquery('english', $1)) DESC) AS rank
+                            FROM snomed.descriptions d
+                            WHERE d.active = TRUE
+                              AND to_tsvector('english', d.term) @@ plainto_tsquery('english', $1)
+                            LIMIT 20
+                        ),
+                        vec AS (
+                            SELECT concept_id,
+                                   ROW_NUMBER() OVER (ORDER BY embedding <=> $3::vector) AS rank
+                            FROM snomed.concept_embeddings
+                            ORDER BY embedding <=> $3::vector LIMIT 20
+                        ),
+                        rrf AS (
+                            SELECT COALESCE(f.concept_id, v.concept_id) AS concept_id,
+                                   COALESCE(1.0/(60+f.rank), 0.0) + COALESCE(1.0/(60+v.rank), 0.0) AS score
+                            FROM fts f FULL OUTER JOIN vec v ON f.concept_id = v.concept_id
+                        )
+                        SELECT d.concept_id, d.term AS preferred_term, d.type_id, c.active
+                        FROM rrf
+                        JOIN snomed.descriptions d ON d.concept_id = rrf.concept_id
+                            AND d.active = TRUE
+                        JOIN snomed.concepts c ON c.concept_id = rrf.concept_id
+                        ORDER BY rrf.score DESC,
+                                 CASE WHEN d.type_id = $4 THEN 0 ELSE 1 END
+                        LIMIT $2
+                        """,
+                        query, limit, vec_str, FSN_TYPE,
+                    )
+                else:
+                    rows = await conn.fetch(
+                        """
+                        SELECT d.concept_id, d.term AS preferred_term, d.type_id, c.active
+                        FROM snomed.descriptions d
+                        JOIN snomed.concepts c ON c.concept_id = d.concept_id
+                        WHERE d.active = TRUE
+                          AND to_tsvector('english', d.term) @@ plainto_tsquery('english', $1)
+                        ORDER BY
+                            CASE WHEN d.type_id = $3 THEN 0 ELSE 1 END,
+                            ts_rank(to_tsvector('english', d.term), plainto_tsquery('english', $1)) DESC
+                        LIMIT $2
+                        """,
+                        query, limit, FSN_TYPE,
+                    )
 
         # Deduplicate to one result per concept_id (prefer FSN)
         seen: dict[int, dict] = {}

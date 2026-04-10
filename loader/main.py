@@ -282,13 +282,24 @@ async def load_food_nutrition(pool: asyncpg.Pool) -> None:
 
 
 async def generate_embeddings(pool: asyncpg.Pool, services: list[str]) -> None:
-    from loaders.embedding_loader import embed_drug, embed_food_nutrition, embed_health_food
+    from loaders.embedding_loader import (
+        embed_drug, embed_food_nutrition, embed_health_food,
+        embed_icd, embed_loinc, embed_guideline, embed_snomed,
+    )
     if "food_nutrition" in services:
         await embed_food_nutrition(pool)
     if "health_food" in services:
         await embed_health_food(pool)
     if "drug" in services:
         await embed_drug(pool)
+    if "icd" in services:
+        await embed_icd(pool)
+    if "loinc" in services:
+        await embed_loinc(pool)
+    if "guideline" in services:
+        await embed_guideline(pool)
+    if "snomed" in services:
+        await embed_snomed(pool)
 
 
 async def main():
@@ -304,7 +315,7 @@ async def main():
     parser.add_argument("--health-food", action="store_true", help="Taiwan FDA health food dataset")
     parser.add_argument("--food-nutrition", action="store_true", help="Taiwan FDA food nutrition datasets")
     parser.add_argument("--fda",       action="store_true", help="Load all Taiwan FDA API datasets")
-    parser.add_argument("--embed",     action="store_true", help="Generate pgvector embeddings (food, health food, drug)")
+    parser.add_argument("--embed",     action="store_true", help="Generate pgvector embeddings (all datasets)")
     args = parser.parse_args()
 
     run_all = args.all or not any([
@@ -351,7 +362,7 @@ async def main():
             print("=== Loading Taiwan FDA food nutrition datasets ===")
             await load_food_nutrition(pool)
 
-        # Auto-embed after FDA or full load; also runs on explicit --embed
+        # Auto-embed after each dataset load; also runs on explicit --embed
         embed_services: list[str] = []
         if run_all or args.fda or args.food_nutrition or args.embed:
             embed_services.append("food_nutrition")
@@ -359,6 +370,16 @@ async def main():
             embed_services.append("health_food")
         if run_all or args.fda or args.drug or args.embed:
             embed_services.append("drug")
+        if run_all or args.icd or args.embed:
+            embed_services.append("icd")
+        if run_all or args.loinc or args.embed:
+            embed_services.append("loinc")
+        if run_all or args.guideline or args.embed:
+            embed_services.append("guideline")
+        if args.snomed or args.embed:
+            # SNOMED embedding is opt-in only (takes 1-2+ hours)
+            # Not auto-triggered by --all to avoid unexpected very long runs
+            embed_services.append("snomed")
 
         if embed_services:
             await generate_embeddings(pool, embed_services)

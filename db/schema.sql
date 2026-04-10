@@ -51,6 +51,15 @@ CREATE INDEX IF NOT EXISTS idx_icd_proc_fts ON icd.procedures
     USING GIN (to_tsvector('simple',
         COALESCE(code,'') || ' ' || COALESCE(name_zh,'') || ' ' || COALESCE(name_en,'')));
 
+-- Embedding table for hybrid search (diagnoses only; PCS is rarely searched semantically)
+CREATE TABLE IF NOT EXISTS icd.diagnosis_embeddings (
+    code        TEXT PRIMARY KEY,
+    embedding   vector(1024),
+    embedded_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_icd_diag_emb_hnsw ON icd.diagnosis_embeddings
+    USING hnsw (embedding vector_cosine_ops);
+
 
 -- ============================================================
 -- DRUG (Taiwan FDA)
@@ -107,6 +116,25 @@ CREATE INDEX IF NOT EXISTS idx_drug_app_lid  ON drug.appearance (license_id);
 CREATE INDEX IF NOT EXISTS idx_drug_ing_lid  ON drug.ingredients (license_id);
 CREATE INDEX IF NOT EXISTS idx_drug_atc_lid  ON drug.atc (license_id);
 CREATE INDEX IF NOT EXISTS idx_drug_atc_code ON drug.atc (atc_code);
+CREATE INDEX IF NOT EXISTS idx_drug_atc_fts  ON drug.atc
+    USING GIN (to_tsvector('simple', COALESCE(atc_name,'')));
+
+-- Embedding tables for hybrid search
+CREATE TABLE IF NOT EXISTS drug.atc_embeddings (
+    atc_code    TEXT PRIMARY KEY,
+    embedding   vector(1024),
+    embedded_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_drug_atc_emb_hnsw ON drug.atc_embeddings
+    USING hnsw (embedding vector_cosine_ops);
+
+CREATE TABLE IF NOT EXISTS drug.ingredient_name_embeddings (
+    ingredient_name TEXT PRIMARY KEY,
+    embedding       vector(1024),
+    embedded_at     TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_drug_ing_emb_hnsw ON drug.ingredient_name_embeddings
+    USING hnsw (embedding vector_cosine_ops);
 CREATE INDEX IF NOT EXISTS idx_drug_lic_fts  ON drug.licenses
     USING GIN (to_tsvector('simple',
         COALESCE(name_zh,'') || ' ' || COALESCE(name_en,'') || ' ' || COALESCE(indication,'')));
@@ -261,6 +289,15 @@ CREATE INDEX IF NOT EXISTS idx_loinc_fts ON loinc.concepts
         COALESCE(loinc_num,'') || ' ' || COALESCE(long_common_name,'') || ' ' ||
         COALESCE(shortname,'') || ' ' || COALESCE(name_zh,'') || ' ' || COALESCE(common_name_zh,'')));
 
+-- Embedding table for hybrid search
+CREATE TABLE IF NOT EXISTS loinc.concept_embeddings (
+    loinc_num   TEXT PRIMARY KEY,
+    embedding   vector(1024),
+    embedded_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_loinc_emb_hnsw ON loinc.concept_embeddings
+    USING hnsw (embedding vector_cosine_ops);
+
 
 -- ============================================================
 -- CLINICAL GUIDELINE
@@ -321,6 +358,15 @@ CREATE TABLE IF NOT EXISTS guideline.treatment_goals (
 CREATE INDEX IF NOT EXISTS idx_gl_icd_code    ON guideline.disease_guidelines (icd_code);
 CREATE INDEX IF NOT EXISTS idx_gl_name_fts    ON guideline.disease_guidelines
     USING GIN (to_tsvector('simple', COALESCE(disease_name_zh,'') || ' ' || COALESCE(disease_name_en,'')));
+
+-- Embedding table for hybrid search
+CREATE TABLE IF NOT EXISTS guideline.guideline_embeddings (
+    id          INTEGER PRIMARY KEY,
+    embedding   vector(1024),
+    embedded_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_gl_emb_hnsw ON guideline.guideline_embeddings
+    USING hnsw (embedding vector_cosine_ops);
 
 
 -- ============================================================
@@ -402,6 +448,16 @@ CREATE INDEX IF NOT EXISTS idx_snomed_rel_type     ON snomed.relationships (type
 CREATE INDEX IF NOT EXISTS idx_snomed_map_target   ON snomed.icd10_map (map_target);
 CREATE INDEX IF NOT EXISTS idx_snomed_desc_fts     ON snomed.descriptions
     USING GIN (to_tsvector('english', COALESCE(term,'')));
+
+-- Embedding table for hybrid search (one FSN embedding per concept)
+-- Note: ~360K active concepts — embedding takes 1-2+ hours with Ollama CPU
+CREATE TABLE IF NOT EXISTS snomed.concept_embeddings (
+    concept_id  BIGINT PRIMARY KEY,
+    embedding   vector(1024),
+    embedded_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_snomed_emb_hnsw ON snomed.concept_embeddings
+    USING hnsw (embedding vector_cosine_ops);
 
 
 -- ============================================================

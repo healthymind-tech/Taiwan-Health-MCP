@@ -322,9 +322,13 @@ class TestFoodNutritionService:
     async def test_analyze_meal_accumulates_nutrients(self):
         from food_nutrition_service import FoodNutritionService
 
-        # Both foods have protein
+        # Both foods have protein — include all fields accessed by analyze_meal_nutrition
         rows = [
-            _row(nutrient_item="粗蛋白", content_per_100g="7.1", content_unit="g"),
+            _row(
+                sample_name="白米", common_name="", food_category="穀類",
+                nutrient_category="蛋白質", nutrient_item="粗蛋白",
+                content_per_100g="7.1", content_unit="g",
+            ),
         ]
         conn = _make_conn(fetch_return=rows)
         pool = _make_pool(conn)
