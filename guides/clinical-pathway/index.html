@@ -3309,7 +3309,7 @@
 <h3 id="_2">第二階段：制定處置基準<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h3>
 <p>依據權威指引設定標準處置。</p>
 <ul>
-<li><strong>工具</strong>：<code>get_complete_guideline</code></li>
+<li><strong>工具</strong>：<code>query_guideline</code></li>
 <li><strong>操作</strong>：獲取該疾病的標準診療流程。</li>
 <li><strong>範例應用</strong>：<ul>
 <li><strong>Day 1 (急診/門診)</strong>：<ul>
@@ -3318,7 +3318,7 @@
 </ul>
 </li>
 <li><strong>治療啟動</strong>：<ul>
-<li>使用 <code>get_medication_recommendations("J15")</code> 查詢抗生素建議。</li>
+<li>使用 <code>query_guideline(icd_code="J15", section="medication")</code> 查詢抗生素建議。</li>
 <li>例如：第一線使用 Beta-lactam + Macrolide。</li>
 </ul>
 </li>
@@ -3340,7 +3340,7 @@
 <h2 id="_3">自動化輔助<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
 <p>在 HIS 系統中，可設計一個「路徑啟動按鈕」：
 1. 醫師輸入診斷 <code>J15.9</code>。
-2. 系統呼叫 <code>mcp.get_complete_guideline("J15.9")</code>。
+2. 系統呼叫 <code>mcp.query_guideline("J15.9", section="complete")</code>。
 3. 自動帶出建議的 Order Set (檢驗套餐 + 藥物套餐)。
 4. 醫師確認修改後發送，大幅節省時間並確保品質。</p>
 

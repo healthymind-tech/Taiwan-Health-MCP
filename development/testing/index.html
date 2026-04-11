@@ -3303,12 +3303,12 @@
 <h3 id="teststest_unitpy">單元測試 (<code>tests/test_unit.py</code>)<a class="headerlink" href="#teststest_unitpy" title="Permanent link">&para;</a></h3>
 <p>針對各 Service 的核心函式進行邏輯驗證，使用 mock DB，不需要外部服務。</p>
 <h3 id="api-teststest_api_integrationpy">API 整合測試 (<code>tests/test_api_integration.py</code>)<a class="headerlink" href="#api-teststest_api_integrationpy" title="Permanent link">&para;</a></h3>
-<p>對實際運行的 MCP server 發送真實 HTTP 請求，驗證所有 56 個 tool 是否正常運作。這些測試同時覆蓋動態註冊後的 <code>tools/list</code> 結果，確認 registry 變更沒有漏掛工具或錯誤隱藏工具。</p>
+<p>對實際運行的 MCP server 發送真實 HTTP 請求，驗證所有 45 個 tool 是否正常運作。這些測試同時覆蓋動態註冊後的 <code>tools/list</code> 結果，確認 registry 變更沒有漏掛工具或錯誤隱藏工具。</p>
 <p>每個 tool 有三種測試情境：
 1. <strong>exact</strong> — 完全正確的查詢，預期返回非空結果
 2. <strong>fuzzy</strong> — 模糊/部分查詢，預期成功處理
 3. <strong>wrong</strong> — 無效輸入，預期優雅處理（不崩潰）</p>
-<p>另有 <code>TestToolsList</code> 驗證 <code>tools/list</code> API 能列出所有 56 個工具，並與 registry 內的群組設定一致。</p>
+<p>另有 <code>TestToolsList</code> 驗證 <code>tools/list</code> API 能列出所有 45 個工具，並與 registry 內的群組設定一致。</p>
 <p>若 server 未啟動，整合測試會自動跳過（skip），不會失敗。</p>
 <h2 id="_4">撰寫新測試<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
 <p>請在 <code>tests/</code> 目錄下建立 <code>test_*.py</code> 檔案。針對每個新增的 Tool，務必加入對應的測試案例，包含「正常輸入」、「模糊輸入」與「異常輸入」三種情境。</p>

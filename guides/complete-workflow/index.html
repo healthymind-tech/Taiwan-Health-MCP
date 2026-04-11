@@ -3302,7 +3302,7 @@
 <h2 id="_3">步驟二：查詢臨床指引<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
 <p>在開立處方前，確認目前的治療指引建議。</p>
 <p><strong>呼叫工具</strong>：
-<div class="language-python highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">get_medication_recommendations</span><span class="p">(</span><span class="n">icd_code</span><span class="o">=</span><span class="s2">&quot;E11&quot;</span><span class="p">)</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">query_guideline</span><span class="p">(</span><span class="n">icd_code</span><span class="o">=</span><span class="s2">&quot;E11&quot;</span><span class="p">,</span> <span class="n">section</span><span class="o">=</span><span class="s2">&quot;medication&quot;</span><span class="p">)</span>
 </span></code></pre></div></p>
 <p><strong>預期結果</strong>：
 指引建議第一線用藥為 Metformin (二甲雙胍)。</p>
@@ -3327,7 +3327,7 @@
 <h2 id="fhir">步驟五：生成 FHIR 病歷紀錄<a class="headerlink" href="#fhir" title="Permanent link">&para;</a></h2>
 <p>最後，將此次診斷記錄轉換為標準的 FHIR 格式以儲存至資料庫。</p>
 <p><strong>呼叫工具</strong>：
-<div class="language-python highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">create_fhir_condition</span><span class="p">(</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">query_fhir_condition</span><span class="p">(</span>
 </span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>    <span class="n">icd_code</span><span class="o">=</span><span class="s2">&quot;E11.9&quot;</span><span class="p">,</span>
 </span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>    <span class="n">patient_id</span><span class="o">=</span><span class="s2">&quot;Patient-001&quot;</span><span class="p">,</span>
 </span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>    <span class="n">clinical_status</span><span class="o">=</span><span class="s2">&quot;active&quot;</span><span class="p">,</span>

@@ -3164,10 +3164,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#6-fhir-condition3" class="md-nav__link">
+  <a href="#6-fhir-condition2" class="md-nav__link">
     <span class="md-ellipsis">
       
-        群組 6 — FHIR Condition（3 個工具）
+        群組 6 — FHIR Condition（2 個工具）
       
     </span>
   </a>
@@ -3175,10 +3175,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#7-fhir-medication4" class="md-nav__link">
+  <a href="#7-fhir-medication2" class="md-nav__link">
     <span class="md-ellipsis">
       
-        群組 7 — FHIR Medication（4 個工具）
+        群組 7 — FHIR Medication（2 個工具）
       
     </span>
   </a>
@@ -3197,10 +3197,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#9-8" class="md-nav__link">
+  <a href="#9-2" class="md-nav__link">
     <span class="md-ellipsis">
       
-        群組 9 — 臨床診療指引（8 個工具）
+        群組 9 — 臨床診療指引（2 個工具）
       
     </span>
   </a>
@@ -3208,10 +3208,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#10-twcore-ig3" class="md-nav__link">
+  <a href="#10-twcore-ig1" class="md-nav__link">
     <span class="md-ellipsis">
       
-        群組 10 — TWCore IG（3 個工具）
+        群組 10 — TWCore IG（1 個工具）
       
     </span>
   </a>
@@ -3288,7 +3288,7 @@
 
 
 <h1 id="mcp">MCP 工具概覽<a class="headerlink" href="#mcp" title="Permanent link">&para;</a></h1>
-<p>Taiwan Health MCP Server 提供 <strong>56 個 MCP 工具</strong>，其中包含 1 個 <code>health_check</code> 基礎工具，以及 12 個主要領域群組共 55 個工具。status page 與動態註冊使用同一份工具 registry，新增或調整工具時請同步更新群組定義與對應說明。</p>
+<p>Taiwan Health MCP Server 提供 <strong>45 個 MCP 工具</strong>，其中包含 1 個 <code>health_check</code> 基礎工具，以及 12 個主要領域群組共 44 個工具。status page 與動態註冊使用同一份工具 registry，新增或調整工具時請同步更新群組定義與對應說明。</p>
 <hr />
 <h2 id="_1">基礎工具<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
 <table>
@@ -3447,7 +3447,7 @@
 </tbody>
 </table>
 <hr />
-<h3 id="6-fhir-condition3">群組 6 — FHIR Condition（3 個工具）<a class="headerlink" href="#6-fhir-condition3" title="Permanent link">&para;</a></h3>
+<h3 id="6-fhir-condition2">群組 6 — FHIR Condition（2 個工具）<a class="headerlink" href="#6-fhir-condition2" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
 <tr>
@@ -3457,12 +3457,8 @@
 </thead>
 <tbody>
 <tr>
-<td><code>create_fhir_condition</code></td>
-<td>ICD-10-CM 碼 → FHIR R4 Condition 資源</td>
-</tr>
-<tr>
-<td><code>create_fhir_condition_from_diagnosis</code></td>
-<td>依關鍵字自動搜尋並建立 FHIR Condition</td>
+<td><code>query_fhir_condition</code></td>
+<td>ICD-10/關鍵字 → FHIR R4 Condition 資源</td>
 </tr>
 <tr>
 <td><code>validate_fhir_condition</code></td>
@@ -3472,7 +3468,7 @@
 </table>
 <p><a href="fhir-tools/">詳細說明</a></p>
 <hr />
-<h3 id="7-fhir-medication4">群組 7 — FHIR Medication（4 個工具）<a class="headerlink" href="#7-fhir-medication4" title="Permanent link">&para;</a></h3>
+<h3 id="7-fhir-medication2">群組 7 — FHIR Medication（2 個工具）<a class="headerlink" href="#7-fhir-medication2" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
 <tr>
@@ -3482,16 +3478,8 @@
 </thead>
 <tbody>
 <tr>
-<td><code>search_medication_fhir</code></td>
-<td>搜尋藥品並建立 FHIR Medication 資源</td>
-</tr>
-<tr>
-<td><code>create_fhir_medication</code></td>
-<td>依許可證字號建立 FHIR Medication</td>
-</tr>
-<tr>
-<td><code>create_fhir_medication_from_drug</code></td>
-<td>依許可證字號建立 FHIR MedicationKnowledge</td>
+<td><code>query_fhir_medication</code></td>
+<td>藥品/許可證字號 → FHIR Medication / MedicationKnowledge</td>
 </tr>
 <tr>
 <td><code>validate_fhir_medication</code></td>
@@ -3546,7 +3534,7 @@
 </table>
 <p><a href="lab-tools/">詳細說明</a></p>
 <hr />
-<h3 id="9-8">群組 9 — 臨床診療指引（8 個工具）<a class="headerlink" href="#9-8" title="Permanent link">&para;</a></h3>
+<h3 id="9-2">群組 9 — 臨床診療指引（2 個工具）<a class="headerlink" href="#9-2" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
 <tr>
@@ -3560,38 +3548,14 @@
 <td>搜尋台灣醫學會臨床指引</td>
 </tr>
 <tr>
-<td><code>get_complete_guideline</code></td>
-<td>取得疾病完整指引（診斷、用藥、檢查、目標）</td>
-</tr>
-<tr>
-<td><code>get_medication_recommendations</code></td>
-<td>取得用藥建議</td>
-</tr>
-<tr>
-<td><code>get_test_recommendations</code></td>
-<td>取得建議檢查項目</td>
-</tr>
-<tr>
-<td><code>get_treatment_goals</code></td>
-<td>取得治療目標</td>
-</tr>
-<tr>
-<td><code>check_medication_contraindications</code></td>
-<td>檢查特定疾病下的用藥禁忌</td>
-</tr>
-<tr>
-<td><code>link_guideline_to_drugs</code></td>
-<td>將指引建議連到台灣 FDA 藥品</td>
-</tr>
-<tr>
-<td><code>suggest_clinical_pathway</code></td>
-<td>依指引規劃臨床路徑</td>
+<td><code>query_guideline</code></td>
+<td>依 ICD 與 section 取得完整/分段指引內容</td>
 </tr>
 </tbody>
 </table>
 <p><a href="guideline-tools/">詳細說明</a></p>
 <hr />
-<h3 id="10-twcore-ig3">群組 10 — TWCore IG（3 個工具）<a class="headerlink" href="#10-twcore-ig3" title="Permanent link">&para;</a></h3>
+<h3 id="10-twcore-ig1">群組 10 — TWCore IG（1 個工具）<a class="headerlink" href="#10-twcore-ig1" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
 <tr>
@@ -3601,16 +3565,8 @@
 </thead>
 <tbody>
 <tr>
-<td><code>list_twcore_codesystems</code></td>
-<td>列出所有 TWCore IG CodeSystem</td>
-</tr>
-<tr>
-<td><code>search_twcore_code</code></td>
-<td>跨 CodeSystem 搜尋代碼</td>
-</tr>
-<tr>
-<td><code>lookup_twcore_code</code></td>
-<td>精確查詢單一代碼（回傳 FHIR Coding）</td>
+<td><code>query_twcore_code</code></td>
+<td>依 code 或 keyword 查詢 TWCore CodeSystem</td>
 </tr>
 </tbody>
 </table>

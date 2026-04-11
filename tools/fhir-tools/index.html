@@ -1526,15 +1526,15 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#create_fhir_condition" class="md-nav__link">
+  <a href="#query_fhir_condition" class="md-nav__link">
     <span class="md-ellipsis">
       
-        create_fhir_condition
+        query_fhir_condition
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="create_fhir_condition">
+    <nav class="md-nav" aria-label="query_fhir_condition">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -1565,15 +1565,15 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#create_fhir_condition_from_diagnosis" class="md-nav__link">
+  <a href="#query_fhir_condition_1" class="md-nav__link">
     <span class="md-ellipsis">
       
-        create_fhir_condition_from_diagnosis
+        query_fhir_condition
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="create_fhir_condition_from_diagnosis">
+    <nav class="md-nav" aria-label="query_fhir_condition">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -3211,15 +3211,15 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#create_fhir_condition" class="md-nav__link">
+  <a href="#query_fhir_condition" class="md-nav__link">
     <span class="md-ellipsis">
       
-        create_fhir_condition
+        query_fhir_condition
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="create_fhir_condition">
+    <nav class="md-nav" aria-label="query_fhir_condition">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -3250,15 +3250,15 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#create_fhir_condition_from_diagnosis" class="md-nav__link">
+  <a href="#query_fhir_condition_1" class="md-nav__link">
     <span class="md-ellipsis">
       
-        create_fhir_condition_from_diagnosis
+        query_fhir_condition
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="create_fhir_condition_from_diagnosis">
+    <nav class="md-nav" aria-label="query_fhir_condition">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -3310,7 +3310,7 @@
 
 <h1 id="fhir-fhir-tools">FHIR 工具 (FHIR Tools)<a class="headerlink" href="#fhir-fhir-tools" title="Permanent link">&para;</a></h1>
 <p>此類別工具依據 HL7 FHIR R4 標準，將本地端的醫療數據轉換為具備互通性的 FHIR 資源 (JSON 格式)。</p>
-<h2 id="create_fhir_condition">create_fhir_condition<a class="headerlink" href="#create_fhir_condition" title="Permanent link">&para;</a></h2>
+<h2 id="query_fhir_condition">query_fhir_condition<a class="headerlink" href="#query_fhir_condition" title="Permanent link">&para;</a></h2>
 <p>建立 FHIR Condition (病情/診斷) 資源。</p>
 <h3 id="_1">參數<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h3>
 <table>
@@ -3378,8 +3378,8 @@
 <h3 id="_2">用途<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h3>
 <p>當已知確切的 ICD 代碼時，使用此工具生成標準化的 FHIR JSON。</p>
 <hr />
-<h2 id="create_fhir_condition_from_diagnosis">create_fhir_condition_from_diagnosis<a class="headerlink" href="#create_fhir_condition_from_diagnosis" title="Permanent link">&para;</a></h2>
-<p><strong>【智慧轉換】</strong> 從疾病名稱自動建立 FHIR Condition 資源。</p>
+<h2 id="query_fhir_condition_1">query_fhir_condition<a class="headerlink" href="#query_fhir_condition_1" title="Permanent link">&para;</a></h2>
+<p><strong>【智慧轉換】</strong> 從疾病名稱或 ICD 自動建立 FHIR Condition 資源。</p>
 <h3 id="_3">參數<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
@@ -3416,7 +3416,7 @@
 </tbody>
 </table>
 <h3 id="_4">用途<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h3>
-<p>當使用者不清楚 ICD 代碼，僅提供疾病名稱時，此工具會先呼叫 ICD 搜尋服務找到最匹配的代碼，再生成 FHIR 資源。</p>
+<p>當使用者不清楚 ICD 代碼，僅提供疾病名稱時，此工具會先搜尋最匹配的代碼，再生成 FHIR 資源。</p>
 
 
 
