@@ -1246,7 +1246,7 @@ _TOOL_GROUPS: dict[str, dict[str, object]] = {
             ("search_snomed_concept", "search_snomed_concept", {"query": "diabetes mellitus", "limit": 5}),
             ("query_snomed_concept", "query_snomed_concept", {"concept_id": 73211009}),
             ("get_snomed_relationships", "get_snomed_relationships", {"concept_id": 73211009}),
-            ("query_snomed_mapping", "query_snomed_mapping", {"icd_code": "E11.9"}),
+            ("query_snomed_mapping", "query_snomed_mapping", {"mode": "icd", "keyword": "E11.9"}),
         ],
     },
     "fhir_condition": {
@@ -3674,38 +3674,55 @@ async def map_icd_to_snomed(icd_code: str) -> str:
 
 @audited("query_snomed_mapping")
 async def query_snomed_mapping(
-    icd_code: str | None = None,
-    concept_id: int | None = None,
+    mode: Literal["icd", "snomed"] = "icd",
+    keyword: str = "",
 ) -> str:
     """
     Convert between ICD-10 and SNOMED CT in either direction.
 
-    Use this when you want a single SNOMED mapping entry point. Provide
-    `icd_code` to map ICD → SNOMED, or `concept_id` to map SNOMED → ICD.
+    Use this when you want a single SNOMED mapping entry point. Set `mode`
+    to `icd` to map ICD → SNOMED, or `snomed` to map SNOMED → ICD. Put the
+    source code or concept ID into `keyword`.
 
     Args:
-        icd_code: ICD-10-CM or ICD-10 code to reverse-map from, such as
-            'E11.9', 'I10', or 'E78.5'.
-        concept_id: SNOMED CT concept ID to map back to ICD-10, such as
-            73211009 or 44054006.
+        mode: Mapping direction. Use `icd` for ICD → SNOMED and `snomed`
+            for SNOMED → ICD.
+        keyword: Source code value. For `icd`, provide an ICD code such as
+            'E11.9' or 'I10'. For `snomed`, provide a SNOMED concept ID
+            such as '73211009' or '44054006'.
     """
     if snomed_service is None:
         return _svc_unavailable("SNOMED CT")
-    if icd_code is not None:
-        results = await snomed_service.map_icd_to_snomed(icd_code)
+    if mode == "icd":
+        if not keyword:
+            return _json_error("Provide keyword when mode is icd")
+        results = await snomed_service.map_icd_to_snomed(keyword)
         return json.dumps(
-            {"icd_code": icd_code.upper(), "snomed_concepts": results},
+            {"mode": "icd", "keyword": keyword.upper(), "snomed_concepts": results},
             ensure_ascii=False,
             indent=2,
         )
-    if concept_id is not None:
+    if mode == "snomed":
+        if not keyword:
+            return _json_error("Provide keyword when mode is snomed")
+        try:
+            concept_id = int(keyword)
+        except ValueError:
+            if snomed_service is None:
+                return _svc_unavailable("SNOMED CT")
+            matches = await snomed_service.search_concepts(keyword, 1)
+            if not matches:
+                return _json_error(
+                    "For mode=snomed, keyword must be a numeric concept_id or match a SNOMED concept"
+                )
+            concept_id = int(matches[0]["concept_id"])
         results = await snomed_service.map_snomed_to_icd(concept_id)
         return json.dumps(
-            {"concept_id": concept_id, "icd10_mappings": results},
+            {"mode": "snomed", "keyword": concept_id, "icd10_mappings": results},
             ensure_ascii=False,
             indent=2,
         )
-    return _json_error("Provide either icd_code or concept_id")
+    return _json_error("Provide mode as icd or snomed")
 
 
 @audited("map_snomed_to_icd")

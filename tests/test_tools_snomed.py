@@ -221,7 +221,7 @@ class TestQuerySnomedMappingFromIcd:
     @pytest.mark.asyncio
     async def test_null_guard(self):
         with patch.object(server, "snomed_service", None):
-            result = json.loads(await server.query_snomed_mapping(icd_code="E11.9"))
+            result = json.loads(await server.query_snomed_mapping(mode="icd", keyword="E11.9"))
         assert "error" in result
         assert "SNOMED CT" in result["error"]
 
@@ -229,7 +229,7 @@ class TestQuerySnomedMappingFromIcd:
     async def test_delegates_icd_code(self):
         mock_svc = _snomed_mock()
         with patch.object(server, "snomed_service", mock_svc):
-            await server.query_snomed_mapping(icd_code="E11.9")
+            await server.query_snomed_mapping(mode="icd", keyword="E11.9")
         mock_svc.map_icd_to_snomed.assert_called_once_with("E11.9")
 
     @pytest.mark.asyncio
@@ -238,16 +238,17 @@ class TestQuerySnomedMappingFromIcd:
         mock_svc = _snomed_mock()
         mock_svc.map_icd_to_snomed = AsyncMock(return_value=concepts)
         with patch.object(server, "snomed_service", mock_svc):
-            result = json.loads(await server.query_snomed_mapping(icd_code="e11.9"))
-        assert result["icd_code"] == "E11.9"
+            result = json.loads(await server.query_snomed_mapping(mode="icd", keyword="e11.9"))
+        assert result["mode"] == "icd"
+        assert result["keyword"] == "E11.9"
         assert len(result["snomed_concepts"]) == 1
 
     @pytest.mark.asyncio
     async def test_response_wraps_in_object(self):
         mock_svc = _snomed_mock()
         with patch.object(server, "snomed_service", mock_svc):
-            result = json.loads(await server.query_snomed_mapping(icd_code="I10"))
-        assert "icd_code" in result
+            result = json.loads(await server.query_snomed_mapping(mode="icd", keyword="I10"))
+        assert result["mode"] == "icd"
         assert "snomed_concepts" in result
 
 
@@ -257,7 +258,7 @@ class TestQuerySnomedMappingFromSnomed:
     @pytest.mark.asyncio
     async def test_null_guard(self):
         with patch.object(server, "snomed_service", None):
-            result = json.loads(await server.query_snomed_mapping(concept_id=44054006))
+            result = json.loads(await server.query_snomed_mapping(mode="snomed", keyword="44054006"))
         assert "error" in result
         assert "SNOMED CT" in result["error"]
 
@@ -265,7 +266,20 @@ class TestQuerySnomedMappingFromSnomed:
     async def test_delegates_concept_id(self):
         mock_svc = _snomed_mock()
         with patch.object(server, "snomed_service", mock_svc):
-            await server.query_snomed_mapping(concept_id=44054006)
+            await server.query_snomed_mapping(mode="snomed", keyword="44054006")
+        mock_svc.map_snomed_to_icd.assert_called_once_with(44054006)
+
+    @pytest.mark.asyncio
+    async def test_searches_when_keyword_is_text(self):
+        mock_svc = _snomed_mock()
+        mock_svc.search_concepts = AsyncMock(
+            return_value=[{"concept_id": 44054006, "preferred_term": "Diabetes mellitus"}]
+        )
+        with patch.object(server, "snomed_service", mock_svc):
+            result = json.loads(await server.query_snomed_mapping(mode="snomed", keyword="diabetes"))
+        assert result["mode"] == "snomed"
+        assert result["keyword"] == 44054006
+        mock_svc.search_concepts.assert_called_once_with("diabetes", 1)
         mock_svc.map_snomed_to_icd.assert_called_once_with(44054006)
 
     @pytest.mark.asyncio
@@ -274,7 +288,8 @@ class TestQuerySnomedMappingFromSnomed:
         mock_svc = _snomed_mock()
         mock_svc.map_snomed_to_icd = AsyncMock(return_value=mappings)
         with patch.object(server, "snomed_service", mock_svc):
-            result = json.loads(await server.query_snomed_mapping(concept_id=44054006))
-        assert result["concept_id"] == 44054006
+            result = json.loads(await server.query_snomed_mapping(mode="snomed", keyword="44054006"))
+        assert result["mode"] == "snomed"
+        assert result["keyword"] == 44054006
         assert len(result["icd10_mappings"]) == 1
         assert result["icd10_mappings"][0]["icd10_code"] == "E11.9"

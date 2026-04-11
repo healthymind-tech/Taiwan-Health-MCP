@@ -465,25 +465,21 @@
 
 ---
 
-## Group 51：ICD → SNOMED 對應 (`query_snomed_mapping`)
+## Group 51：SNOMED 雙向對應 (`query_snomed_mapping`)
 
-**✅** 找出 ICD-10 碼「E11.9」對應的 SNOMED CT 概念。
+**✅** 以 `mode="icd"`、`keyword="E11.9"` 找出對應的 SNOMED CT 概念。
 
-**🪤** 找出 ICD-10 碼「ZZZ.999」對應的 SNOMED CT 概念。
+**✅** 以 `mode="snomed"`、`keyword="44054006"` 查詢對應的 ICD-10 碼。
+
+**🪤** 以 `mode="icd"`、`keyword="ZZZ.999"` 找出對應的 SNOMED CT 概念。
 > ⚠️ ZZZ.999 不是合法 ICD-10 碼，不存在對應關係。
 
----
-
-## Group 52：SNOMED → ICD 對應 (`query_snomed_mapping`)
-
-**✅** 查詢 SNOMED concept「44054006」對應哪些 ICD-10 碼。
-
-**🪤** 查詢 SNOMED concept「00000001」對應的 ICD-10 碼。
+**🪤** 以 `mode="snomed"`、`keyword="00000001"` 查詢對應的 ICD-10 碼。
 > ⚠️ 此 concept ID 不存在。
 
 ---
 
-## Group 53：藥物交互作用 (`check_drug_interactions`)
+## Group 52：藥物交互作用 (`check_drug_interactions`)
 
 **✅** 確認同時使用「warfarin」和「aspirin」是否有交互作用風險。
 

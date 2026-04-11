@@ -1397,32 +1397,39 @@ class TestGetSnomedRelationships:
 
 
 @skip_if_no_server
-class TestMapIcdToSnomed:
-    def test_exact(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("query_snomed_mapping", {"icd_code": "E11.9"})
+class TestQuerySnomedMapping:
+    def test_icd_exact(self, mcp: MCPSession) -> None:
+        result = mcp.call_tool(
+            "query_snomed_mapping", {"mode": "icd", "keyword": "E11.9"}
+        )
         assert _is_success(result)
 
-    def test_fuzzy(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("query_snomed_mapping", {"icd_code": "I10"})
+    def test_icd_fuzzy(self, mcp: MCPSession) -> None:
+        result = mcp.call_tool("query_snomed_mapping", {"mode": "icd", "keyword": "I10"})
         assert _is_success(result)
 
-    def test_wrong(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("query_snomed_mapping", {"icd_code": "ZZZ999"})
+    def test_icd_wrong(self, mcp: MCPSession) -> None:
+        result = mcp.call_tool(
+            "query_snomed_mapping", {"mode": "icd", "keyword": "ZZZ999"}
+        )
         assert _is_success(result)  # Returns empty list, not error
 
-
-@skip_if_no_server
-class TestMapSnomedToIcd:
-    def test_exact(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("query_snomed_mapping", {"concept_id": _SNOMED_ID})
+    def test_snomed_exact(self, mcp: MCPSession) -> None:
+        result = mcp.call_tool(
+            "query_snomed_mapping", {"mode": "snomed", "keyword": str(_SNOMED_ID)}
+        )
         assert _is_success(result)
 
-    def test_fuzzy(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("query_snomed_mapping", {"concept_id": 44054006})
+    def test_snomed_fuzzy(self, mcp: MCPSession) -> None:
+        result = mcp.call_tool(
+            "query_snomed_mapping", {"mode": "snomed", "keyword": "44054006"}
+        )
         assert _is_graceful(result)
 
-    def test_wrong(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("query_snomed_mapping", {"concept_id": 9999999999})
+    def test_snomed_wrong(self, mcp: MCPSession) -> None:
+        result = mcp.call_tool(
+            "query_snomed_mapping", {"mode": "snomed", "keyword": "9999999999"}
+        )
         assert _is_graceful(result)
 
 

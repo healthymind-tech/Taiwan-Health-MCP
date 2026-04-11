@@ -134,7 +134,7 @@ Taiwan Health MCP Server 提供 **42 個 MCP 工具**，其中包含 1 個 `heal
 
 ---
 
-### 群組 11 — SNOMED CT（5 個工具）
+### 群組 11 — SNOMED CT（4 個工具）
 
 > 需先執行 `docker compose --profile loader run --rm data-loader --snomed`
 
@@ -143,7 +143,7 @@ Taiwan Health MCP Server 提供 **42 個 MCP 工具**，其中包含 1 個 `heal
 | `search_snomed_concept` | 以英文詞彙搜尋 SNOMED CT 概念 |
 | `query_snomed_concept` | 取得概念、父概念與子概念的一次性查詢 |
 | `get_snomed_relationships` | 取得非 IS-A 的屬性與關聯 |
-| `query_snomed_mapping` | ICD-10 ↔ SNOMED CT 雙向對應查詢 |
+| `query_snomed_mapping` | 以 `mode` 切換 ICD ↔ SNOMED 的雙向對應查詢 |
 
 ---
 
