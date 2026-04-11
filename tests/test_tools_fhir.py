@@ -2,9 +2,8 @@
 Unit tests for FHIR tool functions in server.py.
 
 Tools covered:
-  create_fhir_condition, create_fhir_condition_from_diagnosis, validate_fhir_condition,
-  search_medication_fhir, create_fhir_medication, create_fhir_medication_from_drug,
-  validate_fhir_medication
+  query_fhir_condition, validate_fhir_condition,
+  query_fhir_medication, validate_fhir_medication
 """
 
 import json
@@ -36,14 +35,14 @@ def _fhir_med_mock():
     return m
 
 
-# ── create_fhir_condition ─────────────────────────────────────────────────────
+# ── query_fhir_condition ─────────────────────────────────────────────────────
 
 class TestCreateFhirCondition:
     @pytest.mark.asyncio
     async def test_null_guard(self):
         with patch.object(server, "fhir_condition_service", None):
             result = json.loads(
-                await server.create_fhir_condition(icd_code="E11.9", patient_id="P001")
+                await server.query_fhir_condition(icd_code="E11.9", patient_id="P001")
             )
         assert "error" in result
         assert "FHIR Condition Service" in result["error"]
@@ -52,7 +51,7 @@ class TestCreateFhirCondition:
     async def test_delegates_required_params(self):
         mock_svc = _fhir_cond_mock()
         with patch.object(server, "fhir_condition_service", mock_svc):
-            await server.create_fhir_condition(icd_code="E11.9", patient_id="P001")
+            await server.query_fhir_condition(icd_code="E11.9", patient_id="P001")
         mock_svc.create_condition.assert_called_once()
         call_kwargs = mock_svc.create_condition.call_args.kwargs
         assert call_kwargs["icd_code"] == "E11.9"
@@ -62,7 +61,7 @@ class TestCreateFhirCondition:
     async def test_delegates_all_optional_params(self):
         mock_svc = _fhir_cond_mock()
         with patch.object(server, "fhir_condition_service", mock_svc):
-            await server.create_fhir_condition(
+            await server.query_fhir_condition(
                 icd_code="E11.9",
                 patient_id="P001",
                 clinical_status="resolved",
@@ -83,18 +82,18 @@ class TestCreateFhirCondition:
     async def test_calls_to_json_string(self):
         mock_svc = _fhir_cond_mock()
         with patch.object(server, "fhir_condition_service", mock_svc):
-            await server.create_fhir_condition(icd_code="E11.9", patient_id="P001")
+            await server.query_fhir_condition(icd_code="E11.9", patient_id="P001")
         mock_svc.to_json_string.assert_called_once()
 
 
-# ── create_fhir_condition_from_diagnosis ─────────────────────────────────────
+# ── query_fhir_condition from diagnosis keyword ──────────────────────────────
 
-class TestCreateFhirConditionFromDiagnosis:
+class TestQueryFhirConditionFromDiagnosis:
     @pytest.mark.asyncio
     async def test_null_guard(self):
         with patch.object(server, "fhir_condition_service", None):
             result = json.loads(
-                await server.create_fhir_condition_from_diagnosis(
+                await server.query_fhir_condition(
                     diagnosis_keyword="Diabetes", patient_id="P001"
                 )
             )
@@ -105,7 +104,7 @@ class TestCreateFhirConditionFromDiagnosis:
     async def test_delegates_keyword_and_patient(self):
         mock_svc = _fhir_cond_mock()
         with patch.object(server, "fhir_condition_service", mock_svc):
-            await server.create_fhir_condition_from_diagnosis(
+            await server.query_fhir_condition(
                 diagnosis_keyword="第二型糖尿病", patient_id="P002"
             )
         mock_svc.create_condition_from_search.assert_called_once()
@@ -117,7 +116,7 @@ class TestCreateFhirConditionFromDiagnosis:
     async def test_default_statuses(self):
         mock_svc = _fhir_cond_mock()
         with patch.object(server, "fhir_condition_service", mock_svc):
-            await server.create_fhir_condition_from_diagnosis(
+            await server.query_fhir_condition(
                 diagnosis_keyword="hypertension", patient_id="P003"
             )
         call_kwargs = mock_svc.create_condition_from_search.call_args.kwargs
@@ -158,13 +157,13 @@ class TestValidateFhirCondition:
         mock_svc.validate_condition.assert_not_called()
 
 
-# ── search_medication_fhir ────────────────────────────────────────────────────
+# ── query_fhir_medication (search) ────────────────────────────────────────────
 
-class TestSearchMedicationFhir:
+class TestQueryFhirMedication:
     @pytest.mark.asyncio
     async def test_null_guard(self):
         with patch.object(server, "fhir_medication_service", None):
-            result = json.loads(await server.search_medication_fhir(keyword="Metformin"))
+            result = json.loads(await server.query_fhir_medication(keyword="Metformin"))
         assert "error" in result
         assert "FHIR Medication Service" in result["error"]
 
@@ -172,14 +171,14 @@ class TestSearchMedicationFhir:
     async def test_delegates_keyword_and_resource_type(self):
         mock_svc = _fhir_med_mock()
         with patch.object(server, "fhir_medication_service", mock_svc):
-            await server.search_medication_fhir(keyword="二甲雙胍", resource_type="MedicationKnowledge")
+            await server.query_fhir_medication(keyword="二甲雙胍", resource_type="MedicationKnowledge")
         mock_svc.create_medication_from_search.assert_called_once_with("二甲雙胍", "MedicationKnowledge")
 
     @pytest.mark.asyncio
     async def test_default_resource_type_is_medication(self):
         mock_svc = _fhir_med_mock()
         with patch.object(server, "fhir_medication_service", mock_svc):
-            await server.search_medication_fhir(keyword="aspirin")
+            await server.query_fhir_medication(keyword="aspirin")
         mock_svc.create_medication_from_search.assert_called_once_with("aspirin", "Medication")
 
     @pytest.mark.asyncio
@@ -189,18 +188,18 @@ class TestSearchMedicationFhir:
             return_value={"resourceType": "Medication", "id": "med-001"}
         )
         with patch.object(server, "fhir_medication_service", mock_svc):
-            result = json.loads(await server.search_medication_fhir(keyword="aspirin"))
+            result = json.loads(await server.query_fhir_medication(keyword="aspirin"))
         assert result["resourceType"] == "Medication"
 
 
-# ── create_fhir_medication ────────────────────────────────────────────────────
+# ── query_fhir_medication (license) ──────────────────────────────────────────
 
 class TestCreateFhirMedication:
     @pytest.mark.asyncio
     async def test_null_guard(self):
         with patch.object(server, "fhir_medication_service", None):
             result = json.loads(
-                await server.create_fhir_medication(license_id="衛部藥製字第058498號")
+                await server.query_fhir_medication(license_id="衛部藥製字第058498號")
             )
         assert "error" in result
         assert "FHIR Medication Service" in result["error"]
@@ -209,19 +208,19 @@ class TestCreateFhirMedication:
     async def test_delegates_license_id(self):
         mock_svc = _fhir_med_mock()
         with patch.object(server, "fhir_medication_service", mock_svc):
-            await server.create_fhir_medication(license_id="衛部藥製字第058498號")
+            await server.query_fhir_medication(license_id="衛部藥製字第058498號")
         mock_svc.create_medication.assert_called_once_with("衛部藥製字第058498號")
         mock_svc.to_json_string.assert_called_once()
 
 
-# ── create_fhir_medication_from_drug (MedicationKnowledge) ───────────────────
+# ── query_fhir_medication (MedicationKnowledge) ──────────────────────────────
 
-class TestCreateFhirMedicationFromDrug:
+class TestQueryFhirMedicationKnowledge:
     @pytest.mark.asyncio
     async def test_null_guard(self):
         with patch.object(server, "fhir_medication_service", None):
             result = json.loads(
-                await server.create_fhir_medication_from_drug(license_id="衛部藥製字第058498號")
+                await server.query_fhir_medication(license_id="衛部藥製字第058498號")
             )
         assert "error" in result
         assert "FHIR Medication Service" in result["error"]
@@ -230,7 +229,9 @@ class TestCreateFhirMedicationFromDrug:
     async def test_delegates_to_medication_knowledge(self):
         mock_svc = _fhir_med_mock()
         with patch.object(server, "fhir_medication_service", mock_svc):
-            await server.create_fhir_medication_from_drug(license_id="L123")
+            await server.query_fhir_medication(
+                license_id="L123", resource_type="MedicationKnowledge"
+            )
         mock_svc.create_medication_knowledge.assert_called_once_with("L123")
         mock_svc.to_json_string.assert_called_once()
 

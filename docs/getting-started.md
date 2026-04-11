@@ -161,7 +161,7 @@ curl http://localhost:8000/mcp -X POST \
 }
 ```
 
-儲存後重啟 Claude Desktop，即可在對話中使用所有 56 個醫療工具。
+儲存後重啟 Claude Desktop，即可在對話中使用所有 45 個醫療工具。
 
 ---
 

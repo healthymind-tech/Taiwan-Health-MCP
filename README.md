@@ -14,7 +14,7 @@
 
 - 🇹🇼 **台灣在地化** — 整合台灣 FDA、衛福部官方開放資料，支援繁體中文
 - 🔗 **國際標準** — 符合 FHIR R4、ICD-10-CM 2025、LOINC 2.80、SNOMED CT、RxNorm、ATC
-- 🏥 **56 個 MCP 工具** — 由動態 registry 管理，涵蓋診斷、藥品、檢驗、指引、術語、藥物交互作用
+- 🏥 **45 個 MCP 工具** — 由動態 registry 管理，涵蓋診斷、藥品、檢驗、指引、術語、藥物交互作用
 - 🏗️ **生產就緒** — PostgreSQL 16 + pgBouncer + Redis + Prometheus，支援每秒數百請求
 - 🔄 **自動同步** — FDA 藥品/保健食品/營養資料每週自動更新
 
@@ -123,9 +123,9 @@ curl http://localhost:8000/mcp -X POST \
 
 ---
 
-## 📋 核心功能（56 個 MCP 工具）
+## 📋 核心功能（45 個 MCP 工具）
 
-工具分類、status page 範例與 dataset gating 由同一份 registry 產生；`tools/list` 只會顯示已載入資料集對應的工具，`health_check` 永遠可用。
+工具分類、status page 範例與 dataset gating 由同一份 registry 產生；`tools/list` 只會顯示已載入資料集對應的工具，`health_check` 永遠可用。FHIR、TWCore 與臨床指引已合併成較少的對外入口。
 
 | 群組 | 工具數 | 功能 |
 |------|--------|------|
@@ -135,11 +135,11 @@ curl http://localhost:8000/mcp -X POST \
 | 健康食品 (FDA) | 2 | 健康食品查詢、詳細資訊 |
 | 營養 (FDA) | 6 | 營養成分、膳食分析、食品原料、營養排序 |
 | 健康食品+ICD 整合 | 1 | 疾病-保健食品對應分析 |
-| FHIR Condition | 3 | ICD-10 → FHIR R4 Condition 轉換、驗證 |
-| FHIR Medication | 4 | 藥品 → FHIR R4 Medication/MedicationKnowledge |
+| FHIR Condition | 2 | ICD-10 / 關鍵字 → FHIR R4 Condition，驗證 |
+| FHIR Medication | 2 | 藥品 / 關鍵字 → FHIR R4 Medication / MedicationKnowledge |
 | 檢驗 (LOINC) | 8 | LOINC 碼查詢、參考值、結果判讀、細節與同類檢驗 |
-| 臨床指引 | 8 | 指引查詢、用藥/檢查建議、治療目標、臨床路徑、禁忌與藥品連結 |
-| TWCore IG | 3 | 台灣核心 CodeSystem 查詢（30+ 健保碼系統） |
+| 臨床指引 | 2 | 指引查詢、分段內容、臨床路徑 |
+| TWCore IG | 1 | 台灣核心 CodeSystem 統一查詢入口 |
 | SNOMED CT | 7 | 概念搜尋、階層查詢、關聯查詢、ICD-10 雙向對應 |
 | RxNorm | 3 | 藥物交互作用檢查、藥品名稱解析、成分查詢 |
 

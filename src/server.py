@@ -3,7 +3,7 @@ import inspect
 import json
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Literal
 
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
@@ -1195,8 +1195,8 @@ _TOOL_GROUPS: dict[str, dict[str, object]] = {
     "icd": {
         "category": "ICD-10",
         "tools": [
-            ("search_medical_codes", "search_medical_codes", {"keyword": "糖尿病"}),
-            ("infer_complications", "infer_complications", {"code": "E11.9"}),
+            ("search_medical_codes", "search_medical_codes", {"keyword": "第二型糖尿病", "type": "diagnosis", "limit": 5}),
+            ("infer_complications", "infer_complications", {"code": "E11"}),
             ("get_nearby_codes", "get_nearby_codes", {"code": "E11.9"}),
             ("check_medical_conflict", "check_medical_conflict", {"diagnosis_code": "E11.9", "procedure_code": "0BH17EZ"}),
             ("browse_icd_category", "browse_icd_category", {"category": "E11"}),
@@ -1205,17 +1205,17 @@ _TOOL_GROUPS: dict[str, dict[str, object]] = {
     "drug": {
         "category": "Drug",
         "tools": [
-            ("search_drug_info", "search_drug_info", {"keyword": "Metformin"}),
-            ("get_drug_details", "get_drug_details", {"license_id": "衛部藥製字第059686號"}),
-            ("identify_unknown_pill", "identify_unknown_pill", {"features": "白色 圓形 刻字M500"}),
+            ("search_drug_info", "search_drug_info", {"keyword": "Metformin", "limit": 5}),
+            ("get_drug_details", "get_drug_details", {"license_id": "內衛成製字第000029號"}),
+            ("identify_unknown_pill", "identify_unknown_pill", {"features": "white round M500"}),
             ("search_drug_by_atc", "search_drug_by_atc", {"query": "A10BA02"}),
-            ("search_drug_by_ingredient", "search_drug_by_ingredient", {"ingredient_name": "metformin"}),
+            ("search_drug_by_ingredient", "search_drug_by_ingredient", {"ingredient_name": "metformin", "limit": 5}),
         ],
     },
     "rxnorm": {
         "category": "RxNorm",
         "tools": [
-            ("check_drug_interactions", "check_drug_interactions", {"drug_names": ["warfarin", "aspirin", "metformin"]}),
+            ("check_drug_interactions", "check_drug_interactions", {"drug_names": ["warfarin", "aspirin"]}),
             ("resolve_rxnorm_drug", "resolve_rxnorm_drug", {"drug_name": "atorvastatin"}),
             ("get_drug_ingredients_rxnorm", "get_drug_ingredients_rxnorm", {"rxcui": "41493"}),
         ],
@@ -1223,12 +1223,12 @@ _TOOL_GROUPS: dict[str, dict[str, object]] = {
     "lab": {
         "category": "Lab / LOINC",
         "tools": [
-            ("search_loinc_code", "search_loinc_code", {"keyword": "glucose"}),
+            ("search_loinc_code", "search_loinc_code", {"keyword": "glucose", "category": "CHEM", "limit": 5}),
             ("list_lab_categories", "list_lab_categories", {}),
             ("get_reference_range", "get_reference_range", {"loinc_code": "2345-7", "age": 45, "gender": "M"}),
             ("interpret_lab_result", "interpret_lab_result", {"loinc_code": "2345-7", "value": 126, "age": 45, "gender": "M"}),
-            ("search_loinc_by_specimen", "search_loinc_by_specimen", {"specimen_type": "血清/血漿"}),
-            ("find_related_loinc_tests", "find_related_loinc_tests", {"component": "Glucose"}),
+            ("search_loinc_by_specimen", "search_loinc_by_specimen", {"specimen_type": "血清/血漿", "limit": 5}),
+            ("find_related_loinc_tests", "find_related_loinc_tests", {"component": "Glucose", "limit": 5}),
             ("get_loinc_detail", "get_loinc_detail", {"loinc_num": "2345-7"}),
             ("batch_interpret_lab_results", "batch_interpret_lab_results", {"results_json": '[{"loinc_code":"2345-7","value":126},{"loinc_code":"4548-4","value":7.2},{"loinc_code":"718-7","value":13.5}]', "age": 45, "gender": "M"}),
         ],
@@ -1237,19 +1237,13 @@ _TOOL_GROUPS: dict[str, dict[str, object]] = {
         "category": "Guidelines",
         "tools": [
             ("search_clinical_guideline", "search_clinical_guideline", {"keyword": "糖尿病"}),
-            ("get_complete_guideline", "get_complete_guideline", {"icd_code": "E11"}),
-            ("get_medication_recommendations", "get_medication_recommendations", {"icd_code": "E11"}),
-            ("get_test_recommendations", "get_test_recommendations", {"icd_code": "E11"}),
-            ("get_treatment_goals", "get_treatment_goals", {"icd_code": "E11"}),
-            ("check_medication_contraindications", "check_medication_contraindications", {"icd_code": "E11", "medication_class": "SGLT2抑制劑"}),
-            ("link_guideline_to_drugs", "link_guideline_to_drugs", {"icd_code": "E11"}),
-            ("suggest_clinical_pathway", "suggest_clinical_pathway", {"icd_code": "E11", "patient_context_json": '{"age":65,"gender":"M","comorbidities":["CKD"],"current_medications":["metformin"]}'}),
+            ("query_guideline", "query_guideline", {"icd_code": "E11", "section": "medication"}),
         ],
     },
     "snomed": {
         "category": "SNOMED CT",
         "tools": [
-            ("search_snomed_concept", "search_snomed_concept", {"query": "diabetes mellitus"}),
+            ("search_snomed_concept", "search_snomed_concept", {"query": "diabetes mellitus", "limit": 5}),
             ("get_snomed_concept", "get_snomed_concept", {"concept_id": 73211009}),
             ("get_snomed_children", "get_snomed_children", {"concept_id": 73211009}),
             ("get_snomed_ancestors", "get_snomed_ancestors", {"concept_id": 73211009}),
@@ -1261,32 +1255,28 @@ _TOOL_GROUPS: dict[str, dict[str, object]] = {
     "fhir_condition": {
         "category": "FHIR R4",
         "tools": [
-            ("create_fhir_condition", "create_fhir_condition", {"icd_code": "E11.9", "patient_id": "patient-001"}),
-            ("create_fhir_condition_from_diagnosis", "create_fhir_condition_from_diagnosis", {"diagnosis_keyword": "type 2 diabetes", "patient_id": "patient-001"}),
-            ("validate_fhir_condition", "validate_fhir_condition", {"condition_json": '{"resourceType":"Condition","subject":{"reference":"Patient/patient-001"},"code":{"coding":[{"system":"http://hl7.org/fhir/sid/icd-10-cm","code":"E11.9","display":"Type 2 diabetes mellitus without complications"}]},"clinicalStatus":{"coding":[{"system":"http://terminology.hl7.org/CodeSystem/condition-clinical","code":"active"}]}}'}),
+            ("query_fhir_condition", "query_fhir_condition", {"diagnosis_keyword": "第二型糖尿病", "patient_id": "patient-001"}),
+            ("validate_fhir_condition", "validate_fhir_condition", {"condition_json": '{"resourceType":"Condition","subject":{"reference":"Patient/patient-001"},"code":{"coding":[{"system":"http://hl7.org/fhir/sid/icd-10-cm","code":"E11.9","display":"Type 2 diabetes mellitus without complications"}]},"clinicalStatus":{"coding":[{"system":"http://terminology.hl7.org/CodeSystem/condition-clinical","code":"active"}]},"verificationStatus":{"coding":[{"system":"http://terminology.hl7.org/CodeSystem/v3-ActCode","code":"confirmed"}]}}'}),
         ],
     },
     "fhir_medication": {
         "category": "FHIR R4",
         "tools": [
-            ("search_medication_fhir", "search_medication_fhir", {"keyword": "Metformin"}),
-            ("create_fhir_medication", "create_fhir_medication", {"license_id": "衛部藥製字第059686號"}),
-            ("create_fhir_medication_from_drug", "create_fhir_medication_from_drug", {"license_id": "衛部藥製字第059686號"}),
+            ("query_fhir_medication", "query_fhir_medication", {"keyword": "Metformin", "resource_type": "MedicationKnowledge"}),
             ("validate_fhir_medication", "validate_fhir_medication", {"medication_json": '{"resourceType":"Medication","code":{"coding":[{"system":"https://twcore.mohw.gov.tw/ig/twcore/CodeSystem/medication-fda-tw","code":"衛部藥製字第059686號","display":"Metformin 500mg"}]},"ingredient":[{"itemCodeableConcept":{"coding":[{"code":"metformin"}]},"strength":{"numerator":{"value":500,"unit":"mg"}}}]}' }),
         ],
     },
     "twcore": {
         "category": "TWCore IG",
         "tools": [
-            ("list_twcore_codesystems", "list_twcore_codesystems", {"category": "all"}),
-            ("search_twcore_code", "search_twcore_code", {"keyword": "QD", "codesystem_ids": ["medication-frequency-nhi-tw"]}),
-            ("lookup_twcore_code", "lookup_twcore_code", {"code": "QD", "codesystem_id": "medication-frequency-nhi-tw"}),
+            ("query_twcore_code", "query_twcore_code", {"category": "medication"}),
+            ("query_twcore_code", "query_twcore_code", {"code": "QD", "codesystem_id": "medication-frequency-nhi-tw"}),
         ],
     },
     "health_food": {
         "category": "Health Food",
         "tools": [
-            ("search_health_food", "search_health_food", {"keyword": "魚油"}),
+            ("search_health_food", "search_health_food", {"keyword": "調節血脂", "limit": 5}),
             ("get_health_food_details", "get_health_food_details", {"permit_no": "衛署健食字第A00022號"}),
             ("analyze_health_support_for_condition", "analyze_health_support_for_condition", {"diagnosis_keyword": "糖尿病"}),
         ],
@@ -1294,7 +1284,7 @@ _TOOL_GROUPS: dict[str, dict[str, object]] = {
     "food_nutrition": {
         "category": "Food Nutrition",
         "tools": [
-            ("search_food_nutrition", "search_food_nutrition", {"food_name": "雞蛋"}),
+            ("search_food_nutrition", "search_food_nutrition", {"food_name": "雞蛋", "nutrient": "粗蛋白"}),
             ("get_detailed_nutrition", "get_detailed_nutrition", {"food_name": "白米"}),
             ("search_food_ingredient", "search_food_ingredient", {"keyword": "維生素C"}),
             ("get_ingredients_by_category", "get_ingredients_by_category", {"category": "Omega-3脂肪酸"}),
@@ -2136,7 +2126,11 @@ async def health_check() -> str:
 
 
 @audited("search_medical_codes")
-async def search_medical_codes(keyword: str, type: str = "all", limit: int = 3) -> str:
+async def search_medical_codes(
+    keyword: str,
+    type: Literal["diagnosis", "procedure", "all"] = "all",
+    limit: int = 3,
+) -> str:
     """
     Search ICD-10-CM 2025 diagnosis codes and ICD-10-PCS 2025 procedure codes.
 
@@ -2189,11 +2183,11 @@ async def infer_complications(code: str) -> str:
 @audited("get_nearby_codes")
 async def get_nearby_codes(code: str) -> str:
     """
-    Retrieve ICD-10-CM codes adjacent to a given code in the classification order.
+    Retrieve ICD-10-CM codes adjacent to a given code.
 
-    Returns up to 2 codes before and 2 codes after the target code in
-    ICD-10-CM tabular order (up to 4 total). Useful for exploring neighbouring
-    diagnoses and understanding classification context.
+    Use this to inspect the surrounding classification context for a code you
+    already know. The response returns up to two codes before and after the
+    target code in ICD-10-CM tabular order.
 
     Args:
         code: ICD-10-CM diagnosis code (e.g., 'E11.9', 'I10').
@@ -2232,12 +2226,11 @@ async def check_medical_conflict(diagnosis_code: str, procedure_code: str) -> st
 @audited("browse_icd_category")
 async def browse_icd_category(category: str | None = None, limit: int = 50) -> str:
     """
-    Browse ICD-10-CM diagnosis codes by top-level chapter or 3-character category.
+    Browse ICD-10-CM diagnosis codes by chapter or category.
 
-    Call with no arguments to list all ICD-10-CM chapters and 3-character categories.
-    Provide a category code to list all specific codes within that category.
-    Useful for exploring the classification structure or generating a pick-list
-    of codes for a specific disease area.
+    Use this to explore the ICD hierarchy or build a pick-list for a disease
+    area. Call it without a category to list available chapters; provide a
+    3-character code to list the codes underneath it.
 
     Args:
         category: 3-character ICD-10-CM category code (e.g., 'E11', 'I10', 'N80').
@@ -2403,11 +2396,11 @@ async def search_health_food(keyword: str, limit: int = 3) -> str:
 @audited("get_health_food_details")
 async def get_health_food_details(permit_no: str) -> str:
     """
-    Get full details for a Taiwan FDA certified health food by permit number.
+    Get the full record for a Taiwan FDA certified health food.
 
-    Returns all available fields: product name, manufacturer, certified health
-    benefit claims, main ingredients, recommended dosage, cautions, and permit
-    validity status.
+    Use this after `search_health_food` when you already know the permit number
+    and need the official product details, claims, ingredients, dosage, and
+    status.
 
     Args:
         permit_no: Taiwan FDA health food permit number from search_health_food
@@ -2500,10 +2493,11 @@ async def search_food_ingredient(keyword: str, limit: int = 3) -> str:
 @audited("get_ingredients_by_category")
 async def get_ingredients_by_category(category: str) -> str:
     """
-    List all Taiwan FDA approved food ingredients within a specific category.
+    List approved Taiwan FDA food ingredients within a category.
 
-    Returns a complete list of ingredients belonging to the given classification
-    category. Use search_food_ingredient first to discover category names.
+    Use this when you know the exact ingredient category and want the full
+    approved list. If you do not know the category name yet, search first with
+    `search_food_ingredient`.
 
     Args:
         category: Exact category name as stored in the Taiwan FDA ingredient database
@@ -2593,9 +2587,9 @@ async def analyze_health_support_for_condition(diagnosis_keyword: str) -> str:
 async def create_fhir_condition(
     icd_code: str,
     patient_id: str,
-    clinical_status: str = "active",
-    verification_status: str = "confirmed",
-    category: str = "encounter-diagnosis",
+    clinical_status: Literal["active", "inactive", "resolved", "remission"] = "active",
+    verification_status: Literal["confirmed", "provisional", "differential", "refuted"] = "confirmed",
+    category: Literal["encounter-diagnosis", "problem-list-item"] = "encounter-diagnosis",
     severity: str = None,
     onset_date: str = None,
     recorded_date: str = None,
@@ -2626,7 +2620,9 @@ async def create_fhir_condition(
     """
     if fhir_condition_service is None:
         return _svc_unavailable("FHIR Condition Service")
-    result = await fhir_condition_service.create_condition(
+    return await _call_service_json(
+        fhir_condition_service,
+        "create_condition",
         icd_code=icd_code,
         patient_id=patient_id,
         clinical_status=clinical_status,
@@ -2637,15 +2633,14 @@ async def create_fhir_condition(
         recorded_date=recorded_date,
         additional_notes=additional_notes,
     )
-    return fhir_condition_service.to_json_string(result, indent=2)
 
 
 @audited("create_fhir_condition_from_diagnosis")
 async def create_fhir_condition_from_diagnosis(
     diagnosis_keyword: str,
     patient_id: str,
-    clinical_status: str = "active",
-    verification_status: str = "confirmed",
+    clinical_status: Literal["active", "inactive", "resolved", "remission"] = "active",
+    verification_status: Literal["confirmed", "provisional", "differential", "refuted"] = "confirmed",
     severity: str | None = None,
 ) -> str:
     """
@@ -2677,6 +2672,72 @@ async def create_fhir_condition_from_diagnosis(
         clinical_status=clinical_status,
         verification_status=verification_status,
         severity=severity,
+    )
+
+
+@audited("create_fhir_condition_query")
+async def query_fhir_condition(
+    icd_code: str | None = None,
+    diagnosis_keyword: str | None = None,
+    patient_id: str = "",
+    clinical_status: Literal["active", "inactive", "resolved", "remission"] = "active",
+    verification_status: Literal["confirmed", "provisional", "differential", "refuted"] = "confirmed",
+    category: Literal["encounter-diagnosis", "problem-list-item"] = "encounter-diagnosis",
+    severity: str | None = None,
+    onset_date: str | None = None,
+    recorded_date: str | None = None,
+    additional_notes: str | None = None,
+) -> str:
+    """
+    Unified FHIR Condition entry point.
+
+    Use this when you want a FHIR R4 Condition resource from either an exact
+    ICD-10-CM code or a diagnosis keyword. If `diagnosis_keyword` is provided,
+    the tool searches the ICD service first and then builds the Condition from
+    the best match. If `icd_code` is provided, it builds the Condition directly.
+
+    Args:
+        icd_code: Exact ICD-10-CM diagnosis code, such as 'E11.9' or 'I10'.
+        diagnosis_keyword: Diagnosis name or keyword in Chinese or English,
+            such as '第二型糖尿病', 'diabetes mellitus', or '高血壓'.
+        patient_id: Patient identifier to place in Condition.subject.reference.
+        clinical_status: FHIR clinical status. Common values include active,
+            inactive, resolved, and remission.
+        verification_status: FHIR verification status. Common values include
+            confirmed, provisional, differential, and refuted.
+        category: FHIR Condition category. Use 'encounter-diagnosis' for a
+            visit diagnosis or 'problem-list-item' for a persistent problem.
+        severity: Optional severity label such as mild, moderate, or severe.
+        onset_date: Optional onset date in YYYY-MM-DD.
+        recorded_date: Optional timestamp in YYYY-MM-DDTHH:MM:SS+08:00.
+        additional_notes: Optional clinical note to attach to the resource.
+    """
+    if fhir_condition_service is None:
+        return _svc_unavailable("FHIR Condition Service")
+    if diagnosis_keyword:
+        return await _call_service_json(
+            fhir_condition_service,
+            "create_condition_from_search",
+            keyword=diagnosis_keyword,
+            patient_id=patient_id,
+            clinical_status=clinical_status,
+            verification_status=verification_status,
+            severity=severity,
+        )
+    if not icd_code:
+        return _json_error("Provide either icd_code or diagnosis_keyword")
+    return await _call_service_json(
+        fhir_condition_service,
+        "create_condition",
+        icd_code=icd_code,
+        patient_id=patient_id,
+        clinical_status=clinical_status,
+        verification_status=verification_status,
+        category=category,
+        severity=severity,
+        onset_date=onset_date,
+        recorded_date=recorded_date,
+        additional_notes=additional_notes,
     )
 
 
@@ -2742,11 +2803,10 @@ async def search_medication_fhir(
 @audited("create_fhir_medication")
 async def create_fhir_medication(license_id: str) -> str:
     """
-    Build a FHIR R4 Medication resource from a Taiwan FDA drug license ID.
+    Build a FHIR R4 Medication resource from a Taiwan FDA license ID.
 
-    Retrieves the drug record and constructs a FHIR R4 Medication resource with
-    code (using Taiwan FDA license system), dosage form, and active ingredients.
-    Does not persist to any FHIR server — returns the resource JSON.
+    Use this when you already have the exact license number and want the basic
+    Medication representation rather than the richer MedicationKnowledge form.
 
     Args:
         license_id: Taiwan FDA drug license ID from search_drug_info results
@@ -2760,11 +2820,10 @@ async def create_fhir_medication(license_id: str) -> str:
 @audited("create_fhir_medication_knowledge")
 async def create_fhir_medication_from_drug(license_id: str) -> str:
     """
-    Build a FHIR R4 MedicationKnowledge resource from a Taiwan FDA drug license ID.
+    Build a FHIR R4 MedicationKnowledge resource from a Taiwan FDA license ID.
 
-    Extends the basic Medication resource with knowledge-level detail: ATC
-    classification, available dosage forms, administration routes, indications,
-    contraindications, and storage conditions. Does not persist to any FHIR server.
+    Use this when you need the richer FHIR knowledge record with ATC, dosage
+    forms, administration routes, indications, contraindications, and storage.
 
     Args:
         license_id: Taiwan FDA drug license ID from search_drug_info results
@@ -2777,14 +2836,54 @@ async def create_fhir_medication_from_drug(license_id: str) -> str:
     )
 
 
+@audited("create_fhir_medication_query")
+async def query_fhir_medication(
+    license_id: str | None = None,
+    keyword: str | None = None,
+    resource_type: Literal["Medication", "MedicationKnowledge"] = "Medication",
+) -> str:
+    """
+    Unified FHIR Medication entry point.
+
+    Use this when you want either a FHIR Medication resource from a Taiwan FDA
+    license ID or a FHIR Medication/MedicationKnowledge resource from a keyword
+    search. If `keyword` is provided, the tool searches by drug name first. If
+    `license_id` is provided, it creates a resource from the exact license.
+
+    Args:
+        license_id: Taiwan FDA drug license ID, such as '衛部藥製字第059686號'.
+        keyword: Drug name or synonym in Chinese or English, such as
+            'Metformin', '二甲雙胍', or 'atorvastatin'.
+        resource_type: Choose 'Medication' for a basic resource or
+            'MedicationKnowledge' for a richer record with ATC and usage detail.
+    """
+    if fhir_medication_service is None:
+        return _svc_unavailable("FHIR Medication Service")
+    if keyword:
+        return await _call_service_json(
+            fhir_medication_service,
+            "create_medication_from_search",
+            keyword,
+            resource_type,
+        )
+    if not license_id:
+        return _json_error("Provide either license_id or keyword")
+    if resource_type == "MedicationKnowledge":
+        return await _call_service_json(
+            fhir_medication_service, "create_medication_knowledge", license_id
+        )
+    return await _call_service_json(
+        fhir_medication_service, "create_medication", license_id
+    )
+
+
 @audited("validate_fhir_medication")
 async def validate_fhir_medication(medication_json: str) -> str:
     """
-    Validate a FHIR R4 Medication or MedicationKnowledge resource for required fields.
+    Validate a FHIR R4 Medication or MedicationKnowledge resource.
 
-    Checks for resourceType, code with valid coding system, and ingredient list.
-    Returns a validation result with a list of errors if any field is missing
-    or malformed.
+    Use this before downstream use or storage to catch missing structure,
+    malformed coding, or ingredient problems.
 
     ⚠️ This is a basic structural validation only. For production use, validate
     with the official HL7 FHIR Validator or Taiwan TWCore IG validator.
@@ -2839,11 +2938,10 @@ async def search_loinc_code(keyword: str, category: str | None = None, limit: in
 @audited("list_lab_categories")
 async def list_lab_categories() -> str:
     """
-    List all LOINC class categories available in the database.
+    List all LOINC class categories in the database.
 
-    Returns category codes and names that can be used as the `category` filter
-    in search_loinc_code. Categories follow the LOINC CLASS axis
-    (e.g., CHEM, HEM/BC, SERO, UA, MICRO, COAG).
+    Use this first if you want to filter `search_loinc_code` by a LOINC class
+    such as CHEM, HEM/BC, SERO, UA, MICRO, or COAG.
     """
     if lab_service is None:
         return _svc_unavailable("Lab Service")
@@ -2851,7 +2949,9 @@ async def list_lab_categories() -> str:
 
 
 @audited("get_reference_range")
-async def get_reference_range(loinc_code: str, age: int, gender: str = "all") -> str:
+async def get_reference_range(
+    loinc_code: str, age: int, gender: Literal["M", "F", "all"] = "all"
+) -> str:
     """
     Get the clinical reference range for a LOINC lab test, stratified by age and gender.
 
@@ -2873,7 +2973,7 @@ async def get_reference_range(loinc_code: str, age: int, gender: str = "all") ->
 
 @audited("interpret_lab_result")
 async def interpret_lab_result(
-    loinc_code: str, value: float, age: int, gender: str = "all"
+    loinc_code: str, value: float, age: int, gender: Literal["M", "F", "all"] = "all"
 ) -> str:
     """
     Interpret a single lab result as High / Normal / Low against its reference range.
@@ -2951,12 +3051,10 @@ async def find_related_loinc_tests(component: str, limit: int = 3) -> str:
 @audited("get_loinc_detail")
 async def get_loinc_detail(loinc_num: str) -> str:
     """
-    Get the complete LOINC concept record for a single LOINC code.
+    Get the full LOINC concept record for one code.
 
-    Returns all six LOINC axes (Component, Property, Time Aspect, System,
-    Scale Type, Method Type), specimen type, long common name, short name,
-    display name, LOINC class, and status (active/deprecated). Useful when
-    you need to understand exactly what a LOINC code measures and how.
+    Use this when you need the detailed axis breakdown for a known LOINC code,
+    including component, property, system, method, specimen type, and status.
 
     Args:
         loinc_num: LOINC code in 'NNNNN-N' format
@@ -2970,7 +3068,7 @@ async def get_loinc_detail(loinc_num: str) -> str:
 
 @audited("batch_interpret_lab_results")
 async def batch_interpret_lab_results(
-    results_json: str, age: int, gender: str = "all"
+    results_json: str, age: int, gender: Literal["M", "F", "all"] = "all"
 ) -> str:
     """
     Interpret multiple lab results at once against their reference ranges.
@@ -3033,12 +3131,10 @@ async def search_clinical_guideline(keyword: str, limit: int = 3) -> str:
 @audited("get_complete_guideline")
 async def get_complete_guideline(icd_code: str) -> str:
     """
-    Get the complete Taiwan clinical guideline for a disease by ICD-10 code.
+    Get the complete Taiwan clinical guideline for a diagnosis.
 
-    Returns the full guideline in one call: diagnostic criteria, first-line
-    and second-line medication recommendations (with drug classes and notes),
-    recommended lab tests and monitoring schedule, and treatment targets.
-    Use search_clinical_guideline to find the correct ICD-10 code first.
+    Use this when you want the full guideline summary in one response rather
+    than a single section. For a narrower response, use `query_guideline`.
 
     Args:
         icd_code: ICD-10 code for the disease (e.g., 'E11' for type 2 diabetes,
@@ -3049,14 +3145,54 @@ async def get_complete_guideline(icd_code: str) -> str:
     return await _call_service_json(guideline_service, "get_complete_guideline", icd_code)
 
 
+@audited("query_guideline")
+async def query_guideline(
+    icd_code: str,
+    section: Literal["complete", "medication", "test", "goals", "pathway"] = "complete",
+) -> str:
+    """
+    Unified guideline entry point.
+
+    Use this when you want a specific section of a Taiwan clinical guideline.
+    Prefer this over the older section-specific tools when you want one stable
+    entry point for full or partial guideline retrieval.
+
+    Args:
+        icd_code: Guideline diagnosis code such as 'E11', 'I10', or 'N18'.
+        section: One of:
+            - complete: full guideline summary
+            - medication: medication recommendations
+            - test: recommended tests and examinations
+            - goals: treatment goals and targets
+            - pathway: synthesized clinical pathway
+    """
+    if guideline_service is None:
+        return _svc_unavailable("Clinical Guideline Service")
+    section_map = {
+        "complete": "get_complete_guideline",
+        "medication": "get_medication_recommendations",
+        "test": "get_test_recommendations",
+        "goals": "get_treatment_goals",
+        "pathway": "suggest_clinical_pathway",
+    }
+    method_name = section_map.get(section)
+    if method_name is None:
+        return _json_error(
+            f"Unknown guideline section: {section}",
+            allowed_sections=list(section_map),
+        )
+    if method_name == "suggest_clinical_pathway":
+        return await _call_service_json(guideline_service, method_name, icd_code, None)
+    return await _call_service_json(guideline_service, method_name, icd_code)
+
+
 @audited("get_medication_recommendations")
 async def get_medication_recommendations(icd_code: str) -> str:
     """
-    Get Taiwan guideline medication recommendations for a specific diagnosis.
+    Get Taiwan guideline medication recommendations for a diagnosis.
 
-    Returns drug classes, individual drugs, line of therapy (first-line,
-    second-line, add-on), dosing notes, and special population considerations
-    as documented in the Taiwan clinical guideline for that condition.
+    Use this when you only need the medication section. The result focuses on
+    first-line, second-line, add-on, and special population recommendations.
 
     ⚠️ Always verify with a licensed clinician before making prescribing decisions.
 
@@ -3074,11 +3210,10 @@ async def get_medication_recommendations(icd_code: str) -> str:
 @audited("get_test_recommendations")
 async def get_test_recommendations(icd_code: str) -> str:
     """
-    Get recommended lab tests and examinations for a diagnosis per Taiwan guidelines.
+    Get recommended tests and examinations for a diagnosis.
 
-    Returns a list of recommended investigations including lab tests (with LOINC
-    codes where available), imaging studies, and other examinations, along with
-    their recommended frequency/timing as documented in the Taiwan guideline.
+    Use this when you only need the investigation section. The response can
+    include lab tests, imaging, and timing or frequency notes.
 
     Args:
         icd_code: ICD-10 code (e.g., 'E11' for type 2 diabetes, 'N18' for CKD,
@@ -3092,11 +3227,10 @@ async def get_test_recommendations(icd_code: str) -> str:
 @audited("get_treatment_goals")
 async def get_treatment_goals(icd_code: str) -> str:
     """
-    Get quantitative treatment targets for a diagnosis per Taiwan clinical guidelines.
+    Get the treatment goals for a diagnosis.
 
-    Returns specific numeric targets (e.g., HbA1c < 7%, BP < 130/80 mmHg,
-    LDL-C < 70 mg/dL) and qualitative goals documented in the Taiwan guideline
-    for the given condition. Targets may differ by subgroup or comorbidity.
+    Use this when you only want the target section, such as HbA1c, blood
+    pressure, or LDL-C goals, without the rest of the guideline.
 
     ⚠️ Individual treatment targets should be determined by a licensed clinician.
 
@@ -3146,12 +3280,10 @@ async def check_medication_contraindications(
 @audited("link_guideline_to_drugs")
 async def link_guideline_to_drugs(icd_code: str) -> str:
     """
-    Cross-reference Taiwan guideline drug recommendations with FDA licensed products.
+    Cross-reference guideline drug recommendations with Taiwan FDA products.
 
-    For each drug class or drug name mentioned in the guideline for the given
-    diagnosis, searches the Taiwan FDA drug database to find licensed products
-    available in Taiwan. Returns the guideline recommendation alongside matching
-    Taiwan FDA license records.
+    Use this when you want to know which guideline-mentioned drugs have licensed
+    products available in Taiwan.
 
     Args:
         icd_code: ICD-10 code (e.g., 'E11' for type 2 diabetes, 'I10' for
@@ -3169,11 +3301,9 @@ async def suggest_clinical_pathway(
     """
     Suggest a step-by-step clinical management pathway based on Taiwan guidelines.
 
-    Generates an ordered clinical pathway (initial assessment → diagnosis →
-    first-line treatment → monitoring → escalation) by synthesising the guideline
-    content for the given diagnosis. Optionally personalises the pathway when
-    patient context is provided (e.g., adjusts drug recommendations based on
-    comorbidities or age).
+    Use this when you want a synthesized plan rather than raw guideline text.
+    The pathway moves from assessment to treatment and follow-up, and can be
+    personalised with patient context when provided.
 
     ⚠️ For clinical decision support only. All management decisions must be made
     by a licensed healthcare professional.
@@ -3209,12 +3339,10 @@ async def suggest_clinical_pathway(
 @audited("list_twcore_codesystems")
 async def list_twcore_codesystems(category: str = "all") -> str:
     """
-    List all CodeSystems defined in the Taiwan Core FHIR Implementation Guide (TWCore IG).
+    List TWCore CodeSystems by category.
 
-    TWCore IG v1.0.0 defines 30+ CodeSystems covering Taiwan NHI-specific code sets
-    including drug frequency codes, diagnosis category codes, organization types,
-    administrative divisions, and medical specialty codes used in Taiwan's national
-    health information exchange infrastructure.
+    Use this when you need to discover which TWCore CodeSystem IDs are
+    available before searching or exact lookup.
 
     Args:
         category: Filter by category — 'all' (default) | 'medication' |
@@ -3228,13 +3356,10 @@ async def list_twcore_codesystems(category: str = "all") -> str:
 @audited("search_twcore_code")
 async def search_twcore_code(keyword: str, codesystem_ids: list[str]) -> str:
     """
-    Search for a code or display term across one or more TWCore IG CodeSystems.
+    Search for a code or display term across one or more TWCore CodeSystems.
 
-    Performs a case-insensitive search across both code values and display names
-    within the specified CodeSystems. If a CodeSystem is not yet cached in the
-    database, it is fetched automatically from the TWCore IG package first.
-    Returns a list of matching entries with cs_id, cs_name, code, and display.
-    Use list_twcore_codesystems to find available CodeSystem IDs.
+    Use this when you know a label or code fragment and want to find the exact
+    TWCore entry across one or more systems.
 
     Args:
         keyword: Code value or display term to search for
@@ -3252,13 +3377,10 @@ async def search_twcore_code(keyword: str, codesystem_ids: list[str]) -> str:
 @audited("lookup_twcore_code")
 async def lookup_twcore_code(code: str, codesystem_id: str) -> str:
     """
-    Exact lookup of a single code in a TWCore IG CodeSystem. Returns a FHIR Coding.
+    Look up one exact code in a TWCore CodeSystem.
 
-    Retrieves the FHIR Coding object (system URL, code, display) for an exact
-    code match (case-insensitive). If the CodeSystem is not yet cached in the
-    database, it is fetched automatically from the TWCore IG package first.
-    Use this when you have a known code and need the full FHIR representation
-    for inclusion in a FHIR resource.
+    Use this when you already know the code and want the full FHIR Coding
+    object with system, code, and display.
 
     Args:
         code: The exact code value to look up (e.g., 'QD', 'BID', 'HOSP').
@@ -3268,6 +3390,45 @@ async def lookup_twcore_code(code: str, codesystem_id: str) -> str:
     if twcore_service is None:
         return _svc_unavailable("TWCore Service")
     return await twcore_service.lookup_code(code, codesystem_id)
+
+
+@audited("query_twcore_code")
+async def query_twcore_code(
+    category: Literal["all", "medication", "diagnosis", "organization", "administrative"] | None = None,
+    keyword: str | None = None,
+    code: str | None = None,
+    codesystem_ids: list[str] | None = None,
+    codesystem_id: str | None = None,
+) -> str:
+    """
+    Unified TWCore entry point.
+
+    Use this when you need one of three patterns:
+    - list TWCore CodeSystems by category
+    - search code or display text within one or more CodeSystems
+    - look up an exact TWCore code in a specific CodeSystem
+
+    Args:
+        category: When provided alone, returns available CodeSystems for the
+            requested category. Valid values are all, medication, diagnosis,
+            organization, and administrative.
+        keyword: Search term such as 'QD', '每日一次', or 'HOSP'.
+        code: Exact TWCore code to look up.
+        codesystem_ids: One or more CodeSystem IDs to search, such as
+            ['medication-frequency-nhi-tw'].
+        codesystem_id: Exact CodeSystem ID for single-code lookup.
+    """
+    if twcore_service is None:
+        return _svc_unavailable("TWCore Service")
+    if category is not None and keyword is None and code is None:
+        return await twcore_service.list_codesystems(category)
+    if code and codesystem_id:
+        return await twcore_service.lookup_code(code, codesystem_id)
+    if keyword and codesystem_ids is not None:
+        return await twcore_service.search_code(keyword, codesystem_ids)
+    return _json_error(
+        "Provide category, or either (code + codesystem_id) or (keyword + codesystem_ids)"
+    )
 
 
 # ============================================================
@@ -3445,12 +3606,10 @@ async def get_snomed_relationships(
 @audited("map_icd_to_snomed")
 async def map_icd_to_snomed(icd_code: str) -> str:
     """
-    Find SNOMED CT concepts that map to a given ICD-10 code via SNOMED extended map.
+    Find SNOMED CT concepts that map to an ICD-10 code.
 
-    Uses the SNOMED CT ICD-10 extended map (part of the International release)
-    to find all SNOMED concepts whose map target includes the given ICD-10 code.
-    Each result includes the SNOMED concept ID, FSN, and map rule/advice that
-    defines when the mapping applies.
+    Use this when you have an ICD code and want the corresponding SNOMED
+    concept or concepts.
 
     Args:
         icd_code: ICD-10-CM or ICD-10 code to reverse-map from
@@ -3469,12 +3628,10 @@ async def map_icd_to_snomed(icd_code: str) -> str:
 @audited("map_snomed_to_icd")
 async def map_snomed_to_icd(concept_id: int) -> str:
     """
-    Get all ICD-10 codes that a SNOMED CT concept maps to via the extended map.
+    Get the ICD-10 codes that a SNOMED CT concept maps to.
 
-    Returns all map entries for the concept including map target (ICD-10 code),
-    map rule (condition under which the mapping applies, e.g., 'TRUE', or a
-    clinical condition), map advice, and map group/priority for complex mappings
-    where multiple rules must be evaluated in sequence.
+    Use this when you have a SNOMED concept and want the linked ICD codes and
+    mapping rule details.
 
     Args:
         concept_id: SNOMED CT concept ID (e.g., 73211009 for 'Diabetes mellitus',
@@ -3498,11 +3655,10 @@ async def map_snomed_to_icd(concept_id: int) -> str:
 @audited("check_drug_interactions")
 async def check_drug_interactions(drug_names: list[str]) -> str:
     """
-    Check for drug-drug interactions among a list of drugs using RxNorm interaction data.
+    Check for drug-drug interactions among multiple drugs using RxNorm data.
 
-    Resolves each drug name to its RxCUI, then queries RxNorm
-    `interacts_with` relationships to identify known interaction pairs.
-    Returns each interacting pair with the RxNorm interaction concept.
+    Use this when you have a medication list and want to know whether any pair
+    is known to interact.
 
     ⚠️ RxNorm interaction data indicates potential interactions but does NOT include
     severity ratings or clinical significance. All findings must be verified by
@@ -3529,15 +3685,10 @@ async def check_drug_interactions(drug_names: list[str]) -> str:
 @audited("resolve_rxnorm_drug")
 async def resolve_rxnorm_drug(drug_name: str) -> str:
     """
-    Resolve a drug name to its RxNorm concepts (RXCUI, term type, synonym variants).
+    Resolve a drug name to its RxNorm concept(s).
 
-    Searches the local RxNorm database (loaded from NLM) for concepts matching
-    the drug name using English full-text search. Results are prioritised by
-    term type: ingredient (IN) > precise ingredient (PIN) > multi-ingredient (MIN)
-    > brand name (BN) > other types; shorter names rank higher within each type.
-    Returns up to 10 matching concepts with RXCUI identifiers and term types.
-    Use the RXCUI from this result with get_drug_ingredients_rxnorm or
-    check_drug_interactions. English names only (generic or brand).
+    Use this when you need a canonical RxNorm identifier before checking
+    ingredients or interactions.
 
     Args:
         drug_name: Drug name in English — generic (INN) or brand name
@@ -3556,11 +3707,10 @@ async def resolve_rxnorm_drug(drug_name: str) -> str:
 @audited("get_drug_ingredients_rxnorm")
 async def get_drug_ingredients_rxnorm(rxcui: str) -> str:
     """
-    Get the active ingredient components of a drug concept via RxNorm relationships.
+    Get the active ingredient components of a RxNorm concept.
 
-    Follows RxNorm `has_ingredient` relationships to list all ingredient concepts
-    associated with the given RXCUI. Useful for determining the active substances
-    in a product or for verifying that two drugs share the same ingredient.
+    Use this when you already have an RXCUI and want the ingredient-level
+    breakdown for normalisation or interaction reasoning.
 
     Args:
         rxcui: RxNorm Concept Unique Identifier (string) obtained from

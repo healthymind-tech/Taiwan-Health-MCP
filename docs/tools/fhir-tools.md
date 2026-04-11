@@ -2,7 +2,7 @@
 
 此類別工具依據 HL7 FHIR R4 標準，將本地端的醫療數據轉換為具備互通性的 FHIR 資源 (JSON 格式)。
 
-## create_fhir_condition
+## query_fhir_condition
 建立 FHIR Condition (病情/診斷) 資源。
 
 ### 參數
@@ -21,8 +21,8 @@
 
 ---
 
-## create_fhir_condition_from_diagnosis
-**【智慧轉換】** 從疾病名稱自動建立 FHIR Condition 資源。
+## query_fhir_condition
+**【智慧轉換】** 從疾病名稱或 ICD 自動建立 FHIR Condition 資源。
 
 ### 參數
 | 參數名 | 型別 | 必填 | 說明 | 範例 |
@@ -32,4 +32,4 @@
 | ... | ... | ... | (同上相關狀態參數) | |
 
 ### 用途
-當使用者不清楚 ICD 代碼，僅提供疾病名稱時，此工具會先呼叫 ICD 搜尋服務找到最匹配的代碼，再生成 FHIR 資源。
+當使用者不清楚 ICD 代碼，僅提供疾病名稱時，此工具會先搜尋最匹配的代碼，再生成 FHIR 資源。

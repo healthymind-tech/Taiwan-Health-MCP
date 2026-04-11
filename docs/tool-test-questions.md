@@ -177,7 +177,7 @@
 
 ---
 
-## Group 20：FHIR Condition 建立 (`create_fhir_condition`)
+## Group 20：FHIR Condition 建立 (`query_fhir_condition`)
 
 **✅** 將 ICD-10 碼「E11.9」轉為 FHIR R4 Condition 資源，病人 ID 為「patient-001」。
 
@@ -186,7 +186,7 @@
 
 ---
 
-## Group 21：FHIR Condition 從關鍵字建立 (`create_fhir_condition_from_diagnosis`)
+## Group 21：FHIR Condition 從關鍵字建立 (`query_fhir_condition`)
 
 **✅** 以「第二型糖尿病」為關鍵字，自動建立 FHIR Condition 資源（病人 ID: P-2024-001）。
 
@@ -207,7 +207,7 @@
 
 ---
 
-## Group 23：FHIR Medication 搜尋建立 (`search_medication_fhir`)
+## Group 23：FHIR Medication 搜尋建立 (`query_fhir_medication`)
 
 **✅** 以關鍵字「Metformin」搜尋並建立 FHIR Medication 資源。
 
@@ -216,7 +216,7 @@
 
 ---
 
-## Group 24：FHIR Medication 從許可證建立 (`create_fhir_medication`)
+## Group 24：FHIR Medication 從許可證建立 (`query_fhir_medication`)
 
 **✅** 以許可證「衛部藥製字第058774號」建立完整 FHIR R4 Medication 資源（含成分與外觀）。
 
@@ -225,7 +225,7 @@
 
 ---
 
-## Group 25：FHIR MedicationKnowledge 建立 (`create_fhir_medication_from_drug`)
+## Group 25：FHIR MedicationKnowledge 建立 (`query_fhir_medication`)
 
 **✅** 以許可證「衛部藥製字第058774號」建立 FHIR R4 MedicationKnowledge 資源（含 ATC 碼與適應症）。
 
@@ -330,7 +330,7 @@
 
 ---
 
-## Group 36：完整臨床指引 (`get_complete_guideline`)
+## Group 36：完整臨床指引 (`query_guideline`)
 
 **✅** 取得 ICD 碼「E11」的完整臨床指引（診斷、用藥、檢查、治療目標）。
 
@@ -339,7 +339,7 @@
 
 ---
 
-## Group 37：用藥建議 (`get_medication_recommendations`)
+## Group 37：用藥建議 (`query_guideline`)
 
 **✅** 查詢「I10」（原發性高血壓）的指引用藥建議。
 
@@ -348,7 +348,7 @@
 
 ---
 
-## Group 38：檢查建議 (`get_test_recommendations`)
+## Group 38：檢查建議 (`query_guideline`)
 
 **✅** 查詢「E11」的指引推薦檢查項目與頻率。
 
@@ -357,7 +357,7 @@
 
 ---
 
-## Group 39：治療目標 (`get_treatment_goals`)
+## Group 39：治療目標 (`query_guideline`)
 
 **✅** 查詢「E11」（第二型糖尿病）的治療目標數值（如 HbA1c 目標）。
 
@@ -366,7 +366,7 @@
 
 ---
 
-## Group 40：用藥禁忌確認 (`check_medication_contraindications`)
+## Group 40：用藥禁忌確認 (`query_guideline`)
 
 **✅** 針對「E11」（糖尿病），確認「Metformin」類藥物的禁忌症。
 
@@ -375,7 +375,7 @@
 
 ---
 
-## Group 41：指引連結藥品 (`link_guideline_to_drugs`)
+## Group 41：指引連結藥品 (`query_guideline`)
 
 **✅** 交叉比對「E11」指引推薦用藥與台灣 FDA 核准藥品（找出實際有許可證的藥品）。
 
@@ -384,7 +384,7 @@
 
 ---
 
-## Group 42：臨床路徑建議 (`suggest_clinical_pathway`)
+## Group 42：臨床路徑建議 (`query_guideline`)
 
 **✅** 針對「I10」（高血壓），建議完整的臨床診療路徑（診斷→檢查→用藥→監測→目標）。
 
@@ -393,7 +393,7 @@
 
 ---
 
-## Group 43：TWCore CodeSystem 列表 (`list_twcore_codesystems`)
+## Group 43：TWCore CodeSystem 列表 (`query_twcore_code`)
 
 **✅** 列出所有可用的 TWCore IG CodeSystem（分類：medication）。
 
@@ -402,7 +402,7 @@
 
 ---
 
-## Group 44：TWCore 代碼搜尋 (`search_twcore_code`)
+## Group 44：TWCore 代碼搜尋 (`query_twcore_code`)
 
 **✅** 在「medication-frequency-nhi-tw」CodeSystem 中搜尋「QD」。
 
@@ -411,7 +411,7 @@
 
 ---
 
-## Group 45：TWCore 代碼查詢 (`lookup_twcore_code`)
+## Group 45：TWCore 代碼查詢 (`query_twcore_code`)
 
 **✅** 在「medication-frequency-nhi-tw」中精確查詢代碼「BID」。
 

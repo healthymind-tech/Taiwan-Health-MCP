@@ -1,6 +1,6 @@
 # MCP 工具概覽
 
-Taiwan Health MCP Server 提供 **56 個 MCP 工具**，其中包含 1 個 `health_check` 基礎工具，以及 12 個主要領域群組共 55 個工具。status page 與動態註冊使用同一份工具 registry，新增或調整工具時請同步更新群組定義與對應說明。
+Taiwan Health MCP Server 提供 **45 個 MCP 工具**，其中包含 1 個 `health_check` 基礎工具，以及 12 個主要領域群組共 44 個工具。status page 與動態註冊使用同一份工具 registry，新增或調整工具時請同步更新群組定義與對應說明。
 
 ---
 
@@ -76,25 +76,22 @@ Taiwan Health MCP Server 提供 **56 個 MCP 工具**，其中包含 1 個 `heal
 
 ---
 
-### 群組 6 — FHIR Condition（3 個工具）
+### 群組 6 — FHIR Condition（2 個工具）
 
 | 工具 | 說明 |
 |------|------|
-| `create_fhir_condition` | ICD-10-CM 碼 → FHIR R4 Condition 資源 |
-| `create_fhir_condition_from_diagnosis` | 依關鍵字自動搜尋並建立 FHIR Condition |
+| `query_fhir_condition` | ICD-10/關鍵字 → FHIR R4 Condition 資源 |
 | `validate_fhir_condition` | 驗證 FHIR R4 Condition 資源 |
 
 [詳細說明](fhir-tools.md)
 
 ---
 
-### 群組 7 — FHIR Medication（4 個工具）
+### 群組 7 — FHIR Medication（2 個工具）
 
 | 工具 | 說明 |
 |------|------|
-| `search_medication_fhir` | 搜尋藥品並建立 FHIR Medication 資源 |
-| `create_fhir_medication` | 依許可證字號建立 FHIR Medication |
-| `create_fhir_medication_from_drug` | 依許可證字號建立 FHIR MedicationKnowledge |
+| `query_fhir_medication` | 藥品/許可證字號 → FHIR Medication / MedicationKnowledge |
 | `validate_fhir_medication` | 驗證 FHIR Medication/MedicationKnowledge |
 
 [詳細說明](fhir-tools.md)
@@ -118,30 +115,22 @@ Taiwan Health MCP Server 提供 **56 個 MCP 工具**，其中包含 1 個 `heal
 
 ---
 
-### 群組 9 — 臨床診療指引（8 個工具）
+### 群組 9 — 臨床診療指引（2 個工具）
 
 | 工具 | 說明 |
 |------|------|
 | `search_clinical_guideline` | 搜尋台灣醫學會臨床指引 |
-| `get_complete_guideline` | 取得疾病完整指引（診斷、用藥、檢查、目標） |
-| `get_medication_recommendations` | 取得用藥建議 |
-| `get_test_recommendations` | 取得建議檢查項目 |
-| `get_treatment_goals` | 取得治療目標 |
-| `check_medication_contraindications` | 檢查特定疾病下的用藥禁忌 |
-| `link_guideline_to_drugs` | 將指引建議連到台灣 FDA 藥品 |
-| `suggest_clinical_pathway` | 依指引規劃臨床路徑 |
+| `query_guideline` | 依 ICD 與 section 取得完整/分段指引內容 |
 
 [詳細說明](guideline-tools.md)
 
 ---
 
-### 群組 10 — TWCore IG（3 個工具）
+### 群組 10 — TWCore IG（1 個工具）
 
 | 工具 | 說明 |
 |------|------|
-| `list_twcore_codesystems` | 列出所有 TWCore IG CodeSystem |
-| `search_twcore_code` | 跨 CodeSystem 搜尋代碼 |
-| `lookup_twcore_code` | 精確查詢單一代碼（回傳 FHIR Coding） |
+| `query_twcore_code` | 依 code 或 keyword 查詢 TWCore CodeSystem |
 
 ---
 

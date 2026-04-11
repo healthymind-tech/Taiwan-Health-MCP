@@ -25,7 +25,7 @@ search_medical_codes(keyword="第二型糖尿病")
 
 **呼叫工具**：
 ```python
-get_medication_recommendations(icd_code="E11")
+query_guideline(icd_code="E11", section="medication")
 ```
 
 **預期結果**：
@@ -67,7 +67,7 @@ check_drug_interactions(drug_names=["Metformin", "Warfarin"])
 
 **呼叫工具**：
 ```python
-create_fhir_condition(
+query_fhir_condition(
     icd_code="E11.9",
     patient_id="Patient-001",
     clinical_status="active",

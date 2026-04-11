@@ -14,14 +14,14 @@
 ### 第二階段：制定處置基準
 依據權威指引設定標準處置。
 
-- **工具**：`get_complete_guideline`
+- **工具**：`query_guideline`
 - **操作**：獲取該疾病的標準診療流程。
 - **範例應用**：
     - **Day 1 (急診/門診)**：
         - 檢驗：CXR (胸部X光), CBC/DC, CRP。 -> 使用 `search_loinc_code` 標準化檢驗單。
         - 評估：PSI 或 CURB-65 嚴重度評分。
     - **治療啟動**：
-        - 使用 `get_medication_recommendations("J15")` 查詢抗生素建議。
+        - 使用 `query_guideline(icd_code="J15", section="medication")` 查詢抗生素建議。
         - 例如：第一線使用 Beta-lactam + Macrolide。
 
 ### 第三階段：設定監測指標 (Monitoring)
@@ -38,6 +38,6 @@
 ## 自動化輔助
 在 HIS 系統中，可設計一個「路徑啟動按鈕」：
 1. 醫師輸入診斷 `J15.9`。
-2. 系統呼叫 `mcp.get_complete_guideline("J15.9")`。
+2. 系統呼叫 `mcp.query_guideline("J15.9", section="complete")`。
 3. 自動帶出建議的 Order Set (檢驗套餐 + 藥物套餐)。
 4. 醫師確認修改後發送，大幅節省時間並確保品質。

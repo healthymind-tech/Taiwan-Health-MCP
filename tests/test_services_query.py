@@ -421,7 +421,7 @@ class TestClinicalGuidelineService:
         assert result["guidelines"][0]["icd_code"] == "E11"
 
     @pytest.mark.asyncio
-    async def test_get_medication_recommendations_not_found(self):
+    async def test_query_guideline_medication_not_found(self):
         from clinical_guideline_service import ClinicalGuidelineService
 
         conn = _make_conn(fetch_return=[])
@@ -433,7 +433,7 @@ class TestClinicalGuidelineService:
         assert "message" in result
 
     @pytest.mark.asyncio
-    async def test_get_treatment_goals_not_found(self):
+    async def test_query_guideline_goals_not_found(self):
         from clinical_guideline_service import ClinicalGuidelineService
 
         conn = _make_conn(fetch_return=[])

@@ -2,7 +2,7 @@
 Unit tests for TWCore IG tool functions in server.py.
 
 Tools covered:
-  list_twcore_codesystems, search_twcore_code, lookup_twcore_code
+  query_twcore_code
 """
 
 import json
@@ -21,13 +21,13 @@ def _twcore_mock():
     return m
 
 
-# ── list_twcore_codesystems ───────────────────────────────────────────────────
+# ── query_twcore_code (category) ─────────────────────────────────────────────
 
-class TestListTwcoreCodesystems:
+class TestQueryTwcoreCodeCategory:
     @pytest.mark.asyncio
     async def test_null_guard(self):
         with patch.object(server, "twcore_service", None):
-            result = json.loads(await server.list_twcore_codesystems())
+            result = json.loads(await server.query_twcore_code(category="all"))
         assert "error" in result
         assert "TWCore Service" in result["error"]
 
@@ -35,14 +35,14 @@ class TestListTwcoreCodesystems:
     async def test_default_category_all(self):
         mock_svc = _twcore_mock()
         with patch.object(server, "twcore_service", mock_svc):
-            await server.list_twcore_codesystems()
+            await server.query_twcore_code(category="all")
         mock_svc.list_codesystems.assert_called_once_with("all")
 
     @pytest.mark.asyncio
     async def test_delegates_specific_category(self):
         mock_svc = _twcore_mock()
         with patch.object(server, "twcore_service", mock_svc):
-            await server.list_twcore_codesystems(category="medication")
+            await server.query_twcore_code(category="medication")
         mock_svc.list_codesystems.assert_called_once_with("medication")
 
     @pytest.mark.asyncio
@@ -50,7 +50,7 @@ class TestListTwcoreCodesystems:
         for cat in ("medication", "diagnosis", "organization", "administrative"):
             mock_svc = _twcore_mock()
             with patch.object(server, "twcore_service", mock_svc):
-                await server.list_twcore_codesystems(category=cat)
+                await server.query_twcore_code(category=cat)
             mock_svc.list_codesystems.assert_called_once_with(cat)
 
     @pytest.mark.asyncio
@@ -59,18 +59,18 @@ class TestListTwcoreCodesystems:
         mock_svc = _twcore_mock()
         mock_svc.list_codesystems = AsyncMock(return_value=payload)
         with patch.object(server, "twcore_service", mock_svc):
-            result = await server.list_twcore_codesystems()
+            result = await server.query_twcore_code(category="all")
         assert result == payload
 
 
-# ── search_twcore_code ────────────────────────────────────────────────────────
+# ── query_twcore_code (search) ───────────────────────────────────────────────
 
-class TestSearchTwcoreCode:
+class TestQueryTwcoreCodeSearch:
     @pytest.mark.asyncio
     async def test_null_guard(self):
         with patch.object(server, "twcore_service", None):
             result = json.loads(
-                await server.search_twcore_code(
+                await server.query_twcore_code(
                     keyword="QD", codesystem_ids=["medication-frequency-nhi-tw"]
                 )
             )
@@ -82,14 +82,14 @@ class TestSearchTwcoreCode:
         mock_svc = _twcore_mock()
         ids = ["medication-frequency-nhi-tw", "medication-path-tw"]
         with patch.object(server, "twcore_service", mock_svc):
-            await server.search_twcore_code(keyword="oral", codesystem_ids=ids)
+            await server.query_twcore_code(keyword="oral", codesystem_ids=ids)
         mock_svc.search_code.assert_called_once_with("oral", ids)
 
     @pytest.mark.asyncio
     async def test_empty_codesystem_ids_still_delegates(self):
         mock_svc = _twcore_mock()
         with patch.object(server, "twcore_service", mock_svc):
-            await server.search_twcore_code(keyword="QD", codesystem_ids=[])
+            await server.query_twcore_code(keyword="QD", codesystem_ids=[])
         mock_svc.search_code.assert_called_once_with("QD", [])
 
     @pytest.mark.asyncio
@@ -98,20 +98,20 @@ class TestSearchTwcoreCode:
         mock_svc = _twcore_mock()
         mock_svc.search_code = AsyncMock(return_value=payload)
         with patch.object(server, "twcore_service", mock_svc):
-            result = await server.search_twcore_code(
+            result = await server.query_twcore_code(
                 keyword="QD", codesystem_ids=["medication-frequency-nhi-tw"]
             )
         assert result == payload
 
 
-# ── lookup_twcore_code ────────────────────────────────────────────────────────
+# ── query_twcore_code (lookup) ───────────────────────────────────────────────
 
-class TestLookupTwcoreCode:
+class TestQueryTwcoreCodeLookup:
     @pytest.mark.asyncio
     async def test_null_guard(self):
         with patch.object(server, "twcore_service", None):
             result = json.loads(
-                await server.lookup_twcore_code(
+                await server.query_twcore_code(
                     code="QD", codesystem_id="medication-frequency-nhi-tw"
                 )
             )
@@ -122,7 +122,7 @@ class TestLookupTwcoreCode:
     async def test_delegates_code_and_codesystem(self):
         mock_svc = _twcore_mock()
         with patch.object(server, "twcore_service", mock_svc):
-            await server.lookup_twcore_code(
+            await server.query_twcore_code(
                 code="PO", codesystem_id="medication-path-tw"
             )
         mock_svc.lookup_code.assert_called_once_with("PO", "medication-path-tw")
@@ -133,7 +133,7 @@ class TestLookupTwcoreCode:
         mock_svc = _twcore_mock()
         mock_svc.lookup_code = AsyncMock(return_value=payload)
         with patch.object(server, "twcore_service", mock_svc):
-            result = await server.lookup_twcore_code(
+            result = await server.query_twcore_code(
                 code="QD", codesystem_id="medication-frequency-nhi-tw"
             )
         assert result == payload

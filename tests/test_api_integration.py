@@ -44,7 +44,7 @@ _SNOMED_ID = 73211009  # Diabetes mellitus
 _ICD_PROC_CODE = "0016070"  # ICD-10-PCS procedure code
 _GUIDELINE_ICD = "E11"  # Type 2 diabetes — has seed guideline data
 
-# All 56 tool names expected when every dataset is loaded.
+# All 45 tool names expected when every dataset is loaded.
 ALL_TOOLS = {
     "health_check",
     # ICD
@@ -71,13 +71,10 @@ ALL_TOOLS = {
     "search_foods_by_nutrient",
     "analyze_meal_nutrition",
     # FHIR Condition
-    "create_fhir_condition",
-    "create_fhir_condition_from_diagnosis",
+    "query_fhir_condition",
     "validate_fhir_condition",
     # FHIR Medication
-    "search_medication_fhir",
-    "create_fhir_medication",
-    "create_fhir_medication_from_drug",
+    "query_fhir_medication",
     "validate_fhir_medication",
     # Lab / LOINC
     "search_loinc_code",
@@ -90,17 +87,9 @@ ALL_TOOLS = {
     "batch_interpret_lab_results",
     # Clinical Guidelines
     "search_clinical_guideline",
-    "get_complete_guideline",
-    "get_medication_recommendations",
-    "get_test_recommendations",
-    "get_treatment_goals",
-    "check_medication_contraindications",
-    "link_guideline_to_drugs",
-    "suggest_clinical_pathway",
+    "query_guideline",
     # TWCore
-    "list_twcore_codesystems",
-    "search_twcore_code",
-    "lookup_twcore_code",
+    "query_twcore_code",
     # SNOMED CT
     "search_snomed_concept",
     "get_snomed_concept",
@@ -114,7 +103,6 @@ ALL_TOOLS = {
     "resolve_rxnorm_drug",
     "get_drug_ingredients_rxnorm",
 }
-
 
 # ---------------------------------------------------------------------------
 # MCP HTTP client helper
@@ -325,7 +313,7 @@ class TestToolsList:
 
     def test_total_tool_count_is_56(self, mcp: MCPSession) -> None:
         tools = mcp.list_tools()
-        assert len(tools) == 56
+        assert len(tools) == 45
 
     def test_every_tool_has_name_and_description(self, mcp: MCPSession) -> None:
         for tool in mcp.list_tools():
@@ -718,14 +706,14 @@ class TestAnalyzeMealNutrition:
 class TestCreateFhirCondition:
     def test_exact(self, mcp: MCPSession) -> None:
         result = mcp.call_tool(
-            "create_fhir_condition", {"icd_code": "E11.9", "patient_id": "patient-001"}
+            "query_fhir_condition", {"icd_code": "E11.9", "patient_id": "patient-001"}
         )
         assert _is_success(result)
         assert result.get("resourceType") == "Condition"
 
     def test_fuzzy(self, mcp: MCPSession) -> None:
         result = mcp.call_tool(
-            "create_fhir_condition",
+            "query_fhir_condition",
             {
                 "icd_code": "E11",
                 "patient_id": "test-patient",
@@ -736,7 +724,7 @@ class TestCreateFhirCondition:
 
     def test_wrong(self, mcp: MCPSession) -> None:
         result = mcp.call_tool(
-            "create_fhir_condition",
+            "query_fhir_condition",
             {"icd_code": "ZZZINVALID", "patient_id": "patient-001"},
         )
         assert _is_graceful(result)
@@ -747,21 +735,21 @@ class TestCreateFhirCondition:
 class TestCreateFhirConditionFromDiagnosis:
     def test_exact(self, mcp: MCPSession) -> None:
         result = mcp.call_tool(
-            "create_fhir_condition_from_diagnosis",
+            "query_fhir_condition",
             {"diagnosis_keyword": "E11.9", "patient_id": "patient-001"},
         )
         assert _is_success(result)
 
     def test_fuzzy(self, mcp: MCPSession) -> None:
         result = mcp.call_tool(
-            "create_fhir_condition_from_diagnosis",
+            "query_fhir_condition",
             {"diagnosis_keyword": "糖尿", "patient_id": "patient-001"},
         )
         assert _is_graceful(result)
 
     def test_wrong(self, mcp: MCPSession) -> None:
         result = mcp.call_tool(
-            "create_fhir_condition_from_diagnosis",
+            "query_fhir_condition",
             {"diagnosis_keyword": "ZZZXYZNOTADISEASE", "patient_id": "patient-001"},
         )
         assert _is_graceful(result)
@@ -814,12 +802,12 @@ class TestValidateFhirCondition:
 @skip_if_no_server
 class TestSearchMedicationFhir:
     def test_exact(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("search_medication_fhir", {"keyword": "Metformin"})
+        result = mcp.call_tool("query_fhir_medication", {"keyword": "Metformin"})
         assert _is_success(result)
 
     def test_fuzzy(self, mcp: MCPSession) -> None:
         result = mcp.call_tool(
-            "search_medication_fhir",
+            "query_fhir_medication",
             {"keyword": "metfor", "resource_type": "MedicationKnowledge"},
         )
         assert _is_graceful(result)
@@ -827,7 +815,7 @@ class TestSearchMedicationFhir:
     def test_wrong(self, mcp: MCPSession) -> None:
         # Hybrid semantic search always returns the closest match — no "not found" error
         result = mcp.call_tool(
-            "search_medication_fhir", {"keyword": "ZZZXYZNOTADRUG12345"}
+            "query_fhir_medication", {"keyword": "ZZZXYZNOTADRUG12345"}
         )
         assert _is_graceful(result)
 
@@ -835,20 +823,23 @@ class TestSearchMedicationFhir:
 @skip_if_no_server
 class TestCreateFhirMedication:
     def test_exact(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("create_fhir_medication", {"license_id": _LICENSE_ID})
+        result = mcp.call_tool(
+            "query_fhir_medication",
+            {"license_id": _LICENSE_ID, "resource_type": "Medication"},
+        )
         assert _is_success(result)
         assert result.get("resourceType") == "Medication"
 
     def test_fuzzy(self, mcp: MCPSession) -> None:
         # Truncated license ID → not found
         result = mcp.call_tool(
-            "create_fhir_medication", {"license_id": "內衛成製字第000029"}
+            "query_fhir_medication", {"license_id": "內衛成製字第000029"}
         )
         assert _is_graceful(result)
 
     def test_wrong(self, mcp: MCPSession) -> None:
         result = mcp.call_tool(
-            "create_fhir_medication", {"license_id": "INVALID_LICENSE_XYZ"}
+            "query_fhir_medication", {"license_id": "INVALID_LICENSE_XYZ"}
         )
         assert _is_graceful(result)
         assert "error" in result
@@ -858,20 +849,23 @@ class TestCreateFhirMedication:
 class TestCreateFhirMedicationFromDrug:
     def test_exact(self, mcp: MCPSession) -> None:
         result = mcp.call_tool(
-            "create_fhir_medication_from_drug", {"license_id": _LICENSE_ID}
+            "query_fhir_medication",
+            {"license_id": _LICENSE_ID, "resource_type": "MedicationKnowledge"},
         )
         assert _is_success(result)
         assert result.get("resourceType") == "MedicationKnowledge"
 
     def test_fuzzy(self, mcp: MCPSession) -> None:
         result = mcp.call_tool(
-            "create_fhir_medication_from_drug", {"license_id": "內衛成製字第000029"}
+            "query_fhir_medication",
+            {"license_id": "內衛成製字第000029", "resource_type": "MedicationKnowledge"},
         )
         assert _is_graceful(result)
 
     def test_wrong(self, mcp: MCPSession) -> None:
         result = mcp.call_tool(
-            "create_fhir_medication_from_drug", {"license_id": "INVALID_LICENSE_XYZ"}
+            "query_fhir_medication",
+            {"license_id": "INVALID_LICENSE_XYZ", "resource_type": "MedicationKnowledge"},
         )
         assert _is_graceful(result)
         assert "error" in result
@@ -1112,15 +1106,21 @@ class TestSearchClinicalGuideline:
 @skip_if_no_server
 class TestGetCompleteGuideline:
     def test_exact(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("get_complete_guideline", {"icd_code": _GUIDELINE_ICD})
+        result = mcp.call_tool(
+            "query_guideline", {"icd_code": _GUIDELINE_ICD, "section": "complete"}
+        )
         assert _is_success(result)
 
     def test_fuzzy(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("get_complete_guideline", {"icd_code": "I10"})
+        result = mcp.call_tool(
+            "query_guideline", {"icd_code": "I10", "section": "medication"}
+        )
         assert _is_graceful(result)
 
     def test_wrong(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("get_complete_guideline", {"icd_code": "ZZZ999"})
+        result = mcp.call_tool(
+            "query_guideline", {"icd_code": "ZZZ999", "section": "unknown"}
+        )
         assert _is_graceful(result)
 
 
@@ -1128,46 +1128,50 @@ class TestGetCompleteGuideline:
 class TestGetMedicationRecommendations:
     def test_exact(self, mcp: MCPSession) -> None:
         result = mcp.call_tool(
-            "get_medication_recommendations", {"icd_code": _GUIDELINE_ICD}
+            "query_guideline", {"icd_code": _GUIDELINE_ICD, "section": "medication"}
         )
         assert _is_graceful(result)
 
     def test_fuzzy(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("get_medication_recommendations", {"icd_code": "I10"})
+        result = mcp.call_tool(
+            "query_guideline", {"icd_code": "I10", "section": "medication"}
+        )
         assert _is_graceful(result)
 
     def test_wrong(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("get_medication_recommendations", {"icd_code": "ZZZ999"})
+        result = mcp.call_tool(
+            "query_guideline", {"icd_code": "ZZZ999", "section": "medication"}
+        )
         assert _is_graceful(result)
 
 
 @skip_if_no_server
 class TestGetTestRecommendations:
     def test_exact(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("get_test_recommendations", {"icd_code": _GUIDELINE_ICD})
+        result = mcp.call_tool("query_guideline", {"icd_code": _GUIDELINE_ICD, "section": "test"})
         assert _is_graceful(result)
 
     def test_fuzzy(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("get_test_recommendations", {"icd_code": "E78"})
+        result = mcp.call_tool("query_guideline", {"icd_code": "E78", "section": "test"})
         assert _is_graceful(result)
 
     def test_wrong(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("get_test_recommendations", {"icd_code": "ZZZ999"})
+        result = mcp.call_tool("query_guideline", {"icd_code": "ZZZ999", "section": "test"})
         assert _is_graceful(result)
 
 
 @skip_if_no_server
 class TestGetTreatmentGoals:
     def test_exact(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("get_treatment_goals", {"icd_code": _GUIDELINE_ICD})
+        result = mcp.call_tool("query_guideline", {"icd_code": _GUIDELINE_ICD, "section": "goals"})
         assert _is_graceful(result)
 
     def test_fuzzy(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("get_treatment_goals", {"icd_code": "I10"})
+        result = mcp.call_tool("query_guideline", {"icd_code": "I10", "section": "goals"})
         assert _is_graceful(result)
 
     def test_wrong(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("get_treatment_goals", {"icd_code": "ZZZ999"})
+        result = mcp.call_tool("query_guideline", {"icd_code": "ZZZ999", "section": "goals"})
         assert _is_graceful(result)
 
 
@@ -1175,22 +1179,19 @@ class TestGetTreatmentGoals:
 class TestCheckMedicationContraindications:
     def test_exact(self, mcp: MCPSession) -> None:
         result = mcp.call_tool(
-            "check_medication_contraindications",
-            {"icd_code": _GUIDELINE_ICD, "medication_class": "Metformin"},
+            "query_guideline", {"icd_code": _GUIDELINE_ICD, "section": "medication"}
         )
         assert _is_graceful(result)
 
     def test_fuzzy(self, mcp: MCPSession) -> None:
         result = mcp.call_tool(
-            "check_medication_contraindications",
-            {"icd_code": _GUIDELINE_ICD, "medication_class": "insulin"},
+            "query_guideline", {"icd_code": _GUIDELINE_ICD, "section": "medication"}
         )
         assert _is_graceful(result)
 
     def test_wrong(self, mcp: MCPSession) -> None:
         result = mcp.call_tool(
-            "check_medication_contraindications",
-            {"icd_code": "ZZZ999", "medication_class": "ZZZNOTADRUG"},
+            "query_guideline", {"icd_code": "ZZZ999", "section": "medication"}
         )
         assert _is_graceful(result)
 
@@ -1198,33 +1199,32 @@ class TestCheckMedicationContraindications:
 @skip_if_no_server
 class TestLinkGuidelineToDrugs:
     def test_exact(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("link_guideline_to_drugs", {"icd_code": _GUIDELINE_ICD})
+        result = mcp.call_tool("query_guideline", {"icd_code": _GUIDELINE_ICD, "section": "complete"})
         assert _is_graceful(result)
 
     def test_fuzzy(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("link_guideline_to_drugs", {"icd_code": "I10"})
+        result = mcp.call_tool("query_guideline", {"icd_code": "I10", "section": "complete"})
         assert _is_graceful(result)
 
     def test_wrong(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("link_guideline_to_drugs", {"icd_code": "ZZZ999"})
+        result = mcp.call_tool("query_guideline", {"icd_code": "ZZZ999", "section": "complete"})
         assert _is_graceful(result)
 
 
 @skip_if_no_server
 class TestSuggestClinicalPathway:
     def test_exact(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("suggest_clinical_pathway", {"icd_code": _GUIDELINE_ICD})
+        result = mcp.call_tool("query_guideline", {"icd_code": _GUIDELINE_ICD, "section": "pathway"})
         assert _is_graceful(result)
 
     def test_fuzzy(self, mcp: MCPSession) -> None:
         # Use a different ICD code (hypertension) without optional patient context
-        result = mcp.call_tool("suggest_clinical_pathway", {"icd_code": "I10"})
+        result = mcp.call_tool("query_guideline", {"icd_code": "I10", "section": "pathway"})
         assert _is_graceful(result)
 
     def test_wrong(self, mcp: MCPSession) -> None:
         result = mcp.call_tool(
-            "suggest_clinical_pathway",
-            {"icd_code": "ZZZ999", "patient_context_json": "NOT JSON {{{"},
+            "query_guideline", {"icd_code": "ZZZ999", "section": "pathway"}
         )
         assert _is_graceful(result)
 
@@ -1237,18 +1237,18 @@ class TestSuggestClinicalPathway:
 @skip_if_no_server
 class TestListTwcoreCodesystems:
     def test_exact(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("list_twcore_codesystems", {"category": "all"})
+        result = mcp.call_tool("query_twcore_code", {"category": "all"})
         assert _is_success(result)
         # Result uses {categories: {<cat>: [...]}, total: N} structure
         assert result.get("total", 0) > 0
 
     def test_fuzzy(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("list_twcore_codesystems", {"category": "medication"})
+        result = mcp.call_tool("query_twcore_code", {"category": "medication"})
         assert _is_graceful(result)
 
     def test_wrong(self, mcp: MCPSession) -> None:
         result = mcp.call_tool(
-            "list_twcore_codesystems", {"category": "ZZZNOTCATEGORY"}
+            "query_twcore_code", {"category": "ZZZNOTCATEGORY"}
         )
         assert _is_graceful(result)
 
@@ -1257,20 +1257,20 @@ class TestListTwcoreCodesystems:
 class TestSearchTwcoreCode:
     def test_exact(self, mcp: MCPSession) -> None:
         result = mcp.call_tool(
-            "search_twcore_code",
+            "query_twcore_code",
             {"keyword": "daily", "codesystem_ids": [_TWCORE_CS_ID]},
         )
         assert _is_graceful(result)
 
     def test_fuzzy(self, mcp: MCPSession) -> None:
         result = mcp.call_tool(
-            "search_twcore_code", {"keyword": "dai", "codesystem_ids": [_TWCORE_CS_ID]}
+            "query_twcore_code", {"keyword": "dai", "codesystem_ids": [_TWCORE_CS_ID]}
         )
         assert _is_graceful(result)
 
     def test_wrong(self, mcp: MCPSession) -> None:
         result = mcp.call_tool(
-            "search_twcore_code",
+            "query_twcore_code",
             {"keyword": "ZZZXYZ", "codesystem_ids": ["nonexistent-cs"]},
         )
         assert _is_graceful(result)
@@ -1280,19 +1280,19 @@ class TestSearchTwcoreCode:
 class TestLookupTwcoreCode:
     def test_exact(self, mcp: MCPSession) -> None:
         result = mcp.call_tool(
-            "lookup_twcore_code", {"code": "daily", "codesystem_id": _TWCORE_CS_ID}
+            "query_twcore_code", {"code": "daily", "codesystem_id": _TWCORE_CS_ID}
         )
         assert _is_graceful(result)
 
     def test_fuzzy(self, mcp: MCPSession) -> None:
         result = mcp.call_tool(
-            "lookup_twcore_code", {"code": "DAILY", "codesystem_id": _TWCORE_CS_ID}
+            "query_twcore_code", {"code": "DAILY", "codesystem_id": _TWCORE_CS_ID}
         )
         assert _is_graceful(result)
 
     def test_wrong(self, mcp: MCPSession) -> None:
         result = mcp.call_tool(
-            "lookup_twcore_code",
+            "query_twcore_code",
             {"code": "ZZZNOTEXIST", "codesystem_id": "nonexistent-cs"},
         )
         assert _is_graceful(result)

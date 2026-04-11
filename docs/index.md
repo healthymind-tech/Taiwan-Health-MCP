@@ -34,7 +34,7 @@
 
     FHIR R4、ICD-10-CM 2025、LOINC 2.80、SNOMED CT、RxNorm、ATC
 
--   :bar_chart: __56 個 MCP 工具__
+-   :bar_chart: __45 個 MCP 工具__
 
     ---
 
@@ -113,7 +113,7 @@ graph TB
     end
 
     subgraph "MCP 協議層"
-        B[MCP Server<br/>56 個工具]
+        B[MCP Server<br/>45 個工具]
     end
 
     subgraph "服務層"
@@ -211,7 +211,7 @@ graph TB
 
 ## 🛠️ MCP 工具清單
 
-本服務提供 **56 個 MCP 工具**，包含 `health_check` 與 55 個領域工具，主要分為 12 個群組；工具分類與 status page 範例由同一份 registry 生成，避免文件和實作分岔。
+本服務提供 **45 個 MCP 工具**，包含 `health_check` 與 44 個領域工具，主要分為 12 個群組；工具分類與 status page 範例由同一份 registry 生成，避免文件和實作分岔。
 
 | 群組 | 工具數 | 主要功能 |
 |------|--------|---------|
@@ -220,11 +220,11 @@ graph TB
 | 健康食品 (FDA) | 2 | 健康食品查詢 |
 | 營養 (FDA) | 6 | 營養成分、膳食分析、食品原料、營養排序 |
 | 健康食品+ICD 整合 | 1 | 疾病-保健食品對應分析 |
-| FHIR Condition | 3 | ICD-10 → FHIR R4 Condition |
-| FHIR Medication | 4 | 藥品 → FHIR Medication/MedicationKnowledge |
+| FHIR Condition | 2 | ICD-10 / 關鍵字 → FHIR R4 Condition |
+| FHIR Medication | 2 | 藥品 / 關鍵字 → FHIR Medication/MedicationKnowledge |
 | 檢驗 (LOINC) | 8 | LOINC 查詢、參考值、結果判讀、細節與同類檢驗 |
-| 臨床指引 | 8 | 指引查詢、路徑規劃、禁忌與藥品連結 |
-| TWCore IG | 3 | 台灣健保 CodeSystem |
+| 臨床指引 | 2 | 指引查詢與分段內容 |
+| TWCore IG | 1 | 台灣健保 CodeSystem 統一查詢 |
 | SNOMED CT | 7 | 概念搜尋、階層、關聯、ICD-10 對應 |
 | RxNorm | 3 | 藥物交互作用、名稱解析 |
 

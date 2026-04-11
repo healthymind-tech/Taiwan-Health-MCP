@@ -2,9 +2,7 @@
 Unit tests for Clinical Guideline tool functions in server.py.
 
 Tools covered:
-  search_clinical_guideline, get_complete_guideline, get_medication_recommendations,
-  get_test_recommendations, get_treatment_goals, check_medication_contraindications,
-  link_guideline_to_drugs, suggest_clinical_pathway
+  search_clinical_guideline, query_guideline
 """
 
 import json
@@ -24,8 +22,6 @@ def _guideline_mock():
     m.get_medication_recommendations     = AsyncMock(return_value='{"medications":[]}')
     m.get_test_recommendations           = AsyncMock(return_value='{"tests":[]}')
     m.get_treatment_goals                = AsyncMock(return_value='{"goals":[]}')
-    m.check_medication_contraindications = AsyncMock(return_value='{"matched_recommendations":[]}')
-    m.link_guideline_to_drugs            = AsyncMock(return_value='{"medications":[]}')
     m.suggest_clinical_pathway           = AsyncMock(return_value='{"pathway":{}}')
     return m
 
@@ -71,13 +67,13 @@ class TestSearchClinicalGuideline:
         assert result == payload
 
 
-# ── get_complete_guideline ────────────────────────────────────────────────────
+# ── query_guideline (complete) ───────────────────────────────────────────────
 
-class TestGetCompleteGuideline:
+class TestQueryGuidelineComplete:
     @pytest.mark.asyncio
     async def test_null_guard(self):
         with patch.object(server, "guideline_service", None):
-            result = json.loads(await server.get_complete_guideline(icd_code="E11"))
+            result = json.loads(await server.query_guideline(icd_code="E11", section="complete"))
         assert "error" in result
         assert "Clinical Guideline Service" in result["error"]
 
@@ -85,17 +81,17 @@ class TestGetCompleteGuideline:
     async def test_delegates_icd_code(self):
         mock_svc = _guideline_mock()
         with patch.object(server, "guideline_service", mock_svc):
-            await server.get_complete_guideline(icd_code="I10")
+            await server.query_guideline(icd_code="I10", section="complete")
         mock_svc.get_complete_guideline.assert_called_once_with("I10")
 
 
-# ── get_medication_recommendations ────────────────────────────────────────────
+# ── query_guideline (medication) ─────────────────────────────────────────────
 
-class TestGetMedicationRecommendations:
+class TestQueryGuidelineMedication:
     @pytest.mark.asyncio
     async def test_null_guard(self):
         with patch.object(server, "guideline_service", None):
-            result = json.loads(await server.get_medication_recommendations(icd_code="I10"))
+            result = json.loads(await server.query_guideline(icd_code="I10", section="medication"))
         assert "error" in result
         assert "Clinical Guideline Service" in result["error"]
 
@@ -103,17 +99,17 @@ class TestGetMedicationRecommendations:
     async def test_delegates_icd_code(self):
         mock_svc = _guideline_mock()
         with patch.object(server, "guideline_service", mock_svc):
-            await server.get_medication_recommendations(icd_code="E78")
+            await server.query_guideline(icd_code="E78", section="medication")
         mock_svc.get_medication_recommendations.assert_called_once_with("E78")
 
 
-# ── get_test_recommendations ──────────────────────────────────────────────────
+# ── query_guideline (test) ───────────────────────────────────────────────────
 
-class TestGetTestRecommendations:
+class TestQueryGuidelineTest:
     @pytest.mark.asyncio
     async def test_null_guard(self):
         with patch.object(server, "guideline_service", None):
-            result = json.loads(await server.get_test_recommendations(icd_code="N18"))
+            result = json.loads(await server.query_guideline(icd_code="N18", section="test"))
         assert "error" in result
         assert "Clinical Guideline Service" in result["error"]
 
@@ -121,17 +117,17 @@ class TestGetTestRecommendations:
     async def test_delegates_icd_code(self):
         mock_svc = _guideline_mock()
         with patch.object(server, "guideline_service", mock_svc):
-            await server.get_test_recommendations(icd_code="N18")
+            await server.query_guideline(icd_code="N18", section="test")
         mock_svc.get_test_recommendations.assert_called_once_with("N18")
 
 
-# ── get_treatment_goals ───────────────────────────────────────────────────────
+# ── query_guideline (goals) ──────────────────────────────────────────────────
 
-class TestGetTreatmentGoals:
+class TestQueryGuidelineGoals:
     @pytest.mark.asyncio
     async def test_null_guard(self):
         with patch.object(server, "guideline_service", None):
-            result = json.loads(await server.get_treatment_goals(icd_code="E11"))
+            result = json.loads(await server.query_guideline(icd_code="E11", section="goals"))
         assert "error" in result
         assert "Clinical Guideline Service" in result["error"]
 
@@ -139,114 +135,5 @@ class TestGetTreatmentGoals:
     async def test_delegates_icd_code(self):
         mock_svc = _guideline_mock()
         with patch.object(server, "guideline_service", mock_svc):
-            await server.get_treatment_goals(icd_code="E11")
+            await server.query_guideline(icd_code="E11", section="goals")
         mock_svc.get_treatment_goals.assert_called_once_with("E11")
-
-
-# ── check_medication_contraindications ───────────────────────────────────────
-
-class TestCheckMedicationContraindications:
-    @pytest.mark.asyncio
-    async def test_null_guard(self):
-        with patch.object(server, "guideline_service", None):
-            result = json.loads(
-                await server.check_medication_contraindications(icd_code="E11", medication_class="Metformin")
-            )
-        assert "error" in result
-        assert "Clinical Guideline Service" in result["error"]
-
-    @pytest.mark.asyncio
-    async def test_delegates_both_params(self):
-        mock_svc = _guideline_mock()
-        with patch.object(server, "guideline_service", mock_svc):
-            await server.check_medication_contraindications(
-                icd_code="E11", medication_class="SGLT2抑制劑"
-            )
-        mock_svc.check_medication_contraindications.assert_called_once_with("E11", "SGLT2抑制劑")
-
-    @pytest.mark.asyncio
-    async def test_english_medication_class_forwarded(self):
-        mock_svc = _guideline_mock()
-        with patch.object(server, "guideline_service", mock_svc):
-            await server.check_medication_contraindications(
-                icd_code="N18", medication_class="NSAIDs"
-            )
-        mock_svc.check_medication_contraindications.assert_called_once_with("N18", "NSAIDs")
-
-
-# ── link_guideline_to_drugs ───────────────────────────────────────────────────
-
-class TestLinkGuidelineToDrugs:
-    @pytest.mark.asyncio
-    async def test_null_guard(self):
-        with patch.object(server, "guideline_service", None):
-            result = json.loads(await server.link_guideline_to_drugs(icd_code="E11"))
-        assert "error" in result
-        assert "Clinical Guideline Service" in result["error"]
-
-    @pytest.mark.asyncio
-    async def test_delegates_icd_code(self):
-        mock_svc = _guideline_mock()
-        with patch.object(server, "guideline_service", mock_svc):
-            await server.link_guideline_to_drugs(icd_code="I10")
-        mock_svc.link_guideline_to_drugs.assert_called_once_with("I10")
-
-
-# ── suggest_clinical_pathway ──────────────────────────────────────────────────
-
-class TestSuggestClinicalPathway:
-    @pytest.mark.asyncio
-    async def test_null_guard(self):
-        with patch.object(server, "guideline_service", None):
-            result = json.loads(await server.suggest_clinical_pathway(icd_code="E11"))
-        assert "error" in result
-        assert "Clinical Guideline Service" in result["error"]
-
-    @pytest.mark.asyncio
-    async def test_delegates_icd_no_context(self):
-        mock_svc = _guideline_mock()
-        with patch.object(server, "guideline_service", mock_svc):
-            await server.suggest_clinical_pathway(icd_code="I10")
-        mock_svc.suggest_clinical_pathway.assert_called_once_with("I10", None)
-
-    @pytest.mark.asyncio
-    async def test_parses_context_json(self):
-        mock_svc = _guideline_mock()
-        ctx = {"age": 55, "comorbidities": ["CKD"]}
-        with patch.object(server, "guideline_service", mock_svc):
-            await server.suggest_clinical_pathway(
-                icd_code="E11", patient_context_json=json.dumps(ctx)
-            )
-        mock_svc.suggest_clinical_pathway.assert_called_once_with("E11", ctx)
-
-    @pytest.mark.asyncio
-    async def test_invalid_context_json_passes_none(self):
-        """Bad JSON in patient_context_json is silently ignored and None is passed."""
-        mock_svc = _guideline_mock()
-        with patch.object(server, "guideline_service", mock_svc):
-            await server.suggest_clinical_pathway(
-                icd_code="E11", patient_context_json="{bad json"
-            )
-        mock_svc.suggest_clinical_pathway.assert_called_once_with("E11", None)
-
-    @pytest.mark.asyncio
-    async def test_empty_context_json_passes_none(self):
-        mock_svc = _guideline_mock()
-        with patch.object(server, "guideline_service", mock_svc):
-            await server.suggest_clinical_pathway(icd_code="E11", patient_context_json=None)
-        mock_svc.suggest_clinical_pathway.assert_called_once_with("E11", None)
-
-    @pytest.mark.asyncio
-    async def test_full_patient_context_forwarded(self):
-        mock_svc = _guideline_mock()
-        ctx = {
-            "age": 65, "gender": "M",
-            "comorbidities": ["CKD", "心衰竭"],
-            "current_medications": ["metformin"],
-            "allergies": ["sulfonamides"],
-        }
-        with patch.object(server, "guideline_service", mock_svc):
-            await server.suggest_clinical_pathway(
-                icd_code="E11", patient_context_json=json.dumps(ctx)
-            )
-        mock_svc.suggest_clinical_pathway.assert_called_once_with("E11", ctx)

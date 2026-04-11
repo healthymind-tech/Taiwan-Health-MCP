@@ -15,8 +15,8 @@
 
 ---
 
-## get_complete_guideline
-取得完整的結構化診療指引。
+## query_guideline
+取得完整或分段的結構化診療指引。
 
 ### 參數
 | 參數名 | 型別 | 必填 | 說明 | 範例 |
@@ -32,8 +32,17 @@
 
 ---
 
-## get_medication_recommendations
+### `section="medication"`
 取得指引建議的用藥策略。
+
+### `section="test"`
+取得指引建議的檢查項目。
+
+### `section="goals"`
+取得治療目標。
+
+### `section="pathway"`
+取得臨床路徑建議。
 
 ### 參數
 | 參數名 | 型別 | 必填 | 說明 | 範例 |
