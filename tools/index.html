@@ -3120,10 +3120,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#2-fda-5" class="md-nav__link">
+  <a href="#2-fda-3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        群組 2 — 台灣 FDA 藥品（5 個工具）
+        群組 2 — 台灣 FDA 藥品（3 個工具）
       
     </span>
   </a>
@@ -3288,7 +3288,7 @@
 
 
 <h1 id="mcp">MCP 工具概覽<a class="headerlink" href="#mcp" title="Permanent link">&para;</a></h1>
-<p>Taiwan Health MCP Server 提供 <strong>42 個 MCP 工具</strong>，其中包含 1 個 <code>health_check</code> 基礎工具，以及 12 個主要領域群組共 42 個工具。status page 與動態註冊使用同一份工具 registry，新增或調整工具時請同步更新群組定義與對應說明。</p>
+<p>Taiwan Health MCP Server 提供 <strong>39 個 MCP 工具</strong>，其中包含 1 個 <code>health_check</code> 基礎工具，以及 12 個主要領域群組共 39 個工具。status page 與動態註冊使用同一份工具 registry，新增或調整工具時請同步更新群組定義與對應說明。</p>
 <hr />
 <h2 id="_1">基礎工具<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
 <table>
@@ -3340,7 +3340,7 @@
 </table>
 <p><a href="icd-tools/">詳細說明</a></p>
 <hr />
-<h3 id="2-fda-5">群組 2 — 台灣 FDA 藥品（5 個工具）<a class="headerlink" href="#2-fda-5" title="Permanent link">&para;</a></h3>
+<h3 id="2-fda-3">群組 2 — 台灣 FDA 藥品（3 個工具）<a class="headerlink" href="#2-fda-3" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
 <tr>
@@ -3350,24 +3350,12 @@
 </thead>
 <tbody>
 <tr>
-<td><code>search_drug_info</code></td>
-<td>以中英文名稱或適應症搜尋 FDA 核准藥品</td>
-</tr>
-<tr>
-<td><code>get_drug_details</code></td>
-<td>依許可證字號取得完整藥品資訊</td>
+<td><code>search_drug</code></td>
+<td>以 <code>mode</code> 切換藥名、ATC code、許可證字號或成分搜尋 FDA 核准藥品（<code>drug_name</code> / <code>ingredient</code> 可用 embedding，<code>atc_code</code> 只接受 ATC code 前綴，<code>license_id</code> 支援 bare digits；回傳為完整藥品摘要）</td>
 </tr>
 <tr>
 <td><code>identify_unknown_pill</code></td>
 <td>依外觀特徵（形狀、顏色、刻痕）識別藥錠</td>
-</tr>
-<tr>
-<td><code>search_drug_by_atc</code></td>
-<td>依 ATC 代碼或藥理分類搜尋藥品</td>
-</tr>
-<tr>
-<td><code>search_drug_by_ingredient</code></td>
-<td>依有效成分搜尋藥品</td>
 </tr>
 </tbody>
 </table>

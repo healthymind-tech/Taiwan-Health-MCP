@@ -2227,6 +2227,28 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#async-search_by_atcself-query-str-str" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        async search_by_atc(self, query: str) -&gt; str
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#async-search_by_license_idself-license_id-str-str" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        async search_by_license_id(self, license_id: str) -&gt; str
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#async-get_drug_details_by_licenseself-license_id-str-str" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2242,17 +2264,6 @@
     <span class="md-ellipsis">
       
         async identify_pill(self, features: str) -&gt; str
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#async-search_by_atcself-query-str-str" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        async search_by_atc(self, query: str) -&gt; str
       
     </span>
   </a>
@@ -3250,6 +3261,28 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#async-search_by_atcself-query-str-str" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        async search_by_atc(self, query: str) -&gt; str
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#async-search_by_license_idself-license_id-str-str" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        async search_by_license_id(self, license_id: str) -&gt; str
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#async-get_drug_details_by_licenseself-license_id-str-str" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3265,17 +3298,6 @@
     <span class="md-ellipsis">
       
         async identify_pill(self, features: str) -&gt; str
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#async-search_by_atcself-query-str-str" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        async search_by_atc(self, query: str) -&gt; str
       
     </span>
   </a>
@@ -3323,16 +3345,24 @@
 <h3 id="__init__self-pool"><code>__init__(self, pool)</code><a class="headerlink" href="#__init__self-pool" title="Permanent link">&para;</a></h3>
 <p>初始化藥品服務，接受 asyncpg 連線池。</p>
 <h3 id="async-search_drugself-keyword-str-str"><code>async search_drug(self, keyword: str) -&gt; str</code><a class="headerlink" href="#async-search_drugself-keyword-str-str" title="Permanent link">&para;</a></h3>
-<p>FTS 搜尋藥品名稱或適應症。</p>
+<p>FTS 搜尋藥品名稱或適應症，並回傳完整藥品摘要欄位。</p>
 <ul>
 <li><strong>keyword</strong>: 藥名（中/英）或適應症關鍵字。</li>
+</ul>
+<h3 id="async-search_by_atcself-query-str-str"><code>async search_by_atc(self, query: str) -&gt; str</code><a class="headerlink" href="#async-search_by_atcself-query-str-str" title="Permanent link">&para;</a></h3>
+<p>依 ATC code 前綴搜尋藥品，不使用 embedding。</p>
+<ul>
+<li><strong>query</strong>: ATC code 前綴，例如 <code>A10</code> 或 <code>A10BA02</code>。</li>
+</ul>
+<h3 id="async-search_by_license_idself-license_id-str-str"><code>async search_by_license_id(self, license_id: str) -&gt; str</code><a class="headerlink" href="#async-search_by_license_idself-license_id-str-str" title="Permanent link">&para;</a></h3>
+<p>依許可證字號查詢單一藥品，支援完整字串與 bare digits。</p>
+<ul>
+<li><strong>license_id</strong>: 台灣 FDA 許可證字號或尾碼數字，例如 <code>000029</code>。</li>
 </ul>
 <h3 id="async-get_drug_details_by_licenseself-license_id-str-str"><code>async get_drug_details_by_license(self, license_id: str) -&gt; str</code><a class="headerlink" href="#async-get_drug_details_by_licenseself-license_id-str-str" title="Permanent link">&para;</a></h3>
 <p>依許可證字號取得完整藥品資料，含三層模糊匹配回退。</p>
 <h3 id="async-identify_pillself-features-str-str"><code>async identify_pill(self, features: str) -&gt; str</code><a class="headerlink" href="#async-identify_pillself-features-str-str" title="Permanent link">&para;</a></h3>
 <p>依外觀特徵辨識藥錠（顏色、形狀、刻痕）。</p>
-<h3 id="async-search_by_atcself-query-str-str"><code>async search_by_atc(self, query: str) -&gt; str</code><a class="headerlink" href="#async-search_by_atcself-query-str-str" title="Permanent link">&para;</a></h3>
-<p>依 ATC 代碼或藥理分類名稱搜尋藥品。</p>
 <h3 id="async-search_by_ingredientself-ingredient_name-str-str"><code>async search_by_ingredient(self, ingredient_name: str) -&gt; str</code><a class="headerlink" href="#async-search_by_ingredientself-ingredient_name-str-str" title="Permanent link">&para;</a></h3>
 <p>依有效成分名稱搜尋含有該成分的藥品。</p>
 

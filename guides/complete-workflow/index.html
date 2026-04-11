@@ -3309,17 +3309,17 @@
 <h2 id="_4">步驟三：查詢藥品資訊<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
 <p>搜尋台灣核准的 Metformin 藥品。</p>
 <p><strong>呼叫工具</strong>：
-<div class="language-python highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">search_drug_info</span><span class="p">(</span><span class="n">keyword</span><span class="o">=</span><span class="s2">&quot;Metformin&quot;</span><span class="p">)</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">search_drug</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">&quot;drug_name&quot;</span><span class="p">,</span> <span class="n">keyword</span><span class="o">=</span><span class="s2">&quot;Metformin&quot;</span><span class="p">)</span>
 </span></code></pre></div></p>
 <p><strong>預期結果</strong>：
 找到多項藥品，例如「庫魯化錠 (Glucophage)」。
 進一步查詢詳細資訊以確認禁忌症：</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">get_drug_details</span><span class="p">(</span><span class="n">license_id</span><span class="o">=</span><span class="s2">&quot;衛署藥輸字第021938號&quot;</span><span class="p">)</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">search_drug</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">&quot;license_id&quot;</span><span class="p">,</span> <span class="n">keyword</span><span class="o">=</span><span class="s2">&quot;衛署藥輸字第021938號&quot;</span><span class="p">)</span>
 </span></code></pre></div>
 <h2 id="_5">步驟四：開立處方與衝突檢查<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>
-<p>假設醫師決定開立 Metformin，並想確認與患者原本服用的藥物是否有交互作用。可先透過 <code>search_drug_by_ingredient</code> 找到含 Metformin 的藥品，再使用 <code>check_drug_interactions</code> 確認交互作用。</p>
+<p>假設醫師決定開立 Metformin，並想確認與患者原本服用的藥物是否有交互作用。可先透過 <code>search_drug(mode="ingredient", keyword="Metformin")</code> 找到含 Metformin 的藥品，再使用 <code>check_drug_interactions</code> 確認交互作用。</p>
 <p><strong>呼叫工具</strong>：
-<div class="language-python highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">search_drug_by_ingredient</span><span class="p">(</span><span class="n">ingredient_name</span><span class="o">=</span><span class="s2">&quot;Metformin&quot;</span><span class="p">)</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">search_drug</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">&quot;ingredient&quot;</span><span class="p">,</span> <span class="n">keyword</span><span class="o">=</span><span class="s2">&quot;Metformin&quot;</span><span class="p">)</span>
 </span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="n">check_drug_interactions</span><span class="p">(</span><span class="n">drug_names</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;Metformin&quot;</span><span class="p">,</span> <span class="s2">&quot;Warfarin&quot;</span><span class="p">])</span>
 </span></code></pre></div></p>
 <p><strong>預期結果</strong>：
