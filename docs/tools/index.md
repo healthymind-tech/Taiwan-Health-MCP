@@ -1,6 +1,6 @@
 # MCP 工具概覽
 
-Taiwan Health MCP Server 提供 **42 個 MCP 工具**，其中包含 1 個 `health_check` 基礎工具，以及 12 個主要領域群組共 42 個工具。status page 與動態註冊使用同一份工具 registry，新增或調整工具時請同步更新群組定義與對應說明。
+Taiwan Health MCP Server 提供 **39 個 MCP 工具**，其中包含 1 個 `health_check` 基礎工具，以及 12 個主要領域群組共 39 個工具。status page 與動態註冊使用同一份工具 registry，新增或調整工具時請同步更新群組定義與對應說明。
 
 ---
 
@@ -28,15 +28,12 @@ Taiwan Health MCP Server 提供 **42 個 MCP 工具**，其中包含 1 個 `heal
 
 ---
 
-### 群組 2 — 台灣 FDA 藥品（5 個工具）
+### 群組 2 — 台灣 FDA 藥品（3 個工具）
 
 | 工具 | 說明 |
 |------|------|
-| `search_drug_info` | 以中英文名稱或適應症搜尋 FDA 核准藥品 |
-| `get_drug_details` | 依許可證字號取得完整藥品資訊 |
+| `search_drug` | 以 `mode` 切換藥名、ATC code、許可證字號或成分搜尋 FDA 核准藥品（`drug_name` / `ingredient` 可用 embedding，`atc_code` 只接受 ATC code 前綴，`license_id` 支援 bare digits；回傳為完整藥品摘要） |
 | `identify_unknown_pill` | 依外觀特徵（形狀、顏色、刻痕）識別藥錠 |
-| `search_drug_by_atc` | 依 ATC 代碼或藥理分類搜尋藥品 |
-| `search_drug_by_ingredient` | 依有效成分搜尋藥品 |
 
 [詳細說明](drug-tools.md)
 

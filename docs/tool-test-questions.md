@@ -51,7 +51,7 @@
 
 ---
 
-## Group 6：藥品搜尋 (`search_drug_info`)
+## Group 6：藥品搜尋 (`search_drug`)
 
 **✅** 搜尋台灣 FDA 核准的「Metformin」相關藥品。
 
@@ -60,7 +60,7 @@
 
 ---
 
-## Group 7：藥品詳情 (`get_drug_details`)
+## Group 7：藥品詳情 (`search_drug` / `license_id`)
 
 **✅** 查詢許可證「衛部藥製字第058774號」的完整藥品資訊（成分、外觀、用法）。
 
@@ -78,7 +78,7 @@
 
 ---
 
-## Group 9：ATC 分類搜尋 (`search_drug_by_atc`)
+## Group 9：ATC 分類搜尋 (`search_drug`)
 
 **✅** 搜尋 ATC 碼「A10BA」（雙胍類降血糖藥）相關的台灣核准藥品。
 
@@ -87,7 +87,7 @@
 
 ---
 
-## Group 10：成分搜尋 (`search_drug_by_ingredient`)
+## Group 10：成分搜尋 (`search_drug`)
 
 **✅** 找出含有「Aspirin」成分的台灣核准藥品清單。
 

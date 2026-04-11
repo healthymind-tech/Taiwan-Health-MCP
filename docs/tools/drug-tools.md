@@ -2,37 +2,55 @@
 
 此類別工具提供台灣 FDA 藥品資料庫的查詢、辨識與分析功能。
 
-## search_drug_info
-依名稱或適應症搜尋藥品。
+## search_drug
+依藥名、ATC code、許可證字號或有效成分搜尋藥品。
+`drug_name` 與 `ingredient` 會使用 hybrid BM25 + semantic embedding 搜尋（若 embeddings 可用）。
+`atc_code` 為 code-only 模式，只接受 ATC code 前綴，例如 `A10` 或 `A10BA02`，不做 embedding。
+`license_id` 可輸入完整許可證字號，或僅輸入尾碼數字，例如 `000029`。
 
 ### 參數
 | 參數名 | 型別 | 必填 | 說明 | 範例 |
 | :--- | :--- | :--- | :--- | :--- |
-| `keyword` | string | 是 | 藥品名稱（中/英）或適應症關鍵字 | `"普拿疼"`, `"Panadol"`, `"頭痛"` |
+| `mode` | string | 是 | 搜尋模式：`drug_name`、`atc_code`、`ingredient`、`license_id` | `"drug_name"` |
+| `keyword` | string | 是 | 搜尋關鍵字；`drug_name` 用藥名/適應症，`atc_code` 只接受 ATC code 前綴，`ingredient` 用成分名，`license_id` 用許可證字號或尾碼數字 | `"Metformin"`, `"A10BA02"`, `"aspirin"`, `"000029"` |
+| `limit` | integer | 否 | 回傳筆數上限 | `5` |
 
 ### 回傳內容
 回傳符合條件的藥品列表，包含：
 - 許可證字號
 - 中文品名
 - 英文品名
-- 適應症簡述
+- `usage` / `form` / `package`
+- 主成分或適應症摘要
+- `ingredients`、`appearance`、`atc_code`、`insert_url`
+  
+四種模式的回傳格式完全一致：
+```json
+{"mode":"drug_name","keyword":"Metformin","results":[...]}
+```
+每筆 `results` 都包含相同欄位：
+- `license_id`
+- `name_zh`
+- `name_en`
+- `indication`
+- `usage`
+- `form`
+- `package`
+- `category`
+- `manufacturer`
+- `valid_date`
+- `ingredients`
+- `appearance`
+- `atc_code`
+- `insert_url`
+
+### 模式說明
+- `drug_name`：搜尋商品名、學名或適應症關鍵字
+- `atc_code`：搜尋 ATC code 前綴
+- `ingredient`：搜尋有效成分、INN 或學名
+- `license_id`：搜尋單一許可證字號，支援 bare digits，例如 `000029`
 
 ---
-
-## get_drug_details
-取得特定藥品的完整詳細資料。
-
-### 參數
-| 參數名 | 型別 | 必填 | 說明 | 範例 |
-| :--- | :--- | :--- | :--- | :--- |
-| `license_id` | string | 是 | 藥品許可證字號 | `"衛部藥製字第058498號"` |
-
-### 回傳內容
-- 完整適應症
-- 主成分與含量
-- 用法用量
-- 藥品外觀描述
-- 仿單連結
 
 ---
 
@@ -46,29 +64,3 @@
 
 ### 用途
 當使用者持有不明藥物，僅能描述外觀時使用。
-
----
-
-## search_drug_by_atc
-**【ATC 分類查詢】** 依 WHO ATC 代碼或藥理分類搜尋藥品。
-
-### 參數
-| 參數名 | 型別 | 必填 | 說明 | 範例 |
-| :--- | :--- | :--- | :--- | :--- |
-| `query` | string | 是 | ATC 代碼或藥理分類名稱 | `"A10BA02"`, `"降血糖"` |
-
-### 用途
-透過 ATC 分類系統找出同類藥品，適合藥理分類比較與替代藥物查詢。
-
----
-
-## search_drug_by_ingredient
-**【成分查詢】** 依有效成分名稱搜尋含有該成分的所有藥品。
-
-### 參數
-| 參數名 | 型別 | 必填 | 說明 | 範例 |
-| :--- | :--- | :--- | :--- | :--- |
-| `ingredient_name` | string | 是 | 有效成分名稱（中/英文） | `"Metformin"`, `"二甲雙胍"` |
-
-### 用途
-查詢市面上含特定成分的所有藥品（品牌藥 + 學名藥），協助用藥安全確認。

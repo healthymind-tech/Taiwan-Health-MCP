@@ -34,7 +34,7 @@
 
     FHIR R4、ICD-10-CM 2025、LOINC 2.80、SNOMED CT、RxNorm、ATC
 
--   :bar_chart: __42 個 MCP 工具__
+-   :bar_chart: __39 個 MCP 工具__
 
     ---
 
@@ -113,7 +113,7 @@ graph TB
     end
 
     subgraph "MCP 協議層"
-        B[MCP Server<br/>42 個工具]
+        B[MCP Server<br/>39 個工具]
     end
 
     subgraph "服務層"
@@ -211,7 +211,7 @@ graph TB
 
 ## 🛠️ MCP 工具清單
 
-本服務提供 **42 個 MCP 工具**，包含 `health_check` 與 41 個領域工具，主要分為 12 個群組；工具分類與 status page 範例由同一份 registry 生成，避免文件和實作分岔。
+本服務提供 **39 個 MCP 工具**，包含 `health_check` 與 38 個領域工具，主要分為 12 個群組；工具分類與 status page 範例由同一份 registry 生成，避免文件和實作分岔。
 
 | 群組 | 工具數 | 主要功能 |
 |------|--------|---------|

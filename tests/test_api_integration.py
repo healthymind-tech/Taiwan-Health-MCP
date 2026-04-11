@@ -44,7 +44,7 @@ _SNOMED_ID = 73211009  # Diabetes mellitus
 _ICD_PROC_CODE = "0016070"  # ICD-10-PCS procedure code
 _GUIDELINE_ICD = "E11"  # Type 2 diabetes — has seed guideline data
 
-# All 43 tool names expected when every dataset is loaded.
+# All 39 tool names expected when every dataset is loaded.
 ALL_TOOLS = {
     "health_check",
     # ICD
@@ -54,11 +54,8 @@ ALL_TOOLS = {
     "check_medical_conflict",
     "browse_icd_category",
     # Drug
-    "search_drug_info",
-    "get_drug_details",
+    "search_drug",
     "identify_unknown_pill",
-    "search_drug_by_atc",
-    "search_drug_by_ingredient",
     # Health Food
     "search_health_food",
     "get_health_food_details",
@@ -308,9 +305,9 @@ class TestToolsList:
             names == ALL_TOOLS
         ), f"Missing: {ALL_TOOLS - names}\nExtra: {names - ALL_TOOLS}"
 
-    def test_total_tool_count_is_42(self, mcp: MCPSession) -> None:
+    def test_total_tool_count_is_39(self, mcp: MCPSession) -> None:
         tools = mcp.list_tools()
-        assert len(tools) == 42
+        assert len(tools) == 39
 
     def test_every_tool_has_name_and_description(self, mcp: MCPSession) -> None:
         for tool in mcp.list_tools():
@@ -423,40 +420,38 @@ class TestBrowseIcdCategory:
 
 
 @skip_if_no_server
-class TestSearchDrugInfo:
+class TestSearchDrug:
     def test_exact(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("search_drug_info", {"keyword": "Metformin"})
+        result = mcp.call_tool("search_drug", {"mode": "drug_name", "keyword": "Metformin"})
         assert _is_success(result)
         assert _has_results(result)
+        assert result["mode"] == "drug_name"
+        assert result["keyword"] == "Metformin"
+        assert set(result["results"][0].keys()) == {
+            "license_id",
+            "name_zh",
+            "name_en",
+            "indication",
+            "usage",
+            "form",
+            "package",
+            "category",
+            "manufacturer",
+            "valid_date",
+            "ingredients",
+            "appearance",
+            "atc",
+            "insert_url",
+        }
 
     def test_fuzzy(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("search_drug_info", {"keyword": "aspirin"})
+        result = mcp.call_tool("search_drug", {"mode": "drug_name", "keyword": "aspirin"})
         assert _is_success(result)
         assert _has_results(result)
 
     def test_wrong(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("search_drug_info", {"keyword": "ZZZXYZNOTADRUG12345"})
+        result = mcp.call_tool("search_drug", {"mode": "drug_name", "keyword": "ZZZXYZNOTADRUG12345"})
         assert _is_graceful(result)
-
-
-@skip_if_no_server
-class TestGetDrugDetails:
-    def test_exact(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("get_drug_details", {"license_id": _LICENSE_ID})
-        assert _is_success(result)
-        assert result.get("license_id") == _LICENSE_ID
-
-    def test_fuzzy(self, mcp: MCPSession) -> None:
-        # Slightly malformed license ID → should return not-found error gracefully
-        result = mcp.call_tool("get_drug_details", {"license_id": "內衛成製字第000029"})
-        assert _is_graceful(result)
-
-    def test_wrong(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool(
-            "get_drug_details", {"license_id": "INVALID_LICENSE_XYZ"}
-        )
-        assert _is_graceful(result)
-        assert "error" in result
 
 
 @skip_if_no_server
@@ -481,38 +476,87 @@ class TestIdentifyUnknownPill:
 @skip_if_no_server
 class TestSearchDrugByAtc:
     def test_exact(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("search_drug_by_atc", {"query": "A10BA02"})
+        result = mcp.call_tool("search_drug", {"mode": "atc_code", "keyword": "A10BA02"})
         assert _is_success(result)
+        assert result["mode"] == "atc_code"
+        assert result["keyword"] == "A10BA02"
+        assert set(result["results"][0].keys()) == {
+            "license_id",
+            "name_zh",
+            "name_en",
+            "indication",
+            "usage",
+            "form",
+            "package",
+            "category",
+            "manufacturer",
+            "valid_date",
+            "ingredients",
+            "appearance",
+            "atc",
+            "insert_url",
+        }
 
     def test_fuzzy(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("search_drug_by_atc", {"query": "A10"})
+        result = mcp.call_tool("search_drug", {"mode": "atc_code", "keyword": "A10"})
         assert _is_success(result)
         assert _has_results(result)
 
     def test_wrong(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("search_drug_by_atc", {"query": "ZZZZZZ999"})
+        result = mcp.call_tool("search_drug", {"mode": "atc_code", "keyword": "antihypertensives"})
         assert _is_graceful(result)
 
 
 @skip_if_no_server
 class TestSearchDrugByIngredient:
     def test_exact(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool(
-            "search_drug_by_ingredient", {"ingredient_name": "metformin"}
-        )
+        result = mcp.call_tool("search_drug", {"mode": "ingredient", "keyword": "metformin"})
         assert _is_success(result)
         assert _has_results(result)
+        assert result["mode"] == "ingredient"
+        assert result["keyword"] == "metformin"
+        assert set(result["results"][0].keys()) == {
+            "license_id",
+            "name_zh",
+            "name_en",
+            "indication",
+            "usage",
+            "form",
+            "package",
+            "category",
+            "manufacturer",
+            "valid_date",
+            "ingredients",
+            "appearance",
+            "atc",
+            "insert_url",
+        }
+
+
+@skip_if_no_server
+class TestSearchDrugByLicenseId:
+    def test_exact(self, mcp: MCPSession) -> None:
+        result = mcp.call_tool("search_drug", {"mode": "license_id", "keyword": _LICENSE_ID})
+        assert _is_success(result)
+        assert result["mode"] == "license_id"
+        assert result["keyword"] == _LICENSE_ID
+        assert _has_results(result)
+        assert result["results"][0]["license_id"] == _LICENSE_ID
+
+    def test_bare_digits(self, mcp: MCPSession) -> None:
+        result = mcp.call_tool("search_drug", {"mode": "license_id", "keyword": "000029"})
+        assert _is_success(result)
+        assert result["mode"] == "license_id"
+        assert result["keyword"] == "000029"
+        assert _has_results(result)
+        assert result["results"][0]["license_id"].endswith("第000029號")
 
     def test_fuzzy(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool(
-            "search_drug_by_ingredient", {"ingredient_name": "aspirin"}
-        )
+        result = mcp.call_tool("search_drug", {"mode": "ingredient", "keyword": "aspirin"})
         assert _is_success(result)
 
     def test_wrong(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool(
-            "search_drug_by_ingredient", {"ingredient_name": "ZZZXYZNOTINGREDIENT"}
-        )
+        result = mcp.call_tool("search_drug", {"mode": "ingredient", "keyword": "ZZZXYZNOTINGREDIENT"})
         assert _is_graceful(result)
 
 

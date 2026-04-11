@@ -1205,11 +1205,8 @@ _TOOL_GROUPS: dict[str, dict[str, object]] = {
     "drug": {
         "category": "Drug",
         "tools": [
-            ("search_drug_info", "search_drug_info", {"keyword": "Metformin", "limit": 5}),
-            ("get_drug_details", "get_drug_details", {"license_id": "內衛成製字第000029號"}),
+            ("search_drug", "search_drug", {"mode": "drug_name", "keyword": "Metformin", "limit": 5}),
             ("identify_unknown_pill", "identify_unknown_pill", {"features": "white round M500"}),
-            ("search_drug_by_atc", "search_drug_by_atc", {"query": "A10BA02"}),
-            ("search_drug_by_ingredient", "search_drug_by_ingredient", {"ingredient_name": "metformin", "limit": 5}),
         ],
     },
     "rxnorm": {
@@ -2244,6 +2241,63 @@ async def browse_icd_category(category: str | None = None, limit: int = 50) -> s
 # ============================================================
 
 
+@audited("search_drug")
+async def search_drug(
+    mode: Literal["drug_name", "atc_code", "ingredient", "license_id"] = "drug_name",
+    keyword: str = "",
+    limit: int = 3,
+) -> str:
+    """
+    Search Taiwan FDA approved drugs (66,000+ licenses) by name, ATC, or ingredient.
+
+    Use this when you want a single drug search entry point. Set `mode` to
+    `drug_name` for trade name / indication search, `atc_code` for ATC code
+    prefix search, `ingredient` for active ingredient search, or `license_id`
+    for direct license number lookup.
+    `drug_name` and `ingredient` use hybrid BM25 + semantic embedding search when
+    embeddings are available. `atc_code` is code-only: it accepts ATC code
+    prefixes such as `A10` or `A10BA02` and does not use embeddings.
+    `license_id` accepts the full Taiwan FDA license string or a bare digit
+    fragment such as `000029`; bare digits are resolved to the best matching
+    license.
+    Data source: Taiwan FDA open data.
+
+    Output: returns a detail-shaped payload with a `results` list. For
+    `drug_name`, `atc_code`, and `ingredient`, the returned rows are the best
+    matches for the query. For `license_id`, the returned row is the resolved
+    license record. Every result includes `ingredients`, `appearance`, `atc`,
+    and `insert_url`, so callers do not need a second lookup for the selected
+    item.
+    The response shape is identical across search modes:
+    `{"mode", "keyword", "results"}`.
+
+    Args:
+        mode: Search mode. Use `drug_name`, `atc_code`, `ingredient`, or
+            `license_id`.
+        keyword: Search term in Chinese or English. For `atc_code`, use an ATC
+            code prefix such as `A10` or `A10BA02`. For `ingredient`, use a
+            generic/INN ingredient name. For `license_id`, use a Taiwan FDA
+            license number or bare digits such as `000029`.
+        limit: Number of closest-matching results to return (default 3, max 10).
+    """
+    if drug_service is None:
+        return _svc_unavailable("Drug Service")
+    if not keyword:
+        return _json_error("Provide keyword")
+    if mode == "drug_name":
+        return await drug_service.search_drug(keyword, limit=limit)
+    if mode == "atc_code":
+        import re
+        if not re.fullmatch(r"[A-Za-z][A-Za-z0-9]{1,6}", keyword):
+            return _json_error("ATC code mode accepts ATC code prefixes only (e.g. A10, A10BA02).")
+        return await drug_service.search_by_atc(keyword, limit=limit)
+    if mode == "ingredient":
+        return await drug_service.search_by_ingredient(keyword, limit=limit)
+    if mode == "license_id":
+        return await drug_service.search_by_license_id(keyword)
+    return _json_error("Provide mode as drug_name, atc_code, ingredient, or license_id")
+
+
 @audited("search_drug_info")
 async def search_drug_info(keyword: str, limit: int = 3) -> str:
     """
@@ -2251,7 +2305,8 @@ async def search_drug_info(keyword: str, limit: int = 3) -> str:
 
     Searches across Chinese trade name, English trade name, generic ingredient name,
     and indication fields using hybrid BM25 + semantic similarity (vector search).
-    Use get_drug_details to retrieve full information for a specific result.
+    Use `search_drug(mode="license_id", keyword=...)` to retrieve full information
+    for a specific license.
     Data source: Taiwan FDA open data.
 
     Output: returns the top `limit` results ranked by semantic similarity score,
@@ -2266,27 +2321,6 @@ async def search_drug_info(keyword: str, limit: int = 3) -> str:
     if drug_service is None:
         return _svc_unavailable("Drug Service")
     return await drug_service.search_drug(keyword, limit=limit)
-
-
-@audited("get_drug_details")
-async def get_drug_details(license_id: str) -> str:
-    """
-    Get full details for a Taiwan FDA drug license: ingredients, dosage, usage, appearance.
-
-    Returns all available fields for the license: trade name (Chinese/English),
-    manufacturer, drug category, active ingredients with strengths, dosage form,
-    administration route, indication, usage instructions, appearance description
-    (color/shape/markings), ATC classification, and package insert URL.
-    Applies fuzzy license ID matching — bare numbers or partial IDs are accepted.
-
-    Args:
-        license_id: Taiwan FDA drug license ID from search_drug_info results
-                    (e.g., '衛部藥製字第059686號'). Partial or numeric-only IDs
-                    are also accepted (e.g., '058498').
-    """
-    if drug_service is None:
-        return _svc_unavailable("Drug Service")
-    return await drug_service.get_drug_details_by_license(license_id)
 
 
 @audited("identify_unknown_pill")
@@ -2310,54 +2344,6 @@ async def identify_unknown_pill(features: str) -> str:
     if drug_service is None:
         return _svc_unavailable("Drug Service")
     return await drug_service.identify_pill(features)
-
-
-@audited("search_drug_by_atc")
-async def search_drug_by_atc(query: str, limit: int = 3) -> str:
-    """
-    Search Taiwan FDA approved drugs by WHO ATC code or therapeutic class name.
-
-    The ATC (Anatomical Therapeutic Chemical) classification organises drugs by
-    therapeutic use and chemical properties. Supports prefix search on ATC codes
-    and uses hybrid BM25 + semantic similarity for class name queries — so
-    '降血糖' also surfaces 'Biguanides' and related ATC categories.
-
-    Output: returns the top `limit` results ranked by semantic similarity score,
-    not keyword-filtered records. Results are the most similar ATC-mapped drugs
-    found in the database, not only drugs whose ATC name contains the exact term.
-
-    Args:
-        query: ATC code prefix (e.g., 'A10' for diabetes drugs, 'C09' for ACE
-               inhibitors/ARBs, 'N02BE' for paracetamol) or class name in Chinese
-               or English (e.g., '降血糖', 'antihypertensives', 'statins').
-        limit: Number of closest-matching results to return (default 3, max 10).
-    """
-    if drug_service is None:
-        return _svc_unavailable("Drug Service")
-    return await drug_service.search_by_atc(query, limit=limit)
-
-
-@audited("search_drug_by_ingredient")
-async def search_drug_by_ingredient(ingredient_name: str, limit: int = 3) -> str:
-    """
-    Find Taiwan FDA approved drugs that contain a specific active ingredient.
-
-    Uses hybrid BM25 + semantic similarity — e.g., '二甲雙胍' also surfaces
-    drugs with ingredient 'Metformin Hydrochloride'.
-
-    Output: returns the top `limit` results ranked by semantic similarity score,
-    not keyword-filtered records. Results are the most similar ingredient-matched
-    drugs in the database, not only drugs whose ingredient name contains the exact term.
-
-    Args:
-        ingredient_name: Active ingredient in Chinese or English, generic or INN name
-                         (e.g., 'metformin', '二甲雙胍', 'aspirin', '阿斯匹林',
-                          'atorvastatin', '阿托伐他汀').
-        limit: Number of closest-matching results to return (default 3, max 10).
-    """
-    if drug_service is None:
-        return _svc_unavailable("Drug Service")
-    return await drug_service.search_by_ingredient(ingredient_name, limit=limit)
 
 
 # ============================================================

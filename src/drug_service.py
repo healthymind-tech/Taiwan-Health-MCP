@@ -204,7 +204,7 @@ class DrugService:
 
     # ── query methods ────────────────────────────────────────────────────────
 
-    @cached(ttl=3600, prefix="drug.search")
+    @cached(ttl=3600, prefix="drug.search.v3")
     async def search_drug(self, keyword: str, limit: int = 3) -> str:
         """Search Taiwan FDA approved drugs by name or indication keyword.
 
@@ -219,54 +219,146 @@ class DrugService:
             JSON string with a ``results`` list of the closest matching license records.
         """
         limit = min(max(1, limit), 10)
-        vec = await self._embedding_svc.embed(keyword) if self._embedding_svc else None
-        vec_str = f"[{','.join(str(x) for x in vec)}]" if vec else None
-
         async with self.pool.acquire() as conn:
-            if vec_str:
-                rows = await conn.fetch(
-                    """WITH fts AS (
-                           SELECT l.license_id,
-                                  ROW_NUMBER() OVER (ORDER BY ts_rank_cd(
-                                      to_tsvector('simple', COALESCE(l.name_zh,'') || ' ' ||
-                                                            COALESCE(l.name_en,'') || ' ' ||
-                                                            COALESCE(l.indication,'')),
-                                      plainto_tsquery('simple', $1)) DESC) AS rank
-                           FROM drug.licenses l
-                           WHERE to_tsvector('simple',
-                                   COALESCE(l.name_zh,'') || ' ' || COALESCE(l.name_en,'') || ' ' || COALESCE(l.indication,''))
-                                 @@ plainto_tsquery('simple', $1)
-                           LIMIT 20
-                       ),
-                       vec AS (
-                           SELECT license_id,
-                                  ROW_NUMBER() OVER (ORDER BY embedding <=> $2::halfvec) AS rank
-                           FROM drug.license_embeddings
-                           ORDER BY embedding <=> $2::halfvec LIMIT 20
-                       ),
-                       rrf AS (
-                           SELECT COALESCE(f.license_id, v.license_id) AS license_id,
-                                  COALESCE(1.0/(60+f.rank), 0.0) + COALESCE(1.0/(60+v.rank), 0.0) AS score
-                           FROM fts f FULL OUTER JOIN vec v ON f.license_id = v.license_id
-                       )
-                       SELECT l.license_id, l.name_zh, l.name_en, l.indication, l.category
-                       FROM rrf JOIN drug.licenses l ON l.license_id = rrf.license_id
-                       ORDER BY rrf.score DESC LIMIT $3""",
-                    keyword, vec_str, limit,
-                )
-            else:
-                rows = await conn.fetch(
-                    """SELECT license_id, name_zh, name_en, indication, category
-                       FROM drug.licenses
-                       WHERE to_tsvector('simple',
-                               COALESCE(name_zh,'') || ' ' || COALESCE(name_en,'') || ' ' || COALESCE(indication,''))
-                             @@ plainto_tsquery('simple', $1)
-                       LIMIT $2""",
-                    keyword, limit,
-                )
+            rows = await conn.fetch(
+                """SELECT DISTINCT l.license_id
+                   FROM drug.licenses l
+                   WHERE to_tsvector('simple',
+                           COALESCE(l.name_zh,'') || ' ' || COALESCE(l.name_en,'') || ' ' || COALESCE(l.indication,''))
+                         @@ plainto_tsquery('simple', $1)
+                   ORDER BY l.license_id
+                   LIMIT $2""",
+                keyword, limit,
+            )
         if not rows:
-            return json.dumps({"error": f"No results found for '{keyword}'.", "results": []}, ensure_ascii=False)
-        return json.dumps({"results": [dict(r) for r in rows]}, ensure_ascii=False)
+            return json.dumps({"mode": "drug_name", "keyword": keyword, "results": []}, ensure_ascii=False)
+        return await self._build_drug_detail_results("drug_name", keyword, rows)
+
+    @cached(ttl=3600, prefix="drug.license.v2")
+    async def search_by_license_id(self, license_id: str) -> str:
+        """Return a detail-shaped payload for a specific license ID."""
+        async with self.pool.acquire() as conn:
+            lic, candidates = await self._fuzzy_license_lookup(conn, license_id)
+            if candidates:
+                return json.dumps(
+                    {
+                        "mode": "license_id",
+                        "keyword": license_id,
+                        "results": [],
+                        "error": f"找不到精確匹配 '{license_id}'，找到多筆相似許可證，請確認後重新查詢。",
+                    },
+                    ensure_ascii=False,
+                )
+            if not lic:
+                return json.dumps(
+                    {"mode": "license_id", "keyword": license_id, "results": []},
+                    ensure_ascii=False,
+                )
+        return await self._build_drug_detail_results("license_id", license_id, [lic])
+
+    async def _build_drug_detail_results(
+        self,
+        mode: str,
+        keyword: str,
+        rows: list[asyncpg.Record],
+    ) -> str:
+        license_ids = [r["license_id"] for r in rows]
+        async with self.pool.acquire() as conn:
+            licenses = await conn.fetch(
+                """
+                SELECT license_id, name_zh, name_en, indication, usage, form, package,
+                       category, manufacturer, valid_date
+                FROM drug.licenses
+                WHERE license_id = ANY($1::text[])
+                """,
+                license_ids,
+            )
+            app_rows = await conn.fetch(
+                """
+                SELECT license_id, shape, color, marking, image_url
+                FROM drug.appearance
+                WHERE license_id = ANY($1::text[])
+                """,
+                license_ids,
+            )
+            atc_rows = await conn.fetch(
+                """
+                SELECT license_id, atc_code, atc_name
+                FROM drug.atc
+                WHERE license_id = ANY($1::text[])
+                ORDER BY license_id, atc_code
+                """,
+                license_ids,
+            )
+            doc_rows = await conn.fetch(
+                """
+                SELECT license_id, doc_url
+                FROM drug.documents
+                WHERE license_id = ANY($1::text[])
+                  AND doc_type = 'insert'
+                """,
+                license_ids,
+            )
+            ingredients = await conn.fetch(
+                """
+                SELECT license_id, ingredient_name, ingredient_qty, ingredient_unit
+                FROM drug.ingredients
+                WHERE license_id = ANY($1::text[])
+                ORDER BY license_id, ingredient_name
+                """,
+                license_ids,
+            )
+        by_license: dict[str, list[dict]] = {}
+        for row in ingredients:
+            by_license.setdefault(row["license_id"], []).append(
+                {
+                    "ingredient_name": row["ingredient_name"],
+                    "ingredient_qty": row["ingredient_qty"],
+                    "ingredient_unit": row["ingredient_unit"],
+                }
+            )
+        app_by_license = {
+            row["license_id"]: {
+                "shape": row["shape"],
+                "color": row["color"],
+                "marking": row["marking"],
+                "image_url": row["image_url"],
+            }
+            for row in app_rows
+        }
+        atc_by_license: dict[str, list[dict]] = {}
+        for row in atc_rows:
+            atc_by_license.setdefault(row["license_id"], []).append(
+                {
+                    "atc_code": row["atc_code"],
+                    "atc_name": row["atc_name"],
+                }
+            )
+        doc_by_license = {row["license_id"]: row["doc_url"] for row in doc_rows}
+        results = []
+        licenses_by_id = {r["license_id"]: r for r in licenses}
+        for r in rows:
+            lic = licenses_by_id.get(r["license_id"])
+            if not lic:
+                continue
+            item = {
+                "license_id": r["license_id"],
+                "name_zh": lic["name_zh"],
+                "name_en": lic["name_en"],
+                "indication": lic["indication"],
+                "usage": lic["usage"],
+                "form": lic["form"],
+                "package": lic["package"],
+                "category": lic["category"],
+                "manufacturer": lic["manufacturer"],
+                "valid_date": lic["valid_date"],
+                "ingredients": by_license.get(r["license_id"], []),
+                "appearance": app_by_license.get(r["license_id"], {}),
+                "atc": atc_by_license.get(r["license_id"], []),
+                "insert_url": doc_by_license.get(r["license_id"]),
+            }
+            results.append(item)
+        return json.dumps({"mode": mode, "keyword": keyword, "results": results}, ensure_ascii=False)
 
     @cached(ttl=3600, prefix="drug.details")
     async def _fuzzy_license_lookup(self, conn, license_id: str):
@@ -286,6 +378,24 @@ class DrugService:
         if lic:
             return lic, []
 
+        # 3. Extract consecutive digits and retry
+        digits = re.search(r"\d+", license_id)
+        if digits:
+            digit_text = digits.group()
+            rows = await conn.fetch(
+                "SELECT * FROM drug.licenses WHERE license_id ILIKE $1 ORDER BY license_id LIMIT 50",
+                f"%{digit_text}%",
+            )
+            if len(rows) == 1:
+                return rows[0], []
+            if len(rows) > 1:
+                exact_digit_rows = [r for r in rows if f"第{digit_text}號" in r["license_id"]]
+                if len(exact_digit_rows) == 1:
+                    return exact_digit_rows[0], []
+                if len(exact_digit_rows) > 1:
+                    return exact_digit_rows[0], []
+                return rows[0], []
+
         # 2. ILIKE on full input (e.g. user typed '衛署藥製字第058498號')
         rows = await conn.fetch(
             "SELECT * FROM drug.licenses WHERE license_id ILIKE $1 LIMIT 6",
@@ -295,18 +405,6 @@ class DrugService:
             return rows[0], []
         if len(rows) > 1:
             return None, list(rows)
-
-        # 3. Extract consecutive digits and retry
-        digits = re.search(r"\d+", license_id)
-        if digits:
-            rows = await conn.fetch(
-                "SELECT * FROM drug.licenses WHERE license_id ILIKE $1 LIMIT 6",
-                f"%{digits.group()}%",
-            )
-            if len(rows) == 1:
-                return rows[0], []
-            if len(rows) > 1:
-                return None, list(rows)
 
         return None, []
 
@@ -427,92 +525,44 @@ class DrugService:
             ensure_ascii=False,
         )
 
-    @cached(ttl=3600, prefix="drug.byatc")
+    @cached(ttl=3600, prefix="drug.byatc.v4")
     async def search_by_atc(self, query: str, limit: int = 3) -> str:
         """Search Taiwan FDA drugs by WHO ATC code or therapeutic class name.
 
-        Matches ATC code prefix (e.g. ``"A10BA"``) or uses hybrid BM25 +
-        semantic similarity on ATC class names (e.g. ``"降血糖"``).
-        Returns top *limit* closest matching drug records (default 3, max 10).
+        Matches ATC code prefix (e.g. ``"A10BA"``). This mode is code-only:
+        it does not use semantic embedding, and non-code text should be routed
+        to the ``drug_name`` or ``ingredient`` modes instead.
+        Returns top *limit* matching drug records (default 3, max 10).
 
         Args:
-            query: ATC code prefix or therapeutic class name keyword.
+            query: ATC code prefix (e.g. ``"A10BA02"`` or ``"A10"``).
             limit: Number of closest matches to return (default 3, max 10).
 
         Returns:
-            JSON string with ``query``, ``total``, and ``results`` list.
+            JSON string with ``mode``, ``keyword``, and ``results`` list.
         """
         limit = min(max(1, limit), 10)
-        vec = await self._embedding_svc.embed(query) if self._embedding_svc else None
-        vec_str = f"[{','.join(str(x) for x in vec)}]" if vec else None
-
-        async with self.pool.acquire() as conn:
-            if vec_str:
-                rows = await conn.fetch(
-                    """WITH fts_atc AS (
-                           SELECT DISTINCT a.atc_code,
-                                  ROW_NUMBER() OVER (ORDER BY MAX(ts_rank_cd(
-                                      to_tsvector('simple', COALESCE(a.atc_name,'')),
-                                      plainto_tsquery('simple', $1))) DESC) AS rank
-                           FROM drug.atc a
-                           WHERE a.atc_code ILIKE $2
-                              OR to_tsvector('simple', COALESCE(a.atc_name,'')) @@ plainto_tsquery('simple', $1)
-                           GROUP BY a.atc_code
-                           LIMIT 20
-                       ),
-                       vec_atc AS (
-                           SELECT atc_code,
-                                  ROW_NUMBER() OVER (ORDER BY embedding <=> $3::halfvec) AS rank
-                           FROM drug.atc_embeddings
-                           ORDER BY embedding <=> $3::halfvec LIMIT 20
-                       ),
-                       rrf_atc AS (
-                           SELECT COALESCE(f.atc_code, v.atc_code) AS atc_code,
-                                  COALESCE(1.0/(60+f.rank), 0.0) + COALESCE(1.0/(60+v.rank), 0.0) AS score
-                           FROM fts_atc f FULL OUTER JOIN vec_atc v ON f.atc_code = v.atc_code
-                       )
-                       SELECT * FROM (
-                           SELECT DISTINCT ON (l.license_id)
-                                  l.license_id, l.name_zh, l.name_en, l.indication, l.category,
-                                  a.atc_code, a.atc_name, r.score
-                           FROM rrf_atc r
-                           JOIN drug.atc a ON a.atc_code = r.atc_code
-                           JOIN drug.licenses l ON l.license_id = a.license_id
-                           ORDER BY l.license_id, r.score DESC
-                       ) sub
-                       ORDER BY score DESC LIMIT $4""",
-                    query, f"{query}%", vec_str, limit,
-                )
-            else:
-                rows = await conn.fetch(
-                    """SELECT DISTINCT l.license_id, l.name_zh, l.name_en, l.indication, l.category,
-                              a.atc_code, a.atc_name
-                       FROM drug.atc a
-                       JOIN drug.licenses l ON l.license_id = a.license_id
-                       WHERE a.atc_code ILIKE $1
-                          OR to_tsvector('simple', COALESCE(a.atc_name,'')) @@ plainto_tsquery('simple', $2)
-                       ORDER BY a.atc_code, l.name_zh
-                       LIMIT $3""",
-                    f"{query}%", query, limit,
-                )
-        if not rows:
+        if not re.fullmatch(r"[A-Za-z][A-Za-z0-9]{1,6}", query):
             return json.dumps(
-                {"error": f"找不到與 ATC '{query}' 相關的藥品。", "results": []},
+                {"error": "ATC mode accepts ATC code prefixes only (e.g. A10, A10BA02)."},
                 ensure_ascii=False,
             )
-        def _row_atc(r):
-            d = dict(r)
-            if "score" in d and d["score"] is not None:
-                d["score"] = float(d["score"])
-            return d
 
-        return json.dumps(
-            {"query": query, "total": len(rows),
-             "results": [_row_atc(r) for r in rows]},
-            ensure_ascii=False,
-        )
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch(
+                """SELECT DISTINCT ON (l.license_id) l.license_id
+                   FROM drug.atc a
+                   JOIN drug.licenses l ON l.license_id = a.license_id
+                   WHERE a.atc_code ILIKE $1
+                   ORDER BY l.license_id, a.atc_code
+                   LIMIT $2""",
+                f"{query}%", limit,
+            )
+        if not rows:
+            return json.dumps({"mode": "atc_code", "keyword": query, "results": []}, ensure_ascii=False)
+        return await self._build_drug_detail_results("atc_code", query, rows)
 
-    @cached(ttl=3600, prefix="drug.bying")
+    @cached(ttl=3600, prefix="drug.bying.v3")
     async def search_by_ingredient(self, ingredient_name: str, limit: int = 3) -> str:
         """Search Taiwan FDA drugs that contain a specific active ingredient.
 
@@ -582,18 +632,5 @@ class DrugService:
                     f"%{ingredient_name}%", limit,
                 )
         if not rows:
-            return json.dumps(
-                {"error": f"找不到含有 '{ingredient_name}' 成分的藥品。", "results": []},
-                ensure_ascii=False,
-            )
-        def _row_ing(r):
-            d = dict(r)
-            if "score" in d and d["score"] is not None:
-                d["score"] = float(d["score"])
-            return d
-
-        return json.dumps(
-            {"ingredient": ingredient_name, "total": len(rows),
-             "results": [_row_ing(r) for r in rows]},
-            ensure_ascii=False,
-        )
+            return json.dumps({"mode": "ingredient", "keyword": ingredient_name, "results": []}, ensure_ascii=False)
+        return await self._build_drug_detail_results("ingredient", ingredient_name, rows)

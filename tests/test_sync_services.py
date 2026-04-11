@@ -246,8 +246,8 @@ class TestDrugServiceFuzzyLicenseLookup:
         assert "error" not in result or "candidates" not in result
 
     @pytest.mark.asyncio
-    async def test_fuzzy_multiple_hits_returns_candidates(self):
-        """Fuzzy returns >1 rows → return candidates list, not auto-resolve."""
+    async def test_fuzzy_multiple_hits_autoresolves_bare_digits(self):
+        """Bare digits should auto-resolve to one best candidate."""
         from drug_service import DrugService
 
         row1 = self._make_license_row(license_id="衛部藥製字第058774號", name_zh="藥品A")
@@ -270,8 +270,50 @@ class TestDrugServiceFuzzyLicenseLookup:
 
         svc = DrugService(pool)
         result = json.loads(await svc.get_drug_details_by_license("058774"))
-        assert "candidates" in result
-        assert len(result["candidates"]) == 2
+        assert "candidates" not in result
+        assert result["license_id"] == "衛部藥製字第058774號"
+
+    @pytest.mark.asyncio
+    async def test_search_by_license_id_bare_digits_autoresolves(self):
+        """Bare digit license lookup should resolve through search_by_license_id."""
+        from drug_service import DrugService
+
+        row = self._make_license_row(license_id="內衛成製字第000029號", name_zh="藥品C")
+        ingredient_row = MagicMock()
+        ingredient_row.__getitem__.side_effect = lambda k: {
+            "license_id": "內衛成製字第000029號",
+            "ingredient_name": "acetaminophen",
+            "ingredient_qty": "500",
+            "ingredient_unit": "mg",
+        }[k]
+        conn = _make_conn_mock()
+
+        async def fetchrow_side(query, *args):
+            return None
+
+        async def fetch_side(query, *args):
+            if "FROM drug.licenses" in query:
+                return [row]
+            if "FROM drug.ingredients" in query:
+                return [ingredient_row]
+            if "FROM drug.appearance" in query:
+                return []
+            if "FROM drug.atc" in query:
+                return []
+            if "FROM drug.documents" in query:
+                return []
+            return []
+
+        conn.fetchrow = AsyncMock(side_effect=fetchrow_side)
+        conn.fetch = AsyncMock(side_effect=fetch_side)
+        pool = _make_pool_mock(conn)
+        pool.fetchval = AsyncMock(return_value=10)
+
+        svc = DrugService(pool)
+        result = json.loads(await svc.search_by_license_id("000029"))
+        assert result["mode"] == "license_id"
+        assert result["keyword"] == "000029"
+        assert result["results"][0]["license_id"] == "內衛成製字第000029號"
 
     @pytest.mark.asyncio
     async def test_no_match_returns_error(self):

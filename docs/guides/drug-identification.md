@@ -30,11 +30,11 @@ identify_unknown_pill(features="白色 橢圓形 STD")
 **呼叫範例**：
 ```python
 # 1. 查原廠藥
-search_drug_info(keyword="Norvasc")
-get_drug_details(license_id="...") # 取得成分 Amlodipine
+search_drug(mode="drug_name", keyword="Norvasc")
+search_drug(mode="license_id", keyword="...") # 取得成分 Amlodipine
 
 # 2. 查同成分藥品
-search_drug_info(keyword="Amlodipine")
+search_drug(mode="drug_name", keyword="Amlodipine")
 ```
 
 **結果應用**：
@@ -49,7 +49,7 @@ search_drug_info(keyword="Amlodipine")
 
 **呼叫範例**：
 ```python
-get_drug_details(license_id="衛署藥製字第XXXXXX號")
+search_drug(mode="license_id", keyword="衛署藥製字第XXXXXX號")
 ```
 
 **結果應用**：

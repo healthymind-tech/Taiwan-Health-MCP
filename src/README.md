@@ -55,8 +55,8 @@
 **資料來源**: `drug.*`（PostgreSQL），從台灣 FDA Open Data API 同步
 
 **主要方法**:
-- `search_drug(keyword)` — FTS 搜尋藥品名稱/適應症
-- `get_drug_details_by_license(license_id)` — 完整藥品資訊（含模糊匹配三層解析）
+- `search_drug(mode, keyword)` — 藥名、ATC code 前綴、成分搜尋藥品
+- `search_drug(mode, keyword)` — 完整藥品摘要（含 license_id / bare digits 解析）
 - `identify_pill(features)` — 依外觀識別藥錠
 - `search_by_atc(query)` — 依 ATC 代碼或藥理分類搜尋
 - `search_by_ingredient(ingredient_name)` — 依有效成分搜尋
