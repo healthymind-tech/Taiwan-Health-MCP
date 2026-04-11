@@ -3199,7 +3199,7 @@
 <h1 id="_1">專案結構<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h1>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>.
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>├── src/                        # MCP server 與所有 service 模組
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>│   ├── server.py               # 入口點，DynamicFastMCP + 56 個 MCP 工具定義
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>│   ├── server.py               # 入口點，DynamicFastMCP + 工具 registry / 動態註冊
 </span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>│   ├── dataset_status.py       # DatasetStatusManager — 動態工具啟用/停用（5 分鐘 TTL）
 </span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>│   ├── *_service.py            # ICD / Drug / Lab / Guideline / SNOMED / TWCore 等服務
 </span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>│   ├── database.py             # asyncpg pool 單例
@@ -3237,7 +3237,7 @@
 <ul>
 <li><strong>Services</strong> (<code>src/*_service.py</code>)：封裝查詢、FHIR 轉換、FDA 同步與術語邏輯。</li>
 <li><strong>Infrastructure</strong> (<code>database.py</code>、<code>cache.py</code>、<code>audit.py</code>、<code>metrics.py</code>)：處理 PostgreSQL、Redis、稽核與監控。</li>
-<li><strong>MCP Entry</strong> (<code>src/server.py</code>)：定義工具函式、初始化服務、管理 transport 與 HTTP 錯誤 logging；<code>DynamicFastMCP</code> 子類覆寫 <code>list_tools</code> 以觸發動態工具同步。</li>
+<li><strong>MCP Entry</strong> (<code>src/server.py</code>)：定義工具函式、初始化服務、管理 transport 與 HTTP 錯誤 logging；<code>DynamicFastMCP</code> 子類覆寫 <code>list_tools</code> 以觸發動態工具同步。工具分類、範例參數與 dataset-gating 由同一份 registry 衍生，避免手動同步。</li>
 <li><strong>Dataset Status</strong> (<code>src/dataset_status.py</code>)：查詢各 schema 的資料量，與門檻比對後透過 <code>add_tool</code>/<code>remove_tool</code> 動態控制工具可見性；快取 5 分鐘。</li>
 <li><strong>Data Loader</strong> (<code>loader/</code>)：負責將靜態術語資料與 FDA API 資料寫入 PostgreSQL。</li>
 </ul>
