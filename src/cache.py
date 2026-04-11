@@ -65,11 +65,14 @@ def cached(ttl: int = 3600, prefix: str = "") -> Callable:
         async def search_codes(keyword: str) -> str:
             ...
     """
+
     def decorator(func: Callable) -> Callable:
         @functools.wraps(func)
         async def wrapper(*args: Any, **kwargs: Any) -> Any:
             ns = prefix or func.__qualname__
-            key_data = json.dumps({"a": args[1:], "k": kwargs}, sort_keys=True, default=str)
+            key_data = json.dumps(
+                {"a": args[1:], "k": kwargs}, sort_keys=True, default=str
+            )
             digest = hashlib.sha256(key_data.encode()).hexdigest()[:16]
             cache_key = f"mcp:{ns}:{digest}"
 
@@ -94,6 +97,7 @@ def cached(ttl: int = 3600, prefix: str = "") -> Callable:
                 return await func(*args, **kwargs)
 
         return wrapper
+
     return decorator
 
 

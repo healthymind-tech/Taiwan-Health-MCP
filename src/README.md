@@ -8,10 +8,10 @@
 
 | 檔案 | 服務 | MCP 工具數 |
 |------|------|-----------|
-| `server.py` | 入口點（`mcp` SDK DynamicFastMCP + lifespan） | 最多 56 |
+| `server.py` | 入口點（`mcp` SDK DynamicFastMCP + lifespan） | 最多 37 |
 | `icd_service.py` | ICD-10-CM/PCS 診斷與手術碼 | 5 |
 | `drug_service.py` | 台灣 FDA 藥品 | 5 |
-| `health_food_service.py` | 台灣 FDA 健康食品 | 3 |
+| `health_supplement_service.py` | 台灣 FDA 健康補充品 | 1 |
 | `food_nutrition_service.py` | 食品營養成分 | 6 |
 | `fhir_condition_service.py` | FHIR R4 Condition | 3 |
 | `fhir_medication_service.py` | FHIR R4 Medication | 4 |
@@ -73,14 +73,14 @@
 
 ---
 
-## 3. Health Food Service（`health_food_service.py`）
+## 3. Health Supplement Service（`health_supplement_service.py`）
 
-**資料來源**: `health_food.items`（PostgreSQL），從 FDA Open Data 同步
+**資料來源**: `health_supplement.items`（PostgreSQL），從 FDA Open Data 同步
 
 **主要方法**:
-- `search_health_food(keyword)` — 搜尋核可健康食品
-- `get_health_food_details(permit_no)` — 詳細資訊
-- `analyze_health_support_for_condition(diagnosis_keyword, icd_service)` — 疾病-保健食品分析
+- `search_health_supplement(mode="keyword", keyword)` — 依產品、功效搜尋
+- `search_health_supplement(mode="permit_no", keyword)` — 許可證號 / digits-only 查詢
+- `search_health_supplement(mode="condition", keyword)` — 疾病情境推薦
 
 **排程**: 每週一 02:30 UTC
 
@@ -149,6 +149,12 @@
 
 **主要方法**:
 - `search_guideline(keyword)` — 指引搜尋
+- `query_guideline(icd_code, section)` — 統一指引入口
+  - `complete`：完整摘要
+  - `medication`：用藥建議
+  - `test`：檢查建議
+  - `goals`：治療目標
+  - `pathway`：臨床路徑
 - `get_complete_guideline(icd_code)` — 完整指引
 - `get_medication_recommendations(icd_code)` — 用藥建議
 - `get_test_recommendations(icd_code)` — 建議檢查

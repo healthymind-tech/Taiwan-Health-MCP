@@ -56,10 +56,8 @@ ALL_TOOLS = {
     # Drug
     "search_drug",
     "identify_unknown_pill",
-    # Health Food
-    "search_health_food",
-    "get_health_food_details",
-    "analyze_health_support_for_condition",
+    # Health Supplement
+    "search_health_supplement",
     # Food Nutrition
     "search_food_nutrition",
     "get_detailed_nutrition",
@@ -305,9 +303,9 @@ class TestToolsList:
             names == ALL_TOOLS
         ), f"Missing: {ALL_TOOLS - names}\nExtra: {names - ALL_TOOLS}"
 
-    def test_total_tool_count_is_39(self, mcp: MCPSession) -> None:
+    def test_total_tool_count_is_37(self, mcp: MCPSession) -> None:
         tools = mcp.list_tools()
-        assert len(tools) == 39
+        assert len(tools) == 37
 
     def test_every_tool_has_name_and_description(self, mcp: MCPSession) -> None:
         for tool in mcp.list_tools():
@@ -561,67 +559,37 @@ class TestSearchDrugByLicenseId:
 
 
 # ---------------------------------------------------------------------------
-# Group 3: Health Food
+# Group 3: Health Supplement
 # ---------------------------------------------------------------------------
 
 
 @skip_if_no_server
-class TestSearchHealthFood:
+class TestSearchHealthSupplement:
     def test_exact(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("search_health_food", {"keyword": "調節血脂"})
+        result = mcp.call_tool("search_health_supplement", {"mode": "keyword", "keyword": "調節血脂"})
         assert _is_success(result)
         assert _has_results(result)
 
     def test_fuzzy(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("search_health_food", {"keyword": "魚油"})
+        result = mcp.call_tool("search_health_supplement", {"mode": "keyword", "keyword": "魚油"})
         assert _is_success(result)
 
     def test_wrong(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("search_health_food", {"keyword": "ZZZXYZNOTFOOD99999"})
+        result = mcp.call_tool("search_health_supplement", {"mode": "keyword", "keyword": "ZZZXYZNOTFOOD99999"})
         assert _is_graceful(result)
-
-
-@skip_if_no_server
-class TestGetHealthFoodDetails:
-    def test_exact(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("get_health_food_details", {"permit_no": _PERMIT_NO})
-        assert _is_success(result)
-        assert result.get("permit_no") == _PERMIT_NO
-
-    def test_fuzzy(self, mcp: MCPSession) -> None:
-        # Missing trailing character → not found
-        result = mcp.call_tool(
-            "get_health_food_details", {"permit_no": "衛署健食字第A00022"}
-        )
-        assert _is_graceful(result)
-
-    def test_wrong(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool(
-            "get_health_food_details", {"permit_no": "INVALID_PERMIT_XYZ"}
-        )
-        assert _is_graceful(result)
-        assert "error" in result
-
 
 @skip_if_no_server
 class TestAnalyzeHealthSupportForCondition:
     def test_exact(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool(
-            "analyze_health_support_for_condition", {"diagnosis_keyword": "E11"}
-        )
+        result = mcp.call_tool("search_health_supplement", {"mode": "condition", "keyword": "E11"})
         assert _is_success(result)
 
     def test_fuzzy(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool(
-            "analyze_health_support_for_condition", {"diagnosis_keyword": "糖尿病"}
-        )
+        result = mcp.call_tool("search_health_supplement", {"mode": "condition", "keyword": "糖尿病"})
         assert _is_success(result)
 
     def test_wrong(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool(
-            "analyze_health_support_for_condition",
-            {"diagnosis_keyword": "ZZZXYZNOTDISEASE"},
-        )
+        result = mcp.call_tool("search_health_supplement", {"mode": "condition", "keyword": "ZZZXYZNOTDISEASE"})
         assert _is_graceful(result)
 
 

@@ -19,22 +19,27 @@ Sheets used: "ICD-10-CM" (col A=code, col D=中文名稱)
 import glob
 import os
 import re
-import zipfile
 import xml.etree.ElementTree as ET
+import zipfile
 from typing import Iterator, Tuple
 
 import asyncpg
 
-
 # ── Chinese name map from Taiwan MOHW Excel ─────────────────────────────────
 
-def parse_icd_chinese_xlsx(xlsx_path: str) -> tuple[dict[str, str], dict[str, str]]:
-    """
-    Parse the Taiwan MOHW bilingual ICD-10 Excel file.
-    Returns (cm_zh, pcs_zh) — dicts mapping code → Chinese name.
 
-    Sheet "ICD-10-CM":  col 0 = code (with dots, e.g. A00.0), col 3 = 中文名稱
-    Sheet "ICD-10-PCS": col 0 = code (7-char, e.g. 0016070), col 3 = 中文名稱
+def parse_icd_chinese_xlsx(xlsx_path: str) -> tuple[dict[str, str], dict[str, str]]:
+    """Parse the Taiwan MOHW bilingual ICD-10 Excel file.
+
+    Reads sheet ``"ICD-10-CM"`` (col 0 = code, col 3 = 中文名稱) and
+    ``"ICD-10-PCS"`` (col 0 = 7-char code, col 3 = 中文名稱).
+
+    Args:
+        xlsx_path: Path to the MOHW bilingual Excel file.
+
+    Returns:
+        A 2-tuple ``(cm_zh, pcs_zh)`` where each element is a dict mapping
+        ICD code string to its Chinese name.
     """
     try:
         import openpyxl
@@ -62,13 +67,14 @@ def parse_icd_chinese_xlsx(xlsx_path: str) -> tuple[dict[str, str], dict[str, st
                 result[code.strip()] = name_zh.strip()
         return result
 
-    cm_zh  = _read_sheet("ICD-10-CM")
+    cm_zh = _read_sheet("ICD-10-CM")
     pcs_zh = _read_sheet("ICD-10-PCS")
     print(f"  Chinese names loaded: {len(cm_zh)} CM, {len(pcs_zh)} PCS")
     return cm_zh, pcs_zh
 
 
 # ── ICD-10-CM ───────────────────────────────────────────────────────────────
+
 
 def _parse_xml(data: bytes) -> Iterator[Tuple[str, str, str]]:
     """Yield (code, name_en, name_zh) from NLM tabular XML."""
@@ -100,9 +106,9 @@ def _parse_order_txt(data: bytes) -> Iterator[Tuple[str, str, str]]:
     for line in data.decode("utf-8", errors="replace").splitlines():
         if len(line) < 77:
             continue
-        code      = line[6:13].strip()
+        code = line[6:13].strip()
         is_header = line[14].strip()
-        if is_header == "1":   # header rows don't have billable codes
+        if is_header == "1":  # header rows don't have billable codes
             continue
         long_desc = line[77:].strip()
         if code and re.match(r"^[A-Z]\d", code):
@@ -114,14 +120,27 @@ async def load_icd10cm(
     zip_path: str,
     name_zh_map: dict[str, str] | None = None,
 ) -> None:
+    """Load ICD-10-CM 2025 codes from the NLM ZIP into ``icd.diagnoses``.
+
+    Prefers the tabular XML; falls back to the flat order TXT if XML is absent.
+
+    Args:
+        pool: asyncpg connection pool.
+        zip_path: Path to ``icd10cm-table-index-2025.zip``.
+        name_zh_map: Optional dict mapping ICD code → Chinese name to include.
+    """
     print(f"Parsing {zip_path} ...")
     records: list[tuple] = []
     zh = name_zh_map or {}
 
     with zipfile.ZipFile(zip_path) as zf:
         names = zf.namelist()
-        xml_files = [n for n in names if n.lower().endswith(".xml") and "tabular" in n.lower()]
-        txt_files = [n for n in names if n.lower().endswith(".txt") and "order" in n.lower()]
+        xml_files = [
+            n for n in names if n.lower().endswith(".xml") and "tabular" in n.lower()
+        ]
+        txt_files = [
+            n for n in names if n.lower().endswith(".txt") and "order" in n.lower()
+        ]
 
         if xml_files:
             print(f"  Using XML: {xml_files[0]}")
@@ -140,7 +159,9 @@ async def load_icd10cm(
             return
 
     matched = sum(1 for r in records if r[2])
-    print(f"  Parsed {len(records)} ICD-10-CM diagnoses ({matched} with Chinese names). Writing to DB ...")
+    print(
+        f"  Parsed {len(records)} ICD-10-CM diagnoses ({matched} with Chinese names). Writing to DB ..."
+    )
 
     BATCH = 5000
     async with pool.acquire() as conn:
@@ -149,13 +170,14 @@ async def load_icd10cm(
             await conn.executemany(
                 "INSERT INTO icd.diagnoses (code, name_en, name_zh, category) VALUES ($1,$2,$3,$4)"
                 " ON CONFLICT (code) DO UPDATE SET name_en=$2, name_zh=$3, category=$4",
-                records[i:i+BATCH],
+                records[i : i + BATCH],
             )
 
     print(f"  ICD-10-CM loaded: {len(records)} rows.")
 
 
 # ── ICD-10-PCS ──────────────────────────────────────────────────────────────
+
 
 def _parse_pcs_codes_txt(data: bytes) -> Iterator[Tuple[str, str]]:
     """
@@ -165,7 +187,7 @@ def _parse_pcs_codes_txt(data: bytes) -> Iterator[Tuple[str, str]]:
     """
     for line in data.decode("utf-8", errors="replace").splitlines():
         line = line.rstrip()
-        if len(line) < 9:      # 7 code + 1 space + at least 1 char
+        if len(line) < 9:  # 7 code + 1 space + at least 1 char
             continue
         code = line[:7].strip()
         desc = line[8:].strip()
@@ -186,14 +208,19 @@ async def load_icd10pcs(
         names = zf.namelist()
         # Prefer main codes file; exclude addenda (diff/patch files)
         codes_files = [
-            n for n in names
+            n
+            for n in names
             if n.lower().endswith(".txt")
             and "addenda" not in n.lower()
             and ("codes" in n.lower() or "pcs" in n.lower())
         ]
         # Fallback: any non-addenda .txt
         if not codes_files:
-            codes_files = [n for n in names if n.lower().endswith(".txt") and "addenda" not in n.lower()]
+            codes_files = [
+                n
+                for n in names
+                if n.lower().endswith(".txt") and "addenda" not in n.lower()
+            ]
 
         if not codes_files:
             print(f"  ERROR: No usable PCS file found. Contents: {names}")
@@ -205,7 +232,9 @@ async def load_icd10pcs(
             records.append((code, name_en, zh.get(code, "")))
 
     matched = sum(1 for r in records if r[2])
-    print(f"  Parsed {len(records)} ICD-10-PCS procedures ({matched} with Chinese names). Writing to DB ...")
+    print(
+        f"  Parsed {len(records)} ICD-10-PCS procedures ({matched} with Chinese names). Writing to DB ..."
+    )
 
     BATCH = 5000
     async with pool.acquire() as conn:
@@ -214,7 +243,7 @@ async def load_icd10pcs(
             await conn.executemany(
                 "INSERT INTO icd.procedures (code, name_en, name_zh) VALUES ($1,$2,$3)"
                 " ON CONFLICT (code) DO UPDATE SET name_en=$2, name_zh=$3",
-                records[i:i+BATCH],
+                records[i : i + BATCH],
             )
 
     print(f"  ICD-10-PCS loaded: {len(records)} rows.")

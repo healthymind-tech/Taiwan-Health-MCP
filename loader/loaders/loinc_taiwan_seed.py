@@ -27,13 +27,15 @@ def _load_mapping_csv(path: str | Path | None = None) -> list[tuple]:
     rows = []
     with path.open(encoding="utf-8") as f:
         for row in csv.DictReader(f):
-            rows.append((
-                row["loinc_code"],
-                row["name_zh"],
-                row["common_name_zh"],
-                row["specimen_type"],
-                row["unit"],
-            ))
+            rows.append(
+                (
+                    row["loinc_code"],
+                    row["name_zh"],
+                    row["common_name_zh"],
+                    row["specimen_type"],
+                    row["unit"],
+                )
+            )
     return rows
 
 
@@ -45,16 +47,18 @@ def _load_ranges_csv(path: str | Path | None = None) -> list[tuple]:
     rows = []
     with path.open(encoding="utf-8") as f:
         for row in csv.DictReader(f):
-            rows.append((
-                row["loinc_code"],
-                int(row["age_min"]),
-                int(row["age_max"]),
-                row["gender"],
-                float(row["range_low"]),
-                float(row["range_high"]),
-                row["unit"],
-                row["interpretation"],
-            ))
+            rows.append(
+                (
+                    row["loinc_code"],
+                    int(row["age_min"]),
+                    int(row["age_max"]),
+                    row["gender"],
+                    float(row["range_low"]),
+                    float(row["range_high"]),
+                    row["unit"],
+                    row["interpretation"],
+                )
+            )
     return rows
 
 
@@ -63,6 +67,17 @@ async def apply_taiwan_seed(
     mapping_csv_path: str | None = None,
     reference_ranges_csv_path: str | None = None,
 ) -> None:
+    """Apply Taiwan-specific LOINC Chinese names and reference ranges to the DB.
+
+    Pass an empty string for either path to skip that step entirely.
+
+    Args:
+        pool: asyncpg connection pool.
+        mapping_csv_path: Path to ``taiwan_mapping.csv``, or ``None`` to use the
+            default location, or ``""`` to skip.
+        reference_ranges_csv_path: Path to ``lab_reference_ranges.csv``, or
+            ``None`` to use the default, or ``""`` to skip.
+    """
     print("  Applying Taiwan LOINC Chinese names ...")
     if mapping_csv_path == "":
         print("  Taiwan mapping CSV not configured/resolved — skipping Chinese names")
@@ -71,7 +86,9 @@ async def apply_taiwan_seed(
         taiwan_tests = _load_mapping_csv(mapping_csv_path)
 
     if reference_ranges_csv_path == "":
-        print("  Taiwan reference ranges CSV not configured/resolved — skipping reference ranges")
+        print(
+            "  Taiwan reference ranges CSV not configured/resolved — skipping reference ranges"
+        )
         reference_ranges = []
     else:
         reference_ranges = _load_ranges_csv(reference_ranges_csv_path)
@@ -82,7 +99,11 @@ async def apply_taiwan_seed(
                 """UPDATE loinc.concepts
                    SET name_zh=$2, common_name_zh=$3, specimen_type=$4, unit=$5
                    WHERE loinc_num=$1""",
-                loinc_num, name_zh, common_name_zh, specimen_type, unit,
+                loinc_num,
+                name_zh,
+                common_name_zh,
+                specimen_type,
+                unit,
             )
 
         print("  Inserting Taiwan reference ranges ...")
@@ -96,7 +117,9 @@ async def apply_taiwan_seed(
         skipped = len(reference_ranges) - len(ranges_to_insert)
         if skipped:
             missing = {r[0] for r in reference_ranges} - existing
-            print(f"  WARNING: skipping {skipped} range rows — LOINC codes not in concepts: {missing}")
+            print(
+                f"  WARNING: skipping {skipped} range rows — LOINC codes not in concepts: {missing}"
+            )
         if ranges_to_insert:
             await conn.executemany(
                 """INSERT INTO loinc.reference_ranges
@@ -104,4 +127,6 @@ async def apply_taiwan_seed(
                    VALUES ($1,$2,$3,$4,$5,$6,$7,$8)""",
                 ranges_to_insert,
             )
-    print(f"  Taiwan seed applied: {len(taiwan_tests)} names, {len(ranges_to_insert)} ranges.")
+    print(
+        f"  Taiwan seed applied: {len(taiwan_tests)} names, {len(ranges_to_insert)} ranges."
+    )

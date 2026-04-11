@@ -22,14 +22,20 @@ import os
 import sys
 
 import asyncpg
-from dotenv import load_dotenv
-from dataset_config import DatasetConfig, DatasetDefaults, DatasetEntry, get_dataset_config_path, load_dataset_config
+from dataset_config import (
+    DatasetConfig,
+    DatasetDefaults,
+    DatasetEntry,
+    get_dataset_config_path,
+    load_dataset_config,
+)
 from dataset_resolver import DATASET_GROUPS, format_resolution_line, resolve_group
+from dotenv import load_dotenv
 
 load_dotenv()
 
 FHIR_CODE_DIR = os.getenv("FHIR_CODE_DIR", "/app/fhir-code")
-DATABASE_URL  = os.getenv("DATABASE_URL", "")
+DATABASE_URL = os.getenv("DATABASE_URL", "")
 
 
 async def get_pool() -> asyncpg.Pool:
@@ -56,7 +62,9 @@ def _legacy_dataset_config() -> DatasetConfig:
                 enabled=True,
                 required=True,
                 source_type="file",
-                path=os.path.join(base, "icd", "10", "icd10cm", "icd10cm-table-index-2025.zip"),
+                path=os.path.join(
+                    base, "icd", "10", "icd10cm", "icd10cm-table-index-2025.zip"
+                ),
                 pattern=None,
                 label="ICD-10-CM",
                 version="2025",
@@ -133,7 +141,9 @@ def _legacy_dataset_config() -> DatasetConfig:
                 required=False,
                 source_type="glob",
                 path=None,
-                pattern=os.path.join(base, "snomed", "SnomedCT_InternationalRF2_PRODUCTION_*.zip"),
+                pattern=os.path.join(
+                    base, "snomed", "SnomedCT_InternationalRF2_PRODUCTION_*.zip"
+                ),
                 label="SNOMED CT",
             ),
             "rxnorm": DatasetEntry(
@@ -164,7 +174,8 @@ def _print_resolution_summary(group: str, resolved: dict) -> None:
 
 def _ensure_required_datasets(resolved: dict) -> None:
     missing_required = [
-        result for result in resolved.values()
+        result
+        for result in resolved.values()
         if result.required and result.status not in ("ok", "internal", "disabled")
     ]
     if missing_required:
@@ -177,6 +188,7 @@ def _ensure_required_datasets(resolved: dict) -> None:
 
 async def load_icd(pool: asyncpg.Pool) -> None:
     from loaders.icd_loader import load_icd10cm, load_icd10pcs, parse_icd_chinese_xlsx
+
     resolved = resolve_group(get_effective_dataset_config(), "icd")
     _print_resolution_summary("icd", resolved)
     _ensure_required_datasets(resolved)
@@ -203,6 +215,7 @@ async def load_icd(pool: asyncpg.Pool) -> None:
 
 async def load_loinc(pool: asyncpg.Pool) -> None:
     from loaders.loinc_loader import load_loinc_full
+
     resolved = resolve_group(get_effective_dataset_config(), "loinc")
     _print_resolution_summary("loinc", resolved)
     _ensure_required_datasets(resolved)
@@ -215,12 +228,14 @@ async def load_loinc(pool: asyncpg.Pool) -> None:
         pool,
         zip_path,
         mapping_csv_path=resolved["loinc_taiwan_mapping"].resolved_path or "",
-        reference_ranges_csv_path=resolved["loinc_reference_ranges"].resolved_path or "",
+        reference_ranges_csv_path=resolved["loinc_reference_ranges"].resolved_path
+        or "",
     )
 
 
 async def load_twcore(pool: asyncpg.Pool) -> None:
     from loaders.twcore_loader import load_twcore_package
+
     resolved = resolve_group(get_effective_dataset_config(), "twcore")
     _print_resolution_summary("twcore", resolved)
     _ensure_required_datasets(resolved)
@@ -234,6 +249,7 @@ async def load_twcore(pool: asyncpg.Pool) -> None:
 
 async def load_guideline(pool: asyncpg.Pool) -> None:
     from loaders.guideline_seed import seed_guidelines
+
     resolved = resolve_group(get_effective_dataset_config(), "guideline")
     _print_resolution_summary("guideline", resolved)
     _ensure_required_datasets(resolved)
@@ -242,6 +258,7 @@ async def load_guideline(pool: asyncpg.Pool) -> None:
 
 async def load_snomed(pool: asyncpg.Pool) -> None:
     from loaders.snomed_loader import load_snomed as _load
+
     resolved = resolve_group(get_effective_dataset_config(), "snomed")
     _print_resolution_summary("snomed", resolved)
     _ensure_required_datasets(resolved)
@@ -255,6 +272,7 @@ async def load_snomed(pool: asyncpg.Pool) -> None:
 
 async def load_rxnorm(pool: asyncpg.Pool) -> None:
     from loaders.rxnorm_loader import load_rxnorm as _load
+
     resolved = resolve_group(get_effective_dataset_config(), "rxnorm")
     _print_resolution_summary("rxnorm", resolved)
     _ensure_required_datasets(resolved)
@@ -268,25 +286,34 @@ async def load_rxnorm(pool: asyncpg.Pool) -> None:
 
 async def load_drug(pool: asyncpg.Pool) -> None:
     from loaders.drug_loader import load_drug as _load
+
     await _load(pool)
 
 
 async def load_health_food(pool: asyncpg.Pool) -> None:
     from loaders.health_food_loader import load_health_food as _load
+
     await _load(pool)
 
 
 async def load_food_nutrition(pool: asyncpg.Pool) -> None:
     from loaders.food_nutrition_loader import load_food_nutrition as _load
+
     await _load(pool)
 
 
 async def generate_embeddings(pool: asyncpg.Pool, services: list[str]) -> None:
     from loaders.embedding_loader import (
-        embed_drug, embed_food_nutrition, embed_health_food,
-        embed_icd, embed_loinc, embed_guideline, embed_snomed,
+        embed_drug,
+        embed_food_nutrition,
+        embed_guideline,
+        embed_health_food,
+        embed_icd,
+        embed_loinc,
+        embed_snomed,
         ensure_dimensions,
     )
+
     await ensure_dimensions(pool)
     if "food_nutrition" in services:
         await embed_food_nutrition(pool)
@@ -306,24 +333,51 @@ async def generate_embeddings(pool: asyncpg.Pool, services: list[str]) -> None:
 
 async def main():
     parser = argparse.ArgumentParser(description="Taiwan Health MCP Data Loader")
-    parser.add_argument("--all",       action="store_true", help="Load all datasets")
-    parser.add_argument("--icd",       action="store_true", help="ICD-10-CM 2025")
-    parser.add_argument("--loinc",     action="store_true", help="LOINC 2.80")
-    parser.add_argument("--twcore",    action="store_true", help="TWCore IG CodeSystems")
-    parser.add_argument("--guideline", action="store_true", help="Clinical guidelines seed data")
-    parser.add_argument("--snomed",    action="store_true", help="SNOMED CT International RF2")
-    parser.add_argument("--rxnorm",    action="store_true", help="RxNorm full release")
-    parser.add_argument("--drug",      action="store_true", help="Taiwan FDA drug datasets")
-    parser.add_argument("--health-food", action="store_true", help="Taiwan FDA health food dataset")
-    parser.add_argument("--food-nutrition", action="store_true", help="Taiwan FDA food nutrition datasets")
-    parser.add_argument("--fda",       action="store_true", help="Load all Taiwan FDA API datasets")
-    parser.add_argument("--embed",     action="store_true", help="Generate pgvector embeddings (all datasets)")
+    parser.add_argument("--all", action="store_true", help="Load all datasets")
+    parser.add_argument("--icd", action="store_true", help="ICD-10-CM 2025")
+    parser.add_argument("--loinc", action="store_true", help="LOINC 2.80")
+    parser.add_argument("--twcore", action="store_true", help="TWCore IG CodeSystems")
+    parser.add_argument(
+        "--guideline", action="store_true", help="Clinical guidelines seed data"
+    )
+    parser.add_argument(
+        "--snomed", action="store_true", help="SNOMED CT International RF2"
+    )
+    parser.add_argument("--rxnorm", action="store_true", help="RxNorm full release")
+    parser.add_argument("--drug", action="store_true", help="Taiwan FDA drug datasets")
+    parser.add_argument(
+        "--health-food", action="store_true", help="Taiwan FDA health food dataset"
+    )
+    parser.add_argument(
+        "--food-nutrition",
+        action="store_true",
+        help="Taiwan FDA food nutrition datasets",
+    )
+    parser.add_argument(
+        "--fda", action="store_true", help="Load all Taiwan FDA API datasets"
+    )
+    parser.add_argument(
+        "--embed",
+        action="store_true",
+        help="Generate pgvector embeddings (all datasets)",
+    )
     args = parser.parse_args()
 
-    run_all = args.all or not any([
-        args.icd, args.loinc, args.twcore, args.guideline, args.snomed, args.rxnorm,
-        args.drug, args.health_food, args.food_nutrition, args.fda, args.embed,
-    ])
+    run_all = args.all or not any(
+        [
+            args.icd,
+            args.loinc,
+            args.twcore,
+            args.guideline,
+            args.snomed,
+            args.rxnorm,
+            args.drug,
+            args.health_food,
+            args.food_nutrition,
+            args.fda,
+            args.embed,
+        ]
+    )
 
     pool = await get_pool()
     try:

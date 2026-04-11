@@ -37,13 +37,18 @@ class EmbeddingService:
 
     async def initialize(self) -> None:
         if not _BASE_URL:
-            log_warning("OLLAMA_BASE_URL not set — semantic search disabled, using keyword-only")
+            log_warning(
+                "OLLAMA_BASE_URL not set — semantic search disabled, using keyword-only"
+            )
             return
         self._available = await self._ping()
         if self._available:
             log_info("EmbeddingService ready", model=_MODEL, base_url=_BASE_URL)
         else:
-            log_warning("Ollama not reachable at startup — will retry on first query", base_url=_BASE_URL)
+            log_warning(
+                "Ollama not reachable at startup — will retry on first query",
+                base_url=_BASE_URL,
+            )
 
     async def _ping(self) -> bool:
         if not _BASE_URL:
@@ -60,7 +65,14 @@ class EmbeddingService:
         return bool(_BASE_URL)
 
     async def embed(self, text: str) -> list[float] | None:
-        """Embed a single text. Returns None if Ollama is unavailable."""
+        """Embed a single text string via Ollama.
+
+        Args:
+            text: The input text to embed.
+
+        Returns:
+            A float vector, or ``None`` if Ollama is unavailable.
+        """
         results = await self.embed_batch([text])
         return results[0]
 
@@ -89,6 +101,9 @@ class EmbeddingService:
             return result
         except Exception as exc:
             if self._available:
-                log_warning("Ollama embedding failed — falling back to keyword search", error=str(exc))
+                log_warning(
+                    "Ollama embedding failed — falling back to keyword search",
+                    error=str(exc),
+                )
             self._available = False
             return [None] * len(texts)

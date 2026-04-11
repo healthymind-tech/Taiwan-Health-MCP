@@ -10,3 +10,10 @@
 
 ### `async query_guideline(self, icd_code: str, section: str = "complete") -> str`
 取得完整或分段的指引內容。
+
+`section` 對應：
+- `complete`：完整指引摘要
+- `medication`：用藥建議
+- `test`：檢查建議
+- `goals`：治療目標
+- `pathway`：臨床路徑

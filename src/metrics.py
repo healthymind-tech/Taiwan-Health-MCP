@@ -18,15 +18,10 @@ import os
 import time
 from typing import Any, Callable
 
-from prometheus_client import (
-    Counter,
-    Gauge,
-    Histogram,
-    start_http_server as _prom_start_http_server,
-    REGISTRY,
-)
+from prometheus_client import REGISTRY, Counter, Gauge, Histogram
+from prometheus_client import start_http_server as _prom_start_http_server
 
-from utils import log_info, log_error
+from utils import log_error, log_info
 
 # ── metric definitions ───────────────────────────────────────────────────────
 
@@ -46,7 +41,7 @@ tool_duration = Histogram(
 cache_ops = Counter(
     "mcp_cache_operations_total",
     "Redis cache hit/miss counts",
-    ["prefix", "result"],   # result: hit | miss | error
+    ["prefix", "result"],  # result: hit | miss | error
 )
 
 db_pool_size = Gauge(
@@ -61,6 +56,7 @@ db_pool_checked_out = Gauge(
 
 
 # ── helpers called from other modules ────────────────────────────────────────
+
 
 def record_tool_call(tool: str, status: str, duration_s: float) -> None:
     """Increment request counter and record latency for one tool invocation.
@@ -100,6 +96,7 @@ def update_db_pool_stats(pool: Any) -> None:
 
 # ── periodic DB stats collection ────────────────────────────────────────────
 
+
 async def _collect_db_stats_loop(get_pool_fn: Callable, interval: int = 15) -> None:
     while True:
         try:
@@ -116,10 +113,13 @@ _metrics_server_started = False
 
 
 def start_metrics_server(port: int | None = None) -> int:
-    """
-    Start the Prometheus HTTP server on *port* (default: METRICS_PORT env var, else 9090).
-    Idempotent — safe to call from each FastMCP session lifespan.
-    Returns the port actually used.
+    """Start the Prometheus HTTP server. Idempotent across FastMCP session lifespans.
+
+    Args:
+        port: Port to bind. Defaults to the ``METRICS_PORT`` env var, then ``9090``.
+
+    Returns:
+        The port actually used.
     """
     global _metrics_server_started
     port = port or int(os.getenv("METRICS_PORT", "9090"))
@@ -134,6 +134,16 @@ def start_metrics_server(port: int | None = None) -> int:
     return port
 
 
-async def start_db_stats_collector(get_pool_fn: Callable, interval: int = 15) -> asyncio.Task:
-    """Launch background task that refreshes DB pool gauges every *interval* seconds."""
+async def start_db_stats_collector(
+    get_pool_fn: Callable, interval: int = 15
+) -> asyncio.Task:
+    """Launch a background task that refreshes DB pool Prometheus gauges.
+
+    Args:
+        get_pool_fn: Zero-argument callable that returns the current asyncpg Pool.
+        interval: Polling interval in seconds.
+
+    Returns:
+        The running ``asyncio.Task``.
+    """
     return asyncio.create_task(_collect_db_stats_loop(get_pool_fn, interval))

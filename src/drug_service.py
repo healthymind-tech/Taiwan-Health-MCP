@@ -28,7 +28,9 @@ API_SOURCES = {
 
 
 class DrugService:
-    def __init__(self, pool: asyncpg.Pool, embedding_svc: EmbeddingService | None = None):
+    def __init__(
+        self, pool: asyncpg.Pool, embedding_svc: EmbeddingService | None = None
+    ):
         self.pool = pool
         self._embedding_svc = embedding_svc
         self._sync_lock = asyncio.Lock()
@@ -41,6 +43,7 @@ class DrugService:
             log_info("Drug Service ready", licenses=count)
 
     async def shutdown(self) -> None:
+        """Gracefully stop the service. No-op; provided for lifecycle symmetry."""
         pass
 
     # ── sync helpers ────────────────────────────────────────────────────────
@@ -50,7 +53,9 @@ class DrugService:
         resp.raise_for_status()
         ct = resp.headers.get("content-type", "")
         if "zip" in ct or url.endswith(".zip"):
-            import io, zipfile
+            import io
+            import zipfile
+
             zf = zipfile.ZipFile(io.BytesIO(resp.content))
             names = [n for n in zf.namelist() if n.endswith(".json")]
             return json.loads(zf.read(names[0])) if names else []
@@ -74,9 +79,14 @@ class DrugService:
                 atc = await self._fetch_json(client, API_SOURCES["atc"])
                 documents = await self._fetch_json(client, API_SOURCES["documents"])
 
-            log_info("Drug data fetched — writing to DB",
-                     licenses=len(master), appearance=len(appearance),
-                     ingredients=len(ingredients), atc=len(atc), documents=len(documents))
+            log_info(
+                "Drug data fetched — writing to DB",
+                licenses=len(master),
+                appearance=len(appearance),
+                ingredients=len(ingredients),
+                atc=len(atc),
+                documents=len(documents),
+            )
 
             # Step 2: write everything atomically
             async with self.pool.acquire() as conn:
@@ -93,64 +103,89 @@ class DrugService:
                         lid = r.get("許可證字號", "")
                         if lid and lid not in seen_ids:
                             seen_ids.add(lid)
-                            license_rows.append((
-                                lid, r.get("中文品名",""), r.get("英文品名",""),
-                                r.get("適應症",""), r.get("劑型",""), r.get("包裝",""),
-                                r.get("藥品類別",""), r.get("申請商名稱",""), r.get("有效日期",""),
-                                r.get("用法用量",""),
-                            ))
+                            license_rows.append(
+                                (
+                                    lid,
+                                    r.get("中文品名", ""),
+                                    r.get("英文品名", ""),
+                                    r.get("適應症", ""),
+                                    r.get("劑型", ""),
+                                    r.get("包裝", ""),
+                                    r.get("藥品類別", ""),
+                                    r.get("申請商名稱", ""),
+                                    r.get("有效日期", ""),
+                                    r.get("用法用量", ""),
+                                )
+                            )
                     for i in range(0, len(license_rows), BATCH):
                         await conn.executemany(
                             """INSERT INTO drug.licenses
                                (license_id,name_zh,name_en,indication,form,package,
                                 category,manufacturer,valid_date,usage)
                                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)""",
-                            license_rows[i:i+BATCH],
+                            license_rows[i : i + BATCH],
                         )
 
                     # Build set of valid license IDs to skip orphan rows
                     valid_ids = {r[0] for r in license_rows if r[0]}
 
                     app_rows = [
-                        (r.get("許可證字號",""), r.get("形狀",""), r.get("顏色",""),
-                         r.get("刻痕",""), r.get("外觀圖檔連結",""))
-                        for r in appearance if r.get("許可證字號") in valid_ids
+                        (
+                            r.get("許可證字號", ""),
+                            r.get("形狀", ""),
+                            r.get("顏色", ""),
+                            r.get("刻痕", ""),
+                            r.get("外觀圖檔連結", ""),
+                        )
+                        for r in appearance
+                        if r.get("許可證字號") in valid_ids
                     ]
                     for i in range(0, len(app_rows), BATCH):
                         await conn.executemany(
                             "INSERT INTO drug.appearance (license_id,shape,color,marking,image_url) VALUES ($1,$2,$3,$4,$5)",
-                            app_rows[i:i+BATCH],
+                            app_rows[i : i + BATCH],
                         )
 
                     ing_rows = [
-                        (r.get("許可證字號",""), r.get("成分名稱",""), r.get("含量",""), r.get("含量單位",""))
-                        for r in ingredients if r.get("許可證字號") in valid_ids
+                        (
+                            r.get("許可證字號", ""),
+                            r.get("成分名稱", ""),
+                            r.get("含量", ""),
+                            r.get("含量單位", ""),
+                        )
+                        for r in ingredients
+                        if r.get("許可證字號") in valid_ids
                     ]
                     for i in range(0, len(ing_rows), BATCH):
                         await conn.executemany(
                             "INSERT INTO drug.ingredients (license_id,ingredient_name,ingredient_qty,ingredient_unit) VALUES ($1,$2,$3,$4)",
-                            ing_rows[i:i+BATCH],
+                            ing_rows[i : i + BATCH],
                         )
 
                     atc_rows = [
-                        (r.get("許可證字號",""), r.get("代碼",""),
-                         r.get("中文分類名稱","") or r.get("英文分類名稱",""))
-                        for r in atc if r.get("許可證字號") in valid_ids
+                        (
+                            r.get("許可證字號", ""),
+                            r.get("代碼", ""),
+                            r.get("中文分類名稱", "") or r.get("英文分類名稱", ""),
+                        )
+                        for r in atc
+                        if r.get("許可證字號") in valid_ids
                     ]
                     for i in range(0, len(atc_rows), BATCH):
                         await conn.executemany(
                             "INSERT INTO drug.atc (license_id,atc_code,atc_name) VALUES ($1,$2,$3)",
-                            atc_rows[i:i+BATCH],
+                            atc_rows[i : i + BATCH],
                         )
 
                     doc_rows = [
-                        (r.get("許可證字號",""), "insert", r.get("仿單圖檔連結",""))
-                        for r in documents if r.get("許可證字號") in valid_ids
+                        (r.get("許可證字號", ""), "insert", r.get("仿單圖檔連結", ""))
+                        for r in documents
+                        if r.get("許可證字號") in valid_ids
                     ]
                     for i in range(0, len(doc_rows), BATCH):
                         await conn.executemany(
                             "INSERT INTO drug.documents (license_id,doc_type,doc_url) VALUES ($1,$2,$3)",
-                            doc_rows[i:i+BATCH],
+                            doc_rows[i : i + BATCH],
                         )
 
                     await conn.execute(
@@ -178,16 +213,20 @@ class DrugService:
                 )
             log_info("Drug: embedding licenses", count=len(drugs))
             from embedding_service import BATCH_SIZE
+
             for i in range(0, len(drugs), BATCH_SIZE):
-                batch = drugs[i:i + BATCH_SIZE]
+                batch = drugs[i : i + BATCH_SIZE]
                 texts = [
-                    " ".join(filter(None, [r["name_zh"], r["name_en"], r["indication"]]))
+                    " ".join(
+                        filter(None, [r["name_zh"], r["name_en"], r["indication"]])
+                    )
                     for r in batch
                 ]
                 vecs = await svc.embed_batch(texts)
                 rows = [
                     (batch[j]["license_id"], f"[{','.join(str(x) for x in vecs[j])}]")
-                    for j in range(len(batch)) if vecs[j] is not None
+                    for j in range(len(batch))
+                    if vecs[j] is not None
                 ]
                 if rows:
                     async with self.pool.acquire() as conn:
@@ -228,10 +267,14 @@ class DrugService:
                          @@ plainto_tsquery('simple', $1)
                    ORDER BY l.license_id
                    LIMIT $2""",
-                keyword, limit,
+                keyword,
+                limit,
             )
         if not rows:
-            return json.dumps({"mode": "drug_name", "keyword": keyword, "results": []}, ensure_ascii=False)
+            return json.dumps(
+                {"mode": "drug_name", "keyword": keyword, "results": []},
+                ensure_ascii=False,
+            )
         return await self._build_drug_detail_results("drug_name", keyword, rows)
 
     @cached(ttl=3600, prefix="drug.license.v2")
@@ -358,7 +401,9 @@ class DrugService:
                 "insert_url": doc_by_license.get(r["license_id"]),
             }
             results.append(item)
-        return json.dumps({"mode": mode, "keyword": keyword, "results": results}, ensure_ascii=False)
+        return json.dumps(
+            {"mode": mode, "keyword": keyword, "results": results}, ensure_ascii=False
+        )
 
     @cached(ttl=3600, prefix="drug.details")
     async def _fuzzy_license_lookup(self, conn, license_id: str):
@@ -389,7 +434,9 @@ class DrugService:
             if len(rows) == 1:
                 return rows[0], []
             if len(rows) > 1:
-                exact_digit_rows = [r for r in rows if f"第{digit_text}號" in r["license_id"]]
+                exact_digit_rows = [
+                    r for r in rows if f"第{digit_text}號" in r["license_id"]
+                ]
                 if len(exact_digit_rows) == 1:
                     return exact_digit_rows[0], []
                 if len(exact_digit_rows) > 1:
@@ -433,7 +480,11 @@ class DrugService:
                     {
                         "error": f"找不到精確匹配 '{license_id}'，找到多筆相似許可證，請確認後重新查詢。",
                         "candidates": [
-                            {"license_id": r["license_id"], "name_zh": r["name_zh"], "name_en": r["name_en"]}
+                            {
+                                "license_id": r["license_id"],
+                                "name_zh": r["name_zh"],
+                                "name_en": r["name_en"],
+                            }
                             for r in candidates
                         ],
                     },
@@ -441,9 +492,13 @@ class DrugService:
                 )
 
             if not lic:
-                return json.dumps({"error": f"License ID not found: {license_id}"}, ensure_ascii=False)
+                return json.dumps(
+                    {"error": f"License ID not found: {license_id}"}, ensure_ascii=False
+                )
 
-            resolved_id = lic["license_id"]  # use the DB-resolved ID for all sub-queries
+            resolved_id = lic[
+                "license_id"
+            ]  # use the DB-resolved ID for all sub-queries
             ingredients = await conn.fetch(
                 "SELECT ingredient_name, ingredient_qty, ingredient_unit FROM drug.ingredients WHERE license_id = $1",
                 resolved_id,
@@ -453,7 +508,8 @@ class DrugService:
                 resolved_id,
             )
             atc_rows = await conn.fetch(
-                "SELECT atc_code, atc_name FROM drug.atc WHERE license_id = $1", resolved_id
+                "SELECT atc_code, atc_name FROM drug.atc WHERE license_id = $1",
+                resolved_id,
             )
             doc = await conn.fetchrow(
                 "SELECT doc_url FROM drug.documents WHERE license_id = $1 AND doc_type = 'insert'",
@@ -497,7 +553,10 @@ class DrugService:
         """
         keywords = features.split()
         if not keywords:
-            return json.dumps({"error": "Please provide visual features (shape, color, marking)."}, ensure_ascii=False)
+            return json.dumps(
+                {"error": "Please provide visual features (shape, color, marking)."},
+                ensure_ascii=False,
+            )
 
         conditions = " AND ".join(
             f"(shape ILIKE ${i*3+1} OR color ILIKE ${i*3+2} OR marking ILIKE ${i*3+3})"
@@ -517,11 +576,23 @@ class DrugService:
                 *params,
             )
         if not rows:
-            return json.dumps({"error": "No matching pills found based on description."}, ensure_ascii=False)
+            return json.dumps(
+                {"error": "No matching pills found based on description."},
+                ensure_ascii=False,
+            )
         return json.dumps(
-            [{"name_zh": r["name_zh"], "name_en": r["name_en"],
-              "shape": r["shape"], "color": r["color"], "marking": r["marking"],
-              "image_url": r["image_url"], "license_id": r["license_id"]} for r in rows],
+            [
+                {
+                    "name_zh": r["name_zh"],
+                    "name_en": r["name_en"],
+                    "shape": r["shape"],
+                    "color": r["color"],
+                    "marking": r["marking"],
+                    "image_url": r["image_url"],
+                    "license_id": r["license_id"],
+                }
+                for r in rows
+            ],
             ensure_ascii=False,
         )
 
@@ -544,7 +615,9 @@ class DrugService:
         limit = min(max(1, limit), 10)
         if not re.fullmatch(r"[A-Za-z][A-Za-z0-9]{1,6}", query):
             return json.dumps(
-                {"error": "ATC mode accepts ATC code prefixes only (e.g. A10, A10BA02)."},
+                {
+                    "error": "ATC mode accepts ATC code prefixes only (e.g. A10, A10BA02)."
+                },
                 ensure_ascii=False,
             )
 
@@ -556,10 +629,14 @@ class DrugService:
                    WHERE a.atc_code ILIKE $1
                    ORDER BY l.license_id, a.atc_code
                    LIMIT $2""",
-                f"{query}%", limit,
+                f"{query}%",
+                limit,
             )
         if not rows:
-            return json.dumps({"mode": "atc_code", "keyword": query, "results": []}, ensure_ascii=False)
+            return json.dumps(
+                {"mode": "atc_code", "keyword": query, "results": []},
+                ensure_ascii=False,
+            )
         return await self._build_drug_detail_results("atc_code", query, rows)
 
     @cached(ttl=3600, prefix="drug.bying.v3")
@@ -580,7 +657,11 @@ class DrugService:
             including ingredient quantity and unit for each match.
         """
         limit = min(max(1, limit), 10)
-        vec = await self._embedding_svc.embed(ingredient_name) if self._embedding_svc else None
+        vec = (
+            await self._embedding_svc.embed(ingredient_name)
+            if self._embedding_svc
+            else None
+        )
         vec_str = f"[{','.join(str(x) for x in vec)}]" if vec else None
 
         async with self.pool.acquire() as conn:
@@ -618,7 +699,10 @@ class DrugService:
                            ORDER BY l.license_id, r.score DESC
                        ) sub
                        ORDER BY score DESC LIMIT $4""",
-                    ingredient_name, f"%{ingredient_name}%", vec_str, limit,
+                    ingredient_name,
+                    f"%{ingredient_name}%",
+                    vec_str,
+                    limit,
                 )
             else:
                 rows = await conn.fetch(
@@ -629,8 +713,14 @@ class DrugService:
                        WHERE i.ingredient_name ILIKE $1
                        ORDER BY i.ingredient_name, l.name_zh
                        LIMIT $2""",
-                    f"%{ingredient_name}%", limit,
+                    f"%{ingredient_name}%",
+                    limit,
                 )
         if not rows:
-            return json.dumps({"mode": "ingredient", "keyword": ingredient_name, "results": []}, ensure_ascii=False)
-        return await self._build_drug_detail_results("ingredient", ingredient_name, rows)
+            return json.dumps(
+                {"mode": "ingredient", "keyword": ingredient_name, "results": []},
+                ensure_ascii=False,
+            )
+        return await self._build_drug_detail_results(
+            "ingredient", ingredient_name, rows
+        )

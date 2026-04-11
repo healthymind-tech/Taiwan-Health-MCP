@@ -28,23 +28,35 @@ DISEASE_BENEFIT_MAPPING = {
     "I10": ["調節血脂", "心血管保健"],
     "I25": ["調節血脂", "心血管保健"],
     "I21": ["調節血脂", "心血管保健"],
-    "K70": ["護肝"], "K71": ["護肝"], "K72": ["護肝"],
-    "K73": ["護肝"], "K74": ["護肝"], "K76": ["護肝"],
+    "K70": ["護肝"],
+    "K71": ["護肝"],
+    "K72": ["護肝"],
+    "K73": ["護肝"],
+    "K74": ["護肝"],
+    "K76": ["護肝"],
     "M80": ["骨質保健", "促進鈣吸收"],
     "M81": ["骨質保健", "促進鈣吸收"],
-    "M15": ["關節保健"], "M17": ["關節保健"],
+    "M15": ["關節保健"],
+    "M17": ["關節保健"],
     "K59": ["胃腸功能改善", "促進腸道有益菌增生"],
-    "K29": ["胃腸功能改善"], "K21": ["胃腸功能改善"],
-    "D84": ["免疫調節"], "J06": ["免疫調節"],
-    "H52": ["護眼保健", "調節視覺"], "H53": ["護眼保健"],
-    "N40": ["促進泌尿道保健"], "N39": ["促進泌尿道保健"],
-    "K02": ["牙齒保健", "促進釋放齒垢"], "K05": ["牙齒保健"],
+    "K29": ["胃腸功能改善"],
+    "K21": ["胃腸功能改善"],
+    "D84": ["免疫調節"],
+    "J06": ["免疫調節"],
+    "H52": ["護眼保健", "調節視覺"],
+    "H53": ["護眼保健"],
+    "N40": ["促進泌尿道保健"],
+    "N39": ["促進泌尿道保健"],
+    "K02": ["牙齒保健", "促進釋放齒垢"],
+    "K05": ["牙齒保健"],
     "L70": ["調節免疫", "皮膚保健"],
 }
 
 
 class HealthFoodService:
-    def __init__(self, pool: asyncpg.Pool, embedding_svc: EmbeddingService | None = None):
+    def __init__(
+        self, pool: asyncpg.Pool, embedding_svc: EmbeddingService | None = None
+    ):
         self.pool = pool
         self._embedding_svc = embedding_svc
         self._sync_lock = asyncio.Lock()
@@ -52,11 +64,14 @@ class HealthFoodService:
     async def initialize(self) -> None:
         count = await self.pool.fetchval("SELECT COUNT(*) FROM health_food.items")
         if count == 0:
-            log_info("Health food DB empty — run data-loader --health-food to load data")
+            log_info(
+                "Health food DB empty — run data-loader --health-food to load data"
+            )
         else:
             log_info("Health Food Service ready", items=count)
 
     async def shutdown(self) -> None:
+        """Gracefully stop the service. No-op; provided for lifecycle symmetry."""
         pass
 
     async def _sync(self) -> None:
@@ -75,7 +90,9 @@ class HealthFoodService:
                 resp.raise_for_status()
                 ct = resp.headers.get("content-type", "")
                 if "zip" in ct:
-                    import io, zipfile
+                    import io
+                    import zipfile
+
                     zf = zipfile.ZipFile(io.BytesIO(resp.content))
                     names = [n for n in zf.namelist() if n.endswith(".json")]
                     data = json.loads(zf.read(names[0])) if names else []
@@ -84,9 +101,15 @@ class HealthFoodService:
 
             # Step 2: write atomically
             rows = [
-                (r.get("許可證字號",""), r.get("中文品名",""), r.get("申請商",""),
-                 r.get("保健功效",""), r.get("核可日期",""), "",
-                 r.get("類別",""))
+                (
+                    r.get("許可證字號", ""),
+                    r.get("中文品名", ""),
+                    r.get("申請商", ""),
+                    r.get("保健功效", ""),
+                    r.get("核可日期", ""),
+                    "",
+                    r.get("類別", ""),
+                )
                 for r in data
             ]
 
@@ -99,7 +122,7 @@ class HealthFoodService:
                             """INSERT INTO health_food.items
                                (permit_no, name, applicant, benefit_claims, valid_from, valid_to, category)
                                VALUES ($1,$2,$3,$4,$5,$6,$7)""",
-                            rows[i:i+BATCH],
+                            rows[i : i + BATCH],
                         )
                     await conn.execute(
                         """INSERT INTO health_food.sync_meta (key, value, updated_at)
@@ -120,18 +143,23 @@ class HealthFoodService:
         svc = self._embedding_svc
         try:
             async with self.pool.acquire() as conn:
-                items = await conn.fetch("SELECT permit_no, name, benefit_claims FROM health_food.items")
+                items = await conn.fetch(
+                    "SELECT permit_no, name, benefit_claims FROM health_food.items"
+                )
             log_info("Health food: embedding items", count=len(items))
             from embedding_service import BATCH_SIZE
+
             for i in range(0, len(items), BATCH_SIZE):
-                batch = items[i:i + BATCH_SIZE]
+                batch = items[i : i + BATCH_SIZE]
                 texts = [
-                    " ".join(filter(None, [r["name"], r["benefit_claims"]])) for r in batch
+                    " ".join(filter(None, [r["name"], r["benefit_claims"]]))
+                    for r in batch
                 ]
                 vecs = await svc.embed_batch(texts)
                 rows = [
                     (batch[j]["permit_no"], f"[{','.join(str(x) for x in vecs[j])}]")
-                    for j in range(len(batch)) if vecs[j] is not None
+                    for j in range(len(batch))
+                    if vecs[j] is not None
                 ]
                 if rows:
                     async with self.pool.acquire() as conn:
@@ -193,7 +221,9 @@ class HealthFoodService:
                        SELECT i.permit_no, i.name, i.category, i.benefit_claims, i.applicant, i.valid_from
                        FROM rrf JOIN health_food.items i ON i.permit_no = rrf.permit_no
                        ORDER BY rrf.score DESC LIMIT $3""",
-                    keyword, vec_str, limit,
+                    keyword,
+                    vec_str,
+                    limit,
                 )
             else:
                 rows = await conn.fetch(
@@ -202,10 +232,14 @@ class HealthFoodService:
                        WHERE to_tsvector('simple', COALESCE(name,'') || ' ' || COALESCE(benefit_claims,''))
                              @@ plainto_tsquery('simple', $1)
                        LIMIT $2""",
-                    keyword, limit,
+                    keyword,
+                    limit,
                 )
         if not rows:
-            return json.dumps({"error": f"找不到與 '{keyword}' 相關的健康食品。", "results": []}, ensure_ascii=False)
+            return json.dumps(
+                {"error": f"找不到與 '{keyword}' 相關的健康食品。", "results": []},
+                ensure_ascii=False,
+            )
         return json.dumps({"results": [dict(r) for r in rows]}, ensure_ascii=False)
 
     @cached(ttl=3600, prefix="hf.details")
@@ -225,7 +259,9 @@ class HealthFoodService:
                 "SELECT * FROM health_food.items WHERE permit_no = $1", permit_no
             )
         if not row:
-            return json.dumps({"error": f"找不到許可證字號: {permit_no}"}, ensure_ascii=False)
+            return json.dumps(
+                {"error": f"找不到許可證字號: {permit_no}"}, ensure_ascii=False
+            )
         return json.dumps(dict(row), ensure_ascii=False)
 
     async def _resolve_icd_code(
@@ -287,8 +323,12 @@ class HealthFoodService:
             ``recommended_benefits``, ``total_products``, ``products`` list,
             and a developer-curated ``disclaimer``.
         """
-        icd_code = await self._resolve_icd_code(diagnosis_keyword, icd_service=icd_service)
-        recommended_benefits = DISEASE_BENEFIT_MAPPING.get(icd_code, [diagnosis_keyword])
+        icd_code = await self._resolve_icd_code(
+            diagnosis_keyword, icd_service=icd_service
+        )
+        recommended_benefits = DISEASE_BENEFIT_MAPPING.get(
+            icd_code, [diagnosis_keyword]
+        )
 
         foods: list[dict] = []
         async with self.pool.acquire() as conn:

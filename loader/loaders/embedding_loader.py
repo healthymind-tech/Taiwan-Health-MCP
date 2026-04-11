@@ -30,6 +30,7 @@ import httpx
 
 try:
     from tqdm import tqdm as _tqdm
+
     HAS_TQDM = True
 except ImportError:
     HAS_TQDM = False
@@ -43,16 +44,16 @@ _BATCH_SIZE: int = int(os.getenv("OLLAMA_EMBED_BATCH_SIZE", "32"))
 # All (schema, table, column) triples that hold embedding vectors.
 # Used by ensure_dimensions() to ALTER TABLE when OLLAMA_EMBED_DIMENSIONS changes.
 _EMBEDDING_COLUMNS: list[tuple[str, str, str]] = [
-    ("icd",           "diagnosis_embeddings",       "embedding"),
-    ("drug",          "atc_embeddings",              "embedding"),
-    ("drug",          "ingredient_name_embeddings",  "embedding"),
-    ("drug",          "license_embeddings",          "embedding"),
-    ("health_food",   "item_embeddings",             "embedding"),
-    ("food_nutrition","food_embeddings",             "embedding"),
-    ("food_nutrition","ingredient_embeddings",       "embedding"),
-    ("loinc",         "concept_embeddings",          "embedding"),
-    ("guideline",     "guideline_embeddings",        "embedding"),
-    ("snomed",        "concept_embeddings",          "embedding"),
+    ("icd", "diagnosis_embeddings", "embedding"),
+    ("drug", "atc_embeddings", "embedding"),
+    ("drug", "ingredient_name_embeddings", "embedding"),
+    ("drug", "license_embeddings", "embedding"),
+    ("health_food", "item_embeddings", "embedding"),
+    ("food_nutrition", "food_embeddings", "embedding"),
+    ("food_nutrition", "ingredient_embeddings", "embedding"),
+    ("loinc", "concept_embeddings", "embedding"),
+    ("guideline", "guideline_embeddings", "embedding"),
+    ("snomed", "concept_embeddings", "embedding"),
 ]
 
 
@@ -100,7 +101,9 @@ async def ensure_dimensions(pool: asyncpg.Pool) -> None:
                    JOIN pg_namespace pn ON pn.oid = pc.relnamespace
                    WHERE pn.nspname = $1 AND pc.relname = $2 AND pa.attname = $3
                      AND pa.attnum > 0 AND NOT pa.attisdropped""",
-                schema, table, col,
+                schema,
+                table,
+                col,
             )
             if row is None:
                 print(f"  {schema}.{table} not found, skipping")
@@ -111,12 +114,12 @@ async def ensure_dimensions(pool: asyncpg.Pool) -> None:
                 print(f"  {schema}.{table}.{col}: already {_DIMENSIONS}d — OK")
                 continue
 
-            print(f"  {schema}.{table}.{col}: {current_dim}d → {_DIMENSIONS}d  (ALTER TABLE)")
+            print(
+                f"  {schema}.{table}.{col}: {current_dim}d → {_DIMENSIONS}d  (ALTER TABLE)"
+            )
             fqt = f"{schema}.{table}"
             # DROP CASCADE removes any dependent HNSW index automatically
-            await conn.execute(
-                f"ALTER TABLE {fqt} DROP COLUMN IF EXISTS {col} CASCADE"
-            )
+            await conn.execute(f"ALTER TABLE {fqt} DROP COLUMN IF EXISTS {col} CASCADE")
             await conn.execute(
                 f"ALTER TABLE {fqt} ADD COLUMN {col} halfvec({_DIMENSIONS})"
             )
@@ -151,7 +154,9 @@ async def _check_ollama() -> bool:
     return False
 
 
-async def _embed_batch(client: httpx.AsyncClient, texts: list[str]) -> list[list[float] | None]:
+async def _embed_batch(
+    client: httpx.AsyncClient, texts: list[str]
+) -> list[list[float] | None]:
     try:
         resp = await client.post(
             f"{_BASE_URL}/api/embed",
@@ -159,7 +164,9 @@ async def _embed_batch(client: httpx.AsyncClient, texts: list[str]) -> list[list
         )
         resp.raise_for_status()
         embeddings = resp.json().get("embeddings", [])
-        return [embeddings[i] if i < len(embeddings) else None for i in range(len(texts))]
+        return [
+            embeddings[i] if i < len(embeddings) else None for i in range(len(texts))
+        ]
     except Exception as exc:
         print(f"  [warn] Ollama batch failed: {exc}", flush=True)
         return [None] * len(texts)
@@ -184,20 +191,26 @@ async def embed_food_nutrition(pool: asyncpg.Pool) -> None:
                FROM food_nutrition.measurements ORDER BY sample_name"""
         )
     print(f"  Foods: {len(foods)}")
-    batches = [foods[i:i + _BATCH_SIZE] for i in range(0, len(foods), _BATCH_SIZE)]
+    batches = [foods[i : i + _BATCH_SIZE] for i in range(0, len(foods), _BATCH_SIZE)]
     total_ok = 0
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
         for batch in _progress(batches, "Foods"):
             texts = [
-                " ".join(filter(None, [r["sample_name"], r["common_name"], r["english_name"]]))
+                " ".join(
+                    filter(
+                        None, [r["sample_name"], r["common_name"], r["english_name"]]
+                    )
+                )
                 for r in batch
             ]
             vecs = await _embed_batch(client, texts)
             rows = [
                 (batch[j]["sample_name"], f"[{','.join(str(x) for x in vecs[j])}]")
-                for j in range(len(batch)) if vecs[j] is not None
+                for j in range(len(batch))
+                if vecs[j] is not None
             ]
-            await _upsert(pool,
+            await _upsert(
+                pool,
                 """INSERT INTO food_nutrition.food_embeddings (sample_name, embedding)
                    VALUES ($1, $2::halfvec)
                    ON CONFLICT (sample_name) DO UPDATE
@@ -209,19 +222,25 @@ async def embed_food_nutrition(pool: asyncpg.Pool) -> None:
 
     # ── Ingredients ───────────────────────────────────────────────────────────
     async with pool.acquire() as conn:
-        ings = await conn.fetch("SELECT id, name_zh, name_en FROM food_nutrition.ingredients")
+        ings = await conn.fetch(
+            "SELECT id, name_zh, name_en FROM food_nutrition.ingredients"
+        )
     print(f"  Ingredients: {len(ings)}")
-    batches = [ings[i:i + _BATCH_SIZE] for i in range(0, len(ings), _BATCH_SIZE)]
+    batches = [ings[i : i + _BATCH_SIZE] for i in range(0, len(ings), _BATCH_SIZE)]
     total_ok = 0
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
         for batch in _progress(batches, "Ingredients"):
-            texts = [" ".join(filter(None, [r["name_zh"], r["name_en"]])) for r in batch]
+            texts = [
+                " ".join(filter(None, [r["name_zh"], r["name_en"]])) for r in batch
+            ]
             vecs = await _embed_batch(client, texts)
             rows = [
                 (batch[j]["id"], f"[{','.join(str(x) for x in vecs[j])}]")
-                for j in range(len(batch)) if vecs[j] is not None
+                for j in range(len(batch))
+                if vecs[j] is not None
             ]
-            await _upsert(pool,
+            await _upsert(
+                pool,
                 """INSERT INTO food_nutrition.ingredient_embeddings (id, embedding)
                    VALUES ($1, $2::halfvec)
                    ON CONFLICT (id) DO UPDATE
@@ -238,19 +257,25 @@ async def embed_health_food(pool: asyncpg.Pool) -> None:
         return
 
     async with pool.acquire() as conn:
-        items = await conn.fetch("SELECT permit_no, name, benefit_claims FROM health_food.items")
+        items = await conn.fetch(
+            "SELECT permit_no, name, benefit_claims FROM health_food.items"
+        )
     print(f"  Items: {len(items)}")
-    batches = [items[i:i + _BATCH_SIZE] for i in range(0, len(items), _BATCH_SIZE)]
+    batches = [items[i : i + _BATCH_SIZE] for i in range(0, len(items), _BATCH_SIZE)]
     total_ok = 0
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
         for batch in _progress(batches, "Health foods"):
-            texts = [" ".join(filter(None, [r["name"], r["benefit_claims"]])) for r in batch]
+            texts = [
+                " ".join(filter(None, [r["name"], r["benefit_claims"]])) for r in batch
+            ]
             vecs = await _embed_batch(client, texts)
             rows = [
                 (batch[j]["permit_no"], f"[{','.join(str(x) for x in vecs[j])}]")
-                for j in range(len(batch)) if vecs[j] is not None
+                for j in range(len(batch))
+                if vecs[j] is not None
             ]
-            await _upsert(pool,
+            await _upsert(
+                pool,
                 """INSERT INTO health_food.item_embeddings (permit_no, embedding)
                    VALUES ($1, $2::halfvec)
                    ON CONFLICT (permit_no) DO UPDATE
@@ -262,7 +287,9 @@ async def embed_health_food(pool: asyncpg.Pool) -> None:
 
 
 async def embed_drug(pool: asyncpg.Pool) -> None:
-    print("\n=== Embedding: drug (~66k licenses — may take 5-20 min depending on GPU) ===")
+    print(
+        "\n=== Embedding: drug (~66k licenses — may take 5-20 min depending on GPU) ==="
+    )
     if not await _check_ollama():
         return
 
@@ -272,7 +299,7 @@ async def embed_drug(pool: asyncpg.Pool) -> None:
             "SELECT license_id, name_zh, name_en, indication FROM drug.licenses"
         )
     print(f"  Licenses: {len(drugs)}")
-    batches = [drugs[i:i + _BATCH_SIZE] for i in range(0, len(drugs), _BATCH_SIZE)]
+    batches = [drugs[i : i + _BATCH_SIZE] for i in range(0, len(drugs), _BATCH_SIZE)]
     total_ok = 0
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
         for batch in _progress(batches, "Drug licenses"):
@@ -283,9 +310,11 @@ async def embed_drug(pool: asyncpg.Pool) -> None:
             vecs = await _embed_batch(client, texts)
             rows = [
                 (batch[j]["license_id"], f"[{','.join(str(x) for x in vecs[j])}]")
-                for j in range(len(batch)) if vecs[j] is not None
+                for j in range(len(batch))
+                if vecs[j] is not None
             ]
-            await _upsert(pool,
+            await _upsert(
+                pool,
                 """INSERT INTO drug.license_embeddings (license_id, embedding)
                    VALUES ($1, $2::halfvec)
                    ON CONFLICT (license_id) DO UPDATE
@@ -301,7 +330,9 @@ async def embed_drug(pool: asyncpg.Pool) -> None:
             "SELECT DISTINCT ON (atc_code) atc_code, atc_name FROM drug.atc WHERE atc_name IS NOT NULL"
         )
     print(f"  ATC codes: {len(atc_rows)}")
-    batches = [atc_rows[i:i + _BATCH_SIZE] for i in range(0, len(atc_rows), _BATCH_SIZE)]
+    batches = [
+        atc_rows[i : i + _BATCH_SIZE] for i in range(0, len(atc_rows), _BATCH_SIZE)
+    ]
     total_ok = 0
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
         for batch in _progress(batches, "Drug ATC"):
@@ -309,9 +340,11 @@ async def embed_drug(pool: asyncpg.Pool) -> None:
             vecs = await _embed_batch(client, texts)
             rows = [
                 (batch[j]["atc_code"], f"[{','.join(str(x) for x in vecs[j])}]")
-                for j in range(len(batch)) if vecs[j] is not None
+                for j in range(len(batch))
+                if vecs[j] is not None
             ]
-            await _upsert(pool,
+            await _upsert(
+                pool,
                 """INSERT INTO drug.atc_embeddings (atc_code, embedding)
                    VALUES ($1, $2::halfvec)
                    ON CONFLICT (atc_code) DO UPDATE
@@ -327,7 +360,9 @@ async def embed_drug(pool: asyncpg.Pool) -> None:
             "SELECT DISTINCT ingredient_name FROM drug.ingredients WHERE ingredient_name IS NOT NULL AND ingredient_name <> ''"
         )
     print(f"  Ingredient names: {len(ing_rows)}")
-    batches = [ing_rows[i:i + _BATCH_SIZE] for i in range(0, len(ing_rows), _BATCH_SIZE)]
+    batches = [
+        ing_rows[i : i + _BATCH_SIZE] for i in range(0, len(ing_rows), _BATCH_SIZE)
+    ]
     total_ok = 0
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
         for batch in _progress(batches, "Drug ingredients"):
@@ -335,9 +370,11 @@ async def embed_drug(pool: asyncpg.Pool) -> None:
             vecs = await _embed_batch(client, texts)
             rows = [
                 (batch[j]["ingredient_name"], f"[{','.join(str(x) for x in vecs[j])}]")
-                for j in range(len(batch)) if vecs[j] is not None
+                for j in range(len(batch))
+                if vecs[j] is not None
             ]
-            await _upsert(pool,
+            await _upsert(
+                pool,
                 """INSERT INTO drug.ingredient_name_embeddings (ingredient_name, embedding)
                    VALUES ($1, $2::halfvec)
                    ON CONFLICT (ingredient_name) DO UPDATE
@@ -356,7 +393,7 @@ async def embed_icd(pool: asyncpg.Pool) -> None:
     async with pool.acquire() as conn:
         rows = await conn.fetch("SELECT code, name_zh, name_en FROM icd.diagnoses")
     print(f"  Diagnoses: {len(rows)}")
-    batches = [rows[i:i + _BATCH_SIZE] for i in range(0, len(rows), _BATCH_SIZE)]
+    batches = [rows[i : i + _BATCH_SIZE] for i in range(0, len(rows), _BATCH_SIZE)]
     total_ok = 0
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
         for batch in _progress(batches, "ICD diagnoses"):
@@ -367,9 +404,11 @@ async def embed_icd(pool: asyncpg.Pool) -> None:
             vecs = await _embed_batch(client, texts)
             rows_out = [
                 (batch[j]["code"], f"[{','.join(str(x) for x in vecs[j])}]")
-                for j in range(len(batch)) if vecs[j] is not None
+                for j in range(len(batch))
+                if vecs[j] is not None
             ]
-            await _upsert(pool,
+            await _upsert(
+                pool,
                 """INSERT INTO icd.diagnosis_embeddings (code, embedding)
                    VALUES ($1, $2::halfvec)
                    ON CONFLICT (code) DO UPDATE
@@ -392,23 +431,34 @@ async def embed_loinc(pool: asyncpg.Pool) -> None:
                FROM loinc.concepts"""
         )
     print(f"  LOINC concepts: {len(rows)}")
-    batches = [rows[i:i + _BATCH_SIZE] for i in range(0, len(rows), _BATCH_SIZE)]
+    batches = [rows[i : i + _BATCH_SIZE] for i in range(0, len(rows), _BATCH_SIZE)]
     total_ok = 0
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
         for batch in _progress(batches, "LOINC"):
             texts = [
-                " ".join(filter(None, [
-                    r["long_common_name"], r["shortname"], r["name_zh"],
-                    r["common_name_zh"], r["component"], r["specimen_type"],
-                ]))
+                " ".join(
+                    filter(
+                        None,
+                        [
+                            r["long_common_name"],
+                            r["shortname"],
+                            r["name_zh"],
+                            r["common_name_zh"],
+                            r["component"],
+                            r["specimen_type"],
+                        ],
+                    )
+                )
                 for r in batch
             ]
             vecs = await _embed_batch(client, texts)
             rows_out = [
                 (batch[j]["loinc_num"], f"[{','.join(str(x) for x in vecs[j])}]")
-                for j in range(len(batch)) if vecs[j] is not None
+                for j in range(len(batch))
+                if vecs[j] is not None
             ]
-            await _upsert(pool,
+            await _upsert(
+                pool,
                 """INSERT INTO loinc.concept_embeddings (loinc_num, embedding)
                    VALUES ($1, $2::halfvec)
                    ON CONFLICT (loinc_num) DO UPDATE
@@ -432,23 +482,32 @@ async def embed_guideline(pool: asyncpg.Pool) -> None:
     if not rows:
         print("  No guidelines found — run data-loader --guideline first")
         return
-    batches = [rows[i:i + _BATCH_SIZE] for i in range(0, len(rows), _BATCH_SIZE)]
+    batches = [rows[i : i + _BATCH_SIZE] for i in range(0, len(rows), _BATCH_SIZE)]
     total_ok = 0
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
         for batch in _progress(batches, "Guidelines"):
             texts = [
-                " ".join(filter(None, [
-                    r["disease_name_zh"], r["disease_name_en"],
-                    r["guideline_title"], r["guideline_summary"],
-                ]))
+                " ".join(
+                    filter(
+                        None,
+                        [
+                            r["disease_name_zh"],
+                            r["disease_name_en"],
+                            r["guideline_title"],
+                            r["guideline_summary"],
+                        ],
+                    )
+                )
                 for r in batch
             ]
             vecs = await _embed_batch(client, texts)
             rows_out = [
                 (batch[j]["id"], f"[{','.join(str(x) for x in vecs[j])}]")
-                for j in range(len(batch)) if vecs[j] is not None
+                for j in range(len(batch))
+                if vecs[j] is not None
             ]
-            await _upsert(pool,
+            await _upsert(
+                pool,
                 """INSERT INTO guideline.guideline_embeddings (id, embedding)
                    VALUES ($1, $2::halfvec)
                    ON CONFLICT (id) DO UPDATE
@@ -460,20 +519,20 @@ async def embed_guideline(pool: asyncpg.Pool) -> None:
 
 
 async def embed_snomed(pool: asyncpg.Pool) -> None:
-    print("\n=== Embedding: snomed.concept_embeddings (~360k FSNs — expect 1-2+ hours) ===")
+    print(
+        "\n=== Embedding: snomed.concept_embeddings (~360k FSNs — expect 1-2+ hours) ==="
+    )
     if not await _check_ollama():
         return
 
     # Embed one FSN per active concept
     async with pool.acquire() as conn:
-        rows = await conn.fetch(
-            """SELECT DISTINCT ON (concept_id) concept_id, term
+        rows = await conn.fetch("""SELECT DISTINCT ON (concept_id) concept_id, term
                FROM snomed.descriptions
                WHERE active = TRUE AND type_id = 900000000000003001  -- FSN type
-               ORDER BY concept_id"""
-        )
+               ORDER BY concept_id""")
     print(f"  SNOMED active concepts (FSN): {len(rows)}")
-    batches = [rows[i:i + _BATCH_SIZE] for i in range(0, len(rows), _BATCH_SIZE)]
+    batches = [rows[i : i + _BATCH_SIZE] for i in range(0, len(rows), _BATCH_SIZE)]
     total_ok = 0
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
         for batch in _progress(batches, "SNOMED"):
@@ -481,9 +540,11 @@ async def embed_snomed(pool: asyncpg.Pool) -> None:
             vecs = await _embed_batch(client, texts)
             rows_out = [
                 (batch[j]["concept_id"], f"[{','.join(str(x) for x in vecs[j])}]")
-                for j in range(len(batch)) if vecs[j] is not None
+                for j in range(len(batch))
+                if vecs[j] is not None
             ]
-            await _upsert(pool,
+            await _upsert(
+                pool,
                 """INSERT INTO snomed.concept_embeddings (concept_id, embedding)
                    VALUES ($1, $2::halfvec)
                    ON CONFLICT (concept_id) DO UPDATE

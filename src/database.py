@@ -35,7 +35,9 @@ async def init_pool(
     global _pool
     if _pool is not None:
         return _pool
-    _pool = await asyncpg.create_pool(dsn, min_size=min_size, max_size=max_size, **kwargs)
+    _pool = await asyncpg.create_pool(
+        dsn, min_size=min_size, max_size=max_size, **kwargs
+    )
     return _pool
 
 

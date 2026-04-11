@@ -96,6 +96,7 @@ def _iter_rrf(zf: zipfile.ZipFile, member: str):
 
 # ── concept loader ──────────────────────────────────────────────────────────
 
+
 def _load_concepts(zf: zipfile.ZipFile) -> list[tuple]:
     """Return list of (rxcui, name, tty, suppress) — one row per (rxcui, tty) keeping preferred."""
     member = _find_rrf(zf, "RXNCONSO.RRF")
@@ -103,23 +104,23 @@ def _load_concepts(zf: zipfile.ZipFile) -> list[tuple]:
         raise FileNotFoundError("RXNCONSO.RRF not found in RxNorm zip")
 
     # Best-row per rxcui: prefer ISPREF=Y, then just last seen
-    seen: dict[str, tuple] = {}   # rxcui -> (rxcui, name, tty, suppress)
+    seen: dict[str, tuple] = {}  # rxcui -> (rxcui, name, tty, suppress)
     for cols in _iter_rrf(zf, member):
         if len(cols) < 17:
             continue
-        rxcui   = cols[0].strip()
-        lat     = cols[1].strip()
-        ispref  = cols[6].strip()
-        sab     = cols[11].strip()
-        tty     = cols[12].strip()
-        name    = cols[14].strip()
+        rxcui = cols[0].strip()
+        lat = cols[1].strip()
+        ispref = cols[6].strip()
+        sab = cols[11].strip()
+        tty = cols[12].strip()
+        name = cols[14].strip()
         suppress = cols[16].strip()
 
         if lat != "ENG" or sab != "RXNORM":
             continue
         if tty not in WANTED_TTY:
             continue
-        if suppress in ("O", "E"):   # obsolete / excluded
+        if suppress in ("O", "E"):  # obsolete / excluded
             continue
 
         key = rxcui
@@ -131,6 +132,7 @@ def _load_concepts(zf: zipfile.ZipFile) -> list[tuple]:
 
 # ── relationship loader ─────────────────────────────────────────────────────
 
+
 def _load_relationships(zf: zipfile.ZipFile, valid_rxcui: set[str]) -> list[tuple]:
     """Return list of (rxcui1, rel, rxcui2, rela)."""
     member = _find_rrf(zf, "RXNREL.RRF")
@@ -141,11 +143,11 @@ def _load_relationships(zf: zipfile.ZipFile, valid_rxcui: set[str]) -> list[tupl
     for cols in _iter_rrf(zf, member):
         if len(cols) < 15:
             continue
-        rxcui1   = cols[0].strip()
-        rel      = cols[3].strip()
-        rxcui2   = cols[4].strip()
-        rela     = cols[7].strip()
-        sab      = cols[10].strip()
+        rxcui1 = cols[0].strip()
+        rel = cols[3].strip()
+        rxcui2 = cols[4].strip()
+        rela = cols[7].strip()
+        sab = cols[10].strip()
         suppress = cols[14].strip()
 
         if sab != "RXNORM":
@@ -163,6 +165,7 @@ def _load_relationships(zf: zipfile.ZipFile, valid_rxcui: set[str]) -> list[tupl
 
 
 # ── main loader ─────────────────────────────────────────────────────────────
+
 
 async def load_rxnorm(pool: asyncpg.Pool, zip_path: str) -> None:
     print(f"Parsing {zip_path} ...")
@@ -190,7 +193,7 @@ async def load_rxnorm(pool: asyncpg.Pool, zip_path: str) -> None:
                        VALUES ($1, $2, $3, $4)
                        ON CONFLICT (rxcui) DO UPDATE
                        SET name=$2, tty=$3, suppress=$4""",
-                    concepts[i:i+BATCH],
+                    concepts[i : i + BATCH],
                 )
 
             print("  Inserting relationships ...")
@@ -198,7 +201,7 @@ async def load_rxnorm(pool: asyncpg.Pool, zip_path: str) -> None:
                 await conn.executemany(
                     """INSERT INTO rxnorm.relationships (rxcui1, rel, rxcui2, rela)
                        VALUES ($1, $2, $3, $4)""",
-                    relationships[i:i+BATCH],
+                    relationships[i : i + BATCH],
                 )
 
     print(

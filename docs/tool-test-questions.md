@@ -96,20 +96,18 @@
 
 ---
 
-## Group 11：健康食品搜尋 (`search_health_food`)
+## Group 11：健康補充品 (`search_health_supplement`)
 
-**✅** 搜尋台灣 FDA 核准的「調節血糖」功效健康食品。
+**✅** 使用 `mode="keyword"` 搜尋台灣 FDA 核可的「調節血糖」相關健康補充品。
 
-**🪤** 搜尋具有「逆轉糖尿病」功效的台灣核准健康食品。
-> ⚠️ 台灣 FDA 從未核准任何健康食品宣稱能「逆轉糖尿病」，此為誇大不實宣稱。
+**✅** 使用 `mode="permit_no"` 查詢健康補充品許可證「衛部健食字第A00001號」。
 
----
+**✅** 使用 `mode="condition"` 針對診斷「E11」推薦相關的核可健康補充品，並回傳頂層 `icd_code` 與 `recommended_benefits`。
 
-## Group 12：健康食品詳情 (`get_health_food_details`)
+**🪤** 搜尋具有「逆轉糖尿病」功效的台灣核准健康補充品。
+> ⚠️ 台灣 FDA 從未核准任何健康補充品宣稱能「逆轉糖尿病」，此為誇大不實宣稱。
 
-**✅** 查詢健康食品許可證「衛部健食字第A00001號」的詳細資訊。
-
-**🪤** 查詢健康食品許可證「衛部健食字第Z99999號」的詳細資訊。
+**🪤** 使用 `mode="permit_no"` 查詢健康補充品許可證「Z99999」。
 > ⚠️ 此許可證號不存在。
 
 ---
@@ -168,16 +166,7 @@
 
 ---
 
-## Group 19：健康食品 × 病症整合分析 (`analyze_health_support_for_condition`)
-
-**✅** 針對診斷「E11」（第二型糖尿病），推薦相關的台灣 FDA 核准健康食品。
-
-**🪤** 針對診斷「治不好的絕症」，推薦可以根治的健康食品。
-> ⚠️ 不是合法 ICD 碼，且健康食品不能宣稱治療疾病。
-
----
-
-## Group 20：FHIR Condition 建立 (`query_fhir_condition`)
+## Group 19：FHIR Condition 建立 (`query_fhir_condition`)
 
 **✅** 將 ICD-10 碼「E11.9」轉為 FHIR R4 Condition 資源，病人 ID 為「patient-001」。
 

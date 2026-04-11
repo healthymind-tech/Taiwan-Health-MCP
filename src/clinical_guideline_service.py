@@ -15,14 +15,20 @@ from utils import log_error, log_info
 
 
 class ClinicalGuidelineService:
-    def __init__(self, pool: asyncpg.Pool, embedding_svc: EmbeddingService | None = None):
+    def __init__(
+        self, pool: asyncpg.Pool, embedding_svc: EmbeddingService | None = None
+    ):
         self.pool = pool
         self._embedding_svc = embedding_svc
 
     async def initialize(self) -> None:
-        count = await self.pool.fetchval("SELECT COUNT(*) FROM guideline.disease_guidelines")
+        count = await self.pool.fetchval(
+            "SELECT COUNT(*) FROM guideline.disease_guidelines"
+        )
         if count == 0:
-            log_error("Clinical guideline table is empty — run data-loader seed script first")
+            log_error(
+                "Clinical guideline table is empty — run data-loader seed script first"
+            )
         else:
             log_info(f"Clinical Guideline Service ready ({count} guidelines)")
 
@@ -74,7 +80,10 @@ class ClinicalGuidelineService:
                               g.guideline_title, g.guideline_source, g.publication_year
                        FROM rrf JOIN guideline.disease_guidelines g ON g.id = rrf.id
                        ORDER BY rrf.score DESC LIMIT $4""",
-                    f"%{keyword}%", keyword, vec_str, limit,
+                    f"%{keyword}%",
+                    keyword,
+                    vec_str,
+                    limit,
                 )
             else:
                 rows = await conn.fetch(
@@ -85,16 +94,24 @@ class ClinicalGuidelineService:
                           OR to_tsvector('simple', COALESCE(disease_name_zh,'') || ' ' || COALESCE(disease_name_en,''))
                              @@ plainto_tsquery('simple', $2)
                        ORDER BY publication_year DESC LIMIT $3""",
-                    f"%{keyword}%", keyword, limit,
+                    f"%{keyword}%",
+                    keyword,
+                    limit,
                 )
         if not rows:
             return json.dumps(
-                {"message": f"找不到符合 '{keyword}' 的診療指引",
-                 "suggestion": "請使用疾病中文名稱或 ICD-10 編碼搜尋"},
+                {
+                    "message": f"找不到符合 '{keyword}' 的診療指引",
+                    "suggestion": "請使用疾病中文名稱或 ICD-10 編碼搜尋",
+                },
                 ensure_ascii=False,
             )
         return json.dumps(
-            {"keyword": keyword, "total_found": len(rows), "guidelines": [dict(r) for r in rows]},
+            {
+                "keyword": keyword,
+                "total_found": len(rows),
+                "guidelines": [dict(r) for r in rows],
+            },
             ensure_ascii=False,
         )
 
@@ -116,23 +133,31 @@ class ClinicalGuidelineService:
         async with self.pool.acquire() as conn:
             guideline = await conn.fetchrow(
                 "SELECT * FROM guideline.disease_guidelines WHERE icd_code = $1 OR icd_code ILIKE $2",
-                icd_code, f"{icd_code}%",
+                icd_code,
+                f"{icd_code}%",
             )
             if not guideline:
-                return json.dumps({"error": f"找不到 ICD 碼 '{icd_code}' 的診療指引"}, ensure_ascii=False)
+                return json.dumps(
+                    {"error": f"找不到 ICD 碼 '{icd_code}' 的診療指引"},
+                    ensure_ascii=False,
+                )
 
             gid = guideline["id"]
             diagnostics = await conn.fetch(
-                "SELECT * FROM guideline.diagnostic_recommendations WHERE guideline_id = $1 ORDER BY step_order", gid
+                "SELECT * FROM guideline.diagnostic_recommendations WHERE guideline_id = $1 ORDER BY step_order",
+                gid,
             )
             medications = await conn.fetch(
-                "SELECT * FROM guideline.medication_recommendations WHERE guideline_id = $1 ORDER BY line_of_therapy", gid
+                "SELECT * FROM guideline.medication_recommendations WHERE guideline_id = $1 ORDER BY line_of_therapy",
+                gid,
             )
             tests = await conn.fetch(
-                "SELECT * FROM guideline.test_recommendations WHERE guideline_id = $1 ORDER BY test_category", gid
+                "SELECT * FROM guideline.test_recommendations WHERE guideline_id = $1 ORDER BY test_category",
+                gid,
             )
             goals = await conn.fetch(
-                "SELECT * FROM guideline.treatment_goals WHERE guideline_id = $1 ORDER BY goal_type", gid
+                "SELECT * FROM guideline.treatment_goals WHERE guideline_id = $1 ORDER BY goal_type",
+                gid,
             )
 
         return json.dumps(
@@ -171,12 +196,20 @@ class ClinicalGuidelineService:
                    JOIN guideline.disease_guidelines dg ON mr.guideline_id = dg.id
                    WHERE dg.icd_code = $1 OR dg.icd_code ILIKE $2
                    ORDER BY mr.line_of_therapy""",
-                icd_code, f"{icd_code}%",
+                icd_code,
+                f"{icd_code}%",
             )
         if not rows:
-            return json.dumps({"message": f"找不到 ICD 碼 '{icd_code}' 的用藥建議"}, ensure_ascii=False)
+            return json.dumps(
+                {"message": f"找不到 ICD 碼 '{icd_code}' 的用藥建議"},
+                ensure_ascii=False,
+            )
         return json.dumps(
-            {"icd_code": icd_code, "total_recommendations": len(rows), "medications": [dict(r) for r in rows]},
+            {
+                "icd_code": icd_code,
+                "total_recommendations": len(rows),
+                "medications": [dict(r) for r in rows],
+            },
             ensure_ascii=False,
         )
 
@@ -197,12 +230,20 @@ class ClinicalGuidelineService:
                    JOIN guideline.disease_guidelines dg ON tr.guideline_id = dg.id
                    WHERE dg.icd_code = $1 OR dg.icd_code ILIKE $2
                    ORDER BY tr.test_category""",
-                icd_code, f"{icd_code}%",
+                icd_code,
+                f"{icd_code}%",
             )
         if not rows:
-            return json.dumps({"message": f"找不到 ICD 碼 '{icd_code}' 的檢查建議"}, ensure_ascii=False)
+            return json.dumps(
+                {"message": f"找不到 ICD 碼 '{icd_code}' 的檢查建議"},
+                ensure_ascii=False,
+            )
         return json.dumps(
-            {"icd_code": icd_code, "total_recommendations": len(rows), "tests": [dict(r) for r in rows]},
+            {
+                "icd_code": icd_code,
+                "total_recommendations": len(rows),
+                "tests": [dict(r) for r in rows],
+            },
             ensure_ascii=False,
         )
 
@@ -222,12 +263,20 @@ class ClinicalGuidelineService:
                    JOIN guideline.disease_guidelines dg ON tg.guideline_id = dg.id
                    WHERE dg.icd_code = $1 OR dg.icd_code ILIKE $2
                    ORDER BY tg.goal_type""",
-                icd_code, f"{icd_code}%",
+                icd_code,
+                f"{icd_code}%",
             )
         if not rows:
-            return json.dumps({"message": f"找不到 ICD 碼 '{icd_code}' 的治療目標"}, ensure_ascii=False)
+            return json.dumps(
+                {"message": f"找不到 ICD 碼 '{icd_code}' 的治療目標"},
+                ensure_ascii=False,
+            )
         return json.dumps(
-            {"icd_code": icd_code, "total_goals": len(rows), "goals": [dict(r) for r in rows]},
+            {
+                "icd_code": icd_code,
+                "total_goals": len(rows),
+                "goals": [dict(r) for r in rows],
+            },
             ensure_ascii=False,
         )
 
@@ -259,7 +308,9 @@ class ClinicalGuidelineService:
                    WHERE (dg.icd_code = $1 OR dg.icd_code ILIKE $2)
                      AND (mr.medication_class ILIKE $3 OR mr.medication_examples ILIKE $3)
                    ORDER BY mr.line_of_therapy""",
-                icd_code, f"{icd_code}%", f"%{medication_class}%",
+                icd_code,
+                f"{icd_code}%",
+                f"%{medication_class}%",
             )
             # Also get all meds for that ICD to show broader context
             all_meds = await conn.fetch(
@@ -268,13 +319,18 @@ class ClinicalGuidelineService:
                    JOIN guideline.disease_guidelines dg ON mr.guideline_id = dg.id
                    WHERE dg.icd_code = $1 OR dg.icd_code ILIKE $2
                    ORDER BY mr.line_of_therapy""",
-                icd_code, f"{icd_code}%",
+                icd_code,
+                f"{icd_code}%",
             )
 
         matched = [dict(r) for r in rows]
         all_contraindications = [
-            {"medication_class": r["medication_class"], "contraindications": r["contraindications"]}
-            for r in all_meds if r["contraindications"]
+            {
+                "medication_class": r["medication_class"],
+                "contraindications": r["contraindications"],
+            }
+            for r in all_meds
+            if r["contraindications"]
         ]
 
         return json.dumps(
@@ -311,11 +367,13 @@ class ClinicalGuidelineService:
                    JOIN guideline.disease_guidelines dg ON mr.guideline_id = dg.id
                    WHERE dg.icd_code = $1 OR dg.icd_code ILIKE $2
                    ORDER BY mr.line_of_therapy""",
-                icd_code, f"{icd_code}%",
+                icd_code,
+                f"{icd_code}%",
             )
             if not med_rows:
                 return json.dumps(
-                    {"error": f"找不到 ICD 碼 '{icd_code}' 的診療指引"}, ensure_ascii=False
+                    {"error": f"找不到 ICD 碼 '{icd_code}' 的診療指引"},
+                    ensure_ascii=False,
                 )
 
             results = []
@@ -323,7 +381,9 @@ class ClinicalGuidelineService:
                 # Split medication_examples by comma/space and search each
                 examples_raw = med["medication_examples"] or ""
                 # Extract individual drug names (comma/slash/space separated)
-                names = [n.strip() for n in re.split(r"[,、/；;]", examples_raw) if n.strip()]
+                names = [
+                    n.strip() for n in re.split(r"[,、/；;]", examples_raw) if n.strip()
+                ]
 
                 fda_matches = []
                 for name in names[:5]:  # limit to first 5 per row
@@ -339,19 +399,26 @@ class ClinicalGuidelineService:
                         name,
                     )
                     if drug_rows:
-                        fda_matches.extend([{**dict(r), "matched_from": name} for r in drug_rows])
+                        fda_matches.extend(
+                            [{**dict(r), "matched_from": name} for r in drug_rows]
+                        )
 
-                results.append({
-                    "line_of_therapy": med["line_of_therapy"],
-                    "medication_class": med["medication_class"],
-                    "medication_examples": examples_raw,
-                    "evidence_level": med["evidence_level"],
-                    "fda_approved_matches": fda_matches,
-                })
+                results.append(
+                    {
+                        "line_of_therapy": med["line_of_therapy"],
+                        "medication_class": med["medication_class"],
+                        "medication_examples": examples_raw,
+                        "evidence_level": med["evidence_level"],
+                        "fda_approved_matches": fda_matches,
+                    }
+                )
 
         return json.dumps(
-            {"icd_code": icd_code, "medications": results,
-             "note": "以衛福部核准藥品許可證資料庫比對，結果僅供參考"},
+            {
+                "icd_code": icd_code,
+                "medications": results,
+                "note": "以衛福部核准藥品許可證資料庫比對，結果僅供參考",
+            },
             ensure_ascii=False,
         )
 
@@ -382,14 +449,18 @@ class ClinicalGuidelineService:
             "pathway": {
                 "step1_diagnosis": {
                     "phase": "診斷確認階段",
-                    "actions": [r["description"] for r in guideline_data["diagnostic_recommendations"]],
+                    "actions": [
+                        r["description"]
+                        for r in guideline_data["diagnostic_recommendations"]
+                    ],
                 },
                 "step2_baseline_tests": {
                     "phase": "基礎檢查階段",
                     "actions": [
                         f"{t['test_name']} ({t['indication']})"
                         for t in guideline_data["test_recommendations"]
-                        if "診斷" in (t.get("indication") or "") or "基礎" in (t.get("indication") or "")
+                        if "診斷" in (t.get("indication") or "")
+                        or "基礎" in (t.get("indication") or "")
                     ],
                 },
                 "step3_treatment_initiation": {
@@ -405,7 +476,8 @@ class ClinicalGuidelineService:
                     "actions": [
                         f"{t['test_name']} - {t['frequency']}"
                         for t in guideline_data["test_recommendations"]
-                        if "追蹤" in (t.get("indication") or "") or "監測" in (t.get("indication") or "")
+                        if "追蹤" in (t.get("indication") or "")
+                        or "監測" in (t.get("indication") or "")
                     ],
                 },
                 "step5_treatment_goals": {

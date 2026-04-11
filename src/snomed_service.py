@@ -38,7 +38,9 @@ HIERARCHY_ROOTS = {
 
 
 class SNOMEDService:
-    def __init__(self, pool: asyncpg.Pool, embedding_svc: EmbeddingService | None = None):
+    def __init__(
+        self, pool: asyncpg.Pool, embedding_svc: EmbeddingService | None = None
+    ):
         self.pool = pool
         self._embedding_svc = embedding_svc
 
@@ -114,7 +116,12 @@ class SNOMEDService:
                                  CASE WHEN d.type_id = $6 THEN 0 ELSE 1 END
                         LIMIT $2
                         """,
-                        query, limit, hierarchy_filter, IS_A_TYPE, vec_str, FSN_TYPE,
+                        query,
+                        limit,
+                        hierarchy_filter,
+                        IS_A_TYPE,
+                        vec_str,
+                        FSN_TYPE,
                     )
                 else:
                     rows = await conn.fetch(
@@ -138,7 +145,11 @@ class SNOMEDService:
                             ts_rank(to_tsvector('english', d.term), plainto_tsquery('english', $1)) DESC
                         LIMIT $2
                         """,
-                        query, limit, hierarchy_filter, IS_A_TYPE, FSN_TYPE,
+                        query,
+                        limit,
+                        hierarchy_filter,
+                        IS_A_TYPE,
+                        FSN_TYPE,
                     )
             else:
                 if vec_str:
@@ -174,7 +185,10 @@ class SNOMEDService:
                                  CASE WHEN d.type_id = $4 THEN 0 ELSE 1 END
                         LIMIT $2
                         """,
-                        query, limit, vec_str, FSN_TYPE,
+                        query,
+                        limit,
+                        vec_str,
+                        FSN_TYPE,
                     )
                 else:
                     rows = await conn.fetch(
@@ -189,7 +203,9 @@ class SNOMEDService:
                             ts_rank(to_tsvector('english', d.term), plainto_tsquery('english', $1)) DESC
                         LIMIT $2
                         """,
-                        query, limit, FSN_TYPE,
+                        query,
+                        limit,
+                        FSN_TYPE,
                     )
 
         # Deduplicate to one result per concept_id (prefer FSN)

@@ -8,20 +8,31 @@ from datetime import datetime, timezone
 
 import asyncpg
 import httpx
-
 from loaders.fda_common import fetch_json
 
 API_SOURCE = "https://data.fda.gov.tw/data/opendata/export/19/json"
 
 
 async def load_health_food(pool: asyncpg.Pool) -> None:
+    """Fetch Taiwan FDA health food data from the Open Data API and load into ``health_food.items``.
+
+    Args:
+        pool: asyncpg connection pool.
+    """
     print("Fetching Taiwan FDA health food dataset ...")
     async with httpx.AsyncClient(timeout=60) as client:
         data = await fetch_json(client, API_SOURCE)
 
     rows = [
-        (r.get("許可證字號", ""), r.get("中文品名", ""), r.get("申請商", ""),
-         r.get("保健功效", ""), r.get("核可日期", ""), "", r.get("類別", ""))
+        (
+            r.get("許可證字號", ""),
+            r.get("中文品名", ""),
+            r.get("申請商", ""),
+            r.get("保健功效", ""),
+            r.get("核可日期", ""),
+            "",
+            r.get("類別", ""),
+        )
         for r in data
     ]
 
@@ -34,7 +45,7 @@ async def load_health_food(pool: asyncpg.Pool) -> None:
                     """INSERT INTO health_food.items
                        (permit_no, name, applicant, benefit_claims, valid_from, valid_to, category)
                        VALUES ($1,$2,$3,$4,$5,$6,$7)""",
-                    rows[i:i+BATCH],
+                    rows[i : i + BATCH],
                 )
             await conn.execute(
                 """INSERT INTO health_food.sync_meta (key, value, updated_at)

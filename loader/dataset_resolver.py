@@ -11,7 +11,6 @@ from typing import Literal
 
 from dataset_config import DatasetConfig, DatasetEntry
 
-
 DatasetStatus = Literal["ok", "missing", "disabled", "internal"]
 
 
@@ -44,7 +43,24 @@ def _normalize_path(path: str, base_dir: str) -> str:
     return os.path.abspath(os.path.join(base_dir, path))
 
 
-def resolve_dataset(entry: DatasetEntry, base_dir: str, resolve_mode: str = "first_match") -> ResolvedDataset:
+def resolve_dataset(
+    entry: DatasetEntry, base_dir: str, resolve_mode: str = "first_match"
+) -> ResolvedDataset:
+    """Resolve a single dataset entry to a concrete filesystem path.
+
+    Args:
+        entry: The dataset configuration entry to resolve.
+        base_dir: Base directory used to resolve relative paths.
+        resolve_mode: How to handle multiple glob matches. Only ``"first_match"``
+            is currently supported.
+
+    Returns:
+        A ``ResolvedDataset`` with status ``"ok"``, ``"missing"``, ``"disabled"``,
+        or ``"internal"``.
+
+    Raises:
+        ValueError: If ``resolve_mode`` is unsupported.
+    """
     if not entry.enabled:
         return ResolvedDataset(
             key=entry.key,
@@ -135,6 +151,18 @@ def resolve_dataset(entry: DatasetEntry, base_dir: str, resolve_mode: str = "fir
 
 
 def resolve_group(config: DatasetConfig, group: str) -> dict[str, ResolvedDataset]:
+    """Resolve all datasets belonging to a named loader group.
+
+    Args:
+        config: Loaded dataset configuration.
+        group: Group key, e.g. ``"icd"``, ``"loinc"``, ``"snomed"``.
+
+    Returns:
+        Mapping of dataset key → ``ResolvedDataset`` for every member of the group.
+
+    Raises:
+        KeyError: If ``group`` is unknown or a required dataset key is absent from config.
+    """
     if group not in DATASET_GROUPS:
         raise KeyError(f"Unknown dataset group: {group}")
 
@@ -142,7 +170,9 @@ def resolve_group(config: DatasetConfig, group: str) -> dict[str, ResolvedDatase
     for key in DATASET_GROUPS[group]:
         entry = config.datasets.get(key)
         if entry is None:
-            raise KeyError(f"Dataset group '{group}' requires missing config entry '{key}'")
+            raise KeyError(
+                f"Dataset group '{group}' requires missing config entry '{key}'"
+            )
         resolved[key] = resolve_dataset(
             entry, config.defaults.base_dir, config.defaults.resolve_mode
         )
@@ -150,6 +180,14 @@ def resolve_group(config: DatasetConfig, group: str) -> dict[str, ResolvedDatase
 
 
 def format_resolution_line(result: ResolvedDataset) -> str:
+    """Format a single ``ResolvedDataset`` as a human-readable status line.
+
+    Args:
+        result: The resolved dataset to format.
+
+    Returns:
+        A string like ``"- key: OK -> /path/to/file"`` or ``"- key: SKIPPED (reason)"``.
+    """
     if result.status == "ok":
         suffix = result.resolved_path or ""
         if result.diagnostics:

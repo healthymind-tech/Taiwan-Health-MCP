@@ -136,7 +136,7 @@ curl http://localhost:8000/mcp -X POST \
   "database": "ok",
   "cache": "ok",
   "services": {
-    "icd": true, "drug": true, "health_food": true,
+    "icd": true, "drug": true, "health_supplement": true,
     "food_nutrition": true, "fhir_condition": true, "fhir_medication": true,
     "lab": true, "guideline": true, "twcore": true,
     "snomed": true, "drug_interactions": true

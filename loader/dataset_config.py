@@ -18,7 +18,6 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
-
 SUPPORTED_CONFIG_VERSION = 1
 
 
@@ -129,7 +128,9 @@ def _coerce_bool(value, field_name: str, dataset_key: str) -> bool:
 def _coerce_str(value, field_name: str, dataset_key: str) -> str:
     if isinstance(value, str) and value.strip():
         return value
-    raise ValueError(f"Dataset '{dataset_key}' field '{field_name}' must be a non-empty string")
+    raise ValueError(
+        f"Dataset '{dataset_key}' field '{field_name}' must be a non-empty string"
+    )
 
 
 def _build_defaults(raw: dict) -> DatasetDefaults:
@@ -190,6 +191,17 @@ def _build_dataset_entry(key: str, raw: dict) -> DatasetEntry:
 
 
 def parse_dataset_config(text: str) -> DatasetConfig:
+    """Parse a YAML-subset dataset config string into a ``DatasetConfig``.
+
+    Args:
+        text: Raw YAML content as a string.
+
+    Returns:
+        Validated ``DatasetConfig`` instance.
+
+    Raises:
+        ValueError: If the version is unsupported or any required field is invalid.
+    """
     raw = _parse_simple_yaml(text)
     version = raw.get("version")
     if version != SUPPORTED_CONFIG_VERSION:
@@ -201,17 +213,28 @@ def parse_dataset_config(text: str) -> DatasetConfig:
         raise ValueError("datasets must be a non-empty mapping")
 
     datasets = {
-        key: _build_dataset_entry(key, value)
-        for key, value in raw_datasets.items()
+        key: _build_dataset_entry(key, value) for key, value in raw_datasets.items()
     }
     return DatasetConfig(version=version, defaults=defaults, datasets=datasets)
 
 
 def load_dataset_config(path: str) -> DatasetConfig:
+    """Load and parse a dataset config file from disk.
+
+    Args:
+        path: Filesystem path to the YAML config file.
+
+    Returns:
+        Validated ``DatasetConfig`` instance.
+    """
     with open(path, encoding="utf-8") as f:
         return parse_dataset_config(f.read())
 
 
 def get_dataset_config_path() -> str | None:
-    return os.getenv("DATASETS_CONFIG")
+    """Return the dataset config file path from the ``DATASETS_CONFIG`` env var.
 
+    Returns:
+        Path string, or ``None`` if the variable is unset.
+    """
+    return os.getenv("DATASETS_CONFIG")

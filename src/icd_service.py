@@ -17,7 +17,9 @@ from utils import log_error, log_info
 
 
 class ICDService:
-    def __init__(self, pool: asyncpg.Pool, embedding_svc: EmbeddingService | None = None):
+    def __init__(
+        self, pool: asyncpg.Pool, embedding_svc: EmbeddingService | None = None
+    ):
         self.pool = pool
         self._embedding_svc = embedding_svc
         self._pcs_available = False
@@ -35,7 +37,9 @@ class ICDService:
             log_info("ICD Service ready", diagnoses=diag_count, procedures=proc_count)
 
     @cached(ttl=86400, prefix="icd.search")
-    async def search_codes(self, keyword: str, type: str = "all", limit: int = 3) -> str:
+    async def search_codes(
+        self, keyword: str, type: str = "all", limit: int = 3
+    ) -> str:
         """Search ICD-10-CM diagnoses and/or ICD-10-PCS procedures by keyword.
 
         Args:
@@ -80,7 +84,10 @@ class ICDService:
                            SELECT d.code, d.name_zh, d.name_en
                            FROM rrf JOIN icd.diagnoses d ON d.code = rrf.code
                            ORDER BY rrf.score DESC LIMIT $4""",
-                        keyword, f"{keyword}%", vec_str, limit,
+                        keyword,
+                        f"{keyword}%",
+                        vec_str,
+                        limit,
                     )
                 else:
                     rows = await conn.fetch(
@@ -90,7 +97,9 @@ class ICDService:
                                  @@ plainto_tsquery('simple', $1)
                               OR code ILIKE $2
                            ORDER BY code LIMIT $3""",
-                        keyword, f"{keyword}%", limit,
+                        keyword,
+                        f"{keyword}%",
+                        limit,
                     )
                 results["diagnoses"] = [dict(r) for r in rows]
 
@@ -103,7 +112,9 @@ class ICDService:
                                  @@ plainto_tsquery('simple', $1)
                               OR code ILIKE $2
                            ORDER BY code LIMIT $3""",
-                        keyword, f"{keyword}%", limit,
+                        keyword,
+                        f"{keyword}%",
+                        limit,
                     )
                     results["procedures"] = [dict(r) for r in rows]
                 else:
@@ -113,8 +124,14 @@ class ICDService:
                         "Add icd10pcs_tables_<year>.zip to fhir-code/icd10pcs/ and re-run data-loader."
                     )
 
-        if not results.get("diagnoses") and not results.get("procedures") and "procedures_note" not in results:
-            return json.dumps({"error": f"No results found for '{keyword}'."}, ensure_ascii=False)
+        if (
+            not results.get("diagnoses")
+            and not results.get("procedures")
+            and "procedures_note" not in results
+        ):
+            return json.dumps(
+                {"error": f"No results found for '{keyword}'."}, ensure_ascii=False
+            )
 
         return json.dumps(results, ensure_ascii=False)
 
@@ -135,18 +152,25 @@ class ICDService:
         async with self.pool.acquire() as conn:
             children = await conn.fetch(
                 "SELECT code, name_zh FROM icd.diagnoses WHERE code LIKE $1 AND code != $2 ORDER BY code LIMIT 15",
-                f"{code}%", code,
+                f"{code}%",
+                code,
             )
             if children:
                 return json.dumps(
-                    {"base_code": code, "potential_complications_or_specifics": [dict(r) for r in children]},
+                    {
+                        "base_code": code,
+                        "potential_complications_or_specifics": [
+                            dict(r) for r in children
+                        ],
+                    },
                     ensure_ascii=False,
                 )
 
             category = code.split(".")[0] if "." in code else code[:3]
             siblings = await conn.fetch(
                 "SELECT code, name_zh FROM icd.diagnoses WHERE category = $1 AND code != $2 LIMIT 10",
-                category, code,
+                category,
+                code,
             )
             return json.dumps(
                 {
@@ -178,10 +202,14 @@ class ICDService:
             )
         neighbors = [dict(r) for r in prev_rows] + [dict(r) for r in next_rows]
         neighbors.sort(key=lambda r: r["code"])
-        return json.dumps({"target": code, "nearby_options": neighbors}, ensure_ascii=False)
+        return json.dumps(
+            {"target": code, "nearby_options": neighbors}, ensure_ascii=False
+        )
 
     @cached(ttl=86400, prefix="icd.category")
-    async def browse_category(self, category: str | None = None, limit: int = 50) -> str:
+    async def browse_category(
+        self, category: str | None = None, limit: int = 50
+    ) -> str:
         """List ICD-10-CM codes within a category, or enumerate all categories.
 
         Args:
@@ -196,18 +224,18 @@ class ICDService:
         """
         async with self.pool.acquire() as conn:
             if not category:
-                rows = await conn.fetch(
-                    """SELECT category,
+                rows = await conn.fetch("""SELECT category,
                               MIN(name_zh) FILTER (WHERE LENGTH(code)=3) AS category_name_zh,
                               MIN(name_en) FILTER (WHERE LENGTH(code)=3) AS category_name_en,
                               COUNT(*) AS code_count
                        FROM icd.diagnoses
                        GROUP BY category
-                       ORDER BY category"""
-                )
+                       ORDER BY category""")
                 return json.dumps(
-                    {"total_categories": len(rows),
-                     "categories": [dict(r) for r in rows]},
+                    {
+                        "total_categories": len(rows),
+                        "categories": [dict(r) for r in rows],
+                    },
                     ensure_ascii=False,
                 )
 
@@ -217,16 +245,22 @@ class ICDService:
                    WHERE category = $1
                    ORDER BY code
                    LIMIT $2""",
-                category.upper(), min(limit, 200),
+                category.upper(),
+                min(limit, 200),
             )
         if not rows:
             return json.dumps(
-                {"error": f"找不到 category '{category}'。使用 category=null 可列出所有分類。"},
+                {
+                    "error": f"找不到 category '{category}'。使用 category=null 可列出所有分類。"
+                },
                 ensure_ascii=False,
             )
         return json.dumps(
-            {"category": category.upper(), "total": len(rows),
-             "codes": [dict(r) for r in rows]},
+            {
+                "category": category.upper(),
+                "total": len(rows),
+                "codes": [dict(r) for r in rows],
+            },
             ensure_ascii=False,
         )
 
@@ -257,12 +291,20 @@ class ICDService:
                         "SELECT * FROM icd.procedures WHERE code = $1", procedure_code
                     )
                 else:
-                    proc_note = "ICD-10-PCS data not loaded — procedure lookup unavailable."
+                    proc_note = (
+                        "ICD-10-PCS data not loaded — procedure lookup unavailable."
+                    )
 
             return json.dumps(
                 {
-                    "diagnosis_info": dict(diag) if diag else f"Diagnosis {diagnosis_code} not found",
-                    "procedure_info": dict(proc) if proc else (proc_note or f"Procedure {procedure_code} not found"),
+                    "diagnosis_info": (
+                        dict(diag) if diag else f"Diagnosis {diagnosis_code} not found"
+                    ),
+                    "procedure_info": (
+                        dict(proc)
+                        if proc
+                        else (proc_note or f"Procedure {procedure_code} not found")
+                    ),
                     "instruction": "Analyze the above for potential contraindications or medical conflicts.",
                 },
                 ensure_ascii=False,
@@ -270,6 +312,10 @@ class ICDService:
         except Exception as e:
             log_error("get_conflict_info error", error=str(e))
             return json.dumps(
-                {"error": str(e), "diagnosis_code": diagnosis_code, "procedure_code": procedure_code},
+                {
+                    "error": str(e),
+                    "diagnosis_code": diagnosis_code,
+                    "procedure_code": procedure_code,
+                },
                 ensure_ascii=False,
             )

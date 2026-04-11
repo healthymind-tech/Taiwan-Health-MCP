@@ -37,13 +37,23 @@ class DrugInteractionService:
             inter_count = await self.pool.fetchval(
                 "SELECT COUNT(*) FROM rxnorm.relationships WHERE rela = 'interacts_with'"
             )
-            log_info(f"DrugInteractionService ready — {count:,} concepts, {inter_count:,} interactions")
+            log_info(
+                f"DrugInteractionService ready — {count:,} concepts, {inter_count:,} interactions"
+            )
 
     # ── name → RXCUI resolution ────────────────────────────────────────────
 
     @cached(ttl=3600, prefix="rxn:resolve")
     async def resolve_drug(self, drug_name: str) -> list[dict[str, Any]]:
-        """Resolve a drug name to RxNorm concepts (prioritizes IN/PIN/MIN)."""
+        """Resolve a drug name to RxNorm concepts, prioritising ingredient types.
+
+        Args:
+            drug_name: Free-text drug name or brand name to look up.
+
+        Returns:
+            Up to 10 matching concepts, each with ``rxcui``, ``name``, and ``tty``
+            keys, ordered by term type (IN > PIN > MIN > BN > other).
+        """
         async with self.pool.acquire() as conn:
             rows = await conn.fetch(
                 """
@@ -149,33 +159,44 @@ class DrugInteractionService:
                                     OR (rxcui1 = $2 AND rxcui2 = $1))
                                 LIMIT 1
                                 """,
-                                ing_a, ing_b,
+                                ing_a,
+                                ing_b,
                             )
                             if rows:
                                 # Get names for the ingredient RXCUIs
                                 name_a = await conn.fetchval(
-                                    "SELECT name FROM rxnorm.concepts WHERE rxcui = $1", ing_a
+                                    "SELECT name FROM rxnorm.concepts WHERE rxcui = $1",
+                                    ing_a,
                                 )
                                 name_b = await conn.fetchval(
-                                    "SELECT name FROM rxnorm.concepts WHERE rxcui = $1", ing_b
+                                    "SELECT name FROM rxnorm.concepts WHERE rxcui = $1",
+                                    ing_b,
                                 )
-                                interactions.append({
-                                    "drug_a": {
-                                        "input": drug_a["input"],
-                                        "rxcui": drug_a["rxcui"],
-                                        "name": drug_a["name"],
-                                        "ingredient": {"rxcui": ing_a, "name": name_a},
-                                    },
-                                    "drug_b": {
-                                        "input": drug_b["input"],
-                                        "rxcui": drug_b["rxcui"],
-                                        "name": drug_b["name"],
-                                        "ingredient": {"rxcui": ing_b, "name": name_b},
-                                    },
-                                    "interaction_type": "interacts_with",
-                                    "severity": "unknown",
-                                    "source": "RxNorm",
-                                })
+                                interactions.append(
+                                    {
+                                        "drug_a": {
+                                            "input": drug_a["input"],
+                                            "rxcui": drug_a["rxcui"],
+                                            "name": drug_a["name"],
+                                            "ingredient": {
+                                                "rxcui": ing_a,
+                                                "name": name_a,
+                                            },
+                                        },
+                                        "drug_b": {
+                                            "input": drug_b["input"],
+                                            "rxcui": drug_b["rxcui"],
+                                            "name": drug_b["name"],
+                                            "ingredient": {
+                                                "rxcui": ing_b,
+                                                "name": name_b,
+                                            },
+                                        },
+                                        "interaction_type": "interacts_with",
+                                        "severity": "unknown",
+                                        "source": "RxNorm",
+                                    }
+                                )
 
         return {
             "resolved_drugs": resolved,
@@ -207,9 +228,9 @@ class DrugInteractionService:
             )
 
         return {
-            "rxcui":       concept["rxcui"],
-            "name":        concept["name"],
-            "tty":         concept["tty"],
+            "rxcui": concept["rxcui"],
+            "name": concept["name"],
+            "tty": concept["tty"],
             "ingredients": [
                 {"rxcui": r["rxcui"], "name": r["name"], "tty": r["tty"]}
                 for r in ingredients

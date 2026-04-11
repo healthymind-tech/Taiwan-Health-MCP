@@ -99,7 +99,11 @@ class DatasetStatusManager:
                     except Exception as exc:
                         log_warning("remove_tool failed", tool=name, error=str(exc))
                 self._enabled.discard(key)
-                log_info("Dataset unavailable — tools disabled", service=key, tools=len(tools))
+                log_info(
+                    "Dataset unavailable — tools disabled",
+                    service=key,
+                    tools=len(tools),
+                )
 
     async def refresh_if_stale_and_sync(
         self,

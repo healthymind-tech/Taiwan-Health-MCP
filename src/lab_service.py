@@ -15,14 +15,18 @@ from utils import log_error, log_info
 
 
 class LabService:
-    def __init__(self, pool: asyncpg.Pool, embedding_svc: EmbeddingService | None = None):
+    def __init__(
+        self, pool: asyncpg.Pool, embedding_svc: EmbeddingService | None = None
+    ):
         self.pool = pool
         self._embedding_svc = embedding_svc
 
     async def initialize(self) -> None:
         count = await self.pool.fetchval("SELECT COUNT(*) FROM loinc.concepts")
         if count == 0:
-            log_error("LOINC table is empty — run data-loader (Phase 2) or seed script first")
+            log_error(
+                "LOINC table is empty — run data-loader (Phase 2) or seed script first"
+            )
         else:
             log_info(f"Lab Service ready ({count} LOINC concepts)")
 
@@ -31,7 +35,9 @@ class LabService:
     # ------------------------------------------------------------------ #
 
     @cached(ttl=86400, prefix="lab.search")
-    async def search_loinc_code(self, keyword: str, category: Optional[str] = None, limit: int = 3) -> str:
+    async def search_loinc_code(
+        self, keyword: str, category: Optional[str] = None, limit: int = 3
+    ) -> str:
         """Search LOINC concepts by keyword and optional category filter.
 
         Args:
@@ -82,7 +88,10 @@ class LabService:
                        FROM rrf JOIN loinc.concepts c ON c.loinc_num = rrf.loinc_num
                        {cat_filter}
                        ORDER BY rrf.score DESC LIMIT $4""",
-                    keyword, f"%{keyword}%", vec_str, limit,
+                    keyword,
+                    f"%{keyword}%",
+                    vec_str,
+                    limit,
                     *([f"%{category}%"] if category else []),
                 )
             elif category:
@@ -92,7 +101,9 @@ class LabService:
                        WHERE {_fts_vector} @@ plainto_tsquery('simple', $1)
                          AND class ILIKE $2
                        ORDER BY loinc_num LIMIT $3""",
-                    keyword, f"%{category}%", limit,
+                    keyword,
+                    f"%{category}%",
+                    limit,
                 )
             else:
                 rows = await conn.fetch(
@@ -101,17 +112,25 @@ class LabService:
                        WHERE {_fts_vector} @@ plainto_tsquery('simple', $1)
                           OR loinc_num ILIKE $2
                        ORDER BY loinc_num LIMIT $3""",
-                    keyword, f"%{keyword}%", limit,
+                    keyword,
+                    f"%{keyword}%",
+                    limit,
                 )
 
         if not rows:
             return json.dumps(
-                {"message": f"找不到符合 '{keyword}' 的檢驗項目",
-                 "suggestion": "請嘗試使用中文名稱、英文名稱或常用縮寫"},
+                {
+                    "message": f"找不到符合 '{keyword}' 的檢驗項目",
+                    "suggestion": "請嘗試使用中文名稱、英文名稱或常用縮寫",
+                },
                 ensure_ascii=False,
             )
         return json.dumps(
-            {"keyword": keyword, "total_found": len(rows), "results": [dict(r) for r in rows]},
+            {
+                "keyword": keyword,
+                "total_found": len(rows),
+                "results": [dict(r) for r in rows],
+            },
             ensure_ascii=False,
         )
 
@@ -157,7 +176,9 @@ class LabService:
                 loinc_num,
             )
             if not concept:
-                return json.dumps({"error": f"找不到 LOINC 碼: {loinc_num}"}, ensure_ascii=False)
+                return json.dumps(
+                    {"error": f"找不到 LOINC 碼: {loinc_num}"}, ensure_ascii=False
+                )
 
             ref = await conn.fetchrow(
                 """SELECT range_low, range_high, unit, interpretation, age_min, age_max, gender
@@ -166,7 +187,9 @@ class LabService:
                      AND (gender = $3 OR gender = 'all')
                    ORDER BY CASE gender WHEN $3 THEN 1 ELSE 2 END, age_min DESC
                    LIMIT 1""",
-                loinc_num, age, gender,
+                loinc_num,
+                age,
+                gender,
             )
 
         if not ref:
@@ -187,14 +210,26 @@ class LabService:
                 "test_name_en": concept["long_common_name"],
                 "common_name": concept["common_name_zh"],
                 "reference_range": {
-                    "low": float(ref["range_low"]) if ref["range_low"] is not None else None,
-                    "high": float(ref["range_high"]) if ref["range_high"] is not None else None,
+                    "low": (
+                        float(ref["range_low"])
+                        if ref["range_low"] is not None
+                        else None
+                    ),
+                    "high": (
+                        float(ref["range_high"])
+                        if ref["range_high"] is not None
+                        else None
+                    ),
                     "unit": ref["unit"],
                     "interpretation": ref["interpretation"],
                 },
                 "applicable_to": {
                     "age_range": f"{ref['age_min']}-{ref['age_max']} 歲",
-                    "gender": "男性" if ref["gender"] == "M" else "女性" if ref["gender"] == "F" else "不分性別",
+                    "gender": (
+                        "男性"
+                        if ref["gender"] == "M"
+                        else "女性" if ref["gender"] == "F" else "不分性別"
+                    ),
                 },
             },
             ensure_ascii=False,
@@ -205,7 +240,11 @@ class LabService:
     # ------------------------------------------------------------------ #
 
     async def interpret_lab_result(
-        self, loinc_num: str, value: float, age: int, gender: Literal["M", "F", "all"] = "all"
+        self,
+        loinc_num: str,
+        value: float,
+        age: int,
+        gender: Literal["M", "F", "all"] = "all",
     ) -> str:
         """Interpret a single lab result against the age/gender-appropriate reference range.
 
@@ -238,8 +277,17 @@ class LabService:
                 "loinc_num": loinc_num,
                 "test_name_zh": ref_data["test_name_zh"],
                 "test_name_en": ref_data["test_name_en"],
-                "result": {"value": value, "unit": ref_range["unit"], "status": status, "flag": flag},
-                "reference_range": {"low": low, "high": high, "unit": ref_range["unit"]},
+                "result": {
+                    "value": value,
+                    "unit": ref_range["unit"],
+                    "status": status,
+                    "flag": flag,
+                },
+                "reference_range": {
+                    "low": low,
+                    "high": high,
+                    "unit": ref_range["unit"],
+                },
                 "interpretation": note,
                 "applicable_to": ref_data["applicable_to"],
             },
@@ -255,7 +303,11 @@ class LabService:
         Returns top *limit* closest matching test records (default 3, max 10).
         """
         limit = min(max(1, limit), 10)
-        vec = await self._embedding_svc.embed(specimen_type) if self._embedding_svc else None
+        vec = (
+            await self._embedding_svc.embed(specimen_type)
+            if self._embedding_svc
+            else None
+        )
         vec_str = f"[{','.join(str(x) for x in vec)}]" if vec else None
 
         async with self.pool.acquire() as conn:
@@ -291,7 +343,10 @@ class LabService:
                        FROM rrf JOIN loinc.concepts c ON c.loinc_num = rrf.loinc_num
                        WHERE c.status = 'ACTIVE'
                        ORDER BY rrf.score DESC LIMIT $4""",
-                    specimen_type, f"%{specimen_type}%", vec_str, limit,
+                    specimen_type,
+                    f"%{specimen_type}%",
+                    vec_str,
+                    limit,
                 )
             else:
                 rows = await conn.fetch(
@@ -302,17 +357,23 @@ class LabService:
                          AND status = 'ACTIVE'
                        ORDER BY class, loinc_num
                        LIMIT $2""",
-                    f"%{specimen_type}%", limit,
+                    f"%{specimen_type}%",
+                    limit,
                 )
         if not rows:
             return json.dumps(
-                {"message": f"找不到檢體類型 '{specimen_type}' 的檢驗項目",
-                 "hint": "常見值: 血清/血漿, 全血, Urine, Ser/Plas, Bld"},
+                {
+                    "message": f"找不到檢體類型 '{specimen_type}' 的檢驗項目",
+                    "hint": "常見值: 血清/血漿, 全血, Urine, Ser/Plas, Bld",
+                },
                 ensure_ascii=False,
             )
         return json.dumps(
-            {"specimen_type": specimen_type, "total_found": len(rows),
-             "results": [dict(r) for r in rows]},
+            {
+                "specimen_type": specimen_type,
+                "total_found": len(rows),
+                "results": [dict(r) for r in rows],
+            },
             ensure_ascii=False,
         )
 
@@ -325,7 +386,9 @@ class LabService:
         test records grouped by biological system (default 3, max 10).
         """
         limit = min(max(1, limit), 10)
-        vec = await self._embedding_svc.embed(component) if self._embedding_svc else None
+        vec = (
+            await self._embedding_svc.embed(component) if self._embedding_svc else None
+        )
         vec_str = f"[{','.join(str(x) for x in vec)}]" if vec else None
 
         async with self.pool.acquire() as conn:
@@ -357,7 +420,10 @@ class LabService:
                               c.scale_type, c.method_type, c.long_common_name, c.name_zh, c.unit
                        FROM rrf JOIN loinc.concepts c ON c.loinc_num = rrf.loinc_num
                        ORDER BY rrf.score DESC LIMIT $4""",
-                    component, f"%{component}%", vec_str, limit,
+                    component,
+                    f"%{component}%",
+                    vec_str,
+                    limit,
                 )
             else:
                 rows = await conn.fetch(
@@ -367,7 +433,8 @@ class LabService:
                        WHERE component ILIKE $1
                        ORDER BY system, time_aspect, method_type
                        LIMIT $2""",
-                    f"%{component}%", limit,
+                    f"%{component}%",
+                    limit,
                 )
         if not rows:
             return json.dumps(
@@ -378,16 +445,18 @@ class LabService:
         by_system: dict[str, list] = {}
         for r in rows:
             sys = r["system"] or "Unknown"
-            by_system.setdefault(sys, []).append({
-                "loinc_num": r["loinc_num"],
-                "long_common_name": r["long_common_name"],
-                "name_zh": r["name_zh"],
-                "property": r["property"],
-                "time_aspect": r["time_aspect"],
-                "method_type": r["method_type"],
-                "scale_type": r["scale_type"],
-                "unit": r["unit"],
-            })
+            by_system.setdefault(sys, []).append(
+                {
+                    "loinc_num": r["loinc_num"],
+                    "long_common_name": r["long_common_name"],
+                    "name_zh": r["name_zh"],
+                    "property": r["property"],
+                    "time_aspect": r["time_aspect"],
+                    "method_type": r["method_type"],
+                    "scale_type": r["scale_type"],
+                    "unit": r["unit"],
+                }
+            )
         return json.dumps(
             {"component": component, "total_found": len(rows), "by_system": by_system},
             ensure_ascii=False,
@@ -405,12 +474,16 @@ class LabService:
                 loinc_num,
             )
         if not row:
-            return json.dumps({"error": f"找不到 LOINC 碼: {loinc_num}"}, ensure_ascii=False)
+            return json.dumps(
+                {"error": f"找不到 LOINC 碼: {loinc_num}"}, ensure_ascii=False
+            )
         d = dict(row)
         # consumer_name is empty in current dataset; fall back to common_name_zh or shortname
         d["display_name"] = (
-            d.get("consumer_name") or d.get("common_name_zh") or
-            d.get("shortname") or d.get("long_common_name")
+            d.get("consumer_name")
+            or d.get("common_name_zh")
+            or d.get("shortname")
+            or d.get("long_common_name")
         )
         return json.dumps(d, ensure_ascii=False)
 
@@ -443,7 +516,9 @@ class LabService:
             value = item.get("value")
             if not loinc_num or value is None:
                 continue
-            interp = json.loads(await self.interpret_lab_result(loinc_num, float(value), age, gender))
+            interp = json.loads(
+                await self.interpret_lab_result(loinc_num, float(value), age, gender)
+            )
             if "error" not in interp and "message" not in interp:
                 interpretations.append(interp)
                 if interp["result"]["flag"] != "N":
@@ -454,7 +529,14 @@ class LabService:
                 "total_tests": len(interpretations),
                 "abnormal_count": abnormal_count,
                 "normal_count": len(interpretations) - abnormal_count,
-                "patient_info": {"age": age, "gender": "男性" if gender == "M" else "女性" if gender == "F" else "不分性別"},
+                "patient_info": {
+                    "age": age,
+                    "gender": (
+                        "男性"
+                        if gender == "M"
+                        else "女性" if gender == "F" else "不分性別"
+                    ),
+                },
                 "results": interpretations,
             },
             ensure_ascii=False,

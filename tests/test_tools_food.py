@@ -1,11 +1,10 @@
 """
-Unit tests for Health Food + Food Nutrition tool functions in server.py.
+Unit tests for Health Supplement + Food Nutrition tool functions in server.py.
 
 Tools covered:
-  search_health_food, get_health_food_details,
+  search_health_supplement,
   search_food_nutrition, get_detailed_nutrition, search_food_ingredient,
-  get_ingredients_by_category, search_foods_by_nutrient, analyze_meal_nutrition,
-  analyze_health_support_for_condition
+  get_ingredients_by_category, search_foods_by_nutrient, analyze_meal_nutrition
 """
 
 import json
@@ -20,9 +19,25 @@ import server
 
 def _hf_mock():
     m = MagicMock()
-    m.search_health_food               = AsyncMock(return_value='{"results":[]}')
-    m.get_health_food_details          = AsyncMock(return_value='{"permit_no":"H001"}')
-    m.analyze_health_support_for_condition = AsyncMock(return_value='{"health_foods":[]}')
+    conn = MagicMock()
+    conn.fetchrow = AsyncMock(return_value={
+        "permit_no": "H001",
+        "name": "靈芝膠囊",
+        "applicant": "A公司",
+        "benefit_claims": "護肝",
+        "ingredients": [],
+        "specs": {},
+        "status": "approved",
+        "source_url": "https://example.com",
+    })
+    conn.fetch = AsyncMock(return_value=[])
+    m.pool = MagicMock()
+    m.pool.acquire.return_value.__aenter__ = AsyncMock(return_value=conn)
+    m.pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
+    m.search_health_food = AsyncMock(return_value='{"mode":"keyword","keyword":"護肝","results":[{"permit_no":"H001"}]}')
+    m.analyze_health_support_for_condition = AsyncMock(
+        return_value='{"icd_code":"E11","recommended_benefits":["調節血糖"],"health_foods":[{"permit_no":"H001"}],"disclaimer":"..."}'
+    )
     return m
 
 
@@ -37,56 +52,86 @@ def _fn_mock():
     return m
 
 
-# ── search_health_food ────────────────────────────────────────────────────────
+# ── search_health_supplement ─────────────────────────────────────────────────
 
-class TestSearchHealthFood:
+class TestSearchHealthSupplement:
     @pytest.mark.asyncio
     async def test_null_guard(self):
         with patch.object(server, "health_food_service", None):
-            result = json.loads(await server.search_health_food(keyword="靈芝"))
+            result = json.loads(await server.search_health_supplement(keyword="靈芝"))
         assert "error" in result
-        assert "Health Food Service" in result["error"]
+        assert "Health Supplement Service" in result["error"]
 
     @pytest.mark.asyncio
     async def test_delegates_keyword_with_default_limit(self):
         mock_svc = _hf_mock()
         with patch.object(server, "health_food_service", mock_svc):
-            await server.search_health_food(keyword="護肝")
+            await server.search_health_supplement(keyword="護肝")
         mock_svc.search_health_food.assert_called_once_with("護肝", limit=3)
 
     @pytest.mark.asyncio
     async def test_custom_limit_forwarded(self):
         mock_svc = _hf_mock()
         with patch.object(server, "health_food_service", mock_svc):
-            await server.search_health_food(keyword="益生菌", limit=7)
+            await server.search_health_supplement(keyword="益生菌", limit=7)
         mock_svc.search_health_food.assert_called_once_with("益生菌", limit=7)
 
     @pytest.mark.asyncio
     async def test_returns_service_result(self):
-        payload = '{"results":[{"product_name":"靈芝膠囊"}]}'
+        payload = '{"mode":"keyword","keyword":"靈芝","results":[{"permit_no":"H001","product_name":"靈芝膠囊","company":"A公司","benefits":"護肝","ingredients":[],"specs":{},"status":"approved","source_url":"https://example.com"}]}'
         mock_svc = _hf_mock()
-        mock_svc.search_health_food = AsyncMock(return_value=payload)
+        mock_svc.search_health_food = AsyncMock(return_value='{"mode":"keyword","keyword":"靈芝","results":[{"permit_no":"H001"}]}')
         with patch.object(server, "health_food_service", mock_svc):
-            result = await server.search_health_food(keyword="靈芝")
-        assert result == payload
-
-
-# ── get_health_food_details ───────────────────────────────────────────────────
-
-class TestGetHealthFoodDetails:
-    @pytest.mark.asyncio
-    async def test_null_guard(self):
-        with patch.object(server, "health_food_service", None):
-            result = json.loads(await server.get_health_food_details(permit_no="衛部健食字第A00001號"))
-        assert "error" in result
-        assert "Health Food Service" in result["error"]
+            result = await server.search_health_supplement(keyword="靈芝")
+        assert json.loads(result) == json.loads(payload)
 
     @pytest.mark.asyncio
-    async def test_delegates_permit_no(self):
+    async def test_permit_no_digits_only(self):
         mock_svc = _hf_mock()
+        mock_conn = MagicMock()
+        mock_conn.fetchrow = AsyncMock(return_value=None)
+        mock_conn.fetch = AsyncMock(return_value=[
+            {
+                "permit_no": "衛部健食字第A00022號",
+                "name": "產品A",
+                "applicant": "A公司",
+                "benefit_claims": "調節血脂",
+                "ingredients": [],
+                "specs": {},
+                "status": "approved",
+                "source_url": "https://example.com",
+            }
+        ])
+        mock_svc.pool.acquire.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
+        mock_svc.pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
         with patch.object(server, "health_food_service", mock_svc):
-            await server.get_health_food_details(permit_no="衛部健食字第A00001號")
-        mock_svc.get_health_food_details.assert_called_once_with("衛部健食字第A00001號")
+            result = await server.search_health_supplement(mode="permit_no", keyword="A00022")
+        parsed = json.loads(result)
+        assert parsed["mode"] == "permit_no"
+        assert parsed["results"][0]["permit_no"] == "衛部健食字第A00022號"
+        assert "icd_code" not in parsed
+        assert "recommended_benefits" not in parsed
+
+    @pytest.mark.asyncio
+    async def test_condition_includes_icd_and_benefits(self):
+        payload = '{"mode":"condition","keyword":"E11","icd_code":"E11","recommended_benefits":["調節血糖"],"results":[{"permit_no":"H001","product_name":"靈芝膠囊","company":"A公司","benefits":"護肝","ingredients":[],"specs":{},"status":"approved","source_url":"https://example.com"}]}'
+        mock_svc = _hf_mock()
+        mock_conn = MagicMock()
+        mock_conn.fetchrow = AsyncMock(return_value={
+            "permit_no": "H001",
+            "name": "靈芝膠囊",
+            "applicant": "A公司",
+            "benefit_claims": "護肝",
+            "ingredients": [],
+            "specs": {},
+            "status": "approved",
+            "source_url": "https://example.com",
+        })
+        mock_svc.pool.acquire.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
+        mock_svc.pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
+        with patch.object(server, "health_food_service", mock_svc):
+            result = await server.search_health_supplement(mode="condition", keyword="E11")
+        assert json.loads(result) == json.loads(payload)
 
 
 # ── search_food_nutrition ─────────────────────────────────────────────────────
@@ -272,38 +317,3 @@ class TestAnalyzeMealNutrition:
         with patch.object(server, "food_nutrition_service", mock_svc):
             await server.analyze_meal_nutrition(foods=[])
         mock_svc.analyze_meal_nutrition.assert_called_once_with([])
-
-
-# ── analyze_health_support_for_condition ─────────────────────────────────────
-
-class TestAnalyzeHealthSupportForCondition:
-    @pytest.mark.asyncio
-    async def test_null_guard_health_food_none(self):
-        with patch.object(server, "health_food_service", None):
-            result = json.loads(
-                await server.analyze_health_support_for_condition(diagnosis_keyword="E11")
-            )
-        assert "error" in result
-        assert "Health Food Service" in result["error"]
-
-    @pytest.mark.asyncio
-    async def test_delegates_with_icd_service(self):
-        mock_hf = _hf_mock()
-        mock_icd = MagicMock()
-        with patch.object(server, "health_food_service", mock_hf), \
-             patch.object(server, "icd_service", mock_icd):
-            await server.analyze_health_support_for_condition(diagnosis_keyword="糖尿病")
-        mock_hf.analyze_health_support_for_condition.assert_called_once_with(
-            "糖尿病", icd_service=mock_icd
-        )
-
-    @pytest.mark.asyncio
-    async def test_passes_none_icd_service_when_unavailable(self):
-        """ICD service may be None; tool still calls health food service."""
-        mock_hf = _hf_mock()
-        with patch.object(server, "health_food_service", mock_hf), \
-             patch.object(server, "icd_service", None):
-            await server.analyze_health_support_for_condition(diagnosis_keyword="I10")
-        mock_hf.analyze_health_support_for_condition.assert_called_once_with(
-            "I10", icd_service=None
-        )

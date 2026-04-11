@@ -1,6 +1,6 @@
 # MCP 工具概覽
 
-Taiwan Health MCP Server 提供 **39 個 MCP 工具**，其中包含 1 個 `health_check` 基礎工具，以及 12 個主要領域群組共 39 個工具。status page 與動態註冊使用同一份工具 registry，新增或調整工具時請同步更新群組定義與對應說明。
+Taiwan Health MCP Server 提供 **37 個 MCP 工具**，其中包含 1 個 `health_check` 基礎工具，以及 11 個主要領域群組共 37 個工具。status page 與動態註冊使用同一份工具 registry，新增或調整工具時請同步更新群組定義與對應說明。
 
 ---
 
@@ -32,19 +32,18 @@ Taiwan Health MCP Server 提供 **39 個 MCP 工具**，其中包含 1 個 `heal
 
 | 工具 | 說明 |
 |------|------|
-| `search_drug` | 以 `mode` 切換藥名、ATC code、許可證字號或成分搜尋 FDA 核准藥品（`drug_name` / `ingredient` 可用 embedding，`atc_code` 只接受 ATC code 前綴，`license_id` 支援 bare digits；回傳為完整藥品摘要） |
+| `search_drug` | 單一藥品搜尋入口，`mode` 可切換 `drug_name` / `atc_code` / `ingredient` / `license_id`；`drug_name` / `ingredient` 用語意搜尋，`atc_code` 只接受 code 前綴，`license_id` 支援 bare digits；回傳統一 detail-shaped 結果 |
 | `identify_unknown_pill` | 依外觀特徵（形狀、顏色、刻痕）識別藥錠 |
 
 [詳細說明](drug-tools.md)
 
 ---
 
-### 群組 3 — 台灣 FDA 健康食品（2 個工具）
+### 群組 3 — 台灣 FDA 健康補充品（1 個工具）
 
 | 工具 | 說明 |
 |------|------|
-| `search_health_food` | 搜尋 FDA 核可健康食品 |
-| `get_health_food_details` | 依許可證號取得健康食品完整資訊 |
+| `search_health_supplement` | 單一健康補充品入口，`mode` 可切換 `keyword` / `permit_no` / `condition`；只有 `condition` 會回傳頂層 `icd_code` / `recommended_benefits`，results item 不含這兩欄 |
 
 [詳細說明](health-food-tools.md)
 
@@ -65,15 +64,7 @@ Taiwan Health MCP Server 提供 **39 個 MCP 工具**，其中包含 1 個 `heal
 
 ---
 
-### 群組 5 — 健康食品 + ICD 整合（1 個工具）
-
-| 工具 | 說明 |
-|------|------|
-| `analyze_health_support_for_condition` | 依診斷推薦 FDA 核可保健食品 |
-
----
-
-### 群組 6 — FHIR Condition（2 個工具）
+### 群組 5 — FHIR Condition（2 個工具）
 
 | 工具 | 說明 |
 |------|------|
@@ -84,7 +75,7 @@ Taiwan Health MCP Server 提供 **39 個 MCP 工具**，其中包含 1 個 `heal
 
 ---
 
-### 群組 7 — FHIR Medication（2 個工具）
+### 群組 6 — FHIR Medication（2 個工具）
 
 | 工具 | 說明 |
 |------|------|
@@ -95,11 +86,11 @@ Taiwan Health MCP Server 提供 **39 個 MCP 工具**，其中包含 1 個 `heal
 
 ---
 
-### 群組 8 — 檢驗 / LOINC（8 個工具）
+### 群組 7 — 檢驗 / LOINC（8 個工具）
 
 | 工具 | 說明 |
 |------|------|
-| `search_loinc_code` | 搜尋 LOINC 碼（含中文名稱） |
+| `search_loinc_code` | 搜尋 LOINC 檢驗碼與別名；用來先找到可能的 test code，再搭配 `get_loinc_detail` 或 `get_reference_range` 深入查看 |
 | `list_lab_categories` | 列出所有檢驗分類 |
 | `get_reference_range` | 依 LOINC 碼、年齡、性別取得參考值 |
 | `interpret_lab_result` | 判讀單項檢驗結果 |
@@ -112,18 +103,18 @@ Taiwan Health MCP Server 提供 **39 個 MCP 工具**，其中包含 1 個 `heal
 
 ---
 
-### 群組 9 — 臨床診療指引（2 個工具）
+### 群組 8 — 臨床診療指引（2 個工具）
 
 | 工具 | 說明 |
 |------|------|
 | `search_clinical_guideline` | 搜尋台灣醫學會臨床指引 |
-| `query_guideline` | 依 ICD 與 section 取得完整/分段指引內容 |
+| `query_guideline` | 統一指引入口，`section` 可切換 `complete` / `medication` / `test` / `goals` / `pathway`，適合在同一工具下切換不同層次的臨床內容 |
 
 [詳細說明](guideline-tools.md)
 
 ---
 
-### 群組 10 — TWCore IG（1 個工具）
+### 群組 9 — TWCore IG（1 個工具）
 
 | 工具 | 說明 |
 |------|------|
@@ -131,20 +122,20 @@ Taiwan Health MCP Server 提供 **39 個 MCP 工具**，其中包含 1 個 `heal
 
 ---
 
-### 群組 11 — SNOMED CT（4 個工具）
+### 群組 10 — SNOMED CT（4 個工具）
 
 > 需先執行 `docker compose --profile loader run --rm data-loader --snomed`
 
 | 工具 | 說明 |
 |------|------|
-| `search_snomed_concept` | 以英文詞彙搜尋 SNOMED CT 概念 |
-| `query_snomed_concept` | 取得概念、父概念與子概念的一次性查詢 |
-| `get_snomed_relationships` | 取得非 IS-A 的屬性與關聯 |
-| `query_snomed_mapping` | 以 `mode` 切換 ICD ↔ SNOMED 的雙向對應查詢 |
+| `search_snomed_concept` | 以英文詞彙搜尋 SNOMED CT 概念，適合先找候選概念與相似詞 |
+| `query_snomed_concept` | 取得概念、父概念與子概念的一次性查詢，適合閱讀分類樹脈絡 |
+| `get_snomed_relationships` | 取得非 IS-A 的屬性與關聯，適合看 finding site / causative agent / active ingredient |
+| `query_snomed_mapping` | 單一 SNOMED mapping 入口，`mode` 可切換 `icd` / `snomed`；適合雙向轉碼 |
 
 ---
 
-### 群組 12 — RxNorm 藥物交互作用（3 個工具）
+### 群組 11 — RxNorm 藥物交互作用（3 個工具）
 
 > 需先執行 `docker compose --profile loader run --rm data-loader --rxnorm`
 

@@ -17,54 +17,89 @@ from embedding_service import EmbeddingService
 from utils import log_error, log_info
 
 API_SOURCES = {
-    "nutrition":   "https://data.fda.gov.tw/data/opendata/export/20/json",
+    "nutrition": "https://data.fda.gov.tw/data/opendata/export/20/json",
     "ingredients": "https://data.fda.gov.tw/data/opendata/export/4/json",
 }
 
 # Common synonym → exact DB nutrient_item name
 _NUTRIENT_ALIASES: dict[str, str] = {
     # Protein
-    "蛋白質": "粗蛋白", "蛋白": "粗蛋白", "protein": "粗蛋白",
+    "蛋白質": "粗蛋白",
+    "蛋白": "粗蛋白",
+    "protein": "粗蛋白",
     # Fat
-    "脂肪": "粗脂肪", "油脂": "粗脂肪", "fat": "粗脂肪",
+    "脂肪": "粗脂肪",
+    "油脂": "粗脂肪",
+    "fat": "粗脂肪",
     # Carbohydrate
-    "碳水": "總碳水化合物", "碳水化合物": "總碳水化合物",
-    "carbohydrate": "總碳水化合物", "carb": "總碳水化合物",
+    "碳水": "總碳水化合物",
+    "碳水化合物": "總碳水化合物",
+    "carbohydrate": "總碳水化合物",
+    "carb": "總碳水化合物",
     # Fiber
-    "纖維": "膳食纖維", "fiber": "膳食纖維", "fibre": "膳食纖維",
+    "纖維": "膳食纖維",
+    "fiber": "膳食纖維",
+    "fibre": "膳食纖維",
     # Calories
-    "卡路里": "熱量", "calories": "熱量", "calorie": "熱量", "kcal": "熱量",
+    "卡路里": "熱量",
+    "calories": "熱量",
+    "calorie": "熱量",
+    "kcal": "熱量",
     # Vitamins (維他命 is Taiwanese, 維生素 is Mandarin)
-    "維他命a": "維生素A", "vitamin a": "維生素A",
-    "維他命b1": "維生素B1", "vitamin b1": "維生素B1", "硫胺素": "維生素B1",
-    "維他命b2": "維生素B2", "vitamin b2": "維生素B2", "核黃素": "維生素B2",
-    "維他命b6": "維生素B6", "vitamin b6": "維生素B6",
-    "維他命b12": "維生素B12", "vitamin b12": "維生素B12",
-    "維他命c": "維生素C", "vitamin c": "維生素C", "抗壞血酸": "維生素C",
-    "維他命d": "維生素D", "vitamin d": "維生素D",
-    "維他命e": "維生素E", "vitamin e": "維生素E",
-    "維他命k": "維生素K", "vitamin k": "維生素K",
+    "維他命a": "維生素A",
+    "vitamin a": "維生素A",
+    "維他命b1": "維生素B1",
+    "vitamin b1": "維生素B1",
+    "硫胺素": "維生素B1",
+    "維他命b2": "維生素B2",
+    "vitamin b2": "維生素B2",
+    "核黃素": "維生素B2",
+    "維他命b6": "維生素B6",
+    "vitamin b6": "維生素B6",
+    "維他命b12": "維生素B12",
+    "vitamin b12": "維生素B12",
+    "維他命c": "維生素C",
+    "vitamin c": "維生素C",
+    "抗壞血酸": "維生素C",
+    "維他命d": "維生素D",
+    "vitamin d": "維生素D",
+    "維他命e": "維生素E",
+    "vitamin e": "維生素E",
+    "維他命k": "維生素K",
+    "vitamin k": "維生素K",
     # Minerals
-    "sodium": "鈉", "na": "鈉",
-    "calcium": "鈣", "ca": "鈣",
-    "iron": "鐵", "fe": "鐵",
-    "potassium": "鉀", "k": "鉀",
-    "magnesium": "鎂", "mg": "鎂",
-    "zinc": "鋅", "zn": "鋅",
-    "phosphorus": "磷", "phosphate": "磷",
+    "sodium": "鈉",
+    "na": "鈉",
+    "calcium": "鈣",
+    "ca": "鈣",
+    "iron": "鐵",
+    "fe": "鐵",
+    "potassium": "鉀",
+    "k": "鉀",
+    "magnesium": "鎂",
+    "mg": "鎂",
+    "zinc": "鋅",
+    "zn": "鋅",
+    "phosphorus": "磷",
+    "phosphate": "磷",
     # Cholesterol
-    "膽固醇": "膽固醇", "cholesterol": "膽固醇",
+    "膽固醇": "膽固醇",
+    "cholesterol": "膽固醇",
     # Sugar
-    "糖": "糖質", "sugar": "糖質",
+    "糖": "糖質",
+    "sugar": "糖質",
     # Water
-    "水": "水分", "water": "水分",
+    "水": "水分",
+    "water": "水分",
     # Ash
     "灰": "灰分",
 }
 
 
 class FoodNutritionService:
-    def __init__(self, pool: asyncpg.Pool, embedding_svc: EmbeddingService | None = None):
+    def __init__(
+        self, pool: asyncpg.Pool, embedding_svc: EmbeddingService | None = None
+    ):
         self.pool = pool
         self._embedding_svc = embedding_svc
         self._sync_lock = asyncio.Lock()
@@ -72,13 +107,18 @@ class FoodNutritionService:
         self._nutrient_embeddings: dict[str, list[float]] | None = None
 
     async def initialize(self) -> None:
-        count = await self.pool.fetchval("SELECT COUNT(*) FROM food_nutrition.measurements")
+        count = await self.pool.fetchval(
+            "SELECT COUNT(*) FROM food_nutrition.measurements"
+        )
         if count == 0:
-            log_info("Food nutrition DB empty — run data-loader --food-nutrition to load data")
+            log_info(
+                "Food nutrition DB empty — run data-loader --food-nutrition to load data"
+            )
         else:
             log_info("Food Nutrition Service ready", measurements=count)
 
     async def shutdown(self) -> None:
+        """Gracefully stop the service. No-op; provided for lifecycle symmetry."""
         pass
 
     async def _fetch_json(self, client: httpx.AsyncClient, url: str) -> list:
@@ -86,7 +126,9 @@ class FoodNutritionService:
         resp.raise_for_status()
         ct = resp.headers.get("content-type", "")
         if "zip" in ct:
-            import io, zipfile
+            import io
+            import zipfile
+
             zf = zipfile.ZipFile(io.BytesIO(resp.content))
             names = [n for n in zf.namelist() if n.endswith(".json")]
             return json.loads(zf.read(names[0])) if names else []
@@ -104,19 +146,34 @@ class FoodNutritionService:
         try:
             # Step 1: fetch both endpoints
             async with httpx.AsyncClient(timeout=60) as client:
-                nutrition_data   = await self._fetch_json(client, API_SOURCES["nutrition"])
-                ingredients_data = await self._fetch_json(client, API_SOURCES["ingredients"])
+                nutrition_data = await self._fetch_json(
+                    client, API_SOURCES["nutrition"]
+                )
+                ingredients_data = await self._fetch_json(
+                    client, API_SOURCES["ingredients"]
+                )
 
             measurement_rows = [
-                (r.get("食品分類",""), r.get("樣品名稱",""), r.get("俗名",""),
-                 r.get("樣品英文名稱",""), r.get("分析項",""),
-                 str(r.get("每100克含量","")), r.get("含量單位",""),
-                 r.get("分析項分類",""))
+                (
+                    r.get("食品分類", ""),
+                    r.get("樣品名稱", ""),
+                    r.get("俗名", ""),
+                    r.get("樣品英文名稱", ""),
+                    r.get("分析項", ""),
+                    str(r.get("每100克含量", "")),
+                    r.get("含量單位", ""),
+                    r.get("分析項分類", ""),
+                )
                 for r in nutrition_data
             ]
             ingredient_rows = [
-                (r.get("中文名稱",""), r.get("英文名稱",""), r.get("大分類",""),
-                 r.get("次分類",""), r.get("備註",""))
+                (
+                    r.get("中文名稱", ""),
+                    r.get("英文名稱", ""),
+                    r.get("大分類", ""),
+                    r.get("次分類", ""),
+                    r.get("備註", ""),
+                )
                 for r in ingredients_data
             ]
 
@@ -124,7 +181,9 @@ class FoodNutritionService:
             BATCH = 5000
             async with self.pool.acquire() as conn:
                 async with conn.transaction():
-                    await conn.execute("TRUNCATE food_nutrition.ingredients, food_nutrition.measurements")
+                    await conn.execute(
+                        "TRUNCATE food_nutrition.ingredients, food_nutrition.measurements"
+                    )
 
                     for i in range(0, len(measurement_rows), BATCH):
                         await conn.executemany(
@@ -132,7 +191,7 @@ class FoodNutritionService:
                                (food_category, sample_name, common_name, english_name,
                                 nutrient_item, content_per_100g, content_unit, nutrient_category)
                                VALUES ($1,$2,$3,$4,$5,$6,$7,$8)""",
-                            measurement_rows[i:i+BATCH],
+                            measurement_rows[i : i + BATCH],
                         )
 
                     for i in range(0, len(ingredient_rows), BATCH):
@@ -140,7 +199,7 @@ class FoodNutritionService:
                             """INSERT INTO food_nutrition.ingredients
                                (name_zh, name_en, major_category, sub_category, note)
                                VALUES ($1,$2,$3,$4,$5)""",
-                            ingredient_rows[i:i+BATCH],
+                            ingredient_rows[i : i + BATCH],
                         )
 
                     await conn.execute(
@@ -149,8 +208,11 @@ class FoodNutritionService:
                            ON CONFLICT (key) DO UPDATE SET value=$1, updated_at=NOW()""",
                         datetime.now(tz=timezone.utc).isoformat(),
                     )
-            log_info("Food nutrition sync completed",
-                     measurements=len(measurement_rows), ingredients=len(ingredient_rows))
+            log_info(
+                "Food nutrition sync completed",
+                measurements=len(measurement_rows),
+                ingredients=len(ingredient_rows),
+            )
             self._nutrient_embeddings = None  # invalidate in-memory nutrient cache
             if self._embedding_svc and self._embedding_svc.enabled:
                 asyncio.create_task(self._generate_embeddings())
@@ -170,16 +232,23 @@ class FoodNutritionService:
                 )
             log_info("Food nutrition: embedding foods", count=len(foods))
             from embedding_service import BATCH_SIZE
+
             for i in range(0, len(foods), BATCH_SIZE):
-                batch = foods[i:i + BATCH_SIZE]
+                batch = foods[i : i + BATCH_SIZE]
                 texts = [
-                    " ".join(filter(None, [r["sample_name"], r["common_name"], r["english_name"]]))
+                    " ".join(
+                        filter(
+                            None,
+                            [r["sample_name"], r["common_name"], r["english_name"]],
+                        )
+                    )
                     for r in batch
                 ]
                 vecs = await svc.embed_batch(texts)
                 rows = [
                     (batch[j]["sample_name"], f"[{','.join(str(x) for x in vecs[j])}]")
-                    for j in range(len(batch)) if vecs[j] is not None
+                    for j in range(len(batch))
+                    if vecs[j] is not None
                 ]
                 if rows:
                     async with self.pool.acquire() as conn:
@@ -194,16 +263,19 @@ class FoodNutritionService:
 
             # Ingredient embeddings
             async with self.pool.acquire() as conn:
-                ings = await conn.fetch("SELECT id, name_zh, name_en FROM food_nutrition.ingredients")
+                ings = await conn.fetch(
+                    "SELECT id, name_zh, name_en FROM food_nutrition.ingredients"
+                )
             for i in range(0, len(ings), BATCH_SIZE):
-                batch = ings[i:i + BATCH_SIZE]
+                batch = ings[i : i + BATCH_SIZE]
                 texts = [
                     " ".join(filter(None, [r["name_zh"], r["name_en"]])) for r in batch
                 ]
                 vecs = await svc.embed_batch(texts)
                 rows = [
                     (batch[j]["id"], f"[{','.join(str(x) for x in vecs[j])}]")
-                    for j in range(len(batch)) if vecs[j] is not None
+                    for j in range(len(batch))
+                    if vecs[j] is not None
                 ]
                 if rows:
                     async with self.pool.acquire() as conn:
@@ -221,9 +293,13 @@ class FoodNutritionService:
     # ── query methods ────────────────────────────────────────────────────────
 
     @cached(ttl=86400, prefix="fn.search")
-    async def search_nutrition(self, food_name: str, nutrient: str | None = None, limit: int = 3) -> str:
+    async def search_nutrition(
+        self, food_name: str, nutrient: str | None = None, limit: int = 3
+    ) -> str:
         limit = min(max(1, limit), 10)
-        vec = await self._embedding_svc.embed(food_name) if self._embedding_svc else None
+        vec = (
+            await self._embedding_svc.embed(food_name) if self._embedding_svc else None
+        )
         vec_str = f"[{','.join(str(x) for x in vec)}]" if vec else None
 
         async with self.pool.acquire() as conn:
@@ -257,7 +333,9 @@ class FoodNutritionService:
                            FROM fts f FULL OUTER JOIN vec v ON f.sample_name = v.sample_name
                        )
                        SELECT sample_name FROM rrf ORDER BY score DESC LIMIT $3""",
-                    food_name, vec_str, limit,
+                    food_name,
+                    vec_str,
+                    limit,
                 )
             else:
                 matched = await conn.fetch(
@@ -266,11 +344,14 @@ class FoodNutritionService:
                                COALESCE(sample_name,'') || ' ' || COALESCE(common_name,'') || ' ' || COALESCE(english_name,''))
                              @@ plainto_tsquery('simple', $1)
                        LIMIT $2""",
-                    food_name, limit,
+                    food_name,
+                    limit,
                 )
 
             if not matched:
-                return json.dumps({"error": f"找不到 '{food_name}' 的營養資料。"}, ensure_ascii=False)
+                return json.dumps(
+                    {"error": f"找不到 '{food_name}' 的營養資料。"}, ensure_ascii=False
+                )
 
             names = [r["sample_name"] for r in matched]
             if nutrient:
@@ -278,7 +359,8 @@ class FoodNutritionService:
                     """SELECT sample_name, common_name, nutrient_item, content_per_100g, content_unit, food_category
                        FROM food_nutrition.measurements
                        WHERE sample_name = ANY($1) AND nutrient_item ILIKE $2""",
-                    names, f"%{nutrient}%",
+                    names,
+                    f"%{nutrient}%",
                 )
             else:
                 rows = await conn.fetch(
@@ -289,22 +371,36 @@ class FoodNutritionService:
                 )
 
         if not rows:
-            return json.dumps({"error": f"找不到 '{food_name}' 的營養資料。"}, ensure_ascii=False)
+            return json.dumps(
+                {"error": f"找不到 '{food_name}' 的營養資料。"}, ensure_ascii=False
+            )
 
         foods: dict[str, dict] = {}
         for r in rows:
-            key = f"{r['sample_name']} ({r['common_name']})" if r["common_name"] else r["sample_name"]
+            key = (
+                f"{r['sample_name']} ({r['common_name']})"
+                if r["common_name"]
+                else r["sample_name"]
+            )
             if key not in foods:
                 foods[key] = {"category": r["food_category"], "nutrients": []}
             foods[key]["nutrients"].append(
-                {"item": r["nutrient_item"], "value": r["content_per_100g"], "unit": r["content_unit"]}
+                {
+                    "item": r["nutrient_item"],
+                    "value": r["content_per_100g"],
+                    "unit": r["content_unit"],
+                }
             )
 
-        return json.dumps([{"food": k, **v} for k, v in foods.items()], ensure_ascii=False)
+        return json.dumps(
+            [{"food": k, **v} for k, v in foods.items()], ensure_ascii=False
+        )
 
     @cached(ttl=86400, prefix="fn.detail")
     async def get_detailed_nutrition(self, food_name: str) -> str:
-        vec = await self._embedding_svc.embed(food_name) if self._embedding_svc else None
+        vec = (
+            await self._embedding_svc.embed(food_name) if self._embedding_svc else None
+        )
         vec_str = f"[{','.join(str(x) for x in vec)}]" if vec else None
 
         async with self.pool.acquire() as conn:
@@ -338,7 +434,8 @@ class FoodNutritionService:
                            FROM fts f FULL OUTER JOIN vec v ON f.sample_name = v.sample_name
                        )
                        SELECT sample_name FROM rrf ORDER BY score DESC LIMIT 3""",
-                    food_name, vec_str,
+                    food_name,
+                    vec_str,
                 )
             else:
                 matched = await conn.fetch(
@@ -351,7 +448,10 @@ class FoodNutritionService:
                 )
 
             if not matched:
-                return json.dumps({"error": f"找不到 '{food_name}' 的詳細營養資料。"}, ensure_ascii=False)
+                return json.dumps(
+                    {"error": f"找不到 '{food_name}' 的詳細營養資料。"},
+                    ensure_ascii=False,
+                )
 
             names = [r["sample_name"] for r in matched]
 
@@ -366,7 +466,9 @@ class FoodNutritionService:
             )
 
         if not rows:
-            return json.dumps({"error": f"找不到 '{food_name}' 的詳細營養資料。"}, ensure_ascii=False)
+            return json.dumps(
+                {"error": f"找不到 '{food_name}' 的詳細營養資料。"}, ensure_ascii=False
+            )
 
         # Group by sample_name, nutrients nested by category; preserve RRF rank order
         name_order = {name: i for i, name in enumerate(names)}
@@ -383,13 +485,19 @@ class FoodNutritionService:
             cat = r["nutrient_category"] or "其他"
             if cat not in foods[key]["nutrients"]:
                 foods[key]["nutrients"][cat] = []
-            foods[key]["nutrients"][cat].append({
-                "item": r["nutrient_item"],
-                "value": r["content_per_100g"].strip() if r["content_per_100g"] else None,
-                "unit": r["content_unit"],
-            })
+            foods[key]["nutrients"][cat].append(
+                {
+                    "item": r["nutrient_item"],
+                    "value": (
+                        r["content_per_100g"].strip() if r["content_per_100g"] else None
+                    ),
+                    "unit": r["content_unit"],
+                }
+            )
 
-        ordered = sorted(foods.values(), key=lambda f: name_order.get(f["sample_name"], 999))
+        ordered = sorted(
+            foods.values(), key=lambda f: name_order.get(f["sample_name"], 999)
+        )
         return json.dumps(ordered, ensure_ascii=False)
 
     @cached(ttl=86400, prefix="fn.ing")
@@ -425,7 +533,9 @@ class FoodNutritionService:
                        SELECT i.name_zh, i.name_en, i.major_category, i.sub_category, i.note
                        FROM rrf JOIN food_nutrition.ingredients i ON i.id = rrf.id
                        ORDER BY rrf.score DESC LIMIT $3""",
-                    keyword, vec_str, limit,
+                    keyword,
+                    vec_str,
+                    limit,
                 )
             else:
                 rows = await conn.fetch(
@@ -434,10 +544,13 @@ class FoodNutritionService:
                        WHERE to_tsvector('simple', COALESCE(name_zh,'') || ' ' || COALESCE(name_en,''))
                              @@ plainto_tsquery('simple', $1)
                        LIMIT $2""",
-                    keyword, limit,
+                    keyword,
+                    limit,
                 )
         if not rows:
-            return json.dumps({"error": f"找不到與 '{keyword}' 相關的食品原料。"}, ensure_ascii=False)
+            return json.dumps(
+                {"error": f"找不到與 '{keyword}' 相關的食品原料。"}, ensure_ascii=False
+            )
         return json.dumps([dict(r) for r in rows], ensure_ascii=False)
 
     @cached(ttl=86400, prefix="fn.cat")
@@ -451,7 +564,9 @@ class FoodNutritionService:
                 f"%{category}%",
             )
         if not rows:
-            return json.dumps({"error": f"找不到分類 '{category}' 的原料資料。"}, ensure_ascii=False)
+            return json.dumps(
+                {"error": f"找不到分類 '{category}' 的原料資料。"}, ensure_ascii=False
+            )
         return json.dumps([dict(r) for r in rows], ensure_ascii=False)
 
     async def _find_nutrient_by_embedding(self, query: str) -> str | None:
@@ -467,9 +582,10 @@ class FoodNutritionService:
                 )
             names = [r["nutrient_item"] for r in items]
             from embedding_service import BATCH_SIZE
+
             all_vecs: list[list[float] | None] = []
             for i in range(0, len(names), BATCH_SIZE):
-                vecs = await self._embedding_svc.embed_batch(names[i:i + BATCH_SIZE])
+                vecs = await self._embedding_svc.embed_batch(names[i : i + BATCH_SIZE])
                 all_vecs.extend(vecs)
             self._nutrient_embeddings = {
                 name: vec for name, vec in zip(names, all_vecs) if vec is not None
@@ -484,6 +600,7 @@ class FoodNutritionService:
 
         # Cosine similarity (vectors are already unit-normalised by qwen3-embedding)
         import math
+
         def cosine(a: list[float], b: list[float]) -> float:
             dot = sum(x * y for x, y in zip(a, b))
             na = math.sqrt(sum(x * x for x in a))
@@ -491,7 +608,10 @@ class FoodNutritionService:
             return dot / (na * nb) if na and nb else 0.0
 
         best_name, best_score = max(
-            ((name, cosine(query_vec, vec)) for name, vec in self._nutrient_embeddings.items()),
+            (
+                (name, cosine(query_vec, vec))
+                for name, vec in self._nutrient_embeddings.items()
+            ),
             key=lambda kv: kv[1],
         )
         # Threshold: the query must be clearly related to the matched nutrient.
@@ -524,7 +644,9 @@ class FoodNutritionService:
 
         if not matched_nutrient:
             return json.dumps(
-                {"error": f"找不到營養素 '{nutrient}'。請嘗試中文名稱，如：粗蛋白、粗脂肪、鈣、鐵、維生素C、熱量、鈉"},
+                {
+                    "error": f"找不到營養素 '{nutrient}'。請嘗試中文名稱，如：粗蛋白、粗脂肪、鈣、鐵、維生素C、熱量、鈉"
+                },
                 ensure_ascii=False,
             )
 
@@ -537,7 +659,8 @@ class FoodNutritionService:
                      AND TRIM(content_per_100g) ~ '^[0-9]+[.]?[0-9]*$'
                    ORDER BY CAST(TRIM(content_per_100g) AS FLOAT) DESC
                    LIMIT $2""",
-                matched_nutrient, min(limit, 50),
+                matched_nutrient,
+                min(limit, 50),
             )
 
         return json.dumps(
@@ -547,11 +670,17 @@ class FoodNutritionService:
                 "total": len(rows),
                 "note": "數值為每 100 克含量",
                 "foods": [
-                    {"name": r["sample_name"],
-                     "common_name": r["common_name"],
-                     "category": r["food_category"],
-                     "content_per_100g": r["content_per_100g"].strip() if r["content_per_100g"] else None,
-                     "unit": r["content_unit"]}
+                    {
+                        "name": r["sample_name"],
+                        "common_name": r["common_name"],
+                        "category": r["food_category"],
+                        "content_per_100g": (
+                            r["content_per_100g"].strip()
+                            if r["content_per_100g"]
+                            else None
+                        ),
+                        "unit": r["content_unit"],
+                    }
                     for r in rows
                 ],
             },
@@ -578,14 +707,20 @@ class FoodNutritionService:
                     cat = r["nutrient_category"] or "其他"
                     if cat not in grouped:
                         grouped[cat] = []
-                    val_str = r["content_per_100g"].strip() if r["content_per_100g"] else None
-                    grouped[cat].append({
-                        "item": r["nutrient_item"],
-                        "value": val_str,
-                        "unit": r["content_unit"],
-                    })
+                    val_str = (
+                        r["content_per_100g"].strip() if r["content_per_100g"] else None
+                    )
+                    grouped[cat].append(
+                        {
+                            "item": r["nutrient_item"],
+                            "value": val_str,
+                            "unit": r["content_unit"],
+                        }
+                    )
                     try:
-                        totals[r["nutrient_item"]] = totals.get(r["nutrient_item"], 0) + float(val_str)
+                        totals[r["nutrient_item"]] = totals.get(
+                            r["nutrient_item"], 0
+                        ) + float(val_str)
                     except (ValueError, TypeError):
                         pass
 

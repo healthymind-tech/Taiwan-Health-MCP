@@ -24,10 +24,27 @@ class _JsonFormatter(logging.Formatter):
         # Any extra fields attached via `extra=`
         for key, val in record.__dict__.items():
             if key not in (
-                "msg", "args", "levelname", "levelno", "pathname", "filename",
-                "module", "exc_info", "exc_text", "stack_info", "lineno",
-                "funcName", "created", "msecs", "relativeCreated", "thread",
-                "threadName", "processName", "process", "name", "message",
+                "msg",
+                "args",
+                "levelname",
+                "levelno",
+                "pathname",
+                "filename",
+                "module",
+                "exc_info",
+                "exc_text",
+                "stack_info",
+                "lineno",
+                "funcName",
+                "created",
+                "msecs",
+                "relativeCreated",
+                "thread",
+                "threadName",
+                "processName",
+                "process",
+                "name",
+                "message",
             ):
                 payload[key] = val
         return json.dumps(payload, ensure_ascii=False, default=str)
@@ -35,7 +52,7 @@ class _JsonFormatter(logging.Formatter):
 
 def _build_logger() -> logging.Logger:
     logger = logging.getLogger("taiwan_health_mcp")
-    if logger.handlers:          # already configured (e.g. module re-imported)
+    if logger.handlers:  # already configured (e.g. module re-imported)
         return logger
 
     handler = logging.StreamHandler(sys.stderr)

@@ -53,8 +53,17 @@ class FHIRMedicationService:
             medication: Dict = {
                 "resourceType": "Medication",
                 "id": f"medication-{license_id.replace(' ', '-')}",
-                "meta": {"profile": ["http://hl7.org/fhir/StructureDefinition/Medication"], "lastUpdated": now},
-                "identifier": [{"system": self.FHIR_TAIWAN_LICENSE_SYSTEM, "value": license_id, "use": "official"}],
+                "meta": {
+                    "profile": ["http://hl7.org/fhir/StructureDefinition/Medication"],
+                    "lastUpdated": now,
+                },
+                "identifier": [
+                    {
+                        "system": self.FHIR_TAIWAN_LICENSE_SYSTEM,
+                        "value": license_id,
+                        "use": "official",
+                    }
+                ],
                 "code": self._medication_code(drug),
                 "status": "active",
                 "manufacturer": {"display": drug.get("manufacturer", "")},
@@ -66,8 +75,18 @@ class FHIRMedicationService:
                     {
                         "itemCodeableConcept": {"text": i.get("ingredient_name", "")},
                         "isActive": True,
-                        **({"strength": {"numerator": {"value": i["ingredient_qty"], "unit": "mg"}}}
-                           if i.get("ingredient_qty") else {}),
+                        **(
+                            {
+                                "strength": {
+                                    "numerator": {
+                                        "value": i["ingredient_qty"],
+                                        "unit": "mg",
+                                    }
+                                }
+                            }
+                            if i.get("ingredient_qty")
+                            else {}
+                        ),
                     }
                     for i in drug["ingredients"]
                 ]
@@ -75,11 +94,14 @@ class FHIRMedicationService:
             if include_appearance and drug.get("appearance"):
                 app = drug["appearance"]
                 medication["extension"] = [
-                    {"url": "https://twhealth.mohw.gov.tw/fhir/StructureDefinition/medication-appearance",
-                     "extension": [
-                         {"url": k, "valueString": v}
-                         for k, v in app.items() if v and k in ("shape", "color", "marking")
-                     ]}
+                    {
+                        "url": "https://twhealth.mohw.gov.tw/fhir/StructureDefinition/medication-appearance",
+                        "extension": [
+                            {"url": k, "valueString": v}
+                            for k, v in app.items()
+                            if v and k in ("shape", "color", "marking")
+                        ],
+                    }
                 ]
 
             if drug.get("valid_date"):
@@ -112,8 +134,15 @@ class FHIRMedicationService:
             mk: Dict = {
                 "resourceType": "MedicationKnowledge",
                 "id": f"medknowledge-{license_id.replace(' ', '-')}",
-                "meta": {"profile": ["http://hl7.org/fhir/StructureDefinition/MedicationKnowledge"], "lastUpdated": now},
-                "identifier": [{"system": self.FHIR_TAIWAN_LICENSE_SYSTEM, "value": license_id}],
+                "meta": {
+                    "profile": [
+                        "http://hl7.org/fhir/StructureDefinition/MedicationKnowledge"
+                    ],
+                    "lastUpdated": now,
+                },
+                "identifier": [
+                    {"system": self.FHIR_TAIWAN_LICENSE_SYSTEM, "value": license_id}
+                ],
                 "code": self._medication_code(drug),
                 "status": "active",
                 "manufacturer": {"display": drug.get("manufacturer", "")},
@@ -125,13 +154,25 @@ class FHIRMedicationService:
 
             if drug.get("usage"):
                 mk["administrationGuidelines"] = [
-                    {"dosage": [{"type": {"text": "標準用法用量"}, "dosage": [{"text": drug["usage"]}]}]}
+                    {
+                        "dosage": [
+                            {
+                                "type": {"text": "標準用法用量"},
+                                "dosage": [{"text": drug["usage"]}],
+                            }
+                        ]
+                    }
                 ]
 
             if drug.get("atc"):
                 atc_codings = [
-                    {"system": self.FHIR_ATC_SYSTEM, "code": a["atc_code"], "display": a.get("atc_name", "")}
-                    for a in drug["atc"] if a.get("atc_code")
+                    {
+                        "system": self.FHIR_ATC_SYSTEM,
+                        "code": a["atc_code"],
+                        "display": a.get("atc_name", ""),
+                    }
+                    for a in drug["atc"]
+                    if a.get("atc_code")
                 ]
                 if atc_codings:
                     mk["code"]["coding"].extend(atc_codings)
@@ -144,7 +185,9 @@ class FHIRMedicationService:
             log_error(f"create_medication_knowledge error: {e}")
             return {"error": str(e), "license_id": license_id}
 
-    async def create_medication_from_search(self, keyword: str, resource_type: str = "Medication") -> Dict:
+    async def create_medication_from_search(
+        self, keyword: str, resource_type: str = "Medication"
+    ) -> Dict:
         """Search for a drug by keyword and create a FHIR resource for the top result.
 
         Args:
@@ -168,8 +211,11 @@ class FHIRMedicationService:
         else:
             resource = await self.create_medication(lid)
 
-        return {"search_results": search_data, "selected_drug": first,
-                f"fhir_{resource_type.lower()}": resource}
+        return {
+            "search_results": search_data,
+            "selected_drug": first,
+            f"fhir_{resource_type.lower()}": resource,
+        }
 
     def validate_medication(self, medication: Dict) -> Dict:
         """Perform basic validation on a FHIR Medication or MedicationKnowledge resource.
@@ -202,7 +248,12 @@ class FHIRMedicationService:
 
     def _medication_code(self, drug: Dict) -> Dict:
         return {
-            "coding": [{"system": self.FHIR_TAIWAN_LICENSE_SYSTEM,
-                        "code": drug.get("license_id", ""), "display": drug.get("name_en", "")}],
+            "coding": [
+                {
+                    "system": self.FHIR_TAIWAN_LICENSE_SYSTEM,
+                    "code": drug.get("license_id", ""),
+                    "display": drug.get("name_en", ""),
+                }
+            ],
             "text": drug.get("name_zh", drug.get("name_en", "")),
         }

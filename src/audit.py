@@ -52,17 +52,24 @@ async def log_query(
 
 
 def audited(tool_name: str) -> Callable:
-    """
-    Decorator that wraps an async MCP tool function with:
-      - HIPAA audit logging (params SHA-256 hash, never raw values)
-      - Prometheus metrics (request count + latency histogram)
+    """Wrap an async MCP tool function with HIPAA audit logging and Prometheus metrics.
 
-    Usage:
+    Logs a SHA-256 hash of the parameters (never raw values) plus duration and
+    status to ``audit.query_log``. Also increments Prometheus counters.
+
+    Args:
+        tool_name: The MCP tool name used as the audit and metrics label.
+
+    Returns:
+        A decorator that wraps the target async function.
+
+    Example:
         @mcp.tool()
         @audited("search_medical_codes")
         async def search_medical_codes(keyword: str) -> str:
             ...
     """
+
     def decorator(func: Callable) -> Callable:
         @wraps(func)
         async def wrapper(*args: Any, **kwargs: Any) -> Any:
@@ -80,9 +87,12 @@ def audited(tool_name: str) -> Callable:
             except Exception as e:
                 duration_s = time.monotonic() - start
                 duration_ms = int(duration_s * 1000)
-                await log_query(tool_name, params_hash, duration_ms, "error", str(e)[:500])
+                await log_query(
+                    tool_name, params_hash, duration_ms, "error", str(e)[:500]
+                )
                 _metrics.record_tool_call(tool_name, "error", duration_s)
                 raise
 
         return wrapper
+
     return decorator

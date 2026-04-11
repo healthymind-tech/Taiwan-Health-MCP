@@ -1,6 +1,7 @@
 import asyncio
 import inspect
 import json
+import re
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Callable, Literal
@@ -18,6 +19,7 @@ from config import AppConfig
 from dataset_status import DatasetStatusManager
 from drug_interaction_service import DrugInteractionService
 from drug_service import DrugService
+from embedding_service import EmbeddingService
 from fhir_condition_service import FHIRConditionService
 from fhir_medication_service import FHIRMedicationService
 from food_nutrition_service import FoodNutritionService
@@ -25,7 +27,6 @@ from health_food_service import HealthFoodService
 from icd_service import ICDService
 from lab_service import LabService
 from snomed_service import SNOMEDService
-from embedding_service import EmbeddingService
 from twcore_service import TWCoreService
 from utils import configure_log_level, log_error, log_info, log_warning
 
@@ -92,11 +93,17 @@ async def lifespan(server):
                 ("ICDService", lambda: ICDService(pool, embedding_svc)),
                 ("DrugService", lambda: DrugService(pool, embedding_svc)),
                 ("HealthFoodService", lambda: HealthFoodService(pool, embedding_svc)),
-                ("FoodNutritionService", lambda: FoodNutritionService(pool, embedding_svc)),
+                (
+                    "FoodNutritionService",
+                    lambda: FoodNutritionService(pool, embedding_svc),
+                ),
                 ("FHIRConditionService", lambda: FHIRConditionService(pool)),
                 ("FHIRMedicationService", lambda: FHIRMedicationService(drug_service)),
                 ("LabService", lambda: LabService(pool, embedding_svc)),
-                ("ClinicalGuidelineService", lambda: ClinicalGuidelineService(pool, embedding_svc)),
+                (
+                    "ClinicalGuidelineService",
+                    lambda: ClinicalGuidelineService(pool, embedding_svc),
+                ),
                 ("TWCoreService", lambda: TWCoreService(pool)),
                 ("SNOMEDService", lambda: SNOMEDService(pool, embedding_svc)),
                 ("DrugInteractionService", lambda: DrugInteractionService(pool)),
@@ -301,6 +308,7 @@ def _load_static_file(filename: str) -> bytes | None:
             except OSError:
                 pass
     return None
+
 
 _LOGO_H_BYTES: bytes | None = _load_static_file("static/logo-h.png")
 _LOGO_S_BYTES: bytes | None = _load_static_file("static/logo-s.png")
@@ -966,7 +974,7 @@ _LANDING_HTML = """\
         <td>Auto-sync every Tuesday 02:00 UTC</td>
       </tr>
       <tr>
-        <td>Taiwan FDA Health Foods</td>
+        <td>Taiwan FDA Health Supplements</td>
         <td>Open Data — Taiwan FDA</td>
         <td>Auto-sync every Monday 02:30 UTC</td>
       </tr>
@@ -1195,95 +1203,217 @@ _TOOL_GROUPS: dict[str, dict[str, object]] = {
     "icd": {
         "category": "ICD-10",
         "tools": [
-            ("search_medical_codes", "search_medical_codes", {"keyword": "第二型糖尿病", "type": "diagnosis", "limit": 5}),
+            (
+                "search_medical_codes",
+                "search_medical_codes",
+                {"keyword": "第二型糖尿病", "type": "diagnosis", "limit": 5},
+            ),
             ("infer_complications", "infer_complications", {"code": "E11"}),
             ("get_nearby_codes", "get_nearby_codes", {"code": "E11.9"}),
-            ("check_medical_conflict", "check_medical_conflict", {"diagnosis_code": "E11.9", "procedure_code": "0BH17EZ"}),
+            (
+                "check_medical_conflict",
+                "check_medical_conflict",
+                {"diagnosis_code": "E11.9", "procedure_code": "0BH17EZ"},
+            ),
             ("browse_icd_category", "browse_icd_category", {"category": "E11"}),
         ],
     },
     "drug": {
         "category": "Drug",
         "tools": [
-            ("search_drug", "search_drug", {"mode": "drug_name", "keyword": "Metformin", "limit": 5}),
-            ("identify_unknown_pill", "identify_unknown_pill", {"features": "white round M500"}),
+            (
+                "search_drug",
+                "search_drug",
+                {"mode": "drug_name", "keyword": "Metformin", "limit": 5},
+            ),
+            (
+                "identify_unknown_pill",
+                "identify_unknown_pill",
+                {"features": "white round M500"},
+            ),
         ],
     },
     "rxnorm": {
         "category": "RxNorm",
         "tools": [
-            ("check_drug_interactions", "check_drug_interactions", {"drug_names": ["warfarin", "aspirin"]}),
-            ("resolve_rxnorm_drug", "resolve_rxnorm_drug", {"drug_name": "atorvastatin"}),
-            ("get_drug_ingredients_rxnorm", "get_drug_ingredients_rxnorm", {"rxcui": "41493"}),
+            (
+                "check_drug_interactions",
+                "check_drug_interactions",
+                {"drug_names": ["warfarin", "aspirin"]},
+            ),
+            (
+                "resolve_rxnorm_drug",
+                "resolve_rxnorm_drug",
+                {"drug_name": "atorvastatin"},
+            ),
+            (
+                "get_drug_ingredients_rxnorm",
+                "get_drug_ingredients_rxnorm",
+                {"rxcui": "41493"},
+            ),
         ],
     },
     "lab": {
         "category": "Lab / LOINC",
         "tools": [
-            ("search_loinc_code", "search_loinc_code", {"keyword": "glucose", "category": "CHEM", "limit": 5}),
+            (
+                "search_loinc_code",
+                "search_loinc_code",
+                {"keyword": "glucose", "category": "CHEM", "limit": 5},
+            ),
             ("list_lab_categories", "list_lab_categories", {}),
-            ("get_reference_range", "get_reference_range", {"loinc_code": "2345-7", "age": 45, "gender": "M"}),
-            ("interpret_lab_result", "interpret_lab_result", {"loinc_code": "2345-7", "value": 126, "age": 45, "gender": "M"}),
-            ("search_loinc_by_specimen", "search_loinc_by_specimen", {"specimen_type": "血清/血漿", "limit": 5}),
-            ("find_related_loinc_tests", "find_related_loinc_tests", {"component": "Glucose", "limit": 5}),
+            (
+                "get_reference_range",
+                "get_reference_range",
+                {"loinc_code": "2345-7", "age": 45, "gender": "M"},
+            ),
+            (
+                "interpret_lab_result",
+                "interpret_lab_result",
+                {"loinc_code": "2345-7", "value": 126, "age": 45, "gender": "M"},
+            ),
+            (
+                "search_loinc_by_specimen",
+                "search_loinc_by_specimen",
+                {"specimen_type": "血清/血漿", "limit": 5},
+            ),
+            (
+                "find_related_loinc_tests",
+                "find_related_loinc_tests",
+                {"component": "Glucose", "limit": 5},
+            ),
             ("get_loinc_detail", "get_loinc_detail", {"loinc_num": "2345-7"}),
-            ("batch_interpret_lab_results", "batch_interpret_lab_results", {"results_json": '[{"loinc_code":"2345-7","value":126},{"loinc_code":"4548-4","value":7.2},{"loinc_code":"718-7","value":13.5}]', "age": 45, "gender": "M"}),
+            (
+                "batch_interpret_lab_results",
+                "batch_interpret_lab_results",
+                {
+                    "results_json": '[{"loinc_code":"2345-7","value":126},{"loinc_code":"4548-4","value":7.2},{"loinc_code":"718-7","value":13.5}]',
+                    "age": 45,
+                    "gender": "M",
+                },
+            ),
         ],
     },
     "guideline": {
         "category": "Guidelines",
         "tools": [
-            ("search_clinical_guideline", "search_clinical_guideline", {"keyword": "糖尿病"}),
-            ("query_guideline", "query_guideline", {"icd_code": "E11", "section": "medication"}),
+            (
+                "search_clinical_guideline",
+                "search_clinical_guideline",
+                {"keyword": "糖尿病"},
+            ),
+            (
+                "query_guideline",
+                "query_guideline",
+                {"icd_code": "E11", "section": "medication"},
+            ),
         ],
     },
     "snomed": {
         "category": "SNOMED CT",
         "tools": [
-            ("search_snomed_concept", "search_snomed_concept", {"query": "diabetes mellitus", "limit": 5}),
+            (
+                "search_snomed_concept",
+                "search_snomed_concept",
+                {"query": "diabetes mellitus", "limit": 5},
+            ),
             ("query_snomed_concept", "query_snomed_concept", {"concept_id": 73211009}),
-            ("get_snomed_relationships", "get_snomed_relationships", {"concept_id": 73211009}),
-            ("query_snomed_mapping", "query_snomed_mapping", {"mode": "icd", "keyword": "E11.9"}),
+            (
+                "get_snomed_relationships",
+                "get_snomed_relationships",
+                {"concept_id": 73211009},
+            ),
+            (
+                "query_snomed_mapping",
+                "query_snomed_mapping",
+                {"mode": "icd", "keyword": "E11.9"},
+            ),
         ],
     },
     "fhir_condition": {
         "category": "FHIR R4",
         "tools": [
-            ("query_fhir_condition", "query_fhir_condition", {"diagnosis_keyword": "第二型糖尿病", "patient_id": "patient-001"}),
-            ("validate_fhir_condition", "validate_fhir_condition", {"condition_json": '{"resourceType":"Condition","subject":{"reference":"Patient/patient-001"},"code":{"coding":[{"system":"http://hl7.org/fhir/sid/icd-10-cm","code":"E11.9","display":"Type 2 diabetes mellitus without complications"}]},"clinicalStatus":{"coding":[{"system":"http://terminology.hl7.org/CodeSystem/condition-clinical","code":"active"}]},"verificationStatus":{"coding":[{"system":"http://terminology.hl7.org/CodeSystem/v3-ActCode","code":"confirmed"}]}}'}),
+            (
+                "query_fhir_condition",
+                "query_fhir_condition",
+                {"diagnosis_keyword": "第二型糖尿病", "patient_id": "patient-001"},
+            ),
+            (
+                "validate_fhir_condition",
+                "validate_fhir_condition",
+                {
+                    "condition_json": '{"resourceType":"Condition","subject":{"reference":"Patient/patient-001"},"code":{"coding":[{"system":"http://hl7.org/fhir/sid/icd-10-cm","code":"E11.9","display":"Type 2 diabetes mellitus without complications"}]},"clinicalStatus":{"coding":[{"system":"http://terminology.hl7.org/CodeSystem/condition-clinical","code":"active"}]},"verificationStatus":{"coding":[{"system":"http://terminology.hl7.org/CodeSystem/v3-ActCode","code":"confirmed"}]}}'
+                },
+            ),
         ],
     },
     "fhir_medication": {
         "category": "FHIR R4",
         "tools": [
-            ("query_fhir_medication", "query_fhir_medication", {"keyword": "Metformin", "resource_type": "MedicationKnowledge"}),
-            ("validate_fhir_medication", "validate_fhir_medication", {"medication_json": '{"resourceType":"Medication","code":{"coding":[{"system":"https://twcore.mohw.gov.tw/ig/twcore/CodeSystem/medication-fda-tw","code":"衛部藥製字第059686號","display":"Metformin 500mg"}]},"ingredient":[{"itemCodeableConcept":{"coding":[{"code":"metformin"}]},"strength":{"numerator":{"value":500,"unit":"mg"}}}]}' }),
+            (
+                "query_fhir_medication",
+                "query_fhir_medication",
+                {"keyword": "Metformin", "resource_type": "MedicationKnowledge"},
+            ),
+            (
+                "validate_fhir_medication",
+                "validate_fhir_medication",
+                {
+                    "medication_json": '{"resourceType":"Medication","code":{"coding":[{"system":"https://twcore.mohw.gov.tw/ig/twcore/CodeSystem/medication-fda-tw","code":"衛部藥製字第059686號","display":"Metformin 500mg"}]},"ingredient":[{"itemCodeableConcept":{"coding":[{"code":"metformin"}]},"strength":{"numerator":{"value":500,"unit":"mg"}}}]}'
+                },
+            ),
         ],
     },
     "twcore": {
         "category": "TWCore IG",
         "tools": [
             ("query_twcore_code", "query_twcore_code", {"category": "medication"}),
-            ("query_twcore_code", "query_twcore_code", {"code": "QD", "codesystem_id": "medication-frequency-nhi-tw"}),
+            (
+                "query_twcore_code",
+                "query_twcore_code",
+                {"code": "QD", "codesystem_id": "medication-frequency-nhi-tw"},
+            ),
         ],
     },
     "health_food": {
-        "category": "Health Food",
+        "category": "Health Supplement",
         "tools": [
-            ("search_health_food", "search_health_food", {"keyword": "調節血脂", "limit": 5}),
-            ("get_health_food_details", "get_health_food_details", {"permit_no": "衛署健食字第A00022號"}),
-            ("analyze_health_support_for_condition", "analyze_health_support_for_condition", {"diagnosis_keyword": "糖尿病"}),
+            (
+                "search_health_supplement",
+                "search_health_supplement",
+                {"mode": "keyword", "keyword": "魚油", "limit": 5},
+            ),
         ],
     },
     "food_nutrition": {
         "category": "Food Nutrition",
         "tools": [
-            ("search_food_nutrition", "search_food_nutrition", {"food_name": "雞蛋", "nutrient": "粗蛋白"}),
+            (
+                "search_food_nutrition",
+                "search_food_nutrition",
+                {"food_name": "雞蛋", "nutrient": "粗蛋白"},
+            ),
             ("get_detailed_nutrition", "get_detailed_nutrition", {"food_name": "白米"}),
-            ("search_food_ingredient", "search_food_ingredient", {"keyword": "維生素C"}),
-            ("get_ingredients_by_category", "get_ingredients_by_category", {"category": "Omega-3脂肪酸"}),
-            ("search_foods_by_nutrient", "search_foods_by_nutrient", {"nutrient": "鈣"}),
-            ("analyze_meal_nutrition", "analyze_meal_nutrition", {"foods": ["白米飯", "雞胸肉", "花椰菜", "豆腐"]}),
+            (
+                "search_food_ingredient",
+                "search_food_ingredient",
+                {"keyword": "維生素C"},
+            ),
+            (
+                "get_ingredients_by_category",
+                "get_ingredients_by_category",
+                {"category": "Omega-3脂肪酸"},
+            ),
+            (
+                "search_foods_by_nutrient",
+                "search_foods_by_nutrient",
+                {"nutrient": "鈣"},
+            ),
+            (
+                "analyze_meal_nutrition",
+                "analyze_meal_nutrition",
+                {"foods": ["白米飯", "雞胸肉", "花椰菜", "豆腐"]},
+            ),
         ],
     },
     "system": {
@@ -1313,14 +1443,13 @@ def _build_tool_maps():
             service_tools[service_key] = tools
     return tool_category_map, tool_examples, service_tools
 
+
 def _build_status_html() -> str:
     """Build the status page HTML, embedding the category map and examples as JS constants."""
     cat_map_js = json.dumps(_TOOL_CATEGORY_MAP, ensure_ascii=False)
     examples_js = json.dumps(_TOOL_EXAMPLES, ensure_ascii=False)
-    return (
-        _STATUS_HTML_TEMPLATE
-        .replace('"__CATEGORY_MAP__"', cat_map_js)
-        .replace('"__TOOL_EXAMPLES__"', examples_js)
+    return _STATUS_HTML_TEMPLATE.replace('"__CATEGORY_MAP__"', cat_map_js).replace(
+        '"__TOOL_EXAMPLES__"', examples_js
     )
 
 
@@ -1929,6 +2058,8 @@ init();
 </body>
 </html>
 """
+
+
 class PrivacyPageMiddleware:
     """Serve static pages (/, /privacy, /dpa, /status) and static assets (logos, favicon)."""
 
@@ -1936,41 +2067,49 @@ class PrivacyPageMiddleware:
         self.app = app
 
     async def _send_file(self, send, body: bytes, content_type: bytes):
-        await send({
-            "type": "http.response.start",
-            "status": 200,
-            "headers": [
-                (b"content-type", content_type),
-                (b"content-length", str(len(body)).encode()),
-                (b"cache-control", b"public, max-age=604800"),
-            ],
-        })
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [
+                    (b"content-type", content_type),
+                    (b"content-length", str(len(body)).encode()),
+                    (b"cache-control", b"public, max-age=604800"),
+                ],
+            }
+        )
         await send({"type": "http.response.body", "body": body, "more_body": False})
 
     async def _send_404(self, send):
-        await send({
-            "type": "http.response.start",
-            "status": 404,
-            "headers": [(b"content-length", b"9")],
-        })
-        await send({"type": "http.response.body", "body": b"Not Found", "more_body": False})
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 404,
+                "headers": [(b"content-length", b"9")],
+            }
+        )
+        await send(
+            {"type": "http.response.body", "body": b"Not Found", "more_body": False}
+        )
 
     async def _send_html(self, send, body: bytes):
-        await send({
-            "type": "http.response.start",
-            "status": 200,
-            "headers": [
-                (b"content-type", b"text/html; charset=utf-8"),
-                (b"content-length", str(len(body)).encode()),
-                (b"cache-control", b"public, max-age=300"),
-            ],
-        })
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [
+                    (b"content-type", b"text/html; charset=utf-8"),
+                    (b"content-length", str(len(body)).encode()),
+                    (b"cache-control", b"public, max-age=300"),
+                ],
+            }
+        )
         await send({"type": "http.response.body", "body": body, "more_body": False})
 
     async def __call__(self, scope, receive, send):
         if scope["type"] == "http":
             method = scope.get("method", "")
-            path   = scope.get("path", "").rstrip("/")
+            path = scope.get("path", "").rstrip("/")
 
             # ── static HTML pages ──────────────────────────────────────────
             if method == "GET":
@@ -2069,7 +2208,7 @@ async def health_check() -> str:
     Returns server health status and dataset availability for all services.
 
     Reports database and cache connectivity, plus which of the 11 service
-    datasets are loaded and ready. Services reported: icd, drug, health_food,
+    datasets are loaded and ready. Services reported: icd, drug, health_supplement,
     food_nutrition, fhir_condition, fhir_medication, lab, guideline, twcore,
     snomed, drug_interactions (RxNorm). Always available regardless of dataset
     load status.
@@ -2099,7 +2238,7 @@ async def health_check() -> str:
             "services": {
                 "icd": icd_service is not None,
                 "drug": drug_service is not None,
-                "health_food": health_food_service is not None,
+                "health_supplement": health_food_service is not None,
                 "food_nutrition": food_nutrition_service is not None,
                 "fhir_condition": fhir_condition_service is not None,
                 "fhir_medication": fhir_medication_service is not None,
@@ -2155,15 +2294,18 @@ async def search_medical_codes(
 @audited("infer_complications")
 async def infer_complications(code: str) -> str:
     """
-    Explore the ICD-10-CM hierarchy for a given code.
+    Explore the ICD-10-CM hierarchy for a diagnosis code or category prefix.
 
-    Two behaviours depending on the input:
-    - If the code has more-specific child codes (e.g., 'E11' → E11.0, E11.1 …):
-      returns those child codes as "potential_complications_or_specifics".
-    - If the code has no children (already a leaf code): returns sibling codes
-      in the same 3-character category as "related_codes".
-    Useful for finding the most-specific billable code or exploring diagnosis variants.
-    Note: hierarchical lookup only — not AI-based clinical inference.
+    Use this when you want to see how a diagnosis expands into more specific
+    billable codes or what nearby variants exist in the same category. This is
+    a hierarchy lookup, not AI-generated clinical inference.
+
+    Behaviour depends on the input:
+    - Broad category like `E11`: returns more-specific child codes that may act
+      as candidate subcodes or finer-grained diagnoses.
+    - Leaf code like `E11.9`: returns sibling or related codes in the same
+      category when no children exist.
+    - Other codes: follows the ICD tree and returns the most relevant branch.
 
     Args:
         code: ICD-10-CM code or category prefix (e.g., 'E11' for type 2 diabetes,
@@ -2179,9 +2321,10 @@ async def get_nearby_codes(code: str) -> str:
     """
     Retrieve ICD-10-CM codes adjacent to a given code.
 
-    Use this to inspect the surrounding classification context for a code you
-    already know. The response returns up to two codes before and after the
-    target code in ICD-10-CM tabular order.
+    Use this when you already know the code and want the surrounding
+    classification context. It returns the nearby entries before and after the
+    target code in ICD-10-CM tabular order, which is useful for understanding
+    severity gradations, exclusions, or adjacent variants.
 
     Args:
         code: ICD-10-CM diagnosis code (e.g., 'E11.9', 'I10').
@@ -2196,12 +2339,13 @@ async def check_medical_conflict(diagnosis_code: str, procedure_code: str) -> st
     """
     Retrieve structured data for a diagnosis-procedure pair to support conflict analysis.
 
-    Returns the full description and metadata for both an ICD-10-CM diagnosis code
-    and an ICD-10-PCS procedure code side-by-side. The returned data (body site,
-    procedure type, diagnosis category) enables the calling model to reason about
-    whether the procedure is clinically appropriate for the diagnosis.
-    This tool does not perform automatic conflict detection — it provides the raw
-    data needed for the model to make that determination.
+    Use this when you want to compare a diagnosis and a procedure before
+    deciding whether the combination is clinically plausible. The tool returns
+    both codes’ structured metadata side-by-side so the caller can reason about
+    body site, procedure intent, and diagnosis category alignment.
+
+    This tool does not auto-judge pass/fail; it provides the evidence needed
+    for a human or model to make that determination.
 
     Args:
         diagnosis_code: ICD-10-CM diagnosis code (e.g., 'K35.80' for acute appendicitis).
@@ -2224,7 +2368,8 @@ async def browse_icd_category(category: str | None = None, limit: int = 50) -> s
 
     Use this to explore the ICD hierarchy or build a pick-list for a disease
     area. Call it without a category to list available chapters; provide a
-    3-character code to list the codes underneath it.
+    3-character code to list the codes underneath it. This is the right tool
+    when you know the disease family but not the exact billable code.
 
     Args:
         category: 3-character ICD-10-CM category code (e.g., 'E11', 'I10', 'N80').
@@ -2288,8 +2433,11 @@ async def search_drug(
         return await drug_service.search_drug(keyword, limit=limit)
     if mode == "atc_code":
         import re
+
         if not re.fullmatch(r"[A-Za-z][A-Za-z0-9]{1,6}", keyword):
-            return _json_error("ATC code mode accepts ATC code prefixes only (e.g. A10, A10BA02).")
+            return _json_error(
+                "ATC code mode accepts ATC code prefixes only (e.g. A10, A10BA02)."
+            )
         return await drug_service.search_by_atc(keyword, limit=limit)
     if mode == "ingredient":
         return await drug_service.search_by_ingredient(keyword, limit=limit)
@@ -2347,51 +2495,157 @@ async def identify_unknown_pill(features: str) -> str:
 
 
 # ============================================================
-# Group 3: Health Food (Taiwan FDA)
+# Group 3: Health Supplement (Taiwan FDA)
 # ============================================================
 
 
-@audited("search_health_food")
-async def search_health_food(keyword: str, limit: int = 3) -> str:
+async def _build_health_supplement_result(
+    row: dict,
+    *,
+    mode: str,
+    keyword: str,
+    icd_code: str | None = None,
+    recommended_benefits: list[str] | None = None,
+) -> dict:
+    result = {
+        "permit_no": row.get("permit_no"),
+        "product_name": row.get("name"),
+        "company": row.get("applicant"),
+        "benefits": row.get("benefit_claims"),
+        "ingredients": row.get("ingredients", []),
+        "specs": row.get("specs", {}),
+        "status": row.get("status"),
+        "source_url": row.get("source_url"),
+    }
+    return result
+
+
+@audited("search_health_supplement")
+async def search_health_supplement(
+    mode: Literal["keyword", "permit_no", "condition"] = "keyword",
+    keyword: str = "",
+    limit: int = 3,
+) -> str:
     """
-    Search Taiwan FDA certified health foods (健康食品) by name or approved health benefit.
+    Search Taiwan FDA health supplements using a single unified entry point.
 
-    Health foods (健康食品) in Taiwan are products that have received an official
-    health benefit certification from the Taiwan FDA — they are distinct from
-    ordinary food supplements. Uses hybrid BM25 + semantic similarity (vector search).
-    Use get_health_food_details for full information.
-    Data source: Taiwan FDA open data.
+    `keyword` mode searches product names, companies, ingredients, and
+    approved benefit claims. `permit_no` mode looks up a permit number and
+    supports bare digits such as `A00022` or `000029`. `condition` mode maps a
+    disease keyword / ICD code to recommended benefits and returns matching
+    certified products. All result items share the same schema; `condition`
+    mode additionally populates `icd_code` and `recommended_benefits`.
 
-    Output: returns the top `limit` results ranked by semantic similarity score,
-    not keyword-filtered records. Results are the closest matches in the database —
-    they may include semantically related products even when the exact term is absent.
-
-    Args:
-        keyword: Product name, brand, or certified health benefit claim in Chinese
-                 (e.g., '靈芝', '調節血脂', '護肝', '益生菌', '葡萄糖胺').
-        limit: Number of closest-matching results to return (default 3, max 10).
+    The top-level response always has the same shape:
+    `{"mode", "keyword", "results"}`.
+    Each result is detail-shaped and includes `permit_no`, `product_name`,
+    `company`, `benefits`, `ingredients`, `specs`, `status`, `source_url`,
+    `icd_code`, and `recommended_benefits`.
     """
     if health_food_service is None:
-        return _svc_unavailable("Health Food Service")
-    return await health_food_service.search_health_food(keyword, limit=limit)
+        return _svc_unavailable("Health Supplement Service")
+    if not keyword:
+        return _json_error("Provide keyword")
 
+    limit = min(max(1, limit), 10)
+    async with health_food_service.pool.acquire() as conn:
+        if mode == "keyword":
+            raw = await health_food_service.search_health_food(keyword, limit=limit)
+            payload = json.loads(raw)
+            results = []
+            for item in payload.get("results", []):
+                permit_no = item.get("permit_no")
+                if not permit_no:
+                    continue
+                row = await conn.fetchrow(
+                    "SELECT * FROM health_food.items WHERE permit_no = $1", permit_no
+                )
+                if row:
+                    results.append(
+                        await _build_health_supplement_result(
+                            dict(row), mode=mode, keyword=keyword
+                        )
+                    )
+            return json.dumps(
+                {"mode": mode, "keyword": keyword, "results": results},
+                ensure_ascii=False,
+            )
 
-@audited("get_health_food_details")
-async def get_health_food_details(permit_no: str) -> str:
-    """
-    Get the full record for a Taiwan FDA certified health food.
+        if mode == "permit_no":
+            row = await conn.fetchrow(
+                "SELECT * FROM health_food.items WHERE permit_no = $1", keyword
+            )
+            if not row:
+                digits = re.search(r"\d+", keyword)
+                if digits:
+                    digits_only = digits.group()
+                    if keyword.isdigit():
+                        row = await conn.fetchrow(
+                            "SELECT * FROM health_food.items WHERE permit_no ILIKE $1 ORDER BY permit_no LIMIT 1",
+                            f"%{digits_only}%",
+                        )
+                    else:
+                        rows = await conn.fetch(
+                            "SELECT * FROM health_food.items WHERE permit_no ILIKE $1 ORDER BY permit_no LIMIT 50",
+                            f"%{digits_only}%",
+                        )
+                        row = rows[0] if rows else None
+            if not row:
+                return json.dumps(
+                    {"mode": mode, "keyword": keyword, "results": []},
+                    ensure_ascii=False,
+                )
+            return json.dumps(
+                {
+                    "mode": mode,
+                    "keyword": keyword,
+                    "results": [
+                        await _build_health_supplement_result(
+                            dict(row), mode=mode, keyword=keyword
+                        )
+                    ],
+                },
+                ensure_ascii=False,
+            )
 
-    Use this after `search_health_food` when you already know the permit number
-    and need the official product details, claims, ingredients, dosage, and
-    status.
+        if mode == "condition":
+            raw = await health_food_service.analyze_health_support_for_condition(
+                keyword, icd_service=icd_service
+            )
+            payload = json.loads(raw)
+            icd_code = payload.get("icd_code")
+            recommended_benefits = payload.get("recommended_benefits", [])
+            foods = payload.get("health_foods", [])
+            results = []
+            for food in foods[:limit]:
+                permit_no = food.get("permit_no")
+                if not permit_no:
+                    continue
+                row = await conn.fetchrow(
+                    "SELECT * FROM health_food.items WHERE permit_no = $1", permit_no
+                )
+                if row:
+                    results.append(
+                        await _build_health_supplement_result(
+                            dict(row),
+                            mode=mode,
+                            keyword=keyword,
+                            icd_code=icd_code,
+                            recommended_benefits=recommended_benefits,
+                        )
+                    )
+            return json.dumps(
+                {
+                    "mode": mode,
+                    "keyword": keyword,
+                    "icd_code": icd_code,
+                    "recommended_benefits": recommended_benefits or [],
+                    "results": results,
+                },
+                ensure_ascii=False,
+            )
 
-    Args:
-        permit_no: Taiwan FDA health food permit number from search_health_food
-                   results (e.g., '衛部健食字第A00123號').
-    """
-    if health_food_service is None:
-        return _svc_unavailable("Health Food Service")
-    return await health_food_service.get_health_food_details(permit_no)
+    return _json_error("Provide mode as keyword, permit_no, or condition")
 
 
 # ============================================================
@@ -2400,7 +2654,9 @@ async def get_health_food_details(permit_no: str) -> str:
 
 
 @audited("search_food_nutrition")
-async def search_food_nutrition(food_name: str, nutrient: str | None = None, limit: int = 3) -> str:
+async def search_food_nutrition(
+    food_name: str, nutrient: str | None = None, limit: int = 3
+) -> str:
     """
     Search Taiwan FDA food composition database for nutritional content per 100 g.
 
@@ -2422,7 +2678,9 @@ async def search_food_nutrition(food_name: str, nutrient: str | None = None, lim
     """
     if food_nutrition_service is None:
         return _svc_unavailable("Food Nutrition Service")
-    return await food_nutrition_service.search_nutrition(food_name, nutrient, limit=limit)
+    return await food_nutrition_service.search_nutrition(
+        food_name, nutrient, limit=limit
+    )
 
 
 @audited("get_detailed_nutrition")
@@ -2533,36 +2791,7 @@ async def analyze_meal_nutrition(foods: list[str]) -> str:
 
 
 # ============================================================
-# Group 5: Health Food + ICD integrated analysis
-# ============================================================
-
-
-@audited("analyze_health_support_for_condition")
-async def analyze_health_support_for_condition(diagnosis_keyword: str) -> str:
-    """
-    Map a diagnosis to relevant Taiwan FDA certified health foods and dietary notes.
-
-    Cross-references the diagnosis against a curated disease-to-health-food mapping,
-    then retrieves matching certified health food products. Also includes general
-    dietary considerations associated with the condition.
-
-    ⚠️ This mapping is developer-curated and NOT medically validated. Health foods
-    are NOT medicine and cannot replace prescription treatment. Not suitable for
-    direct patient-facing use without expert clinical review.
-
-    Args:
-        diagnosis_keyword: Disease name in Chinese/English or ICD-10 code
-                           (e.g., 'E11', 'E78', '糖尿病', '高血脂', 'hypertension').
-    """
-    if health_food_service is None:
-        return _svc_unavailable("Health Food Service")
-    return await health_food_service.analyze_health_support_for_condition(
-        diagnosis_keyword, icd_service=icd_service
-    )
-
-
-# ============================================================
-# Group 6: FHIR Condition
+# Group 5: FHIR Condition
 # ============================================================
 
 
@@ -2571,8 +2800,12 @@ async def create_fhir_condition(
     icd_code: str,
     patient_id: str,
     clinical_status: Literal["active", "inactive", "resolved", "remission"] = "active",
-    verification_status: Literal["confirmed", "provisional", "differential", "refuted"] = "confirmed",
-    category: Literal["encounter-diagnosis", "problem-list-item"] = "encounter-diagnosis",
+    verification_status: Literal[
+        "confirmed", "provisional", "differential", "refuted"
+    ] = "confirmed",
+    category: Literal[
+        "encounter-diagnosis", "problem-list-item"
+    ] = "encounter-diagnosis",
     severity: str = None,
     onset_date: str = None,
     recorded_date: str = None,
@@ -2623,7 +2856,9 @@ async def create_fhir_condition_from_diagnosis(
     diagnosis_keyword: str,
     patient_id: str,
     clinical_status: Literal["active", "inactive", "resolved", "remission"] = "active",
-    verification_status: Literal["confirmed", "provisional", "differential", "refuted"] = "confirmed",
+    verification_status: Literal[
+        "confirmed", "provisional", "differential", "refuted"
+    ] = "confirmed",
     severity: str | None = None,
 ) -> str:
     """
@@ -2664,8 +2899,12 @@ async def query_fhir_condition(
     diagnosis_keyword: str | None = None,
     patient_id: str = "",
     clinical_status: Literal["active", "inactive", "resolved", "remission"] = "active",
-    verification_status: Literal["confirmed", "provisional", "differential", "refuted"] = "confirmed",
-    category: Literal["encounter-diagnosis", "problem-list-item"] = "encounter-diagnosis",
+    verification_status: Literal[
+        "confirmed", "provisional", "differential", "refuted"
+    ] = "confirmed",
+    category: Literal[
+        "encounter-diagnosis", "problem-list-item"
+    ] = "encounter-diagnosis",
     severity: str | None = None,
     onset_date: str | None = None,
     recorded_date: str | None = None,
@@ -2747,7 +2986,9 @@ async def validate_fhir_condition(condition_json: str) -> str:
         result = fhir_condition_service.validate_condition(condition)
         return fhir_condition_service.to_json_string(result, indent=2)
     except json.JSONDecodeError as e:
-        return _json_error(f"Invalid JSON: {e}", valid=False, errors=[f"Invalid JSON: {e}"])
+        return _json_error(
+            f"Invalid JSON: {e}", valid=False, errors=[f"Invalid JSON: {e}"]
+        )
 
 
 # ============================================================
@@ -2797,7 +3038,9 @@ async def create_fhir_medication(license_id: str) -> str:
     """
     if fhir_medication_service is None:
         return _svc_unavailable("FHIR Medication Service")
-    return await _call_service_json(fhir_medication_service, "create_medication", license_id)
+    return await _call_service_json(
+        fhir_medication_service, "create_medication", license_id
+    )
 
 
 @audited("create_fhir_medication_knowledge")
@@ -2882,7 +3125,9 @@ async def validate_fhir_medication(medication_json: str) -> str:
         result = fhir_medication_service.validate_medication(resource)
         return fhir_medication_service.to_json_string(result, indent=2)
     except json.JSONDecodeError as e:
-        return _json_error(f"Invalid JSON: {e}", valid=False, errors=[f"Invalid JSON: {e}"])
+        return _json_error(
+            f"Invalid JSON: {e}", valid=False, errors=[f"Invalid JSON: {e}"]
+        )
 
 
 # ============================================================
@@ -2891,27 +3136,43 @@ async def validate_fhir_medication(medication_json: str) -> str:
 
 
 @audited("search_loinc_code")
-async def search_loinc_code(keyword: str, category: str | None = None, limit: int = 3) -> str:
+async def search_loinc_code(
+    keyword: str, category: str | None = None, limit: int = 3
+) -> str:
     """
-    Search LOINC 2.80 codes (87,000+ codes) by test name or abbreviation.
+    Search LOINC 2.80 codes by test name, abbreviation, analyte, or specimen wording.
 
-    Uses hybrid BM25 + semantic similarity to return the top closest matching
-    LOINC codes — not just exact keyword matches. For example, '血糖' also
-    surfaces glucose-related tests, and 'WBC' surfaces leukocyte count codes.
-    Use get_loinc_detail for the full LOINC axes breakdown of a specific code.
+    This is the discovery entry point for standardizing lab test names before
+    you use a detail or interpretation tool. It uses hybrid BM25 + semantic
+    similarity, so the result list is a ranked set of closest matches rather
+    than a strict exact-match filter. That makes it useful when the source term
+    is messy, abbreviated, bilingual, or not yet mapped to a specific code.
+
+    Typical workflow:
+    1. Search with `search_loinc_code` to find the most likely code.
+    2. Use `get_loinc_detail` to inspect the full LOINC axes for that code.
+    3. Use `get_reference_range` or `interpret_lab_result` if you need clinical
+       interpretation for a patient result.
+
+    Example inputs:
+    - "血糖", "HbA1c", "WBC", "Glucose", "creatinine", "TSH"
+    - category filters such as "CHEM", "HEM/BC", "SERO", "UA" when you already
+      know the broad LOINC class and want to narrow the search space.
 
     Args:
-        keyword: Test name, abbreviation, or analyte in Chinese or English
-                 (e.g., '血糖', 'HbA1c', 'WBC', 'Glucose', 'creatinine',
-                  'TSH', '甲狀腺刺激素').
-        category: Optional LOINC class filter (e.g., 'CHEM', 'HEM/BC',
-                  'SERO', 'UA'). Use list_lab_categories to discover values.
-        limit: Number of closest-matching results to return (default 3, max 10).
+        keyword: Search text in Chinese or English. This can be a test name,
+            abbreviation, analyte, or specimen phrase.
+        category: Optional LOINC class filter such as `CHEM`, `HEM/BC`, `SERO`,
+            or `UA`. Use `list_lab_categories` if you need to browse available
+            categories first.
+        limit: Number of ranked matches to return. Higher values widen recall,
+            but the tool still returns a ranked approximation list rather than
+            a validated mapping.
 
-    Output: returns the top `limit` results ranked by semantic similarity score,
-    not keyword-filtered records. The tool always returns up to `limit` items
-    even when no exact match exists — treat results as the closest approximations
-    found in the database, not confirmed matches.
+    Output:
+        A ranked result list of the closest LOINC matches. Treat the results as
+        candidate codes that need a second-step review, not as confirmed final
+        mappings.
     """
     if lab_service is None:
         return _svc_unavailable("Lab Service")
@@ -2921,10 +3182,17 @@ async def search_loinc_code(keyword: str, category: str | None = None, limit: in
 @audited("list_lab_categories")
 async def list_lab_categories() -> str:
     """
-    List all LOINC class categories in the database.
+    List all LOINC class categories available in the local database.
 
-    Use this first if you want to filter `search_loinc_code` by a LOINC class
-    such as CHEM, HEM/BC, SERO, UA, MICRO, or COAG.
+    This is the browse-style companion to `search_loinc_code`. Use it when you
+    want to know which broad LOINC classes exist before applying a category
+    filter, or when you want to understand how the lab dictionary is organized
+    in this deployment.
+
+    Typical use cases:
+    - discover valid category filters before searching
+    - understand which major lab group a query belongs to
+    - avoid guessing category codes such as CHEM or HEM/BC
     """
     if lab_service is None:
         return _svc_unavailable("Lab Service")
@@ -2936,18 +3204,24 @@ async def get_reference_range(
     loinc_code: str, age: int, gender: Literal["M", "F", "all"] = "all"
 ) -> str:
     """
-    Get the clinical reference range for a LOINC lab test, stratified by age and gender.
+    Get the clinical reference range for one LOINC code, stratified by age and sex.
 
-    Returns lower bound, upper bound, unit, and the age-gender stratum that matched.
-    Reference ranges are drawn from the local database (populated from standard
-    clinical references). Not all LOINC codes have reference ranges — returns
-    an appropriate message when none is available.
+    Use this when you already know the test code and want the normal range for
+    a particular patient context. The tool returns the lower bound, upper bound,
+    unit, and the age/sex stratum that matched the request. If no reference range
+    exists for the requested code, the tool returns an explicit "not available"
+    response rather than guessing.
+
+    This is not a diagnosis tool. It is the lookup step you use before or after
+    result interpretation when you need to compare a measured value against a
+    standard range.
 
     Args:
-        loinc_code: LOINC code (e.g., '1558-6' for fasting plasma glucose,
-                    '4548-4' for HbA1c).
-        age: Patient age in years (integer).
-        gender: 'M' (male) | 'F' (female) | 'all' (gender-neutral, default).
+        loinc_code: A specific LOINC code such as `1558-6` or `4548-4`.
+        age: Patient age in years. The age is used to choose the best matching
+            stratum when ranges differ by life stage.
+        gender: `M`, `F`, or `all`. Use `all` when the reference range is not
+            sex-specific or when you want the broadest applicable range.
     """
     if lab_service is None:
         return _svc_unavailable("Lab Service")
@@ -2959,22 +3233,31 @@ async def interpret_lab_result(
     loinc_code: str, value: float, age: int, gender: Literal["M", "F", "all"] = "all"
 ) -> str:
     """
-    Interpret a single lab result as High / Normal / Low against its reference range.
+    Interpret one lab result against the applicable LOINC reference range.
 
-    Returns the interpretation flag, the applicable reference range (lower/upper bound,
-    unit), and the LOINC test name. Uses age- and gender-stratified reference ranges
-    where available. For batch interpretation of multiple results, use
-    batch_interpret_lab_results.
+    This tool combines a code lookup with a clinical comparison. It returns a
+    normal / high / low style interpretation together with the matched reference
+    range, so it is the right entry point when you already have a numeric result
+    and want a quick clinical readout.
 
-    ⚠️ Reference values are for general guidance. Always interpret in clinical context
-    with a licensed healthcare professional.
+    When to use:
+    - you know the test code and have a single numeric value
+    - you want a quick abnormality flag before reading the detailed report
+    - you want a structured output that can be summarized in a care workflow
+
+    When not to use:
+    - if you only need to find a code, use `search_loinc_code`
+    - if you want to process a full panel, use `batch_interpret_lab_results`
+
+    ⚠️ Reference values are general guidance only. Final interpretation should
+    always consider symptoms, medications, specimen context, and clinician review.
 
     Args:
-        loinc_code: LOINC code for the test (e.g., '1558-6' for fasting glucose,
-                    '718-7' for haemoglobin).
-        value: The measured numeric result value (in the test's standard unit).
-        age: Patient age in years (integer).
-        gender: 'M' (male) | 'F' (female) | 'all' (gender-neutral, default).
+        loinc_code: The LOINC code to interpret, for example `1558-6` or
+            `718-7`.
+        value: The measured numeric value in the test's standard unit.
+        age: Patient age in years.
+        gender: `M`, `F`, or `all`.
     """
     if lab_service is None:
         return _svc_unavailable("Lab Service")
@@ -2986,9 +3269,11 @@ async def search_loinc_by_specimen(specimen_type: str, limit: int = 3) -> str:
     """
     Find LOINC lab tests by specimen or sample type.
 
-    Uses hybrid BM25 + semantic similarity — e.g., querying '血液' also finds
-    tests with specimen_type 'Ser/Plas' or '血清/血漿'. Returns the top closest
-    matching test records (default 3, max 10).
+    Use this when the specimen is known but the final code is not. It is helpful
+    for mapping local lab labels to standard LOINC codes when the source string
+    refers to a specimen rather than the analyte itself. The tool uses hybrid
+    BM25 + semantic similarity, so both English and Chinese specimen phrases can
+    be matched to the closest supported test records.
 
     Args:
         specimen_type: Specimen type in Chinese (preferred) or LOINC system code
@@ -3009,11 +3294,16 @@ async def search_loinc_by_specimen(specimen_type: str, limit: int = 3) -> str:
 @audited("find_related_loinc_tests")
 async def find_related_loinc_tests(component: str, limit: int = 3) -> str:
     """
-    Find LOINC tests that measure the same analyte (component), grouped by specimen system.
+    Find LOINC tests that measure the same analyte, grouped by specimen system.
 
-    Uses hybrid BM25 + semantic similarity — e.g., 'blood sugar' also surfaces
-    glucose measurement codes. Returns top closest matches (default 3, max 10)
-    grouped by biological system to show test variants across specimen types.
+    Use this when the analyte is known but you want to see all common testing
+    variants across specimen types. For example, the same analyte can appear in
+    serum/plasma, whole blood, urine, or other specimen systems, and this tool
+    helps you compare those variants side by side.
+
+    This is especially useful after `search_loinc_code` has identified the likely
+    analyte and you want to check whether a different specimen system or method
+    would be a better clinical fit.
 
     Args:
         component: Analyte/component name in English or Chinese
@@ -3036,8 +3326,10 @@ async def get_loinc_detail(loinc_num: str) -> str:
     """
     Get the full LOINC concept record for one code.
 
-    Use this when you need the detailed axis breakdown for a known LOINC code,
+    Use this after you already have a candidate code and need the full axis
+    breakdown. The response is the detailed record view of the LOINC concept,
     including component, property, system, method, specimen type, and status.
+    This is the detail step after discovery, not the discovery step itself.
 
     Args:
         loinc_num: LOINC code in 'NNNNN-N' format
@@ -3056,12 +3348,19 @@ async def batch_interpret_lab_results(
     """
     Interpret multiple lab results at once against their reference ranges.
 
-    Processes a list of LOINC code + value pairs and returns High/Normal/Low
-    interpretation for each, along with the applicable reference range. More
-    efficient than calling interpret_lab_result repeatedly.
+    This is the panel-level companion to `interpret_lab_result`. It is designed
+    for cases where you already have a batch of LOINC code + value pairs, such as
+    a full lab report, a health checkup panel, or a results feed from an EHR.
+    The tool evaluates each item, returns a per-test interpretation, and avoids
+    repeated round-trips to the single-result endpoint.
 
-    ⚠️ Reference values are for general guidance. Always interpret in clinical
-    context with a licensed healthcare professional.
+    Use this when:
+    - you have more than one lab result to review
+    - you want a compact abnormality summary for an entire report
+    - you need a structured batch output that is easier for LLM summarization
+
+    ⚠️ Reference values are for general guidance. Final interpretation should
+    still be reviewed in clinical context with a licensed healthcare professional.
 
     Args:
         results_json: JSON array of result objects, each with 'loinc_code' (str)
@@ -3125,7 +3424,9 @@ async def get_complete_guideline(icd_code: str) -> str:
     """
     if guideline_service is None:
         return _svc_unavailable("Clinical Guideline Service")
-    return await _call_service_json(guideline_service, "get_complete_guideline", icd_code)
+    return await _call_service_json(
+        guideline_service, "get_complete_guideline", icd_code
+    )
 
 
 @audited("query_guideline")
@@ -3134,20 +3435,26 @@ async def query_guideline(
     section: Literal["complete", "medication", "test", "goals", "pathway"] = "complete",
 ) -> str:
     """
-    Unified guideline entry point.
+    Unified guideline entry point for Taiwan clinical practice guidelines.
 
-    Use this when you want a specific section of a Taiwan clinical guideline.
-    Prefer this over the older section-specific tools when you want one stable
-    entry point for full or partial guideline retrieval.
+    Use this when you want one stable tool for guideline retrieval instead of
+    separate section-specific tools. The `section` parameter controls the
+    shape of the response:
+
+    - `complete`: full guideline summary, including diagnosis overview,
+      medications, tests, goals, and care-path context.
+    - `medication`: medication recommendations only, such as first-line,
+      second-line, add-on, and special population adjustments.
+    - `test`: recommended examinations, labs, imaging, and follow-up checks.
+    - `goals`: treatment targets and outcome goals, such as HbA1c or BP goals.
+    - `pathway`: synthesized step-by-step clinical pathway for the disease.
+
+    The returned JSON always matches the selected section; callers can switch
+    sections without changing tool name.
 
     Args:
         icd_code: Guideline diagnosis code such as 'E11', 'I10', or 'N18'.
-        section: One of:
-            - complete: full guideline summary
-            - medication: medication recommendations
-            - test: recommended tests and examinations
-            - goals: treatment goals and targets
-            - pathway: synthesized clinical pathway
+        section: The guideline section to retrieve.
     """
     if guideline_service is None:
         return _svc_unavailable("Clinical Guideline Service")
@@ -3204,7 +3511,9 @@ async def get_test_recommendations(icd_code: str) -> str:
     """
     if guideline_service is None:
         return _svc_unavailable("Clinical Guideline Service")
-    return await _call_service_json(guideline_service, "get_test_recommendations", icd_code)
+    return await _call_service_json(
+        guideline_service, "get_test_recommendations", icd_code
+    )
 
 
 @audited("get_treatment_goals")
@@ -3274,7 +3583,9 @@ async def link_guideline_to_drugs(icd_code: str) -> str:
     """
     if guideline_service is None:
         return _svc_unavailable("Clinical Guideline Service")
-    return await _call_service_json(guideline_service, "link_guideline_to_drugs", icd_code)
+    return await _call_service_json(
+        guideline_service, "link_guideline_to_drugs", icd_code
+    )
 
 
 @audited("suggest_clinical_pathway")
@@ -3377,7 +3688,10 @@ async def lookup_twcore_code(code: str, codesystem_id: str) -> str:
 
 @audited("query_twcore_code")
 async def query_twcore_code(
-    category: Literal["all", "medication", "diagnosis", "organization", "administrative"] | None = None,
+    category: (
+        Literal["all", "medication", "diagnosis", "organization", "administrative"]
+        | None
+    ) = None,
     keyword: str | None = None,
     code: str | None = None,
     codesystem_ids: list[str] | None = None,
@@ -3641,8 +3955,9 @@ async def map_icd_to_snomed(icd_code: str) -> str:
     """
     Find SNOMED CT concepts that map to an ICD-10 code.
 
-    Use this when you have an ICD code and want the corresponding SNOMED
-    concept or concepts.
+    Use this when you already have an ICD code and want the corresponding
+    SNOMED concept or concepts. This is the one-way mapping helper for the
+    ICD → SNOMED direction.
 
     Args:
         icd_code: ICD-10-CM or ICD-10 code to reverse-map from
@@ -3666,9 +3981,15 @@ async def query_snomed_mapping(
     """
     Convert between ICD-10 and SNOMED CT in either direction.
 
-    Use this when you want a single SNOMED mapping entry point. Set `mode`
-    to `icd` to map ICD → SNOMED, or `snomed` to map SNOMED → ICD. Put the
-    source code or concept ID into `keyword`.
+    Use this when you want a single mapping entry point instead of two
+    separate tools. The `mode` decides the direction:
+
+    - `icd`: take an ICD code and return matching SNOMED concepts.
+    - `snomed`: take a SNOMED concept ID or SNOMED search term and return the
+      ICD-10 mappings.
+
+    This is useful when the caller does not want to decide which direction to
+    call in advance.
 
     Args:
         mode: Mapping direction. Use `icd` for ICD → SNOMED and `snomed`

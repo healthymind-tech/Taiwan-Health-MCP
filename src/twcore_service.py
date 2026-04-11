@@ -20,31 +20,118 @@ REQUEST_TIMEOUT = 15
 # CodeSystem registry (metadata only — actual concepts stored in PostgreSQL)
 CODESYSTEM_REGISTRY: List[Dict] = [
     # === 藥品相關 (medication) ===
-    {"id": "medication-frequency-nhi-tw",   "name": "臺灣健保署藥品使用頻率",         "category": "medication",      "keywords": ["頻率", "QD", "BID", "TID", "QID", "PRN"]},
-    {"id": "medication-path-tw",            "name": "臺灣健保署給藥途徑",             "category": "medication",      "keywords": ["途徑", "口服", "注射", "外用", "吸入"]},
-    {"id": "medication-nhi-tw",             "name": "臺灣健保署用藥品項",             "category": "medication",      "keywords": ["健保藥品", "用藥", "藥品代碼"]},
-    {"id": "nhi-medication-ch-herb-tw",     "name": "臺灣健保署中藥用藥品項",         "category": "medication",      "keywords": ["中藥", "中醫", "herb"]},
-    {"id": "medication-fda-tw",             "name": "臺灣食藥署藥品許可證",           "category": "medication",      "keywords": ["許可證", "FDA", "藥證"]},
-    {"id": "medication-device-fda-tw",      "name": "臺灣食藥署醫療器材許可證",       "category": "medication",      "keywords": ["醫療器材", "device"]},
-    {"id": "medcation-atc-tw",              "name": "臺灣食藥署藥品藥理治療分類ATC碼", "category": "medication",      "keywords": ["ATC", "藥理分類"]},
+    {
+        "id": "medication-frequency-nhi-tw",
+        "name": "臺灣健保署藥品使用頻率",
+        "category": "medication",
+        "keywords": ["頻率", "QD", "BID", "TID", "QID", "PRN"],
+    },
+    {
+        "id": "medication-path-tw",
+        "name": "臺灣健保署給藥途徑",
+        "category": "medication",
+        "keywords": ["途徑", "口服", "注射", "外用", "吸入"],
+    },
+    {
+        "id": "medication-nhi-tw",
+        "name": "臺灣健保署用藥品項",
+        "category": "medication",
+        "keywords": ["健保藥品", "用藥", "藥品代碼"],
+    },
+    {
+        "id": "nhi-medication-ch-herb-tw",
+        "name": "臺灣健保署中藥用藥品項",
+        "category": "medication",
+        "keywords": ["中藥", "中醫", "herb"],
+    },
+    {
+        "id": "medication-fda-tw",
+        "name": "臺灣食藥署藥品許可證",
+        "category": "medication",
+        "keywords": ["許可證", "FDA", "藥證"],
+    },
+    {
+        "id": "medication-device-fda-tw",
+        "name": "臺灣食藥署醫療器材許可證",
+        "category": "medication",
+        "keywords": ["醫療器材", "device"],
+    },
+    {
+        "id": "medcation-atc-tw",
+        "name": "臺灣食藥署藥品藥理治療分類ATC碼",
+        "category": "medication",
+        "keywords": ["ATC", "藥理分類"],
+    },
     # === 診斷分類 (diagnosis) ===
-    {"id": "icd-10-cm-2023-tw",            "name": "臺灣健保署ICD-10-CM 2023年版",   "category": "diagnosis",       "keywords": ["ICD-10-CM", "診斷", "2023"]},
-    {"id": "icd-10-cm-2021-tw",            "name": "臺灣健保署ICD-10-CM 2021年版",   "category": "diagnosis",       "keywords": ["ICD-10-CM", "診斷", "2021"]},
-    {"id": "icd-10-pcs-2023-tw",           "name": "臺灣健保署ICD-10-PCS 2023年版",  "category": "diagnosis",       "keywords": ["ICD-10-PCS", "處置", "procedure"]},
+    {
+        "id": "icd-10-cm-2023-tw",
+        "name": "臺灣健保署ICD-10-CM 2023年版",
+        "category": "diagnosis",
+        "keywords": ["ICD-10-CM", "診斷", "2023"],
+    },
+    {
+        "id": "icd-10-cm-2021-tw",
+        "name": "臺灣健保署ICD-10-CM 2021年版",
+        "category": "diagnosis",
+        "keywords": ["ICD-10-CM", "診斷", "2021"],
+    },
+    {
+        "id": "icd-10-pcs-2023-tw",
+        "name": "臺灣健保署ICD-10-PCS 2023年版",
+        "category": "diagnosis",
+        "keywords": ["ICD-10-PCS", "處置", "procedure"],
+    },
     # === 醫療機構/人員 (organization) ===
-    {"id": "organization-identifier-tw",   "name": "臺灣醫療機構識別碼",             "category": "organization",    "keywords": ["機構", "醫院", "診所"]},
-    {"id": "practitioner-identifier-tw",   "name": "臺灣醫事人員識別碼",             "category": "organization",    "keywords": ["醫師", "護理", "醫事人員"]},
-    {"id": "department-nhia-tw",           "name": "臺灣健保署就醫科別",             "category": "organization",    "keywords": ["科別", "門診", "科"]},
-    {"id": "specialty-nhia-tw",            "name": "臺灣健保署專科醫師代碼",         "category": "organization",    "keywords": ["專科", "specialty"]},
+    {
+        "id": "organization-identifier-tw",
+        "name": "臺灣醫療機構識別碼",
+        "category": "organization",
+        "keywords": ["機構", "醫院", "診所"],
+    },
+    {
+        "id": "practitioner-identifier-tw",
+        "name": "臺灣醫事人員識別碼",
+        "category": "organization",
+        "keywords": ["醫師", "護理", "醫事人員"],
+    },
+    {
+        "id": "department-nhia-tw",
+        "name": "臺灣健保署就醫科別",
+        "category": "organization",
+        "keywords": ["科別", "門診", "科"],
+    },
+    {
+        "id": "specialty-nhia-tw",
+        "name": "臺灣健保署專科醫師代碼",
+        "category": "organization",
+        "keywords": ["專科", "specialty"],
+    },
     # === 行政/人口統計 (administrative) ===
-    {"id": "postal-code-tw",               "name": "臺灣郵遞區號",                   "category": "administrative",  "keywords": ["郵遞區號", "zip", "postal"]},
-    {"id": "marital-status-tw",            "name": "臺灣婚姻狀態",                   "category": "administrative",  "keywords": ["婚姻", "marital"]},
-    {"id": "occupation-dhpc-tw",           "name": "臺灣職業代碼",                   "category": "administrative",  "keywords": ["職業", "occupation"]},
+    {
+        "id": "postal-code-tw",
+        "name": "臺灣郵遞區號",
+        "category": "administrative",
+        "keywords": ["郵遞區號", "zip", "postal"],
+    },
+    {
+        "id": "marital-status-tw",
+        "name": "臺灣婚姻狀態",
+        "category": "administrative",
+        "keywords": ["婚姻", "marital"],
+    },
+    {
+        "id": "occupation-dhpc-tw",
+        "name": "臺灣職業代碼",
+        "category": "administrative",
+        "keywords": ["職業", "occupation"],
+    },
 ]
 
 CATEGORY_NAMES = {
-    "medication": "藥品相關", "diagnosis": "診斷分類",
-    "organization": "醫療機構/人員", "administrative": "行政/人口統計",
+    "medication": "藥品相關",
+    "diagnosis": "診斷分類",
+    "organization": "醫療機構/人員",
+    "administrative": "行政/人口統計",
     "technical": "系統/技術",
 }
 
@@ -56,7 +143,9 @@ class TWCoreService:
     async def initialize(self) -> None:
         count = await self.pool.fetchval("SELECT COUNT(*) FROM twcore.codesystems")
         if count == 0:
-            log_error("TWCore table empty — run data-loader (package.tgz) first; live fetch will be used as fallback")
+            log_error(
+                "TWCore table empty — run data-loader (package.tgz) first; live fetch will be used as fallback"
+            )
         else:
             log_info(f"TWCore Service ready ({count} CodeSystems in DB)")
 
@@ -65,8 +154,10 @@ class TWCoreService:
     # ------------------------------------------------------------------ #
 
     async def _live_fetch(self, cs_id: str) -> Optional[dict]:
-        urls = [f"{TWCORE_BASE_URL}/CodeSystem-{cs_id}.json",
-                f"{TWCORE_BACKUP_URL}/CodeSystem-{cs_id}.json"]
+        urls = [
+            f"{TWCORE_BASE_URL}/CodeSystem-{cs_id}.json",
+            f"{TWCORE_BACKUP_URL}/CodeSystem-{cs_id}.json",
+        ]
         async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
             for url in urls:
                 try:
@@ -88,13 +179,15 @@ class TWCoreService:
                 """INSERT INTO twcore.codesystems (cs_id, name, category, fetched_at, concept_count)
                    VALUES ($1,$2,$3,NOW(),$4)
                    ON CONFLICT (cs_id) DO UPDATE SET fetched_at=NOW(), concept_count=$4""",
-                cs_id, entry["name"] if entry else cs_id,
-                entry["category"] if entry else "unknown", len(concepts),
+                cs_id,
+                entry["name"] if entry else cs_id,
+                entry["category"] if entry else "unknown",
+                len(concepts),
             )
             await conn.execute("DELETE FROM twcore.concepts WHERE cs_id = $1", cs_id)
             await conn.executemany(
                 "INSERT INTO twcore.concepts (cs_id, code, display) VALUES ($1,$2,$3)",
-                [(cs_id, c.get("code",""), c.get("display","")) for c in concepts],
+                [(cs_id, c.get("code", ""), c.get("display", "")) for c in concepts],
             )
 
     # ------------------------------------------------------------------ #
@@ -118,17 +211,22 @@ class TWCoreService:
             if category != "all" and entry["category"] != category:
                 continue
             cat = CATEGORY_NAMES.get(entry["category"], entry["category"])
-            groups.setdefault(cat, []).append({
-                "id": entry["id"], "name": entry["name"],
-                "json_url": f"{TWCORE_BASE_URL}/CodeSystem-{entry['id']}.json",
-            })
+            groups.setdefault(cat, []).append(
+                {
+                    "id": entry["id"],
+                    "name": entry["name"],
+                    "json_url": f"{TWCORE_BASE_URL}/CodeSystem-{entry['id']}.json",
+                }
+            )
         return json.dumps(
             {"total": sum(len(v) for v in groups.values()), "categories": groups},
             ensure_ascii=False,
         )
 
     @cached(ttl=3600, prefix="tc.search")
-    async def search_code(self, keyword: str, codesystem_ids: List[str], limit: int = 30) -> str:
+    async def search_code(
+        self, keyword: str, codesystem_ids: List[str], limit: int = 30
+    ) -> str:
         """Search for a code across one or more TWCore CodeSystems.
 
         If a CodeSystem is not yet cached in the DB, a live fetch is attempted
@@ -148,7 +246,9 @@ class TWCoreService:
         async with self.pool.acquire() as conn:
             for cs_id in codesystem_ids:
                 # Ensure this CS is loaded
-                exists = await conn.fetchval("SELECT 1 FROM twcore.codesystems WHERE cs_id = $1", cs_id)
+                exists = await conn.fetchval(
+                    "SELECT 1 FROM twcore.codesystems WHERE cs_id = $1", cs_id
+                )
                 if not exists:
                     await self._live_fetch(cs_id)
 
@@ -161,17 +261,33 @@ class TWCoreService:
                               @@ plainto_tsquery('simple', $2)
                               OR c.code ILIKE $3)
                        LIMIT $4""",
-                    cs_id, keyword, f"%{keyword}%", limit - len(results),
+                    cs_id,
+                    keyword,
+                    f"%{keyword}%",
+                    limit - len(results),
                 )
-                results.extend([{"cs_id": cs_id, "cs_name": r["name"],
-                                 "code": r["code"], "display": r["display"]} for r in rows])
+                results.extend(
+                    [
+                        {
+                            "cs_id": cs_id,
+                            "cs_name": r["name"],
+                            "code": r["code"],
+                            "display": r["display"],
+                        }
+                        for r in rows
+                    ]
+                )
                 if len(results) >= limit:
                     break
 
         if not results:
-            return json.dumps({"status": "not_found",
-                               "message": f"找不到符合 '{keyword}' 的代碼"}, ensure_ascii=False)
-        return json.dumps({"count": len(results), "results": results}, ensure_ascii=False)
+            return json.dumps(
+                {"status": "not_found", "message": f"找不到符合 '{keyword}' 的代碼"},
+                ensure_ascii=False,
+            )
+        return json.dumps(
+            {"count": len(results), "results": results}, ensure_ascii=False
+        )
 
     @cached(ttl=86400, prefix="tc.lookup")
     async def lookup_code(self, code: str, codesystem_id: str) -> str:
@@ -190,7 +306,9 @@ class TWCoreService:
             On not-found: ``{"status": "not_found", "message": ...}``.
         """
         async with self.pool.acquire() as conn:
-            exists = await conn.fetchval("SELECT 1 FROM twcore.codesystems WHERE cs_id = $1", codesystem_id)
+            exists = await conn.fetchval(
+                "SELECT 1 FROM twcore.codesystems WHERE cs_id = $1", codesystem_id
+            )
             if not exists:
                 await self._live_fetch(codesystem_id)
 
@@ -199,12 +317,18 @@ class TWCoreService:
                    FROM twcore.concepts c
                    JOIN twcore.codesystems cs ON c.cs_id = cs.cs_id
                    WHERE c.cs_id = $1 AND UPPER(c.code) = UPPER($2)""",
-                codesystem_id, code,
+                codesystem_id,
+                code,
             )
 
         if not row:
-            return json.dumps({"status": "not_found",
-                               "message": f"在 {codesystem_id} 中找不到代碼: {code}"}, ensure_ascii=False)
+            return json.dumps(
+                {
+                    "status": "not_found",
+                    "message": f"在 {codesystem_id} 中找不到代碼: {code}",
+                },
+                ensure_ascii=False,
+            )
 
         entry = next((e for e in CODESYSTEM_REGISTRY if e["id"] == codesystem_id), None)
         return json.dumps(

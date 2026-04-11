@@ -30,7 +30,7 @@ classDiagram
     }
 
     class HealthFoodService {
-        +search_health_food()
+        +search_health_supplement()
     }
 
     MCP_Server --> ICDService : calls
@@ -47,4 +47,4 @@ classDiagram
 ## 相依性說明
 
 - **FHIR 服務** 高度依賴基礎資料服務 (`ICDService`, `DrugService`) 來驗證代碼的正確性與獲取詳細描述。
-- **Health Food Service** 作為綜合應用層，同時調用了 `ICDService` (確認疾病) 與 `FoodNutritionService` (確認營養成分) 來產生綜合建議。
+- **Health Supplement Service** 作為綜合應用層，同時調用了 `ICDService` (確認疾病) 與 `FoodNutritionService` (確認營養成分) 來產生綜合建議。

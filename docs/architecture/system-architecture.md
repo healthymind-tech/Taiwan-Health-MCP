@@ -14,7 +14,7 @@ graph TB
     end
 
     subgraph "MCP Server (port 8000)"
-        B["DynamicFastMCP + 動態 tool registry（最多 39 個工具）"]
+        B["DynamicFastMCP + 動態 tool registry（最多 37 個工具）"]
         DSM["dataset_status.py DatasetStatusManager 5 分鐘 TTL"]
         AUD["audit.py audited decorator"]
         CAC["cache.py cached decorator"]
@@ -113,7 +113,7 @@ graph TB
 audit          -- 查詢稽核日誌（SHA-256 參數雜湊）
 icd            -- ICD-10-CM 診斷碼、ICD-10-PCS 手術碼
 drug           -- 台灣 FDA 藥品（licenses/appearance/ingredients/atc/documents）
-health_food    -- 台灣 FDA 核可健康食品
+health_supplement    -- 台灣 FDA 核可健康食品
 food_nutrition -- 食品營養成分、食品原料
 loinc          -- LOINC 2.80 檢驗碼、參考值
 guideline      -- 台灣臨床診療指引
@@ -132,7 +132,7 @@ rxnorm         -- RxNorm 藥品命名與交互作用
 |------|------|----------|---------|
 | ICD Service | `icd_service.py` | `icd.diagnoses` / `icd.procedures` | data-loader（靜態） |
 | Drug Service | `drug_service.py` | `drug.*` | FDA Open Data，每週二 02:00 UTC |
-| Health Food Service | `health_food_service.py` | `health_food.items` | FDA Open Data，每週一 02:30 UTC |
+| Health Supplement Service | `health_supplement_service.py` | `health_supplement.items` | FDA Open Data，每週一 02:30 UTC |
 | Food Nutrition Service | `food_nutrition_service.py` | `food_nutrition.*` | FDA Open Data，每週一 03:00 UTC |
 | Lab Service | `lab_service.py` | `loinc.*` | data-loader（LOINC 2.80 zip） |
 | Clinical Guideline Service | `clinical_guideline_service.py` | `guideline.*` | data-loader（種子資料） |
@@ -209,7 +209,7 @@ client 呼叫 tools/list
 |------|--------|---------|------|
 | ICD | `icd.diagnoses` | 10,000 | ICD-10-CM 完整載入約 46,000 筆 |
 | Drug | `drug.licenses` | 100 | FDA 藥品通常 > 60,000 筆 |
-| Health Food | `health_food.items` | 10 | — |
+| Health Supplement | `health_supplement.items` | 10 | — |
 | Food Nutrition | `food_nutrition.measurements` | 10 | — |
 | Lab | `loinc.concepts` | 1,000 | LOINC 2.80 約 100,000 筆 |
 | Guideline | `guideline.disease_guidelines` | 1 | — |

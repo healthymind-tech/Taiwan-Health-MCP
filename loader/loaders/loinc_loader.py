@@ -15,22 +15,21 @@ import zipfile
 
 import asyncpg
 
-
 # Columns we care about from Loinc.csv
 LOINC_COLS = {
-    "LOINC_NUM":        "loinc_num",
-    "COMPONENT":        "component",
-    "PROPERTY":         "property",
-    "TIME_ASPCT":       "time_aspect",
-    "SYSTEM":           "system",
-    "SCALE_TYP":        "scale_type",
-    "METHOD_TYP":       "method_type",
+    "LOINC_NUM": "loinc_num",
+    "COMPONENT": "component",
+    "PROPERTY": "property",
+    "TIME_ASPCT": "time_aspect",
+    "SYSTEM": "system",
+    "SCALE_TYP": "scale_type",
+    "METHOD_TYP": "method_type",
     "LONG_COMMON_NAME": "long_common_name",
-    "SHORTNAME":        "shortname",
-    "CLASS":            "class",
-    "CLASSTYPE":        "classtype",
-    "STATUS":           "status",
-    "CONSUMER_NAME":    "consumer_name",
+    "SHORTNAME": "shortname",
+    "CLASS": "class",
+    "CLASSTYPE": "classtype",
+    "STATUS": "status",
+    "CONSUMER_NAME": "consumer_name",
 }
 
 
@@ -40,6 +39,17 @@ async def load_loinc_full(
     mapping_csv_path: str | None = None,
     reference_ranges_csv_path: str | None = None,
 ) -> None:
+    """Load the full LOINC 2.80 dataset into ``loinc.*`` tables.
+
+    Also applies Taiwan Chinese names and reference ranges via the seed helpers
+    when the corresponding CSV paths are provided.
+
+    Args:
+        pool: asyncpg connection pool.
+        zip_path: Path to ``Loinc_2.80.zip``.
+        mapping_csv_path: Optional path to the Taiwan LOINC mapping CSV.
+        reference_ranges_csv_path: Optional path to the Taiwan reference ranges CSV.
+    """
     print(f"Parsing {zip_path} ...")
 
     records: list[tuple] = []
@@ -47,7 +57,8 @@ async def load_loinc_full(
         all_names = zf.namelist()
         # Prefer root-level Loinc.csv; exclude AccessoryFiles subsets (PanelsAndForms, etc.)
         loinc_files = [
-            n for n in all_names
+            n
+            for n in all_names
             if n.endswith("Loinc.csv") and "AccessoryFiles" not in n
         ]
         # Fallback: any Loinc.csv
@@ -68,25 +79,27 @@ async def load_loinc_full(
                     classtype = int(row.get("CLASSTYPE", 0))
                 except ValueError:
                     classtype = 0
-                records.append((
-                    loinc_num,
-                    row.get("COMPONENT", "").strip(),
-                    row.get("PROPERTY", "").strip(),
-                    row.get("TIME_ASPCT", "").strip(),
-                    row.get("SYSTEM", "").strip(),
-                    row.get("SCALE_TYP", "").strip(),
-                    row.get("METHOD_TYP", "").strip(),
-                    row.get("LONG_COMMON_NAME", "").strip(),
-                    row.get("SHORTNAME", "").strip(),
-                    row.get("CLASS", "").strip(),
-                    classtype,
-                    row.get("STATUS", "").strip(),
-                    row.get("CONSUMER_NAME", "").strip(),
-                    "",  # name_zh
-                    "",  # common_name_zh
-                    "",  # specimen_type
-                    "",  # unit
-                ))
+                records.append(
+                    (
+                        loinc_num,
+                        row.get("COMPONENT", "").strip(),
+                        row.get("PROPERTY", "").strip(),
+                        row.get("TIME_ASPCT", "").strip(),
+                        row.get("SYSTEM", "").strip(),
+                        row.get("SCALE_TYP", "").strip(),
+                        row.get("METHOD_TYP", "").strip(),
+                        row.get("LONG_COMMON_NAME", "").strip(),
+                        row.get("SHORTNAME", "").strip(),
+                        row.get("CLASS", "").strip(),
+                        classtype,
+                        row.get("STATUS", "").strip(),
+                        row.get("CONSUMER_NAME", "").strip(),
+                        "",  # name_zh
+                        "",  # common_name_zh
+                        "",  # specimen_type
+                        "",  # unit
+                    )
+                )
 
     print(f"  Parsed {len(records)} LOINC concepts. Writing to DB ...")
 
@@ -102,13 +115,14 @@ async def load_loinc_full(
                    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
                    ON CONFLICT (loinc_num) DO UPDATE SET
                      long_common_name=$8, shortname=$9, class=$10, status=$12""",
-                records[i:i+BATCH],
+                records[i : i + BATCH],
             )
 
     print(f"  LOINC loaded: {len(records)} concepts.")
 
     # Apply Taiwan-specific Chinese names and reference ranges
     from loaders.loinc_taiwan_seed import apply_taiwan_seed
+
     await apply_taiwan_seed(
         pool,
         mapping_csv_path=mapping_csv_path,
