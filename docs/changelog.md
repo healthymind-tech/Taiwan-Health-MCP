@@ -14,10 +14,10 @@
 - 新增結構化 JSON 日誌（`src/utils.py`，輸出至 stderr）
 - 新增稽核日誌（`src/audit.py`，`@audited` 裝飾器，SHA-256 參數雜湊，HIPAA 合規）
 
-#### 新增服務與工具（本版本新增 14 個 MCP 工具；目前總數為 45 個）
-- **SNOMED CT Service**（6 個工具）— 概念搜尋、IS-A 階層、ICD-10 雙向對應
+#### 新增服務與工具（本版本新增 14 個 MCP 工具；目前總數為 42 個）
+- **SNOMED CT Service**（4 個工具）— 概念搜尋、上下層脈絡、屬性關聯、ICD-10 雙向對應
 - **RxNorm Drug Interaction Service**（3 個工具）— 藥物交互作用檢查、名稱解析、成分查詢
-- **TWCore IG Service**（3 個工具）— 30+ 台灣健保 CodeSystem 查詢
+- **TWCore IG Service**（1 個工具）— 30+ 台灣健保 CodeSystem 查詢
 
 #### 資料載入器（Data Loader）
 - 新增獨立 Docker 容器（`profiles: [loader]`）

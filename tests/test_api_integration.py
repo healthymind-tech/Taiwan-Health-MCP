@@ -44,7 +44,7 @@ _SNOMED_ID = 73211009  # Diabetes mellitus
 _ICD_PROC_CODE = "0016070"  # ICD-10-PCS procedure code
 _GUIDELINE_ICD = "E11"  # Type 2 diabetes — has seed guideline data
 
-# All 45 tool names expected when every dataset is loaded.
+# All 43 tool names expected when every dataset is loaded.
 ALL_TOOLS = {
     "health_check",
     # ICD
@@ -92,12 +92,9 @@ ALL_TOOLS = {
     "query_twcore_code",
     # SNOMED CT
     "search_snomed_concept",
-    "get_snomed_concept",
-    "get_snomed_children",
-    "get_snomed_ancestors",
+    "query_snomed_concept",
     "get_snomed_relationships",
-    "map_icd_to_snomed",
-    "map_snomed_to_icd",
+    "query_snomed_mapping",
     # RxNorm / Drug Interactions
     "check_drug_interactions",
     "resolve_rxnorm_drug",
@@ -311,9 +308,9 @@ class TestToolsList:
             names == ALL_TOOLS
         ), f"Missing: {ALL_TOOLS - names}\nExtra: {names - ALL_TOOLS}"
 
-    def test_total_tool_count_is_56(self, mcp: MCPSession) -> None:
+    def test_total_tool_count_is_42(self, mcp: MCPSession) -> None:
         tools = mcp.list_tools()
-        assert len(tools) == 45
+        assert len(tools) == 42
 
     def test_every_tool_has_name_and_description(self, mcp: MCPSession) -> None:
         for tool in mcp.list_tools():
@@ -1328,17 +1325,17 @@ class TestSearchSnomedConcept:
 @skip_if_no_server
 class TestGetSnomedConcept:
     def test_exact(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("get_snomed_concept", {"concept_id": _SNOMED_ID})
+        result = mcp.call_tool("query_snomed_concept", {"concept_id": _SNOMED_ID})
         assert _is_success(result)
         assert result.get("concept_id") == _SNOMED_ID
 
     def test_fuzzy(self, mcp: MCPSession) -> None:
         # A valid but different concept
-        result = mcp.call_tool("get_snomed_concept", {"concept_id": 44054006})
+        result = mcp.call_tool("query_snomed_concept", {"concept_id": 44054006})
         assert _is_graceful(result)
 
     def test_wrong(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("get_snomed_concept", {"concept_id": 9999999999})
+        result = mcp.call_tool("query_snomed_concept", {"concept_id": 9999999999})
         assert _is_graceful(result)
         assert "error" in result
 
@@ -1347,18 +1344,18 @@ class TestGetSnomedConcept:
 class TestGetSnomedChildren:
     def test_exact(self, mcp: MCPSession) -> None:
         result = mcp.call_tool(
-            "get_snomed_children", {"concept_id": _SNOMED_ID, "limit": 10}
+            "query_snomed_concept", {"concept_id": _SNOMED_ID, "include_parents": False, "include_children": True}
         )
         assert _is_success(result)
 
     def test_fuzzy(self, mcp: MCPSession) -> None:
         result = mcp.call_tool(
-            "get_snomed_children", {"concept_id": _SNOMED_ID, "limit": 5}
+            "query_snomed_concept", {"concept_id": _SNOMED_ID, "include_parents": False, "include_children": True}
         )
         assert _is_graceful(result)
 
     def test_wrong(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("get_snomed_children", {"concept_id": 9999999999})
+        result = mcp.call_tool("query_snomed_concept", {"concept_id": 9999999999})
         assert _is_graceful(result)
 
 
@@ -1366,18 +1363,18 @@ class TestGetSnomedChildren:
 class TestGetSnomedAncestors:
     def test_exact(self, mcp: MCPSession) -> None:
         result = mcp.call_tool(
-            "get_snomed_ancestors", {"concept_id": _SNOMED_ID, "max_depth": 5}
+            "query_snomed_concept", {"concept_id": _SNOMED_ID, "include_parents": True, "include_children": False}
         )
         assert _is_success(result)
 
     def test_fuzzy(self, mcp: MCPSession) -> None:
         result = mcp.call_tool(
-            "get_snomed_ancestors", {"concept_id": _SNOMED_ID, "max_depth": 2}
+            "query_snomed_concept", {"concept_id": _SNOMED_ID, "include_parents": True, "include_children": False}
         )
         assert _is_graceful(result)
 
     def test_wrong(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("get_snomed_ancestors", {"concept_id": 9999999999})
+        result = mcp.call_tool("query_snomed_concept", {"concept_id": 9999999999})
         assert _is_graceful(result)
 
 
@@ -1402,30 +1399,30 @@ class TestGetSnomedRelationships:
 @skip_if_no_server
 class TestMapIcdToSnomed:
     def test_exact(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("map_icd_to_snomed", {"icd_code": "E11.9"})
+        result = mcp.call_tool("query_snomed_mapping", {"icd_code": "E11.9"})
         assert _is_success(result)
 
     def test_fuzzy(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("map_icd_to_snomed", {"icd_code": "I10"})
+        result = mcp.call_tool("query_snomed_mapping", {"icd_code": "I10"})
         assert _is_success(result)
 
     def test_wrong(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("map_icd_to_snomed", {"icd_code": "ZZZ999"})
+        result = mcp.call_tool("query_snomed_mapping", {"icd_code": "ZZZ999"})
         assert _is_success(result)  # Returns empty list, not error
 
 
 @skip_if_no_server
 class TestMapSnomedToIcd:
     def test_exact(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("map_snomed_to_icd", {"concept_id": _SNOMED_ID})
+        result = mcp.call_tool("query_snomed_mapping", {"concept_id": _SNOMED_ID})
         assert _is_success(result)
 
     def test_fuzzy(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("map_snomed_to_icd", {"concept_id": 44054006})
+        result = mcp.call_tool("query_snomed_mapping", {"concept_id": 44054006})
         assert _is_graceful(result)
 
     def test_wrong(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("map_snomed_to_icd", {"concept_id": 9999999999})
+        result = mcp.call_tool("query_snomed_mapping", {"concept_id": 9999999999})
         assert _is_graceful(result)
 
 

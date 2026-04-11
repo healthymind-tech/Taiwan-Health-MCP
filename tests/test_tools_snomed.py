@@ -2,9 +2,8 @@
 Unit tests for SNOMED CT tool functions in server.py.
 
 Tools covered:
-  search_snomed_concept, get_snomed_concept, get_snomed_children,
-  get_snomed_ancestors, get_snomed_relationships,
-  map_icd_to_snomed, map_snomed_to_icd
+  search_snomed_concept, query_snomed_concept, get_snomed_relationships,
+  query_snomed_mapping
 """
 
 import json
@@ -91,13 +90,13 @@ class TestSearchSnomedConcept:
         assert result == cached
 
 
-# ── get_snomed_concept ────────────────────────────────────────────────────────
+# ── query_snomed_concept ─────────────────────────────────────────────────────
 
-class TestGetSnomedConcept:
+class TestQuerySnomedConcept:
     @pytest.mark.asyncio
     async def test_null_guard(self):
         with patch.object(server, "snomed_service", None):
-            result = json.loads(await server.get_snomed_concept(concept_id=73211009))
+            result = json.loads(await server.query_snomed_concept(concept_id=73211009))
         assert "error" in result
         assert "SNOMED CT" in result["error"]
 
@@ -105,7 +104,7 @@ class TestGetSnomedConcept:
     async def test_delegates_concept_id(self):
         mock_svc = _snomed_mock()
         with patch.object(server, "snomed_service", mock_svc):
-            await server.get_snomed_concept(concept_id=73211009)
+            await server.query_snomed_concept(concept_id=73211009)
         mock_svc.get_concept.assert_called_once_with(73211009)
 
     @pytest.mark.asyncio
@@ -113,7 +112,7 @@ class TestGetSnomedConcept:
         mock_svc = _snomed_mock()
         mock_svc.get_concept = AsyncMock(return_value=None)
         with patch.object(server, "snomed_service", mock_svc):
-            result = json.loads(await server.get_snomed_concept(concept_id=99999999))
+            result = json.loads(await server.query_snomed_concept(concept_id=99999999))
         assert "error" in result
         assert "99999999" in result["error"]
 
@@ -123,9 +122,11 @@ class TestGetSnomedConcept:
         mock_svc = _snomed_mock()
         mock_svc.get_concept = AsyncMock(return_value=concept)
         with patch.object(server, "snomed_service", mock_svc):
-            result = json.loads(await server.get_snomed_concept(concept_id=73211009))
+            result = json.loads(await server.query_snomed_concept(concept_id=73211009))
         assert result["concept_id"] == 73211009
-        assert result["fsn"] == "Diabetes mellitus (disorder)"
+        assert result["concept"]["fsn"] == "Diabetes mellitus (disorder)"
+        assert "ancestors" in result
+        assert "children" in result
 
     @pytest.mark.asyncio
     async def test_cached_string_returned_verbatim(self):
@@ -133,83 +134,42 @@ class TestGetSnomedConcept:
         mock_svc = _snomed_mock()
         mock_svc.get_concept = AsyncMock(return_value=cached)
         with patch.object(server, "snomed_service", mock_svc):
-            result = await server.get_snomed_concept(concept_id=73211009)
-        assert result == cached
+            result = json.loads(await server.query_snomed_concept(concept_id=73211009))
+        assert result["concept"]["concept_id"] == 73211009
 
 
-# ── get_snomed_children ───────────────────────────────────────────────────────
+# ── query_snomed_concept variants ────────────────────────────────────────────
 
-class TestGetSnomedChildren:
+class TestQuerySnomedConceptVariants:
     @pytest.mark.asyncio
-    async def test_null_guard(self):
-        with patch.object(server, "snomed_service", None):
-            result = json.loads(await server.get_snomed_children(concept_id=73211009))
-        assert "error" in result
-        assert "SNOMED CT" in result["error"]
-
-    @pytest.mark.asyncio
-    async def test_delegates_with_default_limit(self):
-        mock_svc = _snomed_mock()
-        with patch.object(server, "snomed_service", mock_svc):
-            await server.get_snomed_children(concept_id=73211009)
-        mock_svc.get_children.assert_called_once_with(73211009, 50)
-
-    @pytest.mark.asyncio
-    async def test_caps_limit_at_200(self):
-        mock_svc = _snomed_mock()
-        with patch.object(server, "snomed_service", mock_svc):
-            await server.get_snomed_children(concept_id=73211009, limit=999)
-        mock_svc.get_children.assert_called_once_with(73211009, 200)
-
-    @pytest.mark.asyncio
-    async def test_response_structure(self):
+    async def test_children_only(self):
         children = [{"concept_id": 44054006, "fsn": "Type 2 diabetes mellitus (disorder)"}]
         mock_svc = _snomed_mock()
+        mock_svc.get_concept = AsyncMock(return_value={"concept_id": 73211009})
         mock_svc.get_children = AsyncMock(return_value=children)
         with patch.object(server, "snomed_service", mock_svc):
-            result = json.loads(await server.get_snomed_children(concept_id=73211009))
-        assert result["concept_id"] == 73211009
+            result = json.loads(
+                await server.query_snomed_concept(
+                    concept_id=73211009, include_parents=False, include_children=True
+                )
+            )
         assert result["children_count"] == 1
-        assert len(result["children"]) == 1
-
-
-# ── get_snomed_ancestors ──────────────────────────────────────────────────────
-
-class TestGetSnomedAncestors:
-    @pytest.mark.asyncio
-    async def test_null_guard(self):
-        with patch.object(server, "snomed_service", None):
-            result = json.loads(await server.get_snomed_ancestors(concept_id=44054006))
-        assert "error" in result
-        assert "SNOMED CT" in result["error"]
+        assert "ancestors" not in result
 
     @pytest.mark.asyncio
-    async def test_delegates_with_default_depth(self):
+    async def test_parents_only(self):
+        ancestors = [{"concept_id": 404684003, "fsn": "Clinical finding (finding)", "depth": 5}]
         mock_svc = _snomed_mock()
-        with patch.object(server, "snomed_service", mock_svc):
-            await server.get_snomed_ancestors(concept_id=44054006)
-        mock_svc.get_ancestors.assert_called_once_with(44054006, 10)
-
-    @pytest.mark.asyncio
-    async def test_caps_max_depth_at_20(self):
-        mock_svc = _snomed_mock()
-        with patch.object(server, "snomed_service", mock_svc):
-            await server.get_snomed_ancestors(concept_id=44054006, max_depth=100)
-        mock_svc.get_ancestors.assert_called_once_with(44054006, 20)
-
-    @pytest.mark.asyncio
-    async def test_response_structure(self):
-        ancestors = [
-            {"concept_id": 73211009, "fsn": "Diabetes mellitus (disorder)", "depth": 1},
-            {"concept_id": 404684003, "fsn": "Clinical finding (finding)", "depth": 5},
-        ]
-        mock_svc = _snomed_mock()
+        mock_svc.get_concept = AsyncMock(return_value={"concept_id": 44054006})
         mock_svc.get_ancestors = AsyncMock(return_value=ancestors)
         with patch.object(server, "snomed_service", mock_svc):
-            result = json.loads(await server.get_snomed_ancestors(concept_id=44054006))
-        assert result["concept_id"] == 44054006
-        assert result["ancestor_count"] == 2
-        assert result["ancestors"][0]["depth"] == 1
+            result = json.loads(
+                await server.query_snomed_concept(
+                    concept_id=44054006, include_parents=True, include_children=False
+                )
+            )
+        assert result["ancestor_count"] == 1
+        assert "children" not in result
 
 
 # ── get_snomed_relationships ──────────────────────────────────────────────────
@@ -255,13 +215,13 @@ class TestGetSnomedRelationships:
         assert len(result["relationships"]) == 2
 
 
-# ── map_icd_to_snomed ─────────────────────────────────────────────────────────
+# ── query_snomed_mapping (ICD → SNOMED) ───────────────────────────────────────
 
-class TestMapIcdToSnomed:
+class TestQuerySnomedMappingFromIcd:
     @pytest.mark.asyncio
     async def test_null_guard(self):
         with patch.object(server, "snomed_service", None):
-            result = json.loads(await server.map_icd_to_snomed(icd_code="E11.9"))
+            result = json.loads(await server.query_snomed_mapping(icd_code="E11.9"))
         assert "error" in result
         assert "SNOMED CT" in result["error"]
 
@@ -269,7 +229,7 @@ class TestMapIcdToSnomed:
     async def test_delegates_icd_code(self):
         mock_svc = _snomed_mock()
         with patch.object(server, "snomed_service", mock_svc):
-            await server.map_icd_to_snomed(icd_code="E11.9")
+            await server.query_snomed_mapping(icd_code="E11.9")
         mock_svc.map_icd_to_snomed.assert_called_once_with("E11.9")
 
     @pytest.mark.asyncio
@@ -278,7 +238,7 @@ class TestMapIcdToSnomed:
         mock_svc = _snomed_mock()
         mock_svc.map_icd_to_snomed = AsyncMock(return_value=concepts)
         with patch.object(server, "snomed_service", mock_svc):
-            result = json.loads(await server.map_icd_to_snomed(icd_code="e11.9"))
+            result = json.loads(await server.query_snomed_mapping(icd_code="e11.9"))
         assert result["icd_code"] == "E11.9"
         assert len(result["snomed_concepts"]) == 1
 
@@ -286,18 +246,18 @@ class TestMapIcdToSnomed:
     async def test_response_wraps_in_object(self):
         mock_svc = _snomed_mock()
         with patch.object(server, "snomed_service", mock_svc):
-            result = json.loads(await server.map_icd_to_snomed(icd_code="I10"))
+            result = json.loads(await server.query_snomed_mapping(icd_code="I10"))
         assert "icd_code" in result
         assert "snomed_concepts" in result
 
 
-# ── map_snomed_to_icd ─────────────────────────────────────────────────────────
+# ── query_snomed_mapping (SNOMED → ICD) ───────────────────────────────────────
 
-class TestMapSnomedToIcd:
+class TestQuerySnomedMappingFromSnomed:
     @pytest.mark.asyncio
     async def test_null_guard(self):
         with patch.object(server, "snomed_service", None):
-            result = json.loads(await server.map_snomed_to_icd(concept_id=44054006))
+            result = json.loads(await server.query_snomed_mapping(concept_id=44054006))
         assert "error" in result
         assert "SNOMED CT" in result["error"]
 
@@ -305,7 +265,7 @@ class TestMapSnomedToIcd:
     async def test_delegates_concept_id(self):
         mock_svc = _snomed_mock()
         with patch.object(server, "snomed_service", mock_svc):
-            await server.map_snomed_to_icd(concept_id=44054006)
+            await server.query_snomed_mapping(concept_id=44054006)
         mock_svc.map_snomed_to_icd.assert_called_once_with(44054006)
 
     @pytest.mark.asyncio
@@ -314,7 +274,7 @@ class TestMapSnomedToIcd:
         mock_svc = _snomed_mock()
         mock_svc.map_snomed_to_icd = AsyncMock(return_value=mappings)
         with patch.object(server, "snomed_service", mock_svc):
-            result = json.loads(await server.map_snomed_to_icd(concept_id=44054006))
+            result = json.loads(await server.query_snomed_mapping(concept_id=44054006))
         assert result["concept_id"] == 44054006
         assert len(result["icd10_mappings"]) == 1
         assert result["icd10_mappings"][0]["icd10_code"] == "E11.9"

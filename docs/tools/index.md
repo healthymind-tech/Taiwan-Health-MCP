@@ -1,6 +1,6 @@
 # MCP 工具概覽
 
-Taiwan Health MCP Server 提供 **45 個 MCP 工具**，其中包含 1 個 `health_check` 基礎工具，以及 12 個主要領域群組共 44 個工具。status page 與動態註冊使用同一份工具 registry，新增或調整工具時請同步更新群組定義與對應說明。
+Taiwan Health MCP Server 提供 **42 個 MCP 工具**，其中包含 1 個 `health_check` 基礎工具，以及 12 個主要領域群組共 42 個工具。status page 與動態註冊使用同一份工具 registry，新增或調整工具時請同步更新群組定義與對應說明。
 
 ---
 
@@ -134,19 +134,16 @@ Taiwan Health MCP Server 提供 **45 個 MCP 工具**，其中包含 1 個 `heal
 
 ---
 
-### 群組 11 — SNOMED CT（7 個工具）
+### 群組 11 — SNOMED CT（5 個工具）
 
 > 需先執行 `docker compose --profile loader run --rm data-loader --snomed`
 
 | 工具 | 說明 |
 |------|------|
 | `search_snomed_concept` | 以英文詞彙搜尋 SNOMED CT 概念 |
-| `get_snomed_concept` | 取得概念完整資訊（FSN、同義詞、父概念、ICD-10 對應） |
-| `get_snomed_children` | 取得直接子概念（IS-A 關係） |
-| `get_snomed_ancestors` | 取得所有祖先概念 |
+| `query_snomed_concept` | 取得概念、父概念與子概念的一次性查詢 |
 | `get_snomed_relationships` | 取得非 IS-A 的屬性與關聯 |
-| `map_icd_to_snomed` | ICD-10 碼 → SNOMED CT 概念 |
-| `map_snomed_to_icd` | SNOMED CT 概念 → ICD-10 碼 |
+| `query_snomed_mapping` | ICD-10 ↔ SNOMED CT 雙向對應查詢 |
 
 ---
 

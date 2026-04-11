@@ -429,7 +429,7 @@
 
 ---
 
-## Group 47：SNOMED 概念詳情 (`get_snomed_concept`)
+## Group 47：SNOMED 概念詳情 (`query_snomed_concept`)
 
 **✅** 取得 SNOMED CT concept ID「73211009」（Diabetes mellitus）的完整詳情。
 
@@ -438,7 +438,7 @@
 
 ---
 
-## Group 48：SNOMED 子概念 (`get_snomed_children`)
+## Group 48：SNOMED 子概念 (`query_snomed_concept`)
 
 **✅** 列出 SNOMED concept「73211009」（Diabetes mellitus）的直接子概念。
 
@@ -447,7 +447,7 @@
 
 ---
 
-## Group 49：SNOMED 祖先概念 (`get_snomed_ancestors`)
+## Group 49：SNOMED 祖先概念 (`query_snomed_concept`)
 
 **✅** 查詢「44054006」（Type 2 diabetes mellitus）的所有祖先概念（向上追溯 IS-A）。
 
@@ -465,7 +465,7 @@
 
 ---
 
-## Group 51：ICD → SNOMED 對應 (`map_icd_to_snomed`)
+## Group 51：ICD → SNOMED 對應 (`query_snomed_mapping`)
 
 **✅** 找出 ICD-10 碼「E11.9」對應的 SNOMED CT 概念。
 
@@ -474,7 +474,7 @@
 
 ---
 
-## Group 52：SNOMED → ICD 對應 (`map_snomed_to_icd`)
+## Group 52：SNOMED → ICD 對應 (`query_snomed_mapping`)
 
 **✅** 查詢 SNOMED concept「44054006」對應哪些 ICD-10 碼。
 

@@ -33,14 +33,14 @@ python -m pytest tests/test_api_integration.py::TestSearchMedicalCodes::test_exa
 針對各 Service 的核心函式進行邏輯驗證，使用 mock DB，不需要外部服務。
 
 ### API 整合測試 (`tests/test_api_integration.py`)
-對實際運行的 MCP server 發送真實 HTTP 請求，驗證所有 45 個 tool 是否正常運作。這些測試同時覆蓋動態註冊後的 `tools/list` 結果，確認 registry 變更沒有漏掛工具或錯誤隱藏工具。
+對實際運行的 MCP server 發送真實 HTTP 請求，驗證所有 42 個 tool 是否正常運作。這些測試同時覆蓋動態註冊後的 `tools/list` 結果，確認 registry 變更沒有漏掛工具或錯誤隱藏工具。
 
 每個 tool 有三種測試情境：
 1. **exact** — 完全正確的查詢，預期返回非空結果
 2. **fuzzy** — 模糊/部分查詢，預期成功處理
 3. **wrong** — 無效輸入，預期優雅處理（不崩潰）
 
-另有 `TestToolsList` 驗證 `tools/list` API 能列出所有 45 個工具，並與 registry 內的群組設定一致。
+另有 `TestToolsList` 驗證 `tools/list` API 能列出所有 42 個工具，並與 registry 內的群組設定一致。
 
 若 server 未啟動，整合測試會自動跳過（skip），不會失敗。
 

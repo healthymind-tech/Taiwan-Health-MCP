@@ -1244,12 +1244,9 @@ _TOOL_GROUPS: dict[str, dict[str, object]] = {
         "category": "SNOMED CT",
         "tools": [
             ("search_snomed_concept", "search_snomed_concept", {"query": "diabetes mellitus", "limit": 5}),
-            ("get_snomed_concept", "get_snomed_concept", {"concept_id": 73211009}),
-            ("get_snomed_children", "get_snomed_children", {"concept_id": 73211009}),
-            ("get_snomed_ancestors", "get_snomed_ancestors", {"concept_id": 73211009}),
+            ("query_snomed_concept", "query_snomed_concept", {"concept_id": 73211009}),
             ("get_snomed_relationships", "get_snomed_relationships", {"concept_id": 73211009}),
-            ("map_icd_to_snomed", "map_icd_to_snomed", {"icd_code": "E11.9"}),
-            ("map_snomed_to_icd", "map_snomed_to_icd", {"concept_id": 73211009}),
+            ("query_snomed_mapping", "query_snomed_mapping", {"icd_code": "E11.9"}),
         ],
     },
     "fhir_condition": {
@@ -3449,7 +3446,7 @@ async def search_snomed_concept(
     concepts — not just exact keyword matches. For example, 'heart attack' also
     surfaces 'Myocardial infarction (disorder)'. Results include concept ID,
     preferred FSN, term type, and active status.
-    Use get_snomed_concept for full details (parents, synonyms, ICD-10 mappings).
+    Use query_snomed_concept for full details plus parent and child context.
 
     Args:
         query: English clinical term (e.g., 'diabetes mellitus', 'myocardial
@@ -3501,6 +3498,56 @@ async def get_snomed_concept(concept_id: int) -> str:
         )
     if isinstance(result, str):
         return result  # Already JSON string from cache
+    return json.dumps(result, ensure_ascii=False, indent=2)
+
+
+@audited("query_snomed_concept")
+async def query_snomed_concept(
+    concept_id: int,
+    include_parents: bool = True,
+    include_children: bool = True,
+    parent_limit: int = 10,
+    child_limit: int = 20,
+) -> str:
+    """
+    Get a SNOMED concept with optional parent and child expansion.
+
+    Use this when you want the concept itself plus its immediate hierarchy
+    context in one call. By default the tool includes the concept record, the
+    ancestor chain, and the direct children. This is the preferred SNOMED
+    entry point when you want to understand a concept and its surrounding tree.
+
+    Args:
+        concept_id: SNOMED CT concept ID such as 73211009 or 44054006.
+        include_parents: Include ancestor concepts above the target concept.
+        include_children: Include direct child concepts beneath the target.
+        parent_limit: Maximum ancestor depth to return.
+        child_limit: Maximum number of child concepts to return.
+    """
+    if snomed_service is None:
+        return _svc_unavailable("SNOMED CT")
+
+    concept = await snomed_service.get_concept(concept_id)
+    if concept is None:
+        return json.dumps(
+            {"error": f"Concept {concept_id} not found"}, ensure_ascii=False
+        )
+    if isinstance(concept, str):
+        concept = json.loads(concept)
+
+    result: dict[str, object] = {"concept_id": concept_id, "concept": concept}
+    if include_parents:
+        parents = await snomed_service.get_ancestors(concept_id, min(parent_limit, 20))
+        if isinstance(parents, str):
+            parents = json.loads(parents)
+        result["ancestor_count"] = len(parents)
+        result["ancestors"] = parents
+    if include_children:
+        children = await snomed_service.get_children(concept_id, min(child_limit, 200))
+        if isinstance(children, str):
+            children = json.loads(children)
+        result["children_count"] = len(children)
+        result["children"] = children
     return json.dumps(result, ensure_ascii=False, indent=2)
 
 
@@ -3623,6 +3670,42 @@ async def map_icd_to_snomed(icd_code: str) -> str:
         ensure_ascii=False,
         indent=2,
     )
+
+
+@audited("query_snomed_mapping")
+async def query_snomed_mapping(
+    icd_code: str | None = None,
+    concept_id: int | None = None,
+) -> str:
+    """
+    Convert between ICD-10 and SNOMED CT in either direction.
+
+    Use this when you want a single SNOMED mapping entry point. Provide
+    `icd_code` to map ICD → SNOMED, or `concept_id` to map SNOMED → ICD.
+
+    Args:
+        icd_code: ICD-10-CM or ICD-10 code to reverse-map from, such as
+            'E11.9', 'I10', or 'E78.5'.
+        concept_id: SNOMED CT concept ID to map back to ICD-10, such as
+            73211009 or 44054006.
+    """
+    if snomed_service is None:
+        return _svc_unavailable("SNOMED CT")
+    if icd_code is not None:
+        results = await snomed_service.map_icd_to_snomed(icd_code)
+        return json.dumps(
+            {"icd_code": icd_code.upper(), "snomed_concepts": results},
+            ensure_ascii=False,
+            indent=2,
+        )
+    if concept_id is not None:
+        results = await snomed_service.map_snomed_to_icd(concept_id)
+        return json.dumps(
+            {"concept_id": concept_id, "icd10_mappings": results},
+            ensure_ascii=False,
+            indent=2,
+        )
+    return _json_error("Provide either icd_code or concept_id")
 
 
 @audited("map_snomed_to_icd")
