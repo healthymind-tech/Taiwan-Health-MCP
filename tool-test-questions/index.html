@@ -3583,10 +3583,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#group-47snomed-get_snomed_concept" class="md-nav__link">
+  <a href="#group-47snomed-query_snomed_concept" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Group 47：SNOMED 概念詳情 (get_snomed_concept)
+        Group 47：SNOMED 概念詳情 (query_snomed_concept)
       
     </span>
   </a>
@@ -3594,10 +3594,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#group-48snomed-get_snomed_children" class="md-nav__link">
+  <a href="#group-48snomed-query_snomed_concept" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Group 48：SNOMED 子概念 (get_snomed_children)
+        Group 48：SNOMED 子概念 (query_snomed_concept)
       
     </span>
   </a>
@@ -3605,10 +3605,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#group-49snomed-get_snomed_ancestors" class="md-nav__link">
+  <a href="#group-49snomed-query_snomed_concept" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Group 49：SNOMED 祖先概念 (get_snomed_ancestors)
+        Group 49：SNOMED 祖先概念 (query_snomed_concept)
       
     </span>
   </a>
@@ -3627,10 +3627,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#group-51icd-snomed-map_icd_to_snomed" class="md-nav__link">
+  <a href="#group-51icd-snomed-query_snomed_mapping" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Group 51：ICD → SNOMED 對應 (map_icd_to_snomed)
+        Group 51：ICD → SNOMED 對應 (query_snomed_mapping)
       
     </span>
   </a>
@@ -3638,10 +3638,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#group-52snomed-icd-map_snomed_to_icd" class="md-nav__link">
+  <a href="#group-52snomed-icd-query_snomed_mapping" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Group 52：SNOMED → ICD 對應 (map_snomed_to_icd)
+        Group 52：SNOMED → ICD 對應 (query_snomed_mapping)
       
     </span>
   </a>
@@ -4056,21 +4056,21 @@
 <p>⚠️ 此為虛構疾病名稱，SNOMED CT International 中不存在。</p>
 </blockquote>
 <hr />
-<h2 id="group-47snomed-get_snomed_concept">Group 47：SNOMED 概念詳情 (<code>get_snomed_concept</code>)<a class="headerlink" href="#group-47snomed-get_snomed_concept" title="Permanent link">&para;</a></h2>
+<h2 id="group-47snomed-query_snomed_concept">Group 47：SNOMED 概念詳情 (<code>query_snomed_concept</code>)<a class="headerlink" href="#group-47snomed-query_snomed_concept" title="Permanent link">&para;</a></h2>
 <p><strong>✅</strong> 取得 SNOMED CT concept ID「73211009」（Diabetes mellitus）的完整詳情。</p>
 <p><strong>🪤</strong> 取得 SNOMED CT concept ID「99999999999」的詳情。</p>
 <blockquote>
 <p>⚠️ 此 concept ID 不存在。</p>
 </blockquote>
 <hr />
-<h2 id="group-48snomed-get_snomed_children">Group 48：SNOMED 子概念 (<code>get_snomed_children</code>)<a class="headerlink" href="#group-48snomed-get_snomed_children" title="Permanent link">&para;</a></h2>
+<h2 id="group-48snomed-query_snomed_concept">Group 48：SNOMED 子概念 (<code>query_snomed_concept</code>)<a class="headerlink" href="#group-48snomed-query_snomed_concept" title="Permanent link">&para;</a></h2>
 <p><strong>✅</strong> 列出 SNOMED concept「73211009」（Diabetes mellitus）的直接子概念。</p>
 <p><strong>🪤</strong> 列出 SNOMED concept「1」的子概念。</p>
 <blockquote>
 <p>⚠️ concept ID 1 不存在於 SNOMED CT 中。</p>
 </blockquote>
 <hr />
-<h2 id="group-49snomed-get_snomed_ancestors">Group 49：SNOMED 祖先概念 (<code>get_snomed_ancestors</code>)<a class="headerlink" href="#group-49snomed-get_snomed_ancestors" title="Permanent link">&para;</a></h2>
+<h2 id="group-49snomed-query_snomed_concept">Group 49：SNOMED 祖先概念 (<code>query_snomed_concept</code>)<a class="headerlink" href="#group-49snomed-query_snomed_concept" title="Permanent link">&para;</a></h2>
 <p><strong>✅</strong> 查詢「44054006」（Type 2 diabetes mellitus）的所有祖先概念（向上追溯 IS-A）。</p>
 <p><strong>🪤</strong> 查詢「0」的 SNOMED 祖先概念。</p>
 <blockquote>
@@ -4084,14 +4084,14 @@
 <p>⚠️ 此為隨機捏造的 concept ID，不存在於資料庫。</p>
 </blockquote>
 <hr />
-<h2 id="group-51icd-snomed-map_icd_to_snomed">Group 51：ICD → SNOMED 對應 (<code>map_icd_to_snomed</code>)<a class="headerlink" href="#group-51icd-snomed-map_icd_to_snomed" title="Permanent link">&para;</a></h2>
+<h2 id="group-51icd-snomed-query_snomed_mapping">Group 51：ICD → SNOMED 對應 (<code>query_snomed_mapping</code>)<a class="headerlink" href="#group-51icd-snomed-query_snomed_mapping" title="Permanent link">&para;</a></h2>
 <p><strong>✅</strong> 找出 ICD-10 碼「E11.9」對應的 SNOMED CT 概念。</p>
 <p><strong>🪤</strong> 找出 ICD-10 碼「ZZZ.999」對應的 SNOMED CT 概念。</p>
 <blockquote>
 <p>⚠️ ZZZ.999 不是合法 ICD-10 碼，不存在對應關係。</p>
 </blockquote>
 <hr />
-<h2 id="group-52snomed-icd-map_snomed_to_icd">Group 52：SNOMED → ICD 對應 (<code>map_snomed_to_icd</code>)<a class="headerlink" href="#group-52snomed-icd-map_snomed_to_icd" title="Permanent link">&para;</a></h2>
+<h2 id="group-52snomed-icd-query_snomed_mapping">Group 52：SNOMED → ICD 對應 (<code>query_snomed_mapping</code>)<a class="headerlink" href="#group-52snomed-icd-query_snomed_mapping" title="Permanent link">&para;</a></h2>
 <p><strong>✅</strong> 查詢 SNOMED concept「44054006」對應哪些 ICD-10 碼。</p>
 <p><strong>🪤</strong> 查詢 SNOMED concept「00000001」對應的 ICD-10 碼。</p>
 <blockquote>
