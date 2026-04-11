@@ -14,7 +14,7 @@
 
 - 🇹🇼 **台灣在地化** — 整合台灣 FDA、衛福部官方開放資料，支援繁體中文
 - 🔗 **國際標準** — 符合 FHIR R4、ICD-10-CM 2025、LOINC 2.80、SNOMED CT、RxNorm、ATC
-- 🏥 **56 個 MCP 工具** — 涵蓋診斷、藥品、檢驗、指引、術語、藥物交互作用
+- 🏥 **56 個 MCP 工具** — 由動態 registry 管理，涵蓋診斷、藥品、檢驗、指引、術語、藥物交互作用
 - 🏗️ **生產就緒** — PostgreSQL 16 + pgBouncer + Redis + Prometheus，支援每秒數百請求
 - 🔄 **自動同步** — FDA 藥品/保健食品/營養資料每週自動更新
 
@@ -124,6 +124,8 @@ curl http://localhost:8000/mcp -X POST \
 ---
 
 ## 📋 核心功能（56 個 MCP 工具）
+
+工具分類、status page 範例與 dataset gating 由同一份 registry 產生；`tools/list` 只會顯示已載入資料集對應的工具，`health_check` 永遠可用。
 
 | 群組 | 工具數 | 功能 |
 |------|--------|------|

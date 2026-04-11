@@ -180,6 +180,25 @@ def _svc_unavailable(name: str) -> str:
     )
 
 
+def _json_error(message: str, **extra) -> str:
+    """Return a compact JSON error payload used by several thin wrappers."""
+    payload = {"error": message}
+    payload.update(extra)
+    return json.dumps(payload, ensure_ascii=False)
+
+
+async def _call_service_json(service, method_name: str, *args, **kwargs) -> str:
+    """Call a service method and serialise dict/list responses to JSON."""
+    method = getattr(service, method_name)
+    result = await method(*args, **kwargs)
+    if isinstance(result, str):
+        return result
+    serializer = getattr(service, "to_json_string", None)
+    if callable(serializer):
+        return serializer(result, indent=2)
+    return json.dumps(result, ensure_ascii=False, indent=2)
+
+
 class DynamicFastMCP(FastMCP):
     """FastMCP subclass that refreshes dataset-based tool availability on every tools/list."""
 
@@ -1172,179 +1191,143 @@ _LANDING_HTML_BYTES = _LANDING_HTML.encode("utf-8")
 # Status page — tool registry and tester
 # ---------------------------------------------------------------------------
 
-_TOOL_CATEGORY_MAP: dict[str, str] = {
-    "search_medical_codes":               "ICD-10",
-    "browse_icd_category":                "ICD-10",
-    "infer_complications":                "ICD-10",
-    "get_nearby_codes":                   "ICD-10",
-    "check_medical_conflict":             "ICD-10",
-    "search_drug_info":                   "Drug",
-    "get_drug_details":                   "Drug",
-    "identify_unknown_pill":              "Drug",
-    "search_drug_by_atc":                 "Drug",
-    "search_drug_by_ingredient":          "Drug",
-    "check_drug_interactions":            "RxNorm",
-    "resolve_rxnorm_drug":                "RxNorm",
-    "get_drug_ingredients_rxnorm":        "RxNorm",
-    "search_loinc_code":                  "Lab / LOINC",
-    "list_lab_categories":                "Lab / LOINC",
-    "get_reference_range":                "Lab / LOINC",
-    "interpret_lab_result":               "Lab / LOINC",
-    "search_loinc_by_specimen":           "Lab / LOINC",
-    "find_related_loinc_tests":           "Lab / LOINC",
-    "get_loinc_detail":                   "Lab / LOINC",
-    "batch_interpret_lab_results":        "Lab / LOINC",
-    "search_clinical_guideline":          "Guidelines",
-    "get_complete_guideline":             "Guidelines",
-    "get_medication_recommendations":     "Guidelines",
-    "get_test_recommendations":           "Guidelines",
-    "get_treatment_goals":                "Guidelines",
-    "check_medication_contraindications": "Guidelines",
-    "link_guideline_to_drugs":            "Guidelines",
-    "suggest_clinical_pathway":           "Guidelines",
-    "search_snomed_concept":              "SNOMED CT",
-    "get_snomed_concept":                 "SNOMED CT",
-    "get_snomed_children":                "SNOMED CT",
-    "get_snomed_ancestors":               "SNOMED CT",
-    "get_snomed_relationships":           "SNOMED CT",
-    "map_icd_to_snomed":                  "SNOMED CT",
-    "map_snomed_to_icd":                  "SNOMED CT",
-    "create_fhir_condition":              "FHIR R4",
-    "create_fhir_condition_from_diagnosis": "FHIR R4",
-    "validate_fhir_condition":            "FHIR R4",
-    "create_fhir_medication":             "FHIR R4",
-    "create_fhir_medication_from_drug":   "FHIR R4",
-    "validate_fhir_medication":           "FHIR R4",
-    "search_medication_fhir":             "FHIR R4",
-    "list_twcore_codesystems":            "TWCore IG",
-    "search_twcore_code":                 "TWCore IG",
-    "lookup_twcore_code":                 "TWCore IG",
-    "search_health_food":                 "Health Food",
-    "get_health_food_details":            "Health Food",
-    "analyze_health_support_for_condition": "Health Food",
-    "search_food_nutrition":              "Food Nutrition",
-    "get_detailed_nutrition":             "Food Nutrition",
-    "search_food_ingredient":             "Food Nutrition",
-    "get_ingredients_by_category":        "Food Nutrition",
-    "search_foods_by_nutrient":           "Food Nutrition",
-    "analyze_meal_nutrition":             "Food Nutrition",
-    "health_check":                       "System",
+_TOOL_GROUPS: dict[str, dict[str, object]] = {
+    "icd": {
+        "category": "ICD-10",
+        "tools": [
+            ("search_medical_codes", "search_medical_codes", {"keyword": "糖尿病"}),
+            ("infer_complications", "infer_complications", {"code": "E11.9"}),
+            ("get_nearby_codes", "get_nearby_codes", {"code": "E11.9"}),
+            ("check_medical_conflict", "check_medical_conflict", {"diagnosis_code": "E11.9", "procedure_code": "0BH17EZ"}),
+            ("browse_icd_category", "browse_icd_category", {"category": "E11"}),
+        ],
+    },
+    "drug": {
+        "category": "Drug",
+        "tools": [
+            ("search_drug_info", "search_drug_info", {"keyword": "Metformin"}),
+            ("get_drug_details", "get_drug_details", {"license_id": "衛部藥製字第059686號"}),
+            ("identify_unknown_pill", "identify_unknown_pill", {"features": "白色 圓形 刻字M500"}),
+            ("search_drug_by_atc", "search_drug_by_atc", {"query": "A10BA02"}),
+            ("search_drug_by_ingredient", "search_drug_by_ingredient", {"ingredient_name": "metformin"}),
+        ],
+    },
+    "rxnorm": {
+        "category": "RxNorm",
+        "tools": [
+            ("check_drug_interactions", "check_drug_interactions", {"drug_names": ["warfarin", "aspirin", "metformin"]}),
+            ("resolve_rxnorm_drug", "resolve_rxnorm_drug", {"drug_name": "atorvastatin"}),
+            ("get_drug_ingredients_rxnorm", "get_drug_ingredients_rxnorm", {"rxcui": "41493"}),
+        ],
+    },
+    "lab": {
+        "category": "Lab / LOINC",
+        "tools": [
+            ("search_loinc_code", "search_loinc_code", {"keyword": "glucose"}),
+            ("list_lab_categories", "list_lab_categories", {}),
+            ("get_reference_range", "get_reference_range", {"loinc_code": "2345-7", "age": 45, "gender": "M"}),
+            ("interpret_lab_result", "interpret_lab_result", {"loinc_code": "2345-7", "value": 126, "age": 45, "gender": "M"}),
+            ("search_loinc_by_specimen", "search_loinc_by_specimen", {"specimen_type": "血清/血漿"}),
+            ("find_related_loinc_tests", "find_related_loinc_tests", {"component": "Glucose"}),
+            ("get_loinc_detail", "get_loinc_detail", {"loinc_num": "2345-7"}),
+            ("batch_interpret_lab_results", "batch_interpret_lab_results", {"results_json": '[{"loinc_code":"2345-7","value":126},{"loinc_code":"4548-4","value":7.2},{"loinc_code":"718-7","value":13.5}]', "age": 45, "gender": "M"}),
+        ],
+    },
+    "guideline": {
+        "category": "Guidelines",
+        "tools": [
+            ("search_clinical_guideline", "search_clinical_guideline", {"keyword": "糖尿病"}),
+            ("get_complete_guideline", "get_complete_guideline", {"icd_code": "E11"}),
+            ("get_medication_recommendations", "get_medication_recommendations", {"icd_code": "E11"}),
+            ("get_test_recommendations", "get_test_recommendations", {"icd_code": "E11"}),
+            ("get_treatment_goals", "get_treatment_goals", {"icd_code": "E11"}),
+            ("check_medication_contraindications", "check_medication_contraindications", {"icd_code": "E11", "medication_class": "SGLT2抑制劑"}),
+            ("link_guideline_to_drugs", "link_guideline_to_drugs", {"icd_code": "E11"}),
+            ("suggest_clinical_pathway", "suggest_clinical_pathway", {"icd_code": "E11", "patient_context_json": '{"age":65,"gender":"M","comorbidities":["CKD"],"current_medications":["metformin"]}'}),
+        ],
+    },
+    "snomed": {
+        "category": "SNOMED CT",
+        "tools": [
+            ("search_snomed_concept", "search_snomed_concept", {"query": "diabetes mellitus"}),
+            ("get_snomed_concept", "get_snomed_concept", {"concept_id": 73211009}),
+            ("get_snomed_children", "get_snomed_children", {"concept_id": 73211009}),
+            ("get_snomed_ancestors", "get_snomed_ancestors", {"concept_id": 73211009}),
+            ("get_snomed_relationships", "get_snomed_relationships", {"concept_id": 73211009}),
+            ("map_icd_to_snomed", "map_icd_to_snomed", {"icd_code": "E11.9"}),
+            ("map_snomed_to_icd", "map_snomed_to_icd", {"concept_id": 73211009}),
+        ],
+    },
+    "fhir_condition": {
+        "category": "FHIR R4",
+        "tools": [
+            ("create_fhir_condition", "create_fhir_condition", {"icd_code": "E11.9", "patient_id": "patient-001"}),
+            ("create_fhir_condition_from_diagnosis", "create_fhir_condition_from_diagnosis", {"diagnosis_keyword": "type 2 diabetes", "patient_id": "patient-001"}),
+            ("validate_fhir_condition", "validate_fhir_condition", {"condition_json": '{"resourceType":"Condition","subject":{"reference":"Patient/patient-001"},"code":{"coding":[{"system":"http://hl7.org/fhir/sid/icd-10-cm","code":"E11.9","display":"Type 2 diabetes mellitus without complications"}]},"clinicalStatus":{"coding":[{"system":"http://terminology.hl7.org/CodeSystem/condition-clinical","code":"active"}]}}'}),
+        ],
+    },
+    "fhir_medication": {
+        "category": "FHIR R4",
+        "tools": [
+            ("search_medication_fhir", "search_medication_fhir", {"keyword": "Metformin"}),
+            ("create_fhir_medication", "create_fhir_medication", {"license_id": "衛部藥製字第059686號"}),
+            ("create_fhir_medication_from_drug", "create_fhir_medication_from_drug", {"license_id": "衛部藥製字第059686號"}),
+            ("validate_fhir_medication", "validate_fhir_medication", {"medication_json": '{"resourceType":"Medication","code":{"coding":[{"system":"https://twcore.mohw.gov.tw/ig/twcore/CodeSystem/medication-fda-tw","code":"衛部藥製字第059686號","display":"Metformin 500mg"}]},"ingredient":[{"itemCodeableConcept":{"coding":[{"code":"metformin"}]},"strength":{"numerator":{"value":500,"unit":"mg"}}}]}' }),
+        ],
+    },
+    "twcore": {
+        "category": "TWCore IG",
+        "tools": [
+            ("list_twcore_codesystems", "list_twcore_codesystems", {"category": "all"}),
+            ("search_twcore_code", "search_twcore_code", {"keyword": "QD", "codesystem_ids": ["medication-frequency-nhi-tw"]}),
+            ("lookup_twcore_code", "lookup_twcore_code", {"code": "QD", "codesystem_id": "medication-frequency-nhi-tw"}),
+        ],
+    },
+    "health_food": {
+        "category": "Health Food",
+        "tools": [
+            ("search_health_food", "search_health_food", {"keyword": "魚油"}),
+            ("get_health_food_details", "get_health_food_details", {"permit_no": "衛署健食字第A00022號"}),
+            ("analyze_health_support_for_condition", "analyze_health_support_for_condition", {"diagnosis_keyword": "糖尿病"}),
+        ],
+    },
+    "food_nutrition": {
+        "category": "Food Nutrition",
+        "tools": [
+            ("search_food_nutrition", "search_food_nutrition", {"food_name": "雞蛋"}),
+            ("get_detailed_nutrition", "get_detailed_nutrition", {"food_name": "白米"}),
+            ("search_food_ingredient", "search_food_ingredient", {"keyword": "維生素C"}),
+            ("get_ingredients_by_category", "get_ingredients_by_category", {"category": "Omega-3脂肪酸"}),
+            ("search_foods_by_nutrient", "search_foods_by_nutrient", {"nutrient": "鈣"}),
+            ("analyze_meal_nutrition", "analyze_meal_nutrition", {"foods": ["白米飯", "雞胸肉", "花椰菜", "豆腐"]}),
+        ],
+    },
+    "system": {
+        "category": "System",
+        "tools": [("health_check", "health_check", {})],
+    },
 }
 
 
-# fmt: off
-# Example argument values pre-filled into each tool's form on the status page.
-# Keys are parameter names from the Python function signature.
-# Array/object values are serialised to JSON strings for textarea fields.
-_TOOL_EXAMPLES: dict[str, dict] = {
-    # ── ICD ─────────────────────────────────────────────────────────────────
-    "search_medical_codes":            {"keyword": "糖尿病"},
-    "infer_complications":             {"code": "E11.9"},
-    "get_nearby_codes":                {"code": "E11.9"},
-    "check_medical_conflict":          {"diagnosis_code": "E11.9", "procedure_code": "0BH17EZ"},
-    "browse_icd_category":             {"category": "E11"},
-    "map_icd_to_snomed":               {"icd_code": "E11.9"},
-
-    # ── Drugs ────────────────────────────────────────────────────────────────
-    "search_drug_info":                {"keyword": "Metformin"},
-    "get_drug_details":                {"license_id": "衛部藥製字第059686號"},
-    "identify_unknown_pill":           {"features": "白色 圓形 刻字M500"},
-    "search_drug_by_atc":              {"query": "A10BA02"},
-    "search_drug_by_ingredient":       {"ingredient_name": "metformin"},
-
-    # ── Health food ───────────────────────────────────────────────────────────
-    "search_health_food":              {"keyword": "魚油"},
-    "get_health_food_details":         {"permit_no": "衛署健食字第A00022號"},
-    "get_ingredients_by_category":     {"category": "Omega-3脂肪酸"},
-
-    # ── Food nutrition ────────────────────────────────────────────────────────
-    "search_food_nutrition":           {"food_name": "雞蛋"},
-    "get_detailed_nutrition":          {"food_name": "白米"},
-    "search_food_ingredient":          {"keyword": "維生素C"},
-    "search_foods_by_nutrient":        {"nutrient": "鈣"},
-    "analyze_meal_nutrition":          {"foods": ["白米飯", "雞胸肉", "花椰菜", "豆腐"]},
-    "analyze_health_support_for_condition": {"diagnosis_keyword": "糖尿病"},
-
-    # ── FHIR ─────────────────────────────────────────────────────────────────
-    "create_fhir_condition":           {"icd_code": "E11.9", "patient_id": "patient-001"},
-    "create_fhir_condition_from_diagnosis": {
-        "diagnosis_keyword": "type 2 diabetes", "patient_id": "patient-001",
-    },
-    "validate_fhir_condition": {
-        "condition_json": (
-            '{"resourceType":"Condition",'
-            '"subject":{"reference":"Patient/patient-001"},'
-            '"code":{"coding":[{"system":"http://hl7.org/fhir/sid/icd-10-cm",'
-            '"code":"E11.9","display":"Type 2 diabetes mellitus without complications"}]},'
-            '"clinicalStatus":{"coding":[{"system":"http://terminology.hl7.org/'
-            'CodeSystem/condition-clinical","code":"active"}]}}'
-        ),
-    },
-    "search_medication_fhir":          {"keyword": "Metformin"},
-    "create_fhir_medication":          {"license_id": "衛部藥製字第059686號"},
-    "create_fhir_medication_from_drug": {"license_id": "衛部藥製字第059686號"},
-    "validate_fhir_medication": {
-        "medication_json": (
-            '{"resourceType":"Medication",'
-            '"code":{"coding":[{"system":"https://twcore.mohw.gov.tw/ig/twcore/'
-            'CodeSystem/medication-fda-tw","code":"衛部藥製字第059686號",'
-            '"display":"Metformin 500mg"}]},'
-            '"ingredient":[{"itemCodeableConcept":{"coding":[{"code":"metformin"}]},'
-            '"strength":{"numerator":{"value":500,"unit":"mg"}}}]}'
-        ),
-    },
-
-    # ── LOINC / Lab ──────────────────────────────────────────────────────────
-    "search_loinc_code":               {"keyword": "glucose"},
-    "get_reference_range":             {"loinc_code": "2345-7", "age": 45, "gender": "M"},
-    "interpret_lab_result":            {"loinc_code": "2345-7", "value": 126, "age": 45, "gender": "M"},
-    "search_loinc_by_specimen":        {"specimen_type": "血清/血漿"},
-    "find_related_loinc_tests":        {"component": "Glucose"},
-    "get_loinc_detail":                {"loinc_num": "2345-7"},
-    "batch_interpret_lab_results": {
-        "results_json": (
-            '[{"loinc_code":"2345-7","value":126},'
-            '{"loinc_code":"4548-4","value":7.2},'
-            '{"loinc_code":"718-7","value":13.5}]'
-        ),
-        "age": 45, "gender": "M",
-    },
-    "get_test_recommendations":        {"icd_code": "E11"},
-
-    # ── Clinical Guidelines ───────────────────────────────────────────────────
-    "search_clinical_guideline":       {"keyword": "糖尿病"},
-    "get_complete_guideline":          {"icd_code": "E11"},
-    "get_medication_recommendations":  {"icd_code": "E11"},
-    "get_treatment_goals":             {"icd_code": "E11"},
-    "check_medication_contraindications": {"icd_code": "E11", "medication_class": "SGLT2抑制劑"},
-    "link_guideline_to_drugs":         {"icd_code": "E11"},
-    "suggest_clinical_pathway": {
-        "icd_code": "E11",
-        "patient_context_json": (
-            '{"age":65,"gender":"M","comorbidities":["CKD"],'
-            '"current_medications":["metformin"]}'
-        ),
-    },
-
-    # ── TWCore ───────────────────────────────────────────────────────────────
-    "search_twcore_code":              {"keyword": "QD", "codesystem_ids": ["medication-frequency-nhi-tw"]},
-    "lookup_twcore_code":              {"code": "QD", "codesystem_id": "medication-frequency-nhi-tw"},
-
-    # ── SNOMED CT ────────────────────────────────────────────────────────────
-    "search_snomed_concept":           {"query": "diabetes mellitus"},
-    "get_snomed_concept":              {"concept_id": 73211009},
-    "get_snomed_children":             {"concept_id": 73211009},
-    "get_snomed_ancestors":            {"concept_id": 73211009},
-    "get_snomed_relationships":        {"concept_id": 73211009},
-    "map_snomed_to_icd":               {"concept_id": 73211009},
-
-    # ── RxNorm / Drug Interactions ────────────────────────────────────────────
-    "check_drug_interactions":         {"drug_names": ["warfarin", "aspirin", "metformin"]},
-    "resolve_rxnorm_drug":             {"drug_name": "atorvastatin"},
-    "get_drug_ingredients_rxnorm":     {"rxcui": "41493"},
-}
-# fmt: on
-
+def _build_tool_maps():
+    tool_category_map: dict[str, str] = {}
+    tool_examples: dict[str, dict] = {}
+    service_tools: dict[str, list[tuple[Callable, str]]] = {}
+    for service_key, spec in _TOOL_GROUPS.items():
+        category = spec["category"]
+        tools = []
+        for fn_name, name, example in spec["tools"]:
+            fn = globals().get(fn_name)
+            if fn is None:
+                raise NameError(f"Tool function not defined: {fn_name}")
+            tool_category_map[name] = category
+            if example:
+                tool_examples[name] = example
+            if service_key != "system":
+                tools.append((fn, name))
+        if service_key != "system":
+            service_tools[service_key] = tools
+    return tool_category_map, tool_examples, service_tools
 
 def _build_status_html() -> str:
     """Build the status page HTML, embedding the category map and examples as JS constants."""
@@ -1962,11 +1945,6 @@ init();
 </body>
 </html>
 """
-
-_STATUS_HTML = _build_status_html()
-_STATUS_HTML_BYTES = _STATUS_HTML.encode("utf-8")
-
-
 class PrivacyPageMiddleware:
     """Serve static pages (/, /privacy, /dpa, /status) and static assets (logos, favicon)."""
 
@@ -2691,14 +2669,15 @@ async def create_fhir_condition_from_diagnosis(
     """
     if fhir_condition_service is None:
         return _svc_unavailable("FHIR Condition Service")
-    result = await fhir_condition_service.create_condition_from_search(
+    return await _call_service_json(
+        fhir_condition_service,
+        "create_condition_from_search",
         keyword=diagnosis_keyword,
         patient_id=patient_id,
         clinical_status=clinical_status,
         verification_status=verification_status,
         severity=severity,
     )
-    return fhir_condition_service.to_json_string(result, indent=2)
 
 
 @audited("validate_fhir_condition")
@@ -2724,9 +2703,7 @@ async def validate_fhir_condition(condition_json: str) -> str:
         result = fhir_condition_service.validate_condition(condition)
         return fhir_condition_service.to_json_string(result, indent=2)
     except json.JSONDecodeError as e:
-        return json.dumps(
-            {"valid": False, "errors": [f"Invalid JSON: {e}"]}, ensure_ascii=False
-        )
+        return _json_error(f"Invalid JSON: {e}", valid=False, errors=[f"Invalid JSON: {e}"])
 
 
 # ============================================================
@@ -2754,12 +2731,11 @@ async def search_medication_fhir(
     """
     if fhir_medication_service is None:
         return _svc_unavailable("FHIR Medication Service")
-    return json.dumps(
-        await fhir_medication_service.create_medication_from_search(
-            keyword, resource_type
-        ),
-        ensure_ascii=False,
-        indent=2,
+    return await _call_service_json(
+        fhir_medication_service,
+        "create_medication_from_search",
+        keyword,
+        resource_type,
     )
 
 
@@ -2778,8 +2754,7 @@ async def create_fhir_medication(license_id: str) -> str:
     """
     if fhir_medication_service is None:
         return _svc_unavailable("FHIR Medication Service")
-    result = await fhir_medication_service.create_medication(license_id)
-    return fhir_medication_service.to_json_string(result, indent=2)
+    return await _call_service_json(fhir_medication_service, "create_medication", license_id)
 
 
 @audited("create_fhir_medication_knowledge")
@@ -2797,8 +2772,9 @@ async def create_fhir_medication_from_drug(license_id: str) -> str:
     """
     if fhir_medication_service is None:
         return _svc_unavailable("FHIR Medication Service")
-    result = await fhir_medication_service.create_medication_knowledge(license_id)
-    return fhir_medication_service.to_json_string(result, indent=2)
+    return await _call_service_json(
+        fhir_medication_service, "create_medication_knowledge", license_id
+    )
 
 
 @audited("validate_fhir_medication")
@@ -2824,9 +2800,7 @@ async def validate_fhir_medication(medication_json: str) -> str:
         result = fhir_medication_service.validate_medication(resource)
         return fhir_medication_service.to_json_string(result, indent=2)
     except json.JSONDecodeError as e:
-        return json.dumps(
-            {"valid": False, "errors": [f"Invalid JSON: {e}"]}, ensure_ascii=False
-        )
+        return _json_error(f"Invalid JSON: {e}", valid=False, errors=[f"Invalid JSON: {e}"])
 
 
 # ============================================================
@@ -3072,7 +3046,7 @@ async def get_complete_guideline(icd_code: str) -> str:
     """
     if guideline_service is None:
         return _svc_unavailable("Clinical Guideline Service")
-    return await guideline_service.get_complete_guideline(icd_code)
+    return await _call_service_json(guideline_service, "get_complete_guideline", icd_code)
 
 
 @audited("get_medication_recommendations")
@@ -3092,7 +3066,9 @@ async def get_medication_recommendations(icd_code: str) -> str:
     """
     if guideline_service is None:
         return _svc_unavailable("Clinical Guideline Service")
-    return await guideline_service.get_medication_recommendations(icd_code)
+    return await _call_service_json(
+        guideline_service, "get_medication_recommendations", icd_code
+    )
 
 
 @audited("get_test_recommendations")
@@ -3110,7 +3086,7 @@ async def get_test_recommendations(icd_code: str) -> str:
     """
     if guideline_service is None:
         return _svc_unavailable("Clinical Guideline Service")
-    return await guideline_service.get_test_recommendations(icd_code)
+    return await _call_service_json(guideline_service, "get_test_recommendations", icd_code)
 
 
 @audited("get_treatment_goals")
@@ -3130,7 +3106,7 @@ async def get_treatment_goals(icd_code: str) -> str:
     """
     if guideline_service is None:
         return _svc_unavailable("Clinical Guideline Service")
-    return await guideline_service.get_treatment_goals(icd_code)
+    return await _call_service_json(guideline_service, "get_treatment_goals", icd_code)
 
 
 @audited("check_medication_contraindications")
@@ -3159,8 +3135,11 @@ async def check_medication_contraindications(
     """
     if guideline_service is None:
         return _svc_unavailable("Clinical Guideline Service")
-    return await guideline_service.check_medication_contraindications(
-        icd_code, medication_class
+    return await _call_service_json(
+        guideline_service,
+        "check_medication_contraindications",
+        icd_code,
+        medication_class,
     )
 
 
@@ -3180,7 +3159,7 @@ async def link_guideline_to_drugs(icd_code: str) -> str:
     """
     if guideline_service is None:
         return _svc_unavailable("Clinical Guideline Service")
-    return await guideline_service.link_guideline_to_drugs(icd_code)
+    return await _call_service_json(guideline_service, "link_guideline_to_drugs", icd_code)
 
 
 @audited("suggest_clinical_pathway")
@@ -3217,7 +3196,9 @@ async def suggest_clinical_pathway(
             context = json.loads(patient_context_json)
         except json.JSONDecodeError:
             pass
-    return await guideline_service.suggest_clinical_pathway(icd_code, context)
+    return await _call_service_json(
+        guideline_service, "suggest_clinical_pathway", icd_code, context
+    )
 
 
 # ============================================================
@@ -3601,85 +3582,9 @@ async def get_drug_ingredients_rxnorm(rxcui: str) -> str:
 # health_check is always registered via @mcp.tool() and is excluded here.
 # ============================================================
 
-SERVICE_TOOLS: dict[str, list[tuple[Callable, str]]] = {
-    "icd": [
-        (search_medical_codes, "search_medical_codes"),
-        (infer_complications, "infer_complications"),
-        (get_nearby_codes, "get_nearby_codes"),
-        (check_medical_conflict, "check_medical_conflict"),
-        (browse_icd_category, "browse_icd_category"),
-    ],
-    "drug": [
-        (search_drug_info, "search_drug_info"),
-        (get_drug_details, "get_drug_details"),
-        (identify_unknown_pill, "identify_unknown_pill"),
-        (search_drug_by_atc, "search_drug_by_atc"),
-        (search_drug_by_ingredient, "search_drug_by_ingredient"),
-    ],
-    "health_food": [
-        (search_health_food, "search_health_food"),
-        (get_health_food_details, "get_health_food_details"),
-        (analyze_health_support_for_condition, "analyze_health_support_for_condition"),
-    ],
-    "food_nutrition": [
-        (search_food_nutrition, "search_food_nutrition"),
-        (get_detailed_nutrition, "get_detailed_nutrition"),
-        (search_food_ingredient, "search_food_ingredient"),
-        (get_ingredients_by_category, "get_ingredients_by_category"),
-        (search_foods_by_nutrient, "search_foods_by_nutrient"),
-        (analyze_meal_nutrition, "analyze_meal_nutrition"),
-    ],
-    "fhir_condition": [
-        (create_fhir_condition, "create_fhir_condition"),
-        (create_fhir_condition_from_diagnosis, "create_fhir_condition_from_diagnosis"),
-        (validate_fhir_condition, "validate_fhir_condition"),
-    ],
-    "fhir_medication": [
-        (search_medication_fhir, "search_medication_fhir"),
-        (create_fhir_medication, "create_fhir_medication"),
-        (create_fhir_medication_from_drug, "create_fhir_medication_from_drug"),
-        (validate_fhir_medication, "validate_fhir_medication"),
-    ],
-    "lab": [
-        (search_loinc_code, "search_loinc_code"),
-        (list_lab_categories, "list_lab_categories"),
-        (get_reference_range, "get_reference_range"),
-        (interpret_lab_result, "interpret_lab_result"),
-        (search_loinc_by_specimen, "search_loinc_by_specimen"),
-        (find_related_loinc_tests, "find_related_loinc_tests"),
-        (get_loinc_detail, "get_loinc_detail"),
-        (batch_interpret_lab_results, "batch_interpret_lab_results"),
-    ],
-    "guideline": [
-        (search_clinical_guideline, "search_clinical_guideline"),
-        (get_complete_guideline, "get_complete_guideline"),
-        (get_medication_recommendations, "get_medication_recommendations"),
-        (get_test_recommendations, "get_test_recommendations"),
-        (get_treatment_goals, "get_treatment_goals"),
-        (check_medication_contraindications, "check_medication_contraindications"),
-        (link_guideline_to_drugs, "link_guideline_to_drugs"),
-        (suggest_clinical_pathway, "suggest_clinical_pathway"),
-    ],
-    "twcore": [
-        (list_twcore_codesystems, "list_twcore_codesystems"),
-        (search_twcore_code, "search_twcore_code"),
-        (lookup_twcore_code, "lookup_twcore_code"),
-    ],
-    "snomed": [
-        (search_snomed_concept, "search_snomed_concept"),
-        (get_snomed_concept, "get_snomed_concept"),
-        (get_snomed_children, "get_snomed_children"),
-        (get_snomed_ancestors, "get_snomed_ancestors"),
-        (get_snomed_relationships, "get_snomed_relationships"),
-        (map_icd_to_snomed, "map_icd_to_snomed"),
-        (map_snomed_to_icd, "map_snomed_to_icd"),
-    ],
-    "rxnorm": [
-        (check_drug_interactions, "check_drug_interactions"),
-        (resolve_rxnorm_drug, "resolve_rxnorm_drug"),
-        (get_drug_ingredients_rxnorm, "get_drug_ingredients_rxnorm"),
-    ],
-}
+_TOOL_CATEGORY_MAP, _TOOL_EXAMPLES, SERVICE_TOOLS = _build_tool_maps()
+_STATUS_HTML = _build_status_html()
+_STATUS_HTML_BYTES = _STATUS_HTML.encode("utf-8")
 
 
 # ============================================================

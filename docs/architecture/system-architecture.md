@@ -14,7 +14,7 @@ graph TB
     end
 
     subgraph "MCP Server (port 8000)"
-        B["DynamicFastMCP uvicorn 最多 56 個工具"]
+        B["DynamicFastMCP + 動態 tool registry（最多 56 個工具）"]
         DSM["dataset_status.py DatasetStatusManager 5 分鐘 TTL"]
         AUD["audit.py audited decorator"]
         CAC["cache.py cached decorator"]
