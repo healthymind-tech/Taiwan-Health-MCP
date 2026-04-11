@@ -211,18 +211,18 @@ graph TB
 
 ## 🛠️ MCP 工具清單
 
-本服務提供 **37 個 MCP 工具**，包含 `health_check` 與 36 個領域工具，主要分為 11 個群組；工具分類與 status page 範例由同一份 registry 生成，避免文件和實作分岔。
+本服務提供 **37 個 MCP 工具**，包含 `health_check` 與 36 個領域工具，主要分為 12 個工具群組；工具分類與 status page 範例由同一份 registry 生成，避免文件和實作分岔。
 
 | 群組 | 工具數 | 主要功能 |
 |------|--------|---------|
 | ICD-10 | 5 | 診斷/手術碼搜尋、併發症推論、衝突檢查、分類瀏覽 |
-| 藥品 (FDA) | 5 | 藥品查詢、詳細資訊、外觀識別、ATC/成分查詢 |
-| 健康食品 (FDA) | 2 | 健康食品查詢 |
+| 藥品 | 5 | 藥品查詢、外觀識別 |
+| 健康補充品 | 2 | 健康食品查詢 |
 | 營養 (FDA) | 6 | 營養成分、膳食分析、食品原料、營養排序 |
 | 健康補充品 (FDA) | 1 | 健康補充品查詢與疾病情境推薦 |
 | FHIR Condition | 2 | ICD-10 / 關鍵字 → FHIR R4 Condition |
 | FHIR Medication | 2 | 藥品 / 關鍵字 → FHIR Medication/MedicationKnowledge |
-| 檢驗 (LOINC) | 8 | LOINC 查詢、參考值、結果判讀、細節與同類檢驗 |
+| LOINC / Lab | 8 | LOINC 搜尋、分類瀏覽、參考值、結果判讀、細節與同類檢驗 |
 | 臨床指引 | 2 | 指引查詢與分段內容 |
 | TWCore IG | 1 | 台灣健保 CodeSystem 統一查詢 |
 | SNOMED CT | 7 | 概念搜尋、階層、關聯、ICD-10 對應 |

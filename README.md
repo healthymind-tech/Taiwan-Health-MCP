@@ -14,7 +14,7 @@
 
 - 🇹🇼 **台灣在地化** — 整合台灣 FDA、衛福部官方開放資料，支援繁體中文
 - 🔗 **國際標準** — 符合 FHIR R4、ICD-10-CM 2025、LOINC 2.80、SNOMED CT、RxNorm、ATC
-- 🏥 **40 個 MCP 工具** — 由動態 registry 管理，涵蓋診斷、藥品、檢驗、指引、術語、藥物交互作用
+- 🏥 **37 個 MCP 工具** — 由動態 registry 管理，涵蓋診斷、藥品、檢驗、指引、術語、藥物交互作用
 - 🏗️ **生產就緒** — PostgreSQL 16 + pgBouncer + Redis + Prometheus，支援每秒數百請求
 - 🔄 **自動同步** — FDA 藥品/保健食品/營養資料每週自動更新
 
@@ -73,7 +73,7 @@ docker compose --profile loader run --rm data-loader --rxnorm     # RxNorm
 `DATASETS_CONFIG` 預設為 `/app/config/datasets.yaml`。若未設定，loader 會回退到舊的
 `/app/fhir-code` 目錄規則。新部署建議使用 `config/datasets.yaml`，避免依賴固定檔名與固定目錄結構。
 
-> `--all` 現在也會初始化 Taiwan FDA 藥品、健康食品、營養資料。
+> `--all` 現在也會初始化 Taiwan FDA 藥品、健康補充品、營養資料。
 > app 仍會在首次啟動或資料過期時自動同步，但若想在部署階段先灌資料，請使用 `data-loader --all` 或 `--fda`。
 
 ### 4. 確認服務正常
@@ -119,28 +119,27 @@ curl http://localhost:8000/mcp -X POST \
 
 ### PostgreSQL Schema
 
-`audit` | `icd` | `drug` | `health_food` | `food_nutrition` | `loinc` | `guideline` | `twcore` | `snomed` | `rxnorm`
+`audit` | `icd` | `drug` | `health_supplement` | `food_nutrition` | `loinc` | `guideline` | `twcore` | `snomed` | `rxnorm`
 
 ---
 
-## 📋 核心功能（40 個 MCP 工具）
+## 📋 核心功能（37 個 MCP 工具）
 
 工具分類、status page 範例與 dataset gating 由同一份 registry 產生；`tools/list` 只會顯示已載入資料集對應的工具，`health_check` 永遠可用。FHIR、TWCore 與臨床指引已合併成較少的對外入口。
 
 | 群組 | 工具數 | 功能 |
 |------|--------|------|
 | 系統 | 1 | `health_check`：資料庫、快取、資料集狀態一覽（永遠可用） |
-| ICD-10 | 5 | ICD-10-CM 診斷碼搜尋、併發症推論、衝突檢查、分類瀏覽 |
-| 藥品 (FDA) | 5 | 藥品查詢、詳細資訊、外觀識別、ATC/成分查詢 |
-| 健康食品 (FDA) | 2 | 健康食品查詢、詳細資訊 |
-| 營養 (FDA) | 6 | 營養成分、膳食分析、食品原料、營養排序 |
-| 健康食品+ICD 整合 | 1 | 疾病-保健食品對應分析 |
+| ICD-10 | 5 | 診斷碼搜尋、併發症推論、鄰近碼、衝突檢查、分類瀏覽 |
+| 藥品 | 2 | `search_drug`（名稱 / 代碼 / 成分 / 許可證）與外觀辨識 |
+| 健康補充品 | 1 | `search_health_supplement`：關鍵字、許可證、疾病情境推薦 |
+| 食品與營養 | 6 | 營養成分、詳細營養、食品原料、營養排序、餐點分析 |
 | FHIR Condition | 2 | ICD-10 / 關鍵字 → FHIR R4 Condition，驗證 |
 | FHIR Medication | 2 | 藥品 / 關鍵字 → FHIR R4 Medication / MedicationKnowledge |
-| 檢驗 (LOINC) | 8 | LOINC 碼查詢、參考值、結果判讀、細節與同類檢驗 |
-| 臨床指引 | 2 | 指引查詢、分段內容、臨床路徑 |
+| LOINC / Lab | 8 | LOINC 搜尋、分類瀏覽、參考值、結果判讀、細節與同類檢驗 |
+| 臨床指引 | 2 | 指引搜尋、分段內容、臨床路徑 |
 | TWCore IG | 1 | 台灣核心 CodeSystem 統一查詢入口 |
-| SNOMED CT | 7 | 概念搜尋、階層查詢、關聯查詢、ICD-10 雙向對應 |
+| SNOMED CT | 4 | 概念搜尋、階層查詢、關聯查詢、ICD-10 雙向對應 |
 | RxNorm | 3 | 藥物交互作用檢查、藥品名稱解析、成分查詢 |
 
 ---
@@ -156,7 +155,7 @@ curl http://localhost:8000/mcp -X POST \
 | RxNorm | 2024-06-03 | 公開 (NLM) | 藥品命名、藥物交互作用 |
 | TWCore IG | v1.0.0 | 公開 (MOHW) | 30+ 台灣健保 CodeSystem |
 | Taiwan FDA 藥品 | 每週更新 | 公開 (FDA) | 66,000+ 藥品許可證 |
-| Taiwan FDA 健康食品 | 每週更新 | 公開 (FDA) | 核可健康食品 |
+| Taiwan FDA 健康補充品 | 每週更新 | 公開 (FDA) | 核可健康補充品 |
 | Taiwan FDA 營養 | 每週更新 | 公開 (FDA) | 食品營養成分資料庫 |
 | 臨床指引 | 自整理 | — | 台灣醫學會指引（種子資料） |
 
@@ -164,7 +163,7 @@ curl http://localhost:8000/mcp -X POST \
 
 ## ⚠️ 重要限制
 
-- **健康食品疾病對應** — 開發者整理，未經醫學驗證，不適合直接面向患者
+- **健康補充品疾病對應** — 開發者整理，未經醫學驗證，不適合直接面向患者
 - **FHIR 驗證** — 僅檢查必要欄位；生產環境請使用 HL7 FHIR Validator
 - **ICD-10-PCS** — 已內建 2025 版（78,948 筆），`--icd` 自動同時載入 CM 和 PCS；`icd.procedures` 未載入時工具自動降級
 - **SNOMED CT** — 需有效的 SNOMED International 授權（多數用途免費）
@@ -180,7 +179,7 @@ curl http://localhost:8000/mcp -X POST \
 主要需求：
 - 補充/驗證臨床指引種子資料
 - 新增 LOINC 中文對照
-- 補充健康食品疾病對應（需醫學審核）
+- 補充健康補充品疾病對應（需醫學審核）
 - 補充/驗證臨床指引種子資料
 
 ---
@@ -204,7 +203,7 @@ Made with [contrib.rocks](https://contrib.rocks).
 
 ## 🙏 致謝
 
-- 台灣衛生福利部、TFDA（ICD、藥品、健康食品、營養資料）
+- 台灣衛生福利部、TFDA（ICD、藥品、健康補充品、營養資料）
 - Regenstrief Institute（LOINC）
 - SNOMED International（SNOMED CT）
 - National Library of Medicine（RxNorm、ICD-10-CM）
