@@ -185,7 +185,7 @@ class FoodNutritionService:
                     async with self.pool.acquire() as conn:
                         await conn.executemany(
                             """INSERT INTO food_nutrition.food_embeddings (sample_name, embedding)
-                               VALUES ($1, $2::vector)
+                               VALUES ($1, $2::halfvec)
                                ON CONFLICT (sample_name) DO UPDATE
                                SET embedding=EXCLUDED.embedding, embedded_at=NOW()""",
                             rows,
@@ -209,7 +209,7 @@ class FoodNutritionService:
                     async with self.pool.acquire() as conn:
                         await conn.executemany(
                             """INSERT INTO food_nutrition.ingredient_embeddings (id, embedding)
-                               VALUES ($1, $2::vector)
+                               VALUES ($1, $2::halfvec)
                                ON CONFLICT (id) DO UPDATE
                                SET embedding=EXCLUDED.embedding, embedded_at=NOW()""",
                             rows,
@@ -247,9 +247,9 @@ class FoodNutritionService:
                        ),
                        vec AS (
                            SELECT sample_name,
-                                  ROW_NUMBER() OVER (ORDER BY embedding <=> $2::vector) AS rank
+                                  ROW_NUMBER() OVER (ORDER BY embedding <=> $2::halfvec) AS rank
                            FROM food_nutrition.food_embeddings
-                           ORDER BY embedding <=> $2::vector LIMIT 20
+                           ORDER BY embedding <=> $2::halfvec LIMIT 20
                        ),
                        rrf AS (
                            SELECT COALESCE(f.sample_name, v.sample_name) AS sample_name,
@@ -304,19 +304,72 @@ class FoodNutritionService:
 
     @cached(ttl=86400, prefix="fn.detail")
     async def get_detailed_nutrition(self, food_name: str) -> str:
+        vec = await self._embedding_svc.embed(food_name) if self._embedding_svc else None
+        vec_str = f"[{','.join(str(x) for x in vec)}]" if vec else None
+
         async with self.pool.acquire() as conn:
+            # Step 1: resolve best-matching sample_names via hybrid RRF
+            if vec_str:
+                matched = await conn.fetch(
+                    """WITH fts AS (
+                           SELECT DISTINCT m.sample_name,
+                                  ROW_NUMBER() OVER (ORDER BY ts_rank_cd(
+                                      to_tsvector('simple', COALESCE(m.sample_name,'') || ' ' ||
+                                                            COALESCE(m.common_name,'') || ' ' ||
+                                                            COALESCE(m.english_name,'')),
+                                      plainto_tsquery('simple', $1)) DESC) AS rank
+                           FROM food_nutrition.measurements m
+                           WHERE to_tsvector('simple',
+                                   COALESCE(m.sample_name,'') || ' ' ||
+                                   COALESCE(m.common_name,'') || ' ' ||
+                                   COALESCE(m.english_name,''))
+                                 @@ plainto_tsquery('simple', $1)
+                           LIMIT 20
+                       ),
+                       vec AS (
+                           SELECT sample_name,
+                                  ROW_NUMBER() OVER (ORDER BY embedding <=> $2::halfvec) AS rank
+                           FROM food_nutrition.food_embeddings
+                           ORDER BY embedding <=> $2::halfvec LIMIT 20
+                       ),
+                       rrf AS (
+                           SELECT COALESCE(f.sample_name, v.sample_name) AS sample_name,
+                                  COALESCE(1.0/(60+f.rank), 0.0) + COALESCE(1.0/(60+v.rank), 0.0) AS score
+                           FROM fts f FULL OUTER JOIN vec v ON f.sample_name = v.sample_name
+                       )
+                       SELECT sample_name FROM rrf ORDER BY score DESC LIMIT 3""",
+                    food_name, vec_str,
+                )
+            else:
+                matched = await conn.fetch(
+                    """SELECT DISTINCT sample_name FROM food_nutrition.measurements
+                       WHERE to_tsvector('simple',
+                               COALESCE(sample_name,'') || ' ' || COALESCE(common_name,'') || ' ' || COALESCE(english_name,''))
+                             @@ plainto_tsquery('simple', $1)
+                       LIMIT 3""",
+                    food_name,
+                )
+
+            if not matched:
+                return json.dumps({"error": f"找不到 '{food_name}' 的詳細營養資料。"}, ensure_ascii=False)
+
+            names = [r["sample_name"] for r in matched]
+
+            # Step 2: fetch all nutrients for matched foods, grouped by category
             rows = await conn.fetch(
                 """SELECT sample_name, common_name, food_category, nutrient_category,
                           nutrient_item, content_per_100g, content_unit
                    FROM food_nutrition.measurements
-                   WHERE sample_name ILIKE $1 OR common_name ILIKE $1
+                   WHERE sample_name = ANY($1)
                    ORDER BY sample_name, nutrient_category, nutrient_item""",
-                f"%{food_name}%",
+                names,
             )
+
         if not rows:
             return json.dumps({"error": f"找不到 '{food_name}' 的詳細營養資料。"}, ensure_ascii=False)
 
-        # Group by sample_name: one object per food variant, nutrients nested by category
+        # Group by sample_name, nutrients nested by category; preserve RRF rank order
+        name_order = {name: i for i, name in enumerate(names)}
         foods: dict[str, dict] = {}
         for r in rows:
             key = r["sample_name"]
@@ -336,7 +389,8 @@ class FoodNutritionService:
                 "unit": r["content_unit"],
             })
 
-        return json.dumps(list(foods.values()), ensure_ascii=False)
+        ordered = sorted(foods.values(), key=lambda f: name_order.get(f["sample_name"], 999))
+        return json.dumps(ordered, ensure_ascii=False)
 
     @cached(ttl=86400, prefix="fn.ing")
     async def search_food_ingredient(self, keyword: str, limit: int = 3) -> str:
@@ -359,9 +413,9 @@ class FoodNutritionService:
                        ),
                        vec AS (
                            SELECT id,
-                                  ROW_NUMBER() OVER (ORDER BY embedding <=> $2::vector) AS rank
+                                  ROW_NUMBER() OVER (ORDER BY embedding <=> $2::halfvec) AS rank
                            FROM food_nutrition.ingredient_embeddings
-                           ORDER BY embedding <=> $2::vector LIMIT 20
+                           ORDER BY embedding <=> $2::halfvec LIMIT 20
                        ),
                        rrf AS (
                            SELECT COALESCE(f.id, v.id) AS id,

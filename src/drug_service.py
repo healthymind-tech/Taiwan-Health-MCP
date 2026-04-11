@@ -193,7 +193,7 @@ class DrugService:
                     async with self.pool.acquire() as conn:
                         await conn.executemany(
                             """INSERT INTO drug.license_embeddings (license_id, embedding)
-                               VALUES ($1, $2::vector)
+                               VALUES ($1, $2::halfvec)
                                ON CONFLICT (license_id) DO UPDATE
                                SET embedding=EXCLUDED.embedding, embedded_at=NOW()""",
                             rows,
@@ -240,9 +240,9 @@ class DrugService:
                        ),
                        vec AS (
                            SELECT license_id,
-                                  ROW_NUMBER() OVER (ORDER BY embedding <=> $2::vector) AS rank
+                                  ROW_NUMBER() OVER (ORDER BY embedding <=> $2::halfvec) AS rank
                            FROM drug.license_embeddings
-                           ORDER BY embedding <=> $2::vector LIMIT 20
+                           ORDER BY embedding <=> $2::halfvec LIMIT 20
                        ),
                        rrf AS (
                            SELECT COALESCE(f.license_id, v.license_id) AS license_id,
@@ -462,9 +462,9 @@ class DrugService:
                        ),
                        vec_atc AS (
                            SELECT atc_code,
-                                  ROW_NUMBER() OVER (ORDER BY embedding <=> $3::vector) AS rank
+                                  ROW_NUMBER() OVER (ORDER BY embedding <=> $3::halfvec) AS rank
                            FROM drug.atc_embeddings
-                           ORDER BY embedding <=> $3::vector LIMIT 20
+                           ORDER BY embedding <=> $3::halfvec LIMIT 20
                        ),
                        rrf_atc AS (
                            SELECT COALESCE(f.atc_code, v.atc_code) AS atc_code,
@@ -549,9 +549,9 @@ class DrugService:
                        ),
                        vec AS (
                            SELECT ingredient_name,
-                                  ROW_NUMBER() OVER (ORDER BY embedding <=> $3::vector) AS rank
+                                  ROW_NUMBER() OVER (ORDER BY embedding <=> $3::halfvec) AS rank
                            FROM drug.ingredient_name_embeddings
-                           ORDER BY embedding <=> $3::vector LIMIT 20
+                           ORDER BY embedding <=> $3::halfvec LIMIT 20
                        ),
                        rrf AS (
                            SELECT COALESCE(f.ingredient_name, v.ingredient_name) AS ingredient_name,

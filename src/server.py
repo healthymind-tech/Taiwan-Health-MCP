@@ -2,6 +2,7 @@ import asyncio
 import inspect
 import json
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Callable
 
 from mcp.server.fastmcp import FastMCP
@@ -270,22 +271,63 @@ class ApiErrorLoggingMiddleware:
             raise
 
 
+# ── Static assets (logos) ────────────────────────────────────────────────────
+def _load_static_file(filename: str) -> bytes | None:
+    """Load a static file from the project root or /app (Docker)."""
+    for base in [Path(__file__).parent.parent, Path("/app")]:
+        p = base / filename
+        if p.exists():
+            try:
+                return p.read_bytes()
+            except OSError:
+                pass
+    return None
+
+_LOGO_H_BYTES: bytes | None = _load_static_file("static/logo-h.png")
+_LOGO_S_BYTES: bytes | None = _load_static_file("static/logo-s.png")
+
+# Shared HTML snippets injected into every page
+
 _PRIVACY_HTML = """\
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <link rel="shortcut icon" type="image/png" href="/favicon.png">
   <title>Privacy Policy – Taiwan Health MCP Server</title>
   <style>
-    body { font-family: system-ui, sans-serif; max-width: 800px; margin: 40px auto;
-           padding: 0 24px; line-height: 1.7; color: #222; }
-    h1 { font-size: 1.6rem; } h2 { font-size: 1.15rem; margin-top: 2rem; }
-    p, li { font-size: 0.97rem; } code { background: #f4f4f4; padding: 1px 5px;
-    border-radius: 3px; font-size: 0.9rem; }
+    *, *::before, *::after { box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; margin: 0; line-height: 1.7; color: #222;
+           background: #fff; }
+    nav { position: sticky; top: 0; background: #fff; border-bottom: 1px solid #e5e7eb;
+          padding: 0 24px; z-index: 100; }
+    .nav-inner { display: flex; align-items: center; max-width: 900px;
+                 margin: 0 auto; padding: 10px 0; }
+    .nav-inner img { height: 36px; display: block; }
+    .wrap { max-width: 900px; margin: 0 auto; padding: 0 24px 48px; }
+    h1 { font-size: 1.6rem; margin-top: 36px; margin-bottom: 4px; }
+    h2 { font-size: 1.15rem; margin-top: 2rem; }
+    p, li { font-size: 0.97rem; }
+    code { background: #f4f4f4; padding: 1px 5px; border-radius: 3px; font-size: 0.9rem; }
+    a { color: #0066cc; }
+    @media (max-width: 600px) {
+      nav { padding: 0 16px; }
+      .wrap { padding: 0 16px 32px; }
+      h1 { font-size: 1.25rem; margin-top: 24px; }
+      h2 { font-size: 1.05rem; }
+      p, li { font-size: 0.93rem; }
+    }
   </style>
 </head>
 <body>
+<nav>
+  <div class="nav-inner">
+    <a href="/"><img src="/logo-h.png" alt="HealthyMind Tech"></a>
+  </div>
+</nav>
+<div class="wrap">
 <h1>Privacy Policy – Taiwan Health MCP Server</h1>
 <p><em>Effective date: 2025-01-01 &nbsp;|&nbsp; Last updated: 2026-04-09</em></p>
 
@@ -356,45 +398,1666 @@ this page will reflect the most recent revision.</p>
 <a href="https://github.com/healthymind-tech/Taiwan-Health-MCP/issues">
 github.com/healthymind-tech/Taiwan-Health-MCP</a> or email
 <a href="mailto:support@healthymind-tech.com">support@healthymind-tech.com</a>.</p>
+</div>
 </body>
 </html>
 """
 
 _PRIVACY_HTML_BYTES = _PRIVACY_HTML.encode("utf-8")
 
+_DPA_HTML = """\
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <link rel="shortcut icon" type="image/png" href="/favicon.png">
+  <title>Data Processing Agreement – Taiwan Health MCP Server</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; margin: 0; line-height: 1.7; color: #222;
+           background: #fff; }
+    nav { position: sticky; top: 0; background: #fff; border-bottom: 1px solid #e5e7eb;
+          padding: 0 24px; z-index: 100; }
+    .nav-inner { display: flex; align-items: center; max-width: 900px;
+                 margin: 0 auto; padding: 10px 0; }
+    .nav-inner img { height: 36px; display: block; }
+    .wrap { max-width: 900px; margin: 0 auto; padding: 0 24px 48px; }
+    h1 { font-size: 1.6rem; margin-top: 36px; margin-bottom: 4px; }
+    h2 { font-size: 1.15rem; margin-top: 2rem; }
+    h3 { font-size: 1.0rem; margin-top: 1.4rem; }
+    p, li { font-size: 0.97rem; }
+    code { background: #f4f4f4; padding: 1px 5px; border-radius: 3px; font-size: 0.9rem; }
+    .tbl-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 1rem 0; }
+    table { border-collapse: collapse; width: 100%; min-width: 480px; }
+    th, td { border: 1px solid #ddd; padding: 8px 12px; font-size: 0.95rem; }
+    th { background: #f6f6f6; text-align: left; }
+    a { color: #0066cc; }
+    @media (max-width: 600px) {
+      nav { padding: 0 16px; }
+      .wrap { padding: 0 16px 32px; }
+      h1 { font-size: 1.25rem; margin-top: 24px; }
+      h2 { font-size: 1.05rem; }
+      p, li { font-size: 0.93rem; }
+      th, td { font-size: 0.85rem; padding: 6px 8px; }
+    }
+  </style>
+</head>
+<body>
+<nav>
+  <div class="nav-inner">
+    <a href="/"><img src="/logo-h.png" alt="HealthyMind Tech"></a>
+  </div>
+</nav>
+<div class="wrap">
+<h1>Data Processing Agreement</h1>
+<p><strong>Service:</strong> Taiwan Health MCP Server<br>
+<strong>Operator:</strong> HealthyMind Tech<br>
+<em>Effective date: 2025-01-01 &nbsp;|&nbsp; Last updated: 2026-04-09</em></p>
+
+<h2>1. Parties and Scope</h2>
+<p>This Data Processing Agreement ("DPA") applies between HealthyMind Tech
+("Operator", "we", "us") and any individual or organisation ("User") accessing
+the Taiwan Health MCP Server via Anthropic's Claude products or directly through
+the MCP API. It describes how data flows through the server, what is retained,
+and the obligations of each party.</p>
+
+<h2>2. Nature of Processing</h2>
+<p>Taiwan Health MCP Server is a <strong>read-only query API</strong> that provides
+access to publicly available medical terminology and pharmaceutical datasets.
+It does not accept, store, or process personal health information submitted by
+users. All 56 tools perform outbound database lookups against pre-loaded public
+datasets and return structured results to the MCP client.</p>
+
+<h2>3. Categories of Data Processed</h2>
+<div class="tbl-wrap"><table>
+  <tr><th>Data category</th><th>Source</th><th>Retained by operator?</th></tr>
+  <tr>
+    <td>Tool call metadata (tool name, timestamp, duration, status)</td>
+    <td>Generated internally</td>
+    <td>Yes — audit log, 90 days</td>
+  </tr>
+  <tr>
+    <td>SHA-256 hash of tool parameters</td>
+    <td>Derived from request</td>
+    <td>Yes — audit log, 90 days; raw values are <strong>never</strong> stored</td>
+  </tr>
+  <tr>
+    <td>Medical terminology query strings (e.g. ICD codes, drug names)</td>
+    <td>User / Claude client</td>
+    <td>No — processed transiently; not written to storage</td>
+  </tr>
+  <tr>
+    <td>Redis cache entries (query result payloads)</td>
+    <td>Internal</td>
+    <td>Temporarily — TTL 1–24 hours, then auto-deleted</td>
+  </tr>
+  <tr>
+    <td>Personal health information</td>
+    <td>—</td>
+    <td>Not collected, not accepted</td>
+  </tr>
+</table></div>
+
+<h2>4. Purpose and Legal Basis</h2>
+<p>Data is processed solely to fulfil individual API requests from the MCP client.
+There is no secondary use: query data is not used for model training, profiling,
+analytics, advertising, or any purpose beyond returning the immediate response.</p>
+<p>The legal basis for processing operational logs (tool name, hash, timing) is
+<strong>legitimate interest</strong> in operating a reliable, auditable service.</p>
+
+<h2>5. Data Minimisation and HIPAA Design</h2>
+<p>The audit logger (<code>src/audit.py</code>) records only the SHA-256 hash of
+parameters — never the raw values. This design ensures that patient-identifiable
+query terms (e.g. a patient's ICD code or medication name) cannot be reconstructed
+from the audit trail, consistent with HIPAA safe-harbour de-identification
+requirements.</p>
+
+<h2>6. Sub-processors</h2>
+<div class="tbl-wrap"><table>
+  <tr><th>Sub-processor</th><th>Role</th><th>Data shared</th></tr>
+  <tr>
+    <td>PostgreSQL 16 (self-hosted)</td>
+    <td>Primary data store for terminology datasets</td>
+    <td>Query strings (transient, in-process only)</td>
+  </tr>
+  <tr>
+    <td>Redis 7 (self-hosted)</td>
+    <td>Response cache</td>
+    <td>Serialised query result payloads (TTL-bound)</td>
+  </tr>
+  <tr>
+    <td>Anthropic</td>
+    <td>MCP platform / Claude client</td>
+    <td>Tool call parameters and responses, per
+      <a href="https://www.anthropic.com/privacy">Anthropic's Privacy Policy</a></td>
+  </tr>
+</table></div>
+<p>All infrastructure (PostgreSQL, Redis) is operated by the Operator on
+self-managed servers. No data is sent to external cloud sub-processors except
+via Anthropic's platform as described above.</p>
+
+<h2>7. International Transfers</h2>
+<p>The server is hosted in Taiwan. Tool call data passed through Anthropic's
+platform may be processed in the United States or other jurisdictions per
+Anthropic's data processing terms. The Operator does not independently transfer
+data outside Taiwan.</p>
+
+<h2>8. Security Measures</h2>
+<ul>
+  <li>All HTTP traffic is served over TLS (HTTPS).</li>
+  <li>Database and cache are network-isolated (Docker internal network, not exposed to public internet).</li>
+  <li>pgBouncer connection pooler limits database exposure.</li>
+  <li>Prometheus metrics endpoint is internal only.</li>
+  <li>Audit log is append-only and stored in a dedicated PostgreSQL schema (<code>audit</code>).</li>
+</ul>
+
+<h2>9. Data Subject Rights</h2>
+<p>Because the Operator does not collect personally identifiable information,
+there is no personal data subject to access, rectification, erasure, or
+portability requests under GDPR or similar regulations. If you believe this
+server has inadvertently processed personal data, contact us at the address
+in Section 12 and we will investigate within 30 days.</p>
+
+<h2>10. Breach Notification</h2>
+<p>In the event of a confirmed data security incident affecting user data, the
+Operator will notify affected users and, where required by applicable law,
+relevant supervisory authorities, within 72 hours of becoming aware of the
+breach.</p>
+
+<h2>11. Retention and Deletion</h2>
+<ul>
+  <li><strong>Audit logs</strong> — retained for 90 days, then deleted by a scheduled purge job.</li>
+  <li><strong>Redis cache</strong> — entries expire automatically per configured TTL (1–24 hours).</li>
+  <li><strong>Terminology datasets</strong> — static public data; not subject to deletion requests.</li>
+</ul>
+
+<h2>12. Contact and Governing Law</h2>
+<p>For data processing questions or concerns:</p>
+<ul>
+  <li>GitHub Issues:
+    <a href="https://github.com/healthymind-tech/Taiwan-Health-MCP/issues">
+    github.com/healthymind-tech/Taiwan-Health-MCP/issues</a></li>
+  <li>Email: <a href="mailto:support@healthymind-tech.com">support@healthymind-tech.com</a></li>
+</ul>
+<p>This agreement is governed by the laws of Taiwan (R.O.C.). Any dispute shall
+be subject to the exclusive jurisdiction of the Taiwan Taipei District Court.</p>
+
+<h2>13. Changes to This Agreement</h2>
+<p>We may update this DPA from time to time. The effective date at the top of
+this page reflects the most recent revision. Continued use of the service after
+an update constitutes acceptance of the revised terms.</p>
+</div>
+</body>
+</html>
+"""
+
+_DPA_HTML_BYTES = _DPA_HTML.encode("utf-8")
+
+_LANDING_HTML = """\
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <link rel="shortcut icon" type="image/png" href="/favicon.png">
+  <title>Taiwan Health MCP Server</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, -apple-system, sans-serif; color: #1a1a1a;
+           background: #fff; line-height: 1.7; }
+
+    /* ── nav ── */
+    nav { position: sticky; top: 0; background: #fff; border-bottom: 1px solid #e5e7eb;
+          padding: 0 24px; z-index: 100; }
+    .nav-inner { display: flex; align-items: center; gap: 24px; max-width: 900px;
+                 margin: 0 auto; padding: 10px 0; flex-wrap: wrap; }
+    .nav-logo img { height: 36px; display: block; }
+    nav ul { display: flex; gap: 24px; list-style: none; flex-wrap: wrap;
+             margin: 0; padding: 0; }
+    nav a { text-decoration: none; color: #444; font-size: 0.9rem; }
+    nav a:hover { color: #0066cc; }
+
+    /* ── layout ── */
+    .wrap { max-width: 900px; margin: 0 auto; padding: 0 24px; }
+    section { padding: 56px 0; border-bottom: 1px solid #f0f0f0; }
+    section:last-of-type { border-bottom: none; }
+
+    /* ── hero ── */
+    .hero { padding: 72px 0 56px; }
+    .hero h1 { font-size: 2.2rem; font-weight: 700; line-height: 1.25;
+               margin-bottom: 16px; }
+    .hero h1 span { color: #0066cc; }
+    .hero p.tagline { font-size: 1.1rem; color: #555; max-width: 640px;
+                      margin-bottom: 28px; }
+    .endpoint-box { display: inline-flex; align-items: center; gap: 10px;
+                    background: #f4f7fb; border: 1px solid #d0daea;
+                    border-radius: 8px; padding: 10px 18px; font-size: 0.9rem; }
+    .endpoint-box .label { color: #666; }
+    .endpoint-box code { color: #0055aa; font-size: 0.88rem;
+                         word-break: break-all; }
+    .badge-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+    .badge { background: #e8f0fe; color: #1a56cc; border-radius: 20px;
+             padding: 3px 12px; font-size: 0.82rem; font-weight: 500; }
+
+    /* ── headings ── */
+    h2 { font-size: 1.45rem; font-weight: 700; margin-bottom: 20px; }
+    h3 { font-size: 1.05rem; font-weight: 600; margin-bottom: 8px; }
+
+    /* ── feature grid ── */
+    .feature-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px,1fr));
+                    gap: 20px; }
+    .feature-card { border: 1px solid #e5e7eb; border-radius: 10px;
+                    padding: 20px 22px; }
+    .feature-card .icon { font-size: 1.6rem; margin-bottom: 10px; }
+    .feature-card ul { padding-left: 18px; font-size: 0.93rem; color: #444;
+                       margin-top: 8px; }
+    .feature-card li { margin-bottom: 4px; }
+
+    /* ── dataset table ── */
+    table { width: 100%; border-collapse: collapse; font-size: 0.93rem;
+            margin-top: 12px; }
+    th, td { border: 1px solid #e0e0e0; padding: 9px 14px; text-align: left; }
+    th { background: #f6f8fb; font-weight: 600; }
+
+    /* ── examples ── */
+    .example { border: 1px solid #e5e7eb; border-radius: 10px;
+               overflow: hidden; margin-bottom: 20px; }
+    .example-header { background: #f6f8fb; padding: 10px 18px;
+                      font-weight: 600; font-size: 0.9rem; color: #333;
+                      border-bottom: 1px solid #e5e7eb; }
+    .example-body { padding: 16px 18px; }
+    .prompt { background: #fff8e6; border-left: 3px solid #f5a623;
+              border-radius: 4px; padding: 8px 14px; font-size: 0.92rem;
+              margin-bottom: 14px; }
+    .prompt strong { color: #b8860b; font-size: 0.8rem; display: block;
+                     margin-bottom: 2px; }
+    .steps { padding-left: 18px; font-size: 0.92rem; color: #444; }
+    .steps li { margin-bottom: 4px; }
+
+    /* ── setup steps ── */
+    .setup-steps { counter-reset: step; display: flex; flex-direction: column;
+                   gap: 16px; }
+    .setup-step { display: flex; gap: 16px; align-items: flex-start; }
+    .setup-step .num { min-width: 32px; height: 32px; border-radius: 50%;
+                       background: #0066cc; color: #fff; display: flex;
+                       align-items: center; justify-content: center;
+                       font-size: 0.85rem; font-weight: 700; margin-top: 2px; }
+    .setup-step .text { font-size: 0.95rem; }
+    .setup-step .text p { margin: 0; }
+    code.inline { background: #f4f4f4; padding: 1px 6px; border-radius: 4px;
+                  font-size: 0.88rem; }
+
+    /* ── auth notice ── */
+    .auth-notice { background: #f0fdf4; border: 1px solid #86efac;
+                   border-radius: 8px; padding: 16px 20px; }
+    .auth-notice strong { color: #166534; }
+
+    /* ── links section ── */
+    .link-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px,1fr));
+                 gap: 14px; }
+    .link-card { border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px 18px;
+                 text-decoration: none; color: inherit;
+                 transition: border-color 0.15s; display: block; }
+    .link-card:hover { border-color: #0066cc; }
+    .link-card .link-title { font-weight: 600; font-size: 0.95rem;
+                             color: #0066cc; margin-bottom: 4px; }
+    .link-card .link-desc { font-size: 0.85rem; color: #666; }
+
+    /* ── footer ── */
+    footer { text-align: center; padding: 32px 24px; color: #888;
+             font-size: 0.85rem; border-top: 1px solid #f0f0f0; }
+    footer a { color: #0066cc; text-decoration: none; }
+
+    /* ── table scroll ── */
+    .tbl-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .tbl-wrap table { min-width: 520px; }
+
+    @media (max-width: 768px) {
+      .hero { padding: 48px 0 36px; }
+      .hero h1 { font-size: 1.8rem; }
+      section { padding: 40px 0; }
+      .feature-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 600px) {
+      .hero h1 { font-size: 1.4rem; }
+      .hero p.tagline { font-size: 1rem; }
+      .endpoint-box { flex-direction: column; align-items: flex-start; gap: 4px; }
+      .nav-inner { gap: 12px; padding: 8px 0; }
+      .nav-logo img { height: 28px; }
+      nav ul { gap: 10px; }
+      nav a { font-size: 0.82rem; }
+      h2 { font-size: 1.2rem; }
+      section { padding: 32px 0; }
+      .link-grid { grid-template-columns: 1fr 1fr; }
+      footer { font-size: 0.8rem; padding: 24px 16px; }
+    }
+    @media (max-width: 400px) {
+      .link-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <div class="nav-logo">
+      <a href="/"><img src="/logo-h.png" alt="HealthyMind Tech"></a>
+    </div>
+    <ul>
+      <li><a href="#description">Overview</a></li>
+      <li><a href="#features">Features</a></li>
+      <li><a href="#datasets">Datasets</a></li>
+      <li><a href="#examples">Examples</a></li>
+      <li><a href="#setup">Setup</a></li>
+      <li><a href="#authentication">Auth</a></li>
+      <li><a href="#support">Support</a></li>
+      <li><a href="/status">Status</a></li>
+    </ul>
+  </div>
+</nav>
+
+<!-- ── Hero ── -->
+<section class="hero" id="top">
+  <div class="wrap">
+    <h1>Taiwan Health<br><span>MCP Server</span></h1>
+    <p class="tagline">
+      An open-source Model Context Protocol server that gives AI assistants
+      structured, read-only access to Taiwan's medical, pharmaceutical, and
+      clinical knowledge — 56 tools, production-grade, HIPAA-audited.
+    </p>
+    <div class="endpoint-box">
+      <span class="label">MCP endpoint</span>
+      <code>https://tw-health-mcp.healthymind-tech.com/mcp</code>
+    </div>
+    <div class="badge-row">
+      <span class="badge">56 Tools</span>
+      <span class="badge">ICD-10-CM 2025</span>
+      <span class="badge">LOINC 2.80</span>
+      <span class="badge">SNOMED CT</span>
+      <span class="badge">RxNorm</span>
+      <span class="badge">Taiwan FDA</span>
+      <span class="badge">TWCore IG v1.0</span>
+      <span class="badge">FHIR R4</span>
+    </div>
+  </div>
+</section>
+
+<!-- ── Description ── -->
+<section id="description">
+  <div class="wrap">
+    <h2>Description</h2>
+    <p>
+      Taiwan Health MCP Server connects Claude to authoritative medical and
+      health datasets curated for Taiwan's healthcare system. Clinicians,
+      researchers, developers, and health-tech products can query ICD-10 diagnoses
+      and procedures, look up LOINC lab codes and reference ranges, navigate
+      SNOMED CT concept hierarchies, resolve drug names via RxNorm, search
+      Taiwan FDA-approved drugs and health foods, access clinical practice
+      guidelines, and generate FHIR R4-compliant resources — all through natural
+      language conversation with Claude.
+    </p>
+    <p style="margin-top:12px;">
+      All underlying datasets are publicly available. The server does
+      <strong>not</strong> collect, store, or process personal health information.
+      Audit logs record only tool names and SHA-256 parameter hashes, never raw values.
+    </p>
+  </div>
+</section>
+
+<!-- ── Features ── -->
+<section id="features">
+  <div class="wrap">
+    <h2>Features</h2>
+    <div class="feature-grid">
+
+      <div class="feature-card">
+        <div class="icon">🏥</div>
+        <h3>Medical Coding</h3>
+        <p style="font-size:0.93rem;color:#555;">
+          Hybrid BM25 + semantic search across ICD-10-CM/PCS 2025,
+          SNOMED CT International, and LOINC 2.80.
+        </p>
+        <ul>
+          <li>Diagnosis &amp; procedure code search</li>
+          <li>SNOMED concept hierarchy traversal</li>
+          <li>ICD ↔ SNOMED cross-mapping</li>
+          <li>LOINC lab code lookup by name, specimen, or component</li>
+          <li>Nearby codes &amp; complication inference</li>
+        </ul>
+      </div>
+
+      <div class="feature-card">
+        <div class="icon">💊</div>
+        <h3>Drug &amp; Pharmacy</h3>
+        <p style="font-size:0.93rem;color:#555;">
+          Taiwan FDA drug database (auto-synced every Tuesday) plus
+          RxNorm terminology and drug interaction checking.
+        </p>
+        <ul>
+          <li>Search by drug name, ingredient, or ATC class</li>
+          <li>Pill identification by appearance features</li>
+          <li>RxNorm concept resolution &amp; ingredient lookup</li>
+          <li>Drug–drug interaction checking (RxNorm)</li>
+          <li>FHIR Medication resource generation</li>
+        </ul>
+      </div>
+
+      <div class="feature-card">
+        <div class="icon">🧪</div>
+        <h3>Lab Interpretation</h3>
+        <p style="font-size:0.93rem;color:#555;">
+          Reference ranges and clinical interpretation for LOINC-coded
+          lab results, with age- and gender-specific thresholds.
+        </p>
+        <ul>
+          <li>Single &amp; batch result interpretation</li>
+          <li>Normal / abnormal / critical flagging</li>
+          <li>Gender- and age-specific reference ranges</li>
+          <li>Patient-friendly name lookup</li>
+          <li>Related test discovery</li>
+        </ul>
+      </div>
+
+      <div class="feature-card">
+        <div class="icon">📋</div>
+        <h3>Clinical Guidelines</h3>
+        <p style="font-size:0.93rem;color:#555;">
+          Taiwan clinical practice guidelines linked to ICD codes,
+          with medication recommendations and treatment goals.
+        </p>
+        <ul>
+          <li>Guideline search by ICD code or keyword</li>
+          <li>Medication &amp; test recommendations</li>
+          <li>Treatment goals per condition</li>
+          <li>Contraindication checking</li>
+          <li>Clinical pathway suggestion</li>
+        </ul>
+      </div>
+
+      <div class="feature-card">
+        <div class="icon">🍎</div>
+        <h3>Food &amp; Nutrition</h3>
+        <p style="font-size:0.93rem;color:#555;">
+          Taiwan FDA health food registry and food nutrition composition
+          database, with meal-level analysis.
+        </p>
+        <ul>
+          <li>Health food product search &amp; details</li>
+          <li>Food nutrition lookup (per 100 g)</li>
+          <li>Meal nutrition analysis (multi-food)</li>
+          <li>Nutrient-ranked food search</li>
+          <li>Ingredient &amp; additive lookup</li>
+        </ul>
+      </div>
+
+      <div class="feature-card">
+        <div class="icon">⚕️</div>
+        <h3>FHIR R4</h3>
+        <p style="font-size:0.93rem;color:#555;">
+          Generate, validate, and search FHIR R4 resources aligned
+          with TWCore IG v1.0.0.
+        </p>
+        <ul>
+          <li>Condition &amp; Medication resource generation</li>
+          <li>FHIR resource validation</li>
+          <li>TWCore CodeSystem lookup &amp; search</li>
+          <li>Diagnosis-to-FHIR one-step conversion</li>
+          <li>Drug-to-FHIR one-step conversion</li>
+        </ul>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ── Datasets ── -->
+<section id="datasets">
+  <div class="wrap">
+    <h2>Datasets</h2>
+    <div class="tbl-wrap"><table>
+      <tr>
+        <th>Dataset</th><th>Version / Source</th><th>Sync</th>
+      </tr>
+      <tr>
+        <td>ICD-10-CM &amp; ICD-10-PCS</td>
+        <td>FY 2025 — CMS / NLM (public domain)</td>
+        <td>Static (data-loader)</td>
+      </tr>
+      <tr>
+        <td>LOINC</td>
+        <td>2.80 — Regenstrief Institute</td>
+        <td>Static (data-loader)</td>
+      </tr>
+      <tr>
+        <td>SNOMED CT International</td>
+        <td>Latest RF2 — SNOMED International</td>
+        <td>Static (data-loader)</td>
+      </tr>
+      <tr>
+        <td>RxNorm</td>
+        <td>Full release — NLM (public domain)</td>
+        <td>Static (data-loader)</td>
+      </tr>
+      <tr>
+        <td>Taiwan FDA Drugs</td>
+        <td>Open Data — Taiwan FDA</td>
+        <td>Auto-sync every Tuesday 02:00 UTC</td>
+      </tr>
+      <tr>
+        <td>Taiwan FDA Health Foods</td>
+        <td>Open Data — Taiwan FDA</td>
+        <td>Auto-sync every Monday 02:30 UTC</td>
+      </tr>
+      <tr>
+        <td>Taiwan Food Nutrition</td>
+        <td>Open Data — Taiwan FDA</td>
+        <td>Auto-sync every Monday 03:00 UTC</td>
+      </tr>
+      <tr>
+        <td>TWCore IG</td>
+        <td>v1.0.0 — Taiwan MoHW</td>
+        <td>Static + live fetch fallback</td>
+      </tr>
+      <tr>
+        <td>Taiwan Clinical Guidelines</td>
+        <td>Curated seed data</td>
+        <td>Static (data-loader)</td>
+      </tr>
+    </table></div>
+  </div>
+</section>
+
+<!-- ── Examples ── -->
+<section id="examples">
+  <div class="wrap">
+    <h2>Examples</h2>
+
+    <div class="example">
+      <div class="example-header">Example 1 — Diagnosis lookup &amp; clinical guidance</div>
+      <div class="example-body">
+        <div class="prompt">
+          <strong>User prompt</strong>
+          "我的病人診斷是 E11.9，幫我查詢對應的用藥建議和治療目標"
+        </div>
+        <ol class="steps">
+          <li>Server searches ICD-10 for <code>E11.9</code> (Type 2 diabetes without complications)</li>
+          <li>Fetches Taiwan clinical guideline for E11 — medication recommendations &amp; treatment goals</li>
+          <li>Maps E11.9 to SNOMED CT concept 44054006 for semantic context</li>
+          <li>Returns structured recommendations: first-line medications, HbA1c target, monitoring schedule</li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="example">
+      <div class="example-header">Example 2 — Lab result interpretation</div>
+      <div class="example-body">
+        <div class="prompt">
+          <strong>User prompt</strong>
+          "病人 HbA1c 8.2%、空腹血糖 176 mg/dL、肌酸酐 1.4，幫我解讀這些數值"
+        </div>
+        <ol class="steps">
+          <li>Server identifies LOINC codes: 4548-4 (HbA1c), 1558-6 (fasting glucose), 2160-0 (creatinine)</li>
+          <li>Runs batch lab interpretation with patient age/gender context</li>
+          <li>Returns per-result flags (H / critical), reference ranges, and clinical significance</li>
+          <li>HbA1c flagged as above target; creatinine mildly elevated — suggests CKD monitoring</li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="example">
+      <div class="example-header">Example 3 — Drug identification &amp; interaction check</div>
+      <div class="example-body">
+        <div class="prompt">
+          <strong>User prompt</strong>
+          "幫我查一顆白色橢圓形藥丸，上面印有 MET 500，並確認它和 Warfarin 有沒有交互作用"
+        </div>
+        <ol class="steps">
+          <li>Server runs pill identification: white + oval + marking "MET 500"</li>
+          <li>Returns top matches — likely Metformin 500 mg products with manufacturer details</li>
+          <li>Resolves Metformin and Warfarin to RxNorm concepts</li>
+          <li>Checks drug interaction database — no direct RxNorm interaction flagged for this pair</li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="example">
+      <div class="example-header">Example 4 — FHIR resource generation</div>
+      <div class="example-body">
+        <div class="prompt">
+          <strong>User prompt</strong>
+          "幫我把診斷 E11.9 和藥品 Metformin 500mg 轉成 TWCore FHIR 格式"
+        </div>
+        <ol class="steps">
+          <li>Server calls <code>create_fhir_condition_from_diagnosis</code> for E11.9</li>
+          <li>Generates TWCore-compliant FHIR Condition resource with ICD-10 coding</li>
+          <li>Calls <code>create_fhir_medication_from_drug</code> for Metformin</li>
+          <li>Returns valid FHIR R4 JSON resources ready for EMR integration</li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="example">
+      <div class="example-header">Example 5 — Nutrition analysis</div>
+      <div class="example-body">
+        <div class="prompt">
+          <strong>User prompt</strong>
+          "糖尿病病人的午餐：白米飯、雞胸肉、青花菜，幫我分析營養成分"
+        </div>
+        <ol class="steps">
+          <li>Server queries Taiwan FDA food nutrition database for all three items</li>
+          <li>Aggregates macronutrients: calories, carbohydrates, protein, fat, fiber per 100 g</li>
+          <li>Returns per-food breakdown plus combined totals</li>
+          <li>Highlights carbohydrate content relevant for diabetes meal planning</li>
+        </ol>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ── Setup ── -->
+<section id="setup">
+  <div class="wrap">
+    <h2>Setup</h2>
+    <div class="setup-steps">
+      <div class="setup-step">
+        <div class="num">1</div>
+        <div class="text">
+          <p>Visit the <strong>Anthropic MCP Directory</strong> at
+          <a href="https://claude.com/connectors">claude.com/connectors</a>.</p>
+        </div>
+      </div>
+      <div class="setup-step">
+        <div class="num">2</div>
+        <div class="text">
+          <p>Search for <strong>"Taiwan Health"</strong> and select
+          <em>Taiwan Health MCP Server</em>.</p>
+        </div>
+      </div>
+      <div class="setup-step">
+        <div class="num">3</div>
+        <div class="text">
+          <p>Click <strong>Connect</strong>. No account or OAuth required —
+          the server is publicly accessible.</p>
+        </div>
+      </div>
+      <div class="setup-step">
+        <div class="num">4</div>
+        <div class="text">
+          <p>Alternatively, connect directly in Claude Desktop by adding the
+          MCP endpoint to your config:<br>
+          <code class="inline">https://tw-health-mcp.healthymind-tech.com/mcp</code></p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Authentication ── -->
+<section id="authentication">
+  <div class="wrap">
+    <h2>Authentication</h2>
+    <div class="auth-notice">
+      <strong>&#10003; No authentication required.</strong>
+      <p style="margin-top:8px;font-size:0.95rem;">
+        Taiwan Health MCP Server provides read-only access to publicly available
+        datasets. No account, API key, or OAuth flow is needed. Simply connect
+        and start querying.
+      </p>
+    </div>
+    <p style="margin-top:16px;font-size:0.93rem;color:#555;">
+      All 56 tools are read-only. The server does not accept writes, does not
+      require a user session, and does not store any identifying information
+      about callers.
+    </p>
+  </div>
+</section>
+
+<!-- ── Support ── -->
+<section id="support">
+  <div class="wrap">
+    <h2>Support &amp; Links</h2>
+    <div class="link-grid">
+      <a class="link-card"
+         href="https://github.com/healthymind-tech/Taiwan-Health-MCP">
+        <div class="link-title">GitHub Repository</div>
+        <div class="link-desc">Source code, issues, and contributions</div>
+      </a>
+      <a class="link-card"
+         href="https://github.com/healthymind-tech/Taiwan-Health-MCP/issues">
+        <div class="link-title">Report an Issue</div>
+        <div class="link-desc">Bug reports and feature requests</div>
+      </a>
+      <a class="link-card" href="/status">
+        <div class="link-title">Status &amp; Tool Tester</div>
+        <div class="link-desc">Live tool availability and interactive tester</div>
+      </a>
+      <a class="link-card" href="/privacy">
+        <div class="link-title">Privacy Policy</div>
+        <div class="link-desc">How we handle data and audit logs</div>
+      </a>
+      <a class="link-card" href="/dpa">
+        <div class="link-title">Data Processing Agreement</div>
+        <div class="link-desc">Sub-processors, retention, and security</div>
+      </a>
+      <a class="link-card"
+         href="mailto:support@healthymind-tech.com">
+        <div class="link-title">Email Support</div>
+        <div class="link-desc">support@healthymind-tech.com</div>
+      </a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <p>Taiwan Health MCP Server &nbsp;&middot;&nbsp;
+     Open source under MIT License &nbsp;&middot;&nbsp;
+     <a href="/status">Status</a> &nbsp;&middot;&nbsp;
+     <a href="/privacy">Privacy</a> &nbsp;&middot;&nbsp;
+     <a href="/dpa">DPA</a> &nbsp;&middot;&nbsp;
+     <a href="https://github.com/healthymind-tech/Taiwan-Health-MCP">GitHub</a>
+  </p>
+</footer>
+
+</body>
+</html>
+"""
+
+_LANDING_HTML_BYTES = _LANDING_HTML.encode("utf-8")
+
+# ---------------------------------------------------------------------------
+# Status page — tool registry and tester
+# ---------------------------------------------------------------------------
+
+_TOOL_CATEGORY_MAP: dict[str, str] = {
+    "search_medical_codes":               "ICD-10",
+    "browse_icd_category":                "ICD-10",
+    "infer_complications":                "ICD-10",
+    "get_nearby_codes":                   "ICD-10",
+    "check_medical_conflict":             "ICD-10",
+    "search_drug_info":                   "Drug",
+    "get_drug_details":                   "Drug",
+    "identify_unknown_pill":              "Drug",
+    "search_drug_by_atc":                 "Drug",
+    "search_drug_by_ingredient":          "Drug",
+    "check_drug_interactions":            "RxNorm",
+    "resolve_rxnorm_drug":                "RxNorm",
+    "get_drug_ingredients_rxnorm":        "RxNorm",
+    "search_loinc_code":                  "Lab / LOINC",
+    "list_lab_categories":                "Lab / LOINC",
+    "get_reference_range":                "Lab / LOINC",
+    "interpret_lab_result":               "Lab / LOINC",
+    "search_loinc_by_specimen":           "Lab / LOINC",
+    "find_related_loinc_tests":           "Lab / LOINC",
+    "get_loinc_detail":                   "Lab / LOINC",
+    "batch_interpret_lab_results":        "Lab / LOINC",
+    "search_clinical_guideline":          "Guidelines",
+    "get_complete_guideline":             "Guidelines",
+    "get_medication_recommendations":     "Guidelines",
+    "get_test_recommendations":           "Guidelines",
+    "get_treatment_goals":                "Guidelines",
+    "check_medication_contraindications": "Guidelines",
+    "link_guideline_to_drugs":            "Guidelines",
+    "suggest_clinical_pathway":           "Guidelines",
+    "search_snomed_concept":              "SNOMED CT",
+    "get_snomed_concept":                 "SNOMED CT",
+    "get_snomed_children":                "SNOMED CT",
+    "get_snomed_ancestors":               "SNOMED CT",
+    "get_snomed_relationships":           "SNOMED CT",
+    "map_icd_to_snomed":                  "SNOMED CT",
+    "map_snomed_to_icd":                  "SNOMED CT",
+    "create_fhir_condition":              "FHIR R4",
+    "create_fhir_condition_from_diagnosis": "FHIR R4",
+    "validate_fhir_condition":            "FHIR R4",
+    "create_fhir_medication":             "FHIR R4",
+    "create_fhir_medication_from_drug":   "FHIR R4",
+    "validate_fhir_medication":           "FHIR R4",
+    "search_medication_fhir":             "FHIR R4",
+    "list_twcore_codesystems":            "TWCore IG",
+    "search_twcore_code":                 "TWCore IG",
+    "lookup_twcore_code":                 "TWCore IG",
+    "search_health_food":                 "Health Food",
+    "get_health_food_details":            "Health Food",
+    "analyze_health_support_for_condition": "Health Food",
+    "search_food_nutrition":              "Food Nutrition",
+    "get_detailed_nutrition":             "Food Nutrition",
+    "search_food_ingredient":             "Food Nutrition",
+    "get_ingredients_by_category":        "Food Nutrition",
+    "search_foods_by_nutrient":           "Food Nutrition",
+    "analyze_meal_nutrition":             "Food Nutrition",
+    "health_check":                       "System",
+}
+
+
+# fmt: off
+# Example argument values pre-filled into each tool's form on the status page.
+# Keys are parameter names from the Python function signature.
+# Array/object values are serialised to JSON strings for textarea fields.
+_TOOL_EXAMPLES: dict[str, dict] = {
+    # ── ICD ─────────────────────────────────────────────────────────────────
+    "search_medical_codes":            {"keyword": "糖尿病"},
+    "infer_complications":             {"code": "E11.9"},
+    "get_nearby_codes":                {"code": "E11.9"},
+    "check_medical_conflict":          {"diagnosis_code": "E11.9", "procedure_code": "0BH17EZ"},
+    "browse_icd_category":             {"category": "E11"},
+    "map_icd_to_snomed":               {"icd_code": "E11.9"},
+
+    # ── Drugs ────────────────────────────────────────────────────────────────
+    "search_drug_info":                {"keyword": "Metformin"},
+    "get_drug_details":                {"license_id": "衛部藥製字第059686號"},
+    "identify_unknown_pill":           {"features": "白色 圓形 刻字M500"},
+    "search_drug_by_atc":              {"query": "A10BA02"},
+    "search_drug_by_ingredient":       {"ingredient_name": "metformin"},
+
+    # ── Health food ───────────────────────────────────────────────────────────
+    "search_health_food":              {"keyword": "魚油"},
+    "get_health_food_details":         {"permit_no": "衛署健食字第A00022號"},
+    "get_ingredients_by_category":     {"category": "Omega-3脂肪酸"},
+
+    # ── Food nutrition ────────────────────────────────────────────────────────
+    "search_food_nutrition":           {"food_name": "雞蛋"},
+    "get_detailed_nutrition":          {"food_name": "白米"},
+    "search_food_ingredient":          {"keyword": "維生素C"},
+    "search_foods_by_nutrient":        {"nutrient": "鈣"},
+    "analyze_meal_nutrition":          {"foods": ["白米飯", "雞胸肉", "花椰菜", "豆腐"]},
+    "analyze_health_support_for_condition": {"diagnosis_keyword": "糖尿病"},
+
+    # ── FHIR ─────────────────────────────────────────────────────────────────
+    "create_fhir_condition":           {"icd_code": "E11.9", "patient_id": "patient-001"},
+    "create_fhir_condition_from_diagnosis": {
+        "diagnosis_keyword": "type 2 diabetes", "patient_id": "patient-001",
+    },
+    "validate_fhir_condition": {
+        "condition_json": (
+            '{"resourceType":"Condition",'
+            '"subject":{"reference":"Patient/patient-001"},'
+            '"code":{"coding":[{"system":"http://hl7.org/fhir/sid/icd-10-cm",'
+            '"code":"E11.9","display":"Type 2 diabetes mellitus without complications"}]},'
+            '"clinicalStatus":{"coding":[{"system":"http://terminology.hl7.org/'
+            'CodeSystem/condition-clinical","code":"active"}]}}'
+        ),
+    },
+    "search_medication_fhir":          {"keyword": "Metformin"},
+    "create_fhir_medication":          {"license_id": "衛部藥製字第059686號"},
+    "create_fhir_medication_from_drug": {"license_id": "衛部藥製字第059686號"},
+    "validate_fhir_medication": {
+        "medication_json": (
+            '{"resourceType":"Medication",'
+            '"code":{"coding":[{"system":"https://twcore.mohw.gov.tw/ig/twcore/'
+            'CodeSystem/medication-fda-tw","code":"衛部藥製字第059686號",'
+            '"display":"Metformin 500mg"}]},'
+            '"ingredient":[{"itemCodeableConcept":{"coding":[{"code":"metformin"}]},'
+            '"strength":{"numerator":{"value":500,"unit":"mg"}}}]}'
+        ),
+    },
+
+    # ── LOINC / Lab ──────────────────────────────────────────────────────────
+    "search_loinc_code":               {"keyword": "glucose"},
+    "get_reference_range":             {"loinc_code": "2345-7", "age": 45, "gender": "M"},
+    "interpret_lab_result":            {"loinc_code": "2345-7", "value": 126, "age": 45, "gender": "M"},
+    "search_loinc_by_specimen":        {"specimen_type": "血清/血漿"},
+    "find_related_loinc_tests":        {"component": "Glucose"},
+    "get_loinc_detail":                {"loinc_num": "2345-7"},
+    "batch_interpret_lab_results": {
+        "results_json": (
+            '[{"loinc_code":"2345-7","value":126},'
+            '{"loinc_code":"4548-4","value":7.2},'
+            '{"loinc_code":"718-7","value":13.5}]'
+        ),
+        "age": 45, "gender": "M",
+    },
+    "get_test_recommendations":        {"icd_code": "E11"},
+
+    # ── Clinical Guidelines ───────────────────────────────────────────────────
+    "search_clinical_guideline":       {"keyword": "糖尿病"},
+    "get_complete_guideline":          {"icd_code": "E11"},
+    "get_medication_recommendations":  {"icd_code": "E11"},
+    "get_treatment_goals":             {"icd_code": "E11"},
+    "check_medication_contraindications": {"icd_code": "E11", "medication_class": "SGLT2抑制劑"},
+    "link_guideline_to_drugs":         {"icd_code": "E11"},
+    "suggest_clinical_pathway": {
+        "icd_code": "E11",
+        "patient_context_json": (
+            '{"age":65,"gender":"M","comorbidities":["CKD"],'
+            '"current_medications":["metformin"]}'
+        ),
+    },
+
+    # ── TWCore ───────────────────────────────────────────────────────────────
+    "search_twcore_code":              {"keyword": "QD", "codesystem_ids": ["medication-frequency-nhi-tw"]},
+    "lookup_twcore_code":              {"code": "QD", "codesystem_id": "medication-frequency-nhi-tw"},
+
+    # ── SNOMED CT ────────────────────────────────────────────────────────────
+    "search_snomed_concept":           {"query": "diabetes mellitus"},
+    "get_snomed_concept":              {"concept_id": 73211009},
+    "get_snomed_children":             {"concept_id": 73211009},
+    "get_snomed_ancestors":            {"concept_id": 73211009},
+    "get_snomed_relationships":        {"concept_id": 73211009},
+    "map_snomed_to_icd":               {"concept_id": 73211009},
+
+    # ── RxNorm / Drug Interactions ────────────────────────────────────────────
+    "check_drug_interactions":         {"drug_names": ["warfarin", "aspirin", "metformin"]},
+    "resolve_rxnorm_drug":             {"drug_name": "atorvastatin"},
+    "get_drug_ingredients_rxnorm":     {"rxcui": "41493"},
+}
+# fmt: on
+
+
+def _build_status_html() -> str:
+    """Build the status page HTML, embedding the category map and examples as JS constants."""
+    cat_map_js = json.dumps(_TOOL_CATEGORY_MAP, ensure_ascii=False)
+    examples_js = json.dumps(_TOOL_EXAMPLES, ensure_ascii=False)
+    return (
+        _STATUS_HTML_TEMPLATE
+        .replace('"__CATEGORY_MAP__"', cat_map_js)
+        .replace('"__TOOL_EXAMPLES__"', examples_js)
+    )
+
+
+_STATUS_HTML_TEMPLATE = """\
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <link rel="shortcut icon" type="image/png" href="/favicon.png">
+  <title>Status &amp; Tool Tester – Taiwan Health MCP</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { height: 100%; }
+    body { font-family: system-ui, sans-serif; background: #f8f9fa; color: #1a1a1a;
+           height: 100%; display: flex; flex-direction: column; overflow: hidden; }
+
+    /* ── header ── */
+    header { background: #fff; border-bottom: 1px solid #e5e7eb; padding: 8px 16px;
+             display: flex; align-items: center; justify-content: space-between;
+             flex-shrink: 0; gap: 10px; flex-wrap: wrap; }
+    .hdr-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .hdr-left img { height: 28px; display: block; flex-shrink: 0; }
+    header h1 { font-size: 0.95rem; font-weight: 700;
+                white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .hdr-right { display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+                 flex-shrink: 0; }
+    .stats { font-size: 0.82rem; color: #555; white-space: nowrap; }
+    .stats b { color: #166534; }
+    .hdr-link { font-size: 0.8rem; color: #0066cc; text-decoration: none;
+                white-space: nowrap; }
+    .hdr-link:hover { text-decoration: underline; }
+
+    /* ── layout ── */
+    .main { display: flex; flex: 1; overflow: hidden; min-height: 0; }
+
+    /* ── left panel ── */
+    .left { width: 260px; min-width: 180px; background: #fff;
+            border-right: 1px solid #e5e7eb; display: flex;
+            flex-direction: column; flex-shrink: 0; overflow: hidden; }
+    .search-wrap { padding: 10px 10px 6px; }
+    .search-wrap input { width: 100%; padding: 7px 10px; border: 1px solid #ddd;
+                         border-radius: 6px; font-size: 0.88rem; }
+    .search-wrap input:focus { outline: none; border-color: #0066cc; }
+    .cat-row { display: flex; gap: 5px; padding: 6px 10px 8px; flex-wrap: wrap;
+               border-bottom: 1px solid #f0f0f0; overflow-x: auto; }
+    .cat-btn { padding: 2px 9px; border-radius: 10px; font-size: 0.75rem; cursor: pointer;
+               border: 1px solid #ddd; background: #f9f9f9; color: #555;
+               white-space: nowrap; flex-shrink: 0; }
+    .cat-btn:hover { border-color: #0066cc; color: #0066cc; }
+    .cat-btn.on { background: #0066cc; color: #fff; border-color: #0066cc; }
+    .tool-list { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 4px 0; }
+    .t-item { display: flex; align-items: center; gap: 7px; padding: 7px 12px;
+              cursor: pointer; border-left: 3px solid transparent; }
+    .t-item:hover { background: #f4f7fb; }
+    .t-item.sel { background: #e8f0fe; border-left-color: #0066cc; }
+    .t-item.off { opacity: 0.45; }
+    .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+    .g { background: #22c55e; }
+    .gr { background: #9ca3af; }
+    .tname { font-size: 0.8rem; font-family: monospace; color: #333;
+             white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    /* ── right panel ── */
+    .right { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch;
+             padding: 20px 22px; min-width: 0; }
+    .empty { height: 100%; display: flex; align-items: center; justify-content: center;
+             color: #bbb; font-size: 1rem; text-align: center; padding: 20px; }
+
+    /* ── tool detail ── */
+    .th { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+    .th h2 { font-size: 1.05rem; font-family: monospace; font-weight: 700;
+             word-break: break-all; }
+    .badge { border-radius: 10px; padding: 2px 10px; font-size: 0.75rem; font-weight: 500; }
+    .bc { background: #e8f0fe; color: #1a56cc; }
+    .ba-on { background: #dcfce7; color: #166534; }
+    .ba-off { background: #f3f4f6; color: #6b7280; }
+    .tdesc { font-size: 0.88rem; color: #555; line-height: 1.65; margin-bottom: 18px; }
+    hr.div { border: none; border-top: 1px solid #f0f0f0; margin: 0 0 16px; }
+
+    /* ── form ── */
+    .sec-title { font-size: 0.88rem; font-weight: 700; color: #333; margin-bottom: 12px;
+                 text-transform: uppercase; letter-spacing: .04em; }
+    .fg { margin-bottom: 13px; }
+    .fg label { display: block; font-size: 0.83rem; font-weight: 600; margin-bottom: 3px; }
+    .fg label.req::after { content: " *"; color: #dc2626; }
+    .fdesc { font-size: 0.77rem; color: #888; margin-bottom: 4px; }
+    .fg input[type=text], .fg input[type=number], .fg select, .fg textarea {
+      width: 100%; max-width: 480px; padding: 7px 10px; border: 1px solid #ddd;
+      border-radius: 6px; font-size: 0.88rem; font-family: inherit; }
+    .fg input:focus, .fg select:focus, .fg textarea:focus {
+      outline: none; border-color: #0066cc; }
+    .fg textarea { resize: vertical; font-family: monospace; font-size: 0.82rem; }
+    .cb-row { display: flex; align-items: center; gap: 7px; font-size: 0.88rem; }
+    .run-btn { margin-top: 6px; padding: 8px 20px; background: #0066cc; color: #fff;
+               border: none; border-radius: 6px; font-size: 0.88rem; font-weight: 600;
+               cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+    .run-btn:hover { background: #0055aa; }
+    .run-btn:disabled { background: #93c5fd; cursor: not-allowed; }
+    .no-params { color: #999; font-size: 0.85rem; font-style: italic; margin-bottom: 10px; }
+
+    /* ── result ── */
+    .res-sec { margin-top: 20px; }
+    .res-sec.hidden { display: none; }
+    .res-hdr { display: flex; align-items: center; justify-content: space-between;
+               margin-bottom: 6px; flex-wrap: wrap; gap: 6px; }
+    .res-meta { font-size: 0.78rem; color: #888; }
+    .copy-btn { padding: 3px 10px; font-size: 0.78rem; border: 1px solid #ddd;
+                border-radius: 4px; background: #f9f9f9; cursor: pointer; }
+    .copy-btn:hover { border-color: #0066cc; }
+
+    /* ── JSON tree ── */
+    .json-tree { background:#1e1e1e; color:#d4d4d4; padding:12px 14px; border-radius:8px;
+                 font-size:0.78rem; overflow:auto; max-height:480px; line-height:1.55;
+                 font-family:'Consolas','JetBrains Mono','Courier New',monospace; }
+    .json-tree.plain { white-space:pre-wrap; word-break:break-all; }
+    .jhead { cursor:pointer; border-radius:3px; }
+    .jhead:hover { background:#2a2a2a; }
+    .jt { color:#888; font-size:0.65rem; margin-right:2px; display:inline-block;
+          width:10px; text-align:center; }
+    .jcoll > .jch { display:block; padding-left:18px;
+                    border-left:1px solid #2d2d2d; margin-left:5px; }
+    .jcoll > .jfoot { display:block; }
+    .jcoll > .jhead > .jsum { display:none; }
+    .jcollapsed > .jch { display:none !important; }
+    .jcollapsed > .jfoot { display:none !important; }
+    .jcollapsed > .jhead > .jsum { display:inline !important; }
+    .jleaf { white-space:nowrap; }
+    .jsum { color:#666; font-style:italic; font-size:0.72rem; }
+    .jkey { color:#9cdcfe; }
+    .jstr { color:#ce9178; }
+    .jnum { color:#b5cea8; }
+    .jbool { color:#569cd6; }
+    .jnull { color:#808080; font-style:italic; }
+    .jbrace { color:#d4d4d4; }
+    .jsep { color:#666; }
+
+    /* ── unavailable ── */
+    .unavail { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px;
+               padding: 18px; color: #6b7280; font-size: 0.88rem; }
+
+    /* ── spinner ── */
+    .spin { display: inline-block; width: 13px; height: 13px; border: 2px solid #fff;
+            border-top-color: transparent; border-radius: 50%;
+            animation: sp .65s linear infinite; }
+    @keyframes sp { to { transform: rotate(360deg); } }
+
+    /* ── mobile: stack panels vertically ── */
+    @media (max-width: 680px) {
+      html, body { height: auto; overflow: auto; }
+      .main { flex-direction: column; overflow: visible; }
+      .left { width: 100%; height: auto; border-right: none;
+              border-bottom: 1px solid #e5e7eb; }
+      .tool-list { max-height: 200px; }
+      .right { overflow-y: visible; padding: 16px; }
+      .fg input[type=text], .fg input[type=number], .fg select, .fg textarea {
+        max-width: 100%; }
+      header h1 { font-size: 0.82rem; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="hdr-left">
+    <img src="/logo-s.png" alt="HealthyMind Tech">
+    <h1>Taiwan Health MCP — Status &amp; Tool Tester</h1>
+  </div>
+  <div class="hdr-right">
+    <div class="stats" id="stats">Loading…</div>
+    <a class="hdr-link" href="/">← Home</a>
+    <a class="hdr-link" href="/privacy">Privacy</a>
+  </div>
+</header>
+
+<div class="main">
+  <!-- left -->
+  <div class="left">
+    <div class="search-wrap">
+      <input type="text" id="srch" placeholder="Search tools…" oninput="filter()">
+    </div>
+    <div class="cat-row" id="cats"></div>
+    <div class="tool-list" id="tlist">
+      <div style="padding:18px;color:#bbb;font-size:.83rem;">Loading…</div>
+    </div>
+  </div>
+
+  <!-- right -->
+  <div class="right" id="right">
+    <div class="empty">← Select a tool from the list to test it</div>
+  </div>
+</div>
+
+<script>
+// ── category map (injected from server) ───────────────────────
+const CATEGORY_MAP = "__CATEGORY_MAP__";
+
+// ── per-tool example arguments (injected from server) ─────────
+const TOOL_EXAMPLES = "__TOOL_EXAMPLES__";
+
+// ── MCP client ────────────────────────────────────────────────
+let _sid = null, _mid = 0;
+
+async function _mcpPost(body) {
+  const hdrs = {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json, text/event-stream',
+  };
+  if (_sid) hdrs['mcp-session-id'] = _sid;
+  const r = await fetch('/mcp', {method: 'POST', headers: hdrs, body: JSON.stringify(body)});
+  const sid = r.headers.get('mcp-session-id');
+  if (sid) _sid = sid;
+  return r;
+}
+
+async function _readResult(r, id) {
+  const ct = r.headers.get('content-type') || '';
+  if (ct.includes('text/event-stream')) {
+    const reader = r.body.getReader(), dec = new TextDecoder();
+    let buf = '';
+    try {
+      while (true) {
+        const {done, value} = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, {stream: true});
+        const lines = buf.split('\\n');
+        buf = lines.pop() ?? '';
+        for (const line of lines) {
+          if (!line.startsWith('data:')) continue;
+          const raw = line.slice(5).trim();
+          if (!raw || raw === '[DONE]') continue;
+          let msg; try { msg = JSON.parse(raw); } catch { continue; }
+          if (msg.id === id) {
+            if (msg.error) throw new Error(msg.error.message || JSON.stringify(msg.error));
+            return msg.result;
+          }
+        }
+      }
+    } finally { reader.cancel(); }
+    throw new Error('SSE stream ended without result');
+  }
+  const data = await r.json();
+  if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
+  return data.result;
+}
+
+async function mcpRequest(method, params) {
+  const id = ++_mid;
+  const r = await _mcpPost({jsonrpc: '2.0', id, method, ...(params ? {params} : {})});
+  return _readResult(r, id);
+}
+
+async function mcpNotify(method, params) {
+  await _mcpPost({jsonrpc: '2.0', method, ...(params ? {params} : {})});
+}
+
+// ── app state ─────────────────────────────────────────────────
+let tools = [], selName = null, activeCat = 'all';
+
+async function init() {
+  let step = 'initialize';
+  try {
+    await mcpRequest('initialize', {
+      protocolVersion: '2024-11-05',
+      capabilities: {},
+      clientInfo: {name: 'tw-health-status-tester', version: '1.0'},
+    });
+    step = 'notifications/initialized';
+    await mcpNotify('notifications/initialized');
+
+    step = 'tools/list';
+    const {tools: mcpTools} = await mcpRequest('tools/list');
+    const byName = Object.fromEntries(mcpTools.map(t => [t.name, t]));
+    const avail  = new Set(mcpTools.map(t => t.name));
+
+    tools = Object.keys(CATEGORY_MAP).map(name => ({
+      name,
+      category:    CATEGORY_MAP[name],
+      description: byName[name]?.description || '',
+      available:   avail.has(name),
+      inputSchema: byName[name]?.inputSchema || {},
+    }));
+
+    const n = tools.filter(t => t.available).length;
+    document.getElementById('stats').innerHTML =
+      `<b>${n}</b> / ${tools.length} tools available`;
+    buildCats();
+    filter();
+  } catch(e) {
+    document.getElementById('tlist').innerHTML =
+      `<div style="padding:18px;color:#dc2626;font-size:.83rem;">Failed at <b>${esc(step)}</b>: ${esc(e.message)}</div>`;
+  }
+}
+
+function buildCats() {
+  const cats = ['all', ...new Set(tools.map(t => t.category))];
+  document.getElementById('cats').innerHTML = cats.map(c => {
+    const cnt = c === 'all' ? tools.length : tools.filter(t => t.category===c).length;
+    const lbl = c === 'all' ? `All&nbsp;(${cnt})` : `${c}&nbsp;(${cnt})`;
+    return `<div class="cat-btn${c===activeCat?' on':''}" onclick="setCat('${c}')">${lbl}</div>`;
+  }).join('');
+}
+
+function setCat(c) {
+  activeCat = c;
+  document.querySelectorAll('.cat-btn').forEach(el => {
+    const isAll = c==='all' && el.textContent.startsWith('All');
+    const isMatch = c!=='all' && el.textContent.startsWith(c);
+    el.classList.toggle('on', isAll || isMatch);
+  });
+  filter();
+}
+
+function filter() {
+  const q = document.getElementById('srch').value.toLowerCase();
+  const vis = tools.filter(t => {
+    if (activeCat !== 'all' && t.category !== activeCat) return false;
+    if (q && !t.name.includes(q) && !t.description.toLowerCase().includes(q)) return false;
+    return true;
+  });
+  if (!vis.length) {
+    document.getElementById('tlist').innerHTML =
+      '<div style="padding:18px;color:#bbb;font-size:.83rem;">No matches</div>';
+    return;
+  }
+  document.getElementById('tlist').innerHTML = vis.map(t =>
+    `<div class="t-item${t.available?'':' off'}${selName===t.name?' sel':''}"
+          onclick="pick('${t.name}')">
+       <span class="dot ${t.available?'g':'gr'}"></span>
+       <span class="tname">${t.name}</span>
+     </div>`
+  ).join('');
+}
+
+function pick(name) {
+  selName = name;
+  filter();
+  const t = tools.find(x => x.name === name);
+  if (t) renderDetail(t);
+}
+
+function renderDetail(t) {
+  const props = t.inputSchema?.properties || {};
+  const req   = t.inputSchema?.required  || [];
+  const fields = Object.entries(props).map(([k,s]) => mkField(k,s,req.includes(k))).join('');
+
+  document.getElementById('right').innerHTML = `
+    <div class="th">
+      <h2>${t.name}</h2>
+      <span class="badge bc">${t.category}</span>
+      <span class="badge ${t.available?'ba-on':'ba-off'}">
+        ${t.available ? '● Available' : '○ Unavailable'}
+      </span>
+    </div>
+    <p class="tdesc">${esc(t.description || 'No description.')}</p>
+    <hr class="div">
+    ${t.available ? `
+      <div class="sec-title">Parameters</div>
+      <form id="frm" onsubmit="run(event)">
+        ${fields || '<p class="no-params">No parameters — just click Run.</p>'}
+        <button type="submit" class="run-btn" id="rbtn">&#9654; Run Tool</button>
+      </form>
+      <div class="res-sec hidden" id="rsec">
+        <div class="res-hdr">
+          <span class="sec-title" style="margin:0;">Result</span>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <span class="res-meta" id="rmeta"></span>
+            <button class="copy-btn" onclick="collapseAll()">Collapse</button>
+            <button class="copy-btn" onclick="expandAll()">Expand</button>
+            <button class="copy-btn" onclick="copyRes()">Copy</button>
+          </div>
+        </div>
+        <div id="rout" class="json-tree"></div>
+      </div>
+    ` : `
+      <div class="unavail">
+        This tool is currently unavailable — its dataset has not been loaded yet.<br>
+        Run <code>docker compose run --rm data-loader --all</code> to populate the data.
+      </div>
+    `}`;
+  applyExamples(t.name);
+}
+
+function applyExamples(toolName) {
+  const ex = TOOL_EXAMPLES[toolName];
+  if (!ex) return;
+  for (const [k, v] of Object.entries(ex)) {
+    const el = document.getElementById('p_' + k);
+    if (!el) continue;
+    if (el.type === 'checkbox') {
+      el.checked = Boolean(v);
+    } else if (typeof v === 'object' && v !== null) {
+      el.value = JSON.stringify(v, null, 2);
+    } else {
+      el.value = String(v);
+    }
+  }
+}
+
+function mkField(k, s, isReq) {
+  const id = 'p_'+k, type = s.type||'string', desc = s.description||'';
+  const def = s.default !== undefined ? s.default : '';
+
+  let inp;
+  if (type==='boolean') {
+    inp = `<div class="cb-row"><input type="checkbox" id="${id}" ${def?'checked':''}><label for="${id}" style="font-weight:normal">${k}</label></div>`;
+  } else if (s.enum) {
+    inp = `<select id="${id}" ${isReq?'required':''}>${s.enum.map(v=>`<option value="${v}"${v===def?'selected':''}>${v}</option>`).join('')}</select>`;
+  } else if (type==='integer'||type==='number') {
+    const mn = s.minimum!==undefined?`min="${s.minimum}"`:'';
+    const mx = s.maximum!==undefined?`max="${s.maximum}"`:'';
+    inp = `<input type="number" id="${id}" value="${def}" ${mn} ${mx} placeholder="${ph(k)}" ${isReq?'required':''}>`;
+  } else if (type==='array') {
+    inp = `<textarea id="${id}" rows="3" placeholder="${arrPh(k)}" ${isReq?'required':''}></textarea>`;
+  } else if (type==='object') {
+    inp = `<textarea id="${id}" rows="3" placeholder='{"key":"value"}' ${isReq?'required':''}></textarea>`;
+  } else if (type==='string' && k.endsWith('_json')) {
+    inp = `<textarea id="${id}" rows="4" style="font-family:monospace;font-size:0.79rem;" placeholder="${k}" ${isReq?'required':''}></textarea>`;
+  } else {
+    inp = `<input type="text" id="${id}" value="${def}" placeholder="${ph(k)}" ${isReq?'required':''}>`;
+  }
+
+  return `<div class="fg">
+    <label class="${isReq?'req':''}" for="${id}">${k}</label>
+    ${desc?`<div class="fdesc">${esc(desc)}</div>`:''}
+    ${inp}
+  </div>`;
+}
+
+const PH = {
+  keyword:'e.g. 糖尿病, diabetes', query:'e.g. A10BA02, 降血糖',
+  icd_code:'e.g. E11.9', code:'e.g. E11.9', diagnosis_code:'e.g. E11.9',
+  loinc_code:'e.g. 2345-7', loinc_num:'e.g. 4548-4',
+  concept_id:'e.g. 73211009', permit_no:'e.g. 衛署健食字第A00022號',
+  license_id:'e.g. 內衛成製字第000029號', food_name:'e.g. 雞蛋',
+  ingredient_name:'e.g. metformin', nutrient:'e.g. 鈣, 粗蛋白',
+  component:'e.g. Glucose', specimen_type:'e.g. 血清/血漿',
+  features:'e.g. 白色 圓形', category:'e.g. E11, CHEM',
+  diagnosis_keyword:'e.g. 糖尿病, E11', medication_class:'e.g. Metformin',
+  drug_name:'e.g. Metformin', procedure_code:'e.g. 0BH17EZ',
+  cs_id:'e.g. TW-CodeSystem-medication-fda-tw',
+};
+const ARR_PH = {
+  foods:'["白米", "雞胸肉"]',
+  drug_names:'["Metformin", "Warfarin"]',
+  results_json:'[{"loinc_code":"2345-7","value":5.5}]',
+};
+const ph  = k => PH[k] || '';
+const arrPh = k => ARR_PH[k] || '["item1","item2"]';
+
+async function run(e) {
+  e.preventDefault();
+  const t = tools.find(x => x.name===selName); if (!t) return;
+  const props = t.inputSchema?.properties || {};
+  const args = {};
+
+  for (const [k, s] of Object.entries(props)) {
+    const el = document.getElementById('p_'+k); if (!el) continue;
+    const type = s.type||'string';
+    if (type==='boolean') { args[k] = el.checked; continue; }
+    if (!el.value) continue;
+    if (type==='integer')            args[k] = parseInt(el.value, 10);
+    else if (type==='number')        args[k] = parseFloat(el.value);
+    else if (type==='array'||type==='object') {
+      try { args[k] = JSON.parse(el.value); } catch { args[k] = el.value; }
+    } else args[k] = el.value;
+  }
+
+  const btn = document.getElementById('rbtn');
+  btn.innerHTML = '<span class="spin"></span>Running…';
+  btn.disabled = true;
+  const t0 = Date.now();
+
+  try {
+    const result = await mcpRequest('tools/call', {name: selName, arguments: args});
+    const ms = Date.now()-t0;
+
+    // MCP returns content blocks; extract text
+    const raw = result?.content?.map(c => c.text ?? '').join('') ?? JSON.stringify(result);
+
+    document.getElementById('rsec').classList.remove('hidden');
+    document.getElementById('rmeta').textContent =
+      ms+'ms' + (result?.isError ? ' ⚠ tool error' : '');
+    renderResult(raw);
+  } catch(err) {
+    document.getElementById('rsec').classList.remove('hidden');
+    document.getElementById('rmeta').textContent = '';
+    const rout = document.getElementById('rout');
+    rout.className = 'json-tree plain';
+    rout.textContent = 'Error: '+err.message;
+    _copyText = 'Error: '+err.message;
+  } finally {
+    btn.innerHTML = '&#9654; Run Tool';
+    btn.disabled = false;
+  }
+}
+
+// ── JSON tree renderer ────────────────────────────────────────
+let _copyText = '';
+
+function jEsc(s) {
+  return JSON.stringify(s).slice(1,-1)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function jLeaf(v) {
+  if (v === null) return '<span class="jnull">null</span>';
+  if (typeof v === 'boolean') return `<span class="jbool">${v}</span>`;
+  if (typeof v === 'number') return `<span class="jnum">${v}</span>`;
+  return `<span class="jstr">"${jEsc(String(v))}"</span>`;
+}
+
+function jNode(v, depth, key, comma) {
+  const keyHtml = key !== undefined
+    ? `<span class="jkey">"${jEsc(key)}"</span><span class="jsep">: </span>` : '';
+  const commaHtml = comma ? `<span class="jsep">,</span>` : '';
+
+  if (v === null || typeof v !== 'object') {
+    return `<div class="jleaf">${keyHtml}${jLeaf(v)}${commaHtml}</div>`;
+  }
+
+  const isArr = Array.isArray(v);
+  const entries = isArr ? v.map((x,i) => [i, x]) : Object.entries(v);
+  const open = isArr ? '[' : '{', close = isArr ? ']' : '}';
+
+  if (entries.length === 0) {
+    return `<div class="jleaf">${keyHtml}<span class="jbrace">${open}${close}</span>${commaHtml}</div>`;
+  }
+
+  const collapsed = depth >= 2;
+  const cnt = entries.length;
+  const label = isArr ? `${cnt} item${cnt!==1?'s':''}` : `${cnt} key${cnt!==1?'s':''}`;
+  const ch = entries.map(([k, vv], i) =>
+    jNode(vv, depth+1, isArr ? undefined : String(k), i < cnt-1)
+  ).join('');
+
+  return (
+    `<div class="jcoll${collapsed?' jcollapsed':''}">` +
+      `<div class="jhead" onclick="jTog(this)">` +
+        `<span class="jt">${collapsed?'&#9656;':'&#9662;'}</span>` +
+        keyHtml +
+        `<span class="jbrace">${open}</span>` +
+        `<span class="jsum"> ${label} ${close}${comma?',':''}</span>` +
+      `</div>` +
+      `<div class="jch">${ch}</div>` +
+      `<div class="jfoot"><span class="jbrace">${close}</span>${commaHtml}</div>` +
+    `</div>`
+  );
+}
+
+function jTog(head) {
+  const coll = head.closest('.jcoll');
+  const wasCollapsed = coll.classList.contains('jcollapsed');
+  coll.classList.toggle('jcollapsed');
+  head.querySelector('.jt').innerHTML = wasCollapsed ? '&#9662;' : '&#9656;';
+}
+
+function collapseAll() {
+  document.querySelectorAll('#rout .jcoll').forEach(c => {
+    if (!c.classList.contains('jcollapsed')) {
+      c.classList.add('jcollapsed');
+      const t = c.querySelector(':scope > .jhead > .jt');
+      if (t) t.innerHTML = '&#9656;';
+    }
+  });
+}
+
+function expandAll() {
+  document.querySelectorAll('#rout .jcoll').forEach(c => {
+    if (c.classList.contains('jcollapsed')) {
+      c.classList.remove('jcollapsed');
+      const t = c.querySelector(':scope > .jhead > .jt');
+      if (t) t.innerHTML = '&#9662;';
+    }
+  });
+}
+
+function renderResult(raw) {
+  const rout = document.getElementById('rout');
+  let parsed;
+  try { parsed = JSON.parse(raw); } catch {
+    _copyText = raw;
+    rout.className = 'json-tree plain';
+    rout.textContent = raw;
+    return;
+  }
+  _copyText = JSON.stringify(parsed, null, 2);
+  rout.className = 'json-tree';
+  rout.innerHTML = jNode(parsed, 0);
+}
+
+function copyRes() {
+  navigator.clipboard.writeText(_copyText).then(()=>{
+    const b = document.querySelector('.copy-btn');
+    b.textContent='Copied!'; setTimeout(()=>b.textContent='Copy', 2000);
+  });
+}
+
+function esc(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+init();
+</script>
+</body>
+</html>
+"""
+
+_STATUS_HTML = _build_status_html()
+_STATUS_HTML_BYTES = _STATUS_HTML.encode("utf-8")
+
 
 class PrivacyPageMiddleware:
-    """Serve a static privacy policy page at GET /privacy."""
+    """Serve static pages (/, /privacy, /dpa, /status) and static assets (logos, favicon)."""
 
     def __init__(self, app):
         self.app = app
 
+    async def _send_file(self, send, body: bytes, content_type: bytes):
+        await send({
+            "type": "http.response.start",
+            "status": 200,
+            "headers": [
+                (b"content-type", content_type),
+                (b"content-length", str(len(body)).encode()),
+                (b"cache-control", b"public, max-age=604800"),
+            ],
+        })
+        await send({"type": "http.response.body", "body": body, "more_body": False})
+
+    async def _send_404(self, send):
+        await send({
+            "type": "http.response.start",
+            "status": 404,
+            "headers": [(b"content-length", b"9")],
+        })
+        await send({"type": "http.response.body", "body": b"Not Found", "more_body": False})
+
+    async def _send_html(self, send, body: bytes):
+        await send({
+            "type": "http.response.start",
+            "status": 200,
+            "headers": [
+                (b"content-type", b"text/html; charset=utf-8"),
+                (b"content-length", str(len(body)).encode()),
+                (b"cache-control", b"public, max-age=300"),
+            ],
+        })
+        await send({"type": "http.response.body", "body": body, "more_body": False})
+
     async def __call__(self, scope, receive, send):
-        if scope["type"] == "http" and scope.get("method") == "GET":
-            path = scope.get("path", "")
-            if path == "/privacy" or path == "/privacy/":
-                await send(
-                    {
-                        "type": "http.response.start",
-                        "status": 200,
-                        "headers": [
-                            (b"content-type", b"text/html; charset=utf-8"),
-                            (
-                                b"content-length",
-                                str(len(_PRIVACY_HTML_BYTES)).encode(),
-                            ),
-                            (b"cache-control", b"public, max-age=86400"),
-                        ],
-                    }
-                )
-                await send(
-                    {
-                        "type": "http.response.body",
-                        "body": _PRIVACY_HTML_BYTES,
-                        "more_body": False,
-                    }
-                )
-                return
+        if scope["type"] == "http":
+            method = scope.get("method", "")
+            path   = scope.get("path", "").rstrip("/")
+
+            # ── static HTML pages ──────────────────────────────────────────
+            if method == "GET":
+                if path in ("", "/"):
+                    await self._send_html(send, _LANDING_HTML_BYTES)
+                    return
+                if path == "/privacy":
+                    await self._send_html(send, _PRIVACY_HTML_BYTES)
+                    return
+                if path == "/dpa":
+                    await self._send_html(send, _DPA_HTML_BYTES)
+                    return
+                if path == "/status":
+                    await self._send_html(send, _STATUS_HTML_BYTES)
+                    return
+
+                # ── static assets (logos + favicon) ───────────────────────
+                if path in ("/favicon.ico", "/favicon.png", "/logo-s.png"):
+                    if _LOGO_S_BYTES:
+                        await self._send_file(send, _LOGO_S_BYTES, b"image/png")
+                    else:
+                        await self._send_404(send)
+                    return
+                if path == "/logo-h.png":
+                    if _LOGO_H_BYTES:
+                        await self._send_file(send, _LOGO_H_BYTES, b"image/png")
+                    else:
+                        await self._send_404(send)
+                    return
+
+            # ── SSE responses: disable nginx proxy buffering ───────────────
+            # nginx buffers SSE by default, which breaks streaming. Injecting
+            # X-Accel-Buffering: no instructs nginx to pass chunks through
+            # immediately without buffering.
+            async def sse_send(message):
+                if message["type"] == "http.response.start":
+                    headers = list(message.get("headers", []))
+                    is_sse = any(
+                        n.lower() == b"content-type" and b"text/event-stream" in v
+                        for n, v in headers
+                    )
+                    if is_sse:
+                        headers.append((b"x-accel-buffering", b"no"))
+                        message = {**message, "headers": headers}
+                await send(message)
+
+            await self.app(scope, receive, sse_send)
+            return
+
         await self.app(scope, receive, send)
 
 
@@ -650,7 +2313,7 @@ async def get_drug_details(license_id: str) -> str:
 
     Args:
         license_id: Taiwan FDA drug license ID from search_drug_info results
-                    (e.g., '衛部藥製字第058498號'). Partial or numeric-only IDs
+                    (e.g., '衛部藥製字第059686號'). Partial or numeric-only IDs
                     are also accepted (e.g., '058498').
     """
     if drug_service is None:
@@ -1111,7 +2774,7 @@ async def create_fhir_medication(license_id: str) -> str:
 
     Args:
         license_id: Taiwan FDA drug license ID from search_drug_info results
-                    (e.g., '衛部藥製字第058498號').
+                    (e.g., '衛部藥製字第059686號').
     """
     if fhir_medication_service is None:
         return _svc_unavailable("FHIR Medication Service")
@@ -1130,7 +2793,7 @@ async def create_fhir_medication_from_drug(license_id: str) -> str:
 
     Args:
         license_id: Taiwan FDA drug license ID from search_drug_info results
-                    (e.g., '衛部藥製字第058498號').
+                    (e.g., '衛部藥製字第059686號').
     """
     if fhir_medication_service is None:
         return _svc_unavailable("FHIR Medication Service")

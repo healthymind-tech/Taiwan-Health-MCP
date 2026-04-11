@@ -6,9 +6,10 @@ health food, and drug datasets. Falls back to None on any error so callers
 can degrade gracefully to keyword-only search.
 
 Config env vars:
-  OLLAMA_BASE_URL        e.g. http://192.168.1.100:11434  (leave unset to disable)
-  OLLAMA_EMBED_MODEL     default: qwen3-embedding:0.6b
-  OLLAMA_EMBED_TIMEOUT   seconds, default: 30
+  OLLAMA_BASE_URL          e.g. http://192.168.1.100:11434  (leave unset to disable)
+  OLLAMA_EMBED_MODEL       default: qwen3-embedding:0.6b
+  OLLAMA_EMBED_DIMENSIONS  output vector size, default: 1024
+  OLLAMA_EMBED_TIMEOUT     seconds, default: 30
   OLLAMA_EMBED_BATCH_SIZE  default: 32
 """
 
@@ -25,6 +26,7 @@ _BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "").rstrip("/")
 _MODEL: str = os.getenv("OLLAMA_EMBED_MODEL", "qwen3-embedding:0.6b")
 _TIMEOUT: float = float(os.getenv("OLLAMA_EMBED_TIMEOUT", "30"))
 BATCH_SIZE: int = int(os.getenv("OLLAMA_EMBED_BATCH_SIZE", "32"))
+DIMENSIONS: int = int(os.getenv("OLLAMA_EMBED_DIMENSIONS", "1024"))
 
 
 class EmbeddingService:

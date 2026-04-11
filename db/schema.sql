@@ -54,11 +54,11 @@ CREATE INDEX IF NOT EXISTS idx_icd_proc_fts ON icd.procedures
 -- Embedding table for hybrid search (diagnoses only; PCS is rarely searched semantically)
 CREATE TABLE IF NOT EXISTS icd.diagnosis_embeddings (
     code        TEXT PRIMARY KEY,
-    embedding   vector(1024),
+    embedding   halfvec(1024),
     embedded_at TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_icd_diag_emb_hnsw ON icd.diagnosis_embeddings
-    USING hnsw (embedding vector_cosine_ops);
+    USING hnsw (embedding halfvec_cosine_ops);
 
 
 -- ============================================================
@@ -122,19 +122,19 @@ CREATE INDEX IF NOT EXISTS idx_drug_atc_fts  ON drug.atc
 -- Embedding tables for hybrid search
 CREATE TABLE IF NOT EXISTS drug.atc_embeddings (
     atc_code    TEXT PRIMARY KEY,
-    embedding   vector(1024),
+    embedding   halfvec(1024),
     embedded_at TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_drug_atc_emb_hnsw ON drug.atc_embeddings
-    USING hnsw (embedding vector_cosine_ops);
+    USING hnsw (embedding halfvec_cosine_ops);
 
 CREATE TABLE IF NOT EXISTS drug.ingredient_name_embeddings (
     ingredient_name TEXT PRIMARY KEY,
-    embedding       vector(1024),
+    embedding       halfvec(1024),
     embedded_at     TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_drug_ing_emb_hnsw ON drug.ingredient_name_embeddings
-    USING hnsw (embedding vector_cosine_ops);
+    USING hnsw (embedding halfvec_cosine_ops);
 CREATE INDEX IF NOT EXISTS idx_drug_lic_fts  ON drug.licenses
     USING GIN (to_tsvector('simple',
         COALESCE(name_zh,'') || ' ' || COALESCE(name_en,'') || ' ' || COALESCE(indication,'')));
@@ -142,11 +142,11 @@ CREATE INDEX IF NOT EXISTS idx_drug_lic_fts  ON drug.licenses
 -- Embedding table for hybrid search
 CREATE TABLE IF NOT EXISTS drug.license_embeddings (
     license_id  TEXT PRIMARY KEY,
-    embedding   vector(1024),
+    embedding   halfvec(1024),
     embedded_at TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_drug_emb_hnsw ON drug.license_embeddings
-    USING hnsw (embedding vector_cosine_ops);
+    USING hnsw (embedding halfvec_cosine_ops);
 
 
 -- ============================================================
@@ -177,11 +177,11 @@ CREATE INDEX IF NOT EXISTS idx_hf_fts ON health_food.items
 -- Embedding table for hybrid search
 CREATE TABLE IF NOT EXISTS health_food.item_embeddings (
     permit_no   TEXT PRIMARY KEY,
-    embedding   vector(1024),
+    embedding   halfvec(1024),
     embedded_at TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_hf_emb_hnsw ON health_food.item_embeddings
-    USING hnsw (embedding vector_cosine_ops);
+    USING hnsw (embedding halfvec_cosine_ops);
 
 
 -- ============================================================
@@ -225,23 +225,26 @@ CREATE INDEX IF NOT EXISTS idx_fn_ing_fts ON food_nutrition.ingredients
     USING GIN (to_tsvector('simple', COALESCE(name_zh,'') || ' ' || COALESCE(name_en,'')));
 
 -- Embedding table for hybrid search (food-level, not measurement-level)
--- Dimension 1024 = qwen3-embedding:0.6b  |  upgrade: DROP TABLE + recreate + re-run --embed
+-- Default dimension 1024 matches OLLAMA_EMBED_DIMENSIONS=1024 (qwen3-embedding:0.6b).
+-- To switch models, set OLLAMA_EMBED_DIMENSIONS to the new size and re-run:
+--   docker compose run --rm data-loader --embed
+-- The loader will ALTER TABLE all embedding columns to the new dimension automatically.
 CREATE TABLE IF NOT EXISTS food_nutrition.food_embeddings (
     sample_name  TEXT PRIMARY KEY,
-    embedding    vector(1024),
+    embedding    halfvec(1024),
     embedded_at  TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_fn_emb_hnsw ON food_nutrition.food_embeddings
-    USING hnsw (embedding vector_cosine_ops);
+    USING hnsw (embedding halfvec_cosine_ops);
 
 -- Embedding table for food_nutrition.ingredients
 CREATE TABLE IF NOT EXISTS food_nutrition.ingredient_embeddings (
     id           INTEGER PRIMARY KEY,
-    embedding    vector(1024),
+    embedding    halfvec(1024),
     embedded_at  TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_fn_ing_emb_hnsw ON food_nutrition.ingredient_embeddings
-    USING hnsw (embedding vector_cosine_ops);
+    USING hnsw (embedding halfvec_cosine_ops);
 
 
 -- ============================================================
@@ -292,11 +295,11 @@ CREATE INDEX IF NOT EXISTS idx_loinc_fts ON loinc.concepts
 -- Embedding table for hybrid search
 CREATE TABLE IF NOT EXISTS loinc.concept_embeddings (
     loinc_num   TEXT PRIMARY KEY,
-    embedding   vector(1024),
+    embedding   halfvec(1024),
     embedded_at TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_loinc_emb_hnsw ON loinc.concept_embeddings
-    USING hnsw (embedding vector_cosine_ops);
+    USING hnsw (embedding halfvec_cosine_ops);
 
 
 -- ============================================================
@@ -362,11 +365,11 @@ CREATE INDEX IF NOT EXISTS idx_gl_name_fts    ON guideline.disease_guidelines
 -- Embedding table for hybrid search
 CREATE TABLE IF NOT EXISTS guideline.guideline_embeddings (
     id          INTEGER PRIMARY KEY,
-    embedding   vector(1024),
+    embedding   halfvec(1024),
     embedded_at TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_gl_emb_hnsw ON guideline.guideline_embeddings
-    USING hnsw (embedding vector_cosine_ops);
+    USING hnsw (embedding halfvec_cosine_ops);
 
 
 -- ============================================================
@@ -453,11 +456,11 @@ CREATE INDEX IF NOT EXISTS idx_snomed_desc_fts     ON snomed.descriptions
 -- Note: ~360K active concepts — embedding takes 1-2+ hours with Ollama CPU
 CREATE TABLE IF NOT EXISTS snomed.concept_embeddings (
     concept_id  BIGINT PRIMARY KEY,
-    embedding   vector(1024),
+    embedding   halfvec(1024),
     embedded_at TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_snomed_emb_hnsw ON snomed.concept_embeddings
-    USING hnsw (embedding vector_cosine_ops);
+    USING hnsw (embedding halfvec_cosine_ops);
 
 
 -- ============================================================

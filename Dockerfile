@@ -21,6 +21,9 @@ COPY --from=builder /install /usr/local
 # Copy application source
 COPY src/ ./src/
 
+# Copy static assets
+COPY static/ ./static/
+
 RUN chown -R mcp:mcp /app
 
 USER mcp

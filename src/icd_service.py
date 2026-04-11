@@ -68,9 +68,9 @@ class ICDService:
                            ),
                            vec AS (
                                SELECT code,
-                                      ROW_NUMBER() OVER (ORDER BY embedding <=> $3::vector) AS rank
+                                      ROW_NUMBER() OVER (ORDER BY embedding <=> $3::halfvec) AS rank
                                FROM icd.diagnosis_embeddings
-                               ORDER BY embedding <=> $3::vector LIMIT 20
+                               ORDER BY embedding <=> $3::halfvec LIMIT 20
                            ),
                            rrf AS (
                                SELECT COALESCE(f.code, v.code) AS code,

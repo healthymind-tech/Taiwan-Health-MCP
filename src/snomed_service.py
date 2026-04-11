@@ -95,10 +95,10 @@ class SNOMEDService:
                         ),
                         vec AS (
                             SELECT e.concept_id,
-                                   ROW_NUMBER() OVER (ORDER BY e.embedding <=> $5::vector) AS rank
+                                   ROW_NUMBER() OVER (ORDER BY e.embedding <=> $5::halfvec) AS rank
                             FROM snomed.concept_embeddings e
                             JOIN descendants desc ON desc.concept_id = e.concept_id
-                            ORDER BY e.embedding <=> $5::vector LIMIT 20
+                            ORDER BY e.embedding <=> $5::halfvec LIMIT 20
                         ),
                         rrf AS (
                             SELECT COALESCE(f.concept_id, v.concept_id) AS concept_id,
@@ -156,9 +156,9 @@ class SNOMEDService:
                         ),
                         vec AS (
                             SELECT concept_id,
-                                   ROW_NUMBER() OVER (ORDER BY embedding <=> $3::vector) AS rank
+                                   ROW_NUMBER() OVER (ORDER BY embedding <=> $3::halfvec) AS rank
                             FROM snomed.concept_embeddings
-                            ORDER BY embedding <=> $3::vector LIMIT 20
+                            ORDER BY embedding <=> $3::halfvec LIMIT 20
                         ),
                         rrf AS (
                             SELECT COALESCE(f.concept_id, v.concept_id) AS concept_id,

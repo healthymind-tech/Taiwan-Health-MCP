@@ -17,7 +17,8 @@ Supports resuming: ON CONFLICT DO UPDATE means already-embedded rows
 are refreshed without skipping. Run --embed after data loaders.
 
 Config env vars:
-  OLLAMA_BASE_URL, OLLAMA_EMBED_MODEL, OLLAMA_EMBED_TIMEOUT, OLLAMA_EMBED_BATCH_SIZE
+  OLLAMA_BASE_URL, OLLAMA_EMBED_MODEL, OLLAMA_EMBED_DIMENSIONS,
+  OLLAMA_EMBED_TIMEOUT, OLLAMA_EMBED_BATCH_SIZE
 """
 
 from __future__ import annotations
@@ -35,8 +36,24 @@ except ImportError:
 
 _BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "").rstrip("/")
 _MODEL: str = os.getenv("OLLAMA_EMBED_MODEL", "qwen3-embedding:0.6b")
+_DIMENSIONS: int = int(os.getenv("OLLAMA_EMBED_DIMENSIONS", "1024"))
 _TIMEOUT: float = float(os.getenv("OLLAMA_EMBED_TIMEOUT", "30"))
 _BATCH_SIZE: int = int(os.getenv("OLLAMA_EMBED_BATCH_SIZE", "32"))
+
+# All (schema, table, column) triples that hold embedding vectors.
+# Used by ensure_dimensions() to ALTER TABLE when OLLAMA_EMBED_DIMENSIONS changes.
+_EMBEDDING_COLUMNS: list[tuple[str, str, str]] = [
+    ("icd",           "diagnosis_embeddings",       "embedding"),
+    ("drug",          "atc_embeddings",              "embedding"),
+    ("drug",          "ingredient_name_embeddings",  "embedding"),
+    ("drug",          "license_embeddings",          "embedding"),
+    ("health_food",   "item_embeddings",             "embedding"),
+    ("food_nutrition","food_embeddings",             "embedding"),
+    ("food_nutrition","ingredient_embeddings",       "embedding"),
+    ("loinc",         "concept_embeddings",          "embedding"),
+    ("guideline",     "guideline_embeddings",        "embedding"),
+    ("snomed",        "concept_embeddings",          "embedding"),
+]
 
 
 def _progress(batches: list, desc: str) -> object:
@@ -56,6 +73,65 @@ def _progress(batches: list, desc: str) -> object:
     return _FallbackIter()
 
 
+_HNSW_MAX_DIMS = 4000  # pgvector halfvec HNSW limit
+
+
+async def ensure_dimensions(pool: asyncpg.Pool) -> None:
+    """ALTER all embedding halfvec columns to match OLLAMA_EMBED_DIMENSIONS.
+
+    Safe to call when dimensions are already correct (no-op). Required when
+    switching embedding models with a different output size.
+    Each column is dropped and re-added (CASCADE drops associated HNSW index);
+    the HNSW index is recreated when dimensions ≤ 4000 (halfvec limit).
+    """
+    print(f"\n=== Ensuring embedding dimensions = {_DIMENSIONS} ===")
+    if _DIMENSIONS > _HNSW_MAX_DIMS:
+        print(
+            f"  [warn] {_DIMENSIONS}d > {_HNSW_MAX_DIMS} halfvec HNSW limit — "
+            "index skipped, falling back to exact sequential scan"
+        )
+    async with pool.acquire() as conn:
+        for schema, table, col in _EMBEDDING_COLUMNS:
+            # Check current dimension stored in pg_attribute
+            row = await conn.fetchrow(
+                """SELECT atttypmod
+                   FROM pg_attribute pa
+                   JOIN pg_class pc ON pc.oid = pa.attrelid
+                   JOIN pg_namespace pn ON pn.oid = pc.relnamespace
+                   WHERE pn.nspname = $1 AND pc.relname = $2 AND pa.attname = $3
+                     AND pa.attnum > 0 AND NOT pa.attisdropped""",
+                schema, table, col,
+            )
+            if row is None:
+                print(f"  {schema}.{table} not found, skipping")
+                continue
+
+            current_dim = row["atttypmod"]
+            if current_dim == _DIMENSIONS:
+                print(f"  {schema}.{table}.{col}: already {_DIMENSIONS}d — OK")
+                continue
+
+            print(f"  {schema}.{table}.{col}: {current_dim}d → {_DIMENSIONS}d  (ALTER TABLE)")
+            fqt = f"{schema}.{table}"
+            # DROP CASCADE removes any dependent HNSW index automatically
+            await conn.execute(
+                f"ALTER TABLE {fqt} DROP COLUMN IF EXISTS {col} CASCADE"
+            )
+            await conn.execute(
+                f"ALTER TABLE {fqt} ADD COLUMN {col} halfvec({_DIMENSIONS})"
+            )
+            if _DIMENSIONS <= _HNSW_MAX_DIMS:
+                idx = f"idx_{schema[:2]}_{table[:6]}_emb_hnsw"
+                await conn.execute(
+                    f"CREATE INDEX IF NOT EXISTS {idx} ON {fqt} "
+                    f"USING hnsw ({col} halfvec_cosine_ops)"
+                )
+                print(f"    → HNSW index recreated: {idx}")
+            else:
+                print(f"    → HNSW index skipped ({_DIMENSIONS}d > {_HNSW_MAX_DIMS})")
+    print("=== Dimensions check complete ===")
+
+
 async def _check_ollama() -> bool:
     if not _BASE_URL:
         print("  OLLAMA_BASE_URL not set — skipping embedding generation")
@@ -64,7 +140,10 @@ async def _check_ollama() -> bool:
         async with httpx.AsyncClient(timeout=5.0) as client:
             r = await client.get(f"{_BASE_URL}/api/version")
             if r.status_code == 200:
-                print(f"  Ollama OK  url={_BASE_URL}  model={_MODEL}  batch_size={_BATCH_SIZE}")
+                print(
+                    f"  Ollama OK  url={_BASE_URL}  model={_MODEL}"
+                    f"  dimensions={_DIMENSIONS}  batch_size={_BATCH_SIZE}"
+                )
                 return True
     except Exception:
         pass
@@ -120,7 +199,7 @@ async def embed_food_nutrition(pool: asyncpg.Pool) -> None:
             ]
             await _upsert(pool,
                 """INSERT INTO food_nutrition.food_embeddings (sample_name, embedding)
-                   VALUES ($1, $2::vector)
+                   VALUES ($1, $2::halfvec)
                    ON CONFLICT (sample_name) DO UPDATE
                    SET embedding=EXCLUDED.embedding, embedded_at=NOW()""",
                 rows,
@@ -144,7 +223,7 @@ async def embed_food_nutrition(pool: asyncpg.Pool) -> None:
             ]
             await _upsert(pool,
                 """INSERT INTO food_nutrition.ingredient_embeddings (id, embedding)
-                   VALUES ($1, $2::vector)
+                   VALUES ($1, $2::halfvec)
                    ON CONFLICT (id) DO UPDATE
                    SET embedding=EXCLUDED.embedding, embedded_at=NOW()""",
                 rows,
@@ -173,7 +252,7 @@ async def embed_health_food(pool: asyncpg.Pool) -> None:
             ]
             await _upsert(pool,
                 """INSERT INTO health_food.item_embeddings (permit_no, embedding)
-                   VALUES ($1, $2::vector)
+                   VALUES ($1, $2::halfvec)
                    ON CONFLICT (permit_no) DO UPDATE
                    SET embedding=EXCLUDED.embedding, embedded_at=NOW()""",
                 rows,
@@ -208,7 +287,7 @@ async def embed_drug(pool: asyncpg.Pool) -> None:
             ]
             await _upsert(pool,
                 """INSERT INTO drug.license_embeddings (license_id, embedding)
-                   VALUES ($1, $2::vector)
+                   VALUES ($1, $2::halfvec)
                    ON CONFLICT (license_id) DO UPDATE
                    SET embedding=EXCLUDED.embedding, embedded_at=NOW()""",
                 rows,
@@ -234,7 +313,7 @@ async def embed_drug(pool: asyncpg.Pool) -> None:
             ]
             await _upsert(pool,
                 """INSERT INTO drug.atc_embeddings (atc_code, embedding)
-                   VALUES ($1, $2::vector)
+                   VALUES ($1, $2::halfvec)
                    ON CONFLICT (atc_code) DO UPDATE
                    SET embedding=EXCLUDED.embedding, embedded_at=NOW()""",
                 rows,
@@ -260,7 +339,7 @@ async def embed_drug(pool: asyncpg.Pool) -> None:
             ]
             await _upsert(pool,
                 """INSERT INTO drug.ingredient_name_embeddings (ingredient_name, embedding)
-                   VALUES ($1, $2::vector)
+                   VALUES ($1, $2::halfvec)
                    ON CONFLICT (ingredient_name) DO UPDATE
                    SET embedding=EXCLUDED.embedding, embedded_at=NOW()""",
                 rows,
@@ -292,7 +371,7 @@ async def embed_icd(pool: asyncpg.Pool) -> None:
             ]
             await _upsert(pool,
                 """INSERT INTO icd.diagnosis_embeddings (code, embedding)
-                   VALUES ($1, $2::vector)
+                   VALUES ($1, $2::halfvec)
                    ON CONFLICT (code) DO UPDATE
                    SET embedding=EXCLUDED.embedding, embedded_at=NOW()""",
                 rows_out,
@@ -331,7 +410,7 @@ async def embed_loinc(pool: asyncpg.Pool) -> None:
             ]
             await _upsert(pool,
                 """INSERT INTO loinc.concept_embeddings (loinc_num, embedding)
-                   VALUES ($1, $2::vector)
+                   VALUES ($1, $2::halfvec)
                    ON CONFLICT (loinc_num) DO UPDATE
                    SET embedding=EXCLUDED.embedding, embedded_at=NOW()""",
                 rows_out,
@@ -371,7 +450,7 @@ async def embed_guideline(pool: asyncpg.Pool) -> None:
             ]
             await _upsert(pool,
                 """INSERT INTO guideline.guideline_embeddings (id, embedding)
-                   VALUES ($1, $2::vector)
+                   VALUES ($1, $2::halfvec)
                    ON CONFLICT (id) DO UPDATE
                    SET embedding=EXCLUDED.embedding, embedded_at=NOW()""",
                 rows_out,
@@ -406,7 +485,7 @@ async def embed_snomed(pool: asyncpg.Pool) -> None:
             ]
             await _upsert(pool,
                 """INSERT INTO snomed.concept_embeddings (concept_id, embedding)
-                   VALUES ($1, $2::vector)
+                   VALUES ($1, $2::halfvec)
                    ON CONFLICT (concept_id) DO UPDATE
                    SET embedding=EXCLUDED.embedding, embedded_at=NOW()""",
                 rows_out,

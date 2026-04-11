@@ -61,9 +61,9 @@ class ClinicalGuidelineService:
                        ),
                        vec AS (
                            SELECT id,
-                                  ROW_NUMBER() OVER (ORDER BY embedding <=> $3::vector) AS rank
+                                  ROW_NUMBER() OVER (ORDER BY embedding <=> $3::halfvec) AS rank
                            FROM guideline.guideline_embeddings
-                           ORDER BY embedding <=> $3::vector LIMIT 20
+                           ORDER BY embedding <=> $3::halfvec LIMIT 20
                        ),
                        rrf AS (
                            SELECT COALESCE(f.id, v.id) AS id,

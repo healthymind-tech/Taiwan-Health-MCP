@@ -137,7 +137,7 @@ class HealthFoodService:
                     async with self.pool.acquire() as conn:
                         await conn.executemany(
                             """INSERT INTO health_food.item_embeddings (permit_no, embedding)
-                               VALUES ($1, $2::vector)
+                               VALUES ($1, $2::halfvec)
                                ON CONFLICT (permit_no) DO UPDATE
                                SET embedding=EXCLUDED.embedding, embedded_at=NOW()""",
                             rows,
@@ -181,9 +181,9 @@ class HealthFoodService:
                        ),
                        vec AS (
                            SELECT permit_no,
-                                  ROW_NUMBER() OVER (ORDER BY embedding <=> $2::vector) AS rank
+                                  ROW_NUMBER() OVER (ORDER BY embedding <=> $2::halfvec) AS rank
                            FROM health_food.item_embeddings
-                           ORDER BY embedding <=> $2::vector LIMIT 20
+                           ORDER BY embedding <=> $2::halfvec LIMIT 20
                        ),
                        rrf AS (
                            SELECT COALESCE(f.permit_no, v.permit_no) AS permit_no,

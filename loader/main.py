@@ -285,7 +285,9 @@ async def generate_embeddings(pool: asyncpg.Pool, services: list[str]) -> None:
     from loaders.embedding_loader import (
         embed_drug, embed_food_nutrition, embed_health_food,
         embed_icd, embed_loinc, embed_guideline, embed_snomed,
+        ensure_dimensions,
     )
+    await ensure_dimensions(pool)
     if "food_nutrition" in services:
         await embed_food_nutrition(pool)
     if "health_food" in services:

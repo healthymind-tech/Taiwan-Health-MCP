@@ -69,9 +69,9 @@ class LabService:
                        ),
                        vec AS (
                            SELECT loinc_num,
-                                  ROW_NUMBER() OVER (ORDER BY embedding <=> $3::vector) AS rank
+                                  ROW_NUMBER() OVER (ORDER BY embedding <=> $3::halfvec) AS rank
                            FROM loinc.concept_embeddings
-                           ORDER BY embedding <=> $3::vector LIMIT 20
+                           ORDER BY embedding <=> $3::halfvec LIMIT 20
                        ),
                        rrf AS (
                            SELECT COALESCE(f.loinc_num, v.loinc_num) AS loinc_num,
@@ -277,9 +277,9 @@ class LabService:
                        ),
                        vec AS (
                            SELECT loinc_num,
-                                  ROW_NUMBER() OVER (ORDER BY embedding <=> $3::vector) AS rank
+                                  ROW_NUMBER() OVER (ORDER BY embedding <=> $3::halfvec) AS rank
                            FROM loinc.concept_embeddings
-                           ORDER BY embedding <=> $3::vector LIMIT 20
+                           ORDER BY embedding <=> $3::halfvec LIMIT 20
                        ),
                        rrf AS (
                            SELECT COALESCE(f.loinc_num, v.loinc_num) AS loinc_num,
@@ -344,9 +344,9 @@ class LabService:
                        ),
                        vec AS (
                            SELECT loinc_num,
-                                  ROW_NUMBER() OVER (ORDER BY embedding <=> $3::vector) AS rank
+                                  ROW_NUMBER() OVER (ORDER BY embedding <=> $3::halfvec) AS rank
                            FROM loinc.concept_embeddings
-                           ORDER BY embedding <=> $3::vector LIMIT 20
+                           ORDER BY embedding <=> $3::halfvec LIMIT 20
                        ),
                        rrf AS (
                            SELECT COALESCE(f.loinc_num, v.loinc_num) AS loinc_num,
