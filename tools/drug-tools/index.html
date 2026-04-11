@@ -1457,7 +1457,7 @@
   <a href="#_1" class="md-nav__link">
     <span class="md-ellipsis">
       
-        參數
+        模式選擇
       
     </span>
   </a>
@@ -1468,7 +1468,7 @@
   <a href="#_2" class="md-nav__link">
     <span class="md-ellipsis">
       
-        回傳內容
+        參數
       
     </span>
   </a>
@@ -1479,7 +1479,18 @@
   <a href="#_3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        模式說明
+        回傳內容
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        補充說明
       
     </span>
   </a>
@@ -1504,7 +1515,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#_4" class="md-nav__link">
+  <a href="#_5" class="md-nav__link">
     <span class="md-ellipsis">
       
         參數
@@ -1515,7 +1526,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#_5" class="md-nav__link">
+  <a href="#_6" class="md-nav__link">
     <span class="md-ellipsis">
       
         用途
@@ -3237,7 +3248,7 @@
   <a href="#_1" class="md-nav__link">
     <span class="md-ellipsis">
       
-        參數
+        模式選擇
       
     </span>
   </a>
@@ -3248,7 +3259,7 @@
   <a href="#_2" class="md-nav__link">
     <span class="md-ellipsis">
       
-        回傳內容
+        參數
       
     </span>
   </a>
@@ -3259,7 +3270,18 @@
   <a href="#_3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        模式說明
+        回傳內容
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        補充說明
       
     </span>
   </a>
@@ -3284,7 +3306,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#_4" class="md-nav__link">
+  <a href="#_5" class="md-nav__link">
     <span class="md-ellipsis">
       
         參數
@@ -3295,7 +3317,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#_5" class="md-nav__link">
+  <a href="#_6" class="md-nav__link">
     <span class="md-ellipsis">
       
         用途
@@ -3337,7 +3359,44 @@
 <code>drug_name</code> 與 <code>ingredient</code> 會使用 hybrid BM25 + semantic embedding 搜尋（若 embeddings 可用）。
 <code>atc_code</code> 為 code-only 模式，只接受 ATC code 前綴，例如 <code>A10</code> 或 <code>A10BA02</code>，不做 embedding。
 <code>license_id</code> 可輸入完整許可證字號，或僅輸入尾碼數字，例如 <code>000029</code>。</p>
-<h3 id="_1">參數<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h3>
+<h3 id="_1">模式選擇<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">模式</th>
+<th style="text-align: left;">適合何時使用</th>
+<th style="text-align: left;">查詢重點</th>
+<th style="text-align: left;">回傳結果重點</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>drug_name</code></td>
+<td style="text-align: left;">你知道商品名、學名、或適應症關鍵字</td>
+<td style="text-align: left;">藥名 / 適應症 / 語意相近詞</td>
+<td style="text-align: left;">找最像的藥品摘要，適合探索未知名稱</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>atc_code</code></td>
+<td style="text-align: left;">你已經知道 ATC code 或前綴</td>
+<td style="text-align: left;">ATC code 前綴</td>
+<td style="text-align: left;">只做結構化 code 比對，不做語意搜尋</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ingredient</code></td>
+<td style="text-align: left;">你想找含特定成分的藥</td>
+<td style="text-align: left;">成分、INN、學名</td>
+<td style="text-align: left;">回傳含該成分的完整藥品摘要</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>license_id</code></td>
+<td style="text-align: left;">你已知藥證號，或只剩尾碼數字</td>
+<td style="text-align: left;">許可證字號 / bare digits</td>
+<td style="text-align: left;">精確定位單一藥品，最接近 detail lookup</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_2">參數<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
 <tr>
@@ -3372,7 +3431,7 @@
 </tr>
 </tbody>
 </table>
-<h3 id="_2">回傳內容<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h3>
+<h3 id="_3">回傳內容<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h3>
 <p>回傳符合條件的藥品列表，包含：
 - 許可證字號
 - 中文品名
@@ -3383,6 +3442,7 @@
 <p>四種模式的回傳格式完全一致：
 <div class="language-json highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">{</span><span class="nt">&quot;mode&quot;</span><span class="p">:</span><span class="s2">&quot;drug_name&quot;</span><span class="p">,</span><span class="nt">&quot;keyword&quot;</span><span class="p">:</span><span class="s2">&quot;Metformin&quot;</span><span class="p">,</span><span class="nt">&quot;results&quot;</span><span class="p">:[</span><span class="err">...</span><span class="p">]}</span>
 </span></code></pre></div>
+<code>mode</code> 與 <code>keyword</code> 會告訴你原始查詢方式，<code>results</code> 則是統一的 detail-shaped 結果清單。
 每筆 <code>results</code> 都包含相同欄位：
 - <code>license_id</code>
 - <code>name_zh</code>
@@ -3398,18 +3458,17 @@
 - <code>appearance</code>
 - <code>atc_code</code>
 - <code>insert_url</code></p>
-<h3 id="_3">模式說明<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h3>
+<h3 id="_4">補充說明<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h3>
 <ul>
-<li><code>drug_name</code>：搜尋商品名、學名或適應症關鍵字</li>
-<li><code>atc_code</code>：搜尋 ATC code 前綴</li>
-<li><code>ingredient</code>：搜尋有效成分、INN 或學名</li>
-<li><code>license_id</code>：搜尋單一許可證字號，支援 bare digits，例如 <code>000029</code></li>
+<li><code>drug_name</code> 與 <code>ingredient</code> 會優先用語意搜尋，因此適合使用中文、英文、商品名、學名或適應症描述。</li>
+<li><code>atc_code</code> 只接受 code / prefix，不接受自然語言分類詞；如果輸入 <code>降血糖</code>，請改用 <code>drug_name</code>。</li>
+<li><code>license_id</code> 會先嘗試完整字串比對，再處理 bare digits，例如 <code>000029</code>。</li>
 </ul>
 <hr />
 <hr />
 <h2 id="identify_unknown_pill">identify_unknown_pill<a class="headerlink" href="#identify_unknown_pill" title="Permanent link">&para;</a></h2>
 <p><strong>【影像/特徵辨識】</strong> 根據外觀特徵辨識不明藥丸。</p>
-<h3 id="_4">參數<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h3>
+<h3 id="_5">參數<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
 <tr>
@@ -3430,7 +3489,7 @@
 </tr>
 </tbody>
 </table>
-<h3 id="_5">用途<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h3>
+<h3 id="_6">用途<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h3>
 <p>當使用者持有不明藥物，僅能描述外觀時使用。</p>
 
 

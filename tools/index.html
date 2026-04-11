@@ -3131,10 +3131,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#3-fda-2" class="md-nav__link">
+  <a href="#3-fda-1" class="md-nav__link">
     <span class="md-ellipsis">
       
-        群組 3 — 台灣 FDA 健康食品（2 個工具）
+        群組 3 — 台灣 FDA 健康補充品（1 個工具）
       
     </span>
   </a>
@@ -3153,10 +3153,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#5-icd-1" class="md-nav__link">
+  <a href="#5-fhir-condition2" class="md-nav__link">
     <span class="md-ellipsis">
       
-        群組 5 — 健康食品 + ICD 整合（1 個工具）
+        群組 5 — FHIR Condition（2 個工具）
       
     </span>
   </a>
@@ -3164,10 +3164,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#6-fhir-condition2" class="md-nav__link">
+  <a href="#6-fhir-medication2" class="md-nav__link">
     <span class="md-ellipsis">
       
-        群組 6 — FHIR Condition（2 個工具）
+        群組 6 — FHIR Medication（2 個工具）
       
     </span>
   </a>
@@ -3175,10 +3175,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#7-fhir-medication2" class="md-nav__link">
+  <a href="#7-loinc8" class="md-nav__link">
     <span class="md-ellipsis">
       
-        群組 7 — FHIR Medication（2 個工具）
+        群組 7 — 檢驗 / LOINC（8 個工具）
       
     </span>
   </a>
@@ -3186,10 +3186,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#8-loinc8" class="md-nav__link">
+  <a href="#8-2" class="md-nav__link">
     <span class="md-ellipsis">
       
-        群組 8 — 檢驗 / LOINC（8 個工具）
+        群組 8 — 臨床診療指引（2 個工具）
       
     </span>
   </a>
@@ -3197,10 +3197,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#9-2" class="md-nav__link">
+  <a href="#9-twcore-ig1" class="md-nav__link">
     <span class="md-ellipsis">
       
-        群組 9 — 臨床診療指引（2 個工具）
+        群組 9 — TWCore IG（1 個工具）
       
     </span>
   </a>
@@ -3208,10 +3208,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#10-twcore-ig1" class="md-nav__link">
+  <a href="#10-snomed-ct4" class="md-nav__link">
     <span class="md-ellipsis">
       
-        群組 10 — TWCore IG（1 個工具）
+        群組 10 — SNOMED CT（4 個工具）
       
     </span>
   </a>
@@ -3219,21 +3219,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#11-snomed-ct4" class="md-nav__link">
+  <a href="#11-rxnorm-3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        群組 11 — SNOMED CT（4 個工具）
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#12-rxnorm-3" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        群組 12 — RxNorm 藥物交互作用（3 個工具）
+        群組 11 — RxNorm 藥物交互作用（3 個工具）
       
     </span>
   </a>
@@ -3288,7 +3277,7 @@
 
 
 <h1 id="mcp">MCP 工具概覽<a class="headerlink" href="#mcp" title="Permanent link">&para;</a></h1>
-<p>Taiwan Health MCP Server 提供 <strong>39 個 MCP 工具</strong>，其中包含 1 個 <code>health_check</code> 基礎工具，以及 12 個主要領域群組共 39 個工具。status page 與動態註冊使用同一份工具 registry，新增或調整工具時請同步更新群組定義與對應說明。</p>
+<p>Taiwan Health MCP Server 提供 <strong>37 個 MCP 工具</strong>，其中包含 1 個 <code>health_check</code> 基礎工具，以及 11 個主要領域群組共 37 個工具。status page 與動態註冊使用同一份工具 registry，新增或調整工具時請同步更新群組定義與對應說明。</p>
 <hr />
 <h2 id="_1">基礎工具<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
 <table>
@@ -3351,7 +3340,7 @@
 <tbody>
 <tr>
 <td><code>search_drug</code></td>
-<td>以 <code>mode</code> 切換藥名、ATC code、許可證字號或成分搜尋 FDA 核准藥品（<code>drug_name</code> / <code>ingredient</code> 可用 embedding，<code>atc_code</code> 只接受 ATC code 前綴，<code>license_id</code> 支援 bare digits；回傳為完整藥品摘要）</td>
+<td>單一藥品搜尋入口，<code>mode</code> 可切換 <code>drug_name</code> / <code>atc_code</code> / <code>ingredient</code> / <code>license_id</code>；<code>drug_name</code> / <code>ingredient</code> 用語意搜尋，<code>atc_code</code> 只接受 code 前綴，<code>license_id</code> 支援 bare digits；回傳統一 detail-shaped 結果</td>
 </tr>
 <tr>
 <td><code>identify_unknown_pill</code></td>
@@ -3361,7 +3350,7 @@
 </table>
 <p><a href="drug-tools/">詳細說明</a></p>
 <hr />
-<h3 id="3-fda-2">群組 3 — 台灣 FDA 健康食品（2 個工具）<a class="headerlink" href="#3-fda-2" title="Permanent link">&para;</a></h3>
+<h3 id="3-fda-1">群組 3 — 台灣 FDA 健康補充品（1 個工具）<a class="headerlink" href="#3-fda-1" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
 <tr>
@@ -3371,12 +3360,8 @@
 </thead>
 <tbody>
 <tr>
-<td><code>search_health_food</code></td>
-<td>搜尋 FDA 核可健康食品</td>
-</tr>
-<tr>
-<td><code>get_health_food_details</code></td>
-<td>依許可證號取得健康食品完整資訊</td>
+<td><code>search_health_supplement</code></td>
+<td>單一健康補充品入口，<code>mode</code> 可切換 <code>keyword</code> / <code>permit_no</code> / <code>condition</code>；只有 <code>condition</code> 會回傳頂層 <code>icd_code</code> / <code>recommended_benefits</code>，results item 不含這兩欄</td>
 </tr>
 </tbody>
 </table>
@@ -3419,23 +3404,7 @@
 </table>
 <p><a href="nutrition-tools/">詳細說明</a></p>
 <hr />
-<h3 id="5-icd-1">群組 5 — 健康食品 + ICD 整合（1 個工具）<a class="headerlink" href="#5-icd-1" title="Permanent link">&para;</a></h3>
-<table>
-<thead>
-<tr>
-<th>工具</th>
-<th>說明</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>analyze_health_support_for_condition</code></td>
-<td>依診斷推薦 FDA 核可保健食品</td>
-</tr>
-</tbody>
-</table>
-<hr />
-<h3 id="6-fhir-condition2">群組 6 — FHIR Condition（2 個工具）<a class="headerlink" href="#6-fhir-condition2" title="Permanent link">&para;</a></h3>
+<h3 id="5-fhir-condition2">群組 5 — FHIR Condition（2 個工具）<a class="headerlink" href="#5-fhir-condition2" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
 <tr>
@@ -3456,7 +3425,7 @@
 </table>
 <p><a href="fhir-tools/">詳細說明</a></p>
 <hr />
-<h3 id="7-fhir-medication2">群組 7 — FHIR Medication（2 個工具）<a class="headerlink" href="#7-fhir-medication2" title="Permanent link">&para;</a></h3>
+<h3 id="6-fhir-medication2">群組 6 — FHIR Medication（2 個工具）<a class="headerlink" href="#6-fhir-medication2" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
 <tr>
@@ -3477,7 +3446,7 @@
 </table>
 <p><a href="fhir-tools/">詳細說明</a></p>
 <hr />
-<h3 id="8-loinc8">群組 8 — 檢驗 / LOINC（8 個工具）<a class="headerlink" href="#8-loinc8" title="Permanent link">&para;</a></h3>
+<h3 id="7-loinc8">群組 7 — 檢驗 / LOINC（8 個工具）<a class="headerlink" href="#7-loinc8" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
 <tr>
@@ -3488,7 +3457,7 @@
 <tbody>
 <tr>
 <td><code>search_loinc_code</code></td>
-<td>搜尋 LOINC 碼（含中文名稱）</td>
+<td>搜尋 LOINC 檢驗碼與別名；用來先找到可能的 test code，再搭配 <code>get_loinc_detail</code> 或 <code>get_reference_range</code> 深入查看</td>
 </tr>
 <tr>
 <td><code>list_lab_categories</code></td>
@@ -3522,7 +3491,7 @@
 </table>
 <p><a href="lab-tools/">詳細說明</a></p>
 <hr />
-<h3 id="9-2">群組 9 — 臨床診療指引（2 個工具）<a class="headerlink" href="#9-2" title="Permanent link">&para;</a></h3>
+<h3 id="8-2">群組 8 — 臨床診療指引（2 個工具）<a class="headerlink" href="#8-2" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
 <tr>
@@ -3537,13 +3506,13 @@
 </tr>
 <tr>
 <td><code>query_guideline</code></td>
-<td>依 ICD 與 section 取得完整/分段指引內容</td>
+<td>統一指引入口，<code>section</code> 可切換 <code>complete</code> / <code>medication</code> / <code>test</code> / <code>goals</code> / <code>pathway</code>，適合在同一工具下切換不同層次的臨床內容</td>
 </tr>
 </tbody>
 </table>
 <p><a href="guideline-tools/">詳細說明</a></p>
 <hr />
-<h3 id="10-twcore-ig1">群組 10 — TWCore IG（1 個工具）<a class="headerlink" href="#10-twcore-ig1" title="Permanent link">&para;</a></h3>
+<h3 id="9-twcore-ig1">群組 9 — TWCore IG（1 個工具）<a class="headerlink" href="#9-twcore-ig1" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
 <tr>
@@ -3559,7 +3528,7 @@
 </tbody>
 </table>
 <hr />
-<h3 id="11-snomed-ct4">群組 11 — SNOMED CT（4 個工具）<a class="headerlink" href="#11-snomed-ct4" title="Permanent link">&para;</a></h3>
+<h3 id="10-snomed-ct4">群組 10 — SNOMED CT（4 個工具）<a class="headerlink" href="#10-snomed-ct4" title="Permanent link">&para;</a></h3>
 <blockquote>
 <p>需先執行 <code>docker compose --profile loader run --rm data-loader --snomed</code></p>
 </blockquote>
@@ -3573,24 +3542,24 @@
 <tbody>
 <tr>
 <td><code>search_snomed_concept</code></td>
-<td>以英文詞彙搜尋 SNOMED CT 概念</td>
+<td>以英文詞彙搜尋 SNOMED CT 概念，適合先找候選概念與相似詞</td>
 </tr>
 <tr>
 <td><code>query_snomed_concept</code></td>
-<td>取得概念、父概念與子概念的一次性查詢</td>
+<td>取得概念、父概念與子概念的一次性查詢，適合閱讀分類樹脈絡</td>
 </tr>
 <tr>
 <td><code>get_snomed_relationships</code></td>
-<td>取得非 IS-A 的屬性與關聯</td>
+<td>取得非 IS-A 的屬性與關聯，適合看 finding site / causative agent / active ingredient</td>
 </tr>
 <tr>
 <td><code>query_snomed_mapping</code></td>
-<td>以 <code>mode</code> 切換 ICD ↔ SNOMED 的雙向對應查詢</td>
+<td>單一 SNOMED mapping 入口，<code>mode</code> 可切換 <code>icd</code> / <code>snomed</code>；適合雙向轉碼</td>
 </tr>
 </tbody>
 </table>
 <hr />
-<h3 id="12-rxnorm-3">群組 12 — RxNorm 藥物交互作用（3 個工具）<a class="headerlink" href="#12-rxnorm-3" title="Permanent link">&para;</a></h3>
+<h3 id="11-rxnorm-3">群組 11 — RxNorm 藥物交互作用（3 個工具）<a class="headerlink" href="#11-rxnorm-3" title="Permanent link">&para;</a></h3>
 <blockquote>
 <p>需先執行 <code>docker compose --profile loader run --rm data-loader --rxnorm</code></p>
 </blockquote>

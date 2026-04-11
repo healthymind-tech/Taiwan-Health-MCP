@@ -3204,7 +3204,7 @@
     }
 
     class HealthFoodService {
-        +search_health_food()
+        +search_health_supplement()
     }
 
     MCP_Server --&gt; ICDService : calls
@@ -3219,7 +3219,7 @@
 <h2 id="_2">相依性說明<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong>FHIR 服務</strong> 高度依賴基礎資料服務 (<code>ICDService</code>, <code>DrugService</code>) 來驗證代碼的正確性與獲取詳細描述。</li>
-<li><strong>Health Food Service</strong> 作為綜合應用層，同時調用了 <code>ICDService</code> (確認疾病) 與 <code>FoodNutritionService</code> (確認營養成分) 來產生綜合建議。</li>
+<li><strong>Health Supplement Service</strong> 作為綜合應用層，同時調用了 <code>ICDService</code> (確認疾病) 與 <code>FoodNutritionService</code> (確認營養成分) 來產生綜合建議。</li>
 </ul>
 
 

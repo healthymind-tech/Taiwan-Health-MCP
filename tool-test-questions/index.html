@@ -3187,21 +3187,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#group-11-search_health_food" class="md-nav__link">
+  <a href="#group-11-search_health_supplement" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Group 11：健康食品搜尋 (search_health_food)
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#group-12-get_health_food_details" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Group 12：健康食品詳情 (get_health_food_details)
+        Group 11：健康補充品 (search_health_supplement)
       
     </span>
   </a>
@@ -3275,21 +3264,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#group-19-analyze_health_support_for_condition" class="md-nav__link">
+  <a href="#group-19fhir-condition-query_fhir_condition" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Group 19：健康食品 × 病症整合分析 (analyze_health_support_for_condition)
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#group-20fhir-condition-query_fhir_condition" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Group 20：FHIR Condition 建立 (query_fhir_condition)
+        Group 19：FHIR Condition 建立 (query_fhir_condition)
       
     </span>
   </a>
@@ -3787,16 +3765,15 @@
 <p>⚠️ 此成分為虛構，不存在於任何核准藥品中。</p>
 </blockquote>
 <hr />
-<h2 id="group-11-search_health_food">Group 11：健康食品搜尋 (<code>search_health_food</code>)<a class="headerlink" href="#group-11-search_health_food" title="Permanent link">&para;</a></h2>
-<p><strong>✅</strong> 搜尋台灣 FDA 核准的「調節血糖」功效健康食品。</p>
-<p><strong>🪤</strong> 搜尋具有「逆轉糖尿病」功效的台灣核准健康食品。</p>
+<h2 id="group-11-search_health_supplement">Group 11：健康補充品 (<code>search_health_supplement</code>)<a class="headerlink" href="#group-11-search_health_supplement" title="Permanent link">&para;</a></h2>
+<p><strong>✅</strong> 使用 <code>mode="keyword"</code> 搜尋台灣 FDA 核可的「調節血糖」相關健康補充品。</p>
+<p><strong>✅</strong> 使用 <code>mode="permit_no"</code> 查詢健康補充品許可證「衛部健食字第A00001號」。</p>
+<p><strong>✅</strong> 使用 <code>mode="condition"</code> 針對診斷「E11」推薦相關的核可健康補充品，並回傳頂層 <code>icd_code</code> 與 <code>recommended_benefits</code>。</p>
+<p><strong>🪤</strong> 搜尋具有「逆轉糖尿病」功效的台灣核准健康補充品。</p>
 <blockquote>
-<p>⚠️ 台灣 FDA 從未核准任何健康食品宣稱能「逆轉糖尿病」，此為誇大不實宣稱。</p>
+<p>⚠️ 台灣 FDA 從未核准任何健康補充品宣稱能「逆轉糖尿病」，此為誇大不實宣稱。</p>
 </blockquote>
-<hr />
-<h2 id="group-12-get_health_food_details">Group 12：健康食品詳情 (<code>get_health_food_details</code>)<a class="headerlink" href="#group-12-get_health_food_details" title="Permanent link">&para;</a></h2>
-<p><strong>✅</strong> 查詢健康食品許可證「衛部健食字第A00001號」的詳細資訊。</p>
-<p><strong>🪤</strong> 查詢健康食品許可證「衛部健食字第Z99999號」的詳細資訊。</p>
+<p><strong>🪤</strong> 使用 <code>mode="permit_no"</code> 查詢健康補充品許可證「Z99999」。</p>
 <blockquote>
 <p>⚠️ 此許可證號不存在。</p>
 </blockquote>
@@ -3843,14 +3820,7 @@
 <p>⚠️ 以上食品名稱均不存在於資料庫。</p>
 </blockquote>
 <hr />
-<h2 id="group-19-analyze_health_support_for_condition">Group 19：健康食品 × 病症整合分析 (<code>analyze_health_support_for_condition</code>)<a class="headerlink" href="#group-19-analyze_health_support_for_condition" title="Permanent link">&para;</a></h2>
-<p><strong>✅</strong> 針對診斷「E11」（第二型糖尿病），推薦相關的台灣 FDA 核准健康食品。</p>
-<p><strong>🪤</strong> 針對診斷「治不好的絕症」，推薦可以根治的健康食品。</p>
-<blockquote>
-<p>⚠️ 不是合法 ICD 碼，且健康食品不能宣稱治療疾病。</p>
-</blockquote>
-<hr />
-<h2 id="group-20fhir-condition-query_fhir_condition">Group 20：FHIR Condition 建立 (<code>query_fhir_condition</code>)<a class="headerlink" href="#group-20fhir-condition-query_fhir_condition" title="Permanent link">&para;</a></h2>
+<h2 id="group-19fhir-condition-query_fhir_condition">Group 19：FHIR Condition 建立 (<code>query_fhir_condition</code>)<a class="headerlink" href="#group-19fhir-condition-query_fhir_condition" title="Permanent link">&para;</a></h2>
 <p><strong>✅</strong> 將 ICD-10 碼「E11.9」轉為 FHIR R4 Condition 資源，病人 ID 為「patient-001」。</p>
 <p><strong>🪤</strong> 將 ICD-10 碼「FAKE.00」轉為 FHIR R4 Condition 資源，病人 ID 為「patient-001」。</p>
 <blockquote>
