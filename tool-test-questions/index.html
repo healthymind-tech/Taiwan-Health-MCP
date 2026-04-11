@@ -3627,10 +3627,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#group-51icd-snomed-query_snomed_mapping" class="md-nav__link">
+  <a href="#group-51snomed-query_snomed_mapping" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Group 51：ICD → SNOMED 對應 (query_snomed_mapping)
+        Group 51：SNOMED 雙向對應 (query_snomed_mapping)
       
     </span>
   </a>
@@ -3638,21 +3638,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#group-52snomed-icd-query_snomed_mapping" class="md-nav__link">
+  <a href="#group-52-check_drug_interactions" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Group 52：SNOMED → ICD 對應 (query_snomed_mapping)
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#group-53-check_drug_interactions" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Group 53：藥物交互作用 (check_drug_interactions)
+        Group 52：藥物交互作用 (check_drug_interactions)
       
     </span>
   </a>
@@ -4084,21 +4073,19 @@
 <p>⚠️ 此為隨機捏造的 concept ID，不存在於資料庫。</p>
 </blockquote>
 <hr />
-<h2 id="group-51icd-snomed-query_snomed_mapping">Group 51：ICD → SNOMED 對應 (<code>query_snomed_mapping</code>)<a class="headerlink" href="#group-51icd-snomed-query_snomed_mapping" title="Permanent link">&para;</a></h2>
-<p><strong>✅</strong> 找出 ICD-10 碼「E11.9」對應的 SNOMED CT 概念。</p>
-<p><strong>🪤</strong> 找出 ICD-10 碼「ZZZ.999」對應的 SNOMED CT 概念。</p>
+<h2 id="group-51snomed-query_snomed_mapping">Group 51：SNOMED 雙向對應 (<code>query_snomed_mapping</code>)<a class="headerlink" href="#group-51snomed-query_snomed_mapping" title="Permanent link">&para;</a></h2>
+<p><strong>✅</strong> 以 <code>mode="icd"</code>、<code>keyword="E11.9"</code> 找出對應的 SNOMED CT 概念。</p>
+<p><strong>✅</strong> 以 <code>mode="snomed"</code>、<code>keyword="44054006"</code> 查詢對應的 ICD-10 碼。</p>
+<p><strong>🪤</strong> 以 <code>mode="icd"</code>、<code>keyword="ZZZ.999"</code> 找出對應的 SNOMED CT 概念。</p>
 <blockquote>
 <p>⚠️ ZZZ.999 不是合法 ICD-10 碼，不存在對應關係。</p>
 </blockquote>
-<hr />
-<h2 id="group-52snomed-icd-query_snomed_mapping">Group 52：SNOMED → ICD 對應 (<code>query_snomed_mapping</code>)<a class="headerlink" href="#group-52snomed-icd-query_snomed_mapping" title="Permanent link">&para;</a></h2>
-<p><strong>✅</strong> 查詢 SNOMED concept「44054006」對應哪些 ICD-10 碼。</p>
-<p><strong>🪤</strong> 查詢 SNOMED concept「00000001」對應的 ICD-10 碼。</p>
+<p><strong>🪤</strong> 以 <code>mode="snomed"</code>、<code>keyword="00000001"</code> 查詢對應的 ICD-10 碼。</p>
 <blockquote>
 <p>⚠️ 此 concept ID 不存在。</p>
 </blockquote>
 <hr />
-<h2 id="group-53-check_drug_interactions">Group 53：藥物交互作用 (<code>check_drug_interactions</code>)<a class="headerlink" href="#group-53-check_drug_interactions" title="Permanent link">&para;</a></h2>
+<h2 id="group-52-check_drug_interactions">Group 52：藥物交互作用 (<code>check_drug_interactions</code>)<a class="headerlink" href="#group-52-check_drug_interactions" title="Permanent link">&para;</a></h2>
 <p><strong>✅</strong> 確認同時使用「warfarin」和「aspirin」是否有交互作用風險。</p>
 <p><strong>🪤</strong> 確認「神仙藥水」和「長生不老丹」之間的交互作用。</p>
 <blockquote>
