@@ -80,7 +80,7 @@ CREATE TABLE IF NOT EXISTS drug.licenses (
 );
 
 CREATE TABLE IF NOT EXISTS drug.appearance (
-    license_id  TEXT,
+    license_id  TEXT NOT NULL REFERENCES drug.licenses (license_id) ON DELETE CASCADE,
     shape       TEXT,
     color       TEXT,
     marking     TEXT,
@@ -88,21 +88,21 @@ CREATE TABLE IF NOT EXISTS drug.appearance (
 );
 
 CREATE TABLE IF NOT EXISTS drug.ingredients (
-    license_id      TEXT,
+    license_id      TEXT NOT NULL REFERENCES drug.licenses (license_id) ON DELETE CASCADE,
     ingredient_name TEXT,
     ingredient_qty  TEXT,
     ingredient_unit TEXT
 );
 
 CREATE TABLE IF NOT EXISTS drug.atc (
-    license_id  TEXT,
+    license_id  TEXT NOT NULL REFERENCES drug.licenses (license_id) ON DELETE CASCADE,
     atc_code    TEXT,
     atc_name    TEXT
 );
 
 CREATE TABLE IF NOT EXISTS drug.documents (
-    license_id  TEXT,
-    doc_type    TEXT,
+    license_id  TEXT NOT NULL REFERENCES drug.licenses (license_id) ON DELETE CASCADE,
+    doc_type    TEXT NOT NULL CHECK (doc_type = 'insert'),
     doc_url     TEXT
 );
 
@@ -114,20 +114,27 @@ CREATE TABLE IF NOT EXISTS drug.sync_meta (
 
 CREATE INDEX IF NOT EXISTS idx_drug_app_lid  ON drug.appearance (license_id);
 CREATE INDEX IF NOT EXISTS idx_drug_ing_lid  ON drug.ingredients (license_id);
+CREATE INDEX IF NOT EXISTS idx_drug_ing_name ON drug.ingredients (ingredient_name);
 CREATE INDEX IF NOT EXISTS idx_drug_atc_lid  ON drug.atc (license_id);
 CREATE INDEX IF NOT EXISTS idx_drug_atc_code ON drug.atc (atc_code);
 CREATE INDEX IF NOT EXISTS idx_drug_atc_fts  ON drug.atc
     USING GIN (to_tsvector('simple', COALESCE(atc_name,'')));
-
--- Embedding tables for hybrid search
-CREATE TABLE IF NOT EXISTS drug.atc_embeddings (
-    atc_code    TEXT PRIMARY KEY,
-    embedding   halfvec(1024),
-    embedded_at TIMESTAMPTZ DEFAULT NOW()
+CREATE INDEX IF NOT EXISTS idx_drug_doc_lid_insert ON drug.documents (license_id)
+    WHERE doc_type = 'insert';
+CREATE UNIQUE INDEX IF NOT EXISTS uidx_drug_appearance_exact ON drug.appearance (
+    license_id, COALESCE(shape,''), COALESCE(color,''), COALESCE(marking,''), COALESCE(image_url,'')
 );
-CREATE INDEX IF NOT EXISTS idx_drug_atc_emb_hnsw ON drug.atc_embeddings
-    USING hnsw (embedding halfvec_cosine_ops);
+CREATE UNIQUE INDEX IF NOT EXISTS uidx_drug_ingredients_exact ON drug.ingredients (
+    license_id, COALESCE(ingredient_name,''), COALESCE(ingredient_qty,''), COALESCE(ingredient_unit,'')
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uidx_drug_atc_exact ON drug.atc (
+    license_id, COALESCE(atc_code,''), COALESCE(atc_name,'')
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uidx_drug_documents_exact ON drug.documents (
+    license_id, doc_type, COALESCE(doc_url,'')
+);
 
+-- Embedding table for hybrid ingredient search
 CREATE TABLE IF NOT EXISTS drug.ingredient_name_embeddings (
     ingredient_name TEXT PRIMARY KEY,
     embedding       halfvec(1024),
@@ -139,14 +146,41 @@ CREATE INDEX IF NOT EXISTS idx_drug_lic_fts  ON drug.licenses
     USING GIN (to_tsvector('simple',
         COALESCE(name_zh,'') || ' ' || COALESCE(name_en,'') || ' ' || COALESCE(indication,'')));
 
--- Embedding table for hybrid search
-CREATE TABLE IF NOT EXISTS drug.license_embeddings (
-    license_id  TEXT PRIMARY KEY,
-    embedding   halfvec(1024),
-    embedded_at TIMESTAMPTZ DEFAULT NOW()
+-- RxNorm (merged into drug domain)
+CREATE TABLE IF NOT EXISTS drug.rx_concepts (
+    rxcui       TEXT PRIMARY KEY,
+    name        TEXT,
+    tty         TEXT,   -- term type: IN, PIN, MIN, BN, etc.
+    suppress    TEXT
 );
-CREATE INDEX IF NOT EXISTS idx_drug_emb_hnsw ON drug.license_embeddings
-    USING hnsw (embedding halfvec_cosine_ops);
+
+CREATE TABLE IF NOT EXISTS drug.rx_relationships (
+    rxcui1      TEXT NOT NULL,
+    rel         TEXT NOT NULL,   -- e.g. RO, RB, RN
+    rxcui2      TEXT NOT NULL,
+    rela        TEXT NOT NULL    -- e.g. has_ingredient, interacts_with
+);
+
+-- RxNorm to ATC mapping extracted from RxNorm source rows (SAB=ATC).
+-- Keeps atc_code as first-class key so it can be joined with drug.atc.atc_code.
+CREATE TABLE IF NOT EXISTS drug.rx_atc_map (
+    rxcui       TEXT NOT NULL,
+    atc_code    TEXT NOT NULL,
+    atc_name    TEXT,
+    source_sab  TEXT DEFAULT 'ATC',
+    suppress    TEXT,
+    PRIMARY KEY (rxcui, atc_code)
+);
+
+CREATE INDEX IF NOT EXISTS idx_drug_rx_rel_cui1 ON drug.rx_relationships (rxcui1);
+CREATE INDEX IF NOT EXISTS idx_drug_rx_rel_cui2 ON drug.rx_relationships (rxcui2);
+CREATE INDEX IF NOT EXISTS idx_drug_rx_rel_rela ON drug.rx_relationships (rela);
+CREATE UNIQUE INDEX IF NOT EXISTS uidx_drug_rx_rel_exact ON drug.rx_relationships
+    (rxcui1, rel, rxcui2, rela);
+CREATE INDEX IF NOT EXISTS idx_drug_rx_fts      ON drug.rx_concepts
+    USING GIN (to_tsvector('english', COALESCE(name,'')));
+CREATE INDEX IF NOT EXISTS idx_drug_rx_atc_code ON drug.rx_atc_map (atc_code);
+CREATE INDEX IF NOT EXISTS idx_drug_rx_atc_cui  ON drug.rx_atc_map (rxcui);
 
 
 -- ============================================================
@@ -461,29 +495,3 @@ CREATE TABLE IF NOT EXISTS snomed.concept_embeddings (
 );
 CREATE INDEX IF NOT EXISTS idx_snomed_emb_hnsw ON snomed.concept_embeddings
     USING hnsw (embedding halfvec_cosine_ops);
-
-
--- ============================================================
--- RXNORM  (populated by data-loader in Phase 4)
--- ============================================================
-CREATE SCHEMA IF NOT EXISTS rxnorm;
-
-CREATE TABLE IF NOT EXISTS rxnorm.concepts (
-    rxcui       TEXT PRIMARY KEY,
-    name        TEXT,
-    tty         TEXT,   -- term type: IN, PIN, MIN, BN, etc.
-    suppress    TEXT
-);
-
-CREATE TABLE IF NOT EXISTS rxnorm.relationships (
-    rxcui1      TEXT,
-    rel         TEXT,   -- e.g. RO, RB, RN
-    rxcui2      TEXT,
-    rela        TEXT    -- e.g. has_ingredient, interacts_with
-);
-
-CREATE INDEX IF NOT EXISTS idx_rxn_rel_cui1 ON rxnorm.relationships (rxcui1);
-CREATE INDEX IF NOT EXISTS idx_rxn_rel_cui2 ON rxnorm.relationships (rxcui2);
-CREATE INDEX IF NOT EXISTS idx_rxn_rel_rela ON rxnorm.relationships (rela);
-CREATE INDEX IF NOT EXISTS idx_rxnorm_fts   ON rxnorm.concepts
-    USING GIN (to_tsvector('english', COALESCE(name,'')));

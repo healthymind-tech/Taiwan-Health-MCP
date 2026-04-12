@@ -37,7 +37,7 @@
 不當行為將由社區領導者審查。報告方式：
 
 - 📧 [support@healthymind-tech.com](mailto:support@healthymind-tech.com)
-- 🐛 [GitHub Issue](https://github.com/audi0417/Taiwan-Health-MCP/issues)
+- 🐛 [GitHub Issue](https://github.com/healthymind-tech/Taiwan-Health-MCP/issues)
 
 所有投訴將被審查和調查，維護者有義務對報告人保密。
 
@@ -49,7 +49,7 @@
 
 確保您已安裝：
 
-- Python 3.8 或更高版本
+- Python 3.12 或更高版本
 - Git
 - Docker（推薦用於測試）
 
@@ -58,7 +58,7 @@
 ```bash
 # 1. Fork 本倉庫到您的 GitHub 帳戶
 # 2. Clone 您的 Fork
-git clone https://github.com/YOUR_USERNAME/Taiwan-Health-MCP.git
+git clone https://github.com/healthymind-tech/Taiwan-Health-MCP.git
 cd Taiwan-Health-MCP
 
 # 3. 創建開發分支
@@ -85,7 +85,7 @@ pre-commit install
 
 ### 1. 選擇一個任務
 
-查看 [GitHub Issues](https://github.com/audi0417/Taiwan-Health-MCP/issues) 找尋待解決的問題。您也可以：
+查看 [GitHub Issues](https://github.com/healthymind-tech/Taiwan-Health-MCP/issues) 找尋待解決的問題。您也可以：
 
 - 新增功能
 - 修復 Bug
@@ -357,8 +357,8 @@ docs/
 
 ## 獲得幫助
 
-- 📖 查看 [文檔](https://github.com/audi0417/Taiwan-Health-MCP)
-- 💬 開啟 [GitHub Discussion](https://github.com/audi0417/Taiwan-Health-MCP/discussions)
+- 📖 查看 [文檔](https://github.com/healthymind-tech/Taiwan-Health-MCP/tree/main/docs)
+- 💬 開啟 [GitHub Discussion](https://github.com/healthymind-tech/Taiwan-Health-MCP/discussions)
 - 📧 聯絡維護者: [support@healthymind-tech.com](mailto:support@healthymind-tech.com)
 
 ---

@@ -26,6 +26,25 @@ API_SOURCES = {
     "documents": "https://data.fda.gov.tw/data/opendata/export/39/json",
 }
 
+_PILL_FEATURE_SYNONYMS: dict[str, list[str]] = {
+    "white": ["白", "白色"],
+    "yellow": ["黃", "黃色"],
+    "orange": ["橘", "橘色", "橙", "橙色"],
+    "pink": ["粉紅", "粉紅色"],
+    "red": ["紅", "紅色"],
+    "blue": ["藍", "藍色"],
+    "green": ["綠", "綠色"],
+    "brown": ["棕", "棕色", "褐", "褐色"],
+    "black": ["黑", "黑色"],
+    "round": ["圓", "圓形"],
+    "oval": ["橢圓", "橢圓形"],
+    "oblong": ["長橢圓", "長橢圓形"],
+    "capsule": ["膠囊", "膠囊形"],
+    "triangle": ["三角", "三角形"],
+    "square": ["方形", "正方形"],
+    "diamond": ["菱形"],
+}
+
 
 class DrugService:
     def __init__(
@@ -142,7 +161,10 @@ class DrugService:
                     ]
                     for i in range(0, len(app_rows), BATCH):
                         await conn.executemany(
-                            "INSERT INTO drug.appearance (license_id,shape,color,marking,image_url) VALUES ($1,$2,$3,$4,$5)",
+                            """INSERT INTO drug.appearance
+                               (license_id,shape,color,marking,image_url)
+                               VALUES ($1,$2,$3,$4,$5)
+                               ON CONFLICT DO NOTHING""",
                             app_rows[i : i + BATCH],
                         )
 
@@ -158,7 +180,10 @@ class DrugService:
                     ]
                     for i in range(0, len(ing_rows), BATCH):
                         await conn.executemany(
-                            "INSERT INTO drug.ingredients (license_id,ingredient_name,ingredient_qty,ingredient_unit) VALUES ($1,$2,$3,$4)",
+                            """INSERT INTO drug.ingredients
+                               (license_id,ingredient_name,ingredient_qty,ingredient_unit)
+                               VALUES ($1,$2,$3,$4)
+                               ON CONFLICT DO NOTHING""",
                             ing_rows[i : i + BATCH],
                         )
 
@@ -173,7 +198,10 @@ class DrugService:
                     ]
                     for i in range(0, len(atc_rows), BATCH):
                         await conn.executemany(
-                            "INSERT INTO drug.atc (license_id,atc_code,atc_name) VALUES ($1,$2,$3)",
+                            """INSERT INTO drug.atc
+                               (license_id,atc_code,atc_name)
+                               VALUES ($1,$2,$3)
+                               ON CONFLICT DO NOTHING""",
                             atc_rows[i : i + BATCH],
                         )
 
@@ -184,7 +212,10 @@ class DrugService:
                     ]
                     for i in range(0, len(doc_rows), BATCH):
                         await conn.executemany(
-                            "INSERT INTO drug.documents (license_id,doc_type,doc_url) VALUES ($1,$2,$3)",
+                            """INSERT INTO drug.documents
+                               (license_id,doc_type,doc_url)
+                               VALUES ($1,$2,$3)
+                               ON CONFLICT DO NOTHING""",
                             doc_rows[i : i + BATCH],
                         )
 
@@ -196,77 +227,47 @@ class DrugService:
                     )
 
             log_info("Drug DB sync completed", licenses=len(license_rows))
-            if self._embedding_svc and self._embedding_svc.enabled:
-                asyncio.create_task(self._generate_embeddings())
         except Exception as e:
             log_error(f"Drug DB sync failed", error=str(e))
 
-    async def _generate_embeddings(self) -> None:
-        """Embed all drug licenses into pgvector table (background task)."""
-        if not self._embedding_svc:
-            return
-        svc = self._embedding_svc
-        try:
-            async with self.pool.acquire() as conn:
-                drugs = await conn.fetch(
-                    "SELECT license_id, name_zh, name_en, indication FROM drug.licenses"
-                )
-            log_info("Drug: embedding licenses", count=len(drugs))
-            from embedding_service import BATCH_SIZE
-
-            for i in range(0, len(drugs), BATCH_SIZE):
-                batch = drugs[i : i + BATCH_SIZE]
-                texts = [
-                    " ".join(
-                        filter(None, [r["name_zh"], r["name_en"], r["indication"]])
-                    )
-                    for r in batch
-                ]
-                vecs = await svc.embed_batch(texts)
-                rows = [
-                    (batch[j]["license_id"], f"[{','.join(str(x) for x in vecs[j])}]")
-                    for j in range(len(batch))
-                    if vecs[j] is not None
-                ]
-                if rows:
-                    async with self.pool.acquire() as conn:
-                        await conn.executemany(
-                            """INSERT INTO drug.license_embeddings (license_id, embedding)
-                               VALUES ($1, $2::halfvec)
-                               ON CONFLICT (license_id) DO UPDATE
-                               SET embedding=EXCLUDED.embedding, embedded_at=NOW()""",
-                            rows,
-                        )
-            log_info("Drug: license embeddings done", total=len(drugs))
-        except Exception as exc:
-            log_error("Drug embedding generation failed", error=str(exc))
 
     # ── query methods ────────────────────────────────────────────────────────
 
-    @cached(ttl=3600, prefix="drug.search.v3")
+    @cached(ttl=3600, prefix="drug.search.v4")
     async def search_drug(self, keyword: str, limit: int = 3) -> str:
         """Search Taiwan FDA approved drugs by name or indication keyword.
+
+        Drug name matches (name_zh / name_en) are ranked higher than indication
+        matches via tsvector setweight (A vs C). Results are ordered by ts_rank_cd
+        so the closest name match appears first.
 
         Args:
             keyword: Chinese or English drug name, or indication phrase
                 (e.g. ``"普拿疼"``, ``"Panadol"``, ``"頭痛"``).
             limit: Maximum number of results to return (default 3, max 10).
-                   Returns the top *limit* closest matches ranked by hybrid
-                   BM25 + semantic similarity — not just keyword matches.
 
         Returns:
-            JSON string with a ``results`` list of the closest matching license records.
+            JSON string with a ``results`` list ranked by relevance.
         """
         limit = min(max(1, limit), 10)
         async with self.pool.acquire() as conn:
             rows = await conn.fetch(
-                """SELECT DISTINCT l.license_id
-                   FROM drug.licenses l
-                   WHERE to_tsvector('simple',
-                           COALESCE(l.name_zh,'') || ' ' || COALESCE(l.name_en,'') || ' ' || COALESCE(l.indication,''))
-                         @@ plainto_tsquery('simple', $1)
-                   ORDER BY l.license_id
-                   LIMIT $2""",
+                """
+                SELECT l.license_id,
+                       ts_rank_cd(
+                           setweight(to_tsvector('simple', COALESCE(l.name_zh,'')), 'A') ||
+                           setweight(to_tsvector('simple', COALESCE(l.name_en,'')), 'A') ||
+                           setweight(to_tsvector('simple', COALESCE(l.indication,'')), 'C'),
+                           plainto_tsquery('simple', $1)
+                       ) AS rank
+                FROM drug.licenses l
+                WHERE to_tsvector('simple',
+                        COALESCE(l.name_zh,'') || ' ' || COALESCE(l.name_en,'') ||
+                        ' ' || COALESCE(l.indication,''))
+                      @@ plainto_tsquery('simple', $1)
+                ORDER BY rank DESC
+                LIMIT $2
+                """,
                 keyword,
                 limit,
             )
@@ -536,12 +537,17 @@ class DrugService:
             ensure_ascii=False,
         )
 
-    @cached(ttl=3600, prefix="drug.pill")
+    @cached(ttl=3600, prefix="drug.pill.v2")
     async def identify_pill(self, features: str) -> str:
         """Identify an unknown pill by visual appearance features.
 
         Each space-separated keyword is matched against shape, colour, and
-        marking fields.  All keywords must match (AND logic).
+        marking fields. All keywords must match (AND logic).
+        Common English descriptors (for example ``white``, ``round``, ``oval``)
+        are automatically expanded to Chinese synonyms to improve matching on
+        Taiwan FDA appearance fields. If no match is found and the query
+        contains an imprint-like token with digits (for example ``M500``),
+        the service retries once without digit-containing tokens.
 
         Args:
             features: Space-separated visual feature keywords
@@ -558,23 +564,21 @@ class DrugService:
                 ensure_ascii=False,
             )
 
-        conditions = " AND ".join(
-            f"(shape ILIKE ${i*3+1} OR color ILIKE ${i*3+2} OR marking ILIKE ${i*3+3})"
-            for i in range(len(keywords))
-        )
-        params = []
-        for k in keywords:
-            params.extend([f"%{k}%", f"%{k}%", f"%{k}%"])
+        keyword_groups = [self._expand_pill_feature_keyword(k) for k in keywords]
+        keyword_groups = [g for g in keyword_groups if g]
 
         async with self.pool.acquire() as conn:
-            rows = await conn.fetch(
-                f"""SELECT l.name_zh, l.name_en, a.shape, a.color, a.marking, a.image_url, l.license_id
-                    FROM drug.appearance a
-                    JOIN drug.licenses l ON a.license_id = l.license_id
-                    WHERE {conditions}
-                    LIMIT 5""",
-                *params,
-            )
+            rows = await self._query_pill_candidates(conn, keyword_groups)
+            if not rows and len(keyword_groups) >= 3:
+                # Fallback: imprint-like tokens (often alphanumeric) are optional
+                # when users only want coarse visual identification.
+                relaxed_groups = [
+                    group
+                    for raw, group in zip(keywords, keyword_groups)
+                    if not re.search(r"\d", raw)
+                ]
+                if 2 <= len(relaxed_groups) < len(keyword_groups):
+                    rows = await self._query_pill_candidates(conn, relaxed_groups)
         if not rows:
             return json.dumps(
                 {"error": "No matching pills found based on description."},
@@ -596,6 +600,61 @@ class DrugService:
             ensure_ascii=False,
         )
 
+    @staticmethod
+    def _expand_pill_feature_keyword(keyword: str) -> list[str]:
+        """Expand one token with common cross-lingual synonyms."""
+        token = keyword.strip()
+        if not token:
+            return []
+
+        variants = [token]
+        variants.extend(_PILL_FEATURE_SYNONYMS.get(token.lower(), []))
+
+        dedup: list[str] = []
+        seen: set[str] = set()
+        for v in variants:
+            key = v.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            dedup.append(v)
+        return dedup
+
+    async def _query_pill_candidates(
+        self,
+        conn: asyncpg.Connection,
+        keyword_groups: list[list[str]],
+    ) -> list[asyncpg.Record]:
+        """Run AND-across-tokens / OR-across-synonyms appearance lookup."""
+        params: list[str] = []
+        clauses: list[str] = []
+        param_idx = 1
+
+        for group in keyword_groups:
+            token_clauses: list[str] = []
+            for term in group:
+                pattern = f"%{term}%"
+                token_clauses.append(f"shape ILIKE ${param_idx}")
+                params.append(pattern)
+                param_idx += 1
+                token_clauses.append(f"color ILIKE ${param_idx}")
+                params.append(pattern)
+                param_idx += 1
+                token_clauses.append(f"marking ILIKE ${param_idx}")
+                params.append(pattern)
+                param_idx += 1
+            clauses.append("(" + " OR ".join(token_clauses) + ")")
+
+        conditions = " AND ".join(clauses)
+        return await conn.fetch(
+            f"""SELECT l.name_zh, l.name_en, a.shape, a.color, a.marking, a.image_url, l.license_id
+                FROM drug.appearance a
+                JOIN drug.licenses l ON a.license_id = l.license_id
+                WHERE {conditions}
+                LIMIT 5""",
+            *params,
+        )
+
     @cached(ttl=3600, prefix="drug.byatc.v4")
     async def search_by_atc(self, query: str, limit: int = 3) -> str:
         """Search Taiwan FDA drugs by WHO ATC code or therapeutic class name.
@@ -613,7 +672,7 @@ class DrugService:
             JSON string with ``mode``, ``keyword``, and ``results`` list.
         """
         limit = min(max(1, limit), 10)
-        if not re.fullmatch(r"[A-Za-z][A-Za-z0-9]{1,6}", query):
+        if not re.fullmatch(r"[A-Za-z][A-Za-z0-9]{0,6}", query):
             return json.dumps(
                 {
                     "error": "ATC mode accepts ATC code prefixes only (e.g. A10, A10BA02)."
@@ -638,6 +697,39 @@ class DrugService:
                 ensure_ascii=False,
             )
         return await self._build_drug_detail_results("atc_code", query, rows)
+
+    async def search_by_atc_codes(self, atc_codes: list[str], limit: int = 3) -> str:
+        """Search TFDA drugs matching any of the given exact ATC codes.
+
+        Used internally to bridge RxNorm RXCUI → ATC → TFDA drug records.
+        Unlike ``search_by_atc`` this accepts a list of full codes (no prefix
+        expansion) and is not cached (caller controls caching).
+
+        Args:
+            atc_codes: List of exact ATC codes (e.g. ``["C10AA05"]``).
+            limit: Maximum number of results (default 3, max 10).
+
+        Returns:
+            JSON string with ``mode="atc_codes"`` and ``results`` list.
+        """
+        if not atc_codes:
+            return json.dumps({"mode": "atc_codes", "results": []}, ensure_ascii=False)
+        limit = min(max(1, limit), 10)
+        codes_upper = sorted({c.strip().upper() for c in atc_codes if c.strip()})
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch(
+                """SELECT DISTINCT ON (l.license_id) l.license_id
+                   FROM drug.atc a
+                   JOIN drug.licenses l ON l.license_id = a.license_id
+                   WHERE UPPER(a.atc_code) = ANY($1::text[])
+                   ORDER BY l.license_id
+                   LIMIT $2""",
+                codes_upper,
+                limit,
+            )
+        if not rows:
+            return json.dumps({"mode": "atc_codes", "results": []}, ensure_ascii=False)
+        return await self._build_drug_detail_results("atc_codes", ",".join(codes_upper), rows)
 
     @cached(ttl=3600, prefix="drug.bying.v3")
     async def search_by_ingredient(self, ingredient_name: str, limit: int = 3) -> str:

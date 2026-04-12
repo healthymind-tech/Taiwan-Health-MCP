@@ -47,8 +47,13 @@
 **✅** 使用 `mode="license_id"` 查詢許可證「衛部藥製字第058774號」的完整藥品資訊。  
 **✅** 使用 `mode="atc_code"` 搜尋 ATC 碼「A10BA」相關藥品。  
 **✅** 使用 `mode="ingredient"` 找出含有「Aspirin」成分的藥品。  
+**✅** 使用 `mode="rxnorm_resolve"` 將「atorvastatin」解析為台灣 FDA 藥品（透過 RXCUI→ATC→TFDA 橋接；無 ATC 對應時 fallback 至 RxNorm-only 結果）。  
+**✅** 使用 `mode="rxnorm_ingredients"` 查詢 RXCUI「860975」的成分，並橋接至對應的台灣 FDA 藥品（無 ATC 對應時 fallback 至 RxNorm-only 成分列表）。  
+**✅** 使用 `mode="interaction"` 檢查 `["warfarin","aspirin"]` 交互作用。  
 **🪤** 使用 `mode="drug_name"` 搜尋「XyloPharm 神奇減重膠囊」。  
 > ⚠️ 此藥品名稱為虛構，不存在於台灣 FDA 資料庫。  
+**🪤** 使用 `mode="atc_code"` 但輸入「metformin」。  
+> ⚠️ `atc_code` 模式只接受 ATC code 前綴，不接受自由文字。  
 
 ### `identify_unknown_pill`
 **✅** 我有一顆白色圓形藥片，上面有刻印「YP」，請幫我辨識可能是什麼藥。  
@@ -223,25 +228,6 @@
 **✅** 以 `mode="snomed"`、`keyword="44054006"` 查詢對應的 ICD-10 碼。  
 **🪤** 以 `mode="icd"`、`keyword="ZZZ.999"` 找出對應的 SNOMED CT 概念。  
 > ⚠️ ZZZ.999 不是合法 ICD-10 碼。  
-
----
-
-## Group 11：RxNorm
-
-### `check_drug_interactions`
-**✅** 確認同時使用「warfarin」和「aspirin」是否有交互作用風險。  
-**🪤** 確認「神仙藥水」和「長生不老丹」之間的交互作用。  
-> ⚠️ 這兩個藥品名稱不存在於 RxNorm 資料庫。  
-
-### `resolve_rxnorm_drug`
-**✅** 將「atorvastatin」解析為 RxNorm RXCUI。  
-**🪤** 將「藍色神奇小藥丸（無品名）」解析為 RxNorm RXCUI。  
-> ⚠️ 無法由描述性語句解析為 RXCUI。  
-
-### `get_drug_ingredients_rxnorm`
-**✅** 查詢 RXCUI「860975」的成分資訊。  
-**🪤** 查詢 RXCUI「000000000」的成分資訊。  
-> ⚠️ 此 RXCUI 不存在於 RxNorm 資料庫。  
 
 ---
 

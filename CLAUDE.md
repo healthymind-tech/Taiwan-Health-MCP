@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Taiwan Health MCP Server — a Model Context Protocol server built on the official **`mcp` SDK** (`mcp.server.fastmcp.FastMCP`) providing **33 tools** for Taiwan medical and health data. Designed for production SaaS deployment with hundreds of requests/second throughput.
+Taiwan Health MCP Server — a Model Context Protocol server built on the official **`mcp` SDK** (`mcp.server.fastmcp.FastMCP`) providing **30 tools** for Taiwan medical and health data. Designed for production SaaS deployment with hundreds of requests/second throughput.
 
 **Datasets**: ICD-10-CM 2025, LOINC 2.80, SNOMED CT International, RxNorm, Taiwan FDA drugs/health foods/nutrition, TWCore IG v1.0.0, Taiwan clinical guidelines.
 
@@ -34,6 +34,7 @@ docker compose --profile loader run --rm data-loader --twcore
 docker compose --profile loader run --rm data-loader --guideline
 docker compose --profile loader run --rm data-loader --snomed   # large, 5-15 min
 docker compose --profile loader run --rm data-loader --rxnorm
+# Drug import is RxNorm-first; run --rxnorm before --fda/--drug
 docker compose --profile loader run --rm data-loader --fda          # all Taiwan FDA API datasets
 docker compose --profile loader run --rm data-loader --drug
 docker compose --profile loader run --rm data-loader --health-food
@@ -58,7 +59,7 @@ python -m pytest tests/test_api_integration.py -v
 | Prometheus | Metrics on `METRICS_PORT` (default 9090) |
 
 ### Entry point
-`src/server.py` — `DynamicFastMCP` server (subclass of FastMCP) with up to 37 tool definitions. Startup uses `asynccontextmanager lifespan`:
+`src/server.py` — `DynamicFastMCP` server (subclass of FastMCP) with up to 30 tool definitions. Startup uses `asynccontextmanager lifespan`:
 1. Start Prometheus metrics server
 2. Init asyncpg pool through pgBouncer (`statement_cache_size=0` required for transaction mode)
 3. Init Redis client
@@ -81,19 +82,20 @@ python -m pytest tests/test_api_integration.py -v
 | FHIR Medication Service | `fhir_medication_service.py` | reads `drug_service` | — |
 | TWCore Service | `twcore_service.py` | `twcore.*` | data-loader (package.tgz) + live fetch fallback |
 | SNOMED Service | `snomed_service.py` | `snomed.*` | data-loader (RF2 zip) |
-| Drug Interaction Service | `drug_interaction_service.py` | `rxnorm.*` | data-loader (RxNorm zip) |
+| Drug Interaction Service | `drug_interaction_service.py` | `drug.rx_*` | data-loader (RxNorm zip) |
 
 ### Data loader
 `loader/main.py` — separate Docker container (`profiles: [loader]`, `restart: "no"`).
 - Connects **directly** to PostgreSQL (bypasses pgBouncer) for bulk writes
 - Source files expected at `/app/fhir-code/` (mounted read-only):
-  - `icd10cm/icd10cm-table-index-2025.zip`
+  - `icd/10/icd10cm/icd10cm-table-index-2025.zip`
+  - `icd/10/icd10pcs/icd10pcs_tables_2025.zip` *(bundled — loaded automatically by `--icd`)*
+  - `icd/10/*.xlsx` *(optional Taiwan ICD Chinese names)*
   - `loinc/2.80/Loinc_2.80.zip`
   - `twcoreig/package.tgz`
   - `snomed/SnomedCT_InternationalRF2_PRODUCTION_*.zip`
   - `rxnorm/RxNorm_full_*.zip`
   - `umls/umls-2024AA-metathesaurus-full.zip` *(not yet loaded — future use; excluded from git due to UMLS license — obtain from https://uts.nlm.nih.gov/uts/signup-login)*
-  - `icd10pcs/icd10pcs_tables_2025.zip` *(bundled — loaded automatically by `--icd`)*
 
 ### Cross-cutting concerns
 - **`src/audit.py`** — `@audited("tool_name")` decorator: logs SHA-256(params), tool name, duration, status to `audit.query_log`. Never logs raw parameter values (HIPAA).
@@ -104,7 +106,7 @@ python -m pytest tests/test_api_integration.py -v
 - **`src/database.py`** — asyncpg pool singleton. `statement_cache_size=0` is set to support pgBouncer transaction mode.
 
 ### PostgreSQL schemas
-`audit` | `icd` | `drug` | `health_food` | `food_nutrition` | `loinc` | `guideline` | `twcore` | `snomed` | `rxnorm`
+`audit` | `icd` | `drug` | `health_food` | `food_nutrition` | `loinc` | `guideline` | `twcore` | `snomed`
 
 Full schema: `db/schema.sql` (auto-applied by PostgreSQL container on first init).
 
@@ -140,7 +142,7 @@ Session teardown does **not** close the pool or Redis client (shared resources m
 
 - **Health food disease mappings** are developer-curated and not medically validated — not suitable for patient-facing use without expert review
 - **FHIR validation** is basic (required fields only); production use requires the HL7 FHIR Validator
-- **ICD-10-PCS** (procedure codes) — 2025 zip is bundled in `fhir-code/icd10pcs/`; `--icd` loads both CM and PCS automatically; graceful degradation if table is empty
+- **ICD-10-PCS** (procedure codes) — 2025 zip is bundled in `fhir-code/icd/10/icd10pcs/`; `--icd` loads both CM and PCS automatically; graceful degradation if table is empty
 - **SNOMED CT** requires an active SNOMED International license (free for most uses)
 - **Drug interactions**: RxNorm `interacts_with` relationships indicate a potential interaction but do not include severity; always verified by a clinician
 - **pgBouncer transaction mode** is incompatible with `LISTEN/NOTIFY` and named prepared statements — asyncpg's `statement_cache_size=0` handles this

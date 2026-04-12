@@ -2,16 +2,50 @@
 
 ---
 
-## [v2.1.0] — 2026-04-12（當前版本）
+## [v2.2.0] — 2026-04-12（當前版本）
+
+### 🔍 Drug 搜尋品質改善
+
+- `drug_name` mode 改用 `ts_rank_cd + setweight` 排序（藥名權重 A、適應症權重 C），取代舊版 `ORDER BY license_id`，結果現依相關度排序
+- `atc_code` 正則式放寬：接受 1–7 字元（舊版 2–7），單一字母（如 `"C"`）現為有效輸入
+
+### 🌉 RxNorm → TFDA 橋接
+
+- `rxnorm_resolve` 與 `rxnorm_ingredients` 新增 RXCUI→ATC→TFDA 橋接邏輯：
+  - 成功時直接回傳台灣 FDA 藥品完整記錄（`license_id`、`manufacturer`、`indication` 等欄位皆填滿）
+  - 無 ATC 對應時 fallback 至 RxNorm-only 結果（維持舊行為）
+- 新增 `DrugService.search_by_atc_codes(atc_codes: list[str], limit)` 方法支援精確 ATC code 批次查詢
+- `rxnorm_resolve` fallback 現正確套用 `limit` 參數（舊版 fallback 不受 limit 限制）
+
+### 🗑️ 移除未使用 embedding 資料表
+
+- 刪除 `drug.license_embeddings`：內容由 name + 幾百字 indication 串接而成，向量主要由 indication 決定，同成分多許可證向量幾乎相同；從未被查詢
+- 刪除 `drug.atc_embeddings`：同樣從未被查詢
+- 新增遷移腳本：`db/migrations/2026-04-12_drop_unused_drug_embeddings.sql`
+- `loader/loaders/embedding_loader.py` 移除對應的 embed 段落與 `_EMBEDDING_COLUMNS` 項目
+- `src/drug_service.py` 移除 `_generate_embeddings()` 方法及其呼叫
+
+### 🔧 其他修復
+
+- `interaction` mode：N+1 查詢修復，成分名稱改為單次批次查詢（`WHERE rxcui = ANY($1)`）
+- `_normalize_drug_mode_payload`：`mode`/`keyword` 改為強制覆蓋（原為 `setdefault`，導致 bridge path 回傳 `mode="atc_codes"` 而非呼叫端指定的 mode）
+
+---
+
+## [v2.1.0] — 2026-04-12
 
 ### 🔁 工具整併與命名一致化
 
-- MCP 對外工具收斂為 **33 個**（含 `health_check`）
+- MCP 對外工具收斂為 **30 個**（含 `health_check`）
 - Lab / LOINC 整併為 4 個入口：
   - `search_loinc`（`code` / `category` / `specimen` / `component`）
   - `query_loinc`（`detail` / `reference_range`）
   - `interpret_lab_result`
   - `batch_interpret_lab_results`
+- RxNorm 三項能力併入 `search_drug`：
+  - `rxnorm_resolve`（藥名 → RXCUI）
+  - `rxnorm_ingredients`（RXCUI → 成分）
+  - `interaction`（多藥交互作用）
 - Drug、Health Supplement、Guideline、TWCore、SNOMED 相關整併入口維持一致的 mode/section 參數風格
 
 ### 📖 文件與 metadata
@@ -22,6 +56,24 @@
   - 是否使用 embedding（依 mode 說明）
   - 回傳格式說明
 - Status page 參數表單改進：enum 與 `anyOf + enum` 皆使用 `select`
+
+### 🧱 Drug 載入防呆與重構規格
+
+- data-loader 新增 RxNorm-first 防呆：
+  - `load_drug()` 前檢查 `drug.rx_concepts`，未達門檻時阻擋匯入並提示先執行 `--rxnorm`
+- 新增架構規格文件：
+  - `docs/architecture/drug-domain-v2-spec.md`
+  - 定義 Drug Domain V2（RxNorm-first）資料模型、匯入順序、遷移策略
+
+### 🗃️ Drug 無資料遺失遷移
+
+- 新增 migration：`db/migrations/2026-04-12_drug_schema_no_loss.sql`
+  - 舊 `rxnorm.*` 自動併入 `drug.rx_*`
+  - 寫入前先備份異常/重複列到 `migration_backup.*`
+  - 對齊 `db/schema.sql`：`NOT NULL`、FK、`documents.doc_type='insert'`、去重索引
+- FDA 藥品匯入寫入策略調整：
+  - `loader/loaders/drug_loader.py`、`src/drug_service.py` 子表 insert 改為 `ON CONFLICT DO NOTHING`
+  - 避免來源重複列在新唯一索引下造成匯入失敗
 
 ---
 

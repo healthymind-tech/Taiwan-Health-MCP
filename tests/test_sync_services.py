@@ -66,6 +66,24 @@ class TestDrugServiceSync:
         truncate_calls = [c for c in conn.execute.call_args_list
                           if "TRUNCATE" in str(c)]
         assert len(truncate_calls) >= 1
+        # Child-table inserts should be duplicate-safe under unique indexes
+        child_sqls = [c.args[0] for c in conn.executemany.call_args_list if c.args]
+        assert any(
+            "INSERT INTO drug.appearance" in s and "ON CONFLICT DO NOTHING" in s
+            for s in child_sqls
+        )
+        assert any(
+            "INSERT INTO drug.ingredients" in s and "ON CONFLICT DO NOTHING" in s
+            for s in child_sqls
+        )
+        assert any(
+            "INSERT INTO drug.atc" in s and "ON CONFLICT DO NOTHING" in s
+            for s in child_sqls
+        )
+        assert any(
+            "INSERT INTO drug.documents" in s and "ON CONFLICT DO NOTHING" in s
+            for s in child_sqls
+        )
 
     @pytest.mark.asyncio
     async def test_fetch_failure_prevents_db_write(self):
@@ -88,6 +106,74 @@ class TestDrugServiceSync:
 
         # executemany (insert rows) must NOT have been called
         conn.executemany.assert_not_called()
+
+
+class TestDrugServiceIdentifyPill:
+    @pytest.mark.asyncio
+    async def test_expands_english_feature_keywords(self):
+        from drug_service import DrugService
+
+        conn = _make_conn_mock()
+        conn.fetch = AsyncMock(
+            return_value=[
+                {
+                    "name_zh": "測試藥",
+                    "name_en": "TestDrug",
+                    "shape": "圓形",
+                    "color": "白色",
+                    "marking": "YP",
+                    "image_url": "",
+                    "license_id": "L001",
+                }
+            ]
+        )
+        pool = _make_pool_mock(conn)
+        svc = DrugService(pool)
+
+        result = json.loads(await svc.identify_pill("white round"))
+        assert isinstance(result, list)
+        assert result[0]["license_id"] == "L001"
+
+        fetch_args = conn.fetch.await_args.args
+        params = fetch_args[1:]
+        assert any(p == "%white%" for p in params)
+        assert any(p == "%白%" for p in params)
+        assert any(p == "%round%" for p in params)
+        assert any(p == "%圓形%" for p in params)
+
+    @pytest.mark.asyncio
+    async def test_retries_without_digit_token_when_strict_match_empty(self):
+        from drug_service import DrugService
+
+        conn = _make_conn_mock()
+        conn.fetch = AsyncMock(
+            side_effect=[
+                [],
+                [
+                    {
+                        "name_zh": "測試藥",
+                        "name_en": "TestDrug",
+                        "shape": "圓形",
+                        "color": "白色",
+                        "marking": "YP",
+                        "image_url": "",
+                        "license_id": "L001",
+                    }
+                ],
+            ]
+        )
+        pool = _make_pool_mock(conn)
+        svc = DrugService(pool)
+
+        result = json.loads(await svc.identify_pill("white round M500"))
+        assert isinstance(result, list)
+        assert result[0]["license_id"] == "L001"
+        assert conn.fetch.await_count == 2
+
+        strict_params = conn.fetch.await_args_list[0].args[1:]
+        relaxed_params = conn.fetch.await_args_list[1].args[1:]
+        assert any(p == "%M500%" for p in strict_params)
+        assert not any(p == "%M500%" for p in relaxed_params)
 
 
 # ── HealthFoodService ────────────────────────────────────────────────────────

@@ -15,3 +15,6 @@
 
 ### [部署架構](deployment.md)
 說明容器化部署的拓撲結構與資料持久層設計。
+
+### [Drug Domain V2（RxNorm-First）](drug-domain-v2-spec.md)
+定義藥品資料層重構方向、匯入順序，以及 FDA 匯入前置防呆策略。

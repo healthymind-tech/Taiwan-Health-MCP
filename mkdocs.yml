@@ -159,9 +159,9 @@ nav:
     - 資料流程: architecture/data-flow.md
     - 模組關係: architecture/module-relations.md
     - 部署架構: architecture/deployment.md
+    - Drug Domain V2 規格: architecture/drug-domain-v2-spec.md
 
   - 服務模組:
-    - modules/index.md
     - ICD Service: modules/icd-service.md
     - Drug Service: modules/drug-service.md
     - Health Food Service: modules/health-food-service.md
@@ -180,14 +180,14 @@ nav:
     - FHIR 工具: tools/fhir-tools.md
     - 檢驗工具: tools/lab-tools.md
     - 臨床指引工具: tools/guideline-tools.md
+    - SNOMED 工具: tools/snomed-tools.md
 
   - FHIR 整合:
-    - fhir/index.md
-    - FHIR R4 概述: fhir/overview.md
-    - Condition 資源: fhir/condition.md
-    - Medication 資源: fhir/medication.md
-    - MedicationKnowledge 資源: fhir/medication-knowledge.md
-    - 驗證與測試: fhir/validation.md
+    - FHIR 工具總覽: tools/fhir-tools.md
+    - Condition 服務: modules/fhir-condition-service.md
+    - Medication 服務: modules/fhir-medication-service.md
+    - FHIR Services API: api/fhir-services.md
+    - FHIR 常見問題: faq/fhir.md
 
   - 使用指南:
     - guides/index.md
@@ -226,6 +226,8 @@ nav:
     - 環境配置: deployment/configuration.md
     - 效能優化: deployment/performance.md
     - 監控與日誌: deployment/monitoring.md
+    - 隱私聲明: deployment/privacy.md
+    - DPA: deployment/dpa.md
 
   - 常見問題:
     - faq/index.md
@@ -233,6 +235,9 @@ nav:
     - 使用問題: faq/usage.md
     - FHIR 相關: faq/fhir.md
     - LOINC 相關: faq/loinc.md
+
+  - 測試題庫:
+    - tool-test-questions.md
 
 # Extra CSS
 extra_css:

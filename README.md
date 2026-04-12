@@ -14,7 +14,7 @@
 
 - 🇹🇼 **台灣在地化** — 整合台灣 FDA、衛福部官方開放資料，支援繁體中文
 - 🔗 **國際標準** — 符合 FHIR R4、ICD-10-CM 2025、LOINC 2.80、SNOMED CT、RxNorm、ATC
-- 🏥 **33 個 MCP 工具** — 由動態 registry 管理，涵蓋診斷、藥品、檢驗、指引、術語、藥物交互作用
+- 🏥 **30 個 MCP 工具** — 由動態 registry 管理，涵蓋診斷、藥品、檢驗、指引、術語；RxNorm 能力已併入 `search_drug` modes
 - 🏗️ **生產就緒** — PostgreSQL 16 + pgBouncer + Redis + Prometheus，支援每秒數百請求
 - 🔄 **自動同步** — FDA 藥品/保健食品/營養資料每週自動更新
 
@@ -56,6 +56,8 @@ docker compose up -d
 docker compose --profile loader run --rm data-loader --all
 
 # 僅初始化 FDA 動態資料
+# 注意：Drug 匯入採 RxNorm-first 防呆，未先載入 RxNorm 會阻擋 --drug/--fda
+docker compose --profile loader run --rm data-loader --rxnorm
 docker compose --profile loader run --rm data-loader --fda
 docker compose --profile loader run --rm data-loader --drug
 docker compose --profile loader run --rm data-loader --health-food
@@ -73,8 +75,8 @@ docker compose --profile loader run --rm data-loader --rxnorm     # RxNorm
 `DATASETS_CONFIG` 預設為 `/app/config/datasets.yaml`。若未設定，loader 會回退到舊的
 `/app/fhir-code` 目錄規則。新部署建議使用 `config/datasets.yaml`，避免依賴固定檔名與固定目錄結構。
 
-> `--all` 現在也會初始化 Taiwan FDA 藥品、健康補充品、營養資料。
-> app 仍會在首次啟動或資料過期時自動同步，但若想在部署階段先灌資料，請使用 `data-loader --all` 或 `--fda`。
+> `--all` 現在也會初始化 Taiwan FDA 藥品、健康補充品、營養資料，且會自動處理相依順序（包含先載入 RxNorm）。
+> app 仍會在首次啟動或資料過期時自動同步；若想在部署階段先灌資料，建議使用 `data-loader --all`，或手動依序執行 `--rxnorm` 後再 `--fda`。
 
 ### 4. 確認服務正常
 
@@ -88,6 +90,28 @@ curl http://localhost:8000/mcp -X POST \
   -H "Accept: application/json, text/event-stream" \
   -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}'
 ```
+
+### 升級既有資料庫（無資料遺失遷移）
+
+若您的環境是在 RxNorm 併入 `drug` schema 之前建立，請先執行一次 migration：
+
+```bash
+# 1. RxNorm 整併與 drug schema 補強
+docker compose exec -T postgres psql \
+  -U ${POSTGRES_USER:-mcp} \
+  -d ${POSTGRES_DB:-taiwan_health} \
+  -v ON_ERROR_STOP=1 \
+  < db/migrations/2026-04-12_drug_schema_no_loss.sql
+
+# 2. 移除已棄用的 embedding 資料表（drug.license_embeddings, drug.atc_embeddings）
+docker compose exec -T postgres psql \
+  -U ${POSTGRES_USER:-mcp} \
+  -d ${POSTGRES_DB:-taiwan_health} \
+  -v ON_ERROR_STOP=1 \
+  < db/migrations/2026-04-12_drop_unused_drug_embeddings.sql
+```
+
+> migration 1 會把不符合新約束的舊資料先備份到 `migration_backup.*`，再進行去重與約束補強。migration 2 移除從未被查詢的 embedding 資料表。
 
 ### 5. 連接 Claude Desktop
 
@@ -119,11 +143,13 @@ curl http://localhost:8000/mcp -X POST \
 
 ### PostgreSQL Schema
 
-`audit` | `icd` | `drug` | `health_supplement` | `food_nutrition` | `loinc` | `guideline` | `twcore` | `snomed` | `rxnorm`
+`audit` | `icd` | `drug` | `health_food` | `food_nutrition` | `loinc` | `guideline` | `twcore` | `snomed`
+
+> `drug` schema 內包含 FDA 藥品資料與 RxNorm 子表（`rx_concepts` / `rx_relationships` / `rx_atc_map`）。
 
 ---
 
-## 📋 核心功能（33 個 MCP 工具）
+## 📋 核心功能（30 個 MCP 工具）
 
 工具分類、status page 範例與 dataset gating 由同一份 registry 產生；`tools/list` 只會顯示已載入資料集對應的工具，`health_check` 永遠可用。FHIR、TWCore 與臨床指引已合併成較少的對外入口。
 
@@ -131,7 +157,7 @@ curl http://localhost:8000/mcp -X POST \
 |------|--------|------|
 | 系統 | 1 | `health_check`：資料庫、快取、資料集狀態一覽（永遠可用） |
 | ICD-10 | 5 | 診斷碼搜尋、併發症推論、鄰近碼、衝突檢查、分類瀏覽 |
-| 藥品 | 2 | `search_drug`（名稱 / 代碼 / 成分 / 許可證）與外觀辨識 |
+| 藥品 | 2 | `search_drug`（名稱 / ATC / 成分 / 許可證 / RxNorm 解析 / RXCUI 成分 / 交互作用）與外觀辨識 |
 | 健康補充品 | 1 | `search_health_supplement`：關鍵字、許可證、疾病情境推薦 |
 | 食品與營養 | 6 | 營養成分、詳細營養、食品原料、營養排序、餐點分析 |
 | FHIR Condition | 2 | ICD-10 / 關鍵字 → FHIR R4 Condition，驗證 |
@@ -140,7 +166,6 @@ curl http://localhost:8000/mcp -X POST \
 | 臨床指引 | 2 | 指引搜尋、分段內容、臨床路徑 |
 | TWCore IG | 1 | 台灣核心 CodeSystem 統一查詢入口 |
 | SNOMED CT | 4 | 概念搜尋、階層查詢、關聯查詢、ICD-10 雙向對應 |
-| RxNorm | 3 | 藥物交互作用檢查、藥品名稱解析、成分查詢 |
 
 ---
 

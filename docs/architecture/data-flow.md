@@ -33,6 +33,7 @@
 術語資料由獨立的 data-loader 容器載入，不在伺服器啟動時進行：
 
 1. 執行 `docker compose --profile loader run --rm data-loader --icd`（或其他旗標）。
+   - 若要匯入 FDA 藥品（`--drug` / `--fda`），需先匯入 `--rxnorm`（loader 會檢查並阻擋錯誤順序）。
 2. **loader/main.py** 直接連接 PostgreSQL（繞過 pgBouncer），讀取 `config/datasets.yaml` 取得原始檔案路徑。
 3. 各 loader（`icd_loader.py`、`loinc_loader.py` 等）解析原始 zip 檔，批次寫入對應 schema。
 4. 載入完成後重啟 MCP server，服務初始化時連接已有資料的 PostgreSQL。
@@ -48,7 +49,7 @@
 5. **比對差異**：
    - 資料量 ≥ 門檻 且尚未啟用 → `mcp.add_tool(fn, name=...)` 逐一註冊工具
    - 資料量 < 門檻 且已啟用 → `mcp.remove_tool(name)` 逐一移除工具
-6. **回傳**：目前已註冊的工具清單（最多 33 個，不含未載入資料集的工具）。
+6. **回傳**：目前已註冊的工具清單（最多 30 個，不含未載入資料集的工具）。
 
 **首次初始化**：lifespan 完成服務初始化後立即執行一次同步，確保 server ready 時工具清單即正確。
 

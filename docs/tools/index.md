@@ -1,6 +1,6 @@
 # MCP 工具概覽
 
-Taiwan Health MCP Server 提供 **33 個 MCP 工具**，其中包含 1 個 `health_check` 基礎工具，以及 11 個主要領域群組。status page 與動態註冊使用同一份工具 registry，新增或調整工具時請同步更新群組定義與對應說明。
+Taiwan Health MCP Server 提供 **30 個 MCP 工具**，其中包含 1 個 `health_check` 基礎工具，以及 10 個主要領域群組。status page 與動態註冊使用同一份工具 registry，新增或調整工具時請同步更新群組定義與對應說明。
 
 ---
 
@@ -32,7 +32,7 @@ Taiwan Health MCP Server 提供 **33 個 MCP 工具**，其中包含 1 個 `heal
 
 | 工具 | 說明 |
 |------|------|
-| `search_drug` | 單一藥品搜尋入口，`mode` 可切換 `drug_name` / `atc_code` / `ingredient` / `license_id`；`drug_name` / `ingredient` 用語意搜尋，`atc_code` 只接受 code 前綴，`license_id` 支援 bare digits；回傳統一 detail-shaped 結果 |
+| `search_drug` | 單一藥品搜尋入口，`mode` 可切換 `drug_name` / `atc_code` / `ingredient` / `license_id` / `rxnorm_resolve` / `rxnorm_ingredients` / `interaction`；`drug_name` 用 `ts_rank_cd` 全文檢索（name 權重高於 indication），`ingredient` 用 BM25+embedding hybrid，`atc_code` 接受 1–7 字元 code 前綴，`rxnorm_*` 模式透過 RXCUI→ATC 橋接至台灣 FDA 藥品；回傳統一 detail-shaped 結果 |
 | `identify_unknown_pill` | 依外觀特徵（形狀、顏色、刻痕）識別藥錠 |
 
 [詳細說明](drug-tools.md)
@@ -131,18 +131,6 @@ Taiwan Health MCP Server 提供 **33 個 MCP 工具**，其中包含 1 個 `heal
 
 ---
 
-### 群組 11 — RxNorm 藥物交互作用（3 個工具）
-
-> 需先執行 `docker compose --profile loader run --rm data-loader --rxnorm`
-
-| 工具 | 說明 |
-|------|------|
-| `check_drug_interactions` | 檢查多種藥物間的交互作用 |
-| `resolve_rxnorm_drug` | 藥品名稱 → RxNorm RXCUI |
-| `get_drug_ingredients_rxnorm` | 依 RXCUI 取得藥物成分 |
-
----
-
 ## 如何呼叫工具
 
 本伺服器遵循 Model Context Protocol (MCP) 標準，使用 JSON-RPC 2.0 格式。
@@ -173,7 +161,7 @@ curl http://localhost:8000/mcp -X POST \
 
 ## 服務降級
 
-SNOMED CT 和 RxNorm 工具在資料未載入時會回傳結構化錯誤，而非拋出例外：
+SNOMED CT 與 Drug（含 RxNorm modes）工具在資料未載入時會回傳結構化錯誤，而非拋出例外：
 
 ```json
 {

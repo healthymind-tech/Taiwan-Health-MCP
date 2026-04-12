@@ -9,10 +9,10 @@
 [![FHIR](https://img.shields.io/badge/FHIR-R4-blue)](http://hl7.org/fhir/R4/)
 [![Python](https://img.shields.io/badge/Python-3.12-green)](https://www.python.org/)
 [![MCP](https://img.shields.io/badge/MCP-1.0-orange)](https://modelcontextprotocol.io)
-[![License](https://img.shields.io/badge/License-MIT-yellow)](https://github.com/yourusername/Taiwan-ICD10-Health-MCP/blob/main/LICENSE)
+[![License](https://img.shields.io/badge/License-MIT-yellow)](https://github.com/healthymind-tech/Taiwan-Health-MCP/blob/main/LICENSE)
 
 [快速開始](getting-started.md){ .md-button .md-button--primary }
-[查看 GitHub](https://github.com/yourusername/Taiwan-ICD10-Health-MCP){ .md-button }
+[查看 GitHub](https://github.com/healthymind-tech/Taiwan-Health-MCP){ .md-button }
 
 </div>
 
@@ -34,11 +34,11 @@
 
     FHIR R4、ICD-10-CM 2025、LOINC 2.80、SNOMED CT、RxNorm、ATC
 
--   :bar_chart: __33 個 MCP 工具__
+-   :bar_chart: __30 個 MCP 工具__
 
     ---
 
-    涵蓋診斷、藥品、術語、檢驗、指引、藥物交互作用
+    涵蓋診斷、藥品、術語、檢驗、指引；RxNorm 能力整併至 `search_drug`
 
 -   :robot: __AI 整合__
 
@@ -83,7 +83,7 @@
 - ✅ IS-A 階層查詢（ancestors/children）
 - ✅ ICD-10 ↔ SNOMED 雙向對應
 
-### 4. RxNorm 藥物交互作用
+### 4. RxNorm 藥物語義與交互作用（併入 Drug 工具）
 - ✅ 多藥交互作用檢查
 - ✅ 藥品名稱 → RXCUI 解析
 - ✅ 藥物成分查詢
@@ -113,7 +113,7 @@ graph TB
     end
 
     subgraph "MCP 協議層"
-        B[MCP Server<br/>33 個工具]
+        B[MCP Server<br/>30 個工具]
     end
 
     subgraph "服務層"
@@ -207,16 +207,19 @@ graph TB
 
 [詳細安裝說明](getting-started.md){ .md-button .md-button--primary }
 
+> 既有環境升級請先套用 `db/migrations/2026-04-12_drug_schema_no_loss.sql`，確保 RxNorm 併入 `drug.*` 與新約束一致。
+
 ---
 
 ## 🛠️ MCP 工具清單
 
-本服務提供 **33 個 MCP 工具**，包含 `health_check` 與 32 個領域工具，主要分為 12 個工具群組；工具分類與 status page 範例由同一份 registry 生成，避免文件和實作分岔。
+本服務提供 **30 個 MCP 工具**，包含 `health_check` 與 29 個領域工具，主要分為 11 個工具群組；工具分類與 status page 範例由同一份 registry 生成，避免文件和實作分岔。
 
 | 群組 | 工具數 | 主要功能 |
 |------|--------|---------|
+| 系統 | 1 | `health_check`：資料庫、快取、dataset ready 狀態 |
 | ICD-10 | 5 | 診斷/手術碼搜尋、併發症推論、衝突檢查、分類瀏覽 |
-| 藥品 | 2 | `search_drug`、`identify_unknown_pill` |
+| 藥品 | 2 | `search_drug`（含 RxNorm modes）、`identify_unknown_pill` |
 | 健康補充品 | 1 | `search_health_supplement` |
 | 食品與營養 | 6 | 營養成分、膳食分析、食品原料、營養排序 |
 | FHIR Condition | 2 | ICD-10 / 關鍵字 → FHIR R4 Condition |
@@ -225,7 +228,6 @@ graph TB
 | 臨床指引 | 2 | 指引查詢與分段內容 |
 | TWCore IG | 1 | 台灣健保 CodeSystem 統一查詢 |
 | SNOMED CT | 4 | 概念搜尋、階層、關聯、ICD-10 對應 |
-| RxNorm | 3 | 藥物交互作用、名稱解析 |
 
 [查看完整工具清單](tools/index.md){ .md-button }
 

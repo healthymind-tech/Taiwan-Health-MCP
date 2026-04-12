@@ -50,12 +50,12 @@ search_drug(mode="license_id", keyword="衛署藥輸字第021938號")
 
 ## 步驟四：開立處方與衝突檢查
 
-假設醫師決定開立 Metformin，並想確認與患者原本服用的藥物是否有交互作用。可先透過 `search_drug(mode="ingredient", keyword="Metformin")` 找到含 Metformin 的藥品，再使用 `check_drug_interactions` 確認交互作用。
+假設醫師決定開立 Metformin，並想確認與患者原本服用的藥物是否有交互作用。可先透過 `search_drug(mode="ingredient", keyword="Metformin")` 找到含 Metformin 的藥品，再用同一工具的 `interaction` mode 進行交互作用查詢。
 
 **呼叫工具**：
 ```python
 search_drug(mode="ingredient", keyword="Metformin")
-check_drug_interactions(drug_names=["Metformin", "Warfarin"])
+search_drug(mode="interaction", drug_names=["Metformin", "Warfarin"])
 ```
 
 **預期結果**：

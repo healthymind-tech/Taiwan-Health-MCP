@@ -96,7 +96,10 @@ async def load_drug(pool: asyncpg.Pool) -> None:
             ]
             for i in range(0, len(app_rows), BATCH):
                 await conn.executemany(
-                    "INSERT INTO drug.appearance (license_id,shape,color,marking,image_url) VALUES ($1,$2,$3,$4,$5)",
+                    """INSERT INTO drug.appearance
+                       (license_id,shape,color,marking,image_url)
+                       VALUES ($1,$2,$3,$4,$5)
+                       ON CONFLICT DO NOTHING""",
                     app_rows[i : i + BATCH],
                 )
 
@@ -112,7 +115,10 @@ async def load_drug(pool: asyncpg.Pool) -> None:
             ]
             for i in range(0, len(ing_rows), BATCH):
                 await conn.executemany(
-                    "INSERT INTO drug.ingredients (license_id,ingredient_name,ingredient_qty,ingredient_unit) VALUES ($1,$2,$3,$4)",
+                    """INSERT INTO drug.ingredients
+                       (license_id,ingredient_name,ingredient_qty,ingredient_unit)
+                       VALUES ($1,$2,$3,$4)
+                       ON CONFLICT DO NOTHING""",
                     ing_rows[i : i + BATCH],
                 )
 
@@ -127,7 +133,10 @@ async def load_drug(pool: asyncpg.Pool) -> None:
             ]
             for i in range(0, len(atc_rows), BATCH):
                 await conn.executemany(
-                    "INSERT INTO drug.atc (license_id,atc_code,atc_name) VALUES ($1,$2,$3)",
+                    """INSERT INTO drug.atc
+                       (license_id,atc_code,atc_name)
+                       VALUES ($1,$2,$3)
+                       ON CONFLICT DO NOTHING""",
                     atc_rows[i : i + BATCH],
                 )
 
@@ -138,7 +147,10 @@ async def load_drug(pool: asyncpg.Pool) -> None:
             ]
             for i in range(0, len(doc_rows), BATCH):
                 await conn.executemany(
-                    "INSERT INTO drug.documents (license_id,doc_type,doc_url) VALUES ($1,$2,$3)",
+                    """INSERT INTO drug.documents
+                       (license_id,doc_type,doc_url)
+                       VALUES ($1,$2,$3)
+                       ON CONFLICT DO NOTHING""",
                     doc_rows[i : i + BATCH],
                 )
 

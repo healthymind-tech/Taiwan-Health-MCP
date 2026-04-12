@@ -8,18 +8,18 @@
 
 | 檔案 | 服務 | MCP 工具數 |
 |------|------|-----------|
-| `server.py` | 入口點（`mcp` SDK DynamicFastMCP + lifespan） | 最多 33 |
+| `server.py` | 入口點（`mcp` SDK DynamicFastMCP + lifespan） | 最多 30 |
 | `icd_service.py` | ICD-10-CM/PCS 診斷與手術碼 | 5 |
-| `drug_service.py` | 台灣 FDA 藥品 | 5 |
+| `drug_service.py` | 台灣 FDA 藥品 | 2 |
 | `health_supplement_service.py` | 台灣 FDA 健康補充品 | 1 |
 | `food_nutrition_service.py` | 食品營養成分 | 6 |
-| `fhir_condition_service.py` | FHIR R4 Condition | 3 |
-| `fhir_medication_service.py` | FHIR R4 Medication | 4 |
+| `fhir_condition_service.py` | FHIR R4 Condition | 2 |
+| `fhir_medication_service.py` | FHIR R4 Medication | 2 |
 | `lab_service.py` | LOINC 檢驗碼與參考值 | 4 |
-| `clinical_guideline_service.py` | 臨床診療指引 | 8 |
-| `twcore_service.py` | TWCore IG CodeSystem | 3 |
-| `snomed_service.py` | SNOMED CT International | 7 |
-| `drug_interaction_service.py` | RxNorm 藥物交互作用 | 3 |
+| `clinical_guideline_service.py` | 臨床診療指引 | 2 |
+| `twcore_service.py` | TWCore IG CodeSystem | 1 |
+| `snomed_service.py` | SNOMED CT International | 4 |
+| `drug_interaction_service.py` | RxNorm 藥物交互作用 | 0（併入 `search_drug` modes） |
 
 ### 跨切面模組
 
@@ -46,7 +46,7 @@
 - `browse_category(category, limit)` — 依類別瀏覽診斷碼
 - `get_conflict_info(diagnosis_code, procedure_code)` — 衝突分析
 
-**注意**: `_pcs_available` flag — PCS 資料未載入時工具自動降級，回傳提示訊息而非錯誤。PCS 2025（78,948 筆）已內建於 `fhir-code/icd10pcs/`，`--icd` 自動同時載入。
+**注意**: `_pcs_available` flag — PCS 資料未載入時工具自動降級，回傳提示訊息而非錯誤。PCS 2025（78,948 筆）位於 `fhir-code/icd/10/icd10pcs/`，`--icd` 自動同時載入。
 
 ---
 
@@ -55,8 +55,7 @@
 **資料來源**: `drug.*`（PostgreSQL），從台灣 FDA Open Data API 同步
 
 **主要方法**:
-- `search_drug(mode, keyword)` — 藥名、ATC code 前綴、成分搜尋藥品
-- `search_drug(mode, keyword)` — 完整藥品摘要（含 license_id / bare digits 解析）
+- `search_drug(...)` — 藥名、ATC code 前綴、成分、許可證查詢（統一 detail-shaped 結果）
 - `identify_pill(features)` — 依外觀識別藥錠
 - `search_by_atc(query)` — 依 ATC 代碼或藥理分類搜尋
 - `search_by_ingredient(ingredient_name)` — 依有效成分搜尋
@@ -205,7 +204,7 @@
 
 ## 11. Drug Interaction Service（`drug_interaction_service.py`）
 
-**資料來源**: `rxnorm.*`（PostgreSQL），需 data-loader `--rxnorm`
+**資料來源**: `drug.rx_*`（PostgreSQL），需 data-loader `--rxnorm`
 
 **主要方法**:
 - `check_interactions(drug_names)` — 解析藥品名稱 → RXCUI → 查詢 `interacts_with`

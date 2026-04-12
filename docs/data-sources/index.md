@@ -1,6 +1,6 @@
 # 資料來源概覽
 
-Taiwan Health MCP Server 整合以下七類資料集。靜態術語資料透過 data-loader 匯入 PostgreSQL；FDA 動態資料由 app 自動週期同步。
+Taiwan Health MCP Server 整合以下十類資料集。靜態術語資料透過 data-loader 匯入 PostgreSQL；FDA 動態資料由 app 自動週期同步。
 
 ---
 
@@ -15,9 +15,11 @@ Taiwan Health MCP Server 整合以下七類資料集。靜態術語資料透過 
 | RxNorm | 2024-06-03 (NLM) | UMLS License | data-loader `--rxnorm` | 數十萬藥品/關係 |
 | TWCore IG | v1.0.0 (MOHW) | 公開 | data-loader `--twcore` | 30+ CodeSystem |
 | 臨床指引 | 自整理 | — | data-loader `--guideline` | 種子資料 |
-| Taiwan FDA 藥品 | 每週更新 | 公開 (FDA) | `data-loader --drug/--fda` 或 app 自動同步 | 66,000+ 許可證 |
+| Taiwan FDA 藥品 | 每週更新 | 公開 (FDA) | `data-loader --rxnorm` 後再 `--drug/--fda`（具順序防呆）或 app 自動同步 | 66,000+ 許可證 |
 | Taiwan FDA 健康食品 | 每週更新 | 公開 (FDA) | `data-loader --health-food/--fda` 或 app 自動同步 | 數百項 |
 | Taiwan FDA 營養 | 每週更新 | 公開 (FDA) | `data-loader --food-nutrition/--fda` 或 app 自動同步 | 200,000+ 筆測量 |
+
+> 注意：`--fda` 會同時觸發藥品、健康食品、營養匯入；其中藥品匯入受 RxNorm-first 防呆限制，需先有 `--rxnorm`。
 
 ---
 
@@ -59,7 +61,8 @@ Taiwan Health MCP Server 整合以下七類資料集。靜態術語資料透過 
 
 - **來源**: NLM（需 UMLS 帳號）
 - **檔案**: `fhir-code/rxnorm/RxNorm_full_*.zip`（~241 MB，需授權，不納入 git）
-- **Schema**: `rxnorm.concepts`, `rxnorm.relationships`
+- **Schema**: `drug.rx_concepts`, `drug.rx_relationships`, `drug.rx_atc_map`
+- **ATC 關聯**: `drug.rx_atc_map.atc_code` 可直接與 `drug.atc.atc_code` join
 - **授權申請**: [uts.nlm.nih.gov](https://uts.nlm.nih.gov/uts/signup-login)（免費，需申請 UMLS 帳號）
 - **散佈限制**: 不得在本 repo、PR 附件、Google Drive 或其他鏡像分享原始檔
 
@@ -73,8 +76,24 @@ Taiwan Health MCP Server 整合以下七類資料集。靜態術語資料透過 
 ### 臨床指引種子資料
 
 - **來源**: 開發者整理（基於台灣醫學會指引）
-- **Schema**: `guideline.diseases`, `guideline.medications`, `guideline.lab_tests`, `guideline.treatment_goals`
+- **Schema**: `guideline.disease_guidelines`, `guideline.medication_recommendations`, `guideline.test_recommendations`, `guideline.treatment_goals`, `guideline.diagnostic_recommendations`
 - **注意**: 未經正式醫學審核，不適合直接用於臨床決策
+
+---
+
+## 版本升級遷移（既有資料庫）
+
+若環境是 RxNorm 併入 `drug.*` 之前建立，請先執行：
+
+```bash
+docker compose exec -T postgres psql \
+  -U ${POSTGRES_USER:-mcp} \
+  -d ${POSTGRES_DB:-taiwan_health} \
+  -v ON_ERROR_STOP=1 \
+  < db/migrations/2026-04-12_drug_schema_no_loss.sql
+```
+
+此腳本會先備份異常列到 `migration_backup.*`，再補齊新約束並併入舊 `rxnorm.*` 資料。
 
 ---
 

@@ -10,10 +10,12 @@
 
 ```
 fhir-code/
-├── icd10cm/                    ICD-10-CM 診斷碼 (NLM)
-│   └── icd10cm-table-index-2025.zip          ~20 MB
-├── icd10pcs/                   ICD-10-PCS 手術碼 (CMS)  ✅ 已備齊
-│   └── icd10pcs_tables_2025.zip              ~648 KB
+├── icd/                        ICD-10 資料根目錄
+│   └── 10/
+│       ├── icd10cm/            ICD-10-CM 診斷碼 (NLM)
+│       │   └── icd10cm-table-index-2025.zip          ~20 MB
+│       └── icd10pcs/           ICD-10-PCS 手術碼 (CMS)
+│           └── icd10pcs_tables_2025.zip              ~648 KB
 ├── loinc/                      LOINC 實驗室檢驗碼 (Regenstrief Institute)
 │   └── 2.80/
 │       └── Loinc_2.80.zip                    ~74 MB
@@ -49,17 +51,26 @@ fhir-code/
 # 全部載入（建議首次部署）
 docker compose --profile loader run --rm data-loader --all
 
+# 只載入 FDA 動態資料（藥品 + 健康食品 + 營養）
+# 注意：Drug 匯入採 RxNorm-first 防呆，先跑 --rxnorm 再跑 --fda/--drug
+docker compose --profile loader run --rm data-loader --rxnorm
+docker compose --profile loader run --rm data-loader --fda
+docker compose --profile loader run --rm data-loader --drug
+docker compose --profile loader run --rm data-loader --health-food
+docker compose --profile loader run --rm data-loader --food-nutrition
+
 # 單獨載入
 docker compose --profile loader run --rm data-loader --icd        # 同時載入 CM（46,498 筆）和 PCS（78,948 筆）
 docker compose --profile loader run --rm data-loader --loinc
 docker compose --profile loader run --rm data-loader --twcore
 docker compose --profile loader run --rm data-loader --guideline
 docker compose --profile loader run --rm data-loader --snomed    # 約 5–15 分鐘
-docker compose --profile loader run --rm data-loader --rxnorm
 ```
 
 > `--icd` 會自動同時載入 ICD-10-CM（診斷碼）和 ICD-10-PCS（手術碼）。
-> 若 `icd10pcs/` 目錄下沒有 zip，則只載入 CM，不影響診斷碼功能。
+> 若 `fhir-code/icd/10/icd10pcs/` 目錄下沒有 zip，則只載入 CM，不影響診斷碼功能。
+> `--all` 會自動處理 RxNorm 與 FDA 載入順序；若手動執行 `--fda` / `--drug`，請先執行 `--rxnorm`。
+> 舊版資料庫升級請先套用 `db/migrations/2026-04-12_drug_schema_no_loss.sql`，再重新跑 `--rxnorm` / `--drug`。
 
 ## 授權限制
 
@@ -82,7 +93,7 @@ docker compose --profile loader run --rm data-loader --rxnorm
 若需要更新至新年度版本：
 ```bash
 curl -L "https://www.cms.gov/files/zip/2026-icd-10-pcs-codes-file.zip" \
-  -o fhir-code/icd10pcs/icd10pcs_tables_2026.zip
+  -o fhir-code/icd/10/icd10pcs/icd10pcs_tables_2026.zip
 docker compose --profile loader run --rm data-loader --icd
 ```
 

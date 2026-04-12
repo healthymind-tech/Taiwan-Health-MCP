@@ -36,6 +36,7 @@ load_dotenv()
 
 FHIR_CODE_DIR = os.getenv("FHIR_CODE_DIR", "/app/fhir-code")
 DATABASE_URL = os.getenv("DATABASE_URL", "")
+RXNORM_READY_MIN_CONCEPTS = 10_000
 
 
 async def get_pool() -> asyncpg.Pool:
@@ -284,9 +285,31 @@ async def load_rxnorm(pool: asyncpg.Pool) -> None:
     await _load(pool, zip_path)
 
 
+async def _assert_rxnorm_ready_for_fda(
+    pool: asyncpg.Pool,
+    min_concepts: int = RXNORM_READY_MIN_CONCEPTS,
+) -> None:
+    """Block FDA drug import unless RxNorm baseline is loaded first.
+
+    Rationale:
+    - Drug-domain redesign is RxNorm-first.
+    - FDA drug load should not run before the terminology backbone exists.
+    """
+    async with pool.acquire() as conn:
+        count = await conn.fetchval("SELECT COUNT(*) FROM drug.rx_concepts")
+    current = int(count or 0)
+    if current < min_concepts:
+        raise RuntimeError(
+            "FDA drug import blocked: RxNorm must be loaded first "
+            f"(drug.rx_concepts={current}, required>={min_concepts}). "
+            "Run: docker compose --profile loader run --rm data-loader --rxnorm"
+        )
+
+
 async def load_drug(pool: asyncpg.Pool) -> None:
     from loaders.drug_loader import load_drug as _load
 
+    await _assert_rxnorm_ready_for_fda(pool)
     await _load(pool)
 
 

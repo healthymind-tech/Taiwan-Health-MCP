@@ -12,6 +12,8 @@
 ### [Docker 部署 (推薦)](docker.md)
 最快速的啟動方式，包含所有相依套件與資料庫設定。
 
+> 既有資料庫升級：請參考 `docker.md` 的「既有環境遷移（無資料遺失）」章節，先套用 `db/migrations/2026-04-12_drug_schema_no_loss.sql`。
+
 ### [環境變數配置](configuration.md)
 說明各項系統參數的設定方式，如資料路徑、日誌層級等。
 

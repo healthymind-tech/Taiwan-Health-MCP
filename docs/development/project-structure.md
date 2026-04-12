@@ -12,7 +12,7 @@
 │   ├── metrics.py              # Prometheus 指標
 │   └── utils.py                # 結構化日誌與共用工具
 ├── loader/                     # data-loader 入口與各資料載入器
-│   ├── main.py                 # CLI：--all / --icd / --fda / --snomed ...
+│   ├── main.py                 # CLI：--all / --icd / --fda / --drug / --rxnorm（Drug 有 RxNorm-first 防呆）
 │   ├── dataset_config.py       # datasets.yaml 解析
 │   ├── dataset_resolver.py     # dataset 路徑解析與 fallback
 │   └── loaders/                # ICD / LOINC / TWCore / SNOMED / RxNorm / FDA loaders
@@ -26,7 +26,10 @@
 │   ├── snomed/                 # SNOMED CT 授權 zip
 │   ├── rxnorm/                 # RxNorm 授權 zip
 │   └── umls/                   # UMLS 授權 zip（預留）
-├── db/                         # PostgreSQL schema 與 seed SQL
+├── db/                         # PostgreSQL schema、seed 與 migration SQL
+│   ├── schema.sql              # 初次建庫 schema
+│   ├── migrations/             # 版本升級 migration（含 no-data-loss 腳本）
+│   └── seeds/                  # 種子資料 SQL
 ├── docs/                       # MkDocs 文件原始碼
 ├── tests/                      # pytest 測試
 ├── compose.yaml                # Docker Compose 主設定

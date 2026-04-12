@@ -14,7 +14,7 @@ graph TB
     end
 
     subgraph "MCP Server (port 8000)"
-        B["DynamicFastMCP + 動態 tool registry（最多 33 個工具）"]
+        B["DynamicFastMCP + 動態 tool registry（最多 30 個工具）"]
         DSM["dataset_status.py DatasetStatusManager 5 分鐘 TTL"]
         AUD["audit.py audited decorator"]
         CAC["cache.py cached decorator"]
@@ -113,13 +113,13 @@ graph TB
 audit          -- 查詢稽核日誌（SHA-256 參數雜湊）
 icd            -- ICD-10-CM 診斷碼、ICD-10-PCS 手術碼
 drug           -- 台灣 FDA 藥品（licenses/appearance/ingredients/atc/documents）
-health_supplement    -- 台灣 FDA 核可健康食品
+               -- RxNorm 語義層（rx_concepts/rx_relationships/rx_atc_map）
+health_food     -- 台灣 FDA 核可健康食品
 food_nutrition -- 食品營養成分、食品原料
 loinc          -- LOINC 2.80 檢驗碼、參考值
 guideline      -- 台灣臨床診療指引
 twcore         -- TWCore IG v1.0.0 CodeSystem
 snomed         -- SNOMED CT International RF2
-rxnorm         -- RxNorm 藥品命名與交互作用
 ```
 
 完整 DDL：`db/schema.sql`（PostgreSQL 容器首次啟動時自動套用）
@@ -140,7 +140,7 @@ rxnorm         -- RxNorm 藥品命名與交互作用
 | FHIR Medication Service | `fhir_medication_service.py` | 讀取 DrugService | — |
 | TWCore Service | `twcore_service.py` | `twcore.*` | data-loader + 即時抓取備援 |
 | SNOMED Service | `snomed_service.py` | `snomed.*` | data-loader（RF2 zip） |
-| Drug Interaction Service | `drug_interaction_service.py` | `rxnorm.*` | data-loader（RxNorm zip） |
+| Drug Interaction Service | `drug_interaction_service.py` | `drug.rx_*` | data-loader（RxNorm zip） |
 
 ---
 
@@ -215,7 +215,7 @@ client 呼叫 tools/list
 | Guideline | `guideline.disease_guidelines` | 1 | — |
 | TWCore | `twcore.codesystems` | 1 | — |
 | SNOMED CT | `snomed.concepts` | 100,000 | 完整約 370,000 筆 |
-| RxNorm | `rxnorm.concepts` | 10,000 | — |
+| RxNorm | `drug.rx_concepts` | 10,000 | — |
 | FHIR Condition | — | — | 跟隨 ICD 服務 |
 | FHIR Medication | — | — | 跟隨 Drug 服務 |
 
@@ -285,3 +285,6 @@ Phase 2: 單一 transaction 寫入（TRUNCATE + INSERT）
 | `--snomed` | SNOMED CT International RF2 | 5-15 分鐘 |
 | `--rxnorm` | RxNorm Full Release | 5-10 分鐘 |
 | `--all` | 全部 | 15-30 分鐘 |
+
+> 順序防呆：`--drug` / `--fda` 在匯入前會檢查 `drug.rx_concepts`。
+> 若 RxNorm 未先載入（低於門檻），loader 會直接中止並提示先執行 `--rxnorm`。

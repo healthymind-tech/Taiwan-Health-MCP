@@ -206,6 +206,227 @@ async def _call_service_json(service, method_name: str, *args, **kwargs) -> str:
     return json.dumps(result, ensure_ascii=False, indent=2)
 
 
+def _empty_drug_result_item() -> dict:
+    """Return the canonical result item shape for all search_drug modes."""
+    return {
+        "license_id": None,
+        "name_zh": None,
+        "name_en": None,
+        "indication": None,
+        "usage": None,
+        "form": None,
+        "package": None,
+        "category": None,
+        "manufacturer": None,
+        "valid_date": None,
+        "ingredients": [],
+        "appearance": {},
+        "atc": [],
+        "rxnorm": [],
+        "insert_url": None,
+    }
+
+
+def _normalize_atc_entries(entries: object) -> list[dict]:
+    """Normalize ATC rows to [{atc_code, atc_name}]."""
+    if not isinstance(entries, list):
+        return []
+    normalized: list[dict] = []
+    seen: set[str] = set()
+    for row in entries:
+        if not isinstance(row, dict):
+            continue
+        code = row.get("atc_code") or row.get("code")
+        name = row.get("atc_name") or row.get("name")
+        if not code and not name:
+            continue
+        key = f"{code or ''}|{name or ''}"
+        if key in seen:
+            continue
+        seen.add(key)
+        normalized.append({"atc_code": code, "atc_name": name})
+    return normalized
+
+
+def _normalize_rxnorm_entries(entries: object) -> list[dict]:
+    """Normalize RxNorm rows to [{rxcui, name, tty, atc_code}]."""
+    if not isinstance(entries, list):
+        return []
+    normalized: list[dict] = []
+    seen: set[str] = set()
+    for row in entries:
+        if not isinstance(row, dict):
+            continue
+        rxcui = row.get("rxcui")
+        if not rxcui:
+            continue
+        name = row.get("name")
+        tty = row.get("tty")
+        atc_code = row.get("atc_code")
+        key = f"{rxcui}|{atc_code or ''}"
+        if key in seen:
+            continue
+        seen.add(key)
+        normalized.append(
+            {"rxcui": str(rxcui), "name": name, "tty": tty, "atc_code": atc_code}
+        )
+    return normalized
+
+
+def _normalize_ingredient_entries(entries: object) -> list[dict]:
+    """Normalize ingredient rows to a shared shape for all search_drug modes."""
+    if not isinstance(entries, list):
+        return []
+    normalized: list[dict] = []
+    for row in entries:
+        if not isinstance(row, dict):
+            continue
+        name = row.get("ingredient_name") or row.get("name")
+        qty = row.get("ingredient_qty")
+        unit = row.get("ingredient_unit")
+        rxcui = row.get("rxcui")
+        tty = row.get("tty")
+        if not any([name, qty, unit, rxcui, tty]):
+            continue
+        normalized.append(
+            {
+                "ingredient_name": name,
+                "ingredient_qty": qty,
+                "ingredient_unit": unit,
+                "rxcui": str(rxcui) if rxcui else None,
+                "tty": tty,
+            }
+        )
+    return normalized
+
+
+async def _load_rxnorm_by_atc_codes(atc_codes: list[str]) -> dict[str, list[dict]]:
+    """Map ATC code -> RxNorm concept candidates."""
+    codes = sorted({c.strip().upper() for c in atc_codes if isinstance(c, str) and c.strip()})
+    if not codes:
+        return {}
+    try:
+        pool = database.get_pool()
+    except RuntimeError:
+        return {}
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT m.atc_code, m.rxcui, c.name, c.tty
+            FROM drug.rx_atc_map m
+            LEFT JOIN drug.rx_concepts c ON c.rxcui = m.rxcui
+            WHERE UPPER(m.atc_code) = ANY($1::text[])
+            ORDER BY m.atc_code, m.rxcui
+            """,
+            codes,
+        )
+    by_code: dict[str, list[dict]] = {}
+    for row in rows:
+        code = (row["atc_code"] or "").upper()
+        by_code.setdefault(code, []).append(
+            {
+                "rxcui": row["rxcui"],
+                "name": row["name"],
+                "tty": row["tty"],
+                "atc_code": row["atc_code"],
+            }
+        )
+    return by_code
+
+
+async def _load_atc_by_rxcuis(rxcuis: list[str]) -> dict[str, list[dict]]:
+    """Map RXCUI -> ATC rows."""
+    keys = sorted({str(r).strip() for r in rxcuis if str(r).strip()})
+    if not keys:
+        return {}
+    try:
+        pool = database.get_pool()
+    except RuntimeError:
+        return {}
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT rxcui, atc_code, atc_name
+            FROM drug.rx_atc_map
+            WHERE rxcui = ANY($1::text[])
+            ORDER BY rxcui, atc_code
+            """,
+            keys,
+        )
+    by_rxcui: dict[str, list[dict]] = {}
+    for row in rows:
+        by_rxcui.setdefault(row["rxcui"], []).append(
+            {"atc_code": row["atc_code"], "atc_name": row["atc_name"]}
+        )
+    return by_rxcui
+
+
+async def _normalize_drug_result_items(items: list[dict]) -> list[dict]:
+    """Canonicalize result items and enrich FDA items with rxnorm mappings by ATC."""
+    atc_codes: list[str] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        atc_rows = _normalize_atc_entries(item.get("atc"))
+        atc_codes.extend(
+            [row["atc_code"] for row in atc_rows if isinstance(row.get("atc_code"), str)]
+        )
+    rxnorm_by_atc = await _load_rxnorm_by_atc_codes(atc_codes)
+
+    normalized: list[dict] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        out = _empty_drug_result_item()
+        for key in (
+            "license_id",
+            "name_zh",
+            "name_en",
+            "indication",
+            "usage",
+            "form",
+            "package",
+            "category",
+            "manufacturer",
+            "valid_date",
+            "insert_url",
+        ):
+            out[key] = item.get(key)
+
+        out["ingredients"] = _normalize_ingredient_entries(item.get("ingredients"))
+        out["appearance"] = item.get("appearance") if isinstance(item.get("appearance"), dict) else {}
+        out["atc"] = _normalize_atc_entries(item.get("atc"))
+
+        merged_rxnorm = _normalize_rxnorm_entries(item.get("rxnorm"))
+        for atc_row in out["atc"]:
+            code = (atc_row.get("atc_code") or "").upper()
+            merged_rxnorm.extend(rxnorm_by_atc.get(code, []))
+        out["rxnorm"] = _normalize_rxnorm_entries(merged_rxnorm)
+        normalized.append(out)
+    return normalized
+
+
+async def _normalize_drug_mode_payload(raw_payload: object, mode: str, keyword: str) -> str:
+    """Normalize FDA-backed mode payloads to the canonical result shape."""
+    payload: object = raw_payload
+    if isinstance(raw_payload, str):
+        try:
+            payload = json.loads(raw_payload)
+        except json.JSONDecodeError:
+            return raw_payload
+    if not isinstance(payload, dict):
+        return json.dumps(payload, ensure_ascii=False)
+
+    payload["mode"] = mode
+    payload["keyword"] = keyword
+    results = payload.get("results")
+    if isinstance(results, list):
+        payload["results"] = await _normalize_drug_result_items(results)
+    else:
+        payload["results"] = []
+    return json.dumps(payload, ensure_ascii=False)
+
+
 class DynamicFastMCP(FastMCP):
     """FastMCP subclass that refreshes dataset-based tool availability on every tools/list."""
 
@@ -494,7 +715,7 @@ and the obligations of each party.</p>
 <p>Taiwan Health MCP Server is a <strong>read-only query API</strong> that provides
 access to publicly available medical terminology and pharmaceutical datasets.
 It does not accept, store, or process personal health information submitted by
-users. All 33 tools perform outbound database lookups against pre-loaded public
+users. All 30 tools perform outbound database lookups against pre-loaded public
 datasets and return structured results to the MCP client.</p>
 
 <h2>3. Categories of Data Processed</h2>
@@ -793,14 +1014,14 @@ _LANDING_HTML = """\
     <p class="tagline">
       An open-source Model Context Protocol server that gives AI assistants
       structured, read-only access to Taiwan's medical, pharmaceutical, and
-      clinical knowledge — 33 tools, production-grade, HIPAA-audited.
+      clinical knowledge — 30 tools, production-grade, HIPAA-audited.
     </p>
     <div class="endpoint-box">
       <span class="label">MCP endpoint</span>
       <code>https://tw-health-mcp.healthymind-tech.com/mcp</code>
     </div>
     <div class="badge-row">
-      <span class="badge">33 Tools</span>
+      <span class="badge">30 Tools</span>
       <span class="badge">ICD-10-CM 2025</span>
       <span class="badge">LOINC 2.80</span>
       <span class="badge">SNOMED CT</span>
@@ -1136,7 +1357,7 @@ _LANDING_HTML = """\
       </p>
     </div>
     <p style="margin-top:16px;font-size:0.93rem;color:#555;">
-      All 33 tools are read-only. The server does not accept writes, does not
+      All 30 tools are read-only. The server does not accept writes, does not
       require a user session, and does not store any identifying information
       about callers.
     </p>
@@ -1252,29 +1473,27 @@ _TOOL_GROUPS: dict[str, dict[str, object]] = {
                 {"mode": "license_id", "keyword": "000029"},
             ),
             (
+                "search_drug",
+                "search_drug",
+                {"mode": "rxnorm_resolve", "keyword": "atorvastatin", "limit": 5},
+            ),
+            (
+                "search_drug",
+                "search_drug",
+                {"mode": "rxnorm_ingredients", "keyword": "41493"},
+            ),
+            (
+                "search_drug",
+                "search_drug",
+                {
+                    "mode": "interaction",
+                    "drug_names": ["warfarin", "aspirin"],
+                },
+            ),
+            (
                 "identify_unknown_pill",
                 "identify_unknown_pill",
-                {"features": "white round M500"},
-            ),
-        ],
-    },
-    "rxnorm": {
-        "category": "RxNorm",
-        "tools": [
-            (
-                "check_drug_interactions",
-                "check_drug_interactions",
-                {"drug_names": ["warfarin", "aspirin"]},
-            ),
-            (
-                "resolve_rxnorm_drug",
-                "resolve_rxnorm_drug",
-                {"drug_name": "atorvastatin"},
-            ),
-            (
-                "get_drug_ingredients_rxnorm",
-                "get_drug_ingredients_rxnorm",
-                {"rxcui": "41493"},
+                {"features": "white round"},
             ),
         ],
     },
@@ -2354,8 +2573,7 @@ async def health_check() -> str:
 
     Reported service flags:
     `icd`, `drug`, `health_supplement`, `food_nutrition`, `fhir_condition`,
-    `fhir_medication`, `lab`, `guideline`, `twcore`, `snomed`,
-    `drug_interactions`.
+    `fhir_medication`, `lab`, `guideline`, `twcore`, `snomed`.
 
     Notes:
     - This tool is always available, even if some datasets are not loaded.
@@ -2395,7 +2613,6 @@ async def health_check() -> str:
                 "guideline": guideline_service is not None,
                 "twcore": twcore_service is not None,
                 "snomed": snomed_service is not None,
-                "drug_interactions": drug_interaction_service is not None,
             },
         },
         ensure_ascii=False,
@@ -2546,62 +2763,262 @@ async def browse_icd_category(category: str | None = None, limit: int = 50) -> s
 
 @audited("search_drug")
 async def search_drug(
-    mode: Literal["drug_name", "atc_code", "ingredient", "license_id"] = "drug_name",
+    mode: Literal[
+        "drug_name",
+        "atc_code",
+        "ingredient",
+        "license_id",
+        "rxnorm_resolve",
+        "rxnorm_ingredients",
+        "interaction",
+    ] = "drug_name",
     keyword: str = "",
+    drug_names: list[str] | None = None,
     limit: int = 3,
 ) -> str:
     """
-    Search Taiwan FDA approved drugs (66,000+ licenses) by name, ATC, or ingredient.
+    Unified drug endpoint for Taiwan FDA product search + RxNorm terminology queries.
 
-    Use this when you want a single drug search entry point. Set `mode` to
-    `drug_name` for trade name / indication search, `atc_code` for ATC code
-    prefix search, `ingredient` for active ingredient search, or `license_id`
-    for direct license number lookup.
-    `drug_name` and `ingredient` use hybrid BM25 + semantic embedding search when
-    embeddings are available. `atc_code` is code-only: it accepts ATC code
-    prefixes such as `A10` or `A10BA02` and does not use embeddings.
-    `license_id` accepts the full Taiwan FDA license string or a bare digit
-    fragment such as `000029`; bare digits are resolved to the best matching
-    license.
-    Data source: Taiwan FDA open data.
+    Modes:
+    - `drug_name`: Taiwan FDA drug name/indication search (hybrid BM25 + embedding)
+    - `atc_code`: Taiwan FDA ATC code prefix search (code-only, no embedding)
+    - `ingredient`: Taiwan FDA ingredient search (hybrid BM25 + embedding)
+    - `license_id`: Taiwan FDA license lookup; supports full license or bare digits
+    - `rxnorm_resolve`: resolve free-text drug name to RxNorm concepts (RXCUI)
+    - `rxnorm_ingredients`: retrieve ingredient composition by RXCUI
+    - `interaction`: check interactions among multiple drugs via RxNorm
 
-    Output: returns a detail-shaped payload with a `results` list. For
-    `drug_name`, `atc_code`, and `ingredient`, the returned rows are the best
-    matches for the query. For `license_id`, the returned row is the resolved
-    license record. Every result includes `ingredients`, `appearance`, `atc`,
-    and `insert_url`, so callers do not need a second lookup for the selected
-    item.
-    The response shape is identical across search modes:
-    `{"mode", "keyword", "results"}`.
+    Response shape is unified across all modes:
+    - top level: `mode`, `keyword`, `results`
+    - every `results[]` item includes the same canonical keys:
+      `license_id`, `name_zh`, `name_en`, `indication`, `usage`, `form`,
+      `package`, `category`, `manufacturer`, `valid_date`, `ingredients`,
+      `appearance`, `atc`, `rxnorm`, `insert_url`
+    - `atc` is always a list of `{atc_code, atc_name}` (possibly empty)
+    - `rxnorm` is always a list of `{rxcui, name, tty, atc_code}` (possibly empty)
+    - `ingredients` is always a list of
+      `{ingredient_name, ingredient_qty, ingredient_unit, rxcui, tty}`
+      so FDA and RxNorm modes share one ingredient schema.
+
+    Notes on enrichment:
+    - FDA modes (`drug_name`, `atc_code`, `ingredient`, `license_id`) include
+      full FDA detail fields and are enriched with `rxnorm` by ATC mapping.
+    - RxNorm modes include `rxnorm` and mapped `atc` by RXCUI; FDA-specific
+      fields remain `null` / empty where no product mapping exists.
+    - `interaction` mode additionally returns top-level `interaction` summary.
 
     Args:
-        mode: Search mode. Use `drug_name`, `atc_code`, `ingredient`, or
-            `license_id`.
+        mode: One of `drug_name`, `atc_code`, `ingredient`, `license_id`,
+            `rxnorm_resolve`, `rxnorm_ingredients`, or `interaction`.
         keyword: Search term in Chinese or English. For `atc_code`, use an ATC
             code prefix such as `A10` or `A10BA02`. For `ingredient`, use a
             generic/INN ingredient name. For `license_id`, use a Taiwan FDA
-            license number or bare digits such as `000029`.
+            license number or bare digits such as `000029`. For
+            `rxnorm_ingredients`, provide RXCUI. For `interaction`, this field
+            is ignored.
+        drug_names: Required only when `mode="interaction"`. Provide at least
+            2 drug names, for example `["warfarin", "aspirin"]`.
         limit: Number of closest-matching results to return (default 3, max 10).
     """
     if drug_service is None:
         return _svc_unavailable("Drug Service")
-    if not keyword:
-        return _json_error("Provide keyword")
     if mode == "drug_name":
-        return await drug_service.search_drug(keyword, limit=limit)
+        if not keyword:
+            return _json_error("Provide keyword")
+        raw = await drug_service.search_drug(keyword, limit=limit)
+        return await _normalize_drug_mode_payload(raw, "drug_name", keyword)
     if mode == "atc_code":
         import re
 
-        if not re.fullmatch(r"[A-Za-z][A-Za-z0-9]{1,6}", keyword):
+        if not keyword:
+            return _json_error("Provide keyword")
+        if not re.fullmatch(r"[A-Za-z][A-Za-z0-9]{0,6}", keyword):
             return _json_error(
                 "ATC code mode accepts ATC code prefixes only (e.g. A10, A10BA02)."
             )
-        return await drug_service.search_by_atc(keyword, limit=limit)
+        raw = await drug_service.search_by_atc(keyword, limit=limit)
+        return await _normalize_drug_mode_payload(raw, "atc_code", keyword)
     if mode == "ingredient":
-        return await drug_service.search_by_ingredient(keyword, limit=limit)
+        if not keyword:
+            return _json_error("Provide keyword")
+        raw = await drug_service.search_by_ingredient(keyword, limit=limit)
+        return await _normalize_drug_mode_payload(raw, "ingredient", keyword)
     if mode == "license_id":
-        return await drug_service.search_by_license_id(keyword)
-    return _json_error("Provide mode as drug_name, atc_code, ingredient, or license_id")
+        if not keyword:
+            return _json_error("Provide keyword")
+        raw = await drug_service.search_by_license_id(keyword)
+        return await _normalize_drug_mode_payload(raw, "license_id", keyword)
+    if drug_interaction_service is None:
+        return _svc_unavailable("Drug Service")
+    if mode == "rxnorm_resolve":
+        if not keyword:
+            return _json_error("Provide keyword")
+        resolved = await drug_interaction_service.resolve_drug(keyword)
+        if isinstance(resolved, str):
+            try:
+                resolved = json.loads(resolved)
+            except json.JSONDecodeError:
+                resolved = []
+        if not isinstance(resolved, list):
+            resolved = []
+
+        all_rxcuis = [str(r.get("rxcui")) for r in resolved if isinstance(r, dict) and r.get("rxcui")]
+        atc_by_rxcui = await _load_atc_by_rxcuis(all_rxcuis)
+
+        # Bridge to TFDA: find Taiwan FDA drugs via ATC codes from IN/PIN concepts.
+        # Prefer ingredient-level concepts for ATC lookup (most specific mapping).
+        in_rxcuis = [
+            str(r.get("rxcui")) for r in resolved
+            if isinstance(r, dict) and r.get("rxcui") and r.get("tty") in ("IN", "PIN", "MIN")
+        ] or all_rxcuis[:3]
+        atc_codes = sorted({
+            row["atc_code"]
+            for rxcui in in_rxcuis
+            for row in atc_by_rxcui.get(rxcui, [])
+            if isinstance(row, dict) and row.get("atc_code")
+        })
+        if atc_codes and drug_service is not None:
+            raw = await drug_service.search_by_atc_codes(atc_codes, limit=limit)
+            return await _normalize_drug_mode_payload(raw, "rxnorm_resolve", keyword)
+
+        # Fallback: no TFDA match — return RxNorm-only items (capped at limit)
+        items: list[dict] = []
+        for concept in resolved[:limit]:
+            if not isinstance(concept, dict):
+                continue
+            rxcui = str(concept.get("rxcui") or "").strip()
+            row = _empty_drug_result_item()
+            row["name_en"] = concept.get("name")
+            row["atc"] = atc_by_rxcui.get(rxcui, [])
+            row["rxnorm"] = _normalize_rxnorm_entries(
+                [{"rxcui": rxcui, "name": concept.get("name"), "tty": concept.get("tty")}]
+            )
+            items.append(row)
+        return json.dumps(
+            {"mode": "rxnorm_resolve", "keyword": keyword, "results": items},
+            ensure_ascii=False,
+        )
+    if mode == "rxnorm_ingredients":
+        if not keyword:
+            return _json_error("Provide keyword")
+        payload = await drug_interaction_service.get_drug_ingredients(keyword)
+        if isinstance(payload, str):
+            try:
+                payload = json.loads(payload)
+            except json.JSONDecodeError:
+                payload = None
+        if not isinstance(payload, dict):
+            return json.dumps(
+                {"mode": "rxnorm_ingredients", "keyword": keyword, "results": []},
+                ensure_ascii=False,
+            )
+        rxcui = str(payload.get("rxcui") or "").strip()
+        ingredients = payload.get("ingredients")
+
+        # Collect RXCUIs for ATC lookup: concept itself + its ingredient children.
+        # ATC is typically assigned at IN level, so ingredient RXCUIs are preferred.
+        all_rxcuis = [rxcui] if rxcui else []
+        if isinstance(ingredients, list):
+            all_rxcuis += [
+                str(ing.get("rxcui"))
+                for ing in ingredients
+                if isinstance(ing, dict) and ing.get("rxcui")
+            ]
+        atc_by_rxcui = await _load_atc_by_rxcuis(all_rxcuis)
+        atc_codes = sorted({
+            row["atc_code"]
+            for rows in atc_by_rxcui.values()
+            for row in rows
+            if isinstance(row, dict) and row.get("atc_code")
+        })
+
+        # Bridge to TFDA: return Taiwan FDA drug records when ATC codes are available.
+        if atc_codes and drug_service is not None:
+            raw = await drug_service.search_by_atc_codes(atc_codes, limit=limit)
+            return await _normalize_drug_mode_payload(raw, "rxnorm_ingredients", keyword)
+
+        # Fallback: no TFDA match — return RxNorm-only result
+        row = _empty_drug_result_item()
+        row["name_en"] = payload.get("name")
+        row["atc"] = atc_by_rxcui.get(rxcui, [])
+        row["rxnorm"] = _normalize_rxnorm_entries(
+            [{"rxcui": rxcui, "name": payload.get("name"), "tty": payload.get("tty")}]
+        )
+        if isinstance(ingredients, list):
+            row["ingredients"] = _normalize_ingredient_entries(
+                [
+                    {
+                        "ingredient_name": ing.get("name") if isinstance(ing, dict) else None,
+                        "ingredient_qty": None,
+                        "ingredient_unit": None,
+                        "rxcui": ing.get("rxcui") if isinstance(ing, dict) else None,
+                        "tty": ing.get("tty") if isinstance(ing, dict) else None,
+                    }
+                    for ing in ingredients
+                ]
+            )
+        return json.dumps(
+            {"mode": "rxnorm_ingredients", "keyword": keyword, "results": [row]},
+            ensure_ascii=False,
+        )
+    if mode == "interaction":
+        if not drug_names or len(drug_names) < 2:
+            return _json_error(
+                "Provide drug_names with at least 2 drug names when mode is interaction"
+            )
+        result = await drug_interaction_service.check_interactions(drug_names)
+        if isinstance(result, str):
+            try:
+                result = json.loads(result)
+            except json.JSONDecodeError:
+                result = {"error": "Invalid cached interaction payload"}
+        if not isinstance(result, dict):
+            result = {"error": "Invalid interaction payload"}
+        resolved = result.get("resolved_drugs")
+        if not isinstance(resolved, list):
+            resolved = []
+        rxcuis = [
+            str(item.get("rxcui"))
+            for item in resolved
+            if isinstance(item, dict) and item.get("rxcui")
+        ]
+        atc_by_rxcui = await _load_atc_by_rxcuis(rxcuis)
+        items: list[dict] = []
+        for item in resolved:
+            if not isinstance(item, dict):
+                continue
+            rxcui = str(item.get("rxcui") or "").strip()
+            row = _empty_drug_result_item()
+            row["name_en"] = item.get("name")
+            row["atc"] = atc_by_rxcui.get(rxcui, [])
+            row["rxnorm"] = _normalize_rxnorm_entries(
+                [
+                    {
+                        "rxcui": rxcui,
+                        "name": item.get("name"),
+                        "tty": item.get("tty"),
+                    }
+                ]
+            )
+            items.append(row)
+        return json.dumps(
+            {
+                "mode": "interaction",
+                "keyword": "",
+                "results": items,
+                "interaction": {
+                    "interaction_count": result.get("interaction_count", 0),
+                    "interactions": result.get("interactions", []),
+                    "resolved_drugs": resolved,
+                    "unresolved_drugs": result.get("unresolved_drugs", []),
+                },
+            },
+            ensure_ascii=False,
+        )
+    return _json_error(
+        "Provide mode as drug_name, atc_code, ingredient, license_id, "
+        "rxnorm_resolve, rxnorm_ingredients, or interaction"
+    )
 
 
 @audited("search_drug_info")
@@ -2636,14 +3053,18 @@ async def identify_unknown_pill(features: str) -> str:
 
     Searches the appearance fields (shape, color, marking) in the Taiwan FDA drug
     database. All keywords must match (AND logic) — more keywords = narrower results.
-    For best results use Chinese color/shape terms. Returns up to 5 matching drugs
-    with license ID, trade name, and appearance description.
+    The service expands common English descriptors (`white`, `round`, `oval`, etc.)
+    into Chinese synonyms used in FDA appearance data. If an imprint-like token with
+    digits causes zero matches (for example `M500`), the service retries once with
+    digit-containing tokens removed.
+    Returns up to 5 matching drugs with license ID, trade name, and appearance
+    description.
 
     ⚠️ For reference only — always confirm pill identity with a licensed pharmacist.
 
     Args:
         features: Space-separated appearance keywords in Chinese or English
-                  (e.g., '白 圓形', '橙色 橢圓', 'white round YP',
+                  (e.g., '白 圓形', '橙色 橢圓', 'white round',
                    '粉紅 菱形 PFIZER'). Each keyword is matched against shape,
                   color, and marking fields independently.
     """
@@ -4316,108 +4737,6 @@ async def map_snomed_to_icd(concept_id: int) -> str:
         ensure_ascii=False,
         indent=2,
     )
-
-
-# ============================================================
-# Group 12: Drug Interactions (RxNorm)
-# ============================================================
-
-
-@audited("check_drug_interactions")
-async def check_drug_interactions(drug_names: list[str]) -> str:
-    """
-    Check for drug-drug interactions among multiple drugs using RxNorm data.
-
-    Use this when you have a medication list and want pairwise interaction
-    signals before deeper pharmacist review.
-
-    ⚠️ RxNorm interaction data indicates potential interactions but does NOT include
-    severity ratings or clinical significance. All findings must be verified by
-    a licensed pharmacist or clinician before clinical use.
-
-    Output behavior:
-    - returns interaction findings for pairs that have known RxNorm signals
-    - may include no-hit pairs when no interaction is found
-
-    Args:
-        drug_names: List of at least 2 English drug names (generic or brand),
-            for example `['warfarin', 'aspirin', 'metformin']`.
-    """
-    if drug_interaction_service is None:
-        return _svc_unavailable("Drug Interactions (RxNorm)")
-    if not drug_names or len(drug_names) < 2:
-        return json.dumps(
-            {"error": "Provide at least 2 drug names to check for interactions"},
-            ensure_ascii=False,
-        )
-    result = await drug_interaction_service.check_interactions(drug_names)
-    if isinstance(result, str):
-        return result  # Already JSON string from cache
-    return json.dumps(result, ensure_ascii=False, indent=2)
-
-
-@audited("resolve_rxnorm_drug")
-async def resolve_rxnorm_drug(drug_name: str) -> str:
-    """
-    Resolve one drug name into RxNorm concept candidates (RXCUI mapping step).
-
-    This endpoint is typically called before:
-    - `get_drug_ingredients_rxnorm`
-    - interaction workflows that require normalized concept IDs
-
-    Output payload includes:
-    - `query`
-    - `rxnorm_concepts` candidate list with RXCUI and term type context
-
-    Notes:
-    - some queries can return multiple concepts (brand/generic/form variants)
-    - callers should pick the clinically intended concept before next steps
-
-    Args:
-        drug_name: English generic or brand name, for example `atorvastatin`,
-            `Lipitor`, `metformin`, `Glucophage`.
-    """
-    if drug_interaction_service is None:
-        return _svc_unavailable("Drug Interactions (RxNorm)")
-    results = await drug_interaction_service.resolve_drug(drug_name)
-    return json.dumps(
-        {"query": drug_name, "rxnorm_concepts": results},
-        ensure_ascii=False,
-        indent=2,
-    )
-
-
-@audited("get_drug_ingredients_rxnorm")
-async def get_drug_ingredients_rxnorm(rxcui: str) -> str:
-    """
-    Retrieve ingredient composition for a normalized RxNorm concept (RXCUI).
-
-    Use this when ingredient-level decomposition is needed for:
-    - de-duplication of combination products
-    - interaction/risk reasoning by active component
-    - normalization pipelines
-
-    Output behavior:
-    - returns ingredient detail for the requested RXCUI
-    - returns an error payload if RXCUI is not found
-
-    Recommended flow:
-    1) call `resolve_rxnorm_drug` with a drug name
-    2) choose target RXCUI
-    3) call this tool to obtain normalized ingredient components
-
-    Args:
-        rxcui: RXCUI string from `resolve_rxnorm_drug`, for example `41493`,
-            `6809`.
-    """
-    if drug_interaction_service is None:
-        return _svc_unavailable("Drug Interactions (RxNorm)")
-    result = await drug_interaction_service.get_drug_ingredients(rxcui)
-    if result is None:
-        return json.dumps({"error": f"RXCUI {rxcui} not found"}, ensure_ascii=False)
-    if isinstance(result, str):
-        return result  # Already JSON string from cache
-    return json.dumps(result, ensure_ascii=False, indent=2)
 
 
 # ============================================================

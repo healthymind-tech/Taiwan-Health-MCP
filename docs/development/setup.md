@@ -7,7 +7,7 @@
 
 ## 2. 下載程式碼
 ```bash
-git clone https://github.com/audi0417/Taiwan-Health-MCP.git
+git clone https://github.com/healthymind-tech/Taiwan-Health-MCP.git
 cd Taiwan-Health-MCP
 ```
 
@@ -95,3 +95,24 @@ Taiwan Health MCP Server
 ==================================================
 Transport: stdio
 Server is starting...
+```
+
+## 8. 升級既有資料庫（可選）
+
+若您沿用舊版資料庫 volume，依序套用 migration 再開發：
+
+```bash
+# 1. RxNorm 整併與 drug schema 補強
+docker compose exec -T postgres psql \
+  -U ${POSTGRES_USER:-mcp} \
+  -d ${POSTGRES_DB:-taiwan_health} \
+  -v ON_ERROR_STOP=1 \
+  < db/migrations/2026-04-12_drug_schema_no_loss.sql
+
+# 2. 移除已棄用的 embedding 資料表（drug.license_embeddings, drug.atc_embeddings）
+docker compose exec -T postgres psql \
+  -U ${POSTGRES_USER:-mcp} \
+  -d ${POSTGRES_DB:-taiwan_health} \
+  -v ON_ERROR_STOP=1 \
+  < db/migrations/2026-04-12_drop_unused_drug_embeddings.sql
+```

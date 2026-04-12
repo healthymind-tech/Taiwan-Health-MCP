@@ -5,8 +5,6 @@ Calls Ollama /api/embed in batches and upserts into:
   - food_nutrition.food_embeddings            (~2181 unique foods)
   - food_nutrition.ingredient_embeddings      (~1702 ingredients)
   - health_food.item_embeddings               (~555 items)
-  - drug.license_embeddings                   (~66k licenses)
-  - drug.atc_embeddings                       (~10k ATC codes)
   - drug.ingredient_name_embeddings           (~50k+ unique ingredient names)
   - icd.diagnosis_embeddings                  (~73k ICD-10-CM codes)
   - loinc.concept_embeddings                  (~87k LOINC concepts)
@@ -45,9 +43,7 @@ _BATCH_SIZE: int = int(os.getenv("OLLAMA_EMBED_BATCH_SIZE", "32"))
 # Used by ensure_dimensions() to ALTER TABLE when OLLAMA_EMBED_DIMENSIONS changes.
 _EMBEDDING_COLUMNS: list[tuple[str, str, str]] = [
     ("icd", "diagnosis_embeddings", "embedding"),
-    ("drug", "atc_embeddings", "embedding"),
     ("drug", "ingredient_name_embeddings", "embedding"),
-    ("drug", "license_embeddings", "embedding"),
     ("health_food", "item_embeddings", "embedding"),
     ("food_nutrition", "food_embeddings", "embedding"),
     ("food_nutrition", "ingredient_embeddings", "embedding"),
@@ -287,72 +283,9 @@ async def embed_health_food(pool: asyncpg.Pool) -> None:
 
 
 async def embed_drug(pool: asyncpg.Pool) -> None:
-    print(
-        "\n=== Embedding: drug (~66k licenses — may take 5-20 min depending on GPU) ==="
-    )
+    print("\n=== Embedding: drug ingredient names ===")
     if not await _check_ollama():
         return
-
-    # ── Licenses ─────────────────────────────────────────────────────────────
-    async with pool.acquire() as conn:
-        drugs = await conn.fetch(
-            "SELECT license_id, name_zh, name_en, indication FROM drug.licenses"
-        )
-    print(f"  Licenses: {len(drugs)}")
-    batches = [drugs[i : i + _BATCH_SIZE] for i in range(0, len(drugs), _BATCH_SIZE)]
-    total_ok = 0
-    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-        for batch in _progress(batches, "Drug licenses"):
-            texts = [
-                " ".join(filter(None, [r["name_zh"], r["name_en"], r["indication"]]))
-                for r in batch
-            ]
-            vecs = await _embed_batch(client, texts)
-            rows = [
-                (batch[j]["license_id"], f"[{','.join(str(x) for x in vecs[j])}]")
-                for j in range(len(batch))
-                if vecs[j] is not None
-            ]
-            await _upsert(
-                pool,
-                """INSERT INTO drug.license_embeddings (license_id, embedding)
-                   VALUES ($1, $2::halfvec)
-                   ON CONFLICT (license_id) DO UPDATE
-                   SET embedding=EXCLUDED.embedding, embedded_at=NOW()""",
-                rows,
-            )
-            total_ok += len(rows)
-    print(f"  Drug licenses done: {total_ok}/{len(drugs)} embedded")
-
-    # ── Distinct ATC codes ────────────────────────────────────────────────────
-    async with pool.acquire() as conn:
-        atc_rows = await conn.fetch(
-            "SELECT DISTINCT ON (atc_code) atc_code, atc_name FROM drug.atc WHERE atc_name IS NOT NULL"
-        )
-    print(f"  ATC codes: {len(atc_rows)}")
-    batches = [
-        atc_rows[i : i + _BATCH_SIZE] for i in range(0, len(atc_rows), _BATCH_SIZE)
-    ]
-    total_ok = 0
-    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-        for batch in _progress(batches, "Drug ATC"):
-            texts = [r["atc_name"] for r in batch]
-            vecs = await _embed_batch(client, texts)
-            rows = [
-                (batch[j]["atc_code"], f"[{','.join(str(x) for x in vecs[j])}]")
-                for j in range(len(batch))
-                if vecs[j] is not None
-            ]
-            await _upsert(
-                pool,
-                """INSERT INTO drug.atc_embeddings (atc_code, embedding)
-                   VALUES ($1, $2::halfvec)
-                   ON CONFLICT (atc_code) DO UPDATE
-                   SET embedding=EXCLUDED.embedding, embedded_at=NOW()""",
-                rows,
-            )
-            total_ok += len(rows)
-    print(f"  Drug ATC done: {total_ok}/{len(atc_rows)} embedded")
 
     # ── Distinct ingredient names ─────────────────────────────────────────────
     async with pool.acquire() as conn:

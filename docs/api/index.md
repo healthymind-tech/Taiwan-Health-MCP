@@ -21,19 +21,29 @@
 
 ## 初始化範例
 
-所有服務通常需要指定資料目錄路徑：
+目前服務初始化依賴 PostgreSQL 連線池（`asyncpg`），不再使用本地 SQLite/Excel 路徑注入：
 
 ```python
+import asyncio
+import asyncpg
+
 from src.icd_service import ICDService
 from src.drug_service import DrugService
 
-DATA_DIR = "./data"
-ICD_FILE = "./data/icd10cm_pcs_2023.xlsx"
 
-# 初始化
-icd_svc = ICDService(icd_file_path=ICD_FILE, data_dir=DATA_DIR)
-drug_svc = DrugService(data_dir=DATA_DIR)
+async def main():
+    pool = await asyncpg.create_pool(
+        "postgresql://mcp:password@localhost:5432/taiwan_health",
+        statement_cache_size=0,  # through pgBouncer transaction mode
+    )
+    icd_svc = ICDService(pool)
+    drug_svc = DrugService(pool)
 
-# 使用
-print(icd_svc.search_codes("diabetes"))
+    await icd_svc.initialize()
+    await drug_svc.initialize()
+
+    print(await icd_svc.search_codes("diabetes", "diagnosis", limit=3))
+
+
+asyncio.run(main())
 ```

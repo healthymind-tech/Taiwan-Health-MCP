@@ -3,7 +3,7 @@ RxNorm Full Release loader.
 
 Expected zip: RxNorm_full_<date>.zip
 Key RRF files inside rrf/:
-  RXNCONSO.RRF  — concepts  (pipe-delimited, 18 fields)
+  RXNCONSO.RRF  — concepts and source mappings (pipe-delimited, 18 fields)
   RXNREL.RRF    — relationships (pipe-delimited, 16 fields)
 
 RXNCONSO.RRF columns (0-indexed):
@@ -26,7 +26,8 @@ RXNCONSO.RRF columns (0-indexed):
  16  SUPPRESS — suppression flag
  17  CVF     — content view flag
 
-We keep SAB=RXNORM entries only and deduplicate by (RXCUI, TTY).
+Concept load keeps SAB=RXNORM entries and deduplicates by RXCUI (preferring ISPREF=Y).
+ATC mapping load reads SAB=ATC entries from RXNCONSO and stores (RXCUI, ATC code).
 
 RXNREL.RRF columns (0-indexed):
   0  RXCUI1  — first concept
@@ -46,16 +47,17 @@ RXNREL.RRF columns (0-indexed):
  14  SUPPRESS
  15  CVF
 
-We keep SAB=RXNORM and filter to the relationship types we actually use.
+Relationship load keeps SAB=RXNORM and filters to the relationship types we use.
 """
 
-import csv
 import io
+import re
 import zipfile
 
 import asyncpg
 
 BATCH = 10_000
+ATC_CODE_RE = re.compile(r"^[A-Z][0-9]{2}[A-Z0-9]{0,4}$")
 
 # TTY values we care about for drug concepts
 WANTED_TTY = {"IN", "PIN", "MIN", "BN", "SBD", "SCD", "GPCK", "BPCK"}
@@ -74,6 +76,15 @@ WANTED_RELA = {
     "has_tradename",
     "tradename_of",
 }
+
+
+def _normalize_atc_code(raw: str) -> str | None:
+    code = (raw or "").strip().upper().replace(" ", "")
+    if not code:
+        return None
+    if not ATC_CODE_RE.match(code):
+        return None
+    return code
 
 
 def _find_rrf(zf: zipfile.ZipFile, filename: str) -> str | None:
@@ -159,12 +170,111 @@ def _load_relationships(zf: zipfile.ZipFile, valid_rxcui: set[str]) -> list[tupl
         if rxcui1 not in valid_rxcui or rxcui2 not in valid_rxcui:
             continue
 
-        rows.append((rxcui1, rel, rxcui2, rela or None))
+        rows.append((rxcui1, rel, rxcui2, rela or ""))
 
     return rows
 
 
+def _load_atc_mappings(zf: zipfile.ZipFile, valid_rxcui: set[str]) -> list[tuple]:
+    """Return list of (rxcui, atc_code, atc_name, source_sab, suppress)."""
+    member = _find_rrf(zf, "RXNCONSO.RRF")
+    if member is None:
+        raise FileNotFoundError("RXNCONSO.RRF not found in RxNorm zip")
+
+    seen: dict[tuple[str, str], tuple] = {}
+    for cols in _iter_rrf(zf, member):
+        if len(cols) < 17:
+            continue
+        rxcui = cols[0].strip()
+        sab = cols[11].strip().upper()
+        code = cols[13].strip()
+        name = cols[14].strip()
+        suppress = cols[16].strip()
+
+        if sab != "ATC":
+            continue
+        if suppress in ("O", "E"):
+            continue
+        if rxcui not in valid_rxcui:
+            continue
+
+        atc_code = _normalize_atc_code(code)
+        if not atc_code:
+            continue
+
+        key = (rxcui, atc_code)
+        row = (rxcui, atc_code, name or None, sab, suppress or "N")
+        # If duplicate pair exists, keep the one with a non-empty ATC name.
+        if key not in seen or (not seen[key][2] and row[2]):
+            seen[key] = row
+
+    return list(seen.values())
+
+
 # ── main loader ─────────────────────────────────────────────────────────────
+
+
+async def _ensure_rxnorm_tables(conn: asyncpg.Connection) -> None:
+    """Create drug-domain RxNorm tables/indexes for in-place upgrades."""
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS drug.rx_concepts (
+            rxcui       TEXT PRIMARY KEY,
+            name        TEXT,
+            tty         TEXT,
+            suppress    TEXT
+        );
+        """
+    )
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS drug.rx_relationships (
+            rxcui1      TEXT NOT NULL,
+            rel         TEXT NOT NULL,
+            rxcui2      TEXT NOT NULL,
+            rela        TEXT NOT NULL
+        );
+        """
+    )
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS drug.rx_atc_map (
+            rxcui       TEXT NOT NULL,
+            atc_code    TEXT NOT NULL,
+            atc_name    TEXT,
+            source_sab  TEXT DEFAULT 'ATC',
+            suppress    TEXT,
+            PRIMARY KEY (rxcui, atc_code)
+        );
+        """
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_drug_rx_rel_cui1 ON drug.rx_relationships (rxcui1)"
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_drug_rx_rel_cui2 ON drug.rx_relationships (rxcui2)"
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_drug_rx_rel_rela ON drug.rx_relationships (rela)"
+    )
+    await conn.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS uidx_drug_rx_rel_exact
+        ON drug.rx_relationships (rxcui1, rel, rxcui2, rela)
+        """
+    )
+    await conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_drug_rx_fts
+        ON drug.rx_concepts USING GIN (to_tsvector('english', COALESCE(name, '')))
+        """
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_drug_rx_atc_code ON drug.rx_atc_map (atc_code)"
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_drug_rx_atc_cui ON drug.rx_atc_map (rxcui)"
+    )
 
 
 async def load_rxnorm(pool: asyncpg.Pool, zip_path: str) -> None:
@@ -181,15 +291,22 @@ async def load_rxnorm(pool: asyncpg.Pool, zip_path: str) -> None:
         relationships = _load_relationships(zf, valid_rxcui)
         print(f"  {len(relationships)} relationships (filtered)")
 
+        print("  Loading ATC mappings (RXNCONSO SAB=ATC) ...")
+        atc_mappings = _load_atc_mappings(zf, valid_rxcui)
+        print(f"  {len(atc_mappings)} RxNorm↔ATC mappings")
+
     print("  Writing to database ...")
     async with pool.acquire() as conn:
         async with conn.transaction():
-            await conn.execute("TRUNCATE rxnorm.relationships, rxnorm.concepts CASCADE")
+            await _ensure_rxnorm_tables(conn)
+            await conn.execute(
+                "TRUNCATE drug.rx_relationships, drug.rx_atc_map, drug.rx_concepts CASCADE"
+            )
 
             print("  Inserting concepts ...")
             for i in range(0, len(concepts), BATCH):
                 await conn.executemany(
-                    """INSERT INTO rxnorm.concepts (rxcui, name, tty, suppress)
+                    """INSERT INTO drug.rx_concepts (rxcui, name, tty, suppress)
                        VALUES ($1, $2, $3, $4)
                        ON CONFLICT (rxcui) DO UPDATE
                        SET name=$2, tty=$3, suppress=$4""",
@@ -199,12 +316,25 @@ async def load_rxnorm(pool: asyncpg.Pool, zip_path: str) -> None:
             print("  Inserting relationships ...")
             for i in range(0, len(relationships), BATCH):
                 await conn.executemany(
-                    """INSERT INTO rxnorm.relationships (rxcui1, rel, rxcui2, rela)
-                       VALUES ($1, $2, $3, $4)""",
+                    """INSERT INTO drug.rx_relationships (rxcui1, rel, rxcui2, rela)
+                       VALUES ($1, $2, $3, $4)
+                       ON CONFLICT DO NOTHING""",
                     relationships[i : i + BATCH],
+                )
+
+            print("  Inserting ATC mappings ...")
+            for i in range(0, len(atc_mappings), BATCH):
+                await conn.executemany(
+                    """INSERT INTO drug.rx_atc_map
+                       (rxcui, atc_code, atc_name, source_sab, suppress)
+                       VALUES ($1, $2, $3, $4, $5)
+                       ON CONFLICT (rxcui, atc_code) DO UPDATE
+                       SET atc_name=$3, source_sab=$4, suppress=$5""",
+                    atc_mappings[i : i + BATCH],
                 )
 
     print(
         f"  RxNorm loaded: {len(concepts)} concepts, "
-        f"{len(relationships)} relationships."
+        f"{len(relationships)} relationships, "
+        f"{len(atc_mappings)} ATC mappings."
     )

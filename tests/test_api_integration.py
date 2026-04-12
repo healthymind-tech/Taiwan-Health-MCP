@@ -86,10 +86,24 @@ ALL_TOOLS = {
     "query_snomed_concept",
     "get_snomed_relationships",
     "query_snomed_mapping",
-    # RxNorm / Drug Interactions
-    "check_drug_interactions",
-    "resolve_rxnorm_drug",
-    "get_drug_ingredients_rxnorm",
+}
+
+DRUG_RESULT_KEYS = {
+    "license_id",
+    "name_zh",
+    "name_en",
+    "indication",
+    "usage",
+    "form",
+    "package",
+    "category",
+    "manufacturer",
+    "valid_date",
+    "ingredients",
+    "appearance",
+    "atc",
+    "rxnorm",
+    "insert_url",
 }
 
 # ---------------------------------------------------------------------------
@@ -299,9 +313,9 @@ class TestToolsList:
             names == ALL_TOOLS
         ), f"Missing: {ALL_TOOLS - names}\nExtra: {names - ALL_TOOLS}"
 
-    def test_total_tool_count_is_33(self, mcp: MCPSession) -> None:
+    def test_total_tool_count_is_30(self, mcp: MCPSession) -> None:
         tools = mcp.list_tools()
-        assert len(tools) == 33
+        assert len(tools) == 30
 
     def test_every_tool_has_name_and_description(self, mcp: MCPSession) -> None:
         for tool in mcp.list_tools():
@@ -421,22 +435,7 @@ class TestSearchDrug:
         assert _has_results(result)
         assert result["mode"] == "drug_name"
         assert result["keyword"] == "Metformin"
-        assert set(result["results"][0].keys()) == {
-            "license_id",
-            "name_zh",
-            "name_en",
-            "indication",
-            "usage",
-            "form",
-            "package",
-            "category",
-            "manufacturer",
-            "valid_date",
-            "ingredients",
-            "appearance",
-            "atc",
-            "insert_url",
-        }
+        assert set(result["results"][0].keys()) == DRUG_RESULT_KEYS
 
     def test_fuzzy(self, mcp: MCPSession) -> None:
         result = mcp.call_tool("search_drug", {"mode": "drug_name", "keyword": "aspirin"})
@@ -474,22 +473,7 @@ class TestSearchDrugByAtc:
         assert _is_success(result)
         assert result["mode"] == "atc_code"
         assert result["keyword"] == "A10BA02"
-        assert set(result["results"][0].keys()) == {
-            "license_id",
-            "name_zh",
-            "name_en",
-            "indication",
-            "usage",
-            "form",
-            "package",
-            "category",
-            "manufacturer",
-            "valid_date",
-            "ingredients",
-            "appearance",
-            "atc",
-            "insert_url",
-        }
+        assert set(result["results"][0].keys()) == DRUG_RESULT_KEYS
 
     def test_fuzzy(self, mcp: MCPSession) -> None:
         result = mcp.call_tool("search_drug", {"mode": "atc_code", "keyword": "A10"})
@@ -509,22 +493,7 @@ class TestSearchDrugByIngredient:
         assert _has_results(result)
         assert result["mode"] == "ingredient"
         assert result["keyword"] == "metformin"
-        assert set(result["results"][0].keys()) == {
-            "license_id",
-            "name_zh",
-            "name_en",
-            "indication",
-            "usage",
-            "form",
-            "package",
-            "category",
-            "manufacturer",
-            "valid_date",
-            "ingredients",
-            "appearance",
-            "atc",
-            "insert_url",
-        }
+        assert set(result["results"][0].keys()) == DRUG_RESULT_KEYS
 
 
 @skip_if_no_server
@@ -1390,7 +1359,7 @@ class TestQuerySnomedMapping:
 
 
 # ---------------------------------------------------------------------------
-# Group 11: Drug Interactions (RxNorm)
+# Group 11: Drug RxNorm modes (merged into search_drug)
 # ---------------------------------------------------------------------------
 
 
@@ -1398,21 +1367,31 @@ class TestQuerySnomedMapping:
 class TestCheckDrugInteractions:
     def test_exact(self, mcp: MCPSession) -> None:
         result = mcp.call_tool(
-            "check_drug_interactions", {"drug_names": ["warfarin", "aspirin"]}
+            "search_drug",
+            {"mode": "interaction", "drug_names": ["warfarin", "aspirin"]},
         )
         assert _is_success(result)
-        assert "interactions" in result
+        assert result.get("mode") == "interaction"
+        assert isinstance(result.get("results"), list)
+        assert isinstance(result.get("interaction"), dict)
+        assert "interactions" in result["interaction"]
+        if result["results"]:
+            assert set(result["results"][0].keys()) == DRUG_RESULT_KEYS
 
     def test_fuzzy(self, mcp: MCPSession) -> None:
         result = mcp.call_tool(
-            "check_drug_interactions",
-            {"drug_names": ["metformin", "lisinopril", "atorvastatin"]},
+            "search_drug",
+            {
+                "mode": "interaction",
+                "drug_names": ["metformin", "lisinopril", "atorvastatin"],
+            },
         )
         assert _is_success(result)
 
     def test_wrong(self, mcp: MCPSession) -> None:
         result = mcp.call_tool(
-            "check_drug_interactions", {"drug_names": ["ZZZNOTADRUG1", "ZZZNOTADRUG2"]}
+            "search_drug",
+            {"mode": "interaction", "drug_names": ["ZZZNOTADRUG1", "ZZZNOTADRUG2"]},
         )
         assert _is_graceful(result)
 
@@ -1420,36 +1399,55 @@ class TestCheckDrugInteractions:
 @skip_if_no_server
 class TestResolveRxnormDrug:
     def test_exact(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("resolve_rxnorm_drug", {"drug_name": "metformin"})
+        result = mcp.call_tool(
+            "search_drug", {"mode": "rxnorm_resolve", "keyword": "metformin"}
+        )
         assert _is_success(result)
-        # rxnorm_concepts is returned as a JSON string — just verify it is non-empty
-        assert result.get("rxnorm_concepts")
+        assert result.get("mode") == "rxnorm_resolve"
+        assert _has_results(result)
 
     def test_fuzzy(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("resolve_rxnorm_drug", {"drug_name": "metfor"})
+        result = mcp.call_tool(
+            "search_drug", {"mode": "rxnorm_resolve", "keyword": "metfor"}
+        )
         assert _is_success(result)
 
     def test_wrong(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("resolve_rxnorm_drug", {"drug_name": "ZZZXYZNOTADRUG"})
+        result = mcp.call_tool(
+            "search_drug", {"mode": "rxnorm_resolve", "keyword": "ZZZXYZNOTADRUG"}
+        )
         assert _is_graceful(result)
 
 
 @skip_if_no_server
 class TestGetDrugIngredientsRxnorm:
     def test_exact(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("get_drug_ingredients_rxnorm", {"rxcui": _RXCUI})
+        result = mcp.call_tool(
+            "search_drug", {"mode": "rxnorm_ingredients", "keyword": _RXCUI}
+        )
         assert _is_success(result)
-        assert result.get("rxcui") == _RXCUI
+        assert result.get("mode") == "rxnorm_ingredients"
+        assert result["keyword"] == _RXCUI
+        assert result["results"]
+        assert set(result["results"][0].keys()) == DRUG_RESULT_KEYS
+        assert any(
+            row.get("rxcui") == _RXCUI
+            for row in result["results"][0].get("rxnorm", [])
+            if isinstance(row, dict)
+        )
 
     def test_fuzzy(self, mcp: MCPSession) -> None:
         # Different valid RXCUI
-        result = mcp.call_tool("get_drug_ingredients_rxnorm", {"rxcui": "44"})
+        result = mcp.call_tool(
+            "search_drug", {"mode": "rxnorm_ingredients", "keyword": "44"}
+        )
         assert _is_graceful(result)
 
     def test_wrong(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("get_drug_ingredients_rxnorm", {"rxcui": "9999999999"})
+        result = mcp.call_tool(
+            "search_drug", {"mode": "rxnorm_ingredients", "keyword": "9999999999"}
+        )
         assert _is_graceful(result)
-        assert "error" in result
 
 
 # ---------------------------------------------------------------------------

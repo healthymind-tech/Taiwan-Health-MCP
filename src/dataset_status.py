@@ -20,18 +20,19 @@ _READ_ONLY = ToolAnnotations(readOnlyHint=True)
 
 CACHE_TTL = timedelta(minutes=5)
 
-# Maps service key → (schema.table to COUNT(*), minimum row count to be "ready").
-# The threshold guards against partial loads (data-loader still running).
-SERVICE_DATASETS: dict[str, tuple[str, int]] = {
-    "icd": ("icd.diagnoses", 10_000),
-    "drug": ("drug.licenses", 100),
-    "health_food": ("health_food.items", 10),
-    "food_nutrition": ("food_nutrition.measurements", 10),
-    "lab": ("loinc.concepts", 1_000),
-    "guideline": ("guideline.disease_guidelines", 1),
-    "twcore": ("twcore.codesystems", 1),
-    "snomed": ("snomed.concepts", 100_000),
-    "rxnorm": ("rxnorm.concepts", 10_000),
+# Maps service key → list of readiness requirements.
+# Each requirement is (schema.table to COUNT(*), minimum row count).
+# A service is ready only when ALL requirements pass.
+SERVICE_DATASETS: dict[str, list[tuple[str, int]]] = {
+    "icd": [("icd.diagnoses", 10_000)],
+    # Drug tools are enabled only when BOTH FDA products and RxNorm backbone exist.
+    "drug": [("drug.licenses", 100), ("drug.rx_concepts", 10_000)],
+    "health_food": [("health_food.items", 10)],
+    "food_nutrition": [("food_nutrition.measurements", 10)],
+    "lab": [("loinc.concepts", 1_000)],
+    "guideline": [("guideline.disease_guidelines", 1)],
+    "twcore": [("twcore.codesystems", 1)],
+    "snomed": [("snomed.concepts", 100_000)],
 }
 
 # FHIR services have no own tables — they derive availability from their dependencies.
@@ -63,10 +64,15 @@ class DatasetStatusManager:
     async def _query_status(self, pool: asyncpg.Pool) -> dict[str, bool]:
         status: dict[str, bool] = {}
         async with pool.acquire() as conn:
-            for key, (table, threshold) in SERVICE_DATASETS.items():
+            for key, requirements in SERVICE_DATASETS.items():
                 try:
-                    count = await conn.fetchval(f"SELECT COUNT(*) FROM {table}")
-                    status[key] = (count or 0) >= threshold
+                    ready = True
+                    for table, threshold in requirements:
+                        count = await conn.fetchval(f"SELECT COUNT(*) FROM {table}")
+                        if (count or 0) < threshold:
+                            ready = False
+                            break
+                    status[key] = ready
                 except Exception:
                     status[key] = False
         for fhir_key, dep_key in _FHIR_DEPS.items():

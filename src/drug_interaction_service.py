@@ -4,11 +4,12 @@ Data pre-loaded into PostgreSQL from RxNorm full release by data-loader.
 
 Interaction detection strategy:
   1. Resolve each drug name → RxNorm ingredient RXCUIs
-  2. Query rxnorm.relationships for rela='interacts_with' between the ingredients
+  2. Query drug.rx_relationships for rela='interacts_with' between ingredients
   3. Return matched pairs with context from the relationship data
 """
 
 from typing import Any
+import json
 
 import asyncpg
 
@@ -30,12 +31,12 @@ class DrugInteractionService:
         self.pool = pool
 
     async def initialize(self) -> None:
-        count = await self.pool.fetchval("SELECT COUNT(*) FROM rxnorm.concepts")
+        count = await self.pool.fetchval("SELECT COUNT(*) FROM drug.rx_concepts")
         if count == 0:
             log_error("RxNorm table empty — run data-loader (--rxnorm) first")
         else:
             inter_count = await self.pool.fetchval(
-                "SELECT COUNT(*) FROM rxnorm.relationships WHERE rela = 'interacts_with'"
+                "SELECT COUNT(*) FROM drug.rx_relationships WHERE rela = 'interacts_with'"
             )
             log_info(
                 f"DrugInteractionService ready — {count:,} concepts, {inter_count:,} interactions"
@@ -58,7 +59,7 @@ class DrugInteractionService:
             rows = await conn.fetch(
                 """
                 SELECT rxcui, name, tty
-                FROM rxnorm.concepts
+                FROM drug.rx_concepts
                 WHERE to_tsvector('english', name) @@ plainto_tsquery('english', $1)
                 ORDER BY
                     CASE tty
@@ -83,7 +84,7 @@ class DrugInteractionService:
         """
         async with self.pool.acquire() as conn:
             tty = await conn.fetchval(
-                "SELECT tty FROM rxnorm.concepts WHERE rxcui = $1", rxcui
+                "SELECT tty FROM drug.rx_concepts WHERE rxcui = $1", rxcui
             )
             if tty in INGREDIENT_TTY:
                 return {rxcui}
@@ -91,7 +92,7 @@ class DrugInteractionService:
             # Traverse has_ingredient relationships
             rows = await conn.fetch(
                 """
-                SELECT rxcui2 FROM rxnorm.relationships
+                SELECT rxcui2 FROM drug.rx_relationships
                 WHERE rxcui1 = $1 AND rela = 'has_ingredient'
                 """,
                 rxcui,
@@ -117,6 +118,11 @@ class DrugInteractionService:
         # Step 1: resolve each drug name
         for name in drug_names:
             candidates = await self.resolve_drug(name)
+            if isinstance(candidates, str):
+                try:
+                    candidates = json.loads(candidates)
+                except json.JSONDecodeError:
+                    candidates = []
             if candidates:
                 # Take the first (best) match
                 resolved.append({"input": name, **candidates[0]})
@@ -138,8 +144,9 @@ class DrugInteractionService:
             drug_ingredients[drug["rxcui"]] = ing_set
 
         # Step 3: check all pairs for interacts_with
-        interactions: list[dict] = []
+        # Collect matching pairs first, then batch-fetch ingredient names.
         drug_list = resolved[:]
+        interaction_pairs: list[tuple] = []  # (drug_a, drug_b, ing_a, ing_b)
         async with self.pool.acquire() as conn:
             for i in range(len(drug_list)):
                 for j in range(i + 1, len(drug_list)):
@@ -153,7 +160,7 @@ class DrugInteractionService:
                             rows = await conn.fetch(
                                 """
                                 SELECT rxcui1, rxcui2, rel, rela
-                                FROM rxnorm.relationships
+                                FROM drug.rx_relationships
                                 WHERE rela = 'interacts_with'
                                   AND ((rxcui1 = $1 AND rxcui2 = $2)
                                     OR (rxcui1 = $2 AND rxcui2 = $1))
@@ -163,40 +170,38 @@ class DrugInteractionService:
                                 ing_b,
                             )
                             if rows:
-                                # Get names for the ingredient RXCUIs
-                                name_a = await conn.fetchval(
-                                    "SELECT name FROM rxnorm.concepts WHERE rxcui = $1",
-                                    ing_a,
-                                )
-                                name_b = await conn.fetchval(
-                                    "SELECT name FROM rxnorm.concepts WHERE rxcui = $1",
-                                    ing_b,
-                                )
-                                interactions.append(
-                                    {
-                                        "drug_a": {
-                                            "input": drug_a["input"],
-                                            "rxcui": drug_a["rxcui"],
-                                            "name": drug_a["name"],
-                                            "ingredient": {
-                                                "rxcui": ing_a,
-                                                "name": name_a,
-                                            },
-                                        },
-                                        "drug_b": {
-                                            "input": drug_b["input"],
-                                            "rxcui": drug_b["rxcui"],
-                                            "name": drug_b["name"],
-                                            "ingredient": {
-                                                "rxcui": ing_b,
-                                                "name": name_b,
-                                            },
-                                        },
-                                        "interaction_type": "interacts_with",
-                                        "severity": "unknown",
-                                        "source": "RxNorm",
-                                    }
-                                )
+                                interaction_pairs.append((drug_a, drug_b, ing_a, ing_b))
+
+            # Batch-fetch all ingredient names in one query
+            need_names = {ing for _, _, ing_a, ing_b in interaction_pairs for ing in (ing_a, ing_b)}
+            concept_names: dict[str, str] = {}
+            if need_names:
+                name_rows = await conn.fetch(
+                    "SELECT rxcui, name FROM drug.rx_concepts WHERE rxcui = ANY($1::text[])",
+                    list(need_names),
+                )
+                concept_names = {r["rxcui"]: r["name"] for r in name_rows}
+
+        interactions: list[dict] = [
+            {
+                "drug_a": {
+                    "input": drug_a["input"],
+                    "rxcui": drug_a["rxcui"],
+                    "name": drug_a["name"],
+                    "ingredient": {"rxcui": ing_a, "name": concept_names.get(ing_a)},
+                },
+                "drug_b": {
+                    "input": drug_b["input"],
+                    "rxcui": drug_b["rxcui"],
+                    "name": drug_b["name"],
+                    "ingredient": {"rxcui": ing_b, "name": concept_names.get(ing_b)},
+                },
+                "interaction_type": "interacts_with",
+                "severity": "unknown",
+                "source": "RxNorm",
+            }
+            for drug_a, drug_b, ing_a, ing_b in interaction_pairs
+        ]
 
         return {
             "resolved_drugs": resolved,
@@ -212,7 +217,7 @@ class DrugInteractionService:
         """Return a drug concept and all its ingredient relationships."""
         async with self.pool.acquire() as conn:
             concept = await conn.fetchrow(
-                "SELECT rxcui, name, tty FROM rxnorm.concepts WHERE rxcui = $1", rxcui
+                "SELECT rxcui, name, tty FROM drug.rx_concepts WHERE rxcui = $1", rxcui
             )
             if not concept:
                 return None
@@ -220,8 +225,8 @@ class DrugInteractionService:
             ingredients = await conn.fetch(
                 """
                 SELECT c.rxcui, c.name, c.tty
-                FROM rxnorm.relationships r
-                JOIN rxnorm.concepts c ON c.rxcui = r.rxcui2
+                FROM drug.rx_relationships r
+                JOIN drug.rx_concepts c ON c.rxcui = r.rxcui2
                 WHERE r.rxcui1 = $1 AND r.rela = 'has_ingredient'
                 """,
                 rxcui,
