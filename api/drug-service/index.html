@@ -354,7 +354,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="../../modules/index.md" class="md-tabs__link">
+        <a href="../../modules/icd-service/" class="md-tabs__link">
           
   
   
@@ -398,7 +398,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="../../fhir/index.md" class="md-tabs__link">
+        <a href="../../tools/fhir-tools/" class="md-tabs__link">
           
   
   
@@ -539,6 +539,28 @@
     
   
   常見問題
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../tool-test-questions/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  測試題庫
 
         </a>
       </li>
@@ -753,6 +775,8 @@
       
         
       
+        
+      
     
     
     
@@ -921,6 +945,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/drug-domain-v2-spec/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Drug Domain V2 規格
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -936,8 +988,6 @@
   
     
     
-      
-        
       
         
       
@@ -1001,34 +1051,6 @@
 
           </label>
           <ul class="md-nav__list" data-md-scrollfix>
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../modules/index.md" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    None
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
             
               
                 
@@ -1272,6 +1294,8 @@
       
         
           
+        
+      
         
       
         
@@ -1540,6 +1564,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tools/snomed-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SNOMED 工具
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1555,8 +1607,6 @@
   
     
     
-      
-        
       
         
       
@@ -1622,14 +1672,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../../fhir/index.md" class="md-nav__link">
+      <a href="../../tools/fhir-tools/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    None
+    FHIR 工具
   
 
     
@@ -1650,14 +1700,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../../fhir/overview.md" class="md-nav__link">
+      <a href="../../modules/fhir-condition-service/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    FHIR R4 概述
+    FHIR Condition Service
   
 
     
@@ -1678,14 +1728,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../../fhir/condition.md" class="md-nav__link">
+      <a href="../../modules/fhir-medication-service/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Condition 資源
+    FHIR Medication Service
   
 
     
@@ -1706,14 +1756,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../../fhir/medication.md" class="md-nav__link">
+      <a href="../fhir-services/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Medication 資源
+    FHIR Services API
   
 
     
@@ -1734,42 +1784,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../../fhir/medication-knowledge.md" class="md-nav__link">
+      <a href="../../faq/fhir/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    MedicationKnowledge 資源
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../fhir/validation.md" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    驗證與測試
+    FHIR 常見問題
   
 
     
@@ -2216,10 +2238,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#async-search_drugself-keyword-str-str" class="md-nav__link">
+  <a href="#async-search_drugself-keyword-str-limit-int-str" class="md-nav__link">
     <span class="md-ellipsis">
       
-        async search_drug(self, keyword: str) -&gt; str
+        async search_drug(self, keyword: str, limit: int) -&gt; str
       
     </span>
   </a>
@@ -2227,10 +2249,21 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#async-search_by_atcself-query-str-str" class="md-nav__link">
+  <a href="#async-search_by_atcself-query-str-limit-int-str" class="md-nav__link">
     <span class="md-ellipsis">
       
-        async search_by_atc(self, query: str) -&gt; str
+        async search_by_atc(self, query: str, limit: int) -&gt; str
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#async-search_by_atc_codesself-atc_codes-liststr-limit-int-str" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        async search_by_atc_codes(self, atc_codes: list[str], limit: int) -&gt; str
       
     </span>
   </a>
@@ -2829,6 +2862,10 @@
       
         
       
+        
+      
+        
+      
     
     
     
@@ -2997,6 +3034,62 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/privacy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    隱私聲明
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/dpa/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DPA
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -3151,7 +3244,7 @@
   <span class="md-ellipsis">
     
   
-    FHIR 相關
+    FHIR 常見問題
   
 
     
@@ -3180,6 +3273,99 @@
     
   
     LOINC 相關
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_12" >
+        
+          
+          <label class="md-nav__link" for="__nav_12" id="__nav_12_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    測試題庫
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_12_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    測試題庫
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tool-test-questions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tool Test Questions — Taiwan Health MCP
   
 
     
@@ -3250,10 +3436,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#async-search_drugself-keyword-str-str" class="md-nav__link">
+  <a href="#async-search_drugself-keyword-str-limit-int-str" class="md-nav__link">
     <span class="md-ellipsis">
       
-        async search_drug(self, keyword: str) -&gt; str
+        async search_drug(self, keyword: str, limit: int) -&gt; str
       
     </span>
   </a>
@@ -3261,10 +3447,21 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#async-search_by_atcself-query-str-str" class="md-nav__link">
+  <a href="#async-search_by_atcself-query-str-limit-int-str" class="md-nav__link">
     <span class="md-ellipsis">
       
-        async search_by_atc(self, query: str) -&gt; str
+        async search_by_atc(self, query: str, limit: int) -&gt; str
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#async-search_by_atc_codesself-atc_codes-liststr-limit-int-str" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        async search_by_atc_codes(self, atc_codes: list[str], limit: int) -&gt; str
       
     </span>
   </a>
@@ -3345,16 +3542,20 @@
 <h2 id="class-drugservice">class <code>DrugService</code><a class="headerlink" href="#class-drugservice" title="Permanent link">&para;</a></h2>
 <h3 id="__init__self-pool"><code>__init__(self, pool)</code><a class="headerlink" href="#__init__self-pool" title="Permanent link">&para;</a></h3>
 <p>初始化藥品服務，接受 asyncpg 連線池。</p>
-<h3 id="async-search_drugself-keyword-str-str"><code>async search_drug(self, keyword: str) -&gt; str</code><a class="headerlink" href="#async-search_drugself-keyword-str-str" title="Permanent link">&para;</a></h3>
-<p>藥品搜尋主入口。實際行為由 <code>search_drug(mode=...)</code> 對應的 service wrapper 決定，底層可用來搜尋藥名、ATC code 前綴、有效成分或許可證字號。</p>
-<h3 id="async-search_by_atcself-query-str-str"><code>async search_by_atc(self, query: str) -&gt; str</code><a class="headerlink" href="#async-search_by_atcself-query-str-str" title="Permanent link">&para;</a></h3>
-<p>依 ATC code 前綴搜尋藥品，不使用 embedding。</p>
+<h3 id="async-search_drugself-keyword-str-limit-int-str"><code>async search_drug(self, keyword: str, limit: int) -&gt; str</code><a class="headerlink" href="#async-search_drugself-keyword-str-limit-int-str" title="Permanent link">&para;</a></h3>
+<p>依藥名或適應症關鍵字搜尋台灣 FDA 藥品。使用 PostgreSQL <code>ts_rank_cd + setweight</code>：<code>name_zh</code>/<code>name_en</code> 權重 A，<code>indication</code> 權重 C，結果依相關度降冪排序。
+所有 <code>search_drug</code> mode 最終都會被正規化成同一個結果 item schema，固定包含
+<code>atc</code>（<code>atc_code/atc_name</code>）與 <code>rxnorm</code>（<code>rxcui/name/tty/atc_code</code>）欄位。</p>
+<h3 id="async-search_by_atcself-query-str-limit-int-str"><code>async search_by_atc(self, query: str, limit: int) -&gt; str</code><a class="headerlink" href="#async-search_by_atcself-query-str-limit-int-str" title="Permanent link">&para;</a></h3>
+<p>依 ATC code 前綴搜尋藥品（1–7 字元），不使用 embedding。</p>
+<h3 id="async-search_by_atc_codesself-atc_codes-liststr-limit-int-str"><code>async search_by_atc_codes(self, atc_codes: list[str], limit: int) -&gt; str</code><a class="headerlink" href="#async-search_by_atc_codesself-atc_codes-liststr-limit-int-str" title="Permanent link">&para;</a></h3>
+<p>依精確 ATC code 清單搜尋台灣 FDA 藥品（完整 code，無前綴展開）。供 <code>rxnorm_resolve</code> 與 <code>rxnorm_ingredients</code> 模式做 RXCUI→ATC→TFDA 橋接使用，不帶快取（caller 負責）。</p>
 <h3 id="async-search_by_license_idself-license_id-str-str"><code>async search_by_license_id(self, license_id: str) -&gt; str</code><a class="headerlink" href="#async-search_by_license_idself-license_id-str-str" title="Permanent link">&para;</a></h3>
 <p>依台灣 FDA 許可證字號查詢單一藥品，支援完整字串與 bare digits。</p>
 <h3 id="async-get_drug_details_by_licenseself-license_id-str-str"><code>async get_drug_details_by_license(self, license_id: str) -&gt; str</code><a class="headerlink" href="#async-get_drug_details_by_licenseself-license_id-str-str" title="Permanent link">&para;</a></h3>
 <p>取得完整藥品資料。這是內部 helper，供公開的 <code>search_drug(mode="license_id", ...)</code> 與 FHIR Medication 服務使用。</p>
 <h3 id="async-identify_pillself-features-str-str"><code>async identify_pill(self, features: str) -&gt; str</code><a class="headerlink" href="#async-identify_pillself-features-str-str" title="Permanent link">&para;</a></h3>
-<p>依外觀特徵辨識藥錠（顏色、形狀、刻痕）。</p>
+<p>依外觀特徵辨識藥錠（顏色、形狀、刻痕）。支援常見英文外觀詞自動擴展（如 <code>white</code>/<code>round</code>/<code>oval</code>），若含數字刻印導致無結果，會自動做一次移除數字 token 的寬鬆重試。</p>
 <h3 id="async-search_by_ingredientself-ingredient_name-str-str"><code>async search_by_ingredient(self, ingredient_name: str) -&gt; str</code><a class="headerlink" href="#async-search_by_ingredientself-ingredient_name-str-str" title="Permanent link">&para;</a></h3>
 <p>依有效成分名稱搜尋含有該成分的藥品。</p>
 
