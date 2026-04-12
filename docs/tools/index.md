@@ -1,6 +1,6 @@
 # MCP 工具概覽
 
-Taiwan Health MCP Server 提供 **37 個 MCP 工具**，其中包含 1 個 `health_check` 基礎工具，以及 11 個主要領域群組共 37 個工具。status page 與動態註冊使用同一份工具 registry，新增或調整工具時請同步更新群組定義與對應說明。
+Taiwan Health MCP Server 提供 **33 個 MCP 工具**，其中包含 1 個 `health_check` 基礎工具，以及 11 個主要領域群組。status page 與動態註冊使用同一份工具 registry，新增或調整工具時請同步更新群組定義與對應說明。
 
 ---
 
@@ -28,7 +28,7 @@ Taiwan Health MCP Server 提供 **37 個 MCP 工具**，其中包含 1 個 `heal
 
 ---
 
-### 群組 2 — 台灣 FDA 藥品（3 個工具）
+### 群組 2 — 台灣 FDA 藥品（2 個工具）
 
 | 工具 | 說明 |
 |------|------|
@@ -86,17 +86,13 @@ Taiwan Health MCP Server 提供 **37 個 MCP 工具**，其中包含 1 個 `heal
 
 ---
 
-### 群組 7 — 檢驗 / LOINC（8 個工具）
+### 群組 7 — 檢驗 / LOINC（4 個工具）
 
 | 工具 | 說明 |
 |------|------|
-| `search_loinc_code` | 搜尋 LOINC 檢驗碼與別名；用來先找到可能的 test code，再搭配 `get_loinc_detail` 或 `get_reference_range` 深入查看 |
-| `list_lab_categories` | 列出所有檢驗分類 |
-| `get_reference_range` | 依 LOINC 碼、年齡、性別取得參考值 |
+| `search_loinc` | 統一 LOINC 搜尋入口，`mode` 可切換 `code` / `category` / `specimen` / `component` |
+| `query_loinc` | 統一 LOINC 查詢入口，`mode` 可切換 `detail` / `reference_range` |
 | `interpret_lab_result` | 判讀單項檢驗結果 |
-| `search_loinc_by_specimen` | 依檢體類型搜尋 LOINC |
-| `find_related_loinc_tests` | 找出相同 analyte 的相關檢驗 |
-| `get_loinc_detail` | 取得 LOINC 完整概念細節 |
 | `batch_interpret_lab_results` | 批次判讀多項檢驗 |
 
 [詳細說明](lab-tools.md)

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Taiwan Health MCP Server — a Model Context Protocol server built on the official **`mcp` SDK** (`mcp.server.fastmcp.FastMCP`) providing **37 tools** for Taiwan medical and health data. Designed for production SaaS deployment with hundreds of requests/second throughput.
+Taiwan Health MCP Server — a Model Context Protocol server built on the official **`mcp` SDK** (`mcp.server.fastmcp.FastMCP`) providing **33 tools** for Taiwan medical and health data. Designed for production SaaS deployment with hundreds of requests/second throughput.
 
 **Datasets**: ICD-10-CM 2025, LOINC 2.80, SNOMED CT International, RxNorm, Taiwan FDA drugs/health foods/nutrition, TWCore IG v1.0.0, Taiwan clinical guidelines.
 

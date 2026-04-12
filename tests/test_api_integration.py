@@ -44,7 +44,7 @@ _SNOMED_ID = 73211009  # Diabetes mellitus
 _ICD_PROC_CODE = "0016070"  # ICD-10-PCS procedure code
 _GUIDELINE_ICD = "E11"  # Type 2 diabetes — has seed guideline data
 
-# All 39 tool names expected when every dataset is loaded.
+# All tool names expected when every dataset is loaded.
 ALL_TOOLS = {
     "health_check",
     # ICD
@@ -72,13 +72,9 @@ ALL_TOOLS = {
     "query_fhir_medication",
     "validate_fhir_medication",
     # Lab / LOINC
-    "search_loinc_code",
-    "list_lab_categories",
-    "get_reference_range",
+    "search_loinc",
+    "query_loinc",
     "interpret_lab_result",
-    "search_loinc_by_specimen",
-    "find_related_loinc_tests",
-    "get_loinc_detail",
     "batch_interpret_lab_results",
     # Clinical Guidelines
     "search_clinical_guideline",
@@ -303,9 +299,9 @@ class TestToolsList:
             names == ALL_TOOLS
         ), f"Missing: {ALL_TOOLS - names}\nExtra: {names - ALL_TOOLS}"
 
-    def test_total_tool_count_is_37(self, mcp: MCPSession) -> None:
+    def test_total_tool_count_is_33(self, mcp: MCPSession) -> None:
         tools = mcp.list_tools()
-        assert len(tools) == 37
+        assert len(tools) == 33
 
     def test_every_tool_has_name_and_description(self, mcp: MCPSession) -> None:
         for tool in mcp.list_tools():
@@ -922,59 +918,63 @@ class TestValidateFhirMedication:
 
 
 @skip_if_no_server
-class TestSearchLoincCode:
+class TestSearchLoinc:
     def test_exact(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("search_loinc_code", {"keyword": "Glucose"})
+        result = mcp.call_tool("search_loinc", {"mode": "code", "keyword": "Glucose"})
         assert _is_success(result)
         assert _has_results(result)
 
     def test_fuzzy(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("search_loinc_code", {"keyword": "gluco"})
+        result = mcp.call_tool(
+            "search_loinc", {"mode": "specimen", "keyword": "血清"}
+        )
         assert _is_success(result)
 
     def test_wrong(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("search_loinc_code", {"keyword": "ZZZXYZNOTTEST99999"})
+        result = mcp.call_tool("search_loinc", {"mode": "code", "keyword": ""})
+        assert _is_graceful(result)
+        assert "error" in result
+
+
+@skip_if_no_server
+class TestSearchLoincCategoryMode:
+    def test_exact(self, mcp: MCPSession) -> None:
+        result = mcp.call_tool("search_loinc", {"mode": "category"})
+        assert _is_success(result)
+        assert result.get("total_categories", 0) > 0 or result.get("total_found", 0) > 0
+
+    def test_fuzzy(self, mcp: MCPSession) -> None:
+        result = mcp.call_tool("search_loinc", {"mode": "category", "keyword": "CHE"})
+        assert _is_success(result)
+
+    def test_wrong(self, mcp: MCPSession) -> None:
+        result = mcp.call_tool(
+            "search_loinc", {"mode": "component", "keyword": "ZZZXYZNOTCOMPONENT"}
+        )
         assert _is_graceful(result)
 
 
 @skip_if_no_server
-class TestListLabCategories:
-    def test_exact(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("list_lab_categories", {})
-        assert _is_success(result)
-        assert _has_results(result)
-
-    def test_fuzzy(self, mcp: MCPSession) -> None:
-        # This tool takes no arguments; calling it again should return the same result
-        result = mcp.call_tool("list_lab_categories", {})
-        assert _is_success(result)
-
-    def test_wrong(self, mcp: MCPSession) -> None:
-        # Extra unknown arguments should be ignored
-        result = mcp.call_tool("list_lab_categories", {})
-        assert _is_graceful(result)
-
-
-@skip_if_no_server
-class TestGetReferenceRange:
+class TestQueryLoinc:
     def test_exact(self, mcp: MCPSession) -> None:
         result = mcp.call_tool(
-            "get_reference_range", {"loinc_code": _LOINC_CODE, "age": 40, "gender": "M"}
+            "query_loinc",
+            {"mode": "reference_range", "loinc_code": _LOINC_CODE, "age": 40, "gender": "M"},
         )
         assert _is_graceful(result)
 
     def test_fuzzy(self, mcp: MCPSession) -> None:
         result = mcp.call_tool(
-            "get_reference_range",
-            {"loinc_code": _LOINC_CODE, "age": 40, "gender": "all"},
+            "query_loinc", {"mode": "detail", "loinc_code": _LOINC_CODE}
         )
         assert _is_graceful(result)
 
     def test_wrong(self, mcp: MCPSession) -> None:
         result = mcp.call_tool(
-            "get_reference_range", {"loinc_code": "0000-0", "age": 40, "gender": "all"}
+            "query_loinc", {"mode": "reference_range", "loinc_code": _LOINC_CODE}
         )
         assert _is_graceful(result)
+        assert "error" in result
 
 
 @skip_if_no_server
@@ -998,62 +998,6 @@ class TestInterpretLabResult:
             "interpret_lab_result",
             {"loinc_code": "0000-0", "value": 50.0, "age": 30, "gender": "all"},
         )
-        assert _is_graceful(result)
-
-
-@skip_if_no_server
-class TestSearchLoincBySpecimen:
-    def test_exact(self, mcp: MCPSession) -> None:
-        # The specimen_type column stores Chinese values; "血清/血漿" = Serum/Plasma
-        result = mcp.call_tool(
-            "search_loinc_by_specimen", {"specimen_type": "血清/血漿"}
-        )
-        assert _is_success(result)
-        assert _has_results(result)
-
-    def test_fuzzy(self, mcp: MCPSession) -> None:
-        # Partial Chinese specimen name — matches "血清/血漿" via ILIKE
-        result = mcp.call_tool("search_loinc_by_specimen", {"specimen_type": "血清"})
-        assert _is_success(result)
-
-    def test_wrong(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool(
-            "search_loinc_by_specimen", {"specimen_type": "ZZZXYZNOTSPECIMEN"}
-        )
-        assert _is_graceful(result)
-
-
-@skip_if_no_server
-class TestFindRelatedLoincTests:
-    def test_exact(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("find_related_loinc_tests", {"component": "Glucose"})
-        assert _is_success(result)
-        # Result uses {by_system: {<system>: [...]}, total_found: N} structure
-        assert result.get("total_found", 0) > 0
-
-    def test_fuzzy(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("find_related_loinc_tests", {"component": "Creatinine"})
-        assert _is_success(result)
-
-    def test_wrong(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool(
-            "find_related_loinc_tests", {"component": "ZZZXYZNOTCOMPONENT"}
-        )
-        assert _is_graceful(result)
-
-
-@skip_if_no_server
-class TestGetLoincDetail:
-    def test_exact(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("get_loinc_detail", {"loinc_num": _LOINC_CODE})
-        assert _is_graceful(result)
-
-    def test_fuzzy(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("get_loinc_detail", {"loinc_num": "2093-3"})
-        assert _is_graceful(result)
-
-    def test_wrong(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("get_loinc_detail", {"loinc_num": "0000-0"})
         assert _is_graceful(result)
 
 

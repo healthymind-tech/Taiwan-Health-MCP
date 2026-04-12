@@ -18,10 +18,10 @@
 
 **呼叫工具**：
 ```python
-search_loinc_code(keyword="空腹血糖")
+search_loinc(mode="code", keyword="空腹血糖")
 # 系統回傳: 1558-6 (Glucose [Mass/volume] in Serum or Plasma --Fasting)
 
-search_loinc_code(keyword="三酸甘油酯")
+search_loinc(mode="code", keyword="三酸甘油酯")
 # 系統回傳: 2571-8 (Triglyceride [Mass/volume] in Serum or Plasma)
 ```
 

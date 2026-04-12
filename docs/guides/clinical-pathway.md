@@ -18,7 +18,7 @@
 - **操作**：獲取該疾病的標準診療流程。
 - **範例應用**：
     - **Day 1 (急診/門診)**：
-        - 檢驗：CXR (胸部X光), CBC/DC, CRP。 -> 使用 `search_loinc_code` 標準化檢驗單。
+        - 檢驗：CXR (胸部X光), CBC/DC, CRP。 -> 使用 `search_loinc(mode="code", ...)` 標準化檢驗單。
         - 評估：PSI 或 CURB-65 嚴重度評分。
     - **治療啟動**：
         - 使用 `query_guideline(icd_code="J15", section="medication")` 查詢抗生素建議。

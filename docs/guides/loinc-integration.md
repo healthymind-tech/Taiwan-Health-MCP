@@ -8,7 +8,7 @@
 ## 整合策略
 
 ### 1. 建立對應表 (Mapping Table)
-利用 `search_loinc_code` 工具來尋找與院內項目最匹配的標準碼。
+利用 `search_loinc(mode="code", ...)` 工具來尋找與院內項目最匹配的標準碼。
 
 **關鍵屬性比對**：
 在選擇 LOINC 碼時，必須確認以下六個屬性 (Axes) 是否一致：
@@ -22,18 +22,18 @@
 **工具應用**：
 ```python
 # 搜尋 "尿液蛋白"
-search_loinc_code(keyword="Urine Protein")
+search_loinc(mode="code", keyword="Urine Protein")
 # 結果中區分 "定性 (Qualitative)" 與 "定量 (Quantitative)"
 ```
 
 ### 2. 驗證參考值
-Mapping 完成後，使用 `get_reference_range` 確認該 LOINC 碼的標準參考值是否與院內實驗室的標準相近。若差異過大，可能選錯了代碼（例如選到不同單位或不同檢測方法的碼）。
+Mapping 完成後，使用 `query_loinc(mode="reference_range", ...)` 確認該 LOINC 碼的標準參考值是否與院內實驗室的標準相近。若差異過大，可能選錯了代碼（例如選到不同單位或不同檢測方法的碼）。
 
 ### 3. 自動化轉換流程
 在資料匯出模組 (Exporter) 中：
 1.讀取院內 Lab 結果。
 2.查表轉換為 LOINC。
-3.呼叫或參考 `get_reference_range` 補齊標準參考值資訊（若院內資料缺失）。
+3.呼叫或參考 `query_loinc(mode="reference_range", ...)` 補齊標準參考值資訊（若院內資料缺失）。
 4.打包為 FHIR Observation 資源。
 
 ## 常見問題

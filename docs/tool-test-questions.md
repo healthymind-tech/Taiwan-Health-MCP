@@ -141,40 +141,24 @@
 
 ## Group 7：LOINC / Lab
 
-### `search_loinc_code`
-**✅** 搜尋「HbA1c」的 LOINC 碼。  
-**🪤** 搜尋「量子血液分析」的 LOINC 碼。  
-> ⚠️ 此不存在於 LOINC 標準中。  
+### `search_loinc`
+**✅** 使用 `mode="code"` 搜尋「HbA1c」的 LOINC 碼。  
+**✅** 使用 `mode="category"` 列出可用分類，並用 `keyword="CHE"` 過濾。  
+**✅** 使用 `mode="specimen"` 搜尋檢體類型為「Urine」的項目。  
+**✅** 使用 `mode="component"` 找出測量「Glucose」的相關檢驗。  
+**🪤** 使用 `mode="code"` 但不提供 `keyword`。  
+> ⚠️ 應回傳參數錯誤，不應猜測查詢關鍵字。  
 
-### `list_lab_categories`
-**✅** 列出所有可用的 LOINC 檢驗分類。  
-**🪤** 列出「第六感官診測」的 LOINC 分類。  
-> ⚠️ 不是查詢語境，list_lab_categories 不接受參數。  
-
-### `get_reference_range`
-**✅** 查詢 LOINC 碼「2345-7」在 45 歲男性的正常參考值範圍。  
-**🪤** 查詢 LOINC 碼「9999-9」在 200 歲老人的正常參考值。  
-> ⚠️ LOINC 9999-9 不存在；200 歲為不合理年齡。  
+### `query_loinc`
+**✅** 使用 `mode="detail"` 查詢 LOINC 碼「2345-7」的完整概念。  
+**✅** 使用 `mode="reference_range"` 查詢「2345-7」在 45 歲男性的參考值。  
+**🪤** 使用 `mode="reference_range"` 但不提供 `age`。  
+> ⚠️ 應回傳參數錯誤，不應假設年齡。  
 
 ### `interpret_lab_result`
 **✅** 解讀：LOINC 碼「2345-7」，數值 `126 mg/dL`，45 歲男性。  
 **🪤** 解讀：LOINC 碼「0000-0」，數值 `-999`，年齡 0 歲。  
 > ⚠️ LOINC 0000-0 不存在；負值為無效測量值。  
-
-### `search_loinc_by_specimen`
-**✅** 搜尋檢體類型為「Urine」的 LOINC 檢驗項目。  
-**🪤** 搜尋檢體類型為「靈魂樣本」的 LOINC 檢驗項目。  
-> ⚠️ 不存在此檢體類型。  
-
-### `find_related_loinc_tests`
-**✅** 找出所有測量「Glucose」的相關 LOINC 檢驗項目，按檢體系統分組。  
-**🪤** 找出所有測量「第三眼電磁場」的 LOINC 項目。  
-> ⚠️ 不存在此分析物。  
-
-### `get_loinc_detail`
-**✅** 取得 LOINC 碼「2345-7」的完整詳細資訊。  
-**🪤** 取得 LOINC 碼「ABCD-1」的詳細資訊。  
-> ⚠️ ABCD-1 為無效格式。  
 
 ### `batch_interpret_lab_results`
 **✅** 批次解讀以下結果（45 歲男性）：  
@@ -207,7 +191,9 @@
 ## Group 9：TWCore IG
 
 ### `query_twcore_code`
-**✅** 在「medication-frequency-nhi-tw」中精確查詢代碼「BID」。  
+**✅** 使用 `category` 模式：列出 `medication` 類別的 CodeSystem。  
+**✅** 使用 `code + codesystem_id` 模式：在「medication-frequency-nhi-tw」中精確查詢代碼「BID」。  
+**✅** 使用 `keyword + codesystem_ids` 模式：在指定 CodeSystem 中搜尋關鍵字「once daily」。  
 **🪤** 在「medication-frequency-nhi-tw」中查詢代碼「每天吃很多次」。  
 > ⚠️ 這不是合法的代碼值，應回傳找不到。  
 
@@ -256,15 +242,6 @@
 **✅** 查詢 RXCUI「860975」的成分資訊。  
 **🪤** 查詢 RXCUI「000000000」的成分資訊。  
 > ⚠️ 此 RXCUI 不存在於 RxNorm 資料庫。  
-
----
-
-## Group 12：健康狀態檢查
-
-### `health_check`
-**✅** 呼叫 health_check，確認伺服器狀態和所有服務是否正常運作。  
-**🪤** 詢問 health_check：目前有多少個病人正在使用系統？  
-> ⚠️ health_check 只回傳服務可用狀態，不追蹤使用者數量。  
 
 ---
 

@@ -46,6 +46,7 @@
 | 參數名 | 型別 | 必填 | 說明 | 範例 |
 | :--- | :--- | :--- | :--- | :--- |
 | `icd_code` | string | 是 | ICD-10 代碼 | `"E11"` |
+| `section` | string | 否 | `complete` / `medication` / `test` / `goals` / `pathway` | `"medication"` |
 
 ### 回傳內容
 回傳內容會依 `section` 不同而改變：
@@ -64,4 +65,4 @@
 
 ### 注意事項
 - `query_guideline` 是統一入口，適合在同一個對話裡切換不同 section。
-- 若你只需要單一資訊，`get_medication_recommendations`、`get_test_recommendations`、`get_treatment_goals` 仍可直接使用，但它們只是分段的舊入口。
+- 對外建議只使用 `query_guideline`，不要依賴分段舊入口名稱。

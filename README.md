@@ -14,7 +14,7 @@
 
 - 🇹🇼 **台灣在地化** — 整合台灣 FDA、衛福部官方開放資料，支援繁體中文
 - 🔗 **國際標準** — 符合 FHIR R4、ICD-10-CM 2025、LOINC 2.80、SNOMED CT、RxNorm、ATC
-- 🏥 **37 個 MCP 工具** — 由動態 registry 管理，涵蓋診斷、藥品、檢驗、指引、術語、藥物交互作用
+- 🏥 **33 個 MCP 工具** — 由動態 registry 管理，涵蓋診斷、藥品、檢驗、指引、術語、藥物交互作用
 - 🏗️ **生產就緒** — PostgreSQL 16 + pgBouncer + Redis + Prometheus，支援每秒數百請求
 - 🔄 **自動同步** — FDA 藥品/保健食品/營養資料每週自動更新
 
@@ -123,7 +123,7 @@ curl http://localhost:8000/mcp -X POST \
 
 ---
 
-## 📋 核心功能（37 個 MCP 工具）
+## 📋 核心功能（33 個 MCP 工具）
 
 工具分類、status page 範例與 dataset gating 由同一份 registry 產生；`tools/list` 只會顯示已載入資料集對應的工具，`health_check` 永遠可用。FHIR、TWCore 與臨床指引已合併成較少的對外入口。
 
@@ -136,7 +136,7 @@ curl http://localhost:8000/mcp -X POST \
 | 食品與營養 | 6 | 營養成分、詳細營養、食品原料、營養排序、餐點分析 |
 | FHIR Condition | 2 | ICD-10 / 關鍵字 → FHIR R4 Condition，驗證 |
 | FHIR Medication | 2 | 藥品 / 關鍵字 → FHIR R4 Medication / MedicationKnowledge |
-| LOINC / Lab | 8 | LOINC 搜尋、分類瀏覽、參考值、結果判讀、細節與同類檢驗 |
+| LOINC / Lab | 4 | `search_loinc` / `query_loinc` 入口 + 單項/批次判讀 |
 | 臨床指引 | 2 | 指引搜尋、分段內容、臨床路徑 |
 | TWCore IG | 1 | 台灣核心 CodeSystem 統一查詢入口 |
 | SNOMED CT | 4 | 概念搜尋、階層查詢、關聯查詢、ICD-10 雙向對應 |

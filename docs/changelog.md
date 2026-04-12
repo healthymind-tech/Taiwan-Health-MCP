@@ -2,7 +2,30 @@
 
 ---
 
-## [v2.0.0] — 2026-04-08（當前版本）
+## [v2.1.0] — 2026-04-12（當前版本）
+
+### 🔁 工具整併與命名一致化
+
+- MCP 對外工具收斂為 **33 個**（含 `health_check`）
+- Lab / LOINC 整併為 4 個入口：
+  - `search_loinc`（`code` / `category` / `specimen` / `component`）
+  - `query_loinc`（`detail` / `reference_range`）
+  - `interpret_lab_result`
+  - `batch_interpret_lab_results`
+- Drug、Health Supplement、Guideline、TWCore、SNOMED 相關整併入口維持一致的 mode/section 參數風格
+
+### 📖 文件與 metadata
+
+- 更新 README、工具索引、測試題庫與架構文件中的工具數量與入口名稱
+- 補齊 mode 型工具 metadata，包含：
+  - mode 用法與參數要求
+  - 是否使用 embedding（依 mode 說明）
+  - 回傳格式說明
+- Status page 參數表單改進：enum 與 `anyOf + enum` 皆使用 `select`
+
+---
+
+## [v2.0.0] — 2026-04-08
 
 ### ✨ 新增功能
 
@@ -14,7 +37,7 @@
 - 新增結構化 JSON 日誌（`src/utils.py`，輸出至 stderr）
 - 新增稽核日誌（`src/audit.py`，`@audited` 裝飾器，SHA-256 參數雜湊，HIPAA 合規）
 
-#### 新增服務與工具（本版本新增 14 個 MCP 工具；目前總數為 42 個）
+#### 新增服務與工具（本版本新增 14 個 MCP 工具；後續版本已再整併入口）
 - **SNOMED CT Service**（4 個工具）— 概念搜尋、上下層脈絡、屬性關聯、ICD-10 雙向對應
 - **RxNorm Drug Interaction Service**（3 個工具）— 藥物交互作用檢查、名稱解析、成分查詢
 - **TWCore IG Service**（1 個工具）— 30+ 台灣健保 CodeSystem 查詢

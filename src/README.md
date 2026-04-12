@@ -8,14 +8,14 @@
 
 | 檔案 | 服務 | MCP 工具數 |
 |------|------|-----------|
-| `server.py` | 入口點（`mcp` SDK DynamicFastMCP + lifespan） | 最多 37 |
+| `server.py` | 入口點（`mcp` SDK DynamicFastMCP + lifespan） | 最多 33 |
 | `icd_service.py` | ICD-10-CM/PCS 診斷與手術碼 | 5 |
 | `drug_service.py` | 台灣 FDA 藥品 | 5 |
 | `health_supplement_service.py` | 台灣 FDA 健康補充品 | 1 |
 | `food_nutrition_service.py` | 食品營養成分 | 6 |
 | `fhir_condition_service.py` | FHIR R4 Condition | 3 |
 | `fhir_medication_service.py` | FHIR R4 Medication | 4 |
-| `lab_service.py` | LOINC 檢驗碼與參考值 | 8 |
+| `lab_service.py` | LOINC 檢驗碼與參考值 | 4 |
 | `clinical_guideline_service.py` | 臨床診療指引 | 8 |
 | `twcore_service.py` | TWCore IG CodeSystem | 3 |
 | `snomed_service.py` | SNOMED CT International | 7 |
@@ -132,14 +132,20 @@
 **資料來源**: `loinc.*`（PostgreSQL），需 data-loader `--loinc`
 
 **主要方法**:
-- `search_loinc_code(keyword, category)` — 搜尋 LOINC 碼
-- `list_categories()` — 列出所有分類
-- `get_reference_range(loinc_code, age, gender)` — 參考值
-- `interpret_lab_result(loinc_code, value, age, gender)` — 結果判讀
-- `search_by_specimen(specimen_type)` — 依檢體類型搜尋
-- `find_related_tests(component)` — 找相同 analyte 的相關檢驗
-- `get_patient_friendly_name(loinc_num)` — 取得 LOINC 完整概念細節
+- `search_loinc_code(keyword, category, limit)` — 依名稱/縮寫搜尋 LOINC
+- `list_categories()` — 列出 LOINC 類別
+- `search_by_specimen(specimen_type, limit)` — 依檢體查詢
+- `find_related_tests(component, limit)` — 依 analyte/component 查詢
+- `get_patient_friendly_name(loinc_code)` — 查詢概念詳情
+- `get_reference_range(loinc_code, age, gender)` — 參考值查詢
+- `interpret_lab_result(loinc_code, value, age, gender)` — 單項判讀
 - `batch_interpret_results(results, age, gender)` — 批次判讀
+
+**對外 MCP 工具入口（server 聚合）**:
+- `search_loinc(mode, ...)`
+- `query_loinc(mode, ...)`
+- `interpret_lab_result(...)`
+- `batch_interpret_lab_results(...)`
 
 ---
 
@@ -149,12 +155,6 @@
 
 **主要方法**:
 - `search_guideline(keyword)` — 指引搜尋
-- `query_guideline(icd_code, section)` — 統一指引入口
-  - `complete`：完整摘要
-  - `medication`：用藥建議
-  - `test`：檢查建議
-  - `goals`：治療目標
-  - `pathway`：臨床路徑
 - `get_complete_guideline(icd_code)` — 完整指引
 - `get_medication_recommendations(icd_code)` — 用藥建議
 - `get_test_recommendations(icd_code)` — 建議檢查
@@ -162,6 +162,10 @@
 - `check_medication_contraindications(icd_code, medication_class)` — 用藥禁忌檢查
 - `link_guideline_to_drugs(icd_code)` — 指引建議連結至台灣 FDA 藥品
 - `suggest_clinical_pathway(icd_code, context)` — 臨床路徑
+
+**對外 MCP 工具入口（server 聚合）**:
+- `search_clinical_guideline(keyword, limit)`
+- `query_guideline(icd_code, section)`（`section`: `complete` / `medication` / `test` / `goals` / `pathway`）
 
 ---
 
@@ -185,9 +189,15 @@
 - `get_concept(concept_id)` — FSN、同義詞、父概念、ICD-10 對應
 - `get_children(concept_id, limit)` — 直接子概念（IS-A）
 - `get_ancestors(concept_id, max_depth)` — 所有祖先（遞迴 CTE）
-- `get_snomed_relationships(concept_id, relationship_type)` — 非 IS-A 屬性與關聯查詢
+- `get_relationships(concept_id, relationship_type_id)` — 非 IS-A 屬性與關聯查詢
 - `map_icd_to_snomed(icd_code)` — ICD-10 → SNOMED
 - `map_snomed_to_icd(concept_id)` — SNOMED → ICD-10
+
+**對外 MCP 工具入口（server 聚合）**:
+- `search_snomed_concept(query, limit, hierarchy_filter)`
+- `query_snomed_concept(concept_id, include_parents, include_children, ...)`
+- `get_snomed_relationships(concept_id, relationship_type_id)`
+- `query_snomed_mapping(mode, keyword)`
 
 **常數**: `FSN_TYPE = 900000000000003001`, `IS_A_TYPE = 116680003`
 
