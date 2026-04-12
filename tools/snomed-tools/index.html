@@ -3114,7 +3114,7 @@
   <a href="#_3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        回傳內容
+        回傳重點
       
     </span>
   </a>
@@ -3153,7 +3153,7 @@
   <a href="#_5" class="md-nav__link">
     <span class="md-ellipsis">
       
-        模式說明
+        參數與行為
       
     </span>
   </a>
@@ -3164,91 +3164,7 @@
   <a href="#_6" class="md-nav__link">
     <span class="md-ellipsis">
       
-        回傳內容
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#get_snomed_concept" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        get_snomed_concept
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="get_snomed_concept">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#_7" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        何時使用
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#get_snomed_children" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        get_snomed_children
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="get_snomed_children">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#_8" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        何時使用
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#get_snomed_ancestors" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        get_snomed_ancestors
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="get_snomed_ancestors">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#_9" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        何時使用
+        回傳重點
       
     </span>
   </a>
@@ -3273,10 +3189,21 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#_10" class="md-nav__link">
+  <a href="#_7" class="md-nav__link">
     <span class="md-ellipsis">
       
         何時使用
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        參數
       
     </span>
   </a>
@@ -3301,10 +3228,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#_11" class="md-nav__link">
+  <a href="#mode" class="md-nav__link">
     <span class="md-ellipsis">
       
-        模式說明
+        mode 說明
       
     </span>
   </a>
@@ -3312,21 +3239,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#_12" class="md-nav__link">
+  <a href="#_9" class="md-nav__link">
     <span class="md-ellipsis">
       
-        何時使用
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#_13" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        回傳內容
+        參數
       
     </span>
   </a>
@@ -3359,11 +3275,11 @@
 
 
 <h1 id="snomed-ct-snomed-ct-tools">SNOMED CT 工具 (SNOMED CT Tools)<a class="headerlink" href="#snomed-ct-snomed-ct-tools" title="Permanent link">&para;</a></h1>
-<p>此類別工具提供 SNOMED CT 概念搜尋、階層導覽與 ICD 對應。</p>
+<p>目前對外 SNOMED 入口為 4 個工具：<code>search_snomed_concept</code>、<code>query_snomed_concept</code>、<code>get_snomed_relationships</code>、<code>query_snomed_mapping</code>。</p>
 <h2 id="search_snomed_concept"><code>search_snomed_concept</code><a class="headerlink" href="#search_snomed_concept" title="Permanent link">&para;</a></h2>
-<p>搜尋 SNOMED CT 概念。</p>
+<p>英文臨床詞彙搜尋 SNOMED 概念候選。</p>
 <h3 id="_1">何時使用<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h3>
-<p>當你只有英文臨床詞彙，想先找到最可能的 SNOMED 概念時使用。這是「找概念」的入口，不是概念詳情頁。</p>
+<p>當你只有文字詞彙（還不知道 concept ID）時先用它找候選。此工具使用 BM25 + embedding 排序，回傳最接近語意的概念，不只限完全字面匹配。</p>
 <h3 id="_2">參數<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
@@ -3381,78 +3297,107 @@
 <td style="text-align: left;">string</td>
 <td style="text-align: left;">是</td>
 <td style="text-align: left;">英文臨床詞彙</td>
-<td style="text-align: left;"><code>"diabetes mellitus"</code>, <code>"myocardial infarction"</code></td>
+<td style="text-align: left;"><code>"diabetes mellitus"</code></td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>limit</code></td>
 <td style="text-align: left;">integer</td>
 <td style="text-align: left;">否</td>
-<td style="text-align: left;">回傳筆數上限</td>
-<td style="text-align: left;"><code>3</code></td>
+<td style="text-align: left;">回傳上限（預設 3）</td>
+<td style="text-align: left;"><code>5</code></td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>hierarchy_filter</code></td>
 <td style="text-align: left;">integer</td>
 <td style="text-align: left;">否</td>
-<td style="text-align: left;">限縮到某個 SNOMED hierarchy 根節點</td>
+<td style="text-align: left;">只搜指定 hierarchy</td>
 <td style="text-align: left;"><code>404684003</code></td>
 </tr>
 </tbody>
 </table>
-<h3 id="_3">回傳內容<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h3>
-<p>回傳最接近的概念清單，每筆通常包含 concept ID、FSN、term type、active 狀態與相似度資訊。這個工具適合做語意搜尋與概念候選探索。</p>
+<h3 id="_3">回傳重點<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h3>
+<p>每筆通常含 <code>concept_id</code>、FSN、active 狀態與相似度資訊，適合拿來挑選下一步要查的 concept。</p>
 <hr />
 <h2 id="query_snomed_concept"><code>query_snomed_concept</code><a class="headerlink" href="#query_snomed_concept" title="Permanent link">&para;</a></h2>
-<p>一次取得 SNOMED 概念、父概念與子概念。</p>
+<p>一次取得概念本體與階層脈絡（父/子）。</p>
 <h3 id="_4">何時使用<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h3>
-<p>當你已經知道 concept ID，想一次看這個概念本身、往上層的脈絡、以及往下層的子概念時使用。這是最適合做分類樹閱讀的工具。</p>
-<h3 id="_5">模式說明<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h3>
+<p>你已經有 concept ID，想一次看 concept 詳情 + 祖先 + 子概念時使用。</p>
+<h3 id="_5">參數與行為<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h3>
 <ul>
-<li><code>include_parents=true</code>：回傳祖先鏈，幫你看上層分類</li>
-<li><code>include_children=true</code>：回傳直接子概念，幫你看下層展開</li>
-<li><code>parent_limit</code> / <code>child_limit</code>：控制展開深度與數量</li>
+<li><code>include_parents=true</code>：回傳祖先鏈</li>
+<li><code>include_children=true</code>：回傳直接子概念</li>
+<li><code>parent_limit</code> / <code>child_limit</code>：限制展開量</li>
 </ul>
-<h3 id="_6">回傳內容<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h3>
-<p>回傳一個 JSON，其中包含：
-- <code>concept</code>：該概念的完整資料
-- <code>ancestors</code>：可選的祖先清單
-- <code>children</code>：可選的子概念清單
-- <code>ancestor_count</code> / <code>children_count</code>：方便 UI 顯示數量</p>
-<hr />
-<h2 id="get_snomed_concept"><code>get_snomed_concept</code><a class="headerlink" href="#get_snomed_concept" title="Permanent link">&para;</a></h2>
-<p>取得單一 SNOMED 概念完整資料。</p>
-<h3 id="_7">何時使用<a class="headerlink" href="#_7" title="Permanent link">&para;</a></h3>
-<p>當你只想看某個 concept 的基本資料、同義詞、ICD 對應時使用。比 <code>query_snomed_concept</code> 更精簡，適合已知 concept ID 的快速查詢。</p>
-<hr />
-<h2 id="get_snomed_children"><code>get_snomed_children</code><a class="headerlink" href="#get_snomed_children" title="Permanent link">&para;</a></h2>
-<p>取得 SNOMED 概念的直接子概念。</p>
-<h3 id="_8">何時使用<a class="headerlink" href="#_8" title="Permanent link">&para;</a></h3>
-<p>當你想從一個上位概念往下展開，查看有哪些更細的 subtype 時使用。</p>
-<hr />
-<h2 id="get_snomed_ancestors"><code>get_snomed_ancestors</code><a class="headerlink" href="#get_snomed_ancestors" title="Permanent link">&para;</a></h2>
-<p>取得 SNOMED 概念的祖先鏈。</p>
-<h3 id="_9">何時使用<a class="headerlink" href="#_9" title="Permanent link">&para;</a></h3>
-<p>當你想知道某個概念屬於哪些更大的分類，或要往上找父層脈絡時使用。</p>
+<h3 id="_6">回傳重點<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h3>
+<p>固定有 <code>concept</code>；依參數附帶 <code>ancestors</code>、<code>children</code> 與對應 count。</p>
 <hr />
 <h2 id="get_snomed_relationships"><code>get_snomed_relationships</code><a class="headerlink" href="#get_snomed_relationships" title="Permanent link">&para;</a></h2>
-<p>取得 SNOMED 概念的屬性關聯。</p>
-<h3 id="_10">何時使用<a class="headerlink" href="#_10" title="Permanent link">&para;</a></h3>
-<p>當你想看 finding site、causative agent、associated morphology、has active ingredient 等非 IS-A 關聯時使用。</p>
+<p>查詢非 IS-A 屬性關聯（語意屬性）。</p>
+<h3 id="_7">何時使用<a class="headerlink" href="#_7" title="Permanent link">&para;</a></h3>
+<p>想看臨床語意屬性而不是階層關係時用它，例如 finding site、causative agent、associated morphology、has active ingredient。</p>
+<h3 id="_8">參數<a class="headerlink" href="#_8" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">參數名</th>
+<th style="text-align: left;">型別</th>
+<th style="text-align: left;">必填</th>
+<th style="text-align: left;">說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>concept_id</code></td>
+<td style="text-align: left;">integer</td>
+<td style="text-align: left;">是</td>
+<td style="text-align: left;">SNOMED concept ID</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>relationship_type_id</code></td>
+<td style="text-align: left;">integer</td>
+<td style="text-align: left;">否</td>
+<td style="text-align: left;">只看特定關係類型</td>
+</tr>
+</tbody>
+</table>
 <hr />
 <h2 id="query_snomed_mapping"><code>query_snomed_mapping</code><a class="headerlink" href="#query_snomed_mapping" title="Permanent link">&para;</a></h2>
-<p>ICD ↔ SNOMED 雙向對應查詢。</p>
-<h3 id="_11">模式說明<a class="headerlink" href="#_11" title="Permanent link">&para;</a></h3>
+<p>ICD ↔ SNOMED 雙向 mapping 單一入口。</p>
+<h3 id="mode">mode 說明<a class="headerlink" href="#mode" title="Permanent link">&para;</a></h3>
 <ul>
-<li><code>mode="icd"</code>：用 ICD code 找對應 SNOMED concept</li>
-<li><code>mode="snomed"</code>：用 SNOMED concept ID 或搜尋詞找對應 ICD code</li>
+<li><code>mode="icd"</code>：<code>keyword</code> 視為 ICD-10 code，回傳 <code>snomed_concepts</code>。</li>
+<li><code>mode="snomed"</code>：<code>keyword</code> 可放數字 concept ID 或英文詞彙。  </li>
+<li>純數字：直接用 concept ID mapping（不走 embedding）  </li>
+<li>文字：先做 SNOMED 搜尋找最佳 concept，再 mapping（此步會用 embedding）</li>
 </ul>
-<h3 id="_12">何時使用<a class="headerlink" href="#_12" title="Permanent link">&para;</a></h3>
-<p>當你不確定要從哪個系統出發時，用這個單一入口切換方向即可。</p>
-<h3 id="_13">回傳內容<a class="headerlink" href="#_13" title="Permanent link">&para;</a></h3>
-<ul>
-<li><code>mode="icd"</code>：回傳 <code>snomed_concepts</code></li>
-<li><code>mode="snomed"</code>：回傳 <code>icd10_mappings</code></li>
-</ul>
+<h3 id="_9">參數<a class="headerlink" href="#_9" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">參數名</th>
+<th style="text-align: left;">型別</th>
+<th style="text-align: left;">必填</th>
+<th style="text-align: left;">說明</th>
+<th style="text-align: left;">範例</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>mode</code></td>
+<td style="text-align: left;">string</td>
+<td style="text-align: left;">否</td>
+<td style="text-align: left;"><code>icd</code> 或 <code>snomed</code></td>
+<td style="text-align: left;"><code>"icd"</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>keyword</code></td>
+<td style="text-align: left;">string</td>
+<td style="text-align: left;">是</td>
+<td style="text-align: left;">ICD code、concept ID 或英文詞彙</td>
+<td style="text-align: left;"><code>"E11.9"</code>, <code>"44054006"</code></td>
+</tr>
+</tbody>
+</table>
 
 
 

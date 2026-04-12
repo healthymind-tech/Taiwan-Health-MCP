@@ -3120,10 +3120,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#2-fda-3" class="md-nav__link">
+  <a href="#2-fda-2" class="md-nav__link">
     <span class="md-ellipsis">
       
-        群組 2 — 台灣 FDA 藥品（3 個工具）
+        群組 2 — 台灣 FDA 藥品（2 個工具）
       
     </span>
   </a>
@@ -3175,10 +3175,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#7-loinc8" class="md-nav__link">
+  <a href="#7-loinc4" class="md-nav__link">
     <span class="md-ellipsis">
       
-        群組 7 — 檢驗 / LOINC（8 個工具）
+        群組 7 — 檢驗 / LOINC（4 個工具）
       
     </span>
   </a>
@@ -3277,7 +3277,7 @@
 
 
 <h1 id="mcp">MCP 工具概覽<a class="headerlink" href="#mcp" title="Permanent link">&para;</a></h1>
-<p>Taiwan Health MCP Server 提供 <strong>37 個 MCP 工具</strong>，其中包含 1 個 <code>health_check</code> 基礎工具，以及 11 個主要領域群組共 37 個工具。status page 與動態註冊使用同一份工具 registry，新增或調整工具時請同步更新群組定義與對應說明。</p>
+<p>Taiwan Health MCP Server 提供 <strong>33 個 MCP 工具</strong>，其中包含 1 個 <code>health_check</code> 基礎工具，以及 11 個主要領域群組。status page 與動態註冊使用同一份工具 registry，新增或調整工具時請同步更新群組定義與對應說明。</p>
 <hr />
 <h2 id="_1">基礎工具<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
 <table>
@@ -3329,7 +3329,7 @@
 </table>
 <p><a href="icd-tools/">詳細說明</a></p>
 <hr />
-<h3 id="2-fda-3">群組 2 — 台灣 FDA 藥品（3 個工具）<a class="headerlink" href="#2-fda-3" title="Permanent link">&para;</a></h3>
+<h3 id="2-fda-2">群組 2 — 台灣 FDA 藥品（2 個工具）<a class="headerlink" href="#2-fda-2" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
 <tr>
@@ -3446,7 +3446,7 @@
 </table>
 <p><a href="fhir-tools/">詳細說明</a></p>
 <hr />
-<h3 id="7-loinc8">群組 7 — 檢驗 / LOINC（8 個工具）<a class="headerlink" href="#7-loinc8" title="Permanent link">&para;</a></h3>
+<h3 id="7-loinc4">群組 7 — 檢驗 / LOINC（4 個工具）<a class="headerlink" href="#7-loinc4" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
 <tr>
@@ -3456,32 +3456,16 @@
 </thead>
 <tbody>
 <tr>
-<td><code>search_loinc_code</code></td>
-<td>搜尋 LOINC 檢驗碼與別名；用來先找到可能的 test code，再搭配 <code>get_loinc_detail</code> 或 <code>get_reference_range</code> 深入查看</td>
+<td><code>search_loinc</code></td>
+<td>統一 LOINC 搜尋入口，<code>mode</code> 可切換 <code>code</code> / <code>category</code> / <code>specimen</code> / <code>component</code></td>
 </tr>
 <tr>
-<td><code>list_lab_categories</code></td>
-<td>列出所有檢驗分類</td>
-</tr>
-<tr>
-<td><code>get_reference_range</code></td>
-<td>依 LOINC 碼、年齡、性別取得參考值</td>
+<td><code>query_loinc</code></td>
+<td>統一 LOINC 查詢入口，<code>mode</code> 可切換 <code>detail</code> / <code>reference_range</code></td>
 </tr>
 <tr>
 <td><code>interpret_lab_result</code></td>
 <td>判讀單項檢驗結果</td>
-</tr>
-<tr>
-<td><code>search_loinc_by_specimen</code></td>
-<td>依檢體類型搜尋 LOINC</td>
-</tr>
-<tr>
-<td><code>find_related_loinc_tests</code></td>
-<td>找出相同 analyte 的相關檢驗</td>
-</tr>
-<tr>
-<td><code>get_loinc_detail</code></td>
-<td>取得 LOINC 完整概念細節</td>
 </tr>
 <tr>
 <td><code>batch_interpret_lab_results</code></td>

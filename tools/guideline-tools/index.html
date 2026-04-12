@@ -3542,6 +3542,13 @@
 <td style="text-align: left;">ICD-10 代碼</td>
 <td style="text-align: left;"><code>"E11"</code></td>
 </tr>
+<tr>
+<td style="text-align: left;"><code>section</code></td>
+<td style="text-align: left;">string</td>
+<td style="text-align: left;">否</td>
+<td style="text-align: left;"><code>complete</code> / <code>medication</code> / <code>test</code> / <code>goals</code> / <code>pathway</code></td>
+<td style="text-align: left;"><code>"medication"</code></td>
+</tr>
 </tbody>
 </table>
 <h3 id="_8">回傳內容<a class="headerlink" href="#_8" title="Permanent link">&para;</a></h3>
@@ -3562,7 +3569,7 @@
 <h3 id="_10">注意事項<a class="headerlink" href="#_10" title="Permanent link">&para;</a></h3>
 <ul>
 <li><code>query_guideline</code> 是統一入口，適合在同一個對話裡切換不同 section。</li>
-<li>若你只需要單一資訊，<code>get_medication_recommendations</code>、<code>get_test_recommendations</code>、<code>get_treatment_goals</code> 仍可直接使用，但它們只是分段的舊入口。</li>
+<li>對外建議只使用 <code>query_guideline</code>，不要依賴分段舊入口名稱。</li>
 </ul>
 
 

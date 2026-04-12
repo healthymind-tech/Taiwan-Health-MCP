@@ -3400,10 +3400,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#search_loinc_code" class="md-nav__link">
+  <a href="#search_loinc" class="md-nav__link">
     <span class="md-ellipsis">
       
-        search_loinc_code
+        search_loinc
       
     </span>
   </a>
@@ -3411,21 +3411,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#list_lab_categories" class="md-nav__link">
+  <a href="#query_loinc" class="md-nav__link">
     <span class="md-ellipsis">
       
-        list_lab_categories
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#get_reference_range" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        get_reference_range
+        query_loinc
       
     </span>
   </a>
@@ -3437,39 +3426,6 @@
     <span class="md-ellipsis">
       
         interpret_lab_result
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#search_loinc_by_specimen" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        search_loinc_by_specimen
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#find_related_loinc_tests" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        find_related_loinc_tests
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#get_loinc_detail" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        get_loinc_detail
       
     </span>
   </a>
@@ -3671,34 +3627,6 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#group-12" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Group 12：健康狀態檢查
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Group 12：健康狀態檢查">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#health_check_1" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        health_check
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#_1" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3873,47 +3801,27 @@
 </blockquote>
 <hr />
 <h2 id="group-7loinc-lab">Group 7：LOINC / Lab<a class="headerlink" href="#group-7loinc-lab" title="Permanent link">&para;</a></h2>
-<h3 id="search_loinc_code"><code>search_loinc_code</code><a class="headerlink" href="#search_loinc_code" title="Permanent link">&para;</a></h3>
-<p><strong>✅</strong> 搜尋「HbA1c」的 LOINC 碼。<br />
-<strong>🪤</strong> 搜尋「量子血液分析」的 LOINC 碼。  </p>
+<h3 id="search_loinc"><code>search_loinc</code><a class="headerlink" href="#search_loinc" title="Permanent link">&para;</a></h3>
+<p><strong>✅</strong> 使用 <code>mode="code"</code> 搜尋「HbA1c」的 LOINC 碼。<br />
+<strong>✅</strong> 使用 <code>mode="category"</code> 列出可用分類，並用 <code>keyword="CHE"</code> 過濾。<br />
+<strong>✅</strong> 使用 <code>mode="specimen"</code> 搜尋檢體類型為「Urine」的項目。<br />
+<strong>✅</strong> 使用 <code>mode="component"</code> 找出測量「Glucose」的相關檢驗。<br />
+<strong>🪤</strong> 使用 <code>mode="code"</code> 但不提供 <code>keyword</code>。  </p>
 <blockquote>
-<p>⚠️ 此不存在於 LOINC 標準中。  </p>
+<p>⚠️ 應回傳參數錯誤，不應猜測查詢關鍵字。  </p>
 </blockquote>
-<h3 id="list_lab_categories"><code>list_lab_categories</code><a class="headerlink" href="#list_lab_categories" title="Permanent link">&para;</a></h3>
-<p><strong>✅</strong> 列出所有可用的 LOINC 檢驗分類。<br />
-<strong>🪤</strong> 列出「第六感官診測」的 LOINC 分類。  </p>
+<h3 id="query_loinc"><code>query_loinc</code><a class="headerlink" href="#query_loinc" title="Permanent link">&para;</a></h3>
+<p><strong>✅</strong> 使用 <code>mode="detail"</code> 查詢 LOINC 碼「2345-7」的完整概念。<br />
+<strong>✅</strong> 使用 <code>mode="reference_range"</code> 查詢「2345-7」在 45 歲男性的參考值。<br />
+<strong>🪤</strong> 使用 <code>mode="reference_range"</code> 但不提供 <code>age</code>。  </p>
 <blockquote>
-<p>⚠️ 不是查詢語境，list_lab_categories 不接受參數。  </p>
-</blockquote>
-<h3 id="get_reference_range"><code>get_reference_range</code><a class="headerlink" href="#get_reference_range" title="Permanent link">&para;</a></h3>
-<p><strong>✅</strong> 查詢 LOINC 碼「2345-7」在 45 歲男性的正常參考值範圍。<br />
-<strong>🪤</strong> 查詢 LOINC 碼「9999-9」在 200 歲老人的正常參考值。  </p>
-<blockquote>
-<p>⚠️ LOINC 9999-9 不存在；200 歲為不合理年齡。  </p>
+<p>⚠️ 應回傳參數錯誤，不應假設年齡。  </p>
 </blockquote>
 <h3 id="interpret_lab_result"><code>interpret_lab_result</code><a class="headerlink" href="#interpret_lab_result" title="Permanent link">&para;</a></h3>
 <p><strong>✅</strong> 解讀：LOINC 碼「2345-7」，數值 <code>126 mg/dL</code>，45 歲男性。<br />
 <strong>🪤</strong> 解讀：LOINC 碼「0000-0」，數值 <code>-999</code>，年齡 0 歲。  </p>
 <blockquote>
 <p>⚠️ LOINC 0000-0 不存在；負值為無效測量值。  </p>
-</blockquote>
-<h3 id="search_loinc_by_specimen"><code>search_loinc_by_specimen</code><a class="headerlink" href="#search_loinc_by_specimen" title="Permanent link">&para;</a></h3>
-<p><strong>✅</strong> 搜尋檢體類型為「Urine」的 LOINC 檢驗項目。<br />
-<strong>🪤</strong> 搜尋檢體類型為「靈魂樣本」的 LOINC 檢驗項目。  </p>
-<blockquote>
-<p>⚠️ 不存在此檢體類型。  </p>
-</blockquote>
-<h3 id="find_related_loinc_tests"><code>find_related_loinc_tests</code><a class="headerlink" href="#find_related_loinc_tests" title="Permanent link">&para;</a></h3>
-<p><strong>✅</strong> 找出所有測量「Glucose」的相關 LOINC 檢驗項目，按檢體系統分組。<br />
-<strong>🪤</strong> 找出所有測量「第三眼電磁場」的 LOINC 項目。  </p>
-<blockquote>
-<p>⚠️ 不存在此分析物。  </p>
-</blockquote>
-<h3 id="get_loinc_detail"><code>get_loinc_detail</code><a class="headerlink" href="#get_loinc_detail" title="Permanent link">&para;</a></h3>
-<p><strong>✅</strong> 取得 LOINC 碼「2345-7」的完整詳細資訊。<br />
-<strong>🪤</strong> 取得 LOINC 碼「ABCD-1」的詳細資訊。  </p>
-<blockquote>
-<p>⚠️ ABCD-1 為無效格式。  </p>
 </blockquote>
 <h3 id="batch_interpret_lab_results"><code>batch_interpret_lab_results</code><a class="headerlink" href="#batch_interpret_lab_results" title="Permanent link">&para;</a></h3>
 <p><strong>✅</strong> 批次解讀以下結果（45 歲男性）：<br />
@@ -3944,7 +3852,9 @@
 <hr />
 <h2 id="group-9twcore-ig">Group 9：TWCore IG<a class="headerlink" href="#group-9twcore-ig" title="Permanent link">&para;</a></h2>
 <h3 id="query_twcore_code"><code>query_twcore_code</code><a class="headerlink" href="#query_twcore_code" title="Permanent link">&para;</a></h3>
-<p><strong>✅</strong> 在「medication-frequency-nhi-tw」中精確查詢代碼「BID」。<br />
+<p><strong>✅</strong> 使用 <code>category</code> 模式：列出 <code>medication</code> 類別的 CodeSystem。<br />
+<strong>✅</strong> 使用 <code>code + codesystem_id</code> 模式：在「medication-frequency-nhi-tw」中精確查詢代碼「BID」。<br />
+<strong>✅</strong> 使用 <code>keyword + codesystem_ids</code> 模式：在指定 CodeSystem 中搜尋關鍵字「once daily」。<br />
 <strong>🪤</strong> 在「medication-frequency-nhi-tw」中查詢代碼「每天吃很多次」。  </p>
 <blockquote>
 <p>⚠️ 這不是合法的代碼值，應回傳找不到。  </p>
@@ -3997,14 +3907,6 @@
 <strong>🪤</strong> 查詢 RXCUI「000000000」的成分資訊。  </p>
 <blockquote>
 <p>⚠️ 此 RXCUI 不存在於 RxNorm 資料庫。  </p>
-</blockquote>
-<hr />
-<h2 id="group-12">Group 12：健康狀態檢查<a class="headerlink" href="#group-12" title="Permanent link">&para;</a></h2>
-<h3 id="health_check_1"><code>health_check</code><a class="headerlink" href="#health_check_1" title="Permanent link">&para;</a></h3>
-<p><strong>✅</strong> 呼叫 health_check，確認伺服器狀態和所有服務是否正常運作。<br />
-<strong>🪤</strong> 詢問 health_check：目前有多少個病人正在使用系統？  </p>
-<blockquote>
-<p>⚠️ health_check 只回傳服務可用狀態，不追蹤使用者數量。  </p>
 </blockquote>
 <hr />
 <h2 id="_1">使用說明<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>

@@ -2666,10 +2666,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#teststest_unitpy" class="md-nav__link">
+  <a href="#teststest_tools_pyteststest_services_querypyteststest_sync_servicespy" class="md-nav__link">
     <span class="md-ellipsis">
       
-        單元測試 (tests/test_unit.py)
+        單元測試（tests/test_tools_*.py、tests/test_services_query.py、tests/test_sync_services.py）
       
     </span>
   </a>
@@ -3217,10 +3217,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#teststest_unitpy" class="md-nav__link">
+  <a href="#teststest_tools_pyteststest_services_querypyteststest_sync_servicespy" class="md-nav__link">
     <span class="md-ellipsis">
       
-        單元測試 (tests/test_unit.py)
+        單元測試（tests/test_tools_*.py、tests/test_services_query.py、tests/test_sync_services.py）
       
     </span>
   </a>
@@ -3281,7 +3281,7 @@
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>tests/<span class="w"> </span>-v
 </span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>
 </span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="c1"># 只執行單元測試</span>
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>tests/test_unit.py<span class="w"> </span>-v
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>tests/test_tools_*.py<span class="w"> </span>tests/test_services_query.py<span class="w"> </span>tests/test_sync_services.py<span class="w"> </span>-v
 </span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>
 </span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="c1"># 只執行 API 整合測試（需要 server 正在運行）</span>
 </span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>tests/test_api_integration.py<span class="w"> </span>-v
@@ -3300,15 +3300,15 @@
 <code>python -m pytest</code> 確保使用目前 conda 環境的 Python，並自動將當前目錄加入 <code>sys.path</code>，避免 import 問題。</p>
 </blockquote>
 <h2 id="_3">測試範疇<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
-<h3 id="teststest_unitpy">單元測試 (<code>tests/test_unit.py</code>)<a class="headerlink" href="#teststest_unitpy" title="Permanent link">&para;</a></h3>
-<p>針對各 Service 的核心函式進行邏輯驗證，使用 mock DB，不需要外部服務。</p>
+<h3 id="teststest_tools_pyteststest_services_querypyteststest_sync_servicespy">單元測試（<code>tests/test_tools_*.py</code>、<code>tests/test_services_query.py</code>、<code>tests/test_sync_services.py</code>）<a class="headerlink" href="#teststest_tools_pyteststest_services_querypyteststest_sync_servicespy" title="Permanent link">&para;</a></h3>
+<p>針對各 Service 與 server 工具封裝函式進行邏輯驗證，使用 mock DB，不需要外部服務。</p>
 <h3 id="api-teststest_api_integrationpy">API 整合測試 (<code>tests/test_api_integration.py</code>)<a class="headerlink" href="#api-teststest_api_integrationpy" title="Permanent link">&para;</a></h3>
-<p>對實際運行的 MCP server 發送真實 HTTP 請求，驗證所有 42 個 tool 是否正常運作。這些測試同時覆蓋動態註冊後的 <code>tools/list</code> 結果，確認 registry 變更沒有漏掛工具或錯誤隱藏工具。</p>
+<p>對實際運行的 MCP server 發送真實 HTTP 請求，驗證所有 33 個公開 tool 是否正常運作。這些測試同時覆蓋動態註冊後的 <code>tools/list</code> 結果，確認 registry 變更沒有漏掛工具或錯誤隱藏工具。</p>
 <p>每個 tool 有三種測試情境：
 1. <strong>exact</strong> — 完全正確的查詢，預期返回非空結果
 2. <strong>fuzzy</strong> — 模糊/部分查詢，預期成功處理
 3. <strong>wrong</strong> — 無效輸入，預期優雅處理（不崩潰）</p>
-<p>另有 <code>TestToolsList</code> 驗證 <code>tools/list</code> API 能列出所有 37 個工具，並與 registry 內的群組設定一致。</p>
+<p>另有 <code>TestToolsList</code> 驗證 <code>tools/list</code> API 能列出所有 33 個工具，並與 registry 內的群組設定一致。</p>
 <p>若 server 未啟動，整合測試會自動跳過（skip），不會失敗。</p>
 <h2 id="_4">撰寫新測試<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
 <p>請在 <code>tests/</code> 目錄下建立 <code>test_*.py</code> 檔案。針對每個新增的 Tool，務必加入對應的測試案例，包含「正常輸入」、「模糊輸入」與「異常輸入」三種情境。</p>

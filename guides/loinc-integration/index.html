@@ -3302,7 +3302,7 @@
 <p>醫院內部常使用自定義代碼（如 GLU-AC），但跨院交換或上傳至健康存摺時，需要通用語言。LOINC 即為此標準。</p>
 <h2 id="_1">整合策略<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
 <h3 id="1-mapping-table">1. 建立對應表 (Mapping Table)<a class="headerlink" href="#1-mapping-table" title="Permanent link">&para;</a></h3>
-<p>利用 <code>search_loinc_code</code> 工具來尋找與院內項目最匹配的標準碼。</p>
+<p>利用 <code>search_loinc(mode="code", ...)</code> 工具來尋找與院內項目最匹配的標準碼。</p>
 <p><strong>關鍵屬性比對</strong>：
 在選擇 LOINC 碼時，必須確認以下六個屬性 (Axes) 是否一致：
 1. <strong>Component</strong>: 檢測物（如 Glucose）
@@ -3313,16 +3313,16 @@
 6. <strong>Method</strong>: 檢測方法（若不影響判讀可選無方法碼）</p>
 <p><strong>工具應用</strong>：
 <div class="language-python highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># 搜尋 &quot;尿液蛋白&quot;</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="n">search_loinc_code</span><span class="p">(</span><span class="n">keyword</span><span class="o">=</span><span class="s2">&quot;Urine Protein&quot;</span><span class="p">)</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="n">search_loinc</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">&quot;code&quot;</span><span class="p">,</span> <span class="n">keyword</span><span class="o">=</span><span class="s2">&quot;Urine Protein&quot;</span><span class="p">)</span>
 </span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="c1"># 結果中區分 &quot;定性 (Qualitative)&quot; 與 &quot;定量 (Quantitative)&quot;</span>
 </span></code></pre></div></p>
 <h3 id="2">2. 驗證參考值<a class="headerlink" href="#2" title="Permanent link">&para;</a></h3>
-<p>Mapping 完成後，使用 <code>get_reference_range</code> 確認該 LOINC 碼的標準參考值是否與院內實驗室的標準相近。若差異過大，可能選錯了代碼（例如選到不同單位或不同檢測方法的碼）。</p>
+<p>Mapping 完成後，使用 <code>query_loinc(mode="reference_range", ...)</code> 確認該 LOINC 碼的標準參考值是否與院內實驗室的標準相近。若差異過大，可能選錯了代碼（例如選到不同單位或不同檢測方法的碼）。</p>
 <h3 id="3">3. 自動化轉換流程<a class="headerlink" href="#3" title="Permanent link">&para;</a></h3>
 <p>在資料匯出模組 (Exporter) 中：
 1.讀取院內 Lab 結果。
 2.查表轉換為 LOINC。
-3.呼叫或參考 <code>get_reference_range</code> 補齊標準參考值資訊（若院內資料缺失）。
+3.呼叫或參考 <code>query_loinc(mode="reference_range", ...)</code> 補齊標準參考值資訊（若院內資料缺失）。
 4.打包為 FHIR Observation 資源。</p>
 <h2 id="_2">常見問題<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
 <ul>

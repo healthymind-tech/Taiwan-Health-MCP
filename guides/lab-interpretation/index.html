@@ -3286,10 +3286,10 @@
 <p>患者為 55 歲男性。</p>
 <h3 id="loinc_1">步驟一：確認 LOINC 代碼 (若報告未提供)<a class="headerlink" href="#loinc_1" title="Permanent link">&para;</a></h3>
 <p><strong>呼叫工具</strong>：
-<div class="language-python highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">search_loinc_code</span><span class="p">(</span><span class="n">keyword</span><span class="o">=</span><span class="s2">&quot;空腹血糖&quot;</span><span class="p">)</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">search_loinc</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">&quot;code&quot;</span><span class="p">,</span> <span class="n">keyword</span><span class="o">=</span><span class="s2">&quot;空腹血糖&quot;</span><span class="p">)</span>
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="c1"># 系統回傳: 1558-6 (Glucose [Mass/volume] in Serum or Plasma --Fasting)</span>
 </span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="n">search_loinc_code</span><span class="p">(</span><span class="n">keyword</span><span class="o">=</span><span class="s2">&quot;三酸甘油酯&quot;</span><span class="p">)</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="n">search_loinc</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">&quot;code&quot;</span><span class="p">,</span> <span class="n">keyword</span><span class="o">=</span><span class="s2">&quot;三酸甘油酯&quot;</span><span class="p">)</span>
 </span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="c1"># 系統回傳: 2571-8 (Triglyceride [Mass/volume] in Serum or Plasma)</span>
 </span></code></pre></div></p>
 <h3 id="_3">步驟二：單項判讀<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h3>
