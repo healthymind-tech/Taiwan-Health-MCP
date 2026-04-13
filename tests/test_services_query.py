@@ -96,6 +96,39 @@ class TestICDServiceQuery:
         assert len(result["potential_complications_or_specifics"]) == 1
 
     @pytest.mark.asyncio
+    async def test_infer_complications_normalises_lowercase_code(self):
+        """infer_complications uppercases the code before querying."""
+        from icd_service import ICDService
+
+        children = [_row(code="E11.1", name_zh="第2型糖尿病，有酮酸中毒")]
+        conn = _make_conn(fetch_return=children)
+        pool = _make_pool(conn)
+        pool.fetchval = AsyncMock(side_effect=[1, 0])
+
+        svc = ICDService(pool)
+        await svc.initialize()
+
+        result = json.loads(await svc.infer_complications("e11"))
+        # base_code in response should be the normalised uppercase version
+        assert result["base_code"] == "E11"
+
+    @pytest.mark.asyncio
+    async def test_get_nearby_codes_normalises_lowercase_code(self):
+        """get_nearby_codes uppercases the code before the comparison queries."""
+        from icd_service import ICDService
+
+        conn = _make_conn(fetch_return=[])
+        pool = _make_pool(conn)
+        pool.fetchval = AsyncMock(side_effect=[1, 0])
+
+        svc = ICDService(pool)
+        await svc.initialize()
+
+        result = json.loads(await svc.get_nearby_codes("i10"))
+        # target in response should be the normalised uppercase version
+        assert result["target"] == "I10"
+
+    @pytest.mark.asyncio
     async def test_browse_category_lists_all_when_none(self):
         from icd_service import ICDService
 

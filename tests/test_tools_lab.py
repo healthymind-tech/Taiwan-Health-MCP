@@ -256,3 +256,186 @@ class TestBatchInterpretLabResults:
                 results_json=json.dumps(results), age=55, gender="F"
             )
         mock_svc.batch_interpret_results.assert_called_once_with(results, 55, "F")
+
+
+# ── search_loinc (not-found + fuzzy per mode) ────────────────────────────────
+
+class TestSearchLoincNotFoundAndFuzzy:
+    @pytest.mark.asyncio
+    async def test_code_mode_not_found_returns_empty(self):
+        mock_svc = _lab_mock()
+        mock_svc.search_loinc_code = AsyncMock(return_value='{"results":[]}')
+        with patch.object(server, "lab_service", mock_svc):
+            result = json.loads(await server.search_loinc(mode="code", keyword="0000-0"))
+        assert result["results"] == []
+
+    @pytest.mark.asyncio
+    async def test_code_mode_fuzzy_term_forwarded(self):
+        """Embedding search: vague term forwarded; service returns semantically close LOINC."""
+        payload = '{"results":[{"loinc_num":"2345-7","long_common_name":"Glucose [Mass/volume]"}]}'
+        mock_svc = _lab_mock()
+        mock_svc.search_loinc_code = AsyncMock(return_value=payload)
+        with patch.object(server, "lab_service", mock_svc):
+            result = json.loads(await server.search_loinc(mode="code", keyword="blood sugar test"))
+        mock_svc.search_loinc_code.assert_called_once_with("blood sugar test", None, limit=3)
+        assert len(result["results"]) == 1
+
+    @pytest.mark.asyncio
+    async def test_specimen_mode_not_found_returns_empty(self):
+        mock_svc = _lab_mock()
+        mock_svc.search_by_specimen = AsyncMock(return_value='{"results":[]}')
+        with patch.object(server, "lab_service", mock_svc):
+            result = json.loads(
+                await server.search_loinc(mode="specimen", keyword="MoonRock")
+            )
+        assert result["results"] == []
+
+    @pytest.mark.asyncio
+    async def test_specimen_mode_fuzzy_forwarded(self):
+        """Embedding search: partial specimen type forwarded; service finds close match."""
+        payload = '{"results":[{"loinc_num":"21482-5","long_common_name":"Glucose [Mass/volume] in Urine"}]}'
+        mock_svc = _lab_mock()
+        mock_svc.search_by_specimen = AsyncMock(return_value=payload)
+        with patch.object(server, "lab_service", mock_svc):
+            result = json.loads(
+                await server.search_loinc(mode="specimen", keyword="voided urine")
+            )
+        mock_svc.search_by_specimen.assert_called_once_with("voided urine", limit=3)
+        assert len(result["results"]) == 1
+
+    @pytest.mark.asyncio
+    async def test_component_mode_not_found_returns_empty(self):
+        mock_svc = _lab_mock()
+        mock_svc.find_related_tests = AsyncMock(return_value='{"by_system":{}}')
+        with patch.object(server, "lab_service", mock_svc):
+            result = json.loads(
+                await server.search_loinc(mode="component", keyword="不存在成分XYZ")
+            )
+        assert result["by_system"] == {}
+
+    @pytest.mark.asyncio
+    async def test_component_mode_fuzzy_forwarded(self):
+        """Embedding search: partial component name forwarded; service finds related tests."""
+        payload = '{"by_system":{"Ser/Plas":[{"loinc_num":"2345-7"}]}}'
+        mock_svc = _lab_mock()
+        mock_svc.find_related_tests = AsyncMock(return_value=payload)
+        with patch.object(server, "lab_service", mock_svc):
+            result = json.loads(
+                await server.search_loinc(mode="component", keyword="glycemia")
+            )
+        mock_svc.find_related_tests.assert_called_once_with("glycemia", limit=3)
+        assert "Ser/Plas" in result["by_system"]
+
+    @pytest.mark.asyncio
+    async def test_category_mode_empty_keyword_returns_all(self):
+        mock_svc = _lab_mock()
+        with patch.object(server, "lab_service", mock_svc):
+            await server.search_loinc(mode="category", keyword="")
+        mock_svc.list_categories.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_limit_capped_at_10(self):
+        mock_svc = _lab_mock()
+        with patch.object(server, "lab_service", mock_svc):
+            await server.search_loinc(mode="code", keyword="glucose", limit=999)
+        mock_svc.search_loinc_code.assert_called_once_with("glucose", None, limit=10)
+
+
+# ── query_loinc (not-found + reference_range gender default) ─────────────────
+
+class TestQueryLoincNotFound:
+    @pytest.mark.asyncio
+    async def test_detail_mode_not_found_returns_error_payload(self):
+        mock_svc = _lab_mock()
+        mock_svc.get_patient_friendly_name = AsyncMock(
+            return_value='{"error":"LOINC code 0000-0 not found"}'
+        )
+        with patch.object(server, "lab_service", mock_svc):
+            result = json.loads(await server.query_loinc(mode="detail", loinc_code="0000-0"))
+        assert "error" in result
+
+    @pytest.mark.asyncio
+    async def test_reference_range_default_gender_all(self):
+        mock_svc = _lab_mock()
+        with patch.object(server, "lab_service", mock_svc):
+            await server.query_loinc(mode="reference_range", loinc_code="2345-7", age=40)
+        mock_svc.get_reference_range.assert_called_once_with("2345-7", 40, "all")
+
+    @pytest.mark.asyncio
+    async def test_reference_range_not_found(self):
+        mock_svc = _lab_mock()
+        mock_svc.get_reference_range = AsyncMock(
+            return_value='{"error":"No reference range for LOINC 0000-0"}'
+        )
+        with patch.object(server, "lab_service", mock_svc):
+            result = json.loads(
+                await server.query_loinc(mode="reference_range", loinc_code="0000-0", age=30)
+            )
+        assert "error" in result
+
+
+# ── interpret_lab_result (not-found + boundary) ───────────────────────────────
+
+class TestInterpretLabResultEdgeCases:
+    @pytest.mark.asyncio
+    async def test_invalid_loinc_returns_error(self):
+        mock_svc = _lab_mock()
+        mock_svc.interpret_lab_result = AsyncMock(
+            return_value='{"error":"LOINC 0000-0 not found"}'
+        )
+        with patch.object(server, "lab_service", mock_svc):
+            result = json.loads(
+                await server.interpret_lab_result(loinc_code="0000-0", value=-999, age=0)
+            )
+        assert "error" in result
+
+    @pytest.mark.asyncio
+    async def test_extreme_high_value_delegated(self):
+        mock_svc = _lab_mock()
+        with patch.object(server, "lab_service", mock_svc):
+            await server.interpret_lab_result(
+                loinc_code="2345-7", value=9999.9, age=60, gender="F"
+            )
+        mock_svc.interpret_lab_result.assert_called_once_with("2345-7", 9999.9, 60, "F")
+
+    @pytest.mark.asyncio
+    async def test_zero_value_delegated(self):
+        mock_svc = _lab_mock()
+        with patch.object(server, "lab_service", mock_svc):
+            await server.interpret_lab_result(loinc_code="2345-7", value=0.0, age=25)
+        mock_svc.interpret_lab_result.assert_called_once_with("2345-7", 0.0, 25, "all")
+
+
+# ── batch_interpret_lab_results (edge cases) ──────────────────────────────────
+
+class TestBatchInterpretEdgeCases:
+    @pytest.mark.asyncio
+    async def test_empty_array_delegates(self):
+        mock_svc = _lab_mock()
+        with patch.object(server, "lab_service", mock_svc):
+            await server.batch_interpret_lab_results(results_json="[]", age=40)
+        mock_svc.batch_interpret_results.assert_called_once_with([], 40, "all")
+
+    @pytest.mark.asyncio
+    async def test_non_array_json_returns_error(self):
+        mock_svc = _lab_mock()
+        with patch.object(server, "lab_service", mock_svc):
+            result = json.loads(
+                await server.batch_interpret_lab_results(
+                    results_json='"this is a string not an array"', age=40
+                )
+            )
+        assert "error" in result
+        mock_svc.batch_interpret_results.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_object_json_returns_error(self):
+        mock_svc = _lab_mock()
+        with patch.object(server, "lab_service", mock_svc):
+            result = json.loads(
+                await server.batch_interpret_lab_results(
+                    results_json='{"loinc_code":"2345-7","value":5.5}', age=40
+                )
+            )
+        assert "error" in result
+        mock_svc.batch_interpret_results.assert_not_called()

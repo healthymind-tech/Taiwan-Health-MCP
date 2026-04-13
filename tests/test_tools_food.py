@@ -317,3 +317,186 @@ class TestAnalyzeMealNutrition:
         with patch.object(server, "food_nutrition_service", mock_svc):
             await server.analyze_meal_nutrition(foods=[])
         mock_svc.analyze_meal_nutrition.assert_called_once_with([])
+
+
+# ── search_health_supplement (not-found + fuzzy) ─────────────────────────────
+
+class TestSearchHealthSupplementNotFoundAndFuzzy:
+    @pytest.mark.asyncio
+    async def test_keyword_not_found_returns_empty_results(self):
+        mock_svc = _hf_mock()
+        mock_svc.search_health_food = AsyncMock(
+            return_value='{"mode":"keyword","keyword":"逆轉糖尿病神藥","results":[]}'
+        )
+        with patch.object(server, "health_food_service", mock_svc):
+            result = json.loads(
+                await server.search_health_supplement(keyword="逆轉糖尿病神藥")
+            )
+        assert result["results"] == []
+
+    @pytest.mark.asyncio
+    async def test_fuzzy_keyword_forwarded_to_service(self):
+        """Embedding search: vague term forwarded; service returns semantically close result."""
+        mock_svc = _hf_mock()
+        mock_svc.search_health_food = AsyncMock(
+            return_value='{"mode":"keyword","keyword":"liver support","results":[{"permit_no":"H001"}]}'
+        )
+        with patch.object(server, "health_food_service", mock_svc):
+            result = json.loads(
+                await server.search_health_supplement(keyword="liver support")
+            )
+        mock_svc.search_health_food.assert_called_once_with("liver support", limit=3)
+        assert len(result["results"]) == 1
+
+    @pytest.mark.asyncio
+    async def test_permit_no_not_found_returns_empty(self):
+        mock_conn = MagicMock()
+        mock_conn.fetchrow = AsyncMock(return_value=None)
+        mock_conn.fetch = AsyncMock(return_value=[])
+        mock_svc = _hf_mock()
+        mock_svc.pool.acquire.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
+        mock_svc.pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
+        with patch.object(server, "health_food_service", mock_svc):
+            result = json.loads(
+                await server.search_health_supplement(
+                    mode="permit_no", keyword="衛部健食字第Z99999號"
+                )
+            )
+        assert result["mode"] == "permit_no"
+        assert result["results"] == []
+
+    @pytest.mark.asyncio
+    async def test_condition_no_supplements_returns_empty(self):
+        mock_svc = _hf_mock()
+        mock_svc.analyze_health_support_for_condition = AsyncMock(
+            return_value='{"icd_code":"Z00.00","recommended_benefits":[],"health_foods":[],"disclaimer":"..."}'
+        )
+        with patch.object(server, "health_food_service", mock_svc):
+            result = json.loads(
+                await server.search_health_supplement(mode="condition", keyword="Z00.00")
+            )
+        assert result["mode"] == "condition"
+        assert result["results"] == []
+
+
+# ── search_food_nutrition (not-found + fuzzy) ─────────────────────────────────
+
+class TestSearchFoodNutritionNotFoundAndFuzzy:
+    @pytest.mark.asyncio
+    async def test_not_found_returns_empty_list(self):
+        mock_svc = _fn_mock()
+        mock_svc.search_nutrition = AsyncMock(return_value="[]")
+        with patch.object(server, "food_nutrition_service", mock_svc):
+            result = json.loads(await server.search_food_nutrition(food_name="鑽石粉末"))
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_fuzzy_term_forwarded_to_service(self):
+        """Embedding search: partial name forwarded; service returns semantically close result."""
+        payload = '[{"food_name":"雞胸肉","粗蛋白":23.1}]'
+        mock_svc = _fn_mock()
+        mock_svc.search_nutrition = AsyncMock(return_value=payload)
+        with patch.object(server, "food_nutrition_service", mock_svc):
+            result = json.loads(
+                await server.search_food_nutrition(food_name="lean chicken protein")
+            )
+        mock_svc.search_nutrition.assert_called_once_with("lean chicken protein", None, limit=3)
+        assert len(result) == 1
+
+
+# ── get_detailed_nutrition (not-found) ───────────────────────────────────────
+
+class TestGetDetailedNutritionNotFound:
+    @pytest.mark.asyncio
+    async def test_not_found_returns_empty_list(self):
+        mock_svc = _fn_mock()
+        mock_svc.get_detailed_nutrition = AsyncMock(return_value="[]")
+        with patch.object(server, "food_nutrition_service", mock_svc):
+            result = json.loads(await server.get_detailed_nutrition(food_name="月球岩石"))
+        assert result == []
+
+
+# ── search_food_ingredient (not-found + fuzzy) ────────────────────────────────
+
+class TestSearchFoodIngredientNotFoundAndFuzzy:
+    @pytest.mark.asyncio
+    async def test_not_found_returns_empty_list(self):
+        mock_svc = _fn_mock()
+        mock_svc.search_food_ingredient = AsyncMock(return_value="[]")
+        with patch.object(server, "food_nutrition_service", mock_svc):
+            result = json.loads(await server.search_food_ingredient(keyword="不死草精華"))
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_fuzzy_term_forwarded_to_service(self):
+        """Embedding search: partial/vague keyword forwarded; service finds close match."""
+        payload = '[{"ingredient_name":"薑黃素","category":"香辛料"}]'
+        mock_svc = _fn_mock()
+        mock_svc.search_food_ingredient = AsyncMock(return_value=payload)
+        with patch.object(server, "food_nutrition_service", mock_svc):
+            result = json.loads(await server.search_food_ingredient(keyword="yellow spice"))
+        mock_svc.search_food_ingredient.assert_called_once_with("yellow spice", limit=3)
+        assert len(result) == 1
+
+
+# ── get_ingredients_by_category (not-found) ───────────────────────────────────
+
+class TestGetIngredientsByCategoryNotFound:
+    @pytest.mark.asyncio
+    async def test_invalid_category_returns_empty(self):
+        mock_svc = _fn_mock()
+        mock_svc.get_ingredients_by_category = AsyncMock(return_value="[]")
+        with patch.object(server, "food_nutrition_service", mock_svc):
+            result = json.loads(
+                await server.get_ingredients_by_category(category="宇宙能量萃取物")
+            )
+        assert result == []
+
+
+# ── search_foods_by_nutrient (not-found + fuzzy) ─────────────────────────────
+
+class TestSearchFoodsByNutrientNotFoundAndFuzzy:
+    @pytest.mark.asyncio
+    async def test_not_found_nutrient_returns_empty(self):
+        mock_svc = _fn_mock()
+        mock_svc.search_foods_by_nutrient = AsyncMock(return_value='{"foods":[]}')
+        with patch.object(server, "food_nutrition_service", mock_svc):
+            result = json.loads(
+                await server.search_foods_by_nutrient(nutrient="第四維度能量")
+            )
+        assert result["foods"] == []
+
+    @pytest.mark.asyncio
+    async def test_fuzzy_nutrient_name_forwarded(self):
+        """Embedding fallback: ambiguous name forwarded; service resolves via alias+embedding."""
+        payload = '{"nutrient":"鈣","unit":"mg","foods":[{"food_name":"芝麻","value":975}]}'
+        mock_svc = _fn_mock()
+        mock_svc.search_foods_by_nutrient = AsyncMock(return_value=payload)
+        with patch.object(server, "food_nutrition_service", mock_svc):
+            result = json.loads(
+                await server.search_foods_by_nutrient(nutrient="bone mineral")
+            )
+        mock_svc.search_foods_by_nutrient.assert_called_once_with("bone mineral", 20)
+        assert "foods" in result
+
+    @pytest.mark.asyncio
+    async def test_limit_capped_at_50(self):
+        mock_svc = _fn_mock()
+        with patch.object(server, "food_nutrition_service", mock_svc):
+            await server.search_foods_by_nutrient(nutrient="鈣", limit=999)
+        mock_svc.search_foods_by_nutrient.assert_called_once_with("鈣", 50)
+
+
+# ── analyze_meal_nutrition (not-found) ────────────────────────────────────────
+
+class TestAnalyzeMealNutritionNotFound:
+    @pytest.mark.asyncio
+    async def test_unknown_foods_return_zero_or_unknown_components(self):
+        payload = '{"meal_components":{"神仙餐":{"found":false}},"combined_totals_per_100g_each":{}}'
+        mock_svc = _fn_mock()
+        mock_svc.analyze_meal_nutrition = AsyncMock(return_value=payload)
+        with patch.object(server, "food_nutrition_service", mock_svc):
+            result = json.loads(
+                await server.analyze_meal_nutrition(foods=["神仙餐", "靈氣粥"])
+            )
+        assert result["meal_components"]["神仙餐"]["found"] is False

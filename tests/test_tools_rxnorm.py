@@ -75,3 +75,63 @@ class TestHealthCheck:
 
         assert result["services"]["icd"] is True
         assert result["services"]["drug"] is False
+
+
+class TestHealthCheckDegradedStates:
+    @pytest.mark.asyncio
+    async def test_db_down_returns_degraded_status(self):
+        import database
+        mock_pool = MagicMock()
+        mock_pool.acquire.side_effect = Exception("Connection refused")
+        mock_redis = AsyncMock()
+        mock_redis.ping = AsyncMock()
+
+        with patch("database._pool", mock_pool), patch.object(
+            cache_mod, "_client", mock_redis
+        ):
+            result = json.loads(await server.health_check())
+
+        assert result["database"] != "ok"
+        assert result["status"] != "ok"
+
+    @pytest.mark.asyncio
+    async def test_cache_down_returns_degraded_status(self):
+        mock_conn = AsyncMock()
+        mock_conn.fetchval = AsyncMock(return_value=1)
+        mock_pool = MagicMock()
+        mock_pool.acquire.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
+        mock_pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
+        mock_redis = AsyncMock()
+        mock_redis.ping = AsyncMock(side_effect=Exception("Redis unavailable"))
+
+        with patch("database._pool", mock_pool), patch.object(
+            cache_mod, "_client", mock_redis
+        ):
+            result = json.loads(await server.health_check())
+
+        assert result["cache"] != "ok"
+
+    @pytest.mark.asyncio
+    async def test_all_services_down_reflected_in_services_dict(self):
+        mock_conn = AsyncMock()
+        mock_conn.fetchval = AsyncMock(return_value=1)
+        mock_pool = MagicMock()
+        mock_pool.acquire.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
+        mock_pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
+        mock_redis = AsyncMock()
+        mock_redis.ping = AsyncMock()
+
+        with (
+            patch("database._pool", mock_pool),
+            patch.object(cache_mod, "_client", mock_redis),
+            patch.object(server, "icd_service", None),
+            patch.object(server, "drug_service", None),
+            patch.object(server, "lab_service", None),
+            patch.object(server, "snomed_service", None),
+        ):
+            result = json.loads(await server.health_check())
+
+        assert result["services"]["icd"] is False
+        assert result["services"]["drug"] is False
+        assert result["services"]["lab"] is False
+        assert result["services"]["snomed"] is False

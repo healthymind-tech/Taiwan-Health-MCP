@@ -149,6 +149,7 @@ class ICDService:
             JSON string with ``potential_complications_or_specifics`` or
             ``related_codes`` depending on whether sub-codes were found.
         """
+        code = code.upper().strip()
         async with self.pool.acquire() as conn:
             children = await conn.fetch(
                 "SELECT code, name_zh FROM icd.diagnoses WHERE code LIKE $1 AND code != $2 ORDER BY code LIMIT 15",
@@ -191,6 +192,7 @@ class ICDService:
             JSON string with ``target`` and a ``nearby_options`` list
             containing codes sorted in alphabetical order.
         """
+        code = code.upper().strip()
         async with self.pool.acquire() as conn:
             prev_rows = await conn.fetch(
                 "SELECT code, name_zh, 'prev' AS rel FROM icd.diagnoses WHERE code < $1 ORDER BY code DESC LIMIT 2",

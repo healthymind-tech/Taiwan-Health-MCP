@@ -137,3 +137,146 @@ class TestQueryGuidelineGoals:
         with patch.object(server, "guideline_service", mock_svc):
             await server.query_guideline(icd_code="E11", section="goals")
         mock_svc.get_treatment_goals.assert_called_once_with("E11")
+
+
+# ── query_guideline (pathway) ────────────────────────────────────────────────
+
+class TestQueryGuidelinePathway:
+    @pytest.mark.asyncio
+    async def test_null_guard(self):
+        with patch.object(server, "guideline_service", None):
+            result = json.loads(await server.query_guideline(icd_code="E11", section="pathway"))
+        assert "error" in result
+        assert "Clinical Guideline Service" in result["error"]
+
+    @pytest.mark.asyncio
+    async def test_delegates_without_context(self):
+        """No patient_context_json → suggest_clinical_pathway called with None."""
+        mock_svc = _guideline_mock()
+        with patch.object(server, "guideline_service", mock_svc):
+            await server.query_guideline(icd_code="E11", section="pathway")
+        mock_svc.suggest_clinical_pathway.assert_called_once_with("E11", None)
+
+    @pytest.mark.asyncio
+    async def test_delegates_with_valid_context(self):
+        """Valid patient_context_json is parsed and forwarded as a dict."""
+        mock_svc = _guideline_mock()
+        ctx = {"age": 65, "comorbidities": ["CKD"]}
+        with patch.object(server, "guideline_service", mock_svc):
+            await server.query_guideline(
+                icd_code="E11",
+                section="pathway",
+                patient_context_json=json.dumps(ctx),
+            )
+        mock_svc.suggest_clinical_pathway.assert_called_once_with("E11", ctx)
+
+    @pytest.mark.asyncio
+    async def test_invalid_context_json_returns_error(self):
+        """Malformed patient_context_json returns an error without calling the service."""
+        mock_svc = _guideline_mock()
+        with patch.object(server, "guideline_service", mock_svc):
+            result = json.loads(
+                await server.query_guideline(
+                    icd_code="E11",
+                    section="pathway",
+                    patient_context_json="not valid json",
+                )
+            )
+        assert "error" in result
+        mock_svc.suggest_clinical_pathway.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_context_ignored_for_non_pathway_sections(self):
+        """patient_context_json is silently ignored for non-pathway sections."""
+        mock_svc = _guideline_mock()
+        with patch.object(server, "guideline_service", mock_svc):
+            await server.query_guideline(
+                icd_code="E11",
+                section="medication",
+                patient_context_json='{"age": 65}',
+            )
+        mock_svc.get_medication_recommendations.assert_called_once_with("E11")
+        mock_svc.suggest_clinical_pathway.assert_not_called()
+
+
+# ── query_guideline (unknown section) ────────────────────────────────────────
+
+class TestQueryGuidelineUnknownSection:
+    @pytest.mark.asyncio
+    async def test_unknown_section_returns_error(self):
+        mock_svc = _guideline_mock()
+        with patch.object(server, "guideline_service", mock_svc):
+            result = json.loads(
+                await server.query_guideline(icd_code="E11", section="nonexistent")  # type: ignore[arg-type]
+            )
+        assert "error" in result
+
+
+# ── search_clinical_guideline (not-found + fuzzy) ────────────────────────────
+
+class TestSearchClinicalGuidelineNotFoundAndFuzzy:
+    @pytest.mark.asyncio
+    async def test_not_found_returns_empty_results(self):
+        mock_svc = _guideline_mock()
+        mock_svc.search_guideline = AsyncMock(
+            return_value='{"keyword":"水晶療法","total_found":0,"guidelines":[]}'
+        )
+        with patch.object(server, "guideline_service", mock_svc):
+            result = json.loads(
+                await server.search_clinical_guideline(keyword="水晶療法")
+            )
+        assert result["total_found"] == 0
+        assert result["guidelines"] == []
+
+    @pytest.mark.asyncio
+    async def test_fuzzy_keyword_forwarded_to_service(self):
+        """Embedding search: vague term forwarded; service returns semantically close guideline."""
+        payload = '{"keyword":"sugar disease management","total_found":1,"guidelines":[{"icd_code":"E11"}]}'
+        mock_svc = _guideline_mock()
+        mock_svc.search_guideline = AsyncMock(return_value=payload)
+        with patch.object(server, "guideline_service", mock_svc):
+            result = json.loads(
+                await server.search_clinical_guideline(keyword="sugar disease management")
+            )
+        mock_svc.search_guideline.assert_called_once_with("sugar disease management", limit=3)
+        assert result["guidelines"][0]["icd_code"] == "E11"
+
+
+# ── query_guideline (not-found per section) ───────────────────────────────────
+
+class TestQueryGuidelineNotFound:
+    @pytest.mark.asyncio
+    async def test_complete_not_found(self):
+        mock_svc = _guideline_mock()
+        mock_svc.get_complete_guideline = AsyncMock(
+            return_value='{"error":"No guideline found for Z00.00"}'
+        )
+        with patch.object(server, "guideline_service", mock_svc):
+            result = json.loads(
+                await server.query_guideline(icd_code="Z00.00", section="complete")
+            )
+        assert "error" in result
+
+    @pytest.mark.asyncio
+    async def test_medication_not_found(self):
+        mock_svc = _guideline_mock()
+        mock_svc.get_medication_recommendations = AsyncMock(
+            return_value='{"error":"No medication guideline for Z00.00"}'
+        )
+        with patch.object(server, "guideline_service", mock_svc):
+            result = json.loads(
+                await server.query_guideline(icd_code="Z00.00", section="medication")
+            )
+        assert "error" in result
+
+    @pytest.mark.asyncio
+    async def test_pathway_not_found(self):
+        mock_svc = _guideline_mock()
+        mock_svc.suggest_clinical_pathway = AsyncMock(
+            return_value='{"error":"No pathway for Z00.00"}'
+        )
+        with patch.object(server, "guideline_service", mock_svc):
+            result = json.loads(
+                await server.query_guideline(icd_code="Z00.00", section="pathway")
+            )
+        assert "error" in result

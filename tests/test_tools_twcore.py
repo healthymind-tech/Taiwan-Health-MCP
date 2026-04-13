@@ -137,3 +137,90 @@ class TestQueryTwcoreCodeLookup:
                 code="QD", codesystem_id="medication-frequency-nhi-tw"
             )
         assert result == payload
+
+
+# ── query_twcore_code (not-found per mode) ────────────────────────────────────
+
+class TestQueryTwcoreCodeNotFound:
+    @pytest.mark.asyncio
+    async def test_category_not_found_returns_empty(self):
+        mock_svc = _twcore_mock()
+        mock_svc.list_codesystems = AsyncMock(return_value='{"codesystems":[]}')
+        with patch.object(server, "twcore_service", mock_svc):
+            result = json.loads(await server.query_twcore_code(category="nonexistent"))
+        assert result["codesystems"] == []
+
+    @pytest.mark.asyncio
+    async def test_search_no_match_returns_empty(self):
+        mock_svc = _twcore_mock()
+        mock_svc.search_code = AsyncMock(return_value='{"results":[]}')
+        with patch.object(server, "twcore_service", mock_svc):
+            result = json.loads(
+                await server.query_twcore_code(
+                    keyword="每天吃很多次",
+                    codesystem_ids=["medication-frequency-nhi-tw"],
+                )
+            )
+        assert result["results"] == []
+
+    @pytest.mark.asyncio
+    async def test_lookup_not_found_returns_error_payload(self):
+        mock_svc = _twcore_mock()
+        mock_svc.lookup_code = AsyncMock(
+            return_value='{"error":"Code 每天吃很多次 not found in medication-frequency-nhi-tw"}'
+        )
+        with patch.object(server, "twcore_service", mock_svc):
+            result = json.loads(
+                await server.query_twcore_code(
+                    code="每天吃很多次",
+                    codesystem_id="medication-frequency-nhi-tw",
+                )
+            )
+        assert "error" in result
+
+
+# ── query_twcore_code (missing params / error) ────────────────────────────────
+
+class TestQueryTwcoreCodeErrors:
+    @pytest.mark.asyncio
+    async def test_no_params_returns_error(self):
+        """No category, keyword, or code → should return an error."""
+        mock_svc = _twcore_mock()
+        with patch.object(server, "twcore_service", mock_svc):
+            result = json.loads(await server.query_twcore_code())
+        assert "error" in result
+        mock_svc.list_codesystems.assert_not_called()
+        mock_svc.search_code.assert_not_called()
+        mock_svc.lookup_code.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_keyword_without_codesystem_ids_still_delegates(self):
+        """keyword without codesystem_ids is valid (search all codesystems)."""
+        mock_svc = _twcore_mock()
+        with patch.object(server, "twcore_service", mock_svc):
+            await server.query_twcore_code(keyword="BID")
+        mock_svc.search_code.assert_called_once_with("BID", None)
+
+    @pytest.mark.asyncio
+    async def test_code_without_codesystem_id_returns_error(self):
+        """code lookup requires codesystem_id."""
+        mock_svc = _twcore_mock()
+        with patch.object(server, "twcore_service", mock_svc):
+            result = json.loads(await server.query_twcore_code(code="BID"))
+        assert "error" in result
+        mock_svc.lookup_code.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_valid_bid_code_lookup(self):
+        mock_svc = _twcore_mock()
+        mock_svc.lookup_code = AsyncMock(
+            return_value='{"code":"BID","display":"每日兩次","system":"medication-frequency-nhi-tw"}'
+        )
+        with patch.object(server, "twcore_service", mock_svc):
+            result = json.loads(
+                await server.query_twcore_code(
+                    code="BID", codesystem_id="medication-frequency-nhi-tw"
+                )
+            )
+        assert result["code"] == "BID"
+        assert result["display"] == "每日兩次"

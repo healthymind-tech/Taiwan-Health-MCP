@@ -194,3 +194,117 @@ class TestBrowseIcdCategory:
         with patch.object(server, "icd_service", mock_svc):
             result = json.loads(await server.browse_icd_category())
         assert "total_categories" in result
+
+
+# ── search_medical_codes (procedure type) ─────────────────────────────────────
+
+class TestSearchMedicalCodesProcedure:
+    @pytest.mark.asyncio
+    async def test_procedure_type_delegated(self):
+        mock_svc = _icd_mock()
+        with patch.object(server, "icd_service", mock_svc):
+            await server.search_medical_codes(keyword="appendectomy", type="procedure")
+        mock_svc.search_codes.assert_called_once_with("appendectomy", "procedure", limit=3)
+
+    @pytest.mark.asyncio
+    async def test_not_found_returns_error_payload(self):
+        mock_svc = _icd_mock()
+        mock_svc.search_codes = AsyncMock(return_value='{"error":"No results found for \'ZZZ\'."}')
+        with patch.object(server, "icd_service", mock_svc):
+            result = json.loads(await server.search_medical_codes(keyword="ZZZ"))
+        assert "error" in result
+
+    @pytest.mark.asyncio
+    async def test_fuzzy_input_passed_through_to_service(self):
+        """Embedding-based search: service receives the fuzzy term unchanged."""
+        payload = '{"diagnoses":[{"code":"E11.9","name_zh":"第2型糖尿病"}]}'
+        mock_svc = _icd_mock()
+        mock_svc.search_codes = AsyncMock(return_value=payload)
+        with patch.object(server, "icd_service", mock_svc):
+            result = json.loads(
+                await server.search_medical_codes(keyword="sugar disease", type="diagnosis")
+            )
+        mock_svc.search_codes.assert_called_once_with("sugar disease", "diagnosis", limit=3)
+        assert result["diagnoses"][0]["code"] == "E11.9"
+
+    @pytest.mark.asyncio
+    async def test_fuzzy_input_no_semantic_match_returns_empty(self):
+        mock_svc = _icd_mock()
+        mock_svc.search_codes = AsyncMock(return_value='{"error":"No results found for \'xyzzy_invalid\'."}')
+        with patch.object(server, "icd_service", mock_svc):
+            result = json.loads(
+                await server.search_medical_codes(keyword="xyzzy_invalid")
+            )
+        assert "error" in result
+
+
+# ── infer_complications (not-found) ───────────────────────────────────────────
+
+class TestInferComplicationsNotFound:
+    @pytest.mark.asyncio
+    async def test_invalid_code_returns_empty_related(self):
+        """Nonexistent code produces an empty related_codes list."""
+        payload = '{"message":"Code ZZZ is specific. Showing related codes in category ZZZ:","related_codes":[]}'
+        mock_svc = _icd_mock()
+        mock_svc.infer_complications = AsyncMock(return_value=payload)
+        with patch.object(server, "icd_service", mock_svc):
+            result = json.loads(await server.infer_complications(code="ZZZ"))
+        assert result["related_codes"] == []
+
+
+# ── get_nearby_codes (not-found) ──────────────────────────────────────────────
+
+class TestGetNearbyCodesNotFound:
+    @pytest.mark.asyncio
+    async def test_nonexistent_code_returns_empty_nearby(self):
+        payload = '{"target":"ZZZ999","nearby_options":[]}'
+        mock_svc = _icd_mock()
+        mock_svc.get_nearby_codes = AsyncMock(return_value=payload)
+        with patch.object(server, "icd_service", mock_svc):
+            result = json.loads(await server.get_nearby_codes(code="ZZZ999"))
+        assert result["target"] == "ZZZ999"
+        assert result["nearby_options"] == []
+
+
+# ── check_medical_conflict (not-found / invalid) ──────────────────────────────
+
+class TestCheckMedicalConflictEdge:
+    @pytest.mark.asyncio
+    async def test_invalid_pcs_code_returns_error(self):
+        payload = '{"error":"Procedure code ZZZZZZZ not found in ICD-10-PCS."}'
+        mock_svc = _icd_mock()
+        mock_svc.get_conflict_info = AsyncMock(return_value=payload)
+        with patch.object(server, "icd_service", mock_svc):
+            result = json.loads(
+                await server.check_medical_conflict(
+                    diagnosis_code="E11.9", procedure_code="ZZZZZZZ"
+                )
+            )
+        assert "error" in result
+
+    @pytest.mark.asyncio
+    async def test_valid_conflict_check_returns_assessment(self):
+        payload = '{"diagnosis":{"code":"K35.80","name_zh":"急性闌尾炎"},"procedure":{"code":"0DTJ0ZZ","name":"Resection of Appendix"},"assessment":"Compatible"}'
+        mock_svc = _icd_mock()
+        mock_svc.get_conflict_info = AsyncMock(return_value=payload)
+        with patch.object(server, "icd_service", mock_svc):
+            result = json.loads(
+                await server.check_medical_conflict(
+                    diagnosis_code="K35.80", procedure_code="0DTJ0ZZ"
+                )
+            )
+        assert result["assessment"] == "Compatible"
+
+
+# ── browse_icd_category (not-found) ──────────────────────────────────────────
+
+class TestBrowseIcdCategoryNotFound:
+    @pytest.mark.asyncio
+    async def test_invalid_category_returns_empty(self):
+        payload = '{"category":"XYZ","total":0,"codes":[]}'
+        mock_svc = _icd_mock()
+        mock_svc.browse_category = AsyncMock(return_value=payload)
+        with patch.object(server, "icd_service", mock_svc):
+            result = json.loads(await server.browse_icd_category(category="XYZ"))
+        assert result["total"] == 0
+        assert result["codes"] == []

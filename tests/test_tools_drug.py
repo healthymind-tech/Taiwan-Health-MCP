@@ -377,3 +377,229 @@ class TestSearchDrugInteractionMode:
         assert isinstance(result["results"], list)
         assert "interaction" in result
         assert isinstance(result["interaction"], dict)
+
+
+# ── search_drug (drug_name — not-found + fuzzy) ───────────────────────────────
+
+class TestSearchDrugByNameNotFoundAndFuzzy:
+    @pytest.mark.asyncio
+    async def test_not_found_returns_empty_results(self):
+        payload = '{"mode":"drug_name","keyword":"XyloPharm神奇減重膠囊","results":[]}'
+        mock_svc = _drug_mock()
+        mock_svc.search_drug = AsyncMock(return_value=payload)
+        with patch.object(server, "drug_service", mock_svc):
+            result = json.loads(
+                await server.search_drug(mode="drug_name", keyword="XyloPharm神奇減重膠囊")
+            )
+        assert result["results"] == []
+
+    @pytest.mark.asyncio
+    async def test_fuzzy_keyword_passed_unchanged_to_service(self):
+        """Embedding search: vague term forwarded as-is; service returns semantically close result."""
+        payload = '{"mode":"drug_name","keyword":"blood thinner pill","results":[{"license_id":"L999"}]}'
+        mock_svc = _drug_mock()
+        mock_svc.search_drug = AsyncMock(return_value=payload)
+        with patch.object(server, "drug_service", mock_svc):
+            result = json.loads(
+                await server.search_drug(mode="drug_name", keyword="blood thinner pill")
+            )
+        mock_svc.search_drug.assert_called_once_with("blood thinner pill", limit=3)
+        assert len(result["results"]) == 1
+
+    @pytest.mark.asyncio
+    async def test_limit_capped_at_10(self):
+        mock_svc = _drug_mock()
+        with patch.object(server, "drug_service", mock_svc):
+            await server.search_drug(mode="drug_name", keyword="aspirin", limit=50)
+        mock_svc.search_drug.assert_called_once_with("aspirin", limit=10)
+
+
+# ── search_drug (atc_code — not-found) ───────────────────────────────────────
+
+class TestSearchDrugByAtcNotFound:
+    @pytest.mark.asyncio
+    async def test_not_found_returns_empty_results(self):
+        payload = '{"mode":"atc_code","keyword":"Z99","results":[]}'
+        mock_svc = _drug_mock()
+        mock_svc.search_by_atc = AsyncMock(return_value=payload)
+        with patch.object(server, "drug_service", mock_svc):
+            result = json.loads(
+                await server.search_drug(mode="atc_code", keyword="Z99")
+            )
+        assert result["results"] == []
+
+    @pytest.mark.asyncio
+    async def test_single_letter_atc_accepted(self):
+        """Regex accepts 1-char ATC codes (e.g. 'C' = Cardiovascular)."""
+        mock_svc = _drug_mock()
+        with patch.object(server, "drug_service", mock_svc):
+            await server.search_drug(mode="atc_code", keyword="C")
+        mock_svc.search_by_atc.assert_called_once_with("C", limit=3)
+
+
+# ── search_drug (ingredient — not-found + fuzzy) ─────────────────────────────
+
+class TestSearchDrugByIngredientNotFoundAndFuzzy:
+    @pytest.mark.asyncio
+    async def test_not_found_returns_empty_results(self):
+        payload = '{"mode":"ingredient","keyword":"不存在成分XYZ","results":[]}'
+        mock_svc = _drug_mock()
+        mock_svc.search_by_ingredient = AsyncMock(return_value=payload)
+        with patch.object(server, "drug_service", mock_svc):
+            result = json.loads(
+                await server.search_drug(mode="ingredient", keyword="不存在成分XYZ")
+            )
+        assert result["results"] == []
+
+    @pytest.mark.asyncio
+    async def test_fuzzy_partial_name_forwarded(self):
+        """Embedding search: partial name forwarded; service returns best matches."""
+        payload = '{"mode":"ingredient","keyword":"statin","results":[{"license_id":"L001"}]}'
+        mock_svc = _drug_mock()
+        mock_svc.search_by_ingredient = AsyncMock(return_value=payload)
+        with patch.object(server, "drug_service", mock_svc):
+            result = json.loads(
+                await server.search_drug(mode="ingredient", keyword="statin")
+            )
+        mock_svc.search_by_ingredient.assert_called_once_with("statin", limit=3)
+        assert len(result["results"]) == 1
+
+
+# ── search_drug (license_id — not-found) ─────────────────────────────────────
+
+class TestSearchDrugByLicenseIdNotFound:
+    @pytest.mark.asyncio
+    async def test_not_found_returns_empty_results(self):
+        payload = '{"mode":"license_id","keyword":"衛部藥製字第000000號","results":[]}'
+        mock_svc = _drug_mock()
+        mock_svc.search_by_license_id = AsyncMock(return_value=payload)
+        with patch.object(server, "drug_service", mock_svc):
+            result = json.loads(
+                await server.search_drug(mode="license_id", keyword="衛部藥製字第000000號")
+            )
+        assert result["results"] == []
+
+
+# ── search_drug (rxnorm_resolve — not-found + fuzzy) ─────────────────────────
+
+class TestSearchDrugRxnormResolveNotFoundAndFuzzy:
+    @pytest.mark.asyncio
+    async def test_not_found_returns_empty_results(self):
+        drug_svc = _drug_mock()
+        rx_svc = _rxnorm_mock()
+        rx_svc.resolve_drug = AsyncMock(return_value=[])
+        with (
+            patch.object(server, "drug_service", drug_svc),
+            patch.object(server, "drug_interaction_service", rx_svc),
+        ):
+            result = json.loads(
+                await server.search_drug(mode="rxnorm_resolve", keyword="不存在藥物XYZ")
+            )
+        assert result["mode"] == "rxnorm_resolve"
+        assert result["results"] == []
+
+    @pytest.mark.asyncio
+    async def test_fuzzy_term_forwarded_to_rxnorm(self):
+        """Embedding-backed resolve: vague term sent to service unchanged."""
+        drug_svc = _drug_mock()
+        rx_svc = _rxnorm_mock()
+        rx_svc.resolve_drug = AsyncMock(
+            return_value=[{"rxcui": "41493", "name": "atorvastatin", "tty": "IN"}]
+        )
+        with (
+            patch.object(server, "drug_service", drug_svc),
+            patch.object(server, "drug_interaction_service", rx_svc),
+        ):
+            result = json.loads(
+                await server.search_drug(mode="rxnorm_resolve", keyword="cholesterol drug")
+            )
+        rx_svc.resolve_drug.assert_called_once_with("cholesterol drug")
+        assert result["mode"] == "rxnorm_resolve"
+
+
+# ── search_drug (rxnorm_ingredients — null guard for drug_service) ────────────
+
+class TestSearchDrugRxnormIngredientsNullGuards:
+    @pytest.mark.asyncio
+    async def test_null_drug_service(self):
+        with patch.object(server, "drug_service", None):
+            result = json.loads(
+                await server.search_drug(mode="rxnorm_ingredients", keyword="860975")
+            )
+        assert "error" in result
+
+    @pytest.mark.asyncio
+    async def test_null_rxnorm_service(self):
+        drug_svc = _drug_mock()
+        with (
+            patch.object(server, "drug_service", drug_svc),
+            patch.object(server, "drug_interaction_service", None),
+        ):
+            result = json.loads(
+                await server.search_drug(mode="rxnorm_ingredients", keyword="860975")
+            )
+        assert "error" in result
+
+
+# ── search_drug (interaction — no interactions found) ─────────────────────────
+
+class TestSearchDrugInteractionNoInteraction:
+    @pytest.mark.asyncio
+    async def test_no_known_interactions_returns_empty_list(self):
+        drug_svc = _drug_mock()
+        rx_svc = _rxnorm_mock()
+        rx_svc.check_interactions = AsyncMock(
+            return_value={
+                "interactions": [],
+                "resolved_drugs": ["metformin", "lisinopril"],
+                "unresolved_drugs": [],
+            }
+        )
+        with (
+            patch.object(server, "drug_service", drug_svc),
+            patch.object(server, "drug_interaction_service", rx_svc),
+        ):
+            result = json.loads(
+                await server.search_drug(
+                    mode="interaction", drug_names=["metformin", "lisinopril"]
+                )
+            )
+        assert result["interaction"]["interactions"] == []
+        assert result["results"] == []
+
+    @pytest.mark.asyncio
+    async def test_three_drugs_all_delegated(self):
+        drug_svc = _drug_mock()
+        rx_svc = _rxnorm_mock()
+        with (
+            patch.object(server, "drug_service", drug_svc),
+            patch.object(server, "drug_interaction_service", rx_svc),
+        ):
+            await server.search_drug(
+                mode="interaction",
+                drug_names=["warfarin", "aspirin", "clopidogrel"],
+            )
+        rx_svc.check_interactions.assert_called_once_with(
+            ["warfarin", "aspirin", "clopidogrel"]
+        )
+
+
+# ── identify_unknown_pill (not-found) ─────────────────────────────────────────
+
+class TestIdentifyUnknownPillNotFound:
+    @pytest.mark.asyncio
+    async def test_no_matches_returns_empty(self):
+        mock_svc = _drug_mock()
+        mock_svc.identify_pill = AsyncMock(return_value='{"matches":[]}')
+        with patch.object(server, "drug_service", mock_svc):
+            result = json.loads(
+                await server.identify_unknown_pill(features="SUPERMAN 透明 capsule")
+            )
+        assert result["matches"] == []
+
+    @pytest.mark.asyncio
+    async def test_single_keyword_still_delegates(self):
+        mock_svc = _drug_mock()
+        with patch.object(server, "drug_service", mock_svc):
+            await server.identify_unknown_pill(features="YP")
+        mock_svc.identify_pill.assert_called_once_with("YP")

@@ -54,12 +54,12 @@ class TestSearchSnomedConcept:
         mock_svc.search_concepts.assert_called_once_with("diabetes", 7, None)
 
     @pytest.mark.asyncio
-    async def test_caps_limit_at_100(self):
+    async def test_caps_limit_at_10(self):
         mock_svc = _snomed_mock()
         with patch.object(server, "snomed_service", mock_svc):
             await server.search_snomed_concept(query="diabetes", limit=500)
-        # limit is min(500, 100) = 100
-        mock_svc.search_concepts.assert_called_once_with("diabetes", 100, None)
+        # limit is min(500, 10) = 10
+        mock_svc.search_concepts.assert_called_once_with("diabetes", 10, None)
 
     @pytest.mark.asyncio
     async def test_passes_hierarchy_filter(self):
@@ -292,4 +292,115 @@ class TestQuerySnomedMappingFromSnomed:
         assert result["mode"] == "snomed"
         assert result["keyword"] == 44054006
         assert len(result["icd10_mappings"]) == 1
+        assert result["icd10_mappings"][0]["icd10_code"] == "E11.9"
+
+
+# ── search_snomed_concept (not-found + fuzzy) ────────────────────────────────
+
+class TestSearchSnomedConceptNotFoundAndFuzzy:
+    @pytest.mark.asyncio
+    async def test_not_found_returns_empty_list(self):
+        mock_svc = _snomed_mock()
+        mock_svc.search_concepts = AsyncMock(return_value=[])
+        with patch.object(server, "snomed_service", mock_svc):
+            result = json.loads(
+                await server.search_snomed_concept(query="永恆青春綜合症")
+            )
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_fuzzy_term_forwarded_returns_semantic_match(self):
+        """Embedding search: vague term forwarded; service returns semantically close concept."""
+        concepts = [{"concept_id": 73211009, "preferred_term": "Diabetes mellitus"}]
+        mock_svc = _snomed_mock()
+        mock_svc.search_concepts = AsyncMock(return_value=concepts)
+        with patch.object(server, "snomed_service", mock_svc):
+            result = json.loads(
+                await server.search_snomed_concept(query="blood sugar disorder")
+            )
+        mock_svc.search_concepts.assert_called_once_with("blood sugar disorder", 3, None)
+        assert result[0]["concept_id"] == 73211009
+
+    @pytest.mark.asyncio
+    async def test_hierarchy_filter_with_not_found(self):
+        """Hierarchy filter restricts search scope; empty when no match in subtree."""
+        mock_svc = _snomed_mock()
+        mock_svc.search_concepts = AsyncMock(return_value=[])
+        with patch.object(server, "snomed_service", mock_svc):
+            result = json.loads(
+                await server.search_snomed_concept(
+                    query="diabetes", limit=5, hierarchy_filter=71388002
+                )
+            )
+        mock_svc.search_concepts.assert_called_once_with("diabetes", 5, 71388002)
+        assert result == []
+
+
+# ── get_snomed_relationships (not-found) ─────────────────────────────────────
+
+class TestGetSnomedRelationshipsNotFound:
+    @pytest.mark.asyncio
+    async def test_invalid_concept_returns_empty_relationships(self):
+        mock_svc = _snomed_mock()
+        mock_svc.get_relationships = AsyncMock(return_value=[])
+        with patch.object(server, "snomed_service", mock_svc):
+            result = json.loads(
+                await server.get_snomed_relationships(concept_id=123456789012)
+            )
+        assert result["concept_id"] == 123456789012
+        assert result["relationship_count"] == 0
+        assert result["relationships"] == []
+
+
+# ── query_snomed_mapping (not-found per mode) ─────────────────────────────────
+
+class TestQuerySnomedMappingNotFound:
+    @pytest.mark.asyncio
+    async def test_icd_not_found_returns_empty_concepts(self):
+        mock_svc = _snomed_mock()
+        mock_svc.map_icd_to_snomed = AsyncMock(return_value=[])
+        with patch.object(server, "snomed_service", mock_svc):
+            result = json.loads(
+                await server.query_snomed_mapping(mode="icd", keyword="ZZZ.999")
+            )
+        assert result["mode"] == "icd"
+        assert result["snomed_concepts"] == []
+
+    @pytest.mark.asyncio
+    async def test_snomed_numeric_not_found_returns_empty_icd(self):
+        mock_svc = _snomed_mock()
+        mock_svc.map_snomed_to_icd = AsyncMock(return_value=[])
+        with patch.object(server, "snomed_service", mock_svc):
+            result = json.loads(
+                await server.query_snomed_mapping(mode="snomed", keyword="99999999999")
+            )
+        assert result["mode"] == "snomed"
+        assert result["icd10_mappings"] == []
+
+    @pytest.mark.asyncio
+    async def test_snomed_text_no_concept_match_returns_error(self):
+        """Text keyword with no semantic match from search_concepts returns error."""
+        mock_svc = _snomed_mock()
+        mock_svc.search_concepts = AsyncMock(return_value=[])
+        with patch.object(server, "snomed_service", mock_svc):
+            result = json.loads(
+                await server.query_snomed_mapping(mode="snomed", keyword="永恆青春綜合症")
+            )
+        assert "error" in result
+        mock_svc.map_snomed_to_icd.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_snomed_fuzzy_text_finds_semantic_match(self):
+        """Embedding search: vague text forwarded; service finds concept and maps to ICD."""
+        concepts = [{"concept_id": 44054006, "preferred_term": "Type 2 diabetes mellitus"}]
+        mappings = [{"icd10_code": "E11.9", "map_rule": "TRUE"}]
+        mock_svc = _snomed_mock()
+        mock_svc.search_concepts = AsyncMock(return_value=concepts)
+        mock_svc.map_snomed_to_icd = AsyncMock(return_value=mappings)
+        with patch.object(server, "snomed_service", mock_svc):
+            result = json.loads(
+                await server.query_snomed_mapping(mode="snomed", keyword="adult onset diabetes")
+            )
+        mock_svc.search_concepts.assert_called_once_with("adult onset diabetes", 1)
+        assert result["keyword"] == 44054006
         assert result["icd10_mappings"][0]["icd10_code"] == "E11.9"
