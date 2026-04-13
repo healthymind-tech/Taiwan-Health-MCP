@@ -14,7 +14,7 @@
 
 - 🇹🇼 **台灣在地化** — 整合台灣 FDA、衛福部官方開放資料，支援繁體中文
 - 🔗 **國際標準** — 符合 FHIR R4、ICD-10-CM 2025、LOINC 2.80、SNOMED CT、RxNorm、ATC
-- 🏥 **30 個 MCP 工具** — 由動態 registry 管理，涵蓋診斷、藥品、檢驗、指引、術語；RxNorm 能力已併入 `search_drug` modes
+- 🏥 **28 個 MCP 工具** — 由動態 registry 管理，涵蓋診斷、藥品、檢驗、指引、術語；RxNorm 能力已併入 `search_drug` modes
 - 🏗️ **生產就緒** — PostgreSQL 16 + pgBouncer + Redis + Prometheus，支援每秒數百請求
 - 🔄 **自動同步** — FDA 藥品/保健食品/營養資料每週自動更新
 
@@ -149,7 +149,7 @@ docker compose exec -T postgres psql \
 
 ---
 
-## 📋 核心功能（30 個 MCP 工具）
+## 📋 核心功能（28 個 MCP 工具）
 
 工具分類、status page 範例與 dataset gating 由同一份 registry 產生；`tools/list` 只會顯示已載入資料集對應的工具，`health_check` 永遠可用。FHIR、TWCore 與臨床指引已合併成較少的對外入口。
 
@@ -159,7 +159,7 @@ docker compose exec -T postgres psql \
 | ICD-10 | 5 | 診斷碼搜尋、併發症推論、鄰近碼、衝突檢查、分類瀏覽 |
 | 藥品 | 2 | `search_drug`（名稱 / ATC / 成分 / 許可證 / RxNorm 解析 / RXCUI 成分 / 交互作用）與外觀辨識 |
 | 健康補充品 | 1 | `search_health_supplement`：關鍵字、許可證、疾病情境推薦 |
-| 食品與營養 | 6 | 營養成分、詳細營養、食品原料、營養排序、餐點分析 |
+| 食品與營養 | 4 | `query_food_nutrition`（營養查詢 + 詳細面板）、`query_food_ingredient`（原料合規）、`search_foods_by_nutrient`（營養排序）、`analyze_meal_nutrition`（餐點分析） |
 | FHIR Condition | 2 | ICD-10 / 關鍵字 → FHIR R4 Condition，驗證 |
 | FHIR Medication | 2 | 藥品 / 關鍵字 → FHIR R4 Medication / MedicationKnowledge |
 | LOINC / Lab | 4 | `search_loinc` / `query_loinc` 入口 + 單項/批次判讀 |

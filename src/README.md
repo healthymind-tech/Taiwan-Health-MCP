@@ -92,12 +92,11 @@
 **資料來源**: `food_nutrition.*`（PostgreSQL），從 FDA Open Data 同步
 
 **主要方法**:
-- `search_nutrition(food_name, nutrient)` — 搜尋食品營養成分
-- `get_detailed_nutrition(food_name)` — 完整營養分析
-- `search_food_ingredient(keyword)` — 搜尋食品原料
-- `get_ingredients_by_category(category)` — 依分類查詢食品原料
-- `search_foods_by_nutrient(nutrient, limit)` — 依特定營養素排名食品
-- `analyze_meal_nutrition(foods)` — 膳食組合分析
+- `search_nutrition(food_name, nutrient, limit)` — hybrid BM25+embedding 搜尋食品營養成分（對外：`query_food_nutrition`）
+- `get_detailed_nutrition(food_name)` — 完整分類營養面板（對外：`query_food_nutrition(detailed=True)`）
+- `search_food_ingredient(keyword, category, limit)` — hybrid 搜尋食品原料，支援分類篩選（對外：`query_food_ingredient`）
+- `search_foods_by_nutrient(nutrient, limit)` — 依特定營養素由高至低排名食品
+- `analyze_meal_nutrition(foods)` — 逐項 hybrid 搜尋解析後加總的膳食組合分析
 
 **排程**: 每週一 03:00 UTC
 

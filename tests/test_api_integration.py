@@ -59,10 +59,8 @@ ALL_TOOLS = {
     # Health Supplement
     "search_health_supplement",
     # Food Nutrition
-    "search_food_nutrition",
-    "get_detailed_nutrition",
-    "search_food_ingredient",
-    "get_ingredients_by_category",
+    "query_food_nutrition",
+    "query_food_ingredient",
     "search_foods_by_nutrient",
     "analyze_meal_nutrition",
     # FHIR Condition
@@ -313,9 +311,9 @@ class TestToolsList:
             names == ALL_TOOLS
         ), f"Missing: {ALL_TOOLS - names}\nExtra: {names - ALL_TOOLS}"
 
-    def test_total_tool_count_is_30(self, mcp: MCPSession) -> None:
+    def test_total_tool_count_is_28(self, mcp: MCPSession) -> None:
         tools = mcp.list_tools()
-        assert len(tools) == 30
+        assert len(tools) == 28
 
     def test_every_tool_has_name_and_description(self, mcp: MCPSession) -> None:
         for tool in mcp.list_tools():
@@ -564,72 +562,59 @@ class TestAnalyzeHealthSupportForCondition:
 
 
 @skip_if_no_server
-class TestSearchFoodNutrition:
+class TestQueryFoodNutrition:
     def test_exact(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("search_food_nutrition", {"food_name": "黃金小蕃茄"})
-        # Service returns a list of food+nutrient records
+        result = mcp.call_tool("query_food_nutrition", {"food_name": "黃金小蕃茄"})
         assert _is_success(result)
         assert _has_results(result)
 
     def test_fuzzy(self, mcp: MCPSession) -> None:
-        # "雞蛋" is a common food with many entries in the DB
-        result = mcp.call_tool("search_food_nutrition", {"food_name": "雞蛋"})
+        result = mcp.call_tool("query_food_nutrition", {"food_name": "雞蛋"})
         assert _is_success(result)
+
+    def test_with_nutrient_filter(self, mcp: MCPSession) -> None:
+        result = mcp.call_tool(
+            "query_food_nutrition", {"food_name": "雞蛋", "nutrient": "粗蛋白"}
+        )
+        assert _is_success(result)
+
+    def test_detailed_mode(self, mcp: MCPSession) -> None:
+        result = mcp.call_tool(
+            "query_food_nutrition", {"food_name": "黃金小蕃茄", "detailed": True}
+        )
+        assert _is_success(result)
+
+    def test_detailed_mode_fuzzy(self, mcp: MCPSession) -> None:
+        result = mcp.call_tool(
+            "query_food_nutrition", {"food_name": "蕃茄", "detailed": True}
+        )
+        assert _is_graceful(result)
 
     def test_wrong(self, mcp: MCPSession) -> None:
         result = mcp.call_tool(
-            "search_food_nutrition", {"food_name": "ZZZXYZNOTFOOD99999"}
+            "query_food_nutrition", {"food_name": "ZZZXYZNOTFOOD99999"}
         )
         assert _is_graceful(result)
 
 
 @skip_if_no_server
-class TestGetDetailedNutrition:
-    def test_exact(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("get_detailed_nutrition", {"food_name": "黃金小蕃茄"})
+class TestQueryFoodIngredient:
+    def test_keyword_exact(self, mcp: MCPSession) -> None:
+        result = mcp.call_tool("query_food_ingredient", {"keyword": "薑黃"})
         assert _is_success(result)
 
-    def test_fuzzy(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("get_detailed_nutrition", {"food_name": "蕃茄"})
+    def test_keyword_fuzzy(self, mcp: MCPSession) -> None:
+        result = mcp.call_tool("query_food_ingredient", {"keyword": "薑"})
         assert _is_graceful(result)
 
-    def test_wrong(self, mcp: MCPSession) -> None:
+    def test_keyword_wrong(self, mcp: MCPSession) -> None:
+        result = mcp.call_tool("query_food_ingredient", {"keyword": "ZZZXYZNOTINGREDIENT"})
+        assert _is_graceful(result)
+
+    def test_keyword_with_category_filter(self, mcp: MCPSession) -> None:
         result = mcp.call_tool(
-            "get_detailed_nutrition", {"food_name": "ZZZXYZNOTEXIST"}
-        )
-        assert _is_graceful(result)
-
-
-@skip_if_no_server
-class TestSearchFoodIngredient:
-    def test_exact(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("search_food_ingredient", {"keyword": "薑黃"})
-        assert _is_success(result)
-
-    def test_fuzzy(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("search_food_ingredient", {"keyword": "薑"})
-        assert _is_graceful(result)
-
-    def test_wrong(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool(
-            "search_food_ingredient", {"keyword": "ZZZXYZNOTINGREDIENT"}
-        )
-        assert _is_graceful(result)
-
-
-@skip_if_no_server
-class TestGetIngredientsByCategory:
-    def test_exact(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("get_ingredients_by_category", {"category": "香料植物"})
-        assert _is_graceful(result)
-
-    def test_fuzzy(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool("get_ingredients_by_category", {"category": "香料"})
-        assert _is_graceful(result)
-
-    def test_wrong(self, mcp: MCPSession) -> None:
-        result = mcp.call_tool(
-            "get_ingredients_by_category", {"category": "ZZZXYZNOTCATEGORY"}
+            "query_food_ingredient",
+            {"keyword": "薑黃", "category": "可供食品使用之原料"},
         )
         assert _is_graceful(result)
 

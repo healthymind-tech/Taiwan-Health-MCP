@@ -715,7 +715,7 @@ and the obligations of each party.</p>
 <p>Taiwan Health MCP Server is a <strong>read-only query API</strong> that provides
 access to publicly available medical terminology and pharmaceutical datasets.
 It does not accept, store, or process personal health information submitted by
-users. All 30 tools perform outbound database lookups against pre-loaded public
+users. All 28 tools perform outbound database lookups against pre-loaded public
 datasets and return structured results to the MCP client.</p>
 
 <h2>3. Categories of Data Processed</h2>
@@ -1014,7 +1014,7 @@ _LANDING_HTML = """\
     <p class="tagline">
       An open-source Model Context Protocol server that gives AI assistants
       structured, read-only access to Taiwan's medical, pharmaceutical, and
-      clinical knowledge — 30 tools, production-grade, HIPAA-audited.
+      clinical knowledge — 28 tools, production-grade, HIPAA-audited.
     </p>
     <div class="endpoint-box">
       <span class="label">MCP endpoint</span>
@@ -1357,7 +1357,7 @@ _LANDING_HTML = """\
       </p>
     </div>
     <p style="margin-top:16px;font-size:0.93rem;color:#555;">
-      All 30 tools are read-only. The server does not accept writes, does not
+      All 28 tools are read-only. The server does not accept writes, does not
       require a user session, and does not store any identifying information
       about callers.
     </p>
@@ -1656,20 +1656,14 @@ _TOOL_GROUPS: dict[str, dict[str, object]] = {
         "category": "Food Nutrition",
         "tools": [
             (
-                "search_food_nutrition",
-                "search_food_nutrition",
+                "query_food_nutrition",
+                "query_food_nutrition",
                 {"food_name": "雞蛋", "nutrient": "粗蛋白"},
             ),
-            ("get_detailed_nutrition", "get_detailed_nutrition", {"food_name": "白米"}),
             (
-                "search_food_ingredient",
-                "search_food_ingredient",
-                {"keyword": "維生素C"},
-            ),
-            (
-                "get_ingredients_by_category",
-                "get_ingredients_by_category",
-                {"category": "Omega-3脂肪酸"},
+                "query_food_ingredient",
+                "query_food_ingredient",
+                {"keyword": "薑黃"},
             ),
             (
                 "search_foods_by_nutrient",
@@ -2171,10 +2165,31 @@ function bindSelectorExampleSwitch(toolName) {
     const fieldMap = toolMap[field];
     if (!el || !fieldMap) continue;
 
+    // Fields that appear in some but not all mode examples are conditional:
+    // show them when the current mode uses them, hide them otherwise.
+    const allExamples = Object.values(fieldMap);
+    const allFields = new Set(
+      allExamples.flatMap(ex => Object.keys(ex).filter(k => k !== field))
+    );
+    const universalFields = new Set(
+      [...allFields].filter(k => allExamples.every(ex => k in ex))
+    );
+    const conditionalFields = [...allFields].filter(k => !universalFields.has(k));
+
+    const updateVisibility = (example) => {
+      for (const k of conditionalFields) {
+        const fg = document.getElementById('p_' + k)?.closest('.fg');
+        if (fg) fg.style.display = (k in example) ? '' : 'none';
+      }
+    };
+
     const applyByField = () => {
       const v = el.value;
       const example = fieldMap[v];
-      if (example) applyExample(toolName, example, true);
+      if (example) {
+        applyExample(toolName, example, true);
+        updateVisibility(example);
+      }
     };
 
     el.onchange = applyByField;
@@ -2576,8 +2591,8 @@ async def health_check() -> str:
       - `drug` — Taiwan FDA drugs (search_drug, identify_unknown_pill)
       - `health_supplement` — Taiwan FDA health foods (search_health_supplement)
       - `food_nutrition` — Taiwan FDA food composition
-        (search_food_nutrition, get_detailed_nutrition, search_food_ingredient,
-         get_ingredients_by_category, search_foods_by_nutrient, analyze_meal_nutrition)
+        (query_food_nutrition, query_food_ingredient,
+         search_foods_by_nutrient, analyze_meal_nutrition)
       - `fhir_condition` — FHIR R4 Condition resources (query_fhir_condition,
         validate_fhir_condition)
       - `fhir_medication` — FHIR R4 Medication resources (query_fhir_medication,
@@ -3302,131 +3317,96 @@ async def search_health_supplement(
 # ============================================================
 
 
-@audited("search_food_nutrition")
-async def search_food_nutrition(
-    food_name: str, nutrient: str | None = None, limit: int = 3
+@audited("query_food_nutrition")
+async def query_food_nutrition(
+    food_name: str,
+    nutrient: str | None = None,
+    limit: int = 3,
+    detailed: bool = False,
 ) -> str:
     """
     Search Taiwan FDA food composition database for nutritional content per 100 g.
 
     Uses hybrid BM25 + semantic embedding re-ranking to find the closest matching
-    foods, not just exact-name hits. E.g. `"白米"` may surface `"蓬萊米"` or `"米飯
-    (熟)"`. Results are ranked by relevance score and always include up to `limit`
-    items even when no exact name exists in the database.
+    foods. E.g. `"白米"` may surface `"蓬萊米"` or `"米飯(熟)"`.
+
+    Two output modes controlled by `detailed`:
+
+    **`detailed=False`** (default) — quick lookup, flat nutrient list:
+    - Returns up to `limit` foods (cap 10).
+    - Supports optional `nutrient` filter (partial ILIKE match, e.g. `"蛋白"`
+      matches `"粗蛋白"`). Omit `nutrient` to return all nutrients.
+    - Output: `[{food, category, nutrients: [{item, value, unit}, ...]}, ...]`
+
+    **`detailed=True`** — complete nutrient panel, grouped by category:
+    - Always returns up to 3 best-matching foods; `limit` is ignored.
+    - `nutrient` filter is ignored; always returns the full panel.
+    - Nutrient panel covers energy, macronutrients, vitamins (A/B1/B2/B6/B12/C/
+      D/E/K/niacin/folate), minerals (Ca/P/Fe/Na/K/Mg/Zn/Mn/Cu/Se/I), fatty
+      acids (SFA/MUFA/PUFA/trans/cholesterol/EPA/DHA — EPA/DHA only for seafood).
+    - Output: `[{sample_name, common_name, food_category,
+      nutrients: {category_name: [{item, value, unit}]}}]`
 
     Data source: Taiwan FDA Food Composition Database (台灣食品成分資料庫).
-
-    Output shape:
-    - `food_name` + optional `nutrient` filter → `{"results": [{food_name,
-      nutrients: {nutrient_name: value, ...}}, ...]}`
-    - `nutrient` filter uses partial ILIKE matching against Taiwan FDA nutrient
-      column names (e.g. `"蛋白"` matches `"粗蛋白"`).
-    - Returns all nutrient columns when `nutrient` is omitted.
+    Values are per 100 g edible portion.
 
     Args:
         food_name: Food name in Chinese or English (e.g. `"白米"`, `"雞蛋"`,
                    `"豆腐"`, `"chicken breast"`, `"salmon"`, `"鮭魚"`).
-        nutrient: Optional nutrient column filter. Partial names accepted using
-                  Taiwan FDA conventions — e.g. `"粗蛋白"`, `"蛋白"`, `"鈣"`,
+        nutrient: Nutrient column filter (default mode only). Partial Taiwan FDA
+                  column names accepted — e.g. `"粗蛋白"`, `"蛋白"`, `"鈣"`,
                   `"維生素C"`, `"膳食纖維"`, `"熱量"`. Omit to get all nutrients.
         limit: Closest-matching food variants to return (default 3, max 10).
+               Applies to `detailed=False` only.
+        detailed: `False` (default) for quick flat lookup; `True` for full
+                  grouped nutrient panel.
     """
     if food_nutrition_service is None:
         return _svc_unavailable("Food Nutrition Service")
-    return await food_nutrition_service.search_nutrition(
-        food_name, nutrient, limit=limit
-    )
+    if detailed:
+        return await food_nutrition_service.get_detailed_nutrition(food_name)
+    return await food_nutrition_service.search_nutrition(food_name, nutrient, limit=limit)
 
 
-@audited("get_detailed_nutrition")
-async def get_detailed_nutrition(food_name: str) -> str:
+@audited("query_food_ingredient")
+async def query_food_ingredient(
+    keyword: str,
+    category: Literal[
+        "可供食品使用之原料",
+        "未確認安全性尚不得使用之原料",
+    ] | None = None,
+    limit: int = 3,
+) -> str:
     """
-    Return the complete nutrient panel for one food from Taiwan FDA composition data.
-
-    Designed for deep per-item inspection, not top-N ranking. Uses partial-name
-    ILIKE matching, so a broad name like `"鮭魚"` may return several salmon
-    variants — inspect each row to pick the closest match.
-
-    Nutrient panel includes:
-    - Energy, water, ash, macronutrients (protein, fat, carbohydrate, fiber)
-    - Vitamins: A, B1, B2, B6, B12, C, D, E, K, niacin, folate, pantothenic acid
-    - Minerals: Ca, P, Fe, Na, K, Mg, Zn, Mn, Cu, Se, I
-    - Fatty acids: SFA, MUFA, PUFA, trans fats, cholesterol, EPA, DHA
-      (EPA/DHA present only for fish/seafood rows)
-
-    Output shape:
-    `{"results": [{food_name, food_code, category, nutrients: {name: value, ...}}, ...]}`
-    Values are per 100 g edible portion.
-
-    Args:
-        food_name: Food name (full or partial) in Chinese, e.g. `"糙米"`,
-                   `"雞胸"`, `"全脂牛奶"`, `"鮭魚"`, `"豆腐"`. Partial names
-                   return multiple matching rows.
-    """
-    if food_nutrition_service is None:
-        return _svc_unavailable("Food Nutrition Service")
-    return await food_nutrition_service.get_detailed_nutrition(food_name)
-
-
-@audited("search_food_ingredient")
-async def search_food_ingredient(keyword: str, limit: int = 3) -> str:
-    """
-    Search Taiwan FDA food ingredient classification database by ingredient name.
+    Search the Taiwan FDA food ingredient classification database by keyword,
+    with an optional category filter.
 
     Uses hybrid BM25 + semantic embedding re-ranking to find the closest matching
-    ingredients — not just exact-name hits. Results are ranked by relevance and
-    always include up to `limit` items even when no exact entry exists.
+    ingredients even when the exact name is unknown.
 
     Data coverage: food additives, natural-origin ingredients, flavourings,
-    processing aids, and novel food categories as classified by Taiwan FDA
+    processing aids, and novel food categories
     (台灣食品添加物及食品原料資料庫).
 
-    Output shape:
-    `{"results": [{ingredient_name, category, permitted_uses, status, ...}, ...]}`
-    Use `get_ingredients_by_category` if you already know the category and want
-    all members of that category.
+    Categories (`major_category` values in the database):
+    - `"可供食品使用之原料"` — approved for food use (1,170 entries)
+    - `"未確認安全性尚不得使用之原料"` — safety unconfirmed, not yet permitted (532 entries)
+    Omit `category` to search across both.
+
+    Output: `[{name_zh, name_en, major_category, sub_category, note}, ...]`
 
     Args:
-        keyword: Ingredient name in Chinese or English.
-                 Examples: `"薑黃"`, `"turmeric"`, `"卡拉膠"`, `"carrageenan"`,
-                 `"山梨酸"`, `"sorbic acid"`, `"紅麴"`, `"亞硝酸鈉"`.
-        limit: Closest-matching results to return (default 3, max 10).
+        keyword: Ingredient name in Chinese or English. Examples: `"薑黃"`,
+                 `"turmeric"`, `"卡拉膠"`, `"carrageenan"`, `"山梨酸"`,
+                 `"sorbic acid"`, `"紅麴"`, `"亞硝酸鈉"`.
+        category: Optional filter by `major_category`. Omit to search all.
+        limit: Max results (default 3, max 10).
     """
     if food_nutrition_service is None:
         return _svc_unavailable("Food Nutrition Service")
-    return await food_nutrition_service.search_food_ingredient(keyword, limit=limit)
-
-
-@audited("get_ingredients_by_category")
-async def get_ingredients_by_category(category: str) -> str:
-    """
-    List all registered ingredients under one Taiwan FDA ingredient category.
-
-    Use this for category-level regulatory review — returns every ingredient
-    entry under the specified category without semantic ranking.
-
-    Category discovery: call `search_food_ingredient` with a broad term first
-    to find the exact category name, then call this tool with it.
-
-    Common valid category strings (exact match required):
-    - `"香料植物及其製品"` (spice plants and products)
-    - `"食品添加物"` (food additives)
-    - `"水產品"` (aquatic products)
-    - `"穀類及其製品"` (cereals and products)
-    - `"蔬菜及其製品"` (vegetables and products)
-    - `"豆類及其製品"` (legumes and products)
-
-    Output shape:
-    `{"category", "total", "ingredients": [{ingredient_name, permitted_uses,
-     status, ...}, ...]}`
-
-    Args:
-        category: Exact category string from the Taiwan FDA ingredient dataset.
-                  Case-sensitive. Call `search_food_ingredient` to discover valid names.
-    """
-    if food_nutrition_service is None:
-        return _svc_unavailable("Food Nutrition Service")
-    return await food_nutrition_service.get_ingredients_by_category(category)
+    return await food_nutrition_service.search_food_ingredient(
+        keyword, limit=limit, category=category
+    )
 
 
 @audited("search_foods_by_nutrient")
@@ -3472,8 +3452,8 @@ async def analyze_meal_nutrition(foods: list[str]) -> str:
 
     Resolves each food name against the Taiwan FDA food composition database, then
     sums nutrient values across all items. Returns both per-food breakdowns and
-    a combined meal total. Use `get_detailed_nutrition` first if you need to
-    confirm which row a partial name resolves to.
+    a combined meal total. Use `query_food_nutrition(detailed=True)` first if
+    you need to confirm which row a partial name resolves to.
 
     Portion assumption: every food in the list is treated as exactly 100 g.
     To adjust for real serving sizes, scale the returned values manually.

@@ -501,15 +501,18 @@ class FoodNutritionService:
         return json.dumps(ordered, ensure_ascii=False)
 
     @cached(ttl=86400, prefix="fn.ing")
-    async def search_food_ingredient(self, keyword: str, limit: int = 3) -> str:
+    async def search_food_ingredient(
+        self, keyword: str, limit: int = 3, category: str | None = None
+    ) -> str:
         limit = min(max(1, limit), 10)
         vec = await self._embedding_svc.embed(keyword) if self._embedding_svc else None
         vec_str = f"[{','.join(str(x) for x in vec)}]" if vec else None
+        cat_filter = "AND i.major_category = $4" if category else ""
 
         async with self.pool.acquire() as conn:
             if vec_str:
                 rows = await conn.fetch(
-                    """WITH fts AS (
+                    f"""WITH fts AS (
                            SELECT i.id,
                                   ROW_NUMBER() OVER (ORDER BY ts_rank_cd(
                                       to_tsvector('simple', COALESCE(i.name_zh,'') || ' ' || COALESCE(i.name_en,'')),
@@ -517,13 +520,16 @@ class FoodNutritionService:
                            FROM food_nutrition.ingredients i
                            WHERE to_tsvector('simple', COALESCE(i.name_zh,'') || ' ' || COALESCE(i.name_en,''))
                                  @@ plainto_tsquery('simple', $1)
+                           {cat_filter}
                            LIMIT 20
                        ),
                        vec AS (
-                           SELECT id,
-                                  ROW_NUMBER() OVER (ORDER BY embedding <=> $2::halfvec) AS rank
-                           FROM food_nutrition.ingredient_embeddings
-                           ORDER BY embedding <=> $2::halfvec LIMIT 20
+                           SELECT ie.id,
+                                  ROW_NUMBER() OVER (ORDER BY ie.embedding <=> $2::halfvec) AS rank
+                           FROM food_nutrition.ingredient_embeddings ie
+                           {"JOIN food_nutrition.ingredients i ON i.id = ie.id" if category else ""}
+                           {"WHERE i.major_category = $4" if category else ""}
+                           ORDER BY ie.embedding <=> $2::halfvec LIMIT 20
                        ),
                        rrf AS (
                            SELECT COALESCE(f.id, v.id) AS id,
@@ -533,19 +539,17 @@ class FoodNutritionService:
                        SELECT i.name_zh, i.name_en, i.major_category, i.sub_category, i.note
                        FROM rrf JOIN food_nutrition.ingredients i ON i.id = rrf.id
                        ORDER BY rrf.score DESC LIMIT $3""",
-                    keyword,
-                    vec_str,
-                    limit,
+                    *([keyword, vec_str, limit, category] if category else [keyword, vec_str, limit]),
                 )
             else:
                 rows = await conn.fetch(
-                    """SELECT name_zh, name_en, major_category, sub_category, note
+                    f"""SELECT name_zh, name_en, major_category, sub_category, note
                        FROM food_nutrition.ingredients
                        WHERE to_tsvector('simple', COALESCE(name_zh,'') || ' ' || COALESCE(name_en,''))
                              @@ plainto_tsquery('simple', $1)
+                       {"AND major_category = $3" if category else ""}
                        LIMIT $2""",
-                    keyword,
-                    limit,
+                    *([keyword, limit, category] if category else [keyword, limit]),
                 )
         if not rows:
             return json.dumps(
@@ -568,6 +572,33 @@ class FoodNutritionService:
                 {"error": f"找不到分類 '{category}' 的原料資料。"}, ensure_ascii=False
             )
         return json.dumps([dict(r) for r in rows], ensure_ascii=False)
+
+    @cached(ttl=86400, prefix="fn.catlist")
+    async def list_ingredient_categories(self) -> str:
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch(
+                """SELECT major_category,
+                          COUNT(*) AS ingredient_count
+                   FROM food_nutrition.ingredients
+                   WHERE major_category IS NOT NULL AND major_category <> ''
+                   GROUP BY major_category
+                   ORDER BY ingredient_count DESC"""
+            )
+        if not rows:
+            return json.dumps(
+                {"error": "食品原料資料庫尚未載入，請執行 data-loader --food-nutrition。"},
+                ensure_ascii=False,
+            )
+        return json.dumps(
+            {
+                "total_categories": len(rows),
+                "categories": [
+                    {"major_category": r["major_category"], "ingredient_count": r["ingredient_count"]}
+                    for r in rows
+                ],
+            },
+            ensure_ascii=False,
+        )
 
     async def _find_nutrient_by_embedding(self, query: str) -> str | None:
         """Find the closest nutrient_item by cosine similarity (in-memory, 104 items)."""
@@ -688,51 +719,106 @@ class FoodNutritionService:
         )
 
     async def analyze_meal_nutrition(self, foods: list[str]) -> str:
+        # Step 1: embed all food names in parallel before touching the DB connection
+        # (pgBouncer transaction mode — never hold a connection open during HTTP calls)
+        vec_strs: dict[str, str | None] = {}
+        if self._embedding_svc:
+            vecs = await asyncio.gather(
+                *[self._embedding_svc.embed(f) for f in foods]
+            )
+            for food, vec in zip(foods, vecs):
+                vec_strs[food] = (
+                    f"[{','.join(str(x) for x in vec)}]" if vec else None
+                )
+
         totals: dict[str, float] = {}
         components: dict[str, dict] = {}
 
-        async with self.pool.acquire() as conn:
-            for food in foods:
+        # Step 2: for each food, resolve sample_name via hybrid search then fetch nutrients
+        for food in foods:
+            vec_str = vec_strs.get(food)
+
+            async with self.pool.acquire() as conn:
+                if vec_str:
+                    matched = await conn.fetchrow(
+                        """WITH fts AS (
+                               SELECT DISTINCT m.sample_name,
+                                      ROW_NUMBER() OVER (ORDER BY ts_rank_cd(
+                                          to_tsvector('simple', COALESCE(m.sample_name,'') || ' ' ||
+                                                                COALESCE(m.common_name,'') || ' ' ||
+                                                                COALESCE(m.english_name,'')),
+                                          plainto_tsquery('simple', $1)) DESC) AS rank
+                               FROM food_nutrition.measurements m
+                               WHERE to_tsvector('simple',
+                                       COALESCE(m.sample_name,'') || ' ' ||
+                                       COALESCE(m.common_name,'') || ' ' ||
+                                       COALESCE(m.english_name,''))
+                                     @@ plainto_tsquery('simple', $1)
+                               LIMIT 20
+                           ),
+                           vec AS (
+                               SELECT sample_name,
+                                      ROW_NUMBER() OVER (ORDER BY embedding <=> $2::halfvec) AS rank
+                               FROM food_nutrition.food_embeddings
+                               ORDER BY embedding <=> $2::halfvec LIMIT 20
+                           ),
+                           rrf AS (
+                               SELECT COALESCE(f.sample_name, v.sample_name) AS sample_name,
+                                      COALESCE(1.0/(60+f.rank), 0.0) + COALESCE(1.0/(60+v.rank), 0.0) AS score
+                               FROM fts f FULL OUTER JOIN vec v ON f.sample_name = v.sample_name
+                           )
+                           SELECT sample_name FROM rrf ORDER BY score DESC LIMIT 1""",
+                        food,
+                        vec_str,
+                    )
+                else:
+                    matched = await conn.fetchrow(
+                        """SELECT DISTINCT sample_name FROM food_nutrition.measurements
+                           WHERE to_tsvector('simple',
+                                   COALESCE(sample_name,'') || ' ' ||
+                                   COALESCE(common_name,'') || ' ' ||
+                                   COALESCE(english_name,''))
+                                 @@ plainto_tsquery('simple', $1)
+                           LIMIT 1""",
+                        food,
+                    )
+
+                if not matched:
+                    components[food] = {"error": f"找不到 '{food}' 的資料"}
+                    continue
+
+                sample_name = matched["sample_name"]
                 rows = await conn.fetch(
                     """SELECT sample_name, common_name, food_category,
                               nutrient_category, nutrient_item, content_per_100g, content_unit
                        FROM food_nutrition.measurements
-                       WHERE sample_name ILIKE $1 OR common_name ILIKE $1
+                       WHERE sample_name = $1
                        ORDER BY nutrient_category, nutrient_item""",
-                    f"%{food}%",
+                    sample_name,
                 )
-                # Group nutrients by category (same pattern as get_detailed_nutrition)
-                grouped: dict[str, list] = {}
-                for r in rows:
-                    cat = r["nutrient_category"] or "其他"
-                    if cat not in grouped:
-                        grouped[cat] = []
-                    val_str = (
-                        r["content_per_100g"].strip() if r["content_per_100g"] else None
-                    )
-                    grouped[cat].append(
-                        {
-                            "item": r["nutrient_item"],
-                            "value": val_str,
-                            "unit": r["content_unit"],
-                        }
-                    )
-                    try:
-                        totals[r["nutrient_item"]] = totals.get(
-                            r["nutrient_item"], 0
-                        ) + float(val_str)
-                    except (ValueError, TypeError):
-                        pass
 
-                if rows:
-                    components[food] = {
-                        "matched": rows[0]["sample_name"],
-                        "common_name": rows[0]["common_name"],
-                        "food_category": rows[0]["food_category"],
-                        "nutrients": grouped,
-                    }
-                else:
-                    components[food] = {"error": f"找不到 '{food}' 的資料"}
+            grouped: dict[str, list] = {}
+            for r in rows:
+                cat = r["nutrient_category"] or "其他"
+                if cat not in grouped:
+                    grouped[cat] = []
+                val_str = (
+                    r["content_per_100g"].strip() if r["content_per_100g"] else None
+                )
+                grouped[cat].append(
+                    {"item": r["nutrient_item"], "value": val_str, "unit": r["content_unit"]}
+                )
+                try:
+                    totals[r["nutrient_item"]] = totals.get(r["nutrient_item"], 0) + float(val_str)
+                except (ValueError, TypeError):
+                    pass
+
+            components[food] = {
+                "matched": sample_name,
+                "common_name": rows[0]["common_name"] if rows else None,
+                "food_category": rows[0]["food_category"] if rows else None,
+                "nutrients": grouped,
+            }
 
         return json.dumps(
             {"meal_components": components, "combined_totals_per_100g_each": totals},

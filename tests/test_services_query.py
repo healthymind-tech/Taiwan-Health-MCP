@@ -355,15 +355,18 @@ class TestFoodNutritionService:
     async def test_analyze_meal_accumulates_nutrients(self):
         from food_nutrition_service import FoodNutritionService
 
-        # Both foods have protein — include all fields accessed by analyze_meal_nutrition
-        rows = [
+        nutrient_rows = [
             _row(
                 sample_name="白米", common_name="", food_category="穀類",
                 nutrient_category="蛋白質", nutrient_item="粗蛋白",
                 content_per_100g="7.1", content_unit="g",
             ),
         ]
-        conn = _make_conn(fetch_return=rows)
+        # fetchrow resolves sample_name via hybrid search; fetch returns nutrient rows
+        conn = _make_conn(
+            fetchrow_return={"sample_name": "白米"},
+            fetch_return=nutrient_rows,
+        )
         pool = _make_pool(conn)
         pool.fetchval = AsyncMock(return_value=100)
 
@@ -371,6 +374,18 @@ class TestFoodNutritionService:
         result = json.loads(await svc.analyze_meal_nutrition(["白米", "糙米"]))
         # Two foods × 7.1 = 14.2
         assert abs(result["combined_totals_per_100g_each"]["粗蛋白"] - 14.2) < 0.01
+
+    @pytest.mark.asyncio
+    async def test_analyze_meal_not_found(self):
+        from food_nutrition_service import FoodNutritionService
+
+        conn = _make_conn(fetchrow_return=None, fetch_return=[])
+        pool = _make_pool(conn)
+        pool.fetchval = AsyncMock(return_value=100)
+
+        svc = FoodNutritionService(pool)
+        result = json.loads(await svc.analyze_meal_nutrition(["月球岩石"]))
+        assert "error" in result["meal_components"]["月球岩石"]
 
 
 class TestHealthFoodService:

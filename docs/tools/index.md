@@ -1,6 +1,6 @@
 # MCP 工具概覽
 
-Taiwan Health MCP Server 提供 **30 個 MCP 工具**，其中包含 1 個 `health_check` 基礎工具，以及 10 個主要領域群組。status page 與動態註冊使用同一份工具 registry，新增或調整工具時請同步更新群組定義與對應說明。
+Taiwan Health MCP Server 提供 **28 個 MCP 工具**，其中包含 1 個 `health_check` 基礎工具，以及 10 個主要領域群組。status page 與動態註冊使用同一份工具 registry，新增或調整工具時請同步更新群組定義與對應說明。
 
 ---
 
@@ -49,16 +49,14 @@ Taiwan Health MCP Server 提供 **30 個 MCP 工具**，其中包含 1 個 `heal
 
 ---
 
-### 群組 4 — 食品營養（6 個工具）
+### 群組 4 — 食品營養（4 個工具）
 
 | 工具 | 說明 |
 |------|------|
-| `search_food_nutrition` | 搜尋食品營養成分 |
-| `get_detailed_nutrition` | 取得特定食品完整營養分析 |
-| `search_food_ingredient` | 搜尋食品原料/添加物 |
-| `get_ingredients_by_category` | 依分類查詢食品原料 |
-| `search_foods_by_nutrient` | 依特定營養素排名食品 |
-| `analyze_meal_nutrition` | 分析多種食品組合的整體營養 |
+| `query_food_nutrition` | 搜尋食品營養成分；`detailed=true` 時回傳完整分類面板 |
+| `query_food_ingredient` | 搜尋食品原料/添加物，可選分類篩選（hybrid BM25 + embedding） |
+| `search_foods_by_nutrient` | 依特定營養素由高至低排名食品 |
+| `analyze_meal_nutrition` | 分析多種食品組合的整體營養，逐項 hybrid 搜尋解析食物名稱 |
 
 [詳細說明](nutrition-tools.md)
 

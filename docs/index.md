@@ -113,7 +113,7 @@ graph TB
     end
 
     subgraph "MCP 協議層"
-        B[MCP Server<br/>30 個工具]
+        B[MCP Server<br/>28 個工具]
     end
 
     subgraph "服務層"

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Taiwan Health MCP Server — a Model Context Protocol server built on the official **`mcp` SDK** (`mcp.server.fastmcp.FastMCP`) providing **30 tools** for Taiwan medical and health data. Designed for production SaaS deployment with hundreds of requests/second throughput.
+Taiwan Health MCP Server — a Model Context Protocol server built on the official **`mcp` SDK** (`mcp.server.fastmcp.FastMCP`) providing **28 tools** for Taiwan medical and health data. Designed for production SaaS deployment with hundreds of requests/second throughput.
 
 **Datasets**: ICD-10-CM 2025, LOINC 2.80, SNOMED CT International, RxNorm, Taiwan FDA drugs/health foods/nutrition, TWCore IG v1.0.0, Taiwan clinical guidelines.
 
@@ -59,7 +59,7 @@ python -m pytest tests/test_api_integration.py -v
 | Prometheus | Metrics on `METRICS_PORT` (default 9090) |
 
 ### Entry point
-`src/server.py` — `DynamicFastMCP` server (subclass of FastMCP) with up to 30 tool definitions. Startup uses `asynccontextmanager lifespan`:
+`src/server.py` — `DynamicFastMCP` server (subclass of FastMCP) with up to 28 tool definitions. Startup uses `asynccontextmanager lifespan`:
 1. Start Prometheus metrics server
 2. Init asyncpg pool through pgBouncer (`statement_cache_size=0` required for transaction mode)
 3. Init Redis client
