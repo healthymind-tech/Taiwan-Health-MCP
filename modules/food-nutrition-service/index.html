@@ -1217,6 +1217,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        對外工具（4 個）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#_2" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1229,10 +1240,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#1" class="md-nav__link">
+  <a href="#1-hybrid-search" class="md-nav__link">
     <span class="md-ellipsis">
       
-        1. 營養成分查詢
+        1. 食物名稱解析（Hybrid Search）
       
     </span>
   </a>
@@ -1243,7 +1254,7 @@
   <a href="#2" class="md-nav__link">
     <span class="md-ellipsis">
       
-        2. 詳細營養分析
+        2. 營養成分查詢
       
     </span>
   </a>
@@ -3413,6 +3424,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        對外工具（4 個）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#_2" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3425,10 +3447,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#1" class="md-nav__link">
+  <a href="#1-hybrid-search" class="md-nav__link">
     <span class="md-ellipsis">
       
-        1. 營養成分查詢
+        1. 食物名稱解析（Hybrid Search）
       
     </span>
   </a>
@@ -3439,7 +3461,7 @@
   <a href="#2" class="md-nav__link">
     <span class="md-ellipsis">
       
-        2. 詳細營養分析
+        2. 營養成分查詢
       
     </span>
   </a>
@@ -3518,27 +3540,54 @@
 <h1 id="food-nutrition-service">食品營養服務模組 (Food Nutrition Service)<a class="headerlink" href="#food-nutrition-service" title="Permanent link">&para;</a></h1>
 <h2 id="_1">模組概述<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
 <p>食品營養服務模組提供全面性的台灣食品營養成分資料與食品原料法規資訊。此模組旨在支援精確的飲食規劃、營養分析以及食品合規性檢查，適用於營養師、食品開發者及關注飲食健康的民眾。</p>
+<h2 id="4">對外工具（4 個）<a class="headerlink" href="#4" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>工具</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>query_food_nutrition</code></td>
+<td>食品營養查詢；<code>detailed=true</code> 回傳完整分類面板</td>
+</tr>
+<tr>
+<td><code>query_food_ingredient</code></td>
+<td>食品原料合規搜尋；可選 <code>category</code> 篩選主分類</td>
+</tr>
+<tr>
+<td><code>search_foods_by_nutrient</code></td>
+<td>依營養素由高至低排名食品</td>
+</tr>
+<tr>
+<td><code>analyze_meal_nutrition</code></td>
+<td>多食物組合的餐點總營養分析</td>
+</tr>
+</tbody>
+</table>
 <h2 id="_2">主要功能<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
-<h3 id="1">1. 營養成分查詢<a class="headerlink" href="#1" title="Permanent link">&para;</a></h3>
-<p>查詢各類食品的詳細營養數據：
-- <strong>一般搜尋</strong>：輸入食物名稱（如「白米」、「雞胸肉」）。
-- <strong>特定營養素篩選</strong>：查詢富含特定營養素的食物（例如：「蛋白質含量高的食物」）。
-- <strong>涵蓋範圍</strong>：包含五穀根莖、肉類、蔬菜、水果、加工食品等各大類別。</p>
-<h3 id="2">2. 詳細營養分析<a class="headerlink" href="#2" title="Permanent link">&para;</a></h3>
-<p>提供單一食品的完整營養素列表，包括：
-- <strong>巨量營養素</strong>：熱量、蛋白質、脂肪（含飽和/不飽和脂肪酸）、碳水化合物、糖、膳食纖維。
-- <strong>微量營養素</strong>：
-    - <strong>維生素</strong>：維生素 A, B群, C, D, E 等。
-    - <strong>礦物質</strong>：鈣、鐵、鎂、鉀、鈉、鋅等。</p>
+<h3 id="1-hybrid-search">1. 食物名稱解析（Hybrid Search）<a class="headerlink" href="#1-hybrid-search" title="Permanent link">&para;</a></h3>
+<p>所有接受 <code>food_name</code> 的工具均使用 <strong>BM25 + semantic embedding Reciprocal Rank Fusion (RRF)</strong>：
+- <strong>BM25（FTS）</strong>：<code>plainto_tsquery('simple', ...)</code> 比對 <code>sample_name</code>、<code>common_name</code>、<code>english_name</code>
+- <strong>向量搜尋</strong>：<code>food_embeddings</code> 表存 <code>halfvec</code> embedding，<code>embedding &lt;=&gt; $2::halfvec</code> 計算餘弦距離
+- <strong>RRF 合併</strong>：兩路排名以 <code>1/(60+rank)</code> 加總，取最高分者</p>
+<p>此設計使「白米飯」能跨越字面差異找到資料庫中的「白飯」。</p>
+<h3 id="2">2. 營養成分查詢<a class="headerlink" href="#2" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>一般搜尋</strong>（<code>detailed=false</code>）：返回扁平 <code>[{food, category, nutrients}]</code> 列表，支援 <code>nutrient</code> 篩選。</li>
+<li><strong>詳細面板</strong>（<code>detailed=true</code>）：按類別分組回傳完整 100+ 項營養素，涵蓋能量、巨量營養素、維生素、礦物質、脂肪酸。</li>
+</ul>
 <h3 id="3">3. 食品原料法規查詢<a class="headerlink" href="#3" title="Permanent link">&para;</a></h3>
 <p>查詢食品原料的法規狀態，確認是否可用於食品加工：
-- <strong>可食用性確認</strong>：查詢特定動植物或化學物質是否為核可的食品原料。
-- <strong>使用限制</strong>：標示原料的使用範圍、限量標準及標示規定（例如：「限作為香料使用」）。
-- <strong>分類瀏覽</strong>：瀏覽特定類別的原料（如「香料植物」、「食用花瓣」）。</p>
+- <strong>主分類</strong>：<code>"可供食品使用之原料"</code>（已核准）、<code>"未確認安全性尚不得使用之原料"</code>（禁用）
+- <strong>Hybrid 搜尋</strong>：支援中英文近似比對，找不到精確名稱時仍能找到相近原料</p>
 <h3 id="4-meal-analysis">4. 飲食組合分析 (Meal Analysis)<a class="headerlink" href="#4-meal-analysis" title="Permanent link">&para;</a></h3>
 <p>針對多項食物組成的餐點進行總體營養評估：
-- <strong>總量計算</strong>：加總一餐中所有食物的熱量與營養素。
-- <strong>營養均衡度</strong>：協助評估該組合是否符合均衡飲食原則。</p>
+- <strong>Hybrid 逐項解析</strong>：每個食物名稱獨立走 BM25 + embedding RRF，找不到的標 <code>"found": false</code>
+- <strong>總量計算</strong>：加總一餐中所有食物的熱量與營養素（每項預設 100 g）
+- <strong>pgBouncer 相容</strong>：embedding HTTP 呼叫在取得 DB 連線前完成，符合 transaction mode 限制</p>
 <h2 id="_3">資料來源<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong>食品營養成分</strong>：台灣食品成分資料庫 (FDA)。</li>

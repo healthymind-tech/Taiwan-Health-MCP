@@ -3317,10 +3317,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#4-6" class="md-nav__link">
+  <a href="#4-4" class="md-nav__link">
     <span class="md-ellipsis">
       
-        群組 4 — 食品營養（6 個工具）
+        群組 4 — 食品營養（4 個工具）
       
     </span>
   </a>
@@ -3441,7 +3441,7 @@
 
 
 <h1 id="mcp">MCP 工具概覽<a class="headerlink" href="#mcp" title="Permanent link">&para;</a></h1>
-<p>Taiwan Health MCP Server 提供 <strong>30 個 MCP 工具</strong>，其中包含 1 個 <code>health_check</code> 基礎工具，以及 10 個主要領域群組。status page 與動態註冊使用同一份工具 registry，新增或調整工具時請同步更新群組定義與對應說明。</p>
+<p>Taiwan Health MCP Server 提供 <strong>28 個 MCP 工具</strong>，其中包含 1 個 <code>health_check</code> 基礎工具，以及 10 個主要領域群組。status page 與動態註冊使用同一份工具 registry，新增或調整工具時請同步更新群組定義與對應說明。</p>
 <hr />
 <h2 id="_1">基礎工具<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
 <table>
@@ -3531,7 +3531,7 @@
 </table>
 <p><a href="health-food-tools/">詳細說明</a></p>
 <hr />
-<h3 id="4-6">群組 4 — 食品營養（6 個工具）<a class="headerlink" href="#4-6" title="Permanent link">&para;</a></h3>
+<h3 id="4-4">群組 4 — 食品營養（4 個工具）<a class="headerlink" href="#4-4" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
 <tr>
@@ -3541,28 +3541,20 @@
 </thead>
 <tbody>
 <tr>
-<td><code>search_food_nutrition</code></td>
-<td>搜尋食品營養成分</td>
+<td><code>query_food_nutrition</code></td>
+<td>搜尋食品營養成分；<code>detailed=true</code> 時回傳完整分類面板</td>
 </tr>
 <tr>
-<td><code>get_detailed_nutrition</code></td>
-<td>取得特定食品完整營養分析</td>
-</tr>
-<tr>
-<td><code>search_food_ingredient</code></td>
-<td>搜尋食品原料/添加物</td>
-</tr>
-<tr>
-<td><code>get_ingredients_by_category</code></td>
-<td>依分類查詢食品原料</td>
+<td><code>query_food_ingredient</code></td>
+<td>搜尋食品原料/添加物，可選分類篩選（hybrid BM25 + embedding）</td>
 </tr>
 <tr>
 <td><code>search_foods_by_nutrient</code></td>
-<td>依特定營養素排名食品</td>
+<td>依特定營養素由高至低排名食品</td>
 </tr>
 <tr>
 <td><code>analyze_meal_nutrition</code></td>
-<td>分析多種食品組合的整體營養</td>
+<td>分析多種食品組合的整體營養，逐項 hybrid 搜尋解析食物名稱</td>
 </tr>
 </tbody>
 </table>

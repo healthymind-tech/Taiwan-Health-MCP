@@ -3483,7 +3483,7 @@
 1. <strong>exact</strong> — 完全正確的查詢，預期返回非空結果
 2. <strong>fuzzy</strong> — 模糊/部分查詢，預期成功處理
 3. <strong>wrong</strong> — 無效輸入，預期優雅處理（不崩潰）</p>
-<p>另有 <code>TestToolsList</code> 驗證 <code>tools/list</code> API 能列出所有 30 個工具，並與 registry 內的群組設定一致。</p>
+<p>另有 <code>TestToolsList</code> 驗證 <code>tools/list</code> API 能列出所有 28 個工具，並與 registry 內的群組設定一致。</p>
 <p>若 server 未啟動，整合測試會自動跳過（skip），不會失敗。</p>
 <h2 id="_4">撰寫新測試<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
 <p>請在 <code>tests/</code> 目錄下建立 <code>test_*.py</code> 檔案。針對每個新增的 Tool，務必加入對應的測試案例，包含「正常輸入」、「模糊輸入」與「異常輸入」三種情境。</p>

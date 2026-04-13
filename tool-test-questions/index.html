@@ -3426,10 +3426,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#search_food_nutrition" class="md-nav__link">
+  <a href="#query_food_nutrition" class="md-nav__link">
     <span class="md-ellipsis">
       
-        search_food_nutrition
+        query_food_nutrition
       
     </span>
   </a>
@@ -3437,32 +3437,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#get_detailed_nutrition" class="md-nav__link">
+  <a href="#query_food_ingredient" class="md-nav__link">
     <span class="md-ellipsis">
       
-        get_detailed_nutrition
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#search_food_ingredient" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        search_food_ingredient
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#get_ingredients_by_category" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        get_ingredients_by_category
+        query_food_ingredient
       
     </span>
   </a>
@@ -3979,10 +3957,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#search_food_nutrition" class="md-nav__link">
+  <a href="#query_food_nutrition" class="md-nav__link">
     <span class="md-ellipsis">
       
-        search_food_nutrition
+        query_food_nutrition
       
     </span>
   </a>
@@ -3990,32 +3968,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#get_detailed_nutrition" class="md-nav__link">
+  <a href="#query_food_ingredient" class="md-nav__link">
     <span class="md-ellipsis">
       
-        get_detailed_nutrition
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#search_food_ingredient" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        search_food_ingredient
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#get_ingredients_by_category" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        get_ingredients_by_category
+        query_food_ingredient
       
     </span>
   </a>
@@ -4423,29 +4379,19 @@
 </blockquote>
 <hr />
 <h2 id="group-4">Group 4：食品與營養<a class="headerlink" href="#group-4" title="Permanent link">&para;</a></h2>
-<h3 id="search_food_nutrition"><code>search_food_nutrition</code><a class="headerlink" href="#search_food_nutrition" title="Permanent link">&para;</a></h3>
-<p><strong>✅</strong> 查詢「白米」每 100g 的粗蛋白含量。<br />
+<h3 id="query_food_nutrition"><code>query_food_nutrition</code><a class="headerlink" href="#query_food_nutrition" title="Permanent link">&para;</a></h3>
+<p><strong>✅</strong> 查詢「白米飯」每 100g 的粗蛋白含量（hybrid 搜尋應找到「白飯」）。<br />
+<strong>✅</strong> 使用 <code>detailed=true</code> 取得「雞胸肉」的完整營養分類面板。<br />
 <strong>🪤</strong> 查詢「鑽石粉末」每 100g 的營養成分。  </p>
 <blockquote>
 <p>⚠️ 鑽石粉末不在台灣食品成分資料庫中。  </p>
 </blockquote>
-<h3 id="get_detailed_nutrition"><code>get_detailed_nutrition</code><a class="headerlink" href="#get_detailed_nutrition" title="Permanent link">&para;</a></h3>
-<p><strong>✅</strong> 取得「雞胸肉」的詳細完整營養分解資料。<br />
-<strong>🪤</strong> 取得「月球岩石」的詳細完整營養分解資料。  </p>
-<blockquote>
-<p>⚠️ 不存在此食品。  </p>
-</blockquote>
-<h3 id="search_food_ingredient"><code>search_food_ingredient</code><a class="headerlink" href="#search_food_ingredient" title="Permanent link">&para;</a></h3>
+<h3 id="query_food_ingredient"><code>query_food_ingredient</code><a class="headerlink" href="#query_food_ingredient" title="Permanent link">&para;</a></h3>
 <p><strong>✅</strong> 搜尋「薑黃（turmeric）」在台灣食品原料資料庫中的分類資訊。<br />
+<strong>✅</strong> 搜尋「卡拉膠」並限縮分類為「可供食品使用之原料」。<br />
 <strong>🪤</strong> 搜尋「不死草精華」在台灣食品原料資料庫中的資訊。  </p>
 <blockquote>
 <p>⚠️ 虛構原料名稱，不存在於資料庫。  </p>
-</blockquote>
-<h3 id="get_ingredients_by_category"><code>get_ingredients_by_category</code><a class="headerlink" href="#get_ingredients_by_category" title="Permanent link">&para;</a></h3>
-<p><strong>✅</strong> 列出分類為「香料植物」的台灣核准食品原料。<br />
-<strong>🪤</strong> 列出分類為「宇宙能量萃取物」的食品原料。  </p>
-<blockquote>
-<p>⚠️ 此分類不存在。  </p>
 </blockquote>
 <h3 id="search_foods_by_nutrient"><code>search_foods_by_nutrient</code><a class="headerlink" href="#search_foods_by_nutrient" title="Permanent link">&para;</a></h3>
 <p><strong>✅</strong> 找出每 100g「鈣」含量最高的前 10 種食物。<br />
@@ -4454,7 +4400,7 @@
 <p>⚠️ 不存在此營養素。  </p>
 </blockquote>
 <h3 id="analyze_meal_nutrition"><code>analyze_meal_nutrition</code><a class="headerlink" href="#analyze_meal_nutrition" title="Permanent link">&para;</a></h3>
-<p><strong>✅</strong> 分析一餐包含「白米、雞胸肉、青花菜」的組合營養成分。<br />
+<p><strong>✅</strong> 分析一餐包含「白米飯、雞胸肉、青花菜、豆腐」的組合營養成分。<br />
 <strong>🪤</strong> 分析一餐包含「神仙餐、靈氣粥、量子能量湯」的營養成分。  </p>
 <blockquote>
 <p>⚠️ 以上食品名稱均不存在於資料庫。  </p>
