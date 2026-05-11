@@ -1,53 +1,6 @@
 # MCP 工具概覽
 
-本頁面列出 Taiwan Health MCP 伺服器所提供的 **43 個**工具函數。這些工具設計用於讓大型語言模型 (LLM) 或其他客戶端程式呼叫，以獲取結構化的醫療數據或執行特定的分析任務。
-
-## 工具分類索引
-
-### 1. ICD-10 診斷與處置工具（4 個）
-用於查詢標準化疾病與手術編碼、併發症推論、診斷衝突檢查。
-- [詳細說明](icd-tools.md)
-
-### 2. 台灣 FDA 藥品工具（4 個）
-查詢 TFDA 核准藥品、外觀識別、綜合治療計畫分析。
-- [詳細說明](drug-tools.md)
-
-### 3. 健康食品工具（2 個）
-查詢 TFDA 核可健康食品與保健功效。
-- [詳細說明](health-food-tools.md)
-
-### 4. 營養與飲食工具（5 個）
-食品營養成分查詢、膳食分析、食品原料查詢。
-- [詳細說明](nutrition-tools.md)
-
-### 5. 檢驗工具 LOINC（5 個）
-LOINC 碼對照、參考值查詢、檢驗結果判讀、批次判讀。
-- [詳細說明](lab-tools.md)
-
-### 6. 臨床指引工具（6 個）
-台灣醫學會臨床指引查詢、診療建議、治療路徑規劃。
-- [詳細說明](guideline-tools.md)
-
-### 7. FHIR 互通性工具（7 個）
-產生符合 FHIR R4 標準的 Condition、Medication、MedicationKnowledge 資源。
-- [詳細說明](fhir-tools.md)
-
-### 8. TWCore IG 工具（6 個）
-即時查詢臺灣核心實作指引 30 個 CodeSystem（藥品、診斷、機構、行政）。
-- [詳細說明](twcore-tools.md)
-
-### 9. FDA 藥品不良反應工具（3 個）
-查詢 openFDA FAERS 不良反應報告、安全性摘要、召回紀錄。
-- [詳細說明](fda-adverse-events-tools.md)
-
-### 10. 綜合分析工具（1 個）
-跨資料來源的治療計畫分析（ICD-10 × 藥品 × 健康食品）。
-
----
-
-## 如何呼叫工具
-
-本伺服器遵循 Model Context Protocol (MCP) 標準。客戶端透過標準 JSON-RPC 格式發送工具呼叫請求，確保參數名稱與型別符合各工具文件的定義。
+Taiwan Health MCP 提供 **28 個**工具函數，由動態 registry 管理。工具會根據已載入的資料集自動啟用或停用（`health_check` 永遠可用）。
 
 快速接入：在 Claude Desktop `claude_desktop_config.json` 加入：
 
@@ -56,8 +9,108 @@ LOINC 碼對照、參考值查詢、檢驗結果判讀、批次判讀。
   "mcpServers": {
     "taiwan-health": {
       "url": "https://tw-health-mcp.healthymind-tech.com/mcp",
-      "type": "streamable-http"
+      "transport": "streamable-http"
     }
   }
 }
 ```
+
+---
+
+## 工具分類索引
+
+### 系統（1 個）
+
+| 工具 | 說明 |
+|------|------|
+| `health_check` | 回傳 MCP server 與每個資料集的就緒狀態（永遠可用） |
+
+---
+
+### ICD-10（5 個） — [詳細說明](icd-tools.md)
+
+| 工具 | 說明 |
+|------|------|
+| `search_medical_codes` | ICD-10-CM 2025 診斷碼 + ICD-10-PCS 2025 處置碼搜尋 |
+| `infer_complications` | 依 ICD-10 階層推論潛在併發症或子代碼 |
+| `get_nearby_codes` | 取得指定碼的前後相鄰碼 |
+| `check_medical_conflict` | 並排取得一組診斷碼 + 處置碼的完整詮釋資料 |
+| `browse_icd_category` | 依章節或三碼分類瀏覽 ICD-10-CM 結構 |
+
+---
+
+### 藥品（2 個） — [詳細說明](drug-tools.md)
+
+| 工具 | 說明 |
+|------|------|
+| `search_drug` | 統一入口：TFDA 藥品名稱 / ATC / 成分 / 許可證 / RxNorm 解析 / 交互作用 |
+| `identify_unknown_pill` | 依外觀（顏色、形狀、刻痕）辨識台灣 FDA 藥品 |
+
+---
+
+### 健康補充品（1 個） — [詳細說明](health-food-tools.md)
+
+| 工具 | 說明 |
+|------|------|
+| `search_health_supplement` | 查詢 TFDA 核可健康食品（關鍵字 / 許可證 / 疾病情境推薦） |
+
+---
+
+### 食品與營養（4 個） — [詳細說明](nutrition-tools.md)
+
+| 工具 | 說明 |
+|------|------|
+| `query_food_nutrition` | 查詢每 100g 的食品營養成分 |
+| `query_food_ingredient` | 查詢食品原料合規分類 |
+| `search_foods_by_nutrient` | 依特定營養素含量排序列出食品 |
+| `analyze_meal_nutrition` | 餐點多品項營養彙總分析 |
+
+---
+
+### FHIR（4 個） — [詳細說明](fhir-tools.md)
+
+| 工具 | 說明 |
+|------|------|
+| `query_fhir_condition` | ICD-10 碼或關鍵字 → FHIR R4 Condition 資源 |
+| `validate_fhir_condition` | 驗證 FHIR R4 Condition 必要欄位與 value set |
+| `query_fhir_medication` | 台灣 FDA 藥品 → FHIR R4 Medication / MedicationKnowledge |
+| `validate_fhir_medication` | 驗證 FHIR R4 Medication 結構與欄位語意 |
+
+---
+
+### LOINC / Lab（4 個） — [詳細說明](lab-tools.md)
+
+| 工具 | 說明 |
+|------|------|
+| `search_loinc` | 依模式搜尋 87,000+ LOINC 碼與分類 |
+| `query_loinc` | 查詢已知 LOINC 碼的完整詮釋資料與參考值 |
+| `interpret_lab_result` | 單項檢驗結果對照 LOINC 參考值範圍判讀 |
+| `batch_interpret_lab_results` | 批次判讀多項檢驗結果 |
+
+---
+
+### 臨床指引（2 個） — [詳細說明](guideline-tools.md)
+
+| 工具 | 說明 |
+|------|------|
+| `search_clinical_guideline` | 依疾病名稱或 ICD-10 碼搜尋台灣臨床指引 |
+| `query_guideline` | 取得臨床指引特定段落內容 |
+
+---
+
+### TWCore IG（1 個） — [詳細說明](twcore-tools.md)
+
+| 工具 | 說明 |
+|------|------|
+| `query_twcore_code` | 台灣核心 30+ CodeSystem 統一查詢入口（藥品、診斷、機構、行政） |
+
+---
+
+### SNOMED CT（4 個） — [詳細說明](snomed-tools.md)
+
+| 工具 | 說明 |
+|------|------|
+| `search_snomed_concept` | 搜尋 SNOMED CT 370,000+ 臨床概念（英文） |
+| `query_snomed_concept` | 取得概念詳情與可選 IS-A 階層展開 |
+| `get_snomed_relationships` | 取得概念的臨床屬性關聯（非 IS-A） |
+| `query_snomed_mapping` | ICD-10-CM ↔ SNOMED CT 雙向對應 |
