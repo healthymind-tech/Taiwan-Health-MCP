@@ -1,12 +1,15 @@
-# Taiwan Health MCP Server
+# Taiwan Health MCP
 
-> 🇹🇼 台灣醫療健康資料整合 MCP 伺服器
-> 整合 ICD-10-CM、SNOMED CT、RxNorm、LOINC、FDA 藥品/保健食品/營養、TWCore IG、臨床指引，支援 FHIR R4 標準
+> Taiwan's medical-grade MCP: ICD-10, TFDA drugs, SNOMED CT, RxNorm, LOINC, clinical guidelines — free and open source.
 
 [![FHIR](https://img.shields.io/badge/FHIR-R4-blue)](http://hl7.org/fhir/R4/)
 [![Python](https://img.shields.io/badge/Python-3.12-green)](https://www.python.org/)
 [![MCP](https://img.shields.io/badge/MCP-1.0-orange)](https://modelcontextprotocol.io)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
+[![Website](https://img.shields.io/badge/Website-tw--health--mcp-blue)](https://tw-health-mcp.healthymind-tech.com/)
+[![Docs](https://img.shields.io/badge/Docs-GitHub%20Pages-informational)](https://healthymind-tech.github.io/Taiwan-Health-MCP)
+
+🌐 **[tw-health-mcp.healthymind-tech.com](https://tw-health-mcp.healthymind-tech.com/)**
 
 ---
 
@@ -115,7 +118,24 @@ docker compose exec -T postgres psql \
 
 ### 5. 連接 Claude Desktop
 
+**Option 1：使用我們的 hosted endpoint（不需自架）**
+
 在 `claude_desktop_config.json` 加入：
+
+```json
+{
+  "mcpServers": {
+    "taiwan-health": {
+      "url": "https://tw-health-mcp.healthymind-tech.com/mcp",
+      "transport": "streamable-http"
+    }
+  }
+}
+```
+
+重啟 Claude Desktop 即可使用。
+
+**Option 2：連接本地自架服務**
 
 ```json
 {
@@ -146,6 +166,34 @@ docker compose exec -T postgres psql \
 `audit` | `icd` | `drug` | `health_food` | `food_nutrition` | `loinc` | `guideline` | `twcore` | `snomed`
 
 > `drug` schema 內包含 FDA 藥品資料與 RxNorm 子表（`rx_concepts` / `rx_relationships` / `rx_atc_map`）。
+
+---
+
+## 🎬 使用場景
+
+### 1. Drug interaction risk analysis（醫師場景）
+
+| | |
+|---|---|
+| **Scenario** | 分析多種藥物交互作用風險，查詢 TFDA 核准用法用量 |
+| **Tools used** | `search_drug`, `search_drug` (interaction mode) |
+| **Demo** | *(影片即將上線)* |
+
+### 2. ICD-10 code lookup（開發者場景）
+
+| | |
+|---|---|
+| **Scenario** | 搜尋 ICD-10 診斷碼，產生 FHIR R4 Condition 資源 |
+| **Tools used** | `search_icd`, `create_fhir_condition_from_icd` |
+| **Demo** | *(影片即將上線)* |
+
+### 3. Lab result interpretation（研究者場景）
+
+| | |
+|---|---|
+| **Scenario** | 查詢 LOINC 碼並自動判讀 HbA1c、eGFR、ALT 檢驗結果 |
+| **Tools used** | `search_loinc`, `interpret_lab_result` |
+| **Demo** | *(影片即將上線)* |
 
 ---
 

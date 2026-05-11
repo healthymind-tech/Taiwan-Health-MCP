@@ -1,171 +1,63 @@
 # MCP 工具概覽
 
-Taiwan Health MCP Server 提供 **28 個 MCP 工具**，其中包含 1 個 `health_check` 基礎工具，以及 10 個主要領域群組。status page 與動態註冊使用同一份工具 registry，新增或調整工具時請同步更新群組定義與對應說明。
-
----
-
-## 基礎工具
-
-| 工具 | 說明 |
-|------|------|
-| `health_check` | 檢查資料庫、快取與各服務初始化狀態 |
-
----
+本頁面列出 Taiwan Health MCP 伺服器所提供的 **43 個**工具函數。這些工具設計用於讓大型語言模型 (LLM) 或其他客戶端程式呼叫，以獲取結構化的醫療數據或執行特定的分析任務。
 
 ## 工具分類索引
 
-### 群組 1 — ICD-10 診斷與手術碼（5 個工具）
+### 1. ICD-10 診斷與處置工具（4 個）
+用於查詢標準化疾病與手術編碼、併發症推論、診斷衝突檢查。
+- [詳細說明](icd-tools.md)
 
-| 工具 | 說明 |
-|------|------|
-| `search_medical_codes` | 搜尋 ICD-10-CM 診斷碼或 ICD-10-PCS 手術碼 |
-| `infer_complications` | 依據 ICD 階層推論潛在併發症 |
-| `get_nearby_codes` | 取得目標碼的前後相鄰碼 |
-| `check_medical_conflict` | 診斷碼與手術碼衝突分析 |
-| `browse_icd_category` | 依 ICD 類別瀏覽診斷碼 |
+### 2. 台灣 FDA 藥品工具（4 個）
+查詢 TFDA 核准藥品、外觀識別、綜合治療計畫分析。
+- [詳細說明](drug-tools.md)
 
-[詳細說明](icd-tools.md)
+### 3. 健康食品工具（2 個）
+查詢 TFDA 核可健康食品與保健功效。
+- [詳細說明](health-food-tools.md)
 
----
+### 4. 營養與飲食工具（5 個）
+食品營養成分查詢、膳食分析、食品原料查詢。
+- [詳細說明](nutrition-tools.md)
 
-### 群組 2 — 台灣 FDA 藥品（2 個工具）
+### 5. 檢驗工具 LOINC（5 個）
+LOINC 碼對照、參考值查詢、檢驗結果判讀、批次判讀。
+- [詳細說明](lab-tools.md)
 
-| 工具 | 說明 |
-|------|------|
-| `search_drug` | 單一藥品搜尋入口，`mode` 可切換 `drug_name` / `atc_code` / `ingredient` / `license_id` / `rxnorm_resolve` / `rxnorm_ingredients` / `interaction`；`drug_name` 用 `ts_rank_cd` 全文檢索（name 權重高於 indication），`ingredient` 用 BM25+embedding hybrid，`atc_code` 接受 1–7 字元 code 前綴，`rxnorm_*` 模式透過 RXCUI→ATC 橋接至台灣 FDA 藥品；回傳統一 detail-shaped 結果 |
-| `identify_unknown_pill` | 依外觀特徵（形狀、顏色、刻痕）識別藥錠 |
+### 6. 臨床指引工具（6 個）
+台灣醫學會臨床指引查詢、診療建議、治療路徑規劃。
+- [詳細說明](guideline-tools.md)
 
-[詳細說明](drug-tools.md)
+### 7. FHIR 互通性工具（7 個）
+產生符合 FHIR R4 標準的 Condition、Medication、MedicationKnowledge 資源。
+- [詳細說明](fhir-tools.md)
 
----
+### 8. TWCore IG 工具（6 個）
+即時查詢臺灣核心實作指引 30 個 CodeSystem（藥品、診斷、機構、行政）。
+- [詳細說明](twcore-tools.md)
 
-### 群組 3 — 台灣 FDA 健康補充品（1 個工具）
+### 9. FDA 藥品不良反應工具（3 個）
+查詢 openFDA FAERS 不良反應報告、安全性摘要、召回紀錄。
+- [詳細說明](fda-adverse-events-tools.md)
 
-| 工具 | 說明 |
-|------|------|
-| `search_health_supplement` | 單一健康補充品入口，`mode` 可切換 `keyword` / `permit_no` / `condition`；只有 `condition` 會回傳頂層 `icd_code` / `recommended_benefits`，results item 不含這兩欄 |
-
-[詳細說明](health-food-tools.md)
-
----
-
-### 群組 4 — 食品營養（4 個工具）
-
-| 工具 | 說明 |
-|------|------|
-| `query_food_nutrition` | 搜尋食品營養成分；`detailed=true` 時回傳完整分類面板 |
-| `query_food_ingredient` | 搜尋食品原料/添加物，可選分類篩選（hybrid BM25 + embedding） |
-| `search_foods_by_nutrient` | 依特定營養素由高至低排名食品 |
-| `analyze_meal_nutrition` | 分析多種食品組合的整體營養，逐項 hybrid 搜尋解析食物名稱 |
-
-[詳細說明](nutrition-tools.md)
-
----
-
-### 群組 5 — FHIR Condition（2 個工具）
-
-| 工具 | 說明 |
-|------|------|
-| `query_fhir_condition` | ICD-10/關鍵字 → FHIR R4 Condition 資源 |
-| `validate_fhir_condition` | 驗證 FHIR R4 Condition 資源 |
-
-[詳細說明](fhir-tools.md)
-
----
-
-### 群組 6 — FHIR Medication（2 個工具）
-
-| 工具 | 說明 |
-|------|------|
-| `query_fhir_medication` | 藥品/許可證字號 → FHIR Medication / MedicationKnowledge |
-| `validate_fhir_medication` | 驗證 FHIR Medication/MedicationKnowledge |
-
-[詳細說明](fhir-tools.md)
-
----
-
-### 群組 7 — 檢驗 / LOINC（4 個工具）
-
-| 工具 | 說明 |
-|------|------|
-| `search_loinc` | 統一 LOINC 搜尋入口，`mode` 可切換 `code` / `category` / `specimen` / `component` |
-| `query_loinc` | 統一 LOINC 查詢入口，`mode` 可切換 `detail` / `reference_range` |
-| `interpret_lab_result` | 判讀單項檢驗結果 |
-| `batch_interpret_lab_results` | 批次判讀多項檢驗 |
-
-[詳細說明](lab-tools.md)
-
----
-
-### 群組 8 — 臨床診療指引（2 個工具）
-
-| 工具 | 說明 |
-|------|------|
-| `search_clinical_guideline` | 搜尋台灣醫學會臨床指引 |
-| `query_guideline` | 統一指引入口，`section` 可切換 `complete` / `medication` / `test` / `goals` / `pathway`，適合在同一工具下切換不同層次的臨床內容 |
-
-[詳細說明](guideline-tools.md)
-
----
-
-### 群組 9 — TWCore IG（1 個工具）
-
-| 工具 | 說明 |
-|------|------|
-| `query_twcore_code` | 依 code 或 keyword 查詢 TWCore CodeSystem |
-
----
-
-### 群組 10 — SNOMED CT（4 個工具）
-
-> 需先執行 `docker compose --profile loader run --rm data-loader --snomed`
-
-| 工具 | 說明 |
-|------|------|
-| `search_snomed_concept` | 以英文詞彙搜尋 SNOMED CT 概念，適合先找候選概念與相似詞 |
-| `query_snomed_concept` | 取得概念、父概念與子概念的一次性查詢，適合閱讀分類樹脈絡 |
-| `get_snomed_relationships` | 取得非 IS-A 的屬性與關聯，適合看 finding site / causative agent / active ingredient |
-| `query_snomed_mapping` | 單一 SNOMED mapping 入口，`mode` 可切換 `icd` / `snomed`；適合雙向轉碼 |
+### 10. 綜合分析工具（1 個）
+跨資料來源的治療計畫分析（ICD-10 × 藥品 × 健康食品）。
 
 ---
 
 ## 如何呼叫工具
 
-本伺服器遵循 Model Context Protocol (MCP) 標準，使用 JSON-RPC 2.0 格式。
+本伺服器遵循 Model Context Protocol (MCP) 標準。客戶端透過標準 JSON-RPC 格式發送工具呼叫請求，確保參數名稱與型別符合各工具文件的定義。
 
-```bash
-# 建立 session
-curl http://localhost:8000/mcp -X POST \
-  -H "Content-Type: application/json" \
-  -H "Accept: application/json, text/event-stream" \
-  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{
-    "protocolVersion":"2024-11-05",
-    "capabilities":{},
-    "clientInfo":{"name":"my-client","version":"1"}
-  }}'
-
-# 呼叫工具（使用上面取得的 mcp-session-id）
-curl http://localhost:8000/mcp -X POST \
-  -H "Content-Type: application/json" \
-  -H "Accept: application/json, text/event-stream" \
-  -H "mcp-session-id: <SESSION_ID>" \
-  -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{
-    "name":"search_medical_codes",
-    "arguments":{"keyword":"糖尿病","type":"diagnosis"}
-  }}'
-```
-
----
-
-## 服務降級
-
-SNOMED CT 與 Drug（含 RxNorm modes）工具在資料未載入時會回傳結構化錯誤，而非拋出例外：
+快速接入：在 Claude Desktop `claude_desktop_config.json` 加入：
 
 ```json
 {
-  "error": "SNOMED CT service is not available",
-  "hint": "Run the data-loader to populate this dataset, then restart the server."
+  "mcpServers": {
+    "taiwan-health": {
+      "url": "https://tw-health-mcp.healthymind-tech.com/mcp",
+      "type": "streamable-http"
+    }
+  }
 }
 ```
-
-其他所有工具（ICD、藥品、LOINC 等）在初始化失敗時同樣降級為錯誤訊息。
