@@ -54,29 +54,98 @@ docker compose --profile loader run --rm data-loader --all
 
 ## 🎬 使用場景
 
-### 1. Drug interaction risk analysis（醫師場景）
+### ⭐ 殺手級場景：Drug interaction risk analysis（醫師 / 藥師）
 
-| | |
-|---|---|
-| **Scenario** | 分析多種藥物交互作用風險，查詢 TFDA 核准用法用量 |
-| **Tools used** | `search_drug` (interaction mode) |
-| **Demo** | *(影片即將上線)* |
+> 藥師每天需要查交互作用，現有工具（PDF 仿單）慢且散。Taiwan Health MCP 讓 Claude 直接查 TFDA 資料，30 秒內給出結果。
+
+```
+你：一個病人同時服用 warfarin、amiodarone 和 metformin，
+    請分析藥物交互作用風險並列出台灣 TFDA 核准的使用注意事項。
+
+Claude：[search_drug → interaction mode]
+
+        ⚠️  Warfarin × Amiodarone：高風險
+            機制：Amiodarone 抑制 CYP2C9，導致 warfarin 血中濃度上升
+            臨床影響：INR 可能顯著升高，出血風險增加
+            TFDA 建議：併用期間密切監測 INR，必要時減少 warfarin 劑量 30–50%
+
+        ✅  Warfarin × Metformin：低風險
+            無顯著藥動學交互作用，但需監測血糖控制狀況
+
+        📋  Warfarin TFDA 核准用法用量：
+            起始劑量 2–5 mg/day，依 INR 調整
+            目標 INR：2.0–3.0（一般適應症）
+```
+
+*(Demo 影片即將上線)*
+
+---
 
 ### 2. ICD-10 code lookup（開發者場景）
 
-| | |
-|---|---|
-| **Scenario** | 搜尋 ICD-10 診斷碼，產生 FHIR R4 Condition 資源 |
-| **Tools used** | `search_medical_codes`, `query_fhir_condition` |
-| **Demo** | *(影片即將上線)* |
+```
+你：Search ICD-10 codes for "type 2 diabetes with kidney complications"
 
-### 3. Lab result interpretation（研究者場景）
+Claude：[search_medical_codes]
 
-| | |
-|---|---|
-| **Scenario** | 查詢 LOINC 碼並自動判讀 HbA1c、eGFR、ALT 檢驗結果 |
-| **Tools used** | `search_loinc`, `interpret_lab_result` |
-| **Demo** | *(影片即將上線)* |
+        E11.65  Type 2 diabetes mellitus with hyperglycemia
+        E11.9   Type 2 diabetes mellitus without complications
+        E11.21  Type 2 diabetes mellitus with diabetic nephropathy
+        E11.22  Type 2 diabetes mellitus with diabetic chronic kidney disease
+
+你：E11.65 幫我產生 FHIR R4 Condition resource
+
+Claude：[query_fhir_condition]
+
+        {
+          "resourceType": "Condition",
+          "clinicalStatus": { "coding": [{ "code": "active" }] },
+          "code": {
+            "coding": [{
+              "system": "http://hl7.org/fhir/sid/icd-10-cm",
+              "code": "E11.65",
+              "display": "Type 2 diabetes mellitus with hyperglycemia"
+            }]
+          }
+        }
+```
+
+*(Demo 影片即將上線)*
+
+---
+
+### 3. FHIR R4 resource generation（研究者 / 醫療 IT）
+
+```
+你：查詢 warfarin 在台灣 FDA 的核准資料，幫我產生 FHIR R4 MedicationKnowledge resource
+
+Claude：[search_drug → name mode, query_fhir_medication]
+
+        {
+          "resourceType": "MedicationKnowledge",
+          "code": {
+            "coding": [{
+              "system": "https://twcore.mohw.gov.tw/ig/twcore/CodeSystem/medication-fda-tw",
+              "code": "AC37022119",
+              "display": "可邁丁錠1毫克"
+            }]
+          },
+          "ingredient": [{
+            "itemCodeableConcept": {
+              "coding": [{ "code": "11289", "display": "Warfarin Sodium" }]
+            },
+            "strength": { "numerator": { "value": 1, "unit": "mg" } }
+          }],
+          "regulatory": [{
+            "regulatoryAuthority": {
+              "display": "Taiwan FDA"
+            },
+            "substitution": [{ "allowed": true }]
+          }]
+        }
+```
+
+*(Demo 影片即將上線)*
 
 ---
 
