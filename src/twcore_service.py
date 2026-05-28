@@ -19,49 +19,6 @@ REQUEST_TIMEOUT = 15
 
 # CodeSystem registry (metadata only — actual concepts stored in PostgreSQL)
 CODESYSTEM_REGISTRY: List[Dict] = [
-    # === 藥品相關 (medication) ===
-    {
-        "id": "medication-frequency-nhi-tw",
-        "name": "臺灣健保署藥品使用頻率",
-        "category": "medication",
-        "keywords": ["頻率", "QD", "BID", "TID", "QID", "PRN"],
-    },
-    {
-        "id": "medication-path-tw",
-        "name": "臺灣健保署給藥途徑",
-        "category": "medication",
-        "keywords": ["途徑", "口服", "注射", "外用", "吸入"],
-    },
-    {
-        "id": "medication-nhi-tw",
-        "name": "臺灣健保署用藥品項",
-        "category": "medication",
-        "keywords": ["健保藥品", "用藥", "藥品代碼"],
-    },
-    {
-        "id": "nhi-medication-ch-herb-tw",
-        "name": "臺灣健保署中藥用藥品項",
-        "category": "medication",
-        "keywords": ["中藥", "中醫", "herb"],
-    },
-    {
-        "id": "medication-fda-tw",
-        "name": "臺灣食藥署藥品許可證",
-        "category": "medication",
-        "keywords": ["許可證", "FDA", "藥證"],
-    },
-    {
-        "id": "medication-device-fda-tw",
-        "name": "臺灣食藥署醫療器材許可證",
-        "category": "medication",
-        "keywords": ["醫療器材", "device"],
-    },
-    {
-        "id": "medcation-atc-tw",
-        "name": "臺灣食藥署藥品藥理治療分類ATC碼",
-        "category": "medication",
-        "keywords": ["ATC", "藥理分類"],
-    },
     # === 診斷分類 (diagnosis) ===
     {
         "id": "icd-10-cm-2023-tw",
@@ -128,7 +85,6 @@ CODESYSTEM_REGISTRY: List[Dict] = [
 ]
 
 CATEGORY_NAMES = {
-    "medication": "藥品相關",
     "diagnosis": "診斷分類",
     "organization": "醫療機構/人員",
     "administrative": "行政/人口統計",

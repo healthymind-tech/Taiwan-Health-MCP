@@ -25,8 +25,6 @@ CACHE_TTL = timedelta(minutes=5)
 # A service is ready only when ALL requirements pass.
 SERVICE_DATASETS: dict[str, list[tuple[str, int]]] = {
     "icd": [("icd.diagnoses", 10_000)],
-    # Drug tools are enabled only when BOTH FDA products and RxNorm backbone exist.
-    "drug": [("drug.licenses", 100), ("drug.rx_concepts", 10_000)],
     "health_food": [("health_food.items", 10)],
     "food_nutrition": [("food_nutrition.measurements", 10)],
     "lab": [("loinc.concepts", 1_000)],
@@ -38,7 +36,6 @@ SERVICE_DATASETS: dict[str, list[tuple[str, int]]] = {
 # FHIR services have no own tables — they derive availability from their dependencies.
 _FHIR_DEPS: dict[str, str] = {
     "fhir_condition": "icd",
-    "fhir_medication": "drug",
 }
 
 

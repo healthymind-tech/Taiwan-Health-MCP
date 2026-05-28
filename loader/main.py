@@ -3,7 +3,7 @@ Data Loader — run once to populate PostgreSQL from official source files.
 Usage:
     docker compose --profile loader run --rm data-loader
     # or locally:
-    DATABASE_URL=postgresql://... python loader/main.py [--all] [--icd] [--loinc] [--twcore] [--guideline] [--snomed] [--rxnorm]
+    DATABASE_URL=postgresql://... python loader/main.py [--all] [--icd] [--loinc] [--twcore] [--guideline] [--snomed]
 
 Source files expected at /app/fhir-code/ (mounted read-only in Docker):
     icd/10/icd10cm/icd10cm-table-index-2025.zip
@@ -12,7 +12,6 @@ Source files expected at /app/fhir-code/ (mounted read-only in Docker):
     loinc/2.80/Loinc_2.80.zip
     twcoreig/package.tgz
     snomed/SnomedCT_InternationalRF2_PRODUCTION_*.zip
-    rxnorm/RxNorm_full_*.zip
 """
 
 import argparse
@@ -36,9 +35,6 @@ load_dotenv()
 
 FHIR_CODE_DIR = os.getenv("FHIR_CODE_DIR", "/app/fhir-code")
 DATABASE_URL = os.getenv("DATABASE_URL", "")
-RXNORM_READY_MIN_CONCEPTS = 10_000
-
-
 async def get_pool() -> asyncpg.Pool:
     if not DATABASE_URL:
         print("ERROR: DATABASE_URL is not set", file=sys.stderr)
@@ -146,15 +142,6 @@ def _legacy_dataset_config() -> DatasetConfig:
                     base, "snomed", "SnomedCT_InternationalRF2_PRODUCTION_*.zip"
                 ),
                 label="SNOMED CT",
-            ),
-            "rxnorm": DatasetEntry(
-                key="rxnorm",
-                enabled=True,
-                required=False,
-                source_type="glob",
-                path=None,
-                pattern=os.path.join(base, "rxnorm", "RxNorm_full_*.zip"),
-                label="RxNorm",
             ),
         },
     )
@@ -271,48 +258,6 @@ async def load_snomed(pool: asyncpg.Pool) -> None:
     await _load(pool, zip_path)
 
 
-async def load_rxnorm(pool: asyncpg.Pool) -> None:
-    from loaders.rxnorm_loader import load_rxnorm as _load
-
-    resolved = resolve_group(get_effective_dataset_config(), "rxnorm")
-    _print_resolution_summary("rxnorm", resolved)
-    _ensure_required_datasets(resolved)
-
-    zip_path = resolved["rxnorm"].resolved_path
-    if zip_path is None:
-        print("RxNorm zip not resolved")
-        return
-    await _load(pool, zip_path)
-
-
-async def _assert_rxnorm_ready_for_fda(
-    pool: asyncpg.Pool,
-    min_concepts: int = RXNORM_READY_MIN_CONCEPTS,
-) -> None:
-    """Block FDA drug import unless RxNorm baseline is loaded first.
-
-    Rationale:
-    - Drug-domain redesign is RxNorm-first.
-    - FDA drug load should not run before the terminology backbone exists.
-    """
-    async with pool.acquire() as conn:
-        count = await conn.fetchval("SELECT COUNT(*) FROM drug.rx_concepts")
-    current = int(count or 0)
-    if current < min_concepts:
-        raise RuntimeError(
-            "FDA drug import blocked: RxNorm must be loaded first "
-            f"(drug.rx_concepts={current}, required>={min_concepts}). "
-            "Run: docker compose --profile loader run --rm data-loader --rxnorm"
-        )
-
-
-async def load_drug(pool: asyncpg.Pool) -> None:
-    from loaders.drug_loader import load_drug as _load
-
-    await _assert_rxnorm_ready_for_fda(pool)
-    await _load(pool)
-
-
 async def load_health_food(pool: asyncpg.Pool) -> None:
     from loaders.health_food_loader import load_health_food as _load
 
@@ -327,7 +272,6 @@ async def load_food_nutrition(pool: asyncpg.Pool) -> None:
 
 async def generate_embeddings(pool: asyncpg.Pool, services: list[str]) -> None:
     from loaders.embedding_loader import (
-        embed_drug,
         embed_food_nutrition,
         embed_guideline,
         embed_health_food,
@@ -342,8 +286,6 @@ async def generate_embeddings(pool: asyncpg.Pool, services: list[str]) -> None:
         await embed_food_nutrition(pool)
     if "health_food" in services:
         await embed_health_food(pool)
-    if "drug" in services:
-        await embed_drug(pool)
     if "icd" in services:
         await embed_icd(pool)
     if "loinc" in services:
@@ -366,8 +308,6 @@ async def main():
     parser.add_argument(
         "--snomed", action="store_true", help="SNOMED CT International RF2"
     )
-    parser.add_argument("--rxnorm", action="store_true", help="RxNorm full release")
-    parser.add_argument("--drug", action="store_true", help="Taiwan FDA drug datasets")
     parser.add_argument(
         "--health-food", action="store_true", help="Taiwan FDA health food dataset"
     )
@@ -375,9 +315,6 @@ async def main():
         "--food-nutrition",
         action="store_true",
         help="Taiwan FDA food nutrition datasets",
-    )
-    parser.add_argument(
-        "--fda", action="store_true", help="Load all Taiwan FDA API datasets"
     )
     parser.add_argument(
         "--embed",
@@ -393,11 +330,8 @@ async def main():
             args.twcore,
             args.guideline,
             args.snomed,
-            args.rxnorm,
-            args.drug,
             args.health_food,
             args.food_nutrition,
-            args.fda,
             args.embed,
         ]
     )
@@ -425,30 +359,20 @@ async def main():
             print("    (large dataset — expect 5-15 minutes)")
             await load_snomed(pool)
 
-        if run_all or args.rxnorm:
-            print("=== Loading RxNorm ===")
-            await load_rxnorm(pool)
-
-        if run_all or args.fda or args.drug:
-            print("=== Loading Taiwan FDA drug datasets ===")
-            await load_drug(pool)
-
-        if run_all or args.fda or args.health_food:
+        if run_all or args.health_food:
             print("=== Loading Taiwan FDA health food dataset ===")
             await load_health_food(pool)
 
-        if run_all or args.fda or args.food_nutrition:
+        if run_all or args.food_nutrition:
             print("=== Loading Taiwan FDA food nutrition datasets ===")
             await load_food_nutrition(pool)
 
         # Auto-embed after each dataset load; also runs on explicit --embed
         embed_services: list[str] = []
-        if run_all or args.fda or args.food_nutrition or args.embed:
+        if run_all or args.food_nutrition or args.embed:
             embed_services.append("food_nutrition")
-        if run_all or args.fda or args.health_food or args.embed:
+        if run_all or args.health_food or args.embed:
             embed_services.append("health_food")
-        if run_all or args.fda or args.drug or args.embed:
-            embed_services.append("drug")
         if run_all or args.icd or args.embed:
             embed_services.append("icd")
         if run_all or args.loinc or args.embed:

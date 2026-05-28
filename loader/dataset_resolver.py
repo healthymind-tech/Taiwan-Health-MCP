@@ -33,7 +33,6 @@ DATASET_GROUPS = {
     "twcore": ("twcore",),
     "guideline": ("guideline_seed",),
     "snomed": ("snomed_ct",),
-    "rxnorm": ("rxnorm",),
 }
 
 

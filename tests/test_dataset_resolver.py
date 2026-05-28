@@ -34,13 +34,13 @@ def test_resolve_glob_dataset_first_match_warns(tmp_path: Path):
     a.write_text("a", encoding="utf-8")
     b.write_text("b", encoding="utf-8")
     entry = DatasetEntry(
-        key="rxnorm",
+        key="snomed_ct",
         enabled=True,
         required=False,
         source_type="glob",
         path=None,
         pattern=str(tmp_path / "*.zip"),
-        label="RxNorm",
+        label="SNOMED CT",
         version=None,
     )
     resolved = resolve_dataset(entry, str(tmp_path))

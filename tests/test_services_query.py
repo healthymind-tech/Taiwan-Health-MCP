@@ -548,33 +548,3 @@ class TestSNOMEDService:
         assert len(results) == 1
         assert results[0]["icd10_code"] == "E11.9"
 
-
-# ── DrugInteractionService ────────────────────────────────────────────────────
-
-class TestDrugInteractionService:
-    @pytest.mark.asyncio
-    async def test_resolve_drug_empty(self):
-        from drug_interaction_service import DrugInteractionService
-
-        conn = _make_conn(fetch_return=[])
-        pool = _make_pool(conn)
-        pool.fetchval = AsyncMock(return_value=100)
-
-        svc = DrugInteractionService(pool)
-        results = await svc.resolve_drug("zzz_unknown")
-        assert results == []
-
-    @pytest.mark.asyncio
-    async def test_get_drug_ingredients_unknown_rxcui(self):
-        from drug_interaction_service import DrugInteractionService
-
-        conn = _make_conn(fetchval_return=None)
-        pool = _make_pool(conn)
-        pool.fetchval = AsyncMock(return_value=100)
-
-        # fetchval returns None (concept not found)
-        conn.fetchval = AsyncMock(return_value=None)
-
-        svc = DrugInteractionService(pool)
-        result = await svc.get_drug_ingredients("NOTEXIST")
-        assert result is None

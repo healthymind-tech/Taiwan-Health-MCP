@@ -5,7 +5,6 @@ Calls Ollama /api/embed in batches and upserts into:
   - food_nutrition.food_embeddings            (~2181 unique foods)
   - food_nutrition.ingredient_embeddings      (~1702 ingredients)
   - health_food.item_embeddings               (~555 items)
-  - drug.ingredient_name_embeddings           (~50k+ unique ingredient names)
   - icd.diagnosis_embeddings                  (~73k ICD-10-CM codes)
   - loinc.concept_embeddings                  (~87k LOINC concepts)
   - guideline.guideline_embeddings            (~50 guidelines)
@@ -43,7 +42,6 @@ _BATCH_SIZE: int = int(os.getenv("OLLAMA_EMBED_BATCH_SIZE", "32"))
 # Used by ensure_dimensions() to ALTER TABLE when OLLAMA_EMBED_DIMENSIONS changes.
 _EMBEDDING_COLUMNS: list[tuple[str, str, str]] = [
     ("icd", "diagnosis_embeddings", "embedding"),
-    ("drug", "ingredient_name_embeddings", "embedding"),
     ("health_food", "item_embeddings", "embedding"),
     ("food_nutrition", "food_embeddings", "embedding"),
     ("food_nutrition", "ingredient_embeddings", "embedding"),
@@ -280,42 +278,6 @@ async def embed_health_food(pool: asyncpg.Pool) -> None:
             )
             total_ok += len(rows)
     print(f"  Health food done: {total_ok}/{len(items)} embedded")
-
-
-async def embed_drug(pool: asyncpg.Pool) -> None:
-    print("\n=== Embedding: drug ingredient names ===")
-    if not await _check_ollama():
-        return
-
-    # ── Distinct ingredient names ─────────────────────────────────────────────
-    async with pool.acquire() as conn:
-        ing_rows = await conn.fetch(
-            "SELECT DISTINCT ingredient_name FROM drug.ingredients WHERE ingredient_name IS NOT NULL AND ingredient_name <> ''"
-        )
-    print(f"  Ingredient names: {len(ing_rows)}")
-    batches = [
-        ing_rows[i : i + _BATCH_SIZE] for i in range(0, len(ing_rows), _BATCH_SIZE)
-    ]
-    total_ok = 0
-    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-        for batch in _progress(batches, "Drug ingredients"):
-            texts = [r["ingredient_name"] for r in batch]
-            vecs = await _embed_batch(client, texts)
-            rows = [
-                (batch[j]["ingredient_name"], f"[{','.join(str(x) for x in vecs[j])}]")
-                for j in range(len(batch))
-                if vecs[j] is not None
-            ]
-            await _upsert(
-                pool,
-                """INSERT INTO drug.ingredient_name_embeddings (ingredient_name, embedding)
-                   VALUES ($1, $2::halfvec)
-                   ON CONFLICT (ingredient_name) DO UPDATE
-                   SET embedding=EXCLUDED.embedding, embedded_at=NOW()""",
-                rows,
-            )
-            total_ok += len(rows)
-    print(f"  Drug ingredients done: {total_ok}/{len(ing_rows)} embedded")
 
 
 async def embed_icd(pool: asyncpg.Pool) -> None:

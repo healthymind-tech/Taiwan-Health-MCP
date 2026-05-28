@@ -1,6 +1,6 @@
 """
 Health Food Service — Taiwan FDA approved health foods.
-Data is loaded via data-loader (--health-food or --fda flag). No auto-sync.
+Data is loaded via data-loader --health-food. No auto-sync.
 
 Sync strategy: fetch data first, then write in one transaction.
 """

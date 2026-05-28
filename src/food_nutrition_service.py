@@ -1,6 +1,6 @@
 """
 Food Nutrition Service — Taiwan FDA food composition database.
-Data is loaded via data-loader (--food-nutrition or --fda flag). No auto-sync.
+Data is loaded via data-loader --food-nutrition. No auto-sync.
 
 Sync strategy: fetch both endpoints first, then write in one transaction.
 """

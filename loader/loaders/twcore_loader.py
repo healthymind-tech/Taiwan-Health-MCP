@@ -18,13 +18,6 @@ import asyncpg
 
 # Mirror the registry from twcore_service.py so we get category + name
 CODESYSTEM_REGISTRY = {
-    "medication-frequency-nhi-tw": ("臺灣健保署藥品使用頻率", "medication"),
-    "medication-path-tw": ("臺灣健保署給藥途徑", "medication"),
-    "medication-nhi-tw": ("臺灣健保署用藥品項", "medication"),
-    "nhi-medication-ch-herb-tw": ("臺灣健保署中藥用藥品項", "medication"),
-    "medication-fda-tw": ("臺灣食藥署藥品許可證", "medication"),
-    "medication-device-fda-tw": ("臺灣食藥署醫療器材許可證", "medication"),
-    "medcation-atc-tw": ("臺灣食藥署藥品藥理治療分類ATC碼", "medication"),
     "icd-10-cm-2023-tw": ("臺灣健保署ICD-10-CM 2023年版", "diagnosis"),
     "icd-10-cm-2021-tw": ("臺灣健保署ICD-10-CM 2021年版", "diagnosis"),
     "icd-10-cm-2014-tw": ("臺灣健保署ICD-10-CM 2014年版", "diagnosis"),

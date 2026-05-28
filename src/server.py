@@ -17,11 +17,8 @@ from audit import audited
 from clinical_guideline_service import ClinicalGuidelineService
 from config import AppConfig
 from dataset_status import DatasetStatusManager
-from drug_interaction_service import DrugInteractionService
-from drug_service import DrugService
 from embedding_service import EmbeddingService
 from fhir_condition_service import FHIRConditionService
-from fhir_medication_service import FHIRMedicationService
 from food_nutrition_service import FoodNutritionService
 from health_food_service import HealthFoodService
 from icd_service import ICDService
@@ -35,16 +32,13 @@ configure_log_level(config.log_level)
 
 # Services (populated once on first lifespan run)
 icd_service: ICDService | None = None
-drug_service: DrugService | None = None
 health_food_service: HealthFoodService | None = None
 food_nutrition_service: FoodNutritionService | None = None
 fhir_condition_service: FHIRConditionService | None = None
-fhir_medication_service: FHIRMedicationService | None = None
 lab_service: LabService | None = None
 guideline_service: ClinicalGuidelineService | None = None
 twcore_service: TWCoreService | None = None
 snomed_service: SNOMEDService | None = None
-drug_interaction_service: DrugInteractionService | None = None
 
 # FastMCP (streamable-http mode) runs the lifespan once per session, not per
 # process.  Guard all one-time initialization behind a lock + flag so that
@@ -57,9 +51,9 @@ _dataset_status = DatasetStatusManager()
 
 @asynccontextmanager
 async def lifespan(server):
-    global icd_service, drug_service, health_food_service, food_nutrition_service
-    global fhir_condition_service, fhir_medication_service, lab_service, guideline_service, twcore_service
-    global snomed_service, drug_interaction_service
+    global icd_service, health_food_service, food_nutrition_service
+    global fhir_condition_service, lab_service, guideline_service, twcore_service
+    global snomed_service
     global _init_lock, _initialized, _db_stats_task
 
     # Lazily create the lock (must happen inside the running event loop)
@@ -91,14 +85,12 @@ async def lifespan(server):
             # ── Services ──────────────────────────────────────────────────
             for name, factory in [
                 ("ICDService", lambda: ICDService(pool, embedding_svc)),
-                ("DrugService", lambda: DrugService(pool, embedding_svc)),
                 ("HealthFoodService", lambda: HealthFoodService(pool, embedding_svc)),
                 (
                     "FoodNutritionService",
                     lambda: FoodNutritionService(pool, embedding_svc),
                 ),
                 ("FHIRConditionService", lambda: FHIRConditionService(pool)),
-                ("FHIRMedicationService", lambda: FHIRMedicationService(drug_service)),
                 ("LabService", lambda: LabService(pool, embedding_svc)),
                 (
                     "ClinicalGuidelineService",
@@ -106,23 +98,18 @@ async def lifespan(server):
                 ),
                 ("TWCoreService", lambda: TWCoreService(pool)),
                 ("SNOMEDService", lambda: SNOMEDService(pool, embedding_svc)),
-                ("DrugInteractionService", lambda: DrugInteractionService(pool)),
             ]:
                 try:
                     svc = factory()
                     await svc.initialize()
                     if name == "ICDService":
                         icd_service = svc
-                    elif name == "DrugService":
-                        drug_service = svc
                     elif name == "HealthFoodService":
                         health_food_service = svc
                     elif name == "FoodNutritionService":
                         food_nutrition_service = svc
                     elif name == "FHIRConditionService":
                         fhir_condition_service = svc
-                    elif name == "FHIRMedicationService":
-                        fhir_medication_service = svc
                     elif name == "LabService":
                         lab_service = svc
                     elif name == "ClinicalGuidelineService":
@@ -131,8 +118,6 @@ async def lifespan(server):
                         twcore_service = svc
                     elif name == "SNOMEDService":
                         snomed_service = svc
-                    elif name == "DrugInteractionService":
-                        drug_interaction_service = svc
                 except Exception as e:
                     log_error(f"{name} failed to initialize", error=str(e))
 
@@ -204,227 +189,6 @@ async def _call_service_json(service, method_name: str, *args, **kwargs) -> str:
     if callable(serializer):
         return serializer(result, indent=2)
     return json.dumps(result, ensure_ascii=False, indent=2)
-
-
-def _empty_drug_result_item() -> dict:
-    """Return the canonical result item shape for all search_drug modes."""
-    return {
-        "license_id": None,
-        "name_zh": None,
-        "name_en": None,
-        "indication": None,
-        "usage": None,
-        "form": None,
-        "package": None,
-        "category": None,
-        "manufacturer": None,
-        "valid_date": None,
-        "ingredients": [],
-        "appearance": {},
-        "atc": [],
-        "rxnorm": [],
-        "insert_url": None,
-    }
-
-
-def _normalize_atc_entries(entries: object) -> list[dict]:
-    """Normalize ATC rows to [{atc_code, atc_name}]."""
-    if not isinstance(entries, list):
-        return []
-    normalized: list[dict] = []
-    seen: set[str] = set()
-    for row in entries:
-        if not isinstance(row, dict):
-            continue
-        code = row.get("atc_code") or row.get("code")
-        name = row.get("atc_name") or row.get("name")
-        if not code and not name:
-            continue
-        key = f"{code or ''}|{name or ''}"
-        if key in seen:
-            continue
-        seen.add(key)
-        normalized.append({"atc_code": code, "atc_name": name})
-    return normalized
-
-
-def _normalize_rxnorm_entries(entries: object) -> list[dict]:
-    """Normalize RxNorm rows to [{rxcui, name, tty, atc_code}]."""
-    if not isinstance(entries, list):
-        return []
-    normalized: list[dict] = []
-    seen: set[str] = set()
-    for row in entries:
-        if not isinstance(row, dict):
-            continue
-        rxcui = row.get("rxcui")
-        if not rxcui:
-            continue
-        name = row.get("name")
-        tty = row.get("tty")
-        atc_code = row.get("atc_code")
-        key = f"{rxcui}|{atc_code or ''}"
-        if key in seen:
-            continue
-        seen.add(key)
-        normalized.append(
-            {"rxcui": str(rxcui), "name": name, "tty": tty, "atc_code": atc_code}
-        )
-    return normalized
-
-
-def _normalize_ingredient_entries(entries: object) -> list[dict]:
-    """Normalize ingredient rows to a shared shape for all search_drug modes."""
-    if not isinstance(entries, list):
-        return []
-    normalized: list[dict] = []
-    for row in entries:
-        if not isinstance(row, dict):
-            continue
-        name = row.get("ingredient_name") or row.get("name")
-        qty = row.get("ingredient_qty")
-        unit = row.get("ingredient_unit")
-        rxcui = row.get("rxcui")
-        tty = row.get("tty")
-        if not any([name, qty, unit, rxcui, tty]):
-            continue
-        normalized.append(
-            {
-                "ingredient_name": name,
-                "ingredient_qty": qty,
-                "ingredient_unit": unit,
-                "rxcui": str(rxcui) if rxcui else None,
-                "tty": tty,
-            }
-        )
-    return normalized
-
-
-async def _load_rxnorm_by_atc_codes(atc_codes: list[str]) -> dict[str, list[dict]]:
-    """Map ATC code -> RxNorm concept candidates."""
-    codes = sorted({c.strip().upper() for c in atc_codes if isinstance(c, str) and c.strip()})
-    if not codes:
-        return {}
-    try:
-        pool = database.get_pool()
-    except RuntimeError:
-        return {}
-    async with pool.acquire() as conn:
-        rows = await conn.fetch(
-            """
-            SELECT m.atc_code, m.rxcui, c.name, c.tty
-            FROM drug.rx_atc_map m
-            LEFT JOIN drug.rx_concepts c ON c.rxcui = m.rxcui
-            WHERE UPPER(m.atc_code) = ANY($1::text[])
-            ORDER BY m.atc_code, m.rxcui
-            """,
-            codes,
-        )
-    by_code: dict[str, list[dict]] = {}
-    for row in rows:
-        code = (row["atc_code"] or "").upper()
-        by_code.setdefault(code, []).append(
-            {
-                "rxcui": row["rxcui"],
-                "name": row["name"],
-                "tty": row["tty"],
-                "atc_code": row["atc_code"],
-            }
-        )
-    return by_code
-
-
-async def _load_atc_by_rxcuis(rxcuis: list[str]) -> dict[str, list[dict]]:
-    """Map RXCUI -> ATC rows."""
-    keys = sorted({str(r).strip() for r in rxcuis if str(r).strip()})
-    if not keys:
-        return {}
-    try:
-        pool = database.get_pool()
-    except RuntimeError:
-        return {}
-    async with pool.acquire() as conn:
-        rows = await conn.fetch(
-            """
-            SELECT rxcui, atc_code, atc_name
-            FROM drug.rx_atc_map
-            WHERE rxcui = ANY($1::text[])
-            ORDER BY rxcui, atc_code
-            """,
-            keys,
-        )
-    by_rxcui: dict[str, list[dict]] = {}
-    for row in rows:
-        by_rxcui.setdefault(row["rxcui"], []).append(
-            {"atc_code": row["atc_code"], "atc_name": row["atc_name"]}
-        )
-    return by_rxcui
-
-
-async def _normalize_drug_result_items(items: list[dict]) -> list[dict]:
-    """Canonicalize result items and enrich FDA items with rxnorm mappings by ATC."""
-    atc_codes: list[str] = []
-    for item in items:
-        if not isinstance(item, dict):
-            continue
-        atc_rows = _normalize_atc_entries(item.get("atc"))
-        atc_codes.extend(
-            [row["atc_code"] for row in atc_rows if isinstance(row.get("atc_code"), str)]
-        )
-    rxnorm_by_atc = await _load_rxnorm_by_atc_codes(atc_codes)
-
-    normalized: list[dict] = []
-    for item in items:
-        if not isinstance(item, dict):
-            continue
-        out = _empty_drug_result_item()
-        for key in (
-            "license_id",
-            "name_zh",
-            "name_en",
-            "indication",
-            "usage",
-            "form",
-            "package",
-            "category",
-            "manufacturer",
-            "valid_date",
-            "insert_url",
-        ):
-            out[key] = item.get(key)
-
-        out["ingredients"] = _normalize_ingredient_entries(item.get("ingredients"))
-        out["appearance"] = item.get("appearance") if isinstance(item.get("appearance"), dict) else {}
-        out["atc"] = _normalize_atc_entries(item.get("atc"))
-
-        merged_rxnorm = _normalize_rxnorm_entries(item.get("rxnorm"))
-        for atc_row in out["atc"]:
-            code = (atc_row.get("atc_code") or "").upper()
-            merged_rxnorm.extend(rxnorm_by_atc.get(code, []))
-        out["rxnorm"] = _normalize_rxnorm_entries(merged_rxnorm)
-        normalized.append(out)
-    return normalized
-
-
-async def _normalize_drug_mode_payload(raw_payload: object, mode: str, keyword: str) -> str:
-    """Normalize FDA-backed mode payloads to the canonical result shape."""
-    payload: object = raw_payload
-    if isinstance(raw_payload, str):
-        try:
-            payload = json.loads(raw_payload)
-        except json.JSONDecodeError:
-            return raw_payload
-    if not isinstance(payload, dict):
-        return json.dumps(payload, ensure_ascii=False)
-
-    payload["mode"] = mode
-    payload["keyword"] = keyword
-    results = payload.get("results")
-    if isinstance(results, list):
-        payload["results"] = await _normalize_drug_result_items(results)
-    else:
-        payload["results"] = []
-    return json.dumps(payload, ensure_ascii=False)
 
 
 class DynamicFastMCP(FastMCP):
@@ -581,7 +345,7 @@ _PRIVACY_HTML = """\
 
 <h2>1. Overview</h2>
 <p>Taiwan Health MCP Server is an open-source Model Context Protocol (MCP) server
-that provides read-only access to Taiwan FDA, ICD-10, LOINC, SNOMED CT, RxNorm,
+that provides read-only access to Taiwan FDA health, ICD-10, LOINC, SNOMED CT,
 and Taiwan clinical guideline data. All underlying datasets are publicly available;
 this service does not collect, store, or process personal health information.</p>
 
@@ -606,8 +370,7 @@ available datasets:</p>
   <li>ICD-10-CM / ICD-10-PCS — U.S. National Library of Medicine / CMS (public domain)</li>
   <li>LOINC 2.80 — Regenstrief Institute (LOINC License, free for most uses)</li>
   <li>SNOMED CT International — SNOMED International (SNOMED License)</li>
-  <li>RxNorm — U.S. National Library of Medicine (public domain)</li>
-  <li>Taiwan FDA drug, health food, and nutrition data — Taiwan FDA open data</li>
+  <li>Taiwan FDA health food and nutrition data — Taiwan FDA open data</li>
   <li>TWCore IG — Taiwan Ministry of Health and Welfare (public)</li>
 </ul>
 
@@ -1013,19 +776,18 @@ _LANDING_HTML = """\
     <h1>Taiwan Health<br><span>MCP Server</span></h1>
     <p class="tagline">
       An open-source Model Context Protocol server that gives AI assistants
-      structured, read-only access to Taiwan's medical, pharmaceutical, and
-      clinical knowledge — 28 tools, production-grade, HIPAA-audited.
+      structured, read-only access to Taiwan's medical and clinical knowledge
+      for Taiwan healthcare workflows.
     </p>
     <div class="endpoint-box">
       <span class="label">MCP endpoint</span>
       <code>https://tw-health-mcp.healthymind-tech.com/mcp</code>
     </div>
     <div class="badge-row">
-      <span class="badge">30 Tools</span>
+      <span class="badge">24 Tools</span>
       <span class="badge">ICD-10-CM 2025</span>
       <span class="badge">LOINC 2.80</span>
       <span class="badge">SNOMED CT</span>
-      <span class="badge">RxNorm</span>
       <span class="badge">Taiwan FDA</span>
       <span class="badge">TWCore IG v1.0</span>
       <span class="badge">FHIR R4</span>
@@ -1042,10 +804,9 @@ _LANDING_HTML = """\
       health datasets curated for Taiwan's healthcare system. Clinicians,
       researchers, developers, and health-tech products can query ICD-10 diagnoses
       and procedures, look up LOINC lab codes and reference ranges, navigate
-      SNOMED CT concept hierarchies, resolve drug names via RxNorm, search
-      Taiwan FDA-approved drugs and health foods, access clinical practice
-      guidelines, and generate FHIR R4-compliant resources — all through natural
-      language conversation with Claude.
+      SNOMED CT concept hierarchies, search Taiwan FDA health foods, access
+      clinical practice guidelines, and generate FHIR R4-compliant resources
+      — all through natural language conversation with Claude.
     </p>
     <p style="margin-top:12px;">
       All underlying datasets are publicly available. The server does
@@ -1078,24 +839,8 @@ _LANDING_HTML = """\
       </div>
 
       <div class="feature-card">
-        <div class="icon">💊</div>
-        <h3>Drug &amp; Pharmacy</h3>
-        <p style="font-size:0.93rem;color:#555;">
-          Taiwan FDA drug database (auto-synced every Tuesday) plus
-          RxNorm terminology and drug interaction checking.
-        </p>
-        <ul>
-          <li>Search by drug name, ingredient, or ATC class</li>
-          <li>Pill identification by appearance features</li>
-          <li>RxNorm concept resolution &amp; ingredient lookup</li>
-          <li>Drug–drug interaction checking (RxNorm)</li>
-          <li>FHIR Medication resource generation</li>
-        </ul>
-      </div>
-
-      <div class="feature-card">
-        <div class="icon">🧪</div>
-        <h3>Lab Interpretation</h3>
+      <div class="icon">🧪</div>
+      <h3>Lab Interpretation</h3>
         <p style="font-size:0.93rem;color:#555;">
           Reference ranges and clinical interpretation for LOINC-coded
           lab results, with age- and gender-specific thresholds.
@@ -1149,11 +894,10 @@ _LANDING_HTML = """\
           with TWCore IG v1.0.0.
         </p>
         <ul>
-          <li>Condition &amp; Medication resource generation</li>
+          <li>Condition resource generation</li>
           <li>FHIR resource validation</li>
           <li>TWCore CodeSystem lookup &amp; search</li>
           <li>Diagnosis-to-FHIR one-step conversion</li>
-          <li>Drug-to-FHIR one-step conversion</li>
         </ul>
       </div>
 
@@ -1183,16 +927,6 @@ _LANDING_HTML = """\
         <td>SNOMED CT International</td>
         <td>Latest RF2 — SNOMED International</td>
         <td>Static (data-loader)</td>
-      </tr>
-      <tr>
-        <td>RxNorm</td>
-        <td>Full release — NLM (public domain)</td>
-        <td>Static (data-loader)</td>
-      </tr>
-      <tr>
-        <td>Taiwan FDA Drugs</td>
-        <td>Open Data — Taiwan FDA</td>
-        <td>Auto-sync every Tuesday 02:00 UTC</td>
       </tr>
       <tr>
         <td>Taiwan FDA Health Supplements</td>
@@ -1256,39 +990,23 @@ _LANDING_HTML = """\
     </div>
 
     <div class="example">
-      <div class="example-header">Example 3 — Drug identification &amp; interaction check</div>
+      <div class="example-header">Example 3 — FHIR resource generation</div>
       <div class="example-body">
         <div class="prompt">
           <strong>User prompt</strong>
-          "幫我查一顆白色橢圓形藥丸，上面印有 MET 500，並確認它和 Warfarin 有沒有交互作用"
-        </div>
-        <ol class="steps">
-          <li>Server runs pill identification: white + oval + marking "MET 500"</li>
-          <li>Returns top matches — likely Metformin 500 mg products with manufacturer details</li>
-          <li>Resolves Metformin and Warfarin to RxNorm concepts</li>
-          <li>Checks drug interaction database — no direct RxNorm interaction flagged for this pair</li>
-        </ol>
-      </div>
-    </div>
-
-    <div class="example">
-      <div class="example-header">Example 4 — FHIR resource generation</div>
-      <div class="example-body">
-        <div class="prompt">
-          <strong>User prompt</strong>
-          "幫我把診斷 E11.9 和藥品 Metformin 500mg 轉成 TWCore FHIR 格式"
+          "幫我把診斷 E11.9 轉成 TWCore FHIR 格式"
         </div>
         <ol class="steps">
           <li>Server calls <code>query_fhir_condition</code> for E11.9</li>
-          <li>Generates TWCore-compliant FHIR Condition resource with ICD-10 coding</li>
-          <li>Calls <code>query_fhir_medication</code> for Metformin</li>
-          <li>Returns valid FHIR R4 JSON resources ready for EMR integration</li>
+          <li>Generates a TWCore-compliant FHIR Condition resource with ICD-10 coding</li>
+          <li>Applies optional status fields such as clinical and verification status</li>
+          <li>Returns valid FHIR R4 JSON ready for EMR integration</li>
         </ol>
       </div>
     </div>
 
     <div class="example">
-      <div class="example-header">Example 5 — Nutrition analysis</div>
+      <div class="example-header">Example 4 — Nutrition analysis</div>
       <div class="example-body">
         <div class="prompt">
           <strong>User prompt</strong>
@@ -1299,6 +1017,22 @@ _LANDING_HTML = """\
           <li>Aggregates macronutrients: calories, carbohydrates, protein, fat, fiber per 100 g</li>
           <li>Returns per-food breakdown plus combined totals</li>
           <li>Highlights carbohydrate content relevant for diabetes meal planning</li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="example">
+      <div class="example-header">Example 5 — Health supplement search</div>
+      <div class="example-body">
+        <div class="prompt">
+          <strong>User prompt</strong>
+          "幫我找有調節血脂功效的台灣健康食品"
+        </div>
+        <ol class="steps">
+          <li>Server searches the Taiwan FDA health supplement registry by benefit keywords</li>
+          <li>Ranks certified products by product name, ingredients, and approved claims</li>
+          <li>Returns permit number, company, ingredients, and approved benefit text</li>
+          <li>Helps narrow candidates for further clinical or regulatory review</li>
         </ol>
       </div>
     </div>
@@ -1449,54 +1183,6 @@ _TOOL_GROUPS: dict[str, dict[str, object]] = {
             ("browse_icd_category", "browse_icd_category", {"category": "E11"}),
         ],
     },
-    "drug": {
-        "category": "Drug",
-        "tools": [
-            (
-                "search_drug",
-                "search_drug",
-                {"mode": "drug_name", "keyword": "Metformin", "limit": 5},
-            ),
-            (
-                "search_drug",
-                "search_drug",
-                {"mode": "atc_code", "keyword": "A10BA02", "limit": 5},
-            ),
-            (
-                "search_drug",
-                "search_drug",
-                {"mode": "ingredient", "keyword": "metformin", "limit": 5},
-            ),
-            (
-                "search_drug",
-                "search_drug",
-                {"mode": "license_id", "keyword": "000029"},
-            ),
-            (
-                "search_drug",
-                "search_drug",
-                {"mode": "rxnorm_resolve", "keyword": "atorvastatin", "limit": 5},
-            ),
-            (
-                "search_drug",
-                "search_drug",
-                {"mode": "rxnorm_ingredients", "keyword": "41493"},
-            ),
-            (
-                "search_drug",
-                "search_drug",
-                {
-                    "mode": "interaction",
-                    "drug_names": ["warfarin", "aspirin"],
-                },
-            ),
-            (
-                "identify_unknown_pill",
-                "identify_unknown_pill",
-                {"features": "white round"},
-            ),
-        ],
-    },
     "lab": {
         "category": "Lab / LOINC",
         "tools": [
@@ -1604,27 +1290,10 @@ _TOOL_GROUPS: dict[str, dict[str, object]] = {
             ),
         ],
     },
-    "fhir_medication": {
-        "category": "FHIR R4",
-        "tools": [
-            (
-                "query_fhir_medication",
-                "query_fhir_medication",
-                {"keyword": "Metformin", "resource_type": "MedicationKnowledge"},
-            ),
-            (
-                "validate_fhir_medication",
-                "validate_fhir_medication",
-                {
-                    "medication_json": '{"resourceType":"Medication","code":{"coding":[{"system":"https://twcore.mohw.gov.tw/ig/twcore/CodeSystem/medication-fda-tw","code":"衛部藥製字第059686號","display":"Metformin 500mg"}]},"ingredient":[{"itemCodeableConcept":{"coding":[{"code":"metformin"}]},"strength":{"numerator":{"value":500,"unit":"mg"}}}]}'
-                },
-            ),
-        ],
-    },
     "twcore": {
         "category": "TWCore IG",
         "tools": [
-            ("query_twcore_code", "query_twcore_code", {"category": "medication"}),
+            ("query_twcore_code", "query_twcore_code", {"category": "diagnosis"}),
             (
                 "query_twcore_code",
                 "query_twcore_code",
@@ -2588,15 +2257,12 @@ async def health_check() -> str:
     - `services`: object with one boolean flag per service group:
       - `icd` — ICD-10-CM/PCS codes (search_medical_codes, infer_complications,
         get_nearby_codes, check_medical_conflict, browse_icd_category)
-      - `drug` — Taiwan FDA drugs (search_drug, identify_unknown_pill)
       - `health_supplement` — Taiwan FDA health foods (search_health_supplement)
       - `food_nutrition` — Taiwan FDA food composition
         (query_food_nutrition, query_food_ingredient,
          search_foods_by_nutrient, analyze_meal_nutrition)
       - `fhir_condition` — FHIR R4 Condition resources (query_fhir_condition,
         validate_fhir_condition)
-      - `fhir_medication` — FHIR R4 Medication resources (query_fhir_medication,
-        validate_fhir_medication)
       - `lab` — LOINC lab tests (search_loinc, query_loinc, interpret_lab_result,
         batch_interpret_lab_results)
       - `guideline` — Taiwan clinical guidelines (search_clinical_guideline,
@@ -2633,11 +2299,9 @@ async def health_check() -> str:
             "cache": "ok" if cache_ok else "error",
             "services": {
                 "icd": icd_service is not None,
-                "drug": drug_service is not None,
                 "health_supplement": health_food_service is not None,
                 "food_nutrition": food_nutrition_service is not None,
                 "fhir_condition": fhir_condition_service is not None,
-                "fhir_medication": fhir_medication_service is not None,
                 "lab": lab_service is not None,
                 "guideline": guideline_service is not None,
                 "twcore": twcore_service is not None,
@@ -2822,315 +2486,7 @@ async def browse_icd_category(category: str | None = None, limit: int = 50) -> s
 
 
 # ============================================================
-# Group 2: Drug (Taiwan FDA)
-# ============================================================
-
-
-@audited("search_drug")
-async def search_drug(
-    mode: Literal[
-        "drug_name",
-        "atc_code",
-        "ingredient",
-        "license_id",
-        "rxnorm_resolve",
-        "rxnorm_ingredients",
-        "interaction",
-    ] = "drug_name",
-    keyword: str = "",
-    drug_names: list[str] | None = None,
-    limit: int = 3,
-) -> str:
-    """
-    Unified drug endpoint for Taiwan FDA product search + RxNorm terminology queries.
-
-    Mode reference:
-    - `drug_name` (default): search Taiwan FDA drug database by trade name or
-      indication text. Uses hybrid BM25 + semantic embedding re-ranking.
-      Example: keyword `"降血壓"` or `"metformin"`.
-    - `atc_code`: filter Taiwan FDA drugs by ATC code prefix (letter+digit pattern
-      only, no embedding). Input must match `[A-Za-z][A-Za-z0-9]{0,6}`.
-      Examples: `"A10"`, `"A10BA02"`, `"C09"`.
-    - `ingredient`: search by active ingredient (INN) name. Hybrid BM25 + embedding.
-      Examples: `"metformin"`, `"lisinopril"`, `"阿斯匹靈"`.
-    - `license_id`: exact Taiwan FDA license lookup by license number.
-      Accepts full license (e.g. `"衛署藥製字第000029號"`) or bare digits (`"000029"`).
-    - `rxnorm_resolve`: resolve a free-text drug name to RxNorm RXCUI concepts.
-      Returns IN/PIN/BN concept matches. Example: keyword `"aspirin"`.
-    - `rxnorm_ingredients`: retrieve ingredient composition for a drug given its
-      RXCUI. Pass the RXCUI as `keyword`, e.g. `"1191"` (aspirin).
-    - `interaction`: check pairwise drug–drug interactions via RxNorm. Does not
-      use `keyword` — pass at least 2 names via `drug_names`.
-
-    Unified response shape (all modes):
-    ```
-    {"mode", "keyword", "results": [...]}
-    ```
-    Every item in `results` always contains the same canonical keys:
-    - `license_id`, `name_zh`, `name_en`, `indication`, `usage`, `form`,
-      `package`, `category`, `manufacturer`, `valid_date`, `appearance`,
-      `insert_url` — Taiwan FDA fields (null/empty for RxNorm-only results)
-    - `ingredients`: `[{ingredient_name, ingredient_qty, ingredient_unit,
-      rxcui, tty}]`
-    - `atc`: `[{atc_code, atc_name}]` (from FDA record or mapped from RXCUI)
-    - `rxnorm`: `[{rxcui, name, tty, atc_code}]` (enriched via ATC for FDA modes)
-
-    Additional top-level keys for `interaction` mode:
-    - `drug_names`: input drug list
-    - `interaction`: `{pairs: [{drug_a, drug_b, description}], total_pairs}`
-
-    Args:
-        mode: One of `drug_name` | `atc_code` | `ingredient` | `license_id` |
-              `rxnorm_resolve` | `rxnorm_ingredients` | `interaction`.
-              Defaults to `drug_name`.
-        keyword: Search term — meaning depends on mode (see above). Ignored for
-                 `interaction` mode.
-        drug_names: Required for `interaction` mode. List of ≥2 drug names,
-                    e.g. `["warfarin", "aspirin", "clopidogrel"]`.
-        limit: Maximum results to return (default 3, cap 10). Applies to
-               `drug_name`, `atc_code`, `ingredient`, and `rxnorm_resolve` modes.
-               Ignored for `license_id` (returns 1), `rxnorm_ingredients`, and
-               `interaction` (all pairs always returned).
-    """
-    if drug_service is None:
-        return _svc_unavailable("Drug Service")
-    limit = min(max(1, limit), 10)
-    if mode == "drug_name":
-        if not keyword:
-            return _json_error("Provide keyword")
-        raw = await drug_service.search_drug(keyword, limit=limit)
-        return await _normalize_drug_mode_payload(raw, "drug_name", keyword)
-    if mode == "atc_code":
-        import re
-
-        if not keyword:
-            return _json_error("Provide keyword")
-        if not re.fullmatch(r"[A-Za-z][A-Za-z0-9]{0,6}", keyword):
-            return _json_error(
-                "ATC code mode accepts ATC code prefixes only (e.g. A10, A10BA02)."
-            )
-        raw = await drug_service.search_by_atc(keyword, limit=limit)
-        return await _normalize_drug_mode_payload(raw, "atc_code", keyword)
-    if mode == "ingredient":
-        if not keyword:
-            return _json_error("Provide keyword")
-        raw = await drug_service.search_by_ingredient(keyword, limit=limit)
-        return await _normalize_drug_mode_payload(raw, "ingredient", keyword)
-    if mode == "license_id":
-        if not keyword:
-            return _json_error("Provide keyword")
-        raw = await drug_service.search_by_license_id(keyword)
-        return await _normalize_drug_mode_payload(raw, "license_id", keyword)
-    if drug_interaction_service is None:
-        return _svc_unavailable("Drug Service")
-    if mode == "rxnorm_resolve":
-        if not keyword:
-            return _json_error("Provide keyword")
-        resolved = await drug_interaction_service.resolve_drug(keyword)
-        if isinstance(resolved, str):
-            try:
-                resolved = json.loads(resolved)
-            except json.JSONDecodeError:
-                resolved = []
-        if not isinstance(resolved, list):
-            resolved = []
-
-        all_rxcuis = [str(r.get("rxcui")) for r in resolved if isinstance(r, dict) and r.get("rxcui")]
-        atc_by_rxcui = await _load_atc_by_rxcuis(all_rxcuis)
-
-        # Bridge to TFDA: find Taiwan FDA drugs via ATC codes from IN/PIN concepts.
-        # Prefer ingredient-level concepts for ATC lookup (most specific mapping).
-        in_rxcuis = [
-            str(r.get("rxcui")) for r in resolved
-            if isinstance(r, dict) and r.get("rxcui") and r.get("tty") in ("IN", "PIN", "MIN")
-        ] or all_rxcuis[:3]
-        atc_codes = sorted({
-            row["atc_code"]
-            for rxcui in in_rxcuis
-            for row in atc_by_rxcui.get(rxcui, [])
-            if isinstance(row, dict) and row.get("atc_code")
-        })
-        if atc_codes and drug_service is not None:
-            raw = await drug_service.search_by_atc_codes(atc_codes, limit=limit)
-            return await _normalize_drug_mode_payload(raw, "rxnorm_resolve", keyword)
-
-        # Fallback: no TFDA match — return RxNorm-only items (capped at limit)
-        items: list[dict] = []
-        for concept in resolved[:limit]:
-            if not isinstance(concept, dict):
-                continue
-            rxcui = str(concept.get("rxcui") or "").strip()
-            row = _empty_drug_result_item()
-            row["name_en"] = concept.get("name")
-            row["atc"] = atc_by_rxcui.get(rxcui, [])
-            row["rxnorm"] = _normalize_rxnorm_entries(
-                [{"rxcui": rxcui, "name": concept.get("name"), "tty": concept.get("tty")}]
-            )
-            items.append(row)
-        return json.dumps(
-            {"mode": "rxnorm_resolve", "keyword": keyword, "results": items},
-            ensure_ascii=False,
-        )
-    if mode == "rxnorm_ingredients":
-        if not keyword:
-            return _json_error("Provide keyword")
-        payload = await drug_interaction_service.get_drug_ingredients(keyword)
-        if isinstance(payload, str):
-            try:
-                payload = json.loads(payload)
-            except json.JSONDecodeError:
-                payload = None
-        if not isinstance(payload, dict):
-            return json.dumps(
-                {"mode": "rxnorm_ingredients", "keyword": keyword, "results": []},
-                ensure_ascii=False,
-            )
-        rxcui = str(payload.get("rxcui") or "").strip()
-        ingredients = payload.get("ingredients")
-
-        # Collect RXCUIs for ATC lookup: concept itself + its ingredient children.
-        # ATC is typically assigned at IN level, so ingredient RXCUIs are preferred.
-        all_rxcuis = [rxcui] if rxcui else []
-        if isinstance(ingredients, list):
-            all_rxcuis += [
-                str(ing.get("rxcui"))
-                for ing in ingredients
-                if isinstance(ing, dict) and ing.get("rxcui")
-            ]
-        atc_by_rxcui = await _load_atc_by_rxcuis(all_rxcuis)
-        atc_codes = sorted({
-            row["atc_code"]
-            for rows in atc_by_rxcui.values()
-            for row in rows
-            if isinstance(row, dict) and row.get("atc_code")
-        })
-
-        # Bridge to TFDA: return Taiwan FDA drug records when ATC codes are available.
-        if atc_codes and drug_service is not None:
-            raw = await drug_service.search_by_atc_codes(atc_codes, limit=limit)
-            return await _normalize_drug_mode_payload(raw, "rxnorm_ingredients", keyword)
-
-        # Fallback: no TFDA match — return RxNorm-only result
-        row = _empty_drug_result_item()
-        row["name_en"] = payload.get("name")
-        row["atc"] = atc_by_rxcui.get(rxcui, [])
-        row["rxnorm"] = _normalize_rxnorm_entries(
-            [{"rxcui": rxcui, "name": payload.get("name"), "tty": payload.get("tty")}]
-        )
-        if isinstance(ingredients, list):
-            row["ingredients"] = _normalize_ingredient_entries(
-                [
-                    {
-                        "ingredient_name": ing.get("name") if isinstance(ing, dict) else None,
-                        "ingredient_qty": None,
-                        "ingredient_unit": None,
-                        "rxcui": ing.get("rxcui") if isinstance(ing, dict) else None,
-                        "tty": ing.get("tty") if isinstance(ing, dict) else None,
-                    }
-                    for ing in ingredients
-                ]
-            )
-        return json.dumps(
-            {"mode": "rxnorm_ingredients", "keyword": keyword, "results": [row]},
-            ensure_ascii=False,
-        )
-    if mode == "interaction":
-        if not drug_names or len(drug_names) < 2:
-            return _json_error(
-                "Provide drug_names with at least 2 drug names when mode is interaction"
-            )
-        result = await drug_interaction_service.check_interactions(drug_names)
-        if isinstance(result, str):
-            try:
-                result = json.loads(result)
-            except json.JSONDecodeError:
-                result = {"error": "Invalid cached interaction payload"}
-        if not isinstance(result, dict):
-            result = {"error": "Invalid interaction payload"}
-        resolved = result.get("resolved_drugs")
-        if not isinstance(resolved, list):
-            resolved = []
-        rxcuis = [
-            str(item.get("rxcui"))
-            for item in resolved
-            if isinstance(item, dict) and item.get("rxcui")
-        ]
-        atc_by_rxcui = await _load_atc_by_rxcuis(rxcuis)
-        items: list[dict] = []
-        for item in resolved:
-            if not isinstance(item, dict):
-                continue
-            rxcui = str(item.get("rxcui") or "").strip()
-            row = _empty_drug_result_item()
-            row["name_en"] = item.get("name")
-            row["atc"] = atc_by_rxcui.get(rxcui, [])
-            row["rxnorm"] = _normalize_rxnorm_entries(
-                [
-                    {
-                        "rxcui": rxcui,
-                        "name": item.get("name"),
-                        "tty": item.get("tty"),
-                    }
-                ]
-            )
-            items.append(row)
-        return json.dumps(
-            {
-                "mode": "interaction",
-                "keyword": "",
-                "results": items,
-                "interaction": {
-                    "interaction_count": result.get("interaction_count", 0),
-                    "interactions": result.get("interactions", []),
-                    "resolved_drugs": resolved,
-                    "unresolved_drugs": result.get("unresolved_drugs", []),
-                },
-            },
-            ensure_ascii=False,
-        )
-    return _json_error(
-        "Provide mode as drug_name, atc_code, ingredient, license_id, "
-        "rxnorm_resolve, rxnorm_ingredients, or interaction"
-    )
-@audited("identify_unknown_pill")
-async def identify_unknown_pill(features: str) -> str:
-    """
-    Identify a Taiwan FDA drug by pill appearance (color, shape, imprint markings).
-
-    Searches the `appearance` field in the Taiwan FDA drug database using AND
-    logic — every provided keyword must match (more keywords → narrower results).
-
-    Matching behavior:
-    - English color/shape words (`white`, `round`, `oval`, `oblong`, `pink`, etc.)
-      are automatically expanded to Chinese synonyms used in FDA data.
-    - Imprint tokens that contain digits (e.g. `M500`, `PFIZER500`) are treated
-      as markings; if they cause zero results, the service auto-retries once
-      with digit-containing tokens removed to widen the search.
-    - Returns up to 5 matching drugs.
-
-    Output shape:
-    `{"results": [{license_id, name_zh, name_en, appearance}, ...], "total"}`
-
-    ⚠️ For reference only — always confirm pill identity with a licensed pharmacist
-    or cross-check with the official Taiwan FDA drug database.
-
-    Args:
-        features: Space-separated appearance keywords in Chinese or English.
-                  Each keyword is independently matched against shape, color,
-                  and marking fields.
-                  Examples:
-                  - `"白 圓形"` (white round)
-                  - `"橙色 橢圓"` (orange oval)
-                  - `"white round M500"` (white, round, imprint M500)
-                  - `"粉紅 菱形 PFIZER"` (pink diamond, PFIZER marking)
-    """
-    if drug_service is None:
-        return _svc_unavailable("Drug Service")
-    return await drug_service.identify_pill(features)
-
-
-# ============================================================
-# Group 3: Health Supplement (Taiwan FDA)
+# Group 2: Health Supplement (Taiwan FDA)
 # ============================================================
 
 
@@ -3607,109 +2963,7 @@ async def validate_fhir_condition(condition_json: str) -> str:
 
 
 # ============================================================
-# Group 7: FHIR Medication
-# ============================================================
-@audited("query_fhir_medication")
-async def query_fhir_medication(
-    license_id: str | None = None,
-    keyword: str | None = None,
-    resource_type: Literal["Medication", "MedicationKnowledge"] = "Medication",
-) -> str:
-    """
-    Generate a FHIR R4 Medication or MedicationKnowledge resource for a Taiwan FDA drug.
-
-    Two routing paths (provide exactly one of `license_id` or `keyword`):
-
-    **Path A — direct license** (`license_id` provided):
-    Builds the resource directly from the exact Taiwan FDA license ID.
-    Supports both `Medication` and `MedicationKnowledge` resource types.
-
-    **Path B — keyword search** (`keyword` provided):
-    Searches the Taiwan FDA drug database for the best-matching drug, then builds
-    the resource from that match. Only `Medication` resource type is generated in
-    this path (the `resource_type` parameter is forwarded and respected).
-
-    Resource type differences:
-    - `Medication` (default): concise FHIR R4 Medication resource with code,
-      form, ingredient list, and manufacturer extension.
-    - `MedicationKnowledge`: richer resource that additionally includes
-      `monograph`, `drugCharacteristic` (appearance/color/shape), `packaging`,
-      `indication`, and regulatory extension fields.
-
-    Always returns exactly one FHIR resource JSON object; never writes to an
-    external FHIR server.
-
-    Args:
-        license_id: Exact Taiwan FDA license number, e.g. `"衛署藥製字第000029號"`
-                    or bare digits `"000029"`. Takes priority when both provided.
-        keyword: Drug name in Chinese or English for search-first flow,
-                 e.g. `"metformin"`, `"阿斯匹靈"`, `"Lipitor"`.
-        resource_type: `"Medication"` (default) | `"MedicationKnowledge"`.
-    """
-    if fhir_medication_service is None:
-        return _svc_unavailable("FHIR Medication Service")
-    if keyword:
-        return await _call_service_json(
-            fhir_medication_service,
-            "create_medication_from_search",
-            keyword,
-            resource_type,
-        )
-    if not license_id:
-        return _json_error("Provide either license_id or keyword")
-    if resource_type == "MedicationKnowledge":
-        return await _call_service_json(
-            fhir_medication_service, "create_medication_knowledge", license_id
-        )
-    return await _call_service_json(
-        fhir_medication_service, "create_medication", license_id
-    )
-
-
-@audited("validate_fhir_medication")
-async def validate_fhir_medication(medication_json: str) -> str:
-    """
-    Validate structure and core field semantics of FHIR medication resources.
-
-    Supported resource types: `Medication` and `MedicationKnowledge`.
-    The validator detects the type from `resourceType` in the JSON.
-
-    Validation checks for `Medication`:
-    - `resourceType` = `"Medication"`
-    - `code.coding` must be present with at least one entry
-    - `ingredient` array entries must each have `itemCodeableConcept` or
-      `itemReference`
-
-    Validation checks for `MedicationKnowledge`:
-    - `resourceType` = `"MedicationKnowledge"`
-    - `code.coding` must be present
-    - `ingredient` entries same as Medication
-
-    Output shape:
-    `{"valid": true|false, "resource_type": "Medication"|"MedicationKnowledge",
-     "errors": ["..."]}`
-
-    ⚠️ Server-side structural validation only. For production-grade TWCore IG
-    profile conformance, use the HL7 FHIR Validator with the TWCore IG package.
-
-    Args:
-        medication_json: JSON string of a FHIR Medication or MedicationKnowledge
-                         resource. Use `query_fhir_medication` to generate one.
-    """
-    if fhir_medication_service is None:
-        return _svc_unavailable("FHIR Medication Service")
-    try:
-        resource = json.loads(medication_json)
-        result = fhir_medication_service.validate_medication(resource)
-        return fhir_medication_service.to_json_string(result, indent=2)
-    except json.JSONDecodeError as e:
-        return _json_error(
-            f"Invalid JSON: {e}", valid=False, errors=[f"Invalid JSON: {e}"]
-        )
-
-
-# ============================================================
-# Group 8: Lab / LOINC
+# Group 6: Lab / LOINC
 # ============================================================
 
 
