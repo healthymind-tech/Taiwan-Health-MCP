@@ -1,0 +1,4799 @@
+
+<!doctype html>
+<html lang="zh-TW" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="台灣醫療健康資料整合 MCP 伺服器 - 技術文件">
+      
+      
+        <meta name="author" content="Taiwan-ICD10-Health-MCP Team">
+      
+      
+        <link rel="canonical" href="https://audi0417.github.io/Taiwan-Health-MCP/datasets/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Taiwan Health MCP — Module Reference - Taiwan ICD10 Health MCP</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#taiwan-health-mcp-module-reference" class="md-skip">
+          跳轉到
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="頁首">
+    <a href=".." title="Taiwan ICD10 Health MCP" class="md-header__button md-logo" aria-label="Taiwan ICD10 Health MCP" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Taiwan ICD10 Health MCP
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Taiwan Health MCP — Module Reference
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="搜尋" placeholder="搜尋" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="搜尋">
+        
+        <button type="reset" class="md-search__icon md-icon" title="清除" aria-label="清除" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            正在初始化搜尋引擎
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/audi0417/Taiwan-Health-MCP" title="前往倉庫" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Taiwan-ICD10-Health-MCP
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="導覽列" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Taiwan ICD10 Health MCP" class="md-nav__button md-logo" aria-label="Taiwan ICD10 Health MCP" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Taiwan ICD10 Health MCP
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/audi0417/Taiwan-Health-MCP" title="前往倉庫" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Taiwan-ICD10-Health-MCP
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_1" id="__nav_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    首頁
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    首頁
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Taiwan Health MCP Server
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    快速開始
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    模組
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    模組
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/icd-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ICD-10
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/drug-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    藥品 / TFDA
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/lab-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    檢驗 / LOINC
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/snomed-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SNOMED CT
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/clinical-guideline-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    臨床指引
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/health-supplements-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    健康補充品
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/food-nutrition-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    食品營養
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/fhir-condition-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FHIR Condition
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/fhir-medication-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FHIR Medication
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/fhir-ig-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FHIR IG
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MCP 工具
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    MCP 工具
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tools/icd-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ICD-10 工具
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tools/drug-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    藥品工具
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tools/lab-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    檢驗 / LOINC 工具
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tools/snomed-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SNOMED 工具
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tools/guideline-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    臨床指引工具
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tools/health-supplements-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    健康補充品工具
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tools/nutrition-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    食品營養工具
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tools/fhir-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FHIR Condition / Medication 工具
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tools/fhir-ig-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FHIR IG 工具
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tools/fhir-server-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FHIR 伺服器工具
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    資料來源
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    資料來源
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../data-sources/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    資料來源
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../data-sources/icd10/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ICD-10
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../data-sources/loinc/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LOINC
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../data-sources/guidelines/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    臨床指引
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FHIR 授權
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    FHIR 授權
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fhir-authoring-walkthrough/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    授權流程說明
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fhir-ig-mcp-toolset-assessment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    工具集設計評估
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fhir-patient-conversion-prompt/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Patient 轉換提示
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fhir-bundle-conversion-prompt/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bundle 轉換提示
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    使用指南
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    使用指南
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    使用指南 (User Guides)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/clinical-pathway/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    臨床路徑
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/lab-interpretation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    檢驗判讀
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/loinc-integration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LOINC 整合
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API 參考
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API 參考
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API 參考
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/fhir-services/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FHIR Services API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/icd-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ICD Service
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/lab-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Lab Service
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/guideline-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guideline Service
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    管理後台
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    管理後台
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../admin/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    管理後台 (Admin Console)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../admin/jobs-and-worker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    背景工作與排程
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9" >
+        
+          
+          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    部署
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    部署
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../deployment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    部署指南
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/deployment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    架構與容器部署
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../deployment/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    環境變數配置
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../deployment/performance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    效能與監控
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../deployment/dpa/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    資料處理附錄 (DPA)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../deployment/privacy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    隱私政策頁面
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10" >
+        
+          
+          <label class="md-nav__link" for="__nav_10" id="__nav_10_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    開發指南
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_10">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    開發指南
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    開發指南
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../development/code-style/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    程式風格
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../development/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    測試指南
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../development/contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    貢獻流程
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_11" >
+        
+          
+          <label class="md-nav__link" for="__nav_11" id="__nav_11_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    常見問題
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_11_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_11">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    常見問題
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../faq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    常見問題 (FAQ)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../faq/usage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    操作與使用
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../faq/loinc/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LOINC 相關
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="目錄">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目錄
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#quick-reference-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick-reference table
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#fhir-code-directory-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        fhir-code/ directory layout
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-icd-10-cmpcs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. ICD-10-CM/PCS
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. ICD-10-CM/PCS">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#source-type" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Source type
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-the-user-must-supply" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What the user must supply
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#input-data-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Input data structure
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#processing-pipeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Processing pipeline
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#final-db-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Final DB schema
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ai-requirements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AI requirements
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-loinc" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. LOINC
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. LOINC">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#source-type_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Source type
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-the-user-must-supply_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What the user must supply
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#input-data-structure_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Input data structure
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#processing-pipeline_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Processing pipeline
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#final-db-schema_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Final DB schema
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ai-requirements_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AI requirements
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-snomed-ct" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. SNOMED CT
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. SNOMED CT">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#source-type_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Source type
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-the-user-must-supply_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What the user must supply
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#input-data-structure_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Input data structure
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#processing-pipeline_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Processing pipeline
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#final-db-schema_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Final DB schema
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ai-requirements_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AI requirements
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-rxnorm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. RxNorm
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. RxNorm">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#source-type_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Source type
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-the-user-must-supply_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What the user must supply
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#input-data-structure_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Input data structure
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#processing-pipeline_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Processing pipeline
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#final-db-schema_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Final DB schema
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ai-requirements_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AI requirements
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-twcore-ig" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. TWCore IG
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. TWCore IG">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#source-type_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Source type
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-the-user-must-supply_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What the user must supply
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#input-data-structure_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Input data structure
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#processing-pipeline_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Processing pipeline
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#final-db-schema_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Final DB schema
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ai-requirements_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AI requirements
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-clinical-guidelines" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Clinical Guidelines
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="6. Clinical Guidelines">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#source-type_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Source type
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-the-user-must-supply_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What the user must supply
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#input-data-structure-seed-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Input data structure (seed format)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#processing-pipeline_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Processing pipeline
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#final-db-schema_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Final DB schema
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ai-requirements_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AI requirements
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-taiwan-fda-drug" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Taiwan FDA Drug
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7. Taiwan FDA Drug">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#source-type_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Source type
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-the-user-must-supply_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What the user must supply
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-1-index-csv-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 1 — Index CSV structure
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-2-tfda-enrichment-crawler" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 2 — TFDA enrichment (crawler)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-2-electronic-insert-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 2 — Electronic insert structure
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-3-ocr-llm-analysis" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 3 — OCR + LLM analysis
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#data-quality-levels-all-combinations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Data quality levels — all combinations
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#final-db-schema-drug-domain" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Final DB schema (drug domain)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#normalized_json-structure-drugnormalized_records" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        normalized_json structure (drug.normalized_records)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ai-requirements_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AI requirements
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-taiwan-fda-health-supplements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Taiwan FDA Health Supplements
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="8. Taiwan FDA Health Supplements">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#source-type_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Source type
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-the-user-must-supply_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What the user must supply
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#api-source" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        API source
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#input-data-structure-api-response-per-item" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Input data structure (API response per item)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#processing-pipeline_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Processing pipeline
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#final-db-schema_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Final DB schema
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ai-requirements_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AI requirements
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-taiwan-fda-food-nutrition" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. Taiwan FDA Food Nutrition
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="9. Taiwan FDA Food Nutrition">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#source-type_8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Source type
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-the-user-must-supply_8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What the user must supply
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#input-data-structure_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Input data structure
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#processing-pipeline_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Processing pipeline
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#final-db-schema_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Final DB schema
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ai-requirements_8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AI requirements
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-umls-file-present-loader-not-yet-implemented" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. UMLS (file present — loader not yet implemented)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="10. UMLS (file present — loader not yet implemented)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Status
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#file-present" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        File present
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#zip-contents-rrf-format-relevant-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ZIP contents (RRF format) — relevant files
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#planned-use" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Planned use
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ai-requirements-planned" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AI requirements (planned)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cross-cutting-embedding-infrastructure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cross-cutting: Embedding infrastructure
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cross-cutting-admin-job-system" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cross-cutting: Admin job system
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="taiwan-health-mcp-module-reference">Taiwan Health MCP — Module Reference<a class="headerlink" href="#taiwan-health-mcp-module-reference" title="Permanent link">&para;</a></h1>
+<p>This document describes every module in the system: what the user must supply,
+the structure of the input data, the full processing pipeline, the final
+PostgreSQL schema, and which AI capabilities (embedding / OCR / LLM) are required.</p>
+<p><strong>Audience</strong>: developers building on or extending this codebase.<br />
+<strong>Authoritative code</strong>: <code>loader/</code>, <code>src/</code>, <code>db/schema.sql</code>.</p>
+<hr />
+<h2 id="quick-reference-table">Quick-reference table<a class="headerlink" href="#quick-reference-table" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Module</th>
+<th>Source type</th>
+<th>User provides</th>
+<th>Embedding</th>
+<th>OCR</th>
+<th>LLM</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ICD-10-CM/PCS</td>
+<td>File (ZIP)</td>
+<td>ZIP from CMS + optional XLSX</td>
+<td>✅ diagnoses only</td>
+<td>—</td>
+<td>—</td>
+</tr>
+<tr>
+<td>LOINC</td>
+<td>File (ZIP)</td>
+<td>ZIP from Regenstrief</td>
+<td>✅</td>
+<td>—</td>
+<td>—</td>
+</tr>
+<tr>
+<td>SNOMED CT</td>
+<td>File (ZIP)</td>
+<td>RF2 ZIP from SNOMED International</td>
+<td>✅</td>
+<td>—</td>
+<td>—</td>
+</tr>
+<tr>
+<td>RxNorm</td>
+<td>File (ZIP)</td>
+<td>RxNorm full ZIP from NLM</td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+</tr>
+<tr>
+<td>TWCore IG</td>
+<td>File (tgz)</td>
+<td>package.tgz from MOHW / live fetch</td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+</tr>
+<tr>
+<td>Clinical Guidelines</td>
+<td>Seed data</td>
+<td>Nothing — bundled in repo</td>
+<td>✅</td>
+<td>—</td>
+<td>⚠️ future</td>
+</tr>
+<tr>
+<td>Taiwan FDA Drug</td>
+<td>CSV upload + crawl</td>
+<td>One or more <code>36_2.csv</code> from FDA Open Data</td>
+<td>⚠️ future</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>Taiwan FDA Health Supplements</td>
+<td>API auto-sync</td>
+<td>Nothing — auto from FDA API</td>
+<td>✅</td>
+<td>—</td>
+<td>—</td>
+</tr>
+<tr>
+<td>Taiwan FDA Food Nutrition</td>
+<td>API auto-sync</td>
+<td>Nothing — auto from FDA API</td>
+<td>✅</td>
+<td>—</td>
+<td>—</td>
+</tr>
+<tr>
+<td>UMLS</td>
+<td>File (ZIP)</td>
+<td>UMLS Metathesaurus ZIP from NLM</td>
+<td>⚠️ future</td>
+<td>—</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="fhir-code-directory-layout">fhir-code/ directory layout<a class="headerlink" href="#fhir-code-directory-layout" title="Permanent link">&para;</a></h2>
+<p>All source files live in <code>fhir-code/</code> (mounted read-only at <code>/app/fhir-code/</code> in the <code>data-loader</code> container).</p>
+<pre><code>fhir-code/
+├── icd/10/
+│   ├── icd10cm/
+│   │   └── icd10cm-table-index-2025.zip                          19.1 MB  ← ICD-10-CM 2025
+│   ├── icd10pcs/
+│   │   └── icd10pcs_tables_2025.zip                               0.6 MB  ← ICD-10-PCS 2025
+│   └── 1.2023年中文版ICD-10-CM_PCS_1131118V3(...).xlsx            (opt.)  ← Chinese names
+├── loinc/
+│   ├── 2.80/
+│   │   └── Loinc_2.80.zip                                        73.9 MB  ← LOINC 2.80
+│   ├── taiwan_mapping.csv                                          (opt.)  ← TW Chinese name/unit overrides
+│   └── lab_reference_ranges.csv                                   (opt.)  ← TW reference ranges
+├── snomed/
+│   └── SnomedCT_InternationalRF2_PRODUCTION_20250601T120000Z.zip 539.1 MB ← SNOMED CT Jun 2025
+├── rxnorm/
+│   └── RxNorm_full_06032024.zip                                  240.3 MB ← RxNorm Jun 2024
+├── twcoreig/
+│   └── v1.0.0/
+│       └── package.tgz                                             2.7 MB  ← TWCore IG v1.0.0
+└── umls/
+    └── umls-2024AA-metathesaurus-full.zip                       4,079.5 MB ← UMLS 2024AA (loader TBD)
+</code></pre>
+<p>Files excluded from git (require licensed download): <code>snomed/</code>, <code>rxnorm/</code>, <code>umls/</code>.</p>
+<hr />
+<h2 id="1-icd-10-cmpcs">1. ICD-10-CM/PCS<a class="headerlink" href="#1-icd-10-cmpcs" title="Permanent link">&para;</a></h2>
+<h3 id="source-type">Source type<a class="headerlink" href="#source-type" title="Permanent link">&para;</a></h3>
+<p>Static loader — user provides files once; reimport only on new annual releases.</p>
+<h3 id="what-the-user-must-supply">What the user must supply<a class="headerlink" href="#what-the-user-must-supply" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>File (relative to <code>fhir-code/</code>)</th>
+<th>Size</th>
+<th>Where to obtain</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>icd/10/icd10cm/icd10cm-table-index-2025.zip</code></td>
+<td>19.1 MB</td>
+<td>https://www.cms.gov/medicare/coding-billing/icd-10-codes</td>
+<td>Contains <code>icd10cm_tabular_2025.xml</code></td>
+</tr>
+<tr>
+<td><code>icd/10/icd10pcs/icd10pcs_tables_2025.zip</code></td>
+<td>648 KB</td>
+<td>https://www.cms.gov/medicare/coding-billing/icd-10-codes (or bundled in repo)</td>
+<td>Contains <code>icd10pcs_tables_2025.xml</code></td>
+</tr>
+<tr>
+<td><code>icd/10/1.2023年中文版ICD-10-CM_PCS_1131118V3(...).xlsx</code></td>
+<td>—</td>
+<td>衛福部/台灣健保署</td>
+<td>Optional. If absent, <code>name_zh</code> is empty; codes still load</td>
+</tr>
+</tbody>
+</table>
+<p>File placement: <code>fhir-code/</code> is mounted read-only at <code>/app/fhir-code/</code> inside the <code>data-loader</code> container.</p>
+<h3 id="input-data-structure">Input data structure<a class="headerlink" href="#input-data-structure" title="Permanent link">&para;</a></h3>
+<p><strong>icd10cm_tabular_2025.xml</strong> (XML tree):</p>
+<pre><code>&lt;ICD10CM.tabular&gt;
+  &lt;chapter&gt;
+    &lt;section id=&quot;...&quot;&gt;
+      &lt;desc&gt;...&lt;/desc&gt;
+      &lt;diag&gt;
+        &lt;name&gt;A00.0&lt;/name&gt;         ← code
+        &lt;desc&gt;Cholera due to Vibrio cholerae 01, biovar cholerae&lt;/desc&gt;
+        &lt;diag&gt;...&lt;/diag&gt;           ← child codes (billable)
+      &lt;/diag&gt;
+    &lt;/section&gt;
+  &lt;/chapter&gt;
+&lt;/ICD10CM.tabular&gt;
+</code></pre>
+<p><strong>icd10pcs_tables_2025.xml</strong> — PCS table XML (different structure, code built by concatenating axis values).</p>
+<p><strong>XLSX</strong> (optional): two columns: ICD code, Chinese name.</p>
+<h3 id="processing-pipeline">Processing pipeline<a class="headerlink" href="#processing-pipeline" title="Permanent link">&para;</a></h3>
+<pre><code>[ZIP] → unzip in memory → parse XML → build (code, name_en, category) tuples
+      → optional XLSX merge → TRUNCATE+INSERT into staging table
+      → promote to icd.diagnoses / icd.procedures
+      → update admin.module_load_log
+</code></pre>
+<p>Admin job type: <code>icd_import</code><br />
+Stages: validate → stage → promote</p>
+<h3 id="final-db-schema">Final DB schema<a class="headerlink" href="#final-db-schema" title="Permanent link">&para;</a></h3>
+<pre><code class="language-sql">-- icd schema
+icd.diagnoses   (code TEXT PK, name_en TEXT, name_zh TEXT, category TEXT)
+icd.procedures  (code TEXT PK, name_en TEXT, name_zh TEXT)
+
+-- embedding (diagnoses only)
+icd.diagnosis_embeddings  (code TEXT PK, embedding halfvec(1024), embedded_at TIMESTAMPTZ)
+</code></pre>
+<h3 id="ai-requirements">AI requirements<a class="headerlink" href="#ai-requirements" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Capability</th>
+<th>Used for</th>
+<th>Input text</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Embedding (Ollama)</td>
+<td>Semantic search over ICD codes</td>
+<td><code>code || ' ' || name_zh || ' ' || name_en</code></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="2-loinc">2. LOINC<a class="headerlink" href="#2-loinc" title="Permanent link">&para;</a></h2>
+<h3 id="source-type_1">Source type<a class="headerlink" href="#source-type_1" title="Permanent link">&para;</a></h3>
+<p>Static loader — update annually when Regenstrief releases a new version.</p>
+<h3 id="what-the-user-must-supply_1">What the user must supply<a class="headerlink" href="#what-the-user-must-supply_1" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>File (relative to <code>fhir-code/</code>)</th>
+<th>Size</th>
+<th>Where to obtain</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>loinc/2.80/Loinc_2.80.zip</code></td>
+<td>73.9 MB</td>
+<td>https://loinc.org/downloads/ (free account)</td>
+<td>Main LOINC table (~100k rows)</td>
+</tr>
+<tr>
+<td><code>loinc/taiwan_mapping.csv</code></td>
+<td>—</td>
+<td>Bundled in repo</td>
+<td>Taiwan Chinese name + specimen + unit overrides. Columns: <code>loinc_code, name_zh, common_name_zh, specimen_type, unit</code></td>
+</tr>
+<tr>
+<td><code>loinc/lab_reference_ranges.csv</code></td>
+<td>—</td>
+<td>Bundled in repo</td>
+<td>Taiwan hospital reference ranges. Columns: <code>loinc_code, test_name_zh, test_name_en, age_min, age_max, gender, range_low, range_high, unit, interpretation, source</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="input-data-structure_1">Input data structure<a class="headerlink" href="#input-data-structure_1" title="Permanent link">&para;</a></h3>
+<p><strong>Loinc.csv</strong> (inside ZIP) — ~87k rows, tab/comma-separated:</p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>LOINC_NUM</code></td>
+<td>Primary key (e.g. <code>2951-2</code>)</td>
+</tr>
+<tr>
+<td><code>COMPONENT</code></td>
+<td>Measured entity (e.g. <code>Sodium</code>)</td>
+</tr>
+<tr>
+<td><code>PROPERTY</code></td>
+<td>Property type (<code>SCnc</code>, <code>MCnc</code>, …)</td>
+</tr>
+<tr>
+<td><code>TIME_ASPCT</code></td>
+<td>Time aspect (<code>Pt</code>, <code>24H</code>, …)</td>
+</tr>
+<tr>
+<td><code>SYSTEM</code></td>
+<td>System measured in (<code>Ser/Plas</code>, …)</td>
+</tr>
+<tr>
+<td><code>SCALE_TYP</code></td>
+<td>Scale (<code>Qn</code>, <code>Ord</code>, <code>Nom</code>, …)</td>
+</tr>
+<tr>
+<td><code>METHOD_TYP</code></td>
+<td>Method (optional)</td>
+</tr>
+<tr>
+<td><code>LONG_COMMON_NAME</code></td>
+<td>Full human-readable name</td>
+</tr>
+<tr>
+<td><code>SHORTNAME</code></td>
+<td>Short display name</td>
+</tr>
+<tr>
+<td><code>CLASS</code></td>
+<td>Grouping class</td>
+</tr>
+<tr>
+<td><code>CLASSTYPE</code></td>
+<td>1=Lab, 2=Clinical, 3=Claims attachment, 4=Survey</td>
+</tr>
+<tr>
+<td><code>STATUS</code></td>
+<td><code>ACTIVE</code>, <code>DISCOURAGED</code>, <code>DEPRECATED</code>, <code>TRIAL</code></td>
+</tr>
+<tr>
+<td><code>CONSUMER_NAME</code></td>
+<td>Patient-facing name</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Taiwan additions</strong> (loaded separately or hard-coded):
+- <code>name_zh</code> — Chinese name
+- <code>common_name_zh</code> — Chinese common name
+- <code>specimen_type</code> — specimen type in Chinese
+- <code>unit</code> — default unit</p>
+<h3 id="processing-pipeline_1">Processing pipeline<a class="headerlink" href="#processing-pipeline_1" title="Permanent link">&para;</a></h3>
+<pre><code>[ZIP] → unzip in memory → parse Loinc.csv → stage rows
+      → promote to loinc.concepts
+      → load reference_ranges (from LoincTable/LoincTableCore/...)
+      → update admin.module_load_log
+</code></pre>
+<p>Admin job type: <code>loinc_import</code><br />
+Stages: validate → stage → promote</p>
+<h3 id="final-db-schema_1">Final DB schema<a class="headerlink" href="#final-db-schema_1" title="Permanent link">&para;</a></h3>
+<pre><code class="language-sql">loinc.concepts (
+  loinc_num TEXT PK, component TEXT, property TEXT, time_aspect TEXT,
+  system TEXT, scale_type TEXT, method_type TEXT,
+  long_common_name TEXT, shortname TEXT, class TEXT, classtype SMALLINT,
+  status TEXT, consumer_name TEXT,
+  name_zh TEXT, common_name_zh TEXT, specimen_type TEXT, unit TEXT
+)
+
+loinc.reference_ranges (
+  id SERIAL PK, loinc_num TEXT FK→loinc.concepts,
+  age_min INT, age_max INT, gender TEXT,
+  range_low NUMERIC, range_high NUMERIC, unit TEXT, interpretation TEXT
+)
+
+loinc.concept_embeddings (loinc_num TEXT PK, embedding halfvec(1024), embedded_at TIMESTAMPTZ)
+</code></pre>
+<h3 id="ai-requirements_1">AI requirements<a class="headerlink" href="#ai-requirements_1" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Capability</th>
+<th>Used for</th>
+<th>Input text</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Embedding (Ollama)</td>
+<td>Semantic search over lab tests</td>
+<td><code>long_common_name || ' ' || shortname || ' ' || name_zh || ' ' || common_name_zh || ' ' || component || ' ' || specimen_type</code></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="3-snomed-ct">3. SNOMED CT<a class="headerlink" href="#3-snomed-ct" title="Permanent link">&para;</a></h2>
+<h3 id="source-type_2">Source type<a class="headerlink" href="#source-type_2" title="Permanent link">&para;</a></h3>
+<p>Static loader — update when SNOMED International releases a new production RF2.</p>
+<h3 id="what-the-user-must-supply_2">What the user must supply<a class="headerlink" href="#what-the-user-must-supply_2" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>File (relative to <code>fhir-code/</code>)</th>
+<th>Size</th>
+<th>Where to obtain</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>snomed/SnomedCT_InternationalRF2_PRODUCTION_20250601T120000Z.zip</code></td>
+<td>539.1 MB</td>
+<td>https://mlds.ihtsdotools.org/ (SNOMED license — free for most uses)</td>
+<td>Filename pattern: <code>SnomedCT_InternationalRF2_PRODUCTION_*.zip</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="input-data-structure_2">Input data structure<a class="headerlink" href="#input-data-structure_2" title="Permanent link">&para;</a></h3>
+<p><strong>SNOMED CT RF2 format</strong> (inside ZIP) — tab-separated files:</p>
+<table>
+<thead>
+<tr>
+<th>File pattern</th>
+<th>Content</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Snapshot/Terminology/sct2_Concept_Snapshot_*.txt</code></td>
+<td>concept_id, effectiveTime, active, moduleId, definitionStatusId</td>
+</tr>
+<tr>
+<td><code>Snapshot/Terminology/sct2_Description_Snapshot-en_*.txt</code></td>
+<td>description_id, conceptId, typeId, term, active, languageCode</td>
+</tr>
+<tr>
+<td><code>Snapshot/Terminology/sct2_Relationship_Snapshot_*.txt</code></td>
+<td>relationship_id, sourceId, destinationId, typeId, active, characteristicTypeId</td>
+</tr>
+<tr>
+<td><code>Snapshot/Refset/Map/der2_iIISSSCCRefset_ExtendedMap_*.txt</code></td>
+<td>Extended map to ICD-10 codes</td>
+</tr>
+</tbody>
+</table>
+<p>Key <code>typeId</code> values: <code>900000000000003001</code> = FSN (Fully Specified Name), <code>900000000000013009</code> = Synonym.</p>
+<h3 id="processing-pipeline_2">Processing pipeline<a class="headerlink" href="#processing-pipeline_2" title="Permanent link">&para;</a></h3>
+<pre><code>[ZIP] → unzip → parse RF2 TSV files → stage (concepts, descriptions, relationships, icd10_map)
+      → promote to snomed.* tables
+      → update admin.module_load_log
+</code></pre>
+<p>Admin job type: <code>snomed_import</code><br />
+Stages: validate → stage_concepts → stage_descriptions → stage_relationships → stage_map → promote</p>
+<h3 id="final-db-schema_2">Final DB schema<a class="headerlink" href="#final-db-schema_2" title="Permanent link">&para;</a></h3>
+<pre><code class="language-sql">snomed.concepts      (concept_id BIGINT PK, effective_time DATE, active BOOL, module_id BIGINT, definition_status_id BIGINT)
+snomed.descriptions  (description_id BIGINT PK, concept_id BIGINT FK, type_id BIGINT, term TEXT, active BOOL, language_code TEXT)
+snomed.relationships (relationship_id BIGINT PK, source_id BIGINT FK, destination_id BIGINT FK, type_id BIGINT, active BOOL, characteristic_type_id BIGINT)
+snomed.icd10_map     (id SERIAL PK, referenced_component_id BIGINT FK, map_target TEXT, map_rule TEXT, map_advice TEXT, map_priority SMALLINT, map_group SMALLINT, active BOOL)
+
+snomed.concept_embeddings (concept_id BIGINT PK, embedding halfvec(1024), embedded_at TIMESTAMPTZ)
+</code></pre>
+<h3 id="ai-requirements_2">AI requirements<a class="headerlink" href="#ai-requirements_2" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Capability</th>
+<th>Used for</th>
+<th>Input text</th>
+<th>Scale</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Embedding (Ollama)</td>
+<td>Semantic search over clinical concepts</td>
+<td>One FSN term per active concept</td>
+<td>~360k concepts — expect 1–2+ hours</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="4-rxnorm">4. RxNorm<a class="headerlink" href="#4-rxnorm" title="Permanent link">&para;</a></h2>
+<h3 id="source-type_3">Source type<a class="headerlink" href="#source-type_3" title="Permanent link">&para;</a></h3>
+<p>Static loader — update when NLM publishes a new monthly full release.</p>
+<h3 id="what-the-user-must-supply_3">What the user must supply<a class="headerlink" href="#what-the-user-must-supply_3" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>File (relative to <code>fhir-code/</code>)</th>
+<th>Size</th>
+<th>Where to obtain</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>rxnorm/RxNorm_full_06032024.zip</code></td>
+<td>240.3 MB</td>
+<td>https://www.nlm.nih.gov/research/umls/rxnorm/docs/rxnormfiles.html (free UMLS account)</td>
+<td>Filename pattern: <code>RxNorm_full_MMDDYYYY.zip</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="input-data-structure_3">Input data structure<a class="headerlink" href="#input-data-structure_3" title="Permanent link">&para;</a></h3>
+<p><strong>RxNorm RRF (Rich Release Format)</strong> files (inside ZIP):</p>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Content</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>rrf/RXNCONSO.RRF</code></td>
+<td>Concept names: RXCUI, LAT, STR, TTY (term type), SAB (source)</td>
+</tr>
+<tr>
+<td><code>rrf/RXNREL.RRF</code></td>
+<td>Relationships: RXCUI1, RELA, RXCUI2 — <code>interacts_with</code> edges used for interaction checks</td>
+</tr>
+<tr>
+<td><code>rrf/RXNSAT.RRF</code></td>
+<td>Attributes: RXCUI, ATN, ATV — used for ingredient info</td>
+</tr>
+</tbody>
+</table>
+<h3 id="processing-pipeline_3">Processing pipeline<a class="headerlink" href="#processing-pipeline_3" title="Permanent link">&para;</a></h3>
+<pre><code>[ZIP] → unzip → parse RXNCONSO.RRF + RXNREL.RRF → load drug.rx_concepts and drug.rx_interactions
+</code></pre>
+<p><strong>Important</strong>: Run <code>--rxnorm</code> before <code>--drug</code> / <code>--fda</code>. The drug index loader bridges <code>license_id</code> → <code>RxCUI</code> via ingredient name matching to populate <code>drug.rx_norms</code> and <code>drug.rx_interactions</code>.</p>
+<h3 id="final-db-schema_3">Final DB schema<a class="headerlink" href="#final-db-schema_3" title="Permanent link">&para;</a></h3>
+<blockquote>
+<p>Note: RxNorm tables are prefixed <code>rx_*</code> within the <code>drug</code> schema.</p>
+</blockquote>
+<pre><code class="language-sql">drug.rx_concepts     (rxcui TEXT PK, name TEXT, tty TEXT, sources TEXT[])
+drug.rx_interactions (rxcui1 TEXT, rxcui2 TEXT, relationship TEXT, source TEXT,
+                      PRIMARY KEY (rxcui1, rxcui2, relationship))
+drug.rx_norms        (license_id TEXT FK→drug.licenses, rxcui TEXT FK→drug.rx_concepts,
+                      match_method TEXT, match_score NUMERIC)
+</code></pre>
+<h3 id="ai-requirements_3">AI requirements<a class="headerlink" href="#ai-requirements_3" title="Permanent link">&para;</a></h3>
+<p>None. RxNorm lookup is exact string/code matching; no embedding or LLM.</p>
+<hr />
+<h2 id="5-twcore-ig">5. TWCore IG<a class="headerlink" href="#5-twcore-ig" title="Permanent link">&para;</a></h2>
+<h3 id="source-type_4">Source type<a class="headerlink" href="#source-type_4" title="Permanent link">&para;</a></h3>
+<p>Static loader + live fetch fallback. Run <code>--twcore</code> to load from file; the service also fetches live from the MOHW FHIR server on cache miss.</p>
+<h3 id="what-the-user-must-supply_4">What the user must supply<a class="headerlink" href="#what-the-user-must-supply_4" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>File (relative to <code>fhir-code/</code>)</th>
+<th>Size</th>
+<th>Where to obtain</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>twcoreig/v1.0.0/package.tgz</code></td>
+<td>2.7 MB</td>
+<td>衛福部 FHIR IG publish site</td>
+<td>Version subfolder matters; loader resolves the tgz via glob pattern</td>
+</tr>
+</tbody>
+</table>
+<h3 id="input-data-structure_4">Input data structure<a class="headerlink" href="#input-data-structure_4" title="Permanent link">&para;</a></h3>
+<p><strong>FHIR NPM package</strong> (tgz) — contains JSON files in <code>package/</code>:
+- <code>CodeSystem-*.json</code> — FHIR CodeSystem resources
+- Each has: <code>id</code>, <code>name</code>, <code>title</code>, <code>description</code>, <code>concept[]</code> (with <code>code</code>, <code>display</code>, <code>definition</code>)</p>
+<h3 id="processing-pipeline_4">Processing pipeline<a class="headerlink" href="#processing-pipeline_4" title="Permanent link">&para;</a></h3>
+<pre><code>[tgz] → extract → parse CodeSystem JSON files → stage (codesystems, concepts)
+      → promote to twcore.* tables
+</code></pre>
+<p>Admin job type: <code>twcore_import</code></p>
+<h3 id="final-db-schema_4">Final DB schema<a class="headerlink" href="#final-db-schema_4" title="Permanent link">&para;</a></h3>
+<pre><code class="language-sql">twcore.codesystems (cs_id TEXT PK, name TEXT, category TEXT, fetched_at TIMESTAMPTZ, concept_count INT)
+twcore.concepts    (id SERIAL PK, cs_id TEXT FK, code TEXT, display TEXT, definition TEXT)
+</code></pre>
+<h3 id="ai-requirements_4">AI requirements<a class="headerlink" href="#ai-requirements_4" title="Permanent link">&para;</a></h3>
+<p>None. Used for FHIR code validation; no embedding needed.</p>
+<hr />
+<h2 id="6-clinical-guidelines">6. Clinical Guidelines<a class="headerlink" href="#6-clinical-guidelines" title="Permanent link">&para;</a></h2>
+<h3 id="source-type_5">Source type<a class="headerlink" href="#source-type_5" title="Permanent link">&para;</a></h3>
+<p>Seed data — hard-coded in <code>loader/loaders/guideline_seed.py</code>. No user file needed.</p>
+<h3 id="what-the-user-must-supply_5">What the user must supply<a class="headerlink" href="#what-the-user-must-supply_5" title="Permanent link">&para;</a></h3>
+<p>Nothing. The seed data is bundled. To add new guidelines, edit <code>guideline_seed.py</code> directly.</p>
+<blockquote>
+<p><strong>Planned future extension</strong>: accept user-uploaded PDF or structured JSON files representing clinical guidelines, trigger LLM summarization to populate <code>guideline_summary</code>.</p>
+</blockquote>
+<h3 id="input-data-structure-seed-format">Input data structure (seed format)<a class="headerlink" href="#input-data-structure-seed-format" title="Permanent link">&para;</a></h3>
+<p>Each guideline is a Python dict in the seed file:</p>
+<pre><code class="language-python">{
+  &quot;icd_code&quot;: &quot;E11&quot;,
+  &quot;disease_name_zh&quot;: &quot;第二型糖尿病&quot;,
+  &quot;disease_name_en&quot;: &quot;Type 2 Diabetes Mellitus&quot;,
+  &quot;guideline_title&quot;: &quot;台灣糖尿病診治指引 2023&quot;,
+  &quot;guideline_source&quot;: &quot;中華民國糖尿病學會&quot;,
+  &quot;publication_year&quot;: 2023,
+  &quot;guideline_summary&quot;: &quot;...&quot;,
+  &quot;diagnostic_recommendations&quot;: [
+    {&quot;step_order&quot;: 1, &quot;recommendation_type&quot;: &quot;lab&quot;, &quot;description&quot;: &quot;...&quot;, &quot;evidence_level&quot;: &quot;A&quot;}
+  ],
+  &quot;medication_recommendations&quot;: [...],
+  &quot;test_recommendations&quot;: [...],
+  &quot;treatment_goals&quot;: [...]
+}
+</code></pre>
+<h3 id="processing-pipeline_5">Processing pipeline<a class="headerlink" href="#processing-pipeline_5" title="Permanent link">&para;</a></h3>
+<pre><code>[seed dict in code] → insert/upsert into guideline.* tables
+                    → update admin.module_load_log
+</code></pre>
+<p>Admin job type: <code>guideline_seed</code></p>
+<h3 id="final-db-schema_5">Final DB schema<a class="headerlink" href="#final-db-schema_5" title="Permanent link">&para;</a></h3>
+<pre><code class="language-sql">guideline.disease_guidelines (
+  id SERIAL PK, icd_code TEXT, disease_name_zh TEXT, disease_name_en TEXT,
+  guideline_title TEXT, guideline_source TEXT, publication_year INT, guideline_summary TEXT
+)
+guideline.diagnostic_recommendations  (id SERIAL PK, guideline_id INT FK, step_order INT, recommendation_type TEXT, description TEXT, evidence_level TEXT)
+guideline.medication_recommendations  (id SERIAL PK, guideline_id INT FK, line_of_therapy TEXT, medication_class TEXT, medication_examples TEXT, dosage_guidance TEXT, contraindications TEXT, evidence_level TEXT)
+guideline.test_recommendations        (id SERIAL PK, guideline_id INT FK, test_category TEXT, test_name TEXT, loinc_code TEXT, frequency TEXT, indication TEXT, evidence_level TEXT)
+guideline.treatment_goals             (id SERIAL PK, guideline_id INT FK, goal_type TEXT, target_parameter TEXT, target_value TEXT, timeframe TEXT)
+
+guideline.guideline_embeddings (id INT PK, embedding halfvec(1024), embedded_at TIMESTAMPTZ)
+</code></pre>
+<h3 id="ai-requirements_5">AI requirements<a class="headerlink" href="#ai-requirements_5" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Capability</th>
+<th>Used for</th>
+<th>Input text</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Embedding (Ollama)</td>
+<td>Semantic search for guideline lookup</td>
+<td><code>disease_name_zh || ' ' || disease_name_en || ' ' || guideline_title || ' ' || guideline_summary</code></td>
+</tr>
+<tr>
+<td>LLM (future)</td>
+<td>Auto-summarize PDF guidelines into <code>guideline_summary</code></td>
+<td>Full guideline PDF text</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="7-taiwan-fda-drug">7. Taiwan FDA Drug<a class="headerlink" href="#7-taiwan-fda-drug" title="Permanent link">&para;</a></h2>
+<p>This is the most complex module. It operates in three distinct phases and the
+data quality depends on which sources are available for each license.</p>
+<h3 id="source-type_6">Source type<a class="headerlink" href="#source-type_6" title="Permanent link">&para;</a></h3>
+<p>Three-phase pipeline:
+1. <strong>Phase 1 — Index Import</strong>: user uploads CSV(s) via Admin UI
+2. <strong>Phase 2 — Enrichment</strong>: system crawls TFDA website per license
+3. <strong>Phase 3 — Analysis</strong>: OCR + LLM structured extraction from insert PDFs</p>
+<h3 id="what-the-user-must-supply_6">What the user must supply<a class="headerlink" href="#what-the-user-must-supply_6" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Source</th>
+<th>Where to obtain</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>36_2.csv</code> (drug index)</td>
+<td>https://data.fda.gov.tw — search "藥品許可證" open data</td>
+<td>Multiple active CSVs are merged at import time</td>
+</tr>
+</tbody>
+</table>
+<p>The CSV is UTF-8-BOM encoded. Multiple files can be activated simultaneously; the loader concatenates them (stripping duplicate headers) before import.</p>
+<h3 id="phase-1-index-csv-structure">Phase 1 — Index CSV structure<a class="headerlink" href="#phase-1-index-csv-structure" title="Permanent link">&para;</a></h3>
+<p>CSV columns (all text):</p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>DB field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>許可證字號</code></td>
+<td><code>license_id</code> (PK)</td>
+<td>e.g. <code>衛署藥製字第000001號</code></td>
+</tr>
+<tr>
+<td><code>中文品名</code></td>
+<td><code>chinese_name</code></td>
+<td>Drug Chinese name</td>
+</tr>
+<tr>
+<td><code>英文品名</code></td>
+<td><code>english_name</code></td>
+<td>Drug English name</td>
+</tr>
+<tr>
+<td><code>藥品類別</code></td>
+<td><code>drug_category</code></td>
+<td>e.g. <code>西藥</code>, <code>中藥</code></td>
+</tr>
+<tr>
+<td><code>劑型</code></td>
+<td><code>dosage_form</code></td>
+<td>e.g. <code>錠劑</code>, <code>膠囊劑</code></td>
+</tr>
+<tr>
+<td><code>適應症</code></td>
+<td><code>indications_text</code></td>
+<td>Plain-text indications</td>
+</tr>
+<tr>
+<td><code>主成分略述</code></td>
+<td><code>main_ingredient_summary</code></td>
+<td>Semicolon-separated active ingredients</td>
+</tr>
+<tr>
+<td><code>用法用量</code></td>
+<td><code>usage_text_from_index</code></td>
+<td>Dosage instructions (brief)</td>
+</tr>
+<tr>
+<td><code>包裝</code></td>
+<td><code>package</code></td>
+<td>Pack size description</td>
+</tr>
+<tr>
+<td><code>申請商名稱</code></td>
+<td><code>applicant_name</code></td>
+<td>Marketing authorization holder</td>
+</tr>
+<tr>
+<td><code>申請商地址</code></td>
+<td><code>applicant_address</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>申請商統一編號</code></td>
+<td><code>applicant_tax_id</code></td>
+<td>ROC business ID</td>
+</tr>
+<tr>
+<td><code>製造商名稱</code></td>
+<td><code>manufacturer_name</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>製造廠廠址</code></td>
+<td><code>manufacturer_factory_address</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>製造廠公司地址</code></td>
+<td><code>manufacturer_company_address</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>製造廠國別</code></td>
+<td><code>manufacturer_country</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>製程</code></td>
+<td><code>manufacturing_process</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>許可證種類</code></td>
+<td><code>license_type</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>管制藥品分類級別</code></td>
+<td><code>controlled_drug_level</code></td>
+<td>Narcotic/controlled classification</td>
+</tr>
+<tr>
+<td><code>舊證字號</code></td>
+<td><code>old_license_no</code></td>
+<td>Previous license number if re-issued</td>
+</tr>
+<tr>
+<td><code>通關簽審文件編號</code></td>
+<td><code>customs_clearance_no</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>包裝與國際條碼</code></td>
+<td><code>barcode_text</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>有效日期</code></td>
+<td><code>valid_until</code></td>
+<td>YYYY/MM/DD</td>
+</tr>
+<tr>
+<td><code>發證日期</code></td>
+<td><code>issue_date</code></td>
+<td>YYYY/MM/DD</td>
+</tr>
+<tr>
+<td><code>異動日期</code></td>
+<td><code>last_changed_date</code></td>
+<td>YYYY/MM/DD</td>
+</tr>
+<tr>
+<td><code>註銷狀態</code></td>
+<td><code>cancellation_status</code></td>
+<td>Non-empty → cancelled license</td>
+</tr>
+<tr>
+<td><code>註銷日期</code></td>
+<td><code>cancellation_date</code></td>
+<td>YYYY/MM/DD</td>
+</tr>
+<tr>
+<td><code>註銷理由</code></td>
+<td><code>cancellation_reason</code></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Active license</strong>: <code>cancellation_status</code> is empty AND <code>cancellation_date</code> is empty.</p>
+<h3 id="phase-2-tfda-enrichment-crawler">Phase 2 — TFDA enrichment (crawler)<a class="headerlink" href="#phase-2-tfda-enrichment-crawler" title="Permanent link">&para;</a></h3>
+<p>The enrichment worker visits <code>https://www.fda.gov.tw/...</code> for each queued <code>license_id</code> and scrapes:</p>
+<table>
+<thead>
+<tr>
+<th>Data scraped</th>
+<th>Stored in</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Electronic insert page</td>
+<td><code>drug.electronic_inserts</code></td>
+<td>Basic info, sections (適應症, 用法用量, etc.), ingredient list, ATC codes, PDF links</td>
+</tr>
+<tr>
+<td>Insert PDFs</td>
+<td><code>drug.assets</code> (asset_group=<code>insert</code>) + MinIO</td>
+<td><code>insert_pdf</code> type; latest version flagged <code>is_latest_for_analysis=TRUE</code></td>
+</tr>
+<tr>
+<td>Label PDFs</td>
+<td><code>drug.assets</code> (asset_group=<code>label</code>) + MinIO</td>
+<td>Alternative label documents</td>
+</tr>
+<tr>
+<td>Appearance records</td>
+<td><code>drug.appearance_records</code> + <code>drug.assets</code> (asset_group=<code>shape</code>)</td>
+<td>Tablet shape, color, imprint; shape images in MinIO</td>
+</tr>
+</tbody>
+</table>
+<h3 id="phase-2-electronic-insert-structure">Phase 2 — Electronic insert structure<a class="headerlink" href="#phase-2-electronic-insert-structure" title="Permanent link">&para;</a></h3>
+<p><code>drug.electronic_inserts.sections_json</code> contains the structured sections from the TFDA drug page:</p>
+<pre><code class="language-json">{
+  &quot;適應症&quot;: &quot;text...&quot;,
+  &quot;用法用量&quot;: &quot;text...&quot;,
+  &quot;警語及副作用&quot;: &quot;text...&quot;,
+  &quot;禁忌&quot;: &quot;text...&quot;,
+  &quot;注意事項&quot;: &quot;text...&quot;,
+  &quot;成分&quot;: &quot;text...&quot;,
+  &quot;儲存方法&quot;: &quot;text...&quot;,
+  &quot;有效期間&quot;: &quot;text...&quot;
+}
+</code></pre>
+<h3 id="phase-3-ocr-llm-analysis">Phase 3 — OCR + LLM analysis<a class="headerlink" href="#phase-3-ocr-llm-analysis" title="Permanent link">&para;</a></h3>
+<p>Triggered for each license that has at least one <code>insert_pdf</code> in MinIO with <code>storage_status='success'</code>.</p>
+<p><strong>OCR provider</strong>: <code>dots_ocr</code> (DotsOCR library, wraps a vLLM server running Qwen2.5-VL-7B-Instruct)
+- <code>DRUG_OCR_PROVIDER</code> = <code>dots_ocr</code>
+- <code>DRUG_OCR_VLLM_SERVER_IP</code> + <code>DRUG_OCR_VLLM_PORT</code> (default <code>127.0.0.1:8002</code>)
+- <code>DRUG_OCR_MODEL_NAME</code> = <code>Qwen/Qwen2.5-VL-7B-Instruct</code>
+- Output: Markdown text saved to MinIO as <code>*.ocr.md</code></p>
+<p><strong>LLM analysis provider</strong>: <code>openai</code> | <code>vllm</code> | <code>ollama</code>
+- <code>DRUG_ANALYSIS_PROVIDER</code> (default <code>openai</code>)
+- <code>DRUG_ANALYSIS_BASE_URL</code> (default <code>http://127.0.0.1:8001/v1</code>)
+- <code>DRUG_ANALYSIS_MODEL_NAME</code> (default <code>qwen2.5:7b</code>)
+- <code>DRUG_ANALYSIS_API_KEY</code>
+- Input: OCR markdown + system prompt
+- Output: structured JSON saved to MinIO as <code>*.analysis.json</code></p>
+<p><strong>Analysis output schema</strong> (LLM must match exactly):</p>
+<pre><code class="language-json">{
+  &quot;藥品特性&quot;: &quot;string&quot;,
+  &quot;有效成分及含量&quot;: [{&quot;成分&quot;: &quot;string&quot;, &quot;含量&quot;: &quot;string&quot;}],
+  &quot;其他成分&quot;: [{&quot;成分&quot;: &quot;string&quot;, &quot;含量&quot;: &quot;string&quot;}],
+  &quot;用途(適應症)&quot;: [&quot;string&quot;],
+  &quot;使用上注意事項&quot;: {
+    &quot;有下列情形者，請勿使用&quot;: [&quot;string&quot;],
+    &quot;有下列情形者，使用前請洽醫師診治&quot;: [&quot;string&quot;],
+    &quot;有下列情形者，使用前請先諮詢醫師藥師藥劑生&quot;: [&quot;string&quot;],
+    &quot;其他使用上注意事項&quot;: [&quot;string&quot;]
+  },
+  &quot;用法用量&quot;: [&quot;string&quot;],
+  &quot;警語&quot;: {
+    &quot;使用本藥後，若有發生以下副作用，請立即停止使用，並持此說明書諮詢醫師藥師藥劑生&quot;: [&quot;string&quot;],
+    &quot;使用本藥後，若有發生以下症狀時，請立即停止使用，並接受醫師診治&quot;: [&quot;string&quot;]
+  },
+  &quot;儲存方式&quot;: [&quot;string&quot;]
+}
+</code></pre>
+<h3 id="data-quality-levels-all-combinations">Data quality levels — all combinations<a class="headerlink" href="#data-quality-levels-all-combinations" title="Permanent link">&para;</a></h3>
+<p>Each license ends up with one of these quality states in <code>drug.normalized_records.quality_confidence</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Situation</th>
+<th>Available data</th>
+<th><code>quality_confidence</code></th>
+<th><code>primary_insert_source</code></th>
+<th>Clinical usability</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>A — Index only</strong></td>
+<td>CSV row only. No EI, no PDF.</td>
+<td><code>index_only</code></td>
+<td><code>index</code></td>
+<td>Minimal: name, category, brief ingredient summary, rough indications</td>
+</tr>
+<tr>
+<td><strong>B — Index + EI partial</strong></td>
+<td>EI scraped but <code>sections</code> dict is empty (TFDA page rendered no structured sections).</td>
+<td><code>ei_partial</code></td>
+<td><code>electronic_insert</code></td>
+<td>Slightly better: manufacturer details, ATC codes, ingredient list from EI</td>
+</tr>
+<tr>
+<td><strong>C — Index + EI complete</strong></td>
+<td>EI scraped with non-empty <code>sections</code> dict. No PDF.</td>
+<td><code>ei_complete</code></td>
+<td><code>electronic_insert</code></td>
+<td>Good: full structured indications, dosage, warnings from TFDA website</td>
+</tr>
+<tr>
+<td><strong>D — Index + EI complete + PDF</strong></td>
+<td>Both EI and insert PDF stored in MinIO. OCR+LLM pending.</td>
+<td><code>ei_complete</code> → (after analysis) <code>pdf_ocr</code></td>
+<td><code>electronic_insert</code> → <code>pdf_insert</code></td>
+<td>Best: PDF analysis supersedes EI for ingredient precision and warning details</td>
+</tr>
+<tr>
+<td><strong>E — Index + PDF only</strong></td>
+<td>Insert PDF stored but EI unavailable/failed. OCR+LLM pending.</td>
+<td><code>index_only</code> → (after analysis) <code>pdf_ocr</code></td>
+<td><code>index</code> → <code>pdf_insert</code></td>
+<td>Good after analysis: PDF is the authoritative source</td>
+</tr>
+<tr>
+<td><strong>F — PDF storage failed</strong></td>
+<td>EI scraped, PDF downloaded but MinIO write failed.</td>
+<td>Same as C but <code>ocr_status='retryable_failed'</code></td>
+<td><code>electronic_insert</code></td>
+<td>Retry storage → proceed to analysis</td>
+</tr>
+<tr>
+<td><strong>G — PDF OCR done</strong></td>
+<td>PDF OCR markdown + LLM analysis JSON in MinIO. Normalized record refreshed.</td>
+<td><code>pdf_ocr</code></td>
+<td><code>pdf_insert</code></td>
+<td>Best achievable: fully structured insert</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Pipeline state machine per license</strong> (<code>drug.import_license_state</code>):</p>
+<pre><code>index_status:             pending → success
+electronic_insert_status: pending → success | no_data | retryable_failed | partial_success
+insert_pdf_status:        pending → success | no_data | retryable_failed | partial_success
+label_pdf_status:         pending → success | no_data | retryable_failed | partial_success
+shape_status:             pending → success | no_data | retryable_failed | partial_success
+storage_status:           pending → success | no_data | retryable_failed | partial_success
+ocr_status:               pending → success | no_data | retryable_failed
+analysis_status:          pending → success | no_data | retryable_failed
+normalize_status:         pending → success | retryable_failed
+</code></pre>
+<h3 id="final-db-schema-drug-domain">Final DB schema (drug domain)<a class="headerlink" href="#final-db-schema-drug-domain" title="Permanent link">&para;</a></h3>
+<pre><code class="language-sql">-- Phase 1: index data
+drug.licenses (
+  license_id TEXT PK, snapshot_id UUID, row_hash TEXT, license_token TEXT,
+  is_active BOOL,           -- FALSE if cancellation_status or cancellation_date is set
+  is_listed BOOL,           -- FALSE if not present in the most recent combined CSV
+  cancellation_status TEXT, cancellation_date DATE, cancellation_reason TEXT,
+  valid_until DATE, issue_date DATE, last_changed_date DATE,
+  license_type TEXT, old_license_no TEXT, customs_clearance_no TEXT,
+  chinese_name TEXT, english_name TEXT, drug_category TEXT,
+  controlled_drug_level TEXT, dosage_form TEXT, package TEXT,
+  indications_text TEXT, main_ingredient_summary TEXT,
+  applicant_name TEXT, applicant_address TEXT, applicant_tax_id TEXT,
+  manufacturer_name TEXT, manufacturer_factory_address TEXT,
+  manufacturer_company_address TEXT, manufacturer_country TEXT,
+  manufacturing_process TEXT, usage_text_from_index TEXT, barcode_text TEXT,
+  raw_index_json JSONB,     -- original CSV row preserved verbatim
+  created_at TIMESTAMPTZ, updated_at TIMESTAMPTZ
+)
+
+drug.ingredients (
+  ingredient_id BIGSERIAL PK, license_id TEXT FK, name TEXT, amount TEXT, unit TEXT,
+  raw_text TEXT, source TEXT,   -- 'index_summary' | 'normalized_record' | 'electronic_insert'
+  sort_order INT, raw_json JSONB
+)
+
+drug.atc (atc_id BIGSERIAL PK, license_id TEXT FK, code TEXT, name TEXT, source TEXT, raw_json JSONB)
+
+-- Phase 2: enrichment data
+drug.electronic_inserts (
+  license_id TEXT PK FK,
+  source_url TEXT,
+  basic_info_json JSONB,         -- {許可證字號, 中文品名, 英文品名, 劑型, ...}
+  manufacturers_json JSONB,      -- [{name, address, country}]
+  sections_json JSONB,           -- {適應症, 用法用量, 警語及副作用, ...}
+  ingredients_json JSONB,        -- {active: [...], inactive: [...]}
+  atc_codes_json JSONB,          -- [{ATC Code, ATC名稱, 中文分類名稱}]
+  label_pdfs_json JSONB,         -- [{url, filename, upload_date}]
+  history_pdfs_json JSONB,
+  public_pdfs_json JSONB,
+  paper_pdfs_json JSONB,
+  authorizations_json JSONB,
+  raw_page_hash TEXT,
+  scraped_at TIMESTAMPTZ, parse_status TEXT, last_error_message TEXT
+)
+
+drug.appearance_records (
+  appearance_id UUID PK, license_id TEXT FK, shape_id TEXT,
+  appearance_no TEXT, detail_url TEXT,
+  description TEXT, color TEXT, shape TEXT, scoring TEXT, symbol TEXT,
+  size TEXT, imprint TEXT,
+  raw_json JSONB, scraped_at TIMESTAMPTZ
+)
+
+drug.assets (
+  asset_id UUID PK, license_id TEXT FK, appearance_id UUID FK,
+  asset_type TEXT,            -- 'insert_pdf' | 'label_pdf' | 'shape_image' | 'ocr_markdown' | 'analysis_json'
+  asset_group TEXT,           -- 'insert' | 'label' | 'shape' | 'analysis'
+  source_page TEXT, source_url TEXT,
+  source_filename TEXT, normalized_filename TEXT,
+  upload_date DATE, mime_type TEXT, size_bytes BIGINT, sha256 TEXT,
+  bucket TEXT, object_key TEXT, minio_uri TEXT,     -- MinIO locator
+  etag TEXT, version_id TEXT,
+  download_status TEXT, storage_status TEXT,
+  is_latest_for_analysis BOOL,   -- TRUE for the newest insert_pdf per license
+  retry_count INT, last_error_code TEXT, last_error_message TEXT,
+  last_attempt_at TIMESTAMPTZ, downloaded_at TIMESTAMPTZ, stored_at TIMESTAMPTZ
+)
+
+-- Phase 3: analysis data
+drug.insert_analysis (
+  analysis_id UUID PK,
+  license_id TEXT FK, source_asset_id UUID FK,   -- the insert_pdf that was analyzed
+  ocr_asset_id UUID FK,                          -- the ocr_markdown asset
+  analysis_asset_id UUID FK,                     -- the analysis_json asset
+  primary_insert_source TEXT,                    -- 'pdf_insert'
+  ocr_provider TEXT, analysis_provider TEXT,
+  ocr_status TEXT, analysis_status TEXT,
+  normalized_json JSONB,                         -- analysis output (matches ANALYSIS_TEMPLATE above)
+  last_error_code TEXT, last_error_message TEXT,
+  last_attempt_at TIMESTAMPTZ, completed_at TIMESTAMPTZ
+)
+
+-- Denormalized: best available data merged from all sources
+drug.normalized_records (
+  license_id TEXT PK FK,
+  normalized_json JSONB,          -- full merged record (see below)
+  primary_insert_source TEXT,     -- 'index' | 'electronic_insert' | 'pdf_insert'
+  quality_confidence TEXT,        -- 'index_only' | 'ei_partial' | 'ei_complete' | 'pdf_ocr'
+  missing_fields JSONB,           -- list of field names absent from this record
+  conflict_fields JSONB,          -- list of field names where sources disagreed
+  source_errors JSONB,            -- list of error strings from enrichment
+  normalized_at TIMESTAMPTZ
+)
+
+-- Pipeline state tracking
+drug.import_license_state (
+  license_id TEXT PK FK,
+  current_run_id UUID FK,
+  index_status TEXT, electronic_insert_status TEXT, insert_pdf_status TEXT,
+  label_pdf_status TEXT, shape_status TEXT, storage_status TEXT,
+  ocr_status TEXT, analysis_status TEXT, normalize_status TEXT,
+  next_retry_at TIMESTAMPTZ, retry_count INT,
+  last_error_code TEXT, last_error_message TEXT, updated_at TIMESTAMPTZ
+)
+
+drug.enrichment_queue (
+  queue_id BIGSERIAL PK, license_id TEXT FK,
+  reason TEXT,     -- 'new_index_entry' | 'relisted_index_entry' | 'index_row_changed'
+  priority INT, status TEXT, available_at TIMESTAMPTZ,
+  claimed_at TIMESTAMPTZ, claimed_by TEXT, attempt_count INT, last_error_message TEXT
+)
+
+drug.import_stage_events (
+  event_id BIGSERIAL PK, run_id UUID FK, license_id TEXT FK,
+  stage TEXT, from_status TEXT, to_status TEXT,
+  error_code TEXT, error_message TEXT, payload JSONB, created_at TIMESTAMPTZ
+)
+</code></pre>
+<h3 id="normalized_json-structure-drugnormalized_records"><code>normalized_json</code> structure (drug.normalized_records)<a class="headerlink" href="#normalized_json-structure-drugnormalized_records" title="Permanent link">&para;</a></h3>
+<pre><code class="language-json">{
+  &quot;license_id&quot;: &quot;衛署藥製字第000001號&quot;,
+  &quot;license_token&quot;: &quot;000001&quot;,
+  &quot;identifiers&quot;: {&quot;chinese_name&quot;: &quot;...&quot;, &quot;english_name&quot;: &quot;...&quot;, &quot;old_license_no&quot;: &quot;...&quot;},
+  &quot;classification&quot;: {&quot;drug_category&quot;: &quot;西藥&quot;, &quot;controlled_drug_level&quot;: &quot;&quot;, &quot;license_type&quot;: &quot;製造&quot;},
+  &quot;product&quot;: {&quot;dosage_form&quot;: &quot;錠劑&quot;, &quot;package&quot;: &quot;...&quot;, &quot;barcode_text&quot;: &quot;...&quot;},
+  &quot;status&quot;: {&quot;is_active&quot;: true, &quot;is_listed&quot;: true, &quot;cancellation_status&quot;: &quot;&quot;, &quot;valid_until&quot;: &quot;2030-01-01&quot;},
+  &quot;dates&quot;: {&quot;issue_date&quot;: &quot;...&quot;, &quot;last_changed_date&quot;: &quot;...&quot;, &quot;cancellation_date&quot;: null},
+  &quot;parties&quot;: {
+    &quot;applicant&quot;: {&quot;name&quot;: &quot;...&quot;, &quot;address&quot;: &quot;...&quot;, &quot;tax_id&quot;: &quot;...&quot;},
+    &quot;manufacturer&quot;: {&quot;name&quot;: &quot;...&quot;, &quot;factory_address&quot;: &quot;...&quot;, &quot;company_address&quot;: &quot;...&quot;, &quot;country&quot;: &quot;台灣&quot;, &quot;process&quot;: &quot;&quot;}
+  },
+  &quot;ingredients&quot;: {
+    &quot;active&quot;: [{&quot;name&quot;: &quot;...&quot;, &quot;amount&quot;: &quot;...&quot;, &quot;unit&quot;: &quot;...&quot;, &quot;raw_text&quot;: &quot;...&quot;}],
+    &quot;inactive&quot;: []
+  },
+  &quot;atc_codes&quot;: [{&quot;code&quot;: &quot;R05CB06&quot;, &quot;name&quot;: &quot;ambroxol&quot;}],
+  &quot;clinical&quot;: {
+    &quot;indications&quot;: &quot;...&quot;,
+    &quot;usage&quot;: &quot;...&quot;,
+    &quot;warnings&quot;: &quot;...&quot;,
+    &quot;contraindications&quot;: &quot;...&quot;,
+    &quot;precautions&quot;: &quot;...&quot;,
+    &quot;storage&quot;: &quot;...&quot;
+  },
+  &quot;analysis&quot;: null,   // null until Phase 3 completes; then matches ANALYSIS_TEMPLATE
+  &quot;assets&quot;: {
+    &quot;insert_pdfs&quot;: [{&quot;asset_id&quot;: &quot;...&quot;, &quot;normalized_filename&quot;: &quot;...&quot;, &quot;minio_uri&quot;: &quot;...&quot;, &quot;upload_date&quot;: &quot;...&quot;}],
+    &quot;label_pdfs&quot;: [...],
+    &quot;appearance_records&quot;: [{&quot;shape_id&quot;: &quot;...&quot;, &quot;description&quot;: &quot;...&quot;, &quot;color&quot;: &quot;...&quot;, &quot;images&quot;: [...]}]
+  },
+  &quot;source&quot;: {
+    &quot;primary_insert_source&quot;: &quot;electronic_insert&quot;,
+    &quot;errors&quot;: []
+  },
+  &quot;quality&quot;: {
+    &quot;confidence&quot;: &quot;ei_complete&quot;,
+    &quot;missing_fields&quot;: [],
+    &quot;conflict_fields&quot;: []
+  },
+  &quot;normalized_at&quot;: &quot;2026-01-01T00:00:00Z&quot;
+}
+</code></pre>
+<h3 id="ai-requirements_6">AI requirements<a class="headerlink" href="#ai-requirements_6" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Capability</th>
+<th>Used for</th>
+<th>Provider config</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>OCR (vision LLM)</td>
+<td>Convert insert PDF pages to Markdown</td>
+<td><code>DRUG_OCR_PROVIDER=dots_ocr</code>, <code>DRUG_OCR_VLLM_SERVER_IP:PORT</code>, model <code>Qwen/Qwen2.5-VL-7B-Instruct</code></td>
+</tr>
+<tr>
+<td>LLM (text)</td>
+<td>Extract structured fields from OCR Markdown</td>
+<td><code>DRUG_ANALYSIS_PROVIDER</code> (<code>openai</code>/<code>vllm</code>/<code>ollama</code>), <code>DRUG_ANALYSIS_BASE_URL</code>, <code>DRUG_ANALYSIS_MODEL_NAME</code></td>
+</tr>
+<tr>
+<td>Embedding (future)</td>
+<td>Semantic search over drug normalized records</td>
+<td>Planned: <code>chinese_name || ' ' || indications_text || ' ' || main_ingredient_summary</code></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="8-taiwan-fda-health-supplements">8. Taiwan FDA Health Supplements<a class="headerlink" href="#8-taiwan-fda-health-supplements" title="Permanent link">&para;</a></h2>
+<h3 id="source-type_7">Source type<a class="headerlink" href="#source-type_7" title="Permanent link">&para;</a></h3>
+<p>API auto-sync — pulled from the Taiwan FDA Open Data API. No user file needed.
+The re-sync cadence is configured per module in the admin console
+(<code>admin.module_schedules</code>, e.g. daily/weekly/monthly + time) and executed by the
+<code>admin-worker</code>; it is not a fixed hardcoded cron. It can also be triggered on
+demand from the Modules tab.</p>
+<h3 id="what-the-user-must-supply_7">What the user must supply<a class="headerlink" href="#what-the-user-must-supply_7" title="Permanent link">&para;</a></h3>
+<p>Nothing. Data is pulled from Taiwan FDA Open Data API automatically.</p>
+<h3 id="api-source">API source<a class="headerlink" href="#api-source" title="Permanent link">&para;</a></h3>
+<pre><code>GET https://data.fda.gov.tw/codedata/datadownload/&lt;module_id&gt;
+</code></pre>
+<p>Response: JSON array of health supplements permit objects.</p>
+<h3 id="input-data-structure-api-response-per-item">Input data structure (API response per item)<a class="headerlink" href="#input-data-structure-api-response-per-item" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>DB column</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>許可證字號</code></td>
+<td><code>permit_no</code> (PK)</td>
+<td>e.g. <code>衛部健食字第A00001號</code></td>
+</tr>
+<tr>
+<td><code>中文品名</code></td>
+<td><code>name</code></td>
+<td>Product name</td>
+</tr>
+<tr>
+<td><code>申請商名稱</code></td>
+<td><code>applicant</code></td>
+<td>Applicant company</td>
+</tr>
+<tr>
+<td><code>功效</code></td>
+<td><code>benefit_claims</code></td>
+<td>Health benefit claims</td>
+</tr>
+<tr>
+<td><code>有效日期(起)</code></td>
+<td><code>valid_from</code></td>
+<td>Validity start</td>
+</tr>
+<tr>
+<td><code>有效日期(迄)</code></td>
+<td><code>valid_to</code></td>
+<td>Validity end</td>
+</tr>
+<tr>
+<td><code>產品種類</code></td>
+<td><code>category</code></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3 id="processing-pipeline_6">Processing pipeline<a class="headerlink" href="#processing-pipeline_6" title="Permanent link">&para;</a></h3>
+<pre><code>FDA Open Data API → fetch JSON → TRUNCATE + INSERT (atomic sync)
+                 → update health_supplements.sync_meta
+</code></pre>
+<p>Job type: <code>health_supplements_sync</code></p>
+<h3 id="final-db-schema_6">Final DB schema<a class="headerlink" href="#final-db-schema_6" title="Permanent link">&para;</a></h3>
+<pre><code class="language-sql">health_supplements.items (
+  permit_no TEXT PK, name TEXT, applicant TEXT,
+  benefit_claims TEXT, valid_from TEXT, valid_to TEXT, category TEXT
+)
+health_supplements.sync_meta (key TEXT PK, value TEXT, updated_at TIMESTAMPTZ)
+
+health_supplements.item_embeddings (permit_no TEXT PK, embedding halfvec(1024), embedded_at TIMESTAMPTZ)
+</code></pre>
+<h3 id="ai-requirements_7">AI requirements<a class="headerlink" href="#ai-requirements_7" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Capability</th>
+<th>Used for</th>
+<th>Input text</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Embedding (Ollama)</td>
+<td>Semantic search over health supplements products</td>
+<td><code>name || ' ' || benefit_claims</code></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="9-taiwan-fda-food-nutrition">9. Taiwan FDA Food Nutrition<a class="headerlink" href="#9-taiwan-fda-food-nutrition" title="Permanent link">&para;</a></h2>
+<h3 id="source-type_8">Source type<a class="headerlink" href="#source-type_8" title="Permanent link">&para;</a></h3>
+<p>API auto-sync — pulled from the Taiwan FDA Open Data API. No user file needed.
+The re-sync cadence is configured per module in the admin console
+(<code>admin.module_schedules</code>, e.g. daily/weekly/monthly + time) and executed by the
+<code>admin-worker</code>; it is not a fixed hardcoded cron. It can also be triggered on
+demand from the Modules tab.</p>
+<h3 id="what-the-user-must-supply_8">What the user must supply<a class="headerlink" href="#what-the-user-must-supply_8" title="Permanent link">&para;</a></h3>
+<p>Nothing. Two modules pulled from FDA Open Data API automatically.</p>
+<h3 id="input-data-structure_5">Input data structure<a class="headerlink" href="#input-data-structure_5" title="Permanent link">&para;</a></h3>
+<p><strong>Measurements</strong> (nutrition data — long/narrow format, one row per food × nutrient):</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>DB column</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>食品分類</code></td>
+<td><code>food_category</code></td>
+<td>Category (e.g. <code>穀物類</code>)</td>
+</tr>
+<tr>
+<td><code>樣品名稱</code></td>
+<td><code>sample_name</code></td>
+<td>Food item name (PK-like)</td>
+</tr>
+<tr>
+<td><code>俗名</code></td>
+<td><code>common_name</code></td>
+<td>Common name</td>
+</tr>
+<tr>
+<td><code>英文名稱</code></td>
+<td><code>english_name</code></td>
+<td>English name</td>
+</tr>
+<tr>
+<td><code>營養素項目</code></td>
+<td><code>nutrient_item</code></td>
+<td>Nutrient name (e.g. <code>蛋白質</code>)</td>
+</tr>
+<tr>
+<td><code>每100克含量</code></td>
+<td><code>content_per_100g</code></td>
+<td>Value per 100g</td>
+</tr>
+<tr>
+<td><code>單位</code></td>
+<td><code>content_unit</code></td>
+<td>Unit (e.g. <code>公克</code>, <code>毫克</code>)</td>
+</tr>
+<tr>
+<td><code>營養素分類</code></td>
+<td><code>nutrient_category</code></td>
+<td>Macro / Micro / Mineral / Vitamin</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Ingredients</strong>: separate API endpoint — ingredient list with Chinese and English names, category hierarchy.</p>
+<h3 id="processing-pipeline_7">Processing pipeline<a class="headerlink" href="#processing-pipeline_7" title="Permanent link">&para;</a></h3>
+<pre><code>FDA Open Data API (measurements) → TRUNCATE + INSERT
+FDA Open Data API (ingredients)  → TRUNCATE + INSERT
+update food_nutrition.sync_meta
+</code></pre>
+<p>Job type: <code>food_nutrition_sync</code></p>
+<h3 id="final-db-schema_7">Final DB schema<a class="headerlink" href="#final-db-schema_7" title="Permanent link">&para;</a></h3>
+<pre><code class="language-sql">-- long format: one row per food × nutrient (~100k+ rows)
+food_nutrition.measurements (
+  id SERIAL PK, food_category TEXT, sample_name TEXT, common_name TEXT, english_name TEXT,
+  nutrient_item TEXT, content_per_100g TEXT, content_unit TEXT, nutrient_category TEXT
+)
+
+food_nutrition.ingredients (
+  id SERIAL PK, name_zh TEXT, name_en TEXT, major_category TEXT, sub_category TEXT, note TEXT
+)
+food_nutrition.sync_meta (key TEXT PK, value TEXT, updated_at TIMESTAMPTZ)
+
+-- embeddings are food-level, not measurement-level
+food_nutrition.food_embeddings       (sample_name TEXT PK, embedding halfvec(1024), embedded_at TIMESTAMPTZ)
+food_nutrition.ingredient_embeddings (id INT PK, embedding halfvec(1024), embedded_at TIMESTAMPTZ)
+</code></pre>
+<h3 id="ai-requirements_8">AI requirements<a class="headerlink" href="#ai-requirements_8" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Capability</th>
+<th>Used for</th>
+<th>Input text</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Embedding (Ollama) — foods</td>
+<td>Semantic search over food items</td>
+<td><code>sample_name || ' ' || common_name || ' ' || english_name</code></td>
+</tr>
+<tr>
+<td>Embedding (Ollama) — ingredients</td>
+<td>Semantic search over ingredients</td>
+<td><code>name_zh || ' ' || name_en</code></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="10-umls-file-present-loader-not-yet-implemented">10. UMLS (file present — loader not yet implemented)<a class="headerlink" href="#10-umls-file-present-loader-not-yet-implemented" title="Permanent link">&para;</a></h2>
+<h3 id="status">Status<a class="headerlink" href="#status" title="Permanent link">&para;</a></h3>
+<p>The ZIP is <strong>physically present</strong> at <code>fhir-code/umls/umls-2024AA-metathesaurus-full.zip</code> (4.0 GB).
+The data loader has no <code>--umls</code> flag yet. Schema tables and loader code are planned for a future phase.</p>
+<h3 id="file-present">File present<a class="headerlink" href="#file-present" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>File (relative to <code>fhir-code/</code>)</th>
+<th>Size</th>
+<th>Where to obtain</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>umls/umls-2024AA-metathesaurus-full.zip</code></td>
+<td>4,079.5 MB</td>
+<td>https://uts.nlm.nih.gov/uts/signup-login (free UMLS license)</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>Note</strong>: excluded from git. Must be downloaded separately and placed here before running the future UMLS loader.</p>
+</blockquote>
+<h3 id="zip-contents-rrf-format-relevant-files">ZIP contents (RRF format) — relevant files<a class="headerlink" href="#zip-contents-rrf-format-relevant-files" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>File inside ZIP</th>
+<th>Content</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>META/MRCONSO.RRF</code></td>
+<td>Concept names across all vocabularies: RXCUI, SAB (source), TTY, STR</td>
+</tr>
+<tr>
+<td><code>META/MRREL.RRF</code></td>
+<td>Concept relationships: RXCUI1, RELA, RXCUI2</td>
+</tr>
+<tr>
+<td><code>META/MRSTY.RRF</code></td>
+<td>Semantic types per concept</td>
+</tr>
+<tr>
+<td><code>META/MRHIER.RRF</code></td>
+<td>Concept hierarchy</td>
+</tr>
+</tbody>
+</table>
+<h3 id="planned-use">Planned use<a class="headerlink" href="#planned-use" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Cross-vocabulary mapping (ICD-10 ↔ SNOMED CT ↔ LOINC ↔ MeSH ↔ RxNorm)</li>
+<li>Synonym expansion for semantic search fallback</li>
+<li>MeSH term lookup for clinical decision support</li>
+</ul>
+<h3 id="ai-requirements-planned">AI requirements (planned)<a class="headerlink" href="#ai-requirements-planned" title="Permanent link">&para;</a></h3>
+<p>Embedding: yes — ~3M+ concepts across all vocabularies; will likely be filtered to medically relevant subsets (ICD, SNOMED, LOINC, MeSH, RxNorm sources only).</p>
+<hr />
+<h2 id="cross-cutting-embedding-infrastructure">Cross-cutting: Embedding infrastructure<a class="headerlink" href="#cross-cutting-embedding-infrastructure" title="Permanent link">&para;</a></h2>
+<p>All embedding tables share this pattern:</p>
+<table>
+<thead>
+<tr>
+<th>Aspect</th>
+<th>Detail</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Vector type</td>
+<td><code>halfvec(N)</code> where N = <code>OLLAMA_EMBED_DIMENSIONS</code> (default <code>1024</code>)</td>
+</tr>
+<tr>
+<td>Index type</td>
+<td>HNSW with <code>halfvec_cosine_ops</code> (created automatically by loader)</td>
+</tr>
+<tr>
+<td>Model</td>
+<td><code>OLLAMA_EMBED_MODEL</code> (default <code>qwen3-embedding:0.6b</code>)</td>
+</tr>
+<tr>
+<td>Batch size</td>
+<td><code>OLLAMA_EMBED_BATCH_SIZE</code> (default <code>32</code>)</td>
+</tr>
+<tr>
+<td>Timeout</td>
+<td><code>OLLAMA_EMBED_TIMEOUT</code> (default <code>30s</code> per batch)</td>
+</tr>
+<tr>
+<td>Dimension change</td>
+<td><code>ensure_dimensions()</code> — ALTER TABLE + DROP/RECREATE HNSW index</td>
+</tr>
+<tr>
+<td>Resuming</td>
+<td><code>ON CONFLICT DO UPDATE</code> — safe to re-run, overwrites existing vectors</td>
+</tr>
+</tbody>
+</table>
+<p>To switch embedding model: set <code>OLLAMA_EMBED_DIMENSIONS</code> to the new model's output size and re-run the embed job. The loader alters all embedding columns automatically.</p>
+<hr />
+<h2 id="cross-cutting-admin-job-system">Cross-cutting: Admin job system<a class="headerlink" href="#cross-cutting-admin-job-system" title="Permanent link">&para;</a></h2>
+<p>Every module import is tracked as an <code>admin.import_jobs</code> row with:
+- <code>job_type</code>: identifies the pipeline (e.g. <code>icd_import</code>, <code>drug_enrichment</code>)
+- <code>status</code>: <code>queued → running → success | partial_success | retryable_failed | permanent_failed</code>
+- <code>progress_current / progress_total</code>: for embedding jobs = items embedded; for others = steps
+- <code>current_step</code>: named phase within the job
+- <code>checkpoint_json</code> (per step): resumable state across worker restarts
+- <code>result_summary_json</code>: final counts and outcome</p>
+<p>Worker: <code>admin-worker</code> container (<code>src/admin_worker.py</code>) — single-threaded, claims jobs from <code>admin.import_jobs</code> by setting <code>status='claimed'</code>.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; 2024 Taiwan-ICD10-Health-MCP Team
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": [], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "\u5df2\u8907\u88fd", "clipboard.copy": "\u8907\u88fd", "search.result.more.one": "\u6b64\u9801\u5c1a\u6709 1 \u500b\u7b26\u5408\u7684\u9805\u76ee", "search.result.more.other": "\u6b64\u9801\u5c1a\u6709 # \u500b\u7b26\u5408\u7684\u9805\u76ee", "search.result.none": "\u6c92\u6709\u7b26\u5408\u7684\u9805\u76ee", "search.result.one": "\u627e\u5230 1 \u500b\u7b26\u5408\u7684\u9805\u76ee", "search.result.other": "\u627e\u5230 # \u500b\u7b26\u5408\u7684\u9805\u76ee", "search.result.placeholder": "\u6253\u5b57\u9032\u884c\u641c\u5c0b", "search.result.term.missing": "\u7f3a\u5c11\u5b57\u8a5e", "select.version": "\u9078\u64c7\u7248\u672c"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
