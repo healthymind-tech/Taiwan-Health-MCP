@@ -70,6 +70,13 @@ python -m pytest tests/ -v
 8. Run initial module status sync — registers only tools whose modules meet the row-count threshold
 9. Mount the admin console sub-app when `ADMIN_ENABLED=true`
 
+**HTTP surface** (one ASGI app, served by `PrivacyPageMiddleware` wrapping the FastMCP app):
+- `/mcp` — the MCP streamable-http endpoint (`MCP_PATH`).
+- `/`, `/status`, `/privacy`, `/dpa` + logo/favicon — static pages.
+- `/admin` + `/admin/ws` — admin console sub-app (when enabled).
+- `/fhir-client/<id>/jwks.json` — public JWKS for FHIR OAuth clients.
+- **OpenAPI bridge** (`_build_openapi_spec` + `_handle_openapi_tool_call`): `GET /openapi.json` advertises the currently-registered tools as an OpenAPI 3.1 doc, and `POST /tools/<name>` invokes a tool with a JSON-body of arguments. This lets OpenAPI-only clients (e.g. Open WebUI's OpenAPI tool servers) call the tools without a separate mcpo proxy. Unauthenticated, same as `/mcp`.
+
 ### Services
 
 | Service | File | Data source | Populated by |

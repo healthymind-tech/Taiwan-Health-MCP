@@ -74,6 +74,22 @@ docker compose up -d                          # postgres / pgbouncer / redis / m
 
 > 模組相關工具會依資料載入狀態自動啟用 / 停用；FHIR 伺服器與系統工具則永遠註冊。
 
+## 連接客戶端
+
+伺服器同時提供兩種介面,皆在同一個 `app` 容器、同一個埠(預設 8000):
+
+| 介面 | 端點 | 適用客戶端 |
+|------|------|-----------|
+| **MCP**（streamable-http） | `http://<host>:8000/mcp` | 原生 MCP 客戶端(Claude Desktop、Open WebUI v0.6.31+ 的 MCP 連線等) |
+| **OpenAPI bridge** | `GET http://<host>:8000/openapi.json`、`POST http://<host>:8000/tools/<工具名>` | 僅支援 OpenAPI 工具伺服器的客戶端(如 Open WebUI 的 External Tools / OpenAPI 類型) |
+
+- **MCP**:客戶端填 `http://<host>:8000/mcp`。
+- **OpenAPI**:`/openapi.json` 依「目前已啟用的工具」動態產生 OpenAPI 3.1 規格;每個工具對應 `POST /tools/<工具名>`,以 JSON body 當參數呼叫。客戶端只要填基底網址 `http://<host>:8000`,會自動抓 `/openapi.json`。
+
+> 例:在 **Open WebUI → Settings → Tools** 以 **OpenAPI** 類型新增工具伺服器,URL 填 `http://<host>:8000` 即可列出全部工具。
+>
+> 注意:這兩個介面目前皆**未強制驗證**(與既有設計一致);對外開放時請在前面加反向代理或 token。
+
 ## 資料庫 Schema
 
 `audit` | `admin` | `icd` | `drug` | `health_supplements` | `food_nutrition` | `loinc` | `guideline` | `fhir`（multi-IG）| `snomed` | `rxnorm`

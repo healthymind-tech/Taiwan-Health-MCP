@@ -3189,6 +3189,90 @@ init();
 """
 
 
+# ---------------------------------------------------------------------------
+# OpenAPI bridge — expose the MCP tools as a plain OpenAPI tool server so
+# OpenAPI-only clients (e.g. Open WebUI's "External Tools") can call them
+# directly, without a separate mcpo proxy/container.
+#   GET  /openapi.json   → spec of the currently-registered tools
+#   POST /tools/<name>   → invoke a tool with a JSON body of arguments
+# ---------------------------------------------------------------------------
+
+_OPENAPI_TOOL_PREFIX = "/tools/"
+
+
+def _origin_from_scope(scope) -> str:
+    """Best-effort public origin (scheme://host) for the OpenAPI ``servers`` block."""
+    headers = {k.lower(): v for k, v in (scope.get("headers") or [])}
+    host = headers.get(b"host", b"").decode("latin-1").strip()
+    scheme = scope.get("scheme", "http")
+    forwarded_proto = headers.get(b"x-forwarded-proto")
+    if forwarded_proto:
+        scheme = forwarded_proto.decode("latin-1").split(",")[0].strip() or scheme
+    return f"{scheme}://{host}" if host else ""
+
+
+def _extract_text_from_tool_result(result) -> str:
+    """Flatten an mcp ``call_tool`` result (list, or ``(content, structured)``
+    tuple) into the concatenated text of its text content blocks."""
+    content = result[0] if isinstance(result, tuple) else result
+    parts: list[str] = []
+    try:
+        for block in content:
+            text = getattr(block, "text", None)
+            if text is not None:
+                parts.append(text)
+    except TypeError:
+        return str(content)
+    return "\n".join(parts)
+
+
+async def _build_openapi_spec(server_url: str) -> dict:
+    """Build an OpenAPI 3.1 spec exposing the currently-registered MCP tools.
+
+    Each tool ``foo`` becomes ``POST /tools/foo`` with the tool's JSON-Schema
+    input as the request body and ``operationId = foo``.
+    """
+    tools = await mcp.list_tools()
+    paths: dict = {}
+    for tool in tools:
+        schema = tool.inputSchema or {"type": "object", "properties": {}}
+        description = (tool.description or "").strip()
+        summary = description.splitlines()[0][:120] if description else tool.name
+        paths[f"{_OPENAPI_TOOL_PREFIX}{tool.name}"] = {
+            "post": {
+                "operationId": tool.name,
+                "summary": summary,
+                "description": description,
+                "requestBody": {
+                    "required": bool(schema.get("required")),
+                    "content": {"application/json": {"schema": schema}},
+                },
+                "responses": {
+                    "200": {
+                        "description": "Tool result",
+                        "content": {"application/json": {"schema": {"type": "object"}}},
+                    }
+                },
+            }
+        }
+    spec: dict = {
+        "openapi": "3.1.0",
+        "info": {
+            "title": "Taiwan Health MCP — OpenAPI bridge",
+            "description": (
+                "REST/OpenAPI surface over the Taiwan Health MCP tools, for "
+                "OpenAPI tool clients such as Open WebUI. Tools are the same ones "
+                "served over MCP at the streamable-http endpoint."
+            ),
+            "version": "1.0.0",
+        },
+        "paths": paths,
+    }
+    if server_url:
+        spec["servers"] = [{"url": server_url}]
+    return spec
+
+
 class PrivacyPageMiddleware:
     """Serve static pages (/, /privacy, /dpa, /status) and static assets (logos, favicon)."""
 
@@ -3324,6 +3408,73 @@ class PrivacyPageMiddleware:
             more_body = bool(message.get("more_body", False))
         return b"".join(chunks)
 
+    async def _send_cors_preflight(self, send):
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 204,
+                "headers": [
+                    (b"access-control-allow-origin", b"*"),
+                    (b"access-control-allow-methods", b"GET, POST, OPTIONS"),
+                    (b"access-control-allow-headers", b"content-type, authorization"),
+                    (b"content-length", b"0"),
+                ],
+            }
+        )
+        await send({"type": "http.response.body", "body": b"", "more_body": False})
+
+    async def _handle_openapi_tool_call(self, tool_name, receive, send):
+        """Invoke an MCP tool from a POST /tools/<name> request and return JSON."""
+        raw = await self._read_body(receive)
+        if raw.strip():
+            try:
+                arguments = json.loads(raw.decode("utf-8"))
+            except Exception:
+                await self._send_json(
+                    send, json.dumps({"error": "invalid_json_body"}), status=400
+                )
+                return
+            if not isinstance(arguments, dict):
+                await self._send_json(
+                    send,
+                    json.dumps({"error": "body_must_be_a_json_object"}),
+                    status=400,
+                )
+                return
+        else:
+            arguments = {}
+        try:
+            await _ensure_runtime_ready()
+        except Exception as exc:
+            await self._send_json(
+                send,
+                json.dumps({"error": "server_not_ready", "detail": str(exc)}),
+                status=503,
+            )
+            return
+        try:
+            result = await mcp.call_tool(tool_name, arguments)
+        except Exception as exc:
+            await self._send_json(
+                send,
+                json.dumps(
+                    {"error": "tool_call_failed", "tool": tool_name, "detail": str(exc)},
+                    ensure_ascii=False,
+                ),
+                status=400,
+            )
+            return
+        text = _extract_text_from_tool_result(result)
+        try:
+            body = json.dumps(json.loads(text), ensure_ascii=False, default=str)
+        except Exception:
+            body = json.dumps({"result": text}, ensure_ascii=False)
+        await self._send_json(
+            send,
+            body,
+            extra_headers=[(b"access-control-allow-origin", b"*")],
+        )
+
     async def __call__(self, scope, receive, send):
         # ── ASGI lifespan: hook process shutdown ──────────────────────────────
         # uvicorn drives this once per process. Wrap receive() so that when the
@@ -3358,6 +3509,54 @@ class PrivacyPageMiddleware:
         if scope["type"] == "http":
             method = scope.get("method", "")
             path = scope.get("path", "").rstrip("/") or "/"
+
+            # ── OpenAPI bridge (for OpenAPI tool clients, e.g. Open WebUI) ────
+            if path == "/openapi.json":
+                if method == "OPTIONS":
+                    await self._send_cors_preflight(send)
+                    return
+                if method != "GET":
+                    await self._send_json(
+                        send,
+                        json.dumps({"error": "method_not_allowed"}),
+                        status=405,
+                    )
+                    return
+                try:
+                    await _ensure_runtime_ready()
+                    spec = await _build_openapi_spec(_origin_from_scope(scope))
+                    await self._send_json(
+                        send,
+                        json.dumps(spec, ensure_ascii=False, default=str),
+                        extra_headers=[(b"access-control-allow-origin", b"*")],
+                    )
+                except Exception as exc:
+                    await self._send_json(
+                        send,
+                        json.dumps(
+                            {"error": "openapi_unavailable", "detail": str(exc)}
+                        ),
+                        status=500,
+                    )
+                return
+
+            if path.startswith(_OPENAPI_TOOL_PREFIX) and len(path) > len(
+                _OPENAPI_TOOL_PREFIX
+            ):
+                if method == "OPTIONS":
+                    await self._send_cors_preflight(send)
+                    return
+                if method != "POST":
+                    await self._send_json(
+                        send,
+                        json.dumps({"error": "method_not_allowed"}),
+                        status=405,
+                    )
+                    return
+                await self._handle_openapi_tool_call(
+                    path[len(_OPENAPI_TOOL_PREFIX):], receive, send
+                )
+                return
 
             # ── Public per-server JWKS endpoint ───────────────────────────────
             # An OAuth Server fetches our client's public signing key here,

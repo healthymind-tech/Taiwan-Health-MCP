@@ -45,9 +45,26 @@ ADMIN_SESSION_SECRET=change_this_admin_session_secret
 
 > 開發時若要直接執行單一 loader 階段，`loader/main.py` 的各階段仍存在（由 worker 呼叫），可在 worker 容器內以模組方式執行。
 
-## 連線 MCP 伺服器
+## 連線客戶端
 
-預設以 `streamable-http` 模式在 `http://<host>:8000/mcp` 提供服務（見 `.env` 的 `MCP_TRANSPORT` / `MCP_PORT` / `MCP_PATH`）。若要供 Claude Desktop 以 stdio 模式使用，設定 `MCP_TRANSPORT=stdio`。
+伺服器在同一個埠(預設 8000)同時提供兩種介面:
+
+### 1. MCP（原生）
+
+預設以 `streamable-http` 模式在 `http://<host>:8000/mcp` 提供服務（見 `.env` 的 `MCP_TRANSPORT` / `MCP_PORT` / `MCP_PATH`）。供原生 MCP 客戶端使用(Claude Desktop、Open WebUI v0.6.31+ 的 MCP 連線等)。若要供 Claude Desktop 以 stdio 模式使用，設定 `MCP_TRANSPORT=stdio`。
+
+### 2. OpenAPI bridge（給只支援 OpenAPI 的客戶端）
+
+對於不支援原生 MCP、只能接 OpenAPI 工具伺服器的客戶端(例如 **Open WebUI 的 External Tools / OpenAPI 類型**),伺服器內建一層 OpenAPI 介面,**不需額外的 mcpo 代理或容器**:
+
+- `GET http://<host>:8000/openapi.json` — 依目前已啟用的工具動態產生 OpenAPI 3.1 規格
+- `POST http://<host>:8000/tools/<工具名>` — 以 JSON body 當參數呼叫工具
+
+在客戶端只要填基底網址 `http://<host>:8000`,它會自動抓 `/openapi.json` 並列出全部工具。
+
+> 例:Open WebUI → Settings → Tools → 以 **OpenAPI** 類型新增,URL 填 `http://<host>:8000`。
+>
+> 注意:`/mcp` 與 OpenAPI bridge 目前皆**未強制驗證**;對外開放時請在前面加反向代理或 token。
 
 ## 驗證
 
