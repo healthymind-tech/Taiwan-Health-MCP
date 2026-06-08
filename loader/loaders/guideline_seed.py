@@ -536,3 +536,10 @@ async def seed_guidelines(pool: asyncpg.Pool) -> None:
 
     count = await pool.fetchval("SELECT COUNT(*) FROM guideline.disease_guidelines")
     print(f"  Clinical guidelines seeded: {count} guidelines.")
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """INSERT INTO admin.module_load_log (module_key, last_loaded_at, row_count)
+               VALUES ('guideline', NOW(), $1)
+               ON CONFLICT (module_key) DO UPDATE SET last_loaded_at=NOW(), row_count=$1""",
+            count,
+        )

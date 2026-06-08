@@ -7,17 +7,15 @@ Phase 2: Full LOINC 2.80 loaded via data-loader.
 import json
 from typing import Dict, List, Literal, Optional
 
-import asyncpg
-
 from cache import cached
+from database import PoolLike
 from embedding_service import EmbeddingService
+from search_quality import annotate, embeddings_present
 from utils import log_error, log_info
 
 
 class LabService:
-    def __init__(
-        self, pool: asyncpg.Pool, embedding_svc: EmbeddingService | None = None
-    ):
+    def __init__(self, pool: PoolLike, embedding_svc: EmbeddingService | None = None):
         self.pool = pool
         self._embedding_svc = embedding_svc
 
@@ -54,7 +52,8 @@ class LabService:
         vec_str = f"[{','.join(str(x) for x in vec)}]" if vec else None
 
         _fts_cols = """loinc_num, long_common_name, shortname, name_zh, common_name_zh,
-                       class, specimen_type, unit"""
+                       component, property, time_aspect, system, scale_type, method_type,
+                       class, classtype, specimen_type, unit, status"""
         _fts_vector = """to_tsvector('simple',
                            COALESCE(loinc_num,'') || ' ' || COALESCE(long_common_name,'') || ' ' ||
                            COALESCE(shortname,'') || ' ' || COALESCE(name_zh,'') || ' ' || COALESCE(common_name_zh,''))"""
@@ -125,12 +124,17 @@ class LabService:
                 },
                 ensure_ascii=False,
             )
+        has_emb = await embeddings_present(self.pool, "loinc.concept_embeddings")
         return json.dumps(
-            {
-                "keyword": keyword,
-                "total_found": len(rows),
-                "results": [dict(r) for r in rows],
-            },
+            annotate(
+                {
+                    "keyword": keyword,
+                    "total_found": len(rows),
+                    "results": [dict(r) for r in rows],
+                },
+                vec_str,
+                has_emb,
+            ),
             ensure_ascii=False,
         )
 
@@ -368,12 +372,17 @@ class LabService:
                 },
                 ensure_ascii=False,
             )
+        has_emb = await embeddings_present(self.pool, "loinc.concept_embeddings")
         return json.dumps(
-            {
-                "specimen_type": specimen_type,
-                "total_found": len(rows),
-                "results": [dict(r) for r in rows],
-            },
+            annotate(
+                {
+                    "specimen_type": specimen_type,
+                    "total_found": len(rows),
+                    "results": [dict(r) for r in rows],
+                },
+                vec_str,
+                has_emb,
+            ),
             ensure_ascii=False,
         )
 
@@ -457,8 +466,17 @@ class LabService:
                     "unit": r["unit"],
                 }
             )
+        has_emb = await embeddings_present(self.pool, "loinc.concept_embeddings")
         return json.dumps(
-            {"component": component, "total_found": len(rows), "by_system": by_system},
+            annotate(
+                {
+                    "component": component,
+                    "total_found": len(rows),
+                    "by_system": by_system,
+                },
+                vec_str,
+                has_emb,
+            ),
             ensure_ascii=False,
         )
 
@@ -478,7 +496,7 @@ class LabService:
                 {"error": f"找不到 LOINC 碼: {loinc_num}"}, ensure_ascii=False
             )
         d = dict(row)
-        # consumer_name is empty in current dataset; fall back to common_name_zh or shortname
+        # consumer_name is empty in current module; fall back to common_name_zh or shortname
         d["display_name"] = (
             d.get("consumer_name")
             or d.get("common_name_zh")
@@ -540,4 +558,17 @@ class LabService:
                 "results": interpretations,
             },
             ensure_ascii=False,
+        )
+
+    async def health_status(self):
+        from service_health import ServiceHealth, check_embedding_health
+
+        async with self.pool.acquire() as conn:
+            count = int(await conn.fetchval("SELECT COUNT(*) FROM loinc.concepts") or 0)
+        if count < 1_000:
+            return ServiceHealth(status="unavailable", reason="LOINC data not loaded")
+        return await check_embedding_health(
+            self.pool,
+            self._embedding_svc,
+            embed_count_sql="SELECT COUNT(*) FROM loinc.concept_embeddings",
         )

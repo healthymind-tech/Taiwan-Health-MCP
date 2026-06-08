@@ -62,9 +62,30 @@ services:
       retries: 3
     restart: unless-stopped
 
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    container_name: taiwanHealthMcp_minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9000:9000"
+      - "127.0.0.1:9001:9001"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9000/minio/health/live >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
   app:
     build: .
     container_name: taiwanHealthMcp
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "${MCP_PORT:-8000}:${MCP_PORT:-8000}"
       - "127.0.0.1:${METRICS_PORT:-9090}:${METRICS_PORT:-9090}"
@@ -81,17 +102,122 @@ services:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-mcp}:${POSTGRES_PASSWORD}@pgbouncer:5432/${POSTGRES_DB:-taiwan_health}
       - REDIS_URL=redis://redis:6379/0
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - ADMIN_ENABLED=${ADMIN_ENABLED:-false}
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - ADMIN_PASSWORD_HASH=${ADMIN_PASSWORD_HASH:-}
+      - ADMIN_SESSION_SECRET=${ADMIN_SESSION_SECRET:-}
+      - ADMIN_SESSION_TTL_MINUTES=${ADMIN_SESSION_TTL_MINUTES:-240}
+      - ADMIN_MAX_UPLOAD_MB=${ADMIN_MAX_UPLOAD_MB:-512}
       - METRICS_PORT=${METRICS_PORT:-9090}
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-}
       - OLLAMA_EMBED_MODEL=${OLLAMA_EMBED_MODEL:-qwen3-embedding:0.6b}
       - OLLAMA_EMBED_DIMENSIONS=${OLLAMA_EMBED_DIMENSIONS:-1024}
       - OLLAMA_EMBED_TIMEOUT=${OLLAMA_EMBED_TIMEOUT:-30}
       - OLLAMA_EMBED_BATCH_SIZE=${OLLAMA_EMBED_BATCH_SIZE:-32}
+      - MINIO_ENDPOINT=${MINIO_ENDPOINT:-minio:9000}
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-minioadmin}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-minioadmin}
+      - MINIO_BUCKET=${MINIO_BUCKET:-taiwan-health-drug-assets}
+      - MINIO_SECURE=${MINIO_SECURE:-false}
+      - MINIO_PRESIGN_TTL_SECONDS=${MINIO_PRESIGN_TTL_SECONDS:-3600}
+      - DRUG_TFDA_BASE_URL=${DRUG_TFDA_BASE_URL:-https://mcp.fda.gov.tw}
+      - DRUG_HTTP_TIMEOUT=${DRUG_HTTP_TIMEOUT:-30}
+      - DRUG_CRAWLER_CONCURRENCY=${DRUG_CRAWLER_CONCURRENCY:-4}
+      - DRUG_OCR_PROVIDER=${DRUG_OCR_PROVIDER:-dots_ocr}
+      - DRUG_OCR_VLLM_SERVER_IP=${DRUG_OCR_VLLM_SERVER_IP:-127.0.0.1}
+      - DRUG_OCR_VLLM_PORT=${DRUG_OCR_VLLM_PORT:-8002}
+      - DRUG_OCR_MODEL_NAME=${DRUG_OCR_MODEL_NAME:-Qwen/Qwen2.5-VL-7B-Instruct}
+      - DRUG_OCR_PROMPT_MODE=${DRUG_OCR_PROMPT_MODE:-prompt_layout_all_en}
+      - DRUG_OCR_PROMPT_PATH=${DRUG_OCR_PROMPT_PATH:-}
+      - DRUG_ANALYSIS_PROVIDER=${DRUG_ANALYSIS_PROVIDER:-openai}
+      - DRUG_ANALYSIS_BASE_URL=${DRUG_ANALYSIS_BASE_URL:-http://127.0.0.1:8001/v1}
+      - DRUG_ANALYSIS_MODEL_NAME=${DRUG_ANALYSIS_MODEL_NAME:-qwen2.5:7b}
+      - DRUG_ANALYSIS_API_KEY=${DRUG_ANALYSIS_API_KEY:-0}
+      - DRUG_ANALYSIS_PROMPT_PATH=${DRUG_ANALYSIS_PROMPT_PATH:-}
+      - DRUG_ANALYSIS_TEMPERATURE=${DRUG_ANALYSIS_TEMPERATURE:-0.1}
+      - DRUG_ANALYSIS_MAX_TOKENS=${DRUG_ANALYSIS_MAX_TOKENS:-4096}
+      - DRUG_ANALYSIS_MAX_RETRIES=${DRUG_ANALYSIS_MAX_RETRIES:-3}
       - PYTHONUNBUFFERED=1
     depends_on:
       pgbouncer:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    restart: unless-stopped
+
+  minio-init:
+    image: minio/mc:latest
+    container_name: taiwanHealthMcp_minio_init
+    entrypoint: >
+      /bin/sh -c "
+        until mc alias set local http://minio:9000 ${MINIO_ACCESS_KEY:-minioadmin} ${MINIO_SECRET_KEY:-minioadmin}; do
+          echo 'Waiting for MinIO...'; sleep 2;
+        done;
+        mc mb --ignore-existing local/${MINIO_BUCKET:-taiwan-health-drug-assets};
+        mc anonymous set none local/${MINIO_BUCKET:-taiwan-health-drug-assets};
+        echo 'MinIO bucket ready.';
+      "
+    environment:
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-minioadmin}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-minioadmin}
+      - MINIO_BUCKET=${MINIO_BUCKET:-taiwan-health-drug-assets}
+    depends_on:
+      minio:
+        condition: service_healthy
+    restart: "no"
+
+  admin-worker:
+    build: .
+    container_name: taiwanHealthMcp_admin_worker
+    entrypoint: ["python", "admin_worker.py"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./src:/app/src
+      - ./loader:/app/loader:ro
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-mcp}:${POSTGRES_PASSWORD}@pgbouncer:5432/${POSTGRES_DB:-taiwan_health}
+      - REDIS_URL=redis://redis:6379/0
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - ADMIN_WORKER_NAME=${ADMIN_WORKER_NAME:-admin-worker}
+      - ADMIN_WORKER_POLL_SECONDS=${ADMIN_WORKER_POLL_SECONDS:-3}
+      - ADMIN_HEARTBEAT_INTERVAL_SECONDS=${ADMIN_HEARTBEAT_INTERVAL_SECONDS:-15}
+      - ADMIN_WORKER_STALE_AFTER_SECONDS=${ADMIN_WORKER_STALE_AFTER_SECONDS:-45}
+      - ADMIN_MAX_CONCURRENT_JOBS=${ADMIN_MAX_CONCURRENT_JOBS:-4}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-}
+      - OLLAMA_EMBED_MODEL=${OLLAMA_EMBED_MODEL:-qwen3-embedding:0.6b}
+      - OLLAMA_EMBED_DIMENSIONS=${OLLAMA_EMBED_DIMENSIONS:-1024}
+      - OLLAMA_EMBED_TIMEOUT=${OLLAMA_EMBED_TIMEOUT:-30}
+      - OLLAMA_EMBED_BATCH_SIZE=${OLLAMA_EMBED_BATCH_SIZE:-32}
+      - MINIO_ENDPOINT=${MINIO_ENDPOINT:-minio:9000}
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-minioadmin}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-minioadmin}
+      - MINIO_BUCKET=${MINIO_BUCKET:-taiwan-health-drug-assets}
+      - MINIO_SECURE=${MINIO_SECURE:-false}
+      - MINIO_PRESIGN_TTL_SECONDS=${MINIO_PRESIGN_TTL_SECONDS:-3600}
+      - DRUG_OCR_PROVIDER=${DRUG_OCR_PROVIDER:-dots_ocr}
+      - DRUG_OCR_VLLM_SERVER_IP=${DRUG_OCR_VLLM_SERVER_IP:-127.0.0.1}
+      - DRUG_OCR_VLLM_PORT=${DRUG_OCR_VLLM_PORT:-8002}
+      - DRUG_OCR_MODEL_NAME=${DRUG_OCR_MODEL_NAME:-Qwen/Qwen2.5-VL-7B-Instruct}
+      - DRUG_OCR_PROMPT_MODE=${DRUG_OCR_PROMPT_MODE:-prompt_layout_all_en}
+      - DRUG_OCR_PROMPT_PATH=${DRUG_OCR_PROMPT_PATH:-}
+      - DRUG_ANALYSIS_PROVIDER=${DRUG_ANALYSIS_PROVIDER:-openai}
+      - DRUG_ANALYSIS_BASE_URL=${DRUG_ANALYSIS_BASE_URL:-http://127.0.0.1:8001/v1}
+      - DRUG_ANALYSIS_MODEL_NAME=${DRUG_ANALYSIS_MODEL_NAME:-qwen2.5:7b}
+      - DRUG_ANALYSIS_API_KEY=${DRUG_ANALYSIS_API_KEY:-0}
+      - DRUG_ANALYSIS_PROMPT_PATH=${DRUG_ANALYSIS_PROMPT_PATH:-}
+      - DRUG_ANALYSIS_TEMPERATURE=${DRUG_ANALYSIS_TEMPERATURE:-0.1}
+      - DRUG_ANALYSIS_MAX_TOKENS=${DRUG_ANALYSIS_MAX_TOKENS:-4096}
+      - DRUG_ANALYSIS_MAX_RETRIES=${DRUG_ANALYSIS_MAX_RETRIES:-3}
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      pgbouncer:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
         condition: service_healthy
     restart: unless-stopped
 
@@ -100,10 +226,14 @@ services:
       context: .
       dockerfile: Dockerfile.loader
     container_name: taiwanHealthMcp_loader
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./loader:/app/loader
+      - ./src:/app/src:ro
       - ./config:/app/config:ro
       - ./fhir-code:/app/fhir-code:ro
+      - ./POC:/app/POC:ro
     environment:
       # Loader writes large bulk data — connect directly to Postgres, not pgBouncer
       - DATABASE_URL=postgresql://${POSTGRES_USER:-mcp}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-taiwan_health}
@@ -114,9 +244,34 @@ services:
       - OLLAMA_EMBED_DIMENSIONS=${OLLAMA_EMBED_DIMENSIONS:-1024}
       - OLLAMA_EMBED_TIMEOUT=${OLLAMA_EMBED_TIMEOUT:-30}
       - OLLAMA_EMBED_BATCH_SIZE=${OLLAMA_EMBED_BATCH_SIZE:-32}
+      - MINIO_ENDPOINT=${MINIO_ENDPOINT:-minio:9000}
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-minioadmin}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-minioadmin}
+      - MINIO_BUCKET=${MINIO_BUCKET:-taiwan-health-drug-assets}
+      - MINIO_SECURE=${MINIO_SECURE:-false}
+      - MINIO_PRESIGN_TTL_SECONDS=${MINIO_PRESIGN_TTL_SECONDS:-3600}
+      - DRUG_TFDA_BASE_URL=${DRUG_TFDA_BASE_URL:-https://mcp.fda.gov.tw}
+      - DRUG_HTTP_TIMEOUT=${DRUG_HTTP_TIMEOUT:-30}
+      - DRUG_CRAWLER_CONCURRENCY=${DRUG_CRAWLER_CONCURRENCY:-4}
+      - DRUG_OCR_PROVIDER=${DRUG_OCR_PROVIDER:-dots_ocr}
+      - DRUG_OCR_VLLM_SERVER_IP=${DRUG_OCR_VLLM_SERVER_IP:-127.0.0.1}
+      - DRUG_OCR_VLLM_PORT=${DRUG_OCR_VLLM_PORT:-8002}
+      - DRUG_OCR_MODEL_NAME=${DRUG_OCR_MODEL_NAME:-Qwen/Qwen2.5-VL-7B-Instruct}
+      - DRUG_OCR_PROMPT_MODE=${DRUG_OCR_PROMPT_MODE:-prompt_layout_all_en}
+      - DRUG_OCR_PROMPT_PATH=${DRUG_OCR_PROMPT_PATH:-}
+      - DRUG_ANALYSIS_PROVIDER=${DRUG_ANALYSIS_PROVIDER:-openai}
+      - DRUG_ANALYSIS_BASE_URL=${DRUG_ANALYSIS_BASE_URL:-http://127.0.0.1:8001/v1}
+      - DRUG_ANALYSIS_MODEL_NAME=${DRUG_ANALYSIS_MODEL_NAME:-qwen2.5:7b}
+      - DRUG_ANALYSIS_API_KEY=${DRUG_ANALYSIS_API_KEY:-0}
+      - DRUG_ANALYSIS_PROMPT_PATH=${DRUG_ANALYSIS_PROMPT_PATH:-}
+      - DRUG_ANALYSIS_TEMPERATURE=${DRUG_ANALYSIS_TEMPERATURE:-0.1}
+      - DRUG_ANALYSIS_MAX_TOKENS=${DRUG_ANALYSIS_MAX_TOKENS:-4096}
+      - DRUG_ANALYSIS_MAX_RETRIES=${DRUG_ANALYSIS_MAX_RETRIES:-3}
       - PYTHONUNBUFFERED=1
     depends_on:
       postgres:
+        condition: service_healthy
+      minio:
         condition: service_healthy
     profiles:
       - loader
@@ -125,3 +280,4 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  minio_data:

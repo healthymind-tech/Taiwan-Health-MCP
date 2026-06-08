@@ -17,16 +17,17 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 # ── shared pool helpers ───────────────────────────────────────────────────────
 
+
 def _make_conn(fetch_return=None, fetchrow_return=None, fetchval_return=None):
     conn = AsyncMock()
-    conn.fetch    = AsyncMock(return_value=fetch_return or [])
+    conn.fetch = AsyncMock(return_value=fetch_return or [])
     conn.fetchrow = AsyncMock(return_value=fetchrow_return)
     conn.fetchval = AsyncMock(return_value=fetchval_return or 0)
-    conn.execute  = AsyncMock()
+    conn.execute = AsyncMock()
     conn.executemany = AsyncMock()
     tx = AsyncMock()
     tx.__aenter__ = AsyncMock(return_value=tx)
-    tx.__aexit__  = AsyncMock(return_value=False)
+    tx.__aexit__ = AsyncMock(return_value=False)
     conn.transaction = MagicMock(return_value=tx)
     return conn
 
@@ -36,7 +37,7 @@ def _make_pool(conn):
     pool.fetchval = AsyncMock(return_value=0)
     pool.fetchrow = AsyncMock(return_value=None)
     pool.acquire.return_value.__aenter__ = AsyncMock(return_value=conn)
-    pool.acquire.return_value.__aexit__  = AsyncMock(return_value=False)
+    pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
     return pool
 
 
@@ -47,13 +48,20 @@ def _row(**kwargs):
 
 # ── ICDService ────────────────────────────────────────────────────────────────
 
+
 class TestICDServiceQuery:
     @pytest.mark.asyncio
     async def test_search_codes_returns_diagnoses(self):
         from icd_service import ICDService
 
         conn = _make_conn(
-            fetch_return=[_row(code="E11.9", name_zh="第2型糖尿病", name_en="Type 2 diabetes mellitus")]
+            fetch_return=[
+                _row(
+                    code="E11.9",
+                    name_zh="第2型糖尿病",
+                    name_en="Type 2 diabetes mellitus",
+                )
+            ]
         )
         pool = _make_pool(conn)
         pool.fetchval = AsyncMock(side_effect=[1, 0])
@@ -147,21 +155,24 @@ class TestICDServiceQuery:
 
 # ── LabService ────────────────────────────────────────────────────────────────
 
+
 class TestLabServiceQuery:
     @pytest.mark.asyncio
     async def test_search_loinc_code_returns_results(self):
         from lab_service import LabService
 
-        rows = [_row(
-            loinc_num="2345-7",
-            long_common_name="Glucose [Mass/volume] in Serum or Plasma",
-            shortname="Glucose SerPl-mCnc",
-            name_zh="血清血漿葡萄糖",
-            common_name_zh="血糖",
-            class_="CHEM",
-            specimen_type="Ser/Plas",
-            unit="mg/dL",
-        )]
+        rows = [
+            _row(
+                loinc_num="2345-7",
+                long_common_name="Glucose [Mass/volume] in Serum or Plasma",
+                shortname="Glucose SerPl-mCnc",
+                name_zh="血清血漿葡萄糖",
+                common_name_zh="血糖",
+                class_="CHEM",
+                specimen_type="Ser/Plas",
+                unit="mg/dL",
+            )
+        ]
         conn = _make_conn(fetch_return=rows)
         pool = _make_pool(conn)
         pool.fetchval = AsyncMock(return_value=100)
@@ -205,9 +216,13 @@ class TestLabServiceQuery:
             unit="mg/dL",
         )
         ref_row = _row(
-            range_low=70, range_high=100,
-            unit="mg/dL", interpretation="Normal fasting glucose",
-            age_min=0, age_max=200, gender="all",
+            range_low=70,
+            range_high=100,
+            unit="mg/dL",
+            interpretation="Normal fasting glucose",
+            age_min=0,
+            age_max=200,
+            gender="all",
         )
 
         async def side_fetchrow(query, *args, **kwargs):
@@ -240,9 +255,13 @@ class TestLabServiceQuery:
             unit="mg/dL",
         )
         ref_row = _row(
-            range_low=70, range_high=100,
-            unit="mg/dL", interpretation="Normal",
-            age_min=0, age_max=200, gender="all",
+            range_low=70,
+            range_high=100,
+            unit="mg/dL",
+            interpretation="Normal",
+            age_min=0,
+            age_max=200,
+            gender="all",
         )
 
         async def side_fetchrow(query, *args, **kwargs):
@@ -274,9 +293,13 @@ class TestLabServiceQuery:
             unit="mg/dL",
         )
         ref_row = _row(
-            range_low=70, range_high=100,
-            unit="mg/dL", interpretation="Normal",
-            age_min=0, age_max=200, gender="all",
+            range_low=70,
+            range_high=100,
+            unit="mg/dL",
+            interpretation="Normal",
+            age_min=0,
+            age_max=200,
+            gender="all",
         )
 
         async def side_fetchrow(query, *args, **kwargs):
@@ -303,15 +326,21 @@ class TestLabServiceQuery:
         # Missing loinc_code field
         conn.fetchrow = AsyncMock(return_value=None)
 
-        result = json.loads(await svc.batch_interpret_results(
-            [{"value": 5.5}, {"loinc_code": "2345-7"}],   # first missing loinc, second missing value
-            age=40,
-            gender="all",
-        ))
+        result = json.loads(
+            await svc.batch_interpret_results(
+                [
+                    {"value": 5.5},
+                    {"loinc_code": "2345-7"},
+                ],  # first missing loinc, second missing value
+                age=40,
+                gender="all",
+            )
+        )
         assert result["total_tests"] == 0
 
 
 # ── FoodNutritionService ──────────────────────────────────────────────────────
+
 
 class TestFoodNutritionService:
     @pytest.mark.asyncio
@@ -333,12 +362,20 @@ class TestFoodNutritionService:
 
         rows = [
             _row(
-                sample_name="白米", common_name="", food_category="穀類",
-                nutrient_item="熱量", content_per_100g="360", content_unit="kcal",
+                sample_name="白米",
+                common_name="",
+                food_category="穀類",
+                nutrient_item="熱量",
+                content_per_100g="360",
+                content_unit="kcal",
             ),
             _row(
-                sample_name="白米", common_name="", food_category="穀類",
-                nutrient_item="粗蛋白", content_per_100g="7.1", content_unit="g",
+                sample_name="白米",
+                common_name="",
+                food_category="穀類",
+                nutrient_item="粗蛋白",
+                content_per_100g="7.1",
+                content_unit="g",
             ),
         ]
         conn = _make_conn(fetch_return=rows)
@@ -357,9 +394,13 @@ class TestFoodNutritionService:
 
         nutrient_rows = [
             _row(
-                sample_name="白米", common_name="", food_category="穀類",
-                nutrient_category="蛋白質", nutrient_item="粗蛋白",
-                content_per_100g="7.1", content_unit="g",
+                sample_name="白米",
+                common_name="",
+                food_category="穀類",
+                nutrient_category="蛋白質",
+                nutrient_item="粗蛋白",
+                content_per_100g="7.1",
+                content_unit="g",
             ),
         ]
         # fetchrow resolves sample_name via hybrid search; fetch returns nutrient rows
@@ -388,43 +429,62 @@ class TestFoodNutritionService:
         assert "error" in result["meal_components"]["月球岩石"]
 
 
-class TestHealthFoodService:
+class TestHealthSupplementsService:
     @pytest.mark.asyncio
     async def test_analyze_health_support_resolves_text_diagnosis_to_icd(self):
-        from health_food_service import HealthFoodService
+        from health_supplements_service import HealthSupplementsService
 
-        conn = _make_conn(fetch_return=[_row(permit_no="A001", name="產品A", benefit_claims="調節血糖")])
+        conn = _make_conn(
+            fetch_return=[
+                _row(permit_no="A001", name="產品A", benefit_claims="調節血糖")
+            ]
+        )
         pool = _make_pool(conn)
-        svc = HealthFoodService(pool)
+        svc = HealthSupplementsService(pool)
 
         icd_service = MagicMock()
-        icd_service.search_codes = AsyncMock(return_value=json.dumps({
-            "diagnoses": [
-                {"code": "E11.9", "name_zh": "第二型糖尿病", "name_en": "Type 2 diabetes mellitus"}
-            ]
-        }, ensure_ascii=False))
+        icd_service.search_codes = AsyncMock(
+            return_value=json.dumps(
+                {
+                    "diagnoses": [
+                        {
+                            "code": "E11.9",
+                            "name_zh": "第二型糖尿病",
+                            "name_en": "Type 2 diabetes mellitus",
+                        }
+                    ]
+                },
+                ensure_ascii=False,
+            )
+        )
 
         result = json.loads(
-            await svc.analyze_health_support_for_condition("第二型糖尿病", icd_service=icd_service)
+            await svc.analyze_health_support_for_condition(
+                "第二型糖尿病", icd_service=icd_service
+            )
         )
 
         assert result["icd_code"] == "E11"
         assert "調節血糖" in result["recommended_benefits"]
-        assert len(result["health_foods"]) == 1
+        assert len(result["health_supplements"]) == 1
 
     @pytest.mark.asyncio
     async def test_analyze_health_support_keeps_free_text_when_no_icd_match(self):
-        from health_food_service import HealthFoodService
+        from health_supplements_service import HealthSupplementsService
 
         conn = _make_conn(fetch_return=[])
         pool = _make_pool(conn)
-        svc = HealthFoodService(pool)
+        svc = HealthSupplementsService(pool)
 
         icd_service = MagicMock()
-        icd_service.search_codes = AsyncMock(return_value=json.dumps({"diagnoses": []}, ensure_ascii=False))
+        icd_service.search_codes = AsyncMock(
+            return_value=json.dumps({"diagnoses": []}, ensure_ascii=False)
+        )
 
         result = json.loads(
-            await svc.analyze_health_support_for_condition("第二型糖尿病", icd_service=icd_service)
+            await svc.analyze_health_support_for_condition(
+                "第二型糖尿病", icd_service=icd_service
+            )
         )
 
         assert result["icd_code"] is None
@@ -432,6 +492,7 @@ class TestHealthFoodService:
 
 
 # ── ClinicalGuidelineService ──────────────────────────────────────────────────
+
 
 class TestClinicalGuidelineService:
     @pytest.mark.asyncio
@@ -450,15 +511,17 @@ class TestClinicalGuidelineService:
     async def test_search_guideline_returns_results(self):
         from clinical_guideline_service import ClinicalGuidelineService
 
-        rows = [_row(
-            id=1,
-            icd_code="E11",
-            disease_name_zh="第二型糖尿病",
-            disease_name_en="Type 2 Diabetes Mellitus",
-            guideline_title="糖尿病臨床照護指引",
-            guideline_source="中華民國糖尿病學會",
-            publication_year=2023,
-        )]
+        rows = [
+            _row(
+                id=1,
+                icd_code="E11",
+                disease_name_zh="第二型糖尿病",
+                disease_name_en="Type 2 Diabetes Mellitus",
+                guideline_title="糖尿病臨床照護指引",
+                guideline_source="中華民國糖尿病學會",
+                publication_year=2023,
+            )
+        ]
         conn = _make_conn(fetch_return=rows)
         pool = _make_pool(conn)
         pool.fetchval = AsyncMock(return_value=5)
@@ -495,25 +558,54 @@ class TestClinicalGuidelineService:
 
 # ── SNOMEDService ─────────────────────────────────────────────────────────────
 
+
 class TestSNOMEDService:
     @pytest.mark.asyncio
     async def test_search_concepts_deduplicates_by_concept_id(self):
         from snomed_service import SNOMEDService, FSN_TYPE, SYNONYM_TYPE
 
-        # Same concept_id appears twice (once FSN, once synonym) — should be deduplicated
-        rows = [
-            _row(concept_id=73211009, preferred_term="Diabetes mellitus (disorder)", type_id=FSN_TYPE, active=True),
-            _row(concept_id=73211009, preferred_term="DM", type_id=SYNONYM_TYPE, active=True),
+        # First fetch: ranked match rows (same concept twice). Second fetch:
+        # per-concept descriptions used to resolve FSN + preferred term.
+        ranking = [
+            _row(
+                concept_id=73211009,
+                preferred_term="Diabetes mellitus (disorder)",
+                type_id=FSN_TYPE,
+                active=True,
+            ),
+            _row(
+                concept_id=73211009,
+                preferred_term="DM",
+                type_id=SYNONYM_TYPE,
+                active=True,
+            ),
         ]
-        conn = _make_conn(fetch_return=rows)
+        detail = [
+            _row(
+                concept_id=73211009,
+                type_id=FSN_TYPE,
+                term="Diabetes mellitus (disorder)",
+                us_preferred=False,
+            ),
+            _row(
+                concept_id=73211009,
+                type_id=SYNONYM_TYPE,
+                term="Diabetes mellitus",
+                us_preferred=True,
+            ),
+        ]
+        conn = _make_conn()
+        conn.fetch = AsyncMock(side_effect=[ranking, detail])
         pool = _make_pool(conn)
         pool.fetchval = AsyncMock(return_value=500000)
 
         svc = SNOMEDService(pool)
         results = await svc.search_concepts("diabetes")
-        # Should deduplicate to 1 result, preferring FSN
+        # Should deduplicate to 1 result with canonical FSN + preferred term + tag
         assert len(results) == 1
-        assert results[0]["term_type"] == "FSN"
+        assert results[0]["fsn"] == "Diabetes mellitus (disorder)"
+        assert results[0]["preferred_term"] == "Diabetes mellitus"
+        assert results[0]["hierarchy_tag"] == "disorder"
 
     @pytest.mark.asyncio
     async def test_get_concept_returns_none_for_missing(self):
@@ -531,14 +623,16 @@ class TestSNOMEDService:
     async def test_map_icd_to_snomed_returns_list(self):
         from snomed_service import SNOMEDService, FSN_TYPE
 
-        rows = [_row(
-            concept_id=44054006,
-            map_rule="TRUE",
-            map_advice="ALWAYS E11.9",
-            map_priority=1,
-            map_group=1,
-            fsn="Type 2 diabetes mellitus (disorder)",
-        )]
+        rows = [
+            _row(
+                concept_id=44054006,
+                map_rule="TRUE",
+                map_advice="ALWAYS E11.9",
+                map_priority=1,
+                map_group=1,
+                fsn="Type 2 diabetes mellitus (disorder)",
+            )
+        ]
         conn = _make_conn(fetch_return=rows)
         pool = _make_pool(conn)
         pool.fetchval = AsyncMock(return_value=500000)
@@ -547,4 +641,3 @@ class TestSNOMEDService:
         results = await svc.map_icd_to_snomed("E11.9")
         assert len(results) == 1
         assert results[0]["icd10_code"] == "E11.9"
-

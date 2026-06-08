@@ -7,8 +7,7 @@ from datetime import datetime
 from typing import Dict, List, Literal, Optional
 from uuid import uuid4
 
-import asyncpg
-
+from database import PoolLike
 from utils import log_error, log_info
 
 
@@ -23,7 +22,7 @@ class FHIRConditionService:
     FHIR_CATEGORY_SYSTEM = "http://terminology.hl7.org/CodeSystem/condition-category"
     FHIR_SEVERITY_SYSTEM = "http://snomed.info/sct"
 
-    def __init__(self, pool: asyncpg.Pool):
+    def __init__(self, pool: PoolLike):
         self.pool = pool
         log_info("FHIR Condition Service initialized")
 

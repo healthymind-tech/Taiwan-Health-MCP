@@ -31,14 +31,65 @@ nav:
   - 首頁:
     - index.md
     - 快速開始: getting-started.md
+  - 模組:
+    - ICD-10: modules/icd-service.md
+    - 藥品 / TFDA: modules/drug-service.md
+    - 檢驗 / LOINC: modules/lab-service.md
+    - SNOMED CT: modules/snomed-service.md
+    - 臨床指引: modules/clinical-guideline-service.md
+    - 健康補充品: modules/health-supplements-service.md
+    - 食品營養: modules/food-nutrition-service.md
+    - FHIR Condition: modules/fhir-condition-service.md
+    - FHIR Medication: modules/fhir-medication-service.md
+    - FHIR IG: modules/fhir-ig-service.md
+  - MCP 工具:
+    - ICD-10 工具: tools/icd-tools.md
+    - 藥品工具: tools/drug-tools.md
+    - 檢驗 / LOINC 工具: tools/lab-tools.md
+    - SNOMED 工具: tools/snomed-tools.md
+    - 臨床指引工具: tools/guideline-tools.md
+    - 健康補充品工具: tools/health-supplements-tools.md
+    - 食品營養工具: tools/nutrition-tools.md
+    - FHIR Condition / Medication 工具: tools/fhir-tools.md
+    - FHIR IG 工具: tools/fhir-ig-tools.md
+    - FHIR 伺服器工具: tools/fhir-server-tools.md
   - 資料來源:
     - data-sources/index.md
+    - ICD-10: data-sources/icd10.md
+    - LOINC: data-sources/loinc.md
+    - 臨床指引: data-sources/guidelines.md
+  - FHIR 授權:
+    - 授權流程說明: fhir-authoring-walkthrough.md
+    - 工具集設計評估: fhir-ig-mcp-toolset-assessment.md
+    - Patient 轉換提示: fhir-patient-conversion-prompt.md
+    - Bundle 轉換提示: fhir-bundle-conversion-prompt.md
+  - 使用指南:
+    - guides/index.md
+    - 臨床路徑: guides/clinical-pathway.md
+    - 檢驗判讀: guides/lab-interpretation.md
+    - LOINC 整合: guides/loinc-integration.md
   - API 參考:
     - api/index.md
     - FHIR Services API: api/fhir-services.md
-  - 開發指南:
-    - development/index.md
+    - ICD Service: api/icd-service.md
+    - Lab Service: api/lab-service.md
+    - Guideline Service: api/guideline-service.md
+  - 管理後台:
+    - admin/index.md
+    - 背景工作與排程: admin/jobs-and-worker.md
   - 部署:
     - deployment/index.md
+    - 架構與容器部署: architecture/deployment.md
+    - 環境變數配置: deployment/configuration.md
+    - 效能與監控: deployment/performance.md
+    - 資料處理附錄 (DPA): deployment/dpa.md
+    - 隱私政策頁面: deployment/privacy.md
+  - 開發指南:
+    - development/index.md
+    - 程式風格: development/code-style.md
+    - 測試指南: development/testing.md
+    - 貢獻流程: development/contributing.md
   - 常見問題:
     - faq/index.md
+    - 操作與使用: faq/usage.md
+    - LOINC 相關: faq/loinc.md

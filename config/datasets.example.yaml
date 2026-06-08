@@ -51,6 +51,13 @@ datasets:
     path: /data/loinc/lab_reference_ranges.csv
     label: LOINC reference ranges
 
+  drug_index_csv:
+    enabled: true
+    required: true
+    source_type: file
+    path: /data/drug/36_2.csv
+    label: Taiwan FDA drug index CSV
+
   twcore:
     enabled: true
     required: true
@@ -72,11 +79,3 @@ datasets:
     pattern: /secure/snomed/*.zip
     label: SNOMED CT
     version: "20250601"
-
-  rxnorm:
-    enabled: true
-    required: false
-    source_type: glob
-    pattern: /secure/rxnorm/*.zip
-    label: RxNorm
-    version: "2024-06-03"

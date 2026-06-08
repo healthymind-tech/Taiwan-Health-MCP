@@ -29,6 +29,7 @@ class ResolvedDataset:
 
 DATASET_GROUPS = {
     "icd": ("icd10cm", "icd10pcs", "icd_zh_tw"),
+    "drug": ("drug_index_csv",),
     "loinc": ("loinc", "loinc_taiwan_mapping", "loinc_reference_ranges"),
     "twcore": ("twcore",),
     "guideline": ("guideline_seed",),

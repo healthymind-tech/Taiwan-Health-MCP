@@ -128,3 +128,10 @@ async def load_loinc_full(
         mapping_csv_path=mapping_csv_path,
         reference_ranges_csv_path=reference_ranges_csv_path,
     )
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """INSERT INTO admin.module_load_log (module_key, last_loaded_at, row_count)
+               VALUES ('loinc', NOW(), $1)
+               ON CONFLICT (module_key) DO UPDATE SET last_loaded_at=NOW(), row_count=$1""",
+            len(records),
+        )

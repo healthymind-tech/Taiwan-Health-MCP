@@ -25,6 +25,21 @@ def _fhir_cond_mock():
     return mock
 
 
+def _fhir_med_mock():
+    mock = MagicMock()
+    mock.create_medication = AsyncMock(
+        return_value={"resourceType": "Medication", "id": "med-1"}
+    )
+    mock.create_medication_from_search = AsyncMock(
+        return_value={"resourceType": "MedicationKnowledge"}
+    )
+    mock.validate_medication = MagicMock(return_value={"valid": True, "errors": []})
+    mock.to_json_string = MagicMock(
+        side_effect=lambda obj, indent=None: json.dumps(obj, ensure_ascii=False)
+    )
+    return mock
+
+
 class TestQueryFhirCondition:
     @pytest.mark.asyncio
     async def test_null_guard(self):
@@ -155,3 +170,80 @@ class TestValidateFhirCondition:
             )
         assert result["valid"] is True
         assert result["errors"] == []
+
+
+class TestQueryFhirMedication:
+    @pytest.mark.asyncio
+    async def test_null_guard(self):
+        with patch.object(server, "fhir_medication_service", None):
+            result = json.loads(
+                await server.query_fhir_medication(
+                    license_id="衛署藥製字第000480號", resource_type="Medication"
+                )
+            )
+        assert "error" in result
+        assert "FHIR Medication Service" in result["error"]
+
+    @pytest.mark.asyncio
+    async def test_license_path_delegates(self):
+        mock_svc = _fhir_med_mock()
+        with patch.object(server, "fhir_medication_service", mock_svc):
+            await server.query_fhir_medication(
+                license_id="000480", resource_type="MedicationKnowledge"
+            )
+        mock_svc.create_medication.assert_called_once()
+        kwargs = mock_svc.create_medication.call_args.kwargs
+        assert kwargs["license_id"] == "000480"
+        assert kwargs["resource_type"] == "MedicationKnowledge"
+
+    @pytest.mark.asyncio
+    async def test_keyword_path_delegates(self):
+        mock_svc = _fhir_med_mock()
+        with patch.object(server, "fhir_medication_service", mock_svc):
+            await server.query_fhir_medication(keyword="普拿疼")
+        mock_svc.create_medication_from_search.assert_called_once()
+        kwargs = mock_svc.create_medication_from_search.call_args.kwargs
+        assert kwargs["keyword"] == "普拿疼"
+
+    @pytest.mark.asyncio
+    async def test_missing_inputs_returns_error(self):
+        mock_svc = _fhir_med_mock()
+        with patch.object(server, "fhir_medication_service", mock_svc):
+            result = json.loads(await server.query_fhir_medication())
+        assert "error" in result
+        mock_svc.create_medication.assert_not_called()
+        mock_svc.create_medication_from_search.assert_not_called()
+
+
+class TestValidateFhirMedication:
+    @pytest.mark.asyncio
+    async def test_null_guard(self):
+        with patch.object(server, "fhir_medication_service", None):
+            result = json.loads(
+                await server.validate_fhir_medication(
+                    medication_json='{"resourceType":"Medication"}'
+                )
+            )
+        assert "error" in result
+        assert "FHIR Medication Service" in result["error"]
+
+    @pytest.mark.asyncio
+    async def test_parses_json_and_validates(self):
+        mock_svc = _fhir_med_mock()
+        medication_dict = {"resourceType": "Medication", "id": "m1"}
+        with patch.object(server, "fhir_medication_service", mock_svc):
+            await server.validate_fhir_medication(
+                medication_json=json.dumps(medication_dict)
+            )
+        mock_svc.validate_medication.assert_called_once_with(medication_dict)
+
+    @pytest.mark.asyncio
+    async def test_invalid_json_returns_error(self):
+        mock_svc = _fhir_med_mock()
+        with patch.object(server, "fhir_medication_service", mock_svc):
+            result = json.loads(
+                await server.validate_fhir_medication(medication_json="{ bad json }")
+            )
+        assert result["valid"] is False
+        assert any("Invalid JSON" in error for error in result["errors"])
+        mock_svc.validate_medication.assert_not_called()

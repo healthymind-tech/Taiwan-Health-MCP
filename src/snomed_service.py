@@ -4,11 +4,11 @@ Data pre-loaded into PostgreSQL from International RF2 release by data-loader.
 All concepts are English-only (International edition).
 """
 
+import re
 from typing import Any
 
-import asyncpg
-
 from cache import cached
+from database import PoolLike
 from embedding_service import EmbeddingService
 from utils import log_error, log_info
 
@@ -16,6 +16,26 @@ from utils import log_error, log_info
 FSN_TYPE = 900000000000003001  # Fully Specified Name
 SYNONYM_TYPE = 900000000000013009  # Synonym
 IS_A_TYPE = 116680003  # Is-a relationship
+
+# definitionStatusId → human-readable label
+DEFINITION_STATUS = {
+    900000000000074008: "primitive",
+    900000000000073002: "fully_defined",
+}
+
+
+def _hierarchy_tag(fsn: str | None) -> str | None:
+    """Extract the SNOMED semantic tag from a Fully Specified Name.
+
+    The tag is the parenthesised suffix of the FSN, e.g.
+    ``"Myocardial infarction (disorder)"`` → ``"disorder"``. Returns ``None``
+    when no FSN or no trailing tag is present.
+    """
+    if not fsn:
+        return None
+    match = re.search(r"\(([^()]+)\)\s*$", fsn)
+    return match.group(1) if match else None
+
 
 # Well-known top-level hierarchy concept IDs
 HIERARCHY_ROOTS = {
@@ -38,9 +58,7 @@ HIERARCHY_ROOTS = {
 
 
 class SNOMEDService:
-    def __init__(
-        self, pool: asyncpg.Pool, embedding_svc: EmbeddingService | None = None
-    ):
+    def __init__(self, pool: PoolLike, embedding_svc: EmbeddingService | None = None):
         self.pool = pool
         self._embedding_svc = embedding_svc
 
@@ -208,18 +226,55 @@ class SNOMEDService:
                         FSN_TYPE,
                     )
 
-        # Deduplicate to one result per concept_id (prefer FSN)
-        seen: dict[int, dict] = {}
+        # Collapse the ranked match rows to score-ordered unique concept_ids.
+        ordered_ids: list[int] = []
+        active_by_id: dict[int, bool] = {}
         for row in rows:
             cid = row["concept_id"]
-            if cid not in seen or row["type_id"] == FSN_TYPE:
-                seen[cid] = {
+            if cid not in active_by_id:
+                ordered_ids.append(cid)
+                active_by_id[cid] = row["active"]
+        ordered_ids = ordered_ids[:limit]
+        if not ordered_ids:
+            return []
+
+        # Second pass: fetch the canonical FSN and US-preferred term per concept
+        # so results always carry the official name (not just the matched
+        # synonym) plus the parsed hierarchy tag.
+        async with self.pool.acquire() as conn:
+            detail = await conn.fetch(
+                """SELECT concept_id, type_id, term, us_preferred
+                   FROM snomed.descriptions
+                   WHERE concept_id = ANY($1::bigint[]) AND active = TRUE""",
+                ordered_ids,
+            )
+
+        fsn_by_id: dict[int, str] = {}
+        preferred_by_id: dict[int, str] = {}
+        synonym_by_id: dict[int, str] = {}
+        for r in detail:
+            cid = r["concept_id"]
+            if r["type_id"] == FSN_TYPE:
+                fsn_by_id[cid] = r["term"]
+            else:
+                synonym_by_id.setdefault(cid, r["term"])
+                if r.get("us_preferred"):
+                    preferred_by_id[cid] = r["term"]
+
+        results: list[dict[str, Any]] = []
+        for cid in ordered_ids:
+            fsn = fsn_by_id.get(cid)
+            preferred = preferred_by_id.get(cid) or synonym_by_id.get(cid) or fsn
+            results.append(
+                {
                     "concept_id": cid,
-                    "preferred_term": row["preferred_term"],
-                    "term_type": "FSN" if row["type_id"] == FSN_TYPE else "Synonym",
-                    "active": row["active"],
+                    "fsn": fsn,
+                    "preferred_term": preferred,
+                    "hierarchy_tag": _hierarchy_tag(fsn),
+                    "active": active_by_id.get(cid),
                 }
-        return list(seen.values())[:limit]
+            )
+        return results
 
     # ── concept detail ──────────────────────────────────────────────────────
 
@@ -270,8 +325,12 @@ class SNOMEDService:
         return {
             "concept_id": concept["concept_id"],
             "fsn": fsn,
+            "hierarchy_tag": _hierarchy_tag(fsn),
             "synonyms": synonyms,
             "active": concept["active"],
+            "definition_status": DEFINITION_STATUS.get(
+                concept["definition_status_id"], "unknown"
+            ),
             "parents": [
                 {"concept_id": p["parent_id"], "fsn": p["parent_term"]} for p in parents
             ],
@@ -404,7 +463,7 @@ class SNOMEDService:
             by_type.setdefault(type_name, []).append(
                 {
                     "concept_id": r["destination_id"],
-                    "term": r["target_term"],
+                    "fsn": r["target_term"],
                 }
             )
 
@@ -476,3 +535,20 @@ class SNOMEDService:
             }
             for r in rows
         ]
+
+    async def health_status(self):
+        from service_health import ServiceHealth, check_embedding_health
+
+        async with self.pool.acquire() as conn:
+            count = int(
+                await conn.fetchval("SELECT COUNT(*) FROM snomed.concepts") or 0
+            )
+        if count < 100_000:
+            return ServiceHealth(
+                status="unavailable", reason="SNOMED CT data not loaded"
+            )
+        return await check_embedding_health(
+            self.pool,
+            self._embedding_svc,
+            embed_count_sql="SELECT COUNT(*) FROM snomed.concept_embeddings",
+        )

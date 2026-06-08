@@ -1,7 +1,7 @@
 """
-Dataset availability tracking for dynamic MCP tool registration.
+Module availability tracking for dynamic MCP tool registration.
 
-Checks which datasets are loaded in PostgreSQL and maintains a 5-minute cache.
+Checks which modules are loaded in PostgreSQL and maintains a 5-minute cache.
 Used by DynamicFastMCP in server.py to add/remove tools based on data availability.
 """
 
@@ -11,9 +11,9 @@ import asyncio
 from datetime import datetime, timedelta
 from typing import Any, Callable
 
-import asyncpg
 from mcp.types import ToolAnnotations
 
+from database import PoolLike
 from utils import log_info, log_warning
 
 _READ_ONLY = ToolAnnotations(readOnlyHint=True)
@@ -23,24 +23,26 @@ CACHE_TTL = timedelta(minutes=5)
 # Maps service key → list of readiness requirements.
 # Each requirement is (schema.table to COUNT(*), minimum row count).
 # A service is ready only when ALL requirements pass.
-SERVICE_DATASETS: dict[str, list[tuple[str, int]]] = {
+SERVICE_MODULES: dict[str, list[tuple[str, int]]] = {
     "icd": [("icd.diagnoses", 10_000)],
-    "health_food": [("health_food.items", 10)],
+    "drug": [("drug.licenses", 1)],
+    "health_supplements": [("health_supplements.items", 10)],
     "food_nutrition": [("food_nutrition.measurements", 10)],
     "lab": [("loinc.concepts", 1_000)],
     "guideline": [("guideline.disease_guidelines", 1)],
-    "twcore": [("twcore.codesystems", 1)],
+    "ig": [("fhir.ig_packages", 1)],
     "snomed": [("snomed.concepts", 100_000)],
 }
 
 # FHIR services have no own tables — they derive availability from their dependencies.
 _FHIR_DEPS: dict[str, str] = {
     "fhir_condition": "icd",
+    "fhir_medication": "drug",
 }
 
 
-class DatasetStatusManager:
-    """Tracks dataset availability with a TTL cache and syncs MCP tool registration.
+class ModuleStatusManager:
+    """Tracks module availability with a TTL cache and syncs MCP tool registration.
 
     Thread-safe: all mutations are guarded by an asyncio.Lock so concurrent
     ``tools/list`` calls cannot race during a refresh.
@@ -58,10 +60,10 @@ class DatasetStatusManager:
             or (datetime.now() - self._last_checked) > CACHE_TTL
         )
 
-    async def _query_status(self, pool: asyncpg.Pool) -> dict[str, bool]:
+    async def _query_status(self, pool: PoolLike) -> dict[str, bool]:
         status: dict[str, bool] = {}
         async with pool.acquire() as conn:
-            for key, requirements in SERVICE_DATASETS.items():
+            for key, requirements in SERVICE_MODULES.items():
                 try:
                     ready = True
                     for table, threshold in requirements:
@@ -93,7 +95,7 @@ class DatasetStatusManager:
                     except Exception as exc:
                         log_warning("add_tool failed", tool=name, error=str(exc))
                 self._enabled.add(key)
-                log_info("Dataset ready — tools enabled", service=key, tools=len(tools))
+                log_info("Module ready — tools enabled", service=key, tools=len(tools))
 
             elif not is_available and was_enabled:
                 for _, name in tools:
@@ -103,16 +105,18 @@ class DatasetStatusManager:
                         log_warning("remove_tool failed", tool=name, error=str(exc))
                 self._enabled.discard(key)
                 log_info(
-                    "Dataset unavailable — tools disabled",
+                    "Module unavailable — tools disabled",
                     service=key,
                     tools=len(tools),
                 )
 
     async def refresh_if_stale_and_sync(
         self,
-        pool: asyncpg.Pool,
+        pool: PoolLike,
         service_tools: dict[str, list[tuple[Callable, str]]],
         mcp: Any,
+        *,
+        force: bool = False,
     ) -> None:
         """If the cache is stale, re-query the DB and update tool registration.
 
@@ -120,11 +124,12 @@ class DatasetStatusManager:
             pool: Active asyncpg connection pool.
             service_tools: Mapping of service key → list of (fn, tool_name) pairs.
             mcp: The FastMCP instance to call add_tool/remove_tool on.
+            force: Re-query even when the cache has not expired.
         """
-        if not self._is_stale():
+        if not force and not self._is_stale():
             return
         async with self._lock:
-            if not self._is_stale():  # double-check after acquiring lock
+            if not force and not self._is_stale():  # double-check after acquiring lock
                 return
             new_status = await self._query_status(pool)
             await self._sync_tools(new_status, service_tools, mcp)

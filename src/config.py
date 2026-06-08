@@ -30,6 +30,12 @@ class AppConfig:
 
     # App
     log_level: str
+    admin_enabled: bool
+    admin_username: str
+    admin_password_hash: str
+    admin_session_secret: str
+    admin_session_ttl_minutes: int
+    admin_max_upload_mb: int
 
     @classmethod
     def from_env(cls) -> "AppConfig":
@@ -57,6 +63,23 @@ class AppConfig:
             database_url=database_url,
             redis_url=os.getenv("REDIS_URL", "redis://localhost:6379/0"),
             log_level=os.getenv("LOG_LEVEL", "INFO").upper(),
+            admin_enabled=os.getenv("ADMIN_ENABLED", "false").lower() == "true",
+            admin_username=os.getenv("ADMIN_USERNAME", "").strip(),
+            admin_password_hash=os.getenv("ADMIN_PASSWORD_HASH", "").strip(),
+            admin_session_secret=os.getenv("ADMIN_SESSION_SECRET", "").strip(),
+            admin_session_ttl_minutes=int(
+                os.getenv("ADMIN_SESSION_TTL_MINUTES", "240")
+            ),
+            admin_max_upload_mb=int(os.getenv("ADMIN_MAX_UPLOAD_MB", "512")),
+        )
+
+    @property
+    def admin_ready(self) -> bool:
+        return (
+            self.admin_enabled
+            and bool(self.admin_username)
+            and bool(self.admin_password_hash)
+            and bool(self.admin_session_secret)
         )
 
     def get_run_kwargs(self) -> dict:
@@ -74,5 +97,8 @@ class AppConfig:
         if self.transport == "stdio":
             return f"Transport: {self.transport}"
         if self.transport == "streamable-http":
-            return f"Transport: {self.transport} | http://{self.host}:{self.port}{self.path}"
+            return (
+                f"Transport: {self.transport} | "
+                f"http://{self.host}:{self.port}{self.path}"
+            )
         return f"Transport: {self.transport} | http://{self.host}:{self.port}/sse"

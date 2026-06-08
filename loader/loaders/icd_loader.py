@@ -43,9 +43,11 @@ def parse_icd_chinese_xlsx(xlsx_path: str) -> tuple[dict[str, str], dict[str, st
     """
     try:
         import openpyxl
-    except ImportError:
-        print("  WARNING: openpyxl not installed — skipping Chinese names")
-        return {}, {}
+    except ImportError as exc:
+        raise RuntimeError(
+            "openpyxl is required to parse the Taiwan ICD bilingual XLSX. "
+            "Install project dependencies and rerun the ICD import."
+        ) from exc
 
     print(f"  Parsing Chinese names from {os.path.basename(xlsx_path)} ...")
     wb = openpyxl.load_workbook(xlsx_path, read_only=True, data_only=True)
@@ -61,8 +63,8 @@ def parse_icd_chinese_xlsx(xlsx_path: str) -> tuple[dict[str, str], dict[str, st
             if not header_skipped:
                 header_skipped = True
                 continue
-            code = row[0]
-            name_zh = row[3]
+            code = row[0] if len(row) > 0 else None
+            name_zh = row[3] if len(row) > 3 else None
             if code and name_zh and isinstance(code, str) and isinstance(name_zh, str):
                 result[code.strip()] = name_zh.strip()
         return result
@@ -174,6 +176,13 @@ async def load_icd10cm(
             )
 
     print(f"  ICD-10-CM loaded: {len(records)} rows.")
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """INSERT INTO admin.module_load_log (module_key, last_loaded_at, row_count)
+               VALUES ('icd', NOW(), $1)
+               ON CONFLICT (module_key) DO UPDATE SET last_loaded_at=NOW(), row_count=$1""",
+            len(records),
+        )
 
 
 # ── ICD-10-PCS ──────────────────────────────────────────────────────────────

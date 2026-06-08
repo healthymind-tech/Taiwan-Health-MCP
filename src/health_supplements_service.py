@@ -1,6 +1,6 @@
 """
-Health Food Service — Taiwan FDA approved health foods.
-Data is loaded via data-loader --health-food. No auto-sync.
+Health Supplements Service — Taiwan FDA approved health supplements.
+Data is loaded via data-loader --health-supplements. No auto-sync.
 
 Sync strategy: fetch data first, then write in one transaction.
 """
@@ -10,11 +10,12 @@ import json
 import re
 from datetime import datetime, timezone
 
-import asyncpg
 import httpx
 
 from cache import cached
+from database import PoolLike
 from embedding_service import EmbeddingService
+from search_quality import annotate, embeddings_present
 from utils import log_error, log_info
 
 API_SOURCE = "https://data.fda.gov.tw/data/opendata/export/19/json"
@@ -53,22 +54,22 @@ DISEASE_BENEFIT_MAPPING = {
 }
 
 
-class HealthFoodService:
-    def __init__(
-        self, pool: asyncpg.Pool, embedding_svc: EmbeddingService | None = None
-    ):
+class HealthSupplementsService:
+    def __init__(self, pool: PoolLike, embedding_svc: EmbeddingService | None = None):
         self.pool = pool
         self._embedding_svc = embedding_svc
         self._sync_lock = asyncio.Lock()
 
     async def initialize(self) -> None:
-        count = await self.pool.fetchval("SELECT COUNT(*) FROM health_food.items")
+        count = await self.pool.fetchval(
+            "SELECT COUNT(*) FROM health_supplements.items"
+        )
         if count == 0:
             log_info(
-                "Health food DB empty — run data-loader --health-food to load data"
+                "Health supplements DB empty — run data-loader --health-supplements to load data"
             )
         else:
-            log_info("Health Food Service ready", items=count)
+            log_info("Health Supplements Service ready", items=count)
 
     async def shutdown(self) -> None:
         """Gracefully stop the service. No-op; provided for lifecycle symmetry."""
@@ -76,13 +77,15 @@ class HealthFoodService:
 
     async def _sync(self) -> None:
         if self._sync_lock.locked():
-            log_info("Health food sync already in progress — skipping duplicate run")
+            log_info(
+                "Health supplements sync already in progress — skipping duplicate run"
+            )
             return
         async with self._sync_lock:
             await self._do_sync()
 
     async def _do_sync(self) -> None:
-        log_info("Health food sync started")
+        log_info("Health supplements sync started")
         try:
             # Step 1: fetch data
             async with httpx.AsyncClient(timeout=60) as client:
@@ -116,37 +119,62 @@ class HealthFoodService:
             BATCH = 2000
             async with self.pool.acquire() as conn:
                 async with conn.transaction():
-                    await conn.execute("TRUNCATE health_food.items")
+                    await conn.execute("TRUNCATE health_supplements.items")
                     for i in range(0, len(rows), BATCH):
                         await conn.executemany(
-                            """INSERT INTO health_food.items
+                            """INSERT INTO health_supplements.items
                                (permit_no, name, applicant, benefit_claims, valid_from, valid_to, category)
                                VALUES ($1,$2,$3,$4,$5,$6,$7)""",
                             rows[i : i + BATCH],
                         )
                     await conn.execute(
-                        """INSERT INTO health_food.sync_meta (key, value, updated_at)
+                        """INSERT INTO health_supplements.sync_meta (key, value, updated_at)
                            VALUES ('last_updated', $1, NOW())
                            ON CONFLICT (key) DO UPDATE SET value=$1, updated_at=NOW()""",
                         datetime.now(tz=timezone.utc).isoformat(),
                     )
-            log_info("Health food sync completed", items=len(rows))
-            if self._embedding_svc and self._embedding_svc.enabled:
-                asyncio.create_task(self._generate_embeddings())
+                    # Stamp the source-change marker so the embedding UI can tell
+                    # when supplements data changed since the last embed run.
+                    await conn.execute(
+                        """INSERT INTO admin.module_load_log (module_key, last_loaded_at, row_count)
+                           VALUES ('health_supplements', NOW(), $1)
+                           ON CONFLICT (module_key) DO UPDATE SET last_loaded_at=NOW(), row_count=$1""",
+                        len(rows),
+                    )
+            log_info("Health supplements sync completed", items=len(rows))
+            # Auto-queue an admin embed job so progress is visible in the Task Manager
+            # and the embedding button re-disables after completion.
+            try:
+                from admin_jobs import create_job as _create_embed_job
+
+                await _create_embed_job(
+                    self.pool,
+                    module_key="health_supplements",
+                    job_type="health_supplements_embed",
+                    requested_by="auto_sync",
+                )
+                log_info("Health supplements: embed job queued after sync")
+            except Exception as _exc:
+                log_error(
+                    "Health supplements: failed to queue embed job", error=str(_exc)
+                )
+                # Fallback to inline embedding if job creation fails
+                if self._embedding_svc and self._embedding_svc.enabled:
+                    asyncio.create_task(self._generate_embeddings())
         except Exception as e:
-            log_error("Health food sync failed", error=str(e))
+            log_error("Health supplements sync failed", error=str(e))
 
     async def _generate_embeddings(self) -> None:
-        """Embed all health food items into pgvector table (background task)."""
+        """Embed all health supplements items into pgvector table (background task)."""
         if not self._embedding_svc:
             return
         svc = self._embedding_svc
         try:
             async with self.pool.acquire() as conn:
                 items = await conn.fetch(
-                    "SELECT permit_no, name, benefit_claims FROM health_food.items"
+                    "SELECT permit_no, name, benefit_claims FROM health_supplements.items"
                 )
-            log_info("Health food: embedding items", count=len(items))
+            log_info("Health supplements: embedding items", count=len(items))
             from embedding_service import BATCH_SIZE
 
             for i in range(0, len(items), BATCH_SIZE):
@@ -164,21 +192,21 @@ class HealthFoodService:
                 if rows:
                     async with self.pool.acquire() as conn:
                         await conn.executemany(
-                            """INSERT INTO health_food.item_embeddings (permit_no, embedding)
+                            """INSERT INTO health_supplements.item_embeddings (permit_no, embedding)
                                VALUES ($1, $2::halfvec)
                                ON CONFLICT (permit_no) DO UPDATE
                                SET embedding=EXCLUDED.embedding, embedded_at=NOW()""",
                             rows,
                         )
-            log_info("Health food: embeddings done", total=len(items))
+            log_info("Health supplements: embeddings done", total=len(items))
         except Exception as exc:
-            log_error("Health food embedding generation failed", error=str(exc))
+            log_error("Health supplements embedding generation failed", error=str(exc))
 
     # ── query methods ────────────────────────────────────────────────────────
 
-    @cached(ttl=3600, prefix="hf.search")
-    async def search_health_food(self, keyword: str, limit: int = 3) -> str:
-        """Search Taiwan FDA approved health foods by name or claimed benefit.
+    @cached(ttl=3600, prefix="hs.search")
+    async def search_health_supplements(self, keyword: str, limit: int = 3) -> str:
+        """Search Taiwan FDA approved health supplements by name or claimed benefit.
 
         Args:
             keyword: Product name or benefit keyword
@@ -188,7 +216,7 @@ class HealthFoodService:
                    BM25 + semantic similarity — not just keyword matches.
 
         Returns:
-            JSON string with a ``results`` list of the closest matching health food records.
+            JSON string with a ``results`` list of the closest matching health supplements records.
         """
         limit = min(max(1, limit), 10)
         vec = await self._embedding_svc.embed(keyword) if self._embedding_svc else None
@@ -202,7 +230,7 @@ class HealthFoodService:
                                   ROW_NUMBER() OVER (ORDER BY ts_rank_cd(
                                       to_tsvector('simple', COALESCE(i.name,'') || ' ' || COALESCE(i.benefit_claims,'')),
                                       plainto_tsquery('simple', $1)) DESC) AS rank
-                           FROM health_food.items i
+                           FROM health_supplements.items i
                            WHERE to_tsvector('simple', COALESCE(i.name,'') || ' ' || COALESCE(i.benefit_claims,''))
                                  @@ plainto_tsquery('simple', $1)
                            LIMIT 20
@@ -210,7 +238,7 @@ class HealthFoodService:
                        vec AS (
                            SELECT permit_no,
                                   ROW_NUMBER() OVER (ORDER BY embedding <=> $2::halfvec) AS rank
-                           FROM health_food.item_embeddings
+                           FROM health_supplements.item_embeddings
                            ORDER BY embedding <=> $2::halfvec LIMIT 20
                        ),
                        rrf AS (
@@ -219,7 +247,7 @@ class HealthFoodService:
                            FROM fts f FULL OUTER JOIN vec v ON f.permit_no = v.permit_no
                        )
                        SELECT i.permit_no, i.name, i.category, i.benefit_claims, i.applicant, i.valid_from
-                       FROM rrf JOIN health_food.items i ON i.permit_no = rrf.permit_no
+                       FROM rrf JOIN health_supplements.items i ON i.permit_no = rrf.permit_no
                        ORDER BY rrf.score DESC LIMIT $3""",
                     keyword,
                     vec_str,
@@ -228,7 +256,7 @@ class HealthFoodService:
             else:
                 rows = await conn.fetch(
                     """SELECT permit_no, name, category, benefit_claims, applicant, valid_from
-                       FROM health_food.items
+                       FROM health_supplements.items
                        WHERE to_tsvector('simple', COALESCE(name,'') || ' ' || COALESCE(benefit_claims,''))
                              @@ plainto_tsquery('simple', $1)
                        LIMIT $2""",
@@ -237,26 +265,32 @@ class HealthFoodService:
                 )
         if not rows:
             return json.dumps(
-                {"error": f"找不到與 '{keyword}' 相關的健康食品。", "results": []},
+                {"error": f"找不到與 '{keyword}' 相關的健康補充品。", "results": []},
                 ensure_ascii=False,
             )
-        return json.dumps({"results": [dict(r) for r in rows]}, ensure_ascii=False)
+        has_emb = await embeddings_present(
+            self.pool, "health_supplements.item_embeddings"
+        )
+        return json.dumps(
+            annotate({"results": [dict(r) for r in rows]}, vec_str, has_emb),
+            ensure_ascii=False,
+        )
 
-    @cached(ttl=3600, prefix="hf.details")
-    async def get_health_food_details(self, permit_no: str) -> str:
-        """Return full details for a Taiwan FDA approved health food by permit number.
+    @cached(ttl=3600, prefix="hs.details")
+    async def get_health_supplements_details(self, permit_no: str) -> str:
+        """Return full details for a Taiwan FDA approved health supplements by permit number.
 
         Args:
-            permit_no: FDA health food permit number
+            permit_no: FDA health supplements permit number
                 (e.g. ``"衛部健食字第A00001號"``).
 
         Returns:
-            JSON string with all fields from ``health_food.items``,
+            JSON string with all fields from ``health_supplements.items``,
             or ``{"error": ...}`` if not found.
         """
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow(
-                "SELECT * FROM health_food.items WHERE permit_no = $1", permit_no
+                "SELECT * FROM health_supplements.items WHERE permit_no = $1", permit_no
             )
         if not row:
             return json.dumps(
@@ -305,11 +339,11 @@ class HealthFoodService:
     async def analyze_health_support_for_condition(
         self, diagnosis_keyword: str, icd_service: "ICDService | None" = None  # type: ignore[name-defined]
     ) -> str:
-        """Recommend FDA-approved health foods relevant to a given diagnosis.
+        """Recommend FDA-approved health supplements relevant to a given diagnosis.
 
         Resolves *diagnosis_keyword* to an ICD prefix, maps it to relevant
         health benefit categories via ``DISEASE_BENEFIT_MAPPING``, then
-        searches ``health_food.items`` for matching products.
+        searches ``health_supplements.items`` for matching products.
 
         Args:
             diagnosis_keyword: Chinese/English disease name or ICD-10 code
@@ -334,7 +368,7 @@ class HealthFoodService:
         async with self.pool.acquire() as conn:
             for benefit in recommended_benefits:
                 rows = await conn.fetch(
-                    """SELECT permit_no, name, benefit_claims FROM health_food.items
+                    """SELECT permit_no, name, benefit_claims FROM health_supplements.items
                        WHERE to_tsvector('simple', COALESCE(benefit_claims,''))
                              @@ plainto_tsquery('simple', $1)
                        LIMIT 5""",
@@ -354,8 +388,26 @@ class HealthFoodService:
             {
                 "icd_code": icd_code,
                 "recommended_benefits": recommended_benefits,
-                "health_foods": unique_foods,
-                "disclaimer": "健康食品僅供輔助保健，不可取代醫療。使用前請諮詢醫師。",
+                "health_supplements": unique_foods,
+                "disclaimer": "健康補充品僅供輔助保健，不可取代醫療。使用前請諮詢醫師。",
             },
             ensure_ascii=False,
+        )
+
+    async def health_status(self):
+        from service_health import ServiceHealth, check_embedding_health
+
+        async with self.pool.acquire() as conn:
+            count = int(
+                await conn.fetchval("SELECT COUNT(*) FROM health_supplements.items")
+                or 0
+            )
+        if count < 10:
+            return ServiceHealth(
+                status="unavailable", reason="Health supplements data not loaded"
+            )
+        return await check_embedding_health(
+            self.pool,
+            self._embedding_svc,
+            embed_count_sql="SELECT COUNT(*) FROM health_supplements.item_embeddings",
         )

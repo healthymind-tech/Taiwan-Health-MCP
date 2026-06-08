@@ -40,7 +40,7 @@ python -m pytest tests/test_api_integration.py::TestSearchMedicalCodes::test_exa
 2. **fuzzy** — 模糊/部分查詢，預期成功處理
 3. **wrong** — 無效輸入，預期優雅處理（不崩潰）
 
-另有 `TestToolsList` 驗證 `tools/list` API 能列出所有 28 個工具，並與 registry 內的群組設定一致。
+另有 `TestToolsList` 驗證 `tools/list` API 能列出所有已註冊的工具，並與 registry（`_TOOL_GROUPS`）內的群組設定一致。
 
 若 server 未啟動，整合測試會自動跳過（skip），不會失敗。
 

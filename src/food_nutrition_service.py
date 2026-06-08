@@ -9,10 +9,10 @@ import asyncio
 import json
 from datetime import datetime, timezone
 
-import asyncpg
 import httpx
 
 from cache import cached
+from database import PoolLike
 from embedding_service import EmbeddingService
 from utils import log_error, log_info
 
@@ -97,9 +97,7 @@ _NUTRIENT_ALIASES: dict[str, str] = {
 
 
 class FoodNutritionService:
-    def __init__(
-        self, pool: asyncpg.Pool, embedding_svc: EmbeddingService | None = None
-    ):
+    def __init__(self, pool: PoolLike, embedding_svc: EmbeddingService | None = None):
         self.pool = pool
         self._embedding_svc = embedding_svc
         self._sync_lock = asyncio.Lock()
@@ -208,14 +206,34 @@ class FoodNutritionService:
                            ON CONFLICT (key) DO UPDATE SET value=$1, updated_at=NOW()""",
                         datetime.now(tz=timezone.utc).isoformat(),
                     )
+                    # Stamp the source-change marker (measurements + ingredients)
+                    # so the embedding UI can detect changes since the last embed.
+                    await conn.execute(
+                        """INSERT INTO admin.module_load_log (module_key, last_loaded_at, row_count)
+                           VALUES ('food_nutrition', NOW(), $1)
+                           ON CONFLICT (module_key) DO UPDATE SET last_loaded_at=NOW(), row_count=$1""",
+                        len(measurement_rows) + len(ingredient_rows),
+                    )
             log_info(
                 "Food nutrition sync completed",
                 measurements=len(measurement_rows),
                 ingredients=len(ingredient_rows),
             )
             self._nutrient_embeddings = None  # invalidate in-memory nutrient cache
-            if self._embedding_svc and self._embedding_svc.enabled:
-                asyncio.create_task(self._generate_embeddings())
+            try:
+                from admin_jobs import create_job as _create_embed_job
+
+                await _create_embed_job(
+                    self.pool,
+                    module_key="food_nutrition",
+                    job_type="food_nutrition_embed",
+                    requested_by="auto_sync",
+                )
+                log_info("Food nutrition: embed job queued after sync")
+            except Exception as _exc:
+                log_error("Food nutrition: failed to queue embed job", error=str(_exc))
+                if self._embedding_svc and self._embedding_svc.enabled:
+                    asyncio.create_task(self._generate_embeddings())
         except Exception as e:
             log_error("Food nutrition sync failed", error=str(e))
 
@@ -539,7 +557,11 @@ class FoodNutritionService:
                        SELECT i.name_zh, i.name_en, i.major_category, i.sub_category, i.note
                        FROM rrf JOIN food_nutrition.ingredients i ON i.id = rrf.id
                        ORDER BY rrf.score DESC LIMIT $3""",
-                    *([keyword, vec_str, limit, category] if category else [keyword, vec_str, limit]),
+                    *(
+                        [keyword, vec_str, limit, category]
+                        if category
+                        else [keyword, vec_str, limit]
+                    ),
                 )
             else:
                 rows = await conn.fetch(
@@ -576,24 +598,27 @@ class FoodNutritionService:
     @cached(ttl=86400, prefix="fn.catlist")
     async def list_ingredient_categories(self) -> str:
         async with self.pool.acquire() as conn:
-            rows = await conn.fetch(
-                """SELECT major_category,
+            rows = await conn.fetch("""SELECT major_category,
                           COUNT(*) AS ingredient_count
                    FROM food_nutrition.ingredients
                    WHERE major_category IS NOT NULL AND major_category <> ''
                    GROUP BY major_category
-                   ORDER BY ingredient_count DESC"""
-            )
+                   ORDER BY ingredient_count DESC""")
         if not rows:
             return json.dumps(
-                {"error": "食品原料資料庫尚未載入，請執行 data-loader --food-nutrition。"},
+                {
+                    "error": "食品原料資料庫尚未載入，請執行 data-loader --food-nutrition。"
+                },
                 ensure_ascii=False,
             )
         return json.dumps(
             {
                 "total_categories": len(rows),
                 "categories": [
-                    {"major_category": r["major_category"], "ingredient_count": r["ingredient_count"]}
+                    {
+                        "major_category": r["major_category"],
+                        "ingredient_count": r["ingredient_count"],
+                    }
                     for r in rows
                 ],
             },
@@ -723,13 +748,9 @@ class FoodNutritionService:
         # (pgBouncer transaction mode — never hold a connection open during HTTP calls)
         vec_strs: dict[str, str | None] = {}
         if self._embedding_svc:
-            vecs = await asyncio.gather(
-                *[self._embedding_svc.embed(f) for f in foods]
-            )
+            vecs = await asyncio.gather(*[self._embedding_svc.embed(f) for f in foods])
             for food, vec in zip(foods, vecs):
-                vec_strs[food] = (
-                    f"[{','.join(str(x) for x in vec)}]" if vec else None
-                )
+                vec_strs[food] = f"[{','.join(str(x) for x in vec)}]" if vec else None
 
         totals: dict[str, float] = {}
         components: dict[str, dict] = {}
@@ -806,10 +827,16 @@ class FoodNutritionService:
                     r["content_per_100g"].strip() if r["content_per_100g"] else None
                 )
                 grouped[cat].append(
-                    {"item": r["nutrient_item"], "value": val_str, "unit": r["content_unit"]}
+                    {
+                        "item": r["nutrient_item"],
+                        "value": val_str,
+                        "unit": r["content_unit"],
+                    }
                 )
                 try:
-                    totals[r["nutrient_item"]] = totals.get(r["nutrient_item"], 0) + float(val_str)
+                    totals[r["nutrient_item"]] = totals.get(
+                        r["nutrient_item"], 0
+                    ) + float(val_str)
                 except (ValueError, TypeError):
                     pass
 
@@ -823,4 +850,22 @@ class FoodNutritionService:
         return json.dumps(
             {"meal_components": components, "combined_totals_per_100g_each": totals},
             ensure_ascii=False,
+        )
+
+    async def health_status(self):
+        from service_health import ServiceHealth, check_embedding_health
+
+        async with self.pool.acquire() as conn:
+            count = int(
+                await conn.fetchval("SELECT COUNT(*) FROM food_nutrition.measurements")
+                or 0
+            )
+        if count < 10:
+            return ServiceHealth(
+                status="unavailable", reason="Food nutrition data not loaded"
+            )
+        return await check_embedding_health(
+            self.pool,
+            self._embedding_svc,
+            embed_count_sql="SELECT COUNT(*) FROM food_nutrition.food_embeddings",
         )

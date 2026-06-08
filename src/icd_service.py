@@ -9,17 +9,15 @@ is available — the icd.procedures table exists but may be empty.
 
 import json
 
-import asyncpg
-
 from cache import cached
+from database import PoolLike
 from embedding_service import EmbeddingService
+from search_quality import annotate, embeddings_present
 from utils import log_error, log_info
 
 
 class ICDService:
-    def __init__(
-        self, pool: asyncpg.Pool, embedding_svc: EmbeddingService | None = None
-    ):
+    def __init__(self, pool: PoolLike, embedding_svc: EmbeddingService | None = None):
         self.pool = pool
         self._embedding_svc = embedding_svc
         self._pcs_available = False
@@ -133,6 +131,8 @@ class ICDService:
                 {"error": f"No results found for '{keyword}'."}, ensure_ascii=False
             )
 
+        has_emb = await embeddings_present(self.pool, "icd.diagnosis_embeddings")
+        annotate(results, vec_str, has_emb)
         return json.dumps(results, ensure_ascii=False)
 
     @cached(ttl=86400, prefix="icd.complications")
@@ -152,7 +152,7 @@ class ICDService:
         code = code.upper().strip()
         async with self.pool.acquire() as conn:
             children = await conn.fetch(
-                "SELECT code, name_zh FROM icd.diagnoses WHERE code LIKE $1 AND code != $2 ORDER BY code LIMIT 15",
+                "SELECT code, name_zh, name_en FROM icd.diagnoses WHERE code LIKE $1 AND code != $2 ORDER BY code LIMIT 15",
                 f"{code}%",
                 code,
             )
@@ -169,7 +169,7 @@ class ICDService:
 
             category = code.split(".")[0] if "." in code else code[:3]
             siblings = await conn.fetch(
-                "SELECT code, name_zh FROM icd.diagnoses WHERE category = $1 AND code != $2 LIMIT 10",
+                "SELECT code, name_zh, name_en FROM icd.diagnoses WHERE category = $1 AND code != $2 LIMIT 10",
                 category,
                 code,
             )
@@ -195,11 +195,11 @@ class ICDService:
         code = code.upper().strip()
         async with self.pool.acquire() as conn:
             prev_rows = await conn.fetch(
-                "SELECT code, name_zh, 'prev' AS rel FROM icd.diagnoses WHERE code < $1 ORDER BY code DESC LIMIT 2",
+                "SELECT code, name_zh, name_en, 'prev' AS rel FROM icd.diagnoses WHERE code < $1 ORDER BY code DESC LIMIT 2",
                 code,
             )
             next_rows = await conn.fetch(
-                "SELECT code, name_zh, 'next' AS rel FROM icd.diagnoses WHERE code > $1 ORDER BY code ASC LIMIT 2",
+                "SELECT code, name_zh, name_en, 'next' AS rel FROM icd.diagnoses WHERE code > $1 ORDER BY code ASC LIMIT 2",
                 code,
             )
         neighbors = [dict(r) for r in prev_rows] + [dict(r) for r in next_rows]
@@ -321,3 +321,16 @@ class ICDService:
                 },
                 ensure_ascii=False,
             )
+
+    async def health_status(self):
+        from service_health import ServiceHealth, check_embedding_health
+
+        async with self.pool.acquire() as conn:
+            count = int(await conn.fetchval("SELECT COUNT(*) FROM icd.diagnoses") or 0)
+        if count < 10_000:
+            return ServiceHealth(status="unavailable", reason="ICD data not loaded")
+        return await check_embedding_health(
+            self.pool,
+            self._embedding_svc,
+            embed_count_sql="SELECT COUNT(*) FROM icd.diagnosis_embeddings",
+        )

@@ -1,8 +1,8 @@
 """
-Unit tests for Health Supplement + Food Nutrition tool functions in server.py.
+Unit tests for Health Supplements + Food Nutrition tool functions in server.py.
 
 Tools covered:
-  search_health_supplement,
+  search_health_supplements,
   query_food_nutrition, query_food_ingredient,
   search_foods_by_nutrient, analyze_meal_nutrition
 """
@@ -14,76 +14,86 @@ import pytest
 
 import server
 
-
 # ── helpers ───────────────────────────────────────────────────────────────────
+
 
 def _hf_mock():
     m = MagicMock()
     conn = MagicMock()
-    conn.fetchrow = AsyncMock(return_value={
-        "permit_no": "H001",
-        "name": "靈芝膠囊",
-        "applicant": "A公司",
-        "benefit_claims": "護肝",
-        "ingredients": [],
-        "specs": {},
-        "status": "approved",
-        "source_url": "https://example.com",
-    })
+    conn.fetchrow = AsyncMock(
+        return_value={
+            "permit_no": "H001",
+            "name": "靈芝膠囊",
+            "applicant": "A公司",
+            "benefit_claims": "護肝",
+            "category": "個案審查",
+            "valid_from": "2020-01-01",
+            "valid_to": "",
+        }
+    )
     conn.fetch = AsyncMock(return_value=[])
     m.pool = MagicMock()
     m.pool.acquire.return_value.__aenter__ = AsyncMock(return_value=conn)
     m.pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
-    m.search_health_food = AsyncMock(return_value='{"mode":"keyword","keyword":"護肝","results":[{"permit_no":"H001"}]}')
+    m.search_health_supplements = AsyncMock(
+        return_value='{"mode":"keyword","keyword":"護肝","results":[{"permit_no":"H001"}]}'
+    )
     m.analyze_health_support_for_condition = AsyncMock(
-        return_value='{"icd_code":"E11","recommended_benefits":["調節血糖"],"health_foods":[{"permit_no":"H001"}],"disclaimer":"..."}'
+        return_value='{"icd_code":"E11","recommended_benefits":["調節血糖"],"health_supplements":[{"permit_no":"H001"}],"disclaimer":"..."}'
     )
     return m
 
 
 def _fn_mock():
     m = MagicMock()
-    m.search_nutrition             = AsyncMock(return_value='[]')
-    m.get_detailed_nutrition       = AsyncMock(return_value='[]')
-    m.search_food_ingredient       = AsyncMock(return_value='[]')
-    m.get_ingredients_by_category  = AsyncMock(return_value='[]')
-    m.list_ingredient_categories   = AsyncMock(return_value='{"total_categories":5,"categories":[]}')
-    m.search_foods_by_nutrient     = AsyncMock(return_value='{"foods":[]}')
-    m.analyze_meal_nutrition       = AsyncMock(return_value='{"meal_components":{},"combined_totals_per_100g_each":{}}')
+    m.search_nutrition = AsyncMock(return_value="[]")
+    m.get_detailed_nutrition = AsyncMock(return_value="[]")
+    m.search_food_ingredient = AsyncMock(return_value="[]")
+    m.get_ingredients_by_category = AsyncMock(return_value="[]")
+    m.list_ingredient_categories = AsyncMock(
+        return_value='{"total_categories":5,"categories":[]}'
+    )
+    m.search_foods_by_nutrient = AsyncMock(return_value='{"foods":[]}')
+    m.analyze_meal_nutrition = AsyncMock(
+        return_value='{"meal_components":{},"combined_totals_per_100g_each":{}}'
+    )
     return m
 
 
-# ── search_health_supplement ─────────────────────────────────────────────────
+# ── search_health_supplements ─────────────────────────────────────────────────
+
 
 class TestSearchHealthSupplement:
     @pytest.mark.asyncio
     async def test_null_guard(self):
-        with patch.object(server, "health_food_service", None):
-            result = json.loads(await server.search_health_supplement(keyword="靈芝"))
+        with patch.object(server, "health_supplements_service", None):
+            result = json.loads(await server.search_health_supplements(keyword="靈芝"))
         assert "error" in result
-        assert "Health Supplement Service" in result["error"]
+        assert "Health Supplements Service" in result["error"]
 
     @pytest.mark.asyncio
     async def test_delegates_keyword_with_default_limit(self):
         mock_svc = _hf_mock()
-        with patch.object(server, "health_food_service", mock_svc):
-            await server.search_health_supplement(keyword="護肝")
-        mock_svc.search_health_food.assert_called_once_with("護肝", limit=3)
+        with patch.object(server, "health_supplements_service", mock_svc):
+            await server.search_health_supplements(keyword="護肝")
+        mock_svc.search_health_supplements.assert_called_once_with("護肝", limit=3)
 
     @pytest.mark.asyncio
     async def test_custom_limit_forwarded(self):
         mock_svc = _hf_mock()
-        with patch.object(server, "health_food_service", mock_svc):
-            await server.search_health_supplement(keyword="益生菌", limit=7)
-        mock_svc.search_health_food.assert_called_once_with("益生菌", limit=7)
+        with patch.object(server, "health_supplements_service", mock_svc):
+            await server.search_health_supplements(keyword="益生菌", limit=7)
+        mock_svc.search_health_supplements.assert_called_once_with("益生菌", limit=7)
 
     @pytest.mark.asyncio
     async def test_returns_service_result(self):
-        payload = '{"mode":"keyword","keyword":"靈芝","results":[{"permit_no":"H001","product_name":"靈芝膠囊","company":"A公司","benefits":"護肝","ingredients":[],"specs":{},"status":"approved","source_url":"https://example.com"}]}'
+        payload = '{"mode":"keyword","keyword":"靈芝","results":[{"permit_no":"H001","product_name":"靈芝膠囊","company":"A公司","category":"個案審查","benefits":"護肝","approval_date":"2020-01-01"}]}'
         mock_svc = _hf_mock()
-        mock_svc.search_health_food = AsyncMock(return_value='{"mode":"keyword","keyword":"靈芝","results":[{"permit_no":"H001"}]}')
-        with patch.object(server, "health_food_service", mock_svc):
-            result = await server.search_health_supplement(keyword="靈芝")
+        mock_svc.search_health_supplements = AsyncMock(
+            return_value='{"mode":"keyword","keyword":"靈芝","results":[{"permit_no":"H001"}]}'
+        )
+        with patch.object(server, "health_supplements_service", mock_svc):
+            result = await server.search_health_supplements(keyword="靈芝")
         assert json.loads(result) == json.loads(payload)
 
     @pytest.mark.asyncio
@@ -91,22 +101,27 @@ class TestSearchHealthSupplement:
         mock_svc = _hf_mock()
         mock_conn = MagicMock()
         mock_conn.fetchrow = AsyncMock(return_value=None)
-        mock_conn.fetch = AsyncMock(return_value=[
-            {
-                "permit_no": "衛部健食字第A00022號",
-                "name": "產品A",
-                "applicant": "A公司",
-                "benefit_claims": "調節血脂",
-                "ingredients": [],
-                "specs": {},
-                "status": "approved",
-                "source_url": "https://example.com",
-            }
-        ])
-        mock_svc.pool.acquire.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
+        mock_conn.fetch = AsyncMock(
+            return_value=[
+                {
+                    "permit_no": "衛部健食字第A00022號",
+                    "name": "產品A",
+                    "applicant": "A公司",
+                    "benefit_claims": "調節血脂",
+                    "category": "規格標準",
+                    "valid_from": "2019-05-01",
+                    "valid_to": "",
+                }
+            ]
+        )
+        mock_svc.pool.acquire.return_value.__aenter__ = AsyncMock(
+            return_value=mock_conn
+        )
         mock_svc.pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
-        with patch.object(server, "health_food_service", mock_svc):
-            result = await server.search_health_supplement(mode="permit_no", keyword="A00022")
+        with patch.object(server, "health_supplements_service", mock_svc):
+            result = await server.search_health_supplements(
+                mode="permit_no", keyword="A00022"
+            )
         parsed = json.loads(result)
         assert parsed["mode"] == "permit_no"
         assert parsed["results"][0]["permit_no"] == "衛部健食字第A00022號"
@@ -115,27 +130,33 @@ class TestSearchHealthSupplement:
 
     @pytest.mark.asyncio
     async def test_condition_includes_icd_and_benefits(self):
-        payload = '{"mode":"condition","keyword":"E11","icd_code":"E11","recommended_benefits":["調節血糖"],"results":[{"permit_no":"H001","product_name":"靈芝膠囊","company":"A公司","benefits":"護肝","ingredients":[],"specs":{},"status":"approved","source_url":"https://example.com"}]}'
+        payload = '{"mode":"condition","keyword":"E11","icd_code":"E11","recommended_benefits":["調節血糖"],"results":[{"permit_no":"H001","product_name":"靈芝膠囊","company":"A公司","category":"個案審查","benefits":"護肝","approval_date":"2020-01-01"}]}'
         mock_svc = _hf_mock()
         mock_conn = MagicMock()
-        mock_conn.fetchrow = AsyncMock(return_value={
-            "permit_no": "H001",
-            "name": "靈芝膠囊",
-            "applicant": "A公司",
-            "benefit_claims": "護肝",
-            "ingredients": [],
-            "specs": {},
-            "status": "approved",
-            "source_url": "https://example.com",
-        })
-        mock_svc.pool.acquire.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
+        mock_conn.fetchrow = AsyncMock(
+            return_value={
+                "permit_no": "H001",
+                "name": "靈芝膠囊",
+                "applicant": "A公司",
+                "benefit_claims": "護肝",
+                "category": "個案審查",
+                "valid_from": "2020-01-01",
+                "valid_to": "",
+            }
+        )
+        mock_svc.pool.acquire.return_value.__aenter__ = AsyncMock(
+            return_value=mock_conn
+        )
         mock_svc.pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
-        with patch.object(server, "health_food_service", mock_svc):
-            result = await server.search_health_supplement(mode="condition", keyword="E11")
+        with patch.object(server, "health_supplements_service", mock_svc):
+            result = await server.search_health_supplements(
+                mode="condition", keyword="E11"
+            )
         assert json.loads(result) == json.loads(payload)
 
 
 # ── query_food_nutrition ──────────────────────────────────────────────────────
+
 
 class TestQueryFoodNutrition:
     @pytest.mark.asyncio
@@ -232,11 +253,14 @@ class TestQueryFoodNutrition:
             result = json.loads(
                 await server.query_food_nutrition(food_name="lean chicken protein")
             )
-        mock_svc.search_nutrition.assert_called_once_with("lean chicken protein", None, limit=3)
+        mock_svc.search_nutrition.assert_called_once_with(
+            "lean chicken protein", None, limit=3
+        )
         assert len(result) == 1
 
 
 # ── query_food_ingredient ─────────────────────────────────────────────────────
+
 
 class TestQueryFoodIngredient:
     @pytest.mark.asyncio
@@ -251,20 +275,26 @@ class TestQueryFoodIngredient:
         mock_svc = _fn_mock()
         with patch.object(server, "food_nutrition_service", mock_svc):
             await server.query_food_ingredient(keyword="turmeric")
-        mock_svc.search_food_ingredient.assert_called_once_with("turmeric", limit=3, category=None)
+        mock_svc.search_food_ingredient.assert_called_once_with(
+            "turmeric", limit=3, category=None
+        )
 
     @pytest.mark.asyncio
     async def test_custom_limit(self):
         mock_svc = _fn_mock()
         with patch.object(server, "food_nutrition_service", mock_svc):
             await server.query_food_ingredient(keyword="卡拉膠", limit=6)
-        mock_svc.search_food_ingredient.assert_called_once_with("卡拉膠", limit=6, category=None)
+        mock_svc.search_food_ingredient.assert_called_once_with(
+            "卡拉膠", limit=6, category=None
+        )
 
     @pytest.mark.asyncio
     async def test_category_filter_forwarded(self):
         mock_svc = _fn_mock()
         with patch.object(server, "food_nutrition_service", mock_svc):
-            await server.query_food_ingredient(keyword="薑黃", category="可供食品使用之原料")
+            await server.query_food_ingredient(
+                keyword="薑黃", category="可供食品使用之原料"
+            )
         mock_svc.search_food_ingredient.assert_called_once_with(
             "薑黃", limit=3, category="可供食品使用之原料"
         )
@@ -275,7 +305,9 @@ class TestQueryFoodIngredient:
         mock_svc = _fn_mock()
         mock_svc.search_food_ingredient = AsyncMock(return_value="[]")
         with patch.object(server, "food_nutrition_service", mock_svc):
-            result = json.loads(await server.query_food_ingredient(keyword="不死草精華"))
+            result = json.loads(
+                await server.query_food_ingredient(keyword="不死草精華")
+            )
         assert result == []
 
     # fuzzy (embedding)
@@ -286,12 +318,17 @@ class TestQueryFoodIngredient:
         mock_svc = _fn_mock()
         mock_svc.search_food_ingredient = AsyncMock(return_value=payload)
         with patch.object(server, "food_nutrition_service", mock_svc):
-            result = json.loads(await server.query_food_ingredient(keyword="yellow spice"))
-        mock_svc.search_food_ingredient.assert_called_once_with("yellow spice", limit=3, category=None)
+            result = json.loads(
+                await server.query_food_ingredient(keyword="yellow spice")
+            )
+        mock_svc.search_food_ingredient.assert_called_once_with(
+            "yellow spice", limit=3, category=None
+        )
         assert len(result) == 1
 
 
 # ── search_foods_by_nutrient ──────────────────────────────────────────────────
+
 
 class TestSearchFoodsByNutrient:
     @pytest.mark.asyncio
@@ -344,7 +381,9 @@ class TestSearchFoodsByNutrient:
     @pytest.mark.asyncio
     async def test_fuzzy_nutrient_name_forwarded(self):
         """Embedding fallback: ambiguous name forwarded; service resolves via alias+embedding."""
-        payload = '{"nutrient":"鈣","unit":"mg","foods":[{"food_name":"芝麻","value":975}]}'
+        payload = (
+            '{"nutrient":"鈣","unit":"mg","foods":[{"food_name":"芝麻","value":975}]}'
+        )
         mock_svc = _fn_mock()
         mock_svc.search_foods_by_nutrient = AsyncMock(return_value=payload)
         with patch.object(server, "food_nutrition_service", mock_svc):
@@ -364,11 +403,14 @@ class TestSearchFoodsByNutrient:
 
 # ── analyze_meal_nutrition ────────────────────────────────────────────────────
 
+
 class TestAnalyzeMealNutrition:
     @pytest.mark.asyncio
     async def test_null_guard(self):
         with patch.object(server, "food_nutrition_service", None):
-            result = json.loads(await server.analyze_meal_nutrition(foods=["白米", "雞胸肉"]))
+            result = json.loads(
+                await server.analyze_meal_nutrition(foods=["白米", "雞胸肉"])
+            )
         assert "error" in result
         assert "Food Nutrition Service" in result["error"]
 
@@ -408,18 +450,19 @@ class TestAnalyzeMealNutrition:
         assert result["meal_components"]["神仙餐"]["found"] is False
 
 
-# ── search_health_supplement (not-found + fuzzy) ─────────────────────────────
+# ── search_health_supplements (not-found + fuzzy) ─────────────────────────────
+
 
 class TestSearchHealthSupplementNotFoundAndFuzzy:
     @pytest.mark.asyncio
     async def test_keyword_not_found_returns_empty_results(self):
         mock_svc = _hf_mock()
-        mock_svc.search_health_food = AsyncMock(
+        mock_svc.search_health_supplements = AsyncMock(
             return_value='{"mode":"keyword","keyword":"逆轉糖尿病神藥","results":[]}'
         )
-        with patch.object(server, "health_food_service", mock_svc):
+        with patch.object(server, "health_supplements_service", mock_svc):
             result = json.loads(
-                await server.search_health_supplement(keyword="逆轉糖尿病神藥")
+                await server.search_health_supplements(keyword="逆轉糖尿病神藥")
             )
         assert result["results"] == []
 
@@ -427,14 +470,16 @@ class TestSearchHealthSupplementNotFoundAndFuzzy:
     async def test_fuzzy_keyword_forwarded_to_service(self):
         """Embedding search: vague term forwarded; service returns semantically close result."""
         mock_svc = _hf_mock()
-        mock_svc.search_health_food = AsyncMock(
+        mock_svc.search_health_supplements = AsyncMock(
             return_value='{"mode":"keyword","keyword":"liver support","results":[{"permit_no":"H001"}]}'
         )
-        with patch.object(server, "health_food_service", mock_svc):
+        with patch.object(server, "health_supplements_service", mock_svc):
             result = json.loads(
-                await server.search_health_supplement(keyword="liver support")
+                await server.search_health_supplements(keyword="liver support")
             )
-        mock_svc.search_health_food.assert_called_once_with("liver support", limit=3)
+        mock_svc.search_health_supplements.assert_called_once_with(
+            "liver support", limit=3
+        )
         assert len(result["results"]) == 1
 
     @pytest.mark.asyncio
@@ -443,11 +488,13 @@ class TestSearchHealthSupplementNotFoundAndFuzzy:
         mock_conn.fetchrow = AsyncMock(return_value=None)
         mock_conn.fetch = AsyncMock(return_value=[])
         mock_svc = _hf_mock()
-        mock_svc.pool.acquire.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
+        mock_svc.pool.acquire.return_value.__aenter__ = AsyncMock(
+            return_value=mock_conn
+        )
         mock_svc.pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
-        with patch.object(server, "health_food_service", mock_svc):
+        with patch.object(server, "health_supplements_service", mock_svc):
             result = json.loads(
-                await server.search_health_supplement(
+                await server.search_health_supplements(
                     mode="permit_no", keyword="衛部健食字第Z99999號"
                 )
             )
@@ -458,11 +505,13 @@ class TestSearchHealthSupplementNotFoundAndFuzzy:
     async def test_condition_no_supplements_returns_empty(self):
         mock_svc = _hf_mock()
         mock_svc.analyze_health_support_for_condition = AsyncMock(
-            return_value='{"icd_code":"Z00.00","recommended_benefits":[],"health_foods":[],"disclaimer":"..."}'
+            return_value='{"icd_code":"Z00.00","recommended_benefits":[],"health_supplements":[],"disclaimer":"..."}'
         )
-        with patch.object(server, "health_food_service", mock_svc):
+        with patch.object(server, "health_supplements_service", mock_svc):
             result = json.loads(
-                await server.search_health_supplement(mode="condition", keyword="Z00.00")
+                await server.search_health_supplements(
+                    mode="condition", keyword="Z00.00"
+                )
             )
         assert result["mode"] == "condition"
         assert result["results"] == []

@@ -23,6 +23,9 @@ fhir-code/loinc/*.txt
 
 .claude
 
+# Ignore Codex agent marker file
+.codex
+
 # 忽略 MkDocs 構建產物（文檔源文件保留，只排除構建結果）
 site/
 

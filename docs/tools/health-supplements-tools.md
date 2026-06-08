@@ -1,8 +1,8 @@
-# 健康補充品工具 (Health Supplement Tools)
+# 健康補充品工具 (Health Supplements Tools)
 
 此類別工具整合台灣 FDA 核可健康補充品的查詢與疾病情境推薦。
 
-## `search_health_supplement`
+## `search_health_supplements`
 單一入口，三種模式：
 
 - `mode="keyword"`：搜尋產品名稱、公司、成分、功效

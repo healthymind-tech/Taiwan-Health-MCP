@@ -51,12 +51,12 @@ fhir-code/
 # 全部載入（建議首次部署）
 docker compose --profile loader run --rm data-loader --all
 
-# 只載入 FDA 動態資料（藥品 + 健康食品 + 營養）
+# 只載入 FDA 動態資料（藥品 + 健康補充品 + 營養）
 # 注意：Drug 匯入採 RxNorm-first 防呆，先跑 --rxnorm 再跑 --fda/--drug
 docker compose --profile loader run --rm data-loader --rxnorm
 docker compose --profile loader run --rm data-loader --fda
 docker compose --profile loader run --rm data-loader --drug
-docker compose --profile loader run --rm data-loader --health-food
+docker compose --profile loader run --rm data-loader --health-supplements
 docker compose --profile loader run --rm data-loader --food-nutrition
 
 # 單獨載入

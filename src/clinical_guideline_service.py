@@ -7,17 +7,15 @@ import json
 import re
 from typing import Dict, Optional
 
-import asyncpg
-
 from cache import cached
+from database import PoolLike
 from embedding_service import EmbeddingService
+from search_quality import annotate, embeddings_present
 from utils import log_error, log_info
 
 
 class ClinicalGuidelineService:
-    def __init__(
-        self, pool: asyncpg.Pool, embedding_svc: EmbeddingService | None = None
-    ):
+    def __init__(self, pool: PoolLike, embedding_svc: EmbeddingService | None = None):
         self.pool = pool
         self._embedding_svc = embedding_svc
 
@@ -106,12 +104,17 @@ class ClinicalGuidelineService:
                 },
                 ensure_ascii=False,
             )
+        has_emb = await embeddings_present(self.pool, "guideline.guideline_embeddings")
         return json.dumps(
-            {
-                "keyword": keyword,
-                "total_found": len(rows),
-                "guidelines": [dict(r) for r in rows],
-            },
+            annotate(
+                {
+                    "keyword": keyword,
+                    "total_found": len(rows),
+                    "guidelines": [dict(r) for r in rows],
+                },
+                vec_str,
+                has_emb,
+            ),
             ensure_ascii=False,
         )
 
@@ -344,7 +347,6 @@ class ClinicalGuidelineService:
             ensure_ascii=False,
         )
 
-
     async def suggest_clinical_pathway(
         self, icd_code: str, patient_context: Optional[Dict] = None
     ) -> str:
@@ -420,3 +422,21 @@ class ClinicalGuidelineService:
             clinical_pathway["note"] = "臨床路徑應根據個別患者情況調整"
 
         return json.dumps(clinical_pathway, ensure_ascii=False)
+
+    async def health_status(self):
+        from service_health import ServiceHealth, check_embedding_health
+
+        async with self.pool.acquire() as conn:
+            count = int(
+                await conn.fetchval("SELECT COUNT(*) FROM guideline.disease_guidelines")
+                or 0
+            )
+        if count < 1:
+            return ServiceHealth(
+                status="unavailable", reason="Guideline data not loaded"
+            )
+        return await check_embedding_health(
+            self.pool,
+            self._embedding_svc,
+            embed_count_sql="SELECT COUNT(*) FROM guideline.guideline_embeddings",
+        )

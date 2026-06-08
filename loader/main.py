@@ -3,7 +3,7 @@ Data Loader — run once to populate PostgreSQL from official source files.
 Usage:
     docker compose --profile loader run --rm data-loader
     # or locally:
-    DATABASE_URL=postgresql://... python loader/main.py [--all] [--icd] [--loinc] [--twcore] [--guideline] [--snomed]
+    DATABASE_URL=postgresql://... python loader/main.py [--all] [--icd] [--drug-index] [--drug-enrich] [--drug-analysis] [--loinc] [--twcore] [--guideline] [--snomed]
 
 Source files expected at /app/fhir-code/ (mounted read-only in Docker):
     icd/10/icd10cm/icd10cm-table-index-2025.zip
@@ -19,6 +19,7 @@ import asyncio
 import glob
 import os
 import sys
+from pathlib import Path
 
 import asyncpg
 from dataset_config import (
@@ -32,6 +33,10 @@ from dataset_resolver import DATASET_GROUPS, format_resolution_line, resolve_gro
 from dotenv import load_dotenv
 
 load_dotenv()
+
+SRC_DIR = Path(__file__).resolve().parents[1] / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
 
 FHIR_CODE_DIR = os.getenv("FHIR_CODE_DIR", "/app/fhir-code")
 DATABASE_URL = os.getenv("DATABASE_URL", "")
@@ -50,6 +55,7 @@ def _find_file(pattern: str) -> str | None:
 
 def _legacy_dataset_config() -> DatasetConfig:
     base = FHIR_CODE_DIR
+    repo_root = Path(__file__).resolve().parents[1]
     return DatasetConfig(
         version=1,
         defaults=DatasetDefaults(base_dir=base),
@@ -112,6 +118,15 @@ def _legacy_dataset_config() -> DatasetConfig:
                 path=os.path.join(base, "loinc", "lab_reference_ranges.csv"),
                 pattern=None,
                 label="LOINC reference ranges",
+            ),
+            "drug_index_csv": DatasetEntry(
+                key="drug_index_csv",
+                enabled=True,
+                required=True,
+                source_type="file",
+                path=str(repo_root / "POC" / "36_2.csv"),
+                pattern=None,
+                label="Taiwan FDA drug index CSV",
             ),
             "twcore": DatasetEntry(
                 key="twcore",
@@ -221,6 +236,60 @@ async def load_loinc(pool: asyncpg.Pool) -> None:
     )
 
 
+async def load_drug_index(pool: asyncpg.Pool) -> None:
+    from loaders.drug_index_loader import load_drug_index as _load
+
+    resolved = resolve_group(get_effective_dataset_config(), "drug")
+    _print_resolution_summary("drug", resolved)
+    _ensure_required_datasets(resolved)
+
+    csv_path = resolved["drug_index_csv"].resolved_path
+    if csv_path is None:
+        print("Drug index CSV not resolved")
+        return
+    await _load(pool, csv_path)
+
+
+async def load_drug_enrichment(
+    pool: asyncpg.Pool,
+    *,
+    limit: int | None = None,
+    license_ids: list[str] | None = None,
+    include_cancelled: bool = False,
+    retry_failed: bool = False,
+) -> None:
+    from loaders.drug_enrichment_loader import load_drug_enrichment as _load
+
+    await _load(
+        pool,
+        limit=limit,
+        license_ids=license_ids,
+        include_cancelled=include_cancelled,
+        retry_failed=retry_failed,
+    )
+
+
+async def load_drug_analysis(
+    pool: asyncpg.Pool,
+    *,
+    limit: int | None = None,
+    license_ids: list[str] | None = None,
+    include_cancelled: bool = False,
+    retry_failed: bool = False,
+    retry_stage: str | None = None,
+) -> None:
+    from loaders.drug_analysis_loader import load_drug_analysis as _load
+
+    await _load(
+        pool,
+        limit=limit,
+        license_ids=license_ids,
+        include_cancelled=include_cancelled,
+        retry_failed=retry_failed,
+        retry_stage=retry_stage,
+    )
+
+
 async def load_twcore(pool: asyncpg.Pool) -> None:
     from loaders.twcore_loader import load_twcore_package
 
@@ -258,8 +327,8 @@ async def load_snomed(pool: asyncpg.Pool) -> None:
     await _load(pool, zip_path)
 
 
-async def load_health_food(pool: asyncpg.Pool) -> None:
-    from loaders.health_food_loader import load_health_food as _load
+async def load_health_supplements(pool: asyncpg.Pool) -> None:
+    from loaders.health_supplements_loader import load_health_supplements as _load
 
     await _load(pool)
 
@@ -274,7 +343,7 @@ async def generate_embeddings(pool: asyncpg.Pool, services: list[str]) -> None:
     from loaders.embedding_loader import (
         embed_food_nutrition,
         embed_guideline,
-        embed_health_food,
+        embed_health_supplements,
         embed_icd,
         embed_loinc,
         embed_snomed,
@@ -284,8 +353,8 @@ async def generate_embeddings(pool: asyncpg.Pool, services: list[str]) -> None:
     await ensure_dimensions(pool)
     if "food_nutrition" in services:
         await embed_food_nutrition(pool)
-    if "health_food" in services:
-        await embed_health_food(pool)
+    if "health_supplements" in services:
+        await embed_health_supplements(pool)
     if "icd" in services:
         await embed_icd(pool)
     if "loinc" in services:
@@ -300,6 +369,26 @@ async def main():
     parser = argparse.ArgumentParser(description="Taiwan Health MCP Data Loader")
     parser.add_argument("--all", action="store_true", help="Load all datasets")
     parser.add_argument("--icd", action="store_true", help="ICD-10-CM 2025")
+    parser.add_argument(
+        "--drug",
+        action="store_true",
+        help="Taiwan FDA drug index + TFDA enrichment",
+    )
+    parser.add_argument(
+        "--drug-index",
+        action="store_true",
+        help="Taiwan FDA drug index CSV (36_2.csv)",
+    )
+    parser.add_argument(
+        "--drug-enrich",
+        action="store_true",
+        help="TFDA enrichment for queued or selected drug licenses",
+    )
+    parser.add_argument(
+        "--drug-analysis",
+        action="store_true",
+        help="OCR and structured analysis for latest stored insert PDFs",
+    )
     parser.add_argument("--loinc", action="store_true", help="LOINC 2.80")
     parser.add_argument("--twcore", action="store_true", help="TWCore IG CodeSystems")
     parser.add_argument(
@@ -309,7 +398,7 @@ async def main():
         "--snomed", action="store_true", help="SNOMED CT International RF2"
     )
     parser.add_argument(
-        "--health-food", action="store_true", help="Taiwan FDA health food dataset"
+        "--health-supplements", action="store_true", help="Taiwan FDA health supplements dataset"
     )
     parser.add_argument(
         "--food-nutrition",
@@ -321,16 +410,48 @@ async def main():
         action="store_true",
         help="Generate pgvector embeddings (all datasets)",
     )
+    parser.add_argument(
+        "--license-id",
+        action="append",
+        default=[],
+        help="Specific drug license ID to process; can be repeated",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="Limit queued drug jobs for enrichment or analysis",
+    )
+    parser.add_argument(
+        "--include-cancelled",
+        action="store_true",
+        help="Include cancelled drug licenses when processing",
+    )
+    parser.add_argument(
+        "--retry-failed",
+        action="store_true",
+        help="Retry drug stage jobs currently marked retryable_failed",
+    )
+    parser.add_argument(
+        "--retry-stage",
+        choices=["ocr", "analysis", "normalize"],
+        default=None,
+        help="When running --drug-analysis, retry only the specified stage",
+    )
     args = parser.parse_args()
 
     run_all = args.all or not any(
         [
             args.icd,
+            args.drug,
+            args.drug_index,
+            args.drug_enrich,
+            args.drug_analysis,
             args.loinc,
             args.twcore,
             args.guideline,
             args.snomed,
-            args.health_food,
+            args.health_supplements,
             args.food_nutrition,
             args.embed,
         ]
@@ -341,6 +462,31 @@ async def main():
         if run_all or args.icd:
             print("=== Loading ICD-10-CM 2025 ===")
             await load_icd(pool)
+
+        if run_all or args.drug or args.drug_index:
+            print("=== Loading Taiwan FDA drug index CSV ===")
+            await load_drug_index(pool)
+
+        if run_all or args.drug or args.drug_enrich:
+            print("=== Running Taiwan FDA TFDA enrichment ===")
+            await load_drug_enrichment(
+                pool,
+                limit=args.limit,
+                license_ids=args.license_id,
+                include_cancelled=args.include_cancelled,
+                retry_failed=args.retry_failed,
+            )
+
+        if args.drug_analysis:
+            print("=== Running Taiwan FDA OCR / analysis refresh ===")
+            await load_drug_analysis(
+                pool,
+                limit=args.limit,
+                license_ids=args.license_id,
+                include_cancelled=args.include_cancelled,
+                retry_failed=args.retry_failed,
+                retry_stage=args.retry_stage,
+            )
 
         if run_all or args.loinc:
             print("=== Loading LOINC 2.80 ===")
@@ -359,9 +505,9 @@ async def main():
             print("    (large dataset — expect 5-15 minutes)")
             await load_snomed(pool)
 
-        if run_all or args.health_food:
-            print("=== Loading Taiwan FDA health food dataset ===")
-            await load_health_food(pool)
+        if run_all or args.health_supplements:
+            print("=== Loading Taiwan FDA health supplements dataset ===")
+            await load_health_supplements(pool)
 
         if run_all or args.food_nutrition:
             print("=== Loading Taiwan FDA food nutrition datasets ===")
@@ -371,8 +517,8 @@ async def main():
         embed_services: list[str] = []
         if run_all or args.food_nutrition or args.embed:
             embed_services.append("food_nutrition")
-        if run_all or args.health_food or args.embed:
-            embed_services.append("health_food")
+        if run_all or args.health_supplements or args.embed:
+            embed_services.append("health_supplements")
         if run_all or args.icd or args.embed:
             embed_services.append("icd")
         if run_all or args.loinc or args.embed:

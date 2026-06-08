@@ -1,0 +1,45 @@
+# Keep the Docker build context small. The Dockerfiles only COPY src/, loader/,
+# static/, and admin-ui/ — everything else here is either mounted at runtime,
+# rebuilt inside a build stage, or irrelevant to the image.
+
+# Version control (4.9 GB)
+.git
+.gitignore
+.gitattributes
+
+# Terminology source data — mounted read-only at runtime, never baked in (4.9 GB)
+fhir-code/
+umls/
+
+# Frontend deps/build — recreated inside the frontend build stage
+admin-ui/node_modules/
+admin-ui/dist/
+
+# Python caches / virtualenvs
+**/__pycache__/
+**/*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Tests and docs — not copied into the image
+tests/
+docs/
+*.md
+
+# Local tooling / experiments
+.codex/
+IUA_POC/
+
+# Editor / OS noise
+.vscode/
+.idea/
+.DS_Store
+*.log
+
+# Local env files (never bake secrets into an image)
+.env
+.env.*
+!.env.example
