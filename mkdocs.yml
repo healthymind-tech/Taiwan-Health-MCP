@@ -61,7 +61,7 @@ nav:
   - FHIR 授權:
     - 授權流程說明: fhir-authoring-walkthrough.md
     - 工具集設計評估: fhir-ig-mcp-toolset-assessment.md
-    - Patient 轉換提示: fhir-patient-conversion-prompt.md
+    - 資源轉換提示（自動判斷型別）: fhir-resource-conversion-prompt.md
     - Bundle 轉換提示: fhir-bundle-conversion-prompt.md
   - 使用指南:
     - guides/index.md

@@ -4,7 +4,7 @@
 FHIR-IG toolset),把**一整包扁平 JSON**(多個 list、每個 list 是一種資源、彼此用
 外鍵互相引用)逐步轉成「合規且完整」的 TW Core FHIR **Bundle**。
 
-與[單一資源版](fhir-patient-conversion-prompt.md)的差異:
+與[單一資源版](fhir-resource-conversion-prompt.md)的差異:
 - 一次有**很多**資源、**多種**型別,而且**互相引用**。
 - 轉換順序「**被引用者優先**」:先處理不主動引用別人的資源(如 Organization),
   再處理引用它們的資源,最後才是引用最多的(如 Observation / Encounter)。
