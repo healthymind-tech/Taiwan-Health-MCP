@@ -3389,7 +3389,7 @@ PostgreSQL schema, and which AI capabilities (embedding / OCR / LLM) are require
 </table>
 <hr />
 <h2 id="fhir-code-directory-layout">fhir-code/ directory layout<a class="headerlink" href="#fhir-code-directory-layout" title="Permanent link">&para;</a></h2>
-<p>All source files live in <code>fhir-code/</code> (mounted read-only at <code>/app/fhir-code/</code> in the <code>data-loader</code> container).</p>
+<p>Bundled/local source files live in <code>fhir-code/</code>. With the admin console, source files are uploaded via Admin → Sources; for direct local loader runs they are read from <code>fhir-code/</code> (legacy <code>/app/fhir-code/</code> layout).</p>
 <pre><code>fhir-code/
 ├── icd/10/
 │   ├── icd10cm/
@@ -3448,7 +3448,7 @@ PostgreSQL schema, and which AI capabilities (embedding / OCR / LLM) are require
 </tr>
 </tbody>
 </table>
-<p>File placement: <code>fhir-code/</code> is mounted read-only at <code>/app/fhir-code/</code> inside the <code>data-loader</code> container.</p>
+<p>File placement: place files under <code>fhir-code/</code> for direct local loader runs (legacy <code>/app/fhir-code/</code> layout), or upload them via Admin → Sources.</p>
 <h3 id="input-data-structure">Input data structure<a class="headerlink" href="#input-data-structure" title="Permanent link">&para;</a></h3>
 <p><strong>icd10cm_tabular_2025.xml</strong> (XML tree):</p>
 <pre><code>&lt;ICD10CM.tabular&gt;

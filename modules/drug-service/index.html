@@ -2672,7 +2672,7 @@
 <h3 id="4-get_drug_asset_links">4. 文件資產連結（<code>get_drug_asset_links</code>）<a class="headerlink" href="#4-get_drug_asset_links" title="Permanent link">&para;</a></h3>
 <p>回傳已持久化的資產 metadata，並即時產生 MinIO 的預簽（presigned）下載連結。資產群組（<code>asset_group</code>）包含 <code>insert</code>（電子仿單）、<code>label</code>（外盒標籤）、<code>shape</code>（外觀圖）、<code>analysis</code>（分析輸出）。</p>
 <h2 id="_3">資料管線（三階段）<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
-<p>藥物資料以 data-loader 的三個階段建立，也可由 Admin Console 的藥物頁面觸發與監控：</p>
+<p>藥物資料以三個匯入階段建立，於 Admin Console 的藥物頁面觸發與監控（由 <code>admin-worker</code> 背景執行）：</p>
 <ol>
 <li><strong><code>--drug-index</code></strong> — 從 TFDA 標準 <code>36_2.csv</code> 載入許可證索引，建立 <code>drug.licenses</code> 等基礎表。</li>
 <li><strong><code>--drug-enrich</code></strong> — 爬取 TFDA 取得電子仿單、文件資產與藥錠外觀紀錄，並將檔案存入 MinIO。</li>

@@ -2523,7 +2523,7 @@
 <h1 id="guideline-service-api">Guideline Service API<a class="headerlink" href="#guideline-service-api" title="Permanent link">&para;</a></h1>
 <h2 id="class-clinicalguidelineservice">class <code>ClinicalGuidelineService</code><a class="headerlink" href="#class-clinicalguidelineservice" title="Permanent link">&para;</a></h2>
 <h3 id="__init__self-pool"><code>__init__(self, pool)</code><a class="headerlink" href="#__init__self-pool" title="Permanent link">&para;</a></h3>
-<p>初始化指引服務，接受 asyncpg 連線池。資料由 data-loader <code>--guideline</code> 預先載入至 <code>guideline.*</code> schema。</p>
+<p>初始化指引服務，接受 asyncpg 連線池。資料經由管理後台（匯入階段 <code>--guideline</code>）預先載入至 <code>guideline.*</code> schema。</p>
 <h3 id="async-search_guidelineself-keyword-str-str"><code>async search_guideline(self, keyword: str) -&gt; str</code><a class="headerlink" href="#async-search_guidelineself-keyword-str-str" title="Permanent link">&para;</a></h3>
 <p>搜尋臨床指引標題與 ICD 碼。</p>
 <h3 id="async-query_guidelineself-icd_code-str-section-str-complete-str"><code>async query_guideline(self, icd_code: str, section: str = "complete") -&gt; str</code><a class="headerlink" href="#async-query_guidelineself-icd_code-str-section-str-complete-str" title="Permanent link">&para;</a></h3>

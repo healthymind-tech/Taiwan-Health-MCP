@@ -2627,7 +2627,7 @@
 - <strong><code>mode="snomed"</code></strong>：輸入 SNOMED concept ID（例如 <code>44054006</code>），回傳對應的 ICD-10 對照。</p>
 <h2 id="_3">技術架構<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>資料來源</strong>：SNOMED CT International RF2（<code>SnomedCT_InternationalRF2_PRODUCTION_*.zip</code>），由 data-loader <code>--snomed</code> 載入（資料量大，約 5–15 分鐘）。</li>
+<li><strong>資料來源</strong>：SNOMED CT International RF2（<code>SnomedCT_InternationalRF2_PRODUCTION_*.zip</code>），經由管理後台（Admin → Modules，匯入階段 <code>--snomed</code>）載入（資料量大，約 5–15 分鐘）。</li>
 <li><strong>資料庫</strong>：<code>snomed</code> schema，含 <code>concepts</code>、<code>descriptions</code>、<code>relationships</code>、<code>icd10_map</code>、<code>historical_associations</code> 與 <code>concept_embeddings</code>。</li>
 <li><strong>可用性閘門</strong>：<code>snomed.concepts</code> 需達門檻（10 萬筆）才會註冊對應工具，否則自動降級。</li>
 </ul>

@@ -2569,7 +2569,7 @@
 <h2 id="_2">專案結構速覽<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
 <ul>
 <li><code>src/</code> — MCP 伺服器（<code>server.py</code>）、各服務（<code>*_service.py</code>）、管理後台（<code>admin_*.py</code>）、FHIR 工具（<code>fhir_*.py</code>）與跨切面模組（<code>audit.py</code> / <code>cache.py</code> / <code>metrics.py</code> / <code>module_status.py</code> / <code>database.py</code>）。</li>
-<li><code>loader/</code> — data-loader 容器與各資料集載入器（<code>loaders/*.py</code>）。</li>
+<li><code>loader/</code> — 各資料集載入器（<code>loaders/*.py</code>），由 <code>admin-worker</code> 呼叫執行。</li>
 <li><code>admin-ui/</code> — 管理後台 React SPA。</li>
 <li><code>db/</code> — <code>schema.sql</code> 與 <code>migrations/</code>。</li>
 <li><code>tests/</code> — 單元與工具測試。</li>

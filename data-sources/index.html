@@ -2443,12 +2443,14 @@
 
 
 <h1 id="_1">資料來源<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h1>
+<p>所有資料匯入都在<strong>管理後台（Admin → Modules）</strong>操作,由 <code>admin-worker</code> 背景執行（已無 CLI data-loader）。下表的「匯入階段」對應 worker 內部使用的 loader 階段名稱。</p>
 <table>
 <thead>
 <tr>
 <th>資料集</th>
 <th>版本 / 來源</th>
-<th>載入指令</th>
+<th>匯入方式（Admin → Modules）</th>
+<th>匯入階段</th>
 <th>授權</th>
 </tr>
 </thead>
@@ -2456,66 +2458,75 @@
 <tr>
 <td>ICD-10-CM / PCS</td>
 <td>NLM / CMS 2025</td>
-<td><code>data-loader --icd</code></td>
+<td>上傳 zip → 匯入</td>
+<td><code>--icd</code></td>
 <td>公開（zip 需自備）</td>
 </tr>
 <tr>
 <td>LOINC</td>
 <td>2.80（Regenstrief）</td>
-<td><code>data-loader --loinc</code></td>
+<td>上傳 zip → 匯入</td>
+<td><code>--loinc</code></td>
 <td>需 LOINC 授權</td>
 </tr>
 <tr>
 <td>SNOMED CT</td>
 <td>International RF2</td>
-<td><code>data-loader --snomed</code></td>
+<td>上傳 RF2 zip → 匯入</td>
+<td><code>--snomed</code></td>
 <td>需 SNOMED 授權</td>
 </tr>
 <tr>
 <td>FHIR IG（TWCore 等）</td>
 <td>MoHW / packages.fhir.org</td>
-<td><code>data-loader --twcore</code> 或 Admin → IG</td>
+<td>上傳 <code>package.tgz</code> 或 Admin → IG 抓取</td>
+<td><code>--twcore</code></td>
 <td>公開</td>
 </tr>
 <tr>
 <td>臨床指引</td>
 <td>專案種子資料</td>
-<td><code>data-loader --guideline</code></td>
+<td>直接執行（內建）</td>
+<td><code>--guideline</code></td>
 <td>專案內建</td>
 </tr>
 <tr>
 <td>藥品（台灣 FDA / TFDA）</td>
 <td>TFDA <code>36_2.csv</code> + 線上爬取</td>
-<td><code>data-loader --drug-index</code> → <code>--drug-enrich</code> → <code>--drug-analysis</code></td>
+<td>API 抓取 + 爬取分析</td>
+<td><code>--drug-index</code> → <code>--drug-enrich</code> → <code>--drug-analysis</code></td>
 <td>開放資料</td>
 </tr>
 <tr>
 <td>台灣健康補充品</td>
 <td>TFDA 開放資料</td>
-<td><code>data-loader --health-supplements</code></td>
+<td>API 抓取</td>
+<td><code>--health-supplements</code></td>
 <td>開放資料</td>
 </tr>
 <tr>
 <td>台灣食品營養</td>
 <td>TFDA 開放資料</td>
-<td><code>data-loader --food-nutrition</code></td>
+<td>API 抓取</td>
+<td><code>--food-nutrition</code></td>
 <td>開放資料</td>
 </tr>
 <tr>
 <td>RxNorm（概念參考）</td>
 <td>NLM</td>
-<td><code>rxnorm/RxNorm_full_*.zip</code>（IG ValueSet 展開用）</td>
+<td>上傳 <code>RxNorm_full_*.zip</code> → 匯入（IG ValueSet 展開用）</td>
+<td>—</td>
 <td>公開</td>
 </tr>
 </tbody>
 </table>
 <h2 id="_2">說明<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>受授權限制的來源檔</strong>（SNOMED、LOINC、ICD zip、RxNorm 等）請自行取得後，依 <code>config/datasets.yaml</code>（<code>DATASETS_CONFIG</code>）設定本機路徑；未設定時，loader 退回 <code>/app/fhir-code/</code> 的傳統目錄慣例。</li>
-<li><strong>藥品域</strong>為三階段管線（索引 → 線上爬取豐富 → OCR/LLM 分析），其中 <code>--drug-enrich</code> 與 <code>--drug-analysis</code> 需設定 TFDA / OCR / 分析 LLM 端點（見 <code>.env</code> 的 <code>DRUG_*</code>）。詳見<a href="../modules/drug-service/">藥品服務模組</a>。</li>
+<li><strong>受授權限制的來源檔</strong>（SNOMED、LOINC、ICD zip、RxNorm 等）請自行取得後,於 Admin → Sources / Modules 上傳。</li>
+<li><strong>藥品域</strong>為三階段管線（索引 → 線上爬取豐富 → OCR/LLM 分析），其中爬取與分析階段需設定 TFDA / OCR / 分析 LLM 端點（見 <code>.env</code> 的 <code>DRUG_*</code>,或於 Admin → Settings 管理）。詳見<a href="../modules/drug-service/">藥品服務模組</a>。</li>
 <li><strong>FHIR IG</strong> 採多 IG（package-scoped）設計；除主 IG 外，可在 Admin → Sources 綁定相依套件（如 <code>hl7.terminology.r4</code>、<code>hl7.fhir.r4.core</code>）。詳見<a href="../modules/fhir-ig-service/">FHIR IG 服務模組</a>。</li>
 <li><strong>RxNorm</strong> 目前僅作為概念參考術語載入，用於 FHIR IG ValueSet 的 TTY 展開，<strong>不</strong>對外提供獨立的藥物交互作用工具。</li>
-<li><strong>嵌入</strong>：每次載入後自動回填 <code>*_embeddings</code> 向量表（需 Ollama）；可單獨以 <code>data-loader --embed</code> 重建。</li>
+<li><strong>嵌入</strong>：每個模組匯入後自動回填 <code>*_embeddings</code> 向量表（需 Ollama）；也可於模組頁面單獨重建。</li>
 </ul>
 <p>各別來源細節：<a href="icd10/">ICD-10</a>、<a href="loinc/">LOINC</a>、<a href="guidelines/">臨床指引</a>。</p>
 

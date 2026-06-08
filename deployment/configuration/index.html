@@ -2789,7 +2789,7 @@
 </tbody>
 </table>
 <blockquote>
-<p>App 透過 pgBouncer（port 5432 內部）連線，data-loader 直接連接 PostgreSQL（<code>@postgres:5432</code>）以支援大量寫入。</p>
+<p>App 透過 pgBouncer（port 5432 內部）連線；<code>admin-worker</code> 在執行匯入時直接連接 PostgreSQL（<code>@postgres:5432</code>）以支援大量寫入。</p>
 </blockquote>
 <h3 id="redis">Redis<a class="headerlink" href="#redis" title="Permanent link">&para;</a></h3>
 <table>

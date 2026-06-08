@@ -2668,7 +2668,7 @@
 </ul>
 <h2 id="_3">技術架構<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>資料來源</strong>：FHIR IG 套件（<code>package.tgz</code>），由 data-loader <code>--twcore</code> 或 Admin Console 的 IG 頁面匯入。相依套件（如 <code>hl7.terminology.r4</code>、<code>hl7.fhir.r4.core</code>）可額外綁定並各自以 package-scoped IG 索引，使跨系統的 ValueSet 綁定能展開出真實碼。</li>
+<li><strong>資料來源</strong>：FHIR IG 套件（<code>package.tgz</code>），經由管理後台（Admin → Modules / IG，匯入階段 <code>--twcore</code>）匯入。相依套件（如 <code>hl7.terminology.r4</code>、<code>hl7.fhir.r4.core</code>）可額外綁定並各自以 package-scoped IG 索引，使跨系統的 ValueSet 綁定能展開出真實碼。</li>
 <li><strong>資料庫</strong>：<code>fhir</code> schema —<code>ig_packages</code>、<code>codesystems</code>、<code>concepts</code>、<code>artifacts</code>（皆 package-scoped，支援多 IG）。</li>
 <li><strong>驗證引擎</strong>：以 <code>fhir_validator.py</code> / <code>fhir_terminology.py</code> / <code>fhir_snapshot.py</code> / <code>fhir_reference.py</code> / <code>fhir_authoring.py</code> 在程序內完成 snapshot 產生、術語綁定檢查、參照解析與骨架填值。</li>
 </ul>

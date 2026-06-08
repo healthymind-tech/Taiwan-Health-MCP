@@ -2658,7 +2658,7 @@
 - <strong>結構化分析</strong>：同時回傳雙方的詳細資訊以供比對。</p>
 <h2 id="_3">技術架構<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>資料來源</strong>：ICD-10-CM 2025（NLM）及 ICD-10-PCS 2025（CMS），由 data-loader <code>--icd</code> 載入。</li>
+<li><strong>資料來源</strong>：ICD-10-CM 2025（NLM）及 ICD-10-PCS 2025（CMS），經由管理後台（Admin → Modules，匯入階段 <code>--icd</code>）載入。</li>
 <li><strong>資料庫</strong>：PostgreSQL 16，<code>icd.diagnoses</code>（診斷碼）與 <code>icd.procedures</code>（手術碼）兩張資料表。</li>
 <li><strong>PCS 降級</strong>：<code>_pcs_available</code> flag — ICD-10-PCS 未載入時工具自動降級，回傳提示訊息而非錯誤。PCS 2025（78,948 筆）位於 <code>fhir-code/icd/10/icd10pcs/</code>，<code>--icd</code> 自動同時載入。</li>
 <li><strong>全文搜尋</strong>：各表建有 FTS index，支援中英文關鍵字搜尋。</li>
