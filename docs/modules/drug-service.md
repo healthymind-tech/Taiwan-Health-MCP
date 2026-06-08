@@ -25,7 +25,7 @@
 回傳已持久化的資產 metadata，並即時產生 MinIO 的預簽（presigned）下載連結。資產群組（`asset_group`）包含 `insert`（電子仿單）、`label`（外盒標籤）、`shape`（外觀圖）、`analysis`（分析輸出）。
 
 ## 資料管線（三階段）
-藥物資料以 data-loader 的三個階段建立，也可由 Admin Console 的藥物頁面觸發與監控：
+藥物資料以三個匯入階段建立，於 Admin Console 的藥物頁面觸發與監控（由 `admin-worker` 背景執行）：
 
 1. **`--drug-index`** — 從 TFDA 標準 `36_2.csv` 載入許可證索引，建立 `drug.licenses` 等基礎表。
 2. **`--drug-enrich`** — 爬取 TFDA 取得電子仿單、文件資產與藥錠外觀紀錄，並將檔案存入 MinIO。

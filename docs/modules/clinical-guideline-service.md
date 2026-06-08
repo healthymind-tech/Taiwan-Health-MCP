@@ -34,7 +34,7 @@
 - **治療策略**：分階段藥物與非藥物治療建議。
 
 ## 資料來源
-- **主要來源**：台灣醫學會臨床診療指引（種子資料），由 data-loader `--guideline` 載入至 `guideline.*` schema。
+- **主要來源**：台灣醫學會臨床診療指引（種子資料），經由管理後台（Admin → Modules，匯入階段 `--guideline`）載入至 `guideline.*` schema。
 - **資料庫表格**：`disease_guidelines`、`diagnostic_recommendations`、`medication_recommendations`、`test_recommendations`、`treatment_goals`。
 - 國際參考：WHO、CDC 及國際權威醫學會之公開指引摘要。
 

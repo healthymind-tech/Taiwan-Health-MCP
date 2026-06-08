@@ -28,7 +28,7 @@ PostgreSQL schema, and which AI capabilities (embedding / OCR / LLM) are require
 
 ## fhir-code/ directory layout
 
-All source files live in `fhir-code/` (mounted read-only at `/app/fhir-code/` in the `data-loader` container).
+Bundled/local source files live in `fhir-code/`. With the admin console, source files are uploaded via Admin → Sources; for direct local loader runs they are read from `fhir-code/` (legacy `/app/fhir-code/` layout).
 
 ```
 fhir-code/
@@ -71,7 +71,7 @@ Static loader — user provides files once; reimport only on new annual releases
 | `icd/10/icd10pcs/icd10pcs_tables_2025.zip` | 648 KB | https://www.cms.gov/medicare/coding-billing/icd-10-codes (or bundled in repo) | Contains `icd10pcs_tables_2025.xml` |
 | `icd/10/1.2023年中文版ICD-10-CM_PCS_1131118V3(...).xlsx` | — | 衛福部/台灣健保署 | Optional. If absent, `name_zh` is empty; codes still load |
 
-File placement: `fhir-code/` is mounted read-only at `/app/fhir-code/` inside the `data-loader` container.
+File placement: place files under `fhir-code/` for direct local loader runs (legacy `/app/fhir-code/` layout), or upload them via Admin → Sources.
 
 ### Input data structure
 

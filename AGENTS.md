@@ -4,8 +4,8 @@
 `src/` contains the MCP server and service layer (`*_service.py`) for ICD, drug, lab, guideline, FHIR, SNOMED, TWCore, and related logic. `loader/` holds the CLI and dataset loaders used to ingest ICD, LOINC, SNOMED, RxNorm, and Taiwan FDA data. `tests/` contains pytest suites, `docs/` contains MkDocs source, `db/` stores PostgreSQL schema SQL, and `fhir-code/` holds source datasets and seed files.
 
 ## Build, Test, and Development Commands
-- `docker compose up -d`: start the app stack (`postgres`, `pgbouncer`, `redis`, `app`).
-- `docker compose --profile loader run --rm data-loader --all`: load all datasets after configuring `config/datasets.yaml`.
+- `docker compose up -d`: start the app stack (`postgres`, `pgbouncer`, `redis`, `minio`, `app`, `admin-worker`).
+- Data import: enable the admin console (`ADMIN_ENABLED=true` + credentials) and import modules from the **Modules** tab; the `admin-worker` runs the loader stages. There is no standalone `data-loader` container. To run a stage directly during development, invoke `loader/main.py` (e.g. `python -m loader.main --icd`).
 - `python -m pytest tests/ -v`: run the full test suite.
 - `python -m pytest tests/test_api_integration.py -v`: run MCP API integration tests against a running server.
 - `python -m pytest tests/test_api_integration.py::TestSearchMedicalCodes::test_exact -v`: run one test case.

@@ -1,8 +1,8 @@
 """
-Data Loader — run once to populate PostgreSQL from official source files.
-Usage:
-    docker compose --profile loader run --rm data-loader
-    # or locally:
+Data Loader — populates PostgreSQL from official source files.
+Imports are normally triggered from the admin console and executed by the
+admin-worker, which invokes these stages (there is no standalone data-loader
+container). To run a stage directly during development:
     DATABASE_URL=postgresql://... python loader/main.py [--all] [--icd] [--drug-index] [--drug-enrich] [--drug-analysis] [--loinc] [--twcore] [--guideline] [--snomed]
 
 Source files expected at /app/fhir-code/ (mounted read-only in Docker):

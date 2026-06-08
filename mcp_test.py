@@ -584,8 +584,8 @@ Examples:
 
     if not tools:
         print(red("FAILED"))
-        print(red("No tools returned — are the datasets loaded?"))
-        print(dim("Run: docker compose --profile loader run --rm data-loader --all"))
+        print(red("No tools returned — are the modules loaded?"))
+        print(dim("Import modules from the admin console (Admin → Modules)."))
         return 1
     print(green(f"{len(tools)} tools"))
 

@@ -8,7 +8,7 @@
 - **Python 版本**：3.12+（裸機部署時）
 
 ## 服務組成
-`docker compose up -d` 會啟動：`postgres`（pgvector）、`pgbouncer`、`redis`、`minio` + `minio-init`、`app`（MCP 伺服器 + 管理後台），以及 `admin-worker`（背景工作執行器）。`data-loader` 為一次性容器，位於 `profiles: [loader]`。
+`docker compose up -d` 會啟動：`postgres`（pgvector）、`pgbouncer`、`redis`、`minio` + `minio-init`、`app`（MCP 伺服器 + 管理後台），以及 `admin-worker`（背景工作執行器）。資料匯入由管理後台觸發、在 `admin-worker` 內執行，已無獨立的 data-loader 容器。
 
 ## 部署選項
 

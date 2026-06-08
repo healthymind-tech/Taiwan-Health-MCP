@@ -2,7 +2,7 @@
 
 ## 啟動速度優化
 本系統在伺服器啟動時直接連接 PostgreSQL，資料已預先載入，無需每次 ETL。
-- **首次部署**：需先執行 data-loader 載入術語資料（ICD 約 1 分鐘，SNOMED CT 約 5-15 分鐘）。
+- **首次部署**：需先於管理後台（Admin → Modules）匯入術語資料（ICD 約 1 分鐘，SNOMED CT 約 5-15 分鐘）。
 - **後續啟動**：服務直接連接 PostgreSQL，啟動時間秒級完成。
 - **mcp SDK lifespan-per-session**：`streamable-http` 模式下每個 MCP session 觸發一次 lifespan，但 `_init_lock + _initialized` 確保只有第一個 session 執行初始化，後續 session 重用已建立的連線池與 Redis。
 

@@ -28,30 +28,16 @@ DATABASE_URL=postgresql://mcp:pass@localhost:5432/taiwan_health python src/serve
 MCP_TRANSPORT=streamable-http DATABASE_URL=postgresql://... python src/server.py
 
 # Docker (production — recommended)
-cp .env.example .env                          # then edit .env
-cp config/datasets.example.yaml config/datasets.yaml
+cp .env.example .env                          # then edit .env (set POSTGRES_PASSWORD, ADMIN_*)
 docker compose up -d                          # postgres, pgbouncer, redis, minio, app, admin-worker
 
-# Run data-loader (populate all modules)
-docker compose --profile loader run --rm data-loader --all
-
-# Run specific loaders
-docker compose --profile loader run --rm data-loader --icd                # ICD-10-CM + PCS 2025
-docker compose --profile loader run --rm data-loader --loinc              # LOINC 2.80
-docker compose --profile loader run --rm data-loader --twcore             # FHIR IG package(s)
-docker compose --profile loader run --rm data-loader --guideline          # clinical guideline seed
-docker compose --profile loader run --rm data-loader --snomed             # large, 5-15 min
-docker compose --profile loader run --rm data-loader --health-supplements # TFDA health supplements
-docker compose --profile loader run --rm data-loader --food-nutrition     # TFDA food nutrition
-
-# Drug domain — three pipeline stages, run in order:
-docker compose --profile loader run --rm data-loader --drug-index    # canonical 36_2.csv license index
-docker compose --profile loader run --rm data-loader --drug-enrich   # TFDA crawl: inserts, assets, appearance
-docker compose --profile loader run --rm data-loader --drug-analysis # OCR + LLM analysis of insert documents
-docker compose --profile loader run --rm data-loader --drug          # = index + enrich in one run
-
-# Embeddings (semantic / hybrid search). Auto-runs after each load; can be run alone:
-docker compose --profile loader run --rm data-loader --embed
+# Data loading is done through the admin console (Modules tab) and executed by
+# the admin-worker in the background — there is NO standalone CLI data-loader
+# container (the old `docker compose --profile loader run …` path was removed).
+# The loader stages still live in loader/main.py and are invoked by the worker:
+#   --icd  --loinc  --twcore  --guideline  --snomed  --health-supplements
+#   --food-nutrition  --drug-index / --drug-enrich / --drug-analysis  --drug
+#   --embed   (embeddings auto-run after each import)
 
 # Run tests
 pip install pytest pytest-asyncio
@@ -70,7 +56,7 @@ python -m pytest tests/ -v
 | Ollama (external) | Embedding model (`qwen3-embedding:0.6b`, 1024-dim) for semantic / hybrid search. Optional — unset `OLLAMA_BASE_URL` to fall back to keyword-only |
 | Prometheus | Metrics on `METRICS_PORT` (default 9090, bound to localhost) |
 
-`docker compose up -d` starts: `postgres`, `pgbouncer`, `redis`, `minio`, `minio-init` (bucket bootstrap), `app` (MCP server + admin), and `admin-worker` (background job runner). `data-loader` is a separate one-shot container under `profiles: [loader]`.
+`docker compose up -d` starts: `postgres`, `pgbouncer`, `redis`, `minio`, `minio-init` (bucket bootstrap), `app` (MCP server + admin), and `admin-worker` (background job runner). There is no separate data-loader container — imports run inside `admin-worker`.
 
 ### Entry point
 `src/server.py` — `DynamicFastMCP` server (subclass of FastMCP). Startup uses `asynccontextmanager lifespan`:
@@ -88,19 +74,19 @@ python -m pytest tests/ -v
 
 | Service | File | Data source | Populated by |
 |---------|------|-------------|--------------|
-| ICD Service | `icd_service.py` | `icd.diagnoses` / `icd.procedures` | data-loader (`--icd`) |
-| Drug Service | `drug_service.py` | `drug.*` tables | data-loader drug pipeline (`--drug-index/-enrich/-analysis`) + admin worker |
+| ICD Service | `icd_service.py` | `icd.diagnoses` / `icd.procedures` | admin import (`--icd`) |
+| Drug Service | `drug_service.py` | `drug.*` tables | admin import drug pipeline (`--drug-index/-enrich/-analysis`), run by admin worker |
 | Drug Analysis Service | `drug_analysis_service.py` | `drug.insert_analysis` | OCR + LLM analysis stage |
-| Health Supplements Service | `health_supplements_service.py` | `health_supplements.items` | data-loader (`--health-supplements`), TFDA Open Data |
-| Food Nutrition Service | `food_nutrition_service.py` | `food_nutrition.*` | data-loader (`--food-nutrition`), TFDA Open Data |
-| Lab Service | `lab_service.py` | `loinc.*` | data-loader (`--loinc`) |
-| Clinical Guideline Service | `clinical_guideline_service.py` | `guideline.*` | data-loader (`--guideline`) |
+| Health Supplements Service | `health_supplements_service.py` | `health_supplements.items` | admin import (`--health-supplements`), TFDA Open Data |
+| Food Nutrition Service | `food_nutrition_service.py` | `food_nutrition.*` | admin import (`--food-nutrition`), TFDA Open Data |
+| Lab Service | `lab_service.py` | `loinc.*` | admin import (`--loinc`) |
+| Clinical Guideline Service | `clinical_guideline_service.py` | `guideline.*` | admin import (`--guideline`) |
 | FHIR Condition Service | `fhir_condition_service.py` | reads `icd.diagnoses` | — (derives from ICD) |
 | FHIR Medication Service | `fhir_medication_service.py` | reads `drug_service` | — (derives from Drug) |
-| FHIR IG Service | `fhir_ig_service.py` | `fhir.*` (multi-IG, package-scoped) | data-loader (`--twcore`) + admin IG import |
+| FHIR IG Service | `fhir_ig_service.py` | `fhir.*` (multi-IG, package-scoped) | admin import (`--twcore`) + admin IG import |
 | FHIR Server Service | `fhir_server_service.py` | `admin.fhir_servers` | admin console (always-on tools) |
-| TWCore Service | `twcore_service.py` | `fhir.*` (legacy helper) | data-loader (`--twcore`) |
-| SNOMED Service | `snomed_service.py` | `snomed.*` | data-loader (`--snomed`) |
+| TWCore Service | `twcore_service.py` | `fhir.*` (legacy helper) | admin import (`--twcore`) |
+| SNOMED Service | `snomed_service.py` | `snomed.*` | admin import (`--snomed`) |
 | Embedding Service | `embedding_service.py` | Ollama `/api/embed` | — (cross-cutting) |
 | MinIO Service | `minio_service.py` | MinIO bucket | — (drug assets) |
 
@@ -125,9 +111,17 @@ Periodic re-imports are **not** scheduled inside the services. Scheduling is cen
 Module-gated groups are dynamically added/removed by `ModuleStatusManager` based on row-count thresholds (see `src/module_status.py`, `SERVICE_MODULES`). FHIR Servers and System tools are always registered.
 
 ### Data loader
-`loader/main.py` — separate Docker container (`profiles: [loader]`, `restart: "no"`).
-- Connects **directly** to PostgreSQL (bypasses pgBouncer) for bulk writes
-- Source-file locations resolved by `loader/dataset_resolver.py` from `config/datasets.yaml` (`DATASETS_CONFIG`), falling back to the legacy `/app/fhir-code/` layout:
+`loader/main.py` — the loader stages live here. There is **no** standalone loader
+container; the `admin-worker` (and, in dev, a direct module invocation) runs these
+stages. Imports are triggered/scheduled from the admin console.
+- File-based imports (ICD / LOINC / SNOMED / FHIR IG) consume source files
+  **uploaded via the admin console** (Sources / Modules tab); API-based imports
+  (drug / health-supplements / food-nutrition) fetch from their upstream APIs;
+  guidelines are seeded from the repo.
+- Bulk writes go **directly** to PostgreSQL (bypassing pgBouncer).
+- For local development without the admin console, source-file locations can also
+  be resolved by `loader/dataset_resolver.py` from `config/datasets.yaml`
+  (`DATASETS_CONFIG`), falling back to the legacy `fhir-code/` layout:
   - `icd/10/icd10cm/icd10cm-table-index-2025.zip`
   - `icd/10/icd10pcs/icd10pcs_tables_2025.zip` *(bundled — loaded automatically by `--icd`)*
   - `icd/10/*.xlsx` *(optional Taiwan ICD Chinese names)*

@@ -2865,8 +2865,7 @@ function renderDetail(t) {
     ` : `
       <div class="unavail">
         This tool is currently unavailable — its module hasn't been loaded yet.<br>
-        Load it from the <strong>Admin console &rarr; Modules</strong> tab, or run
-        <code>docker compose --profile loader run --rm data-loader --all</code>.
+        Load it from the <strong>Admin console &rarr; Modules</strong> tab.
       </div>
     `}`;
   applyExamples(t.name);

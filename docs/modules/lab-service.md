@@ -33,7 +33,7 @@
 一次傳入多項檢驗值，批次取得所有異常標記與解釋，適合健康檢查報告自動分析。
 
 ## 技術架構
-- **資料來源**：LOINC 2.80（87,000+ 碼，由 data-loader `--loinc` 載入），以及台灣常用檢驗種子資料（`loinc_taiwan_seed.py`，約 30 筆）。
+- **資料來源**：LOINC 2.80（87,000+ 碼，經由管理後台 Admin → Modules，匯入階段 `--loinc` 載入），以及台灣常用檢驗種子資料（`loinc_taiwan_seed.py`，約 30 筆）。
 - **資料庫**：PostgreSQL 16，`loinc.concepts`（LOINC 碼）與 `loinc.reference_ranges`（年齡/性別分層參考值）。
 - **結構化輸出**：回傳資料可直接用於產生 FHIR Observation 資源。
 

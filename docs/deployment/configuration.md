@@ -33,7 +33,7 @@ cp .env.example .env
 |------|------|
 | `DATABASE_URL` | App 連接 pgBouncer：`postgresql://mcp:{pass}@pgbouncer:5432/taiwan_health` |
 
-> App 透過 pgBouncer（port 5432 內部）連線，data-loader 直接連接 PostgreSQL（`@postgres:5432`）以支援大量寫入。
+> App 透過 pgBouncer（port 5432 內部）連線；`admin-worker` 在執行匯入時直接連接 PostgreSQL（`@postgres:5432`）以支援大量寫入。
 
 ### Redis
 

@@ -25,28 +25,35 @@
 ```bash
 git clone https://github.com/audi0417/Taiwan-Health-MCP.git
 cd Taiwan-Health-MCP
-cp .env.example .env                          # 設定 POSTGRES_PASSWORD 等
-cp config/datasets.example.yaml config/datasets.yaml
+cp .env.example .env                          # 設定 POSTGRES_PASSWORD、ADMIN_* 等
 docker compose up -d                          # postgres / pgbouncer / redis / minio / app / admin-worker
-docker compose --profile loader run --rm data-loader --all
 ```
 
-若只想個別初始化模組：
+## 載入資料（透過管理後台）
 
-```bash
-docker compose --profile loader run --rm data-loader --icd
-docker compose --profile loader run --rm data-loader --loinc
-docker compose --profile loader run --rm data-loader --twcore
-docker compose --profile loader run --rm data-loader --guideline
-docker compose --profile loader run --rm data-loader --snomed
-docker compose --profile loader run --rm data-loader --health-supplements
-docker compose --profile loader run --rm data-loader --food-nutrition
+資料匯入由 **Admin Console** 觸發、交由 `admin-worker` 背景執行（不再有獨立的 CLI data-loader 容器）。
 
-# 藥物域 — 三階段管線，依序執行：
-docker compose --profile loader run --rm data-loader --drug-index    # 36_2.csv 許可證索引
-docker compose --profile loader run --rm data-loader --drug-enrich   # TFDA 爬取仿單 / 外觀 / 文件資產
-docker compose --profile loader run --rm data-loader --drug-analysis # 仿單 OCR + LLM 分析
-```
+1. 在 `.env` 啟用管理後台：
+
+   ```dotenv
+   ADMIN_ENABLED=true
+   ADMIN_USERNAME=admin
+   # python -c "import hashlib; print('sha256$' + hashlib.sha256(b'change-me').hexdigest())"
+   ADMIN_PASSWORD_HASH=sha256$...
+   ADMIN_SESSION_SECRET=change_this_admin_session_secret
+   ```
+
+   重新啟動 `app`（`docker compose up -d`）後，於 `http://<host>:8000/admin` 登入。
+
+2. 在 **Modules** 頁籤依模組匯入資料：
+
+   - **需上傳來源檔**（在 Sources / Modules 上傳後按匯入）：ICD-10-CM/PCS、LOINC、SNOMED CT、FHIR IG（`package.tgz`）。
+   - **由 API 自動抓取**（直接按匯入或設定排程）：藥品（TFDA，三階段:索引 → 爬取豐富 → OCR/LLM 分析）、健康補充品、食品營養。
+   - **內建種子資料**（直接執行）：臨床指引。
+
+3. 嵌入（語意搜尋）會在各模組匯入後自動回填，也可於模組頁面單獨重建。
+
+匯入進度、步驟時間軸與即時日誌可在 **Tasks** 頁籤查看。詳見[管理後台文件](docs/admin/index.md)與[背景工作與排程](docs/admin/jobs-and-worker.md)。
 
 ## 工具群組
 

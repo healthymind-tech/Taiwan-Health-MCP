@@ -4,7 +4,7 @@
 
 ## 專案結構速覽
 - `src/` — MCP 伺服器（`server.py`）、各服務（`*_service.py`）、管理後台（`admin_*.py`）、FHIR 工具（`fhir_*.py`）與跨切面模組（`audit.py` / `cache.py` / `metrics.py` / `module_status.py` / `database.py`）。
-- `loader/` — data-loader 容器與各資料集載入器（`loaders/*.py`）。
+- `loader/` — 各資料集載入器（`loaders/*.py`），由 `admin-worker` 呼叫執行。
 - `admin-ui/` — 管理後台 React SPA。
 - `db/` — `schema.sql` 與 `migrations/`。
 - `tests/` — 單元與工具測試。

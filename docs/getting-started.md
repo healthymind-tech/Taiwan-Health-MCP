@@ -10,51 +10,40 @@
 
 ```bash
 cp .env.example .env                # 設定 POSTGRES_PASSWORD 等必要變數
-cp config/datasets.example.yaml config/datasets.yaml
 docker compose up -d
 ```
 
 `docker compose up -d` 會啟動：`postgres`、`pgbouncer`、`redis`、`minio`、`minio-init`（建立 bucket）、`app`（MCP 伺服器 + 管理後台）以及 `admin-worker`（背景工作執行器）。
 
-## 載入資料
+## 啟用管理後台
 
-```bash
-docker compose --profile loader run --rm data-loader --all
+資料匯入由管理後台觸發、交由 `admin-worker` 背景執行（已無獨立的 CLI data-loader 容器），因此請先在 `.env` 啟用管理後台：
+
+```dotenv
+ADMIN_ENABLED=true
+ADMIN_USERNAME=admin
+# python -c "import hashlib; print('sha256$' + hashlib.sha256(b'change-me').hexdigest())"
+ADMIN_PASSWORD_HASH=sha256$...
+ADMIN_SESSION_SECRET=change_this_admin_session_secret
 ```
 
-或依需求個別載入：
+重新啟動後（`docker compose up -d`），於 `http://<host>:8000/admin` 登入。詳見[管理後台](admin/index.md)。
 
-```bash
-docker compose --profile loader run --rm data-loader --icd
-docker compose --profile loader run --rm data-loader --loinc
-docker compose --profile loader run --rm data-loader --twcore
-docker compose --profile loader run --rm data-loader --guideline
-docker compose --profile loader run --rm data-loader --snomed
-docker compose --profile loader run --rm data-loader --health-supplements
-docker compose --profile loader run --rm data-loader --food-nutrition
-```
+## 載入資料（管理後台 → Modules）
 
-### 藥物域（三階段管線）
+在 Modules 頁籤依模組匯入：
 
-藥物資料分三個階段，依序執行：
+| 類型 | 模組 | 操作 |
+|------|------|------|
+| 需上傳來源檔 | ICD-10-CM/PCS、LOINC、SNOMED CT、FHIR IG（`package.tgz`） | 於 Sources / Modules 上傳來源檔後按匯入 |
+| API 自動抓取 | 藥品（TFDA）、健康補充品、食品營養 | 直接按匯入，或設定排程 |
+| 內建種子資料 | 臨床指引 | 直接執行 |
 
-```bash
-docker compose --profile loader run --rm data-loader --drug-index    # 36_2.csv 許可證索引
-docker compose --profile loader run --rm data-loader --drug-enrich   # TFDA 爬取仿單 / 外觀 / 文件資產
-docker compose --profile loader run --rm data-loader --drug-analysis # 仿單 OCR + LLM 分析
-# 或一次跑 index + enrich：
-docker compose --profile loader run --rm data-loader --drug
-```
+- **藥物域**為三階段管線（索引 → 爬取豐富 → OCR/LLM 分析），其中爬取與分析需設定 TFDA / OCR / 分析 LLM 端點（見 `.env` 的 `DRUG_*`，或於 Settings 頁籤管理）。
+- **嵌入**（語意搜尋）會在各模組匯入後自動回填，也可於模組頁面單獨重建。
+- 匯入進度、步驟時間軸與即時日誌見 **Tasks** 頁籤；背景機制見[背景工作與排程](admin/jobs-and-worker.md)。
 
-`--drug-enrich` 與 `--drug-analysis` 需要設定 TFDA / OCR / 分析 LLM 端點（見 `.env` 的 `DRUG_*` 變數）。
-
-### 嵌入（語意搜尋）
-
-每次資料載入後會自動執行嵌入回填；也可單獨重建：
-
-```bash
-docker compose --profile loader run --rm data-loader --embed
-```
+> 開發時若要直接執行單一 loader 階段，`loader/main.py` 的各階段仍存在（由 worker 呼叫），可在 worker 容器內以模組方式執行。
 
 ## 連線 MCP 伺服器
 
@@ -68,17 +57,3 @@ python -m pytest tests/ -v
 ```
 
 或先用 `health_check` 工具確認伺服器與各模組狀態。
-
-## 啟用管理後台（選用）
-
-於 `.env` 設定後即可在 `/admin` 存取：
-
-```dotenv
-ADMIN_ENABLED=true
-ADMIN_USERNAME=admin
-# python -c "import hashlib; print('sha256$' + hashlib.sha256(b'change-me').hexdigest())"
-ADMIN_PASSWORD_HASH=sha256$...
-ADMIN_SESSION_SECRET=change_this_admin_session_secret
-```
-
-詳見[管理後台](admin/index.md)。

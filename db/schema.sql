@@ -887,8 +887,8 @@ CREATE INDEX IF NOT EXISTS idx_fn_ing_fts ON food_nutrition.ingredients
 
 -- Embedding table for hybrid search (food-level, not measurement-level)
 -- Default dimension 1024 matches OLLAMA_EMBED_DIMENSIONS=1024 (qwen3-embedding:0.6b).
--- To switch models, set OLLAMA_EMBED_DIMENSIONS to the new size and re-run:
---   docker compose run --rm data-loader --embed
+-- To switch models, set OLLAMA_EMBED_DIMENSIONS to the new size and re-run
+-- embeddings from the admin console (Modules → re-embed).
 -- The loader will ALTER TABLE all embedding columns to the new dimension automatically.
 CREATE TABLE IF NOT EXISTS food_nutrition.food_embeddings (
     sample_name  TEXT PRIMARY KEY,

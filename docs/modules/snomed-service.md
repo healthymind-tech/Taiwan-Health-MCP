@@ -23,7 +23,7 @@ SNOMED CT 服務模組整合 SNOMED CT International 版術語，提供概念搜
 - **`mode="snomed"`**：輸入 SNOMED concept ID（例如 `44054006`），回傳對應的 ICD-10 對照。
 
 ## 技術架構
-- **資料來源**：SNOMED CT International RF2（`SnomedCT_InternationalRF2_PRODUCTION_*.zip`），由 data-loader `--snomed` 載入（資料量大，約 5–15 分鐘）。
+- **資料來源**：SNOMED CT International RF2（`SnomedCT_InternationalRF2_PRODUCTION_*.zip`），經由管理後台（Admin → Modules，匯入階段 `--snomed`）載入（資料量大，約 5–15 分鐘）。
 - **資料庫**：`snomed` schema，含 `concepts`、`descriptions`、`relationships`、`icd10_map`、`historical_associations` 與 `concept_embeddings`。
 - **可用性閘門**：`snomed.concepts` 需達門檻（10 萬筆）才會註冊對應工具，否則自動降級。
 
