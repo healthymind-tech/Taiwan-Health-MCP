@@ -1326,6 +1326,7 @@ class FHIRIGService:
         key: Optional[str] = None,
         package_id: Optional[str] = None,
         version: Optional[str] = None,
+        generate_narrative: bool = True,
     ) -> str:
         if not isinstance(draft, dict):
             return self._err("INVALID_ARGUMENT", "draft must be a resource object")
@@ -1343,6 +1344,14 @@ class FHIRIGService:
         resource.setdefault("resourceType", sd.get("type"))
         warnings: list[str] = []
 
+        # 0. shape fix — wrap bare values into arrays where the profile says the
+        #    element repeats (e.g. Condition.category 0..* given as a lone object)
+        coerced = fhir_authoring.coerce_array_cardinality(sd, resource)
+        if coerced:
+            warnings.append(
+                "auto-wrapped repeating element(s) into arrays: "
+                + ", ".join(c["path"] for c in coerced)
+            )
         # 1. mechanical pins
         fhir_authoring.ensure_meta_profile(resource, canonical)
         pinned = fhir_authoring.pin_fixed_pattern(sd, resource)
@@ -1358,6 +1367,10 @@ class FHIRIGService:
             fhir_reference._rewrite_references(
                 resource, fhir_reference.get_map(context_id)
             )
+        # 3b. narrative — derive text.div from the now-final content (author wins)
+        narrated = (
+            generate_narrative and fhir_authoring.ensure_narrative(resource)
+        )
         # 4. validate (does NOT auto-loop)
         core = await self._validate_core(
             pkg, resource, row.get("artifact_id") or profile
@@ -1366,6 +1379,8 @@ class FHIRIGService:
         data = {
             "resource": resource,
             "validation": core,
+            "coerced": coerced,
+            "narrated": narrated,
             "pinned": pinned,
             "pinnedSlices": pinned_slices,
             "contextId": context_id,

@@ -10,6 +10,7 @@ without touching semantics. Reused by ``FHIRIGService.finalize_resource``.
 from __future__ import annotations
 
 import copy
+import html as _html
 from typing import Any
 
 import fhir_snapshot
@@ -25,6 +26,154 @@ def ensure_meta_profile(resource: dict, canonical: str) -> bool:
     if canonical in profiles:
         return False
     profiles.append(canonical)
+    return True
+
+
+def _max_is_array(max_card: Any) -> bool:
+    return max_card == "*" or (str(max_card).isdigit() and int(max_card) > 1)
+
+
+def coerce_array_cardinality(sd: dict, resource: dict) -> list[dict]:
+    """Wrap bare values into single-element arrays wherever the element is *repeating
+    in the base definition* but the draft supplied a lone object or primitive (e.g.
+    ``category: {coding:[…]}`` for ``Condition.category``). A purely mechanical shape
+    fix: FHIR requires a JSON array there, and a lone value is always equivalent to a
+    one-element array — so this never changes semantics. Returns a trace of
+    ``{path, action}``.
+
+    Array-ness is decided by ``element.base.max`` (the base resource's cardinality),
+    **not** the profile's constrained ``max``: a profile may narrow ``Condition.category``
+    to ``0..1``, but the JSON wire format is fixed by the base (``0..*``) and stays an
+    array. Falls back to the profile ``max`` when ``base`` is absent."""
+    root = sd.get("type") or resource.get("resourceType") or ""
+    array_paths: set[str] = set()
+    for el in (sd.get("snapshot") or {}).get("element") or []:
+        if fhir_snapshot.is_slice_member(el):
+            continue
+        path = el.get("path") or ""
+        if path == root or not path.startswith(root + "."):
+            continue
+        max_card = (el.get("base") or {}).get("max", el.get("max"))
+        if _max_is_array(max_card):
+            array_paths.add(path[len(root) + 1 :])
+    trace: list[dict] = []
+    _coerce_walk(resource, "", root, array_paths, trace)
+    return trace
+
+
+def _coerce_walk(
+    node: Any, rel_path: str, root: str, array_paths: set[str], trace: list[dict]
+) -> None:
+    """Recursively wrap object/primitive leaves into arrays where ``rel_path`` is a
+    declared repeating element. List items keep their parent's ``rel_path`` (FHIR
+    snapshot paths are index-free)."""
+    if isinstance(node, dict):
+        for key in list(node.keys()):
+            if key.startswith("_"):  # primitive-extension siblings — leave as-is
+                continue
+            child = f"{rel_path}.{key}" if rel_path else key
+            value = node[key]
+            if value is not None and not isinstance(value, list) and child in array_paths:
+                node[key] = [value]
+                trace.append(
+                    {"path": f"{root}.{child}", "action": "wrapped-in-array"}
+                )
+            _coerce_walk(node[key], child, root, array_paths, trace)
+    elif isinstance(node, list):
+        for item in node:
+            _coerce_walk(item, rel_path, root, array_paths, trace)
+
+
+# --------------------------------------------------------------------------- #
+#  Narrative (DomainResource.text) generation                                  #
+# --------------------------------------------------------------------------- #
+#
+# Most TW Core profiles mark ``text`` mustSupport and FHIR's dom-6 best-practice
+# warns when a DomainResource carries no human-readable narrative. The narrative
+# is, by definition, *derived* from the structured data (``status: "generated"``),
+# so the server can build it deterministically — the LLM never authors it. An
+# author-supplied ``text.div`` always wins; we only fill when absent.
+
+_NARRATIVE_SKIP = {
+    "resourceType", "id", "meta", "implicitRules", "language", "text",
+    "contained", "extension", "modifierExtension",
+}
+
+# resourceTypes that are NOT DomainResources (no .text element) — never narrate.
+_NON_DOMAIN_RESOURCES = {"Bundle", "Parameters", "Binary"}
+
+
+def _humanize(value: Any) -> str | None:
+    """Render a FHIR value as a short human-readable string for the narrative.
+    Returns ``None`` for structures with no sensible flat rendering (skipped)."""
+    if isinstance(value, dict):
+        text = value.get("text")
+        if isinstance(text, str) and text.strip():
+            return text
+        codings = value.get("coding")
+        if isinstance(codings, list) and codings:
+            parts = [
+                c.get("display") or c.get("code")
+                for c in codings
+                if isinstance(c, dict)
+            ]
+            joined = ", ".join(p for p in parts if p)
+            if joined:
+                return joined
+        if "display" in value or "code" in value:  # bare Coding
+            return value.get("display") or value.get("code")
+        if "reference" in value:  # Reference
+            return value.get("display") or value.get("reference")
+        if "value" in value and not isinstance(value["value"], (dict, list)):  # Quantity
+            unit = value.get("unit") or value.get("code") or ""
+            return f"{value['value']} {unit}".strip()
+        if "start" in value or "end" in value:  # Period
+            return f"{value.get('start', '')} – {value.get('end', '')}".strip(" –")
+        return None
+    if isinstance(value, list):
+        rendered = [r for r in (_humanize(v) for v in value) if r]
+        return "; ".join(rendered) if rendered else None
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (str, int, float)):
+        return str(value)
+    return None
+
+
+def build_narrative_div(resource: dict) -> str:
+    """Build an XHTML ``div`` summarising a resource's top-level fields. Every text
+    node is escaped, so the output is always valid XHTML for ``text.div``."""
+    rtype = resource.get("resourceType") or "Resource"
+    rows: list[str] = []
+    for key, value in resource.items():
+        if key in _NARRATIVE_SKIP:
+            continue
+        rendered = _humanize(value)
+        if not rendered:
+            continue
+        rows.append(f"<p><b>{_html.escape(key)}</b>: {_html.escape(rendered)}</p>")
+    body = "".join(rows) or "<p>(no narrative content)</p>"
+    return (
+        '<div xmlns="http://www.w3.org/1999/xhtml">'
+        f"<p><b>{_html.escape(rtype)}</b></p>{body}</div>"
+    )
+
+
+def ensure_narrative(resource: dict) -> bool:
+    """Generate a ``text`` narrative (``status: "generated"``) when the resource is a
+    DomainResource and lacks a real ``div``. Author-supplied narratives win. Returns
+    True when a narrative was generated."""
+    if resource.get("resourceType") in _NON_DOMAIN_RESOURCES:
+        return False
+    text = resource.get("text")
+    if isinstance(text, dict):
+        div = text.get("div")
+        if isinstance(div, str) and div.strip() and "<" in div:
+            return False  # author already wrote a narrative
+    resource["text"] = {
+        "status": "generated",
+        "div": build_narrative_div(resource),
+    }
     return True
 
 
@@ -132,10 +281,6 @@ def pin_fixed_pattern(sd: dict, resource: dict) -> list[dict]:
 # labour: the LLM tags each entry with ``_slice: "<sliceName>"`` (a *semantic*
 # choice — "this is a national ID card"); the server then pins that slice's
 # mechanical fixed/pattern fields onto the entry and strips the tag.
-
-
-def _max_is_array(max_card: Any) -> bool:
-    return max_card == "*" or (str(max_card).isdigit() and int(max_card) > 1)
 
 
 def _slice_template(els: list[dict], base_path: str, slice_name: str) -> dict:

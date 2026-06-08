@@ -8348,12 +8348,16 @@ async def fhir_finalize_resource(
     key: str | None = None,
     package_id: str | None = None,
     version: str | None = None,
+    generate_narrative: bool = True,
 ) -> str:
     """Finalize an LLM-filled draft: deterministically pin the *mechanical* fields and
-    validate. The server pins `fixed`/`pattern` values and `meta.profile`, infers a
-    coding's `system` when the bound ValueSet is single-system, rewrites references via
-    the build context, then runs the in-process validator. **It does not auto-loop** —
-    on validation failure, read the issues, fix your draft, and call finalize again.
+    validate. The server wraps lone objects into arrays where the profile says the
+    element repeats (e.g. `Condition.category` 0..*), pins `fixed`/`pattern` values and
+    `meta.profile`, infers a coding's `system` when the bound ValueSet is single-system,
+    rewrites references via the build context, generates the `text` narrative
+    (`status: "generated"`), then runs the in-process validator. **It does not
+    auto-loop** — on validation failure, read the issues, fix your draft, and call
+    finalize again.
 
     Args:
         profile: profile id / canonical / artifact_key to conform to.
@@ -8362,8 +8366,11 @@ async def fhir_finalize_resource(
         key: register THIS resource under a logical key so other resources can
             reference it; returns its minted `urn:uuid` reference.
         package_id / version: target IG (omit → default IG).
+        generate_narrative: auto-fill `text.div` from the final content when absent
+            (default True; an author-supplied narrative always wins).
 
-    Returns `{resource, validation, pinned, contextId, reference}`.
+    Returns `{resource, validation, coerced, narrated, pinned, pinnedSlices,
+    contextId, reference}`.
     """
     if fhir_ig_service is None:
         return _fhir_ig_unavailable()
@@ -8376,6 +8383,7 @@ async def fhir_finalize_resource(
         key=key,
         package_id=package_id,
         version=version,
+        generate_narrative=generate_narrative,
     )
 
 
