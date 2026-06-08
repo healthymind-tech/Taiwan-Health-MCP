@@ -15,7 +15,7 @@
         <link rel="canonical" href="https://audi0417.github.io/Taiwan-Health-MCP/fhir-bundle-conversion-prompt/">
       
       
-        <link rel="prev" href="../fhir-patient-conversion-prompt/">
+        <link rel="prev" href="../fhir-resource-conversion-prompt/">
       
       
         <link rel="next" href="../guides/">
@@ -1275,14 +1275,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../fhir-patient-conversion-prompt/" class="md-nav__link">
+      <a href="../fhir-resource-conversion-prompt/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Patient 轉換提示
+    資源轉換提示（自動判斷型別）
   
 
     
@@ -2468,7 +2468,7 @@
 <p>這份提示詞示範如何讓語言模型透過本專案的 <code>fhir_*</code> MCP 工具(Taiwan Health MCP 的
 FHIR-IG toolset),把<strong>一整包扁平 JSON</strong>(多個 list、每個 list 是一種資源、彼此用
 外鍵互相引用)逐步轉成「合規且完整」的 TW Core FHIR <strong>Bundle</strong>。</p>
-<p>與<a href="../fhir-patient-conversion-prompt/">單一資源版</a>的差異:
+<p>與<a href="../fhir-resource-conversion-prompt/">單一資源版</a>的差異:
 - 一次有<strong>很多</strong>資源、<strong>多種</strong>型別,而且<strong>互相引用</strong>。
 - 轉換順序「<strong>被引用者優先</strong>」:先處理不主動引用別人的資源(如 Organization),
   再處理引用它們的資源,最後才是引用最多的(如 Observation / Encounter)。
