@@ -407,18 +407,46 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#mcp" class="md-nav__link">
+  <a href="#_5" class="md-nav__link">
     <span class="md-ellipsis">
       
-        連線 MCP 伺服器
+        連線客戶端
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="連線客戶端">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-mcp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. MCP（原生）
       
     </span>
   </a>
   
 </li>
+        
+          <li class="md-nav__item">
+  <a href="#2-openapi-bridge-openapi" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. OpenAPI bridge（給只支援 OpenAPI 的客戶端）
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
       
         <li class="md-nav__item">
-  <a href="#_5" class="md-nav__link">
+  <a href="#_6" class="md-nav__link">
     <span class="md-ellipsis">
       
         驗證
@@ -2511,18 +2539,46 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#mcp" class="md-nav__link">
+  <a href="#_5" class="md-nav__link">
     <span class="md-ellipsis">
       
-        連線 MCP 伺服器
+        連線客戶端
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="連線客戶端">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-mcp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. MCP（原生）
       
     </span>
   </a>
   
 </li>
+        
+          <li class="md-nav__item">
+  <a href="#2-openapi-bridge-openapi" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. OpenAPI bridge（給只支援 OpenAPI 的客戶端）
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
       
         <li class="md-nav__item">
-  <a href="#_5" class="md-nav__link">
+  <a href="#_6" class="md-nav__link">
     <span class="md-ellipsis">
       
         驗證
@@ -2609,9 +2665,22 @@ ADMIN_SESSION_SECRET=change_this_admin_session_secret
 <blockquote>
 <p>開發時若要直接執行單一 loader 階段，<code>loader/main.py</code> 的各階段仍存在（由 worker 呼叫），可在 worker 容器內以模組方式執行。</p>
 </blockquote>
-<h2 id="mcp">連線 MCP 伺服器<a class="headerlink" href="#mcp" title="Permanent link">&para;</a></h2>
-<p>預設以 <code>streamable-http</code> 模式在 <code>http://&lt;host&gt;:8000/mcp</code> 提供服務（見 <code>.env</code> 的 <code>MCP_TRANSPORT</code> / <code>MCP_PORT</code> / <code>MCP_PATH</code>）。若要供 Claude Desktop 以 stdio 模式使用，設定 <code>MCP_TRANSPORT=stdio</code>。</p>
-<h2 id="_5">驗證<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>
+<h2 id="_5">連線客戶端<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>
+<p>伺服器在同一個埠(預設 8000)同時提供兩種介面:</p>
+<h3 id="1-mcp">1. MCP（原生）<a class="headerlink" href="#1-mcp" title="Permanent link">&para;</a></h3>
+<p>預設以 <code>streamable-http</code> 模式在 <code>http://&lt;host&gt;:8000/mcp</code> 提供服務（見 <code>.env</code> 的 <code>MCP_TRANSPORT</code> / <code>MCP_PORT</code> / <code>MCP_PATH</code>）。供原生 MCP 客戶端使用(Claude Desktop、Open WebUI v0.6.31+ 的 MCP 連線等)。若要供 Claude Desktop 以 stdio 模式使用，設定 <code>MCP_TRANSPORT=stdio</code>。</p>
+<h3 id="2-openapi-bridge-openapi">2. OpenAPI bridge（給只支援 OpenAPI 的客戶端）<a class="headerlink" href="#2-openapi-bridge-openapi" title="Permanent link">&para;</a></h3>
+<p>對於不支援原生 MCP、只能接 OpenAPI 工具伺服器的客戶端(例如 <strong>Open WebUI 的 External Tools / OpenAPI 類型</strong>),伺服器內建一層 OpenAPI 介面,<strong>不需額外的 mcpo 代理或容器</strong>:</p>
+<ul>
+<li><code>GET http://&lt;host&gt;:8000/openapi.json</code> — 依目前已啟用的工具動態產生 OpenAPI 3.1 規格</li>
+<li><code>POST http://&lt;host&gt;:8000/tools/&lt;工具名&gt;</code> — 以 JSON body 當參數呼叫工具</li>
+</ul>
+<p>在客戶端只要填基底網址 <code>http://&lt;host&gt;:8000</code>,它會自動抓 <code>/openapi.json</code> 並列出全部工具。</p>
+<blockquote>
+<p>例:Open WebUI → Settings → Tools → 以 <strong>OpenAPI</strong> 類型新增,URL 填 <code>http://&lt;host&gt;:8000</code>。</p>
+<p>注意:<code>/mcp</code> 與 OpenAPI bridge 目前皆<strong>未強制驗證</strong>;對外開放時請在前面加反向代理或 token。</p>
+</blockquote>
+<h2 id="_6">驗證<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h2>
 <pre><code class="language-bash">pip install pytest pytest-asyncio
 python -m pytest tests/ -v
 </code></pre>
