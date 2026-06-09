@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from http.cookies import SimpleCookie
 from pathlib import Path
 from typing import Any, Callable, Literal
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, quote
 
 from mcp.server.fastmcp import FastMCP
 from mcp.types import TextContent, ToolAnnotations
@@ -116,6 +116,7 @@ from fhir_server_service import (
     test_fhir_server_config,
     update_fhir_server,
 )
+import fhir_oauth_service
 from food_nutrition_service import FoodNutritionService
 from health_supplements_service import HealthSupplementsService
 from icd_service import ICDService
@@ -3211,6 +3212,18 @@ def _origin_from_scope(scope) -> str:
     return f"{scheme}://{host}" if host else ""
 
 
+# Relative path of the OAuth2 Authorization Code redirect/callback endpoint.
+_OAUTH_CALLBACK_PATH = "/fhir-oauth/callback"
+
+
+def _oauth_redirect_uri(scope) -> str:
+    """Build the OAuth2 redirect_uri. Prefers the configured PUBLIC_BASE_URL (which
+    must be pre-registered at the authorization server) and falls back to the
+    request origin behind a trusted proxy."""
+    base = config.public_base_url or _origin_from_scope(scope)
+    return f"{base.rstrip('/')}{_OAUTH_CALLBACK_PATH}" if base else _OAUTH_CALLBACK_PATH
+
+
 def _extract_text_from_tool_result(result) -> str:
     """Flatten an mcp ``call_tool`` result (list, or ``(content, structured)``
     tuple) into the concatenated text of its text content blocks."""
@@ -3601,6 +3614,63 @@ class PrivacyPageMiddleware:
                     send,
                     json.dumps(jwks, ensure_ascii=False),
                 )
+                return
+
+            # ── Public OAuth2 Authorization Code callback ─────────────────────
+            # The external authorization server redirects the operator's browser
+            # here after login. There is no admin session guarantee, so the
+            # single-use, unguessable `state` nonce (validated against the pending
+            # row) is the capability. On success/failure we redirect back to the
+            # FHIR Servers admin page with an `oauth` status query param.
+            if path == _OAUTH_CALLBACK_PATH:
+                fhir_tab = "/admin/modules/fhir-servers"
+                if method != "GET":
+                    await self._send_json(
+                        send,
+                        json.dumps({"error": "method_not_allowed"}),
+                        status=405,
+                    )
+                    return
+                if not db_health.monitor().is_healthy():
+                    await self._send_redirect(
+                        send, f"{fhir_tab}?oauth=error&reason=database_unavailable"
+                    )
+                    return
+                query = _parse_query_params(scope)
+                err = query.get("error")
+                if err:
+                    reason = quote(
+                        (query.get("error_description") or err)[:200], safe=""
+                    )
+                    await self._send_redirect(
+                        send, f"{fhir_tab}?oauth=error&reason={reason}"
+                    )
+                    return
+                try:
+                    await _ensure_runtime_ready()
+                    pool = database.get_pool()
+                    result = await fhir_oauth_service.complete_authorization(
+                        pool,
+                        code=query.get("code", ""),
+                        state=query.get("state", ""),
+                        secret_key=fhir_server_secret_key(
+                            config.admin_session_secret
+                        ),
+                    )
+                    server_key = quote(str(result.get("server_key") or ""), safe="")
+                    await self._send_redirect(
+                        send, f"{fhir_tab}?oauth=success&server={server_key}"
+                    )
+                except ValueError as exc:
+                    await self._send_redirect(
+                        send,
+                        f"{fhir_tab}?oauth=error&reason={quote(str(exc)[:200], safe='')}",
+                    )
+                except Exception as exc:
+                    db_health.monitor().report_failure(exc)
+                    await self._send_redirect(
+                        send, f"{fhir_tab}?oauth=error&reason=token_exchange_failed"
+                    )
                 return
 
             is_admin_route = path == "/admin" or path.startswith("/admin/")
@@ -4204,6 +4274,7 @@ class PrivacyPageMiddleware:
                             pool,
                             include_disabled=include_disabled,
                         )
+                        await fhir_oauth_service.attach_oauth_status(pool, servers)
                         await self._send_json(
                             send,
                             json.dumps(
@@ -4436,6 +4507,117 @@ class PrivacyPageMiddleware:
                         )
                     return
 
+                _fhir_oauth_authorize_match = re.fullmatch(
+                    r"/admin/api/fhir-servers/([^/]+)/oauth/authorize", path
+                )
+                if method == "POST" and _fhir_oauth_authorize_match:
+                    try:
+                        pool = database.get_pool()
+                        result = await fhir_oauth_service.start_authorization(
+                            pool,
+                            _fhir_oauth_authorize_match.group(1),
+                            admin_user=admin_username,
+                            redirect_uri=_oauth_redirect_uri(scope),
+                            secret_key=fhir_server_secret_key(
+                                config.admin_session_secret
+                            ),
+                        )
+                        await self._send_json(
+                            send,
+                            json.dumps(result, ensure_ascii=False, default=str),
+                        )
+                    except ValueError as exc:
+                        await self._send_json(
+                            send,
+                            json.dumps({"error": str(exc)}, ensure_ascii=False),
+                            status=400,
+                        )
+                    except Exception as exc:
+                        await self._send_json(
+                            send,
+                            json.dumps(
+                                {
+                                    "error": "Failed to start OAuth authorization",
+                                    "detail": str(exc),
+                                },
+                                ensure_ascii=False,
+                            ),
+                            status=500,
+                        )
+                    return
+
+                _fhir_oauth_refresh_match = re.fullmatch(
+                    r"/admin/api/fhir-servers/([^/]+)/oauth/refresh", path
+                )
+                if method == "POST" and _fhir_oauth_refresh_match:
+                    try:
+                        pool = database.get_pool()
+                        result = await fhir_oauth_service.refresh_token_now(
+                            pool,
+                            _fhir_oauth_refresh_match.group(1),
+                            secret_key=fhir_server_secret_key(
+                                config.admin_session_secret
+                            ),
+                        )
+                        await self._send_json(
+                            send,
+                            json.dumps(result, ensure_ascii=False, default=str),
+                        )
+                    except ValueError as exc:
+                        await self._send_json(
+                            send,
+                            json.dumps({"error": str(exc)}, ensure_ascii=False),
+                            status=400,
+                        )
+                    except Exception as exc:
+                        await self._send_json(
+                            send,
+                            json.dumps(
+                                {
+                                    "error": "Failed to refresh token",
+                                    "detail": str(exc),
+                                },
+                                ensure_ascii=False,
+                            ),
+                            status=500,
+                        )
+                    return
+
+                _fhir_oauth_clear_match = re.fullmatch(
+                    r"/admin/api/fhir-servers/([^/]+)/oauth/clear-cache", path
+                )
+                if method == "POST" and _fhir_oauth_clear_match:
+                    try:
+                        pool = database.get_pool()
+                        result = await fhir_oauth_service.clear_oauth_state(
+                            pool,
+                            _fhir_oauth_clear_match.group(1),
+                            admin_user=admin_username,
+                        )
+                        await self._send_json(
+                            send,
+                            json.dumps(result, ensure_ascii=False, default=str),
+                        )
+                    except ValueError as exc:
+                        await self._send_json(
+                            send,
+                            json.dumps({"error": str(exc)}, ensure_ascii=False),
+                            status=404,
+                        )
+                    except Exception as exc:
+                        await self._send_json(
+                            send,
+                            json.dumps(
+                                {
+                                    "error": "Failed to clear OAuth token cache",
+                                    "detail": str(exc),
+                                },
+                                ensure_ascii=False,
+                            ),
+                            status=500,
+                        )
+                    return
+
                 _fhir_probe_match = re.fullmatch(
                     r"/admin/api/fhir-servers/([^/]+)/probe", path
                 )
@@ -4529,6 +4711,9 @@ class PrivacyPageMiddleware:
                                     status=404,
                                 )
                             else:
+                                await fhir_oauth_service.attach_oauth_status(
+                                    pool, [server]
+                                )
                                 await self._send_json(
                                     send,
                                     json.dumps(
@@ -6310,6 +6495,7 @@ async def list_fhir_servers(include_disabled: bool = False) -> str:
             pool,
             include_disabled=include_disabled,
         )
+        await fhir_oauth_service.attach_oauth_status(pool, servers)
         safe_servers = [server_mcp_summary(server) for server in servers]
         return json.dumps(
             {"count": len(safe_servers), "servers": safe_servers},
@@ -6359,6 +6545,7 @@ async def get_fhir_server_status(server_key: str) -> str:
                 "FHIR server not found",
                 detail=f"No server matches '{server_key}'.",
             )
+        await fhir_oauth_service.attach_oauth_status(pool, [server])
         return json.dumps(
             server_mcp_summary(server),
             ensure_ascii=False,

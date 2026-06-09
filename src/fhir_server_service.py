@@ -30,6 +30,9 @@ from database import PoolLike
 
 AUTH_NONE = "none"
 AUTH_OAUTH2_CC = "oauth2_client_credentials"
+AUTH_OAUTH2_AC = "oauth2_authorization_code"
+# auth_type values that exchange tokens at an OAuth2 token endpoint.
+OAUTH2_AUTH_TYPES = {AUTH_OAUTH2_CC, AUTH_OAUTH2_AC}
 
 # OAuth2 authorization profile — mutually exclusive. Only meaningful when
 # auth_type == oauth2_client_credentials; otherwise forced to "none".
@@ -299,11 +302,15 @@ async def ensure_fhir_server_schema(pool: PoolLike) -> None:
                 is_default BOOLEAN NOT NULL DEFAULT FALSE,
 
                 auth_type TEXT NOT NULL DEFAULT 'none'
-                    CHECK (auth_type IN ('none', 'oauth2_client_credentials')),
+                    CHECK (auth_type IN (
+                        'none', 'oauth2_client_credentials',
+                        'oauth2_authorization_code'
+                    )),
                 auth_profile TEXT NOT NULL DEFAULT 'none'
                     CHECK (auth_profile IN ('none', 'iua', 'smart')),
                 auth_server_url TEXT,
                 metadata_url TEXT,
+                authorization_endpoint TEXT,
                 token_endpoint TEXT,
                 use_metadata BOOLEAN NOT NULL DEFAULT TRUE,
                 client_id TEXT,
@@ -377,6 +384,11 @@ async def ensure_fhir_server_schema(pool: PoolLike) -> None:
             ALTER TABLE admin.fhir_servers
                 ADD COLUMN IF NOT EXISTS test_path TEXT
             """)
+        # OAuth2 Authorization Code authorize endpoint (auth-code flow only).
+        await conn.execute("""
+            ALTER TABLE admin.fhir_servers
+                ADD COLUMN IF NOT EXISTS authorization_endpoint TEXT
+            """)
         # Admin default OAuth token strategy (fresh / cached); per-call can override.
         await conn.execute("""
             ALTER TABLE admin.fhir_servers
@@ -391,7 +403,40 @@ async def ensure_fhir_server_schema(pool: PoolLike) -> None:
             """)
         await conn.execute("""
             DO $$
+            DECLARE
+                auth_type_chk TEXT;
             BEGIN
+                -- Extend the auth_type CHECK to allow oauth2_authorization_code.
+                -- The original is an unnamed inline CHECK; drop by discovered name
+                -- and add a named replacement (idempotent across re-runs).
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.constraint_column_usage
+                    WHERE table_schema = 'admin'
+                      AND table_name = 'fhir_servers'
+                      AND constraint_name = 'fhir_servers_auth_type_chk'
+                ) THEN
+                    SELECT con.conname INTO auth_type_chk
+                    FROM pg_constraint con
+                    JOIN pg_class rel ON rel.oid = con.conrelid
+                    JOIN pg_namespace nsp ON nsp.oid = rel.relnamespace
+                    WHERE nsp.nspname = 'admin'
+                      AND rel.relname = 'fhir_servers'
+                      AND con.contype = 'c'
+                      AND pg_get_constraintdef(con.oid) ILIKE '%auth_type%'
+                    LIMIT 1;
+                    IF auth_type_chk IS NOT NULL THEN
+                        EXECUTE format(
+                            'ALTER TABLE admin.fhir_servers DROP CONSTRAINT %I',
+                            auth_type_chk
+                        );
+                    END IF;
+                    ALTER TABLE admin.fhir_servers
+                        ADD CONSTRAINT fhir_servers_auth_type_chk
+                        CHECK (auth_type IN (
+                            'none', 'oauth2_client_credentials',
+                            'oauth2_authorization_code'
+                        ));
+                END IF;
                 IF EXISTS (
                     SELECT 1 FROM information_schema.columns
                     WHERE table_schema = 'admin'
@@ -474,6 +519,39 @@ async def ensure_fhir_server_schema(pool: PoolLike) -> None:
         await conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_admin_fhir_server_operation_logs_server_ts
                 ON admin.fhir_server_operation_logs (fhir_server_id, created_at DESC)
+            """)
+        # OAuth2 Authorization Code (+ PKCE) token state — one row per
+        # server+admin user; holds pending PKCE state plus encrypted tokens.
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS admin.fhir_server_oauth_tokens (
+                fhir_server_oauth_token_id BIGSERIAL PRIMARY KEY,
+                fhir_server_id UUID NOT NULL
+                    REFERENCES admin.fhir_servers (fhir_server_id) ON DELETE CASCADE,
+                admin_user TEXT NOT NULL,
+                state_nonce TEXT UNIQUE,
+                code_verifier TEXT,
+                redirect_uri TEXT,
+                requested_scope TEXT,
+                pending_created_at TIMESTAMPTZ,
+                access_token_ciphertext BYTEA,
+                refresh_token_ciphertext BYTEA,
+                token_type TEXT,
+                granted_scope TEXT,
+                access_token_expires_at TIMESTAMPTZ,
+                refresh_token_expires_at TIMESTAMPTZ,
+                obtained_at TIMESTAMPTZ,
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                UNIQUE (fhir_server_id, admin_user)
+            )
+            """)
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_admin_fhir_server_oauth_tokens_server
+                ON admin.fhir_server_oauth_tokens (fhir_server_id)
+            """)
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_admin_fhir_server_oauth_tokens_pending
+                ON admin.fhir_server_oauth_tokens (pending_created_at)
+                WHERE state_nonce IS NOT NULL
             """)
 
 
@@ -664,8 +742,11 @@ def _validate_server_payload(
     base_url = _validate_base_url(_clean_text(merged.get("base_url")))
 
     auth_type = _clean_text(merged.get("auth_type") or AUTH_NONE)
-    if auth_type not in {AUTH_NONE, AUTH_OAUTH2_CC}:
-        raise ValueError("auth_type must be none or oauth2_client_credentials")
+    if auth_type not in {AUTH_NONE, AUTH_OAUTH2_CC, AUTH_OAUTH2_AC}:
+        raise ValueError(
+            "auth_type must be none, oauth2_client_credentials, or "
+            "oauth2_authorization_code"
+        )
 
     allowed_operations = _parse_str_list(
         merged.get("allowed_operations"),
@@ -707,6 +788,10 @@ def _validate_server_payload(
     token_endpoint = _validate_optional_url(
         _clean_text(merged.get("token_endpoint")),
         "token_endpoint",
+    )
+    authorization_endpoint = _validate_optional_url(
+        _clean_text(merged.get("authorization_endpoint")),
+        "authorization_endpoint",
     )
 
     client_id = _clean_text(merged.get("client_id"))
@@ -770,10 +855,35 @@ def _validate_server_payload(
                 # basic / post do not sign a client assertion.
                 jwt_signing_alg = ""
                 jwt_kid = ""
+    elif auth_type == AUTH_OAUTH2_AC:
+        if not client_id:
+            raise ValueError("client_id is required for OAuth2 Authorization Code")
+        if not (authorization_endpoint or metadata_url or auth_server_url):
+            raise ValueError(
+                "Provide authorization_endpoint, metadata_url, or auth_server_url "
+                "for OAuth2 Authorization Code"
+            )
+        if not (token_endpoint or metadata_url or auth_server_url):
+            raise ValueError(
+                "Provide token_endpoint, metadata_url, or auth_server_url for OAuth2"
+            )
+        # Authorization Code authenticates the token exchange with client_secret
+        # (confidential, e.g. IUA) or as a public client with PKCE only. Signed
+        # client assertions / private_key_jwt are not used in this flow.
+        token_auth_method = TOKEN_AUTH_BASIC
+        client_private_key = ""
+        jwt_signing_alg = ""
+        jwt_kid = ""
+        # IUA mandates a confidential client; SMART permits a public client.
+        if auth_profile == AUTH_PROFILE_IUA and not (
+            client_secret or secret_configured
+        ):
+            raise ValueError("client_secret is required for the IUA profile")
     else:
         auth_profile = AUTH_PROFILE_NONE
         auth_server_url = ""
         metadata_url = ""
+        authorization_endpoint = ""
         token_endpoint = ""
         client_id = ""
         token_auth_method = TOKEN_AUTH_BASIC
@@ -829,6 +939,7 @@ def _validate_server_payload(
         "auth_profile": auth_profile,
         "auth_server_url": auth_server_url or None,
         "metadata_url": metadata_url or None,
+        "authorization_endpoint": authorization_endpoint or None,
         "token_endpoint": token_endpoint or None,
         "use_metadata": _bool_value(merged.get("use_metadata"), True),
         "client_id": client_id or None,
@@ -870,6 +981,7 @@ def _server_public(row: asyncpg.Record | dict[str, Any]) -> dict[str, Any]:
         "auth_profile": _row_get(row, "auth_profile") or AUTH_PROFILE_NONE,
         "auth_server_url": _row_get(row, "auth_server_url") or "",
         "metadata_url": _row_get(row, "metadata_url") or "",
+        "authorization_endpoint": _row_get(row, "authorization_endpoint") or "",
         "token_endpoint": _row_get(row, "token_endpoint") or "",
         "use_metadata": bool(row["use_metadata"]),
         "client_id": _row_get(row, "client_id") or "",
@@ -916,7 +1028,7 @@ def server_mcp_summary(server: dict[str, Any]) -> dict[str, Any]:
     capability = server.get("capability_summary") or {}
     supported_resources = capability.get("supported_resources") or []
     auth_type = server.get("auth_type") or AUTH_NONE
-    is_oauth = auth_type == AUTH_OAUTH2_CC
+    is_oauth = auth_type in OAUTH2_AUTH_TYPES
     auth: dict[str, Any] = {
         "required": auth_type != AUTH_NONE,
         "type": auth_type,
@@ -924,11 +1036,18 @@ def server_mcp_summary(server: dict[str, Any]) -> dict[str, Any]:
     }
     if is_oauth:
         auth["token_auth_method"] = server.get("token_auth_method") or TOKEN_AUTH_BASIC
+        auth["uses_metadata"] = bool(server.get("use_metadata"))
+        auth["scopes"] = server.get("scope") or ""
+    if auth_type == AUTH_OAUTH2_CC:
         auth["token_strategy_default"] = resolve_token_strategy(
             TOKEN_STRATEGY_AUTO, server.get("default_token_strategy")
         )
-        auth["uses_metadata"] = bool(server.get("use_metadata"))
-        auth["scopes"] = server.get("scope") or ""
+    if auth_type == AUTH_OAUTH2_AC:
+        # Whether an operator has completed the interactive login. Until then,
+        # crud_fhir_server calls will fail with a "click Authorize" error.
+        status = (server.get("oauth_status") or {}).get("status") or "not_authorized"
+        auth["authorization_status"] = status
+        auth["authorized"] = status == "authorized"
     last_status = server.get("last_probe_status") or ""
     return {
         "server_key": server["server_key"],
@@ -1189,6 +1308,7 @@ async def create_fhir_server(
                     fhir_server_id,
                     server_key, name, description, base_url, enabled, is_default,
                     auth_type, auth_profile, auth_server_url, metadata_url,
+                    authorization_endpoint,
                     token_endpoint, use_metadata, client_id, client_secret_ciphertext,
                     token_auth_method, client_private_key_ciphertext,
                     jwt_signing_alg, jwt_kid, client_public_jwk_json,
@@ -1201,6 +1321,7 @@ async def create_fhir_server(
                     COALESCE($34::uuid, gen_random_uuid()),
                     $1, $2, $3, $4, $5, $6,
                     $7, $8, $9, $10,
+                    $35,
                     $11, $12, $13,
                     CASE WHEN $14::text IS NULL OR $14 = ''
                          THEN NULL
@@ -1252,6 +1373,7 @@ async def create_fhir_server(
                 data["default_token_strategy"],
                 json.dumps(data["metadata_headers_json"], ensure_ascii=False),
                 import_id,
+                data["authorization_endpoint"],
             )
             await _admin_audit(
                 conn,
@@ -1321,6 +1443,7 @@ async def update_fhir_server(
                     auth_profile = $9,
                     auth_server_url = $10,
                     metadata_url = $11,
+                    authorization_endpoint = $36,
                     token_endpoint = $12,
                     use_metadata = $13,
                     client_id = $14,
@@ -1389,6 +1512,7 @@ async def update_fhir_server(
                 data["test_path"],
                 data["default_token_strategy"],
                 json.dumps(data["metadata_headers_json"], ensure_ascii=False),
+                data["authorization_endpoint"],
             )
             _TOKEN_CACHE.pop(str(row["fhir_server_id"]), None)
             await _admin_audit(
@@ -1613,6 +1737,40 @@ def _build_client_assertion(server: dict[str, Any], token_endpoint: str) -> str:
     return jwt.encode(claims, secret, algorithm=alg, headers=headers)
 
 
+def apply_client_auth(
+    server: dict[str, Any], form: dict[str, str], token_endpoint: str
+) -> httpx.BasicAuth | None:
+    """Apply the configured token-endpoint client authentication to ``form``.
+
+    Shared by client_credentials, authorization_code exchange, and refresh. Mutates
+    ``form`` in place for JWT-assertion / POST / public-client cases and returns an
+    ``httpx.BasicAuth`` for client_secret_basic (or None when none applies — e.g. a
+    public SMART client with no client_secret, which sends only client_id).
+    """
+    method = server.get("token_auth_method") or TOKEN_AUTH_BASIC
+    if method in TOKEN_AUTH_JWT_METHODS:
+        # RFC 7521: the assertion identifies the client, but many servers still
+        # require client_id in the body (it must match the assertion iss/sub).
+        if server.get("client_id"):
+            form["client_id"] = server["client_id"]
+        form["client_assertion_type"] = CLIENT_ASSERTION_TYPE
+        form["client_assertion"] = _build_client_assertion(server, token_endpoint)
+        return None
+    if method == TOKEN_AUTH_POST:
+        form["client_id"] = server.get("client_id") or ""
+        form["client_secret"] = server.get("client_secret") or ""
+        return None
+    # client_secret_basic. A public client (no secret) cannot use Basic auth, so
+    # fall back to sending client_id in the body only.
+    client_id = server.get("client_id") or ""
+    client_secret = server.get("client_secret") or ""
+    if not client_secret:
+        if client_id:
+            form["client_id"] = client_id
+        return None
+    return httpx.BasicAuth(client_id, client_secret)
+
+
 async def _fetch_token(
     server: dict[str, Any], metadata: dict[str, Any] | None = None
 ) -> tuple[str, int]:
@@ -1643,22 +1801,7 @@ async def _fetch_token(
     form = _token_request_form(server)
 
     # Apply the configured token-endpoint client authentication method.
-    method = server.get("token_auth_method") or TOKEN_AUTH_BASIC
-    basic_auth: httpx.BasicAuth | None = None
-    if method in TOKEN_AUTH_JWT_METHODS:
-        # RFC 7521: the assertion identifies the client, but many servers still
-        # require client_id in the body (it must match the assertion iss/sub).
-        if server.get("client_id"):
-            form["client_id"] = server["client_id"]
-        form["client_assertion_type"] = CLIENT_ASSERTION_TYPE
-        form["client_assertion"] = _build_client_assertion(server, token_endpoint)
-    elif method == TOKEN_AUTH_POST:
-        form["client_id"] = server.get("client_id") or ""
-        form["client_secret"] = server.get("client_secret") or ""
-    else:  # client_secret_basic
-        basic_auth = httpx.BasicAuth(
-            server.get("client_id") or "", server.get("client_secret") or ""
-        )
+    basic_auth = apply_client_auth(server, form, token_endpoint)
 
     async with httpx.AsyncClient(
         timeout=float(server["timeout_seconds"]),
@@ -1969,8 +2112,18 @@ def _workflow_step(
     return payload
 
 
-async def _run_connection_workflow(server: dict[str, Any]) -> dict[str, Any]:
-    """Test metadata discovery, token acquisition, and FHIR /metadata."""
+async def _run_connection_workflow(
+    server: dict[str, Any],
+    *,
+    user_token: str | None = None,
+    user_token_error: str = "",
+) -> dict[str, Any]:
+    """Test metadata discovery, token acquisition, and FHIR /metadata.
+
+    For Authorization Code servers, ``user_token`` is the pre-resolved stored
+    access token (the caller refreshes it); ``user_token_error`` carries a reason
+    when no usable token is available so the workflow can report it cleanly.
+    """
     started = time.monotonic()
     steps: list[dict[str, Any]] = []
     metadata_payload: dict[str, Any] | None = None
@@ -1978,7 +2131,34 @@ async def _run_connection_workflow(server: dict[str, Any]) -> dict[str, Any]:
     access_token: str | None = None
 
     try:
-        if server["auth_type"] == AUTH_OAUTH2_CC:
+        # Probe path: the caller (probe) resolved the stored token up front and
+        # passed either the token or a reason it is unavailable. Token acquisition
+        # was validated by the Authorize action, so the probe is purely a FHIR
+        # reachability check using the stored (auto-refreshed) token.
+        if server["auth_type"] in OAUTH2_AUTH_TYPES and (
+            user_token is not None or user_token_error
+        ):
+            if user_token:
+                access_token = user_token
+                steps.append(
+                    _workflow_step(
+                        "oauth_token",
+                        "ok",
+                        message="Using stored access token",
+                        details={
+                            "auth_type": server["auth_type"],
+                            "auth_profile": server.get("auth_profile")
+                            or AUTH_PROFILE_NONE,
+                        },
+                    )
+                )
+            else:
+                message = user_token_error or (
+                    "Server not authorized — click Authorize in the admin console"
+                )
+                steps.append(_workflow_step("oauth_token", "error", message=message))
+                raise RuntimeError(message)
+        elif server["auth_type"] == AUTH_OAUTH2_CC:
             if server.get("use_metadata") and (
                 server.get("metadata_url") or server.get("auth_server_url")
             ):
@@ -2153,6 +2333,34 @@ async def _run_connection_workflow(server: dict[str, Any]) -> dict[str, Any]:
         }
 
 
+async def _resolve_user_token_for_probe(
+    pool: PoolLike,
+    server: dict[str, Any],
+    *,
+    secret_key: str,
+) -> tuple[str | None, str]:
+    """Resolve the stored OAuth2 access token for a probe (CC or auth-code).
+
+    Returns ``(token, error_message)``. For ``none`` auth returns ``(None, "")``
+    (the workflow needs no token). For OAuth2 servers, a missing/unrefreshable
+    grant is reported via the error message (no exception) so the probe surfaces a
+    clean "click Authorize" step instead of failing hard.
+    """
+    if server.get("auth_type") not in OAUTH2_AUTH_TYPES:
+        return None, ""
+    if str(server.get("fhir_server_id") or "").startswith("draft:"):
+        return None, "Save the server and click Authorize before probing"
+    import fhir_oauth_service
+
+    try:
+        token = await fhir_oauth_service.get_valid_user_access_token(
+            pool, server, secret_key=secret_key
+        )
+        return token, ""
+    except ValueError as exc:
+        return None, str(exc)
+
+
 async def probe_fhir_server(
     pool: PoolLike,
     identifier: str,
@@ -2166,7 +2374,12 @@ async def probe_fhir_server(
         raise ValueError("FHIR server not found")
     server = _server_private(row)
 
-    result = await _run_connection_workflow(server)
+    user_token, user_token_error = await _resolve_user_token_for_probe(
+        pool, server, secret_key=secret_key
+    )
+    result = await _run_connection_workflow(
+        server, user_token=user_token, user_token_error=user_token_error
+    )
     status = str(result["probe"]["status"])
     message = str(result["probe"]["message"])
     latency_ms = int(result["probe"]["latency_ms"])
@@ -2299,8 +2512,27 @@ async def test_fhir_server_config(
         "created_at": None,
         "updated_at": None,
     }
+    # For an existing Authorization Code server being edited, reuse its stored
+    # token so the draft test can actually reach FHIR; a brand-new draft has no
+    # token yet and the workflow reports "save and authorize first".
+    user_token: str | None = None
+    user_token_error = ""
+    if data["auth_type"] == AUTH_OAUTH2_AC:
+        if existing_identifier and existing_public:
+            probe_server = dict(server)
+            probe_server["fhir_server_id"] = existing_public["fhir_server_id"]
+            user_token, user_token_error = await _resolve_user_token_for_probe(
+                pool, probe_server, secret_key=secret_key
+            )
+        else:
+            user_token_error = (
+                "Save the server and click Authorize before testing "
+                "Authorization Code connectivity"
+            )
     try:
-        result = await _run_connection_workflow(server)
+        result = await _run_connection_workflow(
+            server, user_token=user_token, user_token_error=user_token_error
+        )
         result["server_preview"] = _server_public(server)
         return result
     finally:
@@ -2356,6 +2588,18 @@ async def perform_fhir_crud(
                 f"Resource type '{rt}' is not allowed for server '{server['server_key']}'"
             )
 
+    # Authorization Code servers use a stored, interactively-obtained user token
+    # (lazily refreshed) instead of a per-call client_credentials token. Resolve it
+    # up front; an unauthorized/expired grant raises OAuthNotAuthorizedError /
+    # OAuthRefreshFailedError (ValueError subclasses) with a clear operator message.
+    user_token: str | None = None
+    if server["auth_type"] == AUTH_OAUTH2_AC:
+        import fhir_oauth_service
+
+        user_token = await fhir_oauth_service.get_valid_user_access_token(
+            pool, server, secret_key=secret_key
+        )
+
     status_code = None
     success = False
     error = None
@@ -2371,8 +2615,13 @@ async def perform_fhir_crud(
             resource=resource,
             patch=patch,
             token_strategy=effective_strategy,
+            token=user_token,
         )
-        result["token_strategy"] = effective_strategy
+        result["token_strategy"] = (
+            "authorization_code"
+            if server["auth_type"] == AUTH_OAUTH2_AC
+            else effective_strategy
+        )
         status_code = int(result["status_code"])
         duration_ms = int(result["duration_ms"])
         success = bool(result["ok"])

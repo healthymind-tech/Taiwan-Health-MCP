@@ -36,6 +36,10 @@ class AppConfig:
     admin_session_secret: str
     admin_session_ttl_minutes: int
     admin_max_upload_mb: int
+    # Public origin (scheme://host) of this deployment, used to build the OAuth2
+    # Authorization Code redirect_uri. Must be pre-registered at the external
+    # authorization server. Blank → derive from the request Host header.
+    public_base_url: str
 
     @classmethod
     def from_env(cls) -> "AppConfig":
@@ -71,6 +75,7 @@ class AppConfig:
                 os.getenv("ADMIN_SESSION_TTL_MINUTES", "240")
             ),
             admin_max_upload_mb=int(os.getenv("ADMIN_MAX_UPLOAD_MB", "512")),
+            public_base_url=os.getenv("PUBLIC_BASE_URL", "").strip().rstrip("/"),
         )
 
     @property

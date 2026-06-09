@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../lib/api";
 import { qk } from "../../lib/queryKeys";
@@ -8,6 +8,9 @@ import { Modal } from "../../components/Modal";
 import { StatusBadge } from "../../components/StatusBadge";
 import type {
   FhirAuthProfile,
+  FhirAuthType,
+  FhirOAuthAuthorizePayload,
+  FhirOAuthStatus,
   FhirOperation,
   FhirServer,
   FhirServerPayload,
@@ -15,6 +18,12 @@ import type {
   FhirServersPayload,
   FhirTokenAuthMethod,
 } from "../../lib/types";
+
+const AUTH_TYPE_OPTIONS: { value: FhirAuthType; label: string }[] = [
+  { value: "none", label: "None (no auth)" },
+  { value: "oauth2_client_credentials", label: "OAuth2 Client Credentials" },
+  { value: "oauth2_authorization_code", label: "OAuth2 Authorization Code (+PKCE)" },
+];
 
 const AUTH_PROFILE_OPTIONS: { value: FhirAuthProfile; label: string }[] = [
   { value: "none", label: "None (plain OAuth2)" },
@@ -35,6 +44,88 @@ const ASYMMETRIC_SIGNING_ALGS = [
   "ES256", "ES384", "ES512",
   "PS256", "PS384", "PS512",
 ];
+
+function oauthBadgeTone(status: FhirOAuthStatus): string {
+  switch (status) {
+    case "authorized":
+      return "badge--ok";
+    case "expired":
+      return "badge--bad";
+    case "pending":
+      return "badge--muted";
+    default:
+      return "badge--warn";
+  }
+}
+
+function oauthBadgeLabel(status: FhirOAuthStatus): string {
+  switch (status) {
+    case "authorized":
+      return "Authorized";
+    case "expired":
+      return "Token expired";
+    case "pending":
+      return "Authorizing…";
+    default:
+      return "Not authorized";
+  }
+}
+
+// A 1-second ticking clock, only running while `active` (avoids idle timers).
+function useNow(active: boolean): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!active) return;
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [active]);
+  return now;
+}
+
+function formatCountdown(ms: number): string {
+  const s = Math.floor(ms / 1000);
+  const d = Math.floor(s / 86400);
+  const h = Math.floor((s % 86400) / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  if (d > 0) return `${d}d ${h}h`;
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m ${sec}s`;
+  return `${sec}s`;
+}
+
+function TokenCountdown({
+  label,
+  expiresAt,
+  fallback,
+}: {
+  label: string;
+  expiresAt: string | null;
+  // Shown when there is no expiry timestamp (e.g. a non-expiring offline refresh
+  // token). When omitted, the row is hidden entirely.
+  fallback?: string;
+}): JSX.Element | null {
+  const now = useNow(Boolean(expiresAt));
+  if (!expiresAt) {
+    if (!fallback) return null;
+    return (
+      <div className="fhir-token-countdown fhir-token-countdown--ok">
+        <span className="fhir-token-countdown__label">{label}</span>
+        <span className="fhir-token-countdown__value">{fallback}</span>
+      </div>
+    );
+  }
+  const ms = new Date(expiresAt).getTime() - now;
+  const tone = ms <= 0 ? "bad" : ms < 60_000 ? "warn" : "ok";
+  return (
+    <div className={`fhir-token-countdown fhir-token-countdown--${tone}`}>
+      <span className="fhir-token-countdown__label">{label}</span>
+      <span className="fhir-token-countdown__value">
+        {ms <= 0 ? "expired" : `expires in ${formatCountdown(ms)}`}
+      </span>
+    </div>
+  );
+}
 
 function signingAlgOptions(method: FhirTokenAuthMethod): string[] {
   return method === "private_key_jwt" ? ASYMMETRIC_SIGNING_ALGS : HMAC_SIGNING_ALGS;
@@ -136,10 +227,11 @@ interface FormState {
   default_token_strategy: string;
   enabled: boolean;
   is_default: boolean;
-  auth_type: "none" | "oauth2_client_credentials";
+  auth_type: FhirAuthType;
   auth_profile: FhirAuthProfile;
   auth_server_url: string;
   metadata_url: string;
+  authorization_endpoint: string;
   token_endpoint: string;
   use_metadata: boolean;
   client_id: string;
@@ -222,6 +314,7 @@ function exportPayload(servers: ExportServer[]): string {
         auth_profile: server.auth_profile,
         auth_server_url: server.auth_server_url,
         metadata_url: server.metadata_url,
+        authorization_endpoint: server.authorization_endpoint,
         token_endpoint: server.token_endpoint,
         use_metadata: server.use_metadata,
         client_id: server.client_id,
@@ -264,8 +357,9 @@ function importedServerToForm(payload: Record<string, unknown>): FormState {
     enabled: payload.enabled !== false,
     is_default: Boolean(payload.is_default),
     auth_type:
-      payload.auth_type === "oauth2_client_credentials"
-        ? "oauth2_client_credentials"
+      payload.auth_type === "oauth2_client_credentials" ||
+      payload.auth_type === "oauth2_authorization_code"
+        ? payload.auth_type
         : "none",
     auth_profile:
       payload.auth_profile != null
@@ -275,6 +369,7 @@ function importedServerToForm(payload: Record<string, unknown>): FormState {
           : "none",
     auth_server_url: String(payload.auth_server_url || ""),
     metadata_url: String(payload.metadata_url || ""),
+    authorization_endpoint: String(payload.authorization_endpoint || ""),
     token_endpoint: String(payload.token_endpoint || ""),
     use_metadata: payload.use_metadata !== false,
     client_id: String(payload.client_id || ""),
@@ -344,6 +439,7 @@ function makeEmptyForm(): FormState {
     auth_profile: "none",
     auth_server_url: "",
     metadata_url: "",
+    authorization_endpoint: "",
     token_endpoint: "",
     use_metadata: true,
     client_id: "",
@@ -382,6 +478,7 @@ function serverToForm(server: FhirServer): FormState {
     auth_profile: normalizeAuthProfile(server.auth_profile),
     auth_server_url: server.auth_server_url,
     metadata_url: server.metadata_url,
+    authorization_endpoint: server.authorization_endpoint,
     token_endpoint: server.token_endpoint,
     use_metadata: server.use_metadata,
     client_id: server.client_id,
@@ -416,10 +513,10 @@ function toPayload(form: FormState): Record<string, unknown> {
     enabled: form.enabled,
     is_default: form.is_default,
     auth_type: form.auth_type,
-    auth_profile:
-      form.auth_type === "oauth2_client_credentials" ? form.auth_profile : "none",
+    auth_profile: form.auth_type !== "none" ? form.auth_profile : "none",
     auth_server_url: form.auth_server_url.trim(),
     metadata_url: form.metadata_url.trim(),
+    authorization_endpoint: form.authorization_endpoint.trim(),
     token_endpoint: form.token_endpoint.trim(),
     use_metadata: form.use_metadata,
     client_id: form.client_id.trim(),
@@ -602,21 +699,17 @@ function FhirServerForm({
   initial,
   onCancel,
   onSave,
-  onTest,
   saving,
-  testing,
-  testResult,
 }: {
   initial: FormState;
   onCancel: () => void;
   onSave: (form: FormState) => void;
-  onTest: (form: FormState) => void;
   saving: boolean;
-  testing: boolean;
-  testResult: FhirServerProbePayload | null;
 }): JSX.Element {
   const [form, setForm] = useState<FormState>(initial);
-  const isOAuth = form.auth_type === "oauth2_client_credentials";
+  const isClientCreds = form.auth_type === "oauth2_client_credentials";
+  const isAuthCode = form.auth_type === "oauth2_authorization_code";
+  const isOAuth = isClientCreds || isAuthCode;
   const [scopeOptions, setScopeOptions] = useState<string[]>([]);
   const [scopeFilter, setScopeFilter] = useState<string>("");
   const [discovering, setDiscovering] = useState(false);
@@ -671,6 +764,8 @@ function FhirServerForm({
   const jwksUrl = jwksId
     ? `${window.location.origin}/fhir-client/${jwksId}/jwks.json`
     : "";
+  // The OAuth2 redirect/callback URI to register at the authorization server.
+  const callbackUrl = `${window.location.origin}/fhir-oauth/callback`;
 
   // Scope is a space-separated string; chips add/remove individual tokens while
   // preserving any manually-typed extras and their order.
@@ -824,8 +919,11 @@ function FhirServerForm({
               value={form.auth_type}
               onChange={(e) => set("auth_type", e.target.value as FormState["auth_type"])}
             >
-              <option value="none">No auth</option>
-              <option value="oauth2_client_credentials">OAuth2 Client Credentials</option>
+              {AUTH_TYPE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
             </select>
           </label>
           <label>
@@ -857,9 +955,11 @@ function FhirServerForm({
                 onChange={(e) => {
                   const next = e.target.value as FhirAuthProfile;
                   set("auth_profile", next);
-                  // SMART Backend Services requires a signed client assertion;
-                  // default to private_key_jwt when leaving a Basic/POST method.
+                  // SMART Backend Services (client credentials) requires a signed
+                  // client assertion; default to private_key_jwt when leaving a
+                  // Basic/POST method. Not applicable to the Authorization Code flow.
                   if (
+                    isClientCreds &&
                     next === "smart" &&
                     form.token_auth_method !== "private_key_jwt" &&
                     form.token_auth_method !== "client_secret_jwt"
@@ -883,6 +983,7 @@ function FhirServerForm({
                     : "Plain OAuth2 Client Credentials with no IHE/SMART-specific framing."}
               </small>
             </label>
+            {isClientCreds && (
             <label>
               <span>Token auth method</span>
               <select
@@ -916,6 +1017,7 @@ function FhirServerForm({
                         : "Sends client_id/client_secret via HTTP Basic auth."}
               </small>
             </label>
+            )}
           </div>
           <div className="fhir-toggle-row">
             <label className="switch">
@@ -939,6 +1041,40 @@ function FhirServerForm({
               />
               {discovering && <small className="field-help">Discovering scopes…</small>}
             </label>
+            {isAuthCode && (
+              <label>
+                <span>Authorization endpoint</span>
+                <input
+                  value={form.authorization_endpoint}
+                  onChange={(e) => set("authorization_endpoint", e.target.value)}
+                  placeholder="https://auth.example.com/authorize"
+                />
+                <small className="field-help">
+                  Where the operator is redirected to log in. Leave blank to
+                  auto-discover it from metadata.
+                </small>
+              </label>
+            )}
+            {isAuthCode && (
+              <label className="fhir-form-wide">
+                <span>Redirect URI (register this at the authorization server)</span>
+                <div className="fhir-keytools">
+                  <input readOnly value={callbackUrl} onFocus={(e) => e.target.select()} />
+                  <button
+                    type="button"
+                    className="btn btn--sm"
+                    onClick={() => copyText(callbackUrl)}
+                  >
+                    📋 Copy
+                  </button>
+                </div>
+                <small className="field-help">
+                  The external server must allow this exact redirect URI. If your
+                  public URL differs from this origin, set PUBLIC_BASE_URL and
+                  register that instead.
+                </small>
+              </label>
+            )}
             <label>
               <span>Token endpoint</span>
               <input value={form.token_endpoint} onChange={(e) => set("token_endpoint", e.target.value)} />
@@ -958,6 +1094,12 @@ function FhirServerForm({
                     form.fhir_server_id ? "Leave blank to keep current secret" : ""
                   }
                 />
+                {isAuthCode && (
+                  <small className="field-help">
+                    Required for the IUA profile (confidential client); optional for
+                    a SMART public client (PKCE only).
+                  </small>
+                )}
               </label>
             )}
             {form.token_auth_method === "private_key_jwt" && (
@@ -1314,34 +1456,18 @@ function FhirServerForm({
         </div>
       </FormSection>
 
-      {testResult && (
-        <div className={`fhir-probe fhir-probe--${testResult.ok ? "ok" : "bad"}`}>
-          <div>
-            <strong>{testResult.probe.message}</strong>
-            <div className="muted small">{testResult.probe.latency_ms} ms</div>
-            <div className="fhir-workflow-steps">
-              {((testResult.probe.details?.steps as Array<Record<string, unknown>> | undefined) || []).map(
-                (step) => (
-                  <div key={String(step.name)} className={`fhir-workflow-step fhir-workflow-step--${String(step.status)}`}>
-                    <span>{String(step.name)}</span>
-                    <strong>{String(step.status)}</strong>
-                    <em>{String(step.message || "")}</em>
-                  </div>
-                ),
-              )}
-            </div>
-          </div>
-        </div>
+      {isOAuth && (
+        <p className="field-help fhir-form-note">
+          Save the server, then use <strong>Authorize</strong> and{" "}
+          <strong>Probe</strong> on its card to obtain a token and test connectivity.
+        </p>
       )}
 
       <div className="modal-actions">
-        <button type="button" className="btn" disabled={testing} onClick={() => onTest(form)}>
-          {testing ? "Testing..." : "Test workflow"}
-        </button>
         <button type="button" className="btn btn--ghost" onClick={onCancel}>
           Cancel
         </button>
-        <button type="submit" className="btn" disabled={saving}>
+        <button type="submit" className="btn btn--primary" disabled={saving}>
           {saving ? "Saving..." : "Save"}
         </button>
       </div>
@@ -1354,7 +1480,6 @@ export function FhirServersPage(): JSX.Element {
   const importInput = useRef<HTMLInputElement | null>(null);
   const [editing, setEditing] = useState<FormState | null>(null);
   const [probeResult, setProbeResult] = useState<FhirServerProbePayload | null>(null);
-  const [formTestResult, setFormTestResult] = useState<FhirServerProbePayload | null>(null);
   const [importRows, setImportRows] = useState<ImportRow[] | null>(null);
   const [importing, setImporting] = useState(false);
 
@@ -1362,10 +1487,31 @@ export function FhirServersPage(): JSX.Element {
     queryKey: qk.fhirServers,
     queryFn: () => api.get<FhirServersPayload>("/admin/api/fhir-servers?include_disabled=true"),
     staleTime: 10_000,
+    // Keep token status / countdowns reasonably fresh while the page is open.
+    refetchInterval: 30_000,
   });
 
   const servers = data?.servers ?? [];
   const defaultServer = useMemo(() => servers.find((server) => server.is_default), [servers]);
+
+  // Handle the OAuth2 callback redirect (?oauth=success|error&...) — toast the
+  // result, refresh the list, then strip the query so a refresh doesn't re-toast.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const oauth = params.get("oauth");
+    if (!oauth) return;
+    if (oauth === "success") {
+      const server = params.get("server");
+      toast.success(
+        server ? `Authorization complete for ${server}` : "Authorization complete",
+      );
+      void qc.invalidateQueries({ queryKey: qk.fhirServers });
+    } else if (oauth === "error") {
+      toast.error(`Authorization failed: ${params.get("reason") || "unknown error"}`);
+    }
+    window.history.replaceState({}, "", window.location.pathname);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const save = useMutation({
     mutationFn: (form: FormState) => {
@@ -1400,19 +1546,6 @@ export function FhirServersPage(): JSX.Element {
     onError: (err) => toast.error(`Probe failed: ${String(err)}`),
   });
 
-  const testDraft = useMutation({
-    mutationFn: (form: FormState) => {
-      const payload = toPayload(form);
-      if (form.fhir_server_id) payload.fhir_server_id = form.fhir_server_id;
-      return api.post<FhirServerProbePayload>("/admin/api/fhir-servers/test", payload);
-    },
-    onSuccess: (result) => {
-      setFormTestResult(result);
-      toast.success(result.ok ? "Connection workflow passed" : "Connection workflow failed");
-    },
-    onError: (err) => toast.error(`Connection test failed: ${String(err)}`),
-  });
-
   const setDefault = useMutation({
     mutationFn: (server: FhirServer) =>
       api.post<FhirServerPayload>(
@@ -1436,6 +1569,53 @@ export function FhirServersPage(): JSX.Element {
       toast.success("FHIR server deleted");
     },
     onError: (err) => toast.error(`Delete failed: ${String(err)}`),
+  });
+
+  // Authorize a server. Client Credentials authorizes synchronously (fetches +
+  // stores a token); Authorization Code returns a URL to redirect the browser to
+  // for the interactive login (which returns via /fhir-oauth/callback).
+  const authorize = useMutation({
+    mutationFn: (serverId: string) =>
+      api.post<FhirOAuthAuthorizePayload>(
+        `/admin/api/fhir-servers/${encodeURIComponent(serverId)}/oauth/authorize`,
+        {},
+      ),
+    onSuccess: (res) => {
+      if (res.authorization_uri) {
+        window.location.href = res.authorization_uri;
+        return;
+      }
+      void qc.invalidateQueries({ queryKey: qk.fhirServers });
+      toast.success("Authorized — access token obtained");
+    },
+    onError: (err) => toast.error(`Authorize failed: ${String(err)}`),
+  });
+
+  // Manually exchange the stored refresh token for a fresh access token.
+  const refreshNow = useMutation({
+    mutationFn: (serverId: string) =>
+      api.post<{ ok: boolean }>(
+        `/admin/api/fhir-servers/${encodeURIComponent(serverId)}/oauth/refresh`,
+        {},
+      ),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: qk.fhirServers });
+      toast.success("Access token refreshed");
+    },
+    onError: (err) => toast.error(`Refresh failed: ${String(err)}`),
+  });
+
+  const clearCache = useMutation({
+    mutationFn: (serverId: string) =>
+      api.post<{ cleared: boolean }>(
+        `/admin/api/fhir-servers/${encodeURIComponent(serverId)}/oauth/clear-cache`,
+        {},
+      ),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: qk.fhirServers });
+      toast.success("OAuth tokens cleared");
+    },
+    onError: (err) => toast.error(`Clear cache failed: ${String(err)}`),
   });
 
   if (isPending) return <div className="muted">Loading FHIR servers...</div>;
@@ -1471,7 +1651,7 @@ export function FhirServersPage(): JSX.Element {
     form.name = `${server.name} (copy)`;
     form.is_default = false; // never steal the default flag on a copy
     // Carry the client_secret too — pull it from the full export config.
-    if (server.auth_type === "oauth2_client_credentials") {
+    if (server.auth_type !== "none") {
       try {
         const res = await api.get<{ servers: ExportServer[] }>(
           "/admin/api/fhir-servers/export",
@@ -1484,7 +1664,6 @@ export function FhirServersPage(): JSX.Element {
         // Non-fatal: open the form anyway; the secret can be re-entered.
       }
     }
-    setFormTestResult(null);
     setEditing(form);
   };
 
@@ -1492,7 +1671,7 @@ export function FhirServersPage(): JSX.Element {
     const form = serverToForm(server);
     // Prefill the stored credentials so they are visible when editing, pulling
     // the decrypted values from the full export config (the list endpoint redacts them).
-    if (server.auth_type === "oauth2_client_credentials") {
+    if (server.auth_type !== "none") {
       try {
         const res = await api.get<{ servers: ExportServer[] }>(
           "/admin/api/fhir-servers/export",
@@ -1506,7 +1685,6 @@ export function FhirServersPage(): JSX.Element {
         // Non-fatal: open the form anyway with the credential fields blank.
       }
     }
-    setFormTestResult(null);
     setEditing(form);
   };
 
@@ -1516,7 +1694,6 @@ export function FhirServersPage(): JSX.Element {
       const raws = parseServersFromFile(text);
       if (raws.length === 1) {
         // Single server keeps the familiar "review in the form" flow.
-        setFormTestResult(null);
         setEditing(importedServerToForm(raws[0]));
         toast.success("FHIR server config loaded");
       } else {
@@ -1635,7 +1812,6 @@ export function FhirServersPage(): JSX.Element {
             type="button"
             className="btn"
             onClick={() => {
-              setFormTestResult(null);
               setEditing(makeEmptyForm());
             }}
           >
@@ -1664,7 +1840,23 @@ export function FhirServersPage(): JSX.Element {
         </div>
       ) : (
         <div className="fhir-server-list">
-          {servers.map((server) => (
+          {servers.map((server) => {
+            const oauth = server.auth_type !== "none";
+            const st = server.oauth_status;
+            const authorized = st?.status === "authorized";
+            // A refresh token that is present and not past its own expiry can be
+            // exchanged manually (null refresh expiry = non-expiring).
+            const refreshUsable =
+              Boolean(st?.has_refresh) &&
+              (!st?.refresh_expires_at ||
+                new Date(st.refresh_expires_at).getTime() > Date.now());
+            const busyAuthorize =
+              authorize.isPending && authorize.variables === server.fhir_server_id;
+            const busyRefresh =
+              refreshNow.isPending && refreshNow.variables === server.fhir_server_id;
+            const busyClear =
+              clearCache.isPending && clearCache.variables === server.fhir_server_id;
+            return (
             <article key={server.fhir_server_id} className="fhir-server-card">
               <div className="fhir-server-card__main">
                 <div className="fhir-server-card__title">
@@ -1676,10 +1868,19 @@ export function FhirServersPage(): JSX.Element {
                     {server.is_default && <span className="badge badge--ok">Default</span>}
                     {!server.enabled && <span className="badge badge--muted">Disabled</span>}
                     <span className="badge badge--muted">
-                      {server.auth_type === "oauth2_client_credentials" ? "OAuth2" : "No auth"}
+                      {server.auth_type === "oauth2_client_credentials"
+                        ? "OAuth2 CC"
+                        : server.auth_type === "oauth2_authorization_code"
+                          ? "OAuth2 Auth Code"
+                          : "No auth"}
                     </span>
                     {server.auth_profile === "iua" && <span className="badge badge--warn">IUA</span>}
                     {server.auth_profile === "smart" && <span className="badge badge--warn">SMART</span>}
+                    {oauth && st && (
+                      <span className={`badge ${oauthBadgeTone(st.status)}`}>
+                        {oauthBadgeLabel(st.status)}
+                      </span>
+                    )}
                   </div>
                 </div>
                 <div className="fhir-server-card__url">{server.base_url}</div>
@@ -1695,11 +1896,78 @@ export function FhirServersPage(): JSX.Element {
                   <StatusBadge status={statusForProbe(server)} />
                   <span className="muted small">{formatRelative(server.last_probe_at)}</span>
                 </div>
+                {oauth &&
+                  st &&
+                  (st.status === "authorized" || st.status === "expired") && (
+                    <div className="fhir-token-status">
+                      <TokenCountdown
+                        label="Access token"
+                        expiresAt={st.access_expires_at}
+                      />
+                      {st.has_refresh && (
+                        <TokenCountdown
+                          label="Refresh token"
+                          expiresAt={st.refresh_expires_at}
+                          fallback="does not expire"
+                        />
+                      )}
+                    </div>
+                  )}
                 <div className="fhir-server-card__actions">
+                  {oauth && (
+                    <>
+                      <button
+                        type="button"
+                        className="btn btn--sm btn--primary"
+                        disabled={busyAuthorize}
+                        onClick={() => authorize.mutate(server.fhir_server_id)}
+                      >
+                        {busyAuthorize
+                          ? "Authorizing..."
+                          : authorized
+                            ? "Re-authorize"
+                            : "Authorize"}
+                      </button>
+                      {refreshUsable && (
+                        <button
+                          type="button"
+                          className="btn btn--sm"
+                          disabled={busyRefresh}
+                          onClick={() => refreshNow.mutate(server.fhir_server_id)}
+                        >
+                          {busyRefresh ? "Refreshing..." : "Refresh token"}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className="btn btn--sm btn--ghost"
+                        disabled={busyClear || !st || st.status === "not_authorized"}
+                        onClick={() => {
+                          if (
+                            window.confirm(
+                              `Clear stored tokens for ${server.name}? The server will need to be authorized again.`,
+                            )
+                          )
+                            clearCache.mutate(server.fhir_server_id);
+                        }}
+                      >
+                        Clear cache
+                      </button>
+                    </>
+                  )}
                   <button
                     type="button"
                     className="btn btn--sm"
-                    disabled={probe.isPending}
+                    disabled={
+                      (probe.isPending &&
+                        probe.variables?.fhir_server_id === server.fhir_server_id) ||
+                      (oauth && !authorized)
+                    }
+                    title={
+                      oauth && !authorized
+                        ? "Authorize first to obtain a valid token"
+                        : undefined
+                    }
                     onClick={() => probe.mutate(server)}
                   >
                     {probe.isPending && probe.variables?.fhir_server_id === server.fhir_server_id
@@ -1741,7 +2009,8 @@ export function FhirServersPage(): JSX.Element {
                 </div>
               </div>
             </article>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -1754,14 +2023,8 @@ export function FhirServersPage(): JSX.Element {
           <FhirServerForm
             initial={editing}
             saving={save.isPending}
-            testing={testDraft.isPending}
-            testResult={formTestResult}
-            onCancel={() => {
-              setFormTestResult(null);
-              setEditing(null);
-            }}
+            onCancel={() => setEditing(null)}
             onSave={(form) => save.mutate(form)}
-            onTest={(form) => testDraft.mutate(form)}
           />
         </Modal>
       )}

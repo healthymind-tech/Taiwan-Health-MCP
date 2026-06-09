@@ -104,8 +104,16 @@ export interface ServicesPayload {
 }
 
 // ── FHIR Servers (/admin/api/fhir-servers) ─────────────────────────────────
-export type FhirAuthType = "none" | "oauth2_client_credentials";
+export type FhirAuthType =
+  | "none"
+  | "oauth2_client_credentials"
+  | "oauth2_authorization_code";
 export type FhirAuthProfile = "none" | "iua" | "smart";
+export type FhirOAuthStatus =
+  | "not_authorized"
+  | "authorized"
+  | "expired"
+  | "pending";
 export type FhirTokenAuthMethod =
   | "client_secret_basic"
   | "client_secret_post"
@@ -140,6 +148,7 @@ export interface FhirServer {
   auth_profile: FhirAuthProfile;
   auth_server_url: string;
   metadata_url: string;
+  authorization_endpoint: string;
   token_endpoint: string;
   use_metadata: boolean;
   client_id: string;
@@ -173,10 +182,28 @@ export interface FhirServer {
   created_by: string;
   created_at: string | null;
   updated_at: string | null;
+  oauth_status?: FhirOAuthStatusInfo;
+}
+
+export interface FhirOAuthStatusInfo {
+  status: FhirOAuthStatus;
+  access_expires_at: string | null;
+  refresh_expires_at: string | null;
+  has_refresh: boolean;
+  scope: string;
 }
 
 export interface FhirServersPayload {
   servers: FhirServer[];
+}
+
+export interface FhirOAuthAuthorizePayload {
+  // Authorization Code returns a URL to redirect the browser to; Client
+  // Credentials authorizes synchronously and returns the new status.
+  authorization_uri?: string;
+  state?: string;
+  authorized?: boolean;
+  oauth_status?: FhirOAuthStatusInfo;
 }
 
 export interface FhirServerPayload {

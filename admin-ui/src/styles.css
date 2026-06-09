@@ -147,6 +147,9 @@ body {
 .btn--ghost { background: transparent; color: var(--muted); }
 .btn--ghost:hover { color: var(--text); border-color: var(--muted); }
 .btn--sm { padding: 4px 10px; font-size: 13px; }
+.btn--primary { background: var(--brand); border-color: var(--brand); color: #fff; }
+.btn--primary:hover:not(:disabled) { background: var(--brand); border-color: var(--brand); color: #fff; filter: brightness(1.08); }
+.btn--primary:disabled { opacity: 0.55; }
 
 .head-actions { display: flex; align-items: center; gap: 12px; }
 .summary-row { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
@@ -344,6 +347,38 @@ body {
 .fhir-server-card__side { display: flex; flex-direction: column; align-items: flex-end; justify-content: space-between; gap: 12px; }
 .fhir-server-card__probe { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 .fhir-server-card__actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+
+/* OAuth token countdowns on a server card */
+.fhir-token-status {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-end;
+  width: 100%;
+}
+.fhir-token-countdown {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+}
+.fhir-token-countdown__label { color: var(--muted); }
+.fhir-token-countdown__value { font-variant-numeric: tabular-nums; font-weight: 600; }
+.fhir-token-countdown--ok .fhir-token-countdown__value { color: var(--ok-fg); }
+.fhir-token-countdown--warn { border-color: var(--warn-fg); }
+.fhir-token-countdown--warn .fhir-token-countdown__value { color: var(--warn-fg); }
+.fhir-token-countdown--bad { border-color: var(--bad-fg); }
+.fhir-token-countdown--bad .fhir-token-countdown__value { color: var(--bad-fg); }
+.fhir-form-note { margin: 4px 2px 0; }
+
+@media (max-width: 760px) {
+  .fhir-token-status { align-items: stretch; }
+  .fhir-token-countdown { justify-content: space-between; }
+}
 .fhir-probe {
   display: flex;
   align-items: flex-start;

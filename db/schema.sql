@@ -161,11 +161,14 @@ CREATE TABLE IF NOT EXISTS admin.fhir_servers (
     enabled BOOLEAN NOT NULL DEFAULT TRUE,
     is_default BOOLEAN NOT NULL DEFAULT FALSE,
     auth_type TEXT NOT NULL DEFAULT 'none'
-        CHECK (auth_type IN ('none', 'oauth2_client_credentials')),
+        CHECK (auth_type IN (
+            'none', 'oauth2_client_credentials', 'oauth2_authorization_code'
+        )),
     auth_profile TEXT NOT NULL DEFAULT 'none'
         CHECK (auth_profile IN ('none', 'iua', 'smart')),
     auth_server_url TEXT,
     metadata_url TEXT,
+    authorization_endpoint TEXT,
     token_endpoint TEXT,
     use_metadata BOOLEAN NOT NULL DEFAULT TRUE,
     client_id TEXT,
@@ -197,6 +200,33 @@ CREATE TABLE IF NOT EXISTS admin.fhir_servers (
     created_by TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- OAuth2 Authorization Code (+ PKCE) token state, one row per server+admin user.
+-- Holds both the ephemeral pending-authorization PKCE state (cleared on callback
+-- success) and the active encrypted access/refresh tokens. Tokens are encrypted
+-- with pgp_sym_encrypt under the same key as client_secret_ciphertext.
+CREATE TABLE IF NOT EXISTS admin.fhir_server_oauth_tokens (
+    fhir_server_oauth_token_id BIGSERIAL PRIMARY KEY,
+    fhir_server_id UUID NOT NULL REFERENCES admin.fhir_servers (fhir_server_id)
+        ON DELETE CASCADE,
+    admin_user TEXT NOT NULL,
+    -- Pending PKCE authorization state (cleared once the code is exchanged).
+    state_nonce TEXT UNIQUE,
+    code_verifier TEXT,
+    redirect_uri TEXT,
+    requested_scope TEXT,
+    pending_created_at TIMESTAMPTZ,
+    -- Active tokens (encrypted) populated after a successful code exchange.
+    access_token_ciphertext BYTEA,
+    refresh_token_ciphertext BYTEA,
+    token_type TEXT,
+    granted_scope TEXT,
+    access_token_expires_at TIMESTAMPTZ,
+    refresh_token_expires_at TIMESTAMPTZ,
+    obtained_at TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (fhir_server_id, admin_user)
 );
 
 CREATE TABLE IF NOT EXISTS admin.fhir_server_probe_history (
@@ -275,6 +305,11 @@ CREATE INDEX IF NOT EXISTS idx_admin_fhir_server_probe_history_server_ts
     ON admin.fhir_server_probe_history (fhir_server_id, checked_at DESC);
 CREATE INDEX IF NOT EXISTS idx_admin_fhir_server_operation_logs_server_ts
     ON admin.fhir_server_operation_logs (fhir_server_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_admin_fhir_server_oauth_tokens_server
+    ON admin.fhir_server_oauth_tokens (fhir_server_id);
+CREATE INDEX IF NOT EXISTS idx_admin_fhir_server_oauth_tokens_pending
+    ON admin.fhir_server_oauth_tokens (pending_created_at)
+    WHERE state_nonce IS NOT NULL;
 
 -- Per-module automatic import schedules managed by admin-worker.
 CREATE TABLE IF NOT EXISTS admin.module_schedules (

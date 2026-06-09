@@ -95,6 +95,9 @@ class _RunningJob:
 # Backoff between iterations while the database is unavailable.
 _DB_DOWN_BACKOFF_SECONDS = 3.0
 
+# How often to proactively refresh near-expiry OAuth2 Authorization Code tokens.
+_OAUTH_SWEEP_INTERVAL_SECONDS = 1800.0  # 30 minutes
+
 
 def _is_db_outage(exc: BaseException) -> bool:
     """Return True (and flip the health gate) when an exception is a DB outage
@@ -266,6 +269,7 @@ async def _run_loop() -> None:
     next_idle_heartbeat = 0.0
     next_reclaim = 0.0
     next_log_prune = 0.0
+    next_oauth_sweep = 0.0
     next_schedule_scan = 0.0  # fire immediately on first iteration
 
     try:
@@ -368,6 +372,39 @@ async def _run_loop() -> None:
                         count=reclaimed,
                     )
                 next_reclaim = loop_time + reclaim_interval
+
+            # ── 3a. Proactive OAuth token renewal ─────────────────────────────
+            # Refresh stored Authorization Code tokens that are near expiry, so
+            # long-idle FHIR servers keep a valid grant (and rotate the refresh
+            # token) without needing an interactive request to trigger it.
+            if loop_time >= next_oauth_sweep:
+                try:
+                    import fhir_oauth_service
+                    from fhir_server_service import fhir_server_secret_key
+
+                    refreshed = await fhir_oauth_service.sweep_expiring_tokens(
+                        pool,
+                        secret_key=fhir_server_secret_key(
+                            config.admin_session_secret
+                        ),
+                    )
+                except Exception as exc:
+                    if _is_db_outage(exc):
+                        await asyncio.sleep(_DB_DOWN_BACKOFF_SECONDS)
+                        continue
+                    log_warning(
+                        "OAuth token sweep failed (non-fatal)",
+                        worker_name=worker_name,
+                        error=str(exc),
+                    )
+                    refreshed = 0
+                if refreshed:
+                    log_info(
+                        "Refreshed expiring OAuth tokens",
+                        worker_name=worker_name,
+                        refreshed=refreshed,
+                    )
+                next_oauth_sweep = loop_time + _OAUTH_SWEEP_INTERVAL_SECONDS
 
             # ── 3b. Prune old job logs (hourly) ───────────────────────────────
             if loop_time >= next_log_prune:
