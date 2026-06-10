@@ -2617,9 +2617,10 @@
 </ul>
 <h2 id="_3">啟動服務<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
 <pre><code class="language-bash">cp .env.example .env                # 設定 POSTGRES_PASSWORD 等必要變數
-docker compose up -d
+docker compose up -d app
 </code></pre>
-<p><code>docker compose up -d</code> 會啟動：<code>postgres</code>、<code>pgbouncer</code>、<code>redis</code>、<code>minio</code>、<code>minio-init</code>（建立 bucket）、<code>app</code>（MCP 伺服器 + 管理後台）以及 <code>admin-worker</code>（背景工作執行器）。</p>
+<p><code>docker compose up -d app</code> 會啟動：<code>postgres</code>、<code>pgbouncer</code>、<code>redis</code> 以及 <code>app</code>。預設 <code>app</code> 是 Node.js MCP gateway，對外提供 <code>http://&lt;host&gt;:8000/mcp</code>、<code>/admin</code>、<code>/health</code>、<code>/metrics</code>。</p>
+<p>舊 Python runtime 已移到 <code>Dockerfile.python</code>，供 <code>admin-worker</code> / loader 類背景工作與 legacy Python app 使用；根目錄 <code>Dockerfile</code> 不再啟動 Python server。</p>
 <h2 id="_4">啟用管理後台<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
 <p>資料匯入由管理後台觸發、交由 <code>admin-worker</code> 背景執行（已無獨立的 CLI data-loader 容器），因此請先在 <code>.env</code> 啟用管理後台：</p>
 <pre><code class="language-dotenv">ADMIN_ENABLED=true
@@ -2628,7 +2629,7 @@ ADMIN_USERNAME=admin
 ADMIN_PASSWORD_HASH=sha256$...
 ADMIN_SESSION_SECRET=change_this_admin_session_secret
 </code></pre>
-<p>重新啟動後（<code>docker compose up -d</code>），於 <code>http://&lt;host&gt;:8000/admin</code> 登入。詳見<a href="../admin/">管理後台</a>。</p>
+<p>重新啟動後（<code>docker compose up -d app</code>），於 <code>http://&lt;host&gt;:8000/admin</code> 登入。Node Admin Console 目前提供登入、基礎總覽、模組資料量、jobs / workers read-only 狀態。詳見<a href="../admin/">管理後台</a>。</p>
 <h2 id="modules">載入資料（管理後台 → Modules）<a class="headerlink" href="#modules" title="Permanent link">&para;</a></h2>
 <p>在 Modules 頁籤依模組匯入：</p>
 <table>
@@ -2666,11 +2667,12 @@ ADMIN_SESSION_SECRET=change_this_admin_session_secret
 <p>開發時若要直接執行單一 loader 階段，<code>loader/main.py</code> 的各階段仍存在（由 worker 呼叫），可在 worker 容器內以模組方式執行。</p>
 </blockquote>
 <h2 id="_5">連線客戶端<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>
-<p>伺服器在同一個埠(預設 8000)同時提供兩種介面:</p>
+<p>預設 Node gateway 在同一個埠(預設 8000)提供 MCP、Admin Console、health 與 metrics:</p>
 <h3 id="1-mcp">1. MCP（原生）<a class="headerlink" href="#1-mcp" title="Permanent link">&para;</a></h3>
-<p>預設以 <code>streamable-http</code> 模式在 <code>http://&lt;host&gt;:8000/mcp</code> 提供服務（見 <code>.env</code> 的 <code>MCP_TRANSPORT</code> / <code>MCP_PORT</code> / <code>MCP_PATH</code>）。供原生 MCP 客戶端使用(Claude Desktop、Open WebUI v0.6.31+ 的 MCP 連線等)。若要供 Claude Desktop 以 stdio 模式使用，設定 <code>MCP_TRANSPORT=stdio</code>。</p>
+<p>預設以 <code>streamable-http</code> 模式在 <code>http://&lt;host&gt;:8000/mcp</code> 提供服務（見 <code>.env</code> 的 <code>NODE_MCP_PORT</code> / <code>NODE_MCP_PATH</code>）。供原生 MCP 客戶端使用(Claude Desktop、Open WebUI v0.6.31+ 的 MCP 連線等)。</p>
 <h3 id="2-openapi-bridge-openapi">2. OpenAPI bridge（給只支援 OpenAPI 的客戶端）<a class="headerlink" href="#2-openapi-bridge-openapi" title="Permanent link">&para;</a></h3>
-<p>對於不支援原生 MCP、只能接 OpenAPI 工具伺服器的客戶端(例如 <strong>Open WebUI 的 External Tools / OpenAPI 類型</strong>),伺服器內建一層 OpenAPI 介面,<strong>不需額外的 mcpo 代理或容器</strong>:</p>
+<p>OpenAPI bridge 屬於 legacy Python app 功能；預設 Node gateway 尚未提供 OpenAPI bridge。</p>
+<p>對於不支援原生 MCP、只能接 OpenAPI 工具伺服器的客戶端(例如 <strong>Open WebUI 的 External Tools / OpenAPI 類型</strong>),請先啟動 legacy Python app:</p>
 <ul>
 <li><code>GET http://&lt;host&gt;:8000/openapi.json</code> — 依目前已啟用的工具動態產生 OpenAPI 3.1 規格</li>
 <li><code>POST http://&lt;host&gt;:8000/tools/&lt;工具名&gt;</code> — 以 JSON body 當參數呼叫工具</li>
