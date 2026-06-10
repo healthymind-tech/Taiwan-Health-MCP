@@ -7,9 +7,13 @@ transaction mode, because pgBouncer does not support named prepared statements.
 """
 
 import asyncio
+import time
 from typing import Any, Optional, Union
 
 import asyncpg
+
+import metrics as _metrics
+from utils import log_warning
 
 _pool: Optional[asyncpg.Pool] = None
 # Remember the args used to build the pool so it can be re-created after a
@@ -30,6 +34,27 @@ _disposals: "set[asyncio.Task[None]]" = set()
 # How long to wait for in-flight connections to be released during a graceful
 # close before falling back to an abrupt terminate().
 _DISPOSE_TIMEOUT = 5.0
+_SLOW_DB_SECONDS = 1.0
+_CONNECTION_METHODS = {
+    "copy_from_query",
+    "copy_from_table",
+    "copy_records_to_table",
+    "copy_to_table",
+    "execute",
+    "executemany",
+    "fetch",
+    "fetchmany",
+    "fetchrow",
+    "fetchval",
+}
+_POOL_METHODS = {
+    "execute",
+    "executemany",
+    "fetch",
+    "fetchmany",
+    "fetchrow",
+    "fetchval",
+}
 
 
 def _is_dead(pool: Optional[asyncpg.Pool]) -> bool:
@@ -229,13 +254,33 @@ class _PoolHandle:
     @staticmethod
     def _live() -> asyncpg.Pool:
         if _pool is None:
-            raise RuntimeError("Database pool not initialized — call init_pool() first")
+            raise RuntimeError(
+                "Database pool not initialized — call init_pool() first"
+            )
         return _pool
 
     def __getattr__(self, name: str) -> Any:
         # Only invoked for names not found on the instance/class, so internal
         # attributes are unaffected and there is no recursion via _live.
-        return getattr(self._live(), name)
+        attr = getattr(self._live(), name)
+        if name == "acquire":
+            return self.acquire
+        if name in _POOL_METHODS and callable(attr):
+
+            async def measured_pool_method(*args: Any, **kwargs: Any) -> Any:
+                return await _measure_async_call(
+                    "db",
+                    f"pool.{name}",
+                    attr,
+                    *args,
+                    **kwargs,
+                )
+
+            return measured_pool_method
+        return attr
+
+    def acquire(self, *args: Any, **kwargs: Any) -> "_InstrumentedAcquireContext":
+        return _InstrumentedAcquireContext(self._live().acquire(*args, **kwargs))
 
     def __repr__(self) -> str:
         state = "uninitialized" if _pool is None else f"-> {_pool!r}"
@@ -259,3 +304,80 @@ def pool_handle() -> "_PoolHandle":
 # per-request use) or the reset-safe handle (long-lived holders). Both expose
 # the same surface, so functions and services can accept either.
 PoolLike = Union[asyncpg.Pool, _PoolHandle]
+
+
+async def _measure_async_call(
+    dependency: str,
+    operation: str,
+    func: Any,
+    *args: Any,
+    **kwargs: Any,
+) -> Any:
+    start = time.monotonic()
+    try:
+        result = await func(*args, **kwargs)
+        duration_s = time.monotonic() - start
+        _metrics.record_dependency_call(dependency, operation, "success", duration_s)
+        _log_slow_dependency(dependency, operation, duration_s)
+        return result
+    except Exception:
+        duration_s = time.monotonic() - start
+        _metrics.record_dependency_call(dependency, operation, "error", duration_s)
+        _log_slow_dependency(dependency, operation, duration_s)
+        raise
+
+
+def _log_slow_dependency(dependency: str, operation: str, duration_s: float) -> None:
+    if duration_s >= _SLOW_DB_SECONDS:
+        log_warning(
+            "Slow dependency call",
+            dependency=dependency,
+            operation=operation,
+            duration_ms=int(duration_s * 1000),
+        )
+
+
+class _ConnectionProxy:
+    """Wrap asyncpg connection methods with low-cardinality latency metrics."""
+
+    def __init__(self, conn: asyncpg.Connection):
+        self._conn = conn
+
+    def __getattr__(self, name: str) -> Any:
+        attr = getattr(self._conn, name)
+        if name in _CONNECTION_METHODS and callable(attr):
+
+            async def measured_connection_method(*args: Any, **kwargs: Any) -> Any:
+                return await _measure_async_call(
+                    "db",
+                    f"conn.{name}",
+                    attr,
+                    *args,
+                    **kwargs,
+                )
+
+            return measured_connection_method
+        return attr
+
+
+class _InstrumentedAcquireContext:
+    """Async context manager that measures pool wait and returned connection use."""
+
+    def __init__(self, context: Any):
+        self._context = context
+
+    async def __aenter__(self) -> _ConnectionProxy:
+        conn = await _measure_async_call(
+            "db",
+            "pool.acquire",
+            self._context.__aenter__,
+        )
+        return _ConnectionProxy(conn)
+
+    async def __aexit__(self, *args: Any) -> Any:
+        return await _measure_async_call(
+            "db",
+            "pool.release",
+            self._context.__aexit__,
+            *args,
+        )

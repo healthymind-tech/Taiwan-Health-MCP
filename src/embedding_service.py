@@ -16,10 +16,12 @@ Config env vars:
 from __future__ import annotations
 
 import os
+import time
 from typing import Sequence
 
 import httpx
 
+import metrics as _metrics
 from utils import log_info, log_warning
 
 _BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "").rstrip("/")
@@ -46,6 +48,19 @@ def configure(values: dict) -> None:
 _PROVIDER: str = "ollama"
 _API_KEY: str = ""
 _GOOGLE_BASE = "https://generativelanguage.googleapis.com"
+
+
+def _provider_operation(operation: str) -> str:
+    return f"{_PROVIDER}.{operation}"
+
+
+def _record_embedding_call(operation: str, status: str, start: float) -> None:
+    _metrics.record_dependency_call(
+        "embedding",
+        _provider_operation(operation),
+        status,
+        time.monotonic() - start,
+    )
 
 
 def _configured() -> bool:
@@ -123,16 +138,26 @@ class EmbeddingService:
     async def _ping(self) -> bool:
         if not _configured():
             return False
+        start = time.monotonic()
         try:
             if _PROVIDER == "ollama":
                 async with httpx.AsyncClient(timeout=3.0) as client:
                     r = await client.get(f"{_BASE_URL}/api/version")
-                    return r.status_code == 200
+                    ok = r.status_code == 200
+                    _record_embedding_call(
+                        "ping",
+                        "success" if ok else "error",
+                        start,
+                    )
+                    return ok
             # openai / google: a successful 1-item embed is the cheapest real check
             async with httpx.AsyncClient(timeout=8.0) as client:
                 out = await _provider_embed(client, ["ping"])
-                return bool(out and out[0])
+                ok = bool(out and out[0])
+                _record_embedding_call("ping", "success" if ok else "error", start)
+                return ok
         except Exception:
+            _record_embedding_call("ping", "error", start)
             return False
 
     @property
@@ -159,9 +184,11 @@ class EmbeddingService:
         """
         if not _configured() or not texts:
             return [None] * len(texts)
+        start = time.monotonic()
         try:
             async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
                 embeddings = await _provider_embed(client, list(texts))
+            _record_embedding_call("embed_batch", "success", start)
             result: list[list[float] | None] = []
             for i in range(len(texts)):
                 result.append(embeddings[i] if i < len(embeddings) else None)
@@ -170,6 +197,7 @@ class EmbeddingService:
             self._available = True
             return result
         except Exception as exc:
+            _record_embedding_call("embed_batch", "error", start)
             if self._available:
                 log_warning(
                     "Embedding failed — falling back to keyword search",

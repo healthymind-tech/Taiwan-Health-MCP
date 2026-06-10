@@ -8,6 +8,8 @@ Usage:
 Metrics exposed:
     mcp_tool_requests_total{tool, status}          Counter
     mcp_tool_duration_seconds{tool}                Histogram
+    mcp_dependency_requests_total{dependency, operation, status}
+    mcp_dependency_duration_seconds{dependency, operation}
     mcp_cache_operations_total{prefix, result}     Counter
     mcp_db_pool_size                               Gauge
     mcp_db_pool_checked_out                        Gauge
@@ -44,6 +46,34 @@ cache_ops = Counter(
     ["prefix", "result"],  # result: hit | miss | error
 )
 
+dependency_requests = Counter(
+    "mcp_dependency_requests_total",
+    "External/internal dependency calls by dependency, operation, and status",
+    ["dependency", "operation", "status"],
+)
+
+dependency_duration = Histogram(
+    "mcp_dependency_duration_seconds",
+    "Dependency call latency by dependency and operation",
+    ["dependency", "operation"],
+    buckets=[
+        0.001,
+        0.0025,
+        0.005,
+        0.01,
+        0.025,
+        0.05,
+        0.1,
+        0.25,
+        0.5,
+        1.0,
+        2.5,
+        5.0,
+        10.0,
+        30.0,
+    ],
+)
+
 db_pool_size = Gauge(
     "mcp_db_pool_size",
     "Total connections in the asyncpg pool",
@@ -78,6 +108,28 @@ def record_cache_op(prefix: str, result: str) -> None:
         result: Outcome — ``"hit"``, ``"miss"``, or ``"error"``.
     """
     cache_ops.labels(prefix=prefix, result=result).inc()
+
+
+def record_dependency_call(
+    dependency: str,
+    operation: str,
+    status: str,
+    duration_s: float,
+) -> None:
+    """Record latency and outcome for a DB/cache/HTTP/embedding dependency call.
+
+    Keep labels intentionally low-cardinality: ``operation`` should be a stable
+    method/stage name, never raw SQL, URLs, user input, or IDs.
+    """
+    dependency_requests.labels(
+        dependency=dependency,
+        operation=operation,
+        status=status,
+    ).inc()
+    dependency_duration.labels(
+        dependency=dependency,
+        operation=operation,
+    ).observe(duration_s)
 
 
 def update_db_pool_stats(pool: Any) -> None:

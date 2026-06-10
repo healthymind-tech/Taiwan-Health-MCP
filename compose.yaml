@@ -221,6 +221,29 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  node-gateway:
+    profiles: ["node-gateway"]
+    build:
+      context: ./node-server
+    container_name: taiwanHealthMcp_node_gateway
+    ports:
+      - "${NODE_MCP_PORT:-8010}:${NODE_MCP_PORT:-8010}"
+    environment:
+      - NODE_TRANSPORT=streamable-http
+      - NODE_HOST=0.0.0.0
+      - NODE_PORT=${NODE_MCP_PORT:-8010}
+      - NODE_MCP_PATH=${NODE_MCP_PATH:-/mcp}
+      - NODE_METRICS_PATH=${NODE_METRICS_PATH:-/metrics}
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-mcp}:${POSTGRES_PASSWORD}@pgbouncer:5432/${POSTGRES_DB:-taiwan_health}
+      - REDIS_URL=redis://redis:6379/0
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    depends_on:
+      pgbouncer:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   redis_data:

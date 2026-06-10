@@ -6,6 +6,7 @@ Call init_client() at startup, then use @cached() decorator or get_client() dire
 import functools
 import hashlib
 import json
+import time
 from typing import Any, Callable, Optional
 
 import redis.asyncio as redis
@@ -13,6 +14,32 @@ import redis.asyncio as redis
 import metrics as _metrics
 
 _client: Optional[redis.Redis] = None
+
+
+async def _measure_redis(
+    operation: str,
+    func: Callable,
+    *args: Any,
+    **kwargs: Any,
+) -> Any:
+    start = time.monotonic()
+    try:
+        result = await func(*args, **kwargs)
+        _metrics.record_dependency_call(
+            "redis",
+            operation,
+            "success",
+            time.monotonic() - start,
+        )
+        return result
+    except Exception:
+        _metrics.record_dependency_call(
+            "redis",
+            operation,
+            "error",
+            time.monotonic() - start,
+        )
+        raise
 
 
 async def init_client(url: str) -> redis.Redis:
@@ -30,7 +57,7 @@ async def init_client(url: str) -> redis.Redis:
     if _client is not None:
         return _client
     _client = redis.from_url(url, encoding="utf-8", decode_responses=True)
-    await _client.ping()
+    await _measure_redis("ping", _client.ping)
     return _client
 
 
@@ -78,13 +105,15 @@ def cached(ttl: int = 3600, prefix: str = "") -> Callable:
 
             try:
                 client = get_client()
-                hit = await client.get(cache_key)
+                hit = await _measure_redis("get", client.get, cache_key)
                 if hit is not None:
                     _metrics.record_cache_op(ns, "hit")
                     return hit
                 result = await func(*args, **kwargs)
                 if result is not None:
-                    await client.setex(
+                    await _measure_redis(
+                        "setex",
+                        client.setex,
                         cache_key,
                         ttl,
                         result if isinstance(result, str) else json.dumps(result),
@@ -113,7 +142,7 @@ async def warm_up(keys: list[tuple[str, Any, int]]) -> int:
     for key, value, ttl in keys:
         try:
             serialised = value if isinstance(value, str) else json.dumps(value)
-            await _client.setex(key, ttl, serialised)
+            await _measure_redis("warmup.setex", _client.setex, key, ttl, serialised)
             written += 1
         except Exception:
             pass
