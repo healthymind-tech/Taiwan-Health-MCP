@@ -2639,8 +2639,7 @@
 <li><strong>Python 版本</strong>：3.12+（裸機部署時）</li>
 </ul>
 <h2 id="_3">服務組成<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
-<p><code>docker compose up -d app</code> 會啟動：<code>postgres</code>（pgvector）、<code>pgbouncer</code>、<code>redis</code> 與 <code>app</code>。預設 <code>app</code> 是 Node.js MCP gateway，使用根目錄 <code>Dockerfile</code>，對外發布 <code>http://&lt;host&gt;:8000/mcp</code>、<code>/health</code>、<code>/metrics</code>。</p>
-<p>舊 Python runtime 已移到 <code>Dockerfile.python</code>，供 <code>admin-worker</code> / loader 類背景工作與 legacy Python app 使用。</p>
+<p><code>docker compose up -d</code> 會啟動：<code>postgres</code>（pgvector）、<code>pgbouncer</code>、<code>redis</code>、<code>minio</code> + <code>minio-init</code>、<code>app</code>（MCP 伺服器 + 管理後台），以及 <code>admin-worker</code>（背景工作執行器）。資料匯入由管理後台觸發、在 <code>admin-worker</code> 內執行，已無獨立的 data-loader 容器。</p>
 <h2 id="_4">部署選項<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
 <h3 id="_5"><a href="../architecture/deployment/">架構與容器部署</a><a class="headerlink" href="#_5" title="Permanent link">&para;</a></h3>
 <p>基礎設施拓樸、容器組成與啟動流程。快速啟動步驟見<a href="../getting-started/">快速開始</a>。</p>

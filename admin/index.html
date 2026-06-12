@@ -2586,10 +2586,14 @@ ADMIN_PASSWORD_HASH=sha256$...
 ADMIN_SESSION_SECRET=change_this_admin_session_secret
 ADMIN_SESSION_TTL_MINUTES=240
 ADMIN_MAX_UPLOAD_MB=512
+# 外部 FHIR 伺服器 OAuth token / client secret 的對稱加密金鑰（pgcrypto）。
+# 未設定時回退至 ADMIN_SESSION_SECRET。
+FHIR_SERVER_SECRET_KEY=
 </code></pre>
 <p>密碼雜湊支援 <code>sha256$&lt;hex&gt;</code> 或 <code>pbkdf2_sha256$&lt;iterations&gt;$&lt;salt&gt;$&lt;hex&gt;</code>。四個變數齊備（<code>admin_ready</code>）時 <code>/admin</code> 才會開放。</p>
 <blockquote>
 <p>管理後台需要 <code>admin-worker</code> 容器一起運作（背景工作執行器）。<code>docker compose up -d</code> 會一併啟動。</p>
+<p><strong>重要：</strong> <code>FHIR_SERVER_SECRET_KEY</code>（或其回退值 <code>ADMIN_SESSION_SECRET</code>）必須在 <code>app</code> 與 <code>admin-worker</code> 兩個容器上<strong>完全一致</strong>。worker 會以此金鑰 <code>pgp_sym_decrypt</code> 外部 FHIR 伺服器的 OAuth token 與 client secret；若 worker 的金鑰為空或不同，會在背景工作（如排程 FHIR 任務、token 更新）時拋出 <code>Illegal argument to function</code>（金鑰為空）或 <code>Wrong key or corrupt data</code>（金鑰不符）。</p>
 </blockquote>
 <h2 id="_2">介面組成<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
 <p>現代介面為 React SPA（<code>admin-ui/</code>），另保留伺服器渲染的 HTML shell 作為退路。主要頁籤：</p>

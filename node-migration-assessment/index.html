@@ -12,7 +12,7 @@
         <meta name="author" content="Taiwan-ICD10-Health-MCP Team">
       
       
-        <link rel="canonical" href="https://audi0417.github.io/Taiwan-Health-MCP/TWCORE_MAPPING_TABLES/">
+        <link rel="canonical" href="https://audi0417.github.io/Taiwan-Health-MCP/node-migration-assessment/">
       
       
       
@@ -25,7 +25,7 @@
     
     
       
-        <title>TWCore Mapping Tables — Resource Conversion Spec - Taiwan ICD10 Health MCP</title>
+        <title>Python → Node.js 遷移評估與執行計畫 - Taiwan ICD10 Health MCP</title>
       
     
     
@@ -66,7 +66,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#twcore-mapping-tables-resource-conversion-spec" class="md-skip">
+        <a href="#python-nodejs" class="md-skip">
           跳轉到
         </a>
       
@@ -102,7 +102,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              TWCore Mapping Tables — Resource Conversion Spec
+              Python → Node.js 遷移評估與執行計畫
             
           </span>
         </div>
@@ -2348,22 +2348,88 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#0" class="md-nav__link">
+  <a href="#_1" class="md-nav__link">
     <span class="md-ellipsis">
       
-        0. 通用規則
+        結論
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="0. 通用規則">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        目前資料狀態
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        API 與架構差異
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        已發現並修正的問題
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        逐工具狀態
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        驗證方式
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        建議轉移計畫
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="建議轉移計畫">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#01-cross-reference" class="md-nav__link">
+  <a href="#phase-0" class="md-nav__link">
     <span class="md-ellipsis">
       
-        0.1 Cross-Reference 規則
+        Phase 0：凍結基準
       
     </span>
   </a>
@@ -2371,10 +2437,54 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#02-code-lookup" class="md-nav__link">
+  <a href="#phase-1" class="md-nav__link">
     <span class="md-ellipsis">
       
-        0.2 Code Lookup 規則
+        Phase 1：補齊資料
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-2shadow-traffic" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 2：Shadow traffic
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-3canary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 3：Canary
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 4：正式切換
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-5-python-mcp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 5：移除 Python MCP
       
     </span>
   </a>
@@ -2387,137 +2497,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#1-patient" class="md-nav__link">
+  <a href="#_7" class="md-nav__link">
     <span class="md-ellipsis">
       
-        1. Patient
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#2-organization" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        2. Organization
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#3-practitioner" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        3. Practitioner
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#4-practitionerrole" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        4. PractitionerRole
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#5-encounter" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        5. Encounter
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#6-condition" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        6. Condition
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#7-observation-vital-signs" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        7. Observation — Vital Signs
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="7. Observation — Vital Signs">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#7a-heart-rate-observationcode-vs-0006" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        7a. Heart Rate (observationCode "VS-0006")
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#7b-pulse-oximetry-observationcode-vs-0012" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        7b. Pulse Oximetry (observationCode "VS-0012")
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#8-code-lookup" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        8. Code Lookup 總表
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#9-code" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        9. 一般查詢（自然語言 → 標準 code）
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#10" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        10. 輸入欄位對應決定邏輯
+        回滾策略
       
     </span>
   </a>
@@ -2544,1170 +2527,524 @@
   
 
 
-<h1 id="twcore-mapping-tables-resource-conversion-spec">TWCore Mapping Tables — Resource Conversion Spec<a class="headerlink" href="#twcore-mapping-tables-resource-conversion-spec" title="Permanent link">&para;</a></h1>
-<p>對照來源：你的院內輸入 JSON → 正確解答 FHIR Bundle</p>
-<hr />
-<h2 id="0">0. 通用規則<a class="headerlink" href="#0" title="Permanent link">&para;</a></h2>
-<h3 id="01-cross-reference">0.1 Cross-Reference 規則<a class="headerlink" href="#01-cross-reference" title="Permanent link">&para;</a></h3>
-<p>所有院內 ID（<code>patientId: "1"</code>、<code>encounterId: "1"</code>）在 Bundle 內都被換成 <code>urn:uuid:xxx</code>，靠 ResourceType + 院內 ID 決定目標：</p>
-<pre><code>輸入                          →  Bundle 內的 Reference
-───────────────────────────────────────────────────────
-patients[].id: &quot;1&quot;           → Patient/{uuid}
-organizations[].id: &quot;1&quot;      → Organization/{uuid}
-encounters[].id: &quot;1&quot;         → Encounter/{uuid}
-practitioners[].id: &quot;1&quot;      → Practitioner/{uuid}
-practitionerroles[].id: &quot;1&quot;  → PractitionerRole/{uuid}
-conditions[].id: &quot;1&quot;         → Condition/{uuid}
-observationVitalSigns[].id: &quot;1&quot; → Observation/{uuid}
+<h1 id="python-nodejs">Python → Node.js 遷移評估與執行計畫<a class="headerlink" href="#python-nodejs" title="Permanent link">&para;</a></h1>
+<p>評估日期：2026-06-10</p>
+<h2 id="_1">結論<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
+<p>對外 MCP 線上 runtime 已可由 Node.js 接替 Python。Node 版目前：</p>
+<ul>
+<li>與 Python 暴露相同的資料感知工具清單；本機資料狀態下雙方皆為 40 個工具。</li>
+<li>目前可用的 40 個工具中，37 個案例逐值一致，3 個搜尋案例僅候選排序不同，0 個失敗。</li>
+<li>53 個工具皆有 Node 實作；其中 13 個因本機對應資料表未載入而自動停用，匯入資料後會自動註冊。</li>
+<li>FHIR IG、FHIR Condition、FHIR Medication、臨床指引不再使用假資料或固定回傳。</li>
+</ul>
+<p>本次完成的是 <strong>MCP API/runtime 遷移</strong>。<code>admin-worker</code> 與 <code>loader/</code> 仍使用
+Python，負責資料匯入、OCR/LLM enrichment 與批次工作。若目標是完全移除
+Python，需另立 ETL/worker 遷移專案，不應與線上 MCP 切換綁在同一次發布。</p>
+<h2 id="_2">目前資料狀態<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>模組</th>
+<th style="text-align: right;">資料量</th>
+<th>工具狀態</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ICD diagnoses</td>
+<td style="text-align: right;">46,498</td>
+<td>啟用</td>
+</tr>
+<tr>
+<td>LOINC concepts</td>
+<td style="text-align: right;">104,672</td>
+<td>啟用</td>
+</tr>
+<tr>
+<td>SNOMED concepts</td>
+<td style="text-align: right;">373,972</td>
+<td>啟用</td>
+</tr>
+<tr>
+<td>FHIR IG packages</td>
+<td style="text-align: right;">9</td>
+<td>啟用</td>
+</tr>
+<tr>
+<td>Drug licenses</td>
+<td style="text-align: right;">0</td>
+<td>停用，待匯入</td>
+</tr>
+<tr>
+<td>Food measurements</td>
+<td style="text-align: right;">0</td>
+<td>停用，待匯入</td>
+</tr>
+<tr>
+<td>Health supplements</td>
+<td style="text-align: right;">0</td>
+<td>停用，待匯入</td>
+</tr>
+<tr>
+<td>Clinical guidelines</td>
+<td style="text-align: right;">0</td>
+<td>停用，待匯入</td>
+</tr>
+</tbody>
+</table>
+<p>FHIR Medication 依賴藥品資料，因此目前也停用。</p>
+<h2 id="api">API 與架構差異<a class="headerlink" href="#api" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>項目</th>
+<th>Python</th>
+<th>Node.js</th>
+<th>遷移處理</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>MCP SDK</td>
+<td>FastMCP / Python <code>mcp</code></td>
+<td>TypeScript MCP SDK</td>
+<td>工具名稱、參數與回傳契約對齊</td>
+</tr>
+<tr>
+<td>HTTP transport</td>
+<td>Streamable HTTP</td>
+<td>Streamable HTTP</td>
+<td>同為 <code>/mcp</code>，客戶端 URL 不變</td>
+</tr>
+<tr>
+<td>DB driver</td>
+<td><code>asyncpg</code></td>
+<td><code>pg</code></td>
+<td>SQL 改為實際 schema，處理 <code>BIGINT</code></td>
+</tr>
+<tr>
+<td>Cache</td>
+<td>Redis decorator/cache</td>
+<td>Redis cache helper</td>
+<td>Node cache key加版本，避免舊錯誤結果</td>
+</tr>
+<tr>
+<td>模組啟用</td>
+<td>依資料量動態註冊</td>
+<td>原先無條件註冊</td>
+<td>已改為依 DB 資料量動態註冊</td>
+</tr>
+<tr>
+<td>Embedding</td>
+<td>Ollama，失敗退回 lexical</td>
+<td>原先 timeout 單位錯誤且 app 未帶 env</td>
+<td>已補 env、秒轉毫秒與 semantic 查詢</td>
+</tr>
+<tr>
+<td>Health</td>
+<td>DB monitor、cache、service 狀態</td>
+<td>原先欄位較少</td>
+<td>已補 <code>db_health</code> 與資料模組狀態</td>
+</tr>
+<tr>
+<td>FHIR IG</td>
+<td>package/version aware</td>
+<td>原先查不存在欄位/資料表</td>
+<td>已依 <code>fhir.artifacts/codesystems/concepts</code> 重寫</td>
+</tr>
+<tr>
+<td>FHIR authoring</td>
+<td>skeleton、finalize、validator</td>
+<td>原先功能不完整</td>
+<td>已補 slicing、binding、invariant、fixed/pattern</td>
+</tr>
+<tr>
+<td>FHIR server registry</td>
+<td>安全摘要與 OAuth 狀態</td>
+<td>原先讀錯 probe/capability 欄位</td>
+<td>已改讀實際 registry/token/probe 欄位</td>
+</tr>
+<tr>
+<td>Error JSON</td>
+<td>部分服務受 cache 影響會雙重編碼</td>
+<td>結構化 JSON</td>
+<td>parity runner 會解開 Python 舊格式</td>
+</tr>
+<tr>
+<td>搜尋排序</td>
+<td>BM25/semantic/RRF</td>
+<td>同策略</td>
+<td>契約一致；候選順序允許小幅差異</td>
+</tr>
+</tbody>
+</table>
+<p>JSON Schema 的 nullable 表示法仍有外觀差異：Python 常用 <code>anyOf</code>，
+Node/Zod 常用 <code>type: ["string", "null"]</code>。參數名稱與 required 集合已一致，
+不影響 MCP 呼叫。</p>
+<h2 id="_3">已發現並修正的問題<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
+<ol>
+<li>Node 原先固定暴露 53 個工具，即使資料表為空；現在與 Python 一樣依資料量啟用。</li>
+<li>FHIR Condition、FHIR Medication 與 Guideline 原先含 mock/fake 回傳；已改為 DB 查詢。</li>
+<li>11 個 FHIR IG 工具查詢不存在的 <code>id/url/type/compose_json</code> 欄位與
+   <code>fhir.snapshot_elements</code> 資料表；已依現有 schema 重寫全部 19 個工具。</li>
+<li><code>fhir_apply_mapping_template</code> 的 Node 規則格式與 Python 不同；已統一為
+   <code>source/target/transform/map/skip_if_empty</code>。</li>
+<li>FHIR IG 工具原先缺少 <code>version</code> 參數；已補齊 package/version scope。</li>
+<li>FHIR validator 原先只檢查部分 cardinality；已補 choice、maxLength、
+   slicing、required binding 與 invariant 資訊。</li>
+<li>FHIR skeleton 原先把 <code>candidate_limit</code> 當成欄位數上限；現在只限制候選碼數。</li>
+<li>LOINC hybrid SQL 有 <code>loinc_num</code> 欄位歧義；已限定 table alias。</li>
+<li>LOINC <code>display_name</code> 對空字串未正確 fallback；已修正。</li>
+<li>SNOMED metadata ID 超過 JavaScript safe integer，造成 FSN join 失敗；
+    SQL 參數改以字串傳遞，回傳 concept ID 維持 MCP integer 契約。</li>
+<li>SNOMED relationship count 原先計算群組數；已改為 target 總數。</li>
+<li>FHIR Server status 原先讀不存在的 capability/probe 欄位；已改讀
+    <code>capability_summary_json</code>、<code>last_probe_*</code> 與 OAuth token state。</li>
+<li>Ollama timeout 原先把 <code>30</code> 當 30ms；現在按秒處理，並允許
+    <code>OLLAMA_EMBED_TIMEOUT_MS</code> 明確覆寫。</li>
+</ol>
+<h2 id="_4">逐工具狀態<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
+<p>狀態說明：</p>
+<ul>
+<li><strong>Verified</strong>：已對 Python/Node 實際 API 呼叫比對。</li>
+<li><strong>Implemented</strong>：Node 已有 DB 實作，但本機資料未載入，工具目前雙邊停用。</li>
+<li><strong>Search parity</strong>：schema/回傳契約一致，候選排序可能因 embedding/RRF 不同。</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>工具</th>
+<th>原 Node 差異</th>
+<th>現況</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>health_check</code></td>
+<td>缺 <code>db_health</code>，模組狀態不準</td>
+<td>Verified</td>
+</tr>
+<tr>
+<td><code>list_fhir_servers</code></td>
+<td>capability/probe/auth 摘要不完整</td>
+<td>Verified</td>
+</tr>
+<tr>
+<td><code>get_fhir_server_status</code></td>
+<td>回傳內部欄位，錯誤格式不同</td>
+<td>Verified</td>
+</tr>
+<tr>
+<td><code>crud_fhir_server</code></td>
+<td>registry 解析與 Python 不一致</td>
+<td>Verified</td>
+</tr>
+<tr>
+<td><code>fhir_resolve_terminology_batch</code></td>
+<td>輸出格式與 fallback 不一致</td>
+<td>Search parity</td>
+</tr>
+<tr>
+<td><code>fhir_apply_mapping_template</code></td>
+<td>mapping 規則不相容</td>
+<td>Verified</td>
+</tr>
+<tr>
+<td><code>search_medical_codes</code></td>
+<td>metadata/排序差異</td>
+<td>Verified</td>
+</tr>
+<tr>
+<td><code>infer_complications</code></td>
+<td>小幅 envelope 差異</td>
+<td>Verified</td>
+</tr>
+<tr>
+<td><code>get_nearby_codes</code></td>
+<td>小幅 envelope 差異</td>
+<td>Verified</td>
+</tr>
+<tr>
+<td><code>check_medical_conflict</code></td>
+<td>schema constraint 差異</td>
+<td>Verified</td>
+</tr>
+<tr>
+<td><code>browse_icd_category</code></td>
+<td>nullable/category schema 差異</td>
+<td>Verified</td>
+</tr>
+<tr>
+<td><code>search_drug</code></td>
+<td>DB 實作已有，無資料</td>
+<td>Implemented</td>
+</tr>
+<tr>
+<td><code>identify_unknown_pill</code></td>
+<td>DB 實作已有，無資料</td>
+<td>Implemented</td>
+</tr>
+<tr>
+<td><code>get_drug_details</code></td>
+<td>DB 實作已有，無資料</td>
+<td>Implemented</td>
+</tr>
+<tr>
+<td><code>get_drug_asset_links</code></td>
+<td>DB 實作已有，無資料</td>
+<td>Implemented</td>
+</tr>
+<tr>
+<td><code>search_health_supplements</code></td>
+<td>DB 實作已有，無資料</td>
+<td>Implemented</td>
+</tr>
+<tr>
+<td><code>query_food_nutrition</code></td>
+<td>DB 實作已有，無資料</td>
+<td>Implemented</td>
+</tr>
+<tr>
+<td><code>query_food_ingredient</code></td>
+<td>DB 實作已有，無資料</td>
+<td>Implemented</td>
+</tr>
+<tr>
+<td><code>search_foods_by_nutrient</code></td>
+<td>DB 實作已有，無資料</td>
+<td>Implemented</td>
+</tr>
+<tr>
+<td><code>analyze_meal_nutrition</code></td>
+<td>DB 實作已有，無資料</td>
+<td>Implemented</td>
+</tr>
+<tr>
+<td><code>search_loinc</code></td>
+<td>hybrid SQL 欄位歧義</td>
+<td>Search parity</td>
+</tr>
+<tr>
+<td><code>query_loinc</code></td>
+<td>default 與 <code>display_name</code> 差異</td>
+<td>Verified</td>
+</tr>
+<tr>
+<td><code>interpret_lab_result</code></td>
+<td>schema/default 細節差異</td>
+<td>Verified</td>
+</tr>
+<tr>
+<td><code>batch_interpret_lab_results</code></td>
+<td>schema/default 細節差異</td>
+<td>Verified</td>
+</tr>
+<tr>
+<td><code>search_clinical_guideline</code></td>
+<td>全部為 mock</td>
+<td>Implemented，待資料</td>
+</tr>
+<tr>
+<td><code>query_guideline</code></td>
+<td>mock 且缺 <code>medication_class</code></td>
+<td>Implemented，待資料</td>
+</tr>
+<tr>
+<td><code>search_snomed_concept</code></td>
+<td><code>BIGINT</code>/FSN join 與排序問題</td>
+<td>Search parity</td>
+</tr>
+<tr>
+<td><code>query_snomed_concept</code></td>
+<td>ID 字串、FSN null、map 欄位不同</td>
+<td>Verified</td>
+</tr>
+<tr>
+<td><code>get_snomed_relationships</code></td>
+<td>label/target null、count 錯誤</td>
+<td>Verified</td>
+</tr>
+<tr>
+<td><code>query_snomed_mapping</code></td>
+<td>keyword/default 與輸出格式差異</td>
+<td>Verified</td>
+</tr>
+<tr>
+<td><code>query_fhir_condition</code></td>
+<td>假資料，不查 ICD</td>
+<td>Verified</td>
+</tr>
+<tr>
+<td><code>validate_fhir_condition</code></td>
+<td>永遠回 valid</td>
+<td>Verified</td>
+</tr>
+<tr>
+<td><code>query_fhir_medication</code></td>
+<td>假資料，不查 TFDA</td>
+<td>Implemented，待資料</td>
+</tr>
+<tr>
+<td><code>validate_fhir_medication</code></td>
+<td>永遠回 valid</td>
+<td>Implemented，待資料</td>
+</tr>
+<tr>
+<td><code>fhir_list_igs</code></td>
+<td>envelope 欄位不同</td>
+<td>Verified</td>
+</tr>
+<tr>
+<td><code>fhir_get_ig</code></td>
+<td>envelope/package scope 不完整</td>
+<td>Verified</td>
+</tr>
+<tr>
+<td><code>fhir_list_artifacts</code></td>
+<td>查不存在欄位</td>
+<td>Verified</td>
+</tr>
+<tr>
+<td><code>fhir_search_artifacts</code></td>
+<td>查不存在欄位</td>
+<td>Verified</td>
+</tr>
+<tr>
+<td><code>fhir_list_resource_profiles</code></td>
+<td>查不存在欄位</td>
+<td>Verified</td>
+</tr>
+<tr>
+<td><code>fhir_rank_resource_profiles</code></td>
+<td>查不存在欄位</td>
+<td>Verified</td>
+</tr>
+<tr>
+<td><code>fhir_get_profile</code></td>
+<td>查不存在欄位</td>
+<td>Verified</td>
+</tr>
+<tr>
+<td><code>fhir_get_profile_elements</code></td>
+<td>依賴不存在 snapshot table</td>
+<td>Verified</td>
+</tr>
+<tr>
+<td><code>fhir_get_valueset</code></td>
+<td>查不存在 <code>compose_json</code></td>
+<td>Verified</td>
+</tr>
+<tr>
+<td><code>fhir_expand_valueset</code></td>
+<td>terminology expansion 失效</td>
+<td>Verified</td>
+</tr>
+<tr>
+<td><code>fhir_lookup_code</code></td>
+<td>CodeSystem schema 錯誤</td>
+<td>Verified</td>
+</tr>
+<tr>
+<td><code>fhir_validate_code</code></td>
+<td>ValueSet membership 失效</td>
+<td>Verified</td>
+</tr>
+<tr>
+<td><code>fhir_normalize_code</code></td>
+<td>無 ConceptMap/semantic</td>
+<td>Verified</td>
+</tr>
+<tr>
+<td><code>fhir_resolve_reference</code></td>
+<td>context/reference 契約差異</td>
+<td>Verified</td>
+</tr>
+<tr>
+<td><code>fhir_build_bundle</code></td>
+<td>reference rewrite 契約差異</td>
+<td>Verified</td>
+</tr>
+<tr>
+<td><code>fhir_validate_resource</code></td>
+<td>validator 覆蓋不足</td>
+<td>Verified</td>
+</tr>
+<tr>
+<td><code>fhir_validate_bundle</code></td>
+<td>profile/reference 驗證差異</td>
+<td>Verified</td>
+</tr>
+<tr>
+<td><code>fhir_get_resource_skeleton</code></td>
+<td>candidate limit 語意錯誤</td>
+<td>Verified</td>
+</tr>
+<tr>
+<td><code>fhir_finalize_resource</code></td>
+<td>pin/narrative/validation 不完整</td>
+<td>Verified</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_5">驗證方式<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>
+<p>先在另一個 port 啟動 Python baseline：</p>
+<pre><code class="language-bash">cd src
+MCP_TRANSPORT=streamable-http MCP_PORT=8011 python server.py
 </code></pre>
-<h3 id="02-code-lookup">0.2 Code Lookup 規則<a class="headerlink" href="#02-code-lookup" title="Permanent link">&para;</a></h3>
-<table>
-<thead>
-<tr>
-<th>院內 code</th>
-<th>查詢方式</th>
-<th>標準 system</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>conditionCode</code>, <code>reasonCode</code></td>
-<td>SNOMED（依 <code>conditionText</code> 或 <code>reasonCode</code> 文字）</td>
-<td><code>http://snomed.info/sct</code></td>
-</tr>
-<tr>
-<td><code>observationCode</code> 對應到 vital signs</td>
-<td>LOINC</td>
-<td><code>http://loinc.org</code></td>
-</tr>
-<tr>
-<td><code>roleCode</code>, <code>specialtyCode</code></td>
-<td>SNOMED</td>
-<td><code>http://snomed.info/sct</code></td>
-</tr>
-<tr>
-<td><code>qualificationCode</code></td>
-<td>SNOMED</td>
-<td><code>http://snomed.info/sct</code></td>
-</tr>
-<tr>
-<td><code>serviceType</code></td>
-<td>service-type value set（"emergency" → "117"）</td>
-<td><code>http://terminology.hl7.org/CodeSystem/service-type</code></td>
-</tr>
-<tr>
-<td><code>severity</code></td>
-<td>已是 SNOMED，直接貼</td>
-<td><code>http://snomed.info/sct</code></td>
-</tr>
-<tr>
-<td><code>gender</code></td>
-<td>保留字串（已符合 FHIR enum）</td>
-<td>—</td>
-</tr>
-<tr>
-<td><code>type: "prov"</code></td>
-<td>organization-type value set</td>
-<td><code>http://terminology.hl7.org/CodeSystem/organization-type</code></td>
-</tr>
-</tbody>
-</table>
-<hr />
-<h2 id="1-patient">1. Patient<a class="headerlink" href="#1-patient" title="Permanent link">&para;</a></h2>
-<p><strong>Profile</strong>: <code>Patient-twcore</code></p>
-<table>
-<thead>
-<tr>
-<th>輸入欄位</th>
-<th>FHIR Path</th>
-<th>規則</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>—</td>
-<td><code>resourceType</code></td>
-<td><strong>常數</strong>: <code>"Patient"</code></td>
-</tr>
-<tr>
-<td>—</td>
-<td><code>meta.profile[0]</code></td>
-<td><strong>常數</strong>: <code>"https://twcore.mohw.gov.tw/ig/twcore/StructureDefinition/Patient-twcore"</code></td>
-</tr>
-<tr>
-<td>—</td>
-<td><code>text.status</code></td>
-<td><strong>常數</strong>: <code>"generated"</code></td>
-</tr>
-<tr>
-<td>—</td>
-<td><code>text.div</code></td>
-<td><strong>常數</strong>: <code>&lt;div xmlns="..."&gt;&lt;p&gt;Patient&lt;/p&gt;&lt;/div&gt;</code></td>
-</tr>
-<tr>
-<td><code>id</code> + <code>idSystem</code></td>
-<td><code>identifier[0].use</code></td>
-<td><strong>常數</strong>: <code>"official"</code></td>
-</tr>
-<tr>
-<td><code>id</code> + <code>idSystem</code></td>
-<td><code>identifier[0].type.coding[0].system</code></td>
-<td><strong>常數</strong>: <code>"http://terminology.hl7.org/CodeSystem/v2-0203"</code></td>
-</tr>
-<tr>
-<td><code>id</code> + <code>idSystem</code></td>
-<td><code>identifier[0].type.coding[0].code</code></td>
-<td><strong>常數</strong>: <code>"MR"</code></td>
-</tr>
-<tr>
-<td><code>idSystem</code></td>
-<td><code>identifier[0].system</code></td>
-<td>直接映射</td>
-</tr>
-<tr>
-<td><code>id</code></td>
-<td><code>identifier[0].value</code></td>
-<td>直接映射</td>
-</tr>
-<tr>
-<td>—</td>
-<td><code>identifier[1].use</code></td>
-<td><strong>常數</strong>: <code>"official"</code></td>
-</tr>
-<tr>
-<td>—</td>
-<td><code>identifier[1].type.coding[0].system</code></td>
-<td><strong>常數</strong>: <code>"http://terminology.hl7.org/CodeSystem/v2-0203"</code></td>
-</tr>
-<tr>
-<td>—</td>
-<td><code>identifier[1].type.coding[0].code</code></td>
-<td><strong>常數</strong>: <code>"NNxxx"</code> (TWCore Required Pattern)</td>
-</tr>
-<tr>
-<td>—</td>
-<td><code>identifier[1].system</code></td>
-<td><strong>常數</strong>: <code>"http://www.moi.gov.tw"</code> (TWCore Required Pattern)</td>
-</tr>
-<tr>
-<td><code>idNumber</code></td>
-<td><code>identifier[1].value</code></td>
-<td>直接映射</td>
-</tr>
-<tr>
-<td><code>active</code></td>
-<td><code>active</code></td>
-<td>直接映射</td>
-</tr>
-<tr>
-<td><code>name</code></td>
-<td><code>name[0].use</code></td>
-<td><strong>常數</strong>: <code>"official"</code></td>
-</tr>
-<tr>
-<td><code>name</code></td>
-<td><code>name[0].text</code></td>
-<td>直接映射</td>
-</tr>
-<tr>
-<td><code>telecomSystem</code></td>
-<td><code>telecom[0].system</code></td>
-<td>直接映射</td>
-</tr>
-<tr>
-<td><code>telecomValue</code></td>
-<td><code>telecom[0].value</code></td>
-<td>直接映射</td>
-</tr>
-<tr>
-<td><code>telecomUse</code></td>
-<td><code>telecom[0].use</code></td>
-<td>直接映射</td>
-</tr>
-<tr>
-<td><code>gender</code></td>
-<td><code>gender</code></td>
-<td>直接映射</td>
-</tr>
-<tr>
-<td><code>birthDate</code></td>
-<td><code>birthDate</code></td>
-<td>直接映射</td>
-</tr>
-<tr>
-<td><code>address</code></td>
-<td><code>address[0].text</code></td>
-<td>直接映射</td>
-</tr>
-<tr>
-<td><code>organization</code> (ref)</td>
-<td><code>managingOrganization.reference</code></td>
-<td><strong>Cross-ref</strong> → <code>Organization/{uuid}</code></td>
-</tr>
-</tbody>
-</table>
-<hr />
-<h2 id="2-organization">2. Organization<a class="headerlink" href="#2-organization" title="Permanent link">&para;</a></h2>
-<p><strong>Profile</strong>: <code>Organization-twcore</code></p>
-<table>
-<thead>
-<tr>
-<th>輸入欄位</th>
-<th>FHIR Path</th>
-<th>規則</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>—</td>
-<td><code>resourceType</code></td>
-<td><strong>常數</strong>: <code>"Organization"</code></td>
-</tr>
-<tr>
-<td>—</td>
-<td><code>meta.profile[0]</code></td>
-<td><strong>常數</strong>: <code>"https://twcore.mohw.gov.tw/ig/twcore/StructureDefinition/Organization-twcore"</code></td>
-</tr>
-<tr>
-<td>—</td>
-<td><code>text.status</code></td>
-<td><strong>常數</strong>: <code>"generated"</code></td>
-</tr>
-<tr>
-<td>—</td>
-<td><code>text.div</code></td>
-<td><strong>常數</strong>: <code>&lt;div xmlns="..."&gt;&lt;p&gt;Organization&lt;/p&gt;&lt;/div&gt;</code></td>
-</tr>
-<tr>
-<td>—</td>
-<td><code>identifier[0].type.coding[0].system</code></td>
-<td><strong>常數</strong>: <code>"http://terminology.hl7.org/CodeSystem/v2-0203"</code></td>
-</tr>
-<tr>
-<td>—</td>
-<td><code>identifier[0].type.coding[0].code</code></td>
-<td><strong>常數</strong>: <code>"PRN"</code> (Provider Number)</td>
-</tr>
-<tr>
-<td><code>idSystem</code></td>
-<td><code>identifier[0].system</code></td>
-<td>直接映射</td>
-</tr>
-<tr>
-<td><code>identifierValue</code></td>
-<td><code>identifier[0].value</code></td>
-<td>直接映射</td>
-</tr>
-<tr>
-<td><code>active</code></td>
-<td><code>active</code></td>
-<td>直接映射</td>
-</tr>
-<tr>
-<td><code>type</code></td>
-<td><code>type[0].coding[0].system</code></td>
-<td><strong>常數</strong>: <code>"http://terminology.hl7.org/CodeSystem/organization-type"</code></td>
-</tr>
-<tr>
-<td><code>type</code></td>
-<td><code>type[0].coding[0].code</code></td>
-<td>直接映射 (e.g. <code>"prov"</code>)</td>
-</tr>
-<tr>
-<td><code>name</code></td>
-<td><code>name</code></td>
-<td>直接映射</td>
-</tr>
-<tr>
-<td><code>telecomSystem</code></td>
-<td><code>telecom[0].system</code></td>
-<td>直接映射</td>
-</tr>
-<tr>
-<td><code>telecomValue</code></td>
-<td><code>telecom[0].value</code></td>
-<td>直接映射</td>
-</tr>
-<tr>
-<td><code>telecomUse</code></td>
-<td><code>telecom[0].use</code></td>
-<td>直接映射</td>
-</tr>
-<tr>
-<td><code>address</code></td>
-<td><code>address[0].text</code></td>
-<td>直接映射</td>
-</tr>
-</tbody>
-</table>
-<hr />
-<h2 id="3-practitioner">3. Practitioner<a class="headerlink" href="#3-practitioner" title="Permanent link">&para;</a></h2>
-<p><strong>Profile</strong>: <code>Practitioner-twcore</code></p>
-<table>
-<thead>
-<tr>
-<th>輸入欄位</th>
-<th>FHIR Path</th>
-<th>規則</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>—</td>
-<td><code>resourceType</code></td>
-<td><strong>常數</strong>: <code>"Practitioner"</code></td>
-</tr>
-<tr>
-<td>—</td>
-<td><code>meta.profile[0]</code></td>
-<td><strong>常數</strong>: <code>"https://twcore.mohw.gov.tw/ig/twcore/StructureDefinition/Practitioner-twcore"</code></td>
-</tr>
-<tr>
-<td>—</td>
-<td><code>text.status</code></td>
-<td><strong>常數</strong>: <code>"generated"</code></td>
-</tr>
-<tr>
-<td>—</td>
-<td><code>text.div</code></td>
-<td><strong>常數</strong>: <code>&lt;div xmlns="..."&gt;&lt;p&gt;Practitioner&lt;/p&gt;&lt;/div&gt;</code></td>
-</tr>
-<tr>
-<td>—</td>
-<td><code>identifier[0].use</code></td>
-<td><strong>常數</strong>: <code>"official"</code></td>
-</tr>
-<tr>
-<td>—</td>
-<td><code>identifier[0].type.coding[0].system</code></td>
-<td><strong>常數</strong>: <code>"http://terminology.hl7.org/CodeSystem/v2-0203"</code></td>
-</tr>
-<tr>
-<td>—</td>
-<td><code>identifier[0].type.coding[0].code</code></td>
-<td><strong>常數</strong>: <code>"MD"</code> (Medical License)</td>
-</tr>
-<tr>
-<td><code>medicalLicenseSystem</code></td>
-<td><code>identifier[0].system</code></td>
-<td>直接映射</td>
-</tr>
-<tr>
-<td><code>medicalLicenseNumber</code></td>
-<td><code>identifier[0].value</code></td>
-<td>直接映射</td>
-</tr>
-<tr>
-<td><code>active</code></td>
-<td><code>active</code></td>
-<td>直接映射</td>
-</tr>
-<tr>
-<td><code>name</code></td>
-<td><code>name[0].use</code></td>
-<td><strong>常數</strong>: <code>"official"</code></td>
-</tr>
-<tr>
-<td><code>name</code></td>
-<td><code>name[0].text</code></td>
-<td>直接映射</td>
-</tr>
-<tr>
-<td><code>telecomSystem</code></td>
-<td><code>telecom[0].system</code></td>
-<td>直接映射</td>
-</tr>
-<tr>
-<td><code>telecomValue</code></td>
-<td><code>telecom[0].value</code></td>
-<td>直接映射</td>
-</tr>
-<tr>
-<td><code>telecomUse</code></td>
-<td><code>telecom[0].use</code></td>
-<td>直接映射</td>
-</tr>
-<tr>
-<td><code>address</code></td>
-<td><code>address[0].text</code></td>
-<td>直接映射</td>
-</tr>
-<tr>
-<td><code>gender</code></td>
-<td><code>gender</code></td>
-<td>直接映射</td>
-</tr>
-<tr>
-<td><code>birthday</code></td>
-<td><code>birthDate</code></td>
-<td>直接映射</td>
-</tr>
-<tr>
-<td><code>qualificationCode</code>: <code>"Qual-0001"</code></td>
-<td><code>qualification[0].code.coding[0].system</code></td>
-<td><strong>常數</strong>: <code>"http://snomed.info/sct"</code></td>
-</tr>
-<tr>
-<td><code>qualificationCode</code>: <code>"Qual-0001"</code></td>
-<td><code>qualification[0].code.coding[0].code</code></td>
-<td><strong>查 SNOMED</strong> → <code>"158965000"</code> (Doctor)</td>
-</tr>
-<tr>
-<td><code>qualificationIssuer</code> (ref)</td>
-<td><code>qualification[0].issuer.reference</code></td>
-<td><strong>Cross-ref</strong> → <code>Organization/{uuid}</code></td>
-</tr>
-</tbody>
-</table>
-<hr />
-<h2 id="4-practitionerrole">4. PractitionerRole<a class="headerlink" href="#4-practitionerrole" title="Permanent link">&para;</a></h2>
-<p><strong>Profile</strong>: <code>PractitionerRole-twcore</code></p>
-<table>
-<thead>
-<tr>
-<th>輸入欄位</th>
-<th>FHIR Path</th>
-<th>規則</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>—</td>
-<td><code>resourceType</code></td>
-<td><strong>常數</strong>: <code>"PractitionerRole"</code></td>
-</tr>
-<tr>
-<td>—</td>
-<td><code>meta.profile[0]</code></td>
-<td><strong>常數</strong>: <code>"https://twcore.mohw.gov.tw/ig/twcore/StructureDefinition/PractitionerRole-twcore"</code></td>
-</tr>
-<tr>
-<td>—</td>
-<td><code>text.status</code></td>
-<td><strong>常數</strong>: <code>"generated"</code></td>
-</tr>
-<tr>
-<td>—</td>
-<td><code>text.div</code></td>
-<td><strong>常數</strong>: <code>&lt;div xmlns="..."&gt;&lt;p&gt;PractitionerRole&lt;/p&gt;&lt;/div&gt;</code></td>
-</tr>
-<tr>
-<td>—</td>
-<td><code>identifier[0].use</code></td>
-<td><strong>常數</strong>: <code>"official"</code></td>
-</tr>
-<tr>
-<td>—</td>
-<td><code>identifier[0].type.coding[0].system</code></td>
-<td><strong>常數</strong>: <code>"http://terminology.hl7.org/CodeSystem/v2-0203"</code></td>
-</tr>
-<tr>
-<td>—</td>
-<td><code>identifier[0].type.coding[0].code</code></td>
-<td><strong>常數</strong>: <code>"MD"</code></td>
-</tr>
-<tr>
-<td><code>idSystem</code></td>
-<td><code>identifier[0].system</code></td>
-<td>直接映射</td>
-</tr>
-<tr>
-<td><code>identifierValue</code></td>
-<td><code>identifier[0].value</code></td>
-<td>直接映射</td>
-</tr>
-<tr>
-<td><code>active</code></td>
-<td><code>active</code></td>
-<td>直接映射</td>
-</tr>
-<tr>
-<td><code>periodStart</code></td>
-<td><code>period.start</code></td>
-<td>直接映射</td>
-</tr>
-<tr>
-<td><code>periodEnd</code></td>
-<td><code>period.end</code></td>
-<td>直接映射</td>
-</tr>
-<tr>
-<td><code>practitionerId</code> (ref)</td>
-<td><code>practitioner.reference</code></td>
-<td><strong>Cross-ref</strong> → <code>Practitioner/{uuid}</code></td>
-</tr>
-<tr>
-<td><code>organizationId</code> (ref)</td>
-<td><code>organization.reference</code></td>
-<td><strong>Cross-ref</strong> → <code>Organization/{uuid}</code></td>
-</tr>
-<tr>
-<td><code>roleCode</code>: <code>"PR-0008"</code></td>
-<td><code>code[0].coding[0].system</code></td>
-<td><strong>常數</strong>: <code>"http://snomed.info/sct"</code></td>
-</tr>
-<tr>
-<td><code>roleCode</code>: <code>"PR-0008"</code></td>
-<td><code>code[0].coding[0].code</code></td>
-<td><strong>查 SNOMED</strong> → <code>"309294001"</code> (Emergency physician)</td>
-</tr>
-<tr>
-<td><code>roleText</code></td>
-<td><code>code[0].text</code></td>
-<td>直接映射</td>
-</tr>
-<tr>
-<td><code>specialtyCode</code>: <code>"Spec-0004"</code></td>
-<td><code>specialty[0].coding[0].system</code></td>
-<td><strong>常數</strong>: <code>"http://snomed.info/sct"</code></td>
-</tr>
-<tr>
-<td><code>specialtyCode</code>: <code>"Spec-0004"</code></td>
-<td><code>specialty[0].coding[0].code</code></td>
-<td><strong>查 SNOMED</strong> → <code>"773568002"</code> (Emergency medicine)</td>
-</tr>
-<tr>
-<td><code>telecomSystem</code></td>
-<td><code>telecom[0].system</code></td>
-<td>直接映射</td>
-</tr>
-<tr>
-<td><code>telecomValue</code></td>
-<td><code>telecom[0].value</code></td>
-<td>直接映射</td>
-</tr>
-<tr>
-<td><code>telecomUse</code></td>
-<td><code>telecom[0].use</code></td>
-<td>直接映射</td>
-</tr>
-</tbody>
-</table>
-<hr />
-<h2 id="5-encounter">5. Encounter<a class="headerlink" href="#5-encounter" title="Permanent link">&para;</a></h2>
-<p><strong>Profile</strong>: <code>Encounter-twcore</code></p>
-<table>
-<thead>
-<tr>
-<th>輸入欄位</th>
-<th>FHIR Path</th>
-<th>規則</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>—</td>
-<td><code>resourceType</code></td>
-<td><strong>常數</strong>: <code>"Encounter"</code></td>
-</tr>
-<tr>
-<td>—</td>
-<td><code>meta.profile[0]</code></td>
-<td><strong>常數</strong>: <code>"https://twcore.mohw.gov.tw/ig/twcore/StructureDefinition/Encounter-twcore"</code></td>
-</tr>
-<tr>
-<td>—</td>
-<td><code>text.status</code></td>
-<td><strong>常數</strong>: <code>"generated"</code></td>
-</tr>
-<tr>
-<td>—</td>
-<td><code>text.div</code></td>
-<td><strong>常數</strong>: <code>&lt;div xmlns="..."&gt;&lt;p&gt;Encounter&lt;/p&gt;&lt;/div&gt;</code></td>
-</tr>
-<tr>
-<td><code>idSystem</code></td>
-<td><code>identifier[0].system</code></td>
-<td>直接映射</td>
-</tr>
-<tr>
-<td><code>id</code></td>
-<td><code>identifier[0].value</code></td>
-<td>直接映射</td>
-</tr>
-<tr>
-<td><code>status</code></td>
-<td><code>status</code></td>
-<td>直接映射</td>
-</tr>
-<tr>
-<td><code>class</code></td>
-<td><code>class.system</code></td>
-<td><strong>常數</strong>: <code>"http://terminology.hl7.org/CodeSystem/v3-ActCode"</code></td>
-</tr>
-<tr>
-<td><code>class</code></td>
-<td><code>class.code</code></td>
-<td>直接映射 (e.g. <code>"EMER"</code>)</td>
-</tr>
-<tr>
-<td><code>type</code></td>
-<td><code>type[0].coding[0].system</code></td>
-<td><strong>常數</strong>: <code>"http://terminology.hl7.org/CodeSystem/v3-ActCode"</code></td>
-</tr>
-<tr>
-<td><code>type</code></td>
-<td><code>type[0].coding[0].code</code></td>
-<td>直接映射 (e.g. <code>"EMER"</code>)</td>
-</tr>
-<tr>
-<td><code>patientId</code> (ref)</td>
-<td><code>subject.reference</code></td>
-<td><strong>Cross-ref</strong> → <code>Patient/{uuid}</code></td>
-</tr>
-<tr>
-<td><code>participantType</code></td>
-<td><code>participant[0].type[0].coding[0].system</code></td>
-<td><strong>常數</strong>: <code>"http://terminology.hl7.org/CodeSystem/v3-ParticipationType"</code></td>
-</tr>
-<tr>
-<td><code>participantType</code></td>
-<td><code>participant[0].type[0].coding[0].code</code></td>
-<td>直接映射 (e.g. <code>"ATND"</code>)</td>
-</tr>
-<tr>
-<td><code>periodStart</code></td>
-<td><code>participant[0].period.start</code></td>
-<td>直接映射</td>
-</tr>
-<tr>
-<td><code>periodEnd</code></td>
-<td><code>participant[0].period.end</code></td>
-<td>直接映射</td>
-</tr>
-<tr>
-<td><code>practitionerId</code> (ref)</td>
-<td><code>participant[0].individual.reference</code></td>
-<td><strong>Cross-ref</strong> → <code>Practitioner/{uuid}</code></td>
-</tr>
-<tr>
-<td><code>periodStart</code></td>
-<td><code>period.start</code></td>
-<td>直接映射</td>
-</tr>
-<tr>
-<td><code>periodEnd</code></td>
-<td><code>period.end</code></td>
-<td>直接映射</td>
-</tr>
-<tr>
-<td><code>reasonCode</code>: <code>"Cond-0019"</code></td>
-<td><code>reasonCode[0].coding[0].system</code></td>
-<td><strong>常數</strong>: <code>"http://snomed.info/sct"</code></td>
-</tr>
-<tr>
-<td><code>reasonCode</code>: <code>"Cond-0019"</code></td>
-<td><code>reasonCode[0].coding[0].code</code></td>
-<td><strong>查 SNOMED</strong> → <code>"22298006"</code> (Chest pain)</td>
-</tr>
-<tr>
-<td><code>conditionId</code> (ref)</td>
-<td><code>diagnosis[0].condition.reference</code></td>
-<td><strong>Cross-ref</strong> → <code>Condition/{uuid}</code></td>
-</tr>
-<tr>
-<td><code>diagnosisUse</code></td>
-<td><code>diagnosis[0].use.coding[0].system</code></td>
-<td><strong>常數</strong>: <code>"http://terminology.hl7.org/CodeSystem/diagnosis-role"</code></td>
-</tr>
-<tr>
-<td><code>diagnosisUse</code></td>
-<td><code>diagnosis[0].use.coding[0].code</code></td>
-<td>直接映射 (e.g. <code>"AD"</code>)</td>
-</tr>
-<tr>
-<td><code>admitSource</code></td>
-<td><code>hospitalization.admitSource.coding[0].system</code></td>
-<td><strong>常數</strong>: <code>"http://terminology.hl7.org/CodeSystem/admit-source"</code></td>
-</tr>
-<tr>
-<td><code>admitSource</code></td>
-<td><code>hospitalization.admitSource.coding[0].code</code></td>
-<td>直接映射 (e.g. <code>"emd"</code>)</td>
-</tr>
-<tr>
-<td><code>serviceProviderId</code> (ref)</td>
-<td><code>serviceProvider.reference</code></td>
-<td><strong>Cross-ref</strong> → <code>Organization/{uuid}</code></td>
-</tr>
-<tr>
-<td><code>serviceType</code></td>
-<td><code>serviceType.coding[0].system</code></td>
-<td><strong>常數</strong>: <code>"http://terminology.hl7.org/CodeSystem/service-type"</code></td>
-</tr>
-<tr>
-<td><code>serviceType</code>: <code>"emergency"</code></td>
-<td><code>serviceType.coding[0].code</code></td>
-<td><strong>查 value set</strong>: <code>"emergency"</code> → <code>"117"</code></td>
-</tr>
-<tr>
-<td><code>serviceTypeText</code></td>
-<td><code>serviceType.text</code></td>
-<td>直接映射</td>
-</tr>
-</tbody>
-</table>
-<hr />
-<h2 id="6-condition">6. Condition<a class="headerlink" href="#6-condition" title="Permanent link">&para;</a></h2>
-<p><strong>Profile</strong>: <code>Condition-twcore</code></p>
-<table>
-<thead>
-<tr>
-<th>輸入欄位</th>
-<th>FHIR Path</th>
-<th>規則</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>—</td>
-<td><code>resourceType</code></td>
-<td><strong>常數</strong>: <code>"Condition"</code></td>
-</tr>
-<tr>
-<td>—</td>
-<td><code>meta.profile[0]</code></td>
-<td><strong>常數</strong>: <code>"https://twcore.mohw.gov.tw/ig/twcore/StructureDefinition/Condition-twcore"</code></td>
-</tr>
-<tr>
-<td>—</td>
-<td><code>text.status</code></td>
-<td><strong>常數</strong>: <code>"generated"</code></td>
-</tr>
-<tr>
-<td>—</td>
-<td><code>text.div</code></td>
-<td><strong>常數</strong>: <code>&lt;div xmlns="..."&gt;&lt;p&gt;Condition&lt;/p&gt;&lt;/div&gt;</code></td>
-</tr>
-<tr>
-<td>—</td>
-<td><code>clinicalStatus.coding[0].system</code></td>
-<td><strong>常數</strong>: <code>"http://terminology.hl7.org/CodeSystem/condition-clinical"</code></td>
-</tr>
-<tr>
-<td><code>clinicalStatus</code></td>
-<td><code>clinicalStatus.coding[0].code</code></td>
-<td>直接映射 (e.g. <code>"active"</code>)</td>
-</tr>
-<tr>
-<td>—</td>
-<td><code>verificationStatus.coding[0].system</code></td>
-<td><strong>常數</strong>: <code>"http://terminology.hl7.org/CodeSystem/condition-ver-status"</code></td>
-</tr>
-<tr>
-<td><code>verificationStatus</code></td>
-<td><code>verificationStatus.coding[0].code</code></td>
-<td>直接映射 (e.g. <code>"confirmed"</code>)</td>
-</tr>
-<tr>
-<td>—</td>
-<td><code>category[0].coding[0].system</code></td>
-<td><strong>常數</strong>: <code>"http://terminology.hl7.org/CodeSystem/condition-category"</code></td>
-</tr>
-<tr>
-<td><code>category</code></td>
-<td><code>category[0].coding[0].code</code></td>
-<td>直接映射 (e.g. <code>"encounter-diagnosis"</code>)</td>
-</tr>
-<tr>
-<td>—</td>
-<td><code>severity.coding[0].system</code></td>
-<td><strong>常數</strong>: <code>"http://snomed.info/sct"</code></td>
-</tr>
-<tr>
-<td><code>severity</code>: <code>"24484000"</code></td>
-<td><code>severity.coding[0].code</code></td>
-<td>直接映射（已是 SNOMED code）</td>
-</tr>
-<tr>
-<td><code>conditionCode</code>: <code>"Cond-0023"</code></td>
-<td><code>code.coding[0].system</code></td>
-<td><strong>常數</strong>: <code>"http://snomed.info/sct"</code></td>
-</tr>
-<tr>
-<td><code>conditionCode</code>: <code>"Cond-0023"</code></td>
-<td><code>code.coding[0].code</code></td>
-<td><strong>查 SNOMED</strong> → <code>"57054005"</code> (Acute chest pain)</td>
-</tr>
-<tr>
-<td><code>conditionText</code></td>
-<td><code>code.text</code></td>
-<td>直接映射 (e.g. <code>"突發胸痛"</code>)</td>
-</tr>
-<tr>
-<td><code>patientId</code> (ref)</td>
-<td><code>subject.reference</code></td>
-<td><strong>Cross-ref</strong> → <code>Patient/{uuid}</code></td>
-</tr>
-<tr>
-<td><code>onsetDate</code></td>
-<td><code>onsetDateTime</code></td>
-<td>直接映射</td>
-</tr>
-<tr>
-<td><code>asserterId</code> (ref)</td>
-<td><code>asserter.reference</code></td>
-<td><strong>Cross-ref</strong> → <code>Patient/{uuid}</code></td>
-</tr>
-<tr>
-<td><code>recorderId</code> (ref)</td>
-<td><code>recorder.reference</code></td>
-<td><strong>Cross-ref</strong> → <code>Practitioner/{uuid}</code></td>
-</tr>
-<tr>
-<td><code>note</code></td>
-<td><code>note[0].text</code></td>
-<td>直接映射</td>
-</tr>
-</tbody>
-</table>
-<hr />
-<h2 id="7-observation-vital-signs">7. Observation — Vital Signs<a class="headerlink" href="#7-observation-vital-signs" title="Permanent link">&para;</a></h2>
-<h3 id="7a-heart-rate-observationcode-vs-0006">7a. Heart Rate (observationCode <code>"VS-0006"</code>)<a class="headerlink" href="#7a-heart-rate-observationcode-vs-0006" title="Permanent link">&para;</a></h3>
-<p><strong>Profile</strong>: <code>Observation-heart-rate-twcore</code></p>
-<table>
-<thead>
-<tr>
-<th>輸入欄位</th>
-<th>FHIR Path</th>
-<th>規則</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>—</td>
-<td><code>resourceType</code></td>
-<td><strong>常數</strong>: <code>"Observation"</code></td>
-</tr>
-<tr>
-<td>—</td>
-<td><code>meta.profile[0]</code></td>
-<td><strong>常數</strong>: <code>"https://twcore.mohw.gov.tw/ig/twcore/StructureDefinition/Observation-heart-rate-twcore"</code></td>
-</tr>
-<tr>
-<td>—</td>
-<td><code>text.status</code></td>
-<td><strong>常數</strong>: <code>"generated"</code></td>
-</tr>
-<tr>
-<td>—</td>
-<td><code>text.div</code></td>
-<td><strong>常數</strong>: <code>&lt;div xmlns="..."&gt;&lt;p&gt;Observation&lt;/p&gt;&lt;/div&gt;</code></td>
-</tr>
-<tr>
-<td><code>status</code></td>
-<td><code>status</code></td>
-<td>直接映射 (e.g. <code>"final"</code>)</td>
-</tr>
-<tr>
-<td>—</td>
-<td><code>category[0].coding[0].system</code></td>
-<td><strong>常數</strong>: <code>"http://terminology.hl7.org/CodeSystem/observation-category"</code></td>
-</tr>
-<tr>
-<td><code>categoryCode</code></td>
-<td><code>category[0].coding[0].code</code></td>
-<td>直接映射 (e.g. <code>"vital-signs"</code>)</td>
-</tr>
-<tr>
-<td>—</td>
-<td><code>code.coding[0].system</code></td>
-<td><strong>常數</strong>: <code>"http://loinc.org"</code></td>
-</tr>
-<tr>
-<td><code>observationCode</code>: <code>"VS-0006"</code></td>
-<td><code>code.coding[0].code</code></td>
-<td><strong>查 LOINC</strong> → <code>"8867-4"</code> (Heart rate)</td>
-</tr>
-<tr>
-<td><code>patientId</code> (ref)</td>
-<td><code>subject.reference</code></td>
-<td><strong>Cross-ref</strong> → <code>Patient/{uuid}</code></td>
-</tr>
-<tr>
-<td><code>encounterId</code> (ref)</td>
-<td><code>encounter.reference</code></td>
-<td><strong>Cross-ref</strong> → <code>Encounter/{uuid}</code></td>
-</tr>
-<tr>
-<td><code>effectiveDate</code></td>
-<td><code>effectiveDateTime</code></td>
-<td>直接映射</td>
-</tr>
-<tr>
-<td><code>performerId</code> (ref)</td>
-<td><code>performer[0].reference</code></td>
-<td><strong>Cross-ref</strong> → <code>Practitioner/{uuid}</code></td>
-</tr>
-<tr>
-<td><code>valueQuantity</code></td>
-<td><code>valueQuantity.value</code></td>
-<td>直接映射</td>
-</tr>
-<tr>
-<td><code>valueUnit</code></td>
-<td><code>valueQuantity.unit</code></td>
-<td><strong>映射</strong>: <code>"/min"</code> → <code>"per minute"</code></td>
-</tr>
-<tr>
-<td>—</td>
-<td><code>valueQuantity.system</code></td>
-<td><strong>常數</strong>: <code>"http://unitsofmeasure.org"</code></td>
-</tr>
-<tr>
-<td><code>valueUnit</code></td>
-<td><code>valueQuantity.code</code></td>
-<td>直接映射 (e.g. <code>"/min"</code>)</td>
-</tr>
-<tr>
-<td><code>rangeLow</code></td>
-<td><code>referenceRange[0].low.value</code></td>
-<td>直接映射</td>
-</tr>
-<tr>
-<td><code>rangeHigh</code></td>
-<td><code>referenceRange[0].high.value</code></td>
-<td>直接映射</td>
-</tr>
-</tbody>
-</table>
-<h3 id="7b-pulse-oximetry-observationcode-vs-0012">7b. Pulse Oximetry (observationCode <code>"VS-0012"</code>)<a class="headerlink" href="#7b-pulse-oximetry-observationcode-vs-0012" title="Permanent link">&para;</a></h3>
-<p><strong>Profile</strong>: <code>Observation-pulse-oximetry-twcore</code></p>
-<table>
-<thead>
-<tr>
-<th>輸入欄位</th>
-<th>FHIR Path</th>
-<th>規則</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>—</td>
-<td><code>resourceType</code></td>
-<td><strong>常數</strong>: <code>"Observation"</code></td>
-</tr>
-<tr>
-<td>—</td>
-<td><code>meta.profile[0]</code></td>
-<td><strong>常數</strong>: <code>"https://twcore.mohw.gov.tw/ig/twcore/StructureDefinition/Observation-pulse-oximetry-twcore"</code></td>
-</tr>
-<tr>
-<td>—</td>
-<td><code>text.status</code></td>
-<td><strong>常數</strong>: <code>"generated"</code></td>
-</tr>
-<tr>
-<td>—</td>
-<td><code>text.div</code></td>
-<td><strong>常數</strong>: <code>&lt;div xmlns="..."&gt;&lt;p&gt;Observation&lt;/p&gt;&lt;/div&gt;</code></td>
-</tr>
-<tr>
-<td><code>status</code></td>
-<td><code>status</code></td>
-<td>直接映射</td>
-</tr>
-<tr>
-<td>—</td>
-<td><code>category[0].coding[0].system</code></td>
-<td><strong>常數</strong>: <code>"http://terminology.hl7.org/CodeSystem/observation-category"</code></td>
-</tr>
-<tr>
-<td><code>categoryCode</code></td>
-<td><code>category[0].coding[0].code</code></td>
-<td>直接映射</td>
-</tr>
-<tr>
-<td>—</td>
-<td><code>code.coding[0].system</code></td>
-<td><strong>常數</strong>: <code>"http://loinc.org"</code></td>
-</tr>
-<tr>
-<td><code>observationCode</code>: <code>"VS-0012"</code></td>
-<td><code>code.coding[0].code</code></td>
-<td><strong>查 LOINC</strong> → <code>"59408-5"</code> (O2 sat)</td>
-</tr>
-<tr>
-<td>—</td>
-<td><code>code.coding[1].system</code></td>
-<td><strong>常數</strong>: <code>"http://loinc.org"</code>（第二個 code）</td>
-</tr>
-<tr>
-<td><code>observationCode</code>: <code>"VS-0012"</code></td>
-<td><code>code.coding[1].code</code></td>
-<td><strong>查 LOINC</strong> → <code>"2708-6"</code> (SpO2)</td>
-</tr>
-<tr>
-<td><code>patientId</code> (ref)</td>
-<td><code>subject.reference</code></td>
-<td><strong>Cross-ref</strong> → <code>Patient/{uuid}</code></td>
-</tr>
-<tr>
-<td><code>encounterId</code> (ref)</td>
-<td><code>encounter.reference</code></td>
-<td><strong>Cross-ref</strong> → <code>Encounter/{uuid}</code></td>
-</tr>
-<tr>
-<td><code>effectiveDate</code></td>
-<td><code>effectiveDateTime</code></td>
-<td>直接映射</td>
-</tr>
-<tr>
-<td><code>performerId</code> (ref)</td>
-<td><code>performer[0].reference</code></td>
-<td><strong>Cross-ref</strong> → <code>Practitioner/{uuid}</code></td>
-</tr>
-<tr>
-<td><code>valueQuantity</code></td>
-<td><code>valueQuantity.value</code></td>
-<td>直接映射</td>
-</tr>
-<tr>
-<td><code>valueUnit</code></td>
-<td><code>valueQuantity.unit</code></td>
-<td><strong>映射</strong>: <code>"%"</code> → <code>"percent"</code></td>
-</tr>
-<tr>
-<td>—</td>
-<td><code>valueQuantity.system</code></td>
-<td><strong>常數</strong>: <code>"http://unitsofmeasure.org"</code></td>
-</tr>
-<tr>
-<td><code>valueUnit</code></td>
-<td><code>valueQuantity.code</code></td>
-<td>直接映射 (e.g. <code>"%"</code>)</td>
-</tr>
-<tr>
-<td><code>rangeLow</code></td>
-<td><code>referenceRange[0].low.value</code></td>
-<td>直接映射</td>
-</tr>
-<tr>
-<td><code>rangeHigh</code></td>
-<td><code>referenceRange[0].high.value</code></td>
-<td>直接映射</td>
-</tr>
-</tbody>
-</table>
-<hr />
-<h2 id="8-code-lookup">8. Code Lookup 總表<a class="headerlink" href="#8-code-lookup" title="Permanent link">&para;</a></h2>
-<p>這是所有需要從「院內 code → 標準 code」的查詢，以及需要 LLM 或 <code>search_snomed</code> / <code>search_loinc</code> 工具查的項目：</p>
-<table>
-<thead>
-<tr>
-<th>院內 Code</th>
-<th>資源</th>
-<th>FHIR 欄位</th>
-<th>查詢 system</th>
-<th>預期結果</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>Cond-0023</code></td>
-<td>Condition</td>
-<td><code>code.coding[0].code</code></td>
-<td>SNOMED</td>
-<td><code>57054005</code> (Acute chest pain)</td>
-</tr>
-<tr>
-<td><code>Cond-0019</code></td>
-<td>Encounter</td>
-<td><code>reasonCode[0].coding[0].code</code></td>
-<td>SNOMED</td>
-<td><code>22298006</code> (Chest pain)</td>
-</tr>
-<tr>
-<td><code>PR-0008</code></td>
-<td>PractitionerRole</td>
-<td><code>code[0].coding[0].code</code></td>
-<td>SNOMED</td>
-<td><code>309294001</code> (Emergency physician)</td>
-</tr>
-<tr>
-<td><code>Spec-0004</code></td>
-<td>PractitionerRole</td>
-<td><code>specialty[0].coding[0].code</code></td>
-<td>SNOMED</td>
-<td><code>773568002</code> (Emergency medicine)</td>
-</tr>
-<tr>
-<td><code>Qual-0001</code></td>
-<td>Practitioner</td>
-<td><code>qualification[0].code.coding[0].code</code></td>
-<td>SNOMED</td>
-<td><code>158965000</code> (Doctor)</td>
-</tr>
-<tr>
-<td><code>VS-0006</code></td>
-<td>Observation (HR)</td>
-<td><code>code.coding[0].code</code></td>
-<td>LOINC</td>
-<td><code>8867-4</code> (Heart rate)</td>
-</tr>
-<tr>
-<td><code>VS-0012</code></td>
-<td>Observation (SpO2)</td>
-<td><code>code.coding[0].code</code></td>
-<td>LOINC</td>
-<td><code>59408-5</code> (O2 sat)</td>
-</tr>
-<tr>
-<td><code>VS-0012</code></td>
-<td>Observation (SpO2)</td>
-<td><code>code.coding[1].code</code></td>
-<td>LOINC</td>
-<td><code>2708-6</code> (SpO2)</td>
-</tr>
-<tr>
-<td><code>"emergency"</code></td>
-<td>Encounter</td>
-<td><code>serviceType.coding[0].code</code></td>
-<td>service-type CS</td>
-<td><code>"117"</code></td>
-</tr>
-</tbody>
-</table>
-<hr />
-<h2 id="9-code">9. 一般查詢（自然語言 → 標準 code）<a class="headerlink" href="#9-code" title="Permanent link">&para;</a></h2>
-<p>除了上面的院內 code lookup，這條賽道也需要從 <strong>中文敘述</strong> 查標準 code。這可以依靠現有的 <code>search_snomed</code>、<code>search_loinc</code> 工具，或由 <code>twcore_batch_transform</code> 調用：</p>
-<table>
-<thead>
-<tr>
-<th>資源</th>
-<th>輸入文字</th>
-<th>要查什麼</th>
-<th>預期結果</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>Condition</td>
-<td><code>conditionText</code>: <code>"突發胸痛"</code></td>
-<td>SNOMED</td>
-<td><code>57054005</code></td>
-</tr>
-<tr>
-<td>Encounter</td>
-<td><code>reasonCode</code> 隱含 <code>"胸痛"</code></td>
-<td>SNOMED</td>
-<td><code>22298006</code></td>
-</tr>
-</tbody>
-</table>
-<hr />
-<h2 id="10">10. 輸入欄位對應決定邏輯<a class="headerlink" href="#10" title="Permanent link">&para;</a></h2>
-<p><code>twcore_batch_transform</code> 如何決定哪些輸入欄位對應到哪個 resource type：</p>
-<pre><code class="language-python"># 對應邏輯：
-input_has(&quot;patients&quot;)            → FHIRPatientService
-input_has(&quot;organizations&quot;)        → FHIROrganizationService
-input_has(&quot;practitioners&quot;)        → FHIRPractitionerService
-input_has(&quot;practitionerroles&quot;)    → FHIRPractitionerRoleService
-input_has(&quot;encounters&quot;)           → FHIREncounterService
-input_has(&quot;conditions&quot;)           → FHIRConditionService
-input_has(&quot;observationVitalSigns&quot;) → FHIRObservationService (vital-signs mode)
+<p>Node 使用 compose 的 port 8000：</p>
+<pre><code class="language-bash">docker compose up -d app
+python scripts/api_parity_test.py \
+  --python-url http://127.0.0.1:8011 \
+  --node-url http://127.0.0.1:8000 \
+  --report parity-report.json
 </code></pre>
-<p>各 service 內部循環處理該 array 的每個 item，並自動維護 cross-reference map 供後續解析使用。</p>
+<p>目前結果：</p>
+<pre><code class="language-text">37 passed, 3 warned, 13 skipped, 0 failed
+</code></pre>
+<p>3 個 warning 是 embedding 搜尋候選排序不同；13 個 skip 是雙邊皆因資料未載入而停用。</p>
+<h2 id="_6">建議轉移計畫<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h2>
+<h3 id="phase-0">Phase 0：凍結基準<a class="headerlink" href="#phase-0" title="Permanent link">&para;</a></h3>
+<ol>
+<li>固定 Python reference image、環境變數與資料庫 snapshot。</li>
+<li>將 <code>scripts/api_parity_test.py</code> 放入 CI。</li>
+<li>對寫入型 FHIR API 僅測試拒絕/validation，不對外部正式 server 寫資料。</li>
+</ol>
+<p>通過條件：工具清單、property/required schema 與所有啟用工具無 failure。</p>
+<h3 id="phase-1">Phase 1：補齊資料<a class="headerlink" href="#phase-1" title="Permanent link">&para;</a></h3>
+<ol>
+<li>從 Admin Modules 匯入 Drug、Food、Supplements、Guideline。</li>
+<li>重建各模組 embeddings。</li>
+<li>再跑 parity，要求 53 個工具全部執行，不再有 module inactive skip。</li>
+</ol>
+<p>通過條件：資料量超過 <code>moduleStatus.ts</code> 門檻，53 工具雙邊同時出現。</p>
+<h3 id="phase-2shadow-traffic">Phase 2：Shadow traffic<a class="headerlink" href="#phase-2shadow-traffic" title="Permanent link">&para;</a></h3>
+<ol>
+<li>正式流量仍送 Python。</li>
+<li>將 read-only MCP calls 複製到 Node，保存 latency、error、shape diff。</li>
+<li>搜尋型工具比較 top-N code overlap，不要求排序完全相同。</li>
+</ol>
+<p>建議門檻：錯誤率差 &lt; 0.5%，P95 latency 不高於 Python 20%，核心碼值 top-3 overlap ≥ 80%。</p>
+<h3 id="phase-3canary">Phase 3：Canary<a class="headerlink" href="#phase-3canary" title="Permanent link">&para;</a></h3>
+<p>依 5% → 25% → 50% → 100% 將 MCP 流量切到 Node。每階段至少觀察一個完整業務高峰，
+監控 <code>/health</code>、<code>/metrics</code>、PostgreSQL pool、Redis、Ollama timeout 與外部 FHIR OAuth。</p>
+<p>回滾條件：錯誤率、資料錯誤、OAuth 失敗或 DB pool saturation 超過既定門檻。</p>
+<h3 id="phase-4">Phase 4：正式切換<a class="headerlink" href="#phase-4" title="Permanent link">&para;</a></h3>
+<ol>
+<li>對外僅保留 Node <code>/mcp</code>。</li>
+<li>Python MCP server 停止接收流量，但保留 image 一個 release window。</li>
+<li><code>admin-worker</code>/loader 繼續運作，不受 MCP runtime 切換影響。</li>
+<li>更新 runbook、告警、SLO 與災難復原文件。</li>
+</ol>
+<h3 id="phase-5-python-mcp">Phase 5：移除 Python MCP<a class="headerlink" href="#phase-5-python-mcp" title="Permanent link">&para;</a></h3>
+<p>連續兩個 release 無回滾後，移除 Python MCP 部署設定。不要刪除
+<code>src/</code>、<code>loader/</code> 或 <code>Dockerfile.python</code>，直到 ETL/worker 已有獨立替代方案。</p>
+<h2 id="_7">回滾策略<a class="headerlink" href="#_7" title="Permanent link">&para;</a></h2>
+<ul>
+<li>保持同一 PostgreSQL/Redis schema，Node 未引入破壞性 migration。</li>
+<li>反向代理只需把 <code>/mcp</code> upstream 從 Node 切回 Python。</li>
+<li>回滾前停止 Node 新流量；不需回復資料庫。</li>
+<li>若是搜尋品質問題，可先停用 Ollama semantic，退回 lexical，而不必回滾整個 runtime。</li>
+</ul>
 
 
 

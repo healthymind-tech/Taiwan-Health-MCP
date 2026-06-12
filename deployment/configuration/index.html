@@ -1994,21 +1994,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#node-mcp-gateway-app" class="md-nav__link">
+  <a href="#mcp" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Node MCP Gateway（預設 app）
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#legacy-python-mcp" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Legacy Python MCP 傳輸（非預設）
+        MCP 傳輸
       
     </span>
   </a>
@@ -2054,7 +2043,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#mcp" class="md-nav__link">
+  <a href="#mcp_1" class="md-nav__link">
     <span class="md-ellipsis">
       
         MCP 傳輸模式
@@ -2066,10 +2055,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#node-streamable-http" class="md-nav__link">
+  <a href="#streamable-http" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Node streamable-http（預設）
+        streamable-http（生產環境，推薦）
       
     </span>
   </a>
@@ -2077,10 +2066,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#legacy-python-stdio-claude-desktop" class="md-nav__link">
+  <a href="#stdio-claude-desktop" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Legacy Python stdio（本地開發 / Claude Desktop 直接啟動）
+        stdio（本地開發 / Claude Desktop 直接啟動）
       
     </span>
   </a>
@@ -2579,21 +2568,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#node-mcp-gateway-app" class="md-nav__link">
+  <a href="#mcp" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Node MCP Gateway（預設 app）
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#legacy-python-mcp" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Legacy Python MCP 傳輸（非預設）
+        MCP 傳輸
       
     </span>
   </a>
@@ -2639,7 +2617,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#mcp" class="md-nav__link">
+  <a href="#mcp_1" class="md-nav__link">
     <span class="md-ellipsis">
       
         MCP 傳輸模式
@@ -2651,10 +2629,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#node-streamable-http" class="md-nav__link">
+  <a href="#streamable-http" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Node streamable-http（預設）
+        streamable-http（生產環境，推薦）
       
     </span>
   </a>
@@ -2662,10 +2640,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#legacy-python-stdio-claude-desktop" class="md-nav__link">
+  <a href="#stdio-claude-desktop" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Legacy Python stdio（本地開發 / Claude Desktop 直接啟動）
+        stdio（本地開發 / Claude Desktop 直接啟動）
       
     </span>
   </a>
@@ -2763,35 +2741,7 @@
 </tr>
 </tbody>
 </table>
-<h3 id="node-mcp-gateway-app">Node MCP Gateway（預設 app）<a class="headerlink" href="#node-mcp-gateway-app" title="Permanent link">&para;</a></h3>
-<table>
-<thead>
-<tr>
-<th>變數</th>
-<th>預設值</th>
-<th>說明</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>NODE_MCP_PORT</code></td>
-<td><code>8000</code></td>
-<td>Node gateway 對外與容器內監聽埠</td>
-</tr>
-<tr>
-<td><code>NODE_MCP_PATH</code></td>
-<td><code>/mcp</code></td>
-<td>streamable-http MCP 端點路徑</td>
-</tr>
-<tr>
-<td><code>NODE_METRICS_PATH</code></td>
-<td><code>/metrics</code></td>
-<td>Prometheus metrics 路徑（與 MCP 同一埠）</td>
-</tr>
-</tbody>
-</table>
-<p>根目錄 <code>Dockerfile</code> 預設建置 Node.js MCP gateway；legacy Python runtime 已移到 <code>Dockerfile.python</code>，由 <code>admin-worker</code> / loader 類背景工作使用。</p>
-<h3 id="legacy-python-mcp">Legacy Python MCP 傳輸（非預設）<a class="headerlink" href="#legacy-python-mcp" title="Permanent link">&para;</a></h3>
+<h3 id="mcp">MCP 傳輸<a class="headerlink" href="#mcp" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
 <tr>
@@ -2881,11 +2831,12 @@
 </tbody>
 </table>
 <hr />
-<h2 id="mcp">MCP 傳輸模式<a class="headerlink" href="#mcp" title="Permanent link">&para;</a></h2>
-<h3 id="node-streamable-http">Node streamable-http（預設）<a class="headerlink" href="#node-streamable-http" title="Permanent link">&para;</a></h3>
-<pre><code class="language-env">NODE_MCP_PORT=8000
-NODE_MCP_PATH=/mcp
-NODE_METRICS_PATH=/metrics
+<h2 id="mcp_1">MCP 傳輸模式<a class="headerlink" href="#mcp_1" title="Permanent link">&para;</a></h2>
+<h3 id="streamable-http">streamable-http（生產環境，推薦）<a class="headerlink" href="#streamable-http" title="Permanent link">&para;</a></h3>
+<pre><code class="language-env">MCP_TRANSPORT=streamable-http
+MCP_HOST=0.0.0.0
+MCP_PORT=8000
+MCP_PATH=/mcp
 </code></pre>
 <p>Claude Desktop 連線設定：</p>
 <pre><code class="language-json">{
@@ -2897,7 +2848,7 @@ NODE_METRICS_PATH=/metrics
   }
 }
 </code></pre>
-<h3 id="legacy-python-stdio-claude-desktop">Legacy Python stdio（本地開發 / Claude Desktop 直接啟動）<a class="headerlink" href="#legacy-python-stdio-claude-desktop" title="Permanent link">&para;</a></h3>
+<h3 id="stdio-claude-desktop">stdio（本地開發 / Claude Desktop 直接啟動）<a class="headerlink" href="#stdio-claude-desktop" title="Permanent link">&para;</a></h3>
 <pre><code class="language-env">MCP_TRANSPORT=stdio
 </code></pre>
 <p>Claude Desktop 設定：</p>
@@ -2922,10 +2873,11 @@ POSTGRES_DB=taiwan_health
 POSTGRES_USER=mcp
 POSTGRES_PASSWORD=change_me_please
 
-# ── Node MCP Server ────────────────────────────────────────────
-NODE_MCP_PORT=8000
-NODE_MCP_PATH=/mcp
-NODE_METRICS_PATH=/metrics
+# ── MCP Server ─────────────────────────────────────────────────
+MCP_TRANSPORT=streamable-http
+MCP_HOST=0.0.0.0
+MCP_PORT=8000
+MCP_PATH=/mcp
 
 # ── Monitoring ─────────────────────────────────────────────────
 LOG_LEVEL=INFO
