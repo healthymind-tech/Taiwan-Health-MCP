@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <link rel="shortcut icon" type="image/png" href="/favicon.png">
+  <title>Data Processing Agreement – Taiwan Health MCP Server</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; margin: 0; line-height: 1.7; color: #222;
+           background: #fff; }
+    nav { position: sticky; top: 0; background: #fff; border-bottom: 1px solid #e5e7eb;
+          padding: 0 24px; z-index: 100; }
+    .nav-inner { display: flex; align-items: center; max-width: 900px;
+                 margin: 0 auto; padding: 10px 0; }
+    .nav-inner img { height: 36px; display: block; }
+    .wrap { max-width: 900px; margin: 0 auto; padding: 0 24px 48px; }
+    h1 { font-size: 1.6rem; margin-top: 36px; margin-bottom: 4px; }
+    h2 { font-size: 1.15rem; margin-top: 2rem; }
+    h3 { font-size: 1.0rem; margin-top: 1.4rem; }
+    p, li { font-size: 0.97rem; }
+    code { background: #f4f4f4; padding: 1px 5px; border-radius: 3px; font-size: 0.9rem; }
+    .tbl-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 1rem 0; }
+    table { border-collapse: collapse; width: 100%; min-width: 480px; }
+    th, td { border: 1px solid #ddd; padding: 8px 12px; font-size: 0.95rem; }
+    th { background: #f6f6f6; text-align: left; }
+    a { color: #0066cc; }
+    @media (max-width: 600px) {
+      nav { padding: 0 16px; }
+      .wrap { padding: 0 16px 32px; }
+      h1 { font-size: 1.25rem; margin-top: 24px; }
+      h2 { font-size: 1.05rem; }
+      p, li { font-size: 0.93rem; }
+      th, td { font-size: 0.85rem; padding: 6px 8px; }
+    }
+  </style>
+</head>
+<body>
+<nav>
+  <div class="nav-inner">
+    <a href="/"><img src="/logo-h.png" alt="HealthyMind Tech"></a>
+  </div>
+</nav>
+<div class="wrap">
+<h1>Data Processing Agreement</h1>
+<p><strong>Service:</strong> Taiwan Health MCP Server<br>
+<strong>Operator:</strong> HealthyMind Tech<br>
+<em>Effective date: 2025-01-01 &nbsp;|&nbsp; Last updated: 2026-04-09</em></p>
+
+<h2>1. Parties and Scope</h2>
+<p>This Data Processing Agreement ("DPA") applies between HealthyMind Tech
+("Operator", "we", "us") and any individual or organisation ("User") accessing
+the Taiwan Health MCP Server via Anthropic's Claude products or directly through
+the MCP API. It describes how data flows through the server, what is retained,
+and the obligations of each party.</p>
+
+<h2>2. Nature of Processing</h2>
+<p>Taiwan Health MCP Server is a <strong>read-only query API</strong> that provides
+access to publicly available medical terminology and pharmaceutical modules.
+It does not accept, store, or process personal health information submitted by
+users. All 28 tools perform outbound database lookups against pre-loaded public
+modules and return structured results to the MCP client.</p>
+
+<h2>3. Categories of Data Processed</h2>
+<div class="tbl-wrap"><table>
+  <tr><th>Data category</th><th>Source</th><th>Retained by operator?</th></tr>
+  <tr>
+    <td>Tool call metadata (tool name, timestamp, duration, status)</td>
+    <td>Generated internally</td>
+    <td>Yes — audit log, 90 days</td>
+  </tr>
+  <tr>
+    <td>SHA-256 hash of tool parameters</td>
+    <td>Derived from request</td>
+    <td>Yes — audit log, 90 days; raw values are <strong>never</strong> stored</td>
+  </tr>
+  <tr>
+    <td>Medical terminology query strings (e.g. ICD codes, drug names)</td>
+    <td>User / Claude client</td>
+    <td>No — processed transiently; not written to storage</td>
+  </tr>
+  <tr>
+    <td>Redis cache entries (query result payloads)</td>
+    <td>Internal</td>
+    <td>Temporarily — TTL 1–24 hours, then auto-deleted</td>
+  </tr>
+  <tr>
+    <td>Personal health information</td>
+    <td>—</td>
+    <td>Not collected, not accepted</td>
+  </tr>
+</table></div>
+
+<h2>4. Purpose and Legal Basis</h2>
+<p>Data is processed solely to fulfil individual API requests from the MCP client.
+There is no secondary use: query data is not used for model training, profiling,
+analytics, advertising, or any purpose beyond returning the immediate response.</p>
+<p>The legal basis for processing operational logs (tool name, hash, timing) is
+<strong>legitimate interest</strong> in operating a reliable, auditable service.</p>
+
+<h2>5. Data Minimisation and HIPAA Design</h2>
+<p>The audit logger (<code>src/audit.py</code>) records only the SHA-256 hash of
+parameters — never the raw values. This design ensures that patient-identifiable
+query terms (e.g. a patient's ICD code or medication name) cannot be reconstructed
+from the audit trail, consistent with HIPAA safe-harbour de-identification
+requirements.</p>
+
+<h2>6. Sub-processors</h2>
+<div class="tbl-wrap"><table>
+  <tr><th>Sub-processor</th><th>Role</th><th>Data shared</th></tr>
+  <tr>
+    <td>PostgreSQL 16 (self-hosted)</td>
+    <td>Primary data store for terminology modules</td>
+    <td>Query strings (transient, in-process only)</td>
+  </tr>
+  <tr>
+    <td>Redis 7 (self-hosted)</td>
+    <td>Response cache</td>
+    <td>Serialised query result payloads (TTL-bound)</td>
+  </tr>
+  <tr>
+    <td>Anthropic</td>
+    <td>MCP platform / Claude client</td>
+    <td>Tool call parameters and responses, per
+      <a href="https://www.anthropic.com/privacy">Anthropic's Privacy Policy</a></td>
+  </tr>
+</table></div>
+<p>All infrastructure (PostgreSQL, Redis) is operated by the Operator on
+self-managed servers. No data is sent to external cloud sub-processors except
+via Anthropic's platform as described above.</p>
+
+<h2>7. International Transfers</h2>
+<p>The server is hosted in Taiwan. Tool call data passed through Anthropic's
+platform may be processed in the United States or other jurisdictions per
+Anthropic's data processing terms. The Operator does not independently transfer
+data outside Taiwan.</p>
+
+<h2>8. Security Measures</h2>
+<ul>
+  <li>All HTTP traffic is served over TLS (HTTPS).</li>
+  <li>Database and cache are network-isolated (Docker internal network, not exposed to public internet).</li>
+  <li>pgBouncer connection pooler limits database exposure.</li>
+  <li>Prometheus metrics endpoint is internal only.</li>
+  <li>Audit log is append-only and stored in a dedicated PostgreSQL schema (<code>audit</code>).</li>
+</ul>
+
+<h2>9. Data Subject Rights</h2>
+<p>Because the Operator does not collect personally identifiable information,
+there is no personal data subject to access, rectification, erasure, or
+portability requests under GDPR or similar regulations. If you believe this
+server has inadvertently processed personal data, contact us at the address
+in Section 12 and we will investigate within 30 days.</p>
+
+<h2>10. Breach Notification</h2>
+<p>In the event of a confirmed data security incident affecting user data, the
+Operator will notify affected users and, where required by applicable law,
+relevant supervisory authorities, within 72 hours of becoming aware of the
+breach.</p>
+
+<h2>11. Retention and Deletion</h2>
+<ul>
+  <li><strong>Audit logs</strong> — retained for 90 days, then deleted by a scheduled purge job.</li>
+  <li><strong>Redis cache</strong> — entries expire automatically per configured TTL (1–24 hours).</li>
+  <li><strong>Terminology modules</strong> — static public data; not subject to deletion requests.</li>
+</ul>
+
+<h2>12. Contact and Governing Law</h2>
+<p>For data processing questions or concerns:</p>
+<ul>
+  <li>GitHub Issues:
+    <a href="https://github.com/healthymind-tech/Taiwan-Health-MCP/issues">
+    github.com/healthymind-tech/Taiwan-Health-MCP/issues</a></li>
+  <li>Email: <a href="mailto:support@healthymind-tech.com">support@healthymind-tech.com</a></li>
+</ul>
+<p>This agreement is governed by the laws of Taiwan (R.O.C.). Any dispute shall
+be subject to the exclusive jurisdiction of the Taiwan Taipei District Court.</p>
+
+<h2>13. Changes to This Agreement</h2>
+<p>We may update this DPA from time to time. The effective date at the top of
+this page reflects the most recent revision. Continued use of the service after
+an update constitutes acceptance of the revised terms.</p>
+</div>
+</body>
+</html>

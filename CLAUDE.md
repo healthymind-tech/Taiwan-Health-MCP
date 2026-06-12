@@ -5,15 +5,60 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Language
 用台灣正體中文回答, 文件和註解使用英文
 
+## gstack
+
+Use gstack’s `/browse` skill for all web browsing.
+
+Never use `mcp__claude-in-chrome__*` tools.
+
+Available gstack skills:
+
+* `/office-hours`
+* `/plan-ceo-review`
+* `/plan-eng-review`
+* `/plan-design-review`
+* `/design-consultation`
+* `/design-shotgun`
+* `/design-html`
+* `/review`
+* `/ship`
+* `/land-and-deploy`
+* `/canary`
+* `/benchmark`
+* `/browse`
+* `/connect-chrome`
+* `/qa`
+* `/qa-only`
+* `/design-review`
+* `/setup-browser-cookies`
+* `/setup-deploy`
+* `/setup-gbrain`
+* `/retro`
+* `/investigate`
+* `/document-release`
+* `/document-generate`
+* `/codex`
+* `/cso`
+* `/autoplan`
+* `/plan-devex-review`
+* `/devex-review`
+* `/careful`
+* `/freeze`
+* `/guard`
+* `/unfreeze`
+* `/gstack-upgrade`
+* `/learn`
+
 ## Project Overview
 
 Taiwan Health MCP Server — a Model Context Protocol server built on the official **`mcp` SDK** (`mcp.server.fastmcp.FastMCP`) exposing **~51 tools** across 12 tool groups for Taiwan medical and health data. Designed for production SaaS deployment with hundreds of requests/second throughput.
 
 **Modules**: ICD-10-CM/PCS 2025, LOINC 2.80, SNOMED CT International, Taiwan FDA (TFDA) drugs, Taiwan FDA health supplements, Taiwan FDA food nutrition, Taiwan clinical guidelines, FHIR R4 IG authoring (multi-IG, default TWCore v1.0.0), FHIR Condition/Medication generation, and an external FHIR server registry. RxNorm is loaded as concept-only reference terminology (used for IG ValueSet expansion, not a standalone drug tool).
 
-Two surfaces ship in one codebase:
-- **MCP server** (`src/server.py`) — the read-only tool surface consumed by LLM clients.
-- **Admin console** (`src/admin_*.py` + `admin-ui/` SPA) — an operator UI for uploading source files, running/scheduling data imports, managing settings and external FHIR servers, and monitoring jobs. Disabled by default (`ADMIN_ENABLED=false`).
+Three surfaces ship in one codebase:
+- **MCP server** (`src/server.py`) — the read-only tool surface consumed by LLM clients (also exposes the admin REST API, `/admin/ws`, `/status.json`, `/mcp`, `/openapi.json`).
+- **Admin console** (`src/admin_*.py` backend + the `web/` Next.js front-end) — an operator UI for uploading source files, running/scheduling data imports, managing settings and external FHIR servers, and monitoring jobs. Disabled by default (`ADMIN_ENABLED=false`).
+- **Next.js front-end** (`web/`) — a single Node.js app serving every web page: the public landing/status/privacy/dpa pages **and** the admin SPA (the old `admin-ui/` Vite app is merged in under `web/admin-app/`, mounted via a `/admin` catch-all route). nginx (`nginx/nginx.conf`) is the single front door: it routes API/MCP/WebSocket to the Python `app` and everything else to `web`. The legacy inlined HTML in `src/server.py` is gated behind `LEGACY_HTML=true` (default off).
 
 ## Commands
 
@@ -29,7 +74,7 @@ MCP_TRANSPORT=streamable-http DATABASE_URL=postgresql://... python src/server.py
 
 # Docker (production — recommended)
 cp .env.example .env                          # then edit .env (set POSTGRES_PASSWORD, ADMIN_*)
-docker compose up -d                          # postgres, pgbouncer, redis, minio, app, admin-worker
+docker compose up -d                          # postgres, pgbouncer, redis, minio, app, admin-worker, web (Next.js), nginx (front door :8080)
 
 # Data loading is done through the admin console (Modules tab) and executed by
 # the admin-worker in the background — there is NO standalone CLI data-loader
@@ -70,7 +115,7 @@ python -m pytest tests/ -v
 8. Run initial module status sync — registers only tools whose modules meet the row-count threshold
 9. Mount the admin console sub-app when `ADMIN_ENABLED=true`
 
-**HTTP surface** (one ASGI app, served by `PrivacyPageMiddleware` wrapping the FastMCP app):
+**HTTP surface.** In production nginx (`:${WEB_PORT:-8080}`) is the single entry point: `/mcp`, `/openapi.json`, `/tools/*`, `/status.json`, `/admin/api/*`, `/admin/ws`, `/fhir-client/*`, `/fhir-oauth/*` proxy to the Python `app`; every other path (public pages + `/admin` SPA + `/admin/login`) is served by the `web` Next.js app. The Python ASGI app (still `PrivacyPageMiddleware` wrapping FastMCP) directly exposes:
 - `/mcp` — the MCP streamable-http endpoint (`MCP_PATH`).
 - `/`, `/status`, `/privacy`, `/dpa` + logo/favicon — static pages.
 - `/admin` + `/admin/ws` — admin console sub-app (when enabled).
@@ -91,7 +136,7 @@ python -m pytest tests/ -v
 | FHIR Condition Service | `fhir_condition_service.py` | reads `icd.diagnoses` | — (derives from ICD) |
 | FHIR Medication Service | `fhir_medication_service.py` | reads `drug_service` | — (derives from Drug) |
 | FHIR IG Service | `fhir_ig_service.py` | `fhir.*` (multi-IG, package-scoped) | admin import (`--twcore`) + admin IG import |
-| FHIR Server Service | `fhir_server_service.py` | `admin.fhir_servers` | admin console (always-on tools) |
+| FHIR Server Service | `fhir_server_service.py` | `admin.fhir_servers` | admin console **FHIR Servers** registration pipeline (always-on tools) |
 | TWCore Service | `twcore_service.py` | `fhir.*` (legacy helper) | admin import (`--twcore`) |
 | SNOMED Service | `snomed_service.py` | `snomed.*` | admin import (`--snomed`) |
 | Embedding Service | `embedding_service.py` | Ollama `/api/embed` | — (cross-cutting) |
@@ -142,7 +187,8 @@ stages. Imports are triggered/scheduled from the admin console.
 ### Admin console & background worker
 - **`src/admin_console.py`** mounts a session-authenticated sub-app at `/admin` (Starlette). It composes feature modules: `admin_sources.py` (file uploads + source roles), `admin_jobs.py` (import jobs), `admin_schedule.py` (cron schedules), `admin_services.py` (module/service status), `admin_settings.py` (DB-backed settings), `admin_maintenance.py` (per-module maintenance mode + clear), `admin_drug.py` (drug pipeline control), `admin_ig.py` (FHIR IG gallery/import), `admin_preview.py`, `admin_embedding.py`, `admin_ws.py` (WebSocket live logs), `admin_html_shell.py` (server-rendered fallback shell).
 - **`src/admin_worker.py`** is a standalone process (the `admin-worker` compose service). It claims queued jobs from `admin.import_jobs`, runs loader stages, writes `admin.import_job_steps` / `admin.import_job_logs`, honors checkpoint-based pause/cancel via `admin.job_control_requests`, and emits `admin.worker_heartbeats`. `ADMIN_MAX_CONCURRENT_JOBS` bounds parallelism (per-module resource slots).
-- **`admin-ui/`** is a React SPA (the modern admin UI) served by the admin sub-app; a server-rendered HTML shell remains as fallback.
+- **FHIR Servers registration pipeline** (routes inline in `src/server.py` under `/admin/api/fhir-servers/*`, logic in `fhir_server_service.py`, UI in `admin-ui/.../FhirServersPage.tsx`) — registers external FHIR servers via a 6-step wizard (Basics → Authentication → Headers → Permissions → Connection test → Review) with a fixed Configuration Summary. Covers seven auth templates (No Auth / OAuth2 / SMART on FHIR / IHE IUA × Authorization Code / Client Credentials) as a derived selector over `auth_type` + `auth_profile`. Key pieces: `discover_fhir_metadata` (full endpoint + capability surface for the `/discover` panel), a dual-pane Scope Manager (discovery/preset/manual scope sources), segmented base-URL editor, and `run_fhir_test_request` (the `/test-request` route — sends one ad-hoc method/path/query/headers/body request against an **unsaved** draft, read-only by default).
+- **`web/admin-app/`** is the React SPA admin UI (formerly `admin-ui/`, now merged into the `web/` Next.js app and mounted client-side under the `/admin` catch-all route). It posts to `/admin/api/login`/`/admin/api/logout` (JSON aliases) and a Next `middleware.ts` gates `/admin/*` on the `tw_health_admin_session` cookie. A server-rendered HTML shell (`admin_html_shell.py`) remains as a legacy fallback.
 - **`src/db_health.py`** is a central DB-health gate: when Postgres is unreachable it locks mutating operations and surfaces an overlay in the UI.
 
 ### Cross-cutting concerns

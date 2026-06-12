@@ -42,3 +42,12 @@ fhir-code/umls/
 fhir-code/snomed/SnomedCT_InternationalRF2_PRODUCTION_*.zip
 fhir-code/rxnorm/RxNorm_full_*.zip
 fhir-code/umls/umls-*-metathesaurus-full.zip
+.gstack/
+
+# Node.js build artifacts (Next.js web/ + node-server/ gateway)
+node_modules/
+.next/
+out/
+node-server/dist/
+*.tsbuildinfo
+next-env.d.ts

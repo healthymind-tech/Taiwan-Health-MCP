@@ -271,6 +271,8 @@ body {
 .modal-backdrop { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.45); display: flex; align-items: flex-start; justify-content: center; padding: 48px 16px; z-index: 900; overflow-y: auto; }
 .modal-panel { background: var(--panel); border-radius: 14px; box-shadow: var(--shadow); width: 100%; max-width: 560px; }
 .modal-panel--wide { max-width: 860px; }
+/* Extra-wide panel for the FHIR server wizard (2-column form + summary). */
+.modal-panel--xwide { max-width: min(1180px, calc(100vw - 32px)); }
 .modal-panel--workspace { max-width: min(1560px, calc(100vw - 32px)); height: calc(100vh - 32px); display: flex; flex-direction: column; }
 .modal-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--line); }
 .modal-head h3 { margin: 0; }
@@ -502,6 +504,7 @@ body {
 .fhir-scope-picker__head .fhir-scope-search { flex: 1 1 220px; }
 .fhir-scope-search {
   width: 100%;
+  min-width: 0;
   font: inherit;
   padding: 8px 12px;
   border: 1px solid var(--line);
@@ -536,6 +539,100 @@ body {
   padding: 18px 12px;
   text-align: center;
   font-family: system-ui, sans-serif;
+}
+/* Scope Manager — dual-pane available/selected picker with source tags. */
+.fhir-field-label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+.fhir-scope-manager { display: flex; flex-direction: column; gap: 10px; margin-top: 6px; }
+.fhir-scope-manager__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.fhir-scope-pane { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.fhir-scope-pane__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.fhir-scope-pane__filters { display: flex; gap: 6px; }
+.fhir-scope-pane__filters .fhir-scope-search { flex: 1 1 auto; }
+.fhir-scope-pane__filters select {
+  flex: 0 0 auto;
+  width: auto;
+  font: inherit;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+}
+.fhir-scope-manager .fhir-scope-row { cursor: default; justify-content: space-between; }
+.fhir-scope-row__name { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 auto; overflow: hidden; }
+.fhir-scope-row__name > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fhir-scope-row__name small { font-family: system-ui, sans-serif; }
+.fhir-scope-source {
+  flex: none;
+  font-family: system-ui, sans-serif;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+}
+.fhir-scope-source--discovery { color: var(--brand); border-color: var(--brand); }
+.fhir-scope-source--preset { color: var(--ok-fg); border-color: var(--ok-fg); }
+.fhir-scope-source--manual { color: var(--muted); }
+.fhir-scope-source--registration { color: var(--warn-fg); border-color: var(--warn-fg); }
+.fhir-scope-custom { display: flex; flex-wrap: wrap; gap: 6px; }
+.fhir-scope-custom .fhir-scope-search { flex: 1 1 180px; }
+@media (max-width: 768px) {
+  .fhir-scope-manager__grid { grid-template-columns: 1fr; }
+}
+/* Segmented base-URL editor. */
+.fhir-url-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+.fhir-url-head .fhir-field-label { margin-bottom: 0; }
+.fhir-url-tabs { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.fhir-url-tab { font: inherit; font-size: 12px; padding: 4px 10px; border: none; background: var(--panel); color: var(--muted); cursor: pointer; }
+.fhir-url-tab.is-active { background: var(--brand); color: #fff; }
+.fhir-url-segments { display: grid; grid-template-columns: 110px 1fr 90px 1fr; gap: 6px; }
+.fhir-url-preview { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
+.fhir-url-preview code { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 6px 8px; background: var(--code-bg); color: var(--code-fg); border-radius: 6px; font-size: 12px; }
+.fhir-url-warn { color: var(--warn-fg); }
+/* Authentication Profile cards + Authorization Flow segmented control. */
+.fhir-profile-cards { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 12px; }
+.fhir-profile-card { display: flex; flex-direction: column; gap: 3px; text-align: left; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--text); cursor: pointer; }
+.fhir-profile-card:hover { border-color: var(--brand); }
+.fhir-profile-card.is-active { border-color: var(--brand); background: var(--brand-soft); }
+.fhir-profile-card strong { font-size: 13px; }
+.fhir-profile-card small { color: var(--muted); font-size: 11.5px; }
+.fhir-flow-row { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+.fhir-segmented { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; width: fit-content; }
+.fhir-segmented__btn { font: inherit; font-size: 13px; padding: 6px 14px; border: none; background: var(--panel); color: var(--muted); cursor: pointer; }
+.fhir-segmented__btn + .fhir-segmented__btn { border-left: 1px solid var(--line); }
+.fhir-segmented__btn.is-active { background: var(--brand); color: #fff; }
+@media (max-width: 768px) {
+  .fhir-profile-cards { grid-template-columns: 1fr; }
+  .fhir-url-segments { grid-template-columns: 1fr 1fr; }
+}
+/* Production environment warning banner. */
+.fhir-prod-warn { padding: 10px 12px; border-radius: 8px; background: var(--warn-bg); color: var(--warn-fg); font-size: 12.5px; line-height: 1.5; }
+/* Connection-test request builder. */
+.fhir-test-builder { display: flex; flex-direction: column; gap: 12px; }
+.fhir-test-builder textarea { width: 100%; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px; }
+.fhir-test-body { max-height: 200px; overflow: auto; margin: 8px 0 0; padding: 8px; background: var(--code-bg); color: var(--code-fg); border-radius: 6px; font-size: 12px; white-space: pre-wrap; word-break: break-word; }
+/* 6-step wizard layout: stepped body on the left, fixed summary on the right. */
+.fhir-wizard { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 16px; align-items: start; }
+.fhir-wizard__main { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.fhir-wizard__body { display: flex; flex-direction: column; gap: 14px; min-height: 220px; }
+.fhir-stepper { display: flex; flex-wrap: wrap; gap: 4px; list-style: none; margin: 0; padding: 0; }
+.fhir-stepper__item button { display: flex; align-items: center; gap: 6px; background: none; border: none; padding: 4px 6px; cursor: pointer; color: var(--muted); font: inherit; font-size: 12px; }
+.fhir-stepper__num { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 999px; border: 1px solid var(--line); font-size: 11px; }
+.fhir-stepper__item.is-active .fhir-stepper__num { background: var(--brand); color: #fff; border-color: var(--brand); }
+.fhir-stepper__item.is-active button { color: var(--text); font-weight: 600; }
+.fhir-stepper__item.is-done .fhir-stepper__num { border-color: var(--brand); color: var(--brand); }
+.fhir-wizard__summary { position: sticky; top: 8px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-soft); padding: 12px; }
+.fhir-summary__title { display: block; font-size: 13px; margin-bottom: 8px; }
+.fhir-summary__list { margin: 0; display: flex; flex-direction: column; gap: 8px; }
+.fhir-summary__row { display: flex; flex-direction: column; gap: 1px; }
+.fhir-summary__row dt { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+.fhir-summary__row dd { margin: 0; font-size: 12.5px; color: var(--text); overflow-wrap: anywhere; }
+@media (max-width: 900px) {
+  .fhir-wizard { grid-template-columns: 1fr; }
+  .fhir-wizard__summary { position: static; }
 }
 /* Collapsible form sections — keep the long FHIR server form scannable. */
 .fhir-section {

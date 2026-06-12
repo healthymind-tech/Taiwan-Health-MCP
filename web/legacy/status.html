@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <link rel="shortcut icon" type="image/png" href="/favicon.png">
+  <title>Status &amp; Tool Tester – Taiwan Health MCP</title>
+  <meta name="color-scheme" content="light dark">
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem('admin-theme');
+        if (t !== 'light' && t !== 'dark') {
+          t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+        document.documentElement.dataset.theme = t;
+      } catch (e) {}
+    })();
+  </script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { height: 100%; }
+    body { font-family: system-ui, sans-serif; background: #f8f9fa; color: #1a1a1a;
+           height: 100%; display: flex; flex-direction: column; overflow: hidden; }
+
+    /* ── header ── */
+    header { background: #fff; border-bottom: 1px solid #e5e7eb; padding: 8px 16px;
+             display: flex; align-items: center; justify-content: space-between;
+             flex-shrink: 0; gap: 10px; flex-wrap: wrap; }
+    .hdr-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .hdr-left img { height: 28px; display: block; flex-shrink: 0; }
+    header h1 { font-size: 0.95rem; font-weight: 700;
+                white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .hdr-right { display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+                 flex-shrink: 0; }
+    .stats { font-size: 0.82rem; color: #555; white-space: nowrap; }
+    .stats b { color: #166534; }
+    .hdr-link { font-size: 0.8rem; color: #0066cc; text-decoration: none;
+                white-space: nowrap; }
+    .hdr-link:hover { text-decoration: underline; }
+
+    /* ── layout ── */
+    .main { display: flex; flex: 1; overflow: hidden; min-height: 0; }
+
+    /* ── left panel ── */
+    .left { width: 260px; min-width: 180px; background: #fff;
+            border-right: 1px solid #e5e7eb; display: flex;
+            flex-direction: column; flex-shrink: 0; overflow: hidden; }
+    .search-wrap { padding: 10px 10px 6px; }
+    .search-wrap input { width: 100%; padding: 7px 10px; border: 1px solid #ddd;
+                         border-radius: 6px; font-size: 0.88rem; }
+    .search-wrap input:focus { outline: none; border-color: #0066cc; }
+    .cat-row { display: flex; gap: 5px; padding: 6px 10px 8px; flex-wrap: wrap;
+               border-bottom: 1px solid #f0f0f0; overflow-x: auto; }
+    .cat-btn { padding: 2px 9px; border-radius: 10px; font-size: 0.75rem; cursor: pointer;
+               border: 1px solid #ddd; background: #f9f9f9; color: #555;
+               white-space: nowrap; flex-shrink: 0; }
+    .cat-btn:hover { border-color: #0066cc; color: #0066cc; }
+    .cat-btn.on { background: #0066cc; color: #fff; border-color: #0066cc; }
+    .tool-list { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 4px 0; }
+    .t-item { display: flex; align-items: center; gap: 7px; padding: 7px 12px;
+              cursor: pointer; border-left: 3px solid transparent; }
+    .t-item:hover { background: #f4f7fb; }
+    .t-item.sel { background: #e8f0fe; border-left-color: #0066cc; }
+    .t-item.off { opacity: 0.45; }
+    .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+    .g { background: #22c55e; }
+    .gr { background: #9ca3af; }
+    .tname { font-size: 0.8rem; font-family: monospace; color: #333;
+             white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    /* ── right panel ── */
+    .right { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch;
+             padding: 20px 22px; min-width: 0; }
+    .empty { height: 100%; display: flex; align-items: center; justify-content: center;
+             color: #bbb; font-size: 1rem; text-align: center; padding: 20px; }
+
+    /* ── tool detail ── */
+    .th { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+    .th h2 { font-size: 1.05rem; font-family: monospace; font-weight: 700;
+             word-break: break-all; }
+    .badge { border-radius: 10px; padding: 2px 10px; font-size: 0.75rem; font-weight: 500; }
+    .bc { background: #e8f0fe; color: #1a56cc; }
+    .ba-on { background: #dcfce7; color: #166534; }
+    .ba-off { background: #f3f4f6; color: #6b7280; }
+    .tdesc { font-size: 0.88rem; color: #555; line-height: 1.65; margin-bottom: 18px; }
+    hr.div { border: none; border-top: 1px solid #f0f0f0; margin: 0 0 16px; }
+
+    /* ── form ── */
+    .sec-title { font-size: 0.88rem; font-weight: 700; color: #333; margin-bottom: 12px;
+                 text-transform: uppercase; letter-spacing: .04em; }
+    .fg { margin-bottom: 13px; }
+    .fg label { display: block; font-size: 0.83rem; font-weight: 600; margin-bottom: 3px; }
+    .fg label.req::after { content: " *"; color: #dc2626; }
+    .fdesc { font-size: 0.77rem; color: #888; margin-bottom: 4px; }
+    .fg input[type=text], .fg input[type=number], .fg select, .fg textarea {
+      width: 100%; max-width: 480px; padding: 7px 10px; border: 1px solid #ddd;
+      border-radius: 6px; font-size: 0.88rem; font-family: inherit; }
+    .fg input:focus, .fg select:focus, .fg textarea:focus {
+      outline: none; border-color: #0066cc; }
+    .fg textarea { resize: vertical; font-family: monospace; font-size: 0.82rem; }
+    .cb-row { display: flex; align-items: center; gap: 7px; font-size: 0.88rem; }
+    .run-btn { margin-top: 6px; padding: 8px 20px; background: #0066cc; color: #fff;
+               border: none; border-radius: 6px; font-size: 0.88rem; font-weight: 600;
+               cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+    .run-btn:hover { background: #0055aa; }
+    .run-btn:disabled { background: #93c5fd; cursor: not-allowed; }
+    .no-params { color: #999; font-size: 0.85rem; font-style: italic; margin-bottom: 10px; }
+
+    /* ── result ── */
+    .res-sec { margin-top: 20px; }
+    .res-sec.hidden { display: none; }
+    .res-hdr { display: flex; align-items: center; justify-content: space-between;
+               margin-bottom: 6px; flex-wrap: wrap; gap: 6px; }
+    .res-meta { font-size: 0.78rem; color: #888; }
+    .copy-btn { padding: 3px 10px; font-size: 0.78rem; border: 1px solid #ddd;
+                border-radius: 4px; background: #f9f9f9; cursor: pointer; }
+    .copy-btn:hover { border-color: #0066cc; }
+
+    /* ── JSON tree ── */
+    .json-tree { background:#1e1e1e; color:#d4d4d4; padding:12px 14px; border-radius:8px;
+                 font-size:0.78rem; overflow:auto; max-height:480px; line-height:1.55;
+                 font-family:'Consolas','JetBrains Mono','Courier New',monospace; }
+    .json-tree.plain { white-space:pre-wrap; word-break:break-all; }
+    .jhead { cursor:pointer; border-radius:3px; }
+    .jhead:hover { background:#2a2a2a; }
+    .jt { color:#888; font-size:0.65rem; margin-right:2px; display:inline-block;
+          width:10px; text-align:center; }
+    .jcoll > .jch { display:block; padding-left:18px;
+                    border-left:1px solid #2d2d2d; margin-left:5px; }
+    .jcoll > .jfoot { display:block; }
+    .jcoll > .jhead > .jsum { display:none; }
+    .jcollapsed > .jch { display:none !important; }
+    .jcollapsed > .jfoot { display:none !important; }
+    .jcollapsed > .jhead > .jsum { display:inline !important; }
+    .jleaf { white-space:nowrap; }
+    .jsum { color:#666; font-style:italic; font-size:0.72rem; }
+    .jkey { color:#9cdcfe; }
+    .jstr { color:#ce9178; }
+    .jnum { color:#b5cea8; }
+    .jbool { color:#569cd6; }
+    .jnull { color:#808080; font-style:italic; }
+    .jbrace { color:#d4d4d4; }
+    .jsep { color:#666; }
+
+    /* ── unavailable ── */
+    .unavail { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px;
+               padding: 18px; color: #6b7280; font-size: 0.88rem; }
+
+    /* ── spinner ── */
+    .spin { display: inline-block; width: 13px; height: 13px; border: 2px solid #fff;
+            border-top-color: transparent; border-radius: 50%;
+            animation: sp .65s linear infinite; }
+    @keyframes sp { to { transform: rotate(360deg); } }
+
+    /* ── mobile: stack panels vertically ── */
+    @media (max-width: 680px) {
+      html, body { height: auto; overflow: auto; }
+      .main { flex-direction: column; overflow: visible; }
+      .left { width: 100%; height: auto; border-right: none;
+              border-bottom: 1px solid #e5e7eb; }
+      .tool-list { max-height: 200px; }
+      .right { overflow-y: visible; padding: 16px; }
+      .fg input[type=text], .fg input[type=number], .fg select, .fg textarea {
+        max-width: 100%; }
+      header h1 { font-size: 0.82rem; }
+    }
+
+    /* ── dark mode (follows admin-theme localStorage, else OS preference) ──
+       The JSON tree (.json-tree) is intentionally dark in both themes. */
+    [data-theme="dark"] body { background: #0f1115; color: #e6e8eb; }
+    [data-theme="dark"] header { background: #15181e; border-bottom-color: #262b35; }
+    [data-theme="dark"] .stats { color: #9aa3b2; }
+    [data-theme="dark"] .stats b { color: #6ee7a0; }
+    [data-theme="dark"] .hdr-link { color: #5aa2ff; }
+    [data-theme="dark"] .left { background: #13161c; border-right-color: #262b35; }
+    [data-theme="dark"] .search-wrap input { background: #0f1115; border-color: #2b3340;
+                                             color: #e6e8eb; }
+    [data-theme="dark"] .search-wrap input:focus { border-color: #5aa2ff; }
+    [data-theme="dark"] .cat-row { border-bottom-color: #1d2129; }
+    [data-theme="dark"] .cat-btn { background: #161b22; border-color: #2b3340; color: #aab2bf; }
+    [data-theme="dark"] .cat-btn:hover { border-color: #5aa2ff; color: #5aa2ff; }
+    [data-theme="dark"] .cat-btn.on { background: #2563eb; color: #fff; border-color: #2563eb; }
+    [data-theme="dark"] .t-item:hover { background: #1a2029; }
+    [data-theme="dark"] .t-item.sel { background: #16263f; border-left-color: #5aa2ff; }
+    [data-theme="dark"] .tname { color: #cfd5de; }
+    [data-theme="dark"] .empty { color: #5b636f; }
+    [data-theme="dark"] .th h2 { color: #e6e8eb; }
+    [data-theme="dark"] .bc { background: #16263f; color: #7cb7ff; }
+    [data-theme="dark"] .ba-on { background: #10231a; color: #6ee7a0; }
+    [data-theme="dark"] .ba-off { background: #1b1f27; color: #9aa3b2; }
+    [data-theme="dark"] .tdesc { color: #aab2bf; }
+    [data-theme="dark"] hr.div { border-top-color: #1d2129; }
+    [data-theme="dark"] .sec-title { color: #cfd5de; }
+    [data-theme="dark"] .fg label { color: #e6e8eb; }
+    [data-theme="dark"] .fdesc { color: #8b94a3; }
+    [data-theme="dark"] .fg input[type=text], [data-theme="dark"] .fg input[type=number],
+    [data-theme="dark"] .fg select, [data-theme="dark"] .fg textarea {
+      background: #0f1115; border-color: #2b3340; color: #e6e8eb; }
+    [data-theme="dark"] .fg input:focus, [data-theme="dark"] .fg select:focus,
+    [data-theme="dark"] .fg textarea:focus { border-color: #5aa2ff; }
+    [data-theme="dark"] .no-params { color: #7d8694; }
+    [data-theme="dark"] .res-meta { color: #8b94a3; }
+    [data-theme="dark"] .copy-btn { background: #161b22; border-color: #2b3340; color: #cfd5de; }
+    [data-theme="dark"] .copy-btn:hover { border-color: #5aa2ff; }
+    [data-theme="dark"] .unavail { background: #13161c; border-color: #262b35; color: #9aa3b2; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="hdr-left">
+    <img src="/logo-s.png" alt="HealthyMind Tech">
+    <h1>Taiwan Health MCP — Status &amp; Tool Tester</h1>
+  </div>
+  <div class="hdr-right">
+    <div class="stats" id="stats">Loading…</div>
+    <a class="hdr-link" href="/">← Home</a>
+    <a class="hdr-link" href="/privacy">Privacy</a>
+  </div>
+</header>
+
+<div class="main">
+  <!-- left -->
+  <div class="left">
+    <div class="search-wrap">
+      <input type="text" id="srch" placeholder="Search tools…" oninput="filter()">
+    </div>
+    <div class="cat-row" id="cats"></div>
+    <div class="tool-list" id="tlist">
+      <div style="padding:18px;color:#bbb;font-size:.83rem;">Loading…</div>
+    </div>
+  </div>
+
+  <!-- right -->
+  <div class="right" id="right">
+    <div class="empty">← Select a tool from the list to test it</div>
+  </div>
+</div>
+
+<script>
+// ── category map (injected from server) ───────────────────────
+const CATEGORY_MAP = "__CATEGORY_MAP__";
+
+// ── per-tool example arguments (injected from server) ─────────
+const TOOL_EXAMPLES = "__TOOL_EXAMPLES__";
+const TOOL_SELECTOR_EXAMPLES = "__TOOL_SELECTOR_EXAMPLES__";
+
+// ── MCP client ────────────────────────────────────────────────
+let _sid = null, _mid = 0;
+
+async function _mcpPost(body) {
+  const hdrs = {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json, text/event-stream',
+  };
+  if (_sid) hdrs['mcp-session-id'] = _sid;
+  const r = await fetch('/mcp', {method: 'POST', headers: hdrs, body: JSON.stringify(body)});
+  const sid = r.headers.get('mcp-session-id');
+  if (sid) _sid = sid;
+  return r;
+}
+
+async function _readResult(r, id) {
+  const ct = r.headers.get('content-type') || '';
+  if (ct.includes('text/event-stream')) {
+    const reader = r.body.getReader(), dec = new TextDecoder();
+    let buf = '';
+    try {
+      while (true) {
+        const {done, value} = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, {stream: true});
+        const lines = buf.split('\n');
+        buf = lines.pop() ?? '';
+        for (const line of lines) {
+          if (!line.startsWith('data:')) continue;
+          const raw = line.slice(5).trim();
+          if (!raw || raw === '[DONE]') continue;
+          let msg; try { msg = JSON.parse(raw); } catch { continue; }
+          if (msg.id === id) {
+            if (msg.error) throw new Error(msg.error.message || JSON.stringify(msg.error));
+            return msg.result;
+          }
+        }
+      }
+    } finally { reader.cancel(); }
+    throw new Error('SSE stream ended without result');
+  }
+  const data = await r.json();
+  if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
+  return data.result;
+}
+
+async function mcpRequest(method, params) {
+  const id = ++_mid;
+  const r = await _mcpPost({jsonrpc: '2.0', id, method, ...(params ? {params} : {})});
+  return _readResult(r, id);
+}
+
+async function mcpNotify(method, params) {
+  await _mcpPost({jsonrpc: '2.0', method, ...(params ? {params} : {})});
+}
+
+// ── app state ─────────────────────────────────────────────────
+let tools = [], selName = null, activeCat = 'all';
+
+async function init() {
+  let step = 'initialize';
+  try {
+    await mcpRequest('initialize', {
+      protocolVersion: '2024-11-05',
+      capabilities: {},
+      clientInfo: {name: 'tw-health-status-tester', version: '1.0'},
+    });
+    step = 'notifications/initialized';
+    await mcpNotify('notifications/initialized');
+
+    step = 'tools/list';
+    const {tools: mcpTools} = await mcpRequest('tools/list');
+    const byName = Object.fromEntries(mcpTools.map(t => [t.name, t]));
+    const avail  = new Set(mcpTools.map(t => t.name));
+
+    tools = Object.keys(CATEGORY_MAP).map(name => ({
+      name,
+      category:    CATEGORY_MAP[name],
+      description: byName[name]?.description || '',
+      available:   avail.has(name),
+      inputSchema: byName[name]?.inputSchema || {},
+    }));
+
+    const n = tools.filter(t => t.available).length;
+    document.getElementById('stats').innerHTML =
+      `<b>${n}</b> / ${tools.length} tools available`;
+    buildCats();
+    filter();
+  } catch(e) {
+    document.getElementById('tlist').innerHTML =
+      `<div style="padding:18px;color:#dc2626;font-size:.83rem;">Failed at <b>${esc(step)}</b>: ${esc(e.message)}</div>`;
+  }
+}
+
+function buildCats() {
+  const cats = ['all', ...new Set(tools.map(t => t.category))];
+  document.getElementById('cats').innerHTML = cats.map(c => {
+    const cnt = c === 'all' ? tools.length : tools.filter(t => t.category===c).length;
+    const lbl = c === 'all' ? `All&nbsp;(${cnt})` : `${c}&nbsp;(${cnt})`;
+    return `<div class="cat-btn${c===activeCat?' on':''}" onclick="setCat('${c}')">${lbl}</div>`;
+  }).join('');
+}
+
+function setCat(c) {
+  activeCat = c;
+  document.querySelectorAll('.cat-btn').forEach(el => {
+    const isAll = c==='all' && el.textContent.startsWith('All');
+    const isMatch = c!=='all' && el.textContent.startsWith(c);
+    el.classList.toggle('on', isAll || isMatch);
+  });
+  filter();
+}
+
+function filter() {
+  const q = document.getElementById('srch').value.toLowerCase();
+  const vis = tools.filter(t => {
+    if (activeCat !== 'all' && t.category !== activeCat) return false;
+    if (q && !t.name.includes(q) && !t.description.toLowerCase().includes(q)) return false;
+    return true;
+  });
+  if (!vis.length) {
+    document.getElementById('tlist').innerHTML =
+      '<div style="padding:18px;color:#bbb;font-size:.83rem;">No matches</div>';
+    return;
+  }
+  document.getElementById('tlist').innerHTML = vis.map(t =>
+    `<div class="t-item${t.available?'':' off'}${selName===t.name?' sel':''}"
+          onclick="pick('${t.name}')">
+       <span class="dot ${t.available?'g':'gr'}"></span>
+       <span class="tname">${t.name}</span>
+     </div>`
+  ).join('');
+}
+
+function pick(name) {
+  selName = name;
+  filter();
+  const t = tools.find(x => x.name === name);
+  if (t) renderDetail(t);
+}
+
+function renderDetail(t) {
+  const props = t.inputSchema?.properties || {};
+  const req   = t.inputSchema?.required  || [];
+  const fields = Object.entries(props).map(([k,s]) => mkField(k,s,req.includes(k))).join('');
+
+  document.getElementById('right').innerHTML = `
+    <div class="th">
+      <h2>${t.name}</h2>
+      <span class="badge bc">${t.category}</span>
+      <span class="badge ${t.available?'ba-on':'ba-off'}">
+        ${t.available ? '● Available' : '○ Unavailable'}
+      </span>
+    </div>
+    <p class="tdesc">${esc(t.description || 'No description.')}</p>
+    <hr class="div">
+    ${t.available ? `
+      <div class="sec-title">Parameters</div>
+      <form id="frm" onsubmit="run(event)">
+        ${fields || '<p class="no-params">No parameters — just click Run.</p>'}
+        <button type="submit" class="run-btn" id="rbtn">&#9654; Run Tool</button>
+      </form>
+      <div class="res-sec hidden" id="rsec">
+        <div class="res-hdr">
+          <span class="sec-title" style="margin:0;">Result</span>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <span class="res-meta" id="rmeta"></span>
+            <button class="copy-btn" onclick="collapseAll()">Collapse</button>
+            <button class="copy-btn" onclick="expandAll()">Expand</button>
+            <button class="copy-btn" onclick="copyRes()">Copy</button>
+          </div>
+        </div>
+        <div id="rout" class="json-tree"></div>
+      </div>
+    ` : `
+      <div class="unavail">
+        This tool is currently unavailable — its module hasn't been loaded yet.<br>
+        Load it from the <strong>Admin console &rarr; Modules</strong> tab.
+      </div>
+    `}`;
+  applyExamples(t.name);
+}
+
+function applyExamples(toolName) {
+  const ex = TOOL_EXAMPLES[toolName];
+  if (ex) applyExample(toolName, ex, true);
+  bindSelectorExampleSwitch(toolName);
+}
+
+function applyExample(toolName, example, resetToDefaults) {
+  const t = tools.find(x => x.name === toolName);
+  if (!t) return;
+  const props = t.inputSchema?.properties || {};
+
+  if (resetToDefaults) {
+    for (const [k, s] of Object.entries(props)) {
+      const el = document.getElementById('p_' + k);
+      if (!el) continue;
+      const { schema } = pickSchema(s);
+      const def = s.default !== undefined ? s.default : (schema.default !== undefined ? schema.default : '');
+      if (el.type === 'checkbox') {
+        el.checked = Boolean(def);
+      } else if (def === null || def === undefined) {
+        el.value = '';
+      } else if (typeof def === 'object') {
+        el.value = JSON.stringify(def, null, 2);
+      } else {
+        el.value = String(def);
+      }
+    }
+  }
+
+  for (const [k, v] of Object.entries(example || {})) {
+    const el = document.getElementById('p_' + k);
+    if (!el) continue;
+    if (el.type === 'checkbox') {
+      el.checked = Boolean(v);
+    } else if (typeof v === 'object' && v !== null) {
+      el.value = JSON.stringify(v, null, 2);
+    } else if (v === null || v === undefined) {
+      el.value = '';
+    } else {
+      el.value = String(v);
+    }
+  }
+}
+
+function bindSelectorExampleSwitch(toolName) {
+  const toolMap = TOOL_SELECTOR_EXAMPLES[toolName];
+  if (!toolMap) return;
+
+  for (const field of ['mode', 'type']) {
+    const el = document.getElementById('p_' + field);
+    const fieldMap = toolMap[field];
+    if (!el || !fieldMap) continue;
+
+    // Fields that appear in some but not all mode examples are conditional:
+    // show them when the current mode uses them, hide them otherwise.
+    const allExamples = Object.values(fieldMap);
+    const allFields = new Set(
+      allExamples.flatMap(ex => Object.keys(ex).filter(k => k !== field))
+    );
+    const universalFields = new Set(
+      [...allFields].filter(k => allExamples.every(ex => k in ex))
+    );
+    const conditionalFields = [...allFields].filter(k => !universalFields.has(k));
+
+    const updateVisibility = (example) => {
+      for (const k of conditionalFields) {
+        const fg = document.getElementById('p_' + k)?.closest('.fg');
+        if (fg) fg.style.display = (k in example) ? '' : 'none';
+      }
+    };
+
+    const applyByField = () => {
+      const v = el.value;
+      const example = fieldMap[v];
+      if (example) {
+        applyExample(toolName, example, true);
+        updateVisibility(example);
+      }
+    };
+
+    el.onchange = applyByField;
+    applyByField();
+  }
+}
+
+function pickSchema(s) {
+  if (!s || typeof s !== 'object') {
+    return { type: 'string', enumVals: null, schema: {} };
+  }
+  let schema = s;
+  if (Array.isArray(s.anyOf) && s.anyOf.length > 0) {
+    const nonNull = s.anyOf.filter(opt => opt && opt.type !== 'null');
+    if (nonNull.length > 0) {
+      const enumOpt = nonNull.find(opt => Array.isArray(opt.enum));
+      schema = enumOpt || nonNull[0];
+    }
+  }
+  const type = schema.type || s.type || 'string';
+  const enumVals = Array.isArray(schema.enum) ? schema.enum : (Array.isArray(s.enum) ? s.enum : null);
+  return { type, enumVals, schema };
+}
+
+function mkField(k, s, isReq) {
+  const { type, enumVals, schema } = pickSchema(s);
+  const id = 'p_'+k, desc = s.description||'';
+  const def = s.default !== undefined ? s.default : (schema.default !== undefined ? schema.default : '');
+
+  let inp;
+  if (type==='boolean') {
+    inp = `<div class="cb-row"><input type="checkbox" id="${id}" ${def?'checked':''}><label for="${id}" style="font-weight:normal">${k}</label></div>`;
+  } else if (enumVals) {
+    const opts = [];
+    if (!isReq) {
+      opts.push(`<option value=""${def===null||def===''?' selected':''}>(none)</option>`);
+    }
+    opts.push(...enumVals.map(v=>`<option value="${v}"${v===def?'selected':''}>${v}</option>`));
+    inp = `<select id="${id}" ${isReq?'required':''}>${opts.join('')}</select>`;
+  } else if (type==='integer'||type==='number') {
+    const mn = schema.minimum!==undefined?`min="${schema.minimum}"`:(s.minimum!==undefined?`min="${s.minimum}"`:'');
+    const mx = schema.maximum!==undefined?`max="${schema.maximum}"`:(s.maximum!==undefined?`max="${s.maximum}"`:'');
+    inp = `<input type="number" id="${id}" value="${def}" ${mn} ${mx} placeholder="${ph(k)}" ${isReq?'required':''}>`;
+  } else if (type==='array') {
+    inp = `<textarea id="${id}" rows="3" placeholder="${arrPh(k)}" ${isReq?'required':''}></textarea>`;
+  } else if (type==='object') {
+    inp = `<textarea id="${id}" rows="3" placeholder='{"key":"value"}' ${isReq?'required':''}></textarea>`;
+  } else if (type==='string' && k.endsWith('_json')) {
+    inp = `<textarea id="${id}" rows="4" style="font-family:monospace;font-size:0.79rem;" placeholder="${k}" ${isReq?'required':''}></textarea>`;
+  } else {
+    inp = `<input type="text" id="${id}" value="${def}" placeholder="${ph(k)}" ${isReq?'required':''}>`;
+  }
+
+  return `<div class="fg">
+    <label class="${isReq?'req':''}" for="${id}">${k}</label>
+    ${desc?`<div class="fdesc">${esc(desc)}</div>`:''}
+    ${inp}
+  </div>`;
+}
+
+const PH = {
+  keyword:'e.g. 糖尿病, diabetes', query:'e.g. A10BA02, 降血糖',
+  icd_code:'e.g. E11.9', code:'e.g. E11.9', diagnosis_code:'e.g. E11.9',
+  loinc_code:'e.g. 2345-7', loinc_num:'e.g. 4548-4',
+  concept_id:'e.g. 73211009', permit_no:'e.g. 衛署健食字第A00022號',
+  license_id:'e.g. 內衛成製字第000029號', food_name:'e.g. 雞蛋',
+  ingredient_name:'e.g. metformin', nutrient:'e.g. 鈣, 粗蛋白',
+  component:'e.g. Glucose', specimen_type:'e.g. 血清/血漿',
+  features:'e.g. 白色 圓形', category:'e.g. E11, CHEM',
+  diagnosis_keyword:'e.g. 糖尿病, E11', medication_class:'e.g. Metformin',
+  drug_name:'e.g. Metformin', procedure_code:'e.g. 0BH17EZ',
+  cs_id:'e.g. TW-CodeSystem-medication-fda-tw',
+};
+const ARR_PH = {
+  foods:'["白米", "雞胸肉"]',
+  drug_names:'["Metformin", "Warfarin"]',
+  results_json:'[{"loinc_code":"2345-7","value":5.5}]',
+};
+const ph  = k => PH[k] || '';
+const arrPh = k => ARR_PH[k] || '["item1","item2"]';
+
+async function run(e) {
+  e.preventDefault();
+  const t = tools.find(x => x.name===selName); if (!t) return;
+  const props = t.inputSchema?.properties || {};
+  const args = {};
+
+  for (const [k, s] of Object.entries(props)) {
+    const el = document.getElementById('p_'+k); if (!el) continue;
+    const { type } = pickSchema(s);
+    if (type==='boolean') { args[k] = el.checked; continue; }
+    if (!el.value) continue;
+    if (type==='integer')            args[k] = parseInt(el.value, 10);
+    else if (type==='number')        args[k] = parseFloat(el.value);
+    else if (type==='array'||type==='object') {
+      try { args[k] = JSON.parse(el.value); } catch { args[k] = el.value; }
+    } else args[k] = el.value;
+  }
+
+  const btn = document.getElementById('rbtn');
+  btn.innerHTML = '<span class="spin"></span>Running…';
+  btn.disabled = true;
+  const t0 = Date.now();
+
+  try {
+    const result = await mcpRequest('tools/call', {name: selName, arguments: args});
+    const ms = Date.now()-t0;
+
+    // MCP returns content blocks; extract text
+    const raw = result?.content?.map(c => c.text ?? '').join('') ?? JSON.stringify(result);
+
+    document.getElementById('rsec').classList.remove('hidden');
+    document.getElementById('rmeta').textContent =
+      ms+'ms' + (result?.isError ? ' ⚠ tool error' : '');
+    renderResult(raw);
+  } catch(err) {
+    document.getElementById('rsec').classList.remove('hidden');
+    document.getElementById('rmeta').textContent = '';
+    const rout = document.getElementById('rout');
+    rout.className = 'json-tree plain';
+    rout.textContent = 'Error: '+err.message;
+    _copyText = 'Error: '+err.message;
+  } finally {
+    btn.innerHTML = '&#9654; Run Tool';
+    btn.disabled = false;
+  }
+}
+
+// ── JSON tree renderer ────────────────────────────────────────
+let _copyText = '';
+
+function jEsc(s) {
+  return JSON.stringify(s).slice(1,-1)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function jLeaf(v) {
+  if (v === null) return '<span class="jnull">null</span>';
+  if (typeof v === 'boolean') return `<span class="jbool">${v}</span>`;
+  if (typeof v === 'number') return `<span class="jnum">${v}</span>`;
+  return `<span class="jstr">"${jEsc(String(v))}"</span>`;
+}
+
+function jNode(v, depth, key, comma) {
+  const keyHtml = key !== undefined
+    ? `<span class="jkey">"${jEsc(key)}"</span><span class="jsep">: </span>` : '';
+  const commaHtml = comma ? `<span class="jsep">,</span>` : '';
+
+  if (v === null || typeof v !== 'object') {
+    return `<div class="jleaf">${keyHtml}${jLeaf(v)}${commaHtml}</div>`;
+  }
+
+  const isArr = Array.isArray(v);
+  const entries = isArr ? v.map((x,i) => [i, x]) : Object.entries(v);
+  const open = isArr ? '[' : '{', close = isArr ? ']' : '}';
+
+  if (entries.length === 0) {
+    return `<div class="jleaf">${keyHtml}<span class="jbrace">${open}${close}</span>${commaHtml}</div>`;
+  }
+
+  const collapsed = depth >= 2;
+  const cnt = entries.length;
+  const label = isArr ? `${cnt} item${cnt!==1?'s':''}` : `${cnt} key${cnt!==1?'s':''}`;
+  const ch = entries.map(([k, vv], i) =>
+    jNode(vv, depth+1, isArr ? undefined : String(k), i < cnt-1)
+  ).join('');
+
+  return (
+    `<div class="jcoll${collapsed?' jcollapsed':''}">` +
+      `<div class="jhead" onclick="jTog(this)">` +
+        `<span class="jt">${collapsed?'&#9656;':'&#9662;'}</span>` +
+        keyHtml +
+        `<span class="jbrace">${open}</span>` +
+        `<span class="jsum"> ${label} ${close}${comma?',':''}</span>` +
+      `</div>` +
+      `<div class="jch">${ch}</div>` +
+      `<div class="jfoot"><span class="jbrace">${close}</span>${commaHtml}</div>` +
+    `</div>`
+  );
+}
+
+function jTog(head) {
+  const coll = head.closest('.jcoll');
+  const wasCollapsed = coll.classList.contains('jcollapsed');
+  coll.classList.toggle('jcollapsed');
+  head.querySelector('.jt').innerHTML = wasCollapsed ? '&#9662;' : '&#9656;';
+}
+
+function collapseAll() {
+  document.querySelectorAll('#rout .jcoll').forEach(c => {
+    if (!c.classList.contains('jcollapsed')) {
+      c.classList.add('jcollapsed');
+      const t = c.querySelector(':scope > .jhead > .jt');
+      if (t) t.innerHTML = '&#9656;';
+    }
+  });
+}
+
+function expandAll() {
+  document.querySelectorAll('#rout .jcoll').forEach(c => {
+    if (c.classList.contains('jcollapsed')) {
+      c.classList.remove('jcollapsed');
+      const t = c.querySelector(':scope > .jhead > .jt');
+      if (t) t.innerHTML = '&#9662;';
+    }
+  });
+}
+
+function renderResult(raw) {
+  const rout = document.getElementById('rout');
+  let parsed;
+  try { parsed = JSON.parse(raw); } catch {
+    _copyText = raw;
+    rout.className = 'json-tree plain';
+    rout.textContent = raw;
+    return;
+  }
+  _copyText = JSON.stringify(parsed, null, 2);
+  rout.className = 'json-tree';
+  rout.innerHTML = jNode(parsed, 0);
+}
+
+function copyRes() {
+  navigator.clipboard.writeText(_copyText).then(()=>{
+    const b = document.querySelector('.copy-btn');
+    b.textContent='Copied!'; setTimeout(()=>b.textContent='Copy', 2000);
+  });
+}
+
+function esc(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+init();
+</script>
+</body>
+</html>

@@ -15,11 +15,16 @@ ADMIN_PASSWORD_HASH=sha256$...
 ADMIN_SESSION_SECRET=change_this_admin_session_secret
 ADMIN_SESSION_TTL_MINUTES=240
 ADMIN_MAX_UPLOAD_MB=512
+# 外部 FHIR 伺服器 OAuth token / client secret 的對稱加密金鑰（pgcrypto）。
+# 未設定時回退至 ADMIN_SESSION_SECRET。
+FHIR_SERVER_SECRET_KEY=
 ```
 
 密碼雜湊支援 `sha256$<hex>` 或 `pbkdf2_sha256$<iterations>$<salt>$<hex>`。四個變數齊備（`admin_ready`）時 `/admin` 才會開放。
 
 > 管理後台需要 `admin-worker` 容器一起運作（背景工作執行器）。`docker compose up -d` 會一併啟動。
+
+> **重要：** `FHIR_SERVER_SECRET_KEY`（或其回退值 `ADMIN_SESSION_SECRET`）必須在 `app` 與 `admin-worker` 兩個容器上**完全一致**。worker 會以此金鑰 `pgp_sym_decrypt` 外部 FHIR 伺服器的 OAuth token 與 client secret；若 worker 的金鑰為空或不同，會在背景工作（如排程 FHIR 任務、token 更新）時拋出 `Illegal argument to function`（金鑰為空）或 `Wrong key or corrupt data`（金鑰不符）。
 
 ## 介面組成
 

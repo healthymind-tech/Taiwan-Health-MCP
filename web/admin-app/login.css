@@ -1,0 +1,63 @@
+/* Standalone styling for the Next.js admin login page (light + dark). */
+.login-wrap {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f4f6fa;
+  padding: 24px;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+.login-card {
+  width: 100%;
+  max-width: 360px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 28px 26px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.login-logo { display: block; height: 40px; width: auto; margin: 0 auto 4px; object-fit: contain; }
+.login-card h1 { font-size: 1.15rem; margin: 0; text-align: center; color: #1a1a1a; }
+.login-sub { margin: -6px 0 6px; text-align: center; color: #666; font-size: 0.9rem; }
+.login-card label { display: flex; flex-direction: column; gap: 6px; font-size: 0.85rem; color: #444; }
+.login-card input {
+  padding: 9px 12px;
+  border: 1px solid #d0d7e2;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  background: #fff;
+  color: #1a1a1a;
+}
+.login-card input:focus { outline: 2px solid #0066cc33; border-color: #0066cc; }
+.login-card button {
+  margin-top: 6px;
+  padding: 10px 14px;
+  border: none;
+  border-radius: 8px;
+  background: #0066cc;
+  color: #fff;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.login-card button:disabled { opacity: 0.6; cursor: default; }
+.login-error {
+  background: #fdecec;
+  border: 1px solid #f5b5b5;
+  color: #a12626;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 0.85rem;
+}
+
+[data-theme="dark"] .login-wrap { background: #0f1115; }
+[data-theme="dark"] .login-card { background: #15181e; border-color: #262b35; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4); }
+[data-theme="dark"] .login-card h1 { color: #e6e8eb; }
+[data-theme="dark"] .login-sub { color: #aab2bf; }
+[data-theme="dark"] .login-card label { color: #b8c0cc; }
+[data-theme="dark"] .login-card input { background: #0f1115; border-color: #2b3340; color: #e6e8eb; }
+[data-theme="dark"] .login-error { background: #2a1416; border-color: #5a2630; color: #ff9aa2; }

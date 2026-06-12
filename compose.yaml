@@ -86,8 +86,13 @@ services:
     container_name: taiwanHealthMcp
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    # No public host port: the MCP/admin app is reached only through the nginx
+    # front door (:${WEB_PORT}). nginx proxies /mcp, /admin/api, /admin/ws, etc.
+    # to it over the compose network. Set MCP host-publish back via `ports:` only
+    # if a host-local MCP client must connect to :${MCP_PORT} directly.
+    expose:
+      - "${MCP_PORT:-8000}"
     ports:
-      - "${MCP_PORT:-8000}:${MCP_PORT:-8000}"
       - "127.0.0.1:${METRICS_PORT:-9090}:${METRICS_PORT:-9090}"
     volumes:
       - ./src:/app/src
@@ -106,6 +111,9 @@ services:
       - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
       - ADMIN_PASSWORD_HASH=${ADMIN_PASSWORD_HASH:-}
       - ADMIN_SESSION_SECRET=${ADMIN_SESSION_SECRET:-}
+      # Symmetric pgcrypto key for FHIR OAuth tokens / client secrets
+      # (falls back to ADMIN_SESSION_SECRET when unset). Must match admin-worker.
+      - FHIR_SERVER_SECRET_KEY=${FHIR_SERVER_SECRET_KEY:-}
       - ADMIN_SESSION_TTL_MINUTES=${ADMIN_SESSION_TTL_MINUTES:-240}
       - ADMIN_MAX_UPLOAD_MB=${ADMIN_MAX_UPLOAD_MB:-512}
       - METRICS_PORT=${METRICS_PORT:-9090}
@@ -181,6 +189,11 @@ services:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-mcp}:${POSTGRES_PASSWORD}@pgbouncer:5432/${POSTGRES_DB:-taiwan_health}
       - REDIS_URL=redis://redis:6379/0
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      # Required so the worker can pgp_sym_decrypt FHIR OAuth tokens / client
+      # secrets (same key as `app`; falls back to ADMIN_SESSION_SECRET). Without
+      # it the key is empty and pgcrypto raises "Illegal argument to function".
+      - FHIR_SERVER_SECRET_KEY=${FHIR_SERVER_SECRET_KEY:-}
+      - ADMIN_SESSION_SECRET=${ADMIN_SESSION_SECRET:-}
       - ADMIN_WORKER_NAME=${ADMIN_WORKER_NAME:-admin-worker}
       - ADMIN_WORKER_POLL_SECONDS=${ADMIN_WORKER_POLL_SECONDS:-3}
       - ADMIN_HEARTBEAT_INTERVAL_SECONDS=${ADMIN_HEARTBEAT_INTERVAL_SECONDS:-15}
@@ -220,6 +233,33 @@ services:
       minio:
         condition: service_healthy
     restart: unless-stopped
+
+  # ── Next.js front-end (public pages + admin SPA) ──────────────────────────────
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    container_name: taiwanHealthMcp_web
+    restart: unless-stopped
+    environment:
+      - BACKEND_INTERNAL_URL=http://app:${MCP_PORT:-8000}
+    depends_on:
+      - app
+    expose:
+      - "3000"
+
+  # ── nginx single front door (routes API/MCP/WS -> app, rest -> web) ───────────
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: taiwanHealthMcp_nginx
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - web
+      - app
 
 volumes:
   postgres_data:

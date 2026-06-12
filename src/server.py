@@ -1,6 +1,7 @@
 import asyncio
 import inspect
 import json
+import os
 import mimetypes
 import re
 from contextlib import asynccontextmanager
@@ -111,6 +112,7 @@ from fhir_server_service import list_fhir_servers as list_registered_fhir_server
 from fhir_server_service import (
     perform_fhir_crud,
     probe_fhir_server,
+    run_fhir_test_request,
     server_mcp_summary,
     set_default_fhir_server,
     test_fhir_server_config,
@@ -3708,10 +3710,14 @@ class PrivacyPageMiddleware:
                 if method == "GET" and path == "/admin/login":
                     if admin_username:
                         await self._send_redirect(send, "/admin")
-                    else:
+                    elif _LEGACY_HTML_PAGES:
                         await self._send_html(
                             send, build_admin_login_html().encode("utf-8")
                         )
+                    else:
+                        # Login UI is owned by the Next.js front door; the Python
+                        # app only exposes the JSON login/logout aliases.
+                        await self._send_404(send)
                     return
 
                 if method == "POST" and path == "/admin/login":
@@ -3754,6 +3760,74 @@ class PrivacyPageMiddleware:
                     await self._send_redirect(
                         send,
                         "/admin/login",
+                        extra_headers=[
+                            (
+                                b"set-cookie",
+                                clear_admin_session_cookie().encode("utf-8"),
+                            )
+                        ],
+                    )
+                    return
+
+                # JSON aliases for the Next.js SPA login/logout. Same logic as the
+                # form routes above, but accept JSON or form body and return JSON +
+                # Set-Cookie so the SPA can POST via fetch() and redirect client-side.
+                # MUST stay before the auth gate below (login cannot require auth).
+                if method == "POST" and path == "/admin/api/login":
+                    raw_body = await self._read_body(receive)
+                    text = raw_body.decode("utf-8", errors="replace")
+                    data = None
+                    if text.strip().startswith("{"):
+                        try:
+                            data = json.loads(text)
+                        except json.JSONDecodeError:
+                            data = None
+                    if isinstance(data, dict):
+                        username = str(data.get("username", "")).strip()
+                        password = str(data.get("password", ""))
+                    else:
+                        form = parse_qs(text)
+                        username = (form.get("username", [""])[0] or "").strip()
+                        password = form.get("password", [""])[0] or ""
+                    if username == config.admin_username and verify_admin_password(
+                        password, config.admin_password_hash
+                    ):
+                        max_age_seconds = max(config.admin_session_ttl_minutes, 1) * 60
+                        token = build_admin_session_token(
+                            username,
+                            config.admin_session_secret,
+                            ttl_minutes=config.admin_session_ttl_minutes,
+                        )
+                        await self._send_json(
+                            send,
+                            json.dumps({"ok": True}, ensure_ascii=False),
+                            extra_headers=[
+                                (
+                                    b"set-cookie",
+                                    build_admin_session_cookie(
+                                        token, max_age_seconds=max_age_seconds
+                                    ).encode("utf-8"),
+                                )
+                            ],
+                        )
+                    else:
+                        await self._send_json(
+                            send,
+                            json.dumps(
+                                {
+                                    "ok": False,
+                                    "error": "Invalid username or password.",
+                                },
+                                ensure_ascii=False,
+                            ),
+                            status=401,
+                        )
+                    return
+
+                if method == "POST" and path == "/admin/api/logout":
+                    await self._send_json(
+                        send,
+                        json.dumps({"ok": True}, ensure_ascii=False),
                         extra_headers=[
                             (
                                 b"set-cookie",
@@ -3834,9 +3908,15 @@ class PrivacyPageMiddleware:
                         )
                         return
 
-                # ── Admin SPA: serve hashed assets and the index.html shell for
-                #    every client-side route (the React UI in admin-ui/dist). ──
-                if method == "GET" and not path.startswith("/admin/api/"):
+                # ── Admin SPA (legacy fallback only): serve hashed assets and the
+                #    index.html shell for every client-side route. The Next.js
+                #    front door now owns the admin UI; this is gated off by
+                #    default and only re-enabled with LEGACY_HTML=true. ──
+                if (
+                    _LEGACY_HTML_PAGES
+                    and method == "GET"
+                    and not path.startswith("/admin/api/")
+                ):
                     rel = path[len("/admin") :].lstrip("/")  # "" for /admin
                     last_segment = rel.rsplit("/", 1)[-1]
                     if "." in last_segment:
@@ -3874,6 +3954,12 @@ class PrivacyPageMiddleware:
                         b"Docker image (the frontend stage builds it automatically).</p>",
                         status=503,
                     )
+                    return
+
+                # Legacy admin HTML is off: any remaining non-API admin GET (page
+                # navigation) belongs to the Next.js front door, not this app.
+                if not _LEGACY_HTML_PAGES and not path.startswith("/admin/api/"):
+                    await self._send_404(send)
                     return
 
                 if method == "GET" and path == "/admin/api/overview":
@@ -4499,6 +4585,52 @@ class PrivacyPageMiddleware:
                             json.dumps(
                                 {
                                     "error": "FHIR server connection test failed",
+                                    "detail": str(exc),
+                                },
+                                ensure_ascii=False,
+                            ),
+                            status=500,
+                        )
+                    return
+
+                if method == "POST" and path == "/admin/api/fhir-servers/test-request":
+                    try:
+                        payload = await _read_json_body(receive)
+                    except Exception as exc:
+                        await self._send_json(
+                            send,
+                            json.dumps(
+                                {"error": "Invalid JSON body", "detail": str(exc)},
+                                ensure_ascii=False,
+                            ),
+                            status=400,
+                        )
+                        return
+                    try:
+                        pool = database.get_pool()
+                        result = await run_fhir_test_request(
+                            pool,
+                            payload,
+                            secret_key=fhir_server_secret_key(
+                                config.admin_session_secret
+                            ),
+                        )
+                        await self._send_json(
+                            send,
+                            json.dumps(result, ensure_ascii=False, default=str),
+                        )
+                    except ValueError as exc:
+                        await self._send_json(
+                            send,
+                            json.dumps({"error": str(exc)}, ensure_ascii=False),
+                            status=400,
+                        )
+                    except Exception as exc:
+                        await self._send_json(
+                            send,
+                            json.dumps(
+                                {
+                                    "error": "FHIR test request failed",
                                     "detail": str(exc),
                                 },
                                 ensure_ascii=False,
@@ -6247,17 +6379,23 @@ class PrivacyPageMiddleware:
 
             # ── static HTML pages ──────────────────────────────────────────
             if method == "GET":
-                if path in ("", "/"):
+                if _LEGACY_HTML_PAGES and path in ("", "/"):
                     await self._send_html(send, _LANDING_HTML_BYTES)
                     return
-                if path == "/privacy":
+                if _LEGACY_HTML_PAGES and path == "/privacy":
                     await self._send_html(send, _PRIVACY_HTML_BYTES)
                     return
-                if path == "/dpa":
+                if _LEGACY_HTML_PAGES and path == "/dpa":
                     await self._send_html(send, _DPA_HTML_BYTES)
                     return
-                if path == "/status":
+                if _LEGACY_HTML_PAGES and path == "/status":
                     await self._send_html(send, _STATUS_HTML_BYTES)
+                    return
+                # Data-only endpoint backing the Next.js status page. Serves the
+                # same tool category map / examples injected into _STATUS_HTML so
+                # the SPA stays in sync with the registered tool surface.
+                if path == "/status.json":
+                    await self._send_json(send, _STATUS_DATA_JSON)
                     return
 
                 # ── static assets (logos + favicon) ───────────────────────
@@ -8843,6 +8981,26 @@ _TOOL_CATEGORY_MAP, _TOOL_EXAMPLES, _TOOL_SELECTOR_EXAMPLES, SERVICE_TOOLS = (
 )
 _STATUS_HTML = _build_status_html()
 _STATUS_HTML_BYTES = _STATUS_HTML.encode("utf-8")
+# Data-only payload for the Next.js status page (GET /status.json). Mirrors the
+# three JS constants embedded in _STATUS_HTML so the SPA renders the same tool
+# catalog without scraping the HTML.
+_STATUS_DATA_JSON = json.dumps(
+    {
+        "category_map": _TOOL_CATEGORY_MAP,
+        "tool_examples": _TOOL_EXAMPLES,
+        "tool_selector_examples": _TOOL_SELECTOR_EXAMPLES,
+    },
+    ensure_ascii=False,
+)
+# Legacy public HTML pages (/, /privacy, /dpa, /status) are now served by the
+# Next.js front-end. Set LEGACY_HTML=true to have the Python app keep serving
+# them (e.g. when running without the Next.js/nginx front door).
+_LEGACY_HTML_PAGES = os.getenv("LEGACY_HTML", "false").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+    "on",
+)
 
 
 # ============================================================

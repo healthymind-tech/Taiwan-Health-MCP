@@ -138,6 +138,9 @@ export interface FhirServer {
   fhir_server_id: string;
   server_key: string;
   name: string;
+  display_name: string;
+  environment: string;
+  tags: string[];
   description: string;
   base_url: string;
   test_path: string;

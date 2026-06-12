@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <link rel="shortcut icon" type="image/png" href="/favicon.png">
+  <title>Privacy Policy – Taiwan Health MCP Server</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; margin: 0; line-height: 1.7; color: #222;
+           background: #fff; }
+    nav { position: sticky; top: 0; background: #fff; border-bottom: 1px solid #e5e7eb;
+          padding: 0 24px; z-index: 100; }
+    .nav-inner { display: flex; align-items: center; max-width: 900px;
+                 margin: 0 auto; padding: 10px 0; }
+    .nav-inner img { height: 36px; display: block; }
+    .wrap { max-width: 900px; margin: 0 auto; padding: 0 24px 48px; }
+    h1 { font-size: 1.6rem; margin-top: 36px; margin-bottom: 4px; }
+    h2 { font-size: 1.15rem; margin-top: 2rem; }
+    p, li { font-size: 0.97rem; }
+    code { background: #f4f4f4; padding: 1px 5px; border-radius: 3px; font-size: 0.9rem; }
+    a { color: #0066cc; }
+    @media (max-width: 600px) {
+      nav { padding: 0 16px; }
+      .wrap { padding: 0 16px 32px; }
+      h1 { font-size: 1.25rem; margin-top: 24px; }
+      h2 { font-size: 1.05rem; }
+      p, li { font-size: 0.93rem; }
+    }
+  </style>
+</head>
+<body>
+<nav>
+  <div class="nav-inner">
+    <a href="/"><img src="/logo-h.png" alt="HealthyMind Tech"></a>
+  </div>
+</nav>
+<div class="wrap">
+<h1>Privacy Policy – Taiwan Health MCP Server</h1>
+<p><em>Effective date: 2025-01-01 &nbsp;|&nbsp; Last updated: 2026-04-09</em></p>
+
+<h2>1. Overview</h2>
+<p>Taiwan Health MCP Server is an open-source Model Context Protocol (MCP) server
+that provides read-only access to Taiwan FDA health, ICD-10, LOINC, SNOMED CT,
+and Taiwan clinical guideline data. All underlying modules are publicly available;
+this service does not collect, store, or process personal health information.</p>
+
+<h2>2. Data We Collect</h2>
+<p>We do <strong>not</strong> collect any personally identifiable information (PII).
+The server maintains an internal audit log (<code>audit.query_log</code>) for
+operational monitoring purposes. Each audit record contains:</p>
+<ul>
+  <li>Tool name (e.g., <code>search_medical_codes</code>)</li>
+  <li>SHA-256 hash of the tool parameters — <strong>not</strong> the raw values</li>
+  <li>Request duration and status (success / error)</li>
+  <li>Timestamp</li>
+</ul>
+<p>Raw parameter values are <strong>never</strong> written to logs. This design
+ensures that patient-identifiable query terms cannot be reconstructed from the
+audit trail.</p>
+
+<h2>3. Data Sources</h2>
+<p>All medical terminology data served by this API originates from publicly
+available modules:</p>
+<ul>
+  <li>ICD-10-CM / ICD-10-PCS — U.S. National Library of Medicine / CMS (public domain)</li>
+  <li>LOINC 2.80 — Regenstrief Institute (LOINC License, free for most uses)</li>
+  <li>SNOMED CT International — SNOMED International (SNOMED License)</li>
+  <li>Taiwan FDA health supplements and nutrition data — Taiwan FDA open data</li>
+  <li>TWCore IG — Taiwan Ministry of Health and Welfare (public)</li>
+</ul>
+
+<h2>4. How Data Is Used</h2>
+<p>Query results are returned directly to the requesting MCP client (Claude).
+We do not use query data for training, profiling, advertising, or any purpose
+other than fulfilling the immediate API request.</p>
+
+<h2>5. Third-Party Data Processing</h2>
+<p>When this server is accessed through Anthropic's Claude products, Anthropic
+may collect telemetry on tool calls (including parameters and responses) per
+their own privacy policy. Please refer to
+<a href="https://www.anthropic.com/privacy">Anthropic's Privacy Policy</a>
+for details.</p>
+<p>This server does not share data with any other third parties.</p>
+
+<h2>6. Data Retention</h2>
+<p>Audit log records (SHA-256 hashes only) are retained for up to 90 days and
+then deleted. Redis cache entries expire per configured TTL (1–24 hours).</p>
+
+<h2>7. No Authentication Required</h2>
+<p>This service does not require user accounts or authentication. We do not
+store session tokens, cookies, or user identifiers of any kind.</p>
+
+<h2>8. Your Rights</h2>
+<p>Because we do not collect PII, there is no personal data to access, correct,
+or delete. If you believe this server has inadvertently processed personal data,
+please contact us at the address below.</p>
+
+<h2>9. Changes to This Policy</h2>
+<p>We may update this policy from time to time. The effective date at the top of
+this page will reflect the most recent revision.</p>
+
+<h2>10. Contact</h2>
+<p>For privacy-related questions, please open an issue at
+<a href="https://github.com/healthymind-tech/Taiwan-Health-MCP/issues">
+github.com/healthymind-tech/Taiwan-Health-MCP</a> or email
+<a href="mailto:support@healthymind-tech.com">support@healthymind-tech.com</a>.</p>
+</div>
+</body>
+</html>

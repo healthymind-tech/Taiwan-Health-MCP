@@ -79,7 +79,9 @@ def test_validate_non_oauth_forces_profile_none() -> None:
     assert data["auth_profile"] == "none"
 
 
-def test_smart_token_form_uses_aud_and_omits_token_type() -> None:
+def test_smart_token_form_omits_audience_and_token_type() -> None:
+    # SMART Backend Services token request carries no audience/resource and no
+    # requested_token_type — only grant_type, scope, and the client assertion.
     form = svc._token_request_form(
         {
             "auth_profile": "smart",
@@ -89,10 +91,11 @@ def test_smart_token_form_uses_aud_and_omits_token_type() -> None:
         }
     )
 
-    assert form["aud"] == "https://fhir.example.test/fhir"
+    assert "aud" not in form
     assert "resource" not in form
     assert "requested_token_type" not in form
     assert form["scope"] == "system/*.rs"
+    assert form["grant_type"] == "client_credentials"
 
 
 def test_iua_token_form_uses_resource_and_token_type() -> None:
@@ -218,7 +221,9 @@ def test_access_token_form_carries_client_assertion(monkeypatch) -> None:
     if method in svc.TOKEN_AUTH_JWT_METHODS:
         form["client_assertion_type"] = svc.CLIENT_ASSERTION_TYPE
         form["client_assertion"] = svc._build_client_assertion(server, "https://t")
-    assert form["aud"] == "https://fhir.example.test/fhir"
+    # SMART carries no aud/resource in the token body (the assertion does).
+    assert "aud" not in form
+    assert "resource" not in form
     assert form["client_assertion_type"] == svc.CLIENT_ASSERTION_TYPE
     assert form["client_assertion"] == "SIGNED.JWT.VALUE"
 
@@ -235,6 +240,35 @@ def test_derive_metadata_url_diverges_by_profile() -> None:
     assert (
         svc._derive_metadata_url(base, "https://meta.example.test/x", "smart")
         == "https://meta.example.test/x"
+    )
+
+
+def test_derive_metadata_url_smart_prefers_fhir_base_url() -> None:
+    # Per SMART App Launch, .well-known/smart-configuration is served from the
+    # FHIR resource server base URL, not the authorization server.
+    assert (
+        svc._derive_metadata_url(
+            "https://auth.example.test",
+            "",
+            "smart",
+            "https://fhir.example.test/r4",
+        )
+        == "https://fhir.example.test/r4/.well-known/smart-configuration"
+    )
+    # IUA / OAuth2 ignore base_url and stay on the authorization server.
+    assert (
+        svc._derive_metadata_url(
+            "https://auth.example.test",
+            "",
+            "iua",
+            "https://fhir.example.test/r4",
+        )
+        == "https://auth.example.test/.well-known/oauth-authorization-server"
+    )
+    # SMART with no base_url falls back to the authorization server URL.
+    assert (
+        svc._derive_metadata_url("https://auth.example.test", "", "smart", "")
+        == "https://auth.example.test/.well-known/smart-configuration"
     )
 
 
@@ -661,6 +695,153 @@ def test_fetch_metadata_applies_custom_headers(monkeypatch) -> None:
     assert payload["token_endpoint"] == "https://auth.example.test/token"
     assert captured["headers"]["X-Api-Key"] == "abc"
     assert captured["headers"]["Accept"] == "application/json"
+
+
+def test_validate_environment_and_tags() -> None:
+    data = svc._validate_server_payload(
+        {
+            "server_key": "hospital-a",
+            "name": "Hospital A",
+            "base_url": "https://fhir.example.test/fhir",
+            "environment": "Production",
+            "display_name": "Hospital A (prod)",
+            "tags": ["sandbox", "tw"],
+        }
+    )
+    assert data["environment"] == "production"
+    assert data["display_name"] == "Hospital A (prod)"
+    assert data["tags"] == ["sandbox", "tw"]
+
+
+def test_validate_rejects_unknown_environment() -> None:
+    with pytest.raises(ValueError, match="environment"):
+        svc._validate_server_payload(
+            {
+                "server_key": "hospital-a",
+                "name": "Hospital A",
+                "base_url": "https://fhir.example.test/fhir",
+                "environment": "prod-west-2",
+            }
+        )
+
+
+def test_normalize_expected_statuses_parses_list_and_string() -> None:
+    assert svc._normalize_expected_statuses("200, 201") == {200, 201}
+    assert svc._normalize_expected_statuses([200, "404"]) == {200, 404}
+    assert svc._normalize_expected_statuses("") == set()
+    # Out-of-range and junk are dropped.
+    assert svc._normalize_expected_statuses("99 600 abc 204") == {204}
+
+
+def test_send_test_request_builds_url_and_matches_expected(monkeypatch) -> None:
+    import asyncio
+
+    captured: dict[str, object] = {}
+
+    class _Resp:
+        status_code = 201
+        reason_phrase = "Created"
+        text = '{"resourceType":"Patient"}'
+        url = "https://fhir.example.test/fhir/Patient?_count=1"
+
+    class _FakeClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        async def request(self, method, url, headers=None, content=None):
+            captured["method"] = method
+            captured["url"] = url
+            captured["content"] = content
+            return _Resp()
+
+    monkeypatch.setattr(svc.httpx, "AsyncClient", _FakeClient)
+    server = {
+        "base_url": "https://fhir.example.test/fhir",
+        "auth_type": "none",
+        "timeout_seconds": 30,
+        "verify_tls": True,
+        "resource_headers_json": {},
+    }
+    result = asyncio.run(
+        svc._send_test_request(
+            server,
+            method="POST",
+            path="/Patient",
+            query={"_count": "1"},
+            extra_headers={"X-Trace": "abc"},
+            body={"resourceType": "Patient"},
+            expected_statuses={201},
+        )
+    )
+    assert captured["method"] == "POST"
+    assert captured["url"] == "https://fhir.example.test/fhir/Patient?_count=1"
+    # JSON body is serialized for write methods.
+    assert captured["content"] == '{"resourceType": "Patient"}'
+    # 201 is in expected_statuses, so the test counts as ok despite being non-2xx-default.
+    assert result["ok"] is True
+    assert result["status_code"] == 201
+    assert result["expected_statuses"] == [201]
+
+
+def test_discover_fhir_metadata_returns_full_capability(monkeypatch) -> None:
+    import asyncio
+
+    metadata = {
+        "issuer": "https://auth.example.test",
+        "authorization_endpoint": "https://auth.example.test/authorize",
+        "token_endpoint": "https://auth.example.test/token",
+        "jwks_uri": "https://auth.example.test/jwks",
+        "registration_endpoint": "https://auth.example.test/register",
+        "introspection_endpoint": "https://auth.example.test/introspect",
+        "revocation_endpoint": "https://auth.example.test/revoke",
+        "scopes_supported": ["openid", "fhirUser", "system/*.rs"],
+        "grant_types_supported": ["authorization_code", "client_credentials"],
+        "response_types_supported": ["code"],
+        "code_challenge_methods_supported": ["S256"],
+        "token_endpoint_auth_methods_supported": ["private_key_jwt"],
+        "capabilities": ["launch-standalone", "client-confidential-asymmetric"],
+    }
+
+    async def _fake_fetch(server):
+        return metadata
+
+    monkeypatch.setattr(svc, "_fetch_metadata", _fake_fetch)
+    result = asyncio.run(
+        svc.discover_fhir_metadata(
+            {
+                "auth_server_url": "https://auth.example.test",
+                "auth_profile": "smart",
+            }
+        )
+    )
+
+    # Existing keys stay populated (backward compatibility).
+    assert result["scopes_supported"] == ["openid", "fhirUser", "system/*.rs"]
+    assert result["token_endpoint"] == "https://auth.example.test/token"
+    assert result["grant_types_supported"] == [
+        "authorization_code",
+        "client_credentials",
+    ]
+    # New endpoint + capability surface.
+    assert result["jwks_uri"] == "https://auth.example.test/jwks"
+    assert result["registration_endpoint"] == "https://auth.example.test/register"
+    assert result["introspection_endpoint"] == "https://auth.example.test/introspect"
+    assert result["revocation_endpoint"] == "https://auth.example.test/revoke"
+    assert result["response_types_supported"] == ["code"]
+    assert result["code_challenge_methods_supported"] == ["S256"]
+    assert result["smart_capabilities"] == [
+        "launch-standalone",
+        "client-confidential-asymmetric",
+    ]
+    # Source metadata is present and stable for an identical body.
+    assert result["fetched_at"]
+    assert len(result["response_hash"]) == 64
 
 
 def test_coerce_uuid_accepts_valid_and_rejects_junk() -> None:

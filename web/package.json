@@ -1,0 +1,25 @@
+{
+  "name": "taiwan-health-web",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Unified Next.js front-end for Taiwan Health MCP: public marketing/status/privacy/dpa pages plus the admin console, proxying API/MCP/WS to the Python backend.",
+  "scripts": {
+    "dev": "next dev -p 3000",
+    "build": "next build",
+    "start": "next start -p 3000",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "^5.62.0",
+    "next": "^14.2.15",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.30.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "typescript": "^5.6.3"
+  }
+}

@@ -1,16 +1,17 @@
 // Generic modal: backdrop + panel, Escape to close, scroll-locked body.
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 interface Props {
   title: string;
   onClose: () => void;
   children: React.ReactNode;
   wide?: boolean;
+  xwide?: boolean;
   workspace?: boolean;
 }
 
-export function Modal({ title, onClose, children, wide, workspace }: Props): JSX.Element {
+export function Modal({ title, onClose, children, wide, xwide, workspace }: Props): JSX.Element {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -23,11 +24,24 @@ export function Modal({ title, onClose, children, wide, workspace }: Props): JSX
     };
   }, [onClose]);
 
+  // Only treat a backdrop click as "close" when the press STARTED on the
+  // backdrop too. Otherwise pressing inside a field and dragging the cursor out
+  // before releasing (e.g. selecting text) fires a click whose target is the
+  // backdrop and would wrongly dismiss the modal.
+  const pressOnBackdrop = useRef(false);
+
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div
+      className="modal-backdrop"
+      onMouseDown={(e) => {
+        pressOnBackdrop.current = e.target === e.currentTarget;
+      }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget && pressOnBackdrop.current) onClose();
+      }}
+    >
       <div
-        className={`modal-panel ${wide ? "modal-panel--wide" : ""} ${workspace ? "modal-panel--workspace" : ""}`}
-        onClick={(e) => e.stopPropagation()}
+        className={`modal-panel ${wide ? "modal-panel--wide" : ""} ${xwide ? "modal-panel--xwide" : ""} ${workspace ? "modal-panel--workspace" : ""}`}
         role="dialog"
         aria-modal="true"
       >

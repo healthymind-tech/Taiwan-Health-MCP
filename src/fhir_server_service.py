@@ -16,7 +16,7 @@ import re
 import secrets
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlparse
 
@@ -40,6 +40,12 @@ AUTH_PROFILE_NONE = "none"
 AUTH_PROFILE_IUA = "iua"
 AUTH_PROFILE_SMART = "smart"
 AUTH_PROFILES = {AUTH_PROFILE_NONE, AUTH_PROFILE_IUA, AUTH_PROFILE_SMART}
+
+# Deployment environments for a registered server. "production" triggers extra
+# safety prompts in the admin UI (test confirmation, DELETE disabled by default).
+FHIR_ENVIRONMENTS = frozenset(
+    {"development", "testing", "staging", "production", "custom"}
+)
 
 # How the client authenticates to the OAuth2 token endpoint (OIDC names).
 TOKEN_AUTH_BASIC = "client_secret_basic"
@@ -401,6 +407,20 @@ async def ensure_fhir_server_schema(pool: PoolLike) -> None:
                 ADD COLUMN IF NOT EXISTS metadata_headers_json JSONB
                     NOT NULL DEFAULT '{}'::jsonb
             """)
+        # Pipeline metadata: deployment environment (drives Production safety
+        # warnings in the UI), an optional human display name, and freeform tags.
+        await conn.execute("""
+            ALTER TABLE admin.fhir_servers
+                ADD COLUMN IF NOT EXISTS environment TEXT
+            """)
+        await conn.execute("""
+            ALTER TABLE admin.fhir_servers
+                ADD COLUMN IF NOT EXISTS display_name TEXT
+            """)
+        await conn.execute("""
+            ALTER TABLE admin.fhir_servers
+                ADD COLUMN IF NOT EXISTS tags JSONB NOT NULL DEFAULT '[]'::jsonb
+            """)
         await conn.execute("""
             DO $$
             DECLARE
@@ -656,20 +676,23 @@ def _derive_metadata_url(
     auth_server_url: str,
     metadata_url: str,
     auth_profile: str = AUTH_PROFILE_NONE,
+    base_url: str = "",
 ) -> str:
     if metadata_url:
         return metadata_url
+    # SMART advertises .well-known/smart-configuration on the FHIR *resource*
+    # server base URL (per SMART App Launch), not the authorization server. Fall
+    # back to auth_server_url only if no base_url is supplied.
+    if auth_profile == AUTH_PROFILE_SMART:
+        base = (base_url or auth_server_url).rstrip("/")
+        if not base:
+            return ""
+        return f"{base}/.well-known/smart-configuration"
+    # IUA / plain OAuth2 use the RFC 8414 authorization-server metadata, hosted
+    # on the authorization server.
     if not auth_server_url:
         return ""
-    base = auth_server_url.rstrip("/")
-    # SMART Backend Services advertises via .well-known/smart-configuration;
-    # IUA / plain OAuth2 use the RFC 8414 authorization-server metadata.
-    well_known = (
-        ".well-known/smart-configuration"
-        if auth_profile == AUTH_PROFILE_SMART
-        else ".well-known/oauth-authorization-server"
-    )
-    return f"{base}/{well_known}"
+    return f"{auth_server_url.rstrip('/')}/.well-known/oauth-authorization-server"
 
 
 def _derive_token_endpoint(auth_server_url: str, token_endpoint: str) -> str:
@@ -926,7 +949,20 @@ def _validate_server_payload(
             + ", ".join(sorted(TOKEN_STRATEGY_DEFAULTS))
         )
 
+    # Pipeline metadata. environment drives Production safety prompts; tags/display
+    # name are operator conveniences.
+    environment = _clean_text(merged.get("environment")).lower()
+    if environment and environment not in FHIR_ENVIRONMENTS:
+        raise ValueError(
+            "environment must be one of: " + ", ".join(sorted(FHIR_ENVIRONMENTS))
+        )
+    display_name = _clean_text(merged.get("display_name"))
+    tags = _parse_str_list(merged.get("tags"), [])
+
     return {
+        "environment": environment or None,
+        "display_name": display_name or None,
+        "tags": tags,
         "server_key": server_key,
         "name": name,
         "description": _clean_text(merged.get("description")),
@@ -971,6 +1007,9 @@ def _server_public(row: asyncpg.Record | dict[str, Any]) -> dict[str, Any]:
         "fhir_server_id": str(row["fhir_server_id"]),
         "server_key": row["server_key"],
         "name": row["name"],
+        "display_name": _row_get(row, "display_name") or "",
+        "environment": _row_get(row, "environment") or "",
+        "tags": _json_value(_row_get(row, "tags"), []),
         "description": _row_get(row, "description") or "",
         "base_url": row["base_url"],
         "test_path": _row_get(row, "test_path") or "",
@@ -1315,7 +1354,8 @@ async def create_fhir_server(
                     scope, resource, requested_token_type, token_headers_json,
                     resource_headers_json, verify_tls, timeout_seconds,
                     allowed_resource_types, allowed_operations, created_by, test_path,
-                    default_token_strategy, metadata_headers_json
+                    default_token_strategy, metadata_headers_json,
+                    environment, display_name, tags
                 )
                 VALUES (
                     COALESCE($34::uuid, gen_random_uuid()),
@@ -1335,7 +1375,8 @@ async def create_fhir_server(
                     $18, $19, $30,
                     $20, $21, $22, $23::jsonb,
                     $24::jsonb, $25, $26,
-                    $27::jsonb, $28::jsonb, $29, $31, $32, $33::jsonb
+                    $27::jsonb, $28::jsonb, $29, $31, $32, $33::jsonb,
+                    $36, $37, $38::jsonb
                 )
                 RETURNING *, (client_secret_ciphertext IS NOT NULL) AS client_secret_configured
                 """,
@@ -1374,6 +1415,9 @@ async def create_fhir_server(
                 json.dumps(data["metadata_headers_json"], ensure_ascii=False),
                 import_id,
                 data["authorization_endpoint"],
+                data["environment"],
+                data["display_name"],
+                json.dumps(data["tags"], ensure_ascii=False),
             )
             await _admin_audit(
                 conn,
@@ -1473,6 +1517,9 @@ async def update_fhir_server(
                     test_path = $33,
                     default_token_strategy = $34,
                     metadata_headers_json = $35::jsonb,
+                    environment = $37,
+                    display_name = $38,
+                    tags = $39::jsonb,
                     updated_at = NOW()
                 WHERE fhir_server_id = $1
                 RETURNING *, (client_secret_ciphertext IS NOT NULL) AS client_secret_configured
@@ -1513,6 +1560,9 @@ async def update_fhir_server(
                 data["default_token_strategy"],
                 json.dumps(data["metadata_headers_json"], ensure_ascii=False),
                 data["authorization_endpoint"],
+                data["environment"],
+                data["display_name"],
+                json.dumps(data["tags"], ensure_ascii=False),
             )
             _TOKEN_CACHE.pop(str(row["fhir_server_id"]), None)
             await _admin_audit(
@@ -1595,6 +1645,7 @@ async def _fetch_metadata(server: dict[str, Any]) -> dict[str, Any]:
         server.get("auth_server_url") or "",
         server.get("metadata_url") or "",
         server.get("auth_profile") or AUTH_PROFILE_NONE,
+        server.get("base_url") or "",
     )
     if not metadata_url.strip("/"):
         return {}
@@ -1648,19 +1699,37 @@ async def discover_fhir_metadata(payload: dict[str, Any]) -> dict[str, Any]:
         "metadata_url": _validate_optional_url(
             _clean_text(payload.get("metadata_url")), "metadata_url"
         ),
+        "base_url": _validate_optional_url(
+            _clean_text(payload.get("base_url")), "base_url"
+        ),
         "auth_profile": auth_profile,
         "verify_tls": _bool_value(payload.get("verify_tls"), True),
         "timeout_seconds": max(1, min(int(payload.get("timeout_seconds") or 30), 120)),
     }
     metadata_url = _derive_metadata_url(
-        server["auth_server_url"], server["metadata_url"], auth_profile
+        server["auth_server_url"],
+        server["metadata_url"],
+        auth_profile,
+        server["base_url"],
     )
     if not metadata_url.strip("/"):
         raise ValueError("Provide a metadata URL or auth server URL first")
 
     metadata = await _fetch_metadata(server)
+    # Canonical-JSON hash so the UI can detect when a server's discovery doc
+    # changes between fetches (e.g. rotated endpoints) without storing the body.
+    response_hash = hashlib.sha256(
+        json.dumps(metadata, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+    def _endpoint(key: str) -> str:
+        return str(metadata.get(key) or "")
+
     return {
         "metadata_url": metadata_url,
+        "fetched_at": datetime.now(timezone.utc).isoformat(),
+        "response_hash": response_hash,
+        # Advertised scopes / capabilities (existing keys preserved).
         "scopes_supported": _metadata_str_list(metadata.get("scopes_supported")),
         "token_endpoint_auth_methods_supported": _metadata_str_list(
             metadata.get("token_endpoint_auth_methods_supported")
@@ -1668,7 +1737,22 @@ async def discover_fhir_metadata(payload: dict[str, Any]) -> dict[str, Any]:
         "grant_types_supported": _metadata_str_list(
             metadata.get("grant_types_supported")
         ),
-        "token_endpoint": str(metadata.get("token_endpoint") or ""),
+        "response_types_supported": _metadata_str_list(
+            metadata.get("response_types_supported")
+        ),
+        "code_challenge_methods_supported": _metadata_str_list(
+            metadata.get("code_challenge_methods_supported")
+        ),
+        # SMART advertises its feature flags under `capabilities`.
+        "smart_capabilities": _metadata_str_list(metadata.get("capabilities")),
+        # Authorization-server endpoints (token_endpoint key preserved).
+        "issuer": _endpoint("issuer"),
+        "token_endpoint": _endpoint("token_endpoint"),
+        "authorization_endpoint": _endpoint("authorization_endpoint"),
+        "jwks_uri": _endpoint("jwks_uri"),
+        "registration_endpoint": _endpoint("registration_endpoint"),
+        "introspection_endpoint": _endpoint("introspection_endpoint"),
+        "revocation_endpoint": _endpoint("revocation_endpoint"),
     }
 
 
@@ -1683,13 +1767,18 @@ def _token_request_form(server: dict[str, Any]) -> dict[str, str]:
     form: dict[str, str] = {"grant_type": "client_credentials"}
     if server.get("scope"):
         form["scope"] = server["scope"]
-    if server.get("resource"):
-        if auth_profile == AUTH_PROFILE_SMART:
-            form["aud"] = server["resource"]
-        else:
+    # SMART Backend Services (client_credentials) carries NO audience in the
+    # token-request body — its only parameters are grant_type, scope,
+    # client_assertion_type and client_assertion. The audience is conveyed by the
+    # assertion's `aud` claim (= token endpoint), set in _build_client_assertion.
+    # IUA / plain OAuth2 use the RFC 8707 `resource` indicator and may request a
+    # specific RFC 8693 `requested_token_type` (IUA permits both in the token
+    # request for client_credentials and authorization_code).
+    if auth_profile != AUTH_PROFILE_SMART:
+        if server.get("resource"):
             form["resource"] = server["resource"]
-    if auth_profile != AUTH_PROFILE_SMART and server.get("requested_token_type"):
-        form["requested_token_type"] = server["requested_token_type"]
+        if server.get("requested_token_type"):
+            form["requested_token_type"] = server["requested_token_type"]
     return form
 
 
@@ -2437,13 +2526,19 @@ async def probe_fhir_server(
     }
 
 
-async def test_fhir_server_config(
+async def _build_draft_server(
     pool: PoolLike,
     payload: dict[str, Any],
     *,
     secret_key: str,
-) -> dict[str, Any]:
-    """Test a draft Add/Edit form without saving it."""
+) -> tuple[dict[str, Any], str, dict[str, Any] | None]:
+    """Validate a draft Add/Edit payload into a runtime server dict (unsaved).
+
+    Returns ``(server, existing_identifier, existing_public)`` so callers can
+    reuse a saved server's stored secrets/token when testing an edit. Shared by
+    ``test_fhir_server_config`` (full workflow) and ``run_fhir_test_request``
+    (single custom request).
+    """
     await ensure_fhir_server_schema(pool)
     existing_identifier = _clean_text(
         payload.get("fhir_server_id")
@@ -2512,12 +2607,25 @@ async def test_fhir_server_config(
         "created_at": None,
         "updated_at": None,
     }
+    return server, existing_identifier, existing_public
+
+
+async def test_fhir_server_config(
+    pool: PoolLike,
+    payload: dict[str, Any],
+    *,
+    secret_key: str,
+) -> dict[str, Any]:
+    """Test a draft Add/Edit form without saving it."""
+    server, existing_identifier, existing_public = await _build_draft_server(
+        pool, payload, secret_key=secret_key
+    )
     # For an existing Authorization Code server being edited, reuse its stored
     # token so the draft test can actually reach FHIR; a brand-new draft has no
     # token yet and the workflow reports "save and authorize first".
     user_token: str | None = None
     user_token_error = ""
-    if data["auth_type"] == AUTH_OAUTH2_AC:
+    if server["auth_type"] == AUTH_OAUTH2_AC:
         if existing_identifier and existing_public:
             probe_server = dict(server)
             probe_server["fhir_server_id"] = existing_public["fhir_server_id"]
@@ -2532,6 +2640,169 @@ async def test_fhir_server_config(
     try:
         result = await _run_connection_workflow(
             server, user_token=user_token, user_token_error=user_token_error
+        )
+        result["server_preview"] = _server_public(server)
+        return result
+    finally:
+        _TOKEN_CACHE.pop(str(server["fhir_server_id"]), None)
+
+
+# HTTP methods the connection-test builder may send. GET is the safe default;
+# the admin UI confirms before sending any mutating method.
+TEST_REQUEST_METHODS = frozenset({"GET", "POST", "PUT", "PATCH", "DELETE"})
+
+
+def _normalize_expected_statuses(value: Any) -> set[int]:
+    """Parse expected HTTP statuses from a list or comma/space-separated string."""
+    if value in (None, ""):
+        return set()
+    if isinstance(value, str):
+        parts: list[Any] = re.split(r"[,\s]+", value.strip())
+    elif isinstance(value, (list, tuple)):
+        parts = list(value)
+    else:
+        return set()
+    out: set[int] = set()
+    for part in parts:
+        try:
+            code = int(str(part).strip())
+        except (ValueError, TypeError):
+            continue
+        if 100 <= code <= 599:
+            out.add(code)
+    return out
+
+
+async def _send_test_request(
+    server: dict[str, Any],
+    *,
+    method: str,
+    path: str,
+    query: dict[str, str],
+    extra_headers: dict[str, str],
+    body: Any,
+    expected_statuses: set[int],
+    token: str | None = None,
+) -> dict[str, Any]:
+    """Send one arbitrary request against a draft server, for the test builder.
+
+    Bypasses the per-tool allowed_operations gate (admin connectivity check) and
+    returns the fully-composed URL plus whether the status matched expectations.
+    """
+    url = _fhir_url(server, path)
+    if query:
+        url += ("&" if "?" in url else "?") + urlencode(query)
+    headers = {"Accept": "application/fhir+json, application/json"}
+    headers.update(
+        _parse_headers(server.get("resource_headers_json"), allow_authorization=False)
+    )
+    headers.update(extra_headers)
+    if token is None and server["auth_type"] in OAUTH2_AUTH_TYPES:
+        token = await _access_token(server, strategy=TOKEN_STRATEGY_FRESH)
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    content: str | None = None
+    if body is not None and method in {"POST", "PUT", "PATCH"}:
+        content = body if isinstance(body, str) else json.dumps(body)
+        headers.setdefault("Content-Type", "application/fhir+json")
+    start = time.monotonic()
+    async with httpx.AsyncClient(
+        timeout=float(server["timeout_seconds"]),
+        verify=bool(server["verify_tls"]),
+    ) as client:
+        response = await client.request(method, url, headers=headers, content=content)
+    status_code = response.status_code
+    ok = (
+        status_code in expected_statuses
+        if expected_statuses
+        else 200 <= status_code < 300
+    )
+    return {
+        "ok": ok,
+        "method": method,
+        "url": str(response.url),
+        "status_code": status_code,
+        "reason": response.reason_phrase,
+        "duration_ms": int((time.monotonic() - start) * 1000),
+        "expected_statuses": sorted(expected_statuses),
+        "explanation": _http_error_explanation(status_code),
+        "body_preview": response.text[:2000],
+    }
+
+
+async def run_fhir_test_request(
+    pool: PoolLike,
+    payload: dict[str, Any],
+    *,
+    secret_key: str,
+) -> dict[str, Any]:
+    """Execute a single custom test request against a draft config (unsaved).
+
+    ``payload['test']`` carries method/path/query/headers/body/expected_statuses/
+    timeout. Read-only by default; the admin UI confirms before sending any
+    non-GET method, which may read or write live data on the target server.
+    """
+    server, existing_identifier, existing_public = await _build_draft_server(
+        pool, payload, secret_key=secret_key
+    )
+    test = payload.get("test")
+    if not isinstance(test, dict):
+        raise ValueError("test object is required")
+    method = _clean_text(test.get("method") or "GET").upper()
+    if method not in TEST_REQUEST_METHODS:
+        raise ValueError(
+            "method must be one of: " + ", ".join(sorted(TEST_REQUEST_METHODS))
+        )
+    path = _clean_text(test.get("path") or "/metadata") or "/metadata"
+    query = _normalize_query(test.get("query"))
+    extra_headers = _parse_headers(test.get("headers"), allow_authorization=False)
+    body = _normalize_json_body(test.get("body"), "test.body")
+    expected_statuses = _normalize_expected_statuses(
+        test.get("expected_statuses")
+        if test.get("expected_statuses") is not None
+        else test.get("expectedStatuses")
+    )
+    raw_timeout = test.get("timeout_seconds")
+    if raw_timeout is None:
+        raw_timeout = test.get("timeoutSeconds")
+    if raw_timeout not in (None, ""):
+        server = {**server, "timeout_seconds": max(1, min(int(raw_timeout), 120))}
+
+    # Authorization Code servers need a stored token; surface a clean reason
+    # instead of failing inside the request.
+    user_token: str | None = None
+    if server["auth_type"] == AUTH_OAUTH2_AC:
+        if existing_identifier and existing_public:
+            probe_server = dict(server)
+            probe_server["fhir_server_id"] = existing_public["fhir_server_id"]
+            user_token, err = await _resolve_user_token_for_probe(
+                pool, probe_server, secret_key=secret_key
+            )
+            if err:
+                return {
+                    "ok": False,
+                    "error": err,
+                    "server_preview": _server_public(server),
+                }
+        else:
+            return {
+                "ok": False,
+                "error": (
+                    "Save the server and click Authorize before testing "
+                    "Authorization Code connectivity"
+                ),
+                "server_preview": _server_public(server),
+            }
+    try:
+        result = await _send_test_request(
+            server,
+            method=method,
+            path=path,
+            query=query,
+            extra_headers=extra_headers,
+            body=body,
+            expected_statuses=expected_statuses,
+            token=user_token,
         )
         result["server_preview"] = _server_public(server)
         return result

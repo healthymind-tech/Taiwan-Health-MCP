@@ -19,17 +19,93 @@ import type {
   FhirTokenAuthMethod,
 } from "../../lib/types";
 
-const AUTH_TYPE_OPTIONS: { value: FhirAuthType; label: string }[] = [
-  { value: "none", label: "None (no auth)" },
-  { value: "oauth2_client_credentials", label: "OAuth2 Client Credentials" },
-  { value: "oauth2_authorization_code", label: "OAuth2 Authorization Code (+PKCE)" },
-];
-
 const AUTH_PROFILE_OPTIONS: { value: FhirAuthProfile; label: string }[] = [
   { value: "none", label: "None (plain OAuth2)" },
   { value: "iua", label: "IUA" },
   { value: "smart", label: "SMART on FHIR" },
 ];
+
+// The user-facing "Authentication Profile" combines the no-auth flag with the
+// OAuth framing (`auth_profile`). It is a derived selector over the persisted
+// `auth_type` + `auth_profile` fields — see securityProfileOf / setSecurityProfile.
+type SecurityProfile = "none" | "oauth2" | "smart" | "iua";
+
+const SECURITY_PROFILE_OPTIONS: {
+  value: SecurityProfile;
+  label: string;
+  desc: string;
+}[] = [
+  {
+    value: "none",
+    label: "No Authentication",
+    desc: "Connect to a FHIR API with no access-token protection.",
+  },
+  {
+    value: "oauth2",
+    label: "OAuth 2.0",
+    desc: "Use a standard OAuth 2.0 authorization server.",
+  },
+  {
+    value: "smart",
+    label: "SMART on FHIR",
+    desc: "Use SMART discovery, SMART scopes and FHIR authorization semantics.",
+  },
+  {
+    value: "iua",
+    label: "IHE IUA",
+    desc: "Use IHE Internet User Authorization to protect the RESTful API.",
+  },
+];
+
+function securityProfileOf(authType: FhirAuthType, profile: FhirAuthProfile): SecurityProfile {
+  if (authType === "none") return "none";
+  if (profile === "smart") return "smart";
+  if (profile === "iua") return "iua";
+  return "oauth2";
+}
+
+// Parse a FHIR base URL into editable segments. Returns null for anything that
+// is not a syntactically valid http(s) URL so the segmented editor can stay blank.
+function parseBaseUrl(
+  url: string,
+): { scheme: string; host: string; port: string; basePath: string } | null {
+  const trimmed = url.trim();
+  if (!trimmed) return { scheme: "https", host: "", port: "", basePath: "" };
+  try {
+    const u = new URL(trimmed);
+    if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+    // Preserve the path as authored (URL() reports "/" when none was given).
+    const hadPath = /^[a-z]+:\/\/[^/]+(\/.*)$/i.exec(trimmed);
+    return {
+      scheme: u.protocol.replace(":", ""),
+      host: u.hostname,
+      port: u.port,
+      basePath: hadPath ? hadPath[1] : "",
+    };
+  } catch {
+    return null;
+  }
+}
+
+// Recompose a base URL from segments. Collapses duplicate slashes in the path but
+// otherwise preserves it verbatim (including any trailing slash and letter case).
+function composeBaseUrl(parts: {
+  scheme: string;
+  host: string;
+  port: string;
+  basePath: string;
+}): string {
+  const host = parts.host.trim();
+  if (!host) return "";
+  const scheme = parts.scheme === "http" ? "http" : "https";
+  const port = parts.port.trim() ? `:${parts.port.trim()}` : "";
+  let path = parts.basePath.trim();
+  if (path) {
+    if (!path.startsWith("/")) path = `/${path}`;
+    path = path.replace(/\/{2,}/g, "/");
+  }
+  return `${scheme}://${host}${port}${path}`;
+}
 
 const TOKEN_AUTH_METHOD_OPTIONS: { value: FhirTokenAuthMethod; label: string }[] = [
   { value: "client_secret_basic", label: "client_secret_basic (HTTP Basic)" },
@@ -171,10 +247,35 @@ function normalizeTokenAuthMethod(value: unknown): FhirTokenAuthMethod {
     : "client_secret_basic";
 }
 
-const SCOPE_PLACEHOLDER: Record<FhirAuthProfile, string> = {
-  none: "system/*.read system/*.write",
-  iua: "(scope is profile-specific; optional)",
-  smart: "system/*.rs system/Patient.rs",
+// Where a scope in the Scope Manager came from. `discovery` wins over `preset`
+// when a scope appears in both; anything the user typed that we don't recognise
+// is `manual`. `registration` is reserved for scopes supplied by the external
+// server's registration unit (persisted in a later phase).
+type ScopeSource = "discovery" | "preset" | "manual" | "registration";
+
+const SCOPE_SOURCE_LABEL: Record<ScopeSource, string> = {
+  discovery: "Discovery",
+  preset: "Preset",
+  manual: "Manual",
+  registration: "Registered",
+};
+
+// Profile-default scopes offered even when discovery returns nothing — a server
+// that omits `scopes_supported` may still accept these. Descriptions are UI sugar
+// (not persisted): the saved value is the space-separated scope string.
+const PRESET_SCOPES: Record<FhirAuthProfile, { scope: string; description: string }[]> = {
+  none: [],
+  iua: [{ scope: "openid", description: "OpenID Connect identity" }],
+  smart: [
+    { scope: "openid", description: "OpenID Connect identity" },
+    { scope: "fhirUser", description: "Identity of the authorizing user" },
+    { scope: "launch", description: "EHR launch context" },
+    { scope: "launch/patient", description: "Standalone patient launch context" },
+    { scope: "offline_access", description: "Refresh token for long-lived access" },
+    { scope: "system/*.rs", description: "Backend Services: read + search all resources" },
+    { scope: "patient/*.read", description: "Read all resources in the patient compartment" },
+    { scope: "user/*.read", description: "Read all resources the user can access" },
+  ],
 };
 
 function normalizeAuthProfile(value: unknown): FhirAuthProfile {
@@ -221,6 +322,9 @@ interface FormState {
   preserved_id?: string;
   server_key: string;
   name: string;
+  display_name: string;
+  environment: string;
+  tags: string;
   description: string;
   base_url: string;
   test_path: string;
@@ -304,6 +408,9 @@ function exportPayload(servers: ExportServer[]): string {
         fhir_server_id: server.fhir_server_id,
         server_key: server.server_key,
         name: server.name,
+        display_name: server.display_name,
+        environment: server.environment,
+        tags: server.tags,
         description: server.description,
         base_url: server.base_url,
         test_path: server.test_path,
@@ -350,6 +457,11 @@ function importedServerToForm(payload: Record<string, unknown>): FormState {
     preserved_id: payload.fhir_server_id ? String(payload.fhir_server_id) : undefined,
     server_key: String(payload.server_key || ""),
     name: String(payload.name || ""),
+    display_name: String(payload.display_name || ""),
+    environment: String(payload.environment || ""),
+    tags: Array.isArray(payload.tags)
+      ? payload.tags.join(", ")
+      : String(payload.tags || ""),
     description: String(payload.description || ""),
     base_url: String(payload.base_url || ""),
     test_path: String(payload.test_path || ""),
@@ -425,10 +537,28 @@ function parseServersFromFile(text: string): Record<string, unknown>[] {
   return servers;
 }
 
+// SMART Backend Services (client credentials) must authenticate with a signed
+// client assertion. When the SMART profile is paired with the client-credentials
+// flow, force a JWT auth method if a Basic/POST one is still selected.
+function smartCoerced(form: FormState): FormState {
+  if (
+    form.auth_type === "oauth2_client_credentials" &&
+    form.auth_profile === "smart" &&
+    form.token_auth_method !== "private_key_jwt" &&
+    form.token_auth_method !== "client_secret_jwt"
+  ) {
+    return { ...form, token_auth_method: "private_key_jwt", jwt_signing_alg: "" };
+  }
+  return form;
+}
+
 function makeEmptyForm(): FormState {
   return {
     server_key: "",
     name: "",
+    display_name: "",
+    environment: "development",
+    tags: "",
     description: "",
     base_url: "",
     test_path: "",
@@ -468,6 +598,9 @@ function serverToForm(server: FhirServer): FormState {
     fhir_server_id: server.fhir_server_id,
     server_key: server.server_key,
     name: server.name,
+    display_name: server.display_name || "",
+    environment: server.environment || "",
+    tags: (server.tags || []).join(", "),
     description: server.description,
     base_url: server.base_url,
     test_path: server.test_path,
@@ -506,6 +639,12 @@ function toPayload(form: FormState): Record<string, unknown> {
   const payload: Record<string, unknown> = {
     server_key: form.server_key.trim(),
     name: form.name.trim(),
+    display_name: form.display_name.trim(),
+    environment: form.environment.trim(),
+    tags: form.tags
+      .split(",")
+      .map((t) => t.trim())
+      .filter(Boolean),
     description: form.description.trim(),
     base_url: form.base_url.trim(),
     test_path: form.test_path.trim(),
@@ -695,6 +834,501 @@ function FormSection({
 const countHeaders = (rows: HeaderRow[]): number =>
   rows.filter((r) => r.enabled && r.key.trim()).length;
 
+// Dual-pane scope picker: Available (left, searchable + source-filtered) and
+// Selected (right, removable chips). Scope state stays a space-separated string
+// on the parent form; this component only adds/removes/toggles tokens.
+function ScopeManager({
+  selected,
+  discovered,
+  authProfile,
+  discovering,
+  discoverError,
+  onToggle,
+  onAdd,
+  onRemove,
+  onRefresh,
+}: {
+  selected: string[];
+  discovered: string[];
+  authProfile: FhirAuthProfile;
+  discovering: boolean;
+  discoverError: string;
+  onToggle: (scope: string) => void;
+  onAdd: (scopes: string[]) => void;
+  onRemove: (scopes: string[]) => void;
+  onRefresh: () => void;
+}): JSX.Element {
+  const [search, setSearch] = useState("");
+  const [sourceFilter, setSourceFilter] = useState<"all" | ScopeSource>("all");
+  const [customScope, setCustomScope] = useState("");
+  const [customDesc, setCustomDesc] = useState("");
+  // Descriptions are display-only: seed from presets, augment with custom adds.
+  const [descriptions, setDescriptions] = useState<Record<string, string>>({});
+
+  const presets = PRESET_SCOPES[authProfile];
+  const selectedSet = useMemo(() => new Set(selected), [selected]);
+  const discoveredSet = useMemo(() => new Set(discovered), [discovered]);
+  const presetSet = useMemo(() => new Set(presets.map((p) => p.scope)), [presets]);
+
+  const sourceOf = (scope: string): ScopeSource => {
+    if (discoveredSet.has(scope)) return "discovery";
+    if (presetSet.has(scope)) return "preset";
+    return "manual";
+  };
+
+  // Available = union of discovery + preset + any selected manual scopes, so the
+  // user always sees what they've picked even if it isn't advertised.
+  const available = useMemo(() => {
+    const seen = new Set<string>();
+    const list: string[] = [];
+    for (const s of [...discovered, ...presets.map((p) => p.scope), ...selected]) {
+      if (s && !seen.has(s)) {
+        seen.add(s);
+        list.push(s);
+      }
+    }
+    return list;
+  }, [discovered, presets, selected]);
+
+  const descOf = (scope: string): string =>
+    descriptions[scope] ?? presets.find((p) => p.scope === scope)?.description ?? "";
+
+  const searchLc = search.trim().toLowerCase();
+  const filtered = available.filter((s) => {
+    if (sourceFilter !== "all" && sourceOf(s) !== sourceFilter) return false;
+    if (searchLc && !s.toLowerCase().includes(searchLc)) return false;
+    return true;
+  });
+  const SCOPE_RENDER_CAP = 200;
+  const shown = filtered.slice(0, SCOPE_RENDER_CAP);
+
+  const addCustom = () => {
+    const scope = customScope.trim();
+    if (!scope) return;
+    if (customDesc.trim()) {
+      setDescriptions((prev) => ({ ...prev, [scope]: customDesc.trim() }));
+    }
+    onAdd([scope]);
+    setCustomScope("");
+    setCustomDesc("");
+  };
+
+  return (
+    <div className="fhir-form-wide fhir-scope-manager">
+      <div className="fhir-scope-manager__grid">
+        {/* Left: available scopes */}
+        <div className="fhir-scope-pane">
+          <div className="fhir-scope-pane__head">
+            <strong>Available scopes</strong>
+            <button
+              type="button"
+              className="btn btn--sm"
+              onClick={onRefresh}
+              disabled={discovering}
+            >
+              {discovering ? "Discovering…" : "Refresh"}
+            </button>
+          </div>
+          <div className="fhir-scope-pane__filters">
+            <input
+              type="search"
+              className="fhir-scope-search"
+              placeholder={`Search ${available.length} scope(s)…`}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            <select
+              value={sourceFilter}
+              onChange={(e) =>
+                setSourceFilter(e.target.value as "all" | ScopeSource)
+              }
+            >
+              <option value="all">All sources</option>
+              <option value="discovery">Discovery</option>
+              <option value="preset">Preset</option>
+              <option value="manual">Manual</option>
+            </select>
+          </div>
+          <div className="fhir-scope-list">
+            {shown.map((s) => {
+              const src = sourceOf(s);
+              const isSelected = selectedSet.has(s);
+              const desc = descOf(s);
+              return (
+                <div key={s} className="fhir-scope-row">
+                  <span className={`fhir-scope-source fhir-scope-source--${src}`}>
+                    {SCOPE_SOURCE_LABEL[src]}
+                  </span>
+                  <span className="fhir-scope-row__name">
+                    <span>{s}</span>
+                    {desc && <small className="muted">{desc}</small>}
+                  </span>
+                  <button
+                    type="button"
+                    className="btn btn--sm"
+                    onClick={() => onToggle(s)}
+                  >
+                    {isSelected ? "Added" : "Add"}
+                  </button>
+                </div>
+              );
+            })}
+            {shown.length === 0 && (
+              <div className="muted small fhir-scope-empty">
+                {discoverError
+                  ? discoverError
+                  : available.length === 0
+                    ? "No scopes yet — refresh discovery or add one below. A server with no advertised scopes may still accept them."
+                    : `No scopes match “${search}”.`}
+              </div>
+            )}
+          </div>
+          {filtered.length > shown.length && (
+            <small className="field-help">
+              Showing first {shown.length} of {filtered.length} — refine the search.
+            </small>
+          )}
+        </div>
+
+        {/* Right: selected scopes */}
+        <div className="fhir-scope-pane">
+          <div className="fhir-scope-pane__head">
+            <strong>Selected scopes</strong>
+            {selected.length > 0 && (
+              <button
+                type="button"
+                className="btn btn--sm"
+                onClick={() => onRemove(selected)}
+              >
+                Clear all
+              </button>
+            )}
+          </div>
+          {selected.length > 0 ? (
+            <div className="fhir-scope-chips">
+              {selected.map((s) => (
+                <button
+                  type="button"
+                  key={s}
+                  className="fhir-scope-chip"
+                  onClick={() => onToggle(s)}
+                  title="Remove scope"
+                >
+                  <span>{s}</span>
+                  <span aria-hidden="true">×</span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="muted small">No scopes selected.</div>
+          )}
+        </div>
+      </div>
+
+      {/* Add a custom scope (not advertised by the server). */}
+      <div className="fhir-scope-custom">
+        <input
+          className="fhir-scope-search"
+          placeholder="Add custom scope (e.g. system/Patient.rs)"
+          value={customScope}
+          onChange={(e) => setCustomScope(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              addCustom();
+            }
+          }}
+        />
+        <input
+          className="fhir-scope-search"
+          placeholder="Description (optional)"
+          value={customDesc}
+          onChange={(e) => setCustomDesc(e.target.value)}
+        />
+        <button
+          type="button"
+          className="btn btn--sm"
+          onClick={addCustom}
+          disabled={!customScope.trim()}
+        >
+          Add custom scope
+        </button>
+      </div>
+      <small className="field-help">
+        well-known with no <code>scopes_supported</code> does not mean the server
+        rejects scopes — add presets or custom scopes as needed.
+      </small>
+    </div>
+  );
+}
+
+type TestMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+
+const TEST_PRESETS: {
+  value: string;
+  label: string;
+  method: TestMethod;
+  path: string;
+}[] = [
+  { value: "metadata", label: "FHIR Metadata", method: "GET", path: "/metadata" },
+  { value: "patient", label: "Patient Search", method: "GET", path: "/Patient?_count=1" },
+  { value: "capability", label: "Capability Statement", method: "GET", path: "/metadata" },
+  { value: "custom", label: "Custom Request", method: "GET", path: "" },
+];
+
+interface TestRequestResult {
+  ok: boolean;
+  method?: string;
+  url?: string;
+  status_code?: number;
+  reason?: string;
+  duration_ms?: number;
+  expected_statuses?: number[];
+  explanation?: string | null;
+  body_preview?: string;
+  error?: string;
+}
+
+// Builds and sends one ad-hoc request against the draft config (unsaved) via
+// POST /admin/api/fhir-servers/test-request. Read-only by default; mutating
+// methods are confirmed before sending.
+function TestRequestBuilder({ form }: { form: FormState }): JSX.Element {
+  const [preset, setPreset] = useState("metadata");
+  const [method, setMethod] = useState<TestMethod>("GET");
+  const [path, setPath] = useState("/metadata");
+  const [queryRows, setQueryRows] = useState<HeaderRow[]>([newHeaderRow()]);
+  const [headerRows, setHeaderRows] = useState<HeaderRow[]>([newHeaderRow()]);
+  const [bodyText, setBodyText] = useState("");
+  const [expected, setExpected] = useState("");
+  const [timeoutSeconds, setTimeoutSeconds] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<TestRequestResult | null>(null);
+  const isCustom = preset === "custom";
+  // Production servers may not be DELETE-tested (spec §6.3).
+  const isProduction = form.environment === "production";
+  const methodOptions: TestMethod[] = isProduction
+    ? ["GET", "POST", "PUT", "PATCH"]
+    : ["GET", "POST", "PUT", "PATCH", "DELETE"];
+
+  const applyPreset = (value: string) => {
+    setPreset(value);
+    const found = TEST_PRESETS.find((p) => p.value === value);
+    if (found && value !== "custom") {
+      setMethod(found.method);
+      setPath(found.path);
+    }
+  };
+
+  // Live URL preview — tolerate invalid query rows here (send() surfaces them).
+  let previewUrl = "";
+  try {
+    const queryObj = headerRowsToObject(queryRows, "Query");
+    const base = (form.base_url || "").replace(/\/$/, "");
+    const rel = path.startsWith("/") ? path : `/${path}`;
+    let url = `${base}${rel}`;
+    const qs = new URLSearchParams(queryObj).toString();
+    if (qs) url += `${url.includes("?") ? "&" : "?"}${qs}`;
+    previewUrl = url;
+  } catch {
+    previewUrl = `${(form.base_url || "").replace(/\/$/, "")}${path}`;
+  }
+
+  const send = async () => {
+    if (isProduction && method === "DELETE") {
+      toast.error("DELETE test requests are disabled for Production servers");
+      return;
+    }
+    if (
+      method !== "GET" &&
+      !window.confirm(
+        `This ${method} test may modify or delete data on the target FHIR server. Continue?`,
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    setResult(null);
+    try {
+      const test: Record<string, unknown> = {
+        method,
+        path,
+        query: headerRowsToObject(queryRows, "Query"),
+        headers: headerRowsToObject(headerRows, "Headers"),
+        expected_statuses: expected,
+      };
+      if (bodyText.trim()) test.body = bodyText;
+      if (timeoutSeconds.trim()) test.timeout_seconds = Number(timeoutSeconds);
+      const res = await api.post<TestRequestResult>(
+        "/admin/api/fhir-servers/test-request",
+        { ...toPayload(form), test },
+      );
+      setResult(res);
+      if (res.error) toast.error(res.error);
+      else if (res.ok) toast.success(`HTTP ${res.status_code} (${res.duration_ms} ms)`);
+      else toast.error(`HTTP ${res.status_code ?? "?"} — unexpected status`);
+    } catch (err) {
+      setResult({ ok: false, error: String(err) });
+      toast.error(String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="fhir-test-builder">
+      <div className="fhir-form-grid">
+        <label>
+          <span>Preset</span>
+          <select value={preset} onChange={(e) => applyPreset(e.target.value)}>
+            {TEST_PRESETS.map((p) => (
+              <option key={p.value} value={p.value}>
+                {p.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>Method</span>
+          <select
+            value={method}
+            disabled={!isCustom}
+            onChange={(e) => setMethod(e.target.value as TestMethod)}
+          >
+            {methodOptions.map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="fhir-form-wide">
+          <span>Relative path</span>
+          <input
+            value={path}
+            disabled={!isCustom}
+            onChange={(e) => setPath(e.target.value)}
+            placeholder="/Patient?_count=1"
+          />
+        </label>
+      </div>
+      {isCustom && (
+        <>
+          <HeaderRowsEditor label="Query parameters" rows={queryRows} onChange={setQueryRows} />
+          <HeaderRowsEditor label="Headers" rows={headerRows} onChange={setHeaderRows} />
+          {(method === "POST" || method === "PUT" || method === "PATCH") && (
+            <label className="fhir-form-wide">
+              <span>Request body (JSON)</span>
+              <textarea
+                value={bodyText}
+                onChange={(e) => setBodyText(e.target.value)}
+                rows={5}
+                placeholder='{ "resourceType": "Patient" }'
+              />
+            </label>
+          )}
+          <div className="fhir-form-grid">
+            <label>
+              <span>Expected statuses</span>
+              <input
+                value={expected}
+                onChange={(e) => setExpected(e.target.value)}
+                placeholder="200, 201"
+              />
+            </label>
+            <label>
+              <span>Timeout seconds</span>
+              <input
+                type="number"
+                min={1}
+                max={120}
+                value={timeoutSeconds}
+                onChange={(e) => setTimeoutSeconds(e.target.value)}
+                placeholder="30"
+              />
+            </label>
+          </div>
+        </>
+      )}
+      <div className="fhir-url-preview">
+        <code>{previewUrl || "—"}</code>
+        <button type="button" className="btn btn--sm" onClick={send} disabled={busy}>
+          {busy ? "Sending…" : "Send test request"}
+        </button>
+      </div>
+      {result && (
+        <div className={`fhir-probe fhir-probe--${result.ok ? "ok" : "bad"}`}>
+          {result.error ? (
+            <span>{result.error}</span>
+          ) : (
+            <div>
+              <strong>
+                {result.method} → HTTP {result.status_code} {result.reason}
+              </strong>
+              <div className="muted small">
+                {result.url} · {result.duration_ms} ms
+                {result.explanation ? ` · ${result.explanation}` : ""}
+              </div>
+              {result.body_preview && (
+                <pre className="fhir-test-body">{result.body_preview}</pre>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+      {method !== "GET" && (
+        <small className="field-help fhir-url-warn">
+          {method} requests can read or write live data — they are confirmed before sending.
+        </small>
+      )}
+    </div>
+  );
+}
+
+// Fixed right-hand recap of the draft config, shown alongside the wizard steps.
+function ConfigurationSummary({ form }: { form: FormState }): JSX.Element {
+  const profile = securityProfileOf(form.auth_type, form.auth_profile);
+  const profileLabel =
+    SECURITY_PROFILE_OPTIONS.find((o) => o.value === profile)?.label ?? profile;
+  const flowLabel =
+    form.auth_type === "oauth2_authorization_code"
+      ? "Authorization Code"
+      : form.auth_type === "oauth2_client_credentials"
+        ? profile === "smart"
+          ? "Backend Services"
+          : "Client Credentials"
+        : "—";
+  const scopeCount = form.scope.split(/\s+/).filter(Boolean).length;
+  const rows: { label: string; value: string }[] = [
+    { label: "Connection Name", value: form.name || "—" },
+    { label: "Environment", value: form.environment || "—" },
+    { label: "FHIR Base URL", value: form.base_url || "—" },
+    { label: "Authentication Profile", value: profileLabel },
+    { label: "Authorization Flow", value: flowLabel },
+  ];
+  if (form.auth_type !== "none") {
+    rows.push({ label: "Client Auth Method", value: form.token_auth_method });
+    rows.push({ label: "Selected Scopes", value: String(scopeCount) });
+  }
+  rows.push({
+    label: "Allowed Operations",
+    value: form.allowed_operations.join(", ") || "—",
+  });
+  rows.push({ label: "Test / Probe Path", value: form.test_path || "/metadata" });
+  return (
+    <aside className="fhir-wizard__summary">
+      <strong className="fhir-summary__title">Configuration Summary</strong>
+      <dl className="fhir-summary__list">
+        {rows.map((r) => (
+          <div key={r.label} className="fhir-summary__row">
+            <dt>{r.label}</dt>
+            <dd>{r.value}</dd>
+          </div>
+        ))}
+      </dl>
+    </aside>
+  );
+}
+
 function FhirServerForm({
   initial,
   onCancel,
@@ -710,16 +1344,63 @@ function FhirServerForm({
   const isClientCreds = form.auth_type === "oauth2_client_credentials";
   const isAuthCode = form.auth_type === "oauth2_authorization_code";
   const isOAuth = isClientCreds || isAuthCode;
+  const securityProfile = securityProfileOf(form.auth_type, form.auth_profile);
   const [scopeOptions, setScopeOptions] = useState<string[]>([]);
-  const [scopeFilter, setScopeFilter] = useState<string>("");
   const [discovering, setDiscovering] = useState(false);
   const [discoverError, setDiscoverError] = useState<string>("");
   const [genBusy, setGenBusy] = useState(false);
   const [genError, setGenError] = useState<string>("");
   const [genKey, setGenKey] = useState<GeneratedKey | null>(null);
+  const [urlMode, setUrlMode] = useState<"full" | "segmented">("full");
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((prev) => ({ ...prev, [key]: value }));
+
+  // The Authentication Profile card writes the persisted auth_type/auth_profile
+  // pair atomically. Switching away from No Auth keeps the existing OAuth flow,
+  // defaulting to client credentials when arriving from No Auth.
+  const setSecurityProfile = (next: SecurityProfile) =>
+    setForm((prev) => {
+      if (next === "none") {
+        return { ...prev, auth_type: "none", auth_profile: "none" };
+      }
+      const profile: FhirAuthProfile = next === "oauth2" ? "none" : next;
+      const authType: FhirAuthType =
+        prev.auth_type === "none" ? "oauth2_client_credentials" : prev.auth_type;
+      return smartCoerced({ ...prev, auth_type: authType, auth_profile: profile });
+    });
+
+  // The Authorization Flow segmented control sets the OAuth grant type.
+  const setFlow = (flow: FhirAuthType) =>
+    setForm((prev) => smartCoerced({ ...prev, auth_type: flow }));
+
+  // Segmented URL editor derives its fields from base_url; editing a field
+  // recomposes the whole URL so base_url stays the single source of truth.
+  const urlParts = parseBaseUrl(form.base_url) ?? {
+    scheme: "https",
+    host: "",
+    port: "",
+    basePath: "",
+  };
+  const setUrlPart = (key: "scheme" | "host" | "port" | "basePath", value: string) =>
+    set("base_url", composeBaseUrl({ ...urlParts, [key]: value }));
+
+  // Wizard navigation. Each step maps to one section of the form; the final
+  // Review step recaps the config before saving.
+  const STEPS = [
+    "Basics",
+    "Authentication",
+    "Headers",
+    "Permissions",
+    "Connection test",
+    "Review",
+  ];
+  const [step, setStep] = useState(0);
+  const lastStep = STEPS.length - 1;
+  const basicsValid =
+    !!form.server_key.trim() && !!form.name.trim() && !!form.base_url.trim();
+  const goNext = () => setStep((s) => Math.min(s + 1, lastStep));
+  const goBack = () => setStep((s) => Math.max(s - 1, 0));
 
   // Generate an asymmetric signing keypair on the server. The private key is
   // returned once: we drop it into the PEM field (encrypted on save) and offer
@@ -799,22 +1480,6 @@ function FhirServerForm({
     set("scope", tokens.join(" "));
   };
 
-  // Discovered scopes can be hundreds long, so never render them all at once:
-  // filter by the search box and cap how many rows are drawn inside a scrollable
-  // box. Selected scopes are always shown as removable chips regardless.
-  const SCOPE_RENDER_CAP = 200;
-  const scopeFilterLc = scopeFilter.trim().toLowerCase();
-  const filteredScopeOptions = scopeFilterLc
-    ? scopeOptions.filter((s) => s.toLowerCase().includes(scopeFilterLc))
-    : scopeOptions;
-  const scopeShown = filteredScopeOptions.slice(0, SCOPE_RENDER_CAP);
-  const selectedInFiltered = filteredScopeOptions.filter((s) =>
-    scopeTokens.includes(s),
-  ).length;
-  const allFilteredSelected =
-    filteredScopeOptions.length > 0 &&
-    selectedInFiltered === filteredScopeOptions.length;
-
   // Fetch the discovery doc and surface its scopes_supported as a datalist.
   // Triggered when the Metadata URL field loses focus (use_metadata + a URL present).
   const discoverScopes = async () => {
@@ -862,12 +1527,31 @@ function FhirServerForm({
 
   return (
     <form
-      className="fhir-form"
+      className="fhir-form fhir-wizard"
       onSubmit={(e) => {
         e.preventDefault();
         onSave(form);
       }}
     >
+      <div className="fhir-wizard__main">
+        <ol className="fhir-stepper">
+          {STEPS.map((label, i) => (
+            <li
+              key={label}
+              className={`fhir-stepper__item${i === step ? " is-active" : ""}${
+                i < step ? " is-done" : ""
+              }`}
+            >
+              <button type="button" onClick={() => setStep(i)}>
+                <span className="fhir-stepper__num">{i + 1}</span>
+                <span className="fhir-stepper__label">{label}</span>
+              </button>
+            </li>
+          ))}
+        </ol>
+
+        <div className="fhir-wizard__body">
+      {step === 0 && (
       <FormSection title="General" hint={form.server_key || "new server"} defaultOpen>
         <div className="fhir-form-grid">
           <label>
@@ -883,15 +1567,129 @@ function FhirServerForm({
             <span>Name</span>
             <input value={form.name} onChange={(e) => set("name", e.target.value)} required />
           </label>
-          <label className="fhir-form-wide">
-            <span>Base URL</span>
+          <label>
+            <span>Display name</span>
             <input
-              value={form.base_url}
-              onChange={(e) => set("base_url", e.target.value)}
-              placeholder="https://fhir.example.com/fhir"
-              required
+              value={form.display_name}
+              onChange={(e) => set("display_name", e.target.value)}
+              placeholder="optional"
             />
           </label>
+          <label>
+            <span>Environment</span>
+            <select
+              value={form.environment}
+              onChange={(e) => set("environment", e.target.value)}
+            >
+              <option value="development">Development</option>
+              <option value="testing">Testing</option>
+              <option value="staging">Staging</option>
+              <option value="production">Production</option>
+              <option value="custom">Custom</option>
+            </select>
+          </label>
+          <label>
+            <span>Tags</span>
+            <input
+              value={form.tags}
+              onChange={(e) => set("tags", e.target.value)}
+              placeholder="comma, separated"
+            />
+          </label>
+          {form.environment === "production" && (
+            <div className="fhir-form-wide fhir-prod-warn">
+              <strong>Production environment.</strong> Connection tests may read or
+              write real medical data — confirm your test path and CRUD permissions.
+              DELETE test requests are disabled.
+            </div>
+          )}
+          <div className="fhir-form-wide">
+            <div className="fhir-url-head">
+              <span className="fhir-field-label">Base URL</span>
+              <div className="fhir-url-tabs" role="tablist">
+                <button
+                  type="button"
+                  className={`fhir-url-tab${urlMode === "full" ? " is-active" : ""}`}
+                  onClick={() => setUrlMode("full")}
+                >
+                  Full URL
+                </button>
+                <button
+                  type="button"
+                  className={`fhir-url-tab${urlMode === "segmented" ? " is-active" : ""}`}
+                  onClick={() => setUrlMode("segmented")}
+                >
+                  Segments
+                </button>
+              </div>
+            </div>
+            {urlMode === "full" ? (
+              <input
+                value={form.base_url}
+                onChange={(e) => set("base_url", e.target.value)}
+                placeholder="https://fhir.example.com:8443/r4"
+                required
+              />
+            ) : (
+              <>
+                <div className="fhir-url-segments">
+                  <select
+                    value={urlParts.scheme}
+                    onChange={(e) => setUrlPart("scheme", e.target.value)}
+                    aria-label="Protocol"
+                  >
+                    <option value="https">HTTPS</option>
+                    <option value="http">HTTP</option>
+                  </select>
+                  <input
+                    value={urlParts.host}
+                    onChange={(e) => setUrlPart("host", e.target.value)}
+                    placeholder="fhir.example.com"
+                    aria-label="Domain or IP"
+                  />
+                  <input
+                    value={urlParts.port}
+                    onChange={(e) =>
+                      setUrlPart("port", e.target.value.replace(/[^0-9]/g, ""))
+                    }
+                    placeholder="port"
+                    aria-label="Port"
+                    inputMode="numeric"
+                  />
+                  <input
+                    value={urlParts.basePath}
+                    onChange={(e) => setUrlPart("basePath", e.target.value)}
+                    placeholder="/r4"
+                    aria-label="Base path"
+                  />
+                </div>
+                <div className="fhir-url-preview">
+                  <code>{form.base_url || "https://…"}</code>
+                  <button
+                    type="button"
+                    className="btn btn--sm"
+                    disabled={!form.base_url}
+                    onClick={() => void copyText(form.base_url)}
+                  >
+                    Copy
+                  </button>
+                  <a
+                    className="btn btn--sm"
+                    href={form.base_url || undefined}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                  >
+                    Open
+                  </a>
+                </div>
+              </>
+            )}
+            {urlParts.scheme === "http" && (
+              <small className="field-help fhir-url-warn">
+                HTTP does not encrypt traffic and must not be used in production.
+              </small>
+            )}
+          </div>
           <label className="fhir-form-wide">
             <span>Description</span>
             <input value={form.description} onChange={(e) => set("description", e.target.value)} />
@@ -910,22 +1708,66 @@ function FhirServerForm({
           </label>
         </div>
       </FormSection>
+      )}
 
+      {step === 1 && (
       <FormSection title="Authentication & connection" hint={authHint} defaultOpen>
-        <div className="fhir-form-grid">
-          <label>
-            <span>Auth mode</span>
-            <select
-              value={form.auth_type}
-              onChange={(e) => set("auth_type", e.target.value as FormState["auth_type"])}
+        <div
+          className="fhir-profile-cards"
+          role="radiogroup"
+          aria-label="Authentication Profile"
+        >
+          {SECURITY_PROFILE_OPTIONS.map((opt) => (
+            <button
+              type="button"
+              key={opt.value}
+              role="radio"
+              aria-checked={securityProfile === opt.value}
+              className={`fhir-profile-card${
+                securityProfile === opt.value ? " is-active" : ""
+              }`}
+              onClick={() => setSecurityProfile(opt.value)}
             >
-              {AUTH_TYPE_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          </label>
+              <strong>{opt.label}</strong>
+              <small>{opt.desc}</small>
+            </button>
+          ))}
+        </div>
+        {securityProfile !== "none" && (
+          <div className="fhir-flow-row">
+            <span className="fhir-field-label">Authorization Flow</span>
+            <div
+              className="fhir-segmented"
+              role="radiogroup"
+              aria-label="Authorization Flow"
+            >
+              <button
+                type="button"
+                role="radio"
+                aria-checked={isAuthCode}
+                className={`fhir-segmented__btn${isAuthCode ? " is-active" : ""}`}
+                onClick={() => setFlow("oauth2_authorization_code")}
+              >
+                Authorization Code
+              </button>
+              <button
+                type="button"
+                role="radio"
+                aria-checked={isClientCreds}
+                className={`fhir-segmented__btn${isClientCreds ? " is-active" : ""}`}
+                onClick={() => setFlow("oauth2_client_credentials")}
+              >
+                {securityProfile === "smart" ? "Backend Services" : "Client Credentials"}
+              </button>
+            </div>
+            {isClientCreds && (
+              <small className="field-help">
+                Suitable for system-to-system connections with no user interaction.
+              </small>
+            )}
+          </div>
+        )}
+        <div className="fhir-form-grid">
           <label>
             <span>Timeout seconds</span>
             <input
@@ -948,41 +1790,15 @@ function FhirServerForm({
       {isOAuth && (
         <>
           <div className="fhir-form-grid">
-            <label>
-              <span>Auth profile</span>
-              <select
-                value={form.auth_profile}
-                onChange={(e) => {
-                  const next = e.target.value as FhirAuthProfile;
-                  set("auth_profile", next);
-                  // SMART Backend Services (client credentials) requires a signed
-                  // client assertion; default to private_key_jwt when leaving a
-                  // Basic/POST method. Not applicable to the Authorization Code flow.
-                  if (
-                    isClientCreds &&
-                    next === "smart" &&
-                    form.token_auth_method !== "private_key_jwt" &&
-                    form.token_auth_method !== "client_secret_jwt"
-                  ) {
-                    set("token_auth_method", "private_key_jwt");
-                    set("jwt_signing_alg", "");
-                  }
-                }}
-              >
-                {AUTH_PROFILE_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
+            <div className="fhir-form-wide">
               <small className="field-help">
                 {form.auth_profile === "smart"
-                  ? "SMART Backend Services: discovery via .well-known/smart-configuration, audience sent as `aud`, system/* scopes."
+                  ? "SMART on FHIR: discovery via .well-known/smart-configuration, audience sent as `aud`, system/* scopes."
                   : form.auth_profile === "iua"
                     ? "IHE IUA: discovery via .well-known/oauth-authorization-server, audience sent as `resource`, requested_token_type defaults to JWT."
-                    : "Plain OAuth2 Client Credentials with no IHE/SMART-specific framing."}
+                    : "Plain OAuth2 with no IHE/SMART-specific framing."}
               </small>
-            </label>
+            </div>
             {isClientCreds && (
             <label>
               <span>Token auth method</span>
@@ -1242,97 +2058,20 @@ function FhirServerForm({
                 </label>
               </>
             )}
-            <label className="fhir-form-wide">
-              <span>Scope</span>
-              <input
-                value={form.scope}
-                onChange={(e) => set("scope", e.target.value)}
-                placeholder={SCOPE_PLACEHOLDER[form.auth_profile]}
+            <div className="fhir-form-wide">
+              <span className="fhir-field-label">Scope</span>
+              <ScopeManager
+                selected={scopeTokens}
+                discovered={scopeOptions}
+                authProfile={form.auth_profile}
+                discovering={discovering}
+                discoverError={discoverError}
+                onToggle={toggleScope}
+                onAdd={addScopes}
+                onRemove={removeScopes}
+                onRefresh={() => void discoverScopes()}
               />
-              {scopeTokens.length > 0 && (
-                <div className="fhir-scope-chips">
-                  {scopeTokens.map((s) => (
-                    <button
-                      type="button"
-                      key={s}
-                      className="fhir-scope-chip"
-                      onClick={() => toggleScope(s)}
-                      title="Remove scope"
-                    >
-                      <span>{s}</span>
-                      <span aria-hidden="true">×</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-              <small className="field-help">
-                Space-separated. Type your own above, or pick from discovered scopes
-                below. Selected scopes show as chips you can click to remove.
-              </small>
-            </label>
-            {scopeOptions.length > 0 ? (
-              <div className="fhir-form-wide fhir-scope-picker">
-                <div className="fhir-scope-picker__head">
-                  <input
-                    type="search"
-                    className="fhir-scope-search"
-                    placeholder={`Search ${scopeOptions.length} discovered scope(s)…`}
-                    value={scopeFilter}
-                    onChange={(e) => setScopeFilter(e.target.value)}
-                  />
-                  <button
-                    type="button"
-                    className="btn btn--sm"
-                    disabled={allFilteredSelected}
-                    onClick={() => addScopes(filteredScopeOptions)}
-                  >
-                    {scopeFilterLc ? "Select all matching" : "Select all"}
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn--sm"
-                    disabled={selectedInFiltered === 0}
-                    onClick={() => removeScopes(filteredScopeOptions)}
-                  >
-                    {scopeFilterLc ? "Clear matching" : "Clear all"}
-                  </button>
-                </div>
-                <div className="fhir-scope-list">
-                  {scopeShown.map((s) => (
-                    <label key={s} className="fhir-scope-row">
-                      <input
-                        type="checkbox"
-                        checked={scopeTokens.includes(s)}
-                        onChange={() => toggleScope(s)}
-                      />
-                      <span>{s}</span>
-                    </label>
-                  ))}
-                  {scopeShown.length === 0 && (
-                    <div className="muted small fhir-scope-empty">
-                      No scopes match “{scopeFilter}”.
-                    </div>
-                  )}
-                </div>
-                <small className="field-help">
-                  {`${selectedInFiltered} selected`}
-                  {` · `}
-                  {filteredScopeOptions.length > scopeShown.length
-                    ? `showing first ${scopeShown.length} of ${filteredScopeOptions.length} match(es) — refine the search`
-                    : `${filteredScopeOptions.length} of ${scopeOptions.length} discovered scope(s)${
-                        scopeFilterLc ? " match" : ""
-                      }`}
-                </small>
-              </div>
-            ) : (
-              <div className="fhir-form-wide">
-                <small className="field-help">
-                  {discoverError
-                    ? discoverError
-                    : "Discovered scopes appear here after the Metadata URL is filled and loses focus (Use metadata on). You can always type scopes manually."}
-                </small>
-              </div>
-            )}
+            </div>
             <label>
               <span>Token audience / resource parameter</span>
               <input
@@ -1360,7 +2099,9 @@ function FhirServerForm({
         </>
       )}
       </FormSection>
+      )}
 
+      {step === 2 && (
       <FormSection
         title="Custom headers"
         hint={headerCount ? `${headerCount} configured` : "none"}
@@ -1402,7 +2143,9 @@ function FhirServerForm({
           </small>
         )}
       </FormSection>
+      )}
 
+      {step === 3 && (
       <FormSection
         title="Access control"
         hint={`${form.allowed_operations.length} operation(s)`}
@@ -1455,22 +2198,64 @@ function FhirServerForm({
           />
         </div>
       </FormSection>
-
-      {isOAuth && (
-        <p className="field-help fhir-form-note">
-          Save the server, then use <strong>Authorize</strong> and{" "}
-          <strong>Probe</strong> on its card to obtain a token and test connectivity.
-        </p>
       )}
 
-      <div className="modal-actions">
-        <button type="button" className="btn btn--ghost" onClick={onCancel}>
-          Cancel
-        </button>
-        <button type="submit" className="btn btn--primary" disabled={saving}>
-          {saving ? "Saving..." : "Save"}
-        </button>
+      {step === 4 && (
+      <FormSection title="Connection test" hint="send a request without saving">
+        <TestRequestBuilder form={form} />
+      </FormSection>
+      )}
+
+      {step === 5 && (
+      <FormSection title="Review and save" hint="confirm the configuration" defaultOpen>
+        <p className="field-help">
+          Review the summary on the right, then save. You can step back to any
+          section using the stepper above.
+        </p>
+        {isOAuth && (
+          <p className="field-help fhir-form-note">
+            After saving, use <strong>Authorize</strong> and <strong>Probe</strong>{" "}
+            on the server card to obtain a token and verify connectivity.
+          </p>
+        )}
+      </FormSection>
+      )}
+        </div>
+
+        <div className="modal-actions">
+          <button type="button" className="btn btn--ghost" onClick={onCancel}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="btn"
+            onClick={goBack}
+            disabled={step === 0}
+          >
+            Back
+          </button>
+          {step < lastStep ? (
+            <button
+              type="button"
+              className="btn btn--primary"
+              onClick={goNext}
+              disabled={step === 0 && !basicsValid}
+            >
+              Next
+            </button>
+          ) : (
+            <button
+              type="submit"
+              className="btn btn--primary"
+              disabled={saving || !basicsValid}
+            >
+              {saving ? "Saving..." : "Save"}
+            </button>
+          )}
+        </div>
       </div>
+
+      <ConfigurationSummary form={form} />
     </form>
   );
 }
@@ -2018,7 +2803,7 @@ export function FhirServersPage(): JSX.Element {
         <Modal
           title={editing.fhir_server_id ? "Edit FHIR server" : "Add FHIR server"}
           onClose={() => setEditing(null)}
-          wide
+          xwide
         >
           <FhirServerForm
             initial={editing}
