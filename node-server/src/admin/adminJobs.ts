@@ -1787,6 +1787,197 @@ export async function runFoodNutritionSyncJob(opts: {
   });
 }
 
+/** Faithful port of `_run_icd_import_job` (staged import: validate → stage → promote). */
+export async function runIcdImportJob(opts: {
+  workerName: string;
+  job: Record<string, unknown>;
+}): Promise<void> {
+  const { workerName, job } = opts;
+  const jobId = String(job.job_id);
+  const {
+    parseIcd10cmStageRecords,
+    parseIcd10pcsStageRecords,
+    parseIcdBilingualNames,
+  } = await import("../loaders/icd.js");
+  const {
+    withMaterializedSources,
+    runValidateStep,
+    stageRows,
+    checkpointBeforePromote,
+    optimizedPromote,
+    clearStageRows,
+  } = await import("./adminJobStaging.js");
+
+  const manifest = parseJsonb(parseJsonb(job.job_options).source_manifest);
+  const total = 5;
+  let progress = Math.max(Number(job.progress_current || 0), 0);
+
+  await appendJobLog({
+    jobId,
+    level: "info",
+    message: "Starting ICD staged import",
+    payload: { source_manifest: manifest },
+  });
+
+  await withMaterializedSources(manifest, async (paths) => {
+    let cmZh = new Map<string, string>();
+    let pcsZh = new Map<string, string>();
+    const bilingualPath = paths.icd_zh_tw;
+
+    if (progress < 1) {
+      if (bilingualPath) ({ cmZh, pcsZh } = parseIcdBilingualNames(bilingualPath));
+      await runValidateStep({
+        jobId,
+        stepKey: "validate_sources",
+        currentStep: "validated_sources",
+        checkpoint: {
+          phase: "validated",
+          source_roles: Object.keys(paths).sort(),
+          has_bilingual_names: Boolean(bilingualPath),
+          cm_chinese_name_count: cmZh.size,
+          pcs_chinese_name_count: pcsZh.size,
+        },
+        jobProgressAfter: 1,
+        jobProgressTotal: total,
+      });
+      progress = 1;
+      if (await applyControlCheckpoint({ jobId, workerName })) return;
+    } else if (bilingualPath) {
+      ({ cmZh, pcsZh } = parseIcdBilingualNames(bilingualPath));
+    }
+
+    const diagnoses = parseIcd10cmStageRecords(paths.icd10cm, cmZh);
+    const procedures =
+      "icd10pcs" in paths ? parseIcd10pcsStageRecords(paths.icd10pcs, pcsZh) : [];
+
+    if (progress < 2) {
+      const interrupted = await stageRows({
+        jobId,
+        workerName,
+        stepKey: "stage_diagnoses",
+        runningStepName: "staging_diagnoses",
+        rows: diagnoses,
+        insertSql: `
+          INSERT INTO admin.stage_icd_diagnoses (job_id, code, name_en, name_zh, category)
+          VALUES ($1, $2, $3, $4, $5)
+          ON CONFLICT (job_id, code) DO UPDATE SET
+            name_en = EXCLUDED.name_en,
+            name_zh = EXCLUDED.name_zh,
+            category = EXCLUDED.category
+        `,
+        batchSize: 5000,
+        jobProgressBefore: 1,
+        jobProgressAfter: 2,
+        jobProgressTotal: total,
+        checkpointLabel: "staging_diagnoses",
+      });
+      if (interrupted) return;
+      progress = 2;
+    }
+
+    if (progress < 3) {
+      const interrupted = await stageRows({
+        jobId,
+        workerName,
+        stepKey: "stage_procedures",
+        runningStepName: "staging_procedures",
+        rows: procedures,
+        insertSql: `
+          INSERT INTO admin.stage_icd_procedures (job_id, code, name_en, name_zh)
+          VALUES ($1, $2, $3, $4)
+          ON CONFLICT (job_id, code) DO UPDATE SET
+            name_en = EXCLUDED.name_en,
+            name_zh = EXCLUDED.name_zh
+        `,
+        batchSize: 5000,
+        jobProgressBefore: 2,
+        jobProgressAfter: 3,
+        jobProgressTotal: total,
+        checkpointLabel: "staging_procedures",
+      });
+      if (interrupted) return;
+      progress = 3;
+    }
+
+    if (progress < 4) {
+      if (
+        await checkpointBeforePromote({
+          jobId,
+          workerName,
+          stepKey: "promote",
+          jobProgressBefore: 3,
+          jobProgressTotal: total,
+        })
+      ) {
+        return;
+      }
+      await optimizedPromote({
+        jobId,
+        stepKey: "promote",
+        indexTables: ["icd.diagnoses", "icd.procedures"],
+        truncateSql: "TRUNCATE icd.diagnoses, icd.procedures",
+        copies: [
+          {
+            sql: `
+              INSERT INTO icd.diagnoses (code, name_en, name_zh, category)
+              SELECT code, name_en, name_zh, category
+              FROM admin.stage_icd_diagnoses
+              WHERE job_id = $1::uuid
+            `,
+            args: [jobId],
+            label: `diagnoses (${fmt(diagnoses.length)})`,
+          },
+          {
+            sql: `
+              INSERT INTO icd.procedures (code, name_en, name_zh)
+              SELECT code, name_en, name_zh
+              FROM admin.stage_icd_procedures
+              WHERE job_id = $1::uuid
+            `,
+            args: [jobId],
+            label: `procedures (${fmt(procedures.length)})`,
+          },
+        ],
+        finalCheckpoint: {
+          phase: "promoted",
+          diagnosis_count: diagnoses.length,
+          procedure_count: procedures.length,
+        },
+        promotedStepName: "promoted_icd",
+        jobProgressAfter: 4,
+        jobProgressTotal: total,
+      });
+      progress = 4;
+    }
+
+    await clearStageRows(jobId, ["admin.stage_icd_diagnoses", "admin.stage_icd_procedures"]);
+    await recordJobStep({
+      jobId,
+      stepKey: "cleanup_staging",
+      status: "success",
+      progressCurrent: 1,
+      progressTotal: 1,
+      checkpoint: { phase: "cleaned" },
+    });
+    await markJobStatus({
+      jobId,
+      status: "success",
+      currentStep: "completed",
+      progressCurrent: 5,
+      progressTotal: total,
+      controlState: "idle",
+      resultSummary: {
+        job_type: "icd_import",
+        source_manifest: manifest,
+        diagnosis_count: diagnoses.length,
+        procedure_count: procedures.length,
+        cm_chinese_name_count: diagnoses.filter((row) => row[2]).length,
+        pcs_chinese_name_count: procedures.filter((row) => row[2]).length,
+      },
+    });
+  });
+}
+
 // ── Job dispatcher ────────────────────────────────────────────────────────────
 
 /**
@@ -1853,13 +2044,16 @@ export async function executeAdminJob(opts: {
       await runFoodNutritionSyncJob({ workerName, job });
       return;
     }
+    if (jobType === "icd_import") {
+      await runIcdImportJob({ workerName, job });
+      return;
+    }
 
     // ── W2b loader handlers (not yet wired) ──────────────────────────────────
     // The dispatcher structure mirrors execute_admin_job exactly so W2b only
     // needs to replace each throw with the real handler over the Node loaders
     // (drug stages shell out to Python loader/main.py).
     const W2B_JOB_TYPES = new Set([
-      "icd_import",
       "loinc_import",
       "ig_import",
       "snomed_import",

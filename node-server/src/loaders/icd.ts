@@ -351,6 +351,125 @@ function parseTabularXml(xmlText: string): [string, string][] {
   return out;
 }
 
+// ── Flat-text parsers (shared by legacy load + staged import) ───────────────
+
+/** Mirror `_parse_order_txt`: yield [code, name_en] from the fixed-width order TXT. */
+function parseOrderTxt(text: string): [string, string][] {
+  const out: [string, string][] = [];
+  for (const line of text.split(/\r?\n/)) {
+    if (line.length < 77) continue;
+    const code = line.slice(6, 13).trim();
+    const isHeader = line[14] ? line[14].trim() : "";
+    if (isHeader === "1") continue;
+    const longDesc = line.slice(77).trim();
+    if (code && /^[A-Z]\d/.test(code)) out.push([code, longDesc]);
+  }
+  return out;
+}
+
+/** Mirror `_parse_pcs_codes_txt`: yield [code, name_en] from the flat CMS codes TXT. */
+function parsePcsCodesTxt(text: string): [string, string][] {
+  const out: [string, string][] = [];
+  for (let line of text.split(/\r?\n/)) {
+    line = line.replace(/\s+$/, ""); // rstrip
+    if (line.length < 9) continue;
+    const code = line.slice(0, 7).trim();
+    const desc = line.slice(8).trim();
+    if (code && code.length === 7 && desc) out.push([code, desc]);
+  }
+  return out;
+}
+
+// ── Stage-record parsers (Node port of admin_jobs._parse_icd10*_stage_records) ──
+// These RETURN row tuples (rather than writing tables directly) so the admin
+// worker can stage → promote them. Tuple shapes match the Python stagers exactly:
+//   diagnoses:  [code, name_en, name_zh, category]
+//   procedures: [code, name_en, name_zh]
+
+/** Faithful port of `_parse_icd10cm_stage_records`. */
+export function parseIcd10cmStageRecords(
+  zipPath: string,
+  nameZhMap: Map<string, string>,
+): string[][] {
+  const allNames: string[] = [];
+  const entries = unzipSync(new Uint8Array(fs.readFileSync(zipPath)), {
+    filter: (f) => {
+      allNames.push(f.name);
+      const n = f.name.toLowerCase();
+      return (
+        (n.endsWith(".xml") && n.includes("tabular")) ||
+        (n.endsWith(".txt") && n.includes("order"))
+      );
+    },
+  });
+  const xmlFiles = allNames.filter(
+    (n) => n.toLowerCase().endsWith(".xml") && n.toLowerCase().includes("tabular"),
+  );
+  const txtFiles = allNames.filter(
+    (n) => n.toLowerCase().endsWith(".txt") && n.toLowerCase().includes("order"),
+  );
+  const records: string[][] = [];
+  if (xmlFiles.length) {
+    const xmlText = Buffer.from(entries[xmlFiles[0]]).toString("utf-8");
+    for (const [code, nameEn] of parseTabularXml(xmlText)) {
+      records.push([code, nameEn, nameZhMap.get(code) ?? "", code.slice(0, 3)]);
+    }
+  } else if (txtFiles.length) {
+    const text = Buffer.from(entries[txtFiles[0]]).toString("utf-8");
+    for (const [code, nameEn] of parseOrderTxt(text)) {
+      records.push([code, nameEn, nameZhMap.get(code) ?? "", code.slice(0, 3)]);
+    }
+  } else {
+    throw new Error("No usable ICD-10-CM XML/TXT found in ZIP");
+  }
+  return records;
+}
+
+/** Faithful port of `_parse_icd10pcs_stage_records`. */
+export function parseIcd10pcsStageRecords(
+  zipPath: string,
+  nameZhMap: Map<string, string>,
+): string[][] {
+  const entries = unzipSync(new Uint8Array(fs.readFileSync(zipPath)));
+  const names = Object.keys(entries);
+  let codesFiles = names.filter((n) => {
+    const lo = n.toLowerCase();
+    return (
+      lo.endsWith(".txt") &&
+      !lo.includes("addenda") &&
+      (lo.includes("codes") || lo.includes("pcs"))
+    );
+  });
+  if (!codesFiles.length) {
+    codesFiles = names.filter(
+      (n) => n.toLowerCase().endsWith(".txt") && !n.toLowerCase().includes("addenda"),
+    );
+  }
+  if (!codesFiles.length) {
+    throw new Error("No usable ICD-10-PCS TXT found in ZIP");
+  }
+  const data = Buffer.from(entries[codesFiles[0]]).toString("utf-8");
+  const records: string[][] = [];
+  for (const [code, nameEn] of parsePcsCodesTxt(data)) {
+    records.push([code, nameEn, nameZhMap.get(code) ?? ""]);
+  }
+  return records;
+}
+
+/** Faithful port of `_parse_icd_bilingual_names` (raises if 0 names parsed). */
+export function parseIcdBilingualNames(
+  xlsxPath: string,
+): { cmZh: Map<string, string>; pcsZh: Map<string, string> } {
+  const { cmZh, pcsZh } = parseIcdChineseXlsx(xlsxPath);
+  if (cmZh.size === 0 && pcsZh.size === 0) {
+    throw new Error(
+      "Taiwan ICD bilingual XLSX parsed 0 Chinese names. " +
+        "Verify the workbook has ICD-10-CM and ICD-10-PCS sheets with Chinese names.",
+    );
+  }
+  return { cmZh, pcsZh };
+}
+
 // ── DB write helper ─────────────────────────────────────────────────────────
 
 async function batchInsert(
