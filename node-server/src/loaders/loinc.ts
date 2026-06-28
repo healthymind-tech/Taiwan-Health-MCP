@@ -166,6 +166,124 @@ function floatToExactNumeric(x: number): string {
 
 type Concept = (string | number)[];
 
+// ── Staged-import payload (Node port of admin_jobs._build_loinc_stage_payload) ──
+// Returns row tuples (rather than writing tables directly) so the admin worker
+// can stage → promote them. The mapping CSV is pre-merged into the concept rows
+// (indices 13–16: name_zh/common_name_zh/specimen_type/unit), exactly mirroring
+// the Python stager — unlike the legacy direct-write loader which UPDATEs.
+
+export interface LoincStagePayload {
+  /** 17-col concept tuples (loinc_num … unit). */
+  conceptRows: (string | number)[][];
+  /** 8-col reference-range tuples (loinc_num, age_min, age_max, gender, range_low, range_high, unit, interpretation). */
+  rangeRows: (string | number)[][];
+  stats: { mapping_row_count: number; mapping_match_count: number };
+}
+
+/** Faithful port of `_build_loinc_stage_payload`. */
+export function buildLoincStagePayload(
+  loincZipPath: string,
+  mappingCsvPath: string | null,
+  rangesCsvPath: string | null,
+): LoincStagePayload {
+  const buf = new Uint8Array(fs.readFileSync(loincZipPath));
+  let entries = unzipSync(buf, {
+    filter: (file) => file.name.endsWith("Loinc.csv") && !file.name.includes("AccessoryFiles"),
+  });
+  let names = Object.keys(entries);
+  if (names.length === 0) {
+    entries = unzipSync(buf, { filter: (f) => f.name.endsWith("Loinc.csv") });
+    names = Object.keys(entries);
+    if (names.length === 0) throw new Error("Loinc.csv not found in ZIP");
+  }
+  const csvText = Buffer.from(entries[names[0]]).toString("utf-8");
+  const rows = parseCsvDict(csvText);
+
+  // Keyed by loinc_num, preserving CSV insertion order (mirrors Python dict).
+  const conceptMap = new Map<string, (string | number)[]>();
+  for (const row of rows) {
+    const loincNum = gs(row, "LOINC_NUM");
+    if (!loincNum) continue;
+    let classtype = parseInt(row["CLASSTYPE"] ?? "", 10);
+    if (Number.isNaN(classtype)) classtype = 0;
+    conceptMap.set(loincNum, [
+      loincNum,
+      gs(row, "COMPONENT"),
+      gs(row, "PROPERTY"),
+      gs(row, "TIME_ASPCT"),
+      gs(row, "SYSTEM"),
+      gs(row, "SCALE_TYP"),
+      gs(row, "METHOD_TYP"),
+      gs(row, "LONG_COMMON_NAME"),
+      gs(row, "SHORTNAME"),
+      gs(row, "CLASS"),
+      classtype,
+      gs(row, "STATUS"),
+      gs(row, "CONSUMER_NAME"),
+      "", // name_zh
+      "", // common_name_zh
+      "", // specimen_type
+      "", // unit
+    ]);
+  }
+
+  let mappingRowCount = 0;
+  let mappingMatchCount = 0;
+  if (mappingCsvPath) {
+    // _load_mapping_csv: raw DictReader values (no strip), keyed loinc_code.
+    const mrows = parseCsvDict(fs.readFileSync(mappingCsvPath, "utf-8"));
+    for (const m of mrows) {
+      mappingRowCount += 1;
+      const concept = conceptMap.get(m["loinc_code"]);
+      if (concept) {
+        mappingMatchCount += 1;
+        concept[13] = m["name_zh"];
+        concept[14] = m["common_name_zh"];
+        concept[15] = m["specimen_type"];
+        concept[16] = m["unit"];
+      }
+    }
+    if (mappingRowCount === 0) {
+      throw new Error(
+        "LOINC Taiwan mapping CSV parsed 0 rows. Verify the uploaded CSV headers " +
+          "include loinc_code, name_zh, common_name_zh, specimen_type, and unit.",
+      );
+    }
+  }
+
+  const conceptRows = [...conceptMap.values()];
+  const conceptCodes = new Set(conceptMap.keys());
+
+  let rangeRows: (string | number)[][] = [];
+  if (rangesCsvPath) {
+    // _load_ranges_csv: int(age_*) + float(range_*). The numeric stage columns
+    // take exact-decimal strings (floatToExactNumeric) to reproduce asyncpg's
+    // Decimal(float) byte-for-byte. Filter to codes present in concepts.
+    const rrows = parseCsvDict(fs.readFileSync(rangesCsvPath, "utf-8"));
+    rangeRows = rrows
+      .map(
+        (r) =>
+          [
+            r["loinc_code"],
+            parseInt(r["age_min"], 10),
+            parseInt(r["age_max"], 10),
+            r["gender"],
+            floatToExactNumeric(parseFloat(r["range_low"])),
+            floatToExactNumeric(parseFloat(r["range_high"])),
+            r["unit"],
+            r["interpretation"],
+          ] as (string | number)[],
+      )
+      .filter((r) => conceptCodes.has(r[0] as string));
+  }
+
+  return {
+    conceptRows,
+    rangeRows,
+    stats: { mapping_row_count: mappingRowCount, mapping_match_count: mappingMatchCount },
+  };
+}
+
 /** Faithful port of `load_loinc_full`. */
 export async function loadLoincFull(pool: pg.Pool): Promise<void> {
   logInfo(`Parsing ${ZIP_PATH} ...`);

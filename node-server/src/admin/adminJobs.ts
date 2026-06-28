@@ -1978,6 +1978,224 @@ export async function runIcdImportJob(opts: {
   });
 }
 
+/** Faithful port of `_run_loinc_import_job` (staged import: validate → stage → promote). */
+export async function runLoincImportJob(opts: {
+  workerName: string;
+  job: Record<string, unknown>;
+}): Promise<void> {
+  const { workerName, job } = opts;
+  const jobId = String(job.job_id);
+  const { buildLoincStagePayload } = await import("../loaders/loinc.js");
+  const {
+    withMaterializedSources,
+    runValidateStep,
+    stageRows,
+    checkpointBeforePromote,
+    optimizedPromote,
+    clearStageRows,
+  } = await import("./adminJobStaging.js");
+
+  const manifest = parseJsonb(parseJsonb(job.job_options).source_manifest);
+  const total = 5;
+  let progress = Math.max(Number(job.progress_current || 0), 0);
+
+  await appendJobLog({
+    jobId,
+    level: "info",
+    message: "Starting LOINC staged import",
+    payload: { source_manifest: manifest },
+  });
+
+  await withMaterializedSources(manifest, async (paths) => {
+    const { conceptRows, rangeRows, stats } = buildLoincStagePayload(
+      paths.loinc,
+      paths.loinc_taiwan_mapping ?? null,
+      paths.loinc_reference_ranges ?? null,
+    );
+
+    if (progress < 1) {
+      await runValidateStep({
+        jobId,
+        stepKey: "validate_sources",
+        currentStep: "validated_sources",
+        checkpoint: {
+          phase: "validated",
+          source_roles: Object.keys(paths).sort(),
+          concept_count: conceptRows.length,
+          reference_range_count: rangeRows.length,
+          ...stats,
+        },
+        jobProgressAfter: 1,
+        jobProgressTotal: total,
+      });
+      progress = 1;
+      if (await applyControlCheckpoint({ jobId, workerName })) return;
+    }
+
+    if (progress < 2) {
+      const interrupted = await stageRows({
+        jobId,
+        workerName,
+        stepKey: "stage_concepts",
+        runningStepName: "staging_loinc_concepts",
+        rows: conceptRows,
+        insertSql: `
+          INSERT INTO admin.stage_loinc_concepts (
+            job_id, loinc_num, component, property, time_aspect, system,
+            scale_type, method_type, long_common_name, shortname, class,
+            classtype, status, consumer_name, name_zh, common_name_zh,
+            specimen_type, unit
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+          ON CONFLICT (job_id, loinc_num) DO UPDATE SET
+            component = EXCLUDED.component,
+            property = EXCLUDED.property,
+            time_aspect = EXCLUDED.time_aspect,
+            system = EXCLUDED.system,
+            scale_type = EXCLUDED.scale_type,
+            method_type = EXCLUDED.method_type,
+            long_common_name = EXCLUDED.long_common_name,
+            shortname = EXCLUDED.shortname,
+            class = EXCLUDED.class,
+            classtype = EXCLUDED.classtype,
+            status = EXCLUDED.status,
+            consumer_name = EXCLUDED.consumer_name,
+            name_zh = EXCLUDED.name_zh,
+            common_name_zh = EXCLUDED.common_name_zh,
+            specimen_type = EXCLUDED.specimen_type,
+            unit = EXCLUDED.unit
+        `,
+        batchSize: 5000,
+        jobProgressBefore: 1,
+        jobProgressAfter: 2,
+        jobProgressTotal: total,
+        checkpointLabel: "staging_loinc_concepts",
+      });
+      if (interrupted) return;
+      progress = 2;
+    }
+
+    if (progress < 3) {
+      const interrupted = await stageRows({
+        jobId,
+        workerName,
+        stepKey: "stage_reference_ranges",
+        runningStepName: "staging_loinc_reference_ranges",
+        rows: rangeRows,
+        insertSql: `
+          INSERT INTO admin.stage_loinc_reference_ranges (
+            job_id, loinc_num, age_min, age_max, gender,
+            range_low, range_high, unit, interpretation
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          ON CONFLICT (job_id, loinc_num, age_min, age_max, gender, unit, interpretation)
+          DO NOTHING
+        `,
+        batchSize: 5000,
+        jobProgressBefore: 2,
+        jobProgressAfter: 3,
+        jobProgressTotal: total,
+        checkpointLabel: "staging_loinc_reference_ranges",
+      });
+      if (interrupted) return;
+      progress = 3;
+    }
+
+    if (progress < 4) {
+      if (
+        await checkpointBeforePromote({
+          jobId,
+          workerName,
+          stepKey: "promote",
+          jobProgressBefore: 3,
+          jobProgressTotal: total,
+        })
+      ) {
+        return;
+      }
+      await optimizedPromote({
+        jobId,
+        stepKey: "promote",
+        indexTables: ["loinc.concepts", "loinc.reference_ranges"],
+        truncateSql: "TRUNCATE loinc.reference_ranges, loinc.concepts CASCADE",
+        copies: [
+          {
+            sql: `
+              INSERT INTO loinc.concepts (
+                loinc_num, component, property, time_aspect, system,
+                scale_type, method_type, long_common_name, shortname, class,
+                classtype, status, consumer_name, name_zh, common_name_zh,
+                specimen_type, unit
+              )
+              SELECT
+                loinc_num, component, property, time_aspect, system,
+                scale_type, method_type, long_common_name, shortname, class,
+                classtype, status, consumer_name, name_zh, common_name_zh,
+                specimen_type, unit
+              FROM admin.stage_loinc_concepts
+              WHERE job_id = $1::uuid
+            `,
+            args: [jobId],
+            label: `concepts (${fmt(conceptRows.length)})`,
+          },
+          {
+            sql: `
+              INSERT INTO loinc.reference_ranges (
+                loinc_num, age_min, age_max, gender,
+                range_low, range_high, unit, interpretation
+              )
+              SELECT
+                loinc_num, age_min, age_max, gender,
+                range_low, range_high, unit, interpretation
+              FROM admin.stage_loinc_reference_ranges
+              WHERE job_id = $1::uuid
+            `,
+            args: [jobId],
+            label: `reference ranges (${fmt(rangeRows.length)})`,
+          },
+        ],
+        finalCheckpoint: {
+          phase: "promoted",
+          concept_count: conceptRows.length,
+          reference_range_count: rangeRows.length,
+        },
+        promotedStepName: "promoted_loinc",
+        jobProgressAfter: 4,
+        jobProgressTotal: total,
+      });
+      progress = 4;
+    }
+
+    await clearStageRows(jobId, [
+      "admin.stage_loinc_reference_ranges",
+      "admin.stage_loinc_concepts",
+    ]);
+    await recordJobStep({
+      jobId,
+      stepKey: "cleanup_staging",
+      status: "success",
+      progressCurrent: 1,
+      progressTotal: 1,
+      checkpoint: { phase: "cleaned" },
+    });
+    await markJobStatus({
+      jobId,
+      status: "success",
+      currentStep: "completed",
+      progressCurrent: 5,
+      progressTotal: total,
+      controlState: "idle",
+      resultSummary: {
+        job_type: "loinc_import",
+        source_manifest: manifest,
+        concept_count: conceptRows.length,
+        reference_range_count: rangeRows.length,
+        ...stats,
+      },
+    });
+  });
+}
+
 // ── Job dispatcher ────────────────────────────────────────────────────────────
 
 /**
@@ -2048,13 +2266,16 @@ export async function executeAdminJob(opts: {
       await runIcdImportJob({ workerName, job });
       return;
     }
+    if (jobType === "loinc_import") {
+      await runLoincImportJob({ workerName, job });
+      return;
+    }
 
     // ── W2b loader handlers (not yet wired) ──────────────────────────────────
     // The dispatcher structure mirrors execute_admin_job exactly so W2b only
     // needs to replace each throw with the real handler over the Node loaders
     // (drug stages shell out to Python loader/main.py).
     const W2B_JOB_TYPES = new Set([
-      "loinc_import",
       "ig_import",
       "snomed_import",
       "rxnorm_import",
