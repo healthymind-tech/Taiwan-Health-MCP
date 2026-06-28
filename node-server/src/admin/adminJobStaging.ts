@@ -62,8 +62,12 @@ export interface StageRowsInput {
   stepKey: string;
   runningStepName: string;
   rows: StageRow[];
-  /** Single-row INSERT with $1=job_id, $2..=row columns (ON CONFLICT upsert). */
-  insertSql: string;
+  /** Fully-qualified stage table, e.g. "admin.stage_icd_diagnoses". */
+  table: string;
+  /** Data columns after job_id, in row-tuple order. */
+  columns: string[];
+  /** ON CONFLICT clause appended after VALUES (DO UPDATE … / DO NOTHING). */
+  conflictSql: string;
   batchSize: number;
   jobProgressBefore: number;
   jobProgressAfter: number;
@@ -78,9 +82,13 @@ export interface StageRowsInput {
  */
 export async function stageRows(opts: StageRowsInput): Promise<boolean> {
   const {
-    jobId, workerName, stepKey, runningStepName, rows, insertSql, batchSize,
+    jobId, workerName, stepKey, runningStepName, rows, table, columns, conflictSql, batchSize,
     jobProgressBefore, jobProgressAfter, jobProgressTotal, checkpointLabel,
   } = opts;
+  const ncols = columns.length + 1; // + job_id
+  // Cap rows per INSERT under Postgres' 65535 bind-parameter limit.
+  const maxRowsPerStmt = Math.max(1, Math.floor(60000 / ncols));
+  const insertHead = `INSERT INTO ${table} (job_id, ${columns.join(", ")}) VALUES `;
 
   const checkpoint = await getJobStepCheckpoint(jobId, stepKey);
   let completed = Number(checkpoint.completed ?? 0) || 0;
@@ -122,11 +130,26 @@ export async function stageRows(opts: StageRowsInput): Promise<boolean> {
   for (let start = completed; start < rows.length; start += batchSize) {
     const end = Math.min(start + batchSize, rows.length);
     const batchT0 = Date.now();
-    // Mirror asyncpg executemany: one parameterised insert per row, in a single
-    // transaction per batch (atomic, and the stage-table result is identical).
+    // One transaction per outer batch (atomic). Within it, emit multi-row
+    // INSERTs chunked under the bind-param limit — far fewer round-trips than the
+    // old per-row loop (essential for SNOMED's millions of rows). The ON CONFLICT
+    // clause and ordering are preserved, so the staged content is identical; the
+    // wired datasets carry unique conflict keys, so no within-statement upsert
+    // collision. Progress is still recorded at the batchSize boundary below, so
+    // step/log parity with Python's executemany batching is unchanged.
     await withTransaction(async (client) => {
-      for (let i = start; i < end; i += 1) {
-        await client.query(insertSql, [jobId, ...rows[i]]);
+      for (let s = start; s < end; s += maxRowsPerStmt) {
+        const e = Math.min(s + maxRowsPerStmt, end);
+        const tuples: string[] = [];
+        const params: unknown[] = [];
+        let p = 0;
+        for (let i = s; i < e; i += 1) {
+          const ph: string[] = [`$${(p += 1)}`];
+          for (let ci = 0; ci < columns.length; ci += 1) ph.push(`$${(p += 1)}`);
+          tuples.push(`(${ph.join(", ")})`);
+          params.push(jobId, ...rows[i]);
+        }
+        await client.query(`${insertHead}${tuples.join(", ")} ${conflictSql}`, params);
       }
     });
     await jobDebugLog({

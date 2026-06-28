@@ -1857,14 +1857,12 @@ export async function runIcdImportJob(opts: {
         stepKey: "stage_diagnoses",
         runningStepName: "staging_diagnoses",
         rows: diagnoses,
-        insertSql: `
-          INSERT INTO admin.stage_icd_diagnoses (job_id, code, name_en, name_zh, category)
-          VALUES ($1, $2, $3, $4, $5)
-          ON CONFLICT (job_id, code) DO UPDATE SET
-            name_en = EXCLUDED.name_en,
-            name_zh = EXCLUDED.name_zh,
-            category = EXCLUDED.category
-        `,
+        table: "admin.stage_icd_diagnoses",
+        columns: ["code", "name_en", "name_zh", "category"],
+        conflictSql: `ON CONFLICT (job_id, code) DO UPDATE SET
+          name_en = EXCLUDED.name_en,
+          name_zh = EXCLUDED.name_zh,
+          category = EXCLUDED.category`,
         batchSize: 5000,
         jobProgressBefore: 1,
         jobProgressAfter: 2,
@@ -1882,13 +1880,11 @@ export async function runIcdImportJob(opts: {
         stepKey: "stage_procedures",
         runningStepName: "staging_procedures",
         rows: procedures,
-        insertSql: `
-          INSERT INTO admin.stage_icd_procedures (job_id, code, name_en, name_zh)
-          VALUES ($1, $2, $3, $4)
-          ON CONFLICT (job_id, code) DO UPDATE SET
-            name_en = EXCLUDED.name_en,
-            name_zh = EXCLUDED.name_zh
-        `,
+        table: "admin.stage_icd_procedures",
+        columns: ["code", "name_en", "name_zh"],
+        conflictSql: `ON CONFLICT (job_id, code) DO UPDATE SET
+          name_en = EXCLUDED.name_en,
+          name_zh = EXCLUDED.name_zh`,
         batchSize: 5000,
         jobProgressBefore: 2,
         jobProgressAfter: 3,
@@ -2039,32 +2035,30 @@ export async function runLoincImportJob(opts: {
         stepKey: "stage_concepts",
         runningStepName: "staging_loinc_concepts",
         rows: conceptRows,
-        insertSql: `
-          INSERT INTO admin.stage_loinc_concepts (
-            job_id, loinc_num, component, property, time_aspect, system,
-            scale_type, method_type, long_common_name, shortname, class,
-            classtype, status, consumer_name, name_zh, common_name_zh,
-            specimen_type, unit
-          )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
-          ON CONFLICT (job_id, loinc_num) DO UPDATE SET
-            component = EXCLUDED.component,
-            property = EXCLUDED.property,
-            time_aspect = EXCLUDED.time_aspect,
-            system = EXCLUDED.system,
-            scale_type = EXCLUDED.scale_type,
-            method_type = EXCLUDED.method_type,
-            long_common_name = EXCLUDED.long_common_name,
-            shortname = EXCLUDED.shortname,
-            class = EXCLUDED.class,
-            classtype = EXCLUDED.classtype,
-            status = EXCLUDED.status,
-            consumer_name = EXCLUDED.consumer_name,
-            name_zh = EXCLUDED.name_zh,
-            common_name_zh = EXCLUDED.common_name_zh,
-            specimen_type = EXCLUDED.specimen_type,
-            unit = EXCLUDED.unit
-        `,
+        table: "admin.stage_loinc_concepts",
+        columns: [
+          "loinc_num", "component", "property", "time_aspect", "system",
+          "scale_type", "method_type", "long_common_name", "shortname", "class",
+          "classtype", "status", "consumer_name", "name_zh", "common_name_zh",
+          "specimen_type", "unit",
+        ],
+        conflictSql: `ON CONFLICT (job_id, loinc_num) DO UPDATE SET
+          component = EXCLUDED.component,
+          property = EXCLUDED.property,
+          time_aspect = EXCLUDED.time_aspect,
+          system = EXCLUDED.system,
+          scale_type = EXCLUDED.scale_type,
+          method_type = EXCLUDED.method_type,
+          long_common_name = EXCLUDED.long_common_name,
+          shortname = EXCLUDED.shortname,
+          class = EXCLUDED.class,
+          classtype = EXCLUDED.classtype,
+          status = EXCLUDED.status,
+          consumer_name = EXCLUDED.consumer_name,
+          name_zh = EXCLUDED.name_zh,
+          common_name_zh = EXCLUDED.common_name_zh,
+          specimen_type = EXCLUDED.specimen_type,
+          unit = EXCLUDED.unit`,
         batchSize: 5000,
         jobProgressBefore: 1,
         jobProgressAfter: 2,
@@ -2082,15 +2076,10 @@ export async function runLoincImportJob(opts: {
         stepKey: "stage_reference_ranges",
         runningStepName: "staging_loinc_reference_ranges",
         rows: rangeRows,
-        insertSql: `
-          INSERT INTO admin.stage_loinc_reference_ranges (
-            job_id, loinc_num, age_min, age_max, gender,
-            range_low, range_high, unit, interpretation
-          )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-          ON CONFLICT (job_id, loinc_num, age_min, age_max, gender, unit, interpretation)
-          DO NOTHING
-        `,
+        table: "admin.stage_loinc_reference_ranges",
+        columns: ["loinc_num", "age_min", "age_max", "gender", "range_low", "range_high", "unit", "interpretation"],
+        conflictSql:
+          "ON CONFLICT (job_id, loinc_num, age_min, age_max, gender, unit, interpretation) DO NOTHING",
         batchSize: 5000,
         jobProgressBefore: 2,
         jobProgressAfter: 3,
@@ -2196,6 +2185,269 @@ export async function runLoincImportJob(opts: {
   });
 }
 
+/** Faithful port of `_run_snomed_import_job` (staged import: validate → 5 stage → promote). */
+export async function runSnomedImportJob(opts: {
+  workerName: string;
+  job: Record<string, unknown>;
+}): Promise<void> {
+  const { workerName, job } = opts;
+  const jobId = String(job.job_id);
+  const { buildSnomedStagePayload } = await import("../loaders/snomed.js");
+  const {
+    withMaterializedSources,
+    runValidateStep,
+    stageRows,
+    checkpointBeforePromote,
+    optimizedPromote,
+    clearStageRows,
+  } = await import("./adminJobStaging.js");
+
+  const manifest = parseJsonb(parseJsonb(job.job_options).source_manifest);
+  const total = 8;
+  let progress = Math.max(Number(job.progress_current || 0), 0);
+
+  await appendJobLog({
+    jobId,
+    level: "info",
+    message: "Starting SNOMED staged import",
+    payload: { source_manifest: manifest },
+  });
+
+  await withMaterializedSources(manifest, async (paths) => {
+    const { conceptRows, descriptionRows, relationshipRows, icd10MapRows, associationRows } =
+      buildSnomedStagePayload(paths.snomed_ct);
+
+    if (progress < 1) {
+      await runValidateStep({
+        jobId,
+        stepKey: "validate_sources",
+        currentStep: "validated_sources",
+        checkpoint: {
+          phase: "validated",
+          source_roles: Object.keys(paths).sort(),
+          concept_count: conceptRows.length,
+          description_count: descriptionRows.length,
+          relationship_count: relationshipRows.length,
+          icd10_map_count: icd10MapRows.length,
+          association_count: associationRows.length,
+        },
+        jobProgressAfter: 1,
+        jobProgressTotal: total,
+      });
+      progress = 1;
+      if (await applyControlCheckpoint({ jobId, workerName })) return;
+    }
+
+    if (progress < 2) {
+      const interrupted = await stageRows({
+        jobId, workerName,
+        stepKey: "stage_concepts",
+        runningStepName: "staging_snomed_concepts",
+        rows: conceptRows,
+        table: "admin.stage_snomed_concepts",
+        columns: ["concept_id", "effective_time", "active", "module_id", "definition_status_id"],
+        conflictSql: `ON CONFLICT (job_id, concept_id) DO UPDATE SET
+          effective_time = EXCLUDED.effective_time,
+          active = EXCLUDED.active,
+          module_id = EXCLUDED.module_id,
+          definition_status_id = EXCLUDED.definition_status_id`,
+        batchSize: 5000,
+        jobProgressBefore: 1, jobProgressAfter: 2, jobProgressTotal: total,
+        checkpointLabel: "staging_snomed_concepts",
+      });
+      if (interrupted) return;
+      progress = 2;
+    }
+
+    if (progress < 3) {
+      const interrupted = await stageRows({
+        jobId, workerName,
+        stepKey: "stage_descriptions",
+        runningStepName: "staging_snomed_descriptions",
+        rows: descriptionRows,
+        table: "admin.stage_snomed_descriptions",
+        columns: ["description_id", "concept_id", "type_id", "term", "active", "language_code", "us_preferred"],
+        conflictSql: `ON CONFLICT (job_id, description_id) DO UPDATE SET
+          concept_id = EXCLUDED.concept_id,
+          type_id = EXCLUDED.type_id,
+          term = EXCLUDED.term,
+          active = EXCLUDED.active,
+          language_code = EXCLUDED.language_code,
+          us_preferred = EXCLUDED.us_preferred`,
+        batchSize: 5000,
+        jobProgressBefore: 2, jobProgressAfter: 3, jobProgressTotal: total,
+        checkpointLabel: "staging_snomed_descriptions",
+      });
+      if (interrupted) return;
+      progress = 3;
+    }
+
+    if (progress < 4) {
+      const interrupted = await stageRows({
+        jobId, workerName,
+        stepKey: "stage_relationships",
+        runningStepName: "staging_snomed_relationships",
+        rows: relationshipRows,
+        table: "admin.stage_snomed_relationships",
+        columns: ["relationship_id", "source_id", "destination_id", "type_id", "active", "characteristic_type_id"],
+        conflictSql: `ON CONFLICT (job_id, relationship_id) DO UPDATE SET
+          source_id = EXCLUDED.source_id,
+          destination_id = EXCLUDED.destination_id,
+          type_id = EXCLUDED.type_id,
+          active = EXCLUDED.active,
+          characteristic_type_id = EXCLUDED.characteristic_type_id`,
+        batchSize: 5000,
+        jobProgressBefore: 3, jobProgressAfter: 4, jobProgressTotal: total,
+        checkpointLabel: "staging_snomed_relationships",
+      });
+      if (interrupted) return;
+      progress = 4;
+    }
+
+    if (progress < 5) {
+      const interrupted = await stageRows({
+        jobId, workerName,
+        stepKey: "stage_icd10_map",
+        runningStepName: "staging_snomed_icd10_map",
+        rows: icd10MapRows,
+        table: "admin.stage_snomed_icd10_map",
+        columns: ["referenced_component_id", "map_target", "map_rule", "map_advice", "map_priority", "map_group", "active"],
+        conflictSql:
+          "ON CONFLICT (job_id, referenced_component_id, map_target, map_priority, map_group) DO NOTHING",
+        batchSize: 5000,
+        jobProgressBefore: 4, jobProgressAfter: 5, jobProgressTotal: total,
+        checkpointLabel: "staging_snomed_icd10_map",
+      });
+      if (interrupted) return;
+      progress = 5;
+    }
+
+    if (progress < 6) {
+      const interrupted = await stageRows({
+        jobId, workerName,
+        stepKey: "stage_associations",
+        runningStepName: "staging_snomed_associations",
+        rows: associationRows,
+        table: "admin.stage_snomed_associations",
+        columns: ["referenced_component_id", "target_component_id", "refset_id"],
+        conflictSql:
+          "ON CONFLICT (job_id, referenced_component_id, target_component_id, refset_id) DO NOTHING",
+        batchSize: 5000,
+        jobProgressBefore: 5, jobProgressAfter: 6, jobProgressTotal: total,
+        checkpointLabel: "staging_snomed_associations",
+      });
+      if (interrupted) return;
+      progress = 6;
+    }
+
+    if (progress < 7) {
+      if (
+        await checkpointBeforePromote({
+          jobId, workerName, stepKey: "promote",
+          jobProgressBefore: 6, jobProgressTotal: total,
+        })
+      ) {
+        return;
+      }
+      await optimizedPromote({
+        jobId,
+        stepKey: "promote",
+        indexTables: [
+          "snomed.concepts",
+          "snomed.descriptions",
+          "snomed.relationships",
+          "snomed.icd10_map",
+          "snomed.historical_associations",
+        ],
+        truncateSql:
+          "TRUNCATE snomed.historical_associations, snomed.icd10_map, snomed.relationships, snomed.descriptions, snomed.concepts CASCADE",
+        copies: [
+          {
+            sql: `INSERT INTO snomed.concepts (concept_id, effective_time, active, module_id, definition_status_id)
+                  SELECT concept_id, effective_time, active, module_id, definition_status_id
+                  FROM admin.stage_snomed_concepts WHERE job_id = $1::uuid`,
+            args: [jobId],
+            label: `concepts (${fmt(conceptRows.length)})`,
+          },
+          {
+            sql: `INSERT INTO snomed.descriptions (description_id, concept_id, type_id, term, active, language_code, us_preferred)
+                  SELECT description_id, concept_id, type_id, term, active, language_code, us_preferred
+                  FROM admin.stage_snomed_descriptions WHERE job_id = $1::uuid`,
+            args: [jobId],
+            label: `descriptions (${fmt(descriptionRows.length)})`,
+          },
+          {
+            sql: `INSERT INTO snomed.relationships (relationship_id, source_id, destination_id, type_id, active, characteristic_type_id)
+                  SELECT relationship_id, source_id, destination_id, type_id, active, characteristic_type_id
+                  FROM admin.stage_snomed_relationships WHERE job_id = $1::uuid`,
+            args: [jobId],
+            label: `relationships (${fmt(relationshipRows.length)})`,
+          },
+          {
+            sql: `INSERT INTO snomed.icd10_map (referenced_component_id, map_target, map_rule, map_advice, map_priority, map_group, active)
+                  SELECT referenced_component_id, map_target, map_rule, map_advice, map_priority, map_group, active
+                  FROM admin.stage_snomed_icd10_map WHERE job_id = $1::uuid`,
+            args: [jobId],
+            label: `icd10 map (${fmt(icd10MapRows.length)})`,
+          },
+          {
+            sql: `INSERT INTO snomed.historical_associations (referenced_component_id, target_component_id, refset_id)
+                  SELECT referenced_component_id, target_component_id, refset_id
+                  FROM admin.stage_snomed_associations WHERE job_id = $1::uuid
+                  ON CONFLICT DO NOTHING`,
+            args: [jobId],
+            label: `historical associations (${fmt(associationRows.length)})`,
+          },
+        ],
+        finalCheckpoint: {
+          phase: "promoted",
+          concept_count: conceptRows.length,
+          description_count: descriptionRows.length,
+          relationship_count: relationshipRows.length,
+          icd10_map_count: icd10MapRows.length,
+          association_count: associationRows.length,
+        },
+        promotedStepName: "promoted_snomed",
+        jobProgressAfter: 7,
+        jobProgressTotal: total,
+      });
+      progress = 7;
+    }
+
+    await clearStageRows(jobId, [
+      "admin.stage_snomed_associations",
+      "admin.stage_snomed_icd10_map",
+      "admin.stage_snomed_relationships",
+      "admin.stage_snomed_descriptions",
+      "admin.stage_snomed_concepts",
+    ]);
+    await recordJobStep({
+      jobId,
+      stepKey: "cleanup_staging",
+      status: "success",
+      progressCurrent: 1,
+      progressTotal: 1,
+      checkpoint: { phase: "cleaned" },
+    });
+    await markJobStatus({
+      jobId,
+      status: "success",
+      currentStep: "completed",
+      progressCurrent: total,
+      progressTotal: total,
+      controlState: "idle",
+      resultSummary: {
+        job_type: "snomed_import",
+        source_manifest: manifest,
+        concept_count: conceptRows.length,
+        description_count: descriptionRows.length,
+        relationship_count: relationshipRows.length,
+        icd10_map_count: icd10MapRows.length,
+      },
+    });
+  });
+}
+
 // ── Job dispatcher ────────────────────────────────────────────────────────────
 
 /**
@@ -2270,6 +2522,10 @@ export async function executeAdminJob(opts: {
       await runLoincImportJob({ workerName, job });
       return;
     }
+    if (jobType === "snomed_import") {
+      await runSnomedImportJob({ workerName, job });
+      return;
+    }
 
     // ── W2b loader handlers (not yet wired) ──────────────────────────────────
     // The dispatcher structure mirrors execute_admin_job exactly so W2b only
@@ -2277,7 +2533,6 @@ export async function executeAdminJob(opts: {
     // (drug stages shell out to Python loader/main.py).
     const W2B_JOB_TYPES = new Set([
       "ig_import",
-      "snomed_import",
       "rxnorm_import",
       "drug_index_import",
       "drug_enrichment",

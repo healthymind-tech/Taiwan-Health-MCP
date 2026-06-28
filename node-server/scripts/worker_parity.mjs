@@ -38,6 +38,13 @@ const MODULES = {
       order: "loinc_num, age_min, age_max, gender, unit, interpretation",
     },
   ],
+  snomed: [
+    { table: "snomed.concepts", cols: "concept_id, effective_time, active, module_id, definition_status_id", order: "concept_id" },
+    { table: "snomed.descriptions", cols: "description_id, concept_id, type_id, term, active, language_code, us_preferred", order: "description_id" },
+    { table: "snomed.relationships", cols: "relationship_id, source_id, destination_id, type_id, active, characteristic_type_id", order: "relationship_id" },
+    { table: "snomed.icd10_map", cols: "referenced_component_id, map_target, map_rule, map_advice, map_priority, map_group, active", order: "referenced_component_id, map_target, map_priority, map_group" },
+    { table: "snomed.historical_associations", cols: "referenced_component_id, target_component_id, refset_id", order: "referenced_component_id, target_component_id, refset_id" },
+  ],
 };
 
 const MODULE = process.argv[2];

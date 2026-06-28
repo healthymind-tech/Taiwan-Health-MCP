@@ -320,6 +320,70 @@ async function batchInsert(
   }
 }
 
+// ── Staged-import payload (Node port of admin_jobs._build_snomed_stage_payload) ─
+// Parse-only extraction of loadSnomed: returns the five row-tuple lists (rather
+// than writing tables) so the admin worker can stage → promote them. Memory is
+// bounded the same way (only the six Snapshot members are decompressed, each
+// freed via takeMember after parsing).
+
+export interface SnomedStagePayload {
+  conceptRows: Cell[][];
+  descriptionRows: Cell[][];
+  relationshipRows: Cell[][];
+  icd10MapRows: Cell[][];
+  associationRows: Cell[][];
+}
+
+/** Faithful port of `_build_snomed_stage_payload`. */
+export function buildSnomedStagePayload(zipPath: string): SnomedStagePayload {
+  const needed =
+    /(sct2_Concept_Snapshot_INT|sct2_Description_Snapshot-en_INT|sct2_Relationship_Snapshot_INT|der2_cRefset_LanguageSnapshot-en_INT|der2_cRefset_AssociationSnapshot_INT|der2_iisssccRefset_ExtendedMapSnapshot_INT)/i;
+  const entries = unzipSync(new Uint8Array(fs.readFileSync(zipPath)), {
+    filter: (f) => needed.test(f.name),
+  });
+
+  const conceptText = takeMember(entries, [
+    /Snapshot\/Terminology\/sct2_Concept_Snapshot_INT/i,
+    /Full\/Terminology\/sct2_Concept_Full_INT/i,
+  ]);
+  if (!conceptText) throw new Error("Concept file not found in SNOMED zip");
+  const { rows: conceptRows, loaded } = parseConcepts(conceptText);
+
+  const langText = takeMember(entries, [
+    /Snapshot\/Refset\/Language\/der2_cRefset_LanguageSnapshot-en_INT/i,
+    /Full\/Refset\/Language\/der2_cRefset_LanguageFull-en_INT/i,
+  ]);
+  const usPreferred = langText ? parseUsPreferred(langText) : new Set<string>();
+
+  const descText = takeMember(entries, [
+    /Snapshot\/Terminology\/sct2_Description_Snapshot-en_INT/i,
+    /Full\/Terminology\/sct2_Description_Full-en_INT/i,
+  ]);
+  if (!descText) throw new Error("Description file not found in SNOMED zip");
+  const descriptionRows = parseDescriptions(descText, loaded, usPreferred);
+
+  const relText = takeMember(entries, [
+    /Snapshot\/Terminology\/sct2_Relationship_Snapshot_INT/i,
+    /Full\/Terminology\/sct2_Relationship_Full_INT/i,
+  ]);
+  if (!relText) throw new Error("Relationship file not found in SNOMED zip");
+  const relationshipRows = parseRelationships(relText, loaded);
+
+  const mapText = takeMember(entries, [
+    /Snapshot\/Refset\/Map\/der2_iisssccRefset_ExtendedMapSnapshot_INT/i,
+    /Full\/Refset\/Map\/der2_iisssccRefset_ExtendedMapFull_INT/i,
+  ]);
+  const icd10MapRows = mapText ? parseIcd10Map(mapText, loaded) : [];
+
+  const assocText = takeMember(entries, [
+    /Snapshot\/Refset\/Content\/der2_cRefset_AssociationSnapshot_INT/i,
+    /Full\/Refset\/Content\/der2_cRefset_AssociationFull_INT/i,
+  ]);
+  const associationRows = assocText ? parseAssociations(assocText, loaded) : [];
+
+  return { conceptRows, descriptionRows, relationshipRows, icd10MapRows, associationRows };
+}
+
 // ── main loader ─────────────────────────────────────────────────────────────
 
 export async function loadSnomed(pool: pg.Pool, zipPath: string): Promise<void> {
