@@ -593,7 +593,12 @@ def run_case(
             f"expected both runtimes to reject (Python={python_error}, Node={node_error})",
             details,
         )
-    if python_error or node_error:
+    # An error on only one side is a genuine divergence. When BOTH sides return
+    # an error payload (e.g. a legitimate "no results found" for a keyword that
+    # matches nothing under simple FTS), it is only a parity failure if the two
+    # payloads differ — fall through to the normal value comparison below, which
+    # PASSes on identical payloads and FAILs on real divergence.
+    if python_error != node_error:
         return (
             "FAIL",
             f"unexpected error (Python={python_error}, Node={node_error})",
