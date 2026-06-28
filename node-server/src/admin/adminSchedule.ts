@@ -412,3 +412,38 @@ export async function fireSchedule(opts: {
 
   return { job_id: jobId, status, error };
 }
+
+/** A due schedule: the fire input plus the bookkeeping the worker's scan guard needs. */
+export type DueSchedule = FireScheduleInput & {
+  last_run_job_id: string | null;
+  next_run_at: string | null;
+};
+
+/**
+ * Faithful port of `list_due_schedules`: enabled schedules whose `next_run_at`
+ * is at or before now, ordered by `next_run_at`.
+ */
+export async function listDueSchedules(): Promise<DueSchedule[]> {
+  const res = await query<ScheduleRow>(
+    `SELECT *,
+            ${tsIsoExpr("next_run_at")} AS next_run_at_iso
+       FROM admin.module_schedules
+      WHERE is_enabled = TRUE
+        AND next_run_at IS NOT NULL
+        AND next_run_at <= NOW()
+      ORDER BY next_run_at`,
+  );
+  return res.rows.map((row) => ({
+    schedule_id: String(row.schedule_id),
+    module_key: row.module_key,
+    source_role: row.source_role ?? null,
+    fetch_url: row.fetch_url ?? null,
+    frequency: row.frequency,
+    day_of_week: row.day_of_week ?? null,
+    day_of_month: row.day_of_month ?? null,
+    hour_utc: Number(row.hour_utc),
+    minute_utc: Number(row.minute_utc),
+    last_run_job_id: row.last_run_job_id ? String(row.last_run_job_id) : null,
+    next_run_at: isoOrNull(row.next_run_at_iso),
+  }));
+}

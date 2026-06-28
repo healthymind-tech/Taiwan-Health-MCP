@@ -516,10 +516,48 @@ worker 跑完 → MCP 工具查得到資料 → FHIR 產生 → 驗證通過。P
   寫 claimed log、**claim 回傳 dict 與 live Python `claim_next_job` normalize 後逐位相同**(用 worker 不認得的合成
   job_type `paritytest_noop` 避開正在跑的 admin-worker 搶單)、heartbeat upsert、step upsert(+terminal finished_at)、
   log append、reclaim 重排殭屍。harness 已刪、未 commit。
-  **待 W2**:worker daemon 主迴圈(poll/claim/heartbeat/reclaim/control/cron)+ `mark_job_status`(~620 行控制狀態機/
-  checkpoint pause·cancel + `job_status_changed` 廣播 + `_activate_manifest_sources`)+ `log_job_outcome` +
-  `executeAdminJob` 派發(接已 port 的 Node loaders icd/loinc/ig/snomed/health/food/guideline/embed,drug 階段 shell-out
-  Python `loader/main.py`,polyglot worker)+ `fireSchedule`/`sweepExpiringTokens` 排程(皆已就緒)。
+- ✅ **Worker W2a:控制平面 + daemon 主迴圈 + noop(2026-06-28)**:`adminJobs.ts` 補上 worker 端 primitives——
+  `JOB_RESOURCES`/`JOB_TYPE_RESOURCES`/`getExcludedJobTypes`(per-module db_write slot + ollama_embed + llm 併發模型)、
+  worker tuning getters(`adminWorkerName`/`adminWorkerPollSeconds`/`adminHeartbeatIntervalSeconds`/
+  `adminNoopCheckpointDelaySeconds`)、`markJobStatus`(COALESCE 進度、terminal 填 finished_at、`result_summary='{}'` 保留舊
+  值、success 時 `activateManifestSources` 促活來源、`job_status_changed` 廣播,`updated_at` 經 `tsIsoExpr`+`pyIso`)、
+  `checkpointJobControl`(FOR UPDATE 讀 control_state∈{pause/stop/restart}_requested → 套用 paused/stopped/restart+
+  `createRestartJobLocked`、標記 control request handled、寫 control log)/`applyControlCheckpoint`/`countTableRows`、
+  `logJobOutcome`(+`fmt`/`successSummaryMessage` 的「✓ Completed — N diagnoses…」)、per-job verbose(`AsyncLocalStorage`
+  取代 ContextVar:`setDefaultLogVerbose`/`resolveLogVerbose`/`jobDebugLog`)、`pruneJobLogs`(兩段:retention + 每 job
+  上限保留、不刪 error)、`runNoopJob`(5 checkpoint smoke job)、`maybeAutoChain`(drug index→enrich→analysis)、
+  `executeAdminJob` 派發骨架(noop 全接;loader 類型暫拋 `W2bNotImplementedError` 留待 W2b;未知類型走 Python 的
+  permanent_failed unsupported 路徑)。`adminServices.ts` 補 `JOB_TYPE_DEPENDENCIES`+`getUnhealthyDependencies`(硬
+  `error` 才擋,degraded/無探測放行)。`adminSchedule.ts` 補 `listDueSchedules`。新增 `adminWorker.ts`(忠實 port
+  `admin_worker.py` `_run_loop`):DB health gate、reap+`requeueIfOrphaned`、idle/per-job heartbeat(`setInterval`)、
+  reclaim、oauth sweep、log prune、schedule scan(`scanAndFireSchedules`,前次 job 仍 active 則跳過)、claim+派發,
+  per-resource slot + `ADMIN_MAX_CONCURRENT_JOBS` 雙重併發上限,startup orphan reclaim,SIGTERM/SIGINT graceful。
+  `tsc` 零錯誤、產出 `dist/admin/adminWorker.js`。**verify:noop 執行路徑 PY(live worker 跑 queued noop)↔ND(對 pre-claimed
+  running noop 直接 `executeAdminJob`+`logJobOutcome`)同 DB byte-equal——`import_jobs`(status/control/step/progress/
+  result_summary)、`import_job_steps`、`import_job_logs` 三表全等 PASS**(兩者都設 running/合成 UUID 避開 live worker 搶單;
+  測後 6 筆測試列已刪)。harness `/tmp/w2a_parity.mjs` 已刪、未 commit。
+- 🔄 **Worker W2b(進行中,2026-06-28)**:
+  - ✅ **批次 1 — 輕量 sync(無 MinIO/無 staging)**:`adminJobs.ts` 新增 `runGuidelineSeedJob`/`runHealthSupplementsSyncJob`/
+    `runFoodNutritionSyncJob`(忠實 port `_run_guideline_seed_job`/`_run_health_supplements_sync_job`/
+    `_run_food_nutrition_sync_job`:prepare→sync/seed→finalize 的 step/progress/checkpoint + `applyControlCheckpoint` 續跑
+    保護 + result_summary 計數),分別套用已 port 的 Node loader `seedGuidelines`/`loadHealthSupplements`/`loadFoodNutrition`
+    (吃 `getPool()`)。dispatcher 三分支接上、從 `W2B_JOB_TYPES` 移除。`tsc` 零錯誤。**verify:`guideline_seed` PY(live
+    worker 跑 queued)↔ND(直接 `executeAdminJob`)同 DB byte-equal——job/steps/logs 三表全等 PASS**(idempotent re-seed,
+    `Already seeded (4 guidelines)`;health/food 為相同 wrapper pattern,loader 本身先前各刀已驗證)。測試列自動清除。
+  - 🔄 **批次 2 — 重量 staging/promote(進行中)**:
+    - ✅ **共用 staging 基礎**:**關鍵發現**——既有 Node loaders(`loadIcd`/`loadLoinc`/`loadSnomed`)是 legacy dev-path
+      direct-write(讀 `fhir-code/*.zip` → 直接寫最終表),**不含** admin staged-import 路徑(MinIO manifest /
+      `admin.stage_*` / checkpoint / drop-index promote),故批次 2 不能薄包裝、需 port 整套 staging 機制。已新增
+      `adminJobStaging.ts`(忠實 port `_ProgressLogThrottle`/`_stage_rows`/`_run_validate_step`/
+      `_checkpoint_before_promote`/`_capture_secondary_indexes`/`_optimized_promote`/`_clear_stage_rows` +
+      `_materialize_bound_sources`→`withMaterializedSources`,multi-source header-strip byte-for-byte)。補
+      `minioService.downloadBytes`(getObject stream→Buffer)、`adminJobs.getJobStepCheckpoint`。`tsc` 零錯誤。
+    - **待**:把 Node ICD/LOINC/SNOMED/IG parser 改成「回傳 row tuples」餵進 `stageRows`+`optimizedPromote`,寫每個
+      `_run_*_import_job` handler 接 dispatcher,逐模組對 live PY 跑真實 import 做 byte parity(需 MinIO 已上傳來源)。
+  - **待批次 3 — drug**:`drug_index_import`/`drug_enrichment`/`drug_analysis` shell-out Python `loader/main.py`(polyglot
+    worker;OCR `dots_ocr` VLM 硬依賴留 Python)+ `maybeAutoChain`。
+  - **待批次 4 — embed**:icd/loinc/health/food/guideline/snomed `_run_*_embed_job`(`embeddings.ts`)。
+  逐模組對 live PY byte parity。
 - ✅ **FHIR Servers sub-step A:CRUD + pgcrypto(chunk 4 第一刀,2026-06-21)**:新增 `adminFhirServers.ts`
   (忠實 port `fhir_server_service.py` 的 admin CRUD 面):`fhirServerSecretKey`(env `FHIR_SERVER_SECRET_KEY` 否則
   fallback=admin_session_secret)、private_key_jwt key 材料(`generateKeypair` RSA/EC PKCS8 PEM via node `crypto`、

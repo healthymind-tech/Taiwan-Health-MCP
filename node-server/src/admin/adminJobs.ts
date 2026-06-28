@@ -10,7 +10,8 @@
 
 import type pg from "pg";
 import { randomUUID } from "node:crypto";
-import { query, withTransaction } from "../db.js";
+import { AsyncLocalStorage } from "node:async_hooks";
+import { query, withTransaction, getPool } from "../db.js";
 import { broadcast } from "./adminWs.js";
 
 /**
@@ -523,6 +524,16 @@ export async function listJobSteps(jobId: string): Promise<Record<string, unknow
     checkpoint: parseJsonb(row.checkpoint_json),
     last_error_message: row.last_error_message || "",
   }));
+}
+
+/** Faithful port of `get_job_step_checkpoint`. Returns the step's checkpoint dict or {}. */
+export async function getJobStepCheckpoint(jobId: string, stepKey: string): Promise<Record<string, unknown>> {
+  const res = await query<{ checkpoint_json: unknown }>(
+    `SELECT checkpoint_json FROM admin.import_job_steps WHERE job_id = $1 AND step_key = $2`,
+    [jobId, stepKey],
+  );
+  if (res.rows.length === 0) return {};
+  return parseJsonb(res.rows[0].checkpoint_json);
 }
 
 /**
@@ -1039,5 +1050,848 @@ export async function requestJobControl(opts: {
       },
       restart_job: restartJob,
     };
+  });
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// W2a — worker control plane
+//
+// Faithful ports of the admin_jobs.py worker-side primitives consumed by the
+// admin-worker daemon (adminWorker.ts): resource-based concurrency, worker
+// tuning getters, the job status/control state machine (mark_job_status /
+// checkpoint_job_control), terminal outcome logging, per-job verbose logging,
+// log pruning, the noop smoke job, drug-pipeline auto-chaining, and the
+// execute_admin_job dispatcher. Data-plane loader bodies land in W2b.
+// ════════════════════════════════════════════════════════════════════════════
+
+const sleep = (seconds: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, Math.max(seconds, 0) * 1000));
+
+// ── Resource-based concurrency (mirror JOB_RESOURCES / JOB_TYPE_RESOURCES) ────
+
+/** Faithful port of `JOB_RESOURCES`: resource slot → job types holding it. */
+export const JOB_RESOURCES: Record<string, ReadonlySet<string>> = {
+  db_write_icd: new Set(["icd_import"]),
+  db_write_loinc: new Set(["loinc_import"]),
+  db_write_ig: new Set(["ig_import"]),
+  db_write_snomed: new Set(["snomed_import"]),
+  db_write_rxnorm: new Set(["rxnorm_import"]),
+  db_write_guideline: new Set(["guideline_seed"]),
+  db_write_health_supplements: new Set(["health_supplements_sync"]),
+  db_write_food_nutrition: new Set(["food_nutrition_sync"]),
+  // Drug Phase 1/2 write the same drug.* tables — serialised behind one slot.
+  db_write_drug: new Set(["drug_index_import", "drug_enrichment"]),
+  ollama_embed: new Set(EMBED_JOB_TYPES),
+  llm: new Set(["drug_analysis"]),
+};
+
+/** Inverted index: job_type → set of resources it needs (mirror JOB_TYPE_RESOURCES). */
+export const JOB_TYPE_RESOURCES: Map<string, Set<string>> = (() => {
+  const out = new Map<string, Set<string>>();
+  for (const [resource, types] of Object.entries(JOB_RESOURCES)) {
+    for (const jt of types) {
+      if (!out.has(jt)) out.set(jt, new Set());
+      out.get(jt)!.add(resource);
+    }
+  }
+  return out;
+})();
+
+/** Faithful port of `get_excluded_job_types`. */
+export function getExcludedJobTypes(activeResources: ReadonlySet<string>): Set<string> {
+  if (activeResources.size === 0) return new Set();
+  const excluded = new Set<string>();
+  for (const [jt, rs] of JOB_TYPE_RESOURCES) {
+    for (const r of rs) {
+      if (activeResources.has(r)) {
+        excluded.add(jt);
+        break;
+      }
+    }
+  }
+  return excluded;
+}
+
+// ── Worker tuning getters (mirror admin_jobs.py env getters) ──────────────────
+
+export function adminWorkerName(): string {
+  return (process.env.ADMIN_WORKER_NAME ?? "admin-worker").trim() || "admin-worker";
+}
+export function adminWorkerPollSeconds(): number {
+  return Number.parseFloat(process.env.ADMIN_WORKER_POLL_SECONDS ?? "3");
+}
+export function adminHeartbeatIntervalSeconds(): number {
+  return Number.parseInt(process.env.ADMIN_HEARTBEAT_INTERVAL_SECONDS ?? "15", 10);
+}
+export function adminNoopCheckpointDelaySeconds(): number {
+  return Number.parseFloat(process.env.ADMIN_NOOP_CHECKPOINT_DELAY_SECONDS ?? "0.35");
+}
+
+// ── Status / control state machine ───────────────────────────────────────────
+
+const TERMINAL_STATUSES = new Set([
+  "success",
+  "partial_success",
+  "retryable_failed",
+  "permanent_failed",
+  "stopped",
+  "cancelled",
+]);
+
+/** Faithful port of `_activate_manifest_sources`. Best-effort; never throws. */
+async function activateManifestSources(manifest: Record<string, unknown>): Promise<void> {
+  const { activateSource } = await import("./adminSources.js");
+  const bindings = (manifest.bindings as Record<string, unknown>) || {};
+  const seen = new Set<string>();
+  for (const binding of Object.values(bindings)) {
+    const items = Array.isArray(binding) ? binding : [binding];
+    for (const b of items) {
+      const rec = (b || {}) as Record<string, unknown>;
+      const ufid = String(rec.uploaded_file_id ?? "").trim();
+      if (!ufid || seen.has(ufid)) continue;
+      seen.add(ufid);
+      if (rec.is_active) continue; // already loaded — don't churn version/activated_at
+      try {
+        await activateSource(ufid, "import-job");
+      } catch (exc) {
+        // eslint-disable-next-line no-console
+        console.warn(`Failed to activate source ${ufid} after import: ${String(exc)}`);
+      }
+    }
+  }
+}
+
+export interface MarkJobStatusInput {
+  jobId: string;
+  status: string;
+  currentStep: string;
+  progressCurrent?: number | null;
+  progressTotal?: number | null;
+  controlState?: string | null;
+  lastErrorCode?: string;
+  lastErrorMessage?: string;
+  resultSummary?: Record<string, unknown>;
+}
+
+/** Faithful port of `mark_job_status` (+ `_activate_manifest_sources` + `job_status_changed` broadcast). */
+export async function markJobStatus(opts: MarkJobStatusInput): Promise<void> {
+  const resultSummary = opts.resultSummary ?? {};
+  const res = await query<{
+    job_type: string | null;
+    module_key: string | null;
+    progress_current: number | string | null;
+    progress_total: number | string | null;
+    updated_at_iso: string | null;
+  }>(
+    `UPDATE admin.import_jobs
+        SET status = $2,
+            current_step = $3,
+            progress_current = COALESCE($4, progress_current),
+            progress_total = COALESCE($5, progress_total),
+            control_state = COALESCE($6, control_state),
+            finished_at = CASE
+                WHEN $2 IN ('success','partial_success','retryable_failed','permanent_failed','stopped','cancelled')
+                THEN NOW() ELSE finished_at END,
+            last_error_code = NULLIF($7, ''),
+            last_error_message = NULLIF($8, ''),
+            result_summary_json = CASE
+                WHEN $9::jsonb = '{}'::jsonb THEN result_summary_json
+                ELSE $9::jsonb END,
+            updated_at = NOW()
+      WHERE job_id = $1
+      RETURNING job_type, module_key, progress_current, progress_total,
+                ${tsIsoExpr("updated_at")} AS updated_at_iso`,
+    [
+      opts.jobId,
+      opts.status,
+      opts.currentStep,
+      opts.progressCurrent ?? null,
+      opts.progressTotal ?? null,
+      opts.controlState ?? null,
+      opts.lastErrorCode ?? "",
+      opts.lastErrorMessage ?? "",
+      JSON.stringify(resultSummary),
+    ],
+  );
+  if (res.rows.length === 0) return;
+  const row = res.rows[0];
+  // On success, promote the imported file(s) to active (manifest carried in summary).
+  const manifest = resultSummary.source_manifest as Record<string, unknown> | undefined;
+  if (
+    (opts.status === "success" || opts.status === "partial_success") &&
+    manifest &&
+    typeof manifest === "object" &&
+    !Array.isArray(manifest) &&
+    manifest.bindings
+  ) {
+    await activateManifestSources(manifest);
+  }
+  void broadcast("job_status_changed", {
+    job_id: opts.jobId,
+    job_type: row.job_type,
+    module_key: row.module_key || "",
+    status: opts.status,
+    current_step: opts.currentStep,
+    progress_current: Number(row.progress_current || 0),
+    progress_total: Number(row.progress_total || 0),
+    updated_at: row.updated_at_iso ? pyIso(row.updated_at_iso) : "",
+  });
+}
+
+interface ControlResult {
+  action: string;
+  restart_job: Record<string, unknown> | null;
+  message: string;
+}
+
+/** Faithful port of `checkpoint_job_control`. Applies a pending pause/stop/restart at a checkpoint. */
+export async function checkpointJobControl(opts: {
+  jobId: string;
+  workerName: string;
+}): Promise<ControlResult | null> {
+  const { jobId, workerName } = opts;
+  return withTransaction(async (client) => {
+    const jobSel = await client.query<JobRow & Record<string, unknown>>(
+      `SELECT * FROM admin.import_jobs WHERE job_id = $1 FOR UPDATE`,
+      [jobId],
+    );
+    if (jobSel.rows.length === 0) return null;
+    const jobRow = jobSel.rows[0];
+    const controlState = String(jobRow.control_state || "").trim();
+    if (!["pause_requested", "stop_requested", "restart_requested"].includes(controlState)) {
+      return null;
+    }
+
+    const controlSel = await client.query<{
+      control_request_id: number | string;
+      action: string | null;
+      requested_by: string | null;
+    }>(
+      `SELECT * FROM admin.job_control_requests
+        WHERE job_id = $1 AND handled_at IS NULL
+        ORDER BY requested_at DESC, control_request_id DESC
+        LIMIT 1
+        FOR UPDATE`,
+      [jobId],
+    );
+    const controlRow = controlSel.rows[0] ?? null;
+    const action = controlRow
+      ? String(controlRow.action ?? "").trim().toLowerCase()
+      : controlState.replace("_requested", "");
+    let restartJob: Record<string, unknown> | null = null;
+    let resultMessage = "";
+
+    if (action === "pause") {
+      await client.query(
+        `UPDATE admin.import_jobs SET status = 'paused', control_state = 'paused',
+            current_step = 'paused', updated_at = NOW() WHERE job_id = $1`,
+        [jobId],
+      );
+      resultMessage = "Job paused at checkpoint boundary.";
+    } else if (action === "stop") {
+      await client.query(
+        `UPDATE admin.import_jobs SET status = 'stopped', control_state = 'idle',
+            current_step = 'stopped', finished_at = NOW(), updated_at = NOW() WHERE job_id = $1`,
+        [jobId],
+      );
+      resultMessage = "Job stopped at checkpoint boundary.";
+    } else if (action === "restart") {
+      restartJob = await createRestartJobLocked(
+        client,
+        jobRow,
+        controlRow ? controlRow.requested_by || workerName : workerName,
+      );
+      await client.query(
+        `UPDATE admin.import_jobs SET status = 'stopped', control_state = 'idle',
+            current_step = 'restarted', finished_at = NOW(), updated_at = NOW() WHERE job_id = $1`,
+        [jobId],
+      );
+      resultMessage = `Restart job created: ${String(restartJob.job_id)}`;
+    } else {
+      return null;
+    }
+
+    if (controlRow) {
+      await client.query(
+        `UPDATE admin.job_control_requests
+            SET handled_at = NOW(), result_status = 'applied', result_message = $2
+          WHERE control_request_id = $1`,
+        [Number(controlRow.control_request_id), resultMessage],
+      );
+    }
+    await client.query(
+      `INSERT INTO admin.import_job_logs (job_id, level, message, payload_json)
+       VALUES ($1, 'info', $2, $3::jsonb)`,
+      [
+        jobId,
+        `Worker applied control action: ${action}`,
+        JSON.stringify({
+          worker_name: workerName,
+          action,
+          restart_job_id: restartJob ? String(restartJob.job_id) : "",
+        }),
+      ],
+    );
+    return { action, restart_job: restartJob, message: resultMessage };
+  });
+}
+
+/** Faithful port of `_apply_control_checkpoint`. Returns true if a control action was applied. */
+export async function applyControlCheckpoint(opts: { jobId: string; workerName: string }): Promise<boolean> {
+  return (await checkpointJobControl(opts)) !== null;
+}
+
+/** Faithful port of `_count_table_rows`. */
+export async function countTableRows(tableName: string): Promise<number> {
+  const res = await query<{ count: string }>(`SELECT COUNT(*) AS count FROM ${tableName}`);
+  return Number(res.rows[0]?.count ?? 0);
+}
+
+// ── Terminal outcome logging ──────────────────────────────────────────────────
+
+/** Faithful port of `_fmt` (thousands separator). */
+function fmt(n: number): string {
+  return n.toLocaleString("en-US");
+}
+
+/** Faithful port of `_success_summary_message`. */
+function successSummaryMessage(summary: Record<string, unknown>): string {
+  const countLabels: Array<[string, string]> = [
+    ["diagnosis_count", "diagnoses"],
+    ["procedure_count", "procedures"],
+    ["concept_count", "concepts"],
+    ["description_count", "descriptions"],
+    ["relationship_count", "relationships"],
+    ["codesystem_count", "codesystems"],
+    ["artifact_count", "artifacts"],
+    ["loinc_count", "LOINC terms"],
+    ["guideline_count", "guidelines"],
+    ["drug_count", "drugs"],
+    ["record_count", "records"],
+    ["row_count", "rows"],
+  ];
+  const parts: string[] = [];
+  for (const [key, label] of countLabels) {
+    const v = summary[key];
+    if (v) parts.push(`${fmt(Number(v))} ${label}`);
+  }
+  return parts.length > 0 ? `✓ Completed — ${parts.join(", ")}` : "✓ Completed";
+}
+
+/** Faithful port of `log_job_outcome`. */
+export async function logJobOutcome(opts: { jobId: string; workerName: string }): Promise<void> {
+  const job = await getJob(opts.jobId);
+  if (!job) return;
+  const status = job.status as string;
+  if (status === "success") {
+    const summary = (job.result_summary as Record<string, unknown>) || {};
+    await appendJobLog({
+      jobId: opts.jobId,
+      level: "info",
+      message: successSummaryMessage(summary),
+      payload: { result_summary: summary },
+    });
+  } else if (status === "retryable_failed" || status === "permanent_failed" || status === "failed") {
+    await appendJobLog({
+      jobId: opts.jobId,
+      level: "error",
+      message: `✗ Failed: ${(job.last_error_message as string) || status}`,
+      payload: { status, error_code: (job.last_error_code as string) || "" },
+    });
+  }
+}
+
+// ── Per-job verbose logging (mirror _LOG_VERBOSE ContextVar via AsyncLocalStorage) ──
+
+const logVerboseStore = new AsyncLocalStorage<boolean>();
+let defaultLogVerbose = false;
+
+/** Faithful port of `set_default_log_verbose`. */
+export function setDefaultLogVerbose(value: boolean): void {
+  defaultLogVerbose = Boolean(value);
+}
+
+/** Faithful port of `_resolve_log_verbose`. */
+export function resolveLogVerbose(job: Record<string, unknown>): boolean {
+  const opts = parseJsonb(job.job_options);
+  if ("log_verbose" in opts) return Boolean(opts.log_verbose);
+  return defaultLogVerbose;
+}
+
+/** Faithful port of `job_debug_log` — only emits when verbose mode is active for this job. */
+export async function jobDebugLog(opts: {
+  jobId: string;
+  message: string;
+  payload?: Record<string, unknown>;
+}): Promise<void> {
+  if (!(logVerboseStore.getStore() ?? false)) return;
+  await appendJobLog({ jobId: opts.jobId, level: "debug", message: opts.message, payload: opts.payload });
+}
+
+/** Faithful port of `prune_job_logs`. Returns total rows deleted. */
+export async function pruneJobLogs(opts: {
+  retentionDays?: number;
+  maxLinesPerJob?: number;
+} = {}): Promise<number> {
+  const retentionDays = opts.retentionDays ?? 30;
+  const maxLinesPerJob = opts.maxLinesPerJob ?? 2000;
+  let deleted = 0;
+  if (retentionDays > 0) {
+    const r = await query(
+      `DELETE FROM admin.import_job_logs
+        WHERE created_at < NOW() - make_interval(days => $1::int)`,
+      [retentionDays],
+    );
+    deleted += r.rowCount ?? 0;
+  }
+  if (maxLinesPerJob > 0) {
+    const r = await query(
+      `DELETE FROM admin.import_job_logs l
+        USING (
+          SELECT job_log_id,
+                 row_number() OVER (PARTITION BY job_id ORDER BY created_at DESC, job_log_id DESC) AS rn
+          FROM admin.import_job_logs
+        ) ranked
+        WHERE l.job_log_id = ranked.job_log_id
+          AND ranked.rn > $1::int
+          AND l.level <> 'error'`,
+      [maxLinesPerJob],
+    );
+    deleted += r.rowCount ?? 0;
+  }
+  return deleted;
+}
+
+// ── Noop smoke job ────────────────────────────────────────────────────────────
+
+/** Faithful port of `run_noop_job` — the control-plane smoke job with checkpoints. */
+export async function runNoopJob(job: Record<string, unknown>): Promise<void> {
+  const jobId = String(job.job_id);
+  const total = 5;
+  const startAt = Math.max(Number(job.progress_current || 0), 0);
+  const delay = Math.max(adminNoopCheckpointDelaySeconds(), 0);
+
+  await recordJobStep({
+    jobId,
+    stepKey: "noop",
+    status: "running",
+    progressCurrent: startAt,
+    progressTotal: total,
+    checkpoint: { phase: "started", resume_from: startAt },
+  });
+  await appendJobLog({
+    jobId,
+    level: "info",
+    message: "Executing noop admin job",
+    payload: { module_key: job.module_key, job_type: job.job_type, resume_from: startAt },
+  });
+
+  for (let index = startAt; index < total; index += 1) {
+    const completed = index + 1;
+    await markJobStatus({
+      jobId,
+      status: "running",
+      currentStep: `noop_checkpoint_${completed}`,
+      progressCurrent: index,
+      progressTotal: total,
+    });
+    await appendJobLog({
+      jobId,
+      level: "info",
+      message: "Noop checkpoint started",
+      payload: { checkpoint: completed, total },
+    });
+    if (delay) await sleep(delay);
+    await recordJobStep({
+      jobId,
+      stepKey: "noop",
+      status: "running",
+      progressCurrent: completed,
+      progressTotal: total,
+      checkpoint: { phase: "checkpoint", completed, total },
+    });
+    await markJobStatus({
+      jobId,
+      status: "running",
+      currentStep: `noop_checkpoint_${completed}`,
+      progressCurrent: completed,
+      progressTotal: total,
+    });
+    const control = await checkpointJobControl({ jobId, workerName: String(job.worker_name || "") });
+    if (control !== null) {
+      const stepStatus = control.action === "pause" ? "paused" : "stopped";
+      await recordJobStep({
+        jobId,
+        stepKey: "noop",
+        status: stepStatus,
+        progressCurrent: completed,
+        progressTotal: total,
+        checkpoint: { phase: stepStatus, completed, total, message: control.message },
+      });
+      return;
+    }
+  }
+
+  await markJobStatus({
+    jobId,
+    status: "success",
+    currentStep: "completed",
+    progressCurrent: total,
+    progressTotal: total,
+    controlState: "idle",
+    resultSummary: { mode: "noop", message: "Generic admin control-plane smoke job completed." },
+  });
+  await recordJobStep({
+    jobId,
+    stepKey: "noop",
+    status: "success",
+    progressCurrent: total,
+    progressTotal: total,
+    checkpoint: { phase: "completed", total },
+  });
+}
+
+// ── Drug-pipeline auto-chaining ───────────────────────────────────────────────
+
+/** Faithful port of `_maybe_auto_chain` — create the next drug-pipeline phase after success. */
+export async function maybeAutoChain(opts: {
+  completedJobType: string;
+  parentJobId: string;
+  workerName: string;
+}): Promise<void> {
+  const { completedJobType, parentJobId, workerName } = opts;
+  const NEXT: Record<string, string> = {
+    drug_index_import: "drug_enrichment",
+    drug_enrichment: "drug_analysis",
+  };
+  const nextType = NEXT[completedJobType];
+  if (!nextType) return;
+
+  try {
+    const { getDrugPipelineStatus } = await import("./adminDrug.js");
+    const { getUnhealthyDependencies } = await import("./adminServices.js");
+    const status = (await getDrugPipelineStatus()) as Record<string, Record<string, unknown>>;
+    let hasWork: boolean;
+    if (nextType === "drug_enrichment") {
+      hasWork = Number((status.enrichment as Record<string, unknown>).queue_pending || 0) > 0;
+    } else {
+      hasWork = !(status.analysis as Record<string, unknown>).is_complete;
+    }
+    if (!hasWork) {
+      await appendJobLog({
+        jobId: parentJobId,
+        level: "info",
+        message: `Auto-chain: no pending work for ${nextType}, skipping.`,
+      });
+      return;
+    }
+
+    const unhealthy = await getUnhealthyDependencies(nextType);
+    if (unhealthy.length > 0) {
+      await appendJobLog({
+        jobId: parentJobId,
+        level: "warn",
+        message: `Auto-chain: skipping ${nextType} — service(s) unhealthy: ${unhealthy.join(", ")}.`,
+        payload: { unhealthy },
+      });
+      return;
+    }
+
+    const activeRes = await query<{ count: string }>(
+      `SELECT COUNT(*) AS count FROM admin.import_jobs
+        WHERE job_type = $1 AND status IN ('queued','running','paused')`,
+      [nextType],
+    );
+    if (Number(activeRes.rows[0]?.count ?? 0) > 0) {
+      await appendJobLog({
+        jobId: parentJobId,
+        level: "info",
+        message: `Auto-chain: ${nextType} already active, skipping duplicate.`,
+      });
+      return;
+    }
+
+    const nextJob = await createJob({
+      moduleKey: "drug",
+      jobType: nextType,
+      requestedBy: `auto_chain:${workerName}`,
+      parentJobId,
+    });
+    await appendJobLog({
+      jobId: parentJobId,
+      level: "info",
+      message: `Auto-chain: created ${nextType} job.`,
+      payload: { next_job_id: nextJob.job_id },
+    });
+  } catch (exc) {
+    await appendJobLog({
+      jobId: parentJobId,
+      level: "warn",
+      message: `Auto-chain: could not create ${nextType} (${String(exc)}).`,
+    });
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// W2b — data-plane loader handlers
+//
+// Faithful ports of the `_run_*_import_job` functions in admin_jobs.py. Each
+// wraps a Node loader with the step/progress/checkpoint/result_summary
+// bookkeeping. Lightweight (no MinIO source materialisation, no staging) jobs
+// land first; staging/promote and the drug shell-out follow.
+// ════════════════════════════════════════════════════════════════════════════
+
+/** Faithful port of `_run_guideline_seed_job`. */
+export async function runGuidelineSeedJob(opts: {
+  workerName: string;
+  job: Record<string, unknown>;
+}): Promise<void> {
+  const { workerName, job } = opts;
+  const jobId = String(job.job_id);
+  const { seedGuidelines } = await import("../loaders/guideline.js");
+  const total = 2;
+  const startAt = Math.max(Number(job.progress_current || 0), 0);
+  const beforeCount = await countTableRows("guideline.disease_guidelines");
+
+  if (startAt < 1) {
+    await appendJobLog({ jobId, level: "info", message: "Preparing guideline seed job", payload: { checkpoint: 1, total } });
+    await recordJobStep({ jobId, stepKey: "prepare", status: "success", progressCurrent: 1, progressTotal: total, checkpoint: { phase: "prepared" } });
+    await markJobStatus({ jobId, status: "running", currentStep: "prepared", progressCurrent: 1, progressTotal: total });
+    if (await applyControlCheckpoint({ jobId, workerName })) return;
+  }
+
+  await appendJobLog({ jobId, level: "info", message: "Running guideline seed loader", payload: { resumed: startAt > 0 } });
+  await recordJobStep({ jobId, stepKey: "seed", status: "running", progressCurrent: 1, progressTotal: total, checkpoint: { phase: "seeding" } });
+  await markJobStatus({ jobId, status: "running", currentStep: "seeding", progressCurrent: 1, progressTotal: total });
+  await seedGuidelines(getPool());
+  const afterCount = await countTableRows("guideline.disease_guidelines");
+  await recordJobStep({ jobId, stepKey: "seed", status: "success", progressCurrent: 2, progressTotal: total, checkpoint: { phase: "seeded", row_count: afterCount } });
+  await markJobStatus({
+    jobId,
+    status: "success",
+    currentStep: "completed",
+    progressCurrent: 2,
+    progressTotal: total,
+    controlState: "idle",
+    resultSummary: {
+      job_type: "guideline_seed",
+      row_count_before: beforeCount,
+      row_count_after: afterCount,
+      seeded: afterCount > beforeCount,
+    },
+  });
+}
+
+/** Faithful port of `_run_health_supplements_sync_job`. */
+export async function runHealthSupplementsSyncJob(opts: {
+  workerName: string;
+  job: Record<string, unknown>;
+}): Promise<void> {
+  const { workerName, job } = opts;
+  const jobId = String(job.job_id);
+  const { loadHealthSupplements } = await import("../loaders/healthSupplements.js");
+  const total = 3;
+  const startAt = Math.max(Number(job.progress_current || 0), 0);
+  let rowCount = 0;
+
+  if (startAt < 1) {
+    await appendJobLog({ jobId, level: "info", message: "Preparing health supplements sync job", payload: { checkpoint: 1, total } });
+    await recordJobStep({ jobId, stepKey: "prepare", status: "success", progressCurrent: 1, progressTotal: total, checkpoint: { phase: "prepared" } });
+    await markJobStatus({ jobId, status: "running", currentStep: "prepared", progressCurrent: 1, progressTotal: total });
+    if (await applyControlCheckpoint({ jobId, workerName })) return;
+  }
+
+  if (startAt < 2) {
+    await appendJobLog({ jobId, level: "info", message: "Syncing Taiwan FDA health supplements module", payload: { resumed: startAt > 0 } });
+    await recordJobStep({ jobId, stepKey: "sync", status: "running", progressCurrent: 1, progressTotal: total, checkpoint: { phase: "syncing" } });
+    await markJobStatus({ jobId, status: "running", currentStep: "syncing_health_supplements", progressCurrent: 1, progressTotal: total });
+    await loadHealthSupplements(getPool());
+    rowCount = await countTableRows("health_supplements.items");
+    await recordJobStep({ jobId, stepKey: "sync", status: "success", progressCurrent: 2, progressTotal: total, checkpoint: { phase: "synced", row_count: rowCount } });
+    await markJobStatus({ jobId, status: "running", currentStep: "finalizing_health_supplements", progressCurrent: 2, progressTotal: total });
+    if (await applyControlCheckpoint({ jobId, workerName })) return;
+  } else {
+    rowCount = await countTableRows("health_supplements.items");
+  }
+
+  await recordJobStep({ jobId, stepKey: "finalize", status: "success", progressCurrent: 3, progressTotal: total, checkpoint: { phase: "completed", row_count: rowCount } });
+  await markJobStatus({
+    jobId,
+    status: "success",
+    currentStep: "completed",
+    progressCurrent: 3,
+    progressTotal: total,
+    controlState: "idle",
+    resultSummary: { job_type: "health_supplements_sync", row_count: rowCount },
+  });
+}
+
+/** Faithful port of `_run_food_nutrition_sync_job`. */
+export async function runFoodNutritionSyncJob(opts: {
+  workerName: string;
+  job: Record<string, unknown>;
+}): Promise<void> {
+  const { workerName, job } = opts;
+  const jobId = String(job.job_id);
+  const { loadFoodNutrition } = await import("../loaders/foodNutrition.js");
+  const total = 3;
+  const startAt = Math.max(Number(job.progress_current || 0), 0);
+  let measurementCount = 0;
+  let ingredientCount = 0;
+
+  if (startAt < 1) {
+    await appendJobLog({ jobId, level: "info", message: "Preparing food nutrition sync job", payload: { checkpoint: 1, total } });
+    await recordJobStep({ jobId, stepKey: "prepare", status: "success", progressCurrent: 1, progressTotal: total, checkpoint: { phase: "prepared" } });
+    await markJobStatus({ jobId, status: "running", currentStep: "prepared", progressCurrent: 1, progressTotal: total });
+    if (await applyControlCheckpoint({ jobId, workerName })) return;
+  }
+
+  if (startAt < 2) {
+    await appendJobLog({ jobId, level: "info", message: "Syncing Taiwan FDA food nutrition modules", payload: { resumed: startAt > 0 } });
+    await recordJobStep({ jobId, stepKey: "sync", status: "running", progressCurrent: 1, progressTotal: total, checkpoint: { phase: "syncing" } });
+    await markJobStatus({ jobId, status: "running", currentStep: "syncing_food_nutrition", progressCurrent: 1, progressTotal: total });
+    await loadFoodNutrition(getPool());
+    measurementCount = await countTableRows("food_nutrition.measurements");
+    ingredientCount = await countTableRows("food_nutrition.ingredients");
+    await recordJobStep({
+      jobId,
+      stepKey: "sync",
+      status: "success",
+      progressCurrent: 2,
+      progressTotal: total,
+      checkpoint: { phase: "synced", measurement_count: measurementCount, ingredient_count: ingredientCount },
+    });
+    await markJobStatus({ jobId, status: "running", currentStep: "finalizing_food_nutrition", progressCurrent: 2, progressTotal: total });
+    if (await applyControlCheckpoint({ jobId, workerName })) return;
+  } else {
+    measurementCount = await countTableRows("food_nutrition.measurements");
+    ingredientCount = await countTableRows("food_nutrition.ingredients");
+  }
+
+  await recordJobStep({
+    jobId,
+    stepKey: "finalize",
+    status: "success",
+    progressCurrent: 3,
+    progressTotal: total,
+    checkpoint: { phase: "completed", measurement_count: measurementCount, ingredient_count: ingredientCount },
+  });
+  await markJobStatus({
+    jobId,
+    status: "success",
+    currentStep: "completed",
+    progressCurrent: 3,
+    progressTotal: total,
+    controlState: "idle",
+    resultSummary: { job_type: "food_nutrition_sync", measurement_count: measurementCount, ingredient_count: ingredientCount },
+  });
+}
+
+// ── Job dispatcher ────────────────────────────────────────────────────────────
+
+/**
+ * Raised by W2a loader branches that are not yet wired. W2b replaces these
+ * throws with the real staging/promote handlers around the Node loaders.
+ */
+export class W2bNotImplementedError extends Error {}
+
+/** Faithful port of `execute_admin_job`. Dispatches one claimed job to its handler. */
+export async function executeAdminJob(opts: {
+  workerName: string;
+  job: Record<string, unknown>;
+  // minioService deliberately omitted in W2a; W2b loader bodies take it.
+}): Promise<void> {
+  const { workerName, job } = opts;
+  const jobId = String(job.job_id);
+  const jobType = String(job.job_type);
+
+  // Scope verbose logging to this job (its own async context).
+  await logVerboseStore.run(resolveLogVerbose(job), async () => {
+    // Dependency gate — fail fast if a required service is hard-down.
+    const { getUnhealthyDependencies } = await import("./adminServices.js");
+    const unhealthy = await getUnhealthyDependencies(jobType);
+    if (unhealthy.length > 0) {
+      await markJobStatus({
+        jobId,
+        status: "permanent_failed",
+        currentStep: "dependency_check",
+        controlState: "idle",
+        lastErrorCode: "service_dependency_error",
+        lastErrorMessage: `Required service(s) not healthy: ${unhealthy.join(", ")}. Run an active service probe from the Services tab, then retry.`,
+      });
+      await appendJobLog({
+        jobId,
+        level: "error",
+        message: "Job blocked by unhealthy service dependency",
+        payload: { unhealthy_services: unhealthy, job_type: jobType },
+      });
+      return;
+    }
+
+    if (jobType === "noop") {
+      await runNoopJob(job);
+      const finalJob = await getJob(jobId);
+      if (finalJob && finalJob.status === "success") {
+        await appendJobLog({
+          jobId,
+          level: "info",
+          message: "Job completed successfully",
+          payload: { worker_name: workerName },
+        });
+      }
+      return;
+    }
+    if (jobType === "guideline_seed") {
+      await runGuidelineSeedJob({ workerName, job });
+      return;
+    }
+    if (jobType === "health_supplements_sync") {
+      await runHealthSupplementsSyncJob({ workerName, job });
+      return;
+    }
+    if (jobType === "food_nutrition_sync") {
+      await runFoodNutritionSyncJob({ workerName, job });
+      return;
+    }
+
+    // ── W2b loader handlers (not yet wired) ──────────────────────────────────
+    // The dispatcher structure mirrors execute_admin_job exactly so W2b only
+    // needs to replace each throw with the real handler over the Node loaders
+    // (drug stages shell out to Python loader/main.py).
+    const W2B_JOB_TYPES = new Set([
+      "icd_import",
+      "loinc_import",
+      "ig_import",
+      "snomed_import",
+      "rxnorm_import",
+      "drug_index_import",
+      "drug_enrichment",
+      "drug_analysis",
+      "icd_embed",
+      "loinc_embed",
+      "health_supplements_embed",
+      "food_nutrition_embed",
+      "guideline_embed",
+      "snomed_embed",
+    ]);
+    if (W2B_JOB_TYPES.has(jobType)) {
+      throw new W2bNotImplementedError(`W2b: loader handler for job type '${jobType}' not yet wired`);
+    }
+
+    // Unknown job type — mirror execute_admin_job's terminal unsupported path.
+    await markJobStatus({
+      jobId,
+      status: "permanent_failed",
+      currentStep: "unsupported",
+      controlState: "idle",
+      lastErrorCode: "unsupported_job_type",
+      lastErrorMessage: `No admin adapter registered for job type '${jobType}'`,
+    });
+    await appendJobLog({
+      jobId,
+      level: "error",
+      message: "Unsupported job type",
+      payload: { worker_name: workerName, job_type: jobType },
+    });
   });
 }

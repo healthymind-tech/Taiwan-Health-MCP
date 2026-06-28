@@ -189,3 +189,40 @@ export async function listServiceProbes(historyLimit = 28): Promise<Record<strin
   payload.generated_at = new Date().toISOString();
   return payload;
 }
+
+/**
+ * Faithful port of `JOB_TYPE_DEPENDENCIES` — the hard service dependencies that
+ * must not be in `error` state before a job of the given type may run.
+ */
+export const JOB_TYPE_DEPENDENCIES: Record<string, string[]> = {
+  icd_import: ["minio"],
+  loinc_import: ["minio"],
+  ig_import: ["minio"],
+  snomed_import: ["minio"],
+  rxnorm_import: ["minio"],
+  drug_index_import: ["minio"],
+  drug_enrichment: [], // only outbound HTTP to TFDA — no local service dep
+  drug_analysis: ["minio", "ocr_server", "analysis_server"],
+  guideline_seed: [],
+  health_supplements_sync: [],
+  food_nutrition_sync: [],
+  noop: [],
+};
+
+/**
+ * Faithful port of `get_unhealthy_dependencies`. Returns the service keys that
+ * are in hard `status='error'` for the given job type. `degraded` is allowed,
+ * and a service with no probe row yet gets the benefit of the doubt (not
+ * blocking). Empty list ⇒ all dependencies healthy / no requirements.
+ */
+export async function getUnhealthyDependencies(jobType: string): Promise<string[]> {
+  const required = JOB_TYPE_DEPENDENCIES[jobType] ?? [];
+  if (required.length === 0) return [];
+  const res = await query<{ service_key: string; status: string }>(
+    `SELECT service_key, status FROM admin.service_probes WHERE service_key = ANY($1::text[])`,
+    [required],
+  );
+  const byKey = new Map<string, string>();
+  for (const row of res.rows) byKey.set(row.service_key, row.status);
+  return required.filter((key) => byKey.get(key) === "error");
+}

@@ -94,6 +94,21 @@ export async function removeObject(objectKey: string): Promise<void> {
   }
 }
 
+/** Download an object's full contents as a Buffer. Mirrors `MinioService.download_bytes`. */
+export async function downloadBytes(objectKey: string): Promise<Buffer> {
+  if (!enabled() || _client === null || _config === null) {
+    throw new Error("MinIO service is not enabled");
+  }
+  const stream = await _client.getObject(_config.bucket, objectKey);
+  const chunks: Buffer[] = [];
+  await new Promise<void>((resolve, reject) => {
+    stream.on("data", (c: Buffer) => chunks.push(c));
+    stream.on("end", () => resolve());
+    stream.on("error", (e: Error) => reject(e));
+  });
+  return Buffer.concat(chunks);
+}
+
 /** Config-level enabled (all creds present) regardless of client connectivity. */
 export function configEnabled(): boolean {
   return _config !== null && configEnabled_(_config);
