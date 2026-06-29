@@ -3012,6 +3012,65 @@ export async function runEmbedJob(opts: {
   });
 }
 
+/**
+ * Drug stages stay in Python (TFDA crawl + OCR via the dots_ocr VLM + analysis
+ * LLM are hard Python deps). The Node worker delegates an already-claimed drug
+ * job to the Python `run_one_drug_job.py` shim, which runs the unchanged
+ * `_run_drug_*_job` handler (full tracking + auto-chain) against the same DB.
+ * This is the polyglot-worker split — no drug logic is re-implemented in Node.
+ *
+ * The handler updates job state directly, so Node only spawns + waits. A
+ * non-zero exit means the shim crashed before the handler could record a
+ * terminal status; mark the job failed so it does not hang in `running`.
+ */
+export async function runDrugJob(opts: {
+  workerName: string;
+  job: Record<string, unknown>;
+}): Promise<void> {
+  const { job } = opts;
+  const jobId = String(job.job_id);
+  const jobType = String(job.job_type);
+  const { spawn } = await import("node:child_process");
+  const path = await import("node:path");
+
+  const pythonBin = process.env.DRUG_WORKER_PYTHON || "python";
+  // src/ dir holding run_one_drug_job.py + the Python admin modules. In the
+  // polyglot worker image the Python sources live here; override via env.
+  const srcDir =
+    process.env.DRUG_WORKER_SRC_DIR || path.resolve(import.meta.dirname, "..", "..", "..", "src");
+  const shim = path.join(srcDir, "run_one_drug_job.py");
+
+  await appendJobLog({
+    jobId,
+    level: "info",
+    message: `Delegating ${jobType} to the Python drug worker`,
+    payload: { python: pythonBin, shim },
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    const py = spawn(pythonBin, [shim, jobId], { cwd: srcDir, env: process.env });
+    let errTail = "";
+    py.stderr.on("data", (d) => {
+      errTail = (errTail + String(d)).slice(-2000);
+    });
+    py.on("error", reject);
+    py.on("exit", (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`drug worker exited ${code}: ${errTail.trim().slice(-400)}`));
+    });
+  }).catch(async (err: Error) => {
+    await markJobStatus({
+      jobId,
+      status: "retryable_failed",
+      currentStep: "drug_worker",
+      controlState: "idle",
+      lastErrorCode: "drug_worker_failed",
+      lastErrorMessage: err.message,
+    });
+    await appendJobLog({ jobId, level: "error", message: "Python drug worker failed", payload: { error: err.message } });
+  });
+}
+
 // ── Job dispatcher ────────────────────────────────────────────────────────────
 
 /**
@@ -3102,19 +3161,13 @@ export async function executeAdminJob(opts: {
       await runEmbedJob({ workerName, job });
       return;
     }
-
-    // ── W2b loader handlers (not yet wired) ──────────────────────────────────
-    // The dispatcher structure mirrors execute_admin_job exactly so W2b only
-    // needs to replace each throw with the real handler over the Node loaders
-    // (drug stages shell out to Python loader/main.py).
-    const W2B_JOB_TYPES = new Set([
-      "drug_index_import",
-      "drug_enrichment",
-      "drug_analysis",
-    ]);
-    if (W2B_JOB_TYPES.has(jobType)) {
-      throw new W2bNotImplementedError(`W2b: loader handler for job type '${jobType}' not yet wired`);
+    if (jobType === "drug_index_import" || jobType === "drug_enrichment" || jobType === "drug_analysis") {
+      await runDrugJob({ workerName, job });
+      return;
     }
+
+    // All W2b job types are now wired (loaders + embed in Node; drug delegated to
+    // the Python shim above). Anything else is genuinely unsupported.
 
     // Unknown job type — mirror execute_admin_job's terminal unsupported path.
     await markJobStatus({
