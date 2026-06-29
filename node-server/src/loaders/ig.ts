@@ -365,7 +365,7 @@ function readTgz(tgzPath: string): TarEntry[] {
 
 // ── package identity ────────────────────────────────────────────────────────
 
-interface Identity {
+export interface Identity {
   package_id: string;
   version: string;
   canonical: string;
@@ -639,6 +639,41 @@ function buildPackagePayload(entries: TarEntry[], tgzPath: string): PackagePaylo
   return { identity, codesystems, concepts, artifacts };
 }
 
+// ── multi-package stage payload (mirror _build_twcore_stage_payload) ─────────
+
+export interface TwcoreStagePayload {
+  identities: Identity[];
+  /** pid, pver, cs_id, name, category, concept_count */
+  codesystems: (string | number)[][];
+  /** pid, pver, cs_id, code, display, definition */
+  concepts: (string | number)[][];
+  /** pid, pver, ...17 artifact fields (artifact_key … raw_json) */
+  artifacts: (string | number)[][];
+}
+
+/**
+ * Faithful port of `_build_twcore_stage_payload`: ingest the primary package
+ * (candidate default IG) first, then any dependency packages, each as its own
+ * package-scoped payload. Returns the aggregated tuple lists for staging.
+ */
+export function buildTwcoreStagePayload(
+  rootPath: string,
+  extraPaths: string[] = [],
+): TwcoreStagePayload {
+  const identities: Identity[] = [];
+  const codesystems: (string | number)[][] = [];
+  const concepts: (string | number)[][] = [];
+  const artifacts: (string | number)[][] = [];
+  for (const p of [rootPath, ...extraPaths]) {
+    const pp = buildPackagePayload(readTgz(p), p);
+    identities.push(pp.identity);
+    codesystems.push(...pp.codesystems);
+    concepts.push(...pp.concepts);
+    artifacts.push(...pp.artifacts);
+  }
+  return { identities, codesystems, concepts, artifacts };
+}
+
 // ── DB write ────────────────────────────────────────────────────────────────
 
 /** Batch INSERT with a trailing NOW() column and optional per-column casts. */
@@ -803,7 +838,7 @@ interface MissingDep {
  * metadata omits them). Returns `{depPaths, missing}` where `missing` lists deps
  * the registry could not supply — surfaced for manual upload, never dropped.
  */
-async function fetchIgDependencies(
+export async function fetchIgDependencies(
   pool: pg.Pool,
   rootPath: string,
   tmpdir: string,
@@ -862,7 +897,7 @@ async function fetchIgDependencies(
 }
 
 /** Materialize the root IG .tgz to a local path (registry coordinate or local file). */
-async function acquireIgRoot(
+export async function acquireIgRoot(
   coordinate: string | null,
   localRoot: string | null,
   tmpdir: string,

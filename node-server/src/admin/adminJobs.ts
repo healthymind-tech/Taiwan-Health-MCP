@@ -2448,6 +2448,276 @@ export async function runSnomedImportJob(opts: {
   });
 }
 
+/** Faithful port of `_run_ig_import_job` (registry/upload source → staged FHIR IG import). */
+export async function runIgImportJob(opts: {
+  workerName: string;
+  job: Record<string, unknown>;
+}): Promise<void> {
+  const { workerName, job } = opts;
+  const jobId = String(job.job_id);
+  const igMod = await import("../loaders/ig.js");
+  const registry = await import("../loaders/igRegistry.js");
+  const minioService = await import("../minioService.js");
+  const { getGroup } = await import("./adminSettings.js");
+  const { runValidateStep, stageRows, checkpointBeforePromote, optimizedPromote, clearStageRows } =
+    await import("./adminJobStaging.js");
+  const fsp = await import("node:fs/promises");
+  const os = await import("node:os");
+  const path = await import("node:path");
+
+  const jobOpts = parseJsonb(job.job_options);
+  const igSource = String(jobOpts.ig_source ?? "upload") || "upload";
+  const total = 5;
+  let progress = Math.max(Number(job.progress_current || 0), 0);
+
+  await appendJobLog({ jobId, level: "info", message: "Starting IG import", payload: { ig_source: igSource } });
+
+  // Registry bases from the "registry" settings group (mirror _registry_bases).
+  let regCfg: Record<string, unknown> = {};
+  try {
+    regCfg = await getGroup("registry");
+  } catch {
+    regCfg = {};
+  }
+  const base = registry.normalizeBase(String(regCfg.base_url ?? "") || undefined);
+  const fbRaw = String(regCfg.fallback_url ?? "").trim();
+  const fallback = fbRaw ? registry.normalizeBase(fbRaw) : null;
+
+  const tmpdir = await fsp.mkdtemp(path.join(os.tmpdir(), "admin-ig-import-"));
+  try {
+    // 1. Acquire the root IG .tgz (registry coordinate or uploaded MinIO object).
+    const dest = path.join(tmpdir, "ig-root.tgz");
+    if (igSource === "registry") {
+      const packageId = String(jobOpts.package_id ?? "").trim();
+      if (!packageId) throw new Error("registry IG import requires 'package_id' in job_options");
+      const version = String(jobOpts.version ?? "").trim() || null;
+      const meta = await registry.getMetadata(base, packageId);
+      const resolved = registry.resolveVersion(meta, version);
+      const data = await registry.downloadTarball(base, packageId, resolved, { meta, fallback });
+      await fsp.writeFile(dest, data);
+      // Best-effort archive of the fetched tarball (non-critical, mirrors _store_ig_tarball).
+      try {
+        if (minioService.enabled()) {
+          await minioService.uploadBytes({
+            objectKey: `ig-packages/${packageId}/${resolved}/package.tgz`,
+            data,
+            contentType: "application/gzip",
+          });
+        }
+      } catch {
+        /* archival is non-critical */
+      }
+      await appendJobLog({ jobId, level: "info", message: `Fetched root IG ${packageId}@${resolved} from registry` });
+    } else {
+      const objectKey = String(jobOpts.object_key ?? "").trim();
+      if (!objectKey) throw new Error("upload IG import requires 'object_key' in job_options");
+      if (!minioService.enabled()) throw new Error("MinIO is required to read the uploaded IG package");
+      const data = await minioService.downloadBytes(objectKey);
+      await fsp.writeFile(dest, data);
+    }
+    const rootPath = dest;
+
+    // 2. Recursively fetch declared dependency IGs not already installed (BFS).
+    const { depPaths, missing } = await igMod.fetchIgDependencies(getPool(), rootPath, tmpdir, base, fallback);
+
+    // 3. Build the per-package stage payloads (primary first).
+    const { identities, codesystems, concepts, artifacts } = igMod.buildTwcoreStagePayload(rootPath, depPaths);
+    const packageLabels = identities.map((i) => `${i.package_id}@${i.version}`);
+
+    if (progress < 1) {
+      await runValidateStep({
+        jobId,
+        stepKey: "validate_sources",
+        currentStep: "validated_sources",
+        checkpoint: {
+          phase: "validated",
+          packages: packageLabels,
+          missing_dependencies: missing,
+          codesystem_count: codesystems.length,
+          concept_count: concepts.length,
+          artifact_count: artifacts.length,
+        },
+        jobProgressAfter: 1,
+        jobProgressTotal: total,
+      });
+      progress = 1;
+      if (await applyControlCheckpoint({ jobId, workerName })) return;
+    }
+
+    if (progress < 2) {
+      const interrupted = await stageRows({
+        jobId, workerName,
+        stepKey: "stage_codesystems",
+        runningStepName: "staging_twcore_codesystems",
+        rows: codesystems,
+        table: "admin.stage_twcore_codesystems",
+        columns: ["package_id", "package_version", "cs_id", "name", "category", "concept_count"],
+        conflictSql: `ON CONFLICT (job_id, package_id, package_version, cs_id) DO UPDATE SET
+          name = EXCLUDED.name, category = EXCLUDED.category, concept_count = EXCLUDED.concept_count`,
+        batchSize: 1000,
+        jobProgressBefore: 1, jobProgressAfter: 2, jobProgressTotal: total,
+        checkpointLabel: "staging_twcore_codesystems",
+      });
+      if (interrupted) return;
+      progress = 2;
+    }
+
+    if (progress < 3) {
+      let interrupted = await stageRows({
+        jobId, workerName,
+        stepKey: "stage_artifacts",
+        runningStepName: "staging_twcore_artifacts",
+        rows: artifacts,
+        table: "admin.stage_twcore_artifacts",
+        columns: [
+          "package_id", "package_version", "artifact_key", "resource_type", "artifact_id", "canonical_url",
+          "name", "title", "status", "kind", "base_type", "derivation", "grouping_id", "grouping_name",
+          "description", "package_path", "child_count", "concept_count", "raw_json",
+        ],
+        conflictSql: `ON CONFLICT (job_id, package_id, package_version, artifact_key) DO UPDATE SET
+          resource_type = EXCLUDED.resource_type, artifact_id = EXCLUDED.artifact_id, canonical_url = EXCLUDED.canonical_url,
+          name = EXCLUDED.name, title = EXCLUDED.title, status = EXCLUDED.status, kind = EXCLUDED.kind,
+          base_type = EXCLUDED.base_type, derivation = EXCLUDED.derivation, grouping_id = EXCLUDED.grouping_id,
+          grouping_name = EXCLUDED.grouping_name, description = EXCLUDED.description, package_path = EXCLUDED.package_path,
+          child_count = EXCLUDED.child_count, concept_count = EXCLUDED.concept_count, raw_json = EXCLUDED.raw_json`,
+        batchSize: 500,
+        jobProgressBefore: 2, jobProgressAfter: 2, jobProgressTotal: total,
+        checkpointLabel: "staging_twcore_artifacts",
+      });
+      if (interrupted) return;
+      interrupted = await stageRows({
+        jobId, workerName,
+        stepKey: "stage_concepts",
+        runningStepName: "staging_twcore_concepts",
+        rows: concepts,
+        table: "admin.stage_twcore_concepts",
+        columns: ["package_id", "package_version", "cs_id", "code", "display", "definition"],
+        conflictSql: `ON CONFLICT (job_id, package_id, package_version, cs_id, code) DO UPDATE SET
+          display = EXCLUDED.display, definition = EXCLUDED.definition`,
+        batchSize: 5000,
+        jobProgressBefore: 2, jobProgressAfter: 3, jobProgressTotal: total,
+        checkpointLabel: "staging_twcore_concepts",
+      });
+      if (interrupted) return;
+      progress = 3;
+    }
+
+    if (progress < 4) {
+      if (
+        await checkpointBeforePromote({ jobId, workerName, stepKey: "promote", jobProgressBefore: 3, jobProgressTotal: total })
+      ) {
+        return;
+      }
+
+      const pool = getPool();
+      const existingDefault =
+        (await pool.query<{ package_id: string }>("SELECT package_id FROM fhir.ig_packages WHERE is_default LIMIT 1"))
+          .rows[0]?.package_id ?? null;
+      const primaryId = identities.length ? identities[0].package_id : null;
+      const makePrimaryDefault = existingDefault === null || existingDefault === primaryId;
+
+      const packageCopies = identities.map((ident, idx) => ({
+        sql: `INSERT INTO fhir.ig_packages
+                (package_id, version, canonical, fhir_version, title, status, is_default, dependencies, imported_at)
+              VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, NOW())
+              ON CONFLICT (package_id, version) DO UPDATE SET
+                canonical = EXCLUDED.canonical, fhir_version = EXCLUDED.fhir_version,
+                title = EXCLUDED.title, status = EXCLUDED.status,
+                dependencies = EXCLUDED.dependencies, imported_at = NOW()`,
+        args: [
+          ident.package_id, ident.version, ident.canonical, ident.fhir_version, ident.title, ident.status,
+          idx === 0 && makePrimaryDefault, JSON.stringify(ident.dependencies),
+        ] as unknown[],
+        label: `registered IG ${ident.package_id}#${ident.version}`,
+      }));
+
+      // Per-package DELETE (not a global TRUNCATE) so re-importing one IG never
+      // wipes the others; fhir.concepts cascade from codesystems. job_id is a
+      // UUID, safe to inline (truncateSql takes no params).
+      const scopedDelete =
+        "DELETE FROM fhir.artifacts a USING (SELECT DISTINCT package_id, package_version " +
+        `FROM admin.stage_twcore_artifacts WHERE job_id = '${jobId}'::uuid) s ` +
+        "WHERE a.package_id = s.package_id AND a.package_version = s.package_version; " +
+        "DELETE FROM fhir.codesystems c USING (SELECT DISTINCT package_id, package_version " +
+        `FROM admin.stage_twcore_codesystems WHERE job_id = '${jobId}'::uuid) s ` +
+        "WHERE c.package_id = s.package_id AND c.package_version = s.package_version";
+
+      await optimizedPromote({
+        jobId,
+        stepKey: "promote",
+        indexTables: ["fhir.codesystems", "fhir.concepts", "fhir.artifacts"],
+        truncateSql: scopedDelete,
+        copies: [
+          ...packageCopies,
+          {
+            sql: `INSERT INTO fhir.codesystems (package_id, package_version, cs_id, name, category, fetched_at, concept_count)
+                  SELECT package_id, package_version, cs_id, name, category, NOW(), concept_count
+                  FROM admin.stage_twcore_codesystems WHERE job_id = $1::uuid`,
+            args: [jobId],
+            label: `codesystems (${fmt(codesystems.length)})`,
+          },
+          {
+            sql: `INSERT INTO fhir.concepts (package_id, package_version, cs_id, code, display, definition)
+                  SELECT package_id, package_version, cs_id, code, display, definition
+                  FROM admin.stage_twcore_concepts WHERE job_id = $1::uuid`,
+            args: [jobId],
+            label: `concepts (${fmt(concepts.length)})`,
+          },
+          {
+            sql: `INSERT INTO fhir.artifacts (
+                    package_id, package_version, artifact_key, resource_type, artifact_id, canonical_url,
+                    name, title, status, kind, base_type, derivation, grouping_id, grouping_name, description,
+                    package_path, child_count, concept_count, raw_json, imported_at
+                  )
+                  SELECT package_id, package_version, artifact_key, resource_type, artifact_id, canonical_url,
+                    name, title, status, kind, base_type, derivation, grouping_id, grouping_name, description,
+                    package_path, child_count, concept_count, raw_json, NOW()
+                  FROM admin.stage_twcore_artifacts WHERE job_id = $1::uuid`,
+            args: [jobId],
+            label: `artifacts (${fmt(artifacts.length)})`,
+          },
+        ],
+        finalCheckpoint: {
+          phase: "promoted",
+          package_count: identities.length,
+          codesystem_count: codesystems.length,
+          concept_count: concepts.length,
+          artifact_count: artifacts.length,
+        },
+        promotedStepName: "promoted_twcore",
+        jobProgressAfter: 4,
+        jobProgressTotal: total,
+      });
+      progress = 4;
+    }
+
+    await clearStageRows(jobId, [
+      "admin.stage_twcore_artifacts",
+      "admin.stage_twcore_concepts",
+      "admin.stage_twcore_codesystems",
+    ]);
+    await recordJobStep({
+      jobId, stepKey: "cleanup_staging", status: "success",
+      progressCurrent: 1, progressTotal: 1, checkpoint: { phase: "cleaned" },
+    });
+    await markJobStatus({
+      jobId, status: "success", currentStep: "completed",
+      progressCurrent: 5, progressTotal: total, controlState: "idle",
+      resultSummary: {
+        job_type: "ig_import",
+        ig_source: igSource,
+        packages: packageLabels,
+        missing_dependencies: missing,
+        codesystem_count: codesystems.length,
+        concept_count: concepts.length,
+        artifact_count: artifacts.length,
+      },
+    });
+  } finally {
+    await fsp.rm(tmpdir, { recursive: true, force: true });
+  }
+}
+
 // ── Job dispatcher ────────────────────────────────────────────────────────────
 
 /**
@@ -2526,13 +2796,16 @@ export async function executeAdminJob(opts: {
       await runSnomedImportJob({ workerName, job });
       return;
     }
+    if (jobType === "ig_import") {
+      await runIgImportJob({ workerName, job });
+      return;
+    }
 
     // ── W2b loader handlers (not yet wired) ──────────────────────────────────
     // The dispatcher structure mirrors execute_admin_job exactly so W2b only
     // needs to replace each throw with the real handler over the Node loaders
     // (drug stages shell out to Python loader/main.py).
     const W2B_JOB_TYPES = new Set([
-      "ig_import",
       "rxnorm_import",
       "drug_index_import",
       "drug_enrichment",
