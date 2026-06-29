@@ -177,11 +177,16 @@ services:
     restart: "no"
 
   admin-worker:
-    build: .
+    # Polyglot worker image: Node worker entrypoint + bundled Python drug shim.
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
     container_name: taiwanHealthMcp_admin_worker
-    entrypoint: ["python", "admin_worker.py"]
+    # CMD in Dockerfile.worker runs `node dist/admin/adminWorker.js`.
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    # Live-mount the Python drug shim sources so they track the repo without an
+    # image rebuild. The Node worker bundle (dist/node_modules) stays baked-in.
     volumes:
       - ./src:/app/src
       - ./loader:/app/loader:ro
