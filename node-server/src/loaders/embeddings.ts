@@ -446,6 +446,25 @@ const MODULES: Record<string, (p: pg.Pool, s: EmbeddingService, b: number) => Pr
   snomed: embedSnomed,
 };
 
+/** Loaded embedding settings (base_url etc.) for the admin worker's validate phase. */
+export async function loadEmbeddingSettings(pool: pg.Pool): Promise<EmbeddingSettings> {
+  return loadSettings(pool);
+}
+
+/**
+ * Run one module's incremental embedding (mirror the worker's
+ * `ensure_dimensions(pool)` + `embed_fn(pool)`): always ensure halfvec dims, then
+ * embed via the module's loader function. Settings come from the `embedding` group.
+ */
+export async function runEmbedModule(pool: pg.Pool, moduleKey: string): Promise<void> {
+  const fn = MODULES[moduleKey];
+  if (!fn) throw new Error(`unknown embed module: ${moduleKey}`);
+  const settings = await loadSettings(pool);
+  await ensureDimensions(pool, settings.dimensions);
+  const svc = new EmbeddingService(settings);
+  await fn(pool, svc, settings.batchSize);
+}
+
 async function main(): Promise<void> {
   const cfg = config();
   configureLogLevel(cfg.logLevel);

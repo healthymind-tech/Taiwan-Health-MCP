@@ -2829,6 +2829,189 @@ export async function runRxnormImportJob(opts: {
   });
 }
 
+/** Per-module config for the embed jobs (mirror the Python `_run_*_embed_job` wrappers). */
+const EMBED_JOBS: Record<string, { module: string; label: string; srcQ: string; embQ: string }> = {
+  icd_embed: {
+    module: "icd", label: "ICD-10-CM",
+    srcQ: "SELECT COUNT(*) FROM icd.diagnoses",
+    embQ: "SELECT COUNT(*) FROM icd.diagnosis_embeddings",
+  },
+  loinc_embed: {
+    module: "loinc", label: "LOINC",
+    srcQ: "SELECT COUNT(*) FROM loinc.concepts",
+    embQ: "SELECT COUNT(*) FROM loinc.concept_embeddings",
+  },
+  health_supplements_embed: {
+    module: "health-supplements", label: "Health Supplements",
+    srcQ: "SELECT COUNT(*) FROM health_supplements.items",
+    embQ: "SELECT COUNT(*) FROM health_supplements.item_embeddings",
+  },
+  food_nutrition_embed: {
+    module: "food-nutrition", label: "Food Nutrition",
+    srcQ: "SELECT (SELECT COUNT(DISTINCT sample_name) FROM food_nutrition.measurements)"
+      + " + (SELECT COUNT(*) FROM food_nutrition.ingredients)",
+    embQ: "SELECT (SELECT COUNT(*) FROM food_nutrition.food_embeddings)"
+      + " + (SELECT COUNT(*) FROM food_nutrition.ingredient_embeddings)",
+  },
+  guideline_embed: {
+    module: "guideline", label: "Clinical Guidelines",
+    srcQ: "SELECT COUNT(*) FROM guideline.disease_guidelines",
+    embQ: "SELECT COUNT(*) FROM guideline.guideline_embeddings",
+  },
+  snomed_embed: {
+    module: "snomed", label: "SNOMED CT",
+    srcQ: "SELECT COUNT(DISTINCT concept_id) FROM snomed.descriptions"
+      + " WHERE active = TRUE AND type_id = 900000000000003001",
+    embQ: "SELECT COUNT(*) FROM snomed.concept_embeddings",
+  },
+};
+
+/** Faithful port of `_run_embed_job`: validate (Ollama reachable + source rows) →
+ * embed (ensure dims + module embed, with a 5s progress poller) → finalize. */
+export async function runEmbedJob(opts: {
+  workerName: string;
+  job: Record<string, unknown>;
+}): Promise<void> {
+  const { workerName, job } = opts;
+  const jobId = String(job.job_id);
+  const jobType = String(job.job_type);
+  const cfg = EMBED_JOBS[jobType];
+  if (!cfg) throw new Error(`no embed config for job type '${jobType}'`);
+  const { loadEmbeddingSettings, runEmbedModule } = await import("../loaders/embeddings.js");
+  const pool = getPool();
+
+  const scalar = async (q: string): Promise<number> => {
+    const r = await pool.query(q);
+    const row = r.rows[0] ?? {};
+    return Number(Object.values(row)[0] ?? 0) || 0;
+  };
+
+  const settings = await loadEmbeddingSettings(pool);
+  const ollamaUrl = (settings.baseUrl || "").trim();
+  const stepAtStart = String(job.current_step ?? "");
+
+  // ── Step 1: validate (skip if a prior run already passed this phase) ──
+  if (!["validated", "embedding", "embedded", "completed"].includes(stepAtStart)) {
+    await appendJobLog({
+      jobId, level: "info",
+      message: `Validating ${cfg.label} embedding job`,
+      payload: { ollama_configured: Boolean(ollamaUrl) },
+    });
+    if (!ollamaUrl) {
+      await markJobStatus({
+        jobId, status: "permanent_failed", currentStep: "validate", controlState: "idle",
+        lastErrorCode: "ollama_not_configured",
+        lastErrorMessage: "OLLAMA_BASE_URL is not set — cannot generate embeddings",
+      });
+      return;
+    }
+    let ollamaOk = false;
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 5000);
+      const r = await fetch(`${ollamaUrl.replace(/\/+$/, "")}/api/version`, { signal: ctrl.signal });
+      clearTimeout(timer);
+      ollamaOk = r.status === 200;
+    } catch {
+      /* unreachable */
+    }
+    if (!ollamaOk) {
+      await markJobStatus({
+        jobId, status: "retryable_failed", currentStep: "validate", controlState: "idle",
+        lastErrorCode: "ollama_unreachable",
+        lastErrorMessage: `Ollama not reachable at ${ollamaUrl} — check OLLAMA_BASE_URL`,
+      });
+      return;
+    }
+    const sc = await scalar(cfg.srcQ);
+    if (sc <= 0) {
+      await appendJobLog({ jobId, level: "warn", message: `${cfg.label} has no source rows to embed` });
+      await markJobStatus({
+        jobId, status: "permanent_failed", currentStep: "validate", controlState: "idle",
+        progressCurrent: 0, progressTotal: 0,
+        lastErrorCode: "empty_source_module",
+        lastErrorMessage: `${cfg.label} has no loaded records. Import, sync, or seed the module before embedding.`,
+      });
+      return;
+    }
+    await recordJobStep({
+      jobId, stepKey: "validate", status: "success", progressCurrent: 1, progressTotal: 1,
+      checkpoint: { phase: "validated", source_count: sc },
+    });
+    await markJobStatus({ jobId, status: "running", currentStep: "validated", progressCurrent: 0, progressTotal: sc });
+    if (await applyControlCheckpoint({ jobId, workerName })) return;
+  }
+
+  // ── Step 2: ensure dimensions + embed (with a 5s live-progress poller) ──
+  const sourceCount = await scalar(cfg.srcQ);
+  await appendJobLog({
+    jobId, level: "info",
+    message: `Generating ${cfg.label} embeddings via Ollama (${fmt(sourceCount)} items)`,
+    payload: { resumed: Boolean(stepAtStart), source_count: sourceCount },
+  });
+  await recordJobStep({
+    jobId, stepKey: "embed", status: "running", progressCurrent: 0, progressTotal: sourceCount,
+    checkpoint: { phase: "embedding" },
+  });
+  await markJobStatus({ jobId, status: "running", currentStep: "embedding", progressCurrent: 0, progressTotal: sourceCount });
+
+  const poller = setInterval(() => {
+    void (async () => {
+      try {
+        const cnt = await scalar(cfg.embQ);
+        await recordJobStep({
+          jobId, stepKey: "embed", status: "running", progressCurrent: cnt, progressTotal: sourceCount,
+          checkpoint: { phase: "embedding", embedded_count: cnt },
+        });
+        await markJobStatus({ jobId, status: "running", currentStep: "embedding", progressCurrent: cnt, progressTotal: sourceCount });
+      } catch {
+        /* poll best-effort */
+      }
+    })();
+  }, 5000);
+  try {
+    await runEmbedModule(pool, cfg.module);
+  } finally {
+    clearInterval(poller);
+  }
+
+  const embeddedCount = await scalar(cfg.embQ);
+  if (embeddedCount === 0 && sourceCount > 0) {
+    await appendJobLog({
+      jobId, level: "warn",
+      message: "No embeddings created — Ollama may have been unreachable during embedding",
+    });
+    await markJobStatus({
+      jobId, status: "retryable_failed", currentStep: "embed", controlState: "idle",
+      lastErrorCode: "zero_embeddings",
+      lastErrorMessage: "No embeddings were created — Ollama returned no vectors",
+    });
+    return;
+  }
+
+  await recordJobStep({
+    jobId, stepKey: "embed", status: "success", progressCurrent: embeddedCount, progressTotal: sourceCount,
+    checkpoint: { phase: "embedded", embedded_count: embeddedCount },
+  });
+  if (await applyControlCheckpoint({ jobId, workerName })) return;
+
+  // ── Step 3: finalize ──
+  await recordJobStep({
+    jobId, stepKey: "finalize", status: "success", progressCurrent: embeddedCount, progressTotal: sourceCount,
+    checkpoint: { phase: "completed", embedded_count: embeddedCount },
+  });
+  await markJobStatus({
+    jobId, status: "success", currentStep: "completed",
+    progressCurrent: embeddedCount, progressTotal: sourceCount, controlState: "idle",
+    resultSummary: {
+      job_type: jobType,
+      module: cfg.label,
+      embedded_count: embeddedCount,
+      source_count: sourceCount,
+    },
+  });
+}
+
 // ── Job dispatcher ────────────────────────────────────────────────────────────
 
 /**
@@ -2915,6 +3098,10 @@ export async function executeAdminJob(opts: {
       await runRxnormImportJob({ workerName, job });
       return;
     }
+    if (Object.prototype.hasOwnProperty.call(EMBED_JOBS, jobType)) {
+      await runEmbedJob({ workerName, job });
+      return;
+    }
 
     // ── W2b loader handlers (not yet wired) ──────────────────────────────────
     // The dispatcher structure mirrors execute_admin_job exactly so W2b only
@@ -2924,12 +3111,6 @@ export async function executeAdminJob(opts: {
       "drug_index_import",
       "drug_enrichment",
       "drug_analysis",
-      "icd_embed",
-      "loinc_embed",
-      "health_supplements_embed",
-      "food_nutrition_embed",
-      "guideline_embed",
-      "snomed_embed",
     ]);
     if (W2B_JOB_TYPES.has(jobType)) {
       throw new W2bNotImplementedError(`W2b: loader handler for job type '${jobType}' not yet wired`);
