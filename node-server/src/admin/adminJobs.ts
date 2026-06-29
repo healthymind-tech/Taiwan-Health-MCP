@@ -2718,6 +2718,117 @@ export async function runIgImportJob(opts: {
   }
 }
 
+/** Faithful port of `_run_rxnorm_import_job` (concept-only staged import). */
+export async function runRxnormImportJob(opts: {
+  workerName: string;
+  job: Record<string, unknown>;
+}): Promise<void> {
+  const { workerName, job } = opts;
+  const jobId = String(job.job_id);
+  const { loadRxnormConcepts } = await import("../loaders/rxnorm.js");
+  const {
+    withMaterializedSources,
+    runValidateStep,
+    stageRows,
+    checkpointBeforePromote,
+    optimizedPromote,
+    clearStageRows,
+  } = await import("./adminJobStaging.js");
+
+  const manifest = parseJsonb(parseJsonb(job.job_options).source_manifest);
+  const total = 4;
+  let progress = Math.max(Number(job.progress_current || 0), 0);
+
+  await appendJobLog({
+    jobId,
+    level: "info",
+    message: "Starting RxNorm staged import",
+    payload: { source_manifest: manifest },
+  });
+
+  await withMaterializedSources(manifest, async (paths) => {
+    const conceptRows = loadRxnormConcepts(paths.rxnorm_full);
+
+    if (progress < 1) {
+      await runValidateStep({
+        jobId,
+        stepKey: "validate_sources",
+        currentStep: "validated_sources",
+        checkpoint: {
+          phase: "validated",
+          source_roles: Object.keys(paths).sort(),
+          concept_count: conceptRows.length,
+        },
+        jobProgressAfter: 1,
+        jobProgressTotal: total,
+      });
+      progress = 1;
+      if (await applyControlCheckpoint({ jobId, workerName })) return;
+    }
+
+    if (progress < 2) {
+      const interrupted = await stageRows({
+        jobId, workerName,
+        stepKey: "stage_concepts",
+        runningStepName: "staging_rxnorm_concepts",
+        rows: conceptRows,
+        table: "admin.stage_rxnorm_concepts",
+        columns: ["rxcui", "name", "tty", "suppress"],
+        conflictSql: `ON CONFLICT (job_id, rxcui) DO UPDATE SET
+          name = EXCLUDED.name, tty = EXCLUDED.tty, suppress = EXCLUDED.suppress`,
+        batchSize: 5000,
+        jobProgressBefore: 1, jobProgressAfter: 2, jobProgressTotal: total,
+        checkpointLabel: "staging_rxnorm_concepts",
+      });
+      if (interrupted) return;
+      progress = 2;
+    }
+
+    if (progress < 3) {
+      if (
+        await checkpointBeforePromote({ jobId, workerName, stepKey: "promote", jobProgressBefore: 2, jobProgressTotal: total })
+      ) {
+        return;
+      }
+      await optimizedPromote({
+        jobId,
+        stepKey: "promote",
+        indexTables: ["rxnorm.concepts"],
+        truncateSql: "TRUNCATE rxnorm.concepts",
+        copies: [
+          {
+            sql: `INSERT INTO rxnorm.concepts (rxcui, name, tty, suppress)
+                  SELECT rxcui, name, tty, suppress
+                  FROM admin.stage_rxnorm_concepts WHERE job_id = $1::uuid`,
+            args: [jobId],
+            label: `concepts (${fmt(conceptRows.length)})`,
+          },
+        ],
+        finalCheckpoint: { phase: "promoted", concept_count: conceptRows.length },
+        promotedStepName: "promoted_rxnorm",
+        jobProgressAfter: 3,
+        jobProgressTotal: total,
+      });
+      progress = 3;
+    }
+
+    await clearStageRows(jobId, ["admin.stage_rxnorm_concepts"]);
+    await recordJobStep({
+      jobId, stepKey: "cleanup_staging", status: "success",
+      progressCurrent: 1, progressTotal: 1, checkpoint: { phase: "cleaned" },
+    });
+    await markJobStatus({
+      jobId, status: "success", currentStep: "completed",
+      progressCurrent: total, progressTotal: total, controlState: "idle",
+      resultSummary: {
+        job_type: "rxnorm_import",
+        source_manifest: manifest,
+        concept_count: conceptRows.length,
+      },
+    });
+  });
+}
+
 // ── Job dispatcher ────────────────────────────────────────────────────────────
 
 /**
@@ -2800,13 +2911,16 @@ export async function executeAdminJob(opts: {
       await runIgImportJob({ workerName, job });
       return;
     }
+    if (jobType === "rxnorm_import") {
+      await runRxnormImportJob({ workerName, job });
+      return;
+    }
 
     // ── W2b loader handlers (not yet wired) ──────────────────────────────────
     // The dispatcher structure mirrors execute_admin_job exactly so W2b only
     // needs to replace each throw with the real handler over the Node loaders
     // (drug stages shell out to Python loader/main.py).
     const W2B_JOB_TYPES = new Set([
-      "rxnorm_import",
       "drug_index_import",
       "drug_enrichment",
       "drug_analysis",

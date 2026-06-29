@@ -45,6 +45,9 @@ const MODULES = {
     { table: "fhir.concepts", cols: "package_id, package_version, cs_id, code, display, definition", order: "package_id, package_version, cs_id, code" },
     { table: "fhir.artifacts", cols: "package_id, package_version, artifact_key, resource_type, artifact_id, canonical_url, name, title, status, kind, base_type, derivation, grouping_id, grouping_name, description, package_path, child_count, concept_count, raw_json", order: "package_id, package_version, artifact_key" },
   ],
+  rxnorm: [
+    { table: "rxnorm.concepts", cols: "rxcui, name, tty, suppress", order: "rxcui" },
+  ],
   snomed: [
     { table: "snomed.concepts", cols: "concept_id, effective_time, active, module_id, definition_status_id", order: "concept_id" },
     { table: "snomed.descriptions", cols: "description_id, concept_id, type_id, term, active, language_code, us_preferred", order: "description_id" },
