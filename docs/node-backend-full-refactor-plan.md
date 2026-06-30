@@ -789,10 +789,16 @@ worker 跑完 → MCP 工具查得到資料 → FHIR 產生 → 驗證通過。P
 排程 + checkpoint 控制行為一致。
 
 ### Phase 4 — Docker / 部署 / 觀測
-1. `node-server` 取代 `app`（MCP+admin）與 `admin-worker` 兩個 Python service。
-   - ✅ **admin-worker 已切換(2026-06-30,commit `d45913b`)**:`compose.yaml` `admin-worker` 改用 polyglot
+1. ✅ **`node-server` 已取代 `app`(MCP+admin)與 `admin-worker` 兩個 Python service(2026-06-30)。**
+   - ✅ **admin-worker 已切換(commit `d45913b`)**:`compose.yaml` `admin-worker` 改用 polyglot
      `Dockerfile.worker`(`node dist/admin/adminWorker.js` + 內含 Python drug shim);live 驗過 Node worker 開機/heartbeat +
-     真實 `drug_enrichment` job 端到端成功。舊 Python worker 角色退役。**`app`(MCP+admin)仍是 Python,待後續切換。**
+     真實 `drug_enrichment` job 端到端成功。舊 Python worker 角色退役。
+   - ✅ **app 已切換(commit `0d9635e` 補 3 端點 + `fda18c4` compose swap)**:先補齊 Node 缺的 nginx-routed 端點
+     `/status.json`(靜態目錄,byte-identical)+ OpenAPI bridge `/openapi.json`+`POST /tools/<name>`(`buildMcpServer` 包裹
+     `registerTool` 建工具 registry;canary 對 Python `:8080` 驗 51 工具路徑集零差異)。再把 `app` service 改 build
+     `node-server/Dockerfile`(`node dist/server.js`)、移除 `./src`+`./static` mount。live 驗:容器 healthy、所有 service
+     init、經 nginx `:8080` 的 status/openapi/mcp/tools/admin 全綠。**唯一殘留 Python 依賴 = settings seeding 路徑**
+     (`adminSettings.ts:306` 留 Python;已 seed 的 DB 不受影響,全新部署需補一次性 seeder)。
 2. nginx 上游不變（`/mcp`、`/admin/*` 等仍指後端，只是後端換 Node）。
 3. Prometheus metrics 名稱與 label 對齊（`record_tool_call`、`record_cache_op`、pool stats）。
 4. 結構化 JSON log 到 stderr；`LOG_LEVEL` 行為一致。
