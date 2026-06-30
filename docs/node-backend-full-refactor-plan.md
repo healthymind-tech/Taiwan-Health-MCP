@@ -536,7 +536,7 @@ worker 跑完 → MCP 工具查得到資料 → FHIR 產生 → 驗證通過。P
   running noop 直接 `executeAdminJob`+`logJobOutcome`)同 DB byte-equal——`import_jobs`(status/control/step/progress/
   result_summary)、`import_job_steps`、`import_job_logs` 三表全等 PASS**(兩者都設 running/合成 UUID 避開 live worker 搶單;
   測後 6 筆測試列已刪)。harness `/tmp/w2a_parity.mjs` 已刪、未 commit。
-- 🔄 **Worker W2b(進行中,2026-06-28)**:
+- ✅ **Worker W2b(完成,2026-06-29;polyglot 部署 + e2e 驗證 2026-06-30)**:
   - ✅ **批次 1 — 輕量 sync(無 MinIO/無 staging)**:`adminJobs.ts` 新增 `runGuidelineSeedJob`/`runHealthSupplementsSyncJob`/
     `runFoodNutritionSyncJob`(忠實 port `_run_guideline_seed_job`/`_run_health_supplements_sync_job`/
     `_run_food_nutrition_sync_job`:prepare→sync/seed→finalize 的 step/progress/checkpoint + `applyControlCheckpoint` 續跑
@@ -554,10 +554,24 @@ worker 跑完 → MCP 工具查得到資料 → FHIR 產生 → 驗證通過。P
       `minioService.downloadBytes`(getObject stream→Buffer)、`adminJobs.getJobStepCheckpoint`。`tsc` 零錯誤。
     - **待**:把 Node ICD/LOINC/SNOMED/IG parser 改成「回傳 row tuples」餵進 `stageRows`+`optimizedPromote`,寫每個
       `_run_*_import_job` handler 接 dispatcher,逐模組對 live PY 跑真實 import 做 byte parity(需 MinIO 已上傳來源)。
-  - **待批次 3 — drug**:`drug_index_import`/`drug_enrichment`/`drug_analysis` shell-out Python `loader/main.py`(polyglot
-    worker;OCR `dots_ocr` VLM 硬依賴留 Python)+ `maybeAutoChain`。
-  - **待批次 4 — embed**:icd/loinc/health/food/guideline/snomed `_run_*_embed_job`(`embeddings.ts`)。
-  逐模組對 live PY byte parity。
+  - ✅ **批次 2 完成 — 重量 staging/promote(commit `ae4a50d`/`b34b57e`/`97e3e5c`/`0302980`/`1736d2a`)**:icd/loinc/snomed/ig/rxnorm
+    各自 port「parser→row tuples→`stageRows`+`optimizedPromote`」+ `_run_*_import_job` handler 接 dispatcher,逐模組對 live PY
+    byte parity(steps + 各最終表 md5 全等)。期間優化 `stageRows`:per-row → 單筆 multi-row INSERT(rows×ncols < 65535,每外層
+    batch 一個 txn),ICD 98s→25s、SNOMED 2.97M 列可行。ICD 另以**完整 daemon loop** 對 live PY 驗過。
+  - ✅ **批次 3 完成 — drug(commit `ddee54f`)**:drug 留 Python(TFDA 爬取 + OCR `dots_ocr` VLM + 分析 LLM 硬依賴)。新增
+    `src/run_one_drug_job.py` shim(從 settings init pool+MinIO,對單一已認領 job id 跑 `admin_jobs.execute_admin_job` → 不變的
+    `_run_drug_*_job` + drug auto-chain);Node `runDrugJob` 以 `child_process.spawn` 呼叫(`DRUG_WORKER_PYTHON`/
+    `DRUG_WORKER_SRC_DIR` 可覆寫),shim 崩潰前置則標 `retryable_failed`。drug 三型派發 + 清空 `W2bNotImplementedError` set。
+  - ✅ **批次 4 完成 — embed(commit `11cdd88`)**:icd/loinc/health/food/guideline/snomed `runEmbedJob` + `EMBED_JOBS`
+    (`embeddings.ts`)。embedding 非決定性 → 驗 orchestration + idempotency(非 byte parity);`guideline_embed` PASS。
+  - ✅ **Polyglot worker 部署 + e2e(commit `d45913b`,2026-06-30)**:新增 `Dockerfile.worker`(repo root:`pydeps`(requirements +
+    dots_ocr)→ `nodebuild`(`npm ci`+`build`+`prune --omit=dev`)→ runtime `python:3.12-slim`+Node 20+libcairo2,
+    `CMD ["node","dist/admin/adminWorker.js"]`,ENV `DRUG_WORKER_PYTHON=python`/`DRUG_WORKER_SRC_DIR=/app/src`)。`compose.yaml`
+    `admin-worker` 改 build `Dockerfile.worker`、移除 `entrypoint: python admin_worker.py`(Phase 4 #1 達成)。**live 驗證**:Node
+    worker 開機(DB monitor + MinIO + 17 resources)、heartbeat 正常;Python drug shim 在同容器內開機(imports+pool+MinIO 全通)。
+    **真實 drug job e2e**:enqueue `drug_enrichment {"limit":1}` → Node 認領 → `Delegating … to the Python drug worker`(spawn)→
+    `Starting drug enrichment batch`(Python 跑 live TFDA 爬取)→ `Auto-chain: no pending work … skipping`(零 LLM/OCR 成本)→
+    `success`(2.6s)。**未做**:drug_analysis 全鏈(OCR `162.38.2.150:8000` 目前不可達 + 0 needs_ocr 候選),待 OCR 上線再測。
 - ✅ **FHIR Servers sub-step A:CRUD + pgcrypto(chunk 4 第一刀,2026-06-21)**:新增 `adminFhirServers.ts`
   (忠實 port `fhir_server_service.py` 的 admin CRUD 面):`fhirServerSecretKey`(env `FHIR_SERVER_SECRET_KEY` 否則
   fallback=admin_session_secret)、private_key_jwt key 材料(`generateKeypair` RSA/EC PKCS8 PEM via node `crypto`、
@@ -776,6 +790,9 @@ worker 跑完 → MCP 工具查得到資料 → FHIR 產生 → 驗證通過。P
 
 ### Phase 4 — Docker / 部署 / 觀測
 1. `node-server` 取代 `app`（MCP+admin）與 `admin-worker` 兩個 Python service。
+   - ✅ **admin-worker 已切換(2026-06-30,commit `d45913b`)**:`compose.yaml` `admin-worker` 改用 polyglot
+     `Dockerfile.worker`(`node dist/admin/adminWorker.js` + 內含 Python drug shim);live 驗過 Node worker 開機/heartbeat +
+     真實 `drug_enrichment` job 端到端成功。舊 Python worker 角色退役。**`app`(MCP+admin)仍是 Python,待後續切換。**
 2. nginx 上游不變（`/mcp`、`/admin/*` 等仍指後端，只是後端換 Node）。
 3. Prometheus metrics 名稱與 label 對齊（`record_tool_call`、`record_cache_op`、pool stats）。
 4. 結構化 JSON log 到 stderr；`LOG_LEVEL` 行為一致。
