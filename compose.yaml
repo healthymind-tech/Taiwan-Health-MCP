@@ -82,7 +82,12 @@ services:
     restart: unless-stopped
 
   app:
-    build: .
+    # MCP + admin REST surface, ported to Node (node-server/dist/server.js).
+    # Serves the full nginx-routed app surface: /mcp, /admin/api, /admin/ws,
+    # /status.json, /openapi.json, /tools/*, /fhir-client/*, /fhir-oauth/*.
+    build:
+      context: ./node-server
+      dockerfile: Dockerfile
     container_name: taiwanHealthMcp
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -94,9 +99,9 @@ services:
       - "${MCP_PORT:-8000}"
     ports:
       - "127.0.0.1:${METRICS_PORT:-9090}:${METRICS_PORT:-9090}"
-    volumes:
-      - ./src:/app/src
-      - ./static:/app/static:ro
+    # No source volume mounts: the Node app runs from the baked-in dist/. (The
+    # old Python app mounted ./src + ./static; static public pages are served by
+    # the `web` Next.js service, not the app.)
     environment:
       - MCP_TRANSPORT=${MCP_TRANSPORT:-streamable-http}
       - MCP_HOST=${MCP_HOST:-0.0.0.0}
