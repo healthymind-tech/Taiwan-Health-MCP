@@ -21,7 +21,8 @@ import { initPool, getPool, closePool } from "./db.js";
 import { monitor as dbHealthMonitor } from "./dbHealth.js";
 import { initClient, closeClient } from "./cache.js";
 import { startDbStatsCollector, startMetricsServer } from "./metrics.js";
-import { buildMcpServer } from "./mcp.js";
+import { buildMcpServer, buildOpenApiSpec, invokeRegisteredTool, toolRegistryReady } from "./mcp.js";
+import { STATUS_DATA_JSON } from "./statusData.js";
 import { adminHandler } from "./admin/adminApp.js";
 import { getFhirServerJwks, fhirServerSecretKey } from "./admin/adminFhirServers.js";
 import { completeAuthorization, OAuthError } from "./admin/fhirOauthService.js";
@@ -67,6 +68,14 @@ async function bootstrapResources(): Promise<void> {
   }
 
   startMetricsServer();
+
+  // Warm the OpenAPI tool registry (mirrors Python registering tools at startup),
+  // so GET /openapi.json + POST /tools/<name> work before the first MCP session.
+  try {
+    await buildMcpServer();
+  } catch (err) {
+    logError("Tool registry warm-up skipped", { error: String((err as Error).message) });
+  }
 }
 
 function buildApp(): express.Express {
@@ -77,6 +86,92 @@ function buildApp(): express.Express {
   // B1: liveness probe.
   app.get("/health", (_req: Request, res: Response) => {
     res.status(200).json({ status: "ok" });
+  });
+
+  // Data-only payload for the Next.js status page (mirrors Python GET /status.json:
+  // serve the static tool catalog verbatim).
+  app.get("/status.json", (_req: Request, res: Response) => {
+    res.type("application/json").send(STATUS_DATA_JSON);
+  });
+
+  // ── OpenAPI bridge (for OpenAPI tool clients, e.g. Open WebUI) ───────────────
+  // GET /openapi.json → spec of the registered tools; POST /tools/<name> → invoke.
+  // Mirrors the Python ASGI dispatcher's openapi/tools handling, incl. CORS.
+  const ensureRegistryWarm = async (): Promise<void> => {
+    // buildMcpServer runs per MCP session; warm the registry on demand so the
+    // bridge works before any /mcp session exists. Idempotent (registry cleared+rebuilt).
+    if (!toolRegistryReady()) await buildMcpServer();
+  };
+  const originFrom = (req: Request): string => {
+    const host = String(req.headers["host"] ?? "").trim();
+    if (!host) return "";
+    const fwd = String(req.headers["x-forwarded-proto"] ?? "").split(",")[0].trim();
+    const scheme = fwd || req.protocol || "http";
+    return `${scheme}://${host}`;
+  };
+
+  app.options("/openapi.json", (_req: Request, res: Response) => {
+    res
+      .status(204)
+      .set({
+        "access-control-allow-origin": "*",
+        "access-control-allow-methods": "GET, POST, OPTIONS",
+        "access-control-allow-headers": "content-type",
+      })
+      .end();
+  });
+  app.get("/openapi.json", (req: Request, res: Response) => {
+    void (async () => {
+      try {
+        await ensureRegistryWarm();
+        const spec = buildOpenApiSpec(originFrom(req));
+        res.set("access-control-allow-origin", "*").json(spec);
+      } catch (exc) {
+        res.status(500).json({ error: "openapi_unavailable", detail: String((exc as Error).message) });
+      }
+    })();
+  });
+
+  app.options("/tools/:name", (_req: Request, res: Response) => {
+    res
+      .status(204)
+      .set({
+        "access-control-allow-origin": "*",
+        "access-control-allow-methods": "POST, OPTIONS",
+        "access-control-allow-headers": "content-type",
+      })
+      .end();
+  });
+  app.post("/tools/:name", (req: Request, res: Response) => {
+    void (async () => {
+      const args = req.body;
+      if (args !== undefined && args !== null && (typeof args !== "object" || Array.isArray(args))) {
+        res.status(400).json({ error: "body_must_be_a_json_object" });
+        return;
+      }
+      try {
+        await ensureRegistryWarm();
+      } catch (exc) {
+        res.status(503).json({ error: "server_not_ready", detail: String((exc as Error).message) });
+        return;
+      }
+      try {
+        const text = await invokeRegisteredTool(req.params.name, (args ?? {}) as Record<string, unknown>);
+        let bodyObj: unknown;
+        try {
+          bodyObj = JSON.parse(text);
+        } catch {
+          bodyObj = { result: text };
+        }
+        res.set("access-control-allow-origin", "*").json(bodyObj);
+      } catch (exc) {
+        res.status(400).json({
+          error: "tool_call_failed",
+          tool: req.params.name,
+          detail: String((exc as Error).message),
+        });
+      }
+    })();
   });
 
   // Public per-server JWKS (private_key_jwt). Server-to-server, no admin session;

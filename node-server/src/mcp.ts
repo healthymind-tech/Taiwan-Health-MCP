@@ -11,6 +11,7 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { zodToJsonSchema } from "zod-to-json-schema";
 import { healthcheck as dbHealthcheck } from "./db.js";
 import { monitor as dbHealthMonitor } from "./dbHealth.js";
 import { getClient } from "./cache.js";
@@ -32,6 +33,119 @@ import { logError } from "./logger.js";
 
 const SERVER_NAME = "taiwan-health-mcp";
 const SERVER_VERSION = "0.0.0";
+
+// ── Tool registry (OpenAPI bridge) ────────────────────────────────────────────
+// Mirrors the Python OpenAPI bridge (`_build_openapi_spec` + `_handle_openapi_tool_call`):
+// every tool registered on the McpServer is also captured here so `GET /openapi.json`
+// can advertise it and `POST /tools/<name>` can invoke it outside the MCP transport.
+// `buildMcpServer` wraps `server.registerTool` to populate this on each build.
+const _OPENAPI_TOOL_PREFIX = "/tools/";
+
+interface RegisteredTool {
+  name: string;
+  description: string;
+  shape: z.ZodRawShape;
+  handler: (args: Record<string, unknown>) => Promise<{ content: Array<{ type: string; text?: string }> }>;
+}
+
+const toolRegistry = new Map<string, RegisteredTool>();
+
+/** Patch `server.registerTool` so every registration is also recorded in `toolRegistry`. */
+function captureToolRegistrations(server: McpServer): void {
+  const orig = server.registerTool.bind(server) as (...a: unknown[]) => unknown;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (server as any).registerTool = (name: string, config: any, handler: any) => {
+    toolRegistry.set(name, {
+      name,
+      description: typeof config?.description === "string" ? config.description : "",
+      shape: (config?.inputSchema ?? {}) as z.ZodRawShape,
+      handler: handler as RegisteredTool["handler"],
+    });
+    return orig(name, config, handler);
+  };
+}
+
+/** JSON Schema for a tool's input shape (mirrors the schema the SDK exposes via tools/list). */
+function toolInputJsonSchema(shape: z.ZodRawShape): Record<string, unknown> {
+  const schema = zodToJsonSchema(z.object(shape ?? {})) as Record<string, unknown>;
+  delete schema.$schema;
+  return schema;
+}
+
+/**
+ * Build an OpenAPI 3.1 spec exposing the currently-registered MCP tools.
+ * Faithful port of Python `_build_openapi_spec`: each tool `foo` → `POST /tools/foo`
+ * with the tool's input JSON-Schema as the request body and `operationId = foo`.
+ */
+export function buildOpenApiSpec(serverUrl: string): Record<string, unknown> {
+  const paths: Record<string, unknown> = {};
+  for (const tool of toolRegistry.values()) {
+    const schema = toolInputJsonSchema(tool.shape);
+    const description = (tool.description || "").trim();
+    const summary = description ? description.split("\n")[0].slice(0, 120) : tool.name;
+    const required = schema.required;
+    paths[`${_OPENAPI_TOOL_PREFIX}${tool.name}`] = {
+      post: {
+        operationId: tool.name,
+        summary,
+        description,
+        requestBody: {
+          required: Array.isArray(required) && required.length > 0,
+          content: { "application/json": { schema } },
+        },
+        responses: {
+          "200": {
+            description: "Tool result",
+            content: { "application/json": { schema: { type: "object" } } },
+          },
+        },
+      },
+    };
+  }
+  const spec: Record<string, unknown> = {
+    openapi: "3.1.0",
+    info: {
+      title: "Taiwan Health MCP — OpenAPI bridge",
+      description:
+        "REST/OpenAPI surface over the Taiwan Health MCP tools, for OpenAPI tool " +
+        "clients such as Open WebUI. Tools are the same ones served over MCP at the " +
+        "streamable-http endpoint.",
+      version: "1.0.0",
+    },
+    paths,
+  };
+  if (serverUrl) spec.servers = [{ url: serverUrl }];
+  return spec;
+}
+
+/** True once at least one tool has been registered (registry warmed). */
+export function toolRegistryReady(): boolean {
+  return toolRegistry.size > 0;
+}
+
+/** Flatten a tool result's text content blocks (mirrors `_extract_text_from_tool_result`). */
+function extractToolText(result: { content?: Array<{ text?: string }> }): string {
+  const blocks = result?.content;
+  if (!Array.isArray(blocks)) return String(result);
+  return blocks.map((b) => (b?.text != null ? b.text : "")).filter((t) => t !== "").join("\n");
+}
+
+/**
+ * Invoke a registered tool by name with a JSON-object of arguments and return the
+ * flattened text result. Mirrors Python `mcp.call_tool` + text extraction.
+ * Throws `unknown_tool` if not registered; validation/handler errors propagate.
+ */
+export async function invokeRegisteredTool(
+  name: string,
+  args: Record<string, unknown>,
+): Promise<string> {
+  const tool = toolRegistry.get(name);
+  if (!tool) throw new Error(`unknown_tool: ${name}`);
+  // Validate + coerce (applies zod defaults) the same way the MCP transport would.
+  const parsed = z.object(tool.shape ?? {}).parse(args) as Record<string, unknown>;
+  const result = await tool.handler(parsed);
+  return extractToolText(result);
+}
 
 /**
  * Build the health_check JSON string.
@@ -1378,6 +1492,12 @@ function registerLabTools(server: McpServer, svc: LabService): void {
 /** Construct a fresh McpServer with all currently-ported tools registered. */
 export async function buildMcpServer(): Promise<McpServer> {
   const server = new McpServer({ name: SERVER_NAME, version: SERVER_VERSION });
+
+  // Repopulate the OpenAPI tool registry from this build (mirrors Python, where
+  // the spec reflects the currently-registered tools). Cleared first so a rebuild
+  // with different module gating replaces — never accumulates — entries.
+  toolRegistry.clear();
+  captureToolRegistrations(server);
 
   server.registerTool(
     "health_check",
