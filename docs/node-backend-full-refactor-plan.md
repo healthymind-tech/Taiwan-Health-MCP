@@ -797,8 +797,17 @@ worker 跑完 → MCP 工具查得到資料 → FHIR 產生 → 驗證通過。P
      `/status.json`(靜態目錄,byte-identical)+ OpenAPI bridge `/openapi.json`+`POST /tools/<name>`(`buildMcpServer` 包裹
      `registerTool` 建工具 registry;canary 對 Python `:8080` 驗 51 工具路徑集零差異)。再把 `app` service 改 build
      `node-server/Dockerfile`(`node dist/server.js`)、移除 `./src`+`./static` mount。live 驗:容器 healthy、所有 service
-     init、經 nginx `:8080` 的 status/openapi/mcp/tools/admin 全綠。**唯一殘留 Python 依賴 = settings seeding 路徑**
-     (`adminSettings.ts:306` 留 Python;已 seed 的 DB 不受影響,全新部署需補一次性 seeder)。
+     init、經 nginx `:8080` 的 status/openapi/mcp/tools/admin 全綠。
+   - ✅ **settings seeding 已移植(commit `9a25287`)**:`adminSettings.seedIfEmpty()`(忠實 port `seed_if_empty`:迭代
+     `SETTINGS_SCHEMA`→env/default→`INSERT … ON CONFLICT DO NOTHING`)接入 `server.ts` bootstrap + `adminWorker.ts` main
+     兩個 boot path。seed 集合對 Python `SETTINGS_SCHEMA` byte-identical(37 keys)、對已 seed DB idempotent。**全新
+     Node-only 部署現可自行 seed,不再需要 Python。唯一殘留 Python = 刻意保留的 drug shim。**
+   - ✅ **完整 parity 回歸 + 差異修正(2026-07-01;修正 commit `f7c6327`)**:用 polyglot worker image 起拋棄式 Python
+     baseline(`python server.py`)+ node canary(覆寫已知 `ADMIN_PASSWORD_HASH`,正式 app 不動),在 compose 網路內跑三套
+     harness——**MCP API parity 49 pass/2 warn(embedding 排序非決定性)/2 skip/0 fail(全 51 工具)**;**admin REST parity
+     10/10 0 fail**;**e2e smoke 0 step-diff/0 fail**。修掉 admin 初測的 2 個外觀差異:OCR-down 錯誤字串(undici
+     `fetch failed`→httpx `All connection attempts failed`,`ocrProbe.httpxLikeMessage`)、settings float `3` vs `3.0`
+     (`serializeSettingsResponse` 對整數值 float 欄位 tag 後還原裸 `N.0`)。**全-Node 後端對 Python 行為等價、無功能回歸。**
 2. nginx 上游不變（`/mcp`、`/admin/*` 等仍指後端，只是後端換 Node）。
 3. Prometheus metrics 名稱與 label 對齊（`record_tool_call`、`record_cache_op`、pool stats）。
 4. 結構化 JSON log 到 stderr；`LOG_LEVEL` 行為一致。
