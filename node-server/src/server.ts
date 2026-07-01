@@ -23,6 +23,7 @@ import { initClient, closeClient } from "./cache.js";
 import { startDbStatsCollector, startMetricsServer } from "./metrics.js";
 import { buildMcpServer, buildOpenApiSpec, invokeRegisteredTool, toolRegistryReady } from "./mcp.js";
 import { STATUS_DATA_JSON } from "./statusData.js";
+import { seedIfEmpty } from "./admin/adminSettings.js";
 import { adminHandler } from "./admin/adminApp.js";
 import { getFhirServerJwks, fhirServerSecretKey } from "./admin/adminFhirServers.js";
 import { completeAuthorization, OAuthError } from "./admin/fhirOauthService.js";
@@ -47,6 +48,15 @@ async function bootstrapResources(): Promise<void> {
   // Start the DB health monitor (mirrors Python lifespan db_health.monitor().start()).
   // Idempotent; runs regardless of pool init so `monitoring` reflects a live probe loop.
   dbHealthMonitor().start();
+
+  // Seed admin.app_settings from env/defaults on first boot (mirrors Python
+  // lifespan seed_if_empty). Idempotent; must run before services read settings
+  // (MinIO/embedding). Fail-open — a seed error degrades to env-only behavior.
+  try {
+    await seedIfEmpty();
+  } catch (err) {
+    logError("Settings seed skipped", { error: String((err as Error).message) });
+  }
 
   try {
     await initClient();

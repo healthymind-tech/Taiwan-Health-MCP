@@ -303,9 +303,50 @@ export async function getAll(): Promise<{ groups: Record<string, unknown>[] }> {
   return { groups };
 }
 
-// `defaultAsStr` is reserved for the seed path (not ported here — seeding stays
-// on the Python boot path until the worker chunk).
-void defaultAsStr;
+/**
+ * Seed every registry key from its env var (or default) if not already present.
+ * Faithful port of `admin_settings.seed_if_empty`: idempotent via
+ * `ON CONFLICT DO NOTHING`, so existing values are never overwritten and
+ * newly-added keys self-seed on later upgrades. Returns the number of keys
+ * considered (mirrors Python returning `len(rows)`, not the true insert count).
+ *
+ * Called on both the app and the worker boot path so a fresh deployment gets a
+ * populated `admin.app_settings` without any Python process.
+ */
+export async function seedIfEmpty(): Promise<number> {
+  const rows: [string, string, string][] = [];
+  for (const [group, spec] of Object.entries(SETTINGS_SCHEMA)) {
+    for (const f of spec.fields) {
+      const envVal = process.env[f.env];
+      const value = envVal !== undefined ? envVal : defaultAsStr(f);
+      rows.push([group, f.key, value]);
+    }
+  }
+  await withTransaction(async (client) => {
+    // Idempotent migration for existing deployments (schema.sql only runs on a
+    // fresh postgres data dir).
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS admin.app_settings (
+          group_key   TEXT NOT NULL,
+          key         TEXT NOT NULL,
+          value       TEXT,
+          updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_by  TEXT,
+          PRIMARY KEY (group_key, key)
+      )
+    `);
+    for (const [g, k, v] of rows) {
+      await client.query(
+        `INSERT INTO admin.app_settings (group_key, key, value)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (group_key, key) DO NOTHING`,
+        [g, k, v],
+      );
+    }
+  });
+  bustCache();
+  return rows.length;
+}
 
 // ── Write path: save_group / list_models / test_group ────────────────────────
 // Faithful port of the corresponding `src/admin_settings.py` functions.

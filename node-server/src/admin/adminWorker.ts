@@ -23,7 +23,7 @@ import { monitor as dbHealthMonitor, isDbDownError } from "../dbHealth.js";
 import { initClient } from "../cache.js";
 import * as minioService from "../minioService.js";
 import { initBroadcast } from "./adminWs.js";
-import { getGroup } from "./adminSettings.js";
+import { getGroup, seedIfEmpty } from "./adminSettings.js";
 import { listDueSchedules, fireSchedule, type DueSchedule } from "./adminSchedule.js";
 import { sweepExpiringTokens } from "./fhirOauthService.js";
 import { fhirServerSecretKey } from "./adminFhirServers.js";
@@ -265,8 +265,15 @@ export async function runWorker(): Promise<void> {
     logWarning("Worker Redis init failed — continuing", { error: String((err as Error).message) });
   }
 
-  // NOTE: admin.app_settings is seeded by the server/Python on first boot; the
-  // Node worker reads the already-seeded `worker` / `minio` groups directly.
+  // Seed admin.app_settings from env/defaults on first boot (mirrors Python
+  // admin_worker.seed_if_empty). Idempotent + fail-open; whichever of app/worker
+  // boots first populates the table, so the worker's getGroup reads real values.
+  try {
+    await seedIfEmpty();
+  } catch (err) {
+    logWarning("Worker settings seed skipped", { error: String((err as Error).message) });
+  }
+
   const workerCfg = await getGroup("worker").catch(() => ({}) as Record<string, unknown>);
   const num = (v: unknown, d: number): number => {
     const n = Number(v);
