@@ -286,7 +286,12 @@ export async function adminHandler(req: Request, res: Response, next: NextFuncti
 
     if (method === "GET" && path === "/admin/api/settings") {
       try {
-        sendJson(res, 200, await adminSettings.getAll());
+        // Custom serialize so integer-valued float fields render as `N.0`
+        // (Python json.dumps(float) parity — see serializeSettingsResponse).
+        res
+          .status(200)
+          .set("content-type", "application/json; charset=utf-8")
+          .send(adminSettings.serializeSettingsResponse(await adminSettings.getAll()));
       } catch (exc) {
         sendJson(res, 500, { error: "Failed to load settings", detail: String((exc as Error).message) });
       }

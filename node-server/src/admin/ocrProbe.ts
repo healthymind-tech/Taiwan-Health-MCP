@@ -17,6 +17,16 @@
 
 import * as adminSettings from "./adminSettings.js";
 
+/**
+ * Map Node's generic `fetch` failure message to the httpx-equivalent string the
+ * Python probe surfaces, so `infrastructure.ocr.detail` matches byte-for-byte.
+ * undici raises TypeError "fetch failed" for a refused/unreachable host; httpx's
+ * ConnectError stringifies to "All connection attempts failed".
+ */
+function httpxLikeMessage(message: string): string {
+  return message === "fetch failed" ? "All connection attempts failed" : message;
+}
+
 /** GET each candidate; return true on the first 2xx (mirrors `_probe_http_candidates`). */
 async function probeHttpCandidates(candidates: string[]): Promise<{ ok: boolean; message: string }> {
   let lastMessage = "No probe URL candidates configured.";
@@ -28,7 +38,7 @@ async function probeHttpCandidates(candidates: string[]): Promise<{ ok: boolean;
       if (resp.status >= 200 && resp.status < 300) return { ok: true, message: `HTTP ${resp.status}` };
       lastMessage = `HTTP ${resp.status}`;
     } catch (exc) {
-      lastMessage = String((exc as Error).message);
+      lastMessage = httpxLikeMessage(String((exc as Error).message));
     } finally {
       clearTimeout(timer);
     }

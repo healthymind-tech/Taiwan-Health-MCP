@@ -304,6 +304,34 @@ export async function getAll(): Promise<{ groups: Record<string, unknown>[] }> {
 }
 
 /**
+ * Serialize a `getAll()` payload with Python-parity number formatting. A `float`
+ * field whose value is a whole number must render as `N.0` (Python
+ * `json.dumps(float(3))` → `"3.0"`), which JS `JSON.stringify` drops to `3`;
+ * `json.loads` then yields int vs float and the admin REST parity flags it.
+ * Non-integer floats (`0.1`) and all other types already match, so only
+ * integer-valued floats are tagged. Used by the GET /admin/api/settings route.
+ */
+export function serializeSettingsResponse(payload: { groups: Record<string, unknown>[] }): string {
+  const FLOAT_TAG = "@@FLOAT@@";
+  const tagged = {
+    groups: (payload.groups ?? []).map((g) => {
+      const grp = g as Record<string, unknown>;
+      const fields = (grp.fields as Array<Record<string, unknown>>) ?? [];
+      return {
+        ...grp,
+        fields: fields.map((f) =>
+          f.type === "float" && typeof f.value === "number" && Number.isInteger(f.value)
+            ? { ...f, value: `${FLOAT_TAG}${f.value}` }
+            : f,
+        ),
+      };
+    }),
+  };
+  // Unwrap the tagged placeholders into bare decimal literals (e.g. `3` → `3.0`).
+  return JSON.stringify(tagged).replace(new RegExp(`"${FLOAT_TAG}(-?\\d+)"`, "g"), "$1.0");
+}
+
+/**
  * Seed every registry key from its env var (or default) if not already present.
  * Faithful port of `admin_settings.seed_if_empty`: idempotent via
  * `ON CONFLICT DO NOTHING`, so existing values are never overwritten and
