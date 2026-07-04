@@ -11,7 +11,8 @@ ADMIN_ENABLED=true
 ADMIN_USERNAME=admin
 # 產生密碼雜湊：
 # python -c "import hashlib; print('sha256$' + hashlib.sha256(b'change-me').hexdigest())"
-ADMIN_PASSWORD_HASH=sha256$...
+# 寫入 compose 使用的 .env 時，請將雜湊中的 $ 寫成 $$，避免 Docker Compose 變數插值。
+ADMIN_PASSWORD_HASH=sha256$$...
 ADMIN_SESSION_SECRET=change_this_admin_session_secret
 ADMIN_SESSION_TTL_MINUTES=240
 ADMIN_MAX_UPLOAD_MB=512
