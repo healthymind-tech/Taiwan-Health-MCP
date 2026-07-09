@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 Taiwan common lab tests: Chinese names + reference ranges.
 Applied after full LOINC load.
@@ -10,13 +12,31 @@ Data is read from two CSV files co-located with the other LOINC source files:
 import csv
 import os
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-import asyncpg
+if TYPE_CHECKING:
+    import asyncpg
 
 # In Docker, FHIR_CODE_DIR defaults to /app/fhir-code (same as other loaders).
 # Locally it resolves relative to the repo root.
 _REPO_ROOT = Path(__file__).parent.parent.parent
 LOINC_DIR = Path(os.getenv("FHIR_CODE_DIR", str(_REPO_ROOT / "fhir-code"))) / "loinc"
+
+
+def _normalized_dict_reader(handle):
+    reader = csv.DictReader(handle)
+    reader.fieldnames = [
+        (name or "").strip().lstrip("\ufeff") for name in (reader.fieldnames or [])
+    ]
+    return reader
+
+
+def _require_columns(path: Path, fieldnames: list[str] | None, required: set[str]) -> None:
+    missing = required - set(fieldnames or [])
+    if missing:
+        raise ValueError(
+            f"{path} missing required column(s): {', '.join(sorted(missing))}"
+        )
 
 
 def _load_mapping_csv(path: str | Path | None = None) -> list[tuple]:
@@ -26,14 +46,16 @@ def _load_mapping_csv(path: str | Path | None = None) -> list[tuple]:
         raise FileNotFoundError(f"LOINC mapping CSV not found: {path}")
     rows = []
     with path.open(encoding="utf-8") as f:
-        for row in csv.DictReader(f):
+        reader = _normalized_dict_reader(f)
+        _require_columns(path, reader.fieldnames, {"loinc_code"})
+        for row in reader:
             rows.append(
                 (
                     row["loinc_code"],
-                    row["name_zh"],
-                    row["common_name_zh"],
-                    row["specimen_type"],
-                    row["unit"],
+                    row.get("name_zh", ""),
+                    row.get("common_name_zh", ""),
+                    row.get("specimen_type", ""),
+                    row.get("unit", ""),
                 )
             )
     return rows
@@ -46,7 +68,22 @@ def _load_ranges_csv(path: str | Path | None = None) -> list[tuple]:
         raise FileNotFoundError(f"Reference ranges CSV not found: {path}")
     rows = []
     with path.open(encoding="utf-8") as f:
-        for row in csv.DictReader(f):
+        reader = _normalized_dict_reader(f)
+        _require_columns(
+            path,
+            reader.fieldnames,
+            {
+                "loinc_code",
+                "age_min",
+                "age_max",
+                "gender",
+                "range_low",
+                "range_high",
+                "unit",
+                "interpretation",
+            },
+        )
+        for row in reader:
             rows.append(
                 (
                     row["loinc_code"],
