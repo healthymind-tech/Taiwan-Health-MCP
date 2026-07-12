@@ -101,7 +101,10 @@ function parseCsv(text: string): string[][] {
 function parseCsvDict(text: string): Record<string, string>[] {
   const rows = parseCsv(text);
   if (rows.length === 0) return [];
-  const header = rows[0];
+  // Trim surrounding whitespace from header names so lookups tolerate padded
+  // columns in uploaded CSVs (the leading file BOM is already stripped by
+  // parseCsv) — mirrors PR #25's header normalization on the Python side.
+  const header = rows[0].map((h) => h.trim());
   const out: Record<string, string>[] = [];
   for (let r = 1; r < rows.length; r += 1) {
     const cells = rows[r];
@@ -237,10 +240,14 @@ export function buildLoincStagePayload(
       const concept = conceptMap.get(m["loinc_code"]);
       if (concept) {
         mappingMatchCount += 1;
-        concept[13] = m["name_zh"];
-        concept[14] = m["common_name_zh"];
-        concept[15] = m["specimen_type"];
-        concept[16] = m["unit"];
+        // Optional Taiwan columns may be absent from the uploaded CSV; default
+        // to "" so a missing specimen_type/unit column never stages `undefined`
+        // (JS returns undefined for an absent key rather than throwing — cf.
+        // PR #25, which fixed the equivalent Python `KeyError` crash).
+        concept[13] = m["name_zh"] ?? "";
+        concept[14] = m["common_name_zh"] ?? "";
+        concept[15] = m["specimen_type"] ?? "";
+        concept[16] = m["unit"] ?? "";
       }
     }
     if (mappingRowCount === 0) {
