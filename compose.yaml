@@ -150,7 +150,6 @@ services:
       - DRUG_ANALYSIS_TEMPERATURE=${DRUG_ANALYSIS_TEMPERATURE:-0.1}
       - DRUG_ANALYSIS_MAX_TOKENS=${DRUG_ANALYSIS_MAX_TOKENS:-4096}
       - DRUG_ANALYSIS_MAX_RETRIES=${DRUG_ANALYSIS_MAX_RETRIES:-3}
-      - PYTHONUNBUFFERED=1
     depends_on:
       pgbouncer:
         condition: service_healthy
