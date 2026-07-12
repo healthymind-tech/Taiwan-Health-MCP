@@ -42,7 +42,7 @@ import {
   sortedAdminJobTypes,
   JobValueError,
 } from "./adminJobs.js";
-import { listServiceProbes } from "./adminServices.js";
+import { listServiceProbes, runServiceProbes, ValueError as ServiceProbeValueError } from "./adminServices.js";
 import { listIgs, getIgDetail, setDefault as setIgDefault, removeIg } from "./adminIg.js";
 import { query } from "../db.js";
 import { broadcast } from "./adminWs.js";
@@ -614,6 +614,27 @@ export async function adminHandler(req: Request, res: Response, next: NextFuncti
         sendJson(res, 200, await listServiceProbes());
       } catch (exc) {
         sendJson(res, 500, { error: "Failed to load cached service probes", detail: String((exc as Error).message) });
+      }
+      return;
+    }
+
+    // POST /admin/api/services/probe — run live probes (optionally a subset).
+    if (method === "POST" && path === "/admin/api/services/probe") {
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const rawKeys = body.service_keys ?? [];
+      if (rawKeys && !Array.isArray(rawKeys)) {
+        sendJson(res, 400, { error: "service_keys must be an array when provided" });
+        return;
+      }
+      try {
+        const serviceKeys = (rawKeys as unknown[]).map((k) => String(k));
+        sendJson(res, 200, await runServiceProbes(serviceKeys));
+      } catch (exc) {
+        if (exc instanceof ServiceProbeValueError) {
+          sendJson(res, 400, { error: String(exc.message) });
+        } else {
+          sendJson(res, 500, { error: "Failed to run active service probes", detail: String((exc as Error).message) });
+        }
       }
       return;
     }

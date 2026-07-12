@@ -12,8 +12,11 @@
  * asyncpg's microsecond `+00:00`. `generated_at` is volatile (now()).
  */
 
-import { query } from "../db.js";
+import { query, withTransaction } from "../db.js";
 import { tsIsoExpr, pyIso } from "./adminJobs.js";
+import { getClient as getRedisClient } from "../cache.js";
+import { getGroup } from "./adminSettings.js";
+import * as minioService from "../minioService.js";
 
 export const SERVICE_PROBE_ORDER = [
   "database",
@@ -188,6 +191,271 @@ export async function listServiceProbes(historyLimit = 28): Promise<Record<strin
   const payload = serializeServiceProbes(cur.rows, hist.rows);
   payload.generated_at = new Date().toISOString();
   return payload;
+}
+
+// ── Active probing (port of `run_service_probes` + `_probe_*`) ────────────────
+// Runs live reachability checks and persists them to admin.service_probes /
+// _history, which the read path above renders. Since the Python `app` is
+// retired, this is the sole implementation — functional correctness against the
+// read path matters, not byte-parity with the old asyncpg backend.
+
+interface ProbeResult {
+  status: string;
+  endpoint: string;
+  latency_ms: number | null;
+  message: string;
+  details: Record<string, unknown>;
+}
+
+/** Port of `_probe_http_candidates`: GET each candidate; first 2xx wins. */
+async function probeHttpCandidates(
+  candidates: string[],
+  headers: Record<string, string> = {},
+  timeoutMs = 4000,
+): Promise<{ ok: boolean; endpoint: string; latencyMs: number | null; message: string; details: Record<string, unknown> }> {
+  let lastMessage = "No probe URL candidates configured.";
+  let lastDetails: Record<string, unknown> = {};
+  if (candidates.length === 0) return { ok: false, endpoint: "", latencyMs: null, message: lastMessage, details: {} };
+  for (const candidate of candidates) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+    const started = performance.now();
+    try {
+      const resp = await fetch(candidate, { headers, redirect: "follow", signal: ctrl.signal });
+      const latencyMs = Math.max(Math.trunc(performance.now() - started), 0);
+      const details = { http_status: resp.status };
+      if (resp.status >= 200 && resp.status < 300) {
+        return { ok: true, endpoint: candidate, latencyMs, message: `HTTP ${resp.status}`, details };
+      }
+      lastMessage = `HTTP ${resp.status}`;
+      lastDetails = details;
+    } catch (exc) {
+      lastMessage = String((exc as Error).message);
+      lastDetails = { error_type: (exc as Error).name };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  return { ok: false, endpoint: candidates[0], latencyMs: null, message: lastMessage, details: lastDetails };
+}
+
+/** Port of `_ollama_probe_candidates`. */
+function ollamaCandidates(baseUrl: string): string[] {
+  const base = baseUrl.replace(/\/+$/, "");
+  if (base.endsWith("/api")) return [`${base}/version`, `${base}/tags`];
+  if (base.endsWith("/api/version") || base.endsWith("/api/tags")) return [base];
+  return [`${base}/api/version`, `${base}/api/tags`];
+}
+
+/** Port of `_openai_like_probe_candidates`. */
+function openaiCandidates(baseUrl: string): string[] {
+  const base = baseUrl.replace(/\/+$/, "");
+  if (base.endsWith("/models")) return [base];
+  if (base.endsWith("/v1")) return [`${base}/models`];
+  return [`${base}/models`, `${base}/v1/models`];
+}
+
+async function probeDatabase(): Promise<ProbeResult> {
+  const started = performance.now();
+  await query("SELECT 1");
+  const latency = Math.max(Math.trunc(performance.now() - started), 0);
+  return {
+    status: "ok",
+    endpoint: "postgresql://database",
+    latency_ms: latency,
+    message: "SELECT 1 succeeded.",
+    details: { query: "SELECT 1" },
+  };
+}
+
+async function probeRedis(): Promise<ProbeResult> {
+  const started = performance.now();
+  await getRedisClient().ping();
+  const latency = Math.max(Math.trunc(performance.now() - started), 0);
+  return {
+    status: "ok",
+    endpoint: "redis://cache",
+    latency_ms: latency,
+    message: "Redis PING succeeded.",
+    details: { command: "PING" },
+  };
+}
+
+async function probeMinio(): Promise<ProbeResult> {
+  if (!minioService.initialized()) {
+    return { status: "error", endpoint: "", latency_ms: null, message: "MinIO service has not been initialized.", details: { state: "missing" } };
+  }
+  if (minioService.enabled()) {
+    return { status: "ok", endpoint: `minio://${minioService.bucket()}`, latency_ms: null, message: `Bucket ${minioService.bucket()} reachable.`, details: { bucket: minioService.bucket() } };
+  }
+  if (minioService.configEnabled()) {
+    return { status: "error", endpoint: "", latency_ms: null, message: minioService.initError() || "MinIO configured but unavailable.", details: { state: "unavailable" } };
+  }
+  return { status: "degraded", endpoint: "", latency_ms: null, message: "MinIO disabled by configuration.", details: { state: "disabled" } };
+}
+
+async function probeEmbedding(): Promise<ProbeResult> {
+  const emb = await getGroup("embedding");
+  const baseUrl = String((emb.base_url ?? "") || "").trim().replace(/\/+$/, "");
+  const model = String((emb.model ?? "") || "").trim();
+  if (!baseUrl) {
+    return { status: "degraded", endpoint: "", latency_ms: null, message: "Embedding is disabled because the base URL is not set.", details: { model, state: "disabled" } };
+  }
+  const probe = await probeHttpCandidates(ollamaCandidates(baseUrl));
+  return {
+    status: probe.ok ? "ok" : "error",
+    endpoint: probe.endpoint,
+    latency_ms: probe.latencyMs,
+    message: probe.ok ? `Embedding endpoint reachable for model ${model}.` : `Embedding endpoint probe failed: ${probe.message}`,
+    details: { model, base_url: baseUrl, ...probe.details },
+  };
+}
+
+async function probeOcrServer(): Promise<ProbeResult> {
+  const ocr = await getGroup("ocr");
+  const provider = String((ocr.provider ?? "dots_ocr") || "dots_ocr").trim().toLowerCase();
+  const serverIp = String((ocr.server_ip ?? "127.0.0.1") || "127.0.0.1").trim();
+  const port = Number(ocr.port || 8002) || 8002;
+  const model = String((ocr.model ?? "") || "").trim();
+  const endpoint = `http://${serverIp}:${port}`;
+  if (provider !== "dots_ocr") {
+    return { status: "error", endpoint, latency_ms: null, message: "Unsupported DRUG_OCR_PROVIDER", details: { provider, model } };
+  }
+  const probe = await probeHttpCandidates([`${endpoint}/health`, `${endpoint}/v1/models`]);
+  return {
+    status: probe.ok ? "ok" : "error",
+    endpoint: probe.endpoint,
+    latency_ms: probe.latencyMs,
+    message: probe.ok ? `OCR server reachable for model ${model}.` : `OCR server probe failed: ${probe.message}`,
+    details: { provider, model, ...probe.details },
+  };
+}
+
+/** Probe the analysis endpoint once; returns the shared (analysis_server, lm_server) pair. */
+async function probeAnalysisPair(): Promise<[ProbeResult, ProbeResult]> {
+  const cfg = await getGroup("analysis");
+  const provider = String((cfg.provider ?? "openai") || "openai").trim().toLowerCase();
+  const baseUrl = String((cfg.base_url ?? "") || "").trim().replace(/\/+$/, "");
+  const model = String((cfg.model ?? "") || "").trim();
+  const apiKey = String((cfg.api_key ?? "") || "");
+  const details = { provider, model };
+
+  if (!baseUrl) {
+    const failure: ProbeResult = { status: "error", endpoint: "", latency_ms: null, message: "Analysis base URL is not configured.", details };
+    return [{ ...failure }, { ...failure }];
+  }
+
+  const headers: Record<string, string> = {};
+  if ((provider === "openai" || provider === "vllm") && apiKey && apiKey !== "0") {
+    headers.Authorization = `Bearer ${apiKey}`;
+  }
+  const candidates = provider === "ollama" ? ollamaCandidates(baseUrl) : openaiCandidates(baseUrl);
+  const probe = await probeHttpCandidates(candidates, headers);
+  const merged = { ...details, base_url: baseUrl, ...probe.details };
+  const analysisRow: ProbeResult = {
+    status: probe.ok ? "ok" : "error",
+    endpoint: probe.endpoint,
+    latency_ms: probe.latencyMs,
+    message: probe.ok ? `Analysis runtime ready for provider ${provider}.` : `Analysis server probe failed: ${probe.message}`,
+    details: merged,
+  };
+  const lmRow: ProbeResult = {
+    status: probe.ok ? "ok" : "error",
+    endpoint: probe.endpoint,
+    latency_ms: probe.latencyMs,
+    message: probe.ok ? `LM endpoint reachable for model ${model}.` : `LM endpoint probe failed: ${probe.message}`,
+    details: merged,
+  };
+  return [analysisRow, lmRow];
+}
+
+/**
+ * Run live probes for `serviceKeys` (all when empty), persist to
+ * admin.service_probes + _history, and return the refreshed read payload plus
+ * `probed_service_keys`. Port of `run_service_probes`.
+ */
+export async function runServiceProbes(serviceKeys?: string[]): Promise<Record<string, unknown>> {
+  let selected = SERVICE_PROBE_ORDER;
+  if (serviceKeys && serviceKeys.length) {
+    const requested = new Set(serviceKeys.map((k) => String(k).trim()).filter(Boolean));
+    const invalid = [...requested].filter((k) => !SERVICE_PROBE_ORDER.includes(k)).sort();
+    if (invalid.length) throw new ValueError(`Unsupported service probe keys: ${invalid.join(", ")}`);
+    selected = SERVICE_PROBE_ORDER.filter((k) => requested.has(k));
+  }
+
+  const checkedAt = new Date();
+  let analysisPair: [ProbeResult, ProbeResult] | null = null;
+  const results: (ProbeResult & { service_key: string })[] = [];
+
+  for (const key of selected) {
+    try {
+      let result: ProbeResult;
+      if (key === "database") result = await probeDatabase();
+      else if (key === "redis") result = await probeRedis();
+      else if (key === "minio") result = await probeMinio();
+      else if (key === "embedding_model") result = await probeEmbedding();
+      else if (key === "ocr_server") result = await probeOcrServer();
+      else if (key === "analysis_server" || key === "lm_server") {
+        if (!analysisPair) analysisPair = await probeAnalysisPair();
+        result = key === "analysis_server" ? analysisPair[0] : analysisPair[1];
+      } else {
+        throw new ValueError(`Unsupported service probe key: ${key}`);
+      }
+      results.push({ service_key: key, ...result });
+    } catch (exc) {
+      if (exc instanceof ValueError) throw exc;
+      results.push({
+        service_key: key,
+        status: "error",
+        endpoint: "",
+        latency_ms: null,
+        message: String((exc as Error).message),
+        details: { error_type: (exc as Error).name },
+      });
+    }
+  }
+
+  await withTransaction(async (client) => {
+    for (const r of results) {
+      const params = [
+        r.service_key,
+        r.status,
+        r.endpoint || null,
+        r.latency_ms,
+        r.message || null,
+        JSON.stringify(r.details ?? {}),
+        checkedAt,
+      ];
+      await client.query(
+        `INSERT INTO admin.service_probes
+            (service_key, status, endpoint, latency_ms, message, details_json, checked_at)
+         VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)
+         ON CONFLICT (service_key) DO UPDATE
+            SET status = EXCLUDED.status, endpoint = EXCLUDED.endpoint,
+                latency_ms = EXCLUDED.latency_ms, message = EXCLUDED.message,
+                details_json = EXCLUDED.details_json, checked_at = EXCLUDED.checked_at`,
+        params,
+      );
+      await client.query(
+        `INSERT INTO admin.service_probe_history
+            (service_key, status, endpoint, latency_ms, message, details_json, checked_at)
+         VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)`,
+        params,
+      );
+    }
+  });
+
+  const payload = await listServiceProbes();
+  payload.probed_service_keys = selected;
+  return payload;
+}
+
+/** Raised for a bad `service_keys` request → HTTP 400 (mirrors Python ValueError). */
+export class ValueError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ValueError";
+  }
 }
 
 /**
