@@ -94,6 +94,17 @@ import {
   SourceRuntimeError,
 } from "./adminSources.js";
 import { getEmbeddingStatus } from "./adminEmbedding.js";
+import {
+  beginRegistration,
+  finishRegistration,
+  beginAuthentication,
+  finishAuthentication,
+  listCredentials,
+  deleteCredential,
+  buildChallengeCookie,
+  clearChallengeCookie,
+  readChallengeCookie,
+} from "./webauthn.js";
 import { getDrugAdminStatus, getDrugPipelineStatus, getDrugLicenseEvents } from "./adminDrug.js";
 import { getStates as getMaintenanceStates, setEnabled as setMaintenanceEnabled, MaintenanceValueError } from "./adminMaintenance.js";
 import * as minioService from "../minioService.js";
@@ -222,6 +233,43 @@ export async function adminHandler(req: Request, res: Response, next: NextFuncti
     return;
   }
 
+  // 4e. Passkey login ceremony (unauthenticated — mirrors password login above).
+  // Only the single configured admin user can hold passkeys.
+  if (method === "POST" && path === "/admin/api/passkeys/login/options") {
+    try {
+      const options = await beginAuthentication(cfg.adminUsername);
+      res.append("set-cookie", buildChallengeCookie({ c: options.challenge, t: "auth", u: cfg.adminUsername }));
+      sendJson(res, 200, options);
+    } catch (exc) {
+      sendJson(res, 500, { error: "Failed to start passkey login", detail: String((exc as Error).message) });
+    }
+    return;
+  }
+
+  if (method === "POST" && path === "/admin/api/passkeys/login/verify") {
+    const challenge = readChallengeCookie(req, "auth");
+    if (!challenge) {
+      res.append("set-cookie", clearChallengeCookie());
+      sendJson(res, 401, { ok: false, error: "Passkey challenge expired. Please try again." });
+      return;
+    }
+    try {
+      const ok = await finishAuthentication(cfg.adminUsername, req.body as never, challenge.c);
+      if (ok) {
+        setSessionCookie(res, cfg, cfg.adminUsername); // res.set(set-cookie) — must precede appends
+        res.append("set-cookie", clearChallengeCookie()); // single-use challenge
+        sendJson(res, 200, { ok: true });
+      } else {
+        res.append("set-cookie", clearChallengeCookie());
+        sendJson(res, 401, { ok: false, error: "Passkey could not be verified." });
+      }
+    } catch (exc) {
+      res.append("set-cookie", clearChallengeCookie());
+      sendJson(res, 401, { ok: false, error: "Passkey could not be verified.", detail: String((exc as Error).message) });
+    }
+    return;
+  }
+
   // 5. Auth gate.
   if (!adminUsername) {
     if (path.startsWith("/admin/api/")) {
@@ -256,6 +304,54 @@ export async function adminHandler(req: Request, res: Response, next: NextFuncti
 
   // ── Read-only endpoint dispatch ──────────────────────────────────────────
   try {
+    // Passkeys (authenticated): register / list / delete. Registration is bound
+    // to the logged-in admin (adminUsername from the session).
+    if (method === "GET" && path === "/admin/api/passkeys") {
+      sendJson(res, 200, { credentials: await listCredentials(adminUsername) });
+      return;
+    }
+
+    if (method === "POST" && path === "/admin/api/passkeys/register/options") {
+      const options = await beginRegistration(adminUsername);
+      res.append("set-cookie", buildChallengeCookie({ c: options.challenge, t: "reg", u: adminUsername }));
+      sendJson(res, 200, options);
+      return;
+    }
+
+    if (method === "POST" && path === "/admin/api/passkeys/register/verify") {
+      const challenge = readChallengeCookie(req, "reg");
+      res.append("set-cookie", clearChallengeCookie());
+      if (!challenge || challenge.u !== adminUsername) {
+        sendJson(res, 400, { error: "Passkey challenge expired. Please try again." });
+        return;
+      }
+      const body = (req.body ?? {}) as { response?: unknown; label?: unknown };
+      const label = typeof body.label === "string" ? body.label : null;
+      try {
+        const credential = await finishRegistration(
+          adminUsername,
+          (body.response ?? body) as never,
+          challenge.c,
+          label,
+        );
+        sendJson(res, 200, { ok: true, credential });
+      } catch (exc) {
+        sendJson(res, 400, { error: "Passkey registration failed", detail: String((exc as Error).message) });
+      }
+      return;
+    }
+
+    if (method === "DELETE" && path.startsWith("/admin/api/passkeys/")) {
+      const id = decodeURIComponent(path.slice("/admin/api/passkeys/".length));
+      if (!id) {
+        sendJson(res, 400, { error: "Missing credential id." });
+        return;
+      }
+      const removed = await deleteCredential(adminUsername, id);
+      sendJson(res, removed ? 200 : 404, removed ? { ok: true } : { error: "Passkey not found." });
+      return;
+    }
+
     // GET /admin/api/registry/search?q=...  (FHIR package registry autocomplete)
     if (method === "GET" && path === "/admin/api/registry/search") {
       const q = String(req.query.q ?? "");

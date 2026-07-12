@@ -38,6 +38,26 @@ export interface AppConfig {
 
   // Prometheus metrics port (Python: metrics.start_metrics_server -> METRICS_PORT)
   metricsPort: number;
+
+  // WebAuthn / passkey (Node-only feature — no Python counterpart). The RP ID is
+  // the registrable domain the admin console is served from; passkeys are scoped
+  // to it and only usable over HTTPS on that origin (or localhost for dev).
+  webauthnRpId: string;
+  webauthnRpName: string;
+  webauthnOrigins: string[];
+}
+
+/**
+ * Best-effort host extraction from a `scheme://host[:port]/…` URL. Returns "" on
+ * a blank/invalid input so callers can fall back to a hard default.
+ */
+function hostOf(url: string): string {
+  if (!url) return "";
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return "";
+  }
 }
 
 function env(name: string, fallback = ""): string {
@@ -72,7 +92,31 @@ export function loadConfig(): AppConfig {
     adminMaxUploadMb: Number.parseInt(env("ADMIN_MAX_UPLOAD_MB", "512"), 10),
     publicBaseUrl: env("PUBLIC_BASE_URL").trim().replace(/\/+$/, ""),
     metricsPort: Number.parseInt(env("METRICS_PORT", "9090"), 10),
+    ...webauthnFromEnv(env("PUBLIC_BASE_URL").trim().replace(/\/+$/, "")),
   };
+}
+
+/**
+ * Resolve the WebAuthn relying-party config. Defaults are derived so a standard
+ * deployment needs no extra env: RP ID falls back to the PUBLIC_BASE_URL host,
+ * then to the production domain; the expected origin(s) default to
+ * `https://<rpId>`. WEBAUTHN_ORIGIN may be a comma-separated allow-list (e.g. to
+ * add `http://localhost:3000` for local dev) and is passed verbatim to the
+ * verify calls as `expectedOrigin`.
+ */
+function webauthnFromEnv(publicBaseUrl: string): {
+  webauthnRpId: string;
+  webauthnRpName: string;
+  webauthnOrigins: string[];
+} {
+  const rpId =
+    env("WEBAUTHN_RP_ID").trim() || hostOf(publicBaseUrl) || "taiwan-health-mcp.gugulu.tw";
+  const rpName = env("WEBAUTHN_RP_NAME").trim() || "Taiwan Health MCP — Admin";
+  const originsRaw = env("WEBAUTHN_ORIGIN").trim();
+  const origins = originsRaw
+    ? originsRaw.split(",").map((o) => o.trim()).filter(Boolean)
+    : [`https://${rpId}`];
+  return { webauthnRpId: rpId, webauthnRpName: rpName, webauthnOrigins: origins };
 }
 
 export function adminReady(c: AppConfig): boolean {
