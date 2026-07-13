@@ -88,56 +88,24 @@ def _field(
 # seeding is identical to reading the same .env directly.
 SETTINGS_SCHEMA: dict[str, dict[str, Any]] = {
     "embedding": {
-        "label": "Embedding Model",
-        "description": "Embedding provider used by semantic search and all embed jobs.",
-        "provider_field": "provider",
-        "test": "embedding",
+        "label": "Embedding",
+        "description": (
+            "How embed requests are spread across the embedding profiles, plus the "
+            "settings every profile must share. Endpoints are the profiles below."
+        ),
+        "seed_from_env": False,
         "fields": [
             _field(
-                "provider",
+                "strategy",
                 "str",
-                "ollama",
-                "EMBEDDING_PROVIDER",
-                "Provider",
-                options=["ollama", "openai", "google"],
-                help="ollama = local Ollama; openai = OpenAI-compatible /v1; google = Gemini API.",
-            ),
-            _field(
-                "base_url",
-                "str",
-                "http://host.docker.internal:11434",
-                "OLLAMA_BASE_URL",
-                "Base URL",
-                show_if={"provider": ["ollama", "openai"]},
-                is_url=True,
-                provider_defaults={
-                    "ollama": "http://host.docker.internal:11434",
-                    "openai": OPENAI_BASE_URL,
-                },
-                help="Ollama host (…:11434) or the OpenAI-compatible /v1 root. (Google uses a fixed endpoint.)",
-            ),
-            _field(
-                "api_key",
-                "secret",
-                "",
-                "EMBEDDING_API_KEY",
-                "API Key",
-                show_if={"provider": ["openai", "google"]},
-                help="Leave blank to keep the stored key.",
-            ),
-            _field(
-                "model",
-                "str",
-                "qwen3-embedding:0.6b",
-                "OLLAMA_EMBED_MODEL",
-                "Model",
-                is_model=True,
-                provider_defaults={
-                    "ollama": "qwen3-embedding:0.6b",
-                    "openai": "text-embedding-3-small",
-                    "google": "gemini-embedding-001",
-                },
-                help="Click 'Fetch models' to load the provider's available embedding models.",
+                "failover",
+                "EMBEDDING_STRATEGY",
+                "Strategy",
+                options=["failover", "weighted"],
+                help=(
+                    "failover = always the highest-priority healthy profile; "
+                    "weighted = spread by weight, still falling back on failure."
+                ),
             ),
             _field(
                 "dimensions",
@@ -145,7 +113,10 @@ SETTINGS_SCHEMA: dict[str, dict[str, Any]] = {
                 1024,
                 "OLLAMA_EMBED_DIMENSIONS",
                 "Dimensions",
-                help="Vector size stored in pgvector; must match the model's output.",
+                help=(
+                    "Vector size stored in pgvector. Must match what the model returns — "
+                    "and every stored vector, from every module, shares this one size."
+                ),
             ),
             _field("timeout", "int", 30, "OLLAMA_EMBED_TIMEOUT", "Timeout (s)"),
             _field("batch_size", "int", 32, "OLLAMA_EMBED_BATCH_SIZE", "Batch size"),
@@ -153,69 +124,35 @@ SETTINGS_SCHEMA: dict[str, dict[str, Any]] = {
     },
     "analysis": {
         "label": "Analysis LM",
-        "description": "Text-generation endpoint backing structured drug-insert analysis.",
-        "provider_field": "provider",
-        "test": "analysis",
+        "description": (
+            "How drug-insert analysis calls are spread across the Analysis LM "
+            "profiles. Endpoints, models and keys are the profiles below."
+        ),
+        "seed_from_env": False,
         "fields": [
             _field(
-                "provider",
+                "strategy",
                 "str",
-                "openai",
-                "DRUG_ANALYSIS_PROVIDER",
-                "Provider",
-                options=["openai", "ollama"],
-                help="openai = OpenAI-compatible (/v1); ollama = Ollama native (/api).",
-            ),
-            _field(
-                "base_url",
-                "str",
-                OPENAI_BASE_URL,
-                "DRUG_ANALYSIS_BASE_URL",
-                "Base URL",
-                is_url=True,
-                provider_defaults={
-                    "openai": OPENAI_BASE_URL,
-                    "ollama": OLLAMA_BASE_URL,
-                },
+                "failover",
+                "DRUG_ANALYSIS_STRATEGY",
+                "Strategy",
+                options=["failover", "weighted"],
                 help=(
-                    "OpenAI-compatible /v1 root (official API, Azure, vLLM…) or the Ollama host. "
-                    "Inside Docker, a host-local Ollama is reachable as http://host.docker.internal:11434."
+                    "failover = always the highest-priority healthy profile; "
+                    "weighted = spread by weight. Either way a failed call moves "
+                    "on to the next profile."
                 ),
             ),
             _field(
-                "api_key",
-                "secret",
-                "",
-                "DRUG_ANALYSIS_API_KEY",
-                "API Key",
-                show_if={"provider": ["openai"]},
+                "max_retries",
+                "int",
+                3,
+                "DRUG_ANALYSIS_MAX_RETRIES",
+                "Max retries",
                 help=(
-                    "Leave blank to keep the stored key. Blank on a fresh install means no "
-                    "Authorization header is sent."
+                    "Attempts at getting well-formed JSON out of a profile before "
+                    "moving to the next one."
                 ),
-            ),
-            _field(
-                "model",
-                "str",
-                "gpt-4o-mini",
-                "DRUG_ANALYSIS_MODEL_NAME",
-                "Model",
-                is_model=True,
-                provider_defaults={"openai": "gpt-4o-mini", "ollama": "qwen2.5:7b"},
-                help="Click 'Fetch models' to load the models this server actually serves.",
-            ),
-            _field(
-                "temperature", "float", 0.1, "DRUG_ANALYSIS_TEMPERATURE", "Temperature"
-            ),
-            _field("max_tokens", "int", 4096, "DRUG_ANALYSIS_MAX_TOKENS", "Max tokens"),
-            _field("max_retries", "int", 3, "DRUG_ANALYSIS_MAX_RETRIES", "Max retries"),
-            _field(
-                "prompt_path",
-                "str",
-                "",
-                "DRUG_ANALYSIS_PROMPT_PATH",
-                "Prompt path (optional)",
-                help="Leave blank to use the bundled default prompt.",
             ),
         ],
     },
@@ -224,6 +161,7 @@ SETTINGS_SCHEMA: dict[str, dict[str, Any]] = {
         "description": "Vision/OCR backend for drug insert PDFs.",
         "provider_field": "provider",
         "test": "ocr",
+        "seed_from_env": False,
         "fields": [
             _field(
                 "provider",
@@ -252,20 +190,19 @@ SETTINGS_SCHEMA: dict[str, dict[str, Any]] = {
                 "DRUG_OCR_PROMPT_MODE",
                 "Prompt mode",
             ),
-            _field(
-                "prompt_path",
-                "str",
-                "",
-                "DRUG_OCR_PROMPT_PATH",
-                "Prompt path (optional)",
-                help="Leave blank to use the bundled default prompt.",
-            ),
         ],
     },
     "minio": {
         "label": "MinIO Object Storage",
-        "description": "Object storage for uploaded sources and drug assets.",
+        "description": (
+            "Object storage for uploaded sources and drug assets. Owned by the "
+            "deployment (.env / compose) — shown here so you can test it, not change it."
+        ),
         "test": "minio",
+        # Deployment-owned: editing the endpoint here would not move the running
+        # container, it would point the app elsewhere and orphan every object key
+        # already stored against the old bucket.
+        "readonly": True,
         "fields": [
             _field(
                 "endpoint",
@@ -335,7 +272,13 @@ SETTINGS_SCHEMA: dict[str, dict[str, Any]] = {
     },
     "worker": {
         "label": "Admin Worker Tuning",
-        "description": "Background worker loop cadence. Changes take effect on the next worker restart.",
+        "description": (
+            "Background worker loop cadence, read once when the worker starts. Owned "
+            "by the deployment (.env / compose); change it there and restart the worker."
+        ),
+        # Only read at worker start-up, so a form that appeared to change it live
+        # would simply be lying.
+        "readonly": True,
         "fields": [
             _field("name", "str", "admin-worker", "ADMIN_WORKER_NAME", "Worker name"),
             _field(
@@ -423,6 +366,8 @@ async def seed_if_empty(pool: PoolLike) -> int:
     """
     rows: list[tuple[str, str, str]] = []
     for group, spec in SETTINGS_SCHEMA.items():
+        if spec.get("seed_from_env") is False:
+            continue  # operator configures these in the admin console
         # Env is the seed source, so specialise defaults on the env-selected
         # provider (not whatever the schema happens to default to).
         env_stored: dict[str, Any] = {}
@@ -600,6 +545,23 @@ async def get_group(
     return out
 
 
+async def is_group_configured(pool: PoolLike, group: str) -> bool:
+    """Has an operator actually configured this group? True once any row exists.
+
+    ``get_group`` always answers with schema defaults so the admin form has
+    something to prefill, which means callers cannot tell "left at the default"
+    from "never set". The LM/OCR groups are not seeded from env, so for them the
+    difference matters: a drug job must not go dial a default endpoint nobody
+    chose. It asks this instead.
+    """
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT 1 FROM admin.app_settings WHERE group_key = $1 LIMIT 1",
+            group,
+        )
+    return row is not None
+
+
 def group_metadata(group: str, values_masked: dict[str, Any]) -> dict[str, Any]:
     """Build the UI descriptor for a group: field defs + current (masked) values."""
     spec = SETTINGS_SCHEMA[group]
@@ -626,6 +588,7 @@ def group_metadata(group: str, values_masked: dict[str, Any]) -> dict[str, Any]:
         "description": spec.get("description", ""),
         "provider_field": spec.get("provider_field"),
         "test": spec.get("test"),
+        "readonly": bool(spec.get("readonly")),
         "fields": fields,
     }
 
@@ -653,6 +616,11 @@ async def save_group(
     spec = SETTINGS_SCHEMA.get(group)
     if not spec:
         raise ValueError(f"Unknown settings group: {group}")
+    if spec.get("readonly"):
+        raise ValueError(
+            f"{group} is managed by the deployment (.env / compose) and cannot be "
+            "changed here."
+        )
 
     to_write: list[tuple[str, str, str, str]] = []
     for f in spec["fields"]:

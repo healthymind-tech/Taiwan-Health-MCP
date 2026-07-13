@@ -314,6 +314,18 @@ body {
 .asset-preview { width: 100%; height: 480px; border: 1px solid var(--line); border-radius: 8px; margin-top: 12px; background: var(--panel); }
 
 .error-box { background: var(--bad-bg); color: var(--bad-fg); padding: 14px 16px; border-radius: 10px; }
+/* Advisory that is not an error: the operator can proceed, but should read it. */
+.warning-box {
+  background: rgba(255, 212, 121, 0.12);
+  border-left: 3px solid #ffd479;
+  color: var(--fg);
+  padding: 12px 14px;
+  border-radius: 8px;
+  margin: 10px 0 14px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.warning-box code { font-size: 12px; }
 
 /* FHIR Servers module */
 .fhir-server-list { display: flex; flex-direction: column; gap: 12px; }

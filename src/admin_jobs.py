@@ -1792,7 +1792,7 @@ async def _run_drug_analysis_job(
     minio_service: MinioService | None,
 ) -> None:
     _ensure_repo_root_on_path()
-    from drug_analysis_service import DrugAnalysisConfig, DrugAnalysisService
+    from drug_analysis_service import DrugAnalysisService, load_drug_analysis_config
     from loader.loaders.drug_analysis_loader import load_drug_analysis
 
     options = _json_object(job.get("job_options"))
@@ -1807,14 +1807,7 @@ async def _run_drug_analysis_job(
     limit = options.get("limit")
     limit_value = int(limit) if limit not in (None, "") else None
 
-    import admin_settings as _admin_settings
-
-    analysis_service = DrugAnalysisService(
-        DrugAnalysisConfig.from_values(
-            ocr=await _admin_settings.get_group(pool, "ocr"),
-            analysis=await _admin_settings.get_group(pool, "analysis"),
-        )
-    )
+    analysis_service = DrugAnalysisService(await load_drug_analysis_config(pool))
     if retry_stage != "normalize":
         ready, reason = (
             analysis_service.analysis_readiness()

@@ -8,7 +8,7 @@ the TFDA-backed drug assets already persisted by the loaders.
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import json
 import os
 from pathlib import Path
@@ -19,6 +19,12 @@ import uuid
 
 import httpx
 
+from llm_profiles import (
+    LlmProfile,
+    candidate_order,
+    report_failure,
+    report_success,
+)
 from utils import log_error, log_info, log_warning
 
 try:
@@ -277,30 +283,6 @@ def _normalize_string(value: Any) -> str:
     return convert_text_to_traditional(str(value))
 
 
-def _resolve_config_path(raw_value: str, default_path: Path) -> Path:
-    raw_value = raw_value.strip()
-    if not raw_value:
-        return default_path
-    candidate = Path(raw_value)
-    if candidate.is_absolute():
-        return candidate
-    if candidate.exists():
-        return candidate.resolve()
-
-    module_dir = Path(__file__).resolve().parent
-    repo_root = module_dir.parent
-    prompts_dir = _PROMPTS_DIR
-    extra_candidates = [
-        module_dir / candidate,
-        repo_root / candidate,
-        prompts_dir / candidate.name,
-    ]
-    for option in extra_candidates:
-        if option.exists():
-            return option.resolve()
-    return candidate
-
-
 def _first_mapping_value(mapping: Any, *keys: str) -> Any:
     if not isinstance(mapping, dict):
         return []
@@ -389,57 +371,66 @@ class DrugAnalysisConfig:
     ocr_model_name: str
     ocr_prompt_mode: str
     ocr_prompt_path: Path
-    analysis_provider: str
-    analysis_base_url: str
-    analysis_model_name: str
-    analysis_api_key: str
     analysis_prompt_path: Path
-    analysis_temperature: float
-    analysis_max_tokens: int
     analysis_max_retries: int
+    # The Analysis LM endpoints to try, already in the order this run should try
+    # them (see llm_profiles.candidate_order). More than one means failover.
+    analysis_profiles: list[LlmProfile] = field(default_factory=list)
+    analysis_strategy: str = "failover"
+    # Whether an operator has actually configured OCR in the admin console. The
+    # endpoint has no machine-wide default worth dialling, so it is never seeded
+    # from the environment — see `load_drug_analysis_config`.
+    ocr_configured: bool = True
+
+    # ── Views of the primary profile ────────────────────────────────────────
+    # The pipeline records "which provider produced this analysis" and the admin
+    # probe shows "what is this configured against"; both mean the profile that
+    # would be tried first. A call may end up on a later one — analyze_pdf_bytes
+    # reports the profile it actually used.
+
+    @property
+    def analysis_configured(self) -> bool:
+        return bool(self.analysis_profiles)
+
+    @property
+    def _primary(self) -> "LlmProfile | None":
+        return self.analysis_profiles[0] if self.analysis_profiles else None
+
+    @property
+    def analysis_provider(self) -> str:
+        p = self._primary
+        return p.provider if p else ""
+
+    @property
+    def analysis_base_url(self) -> str:
+        p = self._primary
+        return p.base_url if p else ""
+
+    @property
+    def analysis_model_name(self) -> str:
+        p = self._primary
+        return p.model if p else ""
+
+    @property
+    def analysis_api_key(self) -> str:
+        p = self._primary
+        return p.api_key if p else ""
 
     @classmethod
-    def from_env(cls) -> "DrugAnalysisConfig":
-        return cls(
-            ocr_provider=os.getenv("DRUG_OCR_PROVIDER", "dots_ocr").strip().lower(),
-            ocr_vllm_server_ip=os.getenv(
-                "DRUG_OCR_VLLM_SERVER_IP", "127.0.0.1"
-            ).strip(),
-            ocr_vllm_port=int(os.getenv("DRUG_OCR_VLLM_PORT", "8002")),
-            ocr_model_name=os.getenv(
-                "DRUG_OCR_MODEL_NAME", "Qwen/Qwen2.5-VL-7B-Instruct"
-            ).strip(),
-            ocr_prompt_mode=os.getenv(
-                "DRUG_OCR_PROMPT_MODE", "prompt_layout_all_en"
-            ).strip(),
-            ocr_prompt_path=_resolve_config_path(
-                os.getenv("DRUG_OCR_PROMPT_PATH", str(_DEFAULT_OCR_PROMPT_PATH)),
-                _DEFAULT_OCR_PROMPT_PATH,
-            ),
-            analysis_provider=os.getenv("DRUG_ANALYSIS_PROVIDER", "openai")
-            .strip()
-            .lower(),
-            analysis_base_url=os.getenv(
-                "DRUG_ANALYSIS_BASE_URL", "https://api.openai.com/v1"
-            ).strip(),
-            analysis_model_name=os.getenv(
-                "DRUG_ANALYSIS_MODEL_NAME", "gpt-4o-mini"
-            ).strip(),
-            analysis_api_key=os.getenv("DRUG_ANALYSIS_API_KEY", "").strip(),
-            analysis_prompt_path=_resolve_config_path(
-                os.getenv(
-                    "DRUG_ANALYSIS_PROMPT_PATH", str(_DEFAULT_ANALYSIS_PROMPT_PATH)
-                ),
-                _DEFAULT_ANALYSIS_PROMPT_PATH,
-            ),
-            analysis_temperature=float(os.getenv("DRUG_ANALYSIS_TEMPERATURE", "0.1")),
-            analysis_max_tokens=int(os.getenv("DRUG_ANALYSIS_MAX_TOKENS", "4096")),
-            analysis_max_retries=int(os.getenv("DRUG_ANALYSIS_MAX_RETRIES", "3")),
-        )
+    def from_values(
+        cls,
+        *,
+        ocr: dict,
+        analysis: dict,
+        analysis_profiles: list[LlmProfile] | None = None,
+        ocr_configured: bool = True,
+    ) -> "DrugAnalysisConfig":
+        """Build from DB settings (admin_settings 'ocr' + 'analysis' groups) and
+        the Analysis LM profiles.
 
-    @classmethod
-    def from_values(cls, *, ocr: dict, analysis: dict) -> "DrugAnalysisConfig":
-        """Build from DB settings dicts (admin_settings 'ocr' + 'analysis' groups)."""
+        The prompt files are not configurable: they ship with the code, and a
+        path pointing anywhere else was only ever a way to break the pipeline.
+        """
         return cls(
             ocr_provider=str(ocr.get("provider", "dots_ocr") or "dots_ocr")
             .strip()
@@ -452,24 +443,36 @@ class DrugAnalysisConfig:
             ocr_prompt_mode=str(
                 ocr.get("prompt_mode", "prompt_layout_all_en") or ""
             ).strip(),
-            ocr_prompt_path=_resolve_config_path(
-                str(ocr.get("prompt_path") or _DEFAULT_OCR_PROMPT_PATH),
-                _DEFAULT_OCR_PROMPT_PATH,
-            ),
-            analysis_provider=str(analysis.get("provider", "openai") or "openai")
-            .strip()
-            .lower(),
-            analysis_base_url=str(analysis.get("base_url", "") or "").strip(),
-            analysis_model_name=str(analysis.get("model", "") or "").strip(),
-            analysis_api_key=str(analysis.get("api_key", "") or "").strip(),
-            analysis_prompt_path=_resolve_config_path(
-                str(analysis.get("prompt_path") or _DEFAULT_ANALYSIS_PROMPT_PATH),
-                _DEFAULT_ANALYSIS_PROMPT_PATH,
-            ),
-            analysis_temperature=float(analysis.get("temperature", 0.1) or 0.1),
-            analysis_max_tokens=int(analysis.get("max_tokens", 4096) or 4096),
+            ocr_prompt_path=_DEFAULT_OCR_PROMPT_PATH,
+            analysis_prompt_path=_DEFAULT_ANALYSIS_PROMPT_PATH,
             analysis_max_retries=int(analysis.get("max_retries", 3) or 3),
+            analysis_profiles=list(analysis_profiles or []),
+            analysis_strategy=str(analysis.get("strategy", "failover") or "failover"),
+            ocr_configured=ocr_configured,
         )
+
+
+async def load_drug_analysis_config(pool) -> DrugAnalysisConfig:
+    """The one way to build a drug OCR/analysis config.
+
+    OCR settings come from `admin.app_settings` (group `ocr`); the Analysis LM
+    endpoints come from `admin.llm_profiles`, already ordered for this call by
+    the configured strategy. Neither is seeded from the environment, so "nothing
+    there" means the operator has not set it up yet — which `get_group` cannot
+    express on its own (it answers with schema defaults so the admin form has
+    something to prefill). Readiness can then say "not configured" instead of
+    failing against an endpoint nobody chose.
+    """
+    import admin_settings as _admin_settings
+
+    analysis = await _admin_settings.get_group(pool, "analysis")
+    strategy = str(analysis.get("strategy", "failover") or "failover")
+    return DrugAnalysisConfig.from_values(
+        ocr=await _admin_settings.get_group(pool, "ocr"),
+        analysis=analysis,
+        analysis_profiles=await candidate_order(pool, "analysis", strategy),
+        ocr_configured=await _admin_settings.is_group_configured(pool, "ocr"),
+    )
 
 
 @dataclass
@@ -480,13 +483,24 @@ class DrugAnalysisResult:
     analysis_provider: str
 
 
+_NOT_CONFIGURED = (
+    "{what} is not configured yet — set it up in the admin console "
+    "(Settings → {group})."
+)
+
+
 class DrugAnalysisService:
-    def __init__(self, config: DrugAnalysisConfig | None = None):
-        self.config = config or DrugAnalysisConfig.from_env()
+    def __init__(self, config: DrugAnalysisConfig):
+        self.config = config
+        # The profile that actually served the last call — may not be the primary
+        # one if it had failed over. Recorded on the analysis result.
+        self.last_profile_used: LlmProfile | None = None
 
     def ocr_readiness(self) -> tuple[bool, str]:
+        if not self.config.ocr_configured:
+            return False, _NOT_CONFIGURED.format(what="OCR server", group="OCR Server")
         if self.config.ocr_provider != "dots_ocr":
-            return False, "Unsupported DRUG_OCR_PROVIDER"
+            return False, f"Unsupported OCR provider: {self.config.ocr_provider}"
         if not DOTS_OCR_AVAILABLE:
             return False, "dots_ocr is not installed"
         if not self.config.ocr_prompt_path.exists():
@@ -494,17 +508,22 @@ class DrugAnalysisService:
         return True, ""
 
     def analysis_readiness(self) -> tuple[bool, str]:
+        if not self.config.analysis_configured:
+            return False, _NOT_CONFIGURED.format(
+                what="Analysis LM", group="Analysis LM"
+            )
         if not self.config.analysis_prompt_path.exists():
             return (
                 False,
                 f"Analysis prompt not found: {self.config.analysis_prompt_path}",
             )
-        if self.config.analysis_provider not in {"openai", "vllm", "ollama"}:
-            return False, "Unsupported DRUG_ANALYSIS_PROVIDER"
-        if not self.config.analysis_model_name:
-            return False, "DRUG_ANALYSIS_MODEL_NAME is empty"
-        if not self.config.analysis_base_url:
-            return False, "DRUG_ANALYSIS_BASE_URL is empty"
+        for profile in self.config.analysis_profiles:
+            if profile.provider not in {"openai", "vllm", "ollama"}:
+                return (
+                    False,
+                    f"Profile '{profile.name}': unsupported provider "
+                    f"'{profile.provider}'",
+                )
         return True, ""
 
     def readiness(self) -> tuple[bool, str]:
@@ -533,11 +552,14 @@ class DrugAnalysisService:
                 pdf_bytes, source_filename=source_filename
             )
         analysis_json = await self._run_analysis(markdown)
+        used = self.last_profile_used
         return DrugAnalysisResult(
             markdown=markdown,
             analysis_json=analysis_json,
             ocr_provider=self.config.ocr_provider,
-            analysis_provider=self.config.analysis_provider,
+            # The profile that actually answered, which failover may have made a
+            # different one from the primary.
+            analysis_provider=used.provider if used else self.config.analysis_provider,
         )
 
     async def _ocr_pdf_bytes(self, pdf_bytes: bytes, *, source_filename: str) -> str:
@@ -669,27 +691,69 @@ class DrugAnalysisService:
         )
 
     async def _call_analysis_llm(self, messages: list[dict[str, str]]) -> str:
-        if self.config.analysis_provider in {"openai", "vllm"}:
-            url = f"{self._normalize_openai_base_url(self.config.analysis_base_url)}/chat/completions"
+        """Call the Analysis LM, moving to the next profile when one fails.
+
+        The profiles arrive already ordered for this call (failover by priority,
+        or weighted with the rest as fallbacks). A transport error, a timeout or
+        an HTTP failure means *this endpoint* is unusable right now, so we record
+        that against it — feeding the cool-down — and try the next one. Only when
+        every profile has failed does the call fail, and then the error names each
+        one, so an operator can see whether it was one bad key or the whole fleet.
+        """
+        profiles = self.config.analysis_profiles
+        if not profiles:
+            raise RuntimeError(
+                _NOT_CONFIGURED.format(what="Analysis LM", group="Analysis LM")
+            )
+
+        failures: list[str] = []
+        for profile in profiles:
+            try:
+                content = await self._call_one_profile(profile, messages)
+            except Exception as exc:  # transport, HTTP, or an unusable response
+                message = f"{profile.name}: {exc}"
+                failures.append(message)
+                report_failure(profile.id, str(exc))
+                log_warning(
+                    "analysis_profile_failed",
+                    profile=profile.name,
+                    provider=profile.provider,
+                    model=profile.model,
+                    error=str(exc),
+                )
+                continue
+            report_success(profile.id)
+            self.last_profile_used = profile
+            return content
+
+        raise RuntimeError(
+            "Every Analysis LM profile failed: " + "; ".join(failures)
+        )
+
+    async def _call_one_profile(
+        self, profile: LlmProfile, messages: list[dict[str, str]]
+    ) -> str:
+        if profile.provider in {"openai", "vllm"}:
+            url = f"{self._normalize_openai_base_url(profile.base_url)}/chat/completions"
             payload: dict[str, Any] = {
-                "model": self.config.analysis_model_name,
+                "model": profile.model,
                 "messages": messages,
-                "temperature": self.config.analysis_temperature,
+                "temperature": profile.temperature(),
                 "response_format": {"type": "json_object"},
             }
             token_param = (
                 "max_completion_tokens"
-                if self.config.analysis_provider == "openai"
-                and self._uses_max_completion_tokens(self.config.analysis_model_name)
+                if profile.provider == "openai"
+                and self._uses_max_completion_tokens(profile.model)
                 else "max_tokens"
             )
-            payload[token_param] = self.config.analysis_max_tokens
+            payload[token_param] = profile.max_tokens()
             # Only authenticate when a key is configured: a local vLLM/Ollama
             # OpenAI-compatible server needs no key, and sending an empty or
             # placeholder bearer token makes some of them reject the request.
             headers = (
-                {"Authorization": f"Bearer {self.config.analysis_api_key}"}
-                if self.config.analysis_api_key
+                {"Authorization": f"Bearer {profile.api_key}"}
+                if profile.api_key
                 else {}
             )
 
@@ -754,16 +818,16 @@ class DrugAnalysisService:
                 data = response.json()
             return data["choices"][0]["message"]["content"]
 
-        if self.config.analysis_provider == "ollama":
-            url = f"{self.config.analysis_base_url.rstrip('/')}/api/chat"
+        if profile.provider == "ollama":
+            url = f"{profile.base_url.rstrip('/')}/api/chat"
             payload = {
-                "model": self.config.analysis_model_name,
+                "model": profile.model,
                 "messages": messages,
                 "stream": False,
                 "format": "json",
                 "options": {
-                    "temperature": self.config.analysis_temperature,
-                    "num_predict": self.config.analysis_max_tokens,
+                    "temperature": profile.temperature(),
+                    "num_predict": profile.max_tokens(),
                 },
             }
             async with httpx.AsyncClient(timeout=300) as client:
@@ -772,7 +836,7 @@ class DrugAnalysisService:
                 data = response.json()
             return data["message"]["content"]
 
-        raise ValueError("Unsupported DRUG_ANALYSIS_PROVIDER")
+        raise ValueError(f"Unsupported analysis provider: {profile.provider}")
 
     @staticmethod
     def _normalize_openai_base_url(base_url: str) -> str:

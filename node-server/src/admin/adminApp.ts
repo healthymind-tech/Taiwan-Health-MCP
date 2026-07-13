@@ -30,6 +30,7 @@ import {
   verifyAdminPassword,
 } from "../adminAuth.js";
 import * as adminSettings from "./adminSettings.js";
+import * as llmProfiles from "./llmProfiles.js";
 import {
   listWorkerHeartbeats,
   listJobs,
@@ -390,6 +391,105 @@ export async function adminHandler(req: Request, res: Response, next: NextFuncti
           .send(adminSettings.serializeSettingsResponse(await adminSettings.getAll()));
       } catch (exc) {
         sendJson(res, 500, { error: "Failed to load settings", detail: String((exc as Error).message) });
+      }
+      return;
+    }
+
+    // ── LLM profiles (endpoints for the analysis / embedding roles) ──────────
+    if (path === "/admin/api/llm-profiles" || path.startsWith("/admin/api/llm-profiles/")) {
+      const rest = path.slice("/admin/api/llm-profiles".length).replace(/^\//, "");
+      const [idPart, action] = rest.split("/");
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      try {
+        if (method === "GET" && rest === "") {
+          const kind = req.query.kind as llmProfiles.ProfileKind | undefined;
+          const rows = await llmProfiles.listProfiles(kind);
+          sendJson(res, 200, { profiles: rows.map(llmProfiles.toPublic) });
+          return;
+        }
+        if (method === "POST" && rest === "") {
+          const created = await llmProfiles.createProfile(
+            body as unknown as llmProfiles.ProfileInput,
+            adminUsername,
+          );
+          await refreshSettingsSingletons(created.kind);
+          sendJson(res, 200, { ok: true, profile: llmProfiles.toPublic(created) });
+          return;
+        }
+        // Draft-based probes: no id yet when the operator is adding a profile.
+        if (method === "POST" && idPart === "test") {
+          sendJson(res, 200, await adminSettings.testProfile(body as unknown as adminSettings.ProfileDraft));
+          return;
+        }
+        if (method === "POST" && idPart === "models") {
+          sendJson(res, 200, await adminSettings.listProfileModels(body as unknown as adminSettings.ProfileDraft));
+          return;
+        }
+        const id = Number(idPart);
+        if (Number.isFinite(id) && id > 0) {
+          if ((method === "PATCH" || method === "PUT") && !action) {
+            const updated = await llmProfiles.updateProfile(id, body, adminUsername);
+            await refreshSettingsSingletons(updated.kind);
+            sendJson(res, 200, { ok: true, profile: llmProfiles.toPublic(updated) });
+            return;
+          }
+          if (method === "DELETE" && !action) {
+            const existing = await llmProfiles.getProfile(id);
+            await llmProfiles.deleteProfile(id, adminUsername);
+            if (existing) await refreshSettingsSingletons(existing.kind);
+            sendJson(res, 200, { ok: true });
+            return;
+          }
+        }
+        sendJson(res, 404, { error: `Unknown LLM profile route: ${method} ${path}` });
+      } catch (exc) {
+        if (exc instanceof llmProfiles.ProfileValidationError) {
+          sendJson(res, 400, { error: String(exc.message) });
+        } else {
+          sendJson(res, 500, {
+            error: "LLM profile operation failed",
+            detail: String((exc as Error).message),
+          });
+        }
+      }
+      return;
+    }
+
+    // GET /admin/api/settings/export — the stored settings as a portable file.
+    // The body carries secrets in the clear (that is the point: it must restore a
+    // working configuration), so it is served as a download and never cached.
+    if (method === "GET" && path === "/admin/api/settings/export") {
+      try {
+        const doc = await adminSettings.exportSettings();
+        const stamp = doc.exported_at.slice(0, 10);
+        res
+          .status(200)
+          .set("content-type", "application/json; charset=utf-8")
+          .set("content-disposition", `attachment; filename="tw-health-settings-${stamp}.json"`)
+          .set("cache-control", "no-store")
+          .send(JSON.stringify(doc, null, 2));
+      } catch (exc) {
+        sendJson(res, 500, { error: "Failed to export settings", detail: String((exc as Error).message) });
+      }
+      return;
+    }
+
+    // POST /admin/api/settings/import — apply a previously exported file.
+    if (method === "POST" && path === "/admin/api/settings/import") {
+      try {
+        const body = (req.body ?? {}) as Record<string, unknown>;
+        // Accept the raw export document, or one wrapped as {document: {...}}.
+        const doc = body.document ?? body;
+        const result = await adminSettings.importSettings(doc, adminUsername);
+        for (const group of result.groups) await refreshSettingsSingletons(group);
+        sendJson(res, 200, result);
+      } catch (exc) {
+        const msg = String((exc as Error).message);
+        if (/Unsupported settings export version|Malformed export|is not one of|is not a valid/.test(msg)) {
+          sendJson(res, 400, { error: msg });
+        } else {
+          sendJson(res, 500, { error: "Failed to import settings", detail: msg });
+        }
       }
       return;
     }

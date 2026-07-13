@@ -13,7 +13,7 @@ import uuid
 
 import asyncpg
 
-from drug_analysis_service import DrugAnalysisService
+from drug_analysis_service import DrugAnalysisService, load_drug_analysis_config
 from drug_record_builder import build_drug_record
 from minio_service import MinioService
 
@@ -577,7 +577,7 @@ async def load_drug_analysis(
     if retry_stage and retry_stage not in {"ocr", "analysis", "normalize"}:
         raise ValueError("retry_stage must be one of: ocr, analysis, normalize")
 
-    analysis_service = DrugAnalysisService()
+    analysis_service = DrugAnalysisService(await load_drug_analysis_config(pool))
     minio = MinioService()
     await minio.initialize()
 

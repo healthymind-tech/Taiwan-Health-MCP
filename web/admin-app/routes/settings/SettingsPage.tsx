@@ -12,6 +12,7 @@ import { api } from "../../lib/api";
 import { qk } from "../../lib/queryKeys";
 import { toast } from "../../components/toast";
 import { PasskeysCard } from "./PasskeysCard";
+import { LlmProfilesCard } from "./LlmProfilesCard";
 import type {
   SettingsActionResult,
   SettingsField,
@@ -159,16 +160,27 @@ function SettingsGroupForm({ group }: { group: SettingsGroup }): JSX.Element {
               {test.isPending ? "Testing…" : "Test connection"}
             </button>
           )}
-          <button
-            type="button"
-            className="btn"
-            disabled={!dirty || save.isPending}
-            onClick={() => save.mutate()}
-          >
-            {save.isPending ? "Saving…" : dirty ? "Save changes" : "Saved"}
-          </button>
+          {/* A read-only group has no Save: the server refuses the write anyway,
+              and offering the button would promise something we cannot deliver. */}
+          {!group.readonly && (
+            <button
+              type="button"
+              className="btn"
+              disabled={!dirty || save.isPending}
+              onClick={() => save.mutate()}
+            >
+              {save.isPending ? "Saving…" : dirty ? "Save changes" : "Saved"}
+            </button>
+          )}
         </div>
       </div>
+
+      {group.readonly && (
+        <div className="muted small" style={{ marginBottom: "0.5rem" }}>
+          Managed by the deployment — set these in <code>.env</code> / compose and restart the
+          affected service. Shown here for reference and testing only.
+        </div>
+      )}
 
       <div className="settings-grid">
         {group.fields.filter((f) => isVisible(f, form)).map((field) => (
@@ -178,6 +190,7 @@ function SettingsGroupForm({ group }: { group: SettingsGroup }): JSX.Element {
               field={field}
               value={form[field.key]}
               models={models[field.key]}
+              disabled={group.readonly}
               onChange={(v) => setValue(field.key, v)}
               onFetchModels={() => fetchModels.mutate(field.key)}
               fetchingModels={fetchModels.isPending}
@@ -197,6 +210,7 @@ function FieldInput({
   onChange,
   onFetchModels,
   fetchingModels,
+  disabled = false,
 }: {
   field: SettingsField;
   value: FormValue;
@@ -204,19 +218,25 @@ function FieldInput({
   onChange: (v: FormValue) => void;
   onFetchModels: () => void;
   fetchingModels: boolean;
+  disabled?: boolean;
 }): JSX.Element {
   if (field.type === "bool") {
     return (
       <input
         type="checkbox"
         checked={Boolean(value)}
+        disabled={disabled}
         onChange={(e) => onChange(e.target.checked)}
       />
     );
   }
   if (field.options) {
     return (
-      <select value={String(value ?? "")} onChange={(e) => onChange(e.target.value)}>
+      <select
+        value={String(value ?? "")}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.value)}
+      >
         {field.options.map((opt) => (
           <option key={opt} value={opt}>
             {opt}
@@ -236,6 +256,7 @@ function FieldInput({
           type="text"
           list={listId}
           value={String(value ?? "")}
+          disabled={disabled}
           onChange={(e) => onChange(e.target.value)}
         />
         {models && (
@@ -258,6 +279,7 @@ function FieldInput({
         type="password"
         autoComplete="new-password"
         value={value == null ? "" : String(value)}
+        disabled={disabled}
         placeholder={hasStoredSecret(field) ? "Saved — leave blank to keep it" : "Not set"}
         onChange={(e) => onChange(e.target.value)}
       />
@@ -268,8 +290,98 @@ function FieldInput({
     <input
       type={inputType}
       value={value == null ? "" : String(value)}
+      disabled={disabled}
       onChange={(e) => onChange(e.target.value)}
     />
+  );
+}
+
+/**
+ * Export / import of the whole settings document. The exported file contains the
+ * API keys in the clear — it exists to restore a working install verbatim — so
+ * the card says so, and an import is confirmed before it overwrites anything.
+ */
+function BackupCard(): JSX.Element {
+  const qc = useQueryClient();
+  const [busy, setBusy] = useState(false);
+
+  async function exportSettings(): Promise<void> {
+    setBusy(true);
+    try {
+      const resp = await fetch("/admin/api/settings/export", { credentials: "same-origin" });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `tw-health-settings-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success("Settings exported");
+    } catch (err) {
+      toast.error(`Export failed: ${String(err)}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function importSettings(file: File): Promise<void> {
+    setBusy(true);
+    try {
+      const doc: unknown = JSON.parse(await file.text());
+      const res = await api.post<{ imported: number; groups: string[]; skipped: string[] }>(
+        "/admin/api/settings/import",
+        doc,
+      );
+      await qc.invalidateQueries({ queryKey: qk.settings });
+      await qc.invalidateQueries({ queryKey: qk.services });
+      await qc.invalidateQueries({ queryKey: qk.overview });
+      const skipped = res.skipped.length ? ` (${res.skipped.length} unknown key(s) skipped)` : "";
+      toast.success(
+        `Imported ${res.imported} setting(s) across ${res.groups.length} group(s)${skipped}`,
+      );
+    } catch (err) {
+      toast.error(`Import failed: ${String(err)}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="module-card">
+      <div className="module-card__head">
+        <div>
+          <h3 className="subhead" style={{ margin: 0 }}>Backup &amp; restore</h3>
+          <div className="muted small">
+            Move a working configuration between installs. The exported file contains your API
+            keys in plain text — keep it somewhere you would keep a password.
+          </div>
+        </div>
+        <div className="head-actions">
+          <button type="button" className="btn" disabled={busy} onClick={() => void exportSettings()}>
+            Export settings
+          </button>
+          <label className="btn" style={{ cursor: busy ? "default" : "pointer" }}>
+            Import settings
+            <input
+              type="file"
+              accept="application/json,.json"
+              style={{ display: "none" }}
+              disabled={busy}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = ""; // let the same file be picked again
+                if (!file) return;
+                const ok = window.confirm(
+                  "Import settings from this file? Values for the groups it contains will be overwritten.",
+                );
+                if (ok) void importSettings(file);
+              }}
+            />
+          </label>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -289,9 +401,21 @@ export function SettingsPage(): JSX.Element {
         <h2>Settings</h2>
       </header>
       <PasskeysCard />
-      {data.groups.map((group) => (
-        <SettingsGroupForm key={group.group} group={group} />
-      ))}
+      <BackupCard />
+      {data.groups.map((group) => {
+        const strategy = String(
+          group.fields.find((f) => f.key === "strategy")?.value ?? "failover",
+        );
+        return (
+          <div key={group.group}>
+            <SettingsGroupForm group={group} />
+            {/* The endpoints for these two roles are profiles, not fields. */}
+            {(group.group === "analysis" || group.group === "embedding") && (
+              <LlmProfilesCard kind={group.group} strategy={strategy} />
+            )}
+          </div>
+        );
+      })}
     </section>
   );
 }

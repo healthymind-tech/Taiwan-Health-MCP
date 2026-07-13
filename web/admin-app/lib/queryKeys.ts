@@ -7,6 +7,7 @@ export const qk = {
   overview: ["overview"] as const,
   services: ["services"] as const,
   settings: ["settings"] as const,
+  llmProfiles: (kind: string) => ["llm-profiles", kind] as const,
   jobs: ["jobs"] as const,
   // Prefixed by ["jobs"], so any WS job event that invalidates ["jobs"]
   // cascades to a selected job's detail and steps automatically.
