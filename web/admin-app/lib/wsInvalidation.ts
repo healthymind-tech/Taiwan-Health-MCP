@@ -11,11 +11,13 @@ import type { QueryClient } from "@tanstack/react-query";
 import { qk } from "./queryKeys";
 import type { WsEnvelope, JobStatusChangedEvent, JobStatus } from "./types";
 
+// Every status a job can end on. A failed or stopped job changes what the
+// Modules / Overview tabs should show just as much as a successful one does.
 const TERMINAL_STATUSES: ReadonlySet<JobStatus> = new Set<JobStatus>([
-  "completed",
   "success",
-  "failed",
-  "cancelled",
+  "stopped",
+  "retryable_failed",
+  "permanent_failed",
 ]);
 
 // Job types whose completion changes embedding coverage (mirror of the old
