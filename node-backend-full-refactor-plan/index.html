@@ -1,0 +1,3813 @@
+
+<!doctype html>
+<html lang="zh-TW" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="台灣醫療健康資料整合 MCP 伺服器 - 技術文件">
+      
+      
+        <meta name="author" content="Taiwan-ICD10-Health-MCP Team">
+      
+      
+        <link rel="canonical" href="https://audi0417.github.io/Taiwan-Health-MCP/node-backend-full-refactor-plan/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>後端完整 Python → Node.js 重寫計畫（全層級） - Taiwan ICD10 Health MCP</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#python-nodejs" class="md-skip">
+          跳轉到
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="頁首">
+    <a href=".." title="Taiwan ICD10 Health MCP" class="md-header__button md-logo" aria-label="Taiwan ICD10 Health MCP" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Taiwan ICD10 Health MCP
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              後端完整 Python → Node.js 重寫計畫（全層級）
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="搜尋" placeholder="搜尋" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="搜尋">
+        
+        <button type="reset" class="md-search__icon md-icon" title="清除" aria-label="清除" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            正在初始化搜尋引擎
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/audi0417/Taiwan-Health-MCP" title="前往倉庫" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Taiwan-ICD10-Health-MCP
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="導覽列" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Taiwan ICD10 Health MCP" class="md-nav__button md-logo" aria-label="Taiwan ICD10 Health MCP" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Taiwan ICD10 Health MCP
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/audi0417/Taiwan-Health-MCP" title="前往倉庫" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Taiwan-ICD10-Health-MCP
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_1" id="__nav_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    首頁
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    首頁
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Taiwan Health MCP Server
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    快速開始
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    模組
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    模組
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/icd-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ICD-10
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/drug-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    藥品 / TFDA
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/lab-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    檢驗 / LOINC
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/snomed-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SNOMED CT
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/clinical-guideline-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    臨床指引
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/health-supplements-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    健康補充品
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/food-nutrition-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    食品營養
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/fhir-condition-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FHIR Condition
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/fhir-medication-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FHIR Medication
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/fhir-ig-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FHIR IG
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MCP 工具
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    MCP 工具
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tools/icd-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ICD-10 工具
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tools/drug-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    藥品工具
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tools/lab-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    檢驗 / LOINC 工具
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tools/snomed-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SNOMED 工具
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tools/guideline-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    臨床指引工具
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tools/health-supplements-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    健康補充品工具
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tools/nutrition-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    食品營養工具
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tools/fhir-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FHIR Condition / Medication 工具
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tools/fhir-ig-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FHIR IG 工具
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tools/fhir-server-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FHIR 伺服器工具
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    資料來源
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    資料來源
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../data-sources/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    資料來源
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../data-sources/icd10/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ICD-10
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../data-sources/loinc/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LOINC
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../data-sources/guidelines/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    臨床指引
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FHIR 授權
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    FHIR 授權
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fhir-authoring-walkthrough/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    授權流程說明
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fhir-ig-mcp-toolset-assessment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    工具集設計評估
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fhir-resource-conversion-prompt/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    資源轉換提示（自動判斷型別）
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fhir-bundle-conversion-prompt/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bundle 轉換提示
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    使用指南
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    使用指南
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    使用指南 (User Guides)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/clinical-pathway/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    臨床路徑
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/lab-interpretation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    檢驗判讀
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/loinc-integration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LOINC 整合
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API 參考
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API 參考
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API 參考
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/fhir-services/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FHIR Services API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/icd-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ICD Service
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/lab-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Lab Service
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/guideline-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guideline Service
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    管理後台
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    管理後台
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../admin/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    管理後台 (Admin Console)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../admin/jobs-and-worker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    背景工作與排程
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9" >
+        
+          
+          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    部署
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    部署
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../deployment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    部署指南
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/deployment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    架構與容器部署
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../deployment/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    環境變數配置
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../deployment/performance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    效能與監控
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../deployment/dpa/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    資料處理附錄 (DPA)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../deployment/privacy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    隱私政策頁面
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10" >
+        
+          
+          <label class="md-nav__link" for="__nav_10" id="__nav_10_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    開發指南
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_10">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    開發指南
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    開發指南
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../development/code-style/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    程式風格
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../development/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    測試指南
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../development/contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    貢獻流程
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_11" >
+        
+          
+          <label class="md-nav__link" for="__nav_11" id="__nav_11_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    常見問題
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_11_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_11">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    常見問題
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../faq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    常見問題 (FAQ)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../faq/usage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    操作與使用
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../faq/loinc/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LOINC 相關
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="目錄">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目錄
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#2026-06-13" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        已拍板決策（2026-06-13）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#0" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        0. 為什麼這比上一次大很多
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="0. 為什麼這比上一次大很多">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        後端三層與現況
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. 「行為一模一樣」的精確定義（先對齊驗收標準）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-parity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. 測試先行：四套 parity 工具（這是計畫的地基）
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. 測試先行：四套 parity 工具（這是計畫的地基）">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#21-mcp-parity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.1 MCP parity（已存在，擴充）
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#22-admin-rest-parity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.2 Admin REST parity（新建）
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#23-loader-golden-output-diffl3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.3 Loader golden-output diff（新建，L3 核心）
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#24" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.4 端到端煙霧（新建）
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. 階段計畫
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. 階段計畫">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#phase-0" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 0 — 凍結基準 + 決策
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Phase 0 — 凍結基準 + 決策">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#phase-0-todoab-c-a3d-a4-c-a3-c-d" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 0 可執行 Todo（依賴：A、B 可並行；C 依賴 A3；D 依賴 A4 + C；關鍵路徑 A3 → C → D）
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-1-l1-mcp-runtime" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 1 — L1 對外 MCP runtime 收尾
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-2-l2-admin-rest-ws" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 2 — L2 Admin REST + WS
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-3-l3-etl-worker" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 3 — L3 ETL / Worker（最大、最危險）
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-4-docker" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 4 — Docker / 部署 / 觀測
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-5-shadow-canary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 5 — Shadow → Canary → 切換
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-6-python" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 6 — 移除 Python
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. 高風險清單（每一項都可能造成「行為不一致」）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. 工序與相依
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-2026-06-13" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. 決策紀錄（已拍板 2026-06-13）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. 一句話總結
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-runbook-session" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. 冷啟動 Runbook（新 session 直接照做）
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="8. 冷啟動 Runbook（新 session 直接照做）">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#81" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.1 已完成（不要重做）
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#82-a-python-live-infra" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.2 工作流 A — 凍結 Python 基準（需 live infra；建議在開發機跑）
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#83-c-13-mcp-skip" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.3 工作流 C — 補資料（讓 13 個 MCP skip → 實測）
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#84-d-harness" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.4 工作流 D — 四套 harness
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#85" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.5 接手者的下一步建議
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="python-nodejs">後端完整 Python → Node.js 重寫計畫（全層級）<a class="headerlink" href="#python-nodejs" title="Permanent link">&para;</a></h1>
+<p>評估日期：2026-06-12
+目標：將<strong>整個後端</strong>（不只 MCP runtime）改以 Node.js（TypeScript）開發與運行，
+<strong>保證每一個對外 API 行為與現況逐值一致</strong>，零回歸、零行為差異。</p>
+<h2 id="2026-06-13">已拍板決策（2026-06-13）<a class="headerlink" href="#2026-06-13" title="Permanent link">&para;</a></h2>
+<ol>
+<li><strong>從零重寫</strong> —— 不接續 <code>backup/node-gateway-origin</code> 的 <code>node-server/</code>。backup 僅作
+   「對照參考」（可讀其 SQL/邏輯避免踩同樣的坑），但程式碼一律重寫，不直接沿用。</li>
+<li><strong>OCR/LLM 驗收 = 結構一致 + 人工抽樣</strong> —— <code>drug_analysis</code> 等非決定性 stage 不逐值比對。</li>
+<li><strong>分兩個 release</strong> —— Release A：L1（MCP）+ L2（admin REST/WS）上線並穩定；
+   Release B：L3（worker/loader/ETL）隨後切換。兩者可獨立回滾。</li>
+</ol>
+<hr />
+<h2 id="0">0. 為什麼這比上一次大很多<a class="headerlink" href="#0" title="Permanent link">&para;</a></h2>
+<p>上一份 <code>docs/node-migration-assessment.md</code> 只完成 <strong>L1（對外 MCP runtime）</strong>，並明文
+把 <code>admin-worker</code> 與 <code>loader/</code> 留在 Python。本次目標是「完全移除 Python」，所以必須
+再吃下 <strong>L2（admin REST/WS）</strong> 與 <strong>L3（ETL / worker / OCR / 爬蟲 / 嵌入 / 排程）</strong>。</p>
+<h3 id="_1">後端三層與現況<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>層</th>
+<th>範圍（Python 檔）</th>
+<th style="text-align: right;">約 LOC</th>
+<th>對外契約</th>
+<th>既有 Node 資產</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>L1 MCP runtime</strong></td>
+<td><code>server.py</code> 工具區、<code>*_service.py</code>、<code>fhir_*</code> validator/snapshot/authoring</td>
+<td style="text-align: right;">~12k</td>
+<td><code>/mcp</code>、<code>/openapi.json</code>、<code>/tools/*</code>、<code>/status.json</code></td>
+<td>backup 可當<strong>對照參考</strong>（已驗過 parity 的 SQL/邏輯），程式重寫</td>
+</tr>
+<tr>
+<td><strong>L2 Admin REST + WS</strong></td>
+<td><code>admin_console.py</code>、<code>admin_jobs/sources/settings/services/schedule/drug/ig/embedding/preview/maintenance/ws/html_shell.py</code>、<code>db_health.py</code></td>
+<td style="text-align: right;">~17k</td>
+<td><code>/admin/api/*</code>、<code>/admin/ws</code>、<code>/admin/login\|logout</code>、<code>/fhir-client/*</code>、<code>/fhir-oauth/*</code></td>
+<td>backup <code>node-server/src/admin/*</code> 僅供對照（<strong>未驗 parity</strong>），程式重寫</td>
+</tr>
+<tr>
+<td><strong>L3 ETL / Worker</strong></td>
+<td><code>loader/</code>（18 stages）、<code>admin_worker.py</code>、<code>tfda_crawler_service.py</code>、<code>tfda_parser_utils.py</code>、<code>drug_analysis_service.py</code>、<code>drug_record_builder.py</code>、<code>embedding_loader.py</code></td>
+<td style="text-align: right;">~14k</td>
+<td>無對外 HTTP；契約是<strong>寫入 DB 的資料內容</strong></td>
+<td><strong>無任何 Node 實作（全新）</strong></td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>重點：L1/L2 的「行為一致」可由 HTTP 比對驗證；<strong>L3 沒有對外 HTTP 介面</strong>，它的
+「行為一致」= 給定同一份來源檔，寫進 PostgreSQL 的列要<strong>逐欄位一致</strong>。這需要
+一套完全不同的 golden-output 比對機制，且 OCR/LLM stage 本質非決定性，無法逐值比對。</p>
+</blockquote>
+<hr />
+<h2 id="1">1. 「行為一模一樣」的精確定義（先對齊驗收標準）<a class="headerlink" href="#1" title="Permanent link">&para;</a></h2>
+<p>不是所有面向都能、也都該逐位元相同。分三級：</p>
+<table>
+<thead>
+<tr>
+<th>等級</th>
+<th>適用 API</th>
+<th>驗收</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>A. 逐值一致 (exact)</strong></td>
+<td>確定性工具：ICD/LOINC/SNOMED 查詢、FHIR validator/snapshot/build_bundle、admin 設定 CRUD、job 狀態機</td>
+<td>正規化後 JSON 完全相等</td>
+</tr>
+<tr>
+<td><strong>B. 契約一致 (contract)</strong></td>
+<td>語意搜尋 / 排序：<code>search_*</code>、embedding 驅動、RRF</td>
+<td>schema + 必填一致；top-N 候選重疊 ≥ 門檻，排序允許小差</td>
+</tr>
+<tr>
+<td><strong>C. 副作用一致 (side-effect)</strong></td>
+<td>L3 寫入：loader 各 stage、嵌入回填、爬蟲</td>
+<td>同來源檔 → DB 列逐欄位一致（OCR/LLM stage 改為「結構一致 + 人工抽樣」）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>OCR/LLM 例外</strong>：<code>drug_analysis</code>（OCR 取像 + LLM 抽取仿單）天生非決定。對策：
+- 抽出<strong>確定性骨架</strong>（哪些欄位被填、型別、來源頁、信心分數結構）做逐值比對；
+- LLM 文字內容只做「結構存在性 + 長度區間 + 必填 key」檢查，外加人工抽樣 N 筆；
+- 把 OCR/LLM 視為<strong>外部服務</strong>——Node 與 Python 都呼叫同一個 endpoint，差異只在前後處理。</p>
+<blockquote>
+<p>這一點要先和你確認：L3 的 OCR/LLM stage 是否接受「結構一致 + 抽樣人工驗證」而非逐值？
+若不接受，唯一作法是凍結 OCR/LLM 輸出快取，兩邊吃同一份快取再比對。</p>
+</blockquote>
+<hr />
+<h2 id="2-parity">2. 測試先行：四套 parity 工具（這是計畫的地基）<a class="headerlink" href="#2-parity" title="Permanent link">&para;</a></h2>
+<h3 id="21-mcp-parity">2.1 MCP parity（已存在，擴充）<a class="headerlink" href="#21-mcp-parity" title="Permanent link">&para;</a></h3>
+<p><code>scripts/api_parity_test.py</code> 已可用（37/3/13/0）。要做的：
+1. 補資料後讓 13 個 skip 變成實測（匯入 Drug/Food/Supplement/Guideline）。
+2. 納入 CI，固定 Python reference image + DB snapshot 當 baseline。
+3. <code>--strict-schema</code> 設為 gate。</p>
+<h3 id="22-admin-rest-parity">2.2 Admin REST parity（<strong>新建</strong>）<a class="headerlink" href="#22-admin-rest-parity" title="Permanent link">&para;</a></h3>
+<p>仿 MCP parity 寫 <code>scripts/admin_parity_test.py</code>：
+- 對 Python 與 Node 各起一份，帶同一 session cookie，逐一打 <code>/admin/api/*</code>。
+- 涵蓋：登入、Overview、Services 探測、Settings CRUD+test、Sources 上傳+指紋去重、
+  Jobs 佇列/步驟/日誌、Schedule cron、Modules 狀態/維護模式、IG gallery/import、
+  Preview、Embedding、FHIR Servers 6 步精靈 + discover + test-request、db_health gate。
+- <strong>寫入型</strong>端點：在隔離 DB 上跑，比對「回應 + 寫入後 DB 列」。
+- WebSocket：連 <code>/admin/ws</code>，觸發一個 job，比對事件序列（type/順序，時間戳忽略）。</p>
+<h3 id="23-loader-golden-output-diffl3">2.3 Loader golden-output diff（<strong>新建，L3 核心</strong>）<a class="headerlink" href="#23-loader-golden-output-diffl3" title="Permanent link">&para;</a></h3>
+<p><code>scripts/loader_parity_test.py</code>：
+- 準備一組<strong>小而完整的來源檔 fixture</strong>（裁切版 ICD zip、LOINC、SNOMED RF2、IG tgz、
+  一小批 TFDA license）。
+- 對每個 stage：Python loader 寫入 schema A，Node loader 寫入 schema B（同 DDL，不同 search_path）。
+- 逐表 <code>SELECT ... ORDER BY pk</code> dump → 正規化（忽略 serial id、created_at）→ 逐列 diff。
+- 嵌入向量：比對維度與非空率，cosine 相似度 ≥ 0.99（同模型應幾乎相同）。</p>
+<h3 id="24">2.4 端到端煙霧（<strong>新建</strong>）<a class="headerlink" href="#24" title="Permanent link">&para;</a></h3>
+<p><code>docker compose up</code> 全棧起來後，跑一條真實業務路徑：上傳來源檔 → 觸發匯入 →
+worker 跑完 → MCP 工具查得到資料 → FHIR 產生 → 驗證通過。Python 與 Node 各跑一次比對。</p>
+<blockquote>
+<p><strong>守則</strong>：任何一個 stage 的 Node 版，在它的 parity 測試綠掉之前，不准進 canary。</p>
+</blockquote>
+<hr />
+<h2 id="3">3. 階段計畫<a class="headerlink" href="#3" title="Permanent link">&para;</a></h2>
+<h3 id="phase-0">Phase 0 — 凍結基準 + 決策<a class="headerlink" href="#phase-0" title="Permanent link">&para;</a></h3>
+<ol>
+<li>固定 Python reference：image tag、<code>.env</code>、DB snapshot（含已匯入的全部模組資料）。</li>
+<li><strong>建立全新 <code>node-server/</code>（從零重寫，已拍板）</strong>。backup 分支只開來<strong>對照讀</strong>——
+   參考它已驗過 parity 的 SQL 與邏輯避免重踩坑，但不 <code>git checkout</code> 沿用其程式碼。</li>
+<li>補資料讓 MCP parity 13 skip → 全實測。</li>
+<li>建立 §2 的四套 parity 骨架（先能跑、允許 fail）。</li>
+</ol>
+<h4 id="phase-0-todoab-c-a3d-a4-c-a3-c-d">Phase 0 可執行 Todo（依賴：A、B 可並行；C 依賴 A3；D 依賴 A4 + C；關鍵路徑 <code>A3 → C → D</code>）<a class="headerlink" href="#phase-0-todoab-c-a3d-a4-c-a3-c-d" title="Permanent link">&para;</a></h4>
+<p><strong>工作流 A：凍結 Python 基準</strong>
+- [ ] A1. 鎖定 reference image（<code>app</code> + <code>admin-worker</code> 打固定 tag，如 <code>taiwan-health:py-baseline-20260613</code>）。判準：可起一個與正式同行為的容器。
+- [ ] A2. 凍結 <code>.env.baseline</code>（去敏，記錄所有影響行為的 seed：Ollama model、OCR/LLM endpoint、TFDA base URL）。
+- [ ] A3. DB snapshot：<code>pg_dump</code> 一份<strong>含全部模組資料</strong>（<code>baseline-full.dump</code>）+ 一份<strong>空 schema</strong>（<code>baseline-empty.dump</code>，給 loader parity）。判準：兩份可在乾淨 PG 還原。
+- [ ] A4. 起 Python baseline on <code>:8011</code>（A1 image + A3 full snapshot，<code>MCP_PORT=8011</code>）。判準：parity runner 連得上 Python 側。</p>
+<p><strong>工作流 B：node-server 空骨架（從零重寫，harness 需要 target 樁）</strong>
+- [x] B1. 建 <code>node-server/</code> TS 專案（<code>package.json</code>/<code>tsconfig.json</code>/多階段 <code>Dockerfile</code>）；只放共用基礎層 <code>config.ts</code>/<code>db.ts</code>（pg pool，等價 <code>statement_cache_size</code>）/<code>cache.ts</code>/<code>logger.ts</code>（JSON→stderr）/<code>metrics.ts</code>。判準：<code>docker build</code> 過、<code>/health</code> 回 200。<strong>已完成（2026-06-13）</strong>：<code>tsc</code>/<code>npm run build</code> exit 0；<code>/health</code> 實測回 200；啟動 fail-open（DB/Redis 不可達不中止）已驗。
+- [x] B2. MCP transport 樁（TS MCP SDK 起 <code>/mcp</code>，先掛 <code>health_check</code> 一支）。判準：runner 的 <code>initialize</code> + <code>tools/list</code> 對 Node 不報錯。<strong>已完成（2026-06-13）</strong>：streamable-http <code>/mcp</code> 實測 <code>initialize</code>→回 session id + serverInfo、<code>tools/list</code>→<code>health_check</code>。<code>health_check</code> 全值 parity（含 <code>db_health</code> snapshot）留待 Phase 1 對 live DB 驗。
+- [x] B3. 對照讀 backup：<code>git worktree add ../backup-node backup/node-gateway-origin</code>（只讀，不沿用程式碼）。判準：可隨時 grep backup SQL 當參考。<strong>已完成（2026-06-13）</strong>：worktree 在 <code>../backup-node</code>（detached <code>3f51fd1</code>）。</p>
+<blockquote>
+<p><strong>D1 接線已驗（2026-06-13）</strong>：既有 <code>scripts/api_parity_test.py</code> 對 Node 樁實測通過——<code>PASS tool inventory / schema / health_check: matched</code>，其餘 52 工具 SKIP（樁僅 <code>health_check</code>）、0 failed。證明 runner 能完整驅動 Node target（connect→list_tools→call→比對）。完整 D1 仍待 A4 Python baseline 起在 <code>:8011</code> 後對「Python vs Node」實跑（目前是 Node 自比的接線煙霧）。</p>
+</blockquote>
+<p><strong>工作流 C：補資料（讓 MCP parity 13 個 skip → 實測）</strong>
+- [ ] C1. 匯入 Drug（<code>drug.*</code> 過 <code>module_status</code> 門檻）。
+- [ ] C2. 匯入 Food Nutrition（<code>food_nutrition.*</code>）。
+- [ ] C3. 匯入 Health Supplements（<code>health_supplements.items</code>）。
+- [ ] C4. 匯入 Clinical Guideline（<code>guideline.*</code>）。
+- [ ] C5. 重建各模組 <code>*_embeddings</code>。判準：Python 側 <code>tools/list</code> 出現全部 53 工具，不再有 <code>module inactive</code> skip。</p>
+<p><strong>工作流 D：四套 parity harness（地基）</strong>
+- [x] D1. MCP parity <strong>真 Python↔Node 接線已驗（2026-06-13）</strong>：以 live Python <code>:8080</code>（與 <code>:8011</code> 同 DB，結果等價）對 Node <code>:8000</code> 實跑——<code>PASS schema property/required signatures</code>。C 補資料後 Python 開出全部模組工具（僅 <code>fhir_resolve_terminology_batch</code>/<code>fhir_apply_mapping_template</code> 2 個 phantom case 仍 module inactive）。<strong>Phase 1 進度</strong>：<code>health_check</code> 已達完整 parity（<code>PASS health_check: matched</code>，見下），目前 <code>1 passed / 2 skipped / 51 failed</code>，51 FAIL 即待從零實作的 Node 工具清單。<strong>待辦</strong>：<code>--strict-schema</code> 設為 gate；逐工具補綠。
+- [x] D2. Admin REST parity <strong>骨架完成</strong>（<code>scripts/admin_parity_test.py</code>：JSON 登入取 <code>tw_health_admin_session</code> cookie → 逐打 10 個 read-only <code>/admin/api/*</code>，normalize 去 volatile key → golden/compare 雙模式；write-type 9 端點 + <code>/admin/ws</code> 已在 registry 標 TODO）。<strong>待辦</strong>：需 <code>ADMIN_PASSWORD</code> 明文（<code>.env</code> 只存 <code>ADMIN_PASSWORD_HASH</code>）才能登入產 golden。
+- [x] D3. Loader golden-output diff <strong>骨架完成 + golden 已產</strong>（<code>scripts/loader_parity_test.py</code>：23 表 registry，order-by/ignore 欄位已對實際 schema 校正；asyncpg <code>statement_cache_size=0</code>；BIGINT→string、vector→<code>{dim}</code> 結構化）。實測對 live DB <strong>23 tables / 0 failed</strong>，golden 含 <code>fhir.codesystems</code> 4234 / <code>fhir.concepts</code> 73745 / <code>fhir.artifacts</code> 20996 列。<strong>待辦</strong>：<strong>裁切版 fixture</strong>（小 ICD zip/LOINC/SNOMED RF2/IG tgz/一小批 TFDA）+ Python↔Node 雙 search_path（<code>--left-prefix</code>/<code>--right-prefix</code>）實跑。
+- [x] D4. 端到端煙霧 <strong>骨架完成 + 對 live 全棧跑通</strong>（<code>scripts/e2e_smoke.py</code>：7 步驟 admin_login→upload→trigger→wait→mcp_query→fhir_generate→fhir_validate；expected/baseline 雙模式，比對 step 狀態序列）。實測對 <code>:8080</code>：<code>mcp_query</code> PASS、<code>fhir_generate</code>（<code>fhir_list_igs</code>）PASS；<code>admin_login</code> 因缺明文密碼 FAIL、import 三步與 fhir_validate 標 TODO。<strong>待辦</strong>：<code>ADMIN_PASSWORD</code> + 上傳/匯入 fixture 實作。
+- [ ] D5. CI 接線（D1–D4 入 CI，先跑 Python 自比 + golden 產生，Node 比對留待 Phase 1）。判準：CI job 存在且綠。</p>
+<p><strong>出場條件</strong>：(1) Python baseline 可重現起在 <code>:8011</code>、53 工具全可呼叫；(2) node-server 樁可起、<code>/mcp</code> 可連；(3) 四套 harness 都能執行並已對 Python 產出 golden baseline；(4) A 的三份凍結物（image / <code>.env.baseline</code> / DB dump）存檔。</p>
+<h3 id="phase-1-l1-mcp-runtime">Phase 1 — L1 對外 MCP runtime 收尾<a class="headerlink" href="#phase-1-l1-mcp-runtime" title="Permanent link">&para;</a></h3>
+<ol>
+<li><strong>從零實作</strong> L1 各工具與 <code>*_service.py</code> 的 Node 版，對齊<strong>目前</strong> schema（schema.sql 在
+   51cdd75 後可能已變動，尤其 <code>db/migrations/20260612_fhir_server_pipeline_fields.sql</code>）。
+   backup 僅供 <code>grep</code> 對照其已驗過 parity 的 SQL/邏輯，<strong>不</strong> <code>git checkout</code> 沿用程式碼。</li>
+<li>跑 MCP parity → 要求 exact 工具 0 diff、search 工具達 top-3 重疊 ≥ 80%。</li>
+<li>3 個歷史 search warning 維持可接受。</li>
+</ol>
+<p><strong>出場條件</strong>：MCP parity 綠（search 類僅排序差）。</p>
+<p><strong>進度（2026-06-13 → 06-14）</strong>：D1 <code>6 passed / 2 skipped</code>。
+- ✅ <code>health_check</code>（含 <code>db_health</code>）達完整 parity。新增 <code>node-server/src/dbHealth.ts</code>
+  ——從零移植 <code>src/db_health.py</code> 的 <code>DbHealthMonitor</code>（state machine healthy/recovering/
+  unreachable、fail-fast <code>reportFailure</code>、debounced unlock、背景探測 loop），boot 時於
+  <code>server.ts</code> <code>start()</code>，<code>mcp.ts</code> 改用 <code>monitor().snapshot()</code>；<code>db.ts</code> 補 <code>resetPool()</code>
+  對應 Python <code>reset_pool</code>。
+- ✅ <strong>ICD 4 支確定性工具</strong>達 parity：<code>infer_complications</code> / <code>get_nearby_codes</code> /
+  <code>check_medical_conflict</code> / <code>browse_icd_category</code>（<code>PASS ... matched</code>）。新增
+  <code>node-server/src/icdService.ts</code>（忠實移植 <code>icd_service.py</code> 的非搜尋方法；<code>code_count</code>
+  bigint→number 對齊 asyncpg int）。<code>mcp.ts</code> 的 <code>buildMcpServer</code> 改 <strong>async + 模組 gating</strong>
+  （依 <code>getModuleStatus().icd</code> 動態註冊，鏡像 ModuleStatusManager）。
+  - ⚠️ 尚未移植：<code>search_medical_codes</code>（hybrid BM25+vector，需先移植 embedding service）；
+    Node 暫不含 admin maintenance gate（<code>_icd_maintenance_active</code>，Phase 2）——目前 live 非
+    維護中故 parity 不受影響。
+- ✅ <strong>LOINC <code>query_loinc</code></strong> 達 parity（<code>PASS query_loinc: matched</code>）。新增
+  <code>node-server/src/labService.ts</code>（移植 <code>get_patient_friendly_name</code> detail 模式 +
+  <code>get_reference_range</code> reference_range 模式；NUMERIC <code>range_low/high</code>→number 對齊
+  Python <code>float</code>）。wrapper 的 arg 驗證（<code>loinc_code</code> required、reference_range 需 <code>age</code>）
+  在 mcp.ts 內鏡像。gate 依 <code>getModuleStatus().lab</code>。
+- ✅ <strong>embedding service + 兩支 search 工具</strong>達 parity（2026-06-14，D1 <code>7 passed /
+  1 warned / 2 skipped</code>）。新增 <code>node-server/src/embeddingService.ts</code>（從零移植
+  <code>embedding_service.py</code>：ollama/openai/google 三 provider、<code>embed</code>/<code>embedBatch</code>、
+  fail-open；設定改從 <code>admin.app_settings</code> group <code>embedding</code> 讀，鏡像 Python lifespan 的
+  <code>configure(get_group("embedding"))</code>，process 單例）與 <code>node-server/src/searchQuality.ts</code>
+  （移植 <code>search_quality.py</code> 的 <code>embeddingsPresent</code> + <code>annotate</code>，含 60s presence cache）。
+  - ✅ <code>search_medical_codes</code>：<strong>PASS matched</strong>。<code>icdService.searchCodes</code> 忠實移植 hybrid
+    RRF SQL；vec 表目前空，故走 hybrid 路徑但語意半邊不貢獻 → 與 Python 同樣加
+    <code>search_mode: keyword_only</code> 標記、同樣 fts 排序。<code>IcdService</code> 加 constructor 收 embedding svc。
+  - ⚠️ <code>search_loinc</code>：<strong>WARN（contract matches; ranked candidates differ）= 可接受</strong>。
+    <code>labService</code> 加 <code>searchLoincCode</code>/<code>searchBySpecimen</code>/<code>findRelatedTests</code>/<code>listCategories</code>，
+    4 mode wrapper 鏡像 server.py。排序差來自<strong>來源 SQL 本身</strong>：fts CTE 的 <code>LIMIT 20</code> 無
+    tie-break <code>ORDER BY</code>，"glucose" 類大量 <code>ts_rank_cd</code> 同分 → Postgres 每連線回傳任意 20 列。
+    此非決定性存在於 Python 端，Node 跑 byte-identical SQL，屬計畫列為「可接受的歷史 search
+    warning」。<strong>不</strong>修 tie-break（會偏離 Python 行為）。
+  - 🔧 harness 修正：<code>run_case</code> 改為「僅單邊 error 才 FAIL；兩邊皆 error 時 fall through
+    比對 payload」——<code>search_medical_codes</code> 的測試關鍵字 <code>糖尿病</code> 在兩端都因 simple FTS 不
+    斷中文詞而回傳相同 <code>{"error":"No results found..."}</code>，舊邏輯誤判 FAIL。新邏輯只在 payload
+    相異時才 FAIL，不會遮蔽真分歧。
+- ✅ <strong>Lab interpret 2 支</strong>達 parity（2026-06-14）：<code>interpret_lab_result</code>、
+  <code>batch_interpret_lab_results</code> 皆 <strong>PASS matched</strong>。<code>labService</code> 加 <code>interpretLabResult</code>/
+  <code>batchInterpretResults</code>（沿用既有 <code>getReferenceRange</code>）。LOINC 群至此 4 支全綠
+  （<code>search_loinc</code> WARN-可接受）。
+- ✅ <strong>SNOMED 群 4 支</strong>達 parity（2026-06-14）。新增 <code>node-server/src/snomedService.ts</code>
+  （從零移植 <code>snomed_service.py</code>：search/concept detail/hierarchy/relationships/ICD-10 map）。
+  - <code>query_snomed_concept</code> / <code>get_snomed_relationships</code> / <code>query_snomed_mapping</code>：<strong>PASS matched</strong>。
+  - <code>search_snomed_concept</code>：<strong>WARN（ranked candidates differ）= 可接受</strong>（同 search_loinc，
+    fts CTE <code>LIMIT 20</code> 無 tie-break）。
+  - ⚠️ <strong>bigint 對齊重點</strong>：SNOMED ID 是 PG <code>bigint</code>，node-pg 回<strong>字串</strong>（asyncpg 回 int）。
+    18 位 metadata 型別常數（FSN_TYPE=900000000000003001 等）超過 JS <code>MAX_SAFE_INTEGER</code>，
+    故以<strong>字串常數</strong>保存並當字串 query param 綁定（node-pg 無損綁到 bigint 欄）；輸出時
+    realistic-range concept_id 用 <code>asNum</code>(=<code>Number</code>) 還原成數字以對齊 Python int。
+    <code>mcp.ts</code> 的 <code>query_snomed_mapping</code> snomed-mode 以 <code>/^\d+$/</code> 判斷數字 vs 文字（鏡像
+    Python <code>int(keyword)</code> 的 ValueError fallback → <code>searchConcepts(keyword,1)</code>）。
+- ✅ <strong>Food Nutrition 群 4 支 read 工具</strong>達 parity（2026-06-14，全 <strong>PASS matched</strong>）。
+  新增 <code>node-server/src/foodService.ts</code>（從零移植 <code>food_nutrition_service.py</code> 的
+  search_nutrition / get_detailed_nutrition / search_food_ingredient /
+  search_foods_by_nutrient / analyze_meal_nutrition + 記憶體 nutrient-embedding fallback
+  與 <code>_NUTRIENT_ALIASES</code>）。<code>content_per_100g</code> 是 TEXT，pg 原樣回字串對齊 Python。
+- ✅ <strong>Food 匯入（loader）也已改 Node</strong>（user 要求「匯入的部分也要改」）。新增
+  <code>node-server/src/loaders/foodNutrition.ts</code>（從零移植 <code>loader/loaders/food_nutrition_loader.py</code>：
+  抓 TFDA Open Data 兩個 endpoint、TRUNCATE + 批次 INSERT 單一交易、stamp <code>sync_meta</code>）。
+  - TFDA <code>/export/20/json</code> 實際回 <strong>application/zip</strong>（Python <code>fetch_json</code> 的 zip 分支才是真路徑）；
+    Node 加 <code>fflate</code> <code>unzipSync</code> 解壓第一個 <code>.json</code>。
+  - ⚠️ <strong>null 語意 bug（已修並記入 memory [[project_node_loader_null_semantics]]）</strong>：Python
+    <code>r.get(k,"")</code> 只有 key <strong>缺席</strong>才回 <code>""</code>；key 存在但 JSON <code>null</code> 會回 <code>None</code>→存 SQL NULL。
+    TFDA <code>俗名</code> 對 ~93k 列回 <code>null</code>。初版 Node <code>v ?? ""</code> 把它壓成 <code>""</code> → <code>search_foods_by_nutrient</code>
+    回 <code>common_name:""</code> vs Python <code>null</code>（read-only port 測不出，因兩端讀同一 DB；跑完 Node loader
+    round-trip 才現形）。修法：<code>g()</code>（mirror <code>.get(k,"")</code>，回 <code>string|null</code>）給一般欄、<code>gStr()</code>
+    （mirror <code>str(r.get(k,""))</code>，present-null→<code>"None"</code>）給 <code>content_per_100g</code>。
+  - 驗證：Node loader 跑完 measurements/ingredients 列數與 Python 載入時<strong>完全相同</strong>
+    （226824 / 1702）、NULL 數 93080 / empty 0、<code>flush Redis</code> 後 4 支 food 工具全 <strong>PASS matched</strong>。
+    這是 <strong>Phase 3（L3 loader）的第一刀</strong>，提早做掉。
+- ✅ <strong>Health Supplements 群（1 支 <code>search_health_supplements</code>）+ 匯入（loader）已改 Node</strong>
+  （2026-06-14，<strong>PASS matched</strong>）。新增 <code>node-server/src/supplementsService.ts</code>（從零移植
+  <code>health_supplements_service.py</code>：hybrid RRF search + <code>analyze_health_support_for_condition</code>
+  + <code>DISEASE_BENEFIT_MAPPING</code> + <code>_resolve_icd_code</code> + permit_no 查詢）。MCP 工具為 3-mode
+  包裝（keyword / permit_no / condition）並以 <code>_health_supplement_result</code> 重塑欄位，邏輯在
+  <code>mcp.ts</code> <code>registerSupplementsTools</code> 對齊 <code>server.py</code>。新增
+  <code>node-server/src/loaders/healthSupplements.ts</code>（從零移植 <code>health_supplements_loader.py</code>：
+  TFDA endpoint 19、<code>g()</code> 重現 <code>dict.get(k,"")</code> null 語意、<code>valid_to</code> 寫死 <code>""</code>、TRUNCATE+BATCH 2000
+  +sync_meta）。<strong>Loader round-trip 驗證</strong>：Node 載入 561 列（與 Python 一致）、<code>valid_to</code> 561 空字串/0 NULL、
+  category 全 present，flush Redis 後 <code>search_health_supplements</code> <strong>PASS matched</strong>。
+- ✅ <strong>Guideline seed loader 已改 Node</strong>（2026-06-14，<strong>內容逐位元一致</strong>）。新增
+  <code>node-server/src/loaders/guideline.ts</code>（從零移植 <code>loader/loaders/guideline_seed.py</code>：4 種
+  慢性病 E11/I10/E78/N18 × 5 表 disease/diagnostic/medication/test/treatment_goals，硬編臨床 seed
+  逐字對應、idempotent count&gt;0 跳過、寫 <code>admin.module_load_log</code> ON CONFLICT）。<strong>Loader round-trip
+  驗證</strong>：dump baseline → TRUNCATE RESTART IDENTITY → 跑 Node loader → re-dump，5 表的內容
+  md5 指紋（以 icd_code 為自然鍵、排除 serial id）<strong>全部相同</strong>；flush Redis 後 guideline 2 支工具
+  仍 <strong>PASS matched</strong>。
+- ✅ <strong>LOINC 2.80 full loader 已改 Node</strong>（2026-06-14，<strong>內容逐位元一致</strong>）。新增
+  <code>node-server/src/loaders/loinc.ts</code>（從零移植 <code>loinc_loader.py</code> + <code>loinc_taiwan_seed.py</code>：
+  fflate 解 <code>Loinc_2.80.zip</code> 取根層 <code>LoincTable/Loinc.csv</code>（排除 AccessoryFiles）、自寫 RFC4180
+  CSV parser 重現 <code>csv.DictReader</code>（含 utf-8-sig BOM、引號內逗號/換行、<code>""</code>→<code>"</code>）、欄位
+  逐欄對應、<code>name_zh/common_name_zh/specimen_type/unit</code> seed ""、<code>classtype</code> int fallback 0、
+  TRUNCATE CASCADE + 多列 INSERT ON CONFLICT、再套用台灣中文名 + reference_ranges）。<strong>關鍵發現</strong>：
+  asyncpg 把 Python <code>float</code> 以 <code>Decimal(value)</code>（IEEE754 雙精度的<strong>精確</strong>展開）編入 <code>numeric</code> 欄，
+  故 <code>float("0.2")</code> 落地為 <code>0.2000…0625</code>、<code>0.5</code>→<code>0.5</code>（最小 scale）。node-postgres 預設送最短
+  round-trip 文字（<code>0.2</code>）會破壞位元一致，因此實作 <code>floatToExactNumeric</code>（BigInt 拆 mantissa/exp、
+  約掉 2 的公因子取最小 scale、<code>mantissa*5^k/10^k</code> 精確展開）把 range_low/high 以字串送入，
+  完全複製 asyncpg 行為。<strong>Loader round-trip 驗證</strong>：dump baseline → 跑 Node loader → re-dump，
+  <code>loinc.concepts</code>（104672 列、17 欄）md5 <code>2311566d…</code> 與 <code>loinc.reference_ranges</code>（37 列、8 欄）
+  md5 <code>db66e44e…</code> <strong>皆與 Python baseline 相同</strong>；flush Redis 後 4 支 lab 工具中 <code>query_loinc</code> /
+  <code>interpret_lab_result</code> / <code>batch_interpret_lab_results</code> <strong>PASS matched</strong>（<code>search_loinc</code> 為既知
+  search-mode 排序 WARN）。
+- ✅ <strong>ICD-10-CM / ICD-10-PCS 2025 loader 已改 Node</strong>（2026-06-14，<strong>內容逐位元一致</strong>）。新增
+  <code>node-server/src/loaders/icd.ts</code>（從零移植 <code>icd_loader.py</code> + <code>main.py:load_icd</code>）。為免額外相依,
+  自寫<strong>精簡 XML tree parser</strong>(重現 ElementTree <code>.text</code>=首個子元素前的文字、<code>find</code>=首個直接子、
+  <code>findall</code>=全部直接子、<code>iter</code>=含自身的後代)解析 NLM tabular XML(<code>&lt;diag&gt;&lt;name&gt;&lt;desc&gt;</code> 遞迴 walk、
+  <code>^[A-Z]\d</code> 過濾、category=code[:3])→ <code>icd.diagnoses</code>;PCS flat txt(7 字元 code + space + desc、
+  排除 addenda)→ <code>icd.procedures</code>;並自寫<strong>精簡 XLSX reader</strong>(workbook→rels→sheet 對應、sharedStrings
+  多 <code>&lt;t&gt;</code> run 串接、cell <code>t="s"</code> 解 shared index、col A=code col D=中文名、跳首列、isinstance str 守則)
+  取台灣 MOHW 雙語中文名。<strong>關鍵發現</strong>:XML 1.0 行尾正規化 —— ElementTree/openpyxl 會把 cell/文字中的
+  <code>\r\n</code>/<code>\r</code> 轉成 <code>\n</code>(如 Z53 中文名含內嵌換行存成 CRLF),手寫 parser 須在 entity 解碼前補上
+  <code>normalizeEol</code>(套用於 XML text node、CDATA、xlsx <code>&lt;t&gt;</code>/inlineStr/str)。<strong>Loader round-trip 驗證</strong>:
+  dump baseline → 跑 Node loader → re-dump,<code>icd.diagnoses</code>(46498 列,45907 含中文名)md5 <code>b6479dc6…</code>
+  與 <code>icd.procedures</code>(78948 列,78458 含中文名)md5 <code>ede029ce…</code> <strong>皆與 Python baseline 相同</strong>;
+  flush Redis 後 5 支 ICD 工具(search_medical_codes / infer_complications / get_nearby_codes /
+  check_medical_conflict / browse_icd_category)全 <strong>PASS matched</strong>。
+- ✅ <strong>SNOMED CT International RF2 (Snapshot) loader 已改 Node</strong>（2026-06-15,<strong>內容逐位元一致</strong>）。
+  新增 <code>node-server/src/loaders/snomed.ts</code>（從零移植 <code>snomed_loader.py</code>）。寫 <code>snomed.concepts /
+  descriptions / relationships / icd10_map / historical_associations</code>。<strong>關鍵點</strong>:(1) SNOMED 元件 id
+  為 18 位數,超過 <code>Number.MAX_SAFE_INTEGER</code> → 全程以<strong>字串</strong>處理(parseInt 會破壞精度);(2) 自寫
+  <strong>忠實的 Python-csv state machine</strong>(tab 分隔、<code>"</code> 僅在欄位開頭觸發引號、<code>""</code> doubled、引號內換行→<code>\n</code>、
+  utf-8-sig BOM)。<strong>踩到 2 個雷</strong>:① QUOTE_IN_QUOTED 遇普通字元時 CPython non-strict <strong>只加該字元、丟棄
+  引號</strong>(<code>"Linked to" x</code>→<code>Linked to x</code>),起初誤補回引號 → 2 個 term 不符;② Language refset 解壓後 380MB,
+  原本一次解壓全部成員 + 建百萬筆 dedup Map 造成 <strong>OOM(6GB)</strong> → 改成只解壓 6 個 Snapshot 成員、逐檔
+  <code>takeMember</code> 後 <code>delete</code> 釋放 bytes、且因 Snapshot 每 id 唯一,latest-by-effectiveTime 的 Map 為 no-op
+  故改<strong>串流</strong>直接產出 filtered 列(heap 8GB)。<strong>Loader round-trip 驗證</strong>:dump baseline → 跑 Node loader
+  → re-dump,5 表 md5 全部相同(concepts <code>1f1614cc…</code>、descriptions <code>e445a66d…</code>、relationships
+  <code>fca74375…</code>、icd10_map <code>e0010a29…</code>、hist <code>a1d6ba96…</code>;列數 373972/995443/1301261/126054/174384);
+  us_preferred set 1053086、final true 747895 皆一致;flush Redis 後 SNOMED 工具 query_snomed_concept /
+  get_snomed_relationships / query_snomed_mapping <strong>PASS matched</strong>(search 為既知 WARN)。Node loaders
+  已完成：food / health_supplements / guideline / loinc / icd / <strong>snomed</strong> / <strong>IG(完整:核心+遞迴下載)</strong> /
+  <strong>embeddings</strong>。drug pipeline 確定留 Python(OCR dots_ocr 硬相依)。<strong>所有確定性 loader 皆已 Node 化。</strong>
+- ✅ <strong>embeddings loader 已改 Node</strong>(2026-06-15)。新增 <code>node-server/src/loaders/embeddings.ts</code>(從零移植
+  <code>loader/loaders/embedding_loader.py</code>):<code>ensureDimensions</code>(halfvec dim ALTER + HNSW 重建)、incremental
+  <code>embedTable</code>(sha256 <code>source_hash</code> 增量、orphan anti-join 修剪、<code>module_embed_log</code>)、6 模組函式(food×2 表
+  / health_supplements / icd / loinc / guideline / snomed)。embed 呼叫<strong>重用既有 <code>embeddingService.ts</code></strong>
+  (Ollama/OpenAI/Google,設定取自 <code>admin.app_settings</code> group <code>embedding</code>)。CLI:<code>--&lt;module&gt;</code> / 無旗標=全部 /
+  <code>--ensure-dims</code>。<strong>驗證策略</strong>(非 byte-identical:向量是模型輸出 + halfvec 量化):① <strong><code>source_hash</code> 決定性</strong>
+  ——Node 的 <code>" ".join(filter(None,…))</code> + sha256 與 Python 對 guideline 4 列 <strong>逐 hash 相同</strong>(增量選取邏輯
+  等價);② 增量 re-run = <strong>0 new/changed</strong>;③ batching(health_supplements 561 列)正常、halfvec 1024d;
+  ④ embeddings 寫入共用 DB 後 flush Redis,<code>search_health_supplements</code> / <code>search_clinical_guideline</code> 雙端
+  <strong>PASS matched</strong>(真正走向量路徑)。全套 parity 維持 <strong>49 / 2(既有 search 排序)/ 2 / 0</strong>。大表(icd 46k /
+  loinc 87k / snomed 374k / food 3883)走相同程式路徑,因遠端 Ollama 耗時/成本未全跑,僅小模組已實證。
+  <strong>注意</strong>:<code>concept_id</code> 為 18 位字串(BIGINT),<code>deleteOrphans</code> 用 <code>unnest($1::BIGINT[])</code> anti-join。
+- ✅ <strong>FHIR IG loader 完整移植完成且 9 包全 byte-identical</strong>(2026-06-15)。新增
+  <code>node-server/src/loaders/igRegistry.ts</code>(從零移植 <code>fhir_registry.py</code>:<code>normalizeBase</code>/<code>parseCoordinate</code>/
+  <code>getMetadata</code>/<code>resolveVersion</code>/<code>downloadTarball</code>(候選序 base→meta.tarball→fallback、SHA-1 shasum 驗、
+  gzip magic 驗)/<code>search</code>、<code>RegistryError</code>),並在 <code>ig.ts</code> 加入 <code>fetchIgDependencies</code>(BFS 遞迴,deps 讀自各
+  tarball 的 package.json、跳過已安裝、<code>IG_DEP_MAX_PACKAGES=50</code>)+ <code>acquireIgRoot</code>(registry 座標 or 本地檔)。
+  CLI:<code>--registry &lt;id[@ver]&gt;</code> / <code>--root &lt;tgz&gt; --deps</code> / <code>--no-fallback</code> / <code>--registry-base</code>。<strong>踩到第 3 個雷
+  (階段二才暴露)</strong>:<code>raw_json</code> 雖經 <code>::jsonb</code> 正規化,但 <strong>jsonb 不正規化數字</strong>——<code>3.0::jsonb</code> ≠ <code>3::jsonb</code>
+  且保留 scale。Python <code>json.dumps</code> 對 float 用 <code>repr</code>(<code>3.0</code>/<code>-2.0</code>)、對 int 用精確位數;<code>JSON.parse</code> 抹掉
+  int/float 之分且大整數失精。故新增 <strong>tagged-number JSON parser <code>parseJsonPy</code></strong>(自寫 tokenizer,float→
+  <code>pyFloatRepr</code> Python repr、int→原 token 逐字),<code>PyNum</code> 貫穿 <code>pyJsonStringify</code>/<code>pyStr</code>/<code>pyRepr</code>/<code>pyTruthy</code>,
+  只 artifacts 走此 parser。原症狀:r4.core/ips/sdc 各 1、examples 39 個 artifact 的 <code>"value": 3.0</code> 被寫成 <code>3</code>。
+  <strong>驗證</strong>:TRUNCATE fhir.<em> → Node <code>--root twcore --deps</code> 遞迴抓滿 9 包 → <code>scripts/ig_fingerprint.sql</code> 四表
+  指紋全等 Python baseline:ig_packages 9 <code>d08be99a…</code>、codesystems 4234 <code>4c059ccf…</code>、concepts 73745
+  <code>52f0a8b0…</code>、artifacts 20996 <code>5c825e34…</code>;另以 <code>scripts/ig_artifact_diff.py</code>(跑真正的
+  <code>_build_twcore_artifact_payload</code> 經 jsonb 正規化逐 artifact_key 比對)定位並收斂至 </em><em>0 差異</em><em>。flush Redis
+  後全套 parity </em><em>49 passed / 2 warned(既有 search 排序)/ 2 skipped / 0 failed</em><em>。
+  </em><em>待辦階段三(非 IG 專屬)</em><em>:job 編排(staging 表 <code>admin.stage_twcore_*</code> / checkpoint pause·cancel / worker
+  心跳)——屬跨所有 loader 的 Phase 2 admin worker 框架,非 IG loader 本身。
+  - 索引核心(階段一)詳節:自寫 tar reader(fflate 只解 gzip;ustar prefix / GNU 'L' / pax 'x' 長檔名)、
+    per-package DELETE+INSERT、is_default 僅 insert、per-package dedup;另踩雷 ① artifact metadata 欄位用
+    Python <code>str(data.get(k) or "")</code>,FHIR 欄位是物件/陣列時 Python 產容器 repr、空容器 falsy→"",故實作
+    <code>pyStr</code>/<code>pyRepr</code>/<code>pyTruthy</code>/<code>pyStrOr</code>。
+- ✅ </em><em>FHIR Condition / Medication 群（4 支）已改 Node</em><em>（2026-06-14，全 </em><em>PASS matched</em><em>）。
+  新增 <code>node-server/src/fhirConditionService.ts</code>（從零移植 <code>fhir_condition_service.py</code>：
+  <code>create_condition</code> / <code>create_condition_from_search</code> / <code>validate_condition</code>，衍生自 <code>icd.diagnoses</code>）
+  與 <code>node-server/src/fhirMedicationService.ts</code>（從零移植 <code>fhir_medication_service.py</code>：
+  <code>create_medication</code> / <code>create_medication_from_search</code> / <code>validate_medication</code> + 完整
+  <code>_build_resource</code> 系列，衍生自 <code>drug.licenses</code> + <code>drug.normalized_records.normalized_json</code>，
+  含 <code>normalize_license_token</code>）。MCP 包裝在 <code>mcp.ts</code> <code>registerFhirConditionTools</code> /
+  <code>registerFhirMedicationTools</code>，gate 為 <code>status.fhir_condition</code>(=icd) / <code>status.fhir_medication</code>(=drug)。
+  注意：parity 對 <code>id</code>/<code>meta.lastUpdated</code>/<code>recordedDate</code> 等時間/亂數欄位以全域 skip set 忽略，
+  其餘欄位逐欄相符；<code>query_fhir_medication</code> 為 contract（shape）比對。
+- ✅ </em><em>FHIR Servers 群（3 支，always-on）已改 Node</em><em>（2026-06-14，全綠）。新增
+  <code>node-server/src/fhirServerService.ts</code>（從零移植 <code>fhir_server_service.py</code> 的 MCP 對外面：
+  <code>serverPublic</code> + <code>serverMcpSummary</code> + <code>attachOauthStatus</code> + <code>listFhirServers</code> /
+  <code>getFhirServerStatus</code> / <code>crudFhirServer</code>）。在 <code>mcp.ts</code> <code>registerFhirServerTools</code> 以
+  always-on 方式註冊（不受 module gate 影響，對齊 <code>_TOOL_GROUPS["FHIR Servers"]</code>）。
+  </em><em>範圍註記（誠實）</em><em>：list/get 為完整 faithful 讀取轉換；<code>crud_fhir_server</code> 完整移植 guard
+  chain（server fetch→not-found / allowed_operations / confirm_write / resource_type 驗證）+
+  No-Auth 對外 <code>_call_fhir</code>。OAuth2（CC/AC、private_key_jwt token 機制）與 admin 註冊/discovery
+  pipeline </em><em>尚未移植</em><em>——對 OAuth server 的 crud 會回明確錯誤（非靜默）。<code>admin.fhir_servers</code>
+  目前 0 列,parity 三案（list 空表 / get not-found / crud not-found）皆 </em><em>PASS</em><em>：
+  <code>list_fhir_servers: matched</code>、<code>get_fhir_server_status</code> / <code>crud_fhir_server</code> both rejected。
+- ✅ </em><em>Drug / TFDA 群（4 支 read 工具）已改 Node</em><em>（2026-06-14，全綠）。新增
+  <code>node-server/src/drugService.ts</code>（從零移植 <code>drug_service.py</code> 的 read 面：
+  <code>search_by_name</code>/<code>_ingredient</code>/<code>_license_id</code>/<code>_atc_code</code>、<code>get_drug_details</code>、
+  <code>get_drug_asset_links</code>、<code>identify_unknown_pill</code>，含 <code>_row_to_result</code>/<code>_maybe_json</code>/
+  <code>display_drug_statuses</code>/<code>_PILL_FEATURE_SYNONYMS</code> 與 <code>_BASE_SELECT</code>/<code>_BASE_JOINS</code>）。
+  在 <code>mcp.ts</code> <code>registerDrugTools</code> 以 module gate <code>status.drug</code> 註冊。
+  </em><em>範圍註記（誠實）</em><em>：完整 TFDA crawl/OCR/分析 loader pipeline </em><em>尚未移植</em><em>（屬 Phase 3）；
+  MinIO presign 在 Node 尚未接線，<code>presigned_url</code> 一律回 <code>null</code>（與 Python 未設定 MinIO 時相同，
+  保持 parity）。parity 四案皆 </em><em>PASS</em><em>：<code>search_drug</code> / <code>identify_unknown_pill</code> matched、
+  <code>get_drug_details</code> / <code>get_drug_asset_links</code>（contract）matched。
+- ✅ </em><em>Guidelines 群（2 支）已改 Node</em><em>（2026-06-14，全綠）。新增
+  <code>node-server/src/guidelineService.ts</code>（從零移植 <code>clinical_guideline_service.py</code> 的
+  read 面：<code>search_guideline</code>（hybrid RRF / 純 FTS）、<code>get_complete_guideline</code>、
+  <code>get_medication_recommendations</code>、<code>get_test_recommendations</code>、<code>get_treatment_goals</code>、
+  <code>check_medication_contraindications</code>、<code>suggest_clinical_pathway</code>）。<code>mcp.ts</code>
+  <code>registerGuidelineTools</code> 以 <code>status.guideline</code> gate；<code>query_guideline</code> 依 <code>section</code>
+  dispatch（complete/medication/test/goals/pathway/contraindications，與 server.py 的
+  <code>section_map</code> 一致；contraindications 需 <code>medication_class</code>、pathway 接受
+  <code>patient_context_json</code>）。parity 二案皆 </em><em>PASS</em><em>：<code>search_clinical_guideline</code>（search）、
+  <code>query_guideline</code>（contract）matched。
+- ✅ </em><em>FHIR IG 群（19 支，最大群）已改 Node</em><em>（2026-06-14，行為全綠）。從零移植整個
+  in-process 堆疊：<code>fhirIg.ts</code>（registry/closure/canonical 解析）、<code>fhirSnapshot.ts</code>
+  （snapshot projector）、<code>fhirReference.ts</code>（urn context + bundle 組裝）、
+  <code>fhirAuthoring.ts</code>（fixed/pattern pin、narrative、slice pin）、<code>fhirTerminology.ts</code>
+  （分層 ValueSet 展開 + lookup）、<code>fhirValidator.ts</code>（structure/slicing/invariants）、
+  <code>fhirIgService.ts</code>（19 方法 + 共同 envelope）。<code>mcp.ts</code> <code>registerFhirIgTools</code> gated on
+  <code>status.ig</code>；<code>fhir_resolve_reference</code>/<code>fhir_build_bundle</code> 走純 <code>fhirReference</code> + envelope。
+  </em><em>FHIRPath 對等關鍵</em><em>：Python 用 <code>fhirpathpy</code>，其未實作 <code>hasValue</code>/<code>htmlChecks</code>/
+  <code>memberOf</code>/<code>resolve</code>，被「觸及」時 throw → 計為 unevaluable invariant。Node 以
+  <code>fhirpath</code>(npm) 的 <code>userInvocationTable</code> 覆寫這 4 個函式使其 throw（lazy，未觸及的
+  分支不 throw），</em><em>逐位元複製</em><em> fhirpathpy 行為——validate_resource 的
+  <code>dom-6 warning + 1 invariant-unevaluated</code> 完全吻合。parity 19 案全 PASS（含
+  validate_resource / validate_bundle / finalize_resource / normalize_code）。
+- ✅ </em><em>全 51 工具行為 parity 綠</em><em>：<code>api_parity_test.py</code>（非 strict）</em><em>0 failed</em><em>
+  （49 passed / 2 warned[search 類左右差，可接受] / 2 skipped[<code>fhir_resolve_terminology_batch</code>、
+  <code>fhir_apply_mapping_template</code> 為兩端皆已移除的 legacy 工具，module inactive]）。
+- ℹ️ </em><em><code>--strict-schema</code> 殘留 2 項（純 schema 呈現差異，非行為差異）</em>*：
+  <code>search_snomed_concept.hierarchy_filter</code>、<code>get_snomed_relationships.relationship_type_id</code>。
+  Python 標註 <code>int = None</code>，Pydantic 渲染為 <code>{type:integer, default:null}</code>；Zod 無法在
+  「保持 optional + runtime 接受省略值」下產出該確切形狀（<code>.default(null)</code> 於非 nullable
+  number 會被標 required 且 runtime 拒絕 null）。採 <code>.nullish().default(null)</code>（runtime 忠實），
+  僅 strict-schema 的 type union 呈現不同——屬 Pydantic/Zod 框架渲染差異，不影響任何呼叫。</p>
+<h3 id="phase-2-l2-admin-rest-ws">Phase 2 — L2 Admin REST + WS<a class="headerlink" href="#phase-2-l2-admin-rest-ws" title="Permanent link">&para;</a></h3>
+<ol>
+<li><strong>從零實作</strong>各 admin REST/WS 模組，對齊目前 Python 行為。backup 的
+   <code>node-server/src/admin/*</code> 僅供對照（且 <strong>未經 parity 驗證</strong>，風險高），不沿用程式碼。</li>
+<li>重點難點：</li>
+<li><strong>session/cookie</strong>：<code>tw_health_admin_session</code> 簽章演算法、TTL、密碼雜湊
+     （<code>sha256$</code> / <code>pbkdf2_sha256$</code>）要逐位元相容，否則既有 session 失效。</li>
+<li><strong>pgcrypto</strong>：<code>pgp_sym_decrypt</code> 的 <code>FHIR_SERVER_SECRET_KEY</code> 行為（空/錯誤訊息）。</li>
+<li><strong>WebSocket</strong> live log 事件格式與 react-query 失效表（<code>wsInvalidation.ts</code>）。</li>
+<li><strong>db_health gate</strong>：DB 斷線時鎖定變動操作 + overlay 旗標。</li>
+<li><strong>FHIR Servers 精靈</strong>：<code>discover_fhir_metadata</code>、<code>run_fhir_test_request</code>、OAuth
+     （Auth Code + PKCE、Client Credentials、<code>private_key_jwt</code> JWKS 託管）。</li>
+<li>跑 admin REST parity + WS 比對。</li>
+</ol>
+<p><strong>出場條件</strong>：admin parity 綠；前端 <code>web/admin-app</code> 不改任何一行即可運作。</p>
+<p><strong>進度（2026-06-15，全速啟動 Phase 2）</strong>：
+- ✅ <strong>auth 地基</strong> <code>node-server/src/adminAuth.ts</code>（從零移植 <code>admin_html_shell.py</code> 的
+  <code>verify_admin_password</code> / <code>build_admin_session_token</code> / <code>parse_admin_session_token</code> /
+  cookie helpers）。<strong>逐位元 cross-check 通過</strong>：同 username/secret/固定時間,Python 與 Node
+  產出的 session token 完全相同（<code>eyJ1Ijoi…157ff</code>）;<code>sha256$</code> 與 <code>pbkdf2_sha256$</code> 密碼驗證
+  兩端皆 true。既有瀏覽器 session 切換後不失效。
+- ✅ <strong>admin HTTP gate</strong> <code>node-server/src/admin/adminApp.ts</code>（Express middleware,忠實複製
+  <code>server.py</code> inline dispatcher 的閘門順序:disabled→404 / not-ready→503 / cookie 解析 /
+  form+JSON login·logout（須先於 auth gate）/ 未登入 /admin/api→401 / <code>GET /admin/api/health</code>
+  永不 gated / db_health gate→503 / 非 API GET→404〔front door 擁有 SPA〕）。接入 <code>server.ts</code>
+  （<code>app.use(adminHandler)</code> + <code>express.urlencoded</code>）。<strong>未登入 401 兩端對齊</strong>。
+  - ⚠️ form 登入失敗的 <code>build_admin_login_html</code>（70 行 + brand_css）為 <strong>legacy-only</strong>（front
+    door 擁有登入頁,<code>LEGACY_HTML</code> 預設關),回同 401 狀態但 body 暫為精簡文字——Next.js 部署下
+    不可達。其餘 login/logout 行為逐一對齊。
+- ✅ <strong>settings 讀路徑</strong> <code>node-server/src/admin/adminSettings.ts</code>（完整 <code>SETTINGS_SCHEMA</code>
+  7 群逐欄對應 + <code>coerce</code> + 5s cache <code>getGroup</code> + <code>groupMetadata</code> + <code>getAll</code>,secret 遮罩
+  <code>●●●●●●●●</code>）。<code>GET /admin/api/settings</code> <strong>parsed-JSON EQUAL</strong>（byte 差僅 Python
+  <code>json.dumps</code> 預設 <code>:</code>/<code>,</code> 空白,harness 走 parsed）。
+- ✅ <strong>settings 寫入路徑（chunk 3 第一刀,2026-06-21）</strong> <code>adminSettings.ts</code> 補
+  <code>saveGroup</code> / <code>listModels</code> / <code>testGroup</code> / <code>resolveDraft</code>,<code>adminApp.ts</code> 接
+  <code>POST /admin/api/settings/{group}[/{action}]</code>（action= models | test | 空=save,
+  鏡像 server.py <code>rest.split("/")</code> dispatch）+ <code>refreshSettingsSingletons</code>（embedding→
+  <code>reconfigureEmbeddingService</code>;minio→<code>minioService.initialize()</code> 重讀,鏡像
+  <code>_refresh_settings_singletons</code>）。db.ts 加共用 <code>withTransaction</code> helper（BEGIN/COMMIT/
+  ROLLBACK,供後續所有 write 端點重用）。<code>saveGroup</code> 完整移植:secret-mask 保留、enum 驗證
+  （錯誤訊息以 <code>pyListRepr</code> 複刻 Python list repr <code>['a', 'b']</code>）、<code>coerce</code>→<code>valueToStr</code>
+  寫 storage string、單交易 upsert + <code>admin.admin_audit_log</code>（secret 遮罩成 <code>***</code>）。
+  <code>testGroup</code>/<code>listModels</code> 移植五/三 provider 路徑（ollama <code>/api/tags</code>、openai <code>/models</code>、
+  google <code>/v1beta/models</code>;embedding/analysis/ocr/minio/tfda test）+ <code>errStr</code>（複刻 <code>_err</code>:
+  HTTPStatusError 取 response body 的 <code>error.message</code>/<code>message</code>,否則 status / class name）。
+  <strong>驗證</strong>:鑄造合法 cookie 對 live Python <code>:8080</code> ↔ Node <code>:8000</code>(同 DB) 跑 11 案 →
+  <strong>10 PASS / 1 可接受 divergence</strong>。PASS 含:embedding/models(真 ollama tags)、embedding/test
+  (真 embed,dim=1024 對齊,latency 正規化)、analysis/test、tfda/test、minio/test、
+  unknown-group models→400、unknown-group test→200 no-test、enum 驗證 save→400、unknown save→400、
+  unknown action→404。唯一 divergence:<code>ocr/test</code> 在 <code>server_ip</code> 空/不可達時,httpx 與 fetch 的
+  <strong>malformed-URL 錯誤字串不同</strong>（py「Request URL is missing an 'http://'…」vs node「Failed to
+  parse URL…」）——狀態碼/<code>{ok:false}</code> 分類一致,僅自由文字 detail 差,屬既定「不可達外部服務的
+  error-string divergence」可接受範疇（同 search WARN 政策）。<strong>注意</strong>:save/test/models 不在 HTTP
+  回應放時間欄,但 save 寫 <code>updated_at=NOW()</code> + audit row(append-only,冪等同值寫安全)。
+  - <strong>待辦</strong>:<code>list_models</code>/<code>test</code> 對 openai/google provider 的非 ollama 路徑(目前 live 為 ollama,
+    happy path 已驗;其餘走相同程式碼但未對真 openai/google 端點實測)。
+- ✅ <strong>workers 端點</strong> <code>node-server/src/admin/adminJobs.ts</code>（移植 <code>WorkerHeartbeat</code> /
+  <code>is_heartbeat_stale</code> / <code>list_worker_heartbeats</code> / <code>_parse_jsonb</code> / stale-after env）。
+  <code>GET /admin/api/workers</code> <strong>full EQUAL</strong>（含微秒時間戳）。
+- 🔑 <strong>timestamptz isoformat helper（可重用,高價值）</strong> <code>tsIsoExpr(col)</code> + <code>pyIso(text)</code>:
+  asyncpg 把 timestamptz 解成 <strong>UTC-aware datetime</strong>,<code>.isoformat()</code> 永遠 <code>+00:00</code> 且保留
+  <strong>微秒</strong>;node-pg 解成 <strong>毫秒精度 JS Date</strong>（丟微秒 + 用 <code>Z</code>）。故改在 Postgres 端
+  <code>to_char(col AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US')</code> 取出微秒,JS 端 <code>pyIso</code>
+  依 Python 規則（micro==0 → 不顯示小數,否則 6 位不 trim）+ 補 <code>+00:00</code>。<strong>所有 admin 端點的
+  時間欄都該走此 helper</strong>（jobs created_at/started_at、schedules、sources…）。
+- <strong>驗證法</strong>:兩端共用 <code>ADMIN_SESSION_SECRET</code>+token byte-identical → 直接鑄造合法 cookie 繞過
+  明文密碼,對 live Python <code>:8080</code> 與 Node <code>:8000</code> 逐端點比對（D2 harness 的 <code>ADMIN_PASSWORD</code>
+  明文阻礙因此可繞過）。
+- ✅ <strong>services 端點</strong> <code>node-server/src/admin/adminServices.ts</code>（移植 <code>SERVICE_PROBE_ORDER</code>/
+  <code>SERVICE_PROBE_META</code>/<code>_normalize_probe_row</code>/<code>_placeholder_probe_row</code>/<code>serialize_service_probes</code>/
+  <code>list_service_probes</code>;<code>checked_at</code>/<code>last_checked_at</code> 走 <code>tsIsoExpr</code>/<code>pyIso</code>,<code>generated_at</code> volatile）。
+  <code>GET /admin/api/services</code> <strong>EQUAL</strong>（modulo volatile generated_at）。active probing（寫
+  service_probes）屬 worker chunk。
+- ✅ <strong>jobs 讀路徑</strong> 加入 <code>adminJobs.ts</code>（移植 <code>AdminJob.from_row</code>/<code>to_dict</code>、<code>available_job_actions</code>、
+  <code>FINAL_JOB_STATUSES</code>、<code>list_jobs</code>/<code>get_job</code>/<code>list_job_steps</code>;created_at/started_at/finished_at
+  走 <code>tsIsoExpr</code>/<code>pyIso</code>）。<code>GET /admin/api/jobs</code>（<strong>13 筆真實 job full EQUAL</strong>）、
+  <code>/admin/api/jobs/{id}</code>、<code>/admin/api/jobs/{id}/steps</code> 皆 <strong>EQUAL</strong>。
+- ✅ <strong>jobs logs</strong> 加入 <code>adminJobs.ts</code>（<code>list_job_logs</code>:cursor <code>before_id</code>、<code>limit</code> cap 500、
+  <code>reversed</code>→ascending）。<code>GET /admin/api/jobs/{id}/logs</code>（含 <code>?limit=5</code>）<strong>EQUAL</strong>。
+- ✅ <strong>igs gallery</strong> <code>node-server/src/admin/adminIg.ts</code>（移植 <code>admin_ig.list_igs</code> + <code>_installed_set</code>/
+  <code>_counts_by_package</code>/<code>_closure_missing</code>,reuse 已驗的 <code>fhirIg.listPackages</code>/<code>packageClosure</code>）。
+  <code>GET /admin/api/igs</code> <strong>9 包 full EQUAL</strong>（含 counts/deps_missing/<code>imported_at</code>）。
+  - 🔑 <strong>第二種時間格式</strong>:此端點用 <code>json.dumps(default=str)</code> → <code>imported_at</code> 是 <strong><code>str(datetime)</code></strong>
+    （空格分隔 <code>2026-06-15 00:39:09.754594+00:00</code>,非 isoformat 的 <code>T</code>）。新增 <code>tsStrExpr</code>（空格版
+    to_char）+ 復用 <code>pyIso</code> 的 trim/<code>+00:00</code>。<strong>判斷端點用 <code>.isoformat()</code>〔T〕還是 <code>default=str</code>〔空格〕
+    決定用 <code>tsIsoExpr</code> 或 <code>tsStrExpr</code>。</strong>
+- <strong>待辦（chunk 2 續）</strong>:
+  fhir-servers(+export)〔0 列+pgcrypto,併入 FHIR Servers chunk〕/ drug/assets·drug/asset-content
+  〔MinIO <strong>presigned URL 每次簽章/nonce 不同→本質不可逐位比對</strong>,需把 presign 接進 Node drugService
+   + 比對時 normalize 簽章;asset-content 為二進位串流〕。
+  write endpoints <strong>進行中</strong>(Settings <code>POST</code> 三 action、<strong>Sources upload/dedup</strong>、<strong>Maintenance toggle</strong>、
+  <strong>Schedule POST/DELETE</strong>、<strong>Jobs create/control</strong>、<strong>IG import/set-default/remove</strong>、<strong>Schedule trigger</strong> 已驗,
+  見上/下);其餘 write 全數完成,<strong>WS <code>/admin/ws</code> 已驗</strong>,<strong>FHIR Servers sub-step A(CRUD+pgcrypto)已驗</strong>,
+  剩 FHIR Servers sub-step B(discover/test/test-request)、C(OAuth)、worker 待續。
+- ✅ <strong>FHIR Servers sub-step B1:discover(chunk 4 第二刀,2026-06-21)</strong>:<code>adminFhirServers.ts</code> 補
+  <code>deriveMetadataUrl</code>(SMART→<code>base/.well-known/smart-configuration</code>、IUA/OAuth→<code>auth_server/.well-known/oauth-authorization-server</code>)、
+  <code>metadataStrList</code>、<code>canonicalJson</code>(遞迴 key-sorted compact == Python <code>json.dumps(sort_keys,separators)</code>)、
+  <code>rawGet</code>(node:http/https,timeout + <code>rejectUnauthorized=verify_tls</code>,不用 undici)、<code>fetchMetadata</code>、<code>discoverFhirMetadata</code>
+  (回 metadata_url/fetched_at/<code>response_hash</code>=sha256(canonicalJson)/scopes_supported/token_endpoint_auth_methods/
+  grant_types/response_types/code_challenge_methods/smart_capabilities + issuer/token/authorization/jwks/registration/
+  introspection/revocation endpoints)。<code>adminApp.ts</code> 接 <code>POST /admin/api/fhir-servers/discover</code>(ValueError→400 <code>{ok:false}</code>、
+  其他 Error→<strong>200 <code>{ok:false}</code></strong>〔非致命,UI 退回手填〕、成功→200 <code>{ok:true,...}</code>)。<strong>parity 對 live PY:8080↔ND:8000:5/5 PASS</strong>——
+  no-url/bad-auth_server_url/bad-metadata_url 三個 400 byte-equal + <strong>真實網路 discover</strong>(Google OIDC well-known):
+  <code>response_hash</code> <strong>逐位相同</strong>(證實 canonical-JSON 雜湊與 Python 完全一致)、整個 body 相同(fetched_at normalize 掉)。harness 已刪。
+  B2(probe/test/test-request)、C(OAuth token 層)待續——兩者共用 token 機制故併 C 做。
+- ✅ <strong>FHIR Servers sub-step B2:probe/test/test-request + token/call 機制(chunk 4 第三刀,2026-06-21)</strong>:
+  <code>adminFhirServers.ts</code> 補完整 outbound 機制:<code>rawRequest</code>(node:http/https 任意 method+body+timeout+verify_tls+BasicAuth)、
+  <code>normalizeQuery</code>/<code>normalizeJsonBody</code>/<code>validateResourceId</code>/<code>resolveTokenStrategy</code>/<code>deriveTokenEndpoint</code>/<code>fhirUrl</code>/
+  <code>httpErrorExplanation</code>/<code>operationToRequest</code>/<code>capabilitySummary</code>、<strong>JWT client assertion</strong>(<code>signJwt</code> 用 node <code>crypto</code>
+  支援 HS/RS/PS/ES,ES 用 <code>dsaEncoding:"ieee-p1363"</code> 出 JOSE 格式;<code>buildClientAssertion</code>、<code>tokenRequestForm</code>、
+  <code>applyClientAuth</code>)、<code>fetchToken</code>/<code>accessToken</code>(token cache + 單飛 per-server lock;fresh 不快取)、<code>callFhir</code>、
+  <code>probeTestPath</code>、<code>workflowStep</code>、<code>runConnectionWorkflow</code>(metadata→token→FHIR /metadata 或 test_path)、
+  <code>resolveUserTokenForProbe</code>(none/CC→<code>(null,"")</code>;AC 暫回「authorize first / OAuth 未接」待 C)、<code>buildDraftServer</code>、
+  <code>testFhirServerConfig</code>、<code>sendTestRequest</code>/<code>normalizeExpectedStatuses</code>、<code>runFhirTestRequest</code>、<code>probeFhirServer</code>
+  (寫 <code>last_probe_*</code> + <code>fhir_server_probe_history</code>)。<code>adminApp.ts</code> 接 <code>POST /test</code>、<code>POST /test-request</code>、<code>POST /{id}/probe</code>。
+  <strong>parity 對 live PY:8080↔ND:8000:15/15 PASS</strong>——test/test-request 6 個 validation+AC-defer byte-equal(AC draft「authorize first」
+  錯誤字串與 workflow steps 完全相同,僅 <code>draft:&lt;clock&gt;</code> id normalize)+ <strong>真實 no-auth 呼叫公開 hapi.fhir.org</strong>:
+  test-request <code>/metadata</code> 與 <code>Patient?_count=1</code> 的 ok/method/url/status/reason/expected/explanation <strong>逐欄相同</strong>、
+  full workflow steps 結構相同且 ok=true + probe 寫入 last_probe_status='ok'/probe_history(兩台皆 functional PASS)。
+  測後 paritytest.<em> 全刪、0 straggler。harness 已刪。
+  </em><em>未驗(correct-by-port)</em><em>:CC token round-trip(需 live OAuth FHIR server)、私鑰/HMAC client assertion 簽章(需對端驗)。
+  </em><em>待 C</em><em>:AC 使用者 token(<code>fhir_oauth_service.get_valid_user_access_token</code>)+ authorize/callback/JWKS。
+- ✅ </em><em>FHIR Servers sub-step C:OAuth(AC+PKCE / CC / refresh / JWKS / callback)(chunk 4 第四刀,2026-06-28)</em><em>:
+  新增 <code>fhirOauthService.ts</code>(忠實 port <code>fhir_oauth_service.py</code>):<code>generatePkcePair</code>(S256,node crypto)、
+  <code>startAuthorization</code>/<code>beginAuthorization</code>(寫 pending PKCE state + 組 authorize URL,prompt=login,SMART 加 aud+offline_access)/
+  <code>completeAuthorization</code>(驗 state+TTL→code 換 token→<code>storeTokens</code>)、<code>getValidUserAccessToken</code>(single-flight 懶刷新)、
+  <code>refreshAccessToken</code>/<code>refreshTokenNow</code>、<code>clearOauthState</code>、<code>authorizeClientCredentials</code>、<code>getOauthStatus</code>/<code>statusFromRow</code>/
+  <code>attachOauthStatus</code>、<code>sweepExpiringTokens</code>(worker 用);token 以 <code>pgp_sym_encrypt</code> 加密存 <code>admin.fhir_server_oauth_tokens</code>,
+  時間戳用 <code>tsIsoExpr</code>+<code>pyIso</code> 對 Python <code>.isoformat()</code>。<code>adminFhirServers.ts</code> export 內部 helper 供其重用、
+  <code>resolveUserTokenForProbe</code> 改為 lazy-import 真正解 AC 使用者 token(打通 B2 的 AC probe/test 路徑)。
+  <code>adminApp.ts</code> 接 <code>POST /{id}/oauth/authorize|refresh|clear-cache</code> 並把 list/get 的 <code>attachOauthStatus</code> 換成 oauth-service 版;
+  <code>server.ts</code> 加公開路由 <code>GET /fhir-client/{id}/jwks.json</code> 與 <code>GET /fhir-oauth/callback</code>(303 redirect 回 admin SPA,
+  鏡像 uvicorn <code>_send_redirect</code>)。</em><em>parity 對 live PY:8080↔ND:8000:18/18 PASS</em><em>——authorize/refresh/clear 的 404 與
+  no-auth/no-token 錯誤 byte-equal、clear-cache 成功、</em><em>oauth_status not_authorized/authorized/expired 三態 byte-equal</em><em>
+  (合成 <code>pgp_sym_encrypt</code> token 列 + 固定到期時間,iso 逐位相同)、</em><em>begin_authorization authorize-URL 參數 byte-equal</em><em>
+  (除 state/code_challenge/redirect_uri)+ 持久化 pending state、</em><em>JWKS 同私鑰兩台輸出逐位相同</em><em>(證 derivePublicJwk 一致)、
+  jwks 404、callback missing/explicit-error/invalid-state 的 </em><em>303 Location byte-equal</em><em>。測後全刪、0 straggler、harness 已刪。
+  </em><em>未驗(correct-by-port,需 live IdP)</em><em>:互動式 authorize-code 換 token、refresh 成功、CC token 真實取得。
+  </em><em>FHIR Servers chunk(#4)全部完成。</em><em>
+- ✅ </em><em>Worker W1:job-lifecycle write helpers(chunk 5 第一刀,2026-06-28)</em><em>:<code>adminJobs.ts</code> 補
+  <code>upsertWorkerHeartbeat</code>(+<code>worker_heartbeat</code> 廣播)、<code>reclaimStaleJobs</code>(FOR UPDATE SKIP LOCKED 重排殭屍 job→
+  <code>resume_requested</code>/<code>reclaimed_stale</code>)、<code>claimNextJob</code>(CTE <code>next_job</code>+UPDATE→running/idle/claimed、attempt++、寫
+  claimed log;以 <code>JOB_ISO_COLS</code> 包裝回 <code>jobToDict</code> 形狀)、<code>recordJobStep</code>(+<code>job_step_updated</code> 廣播、terminal 狀態填
+  finished_at)、<code>appendJobLog</code>(+<code>job_log_line</code> 廣播)。時間戳一律 <code>tsIsoExpr</code>+<code>pyIso</code>。</em><em>這批正是先前各刀延後的
+  job-lifecycle ws_broadcast 來源。</em><em>verify:對 live DB 直接呼叫 Node 函式 </em><em>8/8 PASS</em><em>——claim 取得 queued job/狀態轉換/
+  寫 claimed log、</em><em>claim 回傳 dict 與 live Python <code>claim_next_job</code> normalize 後逐位相同</em><em>(用 worker 不認得的合成
+  job_type <code>paritytest_noop</code> 避開正在跑的 admin-worker 搶單)、heartbeat upsert、step upsert(+terminal finished_at)、
+  log append、reclaim 重排殭屍。harness 已刪、未 commit。
+- ✅ </em><em>Worker W2a:控制平面 + daemon 主迴圈 + noop(2026-06-28)</em><em>:<code>adminJobs.ts</code> 補上 worker 端 primitives——
+  <code>JOB_RESOURCES</code>/<code>JOB_TYPE_RESOURCES</code>/<code>getExcludedJobTypes</code>(per-module db_write slot + ollama_embed + llm 併發模型)、
+  worker tuning getters(<code>adminWorkerName</code>/<code>adminWorkerPollSeconds</code>/<code>adminHeartbeatIntervalSeconds</code>/
+  <code>adminNoopCheckpointDelaySeconds</code>)、<code>markJobStatus</code>(COALESCE 進度、terminal 填 finished_at、<code>result_summary='{}'</code> 保留舊
+  值、success 時 <code>activateManifestSources</code> 促活來源、<code>job_status_changed</code> 廣播,<code>updated_at</code> 經 <code>tsIsoExpr</code>+<code>pyIso</code>)、
+  <code>checkpointJobControl</code>(FOR UPDATE 讀 control_state∈{pause/stop/restart}_requested → 套用 paused/stopped/restart+
+  <code>createRestartJobLocked</code>、標記 control request handled、寫 control log)/<code>applyControlCheckpoint</code>/<code>countTableRows</code>、
+  <code>logJobOutcome</code>(+<code>fmt</code>/<code>successSummaryMessage</code> 的「✓ Completed — N diagnoses…」)、per-job verbose(<code>AsyncLocalStorage</code>
+  取代 ContextVar:<code>setDefaultLogVerbose</code>/<code>resolveLogVerbose</code>/<code>jobDebugLog</code>)、<code>pruneJobLogs</code>(兩段:retention + 每 job
+  上限保留、不刪 error)、<code>runNoopJob</code>(5 checkpoint smoke job)、<code>maybeAutoChain</code>(drug index→enrich→analysis)、
+  <code>executeAdminJob</code> 派發骨架(noop 全接;loader 類型暫拋 <code>W2bNotImplementedError</code> 留待 W2b;未知類型走 Python 的
+  permanent_failed unsupported 路徑)。<code>adminServices.ts</code> 補 <code>JOB_TYPE_DEPENDENCIES</code>+<code>getUnhealthyDependencies</code>(硬
+  <code>error</code> 才擋,degraded/無探測放行)。<code>adminSchedule.ts</code> 補 <code>listDueSchedules</code>。新增 <code>adminWorker.ts</code>(忠實 port
+  <code>admin_worker.py</code> <code>_run_loop</code>):DB health gate、reap+<code>requeueIfOrphaned</code>、idle/per-job heartbeat(<code>setInterval</code>)、
+  reclaim、oauth sweep、log prune、schedule scan(<code>scanAndFireSchedules</code>,前次 job 仍 active 則跳過)、claim+派發,
+  per-resource slot + <code>ADMIN_MAX_CONCURRENT_JOBS</code> 雙重併發上限,startup orphan reclaim,SIGTERM/SIGINT graceful。
+  <code>tsc</code> 零錯誤、產出 <code>dist/admin/adminWorker.js</code>。</em><em>verify:noop 執行路徑 PY(live worker 跑 queued noop)↔ND(對 pre-claimed
+  running noop 直接 <code>executeAdminJob</code>+<code>logJobOutcome</code>)同 DB byte-equal——<code>import_jobs</code>(status/control/step/progress/
+  result_summary)、<code>import_job_steps</code>、<code>import_job_logs</code> 三表全等 PASS</em><em>(兩者都設 running/合成 UUID 避開 live worker 搶單;
+  測後 6 筆測試列已刪)。harness <code>/tmp/w2a_parity.mjs</code> 已刪、未 commit。
+- ✅ </em><em>Worker W2b(完成,2026-06-29;polyglot 部署 + e2e 驗證 2026-06-30)</em><em>:
+  - ✅ </em><em>批次 1 — 輕量 sync(無 MinIO/無 staging)</em><em>:<code>adminJobs.ts</code> 新增 <code>runGuidelineSeedJob</code>/<code>runHealthSupplementsSyncJob</code>/
+    <code>runFoodNutritionSyncJob</code>(忠實 port <code>_run_guideline_seed_job</code>/<code>_run_health_supplements_sync_job</code>/
+    <code>_run_food_nutrition_sync_job</code>:prepare→sync/seed→finalize 的 step/progress/checkpoint + <code>applyControlCheckpoint</code> 續跑
+    保護 + result_summary 計數),分別套用已 port 的 Node loader <code>seedGuidelines</code>/<code>loadHealthSupplements</code>/<code>loadFoodNutrition</code>
+    (吃 <code>getPool()</code>)。dispatcher 三分支接上、從 <code>W2B_JOB_TYPES</code> 移除。<code>tsc</code> 零錯誤。</em><em>verify:<code>guideline_seed</code> PY(live
+    worker 跑 queued)↔ND(直接 <code>executeAdminJob</code>)同 DB byte-equal——job/steps/logs 三表全等 PASS</em><em>(idempotent re-seed,
+    <code>Already seeded (4 guidelines)</code>;health/food 為相同 wrapper pattern,loader 本身先前各刀已驗證)。測試列自動清除。
+  - 🔄 </em><em>批次 2 — 重量 staging/promote(進行中)</em><em>:
+    - ✅ </em><em>共用 staging 基礎</em><em>:</em><em>關鍵發現</em><em>——既有 Node loaders(<code>loadIcd</code>/<code>loadLoinc</code>/<code>loadSnomed</code>)是 legacy dev-path
+      direct-write(讀 <code>fhir-code/*.zip</code> → 直接寫最終表),</em><em>不含</em><em> admin staged-import 路徑(MinIO manifest /
+      <code>admin.stage_*</code> / checkpoint / drop-index promote),故批次 2 不能薄包裝、需 port 整套 staging 機制。已新增
+      <code>adminJobStaging.ts</code>(忠實 port <code>_ProgressLogThrottle</code>/<code>_stage_rows</code>/<code>_run_validate_step</code>/
+      <code>_checkpoint_before_promote</code>/<code>_capture_secondary_indexes</code>/<code>_optimized_promote</code>/<code>_clear_stage_rows</code> +
+      <code>_materialize_bound_sources</code>→<code>withMaterializedSources</code>,multi-source header-strip byte-for-byte)。補
+      <code>minioService.downloadBytes</code>(getObject stream→Buffer)、<code>adminJobs.getJobStepCheckpoint</code>。<code>tsc</code> 零錯誤。
+    - </em><em>待</em><em>:把 Node ICD/LOINC/SNOMED/IG parser 改成「回傳 row tuples」餵進 <code>stageRows</code>+<code>optimizedPromote</code>,寫每個
+      <code>_run_*_import_job</code> handler 接 dispatcher,逐模組對 live PY 跑真實 import 做 byte parity(需 MinIO 已上傳來源)。
+  - ✅ </em><em>批次 2 完成 — 重量 staging/promote(commit <code>ae4a50d</code>/<code>b34b57e</code>/<code>97e3e5c</code>/<code>0302980</code>/<code>1736d2a</code>)</em><em>:icd/loinc/snomed/ig/rxnorm
+    各自 port「parser→row tuples→<code>stageRows</code>+<code>optimizedPromote</code>」+ <code>_run_*_import_job</code> handler 接 dispatcher,逐模組對 live PY
+    byte parity(steps + 各最終表 md5 全等)。期間優化 <code>stageRows</code>:per-row → 單筆 multi-row INSERT(rows×ncols &lt; 65535,每外層
+    batch 一個 txn),ICD 98s→25s、SNOMED 2.97M 列可行。ICD 另以</em><em>完整 daemon loop</em><em> 對 live PY 驗過。
+  - ✅ </em><em>批次 3 完成 — drug(commit <code>ddee54f</code>)</em><em>:drug 留 Python(TFDA 爬取 + OCR <code>dots_ocr</code> VLM + 分析 LLM 硬依賴)。新增
+    <code>src/run_one_drug_job.py</code> shim(從 settings init pool+MinIO,對單一已認領 job id 跑 <code>admin_jobs.execute_admin_job</code> → 不變的
+    <code>_run_drug_*_job</code> + drug auto-chain);Node <code>runDrugJob</code> 以 <code>child_process.spawn</code> 呼叫(<code>DRUG_WORKER_PYTHON</code>/
+    <code>DRUG_WORKER_SRC_DIR</code> 可覆寫),shim 崩潰前置則標 <code>retryable_failed</code>。drug 三型派發 + 清空 <code>W2bNotImplementedError</code> set。
+  - ✅ </em><em>批次 4 完成 — embed(commit <code>11cdd88</code>)</em><em>:icd/loinc/health/food/guideline/snomed <code>runEmbedJob</code> + <code>EMBED_JOBS</code>
+    (<code>embeddings.ts</code>)。embedding 非決定性 → 驗 orchestration + idempotency(非 byte parity);<code>guideline_embed</code> PASS。
+  - ✅ </em><em>Polyglot worker 部署 + e2e(commit <code>d45913b</code>,2026-06-30)</em><em>:新增 <code>Dockerfile.worker</code>(repo root:<code>pydeps</code>(requirements +
+    dots_ocr)→ <code>nodebuild</code>(<code>npm ci</code>+<code>build</code>+<code>prune --omit=dev</code>)→ runtime <code>python:3.12-slim</code>+Node 20+libcairo2,
+    <code>CMD ["node","dist/admin/adminWorker.js"]</code>,ENV <code>DRUG_WORKER_PYTHON=python</code>/<code>DRUG_WORKER_SRC_DIR=/app/src</code>)。<code>compose.yaml</code>
+    <code>admin-worker</code> 改 build <code>Dockerfile.worker</code>、移除 <code>entrypoint: python admin_worker.py</code>(Phase 4 #1 達成)。</em><em>live 驗證</em><em>:Node
+    worker 開機(DB monitor + MinIO + 17 resources)、heartbeat 正常;Python drug shim 在同容器內開機(imports+pool+MinIO 全通)。
+    </em><em>真實 drug job e2e</em><em>:enqueue <code>drug_enrichment {"limit":1}</code> → Node 認領 → <code>Delegating … to the Python drug worker</code>(spawn)→
+    <code>Starting drug enrichment batch</code>(Python 跑 live TFDA 爬取)→ <code>Auto-chain: no pending work … skipping</code>(零 LLM/OCR 成本)→
+    <code>success</code>(2.6s)。</em><em>未做</em><em>:drug_analysis 全鏈(OCR <code>162.38.2.150:8000</code> 目前不可達 + 0 needs_ocr 候選),待 OCR 上線再測。
+- ✅ </em><em>FHIR Servers sub-step A:CRUD + pgcrypto(chunk 4 第一刀,2026-06-21)</em><em>:新增 <code>adminFhirServers.ts</code>
+  (忠實 port <code>fhir_server_service.py</code> 的 admin CRUD 面):<code>fhirServerSecretKey</code>(env <code>FHIR_SERVER_SECRET_KEY</code> 否則
+  fallback=admin_session_secret)、private_key_jwt key 材料(<code>generateKeypair</code> RSA/EC PKCS8 PEM via node <code>crypto</code>、
+  <code>jwkThumbprint</code> RFC7638、<code>derivePublicJwk</code> via <code>createPublicKey().export({format:"jwk"})</code>、<code>generateClientKey</code>、
+  <code>publicJwksFromJson</code>、<code>coerceUuid</code>、<code>resolvePublicJwk</code>)、<code>validateServerPayload</code>(完整 auth_type/profile/token_auth_method
+  分支 + URL/headers/resource-type/env/timeout 驗證)、<code>serverPrivate</code>、<code>adminAudit</code>(redact secrets)、
+  <code>fetchServerRow</code>(<code>pgp_sym_decrypt</code> 選擇性解密)、<code>listFhirServers</code>/<code>getFhirServer</code>/<code>exportFhirServers</code>(解密)/
+  <code>getFhirServerJwks</code>/<code>createFhirServer</code>/<code>updateFhirServer</code>/<code>deleteFhirServer</code>/<code>setDefaultFhirServer</code>(<code>pgp_sym_encrypt</code>
+  寫入 + <code>withTransaction</code> + audit)。<code>fhirServerService.ts</code> export <code>serverPublic</code>+<code>attachOauthStatus</code> 供重用。
+  <code>adminApp.ts</code> 接 8 路由:GET list(+oauth status)、GET export、POST create(201/400)、POST generate-key、
+  POST <code>{id}/set-default</code>(200/404)、GET/PATCH/DELETE <code>{id}</code>。schema migration 略過(表已存在於 db/schema.sql)。
+  </em><em>parity 對 live PY:8080↔ND:8000 同 DB:28/28 PASS</em><em>——15 validation 錯誤 byte-equal + get/delete/set-default 404 +
+  generate-key(RS384 結構/ES256/bad-alg)+ create/get/patch/set-default no-auth shape(normalize 掉 id/key/name/ts)+
+  oauth_cc create shape + </em><em>pgcrypto 跨伺服器 round-trip</em><em>(PY 解 ND 建的 client_secret、ND 解 PY 建的,皆得回原值,
+  證實對稱金鑰+演算法一致)。測後 paritytest.</em> 全刪、0 straggler。harness 已刪。
+- ✅ <strong>WebSocket <code>/admin/ws</code>(chunk 3 第八刀,2026-06-21)</strong>:新增 <code>adminWs.ts</code>(忠實 port <code>admin_ws.py</code>):
+  <code>initBroadcast</code>(node-redis 長壽 publisher,'error' 吞掉→失敗退回直送)、<code>broadcast(type,data)</code>(發 <code>{type,data}</code>
+  到 Redis pub/sub <code>admin:ws:events</code>,fire-and-forget)、<code>deliver</code>(對所有連線 client <code>ws.send</code>,readyState 檢查清死連線)、
+  <code>startWsRelay</code>(<code>createClient().subscribe(channel, cb→deliver)</code>,斷線指數退避重連)、<code>handleAdminWsConnection</code>
+  (註冊 client、<code>ping</code>→<code>{"type":"pong"}</code>、close/error 清理)。裝 <code>ws@^8</code>+<code>@types/ws</code>。<code>server.ts</code> <code>main()</code>:
+  <code>initBroadcast</code>+<code>startWsRelay</code>,並在 <code>server.on("upgrade")</code> 對 <code>/admin/ws</code> 把關(<code>adminReady</code> + <code>parseAdminSessionToken</code>
+  驗 cookie;<strong>未授權寫 HTTP 403 + destroy</strong>,鏡像 uvicorn pre-accept reject;授權則 <code>wss.handleUpgrade</code>→<code>handleAdminWsConnection</code>,
+  不送任何 initial frame)。已接的 REST 廣播:<code>maintenance_changed</code>(maintenance toggle 成功後)、<code>module_changed</code>
+  (ig remove 後,無條件,鏡像 Python)。<strong>parity 對 live PY:8080↔ND:8000:7/7 PASS</strong>(各台 unauth→<strong>HTTP 403</strong>、
+  <code>ping→pong</code>、maintenance toggle→收到 <code>maintenance_changed</code>;兩台 event payload <strong>逐位相同</strong>
+  <code>{"type":"maintenance_changed","data":{"module_key":"icd","enabled":true}}</code>)。worker-lifecycle 事件
+  (<code>job_status_changed</code>/<code>job_log_line</code>/<code>job_step_updated</code>/<code>worker_heartbeat</code>,由 mark_job_status/append_job_log/
+  record_job_step/upsert_worker_heartbeat 發)隨 worker 刀 #5;<code>module_cleared</code> 待 module-clear 端點 port。harness 已刪。
+- ✅ <strong>Schedule trigger 寫入路徑(chunk 3 第七刀,2026-06-21)</strong>:<code>adminSchedule.ts</code> 補 <code>fireSchedule</code>
+  (api-sync 直接 <code>createJob(&lt;module&gt;_sync, {source:"scheduler"})</code>;URL-fetch 走 <code>minioService.enabled()</code> 檢查→
+  <code>downloadUrl</code>〔HTTPS-only SSRF 守衛、Content-Disposition/URL 末段取檔名〕→<code>createUploadedSource(autoActivate:false)</code>→
+  <code>ROLE_JOB_TYPE</code> 查 job_type→<code>createJob</code>;失敗皆 catch 成 status=failed)、<code>markScheduleRun</code>(<code>computeNextRun</code> 推進
+  <code>next_run_at</code>+寫 last_run_<em>)、<code>downloadUrl</code>、<code>API_SYNC_JOB_TYPE</code> 對照表;<code>adminSources.ts</code> 將 <code>ROLE_JOB_TYPE</code>
+  改 <code>export</code>。<code>adminApp.ts</code> 接 <code>POST /admin/api/modules/{key}/schedule/trigger</code>:非 schedulable→400、無 schedule→404、
+  成功</em><em>背景 fire(<code>void fireSchedule().catch()</code>,不阻塞)</em><em>回 200 <code>{triggered,message,module_key}</code>(鏡像 Python
+  <code>asyncio.create_task</code>)。</em><em>parity 對 live PY:8080↔ND:8000 同 DB:3/3 PASS</em><em>(400 non-schedulable / 404 no-schedule /
+  200 success)。200 用「暫時 icd schedule + <code>http://</code> 非 HTTPS fetch_url」測:背景 fire 撞 HTTPS 守衛→</em><em>不建 job、不下載</em><em>
+  (icd_import job 數 1→1),<code>last_run_status=failed</code>(SSRF/HTTPS 錯誤,證實 fireSchedule 真的有跑),測後刪暫時列、leftover 0。
+  真正觸發重匯入的成功 fire(建真 job)比照 ig-import-success/jobs heavy-path 延後至 worker 刀(#5)整體驗。harness 已刪。
+- ✅ </em><em>IG import/set-default/remove 寫入路徑(chunk 3 第六刀,2026-06-21)</em><em>:<code>adminIg.ts</code> 補 <code>setDefault</code>
+  (存在性檢查→<code>withTransaction</code> 先清全部 <code>is_default</code> 再設單一,避開 one-default partial unique index)、<code>removeIg</code>
+  (<code>SELECT</code> 取 <code>is_default</code>→<code>_dependents</code>→<code>withTransaction</code> DELETE <code>fhir.ig_packages</code>〔cascade CodeSystems/concepts/
+  artifacts〕+ <code>admin.admin_audit_log</code> <code>remove_ig</code> 稽核〔<code>payload_json={"dependents":[...]}</code>〕→best-effort <code>minioService.removeObject</code>
+  <code>ig-packages/{id}/{ver}/package.tgz</code>;回傳 <code>{removed,package_id,version,was_default,dependents}</code>)。<code>adminApp.ts</code> 接三條路由:
+  <code>POST /admin/api/igs/import</code>(registry 需 <code>package_id</code>、upload 需 <code>object_key</code> 或可解析的 <code>uploaded_file_id</code>→查 <code>admin.uploaded_files</code>;
+  否則 400;成功經 <code>createJob(module_key="ig", job_type="ig_import", job_options)</code> 回 201)、<code>POST /admin/api/igs/{id}/{ver}/default</code>
+  (<code>ok</code> true→200 / false→404)、<code>DELETE /admin/api/igs/{id}/{ver}</code>(<code>removed</code> true→200 / false→404,GET 仍走 detail)。
+  WS <code>module_changed</code> 廣播延後至 WS 刀(不影響 REST body)。</em><em>parity 對 live PY:8080↔ND:8000 同 DB:11/11 PASS</em><em>
+  (sanity GET + 6 import 驗證分支 + set-default 404/success + remove 404/success;import success path 因會觸發真實 worker 匯入而比照
+  jobs heavy-path 延後)。用合成 <code>paritytest.*</code> IG 列測 set-default/remove,測後還原原 default + 刪合成列;<code>remove_ig</code> 稽核列 2 筆
+  (每台一筆,證實真寫入),leftover 0。harness 已刪。
+- ⚠️ </em><em>驗證工具修正(2026-06-21)</em><em>:本 session 早期的 parity harness cookie 簽章用「raw payload」HMAC,
+  但 <code>adminAuth.parseAdminSessionToken</code> 是對 </em><em>b64url-encoded token</em><em> 簽章——兩台都回 401,harness 卻
+  PY==ND 比成 PASS(</em><em>假陽性</em><em>)。發現後改正簽章(<code>hmac(secret, b64url)</code>)並加 <code>[AUTH-FAIL!]</code> 守衛
+  (任何 401 一律判 FAIL),</em><em>重驗 Maintenance(5/5)+ Schedule(11/11)=16/16 真通過</em><em>,DB 清乾淨
+  (0 maintenance true / 0 icd·ig schedule)。三刀程式本身正確,僅早期 harness 有誤。
+- ✅ </em><em>Jobs create/control 寫入路徑(chunk 3 第五刀,2026-06-21)</em><em>:<code>adminJobs.ts</code> 補 job-type 分類
+  常數(<code>ADMIN_JOB_TYPES</code>/<code>JOB_TYPE_MODULE_KEYS</code>/<code>HEAVY_JOB_SOURCE_SPECS</code>/<code>CONTROL_ACTIONS</code>)、<code>createJob</code>
+  (CTE INSERT import_jobs + import_job_logs;heavy 類型先跑 <code>resolveJobSourceManifest</code>〔含 <code>fetchModuleSourceRow</code>、
+  multi-source 由 lazy-import <code>SOURCE_CATALOG</code> 判定,避免 adminJobs↔adminSources 循環〕)、<code>requestJobControl</code>
+  (<code>withTransaction</code> + SELECT FOR UPDATE → available_actions 檢查 → INSERT job_control_requests → 條件式
+  UPDATE 狀態〔pause/resume/stop/restart 的 applied vs accepted 分支〕→ UPDATE 控制請求 → INSERT log → reload;
+  回 <code>{job,control_request,restart_job}</code>;malformed uuid 以 <code>/^[0-9a-fA-F]{32}$/</code> 守衛→<code>JobValueError</code>→400
+  鏡像 Python <code>uuid.UUID()</code> ValueError)、<code>createRestartJobLocked</code>、<code>JobValueError</code> 類;<code>adminApp.ts</code> 接
+  <code>POST /admin/api/jobs</code>(route 先擋未知 job_type→400 帶 <code>allowed_job_types</code>;ValueError→400;成功 201)
+  + <code>POST /admin/api/jobs/{id}/(pause|resume|stop|restart)</code>(ValueError→400;成功 200)。
+  </em><em>注</em><em>:Python 的 <code>asyncio.create_task(broadcast(...))</code> WS 廣播未移植(chunk #3),不影響回應 body。
+  manifest 成功路徑為避免觸發真實 heavy import 未做 parity 實跑(由 worker chunk 覆蓋),其早期 ValueError
+  分支(module 不符)已驗。</em><em>驗</em><em>(admin-worker 正在跑,故用合成 import_jobs 列在 worker 不會認領的狀態下測
+  control,create 用 <code>noop</code> 並於回應當下擷取):live Python <code>:8080</code> ↔ Node <code>:8000</code>(同 DB)</em><em>15/15 PASS</em><em>
+  (5 create〔noop valid×2、未知 type→400+allowed、module 不符→400、heavy 早期 ValueError→400〕+ 8 control
+  〔paused→resume/stop/restart applied、running→pause/stop/restart accepted、paused→pause not-allowed、
+  success→resume not-allowed〕+ job-not-found + malformed-uuid〔status-only〕);cleanup 移除 22 列(含 HTTP 建立的
+  noop 與 restart 子作業),leftover paritytest 列 0。
+- ✅ </em><em>Schedule POST/DELETE 寫入路徑(chunk 3 第四刀,2026-06-21)</em><em>:<code>adminSchedule.ts</code> 補
+  <code>computeNextRun</code>(逐行移植 <code>compute_next_run</code>——daily/weekly/monthly,全程 UTC;JS <code>getUTCDay</code> Sun=0
+  → Python <code>weekday</code> Mon=0 的換算 <code>(d+6)%7</code>;分鐘截斷)、<code>upsertSchedule</code>(CTE
+  <code>WITH up AS (INSERT…ON CONFLICT(module_key)…RETURNING *) SELECT *,tsIsoExpr(…)</code> 一次取回 to_dict 形狀
+  含 <code>_iso</code> 渲染時間;next_run_at 由 <code>computeNextRun</code> 算出、created_at/updated_at=now)、<code>deleteSchedule</code>
+  (rowCount&gt;0)、<code>ScheduleValueError</code> 類;<code>adminApp.ts</code> 把 <code>/schedule</code> 由 GET-only 改為 GET/POST/DELETE,
+  逐行移植 server.py 驗證序(frequency→hour/minute→day_of_week/month→URL_FETCH 的 fetch_url/https/source_role),
+  新增 <code>toInt</code> 鏡像 Python <code>int()</code>(ValueError/TypeError→400)。
+  </em><em>注</em><em>:<code>/schedule/trigger</code>(POST,背景 <code>fire_schedule</code>)依賴 <code>create_job</code> + worker,</em><em>延後</em><em>至 Jobs/worker chunk。
+  </em><em>驗</em><em>:live Python <code>:8080</code> ↔ Node <code>:8000</code>(同 DB)跑 </em><em>17/17 PASS</em><em>(4 valid upsert〔weekly/daily/monthly/
+  is_enabled=false,逐服務隔離 create→capture→delete,normalize schedule_id/created_at/updated_at/module_key〕
+  + 11 驗證錯誤〔frequency/hour/minute/dow/dom 範圍、缺 dow/dom、缺 fetch_url、非 https、缺 source_role、不支援模組〕
+  + 2 DELETE〔existing→true、missing→false〕);測後 DB 僅存兩筆 seeded 預設(food_nutrition/health_supplements),
+  icd/ig 測試列全清。
+- ✅ </em><em>Maintenance toggle 寫入路徑（chunk 3 第三刀,2026-06-21）</em><em>:<code>adminMaintenance.ts</code> 補
+  <code>setEnabled</code>(<code>MAINTENANCE_MODULES</code> 守門→不支援拋 <code>MaintenanceValueError</code>;<code>withTransaction</code>
+  單交易 upsert <code>admin.app_settings</code>(group_key=<code>maintenance</code>)+ audit row <code>set_maintenance</code>;
+  寫後 <code>bustCache</code>)+ <code>MaintenanceValueError</code> 類;<code>adminApp.ts</code> 接 <code>POST /admin/api/module-maintenance</code>
+  (body <code>module_key</code>/<code>enabled</code>→<code>{ok,module_key,enabled}</code>;<code>ValueError</code>→400、其餘→500)。
+  </em><em>注</em><em>:Python 路徑寫後另 <code>ws_broadcast("maintenance_changed")</code>——WS 尚未移植(chunk #3),
+  不影響回應 body parity,待 WS chunk 補。</em><em>驗</em><em>:live Python <code>:8080</code> ↔ Node <code>:8000</code>(同 DB)
+  跑 7 案 </em><em>7/7 PASS</em><em>(icd/drug true↔false、不支援模組、空 <code>module_key</code>、缺 <code>enabled</code> 預設 false);
+  測後所有 maintenance 列還原 false(DB 確認 0 列 true)。
+- ✅ </em><em>Sources upload/dedup 寫入路徑（chunk 3 第二刀,2026-06-21）</em><em>:<code>adminSources.ts</code> 補
+  <code>createUploadedSource</code>/<code>activateSource</code>/<code>deactivateSource</code>/<code>deleteUploadedSource</code> + 驗證面
+  (<code>catalogEntry</code>/<code>safeSourceFilename</code>/<code>validateSourceFilename</code>/<code>validateSourceContent</code>/
+  <code>validateDrugIndexCsv</code>/<code>sha256Bytes</code>/<code>sourceObjectKey</code>/<code>nextVersionNum</code>/<code>parseUuid</code>/RFC4180
+  <code>parseCsv</code>),兩個錯誤類 <code>SourceValueError</code>/<code>SourceRuntimeError</code>(對應 Python ValueError/RuntimeError
+  → 各端點不同 HTTP 碼)。<code>minioService.ts</code> 補 <code>uploadBytes</code>/<code>removeObject</code>(<code>putObject</code>/<code>removeObject</code>)。
+  <code>adminApp.ts</code> 接 <code>POST /admin/api/uploads</code>(raw-body via <code>readRawBody</code>,query 帶
+  module_key/source_role/filename/auto_activate)+ <code>module-sources/{activate,deactivate,delete}</code>,
+  gate 順序與錯誤碼鏡像 server.py(uploads:缺 meta 400 / 空 400 / 超界 413 / 內容驗證 415 /
+  create ValueError 400 / RuntimeError 503;activate ValueError→404;deactivate/delete ValueError→400)。
+  </em><em>Magika 取捨(user 拍板「Magic-byte 等效檢查」)</em><em>:Python app 跑 Magika 0.6.3 做內容嗅探;Node 以
+  <code>detectContentLabel</code>(magic-byte:gzip <code>1f8b</code>、zip <code>PK</code> + 掃 <code>xl/</code>→xlsx、NUL→binary、否則 text)
+  精確複刻我們用到的 4 個 label-set(zip/gzip/xlsx/csv-txt-tsv)的</em><em>接受/拒絕集合成員</em><em>——回傳
+  代表性 label 使 set-membership 與 Magika 對所有 role/file 組合一致;合法檔逐欄一致,僅</em><em>拒絕訊息
+  的 <code>detected</code> 自由文字</em><em>可能與 ML 模型細微不同(屬可接受 divergence)。
+  </em><em>驗證</em><em>:鑄造 cookie 對 live Python <code>:8080</code> ↔ Node <code>:8000</code>(同 DB + 同 MinIO bucket)跑 13 + 3 案
+  → </em><em>全 PASS</em><em>。涵蓋:CREATE(等長異容→ sha 不同雙邊各自新建,normalize sha/uuid/ts/object_key 後
+  逐欄等)、DEDUP(同 server 重傳→ duplicate=true)、bad-extension/unsupported/wrong-content→415、
+  missing-metadata/empty→400、activate/deactivate </em><em>happy path</em><em>(version_num 因各 server 獨立序列
+  normalize)、delete-after-activate 拒絕(loinc 有資料 + activated_at→400)、malformed/nonexistent
+  uuid 全分類一致。測試後以直連 pg+minio 清掉殘列與物件(0 leftover),audit_log append-only 不清。
+  </em><em>注意</em><em>:<code>uploaded_at</code>/<code>activated_at</code> 走 <code>tsIsoExpr</code>/<code>pyIso</code>(NEW 路徑 activated_at 用 python
+  <code>now.isoformat()</code> 語意,以 <code>pyIsoFromDate</code> 補微秒);<code>size_bytes</code> bigint→Number;CREATE/duplicate
+  dict 鍵序逐欄對齊 Python <code>_uploaded_file_dict</code> + 附加鍵序。
+  </em><em>目前 chunk 2 已驗端點</em><em>:auth · gate · login/logout · <code>/health</code> · <code>/settings</code> · <code>/workers</code> ·
+  <code>/services</code> · <code>/jobs</code>(+<code>/{id}</code>+<code>/steps</code>+<code>/logs</code>) · <code>/igs</code>(+<code>/{id}/{ver}</code> detail) ·
+  <code>/modules</code>(GET) · <code>/modules/{key}/schedule</code>(GET) · <code>/modules/{key}/versions</code>(GET) ·
+  <code>/modules/{key}/preview</code>(GET) · <code>/embedding/status</code>(GET) ·
+  <code>/drug/status</code>·<code>/drug/pipeline-status</code>·<code>/drug/events</code>(GET) ·
+  <code>/overview</code>(GET) · <code>/registry/search</code>(GET) · <code>/drug/details</code>(GET)。
+  - <code>/modules/{key}/preview</code>(<code>admin_preview.dispatch_preview</code>):新增 <code>adminPreview.ts</code>(9 模組全移植:
+    icd/loinc/snomed/ig/guideline/drug/health_supplements/food_nutrition/rxnorm)+ <code>buildPreviewKwargs</code>
+    精確複刻 server.py 的 query→kwargs 映射(page/per_page clamp、<code>id</code>→<code>id_</code>、<code>class</code>→<code>class_</code>、
+    <code>property</code>→<code>property_</code>、<code>node</code> null 語意、ig-only <code>artifact_key</code>/<code>value_set_url</code>/<code>field_q</code>)。
+    </em><em>50/50 EQUAL</em><em>(含 IG ValueSet 遞迴展開:SNOMED <code>is-a</code>/<code>descendent-of</code>+歷史關聯成功者替換、
+    LOINC <code>property=</code> filter、RxNorm <code>TTY in/=</code> filter、巢狀 <code>valueSet</code> 參照、CodeSystem 概念列;
+    artifact_tree/valueset/artifact_detail/search/navigator 各模式;分頁/排序/CJK 查詢/error case)。
+    踩到兩個 parity 坑並修正:(1) snomed <code>effective_time</code> 為 </em><em>date 欄</em><em>,node-pg 解析成本地午夜 Date
+    →<code>toISOString()</code> 會偏移時區;改用 <code>c.effective_time::text</code> 在 SQL 端渲染以對齊 Python <code>date.isoformat()</code>。
+    (2) error 訊息用 Python <code>{node!r}</code>(單引號),新增 <code>pyRepr()</code> 取代 <code>JSON.stringify</code>(雙引號)。
+    另:<code>fixed_value</code> 內嵌 <code>json.dumps(...,ensure_ascii=False)</code>(帶空格分隔)以 <code>pyJson()</code> 複刻;
+    SNOMED/RxNorm concept id &gt;2^53 全程以 string 綁定 + <code>::bigint</code> cast 避免精度損失;
+    semantic-tag regex 的單/雙反斜線差異逐位保留。
+  - <code>/embedding/status</code>(<code>admin_embedding.get_embedding_status</code>):新增 <code>adminEmbedding.getEmbeddingStatus</code>。
+    6 模組 embed 計數 + Ollama ping(<code>/api/version</code>+<code>/api/tags</code>)。EQUAL(含 <code>reachable:true</code>
+    真 ollama、<code>dimensions:1024</code>、真 <code>last_source_updated_at</code> 驗 <code>tsIsoExpr</code>/<code>pyIso</code>、
+    空 <code>last_embedded_at</code>、<code>changed_last_run</code> 0/null)。注意:</em><em>全 COUNT 是 bigint→Number() 強轉</em><em>;
+    <code>changed_last_run</code> 實為整數欄(非 bool)兩邊同樣輸出 0/null;非 ollama provider 的
+    reachability 走 <code>list_models</code> 留待 write-path,目前回 <code>reachable:false</code>(live provider 為 ollama 故已驗路徑精確)。
+  - <code>igs/{id}/{ver}</code> detail(<code>admin_ig.get_ig_detail</code>):新增 <code>adminIg.getIgDetail</code> +
+    <code>dependents</code>/<code>externalSystems</code> helper;9 個 IG 全 EQUAL(deps tree / dependents /
+    codesystems≤1132 / external_systems≤115)+ 404 case 一致。<code>imported_at</code> 走 <code>tsStrExpr</code>
+    (<code>json.dumps(default=str)</code>);其餘欄 <code>ensure_ascii=False</code> 直送。
+  - <code>modules/{key}/schedule</code>(GET,<code>admin_schedule.get_schedule</code>):新增 <code>adminSchedule.ts</code>
+    (含 <code>URL_FETCH_MODULES</code>/<code>API_SYNC_MODULES</code>/<code>SCHEDULABLE_MODULES</code> + <code>ScheduleConfig.to_dict</code>
+    形狀)。icd/ig/drug(null)、health_supplements/food_nutrition(seeded,真時間戳驗 <code>tsIsoExpr</code>)
+    全 EQUAL,loinc → 400「does not support scheduling」一致。POST(write)留待 write chunk。
+  - <code>/drug/{status,pipeline-status,events}</code>(<code>admin_drug.py</code> + <code>drug_status_utils.display_drug_statuses</code>):
+    新增 <code>adminDrug.ts</code>(三純 DB 讀路徑)+ <code>adminApp.parseIntDefault</code>(複製 Python
+    <code>try int() except ValueError</code> 的 clamp/fallback 語意)。對 live <code>:8080</code>/<code>:8000</code> 全 EQUAL,
+    含:pipeline-status、status(預設 + <code>page/per_page</code> + <code>active_only=false</code> + <code>failed_only=true</code>
+    + <code>q=錠</code> ILIKE + 超界 <code>page=999&amp;per_page=200</code>)、events(真 CJK <code>license_id</code> + 缺參數 400)。
+    注意:</em><em>無 <code>::int</code> 的 <code>COUNT(*)</code> 是 bigint→Number() 強轉</em><em>(有 <code>::int</code> 者已是 number 直用);
+    <code>created_at/updated_at/last_event_at</code> 走 <code>tsIsoExpr</code>+<code>pyIso</code>(對齊 <code>_iso</code> 的 isoformat/"");
+    <code>display_drug_statuses</code> 的 <code>no_data</code>/<code>normalize→success</code> 改寫邏輯逐欄複製。drug/details
+    (Node drug service)·drug/assets·drug/asset-content(MinIO)留後續。
+  - <code>/modules</code>(GET):新增 <code>adminSources.listSourceCatalog</code>/<code>moduleRecordCounts</code>、<code>adminMaintenance.ts</code>
+    (<code>getStates</code>+<code>MAINTENANCE_MODULES</code>)、</em><em>新 <code>node-server/src/minioService.ts</code></em><em>(移植 <code>minio_service.py</code>
+    的 <code>from_values</code>/<code>initialize</code>/<code>enabled</code>/<code>init_error</code> probe 面;新增 npm 相依 <code>minio@^8</code>;server.ts
+    bootstrap fail-open 初始化)。對 live <code>:8080</code>/<code>:8000</code> </em><em>full EQUAL</em><em>:<code>storage</code>(minio_enabled:true /
+    bucket / "MinIO ready")、10 模組(drug <code>cumulative_total</code> + 每筆上傳的 import 標註 + active_sources/
+    recent_uploads)、<code>record_counts</code>(9 模組)、<code>maintenance</code>(6 鍵 sorted)、<code>upload_limits.max_upload_mb:4096</code>。
+    重點:<code>_uploaded_file_dict</code> 各欄</em><em>保留原值</em><em>(null 不轉 "",與 listSourceVersions 的 <code>|| ""</code> 不同);
+    <code>size_bytes</code> bigint→Number;catalog 物件鍵序逐欄對齊 <code>dict(row)</code> 的 SELECT 欄序;<code>detail</code> 在
+    disabled 時送 <code>init_error</code> 原值(可為 null)。</em><em>環境注意</em><em>:Node dev 在 host 上跑無法解析 docker
+    內部主機名 <code>minio:9000</code>,故驗證時在 <code>/etc/hosts</code> 加 <code>127.0.0.1 minio</code>(minio 已 publish :9000)讓 Node
+    連到同一 bucket;Python 在 compose 網內仍走內部 DNS。程式碼讀 settings endpoint 不變,production
+    在同網內可直接解析,故為純環境橋接非程式差異。
+  - <code>/overview</code>(GET,<code>_build_admin_overview_payload</code>+<code>AdminOverviewPayload.to_json</code>):新增
+    <code>adminOverview.ts</code>(組裝器)、<code>ocrProbe.ts</code>(OCR 探測)、<code>adminJobs.summarizeJobs</code>、
+    <code>mcp.getServiceRegistry</code>(force-init 10 service 回 {key:bool})、<code>embeddingService</code> 加
+    public <code>available</code> getter + <code>initialize()</code> ping(對齊 Python <code>_available</code>=<code>_ping()</code>,
+    lifespan 啟動即 ping)、<code>minioService.configEnabled()</code>。對 live </em><em>EQUAL</em><em>(normalize 掉
+    volatile 的 <code>generated_at</code>/<code>app.uptime</code>/worker <code>last_heartbeat_at</code>+<code>stale</code>):infrastructure
+    (db/redis/minio/ocr/mcp)、8 modules(含 requirements 明細 + cache_ttl_seconds:300)、10 services
+    (7 個 health_status 集中移植於 adminOverview,reason/search_mode 字串 byte-match service_health.py;
+    ig/fhir_condition/fhir_medication inherit module readiness;ollama_ok=embedding.enabled&amp;&available;
+    maintenance override)、jobs summary、workers、summary 聚合、fhir_servers(0 列)。重點:
+    </em><em>mcp.detail 重現 Python <code>str(config)</code></em><em>=<code>Transport: streamable-http | http://0.0.0.0:8000/mcp</code>
+    (Node 啟動須帶 <code>MCP_TRANSPORT=streamable-http</code>/<code>MCP_PORT=8000</code>);</em><em>health 區塊靠 embedding
+    init-ping 讓兩邊 ollama_ok 一致</em><em>(否則 Node 剛啟動 available=false 會與 Python degraded reason 不同);
+    OCR probe </em><em>刻意不模擬 dots_ocr 本地安裝檢查</em><em>(drug runtime 留 worker;只探測外部 server 可達性,
+    對齊 live app 已裝 dots_ocr 的 ready=True 路徑)。
+  注意 D2 harness 的 <code>READ_ONLY_GETS</code> 路徑清單為</em><em>骨架猜測</em>*（<code>/admin/api/sources|schedule|ig|
+  db-health</code> 真實 server 不存在,真實是 <code>/admin/api/module-sources/*</code>、<code>/admin/api/modules/{key}/
+  schedule</code>、<code>/admin/api/igs</code>、<code>/admin/api/health</code>）——對齊真實 Python 路由後須同步修正 harness 清單。</p>
+<h3 id="phase-3-l3-etl-worker">Phase 3 — L3 ETL / Worker（<strong>最大、最危險</strong>）<a class="headerlink" href="#phase-3-l3-etl-worker" title="Permanent link">&para;</a></h3>
+<p>分 stage 逐一遷移，每個獨立驗收。建議順序（由易到難）：
+1. <strong>檔案型純解析</strong>（決定性，易）：<code>icd_loader</code>、<code>loinc_loader</code>、<code>snomed_loader</code>、
+   <code>twcore_loader</code>（IG tgz）、<code>guideline_seed</code>、<code>loinc_taiwan_seed</code>。
+   - 風險：zip/RF2/tgz 解析細節、編碼、去重 <code>seen_ids</code>、TRUNCATE+UPSERT 交易邊界。
+2. <strong>API 型抓取</strong>（中）：<code>health_supplements_loader</code>、<code>food_nutrition_loader</code>、
+   <code>drug_index_loader</code>（TFDA 36_2.csv + 爬蟲）。
+   - 風險：<code>tfda_crawler_service</code>、<code>tfda_parser_utils</code> 的分頁/重試/欄位映射。
+3. <strong>嵌入回填</strong>（中）：<code>embedding_loader</code> → Ollama <code>/api/embed</code>，1024-dim，寫 pgvector。
+   - 風險：秒/毫秒 timeout（歷史 bug）、批次大小、失敗退回 lexical 訊號。
+4. <strong>OCR + LLM</strong>（最難，非決定）：<code>drug_enrichment_loader</code>、<code>drug_analysis_loader</code>、
+   <code>drug_analysis_service</code>、<code>drug_record_builder</code>、MinIO 資產（presigned link）。
+   - 採 §1.C 例外驗收（結構一致 + 抽樣）。
+5. <strong>worker 框架</strong>：<code>admin_worker.py</code> → Node 常駐 process。必須複製：
+   - <code>admin.import_jobs</code> claim、<code>import_job_steps/logs</code> 寫入、checkpoint pause/cancel
+     （<code>admin.job_control_requests</code>）、<code>worker_heartbeats</code>、<code>ADMIN_MAX_CONCURRENT_JOBS</code>
+     資源 slot、<code>admin.module_schedules</code> cron 排程。
+   - 並發/鎖語意要與 Python 等價（<code>SELECT ... FOR UPDATE SKIP LOCKED</code> 之類）。</p>
+<p><strong>出場條件</strong>：loader golden-output diff 對全部 stage 綠（OCR/LLM 走例外）；
+排程 + checkpoint 控制行為一致。</p>
+<h3 id="phase-4-docker">Phase 4 — Docker / 部署 / 觀測<a class="headerlink" href="#phase-4-docker" title="Permanent link">&para;</a></h3>
+<ol>
+<li>✅ <strong><code>node-server</code> 已取代 <code>app</code>(MCP+admin)與 <code>admin-worker</code> 兩個 Python service(2026-06-30)。</strong></li>
+<li>✅ <strong>admin-worker 已切換(commit <code>d45913b</code>)</strong>:<code>compose.yaml</code> <code>admin-worker</code> 改用 polyglot
+     <code>Dockerfile.worker</code>(<code>node dist/admin/adminWorker.js</code> + 內含 Python drug shim);live 驗過 Node worker 開機/heartbeat +
+     真實 <code>drug_enrichment</code> job 端到端成功。舊 Python worker 角色退役。</li>
+<li>✅ <strong>app 已切換(commit <code>0d9635e</code> 補 3 端點 + <code>fda18c4</code> compose swap)</strong>:先補齊 Node 缺的 nginx-routed 端點
+     <code>/status.json</code>(靜態目錄,byte-identical)+ OpenAPI bridge <code>/openapi.json</code>+<code>POST /tools/&lt;name&gt;</code>(<code>buildMcpServer</code> 包裹
+     <code>registerTool</code> 建工具 registry;canary 對 Python <code>:8080</code> 驗 51 工具路徑集零差異)。再把 <code>app</code> service 改 build
+     <code>node-server/Dockerfile</code>(<code>node dist/server.js</code>)、移除 <code>./src</code>+<code>./static</code> mount。live 驗:容器 healthy、所有 service
+     init、經 nginx <code>:8080</code> 的 status/openapi/mcp/tools/admin 全綠。</li>
+<li>✅ <strong>settings seeding 已移植(commit <code>9a25287</code>)</strong>:<code>adminSettings.seedIfEmpty()</code>(忠實 port <code>seed_if_empty</code>:迭代
+     <code>SETTINGS_SCHEMA</code>→env/default→<code>INSERT … ON CONFLICT DO NOTHING</code>)接入 <code>server.ts</code> bootstrap + <code>adminWorker.ts</code> main
+     兩個 boot path。seed 集合對 Python <code>SETTINGS_SCHEMA</code> byte-identical(37 keys)、對已 seed DB idempotent。<strong>全新
+     Node-only 部署現可自行 seed,不再需要 Python。唯一殘留 Python = 刻意保留的 drug shim。</strong></li>
+<li>✅ <strong>完整 parity 回歸 + 差異修正(2026-07-01;修正 commit <code>f7c6327</code>)</strong>:用 polyglot worker image 起拋棄式 Python
+     baseline(<code>python server.py</code>)+ node canary(覆寫已知 <code>ADMIN_PASSWORD_HASH</code>,正式 app 不動),在 compose 網路內跑三套
+     harness——<strong>MCP API parity 49 pass/2 warn(embedding 排序非決定性)/2 skip/0 fail(全 51 工具)</strong>;<strong>admin REST parity
+     10/10 0 fail</strong>;<strong>e2e smoke 0 step-diff/0 fail</strong>。修掉 admin 初測的 2 個外觀差異:OCR-down 錯誤字串(undici
+     <code>fetch failed</code>→httpx <code>All connection attempts failed</code>,<code>ocrProbe.httpxLikeMessage</code>)、settings float <code>3</code> vs <code>3.0</code>
+     (<code>serializeSettingsResponse</code> 對整數值 float 欄位 tag 後還原裸 <code>N.0</code>)。<strong>全-Node 後端對 Python 行為等價、無功能回歸。</strong></li>
+<li>nginx 上游不變（<code>/mcp</code>、<code>/admin/*</code> 等仍指後端，只是後端換 Node）。</li>
+<li>Prometheus metrics 名稱與 label 對齊（<code>record_tool_call</code>、<code>record_cache_op</code>、pool stats）。</li>
+<li>結構化 JSON log 到 stderr；<code>LOG_LEVEL</code> 行為一致。</li>
+<li>asyncpg → <code>pg</code>：<code>statement_cache_size=0</code> 對應（pgBouncer transaction mode 不可用
+   prepared statement / LISTEN-NOTIFY）。</li>
+</ol>
+<h3 id="phase-5-shadow-canary">Phase 5 — Shadow → Canary → 切換<a class="headerlink" href="#phase-5-shadow-canary" title="Permanent link">&para;</a></h3>
+<ol>
+<li>Shadow：正式流量走 Python，read-only 複製到 Node，比 latency/error/shape。</li>
+<li>Canary：5%→25%→50%→100%，每階觀察一個業務高峰。</li>
+<li>切換：對外只留 Node；Python image 保留一個 release window 可回滾。</li>
+</ol>
+<h3 id="phase-6-python">Phase 6 — 移除 Python<a class="headerlink" href="#phase-6-python" title="Permanent link">&para;</a></h3>
+<p>連續兩個 release 無回滾後移除 Python 部署設定。<code>src/</code>、<code>loader/</code> 暫留至下一輪清理。</p>
+<hr />
+<h2 id="4">4. 高風險清單（每一項都可能造成「行為不一致」）<a class="headerlink" href="#4" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>風險</th>
+<th>影響面</th>
+<th>緩解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>OCR/LLM 非決定性</td>
+<td>L3 drug_analysis</td>
+<td>§1.C 例外 + 凍結快取選項</td>
+</tr>
+<tr>
+<td>2</td>
+<td>session cookie 簽章不相容</td>
+<td>L2 全 admin</td>
+<td>逐位元複製簽章 + 既有 session 回歸測</td>
+</tr>
+<tr>
+<td>3</td>
+<td>pgcrypto 金鑰/錯誤訊息差異</td>
+<td>L2 FHIR servers</td>
+<td>比對 <code>Illegal argument</code> / <code>Wrong key</code> 路徑</td>
+</tr>
+<tr>
+<td>4</td>
+<td>asyncpg vs pg 型別處理（BIGINT 超過 JS safe int、numeric、timestamptz、jsonb）</td>
+<td>全層</td>
+<td>SNOMED ID 已知坑；統一字串傳遞 + 明確 cast</td>
+</tr>
+<tr>
+<td>5</td>
+<td>bulk import 交易邊界與去重</td>
+<td>L3 loader</td>
+<td>golden diff + <code>seen_ids</code> 對齊</td>
+</tr>
+<tr>
+<td>6</td>
+<td>pgvector 嵌入寫入/查詢</td>
+<td>L1 search + L3</td>
+<td>cosine ≥ 0.99 比對</td>
+</tr>
+<tr>
+<td>7</td>
+<td>cron 排程與 checkpoint 控制</td>
+<td>L3 worker</td>
+<td>狀態機 parity + 並發 slot 測試</td>
+</tr>
+<tr>
+<td>8</td>
+<td>FHIR snapshot 產生（slicing/binding/invariant）</td>
+<td>L1 validator</td>
+<td>已知 backup 補過；對 IG 全 profile diff</td>
+</tr>
+<tr>
+<td>9</td>
+<td>JSON Schema nullable 表示（anyOf vs type[]）</td>
+<td>MCP schema</td>
+<td>已知外觀差；參數/必填一致即可</td>
+</tr>
+<tr>
+<td>10</td>
+<td>錯誤 JSON 雙重編碼（Python cache 舊格式）</td>
+<td>parity 比對</td>
+<td>parser 解 nested（runner 已處理）</td>
+</tr>
+<tr>
+<td>11</td>
+<td>MinIO presigned URL 簽章</td>
+<td>L3 drug assets</td>
+<td>比對可下載性，非 URL 字串相等</td>
+</tr>
+<tr>
+<td>12</td>
+<td>nginx 變數式 proxy_pass + 動態 DNS</td>
+<td>部署</td>
+<td>後端換 Node 後重測 WS upgrade / SSE</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="5">5. 工序與相依<a class="headerlink" href="#5" title="Permanent link">&para;</a></h2>
+<pre><code>Phase 0 (基準+決策+harness)
+        │
+        ├─ Phase 1 (L1 收尾) ──┐
+        ├─ Phase 2 (L2 admin) ─┼─ 可部分並行（共用 db/cache/config 層）
+        └─ Phase 3 (L3 ETL) ───┘  ← 最長關鍵路徑，內部 5 子階段序列
+                │
+        Phase 4 (Docker/觀測) → Phase 5 (canary) → Phase 6 (移除 Python)
+</code></pre>
+<p>關鍵路徑是 <strong>Phase 3</strong>。L1/L2 因 backup 已有底子，屬「對齊 + 驗證」；L3 是「從零實作 + 設計新驗證機制」，工作量最大、風險最高。</p>
+<hr />
+<h2 id="6-2026-06-13">6. 決策紀錄（已拍板 2026-06-13）<a class="headerlink" href="#6-2026-06-13" title="Permanent link">&para;</a></h2>
+<ol>
+<li><strong>接續 vs 從零</strong> → <strong>從零重寫</strong>。backup 只作對照參考，不沿用程式碼。</li>
+<li><strong>OCR/LLM 驗收標準</strong> → <strong>結構一致 + 人工抽樣</strong>（非逐值）。</li>
+<li><strong>worker 切換節奏</strong> → <strong>分兩個 release</strong>：Release A（L1+L2）先穩定，Release B（L3）隨後。</li>
+<li><strong>L3 內部切換</strong> → 沿用分 release 精神，L3 五子階段<strong>逐 stage 漸進切換（各自 canary）</strong>，
+   不做一次性 big-bang。</li>
+</ol>
+<hr />
+<h2 id="7">7. 一句話總結<a class="headerlink" href="#7" title="Permanent link">&para;</a></h2>
+<p>L1 logic 已在 backup 驗過 parity（僅作對照，程式一律從零重寫）、L2 從零實作、<strong>L3 是真正的工程</strong>。把成敗綁在三件事上：
+(a) 四套 parity harness 先寫好當地基；(b) L3 逐 stage golden-output diff；
+(c) OCR/LLM 的非決定性用「結構一致 + 抽樣」框住。其餘都是對齊既有資產。</p>
+<hr />
+<h2 id="8-runbook-session">8. 冷啟動 Runbook（新 session 直接照做）<a class="headerlink" href="#8-runbook-session" title="Permanent link">&para;</a></h2>
+<blockquote>
+<p>給沒有先前對話記憶的 session：只讀本文件 + <code>CLAUDE.md</code> 即可接手。指令在 repo 根
+（<code>/home/brian/Taiwan-Health-MCP</code>）執行。compose 檔名是 <strong><code>compose.yaml</code></strong>（非
+<code>docker-compose.yml</code>）；loader stage 旗標的完整清單見 <code>CLAUDE.md</code> 的「Commands」段。</p>
+</blockquote>
+<h3 id="81">8.1 已完成（不要重做）<a class="headerlink" href="#81" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Phase 0 工作流 <strong>B 全部</strong>（B1/B2/B3）：<code>node-server/</code> 從零骨架已建、<code>tsc</code>/<code>npm run build</code>
+  exit 0、<code>/health</code> 回 200、<code>/mcp</code> 的 <code>initialize</code>+<code>tools/list</code> 實測通過；backup 對照
+  worktree 在 <code>../backup-node</code>（detached <code>3f51fd1</code>，<strong>唯讀</strong>）。</li>
+<li><strong>D1 真 Python↔Node 接線</strong>已驗（2026-06-13）：起 Node <code>:8000</code>（<code>node dist/server.js</code>，
+  直連 postgres <code>:5432</code> + redis <code>:6379</code>，<code>METRICS_PORT=9091</code> 避開 app 佔用的 9090），
+  以 <code>scripts/api_parity_test.py --python-url :8080 --node-url :8000 --strict-schema</code> 實跑。
+  唯一非「stub 未實作」發現：<code>health_check.db_health</code> 形狀不一致（Phase 1 修）。</li>
+<li><strong>D2/D3/D4 harness 骨架</strong>已建（2026-06-13）：<code>scripts/admin_parity_test.py</code>、
+  <code>scripts/loader_parity_test.py</code>、<code>scripts/e2e_smoke.py</code>。D3 對 live DB 跑出
+  <strong>23 tables / 0 failed</strong> golden；D4 對 <code>:8080</code> 全棧跑通（mcp_query / fhir_generate PASS）；
+  D2 接線到 login 邊界（待 <code>ADMIN_PASSWORD</code> 明文）。</li>
+</ul>
+<blockquote>
+<p><strong>本機現況（2026-06-13）給接手者</strong>：C 補資料<strong>部分完成</strong>——<code>fhir.*</code>（IG 9 包、
+concepts 73745、artifacts 20996、codesystems 4234）、<code>icd.diagnoses</code> 46498 /
+<code>icd.procedures</code> 78948、<code>loinc.concepts</code> 104672 已匯；<strong>仍缺</strong> SNOMED / drug /
+food_nutrition / health_supplements / guideline（全 0 列）+ 各模組 <code>*_embeddings</code>。
+Python <code>:8080</code> 對應 active 工具：ICD(5)+LOINC(4)+FHIR Condition(2)+FHIR IG(19)+
+FHIR Servers(3)+health_check → D1 對 Node stub 跑出 19 SKIP（仍缺資料）/ 35 FAIL
+（Node 未實作 + <code>health_check.db_health</code> 形狀差）。
+<strong>註</strong>：未起獨立 <code>:8011</code> 容器；直接以 nginx <code>:8080</code> 後的 <code>app</code>（同 image+DB）當 Python
+baseline，MCP 工具 parity 結果與 <code>:8011</code> 等價。Infra 全在跑；host 有 python3.13
+（含 mcp/asyncpg/redis）、node v24；Node 跑在 host <code>:8000</code>（pid 由 session 起）。</p>
+</blockquote>
+<h3 id="82-a-python-live-infra">8.2 工作流 A — 凍結 Python 基準（需 live infra；建議在開發機跑）<a class="headerlink" href="#82-a-python-live-infra" title="Permanent link">&para;</a></h3>
+<pre><code class="language-bash">cp .env.example .env            # 設 POSTGRES_PASSWORD、ADMIN_* 等
+docker compose up -d            # postgres(:5432)/pgbouncer/redis/minio/app/admin-worker/web/nginx
+</code></pre>
+<ul>
+<li><strong>A1</strong> reference image：<code>docker compose build app admin-worker</code> 後
+  <code>docker image tag &lt;app-image&gt; taiwan-health:py-baseline-20260613</code>（admin-worker 同理）。</li>
+<li><strong>A2</strong> <code>.env.baseline</code>：複製 <code>.env</code>、去敏，保留所有影響行為的 seed
+  （<code>OLLAMA_*</code>、<code>DRUG_*</code> OCR/LLM endpoint、<code>DRUG_TFDA_BASE_URL</code>）。</li>
+<li><strong>A3</strong> DB snapshot（postgres 直連 <code>:5432</code>，繞過 pgbouncer）：
+  <code>bash
+  docker compose exec -T postgres pg_dump -U mcp -Fc taiwan_health &gt; baseline-full.dump
+  docker compose exec -T postgres pg_dump -U mcp -Fc --schema-only taiwan_health &gt; baseline-empty.dump</code>
+  判準：兩份可在乾淨 PG <code>pg_restore</code> 還原。</li>
+<li><strong>A4</strong> 起 Python baseline on <code>:8011</code>（直連 postgres，非 pgbouncer 亦可）：
+  <code>bash
+  MCP_TRANSPORT=streamable-http MCP_PORT=8011 \
+    DATABASE_URL=postgresql://mcp:&lt;pw&gt;@127.0.0.1:5432/taiwan_health \
+    REDIS_URL=redis://127.0.0.1:6379/0 \
+    python src/server.py</code>
+  判準：<code>curl 127.0.0.1:8011/mcp</code> 的 <code>tools/list</code> 回得到工具清單。</li>
+</ul>
+<h3 id="83-c-13-mcp-skip">8.3 工作流 C — 補資料（讓 13 個 MCP skip → 實測）<a class="headerlink" href="#83-c-13-mcp-skip" title="Permanent link">&para;</a></h3>
+<p>匯入<strong>透過 admin console</strong>（<code>ADMIN_ENABLED=true</code> → <code>/admin</code> Modules 分頁上傳來源檔 +
+觸發匯入，由 <code>admin-worker</code> 背景執行）。開發機直跑亦可（stage 由 worker 內部呼叫
+<code>loader/main.py</code>；完整旗標見 <code>CLAUDE.md</code>）：<code>--drug-index/-enrich/-analysis</code>、
+<code>--food-nutrition</code>、<code>--health-supplements</code>、<code>--guideline</code>，最後 <code>--embed</code> 回填向量。
+- 來源檔需求：drug 走 TFDA API（<code>DRUG_TFDA_BASE_URL</code>）+ OCR/分析 LLM；food/supplement
+  走 TFDA Open Data；guideline 由 repo seed。ICD/LOINC/SNOMED/IG 的 zip 需先上傳。
+- 判準（C5）：Python <code>:8011</code> 的 <code>tools/list</code> 出現<strong>全部 53 工具</strong>，
+  <code>api_parity_test.py</code> 不再有 <code>module inactive</code> 的 SKIP。</p>
+<h3 id="84-d-harness">8.4 工作流 D — 四套 harness<a class="headerlink" href="#84-d-harness" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>D1</strong>（擴充既有）：A4 起來後，真正的 Python↔Node 比對——
+  <code>bash
+  python scripts/api_parity_test.py \
+    --python-url http://127.0.0.1:8011 \
+    --node-url   http://127.0.0.1:8000 \
+    --strict-schema --report parity-report.json</code>
+  （Node 端先 <code>cd node-server &amp;&amp; npm run build &amp;&amp; node dist/server.js</code>，指向同一個
+  已補資料的 DB。）判準：對 <strong>Python 自比</strong>（兩個 URL 都指 <code>:8011</code>）0 failure。</li>
+<li><strong>D2/D3/D4 新建</strong>：<code>scripts/admin_parity_test.py</code>、<code>scripts/loader_parity_test.py</code>、
+  <code>scripts/e2e_smoke.py</code>——規格見 §2.2 / §2.3 / §2.4。<strong>先能跑、允許 fail</strong>，並對 Python
+  產 golden baseline。</li>
+<li><strong>D5</strong>：D1–D4 入 CI（先跑 Python 自比 + 產 golden，Node 比對留待 Phase 1）。</li>
+</ul>
+<h3 id="85">8.5 接手者的下一步建議<a class="headerlink" href="#85" title="Permanent link">&para;</a></h3>
+<p>關鍵路徑 <code>A3 → C → D</code>。先做 <strong>A</strong>（凍結 + 起 <code>:8011</code>）→ <strong>C</strong>（補資料）→ 回來把 <strong>D1</strong>
+跑成真正的 Python↔Node 比對，再寫 <strong>D2/D3/D4 骨架</strong>（屆時每段都能立即對 baseline 驗，
+不是盲寫）。L1/L2/L3 的逐工具實作一律<strong>從零重寫</strong>，backup 只 <code>grep</code> 對照。
+</content></p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; 2024 Taiwan-ICD10-Health-MCP Team
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": [], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "\u5df2\u8907\u88fd", "clipboard.copy": "\u8907\u88fd", "search.result.more.one": "\u6b64\u9801\u5c1a\u6709 1 \u500b\u7b26\u5408\u7684\u9805\u76ee", "search.result.more.other": "\u6b64\u9801\u5c1a\u6709 # \u500b\u7b26\u5408\u7684\u9805\u76ee", "search.result.none": "\u6c92\u6709\u7b26\u5408\u7684\u9805\u76ee", "search.result.one": "\u627e\u5230 1 \u500b\u7b26\u5408\u7684\u9805\u76ee", "search.result.other": "\u627e\u5230 # \u500b\u7b26\u5408\u7684\u9805\u76ee", "search.result.placeholder": "\u6253\u5b57\u9032\u884c\u641c\u5c0b", "search.result.term.missing": "\u7f3a\u5c11\u5b57\u8a5e", "select.version": "\u9078\u64c7\u7248\u672c"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
