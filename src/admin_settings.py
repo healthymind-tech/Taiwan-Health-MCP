@@ -148,7 +148,11 @@ SETTINGS_SCHEMA: dict[str, dict[str, Any]] = {
     },
     "ocr": {
         "label": "OCR Server",
-        "description": "Vision/OCR backend for drug insert PDFs.",
+        "description": (
+            "MinerU server that turns drug insert PDFs into Markdown. Runs as a "
+            "standalone HTTP service; the pipeline uploads each PDF and reads the "
+            "Markdown straight back."
+        ),
         "provider_field": "provider",
         "test": "ocr",
         "seed_from_env": False,
@@ -156,29 +160,76 @@ SETTINGS_SCHEMA: dict[str, dict[str, Any]] = {
             _field(
                 "provider",
                 "str",
-                "dots_ocr",
+                "mineru",
                 "DRUG_OCR_PROVIDER",
                 "Provider",
-                options=["dots_ocr", "vllm"],
+                options=["mineru"],
             ),
             _field(
-                "server_ip", "str", "127.0.0.1", "DRUG_OCR_VLLM_SERVER_IP", "Server IP"
-            ),
-            _field("port", "int", 8002, "DRUG_OCR_VLLM_PORT", "Port"),
-            _field(
-                "model",
+                "base_url",
                 "str",
-                "Qwen/Qwen2.5-VL-7B-Instruct",
-                "DRUG_OCR_MODEL_NAME",
-                "Model",
-                is_model=True,
+                "http://127.0.0.1:8000",
+                "DRUG_OCR_BASE_URL",
+                "Base URL",
+                is_url=True,
+                help="Root of the MinerU API, e.g. http://10.0.0.5:8000",
             ),
             _field(
-                "prompt_mode",
+                "backend",
                 "str",
-                "prompt_layout_all_en",
-                "DRUG_OCR_PROMPT_MODE",
-                "Prompt mode",
+                "hybrid-engine",
+                "DRUG_OCR_BACKEND",
+                "Backend",
+                # The *-http-client backends are excluded on purpose: they make
+                # MinerU call out to an arbitrary `server_url`, which would hand a
+                # request-forgery lever to whoever edits this form.
+                options=["hybrid-engine", "pipeline", "vlm-engine"],
+                help=(
+                    "hybrid-engine handles the mixed text/table layout of TFDA "
+                    "inserts best."
+                ),
+            ),
+            _field(
+                "effort",
+                "str",
+                "medium",
+                "DRUG_OCR_EFFORT",
+                "Effort",
+                options=["medium", "high"],
+                help=(
+                    "hybrid backend only. high adds image/chart analysis and is "
+                    "slower."
+                ),
+            ),
+            _field(
+                "parse_method",
+                "str",
+                "auto",
+                "DRUG_OCR_PARSE_METHOD",
+                "Parse method",
+                options=["auto", "txt", "ocr"],
+            ),
+            _field(
+                "lang",
+                "str",
+                "ch",
+                "DRUG_OCR_LANG",
+                "Language",
+                help=(
+                    "pipeline backend only. 'ch' covers Traditional Chinese and "
+                    "English."
+                ),
+            ),
+            _field(
+                "timeout_seconds",
+                "int",
+                600,
+                "DRUG_OCR_TIMEOUT_SECONDS",
+                "Timeout (seconds)",
+                help=(
+                    "Upper bound on one PDF. Inserts typically parse in a few "
+                    "seconds."
+                ),
             ),
         ],
     },
@@ -769,9 +820,7 @@ async def list_models(
         if provider == "ollama":
             return await _ollama_tags(base)
         return await _openai_models(base, str(draft.get("api_key", "") or ""))
-    if group == "ocr":
-        base = f"http://{str(draft.get('server_ip','') or '').strip()}:{int(draft.get('port', 8002) or 8002)}"
-        return await _openai_models(base, "")
+    # MinerU picks its own models per backend; there is nothing to choose here.
     return {"ok": False, "models": [], "message": "This service has no model list."}
 
 
@@ -1034,31 +1083,34 @@ async def _test_analysis(draft: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _test_ocr(draft: dict[str, Any]) -> dict[str, Any]:
+    """MinerU exposes /health, which also reports its version and queue depth."""
     import httpx
 
-    base = f"http://{str(draft.get('server_ip','') or '').strip()}:{int(draft.get('port', 8002) or 8002)}"
-    model = str(draft.get("model", "") or "")
+    base = str(draft.get("base_url", "") or "").strip().rstrip("/")
+    if not base:
+        return {"ok": False, "message": "Base URL is empty."}
     try:
         async with httpx.AsyncClient(timeout=8.0) as c:
-            r = await c.get(f"{base}/v1/models")
+            r = await c.get(f"{base}/health")
             r.raise_for_status()
-            names = [m.get("id", "") for m in r.json().get("data", [])]
-        present = (model in names) if model else True
-        if not names:
+            health = r.json()
+        status = str(health.get("status", "") or "")
+        if status and status != "healthy":
             return {
                 "ok": False,
-                "message": f"OCR server at {base} reachable but reports no models.",
+                "message": f"OCR server at {base} reports status '{status}'.",
+                "details": health,
             }
-        if model and not present:
-            return {
-                "ok": False,
-                "message": f"OCR server reachable, but model '{model}' is not loaded.",
-                "details": {"available": names},
-            }
+        version = str(health.get("version", "") or "unknown")
         return {
             "ok": True,
-            "message": f"OCR server reachable at {base}; model present.",
-            "details": {"available": names},
+            "message": f"MinerU {version} reachable at {base}.",
+            "details": {
+                "version": version,
+                "max_concurrent_requests": health.get("max_concurrent_requests"),
+                "processing_tasks": health.get("processing_tasks"),
+                "queued_tasks": health.get("queued_tasks"),
+            },
         }
     except Exception as exc:
         return {"ok": False, "message": f"OCR test failed: {_err(exc)}"}

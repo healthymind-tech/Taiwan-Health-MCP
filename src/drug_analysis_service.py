@@ -7,38 +7,22 @@ the TFDA-backed drug assets already persisted by the loaders.
 
 from __future__ import annotations
 
-import asyncio
 from dataclasses import dataclass, field
 import json
-import os
 from pathlib import Path
 import re
-import tempfile
 from typing import Any
-import uuid
 
 import httpx
 
 from llm_profiles import (
     LlmProfile,
     candidate_order,
+    is_reasoning_model,
     report_failure,
     report_success,
 )
-from utils import log_error, log_info, log_warning
-
-try:
-    from dots_ocr.parser import DotsOCRParser
-    from dots_ocr.utils import dict_promptmode_to_prompt
-    from dots_ocr.utils.consts import MAX_PIXELS, MIN_PIXELS
-
-    DOTS_OCR_AVAILABLE = True
-except ImportError:
-    DotsOCRParser = None  # type: ignore[assignment]
-    dict_promptmode_to_prompt = {}  # type: ignore[assignment]
-    MIN_PIXELS = 0  # type: ignore[assignment]
-    MAX_PIXELS = 0  # type: ignore[assignment]
-    DOTS_OCR_AVAILABLE = False
+from utils import log_info, log_warning
 
 ANALYSIS_TEMPLATE: dict[str, Any] = {
     "藥品特性": "",
@@ -138,7 +122,6 @@ _DATA_IMG_URI_RE = re.compile(
 
 _PROMPTS_DIR = Path(__file__).resolve().parent / "prompts" / "drug"
 _DEFAULT_ANALYSIS_PROMPT_PATH = _PROMPTS_DIR / "analysis_prompt.txt"
-_DEFAULT_OCR_PROMPT_PATH = _PROMPTS_DIR / "prompt_layout_all_en.txt"
 
 _INGREDIENT_AMOUNT_RE = re.compile(
     r"^(?P<name>.+?)\s*(?P<amount>\d+(?:\.\d+)?\s*"
@@ -366,11 +349,12 @@ def normalize_analysis_data(data: Any) -> dict[str, Any]:
 @dataclass
 class DrugAnalysisConfig:
     ocr_provider: str
-    ocr_vllm_server_ip: str
-    ocr_vllm_port: int
-    ocr_model_name: str
-    ocr_prompt_mode: str
-    ocr_prompt_path: Path
+    ocr_base_url: str
+    ocr_backend: str
+    ocr_effort: str
+    ocr_parse_method: str
+    ocr_lang: str
+    ocr_timeout_seconds: int
     analysis_prompt_path: Path
     analysis_max_retries: int
     # The Analysis LM endpoints to try, already in the order this run should try
@@ -428,22 +412,21 @@ class DrugAnalysisConfig:
         """Build from DB settings (admin_settings 'ocr' + 'analysis' groups) and
         the Analysis LM profiles.
 
-        The prompt files are not configurable: they ship with the code, and a
-        path pointing anywhere else was only ever a way to break the pipeline.
+        The prompt file is not configurable: it ships with the code, and a path
+        pointing anywhere else was only ever a way to break the pipeline.
         """
         return cls(
-            ocr_provider=str(ocr.get("provider", "dots_ocr") or "dots_ocr")
+            ocr_provider=str(ocr.get("provider", "mineru") or "mineru")
             .strip()
             .lower(),
-            ocr_vllm_server_ip=str(
-                ocr.get("server_ip", "127.0.0.1") or "127.0.0.1"
+            ocr_base_url=str(ocr.get("base_url", "") or "").strip().rstrip("/"),
+            ocr_backend=str(
+                ocr.get("backend", "hybrid-engine") or "hybrid-engine"
             ).strip(),
-            ocr_vllm_port=int(ocr.get("port", 8002) or 8002),
-            ocr_model_name=str(ocr.get("model", "") or "").strip(),
-            ocr_prompt_mode=str(
-                ocr.get("prompt_mode", "prompt_layout_all_en") or ""
-            ).strip(),
-            ocr_prompt_path=_DEFAULT_OCR_PROMPT_PATH,
+            ocr_effort=str(ocr.get("effort", "medium") or "medium").strip(),
+            ocr_parse_method=str(ocr.get("parse_method", "auto") or "auto").strip(),
+            ocr_lang=str(ocr.get("lang", "ch") or "ch").strip(),
+            ocr_timeout_seconds=int(ocr.get("timeout_seconds", 600) or 600),
             analysis_prompt_path=_DEFAULT_ANALYSIS_PROMPT_PATH,
             analysis_max_retries=int(analysis.get("max_retries", 3) or 3),
             analysis_profiles=list(analysis_profiles or []),
@@ -488,6 +471,34 @@ _NOT_CONFIGURED = (
     "(Settings → {group})."
 )
 
+# Ceiling for the automatic budget escalation below. High enough that no drug
+# insert should ever reach it; low enough that a genuinely broken model cannot
+# bill an unbounded number of tokens per attempt.
+MAX_TOKEN_BUDGET = 65536
+
+
+class TokenBudgetExceeded(RuntimeError):
+    """The model ran out of output budget before it finished the JSON.
+
+    Distinct from a broken endpoint on purpose: the server answered correctly, we
+    simply did not give it room to reply. It must therefore not count against the
+    profile's health (no cool-down) — the caller retries the *same* profile with a
+    larger budget instead.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        budget: int,
+        finish_reason: str = "",
+        reasoning_tokens: int | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.budget = budget
+        self.finish_reason = finish_reason
+        self.reasoning_tokens = reasoning_tokens
+
 
 class DrugAnalysisService:
     def __init__(self, config: DrugAnalysisConfig):
@@ -499,12 +510,12 @@ class DrugAnalysisService:
     def ocr_readiness(self) -> tuple[bool, str]:
         if not self.config.ocr_configured:
             return False, _NOT_CONFIGURED.format(what="OCR server", group="OCR Server")
-        if self.config.ocr_provider != "dots_ocr":
+        if self.config.ocr_provider != "mineru":
             return False, f"Unsupported OCR provider: {self.config.ocr_provider}"
-        if not DOTS_OCR_AVAILABLE:
-            return False, "dots_ocr is not installed"
-        if not self.config.ocr_prompt_path.exists():
-            return False, f"OCR prompt not found: {self.config.ocr_prompt_path}"
+        if not self.config.ocr_base_url:
+            return False, _NOT_CONFIGURED.format(
+                what="OCR base URL", group="OCR Server"
+            )
         return True, ""
 
     def analysis_readiness(self) -> tuple[bool, str]:
@@ -563,75 +574,55 @@ class DrugAnalysisService:
         )
 
     async def _ocr_pdf_bytes(self, pdf_bytes: bytes, *, source_filename: str) -> str:
-        return await asyncio.to_thread(
-            self._ocr_pdf_bytes_sync,
-            pdf_bytes,
-            source_filename,
-        )
+        """Turn one insert PDF into Markdown via MinerU's synchronous endpoint.
 
-    def _ocr_pdf_bytes_sync(self, pdf_bytes: bytes, source_filename: str) -> str:
-        self._configure_ocr_prompt()
-        parser = DotsOCRParser(
-            ip=self.config.ocr_vllm_server_ip,
-            port=self.config.ocr_vllm_port,
-            dpi=200,
-            min_pixels=MIN_PIXELS,
-            max_pixels=MAX_PIXELS,
-        )
-        self._apply_vllm_model_patch(parser, self.config.ocr_model_name)
-
-        with tempfile.TemporaryDirectory(prefix="drug_ocr_") as temp_dir:
-            pdf_path = Path(temp_dir) / source_filename
-            pdf_path.write_bytes(pdf_bytes)
-            results = parser.parse_pdf(
-                input_path=str(pdf_path),
-                filename=f"task_{uuid.uuid4().hex[:8]}",
-                prompt_mode=self.config.ocr_prompt_mode,
-                save_dir=temp_dir,
+        `/file_parse` parses the upload and answers with the Markdown inline, so
+        there is no task to poll and no result archive to unpack. We ask for the
+        Markdown only: the pipeline feeds it to the Analysis LM, which cannot use
+        the images or the layout JSON anyway, and skipping them keeps the reply
+        small and leaves no archive to extract.
+        """
+        if not pdf_bytes.startswith(b"%PDF-"):
+            raise RuntimeError(
+                f"{source_filename} is not a PDF (leading bytes: {pdf_bytes[:8]!r})"
             )
-            if not results:
-                raise RuntimeError("OCR parser returned no results")
-            pages: list[str] = []
-            for idx, result in enumerate(results, start=1):
-                markdown_path = result.get("md_content_path")
-                if markdown_path and os.path.exists(markdown_path):
-                    pages.append(Path(markdown_path).read_text(encoding="utf-8"))
-                else:
-                    log_warning("OCR page produced no markdown", page=idx)
-            combined = "\n\n\n\n".join(pages).strip()
-            if not combined:
-                raise RuntimeError("OCR markdown is empty")
-            return combined
 
-    def _configure_ocr_prompt(self) -> None:
-        dict_promptmode_to_prompt[self.config.ocr_prompt_mode] = (
-            self.config.ocr_prompt_path.read_text(encoding="utf-8")
-        )
+        files = {"files": (source_filename, pdf_bytes, "application/pdf")}
+        data = {
+            "backend": self.config.ocr_backend,
+            "effort": self.config.ocr_effort,
+            "parse_method": self.config.ocr_parse_method,
+            "lang_list": self.config.ocr_lang,
+            "table_enable": "true",
+            "return_md": "true",
+            "return_images": "false",
+            "return_middle_json": "false",
+            "return_content_list": "false",
+            "response_format_zip": "false",
+        }
+        url = f"{self.config.ocr_base_url}/file_parse"
+        async with httpx.AsyncClient(timeout=self.config.ocr_timeout_seconds) as client:
+            try:
+                response = await client.post(url, files=files, data=data)
+                response.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                body = (exc.response.text or "")[:300]
+                raise RuntimeError(
+                    f"HTTP {exc.response.status_code} from {url}: {body}"
+                ) from exc
+            payload = response.json()
 
-    @staticmethod
-    def _apply_vllm_model_patch(parser_instance: Any, model_name: str) -> None:
-        parser_instance.model = model_name
-        parser_instance.model_name = model_name
-
-        if hasattr(parser_instance, "_parse_image"):
-            original = parser_instance._parse_image
-
-            def _patched(*args: Any, **kwargs: Any) -> Any:
-                if "model" in kwargs:
-                    kwargs["model"] = model_name
-                return original(*args, **kwargs)
-
-            parser_instance._parse_image = _patched
-
-        if hasattr(parser_instance, "client") and parser_instance.client:
-            original_create = parser_instance.client.chat.completions.create
-
-            def _patched_create(*args: Any, **kwargs: Any) -> Any:
-                if kwargs.get("model") == "model" or "model" not in kwargs:
-                    kwargs["model"] = model_name
-                return original_create(*args, **kwargs)
-
-            parser_instance.client.chat.completions.create = _patched_create
+        results = payload.get("results") or {}
+        if not results:
+            raise RuntimeError(
+                f"OCR returned no results: {payload.get('error') or payload}"
+            )
+        # `results` is keyed by the uploaded file's stem rather than a fixed key,
+        # and we upload exactly one file.
+        markdown = str(next(iter(results.values())).get("md_content") or "")
+        if not markdown.strip():
+            raise RuntimeError("OCR markdown is empty")
+        return markdown
 
     async def _run_analysis(self, ocr_markdown: str) -> dict[str, Any]:
         sanitized_markdown, removed_images, removed_chars = (
@@ -656,6 +647,12 @@ class DrugAnalysisService:
             {"role": "user", "content": user_content},
         ]
 
+        # NB: a TokenBudgetExceeded from here is deliberately NOT caught. This loop
+        # exists to re-prompt a model that produced *malformed* output, which is the
+        # wrong medicine for a truncated one — appending the cut-off reply and asking
+        # again only lengthens the conversation and makes the next reply likelier to
+        # be cut off too. Budget is handled where it can actually be fixed, by
+        # `_call_profile_with_budget`.
         last_error = ""
         for attempt in range(1, self.config.analysis_max_retries + 1):
             content = await self._call_analysis_llm(messages)
@@ -709,7 +706,22 @@ class DrugAnalysisService:
         failures: list[str] = []
         for profile in profiles:
             try:
-                content = await self._call_one_profile(profile, messages)
+                content = await self._call_profile_with_budget(profile, messages)
+            except TokenBudgetExceeded as exc:
+                # The endpoint is healthy — we just could not buy enough room, even
+                # at the ceiling. Record it, but do NOT feed the circuit breaker:
+                # cooling down a working endpoint over our own budget would take it
+                # out of rotation for every other document too.
+                failures.append(f"{profile.name}: {exc}")
+                log_warning(
+                    "analysis_profile_out_of_budget",
+                    profile=profile.name,
+                    model=profile.model,
+                    budget=exc.budget,
+                    finish_reason=exc.finish_reason,
+                    reasoning_tokens=exc.reasoning_tokens,
+                )
+                continue
             except Exception as exc:  # transport, HTTP, or an unusable response
                 message = f"{profile.name}: {exc}"
                 failures.append(message)
@@ -730,8 +742,41 @@ class DrugAnalysisService:
             "Every Analysis LM profile failed: " + "; ".join(failures)
         )
 
-    async def _call_one_profile(
+    async def _call_profile_with_budget(
         self, profile: LlmProfile, messages: list[dict[str, str]]
+    ) -> str:
+        """Call one profile, buying more output budget whenever it runs out.
+
+        A reasoning model spends its budget on hidden reasoning first, so the room
+        an insert needs depends on how hard the model finds it — not on anything we
+        can read off the document up front. Rather than make the operator guess a
+        number that works for every insert, start from the configured one and double
+        it until the model gets to finish, up to `MAX_TOKEN_BUDGET`.
+
+        Retrying the *same* profile with more room is the only retry that addresses
+        this failure: re-prompting the model (what the caller does for malformed
+        output) would only make the conversation longer and the truncation likelier.
+        """
+        budget = profile.max_tokens()
+        while True:
+            try:
+                return await self._call_one_profile(profile, messages, budget)
+            except TokenBudgetExceeded as exc:
+                if budget >= MAX_TOKEN_BUDGET:
+                    raise
+                budget = min(budget * 2, MAX_TOKEN_BUDGET)
+                log_warning(
+                    "analysis_budget_escalated",
+                    profile=profile.name,
+                    model=profile.model,
+                    previous_budget=exc.budget,
+                    new_budget=budget,
+                    finish_reason=exc.finish_reason,
+                    reasoning_tokens=exc.reasoning_tokens,
+                )
+
+    async def _call_one_profile(
+        self, profile: LlmProfile, messages: list[dict[str, str]], max_tokens: int
     ) -> str:
         if profile.provider in {"openai", "vllm"}:
             url = f"{self._normalize_openai_base_url(profile.base_url)}/chat/completions"
@@ -743,11 +788,10 @@ class DrugAnalysisService:
             }
             token_param = (
                 "max_completion_tokens"
-                if profile.provider == "openai"
-                and self._uses_max_completion_tokens(profile.model)
+                if profile.provider == "openai" and is_reasoning_model(profile.model)
                 else "max_tokens"
             )
-            payload[token_param] = profile.max_tokens()
+            payload[token_param] = max_tokens
             # Only authenticate when a key is configured: a local vLLM/Ollama
             # OpenAI-compatible server needs no key, and sending an empty or
             # placeholder bearer token makes some of them reject the request.
@@ -816,7 +860,35 @@ class DrugAnalysisService:
                         or "Analysis LLM call failed after parameter-adaptation retries"
                     )
                 data = response.json()
-            return data["choices"][0]["message"]["content"]
+
+            choice = (data.get("choices") or [{}])[0]
+            content = str(choice.get("message", {}).get("content") or "")
+            finish_reason = str(choice.get("finish_reason") or "")
+            reasoning_tokens = (
+                (data.get("usage") or {})
+                .get("completion_tokens_details", {})
+                .get("reasoning_tokens")
+            )
+            # `length` means the model was cut off mid-answer. An empty message with
+            # no other explanation means the same thing on a reasoning model: the
+            # budget went entirely on hidden reasoning and nothing was left to say
+            # the answer with. Both are budget problems, not content problems — say
+            # so, instead of handing "" to the JSON parser and reporting the
+            # resulting "No JSON object found" as if the model had misbehaved.
+            if finish_reason == "length" or not content.strip():
+                raise TokenBudgetExceeded(
+                    f"{profile.model} ran out of output budget at {max_tokens} tokens"
+                    + (
+                        f" ({reasoning_tokens} of them spent on reasoning)"
+                        if reasoning_tokens
+                        else ""
+                    )
+                    + f"; finish_reason={finish_reason or 'none'}",
+                    budget=max_tokens,
+                    finish_reason=finish_reason,
+                    reasoning_tokens=reasoning_tokens,
+                )
+            return content
 
         if profile.provider == "ollama":
             url = f"{profile.base_url.rstrip('/')}/api/chat"
@@ -827,14 +899,24 @@ class DrugAnalysisService:
                 "format": "json",
                 "options": {
                     "temperature": profile.temperature(),
-                    "num_predict": profile.max_tokens(),
+                    "num_predict": max_tokens,
                 },
             }
             async with httpx.AsyncClient(timeout=300) as client:
                 response = await client.post(url, json=payload)
                 response.raise_for_status()
                 data = response.json()
-            return data["message"]["content"]
+
+            content = str((data.get("message") or {}).get("content") or "")
+            done_reason = str(data.get("done_reason") or "")
+            if done_reason == "length" or not content.strip():
+                raise TokenBudgetExceeded(
+                    f"{profile.model} ran out of output budget at {max_tokens} tokens; "
+                    f"done_reason={done_reason or 'none'}",
+                    budget=max_tokens,
+                    finish_reason=done_reason,
+                )
+            return content
 
         raise ValueError(f"Unsupported analysis provider: {profile.provider}")
 
@@ -842,11 +924,6 @@ class DrugAnalysisService:
     def _normalize_openai_base_url(base_url: str) -> str:
         base_url = base_url.rstrip("/")
         return base_url if base_url.endswith("/v1") else f"{base_url}/v1"
-
-    @staticmethod
-    def _uses_max_completion_tokens(model_name: str) -> bool:
-        lowered = model_name.lower()
-        return lowered.startswith(("gpt-5", "o1", "o3", "o4"))
 
     @staticmethod
     def _extract_json_object(content: str) -> Any:

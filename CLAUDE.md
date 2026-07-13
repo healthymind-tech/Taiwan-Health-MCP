@@ -58,9 +58,13 @@ Available gstack skills:
 > service is the Next.js front-end. **The only Python still in the tree is the
 > drug pipeline**: `admin-worker` is a polyglot image that delegates *drug* jobs
 > (`drug_index_import` / `drug_enrichment` / `drug_analysis`) to a Python shim
-> (`src/run_one_drug_job.py` → `src/admin_jobs.py:execute_admin_job`) because
-> TFDA crawling + the dots_ocr VLM + the analysis LLM are hard Python deps
-> (`requirements.txt`, `Dockerfile.worker`). Everything else — all tools, all
+> (`src/run_one_drug_job.py` → `src/admin_jobs.py:execute_admin_job`) — the TFDA
+> crawl and the analysis LLM still live there (`requirements.txt`,
+> `Dockerfile.worker`). **OCR is no longer a Python dependency**: the dots_ocr VLM
+> was replaced by MinerU, an external HTTP service the pipeline uploads insert PDFs
+> to (Settings → OCR Server). That was the last native hard-dep, so the remaining
+> drug closure is now ordinary httpx/asyncpg/bs4 code and is portable to Node —
+> porting it is outstanding work, not a blocked task. Everything else — all tools, all
 > non-drug loaders, admin REST, settings, IG, FHIR, services probe — is Node.
 > The many `src/*.py` / `src/*_service.py` file references below describe the
 > **original design that has since been ported to `node-server/src/*.ts`**;
@@ -104,7 +108,8 @@ docker compose build app web && docker compose up -d --no-deps app web   # redep
 # (src/run_one_drug_job.py). There is no standalone CLI data-loader container.
 
 # --- Drug pipeline Python (only remaining Python) --------------------------
-# Deps come from requirements.txt (baked into Dockerfile.worker, incl. dots_ocr).
+# Deps come from requirements.txt (baked into Dockerfile.worker) — all pure wheels
+# now that OCR is an external MinerU service rather than an in-process VLM.
 # The worker bind-mounts ./src and ./loader, so edits are live; smoke-test the
 # shim inside the worker container:
 #   docker compose exec admin-worker sh -lc 'cd /app/src && python run_one_drug_job.py <job_id>'

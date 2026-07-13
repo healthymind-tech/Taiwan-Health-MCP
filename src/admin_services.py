@@ -331,55 +331,40 @@ async def _probe_embedding_model(
 
 
 async def _probe_ocr_server(analysis_service: DrugAnalysisService) -> dict[str, Any]:
+    """Probe the configured MinerU server.
+
+    MinerU is a plain HTTP service, so reachability is the whole story — there is
+    no in-process OCR runtime left that could be present or missing.
+    """
+    config = analysis_service.config
+    endpoint = config.ocr_base_url
     ready, reason = analysis_service.ocr_readiness()
-    endpoint = (
-        f"http://{analysis_service.config.ocr_vllm_server_ip}:"
-        f"{analysis_service.config.ocr_vllm_port}"
-    )
-    local_runtime_missing = (not ready) and ("not installed" in reason.lower())
-    hard_config_failure = (not ready) and not local_runtime_missing
-    if hard_config_failure:
+    if not ready:
         return {
             "service_key": "ocr_server",
             "status": "error",
             "endpoint": endpoint,
             "latency_ms": None,
             "message": reason,
-            "details": {
-                "provider": analysis_service.config.ocr_provider,
-                "model": analysis_service.config.ocr_model_name,
-                "prompt_path": str(analysis_service.config.ocr_prompt_path),
-            },
+            "details": {"provider": config.ocr_provider, "backend": config.ocr_backend},
         }
     ok, resolved_endpoint, latency_ms, message, details = await _probe_http_candidates(
-        [
-            f"{endpoint}/health",
-            f"{endpoint}/v1/models",
-        ]
+        [f"{endpoint}/health"]
     )
-    if local_runtime_missing and ok:
-        status = "degraded"
-        probe_message = (
-            "OCR server reachable, but dots_ocr is not installed in the app image."
-        )
-    else:
-        status = "ok" if ok else "error"
-        probe_message = (
-            f"OCR server reachable for model {analysis_service.config.ocr_model_name}."
-            if ok
-            else f"OCR server probe failed: {message}"
-        )
     return {
         "service_key": "ocr_server",
-        "status": status,
+        "status": "ok" if ok else "error",
         "endpoint": resolved_endpoint,
         "latency_ms": latency_ms,
-        "message": probe_message,
+        "message": (
+            f"OCR server reachable ({config.ocr_backend})."
+            if ok
+            else f"OCR server probe failed: {message}"
+        ),
         "details": {
-            "provider": analysis_service.config.ocr_provider,
-            "model": analysis_service.config.ocr_model_name,
-            "prompt_path": str(analysis_service.config.ocr_prompt_path),
-            "local_runtime_missing": local_runtime_missing,
+            "provider": config.ocr_provider,
+            "backend": config.ocr_backend,
+            "effort": config.ocr_effort,
             **details,
         },
     }

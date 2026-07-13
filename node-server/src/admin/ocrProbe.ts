@@ -1,18 +1,11 @@
 /**
  * OCR server reachability probe for the admin overview `infrastructure.ocr` block.
  *
- * Faithful port of the OUTCOME of `admin_services._probe_ocr_server` +
- * `_probe_http_candidates` for the `ready=True` path: read the "ocr" settings
- * group, build the vLLM endpoint, GET `/health` then `/v1/models`, and report
- * "OCR server reachable for model {model}." on a 2xx.
- *
- * Deliberate divergence: Python's `ocr_readiness()` also checks whether the
- * `dots_ocr` runtime is importable *in the app image* and downgrades to
- * "degraded … not installed in the app image". The Node backend never hosts the
- * dots_ocr VLM (the OCR pipeline stays in the Python worker — see the drug
- * pipeline decision), so that app-image-local check is not modeled here; the
- * probe reports reachability of the configured external server, which matches
- * the live deployment where the app image has dots_ocr installed.
+ * The OCR backend is MinerU: a standalone HTTP service the drug pipeline uploads
+ * insert PDFs to. Reachability is the whole story — unlike the dots_ocr VLM it
+ * replaced, there is no in-process runtime that could be absent from an image, so
+ * this probe now says the same thing as its Python twin
+ * (`admin_services._probe_ocr_server`) rather than deliberately diverging from it.
  */
 
 import * as adminSettings from "./adminSettings.js";
@@ -46,7 +39,7 @@ async function probeHttpCandidates(candidates: string[]): Promise<{ ok: boolean;
   return { ok: false, message: lastMessage };
 }
 
-/** Probe the configured OCR server → `{status, detail}` for the overview. */
+/** Probe the configured MinerU server → `{status, detail}` for the overview. */
 export async function probeOcr(): Promise<{ status: string; detail: string }> {
   try {
     // Not seeded from env — no rows means the operator has not set it up, and
@@ -55,20 +48,24 @@ export async function probeOcr(): Promise<{ status: string; detail: string }> {
       return { status: "degraded", detail: "OCR server is not configured yet — set it up in Admin → Settings." };
     }
     const ocr = await adminSettings.getGroup("ocr");
-    const provider = String((ocr.provider ?? "dots_ocr") || "dots_ocr").trim().toLowerCase();
-    const serverIp = String((ocr.server_ip ?? "127.0.0.1") || "127.0.0.1").trim();
-    const port = Number(ocr.port || 8002) || 8002;
-    const model = String((ocr.model ?? "") || "").trim();
+    const provider = String((ocr.provider ?? "mineru") || "mineru").trim().toLowerCase();
+    const baseUrl = String((ocr.base_url ?? "") || "").trim().replace(/\/+$/, "");
+    const backend = String((ocr.backend ?? "hybrid-engine") || "hybrid-engine").trim();
 
-    // Mirror `ocr_readiness` hard-config failure for a non-dots_ocr provider.
-    if (provider !== "dots_ocr") {
-      return { status: "error", detail: "Unsupported DRUG_OCR_PROVIDER" };
+    // Mirror the `ocr_readiness` hard-config failures.
+    if (provider !== "mineru") {
+      return { status: "error", detail: `Unsupported OCR provider: ${provider}` };
+    }
+    if (!baseUrl) {
+      return {
+        status: "error",
+        detail: "OCR base URL is not configured yet — set it up in the admin console (Settings → OCR Server).",
+      };
     }
 
-    const endpoint = `http://${serverIp}:${port}`;
-    const { ok, message } = await probeHttpCandidates([`${endpoint}/health`, `${endpoint}/v1/models`]);
+    const { ok, message } = await probeHttpCandidates([`${baseUrl}/health`]);
     return ok
-      ? { status: "ok", detail: `OCR server reachable for model ${model}.` }
+      ? { status: "ok", detail: `OCR server reachable (${backend}).` }
       : { status: "error", detail: `OCR server probe failed: ${message}` };
   } catch (exc) {
     return { status: "error", detail: String((exc as Error).message) };

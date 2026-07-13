@@ -369,24 +369,27 @@ async function probeEmbedding(): Promise<ProbeResult> {
   });
 }
 
+/** Probe the MinerU server the drug pipeline uploads insert PDFs to. */
 async function probeOcrServer(): Promise<ProbeResult> {
   if (!(await isGroupConfigured("ocr"))) return unconfigured("OCR server");
   const ocr = await getGroup("ocr");
-  const provider = String((ocr.provider ?? "dots_ocr") || "dots_ocr").trim().toLowerCase();
-  const serverIp = String((ocr.server_ip ?? "127.0.0.1") || "127.0.0.1").trim();
-  const port = Number(ocr.port || 8002) || 8002;
-  const model = String((ocr.model ?? "") || "").trim();
-  const endpoint = `http://${serverIp}:${port}`;
-  if (provider !== "dots_ocr") {
-    return { status: "error", endpoint, latency_ms: null, message: "Unsupported DRUG_OCR_PROVIDER", details: { provider, model } };
+  const provider = String((ocr.provider ?? "mineru") || "mineru").trim().toLowerCase();
+  const endpoint = String((ocr.base_url ?? "") || "").trim().replace(/\/+$/, "");
+  const backend = String((ocr.backend ?? "hybrid-engine") || "hybrid-engine").trim();
+  const effort = String((ocr.effort ?? "medium") || "medium").trim();
+  if (provider !== "mineru") {
+    return { status: "error", endpoint, latency_ms: null, message: `Unsupported OCR provider: ${provider}`, details: { provider, backend } };
   }
-  const probe = await probeHttpCandidates([`${endpoint}/health`, `${endpoint}/v1/models`]);
+  if (!endpoint) {
+    return { status: "error", endpoint, latency_ms: null, message: "OCR base URL is not configured yet.", details: { provider, backend } };
+  }
+  const probe = await probeHttpCandidates([`${endpoint}/health`]);
   return {
     status: probe.ok ? "ok" : "error",
     endpoint: probe.endpoint,
     latency_ms: probe.latencyMs,
-    message: probe.ok ? `OCR server reachable for model ${model}.` : `OCR server probe failed: ${probe.message}`,
-    details: { provider, model, ...probe.details },
+    message: probe.ok ? `OCR server reachable (${backend}).` : `OCR server probe failed: ${probe.message}`,
+    details: { provider, backend, effort, ...probe.details },
   };
 }
 
