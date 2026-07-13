@@ -221,6 +221,8 @@ body {
 .btn--danger { border-color: var(--bad-fg); color: var(--bad-fg); }
 .btn--danger:hover:not(:disabled) { background: var(--bad-bg); border-color: var(--bad-fg); color: var(--bad-fg); }
 .module-card__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.passkey-list { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.passkey-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; border: 1px solid var(--line-soft); border-radius: 8px; padding: 8px 12px; }
 .source-role { border-top: 1px solid var(--line-soft); padding-top: 12px; margin-top: 12px; }
 .source-role__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
 

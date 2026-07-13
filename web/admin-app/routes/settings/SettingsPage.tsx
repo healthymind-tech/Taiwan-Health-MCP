@@ -11,6 +11,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../lib/api";
 import { qk } from "../../lib/queryKeys";
 import { toast } from "../../components/toast";
+import { PasskeysCard } from "./PasskeysCard";
 import type {
   SettingsActionResult,
   SettingsField,
@@ -235,6 +236,7 @@ export function SettingsPage(): JSX.Element {
       <header className="section-head">
         <h2>Settings</h2>
       </header>
+      <PasskeysCard />
       {data.groups.map((group) => (
         <SettingsGroupForm key={group.group} group={group} />
       ))}

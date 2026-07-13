@@ -282,6 +282,20 @@ CREATE TABLE IF NOT EXISTS admin.app_settings (
     PRIMARY KEY (group_key, key)
 );
 
+-- Registered WebAuthn / passkey credentials for admin login (additional to the
+-- password). credential_id/public_key are base64url/raw-bytes as produced by
+-- @simplewebauthn; counter guards against cloned-authenticator replay.
+CREATE TABLE IF NOT EXISTS admin.webauthn_credentials (
+    credential_id  TEXT PRIMARY KEY,
+    username       TEXT NOT NULL,
+    public_key     BYTEA NOT NULL,
+    counter        BIGINT NOT NULL DEFAULT 0,
+    transports     TEXT[],
+    label          TEXT,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_used_at   TIMESTAMPTZ
+);
+
 CREATE UNIQUE INDEX IF NOT EXISTS idx_admin_uploaded_files_dedupe
     ON admin.uploaded_files (module_key, source_role, sha256);
 CREATE INDEX IF NOT EXISTS idx_admin_module_sources_lookup
@@ -313,6 +327,8 @@ CREATE INDEX IF NOT EXISTS idx_admin_fhir_server_oauth_tokens_server
 CREATE INDEX IF NOT EXISTS idx_admin_fhir_server_oauth_tokens_pending
     ON admin.fhir_server_oauth_tokens (pending_created_at)
     WHERE state_nonce IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_admin_webauthn_credentials_user
+    ON admin.webauthn_credentials (username);
 
 -- Per-module automatic import schedules managed by admin-worker.
 CREATE TABLE IF NOT EXISTS admin.module_schedules (

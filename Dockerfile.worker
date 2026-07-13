@@ -1,0 +1,66 @@
+# ── Polyglot admin worker image ───────────────────────────────────────────────
+# The Node worker (node-server/dist/admin/adminWorker.js) claims jobs and runs all
+# the deterministic loader/embed stages in TypeScript. Drug jobs are delegated to
+# the Python shim (src/run_one_drug_job.py), which keeps the TFDA crawl + dots_ocr
+# VLM + analysis-LLM Python hard-dependencies. So this image bundles BOTH runtimes:
+#   /app/node-server/dist + node_modules   ← the Node worker (entrypoint)
+#   /app/src + /app/loader + python deps    ← the Python drug shim it spawns
+#
+# Build context is the repo root (see compose.yaml `admin-worker.build`).
+
+# ── python deps (drug pipeline) ───────────────────────────────────────────────
+FROM python:3.12-slim AS pydeps
+WORKDIR /build
+COPY requirements.txt .
+# git — pip install from GitHub (dots_ocr); build-essential/libcairo2-dev/pkg-config — cairosvg
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git build-essential libcairo2-dev pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
+# dots_ocr — upstream omits dots_ocr/model/__init__.py; clone, patch, install.
+RUN git clone --depth=1 https://github.com/rednote-hilab/dots.ocr.git /tmp/dots_ocr \
+    && touch /tmp/dots_ocr/dots_ocr/model/__init__.py \
+    && pip install --no-cache-dir --prefix=/install /tmp/dots_ocr \
+    && rm -rf /tmp/dots_ocr
+
+# ── node build (TS -> dist) ───────────────────────────────────────────────────
+FROM node:20-slim AS nodebuild
+WORKDIR /nb
+COPY node-server/package.json node-server/package-lock.json ./
+RUN npm ci
+COPY node-server/tsconfig.json ./
+COPY node-server/src ./src
+RUN npm run build
+# Drop dev deps from node_modules so the runtime image only ships production deps.
+RUN npm prune --omit=dev
+
+# ── runtime: python base + node 20 runtime ────────────────────────────────────
+FROM python:3.12-slim
+
+# Node 20 runtime + libcairo2 (cairosvg runtime shared lib for dots_ocr).
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl ca-certificates libcairo2 \
+    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && apt-get purge -y curl && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Python deps + app source (consumed by the spawned drug shim).
+COPY --from=pydeps /install /usr/local
+COPY src/ ./src/
+COPY loader/ ./loader/
+
+# Node worker bundle.
+COPY --from=nodebuild /nb/dist ./node-server/dist
+COPY --from=nodebuild /nb/node_modules ./node-server/node_modules
+COPY node-server/package.json ./node-server/package.json
+
+ENV PYTHONUNBUFFERED=1 \
+    NODE_ENV=production \
+    DRUG_WORKER_PYTHON=python \
+    DRUG_WORKER_SRC_DIR=/app/src
+
+WORKDIR /app/node-server
+CMD ["node", "dist/admin/adminWorker.js"]

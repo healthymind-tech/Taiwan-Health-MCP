@@ -51,7 +51,26 @@ Available gstack skills:
 
 ## Project Overview
 
-Taiwan Health MCP Server — a Model Context Protocol server built on the official **`mcp` SDK** (`mcp.server.fastmcp.FastMCP`) exposing **~51 tools** across 12 tool groups for Taiwan medical and health data. Designed for production SaaS deployment with hundreds of requests/second throughput.
+> **Backend runtime — READ FIRST (post-migration state).** The production
+> backend is **Node.js / TypeScript** under `node-server/` — this is what the
+> `app` (MCP + admin REST) and `admin-worker` compose services run
+> (`node dist/server.js` and `node dist/admin/adminWorker.js`). The `web`
+> service is the Next.js front-end. **The only Python still in the tree is the
+> drug pipeline**: `admin-worker` is a polyglot image that delegates *drug* jobs
+> (`drug_index_import` / `drug_enrichment` / `drug_analysis`) to a Python shim
+> (`src/run_one_drug_job.py` → `src/admin_jobs.py:execute_admin_job`) because
+> TFDA crawling + the dots_ocr VLM + the analysis LLM are hard Python deps
+> (`requirements.txt`, `Dockerfile.worker`). Everything else — all tools, all
+> non-drug loaders, admin REST, settings, IG, FHIR, services probe — is Node.
+> The many `src/*.py` / `src/*_service.py` file references below describe the
+> **original design that has since been ported to `node-server/src/*.ts`**;
+> treat them as conceptual, and make code changes in `node-server/` unless you
+> are working on the drug pipeline. The remaining Python is the ~26-file drug
+> closure only (`src/admin_*`/`drug_*`/`tfda_*`/`config`/`database`/`cache`/
+> `minio_service`/`utils` + `loader/loaders/drug_*` + `embedding_loader`/
+> `fda_common`).
+
+Taiwan Health MCP Server — a Model Context Protocol server (originally built on the Python **`mcp` SDK** `FastMCP`, now served by the Node MCP SDK in `node-server/`) exposing **~51 tools** across 12 tool groups for Taiwan medical and health data. Designed for production SaaS deployment with hundreds of requests/second throughput.
 
 **Modules**: ICD-10-CM/PCS 2025, LOINC 2.80, SNOMED CT International, Taiwan FDA (TFDA) drugs, Taiwan FDA health supplements, Taiwan FDA food nutrition, Taiwan clinical guidelines, FHIR R4 IG authoring (multi-IG, default TWCore v1.0.0), FHIR Condition/Medication generation, and an external FHIR server registry. RxNorm is loaded as concept-only reference terminology (used for IG ValueSet expansion, not a standalone drug tool).
 
@@ -63,30 +82,32 @@ Three surfaces ship in one codebase:
 ## Commands
 
 ```bash
-# Install dependencies
-pip install -r requirements.txt
+# --- Node backend (app + admin-worker live in node-server/) ----------------
+cd node-server
+npm install
+npm run build                                 # tsc -> dist/
+npm test                                       # node --test (if present)
+# Run the MCP/admin server locally (HTTP mode):
+MCP_TRANSPORT=streamable-http DATABASE_URL=postgresql://... node dist/server.js
 
-# Run server locally (stdio mode for Claude Desktop)
-DATABASE_URL=postgresql://mcp:pass@localhost:5432/taiwan_health python src/server.py
+# --- Web front-end (public pages + admin SPA) ------------------------------
+cd web && npm install && npm run build && node server.js
 
-# Run server (HTTP mode)
-MCP_TRANSPORT=streamable-http DATABASE_URL=postgresql://... python src/server.py
-
-# Docker (production — recommended)
+# --- Docker (production — recommended) -------------------------------------
 cp .env.example .env                          # then edit .env (set POSTGRES_PASSWORD, ADMIN_*)
-docker compose up -d                          # postgres, pgbouncer, redis, minio, app, admin-worker, web (Next.js), nginx (front door :8080)
+docker compose up -d                          # postgres, pgbouncer, redis, minio, app (Node), admin-worker (Node+Python drug shim), web (Next.js), nginx (front door :8080)
+docker compose build app web && docker compose up -d --no-deps app web   # redeploy after code changes
 
 # Data loading is done through the admin console (Modules tab) and executed by
-# the admin-worker in the background — there is NO standalone CLI data-loader
-# container (the old `docker compose --profile loader run …` path was removed).
-# The loader stages still live in loader/main.py and are invoked by the worker:
-#   --icd  --loinc  --twcore  --guideline  --snomed  --health-supplements
-#   --food-nutrition  --drug-index / --drug-enrich / --drug-analysis  --drug
-#   --embed   (embeddings auto-run after each import)
+# the admin-worker in the background. Non-drug imports run natively in Node;
+# drug jobs (index/enrich/analysis) are delegated to the Python shim
+# (src/run_one_drug_job.py). There is no standalone CLI data-loader container.
 
-# Run tests
-pip install pytest pytest-asyncio
-python -m pytest tests/ -v
+# --- Drug pipeline Python (only remaining Python) --------------------------
+# Deps come from requirements.txt (baked into Dockerfile.worker, incl. dots_ocr).
+# The worker bind-mounts ./src and ./loader, so edits are live; smoke-test the
+# shim inside the worker container:
+#   docker compose exec admin-worker sh -lc 'cd /app/src && python run_one_drug_job.py <job_id>'
 ```
 
 ## Architecture

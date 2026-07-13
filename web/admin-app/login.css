@@ -45,6 +45,13 @@
   cursor: pointer;
 }
 .login-card button:disabled { opacity: 0.6; cursor: default; }
+/* Secondary passkey button — outlined, distinct from the primary sign-in. */
+.login-card button.login-passkey {
+  margin-top: 0;
+  background: transparent;
+  color: #0066cc;
+  border: 1px solid #0066cc;
+}
 .login-error {
   background: #fdecec;
   border: 1px solid #f5b5b5;
@@ -61,3 +68,4 @@
 [data-theme="dark"] .login-card label { color: #b8c0cc; }
 [data-theme="dark"] .login-card input { background: #0f1115; border-color: #2b3340; color: #e6e8eb; }
 [data-theme="dark"] .login-error { background: #2a1416; border-color: #5a2630; color: #ff9aa2; }
+[data-theme="dark"] .login-card button.login-passkey { background: transparent; color: #4d9fff; border-color: #4d9fff; }
