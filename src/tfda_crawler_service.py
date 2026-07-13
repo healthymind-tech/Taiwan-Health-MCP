@@ -141,6 +141,20 @@ class TFDACrawlerService:
         response = await self._fetch(client, source_url, expect_binary=True)
         if response is None:
             return None
+
+        # TFDA serves some "PDF" links as an HTML viewer page, and answers 200 with
+        # a PDF-ish Content-Type either way, so the header cannot be trusted. Storing
+        # that HTML as a .pdf asset only defers the failure to OCR, which rejects it
+        # ("Unsupported file type: html") — drop it at the source instead.
+        if asset_type.endswith("_pdf") and not response.content.startswith(b"%PDF-"):
+            log_warning(
+                "Skipping non-PDF content served from a PDF link",
+                asset_type=asset_type,
+                source_url=source_url,
+                leading_bytes=repr(response.content[:8]),
+            )
+            return None
+
         mime_type = response.headers.get("content-type", "").split(";")[0].strip()
         if not mime_type:
             mime_type = infer_content_type(normalized_filename)
