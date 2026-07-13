@@ -9,12 +9,14 @@ venv/
 # 忽略生成的資料庫 (因為每次都可以由 Excel 重建)
 *.db
 
-# 忽略 LOINC 官方資料（檔案太大且有授權限制）
-fhir-code/loinc/Loinc.csv
-fhir-code/loinc/LOINC_*.zip
-fhir-code/loinc/*.txt
+# Source data (ICD / LOINC / SNOMED / RxNorm / UMLS / IG packages) stays out of git:
+# the archives are large, several are licence-restricted, and all of them are
+# re-downloadable — docs/data-sources/test-data.md records where each one came from.
+fhir-code/*
+!fhir-code/loinc/
 
-# 保留 LOINC 台灣設定檔（輕量，納入版控）
+# Except the two lookup tables that are ours: hand-curated, downloadable nowhere.
+fhir-code/loinc/*
 !fhir-code/loinc/taiwan_mapping.csv
 !fhir-code/loinc/lab_reference_ranges.csv
 
@@ -35,13 +37,6 @@ site/
 # Ignore local dataset configuration; keep the example template in version control
 config/datasets.yaml
 
-# 忽略需授權申請的原始資料（不可再散佈，請至官方申請後自行下載）
-fhir-code/snomed/
-fhir-code/rxnorm/
-fhir-code/umls/
-fhir-code/snomed/SnomedCT_InternationalRF2_PRODUCTION_*.zip
-fhir-code/rxnorm/RxNorm_full_*.zip
-fhir-code/umls/umls-*-metathesaurus-full.zip
 .gstack/
 
 # Node.js build artifacts (Next.js web/ + node-server/ gateway)

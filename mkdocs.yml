@@ -55,6 +55,7 @@ nav:
     - FHIR 伺服器工具: tools/fhir-server-tools.md
   - 資料來源:
     - data-sources/index.md
+    - 測試資料檔清單: data-sources/test-data.md
     - ICD-10: data-sources/icd10.md
     - LOINC: data-sources/loinc.md
     - 臨床指引: data-sources/guidelines.md
