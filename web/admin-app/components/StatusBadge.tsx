@@ -1,16 +1,21 @@
 // Status pill reused across tabs (job status, service health, module state).
 
-type Tone = "ok" | "warn" | "bad" | "muted";
+type Tone = "ok" | "live" | "warn" | "bad" | "halt" | "muted";
 
 const TONE_BY_STATUS: Record<string, Tone> = {
-  // job statuses
+  // Job statuses. The three an operator acts on must never share a colour:
+  // running (blue, in flight) / paused (amber, waiting on you) / stopped (slate,
+  // deliberately ended). `queued` stays muted — nothing has happened to it yet.
   completed: "ok",
   success: "ok",
-  running: "warn",
+  running: "live",
   queued: "muted",
   paused: "warn",
+  stopped: "halt",
+  cancelled: "halt",
   failed: "bad",
-  cancelled: "muted",
+  retryable_failed: "bad",
+  permanent_failed: "bad",
   // service / module health
   ok: "ok",
   ready: "ok",

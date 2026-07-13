@@ -17,14 +17,18 @@ export interface WsEnvelope {
   data: Record<string, unknown>;
 }
 
+// The statuses the worker actually writes (see `markJobStatus` in adminJobs.ts).
+// `completed` / `failed` / `cancelled` were never emitted by the backend, and a
+// status the UI does not recognise falls through to a muted badge — which is how
+// stopped and failed jobs came to look identical to queued ones.
 export type JobStatus =
   | "queued"
   | "running"
   | "paused"
-  | "completed"
+  | "stopped"
   | "success"
-  | "failed"
-  | "cancelled";
+  | "retryable_failed"
+  | "permanent_failed";
 
 export interface JobStatusChangedEvent {
   job_id: string;
