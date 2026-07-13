@@ -7,7 +7,7 @@
  *
  * Config is **not** read from env. The endpoints are `admin.llm_profiles` rows
  * with `kind='embedding'` — one per host — and the shared knobs (strategy,
- * dimensions, timeout, batch size) are the `embedding` settings group. A batch is
+ * timeout, batch size) are the `embedding` settings group. A batch is
  * tried against the profiles in `candidateOrder()` until one answers, so losing a
  * host costs a retry instead of the whole feature.
  *
@@ -22,6 +22,7 @@ import { query } from "./db.js";
 import { logInfo, logWarning } from "./logger.js";
 import {
   candidateOrder,
+  embeddingDimensions,
   reportFailure,
   reportSuccess,
   type LlmProfile,
@@ -32,7 +33,6 @@ export interface EmbeddingSettings {
   strategy: Strategy;
   timeout: number;
   batchSize: number;
-  dimensions: number;
 }
 
 const GOOGLE_BASE = "https://generativelanguage.googleapis.com";
@@ -46,6 +46,7 @@ async function providerEmbed(
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), s.timeout * 1000);
   const baseUrl = p.base_url.replace(/\/+$/, "");
+  const dimensions = embeddingDimensions(p);
   try {
     if (p.provider === "openai") {
       const base = baseUrl.endsWith("/embeddings") ? baseUrl : `${baseUrl}/embeddings`;
@@ -54,8 +55,8 @@ async function providerEmbed(
         input: texts,
         encoding_format: "float",
       };
-      if (s.dimensions && p.model.startsWith("text-embedding-3")) {
-        body.dimensions = s.dimensions;
+      if (dimensions && p.model.startsWith("text-embedding-3")) {
+        body.dimensions = dimensions;
       }
       const headers: Record<string, string> = { "Content-Type": "application/json" };
       if (p.api_key) headers.Authorization = `Bearer ${p.api_key}`;
@@ -69,7 +70,7 @@ async function providerEmbed(
       const modelPath = p.model.startsWith("models/") ? p.model : `models/${p.model}`;
       const reqs = texts.map((t) => {
         const req: Record<string, unknown> = { model: modelPath, content: { parts: [{ text: t }] } };
-        if (s.dimensions) req.outputDimensionality = s.dimensions;
+        if (dimensions) req.outputDimensionality = dimensions;
         return req;
       });
       const resp = await fetch(`${GOOGLE_BASE}/v1beta/${modelPath}:batchEmbedContents`, {
@@ -190,7 +191,6 @@ export async function loadEmbeddingSettings(): Promise<EmbeddingSettings> {
     strategy: "failover",
     timeout: 30,
     batchSize: 32,
-    dimensions: 1024,
   };
   try {
     const res = await query<{ key: string; value: string | null }>(
@@ -202,7 +202,6 @@ export async function loadEmbeddingSettings(): Promise<EmbeddingSettings> {
       strategy: strategy === "weighted" ? "weighted" : "failover",
       timeout: Number(m.get("timeout")) || 30,
       batchSize: Number(m.get("batch_size")) || 32,
-      dimensions: Number(m.get("dimensions")) || 1024,
     };
   } catch {
     return defaults;

@@ -283,13 +283,12 @@ CREATE TABLE IF NOT EXISTS admin.app_settings (
 );
 
 -- LLM endpoints, one row per profile, for the roles that call a model server.
--- The selection strategy (failover / weighted) and the globals every profile of
--- a role must agree on (embedding dimensions) stay in app_settings; the
+-- The selection strategy (failover / weighted) stays in app_settings; the
 -- endpoint, its key, its model and its per-model knobs live here.
 --   kind     — 'analysis' | 'embedding'
 --   priority — failover order, lowest first
 --   weight   — traffic share under the weighted strategy
---   params   — analysis: {temperature, max_tokens}; embedding: {}
+--   params   — analysis: {temperature, max_tokens}; embedding: {dimensions}
 CREATE TABLE IF NOT EXISTS admin.llm_profiles (
     id          BIGSERIAL PRIMARY KEY,
     kind        TEXT NOT NULL CHECK (kind IN ('analysis', 'embedding')),
@@ -968,9 +967,9 @@ CREATE INDEX IF NOT EXISTS idx_fn_ing_fts ON food_nutrition.ingredients
     USING GIN (to_tsvector('simple', COALESCE(name_zh,'') || ' ' || COALESCE(name_en,'')));
 
 -- Embedding table for hybrid search (food-level, not measurement-level)
--- Default dimension 1024 matches OLLAMA_EMBED_DIMENSIONS=1024 (qwen3-embedding:0.6b).
--- To switch models, set OLLAMA_EMBED_DIMENSIONS to the new size and re-run
--- embeddings from the admin console (Modules → re-embed).
+-- Default dimension 1024 matches qwen3-embedding:0.6b. To switch models, set
+-- dimensions on the active embedding profile and re-run embeddings from the
+-- admin console (Modules → re-embed).
 -- The loader will ALTER TABLE all embedding columns to the new dimension automatically.
 CREATE TABLE IF NOT EXISTS food_nutrition.food_embeddings (
     sample_name  TEXT PRIMARY KEY,

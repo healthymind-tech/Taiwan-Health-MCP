@@ -16,9 +16,9 @@ re-embed of an unchanged module is near-instant instead of re-embedding every
 row. Rows whose source was deleted are pruned. Each run records a per-module
 marker in admin.module_embed_log. Run --embed after data loaders.
 
-Config env vars:
-  OLLAMA_BASE_URL, OLLAMA_EMBED_MODEL, OLLAMA_EMBED_DIMENSIONS,
-  OLLAMA_EMBED_TIMEOUT, OLLAMA_EMBED_BATCH_SIZE
+Runtime settings are normally loaded from admin settings / embedding profiles by
+the admin worker. Env vars remain as a development fallback for direct loader
+invocation.
 """
 
 from __future__ import annotations
@@ -64,7 +64,7 @@ def configure(values: dict) -> None:
     _BATCH_SIZE = int(values.get("batch_size", 32) or 32)
 
 # All (schema, table, column) triples that hold embedding vectors.
-# Used by ensure_dimensions() to ALTER TABLE when OLLAMA_EMBED_DIMENSIONS changes.
+# Used by ensure_dimensions() to ALTER TABLE when the active profile dimensions change.
 _EMBEDDING_COLUMNS: list[tuple[str, str, str]] = [
     ("icd", "diagnosis_embeddings", "embedding"),
     ("health_supplements", "item_embeddings", "embedding"),
@@ -97,7 +97,7 @@ _HNSW_MAX_DIMS = 4000  # pgvector halfvec HNSW limit
 
 
 async def ensure_dimensions(pool: asyncpg.Pool) -> None:
-    """ALTER all embedding halfvec columns to match OLLAMA_EMBED_DIMENSIONS.
+    """ALTER all embedding halfvec columns to match the active profile dimensions.
 
     Safe to call when dimensions are already correct (no-op). Required when
     switching embedding models with a different output size.

@@ -91,7 +91,8 @@ SETTINGS_SCHEMA: dict[str, dict[str, Any]] = {
         "label": "Embedding",
         "description": (
             "How embed requests are spread across the embedding profiles, plus the "
-            "settings every profile must share. Endpoints are the profiles below."
+            "shared worker settings. Endpoints, models and dimensions are the "
+            "profiles below."
         ),
         "seed_from_env": False,
         "fields": [
@@ -105,17 +106,6 @@ SETTINGS_SCHEMA: dict[str, dict[str, Any]] = {
                 help=(
                     "failover = always the highest-priority healthy profile; "
                     "weighted = spread by weight, still falling back on failure."
-                ),
-            ),
-            _field(
-                "dimensions",
-                "int",
-                1024,
-                "OLLAMA_EMBED_DIMENSIONS",
-                "Dimensions",
-                help=(
-                    "Vector size stored in pgvector. Must match what the model returns — "
-                    "and every stored vector, from every module, shares this one size."
                 ),
             ),
             _field("timeout", "int", 30, "OLLAMA_EMBED_TIMEOUT", "Timeout (s)"),

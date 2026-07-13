@@ -2,15 +2,15 @@
 --
 -- Replaces the single endpoint that used to live in admin.app_settings groups
 -- `analysis` and `embedding`. Those groups keep only what is genuinely global
--- (the selection strategy, the retry budget, and — for embeddings — the vector
--- dimensions every stored vector must agree on); the endpoint itself, its key,
--- its model and its per-model parameters now live here, one row per profile.
+-- (the selection strategy, retry budget, timeout and batch size); the endpoint
+-- itself, its key, its model and its per-model parameters now live here, one row
+-- per profile.
 --
 -- kind:     which role the profile serves ('analysis' | 'embedding')
 -- priority: failover order, lowest first
 -- weight:   share of traffic under the weighted strategy (ignored by failover)
 -- params:   role-specific knobs — analysis: {temperature, max_tokens};
---           embedding: {} (dimensions/timeout/batch_size stay global)
+--           embedding: {dimensions}
 
 CREATE TABLE IF NOT EXISTS admin.llm_profiles (
     id          BIGSERIAL PRIMARY KEY,
@@ -66,7 +66,9 @@ SELECT
     TRUE,
     10,
     1,
-    '{}'::jsonb
+    jsonb_build_object(
+        'dimensions', COALESCE(NULLIF(MAX(value) FILTER (WHERE key = 'dimensions'), ''), '1024')::int
+    )
 FROM admin.app_settings
 WHERE group_key = 'embedding'
 HAVING COALESCE(MAX(value) FILTER (WHERE key = 'model'), '') <> ''
@@ -77,5 +79,5 @@ ON CONFLICT (kind, name) DO NOTHING;
 -- second copy of every API key).
 DELETE FROM admin.app_settings
 WHERE (group_key = 'analysis' AND key IN ('provider', 'base_url', 'api_key', 'model', 'temperature', 'max_tokens', 'prompt_path'))
-   OR (group_key = 'embedding' AND key IN ('provider', 'base_url', 'api_key', 'model'))
+   OR (group_key = 'embedding' AND key IN ('provider', 'base_url', 'api_key', 'model', 'dimensions'))
    OR (group_key = 'ocr' AND key = 'prompt_path');

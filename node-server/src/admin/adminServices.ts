@@ -26,7 +26,6 @@ export const SERVICE_PROBE_ORDER = [
   "embedding_model",
   "ocr_server",
   "analysis_server",
-  "lm_server",
 ];
 
 interface ProbeMeta {
@@ -62,16 +61,15 @@ export const SERVICE_PROBE_META: Record<string, ProbeMeta> = {
     description: "Vision/OCR backend for drug insert PDFs.",
   },
   analysis_server: {
-    label: "Analyze Server",
+    label: "Analysis LM",
     category: "ml",
-    description: "Structured-analysis runtime and provider configuration.",
-  },
-  lm_server: {
-    label: "LM Server",
-    category: "ml",
-    description: "Text-generation endpoint currently backing structured analysis.",
+    description: "Text-generation endpoint backing structured drug-insert analysis.",
   },
 };
+
+function canonicalServiceKey(key: string): string {
+  return key === "lm_server" ? "analysis_server" : key;
+}
 
 /** Mirror Python `_ensure_json_object`. node-pg parses jsonb; normalize to object. */
 function ensureJsonObject(value: unknown): Record<string, unknown> {
@@ -392,15 +390,14 @@ async function probeOcrServer(): Promise<ProbeResult> {
   };
 }
 
-/** Probe every Analysis LM profile; returns the shared (analysis_server, lm_server) pair. */
-async function probeAnalysisPair(): Promise<[ProbeResult, ProbeResult]> {
-  const row = await probeProfiles("analysis", "Analysis LM", async (p) => {
+/** Probe every Analysis LM profile and fold failover endpoints into one row. */
+async function probeAnalysis(): Promise<ProbeResult> {
+  return probeProfiles("analysis", "Analysis LM", async (p) => {
     const base = p.base_url.replace(/\/+$/, "");
     const headers: Record<string, string> = p.api_key ? { Authorization: `Bearer ${p.api_key}` } : {};
     const candidates = p.provider === "ollama" ? ollamaCandidates(base) : openaiCandidates(base);
     return probeHttpCandidates(candidates, headers);
   });
-  return [{ ...row }, { ...row }];
 }
 
 /**
@@ -411,14 +408,15 @@ async function probeAnalysisPair(): Promise<[ProbeResult, ProbeResult]> {
 export async function runServiceProbes(serviceKeys?: string[]): Promise<Record<string, unknown>> {
   let selected = SERVICE_PROBE_ORDER;
   if (serviceKeys && serviceKeys.length) {
-    const requested = new Set(serviceKeys.map((k) => String(k).trim()).filter(Boolean));
+    const requested = new Set(
+      serviceKeys.map((k) => canonicalServiceKey(String(k).trim())).filter(Boolean),
+    );
     const invalid = [...requested].filter((k) => !SERVICE_PROBE_ORDER.includes(k)).sort();
     if (invalid.length) throw new ValueError(`Unsupported service probe keys: ${invalid.join(", ")}`);
     selected = SERVICE_PROBE_ORDER.filter((k) => requested.has(k));
   }
 
   const checkedAt = new Date();
-  let analysisPair: [ProbeResult, ProbeResult] | null = null;
   const results: (ProbeResult & { service_key: string })[] = [];
 
   for (const key of selected) {
@@ -429,10 +427,8 @@ export async function runServiceProbes(serviceKeys?: string[]): Promise<Record<s
       else if (key === "minio") result = await probeMinio();
       else if (key === "embedding_model") result = await probeEmbedding();
       else if (key === "ocr_server") result = await probeOcrServer();
-      else if (key === "analysis_server" || key === "lm_server") {
-        if (!analysisPair) analysisPair = await probeAnalysisPair();
-        result = key === "analysis_server" ? analysisPair[0] : analysisPair[1];
-      } else {
+      else if (key === "analysis_server") result = await probeAnalysis();
+      else {
         throw new ValueError(`Unsupported service probe key: ${key}`);
       }
       results.push({ service_key: key, ...result });

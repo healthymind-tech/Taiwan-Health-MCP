@@ -29,7 +29,6 @@ SERVICE_PROBE_ORDER = [
     "embedding_model",
     "ocr_server",
     "analysis_server",
-    "lm_server",
 ]
 
 # Service keys that must NOT be in 'error' state for a given job type to run.
@@ -78,16 +77,15 @@ SERVICE_PROBE_META: dict[str, dict[str, str]] = {
         "description": "Vision/OCR backend for drug insert PDFs.",
     },
     "analysis_server": {
-        "label": "Analyze Server",
+        "label": "Analysis LM",
         "category": "ml",
-        "description": "Structured-analysis runtime and provider configuration.",
-    },
-    "lm_server": {
-        "label": "LM Server",
-        "category": "ml",
-        "description": "Text-generation endpoint currently backing structured analysis.",
+        "description": "Text-generation endpoint backing structured drug-insert analysis.",
     },
 }
+
+
+def _canonical_service_key(service_key: str) -> str:
+    return "analysis_server" if service_key == "lm_server" else service_key
 
 
 def _ensure_json_object(value: Any) -> dict[str, Any]:
@@ -401,7 +399,7 @@ async def _probe_analysis_endpoint(
 
 async def _probe_analysis_services(
     analysis_service: DrugAnalysisService,
-) -> tuple[dict[str, Any], dict[str, Any]]:
+) -> dict[str, Any]:
     ready, reason = analysis_service.analysis_readiness()
     config = analysis_service.config
     details = {
@@ -417,16 +415,13 @@ async def _probe_analysis_services(
             "message": reason,
             "details": details,
         }
-        return (
-            {"service_key": "analysis_server", **failure},
-            {"service_key": "lm_server", **failure},
-        )
+        return {"service_key": "analysis_server", **failure}
 
     ok, endpoint, latency_ms, message, probe_details = await _probe_analysis_endpoint(
         config
     )
     merged_details = {**details, "base_url": config.analysis_base_url, **probe_details}
-    analysis_row = {
+    return {
         "service_key": "analysis_server",
         "status": "ok" if ok else "error",
         "endpoint": endpoint,
@@ -438,19 +433,6 @@ async def _probe_analysis_services(
         ),
         "details": merged_details,
     }
-    lm_row = {
-        "service_key": "lm_server",
-        "status": "ok" if ok else "error",
-        "endpoint": endpoint,
-        "latency_ms": latency_ms,
-        "message": (
-            f"LM endpoint reachable for model {config.analysis_model_name}."
-            if ok
-            else f"LM endpoint probe failed: {message}"
-        ),
-        "details": merged_details,
-    }
-    return analysis_row, lm_row
 
 
 async def _run_single_probe(
@@ -459,8 +441,9 @@ async def _run_single_probe(
     pool,
     minio_service: MinioService | None,
     analysis_service: DrugAnalysisService,
-    analysis_pair: tuple[dict[str, Any], dict[str, Any]] | None,
+    analysis_probe: dict[str, Any] | None,
 ) -> dict[str, Any]:
+    service_key = _canonical_service_key(service_key)
     if service_key == "database":
         return await _probe_database(pool)
     if service_key == "redis":
@@ -477,12 +460,10 @@ async def _run_single_probe(
         )
     if service_key == "ocr_server":
         return await _probe_ocr_server(analysis_service)
-    if service_key in {"analysis_server", "lm_server"}:
-        if analysis_pair is None:
-            analysis_pair = await _probe_analysis_services(analysis_service)
-        return (
-            analysis_pair[0] if service_key == "analysis_server" else analysis_pair[1]
-        )
+    if service_key == "analysis_server":
+        if analysis_probe is None:
+            analysis_probe = await _probe_analysis_services(analysis_service)
+        return analysis_probe
     raise ValueError(f"Unsupported service probe key: {service_key}")
 
 
@@ -518,7 +499,11 @@ async def run_service_probes(
 ) -> dict[str, Any]:
     selected = SERVICE_PROBE_ORDER
     if service_keys:
-        requested = {str(key).strip() for key in service_keys if str(key).strip()}
+        requested = {
+            _canonical_service_key(str(key).strip())
+            for key in service_keys
+            if str(key).strip()
+        }
         invalid = sorted(requested - set(SERVICE_PROBE_ORDER))
         if invalid:
             raise ValueError(f"Unsupported service probe keys: {', '.join(invalid)}")
@@ -527,19 +512,19 @@ async def run_service_probes(
     # Build the analysis/OCR config from DB settings so the Services-tab health
     # view reflects the live (DB-managed) configuration.
     analysis_service = DrugAnalysisService(await load_drug_analysis_config(pool))
-    analysis_pair: tuple[dict[str, Any], dict[str, Any]] | None = None
+    analysis_probe: dict[str, Any] | None = None
     checked_at = datetime.now(timezone.utc)
     results: list[dict[str, Any]] = []
     for service_key in selected:
-        if service_key in {"analysis_server", "lm_server"} and analysis_pair is None:
-            analysis_pair = await _probe_analysis_services(analysis_service)
+        if service_key == "analysis_server" and analysis_probe is None:
+            analysis_probe = await _probe_analysis_services(analysis_service)
         try:
             result = await _run_single_probe(
                 service_key,
                 pool=pool,
                 minio_service=minio_service,
                 analysis_service=analysis_service,
-                analysis_pair=analysis_pair,
+                analysis_probe=analysis_probe,
             )
         except Exception as exc:
             result = {
