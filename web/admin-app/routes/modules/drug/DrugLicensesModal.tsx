@@ -618,9 +618,11 @@ export function DrugLicensesModal({ onClose }: { onClose: () => void }): JSX.Ele
   }, [licenses, selectedLicenseId]);
 
   useEffect(() => {
+    // A selected asset belongs to the previous license, so clear it on switch;
+    // but keep the active center tab (record/events/assets) so navigating
+    // between drugs stays on the tab the operator chose.
     setSelectedAssetId(null);
     setPreviewMode("normalized");
-    setCenterTab("record");
   }, [selectedLicenseId]);
 
   const detailsQ = useQuery({
