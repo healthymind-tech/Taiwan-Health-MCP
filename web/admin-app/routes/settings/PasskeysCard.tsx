@@ -23,7 +23,9 @@ interface PasskeySummary {
   last_used_at: string | null;
 }
 
-const qkPasskeys = ["passkeys"] as const;
+// Exported so a settings import — which can restore passkeys — can refresh this
+// list without duplicating the key.
+export const qkPasskeys = ["passkeys"] as const;
 
 function defaultLabel(): string {
   const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";

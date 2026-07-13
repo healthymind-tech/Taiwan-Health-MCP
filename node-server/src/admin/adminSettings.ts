@@ -11,6 +11,7 @@
  * Python dict iteration order byte-for-byte.
  */
 
+import { config } from "../config.js";
 import { query, withTransaction } from "../db.js";
 import { logWarning } from "../logger.js";
 import {
@@ -20,6 +21,7 @@ import {
   type LlmProfile,
   type ProfileKind,
 } from "./llmProfiles.js";
+import { ensureCredentialTable } from "./webauthn.js";
 
 export const SECRET_MASK = "●●●●●●●●";
 
@@ -152,20 +154,40 @@ export const SETTINGS_SCHEMA: Record<string, SettingsGroupSpec> = {
   },
   ocr: {
     label: "OCR Server",
-    description: "Vision/OCR backend for drug insert PDFs.",
+    description:
+      "MinerU server that turns drug insert PDFs into Markdown. Runs as a standalone " +
+      "HTTP service; the pipeline uploads each PDF and reads the Markdown straight back.",
     provider_field: "provider",
     test: "ocr",
     seed_from_env: false,
     fields: [
-      field("provider", "str", "dots_ocr", "DRUG_OCR_PROVIDER", "Provider", {
-        options: ["dots_ocr", "vllm"],
+      field("provider", "str", "mineru", "DRUG_OCR_PROVIDER", "Provider", {
+        options: ["mineru"],
       }),
-      field("server_ip", "str", "127.0.0.1", "DRUG_OCR_VLLM_SERVER_IP", "Server IP"),
-      field("port", "int", 8002, "DRUG_OCR_VLLM_PORT", "Port"),
-      field("model", "str", "Qwen/Qwen2.5-VL-7B-Instruct", "DRUG_OCR_MODEL_NAME", "Model", {
-        is_model: true,
+      field("base_url", "str", "http://127.0.0.1:8000", "DRUG_OCR_BASE_URL", "Base URL", {
+        is_url: true,
+        help: "Root of the MinerU API, e.g. http://10.0.0.5:8000",
       }),
-      field("prompt_mode", "str", "prompt_layout_all_en", "DRUG_OCR_PROMPT_MODE", "Prompt mode"),
+      // The *-http-client backends are excluded on purpose: they make MinerU call out
+      // to an arbitrary `server_url`, which would hand a request-forgery lever to
+      // whoever edits this form.
+      field("backend", "str", "hybrid-engine", "DRUG_OCR_BACKEND", "Backend", {
+        options: ["hybrid-engine", "pipeline", "vlm-engine"],
+        help: "hybrid-engine handles the mixed text/table layout of TFDA inserts best.",
+      }),
+      field("effort", "str", "medium", "DRUG_OCR_EFFORT", "Effort", {
+        options: ["medium", "high"],
+        help: "hybrid backend only. high adds image/chart analysis and is slower.",
+      }),
+      field("parse_method", "str", "auto", "DRUG_OCR_PARSE_METHOD", "Parse method", {
+        options: ["auto", "txt", "ocr"],
+      }),
+      field("lang", "str", "ch", "DRUG_OCR_LANG", "Language", {
+        help: "pipeline backend only. 'ch' covers Traditional Chinese and English.",
+      }),
+      field("timeout_seconds", "int", 600, "DRUG_OCR_TIMEOUT_SECONDS", "Timeout (seconds)", {
+        help: "Upper bound on one PDF. Inserts typically parse in a few seconds.",
+      }),
     ],
   },
   minio: {
@@ -616,7 +638,25 @@ export async function isGroupConfigured(group: string): Promise<boolean> {
 
 // ── Export / import ──────────────────────────────────────────────────────────
 
-export const SETTINGS_EXPORT_VERSION = 1;
+// v2 added `rp_id` + `passkeys`. v1 documents still import — they simply carry no
+// passkeys — so the version gate in importSettings accepts anything up to this.
+export const SETTINGS_EXPORT_VERSION = 2;
+
+/** One registered passkey, as carried in an export document. */
+export interface ExportedPasskey {
+  credential_id: string;
+  username: string;
+  /**
+   * The credential's *public* key (base64). Not a secret: it verifies signatures,
+   * it cannot produce them. The private half never leaves the operator's
+   * authenticator and is not exportable by anyone, including us.
+   */
+  public_key: string;
+  counter: number;
+  transports: string[];
+  label: string;
+  created_at: string;
+}
 
 export interface SettingsExport {
   version: number;
@@ -624,6 +664,15 @@ export interface SettingsExport {
   groups: Record<string, Record<string, string>>;
   /** LLM endpoints (admin.llm_profiles), keys included — see exportSettings. */
   profiles: Omit<LlmProfile, "id">[];
+  /**
+   * The WebAuthn Relying Party ID the passkeys below are bound to. Carried so an
+   * import can tell whether they could possibly work: a browser only offers a
+   * passkey back to the RP ID it was registered against, so restoring one into a
+   * deployment on another domain would install a credential nobody can ever use.
+   */
+  rp_id: string;
+  /** Registered passkeys (admin.webauthn_credentials). */
+  passkeys: ExportedPasskey[];
 }
 
 /**
@@ -654,7 +703,44 @@ export async function exportSettings(): Promise<SettingsExport> {
     exported_at: new Date().toISOString(),
     groups,
     profiles: await exportProfiles(),
+    rp_id: config().webauthnRpId,
+    passkeys: await exportPasskeys(),
   };
+}
+
+/**
+ * Registered passkeys, so a restore does not lock the operator out of passkey
+ * login after a database rebuild.
+ *
+ * Only public material travels: `public_key` verifies an assertion, it cannot
+ * sign one. The private key lives in the authenticator (a YubiKey, a phone's
+ * secure enclave) and is not extractable, so this list cannot be turned into a
+ * login by whoever reads the file — they would also need the physical device.
+ */
+async function exportPasskeys(): Promise<ExportedPasskey[]> {
+  await ensureCredentialTable();
+  const res = await query<{
+    credential_id: string;
+    username: string;
+    public_key: Buffer;
+    counter: string;
+    transports: string[] | null;
+    label: string | null;
+    created_at: Date;
+  }>(
+    `SELECT credential_id, username, public_key, counter, transports, label, created_at
+       FROM admin.webauthn_credentials
+      ORDER BY created_at, credential_id`,
+  );
+  return res.rows.map((r) => ({
+    credential_id: r.credential_id,
+    username: r.username,
+    public_key: Buffer.from(r.public_key).toString("base64"),
+    counter: Number(r.counter),
+    transports: r.transports ?? [],
+    label: r.label ?? "",
+    created_at: new Date(r.created_at).toISOString(),
+  }));
 }
 
 export interface SettingsImportResult {
@@ -662,6 +748,8 @@ export interface SettingsImportResult {
   imported: number;
   groups: string[];
   profiles: number;
+  /** Passkeys restored. Zero when the document's rp_id does not match this host. */
+  passkeys: number;
   skipped: string[];
 }
 
@@ -750,6 +838,7 @@ export async function importSettings(
   // Profiles are replaced wholesale (they are a list, not a merge), and validated
   // by importProfiles — including the "one embedding model" rule.
   const profileCount = await importProfiles((root as { profiles?: unknown }).profiles, updatedBy);
+  const passkeyCount = await importPasskeys(root, updatedBy, skipped);
 
   bustCache();
   return {
@@ -757,8 +846,90 @@ export async function importSettings(
     imported: toWrite.length,
     groups: [...touched].sort(),
     profiles: profileCount,
+    passkeys: passkeyCount,
     skipped,
   };
+}
+
+/**
+ * Restore passkeys — but only the ones that could actually be used here.
+ *
+ * A passkey is bound to the RP ID it was registered against, and the browser
+ * enforces that: it will not offer a credential registered for `a.example.com`
+ * to a page served from `b.example.com`. Writing such a row would therefore not
+ * grant access, it would just leave a permanent, unusable, unexplained credential
+ * in the table. So a document from another RP ID has its passkeys skipped and
+ * *said so*, rather than being half-applied.
+ *
+ * Passkeys are additive: an import restores the credentials in the file without
+ * removing ones registered since, because dropping a working authenticator that
+ * happens to postdate the backup is the one outcome an operator cannot undo from
+ * the far side of a login screen. Deleting a passkey stays an explicit act on the
+ * Passkeys page.
+ */
+async function importPasskeys(
+  root: Record<string, unknown>,
+  updatedBy: string,
+  skipped: string[],
+): Promise<number> {
+  const incoming = root.passkeys;
+  if (!Array.isArray(incoming) || incoming.length === 0) return 0;
+
+  const docRpId = String(root.rp_id ?? "").trim();
+  const hostRpId = config().webauthnRpId;
+  if (docRpId !== hostRpId) {
+    skipped.push(
+      `passkeys (${incoming.length}: registered for rp_id '${docRpId || "unknown"}', ` +
+        `this deployment is '${hostRpId}' — they could never be used here)`,
+    );
+    return 0;
+  }
+
+  await ensureCredentialTable();
+  let written = 0;
+  await withTransaction(async (client) => {
+    for (const raw of incoming) {
+      const p = (raw ?? {}) as Record<string, unknown>;
+      const credentialId = String(p.credential_id ?? "").trim();
+      const username = String(p.username ?? "").trim();
+      const publicKeyB64 = String(p.public_key ?? "").trim();
+      if (!credentialId || !username || !publicKeyB64) {
+        skipped.push(`passkey '${credentialId || "(no id)"}' (incomplete)`);
+        continue;
+      }
+      const transports = Array.isArray(p.transports) ? p.transports.map(String) : [];
+      await client.query(
+        `INSERT INTO admin.webauthn_credentials
+           (credential_id, username, public_key, counter, transports, label, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7::timestamptz, NOW()))
+         -- counter is deliberately not overwritten: it only ever moves forward, and
+         -- restoring the older value from a backup over a live one would reopen the
+         -- replay window that the signature counter exists to close.
+         ON CONFLICT (credential_id) DO UPDATE
+           SET public_key = EXCLUDED.public_key,
+               username   = EXCLUDED.username,
+               transports = EXCLUDED.transports,
+               label      = EXCLUDED.label`,
+        [
+          credentialId,
+          username,
+          Buffer.from(publicKeyB64, "base64"),
+          Number(p.counter ?? 0) || 0,
+          transports,
+          String(p.label ?? "") || null,
+          String(p.created_at ?? "") || null,
+        ],
+      );
+      written += 1;
+    }
+    await client.query(
+      `INSERT INTO admin.admin_audit_log
+         (admin_user, action, target_type, target_id, payload_json)
+       VALUES ($1, 'import_passkeys', 'passkey', 'all', $2::jsonb)`,
+      [updatedBy, JSON.stringify({ rp_id: hostRpId, restored: written })],
+    );
+  });
+  return written;
 }
 
 // ── Provider test / model-list helpers (operate on draft, unsaved values) ─────
@@ -863,11 +1034,7 @@ export async function listModels(group: string, draftIn: Record<string, unknown>
   if (!spec) throw new Error(`Unknown settings group: ${group}`);
   const draft = await resolveDraft(group, draftIn);
 
-  if (group === "ocr") {
-    const ip = String((draft.server_ip ?? "") || "").trim();
-    const port = Number(draft.port ?? 8002) || 8002;
-    return openaiModels(`http://${ip}:${port}`, "");
-  }
+  // MinerU picks its own models per backend; there is nothing to choose here.
   return { ok: false, models: [], message: "This service has no model list." };
 }
 
@@ -1127,30 +1294,26 @@ async function testAnalysis(draft: Record<string, unknown>): Promise<TestResult>
   }
 }
 
+/** MinerU exposes `/health`, which also reports its version and queue depth. */
 async function testOcr(draft: Record<string, unknown>): Promise<TestResult> {
-  const ip = String((draft.server_ip ?? "") || "").trim();
-  const port = Number(draft.port ?? 8002) || 8002;
-  const base = `http://${ip}:${port}`;
-  const model = String((draft.model ?? "") || "");
+  const base = String((draft.base_url ?? "") || "").trim().replace(/\/+$/, "");
+  if (!base) return { ok: false, message: "Base URL is empty." };
   try {
-    const j = (await httpGetJson(`${base}/v1/models`, {}, 8000)) as Record<string, unknown>;
-    const data = (Array.isArray(j.data) ? j.data : []) as Record<string, unknown>[];
-    const names = data.map((m) => String(m.id ?? ""));
-    const present = model ? names.includes(model) : true;
-    if (names.length === 0) {
-      return { ok: false, message: `OCR server at ${base} reachable but reports no models.` };
+    const j = (await httpGetJson(`${base}/health`, {}, 8000)) as Record<string, unknown>;
+    const status = String(j.status ?? "");
+    if (status && status !== "healthy") {
+      return { ok: false, message: `OCR server at ${base} reports status '${status}'.`, details: j };
     }
-    if (model && !present) {
-      return {
-        ok: false,
-        message: `OCR server reachable, but model '${model}' is not loaded.`,
-        details: { available: names },
-      };
-    }
+    const version = String(j.version ?? "unknown");
     return {
       ok: true,
-      message: `OCR server reachable at ${base}; model present.`,
-      details: { available: names },
+      message: `MinerU ${version} reachable at ${base}.`,
+      details: {
+        version,
+        max_concurrent_requests: j.max_concurrent_requests ?? null,
+        processing_tasks: j.processing_tasks ?? null,
+        queued_tasks: j.queued_tasks ?? null,
+      },
     };
   } catch (exc) {
     return { ok: false, message: `OCR test failed: ${errStr(exc)}` };
