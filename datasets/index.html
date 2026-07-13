@@ -4697,7 +4697,7 @@ The data loader has no <code>--umls</code> flag yet. Schema tables and loader co
 <tbody>
 <tr>
 <td>Vector type</td>
-<td><code>halfvec(N)</code> where N = <code>OLLAMA_EMBED_DIMENSIONS</code> (default <code>1024</code>)</td>
+<td><code>halfvec(N)</code> where N is the active embedding profile's <code>dimensions</code> (default <code>1024</code>)</td>
 </tr>
 <tr>
 <td>Index type</td>
@@ -4705,15 +4705,15 @@ The data loader has no <code>--umls</code> flag yet. Schema tables and loader co
 </tr>
 <tr>
 <td>Model</td>
-<td><code>OLLAMA_EMBED_MODEL</code> (default <code>qwen3-embedding:0.6b</code>)</td>
+<td>Configured per embedding profile in Admin → Settings</td>
 </tr>
 <tr>
 <td>Batch size</td>
-<td><code>OLLAMA_EMBED_BATCH_SIZE</code> (default <code>32</code>)</td>
+<td>Embedding settings group <code>batch_size</code> (default <code>32</code>)</td>
 </tr>
 <tr>
 <td>Timeout</td>
-<td><code>OLLAMA_EMBED_TIMEOUT</code> (default <code>30s</code> per batch)</td>
+<td>Embedding settings group <code>timeout</code> (default <code>30s</code> per batch)</td>
 </tr>
 <tr>
 <td>Dimension change</td>
@@ -4725,7 +4725,7 @@ The data loader has no <code>--umls</code> flag yet. Schema tables and loader co
 </tr>
 </tbody>
 </table>
-<p>To switch embedding model: set <code>OLLAMA_EMBED_DIMENSIONS</code> to the new model's output size and re-run the embed job. The loader alters all embedding columns automatically.</p>
+<p>To switch embedding model: update the active embedding profile's model and dimensions, then re-run the embed job. The loader alters all embedding columns automatically.</p>
 <hr />
 <h2 id="cross-cutting-admin-job-system">Cross-cutting: Admin job system<a class="headerlink" href="#cross-cutting-admin-job-system" title="Permanent link">&para;</a></h2>
 <p>Every module import is tracked as an <code>admin.import_jobs</code> row with:
