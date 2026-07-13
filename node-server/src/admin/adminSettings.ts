@@ -12,6 +12,7 @@
  */
 
 import { query, withTransaction } from "../db.js";
+import { logWarning } from "../logger.js";
 
 export const SECRET_MASK = "●●●●●●●●";
 
@@ -26,6 +27,10 @@ export interface SettingsField {
   options: string[] | null;
   show_if: Record<string, string[]> | null;
   is_model: boolean;
+  /** Per-provider default, keyed by the value of the group's `provider_field`. */
+  provider_defaults: Record<string, string> | null;
+  /** Value must be an absolute http(s) URL; enforced on seed and on save. */
+  is_url: boolean;
 }
 
 export interface SettingsGroupSpec {
@@ -48,6 +53,8 @@ function field(
     options?: string[] | null;
     show_if?: Record<string, string[]> | null;
     is_model?: boolean;
+    provider_defaults?: Record<string, string> | null;
+    is_url?: boolean;
   } = {},
 ): SettingsField {
   return {
@@ -61,8 +68,25 @@ function field(
     options: opts.options ?? null,
     show_if: opts.show_if ?? null,
     is_model: Boolean(opts.is_model),
+    provider_defaults: opts.provider_defaults ?? null,
+    is_url: Boolean(opts.is_url),
   };
 }
+
+/** Absolute http(s) URL check — the guard that keeps junk like `ho` out of the DB. */
+export function isValidHttpUrl(value: string): boolean {
+  try {
+    const u = new URL(value);
+    return (u.protocol === "http:" || u.protocol === "https:") && u.host !== "";
+  } catch {
+    return false;
+  }
+}
+
+/** Official OpenAI API root; also the fallback for any OpenAI-compatible server. */
+const OPENAI_BASE_URL = "https://api.openai.com/v1";
+/** Ollama's documented default listen address. */
+const OLLAMA_BASE_URL = "http://localhost:11434";
 
 // ── Registry — mirrors admin_settings.SETTINGS_SCHEMA exactly. ───────────────
 export const SETTINGS_SCHEMA: Record<string, SettingsGroupSpec> = {
@@ -78,13 +102,21 @@ export const SETTINGS_SCHEMA: Record<string, SettingsGroupSpec> = {
       }),
       field("base_url", "str", "http://host.docker.internal:11434", "OLLAMA_BASE_URL", "Base URL", {
         show_if: { provider: ["ollama", "openai"] },
+        is_url: true,
+        provider_defaults: { ollama: "http://host.docker.internal:11434", openai: OPENAI_BASE_URL },
         help: "Ollama host (…:11434) or the OpenAI-compatible /v1 root. (Google uses a fixed endpoint.)",
       }),
       field("api_key", "secret", "", "EMBEDDING_API_KEY", "API Key", {
         show_if: { provider: ["openai", "google"] },
+        help: "Leave blank to keep the stored key.",
       }),
       field("model", "str", "qwen3-embedding:0.6b", "OLLAMA_EMBED_MODEL", "Model", {
         is_model: true,
+        provider_defaults: {
+          ollama: "qwen3-embedding:0.6b",
+          openai: "text-embedding-3-small",
+          google: "gemini-embedding-001",
+        },
         help: "Click 'Fetch models' to load the provider's available embedding models.",
       }),
       field("dimensions", "int", 1024, "OLLAMA_EMBED_DIMENSIONS", "Dimensions", {
@@ -104,11 +136,22 @@ export const SETTINGS_SCHEMA: Record<string, SettingsGroupSpec> = {
         options: ["openai", "ollama"],
         help: "openai = OpenAI-compatible (/v1); ollama = Ollama native (/api).",
       }),
-      field("base_url", "str", "http://127.0.0.1:8001/v1", "DRUG_ANALYSIS_BASE_URL", "Base URL"),
-      field("api_key", "secret", "0", "DRUG_ANALYSIS_API_KEY", "API Key", {
-        show_if: { provider: ["openai"] },
+      field("base_url", "str", OPENAI_BASE_URL, "DRUG_ANALYSIS_BASE_URL", "Base URL", {
+        is_url: true,
+        provider_defaults: { openai: OPENAI_BASE_URL, ollama: OLLAMA_BASE_URL },
+        help:
+          "OpenAI-compatible /v1 root (official API, Azure, vLLM…) or the Ollama host. " +
+          "Inside Docker, a host-local Ollama is reachable as http://host.docker.internal:11434.",
       }),
-      field("model", "str", "qwen2.5:7b", "DRUG_ANALYSIS_MODEL_NAME", "Model", { is_model: true }),
+      field("api_key", "secret", "", "DRUG_ANALYSIS_API_KEY", "API Key", {
+        show_if: { provider: ["openai"] },
+        help: "Leave blank to keep the stored key. Blank on a fresh install means no Authorization header is sent.",
+      }),
+      field("model", "str", "gpt-4o-mini", "DRUG_ANALYSIS_MODEL_NAME", "Model", {
+        is_model: true,
+        provider_defaults: { openai: "gpt-4o-mini", ollama: "qwen2.5:7b" },
+        help: "Click 'Fetch models' to load the models this server actually serves.",
+      }),
       field("temperature", "float", 0.1, "DRUG_ANALYSIS_TEMPERATURE", "Temperature"),
       field("max_tokens", "int", 4096, "DRUG_ANALYSIS_MAX_TOKENS", "Max tokens"),
       field("max_retries", "int", 3, "DRUG_ANALYSIS_MAX_RETRIES", "Max retries"),
@@ -155,7 +198,7 @@ export const SETTINGS_SCHEMA: Record<string, SettingsGroupSpec> = {
     description: "Taiwan FDA endpoint used by drug enrichment.",
     test: "tfda",
     fields: [
-      field("base_url", "str", "https://mcp.fda.gov.tw", "DRUG_TFDA_BASE_URL", "Base URL"),
+      field("base_url", "str", "https://mcp.fda.gov.tw", "DRUG_TFDA_BASE_URL", "Base URL", { is_url: true }),
       field("http_timeout", "int", 30, "DRUG_HTTP_TIMEOUT", "HTTP timeout (s)"),
       field("crawler_concurrency", "int", 4, "DRUG_CRAWLER_CONCURRENCY", "Crawler concurrency"),
     ],
@@ -226,10 +269,34 @@ export function bustCache(group?: string): void {
   else cache.delete(group);
 }
 
-function defaultAsStr(f: SettingsField): string {
-  const d = f.default;
+function defaultAsStr(f: SettingsField, provider?: string): string {
+  const d = resolveDefault(f, provider);
   if (typeof d === "boolean") return d ? "true" : "false";
   return String(d);
+}
+
+/**
+ * The default for a field, specialised for the group's selected provider. A
+ * fresh DB (or a row we refuse to trust) must never fall back to a value that
+ * belongs to a different provider — an OpenAI base URL under Ollama is as
+ * broken as no value at all.
+ */
+function resolveDefault(f: SettingsField, provider?: string): string | number | boolean {
+  if (f.provider_defaults && provider && provider in f.provider_defaults) {
+    return f.provider_defaults[provider];
+  }
+  return f.default;
+}
+
+/** The provider currently selected for a group (stored row → env → schema default). */
+function providerOf(spec: SettingsGroupSpec, stored: Record<string, string | null>): string | undefined {
+  const key = spec.provider_field;
+  if (!key) return undefined;
+  const f = spec.fields.find((x) => x.key === key);
+  if (!f) return undefined;
+  const raw = stored[key];
+  if (raw !== null && raw !== undefined && raw !== "") return String(raw);
+  return String(f.default);
 }
 
 /** Typed {key: value} dict for a group, DB rows overlaid on registry defaults. */
@@ -256,10 +323,16 @@ export async function getGroup(
     cache.set(group, { at: now, stored });
   }
 
+  const provider = providerOf(spec, stored);
   const out: Record<string, string | number | boolean> = {};
   for (const f of spec.fields) {
     const raw = f.key in stored ? stored[f.key] : null;
-    let value = coerce(f, raw);
+    let value = raw === null || raw === undefined ? resolveDefault(f, provider) : coerce(f, raw);
+    // A stored URL that isn't one (e.g. the literal `ho` a bad .env once seeded)
+    // is unusable — surface the provider default instead of the garbage.
+    if (f.is_url && typeof value === "string" && value !== "" && !isValidHttpUrl(value)) {
+      value = resolveDefault(f, provider);
+    }
     if (f.secret && !revealSecrets) value = value ? SECRET_MASK : "";
     out[f.key] = value;
   }
@@ -281,6 +354,8 @@ export function groupMetadata(
     options: f.options,
     show_if: f.show_if,
     is_model: f.is_model,
+    provider_defaults: f.provider_defaults,
+    is_url: f.is_url,
     value: valuesMasked[f.key],
   }));
   return {
@@ -332,6 +407,25 @@ export function serializeSettingsResponse(payload: { groups: Record<string, unkn
 }
 
 /**
+ * The value a field seeds with: the env var if it is usable, else the (provider-
+ * specialised) schema default. Env is operator-supplied and unvalidated — a
+ * malformed URL there used to be copied verbatim into `admin.app_settings` and
+ * then shown in the admin UI forever, since seeding only ever runs once.
+ */
+function seedValue(f: SettingsField, provider?: string): string {
+  const envVal = process.env[f.env];
+  if (envVal === undefined) return defaultAsStr(f, provider);
+  const trimmed = envVal.trim();
+  if (f.is_url && trimmed !== "" && !isValidHttpUrl(trimmed)) {
+    logWarning("settings_seed_invalid_url", { env: f.env, value: trimmed });
+    return defaultAsStr(f, provider);
+  }
+  // `0` was the historical "no API key" placeholder; it is not a key.
+  if (f.secret && trimmed === "0") return "";
+  return envVal;
+}
+
+/**
  * Seed every registry key from its env var (or default) if not already present.
  * Faithful port of `admin_settings.seed_if_empty`: idempotent via
  * `ON CONFLICT DO NOTHING`, so existing values are never overwritten and
@@ -344,10 +438,16 @@ export function serializeSettingsResponse(payload: { groups: Record<string, unkn
 export async function seedIfEmpty(): Promise<number> {
   const rows: [string, string, string][] = [];
   for (const [group, spec] of Object.entries(SETTINGS_SCHEMA)) {
+    // Env is the seed source, so the provider we specialise defaults on is the
+    // env-selected one (not whatever the schema happens to default to).
+    const envStored: Record<string, string | null> = {};
+    if (spec.provider_field) {
+      const pf = spec.fields.find((x) => x.key === spec.provider_field);
+      if (pf && process.env[pf.env] !== undefined) envStored[pf.key] = String(process.env[pf.env]);
+    }
+    const provider = providerOf(spec, envStored);
     for (const f of spec.fields) {
-      const envVal = process.env[f.env];
-      const value = envVal !== undefined ? envVal : defaultAsStr(f);
-      rows.push([group, f.key, value]);
+      rows.push([group, f.key, seedValue(f, provider)]);
     }
   }
   await withTransaction(async (client) => {
@@ -371,9 +471,44 @@ export async function seedIfEmpty(): Promise<number> {
         [g, k, v],
       );
     }
+    await repairUnusableRows(client);
   });
   bustCache();
   return rows.length;
+}
+
+/**
+ * Rewrite rows an earlier seed made unusable: a non-URL in a URL field (a typo'd
+ * `.env` used to be copied in verbatim and stuck there forever, since seeding is
+ * ON CONFLICT DO NOTHING) and the `0` placeholder in a secret field. Idempotent —
+ * a row that is already valid is never touched, so custom values survive.
+ */
+async function repairUnusableRows(client: {
+  query: (sql: string, params?: unknown[]) => Promise<{ rows: { key: string; value: string | null }[] }>;
+}): Promise<void> {
+  for (const [group, spec] of Object.entries(SETTINGS_SCHEMA)) {
+    const res = await client.query("SELECT key, value FROM admin.app_settings WHERE group_key = $1", [group]);
+    const stored: Record<string, string | null> = {};
+    for (const r of res.rows) stored[r.key] = r.value;
+    const provider = providerOf(spec, stored);
+    for (const f of spec.fields) {
+      const raw = stored[f.key];
+      if (raw === null || raw === undefined) continue;
+      let fixed: string | null = null;
+      if (f.is_url && raw.trim() !== "" && !isValidHttpUrl(raw.trim())) {
+        fixed = defaultAsStr(f, provider);
+      } else if (f.secret && raw.trim() === "0") {
+        fixed = "";
+      }
+      if (fixed === null) continue;
+      logWarning("settings_repair_unusable_value", { group, key: f.key });
+      await client.query(
+        "UPDATE admin.app_settings SET value = $1, updated_at = NOW(), updated_by = 'system' " +
+          "WHERE group_key = $2 AND key = $3",
+        [fixed, group, f.key],
+      );
+    }
+  }
 }
 
 // ── Write path: save_group / list_models / test_group ────────────────────────
@@ -417,13 +552,22 @@ export async function saveGroup(
     const key = f.key;
     if (!(key in values)) continue;
     const incoming = values[key];
-    // Preserve secret if the UI sent back the mask unchanged.
-    if (f.secret && (incoming === SECRET_MASK || incoming === "")) {
-      if (incoming === SECRET_MASK) continue; // keep existing
+    // A secret is only ever *replaced*, never cleared by omission: the UI renders
+    // it blank (or masked) whether or not one is stored, so an empty/masked value
+    // means "unchanged", not "delete the key I saved last week".
+    if (f.secret) {
+      const s = incoming === null || incoming === undefined ? "" : String(incoming).trim();
+      if (s === "" || s === SECRET_MASK) continue;
     }
     // Validate enum options.
     if (f.options !== null && !f.options.includes(String(incoming))) {
       throw new Error(`${group}.${key}: '${incoming}' is not one of ${pyListRepr(f.options)}`);
+    }
+    if (f.is_url) {
+      const s = String(incoming ?? "").trim();
+      if (s !== "" && !isValidHttpUrl(s)) {
+        throw new Error(`${group}.${key}: '${incoming}' is not a valid http(s) URL`);
+      }
     }
     const coerced = coerce(f, incoming);
     toWrite.push([group, key, valueToStr(f, coerced), updatedBy]);
@@ -596,7 +740,7 @@ async function ollamaTags(baseUrl: string): Promise<ModelsResult> {
 
 async function openaiModels(baseUrl: string, apiKey: string): Promise<ModelsResult> {
   if (!baseUrl) return { ok: false, models: [], message: "Base URL is empty." };
-  const headers: Record<string, string> = apiKey && apiKey !== "0" ? { Authorization: `Bearer ${apiKey}` } : {};
+  const headers: Record<string, string> = apiKey ? { Authorization: `Bearer ${apiKey}` } : {};
   try {
     const j = (await httpGetJson(`${baseUrl.replace(/\/+$/, "")}/models`, headers, 8000)) as Record<string, unknown>;
     const data = (Array.isArray(j.data) ? j.data : []) as Record<string, unknown>[];
@@ -738,7 +882,7 @@ async function testAnalysis(draft: Record<string, unknown>): Promise<TestResult>
       )) as Record<string, unknown>;
       text = String(((j.message as Record<string, unknown> | undefined) ?? {}).content ?? "");
     } else {
-      const headers: Record<string, string> = apiKey && apiKey !== "0" ? { Authorization: `Bearer ${apiKey}` } : {};
+      const headers: Record<string, string> = apiKey ? { Authorization: `Bearer ${apiKey}` } : {};
       const body: Record<string, unknown> = {
         model,
         max_tokens: 16,

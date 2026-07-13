@@ -20,12 +20,28 @@ from __future__ import annotations
 import os
 import time
 from typing import Any
+from urllib.parse import urlparse
 
 from database import PoolLike
+from utils import log_warning
 
 # Placeholder shown to the UI in place of a stored secret. A save that sends this
 # value back unchanged means "keep the existing secret".
 SECRET_MASK = "●●●●●●●●"
+
+# Official OpenAI API root; also the fallback for any OpenAI-compatible server.
+OPENAI_BASE_URL = "https://api.openai.com/v1"
+# Ollama's documented default listen address.
+OLLAMA_BASE_URL = "http://localhost:11434"
+
+
+def is_valid_http_url(value: str) -> bool:
+    """Absolute http(s) URL check — keeps junk like ``ho`` out of the DB."""
+    try:
+        parsed = urlparse(value)
+    except ValueError:
+        return False
+    return parsed.scheme in ("http", "https") and bool(parsed.netloc)
 
 
 def _field(
@@ -40,6 +56,8 @@ def _field(
     options: list[str] | None = None,
     show_if: dict[str, list[str]] | None = None,
     is_model: bool = False,
+    provider_defaults: dict[str, str] | None = None,
+    is_url: bool = False,
 ) -> dict[str, Any]:
     """Build a field descriptor for the registry."""
     return {
@@ -53,6 +71,9 @@ def _field(
         "options": options,  # for enum/select fields
         "show_if": show_if,  # {other_field_key: [allowed_values]}
         "is_model": is_model,  # field is a model name (gets a "Fetch models" picker)
+        # {provider_value: default} — default specialised by the group's provider
+        "provider_defaults": provider_defaults,
+        "is_url": is_url,  # must be an absolute http(s) URL (seed + save validated)
     }
 
 
@@ -82,6 +103,11 @@ SETTINGS_SCHEMA: dict[str, dict[str, Any]] = {
                 "OLLAMA_BASE_URL",
                 "Base URL",
                 show_if={"provider": ["ollama", "openai"]},
+                is_url=True,
+                provider_defaults={
+                    "ollama": "http://host.docker.internal:11434",
+                    "openai": OPENAI_BASE_URL,
+                },
                 help="Ollama host (…:11434) or the OpenAI-compatible /v1 root. (Google uses a fixed endpoint.)",
             ),
             _field(
@@ -91,6 +117,7 @@ SETTINGS_SCHEMA: dict[str, dict[str, Any]] = {
                 "EMBEDDING_API_KEY",
                 "API Key",
                 show_if={"provider": ["openai", "google"]},
+                help="Leave blank to keep the stored key.",
             ),
             _field(
                 "model",
@@ -99,6 +126,11 @@ SETTINGS_SCHEMA: dict[str, dict[str, Any]] = {
                 "OLLAMA_EMBED_MODEL",
                 "Model",
                 is_model=True,
+                provider_defaults={
+                    "ollama": "qwen3-embedding:0.6b",
+                    "openai": "text-embedding-3-small",
+                    "google": "gemini-embedding-001",
+                },
                 help="Click 'Fetch models' to load the provider's available embedding models.",
             ),
             _field(
@@ -131,25 +163,40 @@ SETTINGS_SCHEMA: dict[str, dict[str, Any]] = {
             _field(
                 "base_url",
                 "str",
-                "http://127.0.0.1:8001/v1",
+                OPENAI_BASE_URL,
                 "DRUG_ANALYSIS_BASE_URL",
                 "Base URL",
+                is_url=True,
+                provider_defaults={
+                    "openai": OPENAI_BASE_URL,
+                    "ollama": OLLAMA_BASE_URL,
+                },
+                help=(
+                    "OpenAI-compatible /v1 root (official API, Azure, vLLM…) or the Ollama host. "
+                    "Inside Docker, a host-local Ollama is reachable as http://host.docker.internal:11434."
+                ),
             ),
             _field(
                 "api_key",
                 "secret",
-                "0",
+                "",
                 "DRUG_ANALYSIS_API_KEY",
                 "API Key",
                 show_if={"provider": ["openai"]},
+                help=(
+                    "Leave blank to keep the stored key. Blank on a fresh install means no "
+                    "Authorization header is sent."
+                ),
             ),
             _field(
                 "model",
                 "str",
-                "qwen2.5:7b",
+                "gpt-4o-mini",
                 "DRUG_ANALYSIS_MODEL_NAME",
                 "Model",
                 is_model=True,
+                provider_defaults={"openai": "gpt-4o-mini", "ollama": "qwen2.5:7b"},
+                help="Click 'Fetch models' to load the models this server actually serves.",
             ),
             _field(
                 "temperature", "float", 0.1, "DRUG_ANALYSIS_TEMPERATURE", "Temperature"
@@ -246,6 +293,7 @@ SETTINGS_SCHEMA: dict[str, dict[str, Any]] = {
                 "https://mcp.fda.gov.tw",
                 "DRUG_TFDA_BASE_URL",
                 "Base URL",
+                is_url=True,
             ),
             _field("http_timeout", "int", 30, "DRUG_HTTP_TIMEOUT", "HTTP timeout (s)"),
             _field(
@@ -369,10 +417,20 @@ async def seed_if_empty(pool: PoolLike) -> int:
     """
     rows: list[tuple[str, str, str]] = []
     for group, spec in SETTINGS_SCHEMA.items():
+        # Env is the seed source, so specialise defaults on the env-selected
+        # provider (not whatever the schema happens to default to).
+        env_stored: dict[str, Any] = {}
+        provider_key = spec.get("provider_field")
+        if provider_key:
+            pf = next(
+                (x for x in spec["fields"] if x["key"] == provider_key),
+                None,
+            )
+            if pf is not None and os.getenv(pf["env"]) is not None:
+                env_stored[provider_key] = os.getenv(pf["env"])
+        provider = _provider_of(spec, env_stored)
         for f in spec["fields"]:
-            env_val = os.getenv(f["env"])
-            value = env_val if env_val is not None else _default_as_str(f)
-            rows.append((group, f["key"], value))
+            rows.append((group, f["key"], _seed_value(f, provider)))
     inserted = 0
     async with pool.acquire() as conn:
         # Idempotent migration for existing deployments (schema.sql only runs on
@@ -395,17 +453,98 @@ async def seed_if_empty(pool: PoolLike) -> int:
             """,
             rows,
         )
+        await _repair_unusable_rows(conn)
         # executemany returns None; count via a follow-up isn't worth it — report total keys
         inserted = len(rows)
     bust_cache()
     return inserted
 
 
-def _default_as_str(field: dict[str, Any]) -> str:
-    d = field["default"]
+async def _repair_unusable_rows(conn: Any) -> None:
+    """Rewrite rows an earlier seed made unusable: a non-URL in a URL field (a
+    typo'd ``.env`` used to be copied in verbatim and stuck there forever, since
+    seeding is ON CONFLICT DO NOTHING) and the ``0`` placeholder in a secret
+    field. Idempotent — already-valid rows are never touched.
+    """
+    for group, spec in SETTINGS_SCHEMA.items():
+        db_rows = await conn.fetch(
+            "SELECT key, value FROM admin.app_settings WHERE group_key = $1",
+            group,
+        )
+        stored = {r["key"]: r["value"] for r in db_rows}
+        provider = _provider_of(spec, stored)
+        for f in spec["fields"]:
+            raw = stored.get(f["key"])
+            if raw is None:
+                continue
+            fixed: str | None = None
+            if f.get("is_url") and raw.strip() and not is_valid_http_url(raw.strip()):
+                fixed = _default_as_str(f, provider)
+            elif f["secret"] and raw.strip() == "0":
+                fixed = ""
+            if fixed is None:
+                continue
+            log_warning("settings_repair_unusable_value", group=group, key=f["key"])
+            await conn.execute(
+                "UPDATE admin.app_settings SET value = $1, updated_at = NOW(), "
+                "updated_by = 'system' WHERE group_key = $2 AND key = $3",
+                fixed,
+                group,
+                f["key"],
+            )
+
+
+def _default_as_str(field: dict[str, Any], provider: str | None = None) -> str:
+    d = _resolve_default(field, provider)
     if isinstance(d, bool):
         return "true" if d else "false"
     return str(d)
+
+
+def _resolve_default(field: dict[str, Any], provider: str | None = None) -> Any:
+    """The field default, specialised for the group's selected provider. A fresh
+    DB (or a row we refuse to trust) must never fall back to a value belonging to
+    a different provider — an OpenAI base URL under Ollama is as broken as none.
+    """
+    defaults = field.get("provider_defaults")
+    if defaults and provider and provider in defaults:
+        return defaults[provider]
+    return field["default"]
+
+
+def _provider_of(spec: dict[str, Any], stored: dict[str, Any]) -> str | None:
+    """The provider currently selected for a group (stored row → schema default)."""
+    key = spec.get("provider_field")
+    if not key:
+        return None
+    f = next((x for x in spec["fields"] if x["key"] == key), None)
+    if f is None:
+        return None
+    raw = stored.get(key)
+    if raw not in (None, ""):
+        return str(raw)
+    return str(f["default"])
+
+
+def _seed_value(field: dict[str, Any], provider: str | None = None) -> str:
+    """The value a field seeds with: the env var if usable, else the (provider-
+    specialised) schema default. Env is operator-supplied and unvalidated — a
+    malformed URL there used to be copied verbatim into ``admin.app_settings``
+    and then shown in the admin UI forever, since seeding only ever runs once.
+    """
+    env_val = os.getenv(field["env"])
+    if env_val is None:
+        return _default_as_str(field, provider)
+    trimmed = env_val.strip()
+    if field.get("is_url") and trimmed and not is_valid_http_url(trimmed):
+        log_warning(
+            "settings_seed_invalid_url", env=field["env"], value=trimmed
+        )
+        return _default_as_str(field, provider)
+    # `0` was the historical "no API key" placeholder; it is not a key.
+    if field["secret"] and trimmed == "0":
+        return ""
+    return env_val
 
 
 async def get_group(
@@ -435,10 +574,20 @@ async def get_group(
         stored = {r["key"]: r["value"] for r in db_rows}
         _cache[group] = (now, stored)
 
+    provider = _provider_of(spec, stored)
     out: dict[str, Any] = {}
     for f in spec["fields"]:
         raw = stored.get(f["key"], None)
-        value = coerce(f, raw)
+        value = _resolve_default(f, provider) if raw is None else coerce(f, raw)
+        # A stored URL that isn't one (e.g. the literal `ho` a bad .env once
+        # seeded) is unusable — surface the provider default instead.
+        if (
+            f.get("is_url")
+            and isinstance(value, str)
+            and value
+            and not is_valid_http_url(value)
+        ):
+            value = _resolve_default(f, provider)
         if f["secret"] and not reveal_secrets:
             value = SECRET_MASK if value else ""
         out[f["key"]] = value
@@ -460,6 +609,8 @@ def group_metadata(group: str, values_masked: dict[str, Any]) -> dict[str, Any]:
                 "options": f["options"],
                 "show_if": f["show_if"],
                 "is_model": f["is_model"],
+                "provider_defaults": f["provider_defaults"],
+                "is_url": f["is_url"],
                 "value": values_masked.get(f["key"]),
             }
         )
@@ -497,24 +648,30 @@ async def save_group(
     if not spec:
         raise ValueError(f"Unknown settings group: {group}")
 
-    # Current stored (revealed) values, to preserve unchanged secrets.
-    current = await get_group(pool, group, reveal_secrets=True)
-
     to_write: list[tuple[str, str, str, str]] = []
     for f in spec["fields"]:
         key = f["key"]
         if key not in values:
             continue
         incoming = values[key]
-        # Preserve secret if the UI sent back the mask unchanged.
-        if f["secret"] and (incoming == SECRET_MASK or incoming == ""):
-            if incoming == SECRET_MASK:
-                continue  # keep existing
+        # A secret is only ever *replaced*, never cleared by omission: the UI
+        # renders it blank (or masked) whether or not one is stored, so an
+        # empty/masked value means "unchanged", not "delete the stored key".
+        if f["secret"]:
+            s = "" if incoming is None else str(incoming).strip()
+            if s == "" or s == SECRET_MASK:
+                continue
         # Validate enum options.
         if f["options"] is not None and str(incoming) not in f["options"]:
             raise ValueError(
                 f"{group}.{key}: '{incoming}' is not one of {f['options']}"
             )
+        if f.get("is_url"):
+            s = "" if incoming is None else str(incoming).strip()
+            if s and not is_valid_http_url(s):
+                raise ValueError(
+                    f"{group}.{key}: '{incoming}' is not a valid http(s) URL"
+                )
         # Normalize to storage string via coerce (ensures type-validity).
         coerced = coerce(f, incoming)
         stored_str = _value_to_str(f, coerced)
@@ -688,9 +845,7 @@ async def _openai_models(base_url: str, api_key: str) -> dict[str, Any]:
 
     if not base_url:
         return {"ok": False, "models": [], "message": "Base URL is empty."}
-    headers = (
-        {"Authorization": f"Bearer {api_key}"} if api_key and api_key != "0" else {}
-    )
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
     try:
         async with httpx.AsyncClient(timeout=8.0) as c:
             r = await c.get(f"{base_url.rstrip('/')}/models", headers=headers)
@@ -883,11 +1038,7 @@ async def _test_analysis(draft: dict[str, Any]) -> dict[str, Any]:
                 r.raise_for_status()
                 text = (r.json().get("message", {}) or {}).get("content", "")
             else:
-                headers = (
-                    {"Authorization": f"Bearer {api_key}"}
-                    if api_key and api_key != "0"
-                    else {}
-                )
+                headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
                 body = {
                     "model": model,
                     "max_tokens": 16,
