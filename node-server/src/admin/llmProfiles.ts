@@ -4,8 +4,7 @@
  * A *role* (`kind`) is "analysis" or "embedding". Each profile is one endpoint:
  * provider + base URL + key + model, plus `enabled`, a failover `priority` and a
  * load-balancing `weight`. The strategy for a role lives in the corresponding
- * `admin.app_settings` group (`analysis.strategy` / `embedding.strategy`), as do
- * the globals every profile of that role must agree on.
+ * `admin.app_settings` group (`analysis.strategy` / `embedding.strategy`).
  *
  * Callers do not pick an endpoint themselves: they ask for `candidateOrder(kind)`
  * and walk it, calling `reportSuccess`/`reportFailure` as they go. A profile that
@@ -40,6 +39,11 @@ export interface LlmProfile {
   priority: number;
   weight: number;
   params: Record<string, unknown>;
+}
+
+export function embeddingDimensions(p: Pick<LlmProfile, "params">, fallback = 1024): number {
+  const n = Math.trunc(Number(p.params?.dimensions ?? fallback));
+  return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
 /** A profile as the admin UI sees it: the key is never sent, only its presence. */
@@ -214,12 +218,22 @@ function isValidHttpUrl(value: string): boolean {
 
 export class ProfileValidationError extends Error {}
 
+function normalizeParams(kind: ProfileKind, params: Record<string, unknown> | undefined): Record<string, unknown> {
+  if (kind !== "embedding") return params ?? {};
+  const next = { ...(params ?? {}) };
+  if (next.dimensions === undefined || next.dimensions === null || next.dimensions === "") {
+    next.dimensions = 1024;
+  }
+  return next;
+}
+
 function validate(input: {
   kind: string;
   name: string;
   base_url: string;
   model: string;
   weight?: number;
+  params?: Record<string, unknown>;
 }): void {
   if (!input.name.trim()) throw new ProfileValidationError("Profile name is required.");
   if (input.kind !== "analysis" && input.kind !== "embedding") {
@@ -232,13 +246,19 @@ function validate(input: {
   if (input.weight !== undefined && (!Number.isInteger(input.weight) || input.weight < 0)) {
     throw new ProfileValidationError("Weight must be a non-negative integer.");
   }
+  if (input.kind === "embedding") {
+    const dims = Math.trunc(Number(input.params?.dimensions ?? 1024));
+    if (!Number.isFinite(dims) || dims <= 0) {
+      throw new ProfileValidationError("Embedding dimensions must be a positive integer.");
+    }
+  }
 }
 
 /**
- * Every enabled embedding profile must serve the same model. Vectors from two
- * different models — or two quantisations of one model — are not comparable, and
- * they all land in the same pgvector column, so mixing them corrupts semantic
- * search in a way nothing would flag at query time.
+ * Every enabled embedding profile must serve the same model and vector
+ * dimensions. Vectors from two different models — or two dimensions — are not
+ * comparable, and they all land in the same pgvector column, so mixing them
+ * corrupts semantic search in a way nothing would flag at query time.
  */
 export async function assertEmbeddingConsistency(pending?: LlmProfile[]): Promise<void> {
   const enabled = (pending ?? (await listProfiles("embedding"))).filter((p) => p.enabled);
@@ -251,6 +271,15 @@ export async function assertEmbeddingConsistency(pending?: LlmProfile[]): Promis
         "quantisations of the same model) are not comparable, and every vector in the " +
         "database shares one column. Extra embedding profiles are for redundancy across " +
         "hosts serving the same model; to change model, re-embed every module afterwards.",
+    );
+  }
+  const dims = [...new Set(enabled.map((p) => embeddingDimensions(p)).filter(Boolean))];
+  if (dims.length > 1) {
+    throw new ProfileValidationError(
+      `All enabled embedding profiles must use the same dimensions — found ${dims.join(
+        ", ",
+      )}. The database stores embeddings in one halfvec column, so changing dimensions ` +
+        "requires re-embedding every module after the profile change.",
     );
   }
 }
@@ -282,7 +311,7 @@ export async function createProfile(input: ProfileInput, updatedBy: string): Pro
     enabled: input.enabled ?? true,
     priority: input.priority ?? 100,
     weight: input.weight ?? 1,
-    params: input.params ?? {},
+    params: normalizeParams(input.kind, input.params),
   };
   validate(candidate);
   if (candidate.kind === "embedding") {
@@ -336,6 +365,7 @@ export async function updateProfile(
   // form: a secret is only ever replaced by a value the operator actually typed.
   const incomingKey = typeof patch.api_key === "string" ? patch.api_key.trim() : "";
   if (incomingKey) merged.api_key = incomingKey;
+  merged.params = normalizeParams(merged.kind, merged.params);
 
   validate(merged);
   if (merged.kind === "embedding") {
@@ -422,7 +452,7 @@ export async function importProfiles(docProfiles: unknown, updatedBy: string): P
       enabled: p.enabled !== false,
       priority: Number(p.priority ?? 100),
       weight: Number(p.weight ?? 1),
-      params: (p.params as Record<string, unknown>) ?? {},
+      params: normalizeParams(String(p.kind ?? "") as ProfileKind, (p.params as Record<string, unknown>) ?? {}),
     };
     validate(profile);
     return profile;

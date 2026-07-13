@@ -910,15 +910,15 @@ All embedding tables share this pattern:
 
 | Aspect | Detail |
 |---|---|
-| Vector type | `halfvec(N)` where N = `OLLAMA_EMBED_DIMENSIONS` (default `1024`) |
+| Vector type | `halfvec(N)` where N is the active embedding profile's `dimensions` (default `1024`) |
 | Index type | HNSW with `halfvec_cosine_ops` (created automatically by loader) |
-| Model | `OLLAMA_EMBED_MODEL` (default `qwen3-embedding:0.6b`) |
-| Batch size | `OLLAMA_EMBED_BATCH_SIZE` (default `32`) |
-| Timeout | `OLLAMA_EMBED_TIMEOUT` (default `30s` per batch) |
+| Model | Configured per embedding profile in Admin → Settings |
+| Batch size | Embedding settings group `batch_size` (default `32`) |
+| Timeout | Embedding settings group `timeout` (default `30s` per batch) |
 | Dimension change | `ensure_dimensions()` — ALTER TABLE + DROP/RECREATE HNSW index |
 | Resuming | `ON CONFLICT DO UPDATE` — safe to re-run, overwrites existing vectors |
 
-To switch embedding model: set `OLLAMA_EMBED_DIMENSIONS` to the new model's output size and re-run the embed job. The loader alters all embedding columns automatically.
+To switch embedding model: update the active embedding profile's model and dimensions, then re-run the embed job. The loader alters all embedding columns automatically.
 
 ---
 

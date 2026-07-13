@@ -23,6 +23,7 @@
 import { query } from "../db.js";
 import { tsIsoExpr, pyIso } from "./adminJobs.js";
 import * as adminSettings from "./adminSettings.js";
+import { candidateOrder, embeddingDimensions } from "./llmProfiles.js";
 
 /**
  * Ping Ollama: reachable AND ≥1 model loaded. Returns true only when
@@ -89,10 +90,16 @@ interface CountsRow {
 /** Faithful port of `get_embedding_status`. */
 export async function getEmbeddingStatus(): Promise<Record<string, unknown>> {
   const emb = await adminSettings.getGroup("embedding");
-  const provider = String((emb.provider ?? "ollama") || "ollama").toLowerCase();
-  const ollamaBaseUrl = String((emb.base_url ?? "") || "").replace(/\/+$/, "");
-  const ollamaModel = String((emb.model ?? "") || "");
-  const ollamaDimensions = Number(emb.dimensions || 1024) || 1024;
+  const strategy =
+    String((emb.strategy ?? "failover") || "failover").toLowerCase() === "weighted"
+      ? "weighted"
+      : "failover";
+  const profiles = await candidateOrder("embedding", strategy);
+  const primary = profiles[0] ?? null;
+  const provider = String((primary?.provider ?? "ollama") || "ollama").toLowerCase();
+  const ollamaBaseUrl = String((primary?.base_url ?? "") || "").replace(/\/+$/, "");
+  const ollamaModel = String((primary?.model ?? "") || "");
+  const ollamaDimensions = primary ? embeddingDimensions(primary) : 1024;
 
   let configured: boolean;
   let ollamaOk: boolean;
@@ -100,7 +107,7 @@ export async function getEmbeddingStatus(): Promise<Record<string, unknown>> {
     configured = Boolean(ollamaBaseUrl);
     ollamaOk = await pingOllama(ollamaBaseUrl);
   } else {
-    configured = Boolean(ollamaModel) && Boolean(emb.api_key);
+    configured = Boolean(ollamaModel) && Boolean(primary?.api_key);
     // Non-ollama reachability (admin_settings.list_models) lands with the
     // write-path port; treat unverified providers as unreachable until then.
     ollamaOk = false;

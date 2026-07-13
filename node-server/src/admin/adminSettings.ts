@@ -118,8 +118,8 @@ export const SETTINGS_SCHEMA: Record<string, SettingsGroupSpec> = {
   embedding: {
     label: "Embedding",
     description:
-      "How embed requests are spread across the embedding profiles, plus the settings every " +
-      "profile must share. Endpoints themselves are the profiles below.",
+      "How embed requests are spread across the embedding profiles, plus the shared worker " +
+      "settings. Endpoints, models and dimensions are the profiles below.",
     seed_from_env: false,
     fields: [
       field("strategy", "str", "failover", "EMBEDDING_STRATEGY", "Strategy", {
@@ -127,11 +127,6 @@ export const SETTINGS_SCHEMA: Record<string, SettingsGroupSpec> = {
         help:
           "failover = always the highest-priority healthy profile; weighted = spread by weight, " +
           "still falling back on failure.",
-      }),
-      field("dimensions", "int", 1024, "OLLAMA_EMBED_DIMENSIONS", "Dimensions", {
-        help:
-          "Vector size stored in pgvector. Must match what the model returns — and every stored " +
-          "vector, from every module, shares this one size.",
       }),
       field("timeout", "int", 30, "OLLAMA_EMBED_TIMEOUT", "Timeout (s)"),
       field("batch_size", "int", 32, "OLLAMA_EMBED_BATCH_SIZE", "Batch size"),
@@ -1000,7 +995,8 @@ export async function testProfile(draft: ProfileDraft): Promise<TestResult> {
   };
   if (draft.kind === "embedding") {
     const emb = await getGroup("embedding");
-    return testEmbedding({ ...common, dimensions: emb.dimensions, timeout: emb.timeout });
+    const dimensions = Number(draft.params?.dimensions ?? 1024) || 1024;
+    return testEmbedding({ ...common, dimensions, timeout: emb.timeout });
   }
   return testAnalysis(common);
 }

@@ -33,6 +33,7 @@ interface DraftProfile {
   enabled: boolean;
   priority: number;
   weight: number;
+  dimensions: number;
   temperature: number;
   max_tokens: number;
 }
@@ -49,6 +50,7 @@ function emptyDraft(kind: LlmProfileKind): DraftProfile {
     enabled: true,
     priority: 100,
     weight: 1,
+    dimensions: 1024,
     temperature: 0.1,
     max_tokens: 4096,
   };
@@ -66,6 +68,7 @@ function toDraft(p: LlmProfile): DraftProfile {
     enabled: p.enabled,
     priority: p.priority,
     weight: p.weight,
+    dimensions: Number(p.params?.dimensions ?? 1024),
     temperature: Number(p.params?.temperature ?? 0.1),
     max_tokens: Number(p.params?.max_tokens ?? 4096),
   };
@@ -83,7 +86,9 @@ function toPayload(d: DraftProfile): Record<string, unknown> {
     priority: d.priority,
     weight: d.weight,
     params:
-      d.kind === "analysis" ? { temperature: d.temperature, max_tokens: d.max_tokens } : {},
+      d.kind === "analysis"
+        ? { temperature: d.temperature, max_tokens: d.max_tokens }
+        : { dimensions: d.dimensions },
   };
   if (d.api_key.trim()) payload.api_key = d.api_key.trim();
   return payload;
@@ -151,6 +156,7 @@ export function LlmProfilesCard({
         base_url: d.base_url,
         api_key: d.api_key,
         model: d.model,
+        params: d.kind === "embedding" ? { dimensions: d.dimensions } : undefined,
       }),
     onSuccess: (res) =>
       res.ok
@@ -184,6 +190,7 @@ export function LlmProfilesCard({
 
   const profiles = data?.profiles ?? [];
   const enabledCount = profiles.filter((p) => p.enabled).length;
+  const testingProfileId = test.isPending ? test.variables?.id : undefined;
 
   return (
     <div className="module-card">
@@ -215,12 +222,11 @@ export function LlmProfilesCard({
 
       {kind === "embedding" && (
         <div className="warning-box">
-          <strong>Every enabled embedding profile must serve the same model.</strong> Vectors from
-          different embedding models — including different quantisations of the same model
-          (<code>:q8_0</code> vs <code>:f16</code>) — are not comparable, and every vector in the
-          database shares one column, so mixing them corrupts semantic search silently. Extra
-          profiles are for redundancy across hosts running the <em>same</em> model. Changing the
-          model means re-embedding every module.
+          <strong>Every enabled embedding profile must serve the same model and dimensions.</strong>{" "}
+          Vectors from different embedding models — including different quantisations of the same
+          model (<code>:q8_0</code> vs <code>:f16</code>) — are not comparable, and every vector in
+          the database shares one column. Extra profiles are for redundancy across hosts running
+          the <em>same</em> model. Changing model or dimensions means re-embedding every module.
         </div>
       )}
 
@@ -238,6 +244,7 @@ export function LlmProfilesCard({
               <th>Name</th>
               <th>Provider</th>
               <th>Model</th>
+              {kind === "embedding" && <th>Dim</th>}
               <th>Priority</th>
               <th>Weight</th>
               <th>Key</th>
@@ -251,6 +258,9 @@ export function LlmProfilesCard({
                 <td data-label="Name">{p.name}</td>
                 <td data-label="Provider">{p.provider}</td>
                 <td data-label="Model">{p.model}</td>
+                {kind === "embedding" && (
+                  <td data-label="Dim">{Number(p.params?.dimensions ?? 1024)}</td>
+                )}
                 <td data-label="Priority">{p.priority}</td>
                 <td data-label="Weight">{strategy === "weighted" ? p.weight : "—"}</td>
                 <td data-label="Key">{p.has_api_key ? "saved" : "—"}</td>
@@ -263,6 +273,14 @@ export function LlmProfilesCard({
                   />
                 </td>
                 <td data-label="Actions">
+                  <button
+                    type="button"
+                    className="btn btn--sm"
+                    disabled={test.isPending}
+                    onClick={() => test.mutate(toDraft(p))}
+                  >
+                    {testingProfileId === p.id ? "Testing…" : "Test"}
+                  </button>{" "}
                   <button
                     type="button"
                     className="btn btn--sm"
@@ -415,6 +433,20 @@ export function LlmProfilesCard({
                 />
               </label>
             </>
+          )}
+          {kind === "embedding" && (
+            <label className="settings-field">
+              <span className="settings-field__label">Dimensions</span>
+              <input
+                type="number"
+                min={1}
+                value={editing.dimensions}
+                onChange={(e) => setEditing({ ...editing, dimensions: Number(e.target.value) })}
+              />
+              <span className="muted small">
+                Must match the model output. All enabled embedding profiles must agree.
+              </span>
+            </label>
           )}
           <label className="settings-field">
             <span className="settings-field__label">Enabled</span>

@@ -28,7 +28,7 @@ import pg from "pg";
 import { config } from "../config.js";
 import { logInfo, logWarning, logError, configureLogLevel } from "../logger.js";
 import { EmbeddingService, type EmbeddingSettings } from "../embeddingService.js";
-import { candidateOrder, type LlmProfile } from "../admin/llmProfiles.js";
+import { candidateOrder, embeddingDimensions, type LlmProfile } from "../admin/llmProfiles.js";
 
 const HNSW_MAX_DIMS = 4000; // pgvector halfvec HNSW limit
 
@@ -58,7 +58,6 @@ async function loadSettings(pool: pg.Pool): Promise<EmbeddingSettings> {
     strategy: "failover",
     timeout: 30,
     batchSize: 32,
-    dimensions: 1024,
   };
   try {
     const res = await pool.query<{ key: string; value: string | null }>(
@@ -70,7 +69,6 @@ async function loadSettings(pool: pg.Pool): Promise<EmbeddingSettings> {
       strategy: strategy === "weighted" ? "weighted" : "failover",
       timeout: Number(m.get("timeout")) || 30,
       batchSize: Number(m.get("batch_size")) || 32,
-      dimensions: Number(m.get("dimensions")) || 1024,
     };
   } catch {
     return defaults;
@@ -80,6 +78,10 @@ async function loadSettings(pool: pg.Pool): Promise<EmbeddingSettings> {
 /** Enabled embedding endpoints, in the order this run should try them. */
 async function loadProfiles(settings: EmbeddingSettings): Promise<LlmProfile[]> {
   return candidateOrder("embedding", settings.strategy);
+}
+
+function activeDimensions(profiles: LlmProfile[]): number {
+  return embeddingDimensions(profiles[0] ?? { params: {} });
 }
 
 /**
@@ -97,7 +99,7 @@ async function checkProvider(s: EmbeddingSettings, profiles: LlmProfile[]): Prom
     if (p.provider !== "ollama") {
       // Hosted providers: a key and a model is all we can check without spending a call.
       if (p.model && p.api_key) {
-        logInfo(`${p.provider} embedding profile '${p.name}' model=${p.model} dimensions=${s.dimensions}`);
+        logInfo(`${p.provider} embedding profile '${p.name}' model=${p.model} dimensions=${embeddingDimensions(p)}`);
         return true;
       }
       logWarning(`Embedding profile '${p.name}' needs a model and API key — skipping it`);
@@ -109,7 +111,7 @@ async function checkProvider(s: EmbeddingSettings, profiles: LlmProfile[]): Prom
       const r = await fetch(`${base}/api/version`, { signal: ctrl.signal });
       clearTimeout(timer);
       if (r.ok) {
-        logInfo(`Ollama OK profile='${p.name}' url=${base} model=${p.model} dimensions=${s.dimensions}`);
+        logInfo(`Ollama OK profile='${p.name}' url=${base} model=${p.model} dimensions=${embeddingDimensions(p)}`);
         return true;
       }
     } catch {
@@ -471,8 +473,9 @@ export async function runEmbedModule(pool: pg.Pool, moduleKey: string): Promise<
   const fn = MODULES[moduleKey];
   if (!fn) throw new Error(`unknown embed module: ${moduleKey}`);
   const settings = await loadSettings(pool);
-  await ensureDimensions(pool, settings.dimensions);
-  const svc = new EmbeddingService(settings, await loadProfiles(settings));
+  const profiles = await loadProfiles(settings);
+  await ensureDimensions(pool, activeDimensions(profiles));
+  const svc = new EmbeddingService(settings, profiles);
   await fn(pool, svc, settings.batchSize);
 }
 
@@ -488,7 +491,7 @@ async function main(): Promise<void> {
   try {
     const settings = await loadSettings(pool);
     const profiles = await loadProfiles(settings);
-    if (ensureDims) await ensureDimensions(pool, settings.dimensions);
+    if (ensureDims) await ensureDimensions(pool, activeDimensions(profiles));
     if (!(await checkProvider(settings, profiles))) {
       logError("Embedding provider not ready — nothing embedded");
       return;
