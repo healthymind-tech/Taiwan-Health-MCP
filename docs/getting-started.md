@@ -23,7 +23,9 @@ docker compose up -d
 ADMIN_ENABLED=true
 ADMIN_USERNAME=admin
 # python -c "import hashlib; print('sha256$' + hashlib.sha256(b'change-me').hexdigest())"
-ADMIN_PASSWORD_HASH=sha256$...
+# ⚠️ 在 .env 中每個 $ 都要寫成 $$（Docker Compose 會把 $ 當變數展開，
+#    雜湊值以字母開頭時會被靜默截斷）。Compose 會把 $$ 還原成單一 $。
+ADMIN_PASSWORD_HASH=sha256$$...
 ADMIN_SESSION_SECRET=change_this_admin_session_secret
 ```
 
