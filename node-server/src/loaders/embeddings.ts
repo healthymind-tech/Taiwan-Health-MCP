@@ -198,7 +198,18 @@ interface EmbedStats {
   changed: number;
   embedded_total: number;
   deleted: number;
+  /** True when the run bailed out at a batch boundary because `shouldStop` fired. */
+  stopped: boolean;
 }
+
+/**
+ * Cooperative cancellation hook, consulted between embedding batches so a
+ * pause/stop requested from the admin console takes effect promptly instead of
+ * only after the whole module finishes (SNOMED alone is ~360k rows).
+ * Embedding is content-hash incremental, so bailing out mid-module is safe:
+ * a resumed job re-derives the remaining set and continues.
+ */
+export type ShouldStop = () => boolean | Promise<boolean>;
 
 interface EmbedTableArgs {
   table: string;
@@ -208,6 +219,7 @@ interface EmbedTableArgs {
   keyOf: (r: any) => string | number;
   textOf: (r: any) => string;
   desc: string;
+  shouldStop?: ShouldStop;
 }
 
 /** Incrementally embed one source→embedding table. */
@@ -222,7 +234,7 @@ async function embedTable(
   // An empty source means "not loaded yet" — never wipe existing embeddings.
   if (a.rows.length === 0) {
     const r = await pool.query<{ c: number }>(`SELECT COUNT(*)::int AS c FROM ${a.table}`);
-    return { source_total: 0, changed: 0, embedded_total: r.rows[0].c, deleted: 0 };
+    return { source_total: 0, changed: 0, embedded_total: r.rows[0].c, deleted: 0, stopped: false };
   }
 
   // 1. Current keys + text + hash (text computed once, shared by hash & embed).
@@ -260,12 +272,25 @@ async function embedTable(
     if (i === 0 || done % (batchSize * 20) === 0 || done === toEmbed.length) {
       logInfo(`  ${a.desc}: ${done}/${toEmbed.length}`);
     }
+    if (done < toEmbed.length && a.shouldStop && (await a.shouldStop())) {
+      logInfo(`  ${a.desc}: stopping at ${done}/${toEmbed.length} on request`);
+      const r = await pool.query<{ c: number }>(`SELECT COUNT(*)::int AS c FROM ${a.table}`);
+      // Orphan pruning is deliberately skipped: it is a whole-module sync step
+      // and must not run against a half-embedded table.
+      return {
+        source_total: a.rows.length, changed: done, embedded_total: r.rows[0].c,
+        deleted: 0, stopped: true,
+      };
+    }
   }
 
   // 6. Prune embeddings whose source row is gone.
   const deleted = await deleteOrphans(pool, a.table, a.keyCol, a.keySqlType, keys);
   const r = await pool.query<{ c: number }>(`SELECT COUNT(*)::int AS c FROM ${a.table}`);
-  return { source_total: a.rows.length, changed: toEmbed.length, embedded_total: r.rows[0].c, deleted };
+  return {
+    source_total: a.rows.length, changed: toEmbed.length, embedded_total: r.rows[0].c,
+    deleted, stopped: false,
+  };
 }
 
 async function writeEmbedLog(
@@ -289,7 +314,9 @@ async function writeEmbedLog(
 
 // ── per-module functions ─────────────────────────────────────────────────────
 
-async function embedFoodNutrition(pool: pg.Pool, svc: EmbeddingService, batch: number): Promise<void> {
+async function embedFoodNutrition(
+  pool: pg.Pool, svc: EmbeddingService, batch: number, shouldStop?: ShouldStop,
+): Promise<boolean> {
   logInfo("=== Embedding: food_nutrition ===");
   const foods = (
     await pool.query(
@@ -307,7 +334,9 @@ async function embedFoodNutrition(pool: pg.Pool, svc: EmbeddingService, batch: n
     keyOf: (r) => r.sample_name,
     textOf: (r) => joinText([r.sample_name, r.common_name, r.english_name]),
     desc: "Foods",
+    shouldStop,
   });
+  if (sFoods.stopped) return true;
   const sIngs = await embedTable(pool, svc, batch, {
     table: "food_nutrition.ingredient_embeddings",
     keyCol: "id",
@@ -316,7 +345,9 @@ async function embedFoodNutrition(pool: pg.Pool, svc: EmbeddingService, batch: n
     keyOf: (r) => r.id,
     textOf: (r) => joinText([r.name_zh, r.name_en]),
     desc: "Ingredients",
+    shouldStop,
   });
+  if (sIngs.stopped) return true;
   await writeEmbedLog(
     pool,
     "food_nutrition",
@@ -327,9 +358,12 @@ async function embedFoodNutrition(pool: pg.Pool, svc: EmbeddingService, batch: n
   logInfo(
     `food_nutrition done: ${sFoods.changed + sIngs.changed} (re)embedded, ${sFoods.deleted + sIngs.deleted} orphans pruned`,
   );
+  return false;
 }
 
-async function embedHealthSupplements(pool: pg.Pool, svc: EmbeddingService, batch: number): Promise<void> {
+async function embedHealthSupplements(
+  pool: pg.Pool, svc: EmbeddingService, batch: number, shouldStop?: ShouldStop,
+): Promise<boolean> {
   logInfo("=== Embedding: health_supplements ===");
   const items = (
     await pool.query("SELECT permit_no, name, benefit_claims FROM health_supplements.items")
@@ -342,14 +376,19 @@ async function embedHealthSupplements(pool: pg.Pool, svc: EmbeddingService, batc
     keyOf: (r) => r.permit_no,
     textOf: (r) => joinText([r.name, r.benefit_claims]),
     desc: "Health supplements",
+    shouldStop,
   });
+  if (s.stopped) return true;
   await writeEmbedLog(pool, "health_supplements", s.source_total, s.embedded_total, s.changed);
   logInfo(
     `Health supplements done: ${s.changed} (re)embedded, ${s.deleted} orphans pruned, ${s.embedded_total} total`,
   );
+  return false;
 }
 
-async function embedIcd(pool: pg.Pool, svc: EmbeddingService, batch: number): Promise<void> {
+async function embedIcd(
+  pool: pg.Pool, svc: EmbeddingService, batch: number, shouldStop?: ShouldStop,
+): Promise<boolean> {
   logInfo("=== Embedding: icd.diagnoses ===");
   const rows = (await pool.query("SELECT code, name_zh, name_en FROM icd.diagnoses")).rows;
   const s = await embedTable(pool, svc, batch, {
@@ -360,12 +399,17 @@ async function embedIcd(pool: pg.Pool, svc: EmbeddingService, batch: number): Pr
     keyOf: (r) => r.code,
     textOf: (r) => joinText([r.code, r.name_zh, r.name_en]),
     desc: "ICD diagnoses",
+    shouldStop,
   });
+  if (s.stopped) return true;
   await writeEmbedLog(pool, "icd", s.source_total, s.embedded_total, s.changed);
   logInfo(`ICD done: ${s.changed} (re)embedded, ${s.deleted} orphans pruned, ${s.embedded_total} total`);
+  return false;
 }
 
-async function embedLoinc(pool: pg.Pool, svc: EmbeddingService, batch: number): Promise<void> {
+async function embedLoinc(
+  pool: pg.Pool, svc: EmbeddingService, batch: number, shouldStop?: ShouldStop,
+): Promise<boolean> {
   logInfo("=== Embedding: loinc.concepts ===");
   const rows = (
     await pool.query(
@@ -389,12 +433,17 @@ async function embedLoinc(pool: pg.Pool, svc: EmbeddingService, batch: number): 
         r.specimen_type,
       ]),
     desc: "LOINC",
+    shouldStop,
   });
+  if (s.stopped) return true;
   await writeEmbedLog(pool, "loinc", s.source_total, s.embedded_total, s.changed);
   logInfo(`LOINC done: ${s.changed} (re)embedded, ${s.deleted} orphans pruned, ${s.embedded_total} total`);
+  return false;
 }
 
-async function embedGuideline(pool: pg.Pool, svc: EmbeddingService, batch: number): Promise<void> {
+async function embedGuideline(
+  pool: pg.Pool, svc: EmbeddingService, batch: number, shouldStop?: ShouldStop,
+): Promise<boolean> {
   logInfo("=== Embedding: guideline.disease_guidelines ===");
   const rows = (
     await pool.query(
@@ -404,7 +453,7 @@ async function embedGuideline(pool: pg.Pool, svc: EmbeddingService, batch: numbe
   ).rows;
   if (rows.length === 0) {
     logWarning("No guidelines found — run the guideline loader first");
-    return;
+    return false;
   }
   const s = await embedTable(pool, svc, batch, {
     table: "guideline.guideline_embeddings",
@@ -415,14 +464,19 @@ async function embedGuideline(pool: pg.Pool, svc: EmbeddingService, batch: numbe
     textOf: (r) =>
       joinText([r.disease_name_zh, r.disease_name_en, r.guideline_title, r.guideline_summary]),
     desc: "Guidelines",
+    shouldStop,
   });
+  if (s.stopped) return true;
   await writeEmbedLog(pool, "guideline", s.source_total, s.embedded_total, s.changed);
   logInfo(
     `Guidelines done: ${s.changed} (re)embedded, ${s.deleted} orphans pruned, ${s.embedded_total} total`,
   );
+  return false;
 }
 
-async function embedSnomed(pool: pg.Pool, svc: EmbeddingService, batch: number): Promise<void> {
+async function embedSnomed(
+  pool: pg.Pool, svc: EmbeddingService, batch: number, shouldStop?: ShouldStop,
+): Promise<boolean> {
   logInfo("=== Embedding: snomed.concept_embeddings (~360k FSNs — slow) ===");
   const rows = (
     await pool.query(
@@ -440,12 +494,18 @@ async function embedSnomed(pool: pg.Pool, svc: EmbeddingService, batch: number):
     keyOf: (r) => r.concept_id, // 18-digit string (BIGINT carried as text)
     textOf: (r) => r.term || "",
     desc: "SNOMED",
+    shouldStop,
   });
+  if (s.stopped) return true;
   await writeEmbedLog(pool, "snomed", s.source_total, s.embedded_total, s.changed);
   logInfo(`SNOMED done: ${s.changed} (re)embedded, ${s.deleted} orphans pruned, ${s.embedded_total} total`);
+  return false;
 }
 
-const MODULES: Record<string, (p: pg.Pool, s: EmbeddingService, b: number) => Promise<void>> = {
+const MODULES: Record<
+  string,
+  (p: pg.Pool, s: EmbeddingService, b: number, stop?: ShouldStop) => Promise<boolean>
+> = {
   "food-nutrition": embedFoodNutrition,
   "health-supplements": embedHealthSupplements,
   icd: embedIcd,
@@ -468,15 +528,22 @@ export async function loadEmbeddingProfiles(settings: EmbeddingSettings): Promis
  * Run one module's incremental embedding (mirror the worker's
  * `ensure_dimensions(pool)` + `embed_fn(pool)`): always ensure halfvec dims, then
  * embed via the module's loader function. Settings come from the `embedding` group.
+ *
+ * Returns true when `shouldStop` cut the run short at a batch boundary; the
+ * caller is then responsible for applying the pending pause/stop.
  */
-export async function runEmbedModule(pool: pg.Pool, moduleKey: string): Promise<void> {
+export async function runEmbedModule(
+  pool: pg.Pool,
+  moduleKey: string,
+  shouldStop?: ShouldStop,
+): Promise<boolean> {
   const fn = MODULES[moduleKey];
   if (!fn) throw new Error(`unknown embed module: ${moduleKey}`);
   const settings = await loadSettings(pool);
   const profiles = await loadProfiles(settings);
   await ensureDimensions(pool, activeDimensions(profiles));
   const svc = new EmbeddingService(settings, profiles);
-  await fn(pool, svc, settings.batchSize);
+  return fn(pool, svc, settings.batchSize, shouldStop);
 }
 
 async function main(): Promise<void> {

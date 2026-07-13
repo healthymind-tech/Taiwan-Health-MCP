@@ -2215,7 +2215,7 @@ export async function runSnomedImportJob(opts: {
 
   await withMaterializedSources(manifest, async (paths) => {
     const { conceptRows, descriptionRows, relationshipRows, icd10MapRows, associationRows } =
-      buildSnomedStagePayload(paths.snomed_ct);
+      await buildSnomedStagePayload(paths.snomed_ct);
 
     if (progress < 1) {
       await runValidateStep({
@@ -2967,24 +2967,69 @@ export async function runEmbedJob(opts: {
   });
   await markJobStatus({ jobId, status: "running", currentStep: "embedding", progressCurrent: 0, progressTotal: sourceCount });
 
+  // Cooperative stop: the embed loop consults this between batches, so a pause
+  // lands within seconds instead of only after the whole module finishes
+  // (SNOMED is ~360k rows). Throttled — the loop asks far more often than 2s.
+  let controlPending = false;
+  let lastControlCheck = 0;
+  const shouldStop = async (): Promise<boolean> => {
+    if (controlPending) return true;
+    const now = Date.now();
+    if (now - lastControlCheck < 2000) return false;
+    lastControlCheck = now;
+    try {
+      const r = await pool.query<{ control_state: string | null }>(
+        `SELECT control_state FROM admin.import_jobs WHERE job_id = $1`,
+        [jobId],
+      );
+      const state = String(r.rows[0]?.control_state ?? "").trim();
+      controlPending = ["pause_requested", "stop_requested", "restart_requested"].includes(state);
+    } catch {
+      /* a transient DB error must not abort an otherwise healthy embed run */
+    }
+    return controlPending;
+  };
+
+  // `stopping` also gates the poller: once we are winding down it must not write
+  // status='running' back over the 'paused' the checkpoint is about to set.
+  let stopping = false;
   const poller = setInterval(() => {
     void (async () => {
       try {
         const cnt = await scalar(cfg.embQ);
+        if (stopping) return;
         await recordJobStep({
           jobId, stepKey: "embed", status: "running", progressCurrent: cnt, progressTotal: sourceCount,
           checkpoint: { phase: "embedding", embedded_count: cnt },
         });
+        if (stopping) return;
         await markJobStatus({ jobId, status: "running", currentStep: "embedding", progressCurrent: cnt, progressTotal: sourceCount });
       } catch {
         /* poll best-effort */
       }
     })();
   }, 5000);
+  let stopped = false;
   try {
-    await runEmbedModule(pool, cfg.module);
+    stopped = await runEmbedModule(pool, cfg.module, shouldStop);
   } finally {
+    stopping = true;
     clearInterval(poller);
+  }
+
+  if (stopped) {
+    const cnt = await scalar(cfg.embQ);
+    await recordJobStep({
+      jobId, stepKey: "embed", status: "running", progressCurrent: cnt, progressTotal: sourceCount,
+      checkpoint: { phase: "embedding", embedded_count: cnt },
+    });
+    await appendJobLog({
+      jobId, level: "info",
+      message: `Embedding halted at a batch boundary on request (${fmt(cnt)}/${fmt(sourceCount)} embedded)`,
+    });
+    // Embedding is content-hash incremental, so a resumed job picks up the
+    // remainder. Let the checkpoint apply the pause/stop/restart that was asked for.
+    if (await applyControlCheckpoint({ jobId, workerName })) return;
   }
 
   const embeddedCount = await scalar(cfg.embQ);
