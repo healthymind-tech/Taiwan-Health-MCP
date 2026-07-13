@@ -153,9 +153,25 @@ function* parseTsvRows(s: string): Generator<string[]> {
   }
 }
 
+/**
+ * Rows between event-loop yields. The RF2 parse walks ~5M records; run as one
+ * synchronous burst it starves the event loop for over a minute, which stalls
+ * the admin worker's heartbeat (`ADMIN_WORKER_STALE_AFTER_SECONDS`, 45s by
+ * default) and lets the running job be reclaimed as orphaned. Yielding keeps the
+ * worker responsive; at 50k rows that is ~100 pauses — immaterial next to the
+ * parse itself.
+ */
+const YIELD_EVERY_ROWS = 50_000;
+
+const yieldToEventLoop = (): Promise<void> =>
+  new Promise((resolve) => {
+    setImmediate(resolve);
+  });
+
 /** DictReader: first record is the header; yield header-keyed objects. */
-function* dictRows(text: string): Generator<Record<string, string>> {
+async function* dictRows(text: string): AsyncGenerator<Record<string, string>> {
   let header: string[] | null = null;
+  let seen = 0;
   for (const rec of parseTsvRows(text)) {
     if (header === null) {
       header = rec;
@@ -163,6 +179,8 @@ function* dictRows(text: string): Generator<Record<string, string>> {
     }
     const obj: Record<string, string> = {};
     for (let c = 0; c < header.length; c += 1) obj[header[c]] = rec[c] ?? "";
+    seen += 1;
+    if (seen % YIELD_EVERY_ROWS === 0) await yieldToEventLoop();
     yield obj;
   }
 }
@@ -208,10 +226,10 @@ function isoDate(yyyymmdd: string): string {
 
 type Cell = string | number | boolean | null;
 
-function parseConcepts(text: string): { rows: Cell[][]; loaded: Set<string> } {
+async function parseConcepts(text: string): Promise<{ rows: Cell[][]; loaded: Set<string> }> {
   const rows: Cell[][] = [];
   const loaded = new Set<string>();
-  for (const row of dictRows(text)) {
+  for await (const row of dictRows(text)) {
     if (row["active"] !== "1") continue; // active concepts only
     loaded.add(row["id"]);
     rows.push([row["id"], isoDate(row["effectiveTime"]), true, row["moduleId"], row["definitionStatusId"]]);
@@ -219,9 +237,9 @@ function parseConcepts(text: string): { rows: Cell[][]; loaded: Set<string> } {
   return { rows, loaded };
 }
 
-function parseUsPreferred(text: string): Set<string> {
+async function parseUsPreferred(text: string): Promise<Set<string>> {
   const out = new Set<string>();
-  for (const row of dictRows(text)) {
+  for await (const row of dictRows(text)) {
     if (row["active"] === "1" && row["refsetId"] === US_EN_REFSET && row["acceptabilityId"] === PREFERRED) {
       out.add(row["referencedComponentId"]);
     }
@@ -229,9 +247,13 @@ function parseUsPreferred(text: string): Set<string> {
   return out;
 }
 
-function parseDescriptions(text: string, loaded: Set<string>, usPreferred: Set<string>): Cell[][] {
+async function parseDescriptions(
+  text: string,
+  loaded: Set<string>,
+  usPreferred: Set<string>,
+): Promise<Cell[][]> {
   const rows: Cell[][] = [];
-  for (const row of dictRows(text)) {
+  for await (const row of dictRows(text)) {
     if (row["languageCode"] !== "en") continue;
     const ttype = row["typeId"];
     if (ttype !== FSN_TYPE && ttype !== SYNONYM_TYPE) continue;
@@ -244,9 +266,9 @@ function parseDescriptions(text: string, loaded: Set<string>, usPreferred: Set<s
   return rows;
 }
 
-function parseRelationships(text: string, loaded: Set<string>): Cell[][] {
+async function parseRelationships(text: string, loaded: Set<string>): Promise<Cell[][]> {
   const rows: Cell[][] = [];
-  for (const row of dictRows(text)) {
+  for await (const row of dictRows(text)) {
     const charType = row["characteristicTypeId"];
     if (charType !== STATED_CHAR && charType !== INFERRED_CHAR) continue;
     if (row["active"] !== "1") continue;
@@ -258,10 +280,10 @@ function parseRelationships(text: string, loaded: Set<string>): Cell[][] {
   return rows;
 }
 
-function parseAssociations(text: string, loaded: Set<string>): Cell[][] {
+async function parseAssociations(text: string, loaded: Set<string>): Promise<Cell[][]> {
   const rows: Cell[][] = [];
   const seen = new Set<string>();
-  for (const row of dictRows(text)) {
+  for await (const row of dictRows(text)) {
     if (row["active"] !== "1") continue;
     const target = row["targetComponentId"];
     if (!loaded.has(target)) continue; // successor must be loaded & active
@@ -275,9 +297,9 @@ function parseAssociations(text: string, loaded: Set<string>): Cell[][] {
   return rows;
 }
 
-function parseIcd10Map(text: string, loaded: Set<string>): Cell[][] {
+async function parseIcd10Map(text: string, loaded: Set<string>): Promise<Cell[][]> {
   const rows: Cell[][] = [];
-  for (const row of dictRows(text)) {
+  for await (const row of dictRows(text)) {
     if (row["active"] !== "1") continue;
     const target = row["mapTarget"] ?? "";
     if (!target) continue;
@@ -335,7 +357,7 @@ export interface SnomedStagePayload {
 }
 
 /** Faithful port of `_build_snomed_stage_payload`. */
-export function buildSnomedStagePayload(zipPath: string): SnomedStagePayload {
+export async function buildSnomedStagePayload(zipPath: string): Promise<SnomedStagePayload> {
   const needed =
     /(sct2_Concept_Snapshot_INT|sct2_Description_Snapshot-en_INT|sct2_Relationship_Snapshot_INT|der2_cRefset_LanguageSnapshot-en_INT|der2_cRefset_AssociationSnapshot_INT|der2_iisssccRefset_ExtendedMapSnapshot_INT)/i;
   const entries = unzipSync(new Uint8Array(fs.readFileSync(zipPath)), {
@@ -347,39 +369,39 @@ export function buildSnomedStagePayload(zipPath: string): SnomedStagePayload {
     /Full\/Terminology\/sct2_Concept_Full_INT/i,
   ]);
   if (!conceptText) throw new Error("Concept file not found in SNOMED zip");
-  const { rows: conceptRows, loaded } = parseConcepts(conceptText);
+  const { rows: conceptRows, loaded } = await parseConcepts(conceptText);
 
   const langText = takeMember(entries, [
     /Snapshot\/Refset\/Language\/der2_cRefset_LanguageSnapshot-en_INT/i,
     /Full\/Refset\/Language\/der2_cRefset_LanguageFull-en_INT/i,
   ]);
-  const usPreferred = langText ? parseUsPreferred(langText) : new Set<string>();
+  const usPreferred = langText ? await parseUsPreferred(langText) : new Set<string>();
 
   const descText = takeMember(entries, [
     /Snapshot\/Terminology\/sct2_Description_Snapshot-en_INT/i,
     /Full\/Terminology\/sct2_Description_Full-en_INT/i,
   ]);
   if (!descText) throw new Error("Description file not found in SNOMED zip");
-  const descriptionRows = parseDescriptions(descText, loaded, usPreferred);
+  const descriptionRows = await parseDescriptions(descText, loaded, usPreferred);
 
   const relText = takeMember(entries, [
     /Snapshot\/Terminology\/sct2_Relationship_Snapshot_INT/i,
     /Full\/Terminology\/sct2_Relationship_Full_INT/i,
   ]);
   if (!relText) throw new Error("Relationship file not found in SNOMED zip");
-  const relationshipRows = parseRelationships(relText, loaded);
+  const relationshipRows = await parseRelationships(relText, loaded);
 
   const mapText = takeMember(entries, [
     /Snapshot\/Refset\/Map\/der2_iisssccRefset_ExtendedMapSnapshot_INT/i,
     /Full\/Refset\/Map\/der2_iisssccRefset_ExtendedMapFull_INT/i,
   ]);
-  const icd10MapRows = mapText ? parseIcd10Map(mapText, loaded) : [];
+  const icd10MapRows = mapText ? await parseIcd10Map(mapText, loaded) : [];
 
   const assocText = takeMember(entries, [
     /Snapshot\/Refset\/Content\/der2_cRefset_AssociationSnapshot_INT/i,
     /Full\/Refset\/Content\/der2_cRefset_AssociationFull_INT/i,
   ]);
-  const associationRows = assocText ? parseAssociations(assocText, loaded) : [];
+  const associationRows = assocText ? await parseAssociations(assocText, loaded) : [];
 
   return { conceptRows, descriptionRows, relationshipRows, icd10MapRows, associationRows };
 }
@@ -406,7 +428,7 @@ export async function loadSnomed(pool: pg.Pool, zipPath: string): Promise<void> 
     /Full\/Terminology\/sct2_Concept_Full_INT/i,
   ]);
   if (!conceptText) throw new Error("Concept file not found in SNOMED zip");
-  const { rows: conceptRows, loaded } = parseConcepts(conceptText);
+  const { rows: conceptRows, loaded } = await parseConcepts(conceptText);
   logInfo(`  ${conceptRows.length} active concepts`);
 
   logInfo("  Loading preferred terms (Language refset) ...");
@@ -415,7 +437,7 @@ export async function loadSnomed(pool: pg.Pool, zipPath: string): Promise<void> 
     /Full\/Refset\/Language\/der2_cRefset_LanguageFull-en_INT/i,
   ]);
   if (!langText) logError("  WARNING: Language refset not found — preferred terms unavailable.");
-  const usPreferred = langText ? parseUsPreferred(langText) : new Set<string>();
+  const usPreferred = langText ? await parseUsPreferred(langText) : new Set<string>();
   logInfo(`  ${usPreferred.size} US-preferred descriptions`);
 
   logInfo("  Loading descriptions ...");
@@ -424,7 +446,7 @@ export async function loadSnomed(pool: pg.Pool, zipPath: string): Promise<void> 
     /Full\/Terminology\/sct2_Description_Full-en_INT/i,
   ]);
   if (!descText) throw new Error("Description file not found in SNOMED zip");
-  const descRows = parseDescriptions(descText, loaded, usPreferred);
+  const descRows = await parseDescriptions(descText, loaded, usPreferred);
   logInfo(`  ${descRows.length} active English descriptions`);
 
   logInfo("  Loading relationships ...");
@@ -433,7 +455,7 @@ export async function loadSnomed(pool: pg.Pool, zipPath: string): Promise<void> 
     /Full\/Terminology\/sct2_Relationship_Full_INT/i,
   ]);
   if (!relText) throw new Error("Relationship file not found in SNOMED zip");
-  const relRows = parseRelationships(relText, loaded);
+  const relRows = await parseRelationships(relText, loaded);
   logInfo(`  ${relRows.length} active relationships`);
 
   logInfo("  Loading ICD-10 extended map ...");
@@ -442,7 +464,7 @@ export async function loadSnomed(pool: pg.Pool, zipPath: string): Promise<void> 
     /Full\/Refset\/Map\/der2_iisssccRefset_ExtendedMapFull_INT/i,
   ]);
   if (!mapText) logError("  WARNING: ICD-10 extended map file not found — skipping map load.");
-  const mapRows = mapText ? parseIcd10Map(mapText, loaded) : [];
+  const mapRows = mapText ? await parseIcd10Map(mapText, loaded) : [];
   logInfo(`  ${mapRows.length} ICD-10 map entries`);
 
   logInfo("  Loading historical associations ...");
@@ -451,7 +473,7 @@ export async function loadSnomed(pool: pg.Pool, zipPath: string): Promise<void> 
     /Full\/Refset\/Content\/der2_cRefset_AssociationFull_INT/i,
   ]);
   if (!assocText) logError("  WARNING: Association refset not found — skipping historical map.");
-  const assocRows = assocText ? parseAssociations(assocText, loaded) : [];
+  const assocRows = assocText ? await parseAssociations(assocText, loaded) : [];
   logInfo(`  ${assocRows.length} active historical associations`);
 
   logInfo("  Writing to database ...");
