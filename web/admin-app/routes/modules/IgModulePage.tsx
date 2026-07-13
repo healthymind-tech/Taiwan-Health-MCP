@@ -8,7 +8,6 @@ import { StatusBadge } from "../../components/StatusBadge";
 import type { ModulesPayload } from "../../lib/types";
 import { IgAddModal } from "./IgAddModal";
 import { IgDetailDrawer } from "./IgDetailDrawer";
-import { IgPreviewModal } from "./IgPreviewModal";
 
 const MODULE_KEY = "ig";
 const LABEL = "Implementation Guides";
@@ -49,7 +48,6 @@ export function IgModulePage(): JSX.Element {
   const importing = activeJobTypes.has(IMPORT_JOB);
 
   const [showAdd, setShowAdd] = useState(false);
-  const [showPreview, setShowPreview] = useState(false);
   const [selected, setSelected] = useState<{ id: string; version: string } | null>(null);
 
   const modulesQ = useQuery({
@@ -139,15 +137,6 @@ export function IgModulePage(): JSX.Element {
             <span className="switch__track" aria-hidden="true" />
             <span className="switch__label">Maintenance</span>
           </label>
-          <button
-            type="button"
-            className="btn"
-            disabled={!populated}
-            title={!populated ? "Add an IG first" : "Browse all installed IG content"}
-            onClick={() => setShowPreview(true)}
-          >
-            Browse content
-          </button>
           <button type="button" className="btn btn--active" onClick={() => setShowAdd(true)}>
             + Add IG
           </button>
@@ -248,7 +237,6 @@ export function IgModulePage(): JSX.Element {
           onChanged={refresh}
         />
       )}
-      {showPreview && <IgPreviewModal onClose={() => setShowPreview(false)} />}
     </div>
   );
 }

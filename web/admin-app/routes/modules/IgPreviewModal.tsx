@@ -1,8 +1,18 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { api, ApiError } from "../../lib/api";
 import { qk } from "../../lib/queryKeys";
 import { Modal } from "../../components/Modal";
+
+// The IG this preview is scoped to. `fhir.artifacts` holds every installed
+// package side by side, so an unscoped request merges them into one tree — the
+// backend now rejects a preview without a package. Carried in context rather
+// than drilled through five levels of tree nodes.
+const IgPackageContext = createContext<string>("");
+
+function useIgPackage(): string {
+  return useContext(IgPackageContext);
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -244,7 +254,7 @@ function requirementBadges(node: TwcoreElementNode): JSX.Element {
 
 function cleanPreviewParams() {
   const url = new URL(window.location.href);
-  ["twcore_preview", "twcore_source"].forEach((key) => url.searchParams.delete(key));
+  ["ig_preview", "ig_source"].forEach((key) => url.searchParams.delete(key));
   window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
 }
 
@@ -252,9 +262,18 @@ function cleanPreviewParams() {
 // Root modal
 // ---------------------------------------------------------------------------
 
-export function IgPreviewModal({ onClose }: { onClose: () => void }): JSX.Element {
+export function IgPreviewModal({
+  packageId,
+  title,
+  onClose,
+}: {
+  packageId: string;
+  title: string;
+  onClose: () => void;
+}): JSX.Element {
+  const pkg = packageId;
   const [elementSource, setElementSource] = useState<ElementSource>(() =>
-    new URLSearchParams(window.location.search).get("twcore_source") === "snapshot"
+    new URLSearchParams(window.location.search).get("ig_source") === "snapshot"
       ? "snapshot"
       : "differential",
   );
@@ -268,8 +287,8 @@ export function IgPreviewModal({ onClose }: { onClose: () => void }): JSX.Elemen
 
   useEffect(() => {
     const url = new URL(window.location.href);
-    url.searchParams.set("twcore_preview", "1");
-    url.searchParams.set("twcore_source", elementSource);
+    url.searchParams.set("ig_preview", "1");
+    url.searchParams.set("ig_source", elementSource);
     window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
   }, [elementSource]);
 
@@ -280,16 +299,24 @@ export function IgPreviewModal({ onClose }: { onClose: () => void }): JSX.Elemen
     return () => clearTimeout(t);
   }, [highlightKey]);
 
+  const navParams = { mode: "navigator", package_id: packageId };
   const { data, isPending, isError, error } = useQuery({
-    queryKey: qk.modulePreview("twcore", { mode: "navigator" }),
+    queryKey: qk.modulePreview("ig", navParams),
     queryFn: () =>
-      api.get<TwcorePreviewResult>("/admin/api/modules/ig/preview?mode=navigator"),
+      api.get<TwcorePreviewResult>(
+        `/admin/api/modules/ig/preview?${new URLSearchParams(navParams).toString()}`,
+      ),
     placeholderData: keepPreviousData,
   });
 
-  const searchParams = { mode: "search", q: searchTerm, element_source: elementSource };
+  const searchParams = {
+    mode: "search",
+    package_id: packageId,
+    q: searchTerm,
+    element_source: elementSource,
+  };
   const search = useQuery({
-    queryKey: qk.modulePreview("twcore", searchParams),
+    queryKey: qk.modulePreview("ig", searchParams),
     queryFn: () =>
       api.get<TwcoreSearchResult>(
         `/admin/api/modules/ig/preview?${new URLSearchParams(searchParams).toString()}`,
@@ -466,14 +493,15 @@ export function IgPreviewModal({ onClose }: { onClose: () => void }): JSX.Elemen
   const elemParams = useMemo(
     () => ({
       mode: "artifact_tree",
+      package_id: pkg,
       artifact_key: acProfile?.artifact_key ?? "",
       element_source: elementSource,
       per_page: "400",
     }),
-    [acProfile?.artifact_key, elementSource],
+    [pkg, acProfile?.artifact_key, elementSource],
   );
   const elemQuery = useQuery({
-    queryKey: qk.modulePreview("twcore", elemParams),
+    queryKey: qk.modulePreview("ig", elemParams),
     queryFn: () =>
       api.get<TwcorePreviewResult>(
         `/admin/api/modules/ig/preview?${new URLSearchParams(elemParams).toString()}`,
@@ -538,7 +566,8 @@ export function IgPreviewModal({ onClose }: { onClose: () => void }): JSX.Elemen
   }
 
   return (
-    <Modal title="TWCore IG - data preview" onClose={close} workspace>
+    <IgPackageContext.Provider value={packageId}>
+      <Modal title={`${title} — content`} onClose={close} workspace>
       <div className="twctree">
         <div className="twctree__toolbar">
           <form
@@ -567,7 +596,7 @@ export function IgPreviewModal({ onClose }: { onClose: () => void }): JSX.Elemen
               type="button"
               className={`btn btn--sm ${elementSource === "differential" ? "btn--active" : ""}`}
               onClick={() => setElementSource("differential")}
-              title="Only the elements TWCore constrains (must-support / bindings / cardinality)"
+              title="Only the elements this IG constrains (must-support / bindings / cardinality)"
             >
               Key fields
             </button>
@@ -619,7 +648,7 @@ export function IgPreviewModal({ onClose }: { onClose: () => void }): JSX.Elemen
                 ref={pathInputRef}
                 type="text"
                 className="twctree__pathinput"
-                placeholder="Go to path — e.g. Patient / TWCorePatient / Patient.gender"
+                placeholder="Go to path — e.g. Patient / <profile> / Patient.gender"
                 value={pathInput}
                 role="combobox"
                 aria-expanded={acOpen}
@@ -695,7 +724,8 @@ export function IgPreviewModal({ onClose }: { onClose: () => void }): JSX.Elemen
           </div>
         )}
       </div>
-    </Modal>
+      </Modal>
+    </IgPackageContext.Provider>
   );
 }
 
@@ -861,7 +891,7 @@ function ResourceGroupNode({
 }
 
 // ---------------------------------------------------------------------------
-// Profile  (TWCorePatient ...)  — lazily loads its element tree
+// Profile  (e.g. TWCorePatient, IPSPatient)  — lazily loads its element tree
 // ---------------------------------------------------------------------------
 
 function ProfileNode({
@@ -887,6 +917,7 @@ function ProfileNode({
   const isHit = highlightKey === key;
   const pathPrefix = `${resourceName} / ${profileToken(profile)}`;
 
+  const pkg = useIgPackage();
   const rowRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (isHit) rowRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
@@ -895,15 +926,16 @@ function ProfileNode({
   const params = useMemo(
     () => ({
       mode: "artifact_tree",
+      package_id: pkg,
       artifact_key: artifactKey,
       element_source: elementSource,
       per_page: "400",
     }),
-    [artifactKey, elementSource],
+    [pkg, artifactKey, elementSource],
   );
 
   const { data, isFetching, isError } = useQuery({
-    queryKey: qk.modulePreview("twcore", params),
+    queryKey: qk.modulePreview("ig", params),
     queryFn: () =>
       api.get<TwcorePreviewResult>(
         `/admin/api/modules/ig/preview?${new URLSearchParams(params).toString()}`,
@@ -1124,6 +1156,7 @@ const NOTE_ROW_TYPES = new Set([
 ]);
 
 function BindingNode({ valueSetUrl }: { valueSetUrl: string }): JSX.Element {
+  const pkg = useIgPackage();
   const [page, setPage] = useState(1);
   useEffect(() => {
     setPage(1);
@@ -1132,15 +1165,16 @@ function BindingNode({ valueSetUrl }: { valueSetUrl: string }): JSX.Element {
   const params = useMemo(
     () => ({
       mode: "valueset",
+      package_id: pkg,
       value_set_url: valueSetUrl,
       page: String(page),
       per_page: String(VALUESET_PAGE_SIZE),
     }),
-    [valueSetUrl, page],
+    [pkg, valueSetUrl, page],
   );
 
   const { data, isFetching, isError } = useQuery({
-    queryKey: qk.modulePreview("twcore", params),
+    queryKey: qk.modulePreview("ig", params),
     queryFn: () =>
       api.get<TwcorePreviewResult>(
         `/admin/api/modules/ig/preview?${new URLSearchParams(params).toString()}`,
@@ -1184,7 +1218,7 @@ function BindingNode({ valueSetUrl }: { valueSetUrl: string }): JSX.Element {
                   <span className="twctree__vs-note-text">
                     {row.meaning ||
                       row.display ||
-                      "Codes are defined outside the TWCore package and can’t be listed here."}
+                      "Codes are defined outside this IG package and can’t be listed here."}
                   </span>
                   {row.system && <span className="muted small">{row.system}</span>}
                 </div>

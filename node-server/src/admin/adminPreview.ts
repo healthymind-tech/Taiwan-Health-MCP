@@ -906,7 +906,45 @@ function canonicalTail(url: string, resourceType: string): string {
   return i >= 0 ? trimmed.slice(i + 1) : trimmed;
 }
 
+interface IgScope {
+  artifacts: string;
+  concepts: string;
+  codesystems: string;
+}
+
+/**
+ * Scope every IG preview query to one installed package.
+ *
+ * `fhir.artifacts / concepts / codesystems` hold all installed IGs side by side
+ * (TWCore's 422 artifacts sit next to hl7.fhir.r4.core's 4,581), so an unscoped
+ * preview silently merges them into a single tree. The preview is always opened
+ * from one IG, so the package is required rather than defaulted.
+ *
+ * The id is validated against `fhir.ig_packages` and only then inlined as a SQL
+ * literal. Inlining is what lets the 21 call sites keep their own parameter
+ * numbering untouched; the whitelist is what makes inlining safe.
+ */
+async function igPackageScope(params: Params): Promise<IgScope | { error: string }> {
+  const pkg = pStr(params, "package_id");
+  if (!pkg) return { error: "package_id is required" };
+  const known = await query("SELECT 1 FROM fhir.ig_packages WHERE package_id = $1 LIMIT 1", [pkg]);
+  if (known.rows.length === 0) return { error: `Unknown IG package '${pkg}'` };
+  const lit = `'${pkg.replace(/'/g, "''")}'`;
+  const scoped = (table: string, alias: string): string =>
+    `(SELECT * FROM ${table} WHERE package_id = ${lit}) AS ${alias}`;
+  return {
+    artifacts: scoped("fhir.artifacts", "artifacts"),
+    concepts: scoped("fhir.concepts", "concepts"),
+    codesystems: scoped("fhir.codesystems", "codesystems"),
+  };
+}
+
 async function previewIg(params: Params): Promise<Row> {
+  const scope = await igPackageScope(params);
+  if ("error" in scope) return { type: "error", message: scope.error };
+  const ARTIFACTS = scope.artifacts;
+  const CONCEPTS = scope.concepts;
+  const CODESYSTEMS = scope.codesystems;
   const mode = pStr(params, "mode");
   const nodeIn = (params.node ?? null) as string | null;
   const artifactKeyIn = pStr(params, "artifact_key");
@@ -1219,7 +1257,7 @@ async function previewIg(params: Params): Promise<Row> {
       await query(
         `
             SELECT artifact_id, raw_json
-            FROM fhir.artifacts
+            FROM ${ARTIFACTS}
             WHERE resource_type = 'CodeSystem'
               AND (canonical_url = $1 OR artifact_id = $2)
             LIMIT 1
@@ -1238,7 +1276,7 @@ async function previewIg(params: Params): Promise<Row> {
       await query(
         `
             SELECT artifact_id, raw_json
-            FROM fhir.artifacts
+            FROM ${ARTIFACTS}
             WHERE resource_type = 'ValueSet'
               AND (canonical_url = $1 OR artifact_id = $2)
             LIMIT 1
@@ -1784,8 +1822,8 @@ async function previewIg(params: Params): Promise<Row> {
   };
 
   // ── main body ──
-  const csCount = n((await query("SELECT COUNT(*) AS c FROM fhir.codesystems")).rows[0]?.c);
-  const artifactCount = n((await query("SELECT COUNT(*) AS c FROM fhir.artifacts")).rows[0]?.c);
+  const csCount = n((await query(`SELECT COUNT(*) AS c FROM ${CODESYSTEMS}`)).rows[0]?.c);
+  const artifactCount = n((await query(`SELECT COUNT(*) AS c FROM ${ARTIFACTS}`)).rows[0]?.c);
   if (csCount === 0 && artifactCount === 0) {
     return { type: "empty", message: "TWCore IG module not loaded. Run the import first." };
   }
@@ -1809,7 +1847,7 @@ async function previewIg(params: Params): Promise<Row> {
             SELECT grouping_id, COALESCE(NULLIF(grouping_name, ''), grouping_id) AS grouping_name,
                    COUNT(*) AS artifact_count,
                    COALESCE(SUM(child_count), 0) AS child_count
-            FROM fhir.artifacts
+            FROM ${ARTIFACTS}
             GROUP BY grouping_id, grouping_name
             ORDER BY
                 CASE grouping_id
@@ -1830,7 +1868,7 @@ async function previewIg(params: Params): Promise<Row> {
             SELECT grouping_id, resource_type,
                    COUNT(*) AS artifact_count,
                    COALESCE(SUM(child_count), 0) AS child_count
-            FROM fhir.artifacts
+            FROM ${ARTIFACTS}
             GROUP BY grouping_id, resource_type
             ORDER BY grouping_id, resource_type
             `)
@@ -1859,11 +1897,11 @@ async function previewIg(params: Params): Promise<Row> {
     is_leaf: false,
   }));
   const resourceTypes = (
-    await query("SELECT DISTINCT resource_type FROM fhir.artifacts ORDER BY resource_type")
+    await query(`SELECT DISTINCT resource_type FROM ${ARTIFACTS} ORDER BY resource_type`)
   ).rows.map((r) => r.resource_type);
   const baseTypes = (
     await query(`
-                SELECT DISTINCT base_type FROM fhir.artifacts
+                SELECT DISTINCT base_type FROM ${ARTIFACTS}
                 WHERE resource_type = 'StructureDefinition'
                   AND grouping_id = 'profiles'
                   AND COALESCE(base_type, '') <> ''
@@ -1873,7 +1911,7 @@ async function previewIg(params: Params): Promise<Row> {
   const profileRows = (
     await query(`
             SELECT *
-            FROM fhir.artifacts
+            FROM ${ARTIFACTS}
             WHERE resource_type = 'StructureDefinition'
               AND grouping_id = 'profiles'
             ORDER BY
@@ -1986,14 +2024,14 @@ async function previewIg(params: Params): Promise<Row> {
     if (row.resource_type === "CodeSystem") {
       const totalRows = n(
         (
-          await query("SELECT COUNT(*) AS c FROM fhir.concepts WHERE cs_id = $1", [row.artifact_id])
+          await query(`SELECT COUNT(*) AS c FROM ${CONCEPTS} WHERE cs_id = $1`, [row.artifact_id])
         ).rows[0]?.c,
       );
       const conceptRows = (
         await query(
           `
                     SELECT code, display, definition
-                    FROM fhir.concepts
+                    FROM ${CONCEPTS}
                     WHERE cs_id = $1
                     ORDER BY code
                     LIMIT $2 OFFSET $3
@@ -2018,7 +2056,7 @@ async function previewIg(params: Params): Promise<Row> {
   };
 
   const fetchArtifact = async (key: string): Promise<Row | undefined> =>
-    (await query("SELECT * FROM fhir.artifacts WHERE artifact_key = $1", [key])).rows[0];
+    (await query(`SELECT * FROM ${ARTIFACTS} WHERE artifact_key = $1`, [key])).rows[0];
 
   const artifactTreeResponse = async (key: string): Promise<Row> => {
     const row = await fetchArtifact(key);
@@ -2057,7 +2095,7 @@ async function previewIg(params: Params): Promise<Row> {
         await query(
           `
                     SELECT *
-                    FROM fhir.artifacts
+                    FROM ${ARTIFACTS}
                     WHERE resource_type = 'ValueSet'
                       AND (
                         artifact_key = $1 OR canonical_url = $1 OR artifact_id = $2
@@ -2186,13 +2224,13 @@ async function previewIg(params: Params): Promise<Row> {
     }
     const where = conditions.length ? "WHERE " + conditions.join(" AND ") : "";
     const total = n(
-      (await query(`SELECT COUNT(*) AS c FROM fhir.artifacts ${where}`, sqlParams)).rows[0]?.c,
+      (await query(`SELECT COUNT(*) AS c FROM ${ARTIFACTS} ${where}`, sqlParams)).rows[0]?.c,
     );
     const artifactSearchRows = (
       await query(
         `
                 SELECT *
-                FROM fhir.artifacts
+                FROM ${ARTIFACTS}
                 ${where}
                 ORDER BY ${sortSql} ${direction}, artifact_key
                 LIMIT $${sqlParams.length + 1} OFFSET $${sqlParams.length + 2}
@@ -2217,7 +2255,7 @@ async function previewIg(params: Params): Promise<Row> {
         await query(
           `
                     SELECT *
-                    FROM fhir.artifacts
+                    FROM ${ARTIFACTS}
                     ${structureWhere}
                     ORDER BY COALESCE(NULLIF(title, ''), NULLIF(name, ''), artifact_id, artifact_key)
                     `,
@@ -2271,7 +2309,7 @@ async function previewIg(params: Params): Promise<Row> {
 
   if (selectedNode.startsWith("artifact:")) {
     const artifactKey = selectedNode.split(":").slice(1).join(":");
-    const row = (await query("SELECT * FROM fhir.artifacts WHERE artifact_key = $1", [artifactKey]))
+    const row = (await query(`SELECT * FROM ${ARTIFACTS} WHERE artifact_key = $1`, [artifactKey]))
       .rows[0];
     if (!row) return { type: "error", message: `Artifact '${artifactKey}' not found` };
     const selected = artifactSummary(row);
@@ -2282,14 +2320,14 @@ async function previewIg(params: Params): Promise<Row> {
     if (row.resource_type === "CodeSystem") {
       total = n(
         (
-          await query("SELECT COUNT(*) AS c FROM fhir.concepts WHERE cs_id = $1", [row.artifact_id])
+          await query(`SELECT COUNT(*) AS c FROM ${CONCEPTS} WHERE cs_id = $1`, [row.artifact_id])
         ).rows[0]?.c,
       );
       const conceptRows = (
         await query(
           `
                     SELECT code, display, definition
-                    FROM fhir.concepts
+                    FROM ${CONCEPTS}
                     WHERE cs_id = $1
                     ORDER BY code
                     LIMIT $2 OFFSET $3
@@ -2353,13 +2391,13 @@ async function previewIg(params: Params): Promise<Row> {
   }
   const where = conditions.length ? "WHERE " + conditions.join(" AND ") : "";
   const total = n(
-    (await query(`SELECT COUNT(*) AS c FROM fhir.artifacts ${where}`, sqlParams)).rows[0]?.c,
+    (await query(`SELECT COUNT(*) AS c FROM ${ARTIFACTS} ${where}`, sqlParams)).rows[0]?.c,
   );
   const rows = (
     await query(
       `
             SELECT *
-            FROM fhir.artifacts
+            FROM ${ARTIFACTS}
             ${where}
             ORDER BY ${sortSql} ${direction}, artifact_key
             LIMIT $${sqlParams.length + 1} OFFSET $${sqlParams.length + 2}
