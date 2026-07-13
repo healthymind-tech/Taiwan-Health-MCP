@@ -1,23 +1,14 @@
-# ── Polyglot admin worker image ───────────────────────────────────────────────
-# The Node worker (node-server/dist/admin/adminWorker.js) claims jobs and runs all
-# the deterministic loader/embed stages in TypeScript. Drug jobs are delegated to
-# the Python shim (src/run_one_drug_job.py), which still owns the TFDA crawl and
-# the analysis LLM. So this image bundles BOTH runtimes:
-#   /app/node-server/dist + node_modules   ← the Node worker (entrypoint)
-#   /app/src + /app/loader + python deps    ← the Python drug shim it spawns
+# ── Admin worker image ────────────────────────────────────────────────────────
+# The Node worker (node-server/dist/admin/adminWorker.js) claims jobs and runs
+# every stage — the deterministic file loaders, the embedding backfill, and the
+# drug pipeline (TFDA crawl → MinIO → OCR → analysis LLM). The drug stages used
+# to be delegated to a bundled Python shim; they are native TypeScript now, so
+# this image ships a single runtime.
 #
-# OCR is no longer part of this image: it is a MinerU HTTP service the pipeline
-# uploads PDFs to. That removed the last native hard-dependency (the dots_ocr VLM
-# and its cairo toolchain), so the Python deps are now pure-wheel installs and the
-# remaining drug closure is ordinary httpx/asyncpg/bs4 code.
+# OCR is an external MinerU HTTP service the pipeline uploads PDFs to, not a
+# library — which is what made the drug closure portable in the first place.
 #
 # Build context is the repo root (see compose.yaml `admin-worker.build`).
-
-# ── python deps (drug pipeline) ───────────────────────────────────────────────
-FROM python:3.12-slim AS pydeps
-WORKDIR /build
-COPY requirements.txt .
-RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 
 # ── node build (TS -> dist) ───────────────────────────────────────────────────
 FROM node:20-slim AS nodebuild
@@ -27,36 +18,22 @@ RUN npm ci
 COPY node-server/tsconfig.json ./
 COPY node-server/src ./src
 RUN npm run build
-# Drop dev deps from node_modules so the runtime image only ships production deps.
+# Drop dev deps so the runtime image only ships production deps.
 RUN npm prune --omit=dev
 
-# ── runtime: python base + node 20 runtime ────────────────────────────────────
-FROM python:3.12-slim
-
-# Node 20 runtime.
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl ca-certificates \
-    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
-    && apt-get install -y --no-install-recommends nodejs \
-    && apt-get purge -y curl && apt-get autoremove -y \
-    && rm -rf /var/lib/apt/lists/*
-
+# ── runtime ───────────────────────────────────────────────────────────────────
+FROM node:20-slim
 WORKDIR /app
 
-# Python deps + app source (consumed by the spawned drug shim).
-COPY --from=pydeps /install /usr/local
-COPY src/ ./src/
-COPY loader/ ./loader/
-
-# Node worker bundle.
 COPY --from=nodebuild /nb/dist ./node-server/dist
 COPY --from=nodebuild /nb/node_modules ./node-server/node_modules
 COPY node-server/package.json ./node-server/package.json
 
-ENV PYTHONUNBUFFERED=1 \
-    NODE_ENV=production \
-    DRUG_WORKER_PYTHON=python \
-    DRUG_WORKER_SRC_DIR=/app/src
+# The Analysis LM system prompt ships with the code and is read at analysis time.
+COPY src/prompts/ ./src/prompts/
+
+ENV NODE_ENV=production \
+    DRUG_ANALYSIS_PROMPT_PATH=/app/src/prompts/drug/analysis_prompt.txt
 
 WORKDIR /app/node-server
 CMD ["node", "dist/admin/adminWorker.js"]

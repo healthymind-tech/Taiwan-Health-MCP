@@ -13,6 +13,24 @@
 import { query } from "./db.js";
 import { logInfo } from "./logger.js";
 import { normalizeLicenseToken } from "./fhirMedicationService.js";
+import * as minioService from "./minioService.js";
+
+/** Best-effort MIME guess from a filename extension, for inline preview. */
+function guessMimeFromName(filename: string): string {
+  const lower = (filename || "").toLowerCase();
+  if (lower.endsWith(".pdf")) return "application/pdf";
+  if (lower.endsWith(".json")) return "application/json";
+  if (lower.endsWith(".md") || lower.endsWith(".markdown")) return "text/markdown";
+  if (lower.endsWith(".txt") || lower.endsWith(".log")) return "text/plain";
+  if (lower.endsWith(".html") || lower.endsWith(".htm")) return "text/html";
+  if (lower.endsWith(".png")) return "image/png";
+  if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+  if (lower.endsWith(".gif")) return "image/gif";
+  if (lower.endsWith(".webp")) return "image/webp";
+  if (lower.endsWith(".bmp")) return "image/bmp";
+  if (lower.endsWith(".svg")) return "image/svg+xml";
+  return "application/octet-stream";
+}
 
 // ---- Pill appearance synonym map (mirror `_PILL_FEATURE_SYNONYMS`) ----------
 const PILL_FEATURE_SYNONYMS: Record<string, string[]> = {
@@ -512,6 +530,40 @@ export class DrugService {
       latest_insert_only,
       assets,
     };
+  }
+
+  /**
+   * Raw bytes of one asset, for inline preview in the admin console.
+   *
+   * Served through a same-origin admin proxy rather than a presigned URL: the
+   * browser then never has to reach MinIO directly, which would mean CORS plus
+   * an internal hostname it usually cannot resolve.
+   *
+   * Returns null when the asset is unknown, has no stored object, or MinIO is
+   * off — the caller maps that to a 404 rather than an empty success.
+   */
+  async getDrugAssetContent(
+    assetId: string,
+  ): Promise<{ data: Buffer; mimeType: string; filename: string } | null> {
+    if (!minioService.enabled()) return null;
+    const res = await query<{
+      object_key: string | null;
+      mime_type: string | null;
+      source_filename: string | null;
+      normalized_filename: string | null;
+    }>(
+      `SELECT object_key, mime_type, source_filename, normalized_filename
+         FROM drug.assets
+        WHERE asset_id::text = $1`,
+      [assetId],
+    );
+    const row = res.rows[0];
+    if (!row) return null;
+    const objectKey = row.object_key || "";
+    if (!objectKey) return null;
+    const data = await minioService.downloadBytes(objectKey);
+    const filename = row.source_filename || row.normalized_filename || "document";
+    return { data, mimeType: row.mime_type || guessMimeFromName(filename), filename };
   }
 
   async identifyUnknownPill(features: string, limit = 5): Promise<Record<string, unknown>> {

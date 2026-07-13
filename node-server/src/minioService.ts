@@ -60,6 +60,21 @@ export function bucket(): string {
 }
 
 /**
+ * The locator an object *would* have, without touching MinIO. Mirrors
+ * `MinioService.build_locator`: with no bucket configured the URI is empty, so a
+ * failed upload still records where the object was meant to go.
+ */
+export function buildLocator(objectKey: string): {
+  bucket: string;
+  object_key: string;
+  minio_uri: string;
+} {
+  const name = _config?.bucket ?? "";
+  if (!name) return { bucket: "", object_key: objectKey, minio_uri: "" };
+  return { bucket: name, object_key: objectKey, minio_uri: `minio://${name}/${objectKey}` };
+}
+
+/**
  * Upload bytes to the configured bucket. Mirrors `MinioService.upload_bytes`:
  * returns the locator dict ({bucket, object_key, minio_uri, etag, version_id}).
  * Throws when the service is not enabled (→ RuntimeError-equivalent upstream).
