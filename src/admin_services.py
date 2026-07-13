@@ -15,7 +15,11 @@ import httpx
 
 import cache as cache_module
 from database import PoolLike
-from drug_analysis_service import DrugAnalysisConfig, DrugAnalysisService
+from drug_analysis_service import (
+    DrugAnalysisConfig,
+    DrugAnalysisService,
+    load_drug_analysis_config,
+)
 from minio_service import MinioService
 
 SERVICE_PROBE_ORDER = [
@@ -522,14 +526,7 @@ async def run_service_probes(
 
     # Build the analysis/OCR config from DB settings so the Services-tab health
     # view reflects the live (DB-managed) configuration.
-    import admin_settings as _admin_settings
-
-    analysis_service = DrugAnalysisService(
-        DrugAnalysisConfig.from_values(
-            ocr=await _admin_settings.get_group(pool, "ocr"),
-            analysis=await _admin_settings.get_group(pool, "analysis"),
-        )
-    )
+    analysis_service = DrugAnalysisService(await load_drug_analysis_config(pool))
     analysis_pair: tuple[dict[str, Any], dict[str, Any]] | None = None
     checked_at = datetime.now(timezone.utc)
     results: list[dict[str, Any]] = []

@@ -282,6 +282,34 @@ CREATE TABLE IF NOT EXISTS admin.app_settings (
     PRIMARY KEY (group_key, key)
 );
 
+-- LLM endpoints, one row per profile, for the roles that call a model server.
+-- The selection strategy (failover / weighted) and the globals every profile of
+-- a role must agree on (embedding dimensions) stay in app_settings; the
+-- endpoint, its key, its model and its per-model knobs live here.
+--   kind     — 'analysis' | 'embedding'
+--   priority — failover order, lowest first
+--   weight   — traffic share under the weighted strategy
+--   params   — analysis: {temperature, max_tokens}; embedding: {}
+CREATE TABLE IF NOT EXISTS admin.llm_profiles (
+    id          BIGSERIAL PRIMARY KEY,
+    kind        TEXT NOT NULL CHECK (kind IN ('analysis', 'embedding')),
+    name        TEXT NOT NULL,
+    provider    TEXT NOT NULL,
+    base_url    TEXT NOT NULL DEFAULT '',
+    api_key     TEXT NOT NULL DEFAULT '',
+    model       TEXT NOT NULL DEFAULT '',
+    enabled     BOOLEAN NOT NULL DEFAULT TRUE,
+    priority    INTEGER NOT NULL DEFAULT 100,
+    weight      INTEGER NOT NULL DEFAULT 1 CHECK (weight >= 0),
+    params      JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (kind, name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_llm_profiles_kind_enabled
+    ON admin.llm_profiles (kind, enabled, priority);
+
 -- Registered WebAuthn / passkey credentials for admin login (additional to the
 -- password). credential_id/public_key are base64url/raw-bytes as produced by
 -- @simplewebauthn; counter guards against cloned-authenticator replay.

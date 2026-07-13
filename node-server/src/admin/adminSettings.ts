@@ -13,6 +13,13 @@
 
 import { query, withTransaction } from "../db.js";
 import { logWarning } from "../logger.js";
+import {
+  exportProfiles,
+  getProfile,
+  importProfiles,
+  type LlmProfile,
+  type ProfileKind,
+} from "./llmProfiles.js";
 
 export const SECRET_MASK = "●●●●●●●●";
 
@@ -38,6 +45,24 @@ export interface SettingsGroupSpec {
   description: string;
   provider_field?: string;
   test?: string;
+  /**
+   * Whether a fresh install seeds this group from `.env`. False for the groups an
+   * operator must configure in the admin console (the LM/OCR endpoints): they have
+   * no sensible machine-wide default, and seeding them from env is what let a
+   * typo'd value become permanent state. Infrastructure groups (MinIO, TFDA,
+   * registry, worker) are still seeded — compose owns their credentials and the
+   * app must come up usable without a manual step.
+   */
+  seed_from_env?: boolean;
+  /**
+   * Infrastructure the deployment owns, not a knob an operator turns: shown and
+   * testable, but never writable through the API. Editing MinIO's endpoint here
+   * would not move the running container — it would just point the app somewhere
+   * else and orphan every object key already stored against the old bucket. The
+   * worker's cadence is only read at worker start-up, so a form that appeared to
+   * change it live would simply be lying. Both come from `.env` / compose.
+   */
+  readonly?: boolean;
   fields: SettingsField[];
 }
 
@@ -91,36 +116,22 @@ const OLLAMA_BASE_URL = "http://localhost:11434";
 // ── Registry — mirrors admin_settings.SETTINGS_SCHEMA exactly. ───────────────
 export const SETTINGS_SCHEMA: Record<string, SettingsGroupSpec> = {
   embedding: {
-    label: "Embedding Model",
-    description: "Embedding provider used by semantic search and all embed jobs.",
-    provider_field: "provider",
-    test: "embedding",
+    label: "Embedding",
+    description:
+      "How embed requests are spread across the embedding profiles, plus the settings every " +
+      "profile must share. Endpoints themselves are the profiles below.",
+    seed_from_env: false,
     fields: [
-      field("provider", "str", "ollama", "EMBEDDING_PROVIDER", "Provider", {
-        options: ["ollama", "openai", "google"],
-        help: "ollama = local Ollama; openai = OpenAI-compatible /v1; google = Gemini API.",
-      }),
-      field("base_url", "str", "http://host.docker.internal:11434", "OLLAMA_BASE_URL", "Base URL", {
-        show_if: { provider: ["ollama", "openai"] },
-        is_url: true,
-        provider_defaults: { ollama: "http://host.docker.internal:11434", openai: OPENAI_BASE_URL },
-        help: "Ollama host (…:11434) or the OpenAI-compatible /v1 root. (Google uses a fixed endpoint.)",
-      }),
-      field("api_key", "secret", "", "EMBEDDING_API_KEY", "API Key", {
-        show_if: { provider: ["openai", "google"] },
-        help: "Leave blank to keep the stored key.",
-      }),
-      field("model", "str", "qwen3-embedding:0.6b", "OLLAMA_EMBED_MODEL", "Model", {
-        is_model: true,
-        provider_defaults: {
-          ollama: "qwen3-embedding:0.6b",
-          openai: "text-embedding-3-small",
-          google: "gemini-embedding-001",
-        },
-        help: "Click 'Fetch models' to load the provider's available embedding models.",
+      field("strategy", "str", "failover", "EMBEDDING_STRATEGY", "Strategy", {
+        options: ["failover", "weighted"],
+        help:
+          "failover = always the highest-priority healthy profile; weighted = spread by weight, " +
+          "still falling back on failure.",
       }),
       field("dimensions", "int", 1024, "OLLAMA_EMBED_DIMENSIONS", "Dimensions", {
-        help: "Vector size stored in pgvector; must match the model's output.",
+        help:
+          "Vector size stored in pgvector. Must match what the model returns — and every stored " +
+          "vector, from every module, shares this one size.",
       }),
       field("timeout", "int", 30, "OLLAMA_EMBED_TIMEOUT", "Timeout (s)"),
       field("batch_size", "int", 32, "OLLAMA_EMBED_BATCH_SIZE", "Batch size"),
@@ -128,35 +139,19 @@ export const SETTINGS_SCHEMA: Record<string, SettingsGroupSpec> = {
   },
   analysis: {
     label: "Analysis LM",
-    description: "Text-generation endpoint backing structured drug-insert analysis.",
-    provider_field: "provider",
-    test: "analysis",
+    description:
+      "How drug-insert analysis calls are spread across the Analysis LM profiles. Endpoints, " +
+      "models and keys are the profiles below.",
+    seed_from_env: false,
     fields: [
-      field("provider", "str", "openai", "DRUG_ANALYSIS_PROVIDER", "Provider", {
-        options: ["openai", "ollama"],
-        help: "openai = OpenAI-compatible (/v1); ollama = Ollama native (/api).",
-      }),
-      field("base_url", "str", OPENAI_BASE_URL, "DRUG_ANALYSIS_BASE_URL", "Base URL", {
-        is_url: true,
-        provider_defaults: { openai: OPENAI_BASE_URL, ollama: OLLAMA_BASE_URL },
+      field("strategy", "str", "failover", "DRUG_ANALYSIS_STRATEGY", "Strategy", {
+        options: ["failover", "weighted"],
         help:
-          "OpenAI-compatible /v1 root (official API, Azure, vLLM…) or the Ollama host. " +
-          "Inside Docker, a host-local Ollama is reachable as http://host.docker.internal:11434.",
+          "failover = always the highest-priority healthy profile; weighted = spread by weight, " +
+          "still falling back on failure. Either way a failed call moves on to the next profile.",
       }),
-      field("api_key", "secret", "", "DRUG_ANALYSIS_API_KEY", "API Key", {
-        show_if: { provider: ["openai"] },
-        help: "Leave blank to keep the stored key. Blank on a fresh install means no Authorization header is sent.",
-      }),
-      field("model", "str", "gpt-4o-mini", "DRUG_ANALYSIS_MODEL_NAME", "Model", {
-        is_model: true,
-        provider_defaults: { openai: "gpt-4o-mini", ollama: "qwen2.5:7b" },
-        help: "Click 'Fetch models' to load the models this server actually serves.",
-      }),
-      field("temperature", "float", 0.1, "DRUG_ANALYSIS_TEMPERATURE", "Temperature"),
-      field("max_tokens", "int", 4096, "DRUG_ANALYSIS_MAX_TOKENS", "Max tokens"),
-      field("max_retries", "int", 3, "DRUG_ANALYSIS_MAX_RETRIES", "Max retries"),
-      field("prompt_path", "str", "", "DRUG_ANALYSIS_PROMPT_PATH", "Prompt path (optional)", {
-        help: "Leave blank to use the bundled default prompt.",
+      field("max_retries", "int", 3, "DRUG_ANALYSIS_MAX_RETRIES", "Max retries", {
+        help: "Attempts at getting well-formed JSON out of a profile before moving to the next one.",
       }),
     ],
   },
@@ -165,6 +160,7 @@ export const SETTINGS_SCHEMA: Record<string, SettingsGroupSpec> = {
     description: "Vision/OCR backend for drug insert PDFs.",
     provider_field: "provider",
     test: "ocr",
+    seed_from_env: false,
     fields: [
       field("provider", "str", "dots_ocr", "DRUG_OCR_PROVIDER", "Provider", {
         options: ["dots_ocr", "vllm"],
@@ -175,15 +171,15 @@ export const SETTINGS_SCHEMA: Record<string, SettingsGroupSpec> = {
         is_model: true,
       }),
       field("prompt_mode", "str", "prompt_layout_all_en", "DRUG_OCR_PROMPT_MODE", "Prompt mode"),
-      field("prompt_path", "str", "", "DRUG_OCR_PROMPT_PATH", "Prompt path (optional)", {
-        help: "Leave blank to use the bundled default prompt.",
-      }),
     ],
   },
   minio: {
     label: "MinIO Object Storage",
-    description: "Object storage for uploaded sources and drug assets.",
+    description:
+      "Object storage for uploaded sources and drug assets. Owned by the deployment " +
+      "(.env / compose) — shown here so you can test it, not change it.",
     test: "minio",
+    readonly: true,
     fields: [
       field("endpoint", "str", "", "MINIO_ENDPOINT", "Endpoint", { help: "host:port, e.g. minio:9000" }),
       field("access_key", "str", "", "MINIO_ACCESS_KEY", "Access key"),
@@ -218,7 +214,10 @@ export const SETTINGS_SCHEMA: Record<string, SettingsGroupSpec> = {
   },
   worker: {
     label: "Admin Worker Tuning",
-    description: "Background worker loop cadence. Changes take effect on the next worker restart.",
+    description:
+      "Background worker loop cadence, read once when the worker starts. Owned by the " +
+      "deployment (.env / compose); change it there and restart the worker.",
+    readonly: true,
     fields: [
       field("name", "str", "admin-worker", "ADMIN_WORKER_NAME", "Worker name"),
       field("poll_seconds", "float", 3.0, "ADMIN_WORKER_POLL_SECONDS", "Poll interval (s)"),
@@ -364,6 +363,7 @@ export function groupMetadata(
     description: spec.description ?? "",
     provider_field: spec.provider_field ?? null,
     test: spec.test ?? null,
+    readonly: spec.readonly ?? false,
     fields,
   };
 }
@@ -438,6 +438,7 @@ function seedValue(f: SettingsField, provider?: string): string {
 export async function seedIfEmpty(): Promise<number> {
   const rows: [string, string, string][] = [];
   for (const [group, spec] of Object.entries(SETTINGS_SCHEMA)) {
+    if (spec.seed_from_env === false) continue; // operator configures these in the UI
     // Env is the seed source, so the provider we specialise defaults on is the
     // env-selected one (not whatever the schema happens to default to).
     const envStored: Record<string, string | null> = {};
@@ -546,6 +547,11 @@ export async function saveGroup(
 ): Promise<Record<string, string | number | boolean>> {
   const spec = SETTINGS_SCHEMA[group];
   if (!spec) throw new Error(`Unknown settings group: ${group}`);
+  if (spec.readonly) {
+    throw new Error(
+      `${group} is managed by the deployment (.env / compose) and cannot be changed here.`,
+    );
+  }
 
   const toWrite: [string, string, string, string][] = [];
   for (const f of spec.fields) {
@@ -596,6 +602,168 @@ export async function saveGroup(
   }
   bustCache(group);
   return getGroup(group, { revealSecrets: false });
+}
+
+/**
+ * Has an operator actually configured this group? True once any row exists for
+ * it. `getGroup` always answers with schema defaults so the form has something
+ * to prefill, which means callers cannot tell "left at the default" from "never
+ * set" — but a probe or a drug job must not go dial a default endpoint nobody
+ * chose. They ask this instead.
+ */
+export async function isGroupConfigured(group: string): Promise<boolean> {
+  const res = await query<{ one: number }>(
+    "SELECT 1 AS one FROM admin.app_settings WHERE group_key = $1 LIMIT 1",
+    [group],
+  );
+  return res.rows.length > 0;
+}
+
+// ── Export / import ──────────────────────────────────────────────────────────
+
+export const SETTINGS_EXPORT_VERSION = 1;
+
+export interface SettingsExport {
+  version: number;
+  exported_at: string;
+  groups: Record<string, Record<string, string>>;
+  /** LLM endpoints (admin.llm_profiles), keys included — see exportSettings. */
+  profiles: Omit<LlmProfile, "id">[];
+}
+
+/**
+ * Every stored setting, as a portable document. Secrets are included in the
+ * clear — the file is meant to restore a working configuration verbatim, and a
+ * redacted key would restore a broken one. Callers (the admin route) must treat
+ * the result as a credential-bearing artefact.
+ *
+ * Only keys that exist in the DB are exported: an un-configured group stays
+ * absent rather than being materialised as a wall of defaults.
+ */
+export async function exportSettings(): Promise<SettingsExport> {
+  const res = await query<{ group_key: string; key: string; value: string | null }>(
+    "SELECT group_key, key, value FROM admin.app_settings ORDER BY group_key, key",
+  );
+  const groups: Record<string, Record<string, string>> = {};
+  for (const r of res.rows) {
+    const spec = SETTINGS_SCHEMA[r.group_key];
+    if (!spec || !spec.fields.some((f) => f.key === r.key)) continue; // drop retired keys
+    // Deployment-owned groups come from .env on every install; carrying them in a
+    // portable document would just re-point a *different* install at this one's
+    // MinIO (and hand over its credentials).
+    if (spec.readonly) continue;
+    (groups[r.group_key] ??= {})[r.key] = r.value ?? "";
+  }
+  return {
+    version: SETTINGS_EXPORT_VERSION,
+    exported_at: new Date().toISOString(),
+    groups,
+    profiles: await exportProfiles(),
+  };
+}
+
+export interface SettingsImportResult {
+  ok: boolean;
+  imported: number;
+  groups: string[];
+  profiles: number;
+  skipped: string[];
+}
+
+/**
+ * Apply an exported document. Every value goes through the same validation as a
+ * form save (enum, URL, type coercion), so a hand-edited file cannot write junk
+ * that the UI would then have to defend against. Unknown groups/keys are skipped
+ * and reported rather than failing the whole import — an export from an older
+ * version stays usable.
+ *
+ * Unlike a form save, a secret present in the document *is* written: the file is
+ * the operator's own backup, and restoring it must restore the keys.
+ */
+export async function importSettings(
+  doc: unknown,
+  updatedBy: string,
+): Promise<SettingsImportResult> {
+  const root = (doc ?? {}) as Record<string, unknown>;
+  const version = Number(root.version ?? 0);
+  if (!Number.isFinite(version) || version < 1 || version > SETTINGS_EXPORT_VERSION) {
+    throw new Error(`Unsupported settings export version: ${String(root.version)}`);
+  }
+  const groupsIn = (root.groups ?? {}) as Record<string, unknown>;
+  if (typeof groupsIn !== "object" || Array.isArray(groupsIn)) {
+    throw new Error("Malformed export: 'groups' must be an object");
+  }
+
+  const skipped: string[] = [];
+  const toWrite: [string, string, string][] = [];
+  const touched = new Set<string>();
+
+  for (const [group, valuesIn] of Object.entries(groupsIn)) {
+    const spec = SETTINGS_SCHEMA[group];
+    if (!spec || spec.readonly || typeof valuesIn !== "object" || valuesIn === null) {
+      skipped.push(group);
+      continue;
+    }
+    for (const [key, rawValue] of Object.entries(valuesIn as Record<string, unknown>)) {
+      const f = spec.fields.find((x) => x.key === key);
+      if (!f) {
+        skipped.push(`${group}.${key}`);
+        continue;
+      }
+      if (f.options !== null && !f.options.includes(String(rawValue))) {
+        throw new Error(`${group}.${key}: '${String(rawValue)}' is not one of ${pyListRepr(f.options)}`);
+      }
+      if (f.is_url) {
+        const s = String(rawValue ?? "").trim();
+        if (s !== "" && !isValidHttpUrl(s)) {
+          throw new Error(`${group}.${key}: '${String(rawValue)}' is not a valid http(s) URL`);
+        }
+      }
+      toWrite.push([group, key, valueToStr(f, coerce(f, rawValue))]);
+      touched.add(group);
+    }
+  }
+
+  if (toWrite.length > 0) {
+    await withTransaction(async (client) => {
+      for (const [g, key, val] of toWrite) {
+        await client.query(
+          `INSERT INTO admin.app_settings (group_key, key, value, updated_by, updated_at)
+             VALUES ($1, $2, $3, $4, NOW())
+           ON CONFLICT (group_key, key)
+           DO UPDATE SET value = EXCLUDED.value,
+                         updated_by = EXCLUDED.updated_by,
+                         updated_at = NOW()`,
+          [g, key, val, updatedBy],
+        );
+      }
+      await client.query(
+        `INSERT INTO admin.admin_audit_log
+           (admin_user, action, target_type, target_id, payload_json)
+         VALUES ($1, 'import_settings', 'settings', 'all', $2::jsonb)`,
+        [
+          updatedBy,
+          JSON.stringify({
+            groups: [...touched].sort(),
+            key_count: toWrite.length,
+            skipped,
+          }),
+        ],
+      );
+    });
+  }
+  // Profiles are replaced wholesale (they are a list, not a merge), and validated
+  // by importProfiles — including the "one embedding model" rule.
+  const profileCount = await importProfiles((root as { profiles?: unknown }).profiles, updatedBy);
+
+  bustCache();
+  return {
+    ok: true,
+    imported: toWrite.length,
+    groups: [...touched].sort(),
+    profiles: profileCount,
+    skipped,
+  };
 }
 
 // ── Provider test / model-list helpers (operate on draft, unsaved values) ─────
@@ -700,20 +868,6 @@ export async function listModels(group: string, draftIn: Record<string, unknown>
   if (!spec) throw new Error(`Unknown settings group: ${group}`);
   const draft = await resolveDraft(group, draftIn);
 
-  if (group === "embedding") {
-    const provider = String((draft.provider ?? "ollama") || "ollama").toLowerCase();
-    const base = String((draft.base_url ?? "") || "").replace(/\/+$/, "");
-    const key = String((draft.api_key ?? "") || "");
-    if (provider === "openai") return openaiModels(base, key);
-    if (provider === "google") return googleEmbeddingModels(key);
-    return ollamaTags(base);
-  }
-  if (group === "analysis") {
-    const provider = String((draft.provider ?? "openai") || "openai").toLowerCase();
-    const base = String((draft.base_url ?? "") || "").replace(/\/+$/, "");
-    if (provider === "ollama") return ollamaTags(base);
-    return openaiModels(base, String((draft.api_key ?? "") || ""));
-  }
   if (group === "ocr") {
     const ip = String((draft.server_ip ?? "") || "").trim();
     const port = Number(draft.port ?? 8002) || 8002;
@@ -792,12 +946,63 @@ interface TestResult {
 /** Run a real test against the draft config. Returns {ok, message, details}. */
 export async function testGroup(group: string, draftIn: Record<string, unknown>): Promise<TestResult> {
   const draft = await resolveDraft(group, draftIn);
-  if (group === "embedding") return testEmbedding(draft);
-  if (group === "analysis") return testAnalysis(draft);
   if (group === "ocr") return testOcr(draft);
   if (group === "minio") return testMinio(draft);
   if (group === "tfda") return testTfda(draft);
   return { ok: false, message: "This service has no test." };
+}
+
+// ── Per-profile model list / test (the endpoint now lives on the profile) ─────
+
+/**
+ * A profile draft as the admin form sends it. A blank `api_key` means "use the
+ * key already stored on this profile" (`id`), so the operator can test an edit
+ * without retyping the secret — the same rule the settings form follows.
+ */
+export interface ProfileDraft {
+  id?: number;
+  kind: ProfileKind;
+  provider: string;
+  base_url: string;
+  api_key?: string;
+  model?: string;
+  params?: Record<string, unknown>;
+}
+
+async function resolveProfileKey(draft: ProfileDraft): Promise<string> {
+  const typed = String(draft.api_key ?? "").trim();
+  if (typed && typed !== SECRET_MASK) return typed;
+  if (draft.id !== undefined && draft.id > 0) {
+    const stored = await getProfile(draft.id);
+    if (stored) return stored.api_key;
+  }
+  return "";
+}
+
+/** Models the profile's server actually serves, for the model picker. */
+export async function listProfileModels(draft: ProfileDraft): Promise<ModelsResult> {
+  const provider = String(draft.provider || "").toLowerCase();
+  const base = String(draft.base_url || "").replace(/\/+$/, "");
+  const key = await resolveProfileKey(draft);
+  if (provider === "google") return googleEmbeddingModels(key);
+  if (provider === "ollama") return ollamaTags(base);
+  return openaiModels(base, key);
+}
+
+/** Run a real call against one profile's endpoint. */
+export async function testProfile(draft: ProfileDraft): Promise<TestResult> {
+  const key = await resolveProfileKey(draft);
+  const common = {
+    provider: draft.provider,
+    base_url: draft.base_url,
+    model: draft.model,
+    api_key: key,
+  };
+  if (draft.kind === "embedding") {
+    const emb = await getGroup("embedding");
+    return testEmbedding({ ...common, dimensions: emb.dimensions, timeout: emb.timeout });
+  }
+  return testAnalysis(common);
 }
 
 async function testEmbedding(draft: Record<string, unknown>): Promise<TestResult> {

@@ -313,6 +313,8 @@ export interface SettingsGroup {
   group: string;
   label: string;
   description: string;
+  /** Deployment-owned (.env / compose): displayed and testable, never writable. */
+  readonly: boolean;
   provider_field: string | null;
   test: string | null;
   fields: SettingsField[];
@@ -320,6 +322,23 @@ export interface SettingsGroup {
 
 export interface SettingsPayload {
   groups: SettingsGroup[];
+}
+
+export type LlmProfileKind = "analysis" | "embedding";
+
+/** One LLM endpoint. The API never sends the key — only whether one is stored. */
+export interface LlmProfile {
+  id: number;
+  kind: LlmProfileKind;
+  name: string;
+  provider: string;
+  base_url: string;
+  model: string;
+  enabled: boolean;
+  priority: number;
+  weight: number;
+  params: Record<string, number | string | boolean> | null;
+  has_api_key: boolean;
 }
 
 export interface SettingsActionResult {

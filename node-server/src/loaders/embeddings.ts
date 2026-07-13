@@ -28,6 +28,7 @@ import pg from "pg";
 import { config } from "../config.js";
 import { logInfo, logWarning, logError, configureLogLevel } from "../logger.js";
 import { EmbeddingService, type EmbeddingSettings } from "../embeddingService.js";
+import { candidateOrder, type LlmProfile } from "../admin/llmProfiles.js";
 
 const HNSW_MAX_DIMS = 4000; // pgvector halfvec HNSW limit
 
@@ -54,10 +55,7 @@ function textHash(text: string): string {
 
 async function loadSettings(pool: pg.Pool): Promise<EmbeddingSettings> {
   const defaults: EmbeddingSettings = {
-    provider: "ollama",
-    baseUrl: "",
-    apiKey: "",
-    model: "",
+    strategy: "failover",
     timeout: 30,
     batchSize: 32,
     dimensions: 1024,
@@ -67,11 +65,9 @@ async function loadSettings(pool: pg.Pool): Promise<EmbeddingSettings> {
       "SELECT key, value FROM admin.app_settings WHERE group_key = 'embedding'",
     );
     const m = new Map(res.rows.map((r) => [r.key, r.value ?? ""]));
+    const strategy = (m.get("strategy") || "failover").trim().toLowerCase();
     return {
-      provider: (m.get("provider") || "ollama").trim().toLowerCase(),
-      baseUrl: (m.get("base_url") || "").replace(/\/+$/, ""),
-      apiKey: m.get("api_key") || "",
-      model: m.get("model") || "",
+      strategy: strategy === "weighted" ? "weighted" : "failover",
       timeout: Number(m.get("timeout")) || 30,
       batchSize: Number(m.get("batch_size")) || 32,
       dimensions: Number(m.get("dimensions")) || 1024,
@@ -81,38 +77,48 @@ async function loadSettings(pool: pg.Pool): Promise<EmbeddingSettings> {
   }
 }
 
-/** Provider readiness check (mirror `_check_ollama`). */
-async function checkProvider(s: EmbeddingSettings): Promise<boolean> {
-  if (s.provider === "ollama") {
-    if (!s.baseUrl) {
-      logWarning("Embedding base URL not set — skipping embedding generation");
-      return false;
+/** Enabled embedding endpoints, in the order this run should try them. */
+async function loadProfiles(settings: EmbeddingSettings): Promise<LlmProfile[]> {
+  return candidateOrder("embedding", settings.strategy);
+}
+
+/**
+ * Is at least one embedding endpoint actually reachable? A dead host is not a
+ * reason to abort when another profile can serve the same model, so this only
+ * fails the run when *every* profile is unreachable.
+ */
+async function checkProvider(s: EmbeddingSettings, profiles: LlmProfile[]): Promise<boolean> {
+  if (profiles.length === 0) {
+    logError("No enabled embedding profile — configure one in Admin → Settings → Embedding");
+    return false;
+  }
+  for (const p of profiles) {
+    const base = p.base_url.replace(/\/+$/, "");
+    if (p.provider !== "ollama") {
+      // Hosted providers: a key and a model is all we can check without spending a call.
+      if (p.model && p.api_key) {
+        logInfo(`${p.provider} embedding profile '${p.name}' model=${p.model} dimensions=${s.dimensions}`);
+        return true;
+      }
+      logWarning(`Embedding profile '${p.name}' needs a model and API key — skipping it`);
+      continue;
     }
     try {
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), 5000);
-      const r = await fetch(`${s.baseUrl}/api/version`, { signal: ctrl.signal });
+      const r = await fetch(`${base}/api/version`, { signal: ctrl.signal });
       clearTimeout(timer);
       if (r.ok) {
-        logInfo(
-          `Ollama OK url=${s.baseUrl} model=${s.model} dimensions=${s.dimensions} batch_size=${s.batchSize}`,
-        );
+        logInfo(`Ollama OK profile='${p.name}' url=${base} model=${p.model} dimensions=${s.dimensions}`);
         return true;
       }
     } catch {
-      /* fall through */
+      /* try the next profile */
     }
-    logError(`Ollama not reachable at ${s.baseUrl} — skipping embedding`);
-    return false;
+    logWarning(`Embedding profile '${p.name}' not reachable at ${base}`);
   }
-  if (!s.model || !s.apiKey) {
-    logError(`${s.provider} embedding needs a model and API key — skipping`);
-    return false;
-  }
-  logInfo(
-    `${s.provider} embedding model=${s.model} dimensions=${s.dimensions} batch_size=${s.batchSize}`,
-  );
-  return true;
+  logError("No embedding profile is reachable — skipping embedding");
+  return false;
 }
 
 /** ALTER all embedding halfvec columns to match the configured dimensions. */
@@ -446,9 +452,14 @@ const MODULES: Record<string, (p: pg.Pool, s: EmbeddingService, b: number) => Pr
   snomed: embedSnomed,
 };
 
-/** Loaded embedding settings (base_url etc.) for the admin worker's validate phase. */
+/** Shared embedding settings for the admin worker's validate phase. */
 export async function loadEmbeddingSettings(pool: pg.Pool): Promise<EmbeddingSettings> {
   return loadSettings(pool);
+}
+
+/** Enabled embedding endpoints, for the admin worker's validate phase. */
+export async function loadEmbeddingProfiles(settings: EmbeddingSettings): Promise<LlmProfile[]> {
+  return loadProfiles(settings);
 }
 
 /**
@@ -461,7 +472,7 @@ export async function runEmbedModule(pool: pg.Pool, moduleKey: string): Promise<
   if (!fn) throw new Error(`unknown embed module: ${moduleKey}`);
   const settings = await loadSettings(pool);
   await ensureDimensions(pool, settings.dimensions);
-  const svc = new EmbeddingService(settings);
+  const svc = new EmbeddingService(settings, await loadProfiles(settings));
   await fn(pool, svc, settings.batchSize);
 }
 
@@ -476,12 +487,13 @@ async function main(): Promise<void> {
   const pool = new pg.Pool({ connectionString: cfg.databaseUrl, max: 4 });
   try {
     const settings = await loadSettings(pool);
+    const profiles = await loadProfiles(settings);
     if (ensureDims) await ensureDimensions(pool, settings.dimensions);
-    if (!(await checkProvider(settings))) {
+    if (!(await checkProvider(settings, profiles))) {
       logError("Embedding provider not ready — nothing embedded");
       return;
     }
-    const svc = new EmbeddingService(settings);
+    const svc = new EmbeddingService(settings, profiles);
     for (const m of modules) {
       await MODULES[m](pool, svc, settings.batchSize);
     }

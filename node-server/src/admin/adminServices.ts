@@ -15,7 +15,8 @@
 import { query, withTransaction } from "../db.js";
 import { tsIsoExpr, pyIso } from "./adminJobs.js";
 import { getClient as getRedisClient } from "../cache.js";
-import { getGroup } from "./adminSettings.js";
+import { getGroup, isGroupConfigured } from "./adminSettings.js";
+import { listEnabled, type LlmProfile } from "./llmProfiles.js";
 import * as minioService from "../minioService.js";
 
 export const SERVICE_PROBE_ORDER = [
@@ -294,24 +295,84 @@ async function probeMinio(): Promise<ProbeResult> {
   return { status: "degraded", endpoint: "", latency_ms: null, message: "MinIO disabled by configuration.", details: { state: "disabled" } };
 }
 
-async function probeEmbedding(): Promise<ProbeResult> {
-  const emb = await getGroup("embedding");
-  const baseUrl = String((emb.base_url ?? "") || "").trim().replace(/\/+$/, "");
-  const model = String((emb.model ?? "") || "").trim();
-  if (!baseUrl) {
-    return { status: "degraded", endpoint: "", latency_ms: null, message: "Embedding is disabled because the base URL is not set.", details: { model, state: "disabled" } };
-  }
-  const probe = await probeHttpCandidates(ollamaCandidates(baseUrl));
+/**
+ * The Settings groups an operator must fill in are not seeded, so `getGroup`
+ * answering with schema defaults means "nothing is set" — not "set to this".
+ * Probing those defaults would dial an endpoint nobody chose and then report it
+ * as broken; say "unconfigured" instead.
+ */
+function unconfigured(label: string): ProbeResult {
   return {
-    status: probe.ok ? "ok" : "error",
-    endpoint: probe.endpoint,
-    latency_ms: probe.latencyMs,
-    message: probe.ok ? `Embedding endpoint reachable for model ${model}.` : `Embedding endpoint probe failed: ${probe.message}`,
-    details: { model, base_url: baseUrl, ...probe.details },
+    status: "degraded",
+    endpoint: "",
+    latency_ms: null,
+    message: `${label} is not configured yet — set it up in Admin → Settings.`,
+    details: { state: "unconfigured" },
   };
 }
 
+/**
+ * Probe every enabled profile of a role and fold the results into one row: the
+ * role is healthy while *any* endpoint answers (that is the point of failover),
+ * degraded when some are down, error only when they all are.
+ */
+async function probeProfiles(
+  kind: "analysis" | "embedding",
+  label: string,
+  probeOne: (p: LlmProfile) => Promise<{ ok: boolean; endpoint: string; latencyMs: number | null; message: string; details: Record<string, unknown> }>,
+): Promise<ProbeResult> {
+  const profiles = await listEnabled(kind);
+  const usable = profiles.filter((p) => p.base_url && p.model);
+  if (usable.length === 0) return unconfigured(label);
+
+  const results = await Promise.all(
+    usable.map(async (p) => ({ profile: p, probe: await probeOne(p) })),
+  );
+  const healthy = results.filter((r) => r.probe.ok);
+  const failed = results.filter((r) => !r.probe.ok);
+  const first = healthy[0] ?? results[0];
+  const perProfile = results.map((r) => ({
+    name: r.profile.name,
+    model: r.profile.model,
+    provider: r.profile.provider,
+    enabled: r.profile.enabled,
+    priority: r.profile.priority,
+    weight: r.profile.weight,
+    ok: r.probe.ok,
+    latency_ms: r.probe.latencyMs,
+    message: r.probe.message,
+  }));
+
+  const status = healthy.length === 0 ? "error" : failed.length > 0 ? "degraded" : "ok";
+  const message =
+    healthy.length === 0
+      ? `${label}: no profile is reachable (${failed.map((f) => f.profile.name).join(", ")}).`
+      : failed.length > 0
+        ? `${label}: ${healthy.length}/${usable.length} profiles reachable — ${failed
+            .map((f) => f.profile.name)
+            .join(", ")} down, failing over.`
+        : `${label}: all ${usable.length} profile(s) reachable.`;
+
+  return {
+    status,
+    endpoint: first.probe.endpoint,
+    latency_ms: first.probe.latencyMs,
+    message,
+    details: { profiles: perProfile },
+  };
+}
+
+async function probeEmbedding(): Promise<ProbeResult> {
+  return probeProfiles("embedding", "Embedding", async (p) => {
+    const base = p.base_url.replace(/\/+$/, "");
+    const headers: Record<string, string> = p.api_key ? { Authorization: `Bearer ${p.api_key}` } : {};
+    const candidates = p.provider === "ollama" ? ollamaCandidates(base) : openaiCandidates(base);
+    return probeHttpCandidates(candidates, headers);
+  });
+}
+
 async function probeOcrServer(): Promise<ProbeResult> {
+  if (!(await isGroupConfigured("ocr"))) return unconfigured("OCR server");
   const ocr = await getGroup("ocr");
   const provider = String((ocr.provider ?? "dots_ocr") || "dots_ocr").trim().toLowerCase();
   const serverIp = String((ocr.server_ip ?? "127.0.0.1") || "127.0.0.1").trim();
@@ -331,42 +392,15 @@ async function probeOcrServer(): Promise<ProbeResult> {
   };
 }
 
-/** Probe the analysis endpoint once; returns the shared (analysis_server, lm_server) pair. */
+/** Probe every Analysis LM profile; returns the shared (analysis_server, lm_server) pair. */
 async function probeAnalysisPair(): Promise<[ProbeResult, ProbeResult]> {
-  const cfg = await getGroup("analysis");
-  const provider = String((cfg.provider ?? "openai") || "openai").trim().toLowerCase();
-  const baseUrl = String((cfg.base_url ?? "") || "").trim().replace(/\/+$/, "");
-  const model = String((cfg.model ?? "") || "").trim();
-  const apiKey = String((cfg.api_key ?? "") || "");
-  const details = { provider, model };
-
-  if (!baseUrl) {
-    const failure: ProbeResult = { status: "error", endpoint: "", latency_ms: null, message: "Analysis base URL is not configured.", details };
-    return [{ ...failure }, { ...failure }];
-  }
-
-  const headers: Record<string, string> = {};
-  if ((provider === "openai" || provider === "vllm") && apiKey && apiKey !== "0") {
-    headers.Authorization = `Bearer ${apiKey}`;
-  }
-  const candidates = provider === "ollama" ? ollamaCandidates(baseUrl) : openaiCandidates(baseUrl);
-  const probe = await probeHttpCandidates(candidates, headers);
-  const merged = { ...details, base_url: baseUrl, ...probe.details };
-  const analysisRow: ProbeResult = {
-    status: probe.ok ? "ok" : "error",
-    endpoint: probe.endpoint,
-    latency_ms: probe.latencyMs,
-    message: probe.ok ? `Analysis runtime ready for provider ${provider}.` : `Analysis server probe failed: ${probe.message}`,
-    details: merged,
-  };
-  const lmRow: ProbeResult = {
-    status: probe.ok ? "ok" : "error",
-    endpoint: probe.endpoint,
-    latency_ms: probe.latencyMs,
-    message: probe.ok ? `LM endpoint reachable for model ${model}.` : `LM endpoint probe failed: ${probe.message}`,
-    details: merged,
-  };
-  return [analysisRow, lmRow];
+  const row = await probeProfiles("analysis", "Analysis LM", async (p) => {
+    const base = p.base_url.replace(/\/+$/, "");
+    const headers: Record<string, string> = p.api_key ? { Authorization: `Bearer ${p.api_key}` } : {};
+    const candidates = p.provider === "ollama" ? ollamaCandidates(base) : openaiCandidates(base);
+    return probeHttpCandidates(candidates, headers);
+  });
+  return [{ ...row }, { ...row }];
 }
 
 /**

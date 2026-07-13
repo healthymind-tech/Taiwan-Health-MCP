@@ -2877,7 +2877,7 @@ export async function runEmbedJob(opts: {
   const jobType = String(job.job_type);
   const cfg = EMBED_JOBS[jobType];
   if (!cfg) throw new Error(`no embed config for job type '${jobType}'`);
-  const { loadEmbeddingSettings, runEmbedModule } = await import("../loaders/embeddings.js");
+  const { loadEmbeddingSettings, loadEmbeddingProfiles, runEmbedModule } = await import("../loaders/embeddings.js");
   const pool = getPool();
 
   const scalar = async (q: string): Promise<number> => {
@@ -2887,7 +2887,7 @@ export async function runEmbedJob(opts: {
   };
 
   const settings = await loadEmbeddingSettings(pool);
-  const ollamaUrl = (settings.baseUrl || "").trim();
+  const profiles = await loadEmbeddingProfiles(settings);
   const stepAtStart = String(job.current_step ?? "");
 
   // ── Step 1: validate (skip if a prior run already passed this phase) ──
@@ -2895,31 +2895,43 @@ export async function runEmbedJob(opts: {
     await appendJobLog({
       jobId, level: "info",
       message: `Validating ${cfg.label} embedding job`,
-      payload: { ollama_configured: Boolean(ollamaUrl) },
+      payload: { embedding_profiles: profiles.length },
     });
-    if (!ollamaUrl) {
+    if (profiles.length === 0) {
       await markJobStatus({
         jobId, status: "permanent_failed", currentStep: "validate", controlState: "idle",
-        lastErrorCode: "ollama_not_configured",
-        lastErrorMessage: "OLLAMA_BASE_URL is not set — cannot generate embeddings",
+        lastErrorCode: "embedding_not_configured",
+        lastErrorMessage:
+          "No enabled embedding profile — add one in Admin → Settings → Embedding",
       });
       return;
     }
-    let ollamaOk = false;
-    try {
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 5000);
-      const r = await fetch(`${ollamaUrl.replace(/\/+$/, "")}/api/version`, { signal: ctrl.signal });
-      clearTimeout(timer);
-      ollamaOk = r.status === 200;
-    } catch {
-      /* unreachable */
+    // One healthy endpoint is enough: the service fails over across the rest.
+    let reachable: string | null = null;
+    let lastProbeError = "";
+    for (const p of profiles) {
+      const base = p.base_url.replace(/\/+$/, "");
+      const url = p.provider === "ollama" ? `${base}/api/version` : `${base}/models`;
+      const headers: Record<string, string> = p.api_key ? { Authorization: `Bearer ${p.api_key}` } : {};
+      try {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 5000);
+        const r = await fetch(url, { headers, signal: ctrl.signal });
+        clearTimeout(timer);
+        if (r.ok) {
+          reachable = p.name;
+          break;
+        }
+        lastProbeError = `${p.name}: HTTP ${r.status}`;
+      } catch (exc) {
+        lastProbeError = `${p.name}: ${String((exc as Error).message)}`;
+      }
     }
-    if (!ollamaOk) {
+    if (reachable === null) {
       await markJobStatus({
         jobId, status: "retryable_failed", currentStep: "validate", controlState: "idle",
-        lastErrorCode: "ollama_unreachable",
-        lastErrorMessage: `Ollama not reachable at ${ollamaUrl} — check OLLAMA_BASE_URL`,
+        lastErrorCode: "embedding_unreachable",
+        lastErrorMessage: `No embedding profile is reachable (${lastProbeError})`,
       });
       return;
     }

@@ -1,24 +1,35 @@
 /**
  * EmbeddingService — async embedding client (Ollama / OpenAI / Google).
  *
- * Faithful port of `src/embedding_service.py`. Provides vector embeddings for
- * hybrid (BM25 + pgvector) search. Falls back to `null` on any error so callers
- * degrade gracefully to keyword-only search.
+ * Provides vector embeddings for hybrid (BM25 + pgvector) search. Every failure
+ * degrades to `null` so callers fall back to keyword-only search rather than
+ * erroring.
  *
- * Config is **not** read from env here (those are seed-only in this project).
- * Settings live in `admin.app_settings` group `embedding`, exactly as the Python
- * lifespan applies them via `embedding_service.configure(...)`. `getEmbeddingService`
- * loads that group from the DB once and caches the configured singleton.
+ * Config is **not** read from env. The endpoints are `admin.llm_profiles` rows
+ * with `kind='embedding'` — one per host — and the shared knobs (strategy,
+ * dimensions, timeout, batch size) are the `embedding` settings group. A batch is
+ * tried against the profiles in `candidateOrder()` until one answers, so losing a
+ * host costs a retry instead of the whole feature.
+ *
+ * Every enabled embedding profile must serve the *same model*: vectors from
+ * different models — or different quantisations of one model — are not
+ * comparable, and they all share one pgvector column. `llmProfiles` enforces
+ * that on write; here we simply use whichever profile answers, knowing they are
+ * interchangeable by construction.
  */
 
 import { query } from "./db.js";
 import { logInfo, logWarning } from "./logger.js";
+import {
+  candidateOrder,
+  reportFailure,
+  reportSuccess,
+  type LlmProfile,
+  type Strategy,
+} from "./admin/llmProfiles.js";
 
 export interface EmbeddingSettings {
-  provider: string;
-  baseUrl: string;
-  apiKey: string;
-  model: string;
+  strategy: Strategy;
   timeout: number;
   batchSize: number;
   dimensions: number;
@@ -26,36 +37,36 @@ export interface EmbeddingSettings {
 
 const GOOGLE_BASE = "https://generativelanguage.googleapis.com";
 
-function configured(s: EmbeddingSettings): boolean {
-  if (s.provider === "ollama") return Boolean(s.baseUrl);
-  return Boolean(s.model && s.apiKey);
-}
-
-/** Embed a batch via the configured provider. Throws on HTTP error. */
-async function providerEmbed(s: EmbeddingSettings, texts: string[]): Promise<(number[] | null)[]> {
+/** Embed a batch via one profile. Throws on HTTP error (the caller fails over). */
+async function providerEmbed(
+  p: LlmProfile,
+  s: EmbeddingSettings,
+  texts: string[],
+): Promise<(number[] | null)[]> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), s.timeout * 1000);
+  const baseUrl = p.base_url.replace(/\/+$/, "");
   try {
-    if (s.provider === "openai") {
-      const base = s.baseUrl.endsWith("/embeddings") ? s.baseUrl : `${s.baseUrl}/embeddings`;
+    if (p.provider === "openai") {
+      const base = baseUrl.endsWith("/embeddings") ? baseUrl : `${baseUrl}/embeddings`;
       const body: Record<string, unknown> = {
-        model: s.model,
+        model: p.model,
         input: texts,
         encoding_format: "float",
       };
-      if (s.dimensions && s.model.startsWith("text-embedding-3")) {
+      if (s.dimensions && p.model.startsWith("text-embedding-3")) {
         body.dimensions = s.dimensions;
       }
       const headers: Record<string, string> = { "Content-Type": "application/json" };
-      if (s.apiKey) headers.Authorization = `Bearer ${s.apiKey}`;
+      if (p.api_key) headers.Authorization = `Bearer ${p.api_key}`;
       const resp = await fetch(base, { method: "POST", headers, body: JSON.stringify(body), signal: ctrl.signal });
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const json = (await resp.json()) as { data?: { index?: number; embedding?: number[] }[] };
       const data = [...(json.data ?? [])].sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
       return data.map((d) => d.embedding ?? null);
     }
-    if (s.provider === "google") {
-      const modelPath = s.model.startsWith("models/") ? s.model : `models/${s.model}`;
+    if (p.provider === "google") {
+      const modelPath = p.model.startsWith("models/") ? p.model : `models/${p.model}`;
       const reqs = texts.map((t) => {
         const req: Record<string, unknown> = { model: modelPath, content: { parts: [{ text: t }] } };
         if (s.dimensions) req.outputDimensionality = s.dimensions;
@@ -63,7 +74,7 @@ async function providerEmbed(s: EmbeddingSettings, texts: string[]): Promise<(nu
       });
       const resp = await fetch(`${GOOGLE_BASE}/v1beta/${modelPath}:batchEmbedContents`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-goog-api-key": s.apiKey },
+        headers: { "Content-Type": "application/json", "x-goog-api-key": p.api_key },
         body: JSON.stringify({ requests: reqs }),
         signal: ctrl.signal,
       });
@@ -72,10 +83,10 @@ async function providerEmbed(s: EmbeddingSettings, texts: string[]): Promise<(nu
       return (json.embeddings ?? []).map((e) => e.values ?? null);
     }
     // ollama
-    const resp = await fetch(`${s.baseUrl}/api/embed`, {
+    const resp = await fetch(`${baseUrl}/api/embed`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model: s.model, input: texts }),
+      body: JSON.stringify({ model: p.model, input: texts }),
       signal: ctrl.signal,
     });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
@@ -88,32 +99,35 @@ async function providerEmbed(s: EmbeddingSettings, texts: string[]): Promise<(nu
 
 export class EmbeddingService {
   private settings: EmbeddingSettings;
+  private profiles: LlmProfile[];
   private available_ = false;
 
-  constructor(settings: EmbeddingSettings) {
+  constructor(settings: EmbeddingSettings, profiles: LlmProfile[]) {
     this.settings = settings;
+    this.profiles = profiles;
   }
 
+  /** Configured = at least one enabled profile with an endpoint and a model. */
   get enabled(): boolean {
-    return configured(this.settings);
+    return this.profiles.length > 0;
+  }
+
+  /** The model every enabled profile serves (they are required to agree). */
+  get model(): string {
+    return this.profiles[0]?.model ?? "";
   }
 
   /**
-   * Reachability flag — mirrors Python `embedding_service._available`: false
-   * until a successful embed (or init ping), flipped false on failure. Used by
-   * `check_embedding_health` to decide semantic vs keyword-only.
+   * Reachability flag — false until a successful embed, flipped false on failure.
+   * `check_embedding_health` uses it to decide semantic vs keyword-only.
    */
   get available(): boolean {
     return this.available_;
   }
 
-  /**
-   * Mirror Python `initialize()` → `_ping()`: probe the provider once with a
-   * trivial embed so `available` reflects reachability before any real query.
-   * Fail-open (the embed catch already records availability).
-   */
+  /** Probe once so `available` reflects reachability before any real query. */
   async initialize(): Promise<void> {
-    if (!configured(this.settings)) return;
+    if (!this.enabled) return;
     await this.embed("ping");
   }
 
@@ -123,41 +137,57 @@ export class EmbeddingService {
     return results[0] ?? null;
   }
 
-  /** Embed multiple texts in one call. Each item is a vector or null. */
+  /**
+   * Embed multiple texts in one call. Each item is a vector or null.
+   *
+   * Walks the candidate order: the first profile that answers wins; one that
+   * fails is reported (feeding the cool-down) and the next is tried. Only when
+   * every profile has failed do we degrade to keyword-only.
+   */
   async embedBatch(texts: string[]): Promise<(number[] | null)[]> {
-    if (!configured(this.settings) || texts.length === 0) {
-      return texts.map(() => null);
-    }
-    try {
-      const embeddings = await providerEmbed(this.settings, texts);
-      const result: (number[] | null)[] = [];
-      for (let i = 0; i < texts.length; i++) {
-        result.push(i < embeddings.length ? embeddings[i] : null);
-      }
-      if (!this.available_) {
-        logInfo("Embedding connection restored — semantic search re-enabled");
-      }
-      this.available_ = true;
-      return result;
-    } catch (exc) {
-      if (this.available_) {
-        logWarning("Embedding failed — falling back to keyword search", {
-          error: String((exc as Error).message),
+    if (!this.enabled || texts.length === 0) return texts.map(() => null);
+
+    const order = await candidateOrder("embedding", this.settings.strategy);
+    const candidates = order.length > 0 ? order : this.profiles;
+    let lastError = "no embedding profile answered";
+
+    for (const p of candidates) {
+      try {
+        const embeddings = await providerEmbed(p, this.settings, texts);
+        const result: (number[] | null)[] = [];
+        for (let i = 0; i < texts.length; i++) {
+          result.push(i < embeddings.length ? embeddings[i] : null);
+        }
+        reportSuccess(p.id);
+        if (!this.available_) {
+          logInfo("Embedding connection restored — semantic search re-enabled", { profile: p.name });
+        }
+        this.available_ = true;
+        return result;
+      } catch (exc) {
+        lastError = String((exc as Error).message);
+        reportFailure(p.id, lastError);
+        logWarning("Embedding profile failed — trying the next one", {
+          profile: p.name,
+          error: lastError,
         });
       }
-      this.available_ = false;
-      return texts.map(() => null);
     }
+
+    if (this.available_) {
+      logWarning("All embedding profiles failed — falling back to keyword search", {
+        error: lastError,
+      });
+    }
+    this.available_ = false;
+    return texts.map(() => null);
   }
 }
 
-/** Load the `embedding` settings group from admin.app_settings. Fails open. */
+/** Load the shared `embedding` settings group. Fails open to the defaults. */
 export async function loadEmbeddingSettings(): Promise<EmbeddingSettings> {
   const defaults: EmbeddingSettings = {
-    provider: "ollama",
-    baseUrl: "",
-    apiKey: "",
-    model: "",
+    strategy: "failover",
     timeout: 30,
     batchSize: 32,
     dimensions: 1024,
@@ -167,11 +197,9 @@ export async function loadEmbeddingSettings(): Promise<EmbeddingSettings> {
       "SELECT key, value FROM admin.app_settings WHERE group_key = 'embedding'",
     );
     const m = new Map(res.rows.map((r) => [r.key, r.value ?? ""]));
+    const strategy = (m.get("strategy") || "failover").trim().toLowerCase();
     return {
-      provider: (m.get("provider") || "ollama").trim().toLowerCase(),
-      baseUrl: (m.get("base_url") || "").replace(/\/+$/, ""),
-      apiKey: m.get("api_key") || "",
-      model: m.get("model") || "",
+      strategy: strategy === "weighted" ? "weighted" : "failover",
       timeout: Number(m.get("timeout")) || 30,
       batchSize: Number(m.get("batch_size")) || 32,
       dimensions: Number(m.get("dimensions")) || 1024,
@@ -183,33 +211,37 @@ export async function loadEmbeddingSettings(): Promise<EmbeddingSettings> {
 
 let _svc: EmbeddingService | null = null;
 
-/**
- * Process-wide embedding service singleton. Loads settings from the DB once
- * (mirrors the Python lifespan applying `admin_settings.get_group("embedding")`).
- */
+/** Process-wide embedding service singleton (settings + profiles loaded once). */
 export async function getEmbeddingService(): Promise<EmbeddingService> {
   if (_svc) return _svc;
   const settings = await loadEmbeddingSettings();
-  _svc = new EmbeddingService(settings);
-  if (settings.provider && configured(settings)) {
-    // Mirror Python lifespan: ping on init so `available` reflects reachability.
+  let profiles: LlmProfile[] = [];
+  try {
+    profiles = (await candidateOrder("embedding", settings.strategy)) ?? [];
+  } catch (exc) {
+    logWarning("Could not load embedding profiles", { error: String((exc as Error).message) });
+  }
+  _svc = new EmbeddingService(settings, profiles);
+  if (_svc.enabled) {
     await _svc.initialize();
     logInfo("EmbeddingService ready", {
-      provider: settings.provider,
-      model: settings.model,
-      base_url: settings.baseUrl,
+      profiles: profiles.length,
+      model: _svc.model,
+      strategy: settings.strategy,
     });
   } else {
-    logWarning("Embedding provider not configured — semantic search disabled, using keyword-only");
+    logWarning(
+      "No enabled embedding profile — semantic search disabled, using keyword-only. " +
+        "Add one in Admin → Settings → Embedding.",
+    );
   }
   return _svc;
 }
 
 /**
  * Drop the cached singleton so the next `getEmbeddingService()` reloads settings
- * from `admin.app_settings` and re-pings. Mirrors the Python
- * `_refresh_settings_singletons` path that calls `embedding_service.configure(...)`
- * after an `embedding` settings save — no process restart needed.
+ * and profiles from the DB and re-pings — no process restart needed after an
+ * operator edits them.
  */
 export async function reconfigureEmbeddingService(): Promise<void> {
   _svc = null;

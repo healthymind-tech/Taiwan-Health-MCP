@@ -49,6 +49,11 @@ async function probeHttpCandidates(candidates: string[]): Promise<{ ok: boolean;
 /** Probe the configured OCR server → `{status, detail}` for the overview. */
 export async function probeOcr(): Promise<{ status: string; detail: string }> {
   try {
+    // Not seeded from env — no rows means the operator has not set it up, and
+    // probing the schema defaults would report a server nobody chose as broken.
+    if (!(await adminSettings.isGroupConfigured("ocr"))) {
+      return { status: "degraded", detail: "OCR server is not configured yet — set it up in Admin → Settings." };
+    }
     const ocr = await adminSettings.getGroup("ocr");
     const provider = String((ocr.provider ?? "dots_ocr") || "dots_ocr").trim().toLowerCase();
     const serverIp = String((ocr.server_ip ?? "127.0.0.1") || "127.0.0.1").trim();
