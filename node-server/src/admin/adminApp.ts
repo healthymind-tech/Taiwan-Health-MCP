@@ -1378,6 +1378,8 @@ function parseIntDefault(
 // elif branch in server.py's preview param mapping).
 const PREVIEW_STR_KEYS = new Set([
   "q",
+  // Which installed IG the preview is scoped to (required by the `ig` preview).
+  "package_id",
   "table",
   "category",
   "code_prefix",

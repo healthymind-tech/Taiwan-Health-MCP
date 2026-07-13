@@ -5,6 +5,7 @@ import { qk } from "../../lib/queryKeys";
 import { formatRelative } from "../../lib/time";
 import { toast } from "../../components/toast";
 import { Modal } from "../../components/Modal";
+import { IgPreviewModal } from "./IgPreviewModal";
 import { uploadWithProgress } from "../../lib/upload";
 
 interface DepNode {
@@ -50,6 +51,7 @@ export function IgDetailDrawer({
   onChanged: () => void;
 }): JSX.Element {
   const qc = useQueryClient();
+  const [showPreview, setShowPreview] = useState(false);
   const detailQ = useQuery({
     queryKey: qk.igDetail(packageId, version),
     queryFn: () =>
@@ -153,6 +155,19 @@ export function IgDetailDrawer({
               )}
             </div>
             <div className="head-actions">
+              <button
+                type="button"
+                className="btn btn--sm"
+                disabled={d.counts.artifacts === 0}
+                title={
+                  d.counts.artifacts === 0
+                    ? "This package has no indexed artifacts"
+                    : `Browse the ${d.counts.artifacts.toLocaleString()} artifacts in this IG`
+                }
+                onClick={() => setShowPreview(true)}
+              >
+                Browse content
+              </button>
               {!d.is_default && (
                 <button
                   type="button"
@@ -266,6 +281,13 @@ export function IgDetailDrawer({
             </Section>
           )}
         </div>
+      )}
+      {showPreview && d && (
+        <IgPreviewModal
+          packageId={d.package_id}
+          title={d.title || d.package_id}
+          onClose={() => setShowPreview(false)}
+        />
       )}
     </Modal>
   );
