@@ -22,8 +22,42 @@ import type {
 type FormValue = string | number | boolean | null;
 type FormState = Record<string, FormValue>;
 
+// What the backend sends in place of a stored secret (admin_settings SECRET_MASK).
+const SECRET_MASK = "●●●●●●●●";
+
+/**
+ * A secret never enters the form: the backend only ever tells us *whether* one
+ * is stored, and an input pre-filled with mask characters would be sent back on
+ * save as if the operator had typed it. Blank means "unchanged" end-to-end.
+ */
 function initialFrom(fields: SettingsField[]): FormState {
-  return Object.fromEntries(fields.map((f) => [f.key, f.value]));
+  return Object.fromEntries(fields.map((f) => [f.key, f.secret ? "" : f.value]));
+}
+
+function hasStoredSecret(field: SettingsField): boolean {
+  return field.secret && field.value === SECRET_MASK;
+}
+
+/**
+ * On a provider switch, carry the provider-specific fields (base URL, model)
+ * over to the new provider's default — but only when the current value is blank
+ * or is another provider's default, so a hand-typed endpoint is preserved.
+ */
+function applyProviderDefaults(
+  fields: SettingsField[],
+  form: FormState,
+  nextProvider: string,
+): FormState {
+  const next = { ...form };
+  for (const f of fields) {
+    const defaults = f.provider_defaults;
+    if (!defaults) continue;
+    const wanted = defaults[nextProvider];
+    if (wanted === undefined) continue;
+    const current = String(form[f.key] ?? "");
+    if (current === "" || Object.values(defaults).includes(current)) next[f.key] = wanted;
+  }
+  return next;
 }
 
 function isVisible(field: SettingsField, form: FormState): boolean {
@@ -103,7 +137,13 @@ function SettingsGroupForm({ group }: { group: SettingsGroup }): JSX.Element {
   });
 
   function setValue(key: string, value: FormValue): void {
-    setForm((f) => ({ ...f, [key]: value }));
+    setForm((f) => {
+      const next = { ...f, [key]: value };
+      if (key === group.provider_field) {
+        return applyProviderDefaults(group.fields, next, String(value ?? ""));
+      }
+      return next;
+    });
   }
 
   return (
@@ -186,7 +226,7 @@ function FieldInput({
     );
   }
 
-  const inputType = field.secret ? "password" : field.type === "int" || field.type === "float" ? "number" : "text";
+  const inputType = field.type === "int" || field.type === "float" ? "number" : "text";
 
   if (field.is_model) {
     const listId = `models-${field.key}`;
@@ -209,6 +249,18 @@ function FieldInput({
           {fetchingModels ? "…" : "Fetch models"}
         </button>
       </span>
+    );
+  }
+
+  if (field.secret) {
+    return (
+      <input
+        type="password"
+        autoComplete="new-password"
+        value={value == null ? "" : String(value)}
+        placeholder={hasStoredSecret(field) ? "Saved — leave blank to keep it" : "Not set"}
+        onChange={(e) => onChange(e.target.value)}
+      />
     );
   }
 

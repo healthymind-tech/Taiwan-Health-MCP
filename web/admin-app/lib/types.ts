@@ -303,6 +303,9 @@ export interface SettingsField {
   options: string[] | null;
   show_if: Record<string, string[]> | null;
   is_model: boolean;
+  /** Per-provider default, keyed by the value of the group's provider_field. */
+  provider_defaults: Record<string, string> | null;
+  is_url: boolean;
   value: string | number | boolean | null;
 }
 

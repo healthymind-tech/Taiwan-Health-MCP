@@ -420,12 +420,12 @@ class DrugAnalysisConfig:
             .strip()
             .lower(),
             analysis_base_url=os.getenv(
-                "DRUG_ANALYSIS_BASE_URL", "http://127.0.0.1:8001/v1"
+                "DRUG_ANALYSIS_BASE_URL", "https://api.openai.com/v1"
             ).strip(),
             analysis_model_name=os.getenv(
-                "DRUG_ANALYSIS_MODEL_NAME", "qwen2.5:7b"
+                "DRUG_ANALYSIS_MODEL_NAME", "gpt-4o-mini"
             ).strip(),
-            analysis_api_key=os.getenv("DRUG_ANALYSIS_API_KEY", "0").strip(),
+            analysis_api_key=os.getenv("DRUG_ANALYSIS_API_KEY", "").strip(),
             analysis_prompt_path=_resolve_config_path(
                 os.getenv(
                     "DRUG_ANALYSIS_PROMPT_PATH", str(_DEFAULT_ANALYSIS_PROMPT_PATH)
@@ -461,7 +461,7 @@ class DrugAnalysisConfig:
             .lower(),
             analysis_base_url=str(analysis.get("base_url", "") or "").strip(),
             analysis_model_name=str(analysis.get("model", "") or "").strip(),
-            analysis_api_key=str(analysis.get("api_key", "0") or "0").strip(),
+            analysis_api_key=str(analysis.get("api_key", "") or "").strip(),
             analysis_prompt_path=_resolve_config_path(
                 str(analysis.get("prompt_path") or _DEFAULT_ANALYSIS_PROMPT_PATH),
                 _DEFAULT_ANALYSIS_PROMPT_PATH,
@@ -684,7 +684,14 @@ class DrugAnalysisService:
                 else "max_tokens"
             )
             payload[token_param] = self.config.analysis_max_tokens
-            headers = {"Authorization": f"Bearer {self.config.analysis_api_key}"}
+            # Only authenticate when a key is configured: a local vLLM/Ollama
+            # OpenAI-compatible server needs no key, and sending an empty or
+            # placeholder bearer token makes some of them reject the request.
+            headers = (
+                {"Authorization": f"Bearer {self.config.analysis_api_key}"}
+                if self.config.analysis_api_key
+                else {}
+            )
 
             # Different OpenAI-compatible model families reject different request
             # parameters (newer OpenAI reasoning models require
