@@ -1269,6 +1269,72 @@ export async function adminHandler(req: Request, res: Response, next: NextFuncti
       return;
     }
 
+    // GET /admin/api/drug/assets?license_id=...&asset_group=...
+    if (method === "GET" && path === "/admin/api/drug/assets") {
+      const licenseId = String(req.query.license_id ?? "").trim();
+      const assetGroup = String(req.query.asset_group ?? "").trim() || null;
+      if (!licenseId) {
+        sendJson(res, 400, { error: "license_id is required" });
+        return;
+      }
+      const drug = await getDrugServiceForAdmin();
+      if (drug === null) {
+        sendJson(res, 503, { error: "Drug service not available" });
+        return;
+      }
+      try {
+        sendJson(
+          res,
+          200,
+          await drug.getDrugAssetLinks({ license_id: licenseId, asset_group: assetGroup }),
+        );
+      } catch (exc) {
+        sendJson(res, 500, {
+          error: "Failed to load drug assets",
+          detail: String((exc as Error).message),
+        });
+      }
+      return;
+    }
+
+    // GET /admin/api/drug/asset-content?asset_id=...
+    // Same-origin proxy that streams one asset's bytes from MinIO for inline
+    // preview (PDF iframe / image / JSON / Markdown), so the browser never has
+    // to reach MinIO itself.
+    if (method === "GET" && path === "/admin/api/drug/asset-content") {
+      const assetId = String(req.query.asset_id ?? "").trim();
+      if (!assetId) {
+        sendJson(res, 400, { error: "asset_id is required" });
+        return;
+      }
+      const drug = await getDrugServiceForAdmin();
+      if (drug === null) {
+        sendJson(res, 503, { error: "Drug service not available" });
+        return;
+      }
+      try {
+        const asset = await drug.getDrugAssetContent(assetId);
+        if (asset === null) {
+          sendJson(res, 404, { error: "Asset not found or has no stored content" });
+          return;
+        }
+        res.writeHead(200, {
+          "Content-Type": asset.mimeType || "application/octet-stream",
+          "Content-Length": String(asset.data.length),
+          // Crawled third-party bytes: never let one execute as same-origin HTML.
+          "Content-Security-Policy": "sandbox",
+          "X-Content-Type-Options": "nosniff",
+        });
+        res.end(asset.data);
+      } catch (exc) {
+        sendJson(res, 500, {
+          error: "Failed to load asset content",
+          detail: String((exc as Error).message),
+        });
+      }
+      return;
+    }
+
     // GET /admin/api/drug/pipeline-status
     if (method === "GET" && path === "/admin/api/drug/pipeline-status") {
       try {

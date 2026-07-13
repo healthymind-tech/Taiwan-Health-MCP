@@ -938,6 +938,14 @@ export function DrugLicensesModal({ onClose }: { onClose: () => void }): JSX.Ele
                     <div className="drug-preview-section">
                       {assetsQ.isPending ? (
                         <div className="muted small">Loading assets...</div>
+                      ) : assetsQ.isError ? (
+                        // Never fall through to an empty AssetList here: "the
+                        // request failed" and "this drug has no assets" are
+                        // different facts, and the license list beside this panel
+                        // is already showing a non-zero asset count.
+                        <div className="error-box small">
+                          Failed to load assets: {String(assetsQ.error)}
+                        </div>
                       ) : (
                         <AssetList
                           assets={assets}

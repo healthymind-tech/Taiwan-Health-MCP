@@ -1554,6 +1554,12 @@ export async function runNoopJob(job: Record<string, unknown>): Promise<void> {
 // ── Drug-pipeline auto-chaining ───────────────────────────────────────────────
 
 /** Faithful port of `_maybe_auto_chain` — create the next drug-pipeline phase after success. */
+/** How many licenses one auto-chained drug batch may take on. */
+function autoChainBatchLimit(): number {
+  const value = Math.trunc(Number(process.env.DRUG_AUTOCHAIN_BATCH_LIMIT ?? 200));
+  return Number.isFinite(value) && value > 0 ? value : 200;
+}
+
 export async function maybeAutoChain(opts: {
   completedJobType: string;
   parentJobId: string;
@@ -1611,17 +1617,23 @@ export async function maybeAutoChain(opts: {
       return;
     }
 
+    // Bound the batch. An unbounded chain turns one index import into tens of
+    // thousands of scrapes against the TFDA site (and, for analysis, as many OCR +
+    // LLM calls) in a single job that must run to completion before anything else
+    // gets a drug slot. A capped batch chains again from its own completion, so the
+    // backlog still drains — just in slices an operator can stop between.
     const nextJob = await createJob({
       moduleKey: "drug",
       jobType: nextType,
       requestedBy: `auto_chain:${workerName}`,
       parentJobId,
+      jobOptions: { limit: autoChainBatchLimit() },
     });
     await appendJobLog({
       jobId: parentJobId,
       level: "info",
       message: `Auto-chain: created ${nextType} job.`,
-      payload: { next_job_id: nextJob.job_id },
+      payload: { next_job_id: nextJob.job_id, limit: autoChainBatchLimit() },
     });
   } catch (exc) {
     await appendJobLog({
@@ -3069,62 +3081,495 @@ export async function runEmbedJob(opts: {
   });
 }
 
+/** The license_ids / limit / flags a drug job was queued with. */
+function drugJobOptions(job: Record<string, unknown>): {
+  licenseIds: string[];
+  includeCancelled: boolean;
+  retryFailed: boolean;
+  retryStage: string | null;
+  limit: number | null;
+} {
+  const options = parseJsonb(job.job_options);
+  const rawIds = Array.isArray(options.license_ids) ? options.license_ids : [];
+  const rawLimit = options.limit;
+  const retryStage = String(options.retry_stage ?? "")
+    .trim()
+    .toLowerCase();
+  if (retryStage && !["ocr", "analysis", "normalize"].includes(retryStage)) {
+    throw new Error("retry_stage must be one of: ocr, analysis, normalize");
+  }
+  return {
+    licenseIds: rawIds.map((item) => String(item)).filter((item) => item.trim() !== ""),
+    includeCancelled: Boolean(options.include_cancelled),
+    retryFailed: Boolean(options.retry_failed),
+    retryStage: retryStage || null,
+    limit: rawLimit === null || rawLimit === undefined || rawLimit === "" ? null : Number(rawLimit),
+  };
+}
+
 /**
- * Drug stages stay in Python (TFDA crawl + OCR via the dots_ocr VLM + analysis
- * LLM are hard Python deps). The Node worker delegates an already-claimed drug
- * job to the Python `run_one_drug_job.py` shim, which runs the unchanged
- * `_run_drug_*_job` handler (full tracking + auto-chain) against the same DB.
- * This is the polyglot-worker split — no drug logic is re-implemented in Node.
+ * The license list a batch job will work through, resumed from its checkpoint.
  *
- * The handler updates job state directly, so Node only spawns + waits. A
- * non-zero exit means the shim crashed before the handler could record a
- * terminal status; mark the job failed so it does not hang in `running`.
+ * The candidates are chosen once and pinned in the step checkpoint: re-selecting
+ * them on resume would re-query a DB the job has itself been mutating, so a paused
+ * job would come back to a different (shorter) list and silently skip licenses.
  */
-export async function runDrugJob(opts: {
+async function resumeDrugCandidates(opts: {
+  jobId: string;
+  job: Record<string, unknown>;
+  stepKey: string;
+  select: () => Promise<string[]>;
+}): Promise<{ candidates: string[]; completed: number }> {
+  const checkpoint = await getJobStepCheckpoint(opts.jobId, opts.stepKey);
+  const options = parseJsonb(opts.job.job_options);
+  const pinned = checkpoint.candidate_license_ids ?? options.candidate_license_ids;
+  const candidates = (Array.isArray(pinned) ? pinned : [])
+    .map((item) => String(item))
+    .filter((item) => item.trim() !== "");
+  if (candidates.length > 0) {
+    return { candidates, completed: Math.max(Number(checkpoint.completed ?? 0), 0) };
+  }
+  return { candidates: await opts.select(), completed: 0 };
+}
+
+/** Load the drug index CSV bound to this job (port of `_run_drug_index_import_job`). */
+export async function runDrugIndexImportJob(opts: {
   workerName: string;
   job: Record<string, unknown>;
 }): Promise<void> {
-  const { job } = opts;
+  const { workerName, job } = opts;
   const jobId = String(job.job_id);
-  const jobType = String(job.job_type);
-  const { spawn } = await import("node:child_process");
-  const path = await import("node:path");
+  const { loadDrugIndex } = await import("../loaders/drugIndex.js");
+  const { withMaterializedSources, runValidateStep } = await import("./adminJobStaging.js");
 
-  const pythonBin = process.env.DRUG_WORKER_PYTHON || "python";
-  // src/ dir holding run_one_drug_job.py + the Python admin modules. In the
-  // polyglot worker image the Python sources live here; override via env.
-  const srcDir =
-    process.env.DRUG_WORKER_SRC_DIR || path.resolve(import.meta.dirname, "..", "..", "..", "src");
-  const shim = path.join(srcDir, "run_one_drug_job.py");
+  const manifest = parseJsonb(parseJsonb(job.job_options).source_manifest);
+  const total = 3;
+  let progress = Math.max(Number(job.progress_current || 0), 0);
+  let indexSummary: Record<string, unknown> = {};
 
   await appendJobLog({
     jobId,
     level: "info",
-    message: `Delegating ${jobType} to the Python drug worker`,
-    payload: { python: pythonBin, shim },
+    message: "Starting drug index import",
+    payload: { source_manifest: manifest },
   });
 
-  await new Promise<void>((resolve, reject) => {
-    const py = spawn(pythonBin, [shim, jobId], { cwd: srcDir, env: process.env });
-    let errTail = "";
-    py.stderr.on("data", (d) => {
-      errTail = (errTail + String(d)).slice(-2000);
+  await withMaterializedSources(manifest, async (paths) => {
+    const sourcePath = paths.drug_index_csv;
+
+    if (progress < 1) {
+      await runValidateStep({
+        jobId,
+        stepKey: "validate_sources",
+        currentStep: "validated_sources",
+        checkpoint: {
+          phase: "validated",
+          source_roles: Object.keys(paths).sort(),
+          source_file: sourcePath,
+        },
+        jobProgressAfter: 1,
+        jobProgressTotal: total,
+      });
+      if (await applyControlCheckpoint({ jobId, workerName })) return;
+      progress = 1;
+    }
+
+    if (progress < 2) {
+      await recordJobStep({
+        jobId,
+        stepKey: "index_import",
+        status: "running",
+        progressCurrent: 0,
+        progressTotal: 1,
+        checkpoint: { phase: "loading_index" },
+      });
+      await markJobStatus({
+        jobId,
+        status: "running",
+        currentStep: "loading_drug_index",
+        progressCurrent: 1,
+        progressTotal: total,
+      });
+
+      indexSummary = (await loadDrugIndex(getPool(), sourcePath)) as unknown as Record<
+        string,
+        unknown
+      >;
+
+      await recordJobStep({
+        jobId,
+        stepKey: "index_import",
+        status: "success",
+        progressCurrent: 1,
+        progressTotal: 1,
+        checkpoint: { phase: "index_loaded", ...indexSummary },
+      });
+      await markJobStatus({
+        jobId,
+        status: "running",
+        currentStep: "index_loaded",
+        progressCurrent: 2,
+        progressTotal: total,
+      });
+      if (await applyControlCheckpoint({ jobId, workerName })) return;
+    }
+
+    await recordJobStep({
+      jobId,
+      stepKey: "finalize",
+      status: "success",
+      progressCurrent: 1,
+      progressTotal: 1,
+      checkpoint: { phase: "completed" },
     });
-    py.on("error", reject);
-    py.on("exit", (code) => {
-      if (code === 0) resolve();
-      else reject(new Error(`drug worker exited ${code}: ${errTail.trim().slice(-400)}`));
-    });
-  }).catch(async (err: Error) => {
     await markJobStatus({
       jobId,
-      status: "retryable_failed",
-      currentStep: "drug_worker",
+      status: "success",
+      currentStep: "completed",
+      progressCurrent: 3,
+      progressTotal: total,
       controlState: "idle",
-      lastErrorCode: "drug_worker_failed",
-      lastErrorMessage: err.message,
+      resultSummary: {
+        job_type: "drug_index_import",
+        source_manifest: manifest,
+        ...indexSummary,
+      },
     });
-    await appendJobLog({ jobId, level: "error", message: "Python drug worker failed", payload: { error: err.message } });
+  });
+}
+
+/** Crawl TFDA for the queued licenses (port of `_run_drug_enrichment_job`). */
+export async function runDrugEnrichmentJob(opts: {
+  workerName: string;
+  job: Record<string, unknown>;
+}): Promise<void> {
+  const { workerName, job } = opts;
+  const jobId = String(job.job_id);
+  const { loadDrugEnrichment, selectEnrichmentCandidates } = await import(
+    "../loaders/drugEnrichment.js"
+  );
+  const adminSettings = await import("./adminSettings.js");
+  const minio = await import("../minioService.js");
+
+  const { licenseIds, includeCancelled, retryFailed, limit } = drugJobOptions(job);
+  const tfdaValues = await adminSettings.getGroup("tfda");
+  if (!minio.initialized()) await minio.initialize();
+
+  const { candidates, completed } = await resumeDrugCandidates({
+    jobId,
+    job,
+    stepKey: "enrich_licenses",
+    select: () =>
+      selectEnrichmentCandidates(getPool(), {
+        licenseIds: licenseIds.length > 0 ? licenseIds : null,
+        limit,
+        includeCancelled,
+        retryFailed,
+      }),
+  });
+
+  const totalCandidates = candidates.length;
+  const total = totalCandidates + 2;
+
+  await appendJobLog({
+    jobId,
+    level: "info",
+    message: "Starting drug enrichment batch",
+    payload: {
+      candidate_count: totalCandidates,
+      include_cancelled: includeCancelled,
+      retry_failed: retryFailed,
+    },
+  });
+  await recordJobStep({
+    jobId,
+    stepKey: "select_candidates",
+    status: "success",
+    progressCurrent: 1,
+    progressTotal: 1,
+    checkpoint: {
+      phase: "selected",
+      candidate_license_ids: candidates,
+      candidate_count: totalCandidates,
+    },
+  });
+  await markJobStatus({
+    jobId,
+    status: "running",
+    currentStep: "selected_drug_candidates",
+    progressCurrent: 1,
+    progressTotal: total,
+  });
+  if (completed === 0 && (await applyControlCheckpoint({ jobId, workerName }))) return;
+
+  await recordJobStep({
+    jobId,
+    stepKey: "enrich_licenses",
+    status: "running",
+    progressCurrent: completed,
+    progressTotal: totalCandidates,
+    checkpoint: { phase: "running", candidate_license_ids: candidates, completed },
+  });
+
+  for (let index = completed; index < totalCandidates; index += 1) {
+    const licenseId = candidates[index];
+    await markJobStatus({
+      jobId,
+      status: "running",
+      currentStep: `enriching_${licenseId}`,
+      progressCurrent: 1 + index,
+      progressTotal: total,
+    });
+
+    await loadDrugEnrichment(getPool(), {
+      licenseIds: [licenseId],
+      includeCancelled,
+      retryFailed,
+      limit: 1,
+      tfdaValues,
+    });
+
+    const newCompleted = index + 1;
+    await recordJobStep({
+      jobId,
+      stepKey: "enrich_licenses",
+      status: "running",
+      progressCurrent: newCompleted,
+      progressTotal: totalCandidates,
+      checkpoint: {
+        phase: "running",
+        candidate_license_ids: candidates,
+        completed: newCompleted,
+        last_license_id: licenseId,
+      },
+    });
+    await markJobStatus({
+      jobId,
+      status: "running",
+      currentStep: `enriched_${licenseId}`,
+      progressCurrent: 1 + newCompleted,
+      progressTotal: total,
+    });
+
+    const control = await checkpointJobControl({ jobId, workerName });
+    if (control !== null) {
+      const stepStatus = control.action === "pause" ? "paused" : "stopped";
+      await recordJobStep({
+        jobId,
+        stepKey: "enrich_licenses",
+        status: stepStatus,
+        progressCurrent: newCompleted,
+        progressTotal: totalCandidates,
+        checkpoint: {
+          phase: stepStatus,
+          candidate_license_ids: candidates,
+          completed: newCompleted,
+          last_license_id: licenseId,
+          message: control.message,
+        },
+      });
+      return;
+    }
+  }
+
+  await recordJobStep({
+    jobId,
+    stepKey: "finalize",
+    status: "success",
+    progressCurrent: 1,
+    progressTotal: 1,
+    checkpoint: { phase: "completed", candidate_count: totalCandidates },
+  });
+  await markJobStatus({
+    jobId,
+    status: "success",
+    currentStep: "completed",
+    progressCurrent: total,
+    progressTotal: total,
+    controlState: "idle",
+    resultSummary: {
+      job_type: "drug_enrichment",
+      candidate_count: totalCandidates,
+      license_ids: candidates,
+      retry_failed: retryFailed,
+    },
+  });
+}
+
+/** OCR + analyse the stored insert PDFs (port of `_run_drug_analysis_job`). */
+export async function runDrugAnalysisJob(opts: {
+  workerName: string;
+  job: Record<string, unknown>;
+}): Promise<void> {
+  const { workerName, job } = opts;
+  const jobId = String(job.job_id);
+  const { loadDrugAnalysis, selectAnalysisCandidates } = await import("../loaders/drugAnalysis.js");
+  const { DrugAnalysisService, loadDrugAnalysisConfig } = await import("../drugAnalysisService.js");
+  const minio = await import("../minioService.js");
+
+  const { licenseIds, includeCancelled, retryFailed, retryStage, limit } = drugJobOptions(job);
+
+  const service = new DrugAnalysisService(await loadDrugAnalysisConfig());
+  if (!minio.initialized()) await minio.initialize();
+  if (retryStage !== "normalize") {
+    const [ready, reason] =
+      retryStage === "analysis" ? service.analysisReadiness() : service.readiness();
+    if (!ready) throw new Error(reason);
+    if (!minio.enabled()) throw new Error(minio.initError() ?? "MinIO not configured");
+  }
+
+  const { candidates, completed } = await resumeDrugCandidates({
+    jobId,
+    job,
+    stepKey: "analyze_licenses",
+    select: () =>
+      selectAnalysisCandidates(getPool(), {
+        licenseIds: licenseIds.length > 0 ? licenseIds : null,
+        limit,
+        includeCancelled,
+        retryFailed,
+        retryStage,
+      }),
+  });
+
+  const totalCandidates = candidates.length;
+  const total = totalCandidates + 2;
+
+  await appendJobLog({
+    jobId,
+    level: "info",
+    message: "Starting drug analysis batch",
+    payload: {
+      candidate_count: totalCandidates,
+      retry_stage: retryStage ?? "",
+      retry_failed: retryFailed,
+    },
+  });
+  await recordJobStep({
+    jobId,
+    stepKey: "select_candidates",
+    status: "success",
+    progressCurrent: 1,
+    progressTotal: 1,
+    checkpoint: {
+      phase: "selected",
+      candidate_license_ids: candidates,
+      candidate_count: totalCandidates,
+      retry_stage: retryStage ?? "",
+    },
+  });
+  await markJobStatus({
+    jobId,
+    status: "running",
+    currentStep: "selected_drug_analysis_candidates",
+    progressCurrent: 1,
+    progressTotal: total,
+  });
+  if (completed === 0 && (await applyControlCheckpoint({ jobId, workerName }))) return;
+
+  await recordJobStep({
+    jobId,
+    stepKey: "analyze_licenses",
+    status: "running",
+    progressCurrent: completed,
+    progressTotal: totalCandidates,
+    checkpoint: {
+      phase: "running",
+      candidate_license_ids: candidates,
+      completed,
+      retry_stage: retryStage ?? "",
+    },
+  });
+
+  for (let index = completed; index < totalCandidates; index += 1) {
+    const licenseId = candidates[index];
+    await markJobStatus({
+      jobId,
+      status: "running",
+      currentStep: `analyzing_${licenseId}`,
+      progressCurrent: 1 + index,
+      progressTotal: total,
+    });
+
+    await loadDrugAnalysis(getPool(), {
+      licenseIds: [licenseId],
+      includeCancelled,
+      retryFailed,
+      retryStage,
+      limit: 1,
+    });
+
+    const newCompleted = index + 1;
+    await recordJobStep({
+      jobId,
+      stepKey: "analyze_licenses",
+      status: "running",
+      progressCurrent: newCompleted,
+      progressTotal: totalCandidates,
+      checkpoint: {
+        phase: "running",
+        candidate_license_ids: candidates,
+        completed: newCompleted,
+        retry_stage: retryStage ?? "",
+        last_license_id: licenseId,
+      },
+    });
+    await markJobStatus({
+      jobId,
+      status: "running",
+      currentStep: `analyzed_${licenseId}`,
+      progressCurrent: 1 + newCompleted,
+      progressTotal: total,
+    });
+
+    const control = await checkpointJobControl({ jobId, workerName });
+    if (control !== null) {
+      const stepStatus = control.action === "pause" ? "paused" : "stopped";
+      await recordJobStep({
+        jobId,
+        stepKey: "analyze_licenses",
+        status: stepStatus,
+        progressCurrent: newCompleted,
+        progressTotal: totalCandidates,
+        checkpoint: {
+          phase: stepStatus,
+          candidate_license_ids: candidates,
+          completed: newCompleted,
+          retry_stage: retryStage ?? "",
+          last_license_id: licenseId,
+          message: control.message,
+        },
+      });
+      return;
+    }
+  }
+
+  await recordJobStep({
+    jobId,
+    stepKey: "finalize",
+    status: "success",
+    progressCurrent: 1,
+    progressTotal: 1,
+    checkpoint: {
+      phase: "completed",
+      candidate_count: totalCandidates,
+      retry_stage: retryStage ?? "",
+    },
+  });
+  await markJobStatus({
+    jobId,
+    status: "success",
+    currentStep: "completed",
+    progressCurrent: total,
+    progressTotal: total,
+    controlState: "idle",
+    resultSummary: {
+      job_type: "drug_analysis",
+      candidate_count: totalCandidates,
+      license_ids: candidates,
+      retry_failed: retryFailed,
+      retry_stage: retryStage ?? "",
+    },
   });
 }
 
@@ -3218,13 +3663,28 @@ export async function executeAdminJob(opts: {
       await runEmbedJob({ workerName, job });
       return;
     }
-    if (jobType === "drug_index_import" || jobType === "drug_enrichment" || jobType === "drug_analysis") {
-      await runDrugJob({ workerName, job });
+    if (jobType === "drug_index_import") {
+      await runDrugIndexImportJob({ workerName, job });
+      const finalJob = await getJob(jobId);
+      if (finalJob && finalJob.status === "success") {
+        await maybeAutoChain({ completedJobType: jobType, parentJobId: jobId, workerName });
+      }
+      return;
+    }
+    if (jobType === "drug_enrichment") {
+      await runDrugEnrichmentJob({ workerName, job });
+      const finalJob = await getJob(jobId);
+      if (finalJob && finalJob.status === "success") {
+        await maybeAutoChain({ completedJobType: jobType, parentJobId: jobId, workerName });
+      }
+      return;
+    }
+    if (jobType === "drug_analysis") {
+      await runDrugAnalysisJob({ workerName, job });
       return;
     }
 
-    // All W2b job types are now wired (loaders + embed in Node; drug delegated to
-    // the Python shim above). Anything else is genuinely unsupported.
+    // Every job type now runs natively in Node. Anything else is unsupported.
 
     // Unknown job type — mirror execute_admin_job's terminal unsupported path.
     await markJobStatus({
