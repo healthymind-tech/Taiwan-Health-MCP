@@ -1,18 +1,24 @@
 """
 DB-backed application settings for external/integration systems.
 
-Settings for embedding (Ollama), analysis LM, OCR, MinIO, TFDA crawler and worker
-tuning live in ``admin.app_settings`` (one row per group_key/key). They are seeded
-once from ``.env`` on first boot (when the table is empty) and managed thereafter
-via the admin Settings tab.
+Settings for embedding, analysis LM, OCR, MinIO, TFDA crawler and worker tuning
+live in ``admin.app_settings`` (one row per group_key/key) and are managed from
+the admin Settings tab.
+
+Infrastructure groups (MinIO, TFDA, FHIR registry, worker) are seeded once from
+``.env`` on first boot, because compose owns their values and the stack must come
+up usable. The model-serving groups (``embedding`` / ``analysis`` / ``ocr``) are
+**not** seeded: they have no machine-wide default worth dialling, so an operator
+configures them in the admin console and nothing is written until they do. See
+``seed_from_env`` on the group specs.
 
 This module is the single source of truth: ``SETTINGS_SCHEMA`` defines every
 group, its fields, types, defaults, the env var to seed from, secret-ness and UI
 metadata. Seeding, type coercion, validation and the UI form all derive from it.
 
 Bootstrap settings (DATABASE_URL, REDIS_URL, MCP_*, ADMIN_* auth, POSTGRES_*,
-LOG_LEVEL, METRICS_PORT, DATASETS_CONFIG) stay in ``.env`` — they are needed
-before the DB connection / admin login exists, so they cannot live in the DB.
+LOG_LEVEL, METRICS_PORT) stay in ``.env`` — they are needed before the DB
+connection / admin login exists, so they cannot live in the DB.
 """
 
 from __future__ import annotations
