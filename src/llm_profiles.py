@@ -30,6 +30,21 @@ _ROW_COLS = (
     "id, kind, name, provider, base_url, api_key, model, enabled, priority, weight, params"
 )
 
+# Token budget. Reasoning models (OpenAI gpt-5 / o-series) spend the *same* budget
+# on hidden reasoning before emitting a single output token, so a budget sized for
+# the answer alone gets eaten by the reasoning and the model returns an empty
+# message with finish_reason='length'. They need far more headroom than a plain
+# chat model does for the same answer, hence a family-dependent default.
+DEFAULT_MAX_TOKENS = 4096
+DEFAULT_REASONING_MAX_TOKENS = 16384
+
+_REASONING_MODEL_PREFIXES = ("gpt-5", "o1", "o3", "o4")
+
+
+def is_reasoning_model(model: str) -> bool:
+    """True for model families that bill hidden reasoning against the output budget."""
+    return (model or "").strip().lower().startswith(_REASONING_MODEL_PREFIXES)
+
 
 @dataclass
 class LlmProfile:
@@ -73,7 +88,18 @@ class LlmProfile:
         except (TypeError, ValueError):
             return default
 
-    def max_tokens(self, default: int = 4096) -> int:
+    @property
+    def is_reasoning(self) -> bool:
+        return is_reasoning_model(self.model)
+
+    def max_tokens(self, default: int | None = None) -> int:
+        """The configured budget, or a default that accounts for reasoning tokens."""
+        if default is None:
+            default = (
+                DEFAULT_REASONING_MAX_TOKENS
+                if self.is_reasoning
+                else DEFAULT_MAX_TOKENS
+            )
         try:
             return int(self.params.get("max_tokens", default))
         except (TypeError, ValueError):

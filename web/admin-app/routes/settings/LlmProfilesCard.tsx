@@ -52,8 +52,23 @@ function emptyDraft(kind: LlmProfileKind): DraftProfile {
     weight: 1,
     dimensions: 1024,
     temperature: 0.1,
-    max_tokens: 4096,
+    max_tokens: DEFAULT_MAX_TOKENS,
   };
+}
+
+// Reasoning models (gpt-5 / o-series) bill their hidden reasoning against the same
+// budget as the answer, so a budget sized for the answer alone gets spent thinking
+// and the reply comes back empty. Mirrors llm_profiles.is_reasoning_model.
+const DEFAULT_MAX_TOKENS = 4096;
+const DEFAULT_REASONING_MAX_TOKENS = 16384;
+
+function isReasoningModel(model: string): boolean {
+  const m = (model ?? "").trim().toLowerCase();
+  return ["gpt-5", "o1", "o3", "o4"].some((p) => m.startsWith(p));
+}
+
+function defaultMaxTokens(model: string): number {
+  return isReasoningModel(model) ? DEFAULT_REASONING_MAX_TOKENS : DEFAULT_MAX_TOKENS;
 }
 
 function toDraft(p: LlmProfile): DraftProfile {
@@ -70,7 +85,7 @@ function toDraft(p: LlmProfile): DraftProfile {
     weight: p.weight,
     dimensions: Number(p.params?.dimensions ?? 1024),
     temperature: Number(p.params?.temperature ?? 0.1),
-    max_tokens: Number(p.params?.max_tokens ?? 4096),
+    max_tokens: Number(p.params?.max_tokens ?? defaultMaxTokens(p.model)),
   };
 }
 
@@ -431,6 +446,16 @@ export function LlmProfilesCard({
                   value={editing.max_tokens}
                   onChange={(e) => setEditing({ ...editing, max_tokens: Number(e.target.value) })}
                 />
+                {isReasoningModel(editing.model) &&
+                  editing.max_tokens < DEFAULT_REASONING_MAX_TOKENS && (
+                    <span className="muted small">
+                      {editing.model} is a reasoning model: it spends this budget on
+                      hidden reasoning before it writes any answer, so a low value can
+                      leave nothing for the reply. {DEFAULT_REASONING_MAX_TOKENS} or
+                      more is recommended. The pipeline raises the budget on its own
+                      when a call runs out, so this is a starting point, not a cap.
+                    </span>
+                  )}
               </label>
             </>
           )}

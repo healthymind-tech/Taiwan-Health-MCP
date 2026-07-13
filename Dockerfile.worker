@@ -1,10 +1,15 @@
 # ── Polyglot admin worker image ───────────────────────────────────────────────
 # The Node worker (node-server/dist/admin/adminWorker.js) claims jobs and runs all
 # the deterministic loader/embed stages in TypeScript. Drug jobs are delegated to
-# the Python shim (src/run_one_drug_job.py), which keeps the TFDA crawl + dots_ocr
-# VLM + analysis-LLM Python hard-dependencies. So this image bundles BOTH runtimes:
+# the Python shim (src/run_one_drug_job.py), which still owns the TFDA crawl and
+# the analysis LLM. So this image bundles BOTH runtimes:
 #   /app/node-server/dist + node_modules   ← the Node worker (entrypoint)
 #   /app/src + /app/loader + python deps    ← the Python drug shim it spawns
+#
+# OCR is no longer part of this image: it is a MinerU HTTP service the pipeline
+# uploads PDFs to. That removed the last native hard-dependency (the dots_ocr VLM
+# and its cairo toolchain), so the Python deps are now pure-wheel installs and the
+# remaining drug closure is ordinary httpx/asyncpg/bs4 code.
 #
 # Build context is the repo root (see compose.yaml `admin-worker.build`).
 
@@ -12,16 +17,7 @@
 FROM python:3.12-slim AS pydeps
 WORKDIR /build
 COPY requirements.txt .
-# git — pip install from GitHub (dots_ocr); build-essential/libcairo2-dev/pkg-config — cairosvg
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    git build-essential libcairo2-dev pkg-config \
-    && rm -rf /var/lib/apt/lists/*
 RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
-# dots_ocr — upstream omits dots_ocr/model/__init__.py; clone, patch, install.
-RUN git clone --depth=1 https://github.com/rednote-hilab/dots.ocr.git /tmp/dots_ocr \
-    && touch /tmp/dots_ocr/dots_ocr/model/__init__.py \
-    && pip install --no-cache-dir --prefix=/install /tmp/dots_ocr \
-    && rm -rf /tmp/dots_ocr
 
 # ── node build (TS -> dist) ───────────────────────────────────────────────────
 FROM node:20-slim AS nodebuild
@@ -37,9 +33,9 @@ RUN npm prune --omit=dev
 # ── runtime: python base + node 20 runtime ────────────────────────────────────
 FROM python:3.12-slim
 
-# Node 20 runtime + libcairo2 (cairosvg runtime shared lib for dots_ocr).
+# Node 20 runtime.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl ca-certificates libcairo2 \
+    curl ca-certificates \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && apt-get purge -y curl && apt-get autoremove -y \
