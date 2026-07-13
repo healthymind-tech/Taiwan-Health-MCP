@@ -11,7 +11,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../lib/api";
 import { qk } from "../../lib/queryKeys";
 import { toast } from "../../components/toast";
-import { PasskeysCard } from "./PasskeysCard";
+import { PasskeysCard, qkPasskeys } from "./PasskeysCard";
 import { LlmProfilesCard } from "./LlmProfilesCard";
 import type {
   SettingsActionResult,
@@ -329,16 +329,29 @@ function BackupCard(): JSX.Element {
     setBusy(true);
     try {
       const doc: unknown = JSON.parse(await file.text());
-      const res = await api.post<{ imported: number; groups: string[]; skipped: string[] }>(
-        "/admin/api/settings/import",
-        doc,
-      );
+      const res = await api.post<{
+        imported: number;
+        groups: string[];
+        profiles: number;
+        passkeys: number;
+        skipped: string[];
+      }>("/admin/api/settings/import", doc);
       await qc.invalidateQueries({ queryKey: qk.settings });
       await qc.invalidateQueries({ queryKey: qk.services });
       await qc.invalidateQueries({ queryKey: qk.overview });
-      const skipped = res.skipped.length ? ` (${res.skipped.length} unknown key(s) skipped)` : "";
+      await qc.invalidateQueries({ queryKey: qkPasskeys });
+
+      // Passkeys dropped for an rp_id mismatch are the one thing the operator has
+      // to actually read — the file looked like it restored their login and did
+      // not. Say it on its own, rather than folding it into a count of "keys".
+      const passkeyNote = res.skipped.find((s) => s.startsWith("passkeys ("));
+      if (passkeyNote) toast.error(`Skipped ${passkeyNote}`);
+
+      const unknown = res.skipped.filter((s) => s !== passkeyNote);
+      const skipped = unknown.length ? ` (${unknown.length} unknown key(s) skipped)` : "";
+      const restored = res.passkeys ? `, ${res.passkeys} passkey(s)` : "";
       toast.success(
-        `Imported ${res.imported} setting(s) across ${res.groups.length} group(s)${skipped}`,
+        `Imported ${res.imported} setting(s) across ${res.groups.length} group(s)${restored}${skipped}`,
       );
     } catch (err) {
       toast.error(`Import failed: ${String(err)}`);
