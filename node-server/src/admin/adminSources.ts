@@ -488,10 +488,10 @@ export class SourceValueError extends Error {}
 /** Maps `RuntimeError` (Python) — surfaced as 503. */
 export class SourceRuntimeError extends Error {}
 
-// Magika label sets per (module/role). The live Python app runs Magika; here we
-// reproduce its accept/reject decision for exactly these four label-sets with a
-// magic-byte detector (see `detectContentLabel`). Representative labels are
-// chosen so set-membership matches Magika for every role/file combination.
+// Magika-compatible label sets per module/role. The Node implementation
+// reproduces the legacy accept/reject decisions for these four label sets with
+// a magic-byte detector (see `detectContentLabel`). Representative labels keep
+// set membership consistent for every role/file combination.
 const ZIP_LABELS = ["zip"];
 const GZIP_LABELS = ["gzip"];
 const XLSX_LABELS = ["xlsx"];

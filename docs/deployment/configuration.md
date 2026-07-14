@@ -49,6 +49,9 @@ cp .env.example .env
 | `MCP_HOST` | `0.0.0.0` | 監聽主機（HTTP 模式） |
 | `MCP_PORT` | `8000` | **容器內部**監聽埠。不對主機發佈。 |
 | `MCP_PATH` | `/mcp` | HTTP 端點路徑 |
+| `PUBLIC_TOOLS_AUTH_MODE` | `none` | 公開 MCP/OpenAPI bridge 驗證模式：`none` 或 `bearer`。正式環境建議使用 `bearer`。 |
+| `PUBLIC_TOOLS_BEARER_TOKEN` | 空 | bearer 模式必要的 token；應使用高熵隨機值。 |
+| `PUBLIC_TOOLS_CORS_ORIGINS` | 空 | 允許的瀏覽器 origin（逗號分隔）。bearer 模式不可使用 `*`；空值代表不允許跨來源瀏覽器呼叫。 |
 
 ### 應用與監控
 
@@ -66,6 +69,7 @@ cp .env.example .env
 | `ADMIN_PASSWORD_HASH` | 空 | `sha256$<hex>` 或 `pbkdf2_sha256$<iterations>$<salt>$<hex>` |
 | `ADMIN_SESSION_SECRET` | 空 | session cookie 簽章金鑰 |
 | `ADMIN_SESSION_TTL_MINUTES` | `240` | session 有效期 |
+| `ADMIN_COOKIE_SECURE` | 空（自動） | `true` / `false`。空值時，`PUBLIC_BASE_URL` 使用 HTTPS 就加入 cookie `Secure` 屬性。TLS 在外部 proxy 終止且未設定 public URL 時應明確設為 `true`。 |
 | `ADMIN_MAX_UPLOAD_MB` | `512` | 來源檔上傳上限 |
 | `FHIR_SERVER_SECRET_KEY` | 空（回退為 `ADMIN_SESSION_SECRET`） | 外部 FHIR 伺服器 OAuth token / client secret 的 pgcrypto 對稱金鑰。**`app` 與 `admin-worker` 必須一致**，否則 worker 解密會拋 `Illegal argument to function`（金鑰為空）或 `Wrong key or corrupt data`（金鑰不符）。 |
 
@@ -91,10 +95,8 @@ node -e "console.log('sha256$' + require('crypto').createHash('sha256').update('
 | `WEBAUTHN_RP_NAME` | `Taiwan Health MCP — Admin` | OS passkey 提示中顯示的名稱 |
 | `WEBAUTHN_ORIGIN` | `https://<WEBAUTHN_RP_ID>` | 允許的 origin 清單（逗號分隔） |
 
-!!! note "目前 `compose.yaml` 沒有把這四個變數傳給 `app` 容器"
-    因此在預設 compose 部署下，`WEBAUTHN_RP_ID` 會落到硬編碼的預設網域。
-    若要在其他網域啟用 passkey 登入，需自行在 `compose.yaml` 的 `app.environment`
-    加上 `PUBLIC_BASE_URL`（或 `WEBAUTHN_*`）。密碼登入不受影響。
+`compose.yaml` 會將這四個變數傳入 `app`。正式部署至少應設定
+`PUBLIC_BASE_URL`；只有需要覆寫自動推導值時才設定 `WEBAUTHN_*`。
 
 ---
 

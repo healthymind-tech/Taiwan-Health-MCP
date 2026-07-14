@@ -123,13 +123,17 @@ export function parseAdminSessionToken(
 }
 
 /** Set-Cookie header value for the admin session. */
-export function buildAdminSessionCookie(token: string, maxAgeSeconds: number): string {
-  return `${SESSION_COOKIE_NAME}=${token}; Path=/admin; Max-Age=${maxAgeSeconds}; HttpOnly; SameSite=Lax`;
+export function buildAdminSessionCookie(
+  token: string,
+  maxAgeSeconds: number,
+  secure = false,
+): string {
+  return `${SESSION_COOKIE_NAME}=${token}; Path=/admin; Max-Age=${maxAgeSeconds}; HttpOnly; SameSite=Lax${secure ? "; Secure" : ""}`;
 }
 
 /** Set-Cookie header value that removes the admin session. */
-export function clearAdminSessionCookie(): string {
-  return `${SESSION_COOKIE_NAME}=; Path=/admin; Max-Age=0; HttpOnly; SameSite=Lax`;
+export function clearAdminSessionCookie(secure = false): string {
+  return `${SESSION_COOKIE_NAME}=; Path=/admin; Max-Age=0; HttpOnly; SameSite=Lax${secure ? "; Secure" : ""}`;
 }
 
 /** Parse a Cookie request header into a name→value map. */

@@ -31,4 +31,6 @@ export const qk = {
   drugEvents: (licenseId: string) => ["drug", "events", licenseId] as const,
   drugDetails: (licenseId: string) => ["drug", "details", licenseId] as const,
   drugAssets: (licenseId: string) => ["drug", "assets", licenseId] as const,
+  drugExplorer: (params: string) => ["drug", "explorer", params] as const,
+  drugExplorerDetail: (licenseId: string) => ["drug", "explorer-detail", licenseId] as const,
 };

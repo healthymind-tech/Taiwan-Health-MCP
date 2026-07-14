@@ -544,6 +544,7 @@ export class DrugService {
    */
   async getDrugAssetContent(
     assetId: string,
+    variantKind: string | null = null,
   ): Promise<{ data: Buffer; mimeType: string; filename: string } | null> {
     if (!minioService.enabled()) return null;
     const res = await query<{
@@ -552,10 +553,18 @@ export class DrugService {
       source_filename: string | null;
       normalized_filename: string | null;
     }>(
-      `SELECT object_key, mime_type, source_filename, normalized_filename
-         FROM drug.assets
-        WHERE asset_id::text = $1`,
-      [assetId],
+      `SELECT
+          CASE WHEN av.storage_status = 'success' THEN av.object_key ELSE a.object_key END AS object_key,
+          CASE WHEN av.storage_status = 'success' THEN av.mime_type ELSE a.mime_type END AS mime_type,
+          a.source_filename,
+          CASE WHEN av.storage_status = 'success' THEN
+            regexp_replace(COALESCE(a.normalized_filename, a.source_filename, 'image'), '\\.[^.]+$', '') || '.webp'
+          ELSE a.normalized_filename END AS normalized_filename
+         FROM drug.assets a
+         LEFT JOIN drug.asset_variants av ON av.source_asset_id = a.asset_id
+           AND av.variant_kind = $2
+        WHERE a.asset_id::text = $1`,
+      [assetId, variantKind],
     );
     const row = res.rows[0];
     if (!row) return null;

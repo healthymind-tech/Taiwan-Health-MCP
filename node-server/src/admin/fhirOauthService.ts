@@ -118,6 +118,10 @@ async function postToken(server: Json, tokenEndpoint: string, form: Record<strin
   if (typeof payload !== "object" || payload === null || !(payload as Json).access_token) {
     throw new Error("Token response is missing access_token");
   }
+  const tokenType = String((payload as Json).token_type || "Bearer");
+  if (tokenType.toLowerCase() !== "bearer") {
+    throw new Error(`Token response token_type is '${tokenType}'; expected Bearer`);
+  }
   return payload as Json;
 }
 

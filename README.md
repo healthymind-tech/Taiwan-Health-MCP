@@ -23,6 +23,8 @@
 - **管理後台**：可選的 Admin Console（上傳來源檔、執行 / 排程匯入、管理設定與外部 FHIR 伺服器、即時監控背景工作）。
 - **生產部署設計**：PostgreSQL 16（pgvector）、pgBouncer、Redis、MinIO、Prometheus、背景 worker，前置 nginx 單一入口。
 
+> 工具顯示為 available 只代表來源資料已載入，不代表 embedding 已完整。請在 Admin → Modules 檢查各模組的 Embeddings 計數；未完成時搜尋會退回或混用 keyword/BM25。
+
 ## 快速開始
 
 ```bash

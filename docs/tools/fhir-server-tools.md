@@ -41,3 +41,4 @@
 - 操作與資源型別會受伺服器的 `allowed_operations` / `allowed_resource_types` 限制；不被允許者直接拒絕。
 - 路徑由 `operation` / `resource_type` / `resource_id` 組成，呼叫端**不**直接傳遞 URL。
 - OAuth token 由 MCP 伺服器代為處理，呼叫端不經手。
+- Client Credentials（含 `private_key_jwt`）依 `fresh` / `cached` 策略取 token；Authorization Code 使用管理後台儲存的加密 grant，並在到期時自動 refresh。Authorization Code 伺服器必須先在 Admin → FHIR Servers 完成 **Authorize**。

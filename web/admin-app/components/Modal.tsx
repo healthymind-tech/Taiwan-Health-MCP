@@ -9,9 +9,10 @@ interface Props {
   wide?: boolean;
   xwide?: boolean;
   workspace?: boolean;
+  panelClassName?: string;
 }
 
-export function Modal({ title, onClose, children, wide, xwide, workspace }: Props): JSX.Element {
+export function Modal({ title, onClose, children, wide, xwide, workspace, panelClassName }: Props): JSX.Element {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -41,7 +42,7 @@ export function Modal({ title, onClose, children, wide, xwide, workspace }: Prop
       }}
     >
       <div
-        className={`modal-panel ${wide ? "modal-panel--wide" : ""} ${xwide ? "modal-panel--xwide" : ""} ${workspace ? "modal-panel--workspace" : ""}`}
+        className={`modal-panel ${wide ? "modal-panel--wide" : ""} ${xwide ? "modal-panel--xwide" : ""} ${workspace ? "modal-panel--workspace" : ""} ${panelClassName ?? ""}`}
         role="dialog"
         aria-modal="true"
       >

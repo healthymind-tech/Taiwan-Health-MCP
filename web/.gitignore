@@ -4,3 +4,4 @@
 /build
 next-env.d.ts
 *.tsbuildinfo
+/public/pdf.worker.min.mjs
