@@ -12,13 +12,8 @@ venv/
 # Source data (ICD / LOINC / SNOMED / RxNorm / UMLS / IG packages) stays out of git:
 # the archives are large, several are licence-restricted, and all of them are
 # re-downloadable — docs/data-sources/test-data.md records where each one came from.
-fhir-code/*
-!fhir-code/loinc/
-
-# Except the two lookup tables that are ours: hand-curated, downloadable nowhere.
-fhir-code/loinc/*
-!fhir-code/loinc/taiwan_mapping.csv
-!fhir-code/loinc/lab_reference_ranges.csv
+# The two lookup tables that are ours (and downloadable nowhere) live in data/loinc/.
+fhir-code/
 
 # 忽略作業系統縮圖
 .DS_Store
