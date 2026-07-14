@@ -390,15 +390,15 @@ function Overview({ detail }: { detail: DrugDetailPayload }): JSX.Element {
   const dosage = listValue(normalized, "usage.dosage_and_administration");
   const images = detail.appearances.flatMap((appearance) => appearance.images.map((image) => ({ image, appearance })));
   return <div className="drug-overview">
-    <section className="drug-appearance-band">
+    {images.length ? <section className="drug-appearance-band">
       <div className="drug-section-title"><ImageIcon size={18} /><h3>Appearance</h3><span>{images.length} image{images.length === 1 ? "" : "s"}</span></div>
-      {images.length ? <div className="drug-image-grid">
+      <div className="drug-image-grid">
         {images.map(({ image, appearance }) => <a key={image.asset_id} href={image.original_url} target="_blank" rel="noreferrer" className="drug-image-item">
           <img src={image.preview_url} alt={appearance.description || String(drug.chinese_name || "Drug appearance")} />
           <span><strong>{appearance.appearance_no || appearance.shape || "Appearance"}</strong><small>{[appearance.color, appearance.shape, appearance.imprint].filter(Boolean).join(" · ")}</small></span>
           <ExternalLink size={15} />
         </a>)}
-      </div> : <div className="drug-empty-inline"><ImageIcon size={22} /><span>No appearance image was collected.</span></div>}
+      </div>
       {detail.appearances.length ? <div className="drug-appearance-specs">
         {detail.appearances.map((appearance) => <dl key={appearance.appearance_id}>
           <Fact label="Appearance" content={appearance.appearance_no || appearance.description} />
@@ -407,7 +407,7 @@ function Overview({ detail }: { detail: DrugDetailPayload }): JSX.Element {
           <Fact label="Size" content={appearance.size} /><Fact label="Symbol" content={appearance.symbol} />
         </dl>)}
       </div> : null}
-    </section>
+    </section> : null}
     <section className="drug-information-band">
       <div className="drug-section-title"><FileText size={18} /><h3>Drug information</h3></div>
       <dl className="drug-detail-facts">
