@@ -259,7 +259,7 @@
 .drug-file-row__badges, .drug-file-row__actions { display: flex; align-items: center; gap: 5px; }
 .drug-file-row__actions { padding-right: 8px; }
 .drug-file-row__actions .btn { min-height: 30px; }
-.modal-panel--workspace.drug-asset-viewer-modal { height: calc(100vh - 96px); }
+.modal-panel--workspace.drug-asset-viewer-modal { height: calc(100dvh - 96px); }
 .drug-asset-viewer-modal .modal-head { min-height: 58px; padding: 10px 16px; }
 .drug-asset-viewer-modal .modal-head h3 { min-width: 0; overflow: hidden; font-size: 15px; text-overflow: ellipsis; white-space: nowrap; }
 .drug-asset-modal { height: 100%; min-height: 0; display: flex; flex-direction: column; }
@@ -473,6 +473,8 @@ body {
 }
 .nav-drawer__item:hover { background: var(--panel-soft); text-decoration: none; }
 .nav-drawer__item--active { background: var(--brand-soft); color: var(--brand); font-weight: 600; }
+.nav-drawer__signout { width: 100%; margin-top: auto; border: 0; background: transparent; font: inherit; text-align: left; cursor: pointer; }
+.nav-drawer__signout:hover { background: var(--bad-bg); color: var(--bad-fg); }
 
 .ws-indicator { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
 .ws-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
@@ -492,7 +494,7 @@ body {
 .muted { color: var(--muted); }
 .small { font-size: 13px; }
 
-.card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px; }
+.card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(180px, 100%), 1fr)); gap: 14px; }
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; box-shadow: var(--shadow); }
 .card__label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; overflow-wrap: anywhere; word-break: break-word; }
 .card__value { font-size: 22px; font-weight: 700; margin-top: 6px; word-break: break-word; }
@@ -626,7 +628,7 @@ body {
   .jobs-table td {
     display: flex; align-items: center; justify-content: space-between; gap: 14px;
     padding: 7px 0; border: none; border-top: 1px solid var(--line-soft);
-    text-align: right; min-width: 0;
+    text-align: right; min-width: 0; overflow-wrap: anywhere; word-break: break-word;
   }
   .jobs-table tr td:first-child { border-top: none; }
   .jobs-table td::before {
@@ -637,6 +639,9 @@ body {
   /* Cells with no label (or no content) collapse cleanly. */
   .jobs-table td:not([data-label])::before { content: none; }
   .jobs-table td > * { min-width: 0; }
+  .jobs-table td .row__name,
+  .jobs-table td code { max-width: 70%; white-space: normal; overflow-wrap: anywhere; word-break: break-word; }
+  .jobs-table .preview-cell { max-width: none; overflow: visible; text-overflow: clip; white-space: normal; }
 }
 
 /* Modal */
@@ -645,9 +650,10 @@ body {
 .modal-panel--wide { max-width: 860px; }
 /* Extra-wide panel for the FHIR server wizard (2-column form + summary). */
 .modal-panel--xwide { max-width: min(1180px, calc(100vw - 32px)); }
-.modal-panel--workspace { max-width: min(1560px, calc(100vw - 32px)); height: calc(100vh - 32px); display: flex; flex-direction: column; }
+.modal-panel--workspace { max-width: min(1560px, calc(100vw - 32px)); height: calc(100dvh - 96px); max-height: calc(100dvh - 96px); display: flex; flex-direction: column; }
 .modal-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--line); }
-.modal-head h3 { margin: 0; }
+.modal-head h3 { min-width: 0; margin: 0; overflow-wrap: anywhere; }
+.modal-head__close { flex: 0 0 auto; margin-left: 12px; }
 .modal-body { padding: 20px; }
 .modal-panel--workspace .modal-body { padding: 0; min-height: 0; flex: 1; overflow: hidden; }
 
@@ -673,7 +679,10 @@ body {
 }
 .settings-field input:focus, .settings-field select:focus { outline: none; border-color: var(--brand); }
 .field-with-action { display: flex; gap: 8px; align-items: center; }
-.field-with-action input { flex: 1; }
+.field-with-action input { min-width: 0; flex: 1; }
+input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--brand); }
+input[type="range"] { min-height: 30px; accent-color: var(--brand); }
+.switch input { width: 0; height: 0; }
 
 /* Preview / license tables */
 .preview-scroll { max-height: 50vh; overflow: auto; border: 1px solid var(--line-soft); border-radius: 8px; }
@@ -1105,6 +1114,7 @@ body {
 .modal-actions {
   display: flex;
   justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 10px;
   padding-top: 4px;
 }
@@ -2267,7 +2277,7 @@ body {
 
 @media (max-width: 900px) {
   .modal-backdrop { padding: 8px; }
-  .modal-panel--workspace { height: calc(100vh - 16px); max-width: calc(100vw - 16px); }
+  .modal-panel--workspace { height: calc(100dvh - 16px); max-height: calc(100dvh - 16px); max-width: calc(100vw - 16px); }
   .drug-preview__toolbar { grid-template-columns: 1fr; }
   .drug-preview__toolbar-actions { justify-content: flex-start; }
   .drug-preview__workspace { grid-template-columns: 1fr; overflow-y: auto; }
@@ -2600,6 +2610,10 @@ body {
   .topbar { padding: 14px 0; }
   .topbar__brand { font-size: 16px; }
   .topbar__menu-btn { display: inline-flex; }
+  .topbar__right { gap: 8px; }
+  .topbar__signout { display: none; }
+  .ws-indicator { font-size: 0; gap: 0; }
+  .ws-dot { width: 10px; height: 10px; }
   .tabbar { display: none; }
 
   /* Header / action rows wrap instead of overflowing */
@@ -2614,8 +2628,9 @@ body {
   .row--service .row__meta { justify-content: flex-start; flex-wrap: wrap; }
 
   /* Card grids: lower the min so cards don't overflow a narrow viewport */
-  .card-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+  .card-grid { grid-template-columns: repeat(auto-fill, minmax(min(180px, 100%), 1fr)); }
   .settings-grid { grid-template-columns: 1fr; }
+  .passkey-row { align-items: flex-start; flex-direction: column; }
 
   /* Remaining wired-width grids collapse to a single column */
   .fhir-workflow-step { grid-template-columns: 1fr; gap: 4px; }
@@ -2624,6 +2639,10 @@ body {
   /* Modals hug the viewport */
   .modal-backdrop { padding: 16px 8px; }
   .modal-panel { max-width: 100%; }
+  .modal-head { padding: 12px 14px; }
+  .modal-body { padding: 16px; }
+  .toast-stack { right: 12px; bottom: 12px; left: 12px; }
+  .toast { overflow-wrap: anywhere; }
 }
 
 /* ── Implementation Guides module ─────────────────────────────────────────── */

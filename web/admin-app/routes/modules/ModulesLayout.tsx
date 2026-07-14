@@ -3,7 +3,7 @@
 // (/modules/:moduleKey). Replaces the old single long-scroll page and the
 // earlier left-sidebar layout (which squeezed the content column).
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { ACTION_MODULES, UPLOAD_MODULE_META, UPLOAD_MODULE_ORDER } from "../../lib/moduleMeta";
 
@@ -24,6 +24,12 @@ export function ModulesLayout(): JSX.Element {
   // avoids relying on CSS to reveal a closed details' content on desktop.
   const isMobile = (): boolean => window.matchMedia("(max-width: 768px)").matches;
   const [navOpen, setNavOpen] = useState(() => !isMobile());
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 768px)");
+    const sync = (event: MediaQueryListEvent): void => setNavOpen(!event.matches);
+    media.addEventListener("change", sync);
+    return () => media.removeEventListener("change", sync);
+  }, []);
   const linkClass = ({ isActive }: { isActive: boolean }) =>
     `modules-nav__item ${isActive ? "modules-nav__item--active" : ""}`;
   // After picking a module on mobile, collapse the disclosure.

@@ -48,7 +48,7 @@ export function Modal({ title, onClose, children, wide, xwide, workspace, panelC
       >
         <header className="modal-head">
           <h3>{title}</h3>
-          <button type="button" className="btn btn--ghost btn--sm" onClick={onClose}>
+          <button type="button" className="btn btn--ghost btn--sm modal-head__close" onClick={onClose} aria-label="Close dialog">
             ✕
           </button>
         </header>

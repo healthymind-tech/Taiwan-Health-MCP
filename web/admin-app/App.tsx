@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { NavLink, Navigate, Route, Routes } from "react-router-dom";
 import { OverviewPage } from "./routes/overview/OverviewPage";
 import { ServicesPage } from "./routes/services/ServicesPage";
@@ -26,6 +26,25 @@ export default function App(): JSX.Element {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const closeDrawer = (): void => setDrawerOpen(false);
   const { theme, toggle } = useTheme();
+  const signOut = (): void => {
+    void fetch("/admin/api/logout", { method: "POST" }).finally(() => {
+      window.location.href = "/admin/login";
+    });
+  };
+
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const previous = document.body.style.overflow;
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") setDrawerOpen(false);
+    };
+    document.body.style.overflow = "hidden";
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previous;
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [drawerOpen]);
 
   return (
     <div className="app">
@@ -55,12 +74,8 @@ export default function App(): JSX.Element {
           </button>
           <button
             type="button"
-            className="btn btn--ghost"
-            onClick={() => {
-              void fetch("/admin/api/logout", { method: "POST" }).finally(() => {
-                window.location.href = "/admin/login";
-              });
-            }}
+            className="btn btn--ghost topbar__signout"
+            onClick={signOut}
           >
             Sign out
           </button>
@@ -106,6 +121,9 @@ export default function App(): JSX.Element {
                 {t.label}
               </NavLink>
             ))}
+            <button type="button" className="nav-drawer__item nav-drawer__signout" onClick={signOut}>
+              Sign out
+            </button>
           </nav>
         </div>
       )}
