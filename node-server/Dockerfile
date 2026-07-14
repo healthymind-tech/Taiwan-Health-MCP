@@ -3,9 +3,8 @@
 
 FROM node:20-slim AS build
 WORKDIR /app
-COPY package.json ./
-# No lockfile yet during scaffolding; switch to `npm ci` once package-lock.json exists.
-RUN npm install
+COPY package.json package-lock.json ./
+RUN npm ci
 COPY tsconfig.json ./
 COPY src ./src
 RUN npm run build
@@ -13,8 +12,8 @@ RUN npm run build
 FROM node:20-slim AS runtime
 ENV NODE_ENV=production
 WORKDIR /app
-COPY package.json ./
-RUN npm install --omit=dev
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
 COPY --from=build /app/dist ./dist
 
 # MCP transport port (overridden by MCP_PORT at runtime).

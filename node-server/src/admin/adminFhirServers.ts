@@ -1256,6 +1256,11 @@ async function accessToken(server: Json, metadata: Json | null = null, strategy:
   }
 }
 
+/** Acquire a Client Credentials token for MCP/runtime callers. */
+export async function getClientCredentialsAccessToken(server: Json, strategy: string): Promise<string> {
+  return accessToken(server, null, resolveTokenStrategy(strategy, String(server.default_token_strategy || "")));
+}
+
 /** Mirror `_call_fhir`. */
 async function callFhir(
   server: Json,

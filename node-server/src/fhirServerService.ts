@@ -8,15 +8,21 @@
  *     + serverMcpSummary + attachOauthStatus)
  *   - performFhirCrud (guard chain + outbound call)
  *
- * Scope note: the outbound CRUD path is implemented for No-Auth servers. OAuth2
- * (client_credentials / authorization_code), private_key_jwt, and the admin
- * registration/discovery pipeline are NOT ported here yet — an OAuth server call
- * raises a clear error. The MCP parity surface (no servers configured) only
- * exercises the empty-list / not-found paths, which are fully faithful.
+ * Outbound CRUD supports no-auth, OAuth2 Client Credentials (including
+ * private_key_jwt), and stored Authorization Code grants. Token acquisition and
+ * refresh reuse the admin FHIR OAuth machinery so secrets never enter MCP data.
  */
 
 import { query } from "./db.js";
 import { logInfo } from "./logger.js";
+import { config } from "./config.js";
+import {
+  fetchServerRow,
+  fhirServerSecretKey,
+  getClientCredentialsAccessToken,
+  serverPrivate,
+} from "./admin/adminFhirServers.js";
+import { getValidUserAccessToken } from "./admin/fhirOauthService.js";
 
 const AUTH_NONE = "none";
 const AUTH_OAUTH2_CC = "oauth2_client_credentials";
@@ -41,6 +47,18 @@ const RESOURCE_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._~-]{0,127}$/;
 const MAX_RESPONSE_CHARS = 300_000;
 
 type Json = Record<string, unknown>;
+
+interface OAuthTokenDependencies {
+  fetchPrivateServer: typeof fetchServerRow;
+  clientCredentialsToken: typeof getClientCredentialsAccessToken;
+  userAccessToken: typeof getValidUserAccessToken;
+}
+
+const OAUTH_TOKEN_DEPENDENCIES: OAuthTokenDependencies = {
+  fetchPrivateServer: fetchServerRow,
+  clientCredentialsToken: getClientCredentialsAccessToken,
+  userAccessToken: getValidUserAccessToken,
+};
 
 function jsonValue(value: unknown, fallback: unknown): unknown {
   if (value === null || value === undefined) return fallback;
@@ -268,7 +286,7 @@ export class FHIRServerService {
     return serverMcpSummary(server);
   }
 
-  /** Tool: `crud_fhir_server` — faithful guard chain + No-Auth outbound. */
+  /** Tool: `crud_fhir_server` — guard chain + authenticated outbound call. */
   async crudFhirServer(args: {
     server_key: string;
     operation: string;
@@ -305,21 +323,17 @@ export class FHIRServerService {
         }
       }
 
-      if (server.auth_type !== AUTH_NONE) {
-        // OAuth token machinery (CC/AC, private_key_jwt) is not ported to the Node
-        // backend yet; surface a clear, non-silent error instead of a wrong call.
-        return {
-          error:
-            "OAuth-authenticated FHIR server calls are not yet supported by the Node backend",
-          detail: `auth_type='${server.auth_type as string}'`,
-        };
-      }
-
       const effectiveStrategy = resolveTokenStrategy(
         args.token_strategy,
         (server.default_token_strategy as string) || null,
       );
-      return await this.callFhir(server, {
+      const resolvedAuth = await resolveFhirServerAuth(
+        server,
+        effectiveStrategy,
+        fhirServerSecretKey(config().adminSessionSecret),
+      );
+
+      return await this.callFhir(resolvedAuth.server, {
         operation: op,
         resourceType: args.resource_type,
         resourceId: args.resource_id,
@@ -327,6 +341,7 @@ export class FHIRServerService {
         resource: args.resource_json,
         patch: args.patch_json,
         tokenStrategy: effectiveStrategy,
+        accessToken: resolvedAuth.accessToken,
       });
     } catch (exc) {
       const msg = String((exc as Error).message);
@@ -459,7 +474,7 @@ export class FHIRServerService {
     return null;
   }
 
-  /** Mirror of `_call_fhir` for No-Auth servers (token always empty). */
+  /** Perform one FHIR request without exposing the access token in the result. */
   private async callFhir(
     server: Json,
     opts: {
@@ -470,6 +485,7 @@ export class FHIRServerService {
       resource: unknown;
       patch: unknown;
       tokenStrategy: string;
+      accessToken: string;
     },
   ): Promise<Json> {
     const { method, path, queryParams, body, contentType } = this.operationToRequest(
@@ -484,13 +500,7 @@ export class FHIRServerService {
     const qs = new URLSearchParams(queryParams).toString();
     if (qs) url += `?${qs}`;
 
-    const headers: Record<string, string> = { Accept: "application/fhir+json, application/json" };
-    const resourceHeaders = jsonValue(server.resource_headers_json, {}) as Json;
-    for (const [k, v] of Object.entries(resourceHeaders)) {
-      if (k.toLowerCase() === "authorization") continue;
-      headers[k] = String(v);
-    }
-    if (body !== null) headers["Content-Type"] = contentType;
+    const headers = buildFhirRequestHeaders(server, body !== null ? contentType : "", opts.accessToken);
 
     const start = Date.now();
     const controller = new AbortController();
@@ -533,4 +543,46 @@ export class FHIRServerService {
     else result.text = rawText.slice(0, MAX_RESPONSE_CHARS);
     return result;
   }
+}
+
+export function buildFhirRequestHeaders(
+  server: Json,
+  contentType: string,
+  accessToken: string,
+): Record<string, string> {
+  const headers: Record<string, string> = { Accept: "application/fhir+json, application/json" };
+  const resourceHeaders = jsonValue(server.resource_headers_json, {}) as Json;
+  for (const [key, value] of Object.entries(resourceHeaders)) {
+    if (key.toLowerCase() === "authorization") continue;
+    headers[key] = String(value);
+  }
+  if (contentType) headers["Content-Type"] = contentType;
+  if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+  return headers;
+}
+
+export async function resolveFhirServerAuth(
+  server: Json,
+  tokenStrategy: string,
+  secretKey: string,
+  dependencies: OAuthTokenDependencies = OAUTH_TOKEN_DEPENDENCIES,
+): Promise<{ server: Json; accessToken: string }> {
+  const authType = String(server.auth_type || AUTH_NONE);
+  if (authType === AUTH_NONE) return { server, accessToken: "" };
+  if (!OAUTH2_AUTH_TYPES.has(authType)) {
+    throw Object.assign(new Error(`Unsupported FHIR server auth_type '${authType}'`), { isValidation: true });
+  }
+  if (!secretKey) {
+    throw Object.assign(new Error("FHIR OAuth secret key is not configured"), { isValidation: true });
+  }
+
+  const privateRow = await dependencies.fetchPrivateServer(String(server.fhir_server_id), secretKey);
+  if (!privateRow) {
+    throw Object.assign(new Error("FHIR server not found or disabled"), { isValidation: true });
+  }
+  const privateServer = serverPrivate(privateRow);
+  const accessToken = authType === AUTH_OAUTH2_CC
+    ? await dependencies.clientCredentialsToken(privateServer, tokenStrategy)
+    : await dependencies.userAccessToken(privateServer, secretKey);
+  return { server: privateServer, accessToken };
 }

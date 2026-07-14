@@ -107,11 +107,13 @@ import {
   readChallengeCookie,
 } from "./webauthn.js";
 import { getDrugAdminStatus, getDrugPipelineStatus, getDrugLicenseEvents } from "./adminDrug.js";
+import { getDrugExplorer, getDrugExplorerDetail } from "./adminDrugExplorer.js";
 import { getStates as getMaintenanceStates, setEnabled as setMaintenanceEnabled, MaintenanceValueError } from "./adminMaintenance.js";
 import * as minioService from "../minioService.js";
 import { buildAdminOverview } from "./adminOverview.js";
 import { search as registrySearch } from "../loaders/igRegistry.js";
 import { getDrugService as getDrugServiceForAdmin } from "../mcp.js";
+import { parseByteRange } from "./drugAssetResponse.js";
 import { reconfigureEmbeddingService } from "../embeddingService.js";
 import { logWarning } from "../logger.js";
 import { dispatchPreview, PREVIEW_SUPPORTED_MODULES } from "./adminPreview.js";
@@ -211,7 +213,7 @@ export async function adminHandler(req: Request, res: Response, next: NextFuncti
 
   // 4c. POST /admin/logout (form) — clear cookie, redirect.
   if (method === "POST" && path === "/admin/logout") {
-    res.set("set-cookie", clearAdminSessionCookie());
+    res.set("set-cookie", clearAdminSessionCookie(cfg.adminCookieSecure));
     res.redirect(303, "/admin/login");
     return;
   }
@@ -229,7 +231,7 @@ export async function adminHandler(req: Request, res: Response, next: NextFuncti
   }
 
   if (method === "POST" && path === "/admin/api/logout") {
-    res.set("set-cookie", clearAdminSessionCookie());
+    res.set("set-cookie", clearAdminSessionCookie(cfg.adminCookieSecure));
     sendJson(res, 200, { ok: true });
     return;
   }
@@ -1244,6 +1246,63 @@ export async function adminHandler(req: Request, res: Response, next: NextFuncti
       return;
     }
 
+    // GET /admin/api/drug/explorer (faceted, server-side drug browser)
+    if (method === "GET" && path === "/admin/api/drug/explorer") {
+      try {
+        const csv = (value: unknown): string[] =>
+          String(value ?? "").split(",").map((item) => item.trim()).filter(Boolean);
+        const activeRaw = String(req.query.active ?? "active");
+        const active = activeRaw === "all" || activeRaw === "inactive" ? activeRaw : "active";
+        const matchRaw = String(req.query.asset_match ?? "any");
+        const orderRaw = String(req.query.order ?? "desc");
+        const errorRaw = String(req.query.has_error ?? "");
+        sendJson(res, 200, await getDrugExplorer({
+          q: String(req.query.q ?? "").trim(),
+          active,
+          assetTypes: csv(req.query.asset_types),
+          assetMatch: matchRaw === "all" ? "all" : "any",
+          missingAssetTypes: csv(req.query.missing_asset_types),
+          pipelineStatuses: csv(req.query.pipeline_statuses),
+          stage: String(req.query.stage ?? ""),
+          stageStatuses: csv(req.query.stage_statuses),
+          hasError: errorRaw === "true" ? true : errorRaw === "false" ? false : null,
+          manufacturer: String(req.query.manufacturer ?? "").trim(),
+          country: String(req.query.country ?? "").trim(),
+          dosageForm: String(req.query.dosage_form ?? "").trim(),
+          appearanceColor: String(req.query.appearance_color ?? "").trim(),
+          appearanceShape: String(req.query.appearance_shape ?? "").trim(),
+          updatedFrom: String(req.query.updated_from ?? "").trim(),
+          updatedTo: String(req.query.updated_to ?? "").trim(),
+          documentFrom: String(req.query.document_from ?? "").trim(),
+          documentTo: String(req.query.document_to ?? "").trim(),
+          sort: String(req.query.sort ?? "").trim(),
+          order: orderRaw === "asc" ? "asc" : "desc",
+          page: parseIntDefault(req.query.page, 1, (value) => Math.max(1, value)),
+          perPage: parseIntDefault(req.query.per_page, 25, (value) => Math.max(10, Math.min(100, value))),
+        }));
+      } catch (exc) {
+        sendJson(res, 500, { error: "Failed to search drugs", detail: String((exc as Error).message) });
+      }
+      return;
+    }
+
+    // GET /admin/api/drug/explorer-detail?license_id=...
+    if (method === "GET" && path === "/admin/api/drug/explorer-detail") {
+      const licenseId = String(req.query.license_id ?? "").trim();
+      if (!licenseId) {
+        sendJson(res, 400, { error: "license_id is required" });
+        return;
+      }
+      try {
+        const detail = await getDrugExplorerDetail(licenseId);
+        if (!detail) sendJson(res, 404, { error: "Drug not found" });
+        else sendJson(res, 200, detail);
+      } catch (exc) {
+        sendJson(res, 500, { error: "Failed to load drug", detail: String((exc as Error).message) });
+      }
+      return;
+    }
+
     // GET /admin/api/drug/details?license_id=...&include_cancelled=...
     if (method === "GET" && path === "/admin/api/drug/details") {
       const licenseId = String(req.query.license_id ?? "").trim();
@@ -1313,19 +1372,35 @@ export async function adminHandler(req: Request, res: Response, next: NextFuncti
         return;
       }
       try {
-        const asset = await drug.getDrugAssetContent(assetId);
+        const variant = String(req.query.variant ?? "").trim() || null;
+        const asset = await drug.getDrugAssetContent(assetId, variant);
         if (asset === null) {
           sendJson(res, 404, { error: "Asset not found or has no stored content" });
           return;
         }
-        res.writeHead(200, {
+        const download = String(req.query.download ?? "").toLowerCase() === "true";
+        const isPdf = asset.mimeType.toLowerCase() === "application/pdf";
+        const range = isPdf ? parseByteRange(req.headers.range, asset.data.length) : undefined;
+        if (range === null) {
+          res.writeHead(416, {
+            "Content-Range": `bytes */${asset.data.length}`,
+            "Accept-Ranges": "bytes",
+          });
+          res.end();
+          return;
+        }
+        const body = range ? asset.data.subarray(range.start, range.end + 1) : asset.data;
+        res.writeHead(range ? 206 : 200, {
           "Content-Type": asset.mimeType || "application/octet-stream",
-          "Content-Length": String(asset.data.length),
-          // Crawled third-party bytes: never let one execute as same-origin HTML.
-          "Content-Security-Policy": "sandbox",
+          "Content-Length": String(body.length),
           "X-Content-Type-Options": "nosniff",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Cache-Control": variant ? "private, max-age=86400" : "private, max-age=3600",
+          "Content-Disposition": `${download ? "attachment" : "inline"}; filename*=UTF-8''${encodeURIComponent(asset.filename)}`,
+          ...(isPdf ? { "Accept-Ranges": "bytes" } : { "Content-Security-Policy": "sandbox" }),
+          ...(range ? { "Content-Range": `bytes ${range.start}-${range.end}/${asset.data.length}` } : {}),
         });
-        res.end(asset.data);
+        res.end(body);
       } catch (exc) {
         sendJson(res, 500, {
           error: "Failed to load asset content",
@@ -1578,5 +1653,5 @@ function setSessionCookie(res: Response, cfg: AppConfig, username: string): void
   const token = buildAdminSessionToken(username, cfg.adminSessionSecret, {
     ttlMinutes: cfg.adminSessionTtlMinutes,
   });
-  res.set("set-cookie", buildAdminSessionCookie(token, maxAge));
+  res.set("set-cookie", buildAdminSessionCookie(token, maxAge, cfg.adminCookieSecure));
 }

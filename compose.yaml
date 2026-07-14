@@ -107,6 +107,9 @@ services:
       - MCP_HOST=${MCP_HOST:-0.0.0.0}
       - MCP_PORT=${MCP_PORT:-8000}
       - MCP_PATH=${MCP_PATH:-/mcp}
+      - PUBLIC_TOOLS_AUTH_MODE=${PUBLIC_TOOLS_AUTH_MODE:-none}
+      - PUBLIC_TOOLS_BEARER_TOKEN=${PUBLIC_TOOLS_BEARER_TOKEN:-}
+      - PUBLIC_TOOLS_CORS_ORIGINS=${PUBLIC_TOOLS_CORS_ORIGINS:-}
       # Connect through pgBouncer (transaction mode — asyncpg uses statement_cache_size=0)
       # edoburu/pgbouncer listens on port 5432 internally
       - DATABASE_URL=postgresql://${POSTGRES_USER:-mcp}:${POSTGRES_PASSWORD}@pgbouncer:5432/${POSTGRES_DB:-taiwan_health}
@@ -116,6 +119,11 @@ services:
       - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
       - ADMIN_PASSWORD_HASH=${ADMIN_PASSWORD_HASH:-}
       - ADMIN_SESSION_SECRET=${ADMIN_SESSION_SECRET:-}
+      - ADMIN_COOKIE_SECURE=${ADMIN_COOKIE_SECURE:-}
+      - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-}
+      - WEBAUTHN_RP_ID=${WEBAUTHN_RP_ID:-}
+      - WEBAUTHN_RP_NAME=${WEBAUTHN_RP_NAME:-}
+      - WEBAUTHN_ORIGIN=${WEBAUTHN_ORIGIN:-}
       # Symmetric pgcrypto key for FHIR OAuth tokens / client secrets
       # (falls back to ADMIN_SESSION_SECRET when unset). Must match admin-worker.
       - FHIR_SERVER_SECRET_KEY=${FHIR_SERVER_SECRET_KEY:-}

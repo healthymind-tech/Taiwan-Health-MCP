@@ -61,5 +61,5 @@ curl http://localhost:8080/openapi.json
 # 呼叫單一工具
 curl -X POST http://localhost:8080/tools/search_medical_codes \
   -H 'Content-Type: application/json' \
-  -d '{"query": "diabetes", "limit": 3}'
+  -d '{"keyword": "diabetes", "limit": 3}'
 ```

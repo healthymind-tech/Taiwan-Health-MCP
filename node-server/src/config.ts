@@ -8,6 +8,10 @@
  */
 
 import "dotenv/config";
+import {
+  resolvePublicToolsSecurity,
+  type PublicToolsAuthMode,
+} from "./publicToolsSecurity.js";
 
 export type TransportType = "stdio" | "streamable-http" | "sse";
 
@@ -17,6 +21,9 @@ export interface AppConfig {
   host: string;
   port: number;
   path: string;
+  publicToolsAuthMode: PublicToolsAuthMode;
+  publicToolsBearerToken: string;
+  publicToolsCorsOrigins: string[];
 
   // Database
   databaseUrl: string;
@@ -31,6 +38,7 @@ export interface AppConfig {
   adminPasswordHash: string;
   adminSessionSecret: string;
   adminSessionTtlMinutes: number;
+  adminCookieSecure: boolean;
   adminMaxUploadMb: number;
   // Public origin (scheme://host) used to build the OAuth2 Authorization Code
   // redirect_uri. Blank -> derive from the request Host header.
@@ -76,11 +84,21 @@ export function loadConfig(): AppConfig {
     throw new Error("DATABASE_URL environment variable is required");
   }
 
+  const publicBaseUrl = env("PUBLIC_BASE_URL").trim().replace(/\/+$/, "");
+  const publicTools = resolvePublicToolsSecurity(
+    env("PUBLIC_TOOLS_AUTH_MODE"),
+    env("PUBLIC_TOOLS_BEARER_TOKEN"),
+    env("PUBLIC_TOOLS_CORS_ORIGINS"),
+  );
+
   return {
     transport: transport as TransportType,
     host: env("MCP_HOST", "0.0.0.0"),
     port: Number.parseInt(env("MCP_PORT", "8000"), 10),
     path: env("MCP_PATH", "/mcp"),
+    publicToolsAuthMode: publicTools.authMode,
+    publicToolsBearerToken: publicTools.bearerToken,
+    publicToolsCorsOrigins: publicTools.corsOrigins,
     databaseUrl,
     redisUrl: env("REDIS_URL", "redis://localhost:6379/0"),
     logLevel: env("LOG_LEVEL", "INFO").toUpperCase(),
@@ -89,11 +107,20 @@ export function loadConfig(): AppConfig {
     adminPasswordHash: env("ADMIN_PASSWORD_HASH").trim(),
     adminSessionSecret: env("ADMIN_SESSION_SECRET").trim(),
     adminSessionTtlMinutes: Number.parseInt(env("ADMIN_SESSION_TTL_MINUTES", "240"), 10),
+    adminCookieSecure: resolveAdminCookieSecure(env("ADMIN_COOKIE_SECURE"), publicBaseUrl),
     adminMaxUploadMb: Number.parseInt(env("ADMIN_MAX_UPLOAD_MB", "512"), 10),
-    publicBaseUrl: env("PUBLIC_BASE_URL").trim().replace(/\/+$/, ""),
+    publicBaseUrl,
     metricsPort: Number.parseInt(env("METRICS_PORT", "9090"), 10),
-    ...webauthnFromEnv(env("PUBLIC_BASE_URL").trim().replace(/\/+$/, "")),
+    ...webauthnFromEnv(publicBaseUrl),
   };
+}
+
+export function resolveAdminCookieSecure(setting: string, publicBaseUrl: string): boolean {
+  const normalized = setting.trim().toLowerCase();
+  if (normalized === "true") return true;
+  if (normalized === "false") return false;
+  if (normalized) throw new Error("ADMIN_COOKIE_SECURE must be true or false");
+  return publicBaseUrl.toLowerCase().startsWith("https://");
 }
 
 /**

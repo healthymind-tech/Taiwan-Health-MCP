@@ -4,15 +4,14 @@
 // drug_analysis job triggers; opens the license browser for per-license detail
 // and asset preview.
 
-import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import { api } from "../../../lib/api";
 import { qk } from "../../../lib/queryKeys";
 import { useActiveJobTypes } from "../../../lib/jobs";
 import { StatusBadge } from "../../../components/StatusBadge";
 import { ProgressBar } from "../../../components/Modal";
 import { toast } from "../../../components/toast";
-import { DrugLicensesModal } from "./DrugLicensesModal";
 
 interface Stage {
   status?: string;
@@ -80,8 +79,8 @@ interface Props {
 
 export function DrugPipelinePanel({ disabled = false, disabledReason = "" }: Props): JSX.Element {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const activeJobTypes = useActiveJobTypes();
-  const [browsing, setBrowsing] = useState(false);
 
   const { data } = useQuery({
     queryKey: qk.drugPipeline,
@@ -134,7 +133,7 @@ export function DrugPipelinePanel({ disabled = false, disabledReason = "" }: Pro
             className="btn btn--sm"
             disabled={disabled && !p.index?.total_licenses}
             title={actionTitle}
-            onClick={() => setBrowsing(true)}
+            onClick={() => navigate("/modules/drug/explorer")}
           >
             Browse licenses
           </button>
@@ -159,7 +158,6 @@ export function DrugPipelinePanel({ disabled = false, disabledReason = "" }: Pro
         <StageRow name="Analysis" stage={p.analysis} />
       </div>
 
-      {browsing && <DrugLicensesModal onClose={() => setBrowsing(false)} />}
     </div>
   );
 }

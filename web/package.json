@@ -2,20 +2,27 @@
   "name": "taiwan-health-web",
   "private": true,
   "version": "0.1.0",
-  "description": "Unified Next.js front-end for Taiwan Health MCP: public marketing/status/privacy/dpa pages plus the admin console, proxying API/MCP/WS to the Python backend.",
+  "description": "Unified Next.js front-end for Taiwan Health MCP: public marketing/status/privacy/dpa pages plus the admin console, proxying API/MCP/WS to the Node backend.",
   "scripts": {
-    "dev": "next dev -p 3000",
-    "build": "next build",
+    "prepare:pdf-worker": "cp node_modules/pdfjs-dist/build/pdf.worker.min.mjs public/pdf.worker.min.mjs",
+    "dev": "npm run prepare:pdf-worker && next dev -p 3000",
+    "build": "npm run prepare:pdf-worker && next build",
     "start": "next start -p 3000",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@simplewebauthn/browser": "^13.3.0",
     "@tanstack/react-query": "^5.62.0",
+    "lucide-react": "^0.468.0",
     "next": "^14.2.15",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.30.4"
+    "react-markdown": "^10.1.0",
+    "react-pdf": "^10.4.1",
+    "react-router-dom": "^6.30.4",
+    "rehype-raw": "^7.0.0",
+    "rehype-sanitize": "^6.0.0",
+    "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
     "@types/node": "^20.14.0",

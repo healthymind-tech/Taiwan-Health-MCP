@@ -77,7 +77,7 @@ function toolInputJsonSchema(shape: z.ZodRawShape): Record<string, unknown> {
  * Faithful port of Python `_build_openapi_spec`: each tool `foo` → `POST /tools/foo`
  * with the tool's input JSON-Schema as the request body and `operationId = foo`.
  */
-export function buildOpenApiSpec(serverUrl: string): Record<string, unknown> {
+export function buildOpenApiSpec(serverUrl: string, bearerAuth = false): Record<string, unknown> {
   const paths: Record<string, unknown> = {};
   for (const tool of toolRegistry.values()) {
     const schema = toolInputJsonSchema(tool.shape);
@@ -115,6 +115,14 @@ export function buildOpenApiSpec(serverUrl: string): Record<string, unknown> {
     paths,
   };
   if (serverUrl) spec.servers = [{ url: serverUrl }];
+  if (bearerAuth) {
+    spec.components = {
+      securitySchemes: {
+        bearerAuth: { type: "http", scheme: "bearer" },
+      },
+    };
+    spec.security = [{ bearerAuth: [] }];
+  }
   return spec;
 }
 

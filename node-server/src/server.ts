@@ -28,6 +28,7 @@ import { adminHandler } from "./admin/adminApp.js";
 import { getFhirServerJwks, fhirServerSecretKey } from "./admin/adminFhirServers.js";
 import { completeAuthorization, OAuthError } from "./admin/fhirOauthService.js";
 import * as minioService from "./minioService.js";
+import { allowedCorsOrigin, bearerTokenMatches } from "./publicToolsSecurity.js";
 
 const OAUTH_CALLBACK_PATH = "/fhir-oauth/callback";
 
@@ -89,6 +90,7 @@ async function bootstrapResources(): Promise<void> {
 }
 
 function buildApp(): express.Express {
+  const cfg = config();
   const app = express();
   app.use(express.json({ limit: "4mb" }));
   app.use(express.urlencoded({ extended: false, limit: "4mb" }));
@@ -120,13 +122,42 @@ function buildApp(): express.Express {
     return `${scheme}://${host}`;
   };
 
+  const publicPaths = [cfg.path, "/openapi.json", "/tools"];
+  app.use(publicPaths, (req: Request, res: Response, next) => {
+    const requestOrigin = String(req.headers.origin ?? "");
+    if (requestOrigin) {
+      const normalizedRequestOrigin = requestOrigin.trim().replace(/\/+$/, "");
+      const sameOrigin = normalizedRequestOrigin === originFrom(req).replace(/\/+$/, "");
+      const allowedOrigin = sameOrigin
+        ? normalizedRequestOrigin
+        : allowedCorsOrigin(requestOrigin, cfg.publicToolsCorsOrigins);
+      if (allowedOrigin === null) {
+        res.status(403).json({ error: "cors_origin_denied" });
+        return;
+      }
+      res.set("access-control-allow-origin", allowedOrigin);
+      if (allowedOrigin !== "*") res.vary("Origin");
+    }
+    if (req.method === "OPTIONS" || cfg.publicToolsAuthMode === "none") {
+      next();
+      return;
+    }
+    if (!bearerTokenMatches(req.headers.authorization, cfg.publicToolsBearerToken)) {
+      res
+        .status(401)
+        .set("www-authenticate", 'Bearer realm="taiwan-health-mcp"')
+        .json({ error: "unauthorized" });
+      return;
+    }
+    next();
+  });
+
   app.options("/openapi.json", (_req: Request, res: Response) => {
     res
       .status(204)
       .set({
-        "access-control-allow-origin": "*",
         "access-control-allow-methods": "GET, POST, OPTIONS",
-        "access-control-allow-headers": "content-type",
+        "access-control-allow-headers": "authorization, content-type",
       })
       .end();
   });
@@ -134,8 +165,8 @@ function buildApp(): express.Express {
     void (async () => {
       try {
         await ensureRegistryWarm();
-        const spec = buildOpenApiSpec(originFrom(req));
-        res.set("access-control-allow-origin", "*").json(spec);
+        const spec = buildOpenApiSpec(originFrom(req), cfg.publicToolsAuthMode === "bearer");
+        res.json(spec);
       } catch (exc) {
         res.status(500).json({ error: "openapi_unavailable", detail: String((exc as Error).message) });
       }
@@ -146,9 +177,8 @@ function buildApp(): express.Express {
     res
       .status(204)
       .set({
-        "access-control-allow-origin": "*",
         "access-control-allow-methods": "POST, OPTIONS",
-        "access-control-allow-headers": "content-type",
+        "access-control-allow-headers": "authorization, content-type",
       })
       .end();
   });
@@ -173,7 +203,7 @@ function buildApp(): express.Express {
         } catch {
           bodyObj = { result: text };
         }
-        res.set("access-control-allow-origin", "*").json(bodyObj);
+        res.json(bodyObj);
       } catch (exc) {
         res.status(400).json({
           error: "tool_call_failed",
@@ -237,7 +267,7 @@ function buildApp(): express.Express {
 
   // B2: MCP streamable-http with per-session transports.
   const transports = new Map<string, StreamableHTTPServerTransport>();
-  const mcpPath = config().path;
+  const mcpPath = cfg.path;
 
   app.post(mcpPath, async (req: Request, res: Response) => {
     const sessionId = req.headers["mcp-session-id"] as string | undefined;

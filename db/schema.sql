@@ -774,6 +774,26 @@ CREATE TABLE IF NOT EXISTS drug.assets (
     stored_at                TIMESTAMPTZ
 );
 
+CREATE TABLE IF NOT EXISTS drug.asset_variants (
+    variant_id        UUID PRIMARY KEY,
+    source_asset_id   UUID NOT NULL REFERENCES drug.assets (asset_id) ON DELETE CASCADE,
+    variant_kind      TEXT NOT NULL,
+    mime_type         TEXT,
+    width_px          INTEGER,
+    height_px         INTEGER,
+    size_bytes        BIGINT,
+    sha256            TEXT,
+    bucket            TEXT,
+    object_key        TEXT,
+    minio_uri         TEXT,
+    etag              TEXT,
+    version_id        TEXT,
+    storage_status    TEXT NOT NULL DEFAULT 'pending',
+    last_error_message TEXT,
+    stored_at         TIMESTAMPTZ,
+    UNIQUE (source_asset_id, variant_kind)
+);
+
 CREATE TABLE IF NOT EXISTS drug.insert_analysis (
     analysis_id            UUID PRIMARY KEY,
     license_id             TEXT NOT NULL REFERENCES drug.licenses (license_id) ON DELETE CASCADE,
@@ -875,6 +895,7 @@ CREATE INDEX IF NOT EXISTS idx_drug_einsert_scraped ON drug.electronic_inserts (
 CREATE INDEX IF NOT EXISTS idx_drug_appearance_license ON drug.appearance_records (license_id);
 CREATE INDEX IF NOT EXISTS idx_drug_asset_license_group ON drug.assets (license_id, asset_group);
 CREATE INDEX IF NOT EXISTS idx_drug_asset_storage_status ON drug.assets (storage_status);
+CREATE INDEX IF NOT EXISTS idx_drug_asset_variant_source ON drug.asset_variants (source_asset_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_drug_insert_analysis_source
     ON drug.insert_analysis (source_asset_id);
 CREATE INDEX IF NOT EXISTS idx_drug_insert_analysis_license

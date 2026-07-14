@@ -5,6 +5,7 @@ import { ServicesPage } from "./routes/services/ServicesPage";
 import { ModulesLayout } from "./routes/modules/ModulesLayout";
 import { ModulePage } from "./routes/modules/ModulePage";
 import { FhirServersPage } from "./routes/modules/FhirServersPage";
+import { DrugExplorerPage } from "./routes/modules/drug/DrugExplorerPage";
 import { UPLOAD_MODULE_ORDER } from "./lib/moduleMeta";
 import { TasksPage } from "./routes/tasks/TasksPage";
 import { SettingsPage } from "./routes/settings/SettingsPage";
@@ -118,6 +119,7 @@ export default function App(): JSX.Element {
           <Route path="/modules" element={<ModulesLayout />}>
             <Route index element={<Navigate to={UPLOAD_MODULE_ORDER[0]} replace />} />
             <Route path="fhir-servers" element={<FhirServersPage />} />
+            <Route path="drug/explorer" element={<DrugExplorerPage />} />
             <Route path=":moduleKey" element={<ModulePage />} />
           </Route>
           <Route path="/settings" element={<SettingsPage />} />

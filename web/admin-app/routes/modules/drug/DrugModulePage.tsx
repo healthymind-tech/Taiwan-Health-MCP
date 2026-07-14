@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import { api } from "../../../lib/api";
 import { qk } from "../../../lib/queryKeys";
 import { formatRelative } from "../../../lib/time";
@@ -9,7 +10,6 @@ import { StatusBadge } from "../../../components/StatusBadge";
 import { UploadField } from "../UploadField";
 import { ScheduleModal } from "../ScheduleModal";
 import { DrugPipelinePanel } from "./DrugPipelinePanel";
-import { DrugLicensesModal } from "./DrugLicensesModal";
 import type { CatalogEntry, ModulesPayload, UploadedFile } from "../../../lib/types";
 
 const MODULE_KEY = "drug";
@@ -37,11 +37,9 @@ function statusBadge(status: ReturnType<typeof importStatus>): JSX.Element {
 
 export function DrugModulePage(): JSX.Element {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const activeJobTypes = useActiveJobTypes();
   const [showSchedule, setShowSchedule] = useState(false);
-  const [showPreview, setShowPreview] = useState(
-    () => new URLSearchParams(window.location.search).get("drug_preview") === "1",
-  );
 
   const modulesQ = useQuery({
     queryKey: qk.modules,
@@ -171,7 +169,7 @@ export function DrugModulePage(): JSX.Element {
             className="btn"
             disabled={totalRecords === 0}
             title={totalRecords === 0 ? "Import drug index data first" : ""}
-            onClick={() => setShowPreview(true)}
+            onClick={() => navigate("/modules/drug/explorer")}
           >
             Preview data
           </button>
@@ -319,7 +317,6 @@ export function DrugModulePage(): JSX.Element {
           onClose={() => setShowSchedule(false)}
         />
       )}
-      {showPreview && <DrugLicensesModal onClose={() => setShowPreview(false)} />}
     </div>
   );
 }

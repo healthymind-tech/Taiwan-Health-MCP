@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 // In production nginx is the single front door and routes API/MCP/WS to the
-// Python backend; these rewrites mirror that map so `next dev` works standalone.
+// Node backend app service; these rewrites mirror that map so `next dev` works standalone.
 const BACKEND = process.env.BACKEND_INTERNAL_URL || "http://localhost:8000";
 
 const nextConfig = {

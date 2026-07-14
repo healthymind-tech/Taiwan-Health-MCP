@@ -13,6 +13,7 @@ import * as minio from "../minioService.js";
 import { logInfo, logWarning } from "../logger.js";
 import { buildDrugRecord, isEiComplete, type Dict, type IndexRow } from "./drugRecordBuilder.js";
 import { parseDate } from "./tfdaParserUtils.js";
+import { renderDrugWebImage } from "./drugImageVariant.js";
 import {
   TFDACrawlerService,
   type AppearanceRecordScrape,
@@ -37,6 +38,7 @@ function uuid5(namespace: string, name: string): string {
 
 const ASSET_NAMESPACE = uuid5(NAMESPACE_URL, "taiwan-health-mcp/drug-assets");
 const APPEARANCE_NAMESPACE = uuid5(NAMESPACE_URL, "taiwan-health-mcp/drug-appearance");
+const VARIANT_NAMESPACE = uuid5(NAMESPACE_URL, "taiwan-health-mcp/drug-asset-variants");
 
 function deterministicAssetId(
   licenseId: string,
@@ -58,6 +60,29 @@ function plannedObjectKey(
   normalizedFilename: string,
 ): string {
   return `drug/${licenseId}/${assetGroup}/${assetId}/${normalizedFilename}`;
+}
+
+function deterministicVariantId(assetId: string, variantKind: string): string {
+  return uuid5(VARIANT_NAMESPACE, `${assetId}|${variantKind}`);
+}
+
+interface AssetVariantRow {
+  variant_id: string;
+  source_asset_id: string;
+  variant_kind: string;
+  mime_type: string;
+  width_px: number | null;
+  height_px: number | null;
+  size_bytes: number | null;
+  sha256: string;
+  bucket: string;
+  object_key: string;
+  minio_uri: string;
+  etag: string;
+  version_id: string;
+  storage_status: string;
+  last_error_message: string;
+  stored_at: Date | null;
 }
 
 function stageStatus(itemCount: number, hadError: boolean): string {
@@ -420,6 +445,7 @@ async function enrichOneLicense(
   }
 
   const uploadedAssets: AssetRow[] = [];
+  const uploadedVariants: AssetVariantRow[] = [];
   let storageFailures = 0;
   let latestInsertAssetId: string | null = null;
   let latestInsertUpload: number | null = null;
@@ -465,6 +491,61 @@ async function enrichOneLicense(
         lastErrorMessage,
       }),
     );
+
+    if (asset.assetType === "shape_image") {
+      const variantKind = "web";
+      const variantId = deterministicVariantId(assetId, variantKind);
+      const variantObjectKey = `drug/${licenseId}/${asset.assetGroup}/${assetId}/variants/web.webp`;
+      let variantLocator: Record<string, string> = minio.buildLocator(variantObjectKey);
+      let variantData: Buffer | null = null;
+      let width: number | null = null;
+      let height: number | null = null;
+      let variantStatus = "success";
+      let variantError = "";
+
+      try {
+        const rendered = await renderDrugWebImage(asset.content);
+        variantData = rendered.data;
+        width = rendered.width;
+        height = rendered.height;
+        if (!minio.enabled()) throw new Error(minio.initError() ?? "MinIO not configured");
+        variantLocator = {
+          ...variantLocator,
+          ...(await minio.uploadBytes({
+            objectKey: variantObjectKey,
+            data: variantData,
+            contentType: "image/webp",
+          })),
+        };
+      } catch (err) {
+        variantStatus = "retryable_failed";
+        variantError = String(err instanceof Error ? err.message : err);
+        logWarning("Drug image WebP generation failed", {
+          license_id: licenseId,
+          asset_id: assetId,
+          error: variantError,
+        });
+      }
+
+      uploadedVariants.push({
+        variant_id: variantId,
+        source_asset_id: assetId,
+        variant_kind: variantKind,
+        mime_type: "image/webp",
+        width_px: width,
+        height_px: height,
+        size_bytes: variantData?.length ?? null,
+        sha256: variantData ? createHash("sha256").update(variantData).digest("hex") : "",
+        bucket: variantLocator.bucket ?? "",
+        object_key: variantLocator.object_key ?? "",
+        minio_uri: variantLocator.minio_uri ?? "",
+        etag: variantLocator.etag ?? "",
+        version_id: variantLocator.version_id ?? "",
+        storage_status: variantStatus,
+        last_error_message: variantError,
+        stored_at: variantStatus === "success" ? new Date() : null,
+      });
+    }
 
     if (asset.assetType === "insert_pdf") {
       // Python compares against datetime.min for an undated asset, and ties go to
@@ -686,6 +767,50 @@ async function enrichOneLicense(
               row.last_error_message,
               row.last_attempt_at,
               row.downloaded_at,
+              row.stored_at,
+            ],
+          );
+        }
+
+        for (const row of uploadedVariants) {
+          await client.query(
+            `INSERT INTO drug.asset_variants (
+               variant_id, source_asset_id, variant_kind, mime_type,
+               width_px, height_px, size_bytes, sha256, bucket, object_key,
+               minio_uri, etag, version_id, storage_status,
+               last_error_message, stored_at
+             )
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+             ON CONFLICT (source_asset_id, variant_kind) DO UPDATE SET
+               mime_type = EXCLUDED.mime_type,
+               width_px = EXCLUDED.width_px,
+               height_px = EXCLUDED.height_px,
+               size_bytes = EXCLUDED.size_bytes,
+               sha256 = EXCLUDED.sha256,
+               bucket = EXCLUDED.bucket,
+               object_key = EXCLUDED.object_key,
+               minio_uri = EXCLUDED.minio_uri,
+               etag = EXCLUDED.etag,
+               version_id = EXCLUDED.version_id,
+               storage_status = EXCLUDED.storage_status,
+               last_error_message = EXCLUDED.last_error_message,
+               stored_at = EXCLUDED.stored_at`,
+            [
+              row.variant_id,
+              row.source_asset_id,
+              row.variant_kind,
+              row.mime_type,
+              row.width_px,
+              row.height_px,
+              row.size_bytes,
+              row.sha256,
+              row.bucket,
+              row.object_key,
+              row.minio_uri,
+              row.etag,
+              row.version_id,
+              row.storage_status,
+              row.last_error_message,
               row.stored_at,
             ],
           );
