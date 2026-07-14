@@ -4,9 +4,9 @@
 餵給哪個模組。2026-07-14 的全清重建（`docker compose down -v` → `up -d --build` →
 重新匯入所有模組）就是照這份清單做的。
 
-`fhir-code/` **不在版控裡**（檔案大、部分有授權限制、且全部可重新取得），只有兩個手工
-維護的 LOINC 對照表例外。所以這份清單就是那個資料夾唯一的紀錄——換機器時照著它把檔案
-補齊即可。
+`fhir-code/` **完全不在版控裡**（檔案大、部分有授權限制、且全部可重新取得）。所以這份
+清單就是那個資料夾唯一的紀錄——換機器時照著它把檔案補齊即可。專案自己整理、下載不到的
+那兩個 LOINC 對照表則放在版控中的 `data/loinc/`（見下）。
 
 ## 檔案清單
 
@@ -18,8 +18,6 @@
 | `icd/10/icd10pcs/icd10pcs_tables_2025.zip` | 648 KB | `728d9b8f5c315548` | icd / `icd10pcs` |
 | `icd/10/1.2023年中文版ICD-10-CM_PCS_1131118V3(…).xlsx` | 7 MB | `1bf34d1f92930f29` | icd / `icd_zh_tw` |
 | `loinc/2.80/Loinc_2.80.zip` | 74 MB | `5a6b10dd6ed29704` | loinc / `loinc` |
-| `loinc/taiwan_mapping.csv` | 1.5 KB | `659898b4763e20d2` | loinc / `loinc_taiwan_mapping` |
-| `loinc/lab_reference_ranges.csv` | 3.5 KB | `bd99653487243637` | loinc / `loinc_reference_ranges` |
 | `snomed/SnomedCT_InternationalRF2_PRODUCTION_20250601T120000Z.zip` | 540 MB | `3d6c189288e375d4` | snomed / `snomed_ct` |
 | `rxnorm/RxNorm_full_06032024.zip` | 241 MB | `fc612ca0abee8955` | rxnorm / `rxnorm_full` |
 | `twcoreig/v1.0.0/package.tgz` | 2.8 MB | `2fa1419fa48d1545` | ig / `ig` |
@@ -28,11 +26,13 @@
 `umls/umls-2024AA-metathesaurus-full.zip`（4 GB）也在資料夾裡，但目前**沒有任何匯入流程
 用到它**，重建時可以略過。
 
-### 兩個必須留在版控的檔案
+### 兩個在版控裡的 LOINC 對照表
 
-`loinc/taiwan_mapping.csv` 和 `loinc/lab_reference_ranges.csv` 是專案自己整理的（台灣檢驗
-代碼對應、各醫學中心參考值彙整），**網路上下載不到**。`.gitignore` 特地把它們從 fhir-code
-的忽略規則裡排除——不要把這個例外拿掉。
+`data/loinc/taiwan_mapping.csv`（loinc / `loinc_taiwan_mapping`）和
+`data/loinc/lab_reference_ranges.csv`（loinc / `loinc_reference_ranges`）是專案自己整理的
+（台灣檢驗代碼對應、各醫學中心參考值彙整），**網路上下載不到**，所以它們放在 `data/`
+底下、跟著 repo 走——不是 `fhir-code/`（那整個資料夾都不進版控）。`loinc_import` 需要這
+兩個 role，記得跟 LOINC zip 一起上傳。
 
 ## 各檔案從哪裡來
 
