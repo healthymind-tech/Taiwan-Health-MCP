@@ -7,7 +7,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../lib/api";
 import { qk } from "../../lib/queryKeys";
-import { formatRelative } from "../../lib/time";
+import { formatPreciseRelative } from "../../lib/time";
+import { formatElapsedTime, formatEstimatedRemaining } from "../../lib/jobTiming";
+import { useNow } from "../../lib/useNow";
 import { toast } from "../../components/toast";
 import { StatusBadge } from "../../components/StatusBadge";
 import { Modal, ProgressBar } from "../../components/Modal";
@@ -21,18 +23,7 @@ const ACTION_LABEL: Record<JobControlAction, string> = {
   restart: "Restart",
 };
 
-function stepDuration(s: JobStep): string {
-  if (!s.started_at) return "";
-  const start = Date.parse(s.started_at);
-  if (!Number.isFinite(start)) return "";
-  const end = s.finished_at ? Date.parse(s.finished_at) : Date.now();
-  const sec = Math.max(0, end - start) / 1000;
-  if (sec < 60) return `${sec.toFixed(1)}s`;
-  const m = Math.floor(sec / 60);
-  return `${m}m ${Math.round(sec % 60)}s`;
-}
-
-function StepsTimeline({ steps }: { steps: JobStep[] }): JSX.Element {
+function StepsTimeline({ steps, now }: { steps: JobStep[]; now: number }): JSX.Element {
   return (
     <div className="job-steps">
       {steps.map((s) => {
@@ -53,7 +44,12 @@ function StepsTimeline({ steps }: { steps: JobStep[] }): JSX.Element {
                     {s.progress_current.toLocaleString()}/{s.progress_total.toLocaleString()}
                   </span>
                 )}
-                {stepDuration(s) && <span className="muted small">{stepDuration(s)}</span>}
+                <span className="muted small">{formatElapsedTime(s, now)}</span>
+                {s.status === "running" && (
+                  <span className="muted small">
+                    remaining {formatEstimatedRemaining(s, now)}
+                  </span>
+                )}
               </div>
               {pct !== null && (
                 <div className="job-step__bar">
@@ -81,6 +77,7 @@ function StepsTimeline({ steps }: { steps: JobStep[] }): JSX.Element {
 
 export function JobDetail({ jobId, onClose }: { jobId: string; onClose: () => void }): JSX.Element {
   const qc = useQueryClient();
+  const now = useNow();
 
   const jobQ = useQuery({
     queryKey: qk.job(jobId),
@@ -117,8 +114,12 @@ export function JobDetail({ jobId, onClose }: { jobId: string; onClose: () => vo
               <StatusBadge status={job.status} />
               <code className="muted small">{job.job_id}</code>
               <span className="muted small">
-                {job.module_key} · by {job.requested_by} · {formatRelative(job.updated_at)}
+                {job.module_key} · by {job.requested_by} · updated {formatPreciseRelative(job.updated_at ?? job.created_at, now)}
               </span>
+              <span className="muted small">duration {formatElapsedTime(job, now)}</span>
+              {job.status === "running" && (
+                <span className="muted small">remaining {formatEstimatedRemaining(job, now)}</span>
+              )}
             </div>
             <div className="head-actions">
               {job.available_actions.map((action) => (
@@ -147,7 +148,7 @@ export function JobDetail({ jobId, onClose }: { jobId: string; onClose: () => vo
           {steps.length > 0 && (
             <>
               <h4 className="subhead">Steps</h4>
-              <StepsTimeline steps={steps} />
+              <StepsTimeline steps={steps} now={now} />
             </>
           )}
 

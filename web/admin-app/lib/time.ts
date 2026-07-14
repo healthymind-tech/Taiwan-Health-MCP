@@ -16,3 +16,39 @@ export function formatRelative(iso: string | null | undefined): string {
   const day = Math.round(hr / 24);
   return `${day}d ago`;
 }
+
+export function formatDuration(totalSeconds: number): string {
+  const total = Math.max(0, Math.round(totalSeconds));
+  const days = Math.floor(total / 86_400);
+  const hours = Math.floor((total % 86_400) / 3_600);
+  const minutes = Math.floor((total % 3_600) / 60);
+  const seconds = total % 60;
+  const parts: string[] = [];
+  if (days > 0) parts.push(`${days}d`);
+  if (hours > 0 || parts.length > 0) parts.push(`${hours}h`);
+  if (minutes > 0 || parts.length > 0) parts.push(`${minutes}m`);
+  parts.push(`${seconds}s`);
+  return parts.join(" ");
+}
+
+export function secondsBetween(
+  startIso: string | null | undefined,
+  endIso: string | null | undefined,
+  nowMs = Date.now(),
+): number | null {
+  if (!startIso) return null;
+  const start = Date.parse(startIso);
+  if (!Number.isFinite(start)) return null;
+  const parsedEnd = endIso ? Date.parse(endIso) : nowMs;
+  const end = Number.isFinite(parsedEnd) ? parsedEnd : nowMs;
+  return Math.max(0, (end - start) / 1000);
+}
+
+export function formatPreciseRelative(
+  iso: string | null | undefined,
+  nowMs = Date.now(),
+): string {
+  const seconds = secondsBetween(iso, null, nowMs);
+  if (seconds === null) return "never";
+  return `${formatDuration(seconds)} ago`;
+}
