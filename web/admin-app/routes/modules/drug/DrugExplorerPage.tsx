@@ -793,7 +793,7 @@ export function DrugExplorerPage(): JSX.Element {
         <Search size={18} /><input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="License, drug, ingredient, manufacturer" />
         {searchInput ? <button type="button" className="icon-btn" onClick={() => { setSearchInput(""); setParam("q", "", true); }} aria-label="Clear search"><X size={16} /></button> : null}
       </form>
-      <button type="button" className="btn drug-filter-button" onClick={() => setFiltersOpen(true)}><Filter size={17} /><span className="drug-filter-label">Filters</span>{filterCount ? <span className="drug-filter-count">{filterCount}</span> : null}</button>
+      <button type="button" className="btn drug-filter-button" aria-label={filterCount ? `Filters, ${filterCount} active` : "Filters"} onClick={() => setFiltersOpen(true)}><Filter size={17} /><span className="drug-filter-label">Filters</span>{filterCount ? <span className="drug-filter-count">{filterCount}</span> : null}</button>
       <label className="drug-sort"><ArrowUpDown size={17} /><select value={params.get("sort") || "work_priority"} onChange={(event) => setParam("sort", event.target.value, true)}>
         <option value="work_priority">Work priority</option><option value="relevance">Relevance</option>
         <option value="updated_at">Recently updated</option><option value="name_zh">Chinese name</option>
