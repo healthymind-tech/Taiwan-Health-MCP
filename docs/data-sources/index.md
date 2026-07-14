@@ -20,6 +20,6 @@
 - **藥品域**為三階段管線（索引 → 線上爬取豐富 → OCR/LLM 分析），其中爬取與分析階段需設定 TFDA / OCR / 分析 LLM 端點（見 `.env` 的 `DRUG_*`,或於 Admin → Settings 管理）。詳見[藥品服務模組](../modules/drug-service.md)。
 - **FHIR IG** 採多 IG（package-scoped）設計；除主 IG 外，可在 Admin → Sources 綁定相依套件（如 `hl7.terminology.r4`、`hl7.fhir.r4.core`）。詳見[FHIR IG 服務模組](../modules/fhir-ig-service.md)。
 - **RxNorm** 目前僅作為概念參考術語載入，用於 FHIR IG ValueSet 的 TTY 展開，**不**對外提供獨立的藥物交互作用工具。
-- **嵌入**：每個模組匯入後自動回填 `*_embeddings` 向量表（需 Ollama）；也可於模組頁面單獨重建。
+- **嵌入**：`*_embeddings` 向量表由各模組獨立的 `*_embed` 工作回填，可在模組頁面執行或排程。嵌入端點存於 `admin.llm_profiles`（於 Admin → Settings 設定，預設為 Ollama）；端點不可用時，搜尋自動退回關鍵字模式。
 
 各別來源細節：[ICD-10](icd10.md)、[LOINC](loinc.md)、[臨床指引](guidelines.md)。

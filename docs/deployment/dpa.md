@@ -9,10 +9,10 @@ Taiwan Health MCP Server 在 `/dpa` 路徑提供靜態 HTML 資料處理協議�
 https://<your-domain>/dpa
 ```
 
-本地測試：
+本地測試（經由 nginx 前門，預設 `:8080`）：
 
 ```bash
-curl http://localhost:8000/dpa
+curl http://localhost:8080/dpa
 ```
 
 ## DPA 摘要
@@ -31,24 +31,34 @@ curl http://localhost:8000/dpa
 | 違反通知 | 72 小時內通知（依法規要求） |
 | 準據法 | 中華民國（台灣）法律，台北地方法院管轄 |
 
+## 唯讀範圍與唯一例外
+
+51 個工具中有 50 個對系統自身的資料做唯讀查詢。唯一例外是 **`crud_fhir_server`**：
+它會把 FHIR 請求轉送到**管理者已明確登錄**的外部 FHIR 伺服器。寫入操作
+（create / update / patch / delete）必須同時滿足兩個條件才會執行 ——
+該伺服器的 allow-list 允許該操作，且呼叫端帶入 `confirm_write=true`。
+
+此類請求中的個人健康資料由呼叫端提供、直接轉送至該外部伺服器，本服務不予保留。
+啟用外部伺服器寫入權限的 Operator，對該處理行為負控制者責任。
+
 ## 實作方式
 
-DPA 頁面由 `server.py` 中的 `PrivacyPageMiddleware` 提供，
-與 `/privacy` 頁面共用同一個中介層。攔截 `GET /dpa` 請求並回傳靜態 HTML。
+`/dpa` 由 **Next.js `web` 服務**提供（不再是後端的中介層）：
 
-回應標頭：
-- `Content-Type: text/html; charset=utf-8`
-- `Cache-Control: public, max-age=86400`
+| 項目 | 位置 |
+|------|------|
+| 路由 | `web/app/dpa/route.ts`（`export const dynamic = "force-static"`） |
+| 內容 | `web/legacy/dpa.html` |
+| 深色模式注入 | `web/lib/legacy.ts` 的 `withDarkMode()` |
+| 回應標頭 | `Content-Type: text/html; charset=utf-8` |
+
+nginx 將所有非 API 路徑導向 `web`，因此 `/dpa` 不經過 `app` 容器。
 
 ## 更新 DPA
 
-DPA 內容定義在 `src/server.py` 的 `_DPA_HTML` 字串中。修改後重新部署即可。
+1. 修改 `web/legacy/dpa.html`。
+2. 重新建置並部署 `web` 服務：
 
-## Nginx 快取設定（選用）
-
-```nginx
-location /dpa {
-    proxy_pass http://app:8000/dpa;
-    proxy_cache_valid 200 1d;
-}
-```
+   ```bash
+   docker compose build web && docker compose up -d --no-deps web
+   ```

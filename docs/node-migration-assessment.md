@@ -1,5 +1,10 @@
 # Python → Node.js 遷移評估與執行計畫
 
+!!! info "歷史文件（已完成）"
+    這是 2026-06 撰寫的 Python → Node 遷移**評估**。該遷移已於 2026-07 全部完成：
+    後端目前 100% 為 Node/TypeScript，倉庫內已無 Python。本文保留作為決策紀錄，
+    **不代表目前的架構**。目前架構請見[開發指南](development/index.md)與[部署架構](architecture/deployment.md)。
+
 評估日期：2026-06-10
 
 ## 結論

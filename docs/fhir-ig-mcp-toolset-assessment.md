@@ -1,5 +1,12 @@
 # FHIR IG MCP Toolset — Data-Readiness Assessment & Multi-IG Design
 
+!!! info "歷史文件（設計評估，已實作）"
+    這是 FHIR IG 工具集的**設計評估**，撰寫於實作之前，內容假設後端為 Python
+    （文中的 `src/admin_jobs.py`、`src/twcore_service.py`、`pip install fhirpathpy`
+    等均已不存在）。工具集已實作完成：19 個 `fhir_*` 工具現以 TypeScript 提供，
+    FHIRPath 驗證由 npm 套件 `fhirpath` 在行程內執行，**不需要任何額外安裝**。
+    本文保留作為決策紀錄；目前的工具說明請見 [FHIR IG 工具](tools/fhir-ig-tools.md)。
+
 **Status:** assessment / planning (no code changes yet)
 **Date:** 2026-06-07
 **Scope:** the 25-tool FHIR-IG-driven MCP server spec (IG Discovery → Profile Selection → StructureDefinition → Terminology → Mapping → Reference/Bundle → Validation), evaluated against what this repo currently stores, with the raw source at `fhir-code/twcoreig/v1.0.0/package.tgz` as the fallback truth.

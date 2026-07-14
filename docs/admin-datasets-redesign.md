@@ -1,5 +1,9 @@
 # Admin Panel — Modules Tab Redesign
 
+!!! info "歷史文件（已實作）"
+    這是管理後台 Modules 頁籤改版的**設計文件**（文中的 "Status: Planning" 已過時）。
+    該改版已實作完成。本文保留作為設計紀錄；目前的管理後台說明請見[管理後台](admin/index.md)。
+
 **Status**: Planning — confirmed, ready to implement  
 **Scope**: Major UI/UX refactor of admin panel  
 

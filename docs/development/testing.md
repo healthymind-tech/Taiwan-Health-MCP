@@ -1,49 +1,65 @@
 # 測試指南
 
-我們使用 `pytest` 作為測試框架。
+後端測試以 **Node 內建的測試執行器**（`node --test`）進行，透過 `tsx` 直接執行 TypeScript。
+
+> 舊版的 pytest 測試套件（`tests/test_*.py`）已隨 Python 後端一併移除，倉庫內已無 Python 測試。
 
 ## 執行測試
 
 ```bash
-# 執行所有測試（單元 + API 整合）
-python -m pytest tests/ -v
-
-# 只執行單元測試
-python -m pytest tests/test_tools_*.py tests/test_services_query.py tests/test_sync_services.py -v
-
-# 只執行 API 整合測試（需要 server 正在運行）
-python -m pytest tests/test_api_integration.py -v
-
-# 指定自訂 server URL
-MCP_SERVER_URL=http://localhost:8000/mcp python -m pytest tests/test_api_integration.py -v
-
-# 執行特定測試類別
-python -m pytest tests/test_api_integration.py::TestSearchMedicalCodes -v
-
-# 執行單一測試
-python -m pytest tests/test_api_integration.py::TestSearchMedicalCodes::test_exact -v
+cd node-server
+npm install
+npm test          # node --import tsx --test src/**/*.test.ts
 ```
 
-> **為何用 `python -m pytest` 而非 `pytest`？**
-> `python -m pytest` 確保使用目前 conda 環境的 Python，並自動將當前目錄加入 `sys.path`，避免 import 問題。
+型別檢查（提交前建議都跑）：
 
-## 測試範疇
+```bash
+cd node-server
+npm run typecheck # tsc --noEmit
 
-### 單元測試（`tests/test_tools_*.py`、`tests/test_services_query.py`、`tests/test_sync_services.py`）
-針對各 Service 與 server 工具封裝函式進行邏輯驗證，使用 mock DB，不需要外部服務。
+cd ../web
+npm run typecheck
+```
 
-### API 整合測試 (`tests/test_api_integration.py`)
-對實際運行的 MCP server 發送真實 HTTP 請求，驗證所有 30 個公開 tool 是否正常運作。這些測試同時覆蓋動態註冊後的 `tools/list` 結果，確認 registry 變更沒有漏掛工具或錯誤隱藏工具。
+## 目前的測試範疇
 
-每個 tool 有三種測試情境：
-1. **exact** — 完全正確的查詢，預期返回非空結果
-2. **fuzzy** — 模糊/部分查詢，預期成功處理
-3. **wrong** — 無效輸入，預期優雅處理（不崩潰）
+測試檔與被測程式放在一起（`src/**/*.test.ts`）。目前涵蓋：
 
-另有 `TestToolsList` 驗證 `tools/list` API 能列出所有已註冊的工具，並與 registry（`_TOOL_GROUPS`）內的群組設定一致。
+| 測試檔 | 範疇 |
+|--------|------|
+| `node-server/src/loaders/loinc.test.ts` | LOINC loader 的解析邏輯 |
 
-若 server 未啟動，整合測試會自動跳過（skip），不會失敗。
+測試覆蓋率目前偏低——多數行為是在 Python → Node 遷移期間以**對照執行**的方式驗證的
+（同一份輸入分別餵給新舊實作，逐欄位比對輸出），而不是以單元測試固定下來。
+新增功能時請補上對應測試。
 
 ## 撰寫新測試
 
-請在 `tests/` 目錄下建立 `test_*.py` 檔案。針對每個新增的 Tool，務必加入對應的測試案例，包含「正常輸入」、「模糊輸入」與「異常輸入」三種情境。
+在被測模組旁建立 `<name>.test.ts`，使用 Node 內建的 `node:test` 與 `node:assert`：
+
+```ts
+import { test } from "node:test";
+import assert from "node:assert/strict";
+
+test("parses a LOINC row", () => {
+  assert.equal(actual, expected);
+});
+```
+
+## 端對端驗證
+
+在跑起來的環境上，可直接對工具面發請求（經由 nginx 前門，預設 `:8080`）：
+
+```bash
+# 服務與各模組狀態
+curl http://localhost:8080/status.json
+
+# 目前已註冊的工具（依模組資料載入狀態動態變動）
+curl http://localhost:8080/openapi.json
+
+# 呼叫單一工具
+curl -X POST http://localhost:8080/tools/search_medical_codes \
+  -H 'Content-Type: application/json' \
+  -d '{"query": "diabetes", "limit": 3}'
+```

@@ -1,13 +1,13 @@
-site_name: Taiwan ICD10 Health MCP
+site_name: Taiwan Health MCP
 site_description: 台灣醫療健康資料整合 MCP 伺服器 - 技術文件
-site_author: Taiwan-ICD10-Health-MCP Team
-site_url: https://audi0417.github.io/Taiwan-Health-MCP
+site_author: Taiwan Health MCP Team
+site_url: https://healthymind-tech.github.io/Taiwan-Health-MCP
 
-repo_name: Taiwan-ICD10-Health-MCP
-repo_url: https://github.com/audi0417/Taiwan-Health-MCP
+repo_name: healthymind-tech/Taiwan-Health-MCP
+repo_url: https://github.com/healthymind-tech/Taiwan-Health-MCP
 edit_uri: edit/main/docs/
 
-copyright: Copyright &copy; 2024 Taiwan-ICD10-Health-MCP Team
+copyright: Copyright &copy; 2024-2026 Taiwan Health MCP Team
 
 theme:
   name: material
@@ -90,6 +90,7 @@ nav:
     - 程式風格: development/code-style.md
     - 測試指南: development/testing.md
     - 貢獻流程: development/contributing.md
+    - 文件網站維護: WEBSITE.md
   - 常見問題:
     - faq/index.md
     - 操作與使用: faq/usage.md

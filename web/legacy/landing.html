@@ -220,7 +220,7 @@
       <code>https://tw-health-mcp.healthymind-tech.com/mcp</code>
     </div>
     <div class="badge-row">
-      <span class="badge">24 Tools</span>
+      <span class="badge">51 Tools</span>
       <span class="badge">ICD-10-CM 2025</span>
       <span class="badge">LOINC 2.80</span>
       <span class="badge">SNOMED CT</span>
@@ -527,9 +527,13 @@
       </p>
     </div>
     <p style="margin-top:16px;font-size:0.93rem;color:#555;">
-      All 28 tools are read-only. The server does not accept writes, does not
-      require a user session, and does not store any identifying information
-      about callers.
+      The server's own medical data is queried read-only: no tool writes to it,
+      no user session is required, and no identifying information about callers
+      is stored. One tool, <code>crud_fhir_server</code>, can write to an
+      <em>external</em> FHIR server &mdash; but only to a server an operator has
+      explicitly registered, only for operations that server's allow-list
+      permits, and only when the caller passes <code>confirm_write=true</code>.
+      The remaining 50 tools are read-only.
     </p>
   </div>
 </section>

@@ -5,7 +5,7 @@
 ## class `LabService`
 
 ### `__init__(self, pool)`
-初始化檢驗服務，接受 asyncpg 連線池。
+初始化檢驗服務，接受 `pg.Pool` 連線池。
 
 ### `async search_loinc_code(self, keyword: str, category: str = None) -> str`
 搜尋 LOINC 候選碼。適合用 test name、abbreviation、analyte 或 specimen phrase 找可能的檢驗碼。

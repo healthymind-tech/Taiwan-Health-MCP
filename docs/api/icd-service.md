@@ -3,9 +3,9 @@
 ## class `ICDService`
 
 ### `__init__(self, pool)`
-初始化 ICD 服務，接受 asyncpg 連線池（透過 pgBouncer）。
+初始化 ICD 服務，接受 `pg.Pool` 連線池（透過 pgBouncer）。
 
-- **pool**: asyncpg 連線池，由 `server.py` lifespan 注入。
+- **pool**: `pg.Pool` 連線池，由 `server.ts` 的行程初始化流程注入。
 
 ### `async initialize(self)`
 檢查 `icd.procedures` 資料表是否有資料，設定 `_pcs_available` flag。

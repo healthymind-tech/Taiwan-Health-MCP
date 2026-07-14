@@ -3,7 +3,7 @@
 ## class `ClinicalGuidelineService`
 
 ### `__init__(self, pool)`
-初始化指引服務，接受 asyncpg 連線池。資料經由管理後台（匯入階段 `--guideline`）預先載入至 `guideline.*` schema。
+初始化指引服務，接受 `pg.Pool` 連線池。資料經由管理後台的 `guideline_import` 工作預先載入至 `guideline.*` schema。
 
 ### `async search_guideline(self, keyword: str) -> str`
 搜尋臨床指引標題與 ICD 碼。
