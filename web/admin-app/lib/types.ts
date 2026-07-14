@@ -240,6 +240,8 @@ export interface JobSummary {
   progress_current?: number;
   progress_total?: number;
   created_at?: string;
+  started_at?: string;
+  finished_at?: string;
   updated_at?: string;
 }
 
@@ -252,8 +254,6 @@ export interface JobDetail extends JobSummary {
   requested_by: string;
   control_state: string;
   worker_name: string;
-  started_at?: string;
-  finished_at?: string;
   last_error_code: string;
   last_error_message: string;
   job_options: Record<string, unknown>;

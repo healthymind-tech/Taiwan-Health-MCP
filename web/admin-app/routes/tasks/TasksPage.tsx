@@ -5,7 +5,9 @@
 
 import { useState } from "react";
 import { useJobs } from "../../lib/jobs";
-import { formatRelative } from "../../lib/time";
+import { formatPreciseRelative } from "../../lib/time";
+import { formatElapsedTime, formatEstimatedRemaining } from "../../lib/jobTiming";
+import { useNow } from "../../lib/useNow";
 import { StatusBadge } from "../../components/StatusBadge";
 import { ProgressBar } from "../../components/Modal";
 import { JobDetail } from "./JobDetail";
@@ -13,6 +15,7 @@ import { JobDetail } from "./JobDetail";
 export function TasksPage(): JSX.Element {
   const { data, isPending, isError, error, isFetching } = useJobs();
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+  const now = useNow();
 
   if (isPending) return <div className="muted">Loading jobs…</div>;
   if (isError) return <div className="error-box">Failed to load jobs: {String(error)}</div>;
@@ -36,6 +39,8 @@ export function TasksPage(): JSX.Element {
               <th>Module</th>
               <th>Status</th>
               <th>Progress</th>
+              <th>Duration</th>
+              <th>Remaining</th>
               <th>Updated</th>
             </tr>
           </thead>
@@ -53,7 +58,11 @@ export function TasksPage(): JSX.Element {
                 <td data-label="Progress">
                   <ProgressBar current={job.progress_current ?? 0} total={job.progress_total ?? 0} />
                 </td>
-                <td className="muted small" data-label="Updated">{formatRelative(job.updated_at)}</td>
+                <td className="muted small" data-label="Duration">{formatElapsedTime(job, now)}</td>
+                <td className="muted small" data-label="Remaining">{formatEstimatedRemaining(job, now)}</td>
+                <td className="muted small" data-label="Updated">
+                  {formatPreciseRelative(job.updated_at ?? job.created_at, now)}
+                </td>
               </tr>
             ))}
           </tbody>

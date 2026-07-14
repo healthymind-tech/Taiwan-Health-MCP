@@ -373,6 +373,7 @@ interface JobRow {
   current_step: string | null;
   worker_name: string | null;
   created_at_iso: string | null;
+  updated_at_iso: string | null;
   started_at_iso: string | null;
   finished_at_iso: string | null;
   last_error_code: string | null;
@@ -397,6 +398,7 @@ function jobToDict(row: JobRow): Record<string, unknown> {
     current_step: row.current_step || "",
     worker_name: row.worker_name || "",
     created_at: row.created_at_iso === null ? "" : pyIso(row.created_at_iso),
+    updated_at: row.updated_at_iso === null ? "" : pyIso(row.updated_at_iso),
     started_at: row.started_at_iso === null ? "" : pyIso(row.started_at_iso),
     finished_at: row.finished_at_iso === null ? "" : pyIso(row.finished_at_iso),
     last_error_code: row.last_error_code || "",
@@ -408,6 +410,7 @@ function jobToDict(row: JobRow): Record<string, unknown> {
 }
 
 const JOB_ISO_COLS = `${tsIsoExpr("created_at")} AS created_at_iso,
+            ${tsIsoExpr("updated_at")} AS updated_at_iso,
             ${tsIsoExpr("started_at")} AS started_at_iso,
             ${tsIsoExpr("finished_at")} AS finished_at_iso`;
 
