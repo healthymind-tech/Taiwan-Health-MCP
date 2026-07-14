@@ -1153,10 +1153,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#_3" class="md-nav__link">
+  <a href="#loinc" class="md-nav__link">
     <span class="md-ellipsis">
       
-        兩個必須留在版控的檔案
+        兩個在版控裡的 LOINC 對照表
       
     </span>
   </a>
@@ -1169,7 +1169,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_4" class="md-nav__link">
+  <a href="#_3" class="md-nav__link">
     <span class="md-ellipsis">
       
         各檔案從哪裡來
@@ -1180,7 +1180,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_5" class="md-nav__link">
+  <a href="#_4" class="md-nav__link">
     <span class="md-ellipsis">
       
         重建步驟
@@ -1191,7 +1191,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_6" class="md-nav__link">
+  <a href="#_5" class="md-nav__link">
     <span class="md-ellipsis">
       
         這份清單對應的資料量
@@ -2502,10 +2502,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#_3" class="md-nav__link">
+  <a href="#loinc" class="md-nav__link">
     <span class="md-ellipsis">
       
-        兩個必須留在版控的檔案
+        兩個在版控裡的 LOINC 對照表
       
     </span>
   </a>
@@ -2518,7 +2518,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_4" class="md-nav__link">
+  <a href="#_3" class="md-nav__link">
     <span class="md-ellipsis">
       
         各檔案從哪裡來
@@ -2529,7 +2529,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_5" class="md-nav__link">
+  <a href="#_4" class="md-nav__link">
     <span class="md-ellipsis">
       
         重建步驟
@@ -2540,7 +2540,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_6" class="md-nav__link">
+  <a href="#_5" class="md-nav__link">
     <span class="md-ellipsis">
       
         這份清單對應的資料量
@@ -2574,9 +2574,9 @@
 <p>這份文件記錄「<strong>從零重建整套系統</strong>」時實際用到的來源檔：每個檔案從哪裡來、放在哪裡、
 餵給哪個模組。2026-07-14 的全清重建（<code>docker compose down -v</code> → <code>up -d --build</code> →
 重新匯入所有模組）就是照這份清單做的。</p>
-<p><code>fhir-code/</code> <strong>不在版控裡</strong>（檔案大、部分有授權限制、且全部可重新取得），只有兩個手工
-維護的 LOINC 對照表例外。所以這份清單就是那個資料夾唯一的紀錄——換機器時照著它把檔案
-補齊即可。</p>
+<p><code>fhir-code/</code> <strong>完全不在版控裡</strong>（檔案大、部分有授權限制、且全部可重新取得）。所以這份
+清單就是那個資料夾唯一的紀錄——換機器時照著它把檔案補齊即可。專案自己整理、下載不到的
+那兩個 LOINC 對照表則放在版控中的 <code>data/loinc/</code>（見下）。</p>
 <h2 id="_2">檔案清單<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
 <p>放在 repo 根目錄的 <code>fhir-code/</code> 底下。<code>sha256</code> 只列前 16 碼，用來確認拿到的是同一份檔案。</p>
 <table>
@@ -2614,18 +2614,6 @@
 <td>loinc / <code>loinc</code></td>
 </tr>
 <tr>
-<td><code>loinc/taiwan_mapping.csv</code></td>
-<td>1.5 KB</td>
-<td><code>659898b4763e20d2</code></td>
-<td>loinc / <code>loinc_taiwan_mapping</code></td>
-</tr>
-<tr>
-<td><code>loinc/lab_reference_ranges.csv</code></td>
-<td>3.5 KB</td>
-<td><code>bd99653487243637</code></td>
-<td>loinc / <code>loinc_reference_ranges</code></td>
-</tr>
-<tr>
 <td><code>snomed/SnomedCT_InternationalRF2_PRODUCTION_20250601T120000Z.zip</code></td>
 <td>540 MB</td>
 <td><code>3d6c189288e375d4</code></td>
@@ -2653,11 +2641,13 @@
 </table>
 <p><code>umls/umls-2024AA-metathesaurus-full.zip</code>（4 GB）也在資料夾裡，但目前<strong>沒有任何匯入流程
 用到它</strong>，重建時可以略過。</p>
-<h3 id="_3">兩個必須留在版控的檔案<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h3>
-<p><code>loinc/taiwan_mapping.csv</code> 和 <code>loinc/lab_reference_ranges.csv</code> 是專案自己整理的（台灣檢驗
-代碼對應、各醫學中心參考值彙整），<strong>網路上下載不到</strong>。<code>.gitignore</code> 特地把它們從 fhir-code
-的忽略規則裡排除——不要把這個例外拿掉。</p>
-<h2 id="_4">各檔案從哪裡來<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
+<h3 id="loinc">兩個在版控裡的 LOINC 對照表<a class="headerlink" href="#loinc" title="Permanent link">&para;</a></h3>
+<p><code>data/loinc/taiwan_mapping.csv</code>（loinc / <code>loinc_taiwan_mapping</code>）和
+<code>data/loinc/lab_reference_ranges.csv</code>（loinc / <code>loinc_reference_ranges</code>）是專案自己整理的
+（台灣檢驗代碼對應、各醫學中心參考值彙整），<strong>網路上下載不到</strong>，所以它們放在 <code>data/</code>
+底下、跟著 repo 走——不是 <code>fhir-code/</code>（那整個資料夾都不進版控）。<code>loinc_import</code> 需要這
+兩個 role，記得跟 LOINC zip 一起上傳。</p>
+<h2 id="_3">各檔案從哪裡來<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
 <p><strong>ICD-10-CM / PCS 2025</strong>：CMS 官方年度釋出（<a href="https://www.cms.gov/medicare/coding-billing/icd-10-codes">https://www.cms.gov/medicare/coding-billing/icd-10-codes</a>）。
 中文名稱 XLSX 來自衛福部的中文版 ICD-10-CM/PCS 對照檔。</p>
 <p><strong>LOINC 2.80</strong>：Regenstrief Institute（<a href="https://loinc.org/downloads/">https://loinc.org/downloads/</a>），需註冊帳號後下載。</p>
@@ -2676,7 +2666,7 @@ hl7.fhir.r4.examples…），最後 DB 裡會有 9 個 package、約 21,000 個 
 <p>其他兩個看起來合理的網址（<code>cacheData/36_2.csv</code>、<code>codedata/datadownload/36</code>）都是 404。</p>
 <p>保健食品與食品營養<strong>不需要來源檔</strong>：<code>health_supplements_sync</code> / <code>food_nutrition_sync</code> 直接
 打 TFDA Open Data API。臨床指引則由 <code>guideline_seed</code> 從 repo 內建資料播種。</p>
-<h2 id="_5">重建步驟<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>
+<h2 id="_4">重建步驟<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
 <p>設定（OCR / TFDA / registry 位址、LLM profiles、passkey）用 Settings 匯出檔還原：</p>
 <pre><code class="language-bash">curl -X POST localhost:8080/admin/api/settings/import \
      -H 'Content-Type: application/json' \
@@ -2702,7 +2692,7 @@ Enrichment 會去爬 TFDA 官方網站、Analysis 會呼叫 OCR + LLM，兩者�
 （<code>DRUG_AUTOCHAIN_BATCH_LIMIT</code>），會分批慢慢推進；不想跑就在 Jobs 頁面停掉它。
 只想小規模驗證的話，自己排一個帶 <code>{"limit": 30}</code> 的 <code>drug_enrichment</code> 即可。</p>
 </div>
-<h2 id="_6">這份清單對應的資料量<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h2>
+<h2 id="_5">這份清單對應的資料量<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>
 <p>2026-07-14 全清重建後的實際結果，可以拿來核對匯入是否完整：</p>
 <table>
 <thead>
