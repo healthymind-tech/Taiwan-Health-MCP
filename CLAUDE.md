@@ -51,68 +51,58 @@ Available gstack skills:
 
 ## Project Overview
 
-> **Backend runtime — READ FIRST (post-migration state).** The production
-> backend is **Node.js / TypeScript** under `node-server/` — this is what the
-> `app` (MCP + admin REST) and `admin-worker` compose services run
-> (`node dist/server.js` and `node dist/admin/adminWorker.js`). The `web`
-> service is the Next.js front-end. **The only Python still in the tree is the
-> drug pipeline**: `admin-worker` is a polyglot image that delegates *drug* jobs
-> (`drug_index_import` / `drug_enrichment` / `drug_analysis`) to a Python shim
-> (`src/run_one_drug_job.py` → `src/admin_jobs.py:execute_admin_job`) — the TFDA
-> crawl and the analysis LLM still live there (`requirements.txt`,
-> `Dockerfile.worker`). **OCR is no longer a Python dependency**: the dots_ocr VLM
-> was replaced by MinerU, an external HTTP service the pipeline uploads insert PDFs
-> to (Settings → OCR Server). That was the last native hard-dep, so the remaining
-> drug closure is now ordinary httpx/asyncpg/bs4 code and is portable to Node —
-> porting it is outstanding work, not a blocked task. Everything else — all tools, all
-> non-drug loaders, admin REST, settings, IG, FHIR, services probe — is Node.
-> The many `src/*.py` / `src/*_service.py` file references below describe the
-> **original design that has since been ported to `node-server/src/*.ts`**;
-> treat them as conceptual, and make code changes in `node-server/` unless you
-> are working on the drug pipeline. The remaining Python is the ~26-file drug
-> closure only (`src/admin_*`/`drug_*`/`tfda_*`/`config`/`database`/`cache`/
-> `minio_service`/`utils` + `loader/loaders/drug_*` + `embedding_loader`/
-> `fda_common`).
+> **Backend runtime — READ FIRST.** The backend is **100% Node.js / TypeScript**, under
+> `node-server/`. There is **no Python anywhere in this repository** — `src/*.py`,
+> `loader/` and `requirements.txt` were deleted when the drug pipeline was ported in
+> 2026-07. Two compose services run from `node-server/`: `app` (`node dist/server.js` —
+> MCP + admin REST) and `admin-worker` (`node dist/admin/adminWorker.js` — every job
+> type, including the three drug stages). The `web` service is the Next.js front-end.
+> OCR is an external **MinerU** HTTP service (Settings → OCR Server), not an in-process
+> model. Make backend changes in `node-server/src/`.
+>
+> The only remaining thing under `src/` is `src/prompts/` — the Analysis-LM system
+> prompt, read at runtime by `drugAnalysisService.ts`. Do not delete it.
 
-Taiwan Health MCP Server — a Model Context Protocol server (originally built on the Python **`mcp` SDK** `FastMCP`, now served by the Node MCP SDK in `node-server/`) exposing **~51 tools** across 12 tool groups for Taiwan medical and health data. Designed for production SaaS deployment with hundreds of requests/second throughput.
+Taiwan Health MCP Server — a Model Context Protocol server (Node MCP SDK,
+`@modelcontextprotocol/sdk`) exposing **51 tools** across 12 tool groups for Taiwan
+medical and health data. Designed for production SaaS deployment with hundreds of
+requests/second throughput.
 
 **Modules**: ICD-10-CM/PCS 2025, LOINC 2.80, SNOMED CT International, Taiwan FDA (TFDA) drugs, Taiwan FDA health supplements, Taiwan FDA food nutrition, Taiwan clinical guidelines, FHIR R4 IG authoring (multi-IG, default TWCore v1.0.0), FHIR Condition/Medication generation, and an external FHIR server registry. RxNorm is loaded as concept-only reference terminology (used for IG ValueSet expansion, not a standalone drug tool).
 
 Three surfaces ship in one codebase:
-- **MCP server** (`src/server.py`) — the read-only tool surface consumed by LLM clients (also exposes the admin REST API, `/admin/ws`, `/status.json`, `/mcp`, `/openapi.json`).
-- **Admin console** (`src/admin_*.py` backend + the `web/` Next.js front-end) — an operator UI for uploading source files, running/scheduling data imports, managing settings and external FHIR servers, and monitoring jobs. Disabled by default (`ADMIN_ENABLED=false`).
-- **Next.js front-end** (`web/`) — a single Node.js app serving every web page: the public landing/status/privacy/dpa pages **and** the admin SPA (the old `admin-ui/` Vite app is merged in under `web/admin-app/`, mounted via a `/admin` catch-all route). nginx (`nginx/nginx.conf`) is the single front door: it routes API/MCP/WebSocket to the Python `app` and everything else to `web`. The legacy inlined HTML in `src/server.py` is gated behind `LEGACY_HTML=true` (default off).
+- **MCP server** (`node-server/src/server.ts` + `mcp.ts`) — the tool surface consumed by LLM clients (also exposes the admin REST API, `/admin/ws`, `/status.json`, `/mcp`, `/openapi.json`, `POST /tools/<name>`).
+- **Admin console** (`node-server/src/admin/*.ts` backend + the `web/admin-app/` SPA) — an operator UI for uploading source files, running/scheduling data imports, managing settings and external FHIR servers, and monitoring jobs. Disabled by default (`ADMIN_ENABLED=false`).
+- **Next.js front-end** (`web/`) — one Node app serving every web page: the public landing/status/privacy/dpa pages **and** the admin SPA (mounted via a `/admin` catch-all route). nginx (`nginx/nginx.conf`) is the single front door: it routes API/MCP/WebSocket to `app` and everything else to `web`.
+
+**Entry point (ports).** nginx publishes `${WEB_PORT:-8080}` and is the **only** service
+reachable from the host. `app` merely `expose`s `MCP_PORT` (8000) on the compose network —
+`http://<host>:8000` does **not** reach this system. Always use `:8080`.
 
 ## Commands
 
 ```bash
-# --- Node backend (app + admin-worker live in node-server/) ----------------
+# --- Node backend (app + admin-worker both build from node-server/) ---------
 cd node-server
 npm install
 npm run build                                 # tsc -> dist/
-npm test                                       # node --test (if present)
+npm run typecheck                             # tsc --noEmit
+npm test                                       # node --test over src/**/*.test.ts
 # Run the MCP/admin server locally (HTTP mode):
 MCP_TRANSPORT=streamable-http DATABASE_URL=postgresql://... node dist/server.js
 
 # --- Web front-end (public pages + admin SPA) ------------------------------
-cd web && npm install && npm run build && node server.js
+cd web && npm install && npm run build && npm run start
 
 # --- Docker (production — recommended) -------------------------------------
 cp .env.example .env                          # then edit .env (set POSTGRES_PASSWORD, ADMIN_*)
-docker compose up -d                          # postgres, pgbouncer, redis, minio, app (Node), admin-worker (Node+Python drug shim), web (Next.js), nginx (front door :8080)
+docker compose up -d                          # nginx (:8080), web, app, admin-worker, postgres, pgbouncer, redis, minio
 docker compose build app web && docker compose up -d --no-deps app web   # redeploy after code changes
 
 # Data loading is done through the admin console (Modules tab) and executed by
-# the admin-worker in the background. Non-drug imports run natively in Node;
-# drug jobs (index/enrich/analysis) are delegated to the Python shim
-# (src/run_one_drug_job.py). There is no standalone CLI data-loader container.
-
-# --- Drug pipeline Python (only remaining Python) --------------------------
-# Deps come from requirements.txt (baked into Dockerfile.worker) — all pure wheels
-# now that OCR is an external MinerU service rather than an in-process VLM.
-# The worker bind-mounts ./src and ./loader, so edits are live; smoke-test the
-# shim inside the worker container:
-#   docker compose exec admin-worker sh -lc 'cd /app/src && python run_one_drug_job.py <job_id>'
+# the admin-worker in the background. Every job type — file loaders, embeddings,
+# and the three drug stages — runs natively in Node. There is no loader CLI and
+# no standalone data-loader container.
 ```
 
 ## Architecture
@@ -120,57 +110,53 @@ docker compose build app web && docker compose up -d --no-deps app web   # redep
 ### Infrastructure stack
 | Component | Purpose |
 |-----------|---------|
+| nginx | Single front door on `${WEB_PORT:-8080}`; routes `/mcp`, `/openapi.json`, `/tools/*`, `/status.json`, `/admin/api/*`, `/admin/ws`, `/fhir-client/*`, `/fhir-oauth/*` to `app`, everything else to `web` |
 | PostgreSQL 16 (`pgvector/pgvector:pg16`) | Primary data store + `vector` columns for semantic search |
 | pgBouncer | Connection pooler (transaction mode, 500 client → 30 PG connections) |
-| Redis 7 | Response cache (TTL-based, `@cached` decorator), LRU-capped |
-| MinIO | Object storage for drug assets (inserts, labels, pill images); presigned download links |
-| Ollama (external) | Embedding model (`qwen3-embedding:0.6b`, 1024-dim) for semantic / hybrid search. Optional — unset `OLLAMA_BASE_URL` to fall back to keyword-only |
+| Redis 7 | Response cache (TTL-based, `cached()` in `cache.ts`), LRU-capped |
+| MinIO | Object storage for admin source uploads and drug assets (inserts, labels, pill images); presigned download links |
+| Embedding endpoint (external) | Semantic / hybrid search vectors (default Ollama `qwen3-embedding`). Configured in `admin.llm_profiles`, **not** env. Unavailable → keyword-only fallback |
+| MinerU (external) | OCR for drug insert PDFs (`POST /file_parse`). Configured in Settings → OCR Server |
+| Analysis LM (external) | Drug insert extraction. Configured in `admin.llm_profiles` |
 | Prometheus | Metrics on `METRICS_PORT` (default 9090, bound to localhost) |
 
-`docker compose up -d` starts: `postgres`, `pgbouncer`, `redis`, `minio`, `minio-init` (bucket bootstrap), `app` (MCP server + admin), and `admin-worker` (background job runner). There is no separate data-loader container — imports run inside `admin-worker`.
-
 ### Entry point
-`src/server.py` — `DynamicFastMCP` server (subclass of FastMCP). Startup uses `asynccontextmanager lifespan`:
-1. Start Prometheus metrics server (idempotent)
-2. Init asyncpg pool through pgBouncer (`statement_cache_size=0` required for transaction mode)
-3. Init Redis client
-4. Init MinIO + embedding clients
-5. Start DB pool stats collector (background task)
-6. Initialize each service in try/except — a failing service degrades gracefully
-7. Run Redis warm-up cache for common queries
-8. Run initial module status sync — registers only tools whose modules meet the row-count threshold
-9. Mount the admin console sub-app when `ADMIN_ENABLED=true`
+`node-server/src/server.ts` — Express app + MCP streamable-http transport. Process startup
+(`main()`) initializes once: Postgres pool (through pgBouncer), Redis, MinIO, metrics,
+each service (a failing service degrades gracefully), and the module-status sync that
+registers only tools whose modules meet the row-count threshold. MCP sessions each get a
+transport but share those process-wide singletons.
 
-**HTTP surface.** In production nginx (`:${WEB_PORT:-8080}`) is the single entry point: `/mcp`, `/openapi.json`, `/tools/*`, `/status.json`, `/admin/api/*`, `/admin/ws`, `/fhir-client/*`, `/fhir-oauth/*` proxy to the Python `app`; every other path (public pages + `/admin` SPA + `/admin/login`) is served by the `web` Next.js app. The Python ASGI app (still `PrivacyPageMiddleware` wrapping FastMCP) directly exposes:
-- `/mcp` — the MCP streamable-http endpoint (`MCP_PATH`).
-- `/`, `/status`, `/privacy`, `/dpa` + logo/favicon — static pages.
-- `/admin` + `/admin/ws` — admin console sub-app (when enabled).
-- `/fhir-client/<id>/jwks.json` — public JWKS for FHIR OAuth clients.
-- **OpenAPI bridge** (`_build_openapi_spec` + `_handle_openapi_tool_call`): `GET /openapi.json` advertises the currently-registered tools as an OpenAPI 3.1 doc, and `POST /tools/<name>` invokes a tool with a JSON-body of arguments. This lets OpenAPI-only clients (e.g. Open WebUI's OpenAPI tool servers) call the tools without a separate mcpo proxy. Unauthenticated, same as `/mcp`.
+HTTP surface exposed by `app`:
+- `/mcp` — MCP streamable-http endpoint (`MCP_PATH`).
+- `/status.json` — module row counts + service health (consumed by the public status page).
+- **OpenAPI bridge**: `GET /openapi.json` advertises the currently-registered tools as an OpenAPI 3.1 doc, and `POST /tools/<name>` invokes a tool with a JSON body of arguments. Lets OpenAPI-only clients (e.g. Open WebUI) call the tools without an mcpo proxy. Unauthenticated, same as `/mcp`.
+- `/admin/api/*` + `/admin/ws` — admin console backend (when enabled).
+- `/fhir-client/<id>/jwks.json` — public JWKS for FHIR OAuth clients; `/fhir-oauth/callback` — OAuth2 Authorization Code callback.
+- `/health` exists on the app but nginx does **not** route it — use `/status.json`.
 
-### Services
+### Services (all `node-server/src/`)
 
 | Service | File | Data source | Populated by |
 |---------|------|-------------|--------------|
-| ICD Service | `icd_service.py` | `icd.diagnoses` / `icd.procedures` | admin import (`--icd`) |
-| Drug Service | `drug_service.py` | `drug.*` tables | admin import drug pipeline (`--drug-index/-enrich/-analysis`), run by admin worker |
-| Drug Analysis Service | `drug_analysis_service.py` | `drug.insert_analysis` | OCR + LLM analysis stage |
-| Health Supplements Service | `health_supplements_service.py` | `health_supplements.items` | admin import (`--health-supplements`), TFDA Open Data |
-| Food Nutrition Service | `food_nutrition_service.py` | `food_nutrition.*` | admin import (`--food-nutrition`), TFDA Open Data |
-| Lab Service | `lab_service.py` | `loinc.*` | admin import (`--loinc`) |
-| Clinical Guideline Service | `clinical_guideline_service.py` | `guideline.*` | admin import (`--guideline`) |
-| FHIR Condition Service | `fhir_condition_service.py` | reads `icd.diagnoses` | — (derives from ICD) |
-| FHIR Medication Service | `fhir_medication_service.py` | reads `drug_service` | — (derives from Drug) |
-| FHIR IG Service | `fhir_ig_service.py` | `fhir.*` (multi-IG, package-scoped) | admin import (`--twcore`) + admin IG import |
-| FHIR Server Service | `fhir_server_service.py` | `admin.fhir_servers` | admin console **FHIR Servers** registration pipeline (always-on tools) |
-| TWCore Service | `twcore_service.py` | `fhir.*` (legacy helper) | admin import (`--twcore`) |
-| SNOMED Service | `snomed_service.py` | `snomed.*` | admin import (`--snomed`) |
-| Embedding Service | `embedding_service.py` | Ollama `/api/embed` | — (cross-cutting) |
-| MinIO Service | `minio_service.py` | MinIO bucket | — (drug assets) |
+| ICD Service | `icdService.ts` | `icd.diagnoses` / `icd.procedures` | `icd_import` job |
+| Drug Service | `drugService.ts` | `drug.*` tables | `drug_index_import` / `drug_enrichment` / `drug_analysis` jobs |
+| Drug Analysis Service | `drugAnalysisService.ts` | `drug.insert_analysis` | MinerU OCR + Analysis-LM stage |
+| Supplements Service | `supplementsService.ts` | `health_supplements.items` | `health_supplements_import` (TFDA Open Data) |
+| Food Service | `foodService.ts` | `food_nutrition.*` | `food_nutrition_import` (TFDA Open Data) |
+| Lab Service | `labService.ts` | `loinc.*` | `loinc_import` |
+| Guideline Service | `guidelineService.ts` | `guideline.*` | `guideline_import` (seeded) |
+| FHIR Condition Service | `fhirConditionService.ts` | reads `icd.*` | — (derives from ICD) |
+| FHIR Medication Service | `fhirMedicationService.ts` | reads drug service | — (derives from Drug) |
+| FHIR IG Service | `fhirIgService.ts` | `fhir.*` (multi-IG, package-scoped) | `ig_import` + admin IG gallery |
+| FHIR Server Service | `fhirServerService.ts` | `admin.fhir_servers` | admin console **FHIR Servers** wizard (always-on tools) |
+| SNOMED Service | `snomedService.ts` | `snomed.*` | `snomed_import` |
+| Embedding Service | `embeddingService.ts` | external embedding endpoint | — (cross-cutting) |
+| MinIO helper | `minioService.ts` | MinIO bucket | — (source files + drug assets) |
 
-Periodic re-imports are **not** scheduled inside the services. Scheduling is centralized in the admin worker via `admin.module_schedules` (managed in the admin console; see `src/admin_schedule.py`).
+Periodic re-imports are **not** scheduled inside the services. Scheduling is centralized in the admin worker via `admin.module_schedules` (see `admin/adminSchedule.ts`).
 
-### MCP tool groups (`_TOOL_GROUPS` in `server.py`)
+### MCP tool groups (`node-server/src/mcp.ts`)
 | Group | Tools |
 |-------|-------|
 | ICD-10 | `search_medical_codes`, `infer_complications`, `get_nearby_codes`, `check_medical_conflict`, `browse_icd_category` |
@@ -186,46 +172,33 @@ Periodic re-imports are **not** scheduled inside the services. Scheduling is cen
 | FHIR Servers | `list_fhir_servers`, `get_fhir_server_status`, `crud_fhir_server` (always registered) |
 | System | `health_check` (always registered) |
 
-Module-gated groups are dynamically added/removed by `ModuleStatusManager` based on row-count thresholds (see `src/module_status.py`, `SERVICE_MODULES`). FHIR Servers and System tools are always registered.
+Module-gated groups are dynamically added/removed by `moduleStatus.ts` (`SERVICE_MODULES` row-count thresholds). FHIR Servers and System tools are always registered.
 
-### Data loader
-`loader/main.py` — the loader stages live here. There is **no** standalone loader
-container; the `admin-worker` (and, in dev, a direct module invocation) runs these
-stages. Imports are triggered/scheduled from the admin console.
-- File-based imports (ICD / LOINC / SNOMED / FHIR IG) consume source files
-  **uploaded via the admin console** (Sources / Modules tab); API-based imports
-  (drug / health-supplements / food-nutrition) fetch from their upstream APIs;
-  guidelines are seeded from the repo.
-- Bulk writes go **directly** to PostgreSQL (bypassing pgBouncer).
-- For local development without the admin console, source-file locations can also
-  be resolved by `loader/dataset_resolver.py` from `config/datasets.yaml`
-  (`DATASETS_CONFIG`), falling back to the legacy `fhir-code/` layout:
-  - `icd/10/icd10cm/icd10cm-table-index-2025.zip`
-  - `icd/10/icd10pcs/icd10pcs_tables_2025.zip` *(bundled — loaded automatically by `--icd`)*
-  - `icd/10/*.xlsx` *(optional Taiwan ICD Chinese names)*
-  - `loinc/2.80/Loinc_2.80.zip`
-  - `twcoreig/package.tgz` *(primary IG; additional IG dependency packages such as `hl7.terminology.r4` / `hl7.fhir.r4.core` can be bound via Admin → Sources and are indexed as their own package-scoped IGs)*
-  - `snomed/SnomedCT_InternationalRF2_PRODUCTION_*.zip`
-  - `rxnorm/RxNorm_full_*.zip` *(concept-only reference)*
-- Drug pipeline source: the canonical TFDA `36_2.csv` license index plus live TFDA crawling (`DRUG_TFDA_BASE_URL`), OCR (`DRUG_OCR_*`), and an analysis LLM (`DRUG_ANALYSIS_*`).
-- Embedding stage (`embedding_loader.py`) backfills `*_embeddings` vector tables via Ollama.
+**`crud_fhir_server` is the only tool that can write.** It relays create/update/patch/delete to an *external* FHIR server, and only when that server's allow-list permits the operation and the caller passes `confirm_write=true`. Every other tool is read-only.
+
+### Data loaders
+`node-server/src/loaders/` — one module per dataset, invoked by the admin worker.
+- File-based imports (ICD / LOINC / SNOMED / RxNorm / FHIR IG) consume source files **uploaded via the admin console**, staged through MinIO; API-based imports (drug / health-supplements / food-nutrition) fetch from upstream APIs; guidelines are seeded from the repo.
+- For local development the source-file locations fall back to `fhir-code/` and can each be overridden by env (`FHIR_CODE_DIR`, `ICD_CM_ZIP`, `LOINC_ZIP_PATH`, `SNOMED_ZIP`, `RXNORM_ZIP`, `IG_TGZ`, …). `fhir-code/` is **not in git** — see `docs/data-sources/test-data.md`. `config/datasets.yaml` is a Python-era leftover and is read by **no code**.
+- Drug pipeline: `drugIndex.ts` (the TFDA `36_2.csv` license index) → `drugEnrichment.ts` (TFDA crawl → MinIO) → `drugAnalysis.ts` (insert PDF → MinerU OCR → Analysis LM). Shared: `tfdaCrawler.ts`, `tfdaParserUtils.ts`, `drugRecordBuilder.ts`.
+- Embedding stage (`embeddings.ts`) backfills `*_embeddings` vector tables as separate `*_embed` jobs.
 
 ### Admin console & background worker
-- **`src/admin_console.py`** mounts a session-authenticated sub-app at `/admin` (Starlette). It composes feature modules: `admin_sources.py` (file uploads + source roles), `admin_jobs.py` (import jobs), `admin_schedule.py` (cron schedules), `admin_services.py` (module/service status), `admin_settings.py` (DB-backed settings), `admin_maintenance.py` (per-module maintenance mode + clear), `admin_drug.py` (drug pipeline control), `admin_ig.py` (FHIR IG gallery/import), `admin_preview.py`, `admin_embedding.py`, `admin_ws.py` (WebSocket live logs), `admin_html_shell.py` (server-rendered fallback shell).
-- **`src/admin_worker.py`** is a standalone process (the `admin-worker` compose service). It claims queued jobs from `admin.import_jobs`, runs loader stages, writes `admin.import_job_steps` / `admin.import_job_logs`, honors checkpoint-based pause/cancel via `admin.job_control_requests`, and emits `admin.worker_heartbeats`. `ADMIN_MAX_CONCURRENT_JOBS` bounds parallelism (per-module resource slots).
-- **FHIR Servers registration pipeline** (routes inline in `src/server.py` under `/admin/api/fhir-servers/*`, logic in `fhir_server_service.py`, UI in `admin-ui/.../FhirServersPage.tsx`) — registers external FHIR servers via a 6-step wizard (Basics → Authentication → Headers → Permissions → Connection test → Review) with a fixed Configuration Summary. Covers seven auth templates (No Auth / OAuth2 / SMART on FHIR / IHE IUA × Authorization Code / Client Credentials) as a derived selector over `auth_type` + `auth_profile`. Key pieces: `discover_fhir_metadata` (full endpoint + capability surface for the `/discover` panel), a dual-pane Scope Manager (discovery/preset/manual scope sources), segmented base-URL editor, and `run_fhir_test_request` (the `/test-request` route — sends one ad-hoc method/path/query/headers/body request against an **unsaved** draft, read-only by default).
-- **`web/admin-app/`** is the React SPA admin UI (formerly `admin-ui/`, now merged into the `web/` Next.js app and mounted client-side under the `/admin` catch-all route). It posts to `/admin/api/login`/`/admin/api/logout` (JSON aliases) and a Next `middleware.ts` gates `/admin/*` on the `tw_health_admin_session` cookie. A server-rendered HTML shell (`admin_html_shell.py`) remains as a legacy fallback.
-- **`src/db_health.py`** is a central DB-health gate: when Postgres is unreachable it locks mutating operations and surfaces an overlay in the UI.
+- **`admin/adminApp.ts`** is the session-authenticated admin backend mounted at `/admin/api/*`. Feature modules: `adminSources.ts` (uploads + source roles), `adminJobs.ts` (import jobs + all job handlers), `adminJobStaging.ts` (staging/promote), `adminSchedule.ts` (cron schedules), `adminServices.ts` (module/service probes), `adminSettings.ts` + `llmProfiles.ts` (DB-backed settings & model endpoints), `adminMaintenance.ts` (per-module maintenance mode), `adminDrug.ts` (drug pipeline control), `adminIg.ts` (FHIR IG gallery/import), `adminPreview.ts`, `adminEmbedding.ts`, `adminWs.ts` (WebSocket live logs), `webauthn.ts` (passkeys), `ocrProbe.ts`.
+- **`admin/adminWorker.ts`** is a standalone process (the `admin-worker` compose service). It claims queued jobs from `admin.import_jobs`, runs the loaders, writes `admin.import_job_steps` / `admin.import_job_logs`, honors checkpoint-based pause/cancel via `admin.job_control_requests`, and emits `admin.worker_heartbeats`. `ADMIN_MAX_CONCURRENT_JOBS` (default 4) bounds parallelism, with per-module resource slots.
+- **Drug auto-chain**: `drug_index_import` → `drug_enrichment` → `drug_analysis` chain automatically, each auto-chained job capped at `DRUG_AUTOCHAIN_BATCH_LIMIT` (default 200) licenses and re-chaining from its own completion. **The cap only applies to auto-chained jobs** — a manually queued `drug_enrichment` with no `limit` will crawl the entire backlog (tens of thousands of TFDA requests).
+- **`web/admin-app/`** is the React SPA admin UI, mounted client-side under the Next.js `/admin` catch-all route; `web/middleware.ts` gates `/admin/*` on the `tw_health_admin_session` cookie. (The old `admin-ui/` directory is a dead leftover — nothing builds it.)
+- **`dbHealth.ts`** is a central DB-health gate: when Postgres is unreachable it locks mutating operations and surfaces an overlay in the UI.
 
 ### Cross-cutting concerns
-- **`src/audit.py`** — `@audited("tool_name")` decorator: logs SHA-256(params), tool name, duration, status to `audit.query_log`. Never logs raw parameter values (HIPAA).
-- **`src/cache.py`** — `@cached(ttl, prefix)` decorator: Redis-backed, fail-open (cache error → function executes normally). Records hit/miss metrics.
-- **`src/module_status.py`** — `ModuleStatusManager`: queries each schema's row count against a minimum threshold; calls `mcp.add_tool()`/`mcp.remove_tool()` to dynamically show/hide tools. 5-minute TTL cache. Triggered on every `tools/list` call via `DynamicFastMCP.list_tools()` override.
-- **`src/embedding_service.py`** — Ollama-backed embeddings for semantic / hybrid search; fails open to keyword-only when unavailable.
-- **`src/fhir_validator.py` / `fhir_terminology.py` / `fhir_snapshot.py` / `fhir_reference.py` / `fhir_authoring.py`** — in-process FHIR R4 profile snapshot generation, terminology validation, reference resolution, and skeleton-fill authoring used by the FHIR IG tools.
-- **`src/metrics.py`** — Prometheus counters/histograms. `record_tool_call()` called by `@audited`; `record_cache_op()` called by `@cached`.
-- **`src/utils.py`** — Structured JSON logging to stderr (never stdout, which belongs to MCP stdio transport). Configure level via `LOG_LEVEL`.
-- **`src/database.py`** — asyncpg pool singleton. `statement_cache_size=0` set to support pgBouncer transaction mode.
+- **`audit`** — logs SHA-256(params), tool name, duration, status to `audit.query_log`. Never logs raw parameter values (HIPAA).
+- **`cache.ts`** — `cached(ttl, prefix)`: Redis-backed, fail-open (cache error → function executes normally). Records hit/miss metrics.
+- **`moduleStatus.ts`** — queries each schema's row count against a minimum threshold and adds/removes tools accordingly, refreshed on `tools/list`.
+- **`embeddingService.ts`** — embeddings for semantic / hybrid search; fails open to keyword-only when unavailable. Profiles come from `admin.llm_profiles`, with failover across enabled profiles.
+- **`fhirValidator.ts` / `fhirTerminology.ts` / `fhirSnapshot.ts` / `fhirReference.ts` / `fhirAuthoring.ts`** — in-process FHIR R4 profile snapshot generation, terminology validation, reference resolution, and skeleton-fill authoring used by the FHIR IG tools.
+- **`metrics.ts`** — Prometheus counters/histograms.
+- **`logger.ts`** — structured JSON logging to stderr (never stdout, which belongs to the MCP stdio transport). Level via `LOG_LEVEL`.
+- **`db.ts`** — `pg` pool singleton; unnamed prepared statements to stay pgBouncer-transaction-mode safe.
 
 ### PostgreSQL schemas
 `audit` | `admin` | `icd` | `drug` | `health_supplements` | `food_nutrition` | `loinc` | `guideline` | `fhir` (multi-IG: `ig_packages` / `codesystems` / `concepts` / `artifacts`, package-scoped) | `snomed` | `rxnorm`
@@ -234,40 +207,34 @@ Full schema: `db/schema.sql` (auto-applied by PostgreSQL container on first init
 
 ## Settings precedence (important)
 
-Bootstrap variables (DB / Redis / MCP transport / `ADMIN_*` auth) live only in `.env`. Everything else — Ollama/embedding, MinIO, drug OCR/analysis, TFDA base URL, worker tuning — is **seed-only** in `.env`: it is read once on first boot to seed `admin.app_settings`, then managed (and hot-reloaded) from the admin console → Settings tab. Editing those `.env` keys has no effect on an already-seeded database.
+Bootstrap variables (DB / Redis / MCP transport / `ADMIN_*` auth / `WEB_PORT`) live only in `.env`.
+
+Infrastructure settings (MinIO, TFDA base URL, worker tuning) are **seed-only** in `.env`: read once on first boot to seed `admin.app_settings`, then managed (and hot-reloaded) from the admin console → Settings tab. Editing those `.env` keys has no effect on an already-seeded database.
+
+Model endpoints (embedding, Analysis LM, OCR) are **never** read from env. They live only in `admin.llm_profiles`, configured in the admin console; use Settings → Export/Import to move a working configuration between installs.
 
 ## Adding a New Service
 
-1. Create `src/<name>_service.py` — class with `__init__(self, pool, ...)` and `async initialize()`
-2. In `server.py` lifespan, add `("<Name>Service", lambda: <Name>Service(pool, ...))` to the services list
-3. Add the global variable and assignment in the elif chain
-4. Add tools with `@mcp.tool()` + `@audited("tool_name")` decorators and register them in `_TOOL_GROUPS`
-5. For module-gated availability, add an entry to `SERVICE_MODULES` in `module_status.py` and a `_svc_unavailable()` guard at the start of each tool
+1. Create `node-server/src/<name>Service.ts` — class with a `pg.Pool` constructor arg and `async initialize()`.
+2. Instantiate it in `server.ts`'s startup sequence (wrap in try/catch so a failure degrades gracefully).
+3. Register its tools in `mcp.ts` (input schemas with `zod`) and add them to the right tool group.
+4. For module-gated availability, add an entry to `SERVICE_MODULES` in `moduleStatus.ts` and guard each tool with an availability check.
 
 ## Sync correctness rule
 
 Bulk imports follow this pattern to prevent partial-state corruption:
-1. **Fetch all data first** (outside DB connection, full network phase)
-2. **Then write atomically** (`async with conn.transaction(): TRUNCATE/UPSERT`)
-3. **Deduplicate source data** before insert — TFDA Open Data occasionally has duplicate primary keys (e.g., duplicate `license_id`). Each import deduplicates using a `seen_ids` set.
+1. **Fetch all data first** (outside the DB transaction, full network phase)
+2. **Then write atomically** (one transaction: `TRUNCATE`/`UPSERT`)
+3. **Deduplicate source data** before insert — TFDA Open Data occasionally has duplicate primary keys (e.g. duplicate `license_id`).
 
 Never interleave HTTP fetches with DB writes inside a transaction.
-
-## mcp SDK lifespan-per-session (important)
-
-In `streamable-http` mode, the `mcp` SDK's `FastMCP` runs the `lifespan` context manager **once per MCP session**, not once per process. All one-time initialization is guarded by:
-- `_init_lock: asyncio.Lock` + `_initialized: bool` in `server.py` — only the first session runs the full setup
-- `database.init_pool()` and `cache.init_client()` — idempotent; return the existing singleton if already created
-- `metrics.start_metrics_server()` — `_metrics_server_started` flag prevents duplicate port binding
-
-Session teardown does **not** close the pool or Redis client (shared resources must survive across sessions).
 
 ## Key Limitations
 
 - **Health supplements disease mappings** are developer-curated and not medically validated — not suitable for patient-facing use without expert review
 - **FHIR validation** is in-process and profile-driven (snapshot + terminology binding checks); it is not a substitute for the official HL7 FHIR Validator for conformance certification
-- **ICD-10-PCS** (procedure codes) — 2025 zip is bundled in `fhir-code/icd/10/icd10pcs/`; `--icd` loads both CM and PCS automatically; graceful degradation if the table is empty
 - **SNOMED CT** requires an active SNOMED International license (free for most uses)
-- **Drug analysis** (OCR + LLM extraction of TFDA inserts) is machine-generated and must be verified by a clinician; it depends on external OCR/LLM endpoints being configured
-- **Embeddings** require a reachable Ollama server; without it, search degrades to keyword-only and the `keyword_only` signal is returned
-- **pgBouncer transaction mode** is incompatible with `LISTEN/NOTIFY` and named prepared statements — asyncpg's `statement_cache_size=0` handles this
+- **Drug analysis** (MinerU OCR + LLM extraction of TFDA inserts) is machine-generated and must be verified by a clinician; it depends on external OCR/LLM endpoints being configured
+- **Embeddings** require a reachable embedding endpoint; without it, search degrades to keyword-only and a `keyword_only` signal is returned
+- **Chinese keyword search without embeddings finds almost nothing** — Postgres' `simple` tokenizer treats a whole Chinese product name as one token. Vectors are the intended path; this is by design, not a bug to patch with `ILIKE`
+- **pgBouncer transaction mode** is incompatible with `LISTEN/NOTIFY` and named prepared statements

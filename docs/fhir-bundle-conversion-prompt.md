@@ -11,7 +11,7 @@ FHIR-IG toolset),把**一整包扁平 JSON**(多個 list、每個 list 是一種
 - 收尾用 `fhir_build_bundle` + `fhir_validate_bundle` 組成並驗證整包 Bundle。
 
 > **前置條件**:LLM 連的是本專案的 `fhir_*` 工具(FHIR-IG toolset)。需先部署:
-> 重建 `fhir.*` schema、匯入 TW Core IG、`pip install fhirpathpy`,並重啟 app + admin-worker。
+> 重建 `fhir.*` schema、匯入 TW Core IG(驗證器已內建於後端,無需額外安裝),並重啟 app + admin-worker。
 
 ---
 

@@ -1,47 +1,62 @@
-# node-server — Node.js MCP backend (parity target)
+# node-server — the Taiwan Health MCP backend
 
-TypeScript reimplementation of the Taiwan Health MCP backend, built **from
-scratch** as the Python → Node refactor target. See
-`../docs/node-backend-full-refactor-plan.md` for the full plan.
+TypeScript implementation of the **entire** Taiwan Health MCP backend. Two compose
+services run from this one build:
 
-> Decision (2026-06-13): this is a clean rewrite. The `backup/node-gateway-origin`
-> branch is **reference only** (read its SQL/logic to avoid repeating bugs); no
-> code is carried over verbatim.
+| Service | Entry point | Role |
+|---------|-------------|------|
+| `app` | `dist/server.js` | MCP server (`/mcp`), OpenAPI bridge (`/openapi.json`, `/tools/*`), `/status.json`, admin REST API (`/admin/api/*`), admin WebSocket (`/admin/ws`), FHIR OAuth/JWKS endpoints |
+| `admin-worker` | `dist/admin/adminWorker.js` | Background job runner: every import, the embedding backfill, and the three-stage drug pipeline |
 
-## Current state — Phase 0, workstream B
+This replaced the original Python backend in 2026-07. **No Python remains in the
+repository.**
 
-Base layer + an MCP stub only:
-
-| File | Mirrors (Python) | Notes |
-|------|------------------|-------|
-| `src/config.ts` | `src/config.py` | same env vars + defaults |
-| `src/logger.ts` | `src/utils.py` | JSON → stderr, fields `ts/level/logger/msg` |
-| `src/db.ts` | `src/database.py` | `pg` pool; unnamed statements = pgBouncer-safe |
-| `src/cache.ts` | `src/cache.py` | Redis; key `mcp:{ns}:{sha256[:16]}`, fail-open |
-| `src/metrics.ts` | `src/metrics.py` | identical metric names/buckets |
-| `src/moduleStatus.ts` | `src/module_status.py` | same `SERVICE_MODULES` thresholds |
-| `src/mcp.ts` | `src/server.py::health_check` | only `health_check` registered so far |
-| `src/server.ts` | `src/server.py` lifespan | `/health` + `/mcp` (streamable-http) |
-
-`db_health` snapshot in `health_check` is a placeholder — the L2 monitor is
-ported in Phase 2 (`TODO(parity, Phase 2)`).
-
-## Develop
+## Commands
 
 ```bash
 npm install
-npm run typecheck          # tsc --noEmit
-DATABASE_URL=postgresql://... npm run dev
-curl localhost:8000/health # -> {"status":"ok"}
+npm run build        # tsc -> dist/
+npm run dev          # tsx watch src/server.ts
+npm run typecheck    # tsc --noEmit
+npm test             # node --test over src/**/*.test.ts
 ```
 
-## Build / run
+Run the server locally in HTTP mode:
 
 ```bash
-npm run build && npm start
-# or
-docker build -t taiwan-health-node .
+MCP_TRANSPORT=streamable-http DATABASE_URL=postgresql://... node dist/server.js
 ```
 
-Environment variables are the same as the Python server (`MCP_PORT`,
-`MCP_PATH`, `DATABASE_URL`, `REDIS_URL`, `METRICS_PORT`, `LOG_LEVEL`, …).
+In Docker, `app` is only reachable through the nginx front door (`:8080` by default) —
+it does not publish port 8000 to the host.
+
+## Layout
+
+| Path | Contents |
+|------|----------|
+| `src/server.ts` | HTTP surface + process initialization (pool, Redis, MinIO, services, metrics) |
+| `src/mcp.ts` | MCP tool registration — all 51 tools, grouped; groups are added/removed dynamically by `moduleStatus.ts` |
+| `src/*Service.ts` | Domain services (ICD, drug, lab, guideline, SNOMED, FHIR Condition/Medication/IG, FHIR servers, embeddings) |
+| `src/fhir*.ts` | In-process FHIR R4 machinery: snapshot generation, terminology, validation, reference resolution, authoring |
+| `src/admin/` | Admin console backend: routing (`adminApp.ts`), jobs (`adminJobs.ts`), worker (`adminWorker.ts`), settings, sources, schedules, IG import, FHIR servers, WebAuthn |
+| `src/loaders/` | Dataset loaders: `icd.ts`, `loinc.ts`, `snomed.ts`, `rxnorm.ts`, `ig.ts`, `healthSupplements.ts`, `foodNutrition.ts`, `guideline.ts`, `embeddings.ts`, and the drug pipeline (`drugIndex.ts`, `drugEnrichment.ts`, `drugAnalysis.ts`, `tfdaCrawler.ts`, `drugRecordBuilder.ts`) |
+| `src/{db,cache,config,logger,metrics,moduleStatus,minioService}.ts` | Cross-cutting infrastructure |
+
+## Things that must not change
+
+- **The Python-semantics helpers in `src/loaders/drugRecordBuilder.ts`** (`pick`,
+  `dictGet`, and the quirks they deliberately reproduce). Their output is persisted as
+  `normalized_records.normalized_json`; "cleaning them up" changes stored data.
+- **The UUIDv5 namespaces** in `drugEnrichment.ts` / `drugAnalysis.ts`. Asset IDs and
+  MinIO object keys derive from them; changing them orphans every stored object.
+- **The single transaction in `loadDrugIndex`.** Its chunking exists for JS memory, not
+  to relax atomicity — a partial index must never land.
+- **`NODE_OPTIONS=--max-old-space-size=8192`** on the worker. The IG import holds whole
+  dependency packages in memory; Node's ~4 GB default is not enough. Do not lower it.
+
+## Configuration
+
+See [`docs/deployment/configuration.md`](../docs/deployment/configuration.md). In short:
+bootstrap vars in `.env`; infrastructure settings seeded once into `admin.app_settings`
+and then managed in Admin → Settings; model endpoints (embedding / OCR / Analysis LM)
+**only** in `admin.llm_profiles`, never from env.

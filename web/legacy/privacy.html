@@ -45,6 +45,11 @@
 that provides read-only access to Taiwan FDA health, ICD-10, LOINC, SNOMED CT,
 and Taiwan clinical guideline data. All underlying modules are publicly available;
 this service does not collect, store, or process personal health information.</p>
+<p>One tool, <code>crud_fhir_server</code>, is an exception to &ldquo;read-only&rdquo;:
+it relays requests to <em>external</em> FHIR servers that an operator has explicitly
+registered. Data sent through it is supplied by the caller and forwarded to that
+external server; this service does not retain it. See the
+<a href="/dpa">Data Processing Addendum</a> for details.</p>
 
 <h2>2. Data We Collect</h2>
 <p>We do <strong>not</strong> collect any personally identifiable information (PII).

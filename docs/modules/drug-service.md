@@ -37,7 +37,7 @@
 - **資料來源**：台灣 FDA 西藥許可證（`mcp.fda.gov.tw`），透過 `DRUG_TFDA_BASE_URL` 設定。
 - **資料庫**：`drug` schema，含 `licenses`、`ingredients`、`atc`、`electronic_inserts`、`appearance_records`、`assets`、`insert_analysis`、`normalized_records` 等資料表，以及匯入狀態追蹤表（`import_runs`、`import_license_state`、`enrichment_queue` 等）。
 - **物件儲存**：仿單 / 標籤 / 外觀圖檔案存於 MinIO，工具回傳時即時產生有時效的預簽連結。
-- **嵌入搜尋**：藥品索引支援語意 / 混合搜尋（需 Ollama 嵌入服務）。
+- **嵌入搜尋**：藥品索引支援語意 / 混合搜尋（需可用的嵌入端點，於 Admin → Settings 設定；未設定時退回關鍵字）。
 
 ## 依賴關係
 - **FHIR Medication Service**：以本模組的藥品資料產生 FHIR Medication / MedicationKnowledge 資源。

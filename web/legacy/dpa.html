@@ -56,11 +56,19 @@ the MCP API. It describes how data flows through the server, what is retained,
 and the obligations of each party.</p>
 
 <h2>2. Nature of Processing</h2>
-<p>Taiwan Health MCP Server is a <strong>read-only query API</strong> that provides
-access to publicly available medical terminology and pharmaceutical modules.
-It does not accept, store, or process personal health information submitted by
-users. All 28 tools perform outbound database lookups against pre-loaded public
-modules and return structured results to the MCP client.</p>
+<p>Taiwan Health MCP Server is primarily a <strong>read-only query API</strong> over
+publicly available medical terminology and pharmaceutical modules. It does not
+accept, store, or process personal health information submitted by users. Of the
+51 tools, 50 perform read-only lookups against pre-loaded public modules and
+return structured results to the MCP client.</p>
+<p>The one exception is <code>crud_fhir_server</code>, which relays a FHIR request to
+an <strong>external</strong> FHIR server that the operator has explicitly registered
+and configured. Write operations (create / update / patch / delete) through that tool
+are refused unless the target server's allow-list permits them and the caller sets
+<code>confirm_write=true</code>. Any personal health information in such a request is
+supplied by the caller and transmitted to that external server; it is not retained by
+this service. An operator who enables write access to a server holding personal data
+is the controller for that processing.</p>
 
 <h2>3. Categories of Data Processed</h2>
 <div class="tbl-wrap"><table>
@@ -100,7 +108,7 @@ analytics, advertising, or any purpose beyond returning the immediate response.<
 <strong>legitimate interest</strong> in operating a reliable, auditable service.</p>
 
 <h2>5. Data Minimisation and HIPAA Design</h2>
-<p>The audit logger (<code>src/audit.py</code>) records only the SHA-256 hash of
+<p>The audit logger records only the SHA-256 hash of
 parameters — never the raw values. This design ensures that patient-identifiable
 query terms (e.g. a patient's ICD code or medication name) cannot be reconstructed
 from the audit trail, consistent with HIPAA safe-harbour de-identification

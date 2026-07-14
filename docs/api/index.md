@@ -1,25 +1,77 @@
 # API 參考
 
-本章節描述可直接在 Python 服務層使用的主要服務類別。所有服務皆以 `__init__(self, pool, ...)` 建構，並提供 `async initialize()`；初始化依賴 PostgreSQL 連線池（透過 pgBouncer）。
+系統對外有三個介面，全部經由 nginx 前門（預設 `:8080`）提供。
 
-## 服務類別
+## HTTP 端點總覽
+
+| 端點 | 方法 | 認證 | 說明 |
+|------|------|------|------|
+| `/mcp` | `POST` / `GET` / `DELETE` | 無 | MCP streamable-http 端點（路徑由 `MCP_PATH` 設定）。 |
+| `/openapi.json` | `GET` | 無 | 依**目前已註冊的工具**動態產生的 OpenAPI 3.1 規格。 |
+| `/tools/<工具名>` | `POST` | 無 | OpenAPI bridge：以 JSON body 當參數呼叫單一工具。 |
+| `/status.json` | `GET` | 無 | 各模組資料筆數與服務健康狀態（公開狀態頁的資料來源）。 |
+| `/admin/api/*` | 各異 | session cookie | 管理後台 REST API（`ADMIN_ENABLED=true` 時才存在）。 |
+| `/admin/ws` | WebSocket | session cookie | 工作即時日誌與進度推送。 |
+| `/fhir-client/<id>/jwks.json` | `GET` | 無 | 外部 FHIR OAuth 客戶端的公開 JWKS。 |
+| `/fhir-oauth/callback` | `GET` | — | OAuth2 Authorization Code 回呼端點。 |
+
+> `/mcp` 與 OpenAPI bridge **目前皆未強制驗證**；對外開放時請在前面加反向代理或 token。
+>
+> 後端另有一個 `/health` 端點，但 nginx 不會轉送它（從前門存取會得到 404）。請改用 `/status.json`。
+
+## OpenAPI bridge
+
+給不支援原生 MCP、只能接 OpenAPI 工具伺服器的客戶端使用（例如 Open WebUI 的 External Tools）。
+
+```bash
+# 取得目前工具清單
+curl http://localhost:8080/openapi.json
+
+# 呼叫工具
+curl -X POST http://localhost:8080/tools/search_medical_codes \
+  -H 'Content-Type: application/json' \
+  -d '{"query": "diabetes", "limit": 3}'
+```
+
+工具清單會隨各模組的資料載入狀態動態增減（見 `moduleStatus.ts` 的 `SERVICE_MODULES` 門檻），
+因此 `/openapi.json` 的內容會依部署的資料狀態而不同。
+
+## 管理後台 REST API
+
+所有路徑以 `/admin/api/` 開頭，需帶 `tw_health_admin_session` cookie。主要端點：
+
+| 群組 | 端點 |
+|------|------|
+| 認證 | `POST /admin/api/login`、`POST /admin/api/logout`、`/admin/api/passkeys/*` |
+| 總覽與健康 | `GET /admin/api/overview`、`GET /admin/api/health`、`GET /admin/api/services`、`POST /admin/api/services/probe`、`GET /admin/api/workers` |
+| 模組與來源 | `GET /admin/api/modules`、`POST /admin/api/uploads`、`/admin/api/module-sources/{activate,deactivate,delete}`、`POST /admin/api/module-maintenance` |
+| 工作 | `GET|POST /admin/api/jobs`（建立、查詢、暫停 / 取消） |
+| 設定 | `GET|POST /admin/api/settings`、`GET /admin/api/settings/export`、`POST /admin/api/settings/import`、`/admin/api/llm-profiles/*` |
+| 藥品管線 | `GET /admin/api/drug/pipeline-status`、`/admin/api/drug/{status,details,assets,asset-content,events}` |
+| FHIR 伺服器 | `GET|POST /admin/api/fhir-servers`、`/admin/api/fhir-servers/{discover,test,test-request,generate-key,export}` |
+| IG | `GET /admin/api/igs`、`POST /admin/api/igs/import`、`GET /admin/api/registry/search` |
+| 嵌入 | `GET /admin/api/embedding/status` |
+
+## 服務層（TypeScript）
+
+各領域服務位於 `node-server/src/`，建構子接收 `pg.Pool`，並提供 `async initialize()`：
 
 | 類別 | 檔案 | 資料 |
 |------|------|------|
-| `ICDService` | `icd_service.py` | `icd.*` |
-| `DrugService` | `drug_service.py` | `drug.*` |
-| `DrugAnalysisService` | `drug_analysis_service.py` | `drug.insert_analysis` |
-| `HealthSupplementsService` | `health_supplements_service.py` | `health_supplements.*` |
-| `FoodNutritionService` | `food_nutrition_service.py` | `food_nutrition.*` |
-| `LabService` | `lab_service.py` | `loinc.*` |
-| `ClinicalGuidelineService` | `clinical_guideline_service.py` | `guideline.*` |
-| `FHIRConditionService` | `fhir_condition_service.py` | 讀取 `icd.*` |
-| `FHIRMedicationService` | `fhir_medication_service.py` | 讀取 `drug_service` |
-| `FHIRIGService` | `fhir_ig_service.py` | `fhir.*`（多 IG） |
-| `FHIRServerService` | `fhir_server_service.py` | `admin.fhir_servers` |
-| `SNOMEDService` | `snomed_service.py` | `snomed.*` |
-| `EmbeddingService` | `embedding_service.py` | Ollama `/api/embed` |
-| `MinIOService` | `minio_service.py` | MinIO bucket |
+| `ICDService` | `icdService.ts` | `icd.*` |
+| `DrugService` | `drugService.ts` | `drug.*` |
+| `DrugAnalysisService` | `drugAnalysisService.ts` | `drug.insert_analysis`（含 MinerU OCR 與分析 LLM 呼叫） |
+| `SupplementsService` | `supplementsService.ts` | `health_supplements.*` |
+| `FoodService` | `foodService.ts` | `food_nutrition.*` |
+| `LabService` | `labService.ts` | `loinc.*` |
+| `GuidelineService` | `guidelineService.ts` | `guideline.*` |
+| `FhirConditionService` | `fhirConditionService.ts` | 讀取 `icd.*` |
+| `FhirMedicationService` | `fhirMedicationService.ts` | 讀取 drug 服務 |
+| `FhirIgService` | `fhirIgService.ts` | `fhir.*`（多 IG） |
+| `FhirServerService` | `fhirServerService.ts` | `admin.fhir_servers` |
+| `SnomedService` | `snomedService.ts` | `snomed.*` |
+| `EmbeddingService` | `embeddingService.ts` | 外部嵌入端點（設定存於 `admin.llm_profiles`） |
+| MinIO helper | `minioService.ts` | MinIO bucket（藥品資產） |
 
 ## 相關文件
 

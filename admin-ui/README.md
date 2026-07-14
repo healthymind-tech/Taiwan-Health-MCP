@@ -1,3 +1,14 @@
+> # ⚠️ OBSOLETE — this directory is no longer built or served
+>
+> The admin SPA was merged into the Next.js front-end and now lives in
+> **`web/admin-app/`**, mounted under the `/admin` catch-all route. Nothing in
+> `compose.yaml`, `web/Dockerfile`, `node-server/Dockerfile` or `Dockerfile.worker`
+> references `admin-ui/` any more — this directory is a leftover and is a candidate for
+> deletion. The description below refers to the old Python-served admin console, which no
+> longer exists.
+>
+> Current admin documentation: `docs/admin/index.md`.
+
 # admin-ui
 
 React + Vite SPA that replaces the server-rendered admin console

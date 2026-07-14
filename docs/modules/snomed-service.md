@@ -6,7 +6,7 @@ SNOMED CT 服務模組整合 SNOMED CT International 版術語，提供概念搜
 ## 主要功能
 
 ### 1. 概念搜尋（`search_snomed_concept`）
-以中英文關鍵字搜尋 SNOMED CT 概念，回傳 concept ID、FSN（完整指定名稱）與 preferred term。支援語意 / 混合搜尋（需 Ollama 嵌入服務），無嵌入時退回關鍵字。
+以中英文關鍵字搜尋 SNOMED CT 概念，回傳 concept ID、FSN（完整指定名稱）與 preferred term。支援語意 / 混合搜尋（需可用的嵌入端點，於 Admin → Settings 設定），無嵌入時退回關鍵字。
 
 ### 2. 概念詳情（`query_snomed_concept`）
 以 concept ID 取得單一概念的完整資訊，包含：

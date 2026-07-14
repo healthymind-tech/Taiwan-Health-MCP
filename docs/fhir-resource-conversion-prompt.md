@@ -8,7 +8,7 @@
 欄位形狀**,並用 MCP 工具查證後決定。
 
 > **前置條件**:這段提示假設 LLM 連的是本專案的 `fhir_*` 工具(FHIR-IG toolset)。
-> 需先部署:重建 `fhir.*` schema、匯入 TW Core IG、`pip install fhirpathpy`,
+> 需先部署:重建 `fhir.*` schema、匯入 TW Core IG(驗證器已內建於後端,無需額外安裝),
 > 並重啟 app + admin-worker。
 
 ---

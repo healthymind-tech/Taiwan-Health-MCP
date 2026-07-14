@@ -49,9 +49,9 @@
 
 確保您已安裝：
 
-- Python 3.12 或更高版本
+- Node.js 20 或更高版本（後端與前端皆為 TypeScript；本專案已無 Python 相依）
 - Git
-- Docker（推薦用於測試）
+- Docker 與 Docker Compose（推薦用於執行完整堆疊）
 
 ### 環境設置
 
@@ -64,20 +64,24 @@ cd Taiwan-Health-MCP
 # 3. 創建開發分支
 git checkout -b feature/your-feature-name
 
-# 4. 建立虛擬環境
-python -m venv venv
-source venv/bin/activate  # macOS/Linux
-# 或
-venv\Scripts\activate  # Windows
+# 4. 安裝後端依賴
+cd node-server
+npm install
+npm run build          # tsc -> dist/
 
-# 5. 安裝開發依賴
-pip install -r requirements.txt
-pip install -r requirements-docs.txt
+# 5. 安裝前端依賴
+cd ../web
+npm install
 
-# 6. 安裝 pre-commit hooks（可選）
-pip install pre-commit
-pre-commit install
+# 6. （可選）啟動完整堆疊
+cd ..
+cp .env.example .env   # 設定 POSTGRES_PASSWORD 等
+docker compose up -d   # nginx 前門在 :8080
 ```
+
+> 文件網站（MkDocs）如需本機預覽：
+> `pip install mkdocs mkdocs-material pymdown-extensions && mkdocs serve`
+> 這是**文件工具鏈**，與專案執行期無關。
 
 ---
 
@@ -110,14 +114,12 @@ git checkout -b feature/descriptive-name
 進行您的更改，並確保：
 
 ```bash
-# 運行現有測試
-python -m pytest
+# 執行測試（後端）
+cd node-server && npm test
 
-# 檢查代碼質量
-python -m pylint src/
-
-# 格式化代碼
-python -m black src/
+# 型別檢查
+npm run typecheck
+cd ../web && npm run typecheck
 ```
 
 ### 4. 提交變更
@@ -184,7 +186,7 @@ git push origin feature/your-feature-name
 
 提供以下信息：
 
-- 環境詳情（OS、Python 版本、Docker 版本等）
+- 環境詳情（OS、Node.js 版本、Docker 版本等）
 - 詳細的重現步驟
 - 預期行為
 - 實際行為
@@ -202,74 +204,49 @@ git push origin feature/your-feature-name
 
 ## 代碼規範
 
-### Python 代碼風格
+程式碼與註解一律使用**英文**；面向使用者的文件使用正體中文。
 
-我們遵循 [PEP 8](https://pep8.org/) 標準：
+### TypeScript 風格
 
-```python
-# 好的
-def calculate_icd_codes(condition: str, max_results: int = 10) -> dict:
-    """Calculate ICD codes for a given condition.
+後端（`node-server/`）與前端（`web/`）皆為 TypeScript 5.7 + ESM。
 
-    Args:
-        condition: Medical condition name
-        max_results: Maximum number of results
+```ts
+// 好的：明確的參數與回傳型別、zod 驗證輸入、透過 logger 記錄
+export async function searchDrug(pool: pg.Pool, keyword: string, limit = 10): Promise<DrugRow[]> {
+  if (!keyword.trim()) return [];
+  const { rows } = await pool.query<DrugRow>(SEARCH_SQL, [keyword, limit]);
+  return rows;
+}
 
-    Returns:
-        Dictionary containing ICD codes
-    """
-    results = []
-    # Implementation here
-    return {"codes": results}
-
-
-# 不好
-def calc(c,m=10):
-    r = []
-    #implement
-    return r
+// 不好：any、無型別、寫 stdout
+export async function search(k: any) {
+  console.log("searching", k);   // stdout 屬於 MCP stdio transport，絕不可寫
+  ...
+}
 ```
 
-### 文檔字符串
+要點：
 
-使用 Google 風格的文檔字符串：
+- ESM：相對 import 需帶 `.js` 副檔名（對應編譯輸出）。
+- 檔案 camelCase（`drugService.ts`）；型別與類別 PascalCase。
+- 公開函式標注參數與回傳型別；避免 `any`。
+- MCP 工具的輸入 schema 以 `zod` 定義。
+- 日誌一律走 `logger.ts`（`logInfo` / `logWarning` / `logError`），輸出到 **stderr**。
+- loader 接收 `pg.Pool`，沿用該檔案既有的 `batchInsert` 模式。
 
-```python
-def search_drug(keyword: str) -> list:
-    """搜尋藥品。
+### 註解
 
-    Args:
-        keyword: 藥品名稱或 ID
+註解解釋**為什麼**，或說明程式碼本身無法表達的限制；不要複述下一行在做什麼。
 
-    Returns:
-        符合搜尋條件的藥品列表
+Python → Node 遷移期間為了逐值一致而刻意保留的怪癖（例如 `drugRecordBuilder.ts` 的
+`pick()` / `dictGet()`）都帶有註解說明原因，其輸出會被持久化。**不要「順手清理」這些。**
 
-    Raises:
-        ValueError: 若關鍵字為空
+### 匯入規則
 
-    Example:
-        >>> results = search_drug("普拿疼")
-        >>> print(results[0]['name'])
-    """
-    pass
-```
+大量匯入必須「先全部抓取、再原子寫入」：完成整個網路階段後，才在單一 transaction 內寫入，
+且寫入前先對來源資料去重。**絕不要**在 transaction 內交錯進行 HTTP 抓取與資料庫寫入。
 
-### 類型提示
-
-使用類型提示提高代碼可讀性：
-
-```python
-from typing import Dict, List, Optional
-
-def process_data(
-    data: List[Dict[str, str]],
-    filter_key: Optional[str] = None
-) -> Dict[str, List]:
-    """Process medical data."""
-    pass
-```
-
----
+詳見[程式風格](docs/development/code-style.md)。
 
 ## 提交訊息規範
 

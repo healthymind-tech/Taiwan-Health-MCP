@@ -1,5 +1,12 @@
 # Taiwan Health MCP — Module Reference
 
+!!! warning "歷史文件（部分過時）"
+    本文是針對**舊 Python loader** 撰寫的模組參考，其中的檔案路徑與模組名稱
+    （`loader/loaders/*.py`、`src/*.py`）已不存在——所有 loader 現為
+    `node-server/src/loaders/*.ts`。各模組的**資料來源、輸入結構與最終 schema**
+    大致仍適用，但實作細節請以程式碼為準。
+    目前的說明請見[資料來源](data-sources/index.md)與[背景工作與排程](admin/jobs-and-worker.md)。
+
 This document describes every module in the system: what the user must supply,
 the structure of the input data, the full processing pipeline, the final
 PostgreSQL schema, and which AI capabilities (embedding / OCR / LLM) are required.
