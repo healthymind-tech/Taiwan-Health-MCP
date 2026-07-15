@@ -565,7 +565,7 @@ export async function summarizeJobs(): Promise<Record<string, number>> {
 /** Raised on job-create / control validation failures (Python ValueError → 400). */
 export class JobValueError extends Error {}
 
-const PHASE2_JOB_TYPES = ["noop"];
+const PHASE2_JOB_TYPES = ["noop", "system_backup"];
 const SIMPLE_LOADER_JOB_TYPES = ["guideline_seed", "health_supplements_sync", "food_nutrition_sync"];
 const HEAVY_LOADER_JOB_TYPES = ["icd_import", "loinc_import", "ig_import", "snomed_import", "rxnorm_import"];
 const DRUG_JOB_TYPES = ["drug_index_import", "drug_enrichment", "drug_analysis"];
@@ -591,6 +591,7 @@ export const CONTROL_ACTIONS = ["pause", "resume", "stop", "restart"] as const;
 /** Faithful port of `JOB_TYPE_MODULE_KEYS`. */
 const JOB_TYPE_MODULE_KEYS: Record<string, string> = {
   noop: "admin",
+  system_backup: "admin",
   guideline_seed: "guideline",
   health_supplements_sync: "health_supplements",
   food_nutrition_sync: "food_nutrition",
@@ -1074,6 +1075,8 @@ const sleep = (seconds: number): Promise<void> =>
 
 /** Faithful port of `JOB_RESOURCES`: resource slot → job types holding it. */
 export const JOB_RESOURCES: Record<string, ReadonlySet<string>> = {
+  // A database snapshot and object walk should not overlap another backup.
+  system_backup: new Set(["system_backup"]),
   db_write_icd: new Set(["icd_import"]),
   db_write_loinc: new Set(["loinc_import"]),
   db_write_ig: new Set(["ig_import"]),
@@ -3628,6 +3631,11 @@ export async function executeAdminJob(opts: {
           payload: { worker_name: workerName },
         });
       }
+      return;
+    }
+    if (jobType === "system_backup") {
+      const { runSystemBackupJob } = await import("./adminBackup.js");
+      await runSystemBackupJob({ workerName, job });
       return;
     }
     if (jobType === "guideline_seed") {

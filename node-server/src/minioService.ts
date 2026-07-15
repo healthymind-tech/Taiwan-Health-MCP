@@ -17,6 +17,7 @@
  */
 
 import { Client as MinioClient } from "minio";
+import type { Readable } from "node:stream";
 import * as adminSettings from "./admin/adminSettings.js";
 import { logError, logInfo, logWarning } from "./logger.js";
 
@@ -97,6 +98,57 @@ export async function uploadBytes(opts: {
     etag: result?.etag ?? "",
     version_id: result?.versionId ?? "",
   };
+}
+
+/** Stream a large object with MinIO multipart upload instead of buffering it. */
+export async function uploadStream(opts: {
+  objectKey: string;
+  stream: Readable;
+  contentType: string;
+}): Promise<{ bucket: string; object_key: string; minio_uri: string; etag: string; version_id: string }> {
+  if (!enabled() || _client === null || _config === null) {
+    throw new Error(_initError ?? "MinIO service is not initialized");
+  }
+  const result = await _client.putObject(_config.bucket, opts.objectKey, opts.stream, undefined, {
+    "Content-Type": opts.contentType,
+  });
+  return {
+    bucket: _config.bucket,
+    object_key: opts.objectKey,
+    minio_uri: `minio://${_config.bucket}/${opts.objectKey}`,
+    etag: result?.etag ?? "",
+    version_id: result?.versionId ?? "",
+  };
+}
+
+export interface StoredObject {
+  name: string;
+  size: number;
+  last_modified: string;
+}
+
+export async function listObjects(prefix = ""): Promise<StoredObject[]> {
+  if (!enabled() || _client === null || _config === null) throw new Error("MinIO service is not enabled");
+  const stream = _client.listObjectsV2(_config.bucket, prefix, true);
+  const rows: StoredObject[] = [];
+  await new Promise<void>((resolve, reject) => {
+    stream.on("data", (item) => {
+      if (!item.name) return;
+      rows.push({
+        name: item.name,
+        size: Number(item.size || 0),
+        last_modified: item.lastModified?.toISOString() ?? "",
+      });
+    });
+    stream.on("end", resolve);
+    stream.on("error", reject);
+  });
+  return rows;
+}
+
+export async function getObjectStream(objectKey: string): Promise<Readable> {
+  if (!enabled() || _client === null || _config === null) throw new Error("MinIO service is not enabled");
+  return _client.getObject(_config.bucket, objectKey);
 }
 
 /** Remove an object; best-effort, never throws. Mirrors `MinioService.remove_object`. */

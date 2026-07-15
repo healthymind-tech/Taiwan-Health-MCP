@@ -323,6 +323,15 @@ CREATE TABLE IF NOT EXISTS admin.webauthn_credentials (
     last_used_at   TIMESTAMPTZ
 );
 
+-- Optional password override managed from Admin -> Settings -> Privacy. The
+-- deployment password remains the bootstrap credential until this row exists.
+CREATE TABLE IF NOT EXISTS admin.admin_credentials (
+    username       TEXT PRIMARY KEY,
+    password_hash  TEXT NOT NULL,
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_by     TEXT NOT NULL
+);
+
 CREATE UNIQUE INDEX IF NOT EXISTS idx_admin_uploaded_files_dedupe
     ON admin.uploaded_files (module_key, source_role, sha256);
 CREATE INDEX IF NOT EXISTS idx_admin_module_sources_lookup

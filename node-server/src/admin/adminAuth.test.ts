@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildAdminSessionCookie, clearAdminSessionCookie } from "../adminAuth.js";
+import {
+  buildAdminSessionCookie,
+  clearAdminSessionCookie,
+  hashAdminPassword,
+  verifyAdminPassword,
+} from "../adminAuth.js";
 import { resolveAdminCookieSecure } from "../config.js";
 
 test("admin session cookies include Secure when enabled", () => {
@@ -15,4 +20,12 @@ test("admin cookie security defaults from the public origin", () => {
   assert.equal(resolveAdminCookieSecure("false", "https://example.com"), false);
   assert.equal(resolveAdminCookieSecure("true", "http://localhost:8080"), true);
   assert.throws(() => resolveAdminCookieSecure("maybe", "https://example.com"));
+});
+
+test("admin password hashes round-trip without storing the plaintext", () => {
+  const hash = hashAdminPassword("a sufficiently long password");
+  assert.match(hash, /^pbkdf2_sha256\$310000\$/);
+  assert.equal(hash.includes("sufficiently long"), false);
+  assert.equal(verifyAdminPassword("a sufficiently long password", hash), true);
+  assert.equal(verifyAdminPassword("wrong password", hash), false);
 });
