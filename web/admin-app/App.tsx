@@ -140,7 +140,7 @@ export default function App(): JSX.Element {
             <Route path="drug/explorer" element={<DrugExplorerPage />} />
             <Route path=":moduleKey" element={<ModulePage />} />
           </Route>
-          <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/settings/*" element={<SettingsPage />} />
           <Route path="*" element={<Navigate to="/overview" replace />} />
         </Routes>
       </main>

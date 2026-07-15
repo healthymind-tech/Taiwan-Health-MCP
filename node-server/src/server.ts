@@ -24,6 +24,7 @@ import { startDbStatsCollector, startMetricsServer } from "./metrics.js";
 import { buildMcpServer, buildOpenApiSpec, invokeRegisteredTool, toolRegistryReady } from "./mcp.js";
 import { STATUS_DATA_JSON } from "./statusData.js";
 import { seedIfEmpty } from "./admin/adminSettings.js";
+import { seedAdminCredential } from "./admin/adminCredentials.js";
 import { adminHandler } from "./admin/adminApp.js";
 import { getFhirServerJwks, fhirServerSecretKey } from "./admin/adminFhirServers.js";
 import { completeAuthorization, OAuthError } from "./admin/fhirOauthService.js";
@@ -57,6 +58,14 @@ async function bootstrapResources(): Promise<void> {
     await seedIfEmpty();
   } catch (err) {
     logError("Settings seed skipped", { error: String((err as Error).message) });
+  }
+
+  // ADMIN_PASSWORD_HASH is bootstrap-only: persist it once, then authenticate
+  // exclusively against the DB-backed credential managed from Privacy.
+  try {
+    await seedAdminCredential();
+  } catch (err) {
+    logError("Admin credential seed skipped", { error: String((err as Error).message) });
   }
 
   try {

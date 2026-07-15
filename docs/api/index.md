@@ -49,11 +49,12 @@ Embeddings 計數，並執行或排程對應的 `*_embed` 工作。
 
 | 群組 | 端點 |
 |------|------|
-| 認證 | `POST /admin/api/login`、`POST /admin/api/logout`、`/admin/api/passkeys/*` |
+| 認證 | `POST /admin/api/login`、`POST /admin/api/logout`、`/admin/api/passkeys/*`、`POST /admin/api/privacy/password` |
 | 總覽與健康 | `GET /admin/api/overview`、`GET /admin/api/health`、`GET /admin/api/services`、`POST /admin/api/services/probe`、`GET /admin/api/workers` |
 | 模組與來源 | `GET /admin/api/modules`、`POST /admin/api/uploads`、`/admin/api/module-sources/{activate,deactivate,delete}`、`POST /admin/api/module-maintenance` |
 | 工作 | `GET|POST /admin/api/jobs`（建立、查詢、暫停 / 取消） |
 | 設定 | `GET|POST /admin/api/settings`、`GET /admin/api/settings/export`、`POST /admin/api/settings/import`、`/admin/api/llm-profiles/*` |
+| 備份 | `GET /admin/api/backups`、`GET /admin/api/backups/{job_id}/download`；以 `POST /admin/api/jobs` 建立 `system_backup` 工作 |
 | 藥品管線 | `GET /admin/api/drug/pipeline-status`、`/admin/api/drug/{status,details,assets,asset-content,events}` |
 | FHIR 伺服器 | `GET|POST /admin/api/fhir-servers`、`/admin/api/fhir-servers/{discover,test,test-request,generate-key,export}` |
 | IG | `GET /admin/api/igs`、`POST /admin/api/igs/import`、`GET /admin/api/registry/search` |

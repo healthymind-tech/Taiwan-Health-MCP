@@ -68,6 +68,16 @@ export function verifyAdminPassword(password: string, storedHash: string): boole
   return false;
 }
 
+/** Create the password format used by DB-backed admin password overrides. */
+export function hashAdminPassword(password: string): string {
+  const iterations = 310_000;
+  const salt = crypto.randomBytes(18).toString("base64url");
+  const digest = crypto
+    .pbkdf2Sync(Buffer.from(password, "utf-8"), Buffer.from(salt, "utf-8"), iterations, 32, "sha256")
+    .toString("hex");
+  return `pbkdf2_sha256$${iterations}$${salt}$${digest}`;
+}
+
 /** Serialize a payload object the way Python `json.dumps(..., separators=(",", ":"))` does. */
 function compactJson(payload: { u: string; exp: number }): string {
   // Keys are emitted in insertion order (u, then exp), matching the Python dict literal.

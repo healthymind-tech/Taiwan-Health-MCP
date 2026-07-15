@@ -25,6 +25,19 @@ RUN npm prune --omit=dev
 FROM node:20-slim
 WORKDIR /app
 
+# Full-system backup jobs stream a PostgreSQL 16 custom-format dump. Install a
+# matching client so pg_dump never fails on a newer server major version.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl gnupg \
+    && install -d /usr/share/postgresql-common/pgdg \
+    && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+       | gpg --dearmor -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg \
+    && echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg] https://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" \
+       > /etc/apt/sources.list.d/pgdg.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends postgresql-client-16 \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY --from=nodebuild /nb/dist ./node-server/dist
 COPY --from=nodebuild /nb/node_modules ./node-server/node_modules
 COPY node-server/package.json ./node-server/package.json

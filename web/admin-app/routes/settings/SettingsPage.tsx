@@ -8,11 +8,27 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Navigate, NavLink, useLocation } from "react-router-dom";
+import {
+  Archive,
+  Bot,
+  BrainCircuit,
+  Cloud,
+  Database,
+  Download,
+  FileScan,
+  Globe2,
+  HardDrive,
+  KeyRound,
+  ServerCog,
+} from "lucide-react";
 import { api } from "../../lib/api";
 import { qk } from "../../lib/queryKeys";
 import { toast } from "../../components/toast";
-import { PasskeysCard, qkPasskeys } from "./PasskeysCard";
+import { qkPasskeys } from "./PasskeysCard";
 import { LlmProfilesCard } from "./LlmProfilesCard";
+import { PrivacyPage } from "./PrivacyPage";
+import { StatusBadge } from "../../components/StatusBadge";
 import type {
   SettingsActionResult,
   SettingsField,
@@ -301,9 +317,52 @@ function FieldInput({
  * API keys in the clear — it exists to restore a working install verbatim — so
  * the card says so, and an import is confirmed before it overwrites anything.
  */
-function BackupCard(): JSX.Element {
+interface BackupItem {
+  job_id: string;
+  status: "queued" | "running" | "paused" | "stopped" | "success" | "retryable_failed" | "permanent_failed";
+  progress_current: number;
+  progress_total: number;
+  current_step: string;
+  selection: Record<string, boolean>;
+  result: { filename?: string; archive_bytes?: number };
+  created_at: string;
+  finished_at: string;
+  error: string;
+}
+
+function bytes(value: number | undefined): string {
+  const size = Number(value || 0);
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 ** 2) return `${(size / 1024).toFixed(1)} KB`;
+  if (size < 1024 ** 3) return `${(size / 1024 ** 2).toFixed(1)} MB`;
+  return `${(size / 1024 ** 3).toFixed(2)} GB`;
+}
+
+function BackupPage(): JSX.Element {
   const qc = useQueryClient();
   const [busy, setBusy] = useState(false);
+  const [selection, setSelection] = useState({ settings: true, database: true, object_storage: true });
+
+  const backups = useQuery({
+    queryKey: ["system-backups"],
+    queryFn: () => api.get<{ backups: BackupItem[] }>("/admin/api/backups"),
+    refetchInterval: (query) =>
+      query.state.data?.backups.some((item) => item.status === "queued" || item.status === "running") ? 3_000 : false,
+  });
+
+  const createBackup = useMutation({
+    mutationFn: () => api.post("/admin/api/jobs", {
+      module_key: "admin",
+      job_type: "system_backup",
+      job_options: { selection },
+    }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["system-backups"] });
+      void qc.invalidateQueries({ queryKey: qk.jobs });
+      toast.success("Backup job queued");
+    },
+    onError: (error) => toast.error(String(error)),
+  });
 
   async function exportSettings(): Promise<void> {
     setBusy(true);
@@ -360,45 +419,176 @@ function BackupCard(): JSX.Element {
     }
   }
 
+  function downloadBackup(jobId: string): void {
+    const anchor = document.createElement("a");
+    anchor.href = `/admin/api/backups/${encodeURIComponent(jobId)}/download`;
+    anchor.rel = "noopener";
+    anchor.click();
+  }
+
   return (
-    <div className="module-card">
-      <div className="module-card__head">
-        <div>
-          <h3 className="subhead" style={{ margin: 0 }}>Backup &amp; restore</h3>
-          <div className="muted small">
-            Move a working configuration between installs. The exported file contains your API
-            keys in plain text — keep it somewhere you would keep a password.
+    <>
+      <div className="module-card">
+        <div className="module-card__head">
+          <div>
+            <h3 className="subhead" style={{ margin: 0 }}>System backup</h3>
+            <div className="muted small">
+              Create a portable ZIP in the background. Completed backups are stored in MinIO.
+            </div>
           </div>
         </div>
-        <div className="head-actions">
-          <button type="button" className="btn" disabled={busy} onClick={() => void exportSettings()}>
-            Export settings
+        <div className="backup-options" role="group" aria-label="Backup contents">
+          <BackupOption
+            icon={<KeyRound size={20} />}
+            title="Settings & credentials"
+            description="Application settings, model profiles, FHIR servers, and passkeys. Secrets are included."
+            checked={selection.settings}
+            onChange={(checked) => setSelection((value) => ({ ...value, settings: checked }))}
+          />
+          <BackupOption
+            icon={<Database size={20} />}
+            title="PostgreSQL database"
+            description="All loaded datasets, embeddings, pipeline state, schedules, and audit records."
+            checked={selection.database}
+            onChange={(checked) => setSelection((value) => ({ ...value, database: checked }))}
+          />
+          <BackupOption
+            icon={<HardDrive size={20} />}
+            title="Object storage"
+            description="Uploaded source files, drug documents, OCR output, analysis JSON, and images."
+            checked={selection.object_storage}
+            onChange={(checked) => setSelection((value) => ({ ...value, object_storage: checked }))}
+          />
+        </div>
+        <div className="backup-create-row">
+          <span className="muted small">Backup artifacts contain sensitive data. Store downloads securely.</span>
+          <button
+            type="button"
+            className="btn"
+            disabled={createBackup.isPending || !Object.values(selection).some(Boolean)}
+            onClick={() => createBackup.mutate()}
+          >
+            <Archive size={16} />
+            {createBackup.isPending ? "Queueing…" : "Create backup"}
           </button>
-          <label className="btn" style={{ cursor: busy ? "default" : "pointer" }}>
-            Import settings
-            <input
-              type="file"
-              accept="application/json,.json"
-              style={{ display: "none" }}
-              disabled={busy}
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                e.target.value = ""; // let the same file be picked again
-                if (!file) return;
-                const ok = window.confirm(
-                  "Import settings from this file? Values for the groups it contains will be overwritten.",
-                );
-                if (ok) void importSettings(file);
-              }}
-            />
-          </label>
         </div>
       </div>
-    </div>
+
+      <div className="module-card">
+        <div className="module-card__head">
+          <div>
+            <h3 className="subhead" style={{ margin: 0 }}>Backup history</h3>
+            <div className="muted small">The worker reports progress here and on the Tasks page.</div>
+          </div>
+        </div>
+        {backups.isPending ? (
+          <div className="muted small">Loading backups…</div>
+        ) : backups.isError ? (
+          <div className="error-box">Failed to load backups: {String(backups.error)}</div>
+        ) : backups.data.backups.length === 0 ? (
+          <div className="muted small">No system backups have been created.</div>
+        ) : (
+          <div className="backup-list">
+            {backups.data.backups.map((item) => {
+              const progress = item.progress_total > 0
+                ? Math.round((item.progress_current / item.progress_total) * 100)
+                : 0;
+              return (
+                <div className="backup-row" key={item.job_id}>
+                  <div className="backup-row__main">
+                    <div className="backup-row__title">
+                      <span>{item.result.filename || `Backup ${item.job_id.slice(0, 8)}`}</span>
+                      <StatusBadge status={item.status} />
+                    </div>
+                    <div className="muted small backup-row__meta">
+                      <span>{new Date(item.created_at).toLocaleString()}</span>
+                      {item.result.archive_bytes ? <span>{bytes(item.result.archive_bytes)}</span> : null}
+                      <span>{Object.entries(item.selection).filter(([, included]) => included).map(([key]) => key.replace("_", " ")).join(" · ")}</span>
+                    </div>
+                    {(item.status === "queued" || item.status === "running") && (
+                      <div className="backup-progress">
+                        <div><span style={{ width: `${progress}%` }} /></div>
+                        <span>{progress}%</span>
+                      </div>
+                    )}
+                    {item.error && <div className="field-error small">{item.error}</div>}
+                  </div>
+                  <button
+                    type="button"
+                    className="icon-btn"
+                    title="Download backup"
+                    aria-label="Download backup"
+                    disabled={item.status !== "success"}
+                    onClick={() => downloadBackup(item.job_id)}
+                  >
+                    <Download size={17} />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <div className="module-card">
+        <div className="module-card__head">
+          <div>
+            <h3 className="subhead" style={{ margin: 0 }}>Settings file</h3>
+            <div className="muted small">
+              Export or restore settings only. The JSON contains API keys in plain text.
+            </div>
+          </div>
+          <div className="head-actions">
+            <button type="button" className="btn" disabled={busy} onClick={() => void exportSettings()}>
+              Export settings
+            </button>
+            <label className="btn" style={{ cursor: busy ? "default" : "pointer" }}>
+              Import settings
+              <input
+                type="file"
+                accept="application/json,.json"
+                style={{ display: "none" }}
+                disabled={busy}
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  event.target.value = "";
+                  if (!file) return;
+                  const ok = window.confirm(
+                    "Import settings from this file? Values for the groups it contains will be overwritten.",
+                  );
+                  if (ok) void importSettings(file);
+                }}
+              />
+            </label>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function BackupOption(props: {
+  icon: JSX.Element;
+  title: string;
+  description: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}): JSX.Element {
+  return (
+    <label className={`backup-option ${props.checked ? "backup-option--selected" : ""}`}>
+      <input type="checkbox" checked={props.checked} onChange={(event) => props.onChange(event.target.checked)} />
+      <span className="backup-option__icon">{props.icon}</span>
+      <span>
+        <strong>{props.title}</strong>
+        <span className="muted small">{props.description}</span>
+      </span>
+    </label>
   );
 }
 
 export function SettingsPage(): JSX.Element {
+  const location = useLocation();
+  const section = location.pathname.split("/").filter(Boolean)[1] ?? "";
   const { data, isPending, isError, error } = useQuery({
     queryKey: qk.settings,
     queryFn: () => api.get<SettingsPayload>("/admin/api/settings"),
@@ -408,27 +598,67 @@ export function SettingsPage(): JSX.Element {
   if (isPending) return <div className="muted">Loading settings…</div>;
   if (isError) return <div className="error-box">Failed to load settings: {String(error)}</div>;
 
+  const navigation = [
+    { key: "embedding", label: "Embedding", icon: BrainCircuit },
+    { key: "analysis", label: "Analysis LM", icon: Bot },
+    { key: "ocr", label: "OCR", icon: FileScan },
+    { key: "tfda", label: "TFDA crawler", icon: Globe2 },
+    { key: "registry", label: "FHIR registry", icon: Cloud },
+    { key: "minio", label: "Object storage", icon: HardDrive },
+    { key: "worker", label: "Worker", icon: ServerCog },
+    { key: "privacy", label: "Privacy", icon: KeyRound },
+    { key: "backup", label: "Backup & restore", icon: Archive },
+  ] as const;
+  if (!section) return <Navigate to="/settings/embedding" replace />;
+  if (!navigation.some((item) => item.key === section)) return <Navigate to="/settings/embedding" replace />;
+
+  const selectedNavigation = navigation.find((item) => item.key === section)!;
+  const SelectedIcon = selectedNavigation.icon;
+  const group = data.groups.find((item) => item.group === section);
+  const strategy = String(group?.fields.find((field) => field.key === "strategy")?.value ?? "failover");
+
   return (
     <section>
       <header className="section-head">
         <h2>Settings</h2>
       </header>
-      <PasskeysCard />
-      <BackupCard />
-      {data.groups.map((group) => {
-        const strategy = String(
-          group.fields.find((f) => f.key === "strategy")?.value ?? "failover",
-        );
-        return (
-          <div key={group.group}>
-            <SettingsGroupForm group={group} />
-            {/* The endpoints for these two roles are profiles, not fields. */}
-            {(group.group === "analysis" || group.group === "embedding") && (
-              <LlmProfilesCard kind={group.group} strategy={strategy} />
-            )}
+      <div className="settings-layout">
+        <nav className="settings-nav" aria-label="Settings categories">
+          {navigation.map((item) => {
+            const Icon = item.icon;
+            return (
+              <NavLink
+                key={item.key}
+                to={`/settings/${item.key}`}
+                className={({ isActive }) => `settings-nav__item ${isActive ? "settings-nav__item--active" : ""}`}
+              >
+                <Icon size={17} />
+                <span>{item.label}</span>
+              </NavLink>
+            );
+          })}
+        </nav>
+        <div className="settings-content">
+          <div className="settings-content__head">
+            <SelectedIcon size={22} />
+            <h3>{selectedNavigation.label}</h3>
           </div>
-        );
-      })}
+          {section === "privacy" ? (
+            <PrivacyPage />
+          ) : section === "backup" ? (
+            <BackupPage />
+          ) : group ? (
+            <>
+              <SettingsGroupForm group={group} />
+              {(group.group === "analysis" || group.group === "embedding") && (
+                <LlmProfilesCard kind={group.group} strategy={strategy} />
+              )}
+            </>
+          ) : (
+            <div className="error-box">This settings group is not available.</div>
+          )}
+        </div>
+      </div>
     </section>
   );
 }

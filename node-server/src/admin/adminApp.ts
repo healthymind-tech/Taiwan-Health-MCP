@@ -27,8 +27,9 @@ import {
   clearAdminSessionCookie,
   parseAdminSessionToken,
   parseCookieHeader,
-  verifyAdminPassword,
 } from "../adminAuth.js";
+import { changePassword, verifyPassword } from "./adminCredentials.js";
+import { listBackups, openBackupDownload } from "./adminBackup.js";
 import * as adminSettings from "./adminSettings.js";
 import * as llmProfiles from "./llmProfiles.js";
 import {
@@ -199,7 +200,7 @@ export async function adminHandler(req: Request, res: Response, next: NextFuncti
   // 4b. POST /admin/login (form) — success redirect+cookie; failure 401.
   if (method === "POST" && path === "/admin/login") {
     const { username, password } = readCredentials(req);
-    if (username === cfg.adminUsername && verifyAdminPassword(password, cfg.adminPasswordHash)) {
+    if (await verifyPassword(username, password)) {
       setSessionCookie(res, cfg, username);
       res.redirect(303, "/admin");
     } else {
@@ -221,7 +222,7 @@ export async function adminHandler(req: Request, res: Response, next: NextFuncti
   // 4d. JSON aliases for the SPA. MUST precede the auth gate.
   if (method === "POST" && path === "/admin/api/login") {
     const { username, password } = readCredentials(req);
-    if (username === cfg.adminUsername && verifyAdminPassword(password, cfg.adminPasswordHash)) {
+    if (await verifyPassword(username, password)) {
       setSessionCookie(res, cfg, username);
       sendJson(res, 200, { ok: true });
     } else {
@@ -352,6 +353,49 @@ export async function adminHandler(req: Request, res: Response, next: NextFuncti
       }
       const removed = await deleteCredential(adminUsername, id);
       sendJson(res, removed ? 200 : 404, removed ? { ok: true } : { error: "Passkey not found." });
+      return;
+    }
+
+    if (method === "POST" && path === "/admin/api/privacy/password") {
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      try {
+        await changePassword({
+          username: adminUsername,
+          currentPassword: String(body.current_password ?? ""),
+          newPassword: String(body.new_password ?? ""),
+        });
+        sendJson(res, 200, { ok: true });
+      } catch (exc) {
+        const message = String((exc as Error).message);
+        sendJson(res, 400, { error: message });
+      }
+      return;
+    }
+
+    if (method === "GET" && path === "/admin/api/backups") {
+      sendJson(res, 200, { backups: await listBackups() });
+      return;
+    }
+
+    const backupDownloadMatch = /^\/admin\/api\/backups\/([0-9a-fA-F-]+)\/download$/.exec(path);
+    if (method === "GET" && backupDownloadMatch) {
+      try {
+        const artifact = await openBackupDownload(backupDownloadMatch[1]);
+        const safeFilename = artifact.filename.replace(/["\\\r\n]/g, "_");
+        res
+          .status(200)
+          .set("content-type", "application/zip")
+          .set("content-disposition", `attachment; filename="${safeFilename}"`)
+          .set("cache-control", "no-store");
+        artifact.stream.once("error", (error) => {
+          if (!res.headersSent) sendJson(res, 502, { error: "Backup download failed", detail: String(error.message) });
+          else res.destroy(error);
+        });
+        artifact.stream.pipe(res);
+      } catch (exc) {
+        const message = String((exc as Error).message);
+        sendJson(res, message === "Backup not found" ? 404 : 409, { error: message });
+      }
       return;
     }
 
