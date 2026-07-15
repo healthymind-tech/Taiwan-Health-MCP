@@ -3062,6 +3062,21 @@
 <td><code>/mcp</code></td>
 <td>HTTP 端點路徑</td>
 </tr>
+<tr>
+<td><code>PUBLIC_TOOLS_AUTH_MODE</code></td>
+<td><code>none</code></td>
+<td>公開 MCP/OpenAPI bridge 驗證模式：<code>none</code> 或 <code>bearer</code>。正式環境建議使用 <code>bearer</code>。</td>
+</tr>
+<tr>
+<td><code>PUBLIC_TOOLS_BEARER_TOKEN</code></td>
+<td>空</td>
+<td>bearer 模式必要的 token；應使用高熵隨機值。</td>
+</tr>
+<tr>
+<td><code>PUBLIC_TOOLS_CORS_ORIGINS</code></td>
+<td>空</td>
+<td>允許的瀏覽器 origin（逗號分隔）。bearer 模式不可使用 <code>*</code>；空值代表不允許跨來源瀏覽器呼叫。</td>
+</tr>
 </tbody>
 </table>
 <h3 id="_4">應用與監控<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h3>
@@ -3122,6 +3137,11 @@
 <td>session 有效期</td>
 </tr>
 <tr>
+<td><code>ADMIN_COOKIE_SECURE</code></td>
+<td>空（自動）</td>
+<td><code>true</code> / <code>false</code>。空值時，<code>PUBLIC_BASE_URL</code> 使用 HTTPS 就加入 cookie <code>Secure</code> 屬性。TLS 在外部 proxy 終止且未設定 public URL 時應明確設為 <code>true</code>。</td>
+</tr>
+<tr>
 <td><code>ADMIN_MAX_UPLOAD_MB</code></td>
 <td><code>512</code></td>
 <td>來源檔上傳上限</td>
@@ -3175,12 +3195,8 @@ Compose 會還原成單一 <code>$</code>。</p>
 </tr>
 </tbody>
 </table>
-<div class="admonition note">
-<p class="admonition-title">目前 <code>compose.yaml</code> 沒有把這四個變數傳給 <code>app</code> 容器</p>
-<p>因此在預設 compose 部署下，<code>WEBAUTHN_RP_ID</code> 會落到硬編碼的預設網域。
-若要在其他網域啟用 passkey 登入，需自行在 <code>compose.yaml</code> 的 <code>app.environment</code>
-加上 <code>PUBLIC_BASE_URL</code>（或 <code>WEBAUTHN_*</code>）。密碼登入不受影響。</p>
-</div>
+<p><code>compose.yaml</code> 會將這四個變數傳入 <code>app</code>。正式部署至少應設定
+<code>PUBLIC_BASE_URL</code>；只有需要覆寫自動推導值時才設定 <code>WEBAUTHN_*</code>。</p>
 <hr />
 <h2 id="seed-only-admin-settings">Seed-only 設定（首次啟動後改於 Admin → Settings）<a class="headerlink" href="#seed-only-admin-settings" title="Permanent link">&para;</a></h2>
 <h3 id="minio">MinIO（藥品資產）<a class="headerlink" href="#minio" title="Permanent link">&para;</a></h3>

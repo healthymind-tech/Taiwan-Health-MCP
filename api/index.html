@@ -2602,19 +2602,19 @@
 <tr>
 <td><code>/mcp</code></td>
 <td><code>POST</code> / <code>GET</code> / <code>DELETE</code></td>
-<td>無</td>
+<td>可設定 Bearer</td>
 <td>MCP streamable-http 端點（路徑由 <code>MCP_PATH</code> 設定）。</td>
 </tr>
 <tr>
 <td><code>/openapi.json</code></td>
 <td><code>GET</code></td>
-<td>無</td>
+<td>可設定 Bearer</td>
 <td>依<strong>目前已註冊的工具</strong>動態產生的 OpenAPI 3.1 規格。</td>
 </tr>
 <tr>
 <td><code>/tools/&lt;工具名&gt;</code></td>
 <td><code>POST</code></td>
-<td>無</td>
+<td>可設定 Bearer</td>
 <td>OpenAPI bridge：以 JSON body 當參數呼叫單一工具。</td>
 </tr>
 <tr>
@@ -2649,22 +2649,28 @@
 </tr>
 </tbody>
 </table>
+<p><code>PUBLIC_TOOLS_AUTH_MODE=bearer</code> 會同時保護 <code>/mcp</code>、<code>/openapi.json</code> 與
+<code>/tools/*</code>。Token 由 <code>PUBLIC_TOOLS_BEARER_TOKEN</code> 設定；瀏覽器跨來源呼叫另需在
+<code>PUBLIC_TOOLS_CORS_ORIGINS</code> 明列 origin。<code>none</code> 僅適合受信任的本機或私有網路。</p>
 <blockquote>
-<p><code>/mcp</code> 與 OpenAPI bridge <strong>目前皆未強制驗證</strong>；對外開放時請在前面加反向代理或 token。</p>
 <p>後端另有一個 <code>/health</code> 端點，但 nginx 不會轉送它（從前門存取會得到 404）。請改用 <code>/status.json</code>。</p>
 </blockquote>
 <h2 id="openapi-bridge">OpenAPI bridge<a class="headerlink" href="#openapi-bridge" title="Permanent link">&para;</a></h2>
 <p>給不支援原生 MCP、只能接 OpenAPI 工具伺服器的客戶端使用（例如 Open WebUI 的 External Tools）。</p>
 <pre><code class="language-bash"># 取得目前工具清單
-curl http://localhost:8080/openapi.json
+curl -H 'Authorization: Bearer &lt;token&gt;' http://localhost:8080/openapi.json
 
 # 呼叫工具
 curl -X POST http://localhost:8080/tools/search_medical_codes \
+  -H 'Authorization: Bearer &lt;token&gt;' \
   -H 'Content-Type: application/json' \
-  -d '{&quot;query&quot;: &quot;diabetes&quot;, &quot;limit&quot;: 3}'
+  -d '{&quot;keyword&quot;: &quot;diabetes&quot;, &quot;limit&quot;: 3}'
 </code></pre>
 <p>工具清單會隨各模組的資料載入狀態動態增減（見 <code>moduleStatus.ts</code> 的 <code>SERVICE_MODULES</code> 門檻），
 因此 <code>/openapi.json</code> 的內容會依部署的資料狀態而不同。</p>
+<p>工具已註冊只代表必要的來源資料存在，<strong>不代表 semantic embedding 已完整回填</strong>。
+向量不完整時，相關搜尋會退回或混用 keyword/BM25。請在 Admin → Modules 查看每個模組的
+Embeddings 計數，並執行或排程對應的 <code>*_embed</code> 工作。</p>
 <h2 id="rest-api">管理後台 REST API<a class="headerlink" href="#rest-api" title="Permanent link">&para;</a></h2>
 <p>所有路徑以 <code>/admin/api/</code> 開頭，需帶 <code>tw_health_admin_session</code> cookie。主要端點：</p>
 <table>
