@@ -109,6 +109,15 @@ export const SOURCE_CATALOG: readonly SourceCatalogEntry[] = [
     accepted_extensions: [".csv"],
     multi_source: true,
   },
+  {
+    module_key: "guideline",
+    source_role: "guideline_pdf",
+    label: "Clinical guideline PDF",
+    description:
+      "Raw clinical-guideline PDF for one disease/ICD target; OCR'd and extracted by the guideline analysis pipeline. Many may be active at once — one per uploaded document.",
+    accepted_extensions: [".pdf"],
+    multi_source: true,
+  },
 ];
 
 interface VersionRow {
@@ -496,6 +505,7 @@ const ZIP_LABELS = ["zip"];
 const GZIP_LABELS = ["gzip"];
 const XLSX_LABELS = ["xlsx"];
 const CSV_LABELS = ["csv", "txt", "tsv"];
+const PDF_LABELS = ["pdf"];
 const ALLOWED_LABELS = new Map<string, string[]>([
   ["icd/icd10cm", ZIP_LABELS],
   ["icd/icd10pcs", ZIP_LABELS],
@@ -507,6 +517,7 @@ const ALLOWED_LABELS = new Map<string, string[]>([
   ["rxnorm/rxnorm_full", ZIP_LABELS],
   ["ig/ig", GZIP_LABELS],
   ["drug/drug_index_csv", CSV_LABELS],
+  ["guideline/guideline_pdf", PDF_LABELS],
 ]);
 
 const CATALOG_BY_KEY = new Map<string, SourceCatalogEntry>(
@@ -559,6 +570,7 @@ export function validateSourceFilename(filename: string, entry: SourceCatalogEnt
  * Magika's real label (sets are disjoint per role).
  */
 function detectContentLabel(data: Buffer): string {
+  if (data.subarray(0, 5).toString("latin1") === "%PDF-") return "pdf";
   if (data.length >= 2 && data[0] === 0x1f && data[1] === 0x8b) return "gzip";
   // ZIP family: PK\x03\x04 (local), PK\x05\x06 (empty), PK\x07\x08 (spanned).
   if (data.length >= 4 && data[0] === 0x50 && data[1] === 0x4b && (data[2] === 0x03 || data[2] === 0x05 || data[2] === 0x07)) {

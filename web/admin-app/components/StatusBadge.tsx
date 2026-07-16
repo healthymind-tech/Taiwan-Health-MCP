@@ -26,6 +26,14 @@ const TONE_BY_STATUS: Record<string, Tone> = {
   unavailable: "bad",
   error: "bad",
   empty: "muted",
+  // guideline PDF pipeline (pipeline_stage / review_status)
+  ocr_running: "live",
+  analysis_running: "live",
+  ocr_failed: "bad",
+  analysis_failed: "bad",
+  pending_review: "warn",
+  approved: "ok",
+  rejected: "bad",
 };
 
 export function StatusBadge({ status }: { status: string }): JSX.Element {

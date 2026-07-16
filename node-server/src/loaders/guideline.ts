@@ -2,6 +2,12 @@
  * Clinical guideline seed loader (Node port of
  * `loader/loaders/guideline_seed.py`).
  *
+ * @deprecated Superseded by the PDF import / Analysis LM extraction pipeline
+ * (`guidelineAnalysisService.ts` + `loaders/guidelineAnalysis.ts` + the review
+ * gate in `admin/guidelineReview.ts`). Retained, unchanged, only until the four
+ * diseases seeded here are re-uploaded and approved through that pipeline —
+ * do not add new diseases here; upload their source PDF instead.
+ *
  * Seeds Taiwan Medical Society guidelines for common chronic diseases into the
  * `guideline.*` tables. Idempotent — skips if data is already present. The row
  * values mirror the Python seed verbatim (same ICD codes, Chinese/English

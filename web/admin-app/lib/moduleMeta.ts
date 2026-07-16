@@ -38,6 +38,10 @@ export interface ActionModuleMeta {
 }
 
 export const ACTION_MODULES: ActionModuleMeta[] = [
+  // guideline is rendered by the bespoke GuidelineModulePage (ModulePage.tsx
+  // intercepts it before GenericModulePage), so jobType/actionLabel/description
+  // below are unused for rendering — this entry only feeds ModulesLayout's
+  // sidebar label/icon and ModulePage's "is this a known module" check.
   {
     moduleKey: "guideline",
     label: "Clinical guidelines",
