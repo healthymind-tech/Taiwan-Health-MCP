@@ -1866,6 +1866,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        系統備份
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#sources" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2567,6 +2578,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        系統備份
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#sources" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2683,7 +2705,7 @@ FHIR_SERVER_SECRET_KEY=
 </tr>
 <tr>
 <td><strong>Settings</strong></td>
-<td>DB-backed 設定（MinIO / TFDA / worker 調校）與 <strong>LLM Profiles</strong>（嵌入 / OCR / 分析 LLM 端點），可線上測試與熱套用。</td>
+<td>依 Embedding、Analysis LM、OCR、整合服務、Privacy、Backup 等子頁分類；可管理 DB-backed 設定、LLM Profiles、登入憑證與系統備份。</td>
 </tr>
 <tr>
 <td><strong>FHIR Servers</strong></td>
@@ -2695,12 +2717,22 @@ FHIR_SERVER_SECRET_KEY=
 <p>登入方式除密碼外，另支援 <strong>passkey / WebAuthn</strong>（<code>node-server/src/admin/webauthn.ts</code>）；
 passkey 僅能在 HTTPS 的 RP 網域（或本機 localhost）上使用，設定見<a href="../deployment/configuration/">環境變數配置</a>。</p>
 <h2 id="settings">設定（Settings）與優先序<a class="headerlink" href="#settings" title="Permanent link">&para;</a></h2>
-<p>Bootstrap 變數（DB / Redis / MCP transport / <code>ADMIN_*</code> 認證）只存在於 <code>.env</code>。</p>
+<p>Bootstrap 變數（DB / Redis / MCP transport / <code>ADMIN_*</code> 認證）起始於 <code>.env</code>。首次啟動會把
+<code>ADMIN_PASSWORD_HASH</code> 寫入 <code>admin.admin_credentials</code>，之後登入只驗證資料庫中的 hash。
+seed 使用 <code>ON CONFLICT DO NOTHING</code>，因此 credential row 建立後修改 <code>.env</code> 或重啟服務都不會
+覆蓋有效密碼。密碼與 passkey 都在 Settings → Privacy 管理。</p>
 <p>其餘外部系統設定（MinIO、TFDA base URL、worker 調校）為 <strong>seed-only</strong>：<code>.env</code> 僅在首次啟動、
 <code>admin.app_settings</code> 為空時讀取一次以種子化；之後請在 Settings 頁籤管理與測試（支援熱套用），
 編輯 <code>.env</code> 對已種子化的資料庫無效。</p>
 <p><strong>模型端點（嵌入 / OCR / 分析 LLM）完全不從環境變數讀取</strong>，只存在於 <code>admin.llm_profiles</code>，
-僅能在 Settings 頁籤設定。可用 Settings → Export / Import 在不同環境間搬移一份可用的設定。</p>
+僅能在 Settings 子頁設定。可用 Settings → Backup &amp; restore 的 JSON Export / Import 在不同環境間搬移一份可用的設定。</p>
+<h2 id="_3">系統備份<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
+<p>Settings → Backup &amp; restore 可逐項選擇設定與憑證、PostgreSQL database、MinIO object storage。
+建立備份只會排入 <code>system_backup</code> 背景工作；worker 將 PostgreSQL custom dump 與 MinIO 物件
+逐段串流進 ZIP，再以 multipart upload 寫回 MinIO 的 <code>system-backups/</code> prefix，不會在單一
+HTTP request 或 Node 記憶體中組裝整份備份。完成後可由備份歷史透過同源 API 串流下載。</p>
+<p>備份包含 API keys、登入憑證與醫療資料，應視同 production secret 管理。資料庫 dump 可用
+PostgreSQL 16 <code>pg_restore</code> 還原；object storage 檔案位於 ZIP 的 <code>object-storage/</code> 目錄。</p>
 <h2 id="sources">來源檔（Sources）<a class="headerlink" href="#sources" title="Permanent link">&para;</a></h2>
 <p>於 Modules / Sources 上傳各模組的來源檔（ICD zip、LOINC zip、SNOMED RF2、RxNorm zip、FHIR IG <code>package.tgz</code> 等），並可指定 source role（例如 IG 相依套件）。系統會以檔案指紋阻擋重複上傳；檔案存於 MinIO，工作執行時再取回。</p>
 <blockquote>

@@ -2683,7 +2683,7 @@ Embeddings 計數，並執行或排程對應的 <code>*_embed</code> 工作。</
 <tbody>
 <tr>
 <td>認證</td>
-<td><code>POST /admin/api/login</code>、<code>POST /admin/api/logout</code>、<code>/admin/api/passkeys/*</code></td>
+<td><code>POST /admin/api/login</code>、<code>POST /admin/api/logout</code>、<code>/admin/api/passkeys/*</code>、<code>POST /admin/api/privacy/password</code></td>
 </tr>
 <tr>
 <td>總覽與健康</td>
@@ -2700,6 +2700,10 @@ Embeddings 計數，並執行或排程對應的 <code>*_embed</code> 工作。</
 <tr>
 <td>設定</td>
 <td><code>GET|POST /admin/api/settings</code>、<code>GET /admin/api/settings/export</code>、<code>POST /admin/api/settings/import</code>、<code>/admin/api/llm-profiles/*</code></td>
+</tr>
+<tr>
+<td>備份</td>
+<td><code>GET /admin/api/backups</code>、<code>GET /admin/api/backups/{job_id}/download</code>；以 <code>POST /admin/api/jobs</code> 建立 <code>system_backup</code> 工作</td>
 </tr>
 <tr>
 <td>藥品管線</td>
