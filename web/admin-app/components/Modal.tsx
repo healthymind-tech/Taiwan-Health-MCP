@@ -2,6 +2,8 @@
 
 import { useEffect, useRef } from "react";
 
+const openModalStack: symbol[] = [];
+
 interface Props {
   title: string;
   onClose: () => void;
@@ -13,17 +15,25 @@ interface Props {
 }
 
 export function Modal({ title, onClose, children, wide, xwide, workspace, panelClassName }: Props): JSX.Element {
+  const modalId = useRef(Symbol("modal"));
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape" && openModalStack.at(-1) === modalId.current) onCloseRef.current();
     };
+    openModalStack.push(modalId.current);
     document.addEventListener("keydown", onKey);
     document.body.style.overflow = "hidden";
     return () => {
+      const index = openModalStack.lastIndexOf(modalId.current);
+      if (index >= 0) openModalStack.splice(index, 1);
       document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = "";
+      if (openModalStack.length === 0) document.body.style.overflow = "";
     };
-  }, [onClose]);
+  }, []);
 
   // Only treat a backdrop click as "close" when the press STARTED on the
   // backdrop too. Otherwise pressing inside a field and dragging the cursor out

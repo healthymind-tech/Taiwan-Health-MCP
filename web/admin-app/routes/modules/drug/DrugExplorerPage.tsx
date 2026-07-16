@@ -783,12 +783,9 @@ export function DrugExplorerPage(): JSX.Element {
   ];
   const pagination = explorerQ.data?.pagination;
 
-  return <div className={`drug-explorer ${selectedLicense ? "drug-explorer--has-selection" : ""}`}>
-    <header className="drug-explorer-head">
-      <div><button type="button" className="icon-btn" onClick={() => navigate("/modules/drug")} aria-label="Back to Drug index" title="Back to Drug index"><ArrowLeft size={18} /></button><h2>Drug Explorer</h2></div>
-      {explorerQ.isFetching ? <span className="muted small">Refreshing...</span> : <button type="button" className="btn btn--sm" onClick={() => navigate("/modules/drug")}>Drug index</button>}
-    </header>
-    <div className="drug-explorer-toolbar">
+  return <Modal title="Drug Explorer" onClose={() => navigate("/modules/drug")} workspace panelClassName="drug-explorer-modal">
+    <div className={`drug-explorer ${selectedLicense ? "drug-explorer--has-selection" : ""}`}>
+      <div className="drug-explorer-toolbar">
       <form onSubmit={(event: FormEvent) => { event.preventDefault(); setParam("q", searchInput.trim(), true); }}>
         <Search size={18} /><input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="License, drug, ingredient, manufacturer" />
         {searchInput ? <button type="button" className="icon-btn" onClick={() => { setSearchInput(""); setParam("q", "", true); }} aria-label="Clear search"><X size={16} /></button> : null}
@@ -825,6 +822,7 @@ export function DrugExplorerPage(): JSX.Element {
           <div className="drug-empty-detail"><Search size={30} /><strong>Select a drug</strong></div>}
       </main>
     </div>
-    {filtersOpen ? <FilterPanel initial={filters} facets={explorerQ.data?.facets ?? {}} onApply={applyFilters} onClose={() => setFiltersOpen(false)} /> : null}
-  </div>;
+      {filtersOpen ? <FilterPanel initial={filters} facets={explorerQ.data?.facets ?? {}} onApply={applyFilters} onClose={() => setFiltersOpen(false)} /> : null}
+    </div>
+  </Modal>;
 }

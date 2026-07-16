@@ -46,6 +46,13 @@
   background: var(--panel);
   overflow: hidden;
 }
+.drug-explorer-modal > .modal-body > .drug-explorer {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  border: 0;
+  border-radius: 0 0 8px 8px;
+}
 .drug-explorer-head {
   min-height: 58px;
   display: flex;
@@ -523,7 +530,7 @@ body {
 .btn--primary:hover:not(:disabled) { background: var(--brand); border-color: var(--brand); color: #fff; filter: brightness(1.08); }
 .btn--primary:disabled { opacity: 0.55; }
 
-.head-actions { display: flex; align-items: center; gap: 12px; }
+.head-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
 .summary-row { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
 
 /* Embedding status line on a module page */
@@ -536,40 +543,119 @@ body {
 .row__main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .row__meta { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
 
-/* Modules sub-nav (horizontal) + per-module page */
-.modules-nav {
-  display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
-  padding: 8px; margin-bottom: 20px;
-  border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow);
+/* Modules use a stable categorized sidebar on desktop and one compact native
+   selector on smaller screens. Terminology datasets share one import workspace. */
+.modules-workspace {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
 }
-.modules-nav__group { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); padding: 0 6px; }
-.modules-nav__sep { width: 1px; align-self: stretch; background: var(--line); margin: 2px 6px; }
-.modules-nav__item { padding: 7px 14px; border-radius: 999px; color: var(--text); text-decoration: none; font-size: 14px; white-space: nowrap; }
-.modules-nav__item:hover { background: var(--panel-soft); text-decoration: none; }
-.modules-nav__item--active { background: var(--brand-soft); color: var(--brand); font-weight: 600; }
+.modules-sidebar {
+  position: sticky;
+  top: 78px;
+  min-width: 0;
+  padding-right: 16px;
+  border-right: 1px solid var(--line);
+}
+.modules-sidebar__group { display: flex; flex-direction: column; gap: 3px; margin-bottom: 18px; }
+.modules-sidebar__group:last-child { margin-bottom: 0; }
+.modules-sidebar__label {
+  padding: 0 10px 6px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.modules-sidebar__item {
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 7px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+  text-decoration: none;
+}
+.modules-sidebar__item svg { flex: 0 0 auto; }
+.modules-sidebar__item span { min-width: 0; overflow-wrap: anywhere; }
+.modules-sidebar__item:hover { background: var(--panel-soft); color: var(--text); text-decoration: none; }
+.modules-sidebar__item--active { background: var(--brand-soft); color: var(--brand); }
 .modules-main { min-width: 0; }
-
-/* Modules sub-nav disclosure wrapper. Desktop: summary hidden, pill nav always
-   shown. Mobile (≤768): summary is a compact bar; nav drops open on demand. */
-.modules-nav-wrap { margin-bottom: 20px; }
-.modules-nav-wrap > .modules-nav { margin-bottom: 0; display: flex; }
-.modules-nav-wrap__summary { display: none; list-style: none; }
-.modules-nav-wrap__summary::-webkit-details-marker { display: none; }
-@media (max-width: 600px) {
-  .modules-nav__sep { display: none; }
-  .modules-nav__group { width: 100%; padding: 6px 6px 0; }
+.modules-mobile-select { display: none; }
+.import-module-picker {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--line);
 }
-@media (max-width: 768px) {
-  .modules-nav-wrap__summary {
-    display: flex; align-items: center; justify-content: space-between; cursor: pointer;
-    padding: 11px 14px; border: 1px solid var(--line); border-radius: 12px;
-    box-shadow: var(--shadow); font-weight: 600; background: var(--panel);
+.import-module-picker__title { font-size: 16px; font-weight: 700; }
+.import-module-picker label {
+  display: grid;
+  grid-template-columns: auto minmax(220px, 300px);
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.import-module-picker select {
+  min-width: 0;
+  width: 100%;
+  padding: 9px 34px 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+@media (max-width: 900px) {
+  .modules-workspace { display: block; }
+  .modules-sidebar { display: none; }
+  .modules-mobile-select {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--panel);
   }
-  .modules-nav-wrap__chevron { color: var(--muted); transition: transform 0.15s ease; }
-  .modules-nav-wrap[open] .modules-nav-wrap__chevron { transform: rotate(180deg); }
-  .modules-nav-wrap:not([open]) > .modules-nav { display: none; }
-  .modules-nav-wrap[open] > .modules-nav { margin-top: 8px; flex-direction: column; align-items: stretch; }
-  .modules-nav-wrap[open] .modules-nav__item { white-space: normal; }
+  .modules-mobile-select > span { color: var(--muted); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+  .modules-mobile-select select {
+    min-width: 0;
+    width: 100%;
+    padding: 7px 32px 7px 10px;
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    background: var(--panel);
+    color: var(--text);
+    font: inherit;
+    font-weight: 600;
+  }
+  .import-module-picker { align-items: start; }
+}
+
+@media (max-width: 420px) {
+  .modules-mobile-select { grid-template-columns: 1fr; gap: 6px; }
+  .import-module-picker { flex-direction: column; gap: 12px; }
+  .import-module-picker label { width: 100%; grid-template-columns: 1fr; gap: 6px; }
 }
 
 .module-card { border: 1px solid var(--line); border-radius: 12px; padding: 18px; margin-bottom: 18px; box-shadow: var(--shadow); }
@@ -646,6 +732,7 @@ body {
 
 /* Modal */
 .modal-backdrop { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.45); display: flex; align-items: flex-start; justify-content: center; padding: 48px 16px; z-index: 900; overflow-y: auto; }
+.modal-backdrop .modal-backdrop { z-index: 1100; }
 .modal-panel { background: var(--panel); border-radius: 14px; box-shadow: var(--shadow); width: 100%; max-width: 560px; }
 .modal-panel--wide { max-width: 860px; }
 /* Extra-wide panel for the FHIR server wizard (2-column form + summary). */
@@ -720,7 +807,17 @@ body {
 }
 .settings-field input:focus, .settings-field select:focus { outline: none; border-color: var(--brand); }
 .field-with-action { display: flex; gap: 8px; align-items: center; }
-.field-with-action input { min-width: 0; flex: 1; }
+.field-with-action input {
+  min-width: 0;
+  flex: 1;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+}
+.field-with-action input:focus { outline: none; border-color: var(--brand); }
 input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--brand); }
 input[type="range"] { min-height: 30px; accent-color: var(--brand); }
 .switch input { width: 0; height: 0; }
@@ -1669,6 +1766,63 @@ input[type="range"] { min-height: 30px; accent-color: var(--brand); }
   text-align: center;
 }
 .drug-preview-empty strong { color: var(--text); }
+
+/* Clinical Guideline review queue — sidebar of pending extractions (grouped by
+   source PDF, since one PDF can fan out into several) + a detail form, inside
+   a workspace Modal. Simpler than .drug-explorer-workspace since the detail
+   pane is one scrollable form rather than a tabbed view. */
+.guideline-review { height: 100%; min-height: 0; display: grid; grid-template-columns: 300px minmax(0, 1fr); }
+.guideline-review-sidebar { min-height: 0; overflow-y: auto; border-right: 1px solid var(--line); background: var(--panel-soft); }
+.guideline-review-item {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 12px 14px;
+  border: 0;
+  border-bottom: 1px solid var(--line-soft);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.guideline-review-item:hover { background: var(--panel); }
+.guideline-review-item--active { background: var(--brand-soft); box-shadow: inset 3px 0 0 var(--brand); }
+.guideline-review-item__title { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; }
+.guideline-review-item__warn { color: var(--bad-fg); }
+.guideline-review-detail { min-width: 0; min-height: 0; overflow-y: auto; padding: 18px 20px 28px; }
+.guideline-review-section { margin-bottom: 18px; }
+.guideline-review-section__label { margin-bottom: 8px; color: var(--muted); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+.guideline-review-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; }
+.guideline-review-field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+.guideline-review-field input,
+.guideline-review-field textarea {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+}
+.guideline-review-field input:focus,
+.guideline-review-field textarea:focus { outline: none; border-color: var(--brand); }
+.guideline-review-table input {
+  width: 100%;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+}
+.guideline-review-table input:focus { outline: none; border-color: var(--brand); }
+@media (max-width: 767px) {
+  .guideline-review { display: block; }
+  .guideline-review-sidebar { max-height: 260px; border-right: 0; border-bottom: 1px solid var(--line); }
+  .guideline-review-grid { grid-template-columns: 1fr; }
+}
 
 /* TWCore IG explorer */
 .twcore-preview { height: 100%; min-height: 0; display: flex; flex-direction: column; background: var(--panel-soft); }
