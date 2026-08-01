@@ -16,6 +16,7 @@ import { Document as PdfDocument, Page as PdfPage, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 import { Modal } from "./Modal";
+import { SmartCropImage } from "./SmartCropImage";
 
 pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
 
@@ -140,7 +141,7 @@ function AssetPreview({ tab }: { tab: AssetViewerTab }): JSX.Element {
   if (tab.kind === "image") {
     return (
       <div className="drug-image-preview">
-        <img src={tab.url} alt={tab.label} />
+        <SmartCropImage contain src={tab.url} alt={tab.label} />
       </div>
     );
   }

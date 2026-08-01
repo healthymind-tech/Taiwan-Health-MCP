@@ -31,6 +31,7 @@ import { api } from "../../../lib/api";
 import { qk } from "../../../lib/queryKeys";
 import { StatusBadge } from "../../../components/StatusBadge";
 import { Modal } from "../../../components/Modal";
+import { SmartCropImage } from "../../../components/SmartCropImage";
 
 pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
 
@@ -363,7 +364,7 @@ function DrugListItem({ row, selected, onSelect }: { row: DrugRow; selected: boo
   const status = row.has_error ? "retryable_failed" : row.statuses?.normalize_status || "pending";
   return <button type="button" className={`drug-result ${selected ? "drug-result--selected" : ""}`} onClick={onSelect}>
     <span className="drug-result__thumb">
-      {row.thumbnail_url ? <img src={row.thumbnail_url} alt="" loading="lazy" /> : <ImageIcon size={20} />}
+      {row.thumbnail_url ? <SmartCropImage contain src={row.thumbnail_url} alt="" /> : <ImageIcon size={20} />}
     </span>
     <span className="drug-result__content">
       <span className="drug-result__title">{row.name_zh || row.name_en || "Unnamed drug"}</span>
@@ -397,7 +398,7 @@ function Overview({ detail }: { detail: DrugDetailPayload }): JSX.Element {
       <div className="drug-section-title"><ImageIcon size={18} /><h3>Appearance</h3><span>{images.length} image{images.length === 1 ? "" : "s"}</span></div>
       <div className="drug-image-grid">
         {images.map(({ image, appearance }) => <a key={image.asset_id} href={image.original_url} target="_blank" rel="noreferrer" className="drug-image-item">
-          <img src={image.preview_url} alt={appearance.description || String(drug.chinese_name || "Drug appearance")} />
+          <SmartCropImage src={image.preview_url} alt={appearance.description || String(drug.chinese_name || "Drug appearance")} />
           <span><strong>{appearance.appearance_no || appearance.shape || "Appearance"}</strong><small>{[appearance.color, appearance.shape, appearance.imprint].filter(Boolean).join(" · ")}</small></span>
           <ExternalLink size={15} />
         </a>)}
@@ -561,7 +562,7 @@ function AssetPreview({ asset }: { asset: AssetPreviewTab }): JSX.Element {
   if (asset.kind === "pdf") return <PdfPreview assetId={asset.assetId} />;
   if (asset.kind === "markdown") return <MarkdownPreview assetId={asset.assetId} />;
   if (asset.kind === "json" || asset.kind === "text") return <TextPreview assetId={asset.assetId} json={asset.kind === "json"} />;
-  if (asset.kind === "image") return <div className="drug-image-preview"><img src={assetUrl(asset.assetId)} alt="Drug asset" /></div>;
+  if (asset.kind === "image") return <div className="drug-image-preview"><SmartCropImage contain src={assetUrl(asset.assetId)} alt="Drug asset" /></div>;
   return <div className="drug-document-loading">This file type cannot be previewed. Open it in a new tab or download the original file.</div>;
 }
 

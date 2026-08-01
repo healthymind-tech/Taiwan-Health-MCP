@@ -217,10 +217,10 @@
 .drug-section-title h3 { font-size: 15px; }
 .drug-section-title > span { margin-left: auto; color: var(--muted); font-size: 12px; }
 .drug-appearance-band { background: var(--panel-soft); }
-.drug-image-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr)); gap: 14px; }
+.drug-image-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 300px)); gap: 14px; }
 .drug-image-item { position: relative; min-width: 0; display: flex; flex-direction: column; gap: 10px; padding: 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel); color: var(--text); text-decoration: none; }
 .drug-image-item:hover { border-color: var(--brand); text-decoration: none; }
-.drug-image-item img { width: 100%; height: 220px; object-fit: contain; border-radius: 4px; background: #fff; }
+.drug-image-item .smart-crop { width: 100%; border-radius: 4px; background: #fff; }
 .drug-image-item > svg { position: absolute; top: 18px; right: 18px; padding: 4px; width: 25px; height: 25px; border-radius: 4px; background: rgba(255, 255, 255, .9); color: #334155; box-shadow: 0 1px 4px rgba(15, 23, 42, .18); }
 .drug-image-item span { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .drug-image-item strong, .drug-image-item small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -266,11 +266,11 @@
 .drug-file-row__badges, .drug-file-row__actions { display: flex; align-items: center; gap: 5px; }
 .drug-file-row__actions { padding-right: 8px; }
 .drug-file-row__actions .btn { min-height: 30px; }
-.modal-panel--workspace.drug-asset-viewer-modal { height: calc(100dvh - 96px); }
-.drug-asset-viewer-modal .modal-head { min-height: 58px; padding: 10px 16px; }
+.modal-panel--workspace.drug-asset-viewer-modal { height: calc(100dvh - 72px); }
+.drug-asset-viewer-modal .modal-head { min-height: 48px; padding: 8px 16px; }
 .drug-asset-viewer-modal .modal-head h3 { min-width: 0; overflow: hidden; font-size: 15px; text-overflow: ellipsis; white-space: nowrap; }
 .drug-asset-modal { height: 100%; min-height: 0; display: flex; flex-direction: column; }
-.drug-asset-modal__toolbar { min-height: 52px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 7px 12px; border-bottom: 1px solid var(--line); background: var(--panel-soft); }
+.drug-asset-modal__toolbar { min-height: 44px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 5px 12px; border-bottom: 1px solid var(--line); background: var(--panel-soft); }
 .drug-asset-modal__toolbar .segmented { width: auto; max-width: min(650px, 75%); }
 .drug-asset-modal__toolbar .segmented button { min-width: 110px; }
 .drug-asset-modal__actions { display: flex; align-items: center; gap: 4px; }
@@ -282,8 +282,8 @@
 .drug-paired-preview > section + section { border-left: 1px solid var(--line); }
 .drug-paired-preview > section > header { min-height: 34px; flex: 0 0 34px; padding: 7px 10px; border-bottom: 1px solid var(--line); background: var(--panel-soft); color: var(--muted); font-size: 12px; font-weight: 700; }
 .drug-paired-preview .drug-pdf-viewer, .drug-paired-preview .drug-markdown-preview, .drug-paired-preview .drug-markdown-state { min-height: 0; }
-.drug-image-preview { display: flex; align-items: center; justify-content: center; overflow: auto; padding: 18px; background: #e9edf2; }
-.drug-image-preview img { display: block; max-width: 100%; max-height: 100%; object-fit: contain; }
+.drug-image-preview { display: flex; align-items: center; justify-content: center; overflow: auto; padding: 8px; background: #e9edf2; }
+.drug-image-preview .smart-crop--contain { flex-shrink: 0; }
 .drug-text-preview { height: 100%; margin: 0; overflow: auto; padding: 18px; background: var(--code-bg); color: var(--code-fg); font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
 .drug-pdf-viewer { min-height: 500px; flex: 1; display: flex; flex-direction: column; background: #e9edf2; }
 .drug-pdf-toolbar { min-height: 38px; display: flex; align-items: center; gap: 5px; padding: 4px 7px; border-bottom: 1px solid #cbd3dd; background: #f8fafc; color: #475569; font-size: 11px; }
@@ -374,7 +374,6 @@
   .drug-detail-tabs button { flex: 1; padding: 0 4px; font-size: 12px; }
   .drug-overview > section, .drug-timeline-view { padding: 14px 12px; }
   .drug-image-grid { grid-template-columns: 1fr; }
-  .drug-image-item img { height: min(280px, 64vw); }
   .drug-detail-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .drug-documents-head { padding: 10px 12px; }
   .drug-documents-head p { display: none; }
@@ -699,7 +698,8 @@ body {
 .passkey-list { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .passkey-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; border: 1px solid var(--line-soft); border-radius: 8px; padding: 8px 12px; }
 .source-role { border-top: 1px solid var(--line-soft); padding-top: 12px; margin-top: 12px; }
-.source-role__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.source-role__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; flex-wrap: wrap; }
+.source-role__head > div:first-child { flex: 1 1 260px; min-width: 0; }
 
 .upload-field { display: inline-flex; align-items: center; }
 .upload-progress { position: relative; display: inline-block; width: 120px; height: 24px; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: var(--panel-soft); }
@@ -713,6 +713,8 @@ body {
 .csv-preview__fail { color: var(--bad-fg); }
 .csv-preview__ok { color: var(--ok-fg); }
 .csv-preview__table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 10px; }
+.csv-preview__scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 6px; margin-bottom: 10px; }
+.csv-preview__scroll .csv-preview__table { margin-bottom: 0; }
 .csv-preview__table th, .csv-preview__table td { border: 1px solid var(--line); padding: 3px 6px; text-align: left; white-space: nowrap; }
 .csv-preview__table th { background: var(--panel-soft); }
 
