@@ -530,7 +530,7 @@ body {
 .btn--primary:hover:not(:disabled) { background: var(--brand); border-color: var(--brand); color: #fff; filter: brightness(1.08); }
 .btn--primary:disabled { opacity: 0.55; }
 
-.head-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.head-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-left: auto; }
 .summary-row { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
 
 /* Embedding status line on a module page */
@@ -678,7 +678,24 @@ body {
 /* Destructive action button */
 .btn--danger { border-color: var(--bad-fg); color: var(--bad-fg); }
 .btn--danger:hover:not(:disabled) { background: var(--bad-bg); border-color: var(--bad-fg); color: var(--bad-fg); }
-.module-card__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.module-card__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 8px; flex-wrap: wrap; }
+/* Allow the card description to shrink so a wide action toolbar keeps its row
+   (and wraps to a right-aligned second row when truly squeezed). */
+.module-card__head > div:first-child { flex: 1 1 240px; min-width: 0; }
+/* Form card footer: secondary actions left, primary Save right. Matches the
+   settings convention of Stripe/Vercel — actions belong with the fields, not
+   stacked beside the card title. */
+.module-card__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 22px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line-soft);
+}
+.module-card__actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .passkey-list { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .passkey-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; border: 1px solid var(--line-soft); border-radius: 8px; padding: 8px 12px; }
 .source-role { border-top: 1px solid var(--line-soft); padding-top: 12px; margin-top: 12px; }
@@ -873,6 +890,8 @@ input[type="range"] { min-height: 30px; accent-color: var(--brand); }
   .settings-grid { grid-template-columns: 1fr; }
   .settings-form-action { justify-content: stretch; }
   .settings-form-action .btn { width: 100%; }
+  .module-card__foot { justify-content: flex-start; }
+  .module-card__foot > .btn { width: 100%; justify-content: center; }
   .backup-create-row { align-items: stretch; flex-direction: column; }
   .backup-create-row .btn { justify-content: center; width: 100%; }
   .backup-option { grid-template-columns: 22px 24px minmax(0, 1fr); }

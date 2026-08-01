@@ -166,42 +166,12 @@ function SettingsGroupForm({ group }: { group: SettingsGroup }): JSX.Element {
     });
   }
 
+  const showFooter = group.group === "ocr" || Boolean(group.test) || !group.readonly;
+
   return (
     <div className="module-card">
       <div className="module-card__head">
-        <div>
-          <div className="muted small">{group.description}</div>
-        </div>
-        <div className="head-actions">
-          {group.group === "ocr" && (
-            <button
-              type="button"
-              className="btn"
-              onClick={() => setIsOcrTestOpen(true)}
-              title="Test OCR functionality with a file"
-            >
-              <Beaker size={16} style={{ marginRight: "6px" }} />
-              Test OCR
-            </button>
-          )}
-          {group.test && (
-            <button type="button" className="btn" disabled={test.isPending} onClick={() => test.mutate()}>
-              {test.isPending ? "Testing…" : "Test connection"}
-            </button>
-          )}
-          {/* A read-only group has no Save: the server refuses the write anyway,
-              and offering the button would promise something we cannot deliver. */}
-          {!group.readonly && (
-            <button
-              type="button"
-              className="btn"
-              disabled={!dirty || save.isPending}
-              onClick={() => save.mutate()}
-            >
-              {save.isPending ? "Saving…" : dirty ? "Save changes" : "Saved"}
-            </button>
-          )}
-        </div>
+        <div className="muted small">{group.description}</div>
       </div>
 
       {group.readonly && (
@@ -228,6 +198,41 @@ function SettingsGroupForm({ group }: { group: SettingsGroup }): JSX.Element {
           </label>
         ))}
       </div>
+
+      {showFooter && (
+        <div className="module-card__foot">
+          <div className="module-card__actions">
+            {group.group === "ocr" && (
+              <button
+                type="button"
+                className="btn"
+                onClick={() => setIsOcrTestOpen(true)}
+                title="Test OCR functionality with a file"
+              >
+                <Beaker size={16} style={{ marginRight: "6px" }} />
+                Test OCR
+              </button>
+            )}
+            {group.test && (
+              <button type="button" className="btn" disabled={test.isPending} onClick={() => test.mutate()}>
+                {test.isPending ? "Testing…" : "Test connection"}
+              </button>
+            )}
+          </div>
+          {/* A read-only group has no Save: the server refuses the write anyway,
+              and offering the button would promise something we cannot deliver. */}
+          {!group.readonly && (
+            <button
+              type="button"
+              className="btn btn--primary"
+              disabled={!dirty || save.isPending}
+              onClick={() => save.mutate()}
+            >
+              {save.isPending ? "Saving…" : dirty ? "Save changes" : "Saved"}
+            </button>
+          )}
+        </div>
+      )}
 
       <OcrTestModal isOpen={isOcrTestOpen} onClose={() => setIsOcrTestOpen(false)} />
     </div>
