@@ -25,6 +25,7 @@ import { buildMcpServer, buildOpenApiSpec, invokeRegisteredTool, toolRegistryRea
 import { STATUS_DATA_JSON } from "./statusData.js";
 import { seedIfEmpty } from "./admin/adminSettings.js";
 import { seedAdminCredential } from "./admin/adminCredentials.js";
+import { ensureDrugExplorerIndexes } from "./admin/adminDrugExplorer.js";
 import { adminHandler } from "./admin/adminApp.js";
 import { getFhirServerJwks, fhirServerSecretKey } from "./admin/adminFhirServers.js";
 import { completeAuthorization, OAuthError } from "./admin/fhirOauthService.js";
@@ -66,6 +67,14 @@ async function bootstrapResources(): Promise<void> {
     await seedAdminCredential();
   } catch (err) {
     logError("Admin credential seed skipped", { error: String((err as Error).message) });
+  }
+
+  // Drug Explorer contains-search indexes (pg_trgm GIN). Idempotent; fail-open —
+  // a missing index just means the explorer falls back to a slower scan.
+  try {
+    await ensureDrugExplorerIndexes();
+  } catch (err) {
+    logError("Drug explorer index migration skipped", { error: String((err as Error).message) });
   }
 
   try {

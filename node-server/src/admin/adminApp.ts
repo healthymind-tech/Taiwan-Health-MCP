@@ -1332,6 +1332,7 @@ export async function adminHandler(req: Request, res: Response, next: NextFuncti
           manufacturer: String(req.query.manufacturer ?? "").trim(),
           country: String(req.query.country ?? "").trim(),
           dosageForm: String(req.query.dosage_form ?? "").trim(),
+          ingredient: String(req.query.ingredient ?? "").trim(),
           appearanceColor: String(req.query.appearance_color ?? "").trim(),
           appearanceShape: String(req.query.appearance_shape ?? "").trim(),
           updatedFrom: String(req.query.updated_from ?? "").trim(),
