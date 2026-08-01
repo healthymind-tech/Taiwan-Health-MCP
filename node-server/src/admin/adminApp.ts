@@ -1316,7 +1316,7 @@ export async function adminHandler(req: Request, res: Response, next: NextFuncti
           String(value ?? "").split(",").map((item) => item.trim()).filter(Boolean);
         const activeRaw = String(req.query.active ?? "active");
         const active = activeRaw === "all" || activeRaw === "inactive" ? activeRaw : "active";
-        const matchRaw = String(req.query.asset_match ?? "any");
+        const matchRaw = String(req.query.asset_match ?? "all");
         const orderRaw = String(req.query.order ?? "desc");
         const errorRaw = String(req.query.has_error ?? "");
         sendJson(res, 200, await getDrugExplorer({

@@ -326,6 +326,8 @@
 .drug-filter-panel select { width: 100%; min-width: 0; padding: 7px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--text); font: inherit; font-size: 13px; }
 .drug-filter-checks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px 12px; }
 .drug-filter-checks label { min-width: 0; display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; align-items: center; gap: 6px; padding: 5px 0; font-size: 12px; }
+.drug-filter-checks label.is-disabled { opacity: .38; }
+.drug-filter-checks label.is-disabled input { cursor: not-allowed; }
 .drug-filter-checks small { color: var(--muted); }
 .drug-filter-selects label { display: block; margin-top: 8px; color: var(--muted); font-size: 11px; font-weight: 700; }
 .drug-filter-selects select { margin-top: 3px; font-weight: 400; }
