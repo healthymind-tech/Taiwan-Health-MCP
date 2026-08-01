@@ -389,6 +389,7 @@ export interface CatalogEntry {
   description: string;
   accepted_extensions: string[];
   multi_source: boolean;
+  expected_columns?: { required: string[]; suggested: string[] } | null;
   active_source: UploadedFile | null;
   active_sources: UploadedFile[];
   recent_uploads: UploadedFile[];

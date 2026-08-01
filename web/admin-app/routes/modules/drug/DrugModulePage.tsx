@@ -256,6 +256,7 @@ export function DrugModulePage(): JSX.Element {
               autoActivate={false}
               maxUploadMb={data.upload_limits.max_upload_mb}
               onUploaded={refresh}
+              csvColumns={entry.expected_columns ?? undefined}
             />
           )}
         </div>
