@@ -170,7 +170,6 @@ function SettingsGroupForm({ group }: { group: SettingsGroup }): JSX.Element {
     <div className="module-card">
       <div className="module-card__head">
         <div>
-          <h3 className="subhead" style={{ margin: 0 }}>{group.label}</h3>
           <div className="muted small">{group.description}</div>
         </div>
         <div className="head-actions">
@@ -657,7 +656,7 @@ export function SettingsPage(): JSX.Element {
         <div className="settings-content">
           <div className="settings-content__head">
             <SelectedIcon size={22} />
-            <h3>{selectedNavigation.label}</h3>
+            <h3>{group?.label ?? selectedNavigation.label}</h3>
           </div>
           {section === "privacy" ? (
             <PrivacyPage />

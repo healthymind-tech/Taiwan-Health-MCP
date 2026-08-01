@@ -16,15 +16,25 @@ async function ensureTable(): Promise<void> {
   ensured = true;
 }
 
-/** Seed the deployment credential exactly once; later env changes are ignored. */
+/**
+ * Seed the deployment credential exactly once; later env changes are ignored.
+ *
+ * Priority: ADMIN_INITIAL_PASSWORD (plaintext) wins when set, else the existing
+ * ADMIN_PASSWORD_HASH. Either way the ON CONFLICT DO NOTHING means a password
+ * already stored in the DB is never overwritten.
+ */
 export async function seedAdminCredential(): Promise<void> {
   await ensureTable();
   const cfg = config();
+  const seedHash = cfg.adminInitialPassword
+    ? hashAdminPassword(cfg.adminInitialPassword)
+    : cfg.adminPasswordHash;
+  if (!seedHash) return;
   await query(
     `INSERT INTO admin.admin_credentials (username, password_hash, updated_by)
      VALUES ($1, $2, 'bootstrap')
      ON CONFLICT (username) DO NOTHING`,
-    [cfg.adminUsername, cfg.adminPasswordHash],
+    [cfg.adminUsername, seedHash],
   );
 }
 

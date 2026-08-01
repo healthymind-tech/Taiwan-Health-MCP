@@ -12,7 +12,13 @@ drug/supplements/food, embeddings). `web/` is the Next.js front-end (public page
 `fhir-code/` holds source datasets (untracked; see `docs/data-sources/test-data.md`).
 
 **There is no Python in this repository.** The backend was fully migrated to Node in
-2026-07; `src/*.py`, `loader/` and `requirements.txt` are gone.
+2026-07; `src/*.py`, `loader/` and `requirements.txt` are gone. `pyproject.toml`,
+`pytest.ini` and `requirements-dev.txt` are dead leftovers — ignore them.
+`requirements-docs.txt` is the live one (MkDocs).
+
+**Root `admin-ui/` is a dead leftover** (Vite React, nothing builds or references it).
+The real admin SPA lives in `web/admin-app/`, mounted under the Next.js `/admin`
+catch-all. Edit `web/admin-app/`, never root `admin-ui/`.
 
 ## Build, Test, and Development Commands
 - `docker compose up -d`: start the full stack (`nginx`, `web`, `app`, `admin-worker`,
@@ -40,7 +46,8 @@ code, and branches `feature/short-name` or `bugfix/issue-summary`.
 Node's built-in test runner (`node --test`, executed through `tsx`). Test files live
 beside the code they cover (`src/**/*.test.ts`). Coverage is currently thin — most
 migration behaviour was verified by differential runs against the old implementation
-rather than by unit tests. Add tests for new tools and loaders.
+rather than by unit tests. Add tests for new tools and loaders. `web/` has **no test
+suite** — typecheck only.
 
 ## Commit & Pull Request Guidelines
 Git history uses Conventional Commits such as `feat:`, `fix:`, `refactor:`, `docs:` and
@@ -58,6 +65,25 @@ overridden with `FHIR_CODE_DIR` / `*_ZIP` env vars.
 
 > `config/datasets.yaml` is **no longer read by any code** and is a leftover from the
 > Python loaders. Do not add new configuration to it.
+
+## Operations Gotchas
+- **MCP tools are module-gated**: `moduleStatus.ts` registers a tool group only when its
+  schema meets a row-count threshold (refreshed on `tools/list`). FHIR Servers and System
+  tools are always registered. A tool "missing" usually means the module wasn't imported.
+- **`crud_fhir_server` is the only tool that can write** — it relays CUD to an external
+  FHIR server and only when that server's allow-list permits it and the caller passes
+  `confirm_write=true`. Every other MCP tool is read-only.
+- **Drug auto-chain cap**: auto-chained `drug_index_import → drug_enrichment →
+  drug_analysis` jobs are capped at `DRUG_AUTOCHAIN_BATCH_LIMIT` (default 200) licenses.
+  A *manually* queued enrichment/analysis job with no `limit` crawls the **entire**
+  backlog (tens of thousands of TFDA requests).
+- **pgBouncer transaction mode**: never use named prepared statements (in `db.ts`, keep
+  `pg` statements unnamed) and never use `LISTEN`/`NOTIFY`.
+- **`/health` exists on `app` but nginx does not route it** — health checks must use
+  `/status.json`.
+- **Chinese keyword search without embeddings finds almost nothing** (Postgres `simple`
+  tokenizer treats a whole Chinese name as one token). Vectors are the intended path —
+  do not "fix" with `ILIKE`.
 
 ## Bulk-import Rule
 Fetch everything first, then write atomically: complete the network phase, then write
