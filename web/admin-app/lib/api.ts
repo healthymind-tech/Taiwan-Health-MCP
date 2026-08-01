@@ -16,6 +16,11 @@ export class ApiError extends Error {
     this.status = status;
     this.detail = detail;
   }
+  // String(err) is the app's error-display idiom; don't leak the internal
+  // "ApiError:" prefix into toasts and error boxes.
+  override toString(): string {
+    return this.message;
+  }
 }
 
 const LOGIN_PATH = "/admin/login";

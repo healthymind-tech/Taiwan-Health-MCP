@@ -330,6 +330,7 @@ export function LlmProfilesCard({
             <input
               type="text"
               value={editing.name}
+              autoFocus
               placeholder="e.g. OpenAI primary"
               onChange={(e) => setEditing({ ...editing, name: e.target.value })}
             />

@@ -36,6 +36,9 @@ export interface AppConfig {
   adminEnabled: boolean;
   adminUsername: string;
   adminPasswordHash: string;
+  // Plaintext bootstrap password (ADMIN_INITIAL_PASSWORD). Seeded only when the
+  // DB has no credential row yet; ignored once a password exists.
+  adminInitialPassword: string;
   adminSessionSecret: string;
   adminSessionTtlMinutes: number;
   adminCookieSecure: boolean;
@@ -105,6 +108,7 @@ export function loadConfig(): AppConfig {
     adminEnabled: env("ADMIN_ENABLED", "false").toLowerCase() === "true",
     adminUsername: env("ADMIN_USERNAME").trim(),
     adminPasswordHash: env("ADMIN_PASSWORD_HASH").trim(),
+    adminInitialPassword: env("ADMIN_INITIAL_PASSWORD").trim(),
     adminSessionSecret: env("ADMIN_SESSION_SECRET").trim(),
     adminSessionTtlMinutes: Number.parseInt(env("ADMIN_SESSION_TTL_MINUTES", "240"), 10),
     adminCookieSecure: resolveAdminCookieSecure(env("ADMIN_COOKIE_SECURE"), publicBaseUrl),
@@ -150,7 +154,7 @@ export function adminReady(c: AppConfig): boolean {
   return (
     c.adminEnabled &&
     Boolean(c.adminUsername) &&
-    Boolean(c.adminPasswordHash) &&
+    (Boolean(c.adminPasswordHash) || Boolean(c.adminInitialPassword)) &&
     Boolean(c.adminSessionSecret)
   );
 }

@@ -860,7 +860,6 @@ input[type="range"] { min-height: 30px; accent-color: var(--brand); }
     position: static;
     flex-direction: row;
     gap: 4px;
-    margin: 0 -16px;
     padding: 0 16px 10px;
     border-right: 0;
     border-bottom: 1px solid var(--line);
