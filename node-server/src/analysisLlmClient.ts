@@ -45,6 +45,20 @@ export class TokenBudgetExceeded extends Error {
   }
 }
 
+/**
+ * Every configured Analysis LM endpoint is currently unusable — a transport
+ * error, timeout, or HTTP failure from all of them, or none configured at all.
+ * Distinct from a per-document failure (malformed output, oversized input): the
+ * fleet is down, so a caller processing a batch should stop and wait for the LM
+ * to come back rather than burn through every remaining item failing identically.
+ */
+export class AnalysisLlmUnavailable extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AnalysisLlmUnavailable";
+  }
+}
+
 function profileTemperature(profile: LlmProfile, fallback = 0.1): number {
   const value = Number(profile.params?.temperature ?? fallback);
   return Number.isFinite(value) ? value : fallback;
@@ -90,6 +104,17 @@ async function callProfileWithBudget(profile: LlmProfile, messages: Message[]): 
   }
 }
 
+/**
+ * Endpoints behind a proxy/CDN answer failures with a full HTML error page
+ * (e.g. a Cloudflare 5xx). Embedding that whole body in the error — which then
+ * becomes a job's `last_error_message` and floods the task log with markup — is
+ * useless. Keep a short single-line snippet: enough to identify the failure.
+ */
+function httpErrorSnippet(body: string, max = 300): string {
+  const oneLine = body.replace(/\s+/g, " ").trim();
+  return oneLine.length > max ? `${oneLine.slice(0, max)}… (${oneLine.length} chars total)` : oneLine;
+}
+
 async function callOneProfile(
   profile: LlmProfile,
   messages: Message[],
@@ -126,7 +151,7 @@ async function callOneProfile(
       }
       const body = await response.text().catch(() => "");
       const low = body.toLowerCase();
-      lastMessage = `HTTP ${response.status} from ${url}: ${body}`;
+      lastMessage = `HTTP ${response.status} from ${url}: ${httpErrorSnippet(body)}`;
       let adapted = false;
       if (low.includes("max_completion_tokens") && "max_tokens" in payload) {
         payload.max_completion_tokens = payload.max_tokens;
@@ -204,7 +229,7 @@ async function callOneProfile(
     });
     if (!response.ok) {
       const body = await response.text().catch(() => "");
-      throw new Error(`HTTP ${response.status} from ${url}: ${body}`);
+      throw new Error(`HTTP ${response.status} from ${url}: ${httpErrorSnippet(body)}`);
     }
     const data = (await response.json()) as Record<string, unknown>;
     const message = (data.message ?? {}) as Record<string, unknown>;
@@ -242,10 +267,16 @@ export async function callAnalysisLlm(
   messages: Message[],
 ): Promise<AnalysisLlmCallResult> {
   if (profiles.length === 0) {
-    throw new Error("Analysis LM is not configured yet — set it up in the admin console.");
+    throw new AnalysisLlmUnavailable(
+      "Analysis LM is not configured yet — set it up in the admin console.",
+    );
   }
 
   const failures: string[] = [];
+  // A budget failure means the endpoint is healthy (see below), so it must not
+  // make the whole call read as "LM unavailable". Only a real transport/HTTP
+  // failure does — track whether at least one profile failed for that reason.
+  let anyEndpointFailure = false;
   for (const profile of profiles) {
     try {
       const content = await callProfileWithBudget(profile, messages);
@@ -267,6 +298,7 @@ export async function callAnalysisLlm(
         continue;
       }
       const message = String(err instanceof Error ? err.message : err);
+      anyEndpointFailure = true;
       failures.push(`${profile.name}: ${message}`);
       reportFailure(profile.id, message);
       logWarning("analysis_profile_failed", {
@@ -277,5 +309,10 @@ export async function callAnalysisLlm(
       });
     }
   }
-  throw new Error(`Every Analysis LM profile failed: ${failures.join("; ")}`);
+  const message = `Every Analysis LM profile failed: ${failures.join("; ")}`;
+  // At least one endpoint failed for a non-budget reason → the fleet is (partly
+  // or wholly) down. Signal that distinctly so a batch caller can pause instead
+  // of failing every remaining item against the same dead endpoints.
+  if (anyEndpointFailure) throw new AnalysisLlmUnavailable(message);
+  throw new Error(message);
 }

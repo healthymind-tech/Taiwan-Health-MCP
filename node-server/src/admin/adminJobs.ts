@@ -568,7 +568,11 @@ export class JobValueError extends Error {}
 const PHASE2_JOB_TYPES = ["noop", "system_backup"];
 const SIMPLE_LOADER_JOB_TYPES = ["guideline_seed", "health_supplements_sync", "food_nutrition_sync"];
 const HEAVY_LOADER_JOB_TYPES = ["icd_import", "loinc_import", "ig_import", "snomed_import", "rxnorm_import"];
-const DRUG_JOB_TYPES = ["drug_index_import", "drug_enrichment", "drug_analysis"];
+// drug_index_import/drug_enrichment/drug_analysis are kept fully functional
+// (dispatchable, restartable) for backward compatibility with any job rows
+// already in history, but nothing creates new ones any more — the admin UI
+// only triggers drug_pipeline, which does all three per license in one job.
+const DRUG_JOB_TYPES = ["drug_index_import", "drug_enrichment", "drug_analysis", "drug_pipeline"];
 const EMBED_JOB_TYPES = ["icd_embed", "loinc_embed", "health_supplements_embed", "food_nutrition_embed", "guideline_embed", "snomed_embed"];
 // PDF -> OCR -> Analysis LM extraction, staged for human review (see
 // guidelineReview.ts) — unlike DRUG_JOB_TYPES, this never auto-commits into the
@@ -608,6 +612,7 @@ const JOB_TYPE_MODULE_KEYS: Record<string, string> = {
   drug_index_import: "drug",
   drug_enrichment: "drug",
   drug_analysis: "drug",
+  drug_pipeline: "drug",
   guideline_analysis: "guideline",
   icd_embed: "icd",
   loinc_embed: "loinc",
@@ -630,7 +635,19 @@ const HEAVY_JOB_SOURCE_SPECS: Record<string, HeavyJobSourceSpec> = {
   snomed_import: { module_key: "snomed", required_roles: ["snomed_ct"], optional_roles: [] },
   rxnorm_import: { module_key: "rxnorm", required_roles: ["rxnorm_full"], optional_roles: [] },
   drug_index_import: { module_key: "drug", required_roles: ["drug_index_csv"], optional_roles: [] },
+  drug_pipeline: { module_key: "drug", required_roles: ["drug_index_csv"], optional_roles: [] },
 };
+
+/**
+ * `drug_pipeline` runs with or without a fresh CSV — a plain "Run pipeline" or
+ * "Retry failed" click just drains the existing queue. Unlike every other
+ * `HEAVY_JOB_SOURCE_SPECS` entry (where a source file is unconditionally
+ * required and `createJob` always attaches one), a manifest should only be
+ * resolved for `drug_pipeline` when the caller explicitly named a source
+ * (i.e. the per-file "Import" button) — otherwise every batch in a self-chain
+ * would redundantly re-parse whatever CSV last happened to be active.
+ */
+const OPTIONAL_MANIFEST_JOB_TYPES = new Set(["drug_pipeline"]);
 
 function jobExpectedModule(jobType: string): string | undefined {
   return JOB_TYPE_MODULE_KEYS[(jobType || "").trim()];
@@ -839,7 +856,10 @@ export async function createJob(opts: {
   const parentJobId = opts.parentJobId || "";
 
   return withTransaction(async (client) => {
-    if (HEAVY_JOB_SOURCE_SPECS[jobType]) {
+    const attachManifest =
+      Boolean(HEAVY_JOB_SOURCE_SPECS[jobType]) &&
+      (!OPTIONAL_MANIFEST_JOB_TYPES.has(jobType) || Boolean(smsId) || Boolean(sufId));
+    if (attachManifest) {
       const manifest = await resolveJobSourceManifest(client, {
         moduleKey,
         jobType,
@@ -1092,13 +1112,17 @@ export const JOB_RESOURCES: Record<string, ReadonlySet<string>> = {
   db_write_health_supplements: new Set(["health_supplements_sync"]),
   db_write_food_nutrition: new Set(["food_nutrition_sync"]),
   // Drug Phase 1/2 write the same drug.* tables — serialised behind one slot.
-  db_write_drug: new Set(["drug_index_import", "drug_enrichment"]),
+  // drug_pipeline does both phases itself, so it holds this slot too.
+  db_write_drug: new Set(["drug_index_import", "drug_enrichment", "drug_pipeline"]),
   ollama_embed: new Set(EMBED_JOB_TYPES),
-  // guideline_analysis shares drug_analysis's slot: both consume the same
-  // circuit-breaker-guarded pool of kind='analysis' LLM profiles and the same
-  // MinerU OCR endpoint, so running them concurrently would just contend for
-  // the same upstream capacity with confusing failure attribution.
-  llm: new Set(["drug_analysis", "guideline_analysis"]),
+  // guideline_analysis shares drug_analysis's/drug_pipeline's slot: all consume
+  // the same circuit-breaker-guarded pool of kind='analysis' LLM profiles and
+  // the same MinerU OCR endpoint, so running them concurrently would just
+  // contend for the same upstream capacity with confusing failure attribution.
+  // drug_pipeline is the first job type to hold two resource slots at once
+  // (this one plus db_write_drug above) — JOB_TYPE_RESOURCES is already a
+  // Set per job type, so nothing else needs to change for that.
+  llm: new Set(["drug_analysis", "guideline_analysis", "drug_pipeline"]),
 };
 
 /** Inverted index: job_type → set of resources it needs (mirror JOB_TYPE_RESOURCES). */
@@ -1585,6 +1609,11 @@ export async function maybeAutoChain(opts: {
   const NEXT: Record<string, string> = {
     drug_index_import: "drug_enrichment",
     drug_enrichment: "drug_analysis",
+    // Unified pipeline: self-chains rather than handing off to a different
+    // job type — the batch cap below still applies, so a large backlog still
+    // drains in slices, just as a sequence of drug_pipeline job rows instead
+    // of alternating drug_enrichment/drug_analysis ones.
+    drug_pipeline: "drug_pipeline",
   };
   const nextType = NEXT[completedJobType];
   if (!nextType) return;
@@ -1594,7 +1623,9 @@ export async function maybeAutoChain(opts: {
     const { getUnhealthyDependencies } = await import("./adminServices.js");
     const status = (await getDrugPipelineStatus()) as Record<string, Record<string, unknown>>;
     let hasWork: boolean;
-    if (nextType === "drug_enrichment") {
+    if (nextType === "drug_pipeline") {
+      hasWork = Number((status.pipeline as Record<string, unknown>).queue_pending || 0) > 0;
+    } else if (nextType === "drug_enrichment") {
       hasWork = Number((status.enrichment as Record<string, unknown>).queue_pending || 0) > 0;
     } else {
       hasWork = !(status.analysis as Record<string, unknown>).is_complete;
@@ -3589,6 +3620,335 @@ export async function runDrugAnalysisJob(opts: {
   });
 }
 
+/**
+ * Unified drug pipeline: optionally (re)parse an uploaded TFDA CSV, then
+ * enrich + OCR + analyze each queued license end-to-end, one license at a
+ * time, checkpointed after every license — same per-item pause/resume/crash-
+ * recovery shape as `runDrugEnrichmentJob`/`runDrugAnalysisJob` above, just
+ * driving `loaders/drugPipeline.ts`'s `runOneLicensePipeline` (which itself
+ * composes those two loaders) instead of one loader at a time.
+ *
+ * The CSV-import phase only runs when this job was created with a bound
+ * source file (the per-file "Import" button) — see `OPTIONAL_MANIFEST_JOB_TYPES`.
+ * A plain "Run pipeline" / "Retry failed" click, or a self-chained follow-up
+ * batch, has no `source_manifest` and goes straight to processing licenses.
+ */
+export async function runDrugPipelineJob(opts: {
+  workerName: string;
+  job: Record<string, unknown>;
+}): Promise<void> {
+  const { workerName, job } = opts;
+  const jobId = String(job.job_id);
+  const { selectPipelineCandidates, runOneLicensePipeline } = await import(
+    "../loaders/drugPipeline.js"
+  );
+  const { withMaterializedSources } = await import("./adminJobStaging.js");
+  const { DrugAnalysisService, loadDrugAnalysisConfig } = await import("../drugAnalysisService.js");
+  const adminSettings = await import("./adminSettings.js");
+  const minio = await import("../minioService.js");
+
+  const { licenseIds, includeCancelled, retryFailed, limit } = drugJobOptions(job);
+  const manifest = parseJsonb(parseJsonb(job.job_options).source_manifest);
+  const hasSourceFile = Object.keys(manifest).length > 0;
+
+  const tfdaValues = await adminSettings.getGroup("tfda");
+  const service = new DrugAnalysisService(await loadDrugAnalysisConfig());
+  if (!minio.initialized()) await minio.initialize();
+  const [ready, reason] = service.readiness();
+  if (!ready) throw new Error(reason);
+  if (!minio.enabled()) throw new Error(minio.initError() ?? "MinIO not configured");
+
+  let indexSummary: Record<string, unknown> = {};
+  const progress = Math.max(Number(job.progress_current || 0), 0);
+
+  if (hasSourceFile && progress < 1) {
+    const { loadDrugIndex } = await import("../loaders/drugIndex.js");
+    await appendJobLog({
+      jobId,
+      level: "info",
+      message: "Starting drug index import",
+      payload: { source_manifest: manifest },
+    });
+    await withMaterializedSources(manifest, async (paths) => {
+      const sourcePath = paths.drug_index_csv;
+      await recordJobStep({
+        jobId,
+        stepKey: "csv_import",
+        status: "running",
+        progressCurrent: 0,
+        progressTotal: 1,
+        checkpoint: { phase: "loading_index" },
+      });
+      await markJobStatus({ jobId, status: "running", currentStep: "loading_drug_index" });
+      indexSummary = (await loadDrugIndex(getPool(), sourcePath)) as unknown as Record<
+        string,
+        unknown
+      >;
+      await recordJobStep({
+        jobId,
+        stepKey: "csv_import",
+        status: "success",
+        progressCurrent: 1,
+        progressTotal: 1,
+        checkpoint: { phase: "index_loaded", ...indexSummary },
+      });
+    });
+    await markJobStatus({ jobId, status: "running", currentStep: "index_loaded", progressCurrent: 1 });
+    if (await applyControlCheckpoint({ jobId, workerName })) return;
+  }
+
+  const { candidates, completed } = await resumeDrugCandidates({
+    jobId,
+    job,
+    stepKey: "process_licenses",
+    select: () =>
+      selectPipelineCandidates(getPool(), {
+        licenseIds: licenseIds.length > 0 ? licenseIds : null,
+        limit,
+        includeCancelled,
+        retryFailed,
+      }),
+  });
+
+  const totalCandidates = candidates.length;
+  const total = totalCandidates + 2;
+
+  await appendJobLog({
+    jobId,
+    level: "info",
+    message: "Starting drug pipeline batch",
+    payload: {
+      candidate_count: totalCandidates,
+      include_cancelled: includeCancelled,
+      retry_failed: retryFailed,
+      csv_import: hasSourceFile,
+    },
+  });
+  await recordJobStep({
+    jobId,
+    stepKey: "select_candidates",
+    status: "success",
+    progressCurrent: 1,
+    progressTotal: 1,
+    checkpoint: {
+      phase: "selected",
+      candidate_license_ids: candidates,
+      candidate_count: totalCandidates,
+    },
+  });
+  await markJobStatus({
+    jobId,
+    status: "running",
+    currentStep: "selected_drug_pipeline_candidates",
+    progressCurrent: 1,
+    progressTotal: total,
+  });
+  if (completed === 0 && (await applyControlCheckpoint({ jobId, workerName }))) return;
+
+  await recordJobStep({
+    jobId,
+    stepKey: "process_licenses",
+    status: "running",
+    progressCurrent: completed,
+    progressTotal: totalCandidates,
+    checkpoint: { phase: "running", candidate_license_ids: candidates, completed },
+  });
+
+  // Counts for licenses processed in *this* run's slice (a resumed job only sees
+  // the licenses after its checkpoint). The per-license log entries below are the
+  // durable, complete record; these just drive the batch summary line.
+  let failedCount = 0;
+  let partialCount = 0;
+
+  for (let index = completed; index < totalCandidates; index += 1) {
+    const licenseId = candidates[index];
+    await markJobStatus({
+      jobId,
+      status: "running",
+      currentStep: `processing_${licenseId}`,
+      progressCurrent: 1 + index,
+      progressTotal: total,
+    });
+
+    const outcome = await runOneLicensePipeline(getPool(), licenseId, {
+      includeCancelled,
+      retryFailed,
+      tfdaValues,
+    });
+
+    // The Analysis LM is down (not a problem with this drug's data) — every
+    // remaining license would fail identically against the same dead endpoints.
+    // Pause the whole job instead of churning: an operator restores the LM and
+    // resumes. The checkpoint records `completed: index` (this license excluded)
+    // so the resume reprocesses it. Because the job ends 'paused', the dispatcher
+    // also won't auto-chain a fresh pipeline job that would just fail again.
+    if (outcome.llmUnavailable) {
+      await appendJobLog({
+        jobId,
+        level: "error",
+        message:
+          `Analysis LM unavailable — pausing at ${licenseId} instead of continuing ` +
+          `(${totalCandidates - index} license(s) not yet processed). ` +
+          `Restore the Analysis LM, then resume this job.`,
+        payload: {
+          license_id: licenseId,
+          reason: "llm_unavailable",
+          error: outcome.lastErrorMessage,
+          remaining: totalCandidates - index,
+        },
+      });
+      await recordJobStep({
+        jobId,
+        stepKey: "process_licenses",
+        status: "paused",
+        progressCurrent: index,
+        progressTotal: totalCandidates,
+        checkpoint: {
+          phase: "paused",
+          candidate_license_ids: candidates,
+          completed: index,
+          last_license_id: licenseId,
+          reason: "llm_unavailable",
+          message: outcome.lastErrorMessage,
+        },
+      });
+      await markJobStatus({
+        jobId,
+        status: "paused",
+        currentStep: "paused_llm_unavailable",
+        progressCurrent: 1 + index,
+        progressTotal: total,
+        controlState: "paused",
+        lastErrorCode: "llm_unavailable",
+        lastErrorMessage: outcome.lastErrorMessage,
+      });
+      return;
+    }
+
+    // The loaders swallow per-license failures into DB status columns, so surface
+    // the outcome in the job log here — otherwise the task log stays empty while
+    // drugs fail. `retryable_failed` → error, `partial_success` → warn.
+    if (outcome.status === "retryable_failed") {
+      failedCount += 1;
+      await appendJobLog({
+        jobId,
+        level: "error",
+        message: `License ${licenseId} failed: ${outcome.failedStages.join(", ") || "unknown stage"}`,
+        payload: {
+          license_id: licenseId,
+          status: outcome.status,
+          failed_stages: outcome.failedStages,
+          error: outcome.lastErrorMessage,
+        },
+      });
+    } else if (outcome.status === "partial_success") {
+      partialCount += 1;
+      await appendJobLog({
+        jobId,
+        level: "warn",
+        message: `License ${licenseId} partial success: ${outcome.failedStages.join(", ") || "unknown stage"}`,
+        payload: {
+          license_id: licenseId,
+          status: outcome.status,
+          failed_stages: outcome.failedStages,
+          error: outcome.lastErrorMessage,
+        },
+      });
+    }
+
+    const newCompleted = index + 1;
+    await recordJobStep({
+      jobId,
+      stepKey: "process_licenses",
+      status: "running",
+      progressCurrent: newCompleted,
+      progressTotal: totalCandidates,
+      checkpoint: {
+        phase: "running",
+        candidate_license_ids: candidates,
+        completed: newCompleted,
+        last_license_id: licenseId,
+      },
+    });
+    await markJobStatus({
+      jobId,
+      status: "running",
+      currentStep: `processed_${licenseId}`,
+      progressCurrent: 1 + newCompleted,
+      progressTotal: total,
+    });
+
+    const control = await checkpointJobControl({ jobId, workerName });
+    if (control !== null) {
+      const stepStatus = control.action === "pause" ? "paused" : "stopped";
+      await recordJobStep({
+        jobId,
+        stepKey: "process_licenses",
+        status: stepStatus,
+        progressCurrent: newCompleted,
+        progressTotal: totalCandidates,
+        checkpoint: {
+          phase: stepStatus,
+          candidate_license_ids: candidates,
+          completed: newCompleted,
+          last_license_id: licenseId,
+          message: control.message,
+        },
+      });
+      return;
+    }
+  }
+
+  const processedThisRun = totalCandidates - completed;
+  const successCount = Math.max(processedThisRun - failedCount - partialCount, 0);
+  await appendJobLog({
+    jobId,
+    level: failedCount > 0 ? "warn" : "info",
+    message:
+      `Drug pipeline batch complete: ${successCount} succeeded, ` +
+      `${partialCount} partial, ${failedCount} failed (of ${processedThisRun} processed this run)`,
+    payload: {
+      processed_this_run: processedThisRun,
+      success_count: successCount,
+      partial_count: partialCount,
+      failed_count: failedCount,
+      candidate_count: totalCandidates,
+    },
+  });
+  await recordJobStep({
+    jobId,
+    stepKey: "finalize",
+    status: "success",
+    progressCurrent: 1,
+    progressTotal: 1,
+    checkpoint: {
+      phase: "completed",
+      candidate_count: totalCandidates,
+      success_count: successCount,
+      partial_count: partialCount,
+      failed_count: failedCount,
+    },
+  });
+  await markJobStatus({
+    jobId,
+    status: "success",
+    currentStep: "completed",
+    progressCurrent: total,
+    progressTotal: total,
+    controlState: "idle",
+    resultSummary: {
+      job_type: "drug_pipeline",
+      candidate_count: totalCandidates,
+      license_ids: candidates,
+      retry_failed: retryFailed,
+      success_count: successCount,
+      partial_count: partialCount,
+      failed_count: failedCount,
+      ...(hasSourceFile ? { index_summary: indexSummary } : {}),
+    },
+  });
+}
+
 function guidelineJobOptions(job: Record<string, unknown>): {
   documentIds: string[];
   retryFailed: boolean;
@@ -3927,6 +4287,14 @@ export async function executeAdminJob(opts: {
     }
     if (jobType === "drug_analysis") {
       await runDrugAnalysisJob({ workerName, job });
+      return;
+    }
+    if (jobType === "drug_pipeline") {
+      await runDrugPipelineJob({ workerName, job });
+      const finalJob = await getJob(jobId);
+      if (finalJob && finalJob.status === "success") {
+        await maybeAutoChain({ completedJobType: jobType, parentJobId: jobId, workerName });
+      }
       return;
     }
     if (jobType === "guideline_analysis") {

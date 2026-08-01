@@ -1,8 +1,9 @@
-// Drug pipeline summary + stage triggers, embedded in the Modules drug card.
+// Drug pipeline summary + trigger, embedded in the Modules drug card.
 //
-// Consumes /admin/api/drug/pipeline-status; exposes drug_enrichment and
-// drug_analysis job triggers; opens the license browser for per-license detail
-// and asset preview.
+// Consumes /admin/api/drug/pipeline-status; exposes one drug_pipeline job
+// trigger (enrich + OCR + analyze per license, end to end) plus a "Retry
+// failed" action that disables itself once nothing is left to retry; opens
+// the license browser for per-license detail and asset preview.
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
@@ -40,6 +41,7 @@ interface PipelineStatus {
   queue_failed?: number;
   is_complete?: boolean;
   index?: Stage;
+  pipeline?: Stage;
   enrichment?: Stage;
   analysis?: Stage;
 }
@@ -48,15 +50,15 @@ function StageRow({ name, stage }: { name: string; stage: Stage | undefined }): 
   if (!stage) return null;
   const done = name === "Index"
     ? stage.total_licenses ?? 0
-    : name === "Enrichment"
+    : name === "Pipeline"
       ? stage.queue_done ?? 0
       : stage.done ?? 0;
   const total = name === "Index"
     ? stage.total_licenses ?? 0
-    : name === "Enrichment"
+    : name === "Pipeline"
       ? stage.queue_total ?? 0
       : stage.total ?? 0;
-  const failed = name === "Enrichment" ? stage.queue_failed ?? 0 : stage.failed ?? 0;
+  const failed = name === "Pipeline" ? stage.queue_failed ?? 0 : stage.failed ?? 0;
   return (
     <div className="row">
       <span className="row__name">{name}</span>
@@ -89,20 +91,25 @@ export function DrugPipelinePanel({ disabled = false, disabledReason = "" }: Pro
   });
 
   const trigger = useMutation({
-    mutationFn: (jobType: string) =>
-      api.post("/admin/api/jobs", { job_type: jobType, module_key: "drug" }),
-    onSuccess: (_d, jobType) => {
+    mutationFn: (opts: { jobType: string; jobOptions?: Record<string, unknown> }) =>
+      api.post("/admin/api/jobs", {
+        job_type: opts.jobType,
+        module_key: "drug",
+        job_options: opts.jobOptions,
+      }),
+    onSuccess: (_d, opts) => {
       void qc.invalidateQueries({ queryKey: qk.jobs });
       void qc.invalidateQueries({ queryKey: qk.drugPipeline });
-      toast.success(`Started ${jobType}`);
+      toast.success(`Started ${opts.jobType}`);
     },
     onError: (err) => toast.error(String(err)),
   });
 
   const p = data ?? {};
   const running = (jt: string) => activeJobTypes.has(jt);
-  const enrichmentRunning = running("drug_enrichment");
-  const analysisRunning = running("drug_analysis");
+  const pipelineRunning = running("drug_pipeline");
+  const queuePending = p.pipeline?.queue_pending ?? 0;
+  const queueFailed = p.pipeline?.queue_failed ?? 0;
   const actionTitle = disabled ? disabledReason : "";
 
   return (
@@ -113,20 +120,20 @@ export function DrugPipelinePanel({ disabled = false, disabledReason = "" }: Pro
           <button
             type="button"
             className="btn btn--sm"
-            disabled={disabled || enrichmentRunning}
+            disabled={disabled || pipelineRunning || (queuePending === 0 && queueFailed === 0)}
             title={actionTitle}
-            onClick={() => trigger.mutate("drug_enrichment")}
+            onClick={() => trigger.mutate({ jobType: "drug_pipeline" })}
           >
-            {enrichmentRunning ? "Enriching…" : "Run enrichment"}
+            {pipelineRunning ? "Running…" : `Run pipeline${queuePending ? ` (${queuePending})` : ""}`}
           </button>
           <button
             type="button"
             className="btn btn--sm"
-            disabled={disabled || analysisRunning}
+            disabled={disabled || pipelineRunning || queueFailed === 0}
             title={actionTitle}
-            onClick={() => trigger.mutate("drug_analysis")}
+            onClick={() => trigger.mutate({ jobType: "drug_pipeline", jobOptions: { retry_failed: true } })}
           >
-            {analysisRunning ? "Analyzing…" : "Run analysis"}
+            {pipelineRunning ? "Running…" : `Retry failed${queueFailed ? ` (${queueFailed})` : ""}`}
           </button>
           <button
             type="button"
@@ -154,8 +161,7 @@ export function DrugPipelinePanel({ disabled = false, disabledReason = "" }: Pro
 
       <div className="service-list">
         <StageRow name="Index" stage={p.index} />
-        <StageRow name="Enrichment" stage={p.enrichment} />
-        <StageRow name="Analysis" stage={p.analysis} />
+        <StageRow name="Pipeline" stage={p.pipeline} />
       </div>
 
     </div>

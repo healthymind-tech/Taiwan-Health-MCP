@@ -21,6 +21,7 @@ import {
   HardDrive,
   KeyRound,
   ServerCog,
+  Beaker,
 } from "lucide-react";
 import { api } from "../../lib/api";
 import { qk } from "../../lib/queryKeys";
@@ -29,6 +30,7 @@ import { qkPasskeys } from "./PasskeysCard";
 import { LlmProfilesCard } from "./LlmProfilesCard";
 import { PrivacyPage } from "./PrivacyPage";
 import { StatusBadge } from "../../components/StatusBadge";
+import { OcrTestModal } from "./OcrTestModal";
 import type {
   SettingsActionResult,
   SettingsField,
@@ -98,6 +100,7 @@ function SettingsGroupForm({ group }: { group: SettingsGroup }): JSX.Element {
   const [form, setForm] = useState<FormState>(incoming);
   const [snapshot, setSnapshot] = useState<FormState>(incoming);
   const [models, setModels] = useState<Record<string, string[]>>({});
+  const [isOcrTestOpen, setIsOcrTestOpen] = useState(false);
 
   // Re-sync when fresh values arrive from the server (post-save refetch).
   useEffect(() => {
@@ -171,6 +174,17 @@ function SettingsGroupForm({ group }: { group: SettingsGroup }): JSX.Element {
           <div className="muted small">{group.description}</div>
         </div>
         <div className="head-actions">
+          {group.group === "ocr" && (
+            <button
+              type="button"
+              className="btn"
+              onClick={() => setIsOcrTestOpen(true)}
+              title="Test OCR functionality with a file"
+            >
+              <Beaker size={16} style={{ marginRight: "6px" }} />
+              Test OCR
+            </button>
+          )}
           {group.test && (
             <button type="button" className="btn" disabled={test.isPending} onClick={() => test.mutate()}>
               {test.isPending ? "Testing…" : "Test connection"}
@@ -215,6 +229,8 @@ function SettingsGroupForm({ group }: { group: SettingsGroup }): JSX.Element {
           </label>
         ))}
       </div>
+
+      <OcrTestModal isOpen={isOcrTestOpen} onClose={() => setIsOcrTestOpen(false)} />
     </div>
   );
 }

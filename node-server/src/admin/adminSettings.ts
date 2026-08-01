@@ -1034,7 +1034,7 @@ export async function listModels(group: string, draftIn: Record<string, unknown>
   if (!spec) throw new Error(`Unknown settings group: ${group}`);
   const draft = await resolveDraft(group, draftIn);
 
-  // MinerU picks its own models per backend; there is nothing to choose here.
+  // No groups currently support model selection
   return { ok: false, models: [], message: "This service has no model list." };
 }
 
@@ -1362,3 +1362,4 @@ async function testTfda(draft: Record<string, unknown>): Promise<TestResult> {
     return { ok: false, message: `TFDA test failed: ${errStr(exc)}` };
   }
 }
+

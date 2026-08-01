@@ -205,7 +205,7 @@ export async function listSourceVersions(moduleKey: string): Promise<Record<stri
 export const ROLE_JOB_TYPE = new Map<string, string>([
   ["icd|icd10cm", "icd_import"],
   ["loinc|loinc", "loinc_import"],
-  ["drug|drug_index_csv", "drug_index_import"],
+  ["drug|drug_index_csv", "drug_pipeline"],
   ["ig|ig", "ig_import"],
   ["snomed|snomed_ct", "snomed_import"],
   ["rxnorm|rxnorm_full", "rxnorm_import"],
@@ -353,13 +353,16 @@ export async function listSourceCatalog(): Promise<Record<string, unknown>[]> {
       ORDER BY job_type, updated_at DESC`)
   ).rows;
 
+  // 'drug_index_import' covers job rows created before the drug pipeline was
+  // unified into 'drug_pipeline' — keeping both matched here means files
+  // imported under the old two/three-stage design still show correctly.
   const drugImportJobRows = (
     await query<{ uploaded_file_id: string | null; imported_at_iso: string | null }>(`
       SELECT
         source_uploaded_file_id::text AS uploaded_file_id,
         ${tsIsoExpr("MAX(updated_at)")} AS imported_at_iso
       FROM admin.import_jobs
-      WHERE job_type = 'drug_index_import'
+      WHERE job_type = ANY(ARRAY['drug_index_import', 'drug_pipeline'])
         AND status IN ('success', 'partial_success')
         AND source_uploaded_file_id IS NOT NULL
       GROUP BY source_uploaded_file_id`)
@@ -386,7 +389,7 @@ export async function listSourceCatalog(): Promise<Record<string, unknown>[]> {
         ${tsIsoExpr("finished_at")} AS finished_at_iso,
         last_error_message
       FROM admin.import_jobs
-      WHERE job_type = 'drug_index_import'
+      WHERE job_type = ANY(ARRAY['drug_index_import', 'drug_pipeline'])
         AND source_uploaded_file_id IS NOT NULL
       ORDER BY source_uploaded_file_id, created_at DESC`)
   ).rows;

@@ -203,11 +203,27 @@ export async function getDrugPipelineStatus(): Promise<Record<string, unknown>> 
     ).rows[0]?.c,
   );
   const lastAnalysisJob = (await query<JobRow>(JOB_SELECT("drug_analysis"))).rows[0];
+  const lastPipelineJob = (await query<JobRow>(JOB_SELECT("drug_pipeline"))).rows[0];
 
   return {
     index: {
       total_licenses: totalLicenses,
       last_job: jobSnapshot(lastIndexJob),
+    },
+    // Unified view for the drug_pipeline job type (enrich+OCR+analyze as one
+    // per-license unit): `drug.enrichment_queue.status` is reconciled after
+    // both phases run (see loaders/drugPipeline.ts's reconcileQueueStatus), so
+    // these counts are already the true end-to-end outcome per license — no
+    // separate analysis-stage query needed the way the legacy `analysis`
+    // block below has one. Kept alongside (not replacing) `enrichment`/
+    // `analysis` so existing consumers of those two blocks are unaffected.
+    pipeline: {
+      queue_total: enrichmentTotal,
+      queue_pending: enrichmentPending,
+      queue_done: enrichmentDone,
+      queue_failed: enrichmentFailed,
+      is_complete: enrichmentPending === 0,
+      last_job: jobSnapshot(lastPipelineJob),
     },
     enrichment: {
       queue_total: enrichmentTotal,

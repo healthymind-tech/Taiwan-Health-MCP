@@ -14,9 +14,18 @@ import type { CatalogEntry, ModulesPayload, UploadedFile } from "../../../lib/ty
 
 const MODULE_KEY = "drug";
 const LABEL = "Drug index";
-const IMPORT_JOB = "drug_index_import";
+// One unified job type does CSV import + enrichment + OCR + analysis end to
+// end per license; drug_index_import/drug_enrichment/drug_analysis remain
+// dispatchable for any pre-existing job history but nothing here creates new
+// ones any more.
+const IMPORT_JOB = "drug_pipeline";
 const REQUIRED_ROLE = "drug_index_csv";
-const DRUG_JOB_TYPES = ["drug_index_import", "drug_enrichment", "drug_analysis"] as const;
+const DRUG_JOB_TYPES = [
+  "drug_pipeline",
+  "drug_index_import",
+  "drug_enrichment",
+  "drug_analysis",
+] as const;
 
 function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`;
