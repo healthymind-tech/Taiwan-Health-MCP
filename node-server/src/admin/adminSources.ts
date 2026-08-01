@@ -23,6 +23,8 @@ export interface SourceCatalogEntry {
   description: string;
   accepted_extensions: string[];
   multi_source: boolean;
+  /** Expected CSV columns for a client-side upload preview (drug index only). */
+  expected_columns?: { required: string[]; suggested: string[] };
 }
 
 /** Faithful port of `SOURCE_CATALOG` (read-relevant fields). */
@@ -108,6 +110,20 @@ export const SOURCE_CATALOG: readonly SourceCatalogEntry[] = [
     description: "Authoritative Taiwan drug index snapshot for drug Phase 1 index import.",
     accepted_extensions: [".csv"],
     multi_source: true,
+    // Mirrors the loader's header keys in drugIndex.ts. Required first, then the
+    // rest the loader maps — the frontend preview uses this to flag bad files
+    // before they reach the server.
+    expected_columns: {
+      required: ["許可證字號", "中文品名", "英文品名"],
+      suggested: [
+        "註銷狀態", "註銷日期", "註銷理由", "有效日期", "發證日期", "異動日期",
+        "許可證種類", "舊證字號", "通關簽審文件編號",
+        "藥品類別", "管制藥品分類級別", "劑型", "包裝", "適應症", "主成分略述",
+        "申請商名稱", "申請商地址", "申請商統一編號",
+        "製造商名稱", "製造廠廠址", "製造廠公司地址", "製造廠國別", "製程",
+        "用法用量", "包裝與國際條碼",
+      ],
+    },
   },
   {
     module_key: "guideline",
@@ -481,6 +497,7 @@ export async function listSourceCatalog(): Promise<Record<string, unknown>[]> {
       description: entry.description,
       accepted_extensions: [...entry.accepted_extensions],
       multi_source: entry.multi_source,
+      expected_columns: entry.expected_columns ?? null,
       active_source: active,
       active_sources: activeSources,
       recent_uploads: isDrug ? uploads.slice(0, 100) : uploads.slice(0, 10),
