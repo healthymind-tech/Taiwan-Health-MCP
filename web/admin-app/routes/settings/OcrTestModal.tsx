@@ -38,11 +38,8 @@ function formatFileSize(bytes: number): string {
 }
 
 function getFilePreviewUrl(file: File): string | null {
-  if (file.type.startsWith("image/")) {
+  if (file.type.startsWith("image/") || file.type === "application/pdf") {
     return URL.createObjectURL(file);
-  }
-  if (file.type === "application/pdf") {
-    return "pdf"; // Special marker for PDF
   }
   return null;
 }
@@ -123,6 +120,14 @@ export function OcrTestModal({ isOpen, onClose }: OcrTestModalProps): JSX.Elemen
     queryFn: () => api.get<{ samples: SampleFile[] }>("/admin/api/ocr/samples"),
     enabled: isOpen,
   });
+
+  // Update preview when file changes; revoke the old object URL so repeated
+  // file picks do not leak blob storage.
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+  }, [previewUrl]);
 
   // Update preview when file changes
   useEffect(() => {
@@ -245,12 +250,12 @@ export function OcrTestModal({ isOpen, onClose }: OcrTestModalProps): JSX.Elemen
             <div className={styles.previewSection}>
               {previewUrl ? (
                 <div className={styles.previewArea}>
-                  {previewUrl === "pdf" ? (
-                    <div className={styles.pdfPlaceholder}>
-                      <FileText size={48} />
-                      <p>{selectedFile?.name}</p>
-                      <p className={styles.fileSize}>{formatFileSize(selectedFile?.size || 0)}</p>
-                    </div>
+                  {selectedFile?.type === "application/pdf" ? (
+                    <iframe
+                      src={previewUrl}
+                      title={`Preview of ${selectedFile.name}`}
+                      className={styles.pdfPreview}
+                    />
                   ) : (
                     <img src={previewUrl} alt="Preview" className={styles.imagePreview} />
                   )}
