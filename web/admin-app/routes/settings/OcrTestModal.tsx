@@ -69,6 +69,13 @@ function renderMarkdown(markdown: string): string {
   // Inline code
   html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
 
+  // Images (MinerU refs are inlined to data URIs by the backend)
+  html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (match, alt, src) => {
+    const safeSrc = src.startsWith("data:image/") ? src : "";
+    if (!safeSrc) return match;
+    return `<img src="${safeSrc}" alt="${escapeHtml(alt)}" class="${styles.resultImage}" />`;
+  });
+
   // Line breaks and paragraphs
   html = html.split("\n").map((line) => {
     if (!line.trim()) return "<br>";

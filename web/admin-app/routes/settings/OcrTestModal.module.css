@@ -763,6 +763,21 @@
   }
 }
 
+.resultImage {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 12px 0;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+}
+
+@media (prefers-color-scheme: dark) {
+  .resultImage {
+    border-color: #444;
+  }
+}
+
 .markdownViewer h1 {
   margin: 20px 0 12px 0;
   font-size: 24px;
