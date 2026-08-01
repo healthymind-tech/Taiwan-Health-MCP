@@ -81,6 +81,7 @@ CREATE TABLE IF NOT EXISTS admin.import_jobs (
     attempt_count             INTEGER NOT NULL DEFAULT 0,
     last_error_code           TEXT,
     last_error_message        TEXT,
+    next_retry_at             TIMESTAMPTZ,
     job_options_json          JSONB NOT NULL DEFAULT '{}'::jsonb,
     result_summary_json       JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at                TIMESTAMPTZ NOT NULL DEFAULT NOW(),

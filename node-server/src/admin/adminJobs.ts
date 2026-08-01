@@ -220,6 +220,30 @@ export async function reclaimStaleJobs(opts: { workerName: string; staleMultipli
 }
 
 /** Faithful port of `claim_next_job` (FOR UPDATE SKIP LOCKED). Returns the claimed job dict or null. */
+/** Backoff between consecutive `llm_unavailable` auto-resume cycles (attempt 1
+ * waits 2min, then 4, 8, 16… capped at 30min). A cycle is expensive (per-call
+ * timeouts × profiles), so keep the job on a gentle cadence instead of churning
+ * a dead LM — but never leave it parked waiting for a human. */
+const LLM_BACKOFF_BASE_MS = 2 * 60_000;
+const LLM_BACKOFF_MAX_MS = 30 * 60_000;
+
+export function llmUnavailableBackoffMs(attemptCount: number): number {
+  return Math.min(LLM_BACKOFF_BASE_MS * 2 ** (attemptCount - 1), LLM_BACKOFF_MAX_MS);
+}
+
+/** Idempotent boot migration: `next_retry_at` gates auto-resume of jobs paused
+ * for `llm_unavailable`. Fresh installs get the column from db/schema.sql. The
+ * backfill re-arms jobs paused by older code (column previously NULL) so they
+ * auto-resume on the next worker poll instead of staying parked. */
+export async function ensureImportJobsRetrySchema(): Promise<void> {
+  await query(`ALTER TABLE admin.import_jobs ADD COLUMN IF NOT EXISTS next_retry_at TIMESTAMPTZ`);
+  await query(
+    `UPDATE admin.import_jobs SET next_retry_at = NOW()
+      WHERE status = 'paused' AND control_state = 'paused'
+        AND last_error_code = 'llm_unavailable' AND next_retry_at IS NULL`,
+  );
+}
+
 export async function claimNextJob(opts: {
   workerName: string;
   supportedJobTypes?: string[];
@@ -232,8 +256,13 @@ export async function claimNextJob(opts: {
     const res = await client.query<JobRow>(
       `WITH next_job AS (
          SELECT job_id FROM admin.import_jobs
-          WHERE status = 'queued'
-            AND control_state = ANY($1::text[])
+          WHERE (
+                  (status = 'queued' AND control_state = ANY($1::text[]))
+                  OR
+                  (status = 'paused' AND control_state = 'paused'
+                   AND last_error_code = 'llm_unavailable'
+                   AND next_retry_at IS NOT NULL AND next_retry_at <= NOW())
+                )
             AND job_type = ANY($2::text[])
           ORDER BY created_at, job_id
           FOR UPDATE SKIP LOCKED
@@ -243,6 +272,7 @@ export async function claimNextJob(opts: {
          UPDATE admin.import_jobs j
             SET status = 'running',
                 control_state = 'idle',
+                next_retry_at = NULL,
                 current_step = CASE WHEN j.progress_current > 0 THEN 'resumed' ELSE 'claimed' END,
                 worker_name = $3,
                 claimed_at = NOW(),
@@ -1211,6 +1241,8 @@ export interface MarkJobStatusInput {
   lastErrorCode?: string;
   lastErrorMessage?: string;
   resultSummary?: Record<string, unknown>;
+  /** When set, writes `next_retry_at` (the job auto-resumes no earlier than this). */
+  nextRetryAt?: Date | null;
 }
 
 /** Faithful port of `mark_job_status` (+ `_activate_manifest_sources` + `job_status_changed` broadcast). */
@@ -1237,6 +1269,7 @@ export async function markJobStatus(opts: MarkJobStatusInput): Promise<void> {
             result_summary_json = CASE
                 WHEN $9::jsonb = '{}'::jsonb THEN result_summary_json
                 ELSE $9::jsonb END,
+            next_retry_at = COALESCE($10::timestamptz, next_retry_at),
             updated_at = NOW()
       WHERE job_id = $1
       RETURNING job_type, module_key, progress_current, progress_total,
@@ -1251,6 +1284,7 @@ export async function markJobStatus(opts: MarkJobStatusInput): Promise<void> {
       opts.lastErrorCode ?? "",
       opts.lastErrorMessage ?? "",
       JSON.stringify(resultSummary),
+      opts.nextRetryAt ?? null,
     ],
   );
   if (res.rows.length === 0) return;
@@ -3778,23 +3812,34 @@ export async function runDrugPipelineJob(opts: {
 
     // The Analysis LM is down (not a problem with this drug's data) — every
     // remaining license would fail identically against the same dead endpoints.
-    // Pause the whole job instead of churning: an operator restores the LM and
-    // resumes. The checkpoint records `completed: index` (this license excluded)
-    // so the resume reprocesses it. Because the job ends 'paused', the dispatcher
-    // also won't auto-chain a fresh pipeline job that would just fail again.
+    // Pause the whole job instead of churning: the worker auto-resumes after a
+    // backoff that doubles per attempt (2min → 30min cap), so a transient outage
+    // recovers on its own instead of waiting for a human. The checkpoint records
+    // `completed: index` (this license excluded) so the resume reprocesses it.
     if (outcome.llmUnavailable) {
+      const attemptRes = await getPool().query<{ attempt_count: number }>(
+        `SELECT attempt_count FROM admin.import_jobs WHERE job_id = $1`,
+        [jobId],
+      );
+      const attemptCount = Number(attemptRes.rows[0]?.attempt_count ?? 0) || 1;
+      const retryInMs = llmUnavailableBackoffMs(attemptCount);
+      const nextRetryAt = new Date(Date.now() + retryInMs);
       await appendJobLog({
         jobId,
         level: "error",
         message:
           `Analysis LM unavailable — pausing at ${licenseId} instead of continuing ` +
           `(${totalCandidates - index} license(s) not yet processed). ` +
-          `Restore the Analysis LM, then resume this job.`,
+          `Auto-resume scheduled in ${Math.round(retryInMs / 60_000)}min (attempt ${attemptCount}); ` +
+          `restore the Analysis LM before then, or let it retry on its own.`,
         payload: {
           license_id: licenseId,
           reason: "llm_unavailable",
           error: outcome.lastErrorMessage,
           remaining: totalCandidates - index,
+          attempt: attemptCount,
+          retry_in_ms: retryInMs,
+          next_retry_at: nextRetryAt.toISOString(),
         },
       });
       await recordJobStep({
@@ -3821,6 +3866,7 @@ export async function runDrugPipelineJob(opts: {
         controlState: "paused",
         lastErrorCode: "llm_unavailable",
         lastErrorMessage: outcome.lastErrorMessage,
+        nextRetryAt,
       });
       return;
     }

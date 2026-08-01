@@ -36,6 +36,7 @@ interface DraftProfile {
   dimensions: number;
   temperature: number;
   max_tokens: number;
+  timeout_ms: number;
 }
 
 function emptyDraft(kind: LlmProfileKind): DraftProfile {
@@ -53,6 +54,7 @@ function emptyDraft(kind: LlmProfileKind): DraftProfile {
     dimensions: 1024,
     temperature: 0.1,
     max_tokens: DEFAULT_MAX_TOKENS,
+    timeout_ms: 300000,
   };
 }
 
@@ -86,6 +88,7 @@ function toDraft(p: LlmProfile): DraftProfile {
     dimensions: Number(p.params?.dimensions ?? 1024),
     temperature: Number(p.params?.temperature ?? 0.1),
     max_tokens: Number(p.params?.max_tokens ?? defaultMaxTokens(p.model)),
+    timeout_ms: Number(p.params?.timeout_ms ?? 300000),
   };
 }
 
@@ -102,7 +105,7 @@ function toPayload(d: DraftProfile): Record<string, unknown> {
     weight: d.weight,
     params:
       d.kind === "analysis"
-        ? { temperature: d.temperature, max_tokens: d.max_tokens }
+        ? { temperature: d.temperature, max_tokens: d.max_tokens, timeout_ms: d.timeout_ms }
         : { dimensions: d.dimensions },
   };
   if (d.api_key.trim()) payload.api_key = d.api_key.trim();
@@ -472,6 +475,21 @@ export function LlmProfilesCard({
                       when a call runs out, so this is a starting point, not a cap.
                     </span>
                   )}
+              </label>
+              <label className="settings-field">
+                <span className="settings-field__label">Timeout (ms)</span>
+                <input
+                  type="number"
+                  name="timeout_ms"
+                  min={1000}
+                  value={editing.timeout_ms}
+                  onChange={(e) =>
+                    setEditing({ ...editing, timeout_ms: Number(e.target.value) })
+                  }
+                />
+                <span className="muted small">
+                  Per-call ceiling before the request is aborted and retried (default 300000).
+                </span>
               </label>
             </>
           )}
