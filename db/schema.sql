@@ -899,6 +899,23 @@ CREATE INDEX IF NOT EXISTS idx_drug_name_fts ON drug.licenses
 CREATE INDEX IF NOT EXISTS idx_drug_ingredient_license ON drug.ingredients (license_id);
 CREATE INDEX IF NOT EXISTS idx_drug_ingredient_fts ON drug.ingredients
     USING GIN (to_tsvector('simple', COALESCE(name,'') || ' ' || COALESCE(raw_text,'')));
+-- Contains (`ILIKE '%q%'`) search support for the Drug Explorer. Trigram indexes
+-- are the only btree alternative that serves CJK substring matches.
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CREATE INDEX IF NOT EXISTS idx_drug_license_id_trgm
+    ON drug.licenses USING GIN (license_id gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_drug_chinese_name_trgm
+    ON drug.licenses USING GIN (chinese_name gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_drug_english_name_trgm
+    ON drug.licenses USING GIN (english_name gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_drug_manufacturer_name_trgm
+    ON drug.licenses USING GIN (manufacturer_name gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_drug_ingredient_summary_trgm
+    ON drug.licenses USING GIN (main_ingredient_summary gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_drug_ingredients_name_trgm
+    ON drug.ingredients USING GIN (name gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_drug_ingredients_raw_text_trgm
+    ON drug.ingredients USING GIN (raw_text gin_trgm_ops);
 CREATE INDEX IF NOT EXISTS idx_drug_atc_code ON drug.atc (code);
 CREATE INDEX IF NOT EXISTS idx_drug_einsert_scraped ON drug.electronic_inserts (scraped_at);
 CREATE INDEX IF NOT EXISTS idx_drug_appearance_license ON drug.appearance_records (license_id);

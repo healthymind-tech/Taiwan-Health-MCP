@@ -157,6 +157,7 @@ interface FilterState {
   manufacturer: string;
   country: string;
   dosageForm: string;
+  ingredient: string;
   appearanceColor: string;
   appearanceShape: string;
   updatedFrom: string;
@@ -236,6 +237,7 @@ function readFilters(params: URLSearchParams): FilterState {
     manufacturer: params.get("manufacturer") || "",
     country: params.get("country") || "",
     dosageForm: params.get("dosage_form") || "",
+    ingredient: params.get("ingredient") || "",
     appearanceColor: params.get("appearance_color") || "",
     appearanceShape: params.get("appearance_shape") || "",
     updatedFrom: params.get("updated_from") || "",
@@ -326,15 +328,16 @@ function FilterPanel({
         </fieldset>
         <fieldset className="drug-filter-selects">
           <legend>Drug attributes</legend>
-          <label>Dosage form<select value={draft.dosageForm} onChange={(event) => update("dosageForm", event.target.value)}>
-            <option value="">All dosage forms</option>{facets.dosage_form?.map((item) => <option key={item.value} value={item.value}>{item.value} ({item.count})</option>)}
-          </select></label>
+          <label>Dosage form<input list="drug-dosage-forms" value={draft.dosageForm} onChange={(event) => update("dosageForm", event.target.value)} placeholder="e.g. 錠劑, 注射液" />
+            <datalist id="drug-dosage-forms">{facets.dosage_form?.map((item) => <option key={item.value} value={item.value}>{item.value} ({item.count})</option>)}</datalist>
+          </label>
+          <label>Main ingredient<input value={draft.ingredient} onChange={(event) => update("ingredient", event.target.value)} placeholder="e.g. Aspirin, 乙醯胺酚" /></label>
           <label>Country<select value={draft.country} onChange={(event) => update("country", event.target.value)}>
             <option value="">All countries</option>{facets.country?.map((item) => <option key={item.value} value={item.value}>{item.value} ({item.count})</option>)}
           </select></label>
-          <label>Manufacturer<select value={draft.manufacturer} onChange={(event) => update("manufacturer", event.target.value)}>
-            <option value="">All manufacturers</option>{facets.manufacturer?.map((item) => <option key={item.value} value={item.value}>{item.value} ({item.count})</option>)}
-          </select></label>
+          <label>Manufacturer<input list="drug-manufacturers" value={draft.manufacturer} onChange={(event) => update("manufacturer", event.target.value)} placeholder="e.g. 永信, Pfizer" />
+            <datalist id="drug-manufacturers">{facets.manufacturer?.map((item) => <option key={item.value} value={item.value}>{item.value} ({item.count})</option>)}</datalist>
+          </label>
           <label>Appearance color<select value={draft.appearanceColor} onChange={(event) => update("appearanceColor", event.target.value)}>
             <option value="">All colors</option>{facets.appearance_color?.map((item) => <option key={item.value} value={item.value}>{item.value} ({item.count})</option>)}
           </select></label>
@@ -703,6 +706,14 @@ export function DrugExplorerPage(): JSX.Element {
   const selectedLicense = params.get("license") || "";
   const view = (["overview", "timeline", "documents"].includes(params.get("view") || "") ? params.get("view") : "overview") as DetailView;
 
+  // Live, debounced search: typing in the box filters without pressing Enter.
+  useEffect(() => {
+    const q = searchInput.trim();
+    if (!q || q === params.get("q")) return;
+    const timer = setTimeout(() => setParam("q", q, true), 400);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
+
   const apiParams = useMemo(() => {
     const next = new URLSearchParams(params);
     next.delete("license"); next.delete("view");
@@ -735,6 +746,7 @@ export function DrugExplorerPage(): JSX.Element {
       ["pipeline_statuses", nextFilters.pipelineStatuses.join(",")], ["stage", nextFilters.stage],
       ["stage_statuses", nextFilters.stageStatuses.join(",")], ["has_error", nextFilters.hasError],
       ["manufacturer", nextFilters.manufacturer], ["country", nextFilters.country], ["dosage_form", nextFilters.dosageForm],
+      ["ingredient", nextFilters.ingredient],
       ["appearance_color", nextFilters.appearanceColor], ["appearance_shape", nextFilters.appearanceShape],
       ["updated_from", nextFilters.updatedFrom], ["updated_to", nextFilters.updatedTo],
       ["document_from", nextFilters.documentFrom], ["document_to", nextFilters.documentTo],
@@ -761,7 +773,8 @@ export function DrugExplorerPage(): JSX.Element {
   };
   const filterCount = [filters.active !== "active", filters.assetTypes.length > 0, filters.missingAssetTypes.length > 0,
     filters.pipelineStatuses.length > 0, Boolean(filters.stage), Boolean(filters.hasError), Boolean(filters.manufacturer),
-    Boolean(filters.country), Boolean(filters.dosageForm), Boolean(filters.appearanceColor), Boolean(filters.appearanceShape),
+    Boolean(filters.country), Boolean(filters.dosageForm), Boolean(filters.ingredient),
+    Boolean(filters.appearanceColor), Boolean(filters.appearanceShape),
     Boolean(filters.updatedFrom || filters.updatedTo), Boolean(filters.documentFrom || filters.documentTo)].filter(Boolean).length;
   const assetName = (key: string): string => ASSETS.find(([asset]) => asset === key)?.[1] ?? key;
   const filterChips: Array<{ key: string; item?: string; label: string }> = [
@@ -774,6 +787,7 @@ export function DrugExplorerPage(): JSX.Element {
     ...(filters.dosageForm ? [{ key: "dosage_form", label: `Dosage: ${filters.dosageForm}` }] : []),
     ...(filters.country ? [{ key: "country", label: `Country: ${filters.country}` }] : []),
     ...(filters.manufacturer ? [{ key: "manufacturer", label: `Manufacturer: ${filters.manufacturer}` }] : []),
+    ...(filters.ingredient ? [{ key: "ingredient", label: `Ingredient: ${filters.ingredient}` }] : []),
     ...(filters.appearanceColor ? [{ key: "appearance_color", label: `Color: ${filters.appearanceColor}` }] : []),
     ...(filters.appearanceShape ? [{ key: "appearance_shape", label: `Shape: ${filters.appearanceShape}` }] : []),
     ...(filters.updatedFrom ? [{ key: "updated_from", label: `Updated from ${filters.updatedFrom}` }] : []),

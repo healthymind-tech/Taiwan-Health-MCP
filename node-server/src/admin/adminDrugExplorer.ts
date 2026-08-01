@@ -1,6 +1,7 @@
 import { query } from "../db.js";
 import { encodeLicenseId } from "../loaders/tfdaParserUtils.js";
 import { pyIso, tsIsoExpr } from "./adminJobs.js";
+import { logInfo } from "../logger.js";
 
 const ASSET_TYPES = new Set([
   "insert_pdf",
@@ -48,6 +49,7 @@ export interface DrugExplorerOptions {
   manufacturer?: string;
   country?: string;
   dosageForm?: string;
+  ingredient?: string;
   appearanceColor?: string;
   appearanceShape?: string;
   updatedFrom?: string;
@@ -128,9 +130,24 @@ function buildWhere(opts: DrugExplorerOptions): { sql: string; params: unknown[]
   }
   if (opts.hasError === true) where.push("COALESCE(s.last_error_message, '') <> ''");
   if (opts.hasError === false) where.push("COALESCE(s.last_error_message, '') = ''");
-  if (opts.manufacturer) where.push(`l.manufacturer_name = ${add(opts.manufacturer)}`);
+  // manufacturer and dosage form are free-text (contains) so a partial name like
+  // 永信 finds the drug even though the facet dropdown only shows the top 50.
+  if (opts.manufacturer) {
+    where.push(`l.manufacturer_name ILIKE ${add(`%${opts.manufacturer}%`)}`);
+  }
+  if (opts.dosageForm) {
+    where.push(`l.dosage_form ILIKE ${add(`%${opts.dosageForm}%`)}`);
+  }
   if (opts.country) where.push(`l.manufacturer_country = ${add(opts.country)}`);
-  if (opts.dosageForm) where.push(`l.dosage_form = ${add(opts.dosageForm)}`);
+  if (opts.ingredient) {
+    const p = add(`%${opts.ingredient}%`);
+    where.push(`(
+      l.main_ingredient_summary ILIKE ${p}
+      OR EXISTS (
+        SELECT 1 FROM drug.ingredients i WHERE i.license_id = l.license_id AND i.name ILIKE ${p}
+      )
+    )`);
+  }
   if (opts.appearanceColor) {
     where.push(`EXISTS (SELECT 1 FROM drug.appearance_records ar WHERE ar.license_id = l.license_id AND ar.color = ${add(opts.appearanceColor)})`);
   }
@@ -202,6 +219,14 @@ export async function getDrugExplorer(opts: DrugExplorerOptions = {}): Promise<R
       FROM drug.assets a WHERE a.license_id = l.license_id AND a.storage_status = 'success'
     ) asset_stats ON TRUE`;
 
+  // Facets and the total only need licenses + state; the per-drug lateral joins
+  // (asset_stats, thumbnail, enrichment_queue) exist purely for the returned
+  // result rows, so recomputing them inside the count/facet passes is wasted
+  // work that scales with the whole filtered set (82k+ licenses).
+  const lightFrom = `
+    FROM drug.licenses l
+    LEFT JOIN drug.import_license_state s ON s.license_id = l.license_id`;
+
   const rowsPromise = query<Record<string, unknown>>(
     `SELECT l.license_id, l.chinese_name AS name_zh, l.english_name AS name_en,
             l.is_active, l.dosage_form, l.manufacturer_name, l.manufacturer_country,
@@ -244,34 +269,30 @@ export async function getDrugExplorer(opts: DrugExplorerOptions = {}): Promise<R
       LIMIT $${limitParam} OFFSET $${offsetParam}`,
     params,
   );
-  const countPromise = query<{ total: string }>(
-    `SELECT COUNT(*) AS total ${from} WHERE ${built.sql}`,
-    built.params,
-  );
-  const facetPromise = query<{ asset_type: string; count: number }>(
+  const facetPromise = query<Record<string, unknown>>(
     `WITH filtered AS (
-       SELECT l.license_id ${from} WHERE ${built.sql}
-     ), kinds(asset_type) AS (
+       SELECT l.license_id, l.dosage_form, l.manufacturer_country, l.manufacturer_name
+         ${lightFrom} WHERE ${built.sql}
+     ),
+     total AS (SELECT COUNT(*)::int AS n FROM filtered),
+     kinds(asset_type) AS (
        VALUES ('insert_pdf'), ('label_pdf'), ('shape_image'), ('ocr_markdown'), ('analysis_json')
-     )
-     SELECT kinds.asset_type,
-            COUNT(DISTINCT a.license_id)::int AS count
-     FROM kinds
-     LEFT JOIN drug.assets a ON a.asset_type = kinds.asset_type
-       AND a.storage_status = 'success'
-       AND EXISTS (SELECT 1 FROM filtered f WHERE f.license_id = a.license_id)
-     GROUP BY kinds.asset_type
-     UNION ALL
-     SELECT 'web_image', COUNT(DISTINCT a.license_id)::int
-     FROM filtered f
-     JOIN drug.assets a ON a.license_id = f.license_id AND a.asset_type = 'shape_image'
-     JOIN drug.asset_variants av ON av.source_asset_id = a.asset_id
-       AND av.variant_kind = 'web' AND av.storage_status = 'success'`,
-    built.params,
-  );
-  const valueFacetPromise = query<Record<string, unknown>>(
-    `WITH filtered AS (SELECT l.* ${from} WHERE ${built.sql}),
-     values AS (
+     ),
+     asset_facets AS (
+       SELECT kinds.asset_type, NULL::text AS value, COUNT(DISTINCT a.license_id)::int AS count
+         FROM kinds
+         LEFT JOIN drug.assets a ON a.asset_type = kinds.asset_type
+           AND a.storage_status = 'success'
+           AND EXISTS (SELECT 1 FROM filtered f WHERE f.license_id = a.license_id)
+        GROUP BY kinds.asset_type
+       UNION ALL
+       SELECT 'web_image', NULL::text, COUNT(DISTINCT a.license_id)::int
+         FROM filtered f
+         JOIN drug.assets a ON a.license_id = f.license_id AND a.asset_type = 'shape_image'
+         JOIN drug.asset_variants av ON av.source_asset_id = a.asset_id
+           AND av.variant_kind = 'web' AND av.storage_status = 'success'
+     ),
+     value_facets AS (
        SELECT 'dosage_form' AS facet, dosage_form AS value, COUNT(*)::int AS count
          FROM filtered WHERE COALESCE(dosage_form, '') <> '' GROUP BY dosage_form
        UNION ALL
@@ -288,26 +309,36 @@ export async function getDrugExplorer(opts: DrugExplorerOptions = {}): Promise<R
        SELECT 'appearance_shape', ar.shape, COUNT(DISTINCT ar.license_id)::int
          FROM drug.appearance_records ar JOIN filtered f ON f.license_id = ar.license_id
          WHERE COALESCE(ar.shape, '') <> '' GROUP BY ar.shape
-     ), ranked AS (
+     ),
+     ranked AS (
        SELECT *, ROW_NUMBER() OVER (PARTITION BY facet ORDER BY count DESC, value) AS rank
-       FROM values
+         FROM value_facets
      )
-     SELECT facet, value, count FROM ranked WHERE rank <= 50 ORDER BY facet, rank`,
+     SELECT 'total' AS facet, NULL::text AS value, (SELECT n FROM total) AS count
+     UNION ALL
+     SELECT asset_type AS facet, NULL::text, count FROM asset_facets
+     UNION ALL
+     SELECT facet, value, count FROM ranked WHERE rank <= 50
+     ORDER BY facet`,
     built.params,
   );
 
-  const [rowsResult, countResult, facetResult, valueFacetResult] = await Promise.all([
-    rowsPromise,
-    countPromise,
-    facetPromise,
-    valueFacetPromise,
-  ]);
-  const total = Number(countResult.rows[0]?.total ?? 0);
-  const assetFacets = Object.fromEntries(facetResult.rows.map((row) => [row.asset_type, Number(row.count)]));
+  const [rowsResult, facetResult] = await Promise.all([rowsPromise, facetPromise]);
+  let total = 0;
+  const assetFacets: Record<string, number> = {};
   const valueFacets: Record<string, Array<{ value: string; count: number }>> = {};
-  for (const row of valueFacetResult.rows) {
+  for (const row of facetResult.rows) {
     const facet = String(row.facet);
-    (valueFacets[facet] ??= []).push({ value: String(row.value), count: Number(row.count) });
+    const count = Number(row.count);
+    if (facet === "total") {
+      total = count;
+      continue;
+    }
+    if (row.value === null) {
+      assetFacets[facet] = count;
+      continue;
+    }
+    (valueFacets[facet] ??= []).push({ value: String(row.value), count });
   }
 
   return {
@@ -327,6 +358,31 @@ export async function getDrugExplorer(opts: DrugExplorerOptions = {}): Promise<R
 
 function iso(value: string | null): string {
   return value ? pyIso(value) : "";
+}
+
+// The explorer searches with `ILIKE '%q%'` (contains), which a btree index cannot
+// serve. Trigram GIN indexes cover the contains match for CJK names (≥3 chars)
+// and Latin names alike. Idempotent — CREATE INDEX IF NOT EXISTS makes it safe to
+// run on every boot; fresh installs get the same indexes from db/schema.sql.
+export async function ensureDrugExplorerIndexes(): Promise<void> {
+  await query(`
+    CREATE EXTENSION IF NOT EXISTS pg_trgm;
+    CREATE INDEX IF NOT EXISTS idx_drug_license_id_trgm
+      ON drug.licenses USING gin (license_id gin_trgm_ops);
+    CREATE INDEX IF NOT EXISTS idx_drug_chinese_name_trgm
+      ON drug.licenses USING gin (chinese_name gin_trgm_ops);
+    CREATE INDEX IF NOT EXISTS idx_drug_english_name_trgm
+      ON drug.licenses USING gin (english_name gin_trgm_ops);
+    CREATE INDEX IF NOT EXISTS idx_drug_manufacturer_name_trgm
+      ON drug.licenses USING gin (manufacturer_name gin_trgm_ops);
+    CREATE INDEX IF NOT EXISTS idx_drug_ingredient_summary_trgm
+      ON drug.licenses USING gin (main_ingredient_summary gin_trgm_ops);
+    CREATE INDEX IF NOT EXISTS idx_drug_ingredients_name_trgm
+      ON drug.ingredients USING gin (name gin_trgm_ops);
+    CREATE INDEX IF NOT EXISTS idx_drug_ingredients_raw_text_trgm
+      ON drug.ingredients USING gin (raw_text gin_trgm_ops);
+  `);
+  logInfo("Drug explorer trigram indexes ensured");
 }
 
 export async function getDrugExplorerDetail(licenseId: string): Promise<Record<string, unknown> | null> {
