@@ -65,6 +65,15 @@ const S2T_CHARS: Record<string, string> = {
   补: "補", 营: "營", 养: "養", 并: "並",
 };
 
+// Characters MinerU emits instead of the real glyph on scanned inserts. Fixed at
+// the leaf-string level so OCR noise never reaches the canonical record.
+const OCR_ARTIFACT_CHARS: Record<string, string> = {
+  "\u2FA7": "長", // CJK compatibility ideograph (radical variant of 長)
+  "\u31D0": "一", // CJK stroke (occurs where 一 was)
+  "\u31E0": "乙", // CJK stroke (occurs where 乙 was)
+  "\uF071": "", // private-use section marker before 【標題】
+};
+
 const DATA_IMG_MD_RE = /!\[[^\]]*\]\(\s*data:image\/[^;\s)]+;base64,[^)]+\)/gi;
 const DATA_IMG_HTML_RE = /<img\b[^>]*\bsrc=["']data:image\/[^;"']+;base64,[^"']+["'][^>]*>/gi;
 const DATA_IMG_URI_RE = /data:image\/[^;\s)"']+;base64,[A-Za-z0-9+/_=\-.\r\n]+/gi;
@@ -83,7 +92,7 @@ const DEFAULT_ANALYSIS_PROMPT_PATH = path.resolve(
 );
 
 export function convertTextToTraditional(text: string): string {
-  let converted = text;
+  let converted = [...text].map((ch) => OCR_ARTIFACT_CHARS[ch] ?? ch).join("");
   for (const [simplified, traditional] of Object.entries(S2T_PHRASES)) {
     converted = converted.split(simplified).join(traditional);
   }
@@ -160,6 +169,35 @@ export function validateIngredientItems(data: unknown): string[] {
   return errors;
 }
 
+function isEmptyList(value: unknown): boolean {
+  if (!Array.isArray(value)) return true;
+  return value.every((item) => {
+    if (item === null || item === undefined) return true;
+    if (typeof item === "string") return item.trim() === "";
+    if (isPlainObject(item)) return Object.values(item).every((v) => v === null || String(v).trim() === "");
+    return false;
+  });
+}
+
+// 有效成分及含量 must always come out populated, and 用途(適應症) must too when
+// the source markdown mentions one. An empty 用途 was the one gap the old index
+// fallback silently masked — re-prompting the model on it is cheaper than
+// shipping a drug with no indication. 警語 is left alone: insert formats vary
+// too much to trust a test.
+export function validateContentChecks(data: unknown, markdown?: string): string[] {
+  const errors: string[] = [];
+  if (!isPlainObject(data)) return errors;
+  if (isEmptyList(data["有效成分及含量"])) errors.push("$.有效成分及含量 不能為空");
+  if (markdown && HAS_INDICATION_TEXT_RE.test(markdown) && isEmptyList(data["用途(適應症)"])) {
+    errors.push("$.用途(適應症) 不能為空");
+  }
+  return errors;
+}
+
+// A TFDA insert almost always spells the section out literally; a bare-match is
+// enough given how inconsistent their OCR section headers are.
+const HAS_INDICATION_TEXT_RE = /適應症|适应症|効能/;
+
 function parseIngredientText(text: string): Record<string, string> {
   const trimmed = text.trim();
   if (!trimmed) return { 成分: "", 含量: "" };
@@ -171,6 +209,37 @@ function parseIngredientText(text: string): Record<string, string> {
     };
   }
   return { 成分: trimmed, 含量: "" };
+}
+
+// MinerU merges the spaces out of some English excipient names on scans. Exact
+// replacements only — a general "re-insert a space before each capital" rule
+// would corrupt chemical formulas like CaCl2. Add new offenders as they appear.
+const COMPONENT_NAME_FIXES: Record<string, string> = {
+  polyethyleneglycol400: "Polyethylene Glycol 400",
+  tartaricacid: "Tartaric Acid",
+  hydrochloricacid: "Hydrochloric Acid",
+  waterforinjection: "Water for Injection",
+};
+
+function normalizeComponentName(raw: string): string {
+  const name = raw.trim();
+  const key = name.replace(/[\s·.,，、]/g, "").toLowerCase();
+  return COMPONENT_NAME_FIXES[key] ?? name;
+}
+
+// Amounts that legitimately carry no number (適量 etc.) survive; any other
+// non-numeric 含量 is a mis-fill (a descriptor like 每 ml 含 or a stray name)
+// and is dropped rather than kept as a bogus amount.
+const LEGIT_NON_NUMERIC_AMOUNTS = new Set(["適量", "足量", "定量"]);
+
+function normalizeAmount(raw: string): string {
+  let s = raw.trim().replace(/ /g, "");
+  if (!s) return "";
+  if (!/\d/.test(s) && !LEGIT_NON_NUMERIC_AMOUNTS.has(s)) return "";
+  // canonical units, then space between number and unit: 0.4gm → 0.4 g, 10mg → 10 mg
+  s = s.replace(/gm\b/gi, "g").replace(/\bml\b/gi, "mL");
+  s = s.replace(/(\d)([A-Za-zμµ])/g, "$1 $2");
+  return s;
 }
 
 /** Python's `value in (None, "")` — null/undefined or the empty string. */
@@ -185,7 +254,11 @@ function normalizeIngredientList(value: unknown): Record<string, string>[] {
   for (const raw of items) {
     if (isBlank(raw)) continue;
     if (typeof raw === "string") {
-      result.push(parseIngredientText(convertTextToTraditional(raw)));
+      const parsed = parseIngredientText(convertTextToTraditional(raw));
+      result.push({
+        成分: normalizeComponentName(parsed["成分"]),
+        含量: normalizeAmount(parsed["含量"]),
+      });
     } else if (isPlainObject(raw)) {
       const item = convertJsonToTraditional(raw) as Record<string, unknown>;
       let name = item["成分"] || item["名稱"] || item.name || "";
@@ -196,7 +269,10 @@ function normalizeIngredientList(value: unknown): Record<string, string>[] {
         name = String(onlyKey);
         amount = onlyVal === null || onlyVal === undefined ? "" : String(onlyVal);
       }
-      result.push({ 成分: String(name), 含量: String(amount) });
+      result.push({
+        成分: normalizeComponentName(convertTextToTraditional(String(name))),
+        含量: normalizeAmount(convertTextToTraditional(String(amount))),
+      });
     } else {
       result.push({ 成分: String(raw), 含量: "" });
     }
@@ -539,32 +615,54 @@ export class DrugAnalysisService {
     }
     const prompt = fs.readFileSync(this.config.analysisPromptPath, "utf8");
     const templateJson = JSON.stringify(ANALYSIS_TEMPLATE, null, 2);
-    const messages: Message[] = [
-      { role: "system", content: prompt },
-      {
-        role: "user",
-        content:
-          "以下是 OCR 轉出的藥品說明書 Markdown 內容。" +
-          "請只根據這份內容抽取資訊，並輸出和指定模板完全一致的 JSON。\n\n" +
-          `指定 JSON 模板：\n${templateJson}\n\n` +
-          `OCR Markdown：\n${sanitized}`,
-      },
-    ];
+    const baseUserContent =
+      "以下是 OCR 轉出的藥品說明書 Markdown 內容。" +
+      "請只根據這份內容抽取資訊，並輸出和指定模板完全一致的 JSON。\n\n" +
+      `指定 JSON 模板：\n${templateJson}\n\n` +
+      `OCR Markdown：\n${sanitized}`;
 
     // NB: a TokenBudgetExceeded from here is deliberately NOT caught. This loop
     // re-prompts a model that produced *malformed* output, which is the wrong
     // medicine for a truncated one — appending the cut-off reply and asking again
     // only lengthens the conversation and makes the next reply likelier to be cut
     // off too. Budget is handled inside callAnalysisLlm, where it can be fixed.
+    //
+    // Each attempt also restarts with the *same* two-message context (system +
+    // user) instead of feeding the previous assistant output back in. One real
+    // retry showed the model reacting to a rejected + echoed answer by emitting an
+    // ever-growing reproduction that escalated the budget 4k→32k and then timed
+    // out — constant context keeps a retry as cheap as the first try.
     let lastError = "";
+    let contentGap: { parsed: Record<string, unknown>; errors: string[] } | null = null;
     for (let attempt = 1; attempt <= this.config.analysisMaxRetries; attempt += 1) {
+      const messages: Message[] = [
+        { role: "system", content: prompt },
+        {
+          role: "user",
+          content:
+            attempt === 1
+              ? baseUserContent
+              : `上一次輸出不合格（${lastError}）。` +
+                "請重新輸出完整 JSON，內容精簡，只含模板欄位，不要輸出說明或 Markdown code fence。\n\n" +
+                baseUserContent,
+        },
+      ];
       const { content, profileUsed } = await callAnalysisLlm(this.config.analysisProfiles, messages);
       this.lastProfileUsed = profileUsed;
       try {
         const parsed = normalizeAnalysisData(extractJsonObject(content));
-        const errors = [...validateAnalysisShape(parsed), ...validateIngredientItems(parsed)];
+        const errors = [
+          ...validateAnalysisShape(parsed),
+          ...validateIngredientItems(parsed),
+          ...validateContentChecks(parsed, sanitized),
+        ];
         if (errors.length === 0) return parsed;
         lastError = errors.join("; ");
+        // A *shape* failure keeps the loop going; a shape-valid reply that is
+        // merely missing 有效成分 or 用途 (both rebuilt from the index by
+        // drugRecordBuilder) is a soft gap — remember it as the fallback answer.
+        const shapeErrors = [...validateAnalysisShape(parsed), ...validateIngredientItems(parsed)];
+        if (shapeErrors.length === 0) contentGap = { parsed, errors };
       } catch (err) {
         lastError = String(err instanceof Error ? err.message : err);
       }
@@ -574,14 +672,10 @@ export class DrugAnalysisService {
         max_retries: this.config.analysisMaxRetries,
         error: lastError,
       });
-      messages.push({ role: "assistant", content });
-      messages.push({
-        role: "user",
-        content:
-          "上一次輸出不合格。請重新輸出單一合法 JSON object。" +
-          "不要輸出說明、不要輸出 Markdown code fence、不要加入模板外欄位。" +
-          `錯誤原因: ${lastError}`,
-      });
+    }
+    if (contentGap) {
+      logWarning("Analysis accepted with unfilled content fields", { errors: contentGap.errors });
+      return contentGap.parsed;
     }
     throw new Error(
       `Analysis LLM failed after ${this.config.analysisMaxRetries} attempts: ${lastError}`,
