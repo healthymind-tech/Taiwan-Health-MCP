@@ -949,7 +949,7 @@ class HttpStatusError extends Error {
  * provider's response body (e.g. OpenAI's "Unsupported parameter ...") instead
  * of the opaque status. Mirrors `admin_settings._err`.
  */
-function errStr(exc: unknown): string {
+export function errStr(exc: unknown): string {
   if (exc instanceof HttpStatusError) {
     let detail = "";
     try {
@@ -964,8 +964,19 @@ function errStr(exc: unknown): string {
     if (!detail) detail = (exc.bodyText || "").trim().slice(0, 300);
     return detail ? `HTTP ${exc.status}: ${detail}` : `HTTP ${exc.status}`;
   }
-  const s = String((exc as Error)?.message ?? "").trim();
-  return s ? s : ((exc as Error)?.constructor?.name ?? "Error");
+  // Unwrap Node fetch's `TypeError: fetch failed` to its `cause` (DNS lookup,
+  // ECONNREFUSED, cert errors…), which is the part that tells the operator
+  // what actually went wrong.
+  const parts: string[] = [];
+  const seen = new Set<unknown>();
+  let cur: unknown = exc;
+  while (cur && typeof cur === "object" && !seen.has(cur)) {
+    seen.add(cur);
+    const msg = String((cur as { message?: unknown }).message ?? "").trim();
+    if (msg && !parts.includes(msg)) parts.push(msg);
+    cur = (cur as { cause?: unknown }).cause;
+  }
+  return parts.join(": ") || ((exc as Error)?.constructor?.name ?? "Error");
 }
 
 async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {

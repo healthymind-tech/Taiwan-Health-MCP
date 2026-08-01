@@ -1,20 +1,25 @@
 # Multi-stage build for the Node (TypeScript) MCP backend.
 # Stage 1 compiles TS -> dist/; stage 2 ships a slim runtime image.
+# Build context is the repo root (see compose.yaml `app.build`).
 
 FROM node:20-slim AS build
 WORKDIR /app
-COPY package.json package-lock.json ./
+COPY node-server/package.json node-server/package-lock.json ./
 RUN npm ci
-COPY tsconfig.json ./
-COPY src ./src
+COPY node-server/tsconfig.json ./
+COPY node-server/src ./src
 RUN npm run build
 
 FROM node:20-slim AS runtime
 ENV NODE_ENV=production
 WORKDIR /app
-COPY package.json package-lock.json ./
+COPY node-server/package.json node-server/package-lock.json ./
 RUN npm ci --omit=dev
 COPY --from=build /app/dist ./dist
+
+# The Analysis LM system prompts ship with the code and are read at analysis
+# time; the services resolve them from /src/prompts (dist/../../src/prompts).
+COPY src/prompts/ /src/prompts/
 
 # MCP transport port (overridden by MCP_PORT at runtime).
 EXPOSE 8000

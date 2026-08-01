@@ -86,8 +86,8 @@ services:
     # Serves the full nginx-routed app surface: /mcp, /admin/api, /admin/ws,
     # /status.json, /openapi.json, /tools/*, /fhir-client/*, /fhir-oauth/*.
     build:
-      context: ./node-server
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: node-server/Dockerfile
     container_name: taiwanHealthMcp
     extra_hosts:
       - "host.docker.internal:host-gateway"

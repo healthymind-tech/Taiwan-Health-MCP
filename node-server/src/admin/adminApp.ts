@@ -1887,7 +1887,7 @@ export async function adminHandler(req: Request, res: Response, next: NextFuncti
           analysisConfigured: analysisReady,
         });
       } catch (exc) {
-        const msg = String((exc as Error).message);
+        const msg = adminSettings.errStr(exc);
         sendJson(res, 400, { error: "OCR test failed", detail: msg });
       }
       return;
