@@ -229,7 +229,7 @@ function readFilters(params: URLSearchParams): FilterState {
   return {
     active: params.get("active") || "active",
     assetTypes: csv(params.get("asset_types")),
-    assetMatch: params.get("asset_match") || "any",
+    assetMatch: params.get("asset_match") || "all",
     missingAssetTypes: csv(params.get("missing_asset_types")),
     pipelineStatuses: csv(params.get("pipeline_statuses")),
     stage: params.get("stage") || "",
@@ -249,21 +249,26 @@ function readFilters(params: URLSearchParams): FilterState {
 }
 
 function CheckGroup({
-  values, selected, onChange, counts,
+  values, selected, onChange, counts, disabled,
 }: {
   values: readonly (readonly [string, string])[];
   selected: string[];
   onChange: (values: string[]) => void;
   counts?: Record<string, number>;
+  disabled?: string[];
 }): JSX.Element {
+  const disabledSet = new Set(disabled ?? []);
   return <div className="drug-filter-checks">
-    {values.map(([key, label]) => <label key={key}>
-      <input type="checkbox" checked={selected.includes(key)} onChange={(event) =>
-        onChange(event.target.checked ? [...selected, key] : selected.filter((item) => item !== key))
-      } />
-      <span>{label}</span>
-      {counts ? <small>{(counts[key] ?? 0).toLocaleString()}</small> : null}
-    </label>)}
+    {values.map(([key, label]) => {
+      const isDisabled = disabledSet.has(key);
+      return <label key={key} className={isDisabled ? "is-disabled" : undefined}>
+        <input type="checkbox" checked={selected.includes(key)} disabled={isDisabled} onChange={(event) =>
+          onChange(event.target.checked ? [...selected, key] : selected.filter((item) => item !== key))
+        } />
+        <span>{label}</span>
+        {counts ? <small>{(counts[key] ?? 0).toLocaleString()}</small> : null}
+      </label>;
+    })}
   </div>;
 }
 
@@ -301,11 +306,11 @@ function FilterPanel({
             <button type="button" className={draft.assetMatch === "any" ? "is-active" : ""} onClick={() => update("assetMatch", "any")}>Any</button>
             <button type="button" className={draft.assetMatch === "all" ? "is-active" : ""} onClick={() => update("assetMatch", "all")}>All</button>
           </div>
-          <CheckGroup values={ASSETS} selected={draft.assetTypes} onChange={(next) => update("assetTypes", next)} counts={facets.asset_types} />
+          <CheckGroup values={ASSETS} selected={draft.assetTypes} onChange={(next) => update("assetTypes", next)} counts={facets.asset_types} disabled={draft.missingAssetTypes} />
         </fieldset>
         <fieldset>
           <legend>Must not have assets</legend>
-          <CheckGroup values={ASSETS} selected={draft.missingAssetTypes} onChange={(next) => update("missingAssetTypes", next)} counts={facets.asset_types} />
+          <CheckGroup values={ASSETS} selected={draft.missingAssetTypes} onChange={(next) => update("missingAssetTypes", next)} counts={facets.asset_types} disabled={draft.assetTypes} />
         </fieldset>
         <fieldset>
           <legend>Any pipeline status</legend>
