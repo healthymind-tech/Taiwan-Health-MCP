@@ -414,10 +414,15 @@ export class DrugAnalysisService {
   async ocrOnly(opts: {
     sourceFilename: string;
     pdfBytes: Buffer;
+    /** Embed MinerU result images as data URIs, replacing `![](images/…)` refs. */
+    embedImages?: boolean;
   }): Promise<string> {
     const [ready, reason] = this.ocrReadiness();
     if (!ready) throw new Error(reason);
-    return this.ocrPdfBytes(opts.pdfBytes, opts.sourceFilename);
+    // OCR is not sensitive to analysis configuration — always available.
+    return this.ocrPdfBytes(opts.pdfBytes, opts.sourceFilename, {
+      embedImages: opts.embedImages,
+    });
   }
 
   /**
@@ -460,7 +465,11 @@ export class DrugAnalysisService {
    * is no task to poll and no archive to unpack. Markdown only: the Analysis LM
    * cannot use the images or the layout JSON anyway.
    */
-  private async ocrPdfBytes(pdfBytes: Buffer, sourceFilename: string): Promise<string> {
+  private async ocrPdfBytes(
+    pdfBytes: Buffer,
+    sourceFilename: string,
+    opts: { embedImages?: boolean } = {},
+  ): Promise<string> {
     if (!pdfBytes.subarray(0, 5).equals(Buffer.from("%PDF-"))) {
       throw new Error(
         `${sourceFilename} is not a PDF (leading bytes: ${JSON.stringify(
@@ -481,7 +490,7 @@ export class DrugAnalysisService {
     form.append("lang_list", this.config.ocrLang);
     form.append("table_enable", "true");
     form.append("return_md", "true");
-    form.append("return_images", "false");
+    form.append("return_images", opts.embedImages ? "true" : "false");
     form.append("return_middle_json", "false");
     form.append("return_content_list", "false");
     form.append("response_format_zip", "false");
@@ -498,7 +507,10 @@ export class DrugAnalysisService {
     }
     const payload = (await response.json()) as Record<string, unknown>;
 
-    const results = (payload.results ?? {}) as Record<string, { md_content?: string }>;
+    const results = (payload.results ?? {}) as Record<
+      string,
+      { md_content?: string; images?: Record<string, string> }
+    >;
     const first = Object.values(results)[0];
     if (!first) {
       throw new Error(
@@ -506,7 +518,13 @@ export class DrugAnalysisService {
       );
     }
     // `results` is keyed by the uploaded file's stem, and we upload exactly one.
-    const markdown = String(first.md_content ?? "");
+    let markdown = String(first.md_content ?? "");
+    if (opts.embedImages && first.images) {
+      markdown = markdown.replace(/!\[([^\]]*)\]\(images\/([^)]+)\)/g, (match, alt, name) => {
+        const uri = first.images?.[name];
+        return uri ? `![${alt}](${uri})` : match;
+      });
+    }
     if (!markdown.trim()) throw new Error("OCR markdown is empty");
     return markdown;
   }

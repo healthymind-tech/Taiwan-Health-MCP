@@ -1862,6 +1862,8 @@ export async function adminHandler(req: Request, res: Response, next: NextFuncti
         const markdown = await service.ocrOnly({
           sourceFilename: filename,
           pdfBytes: fileData,
+          // Inline MinerU result images so the preview can render them.
+          embedImages: true,
         });
 
         // Try analysis if configured, but don't fail if not
