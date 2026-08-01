@@ -180,24 +180,26 @@ export function UploadField({
               <div className="csv-preview__ok small">All required columns present.</div>
             )}
           </div>
-          <table className="csv-preview__table">
-            <thead>
-              <tr>
-                {preview.header.map((col, i) => (
-                  <th key={i}>{col}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {preview.rows.map((row, ri) => (
-                <tr key={ri}>
-                  {preview.header.map((_, ci) => (
-                    <td key={ci}>{row[ci] ?? ""}</td>
+          <div className="csv-preview__scroll">
+            <table className="csv-preview__table">
+              <thead>
+                <tr>
+                  {preview.header.map((col, i) => (
+                    <th key={i}>{col}</th>
                   ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {preview.rows.map((row, ri) => (
+                  <tr key={ri}>
+                    {preview.header.map((_, ci) => (
+                      <td key={ci}>{row[ci] ?? ""}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
           <button
             type="button"
             className="btn btn--primary btn--sm"
