@@ -324,11 +324,17 @@ export function LlmProfilesCard({
       )}
 
       {editing && (
-        <div className="settings-grid" style={{ marginTop: "1rem" }}>
+        <div style={{ marginTop: "1rem" }}>
+          <h4 className="subhead" style={{ margin: "0 0 0.75rem" }}>
+            {editing.id ? "Edit profile" : "New profile"}
+          </h4>
+          <div className="settings-grid">
           <label className="settings-field">
             <span className="settings-field__label">Name</span>
             <input
               type="text"
+              name="name"
+              autoComplete="off"
               value={editing.name}
               autoFocus
               placeholder="e.g. OpenAI primary"
@@ -338,6 +344,7 @@ export function LlmProfilesCard({
           <label className="settings-field">
             <span className="settings-field__label">Provider</span>
             <select
+              name="provider"
               value={editing.provider}
               onChange={(e) => {
                 const provider = e.target.value;
@@ -364,6 +371,7 @@ export function LlmProfilesCard({
             <span className="settings-field__label">Base URL</span>
             <input
               type="text"
+              name="base_url"
               value={editing.base_url}
               onChange={(e) => setEditing({ ...editing, base_url: e.target.value })}
             />
@@ -372,6 +380,7 @@ export function LlmProfilesCard({
             <span className="settings-field__label">API Key</span>
             <input
               type="password"
+              name="api_key"
               autoComplete="new-password"
               value={editing.api_key}
               placeholder={
@@ -385,12 +394,14 @@ export function LlmProfilesCard({
           <label className="settings-field">
             <span className="settings-field__label">Model</span>
             <span className="field-with-action">
-              <input
-                type="text"
-                list={`models-${kind}`}
-                value={editing.model}
-                onChange={(e) => setEditing({ ...editing, model: e.target.value })}
-              />
+                <input
+                  type="text"
+                  name="model"
+                  value={editing.model}
+                  placeholder="e.g. OpenAI primary"
+                  list={`models-${kind}`}
+                  onChange={(e) => setEditing({ ...editing, model: e.target.value })}
+                />
               <datalist id={`models-${kind}`}>
                 {models.map((m) => (
                   <option key={m} value={m} />
@@ -410,6 +421,7 @@ export function LlmProfilesCard({
             <span className="settings-field__label">Priority</span>
             <input
               type="number"
+              name="priority"
               value={editing.priority}
               onChange={(e) => setEditing({ ...editing, priority: Number(e.target.value) })}
             />
@@ -419,6 +431,7 @@ export function LlmProfilesCard({
             <span className="settings-field__label">Weight</span>
             <input
               type="number"
+              name="weight"
               min={0}
               value={editing.weight}
               onChange={(e) => setEditing({ ...editing, weight: Number(e.target.value) })}
@@ -433,6 +446,7 @@ export function LlmProfilesCard({
                 <span className="settings-field__label">Temperature</span>
                 <input
                   type="number"
+                  name="temperature"
                   step="0.1"
                   value={editing.temperature}
                   onChange={(e) =>
@@ -444,6 +458,7 @@ export function LlmProfilesCard({
                 <span className="settings-field__label">Max tokens</span>
                 <input
                   type="number"
+                  name="max_tokens"
                   value={editing.max_tokens}
                   onChange={(e) => setEditing({ ...editing, max_tokens: Number(e.target.value) })}
                 />
@@ -465,6 +480,7 @@ export function LlmProfilesCard({
               <span className="settings-field__label">Dimensions</span>
               <input
                 type="number"
+                name="dimensions"
                 min={1}
                 value={editing.dimensions}
                 onChange={(e) => setEditing({ ...editing, dimensions: Number(e.target.value) })}
@@ -478,6 +494,7 @@ export function LlmProfilesCard({
             <span className="settings-field__label">Enabled</span>
             <input
               type="checkbox"
+              name="enabled"
               checked={editing.enabled}
               onChange={(e) => setEditing({ ...editing, enabled: e.target.checked })}
             />
@@ -503,6 +520,7 @@ export function LlmProfilesCard({
             <button type="button" className="btn" onClick={() => setEditing(null)}>
               Cancel
             </button>
+          </div>
           </div>
         </div>
       )}

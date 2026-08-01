@@ -255,6 +255,7 @@ function FieldInput({
     return (
       <input
         type="checkbox"
+        name={field.key}
         checked={Boolean(value)}
         disabled={disabled}
         onChange={(e) => onChange(e.target.checked)}
@@ -264,6 +265,7 @@ function FieldInput({
   if (field.options) {
     return (
       <select
+        name={field.key}
         value={String(value ?? "")}
         disabled={disabled}
         onChange={(e) => onChange(e.target.value)}
@@ -285,6 +287,7 @@ function FieldInput({
       <span className="field-with-action">
         <input
           type="text"
+          name={field.key}
           list={listId}
           value={String(value ?? "")}
           disabled={disabled}
@@ -308,6 +311,7 @@ function FieldInput({
     return (
       <input
         type="password"
+        name={field.key}
         autoComplete="new-password"
         value={value == null ? "" : String(value)}
         disabled={disabled}
@@ -320,6 +324,7 @@ function FieldInput({
   return (
     <input
       type={inputType}
+      name={field.key}
       value={value == null ? "" : String(value)}
       disabled={disabled}
       onChange={(e) => onChange(e.target.value)}
@@ -656,7 +661,7 @@ export function SettingsPage(): JSX.Element {
         <div className="settings-content">
           <div className="settings-content__head">
             <SelectedIcon size={22} />
-            <h3>{group?.label ?? selectedNavigation.label}</h3>
+            <h3>{selectedNavigation.label}</h3>
           </div>
           {section === "privacy" ? (
             <PrivacyPage />
