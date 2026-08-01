@@ -15,7 +15,19 @@ export type Message = { role: string; content: string };
 
 const DEFAULT_MAX_TOKENS = 4096;
 const DEFAULT_REASONING_MAX_TOKENS = 16384;
+const DEFAULT_TIMEOUT_MS = 300_000;
 const REASONING_MODEL_PREFIXES = ["gpt-5", "o1", "o3", "o4"];
+
+/** How many times a single endpoint call retries on a transport failure
+ * (timeout / network error) before the profile counts as failed. */
+const TRANSPORT_RETRIES = 3;
+/** Backoff (ms) between transport retries. */
+const TRANSPORT_BACKOFF_MS = [2_000, 4_000, 8_000];
+
+function profileTimeoutMs(profile: LlmProfile): number {
+  const value = Math.trunc(Number(profile.params?.timeout_ms ?? DEFAULT_TIMEOUT_MS));
+  return Number.isFinite(value) && value > 0 ? value : DEFAULT_TIMEOUT_MS;
+}
 
 /** Ceiling for the automatic budget escalation (see `callProfileWithBudget`). */
 export const MAX_TOKEN_BUDGET = 65536;
@@ -115,6 +127,28 @@ function httpErrorSnippet(body: string, max = 300): string {
   return oneLine.length > max ? `${oneLine.slice(0, max)}… (${oneLine.length} chars total)` : oneLine;
 }
 
+/** Retry a single endpoint call on transient transport failures (timeout,
+ * network error). A fresh `AbortSignal.timeout` is created per attempt, so a
+ * timed-out signal never leaks into the next try. */
+async function fetchWithTransportRetry(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+): Promise<Response> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= TRANSPORT_RETRIES; attempt += 1) {
+    try {
+      return await fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
+    } catch (err) {
+      lastError = err;
+      if (attempt === TRANSPORT_RETRIES) break;
+      const backoff = TRANSPORT_BACKOFF_MS[attempt] ?? TRANSPORT_BACKOFF_MS[TRANSPORT_BACKOFF_MS.length - 1];
+      await new Promise((resolve) => setTimeout(resolve, backoff));
+    }
+  }
+  throw lastError;
+}
+
 async function callOneProfile(
   profile: LlmProfile,
   messages: Message[],
@@ -139,12 +173,15 @@ async function callOneProfile(
     let data: Record<string, unknown> | null = null;
     let lastMessage = "";
     for (let attempt = 0; attempt < 4; attempt += 1) {
-      const response = await fetch(url, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(payload),
-        signal: AbortSignal.timeout(300_000),
-      });
+      const response = await fetchWithTransportRetry(
+        url,
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify(payload),
+        },
+        profileTimeoutMs(profile),
+      );
       if (response.ok) {
         data = (await response.json()) as Record<string, unknown>;
         break;
@@ -215,18 +252,21 @@ async function callOneProfile(
 
   if (profile.provider === "ollama") {
     const url = `${profile.base_url.replace(/\/+$/, "")}/api/chat`;
-    const response = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: profile.model,
-        messages,
-        stream: false,
-        format: "json",
-        options: { temperature: profileTemperature(profile), num_predict: maxTokens },
-      }),
-      signal: AbortSignal.timeout(300_000),
-    });
+    const response = await fetchWithTransportRetry(
+      url,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: profile.model,
+          messages,
+          stream: false,
+          format: "json",
+          options: { temperature: profileTemperature(profile), num_predict: maxTokens },
+        }),
+      },
+      profileTimeoutMs(profile),
+    );
     if (!response.ok) {
       const body = await response.text().catch(() => "");
       throw new Error(`HTTP ${response.status} from ${url}: ${httpErrorSnippet(body)}`);

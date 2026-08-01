@@ -77,6 +77,12 @@ overridden with `FHIR_CODE_DIR` / `*_ZIP` env vars.
   drug_analysis` jobs are capped at `DRUG_AUTOCHAIN_BATCH_LIMIT` (default 200) licenses.
   A *manually* queued enrichment/analysis job with no `limit` crawls the **entire**
   backlog (tens of thousands of TFDA requests).
+- **`llm_unavailable` pauses auto-resume**: a job paused because every Analysis LM
+  profile failed is re-claimed automatically once `next_retry_at` passes (backoff
+  doubles per attempt, 2min → 30min cap). Manual resume overrides the backoff. A
+  `paused` job with `last_error_code != 'llm_unavailable'` (or a manual pause) is never
+  auto-resumed. Per-call LM timeouts default to 300s and are retried 3× on transport
+  errors; override per profile via `llm_profiles.params.timeout_ms` (admin console).
 - **pgBouncer transaction mode**: never use named prepared statements (in `db.ts`, keep
   `pg` statements unnamed) and never use `LISTEN`/`NOTIFY`.
 - **`/health` exists on `app` but nginx does not route it** — health checks must use

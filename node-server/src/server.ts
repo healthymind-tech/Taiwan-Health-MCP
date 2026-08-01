@@ -26,6 +26,7 @@ import { STATUS_DATA_JSON } from "./statusData.js";
 import { seedIfEmpty } from "./admin/adminSettings.js";
 import { seedAdminCredential } from "./admin/adminCredentials.js";
 import { ensureDrugExplorerIndexes } from "./admin/adminDrugExplorer.js";
+import { ensureImportJobsRetrySchema } from "./admin/adminJobs.js";
 import { adminHandler } from "./admin/adminApp.js";
 import { getFhirServerJwks, fhirServerSecretKey } from "./admin/adminFhirServers.js";
 import { completeAuthorization, OAuthError } from "./admin/fhirOauthService.js";
@@ -75,6 +76,15 @@ async function bootstrapResources(): Promise<void> {
     await ensureDrugExplorerIndexes();
   } catch (err) {
     logError("Drug explorer index migration skipped", { error: String((err as Error).message) });
+  }
+
+  // `next_retry_at` on admin.import_jobs (auto-resume gate for `llm_unavailable`
+  // pauses). Idempotent; fail-open — without it the worker simply never
+  // auto-resumes a paused job and old manual-resume behaviour applies.
+  try {
+    await ensureImportJobsRetrySchema();
+  } catch (err) {
+    logError("Import-jobs retry schema migration skipped", { error: String((err as Error).message) });
   }
 
   try {
