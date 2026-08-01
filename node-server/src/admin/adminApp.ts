@@ -32,6 +32,7 @@ import { changePassword, verifyPassword } from "./adminCredentials.js";
 import { listBackups, openBackupDownload } from "./adminBackup.js";
 import * as adminSettings from "./adminSettings.js";
 import * as llmProfiles from "./llmProfiles.js";
+import * as ocrTestSamples from "./ocrTestSamples.js";
 import {
   listWorkerHeartbeats,
   listJobs,
@@ -1807,6 +1808,87 @@ export async function adminHandler(req: Request, res: Response, next: NextFuncti
         else sendJson(res, 200, { job });
       } catch (exc) {
         sendJson(res, 500, { error: "Failed to load admin job", detail: String((exc as Error).message) });
+      }
+      return;
+    }
+
+    // GET /admin/api/ocr/samples — list available sample files for testing.
+    if (method === "GET" && path === "/admin/api/ocr/samples") {
+      try {
+        const samples = await ocrTestSamples.listSamples();
+        sendJson(res, 200, { samples });
+      } catch (exc) {
+        sendJson(res, 500, { error: "Failed to list OCR samples", detail: String((exc as Error).message) });
+      }
+      return;
+    }
+
+    // GET /admin/api/ocr/samples/{id} — fetch sample file data.
+    const ocrSampleMatch = /^\/admin\/api\/ocr\/samples\/([a-zA-Z0-9._-]+)$/.exec(path);
+    if (method === "GET" && ocrSampleMatch) {
+      try {
+        const sampleId = ocrSampleMatch[1];
+        const data = await ocrTestSamples.getSampleData(sampleId);
+        if (!data) {
+          sendJson(res, 404, { error: "Sample not found" });
+          return;
+        }
+        res.setHeader("Content-Type", "application/octet-stream");
+        res.setHeader("Content-Disposition", `inline; filename="${sampleId}"`);
+        res.end(data);
+      } catch (exc) {
+        sendJson(res, 500, { error: "Failed to fetch sample", detail: String((exc as Error).message) });
+      }
+      return;
+    }
+
+    // POST /admin/api/ocr/test — test OCR with a PDF or image file.
+    if (method === "POST" && path === "/admin/api/ocr/test") {
+      try {
+        const { parseFormData } = await import("../formDataParser.js");
+        const formFields = await parseFormData(req);
+
+        const filename = String(formFields.filename ?? "file.pdf").trim() || "file.pdf";
+        const fileData = formFields.file;
+        if (!fileData || fileData.length === 0) {
+          sendJson(res, 400, { error: "No file data provided" });
+          return;
+        }
+
+        const { DrugAnalysisService, loadDrugAnalysisConfig } = await import("../drugAnalysisService.js");
+        const service = new DrugAnalysisService(await loadDrugAnalysisConfig());
+
+        // Run OCR only (Analysis LM is optional)
+        const markdown = await service.ocrOnly({
+          sourceFilename: filename,
+          pdfBytes: fileData,
+        });
+
+        // Try analysis if configured, but don't fail if not
+        let analysisJson: Record<string, unknown> | null = null;
+        let analysisProvider = "";
+        const [analysisReady] = service.analysisReadiness();
+        if (analysisReady) {
+          try {
+            analysisJson = await service.analyzeMarkdown(markdown);
+            analysisProvider = service.lastProfileUsed?.provider ?? "";
+          } catch (analysisErr) {
+            // Analysis failed, but OCR succeeded - return partial result
+            analysisJson = { error: String((analysisErr as Error).message) };
+          }
+        }
+
+        sendJson(res, 200, {
+          ok: true,
+          markdown,
+          analysis: analysisJson,
+          ocrProvider: service.config.ocrProvider,
+          analysisProvider: analysisProvider || null,
+          analysisConfigured: analysisReady,
+        });
+      } catch (exc) {
+        const msg = String((exc as Error).message);
+        sendJson(res, 400, { error: "OCR test failed", detail: msg });
       }
       return;
     }

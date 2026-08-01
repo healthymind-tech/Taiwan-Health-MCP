@@ -19,6 +19,7 @@ import {
   loadDrugAnalysisConfig,
   type DrugAnalysisResult,
 } from "../drugAnalysisService.js";
+import { AnalysisLlmUnavailable } from "../analysisLlmClient.js";
 import { buildDrugRecord, type Dict, type IndexRow } from "./drugRecordBuilder.js";
 
 const NAMESPACE_URL = "6ba7b811-9dad-11d1-80b4-00c04fd430c8";
@@ -730,7 +731,14 @@ export async function loadDrugAnalysis(
 
       logInfo(`  ${licenseId}: ocr=success, analysis=success, normalize=success`);
     } catch (err) {
-      const errorMessage = String(err instanceof Error ? err.message : err);
+      // Cap the stored message — a proxy/CDN error body or OCR HTML page can be
+      // huge, and this ends up verbatim in the task log's error field.
+      const errorMessage = String(err instanceof Error ? err.message : err).slice(0, 2000);
+      // Distinguish "the Analysis LM fleet is down" from an ordinary per-license
+      // failure. A batch caller (the drug pipeline) reads this code back off
+      // import_license_state to decide whether to pause the whole job instead of
+      // churning every remaining license against the same dead endpoints.
+      const errorCode = err instanceof AnalysisLlmUnavailable ? "llm_unavailable" : "retryable_failed";
       const nextRetryAt = new Date(now.getTime() + 30 * 60 * 1000);
       // Only the stages this run was responsible for are marked failed; one that
       // was skipped (because retryStage started later) keeps its previous status.
@@ -750,9 +758,9 @@ export async function loadDrugAnalysis(
           `UPDATE drug.import_license_state
            SET ocr_status = $2, analysis_status = $3, normalize_status = $4,
                updated_at = $5, next_retry_at = $6, retry_count = retry_count + 1,
-               last_error_code = 'retryable_failed', last_error_message = $7
+               last_error_code = $8, last_error_message = $7
            WHERE license_id = $1`,
-          [licenseId, failedOcr, failedAnalysis, failedNormalize, now, nextRetryAt, errorMessage],
+          [licenseId, failedOcr, failedAnalysis, failedNormalize, now, nextRetryAt, errorMessage, errorCode],
         );
         if (retryStage !== "normalize") {
           await client.query(
@@ -763,7 +771,7 @@ export async function loadDrugAnalysis(
                last_attempt_at, completed_at
              )
              VALUES ($1, $2, $3::uuid, 'pdf_insert', $4, $5, $6, $7,
-                     '{}'::jsonb, 'retryable_failed', $8, $9, NULL)
+                     '{}'::jsonb, $10, $8, $9, NULL)
              ON CONFLICT (source_asset_id) DO UPDATE SET
                ocr_provider = EXCLUDED.ocr_provider,
                analysis_provider = EXCLUDED.analysis_provider,
@@ -783,6 +791,7 @@ export async function loadDrugAnalysis(
               failedAnalysis,
               errorMessage,
               now,
+              errorCode,
             ],
           );
         }
@@ -790,7 +799,7 @@ export async function loadDrugAnalysis(
           licenseId,
           stage: retryStage ?? "analysis_pipeline",
           status: "retryable_failed",
-          errorCode: "retryable_failed",
+          errorCode,
           errorMessage,
           payload: { source_asset_id: sourceAssetId },
           now,

@@ -407,6 +407,29 @@ export class DrugAnalysisService {
     return this.analysisReadiness();
   }
 
+  /**
+   * OCR only — no analysis. Useful for testing OCR independently.
+   * Returns markdown even if Analysis LM is not configured.
+   */
+  async ocrOnly(opts: {
+    sourceFilename: string;
+    pdfBytes: Buffer;
+  }): Promise<string> {
+    const [ready, reason] = this.ocrReadiness();
+    if (!ready) throw new Error(reason);
+    return this.ocrPdfBytes(opts.pdfBytes, opts.sourceFilename);
+  }
+
+  /**
+   * Analyze markdown with the configured Analysis LM.
+   * Can be used to analyze OCR output after the fact.
+   */
+  async analyzeMarkdown(markdown: string): Promise<Record<string, unknown>> {
+    const [ready, reason] = this.analysisReadiness();
+    if (!ready) throw new Error(reason);
+    return this.runAnalysis(markdown);
+  }
+
   async analyzePdfBytes(opts: {
     licenseId: string;
     sourceFilename: string;

@@ -92,7 +92,11 @@ npm test                                       # node --test over src/**/*.test.
 MCP_TRANSPORT=streamable-http DATABASE_URL=postgresql://... node dist/server.js
 
 # --- Web front-end (public pages + admin SPA) ------------------------------
-cd web && npm install && npm run build && npm run start
+cd web
+npm install
+npm run dev                                   # next dev -p 3000 (copies pdf.worker first)
+npm run build && npm run start                # production build / serve
+npm run typecheck                             # tsc --noEmit (no web test suite)
 
 # --- Docker (production — recommended) -------------------------------------
 cp .env.example .env                          # then edit .env (set POSTGRES_PASSWORD, ADMIN_*)
@@ -219,6 +223,28 @@ Model endpoints (embedding, Analysis LM, OCR) are **never** read from env. They 
 2. Instantiate it in `server.ts`'s startup sequence (wrap in try/catch so a failure degrades gracefully).
 3. Register its tools in `mcp.ts` (input schemas with `zod`) and add them to the right tool group.
 4. For module-gated availability, add an entry to `SERVICE_MODULES` in `moduleStatus.ts` and guard each tool with an availability check.
+
+## Coding style & conventions
+
+- TypeScript with ESM (`"type": "module"`) in both `node-server/` and `web/` — relative
+  imports must carry the `.js` extension even though the source is `.ts`.
+- Files: camelCase (`drugService.ts`, `adminJobs.ts`); types/classes: PascalCase. Annotate
+  parameter and return types on public functions; avoid `any`.
+- New service files follow `node-server/src/<domain>Service.ts` (see "Adding a New
+  Service" above); MCP tool input schemas are defined with `zod`.
+- Log through `logger.ts` (structured JSON to **stderr**, never stdout — stdout is
+  reserved for the MCP stdio transport).
+- Code and comments in English (see `## Language` above for chat responses).
+- Branches: `feature/short-name` or `bugfix/issue-summary`. Commits follow Conventional
+  Commits (`feat:`, `fix:`, `refactor:`, `docs:`, `chore:`), short and specific subjects.
+
+## Testing
+
+Node's built-in test runner via `tsx` (`node --import tsx --test`), not Jest/Vitest.
+Test files live beside the code they cover (`node-server/src/**/*.test.ts`). Coverage is
+currently thin (a handful of files) — most of the Python→Node migration was verified by
+differential runs against the old implementation rather than by unit tests. Add tests for
+new tools and loaders. `web/` has no test suite (`typecheck` only).
 
 ## Sync correctness rule
 
