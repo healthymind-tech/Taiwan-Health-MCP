@@ -41,3 +41,6 @@ out/
 node-server/dist/
 *.tsbuildinfo
 next-env.d.ts
+
+# Playwright MCP test artifacts
+.playwright-mcp/
