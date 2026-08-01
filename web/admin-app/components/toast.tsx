@@ -32,10 +32,12 @@ export function pushToast(message: string, kind: ToastKind = "info"): void {
   const id = nextId++;
   toasts = [...toasts, { id, kind, message }];
   emit();
+  // Errors need more time to read than routine success/info notices.
+  const duration = kind === "error" ? 6_000 : 4_000;
   window.setTimeout(() => {
     toasts = toasts.filter((t) => t.id !== id);
     emit();
-  }, 4_000);
+  }, duration);
 }
 
 export const toast = {
