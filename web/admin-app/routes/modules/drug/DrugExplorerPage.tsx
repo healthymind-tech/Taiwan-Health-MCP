@@ -473,9 +473,16 @@ function TextSection({ title, items }: { title: string; items: string[] }): JSX.
 
 const stageLabel = (stage: string): string => STAGES.find(([key]) => stage.startsWith(key))?.[1] ?? stage.replaceAll("_", " ");
 
-function Timeline({ timeline, documents }: { timeline: DrugDetailPayload["timeline"]; documents: DocumentRow[] }): JSX.Element {
+function Timeline({ timeline, documents, licenseId }: { timeline: DrugDetailPayload["timeline"]; documents: DocumentRow[]; licenseId: string }): JSX.Element {
   const ocrPair = documents.find((document) => document.source_asset_id && document.ocr_asset_id);
   const [viewer, setViewer] = useState<AssetViewerState | null>(null);
+  const [callId, setCallId] = useState<number | null>(null);
+  const callsQ = useQuery({
+    queryKey: ["drug-llm-calls", licenseId],
+    queryFn: () => api.get<{ calls: LlmCallSummary[] }>(`/admin/api/drug/llm-calls?license_id=${encodeURIComponent(licenseId)}`),
+    staleTime: 60_000,
+  });
+  const latestCall = callsQ.data?.calls[0];
 
   return <div className="drug-timeline-view">
     <div className="drug-section-title"><Clock3 size={18} /><h3>Process timeline</h3><span>{timeline.events.length} events</span></div>
@@ -490,10 +497,12 @@ function Timeline({ timeline, documents }: { timeline: DrugDetailPayload["timeli
             {event.error_message ? <p>{event.error_message}</p> : null}
           </div>) : <span className="muted small">No recorded transition</span>}
           {stage.stage === "ocr" && ocrPair ? <button type="button" className="btn btn--sm drug-stage__action" onClick={() => setViewer(documentViewer(ocrPair))}><Eye size={15} /> View PDF + OCR</button> : null}
+          {stage.stage === "analysis" && latestCall ? <button type="button" className="btn btn--sm drug-stage__action" onClick={() => setCallId(latestCall.id)}><Cpu size={15} /> View prompt + result</button> : null}
         </div>
       </section>)}
     </div>
     {viewer ? <AssetViewer viewer={viewer} onClose={() => setViewer(null)} /> : null}
+    {callId !== null ? <LlmCallModal callId={callId} onClose={() => setCallId(null)} /> : null}
   </div>;
 }
 
@@ -811,7 +820,7 @@ function DrugDetail({ licenseId, view, onView, onBack, onExit }: { licenseId: st
     </nav>
     <div className="drug-detail-body">
       {view === "overview" ? <Overview detail={detail} /> : null}
-      {view === "timeline" ? <Timeline timeline={detail.timeline} documents={detail.documents} /> : null}
+      {view === "timeline" ? <Timeline timeline={detail.timeline} documents={detail.documents} licenseId={licenseId} /> : null}
       {view === "documents" ? <Documents documents={detail.documents} assets={detail.assets} /> : null}
       {view === "llm" ? <LlmCalls licenseId={licenseId} /> : null}
     </div>
