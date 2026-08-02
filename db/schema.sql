@@ -323,6 +323,30 @@ CREATE TABLE IF NOT EXISTS admin.llm_profile_stats (
     PRIMARY KEY (profile_id, bucket)
 );
 
+-- Per-call Analysis LM audit log, keyed by drug license (see
+-- db/migrations/20260802_llm_call_log.sql). Keeps the actual prompt (system +
+-- user messages) and the model's reply per attempt so the Drug Explorer can show
+-- an operator exactly what was sent and what came back.
+CREATE TABLE IF NOT EXISTS admin.llm_call_log (
+    id                BIGSERIAL PRIMARY KEY,
+    license_id        TEXT NOT NULL,
+    attempt           INTEGER NOT NULL DEFAULT 1,
+    profile_id        BIGINT REFERENCES admin.llm_profiles (id) ON DELETE SET NULL,
+    profile_name      TEXT NOT NULL DEFAULT '',
+    model             TEXT NOT NULL DEFAULT '',
+    provider          TEXT NOT NULL DEFAULT '',
+    status            TEXT NOT NULL CHECK (status IN ('ok', 'budget', 'failed')),
+    prompt_messages   JSONB NOT NULL,
+    response_content  TEXT NOT NULL DEFAULT '',
+    error             TEXT NOT NULL DEFAULT '',
+    prompt_tokens     BIGINT NOT NULL DEFAULT 0,
+    completion_tokens BIGINT NOT NULL DEFAULT 0,
+    latency_ms        BIGINT NOT NULL DEFAULT 0,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_llm_call_log_license_created
+    ON admin.llm_call_log (license_id, created_at DESC);
+
 -- Registered WebAuthn / passkey credentials for admin login (additional to the
 -- password). credential_id/public_key are base64url/raw-bytes as produced by
 -- @simplewebauthn; counter guards against cloned-authenticator replay.

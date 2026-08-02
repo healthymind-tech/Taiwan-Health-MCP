@@ -24,6 +24,7 @@ import { initClient } from "../cache.js";
 import * as minioService from "../minioService.js";
 import { initBroadcast } from "./adminWs.js";
 import { getGroup, seedIfEmpty } from "./adminSettings.js";
+import { ensureLlmCallLogSchema } from "./llmCallLog.js";
 import { listDueSchedules, fireSchedule, type DueSchedule } from "./adminSchedule.js";
 import { sweepExpiringTokens } from "./fhirOauthService.js";
 import { fhirServerSecretKey } from "./adminFhirServers.js";
@@ -272,6 +273,14 @@ export async function runWorker(): Promise<void> {
     await seedIfEmpty();
   } catch (err) {
     logWarning("Worker settings seed skipped", { error: String((err as Error).message) });
+  }
+
+  // `admin.llm_call_log` (per-call prompt → reply audit). The worker writes it
+  // while running analysis jobs, so ensure it exists here too (idempotent).
+  try {
+    await ensureLlmCallLogSchema();
+  } catch (err) {
+    logWarning("Worker LLM call log schema skipped", { error: String((err as Error).message) });
   }
 
   const workerCfg = await getGroup("worker").catch(() => ({}) as Record<string, unknown>);

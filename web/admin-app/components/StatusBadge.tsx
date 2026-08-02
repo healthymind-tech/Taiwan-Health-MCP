@@ -26,6 +26,8 @@ const TONE_BY_STATUS: Record<string, Tone> = {
   unavailable: "bad",
   error: "bad",
   empty: "muted",
+  // Analysis LM per-call audit
+  budget: "warn",
   // guideline PDF pipeline (pipeline_stage / review_status)
   ocr_running: "live",
   analysis_running: "live",

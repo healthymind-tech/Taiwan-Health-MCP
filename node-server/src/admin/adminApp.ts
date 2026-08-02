@@ -129,6 +129,7 @@ import {
   ReviewValueError,
 } from "./guidelineReview.js";
 import { getDrugExplorer, getDrugExplorerDetail } from "./adminDrugExplorer.js";
+import { listDrugLlmCalls, getDrugLlmCall } from "./llmCallLog.js";
 import { getStates as getMaintenanceStates, setEnabled as setMaintenanceEnabled, MaintenanceValueError } from "./adminMaintenance.js";
 import * as minioService from "../minioService.js";
 import { buildAdminOverview } from "./adminOverview.js";
@@ -1367,6 +1368,44 @@ export async function adminHandler(req: Request, res: Response, next: NextFuncti
         else sendJson(res, 200, detail);
       } catch (exc) {
         sendJson(res, 500, { error: "Failed to load drug", detail: String((exc as Error).message) });
+      }
+      return;
+    }
+
+    // GET /admin/api/drug/llm-calls?license_id=... (per-call Analysis LM audit)
+    if (method === "GET" && path === "/admin/api/drug/llm-calls") {
+      const licenseId = String(req.query.license_id ?? "").trim();
+      if (!licenseId) {
+        sendJson(res, 400, { error: "license_id is required" });
+        return;
+      }
+      try {
+        sendJson(res, 200, { calls: await listDrugLlmCalls(licenseId) });
+      } catch (exc) {
+        sendJson(res, 500, {
+          error: "Failed to load LLM calls",
+          detail: String((exc as Error).message),
+        });
+      }
+      return;
+    }
+
+    // GET /admin/api/drug/llm-call?id=... (full record: prompts + reply)
+    if (method === "GET" && path === "/admin/api/drug/llm-call") {
+      const id = Number(req.query.id);
+      if (!Number.isFinite(id) || id <= 0) {
+        sendJson(res, 400, { error: "id is required" });
+        return;
+      }
+      try {
+        const detail = await getDrugLlmCall(id);
+        if (!detail) sendJson(res, 404, { error: "LLM call not found" });
+        else sendJson(res, 200, detail);
+      } catch (exc) {
+        sendJson(res, 500, {
+          error: "Failed to load LLM call",
+          detail: String((exc as Error).message),
+        });
       }
       return;
     }
