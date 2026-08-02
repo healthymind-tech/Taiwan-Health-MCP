@@ -1,7 +1,7 @@
 # Taiwan Health MCP Server
 
 > 台灣醫療健康資料整合 MCP 伺服器
-> 整合 ICD-10-CM/PCS、SNOMED CT、LOINC、台灣 FDA 藥品 / 健康補充品 / 食品營養、臨床指引，以及 FHIR R4 IG 授權與驗證工具
+> 整合 ICD-10-CM/PCS、SNOMED CT、LOINC、台灣 FDA 藥品 / 健康補充品 / 食品營養，以及 FHIR R4 IG 授權與驗證工具
 
 [![FHIR](https://img.shields.io/badge/FHIR-R4-blue)](http://hl7.org/fhir/R4/)
 [![Node.js](https://img.shields.io/badge/Node.js-20-green)](https://nodejs.org/)
@@ -9,13 +9,13 @@
 [![MCP SDK](https://img.shields.io/badge/MCP%20SDK-1.12-orange)](https://modelcontextprotocol.io)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
 
-以官方 **TypeScript MCP SDK**（`@modelcontextprotocol/sdk`）建構的 Node.js 伺服器，對外提供 **51 個工具**，涵蓋 12 個工具群組。專為高吞吐量的生產級 SaaS 部署設計。
+以官方 **TypeScript MCP SDK**（`@modelcontextprotocol/sdk`）建構的 Node.js 伺服器，對外提供 **49 個工具**，涵蓋 11 個工具群組。專為高吞吐量的生產級 SaaS 部署設計。
 
 > **後端執行環境**：整個後端（MCP server、管理後台 REST API、背景 worker、所有資料載入器）皆為 **Node.js / TypeScript**，程式碼位於 [`node-server/`](node-server/)。前端（公開頁面與管理後台 SPA）為 Next.js，位於 [`web/`](web/)。本專案已無 Python 執行期相依。
 
 ## 專案特色
 
-- **台灣在地化資料**：台灣 FDA 藥品（含仿單 / 外觀 / OCR + LLM 分析）、健康補充品、食品營養、臨床指引、TWCore IG。
+- **台灣在地化資料**：台灣 FDA 藥品（含仿單 / 外觀 / OCR + LLM 分析）、健康補充品、食品營養、TWCore IG。
 - **國際術語支援**：ICD-10-CM/PCS 2025、SNOMED CT International、LOINC 2.80、FHIR R4。
 - **FHIR IG 授權工具**：多 IG（package-scoped）剖面 / ValueSet 查詢、術語驗證、骨架填值（skeleton-fill）資源產生與驗證。
 - **語意 / 混合搜尋**：以嵌入模型（預設 Ollama `qwen3-embedding`）為基礎，無嵌入時自動退回關鍵字搜尋。
@@ -78,7 +78,6 @@ docker compose build app web && docker compose up -d --no-deps app web
 
    - **需上傳來源檔**（在 Sources / Modules 上傳後按匯入）：ICD-10-CM/PCS、LOINC、SNOMED CT、RxNorm、FHIR IG（`package.tgz`）。
    - **由 API 自動抓取**（直接按匯入或設定排程）：藥品（TFDA，三階段：索引 → 爬取豐富 → OCR/LLM 分析）、健康補充品、食品營養。
-   - **內建種子資料**（直接執行）：臨床指引。
 
 3. 嵌入（語意搜尋）為獨立的 `*_embed` 工作，可於各模組頁面執行。嵌入 / OCR / 分析 LLM 的端點在 **Settings** 頁籤設定（存於 `admin.llm_profiles`，**不透過環境變數**）。
 
@@ -91,7 +90,6 @@ docker compose build app web && docker compose up -d --no-deps app web
 | ICD-10 | `search_medical_codes`、`infer_complications`、`get_nearby_codes`、`check_medical_conflict`、`browse_icd_category` |
 | 藥品 / TFDA | `search_drug`、`identify_unknown_pill`、`get_drug_details`、`get_drug_asset_links` |
 | 檢驗 / LOINC | `search_loinc`、`query_loinc`、`interpret_lab_result`、`batch_interpret_lab_results` |
-| 臨床指引 | `search_clinical_guideline`、`query_guideline` |
 | SNOMED CT | `search_snomed_concept`、`query_snomed_concept`、`get_snomed_relationships`、`query_snomed_mapping` |
 | FHIR Condition | `query_fhir_condition`、`validate_fhir_condition` |
 | FHIR Medication | `query_fhir_medication`、`validate_fhir_medication` |
@@ -120,7 +118,7 @@ docker compose build app web && docker compose up -d --no-deps app web
 
 ## 資料庫 Schema
 
-`audit` | `admin` | `icd` | `drug` | `health_supplements` | `food_nutrition` | `loinc` | `guideline` | `fhir`（multi-IG）| `snomed` | `rxnorm`
+`audit` | `admin` | `icd` | `drug` | `health_supplements` | `food_nutrition` | `loinc` | `fhir`（multi-IG）| `snomed` | `rxnorm`
 
 完整定義見 `db/schema.sql`（PostgreSQL 容器首次啟動時自動套用），增量變更見 `db/migrations/`。
 

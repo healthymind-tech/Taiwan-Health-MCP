@@ -66,12 +66,6 @@ datasets:
     label: TWCore IG
     version: "1.0.0"
 
-  guideline_seed:
-    enabled: true
-    required: true
-    source_type: internal
-    label: Clinical guideline seed
-
   snomed_ct:
     enabled: true
     required: false

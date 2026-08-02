@@ -8,7 +8,6 @@
 | LOINC | 2.80（Regenstrief） | 上傳 zip → 匯入 | `--loinc` | 需 LOINC 授權 |
 | SNOMED CT | International RF2 | 上傳 RF2 zip → 匯入 | `--snomed` | 需 SNOMED 授權 |
 | FHIR IG（TWCore 等） | MoHW / packages.fhir.org | 上傳 `package.tgz` 或 Admin → IG 抓取 | `--twcore` | 公開 |
-| 臨床指引 | 專案種子資料 | 直接執行（內建） | `--guideline` | 專案內建 |
 | 藥品（台灣 FDA / TFDA） | TFDA `36_2.csv` + 線上爬取 | API 抓取 + 爬取分析 | `--drug-index` → `--drug-enrich` → `--drug-analysis` | 開放資料 |
 | 台灣健康補充品 | TFDA 開放資料 | API 抓取 | `--health-supplements` | 開放資料 |
 | 台灣食品營養 | TFDA 開放資料 | API 抓取 | `--food-nutrition` | 開放資料 |
@@ -22,4 +21,4 @@
 - **RxNorm** 目前僅作為概念參考術語載入，用於 FHIR IG ValueSet 的 TTY 展開，**不**對外提供獨立的藥物交互作用工具。
 - **嵌入**：`*_embeddings` 向量表由各模組獨立的 `*_embed` 工作回填，可在模組頁面執行或排程。嵌入端點存於 `admin.llm_profiles`（於 Admin → Settings 設定，預設為 Ollama）；端點不可用時，搜尋自動退回關鍵字模式。
 
-各別來源細節：[ICD-10](icd10.md)、[LOINC](loinc.md)、[臨床指引](guidelines.md)。
+各別來源細節：[ICD-10](icd10.md)、[LOINC](loinc.md)。

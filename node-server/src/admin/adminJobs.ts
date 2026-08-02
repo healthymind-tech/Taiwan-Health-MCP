@@ -616,18 +616,14 @@ export async function summarizeJobs(): Promise<Record<string, number>> {
 export class JobValueError extends Error {}
 
 const PHASE2_JOB_TYPES = ["noop", "system_backup"];
-const SIMPLE_LOADER_JOB_TYPES = ["guideline_seed", "health_supplements_sync", "food_nutrition_sync"];
+const SIMPLE_LOADER_JOB_TYPES = ["health_supplements_sync", "food_nutrition_sync"];
 const HEAVY_LOADER_JOB_TYPES = ["icd_import", "loinc_import", "ig_import", "snomed_import", "rxnorm_import"];
 // drug_index_import/drug_enrichment/drug_analysis are kept fully functional
 // (dispatchable, restartable) for backward compatibility with any job rows
 // already in history, but nothing creates new ones any more — the admin UI
 // only triggers drug_pipeline, which does all three per license in one job.
 const DRUG_JOB_TYPES = ["drug_index_import", "drug_enrichment", "drug_analysis", "drug_pipeline"];
-const EMBED_JOB_TYPES = ["icd_embed", "loinc_embed", "health_supplements_embed", "food_nutrition_embed", "guideline_embed", "snomed_embed"];
-// PDF -> OCR -> Analysis LM extraction, staged for human review (see
-// guidelineReview.ts) — unlike DRUG_JOB_TYPES, this never auto-commits into the
-// live guideline.* tables.
-const GUIDELINE_JOB_TYPES = ["guideline_analysis"];
+const EMBED_JOB_TYPES = ["icd_embed", "loinc_embed", "health_supplements_embed", "food_nutrition_embed", "snomed_embed"];
 
 /** Faithful port of `ADMIN_JOB_TYPES`. */
 export const ADMIN_JOB_TYPES: ReadonlySet<string> = new Set([
@@ -635,7 +631,6 @@ export const ADMIN_JOB_TYPES: ReadonlySet<string> = new Set([
   ...SIMPLE_LOADER_JOB_TYPES,
   ...HEAVY_LOADER_JOB_TYPES,
   ...DRUG_JOB_TYPES,
-  ...GUIDELINE_JOB_TYPES,
   ...EMBED_JOB_TYPES,
 ]);
 
@@ -651,7 +646,6 @@ export const CONTROL_ACTIONS = ["pause", "resume", "stop", "restart"] as const;
 const JOB_TYPE_MODULE_KEYS: Record<string, string> = {
   noop: "admin",
   system_backup: "admin",
-  guideline_seed: "guideline",
   health_supplements_sync: "health_supplements",
   food_nutrition_sync: "food_nutrition",
   icd_import: "icd",
@@ -663,12 +657,10 @@ const JOB_TYPE_MODULE_KEYS: Record<string, string> = {
   drug_enrichment: "drug",
   drug_analysis: "drug",
   drug_pipeline: "drug",
-  guideline_analysis: "guideline",
   icd_embed: "icd",
   loinc_embed: "loinc",
   health_supplements_embed: "health_supplements",
   food_nutrition_embed: "food_nutrition",
-  guideline_embed: "guideline",
   snomed_embed: "snomed",
 };
 
@@ -1158,21 +1150,16 @@ export const JOB_RESOURCES: Record<string, ReadonlySet<string>> = {
   db_write_ig: new Set(["ig_import"]),
   db_write_snomed: new Set(["snomed_import"]),
   db_write_rxnorm: new Set(["rxnorm_import"]),
-  db_write_guideline: new Set(["guideline_seed"]),
   db_write_health_supplements: new Set(["health_supplements_sync"]),
   db_write_food_nutrition: new Set(["food_nutrition_sync"]),
   // Drug Phase 1/2 write the same drug.* tables — serialised behind one slot.
   // drug_pipeline does both phases itself, so it holds this slot too.
   db_write_drug: new Set(["drug_index_import", "drug_enrichment", "drug_pipeline"]),
   ollama_embed: new Set(EMBED_JOB_TYPES),
-  // guideline_analysis shares drug_analysis's/drug_pipeline's slot: all consume
-  // the same circuit-breaker-guarded pool of kind='analysis' LLM profiles and
-  // the same MinerU OCR endpoint, so running them concurrently would just
-  // contend for the same upstream capacity with confusing failure attribution.
   // drug_pipeline is the first job type to hold two resource slots at once
   // (this one plus db_write_drug above) — JOB_TYPE_RESOURCES is already a
   // Set per job type, so nothing else needs to change for that.
-  llm: new Set(["drug_analysis", "guideline_analysis", "drug_pipeline"]),
+  llm: new Set(["drug_analysis", "drug_pipeline"]),
 };
 
 /** Inverted index: job_type → set of resources it needs (mirror JOB_TYPE_RESOURCES). */
@@ -1459,7 +1446,6 @@ function successSummaryMessage(summary: Record<string, unknown>): string {
     ["codesystem_count", "codesystems"],
     ["artifact_count", "artifacts"],
     ["loinc_count", "LOINC terms"],
-    ["guideline_count", "guidelines"],
     ["drug_count", "drugs"],
     ["record_count", "records"],
     ["row_count", "rows"],
@@ -1753,47 +1739,6 @@ export async function maybeAutoChain(opts: {
 // bookkeeping. Lightweight (no MinIO source materialisation, no staging) jobs
 // land first; staging/promote and the drug shell-out follow.
 // ════════════════════════════════════════════════════════════════════════════
-
-/** Faithful port of `_run_guideline_seed_job`. */
-export async function runGuidelineSeedJob(opts: {
-  workerName: string;
-  job: Record<string, unknown>;
-}): Promise<void> {
-  const { workerName, job } = opts;
-  const jobId = String(job.job_id);
-  const { seedGuidelines } = await import("../loaders/guideline.js");
-  const total = 2;
-  const startAt = Math.max(Number(job.progress_current || 0), 0);
-  const beforeCount = await countTableRows("guideline.disease_guidelines");
-
-  if (startAt < 1) {
-    await appendJobLog({ jobId, level: "info", message: "Preparing guideline seed job", payload: { checkpoint: 1, total } });
-    await recordJobStep({ jobId, stepKey: "prepare", status: "success", progressCurrent: 1, progressTotal: total, checkpoint: { phase: "prepared" } });
-    await markJobStatus({ jobId, status: "running", currentStep: "prepared", progressCurrent: 1, progressTotal: total });
-    if (await applyControlCheckpoint({ jobId, workerName })) return;
-  }
-
-  await appendJobLog({ jobId, level: "info", message: "Running guideline seed loader", payload: { resumed: startAt > 0 } });
-  await recordJobStep({ jobId, stepKey: "seed", status: "running", progressCurrent: 1, progressTotal: total, checkpoint: { phase: "seeding" } });
-  await markJobStatus({ jobId, status: "running", currentStep: "seeding", progressCurrent: 1, progressTotal: total });
-  await seedGuidelines(getPool());
-  const afterCount = await countTableRows("guideline.disease_guidelines");
-  await recordJobStep({ jobId, stepKey: "seed", status: "success", progressCurrent: 2, progressTotal: total, checkpoint: { phase: "seeded", row_count: afterCount } });
-  await markJobStatus({
-    jobId,
-    status: "success",
-    currentStep: "completed",
-    progressCurrent: 2,
-    progressTotal: total,
-    controlState: "idle",
-    resultSummary: {
-      job_type: "guideline_seed",
-      row_count_before: beforeCount,
-      row_count_after: afterCount,
-      seeded: afterCount > beforeCount,
-    },
-  });
-}
 
 /** Faithful port of `_run_health_supplements_sync_job`. */
 export async function runHealthSupplementsSyncJob(opts: {
@@ -2966,11 +2911,6 @@ const EMBED_JOBS: Record<string, { module: string; label: string; srcQ: string; 
     embQ: "SELECT (SELECT COUNT(*) FROM food_nutrition.food_embeddings)"
       + " + (SELECT COUNT(*) FROM food_nutrition.ingredient_embeddings)",
   },
-  guideline_embed: {
-    module: "guideline", label: "Clinical Guidelines",
-    srcQ: "SELECT COUNT(*) FROM guideline.disease_guidelines",
-    embQ: "SELECT COUNT(*) FROM guideline.guideline_embeddings",
-  },
   snomed_embed: {
     module: "snomed", label: "SNOMED CT",
     srcQ: "SELECT COUNT(DISTINCT concept_id) FROM snomed.descriptions"
@@ -4072,245 +4012,6 @@ export async function runDrugPipelineJob(opts: {
   });
 }
 
-function guidelineJobOptions(job: Record<string, unknown>): {
-  documentIds: string[];
-  retryFailed: boolean;
-  retryStage: string | null;
-  limit: number | null;
-} {
-  const options = parseJsonb(job.job_options);
-  const rawIds = Array.isArray(options.document_ids) ? options.document_ids : [];
-  const rawLimit = options.limit;
-  const retryStage = String(options.retry_stage ?? "")
-    .trim()
-    .toLowerCase();
-  if (retryStage && !["ocr", "analysis"].includes(retryStage)) {
-    throw new Error("retry_stage must be one of: ocr, analysis");
-  }
-  return {
-    documentIds: rawIds.map((item) => String(item)).filter((item) => item.trim() !== ""),
-    retryFailed: Boolean(options.retry_failed),
-    retryStage: retryStage || null,
-    limit: rawLimit === null || rawLimit === undefined || rawLimit === "" ? null : Number(rawLimit),
-  };
-}
-
-/**
- * The document list a batch job will work through, resumed from its checkpoint.
- * Same pinning rationale as `resumeDrugCandidates`: re-selecting on resume would
- * re-query a DB the job has itself been mutating (pipeline_stage changes as each
- * document completes), so a paused job would come back to a different list and
- * silently skip documents.
- */
-async function resumeGuidelineCandidates(opts: {
-  jobId: string;
-  job: Record<string, unknown>;
-  stepKey: string;
-  select: () => Promise<string[]>;
-}): Promise<{ candidates: string[]; completed: number }> {
-  const checkpoint = await getJobStepCheckpoint(opts.jobId, opts.stepKey);
-  const options = parseJsonb(opts.job.job_options);
-  const pinned = checkpoint.candidate_document_ids ?? options.candidate_document_ids;
-  const candidates = (Array.isArray(pinned) ? pinned : [])
-    .map((item) => String(item))
-    .filter((item) => item.trim() !== "");
-  if (candidates.length > 0) {
-    return { candidates, completed: Math.max(Number(checkpoint.completed ?? 0), 0) };
-  }
-  return { candidates: await opts.select(), completed: 0 };
-}
-
-/** OCR + Analysis LM extraction for queued guideline PDFs, staged for human review — never auto-commits into the live guideline.* tables (see guidelineReview.ts). Structurally identical to runDrugAnalysisJob's chunked-checkpoint shape. */
-export async function runGuidelineAnalysisJob(opts: {
-  workerName: string;
-  job: Record<string, unknown>;
-}): Promise<void> {
-  const { workerName, job } = opts;
-  const jobId = String(job.job_id);
-  const { loadGuidelineAnalysis, selectAnalysisCandidates } = await import(
-    "../loaders/guidelineAnalysis.js"
-  );
-  const { GuidelineAnalysisService, loadGuidelineAnalysisConfig } = await import(
-    "../guidelineAnalysisService.js"
-  );
-  const minio = await import("../minioService.js");
-
-  const { documentIds, retryFailed, retryStage, limit } = guidelineJobOptions(job);
-
-  const service = new GuidelineAnalysisService(await loadGuidelineAnalysisConfig());
-  if (!minio.initialized()) await minio.initialize();
-  const [ready, reason] =
-    retryStage === "analysis" ? service.analysisReadiness() : service.readiness();
-  if (!ready) throw new Error(reason);
-  if (!minio.enabled()) throw new Error(minio.initError() ?? "MinIO not configured");
-
-  const { candidates, completed } = await resumeGuidelineCandidates({
-    jobId,
-    job,
-    stepKey: "analyze_documents",
-    select: () =>
-      selectAnalysisCandidates(getPool(), {
-        documentIds: documentIds.length > 0 ? documentIds : null,
-        limit,
-        retryFailed,
-        retryStage,
-      }),
-  });
-
-  const totalCandidates = candidates.length;
-  const total = totalCandidates + 2;
-
-  await appendJobLog({
-    jobId,
-    level: "info",
-    message: "Starting guideline analysis batch",
-    payload: {
-      candidate_count: totalCandidates,
-      retry_stage: retryStage ?? "",
-      retry_failed: retryFailed,
-    },
-  });
-  await recordJobStep({
-    jobId,
-    stepKey: "select_candidates",
-    status: "success",
-    progressCurrent: 1,
-    progressTotal: 1,
-    checkpoint: {
-      phase: "selected",
-      candidate_document_ids: candidates,
-      candidate_count: totalCandidates,
-      retry_stage: retryStage ?? "",
-    },
-  });
-  await markJobStatus({
-    jobId,
-    status: "running",
-    currentStep: "selected_guideline_analysis_candidates",
-    progressCurrent: 1,
-    progressTotal: total,
-  });
-  if (completed === 0 && (await applyControlCheckpoint({ jobId, workerName }))) return;
-
-  await recordJobStep({
-    jobId,
-    stepKey: "analyze_documents",
-    status: "running",
-    progressCurrent: completed,
-    progressTotal: totalCandidates,
-    checkpoint: {
-      phase: "running",
-      candidate_document_ids: candidates,
-      completed,
-      retry_stage: retryStage ?? "",
-    },
-  });
-
-  for (let index = completed; index < totalCandidates; index += 1) {
-    const documentId = candidates[index];
-    await markJobStatus({
-      jobId,
-      status: "running",
-      currentStep: `analyzing_${documentId}`,
-      progressCurrent: 1 + index,
-      progressTotal: total,
-    });
-
-    await loadGuidelineAnalysis(getPool(), {
-      documentIds: [documentId],
-      retryFailed,
-      retryStage,
-      limit: 1,
-    });
-
-    const newCompleted = index + 1;
-    await recordJobStep({
-      jobId,
-      stepKey: "analyze_documents",
-      status: "running",
-      progressCurrent: newCompleted,
-      progressTotal: totalCandidates,
-      checkpoint: {
-        phase: "running",
-        candidate_document_ids: candidates,
-        completed: newCompleted,
-        retry_stage: retryStage ?? "",
-        last_document_id: documentId,
-      },
-    });
-    await markJobStatus({
-      jobId,
-      status: "running",
-      currentStep: `analyzed_${documentId}`,
-      progressCurrent: 1 + newCompleted,
-      progressTotal: total,
-    });
-
-    const control = await checkpointJobControl({ jobId, workerName });
-    if (control !== null) {
-      const stepStatus = control.action === "pause" ? "paused" : "stopped";
-      await recordJobStep({
-        jobId,
-        stepKey: "analyze_documents",
-        status: stepStatus,
-        progressCurrent: newCompleted,
-        progressTotal: totalCandidates,
-        checkpoint: {
-          phase: stepStatus,
-          candidate_document_ids: candidates,
-          completed: newCompleted,
-          retry_stage: retryStage ?? "",
-          last_document_id: documentId,
-          message: control.message,
-        },
-      });
-      return;
-    }
-  }
-
-  await recordJobStep({
-    jobId,
-    stepKey: "analyze_documents",
-    status: "success",
-    progressCurrent: totalCandidates,
-    progressTotal: totalCandidates,
-    checkpoint: {
-      phase: "completed",
-      candidate_document_ids: candidates,
-      completed: totalCandidates,
-      retry_stage: retryStage ?? "",
-    },
-  });
-
-  await recordJobStep({
-    jobId,
-    stepKey: "finalize",
-    status: "success",
-    progressCurrent: 1,
-    progressTotal: 1,
-    checkpoint: {
-      phase: "completed",
-      candidate_count: totalCandidates,
-      retry_stage: retryStage ?? "",
-    },
-  });
-  await markJobStatus({
-    jobId,
-    status: "success",
-    currentStep: "completed",
-    progressCurrent: total,
-    progressTotal: total,
-    controlState: "idle",
-    resultSummary: {
-      job_type: "guideline_analysis",
-      candidate_count: totalCandidates,
-      document_ids: candidates,
-      retry_failed: retryFailed,
-      retry_stage: retryStage ?? "",
-    },
-  });
-}
-
 // ── Job dispatcher ────────────────────────────────────────────────────────────
 
 /**
@@ -4368,10 +4069,6 @@ export async function executeAdminJob(opts: {
     if (jobType === "system_backup") {
       const { runSystemBackupJob } = await import("./adminBackup.js");
       await runSystemBackupJob({ workerName, job });
-      return;
-    }
-    if (jobType === "guideline_seed") {
-      await runGuidelineSeedJob({ workerName, job });
       return;
     }
     if (jobType === "health_supplements_sync") {
@@ -4432,10 +4129,6 @@ export async function executeAdminJob(opts: {
       if (finalJob && finalJob.status === "success") {
         await maybeAutoChain({ completedJobType: jobType, parentJobId: jobId, workerName });
       }
-      return;
-    }
-    if (jobType === "guideline_analysis") {
-      await runGuidelineAnalysisJob({ workerName, job });
       return;
     }
 

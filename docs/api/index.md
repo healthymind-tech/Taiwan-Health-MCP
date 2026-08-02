@@ -72,7 +72,6 @@ Embeddings 計數，並執行或排程對應的 `*_embed` 工作。
 | `SupplementsService` | `supplementsService.ts` | `health_supplements.*` |
 | `FoodService` | `foodService.ts` | `food_nutrition.*` |
 | `LabService` | `labService.ts` | `loinc.*` |
-| `GuidelineService` | `guidelineService.ts` | `guideline.*` |
 | `FhirConditionService` | `fhirConditionService.ts` | 讀取 `icd.*` |
 | `FhirMedicationService` | `fhirMedicationService.ts` | 讀取 drug 服務 |
 | `FhirIgService` | `fhirIgService.ts` | `fhir.*`（多 IG） |

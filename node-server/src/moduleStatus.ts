@@ -8,7 +8,6 @@ export interface ModuleStatus {
   fhir_condition: boolean;
   fhir_medication: boolean;
   lab: boolean;
-  guideline: boolean;
   ig: boolean;
   snomed: boolean;
 }
@@ -31,11 +30,6 @@ const REQUIREMENTS: Array<{
     minimum: 10,
   },
   { key: "lab", table: "loinc.concepts", minimum: 1_000 },
-  {
-    key: "guideline",
-    table: "guideline.disease_guidelines",
-    minimum: 1,
-  },
   { key: "ig", table: "fhir.ig_packages", minimum: 1 },
   { key: "snomed", table: "snomed.concepts", minimum: 100_000 },
 ];
@@ -48,7 +42,6 @@ const EMPTY_STATUS: ModuleStatus = {
   fhir_condition: false,
   fhir_medication: false,
   lab: false,
-  guideline: false,
   ig: false,
   snomed: false,
 };

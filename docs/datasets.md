@@ -25,7 +25,6 @@ PostgreSQL schema, and which AI capabilities (embedding / OCR / LLM) are require
 | SNOMED CT | File (ZIP) | RF2 ZIP from SNOMED International | ✅ | — | — |
 | RxNorm | File (ZIP) | RxNorm full ZIP from NLM | — | — | — |
 | TWCore IG | File (tgz) | package.tgz from MOHW / live fetch | — | — | — |
-| Clinical Guidelines | Seed data | Nothing — bundled in repo | ✅ | — | ⚠️ future |
 | Taiwan FDA Drug | CSV upload + crawl | One or more `36_2.csv` from FDA Open Data | ⚠️ future | ✅ | ✅ |
 | Taiwan FDA Health Supplements | API auto-sync | Nothing — auto from FDA API | ✅ | — | — |
 | Taiwan FDA Food Nutrition | API auto-sync | Nothing — auto from FDA API | ✅ | — | — |
@@ -349,71 +348,6 @@ twcore.concepts    (id SERIAL PK, cs_id TEXT FK, code TEXT, display TEXT, defini
 ### AI requirements
 
 None. Used for FHIR code validation; no embedding needed.
-
----
-
-## 6. Clinical Guidelines
-
-### Source type
-Seed data — hard-coded in `loader/loaders/guideline_seed.py`. No user file needed.
-
-### What the user must supply
-
-Nothing. The seed data is bundled. To add new guidelines, edit `guideline_seed.py` directly.
-
-> **Planned future extension**: accept user-uploaded PDF or structured JSON files representing clinical guidelines, trigger LLM summarization to populate `guideline_summary`.
-
-### Input data structure (seed format)
-
-Each guideline is a Python dict in the seed file:
-```python
-{
-  "icd_code": "E11",
-  "disease_name_zh": "第二型糖尿病",
-  "disease_name_en": "Type 2 Diabetes Mellitus",
-  "guideline_title": "台灣糖尿病診治指引 2023",
-  "guideline_source": "中華民國糖尿病學會",
-  "publication_year": 2023,
-  "guideline_summary": "...",
-  "diagnostic_recommendations": [
-    {"step_order": 1, "recommendation_type": "lab", "description": "...", "evidence_level": "A"}
-  ],
-  "medication_recommendations": [...],
-  "test_recommendations": [...],
-  "treatment_goals": [...]
-}
-```
-
-### Processing pipeline
-
-```
-[seed dict in code] → insert/upsert into guideline.* tables
-                    → update admin.module_load_log
-```
-
-Admin job type: `guideline_seed`
-
-### Final DB schema
-
-```sql
-guideline.disease_guidelines (
-  id SERIAL PK, icd_code TEXT, disease_name_zh TEXT, disease_name_en TEXT,
-  guideline_title TEXT, guideline_source TEXT, publication_year INT, guideline_summary TEXT
-)
-guideline.diagnostic_recommendations  (id SERIAL PK, guideline_id INT FK, step_order INT, recommendation_type TEXT, description TEXT, evidence_level TEXT)
-guideline.medication_recommendations  (id SERIAL PK, guideline_id INT FK, line_of_therapy TEXT, medication_class TEXT, medication_examples TEXT, dosage_guidance TEXT, contraindications TEXT, evidence_level TEXT)
-guideline.test_recommendations        (id SERIAL PK, guideline_id INT FK, test_category TEXT, test_name TEXT, loinc_code TEXT, frequency TEXT, indication TEXT, evidence_level TEXT)
-guideline.treatment_goals             (id SERIAL PK, guideline_id INT FK, goal_type TEXT, target_parameter TEXT, target_value TEXT, timeframe TEXT)
-
-guideline.guideline_embeddings (id INT PK, embedding halfvec(1024), embedded_at TIMESTAMPTZ)
-```
-
-### AI requirements
-
-| Capability | Used for | Input text |
-|---|---|---|
-| Embedding (Ollama) | Semantic search for guideline lookup | `disease_name_zh || ' ' || disease_name_en || ' ' || guideline_title || ' ' || guideline_summary` |
-| LLM (future) | Auto-summarize PDF guidelines into `guideline_summary` | Full guideline PDF text |
 
 ---
 
@@ -939,4 +873,4 @@ Every module import is tracked as an `admin.import_jobs` row with:
 - `checkpoint_json` (per step): resumable state across worker restarts
 - `result_summary_json`: final counts and outcome
 
-Worker: `admin-worker` container (`src/admin_worker.py`) — single-threaded, claims jobs from `admin.import_jobs` by setting `status='claimed'`.
+Worker: `admin-worker` container (`node-server/src/admin/adminWorker.ts`) — claims jobs from `admin.import_jobs` by setting `status='claimed'`.

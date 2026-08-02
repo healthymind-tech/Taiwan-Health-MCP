@@ -14,7 +14,6 @@ export const PREVIEW_SUPPORTED_MODULES = new Set([
   "loinc",
   "snomed",
   "ig",
-  "guideline",
   "drug",
   "health_supplements",
   "food_nutrition",

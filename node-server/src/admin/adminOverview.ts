@@ -130,12 +130,6 @@ async function dataServiceHealth(key: string, ollamaOk: boolean): Promise<Health
       }
       return checkEmbeddingHealth(ollamaOk, "SELECT COUNT(*) AS c FROM health_supplements.item_embeddings");
     }
-    case "guideline": {
-      if ((await scalarCount("SELECT COUNT(*) AS c FROM guideline.disease_guidelines")) < 1) {
-        return UNAVAILABLE("Guideline data not loaded");
-      }
-      return checkEmbeddingHealth(ollamaOk, "SELECT COUNT(*) AS c FROM guideline.guideline_embeddings");
-    }
     case "drug": {
       const licenseCount = await scalarCount("SELECT COUNT(*) AS c FROM drug.licenses WHERE is_listed");
       if (licenseCount < 1) return UNAVAILABLE("Drug index not loaded");
@@ -171,7 +165,6 @@ const SERVICE_MODULES: Array<{ key: string; table: string; minimum: number }> = 
   { key: "health_supplements", table: "health_supplements.items", minimum: 10 },
   { key: "food_nutrition", table: "food_nutrition.measurements", minimum: 10 },
   { key: "lab", table: "loinc.concepts", minimum: 1_000 },
-  { key: "guideline", table: "guideline.disease_guidelines", minimum: 1 },
   { key: "ig", table: "fhir.ig_packages", minimum: 1 },
   { key: "snomed", table: "snomed.concepts", minimum: 100_000 },
 ];
@@ -183,7 +176,6 @@ const DATA_SERVICE_KEYS = new Set([
   "health_supplements",
   "food_nutrition",
   "lab",
-  "guideline",
   "snomed",
 ]);
 

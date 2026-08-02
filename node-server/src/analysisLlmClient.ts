@@ -1,11 +1,10 @@
 /**
  * Shared "Analysis LM" chat-completion client: failover across `admin.llm_profiles`
  * (`kind='analysis'`), per-profile output-budget escalation, and the OpenAI/vLLM
- * parameter-adaptation retries. Extracted from `drugAnalysisService.ts` so the
- * Clinical Guideline analysis pipeline (`guidelineAnalysisService.ts`) can reuse the
- * exact same profile-selection/circuit-breaker/budget machinery instead of forking
- * it — the logic is document-format-agnostic, only the prompt/template differ per
- * caller.
+ * parameter-adaptation retries. Extracted from `drugAnalysisService.ts` so other
+ * document-analysis pipelines can reuse the exact same
+ * profile-selection/circuit-breaker/budget machinery instead of forking it — the
+ * logic is document-format-agnostic, only the prompt/template differ per caller.
  */
 
 import { reportFailure, reportSuccess, type LlmProfile } from "./admin/llmProfiles.js";

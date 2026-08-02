@@ -64,11 +64,11 @@ Available gstack skills:
 > prompt, read at runtime by `drugAnalysisService.ts`. Do not delete it.
 
 Taiwan Health MCP Server — a Model Context Protocol server (Node MCP SDK,
-`@modelcontextprotocol/sdk`) exposing **51 tools** across 12 tool groups for Taiwan
+`@modelcontextprotocol/sdk`) exposing **49 tools** across 11 tool groups for Taiwan
 medical and health data. Designed for production SaaS deployment with hundreds of
 requests/second throughput.
 
-**Modules**: ICD-10-CM/PCS 2025, LOINC 2.80, SNOMED CT International, Taiwan FDA (TFDA) drugs, Taiwan FDA health supplements, Taiwan FDA food nutrition, Taiwan clinical guidelines, FHIR R4 IG authoring (multi-IG, default TWCore v1.0.0), FHIR Condition/Medication generation, and an external FHIR server registry. RxNorm is loaded as concept-only reference terminology (used for IG ValueSet expansion, not a standalone drug tool).
+**Modules**: ICD-10-CM/PCS 2025, LOINC 2.80, SNOMED CT International, Taiwan FDA (TFDA) drugs, Taiwan FDA health supplements, Taiwan FDA food nutrition, FHIR R4 IG authoring (multi-IG, default TWCore v1.0.0), FHIR Condition/Medication generation, and an external FHIR server registry. RxNorm is loaded as concept-only reference terminology (used for IG ValueSet expansion, not a standalone drug tool).
 
 Three surfaces ship in one codebase:
 - **MCP server** (`node-server/src/server.ts` + `mcp.ts`) — the tool surface consumed by LLM clients (also exposes the admin REST API, `/admin/ws`, `/status.json`, `/mcp`, `/openapi.json`, `POST /tools/<name>`).
@@ -149,7 +149,6 @@ HTTP surface exposed by `app`:
 | Supplements Service | `supplementsService.ts` | `health_supplements.items` | `health_supplements_import` (TFDA Open Data) |
 | Food Service | `foodService.ts` | `food_nutrition.*` | `food_nutrition_import` (TFDA Open Data) |
 | Lab Service | `labService.ts` | `loinc.*` | `loinc_import` |
-| Guideline Service | `guidelineService.ts` | `guideline.*` | `guideline_import` (seeded) |
 | FHIR Condition Service | `fhirConditionService.ts` | reads `icd.*` | — (derives from ICD) |
 | FHIR Medication Service | `fhirMedicationService.ts` | reads drug service | — (derives from Drug) |
 | FHIR IG Service | `fhirIgService.ts` | `fhir.*` (multi-IG, package-scoped) | `ig_import` + admin IG gallery |
@@ -166,7 +165,6 @@ Periodic re-imports are **not** scheduled inside the services. Scheduling is cen
 | ICD-10 | `search_medical_codes`, `infer_complications`, `get_nearby_codes`, `check_medical_conflict`, `browse_icd_category` |
 | Drug / TFDA | `search_drug`, `identify_unknown_pill`, `get_drug_details`, `get_drug_asset_links` |
 | Lab / LOINC | `search_loinc`, `query_loinc`, `interpret_lab_result`, `batch_interpret_lab_results` |
-| Guidelines | `search_clinical_guideline`, `query_guideline` |
 | SNOMED CT | `search_snomed_concept`, `query_snomed_concept`, `get_snomed_relationships`, `query_snomed_mapping` |
 | FHIR R4 (Condition) | `query_fhir_condition`, `validate_fhir_condition` |
 | FHIR R4 (Medication) | `query_fhir_medication`, `validate_fhir_medication` |
@@ -182,7 +180,7 @@ Module-gated groups are dynamically added/removed by `moduleStatus.ts` (`SERVICE
 
 ### Data loaders
 `node-server/src/loaders/` — one module per dataset, invoked by the admin worker.
-- File-based imports (ICD / LOINC / SNOMED / RxNorm / FHIR IG) consume source files **uploaded via the admin console**, staged through MinIO; API-based imports (drug / health-supplements / food-nutrition) fetch from upstream APIs; guidelines are seeded from the repo.
+- File-based imports (ICD / LOINC / SNOMED / RxNorm / FHIR IG) consume source files **uploaded via the admin console**, staged through MinIO; API-based imports (drug / health-supplements / food-nutrition) fetch from upstream APIs.
 - For local development the source-file locations fall back to `fhir-code/` and can each be overridden by env (`FHIR_CODE_DIR`, `ICD_CM_ZIP`, `LOINC_ZIP_PATH`, `SNOMED_ZIP`, `RXNORM_ZIP`, `IG_TGZ`, …). `fhir-code/` is **not in git** — see `docs/data-sources/test-data.md`. `config/datasets.yaml` is a Python-era leftover and is read by **no code**.
 - Drug pipeline: `drugIndex.ts` (the TFDA `36_2.csv` license index) → `drugEnrichment.ts` (TFDA crawl → MinIO) → `drugAnalysis.ts` (insert PDF → MinerU OCR → Analysis LM). Shared: `tfdaCrawler.ts`, `tfdaParserUtils.ts`, `drugRecordBuilder.ts`.
 - Embedding stage (`embeddings.ts`) backfills `*_embeddings` vector tables as separate `*_embed` jobs.
@@ -205,7 +203,7 @@ Module-gated groups are dynamically added/removed by `moduleStatus.ts` (`SERVICE
 - **`db.ts`** — `pg` pool singleton; unnamed prepared statements to stay pgBouncer-transaction-mode safe.
 
 ### PostgreSQL schemas
-`audit` | `admin` | `icd` | `drug` | `health_supplements` | `food_nutrition` | `loinc` | `guideline` | `fhir` (multi-IG: `ig_packages` / `codesystems` / `concepts` / `artifacts`, package-scoped) | `snomed` | `rxnorm`
+`audit` | `admin` | `icd` | `drug` | `health_supplements` | `food_nutrition` | `loinc` | `fhir` (multi-IG: `ig_packages` / `codesystems` / `concepts` / `artifacts`, package-scoped) | `snomed` | `rxnorm`
 
 Full schema: `db/schema.sql` (auto-applied by PostgreSQL container on first init). Incremental changes live in `db/migrations/`.
 

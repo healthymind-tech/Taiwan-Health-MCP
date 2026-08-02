@@ -35,11 +35,11 @@ it does not publish port 8000 to the host.
 | Path | Contents |
 |------|----------|
 | `src/server.ts` | HTTP surface + process initialization (pool, Redis, MinIO, services, metrics) |
-| `src/mcp.ts` | MCP tool registration — all 51 tools, grouped; groups are added/removed dynamically by `moduleStatus.ts` |
-| `src/*Service.ts` | Domain services (ICD, drug, lab, guideline, SNOMED, FHIR Condition/Medication/IG, FHIR servers, embeddings) |
+| `src/mcp.ts` | MCP tool registration — all 49 tools, grouped; groups are added/removed dynamically by `moduleStatus.ts` |
+| `src/*Service.ts` | Domain services (ICD, drug, lab, SNOMED, FHIR Condition/Medication/IG, FHIR servers, embeddings) |
 | `src/fhir*.ts` | In-process FHIR R4 machinery: snapshot generation, terminology, validation, reference resolution, authoring |
 | `src/admin/` | Admin console backend: routing (`adminApp.ts`), jobs (`adminJobs.ts`), worker (`adminWorker.ts`), settings, sources, schedules, IG import, FHIR servers, WebAuthn |
-| `src/loaders/` | Dataset loaders: `icd.ts`, `loinc.ts`, `snomed.ts`, `rxnorm.ts`, `ig.ts`, `healthSupplements.ts`, `foodNutrition.ts`, `guideline.ts`, `embeddings.ts`, and the drug pipeline (`drugIndex.ts`, `drugEnrichment.ts`, `drugAnalysis.ts`, `tfdaCrawler.ts`, `drugRecordBuilder.ts`) |
+| `src/loaders/` | Dataset loaders: `icd.ts`, `loinc.ts`, `snomed.ts`, `rxnorm.ts`, `ig.ts`, `healthSupplements.ts`, `foodNutrition.ts`, `embeddings.ts`, and the drug pipeline (`drugIndex.ts`, `drugEnrichment.ts`, `drugAnalysis.ts`, `tfdaCrawler.ts`, `drugRecordBuilder.ts`) |
 | `src/{db,cache,config,logger,metrics,moduleStatus,minioService}.ts` | Cross-cutting infrastructure |
 
 ## Things that must not change

@@ -3,7 +3,7 @@
 ## Project Structure & Module Organization
 `node-server/` contains the **entire backend** (Node.js / TypeScript): the MCP server
 (`src/server.ts`, `src/mcp.ts`), the service layer (`src/*Service.ts` — ICD, drug, lab,
-guideline, FHIR, SNOMED, …), the admin console backend (`src/admin/*.ts`), and every
+FHIR, SNOMED, …), the admin console backend (`src/admin/*.ts`), and every
 dataset loader (`src/loaders/*.ts` — ICD, LOINC, SNOMED, RxNorm, FHIR IG, Taiwan FDA
 drug/supplements/food, embeddings). `web/` is the Next.js front-end (public pages in
 `app/`, the admin SPA in `admin-app/`, verbatim legacy HTML in `legacy/`). `db/` holds
