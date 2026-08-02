@@ -461,8 +461,20 @@ function Overview({ detail }: { detail: DrugDetailPayload }): JSX.Element {
       </dl>
     </section>
     <TextSection title="Active ingredients" items={ingredients} />
+    <TextSection title="Other ingredients" items={listValue(normalized, "ingredients.inactive")} />
+    <TextSection title="Purpose" items={listValue(normalized, "usage.purpose")} />
     <TextSection title="Indications" items={indications.length ? indications : [String(drug.indications_text || "")].filter(Boolean)} />
     <TextSection title="Dosage and administration" items={dosage} />
+    <TextSection title="Side effects" items={listValue(normalized, "safety.side_effects_stop_use")} />
+    <TextSection title="Symptoms — stop use and seek care" items={listValue(normalized, "safety.symptoms_stop_use_and_seek_care")} />
+    <TextSection title="Contraindications" items={listValue(normalized, "safety.contraindications")} />
+    <TextSection title="Warnings" items={listValue(normalized, "safety.warnings")} />
+    <TextSection title="Precautions" items={listValue(normalized, "safety.precautions")} />
+    <TextSection title="Consult before use" items={[
+      ...listValue(normalized, "safety.consult_doctor_before_use"),
+      ...listValue(normalized, "safety.consult_professional_before_use"),
+    ]} />
+    <TextSection title="Storage" items={listValue(normalized, "storage")} />
   </div>;
 }
 
