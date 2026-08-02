@@ -14,6 +14,12 @@ import type { JobLog, JobLogLineEventFull } from "../../lib/types";
 const MAX_LINES = 1500;
 const LEVELS = ["info", "warn", "error", "debug"] as const;
 
+// Backend writes the full word "warning"; chips use the short form "warn".
+const normLevel = (lvl: string | null | undefined): string => {
+  const l = (lvl || "info").toLowerCase();
+  return l === "warning" ? "warn" : l;
+};
+
 interface Line {
   key: string;
   level: string;
@@ -48,7 +54,7 @@ export function JobLogViewer({ jobId }: { jobId: string }): JSX.Element {
         setLines(
           res.logs.map((l) => ({
             key: `h${l.job_log_id}`,
-            level: l.level,
+            level: normLevel(l.level),
             message: l.message,
             ts: l.created_at,
           })),
@@ -75,7 +81,7 @@ export function JobLogViewer({ jobId }: { jobId: string }): JSX.Element {
       setLines((prev) => {
         const next = [
           ...prev,
-          { key: `l${seq++}`, level: data.level, message: data.message, ts: data.timestamp },
+          { key: `l${seq++}`, level: normLevel(data.level), message: data.message, ts: data.timestamp },
         ];
         return next.length > MAX_LINES ? next.slice(next.length - MAX_LINES) : next;
       });
