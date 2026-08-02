@@ -725,7 +725,6 @@ function LlmCallModal({ callId, onClose }: { callId: number; onClose: () => void
     queryKey: ["drug-llm-call", callId],
     queryFn: () => api.get<LlmCallDetail>(`/admin/api/drug/llm-call?id=${callId}`),
   });
-  const [tab, setTab] = useState<"system" | "user" | "response">("response");
   if (detailQ.isPending) return <Modal title="LLM call" onClose={onClose} workspace panelClassName="drug-asset-viewer-modal"><div className="drug-detail-loading">Loading LLM call...</div></Modal>;
   if (detailQ.isError || !detailQ.data) {
     return <Modal title="LLM call" onClose={onClose} workspace panelClassName="drug-asset-viewer-modal"><div className="error-box">Failed to load LLM call: {String(detailQ.error)}</div></Modal>;
@@ -739,11 +738,6 @@ function LlmCallModal({ callId, onClose }: { callId: number; onClose: () => void
   return <Modal title={`LLM call · ${call.profileName || call.model || "analysis"} · attempt ${call.attempt}`} onClose={onClose} workspace panelClassName="drug-asset-viewer-modal">
     <div className="drug-asset-modal">
       <div className="drug-asset-modal__toolbar">
-        <div className="segmented" role="tablist" aria-label="LLM call parts">
-          <button type="button" role="tab" aria-selected={tab === "system"} className={tab === "system" ? "is-active" : ""} onClick={() => setTab("system")}>System prompt</button>
-          <button type="button" role="tab" aria-selected={tab === "user"} className={tab === "user" ? "is-active" : ""} onClick={() => setTab("user")}>User prompt</button>
-          <button type="button" role="tab" aria-selected={tab === "response"} className={tab === "response" ? "is-active" : ""} onClick={() => setTab("response")}>Response{isJson ? " (JSON)" : ""}</button>
-        </div>
         <div className="drug-llm-modal__facts">
           <StatusBadge status={call.status} />
           <span>{call.model || call.profileName}</span>
@@ -753,9 +747,25 @@ function LlmCallModal({ callId, onClose }: { callId: number; onClose: () => void
       </div>
       {call.error ? <div className="drug-llm-modal__error">{call.error}</div> : null}
       <div className="drug-asset-modal__preview">
-        {tab === "system" ? <LlmContentPane content={system} isJson={false} /> : null}
-        {tab === "user" ? <LlmContentPane content={user} isJson={false} /> : null}
-        {tab === "response" ? <LlmContentPane content={call.responseContent} isJson={isJson} /> : null}
+        <div className="drug-paired-preview">
+          <section>
+            <header>Prompt</header>
+            <div className="drug-llm-pane">
+              <div className="drug-llm-message">
+                <span className="drug-llm-msg-label">System</span>
+                <pre className="drug-llm-msg-body">{system || "—"}</pre>
+              </div>
+              <div className="drug-llm-message">
+                <span className="drug-llm-msg-label">User</span>
+                <pre className="drug-llm-msg-body">{user || "—"}</pre>
+              </div>
+            </div>
+          </section>
+          <section>
+            <header>Response{isJson ? " (JSON)" : ""}</header>
+            <LlmContentPane content={call.responseContent} isJson={isJson} />
+          </section>
+        </div>
       </div>
     </div>
   </Modal>;
