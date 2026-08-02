@@ -523,7 +523,6 @@ function inferPreviewKind(asset: Pick<AssetRow, "asset_type" | "source_filename"
 function documentViewer(document: DocumentRow, initialAssetId = document.source_asset_id): AssetViewerState {
   const tabs: AssetPreviewTab[] = [{ assetId: document.source_asset_id, kind: "pdf", label: "Source PDF" }];
   if (document.ocr_asset_id) tabs.push({ assetId: document.ocr_asset_id, kind: "markdown", label: "OCR Markdown" });
-  if (document.analysis_asset_id) tabs.push({ assetId: document.analysis_asset_id, kind: "json", label: "Analysis JSON" });
   return { title: document.source_filename || document.normalized_filename || "Drug document", tabs, initialAssetId };
 }
 
@@ -547,11 +546,9 @@ function Documents({ documents, assets }: { documents: DocumentRow[]; assets: As
         <div className="drug-file-row__badges">
           <span className="badge">PDF</span>
           {document.ocr_asset_id ? <span className="badge badge--ok">OCR</span> : null}
-          {document.analysis_asset_id ? <span className="badge badge--ok">JSON</span> : null}
         </div>
         <div className="drug-file-row__actions">
           {document.ocr_asset_id ? <button type="button" className="btn btn--sm" onClick={() => setViewer(documentViewer(document, document.ocr_asset_id))}>OCR</button> : null}
-          {document.analysis_asset_id ? <button type="button" className="btn btn--sm" onClick={() => setViewer(documentViewer(document, document.analysis_asset_id))}>JSON</button> : null}
           <button type="button" className="icon-btn" onClick={() => setViewer(documentViewer(document))} aria-label="Preview document" title="Preview document"><Eye size={17} /></button>
         </div>
       </article>)}</div> : <div className="drug-empty-inline"><FileText size={22} /><span>No PDF documents were collected.</span></div>}
@@ -720,10 +717,7 @@ function LlmContentPane({ content, isJson }: { content: string; isJson: boolean 
   const pretty = isJson ? (() => {
     try { return JSON.stringify(JSON.parse(content), null, 2); } catch { return content; }
   })() : content;
-  return <div className="drug-llm-content">
-    {isJson ? <span className="badge badge--ok drug-llm-content__badge">JSON output</span> : null}
-    <pre className="drug-text-preview">{pretty}</pre>
-  </div>;
+  return <pre className="drug-text-preview">{pretty}</pre>;
 }
 
 function LlmCallModal({ callId, onClose }: { callId: number; onClose: () => void }): JSX.Element {
@@ -732,9 +726,9 @@ function LlmCallModal({ callId, onClose }: { callId: number; onClose: () => void
     queryFn: () => api.get<LlmCallDetail>(`/admin/api/drug/llm-call?id=${callId}`),
   });
   const [tab, setTab] = useState<"system" | "user" | "response">("response");
-  if (detailQ.isPending) return <Modal title="LLM call" onClose={onClose} workspace panelClassName="drug-llm-modal"><div className="drug-detail-loading">Loading LLM call...</div></Modal>;
+  if (detailQ.isPending) return <Modal title="LLM call" onClose={onClose} workspace panelClassName="drug-asset-viewer-modal"><div className="drug-detail-loading">Loading LLM call...</div></Modal>;
   if (detailQ.isError || !detailQ.data) {
-    return <Modal title="LLM call" onClose={onClose} workspace panelClassName="drug-llm-modal"><div className="error-box">Failed to load LLM call: {String(detailQ.error)}</div></Modal>;
+    return <Modal title="LLM call" onClose={onClose} workspace panelClassName="drug-asset-viewer-modal"><div className="error-box">Failed to load LLM call: {String(detailQ.error)}</div></Modal>;
   }
   const call = detailQ.data;
   const system = call.promptMessages.find((message) => message.role === "system")?.content ?? "";
@@ -742,25 +736,27 @@ function LlmCallModal({ callId, onClose }: { callId: number; onClose: () => void
   const isJson = (() => {
     try { JSON.parse(call.responseContent); return true; } catch { return false; }
   })();
-  return <Modal title={`LLM call · ${call.profileName || call.model || "analysis"} · attempt ${call.attempt}`} onClose={onClose} workspace panelClassName="drug-llm-modal">
-    <div className="drug-llm-modal__head">
-      <div className="drug-llm-modal__facts">
-        <StatusBadge status={call.status} />
-        <span>{new Date(call.createdAt ?? "").toLocaleString()}</span>
-        <span>{call.model || call.profileName}</span>
-        <span>{formatCallTokens(call)}</span>
+  return <Modal title={`LLM call · ${call.profileName || call.model || "analysis"} · attempt ${call.attempt}`} onClose={onClose} workspace panelClassName="drug-asset-viewer-modal">
+    <div className="drug-asset-modal">
+      <div className="drug-asset-modal__toolbar">
+        <div className="segmented" role="tablist" aria-label="LLM call parts">
+          <button type="button" role="tab" aria-selected={tab === "system"} className={tab === "system" ? "is-active" : ""} onClick={() => setTab("system")}>System prompt</button>
+          <button type="button" role="tab" aria-selected={tab === "user"} className={tab === "user" ? "is-active" : ""} onClick={() => setTab("user")}>User prompt</button>
+          <button type="button" role="tab" aria-selected={tab === "response"} className={tab === "response" ? "is-active" : ""} onClick={() => setTab("response")}>Response{isJson ? " (JSON)" : ""}</button>
+        </div>
+        <div className="drug-llm-modal__facts">
+          <StatusBadge status={call.status} />
+          <span>{call.model || call.profileName}</span>
+          <span>{formatCallTokens(call)}</span>
+          <span>{new Date(call.createdAt ?? "").toLocaleString()}</span>
+        </div>
       </div>
-      {call.error ? <p className="drug-llm-modal__error">{call.error}</p> : null}
-    </div>
-    <div className="segmented" role="tablist" aria-label="LLM call parts">
-      <button type="button" role="tab" aria-selected={tab === "system"} className={tab === "system" ? "is-active" : ""} onClick={() => setTab("system")}>System prompt</button>
-      <button type="button" role="tab" aria-selected={tab === "user"} className={tab === "user" ? "is-active" : ""} onClick={() => setTab("user")}>User prompt</button>
-      <button type="button" role="tab" aria-selected={tab === "response"} className={tab === "response" ? "is-active" : ""} onClick={() => setTab("response")}>Response{isJson ? " (JSON)" : ""}</button>
-    </div>
-    <div className="drug-llm-modal__body">
-      {tab === "system" ? <LlmContentPane content={system} isJson={false} /> : null}
-      {tab === "user" ? <LlmContentPane content={user} isJson={false} /> : null}
-      {tab === "response" ? <LlmContentPane content={call.responseContent} isJson={isJson} /> : null}
+      {call.error ? <div className="drug-llm-modal__error">{call.error}</div> : null}
+      <div className="drug-asset-modal__preview">
+        {tab === "system" ? <LlmContentPane content={system} isJson={false} /> : null}
+        {tab === "user" ? <LlmContentPane content={user} isJson={false} /> : null}
+        {tab === "response" ? <LlmContentPane content={call.responseContent} isJson={isJson} /> : null}
+      </div>
     </div>
   </Modal>;
 }

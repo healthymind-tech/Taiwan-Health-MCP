@@ -3209,11 +3209,5 @@ input[type="range"] { min-height: 30px; accent-color: var(--brand); }
 .drug-llm-row__meta strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
 .drug-llm-row__meta small { color: var(--muted); font-size: 11px; }
 .drug-llm-row__tokens { color: var(--muted); font-size: 12px; white-space: nowrap; }
-.drug-llm-modal { height: 100%; min-height: 0; display: flex; flex-direction: column; }
-.drug-llm-modal__head { padding: 12px 16px; border-bottom: 1px solid var(--line); }
-.drug-llm-modal__facts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; font-size: 12px; color: var(--muted); }
-.drug-llm-modal__error { margin: 8px 0 0; padding: 8px 10px; border-left: 3px solid var(--bad-fg); background: var(--bad-bg); color: var(--bad-fg); font-size: 12px; overflow-wrap: anywhere; }
-.drug-llm-modal__body { min-height: 0; flex: 1; overflow: hidden; }
-.drug-llm-content { height: 100%; min-height: 0; position: relative; display: flex; flex-direction: column; }
-.drug-llm-content .drug-text-preview { height: auto; min-height: 0; flex: 1; }
-.drug-llm-content__badge { position: absolute; top: 10px; right: 10px; z-index: 1; }
+.drug-llm-modal__facts { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 4px 12px; font-size: 12px; color: var(--muted); }
+.drug-llm-modal__error { margin: 0 12px; padding: 8px 10px; border-left: 3px solid var(--bad-fg); background: var(--bad-bg); color: var(--bad-fg); font-size: 12px; overflow-wrap: anywhere; }
