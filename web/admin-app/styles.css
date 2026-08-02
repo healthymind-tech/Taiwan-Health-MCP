@@ -30,8 +30,8 @@
   --code-fg: #e2e8f0;
   --knob: #ffffff;          /* toggle-switch knob — light in both themes */
   --app-bg:
-    radial-gradient(circle at top right, rgba(0, 102, 204, 0.08), transparent 28%),
-    linear-gradient(180deg, #f9fbfe 0%, #ffffff 22%);
+    radial-gradient(circle at top right, rgba(0, 102, 204, 0.10), transparent 40%),
+    linear-gradient(180deg, #f6f9fe 0%, #edf3fa 100%);
   color-scheme: light;
 }
 
@@ -426,8 +426,8 @@
   --code-fg: #d4dae8;
   --knob: #e6e9ef;
   --app-bg:
-    radial-gradient(circle at top right, rgba(77, 159, 255, 0.10), transparent 30%),
-    linear-gradient(180deg, #0d1117 0%, #0b0e14 60%);
+    radial-gradient(circle at top right, rgba(77, 159, 255, 0.14), transparent 40%),
+    linear-gradient(180deg, #0d1117 0%, #10151e 100%);
   color-scheme: dark;
 }
 
@@ -437,6 +437,10 @@ body {
   font-family: system-ui, -apple-system, sans-serif;
   color: var(--text);
   background: var(--app-bg);
+  /* Keep the gradient relative to the viewport, not the (much taller) document:
+     otherwise only the top slice of the page shows it and everything below the
+     gradient's first stop renders as a flat band. */
+  background-attachment: fixed;
   line-height: 1.6;
 }
 
@@ -785,6 +789,7 @@ body {
 .log-viewer { background: var(--code-bg); color: var(--code-fg); border-radius: 8px; padding: 12px; height: 320px; overflow-y: auto; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px; line-height: 1.5; }
 .log-line { display: flex; gap: 8px; white-space: pre-wrap; word-break: break-word; }
 .log-line__lvl { flex-shrink: 0; width: 48px; color: #6b7a99; text-transform: uppercase; font-size: 11px; }
+.log-line__ts { flex-shrink: 0; color: #6b7a99; font-size: 11px; }
 .log-line--error .log-line__msg, .log-line--critical .log-line__msg { color: #ff9a9a; }
 .log-line--warning .log-line__msg, .log-line--warn .log-line__msg { color: #ffd479; }
 
@@ -854,6 +859,17 @@ input[type="range"] { min-height: 30px; accent-color: var(--brand); }
 .switch input { width: 0; height: 0; }
 .settings-form-action { display: flex; align-items: flex-end; justify-content: flex-end; }
 .settings-form-action .btn { min-height: 38px; }
+.table-actions { display: inline-flex; align-items: center; justify-content: flex-end; gap: 6px; }
+.profile-stats-row td { padding-block: 6px; }
+.profile-stats { display: flex; flex-wrap: wrap; gap: 10px 28px; }
+.profile-stats__window { display: flex; align-items: center; gap: 14px; }
+.profile-stats__title {
+  font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--muted); white-space: nowrap;
+}
+.stat { display: inline-flex; flex-direction: column; align-items: baseline; line-height: 1.15; }
+.stat__value { font-size: 14px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.stat__label { font-size: 11px; color: var(--muted); white-space: nowrap; }
 .field-error { color: var(--bad-fg); }
 
 .backup-options { display: flex; flex-direction: column; margin-top: 10px; border-top: 1px solid var(--line-soft); }

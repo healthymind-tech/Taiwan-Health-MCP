@@ -25,6 +25,12 @@ export interface DrugPipelineOptions {
   licenseIds?: string[] | null;
   includeCancelled?: boolean;
   retryFailed?: boolean;
+  /** Fired when a license's Analysis LM output fails validation and is re-prompted. */
+  onRetry?: (info: {
+    licenseId: string;
+    attempt: number;
+    error: string;
+  }) => Promise<void> | void;
 }
 
 /**
@@ -78,6 +84,7 @@ export async function runOneLicensePipeline(
     includeCancelled: boolean;
     retryFailed: boolean;
     tfdaValues: DrugEnrichmentOptions["tfdaValues"];
+    onRetry?: DrugPipelineOptions["onRetry"];
   },
 ): Promise<LicensePipelineOutcome> {
   await loadDrugEnrichment(pool, {
@@ -94,6 +101,7 @@ export async function runOneLicensePipeline(
     includeCancelled: opts.includeCancelled,
     retryFailed: opts.retryFailed,
     retryStage: null,
+    onRetry: opts.onRetry,
   });
 
   return reconcileQueueStatus(pool, licenseId);

@@ -4,12 +4,12 @@
 // The API never returns a stored API key — only `has_api_key` — so the key input
 // is always blank and an empty value on save means "keep the stored one".
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../lib/api";
 import { qk } from "../../lib/queryKeys";
 import { toast } from "../../components/toast";
-import type { LlmProfile, LlmProfileKind } from "../../lib/types";
+import type { LlmProfile, LlmProfileKind, LlmProfileStats, LlmProfileStatsWindow } from "../../lib/types";
 
 const PROVIDERS: Record<LlmProfileKind, string[]> = {
   analysis: ["openai", "ollama"],
@@ -36,6 +36,7 @@ interface DraftProfile {
   dimensions: number;
   temperature: number;
   max_tokens: number;
+  max_token_budget: number;
   timeout_ms: number;
 }
 
@@ -54,6 +55,7 @@ function emptyDraft(kind: LlmProfileKind): DraftProfile {
     dimensions: 1024,
     temperature: 0.1,
     max_tokens: DEFAULT_MAX_TOKENS,
+    max_token_budget: 0,
     timeout_ms: 600000,
   };
 }
@@ -86,8 +88,9 @@ function toDraft(p: LlmProfile): DraftProfile {
     priority: p.priority,
     weight: p.weight,
     dimensions: Number(p.params?.dimensions ?? 1024),
-    temperature: Number(p.params?.temperature ?? 0.1),
+    temperature: Math.round(Number(p.params?.temperature ?? 0.1) * 100) / 100,
     max_tokens: Number(p.params?.max_tokens ?? defaultMaxTokens(p.model)),
+    max_token_budget: Number(p.params?.max_token_budget ?? 0),
     timeout_ms: Number(p.params?.timeout_ms ?? 600000),
   };
 }
@@ -105,11 +108,68 @@ function toPayload(d: DraftProfile): Record<string, unknown> {
     weight: d.weight,
     params:
       d.kind === "analysis"
-        ? { temperature: d.temperature, max_tokens: d.max_tokens, timeout_ms: d.timeout_ms }
+        ? {
+            temperature: d.temperature,
+            max_tokens: d.max_tokens,
+            max_token_budget: d.max_token_budget,
+            timeout_ms: d.timeout_ms,
+          }
         : { dimensions: d.dimensions },
   };
   if (d.api_key.trim()) payload.api_key = d.api_key.trim();
   return payload;
+}
+
+function pct(w: LlmProfileStatsWindow): string {
+  return w.calls > 0 ? `${((w.failures / w.calls) * 100).toFixed(1)}%` : "–";
+}
+
+/** Generation throughput across all calls: total tokens ÷ total seconds. */
+function tokPerSec(w: LlmProfileStatsWindow): string {
+  if (w.calls <= 0 || !w.avgLatencyMs || w.avgLatencyMs <= 0) return "–";
+  const tps = (w.promptTokens + w.completionTokens) / ((w.avgLatencyMs / 1000) * w.calls);
+  if (tps >= 1000) return `${(tps / 1000).toFixed(1)}k`;
+  if (tps >= 100) return String(Math.round(tps));
+  return tps.toFixed(1);
+}
+
+function StatCell({ value, label }: { value: string; label: string }): JSX.Element {
+  return (
+    <span className="stat">
+      <b className="stat__value">{value}</b>
+      <span className="stat__label">{label}</span>
+    </span>
+  );
+}
+
+function ProfileStatsRow({ s }: { s: LlmProfileStats | undefined }): JSX.Element {
+  const windows: Array<[string, LlmProfileStatsWindow | undefined]> = [
+    ["last 24h", s?.window24h],
+    ["last 7d", s?.window7d],
+  ];
+  return (
+    <div className="profile-stats">
+      {windows.map(([title, w]) => (
+        <div key={title} className="profile-stats__window">
+          <span className="profile-stats__title">{title}</span>
+          {!w || w.calls === 0 ? (
+            <span className="muted small">no calls yet</span>
+          ) : (
+            <>
+              <StatCell value={String(w.calls)} label="calls" />
+              <StatCell value={pct(w)} label="fail rate" />
+              <StatCell value={String(w.budgetFailures)} label="budget fails" />
+              <StatCell
+                value={w.avgLatencyMs != null ? `${(w.avgLatencyMs / 1000).toFixed(2)}s` : "–"}
+                label="avg latency"
+              />
+              <StatCell value={tokPerSec(w)} label="tok/s" />
+            </>
+          )}
+        </div>
+      ))}
+    </div>
+  );
 }
 
 export function LlmProfilesCard({
@@ -125,7 +185,10 @@ export function LlmProfilesCard({
 
   const { data, isPending } = useQuery({
     queryKey: qk.llmProfiles(kind),
-    queryFn: () => api.get<{ profiles: LlmProfile[] }>(`/admin/api/llm-profiles?kind=${kind}`),
+    queryFn: () =>
+      api.get<{ profiles: LlmProfile[]; stats: Record<string, LlmProfileStats> }>(
+        `/admin/api/llm-profiles?kind=${kind}`,
+      ),
   });
 
   function refresh(): void {
@@ -207,6 +270,7 @@ export function LlmProfilesCard({
   });
 
   const profiles = data?.profiles ?? [];
+  const stats = data?.stats ?? {};
   const enabledCount = profiles.filter((p) => p.enabled).length;
   const testingProfileId = test.isPending ? test.variables?.id : undefined;
 
@@ -272,7 +336,8 @@ export function LlmProfilesCard({
           </thead>
           <tbody>
             {profiles.map((p) => (
-              <tr key={p.id}>
+              <Fragment key={p.id}>
+                <tr>
                 <td data-label="Name">{p.name}</td>
                 <td data-label="Provider">{p.provider}</td>
                 <td data-label="Model">{p.model}</td>
@@ -291,36 +356,46 @@ export function LlmProfilesCard({
                   />
                 </td>
                 <td data-label="Actions">
-                  <button
-                    type="button"
-                    className="btn btn--sm"
-                    disabled={test.isPending}
-                    onClick={() => test.mutate(toDraft(p))}
-                  >
-                    {testingProfileId === p.id ? "Testing…" : "Test"}
-                  </button>{" "}
-                  <button
-                    type="button"
-                    className="btn btn--sm"
-                    onClick={() => {
-                      setModels([]);
-                      setEditing(toDraft(p));
-                    }}
-                  >
-                    Edit
-                  </button>{" "}
-                  <button
-                    type="button"
-                    className="btn btn--sm"
-                    disabled={remove.isPending}
-                    onClick={() => {
-                      if (window.confirm(`Delete profile '${p.name}'?`)) remove.mutate(p);
-                    }}
-                  >
-                    Delete
-                  </button>
+                  <span className="table-actions">
+                    <button
+                      type="button"
+                      className="btn btn--sm"
+                      disabled={test.isPending}
+                      onClick={() => test.mutate(toDraft(p))}
+                    >
+                      {testingProfileId === p.id ? "Testing…" : "Test"}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn--sm"
+                      onClick={() => {
+                        setModels([]);
+                        setEditing(toDraft(p));
+                      }}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn--sm btn--danger"
+                      disabled={remove.isPending}
+                      onClick={() => {
+                        if (window.confirm(`Delete profile '${p.name}'?`)) remove.mutate(p);
+                      }}
+                    >
+                      Delete
+                    </button>
+                  </span>
                 </td>
               </tr>
+              {kind === "analysis" && (
+                <tr className="profile-stats-row">
+                  <td colSpan={8}>
+                    <ProfileStatsRow s={stats[p.id]} />
+                  </td>
+                </tr>
+              )}
+              </Fragment>
             ))}
           </tbody>
         </table>
@@ -477,6 +552,23 @@ export function LlmProfilesCard({
                   )}
               </label>
               <label className="settings-field">
+                <span className="settings-field__label">Budget ceiling (max tokens)</span>
+                <input
+                  type="number"
+                  name="max_token_budget"
+                  min={0}
+                  value={editing.max_token_budget}
+                  onChange={(e) =>
+                    setEditing({ ...editing, max_token_budget: Number(e.target.value) })
+                  }
+                />
+                <span className="muted small">
+                  Escalation ceiling when the model keeps running out of output budget. 0 =
+                  model default (8192 for non-reasoning, 65536 for reasoning). Raise this if
+                  long inserts fail with "ran out of output budget".
+                </span>
+              </label>
+              <label className="settings-field">
                 <span className="settings-field__label">Timeout (ms)</span>
                 <input
                   type="number"
@@ -518,7 +610,7 @@ export function LlmProfilesCard({
             />
           </label>
 
-          <div className="head-actions" style={{ gridColumn: "1 / -1" }}>
+          <div className="settings-form-action" style={{ gridColumn: "1 / -1" }}>
             <button
               type="button"
               className="btn"
@@ -529,13 +621,13 @@ export function LlmProfilesCard({
             </button>
             <button
               type="button"
-              className="btn"
+              className="btn btn--primary"
               disabled={save.isPending}
               onClick={() => save.mutate(editing)}
             >
               {save.isPending ? "Saving…" : editing.id ? "Save profile" : "Create profile"}
             </button>
-            <button type="button" className="btn" onClick={() => setEditing(null)}>
+            <button type="button" className="btn btn--ghost" onClick={() => setEditing(null)}>
               Cancel
             </button>
           </div>

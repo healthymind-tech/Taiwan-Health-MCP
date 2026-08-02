@@ -9,6 +9,7 @@
  */
 
 import { reportFailure, reportSuccess, type LlmProfile } from "./admin/llmProfiles.js";
+import { recordProfileStats, type LlmCallUsage } from "./admin/llmProfileStats.js";
 import { logWarning } from "./logger.js";
 
 export type Message = { role: string; content: string };
@@ -32,6 +33,16 @@ function profileTimeoutMs(profile: LlmProfile): number {
 /** Ceiling for the automatic budget escalation (see `callProfileWithBudget`). */
 export const MAX_TOKEN_BUDGET = 65536;
 
+/**
+ * Ceiling for non-reasoning models. The doubling exists to buy a reasoning model
+ * room for hidden reasoning; a non-reasoning model doing structured extraction
+ * that cannot finish within one escalation is almost always looping (a small
+ * quantized model repeating itself, finish_reason=length forever). Doubling on
+ * to 64k would make each regeneration 10min+ and block the pipeline — fail fast
+ * instead.
+ */
+const NON_REASONING_MAX_TOKEN_BUDGET = 8192;
+
 /** True for model families that bill hidden reasoning against the output budget. */
 export function isReasoningModel(model: string): boolean {
   const name = (model || "").trim().toLowerCase();
@@ -51,6 +62,7 @@ export class TokenBudgetExceeded extends Error {
     readonly budget: number,
     readonly finishReason = "",
     readonly reasoningTokens: number | null = null,
+    readonly usage: LlmCallUsage = { promptTokens: 0, completionTokens: 0, latencyMs: 0 },
   ) {
     super(message);
     this.name = "TokenBudgetExceeded";
@@ -76,6 +88,12 @@ function profileTemperature(profile: LlmProfile, fallback = 0.1): number {
   return Number.isFinite(value) ? value : fallback;
 }
 
+/** Usage counts can be absent or 0 on some providers — never negative/NaN. */
+function positiveNum(value: unknown): number {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
 function profileMaxTokens(profile: LlmProfile): number {
   const fallback = isReasoningModel(profile.model)
     ? DEFAULT_REASONING_MAX_TOKENS
@@ -95,15 +113,34 @@ function normalizeOpenAiBaseUrl(baseUrl: string): string {
  * depends on how hard the model finds it — start from the configured budget and
  * double it until the model finishes, up to `MAX_TOKEN_BUDGET`.
  */
-async function callProfileWithBudget(profile: LlmProfile, messages: Message[]): Promise<string> {
+/**
+ * Ceiling for the automatic budget escalation. Defaults to the model-family
+ * ceiling (64k reasoning / 8k non-reasoning), but an operator can raise it per
+ * profile via `params.max_token_budget`: a long drug insert can legitimately
+ * need more than 8k output tokens, and the 8k default exists to stop a looping
+ * *non-reasoning* model from doubling to 64k — not to starve a real extraction.
+ */
+function profileBudgetCeiling(profile: LlmProfile): number {
+  const override = Math.trunc(Number(profile.params?.max_token_budget ?? 0));
+  const fallback = isReasoningModel(profile.model)
+    ? MAX_TOKEN_BUDGET
+    : NON_REASONING_MAX_TOKEN_BUDGET;
+  return Number.isFinite(override) && override > 0 ? override : fallback;
+}
+
+async function callProfileWithBudget(
+  profile: LlmProfile,
+  messages: Message[],
+): Promise<{ content: string; usage: LlmCallUsage }> {
   let budget = profileMaxTokens(profile);
+  const ceiling = Math.max(budget, profileBudgetCeiling(profile));
   for (;;) {
     try {
       return await callOneProfile(profile, messages, budget);
     } catch (err) {
-      if (!(err instanceof TokenBudgetExceeded) || budget >= MAX_TOKEN_BUDGET) throw err;
+      if (!(err instanceof TokenBudgetExceeded) || budget >= ceiling) throw err;
       const previous = budget;
-      budget = Math.min(budget * 2, MAX_TOKEN_BUDGET);
+      budget = Math.min(budget * 2, ceiling);
       logWarning("analysis_budget_escalated", {
         profile: profile.name,
         model: profile.model,
@@ -153,7 +190,8 @@ async function callOneProfile(
   profile: LlmProfile,
   messages: Message[],
   maxTokens: number,
-): Promise<string> {
+): Promise<{ content: string; usage: LlmCallUsage }> {
+  const startedAt = Date.now();
   if (profile.provider === "openai" || profile.provider === "vllm") {
     const url = `${normalizeOpenAiBaseUrl(profile.base_url)}/chat/completions`;
     const payload: Record<string, unknown> = {
@@ -236,6 +274,11 @@ async function callOneProfile(
     const details = (usage.completion_tokens_details ?? {}) as Record<string, unknown>;
     const reasoningTokens =
       details.reasoning_tokens === undefined ? null : Number(details.reasoning_tokens);
+    const callUsage: LlmCallUsage = {
+      promptTokens: positiveNum(usage.prompt_tokens),
+      completionTokens: positiveNum(usage.completion_tokens),
+      latencyMs: Date.now() - startedAt,
+    };
 
     if (finishReason === "length" || !content.trim()) {
       throw new TokenBudgetExceeded(
@@ -245,9 +288,10 @@ async function callOneProfile(
         maxTokens,
         finishReason,
         reasoningTokens,
+        callUsage,
       );
     }
-    return content;
+    return { content, usage: callUsage };
   }
 
   if (profile.provider === "ollama") {
@@ -275,15 +319,22 @@ async function callOneProfile(
     const message = (data.message ?? {}) as Record<string, unknown>;
     const content = String(message.content ?? "");
     const doneReason = String(data.done_reason ?? "");
+    const callUsage: LlmCallUsage = {
+      promptTokens: positiveNum(data.prompt_eval_count),
+      completionTokens: positiveNum(data.eval_count),
+      latencyMs: Date.now() - startedAt,
+    };
     if (doneReason === "length" || !content.trim()) {
       throw new TokenBudgetExceeded(
         `${profile.model} ran out of output budget at ${maxTokens} tokens; ` +
           `done_reason=${doneReason || "none"}`,
         maxTokens,
         doneReason,
+        null,
+        callUsage,
       );
     }
-    return content;
+    return { content, usage: callUsage };
   }
 
   throw new Error(`Unsupported analysis provider: ${profile.provider}`);
@@ -319,8 +370,9 @@ export async function callAnalysisLlm(
   let anyEndpointFailure = false;
   for (const profile of profiles) {
     try {
-      const content = await callProfileWithBudget(profile, messages);
+      const { content, usage } = await callProfileWithBudget(profile, messages);
       reportSuccess(profile.id);
+      await recordProfileStats(profile.id, { ok: true, budgetFailure: false, usage });
       return { content, profileUsed: profile };
     } catch (err) {
       if (err instanceof TokenBudgetExceeded) {
@@ -328,6 +380,7 @@ export async function callAnalysisLlm(
         // ceiling. Do NOT feed the circuit breaker: cooling down a working endpoint
         // over our own budget would take it out of rotation for every other caller.
         failures.push(`${profile.name}: ${err.message}`);
+        await recordProfileStats(profile.id, { ok: false, budgetFailure: true, usage: err.usage });
         logWarning("analysis_profile_out_of_budget", {
           profile: profile.name,
           model: profile.model,
@@ -341,6 +394,7 @@ export async function callAnalysisLlm(
       anyEndpointFailure = true;
       failures.push(`${profile.name}: ${message}`);
       reportFailure(profile.id, message);
+      await recordProfileStats(profile.id, { ok: false, budgetFailure: false, usage: null });
       logWarning("analysis_profile_failed", {
         profile: profile.name,
         provider: profile.provider,

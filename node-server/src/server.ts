@@ -26,7 +26,8 @@ import { STATUS_DATA_JSON } from "./statusData.js";
 import { seedIfEmpty } from "./admin/adminSettings.js";
 import { seedAdminCredential } from "./admin/adminCredentials.js";
 import { ensureDrugExplorerIndexes } from "./admin/adminDrugExplorer.js";
-import { ensureImportJobsRetrySchema } from "./admin/adminJobs.js";
+import { ensureImportJobsRetrySchema, reconcileJobStepTerminalState } from "./admin/adminJobs.js";
+import { ensureProfileStatsSchema } from "./admin/llmProfileStats.js";
 import { adminHandler } from "./admin/adminApp.js";
 import { getFhirServerJwks, fhirServerSecretKey } from "./admin/adminFhirServers.js";
 import { completeAuthorization, OAuthError } from "./admin/fhirOauthService.js";
@@ -85,6 +86,22 @@ async function bootstrapResources(): Promise<void> {
     await ensureImportJobsRetrySchema();
   } catch (err) {
     logError("Import-jobs retry schema migration skipped", { error: String((err as Error).message) });
+  }
+
+  // Older runners forgot to mark the main batch step terminal, so a success job
+  // could show a step stuck "running". Reconcile once at boot; new runs are fine.
+  try {
+    await reconcileJobStepTerminalState();
+  } catch (err) {
+    logError("Job-step terminal-state reconciliation skipped", { error: String((err as Error).message) });
+  }
+
+  // `admin.llm_profile_stats` (per-profile Analysis LM call stats). Idempotent;
+  // fail-open — without it stats recording is a no-op that just logs warnings.
+  try {
+    await ensureProfileStatsSchema();
+  } catch (err) {
+    logError("LLM profile stats schema migration skipped", { error: String((err as Error).message) });
   }
 
   try {

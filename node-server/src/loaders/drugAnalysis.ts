@@ -79,6 +79,19 @@ async function loadIndexRow(client: pg.PoolClient, licenseId: string): Promise<I
     : null;
 }
 
+/** Python truthiness for an electronic-insert section value: non-empty string,
+ * non-empty array, non-empty dict. */
+function sectionHasContent(value: unknown): boolean {
+  if (value === null || value === undefined || value === "") return false;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === "object") return Object.keys(value as Record<string, unknown>).length > 0;
+  return true;
+}
+
+function hasAnySection(sections: Dict, keys: string[]): boolean {
+  return keys.some((key) => sectionHasContent(sections[key]));
+}
+
 async function loadExistingSourceErrors(
   client: pg.PoolClient,
   licenseId: string,
@@ -400,6 +413,12 @@ export interface DrugAnalysisOptions {
   retryStage?: string | null;
   /** Called after each license; throw to abort (used for pause/cancel). */
   onProgress?: (done: number, total: number, licenseId: string) => Promise<void> | void;
+  /** Fired when a license's Analysis LM output fails validation and is re-prompted. */
+  onRetry?: (info: {
+    licenseId: string;
+    attempt: number;
+    error: string;
+  }) => Promise<void> | void;
 }
 
 /** The licenses this run would analyse — used by the worker to pin its batch. */
@@ -536,6 +555,26 @@ export async function loadDrugAnalysis(
     const sourceFilename = candidate.normalized_filename || "insert.pdf";
     const sourceUploadDate = dateText(candidate.upload_date);
 
+    // CSV-covered fields need no LM extraction — shrink the prompt and skip the
+    // re-prompt when the model leaves them empty anyway.
+    const providedFieldsClient = await pool.connect();
+    let providedFields: { indications?: boolean; usage?: boolean };
+    try {
+      const indexRow = await loadIndexRow(providedFieldsClient, licenseId);
+      const insert = await loadElectronicInsert(providedFieldsClient, licenseId);
+      const sections = (insert?.sections ?? {}) as Dict;
+      providedFields = {
+        indications:
+          Boolean(indexRow?.["適應症"]) ||
+          hasAnySection(sections, ["用途(適應症)", "適應症"]),
+        usage:
+          Boolean(indexRow?.["用法用量"]) ||
+          hasAnySection(sections, ["用法用量", "用法及用量"]),
+      };
+    } finally {
+      providedFieldsClient.release();
+    }
+
     try {
       if (retryStage === "normalize") {
         const client = await pool.connect();
@@ -597,6 +636,8 @@ export async function loadDrugAnalysis(
         sourceFilename,
         pdfBytes,
         existingMarkdown,
+        providedFields,
+        onRetry: (info) => options.onRetry?.({ licenseId, ...info }),
       });
 
       const ocrAssetId = analysisAssetId(sourceAssetId, "ocr");

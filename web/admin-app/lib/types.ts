@@ -345,6 +345,21 @@ export interface LlmProfile {
   has_api_key: boolean;
 }
 
+/** Per-profile Analysis LM call stats over one time window (see llmProfileStats.ts). */
+export interface LlmProfileStatsWindow {
+  calls: number;
+  failures: number;
+  budgetFailures: number;
+  avgLatencyMs: number | null;
+  promptTokens: number;
+  completionTokens: number;
+}
+
+export interface LlmProfileStats {
+  window24h: LlmProfileStatsWindow;
+  window7d: LlmProfileStatsWindow;
+}
+
 export interface SettingsActionResult {
   ok: boolean;
   message?: string;

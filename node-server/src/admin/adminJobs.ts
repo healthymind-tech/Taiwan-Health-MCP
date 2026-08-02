@@ -244,6 +244,26 @@ export async function ensureImportJobsRetrySchema(): Promise<void> {
   );
 }
 
+/** Idempotent boot reconciliation: a job that is no longer running must not
+ * leave any step marked `running`. Older batch runners only marked the finalize
+ * step terminal and forgot the main processing step (`enrich_licenses` /
+ * `analyze_licenses` / `process_licenses` / `analyze_documents`), so a finished
+ * job could show a step stuck "running" in the UI forever — for both the success
+ * path and the `worker_exception` path, which never touched steps. Fresh runs
+ * now write the terminal state themselves; this repairs rows written before that
+ * fix. Running jobs are deliberately untouched (their steps are genuinely live,
+ * and a crash-recovered job resumes them). */
+export async function reconcileJobStepTerminalState(): Promise<void> {
+  await query(
+    `UPDATE admin.import_job_steps s
+        SET status = j.status, finished_at = COALESCE(s.finished_at, NOW())
+       FROM admin.import_jobs j
+      WHERE j.job_id = s.job_id
+        AND j.status IN ('success', 'retryable_failed', 'permanent_failed')
+        AND s.status = 'running'`,
+  );
+}
+
 export async function claimNextJob(opts: {
   workerName: string;
   supportedJobTypes?: string[];
@@ -3455,6 +3475,15 @@ export async function runDrugEnrichmentJob(opts: {
 
   await recordJobStep({
     jobId,
+    stepKey: "enrich_licenses",
+    status: "success",
+    progressCurrent: totalCandidates,
+    progressTotal: totalCandidates,
+    checkpoint: { phase: "completed", candidate_license_ids: candidates, completed: totalCandidates },
+  });
+
+  await recordJobStep({
+    jobId,
     stepKey: "finalize",
     status: "success",
     progressCurrent: 1,
@@ -3578,6 +3607,13 @@ export async function runDrugAnalysisJob(opts: {
       retryFailed,
       retryStage,
       limit: 1,
+      onRetry: ({ attempt, error }) =>
+        appendJobLog({
+          jobId,
+          level: "warning",
+          message: `Analysis attempt ${attempt} failed for license ${licenseId}: ${error}`,
+          payload: { license_id: licenseId, attempt, error },
+        }),
     });
 
     const newCompleted = index + 1;
@@ -3624,6 +3660,20 @@ export async function runDrugAnalysisJob(opts: {
       return;
     }
   }
+
+  await recordJobStep({
+    jobId,
+    stepKey: "analyze_licenses",
+    status: "success",
+    progressCurrent: totalCandidates,
+    progressTotal: totalCandidates,
+    checkpoint: {
+      phase: "completed",
+      candidate_license_ids: candidates,
+      completed: totalCandidates,
+      retry_stage: retryStage ?? "",
+    },
+  });
 
   await recordJobStep({
     jobId,
@@ -3808,6 +3858,13 @@ export async function runDrugPipelineJob(opts: {
       includeCancelled,
       retryFailed,
       tfdaValues,
+      onRetry: ({ licenseId: retriedLicense, attempt, error }) =>
+        appendJobLog({
+          jobId,
+          level: "warning",
+          message: `Analysis attempt ${attempt} failed for license ${retriedLicense}: ${error}`,
+          payload: { license_id: retriedLicense, attempt, error },
+        }),
     });
 
     // The Analysis LM is down (not a problem with this drug's data) — every
@@ -3873,13 +3930,18 @@ export async function runDrugPipelineJob(opts: {
 
     // The loaders swallow per-license failures into DB status columns, so surface
     // the outcome in the job log here — otherwise the task log stays empty while
-    // drugs fail. `retryable_failed` → error, `partial_success` → warn.
+    // drugs fail. `retryable_failed` → error, `partial_success` → warn. Name the
+    // actual reason in the message, not just the failed stages, so a log reader
+    // can tell a budget cut-off from a dead endpoint without opening the payload.
+    const stageNames = outcome.failedStages.join(", ") || "unknown stage";
+    const detail = String(outcome.lastErrorMessage ?? "").trim().slice(0, 500);
     if (outcome.status === "retryable_failed") {
       failedCount += 1;
       await appendJobLog({
         jobId,
         level: "error",
-        message: `License ${licenseId} failed: ${outcome.failedStages.join(", ") || "unknown stage"}`,
+        message:
+          `License ${licenseId} failed: ${stageNames}` + (detail ? ` — ${detail}` : ""),
         payload: {
           license_id: licenseId,
           status: outcome.status,
@@ -3892,7 +3954,9 @@ export async function runDrugPipelineJob(opts: {
       await appendJobLog({
         jobId,
         level: "warn",
-        message: `License ${licenseId} partial success: ${outcome.failedStages.join(", ") || "unknown stage"}`,
+        message:
+          `License ${licenseId} partial success: ${stageNames}` +
+          (detail ? ` — ${detail}` : ""),
         payload: {
           license_id: licenseId,
           status: outcome.status,
@@ -3961,6 +4025,19 @@ export async function runDrugPipelineJob(opts: {
       candidate_count: totalCandidates,
     },
   });
+  await recordJobStep({
+    jobId,
+    stepKey: "process_licenses",
+    status: "success",
+    progressCurrent: totalCandidates,
+    progressTotal: totalCandidates,
+    checkpoint: {
+      phase: "completed",
+      candidate_license_ids: candidates,
+      completed: totalCandidates,
+    },
+  });
+
   await recordJobStep({
     jobId,
     stepKey: "finalize",
@@ -4190,6 +4267,20 @@ export async function runGuidelineAnalysisJob(opts: {
       return;
     }
   }
+
+  await recordJobStep({
+    jobId,
+    stepKey: "analyze_documents",
+    status: "success",
+    progressCurrent: totalCandidates,
+    progressTotal: totalCandidates,
+    checkpoint: {
+      phase: "completed",
+      candidate_document_ids: candidates,
+      completed: totalCandidates,
+      retry_stage: retryStage ?? "",
+    },
+  });
 
   await recordJobStep({
     jobId,

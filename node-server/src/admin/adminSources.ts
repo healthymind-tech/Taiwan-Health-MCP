@@ -106,7 +106,7 @@ export const SOURCE_CATALOG: readonly SourceCatalogEntry[] = [
   {
     module_key: "drug",
     source_role: "drug_index_csv",
-    label: "Drug index CSV (36_2.csv)",
+    label: "Drug index CSV",
     description: "Authoritative Taiwan drug index snapshot for drug Phase 1 index import.",
     accepted_extensions: [".csv"],
     multi_source: true,

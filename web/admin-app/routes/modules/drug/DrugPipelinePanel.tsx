@@ -2,11 +2,9 @@
 //
 // Consumes /admin/api/drug/pipeline-status; exposes one drug_pipeline job
 // trigger (enrich + OCR + analyze per license, end to end) plus a "Retry
-// failed" action that disables itself once nothing is left to retry; opens
-// the license browser for per-license detail and asset preview.
+// failed" action that disables itself once nothing is left to retry.
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
 import { api } from "../../../lib/api";
 import { qk } from "../../../lib/queryKeys";
 import { useActiveJobTypes } from "../../../lib/jobs";
@@ -81,7 +79,6 @@ interface Props {
 
 export function DrugPipelinePanel({ disabled = false, disabledReason = "" }: Props): JSX.Element {
   const qc = useQueryClient();
-  const navigate = useNavigate();
   const activeJobTypes = useActiveJobTypes();
 
   const { data } = useQuery({
@@ -134,15 +131,6 @@ export function DrugPipelinePanel({ disabled = false, disabledReason = "" }: Pro
             onClick={() => trigger.mutate({ jobType: "drug_pipeline", jobOptions: { retry_failed: true } })}
           >
             {pipelineRunning ? "Running…" : `Retry failed${queueFailed ? ` (${queueFailed})` : ""}`}
-          </button>
-          <button
-            type="button"
-            className="btn btn--sm"
-            disabled={disabled && !p.index?.total_licenses}
-            title={actionTitle}
-            onClick={() => navigate("/modules/drug/explorer")}
-          >
-            Browse licenses
           </button>
         </div>
       </div>

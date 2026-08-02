@@ -125,6 +125,9 @@ export function JobLogViewer({ jobId }: { jobId: string }): JSX.Element {
           visible.map((l) => (
             <div key={l.key} className={`log-line log-line--${l.level.toLowerCase()}`}>
               <span className="log-line__lvl">{l.level || "info"}</span>
+              <span className="log-line__ts">
+                {l.ts ? new Date(l.ts).toLocaleTimeString() : ""}
+              </span>
               <span className="log-line__msg">{l.message}</span>
             </div>
           ))

@@ -36,6 +36,25 @@ export const ANALYSIS_TEMPLATE: Record<string, unknown> = {
   儲存方式: [],
 };
 
+/**
+ * Fields the index CSV already provides for this license. When true, the LM is
+ * told not to emit that field and its empty-content check is skipped — the CSV
+ * value wins in the record builder anyway, and 用途 was the leading cause of
+ * wasted re-prompts (the model returned [] ~78% of the time).
+ */
+export interface ProvidedAnalysisFields {
+  indications?: boolean;
+  usage?: boolean;
+}
+
+/** The template shown to the LM — CSV-covered fields removed so they cost no tokens. */
+export function buildAnalysisTemplate(fields?: ProvidedAnalysisFields): Record<string, unknown> {
+  const template: Record<string, unknown> = { ...ANALYSIS_TEMPLATE };
+  if (fields?.indications) delete template["用途(適應症)"];
+  if (fields?.usage) delete template["用法用量"];
+  return template;
+}
+
 // Simplified→traditional conversion. The Python tries OpenCC first and falls back
 // to these tables; OpenCC is not in the worker's requirements, so the fallback is
 // what actually runs — and it is what is reproduced here.
@@ -78,8 +97,11 @@ const DATA_IMG_MD_RE = /!\[[^\]]*\]\(\s*data:image\/[^;\s)]+;base64,[^)]+\)/gi;
 const DATA_IMG_HTML_RE = /<img\b[^>]*\bsrc=["']data:image\/[^;"']+;base64,[^"']+["'][^>]*>/gi;
 const DATA_IMG_URI_RE = /data:image\/[^;\s)"']+;base64,[A-Za-z0-9+/_=\-.\r\n]+/gi;
 
+// Split "name amount-unit" pairs. The amount must be preceded by whitespace:
+// a string that *starts* with a digit (e.g. "10% w/v 溶劑") is then kept whole
+// as the name instead of being cut at its first digit into name="1".
 const INGREDIENT_AMOUNT_RE =
-  /^(.+?)\s*(\d+(?:\.\d+)?\s*(?:mg|g|mcg|μg|ug|mL|ml|IU|%|毫克|公克|微克|毫升|單位).*)$/i;
+  /^(.+?)\s+(\d+(?:\.\d+)?\s*(?:mg|g|mcg|μg|ug|mL|ml|IU|%|毫克|公克|微克|毫升|單位).*)$/i;
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 // The prompt ships with the code (repo `src/prompts/drug/`), and is deliberately
@@ -180,15 +202,25 @@ function isEmptyList(value: unknown): boolean {
 }
 
 // 有效成分及含量 must always come out populated, and 用途(適應症) must too when
-// the source markdown mentions one. An empty 用途 was the one gap the old index
-// fallback silently masked — re-prompting the model on it is cheaper than
-// shipping a drug with no indication. 警語 is left alone: insert formats vary
-// too much to trust a test.
-export function validateContentChecks(data: unknown, markdown?: string): string[] {
+// the source markdown mentions one AND the index row does not already provide an
+// indication (skipIndications) — an empty 用途 was the one gap the old index
+// fallback silently masked, but when the index has it, the CSV value is as good
+// as re-prompting the model for. 警語 is left alone: insert formats vary too much
+// to trust a test.
+export function validateContentChecks(
+  data: unknown,
+  markdown?: string,
+  opts: { skipIndications?: boolean } = {},
+): string[] {
   const errors: string[] = [];
   if (!isPlainObject(data)) return errors;
   if (isEmptyList(data["有效成分及含量"])) errors.push("$.有效成分及含量 不能為空");
-  if (markdown && HAS_INDICATION_TEXT_RE.test(markdown) && isEmptyList(data["用途(適應症)"])) {
+  if (
+    !opts.skipIndications &&
+    markdown &&
+    HAS_INDICATION_TEXT_RE.test(markdown) &&
+    isEmptyList(data["用途(適應症)"])
+  ) {
     errors.push("$.用途(適應症) 不能為空");
   }
   return errors;
@@ -197,6 +229,11 @@ export function validateContentChecks(data: unknown, markdown?: string): string[
 // A TFDA insert almost always spells the section out literally; a bare-match is
 // enough given how inconsistent their OCR section headers are.
 const HAS_INDICATION_TEXT_RE = /適應症|适应症|効能/;
+
+/** Whether two consecutive validation-error sets are identical (same gap, same order). */
+export function sameGapErrors(a: string[], b: string[]): boolean {
+  return a.join("; ") === b.join("; ");
+}
 
 function parseIngredientText(text: string): Record<string, string> {
   const trimmed = text.trim();
@@ -444,6 +481,9 @@ export interface DrugAnalysisResult {
   analysisProvider: string;
 }
 
+/** Fired when a validation attempt fails and the model is about to be re-prompted. */
+export type AnalysisRetryListener = (info: { attempt: number; error: string }) => void;
+
 const NOT_CONFIGURED = (what: string, group: string): string =>
   `${what} is not configured yet — set it up in the admin console (Settings → ${group}).`;
 
@@ -505,10 +545,14 @@ export class DrugAnalysisService {
    * Analyze markdown with the configured Analysis LM.
    * Can be used to analyze OCR output after the fact.
    */
-  async analyzeMarkdown(markdown: string): Promise<Record<string, unknown>> {
+  async analyzeMarkdown(
+    markdown: string,
+    providedFields?: ProvidedAnalysisFields,
+    onRetry?: AnalysisRetryListener,
+  ): Promise<Record<string, unknown>> {
     const [ready, reason] = this.analysisReadiness();
     if (!ready) throw new Error(reason);
-    return this.runAnalysis(markdown);
+    return this.runAnalysis(markdown, providedFields, onRetry);
   }
 
   async analyzePdfBytes(opts: {
@@ -516,13 +560,16 @@ export class DrugAnalysisService {
     sourceFilename: string;
     pdfBytes: Buffer;
     existingMarkdown?: string | null;
+    providedFields?: ProvidedAnalysisFields;
+    /** Fired on each failed validation attempt, before the re-prompt. */
+    onRetry?: AnalysisRetryListener;
   }): Promise<DrugAnalysisResult> {
     const [ready, reason] = opts.existingMarkdown ? this.analysisReadiness() : this.readiness();
     if (!ready) throw new Error(reason);
 
     const markdown =
       opts.existingMarkdown || (await this.ocrPdfBytes(opts.pdfBytes, opts.sourceFilename));
-    const analysisJson = await this.runAnalysis(markdown);
+    const analysisJson = await this.runAnalysis(markdown, opts.providedFields, opts.onRetry);
     const used = this.lastProfileUsed;
     return {
       markdown,
@@ -605,7 +652,11 @@ export class DrugAnalysisService {
     return markdown;
   }
 
-  private async runAnalysis(ocrMarkdown: string): Promise<Record<string, unknown>> {
+  private async runAnalysis(
+    ocrMarkdown: string,
+    providedFields?: ProvidedAnalysisFields,
+    onRetry?: AnalysisRetryListener,
+  ): Promise<Record<string, unknown>> {
     const [sanitized, removedImages, removedChars] = stripEmbeddedBase64Images(ocrMarkdown);
     if (removedImages) {
       logInfo("Removed embedded base64 images from OCR markdown", {
@@ -614,11 +665,17 @@ export class DrugAnalysisService {
       });
     }
     const prompt = fs.readFileSync(this.config.analysisPromptPath, "utf8");
-    const templateJson = JSON.stringify(ANALYSIS_TEMPLATE, null, 2);
+    const templateJson = JSON.stringify(buildAnalysisTemplate(providedFields), null, 2);
+    const skipped: string[] = [];
+    if (providedFields?.indications) skipped.push("「用途(適應症)」");
+    if (providedFields?.usage) skipped.push("「用法用量」");
+    const providedNote = skipped.length
+      ? `\n\n以下欄位已由原始登記資料提供，請不要輸出這幾個欄位：${skipped.join("、")}。`
+      : "";
     const baseUserContent =
       "以下是 OCR 轉出的藥品說明書 Markdown 內容。" +
       "請只根據這份內容抽取資訊，並輸出和指定模板完全一致的 JSON。\n\n" +
-      `指定 JSON 模板：\n${templateJson}\n\n` +
+      `指定 JSON 模板：\n${templateJson}${providedNote}\n\n` +
       `OCR Markdown：\n${sanitized}`;
 
     // NB: a TokenBudgetExceeded from here is deliberately NOT caught. This loop
@@ -654,7 +711,9 @@ export class DrugAnalysisService {
         const errors = [
           ...validateAnalysisShape(parsed),
           ...validateIngredientItems(parsed),
-          ...validateContentChecks(parsed, sanitized),
+          ...validateContentChecks(parsed, sanitized, {
+            skipIndications: providedFields?.indications,
+          }),
         ];
         if (errors.length === 0) return parsed;
         lastError = errors.join("; ");
@@ -662,7 +721,17 @@ export class DrugAnalysisService {
         // merely missing 有效成分 or 用途 (both rebuilt from the index by
         // drugRecordBuilder) is a soft gap — remember it as the fallback answer.
         const shapeErrors = [...validateAnalysisShape(parsed), ...validateIngredientItems(parsed)];
-        if (shapeErrors.length === 0) contentGap = { parsed, errors };
+        if (shapeErrors.length === 0) {
+          // The exact same shape-valid content gap twice in a row means the
+          // insert genuinely lacks the field (or the model keeps skipping it) —
+          // re-prompting the same markdown will not fill it. Accept the fallback
+          // answer now instead of burning the remaining retries.
+          if (contentGap !== null && sameGapErrors(contentGap.errors, errors)) {
+            logWarning("Analysis accepted with unfilled content fields", { errors: contentGap.errors });
+            return contentGap.parsed;
+          }
+          contentGap = { parsed, errors };
+        }
       } catch (err) {
         lastError = String(err instanceof Error ? err.message : err);
       }
@@ -672,6 +741,7 @@ export class DrugAnalysisService {
         max_retries: this.config.analysisMaxRetries,
         error: lastError,
       });
+      onRetry?.({ attempt, error: lastError });
     }
     if (contentGap) {
       logWarning("Analysis accepted with unfilled content fields", { errors: contentGap.errors });

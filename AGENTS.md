@@ -26,6 +26,11 @@ catch-all. Edit `web/admin-app/`, never root `admin-ui/`.
   published entry point** — `app` is not reachable on `:8000` from the host.
 - `docker compose build app web && docker compose up -d --no-deps app web`: redeploy after
   a code change.
+- **`admin-worker` is a separate image (`Dockerfile.worker`) that executes all import
+  jobs.** Any `node-server/` change that touches job/loader code (`adminJobs.ts`, the
+  `*Service.ts` layer, `loaders/*`) must also be deployed to it:
+  `docker compose build admin-worker && docker compose up -d --no-deps admin-worker`.
+  Rebuilding only `app` leaves the worker running stale code.
 - `cd node-server && npm run build`: compile TypeScript to `dist/`.
 - `cd node-server && npm test`: run the test suite (`node --test` over `src/**/*.test.ts`).
 - `cd node-server && npm run typecheck`: type-check without emitting.
