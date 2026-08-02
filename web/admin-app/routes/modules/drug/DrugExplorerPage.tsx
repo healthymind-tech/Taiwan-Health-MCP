@@ -7,6 +7,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock3,
+  Cpu,
   Download,
   Eye,
   ExternalLink,
@@ -35,7 +36,7 @@ import { SmartCropImage } from "../../../components/SmartCropImage";
 
 pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
 
-type DetailView = "overview" | "timeline" | "documents";
+type DetailView = "overview" | "timeline" | "documents" | "llm";
 
 interface DrugRow {
   license_id: string;
@@ -111,6 +112,36 @@ interface AssetRow {
   size_bytes?: number;
   upload_date?: string;
   storage_status?: string;
+}
+
+interface LlmCallSummary {
+  id: number;
+  created_at?: string | null;
+  attempt: number;
+  profileName: string;
+  model: string;
+  provider: string;
+  status: string;
+  promptTokens: number;
+  completionTokens: number;
+  latencyMs: number;
+  isJson: boolean;
+}
+interface LlmCallDetail {
+  id: number;
+  licenseId: string;
+  attempt: number;
+  profileName: string;
+  model: string;
+  provider: string;
+  status: string;
+  promptMessages: Array<{ role: string; content: string }>;
+  responseContent: string;
+  error: string;
+  promptTokens: number;
+  completionTokens: number;
+  latencyMs: number;
+  createdAt?: string | null;
 }
 
 type AssetPreviewKind = "pdf" | "markdown" | "json" | "image" | "text" | "unsupported";
@@ -671,6 +702,84 @@ function MarkdownPreview({ assetId }: { assetId: string }): JSX.Element {
   </div>;
 }
 
+const formatCallTokens = (summary: { promptTokens: number; completionTokens: number; latencyMs: number }): string =>
+  `${(summary.promptTokens + summary.completionTokens).toLocaleString()} tokens · ${summary.latencyMs}ms`;
+
+/** Plain-text or pretty-printed JSON viewer for a stored LLM reply. */
+function LlmContentPane({ content, isJson }: { content: string; isJson: boolean }): JSX.Element {
+  if (!content.trim()) return <div className="drug-document-state">No output was returned.</div>;
+  const pretty = isJson ? (() => {
+    try { return JSON.stringify(JSON.parse(content), null, 2); } catch { return content; }
+  })() : content;
+  return <div className="drug-llm-content">
+    {isJson ? <span className="badge badge--ok drug-llm-content__badge">JSON output</span> : null}
+    <pre className="drug-text-preview">{pretty}</pre>
+  </div>;
+}
+
+function LlmCallModal({ callId, onClose }: { callId: number; onClose: () => void }): JSX.Element {
+  const detailQ = useQuery({
+    queryKey: ["drug-llm-call", callId],
+    queryFn: () => api.get<LlmCallDetail>(`/admin/api/drug/llm-call?id=${callId}`),
+  });
+  const [tab, setTab] = useState<"system" | "user" | "response">("response");
+  if (detailQ.isPending) return <Modal title="LLM call" onClose={onClose} workspace panelClassName="drug-llm-modal"><div className="drug-detail-loading">Loading LLM call...</div></Modal>;
+  if (detailQ.isError || !detailQ.data) {
+    return <Modal title="LLM call" onClose={onClose} workspace panelClassName="drug-llm-modal"><div className="error-box">Failed to load LLM call: {String(detailQ.error)}</div></Modal>;
+  }
+  const call = detailQ.data;
+  const system = call.promptMessages.find((message) => message.role === "system")?.content ?? "";
+  const user = call.promptMessages.find((message) => message.role === "user")?.content ?? "";
+  const isJson = (() => {
+    try { JSON.parse(call.responseContent); return true; } catch { return false; }
+  })();
+  return <Modal title={`LLM call · ${call.profileName || call.model || "analysis"} · attempt ${call.attempt}`} onClose={onClose} workspace panelClassName="drug-llm-modal">
+    <div className="drug-llm-modal__head">
+      <div className="drug-llm-modal__facts">
+        <StatusBadge status={call.status} />
+        <span>{new Date(call.createdAt ?? "").toLocaleString()}</span>
+        <span>{call.model || call.profileName}</span>
+        <span>{formatCallTokens(call)}</span>
+      </div>
+      {call.error ? <p className="drug-llm-modal__error">{call.error}</p> : null}
+    </div>
+    <div className="segmented" role="tablist" aria-label="LLM call parts">
+      <button type="button" role="tab" aria-selected={tab === "system"} className={tab === "system" ? "is-active" : ""} onClick={() => setTab("system")}>System prompt</button>
+      <button type="button" role="tab" aria-selected={tab === "user"} className={tab === "user" ? "is-active" : ""} onClick={() => setTab("user")}>User prompt</button>
+      <button type="button" role="tab" aria-selected={tab === "response"} className={tab === "response" ? "is-active" : ""} onClick={() => setTab("response")}>Response{isJson ? " (JSON)" : ""}</button>
+    </div>
+    <div className="drug-llm-modal__body">
+      {tab === "system" ? <LlmContentPane content={system} isJson={false} /> : null}
+      {tab === "user" ? <LlmContentPane content={user} isJson={false} /> : null}
+      {tab === "response" ? <LlmContentPane content={call.responseContent} isJson={isJson} /> : null}
+    </div>
+  </Modal>;
+}
+
+function LlmCalls({ licenseId }: { licenseId: string }): JSX.Element {
+  const [selected, setSelected] = useState<number | null>(null);
+  const listQ = useQuery({
+    queryKey: ["drug-llm-calls", licenseId],
+    queryFn: () => api.get<{ calls: LlmCallSummary[] }>(`/admin/api/drug/llm-calls?license_id=${encodeURIComponent(licenseId)}`),
+  });
+  if (listQ.isPending) return <div className="drug-detail-loading">Loading LLM calls...</div>;
+  if (listQ.isError) return <div className="error-box">Failed to load LLM calls: {String(listQ.error)}</div>;
+  const calls = listQ.data.calls;
+  return <div className="drug-llm-view">
+    <div className="drug-section-title"><Cpu size={18} /><h3>LLM calls</h3><span>{calls.length} calls</span></div>
+    {calls.length ? <div className="drug-llm-list">{calls.map((call) => <button type="button" key={call.id} className="drug-llm-row" onClick={() => setSelected(call.id)}>
+      <span className="drug-llm-row__meta">
+        <strong>{call.profileName || call.model || "Analysis LM"}</strong>
+        <small>{new Date(call.created_at ?? "").toLocaleString()}{call.attempt > 1 ? ` · attempt ${call.attempt}` : ""}</small>
+      </span>
+      <span className="drug-llm-row__tokens">{formatCallTokens(call)}</span>
+      {call.isJson ? <span className="badge badge--ok">JSON</span> : null}
+      <StatusBadge status={call.status} />
+    </button>)}</div> : <div className="drug-empty-inline"><Cpu size={22} /><span>No LLM calls recorded for this drug yet.</span></div>}
+    {selected !== null ? <LlmCallModal callId={selected} onClose={() => setSelected(null)} /> : null}
+  </div>;
+}
+
 function DrugDetail({ licenseId, view, onView, onBack, onExit }: { licenseId: string; view: DetailView; onView: (view: DetailView) => void; onBack: () => void; onExit: () => void }): JSX.Element {
   const detailQ = useQuery({
     queryKey: qk.drugExplorerDetail(licenseId),
@@ -694,16 +803,17 @@ function DrugDetail({ licenseId, view, onView, onBack, onExit }: { licenseId: st
       </div>
     </header>
     <nav className="drug-detail-tabs" aria-label="Drug detail views">
-      {(["overview", "timeline", "documents"] as const).map((tab) => <button type="button" key={tab}
+      {(["overview", "timeline", "documents", "llm"] as const).map((tab) => <button type="button" key={tab}
         className={view === tab ? "is-active" : ""} onClick={() => onView(tab)}>
-        {tab === "overview" ? <ImageIcon size={16} /> : tab === "timeline" ? <Clock3 size={16} /> : <FileText size={16} />}
-        {tab === "timeline" ? "Process timeline" : tab[0].toUpperCase() + tab.slice(1)}
+        {tab === "overview" ? <ImageIcon size={16} /> : tab === "timeline" ? <Clock3 size={16} /> : tab === "documents" ? <FileText size={16} /> : <Cpu size={16} />}
+        {tab === "timeline" ? "Process timeline" : tab === "llm" ? "LLM calls" : tab[0].toUpperCase() + tab.slice(1)}
       </button>)}
     </nav>
     <div className="drug-detail-body">
       {view === "overview" ? <Overview detail={detail} /> : null}
       {view === "timeline" ? <Timeline timeline={detail.timeline} documents={detail.documents} /> : null}
       {view === "documents" ? <Documents documents={detail.documents} assets={detail.assets} /> : null}
+      {view === "llm" ? <LlmCalls licenseId={licenseId} /> : null}
     </div>
   </article>;
 }
@@ -715,7 +825,7 @@ export function DrugExplorerPage(): JSX.Element {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const filters = useMemo(() => readFilters(params), [params]);
   const selectedLicense = params.get("license") || "";
-  const view = (["overview", "timeline", "documents"].includes(params.get("view") || "") ? params.get("view") : "overview") as DetailView;
+  const view = (["overview", "timeline", "documents", "llm"].includes(params.get("view") || "") ? params.get("view") : "overview") as DetailView;
 
   // Live, debounced search: typing in the box filters without pressing Enter.
   useEffect(() => {

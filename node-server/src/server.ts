@@ -28,6 +28,7 @@ import { seedAdminCredential } from "./admin/adminCredentials.js";
 import { ensureDrugExplorerIndexes } from "./admin/adminDrugExplorer.js";
 import { ensureImportJobsRetrySchema, reconcileJobStepTerminalState } from "./admin/adminJobs.js";
 import { ensureProfileStatsSchema } from "./admin/llmProfileStats.js";
+import { ensureLlmCallLogSchema } from "./admin/llmCallLog.js";
 import { adminHandler } from "./admin/adminApp.js";
 import { getFhirServerJwks, fhirServerSecretKey } from "./admin/adminFhirServers.js";
 import { completeAuthorization, OAuthError } from "./admin/fhirOauthService.js";
@@ -102,6 +103,14 @@ async function bootstrapResources(): Promise<void> {
     await ensureProfileStatsSchema();
   } catch (err) {
     logError("LLM profile stats schema migration skipped", { error: String((err as Error).message) });
+  }
+
+  // `admin.llm_call_log` (per-call prompt → reply audit, keyed by drug license).
+  // Idempotent; fail-open — recording failures are logged and swallowed.
+  try {
+    await ensureLlmCallLogSchema();
+  } catch (err) {
+    logError("LLM call log schema migration skipped", { error: String((err as Error).message) });
   }
 
   try {

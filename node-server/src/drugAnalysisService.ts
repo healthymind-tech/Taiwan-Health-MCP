@@ -12,7 +12,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import * as adminSettings from "./admin/adminSettings.js";
 import { candidateOrder, type LlmProfile, type Strategy } from "./admin/llmProfiles.js";
-import { callAnalysisLlm, type Message } from "./analysisLlmClient.js";
+import { recordLlmCall } from "./admin/llmCallLog.js";
+import { callAnalysisLlm, type LlmCallAttempt, type Message } from "./analysisLlmClient.js";
 import { logInfo, logWarning } from "./logger.js";
 
 export { isReasoningModel, MAX_TOKEN_BUDGET, TokenBudgetExceeded } from "./analysisLlmClient.js";
@@ -569,7 +570,12 @@ export class DrugAnalysisService {
 
     const markdown =
       opts.existingMarkdown || (await this.ocrPdfBytes(opts.pdfBytes, opts.sourceFilename));
-    const analysisJson = await this.runAnalysis(markdown, opts.providedFields, opts.onRetry);
+    const analysisJson = await this.runAnalysis(
+      markdown,
+      opts.providedFields,
+      opts.onRetry,
+      opts.licenseId,
+    );
     const used = this.lastProfileUsed;
     return {
       markdown,
@@ -656,6 +662,9 @@ export class DrugAnalysisService {
     ocrMarkdown: string,
     providedFields?: ProvidedAnalysisFields,
     onRetry?: AnalysisRetryListener,
+    /** License being analyzed — when set, every LM attempt is written to
+     * `admin.llm_call_log` so the admin Drug Explorer can show prompt + reply. */
+    licenseId?: string,
   ): Promise<Record<string, unknown>> {
     const [sanitized, removedImages, removedChars] = stripEmbeddedBase64Images(ocrMarkdown);
     if (removedImages) {
@@ -704,7 +713,29 @@ export class DrugAnalysisService {
                 baseUserContent,
         },
       ];
-      const { content, profileUsed } = await callAnalysisLlm(this.config.analysisProfiles, messages);
+      const { content, profileUsed } = await callAnalysisLlm(
+        this.config.analysisProfiles,
+        messages,
+        licenseId
+          ? (call: LlmCallAttempt): void => {
+              void recordLlmCall({
+                licenseId,
+                attempt,
+                profileId: call.profileUsed.id,
+                profileName: call.profileUsed.name,
+                model: call.profileUsed.model,
+                provider: call.profileUsed.provider,
+                status: call.status,
+                promptMessages: messages,
+                responseContent: call.content,
+                error: call.error,
+                promptTokens: call.usage?.promptTokens ?? 0,
+                completionTokens: call.usage?.completionTokens ?? 0,
+                latencyMs: call.usage?.latencyMs ?? 0,
+              });
+            }
+          : undefined,
+      );
       this.lastProfileUsed = profileUsed;
       try {
         const parsed = normalizeAnalysisData(extractJsonObject(content));

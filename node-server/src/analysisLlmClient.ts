@@ -346,6 +346,21 @@ export interface AnalysisLlmCallResult {
 }
 
 /**
+ * One attempt against one profile, reported to an optional observer so a caller
+ * can audit prompt → reply (e.g. persist the system prompt and the raw output).
+ * The final profile's call is reported with `status='ok'`; earlier profiles
+ * that failed (budget or endpoint) are each reported too.
+ */
+export interface LlmCallAttempt {
+  messages: Message[];
+  profileUsed: LlmProfile;
+  content: string;
+  usage: LlmCallUsage | null;
+  status: "ok" | "budget" | "failed";
+  error: string;
+}
+
+/**
  * Call the Analysis LM, moving to the next profile when one fails.
  *
  * A transport error, timeout or HTTP failure means *this endpoint* is unusable
@@ -356,6 +371,7 @@ export interface AnalysisLlmCallResult {
 export async function callAnalysisLlm(
   profiles: LlmProfile[],
   messages: Message[],
+  onCall?: (attempt: LlmCallAttempt) => void | Promise<void>,
 ): Promise<AnalysisLlmCallResult> {
   if (profiles.length === 0) {
     throw new AnalysisLlmUnavailable(
@@ -373,6 +389,7 @@ export async function callAnalysisLlm(
       const { content, usage } = await callProfileWithBudget(profile, messages);
       reportSuccess(profile.id);
       await recordProfileStats(profile.id, { ok: true, budgetFailure: false, usage });
+      await onCall?.({ messages, profileUsed: profile, content, usage, status: "ok", error: "" });
       return { content, profileUsed: profile };
     } catch (err) {
       if (err instanceof TokenBudgetExceeded) {
@@ -381,6 +398,14 @@ export async function callAnalysisLlm(
         // over our own budget would take it out of rotation for every other caller.
         failures.push(`${profile.name}: ${err.message}`);
         await recordProfileStats(profile.id, { ok: false, budgetFailure: true, usage: err.usage });
+        await onCall?.({
+          messages,
+          profileUsed: profile,
+          content: "",
+          usage: err.usage,
+          status: "budget",
+          error: err.message,
+        });
         logWarning("analysis_profile_out_of_budget", {
           profile: profile.name,
           model: profile.model,
@@ -395,6 +420,14 @@ export async function callAnalysisLlm(
       failures.push(`${profile.name}: ${message}`);
       reportFailure(profile.id, message);
       await recordProfileStats(profile.id, { ok: false, budgetFailure: false, usage: null });
+      await onCall?.({
+        messages,
+        profileUsed: profile,
+        content: "",
+        usage: null,
+        status: "failed",
+        error: message,
+      });
       logWarning("analysis_profile_failed", {
         profile: profile.name,
         provider: profile.provider,
