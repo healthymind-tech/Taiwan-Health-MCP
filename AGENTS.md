@@ -81,7 +81,7 @@ overridden with `FHIR_CODE_DIR` / `*_ZIP` env vars.
   profile failed is re-claimed automatically once `next_retry_at` passes (backoff
   doubles per attempt, 2min → 30min cap). Manual resume overrides the backoff. A
   `paused` job with `last_error_code != 'llm_unavailable'` (or a manual pause) is never
-  auto-resumed. Per-call LM timeouts default to 300s and are retried 3× on transport
+  auto-resumed. Per-call LM timeouts default to 600s and are retried 3× on transport
   errors; override per profile via `llm_profiles.params.timeout_ms` (admin console).
 - **pgBouncer transaction mode**: never use named prepared statements (in `db.ts`, keep
   `pg` statements unnamed) and never use `LISTEN`/`NOTIFY`.

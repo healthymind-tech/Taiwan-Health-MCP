@@ -54,7 +54,7 @@ function emptyDraft(kind: LlmProfileKind): DraftProfile {
     dimensions: 1024,
     temperature: 0.1,
     max_tokens: DEFAULT_MAX_TOKENS,
-    timeout_ms: 300000,
+    timeout_ms: 600000,
   };
 }
 
@@ -88,7 +88,7 @@ function toDraft(p: LlmProfile): DraftProfile {
     dimensions: Number(p.params?.dimensions ?? 1024),
     temperature: Number(p.params?.temperature ?? 0.1),
     max_tokens: Number(p.params?.max_tokens ?? defaultMaxTokens(p.model)),
-    timeout_ms: Number(p.params?.timeout_ms ?? 300000),
+    timeout_ms: Number(p.params?.timeout_ms ?? 600000),
   };
 }
 
@@ -488,7 +488,7 @@ export function LlmProfilesCard({
                   }
                 />
                 <span className="muted small">
-                  Per-call ceiling before the request is aborted and retried (default 300000).
+                  Per-call ceiling before the request is aborted and retried (default 600000).
                 </span>
               </label>
             </>

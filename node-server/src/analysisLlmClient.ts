@@ -15,7 +15,7 @@ export type Message = { role: string; content: string };
 
 const DEFAULT_MAX_TOKENS = 4096;
 const DEFAULT_REASONING_MAX_TOKENS = 16384;
-const DEFAULT_TIMEOUT_MS = 300_000;
+const DEFAULT_TIMEOUT_MS = 600_000;
 const REASONING_MODEL_PREFIXES = ["gpt-5", "o1", "o3", "o4"];
 
 /** How many times a single endpoint call retries on a transport failure
