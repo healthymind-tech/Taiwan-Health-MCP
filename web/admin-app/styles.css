@@ -3211,3 +3211,9 @@ input[type="range"] { min-height: 30px; accent-color: var(--brand); }
 .drug-llm-row__tokens { color: var(--muted); font-size: 12px; white-space: nowrap; }
 .drug-llm-modal__facts { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 4px 12px; font-size: 12px; color: var(--muted); }
 .drug-llm-modal__error { margin: 0 12px; padding: 8px 10px; border-left: 3px solid var(--bad-fg); background: var(--bad-bg); color: var(--bad-fg); font-size: 12px; overflow-wrap: anywhere; }
+.drug-llm-pane { min-height: 0; flex: 1; overflow-y: auto; display: flex; flex-direction: column; }
+.drug-llm-message { padding: 12px 14px; }
+.drug-llm-message + .drug-llm-message { border-top: 1px solid var(--line); }
+.drug-llm-msg-label { display: inline-block; margin-bottom: 8px; padding: 1px 8px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel-soft); color: var(--muted); font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+.drug-llm-msg-body { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; line-height: 1.55; color: var(--text); }
+.drug-paired-preview .drug-text-preview { flex: 1; min-height: 0; height: auto; }
