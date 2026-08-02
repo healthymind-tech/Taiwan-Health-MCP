@@ -310,6 +310,19 @@ CREATE TABLE IF NOT EXISTS admin.llm_profiles (
 CREATE INDEX IF NOT EXISTS idx_llm_profiles_kind_enabled
     ON admin.llm_profiles (kind, enabled, priority);
 
+-- Per-profile Analysis LM call stats (see db/migrations/20260802_llm_profile_stats.sql).
+CREATE TABLE IF NOT EXISTS admin.llm_profile_stats (
+    profile_id         BIGINT NOT NULL REFERENCES admin.llm_profiles (id) ON DELETE CASCADE,
+    bucket             TIMESTAMPTZ NOT NULL,
+    calls              BIGINT NOT NULL DEFAULT 0,
+    failures           BIGINT NOT NULL DEFAULT 0,
+    budget_failures    BIGINT NOT NULL DEFAULT 0,
+    total_latency_ms   BIGINT NOT NULL DEFAULT 0,
+    prompt_tokens      BIGINT NOT NULL DEFAULT 0,
+    completion_tokens  BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (profile_id, bucket)
+);
+
 -- Registered WebAuthn / passkey credentials for admin login (additional to the
 -- password). credential_id/public_key are base64url/raw-bytes as produced by
 -- @simplewebauthn; counter guards against cloned-authenticator replay.

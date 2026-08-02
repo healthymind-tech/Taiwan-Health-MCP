@@ -378,7 +378,7 @@ export class FHIRMedicationService {
           isActive,
         };
         const strength = this.ratioFromAmount(
-          String(it.amount || it["含量"] || it.raw_text || ""),
+          [String(it.amount || it["含量"] || ""), String(it.unit || "")].filter(Boolean).join(" "),
         );
         if (strength) ingredient.strength = strength;
         entries.push(ingredient);

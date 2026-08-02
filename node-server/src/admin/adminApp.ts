@@ -32,6 +32,7 @@ import { changePassword, verifyPassword } from "./adminCredentials.js";
 import { listBackups, openBackupDownload } from "./adminBackup.js";
 import * as adminSettings from "./adminSettings.js";
 import * as llmProfiles from "./llmProfiles.js";
+import * as llmProfileStats from "./llmProfileStats.js";
 import * as ocrTestSamples from "./ocrTestSamples.js";
 import {
   listWorkerHeartbeats,
@@ -469,7 +470,10 @@ export async function adminHandler(req: Request, res: Response, next: NextFuncti
         if (method === "GET" && rest === "") {
           const kind = req.query.kind as llmProfiles.ProfileKind | undefined;
           const rows = await llmProfiles.listProfiles(kind);
-          sendJson(res, 200, { profiles: rows.map(llmProfiles.toPublic) });
+          const stats = kind === "analysis" ? await llmProfileStats.readProfileStats() : new Map<number, llmProfileStats.ProfileStats>();
+          const statsJson: Record<string, llmProfileStats.ProfileStats> = {};
+          for (const [id, s] of stats) statsJson[String(id)] = s;
+          sendJson(res, 200, { profiles: rows.map(llmProfiles.toPublic), stats: statsJson });
           return;
         }
         if (method === "POST" && rest === "") {

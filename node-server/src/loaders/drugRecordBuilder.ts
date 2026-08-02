@@ -132,6 +132,54 @@ export function nestedGet(data: unknown, ...keys: string[]): unknown {
   return current;
 }
 
+// ── Active-ingredient amounts ────────────────────────────────────────────────
+// The TFDA crawl writes units verbatim from the insert table ("MG"/"GM"/"ML",
+// uppercase), while the analysis LM folds value and unit into 含量 ("10 mg").
+// The normalized record keeps value and unit in separate fields, so every unit
+// is canonicalized against the fixed alias table here — the one point where all
+// ingredient sources (analysis, electronic insert, index) converge. A unit that
+// is present must be one of the allowed few; anything else is dropped rather
+// than stored verbatim. Some ingredients legitimately carry no unit (適量).
+const UNIT_CANON: Record<string, string> = {
+  mg: "mg", 毫克: "mg",
+  g: "g", gm: "g", 公克: "g",
+  mcg: "mcg", μg: "mcg", ug: "mcg", 微克: "mcg",
+  ml: "mL", 毫升: "mL",
+  iu: "IU", 單位: "單位",
+  "%": "%",
+};
+
+function canonicalUnitPiece(raw: string): string {
+  return UNIT_CANON[raw.trim().toLowerCase()] ?? "";
+}
+
+/** Canonicalize a unit (possibly compound like mg/mL, or %w/v) or "" if not allowed. */
+export function canonicalizeUnit(raw: string): string {
+  let s = raw.trim();
+  if (!s) return "";
+  const wv = /^(.*?)(w\/w|w\/v)$/i.exec(s);
+  let suffix = "";
+  if (wv) {
+    suffix = wv[2];
+    s = wv[1].trim();
+  }
+  const pieces = s.split("/").map(canonicalUnitPiece);
+  if (pieces.some((p) => p === "")) return "";
+  return pieces.join("/") + suffix;
+}
+
+// "500.0 mg" → value 500.0 unit mg; "25.0毫克(mg)" → 25.0 mg; "每mL含50 mg" → null.
+const INGREDIENT_VALUE_UNIT_RE =
+  /^([\d.,]+)\s*(mg|g|mcg|μg|ug|ml|iu|%|毫克|公克|微克|毫升)(w\/w|w\/v)?(?:\/(mg|g|mcg|μg|ug|ml|iu|%|毫克|公克|微克|毫升))?$/i;
+
+function splitValueUnit(amount: string): { value: string; unit: string } | null {
+  const clean = amount.replace(/\s*[（(][^）)]*[）)]$/, "").trim();
+  const m = INGREDIENT_VALUE_UNIT_RE.exec(clean);
+  if (!m) return null;
+  const unit = `${m[2]}${m[3] ?? ""}${m[4] ? "/" + m[4] : ""}`;
+  return { value: m[1], unit: canonicalizeUnit(unit) };
+}
+
 function normalizeIngredientItem(item: unknown): Record<string, string> {
   if (typeof item === "string") {
     return { name: item, amount: "", unit: "", raw_text: item };
@@ -140,8 +188,15 @@ function normalizeIngredientItem(item: unknown): Record<string, string> {
     return { name: "", amount: "", unit: "", raw_text: "" };
   }
   const name = pick(item["成分"], item["成分名稱"], item.name, item.ingredient);
-  const amount = pick(item["含量"], item["含量描述"], item.amount, item.quantity);
-  const unit = pick(item["單位"], item.unit);
+  let amount = pyStr(pick(item["含量"], item["含量描述"], item.amount, item.quantity)).trim();
+  let unit = canonicalizeUnit(pyStr(pick(item["單位"], item.unit)).trim());
+  if (!unit && amount) {
+    const split = splitValueUnit(amount);
+    if (split) {
+      amount = split.value;
+      unit = split.unit;
+    }
+  }
   const rawText = pick(
     item.raw_text,
     Object.values(item)
@@ -151,8 +206,8 @@ function normalizeIngredientItem(item: unknown): Record<string, string> {
   );
   return {
     name: pyStr(name).trim(),
-    amount: pyStr(amount).trim(),
-    unit: pyStr(unit).trim(),
+    amount,
+    unit,
     raw_text: pyStr(rawText).trim(),
   };
 }
@@ -236,16 +291,25 @@ function pickSections(electronicInsert: Dict | null, analysis: Dict | null): [st
   return ["index_only", {}];
 }
 
-function normalizeUsage(sections: Dict, row: IndexRow): Dict {
+function normalizeUsage(sections: Dict, row: IndexRow, electronicSections: Dict): Dict {
+  // `sections` is the analysis JSON when a PDF insert was analyzed, so fields the
+  // LM was told to skip (already provided by the crawler/electronic insert or the
+  // index CSV) are absent there — fall back to the electronic-insert sections and
+  // then to the CSV row so the value is never lost.
   const purpose = pick(
     dictGet(sections, "用途(適應症)"),
     dictGet(sections, "適應症"),
+    dictGet(electronicSections, "用途(適應症)"),
+    dictGet(electronicSections, "適應症"),
     row["適應症"] ?? "",
   );
   const dosage = pick(
     dictGet(sections, "用法用量"),
     dictGet(sections, "用法及用量"),
     nestedGet(sections, "用法及用量", "用法用量"),
+    dictGet(electronicSections, "用法用量"),
+    dictGet(electronicSections, "用法及用量"),
+    nestedGet(electronicSections, "用法及用量", "用法用量"),
     row["用法用量"] ?? "",
   );
   return {
@@ -591,7 +655,13 @@ export function buildDrugRecord(row: IndexRow, options: BuildDrugRecordOptions =
     },
     companies: normalizeCompanies(row, electronicInsert),
     ingredients: normalizeIngredients(row, electronicInsert, analysis),
-    usage: normalizeUsage(sections, row),
+    usage: normalizeUsage(
+      sections,
+      row,
+      electronicInsert && isDict(dictGet(electronicInsert, "sections"))
+        ? (dictGet(electronicInsert, "sections") as Dict)
+        : {},
+    ),
     safety: normalizeSafety(sections),
     storage: normalizeStorage(sections),
     insert_content: {
