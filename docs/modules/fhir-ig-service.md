@@ -37,7 +37,7 @@ FHIR IG 服務模組是一套通用、以 IG 為範圍（IG-scoped）的工具�
 ## 技術架構
 - **資料來源**：FHIR IG 套件（`package.tgz`），經由管理後台（Admin → Modules / IG，匯入階段 `--twcore`）匯入。相依套件（如 `hl7.terminology.r4`、`hl7.fhir.r4.core`）可額外綁定並各自以 package-scoped IG 索引，使跨系統的 ValueSet 綁定能展開出真實碼。
 - **資料庫**：`fhir` schema —`ig_packages`、`codesystems`、`concepts`、`artifacts`（皆 package-scoped，支援多 IG）。
-- **驗證引擎**：以 `fhir_validator.py` / `fhir_terminology.py` / `fhir_snapshot.py` / `fhir_reference.py` / `fhir_authoring.py` 在程序內完成 snapshot 產生、術語綁定檢查、參照解析與骨架填值。
+- **驗證引擎**：以 `fhirValidator.ts` / `fhirTerminology.ts` / `fhirSnapshot.ts` / `fhirReference.ts` / `fhirAuthoring.ts` 在程序內完成 snapshot 產生、術語綁定檢查、參照解析與骨架填值。
 
 ## 授權工作流程（建議）
 1. `fhir_list_igs` →（必要時）選定目標 IG。

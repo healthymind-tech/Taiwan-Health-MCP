@@ -14,7 +14,6 @@
 |----------|------|------|
 | `icd_import` / `loinc_import` / `snomed_import` / `rxnorm_import` / `ig_import` | 對應模組 | 由管理後台上傳的來源檔匯入（來源檔存於 MinIO，工作執行時取回）。 |
 | `health_supplements_import` / `food_nutrition_import` | 對應模組 | 由 TFDA Open Data API 抓取。 |
-| `guideline_import` | `guideline` | 內建種子資料。 |
 | `drug_index_import` | `drug` | 由 `36_2.csv` 授權證索引匯入 `drug.licenses`，並排入 enrichment 佇列。 |
 | `drug_enrichment` | `drug` | 爬取 TFDA 網站取得仿單 / 標籤 / 外觀資產，上傳 MinIO。 |
 | `drug_analysis` | `drug` | 仿單 PDF → MinerU OCR → 分析 LLM → `drug.insert_analysis`。 |

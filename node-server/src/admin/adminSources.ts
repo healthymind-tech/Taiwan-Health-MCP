@@ -125,15 +125,6 @@ export const SOURCE_CATALOG: readonly SourceCatalogEntry[] = [
       ],
     },
   },
-  {
-    module_key: "guideline",
-    source_role: "guideline_pdf",
-    label: "Clinical guideline PDF",
-    description:
-      "Raw clinical-guideline PDF for one disease/ICD target; OCR'd and extracted by the guideline analysis pipeline. Many may be active at once — one per uploaded document.",
-    accepted_extensions: [".pdf"],
-    multi_source: true,
-  },
 ];
 
 interface VersionRow {
@@ -246,7 +237,7 @@ async function safeCount(sql: string): Promise<number> {
 
 /**
  * Faithful port of `_module_record_counts`. Key insertion order matches Python:
- * icd, loinc, snomed, rxnorm, ig, drug, guideline, health_supplements, food_nutrition.
+ * icd, loinc, snomed, rxnorm, ig, drug, health_supplements, food_nutrition.
  */
 export async function moduleRecordCounts(): Promise<Record<string, number>> {
   const counts: Record<string, number> = {};
@@ -266,7 +257,6 @@ export async function moduleRecordCounts(): Promise<Record<string, number>> {
     "SELECT (SELECT COUNT(*) FROM fhir.codesystems) + (SELECT COUNT(*) FROM fhir.artifacts) AS c",
   );
   counts.drug = await safeCount("SELECT COUNT(*) AS c FROM drug.licenses WHERE is_listed");
-  counts.guideline = await safeCount("SELECT COUNT(*) AS c FROM guideline.disease_guidelines");
   counts.health_supplements = await safeCount("SELECT COUNT(*) AS c FROM health_supplements.items");
   counts.food_nutrition = await safeCount(
     "SELECT (SELECT COUNT(DISTINCT sample_name) FROM food_nutrition.measurements) + (SELECT COUNT(*) FROM food_nutrition.ingredients) AS c",
@@ -525,7 +515,6 @@ const ZIP_LABELS = ["zip"];
 const GZIP_LABELS = ["gzip"];
 const XLSX_LABELS = ["xlsx"];
 const CSV_LABELS = ["csv", "txt", "tsv"];
-const PDF_LABELS = ["pdf"];
 const ALLOWED_LABELS = new Map<string, string[]>([
   ["icd/icd10cm", ZIP_LABELS],
   ["icd/icd10pcs", ZIP_LABELS],
@@ -537,7 +526,6 @@ const ALLOWED_LABELS = new Map<string, string[]>([
   ["rxnorm/rxnorm_full", ZIP_LABELS],
   ["ig/ig", GZIP_LABELS],
   ["drug/drug_index_csv", CSV_LABELS],
-  ["guideline/guideline_pdf", PDF_LABELS],
 ]);
 
 const CATALOG_BY_KEY = new Map<string, SourceCatalogEntry>(

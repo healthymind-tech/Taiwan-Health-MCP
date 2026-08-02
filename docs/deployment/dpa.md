@@ -33,7 +33,7 @@ curl http://localhost:8080/dpa
 
 ## 唯讀範圍與唯一例外
 
-51 個工具中有 50 個對系統自身的資料做唯讀查詢。唯一例外是 **`crud_fhir_server`**：
+49 個工具中有 48 個對系統自身的資料做唯讀查詢。唯一例外是 **`crud_fhir_server`**：
 它會把 FHIR 請求轉送到**管理者已明確登錄**的外部 FHIR 伺服器。寫入操作
 （create / update / patch / delete）必須同時滿足兩個條件才會執行 ——
 該伺服器的 allow-list 允許該操作，且呼叫端帶入 `confirm_write=true`。

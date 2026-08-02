@@ -19,7 +19,6 @@ export const SERVICE_LABELS: Record<string, string> = {
   drug: "Drug (TFDA)",
   health_supplements: "Health supplements",
   food_nutrition: "Food nutrition",
-  guideline: "Clinical guidelines",
 };
 
 /** Ordered categories rendered as sibling sections on the Overview page. */
@@ -33,7 +32,6 @@ export const SERVICE_CATEGORIES: readonly ServiceCategory[] = [
     label: "Drug, supplements & nutrition",
     keys: ["drug", "health_supplements", "food_nutrition"],
   },
-  { label: "Clinical guidelines", keys: ["guideline"] },
 ];
 
 export function serviceLabel(key: string): string {

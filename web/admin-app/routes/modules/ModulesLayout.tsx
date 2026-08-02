@@ -1,7 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import {
   Apple,
-  BookOpenText,
   Boxes,
   Building2,
   Database,
@@ -24,7 +23,6 @@ interface NavigationGroup {
 }
 
 const ACTION_ICONS: Record<string, LucideIcon> = {
-  guideline: BookOpenText,
   health_supplements: Leaf,
   food_nutrition: Apple,
 };

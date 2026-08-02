@@ -62,7 +62,7 @@ curl -L "https://data.fda.gov.tw/data/opendata/export/36/csv" -o drug36.zip
 其他兩個看起來合理的網址（`cacheData/36_2.csv`、`codedata/datadownload/36`）都是 404。
 
 保健食品與食品營養**不需要來源檔**：`health_supplements_sync` / `food_nutrition_sync` 直接
-打 TFDA Open Data API。臨床指引則由 `guideline_seed` 從 repo 內建資料播種。
+打 TFDA Open Data API。
 
 ## 重建步驟
 
@@ -87,7 +87,7 @@ curl -X POST "localhost:8080/admin/api/uploads?module_key=icd&source_role=icd10c
 
 接著依序排入 job：`icd_import`、`loinc_import`、`snomed_import`、`rxnorm_import`、
 `ig_import`（要帶 `job_options.object_key`，值是該來源檔的 MinIO object key）、
-`guideline_seed`、`health_supplements_sync`、`food_nutrition_sync`、`drug_index_import`。
+`health_supplements_sync`、`food_nutrition_sync`、`drug_index_import`。
 
 !!! warning "藥品 pipeline 會自動接續"
     `drug_index_import` 成功後會 auto-chain 出 `drug_enrichment`，再接 `drug_analysis`。
@@ -110,7 +110,6 @@ curl -X POST "localhost:8080/admin/api/uploads?module_key=icd&source_role=icd10c
 | 藥品 | 66,395 張許可證 |
 | 保健食品 | 565 |
 | 食品營養 | 1,702 |
-| 臨床指引 | 4 |
 
 語意搜尋要另外跑 `*_embed` job（需要可連線的 Ollama）。**沒有 embedding 時，中文關鍵字
 搜尋幾乎搜不到東西**——因為 Postgres 的 `simple` tokenizer 會把整串中文品名當成一個 token，

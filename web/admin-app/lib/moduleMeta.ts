@@ -27,7 +27,7 @@ export const UPLOAD_MODULE_META: Record<string, UploadModuleMeta> = {
 };
 
 // Action-only modules that have NO upload sources (not in the catalog):
-// FDA API syncs and the guideline seed.
+// FDA API syncs.
 export interface ActionModuleMeta {
   moduleKey: string;
   label: string;
@@ -38,18 +38,6 @@ export interface ActionModuleMeta {
 }
 
 export const ACTION_MODULES: ActionModuleMeta[] = [
-  // guideline is rendered by the bespoke GuidelineModulePage (ModulePage.tsx
-  // intercepts it before GenericModulePage), so jobType/actionLabel/description
-  // below are unused for rendering — this entry only feeds ModulesLayout's
-  // sidebar label/icon and ModulePage's "is this a known module" check.
-  {
-    moduleKey: "guideline",
-    label: "Clinical guidelines",
-    jobType: "guideline_seed",
-    actionLabel: "Run seed",
-    description: "Seeds built-in Taiwan clinical guideline data (idempotent upsert — safe to re-run).",
-    embedJobType: "guideline_embed",
-  },
   {
     moduleKey: "health_supplements",
     label: "Health supplements",

@@ -25,7 +25,6 @@ import { FHIRConditionService } from "./fhirConditionService.js";
 import { FHIRMedicationService } from "./fhirMedicationService.js";
 import { FHIRServerService } from "./fhirServerService.js";
 import { DrugService } from "./drugService.js";
-import { ClinicalGuidelineService } from "./guidelineService.js";
 import { FHIRIGService } from "./fhirIgService.js";
 import * as fhirReference from "./fhirReference.js";
 import { getEmbeddingService } from "./embeddingService.js";
@@ -184,7 +183,6 @@ async function buildHealthCheck(): Promise<string> {
     fhir_condition: false,
     fhir_medication: false,
     lab: false,
-    guideline: false,
     ig: false,
     snomed: false,
   };
@@ -198,7 +196,6 @@ async function buildHealthCheck(): Promise<string> {
       fhir_condition: status.fhir_condition,
       fhir_medication: status.fhir_medication,
       lab: status.lab,
-      guideline: status.guideline,
       ig: status.ig,
       snomed: status.snomed,
     };
@@ -627,80 +624,6 @@ function registerDrugTools(server: McpServer, svc: DrugService): void {
   );
 }
 
-// Lazily-initialized Clinical Guideline service singleton.
-let _guideline: ClinicalGuidelineService | null = null;
-async function getGuidelineService(): Promise<ClinicalGuidelineService | null> {
-  if (_guideline) return _guideline;
-  try {
-    const svc = new ClinicalGuidelineService(await getEmbeddingService());
-    await svc.initialize();
-    _guideline = svc;
-    return _guideline;
-  } catch (err) {
-    logError("Clinical guideline service init failed", { error: String((err as Error).message) });
-    return null;
-  }
-}
-
-/** Register the Guidelines tool group. Mirrors `_TOOL_GROUPS["Guidelines"]`. */
-function registerGuidelineTools(server: McpServer, svc: ClinicalGuidelineService): void {
-  server.registerTool(
-    "search_clinical_guideline",
-    {
-      description:
-        "Search Taiwan clinical practice guidelines by disease name or ICD-10 code. " +
-        "Hybrid BM25 + semantic ranking (cross-language). Returns up to `limit` guidelines.",
-      inputSchema: {
-        keyword: z.string(),
-        limit: z.number().int().default(3),
-      },
-    },
-    async ({ keyword, limit }) => jsonResult(await svc.searchGuideline(keyword, limit ?? 3)),
-  );
-
-  server.registerTool(
-    "query_guideline",
-    {
-      description:
-        "Retrieve a specific section from a Taiwan clinical practice guideline by ICD code. " +
-        "section: complete (default) | medication | test | goals | pathway | contraindications. " +
-        "contraindications REQUIRES medication_class; pathway accepts optional patient_context_json.",
-      inputSchema: {
-        icd_code: z.string(),
-        section: z
-          .enum(["complete", "medication", "test", "goals", "pathway", "contraindications"])
-          .default("complete"),
-        patient_context_json: z.string().nullish().default(null),
-        medication_class: z.string().nullish().default(null),
-      },
-    },
-    async ({ icd_code, section, patient_context_json, medication_class }) => {
-      const sec = section ?? "complete";
-      if (sec === "contraindications") {
-        if (!medication_class) {
-          return jsonResult({ error: "medication_class is required for section=contraindications" });
-        }
-        return jsonResult(await svc.checkMedicationContraindications(icd_code, medication_class));
-      }
-      if (sec === "pathway") {
-        let context: Record<string, unknown> | null = null;
-        if (patient_context_json) {
-          try {
-            context = JSON.parse(patient_context_json);
-          } catch {
-            return jsonResult({ error: "patient_context_json is not valid JSON" });
-          }
-        }
-        return jsonResult(await svc.suggestClinicalPathway(icd_code, context));
-      }
-      if (sec === "medication") return jsonResult(await svc.getMedicationRecommendations(icd_code));
-      if (sec === "test") return jsonResult(await svc.getTestRecommendations(icd_code));
-      if (sec === "goals") return jsonResult(await svc.getTreatmentGoals(icd_code));
-      return jsonResult(await svc.getCompleteGuideline(icd_code));
-    },
-  );
-}
-
 // Lazily-initialized FHIR IG service singleton.
 let _fhirIg: FHIRIGService | null = null;
 async function getFhirIgService(): Promise<FHIRIGService | null> {
@@ -979,7 +902,7 @@ async function getFhirMedicationService(): Promise<FHIRMedicationService | null>
  * Key order matches Python `_admin_service_registry`.
  */
 export async function getServiceRegistry(): Promise<Record<string, boolean>> {
-  const [icd, drug, hs, food, cond, med, lab, guideline, ig, snomed] = await Promise.all([
+  const [icd, drug, hs, food, cond, med, lab, ig, snomed] = await Promise.all([
     getIcdService(),
     getDrugService(),
     getSupplementsService(),
@@ -987,7 +910,6 @@ export async function getServiceRegistry(): Promise<Record<string, boolean>> {
     getFhirConditionService(),
     getFhirMedicationService(),
     getLabService(),
-    getGuidelineService(),
     getFhirIgService(),
     getSnomedService(),
   ]);
@@ -999,7 +921,6 @@ export async function getServiceRegistry(): Promise<Record<string, boolean>> {
     fhir_condition: cond !== null,
     fhir_medication: med !== null,
     lab: lab !== null,
-    guideline: guideline !== null,
     ig: ig !== null,
     snomed: snomed !== null,
   };
@@ -1548,10 +1469,6 @@ export async function buildMcpServer(): Promise<McpServer> {
     if (status.drug) {
       const svc = await getDrugService();
       if (svc) registerDrugTools(server, svc);
-    }
-    if (status.guideline) {
-      const svc = await getGuidelineService();
-      if (svc) registerGuidelineTools(server, svc);
     }
     if (status.ig) {
       const svc = await getFhirIgService();

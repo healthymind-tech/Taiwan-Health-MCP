@@ -505,8 +505,6 @@ export const JOB_TYPE_DEPENDENCIES: Record<string, string[]> = {
   drug_enrichment: [], // only outbound HTTP to TFDA — no local service dep
   drug_analysis: ["minio", "ocr_server", "analysis_server"],
   drug_pipeline: ["minio", "ocr_server", "analysis_server"],
-  guideline_analysis: ["minio", "ocr_server", "analysis_server"],
-  guideline_seed: [],
   health_supplements_sync: [],
   food_nutrition_sync: [],
   noop: [],

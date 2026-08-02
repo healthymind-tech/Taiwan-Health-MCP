@@ -5,7 +5,7 @@
  * upserts them into the per-module `*_embeddings` tables:
  *   food_nutrition.food_embeddings / ingredient_embeddings, health_supplements.
  *   item_embeddings, icd.diagnosis_embeddings, loinc.concept_embeddings,
- *   guideline.guideline_embeddings, snomed.concept_embeddings.
+ *   snomed.concept_embeddings.
  *
  * Incremental: each row's embedded text is hashed (sha256 → `source_hash`); a row
  * is (re)embedded only when new or changed since the last run, and embedding rows
@@ -19,7 +19,7 @@
  * Python worker's `embedding_loader.configure(...)`.
  *
  * Run:  node dist/loaders/embeddings.js [--food-nutrition] [--health-supplements]
- *       [--icd] [--loinc] [--guideline] [--snomed] [--ensure-dims]
+ *       [--icd] [--loinc] [--snomed] [--ensure-dims]
  *       (no module flag → all modules; --ensure-dims also ALTERs vector dims)
  */
 
@@ -39,7 +39,6 @@ const EMBEDDING_COLUMNS: [string, string, string][] = [
   ["food_nutrition", "food_embeddings", "embedding"],
   ["food_nutrition", "ingredient_embeddings", "embedding"],
   ["loinc", "concept_embeddings", "embedding"],
-  ["guideline", "guideline_embeddings", "embedding"],
   ["snomed", "concept_embeddings", "embedding"],
 ];
 
@@ -441,39 +440,6 @@ async function embedLoinc(
   return false;
 }
 
-async function embedGuideline(
-  pool: pg.Pool, svc: EmbeddingService, batch: number, shouldStop?: ShouldStop,
-): Promise<boolean> {
-  logInfo("=== Embedding: guideline.disease_guidelines ===");
-  const rows = (
-    await pool.query(
-      `SELECT id, disease_name_zh, disease_name_en, guideline_title, guideline_summary
-         FROM guideline.disease_guidelines`,
-    )
-  ).rows;
-  if (rows.length === 0) {
-    logWarning("No guidelines found — run the guideline loader first");
-    return false;
-  }
-  const s = await embedTable(pool, svc, batch, {
-    table: "guideline.guideline_embeddings",
-    keyCol: "id",
-    keySqlType: "INTEGER",
-    rows,
-    keyOf: (r) => r.id,
-    textOf: (r) =>
-      joinText([r.disease_name_zh, r.disease_name_en, r.guideline_title, r.guideline_summary]),
-    desc: "Guidelines",
-    shouldStop,
-  });
-  if (s.stopped) return true;
-  await writeEmbedLog(pool, "guideline", s.source_total, s.embedded_total, s.changed);
-  logInfo(
-    `Guidelines done: ${s.changed} (re)embedded, ${s.deleted} orphans pruned, ${s.embedded_total} total`,
-  );
-  return false;
-}
-
 async function embedSnomed(
   pool: pg.Pool, svc: EmbeddingService, batch: number, shouldStop?: ShouldStop,
 ): Promise<boolean> {
@@ -510,7 +476,6 @@ const MODULES: Record<
   "health-supplements": embedHealthSupplements,
   icd: embedIcd,
   loinc: embedLoinc,
-  guideline: embedGuideline,
   snomed: embedSnomed,
 };
 

@@ -57,7 +57,6 @@ ADMIN_SESSION_SECRET=change_this_admin_session_secret
 |------|------|------|
 | 需上傳來源檔 | ICD-10-CM/PCS、LOINC、SNOMED CT、RxNorm、FHIR IG（`package.tgz`） | 於 Sources / Modules 上傳來源檔後按匯入 |
 | API 自動抓取 | 藥品（TFDA）、健康補充品、食品營養 | 直接按匯入，或設定排程 |
-| 內建種子資料 | 臨床指引 | 直接執行 |
 
 - **藥物域**為三階段管線（索引 → 爬取豐富 → OCR/LLM 分析）。爬取的 TFDA base URL 可在 Settings 設定；OCR（MinerU）與分析 LLM 的端點則存於 `admin.llm_profiles`，同樣在 Settings 管理。
 - **嵌入**（語意搜尋）是各模組獨立的 `*_embed` 工作，可在模組頁面執行或排程。

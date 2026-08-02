@@ -130,9 +130,6 @@ export async function getEmbeddingStatus(): Promise<Record<string, unknown>> {
         (SELECT COUNT(*) FROM food_nutrition.ingredient_embeddings)  AS fn_ings_embedded,
         ${tsIsoExpr("(SELECT MAX(embedded_at) FROM food_nutrition.food_embeddings)")} AS fn_food_last,
         ${tsIsoExpr("(SELECT MAX(embedded_at) FROM food_nutrition.ingredient_embeddings)")} AS fn_ing_last,
-        (SELECT COUNT(*) FROM guideline.disease_guidelines)  AS gl_total,
-        (SELECT COUNT(*) FROM guideline.guideline_embeddings) AS gl_embedded,
-        ${tsIsoExpr("(SELECT MAX(embedded_at) FROM guideline.guideline_embeddings)")} AS gl_last,
         (SELECT COUNT(DISTINCT concept_id) FROM snomed.descriptions
            WHERE active = TRUE AND type_id = 900000000000003001) AS sn_total,
         (SELECT COUNT(*) FROM snomed.concept_embeddings)     AS sn_embedded,
@@ -230,16 +227,6 @@ export async function getEmbeddingStatus(): Promise<Record<string, unknown>> {
           ingredients_total: fnIngsTotal,
           ingredients_embedded: fnIngsEmbedded,
         },
-      },
-      {
-        key: "guideline",
-        label: "Clinical Guidelines",
-        job_type: "guideline_embed",
-        total: n(c.gl_total),
-        embedded: n(c.gl_embedded),
-        last_embedded_at: iso((embedRun.get("guideline") || c.gl_last) ?? null),
-        last_source_updated_at: iso(loadLog.get("guideline") ?? null),
-        changed_last_run: changed("guideline"),
       },
       {
         key: "snomed",

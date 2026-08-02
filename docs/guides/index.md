@@ -9,6 +9,3 @@
 
 ### [LOINC 整合指南](loinc-integration.md)
 針對醫療資訊人員 (IT)，說明如何利用本系統將院內代碼標準化為 LOINC 編碼。
-
-### [臨床路徑規劃](clinical-pathway.md)
-展示如何結合臨床指引工具，為特定疾病規劃標準化的照護路徑。

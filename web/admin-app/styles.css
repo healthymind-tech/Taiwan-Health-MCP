@@ -1815,63 +1815,6 @@ input[type="range"] { min-height: 30px; accent-color: var(--brand); }
 }
 .drug-preview-empty strong { color: var(--text); }
 
-/* Clinical Guideline review queue — sidebar of pending extractions (grouped by
-   source PDF, since one PDF can fan out into several) + a detail form, inside
-   a workspace Modal. Simpler than .drug-explorer-workspace since the detail
-   pane is one scrollable form rather than a tabbed view. */
-.guideline-review { height: 100%; min-height: 0; display: grid; grid-template-columns: 300px minmax(0, 1fr); }
-.guideline-review-sidebar { min-height: 0; overflow-y: auto; border-right: 1px solid var(--line); background: var(--panel-soft); }
-.guideline-review-item {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  padding: 12px 14px;
-  border: 0;
-  border-bottom: 1px solid var(--line-soft);
-  background: transparent;
-  color: var(--text);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-.guideline-review-item:hover { background: var(--panel); }
-.guideline-review-item--active { background: var(--brand-soft); box-shadow: inset 3px 0 0 var(--brand); }
-.guideline-review-item__title { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; }
-.guideline-review-item__warn { color: var(--bad-fg); }
-.guideline-review-detail { min-width: 0; min-height: 0; overflow-y: auto; padding: 18px 20px 28px; }
-.guideline-review-section { margin-bottom: 18px; }
-.guideline-review-section__label { margin-bottom: 8px; color: var(--muted); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
-.guideline-review-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; }
-.guideline-review-field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
-.guideline-review-field input,
-.guideline-review-field textarea {
-  width: 100%;
-  padding: 7px 10px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--panel);
-  color: var(--text);
-  font: inherit;
-}
-.guideline-review-field input:focus,
-.guideline-review-field textarea:focus { outline: none; border-color: var(--brand); }
-.guideline-review-table input {
-  width: 100%;
-  padding: 5px 8px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--panel);
-  color: var(--text);
-  font: inherit;
-}
-.guideline-review-table input:focus { outline: none; border-color: var(--brand); }
-@media (max-width: 767px) {
-  .guideline-review { display: block; }
-  .guideline-review-sidebar { max-height: 260px; border-right: 0; border-bottom: 1px solid var(--line); }
-  .guideline-review-grid { grid-template-columns: 1fr; }
-}
-
 /* TWCore IG explorer */
 .twcore-preview { height: 100%; min-height: 0; display: flex; flex-direction: column; background: var(--panel-soft); }
 .twcore-preview__toolbar {

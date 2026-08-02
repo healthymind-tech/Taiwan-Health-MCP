@@ -41,5 +41,4 @@ ICD 服務模組是本系統的核心組件之一，專門負責處理國際疾�
 ## 依賴關係
 本模組為獨立基礎模組，但被以下進階服務所依賴：
 - **FHIR Condition Service**：轉換 ICD 代碼為 FHIR 標準格式。
-- **Clinical Guideline Service**：依據診斷代碼提供臨床指引。
 - **Health Supplements Service**：依據診斷建議相關保健資訊。

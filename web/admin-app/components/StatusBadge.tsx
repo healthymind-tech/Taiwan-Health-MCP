@@ -28,14 +28,6 @@ const TONE_BY_STATUS: Record<string, Tone> = {
   empty: "muted",
   // Analysis LM per-call audit
   budget: "warn",
-  // guideline PDF pipeline (pipeline_stage / review_status)
-  ocr_running: "live",
-  analysis_running: "live",
-  ocr_failed: "bad",
-  analysis_failed: "bad",
-  pending_review: "warn",
-  approved: "ok",
-  rejected: "bad",
 };
 
 export function StatusBadge({ status }: { status: string }): JSX.Element {

@@ -1,8 +1,8 @@
 // A single module's page (/modules/:moduleKey).
 //
 // Handles both upload-based modules (icd/loinc/drug/ig/snomed — source
-// uploads, activate, import, embed) and action-only modules (guideline /
-// health_supplements / food_nutrition — sync/seed). The drug page also embeds the
+// uploads, activate, import, embed) and action-only modules (health_supplements /
+// food_nutrition — sync/seed). The drug page also embeds the
 // pipeline panel. Reactive status still flows from the WS map: a finished
 // import invalidates qk.modules and this page re-renders automatically.
 
@@ -24,7 +24,6 @@ import { SnomedModulePage } from "./SnomedModulePage";
 import { RxnormModulePage } from "./RxnormModulePage";
 import { IgModulePage } from "./IgModulePage";
 import { DrugModulePage } from "./drug/DrugModulePage";
-import { GuidelineModulePage } from "./guideline/GuidelineModulePage";
 import { UploadField } from "./UploadField";
 import { VersionHistoryModal } from "./VersionHistoryModal";
 import { ScheduleModal } from "./ScheduleModal";
@@ -59,11 +58,6 @@ export function ModulePage(): JSX.Element {
   if (moduleKey === "rxnorm") return <RxnormModulePage />;
   if (moduleKey === "ig") return <IgModulePage />;
   if (moduleKey === "drug") return <DrugModulePage />;
-  // Clinical guidelines have a bespoke PDF-upload + human-review pipeline
-  // (see guidelineReview.ts) that GenericModulePage's action-button/upload
-  // shapes cannot express — it still appears in ACTION_MODULES purely for the
-  // ModulesLayout sidebar label/icon.
-  if (moduleKey === "guideline") return <GuidelineModulePage />;
 
   return <GenericModulePage moduleKey={moduleKey} />;
 }
