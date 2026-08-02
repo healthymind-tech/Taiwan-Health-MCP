@@ -3197,3 +3197,34 @@ input[type="range"] { min-height: 30px; accent-color: var(--brand); }
 @media (max-width: 600px) {
   .ig-grid { grid-template-columns: 1fr; }
 }
+
+/* Floating windows (drug timeline OCR viewer) */
+.float-win {
+  position: fixed;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  min-width: 240px;
+  min-height: 160px;
+}
+.float-win--focused { border-color: var(--brand); }
+.float-win__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px 6px 12px;
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--line-soft);
+  cursor: move;
+  user-select: none;
+  font-size: 13px;
+}
+.float-win__bar strong { color: var(--text); }
+.float-win__body { flex: 1; overflow: auto; }
+
+.drug-stage__action { margin-top: 10px; }

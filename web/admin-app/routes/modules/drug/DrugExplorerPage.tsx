@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import {
   ArrowDownAZ,
@@ -442,7 +442,85 @@ function TextSection({ title, items }: { title: string; items: string[] }): JSX.
 
 const stageLabel = (stage: string): string => STAGES.find(([key]) => stage.startsWith(key))?.[1] ?? stage.replaceAll("_", " ");
 
-function Timeline({ timeline }: { timeline: DrugDetailPayload["timeline"] }): JSX.Element {
+interface WindowRect { x: number; y: number; width: number; height: number }
+
+// A draggable, closable floating window (used by the timeline OCR viewer).
+// Drags via the title bar; click raises the window above its sibling.
+function FloatingWindow({ id, title, rect, z, focused, onFocus, onMove, onClose, children }: {
+  id: string;
+  title: string;
+  rect: WindowRect;
+  z: number;
+  focused: boolean;
+  onFocus: (id: string) => void;
+  onMove: (id: string, x: number, y: number) => void;
+  onClose: (id: string) => void;
+  children: React.ReactNode;
+}): JSX.Element {
+  const dragRef = useRef<{ sx: number; sy: number; ox: number; oy: number } | null>(null);
+  // Drag with window-level move/up listeners instead of setPointerCapture:
+  // capture retargets the click to the header, which would swallow the close
+  // button's onClick.
+  const beginDrag = (event: ReactPointerEvent<HTMLElement>): void => {
+    if (event.button !== 0 || dragRef.current) return;
+    dragRef.current = { sx: event.clientX, sy: event.clientY, ox: rect.x, oy: rect.y };
+    onFocus(id);
+    const handleMove = (moveEvent: globalThis.PointerEvent): void => {
+      const drag = dragRef.current;
+      if (!drag) return;
+      const nextX = Math.max(0, Math.min(drag.ox + moveEvent.clientX - drag.sx, window.innerWidth - 60));
+      const nextY = Math.max(0, Math.min(drag.oy + moveEvent.clientY - drag.sy, window.innerHeight - 48));
+      onMove(id, nextX, nextY);
+    };
+    const handleUp = (): void => {
+      dragRef.current = null;
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleUp);
+      window.removeEventListener("pointercancel", handleUp);
+    };
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", handleUp);
+    window.addEventListener("pointercancel", handleUp);
+  };
+  return (
+    <div
+      className={`float-win${focused ? " float-win--focused" : ""}`}
+      style={{ left: rect.x, top: rect.y, width: rect.width, height: rect.height, zIndex: z }}
+      onPointerDown={() => onFocus(id)}
+    >
+      <header className="float-win__bar" onPointerDown={beginDrag}>
+        <strong>{title}</strong>
+        <button type="button" className="icon-btn" onClick={() => onClose(id)} aria-label={`Close ${title}`} title="Close"><X size={15} /></button>
+      </header>
+      <div className="float-win__body">{children}</div>
+    </div>
+  );
+}
+
+function Timeline({ timeline, documents }: { timeline: DrugDetailPayload["timeline"]; documents: DocumentRow[] }): JSX.Element {
+  const ocrPair = documents.find((document) => document.source_asset_id && document.ocr_asset_id);
+  const [wins, setWins] = useState<Partial<Record<"pdf" | "ocr", WindowRect>>>({});
+  const [focused, setFocused] = useState<"pdf" | "ocr" | null>(null);
+  const [zTop, setZTop] = useState(10);
+
+  const openOcrViewer = (): void => {
+    if (!ocrPair) return;
+    const y = 80;
+    const pdf = { x: 32, y, width: 480, height: 540 };
+    const ocr = { x: 32 + 480 + 14, y, width: 580, height: 540 };
+    setWins({ pdf, ocr });
+    setFocused("pdf");
+    setZTop((value) => value + 2);
+  };
+  const focusWin = (id: string): void => { setFocused(id as "pdf" | "ocr"); setZTop((value) => value + 1); };
+  const moveWin = (id: string, x: number, y: number): void => {
+    setWins((prev) => ({ ...prev, [id as "pdf" | "ocr"]: { ...prev[id as "pdf" | "ocr"]!, x, y } }));
+  };
+  const closeWin = (id: string): void => {
+    setWins((prev) => { const next = { ...prev }; delete next[id as "pdf" | "ocr"]; return next; });
+    setFocused((current) => (current === (id as "pdf" | "ocr") ? null : current));
+  };
+
   return <div className="drug-timeline-view">
     <div className="drug-section-title"><Clock3 size={18} /><h3>Process timeline</h3><span>{timeline.events.length} events</span></div>
     <div className="drug-stage-track">
@@ -455,9 +533,16 @@ function Timeline({ timeline }: { timeline: DrugDetailPayload["timeline"] }): JS
             {event.from_status ? <small>{event.from_status} → {event.status}</small> : null}
             {event.error_message ? <p>{event.error_message}</p> : null}
           </div>) : <span className="muted small">No recorded transition</span>}
+          {stage.stage === "ocr" && ocrPair ? <button type="button" className="btn btn--sm drug-stage__action" onClick={openOcrViewer}><Eye size={15} /> View PDF + OCR</button> : null}
         </div>
       </section>)}
     </div>
+    {wins.pdf && ocrPair ? <FloatingWindow id="pdf" title="Source PDF" rect={wins.pdf} z={focused === "pdf" ? zTop : zTop - 1} focused={focused === "pdf"} onFocus={focusWin} onMove={moveWin} onClose={closeWin}>
+      <PdfPreview assetId={ocrPair.source_asset_id!} />
+    </FloatingWindow> : null}
+    {wins.ocr && ocrPair ? <FloatingWindow id="ocr" title="OCR Markdown" rect={wins.ocr} z={focused === "ocr" ? zTop : zTop - 1} focused={focused === "ocr"} onFocus={focusWin} onMove={moveWin} onClose={closeWin}>
+      <MarkdownPreview assetId={ocrPair.ocr_asset_id!} />
+    </FloatingWindow> : null}
   </div>;
 }
 
@@ -697,7 +782,7 @@ function DrugDetail({ licenseId, view, onView, onBack, onExit }: { licenseId: st
     </nav>
     <div className="drug-detail-body">
       {view === "overview" ? <Overview detail={detail} /> : null}
-      {view === "timeline" ? <Timeline timeline={detail.timeline} /> : null}
+      {view === "timeline" ? <Timeline timeline={detail.timeline} documents={detail.documents} /> : null}
       {view === "documents" ? <Documents documents={detail.documents} assets={detail.assets} /> : null}
     </div>
   </article>;
