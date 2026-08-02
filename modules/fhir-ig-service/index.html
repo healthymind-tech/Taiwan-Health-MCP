@@ -497,34 +497,6 @@
   
   
     <li class="md-nav__item">
-      <a href="../clinical-guideline-service/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    臨床指引
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../health-supplements-service/" class="md-nav__link">
         
   
@@ -983,34 +955,6 @@
   
   
     <li class="md-nav__item">
-      <a href="../../tools/guideline-tools/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    臨床指引工具
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../../tools/health-supplements-tools/" class="md-nav__link">
         
   
@@ -1310,34 +1254,6 @@
 
               
             
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../data-sources/guidelines/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    臨床指引
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
           </ul>
         </nav>
       
@@ -1593,34 +1509,6 @@
   
   
     <li class="md-nav__item">
-      <a href="../../guides/clinical-pathway/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    臨床路徑
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../../guides/lab-interpretation/" class="md-nav__link">
         
   
@@ -1823,34 +1711,6 @@
     
   
     Lab Service
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../api/guideline-service/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Guideline Service
   
 
     
@@ -2726,7 +2586,7 @@
 <ul>
 <li><strong>資料來源</strong>：FHIR IG 套件（<code>package.tgz</code>），經由管理後台（Admin → Modules / IG，匯入階段 <code>--twcore</code>）匯入。相依套件（如 <code>hl7.terminology.r4</code>、<code>hl7.fhir.r4.core</code>）可額外綁定並各自以 package-scoped IG 索引，使跨系統的 ValueSet 綁定能展開出真實碼。</li>
 <li><strong>資料庫</strong>：<code>fhir</code> schema —<code>ig_packages</code>、<code>codesystems</code>、<code>concepts</code>、<code>artifacts</code>（皆 package-scoped，支援多 IG）。</li>
-<li><strong>驗證引擎</strong>：以 <code>fhir_validator.py</code> / <code>fhir_terminology.py</code> / <code>fhir_snapshot.py</code> / <code>fhir_reference.py</code> / <code>fhir_authoring.py</code> 在程序內完成 snapshot 產生、術語綁定檢查、參照解析與骨架填值。</li>
+<li><strong>驗證引擎</strong>：以 <code>fhirValidator.ts</code> / <code>fhirTerminology.ts</code> / <code>fhirSnapshot.ts</code> / <code>fhirReference.ts</code> / <code>fhirAuthoring.ts</code> 在程序內完成 snapshot 產生、術語綁定檢查、參照解析與骨架填值。</li>
 </ul>
 <h2 id="_4">授權工作流程（建議）<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
 <ol>

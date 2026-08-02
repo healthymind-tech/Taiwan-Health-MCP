@@ -495,34 +495,6 @@
   
   
     <li class="md-nav__item">
-      <a href="../../modules/clinical-guideline-service/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    臨床指引
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../../modules/health-supplements-service/" class="md-nav__link">
         
   
@@ -809,34 +781,6 @@
     
   
     SNOMED 工具
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../tools/guideline-tools/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    臨床指引工具
   
 
     
@@ -1156,34 +1100,6 @@
 
               
             
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../data-sources/guidelines/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    臨床指引
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
           </ul>
         </nav>
       
@@ -1439,34 +1355,6 @@
   
   
     <li class="md-nav__item">
-      <a href="../../guides/clinical-pathway/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    臨床路徑
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../../guides/lab-interpretation/" class="md-nav__link">
         
   
@@ -1669,34 +1557,6 @@
     
   
     Lab Service
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../api/guideline-service/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Guideline Service
   
 
     
@@ -2651,7 +2511,7 @@
 </tbody>
 </table>
 <h2 id="_2">唯讀範圍與唯一例外<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
-<p>51 個工具中有 50 個對系統自身的資料做唯讀查詢。唯一例外是 <strong><code>crud_fhir_server</code></strong>：
+<p>49 個工具中有 48 個對系統自身的資料做唯讀查詢。唯一例外是 <strong><code>crud_fhir_server</code></strong>：
 它會把 FHIR 請求轉送到<strong>管理者已明確登錄</strong>的外部 FHIR 伺服器。寫入操作
 （create / update / patch / delete）必須同時滿足兩個條件才會執行 ——
 該伺服器的 allow-list 允許該操作，且呼叫端帶入 <code>confirm_write=true</code>。</p>

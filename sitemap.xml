@@ -9,15 +9,7 @@
          <lastmod>2026-08-02</lastmod>
     </url>
     <url>
-         <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/OCR-FEATURES-SUMMARY/</loc>
-         <lastmod>2026-08-02</lastmod>
-    </url>
-    <url>
          <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/WEBSITE/</loc>
-         <lastmod>2026-08-02</lastmod>
-    </url>
-    <url>
-         <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/admin-datasets-redesign/</loc>
          <lastmod>2026-08-02</lastmod>
     </url>
     <url>
@@ -45,14 +37,6 @@
          <lastmod>2026-08-02</lastmod>
     </url>
     <url>
-         <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/node-backend-full-refactor-plan/</loc>
-         <lastmod>2026-08-02</lastmod>
-    </url>
-    <url>
-         <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/node-migration-assessment/</loc>
-         <lastmod>2026-08-02</lastmod>
-    </url>
-    <url>
          <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/ocr-test-setup/</loc>
          <lastmod>2026-08-02</lastmod>
     </url>
@@ -73,10 +57,6 @@
          <lastmod>2026-08-02</lastmod>
     </url>
     <url>
-         <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/api/guideline-service/</loc>
-         <lastmod>2026-08-02</lastmod>
-    </url>
-    <url>
          <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/api/icd-service/</loc>
          <lastmod>2026-08-02</lastmod>
     </url>
@@ -90,10 +70,6 @@
     </url>
     <url>
          <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/data-sources/</loc>
-         <lastmod>2026-08-02</lastmod>
-    </url>
-    <url>
-         <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/data-sources/guidelines/</loc>
          <lastmod>2026-08-02</lastmod>
     </url>
     <url>
@@ -161,19 +137,11 @@
          <lastmod>2026-08-02</lastmod>
     </url>
     <url>
-         <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/guides/clinical-pathway/</loc>
-         <lastmod>2026-08-02</lastmod>
-    </url>
-    <url>
          <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/guides/lab-interpretation/</loc>
          <lastmod>2026-08-02</lastmod>
     </url>
     <url>
          <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/guides/loinc-integration/</loc>
-         <lastmod>2026-08-02</lastmod>
-    </url>
-    <url>
-         <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/modules/clinical-guideline-service/</loc>
          <lastmod>2026-08-02</lastmod>
     </url>
     <url>
@@ -226,10 +194,6 @@
     </url>
     <url>
          <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/tools/fhir-tools/</loc>
-         <lastmod>2026-08-02</lastmod>
-    </url>
-    <url>
-         <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/tools/guideline-tools/</loc>
          <lastmod>2026-08-02</lastmod>
     </url>
     <url>

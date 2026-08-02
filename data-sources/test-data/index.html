@@ -495,34 +495,6 @@
   
   
     <li class="md-nav__item">
-      <a href="../../modules/clinical-guideline-service/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    臨床指引
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../../modules/health-supplements-service/" class="md-nav__link">
         
   
@@ -809,34 +781,6 @@
     
   
     SNOMED 工具
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../tools/guideline-tools/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    臨床指引工具
   
 
     
@@ -1266,34 +1210,6 @@
 
               
             
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../guidelines/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    臨床指引
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
           </ul>
         </nav>
       
@@ -1549,34 +1465,6 @@
   
   
     <li class="md-nav__item">
-      <a href="../../guides/clinical-pathway/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    臨床路徑
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../../guides/lab-interpretation/" class="md-nav__link">
         
   
@@ -1779,34 +1667,6 @@
     
   
     Lab Service
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../api/guideline-service/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Guideline Service
   
 
     
@@ -2693,7 +2553,7 @@ hl7.fhir.r4.examples…），最後 DB 裡會有 9 個 package、約 21,000 個 
 </code></pre>
 <p>其他兩個看起來合理的網址（<code>cacheData/36_2.csv</code>、<code>codedata/datadownload/36</code>）都是 404。</p>
 <p>保健食品與食品營養<strong>不需要來源檔</strong>：<code>health_supplements_sync</code> / <code>food_nutrition_sync</code> 直接
-打 TFDA Open Data API。臨床指引則由 <code>guideline_seed</code> 從 repo 內建資料播種。</p>
+打 TFDA Open Data API。</p>
 <h2 id="_4">重建步驟<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
 <p>設定（OCR / TFDA / registry 位址、LLM profiles、passkey）用 Settings 匯出檔還原：</p>
 <pre><code class="language-bash">curl -X POST localhost:8080/admin/api/settings/import \
@@ -2711,7 +2571,7 @@ hl7.fhir.r4.examples…），最後 DB 裡會有 9 個 package、約 21,000 個 
 </code></pre>
 <p>接著依序排入 job：<code>icd_import</code>、<code>loinc_import</code>、<code>snomed_import</code>、<code>rxnorm_import</code>、
 <code>ig_import</code>（要帶 <code>job_options.object_key</code>，值是該來源檔的 MinIO object key）、
-<code>guideline_seed</code>、<code>health_supplements_sync</code>、<code>food_nutrition_sync</code>、<code>drug_index_import</code>。</p>
+<code>health_supplements_sync</code>、<code>food_nutrition_sync</code>、<code>drug_index_import</code>。</p>
 <div class="admonition warning">
 <p class="admonition-title">藥品 pipeline 會自動接續</p>
 <p><code>drug_index_import</code> 成功後會 auto-chain 出 <code>drug_enrichment</code>，再接 <code>drug_analysis</code>。
@@ -2761,10 +2621,6 @@ Enrichment 會去爬 TFDA 官方網站、Analysis 會呼叫 OCR + LLM，兩者�
 <tr>
 <td>食品營養</td>
 <td>1,702</td>
-</tr>
-<tr>
-<td>臨床指引</td>
-<td>4</td>
 </tr>
 </tbody>
 </table>
