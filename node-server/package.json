@@ -1,6 +1,6 @@
 {
   "name": "taiwan-health-node-server",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "description": "Node.js (TypeScript) reimplementation of the Taiwan Health MCP backend — parity target for the Python->Node refactor.",
