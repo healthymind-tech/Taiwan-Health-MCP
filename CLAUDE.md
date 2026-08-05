@@ -62,6 +62,11 @@ Available gstack skills:
 >
 > The only remaining thing under `src/` is `src/prompts/` — the Analysis-LM system
 > prompt, read at runtime by `drugAnalysisService.ts`. Do not delete it.
+>
+> **Dead files that look live — do not edit, do not "fix":** root `pyproject.toml`,
+> `pytest.ini`, `requirements-dev.txt` (Python-era leftovers; `requirements-docs.txt`
+> is the live one, used by the MkDocs workflow), root `admin-ui/` (old Vite SPA —
+> the real admin UI is `web/admin-app/`), and `config/datasets.yaml` (read by no code).
 
 Taiwan Health MCP Server — a Model Context Protocol server (Node MCP SDK,
 `@modelcontextprotocol/sdk`) exposing **49 tools** across 11 tool groups for Taiwan
@@ -87,7 +92,14 @@ cd node-server
 npm install
 npm run build                                 # tsc -> dist/
 npm run typecheck                             # tsc --noEmit
-npm test                                       # node --test over src/**/*.test.ts
+npm test                                      # node --import tsx --test src/**/*.test.ts
+npm run dev                                   # tsx watch src/server.ts (no build step)
+
+# Run a single test file (npm test has no path passthrough — call node directly):
+node --import tsx --test src/loaders/loinc.test.ts
+# Run a single test case by name (matches the string passed to `test(...)`):
+node --import tsx --test --test-name-pattern "padded headers" src/loaders/loinc.test.ts
+
 # Run the MCP/admin server locally (HTTP mode):
 MCP_TRANSPORT=streamable-http DATABASE_URL=postgresql://... node dist/server.js
 
@@ -103,11 +115,21 @@ cp .env.example .env                          # then edit .env (set POSTGRES_PAS
 docker compose up -d                          # nginx (:8080), web, app, admin-worker, postgres, pgbouncer, redis, minio
 docker compose build app web && docker compose up -d --no-deps app web   # redeploy after code changes
 
+# `admin-worker` is a SEPARATE image (Dockerfile.worker) built from the same
+# node-server/ source. Any change to job/loader code (adminJobs.ts, *Service.ts,
+# loaders/*) must be deployed to it too — rebuilding only `app` leaves the
+# worker executing stale code with no error:
+docker compose build admin-worker && docker compose up -d --no-deps admin-worker
+
 # Data loading is done through the admin console (Modules tab) and executed by
 # the admin-worker in the background. Every job type — file loaders, embeddings,
 # and the three drug stages — runs natively in Node. There is no loader CLI and
 # no standalone data-loader container.
 ```
+
+**There is no linter or formatter** — no ESLint, Prettier or Biome config in either
+package. `tsc --noEmit` (`npm run typecheck`) is the only static gate; don't add
+lint commands to a task's "done" checklist expecting one to exist.
 
 ## Architecture
 
@@ -117,7 +139,7 @@ docker compose build app web && docker compose up -d --no-deps app web   # redep
 | nginx | Single front door on `${WEB_PORT:-8080}`; routes `/mcp`, `/openapi.json`, `/tools/*`, `/status.json`, `/admin/api/*`, `/admin/ws`, `/fhir-client/*`, `/fhir-oauth/*` to `app`, everything else to `web` |
 | PostgreSQL 16 (`pgvector/pgvector:pg16`) | Primary data store + `vector` columns for semantic search |
 | pgBouncer | Connection pooler (transaction mode, 500 client → 30 PG connections) |
-| Redis 7 | Response cache (TTL-based, `cached()` in `cache.ts`), LRU-capped |
+| Redis 7 | Connected at boot and health-pinged, but **no tool response is cached today** — `cached()` in `cache.ts` has zero call sites (see "Cross-cutting concerns") |
 | MinIO | Object storage for admin source uploads and drug assets (inserts, labels, pill images); presigned download links |
 | Embedding endpoint (external) | Semantic / hybrid search vectors (default Ollama `qwen3-embedding`). Configured in `admin.llm_profiles`, **not** env. Unavailable → keyword-only fallback |
 | MinerU (external) | OCR for drug insert PDFs (`POST /file_parse`). Configured in Settings → OCR Server |
@@ -134,7 +156,8 @@ transport but share those process-wide singletons.
 HTTP surface exposed by `app`:
 - `/mcp` — MCP streamable-http endpoint (`MCP_PATH`).
 - `/status.json` — module row counts + service health (consumed by the public status page).
-- **OpenAPI bridge**: `GET /openapi.json` advertises the currently-registered tools as an OpenAPI 3.1 doc, and `POST /tools/<name>` invokes a tool with a JSON body of arguments. Lets OpenAPI-only clients (e.g. Open WebUI) call the tools without an mcpo proxy. Unauthenticated, same as `/mcp`.
+- **OpenAPI bridge**: `GET /openapi.json` advertises the currently-registered tools as an OpenAPI 3.1 doc, and `POST /tools/<name>` invokes a tool with a JSON body of arguments. Lets OpenAPI-only clients (e.g. Open WebUI) call the tools without an mcpo proxy.
+- **Public-tools auth** (`publicToolsSecurity.ts`) guards `/mcp`, `/openapi.json` and `/tools/*` as one group: `PUBLIC_TOOLS_AUTH_MODE=none` (default — open) or `bearer` (requires `PUBLIC_TOOLS_BEARER_TOKEN`, compared with `timingSafeEqual`). `PUBLIC_TOOLS_CORS_ORIGINS` is a comma-separated allow-list; it defaults to `*` in `none` mode and **may not** contain `*` in `bearer` mode (startup throws). The admin surface has its own session auth and is unaffected.
 - `/admin/api/*` + `/admin/ws` — admin console backend (when enabled).
 - `/fhir-client/<id>/jwks.json` — public JWKS for FHIR OAuth clients; `/fhir-oauth/callback` — OAuth2 Authorization Code callback.
 - `/health` exists on the app but nginx does **not** route it — use `/status.json`.
@@ -189,14 +212,18 @@ Module-gated groups are dynamically added/removed by `moduleStatus.ts` (`SERVICE
 - **`admin/adminApp.ts`** is the session-authenticated admin backend mounted at `/admin/api/*`. Feature modules: `adminSources.ts` (uploads + source roles), `adminJobs.ts` (import jobs + all job handlers), `adminJobStaging.ts` (staging/promote), `adminSchedule.ts` (cron schedules), `adminServices.ts` (module/service probes), `adminSettings.ts` + `llmProfiles.ts` (DB-backed settings & model endpoints), `adminMaintenance.ts` (per-module maintenance mode), `adminDrug.ts` (drug pipeline control), `adminIg.ts` (FHIR IG gallery/import), `adminPreview.ts`, `adminEmbedding.ts`, `adminWs.ts` (WebSocket live logs), `webauthn.ts` (passkeys), `ocrProbe.ts`.
 - **`admin/adminWorker.ts`** is a standalone process (the `admin-worker` compose service). It claims queued jobs from `admin.import_jobs`, runs the loaders, writes `admin.import_job_steps` / `admin.import_job_logs`, honors checkpoint-based pause/cancel via `admin.job_control_requests`, and emits `admin.worker_heartbeats`. `ADMIN_MAX_CONCURRENT_JOBS` (default 4) bounds parallelism, with per-module resource slots.
 - **Drug auto-chain**: `drug_index_import` → `drug_enrichment` → `drug_analysis` chain automatically, each auto-chained job capped at `DRUG_AUTOCHAIN_BATCH_LIMIT` (default 200) licenses and re-chaining from its own completion. **The cap only applies to auto-chained jobs** — a manually queued `drug_enrichment` with no `limit` will crawl the entire backlog (tens of thousands of TFDA requests).
+- **`llm_unavailable` pause is self-healing**: a job paused because every Analysis LM profile failed is re-claimed automatically once `admin.import_jobs.next_retry_at` passes (backoff doubles per attempt, 2min → 30min cap); manual resume overrides the backoff. A `paused` job whose `last_error_code != 'llm_unavailable'` (or that a human paused) is **never** auto-resumed. Per-call LM timeouts default to 600s with 3 transport retries; override per profile via `llm_profiles.params.timeout_ms`.
 - **`web/admin-app/`** is the React SPA admin UI, mounted client-side under the Next.js `/admin` catch-all route; `web/middleware.ts` gates `/admin/*` on the `tw_health_admin_session` cookie. (The old `admin-ui/` directory is a dead leftover — nothing builds it.)
 - **`dbHealth.ts`** is a central DB-health gate: when Postgres is unreachable it locks mutating operations and surfaces an overlay in the UI.
 
 ### Cross-cutting concerns
-- **`audit`** — logs SHA-256(params), tool name, duration, status to `audit.query_log`. Never logs raw parameter values (HIPAA).
-- **`cache.ts`** — `cached(ttl, prefix)`: Redis-backed, fail-open (cache error → function executes normally). Records hit/miss metrics.
+- **`audit.query_log`** — the table exists in `db/schema.sql` (SHA-256(params), tool name, duration, status — raw parameter values are never stored, for HIPAA), but **the Node backend does not write to it**: nothing under `node-server/src/` references `audit.query_log`. The writer was not carried over in the Python→Node port. Treat per-tool audit logging as unimplemented, not as something to read from.
+- **`cache.ts`** — `cached(ttl, prefix)` is a Redis-backed, fail-open memoizer (cache error → the function just executes) that records hit/miss metrics. It is **currently unused** — no service or tool calls it, so every tool call hits Postgres. Elsewhere Redis is only `ping`ed for health (`mcp.ts`, `adminServices.ts`, `adminOverview.ts`). Wrapping a hot read path in `cached()` is the intended way to add caching.
 - **`moduleStatus.ts`** — queries each schema's row count against a minimum threshold and adds/removes tools accordingly, refreshed on `tools/list`.
 - **`embeddingService.ts`** — embeddings for semantic / hybrid search; fails open to keyword-only when unavailable. Profiles come from `admin.llm_profiles`, with failover across enabled profiles.
+- **`searchQuality.ts`** — decides when a hybrid search has degraded (embedding provider returned nothing, or the module's `*_embeddings` table is empty) and stamps `search_mode: "keyword_only"` on the response so the calling LLM knows results are literal matches. Any new hybrid-search tool should go through it rather than silently returning BM25 hits.
+- **`publicToolsSecurity.ts`** — bearer/CORS policy for the public `/mcp` + `/tools/*` surface (see "HTTP surface" above).
+- **`statusData.ts`** — assembles the `/status.json` payload (module row counts + service health) consumed by the public status page.
 - **`fhirValidator.ts` / `fhirTerminology.ts` / `fhirSnapshot.ts` / `fhirReference.ts` / `fhirAuthoring.ts`** — in-process FHIR R4 profile snapshot generation, terminology validation, reference resolution, and skeleton-fill authoring used by the FHIR IG tools.
 - **`metrics.ts`** — Prometheus counters/histograms.
 - **`logger.ts`** — structured JSON logging to stderr (never stdout, which belongs to the MCP stdio transport). Level via `LOG_LEVEL`.
@@ -205,7 +232,7 @@ Module-gated groups are dynamically added/removed by `moduleStatus.ts` (`SERVICE
 ### PostgreSQL schemas
 `audit` | `admin` | `icd` | `drug` | `health_supplements` | `food_nutrition` | `loinc` | `fhir` (multi-IG: `ig_packages` / `codesystems` / `concepts` / `artifacts`, package-scoped) | `snomed` | `rxnorm`
 
-Full schema: `db/schema.sql` (auto-applied by PostgreSQL container on first init). Incremental changes live in `db/migrations/`.
+Full schema: `db/schema.sql` — auto-applied by the PostgreSQL container **only on first init** (empty data volume). Incremental changes live in `db/migrations/`, named `YYYYMMDD_description.sql`. There is **no migration runner**: nothing in the code applies them, and they are not tracked in a versions table. On an existing database they must be applied by hand, in filename-date order. A new migration must therefore also be folded into `db/schema.sql` so fresh installs get it.
 
 ## Settings precedence (important)
 
@@ -240,9 +267,17 @@ Model endpoints (embedding, Analysis LM, OCR) are **never** read from env. They 
 
 Node's built-in test runner via `tsx` (`node --import tsx --test`), not Jest/Vitest.
 Test files live beside the code they cover (`node-server/src/**/*.test.ts`). Coverage is
-currently thin (a handful of files) — most of the Python→Node migration was verified by
+currently thin (~10 files) — most of the Python→Node migration was verified by
 differential runs against the old implementation rather than by unit tests. Add tests for
 new tools and loaders. `web/` has no test suite (`typecheck` only).
+
+Tests are pure unit tests: no Postgres, Redis or MinIO is started for them, so anything
+new must be written against injected/faked collaborators rather than a live pool.
+
+**CI does not run tests.** The only GitHub Actions workflow is `deploy-docs.yml`, which
+builds and publishes MkDocs on pushes to `main` that touch `docs/` or `mkdocs.yml`.
+Nothing gates a merge on `npm test` / `npm run typecheck` — run both locally
+(in `node-server/` *and* `web/`) before committing.
 
 ## Sync correctness rule
 
