@@ -22,7 +22,7 @@ ADMIN_MAX_UPLOAD_MB=512
 FHIR_SERVER_SECRET_KEY=
 ```
 
-密碼雜湊支援 `sha256$<hex>` 或 `pbkdf2_sha256$<iterations>$<salt>$<hex>`。四個變數齊備時 `/admin` 才會開放。
+密碼雜湊支援 `sha256$<hex>` 或 `pbkdf2_sha256$<iterations>$<salt>$<hex>`。也可改用 `ADMIN_INITIAL_PASSWORD` 直接給明文初始密碼（僅首次啟動有效）。`/admin` 開放的條件是 `ADMIN_ENABLED=true`、`ADMIN_USERNAME`、`ADMIN_SESSION_SECRET` 皆有值，且 `ADMIN_PASSWORD_HASH` 與 `ADMIN_INITIAL_PASSWORD` 至少其一有值。
 
 登入網址為 `http://<host>:8080/admin`（經由 nginx 前門；`app` 容器不對主機開埠）。
 

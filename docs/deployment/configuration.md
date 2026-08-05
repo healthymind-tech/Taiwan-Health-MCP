@@ -6,12 +6,12 @@
 cp .env.example .env
 ```
 
-## 設定優先序（重要）
+## 設定優先序（重要） { #settings-precedence }
 
 | 類別 | 存放位置 | 說明 |
 |------|----------|------|
 | **Bootstrap 變數** | 只在 `.env` | DB / Redis / MCP transport / `ADMIN_*` 認證 / `WEB_PORT`。系統啟動前就要知道，不進資料庫。 |
-| **Seed-only 設定** | `.env` → `admin.app_settings` | MinIO、TFDA 爬蟲、worker 調校等。**只在首次啟動、資料表為空時讀取一次**以種子化；之後請在 Admin → Settings 管理（支援熱套用）。編輯 `.env` 對已種子化的資料庫無效。 |
+| **Seed-only 設定** | `.env` → `admin.app_settings` | MinIO、TFDA 爬蟲、FHIR package registry、worker 調校等。**只在首次啟動、對應鍵尚未存在時讀取一次**以種子化；編輯 `.env` 對已種子化的資料庫無效。TFDA / registry 之後可在 Admin → Settings 管理（支援熱套用）；**MinIO 與 worker 調校在後台是唯讀群組**，事後只能直接 `UPDATE admin.app_settings` 再重啟服務。 |
 | **模型端點** | 只在資料庫（`admin.llm_profiles`） | 嵌入、OCR（MinerU）、分析 LLM。**完全不從環境變數讀取**，只能在 Admin → Settings 設定，可用 Settings → Export / Import 在不同環境間搬移。 |
 
 ---
@@ -67,13 +67,14 @@ cp .env.example .env
 | `ADMIN_ENABLED` | `false` | 設 `true` 才會掛載 `/admin` |
 | `ADMIN_USERNAME` | `admin` | 操作者帳號 |
 | `ADMIN_PASSWORD_HASH` | 空 | `sha256$<hex>` 或 `pbkdf2_sha256$<iterations>$<salt>$<hex>` |
+| `ADMIN_INITIAL_PASSWORD` | 空 | 明文初始密碼，**僅在首次啟動、資料庫尚無憑證列時**使用：雜湊後寫入 `admin.admin_credentials`，之後永久忽略。與 `ADMIN_PASSWORD_HASH` 並存時優先採用。明文不會被持久化。 |
 | `ADMIN_SESSION_SECRET` | 空 | session cookie 簽章金鑰 |
 | `ADMIN_SESSION_TTL_MINUTES` | `240` | session 有效期 |
 | `ADMIN_COOKIE_SECURE` | 空（自動） | `true` / `false`。空值時，`PUBLIC_BASE_URL` 使用 HTTPS 就加入 cookie `Secure` 屬性。TLS 在外部 proxy 終止且未設定 public URL 時應明確設為 `true`。 |
 | `ADMIN_MAX_UPLOAD_MB` | `512` | 來源檔上傳上限 |
 | `FHIR_SERVER_SECRET_KEY` | 空（回退為 `ADMIN_SESSION_SECRET`） | 外部 FHIR 伺服器 OAuth token / client secret 的 pgcrypto 對稱金鑰。**`app` 與 `admin-worker` 必須一致**，否則 worker 解密會拋 `Illegal argument to function`（金鑰為空）或 `Wrong key or corrupt data`（金鑰不符）。 |
 
-`ADMIN_ENABLED` / `ADMIN_USERNAME` / `ADMIN_PASSWORD_HASH` / `ADMIN_SESSION_SECRET` 四者齊備，`/admin` 才會開放。
+`/admin` 開放的條件（`adminReady()`）是：`ADMIN_ENABLED=true`、`ADMIN_USERNAME`、`ADMIN_SESSION_SECRET` 皆有值，且 `ADMIN_PASSWORD_HASH` 與 `ADMIN_INITIAL_PASSWORD` **至少其一**有值。
 
 產生密碼雜湊（Node）：
 
@@ -190,7 +191,7 @@ Claude Desktop：
 
 ---
 
-## 資源限制建議（生產環境）
+## 資源限制建議（生產環境） { #resource-limits }
 
 在 `docker-compose.override.yml` 加入資源限制：
 
