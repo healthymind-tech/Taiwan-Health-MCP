@@ -1,13 +1,15 @@
-# Material for MkDocs requirements
+# Documentation toolchain (MkDocs + Material).
+#
+# Unrelated to the project runtime — the backend is 100% Node.js and has no
+# Python dependency. This file is what CI installs (.github/workflows/deploy-docs.yml),
+# so anything mkdocs.yml enables must be listed here or the build fails.
 
 mkdocs>=1.5.0
 mkdocs-material>=9.4.0
-mkdocs-material-extensions>=1.3.0
 
-# Plugins
-mkdocs-minify-plugin>=0.7.0
-mkdocs-git-revision-date-localized-plugin>=1.2.0
+# Bilingual site (zh-TW default + English under /en/) — mkdocs.yml `plugins.i18n`.
+mkdocs-static-i18n>=1.2.0
 
-# Markdown extensions
+# Markdown extensions enabled in mkdocs.yml (pymdownx.tasklist).
 pymdown-extensions>=10.0
 markdown>=3.4.0

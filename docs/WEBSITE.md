@@ -40,6 +40,11 @@ comm -23 \
   <(find docs -name '*.en.md' | sed 's/\.en\.md$//' | sort)
 ```
 
+目前預期的輸出只有這三頁：`docs/datasets`、`docs/MinerU-vs-OpenAI`、`docs/ocr-test-setup`。
+它們**不在 `nav` 內、也沒有任何頁面連結到它們**（`datasets.md` 開頭甚至自述為過時的
+Python 時代文件），因此尚未翻譯；英文站會以 fallback 顯示中文原文。
+**除此之外任何出現在輸出裡的項目，都代表漏翻，要補。**
+
 ## 語言與網址
 
 | 語言 | 網址 |

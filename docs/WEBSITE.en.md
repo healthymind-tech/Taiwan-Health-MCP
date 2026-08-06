@@ -41,6 +41,12 @@ comm -23 \
   <(find docs -name '*.en.md' | sed 's/\.en\.md$//' | sort)
 ```
 
+The only expected output today is these three pages: `docs/datasets`, `docs/MinerU-vs-OpenAI`,
+and `docs/ocr-test-setup`. They are **not in `nav` and nothing links to them** (`datasets.md` even
+opens by declaring itself an outdated Python-era document), so they have not been translated; the
+English site falls back to showing the Chinese original for them.
+**Anything else appearing in that output is a missing translation and must be filled in.**
+
 ## Languages and URLs
 
 | Language | URL |
