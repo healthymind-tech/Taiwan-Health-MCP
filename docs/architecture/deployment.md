@@ -17,7 +17,7 @@ graph TD
     end
 
     Client -- "HTTP :8080" --> NGX
-    NGX -- "/mcp, /openapi.json, /tools/*, /status.json, /admin/api/*, /admin/ws" --> Server
+    NGX -- "/mcp, /openapi.json, /tools/*, /admin/api/*, /admin/ws" --> Server
     NGX -- "everything else" --> WEB
     Server --> PGB --> PG
     Server --> RD

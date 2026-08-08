@@ -9,10 +9,10 @@
 | `node-server/` | **整個後端**（Node.js / TypeScript）：MCP 伺服器、管理後台 REST API、背景 worker、所有資料載入器。 |
 | `node-server/src/*Service.ts` | 各領域服務（`icdService.ts`、`drugService.ts`、`labService.ts`、`snomedService.ts`、`fhirIgService.ts` …）。 |
 | `node-server/src/mcp.ts` | MCP 工具註冊（工具群組與輸入 schema）。 |
-| `node-server/src/server.ts` | 入口點：HTTP 介面（`/mcp`、`/openapi.json`、`/tools/*`、`/status.json`）與行程初始化。 |
+| `node-server/src/server.ts` | 入口點：HTTP 介面（`/mcp`、`/openapi.json`、`/tools/*`）與行程初始化。 |
 | `node-server/src/admin/` | 管理後台後端（`adminApp.ts` 路由、`adminJobs.ts` 工作、`adminWorker.ts` 背景 worker、`adminSettings.ts` 設定 …）。 |
 | `node-server/src/loaders/` | 各模組載入器（`icd.ts`、`loinc.ts`、`snomed.ts`、`rxnorm.ts`、`ig.ts`、`drug*.ts`、`embeddings.ts` …）。 |
-| `web/` | Next.js 前端：公開頁面（`app/`）+ 管理後台 SPA（`admin-app/`）+ 舊版靜態 HTML（`legacy/`）。 |
+| `web/` | Next.js 前端：管理後台 SPA（`admin-app/`），透過 `app/admin/` 的 catch-all 路由掛載。 |
 | `db/` | `schema.sql` 與 `migrations/`。 |
 | `src/prompts/` | 執行期讀取的 LLM prompt（藥品分析）。**這是 `src/` 目錄唯一剩下的內容。** |
 | `data/loinc/` | 人工整理、無法從外部重新下載的 LOINC 對照表。 |

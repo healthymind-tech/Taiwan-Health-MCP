@@ -84,7 +84,7 @@ services:
   app:
     # MCP + admin REST surface, ported to Node (node-server/dist/server.js).
     # Serves the full nginx-routed app surface: /mcp, /admin/api, /admin/ws,
-    # /status.json, /openapi.json, /tools/*, /fhir-client/*, /fhir-oauth/*.
+    # /openapi.json, /tools/*, /fhir-client/*, /fhir-oauth/*.
     build:
       context: .
       dockerfile: node-server/Dockerfile

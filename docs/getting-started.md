@@ -86,9 +86,10 @@ ADMIN_SESSION_SECRET=change_this_admin_session_secret
 確認服務與各模組狀態：
 
 ```bash
-curl http://localhost:8080/status.json          # 各模組資料筆數與服務健康狀態
-curl http://localhost:8080/openapi.json | head  # 目前已註冊的工具
+curl http://localhost:8080/openapi.json | head  # 目前已註冊的工具（依模組資料載入狀態變動）
 ```
+
+各模組的資料筆數與服務健康狀態請看管理後台的 Overview 分頁。
 
 也可直接呼叫 `health_check` 工具：
 

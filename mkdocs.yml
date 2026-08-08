@@ -78,8 +78,6 @@ nav:
     - 架構與容器部署: architecture/deployment.md
     - 環境變數配置: deployment/configuration.md
     - 效能與監控: deployment/performance.md
-    - 資料處理附錄 (DPA): deployment/dpa.md
-    - 隱私政策頁面: deployment/privacy.md
   - 開發指南:
     - development/index.md
     - 程式風格: development/code-style.md

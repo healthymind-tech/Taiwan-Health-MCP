@@ -52,9 +52,6 @@ test("parses a LOINC row", () => {
 在跑起來的環境上，可直接對工具面發請求（經由 nginx 前門，預設 `:8080`）：
 
 ```bash
-# 服務與各模組狀態
-curl http://localhost:8080/status.json
-
 # 目前已註冊的工具（依模組資料載入狀態動態變動）
 curl http://localhost:8080/openapi.json
 

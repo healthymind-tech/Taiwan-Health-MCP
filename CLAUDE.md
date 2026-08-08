@@ -71,9 +71,9 @@ requests/second throughput.
 **Modules**: ICD-10-CM/PCS 2025, LOINC 2.80, SNOMED CT International, Taiwan FDA (TFDA) drugs, Taiwan FDA health supplements, Taiwan FDA food nutrition, FHIR R4 IG authoring (multi-IG, default TWCore v1.0.0), FHIR Condition/Medication generation, and an external FHIR server registry. RxNorm is loaded as concept-only reference terminology (used for IG ValueSet expansion, not a standalone drug tool).
 
 Three surfaces ship in one codebase:
-- **MCP server** (`node-server/src/server.ts` + `mcp.ts`) — the tool surface consumed by LLM clients (also exposes the admin REST API, `/admin/ws`, `/status.json`, `/mcp`, `/openapi.json`, `POST /tools/<name>`).
+- **MCP server** (`node-server/src/server.ts` + `mcp.ts`) — the tool surface consumed by LLM clients (also exposes the admin REST API, `/admin/ws`, `/mcp`, `/openapi.json`, `POST /tools/<name>`).
 - **Admin console** (`node-server/src/admin/*.ts` backend + the `web/admin-app/` SPA) — an operator UI for uploading source files, running/scheduling data imports, managing settings and external FHIR servers, and monitoring jobs. Disabled by default (`ADMIN_ENABLED=false`).
-- **Next.js front-end** (`web/`) — one Node app serving every web page: the public landing/status/privacy/dpa pages **and** the admin SPA (mounted via a `/admin` catch-all route). nginx (`nginx/nginx.conf`) is the single front door: it routes API/MCP/WebSocket to `app` and everything else to `web`.
+- **Next.js front-end** (`web/`) — serves the admin SPA only (mounted via a `/admin` catch-all route). nginx (`nginx/nginx.conf`) is the single front door: it routes API/MCP/WebSocket to `app` and everything else to `web`. The public landing/status/privacy/dpa pages were removed from this repo and now live in a standalone marketing-site project; `nginx.conf` carries a TODO for the 301 redirects.
 
 **Entry point (ports).** nginx publishes `${WEB_PORT:-8080}` and is the **only** service
 reachable from the host. `app` merely `expose`s `MCP_PORT` (8000) on the compose network —
@@ -114,7 +114,7 @@ docker compose build app web && docker compose up -d --no-deps app web   # redep
 ### Infrastructure stack
 | Component | Purpose |
 |-----------|---------|
-| nginx | Single front door on `${WEB_PORT:-8080}`; routes `/mcp`, `/openapi.json`, `/tools/*`, `/status.json`, `/admin/api/*`, `/admin/ws`, `/fhir-client/*`, `/fhir-oauth/*` to `app`, everything else to `web` |
+| nginx | Single front door on `${WEB_PORT:-8080}`; routes `/mcp`, `/openapi.json`, `/tools/*`, `/admin/api/*`, `/admin/ws`, `/fhir-client/*`, `/fhir-oauth/*` to `app`, everything else to `web` |
 | PostgreSQL 16 (`pgvector/pgvector:pg16`) | Primary data store + `vector` columns for semantic search |
 | pgBouncer | Connection pooler (transaction mode, 500 client → 30 PG connections) |
 | Redis 7 | Response cache (TTL-based, `cached()` in `cache.ts`), LRU-capped |
@@ -133,11 +133,10 @@ transport but share those process-wide singletons.
 
 HTTP surface exposed by `app`:
 - `/mcp` — MCP streamable-http endpoint (`MCP_PATH`).
-- `/status.json` — module row counts + service health (consumed by the public status page).
-- **OpenAPI bridge**: `GET /openapi.json` advertises the currently-registered tools as an OpenAPI 3.1 doc, and `POST /tools/<name>` invokes a tool with a JSON body of arguments. Lets OpenAPI-only clients (e.g. Open WebUI) call the tools without an mcpo proxy. Unauthenticated, same as `/mcp`.
+- **OpenAPI bridge**: `GET /openapi.json` advertises the currently-registered tools as an OpenAPI 3.1 doc, and `POST /tools/<name>` invokes a tool with a JSON body of arguments. Lets OpenAPI-only clients (e.g. Open WebUI) call the tools without an mcpo proxy. Shares `/mcp`'s auth layer (`publicToolsSecurity.ts`): open by default, optionally Bearer-gated via `PUBLIC_TOOLS_AUTH_MODE`, with a CORS origin allow-list.
 - `/admin/api/*` + `/admin/ws` — admin console backend (when enabled).
 - `/fhir-client/<id>/jwks.json` — public JWKS for FHIR OAuth clients; `/fhir-oauth/callback` — OAuth2 Authorization Code callback.
-- `/health` exists on the app but nginx does **not** route it — use `/status.json`.
+- `/health` exists on the app but nginx does **not** route it. There is no front-door health endpoint; hit `/openapi.json` to check liveness.
 
 ### Services (all `node-server/src/`)
 

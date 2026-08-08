@@ -17,7 +17,7 @@
 ## 架構摘要
 
 - **執行環境**：後端全部為 Node.js / TypeScript（`node-server/`）；前端為 Next.js（`web/`）。
-- **對外入口**：nginx 單一前門（預設 `:8080`），將 `/mcp`、`/openapi.json`、`/tools/*`、`/status.json`、`/admin/api/*` 導向 `app`，其餘（公開頁面與 `/admin` SPA）導向 `web`。
+- **對外入口**：nginx 單一前門（預設 `:8080`），將 `/mcp`、`/openapi.json`、`/tools/*`、`/admin/api/*` 導向 `app`，其餘（`/admin` SPA）導向 `web`。
 - **基礎設施**：PostgreSQL 16（pgvector）、pgBouncer、Redis、MinIO、Prometheus，以及可選的嵌入服務（預設 Ollama）。
 - **動態工具註冊**：依各模組資料載入狀態自動啟用 / 停用對應工具。
 - **語意 / 混合搜尋**：以嵌入向量強化搜尋，無嵌入時退回關鍵字。
