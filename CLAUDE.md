@@ -3,7 +3,37 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Language
-用台灣正體中文回答, 文件和註解使用英文
+用台灣正體中文回答, 程式碼和註解使用英文
+
+### 文件網站是雙語的 —— 改內容時兩份一起改
+
+`docs/` 底下的 MkDocs 網站（發佈於 GitHub Pages）為**繁體中文 + 英文**雙語。
+每一頁都以兩個檔案存在：
+
+| 檔案 | 語言 | 發佈路徑 |
+|------|------|----------|
+| `docs/<path>/<page>.md` | 繁體中文（預設） | `/<path>/<page>/` |
+| `docs/<path>/<page>.en.md` | 英文 | `/en/<path>/<page>/` |
+
+**任何文件內容變更都必須同時套用到兩個檔案，並放在同一個 commit 裡。**
+只改一邊會讓兩種語言悄悄發散——`mkdocs-static-i18n` 的 `fallback_to_default` 會讓
+缺漏的翻譯默默顯示中文版而不報錯，問題會被隱藏很久。
+
+新增頁面時：一次建立 `.md` 與 `.en.md`，在 `mkdocs.yml` 的 `nav` 加入口，
+並在 `plugins.i18n` 的 `nav_translations` 補上英文標題。
+
+檢查漏翻：
+
+```bash
+comm -23 \
+  <(find docs -name '*.md' ! -name '*.en.md' | sed 's/\.md$//' | sort) \
+  <(find docs -name '*.en.md' | sed 's/\.en\.md$//' | sort)
+```
+
+（目前預期輸出：`docs/datasets`、`docs/MinerU-vs-OpenAI`、`docs/ocr-test-setup` —— 這三頁
+不在 `nav` 內、無任何連結指向，尚未翻譯。其餘任何項目出現都代表漏翻。）
+
+細節見 `docs/WEBSITE.md`。
 
 ## gstack
 
