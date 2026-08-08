@@ -13,17 +13,91 @@ theme:
   name: material
   language: zh-TW
 
+extra_javascript:
+  - javascripts/lang-switch.js
+
+# Bilingual site (zh-TW default, English under /en/).
+#
+# Authoring rule: every page exists as BOTH `<page>.md` (zh-TW) and
+# `<page>.en.md` (English), and the two are always edited together in the same
+# change. See docs/WEBSITE.md.
 plugins:
   - search:
       lang:
         - zh
         - en
+  - i18n:
+      docs_structure: suffix
+      # An untranslated page silently serves the zh-TW original rather than
+      # 404ing. Convenient, but it hides a missing translation — treat any
+      # fallback as a bug, not as an acceptable steady state.
+      fallback_to_default: true
+      reconfigure_material: true
+      reconfigure_search: true
+      languages:
+        - locale: zh-TW
+          name: 繁體中文
+          default: true
+          build: true
+        - locale: en
+          name: English
+          build: true
+          site_description: Taiwan health & medical data MCP server — technical documentation
+          theme:
+            language: en
+          nav_translations:
+            首頁: Home
+            快速開始: Getting Started
+            模組: Modules
+            藥品 / TFDA: Drugs / TFDA
+            檢驗 / LOINC: Labs / LOINC
+            健康補充品: Health Supplements
+            食品營養: Food Nutrition
+            MCP 工具: MCP Tools
+            ICD-10 工具: ICD-10 Tools
+            藥品工具: Drug Tools
+            檢驗 / LOINC 工具: Lab / LOINC Tools
+            SNOMED 工具: SNOMED Tools
+            健康補充品工具: Health Supplement Tools
+            食品營養工具: Food Nutrition Tools
+            FHIR Condition / Medication 工具: FHIR Condition / Medication Tools
+            FHIR IG 工具: FHIR IG Tools
+            FHIR 伺服器工具: FHIR Server Tools
+            資料來源: Data Sources
+            測試資料檔清單: Test Data Files
+            FHIR 授權: FHIR Authoring
+            授權流程說明: Authoring Walkthrough
+            工具集設計評估: Toolset Design Assessment
+            資源轉換提示（自動判斷型別）: Resource Conversion Prompt (auto type detection)
+            Bundle 轉換提示: Bundle Conversion Prompt
+            使用指南: Guides
+            檢驗判讀: Lab Interpretation
+            LOINC 整合: LOINC Integration
+            API 參考: API Reference
+            管理後台: Admin Console
+            背景工作與排程: Jobs & Scheduling
+            部署: Deployment
+            架構與容器部署: Architecture & Container Deployment
+            環境變數配置: Configuration
+            效能與監控: Performance & Monitoring
+            資料處理附錄 (DPA): Data Processing Addendum (DPA)
+            隱私政策頁面: Privacy Policy Page
+            開發指南: Development
+            程式風格: Code Style
+            測試指南: Testing
+            貢獻流程: Contributing
+            文件網站維護: Docs Site Maintenance
+            常見問題: FAQ
+            操作與使用: Usage
+            LOINC 相關: LOINC
 
 markdown_extensions:
   - admonition
   - attr_list
   - footnotes
   - md_in_html
+  - pymdownx.tasklist:
+      custom_checkbox: true
   - toc:
       permalink: true
 
