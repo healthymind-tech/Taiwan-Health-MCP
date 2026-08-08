@@ -3039,8 +3039,8 @@ cd Taiwan-Health-MCP
 </tr>
 <tr>
 <td><code>ADMIN_ENABLED</code></td>
-<td>預設 <code>false</code>，不開就沒有 <code>/admin</code>，也<strong>無法匯入任何資料</strong></td>
-<td>設 <code>true</code></td>
+<td>預設 <code>true</code>（<code>/admin</code> 是<strong>唯一</strong>能匯入資料的途徑）。資料載入完成後可設 <code>false</code> 縮小公開部署的受攻擊面</td>
+<td>依需求</td>
 </tr>
 <tr>
 <td><code>ADMIN_USERNAME</code></td>
@@ -3380,8 +3380,13 @@ docker run --rm -v taiwan-health-mcp_minio_data:/data -v &quot;$PWD&quot;:/backu
 </tr>
 <tr>
 <td><code>/admin</code> 回 404</td>
-<td><code>ADMIN_ENABLED</code> 非 <code>true</code>，或四項認證變數不齊</td>
-<td>補齊後 <code>docker compose up -d</code></td>
+<td><code>ADMIN_ENABLED</code> 被設為 false</td>
+<td>改回 <code>true</code> 後 <code>docker compose up -d</code></td>
+</tr>
+<tr>
+<td><code>/admin</code> 回 503</td>
+<td>已啟用但認證變數不齊</td>
+<td>看啟動日誌的 <code>missing</code> 欄位,補齊後重啟</td>
 </tr>
 <tr>
 <td>管理後台密碼正確卻登入失敗</td>

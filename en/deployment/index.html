@@ -3039,8 +3039,8 @@ cd Taiwan-Health-MCP
 </tr>
 <tr>
 <td><code>ADMIN_ENABLED</code></td>
-<td>Defaults to <code>false</code>; without it there is no <code>/admin</code>, and <strong>no way to import any data</strong></td>
-<td>Set to <code>true</code></td>
+<td>Defaults to <code>true</code> (<code>/admin</code> is the <strong>only</strong> way to import data). Set it to <code>false</code> once the data is loaded, to shrink a public deployment's attack surface</td>
+<td>As needed</td>
 </tr>
 <tr>
 <td><code>ADMIN_USERNAME</code></td>
@@ -3376,8 +3376,13 @@ docker run --rm -v taiwan-health-mcp_minio_data:/data -v &quot;$PWD&quot;:/backu
 </tr>
 <tr>
 <td><code>/admin</code> returns 404</td>
-<td><code>ADMIN_ENABLED</code> is not <code>true</code>, or the auth variables are incomplete</td>
-<td>Complete them and run <code>docker compose up -d</code></td>
+<td><code>ADMIN_ENABLED</code> was set to false</td>
+<td>Set it back to <code>true</code> and run <code>docker compose up -d</code></td>
+</tr>
+<tr>
+<td><code>/admin</code> returns 503</td>
+<td>Enabled, but the auth variables are incomplete</td>
+<td>Check the <code>missing</code> field in the startup log, fill them in and restart</td>
 </tr>
 <tr>
 <td>The admin password is correct but login fails</td>
