@@ -33,9 +33,9 @@ The module's advanced capability: validating logical compatibility between a dia
 - **Structured analysis**: returns detailed information about both sides for comparison.
 
 ## Technical architecture
-- **Data sources**: ICD-10-CM 2025 (NLM) and ICD-10-PCS 2025 (CMS), loaded through the admin console (Admin → Modules, import stage `--icd`).
+- **Data sources**: ICD-10-CM 2025 (NLM) and ICD-10-PCS 2025 (CMS), loaded through the admin console (Admin → Modules, import stage `icd_import`).
 - **Database**: PostgreSQL 16, with two tables — `icd.diagnoses` (diagnosis codes) and `icd.procedures` (procedure codes).
-- **PCS degradation**: the `_pcs_available` flag — when ICD-10-PCS is not loaded, the tools degrade automatically and return an informational message rather than an error. PCS 2025 (78,948 rows) lives in `fhir-code/icd/10/icd10pcs/` and is loaded by `--icd` at the same time.
+- **PCS degradation**: the `_pcs_available` flag — when ICD-10-PCS is not loaded, the tools degrade automatically and return an informational message rather than an error. PCS 2025 (78,948 rows) lives in `fhir-code/icd/10/icd10pcs/` and is loaded by `icd_import` at the same time.
 - **Full-text search**: each table has an FTS index supporting Chinese and English keyword search.
 
 ## Dependencies

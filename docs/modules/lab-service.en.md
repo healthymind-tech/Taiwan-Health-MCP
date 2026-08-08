@@ -33,7 +33,7 @@ Retrieve complete information for a single LOINC code, including a patient-frien
 Submit many test values at once and get every abnormality flag and explanation back in one call — suitable for automated analysis of health check-up reports.
 
 ## Technical architecture
-- **Data sources**: LOINC 2.80 (87,000+ codes, loaded through the admin console, Admin → Modules, import stage `--loinc`), plus seed data for tests commonly used in Taiwan (built into `node-server/src/loaders/loinc.ts`, roughly 30 rows).
+- **Data sources**: LOINC 2.80 (87,000+ codes, loaded through the admin console, Admin → Modules, import stage `loinc_import`), plus seed data for tests commonly used in Taiwan (built into `node-server/src/loaders/loinc.ts`, roughly 30 rows).
 - **Database**: PostgreSQL 16, with `loinc.concepts` (LOINC codes) and `loinc.reference_ranges` (age/sex-stratified reference values).
 - **Structured output**: the returned data can be used directly to generate FHIR Observation resources.
 

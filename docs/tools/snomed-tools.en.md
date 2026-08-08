@@ -13,7 +13,6 @@ Use it first when you only have a text term and do not yet know the concept ID. 
 | :--- | :--- | :--- | :--- | :--- |
 | `query` | string | Yes | English clinical term | `"diabetes mellitus"` |
 | `limit` | integer | No | Result cap (3 by default) | `5` |
-| `hierarchy_filter` | integer | No | Restrict the search to one hierarchy | `404684003` |
 
 ### What comes back
 Each row typically carries `concept_id`, the FSN, active status, and similarity information — enough to pick the concept to query next.
@@ -26,10 +25,14 @@ Retrieve the concept itself plus its hierarchical context (parents / children) i
 ### When to use it
 Use it when you already have a concept ID and want concept details, ancestors, and children together.
 
-### Parameters and behaviour
-- `include_parents=true`: return the ancestor chain
-- `include_children=true`: return direct child concepts
-- `parent_limit` / `child_limit`: cap how much is expanded
+### Parameters
+| Parameter | Type | Required | Description | Example |
+| :--- | :--- | :--- | :--- | :--- |
+| `concept_id` | integer | Yes | SNOMED concept ID | `73211009` |
+| `include_parents` | boolean | No | Return the ancestor chain, `true` by default | `false` |
+| `include_children` | boolean | No | Return direct child concepts, `true` by default | `false` |
+| `parent_limit` | integer | No | Cap on ancestors expanded, 10 by default | `20` |
+| `child_limit` | integer | No | Cap on children expanded, 20 by default | `50` |
 
 ### What comes back
 `concept` is always present; `ancestors`, `children`, and their counts are attached according to the parameters.
@@ -46,7 +49,6 @@ Use it to see clinical semantic attributes rather than hierarchy — for example
 | Parameter | Type | Required | Description |
 | :--- | :--- | :--- | :--- |
 | `concept_id` | integer | Yes | SNOMED concept ID |
-| `relationship_type_id` | integer | No | Restrict to a specific relationship type |
 
 ---
 

@@ -23,7 +23,7 @@ Bidirectional mapping:
 - **`mode="snomed"`**: given a SNOMED concept ID (for example `44054006`), return the corresponding ICD-10 mapping.
 
 ## Technical architecture
-- **Data source**: SNOMED CT International RF2 (`SnomedCT_InternationalRF2_PRODUCTION_*.zip`), loaded through the admin console (Admin → Modules, import stage `--snomed`). The dataset is large — expect roughly 5–15 minutes.
+- **Data source**: SNOMED CT International RF2 (`SnomedCT_InternationalRF2_PRODUCTION_*.zip`), loaded through the admin console (Admin → Modules, import stage `snomed_import`). The dataset is large — expect roughly 5–15 minutes.
 - **Database**: the `snomed` schema, with `concepts`, `descriptions`, `relationships`, `icd10_map`, `historical_associations`, and `concept_embeddings`.
 - **Availability gate**: `snomed.concepts` must reach the threshold (100,000 rows) before the corresponding tools are registered; otherwise they degrade automatically.
 

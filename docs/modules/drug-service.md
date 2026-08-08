@@ -27,11 +27,11 @@
 ## 資料管線（三階段）
 藥物資料以三個匯入階段建立，於 Admin Console 的藥物頁面觸發與監控（由 `admin-worker` 背景執行）：
 
-1. **`--drug-index`** — 從 TFDA 標準 `36_2.csv` 載入許可證索引，建立 `drug.licenses` 等基礎表。
-2. **`--drug-enrich`** — 爬取 TFDA 取得電子仿單、文件資產與藥錠外觀紀錄，並將檔案存入 MinIO。
-3. **`--drug-analysis`** — 對仿單文件執行 OCR（`DRUG_OCR_*`）與 LLM 分析（`DRUG_ANALYSIS_*`），萃取結構化內容寫入 `drug.insert_analysis`。
+1. **`drug_index_import`** — 從 TFDA 標準 `36_2.csv` 載入許可證索引，建立 `drug.licenses` 等基礎表。
+2. **`drug_enrichment`** — 爬取 TFDA 取得電子仿單、文件資產與藥錠外觀紀錄，並將檔案存入 MinIO。
+3. **`drug_analysis`** — 對仿單文件執行 MinerU OCR 與分析 LLM，萃取結構化內容寫入 `drug.insert_analysis`。OCR 與分析 LLM 的端點在 Admin → Settings 設定（存於 `admin.llm_profiles`），**不從環境變數讀取**。
 
-`--drug` 等同於一次執行 index + enrich。
+另有 `drug_pipeline` 工作型別可一次串起三個階段。三者也會自動串接：每個自動串接的工作以 `DRUG_AUTOCHAIN_BATCH_LIMIT`（預設 200）為上限；**手動排入且未指定 `limit` 的 `drug_enrichment` 不受此限**，會爬完整個待處理佇列。
 
 ## 技術架構
 - **資料來源**：台灣 FDA 西藥許可證（`mcp.fda.gov.tw`），透過 `DRUG_TFDA_BASE_URL` 設定。
@@ -44,4 +44,4 @@
 
 ## 關鍵限制
 - 仿單 OCR + LLM 分析為機器產生，必須由臨床人員覆核。
-- `--drug-enrich` 與 `--drug-analysis` 需要可達的 TFDA / OCR / 分析 LLM 端點。
+- `drug_enrichment` 與 `drug_analysis` 需要可達的 TFDA / OCR / 分析 LLM 端點。

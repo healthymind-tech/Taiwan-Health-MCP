@@ -37,7 +37,7 @@ Identify an unknown drug from tablet appearance keywords.
 | `features` | string | Yes | Space-separated appearance keywords (colour / shape / score line / marking / size / engraving) | `"white round"`, `"白 圓形"` |
 
 ### Purpose
-Each keyword is matched conjunctively against the appearance description, colour, shape, symbol, score line, size, and engraving fields. English colour and shape terms are expanded through a built-in synonym table. Appearance data must be loaded first via `--drug-enrich`.
+Each keyword is matched conjunctively against the appearance description, colour, shape, symbol, score line, size, and engraving fields. English colour and shape terms are expanded through a built-in synonym table. Appearance data must be loaded first by a `drug_enrichment` job (Admin → Modules).
 
 ---
 
@@ -67,4 +67,4 @@ Return drug document asset metadata plus freshly generated MinIO download links.
 | `latest_insert_only` | boolean | No | Return only the newest insert, `false` by default | `true` |
 
 ### Purpose
-The returned download links are time-limited presigned URLs. The corresponding data must be loaded first via `--drug-enrich` (assets) and `--drug-analysis` (analysis output).
+The returned download links are time-limited presigned URLs. The corresponding data must be loaded first by `drug_enrichment` (assets) and `drug_analysis` (analysis output) jobs.

@@ -10,13 +10,11 @@
 | :--- | :--- | :--- | :--- | :--- |
 | `keyword` | string | 是 | 搜尋關鍵字（代碼、中文名稱或英文名稱） | `"糖尿病"`, `"E11"`, `"Appendectomy"` |
 | `type` | string | 否 | 搜尋類型，預設為 `"all"`。<br>可選值：`"diagnosis"` (診斷), `"procedure"` (處置), `"all"` | `"diagnosis"` |
+| `limit` | integer | 否 | 每類結果上限，預設 3 | `5` |
 
-### 回傳範例
-```text
-Found 5 matches:
-1. [E11.9] Type 2 diabetes mellitus without complications (第二型糖尿病，無併發症)
-...
-```
+### 搜尋方式
+`diagnosis` 走 BM25 + 向量重排序的混合搜尋；`procedure` 只走 BM25；`all`（預設）兩者都做，
+並以獨立的 `diagnoses` / `procedures` 鍵分開回傳。結果依相關性排序，不是依代碼字母順序。
 
 ---
 
@@ -47,7 +45,7 @@ Found 5 matches:
 ---
 
 ## check_medical_conflict
-**【高階工具】** 檢查診斷與處置之間的相容性。
+並列取出一組診斷碼與處置碼的完整定義，供編碼品管比對。
 
 ### 參數
 | 參數名 | 型別 | 必填 | 說明 | 範例 |
@@ -56,7 +54,7 @@ Found 5 matches:
 | `procedure_code` | string | 是 | ICD-10-PCS 處置碼 | `"0DTJ0ZZ"` (闌尾切除術) |
 
 ### 用途
-用於回答「這個手術適合這個病嗎？」或「兩者是否有衝突？」等問題。回傳結果包含雙方的詳細定義以供比對。
+回傳雙方的詳細定義以供比對。**此工具只提供事實,不做相容性判定**——它不會回傳通過 / 不通過的結論,是否衝突需由呼叫端自行判斷。
 
 ---
 
@@ -67,8 +65,9 @@ Found 5 matches:
 | 參數名 | 型別 | 必填 | 說明 | 範例 |
 | :--- | :--- | :--- | :--- | :--- |
 | `category` | string | 否 | 類別代碼（前三碼）。省略時回傳所有類別清單 | `"E11"` |
+| `limit` | integer | 否 | 展開類別時的代碼數上限，預設 50 | `100` |
 
 ### 用途
 不帶 `category` 時回傳 `{"total_categories", "categories": [...]}`；帶入類別（如 `E11`）時回傳該類別下所有診斷碼 `{"category", "total", "codes": [...]}`。適合先列類別再逐層展開瀏覽。
 
-> 多數搜尋類工具另支援 `limit` 參數以限制回傳筆數。
+> 所有工具都以 JSON 回傳（MCP `content[0].text` 內為 JSON 字串），沒有純文字格式的輸出。

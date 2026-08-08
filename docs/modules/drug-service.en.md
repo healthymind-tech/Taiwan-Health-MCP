@@ -27,11 +27,11 @@ Returns persisted asset metadata and generates presigned MinIO download links on
 ## Data pipeline (three stages)
 Drug data is built by three import stages, triggered and monitored from the drug page of the admin console (executed in the background by `admin-worker`):
 
-1. **`--drug-index`** — loads the license index from TFDA's standard `36_2.csv`, creating `drug.licenses` and the other base tables.
-2. **`--drug-enrich`** — crawls TFDA for electronic inserts, document assets, and pill appearance records, storing the files in MinIO.
-3. **`--drug-analysis`** — runs OCR (`DRUG_OCR_*`) and LLM analysis (`DRUG_ANALYSIS_*`) over the insert documents, extracting structured content into `drug.insert_analysis`.
+1. **`drug_index_import`** — loads the license index from TFDA's standard `36_2.csv`, creating `drug.licenses` and the other base tables.
+2. **`drug_enrichment`** — crawls TFDA for electronic inserts, document assets, and pill appearance records, storing the files in MinIO.
+3. **`drug_analysis`** — runs MinerU OCR and the analysis LM over the insert documents, extracting structured content into `drug.insert_analysis`. The OCR and analysis-LM endpoints are configured in Admin → Settings (stored in `admin.llm_profiles`) and are **never read from environment variables**.
 
-`--drug` is equivalent to running index + enrich in one go.
+A `drug_pipeline` job type also exists to chain all three stages in one go. The three stages auto-chain as well: each auto-chained job is capped at `DRUG_AUTOCHAIN_BATCH_LIMIT` (200 by default); **a manually queued `drug_enrichment` with no `limit` is not capped** and will crawl the entire backlog.
 
 ## Technical architecture
 - **Data source**: Taiwan FDA western-medicine licenses (`mcp.fda.gov.tw`), configured via `DRUG_TFDA_BASE_URL`.
@@ -44,4 +44,4 @@ Drug data is built by three import stages, triggered and monitored from the drug
 
 ## Key limitations
 - Insert OCR + LLM analysis is machine-generated and must be reviewed by a clinician.
-- `--drug-enrich` and `--drug-analysis` require reachable TFDA / OCR / analysis-LLM endpoints.
+- `drug_enrichment` and `drug_analysis` require reachable TFDA / OCR / analysis-LM endpoints.

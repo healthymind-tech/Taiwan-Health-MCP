@@ -35,7 +35,7 @@ Every tool accepts an optional `package_id` + `version` (omitting both pins it t
 - **`fhir_validate_bundle`**: validate an entire Bundle.
 
 ## Technical architecture
-- **Data source**: FHIR IG packages (`package.tgz`), imported through the admin console (Admin → Modules / IG, import stage `--twcore`). Dependency packages (such as `hl7.terminology.r4` and `hl7.fhir.r4.core`) can be bound additionally and are each indexed as package-scoped IGs, so cross-system ValueSet bindings expand to real codes.
+- **Data source**: FHIR IG packages (`package.tgz`), imported through the admin console (Admin → Modules / IG, import stage `ig_import`). Dependency packages (such as `hl7.terminology.r4` and `hl7.fhir.r4.core`) can be bound additionally and are each indexed as package-scoped IGs, so cross-system ValueSet bindings expand to real codes.
 - **Database**: the `fhir` schema — `ig_packages`, `codesystems`, `concepts`, and `artifacts` (all package-scoped, supporting multiple IGs).
 - **Validation engine**: `fhirValidator.ts` / `fhirTerminology.ts` / `fhirSnapshot.ts` / `fhirReference.ts` / `fhirAuthoring.ts` perform snapshot generation, terminology binding checks, reference resolution, and skeleton-fill authoring in process.
 

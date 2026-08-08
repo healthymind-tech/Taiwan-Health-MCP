@@ -199,8 +199,8 @@ HTTP surface exposed by `app`:
 | ICD Service | `icdService.ts` | `icd.diagnoses` / `icd.procedures` | `icd_import` job |
 | Drug Service | `drugService.ts` | `drug.*` tables | `drug_index_import` / `drug_enrichment` / `drug_analysis` jobs |
 | Drug Analysis Service | `drugAnalysisService.ts` | `drug.insert_analysis` | MinerU OCR + Analysis-LM stage |
-| Supplements Service | `supplementsService.ts` | `health_supplements.items` | `health_supplements_import` (TFDA Open Data) |
-| Food Service | `foodService.ts` | `food_nutrition.*` | `food_nutrition_import` (TFDA Open Data) |
+| Supplements Service | `supplementsService.ts` | `health_supplements.items` | `health_supplements_sync` (TFDA Open Data) |
+| Food Service | `foodService.ts` | `food_nutrition.*` | `food_nutrition_sync` (TFDA Open Data) |
 | Lab Service | `labService.ts` | `loinc.*` | `loinc_import` |
 | FHIR Condition Service | `fhirConditionService.ts` | reads `icd.*` | — (derives from ICD) |
 | FHIR Medication Service | `fhirMedicationService.ts` | reads drug service | — (derives from Drug) |

@@ -10,13 +10,12 @@ Search ICD-10 diagnosis or procedure codes.
 | :--- | :--- | :--- | :--- | :--- |
 | `keyword` | string | Yes | Search keyword (code, Chinese name, or English name) | `"糖尿病"`, `"E11"`, `"Appendectomy"` |
 | `type` | string | No | Search type, `"all"` by default.<br>Allowed values: `"diagnosis"`, `"procedure"`, `"all"` | `"diagnosis"` |
+| `limit` | integer | No | Cap per result class, 3 by default | `5` |
 
-### Example response
-```text
-Found 5 matches:
-1. [E11.9] Type 2 diabetes mellitus without complications (第二型糖尿病，無併發症)
-...
-```
+### How the search works
+`diagnosis` runs a hybrid BM25 + vector re-ranking search; `procedure` is BM25 only; `all`
+(the default) does both and returns them under separate `diagnoses` / `procedures` keys.
+Results are ordered by relevance, not alphabetically by code.
 
 ---
 
@@ -47,7 +46,7 @@ Useful for reviewing codes of differing severity or similar character within the
 ---
 
 ## check_medical_conflict
-**[Advanced tool]** Check compatibility between a diagnosis and a procedure.
+Fetch the full definitions of one diagnosis code and one procedure code side by side for coding QA.
 
 ### Parameters
 | Parameter | Type | Required | Description | Example |
@@ -56,7 +55,7 @@ Useful for reviewing codes of differing severity or similar character within the
 | `procedure_code` | string | Yes | ICD-10-PCS procedure code | `"0DTJ0ZZ"` (appendectomy) |
 
 ### Purpose
-Answers questions such as "is this surgery appropriate for this condition?" or "do these two conflict?". The result includes the detailed definitions of both sides for comparison.
+Returns the detailed definitions of both sides for comparison. **The tool reports facts only and makes no compatibility judgement** — it returns no pass/fail verdict, so deciding whether the pair conflicts is left to the caller.
 
 ---
 
@@ -67,8 +66,9 @@ Browse diagnosis codes by ICD category.
 | Parameter | Type | Required | Description | Example |
 | :--- | :--- | :--- | :--- | :--- |
 | `category` | string | No | Category code (first three characters). Omit to return the list of all categories | `"E11"` |
+| `limit` | integer | No | Cap on codes returned when expanding a category, 50 by default | `100` |
 
 ### Purpose
 Without `category`, returns `{"total_categories", "categories": [...]}`; with a category (such as `E11`), returns every diagnosis code under it as `{"category", "total", "codes": [...]}`. Suitable for listing categories first and then drilling down.
 
-> Most search tools also accept a `limit` parameter to cap the number of results.
+> Every tool returns JSON (a JSON string inside the MCP `content[0].text` block); none of them emit a plain-text format.
