@@ -65,11 +65,11 @@ The defaults in `.env.example` **must not go straight to production**. The follo
 
 | Variable | Why it matters | Suggested approach |
 |----------|----------------|--------------------|
-| `POSTGRES_PASSWORD` | `docker compose` fails outright when unset (compose enforces it with `:?`) | `openssl rand -hex 24` |
+| `POSTGRES_PASSWORD` | `docker compose` fails outright when unset (compose enforces it with `:?`); **`app` refuses to start while the `.env.example` placeholder is still in place** | `openssl rand -hex 24` |
 | `ADMIN_ENABLED` | Defaults to `true` (`/admin` is the **only** way to import data). Set it to `false` once the data is loaded, to shrink a public deployment's attack surface | As needed |
 | `ADMIN_USERNAME` | Admin console account | Defaults to `admin`; customisable |
 | `ADMIN_INITIAL_PASSWORD`<br>or `ADMIN_PASSWORD_HASH` | Without a credential you cannot sign in | Pick one, see 2-2 |
-| `ADMIN_SESSION_SECRET` | Session cookie signing key; also the fallback value for `FHIR_SERVER_SECRET_KEY` | `openssl rand -hex 32` |
+| `ADMIN_SESSION_SECRET` | Session cookie signing key — holding it is enough to forge a session for any user, no password involved; also the fallback for `FHIR_SERVER_SECRET_KEY`. **`app` refuses to start while the `.env.example` placeholder is still in place** | `openssl rand -hex 32` |
 | `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY` | Default to `minioadmin` / `minioadmin`, effectively no password | `openssl rand -hex 16` each |
 | `PUBLIC_BASE_URL` | Public origin, used to build the OAuth2 redirect_uri and to derive the WebAuthn RP ID | `https://your-domain.example.com` |
 | `PUBLIC_TOOLS_AUTH_MODE` / `PUBLIC_TOOLS_BEARER_TOKEN` | Defaults to `none`, meaning `/mcp` and `/tools/*` are completely unauthenticated | Set `bearer` + `openssl rand -hex 32` when publicly reachable |
@@ -168,7 +168,6 @@ POSTGRES_USER=mcp
 POSTGRES_PASSWORD=<openssl rand -hex 24>
 
 # --- MCP ---
-MCP_TRANSPORT=streamable-http
 MCP_PORT=8000
 MCP_PATH=/mcp
 PUBLIC_TOOLS_AUTH_MODE=bearer

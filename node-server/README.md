@@ -24,7 +24,7 @@ npm test             # node --test over src/**/*.test.ts
 Run the server locally in HTTP mode:
 
 ```bash
-MCP_TRANSPORT=streamable-http DATABASE_URL=postgresql://... node dist/server.js
+DATABASE_URL=postgresql://... node dist/server.js
 ```
 
 In Docker, `app` is only reachable through the nginx front door (`:8080` by default) —

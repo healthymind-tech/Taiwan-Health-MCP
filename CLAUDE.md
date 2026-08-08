@@ -132,7 +132,7 @@ node --import tsx --test src/loaders/loinc.test.ts
 node --import tsx --test --test-name-pattern "padded headers" src/loaders/loinc.test.ts
 
 # Run the MCP/admin server locally (HTTP mode):
-MCP_TRANSPORT=streamable-http DATABASE_URL=postgresql://... node dist/server.js
+DATABASE_URL=postgresql://... node dist/server.js
 
 # --- Web front-end (admin SPA) ---------------------------------------------
 cd web

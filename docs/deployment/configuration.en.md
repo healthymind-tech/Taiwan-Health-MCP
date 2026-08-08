@@ -45,7 +45,6 @@ cp .env.example .env
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `MCP_TRANSPORT` | `streamable-http` (compose); the program's default is `stdio` | `streamable-http` \| `sse` \| `stdio` |
 | `MCP_HOST` | `0.0.0.0` | Listen host (HTTP mode) |
 | `MCP_PORT` | `8000` | **Container-internal** listen port. Never published to the host. |
 | `MCP_PATH` | `/mcp` | HTTP endpoint path |
@@ -164,26 +163,6 @@ Claude Desktop:
     "taiwan-health": {
       "url": "http://<host>:8080/mcp",
       "transport": "streamable-http"
-    }
-  }
-}
-```
-
-### stdio (launching the process locally)
-
-Run `npm install && npm run build` in `node-server/` first:
-
-```json
-{
-  "mcpServers": {
-    "taiwan-health": {
-      "command": "node",
-      "args": ["/absolute/path/to/node-server/dist/server.js"],
-      "env": {
-        "MCP_TRANSPORT": "stdio",
-        "DATABASE_URL": "postgresql://mcp:pass@localhost:5432/taiwan_health",
-        "REDIS_URL": "redis://localhost:6379/0"
-      }
     }
   }
 }

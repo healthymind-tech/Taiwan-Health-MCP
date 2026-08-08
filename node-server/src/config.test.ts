@@ -100,6 +100,35 @@ test("the admin console is on by default", () => {
   assert.equal(cfg.adminEnabled, true);
 });
 
+test("the .env.example placeholder secrets are refused", () => {
+  // Not "weak" — published. The session cookie is signed with
+  // ADMIN_SESSION_SECRET, so anyone reading the repo could mint one for any user
+  // without ever touching the password check.
+  assert.throws(
+    () => withEnv({ ...BASE, ADMIN_SESSION_SECRET: "change_this_admin_session_secret" }, loadConfig),
+    /ADMIN_SESSION_SECRET is still the .env.example placeholder/,
+  );
+  assert.throws(
+    () =>
+      withEnv(
+        { ...BASE, DATABASE_URL: "postgresql://mcp:changeme_strong_password@pgbouncer:5432/db" },
+        loadConfig,
+      ),
+    /POSTGRES_PASSWORD is still the .env.example placeholder/,
+  );
+});
+
+test("a real secret and a real database password are accepted", () => {
+  const cfg = withEnv(
+    {
+      DATABASE_URL: "postgresql://mcp:8f2c1a@pgbouncer:5432/db",
+      ADMIN_SESSION_SECRET: "9d8239b6e5772b829a85ae074ba7637e",
+    },
+    loadConfig,
+  );
+  assert.equal(cfg.adminSessionSecret, "9d8239b6e5772b829a85ae074ba7637e");
+});
+
 test("the served transport is fixed, not taken from the environment", () => {
   // main() starts the HTTP listener unconditionally, so MCP_TRANSPORT never
   // selected anything. It must not silently downgrade the reported transport.
