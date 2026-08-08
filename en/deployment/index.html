@@ -3034,7 +3034,7 @@ cd Taiwan-Health-MCP
 <tbody>
 <tr>
 <td><code>POSTGRES_PASSWORD</code></td>
-<td><code>docker compose</code> fails outright when unset (compose enforces it with <code>:?</code>)</td>
+<td><code>docker compose</code> fails outright when unset (compose enforces it with <code>:?</code>); <strong><code>app</code> refuses to start while the <code>.env.example</code> placeholder is still in place</strong></td>
 <td><code>openssl rand -hex 24</code></td>
 </tr>
 <tr>
@@ -3054,7 +3054,7 @@ cd Taiwan-Health-MCP
 </tr>
 <tr>
 <td><code>ADMIN_SESSION_SECRET</code></td>
-<td>Session cookie signing key; also the fallback value for <code>FHIR_SERVER_SECRET_KEY</code></td>
+<td>Session cookie signing key — holding it is enough to forge a session for any user, no password involved; also the fallback for <code>FHIR_SERVER_SECRET_KEY</code>. <strong><code>app</code> refuses to start while the <code>.env.example</code> placeholder is still in place</strong></td>
 <td><code>openssl rand -hex 32</code></td>
 </tr>
 <tr>
@@ -3163,7 +3163,6 @@ POSTGRES_USER=mcp
 POSTGRES_PASSWORD=&lt;openssl rand -hex 24&gt;
 
 # --- MCP ---
-MCP_TRANSPORT=streamable-http
 MCP_PORT=8000
 MCP_PATH=/mcp
 PUBLIC_TOOLS_AUTH_MODE=bearer

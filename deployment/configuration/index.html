@@ -2077,17 +2077,6 @@
   
 </li>
         
-          <li class="md-nav__item">
-  <a href="#stdio" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        stdio（本機直接啟動行程）
-      
-    </span>
-  </a>
-  
-</li>
-        
       </ul>
     </nav>
   
@@ -2706,17 +2695,6 @@
   
 </li>
         
-          <li class="md-nav__item">
-  <a href="#stdio" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        stdio（本機直接啟動行程）
-      
-    </span>
-  </a>
-  
-</li>
-        
       </ul>
     </nav>
   
@@ -2876,11 +2854,6 @@
 </tr>
 </thead>
 <tbody>
-<tr>
-<td><code>MCP_TRANSPORT</code></td>
-<td><code>streamable-http</code>（compose）；程式預設 <code>stdio</code></td>
-<td><code>streamable-http</code> | <code>sse</code> | <code>stdio</code></td>
-</tr>
 <tr>
 <td><code>MCP_HOST</code></td>
 <td><code>0.0.0.0</code></td>
@@ -3206,22 +3179,6 @@ Compose 會還原成單一 <code>$</code>。</p>
     &quot;taiwan-health&quot;: {
       &quot;url&quot;: &quot;http://&lt;host&gt;:8080/mcp&quot;,
       &quot;transport&quot;: &quot;streamable-http&quot;
-    }
-  }
-}
-</code></pre>
-<h3 id="stdio">stdio（本機直接啟動行程）<a class="headerlink" href="#stdio" title="Permanent link">&para;</a></h3>
-<p>需先在 <code>node-server/</code> 執行 <code>npm install &amp;&amp; npm run build</code>：</p>
-<pre><code class="language-json">{
-  &quot;mcpServers&quot;: {
-    &quot;taiwan-health&quot;: {
-      &quot;command&quot;: &quot;node&quot;,
-      &quot;args&quot;: [&quot;/absolute/path/to/node-server/dist/server.js&quot;],
-      &quot;env&quot;: {
-        &quot;MCP_TRANSPORT&quot;: &quot;stdio&quot;,
-        &quot;DATABASE_URL&quot;: &quot;postgresql://mcp:pass@localhost:5432/taiwan_health&quot;,
-        &quot;REDIS_URL&quot;: &quot;redis://localhost:6379/0&quot;
-      }
     }
   }
 }

@@ -2363,7 +2363,7 @@
 <ol>
 <li><strong>單一入口</strong>：nginx 是唯一對主機開放的服務（<code>WEB_PORT</code>，預設 8080）。<code>app</code> 只有 <code>expose</code>，沒有 <code>ports</code>，所以 <code>:8000</code> 無法從主機連入。</li>
 <li><strong>資料持久性</strong>：PostgreSQL 與 MinIO 資料存放於 Docker Volume，容器重啟後資料保留，無需重新匯入。</li>
-<li><strong>通訊模式</strong>：生產環境使用 <code>streamable-http</code>（經 nginx 的 <code>/mcp</code>）。<code>MCP_TRANSPORT=stdio</code> 供本機直接啟動行程時使用。</li>
+<li><strong>通訊模式</strong>：一律為 <code>streamable-http</code>（經 nginx 的 <code>/mcp</code>）。伺服器只提供這一種傳輸方式，沒有 stdio 模式。</li>
 <li><strong>pgBouncer transaction mode</strong>：不相容 <code>LISTEN/NOTIFY</code> 與 named prepared statements；Node 端使用 <code>pg</code> 的 unnamed statements 以相容此模式。</li>
 <li><strong>資料匯入</strong>：由管理後台觸發、<code>admin-worker</code> 背景執行（已無獨立的 data-loader 容器）。來源檔由管理後台上傳至 MinIO，工作執行時再取回。</li>
 <li><strong>MinIO</strong>：儲存藥品文件資產（仿單 / 標籤 / 外觀圖），工具回傳有時效的預簽下載連結。</li>

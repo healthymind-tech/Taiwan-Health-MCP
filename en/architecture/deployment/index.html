@@ -2363,7 +2363,7 @@
 <ol>
 <li><strong>Single entry point</strong>: nginx is the only service intended for host access (<code>WEB_PORT</code>, 8080 by default). <code>app</code> only has <code>expose</code>, no <code>ports</code>, so <code>:8000</code> cannot be reached from the host.</li>
 <li><strong>Data persistence</strong>: PostgreSQL and MinIO data live in Docker volumes, so the data survives container restarts and needs no re-import.</li>
-<li><strong>Transport</strong>: production uses <code>streamable-http</code> (through nginx's <code>/mcp</code>). <code>MCP_TRANSPORT=stdio</code> is for launching the process directly on a local machine.</li>
+<li><strong>Transport</strong>: always <code>streamable-http</code> (through nginx's <code>/mcp</code>). It is the only transport the server offers; there is no stdio mode.</li>
 <li><strong>pgBouncer transaction mode</strong>: incompatible with <code>LISTEN/NOTIFY</code> and named prepared statements; the Node side uses <code>pg</code>'s unnamed statements for compatibility.</li>
 <li><strong>Data imports</strong>: triggered from the admin console and executed in the background by <code>admin-worker</code> (there is no longer a standalone data-loader container). Source files are uploaded to MinIO through the admin console and fetched back when a job runs.</li>
 <li><strong>MinIO</strong>: stores drug document assets (inserts / labels / pill images); the tools return time-limited presigned download links.</li>

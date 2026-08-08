@@ -3034,7 +3034,7 @@ cd Taiwan-Health-MCP
 <tbody>
 <tr>
 <td><code>POSTGRES_PASSWORD</code></td>
-<td>未設定時 <code>docker compose</code> 會直接失敗（compose 以 <code>:?</code> 強制要求）</td>
+<td>未設定時 <code>docker compose</code> 會直接失敗（compose 以 <code>:?</code> 強制要求）；<strong>沿用 <code>.env.example</code> 的預設值時 <code>app</code> 會拒絕啟動</strong></td>
 <td><code>openssl rand -hex 24</code></td>
 </tr>
 <tr>
@@ -3054,7 +3054,7 @@ cd Taiwan-Health-MCP
 </tr>
 <tr>
 <td><code>ADMIN_SESSION_SECRET</code></td>
-<td>session cookie 簽章金鑰；同時是 <code>FHIR_SERVER_SECRET_KEY</code> 的回退值</td>
+<td>session cookie 簽章金鑰（知道它就能偽造任何使用者的登入，不需密碼）；同時是 <code>FHIR_SERVER_SECRET_KEY</code> 的回退值。<strong>沿用 <code>.env.example</code> 的預設值時 <code>app</code> 會拒絕啟動</strong></td>
 <td><code>openssl rand -hex 32</code></td>
 </tr>
 <tr>
@@ -3167,7 +3167,6 @@ POSTGRES_USER=mcp
 POSTGRES_PASSWORD=&lt;openssl rand -hex 24&gt;
 
 # --- MCP ---
-MCP_TRANSPORT=streamable-http
 MCP_PORT=8000
 MCP_PATH=/mcp
 PUBLIC_TOOLS_AUTH_MODE=bearer
