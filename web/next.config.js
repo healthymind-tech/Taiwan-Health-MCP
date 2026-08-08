@@ -5,14 +5,9 @@ const BACKEND = process.env.BACKEND_INTERNAL_URL || "http://localhost:8000";
 
 const nextConfig = {
   output: "standalone",
-  // Ensure the verbatim legacy HTML is traced into the standalone bundle.
-  experimental: {
-    outputFileTracingIncludes: { "/status": ["./legacy/**/*"], "/": ["./legacy/**/*"] },
-  },
   async rewrites() {
     return [
       { source: "/mcp", destination: `${BACKEND}/mcp` },
-      { source: "/status.json", destination: `${BACKEND}/status.json` },
       { source: "/openapi.json", destination: `${BACKEND}/openapi.json` },
       { source: "/tools/:path*", destination: `${BACKEND}/tools/:path*` },
       { source: "/admin/api/:path*", destination: `${BACKEND}/admin/api/:path*` },

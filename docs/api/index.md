@@ -9,7 +9,6 @@
 | `/mcp` | `POST` / `GET` / `DELETE` | 可設定 Bearer | MCP streamable-http 端點（路徑由 `MCP_PATH` 設定）。 |
 | `/openapi.json` | `GET` | 可設定 Bearer | 依**目前已註冊的工具**動態產生的 OpenAPI 3.1 規格。 |
 | `/tools/<工具名>` | `POST` | 可設定 Bearer | OpenAPI bridge：以 JSON body 當參數呼叫單一工具。 |
-| `/status.json` | `GET` | 無 | 各模組資料筆數與服務健康狀態（公開狀態頁的資料來源）。 |
 | `/admin/api/*` | 各異 | session cookie | 管理後台 REST API（`ADMIN_ENABLED=true` 時才存在）。 |
 | `/admin/ws` | WebSocket | session cookie | 工作即時日誌與進度推送。 |
 | `/fhir-client/<id>/jwks.json` | `GET` | 無 | 外部 FHIR OAuth 客戶端的公開 JWKS。 |
@@ -19,7 +18,8 @@
 `/tools/*`。Token 由 `PUBLIC_TOOLS_BEARER_TOKEN` 設定；瀏覽器跨來源呼叫另需在
 `PUBLIC_TOOLS_CORS_ORIGINS` 明列 origin。`none` 僅適合受信任的本機或私有網路。
 
-> 後端另有一個 `/health` 端點，但 nginx 不會轉送它（從前門存取會得到 404）。請改用 `/status.json`。
+> 後端另有一個 `/health` 端點，但 nginx 不會轉送它（從前門存取會得到 404）。要從前門確認 `app`
+> 是否存活，請改打 `/openapi.json`。各模組的資料筆數請看管理後台 Overview 分頁。
 
 ## OpenAPI bridge
 
