@@ -66,7 +66,7 @@ cp .env.example .env
 | 變數 | 為何必要 | 建議做法 |
 |------|----------|----------|
 | `POSTGRES_PASSWORD` | 未設定時 `docker compose` 會直接失敗（compose 以 `:?` 強制要求） | `openssl rand -hex 24` |
-| `ADMIN_ENABLED` | 預設 `false`，不開就沒有 `/admin`，也**無法匯入任何資料** | 設 `true` |
+| `ADMIN_ENABLED` | 預設 `true`（`/admin` 是**唯一**能匯入資料的途徑）。資料載入完成後可設 `false` 縮小公開部署的受攻擊面 | 依需求 |
 | `ADMIN_USERNAME` | 管理後台帳號 | 預設 `admin`，可自訂 |
 | `ADMIN_INITIAL_PASSWORD`<br>或 `ADMIN_PASSWORD_HASH` | 沒有憑證就無法登入 | 二擇一，見 2-2 |
 | `ADMIN_SESSION_SECRET` | session cookie 簽章金鑰；同時是 `FHIR_SERVER_SECRET_KEY` 的回退值 | `openssl rand -hex 32` |
@@ -365,7 +365,8 @@ services:
 | 症狀 | 可能原因 | 處置 |
 |------|----------|------|
 | `docker compose up` 立刻失敗並提示 `POSTGRES_PASSWORD is required` | `.env` 未設定該變數 | 補上（compose 以 `:?` 強制要求） |
-| `/admin` 回 404 | `ADMIN_ENABLED` 非 `true`，或四項認證變數不齊 | 補齊後 `docker compose up -d` |
+| `/admin` 回 404 | `ADMIN_ENABLED` 被設為 false | 改回 `true` 後 `docker compose up -d` |
+| `/admin` 回 503 | 已啟用但認證變數不齊 | 看啟動日誌的 `missing` 欄位,補齊後重啟 |
 | 管理後台密碼正確卻登入失敗 | `.env` 中的 `$` 未寫成 `$$`，雜湊被截斷 | 見 2-2 的警告框 |
 | 改了 `.env` 的密碼卻沒生效 | 憑證在首次啟動即寫入 `admin.admin_credentials`，seed 為 `ON CONFLICT DO NOTHING` | 改用 Settings → Privacy 修改密碼 |
 | worker 拋 `Illegal argument to function` / `Wrong key or corrupt data` | `FHIR_SERVER_SECRET_KEY` 為空或 `app` 與 worker 不一致 | 見 2-3 |

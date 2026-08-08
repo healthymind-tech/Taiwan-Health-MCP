@@ -108,7 +108,7 @@ requests/second throughput.
 
 Three surfaces ship in one codebase:
 - **MCP server** (`node-server/src/server.ts` + `mcp.ts`) — the tool surface consumed by LLM clients (also exposes the admin REST API, `/admin/ws`, `/mcp`, `/openapi.json`, `POST /tools/<name>`).
-- **Admin console** (`node-server/src/admin/*.ts` backend + the `web/admin-app/` SPA) — an operator UI for uploading source files, running/scheduling data imports, managing settings and external FHIR servers, and monitoring jobs. Disabled by default (`ADMIN_ENABLED=false`).
+- **Admin console** (`node-server/src/admin/*.ts` backend + the `web/admin-app/` SPA) — an operator UI for uploading source files, running/scheduling data imports, managing settings and external FHIR servers, and monitoring jobs. On by default (`ADMIN_ENABLED=true`) — it is the only way to import data; set it false after loading to shrink a public deployment's attack surface.
 - **Next.js front-end** (`web/`) — serves the admin SPA only (mounted via a `/admin` catch-all route). nginx (`nginx/nginx.conf`) is the single front door: it routes API/MCP/WebSocket to `app` and everything else to `web`. The public landing/status/privacy/dpa pages were removed from this repo and now live in a standalone marketing-site project; `nginx.conf` carries a TODO for the 301 redirects.
 
 **Entry point (ports).** nginx publishes `${WEB_PORT:-8080}` and is the **only** service

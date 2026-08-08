@@ -12,8 +12,8 @@ import express, { type Request, type Response } from "express";
 import { randomUUID } from "node:crypto";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
-import { config, adminReady } from "./config.js";
-import { configureLogLevel, logError, logInfo } from "./logger.js";
+import { config, adminReady, type AppConfig } from "./config.js";
+import { configureLogLevel, logError, logInfo, logWarning } from "./logger.js";
 import { WebSocketServer } from "ws";
 import { parseCookieHeader, parseAdminSessionToken, SESSION_COOKIE_NAME } from "./adminAuth.js";
 import { initBroadcast, startWsRelay, handleAdminWsConnection } from "./admin/adminWs.js";
@@ -36,9 +36,39 @@ import { allowedCorsOrigin, bearerTokenMatches } from "./publicToolsSecurity.js"
 
 const OAUTH_CALLBACK_PATH = "/fhir-oauth/callback";
 
+/**
+ * Say out loud which admin state this process booted into.
+ *
+ * The three states are indistinguishable from the outside until someone tries to
+ * log in, and two of them answer with a status code that reads like a different
+ * problem: disabled is a 404 (looks like the feature does not exist) and
+ * not-configured is a 503. Neither used to leave anything in the log, so the
+ * first signal an operator got was a login page that would not let them in.
+ */
+function logAdminConsoleState(cfg: AppConfig): void {
+  if (!cfg.adminEnabled) {
+    logInfo("Admin console disabled (ADMIN_ENABLED=false) — /admin and /admin/api/* return 404");
+    return;
+  }
+  if (!adminReady(cfg)) {
+    const missing: string[] = [];
+    if (!cfg.adminUsername) missing.push("ADMIN_USERNAME");
+    if (!cfg.adminPasswordHash && !cfg.adminInitialPassword) {
+      missing.push("ADMIN_INITIAL_PASSWORD (or ADMIN_PASSWORD_HASH)");
+    }
+    if (!cfg.adminSessionSecret) missing.push("ADMIN_SESSION_SECRET");
+    logWarning("Admin console enabled but not fully configured — /admin/api/* returns 503", {
+      missing: missing.join(", "),
+    });
+    return;
+  }
+  logInfo("Admin console enabled", { username: cfg.adminUsername });
+}
+
 async function bootstrapResources(): Promise<void> {
   const cfg = config();
   configureLogLevel(cfg.logLevel);
+  logAdminConsoleState(cfg);
 
   try {
     initPool();

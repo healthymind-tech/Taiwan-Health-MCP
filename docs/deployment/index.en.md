@@ -66,7 +66,7 @@ The defaults in `.env.example` **must not go straight to production**. The follo
 | Variable | Why it matters | Suggested approach |
 |----------|----------------|--------------------|
 | `POSTGRES_PASSWORD` | `docker compose` fails outright when unset (compose enforces it with `:?`) | `openssl rand -hex 24` |
-| `ADMIN_ENABLED` | Defaults to `false`; without it there is no `/admin`, and **no way to import any data** | Set to `true` |
+| `ADMIN_ENABLED` | Defaults to `true` (`/admin` is the **only** way to import data). Set it to `false` once the data is loaded, to shrink a public deployment's attack surface | As needed |
 | `ADMIN_USERNAME` | Admin console account | Defaults to `admin`; customisable |
 | `ADMIN_INITIAL_PASSWORD`<br>or `ADMIN_PASSWORD_HASH` | Without a credential you cannot sign in | Pick one, see 2-2 |
 | `ADMIN_SESSION_SECRET` | Session cookie signing key; also the fallback value for `FHIR_SERVER_SECRET_KEY` | `openssl rand -hex 32` |
@@ -361,7 +361,8 @@ The same override file is a good home for [resource limits](configuration.md#res
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
 | `docker compose up` fails immediately with `POSTGRES_PASSWORD is required` | The variable is unset in `.env` | Set it (compose enforces it with `:?`) |
-| `/admin` returns 404 | `ADMIN_ENABLED` is not `true`, or the auth variables are incomplete | Complete them and run `docker compose up -d` |
+| `/admin` returns 404 | `ADMIN_ENABLED` was set to false | Set it back to `true` and run `docker compose up -d` |
+| `/admin` returns 503 | Enabled, but the auth variables are incomplete | Check the `missing` field in the startup log, fill them in and restart |
 | The admin password is correct but login fails | `$` in `.env` was not written as `$$`, truncating the hash | See the warning box in 2-2 |
 | Changing the password in `.env` has no effect | The credential was written to `admin.admin_credentials` on first boot, and seeding uses `ON CONFLICT DO NOTHING` | Change it under Settings → Privacy instead |
 | The worker raises `Illegal argument to function` / `Wrong key or corrupt data` | `FHIR_SERVER_SECRET_KEY` is empty, or differs between `app` and the worker | See 2-3 |
