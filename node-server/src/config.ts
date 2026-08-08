@@ -76,12 +76,32 @@ function env(name: string, fallback = ""): string {
   return v === undefined ? fallback : v;
 }
 
-export function loadConfig(): AppConfig {
-  let transport = env("MCP_TRANSPORT", "stdio").toLowerCase();
-  if (!["stdio", "sse", "streamable-http"].includes(transport)) {
-    transport = "stdio";
+/**
+ * Parse an integer setting, refusing anything that is not one.
+ *
+ * Failing loudly here matters: `Number.parseInt("abc")` is NaN, and NaN survives
+ * both `??` (which only catches null/undefined) and `Math.max(NaN, 1)` (which
+ * returns NaN, not the floor). A bad value therefore used to reach runtime
+ * intact and break something unrelated — a non-numeric ADMIN_SESSION_TTL_MINUTES
+ * produced a session token whose `exp` serialised as invalid JSON, so login
+ * succeeded and every later request was silently unauthenticated. A typo should
+ * stop the process here instead, naming itself.
+ */
+function envInt(name: string, fallback: number, opts: { min?: number } = {}): number {
+  const raw = env(name).trim();
+  if (!raw) return fallback;
+  const value = Number(raw);
+  if (!Number.isInteger(value)) {
+    throw new Error(`${name} must be an integer, got ${JSON.stringify(raw)}`);
   }
+  const min = opts.min ?? 1;
+  if (value < min) {
+    throw new Error(`${name} must be >= ${min}, got ${value}`);
+  }
+  return value;
+}
 
+export function loadConfig(): AppConfig {
   const databaseUrl = env("DATABASE_URL", "");
   if (!databaseUrl) {
     throw new Error("DATABASE_URL environment variable is required");
@@ -95,9 +115,13 @@ export function loadConfig(): AppConfig {
   );
 
   return {
-    transport: transport as TransportType,
+    // Not read from the environment: main() always starts the HTTP listener, so
+    // streamable-http is the only transport this server actually serves. It used
+    // to come from MCP_TRANSPORT, which silently fell back to "stdio" on a typo
+    // and only ever changed what the admin Overview printed.
+    transport: "streamable-http",
     host: env("MCP_HOST", "0.0.0.0"),
-    port: Number.parseInt(env("MCP_PORT", "8000"), 10),
+    port: envInt("MCP_PORT", 8000),
     path: env("MCP_PATH", "/mcp"),
     publicToolsAuthMode: publicTools.authMode,
     publicToolsBearerToken: publicTools.bearerToken,
@@ -110,11 +134,11 @@ export function loadConfig(): AppConfig {
     adminPasswordHash: env("ADMIN_PASSWORD_HASH").trim(),
     adminInitialPassword: env("ADMIN_INITIAL_PASSWORD").trim(),
     adminSessionSecret: env("ADMIN_SESSION_SECRET").trim(),
-    adminSessionTtlMinutes: Number.parseInt(env("ADMIN_SESSION_TTL_MINUTES", "240"), 10),
+    adminSessionTtlMinutes: envInt("ADMIN_SESSION_TTL_MINUTES", 240),
     adminCookieSecure: resolveAdminCookieSecure(env("ADMIN_COOKIE_SECURE"), publicBaseUrl),
-    adminMaxUploadMb: Number.parseInt(env("ADMIN_MAX_UPLOAD_MB", "512"), 10),
+    adminMaxUploadMb: envInt("ADMIN_MAX_UPLOAD_MB", 512),
     publicBaseUrl,
-    metricsPort: Number.parseInt(env("METRICS_PORT", "9090"), 10),
+    metricsPort: envInt("METRICS_PORT", 9090),
     ...webauthnFromEnv(publicBaseUrl),
   };
 }
