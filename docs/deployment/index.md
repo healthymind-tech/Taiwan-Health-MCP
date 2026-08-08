@@ -25,8 +25,8 @@
 
 | 服務 | 說明 |
 |------|------|
-| `nginx` | **對外入口**（預設 `:8080`，由 `WEB_PORT` 設定）。把 `/mcp`、`/openapi.json`、`/tools/*`、`/status.json`、`/admin/api/*`、`/admin/ws`、`/fhir-client/*`、`/fhir-oauth/*` 導向 `app`，其餘全部導向 `web`。 |
-| `web` | Next.js 前端：公開頁面（`/`、`/status`、`/privacy`、`/dpa`）與 `/admin` 管理後台 SPA。 |
+| `nginx` | **對外入口**（預設 `:8080`，由 `WEB_PORT` 設定）。把 `/mcp`、`/openapi.json`、`/tools/*`、`/admin/api/*`、`/admin/ws`、`/fhir-client/*`、`/fhir-oauth/*` 導向 `app`，其餘全部導向 `web`。 |
+| `web` | Next.js 前端：`/admin` 管理後台 SPA。 |
 | `app` | Node MCP 伺服器 + 管理後台 REST API。**只在 compose 內部網路上 `expose` 8000 埠，不對主機發佈。** |
 | `admin-worker` | 背景工作執行器：所有匯入（含藥品三階段管線）與嵌入工作。 |
 | `postgres` | PostgreSQL 16 + pgvector。 |
@@ -213,7 +213,6 @@ docker compose ps
 確認服務與各模組狀態：
 
 ```bash
-curl http://localhost:8080/status.json          # 各模組資料筆數與服務健康狀態
 curl http://localhost:8080/openapi.json | head  # 目前已註冊的工具
 ```
 
@@ -389,8 +388,7 @@ services:
 ### [效能與監控](performance.md)
 高併發場景的優化建議、連線池與快取策略、Prometheus 監控。
 
-### [資料處理附錄 (DPA)](dpa.md)
-資料處理與合規說明。
-
-### [隱私政策頁面](privacy.md)
-`/privacy` 端點說明，供 Anthropic Connectors Directory 審核使用。
+!!! note "公開頁面已移出本專案"
+    對外的宣傳頁與法務頁（`/`、`/status`、`/privacy`、`/dpa`）已改由獨立的宣傳網站專案提供，
+    不再由 `web` 服務發送。`/privacy` 是登記於 Anthropic Connectors Directory 的網址，
+    移轉後務必在 `nginx/nginx.conf` 補上 301 導向（該檔已留有 TODO 區塊）。

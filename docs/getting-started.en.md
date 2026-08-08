@@ -20,7 +20,7 @@ docker compose up -d
 | Service | Description |
 |---------|-------------|
 | `nginx` | **The single front door**, `:8080` by default (adjustable via `WEB_PORT`) |
-| `web` | Next.js front-end: public pages plus the `/admin` console SPA |
+| `web` | Next.js front-end: the `/admin` console SPA |
 | `app` | Node MCP server + admin REST API (internal network only) |
 | `admin-worker` | Background job runner (all imports and embedding jobs) |
 | `postgres` | PostgreSQL 16 + pgvector |
@@ -87,9 +87,10 @@ In the client, just fill in the base URL `http://<host>:8080`; it fetches `/open
 Check the services and each module's status:
 
 ```bash
-curl http://localhost:8080/status.json          # per-module row counts and service health
 curl http://localhost:8080/openapi.json | head  # currently registered tools
 ```
+
+Per-module row counts and service health are on the admin console's Overview tab.
 
 You can also call the `health_check` tool directly:
 

@@ -6,7 +6,7 @@ graph TD
 
     subgraph "Docker Compose Stack"
         NGX["nginx (single front door, :8080 = WEB_PORT)"]
-        WEB["web (Next.js) — public pages + /admin SPA"]
+        WEB["web (Next.js) — /admin SPA"]
         Server["app (Node MCP server + admin REST API, internal :8000)"]
         Worker["admin-worker (Node — imports, embeddings, drug pipeline)"]
         PGB["pgbouncer (transaction mode, :5432)"]
@@ -17,7 +17,7 @@ graph TD
     end
 
     Client -- "HTTP :8080" --> NGX
-    NGX -- "/mcp, /openapi.json, /tools/*, /status.json, /admin/api/*, /admin/ws" --> Server
+    NGX -- "/mcp, /openapi.json, /tools/*, /admin/api/*, /admin/ws" --> Server
     NGX -- "everything else" --> WEB
     Server --> PGB --> PG
     Server --> RD

@@ -17,7 +17,7 @@ An MCP server for Taiwan medical and health data — a Node.js service built on 
 ## Architecture at a glance
 
 - **Runtime**: the backend is entirely Node.js / TypeScript (`node-server/`); the front-end is Next.js (`web/`).
-- **Front door**: a single nginx entry point (default `:8080`) routes `/mcp`, `/openapi.json`, `/tools/*`, `/status.json`, and `/admin/api/*` to `app`, and everything else (public pages and the `/admin` SPA) to `web`.
+- **Front door**: a single nginx entry point (default `:8080`) routes `/mcp`, `/openapi.json`, `/tools/*`, and `/admin/api/*` to `app`, and everything else (the `/admin` SPA) to `web`.
 - **Infrastructure**: PostgreSQL 16 (pgvector), pgBouncer, Redis, MinIO, Prometheus, plus an optional embedding service (Ollama by default).
 - **Dynamic tool registration**: tools are enabled / disabled automatically according to each module's data-load status.
 - **Semantic / hybrid search**: embedding vectors strengthen search, with a keyword-only fallback when embeddings are unavailable.

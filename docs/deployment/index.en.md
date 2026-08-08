@@ -25,8 +25,8 @@ The embedding service, OCR (MinerU), and the analysis LLM are all **external HTT
 
 | Service | Description |
 |---------|-------------|
-| `nginx` | **The front door** (`:8080` by default, set by `WEB_PORT`). Routes `/mcp`, `/openapi.json`, `/tools/*`, `/status.json`, `/admin/api/*`, `/admin/ws`, `/fhir-client/*`, and `/fhir-oauth/*` to `app`, and everything else to `web`. |
-| `web` | Next.js front-end: public pages (`/`, `/status`, `/privacy`, `/dpa`) and the `/admin` console SPA. |
+| `nginx` | **The front door** (`:8080` by default, set by `WEB_PORT`). Routes `/mcp`, `/openapi.json`, `/tools/*`, `/admin/api/*`, `/admin/ws`, `/fhir-client/*`, and `/fhir-oauth/*` to `app`, and everything else to `web`. |
+| `web` | Next.js front-end: the `/admin` console SPA. |
 | `app` | Node MCP server + admin REST API. **Only `expose`s port 8000 on the compose network; never published to the host.** |
 | `admin-worker` | Background job runner: every import (including the three-stage drug pipeline) and embedding job. |
 | `postgres` | PostgreSQL 16 + pgvector. |
@@ -209,7 +209,6 @@ docker compose ps
 Check the services and each module's status:
 
 ```bash
-curl http://localhost:8080/status.json          # per-module row counts and service health
 curl http://localhost:8080/openapi.json | head  # currently registered tools
 ```
 
@@ -385,8 +384,8 @@ The full parameter reference, covering bootstrap variables (`.env`) and seed-onl
 ### [Performance & Monitoring](performance.md)
 Optimisation advice for high-concurrency scenarios, connection pool and cache strategy, and Prometheus monitoring.
 
-### [Data Processing Addendum (DPA)](dpa.md)
-Data processing and compliance notes.
-
-### [Privacy Policy Page](privacy.md)
-The `/privacy` endpoint, used for Anthropic Connectors Directory review.
+!!! note "The public pages moved out of this repo"
+    The public-facing marketing and legal pages (`/`, `/status`, `/privacy`, `/dpa`) are
+    now served by a standalone marketing-site project, not by the `web` service here.
+    `/privacy` is the URL registered with the Anthropic Connectors Directory, so once the
+    new site is live, add the 301 redirects in `nginx/nginx.conf` (a TODO block is in place).

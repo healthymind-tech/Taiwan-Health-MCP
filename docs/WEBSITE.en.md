@@ -125,4 +125,4 @@ No custom domain is configured (no `CNAME`). `.nojekyll` is written to the publi
 - Never edit `site/` (build output).
 - Command examples must run as-is from the directory the text specifies; use port `:8080` (the nginx front door), never `:8000`.
 - For planning documents that are finished or superseded, add a status note at the top (every historical document on this site does this) rather than deleting them — they are decision records.
-- The public-facing pages (`/`, `/status`, `/privacy`, `/dpa`) are **not on this site**. They are served by the `web` service, with content in `web/legacy/*.html`.
+- The public-facing marketing and legal pages (`/`, `/status`, `/privacy`, `/dpa`) are **no longer part of this repo** — they moved to a standalone marketing site. The `web` service here only serves the `/admin` console.

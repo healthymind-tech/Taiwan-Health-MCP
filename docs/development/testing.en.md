@@ -50,9 +50,6 @@ test("parses a LOINC row", () => {
 Against a running environment, you can issue requests to the tool surface directly (through the nginx front door, `:8080` by default):
 
 ```bash
-# Service and per-module status
-curl http://localhost:8080/status.json
-
 # Currently registered tools (varies with each module's data-load status)
 curl http://localhost:8080/openapi.json
 

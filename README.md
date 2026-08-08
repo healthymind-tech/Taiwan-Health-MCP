@@ -11,7 +11,8 @@
 
 以官方 **TypeScript MCP SDK**（`@modelcontextprotocol/sdk`）建構的 Node.js 伺服器，對外提供 **49 個工具**，涵蓋 11 個工具群組。專為高吞吐量的生產級 SaaS 部署設計。
 
-> **後端執行環境**：整個後端（MCP server、管理後台 REST API、背景 worker、所有資料載入器）皆為 **Node.js / TypeScript**，程式碼位於 [`node-server/`](node-server/)。前端（公開頁面與管理後台 SPA）為 Next.js，位於 [`web/`](web/)。本專案已無 Python 執行期相依。
+> **後端執行環境**：整個後端（MCP server、管理後台 REST API、背景 worker、所有資料載入器）皆為 **Node.js / TypeScript**，程式碼位於 [`node-server/`](node-server/)。前端（管理後台 SPA）為 Next.js，位於 [`web/`](web/)。本專案已無 Python 執行期相依。
+> 對外的宣傳頁與法務頁（`/`、`/status`、`/privacy`、`/dpa`）已移出本專案，改由獨立的宣傳網站提供。
 
 ## 專案特色
 
@@ -39,7 +40,7 @@ docker compose up -d
 | 服務 | 說明 |
 |------|------|
 | `nginx` | **單一對外入口**，預設 `:8080`（`WEB_PORT`） |
-| `web` | Next.js 前端：公開頁面 + `/admin` 管理後台 SPA |
+| `web` | Next.js 前端：`/admin` 管理後台 SPA |
 | `app` | Node MCP 伺服器 + 管理後台 REST API（`node dist/server.js`；只在內部網路，不對主機開埠） |
 | `admin-worker` | 背景工作執行器（所有匯入與嵌入工作，`node dist/admin/adminWorker.js`） |
 | `postgres` | PostgreSQL 16 + pgvector |
@@ -136,7 +137,7 @@ npm run build          # tsc -> dist/
 npm run typecheck      # tsc --noEmit
 npm test               # node --test（node-server/src/**/*.test.ts）
 
-# 前端（公開頁面 + 管理後台 SPA）
+# 前端（管理後台 SPA）
 cd web
 npm install
 npm run build
