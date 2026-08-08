@@ -214,6 +214,12 @@ function buildApp(): express.Express {
       }
       res.set("access-control-allow-origin", allowedOrigin);
       if (allowedOrigin !== "*") res.vary("Origin");
+      // A browser can only read CORS-safelisted response headers unless they are
+      // named here. mcp-session-id is where the streamable-http transport returns
+      // the session, so without this a cross-origin client reads null, sends the
+      // next request without it, and gets "Bad Request: no valid session" — the
+      // protocol looks broken when only the header exposure is missing.
+      res.set("access-control-expose-headers", "mcp-session-id, Mcp-Session-Id");
     }
     if (req.method === "OPTIONS" || cfg.publicToolsAuthMode === "none") {
       next();
@@ -227,6 +233,18 @@ function buildApp(): express.Express {
       return;
     }
     next();
+  });
+
+  app.options(cfg.path, (_req: Request, res: Response) => {
+    res
+      .status(204)
+      .set({
+        "access-control-allow-methods": "GET, POST, DELETE, OPTIONS",
+        "access-control-allow-headers":
+          "authorization, content-type, accept, mcp-session-id, mcp-protocol-version",
+        "access-control-max-age": "86400",
+      })
+      .end();
   });
 
   app.options("/openapi.json", (_req: Request, res: Response) => {
