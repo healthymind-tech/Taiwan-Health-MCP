@@ -79,6 +79,27 @@ test("blank or unset integer settings fall back to their defaults", () => {
   assert.equal(blank.adminSessionTtlMinutes, 240);
 });
 
+test("ADMIN_ENABLED accepts the usual boolean spellings and rejects junk", () => {
+  for (const on of ["true", "TRUE", "1", "yes", "on", " True "]) {
+    assert.equal(withEnv({ ...BASE, ADMIN_ENABLED: on }, loadConfig).adminEnabled, true, on);
+  }
+  for (const off of ["false", "0", "no", "off"]) {
+    assert.equal(withEnv({ ...BASE, ADMIN_ENABLED: off }, loadConfig).adminEnabled, false, off);
+  }
+  assert.throws(
+    () => withEnv({ ...BASE, ADMIN_ENABLED: "maybe" }, loadConfig),
+    /ADMIN_ENABLED must be a boolean/,
+  );
+});
+
+test("the admin console is on by default", () => {
+  // A fresh install must be able to reach /admin: it is the only way to import
+  // any data. Credentials are still required — adminReady() gates that
+  // separately, so defaulting to on cannot open an unauthenticated console.
+  const cfg = withEnv({ ...BASE, ADMIN_ENABLED: undefined }, loadConfig);
+  assert.equal(cfg.adminEnabled, true);
+});
+
 test("the served transport is fixed, not taken from the environment", () => {
   // main() starts the HTTP listener unconditionally, so MCP_TRANSPORT never
   // selected anything. It must not silently downgrade the reported transport.

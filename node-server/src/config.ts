@@ -101,6 +101,20 @@ function envInt(name: string, fallback: number, opts: { min?: number } = {}): nu
   return value;
 }
 
+/**
+ * Parse a boolean setting, refusing anything ambiguous.
+ *
+ * The old `=== "true"` comparison quietly read `1`, `yes` and `on` as false, so
+ * a deployment that believed the admin console was on got 404s with no clue why.
+ */
+function envBool(name: string, fallback: boolean): boolean {
+  const raw = env(name).trim().toLowerCase();
+  if (!raw) return fallback;
+  if (["true", "1", "yes", "on"].includes(raw)) return true;
+  if (["false", "0", "no", "off"].includes(raw)) return false;
+  throw new Error(`${name} must be a boolean (true/false), got ${JSON.stringify(raw)}`);
+}
+
 export function loadConfig(): AppConfig {
   const databaseUrl = env("DATABASE_URL", "");
   if (!databaseUrl) {
@@ -129,7 +143,7 @@ export function loadConfig(): AppConfig {
     databaseUrl,
     redisUrl: env("REDIS_URL", "redis://localhost:6379/0"),
     logLevel: env("LOG_LEVEL", "INFO").toUpperCase(),
-    adminEnabled: env("ADMIN_ENABLED", "false").toLowerCase() === "true",
+    adminEnabled: envBool("ADMIN_ENABLED", true),
     adminUsername: env("ADMIN_USERNAME").trim(),
     adminPasswordHash: env("ADMIN_PASSWORD_HASH").trim(),
     adminInitialPassword: env("ADMIN_INITIAL_PASSWORD").trim(),

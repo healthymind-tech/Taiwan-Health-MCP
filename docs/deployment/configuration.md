@@ -64,7 +64,7 @@ cp .env.example .env
 
 | 變數 | 預設值 | 說明 |
 |------|--------|------|
-| `ADMIN_ENABLED` | `false` | 設 `true` 才會掛載 `/admin` |
+| `ADMIN_ENABLED` | `true` | 掛載 `/admin`。接受 `true/1/yes/on` 與 `false/0/no/off`，其他值啟動即報錯 |
 | `ADMIN_USERNAME` | `admin` | 操作者帳號 |
 | `ADMIN_PASSWORD_HASH` | 空 | `sha256$<hex>` 或 `pbkdf2_sha256$<iterations>$<salt>$<hex>` |
 | `ADMIN_INITIAL_PASSWORD` | 空 | 明文初始密碼，**僅在首次啟動、資料庫尚無憑證列時**使用：雜湊後寫入 `admin.admin_credentials`，之後永久忽略。與 `ADMIN_PASSWORD_HASH` 並存時優先採用。明文不會被持久化。 |

@@ -114,7 +114,7 @@ services:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-mcp}:${POSTGRES_PASSWORD}@pgbouncer:5432/${POSTGRES_DB:-taiwan_health}
       - REDIS_URL=redis://redis:6379/0
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - ADMIN_ENABLED=${ADMIN_ENABLED:-false}
+      - ADMIN_ENABLED=${ADMIN_ENABLED:-true}
       - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
       - ADMIN_PASSWORD_HASH=${ADMIN_PASSWORD_HASH:-}
       - ADMIN_INITIAL_PASSWORD=${ADMIN_INITIAL_PASSWORD:-}

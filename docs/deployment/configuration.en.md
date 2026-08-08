@@ -64,7 +64,7 @@ cp .env.example .env
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `ADMIN_ENABLED` | `false` | Must be `true` for `/admin` to be mounted |
+| `ADMIN_ENABLED` | `true` | Mounts `/admin`. Accepts `true/1/yes/on` and `false/0/no/off`; anything else aborts startup |
 | `ADMIN_USERNAME` | `admin` | Operator account |
 | `ADMIN_PASSWORD_HASH` | empty | `sha256$<hex>` or `pbkdf2_sha256$<iterations>$<salt>$<hex>` |
 | `ADMIN_INITIAL_PASSWORD` | empty | A plaintext initial password, used **only on first boot while the database has no credential row**: it is hashed into `admin.admin_credentials` once and ignored forever afterwards. Takes precedence over `ADMIN_PASSWORD_HASH` when both are set. The plaintext is never persisted. |
