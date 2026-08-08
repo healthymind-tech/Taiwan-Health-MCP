@@ -45,7 +45,6 @@ cp .env.example .env
 
 | 變數 | 預設值 | 說明 |
 |------|--------|------|
-| `MCP_TRANSPORT` | `streamable-http`（compose）；程式預設 `stdio` | `streamable-http` \| `sse` \| `stdio` |
 | `MCP_HOST` | `0.0.0.0` | 監聽主機（HTTP 模式） |
 | `MCP_PORT` | `8000` | **容器內部**監聽埠。不對主機發佈。 |
 | `MCP_PATH` | `/mcp` | HTTP 端點路徑 |
@@ -164,26 +163,6 @@ Claude Desktop：
     "taiwan-health": {
       "url": "http://<host>:8080/mcp",
       "transport": "streamable-http"
-    }
-  }
-}
-```
-
-### stdio（本機直接啟動行程）
-
-需先在 `node-server/` 執行 `npm install && npm run build`：
-
-```json
-{
-  "mcpServers": {
-    "taiwan-health": {
-      "command": "node",
-      "args": ["/absolute/path/to/node-server/dist/server.js"],
-      "env": {
-        "MCP_TRANSPORT": "stdio",
-        "DATABASE_URL": "postgresql://mcp:pass@localhost:5432/taiwan_health",
-        "REDIS_URL": "redis://localhost:6379/0"
-      }
     }
   }
 }

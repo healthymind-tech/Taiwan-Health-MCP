@@ -115,11 +115,52 @@ function envBool(name: string, fallback: boolean): boolean {
   throw new Error(`${name} must be a boolean (true/false), got ${JSON.stringify(raw)}`);
 }
 
+/**
+ * Values shipped verbatim in `.env.example`.
+ *
+ * Leaving one in place is not a weak secret, it is a published one: the admin
+ * session cookie is `payload.HMAC-SHA256(ADMIN_SESSION_SECRET, payload)`, so
+ * anyone holding the key can mint a token for any user and never touches the
+ * password check. `adminReady()` only asks whether a secret is set, and the
+ * placeholder is a non-empty string, so it passes. Refuse to boot instead —
+ * there is no deployment for which the literal placeholder is the right value.
+ */
+const PLACEHOLDER_ADMIN_SESSION_SECRET = "change_this_admin_session_secret";
+const PLACEHOLDER_POSTGRES_PASSWORD = "changeme_strong_password";
+
+/** The password compose embeds in DATABASE_URL; "" when absent or unparseable. */
+function databaseUrlPassword(url: string): string {
+  try {
+    return decodeURIComponent(new URL(url).password ?? "");
+  } catch {
+    return "";
+  }
+}
+
+function assertNoPlaceholderSecrets(adminSessionSecret: string, databaseUrl: string): void {
+  if (adminSessionSecret === PLACEHOLDER_ADMIN_SESSION_SECRET) {
+    throw new Error(
+      "ADMIN_SESSION_SECRET is still the .env.example placeholder, which is published " +
+        "in the repository — anyone can forge an admin session cookie with it. " +
+        "Generate one with: openssl rand -hex 32",
+    );
+  }
+  if (databaseUrlPassword(databaseUrl) === PLACEHOLDER_POSTGRES_PASSWORD) {
+    throw new Error(
+      "POSTGRES_PASSWORD is still the .env.example placeholder, which is published " +
+        "in the repository. Generate one with: openssl rand -hex 24",
+    );
+  }
+}
+
 export function loadConfig(): AppConfig {
   const databaseUrl = env("DATABASE_URL", "");
   if (!databaseUrl) {
     throw new Error("DATABASE_URL environment variable is required");
   }
+
+  const adminSessionSecret = env("ADMIN_SESSION_SECRET").trim();
+  assertNoPlaceholderSecrets(adminSessionSecret, databaseUrl);
 
   const publicBaseUrl = env("PUBLIC_BASE_URL").trim().replace(/\/+$/, "");
   const publicTools = resolvePublicToolsSecurity(
@@ -147,7 +188,7 @@ export function loadConfig(): AppConfig {
     adminUsername: env("ADMIN_USERNAME").trim(),
     adminPasswordHash: env("ADMIN_PASSWORD_HASH").trim(),
     adminInitialPassword: env("ADMIN_INITIAL_PASSWORD").trim(),
-    adminSessionSecret: env("ADMIN_SESSION_SECRET").trim(),
+    adminSessionSecret,
     adminSessionTtlMinutes: envInt("ADMIN_SESSION_TTL_MINUTES", 240),
     adminCookieSecure: resolveAdminCookieSecure(env("ADMIN_COOKIE_SECURE"), publicBaseUrl),
     adminMaxUploadMb: envInt("ADMIN_MAX_UPLOAD_MB", 512),

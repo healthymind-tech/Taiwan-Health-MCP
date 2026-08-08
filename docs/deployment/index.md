@@ -65,11 +65,11 @@ cp .env.example .env
 
 | 變數 | 為何必要 | 建議做法 |
 |------|----------|----------|
-| `POSTGRES_PASSWORD` | 未設定時 `docker compose` 會直接失敗（compose 以 `:?` 強制要求） | `openssl rand -hex 24` |
+| `POSTGRES_PASSWORD` | 未設定時 `docker compose` 會直接失敗（compose 以 `:?` 強制要求）；**沿用 `.env.example` 的預設值時 `app` 會拒絕啟動** | `openssl rand -hex 24` |
 | `ADMIN_ENABLED` | 預設 `true`（`/admin` 是**唯一**能匯入資料的途徑）。資料載入完成後可設 `false` 縮小公開部署的受攻擊面 | 依需求 |
 | `ADMIN_USERNAME` | 管理後台帳號 | 預設 `admin`，可自訂 |
 | `ADMIN_INITIAL_PASSWORD`<br>或 `ADMIN_PASSWORD_HASH` | 沒有憑證就無法登入 | 二擇一，見 2-2 |
-| `ADMIN_SESSION_SECRET` | session cookie 簽章金鑰；同時是 `FHIR_SERVER_SECRET_KEY` 的回退值 | `openssl rand -hex 32` |
+| `ADMIN_SESSION_SECRET` | session cookie 簽章金鑰（知道它就能偽造任何使用者的登入，不需密碼）；同時是 `FHIR_SERVER_SECRET_KEY` 的回退值。**沿用 `.env.example` 的預設值時 `app` 會拒絕啟動** | `openssl rand -hex 32` |
 | `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY` | 預設 `minioadmin` / `minioadmin`，等同無密碼 | 各自 `openssl rand -hex 16` |
 | `PUBLIC_BASE_URL` | 對外 origin，用於 OAuth2 redirect_uri 與 WebAuthn RP ID 推導 | `https://your-domain.example.com` |
 | `PUBLIC_TOOLS_AUTH_MODE` / `PUBLIC_TOOLS_BEARER_TOKEN` | 預設 `none`，代表 `/mcp` 與 `/tools/*` 完全不驗證 | 對外開放時設 `bearer` + `openssl rand -hex 32` |
@@ -172,7 +172,6 @@ POSTGRES_USER=mcp
 POSTGRES_PASSWORD=<openssl rand -hex 24>
 
 # --- MCP ---
-MCP_TRANSPORT=streamable-http
 MCP_PORT=8000
 MCP_PATH=/mcp
 PUBLIC_TOOLS_AUTH_MODE=bearer
