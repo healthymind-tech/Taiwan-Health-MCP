@@ -49,7 +49,7 @@ test("non-reasoning model escalates once then gives up (no 64k runaway)", async 
       callAnalysisLlm([profile("Qwen3.5-2B-MLX-4bit")], [{ role: "user", content: "x" }]),
       /Every Analysis LM profile failed/,
     );
-    assert.equal(calls, 2, "budget 4096 → 8192, then stop — not 15 escalations to 64k");
+    assert.equal(calls, 2, "budget 16384 → 32768, then stop — not 15 escalations to 64k");
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -85,12 +85,12 @@ test("profile max_token_budget override raises the non-reasoning ceiling", async
   try {
     await assert.rejects(
       callAnalysisLlm(
-        [profile("gemma-4-e4b-it-OptiQ-4bit", { max_token_budget: 16384 })],
+        [profile("gemma-4-e4b-it-OptiQ-4bit", { max_token_budget: 65536 })],
         [{ role: "user", content: "x" }],
       ),
-      /ran out of output budget at 16384/,
+      /ran out of output budget at 65536/,
     );
-    assert.equal(calls, 3, "budget 4096 → 8192 → 16384, then stop at the override");
+    assert.equal(calls, 3, "budget 16384 → 32768 → 65536, then stop at the override");
   } finally {
     globalThis.fetch = originalFetch;
   }

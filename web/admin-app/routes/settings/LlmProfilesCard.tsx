@@ -63,7 +63,9 @@ function emptyDraft(kind: LlmProfileKind): DraftProfile {
 // Reasoning models (gpt-5 / o-series) bill their hidden reasoning against the same
 // budget as the answer, so a budget sized for the answer alone gets spent thinking
 // and the reply comes back empty. Mirrors llm_profiles.is_reasoning_model.
-const DEFAULT_MAX_TOKENS = 4096;
+// Keep in step with analysisLlmClient.ts — the form suggests the value the
+// pipeline would otherwise pick for itself.
+const DEFAULT_MAX_TOKENS = 16384;
 const DEFAULT_REASONING_MAX_TOKENS = 16384;
 
 function isReasoningModel(model: string): boolean {

@@ -13,7 +13,11 @@ import { logWarning } from "./logger.js";
 
 export type Message = { role: string; content: string };
 
-const DEFAULT_MAX_TOKENS = 4096;
+// Starting output budget. Both families now start here: a locally hosted thinking
+// model is indistinguishable from a plain one by name (see REASONING_MODEL_PREFIXES),
+// so the safe assumption is that any model may spend budget on hidden reasoning
+// first. The escalation ceilings still differ.
+const DEFAULT_MAX_TOKENS = 16384;
 const DEFAULT_REASONING_MAX_TOKENS = 16384;
 const DEFAULT_TIMEOUT_MS = 600_000;
 const REASONING_MODEL_PREFIXES = ["gpt-5", "o1", "o3", "o4"];
@@ -33,14 +37,19 @@ function profileTimeoutMs(profile: LlmProfile): number {
 export const MAX_TOKEN_BUDGET = 65536;
 
 /**
- * Ceiling for non-reasoning models. The doubling exists to buy a reasoning model
- * room for hidden reasoning; a non-reasoning model doing structured extraction
- * that cannot finish within one escalation is almost always looping (a small
- * quantized model repeating itself, finish_reason=length forever). Doubling on
- * to 64k would make each regeneration 10min+ and block the pipeline — fail fast
- * instead.
+ * Ceiling for models this client does not recognise as reasoning models.
+ *
+ * The doubling exists to buy a reasoning model room for hidden reasoning, and a
+ * model that truly cannot finish structured extraction within one escalation is
+ * usually looping (a small quantized model repeating itself, finish_reason=length
+ * forever) — doubling on to 64k would make each regeneration 10min+ and block the
+ * pipeline. But `isReasoningModel()` only matches a few OpenAI prefixes, so any
+ * locally hosted thinking model (Qwen, DeepSeek-R1, ThinkingCap, …) lands here
+ * and spends this budget on reasoning before writing a single character of JSON.
+ * The old 8192 was not enough for a drug insert under those models; this keeps a
+ * bound on the runaway case while leaving real extraction room.
  */
-const NON_REASONING_MAX_TOKEN_BUDGET = 8192;
+const NON_REASONING_MAX_TOKEN_BUDGET = 32768;
 
 /** True for model families that bill hidden reasoning against the output budget. */
 export function isReasoningModel(model: string): boolean {
