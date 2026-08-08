@@ -1,4 +1,5 @@
 import { query } from "./db.js";
+import { logWarning } from "./logger.js";
 
 export interface ModuleStatus {
   icd: boolean;
@@ -65,7 +66,16 @@ export async function getModuleStatus(force = false): Promise<ModuleStatus> {
           `module_status.${String(key)}`,
         );
         status[key] = Number.parseInt(result.rows[0]?.count ?? "0", 10) >= minimum;
-      } catch {
+      } catch (err) {
+        // Fail closed, but never silently: this is what removes a tool group from
+        // tools/list, so a transient DB error looks to an MCP client exactly like
+        // "the data was never loaded". Without this line there is nothing in the
+        // logs to correlate the disappearance against.
+        logWarning("Module status probe failed; treating module as unavailable", {
+          module: String(key),
+          table,
+          error: String((err as Error).message),
+        });
         status[key] = false;
       }
     }),

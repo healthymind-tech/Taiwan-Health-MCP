@@ -37,11 +37,10 @@ interface Health {
 
 /** Mirror `config.__str__`. */
 function configStr(c: AppConfig): string {
-  if (c.transport === "stdio") return `Transport: ${c.transport}`;
-  if (c.transport === "streamable-http") {
-    return `Transport: ${c.transport} | http://${c.host}:${c.port}${c.path}`;
-  }
-  return `Transport: ${c.transport} | http://${c.host}:${c.port}/sse`;
+  // One branch only: the HTTP listener is unconditional. The old stdio branch hid
+  // the endpoint (implying MCP was not served when it was) and the sse branch
+  // advertised /sse, a route that does not exist anywhere in this server.
+  return `Transport: ${c.transport} | http://${c.host}:${c.port}${c.path}`;
 }
 
 /** Mirror `_format_uptime`. */
