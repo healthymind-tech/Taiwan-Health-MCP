@@ -182,7 +182,9 @@ export async function adminHandler(req: Request, res: Response, next: NextFuncti
     if (path.startsWith("/admin/api/")) {
       sendJson(res, 503, {
         error: message,
-        hint: "Set ADMIN_USERNAME, ADMIN_PASSWORD_HASH, and ADMIN_SESSION_SECRET.",
+        hint:
+          "Set ADMIN_USERNAME, ADMIN_SESSION_SECRET, and a password source " +
+          "(ADMIN_INITIAL_PASSWORD, or ADMIN_PASSWORD_HASH for a pre-computed hash).",
       });
     } else {
       // Login UI owned by the Next.js front door; legacy HTML off → plain 503.
