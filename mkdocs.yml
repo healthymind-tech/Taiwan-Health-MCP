@@ -80,8 +80,6 @@ plugins:
             架構與容器部署: Architecture & Container Deployment
             環境變數配置: Configuration
             效能與監控: Performance & Monitoring
-            資料處理附錄 (DPA): Data Processing Addendum (DPA)
-            隱私政策頁面: Privacy Policy Page
             開發指南: Development
             程式風格: Code Style
             測試指南: Testing
@@ -152,8 +150,6 @@ nav:
     - 架構與容器部署: architecture/deployment.md
     - 環境變數配置: deployment/configuration.md
     - 效能與監控: deployment/performance.md
-    - 資料處理附錄 (DPA): deployment/dpa.md
-    - 隱私政策頁面: deployment/privacy.md
   - 開發指南:
     - development/index.md
     - 程式風格: development/code-style.md

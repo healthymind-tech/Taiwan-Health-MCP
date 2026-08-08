@@ -20,7 +20,7 @@ docker compose up -d
 | 服務 | 說明 |
 |------|------|
 | `nginx` | **單一對外入口**，預設 `:8080`（可用 `WEB_PORT` 調整） |
-| `web` | Next.js 前端：公開頁面 + `/admin` 管理後台 SPA |
+| `web` | Next.js 前端：`/admin` 管理後台 SPA |
 | `app` | Node MCP 伺服器 + 管理後台 REST API（僅內部網路） |
 | `admin-worker` | 背景工作執行器（所有匯入與嵌入工作） |
 | `postgres` | PostgreSQL 16 + pgvector |
@@ -86,9 +86,10 @@ ADMIN_SESSION_SECRET=change_this_admin_session_secret
 確認服務與各模組狀態：
 
 ```bash
-curl http://localhost:8080/status.json          # 各模組資料筆數與服務健康狀態
-curl http://localhost:8080/openapi.json | head  # 目前已註冊的工具
+curl http://localhost:8080/openapi.json | head  # 目前已註冊的工具（依模組資料載入狀態變動）
 ```
+
+各模組的資料筆數與服務健康狀態請看管理後台的 Overview 分頁。
 
 也可直接呼叫 `health_check` 工具：
 

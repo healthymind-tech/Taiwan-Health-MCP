@@ -9,10 +9,10 @@ Thank you for your interest in contributing to Taiwan Health MCP. This section h
 | `node-server/` | **The entire backend** (Node.js / TypeScript): MCP server, admin REST API, background worker, and all data loaders. |
 | `node-server/src/*Service.ts` | The domain services (`icdService.ts`, `drugService.ts`, `labService.ts`, `snomedService.ts`, `fhirIgService.ts`, …). |
 | `node-server/src/mcp.ts` | MCP tool registration (tool groups and input schemas). |
-| `node-server/src/server.ts` | Entry point: the HTTP surface (`/mcp`, `/openapi.json`, `/tools/*`, `/status.json`) and process initialisation. |
+| `node-server/src/server.ts` | Entry point: the HTTP surface (`/mcp`, `/openapi.json`, `/tools/*`) and process initialisation. |
 | `node-server/src/admin/` | Admin console backend (`adminApp.ts` routing, `adminJobs.ts` jobs, `adminWorker.ts` background worker, `adminSettings.ts` settings, …). |
 | `node-server/src/loaders/` | Per-module loaders (`icd.ts`, `loinc.ts`, `snomed.ts`, `rxnorm.ts`, `ig.ts`, `drug*.ts`, `embeddings.ts`, …). |
-| `web/` | Next.js front-end: public pages (`app/`) + admin console SPA (`admin-app/`) + legacy static HTML (`legacy/`). |
+| `web/` | Next.js front-end: the admin console SPA (`admin-app/`), mounted through the `app/admin/` catch-all route. |
 | `db/` | `schema.sql` and `migrations/`. |
 | `src/prompts/` | LLM prompts read at runtime (drug analysis). **This is the only thing left under `src/`.** |
 | `data/loinc/` | Hand-curated LOINC mapping tables that cannot be re-downloaded from anywhere. |

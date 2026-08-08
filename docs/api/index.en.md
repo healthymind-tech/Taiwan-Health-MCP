@@ -9,7 +9,6 @@ The system exposes three interfaces, all served through the nginx front door (`:
 | `/mcp` | `POST` / `GET` / `DELETE` | Optional bearer | The MCP streamable-http endpoint (path set by `MCP_PATH`). |
 | `/openapi.json` | `GET` | Optional bearer | An OpenAPI 3.1 spec generated dynamically from the **currently registered tools**. |
 | `/tools/<tool_name>` | `POST` | Optional bearer | OpenAPI bridge: invoke a single tool with the arguments as a JSON body. |
-| `/status.json` | `GET` | None | Per-module row counts and service health (the data source for the public status page). |
 | `/admin/api/*` | Varies | Session cookie | Admin console REST API (present only when `ADMIN_ENABLED=true`). |
 | `/admin/ws` | WebSocket | Session cookie | Live job logs and progress. |
 | `/fhir-client/<id>/jwks.json` | `GET` | None | Public JWKS for external FHIR OAuth clients. |
@@ -17,7 +16,7 @@ The system exposes three interfaces, all served through the nginx front door (`:
 
 `PUBLIC_TOOLS_AUTH_MODE=bearer` protects `/mcp`, `/openapi.json`, and `/tools/*` together. The token is set by `PUBLIC_TOOLS_BEARER_TOKEN`; cross-origin browser calls additionally require the origin to be listed in `PUBLIC_TOOLS_CORS_ORIGINS`. `none` is only suitable for trusted local or private networks.
 
-> The backend also has a `/health` endpoint, but nginx does not proxy it (reaching it through the front door returns 404). Use `/status.json` instead.
+> The backend also has a `/health` endpoint, but nginx does not proxy it (reaching it through the front door returns 404). To check from the front door whether `app` is alive, hit `/openapi.json` instead. Per-module row counts are on the admin console's Overview tab.
 
 ## OpenAPI bridge
 

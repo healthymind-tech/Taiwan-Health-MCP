@@ -22,7 +22,6 @@ import { monitor as dbHealthMonitor } from "./dbHealth.js";
 import { initClient, closeClient } from "./cache.js";
 import { startDbStatsCollector, startMetricsServer } from "./metrics.js";
 import { buildMcpServer, buildOpenApiSpec, invokeRegisteredTool, toolRegistryReady } from "./mcp.js";
-import { STATUS_DATA_JSON } from "./statusData.js";
 import { seedIfEmpty } from "./admin/adminSettings.js";
 import { seedAdminCredential } from "./admin/adminCredentials.js";
 import { ensureDrugExplorerIndexes } from "./admin/adminDrugExplorer.js";
@@ -152,12 +151,6 @@ function buildApp(): express.Express {
   // B1: liveness probe.
   app.get("/health", (_req: Request, res: Response) => {
     res.status(200).json({ status: "ok" });
-  });
-
-  // Data-only payload for the Next.js status page (mirrors Python GET /status.json:
-  // serve the static tool catalog verbatim).
-  app.get("/status.json", (_req: Request, res: Response) => {
-    res.type("application/json").send(STATUS_DATA_JSON);
   });
 
   // ── OpenAPI bridge (for OpenAPI tool clients, e.g. Open WebUI) ───────────────
