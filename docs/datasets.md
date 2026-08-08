@@ -315,7 +315,7 @@ None. RxNorm lookup is exact string/code matching; no embedding or LLM.
 ## 5. TWCore IG
 
 ### Source type
-Static loader + live fetch fallback. Run `--twcore` to load from file; the service also fetches live from the MOHW FHIR server on cache miss.
+Static loader + live fetch fallback. Run `ig_import` to load from file; the service also fetches live from the MOHW FHIR server on cache miss.
 
 ### What the user must supply
 

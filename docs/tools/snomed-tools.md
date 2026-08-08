@@ -13,7 +13,6 @@
 | :--- | :--- | :--- | :--- | :--- |
 | `query` | string | 是 | 英文臨床詞彙 | `"diabetes mellitus"` |
 | `limit` | integer | 否 | 回傳上限（預設 3） | `5` |
-| `hierarchy_filter` | integer | 否 | 只搜指定 hierarchy | `404684003` |
 
 ### 回傳重點
 每筆通常含 `concept_id`、FSN、active 狀態與相似度資訊，適合拿來挑選下一步要查的 concept。
@@ -26,10 +25,14 @@
 ### 何時使用
 你已經有 concept ID，想一次看 concept 詳情 + 祖先 + 子概念時使用。
 
-### 參數與行為
-- `include_parents=true`：回傳祖先鏈
-- `include_children=true`：回傳直接子概念
-- `parent_limit` / `child_limit`：限制展開量
+### 參數
+| 參數名 | 型別 | 必填 | 說明 | 範例 |
+| :--- | :--- | :--- | :--- | :--- |
+| `concept_id` | integer | 是 | SNOMED concept ID | `73211009` |
+| `include_parents` | boolean | 否 | 回傳祖先鏈，預設 `true` | `false` |
+| `include_children` | boolean | 否 | 回傳直接子概念，預設 `true` | `false` |
+| `parent_limit` | integer | 否 | 祖先展開上限，預設 10 | `20` |
+| `child_limit` | integer | 否 | 子概念展開上限，預設 20 | `50` |
 
 ### 回傳重點
 固定有 `concept`；依參數附帶 `ancestors`、`children` 與對應 count。
@@ -46,7 +49,6 @@
 | 參數名 | 型別 | 必填 | 說明 |
 | :--- | :--- | :--- | :--- |
 | `concept_id` | integer | 是 | SNOMED concept ID |
-| `relationship_type_id` | integer | 否 | 只看特定關係類型 |
 
 ---
 

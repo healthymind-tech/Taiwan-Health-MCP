@@ -1,16 +1,16 @@
 # 資料來源
 
-所有資料匯入都在**管理後台（Admin → Modules）**操作,由 `admin-worker` 背景執行（已無 CLI data-loader）。下表的「匯入階段」對應 worker 內部使用的 loader 階段名稱。
+所有資料匯入都在**管理後台（Admin → Modules）**操作,由 `admin-worker` 背景執行（已無 CLI data-loader）。下表的「匯入階段」是 `admin.import_jobs.job_type` 的實際值——建立工作時送出的就是這些字串。
 
 | 資料集 | 版本 / 來源 | 匯入方式（Admin → Modules） | 匯入階段 | 授權 |
 |--------|-------------|------------------------------|----------|------|
-| ICD-10-CM / PCS | NLM / CMS 2025 | 上傳 zip → 匯入 | `--icd` | 公開（zip 需自備） |
-| LOINC | 2.80（Regenstrief） | 上傳 zip → 匯入 | `--loinc` | 需 LOINC 授權 |
-| SNOMED CT | International RF2 | 上傳 RF2 zip → 匯入 | `--snomed` | 需 SNOMED 授權 |
-| FHIR IG（TWCore 等） | MoHW / packages.fhir.org | 上傳 `package.tgz` 或 Admin → IG 抓取 | `--twcore` | 公開 |
-| 藥品（台灣 FDA / TFDA） | TFDA `36_2.csv` + 線上爬取 | API 抓取 + 爬取分析 | `--drug-index` → `--drug-enrich` → `--drug-analysis` | 開放資料 |
-| 台灣健康補充品 | TFDA 開放資料 | API 抓取 | `--health-supplements` | 開放資料 |
-| 台灣食品營養 | TFDA 開放資料 | API 抓取 | `--food-nutrition` | 開放資料 |
+| ICD-10-CM / PCS | NLM / CMS 2025 | 上傳 zip → 匯入 | `icd_import` | 公開（zip 需自備） |
+| LOINC | 2.80（Regenstrief） | 上傳 zip → 匯入 | `loinc_import` | 需 LOINC 授權 |
+| SNOMED CT | International RF2 | 上傳 RF2 zip → 匯入 | `snomed_import` | 需 SNOMED 授權 |
+| FHIR IG（TWCore 等） | MoHW / packages.fhir.org | 上傳 `package.tgz` 或 Admin → IG 抓取 | `ig_import` | 公開 |
+| 藥品（台灣 FDA / TFDA） | TFDA `36_2.csv` + 線上爬取 | API 抓取 + 爬取分析 | `drug_index_import` → `drug_enrichment` → `drug_analysis` | 開放資料 |
+| 台灣健康補充品 | TFDA 開放資料 | API 抓取 | `health_supplements_sync` | 開放資料 |
+| 台灣食品營養 | TFDA 開放資料 | API 抓取 | `food_nutrition_sync` | 開放資料 |
 | RxNorm（概念參考） | NLM | 上傳 `RxNorm_full_*.zip` → 匯入（IG ValueSet 展開用） | — | 公開 |
 
 ## 說明

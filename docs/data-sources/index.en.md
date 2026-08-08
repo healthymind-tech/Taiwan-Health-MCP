@@ -1,16 +1,16 @@
 # Data Sources
 
-Every data import is performed in the **admin console (Admin → Modules)** and executed in the background by `admin-worker` (there is no longer a CLI data loader). The "import stage" column below corresponds to the loader stage names used internally by the worker.
+Every data import is performed in the **admin console (Admin → Modules)** and executed in the background by `admin-worker` (there is no longer a CLI data loader). The "import stage" column below gives the actual `admin.import_jobs.job_type` value — these are the strings a job is created with.
 
 | Dataset | Version / source | How to import (Admin → Modules) | Import stage | Licensing |
 |---------|------------------|----------------------------------|--------------|-----------|
-| ICD-10-CM / PCS | NLM / CMS 2025 | Upload the zip → import | `--icd` | Public (bring your own zip) |
-| LOINC | 2.80 (Regenstrief) | Upload the zip → import | `--loinc` | LOINC license required |
-| SNOMED CT | International RF2 | Upload the RF2 zip → import | `--snomed` | SNOMED license required |
-| FHIR IG (TWCore and others) | MoHW / packages.fhir.org | Upload `package.tgz`, or fetch from Admin → IG | `--twcore` | Public |
-| Drugs (Taiwan FDA / TFDA) | TFDA `36_2.csv` + online crawl | API fetch + crawl and analysis | `--drug-index` → `--drug-enrich` → `--drug-analysis` | Open data |
-| Taiwan health supplements | TFDA open data | API fetch | `--health-supplements` | Open data |
-| Taiwan food nutrition | TFDA open data | API fetch | `--food-nutrition` | Open data |
+| ICD-10-CM / PCS | NLM / CMS 2025 | Upload the zip → import | `icd_import` | Public (bring your own zip) |
+| LOINC | 2.80 (Regenstrief) | Upload the zip → import | `loinc_import` | LOINC license required |
+| SNOMED CT | International RF2 | Upload the RF2 zip → import | `snomed_import` | SNOMED license required |
+| FHIR IG (TWCore and others) | MoHW / packages.fhir.org | Upload `package.tgz`, or fetch from Admin → IG | `ig_import` | Public |
+| Drugs (Taiwan FDA / TFDA) | TFDA `36_2.csv` + online crawl | API fetch + crawl and analysis | `drug_index_import` → `drug_enrichment` → `drug_analysis` | Open data |
+| Taiwan health supplements | TFDA open data | API fetch | `health_supplements_sync` | Open data |
+| Taiwan food nutrition | TFDA open data | API fetch | `food_nutrition_sync` | Open data |
 | RxNorm (concept reference) | NLM | Upload `RxNorm_full_*.zip` → import (for IG ValueSet expansion) | — | Public |
 
 ## Notes

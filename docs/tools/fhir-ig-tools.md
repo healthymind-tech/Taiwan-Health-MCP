@@ -30,16 +30,16 @@
 | `fhir_expand_valueset` | 展開 ValueSet 並列出成員碼 | `identifier`, `limit` |
 | `fhir_lookup_code` | 在 CodeSystem 中查詢單一碼的顯示名稱與屬性 | `system`, `code` |
 | `fhir_validate_code` | 驗證 `system`+`code` 是否屬於指定 ValueSet | `system`, `code`, `value_set` |
-| `fhir_normalize_code` | 以自由文字對照 ValueSet，回傳最合適標準碼 | `text`, `value_set` |
+| `fhir_normalize_code` | 以自由文字對照 ValueSet，回傳最合適標準碼 | `text`, `value_set`, `system`, `limit`（預設 10） |
 
 ## 授權、組裝與驗證
 | 工具 | 說明 | 主要參數 |
 | :--- | :--- | :--- |
-| `fhir_get_resource_skeleton` | 依剖面產生僅含必填 / mustSupport 結構的空白草稿 | `profile` |
-| `fhir_finalize_resource` | 將草稿依剖面定稿並回傳完整資源 | `profile`, `draft` |
-| `fhir_resolve_reference` | 以暫時鍵解析資源參照（供 Bundle 內互連） | `key`, `resource_type` |
-| `fhir_build_bundle` | 將多筆資源組裝為 Bundle | `entries`, `bundle_type` |
-| `fhir_validate_resource` | 依 `meta.profile` 驗證單一資源（結構 + 術語綁定） | `resource` |
+| `fhir_get_resource_skeleton` | 依剖面產生僅含必填 / mustSupport 結構的空白草稿 | `profile`, `candidate_limit`（預設 20，上限 100）, `include_examples`（預設 `true`） |
+| `fhir_finalize_resource` | 將草稿依剖面定稿並回傳完整資源 | `profile`, `draft`, `context_id`, `key`, `generate_narrative`（預設 `true`） |
+| `fhir_resolve_reference` | 以暫時鍵解析資源參照（供 Bundle 內互連） | `key`, `resource_type`, `context_id`, `display` |
+| `fhir_build_bundle` | 將多筆資源組裝為 Bundle | `entries`, `bundle_type`（預設 `transaction`）, `context_id` |
+| `fhir_validate_resource` | 驗證單一資源（結構 + 術語綁定）；未給 `profile` 時取 `meta.profile` | `resource`, `profile` |
 | `fhir_validate_bundle` | 驗證整個 Bundle | `bundle` |
 
 > 程序內驗證以剖面 snapshot 與術語綁定為基礎，不等同官方 HL7 FHIR Validator 的一致性認證。

@@ -34,11 +34,14 @@
 | `operation` | string | 是 | `metadata` / `read` / `search` / `create` / `update` / `patch` / `delete` |
 | `resource_type` | string | 視操作 | FHIR 資源型別（如 `Patient`、`Observation`） |
 | `resource_id` | string | 視操作 | 目標資源 ID（read / update / patch / delete） |
+| `query_json` | string | `search` 時使用 | 搜尋參數的 JSON 物件字串，例如 `'{"name":"Chen","_count":"10"}'` |
+| `resource_json` | string | `create` / `update` 時必填 | 完整 FHIR 資源的 JSON 字串 |
+| `patch_json` | string | `patch` 時必填 | JSON Patch 陣列的字串 |
 | `confirm_write` | boolean | 寫入時必填 | 寫入類操作（create / update / patch / delete）需 `true` 才會執行 |
-| `token_strategy` | string | 否 | 覆寫該伺服器的預設 token 策略（`fresh` / `cached`） |
+| `token_strategy` | string | 否 | 覆寫該伺服器的預設 token 策略：`auto`（預設）/ `fresh` / `cached` |
 
 ### 注意
 - 操作與資源型別會受伺服器的 `allowed_operations` / `allowed_resource_types` 限制；不被允許者直接拒絕。
-- 路徑由 `operation` / `resource_type` / `resource_id` 組成，呼叫端**不**直接傳遞 URL。
+- 路徑由 `operation` / `resource_type` / `resource_id` 組成，呼叫端**不**直接傳遞 URL；查詢字串與請求主體則分別由 `query_json`、`resource_json`、`patch_json` 提供（皆為 JSON **字串**，不是物件）。
 - OAuth token 由 MCP 伺服器代為處理，呼叫端不經手。
 - Client Credentials（含 `private_key_jwt`）依 `fresh` / `cached` 策略取 token；Authorization Code 使用管理後台儲存的加密 grant，並在到期時自動 refresh。Authorization Code 伺服器必須先在 Admin → FHIR Servers 完成 **Authorize**。

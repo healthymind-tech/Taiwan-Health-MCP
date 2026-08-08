@@ -56,6 +56,8 @@ Embeddings 計數，並執行或排程對應的 `*_embed` 工作。
 | 設定 | `GET|POST /admin/api/settings`、`GET /admin/api/settings/export`、`POST /admin/api/settings/import`、`/admin/api/llm-profiles/*` |
 | 備份 | `GET /admin/api/backups`、`GET /admin/api/backups/{job_id}/download`；以 `POST /admin/api/jobs` 建立 `system_backup` 工作 |
 | 藥品管線 | `GET /admin/api/drug/pipeline-status`、`/admin/api/drug/{status,details,assets,asset-content,events}` |
+| 藥品瀏覽器 | `GET /admin/api/drug/explorer`、`GET /admin/api/drug/explorer-detail`、`GET /admin/api/drug/llm-calls`、`GET /admin/api/drug/llm-call` |
+| OCR | `GET /admin/api/ocr/samples`、`POST /admin/api/ocr/test` |
 | FHIR 伺服器 | `GET|POST /admin/api/fhir-servers`、`/admin/api/fhir-servers/{discover,test,test-request,generate-key,export}` |
 | IG | `GET /admin/api/igs`、`POST /admin/api/igs/import`、`GET /admin/api/registry/search` |
 | 嵌入 | `GET /admin/api/embedding/status` |

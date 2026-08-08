@@ -8,11 +8,21 @@ Generate a FHIR R4 `Condition` resource from an ICD-10 diagnosis.
 ### Parameters
 | Parameter | Type | Required | Description | Example |
 | :--- | :--- | :--- | :--- | :--- |
-| `diagnosis_keyword` | string | Yes | Diagnosis keyword (Chinese, English, or an ICD code) | `"第二型糖尿病"` |
-| `patient_id` | string | No | The Patient reference to link | `"patient-001"` |
+| `icd_code` | string | No | An ICD-10-CM code given directly (supply this or `diagnosis_keyword`; takes precedence over the keyword) | `"E11.9"` |
+| `diagnosis_keyword` | string | No | Diagnosis keyword (Chinese or English), used to look the ICD code up | `"第二型糖尿病"` |
+| `patient_id` | string | No | The Patient reference to link; empty string by default | `"patient-001"` |
+| `clinical_status` | string | No | `active` (default) / `inactive` / `resolved` / `remission` | `"resolved"` |
+| `verification_status` | string | No | `confirmed` (default) / `provisional` / `differential` / `refuted` | `"provisional"` |
+| `category` | string | No | `encounter-diagnosis` (default) / `problem-list-item` | `"problem-list-item"` |
+| `severity` | string | No | Severity | `"moderate"` |
+| `onset_date` | string | No | Onset date | `"2026-01-15"` |
+| `recorded_date` | string | No | Recorded date | `"2026-02-01"` |
+| `additional_notes` | string | No | Extra notes, written into `Condition.note` | `"under follow-up"` |
+
+> At least one of `icd_code` and `diagnosis_keyword` must be supplied; with both omitted there is no way to tell which diagnosis to code.
 
 ### Purpose
-Maps the ICD-10-CM code into `Condition.code.coding` automatically, filling in the standard system URI (`http://hl7.org/fhir/sid/icd-10-cm`) and the disease name, and allows setting clinicalStatus, verificationStatus, category, subject, and other attributes.
+Maps the ICD-10-CM code into `Condition.code.coding` automatically, filling in the standard system URI (`http://hl7.org/fhir/sid/icd-10-cm`) and the disease name, then populates clinicalStatus, verificationStatus, category, subject, and the other attributes from the parameters above.
 
 ---
 
@@ -26,8 +36,12 @@ Validate the basic structure of a FHIR `Condition` resource.
 
 ### Response format
 ```json
-{ "valid": true, "resource_type": "Condition", "errors": [] }
+{ "valid": true, "errors": [], "warnings": [] }
 ```
+
+> Unlike `validate_fhir_medication`, this tool's response carries **no** `resource_type`, but
+> adds a `warnings` array (for recommended fields that are missing, for example). `valid`
+> reflects only whether `errors` is empty; warnings do not affect it.
 
 ---
 

@@ -50,6 +50,8 @@ Every path starts with `/admin/api/` and requires the `tw_health_admin_session` 
 | Settings | `GET|POST /admin/api/settings`, `GET /admin/api/settings/export`, `POST /admin/api/settings/import`, `/admin/api/llm-profiles/*` |
 | Backups | `GET /admin/api/backups`, `GET /admin/api/backups/{job_id}/download`; create a `system_backup` job with `POST /admin/api/jobs` |
 | Drug pipeline | `GET /admin/api/drug/pipeline-status`, `/admin/api/drug/{status,details,assets,asset-content,events}` |
+| Drug explorer | `GET /admin/api/drug/explorer`, `GET /admin/api/drug/explorer-detail`, `GET /admin/api/drug/llm-calls`, `GET /admin/api/drug/llm-call` |
+| OCR | `GET /admin/api/ocr/samples`, `POST /admin/api/ocr/test` |
 | FHIR servers | `GET|POST /admin/api/fhir-servers`, `/admin/api/fhir-servers/{discover,test,test-request,generate-key,export}` |
 | IG | `GET /admin/api/igs`, `POST /admin/api/igs/import`, `GET /admin/api/registry/search` |
 | Embeddings | `GET /admin/api/embedding/status` |

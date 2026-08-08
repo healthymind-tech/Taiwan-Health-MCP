@@ -37,7 +37,7 @@
 | `features` | string | 是 | 空白分隔的外觀關鍵字（顏色 / 形狀 / 刻痕 / 標記 / 尺寸 / 刻字） | `"white round"`, `"白 圓形"` |
 
 ### 用途
-每個關鍵字以交集（conjunctive）比對外觀描述、顏色、形狀、符號、刻痕、尺寸與刻字欄位。英文顏色 / 形狀詞會以內建同義詞表擴展。需先以 `--drug-enrich` 載入外觀資料。
+每個關鍵字以交集（conjunctive）比對外觀描述、顏色、形狀、符號、刻痕、尺寸與刻字欄位。英文顏色 / 形狀詞會以內建同義詞表擴展。外觀資料需先由 `drug_enrichment` 工作載入（Admin → Modules）。
 
 ---
 
@@ -67,4 +67,4 @@
 | `latest_insert_only` | boolean | 否 | 只取最新一份仿單，預設 `false` | `true` |
 
 ### 用途
-回傳的下載連結為有時效的預簽（presigned）URL。需先以 `--drug-enrich`（資產）與 `--drug-analysis`（分析輸出）載入對應資料。
+回傳的下載連結為有時效的預簽（presigned）URL。對應資料需先由 `drug_enrichment`（資產）與 `drug_analysis`（分析輸出）工作載入。

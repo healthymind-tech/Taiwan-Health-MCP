@@ -33,9 +33,9 @@ ICD 服務模組是本系統的核心組件之一，專門負責處理國際疾�
 - **結構化分析**：同時回傳雙方的詳細資訊以供比對。
 
 ## 技術架構
-- **資料來源**：ICD-10-CM 2025（NLM）及 ICD-10-PCS 2025（CMS），經由管理後台（Admin → Modules，匯入階段 `--icd`）載入。
+- **資料來源**：ICD-10-CM 2025（NLM）及 ICD-10-PCS 2025（CMS），經由管理後台（Admin → Modules，匯入階段 `icd_import`）載入。
 - **資料庫**：PostgreSQL 16，`icd.diagnoses`（診斷碼）與 `icd.procedures`（手術碼）兩張資料表。
-- **PCS 降級**：`_pcs_available` flag — ICD-10-PCS 未載入時工具自動降級，回傳提示訊息而非錯誤。PCS 2025（78,948 筆）位於 `fhir-code/icd/10/icd10pcs/`，`--icd` 自動同時載入。
+- **PCS 降級**：`_pcs_available` flag — ICD-10-PCS 未載入時工具自動降級，回傳提示訊息而非錯誤。PCS 2025（78,948 筆）位於 `fhir-code/icd/10/icd10pcs/`，`icd_import` 自動同時載入。
 - **全文搜尋**：各表建有 FTS index，支援中英文關鍵字搜尋。
 
 ## 依賴關係
