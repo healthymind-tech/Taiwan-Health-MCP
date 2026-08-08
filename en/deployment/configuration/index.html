@@ -1,0 +1,3360 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Taiwan health & medical data MCP server — technical documentation">
+      
+      
+        <meta name="author" content="Taiwan Health MCP Team">
+      
+      
+        <link rel="canonical" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/deployment/configuration/">
+      
+      
+        <link rel="prev" href="../../architecture/deployment/">
+      
+      
+        <link rel="next" href="../performance/">
+      
+      
+        
+          <link rel="alternate" href="../../../deployment/configuration/" hreflang="zh-TW">
+        
+          <link rel="alternate" href="./" hreflang="en">
+        
+      
+      
+      <link rel="icon" href="../../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Configuration - Taiwan Health MCP</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#configuration" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../" title="Taiwan Health MCP" class="md-header__button md-logo" aria-label="Taiwan Health MCP" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Taiwan Health MCP
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Configuration
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+      <div class="md-header__option">
+  <div class="md-select">
+    
+    <button class="md-header__button md-icon" aria-label="Select language">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m12.87 15.07-2.54-2.51.03-.03A17.5 17.5 0 0 0 14.07 6H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2zm-2.62 7 1.62-4.33L19.12 17z"/></svg>
+    </button>
+    <div class="md-select__inner">
+      <ul class="md-select__list">
+        
+          <li class="md-select__item">
+            <a href="../../../deployment/configuration/" hreflang="zh-TW" class="md-select__link">
+              繁體中文
+            </a>
+          </li>
+        
+          <li class="md-select__item">
+            <a href="./" hreflang="en" class="md-select__link">
+              English
+            </a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+</div>
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/healthymind-tech/Taiwan-Health-MCP" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    healthymind-tech/Taiwan-Health-MCP
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../" title="Taiwan Health MCP" class="md-nav__button md-logo" aria-label="Taiwan Health MCP" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Taiwan Health MCP
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/healthymind-tech/Taiwan-Health-MCP" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    healthymind-tech/Taiwan-Health-MCP
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_1" id="__nav_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Home
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Taiwan Health MCP Server
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Modules
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Modules
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../modules/icd-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ICD-10
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../modules/drug-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Drugs / TFDA
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../modules/lab-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Labs / LOINC
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../modules/snomed-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SNOMED CT
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../modules/health-supplements-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Health Supplements
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../modules/food-nutrition-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Food Nutrition
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../modules/fhir-condition-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FHIR Condition
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../modules/fhir-medication-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FHIR Medication
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../modules/fhir-ig-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FHIR IG
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MCP Tools
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    MCP Tools
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tools/icd-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ICD-10 Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tools/drug-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Drug Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tools/lab-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Lab / LOINC Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tools/snomed-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SNOMED Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tools/health-supplements-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Health Supplement Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tools/nutrition-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Food Nutrition Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tools/fhir-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FHIR Condition / Medication Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tools/fhir-ig-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FHIR IG Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tools/fhir-server-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FHIR Server Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Sources
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Data Sources
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../data-sources/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Sources
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../data-sources/test-data/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Test Data Files
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../data-sources/icd10/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ICD-10
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../data-sources/loinc/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LOINC
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FHIR Authoring
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    FHIR Authoring
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../fhir-authoring-walkthrough/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Authoring Walkthrough
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../fhir-ig-mcp-toolset-assessment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Toolset Design Assessment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../fhir-resource-conversion-prompt/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Resource Conversion Prompt (auto type detection)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../fhir-bundle-conversion-prompt/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bundle Conversion Prompt
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/lab-interpretation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Lab Interpretation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/loinc-integration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LOINC Integration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/fhir-services/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FHIR Services API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/icd-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ICD Service
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/lab-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Lab Service
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Admin Console
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Admin Console
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../admin/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Admin Console
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../admin/jobs-and-worker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Jobs & Scheduling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Deployment
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/deployment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture & Container Deployment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#settings-precedence" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Settings precedence (important)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#bootstrap-variables-env" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Bootstrap variables (.env)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Bootstrap variables (.env)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#public-port" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Public port
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#postgresql" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PostgreSQL
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#redis" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Redis
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mcp-transport" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCP transport
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#application-and-monitoring" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Application and monitoring
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#admin-console-authentication" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Admin console authentication
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#passkeys-webauthn-optional" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Passkeys / WebAuthn (optional)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#seed-only-settings-managed-in-admin-settings-after-first-boot" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Seed-only settings (managed in Admin → Settings after first boot)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Seed-only settings (managed in Admin → Settings after first boot)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#minio-drug-assets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MinIO (drug assets)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#drug-tfda-crawler" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Drug / TFDA crawler
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#background-worker-tuning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Background worker tuning
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#source-file-paths-for-local-development" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Source file paths for local development
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mcp-client-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCP client configuration
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="MCP client configuration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#streamable-http-production-recommended" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        streamable-http (production, recommended)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#stdio-launching-the-process-locally" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        stdio (launching the process locally)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#resource-limits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Recommended resource limits (production)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#advanced-pgbouncer-settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Advanced pgBouncer settings
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../performance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance & Monitoring
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10" >
+        
+          
+          <label class="md-nav__link" for="__nav_10" id="__nav_10_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_10">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/code-style/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Code Style
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../WEBSITE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docs Site Maintenance
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_11" >
+        
+          
+          <label class="md-nav__link" for="__nav_11" id="__nav_11_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FAQ
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_11_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_11">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    FAQ
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../faq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FAQ
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../faq/usage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Usage
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../faq/loinc/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LOINC
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#settings-precedence" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Settings precedence (important)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#bootstrap-variables-env" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Bootstrap variables (.env)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Bootstrap variables (.env)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#public-port" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Public port
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#postgresql" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PostgreSQL
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#redis" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Redis
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mcp-transport" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCP transport
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#application-and-monitoring" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Application and monitoring
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#admin-console-authentication" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Admin console authentication
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#passkeys-webauthn-optional" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Passkeys / WebAuthn (optional)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#seed-only-settings-managed-in-admin-settings-after-first-boot" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Seed-only settings (managed in Admin → Settings after first boot)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Seed-only settings (managed in Admin → Settings after first boot)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#minio-drug-assets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MinIO (drug assets)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#drug-tfda-crawler" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Drug / TFDA crawler
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#background-worker-tuning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Background worker tuning
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#source-file-paths-for-local-development" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Source file paths for local development
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mcp-client-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCP client configuration
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="MCP client configuration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#streamable-http-production-recommended" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        streamable-http (production, recommended)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#stdio-launching-the-process-locally" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        stdio (launching the process locally)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#resource-limits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Recommended resource limits (production)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#advanced-pgbouncer-settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Advanced pgBouncer settings
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="configuration">Configuration<a class="headerlink" href="#configuration" title="Permanent link">&para;</a></h1>
+<p>The system is configured through two layers: environment variables and database settings (<code>admin.app_settings</code> / <code>admin.llm_profiles</code>). Copy <code>.env.example</code> to <code>.env</code> and edit it:</p>
+<pre><code class="language-bash">cp .env.example .env
+</code></pre>
+<h2 id="settings-precedence">Settings precedence (important)<a class="headerlink" href="#settings-precedence" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Category</th>
+<th>Stored in</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Bootstrap variables</strong></td>
+<td><code>.env</code> only</td>
+<td>DB / Redis / MCP transport / <code>ADMIN_*</code> auth / <code>WEB_PORT</code>. These must be known before startup and never enter the database.</td>
+</tr>
+<tr>
+<td><strong>Seed-only settings</strong></td>
+<td><code>.env</code> → <code>admin.app_settings</code></td>
+<td>MinIO, the TFDA crawler, the FHIR package registry, worker tuning, and so on. <strong>Read exactly once, on first boot, for keys that do not yet exist</strong>, to seed the database; editing <code>.env</code> has no effect on an already-seeded database. TFDA and registry settings can then be managed in Admin → Settings (applied hot); <strong>MinIO and worker tuning are read-only groups in the console</strong>, so changing them later requires a direct <code>UPDATE admin.app_settings</code> and a service restart.</td>
+</tr>
+<tr>
+<td><strong>Model endpoints</strong></td>
+<td>Database only (<code>admin.llm_profiles</code>)</td>
+<td>Embedding, OCR (MinerU), and the analysis LLM. <strong>Never read from environment variables</strong>; configurable only in Admin → Settings, and movable between environments with Settings → Export / Import.</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="bootstrap-variables-env">Bootstrap variables (<code>.env</code>)<a class="headerlink" href="#bootstrap-variables-env" title="Permanent link">&para;</a></h2>
+<h3 id="public-port">Public port<a class="headerlink" href="#public-port" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>WEB_PORT</code></td>
+<td><code>8080</code></td>
+<td><strong>The port the nginx front door publishes to the host.</strong> This is the system's only public entry point.</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>The <code>app</code> container only <code>expose</code>s <code>MCP_PORT</code> (8000) on the internal network and never publishes it to the host. Clients always connect to <code>http://&lt;host&gt;:${WEB_PORT}</code>.</p>
+</blockquote>
+<h3 id="postgresql">PostgreSQL<a class="headerlink" href="#postgresql" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>POSTGRES_PASSWORD</code></td>
+<td><strong>Required</strong></td>
+<td>PostgreSQL password (compose fails outright when unset)</td>
+</tr>
+<tr>
+<td><code>POSTGRES_DB</code></td>
+<td><code>taiwan_health</code></td>
+<td>Database name</td>
+</tr>
+<tr>
+<td><code>POSTGRES_USER</code></td>
+<td><code>mcp</code></td>
+<td>Database user</td>
+</tr>
+<tr>
+<td><code>DATABASE_URL</code></td>
+<td>Composed by compose</td>
+<td><code>postgresql://&lt;user&gt;:&lt;pass&gt;@pgbouncer:5432/&lt;db&gt;</code>. Only needs setting by hand when running outside Docker.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="redis">Redis<a class="headerlink" href="#redis" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>REDIS_URL</code></td>
+<td><code>redis://redis:6379/0</code> (set by compose; the program's own default is <code>redis://localhost:6379/0</code>)</td>
+<td>Redis connection URL</td>
+</tr>
+</tbody>
+</table>
+<h3 id="mcp-transport">MCP transport<a class="headerlink" href="#mcp-transport" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>MCP_TRANSPORT</code></td>
+<td><code>streamable-http</code> (compose); the program's default is <code>stdio</code></td>
+<td><code>streamable-http</code> | <code>sse</code> | <code>stdio</code></td>
+</tr>
+<tr>
+<td><code>MCP_HOST</code></td>
+<td><code>0.0.0.0</code></td>
+<td>Listen host (HTTP mode)</td>
+</tr>
+<tr>
+<td><code>MCP_PORT</code></td>
+<td><code>8000</code></td>
+<td><strong>Container-internal</strong> listen port. Never published to the host.</td>
+</tr>
+<tr>
+<td><code>MCP_PATH</code></td>
+<td><code>/mcp</code></td>
+<td>HTTP endpoint path</td>
+</tr>
+<tr>
+<td><code>PUBLIC_TOOLS_AUTH_MODE</code></td>
+<td><code>none</code></td>
+<td>Authentication mode for the public MCP / OpenAPI bridge: <code>none</code> or <code>bearer</code>. <code>bearer</code> is recommended in production.</td>
+</tr>
+<tr>
+<td><code>PUBLIC_TOOLS_BEARER_TOKEN</code></td>
+<td>empty</td>
+<td>The token required in bearer mode; use a high-entropy random value.</td>
+</tr>
+<tr>
+<td><code>PUBLIC_TOOLS_CORS_ORIGINS</code></td>
+<td>empty</td>
+<td>Permitted browser origins (comma-separated). <code>*</code> is not allowed in bearer mode; empty means no cross-origin browser calls are permitted.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="application-and-monitoring">Application and monitoring<a class="headerlink" href="#application-and-monitoring" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>LOG_LEVEL</code></td>
+<td><code>INFO</code></td>
+<td><code>DEBUG</code> | <code>INFO</code> | <code>WARNING</code> | <code>ERROR</code></td>
+</tr>
+<tr>
+<td><code>METRICS_PORT</code></td>
+<td><code>9090</code></td>
+<td>Prometheus metrics endpoint (bound to <code>127.0.0.1</code> only)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="admin-console-authentication">Admin console authentication<a class="headerlink" href="#admin-console-authentication" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ADMIN_ENABLED</code></td>
+<td><code>false</code></td>
+<td>Must be <code>true</code> for <code>/admin</code> to be mounted</td>
+</tr>
+<tr>
+<td><code>ADMIN_USERNAME</code></td>
+<td><code>admin</code></td>
+<td>Operator account</td>
+</tr>
+<tr>
+<td><code>ADMIN_PASSWORD_HASH</code></td>
+<td>empty</td>
+<td><code>sha256$&lt;hex&gt;</code> or <code>pbkdf2_sha256$&lt;iterations&gt;$&lt;salt&gt;$&lt;hex&gt;</code></td>
+</tr>
+<tr>
+<td><code>ADMIN_INITIAL_PASSWORD</code></td>
+<td>empty</td>
+<td>A plaintext initial password, used <strong>only on first boot while the database has no credential row</strong>: it is hashed into <code>admin.admin_credentials</code> once and ignored forever afterwards. Takes precedence over <code>ADMIN_PASSWORD_HASH</code> when both are set. The plaintext is never persisted.</td>
+</tr>
+<tr>
+<td><code>ADMIN_SESSION_SECRET</code></td>
+<td>empty</td>
+<td>Session cookie signing key</td>
+</tr>
+<tr>
+<td><code>ADMIN_SESSION_TTL_MINUTES</code></td>
+<td><code>240</code></td>
+<td>Session lifetime</td>
+</tr>
+<tr>
+<td><code>ADMIN_COOKIE_SECURE</code></td>
+<td>empty (automatic)</td>
+<td><code>true</code> / <code>false</code>. When empty, the cookie's <code>Secure</code> attribute is added if <code>PUBLIC_BASE_URL</code> uses HTTPS. Set it explicitly to <code>true</code> when TLS terminates at an external proxy and no public URL is configured.</td>
+</tr>
+<tr>
+<td><code>ADMIN_MAX_UPLOAD_MB</code></td>
+<td><code>512</code></td>
+<td>Source file upload cap</td>
+</tr>
+<tr>
+<td><code>FHIR_SERVER_SECRET_KEY</code></td>
+<td>empty (falls back to <code>ADMIN_SESSION_SECRET</code>)</td>
+<td>pgcrypto symmetric key for external FHIR servers' OAuth tokens and client secrets. <strong>Must be identical on <code>app</code> and <code>admin-worker</code></strong>, or the worker's decryption raises <code>Illegal argument to function</code> (empty key) or <code>Wrong key or corrupt data</code> (mismatched key).</td>
+</tr>
+</tbody>
+</table>
+<p><code>/admin</code> opens (<code>adminReady()</code>) when <code>ADMIN_ENABLED=true</code>, <code>ADMIN_USERNAME</code>, and <code>ADMIN_SESSION_SECRET</code> all have values, and <strong>at least one</strong> of <code>ADMIN_PASSWORD_HASH</code> / <code>ADMIN_INITIAL_PASSWORD</code> is set.</p>
+<p>Generating a password hash (Node):</p>
+<pre><code class="language-bash">node -e &quot;console.log('sha256$' + require('crypto').createHash('sha256').update('change-me').digest('hex'))&quot;
+</code></pre>
+<div class="admonition warning">
+<p class="admonition-title">Write every <code>$</code> in <code>.env</code> as <code>$$</code></p>
+<p>Docker Compose interpolates variables in <code>.env</code>, so a single <code>$</code> is read as a variable
+reference and the hash value is silently truncated (especially when the digest starts with
+a letter). Write every <code>$</code> as <code>$$</code>; Compose collapses it back to a single <code>$</code>.</p>
+</div>
+<h3 id="passkeys-webauthn-optional">Passkeys / WebAuthn (optional)<a class="headerlink" href="#passkeys-webauthn-optional" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>PUBLIC_BASE_URL</code></td>
+<td>empty</td>
+<td>The public origin (<code>scheme://host</code>), used to build the OAuth2 redirect_uri and to derive the WebAuthn RP ID. When empty it is derived from the request's <code>Host</code> header.</td>
+</tr>
+<tr>
+<td><code>WEBAUTHN_RP_ID</code></td>
+<td>The host of <code>PUBLIC_BASE_URL</code>, falling back to <code>taiwan-health-mcp.gugulu.tw</code></td>
+<td>The registrable domain the admin console is served from</td>
+</tr>
+<tr>
+<td><code>WEBAUTHN_RP_NAME</code></td>
+<td><code>Taiwan Health MCP — Admin</code></td>
+<td>The name shown in the OS passkey prompt</td>
+</tr>
+<tr>
+<td><code>WEBAUTHN_ORIGIN</code></td>
+<td><code>https://&lt;WEBAUTHN_RP_ID&gt;</code></td>
+<td>Allow-list of expected origins (comma-separated)</td>
+</tr>
+</tbody>
+</table>
+<p><code>compose.yaml</code> passes all four variables to <code>app</code>. A production deployment should at least set
+<code>PUBLIC_BASE_URL</code>; set <code>WEBAUTHN_*</code> only when the derived values need overriding.</p>
+<hr />
+<h2 id="seed-only-settings-managed-in-admin-settings-after-first-boot">Seed-only settings (managed in Admin → Settings after first boot)<a class="headerlink" href="#seed-only-settings-managed-in-admin-settings-after-first-boot" title="Permanent link">&para;</a></h2>
+<h3 id="minio-drug-assets">MinIO (drug assets)<a class="headerlink" href="#minio-drug-assets" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>MINIO_ENDPOINT</code></td>
+<td><code>minio:9000</code> (use <code>localhost:9000</code> outside Docker)</td>
+</tr>
+<tr>
+<td><code>MINIO_ACCESS_KEY</code></td>
+<td><code>minioadmin</code></td>
+</tr>
+<tr>
+<td><code>MINIO_SECRET_KEY</code></td>
+<td><code>minioadmin</code></td>
+</tr>
+<tr>
+<td><code>MINIO_BUCKET</code></td>
+<td><code>taiwan-health-drug-assets</code></td>
+</tr>
+<tr>
+<td><code>MINIO_SECURE</code></td>
+<td><code>false</code></td>
+</tr>
+<tr>
+<td><code>MINIO_PRESIGN_TTL_SECONDS</code></td>
+<td><code>3600</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="drug-tfda-crawler">Drug / TFDA crawler<a class="headerlink" href="#drug-tfda-crawler" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>DRUG_TFDA_BASE_URL</code></td>
+<td><code>https://mcp.fda.gov.tw</code></td>
+<td>TFDA site base URL</td>
+</tr>
+<tr>
+<td><code>DRUG_HTTP_TIMEOUT</code></td>
+<td><code>30</code></td>
+<td>Per-request HTTP timeout (seconds)</td>
+</tr>
+<tr>
+<td><code>DRUG_CRAWLER_CONCURRENCY</code></td>
+<td><code>4</code></td>
+<td>Crawler concurrency</td>
+</tr>
+<tr>
+<td><code>DRUG_AUTOCHAIN_BATCH_LIMIT</code></td>
+<td><code>200</code></td>
+<td>The licenses each follow-on job processes when auto-chaining (index → enrichment → analysis). <strong>Applies only to auto-chained jobs</strong>; a manually queued job without a <code>limit</code> processes the entire pending queue.</td>
+</tr>
+<tr>
+<td><code>DRUG_ANALYSIS_PROMPT_PATH</code></td>
+<td><code>src/prompts/drug/analysis_prompt.txt</code></td>
+<td>Path to the analysis LLM's system prompt</td>
+</tr>
+</tbody>
+</table>
+<h3 id="background-worker-tuning">Background worker tuning<a class="headerlink" href="#background-worker-tuning" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Default (program)</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ADMIN_WORKER_NAME</code></td>
+<td><code>admin-worker</code></td>
+<td>Worker identifier (used for heartbeats and job claiming)</td>
+</tr>
+<tr>
+<td><code>ADMIN_WORKER_POLL_SECONDS</code></td>
+<td><code>3</code></td>
+<td>Queue poll interval</td>
+</tr>
+<tr>
+<td><code>ADMIN_HEARTBEAT_INTERVAL_SECONDS</code></td>
+<td><code>15</code></td>
+<td>Heartbeat interval</td>
+</tr>
+<tr>
+<td><code>ADMIN_WORKER_STALE_AFTER_SECONDS</code></td>
+<td><code>45</code></td>
+<td>No heartbeat for longer than this counts as lost</td>
+</tr>
+<tr>
+<td><code>ADMIN_MAX_CONCURRENT_JOBS</code></td>
+<td><code>4</code></td>
+<td>Maximum concurrent jobs (per-module resource slots apply on top). Read from the environment on every worker start — not stored in <code>admin.app_settings</code>.</td>
+</tr>
+<tr>
+<td><code>ADMIN_SCHEDULE_SCAN_INTERVAL_SECONDS</code></td>
+<td><code>60</code></td>
+<td>Schedule scan interval</td>
+</tr>
+<tr>
+<td><code>NODE_OPTIONS</code></td>
+<td><code>--max-old-space-size=8192</code> (set by compose on the worker)</td>
+<td>IG imports load whole dependency packages — <strong>do not lower this</strong>.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="source-file-paths-for-local-development">Source file paths for local development<a class="headerlink" href="#source-file-paths-for-local-development" title="Permanent link">&para;</a></h3>
+<p>In production, source files are uploaded to MinIO through the admin console; the variables below only specify file locations when running a loader locally.</p>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>FHIR_CODE_DIR</code></td>
+<td><code>&lt;repo&gt;/fhir-code</code></td>
+</tr>
+<tr>
+<td><code>ICD_CM_ZIP</code> / <code>ICD_PCS_ZIP</code> / <code>ICD_XLSX</code></td>
+<td>The matching files under <code>fhir-code/icd/10/...</code></td>
+</tr>
+<tr>
+<td><code>LOINC_ZIP_PATH</code></td>
+<td><code>fhir-code/loinc/2.80/Loinc_2.80.zip</code></td>
+</tr>
+<tr>
+<td><code>LOINC_MAPPING_CSV</code> / <code>LOINC_RANGES_CSV</code></td>
+<td>The mapping tables under <code>data/loinc/</code></td>
+</tr>
+<tr>
+<td><code>SNOMED_ZIP</code></td>
+<td><code>fhir-code/snomed/SnomedCT_InternationalRF2_PRODUCTION_*.zip</code></td>
+</tr>
+<tr>
+<td><code>RXNORM_ZIP</code></td>
+<td><code>fhir-code/rxnorm/RxNorm_full_*.zip</code></td>
+</tr>
+<tr>
+<td><code>IG_TGZ</code></td>
+<td><code>fhir-code/twcoreig/**/package.tgz</code></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="mcp-client-configuration">MCP client configuration<a class="headerlink" href="#mcp-client-configuration" title="Permanent link">&para;</a></h2>
+<h3 id="streamable-http-production-recommended">streamable-http (production, recommended)<a class="headerlink" href="#streamable-http-production-recommended" title="Permanent link">&para;</a></h3>
+<p>Claude Desktop:</p>
+<pre><code class="language-json">{
+  &quot;mcpServers&quot;: {
+    &quot;taiwan-health&quot;: {
+      &quot;url&quot;: &quot;http://&lt;host&gt;:8080/mcp&quot;,
+      &quot;transport&quot;: &quot;streamable-http&quot;
+    }
+  }
+}
+</code></pre>
+<h3 id="stdio-launching-the-process-locally">stdio (launching the process locally)<a class="headerlink" href="#stdio-launching-the-process-locally" title="Permanent link">&para;</a></h3>
+<p>Run <code>npm install &amp;&amp; npm run build</code> in <code>node-server/</code> first:</p>
+<pre><code class="language-json">{
+  &quot;mcpServers&quot;: {
+    &quot;taiwan-health&quot;: {
+      &quot;command&quot;: &quot;node&quot;,
+      &quot;args&quot;: [&quot;/absolute/path/to/node-server/dist/server.js&quot;],
+      &quot;env&quot;: {
+        &quot;MCP_TRANSPORT&quot;: &quot;stdio&quot;,
+        &quot;DATABASE_URL&quot;: &quot;postgresql://mcp:pass@localhost:5432/taiwan_health&quot;,
+        &quot;REDIS_URL&quot;: &quot;redis://localhost:6379/0&quot;
+      }
+    }
+  }
+}
+</code></pre>
+<hr />
+<h2 id="resource-limits">Recommended resource limits (production)<a class="headerlink" href="#resource-limits" title="Permanent link">&para;</a></h2>
+<p>Add resource limits in <code>docker-compose.override.yml</code>:</p>
+<pre><code class="language-yaml">services:
+  app:
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+  admin-worker:
+    deploy:
+      resources:
+        limits:
+          memory: 10G     # needed by IG imports, matching NODE_OPTIONS=--max-old-space-size=8192
+  postgres:
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+  redis:
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+</code></pre>
+<hr />
+<h2 id="advanced-pgbouncer-settings">Advanced pgBouncer settings<a class="headerlink" href="#advanced-pgbouncer-settings" title="Permanent link">&para;</a></h2>
+<p>pgBouncer is configured through the <code>edoburu/pgbouncer</code> image's environment variables. The important ones (see <code>compose.yaml</code>):</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Value</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>POOL_MODE</code></td>
+<td><code>transaction</code></td>
+<td>Release the connection after each transaction</td>
+</tr>
+<tr>
+<td><code>MAX_CLIENT_CONN</code></td>
+<td><code>500</code></td>
+<td>Up to 500 client connections</td>
+</tr>
+<tr>
+<td><code>DEFAULT_POOL_SIZE</code></td>
+<td><code>30</code></td>
+<td>Up to 30 PostgreSQL connections</td>
+</tr>
+<tr>
+<td><code>MIN_POOL_SIZE</code></td>
+<td><code>5</code></td>
+<td>Pre-warmed connections</td>
+</tr>
+<tr>
+<td><code>AUTH_TYPE</code></td>
+<td><code>scram-sha-256</code></td>
+<td>Authentication method</td>
+</tr>
+<tr>
+<td><code>IGNORE_STARTUP_PARAMETERS</code></td>
+<td><code>extra_float_digits</code></td>
+<td>Driver compatibility setting</td>
+</tr>
+</tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; 2024-2026 Taiwan Health MCP Team
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": [], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+        <script src="../../../javascripts/lang-switch.js"></script>
+      
+    
+  </body>
+</html>

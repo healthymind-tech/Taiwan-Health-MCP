@@ -22,6 +22,10 @@
       
       
         
+          <link rel="alternate" href="./" hreflang="zh-TW">
+        
+          <link rel="alternate" href="../en/fhir-authoring-walkthrough/" hreflang="en">
+        
       
       
       <link rel="icon" href="../assets/images/favicon.png">
@@ -70,7 +74,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#turning-your-data-into-fhir-how-the-authoring-flow-works" class="md-skip">
+        <a href="#fhir" class="md-skip">
           跳轉到
         </a>
       
@@ -116,6 +120,32 @@
     
       <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
     
+    
+      <div class="md-header__option">
+  <div class="md-select">
+    
+    <button class="md-header__button md-icon" aria-label="選擇語言">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m12.87 15.07-2.54-2.51.03-.03A17.5 17.5 0 0 0 14.07 6H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2zm-2.62 7 1.62-4.33L19.12 17z"/></svg>
+    </button>
+    <div class="md-select__inner">
+      <ul class="md-select__list">
+        
+          <li class="md-select__item">
+            <a href="./" hreflang="zh-TW" class="md-select__link">
+              繁體中文
+            </a>
+          </li>
+        
+          <li class="md-select__item">
+            <a href="../en/fhir-authoring-walkthrough/" hreflang="en" class="md-select__link">
+              English
+            </a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+</div>
     
     
       
@@ -1223,10 +1253,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#the-one-idea-to-hold-onto-who-does-what" class="md-nav__link">
+  <a href="#_1" class="md-nav__link">
     <span class="md-ellipsis">
       
-        The one idea to hold onto: who does what
+        唯一要記住的概念：誰負責什麼
       
     </span>
   </a>
@@ -1234,10 +1264,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#before-you-start-which-ig" class="md-nav__link">
+  <a href="#ig" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Before you start: which IG?
+        開始之前：要用哪個 IG？
       
     </span>
   </a>
@@ -1245,22 +1275,22 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#worked-example" class="md-nav__link">
+  <a href="#_2" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Worked example
+        實例演練
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Worked example">
+    <nav class="md-nav" aria-label="實例演練">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#stage-0-understand-the-text-no-tool-calls" class="md-nav__link">
+  <a href="#0" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Stage 0 — Understand the text (no tool calls)
+        階段 0 —— 讀懂文字 （無工具呼叫）
       
     </span>
   </a>
@@ -1268,10 +1298,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#stage-1-resolve-the-ig" class="md-nav__link">
+  <a href="#1-ig" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Stage 1 — Resolve the IG
+        階段 1 —— 決定 IG
       
     </span>
   </a>
@@ -1279,10 +1309,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#stage-2-decide-the-profiles" class="md-nav__link">
+  <a href="#2" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Stage 2 — Decide the profiles
+        階段 2 —— 決定剖面
       
     </span>
   </a>
@@ -1290,15 +1320,15 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#stage-3-build-each-resource-patient-first-because-condition-references-it" class="md-nav__link">
+  <a href="#3-patient-condition" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Stage 3 — Build each resource (Patient first, because Condition references it)
+        階段 3 —— 逐一建立資源（先 Patient，因為 Condition 會參照它）
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Stage 3 — Build each resource (Patient first, because Condition references it)">
+    <nav class="md-nav" aria-label="階段 3 —— 逐一建立資源（先 Patient，因為 Condition 會參照它）">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -1329,10 +1359,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#stage-4-assemble-validate-the-whole-thing" class="md-nav__link">
+  <a href="#4" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Stage 4 — Assemble &amp; validate the whole thing
+        階段 4 —— 組裝與整體驗證
       
     </span>
   </a>
@@ -1345,10 +1375,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#the-flow-at-a-glance" class="md-nav__link">
+  <a href="#_3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        The flow at a glance
+        流程一覽
       
     </span>
   </a>
@@ -1356,10 +1386,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#why-its-built-this-way" class="md-nav__link">
+  <a href="#_4" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Why it's built this way
+        為什麼這樣設計
       
     </span>
   </a>
@@ -1367,10 +1397,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#quick-tool-reference" class="md-nav__link">
+  <a href="#_5" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Quick tool reference
+        工具速查
       
     </span>
   </a>
@@ -2050,62 +2080,6 @@
 
               
             
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../deployment/dpa/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    資料處理附錄 (DPA)
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../deployment/privacy/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    隱私政策頁面
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
           </ul>
         </nav>
       
@@ -2472,10 +2446,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#the-one-idea-to-hold-onto-who-does-what" class="md-nav__link">
+  <a href="#_1" class="md-nav__link">
     <span class="md-ellipsis">
       
-        The one idea to hold onto: who does what
+        唯一要記住的概念：誰負責什麼
       
     </span>
   </a>
@@ -2483,10 +2457,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#before-you-start-which-ig" class="md-nav__link">
+  <a href="#ig" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Before you start: which IG?
+        開始之前：要用哪個 IG？
       
     </span>
   </a>
@@ -2494,22 +2468,22 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#worked-example" class="md-nav__link">
+  <a href="#_2" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Worked example
+        實例演練
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Worked example">
+    <nav class="md-nav" aria-label="實例演練">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#stage-0-understand-the-text-no-tool-calls" class="md-nav__link">
+  <a href="#0" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Stage 0 — Understand the text (no tool calls)
+        階段 0 —— 讀懂文字 （無工具呼叫）
       
     </span>
   </a>
@@ -2517,10 +2491,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#stage-1-resolve-the-ig" class="md-nav__link">
+  <a href="#1-ig" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Stage 1 — Resolve the IG
+        階段 1 —— 決定 IG
       
     </span>
   </a>
@@ -2528,10 +2502,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#stage-2-decide-the-profiles" class="md-nav__link">
+  <a href="#2" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Stage 2 — Decide the profiles
+        階段 2 —— 決定剖面
       
     </span>
   </a>
@@ -2539,15 +2513,15 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#stage-3-build-each-resource-patient-first-because-condition-references-it" class="md-nav__link">
+  <a href="#3-patient-condition" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Stage 3 — Build each resource (Patient first, because Condition references it)
+        階段 3 —— 逐一建立資源（先 Patient，因為 Condition 會參照它）
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Stage 3 — Build each resource (Patient first, because Condition references it)">
+    <nav class="md-nav" aria-label="階段 3 —— 逐一建立資源（先 Patient，因為 Condition 會參照它）">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -2578,10 +2552,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#stage-4-assemble-validate-the-whole-thing" class="md-nav__link">
+  <a href="#4" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Stage 4 — Assemble &amp; validate the whole thing
+        階段 4 —— 組裝與整體驗證
       
     </span>
   </a>
@@ -2594,10 +2568,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#the-flow-at-a-glance" class="md-nav__link">
+  <a href="#_3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        The flow at a glance
+        流程一覽
       
     </span>
   </a>
@@ -2605,10 +2579,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#why-its-built-this-way" class="md-nav__link">
+  <a href="#_4" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Why it's built this way
+        為什麼這樣設計
       
     </span>
   </a>
@@ -2616,10 +2590,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#quick-tool-reference" class="md-nav__link">
+  <a href="#_5" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Quick tool reference
+        工具速查
       
     </span>
   </a>
@@ -2646,81 +2620,83 @@
   
 
 
-<h1 id="turning-your-data-into-fhir-how-the-authoring-flow-works">Turning your data into FHIR — how the authoring flow works<a class="headerlink" href="#turning-your-data-into-fhir-how-the-authoring-flow-works" title="Permanent link">&para;</a></h1>
+<h1 id="fhir">把你的資料轉成 FHIR —— 授權流程怎麼運作<a class="headerlink" href="#fhir" title="Permanent link">&para;</a></h1>
 <blockquote>
-<p><strong>Status:</strong> describes the <em>designed</em> FHIR-IG authoring toolset (the <code>fhir_*</code> tools). For the engineering spec and design decisions, see <a href="../fhir-ig-mcp-toolset-assessment/"><code>fhir-ig-mcp-toolset-assessment.md</code></a>. This page is the <strong>user-facing walkthrough</strong>.</p>
+<p><strong>狀態：</strong>說明 FHIR-IG 授權工具集（<code>fhir_*</code> 工具）的<strong>設計</strong>。工程規格與設計決策見
+<a href="../fhir-ig-mcp-toolset-assessment/"><code>fhir-ig-mcp-toolset-assessment.md</code></a>。
+本頁是<strong>面向使用者的操作導覽</strong>。</p>
 </blockquote>
-<p>This MCP server lets a language model (LLM) turn your source data — a structured hospital record <strong>or a free-text clinical note</strong> — into a valid FHIR resource that conforms to an Implementation Guide (IG) such as TW Core, US Core, or IPS. This page walks through exactly how that happens, step by step, with a concrete example.</p>
+<p>這個 MCP 伺服器讓語言模型（LLM）把你的來源資料——結構化的院內紀錄，<strong>或一段自由文字的臨床病歷</strong>——轉成符合某個 Implementation Guide（IG，例如 TW Core、US Core、IPS）的有效 FHIR 資源。本頁用一個具體範例逐步說明整個過程。</p>
 <hr />
-<h2 id="the-one-idea-to-hold-onto-who-does-what">The one idea to hold onto: who does what<a class="headerlink" href="#the-one-idea-to-hold-onto-who-does-what" title="Permanent link">&para;</a></h2>
-<p>The conversion is a partnership. The boundary never moves:</p>
+<h2 id="_1">唯一要記住的概念：誰負責什麼<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
+<p>這個轉換是一種分工，界線始終不變：</p>
 <table>
 <thead>
 <tr>
 <th></th>
-<th>Responsibility</th>
+<th>職責</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><strong>The LLM</strong></td>
-<td><strong>Meaning &amp; semantics</strong> — reads/understands the source, decides which resource to build, picks the right code for "influenza", fills the <em>value</em> of each field.</td>
+<td><strong>LLM</strong></td>
+<td><strong>語意與意義</strong>——讀懂來源、決定要建立哪種資源、為「流行性感冒」挑出正確的碼、填入每個欄位的<strong>值</strong>。</td>
 </tr>
 <tr>
-<td><strong>The MCP server</strong></td>
-<td><strong>Structure, terminology, mechanics &amp; conformance</strong> — tells the LLM <em>which fields exist and what's allowed</em>, supplies the legal code lists, pins the <em>mechanical</em> fields the LLM must not invent (fixed values, profile URLs, system URLs, references), and validates the result.</td>
+<td><strong>MCP 伺服器</strong></td>
+<td><strong>結構、術語、機制與一致性</strong>——告訴 LLM <em>有哪些欄位、允許什麼值</em>、提供合法碼表、釘住 LLM <strong>不可自行編造</strong>的機制性欄位（固定值、profile URL、system URL、參照），並驗證結果。</td>
 </tr>
 </tbody>
 </table>
-<p><strong>The LLM never invents</strong> canonical URLs, code-system URLs, a SNOMED display, or a <code>meta.profile</code>. Those come from the server. The LLM fills the <em>semantic</em> blanks; the server pins the <em>mechanical</em> ones.</p>
+<p><strong>LLM 絕不編造</strong> canonical URL、code system URL、SNOMED 顯示名稱或 <code>meta.profile</code>——這些都來自伺服器。LLM 填的是<strong>語意</strong>空格，伺服器釘的是<strong>機制</strong>欄位。</p>
 <hr />
-<h2 id="before-you-start-which-ig">Before you start: which IG?<a class="headerlink" href="#before-you-start-which-ig" title="Permanent link">&para;</a></h2>
-<p>A FHIR resource is only meaningful against a target IG. The <strong>same</strong> clinical facts (a patient, an influenza diagnosis) can be mapped to TW Core, US Core, or IPS depending on <strong>where the data is going</strong> — the data itself doesn't tell you. So the IG is chosen by <em>context</em>, not guessed from the content, in this order:</p>
+<h2 id="ig">開始之前：要用哪個 IG？<a class="headerlink" href="#ig" title="Permanent link">&para;</a></h2>
+<p>FHIR 資源只有對著目標 IG 才有意義。<strong>同一組</strong>臨床事實（一位病人、一個流感診斷）可以依<strong>資料要送到哪裡</strong>而對應到 TW Core、US Core 或 IPS——資料本身不會告訴你答案。所以 IG 是依<strong>情境</strong>決定，而不是從內容猜測，順序如下：</p>
 <ol>
-<li><strong>Deployment default</strong> — most installations are bound to one IG (e.g. a Taiwan hospital → TW Core). One package is marked the default; the LLM doesn't choose.</li>
-<li><strong>Explicit instruction</strong> — the calling app or the user says "produce TW Core FHIR". Every tool takes an <code>ig = {packageId, version}</code> argument, so the choice is always explicit.</li>
-<li><strong>Informed choice</strong> — if several IGs are installed and none is specified, the LLM calls <code>fhir_list_igs</code> (which returns each package's <code>title</code>, <code>jurisdiction</code>, and default flag) and matches it to the user's intent and content hints (Chinese text, ROC national ID, NHI billing → <code>jurisdiction = TW</code>).</li>
-<li><strong>If still ambiguous → ask.</strong> The system asks the user rather than guessing.</li>
+<li><strong>部署預設值</strong>——多數安裝綁定單一 IG（例如台灣的醫院 → TW Core）。有一個套件被標記為預設，LLM 不需要選。</li>
+<li><strong>明確指示</strong>——呼叫端應用或使用者說「產生 TW Core FHIR」。每個工具都接受 <code>ig = {packageId, version}</code> 參數，所以選擇永遠是明確的。</li>
+<li><strong>知情選擇</strong>——若安裝了多個 IG 且未指定，LLM 呼叫 <code>fhir_list_igs</code>（回傳每個套件的 <code>title</code>、<code>jurisdiction</code> 與預設旗標），再對照使用者意圖與內容線索（中文文字、中華民國身分證號、健保申報 → <code>jurisdiction = TW</code>）。</li>
+<li><strong>仍然模稜兩可 → 詢問。</strong>系統會問使用者，而不是用猜的。</li>
 </ol>
-<p>Because every IG-scoped tool takes <code>ig</code>, you can target <strong>any imported IG</strong> explicitly: <code>fhir_get_profile(ig=US-Core, "Patient")</code> and <code>fhir_get_profile(ig=TW-Core, "Patient")</code> return different profiles. Adding a new country's IG is just importing its package — no new tools.</p>
+<p>因為每個 IG-scoped 工具都接受 <code>ig</code>，你可以明確指定<strong>任何已匯入的 IG</strong>：<code>fhir_get_profile(ig=US-Core, "Patient")</code> 與 <code>fhir_get_profile(ig=TW-Core, "Patient")</code> 會回傳不同的剖面。要支援新國家的 IG，只要匯入它的套件即可——不需要新工具。</p>
 <hr />
-<h2 id="worked-example">Worked example<a class="headerlink" href="#worked-example" title="Permanent link">&para;</a></h2>
-<p><strong>Input — an unstructured clinical note (free text):</strong></p>
+<h2 id="_2">實例演練<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
+<p><strong>輸入——一段非結構化的臨床病歷（自由文字）：</strong></p>
 <blockquote>
 <p>「病人王小明,男性,生日 1985年3月12日,身分證 A123456789。因急性發燒至門診就醫,經醫師確診為<strong>流行性感冒</strong>,2026/6/1 發病,目前持續追蹤中。」</p>
 </blockquote>
-<p><strong>Goal:</strong> produce TW-Core-conformant FHIR — a <code>Patient</code> and a <code>Condition</code>, packaged in a Bundle.</p>
-<p>Legend: <strong>[LLM]</strong> = the model reasons on its own (no tool call) · <strong>[MCP]</strong> = a tool call.</p>
-<h3 id="stage-0-understand-the-text-no-tool-calls">Stage 0 — Understand the text <em>(no tool calls)</em><a class="headerlink" href="#stage-0-understand-the-text-no-tool-calls" title="Permanent link">&para;</a></h3>
-<p><strong>[LLM]</strong> reads the note and extracts the clinical facts:</p>
+<p><strong>目標：</strong>產生符合 TW Core 的 FHIR——一個 <code>Patient</code> 與一個 <code>Condition</code>，包進一個 Bundle。</p>
+<p>圖例：<strong>[LLM]</strong> = 模型自行推理（沒有工具呼叫）· <strong>[MCP]</strong> = 一次工具呼叫。</p>
+<h3 id="0">階段 0 —— 讀懂文字 <em>（無工具呼叫）</em><a class="headerlink" href="#0" title="Permanent link">&para;</a></h3>
+<p><strong>[LLM]</strong> 讀病歷並抽出臨床事實：</p>
 <pre><code>Patient:   name=王小明, sex=male, birth=1985-03-12, national-id=A123456789
 Diagnosis: influenza, clinical status=active, verification=confirmed, onset=2026-06-01
 </code></pre>
-<p>It also decides it needs a <strong>Patient</strong> + a <strong>Condition</strong>. It does <em>not</em> yet know which FHIR fields or codes to use — that's what the server is for.</p>
-<h3 id="stage-1-resolve-the-ig">Stage 1 — Resolve the IG<a class="headerlink" href="#stage-1-resolve-the-ig" title="Permanent link">&para;</a></h3>
-<p>Per the rules above. In a TW-bound deployment this is just "TW Core 1.0.0". If unsure: <strong>[MCP] <code>fhir_list_igs</code></strong> → pick by <code>jurisdiction</code>/intent → ask if ambiguous.</p>
-<h3 id="stage-2-decide-the-profiles">Stage 2 — Decide the profiles<a class="headerlink" href="#stage-2-decide-the-profiles" title="Permanent link">&para;</a></h3>
+<p>它也判斷需要一個 <strong>Patient</strong> 與一個 <strong>Condition</strong>。此時它<strong>還不知道</strong>要用哪些 FHIR 欄位或碼——那正是伺服器的職責。</p>
+<h3 id="1-ig">階段 1 —— 決定 IG<a class="headerlink" href="#1-ig" title="Permanent link">&para;</a></h3>
+<p>依照上述規則。在綁定台灣的部署中，答案就是「TW Core 1.0.0」。不確定時：<strong>[MCP] <code>fhir_list_igs</code></strong> → 依 <code>jurisdiction</code> / 意圖挑選 → 模稜兩可就詢問。</p>
+<h3 id="2">階段 2 —— 決定剖面<a class="headerlink" href="#2" title="Permanent link">&para;</a></h3>
 <ul>
-<li><strong>[MCP] <code>fhir_list_resource_profiles(ig)</code></strong> → returns the IG's profiles: <code>Patient-twcore</code>, <code>Condition-twcore</code>, <code>Encounter-twcore</code>, …</li>
-<li><strong>[MCP] <code>fhir_rank_resource_profiles(ig, facts)</code></strong> <em>(optional)</em> → feeds the diagnosis facts in; the server ranks candidates (<code>Condition-twcore</code> top, with matching-field evidence). <strong>It only suggests</strong> — <strong>[LLM]</strong> makes the final pick.</li>
+<li><strong>[MCP] <code>fhir_list_resource_profiles(ig)</code></strong> → 回傳該 IG 的剖面：<code>Patient-twcore</code>、<code>Condition-twcore</code>、<code>Encounter-twcore</code>……</li>
+<li><strong>[MCP] <code>fhir_rank_resource_profiles(ig, facts)</code></strong> <em>（選用）</em> → 把診斷事實餵進去，伺服器對候選剖面排名（<code>Condition-twcore</code> 居首，附上吻合欄位的佐證）。<strong>它只給建議</strong>——最終由 <strong>[LLM]</strong> 拍板。</li>
 </ul>
-<h3 id="stage-3-build-each-resource-patient-first-because-condition-references-it">Stage 3 — Build each resource (Patient first, because Condition references it)<a class="headerlink" href="#stage-3-build-each-resource-patient-first-because-condition-references-it" title="Permanent link">&para;</a></h3>
+<h3 id="3-patient-condition">階段 3 —— 逐一建立資源（先 Patient，因為 Condition 會參照它）<a class="headerlink" href="#3-patient-condition" title="Permanent link">&para;</a></h3>
 <h4 id="3a-patient">3A · Patient<a class="headerlink" href="#3a-patient" title="Permanent link">&para;</a></h4>
 <ol>
-<li><strong>[MCP] <code>fhir_get_resource_skeleton(ig, Patient-twcore)</code></strong> → a <em>blank, annotated fill-form</em> derived live from the profile:
+<li><strong>[MCP] <code>fhir_get_resource_skeleton(ig, Patient-twcore)</code></strong> → 從剖面即時衍生出一份<strong>空白、帶註解的填寫表單</strong>：
    <code>identifier  (1..*, required; sliced — national ID uses slice "NN";
                 system is auto-pinned, you only supply value)
    name        (1..*, required: family / given)
    gender      (0..1; allowed: male | female | other | unknown)
    birthDate   (0..1; date)
    [meta.profile → auto-filled by the server; do not touch]</code></li>
-<li><strong>[LLM]</strong> fills the <strong>semantic</strong> blanks from Stage 0:
+<li><strong>[LLM]</strong> 以階段 0 的事實填入<strong>語意</strong>空格：
    <code>identifier[0].value = "A123456789"
    name = { family: "王", given: ["小明"] }
-   gender = "male"          ← taken from the allowed list in the skeleton
+   gender = "male"          ← 取自骨架中列出的允許值
    birthDate = "1985-03-12"</code>
-   For coded fields it may double-check with <strong>[MCP] <code>fhir_validate_code</code></strong>.</li>
-<li><strong>[MCP] <code>fhir_finalize_resource(ig, Patient-twcore, draft, refCtx)</code></strong> → the server pins the <strong>mechanical</strong> fields (<code>identifier.system</code> for the national-ID slice, <code>identifier.type</code>, <code>meta.profile</code>), runs the validator, and returns <code>{ resource, validation: pass }</code>. The Patient is registered in the <em>reference context</em> (<code>refCtx</code>) so other resources can point to it.</li>
+   對於編碼欄位，它可以用 <strong>[MCP] <code>fhir_validate_code</code></strong> 再確認一次。</li>
+<li><strong>[MCP] <code>fhir_finalize_resource(ig, Patient-twcore, draft, refCtx)</code></strong> → 伺服器釘住<strong>機制性</strong>欄位（身分證 slice 的 <code>identifier.system</code>、<code>identifier.type</code>、<code>meta.profile</code>），執行驗證器，回傳 <code>{ resource, validation: pass }</code>。這個 Patient 會登記進<strong>參照脈絡</strong>（<code>refCtx</code>），讓其他資源可以指向它。</li>
 </ol>
 <h4 id="3b-condition">3B · Condition<a class="headerlink" href="#3b-condition" title="Permanent link">&para;</a></h4>
 <ol>
@@ -2731,23 +2707,23 @@ Diagnosis: influenza, clinical status=active, verification=confirmed, onset=2026
    code               (1..1, required; bound to a SNOMED diagnosis ValueSet)
    subject            (1..1, required; Reference → Patient-twcore)
    onset[x]           (choice; use onsetDateTime for a date)</code></li>
-<li><strong>[LLM]</strong> fills the easy semantic blanks: <code>clinicalStatus=active</code>, <code>verificationStatus=confirmed</code>, <code>onsetDateTime=2026-06-01</code>.</li>
-<li><strong>The key step — turn free text "流行性感冒" into a standard code:</strong></li>
-<li><strong>[MCP] <code>fhir_normalize_code(input="流行性感冒", target = Condition.code's ValueSet)</code></strong> → returns <strong>candidate codes</strong> by semantic match, e.g. SNOMED <code>6142004 | Influenza</code>.</li>
-<li><strong>[MCP] <code>fhir_validate_code</code></strong> → confirms that code really is a member of the bound ValueSet → the LLM writes it into <code>code</code>.</li>
-<li><em>(The LLM must not invent a code here — always normalize, then validate.)</em></li>
-<li><strong>Wire the reference:</strong> <strong>[MCP] <code>fhir_resolve_reference(refCtx, target=Patient, source=王小明)</code></strong> → returns <code>urn:uuid:…</code> → written into <code>subject.reference</code>.</li>
-<li><strong>[MCP] <code>fhir_finalize_resource(ig, Condition-twcore, draft, refCtx)</code></strong> → suppose the validator finds <strong><code>category</code> is required but missing</strong>. The server <strong>does not fix it for you</strong> — it returns <code>{ resource, issues: [category missing] }</code>.</li>
-<li><strong>[LLM]</strong> reads the issue, checks the allowed values with <strong>[MCP] <code>fhir_get_profile_elements(ig, Condition-twcore, view="binding", path="Condition.category")</code></strong>, sets <code>category="encounter-diagnosis"</code>, and <strong>calls <code>fhir_finalize_resource</code> again</strong> → this time it <strong>passes</strong>.</li>
+<li><strong>[LLM]</strong> 填入容易的語意空格：<code>clinicalStatus=active</code>、<code>verificationStatus=confirmed</code>、<code>onsetDateTime=2026-06-01</code>。</li>
+<li><strong>關鍵步驟——把自由文字「流行性感冒」轉成標準碼：</strong></li>
+<li><strong>[MCP] <code>fhir_normalize_code(input="流行性感冒", target = Condition.code 的 ValueSet)</code></strong> → 依語意相似度回傳<strong>候選碼</strong>，例如 SNOMED <code>6142004 | Influenza</code>。</li>
+<li><strong>[MCP] <code>fhir_validate_code</code></strong> → 確認該碼確實屬於綁定的 ValueSet → LLM 才寫入 <code>code</code>。</li>
+<li><em>（LLM 在這裡絕不可自行編造碼——一律先 normalize，再 validate。）</em></li>
+<li><strong>接上參照：[MCP] <code>fhir_resolve_reference(refCtx, target=Patient, source=王小明)</code></strong> → 回傳 <code>urn:uuid:…</code> → 寫入 <code>subject.reference</code>。</li>
+<li><strong>[MCP] <code>fhir_finalize_resource(ig, Condition-twcore, draft, refCtx)</code></strong> → 假設驗證器發現 <strong><code>category</code> 為必填但缺漏</strong>。伺服器<strong>不會替你修</strong>，而是回傳 <code>{ resource, issues: [category missing] }</code>。</li>
+<li><strong>[LLM]</strong> 讀取該問題，用 <strong>[MCP] <code>fhir_get_profile_elements(ig, Condition-twcore, view="binding", path="Condition.category")</code></strong> 查允許值，設定 <code>category="encounter-diagnosis"</code>，然後<strong>再呼叫一次 <code>fhir_finalize_resource</code></strong> → 這次<strong>通過</strong>。</li>
 </ol>
-<h3 id="stage-4-assemble-validate-the-whole-thing">Stage 4 — Assemble &amp; validate the whole thing<a class="headerlink" href="#stage-4-assemble-validate-the-whole-thing" title="Permanent link">&para;</a></h3>
+<h3 id="4">階段 4 —— 組裝與整體驗證<a class="headerlink" href="#4" title="Permanent link">&para;</a></h3>
 <ul>
-<li><strong>[MCP] <code>fhir_build_bundle([Patient, Condition], type="transaction", refCtx)</code></strong> → wraps both into a Bundle, rewrites references to <code>urn:uuid:</code>, returns the bundle + a reference map.</li>
-<li><strong>[MCP] <code>fhir_validate_bundle(bundle)</code></strong> → checks every entry <strong>and</strong> internal reference integrity (Condition.subject really points to the Patient in the bundle) → passes.</li>
+<li><strong>[MCP] <code>fhir_build_bundle([Patient, Condition], type="transaction", refCtx)</code></strong> → 把兩者包成 Bundle，將參照改寫為 <code>urn:uuid:</code>，回傳 bundle 與參照對照表。</li>
+<li><strong>[MCP] <code>fhir_validate_bundle(bundle)</code></strong> → 檢查每一個 entry <strong>以及</strong>內部參照完整性（Condition.subject 確實指向 bundle 內的 Patient）→ 通過。</li>
 </ul>
-<p><strong>The validated Bundle is your output file.</strong></p>
+<p><strong>通過驗證的 Bundle 就是你的輸出檔。</strong></p>
 <hr />
-<h2 id="the-flow-at-a-glance">The flow at a glance<a class="headerlink" href="#the-flow-at-a-glance" title="Permanent link">&para;</a></h2>
+<h2 id="_3">流程一覽<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
 <pre><code>free-text / source data
   │
   ├─[LLM]  understand it, extract facts, decide which resources are needed
@@ -2767,63 +2743,63 @@ Diagnosis: influenza, clinical status=active, verification=confirmed, onset=2026
   └─[MCP] build_bundle → validate_bundle ──▶ final Bundle file
 </code></pre>
 <hr />
-<h2 id="why-its-built-this-way">Why it's built this way<a class="headerlink" href="#why-its-built-this-way" title="Permanent link">&para;</a></h2>
+<h2 id="_4">為什麼這樣設計<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>No mapping templates to maintain.</strong> Older systems needed a hand-written "field A → field B" rule file because software couldn't understand meaning. With an LLM, the model does the semantic mapping live against the skeleton the server hands it — nothing to author or version.</li>
-<li><strong>The LLM can't drift into invalid FHIR.</strong> It only fills semantic values; the server pins the mechanical parts and the validator gates the result. Anything the server can't verify locally comes back as a <em>warning</em>, never a silent "valid".</li>
-<li><strong>A pre-flight check, not the final authority.</strong> When you submit the Bundle to a real FHIR server, <em>that</em> server does the authoritative validation. This flow's job is to catch the great majority of mistakes early, with clear, fixable feedback.</li>
-<li><strong>One toolset, many IGs.</strong> Every tool takes an <code>ig</code> selector, so the same flow works for TW Core today and any IG you import tomorrow — no new tools.</li>
+<li><strong>沒有對應樣板要維護。</strong>舊系統需要手寫的「欄位 A → 欄位 B」規則檔，因為軟體無法理解語意。有了 LLM，模型會對著伺服器交給它的骨架即時完成語意對應——沒有東西需要撰寫或版本控管。</li>
+<li><strong>LLM 無法漂移成無效的 FHIR。</strong>它只填語意值；機制部分由伺服器釘住，結果由驗證器把關。任何伺服器無法在本地查證的事項都會以<strong>警告</strong>回報，絕不會靜默地標成「有效」。</li>
+<li><strong>這是預檢，不是最終權威。</strong>當你把 Bundle 送到真正的 FHIR 伺服器時，<strong>那台</strong>伺服器才做權威驗證。本流程的職責是及早攔下絕大多數錯誤，並給出清楚、可修正的回饋。</li>
+<li><strong>一套工具，多個 IG。</strong>每個工具都接受 <code>ig</code> 選擇器，所以同一套流程今天適用 TW Core，明天也適用任何你匯入的 IG——不需要新工具。</li>
 </ul>
 <hr />
-<h2 id="quick-tool-reference">Quick tool reference<a class="headerlink" href="#quick-tool-reference" title="Permanent link">&para;</a></h2>
+<h2 id="_5">工具速查<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
 <tr>
-<th>Stage</th>
-<th>Tool</th>
-<th>Does</th>
+<th>階段</th>
+<th>工具</th>
+<th>作用</th>
 </tr>
 </thead>
 <tbody>
 <tr>
 <td>IG</td>
 <td><code>fhir_list_igs</code> / <code>fhir_get_ig</code></td>
-<td>list installed IGs (title, jurisdiction, default) / one IG's details</td>
+<td>列出已安裝 IG（title、jurisdiction、預設）/ 單一 IG 詳情</td>
 </tr>
 <tr>
-<td>Discover</td>
+<td>探索</td>
 <td><code>fhir_list_artifacts</code> / <code>fhir_search_artifacts</code></td>
-<td>browse / search an IG's profiles, ValueSets, etc.</td>
+<td>瀏覽 / 搜尋某 IG 的剖面、ValueSet 等</td>
 </tr>
 <tr>
-<td>Profile</td>
+<td>剖面</td>
 <td><code>fhir_list_resource_profiles</code> / <code>fhir_rank_resource_profiles</code> / <code>fhir_get_profile</code></td>
-<td>list selectable profiles / rank candidates for your data / profile summary</td>
+<td>列出可選剖面 / 依你的資料排名候選 / 剖面摘要</td>
 </tr>
 <tr>
-<td>Structure</td>
+<td>結構</td>
 <td><code>fhir_get_profile_elements(view=…)</code></td>
-<td>one tool, many views: <code>elements</code>, <code>element</code>, <code>slices</code>, <code>choices</code>, <code>binding</code>, <code>examples</code></td>
+<td>一個工具多種視圖：<code>elements</code>、<code>element</code>、<code>slices</code>、<code>choices</code>、<code>binding</code>、<code>examples</code></td>
 </tr>
 <tr>
-<td>Terminology</td>
+<td>術語</td>
 <td><code>fhir_get_valueset</code> / <code>fhir_expand_valueset</code> / <code>fhir_lookup_code</code> / <code>fhir_validate_code</code> / <code>fhir_normalize_code</code></td>
-<td>inspect/expand a ValueSet, look up or validate a code, map free text → candidate codes</td>
+<td>檢視 / 展開 ValueSet、查詢或驗證碼、自由文字 → 候選碼</td>
 </tr>
 <tr>
-<td>Author</td>
+<td>授權</td>
 <td><code>fhir_get_resource_skeleton</code> / <code>fhir_finalize_resource</code></td>
-<td>get the annotated fill-form / pin mechanical fields + validate</td>
+<td>取得帶註解的填寫表單 / 釘住機制欄位並驗證</td>
 </tr>
 <tr>
-<td>Assemble</td>
+<td>組裝</td>
 <td><code>fhir_resolve_reference</code> / <code>fhir_build_bundle</code></td>
-<td>link resources / package into a Bundle</td>
+<td>連結資源 / 打包成 Bundle</td>
 </tr>
 <tr>
-<td>Validate</td>
+<td>驗證</td>
 <td><code>fhir_validate_resource</code> / <code>fhir_validate_bundle</code></td>
-<td>conformance check a resource / a whole bundle</td>
+<td>對單一資源 / 整個 bundle 做一致性檢查</td>
 </tr>
 </tbody>
 </table>
@@ -2884,6 +2860,8 @@ Diagnosis: influenza, clinical status=active, verification=confirmed, onset=2026
     
     
       <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+        <script src="../javascripts/lang-switch.js"></script>
       
     
   </body>

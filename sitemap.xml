@@ -1,219 +1,731 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
     <url>
-         <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/</loc>
-         <lastmod>2026-08-02</lastmod>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/"/>
     </url>
     <url>
-         <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/MinerU-vs-OpenAI/</loc>
-         <lastmod>2026-08-02</lastmod>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/MinerU-vs-OpenAI/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/MinerU-vs-OpenAI/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/MinerU-vs-OpenAI/"/>
     </url>
     <url>
-         <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/WEBSITE/</loc>
-         <lastmod>2026-08-02</lastmod>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/WEBSITE/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/WEBSITE/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/WEBSITE/"/>
     </url>
     <url>
-         <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/datasets/</loc>
-         <lastmod>2026-08-02</lastmod>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/datasets/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/datasets/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/datasets/"/>
     </url>
     <url>
-         <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/fhir-authoring-walkthrough/</loc>
-         <lastmod>2026-08-02</lastmod>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/fhir-authoring-walkthrough/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/fhir-authoring-walkthrough/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/fhir-authoring-walkthrough/"/>
     </url>
     <url>
-         <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/fhir-bundle-conversion-prompt/</loc>
-         <lastmod>2026-08-02</lastmod>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/fhir-bundle-conversion-prompt/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/fhir-bundle-conversion-prompt/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/fhir-bundle-conversion-prompt/"/>
     </url>
     <url>
-         <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/fhir-ig-mcp-toolset-assessment/</loc>
-         <lastmod>2026-08-02</lastmod>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/fhir-ig-mcp-toolset-assessment/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/fhir-ig-mcp-toolset-assessment/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/fhir-ig-mcp-toolset-assessment/"/>
     </url>
     <url>
-         <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/fhir-resource-conversion-prompt/</loc>
-         <lastmod>2026-08-02</lastmod>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/fhir-resource-conversion-prompt/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/fhir-resource-conversion-prompt/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/fhir-resource-conversion-prompt/"/>
     </url>
     <url>
-         <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/getting-started/</loc>
-         <lastmod>2026-08-02</lastmod>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/getting-started/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/getting-started/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/getting-started/"/>
     </url>
     <url>
-         <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/ocr-test-setup/</loc>
-         <lastmod>2026-08-02</lastmod>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/ocr-test-setup/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/ocr-test-setup/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/ocr-test-setup/"/>
     </url>
     <url>
-         <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/admin/</loc>
-         <lastmod>2026-08-02</lastmod>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/admin/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/admin/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/admin/"/>
     </url>
     <url>
-         <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/admin/jobs-and-worker/</loc>
-         <lastmod>2026-08-02</lastmod>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/admin/jobs-and-worker/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/admin/jobs-and-worker/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/admin/jobs-and-worker/"/>
     </url>
     <url>
-         <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/api/</loc>
-         <lastmod>2026-08-02</lastmod>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/api/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/api/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/api/"/>
     </url>
     <url>
-         <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/api/fhir-services/</loc>
-         <lastmod>2026-08-02</lastmod>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/api/fhir-services/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/api/fhir-services/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/api/fhir-services/"/>
     </url>
     <url>
-         <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/api/icd-service/</loc>
-         <lastmod>2026-08-02</lastmod>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/api/icd-service/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/api/icd-service/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/api/icd-service/"/>
     </url>
     <url>
-         <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/api/lab-service/</loc>
-         <lastmod>2026-08-02</lastmod>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/api/lab-service/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/api/lab-service/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/api/lab-service/"/>
     </url>
     <url>
-         <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/architecture/deployment/</loc>
-         <lastmod>2026-08-02</lastmod>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/architecture/deployment/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/architecture/deployment/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/architecture/deployment/"/>
     </url>
     <url>
-         <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/data-sources/</loc>
-         <lastmod>2026-08-02</lastmod>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/data-sources/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/data-sources/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/data-sources/"/>
     </url>
     <url>
-         <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/data-sources/icd10/</loc>
-         <lastmod>2026-08-02</lastmod>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/data-sources/icd10/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/data-sources/icd10/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/data-sources/icd10/"/>
     </url>
     <url>
-         <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/data-sources/loinc/</loc>
-         <lastmod>2026-08-02</lastmod>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/data-sources/loinc/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/data-sources/loinc/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/data-sources/loinc/"/>
     </url>
     <url>
-         <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/data-sources/test-data/</loc>
-         <lastmod>2026-08-02</lastmod>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/data-sources/test-data/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/data-sources/test-data/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/data-sources/test-data/"/>
     </url>
     <url>
-         <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/deployment/</loc>
-         <lastmod>2026-08-02</lastmod>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/deployment/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/deployment/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/deployment/"/>
     </url>
     <url>
-         <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/deployment/configuration/</loc>
-         <lastmod>2026-08-02</lastmod>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/deployment/configuration/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/deployment/configuration/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/deployment/configuration/"/>
     </url>
     <url>
-         <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/deployment/dpa/</loc>
-         <lastmod>2026-08-02</lastmod>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/deployment/performance/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/deployment/performance/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/deployment/performance/"/>
     </url>
     <url>
-         <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/deployment/performance/</loc>
-         <lastmod>2026-08-02</lastmod>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/development/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/development/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/development/"/>
     </url>
     <url>
-         <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/deployment/privacy/</loc>
-         <lastmod>2026-08-02</lastmod>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/development/code-style/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/development/code-style/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/development/code-style/"/>
     </url>
     <url>
-         <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/development/</loc>
-         <lastmod>2026-08-02</lastmod>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/development/contributing/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/development/contributing/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/development/contributing/"/>
     </url>
     <url>
-         <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/development/code-style/</loc>
-         <lastmod>2026-08-02</lastmod>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/development/testing/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/development/testing/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/development/testing/"/>
     </url>
     <url>
-         <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/development/contributing/</loc>
-         <lastmod>2026-08-02</lastmod>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/faq/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/faq/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/faq/"/>
     </url>
     <url>
-         <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/development/testing/</loc>
-         <lastmod>2026-08-02</lastmod>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/faq/loinc/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/faq/loinc/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/faq/loinc/"/>
     </url>
     <url>
-         <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/faq/</loc>
-         <lastmod>2026-08-02</lastmod>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/faq/usage/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/faq/usage/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/faq/usage/"/>
     </url>
     <url>
-         <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/faq/loinc/</loc>
-         <lastmod>2026-08-02</lastmod>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/guides/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/guides/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/guides/"/>
     </url>
     <url>
-         <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/faq/usage/</loc>
-         <lastmod>2026-08-02</lastmod>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/guides/lab-interpretation/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/guides/lab-interpretation/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/guides/lab-interpretation/"/>
     </url>
     <url>
-         <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/guides/</loc>
-         <lastmod>2026-08-02</lastmod>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/guides/loinc-integration/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/guides/loinc-integration/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/guides/loinc-integration/"/>
     </url>
     <url>
-         <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/guides/lab-interpretation/</loc>
-         <lastmod>2026-08-02</lastmod>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/modules/drug-service/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/modules/drug-service/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/modules/drug-service/"/>
     </url>
     <url>
-         <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/guides/loinc-integration/</loc>
-         <lastmod>2026-08-02</lastmod>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/modules/fhir-condition-service/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/modules/fhir-condition-service/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/modules/fhir-condition-service/"/>
     </url>
     <url>
-         <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/modules/drug-service/</loc>
-         <lastmod>2026-08-02</lastmod>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/modules/fhir-ig-service/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/modules/fhir-ig-service/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/modules/fhir-ig-service/"/>
     </url>
     <url>
-         <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/modules/fhir-condition-service/</loc>
-         <lastmod>2026-08-02</lastmod>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/modules/fhir-medication-service/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/modules/fhir-medication-service/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/modules/fhir-medication-service/"/>
     </url>
     <url>
-         <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/modules/fhir-ig-service/</loc>
-         <lastmod>2026-08-02</lastmod>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/modules/food-nutrition-service/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/modules/food-nutrition-service/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/modules/food-nutrition-service/"/>
     </url>
     <url>
-         <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/modules/fhir-medication-service/</loc>
-         <lastmod>2026-08-02</lastmod>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/modules/health-supplements-service/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/modules/health-supplements-service/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/modules/health-supplements-service/"/>
     </url>
     <url>
-         <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/modules/food-nutrition-service/</loc>
-         <lastmod>2026-08-02</lastmod>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/modules/icd-service/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/modules/icd-service/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/modules/icd-service/"/>
     </url>
     <url>
-         <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/modules/health-supplements-service/</loc>
-         <lastmod>2026-08-02</lastmod>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/modules/lab-service/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/modules/lab-service/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/modules/lab-service/"/>
     </url>
     <url>
-         <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/modules/icd-service/</loc>
-         <lastmod>2026-08-02</lastmod>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/modules/snomed-service/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/modules/snomed-service/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/modules/snomed-service/"/>
     </url>
     <url>
-         <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/modules/lab-service/</loc>
-         <lastmod>2026-08-02</lastmod>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/tools/drug-tools/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/tools/drug-tools/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/tools/drug-tools/"/>
     </url>
     <url>
-         <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/modules/snomed-service/</loc>
-         <lastmod>2026-08-02</lastmod>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/tools/fhir-ig-tools/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/tools/fhir-ig-tools/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/tools/fhir-ig-tools/"/>
     </url>
     <url>
-         <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/tools/drug-tools/</loc>
-         <lastmod>2026-08-02</lastmod>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/tools/fhir-server-tools/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/tools/fhir-server-tools/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/tools/fhir-server-tools/"/>
     </url>
     <url>
-         <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/tools/fhir-ig-tools/</loc>
-         <lastmod>2026-08-02</lastmod>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/tools/fhir-tools/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/tools/fhir-tools/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/tools/fhir-tools/"/>
     </url>
     <url>
-         <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/tools/fhir-server-tools/</loc>
-         <lastmod>2026-08-02</lastmod>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/tools/health-supplements-tools/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/tools/health-supplements-tools/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/tools/health-supplements-tools/"/>
     </url>
     <url>
-         <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/tools/fhir-tools/</loc>
-         <lastmod>2026-08-02</lastmod>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/tools/icd-tools/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/tools/icd-tools/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/tools/icd-tools/"/>
     </url>
     <url>
-         <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/tools/health-supplements-tools/</loc>
-         <lastmod>2026-08-02</lastmod>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/tools/lab-tools/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/tools/lab-tools/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/tools/lab-tools/"/>
     </url>
     <url>
-         <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/tools/icd-tools/</loc>
-         <lastmod>2026-08-02</lastmod>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/tools/nutrition-tools/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/tools/nutrition-tools/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/tools/nutrition-tools/"/>
     </url>
     <url>
-         <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/tools/lab-tools/</loc>
-         <lastmod>2026-08-02</lastmod>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/tools/snomed-tools/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/tools/snomed-tools/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/tools/snomed-tools/"/>
     </url>
     <url>
-         <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/tools/nutrition-tools/</loc>
-         <lastmod>2026-08-02</lastmod>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/en/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/"/>
     </url>
     <url>
-         <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/tools/snomed-tools/</loc>
-         <lastmod>2026-08-02</lastmod>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/en/MinerU-vs-OpenAI/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/MinerU-vs-OpenAI/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/MinerU-vs-OpenAI/"/>
+    </url>
+    <url>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/en/WEBSITE/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/WEBSITE/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/WEBSITE/"/>
+    </url>
+    <url>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/en/datasets/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/datasets/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/datasets/"/>
+    </url>
+    <url>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/en/fhir-authoring-walkthrough/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/fhir-authoring-walkthrough/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/fhir-authoring-walkthrough/"/>
+    </url>
+    <url>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/en/fhir-bundle-conversion-prompt/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/fhir-bundle-conversion-prompt/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/fhir-bundle-conversion-prompt/"/>
+    </url>
+    <url>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/en/fhir-ig-mcp-toolset-assessment/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/fhir-ig-mcp-toolset-assessment/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/fhir-ig-mcp-toolset-assessment/"/>
+    </url>
+    <url>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/en/fhir-resource-conversion-prompt/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/fhir-resource-conversion-prompt/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/fhir-resource-conversion-prompt/"/>
+    </url>
+    <url>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/en/getting-started/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/getting-started/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/getting-started/"/>
+    </url>
+    <url>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/en/ocr-test-setup/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/ocr-test-setup/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/ocr-test-setup/"/>
+    </url>
+    <url>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/en/admin/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/admin/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/admin/"/>
+    </url>
+    <url>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/en/admin/jobs-and-worker/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/admin/jobs-and-worker/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/admin/jobs-and-worker/"/>
+    </url>
+    <url>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/en/api/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/api/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/api/"/>
+    </url>
+    <url>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/en/api/fhir-services/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/api/fhir-services/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/api/fhir-services/"/>
+    </url>
+    <url>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/en/api/icd-service/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/api/icd-service/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/api/icd-service/"/>
+    </url>
+    <url>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/en/api/lab-service/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/api/lab-service/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/api/lab-service/"/>
+    </url>
+    <url>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/en/architecture/deployment/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/architecture/deployment/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/architecture/deployment/"/>
+    </url>
+    <url>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/en/data-sources/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/data-sources/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/data-sources/"/>
+    </url>
+    <url>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/en/data-sources/icd10/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/data-sources/icd10/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/data-sources/icd10/"/>
+    </url>
+    <url>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/en/data-sources/loinc/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/data-sources/loinc/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/data-sources/loinc/"/>
+    </url>
+    <url>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/en/data-sources/test-data/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/data-sources/test-data/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/data-sources/test-data/"/>
+    </url>
+    <url>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/en/deployment/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/deployment/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/deployment/"/>
+    </url>
+    <url>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/en/deployment/configuration/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/deployment/configuration/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/deployment/configuration/"/>
+    </url>
+    <url>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/en/deployment/performance/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/deployment/performance/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/deployment/performance/"/>
+    </url>
+    <url>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/en/development/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/development/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/development/"/>
+    </url>
+    <url>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/en/development/code-style/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/development/code-style/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/development/code-style/"/>
+    </url>
+    <url>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/en/development/contributing/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/development/contributing/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/development/contributing/"/>
+    </url>
+    <url>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/en/development/testing/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/development/testing/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/development/testing/"/>
+    </url>
+    <url>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/en/faq/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/faq/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/faq/"/>
+    </url>
+    <url>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/en/faq/loinc/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/faq/loinc/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/faq/loinc/"/>
+    </url>
+    <url>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/en/faq/usage/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/faq/usage/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/faq/usage/"/>
+    </url>
+    <url>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/en/guides/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/guides/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/guides/"/>
+    </url>
+    <url>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/en/guides/lab-interpretation/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/guides/lab-interpretation/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/guides/lab-interpretation/"/>
+    </url>
+    <url>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/en/guides/loinc-integration/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/guides/loinc-integration/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/guides/loinc-integration/"/>
+    </url>
+    <url>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/en/modules/drug-service/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/modules/drug-service/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/modules/drug-service/"/>
+    </url>
+    <url>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/en/modules/fhir-condition-service/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/modules/fhir-condition-service/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/modules/fhir-condition-service/"/>
+    </url>
+    <url>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/en/modules/fhir-ig-service/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/modules/fhir-ig-service/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/modules/fhir-ig-service/"/>
+    </url>
+    <url>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/en/modules/fhir-medication-service/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/modules/fhir-medication-service/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/modules/fhir-medication-service/"/>
+    </url>
+    <url>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/en/modules/food-nutrition-service/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/modules/food-nutrition-service/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/modules/food-nutrition-service/"/>
+    </url>
+    <url>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/en/modules/health-supplements-service/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/modules/health-supplements-service/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/modules/health-supplements-service/"/>
+    </url>
+    <url>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/en/modules/icd-service/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/modules/icd-service/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/modules/icd-service/"/>
+    </url>
+    <url>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/en/modules/lab-service/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/modules/lab-service/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/modules/lab-service/"/>
+    </url>
+    <url>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/en/modules/snomed-service/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/modules/snomed-service/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/modules/snomed-service/"/>
+    </url>
+    <url>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/en/tools/drug-tools/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/tools/drug-tools/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/tools/drug-tools/"/>
+    </url>
+    <url>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/en/tools/fhir-ig-tools/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/tools/fhir-ig-tools/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/tools/fhir-ig-tools/"/>
+    </url>
+    <url>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/en/tools/fhir-server-tools/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/tools/fhir-server-tools/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/tools/fhir-server-tools/"/>
+    </url>
+    <url>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/en/tools/fhir-tools/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/tools/fhir-tools/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/tools/fhir-tools/"/>
+    </url>
+    <url>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/en/tools/health-supplements-tools/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/tools/health-supplements-tools/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/tools/health-supplements-tools/"/>
+    </url>
+    <url>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/en/tools/icd-tools/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/tools/icd-tools/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/tools/icd-tools/"/>
+    </url>
+    <url>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/en/tools/lab-tools/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/tools/lab-tools/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/tools/lab-tools/"/>
+    </url>
+    <url>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/en/tools/nutrition-tools/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/tools/nutrition-tools/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/tools/nutrition-tools/"/>
+    </url>
+    <url>
+        <loc>https://healthymind-tech.github.io/Taiwan-Health-MCP/en/tools/snomed-tools/</loc>
+        <lastmod>2026-08-08</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/tools/snomed-tools/"/>
+        <xhtml:link rel="alternate" hreflang="zh-TW" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/tools/snomed-tools/"/>
     </url>
 </urlset>

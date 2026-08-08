@@ -22,6 +22,10 @@
       
       
         
+          <link rel="alternate" href="./" hreflang="zh-TW">
+        
+          <link rel="alternate" href="../en/data-sources/" hreflang="en">
+        
       
       
       <link rel="icon" href="../assets/images/favicon.png">
@@ -116,6 +120,32 @@
     
       <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
     
+    
+      <div class="md-header__option">
+  <div class="md-select">
+    
+    <button class="md-header__button md-icon" aria-label="選擇語言">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m12.87 15.07-2.54-2.51.03-.03A17.5 17.5 0 0 0 14.07 6H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2zm-2.62 7 1.62-4.33L19.12 17z"/></svg>
+    </button>
+    <div class="md-select__inner">
+      <ul class="md-select__list">
+        
+          <li class="md-select__item">
+            <a href="./" hreflang="zh-TW" class="md-select__link">
+              繁體中文
+            </a>
+          </li>
+        
+          <li class="md-select__item">
+            <a href="../en/data-sources/" hreflang="en" class="md-select__link">
+              English
+            </a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+</div>
     
     
       
@@ -1906,62 +1936,6 @@
 
               
             
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../deployment/dpa/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    資料處理附錄 (DPA)
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../deployment/privacy/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    隱私政策頁面
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
           </ul>
         </nav>
       
@@ -2359,7 +2333,7 @@
 
 
 <h1 id="_1">資料來源<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h1>
-<p>所有資料匯入都在<strong>管理後台（Admin → Modules）</strong>操作,由 <code>admin-worker</code> 背景執行（已無 CLI data-loader）。下表的「匯入階段」對應 worker 內部使用的 loader 階段名稱。</p>
+<p>所有資料匯入都在<strong>管理後台（Admin → Modules）</strong>操作,由 <code>admin-worker</code> 背景執行（已無 CLI data-loader）。下表的「匯入階段」是 <code>admin.import_jobs.job_type</code> 的實際值——建立工作時送出的就是這些字串。</p>
 <table>
 <thead>
 <tr>
@@ -2375,49 +2349,49 @@
 <td>ICD-10-CM / PCS</td>
 <td>NLM / CMS 2025</td>
 <td>上傳 zip → 匯入</td>
-<td><code>--icd</code></td>
+<td><code>icd_import</code></td>
 <td>公開（zip 需自備）</td>
 </tr>
 <tr>
 <td>LOINC</td>
 <td>2.80（Regenstrief）</td>
 <td>上傳 zip → 匯入</td>
-<td><code>--loinc</code></td>
+<td><code>loinc_import</code></td>
 <td>需 LOINC 授權</td>
 </tr>
 <tr>
 <td>SNOMED CT</td>
 <td>International RF2</td>
 <td>上傳 RF2 zip → 匯入</td>
-<td><code>--snomed</code></td>
+<td><code>snomed_import</code></td>
 <td>需 SNOMED 授權</td>
 </tr>
 <tr>
 <td>FHIR IG（TWCore 等）</td>
 <td>MoHW / packages.fhir.org</td>
 <td>上傳 <code>package.tgz</code> 或 Admin → IG 抓取</td>
-<td><code>--twcore</code></td>
+<td><code>ig_import</code></td>
 <td>公開</td>
 </tr>
 <tr>
 <td>藥品（台灣 FDA / TFDA）</td>
 <td>TFDA <code>36_2.csv</code> + 線上爬取</td>
 <td>API 抓取 + 爬取分析</td>
-<td><code>--drug-index</code> → <code>--drug-enrich</code> → <code>--drug-analysis</code></td>
+<td><code>drug_index_import</code> → <code>drug_enrichment</code> → <code>drug_analysis</code></td>
 <td>開放資料</td>
 </tr>
 <tr>
 <td>台灣健康補充品</td>
 <td>TFDA 開放資料</td>
 <td>API 抓取</td>
-<td><code>--health-supplements</code></td>
+<td><code>health_supplements_sync</code></td>
 <td>開放資料</td>
 </tr>
 <tr>
 <td>台灣食品營養</td>
 <td>TFDA 開放資料</td>
 <td>API 抓取</td>
-<td><code>--food-nutrition</code></td>
+<td><code>food_nutrition_sync</code></td>
 <td>開放資料</td>
 </tr>
 <tr>
@@ -2495,6 +2469,8 @@
     
     
       <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+        <script src="../javascripts/lang-switch.js"></script>
       
     
   </body>

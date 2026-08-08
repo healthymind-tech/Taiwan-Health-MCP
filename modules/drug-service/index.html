@@ -22,6 +22,10 @@
       
       
         
+          <link rel="alternate" href="./" hreflang="zh-TW">
+        
+          <link rel="alternate" href="../../en/modules/drug-service/" hreflang="en">
+        
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
@@ -116,6 +120,32 @@
     
       <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
     
+    
+      <div class="md-header__option">
+  <div class="md-select">
+    
+    <button class="md-header__button md-icon" aria-label="選擇語言">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m12.87 15.07-2.54-2.51.03-.03A17.5 17.5 0 0 0 14.07 6H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2zm-2.62 7 1.62-4.33L19.12 17z"/></svg>
+    </button>
+    <div class="md-select__inner">
+      <ul class="md-select__list">
+        
+          <li class="md-select__item">
+            <a href="./" hreflang="zh-TW" class="md-select__link">
+              繁體中文
+            </a>
+          </li>
+        
+          <li class="md-select__item">
+            <a href="../../en/modules/drug-service/" hreflang="en" class="md-select__link">
+              English
+            </a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+</div>
     
     
       
@@ -2011,62 +2041,6 @@
 
               
             
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../deployment/dpa/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    資料處理附錄 (DPA)
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../deployment/privacy/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    隱私政策頁面
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
           </ul>
         </nav>
       
@@ -2590,11 +2564,11 @@
 <h2 id="_3">資料管線（三階段）<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
 <p>藥物資料以三個匯入階段建立，於 Admin Console 的藥物頁面觸發與監控（由 <code>admin-worker</code> 背景執行）：</p>
 <ol>
-<li><strong><code>--drug-index</code></strong> — 從 TFDA 標準 <code>36_2.csv</code> 載入許可證索引，建立 <code>drug.licenses</code> 等基礎表。</li>
-<li><strong><code>--drug-enrich</code></strong> — 爬取 TFDA 取得電子仿單、文件資產與藥錠外觀紀錄，並將檔案存入 MinIO。</li>
-<li><strong><code>--drug-analysis</code></strong> — 對仿單文件執行 OCR（<code>DRUG_OCR_*</code>）與 LLM 分析（<code>DRUG_ANALYSIS_*</code>），萃取結構化內容寫入 <code>drug.insert_analysis</code>。</li>
+<li><strong><code>drug_index_import</code></strong> — 從 TFDA 標準 <code>36_2.csv</code> 載入許可證索引，建立 <code>drug.licenses</code> 等基礎表。</li>
+<li><strong><code>drug_enrichment</code></strong> — 爬取 TFDA 取得電子仿單、文件資產與藥錠外觀紀錄，並將檔案存入 MinIO。</li>
+<li><strong><code>drug_analysis</code></strong> — 對仿單文件執行 MinerU OCR 與分析 LLM，萃取結構化內容寫入 <code>drug.insert_analysis</code>。OCR 與分析 LLM 的端點在 Admin → Settings 設定（存於 <code>admin.llm_profiles</code>），<strong>不從環境變數讀取</strong>。</li>
 </ol>
-<p><code>--drug</code> 等同於一次執行 index + enrich。</p>
+<p>另有 <code>drug_pipeline</code> 工作型別可一次串起三個階段。三者也會自動串接：每個自動串接的工作以 <code>DRUG_AUTOCHAIN_BATCH_LIMIT</code>（預設 200）為上限；<strong>手動排入且未指定 <code>limit</code> 的 <code>drug_enrichment</code> 不受此限</strong>，會爬完整個待處理佇列。</p>
 <h2 id="_4">技術架構<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong>資料來源</strong>：台灣 FDA 西藥許可證（<code>mcp.fda.gov.tw</code>），透過 <code>DRUG_TFDA_BASE_URL</code> 設定。</li>
@@ -2609,7 +2583,7 @@
 <h2 id="_6">關鍵限制<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h2>
 <ul>
 <li>仿單 OCR + LLM 分析為機器產生，必須由臨床人員覆核。</li>
-<li><code>--drug-enrich</code> 與 <code>--drug-analysis</code> 需要可達的 TFDA / OCR / 分析 LLM 端點。</li>
+<li><code>drug_enrichment</code> 與 <code>drug_analysis</code> 需要可達的 TFDA / OCR / 分析 LLM 端點。</li>
 </ul>
 
 
@@ -2668,6 +2642,8 @@
     
     
       <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+        <script src="../../javascripts/lang-switch.js"></script>
       
     
   </body>

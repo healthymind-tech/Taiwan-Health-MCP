@@ -22,6 +22,10 @@
       
       
         
+          <link rel="alternate" href="./" hreflang="zh-TW">
+        
+          <link rel="alternate" href="../../en/tools/fhir-server-tools/" hreflang="en">
+        
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
@@ -116,6 +120,32 @@
     
       <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
     
+    
+      <div class="md-header__option">
+  <div class="md-select">
+    
+    <button class="md-header__button md-icon" aria-label="選擇語言">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m12.87 15.07-2.54-2.51.03-.03A17.5 17.5 0 0 0 14.07 6H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2zm-2.62 7 1.62-4.33L19.12 17z"/></svg>
+    </button>
+    <div class="md-select__inner">
+      <ul class="md-select__list">
+        
+          <li class="md-select__item">
+            <a href="./" hreflang="zh-TW" class="md-select__link">
+              繁體中文
+            </a>
+          </li>
+        
+          <li class="md-select__item">
+            <a href="../../en/tools/fhir-server-tools/" hreflang="en" class="md-select__link">
+              English
+            </a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+</div>
     
     
       
@@ -2012,62 +2042,6 @@
 
               
             
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../deployment/dpa/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    資料處理附錄 (DPA)
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../deployment/privacy/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    隱私政策頁面
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
           </ul>
         </nav>
       
@@ -2656,6 +2630,24 @@
 <td style="text-align: left;">目標資源 ID（read / update / patch / delete）</td>
 </tr>
 <tr>
+<td style="text-align: left;"><code>query_json</code></td>
+<td style="text-align: left;">string</td>
+<td style="text-align: left;"><code>search</code> 時使用</td>
+<td style="text-align: left;">搜尋參數的 JSON 物件字串，例如 <code>'{"name":"Chen","_count":"10"}'</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>resource_json</code></td>
+<td style="text-align: left;">string</td>
+<td style="text-align: left;"><code>create</code> / <code>update</code> 時必填</td>
+<td style="text-align: left;">完整 FHIR 資源的 JSON 字串</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>patch_json</code></td>
+<td style="text-align: left;">string</td>
+<td style="text-align: left;"><code>patch</code> 時必填</td>
+<td style="text-align: left;">JSON Patch 陣列的字串</td>
+</tr>
+<tr>
 <td style="text-align: left;"><code>confirm_write</code></td>
 <td style="text-align: left;">boolean</td>
 <td style="text-align: left;">寫入時必填</td>
@@ -2665,14 +2657,14 @@
 <td style="text-align: left;"><code>token_strategy</code></td>
 <td style="text-align: left;">string</td>
 <td style="text-align: left;">否</td>
-<td style="text-align: left;">覆寫該伺服器的預設 token 策略（<code>fresh</code> / <code>cached</code>）</td>
+<td style="text-align: left;">覆寫該伺服器的預設 token 策略：<code>auto</code>（預設）/ <code>fresh</code> / <code>cached</code></td>
 </tr>
 </tbody>
 </table>
 <h3 id="_6">注意<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h3>
 <ul>
 <li>操作與資源型別會受伺服器的 <code>allowed_operations</code> / <code>allowed_resource_types</code> 限制；不被允許者直接拒絕。</li>
-<li>路徑由 <code>operation</code> / <code>resource_type</code> / <code>resource_id</code> 組成，呼叫端<strong>不</strong>直接傳遞 URL。</li>
+<li>路徑由 <code>operation</code> / <code>resource_type</code> / <code>resource_id</code> 組成，呼叫端<strong>不</strong>直接傳遞 URL；查詢字串與請求主體則分別由 <code>query_json</code>、<code>resource_json</code>、<code>patch_json</code> 提供（皆為 JSON <strong>字串</strong>，不是物件）。</li>
 <li>OAuth token 由 MCP 伺服器代為處理，呼叫端不經手。</li>
 <li>Client Credentials（含 <code>private_key_jwt</code>）依 <code>fresh</code> / <code>cached</code> 策略取 token；Authorization Code 使用管理後台儲存的加密 grant，並在到期時自動 refresh。Authorization Code 伺服器必須先在 Admin → FHIR Servers 完成 <strong>Authorize</strong>。</li>
 </ul>
@@ -2733,6 +2725,8 @@
     
     
       <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+        <script src="../../javascripts/lang-switch.js"></script>
       
     
   </body>

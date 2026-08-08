@@ -1,0 +1,3501 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Taiwan health & medical data MCP server — technical documentation">
+      
+      
+        <meta name="author" content="Taiwan Health MCP Team">
+      
+      
+        <link rel="canonical" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/deployment/">
+      
+      
+        <link rel="prev" href="../admin/jobs-and-worker/">
+      
+      
+        <link rel="next" href="../architecture/deployment/">
+      
+      
+        
+          <link rel="alternate" href="../../deployment/" hreflang="zh-TW">
+        
+          <link rel="alternate" href="./" hreflang="en">
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Deployment Guide - Taiwan Health MCP</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#deployment-guide" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../" title="Taiwan Health MCP" class="md-header__button md-logo" aria-label="Taiwan Health MCP" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Taiwan Health MCP
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Deployment Guide
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+      <div class="md-header__option">
+  <div class="md-select">
+    
+    <button class="md-header__button md-icon" aria-label="Select language">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m12.87 15.07-2.54-2.51.03-.03A17.5 17.5 0 0 0 14.07 6H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2zm-2.62 7 1.62-4.33L19.12 17z"/></svg>
+    </button>
+    <div class="md-select__inner">
+      <ul class="md-select__list">
+        
+          <li class="md-select__item">
+            <a href="../../deployment/" hreflang="zh-TW" class="md-select__link">
+              繁體中文
+            </a>
+          </li>
+        
+          <li class="md-select__item">
+            <a href="./" hreflang="en" class="md-select__link">
+              English
+            </a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+</div>
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/healthymind-tech/Taiwan-Health-MCP" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    healthymind-tech/Taiwan-Health-MCP
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../" title="Taiwan Health MCP" class="md-nav__button md-logo" aria-label="Taiwan Health MCP" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Taiwan Health MCP
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/healthymind-tech/Taiwan-Health-MCP" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    healthymind-tech/Taiwan-Health-MCP
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_1" id="__nav_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Home
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Taiwan Health MCP Server
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Modules
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Modules
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/icd-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ICD-10
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/drug-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Drugs / TFDA
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/lab-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Labs / LOINC
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/snomed-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SNOMED CT
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/health-supplements-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Health Supplements
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/food-nutrition-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Food Nutrition
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/fhir-condition-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FHIR Condition
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/fhir-medication-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FHIR Medication
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/fhir-ig-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FHIR IG
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MCP Tools
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    MCP Tools
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tools/icd-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ICD-10 Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tools/drug-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Drug Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tools/lab-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Lab / LOINC Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tools/snomed-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SNOMED Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tools/health-supplements-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Health Supplement Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tools/nutrition-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Food Nutrition Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tools/fhir-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FHIR Condition / Medication Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tools/fhir-ig-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FHIR IG Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tools/fhir-server-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FHIR Server Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Sources
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Data Sources
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../data-sources/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data Sources
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../data-sources/test-data/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Test Data Files
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../data-sources/icd10/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ICD-10
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../data-sources/loinc/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LOINC
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FHIR Authoring
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    FHIR Authoring
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fhir-authoring-walkthrough/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Authoring Walkthrough
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fhir-ig-mcp-toolset-assessment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Toolset Design Assessment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fhir-resource-conversion-prompt/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Resource Conversion Prompt (auto type detection)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fhir-bundle-conversion-prompt/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bundle Conversion Prompt
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/lab-interpretation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Lab Interpretation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/loinc-integration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LOINC Integration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/fhir-services/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FHIR Services API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/icd-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ICD Service
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/lab-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Lab Service
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Admin Console
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Admin Console
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../admin/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Admin Console
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../admin/jobs-and-worker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Jobs & Scheduling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Deployment
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment Guide
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#supported-environments" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Supported environments
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Supported environments">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#resource-requirements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Resource requirements
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#services" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Services
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#deployment-procedure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deployment procedure
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Deployment procedure">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#step-1-get-the-code" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 1: Get the code
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-2-create-env" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 2: Create .env
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Step 2: Create .env">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#2-1-required-must-change-variables" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2-1. Required / must-change variables
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-2-set-the-admin-console-password" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2-2. Set the admin console password
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-3-keep-the-encryption-key-consistent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2-3. Keep the encryption key consistent
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-4-know-which-settings-are-read-only-once" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2-4. Know which settings are read only once
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-5-a-minimal-working-env" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2-5. A minimal working .env
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-3-build-and-start" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 3: Build and start
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-4-verify" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 4: Verify
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-5-sign-in-and-configure-the-model-endpoints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 5: Sign in and configure the model endpoints
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-6-load-data" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 6: Load data
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#day-2-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Day-2 operations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Day-2 operations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#updating-and-redeploying" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Updating and redeploying
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#database-migrations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Database migrations
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#backups" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Backups
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#external-ports" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Exposed ports and hardening
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#further-reading" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Further reading
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Further reading">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#architecture-container-deployment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Architecture &amp; Container Deployment
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#performance-monitoring" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Performance &amp; Monitoring
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/deployment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture & Container Deployment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="performance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance & Monitoring
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10" >
+        
+          
+          <label class="md-nav__link" for="__nav_10" id="__nav_10_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_10">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../development/code-style/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Code Style
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../development/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../development/contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../WEBSITE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docs Site Maintenance
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_11" >
+        
+          
+          <label class="md-nav__link" for="__nav_11" id="__nav_11_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FAQ
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_11_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_11">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    FAQ
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../faq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FAQ
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../faq/usage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Usage
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../faq/loinc/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LOINC
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#supported-environments" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Supported environments
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Supported environments">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#resource-requirements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Resource requirements
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#services" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Services
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#deployment-procedure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deployment procedure
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Deployment procedure">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#step-1-get-the-code" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 1: Get the code
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-2-create-env" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 2: Create .env
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Step 2: Create .env">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#2-1-required-must-change-variables" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2-1. Required / must-change variables
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-2-set-the-admin-console-password" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2-2. Set the admin console password
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-3-keep-the-encryption-key-consistent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2-3. Keep the encryption key consistent
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-4-know-which-settings-are-read-only-once" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2-4. Know which settings are read only once
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-5-a-minimal-working-env" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2-5. A minimal working .env
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-3-build-and-start" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 3: Build and start
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-4-verify" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 4: Verify
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-5-sign-in-and-configure-the-model-endpoints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 5: Sign in and configure the model endpoints
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-6-load-data" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 6: Load data
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#day-2-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Day-2 operations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Day-2 operations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#updating-and-redeploying" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Updating and redeploying
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#database-migrations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Database migrations
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#backups" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Backups
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#external-ports" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Exposed ports and hardening
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#further-reading" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Further reading
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Further reading">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#architecture-container-deployment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Architecture &amp; Container Deployment
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#performance-monitoring" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Performance &amp; Monitoring
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="deployment-guide">Deployment Guide<a class="headerlink" href="#deployment-guide" title="Permanent link">&para;</a></h1>
+<p>This section explains how to deploy the Taiwan Health MCP server to production. The project is container-first; Docker deployment is strongly recommended for environment consistency.</p>
+<p>For the full variable reference see <a href="configuration/">Configuration</a>. This page is the <strong>ordered deployment procedure</strong>.</p>
+<h2 id="supported-environments">Supported environments<a class="headerlink" href="#supported-environments" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Operating system</strong>: Linux (Ubuntu/CentOS), macOS, Windows (WSL2)</li>
+<li><strong>Container platform</strong>: Docker Engine 24+ with Docker Compose v2 (<code>docker compose</code>, not the legacy <code>docker-compose</code>)</li>
+<li><strong>Node.js</strong>: 20 or newer (for bare-metal deployment or local development). The project has no Python runtime dependency.</li>
+</ul>
+<h3 id="resource-requirements">Resource requirements<a class="headerlink" href="#resource-requirements" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Minimum</th>
+<th>Recommended</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>CPU</td>
+<td>2 cores</td>
+<td>4+ cores</td>
+<td>Imports and embedding jobs are the dominant load</td>
+</tr>
+<tr>
+<td>Memory</td>
+<td>8 GB</td>
+<td>16 GB+</td>
+<td><code>admin-worker</code> alone is configured with <code>--max-old-space-size=8192</code> (required by FHIR IG imports)</td>
+</tr>
+<tr>
+<td>Disk</td>
+<td>20 GB</td>
+<td>100 GB+</td>
+<td>PostgreSQL plus MinIO drug assets (inserts / labels / pill images) grow continuously</td>
+</tr>
+</tbody>
+</table>
+<p>The embedding service, OCR (MinerU), and the analysis LLM are all <strong>external HTTP services</strong>. They are not part of this compose stack — provision them separately and configure them in the admin console.</p>
+<h2 id="services">Services<a class="headerlink" href="#services" title="Permanent link">&para;</a></h2>
+<p><code>docker compose up -d</code> starts the following services:</p>
+<table>
+<thead>
+<tr>
+<th>Service</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>nginx</code></td>
+<td><strong>The front door</strong> (<code>:8080</code> by default, set by <code>WEB_PORT</code>). Routes <code>/mcp</code>, <code>/openapi.json</code>, <code>/tools/*</code>, <code>/admin/api/*</code>, <code>/admin/ws</code>, <code>/fhir-client/*</code>, and <code>/fhir-oauth/*</code> to <code>app</code>, and everything else to <code>web</code>.</td>
+</tr>
+<tr>
+<td><code>web</code></td>
+<td>Next.js front-end: the <code>/admin</code> console SPA.</td>
+</tr>
+<tr>
+<td><code>app</code></td>
+<td>Node MCP server + admin REST API. <strong>Only <code>expose</code>s port 8000 on the compose network; never published to the host.</strong></td>
+</tr>
+<tr>
+<td><code>admin-worker</code></td>
+<td>Background job runner: every import (including the three-stage drug pipeline) and embedding job.</td>
+</tr>
+<tr>
+<td><code>postgres</code></td>
+<td>PostgreSQL 16 + pgvector.</td>
+</tr>
+<tr>
+<td><code>pgbouncer</code></td>
+<td>Connection pool (transaction mode).</td>
+</tr>
+<tr>
+<td><code>redis</code></td>
+<td>Response cache.</td>
+</tr>
+<tr>
+<td><code>minio</code> + <code>minio-init</code></td>
+<td>Drug asset object storage and bucket initialisation.</td>
+</tr>
+</tbody>
+</table>
+<p>Data imports are triggered from the admin console and run inside <code>admin-worker</code>; there is no longer a standalone data-loader container.</p>
+<div class="admonition warning">
+<p class="admonition-title">Application traffic goes through nginx only</p>
+<p>Never use <code>http://&lt;host&gt;:8000</code> in documentation or client configuration — <code>app</code> does not publish that port to the host.
+All application traffic (including MCP) must go through <code>http://&lt;host&gt;:8080</code>.</p>
+<p>(<code>postgres</code> and <code>minio</code> do publish ports to the host for operational access; for production see <a href="#external-ports">Exposed ports and hardening</a>.)</p>
+</div>
+<hr />
+<h2 id="deployment-procedure">Deployment procedure<a class="headerlink" href="#deployment-procedure" title="Permanent link">&para;</a></h2>
+<h3 id="step-1-get-the-code">Step 1: Get the code<a class="headerlink" href="#step-1-get-the-code" title="Permanent link">&para;</a></h3>
+<pre><code class="language-bash">git clone https://github.com/healthymind-tech/Taiwan-Health-MCP.git
+cd Taiwan-Health-MCP
+</code></pre>
+<h3 id="step-2-create-env">Step 2: Create <code>.env</code><a class="headerlink" href="#step-2-create-env" title="Permanent link">&para;</a></h3>
+<pre><code class="language-bash">cp .env.example .env
+</code></pre>
+<p>The defaults in <code>.env.example</code> <strong>must not go straight to production</strong>. The following must be handled:</p>
+<h4 id="2-1-required-must-change-variables">2-1. Required / must-change variables<a class="headerlink" href="#2-1-required-must-change-variables" title="Permanent link">&para;</a></h4>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Why it matters</th>
+<th>Suggested approach</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>POSTGRES_PASSWORD</code></td>
+<td><code>docker compose</code> fails outright when unset (compose enforces it with <code>:?</code>)</td>
+<td><code>openssl rand -hex 24</code></td>
+</tr>
+<tr>
+<td><code>ADMIN_ENABLED</code></td>
+<td>Defaults to <code>false</code>; without it there is no <code>/admin</code>, and <strong>no way to import any data</strong></td>
+<td>Set to <code>true</code></td>
+</tr>
+<tr>
+<td><code>ADMIN_USERNAME</code></td>
+<td>Admin console account</td>
+<td>Defaults to <code>admin</code>; customisable</td>
+</tr>
+<tr>
+<td><code>ADMIN_INITIAL_PASSWORD</code><br>or <code>ADMIN_PASSWORD_HASH</code></td>
+<td>Without a credential you cannot sign in</td>
+<td>Pick one, see 2-2</td>
+</tr>
+<tr>
+<td><code>ADMIN_SESSION_SECRET</code></td>
+<td>Session cookie signing key; also the fallback value for <code>FHIR_SERVER_SECRET_KEY</code></td>
+<td><code>openssl rand -hex 32</code></td>
+</tr>
+<tr>
+<td><code>MINIO_ACCESS_KEY</code> / <code>MINIO_SECRET_KEY</code></td>
+<td>Default to <code>minioadmin</code> / <code>minioadmin</code>, effectively no password</td>
+<td><code>openssl rand -hex 16</code> each</td>
+</tr>
+<tr>
+<td><code>PUBLIC_BASE_URL</code></td>
+<td>Public origin, used to build the OAuth2 redirect_uri and to derive the WebAuthn RP ID</td>
+<td><code>https://your-domain.example.com</code></td>
+</tr>
+<tr>
+<td><code>PUBLIC_TOOLS_AUTH_MODE</code> / <code>PUBLIC_TOOLS_BEARER_TOKEN</code></td>
+<td>Defaults to <code>none</code>, meaning <code>/mcp</code> and <code>/tools/*</code> are completely unauthenticated</td>
+<td>Set <code>bearer</code> + <code>openssl rand -hex 32</code> when publicly reachable</td>
+</tr>
+<tr>
+<td><code>WEB_PORT</code></td>
+<td>Public port</td>
+<td>Defaults to <code>8080</code>; adjust per environment</td>
+</tr>
+</tbody>
+</table>
+<p>Generate every random value at once:</p>
+<pre><code class="language-bash">echo &quot;POSTGRES_PASSWORD=$(openssl rand -hex 24)&quot;
+echo &quot;ADMIN_SESSION_SECRET=$(openssl rand -hex 32)&quot;
+echo &quot;FHIR_SERVER_SECRET_KEY=$(openssl rand -hex 32)&quot;
+echo &quot;MINIO_ACCESS_KEY=$(openssl rand -hex 16)&quot;
+echo &quot;MINIO_SECRET_KEY=$(openssl rand -hex 16)&quot;
+echo &quot;PUBLIC_TOOLS_BEARER_TOKEN=$(openssl rand -hex 32)&quot;
+</code></pre>
+<h4 id="2-2-set-the-admin-console-password">2-2. Set the admin console password<a class="headerlink" href="#2-2-set-the-admin-console-password" title="Permanent link">&para;</a></h4>
+<p>Pick one of two approaches:</p>
+<p><strong>(a) Plaintext initial password (simpler)</strong> — used only on first boot, when the database has no credential row yet, and ignored forever afterwards:</p>
+<pre><code class="language-dotenv">ADMIN_INITIAL_PASSWORD=your-strong-password
+</code></pre>
+<p><strong>(b) A pre-computed hash</strong>:</p>
+<pre><code class="language-bash">node -e &quot;console.log('sha256\$' + require('crypto').createHash('sha256').update('change-me').digest('hex'))&quot;
+</code></pre>
+<pre><code class="language-dotenv">ADMIN_PASSWORD_HASH=sha256$$1a2b3c...
+</code></pre>
+<p>When both are set, <code>ADMIN_INITIAL_PASSWORD</code> wins. Password hashes support <code>sha256$&lt;hex&gt;</code> and <code>pbkdf2_sha256$&lt;iterations&gt;$&lt;salt&gt;$&lt;hex&gt;</code>.</p>
+<div class="admonition danger">
+<p class="admonition-title">Every <code>$</code> in <code>.env</code> must be written as <code>$$</code></p>
+<p>Docker Compose interpolates variables in <code>.env</code>, so a single <code>$</code> is read as a variable reference.
+When the hash starts with a letter (for example <code>sha256$abc…</code>), <code>$abc…</code> is treated as an undefined
+variable and the value is <strong>silently truncated to <code>sha256</code></strong> — login then fails forever with no
+obvious error message.</p>
+<p>Write every <code>$</code> as <code>$$</code> (Compose collapses it back to a single <code>$</code>). A <code>pbkdf2_sha256$...$...$...</code>
+hash contains several <code>$</code>; double each one. The same applies when the password itself or
+<code>ADMIN_SESSION_SECRET</code> contains a <code>$</code>.</p>
+</div>
+<h4 id="2-3-keep-the-encryption-key-consistent">2-3. Keep the encryption key consistent<a class="headerlink" href="#2-3-keep-the-encryption-key-consistent" title="Permanent link">&para;</a></h4>
+<p><code>FHIR_SERVER_SECRET_KEY</code> is the pgcrypto symmetric key for external FHIR servers' OAuth tokens and client secrets, falling back to <code>ADMIN_SESSION_SECRET</code> when unset. <code>compose.yaml</code> passes it to both <code>app</code> and <code>admin-worker</code>, and <strong>the two must match</strong> — otherwise the worker fails to decrypt with <code>Illegal argument to function</code> (empty key) or <code>Wrong key or corrupt data</code> (mismatched key).</p>
+<h4 id="2-4-know-which-settings-are-read-only-once">2-4. Know which settings are read only once<a class="headerlink" href="#2-4-know-which-settings-are-read-only-once" title="Permanent link">&para;</a></h4>
+<p>Seed-only settings (MinIO, the TFDA crawler, the FHIR package registry, worker tuning) are <strong>read from <code>.env</code> exactly once, on first boot</strong>, and written into <code>admin.app_settings</code> (<code>seedIfEmpty()</code> inserts key by key with <code>ON CONFLICT DO NOTHING</code>). Editing <code>.env</code> afterwards has no effect. How changeable they remain, however, <strong>differs</strong>:</p>
+<table>
+<thead>
+<tr>
+<th>Settings group</th>
+<th>How to change it after first boot</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>TFDA crawler, FHIR package registry</td>
+<td>Edit directly in Admin → Settings (applied hot)</td>
+</tr>
+<tr>
+<td><strong>MinIO (Storage)</strong>, <strong>Worker Tuning</strong></td>
+<td><strong>Read-only</strong> in the console, labelled "Owned by the deployment (.env / compose)". But since the values were already seeded into the database and the code reads the database, <strong>editing <code>.env</code> has no effect either</strong> — the only way is a direct <code>UPDATE admin.app_settings</code> followed by a restart of the relevant service.</td>
+</tr>
+<tr>
+<td>Model endpoints (embedding / OCR / analysis LLM)</td>
+<td><strong>Never read from <code>.env</code></strong>; configurable only in Admin → Settings</td>
+</tr>
+</tbody>
+</table>
+<p><code>ADMIN_MAX_CONCURRENT_JOBS</code> is the exception: it never enters <code>admin.app_settings</code>. The worker reads the environment variable on every start, so editing <code>.env</code> and restarting the worker takes effect.</p>
+<div class="admonition danger">
+<p class="admonition-title">Set the MinIO credentials before the very first boot</p>
+<p><code>MINIO_ACCESS_KEY</code> / <code>MINIO_SECRET_KEY</code> have two consumers that behave differently:</p>
+<ul>
+<li>The <code>minio</code> container reads <code>.env</code> <strong>on every start</strong> for its root credentials (<code>MINIO_ROOT_USER</code> / <code>MINIO_ROOT_PASSWORD</code>);</li>
+<li><code>app</code> / <code>admin-worker</code> use the copy <strong>seeded into <code>admin.app_settings</code> on first boot</strong> (<code>seedIfEmpty()</code> writes with <code>ON CONFLICT DO NOTHING</code> and never overwrites).</li>
+</ul>
+<p>Changing <code>.env</code> after the first boot leaves the MinIO server's credentials <strong>out of sync</strong> with the stored application settings, breaking object storage reads and writes.</p>
+<p>Worse, the <strong>Storage group in Settings is read-only</strong> (labelled "Owned by the deployment (.env / compose)"), so it cannot be fixed from the console. If this has already happened, the only route is the database:</p>
+<p><code>sql
+UPDATE admin.app_settings SET value = '&lt;new-access-key&gt;'
+ WHERE group_key = 'minio' AND key = 'access_key';
+UPDATE admin.app_settings SET value = '&lt;new-secret-key&gt;'
+ WHERE group_key = 'minio' AND key = 'secret_key';</code></p>
+<p>Then restart <code>app</code> and <code>admin-worker</code>.</p>
+</div>
+<p>See <a href="configuration/#settings-precedence">Configuration</a> for details.</p>
+<h4 id="2-5-a-minimal-working-env">2-5. A minimal working <code>.env</code><a class="headerlink" href="#2-5-a-minimal-working-env" title="Permanent link">&para;</a></h4>
+<pre><code class="language-dotenv"># --- Public ---
+WEB_PORT=8080
+PUBLIC_BASE_URL=https://taiwan-health-mcp.example.com
+
+# --- Database ---
+POSTGRES_DB=taiwan_health
+POSTGRES_USER=mcp
+POSTGRES_PASSWORD=&lt;openssl rand -hex 24&gt;
+
+# --- MCP ---
+MCP_TRANSPORT=streamable-http
+MCP_PORT=8000
+MCP_PATH=/mcp
+PUBLIC_TOOLS_AUTH_MODE=bearer
+PUBLIC_TOOLS_BEARER_TOKEN=&lt;openssl rand -hex 32&gt;
+
+# --- Admin console ---
+ADMIN_ENABLED=true
+ADMIN_USERNAME=admin
+ADMIN_INITIAL_PASSWORD=&lt;strong password; write any $ as $$&gt;
+ADMIN_SESSION_SECRET=&lt;openssl rand -hex 32&gt;
+ADMIN_COOKIE_SECURE=true          # set explicitly when TLS terminates at a proxy
+FHIR_SERVER_SECRET_KEY=&lt;openssl rand -hex 32&gt;
+
+# --- Object storage (seed-only: read on first boot) ---
+MINIO_ENDPOINT=minio:9000
+MINIO_ACCESS_KEY=&lt;openssl rand -hex 16&gt;
+MINIO_SECRET_KEY=&lt;openssl rand -hex 16&gt;
+MINIO_BUCKET=taiwan-health-drug-assets
+</code></pre>
+<h3 id="step-3-build-and-start">Step 3: Build and start<a class="headerlink" href="#step-3-build-and-start" title="Permanent link">&para;</a></h3>
+<pre><code class="language-bash">docker compose build          # first build of the app / admin-worker / web images
+docker compose up -d
+</code></pre>
+<p>On first boot the PostgreSQL container applies <code>db/schema.sql</code> automatically, and <code>minio-init</code> creates the bucket and exits (an <code>exited</code> status is normal).</p>
+<h3 id="step-4-verify">Step 4: Verify<a class="headerlink" href="#step-4-verify" title="Permanent link">&para;</a></h3>
+<p>Check container status — <code>postgres</code> / <code>redis</code> / <code>minio</code> / <code>pgbouncer</code> should be <code>healthy</code>:</p>
+<pre><code class="language-bash">docker compose ps
+</code></pre>
+<p>Check the services and each module's status:</p>
+<pre><code class="language-bash">curl http://localhost:8080/openapi.json | head  # currently registered tools
+</code></pre>
+<p>When startup fails, start with the logs:</p>
+<pre><code class="language-bash">docker compose logs -f app admin-worker
+</code></pre>
+<h3 id="step-5-sign-in-and-configure-the-model-endpoints">Step 5: Sign in and configure the model endpoints<a class="headerlink" href="#step-5-sign-in-and-configure-the-model-endpoints" title="Permanent link">&para;</a></h3>
+<p>Open <code>http://&lt;host&gt;:8080/admin</code> and sign in with the credentials from step 2.</p>
+<p>Then configure the external model endpoints under <strong>Settings</strong> (these <strong>cannot</strong> be set from <code>.env</code>):</p>
+<table>
+<thead>
+<tr>
+<th>Sub-page</th>
+<th>What it configures</th>
+<th>Consequence if unset</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Embedding</td>
+<td>Embedding endpoint / model (Ollama <code>qwen3-embedding</code> in the default scenario)</td>
+<td>Search falls back to keyword mode; <strong>Chinese keyword search finds almost nothing</strong></td>
+</tr>
+<tr>
+<td>Analysis LM</td>
+<td>The LLM used to extract drug inserts</td>
+<td>The drug analysis stage cannot run</td>
+</tr>
+<tr>
+<td>OCR</td>
+<td>MinerU service address</td>
+<td>Insert PDFs cannot be OCR'd</td>
+</tr>
+</tbody>
+</table>
+<p>Model settings can be moved between environments with the JSON Export / Import under Settings → Backup &amp; restore. See <a href="../admin/">Admin Console</a>.</p>
+<h3 id="step-6-load-data">Step 6: Load data<a class="headerlink" href="#step-6-load-data" title="Permanent link">&para;</a></h3>
+<p>Import module by module from the Modules tab. Licensed source files (ICD-10, LOINC, SNOMED CT, RxNorm, FHIR IG) must be uploaded first; drugs, health supplements, and food nutrition are fetched automatically via API.</p>
+<div class="admonition warning">
+<p class="admonition-title">A manually queued <code>drug_enrichment</code> is not protected by the batch cap</p>
+<p><code>DRUG_AUTOCHAIN_BATCH_LIMIT</code> (default 200) <strong>applies only to auto-chained jobs</strong>.
+A manually queued <code>drug_enrichment</code> with no <code>limit</code> crawls the entire pending queue,
+issuing tens of thousands of requests against the TFDA site.</p>
+</div>
+<p>For the steps and scheduling see <a href="../getting-started/">Getting Started</a> and <a href="../admin/jobs-and-worker/">Jobs &amp; Scheduling</a>.</p>
+<hr />
+<h2 id="day-2-operations">Day-2 operations<a class="headerlink" href="#day-2-operations" title="Permanent link">&para;</a></h2>
+<h3 id="updating-and-redeploying">Updating and redeploying<a class="headerlink" href="#updating-and-redeploying" title="Permanent link">&para;</a></h3>
+<p>When only application code changed, there is no need to restart the whole stack:</p>
+<pre><code class="language-bash">git pull
+docker compose build app web admin-worker
+docker compose up -d --no-deps app web admin-worker
+</code></pre>
+<p>After changing <code>nginx/nginx.conf</code>:</p>
+<pre><code class="language-bash">docker compose restart nginx
+</code></pre>
+<p>Containers only need recreating when a <strong>bootstrap variable</strong> in <code>.env</code> changed (DB / Redis / MCP / <code>ADMIN_*</code>):</p>
+<pre><code class="language-bash">docker compose up -d
+</code></pre>
+<p>(Changing the seed-only block has no effect; see 2-4.)</p>
+<h3 id="database-migrations">Database migrations<a class="headerlink" href="#database-migrations" title="Permanent link">&para;</a></h3>
+<p><code>db/schema.sql</code> is applied automatically on first boot. <strong>Existing environments</strong> must apply the incremental changes under <code>db/migrations/</code> themselves, in filename date order:</p>
+<pre><code class="language-bash">docker compose exec -T postgres \
+  sh -c 'psql -U &quot;$POSTGRES_USER&quot; -d &quot;$POSTGRES_DB&quot; -v ON_ERROR_STOP=1' \
+  &lt; db/migrations/20260802_llm_call_log.sql
+</code></pre>
+<p>To apply all of them in order (drop the ones already applied yourself — the project has no built-in migration version tracking):</p>
+<pre><code class="language-bash">for f in $(ls db/migrations/*.sql | sort); do
+  echo &quot;applying $f&quot;
+  docker compose exec -T postgres \
+    sh -c 'psql -U &quot;$POSTGRES_USER&quot; -d &quot;$POSTGRES_DB&quot; -v ON_ERROR_STOP=1' &lt; &quot;$f&quot;
+done
+</code></pre>
+<div class="admonition tip">
+<p class="admonition-title">Credentials are expanded inside the container</p>
+<p>The <code>$POSTGRES_USER</code> / <code>$POSTGRES_DB</code> above are expanded <strong>inside the container</strong> (which is why the
+whole command is wrapped in a single-quoted <code>sh -c</code>), so nothing needs exporting or substituting on the host.</p>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Connect to postgres directly, not pgbouncer</p>
+<p>Run migrations through the <code>postgres</code> container. pgBouncer runs in transaction mode and is unsuitable for DDL batches.</p>
+</div>
+<h3 id="backups">Backups<a class="headerlink" href="#backups" title="Permanent link">&para;</a></h3>
+<p>Two approaches:</p>
+<p><strong>(a) Admin console (recommended)</strong> — Settings → Backup &amp; restore lets you select settings and credentials, the PostgreSQL database, and MinIO object storage. It queues a <code>system_backup</code> background job; the resulting ZIP is written back to the <code>system-backups/</code> prefix in MinIO and can be downloaded from the backup history.</p>
+<p><strong>(b) Manual</strong>:</p>
+<pre><code class="language-bash"># PostgreSQL (custom format, for pg_restore)
+docker compose exec -T postgres \
+  sh -c 'pg_dump -U &quot;$POSTGRES_USER&quot; -d &quot;$POSTGRES_DB&quot; -Fc' &gt; backup-$(date +%F).dump
+
+# MinIO objects (volume level)
+docker run --rm -v taiwan-health-mcp_minio_data:/data -v &quot;$PWD&quot;:/backup \
+  alpine tar czf /backup/minio-$(date +%F).tar.gz -C /data .
+</code></pre>
+<blockquote>
+<p>The volume name is prefixed with the compose project name (the directory name by default); confirm the actual name with <code>docker volume ls</code>.</p>
+</blockquote>
+<p>Backups contain API keys, login credentials, and medical data — <strong>treat them as production secrets</strong>.</p>
+<h3 id="external-ports">Exposed ports and hardening<a class="headerlink" href="#external-ports" title="Permanent link">&para;</a></h3>
+<p>Ports <code>compose.yaml</code> currently publishes to the host:</p>
+<table>
+<thead>
+<tr>
+<th>Service</th>
+<th>Port</th>
+<th>Binding</th>
+<th>Production recommendation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>nginx</code></td>
+<td><code>${WEB_PORT}</code> → 80</td>
+<td>All interfaces</td>
+<td>Put a TLS reverse proxy in front</td>
+</tr>
+<tr>
+<td><code>postgres</code></td>
+<td><code>5432</code></td>
+<td><strong>All interfaces</strong></td>
+<td>Rebind to <code>127.0.0.1:5432:5432</code> or remove</td>
+</tr>
+<tr>
+<td><code>minio</code></td>
+<td><code>9000</code></td>
+<td><strong>All interfaces</strong></td>
+<td>Rebind to <code>127.0.0.1:9000:9000</code> or remove</td>
+</tr>
+<tr>
+<td><code>minio</code> console</td>
+<td><code>9001</code></td>
+<td><code>127.0.0.1</code></td>
+<td>Leave as is</td>
+</tr>
+<tr>
+<td><code>redis</code></td>
+<td><code>6379</code></td>
+<td><code>127.0.0.1</code></td>
+<td>Leave as is</td>
+</tr>
+<tr>
+<td><code>app</code> metrics</td>
+<td><code>${METRICS_PORT}</code></td>
+<td><code>127.0.0.1</code></td>
+<td>Leave as is</td>
+</tr>
+</tbody>
+</table>
+<p>Pre-launch checklist:</p>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>POSTGRES_PASSWORD</code>, <code>ADMIN_SESSION_SECRET</code>, and <code>FHIR_SERVER_SECRET_KEY</code> are all strong random values</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> MinIO credentials no longer use the <code>minioadmin</code> defaults</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>postgres:5432</code> / <code>minio:9000</code> rebound to <code>127.0.0.1</code> or blocked by a firewall</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>PUBLIC_TOOLS_AUTH_MODE=bearer</code> with a high-entropy token (if <code>/mcp</code> is publicly reachable)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> TLS terminates at a front proxy and <code>ADMIN_COOKIE_SECURE=true</code></li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>.env</code> permissions tightened (<code>chmod 600 .env</code>) and kept out of version control</li>
+</ul>
+<p>Override the port bindings with <code>docker-compose.override.yml</code> instead of editing <code>compose.yaml</code>:</p>
+<pre><code class="language-yaml">services:
+  postgres:
+    ports:
+      - &quot;127.0.0.1:5432:5432&quot;
+  minio:
+    ports:
+      - &quot;127.0.0.1:9000:9000&quot;
+</code></pre>
+<p>The same override file is a good home for <a href="configuration/#resource-limits">resource limits</a>.</p>
+<h3 id="troubleshooting">Troubleshooting<a class="headerlink" href="#troubleshooting" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Symptom</th>
+<th>Likely cause</th>
+<th>Fix</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>docker compose up</code> fails immediately with <code>POSTGRES_PASSWORD is required</code></td>
+<td>The variable is unset in <code>.env</code></td>
+<td>Set it (compose enforces it with <code>:?</code>)</td>
+</tr>
+<tr>
+<td><code>/admin</code> returns 404</td>
+<td><code>ADMIN_ENABLED</code> is not <code>true</code>, or the auth variables are incomplete</td>
+<td>Complete them and run <code>docker compose up -d</code></td>
+</tr>
+<tr>
+<td>The admin password is correct but login fails</td>
+<td><code>$</code> in <code>.env</code> was not written as <code>$$</code>, truncating the hash</td>
+<td>See the warning box in 2-2</td>
+</tr>
+<tr>
+<td>Changing the password in <code>.env</code> has no effect</td>
+<td>The credential was written to <code>admin.admin_credentials</code> on first boot, and seeding uses <code>ON CONFLICT DO NOTHING</code></td>
+<td>Change it under Settings → Privacy instead</td>
+</tr>
+<tr>
+<td>The worker raises <code>Illegal argument to function</code> / <code>Wrong key or corrupt data</code></td>
+<td><code>FHIR_SERVER_SECRET_KEY</code> is empty, or differs between <code>app</code> and the worker</td>
+<td>See 2-3</td>
+</tr>
+<tr>
+<td>Changing TFDA / registry settings in <code>.env</code> has no effect</td>
+<td>That group is seed-only, read only on first boot</td>
+<td>Change it in Admin → Settings</td>
+</tr>
+<tr>
+<td>Changing MinIO / worker tuning in <code>.env</code> has no effect</td>
+<td>Seed-only, and read-only in the console</td>
+<td><code>UPDATE admin.app_settings</code> directly, then restart the service (see 2-4)</td>
+</tr>
+<tr>
+<td>Chinese search returns almost nothing</td>
+<td>No embedding endpoint configured, so search fell back to keyword mode</td>
+<td>Configure the endpoint under Settings → Embedding</td>
+</tr>
+<tr>
+<td>The worker OOMs during an IG import</td>
+<td><code>NODE_OPTIONS</code> was lowered, or the container memory limit is too small</td>
+<td>Keep <code>--max-old-space-size=8192</code> and give the container a 10G limit</td>
+</tr>
+<tr>
+<td><code>http://&lt;host&gt;:8000</code> is unreachable</td>
+<td>By design — <code>app</code> publishes no host port</td>
+<td>Always use <code>http://&lt;host&gt;:${WEB_PORT}</code></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="further-reading">Further reading<a class="headerlink" href="#further-reading" title="Permanent link">&para;</a></h2>
+<h3 id="architecture-container-deployment"><a href="../architecture/deployment/">Architecture &amp; Container Deployment</a><a class="headerlink" href="#architecture-container-deployment" title="Permanent link">&para;</a></h3>
+<p>Infrastructure topology, container composition, and the startup sequence.</p>
+<h3 id="configuration"><a href="configuration/">Configuration</a><a class="headerlink" href="#configuration" title="Permanent link">&para;</a></h3>
+<p>The full parameter reference, covering bootstrap variables (<code>.env</code>) and seed-only settings (managed in Admin → Settings after first boot).</p>
+<h3 id="performance-monitoring"><a href="performance/">Performance &amp; Monitoring</a><a class="headerlink" href="#performance-monitoring" title="Permanent link">&para;</a></h3>
+<p>Optimisation advice for high-concurrency scenarios, connection pool and cache strategy, and Prometheus monitoring.</p>
+<div class="admonition note">
+<p class="admonition-title">The public pages moved out of this repo</p>
+<p>The public-facing marketing and legal pages (<code>/</code>, <code>/status</code>, <code>/privacy</code>, <code>/dpa</code>) are
+now served by a standalone marketing-site project, not by the <code>web</code> service here.
+<code>/privacy</code> is the URL registered with the Anthropic Connectors Directory, so once the
+new site is live, add the 301 redirects in <code>nginx/nginx.conf</code> (a TODO block is in place).</p>
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; 2024-2026 Taiwan Health MCP Team
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": [], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+        <script src="../../javascripts/lang-switch.js"></script>
+      
+    
+  </body>
+</html>

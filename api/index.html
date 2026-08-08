@@ -22,6 +22,10 @@
       
       
         
+          <link rel="alternate" href="./" hreflang="zh-TW">
+        
+          <link rel="alternate" href="../en/api/" hreflang="en">
+        
       
       
       <link rel="icon" href="../assets/images/favicon.png">
@@ -116,6 +120,32 @@
     
       <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
     
+    
+      <div class="md-header__option">
+  <div class="md-select">
+    
+    <button class="md-header__button md-icon" aria-label="選擇語言">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m12.87 15.07-2.54-2.51.03-.03A17.5 17.5 0 0 0 14.07 6H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2zm-2.62 7 1.62-4.33L19.12 17z"/></svg>
+    </button>
+    <div class="md-select__inner">
+      <ul class="md-select__list">
+        
+          <li class="md-select__item">
+            <a href="./" hreflang="zh-TW" class="md-select__link">
+              繁體中文
+            </a>
+          </li>
+        
+          <li class="md-select__item">
+            <a href="../en/api/" hreflang="en" class="md-select__link">
+              English
+            </a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+</div>
     
     
       
@@ -1950,62 +1980,6 @@
 
               
             
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../deployment/dpa/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    資料處理附錄 (DPA)
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../deployment/privacy/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    隱私政策頁面
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
           </ul>
         </nav>
       
@@ -2478,12 +2452,6 @@
 <td>OpenAPI bridge：以 JSON body 當參數呼叫單一工具。</td>
 </tr>
 <tr>
-<td><code>/status.json</code></td>
-<td><code>GET</code></td>
-<td>無</td>
-<td>各模組資料筆數與服務健康狀態（公開狀態頁的資料來源）。</td>
-</tr>
-<tr>
 <td><code>/admin/api/*</code></td>
 <td>各異</td>
 <td>session cookie</td>
@@ -2513,7 +2481,8 @@
 <code>/tools/*</code>。Token 由 <code>PUBLIC_TOOLS_BEARER_TOKEN</code> 設定；瀏覽器跨來源呼叫另需在
 <code>PUBLIC_TOOLS_CORS_ORIGINS</code> 明列 origin。<code>none</code> 僅適合受信任的本機或私有網路。</p>
 <blockquote>
-<p>後端另有一個 <code>/health</code> 端點，但 nginx 不會轉送它（從前門存取會得到 404）。請改用 <code>/status.json</code>。</p>
+<p>後端另有一個 <code>/health</code> 端點，但 nginx 不會轉送它（從前門存取會得到 404）。要從前門確認 <code>app</code>
+是否存活，請改打 <code>/openapi.json</code>。各模組的資料筆數請看管理後台 Overview 分頁。</p>
 </blockquote>
 <h2 id="openapi-bridge">OpenAPI bridge<a class="headerlink" href="#openapi-bridge" title="Permanent link">&para;</a></h2>
 <p>給不支援原生 MCP、只能接 OpenAPI 工具伺服器的客戶端使用（例如 Open WebUI 的 External Tools）。</p>
@@ -2568,6 +2537,14 @@ Embeddings 計數，並執行或排程對應的 <code>*_embed</code> 工作。</
 <tr>
 <td>藥品管線</td>
 <td><code>GET /admin/api/drug/pipeline-status</code>、<code>/admin/api/drug/{status,details,assets,asset-content,events}</code></td>
+</tr>
+<tr>
+<td>藥品瀏覽器</td>
+<td><code>GET /admin/api/drug/explorer</code>、<code>GET /admin/api/drug/explorer-detail</code>、<code>GET /admin/api/drug/llm-calls</code>、<code>GET /admin/api/drug/llm-call</code></td>
+</tr>
+<tr>
+<td>OCR</td>
+<td><code>GET /admin/api/ocr/samples</code>、<code>POST /admin/api/ocr/test</code></td>
 </tr>
 <tr>
 <td>FHIR 伺服器</td>
@@ -2724,6 +2701,8 @@ Embeddings 計數，並執行或排程對應的 <code>*_embed</code> 工作。</
     
     
       <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+        <script src="../javascripts/lang-switch.js"></script>
       
     
   </body>

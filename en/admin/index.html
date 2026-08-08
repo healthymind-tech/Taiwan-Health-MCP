@@ -1,26 +1,30 @@
 
 <!doctype html>
-<html lang="zh-TW" class="no-js">
+<html lang="en" class="no-js">
   <head>
     
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width,initial-scale=1">
       
-        <meta name="description" content="台灣醫療健康資料整合 MCP 伺服器 - 技術文件">
+        <meta name="description" content="Taiwan health & medical data MCP server — technical documentation">
       
       
         <meta name="author" content="Taiwan Health MCP Team">
       
       
-        <link rel="canonical" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/deployment/dpa/">
+        <link rel="canonical" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/admin/">
       
       
-        <link rel="prev" href="../performance/">
+        <link rel="prev" href="../api/lab-service/">
       
       
-        <link rel="next" href="../privacy/">
+        <link rel="next" href="jobs-and-worker/">
       
       
+        
+          <link rel="alternate" href="../../admin/" hreflang="zh-TW">
+        
+          <link rel="alternate" href="./" hreflang="en">
         
       
       
@@ -29,7 +33,7 @@
     
     
       
-        <title>資料處理附錄 (DPA) - Taiwan Health MCP</title>
+        <title>Admin Console - Taiwan Health MCP</title>
       
     
     
@@ -70,8 +74,8 @@
     <div data-md-component="skip">
       
         
-        <a href="#dpa" class="md-skip">
-          跳轉到
+        <a href="#admin-console" class="md-skip">
+          Skip to content
         </a>
       
     </div>
@@ -85,8 +89,8 @@
   
 
 <header class="md-header md-header--shadow" data-md-component="header">
-  <nav class="md-header__inner md-grid" aria-label="頁首">
-    <a href="../.." title="Taiwan Health MCP" class="md-header__button md-logo" aria-label="Taiwan Health MCP" data-md-component="logo">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../" title="Taiwan Health MCP" class="md-header__button md-logo" aria-label="Taiwan Health MCP" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -106,7 +110,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              資料處理附錄 (DPA)
+              Admin Console
             
           </span>
         </div>
@@ -116,6 +120,32 @@
     
       <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
     
+    
+      <div class="md-header__option">
+  <div class="md-select">
+    
+    <button class="md-header__button md-icon" aria-label="Select language">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m12.87 15.07-2.54-2.51.03-.03A17.5 17.5 0 0 0 14.07 6H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2zm-2.62 7 1.62-4.33L19.12 17z"/></svg>
+    </button>
+    <div class="md-select__inner">
+      <ul class="md-select__list">
+        
+          <li class="md-select__item">
+            <a href="../../admin/" hreflang="zh-TW" class="md-select__link">
+              繁體中文
+            </a>
+          </li>
+        
+          <li class="md-select__item">
+            <a href="./" hreflang="en" class="md-select__link">
+              English
+            </a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+</div>
     
     
       
@@ -128,16 +158,16 @@
   <label class="md-search__overlay" for="__search"></label>
   <div class="md-search__inner" role="search">
     <form class="md-search__form" name="search">
-      <input type="text" class="md-search__input" name="query" aria-label="搜尋" placeholder="搜尋" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
       <label class="md-search__icon md-icon" for="__search">
         
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
         
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
       </label>
-      <nav class="md-search__options" aria-label="搜尋">
+      <nav class="md-search__options" aria-label="Search">
         
-        <button type="reset" class="md-search__icon md-icon" title="清除" aria-label="清除" tabindex="-1">
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
           
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
         </button>
@@ -148,7 +178,7 @@
       <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
         <div class="md-search-result" data-md-component="search-result">
           <div class="md-search-result__meta">
-            正在初始化搜尋引擎
+            Initializing search
           </div>
           <ol class="md-search-result__list" role="presentation"></ol>
         </div>
@@ -160,7 +190,7 @@
     
     
       <div class="md-header__source">
-        <a href="https://github.com/healthymind-tech/Taiwan-Health-MCP" title="前往倉庫" class="md-source" data-md-component="source">
+        <a href="https://github.com/healthymind-tech/Taiwan-Health-MCP" title="Go to repository" class="md-source" data-md-component="source">
   <div class="md-source__icon md-icon">
     
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
@@ -194,9 +224,9 @@
 
 
 
-<nav class="md-nav md-nav--primary" aria-label="導覽列" data-md-level="0">
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href="../.." title="Taiwan Health MCP" class="md-nav__button md-logo" aria-label="Taiwan Health MCP" data-md-component="logo">
+    <a href="../" title="Taiwan Health MCP" class="md-nav__button md-logo" aria-label="Taiwan Health MCP" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -206,7 +236,7 @@
   </label>
   
     <div class="md-nav__source">
-      <a href="https://github.com/healthymind-tech/Taiwan-Health-MCP" title="前往倉庫" class="md-source" data-md-component="source">
+      <a href="https://github.com/healthymind-tech/Taiwan-Health-MCP" title="Go to repository" class="md-source" data-md-component="source">
   <div class="md-source__icon md-icon">
     
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
@@ -244,7 +274,7 @@
   <span class="md-ellipsis">
     
   
-    首頁
+    Home
   
 
     
@@ -260,7 +290,7 @@
             <span class="md-nav__icon md-icon"></span>
             
   
-    首頁
+    Home
   
 
           </label>
@@ -273,7 +303,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../.." class="md-nav__link">
+      <a href="../" class="md-nav__link">
         
   
   
@@ -301,14 +331,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../../getting-started/" class="md-nav__link">
+      <a href="../getting-started/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    快速開始
+    Getting Started
   
 
     
@@ -354,7 +384,7 @@
   <span class="md-ellipsis">
     
   
-    模組
+    Modules
   
 
     
@@ -370,7 +400,7 @@
             <span class="md-nav__icon md-icon"></span>
             
   
-    模組
+    Modules
   
 
           </label>
@@ -383,7 +413,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../modules/icd-service/" class="md-nav__link">
+      <a href="../modules/icd-service/" class="md-nav__link">
         
   
   
@@ -411,14 +441,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../../modules/drug-service/" class="md-nav__link">
+      <a href="../modules/drug-service/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    藥品 / TFDA
+    Drugs / TFDA
   
 
     
@@ -439,14 +469,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../../modules/lab-service/" class="md-nav__link">
+      <a href="../modules/lab-service/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    檢驗 / LOINC
+    Labs / LOINC
   
 
     
@@ -467,7 +497,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../modules/snomed-service/" class="md-nav__link">
+      <a href="../modules/snomed-service/" class="md-nav__link">
         
   
   
@@ -495,14 +525,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../../modules/health-supplements-service/" class="md-nav__link">
+      <a href="../modules/health-supplements-service/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    健康補充品
+    Health Supplements
   
 
     
@@ -523,14 +553,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../../modules/food-nutrition-service/" class="md-nav__link">
+      <a href="../modules/food-nutrition-service/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    食品營養
+    Food Nutrition
   
 
     
@@ -551,7 +581,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../modules/fhir-condition-service/" class="md-nav__link">
+      <a href="../modules/fhir-condition-service/" class="md-nav__link">
         
   
   
@@ -579,7 +609,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../modules/fhir-medication-service/" class="md-nav__link">
+      <a href="../modules/fhir-medication-service/" class="md-nav__link">
         
   
   
@@ -607,7 +637,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../modules/fhir-ig-service/" class="md-nav__link">
+      <a href="../modules/fhir-ig-service/" class="md-nav__link">
         
   
   
@@ -660,7 +690,7 @@
   <span class="md-ellipsis">
     
   
-    MCP 工具
+    MCP Tools
   
 
     
@@ -676,7 +706,7 @@
             <span class="md-nav__icon md-icon"></span>
             
   
-    MCP 工具
+    MCP Tools
   
 
           </label>
@@ -689,14 +719,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../../tools/icd-tools/" class="md-nav__link">
+      <a href="../tools/icd-tools/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    ICD-10 工具
+    ICD-10 Tools
   
 
     
@@ -717,14 +747,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../../tools/drug-tools/" class="md-nav__link">
+      <a href="../tools/drug-tools/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    藥品工具
+    Drug Tools
   
 
     
@@ -745,14 +775,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../../tools/lab-tools/" class="md-nav__link">
+      <a href="../tools/lab-tools/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    檢驗 / LOINC 工具
+    Lab / LOINC Tools
   
 
     
@@ -773,14 +803,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../../tools/snomed-tools/" class="md-nav__link">
+      <a href="../tools/snomed-tools/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    SNOMED 工具
+    SNOMED Tools
   
 
     
@@ -801,14 +831,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../../tools/health-supplements-tools/" class="md-nav__link">
+      <a href="../tools/health-supplements-tools/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    健康補充品工具
+    Health Supplement Tools
   
 
     
@@ -829,14 +859,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../../tools/nutrition-tools/" class="md-nav__link">
+      <a href="../tools/nutrition-tools/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    食品營養工具
+    Food Nutrition Tools
   
 
     
@@ -857,14 +887,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../../tools/fhir-tools/" class="md-nav__link">
+      <a href="../tools/fhir-tools/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    FHIR Condition / Medication 工具
+    FHIR Condition / Medication Tools
   
 
     
@@ -885,14 +915,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../../tools/fhir-ig-tools/" class="md-nav__link">
+      <a href="../tools/fhir-ig-tools/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    FHIR IG 工具
+    FHIR IG Tools
   
 
     
@@ -913,14 +943,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../../tools/fhir-server-tools/" class="md-nav__link">
+      <a href="../tools/fhir-server-tools/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    FHIR 伺服器工具
+    FHIR Server Tools
   
 
     
@@ -966,7 +996,7 @@
   <span class="md-ellipsis">
     
   
-    資料來源
+    Data Sources
   
 
     
@@ -982,7 +1012,7 @@
             <span class="md-nav__icon md-icon"></span>
             
   
-    資料來源
+    Data Sources
   
 
           </label>
@@ -995,14 +1025,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../../data-sources/" class="md-nav__link">
+      <a href="../data-sources/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    資料來源
+    Data Sources
   
 
     
@@ -1023,14 +1053,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../../data-sources/test-data/" class="md-nav__link">
+      <a href="../data-sources/test-data/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    測試資料檔清單
+    Test Data Files
   
 
     
@@ -1051,7 +1081,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../data-sources/icd10/" class="md-nav__link">
+      <a href="../data-sources/icd10/" class="md-nav__link">
         
   
   
@@ -1079,7 +1109,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../data-sources/loinc/" class="md-nav__link">
+      <a href="../data-sources/loinc/" class="md-nav__link">
         
   
   
@@ -1132,7 +1162,7 @@
   <span class="md-ellipsis">
     
   
-    FHIR 授權
+    FHIR Authoring
   
 
     
@@ -1148,7 +1178,7 @@
             <span class="md-nav__icon md-icon"></span>
             
   
-    FHIR 授權
+    FHIR Authoring
   
 
           </label>
@@ -1161,14 +1191,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../../fhir-authoring-walkthrough/" class="md-nav__link">
+      <a href="../fhir-authoring-walkthrough/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    授權流程說明
+    Authoring Walkthrough
   
 
     
@@ -1189,14 +1219,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../../fhir-ig-mcp-toolset-assessment/" class="md-nav__link">
+      <a href="../fhir-ig-mcp-toolset-assessment/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    工具集設計評估
+    Toolset Design Assessment
   
 
     
@@ -1217,14 +1247,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../../fhir-resource-conversion-prompt/" class="md-nav__link">
+      <a href="../fhir-resource-conversion-prompt/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    資源轉換提示（自動判斷型別）
+    Resource Conversion Prompt (auto type detection)
   
 
     
@@ -1245,14 +1275,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../../fhir-bundle-conversion-prompt/" class="md-nav__link">
+      <a href="../fhir-bundle-conversion-prompt/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Bundle 轉換提示
+    Bundle Conversion Prompt
   
 
     
@@ -1298,7 +1328,7 @@
   <span class="md-ellipsis">
     
   
-    使用指南
+    Guides
   
 
     
@@ -1314,7 +1344,7 @@
             <span class="md-nav__icon md-icon"></span>
             
   
-    使用指南
+    Guides
   
 
           </label>
@@ -1327,14 +1357,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../../guides/" class="md-nav__link">
+      <a href="../guides/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    使用指南 (User Guides)
+    Guides
   
 
     
@@ -1355,14 +1385,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../../guides/lab-interpretation/" class="md-nav__link">
+      <a href="../guides/lab-interpretation/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    檢驗判讀
+    Lab Interpretation
   
 
     
@@ -1383,14 +1413,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../../guides/loinc-integration/" class="md-nav__link">
+      <a href="../guides/loinc-integration/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    LOINC 整合
+    LOINC Integration
   
 
     
@@ -1436,7 +1466,7 @@
   <span class="md-ellipsis">
     
   
-    API 參考
+    API Reference
   
 
     
@@ -1452,7 +1482,7 @@
             <span class="md-nav__icon md-icon"></span>
             
   
-    API 參考
+    API Reference
   
 
           </label>
@@ -1465,14 +1495,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../../api/" class="md-nav__link">
+      <a href="../api/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    API 參考
+    API Reference
   
 
     
@@ -1493,7 +1523,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../api/fhir-services/" class="md-nav__link">
+      <a href="../api/fhir-services/" class="md-nav__link">
         
   
   
@@ -1521,7 +1551,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../api/icd-service/" class="md-nav__link">
+      <a href="../api/icd-service/" class="md-nav__link">
         
   
   
@@ -1549,7 +1579,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../api/lab-service/" class="md-nav__link">
+      <a href="../api/lab-service/" class="md-nav__link">
         
   
   
@@ -1557,116 +1587,6 @@
     
   
     Lab Service
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-          </ul>
-        </nav>
-      
-    </li>
-  
-
-    
-      
-      
-  
-  
-  
-  
-    
-    
-    
-    
-    
-    <li class="md-nav__item md-nav__item--nested">
-      
-        
-        
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
-        
-          
-          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
-            
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    管理後台
-  
-
-    
-  </span>
-  
-  
-
-            <span class="md-nav__icon md-icon"></span>
-          </label>
-        
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_8">
-            <span class="md-nav__icon md-icon"></span>
-            
-  
-    管理後台
-  
-
-          </label>
-          <ul class="md-nav__list" data-md-scrollfix>
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../admin/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    管理後台 (Admin Console)
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../admin/jobs-and-worker/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    背景工作與排程
   
 
     
@@ -1704,17 +1624,17 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" checked>
         
           
-          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
             
   
   
   <span class="md-ellipsis">
     
   
-    部署
+    Admin Console
   
 
     
@@ -1725,128 +1645,16 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="true">
-          <label class="md-nav__title" for="__nav_9">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_8">
             <span class="md-nav__icon md-icon"></span>
             
   
-    部署
+    Admin Console
   
 
           </label>
           <ul class="md-nav__list" data-md-scrollfix>
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    部署指南
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../architecture/deployment/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    架構與容器部署
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../configuration/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    環境變數配置
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../performance/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    效能與監控
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
             
               
                 
@@ -1871,7 +1679,7 @@
   <span class="md-ellipsis">
     
   
-    資料處理附錄 (DPA)
+    Admin Console
   
 
     
@@ -1889,7 +1697,7 @@
   <span class="md-ellipsis">
     
   
-    資料處理附錄 (DPA)
+    Admin Console
   
 
     
@@ -1901,7 +1709,7 @@
       
         
 
-<nav class="md-nav md-nav--secondary" aria-label="目錄">
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
   
   
   
@@ -1910,15 +1718,15 @@
   
     <label class="md-nav__title" for="__toc">
       <span class="md-nav__icon md-icon"></span>
-      目錄
+      Table of contents
     </label>
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#_1" class="md-nav__link">
+  <a href="#enabling-it" class="md-nav__link">
     <span class="md-ellipsis">
       
-        存取方式
+        Enabling it
       
     </span>
   </a>
@@ -1926,10 +1734,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#dpa_1" class="md-nav__link">
+  <a href="#interface" class="md-nav__link">
     <span class="md-ellipsis">
       
-        DPA 摘要
+        Interface
       
     </span>
   </a>
@@ -1937,10 +1745,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_2" class="md-nav__link">
+  <a href="#settings-and-precedence" class="md-nav__link">
     <span class="md-ellipsis">
       
-        唯讀範圍與唯一例外
+        Settings and precedence
       
     </span>
   </a>
@@ -1948,10 +1756,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_3" class="md-nav__link">
+  <a href="#system-backups" class="md-nav__link">
     <span class="md-ellipsis">
       
-        實作方式
+        System backups
       
     </span>
   </a>
@@ -1959,10 +1767,43 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#dpa_2" class="md-nav__link">
+  <a href="#source-files" class="md-nav__link">
     <span class="md-ellipsis">
       
-        更新 DPA
+        Source files
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#maintenance-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Maintenance mode
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#external-fhir-servers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        External FHIR servers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#db-health-gate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DB health gate
       
     </span>
   </a>
@@ -1985,14 +1826,180 @@
   
   
     <li class="md-nav__item">
-      <a href="../privacy/" class="md-nav__link">
+      <a href="jobs-and-worker/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    隱私政策頁面
+    Jobs & Scheduling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9" >
+        
+          
+          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Deployment
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../deployment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/deployment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture & Container Deployment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../deployment/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../deployment/performance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance & Monitoring
   
 
     
@@ -2038,7 +2045,7 @@
   <span class="md-ellipsis">
     
   
-    開發指南
+    Development
   
 
     
@@ -2054,7 +2061,7 @@
             <span class="md-nav__icon md-icon"></span>
             
   
-    開發指南
+    Development
   
 
           </label>
@@ -2067,14 +2074,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../../development/" class="md-nav__link">
+      <a href="../development/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    開發指南
+    Development
   
 
     
@@ -2095,14 +2102,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../../development/code-style/" class="md-nav__link">
+      <a href="../development/code-style/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    程式風格
+    Code Style
   
 
     
@@ -2123,14 +2130,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../../development/testing/" class="md-nav__link">
+      <a href="../development/testing/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    測試指南
+    Testing
   
 
     
@@ -2151,14 +2158,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../../development/contributing/" class="md-nav__link">
+      <a href="../development/contributing/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    貢獻流程
+    Contributing
   
 
     
@@ -2179,14 +2186,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../../WEBSITE/" class="md-nav__link">
+      <a href="../WEBSITE/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    文件網站維護
+    Docs Site Maintenance
   
 
     
@@ -2232,7 +2239,7 @@
   <span class="md-ellipsis">
     
   
-    常見問題
+    FAQ
   
 
     
@@ -2248,7 +2255,7 @@
             <span class="md-nav__icon md-icon"></span>
             
   
-    常見問題
+    FAQ
   
 
           </label>
@@ -2261,14 +2268,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../../faq/" class="md-nav__link">
+      <a href="../faq/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    常見問題 (FAQ)
+    FAQ
   
 
     
@@ -2289,14 +2296,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../../faq/usage/" class="md-nav__link">
+      <a href="../faq/usage/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    操作與使用
+    Usage
   
 
     
@@ -2317,14 +2324,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../../faq/loinc/" class="md-nav__link">
+      <a href="../faq/loinc/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    LOINC 相關
+    LOINC
   
 
     
@@ -2358,7 +2365,7 @@
                   <div class="md-sidebar__inner">
                     
 
-<nav class="md-nav md-nav--secondary" aria-label="目錄">
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
   
   
   
@@ -2367,15 +2374,15 @@
   
     <label class="md-nav__title" for="__toc">
       <span class="md-nav__icon md-icon"></span>
-      目錄
+      Table of contents
     </label>
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#_1" class="md-nav__link">
+  <a href="#enabling-it" class="md-nav__link">
     <span class="md-ellipsis">
       
-        存取方式
+        Enabling it
       
     </span>
   </a>
@@ -2383,10 +2390,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#dpa_1" class="md-nav__link">
+  <a href="#interface" class="md-nav__link">
     <span class="md-ellipsis">
       
-        DPA 摘要
+        Interface
       
     </span>
   </a>
@@ -2394,10 +2401,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_2" class="md-nav__link">
+  <a href="#settings-and-precedence" class="md-nav__link">
     <span class="md-ellipsis">
       
-        唯讀範圍與唯一例外
+        Settings and precedence
       
     </span>
   </a>
@@ -2405,10 +2412,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_3" class="md-nav__link">
+  <a href="#system-backups" class="md-nav__link">
     <span class="md-ellipsis">
       
-        實作方式
+        System backups
       
     </span>
   </a>
@@ -2416,10 +2423,43 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#dpa_2" class="md-nav__link">
+  <a href="#source-files" class="md-nav__link">
     <span class="md-ellipsis">
       
-        更新 DPA
+        Source files
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#maintenance-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Maintenance mode
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#external-fhir-servers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        External FHIR servers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#db-health-gate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DB health gate
       
     </span>
   </a>
@@ -2446,113 +2486,93 @@
   
 
 
-<h1 id="dpa">資料處理協議頁面 (DPA)<a class="headerlink" href="#dpa" title="Permanent link">&para;</a></h1>
-<p>Taiwan Health MCP Server 在 <code>/dpa</code> 路徑提供靜態 HTML 資料處理協議（Data Processing Agreement），
-供 Anthropic Remote MCP Server 目錄審核及使用者查閱。</p>
-<h2 id="_1">存取方式<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
-<pre><code>https://&lt;your-domain&gt;/dpa
+<h1 id="admin-console">Admin Console<a class="headerlink" href="#admin-console" title="Permanent link">&para;</a></h1>
+<p>The admin console is a session-authenticated operator interface mounted at <code>/admin</code>, used to upload source files, run and schedule data imports, manage settings and external FHIR servers, and monitor background jobs in real time. It is <strong>disabled by default</strong>.</p>
+<h2 id="enabling-it">Enabling it<a class="headerlink" href="#enabling-it" title="Permanent link">&para;</a></h2>
+<p>Set the following in <code>.env</code> and restart <code>app</code>:</p>
+<pre><code class="language-dotenv">ADMIN_ENABLED=true
+ADMIN_USERNAME=admin
+# Generate a password hash (Node):
+#   node -e &quot;console.log('sha256$' + require('crypto').createHash('sha256').update('change-me').digest('hex'))&quot;
+# ⚠️ Every $ must be written as $$ in .env (Docker Compose expands $ as a variable
+#    reference, and a hash starting with a letter gets silently truncated).
+#    Compose collapses $$ back to a single $.
+ADMIN_PASSWORD_HASH=sha256$$...
+ADMIN_SESSION_SECRET=change_this_admin_session_secret
+ADMIN_SESSION_TTL_MINUTES=240
+ADMIN_MAX_UPLOAD_MB=512
+# pgcrypto symmetric key for external FHIR servers' OAuth tokens / client secrets.
+# Falls back to ADMIN_SESSION_SECRET when unset.
+FHIR_SERVER_SECRET_KEY=
 </code></pre>
-<p>本地測試（經由 nginx 前門，預設 <code>:8080</code>）：</p>
-<pre><code class="language-bash">curl http://localhost:8080/dpa
-</code></pre>
-<h2 id="dpa_1">DPA 摘要<a class="headerlink" href="#dpa_1" title="Permanent link">&para;</a></h2>
+<p>Password hashes support <code>sha256$&lt;hex&gt;</code> and <code>pbkdf2_sha256$&lt;iterations&gt;$&lt;salt&gt;$&lt;hex&gt;</code>. You may instead supply a plaintext initial password with <code>ADMIN_INITIAL_PASSWORD</code> (effective on first boot only). <code>/admin</code> opens when <code>ADMIN_ENABLED=true</code>, <code>ADMIN_USERNAME</code>, and <code>ADMIN_SESSION_SECRET</code> all have values, and at least one of <code>ADMIN_PASSWORD_HASH</code> / <code>ADMIN_INITIAL_PASSWORD</code> is set.</p>
+<p>The sign-in URL is <code>http://&lt;host&gt;:8080/admin</code> (through the nginx front door; the <code>app</code> container publishes no host port).</p>
+<blockquote>
+<p>The admin console needs the <code>admin-worker</code> container running alongside it (the background job runner). <code>docker compose up -d</code> starts both.</p>
+<p><strong>Important:</strong> <code>FHIR_SERVER_SECRET_KEY</code> (or its fallback, <code>ADMIN_SESSION_SECRET</code>) must be <strong>identical</strong> on the <code>app</code> and <code>admin-worker</code> containers. The worker uses this key to <code>pgp_sym_decrypt</code> external FHIR servers' OAuth tokens and client secrets; if the worker's key is empty or different, background jobs raise <code>Illegal argument to function</code> (empty key) or <code>Wrong key or corrupt data</code> (mismatched key).</p>
+</blockquote>
+<h2 id="interface">Interface<a class="headerlink" href="#interface" title="Permanent link">&para;</a></h2>
+<p>The admin interface is a React SPA in <strong><code>web/admin-app/</code></strong>, mounted client-side by the Next.js front-end (the <code>web</code> service) under the <code>/admin</code> catch-all route; <code>web/middleware.ts</code> gates access on the <code>tw_health_admin_session</code> cookie.</p>
+<p>The main tabs:</p>
 <table>
 <thead>
 <tr>
-<th>項目</th>
-<th>說明</th>
+<th>Tab</th>
+<th>Purpose</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>資料控制者</td>
-<td>HealthyMind Tech（Operator）</td>
+<td><strong>Overview</strong></td>
+<td>System overview: DB, per-module, worker, and external FHIR server health.</td>
 </tr>
 <tr>
-<td>處理目的</td>
-<td>僅用於回應 MCP 工具呼叫請求</td>
+<td><strong>Services</strong></td>
+<td>Availability and probe results for each service / module.</td>
 </tr>
 <tr>
-<td>個人資料收集</td>
-<td>不收集任何 PII 或個人健康資料</td>
+<td><strong>Tasks</strong></td>
+<td>The import job queue, progress, step timeline, and live logs (see <a href="jobs-and-worker/">Jobs &amp; Scheduling</a>).</td>
 </tr>
 <tr>
-<td>Audit log</td>
-<td>保留工具名稱、SHA-256(參數)、時間戳記，保留 90 天</td>
+<td><strong>Modules</strong></td>
+<td>Per-module source files, imports, schedules, previews, embeddings, and maintenance mode.</td>
 </tr>
 <tr>
-<td>原始參數</td>
-<td>永不寫入 log（HIPAA 設計）</td>
+<td><strong>Settings</strong></td>
+<td>Organised into Embedding, Analysis LM, OCR, integrations, Privacy, and Backup sub-pages; manages DB-backed settings, LLM profiles, login credentials, and system backups.</td>
 </tr>
 <tr>
-<td>Redis 快取</td>
-<td>依 TTL 自動過期（1–24 小時）</td>
-</tr>
-<tr>
-<td>次處理者</td>
-<td>PostgreSQL、Redis（自建）、Anthropic 平台</td>
-</tr>
-<tr>
-<td>資料境外傳輸</td>
-<td>僅透過 Anthropic 平台（美國）；Operator 本身不境外傳輸</td>
-</tr>
-<tr>
-<td>安全措施</td>
-<td>HTTPS、Docker 網路隔離、append-only audit log</td>
-</tr>
-<tr>
-<td>違反通知</td>
-<td>72 小時內通知（依法規要求）</td>
-</tr>
-<tr>
-<td>準據法</td>
-<td>中華民國（台灣）法律，台北地方法院管轄</td>
+<td><strong>FHIR Servers</strong></td>
+<td>Register and manage external FHIR R4 servers, authentication, and health checks.</td>
 </tr>
 </tbody>
 </table>
-<h2 id="_2">唯讀範圍與唯一例外<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
-<p>49 個工具中有 48 個對系統自身的資料做唯讀查詢。唯一例外是 <strong><code>crud_fhir_server</code></strong>：
-它會把 FHIR 請求轉送到<strong>管理者已明確登錄</strong>的外部 FHIR 伺服器。寫入操作
-（create / update / patch / delete）必須同時滿足兩個條件才會執行 ——
-該伺服器的 allow-list 允許該操作，且呼叫端帶入 <code>confirm_write=true</code>。</p>
-<p>此類請求中的個人健康資料由呼叫端提供、直接轉送至該外部伺服器，本服務不予保留。
-啟用外部伺服器寫入權限的 Operator，對該處理行為負控制者責任。</p>
-<h2 id="_3">實作方式<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
-<p><code>/dpa</code> 由 <strong>Next.js <code>web</code> 服務</strong>提供（不再是後端的中介層）：</p>
-<table>
-<thead>
-<tr>
-<th>項目</th>
-<th>位置</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>路由</td>
-<td><code>web/app/dpa/route.ts</code>（<code>export const dynamic = "force-static"</code>）</td>
-</tr>
-<tr>
-<td>內容</td>
-<td><code>web/legacy/dpa.html</code></td>
-</tr>
-<tr>
-<td>深色模式注入</td>
-<td><code>web/lib/legacy.ts</code> 的 <code>withDarkMode()</code></td>
-</tr>
-<tr>
-<td>回應標頭</td>
-<td><code>Content-Type: text/html; charset=utf-8</code></td>
-</tr>
-</tbody>
-</table>
-<p>nginx 將所有非 API 路徑導向 <code>web</code>，因此 <code>/dpa</code> 不經過 <code>app</code> 容器。</p>
-<h2 id="dpa_2">更新 DPA<a class="headerlink" href="#dpa_2" title="Permanent link">&para;</a></h2>
-<ol>
-<li>修改 <code>web/legacy/dpa.html</code>。</li>
-<li>重新建置並部署 <code>web</code> 服務：</li>
-</ol>
-<p><code>bash
-   docker compose build web &amp;&amp; docker compose up -d --no-deps web</code></p>
+<p>The corresponding backend modules are in <code>node-server/src/admin/*.ts</code> (<code>adminApp.ts</code> is the routing entry point).</p>
+<p>Besides passwords, sign-in also supports <strong>passkeys / WebAuthn</strong> (<code>node-server/src/admin/webauthn.ts</code>); passkeys only work over HTTPS on the RP domain (or on localhost for development). See <a href="../deployment/configuration/">Configuration</a>.</p>
+<h2 id="settings-and-precedence">Settings and precedence<a class="headerlink" href="#settings-and-precedence" title="Permanent link">&para;</a></h2>
+<p>Bootstrap variables (DB / Redis / MCP transport / <code>ADMIN_*</code> auth) originate in <code>.env</code>. On first boot, <code>ADMIN_PASSWORD_HASH</code> is written into <code>admin.admin_credentials</code>, and subsequent sign-ins validate only against the hash in the database. Seeding uses <code>ON CONFLICT DO NOTHING</code>, so once the credential row exists, editing <code>.env</code> or restarting the service never overwrites a working password. Passwords and passkeys are both managed under Settings → Privacy.</p>
+<p>The other external-system settings (MinIO, TFDA base URL, worker tuning) are <strong>seed-only</strong>: <code>.env</code> is read exactly once, on first boot, while <code>admin.app_settings</code> is empty. Editing <code>.env</code> afterwards has no effect on an already-seeded database. TFDA and registry settings can then be managed and tested in the Settings tab (applied hot); <strong>MinIO and worker tuning are read-only groups</strong> there, so changing them later requires a direct <code>UPDATE admin.app_settings</code> and a service restart.</p>
+<p><strong>Model endpoints (embedding / OCR / analysis LLM) are never read from environment variables.</strong> They live only in <code>admin.llm_profiles</code> and are configurable only in the Settings sub-pages. Use the JSON Export / Import under Settings → Backup &amp; restore to move a working configuration between installs.</p>
+<h2 id="system-backups">System backups<a class="headerlink" href="#system-backups" title="Permanent link">&para;</a></h2>
+<p>Settings → Backup &amp; restore lets you select settings and credentials, the PostgreSQL database, and MinIO object storage individually.
+Creating a backup only queues a <code>system_backup</code> background job; the worker streams the PostgreSQL custom dump and the MinIO objects into a ZIP chunk by chunk, then writes it back to the <code>system-backups/</code> prefix in MinIO with a multipart upload — the whole backup is never assembled in a single HTTP request or in Node's memory. Once finished, it can be streamed down from the backup history through a same-origin API.</p>
+<p>Backups contain API keys, login credentials, and medical data, and should be managed as production secrets. The database dump restores with PostgreSQL 16 <code>pg_restore</code>; the object storage files are in the ZIP's <code>object-storage/</code> directory.</p>
+<h2 id="source-files">Source files<a class="headerlink" href="#source-files" title="Permanent link">&para;</a></h2>
+<p>Upload each module's source files under Modules / Sources (ICD zip, LOINC zip, SNOMED RF2, RxNorm zip, FHIR IG <code>package.tgz</code>, and so on), optionally specifying a source role (such as an IG dependency package). The system blocks duplicate uploads by file fingerprint; files are stored in MinIO and fetched back when a job runs.</p>
+<blockquote>
+<p>Uploads must send <code>Content-Type: application/octet-stream</code>, or express's JSON parser intercepts them and returns 413.</p>
+</blockquote>
+<h2 id="maintenance-mode">Maintenance mode<a class="headerlink" href="#maintenance-mode" title="Permanent link">&para;</a></h2>
+<p>Each module can be switched into maintenance mode: while it is on, that module's MCP tools stop responding (returning a maintenance message), so the data can be reloaded or cleared safely without read/write races.</p>
+<h2 id="external-fhir-servers">External FHIR servers<a class="headerlink" href="#external-fhir-servers" title="Permanent link">&para;</a></h2>
+<p>Register external FHIR R4 servers on the FHIR Servers tab, configuring the permitted resource types and operations, OAuth authentication (including <code>private_key_jwt</code> key generation, with the public JWKS hosted at <code>/fhir-client/&lt;id&gt;/jwks.json</code>), the token strategy, and the health check path.</p>
+<p>The MCP side consumes them through <code>list_fhir_servers</code> / <code>get_fhir_server_status</code> / <code>crud_fhir_server</code>, with the server handling tokens on the caller's behalf — the caller never touches any secret.</p>
+<blockquote>
+<p><code>crud_fhir_server</code> is the only tool in the system that can produce a write: write operations require the server's allow-list to permit them and the caller to pass <code>confirm_write=true</code>.</p>
+</blockquote>
+<h2 id="db-health-gate">DB health gate<a class="headerlink" href="#db-health-gate" title="Permanent link">&para;</a></h2>
+<p><code>node-server/src/dbHealth.ts</code> is the central DB health monitor: when PostgreSQL is unreachable, it locks every mutating operation and shows an overlay in the UI, preventing imports or edits while the database is unhealthy.</p>
 
 
 
@@ -2606,10 +2626,12 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": [], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "\u5df2\u8907\u88fd", "clipboard.copy": "\u8907\u88fd", "search.result.more.one": "\u6b64\u9801\u5c1a\u6709 1 \u500b\u7b26\u5408\u7684\u9805\u76ee", "search.result.more.other": "\u6b64\u9801\u5c1a\u6709 # \u500b\u7b26\u5408\u7684\u9805\u76ee", "search.result.none": "\u6c92\u6709\u7b26\u5408\u7684\u9805\u76ee", "search.result.one": "\u627e\u5230 1 \u500b\u7b26\u5408\u7684\u9805\u76ee", "search.result.other": "\u627e\u5230 # \u500b\u7b26\u5408\u7684\u9805\u76ee", "search.result.placeholder": "\u6253\u5b57\u9032\u884c\u641c\u5c0b", "search.result.term.missing": "\u7f3a\u5c11\u5b57\u8a5e", "select.version": "\u9078\u64c7\u7248\u672c"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": [], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
       <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+        <script src="../../javascripts/lang-switch.js"></script>
       
     
   </body>

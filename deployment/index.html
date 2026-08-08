@@ -22,6 +22,10 @@
       
       
         
+          <link rel="alternate" href="./" hreflang="zh-TW">
+        
+          <link rel="alternate" href="../en/deployment/" hreflang="en">
+        
       
       
       <link rel="icon" href="../assets/images/favicon.png">
@@ -116,6 +120,32 @@
     
       <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
     
+    
+      <div class="md-header__option">
+  <div class="md-select">
+    
+    <button class="md-header__button md-icon" aria-label="選擇語言">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m12.87 15.07-2.54-2.51.03-.03A17.5 17.5 0 0 0 14.07 6H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2zm-2.62 7 1.62-4.33L19.12 17z"/></svg>
+    </button>
+    <div class="md-select__inner">
+      <ul class="md-select__list">
+        
+          <li class="md-select__item">
+            <a href="./" hreflang="zh-TW" class="md-select__link">
+              繁體中文
+            </a>
+          </li>
+        
+          <li class="md-select__item">
+            <a href="../en/deployment/" hreflang="en" class="md-select__link">
+              English
+            </a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+</div>
     
     
       
@@ -1811,80 +1841,14 @@
     </span>
   </a>
   
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#_3" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        服務組成
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#_4" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        部署選項
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="部署選項">
+    <nav class="md-nav" aria-label="支援環境">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#_5" class="md-nav__link">
+  <a href="#_3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        架構與容器部署
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#_6" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        環境變數配置
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#_7" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        效能與監控
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#dpa" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        資料處理附錄 (DPA)
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#_8" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        隱私政策頁面
+        資源需求
       
     </span>
   </a>
@@ -1897,13 +1861,279 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_9" class="md-nav__link">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        服務組成
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        部署流程
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="部署流程">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        步驟 1：取得程式碼
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-env" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        步驟 2：建立 .env
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="步驟 2：建立 .env">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#2-1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2-1. 必填 / 必改變數
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2-2. 設定管理後台密碼
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2-3. 加密金鑰的一致性
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2-4. 認清「只讀一次」的設定
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-5-env" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2-5. 最小可用 .env 範例
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        步驟 3：建置與啟動
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        步驟 4：驗證
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        步驟 5：登入管理後台並設定模型端點
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        步驟 6：載入資料
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        日常維運
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="日常維運">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        更新與重新部署
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_8" class="md-nav__link">
     <span class="md-ellipsis">
       
         資料庫遷移
       
     </span>
   </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_9" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        備份
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#external-ports" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        對外埠與強化
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        疑難排解
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_11" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        延伸閱讀
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="延伸閱讀">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_12" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        架構與容器部署
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_13" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        環境變數配置
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_14" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        效能與監控
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -1987,62 +2217,6 @@
     
   
     效能與監控
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="dpa/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    資料處理附錄 (DPA)
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="privacy/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    隱私政策頁面
   
 
     
@@ -2430,80 +2604,14 @@
     </span>
   </a>
   
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#_3" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        服務組成
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#_4" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        部署選項
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="部署選項">
+    <nav class="md-nav" aria-label="支援環境">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#_5" class="md-nav__link">
+  <a href="#_3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        架構與容器部署
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#_6" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        環境變數配置
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#_7" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        效能與監控
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#dpa" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        資料處理附錄 (DPA)
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#_8" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        隱私政策頁面
+        資源需求
       
     </span>
   </a>
@@ -2516,13 +2624,279 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_9" class="md-nav__link">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        服務組成
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        部署流程
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="部署流程">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        步驟 1：取得程式碼
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-env" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        步驟 2：建立 .env
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="步驟 2：建立 .env">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#2-1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2-1. 必填 / 必改變數
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2-2. 設定管理後台密碼
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2-3. 加密金鑰的一致性
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2-4. 認清「只讀一次」的設定
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-5-env" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2-5. 最小可用 .env 範例
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        步驟 3：建置與啟動
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        步驟 4：驗證
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        步驟 5：登入管理後台並設定模型端點
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        步驟 6：載入資料
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        日常維運
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="日常維運">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        更新與重新部署
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_8" class="md-nav__link">
     <span class="md-ellipsis">
       
         資料庫遷移
       
     </span>
   </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_9" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        備份
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#external-ports" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        對外埠與強化
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        疑難排解
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_11" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        延伸閱讀
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="延伸閱讀">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_12" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        架構與容器部署
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_13" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        環境變數配置
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_14" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        效能與監控
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -2548,13 +2922,46 @@
 
 <h1 id="_1">部署指南<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h1>
 <p>本章節說明如何將 Taiwan Health MCP 伺服器部署至生產環境。本專案採 Container-first 策略，強烈建議使用 Docker 部署以確保環境一致性。</p>
+<p>完整的變數清單見<a href="configuration/">環境變數配置</a>；本頁是<strong>按順序執行的部署流程</strong>。</p>
 <h2 id="_2">支援環境<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong>作業系統</strong>：Linux (Ubuntu/CentOS)、macOS、Windows (WSL2)</li>
-<li><strong>容器平台</strong>：Docker、Kubernetes、Podman</li>
+<li><strong>容器平台</strong>：Docker Engine 24 以上 + Docker Compose v2（<code>docker compose</code>，非舊版 <code>docker-compose</code>）</li>
 <li><strong>Node.js 版本</strong>：20 以上（裸機部署或本機開發時）。本專案已無 Python 執行期相依。</li>
 </ul>
-<h2 id="_3">服務組成<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
+<h3 id="_3">資源需求<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>項目</th>
+<th>最低</th>
+<th>建議</th>
+<th>備註</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>CPU</td>
+<td>2 core</td>
+<td>4 core 以上</td>
+<td>匯入與嵌入工作為主要負載</td>
+</tr>
+<tr>
+<td>記憶體</td>
+<td>8 GB</td>
+<td>16 GB 以上</td>
+<td><code>admin-worker</code> 單一容器就設定了 <code>--max-old-space-size=8192</code>（FHIR IG 匯入需要）</td>
+</tr>
+<tr>
+<td>磁碟</td>
+<td>20 GB</td>
+<td>100 GB 以上</td>
+<td>PostgreSQL + MinIO 藥品資產（仿單 / 標籤 / 外觀圖）會持續成長</td>
+</tr>
+</tbody>
+</table>
+<p>嵌入、OCR（MinerU）與分析 LLM 都是<strong>外部 HTTP 服務</strong>，不含在本 compose stack 內，需另行準備並在管理後台設定。</p>
+<h2 id="_4">服務組成<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
 <p><code>docker compose up -d</code> 會啟動下列服務：</p>
 <table>
 <thead>
@@ -2566,11 +2973,11 @@
 <tbody>
 <tr>
 <td><code>nginx</code></td>
-<td><strong>單一對外入口</strong>（預設 <code>:8080</code>，由 <code>WEB_PORT</code> 設定）。把 <code>/mcp</code>、<code>/openapi.json</code>、<code>/tools/*</code>、<code>/status.json</code>、<code>/admin/api/*</code>、<code>/admin/ws</code>、<code>/fhir-client/*</code>、<code>/fhir-oauth/*</code> 導向 <code>app</code>，其餘全部導向 <code>web</code>。</td>
+<td><strong>對外入口</strong>（預設 <code>:8080</code>，由 <code>WEB_PORT</code> 設定）。把 <code>/mcp</code>、<code>/openapi.json</code>、<code>/tools/*</code>、<code>/admin/api/*</code>、<code>/admin/ws</code>、<code>/fhir-client/*</code>、<code>/fhir-oauth/*</code> 導向 <code>app</code>，其餘全部導向 <code>web</code>。</td>
 </tr>
 <tr>
 <td><code>web</code></td>
-<td>Next.js 前端：公開頁面（<code>/</code>、<code>/status</code>、<code>/privacy</code>、<code>/dpa</code>）與 <code>/admin</code> 管理後台 SPA。</td>
+<td>Next.js 前端：<code>/admin</code> 管理後台 SPA。</td>
 </tr>
 <tr>
 <td><code>app</code></td>
@@ -2600,23 +3007,438 @@
 </table>
 <p>資料匯入由管理後台觸發、在 <code>admin-worker</code> 內執行，已無獨立的 data-loader 容器。</p>
 <div class="admonition warning">
-<p class="admonition-title">對外只開 nginx</p>
+<p class="admonition-title">應用流量只走 nginx</p>
 <p>不要在文件或客戶端設定中使用 <code>http://&lt;host&gt;:8000</code> —— <code>app</code> 沒有對主機開放該埠。
-所有流量（含 MCP）都必須經由 <code>http://&lt;host&gt;:8080</code>。</p>
+所有應用流量（含 MCP）都必須經由 <code>http://&lt;host&gt;:8080</code>。</p>
+<p>（<code>postgres</code> 與 <code>minio</code> 另有對主機發佈的埠，屬於維運用途，正式環境請見<a href="#external-ports">對外埠與強化</a>。）</p>
 </div>
-<h2 id="_4">部署選項<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
-<h3 id="_5"><a href="../architecture/deployment/">架構與容器部署</a><a class="headerlink" href="#_5" title="Permanent link">&para;</a></h3>
-<p>基礎設施拓樸、容器組成與啟動流程。快速啟動步驟見<a href="../getting-started/">快速開始</a>。</p>
-<h3 id="_6"><a href="configuration/">環境變數配置</a><a class="headerlink" href="#_6" title="Permanent link">&para;</a></h3>
-<p>各項系統參數的設定方式，含 bootstrap 變數（<code>.env</code>）與 seed-only 設定（首次啟動後改於 Admin → Settings 管理）。</p>
-<h3 id="_7"><a href="performance/">效能與監控</a><a class="headerlink" href="#_7" title="Permanent link">&para;</a></h3>
+<hr />
+<h2 id="_5">部署流程<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>
+<h3 id="1">步驟 1：取得程式碼<a class="headerlink" href="#1" title="Permanent link">&para;</a></h3>
+<pre><code class="language-bash">git clone https://github.com/healthymind-tech/Taiwan-Health-MCP.git
+cd Taiwan-Health-MCP
+</code></pre>
+<h3 id="2-env">步驟 2：建立 <code>.env</code><a class="headerlink" href="#2-env" title="Permanent link">&para;</a></h3>
+<pre><code class="language-bash">cp .env.example .env
+</code></pre>
+<p><code>.env.example</code> 的預設值<strong>不能直接上生產環境</strong>。以下是必須處理的項目：</p>
+<h4 id="2-1">2-1. 必填 / 必改變數<a class="headerlink" href="#2-1" title="Permanent link">&para;</a></h4>
+<table>
+<thead>
+<tr>
+<th>變數</th>
+<th>為何必要</th>
+<th>建議做法</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>POSTGRES_PASSWORD</code></td>
+<td>未設定時 <code>docker compose</code> 會直接失敗（compose 以 <code>:?</code> 強制要求）</td>
+<td><code>openssl rand -hex 24</code></td>
+</tr>
+<tr>
+<td><code>ADMIN_ENABLED</code></td>
+<td>預設 <code>false</code>，不開就沒有 <code>/admin</code>，也<strong>無法匯入任何資料</strong></td>
+<td>設 <code>true</code></td>
+</tr>
+<tr>
+<td><code>ADMIN_USERNAME</code></td>
+<td>管理後台帳號</td>
+<td>預設 <code>admin</code>，可自訂</td>
+</tr>
+<tr>
+<td><code>ADMIN_INITIAL_PASSWORD</code><br>或 <code>ADMIN_PASSWORD_HASH</code></td>
+<td>沒有憑證就無法登入</td>
+<td>二擇一，見 2-2</td>
+</tr>
+<tr>
+<td><code>ADMIN_SESSION_SECRET</code></td>
+<td>session cookie 簽章金鑰；同時是 <code>FHIR_SERVER_SECRET_KEY</code> 的回退值</td>
+<td><code>openssl rand -hex 32</code></td>
+</tr>
+<tr>
+<td><code>MINIO_ACCESS_KEY</code> / <code>MINIO_SECRET_KEY</code></td>
+<td>預設 <code>minioadmin</code> / <code>minioadmin</code>，等同無密碼</td>
+<td>各自 <code>openssl rand -hex 16</code></td>
+</tr>
+<tr>
+<td><code>PUBLIC_BASE_URL</code></td>
+<td>對外 origin，用於 OAuth2 redirect_uri 與 WebAuthn RP ID 推導</td>
+<td><code>https://your-domain.example.com</code></td>
+</tr>
+<tr>
+<td><code>PUBLIC_TOOLS_AUTH_MODE</code> / <code>PUBLIC_TOOLS_BEARER_TOKEN</code></td>
+<td>預設 <code>none</code>，代表 <code>/mcp</code> 與 <code>/tools/*</code> 完全不驗證</td>
+<td>對外開放時設 <code>bearer</code> + <code>openssl rand -hex 32</code></td>
+</tr>
+<tr>
+<td><code>WEB_PORT</code></td>
+<td>對外埠</td>
+<td>預設 <code>8080</code>，依環境調整</td>
+</tr>
+</tbody>
+</table>
+<p>一次產生所有隨機值：</p>
+<pre><code class="language-bash">echo &quot;POSTGRES_PASSWORD=$(openssl rand -hex 24)&quot;
+echo &quot;ADMIN_SESSION_SECRET=$(openssl rand -hex 32)&quot;
+echo &quot;FHIR_SERVER_SECRET_KEY=$(openssl rand -hex 32)&quot;
+echo &quot;MINIO_ACCESS_KEY=$(openssl rand -hex 16)&quot;
+echo &quot;MINIO_SECRET_KEY=$(openssl rand -hex 16)&quot;
+echo &quot;PUBLIC_TOOLS_BEARER_TOKEN=$(openssl rand -hex 32)&quot;
+</code></pre>
+<h4 id="2-2">2-2. 設定管理後台密碼<a class="headerlink" href="#2-2" title="Permanent link">&para;</a></h4>
+<p>兩種方式擇一：</p>
+<p><strong>(a) 明文初始密碼（較簡單）</strong> —— 只在首次啟動、資料庫尚無憑證列時使用，之後永久忽略：</p>
+<pre><code class="language-dotenv">ADMIN_INITIAL_PASSWORD=your-strong-password
+</code></pre>
+<p><strong>(b) 預先算好的雜湊</strong>：</p>
+<pre><code class="language-bash">node -e &quot;console.log('sha256\$' + require('crypto').createHash('sha256').update('change-me').digest('hex'))&quot;
+</code></pre>
+<pre><code class="language-dotenv">ADMIN_PASSWORD_HASH=sha256$$1a2b3c...
+</code></pre>
+<p>兩者同時存在時 <code>ADMIN_INITIAL_PASSWORD</code> 優先。密碼雜湊支援 <code>sha256$&lt;hex&gt;</code> 與 <code>pbkdf2_sha256$&lt;iterations&gt;$&lt;salt&gt;$&lt;hex&gt;</code>。</p>
+<div class="admonition danger">
+<p class="admonition-title"><code>.env</code> 中的每個 <code>$</code> 都要寫成 <code>$$</code></p>
+<p>Docker Compose 會對 <code>.env</code> 做變數展開，單一 <code>$</code> 會被當成變數參照。
+當雜湊值以字母開頭時（例如 <code>sha256$abc…</code>），<code>$abc…</code> 會被當成未定義變數而<strong>靜默截斷成 <code>sha256</code></strong>，
+結果是登入永遠失敗且沒有明顯錯誤訊息。</p>
+<p>請把每個 <code>$</code> 都寫成 <code>$$</code>（Compose 會還原成單一 <code>$</code>）。<code>pbkdf2_sha256$...$...$...</code> 含多個 <code>$</code>，每個都要加倍。
+密碼本身或 <code>ADMIN_SESSION_SECRET</code> 含 <code>$</code> 時同理。</p>
+</div>
+<h4 id="2-3">2-3. 加密金鑰的一致性<a class="headerlink" href="#2-3" title="Permanent link">&para;</a></h4>
+<p><code>FHIR_SERVER_SECRET_KEY</code> 是外部 FHIR 伺服器 OAuth token / client secret 的 pgcrypto 對稱金鑰，
+未設定時回退為 <code>ADMIN_SESSION_SECRET</code>。<code>compose.yaml</code> 已把它同時傳給 <code>app</code> 與 <code>admin-worker</code>，
+<strong>兩者必須一致</strong>，否則 worker 解密會拋 <code>Illegal argument to function</code>（金鑰為空）
+或 <code>Wrong key or corrupt data</code>（金鑰不符）。</p>
+<h4 id="2-4">2-4. 認清「只讀一次」的設定<a class="headerlink" href="#2-4" title="Permanent link">&para;</a></h4>
+<p>seed-only 設定（MinIO、TFDA 爬蟲、FHIR package registry、worker 調校）<strong>只在首次啟動時
+從 <code>.env</code> 讀取一次</strong>寫入 <code>admin.app_settings</code>（<code>seedIfEmpty()</code> 以 <code>ON CONFLICT DO NOTHING</code>
+逐鍵寫入），之後改 <code>.env</code> 一律無效。但它們事後的可改性<strong>並不相同</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>設定群組</th>
+<th>首次啟動後如何修改</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>TFDA 爬蟲、FHIR package registry</td>
+<td>Admin → Settings 直接改（支援熱套用）</td>
+</tr>
+<tr>
+<td><strong>MinIO（Storage）</strong>、<strong>Worker Tuning</strong></td>
+<td>後台<strong>唯讀</strong>，標示為 "Owned by the deployment (.env / compose)"。但因為值早已種子化進資料庫、程式也是讀資料庫，<strong>改 <code>.env</code> 同樣沒有效果</strong> —— 只能直接 <code>UPDATE admin.app_settings</code> 再重啟對應服務。</td>
+</tr>
+<tr>
+<td>模型端點（嵌入 / OCR / 分析 LLM）</td>
+<td><strong>完全不從 <code>.env</code> 讀取</strong>，只能在 Admin → Settings 設定</td>
+</tr>
+</tbody>
+</table>
+<p><code>ADMIN_MAX_CONCURRENT_JOBS</code> 是例外：它不進 <code>admin.app_settings</code>，worker 每次啟動都直接讀環境變數，改 <code>.env</code> 後重啟 worker 即生效。</p>
+<div class="admonition danger">
+<p class="admonition-title">MinIO 憑證務必在首次啟動前就設定好</p>
+<p><code>MINIO_ACCESS_KEY</code> / <code>MINIO_SECRET_KEY</code> 有兩個消費者，行為並不一致：</p>
+<ul>
+<li><code>minio</code> 容器<strong>每次啟動都會</strong>從 <code>.env</code> 讀取，作為 root 帳密（<code>MINIO_ROOT_USER</code> / <code>MINIO_ROOT_PASSWORD</code>）；</li>
+<li><code>app</code> / <code>admin-worker</code> 用的是<strong>首次啟動時種子化進 <code>admin.app_settings</code></strong> 的那份（<code>seedIfEmpty()</code> 以 <code>ON CONFLICT DO NOTHING</code> 寫入，之後永不覆寫）。</li>
+</ul>
+<p>首次啟動後才改 <code>.env</code>，會讓 MinIO 伺服器帳密與應用端儲存的設定<strong>不一致</strong>，導致物件儲存讀寫失敗。</p>
+<p>而且 <strong>Settings 中的 Storage 群組是唯讀的</strong>（標示為 "Owned by the deployment (.env / compose)"），
+無法從後台修正。若已經發生，只能直接改資料庫：</p>
+<p><code>sql
+UPDATE admin.app_settings SET value = '&lt;new-access-key&gt;'
+ WHERE group_key = 'minio' AND key = 'access_key';
+UPDATE admin.app_settings SET value = '&lt;new-secret-key&gt;'
+ WHERE group_key = 'minio' AND key = 'secret_key';</code></p>
+<p>改完重啟 <code>app</code> 與 <code>admin-worker</code>。</p>
+</div>
+<p>詳見<a href="configuration/#settings-precedence">環境變數配置</a>。</p>
+<h4 id="2-5-env">2-5. 最小可用 <code>.env</code> 範例<a class="headerlink" href="#2-5-env" title="Permanent link">&para;</a></h4>
+<pre><code class="language-dotenv"># --- 對外 ---
+WEB_PORT=8080
+PUBLIC_BASE_URL=https://taiwan-health-mcp.example.com
+
+# --- 資料庫 ---
+POSTGRES_DB=taiwan_health
+POSTGRES_USER=mcp
+POSTGRES_PASSWORD=&lt;openssl rand -hex 24&gt;
+
+# --- MCP ---
+MCP_TRANSPORT=streamable-http
+MCP_PORT=8000
+MCP_PATH=/mcp
+PUBLIC_TOOLS_AUTH_MODE=bearer
+PUBLIC_TOOLS_BEARER_TOKEN=&lt;openssl rand -hex 32&gt;
+
+# --- 管理後台 ---
+ADMIN_ENABLED=true
+ADMIN_USERNAME=admin
+ADMIN_INITIAL_PASSWORD=&lt;強密碼；含 $ 請寫成 $$&gt;
+ADMIN_SESSION_SECRET=&lt;openssl rand -hex 32&gt;
+ADMIN_COOKIE_SECURE=true          # TLS 在外部 proxy 終止時明確設定
+FHIR_SERVER_SECRET_KEY=&lt;openssl rand -hex 32&gt;
+
+# --- 物件儲存（seed-only：首次啟動才讀）---
+MINIO_ENDPOINT=minio:9000
+MINIO_ACCESS_KEY=&lt;openssl rand -hex 16&gt;
+MINIO_SECRET_KEY=&lt;openssl rand -hex 16&gt;
+MINIO_BUCKET=taiwan-health-drug-assets
+</code></pre>
+<h3 id="3">步驟 3：建置與啟動<a class="headerlink" href="#3" title="Permanent link">&para;</a></h3>
+<pre><code class="language-bash">docker compose build          # 首次建置 app / admin-worker / web 三個映像
+docker compose up -d
+</code></pre>
+<p>首次啟動時 PostgreSQL 容器會自動套用 <code>db/schema.sql</code>，<code>minio-init</code> 會建立 bucket 後結束（狀態顯示為 exited 屬正常）。</p>
+<h3 id="4">步驟 4：驗證<a class="headerlink" href="#4" title="Permanent link">&para;</a></h3>
+<p>確認容器狀態，<code>postgres</code> / <code>redis</code> / <code>minio</code> / <code>pgbouncer</code> 應為 <code>healthy</code>：</p>
+<pre><code class="language-bash">docker compose ps
+</code></pre>
+<p>確認服務與各模組狀態：</p>
+<pre><code class="language-bash">curl http://localhost:8080/openapi.json | head  # 目前已註冊的工具
+</code></pre>
+<p>啟動失敗時先看日誌：</p>
+<pre><code class="language-bash">docker compose logs -f app admin-worker
+</code></pre>
+<h3 id="5">步驟 5：登入管理後台並設定模型端點<a class="headerlink" href="#5" title="Permanent link">&para;</a></h3>
+<p>瀏覽 <code>http://&lt;host&gt;:8080/admin</code>，以步驟 2 的帳密登入。</p>
+<p>登入後到 <strong>Settings</strong> 設定外部模型端點（這些<strong>不能</strong>由 <code>.env</code> 設定）：</p>
+<table>
+<thead>
+<tr>
+<th>子頁</th>
+<th>設定內容</th>
+<th>未設定的後果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Embedding</td>
+<td>嵌入端點 / 模型（預設情境為 Ollama <code>qwen3-embedding</code>）</td>
+<td>搜尋退回關鍵字模式；<strong>中文關鍵字搜尋幾乎查不到東西</strong></td>
+</tr>
+<tr>
+<td>Analysis LM</td>
+<td>藥品仿單抽取用 LLM</td>
+<td>藥品分析階段無法執行</td>
+</tr>
+<tr>
+<td>OCR</td>
+<td>MinerU 服務位址</td>
+<td>仿單 PDF 無法 OCR</td>
+</tr>
+</tbody>
+</table>
+<p>模型設定可用 Settings → Backup &amp; restore 的 JSON Export / Import 在不同環境間搬移。詳見<a href="../admin/">管理後台</a>。</p>
+<h3 id="6">步驟 6：載入資料<a class="headerlink" href="#6" title="Permanent link">&para;</a></h3>
+<p>在 Modules 頁籤依模組匯入；需授權的來源檔（ICD-10、LOINC、SNOMED CT、RxNorm、FHIR IG）須先上傳，藥品 / 健康補充品 / 食品營養則由 API 自動抓取。</p>
+<div class="admonition warning">
+<p class="admonition-title">手動排入的 <code>drug_enrichment</code> 不受批次上限保護</p>
+<p><code>DRUG_AUTOCHAIN_BATCH_LIMIT</code>（預設 200）<strong>只作用於自動串接產生的工作</strong>。
+手動排入且未帶 <code>limit</code> 的 <code>drug_enrichment</code> 會爬完整個待辦佇列，
+對 TFDA 網站發出數萬次請求。</p>
+</div>
+<p>步驟與排程說明見<a href="../getting-started/">快速開始</a>與<a href="../admin/jobs-and-worker/">背景工作與排程</a>。</p>
+<hr />
+<h2 id="_6">日常維運<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h2>
+<h3 id="_7">更新與重新部署<a class="headerlink" href="#_7" title="Permanent link">&para;</a></h3>
+<p>只改了應用程式碼時，不需要重啟整個 stack：</p>
+<pre><code class="language-bash">git pull
+docker compose build app web admin-worker
+docker compose up -d --no-deps app web admin-worker
+</code></pre>
+<p>改了 <code>nginx/nginx.conf</code>：</p>
+<pre><code class="language-bash">docker compose restart nginx
+</code></pre>
+<p>改了 <code>.env</code> 中的 <strong>bootstrap 變數</strong>（DB / Redis / MCP / <code>ADMIN_*</code>）才需要重建容器：</p>
+<pre><code class="language-bash">docker compose up -d
+</code></pre>
+<p>（改 seed-only 區塊無效，見 2-4。）</p>
+<h3 id="_8">資料庫遷移<a class="headerlink" href="#_8" title="Permanent link">&para;</a></h3>
+<p>首次啟動時 <code>db/schema.sql</code> 會自動套用。<strong>既有環境</strong>升級後需自行套用 <code>db/migrations/</code> 下的增量變更，依檔名日期順序：</p>
+<pre><code class="language-bash">docker compose exec -T postgres \
+  sh -c 'psql -U &quot;$POSTGRES_USER&quot; -d &quot;$POSTGRES_DB&quot; -v ON_ERROR_STOP=1' \
+  &lt; db/migrations/20260802_llm_call_log.sql
+</code></pre>
+<p>依序套用全部（已套用過的檔案請自行剔除，本專案未內建遷移版本追蹤）：</p>
+<pre><code class="language-bash">for f in $(ls db/migrations/*.sql | sort); do
+  echo &quot;applying $f&quot;
+  docker compose exec -T postgres \
+    sh -c 'psql -U &quot;$POSTGRES_USER&quot; -d &quot;$POSTGRES_DB&quot; -v ON_ERROR_STOP=1' &lt; &quot;$f&quot;
+done
+</code></pre>
+<div class="admonition tip">
+<p class="admonition-title">帳號密碼由容器內部環境變數展開</p>
+<p>上面的 <code>$POSTGRES_USER</code> / <code>$POSTGRES_DB</code> 是<strong>在容器內</strong>展開的（所以整段包在單引號的 <code>sh -c</code> 裡），
+不需要在主機端 export 或手動代入。</p>
+</div>
+<div class="admonition note">
+<p class="admonition-title">直連 postgres 而非 pgbouncer</p>
+<p>遷移請走 <code>postgres</code> 容器。pgBouncer 為 transaction mode，不適合執行 DDL 批次。</p>
+</div>
+<h3 id="_9">備份<a class="headerlink" href="#_9" title="Permanent link">&para;</a></h3>
+<p>兩種做法：</p>
+<p><strong>(a) 管理後台（推薦）</strong> —— Settings → Backup &amp; restore 可勾選設定與憑證、PostgreSQL database、MinIO object storage，排入 <code>system_backup</code> 背景工作，產出的 ZIP 寫回 MinIO 的 <code>system-backups/</code> prefix，可從備份歷史下載。</p>
+<p><strong>(b) 手動</strong>：</p>
+<pre><code class="language-bash"># PostgreSQL（custom format，供 pg_restore 使用）
+docker compose exec -T postgres \
+  sh -c 'pg_dump -U &quot;$POSTGRES_USER&quot; -d &quot;$POSTGRES_DB&quot; -Fc' &gt; backup-$(date +%F).dump
+
+# MinIO 物件（volume 層級）
+docker run --rm -v taiwan-health-mcp_minio_data:/data -v &quot;$PWD&quot;:/backup \
+  alpine tar czf /backup/minio-$(date +%F).tar.gz -C /data .
+</code></pre>
+<blockquote>
+<p>volume 名稱前綴為 compose 專案名（預設是目錄名），實際名稱以 <code>docker volume ls</code> 為準。</p>
+</blockquote>
+<p>備份內含 API keys、登入憑證與醫療資料，<strong>應視同 production secret 管理</strong>。</p>
+<h3 id="external-ports">對外埠與強化<a class="headerlink" href="#external-ports" title="Permanent link">&para;</a></h3>
+<p><code>compose.yaml</code> 目前對主機發佈的埠：</p>
+<table>
+<thead>
+<tr>
+<th>服務</th>
+<th>埠</th>
+<th>綁定</th>
+<th>正式環境建議</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>nginx</code></td>
+<td><code>${WEB_PORT}</code> → 80</td>
+<td>全介面</td>
+<td>前面加 TLS 反向代理</td>
+</tr>
+<tr>
+<td><code>postgres</code></td>
+<td><code>5432</code></td>
+<td><strong>全介面</strong></td>
+<td>改綁 <code>127.0.0.1:5432:5432</code> 或移除</td>
+</tr>
+<tr>
+<td><code>minio</code></td>
+<td><code>9000</code></td>
+<td><strong>全介面</strong></td>
+<td>改綁 <code>127.0.0.1:9000:9000</code> 或移除</td>
+</tr>
+<tr>
+<td><code>minio</code> console</td>
+<td><code>9001</code></td>
+<td><code>127.0.0.1</code></td>
+<td>保持現狀</td>
+</tr>
+<tr>
+<td><code>redis</code></td>
+<td><code>6379</code></td>
+<td><code>127.0.0.1</code></td>
+<td>保持現狀</td>
+</tr>
+<tr>
+<td><code>app</code> metrics</td>
+<td><code>${METRICS_PORT}</code></td>
+<td><code>127.0.0.1</code></td>
+<td>保持現狀</td>
+</tr>
+</tbody>
+</table>
+<p>上線前的檢查清單：</p>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>POSTGRES_PASSWORD</code>、<code>ADMIN_SESSION_SECRET</code>、<code>FHIR_SERVER_SECRET_KEY</code> 皆為隨機強值</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> MinIO 憑證已改掉 <code>minioadmin</code> 預設值</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>postgres:5432</code> / <code>minio:9000</code> 已改綁 <code>127.0.0.1</code> 或以防火牆阻擋</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>PUBLIC_TOOLS_AUTH_MODE=bearer</code> 並設定高熵 token（若 <code>/mcp</code> 對公網開放）</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> TLS 已在前置 proxy 終止，且 <code>ADMIN_COOKIE_SECURE=true</code></li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>.env</code> 權限收斂（<code>chmod 600 .env</code>）且未進版控</li>
+</ul>
+<p>用 <code>docker-compose.override.yml</code> 覆寫埠綁定，不必改動 <code>compose.yaml</code>：</p>
+<pre><code class="language-yaml">services:
+  postgres:
+    ports:
+      - &quot;127.0.0.1:5432:5432&quot;
+  minio:
+    ports:
+      - &quot;127.0.0.1:9000:9000&quot;
+</code></pre>
+<p>同一份 override 也適合放<a href="configuration/#resource-limits">資源限制</a>。</p>
+<h3 id="_10">疑難排解<a class="headerlink" href="#_10" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>症狀</th>
+<th>可能原因</th>
+<th>處置</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>docker compose up</code> 立刻失敗並提示 <code>POSTGRES_PASSWORD is required</code></td>
+<td><code>.env</code> 未設定該變數</td>
+<td>補上（compose 以 <code>:?</code> 強制要求）</td>
+</tr>
+<tr>
+<td><code>/admin</code> 回 404</td>
+<td><code>ADMIN_ENABLED</code> 非 <code>true</code>，或四項認證變數不齊</td>
+<td>補齊後 <code>docker compose up -d</code></td>
+</tr>
+<tr>
+<td>管理後台密碼正確卻登入失敗</td>
+<td><code>.env</code> 中的 <code>$</code> 未寫成 <code>$$</code>，雜湊被截斷</td>
+<td>見 2-2 的警告框</td>
+</tr>
+<tr>
+<td>改了 <code>.env</code> 的密碼卻沒生效</td>
+<td>憑證在首次啟動即寫入 <code>admin.admin_credentials</code>，seed 為 <code>ON CONFLICT DO NOTHING</code></td>
+<td>改用 Settings → Privacy 修改密碼</td>
+</tr>
+<tr>
+<td>worker 拋 <code>Illegal argument to function</code> / <code>Wrong key or corrupt data</code></td>
+<td><code>FHIR_SERVER_SECRET_KEY</code> 為空或 <code>app</code> 與 worker 不一致</td>
+<td>見 2-3</td>
+</tr>
+<tr>
+<td>改了 <code>.env</code> 的 TFDA / registry 設定沒有效果</td>
+<td>該群組為 seed-only，只在首次啟動讀取</td>
+<td>改到 Admin → Settings</td>
+</tr>
+<tr>
+<td>改了 <code>.env</code> 的 MinIO / worker 調校沒有效果</td>
+<td>seed-only，且後台為唯讀群組</td>
+<td>直接 <code>UPDATE admin.app_settings</code> 後重啟服務（見 2-4）</td>
+</tr>
+<tr>
+<td>中文搜尋幾乎查不到結果</td>
+<td>嵌入端點未設定，退回關鍵字模式</td>
+<td>於 Settings → Embedding 設定端點</td>
+</tr>
+<tr>
+<td>IG 匯入時 worker OOM</td>
+<td><code>NODE_OPTIONS</code> 被調低，或容器記憶體上限不足</td>
+<td>保留 <code>--max-old-space-size=8192</code>，容器上限給到 10G</td>
+</tr>
+<tr>
+<td><code>http://&lt;host&gt;:8000</code> 連不上</td>
+<td>設計如此，<code>app</code> 不對主機開埠</td>
+<td>一律使用 <code>http://&lt;host&gt;:${WEB_PORT}</code></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_11">延伸閱讀<a class="headerlink" href="#_11" title="Permanent link">&para;</a></h2>
+<h3 id="_12"><a href="../architecture/deployment/">架構與容器部署</a><a class="headerlink" href="#_12" title="Permanent link">&para;</a></h3>
+<p>基礎設施拓樸、容器組成與啟動流程。</p>
+<h3 id="_13"><a href="configuration/">環境變數配置</a><a class="headerlink" href="#_13" title="Permanent link">&para;</a></h3>
+<p>各項系統參數的完整清單，含 bootstrap 變數（<code>.env</code>）與 seed-only 設定（首次啟動後改於 Admin → Settings 管理）。</p>
+<h3 id="_14"><a href="performance/">效能與監控</a><a class="headerlink" href="#_14" title="Permanent link">&para;</a></h3>
 <p>高併發場景的優化建議、連線池與快取策略、Prometheus 監控。</p>
-<h3 id="dpa"><a href="dpa/">資料處理附錄 (DPA)</a><a class="headerlink" href="#dpa" title="Permanent link">&para;</a></h3>
-<p>資料處理與合規說明。</p>
-<h3 id="_8"><a href="privacy/">隱私政策頁面</a><a class="headerlink" href="#_8" title="Permanent link">&para;</a></h3>
-<p><code>/privacy</code> 端點說明，供 Anthropic Connectors Directory 審核使用。</p>
-<h2 id="_9">資料庫遷移<a class="headerlink" href="#_9" title="Permanent link">&para;</a></h2>
-<p>首次啟動時 <code>db/schema.sql</code> 會自動套用。既有環境的增量變更位於 <code>db/migrations/</code>，請依檔名日期順序套用。</p>
+<div class="admonition note">
+<p class="admonition-title">公開頁面已移出本專案</p>
+<p>對外的宣傳頁與法務頁（<code>/</code>、<code>/status</code>、<code>/privacy</code>、<code>/dpa</code>）已改由獨立的宣傳網站專案提供，
+不再由 <code>web</code> 服務發送。<code>/privacy</code> 是登記於 Anthropic Connectors Directory 的網址，
+移轉後務必在 <code>nginx/nginx.conf</code> 補上 301 導向（該檔已留有 TODO 區塊）。</p>
+</div>
 
 
 
@@ -2674,6 +3496,8 @@
     
     
       <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+        <script src="../javascripts/lang-switch.js"></script>
       
     
   </body>

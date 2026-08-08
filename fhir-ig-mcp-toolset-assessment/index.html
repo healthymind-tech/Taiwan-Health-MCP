@@ -22,6 +22,10 @@
       
       
         
+          <link rel="alternate" href="./" hreflang="zh-TW">
+        
+          <link rel="alternate" href="../en/fhir-ig-mcp-toolset-assessment/" hreflang="en">
+        
       
       
       <link rel="icon" href="../assets/images/favicon.png">
@@ -70,7 +74,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#fhir-ig-mcp-toolset-data-readiness-assessment-multi-ig-design" class="md-skip">
+        <a href="#fhir-ig-mcp-ig" class="md-skip">
           跳轉到
         </a>
       
@@ -116,6 +120,32 @@
     
       <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
     
+    
+      <div class="md-header__option">
+  <div class="md-select">
+    
+    <button class="md-header__button md-icon" aria-label="選擇語言">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m12.87 15.07-2.54-2.51.03-.03A17.5 17.5 0 0 0 14.07 6H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2zm-2.62 7 1.62-4.33L19.12 17z"/></svg>
+    </button>
+    <div class="md-select__inner">
+      <ul class="md-select__list">
+        
+          <li class="md-select__item">
+            <a href="./" hreflang="zh-TW" class="md-select__link">
+              繁體中文
+            </a>
+          </li>
+        
+          <li class="md-select__item">
+            <a href="../en/fhir-ig-mcp-toolset-assessment/" hreflang="en" class="md-select__link">
+              English
+            </a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+</div>
     
     
       
@@ -1251,10 +1281,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#0-tldr-verdict" class="md-nav__link">
+  <a href="#0-tldr" class="md-nav__link">
     <span class="md-ellipsis">
       
-        0. TL;DR verdict
+        0. 結論摘要（TL;DR）
       
     </span>
   </a>
@@ -1262,22 +1292,22 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#1-what-we-actually-store-today-data-inventory" class="md-nav__link">
+  <a href="#1" class="md-nav__link">
     <span class="md-ellipsis">
       
-        1. What we actually store today (data inventory)
+        1. 我們今天實際儲存了什麼（資料盤點）
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="1. What we actually store today (data inventory)">
+    <nav class="md-nav" aria-label="1. 我們今天實際儲存了什麼（資料盤點）">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#11-twcoreartifacts-the-goldmine" class="md-nav__link">
+  <a href="#11-twcoreartifacts" class="md-nav__link">
     <span class="md-ellipsis">
       
-        1.1 twcore.artifacts — the goldmine
+        1.1 twcore.artifacts —— 金礦
       
     </span>
   </a>
@@ -1285,10 +1315,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#12-twcorecodesystems-twcoreconcepts-parsed-terminology" class="md-nav__link">
+  <a href="#12-twcorecodesystems-twcoreconcepts" class="md-nav__link">
     <span class="md-ellipsis">
       
-        1.2 twcore.codesystems + twcore.concepts — parsed terminology
+        1.2 twcore.codesystems + twcore.concepts —— 已解析的術語
       
     </span>
   </a>
@@ -1296,10 +1326,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#13-already-shipped-service-methods-srctwcore_servicepy" class="md-nav__link">
+  <a href="#13-srctwcore_servicepy" class="md-nav__link">
     <span class="md-ellipsis">
       
-        1.3 Already-shipped service methods (src/twcore_service.py)
+        1.3 已上線的服務方法（src/twcore_service.py）
       
     </span>
   </a>
@@ -1307,10 +1337,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#14-cross-domain-terminology-we-hold-elsewhere-matters-for-expansionlookup" class="md-nav__link">
+  <a href="#14" class="md-nav__link">
     <span class="md-ellipsis">
       
-        1.4 Cross-domain terminology we hold elsewhere (matters for expansion/lookup)
+        1.4 我們在別處持有的跨領域術語（影響展開／查詢）
       
     </span>
   </a>
@@ -1323,22 +1353,22 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#2-per-tool-readiness-matrix-25-tools" class="md-nav__link">
+  <a href="#2-25" class="md-nav__link">
     <span class="md-ellipsis">
       
-        2. Per-tool readiness matrix (25 tools)
+        2. 逐工具就緒度矩陣（25 個工具）
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="2. Per-tool readiness matrix (25 tools)">
+    <nav class="md-nav" aria-label="2. 逐工具就緒度矩陣（25 個工具）">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#a-ig-discovery" class="md-nav__link">
+  <a href="#a-ig" class="md-nav__link">
     <span class="md-ellipsis">
       
-        A. IG Discovery
+        A. IG 探索
       
     </span>
   </a>
@@ -1346,10 +1376,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#b-profile-selection" class="md-nav__link">
+  <a href="#b" class="md-nav__link">
     <span class="md-ellipsis">
       
-        B. Profile Selection
+        B. 剖面選擇
       
     </span>
   </a>
@@ -1357,10 +1387,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#c-structuredefinition-consolidated-into-one-tool-with-a-view-param-all-parse-raw_jsonsnapshotelement-data-100-present" class="md-nav__link">
+  <a href="#c-structuredefinition-view-raw_jsonsnapshotelement-100" class="md-nav__link">
     <span class="md-ellipsis">
       
-        C. StructureDefinition — consolidated into one tool with a view param (all parse raw_json.snapshot.element, data 100% present)
+        C. StructureDefinition —— 合併為單一工具，以 view 參數切換（皆解析 raw_json.snapshot.element，資料 100% 齊備）
       
     </span>
   </a>
@@ -1368,10 +1398,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#d-terminology" class="md-nav__link">
+  <a href="#d" class="md-nav__link">
     <span class="md-ellipsis">
       
-        D. Terminology
+        D. 術語
       
     </span>
   </a>
@@ -1379,10 +1409,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#e-mapping-redesigned-schema-guided-fill-no-stored-templates" class="md-nav__link">
+  <a href="#e-schema-guided-fill" class="md-nav__link">
     <span class="md-ellipsis">
       
-        E. Mapping — redesigned: schema-guided fill (no stored templates)
+        E. 對應 —— 重新設計：schema-guided fill（無儲存式樣板）
       
     </span>
   </a>
@@ -1390,10 +1420,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#f-reference-bundle" class="md-nav__link">
+  <a href="#f-bundle" class="md-nav__link">
     <span class="md-ellipsis">
       
-        F. Reference / Bundle
+        F. 參照 / Bundle
       
     </span>
   </a>
@@ -1401,10 +1431,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#g-validation" class="md-nav__link">
+  <a href="#g" class="md-nav__link">
     <span class="md-ellipsis">
       
-        G. Validation
+        G. 驗證
       
     </span>
   </a>
@@ -1417,22 +1447,22 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#3-the-gaps-options" class="md-nav__link">
+  <a href="#3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        3. The gaps — options
+        3. 缺口與選項
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="3. The gaps — options">
+    <nav class="md-nav" aria-label="3. 缺口與選項">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#gap-1-built-in-validator-tools-2425-in-process-python-no-external-service" class="md-nav__link">
+  <a href="#1-2425-python" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Gap 1 — Built-in validator (tools 24–25): in-process Python, no external service
+        缺口 1 —— 內建驗證器（工具 24–25）：行程內 Python，不需外部服務
       
     </span>
   </a>
@@ -1440,10 +1470,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#gap-2-mapping-redesigned-schema-guided-fill-replaces-tools-1921-no-stored-templates" class="md-nav__link">
+  <a href="#2-schema-guided-fill-1921" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Gap 2 — Mapping, redesigned: schema-guided fill (replaces tools 19–21, no stored templates)
+        缺口 2 —— 對應的重新設計：schema-guided fill（取代工具 19–21，無儲存式樣板）
       
     </span>
   </a>
@@ -1451,10 +1481,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#gap-3-valueset-expansion-breadth-tools-1517" class="md-nav__link">
+  <a href="#3-valueset-1517" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Gap 3 — ValueSet expansion breadth (tools 15–17)
+        缺口 3 —— ValueSet 展開廣度（工具 15–17）
       
     </span>
   </a>
@@ -1467,22 +1497,22 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#4-multi-ig-architecture-design-from-day-one" class="md-nav__link">
+  <a href="#4-ig" class="md-nav__link">
     <span class="md-ellipsis">
       
-        4. Multi-IG architecture (design from day one)
+        4. 多 IG 架構（從第一天就納入設計）
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="4. Multi-IG architecture (design from day one)">
+    <nav class="md-nav" aria-label="4. 多 IG 架構（從第一天就納入設計）">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#41-generalize-the-schema-logical-rename-twcore-fhir" class="md-nav__link">
+  <a href="#41-schema-twcore-fhir" class="md-nav__link">
     <span class="md-ellipsis">
       
-        4.1 Generalize the schema (logical rename twcore → fhir)
+        4.1 一般化 schema（邏輯上把 twcore 更名為 fhir）
       
     </span>
   </a>
@@ -1490,10 +1520,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#42-the-ig-selector-every-tool" class="md-nav__link">
+  <a href="#42-ig" class="md-nav__link">
     <span class="md-ellipsis">
       
-        4.2 The IG selector (every tool)
+        4.2 IG 選擇器（每個工具）
       
     </span>
   </a>
@@ -1501,10 +1531,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#43-canonical-resolver-across-dependencies" class="md-nav__link">
+  <a href="#43-canonical" class="md-nav__link">
     <span class="md-ellipsis">
       
-        4.3 Canonical resolver across dependencies
+        4.3 跨相依的 canonical 解析器
       
     </span>
   </a>
@@ -1512,10 +1542,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#44-mcp-tool-shape" class="md-nav__link">
+  <a href="#44-mcp" class="md-nav__link">
     <span class="md-ellipsis">
       
-        4.4 MCP tool shape
+        4.4 MCP 工具形態
       
     </span>
   </a>
@@ -1528,10 +1558,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#5-phased-roadmap-data-first-lowest-risk-first" class="md-nav__link">
+  <a href="#5" class="md-nav__link">
     <span class="md-ellipsis">
       
-        5. Phased roadmap (data-first, lowest-risk first)
+        5. 分階段路線圖（資料優先、風險最低者優先）
       
     </span>
   </a>
@@ -1539,10 +1569,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#6-open-decisions-need-user-input-before-building" class="md-nav__link">
+  <a href="#6" class="md-nav__link">
     <span class="md-ellipsis">
       
-        6. Open decisions (need user input before building)
+        6. 待決事項（動工前需要使用者裁示）
       
     </span>
   </a>
@@ -1550,10 +1580,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#7-bottom-line" class="md-nav__link">
+  <a href="#7" class="md-nav__link">
     <span class="md-ellipsis">
       
-        7. Bottom line
+        7. 結論
       
     </span>
   </a>
@@ -2205,62 +2235,6 @@
 
               
             
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../deployment/dpa/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    資料處理附錄 (DPA)
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../deployment/privacy/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    隱私政策頁面
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
           </ul>
         </nav>
       
@@ -2627,10 +2601,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#0-tldr-verdict" class="md-nav__link">
+  <a href="#0-tldr" class="md-nav__link">
     <span class="md-ellipsis">
       
-        0. TL;DR verdict
+        0. 結論摘要（TL;DR）
       
     </span>
   </a>
@@ -2638,22 +2612,22 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#1-what-we-actually-store-today-data-inventory" class="md-nav__link">
+  <a href="#1" class="md-nav__link">
     <span class="md-ellipsis">
       
-        1. What we actually store today (data inventory)
+        1. 我們今天實際儲存了什麼（資料盤點）
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="1. What we actually store today (data inventory)">
+    <nav class="md-nav" aria-label="1. 我們今天實際儲存了什麼（資料盤點）">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#11-twcoreartifacts-the-goldmine" class="md-nav__link">
+  <a href="#11-twcoreartifacts" class="md-nav__link">
     <span class="md-ellipsis">
       
-        1.1 twcore.artifacts — the goldmine
+        1.1 twcore.artifacts —— 金礦
       
     </span>
   </a>
@@ -2661,10 +2635,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#12-twcorecodesystems-twcoreconcepts-parsed-terminology" class="md-nav__link">
+  <a href="#12-twcorecodesystems-twcoreconcepts" class="md-nav__link">
     <span class="md-ellipsis">
       
-        1.2 twcore.codesystems + twcore.concepts — parsed terminology
+        1.2 twcore.codesystems + twcore.concepts —— 已解析的術語
       
     </span>
   </a>
@@ -2672,10 +2646,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#13-already-shipped-service-methods-srctwcore_servicepy" class="md-nav__link">
+  <a href="#13-srctwcore_servicepy" class="md-nav__link">
     <span class="md-ellipsis">
       
-        1.3 Already-shipped service methods (src/twcore_service.py)
+        1.3 已上線的服務方法（src/twcore_service.py）
       
     </span>
   </a>
@@ -2683,10 +2657,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#14-cross-domain-terminology-we-hold-elsewhere-matters-for-expansionlookup" class="md-nav__link">
+  <a href="#14" class="md-nav__link">
     <span class="md-ellipsis">
       
-        1.4 Cross-domain terminology we hold elsewhere (matters for expansion/lookup)
+        1.4 我們在別處持有的跨領域術語（影響展開／查詢）
       
     </span>
   </a>
@@ -2699,22 +2673,22 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#2-per-tool-readiness-matrix-25-tools" class="md-nav__link">
+  <a href="#2-25" class="md-nav__link">
     <span class="md-ellipsis">
       
-        2. Per-tool readiness matrix (25 tools)
+        2. 逐工具就緒度矩陣（25 個工具）
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="2. Per-tool readiness matrix (25 tools)">
+    <nav class="md-nav" aria-label="2. 逐工具就緒度矩陣（25 個工具）">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#a-ig-discovery" class="md-nav__link">
+  <a href="#a-ig" class="md-nav__link">
     <span class="md-ellipsis">
       
-        A. IG Discovery
+        A. IG 探索
       
     </span>
   </a>
@@ -2722,10 +2696,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#b-profile-selection" class="md-nav__link">
+  <a href="#b" class="md-nav__link">
     <span class="md-ellipsis">
       
-        B. Profile Selection
+        B. 剖面選擇
       
     </span>
   </a>
@@ -2733,10 +2707,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#c-structuredefinition-consolidated-into-one-tool-with-a-view-param-all-parse-raw_jsonsnapshotelement-data-100-present" class="md-nav__link">
+  <a href="#c-structuredefinition-view-raw_jsonsnapshotelement-100" class="md-nav__link">
     <span class="md-ellipsis">
       
-        C. StructureDefinition — consolidated into one tool with a view param (all parse raw_json.snapshot.element, data 100% present)
+        C. StructureDefinition —— 合併為單一工具，以 view 參數切換（皆解析 raw_json.snapshot.element，資料 100% 齊備）
       
     </span>
   </a>
@@ -2744,10 +2718,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#d-terminology" class="md-nav__link">
+  <a href="#d" class="md-nav__link">
     <span class="md-ellipsis">
       
-        D. Terminology
+        D. 術語
       
     </span>
   </a>
@@ -2755,10 +2729,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#e-mapping-redesigned-schema-guided-fill-no-stored-templates" class="md-nav__link">
+  <a href="#e-schema-guided-fill" class="md-nav__link">
     <span class="md-ellipsis">
       
-        E. Mapping — redesigned: schema-guided fill (no stored templates)
+        E. 對應 —— 重新設計：schema-guided fill（無儲存式樣板）
       
     </span>
   </a>
@@ -2766,10 +2740,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#f-reference-bundle" class="md-nav__link">
+  <a href="#f-bundle" class="md-nav__link">
     <span class="md-ellipsis">
       
-        F. Reference / Bundle
+        F. 參照 / Bundle
       
     </span>
   </a>
@@ -2777,10 +2751,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#g-validation" class="md-nav__link">
+  <a href="#g" class="md-nav__link">
     <span class="md-ellipsis">
       
-        G. Validation
+        G. 驗證
       
     </span>
   </a>
@@ -2793,22 +2767,22 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#3-the-gaps-options" class="md-nav__link">
+  <a href="#3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        3. The gaps — options
+        3. 缺口與選項
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="3. The gaps — options">
+    <nav class="md-nav" aria-label="3. 缺口與選項">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#gap-1-built-in-validator-tools-2425-in-process-python-no-external-service" class="md-nav__link">
+  <a href="#1-2425-python" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Gap 1 — Built-in validator (tools 24–25): in-process Python, no external service
+        缺口 1 —— 內建驗證器（工具 24–25）：行程內 Python，不需外部服務
       
     </span>
   </a>
@@ -2816,10 +2790,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#gap-2-mapping-redesigned-schema-guided-fill-replaces-tools-1921-no-stored-templates" class="md-nav__link">
+  <a href="#2-schema-guided-fill-1921" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Gap 2 — Mapping, redesigned: schema-guided fill (replaces tools 19–21, no stored templates)
+        缺口 2 —— 對應的重新設計：schema-guided fill（取代工具 19–21，無儲存式樣板）
       
     </span>
   </a>
@@ -2827,10 +2801,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#gap-3-valueset-expansion-breadth-tools-1517" class="md-nav__link">
+  <a href="#3-valueset-1517" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Gap 3 — ValueSet expansion breadth (tools 15–17)
+        缺口 3 —— ValueSet 展開廣度（工具 15–17）
       
     </span>
   </a>
@@ -2843,22 +2817,22 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#4-multi-ig-architecture-design-from-day-one" class="md-nav__link">
+  <a href="#4-ig" class="md-nav__link">
     <span class="md-ellipsis">
       
-        4. Multi-IG architecture (design from day one)
+        4. 多 IG 架構（從第一天就納入設計）
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="4. Multi-IG architecture (design from day one)">
+    <nav class="md-nav" aria-label="4. 多 IG 架構（從第一天就納入設計）">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#41-generalize-the-schema-logical-rename-twcore-fhir" class="md-nav__link">
+  <a href="#41-schema-twcore-fhir" class="md-nav__link">
     <span class="md-ellipsis">
       
-        4.1 Generalize the schema (logical rename twcore → fhir)
+        4.1 一般化 schema（邏輯上把 twcore 更名為 fhir）
       
     </span>
   </a>
@@ -2866,10 +2840,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#42-the-ig-selector-every-tool" class="md-nav__link">
+  <a href="#42-ig" class="md-nav__link">
     <span class="md-ellipsis">
       
-        4.2 The IG selector (every tool)
+        4.2 IG 選擇器（每個工具）
       
     </span>
   </a>
@@ -2877,10 +2851,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#43-canonical-resolver-across-dependencies" class="md-nav__link">
+  <a href="#43-canonical" class="md-nav__link">
     <span class="md-ellipsis">
       
-        4.3 Canonical resolver across dependencies
+        4.3 跨相依的 canonical 解析器
       
     </span>
   </a>
@@ -2888,10 +2862,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#44-mcp-tool-shape" class="md-nav__link">
+  <a href="#44-mcp" class="md-nav__link">
     <span class="md-ellipsis">
       
-        4.4 MCP tool shape
+        4.4 MCP 工具形態
       
     </span>
   </a>
@@ -2904,10 +2878,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#5-phased-roadmap-data-first-lowest-risk-first" class="md-nav__link">
+  <a href="#5" class="md-nav__link">
     <span class="md-ellipsis">
       
-        5. Phased roadmap (data-first, lowest-risk first)
+        5. 分階段路線圖（資料優先、風險最低者優先）
       
     </span>
   </a>
@@ -2915,10 +2889,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#6-open-decisions-need-user-input-before-building" class="md-nav__link">
+  <a href="#6" class="md-nav__link">
     <span class="md-ellipsis">
       
-        6. Open decisions (need user input before building)
+        6. 待決事項（動工前需要使用者裁示）
       
     </span>
   </a>
@@ -2926,10 +2900,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#7-bottom-line" class="md-nav__link">
+  <a href="#7" class="md-nav__link">
     <span class="md-ellipsis">
       
-        7. Bottom line
+        7. 結論
       
     </span>
   </a>
@@ -2956,7 +2930,7 @@
   
 
 
-<h1 id="fhir-ig-mcp-toolset-data-readiness-assessment-multi-ig-design">FHIR IG MCP Toolset — Data-Readiness Assessment &amp; Multi-IG Design<a class="headerlink" href="#fhir-ig-mcp-toolset-data-readiness-assessment-multi-ig-design" title="Permanent link">&para;</a></h1>
+<h1 id="fhir-ig-mcp-ig">FHIR IG MCP 工具集 —— 資料就緒度評估與多 IG 設計<a class="headerlink" href="#fhir-ig-mcp-ig" title="Permanent link">&para;</a></h1>
 <div class="admonition info">
 <p class="admonition-title">歷史文件（設計評估，已實作）</p>
 <p>這是 FHIR IG 工具集的<strong>設計評估</strong>，撰寫於實作之前，內容假設後端為 Python
@@ -2965,80 +2939,82 @@
 FHIRPath 驗證由 npm 套件 <code>fhirpath</code> 在行程內執行，<strong>不需要任何額外安裝</strong>。
 本文保留作為決策紀錄；目前的工具說明請見 <a href="../tools/fhir-ig-tools/">FHIR IG 工具</a>。</p>
 </div>
-<p><strong>Status:</strong> assessment / planning (no code changes yet)
-<strong>Date:</strong> 2026-06-07
-<strong>Scope:</strong> the 25-tool FHIR-IG-driven MCP server spec (IG Discovery → Profile Selection → StructureDefinition → Terminology → Mapping → Reference/Bundle → Validation), evaluated against what this repo currently stores, with the raw source at <code>fhir-code/twcoreig/v1.0.0/package.tgz</code> as the fallback truth.
-<strong>Forward constraint:</strong> the platform will import <strong>multiple IG packages</strong> in future. Every tool below is designed IG-scoped from day one (<code>ig = {packageId, version}</code> selector), not hardcoded to TW Core.</p>
+<p><strong>狀態：</strong> 評估／規劃（尚未變更程式碼）
+<strong>日期：</strong> 2026-06-07
+<strong>範圍：</strong> 25 個工具的 FHIR-IG 驅動 MCP 伺服器規格（IG 探索 → 剖面選擇 → StructureDefinition → 術語 → 對應 → 參照/Bundle → 驗證），對照本倉庫目前實際儲存的資料進行評估，並以 <code>fhir-code/twcoreig/v1.0.0/package.tgz</code> 原始檔作為對照依據。
+<strong>前瞻性限制：</strong> 平台未來會匯入<strong>多個 IG 套件</strong>。以下每個工具從第一天起就設計為 IG-scoped（以 <code>ig = {packageId, version}</code> 選擇），而非寫死 TW Core。</p>
 <hr />
-<h2 id="0-tldr-verdict">0. TL;DR verdict<a class="headerlink" href="#0-tldr-verdict" title="Permanent link">&para;</a></h2>
-<p>The raw data we need is <strong>almost entirely already in the database</strong>. The TWCore admin import (<code>src/admin_jobs.py</code> → <code>twcore.artifacts</code>) ingests <strong>every <code>.json</code> resource</strong> in <code>package.tgz</code> and stores the <strong>complete FHIR JSON in <code>twcore.artifacts.raw_json</code> (JSONB)</strong> — StructureDefinitions <em>with their full <code>snapshot.element</code></em> (bindings, slicing, choice types), ValueSets <em>with <code>compose</code></em>, CodeSystems, ConceptMaps, SearchParameters, the ImplementationGuide, CapabilityStatements, and all 98 examples. CodeSystem concepts are additionally parsed into <code>twcore.concepts</code>.</p>
-<p>So for <strong>17 of 25 tools the data is fully present</strong> — they need parsing/serving code, not new data. After the design decisions below, <strong>no external service is required</strong> and there is <strong>no stored-mapping gap</strong>:</p>
+<h2 id="0-tldr">0. 結論摘要（TL;DR）<a class="headerlink" href="#0-tldr" title="Permanent link">&para;</a></h2>
+<p>我們需要的原始資料<strong>幾乎已經全部在資料庫裡</strong>。TWCore 的管理後台匯入（<code>src/admin_jobs.py</code> → <code>twcore.artifacts</code>）會吃下 <code>package.tgz</code> 內<strong>每一個 <code>.json</code> 資源</strong>，並把<strong>完整的 FHIR JSON 存進 <code>twcore.artifacts.raw_json</code>（JSONB）</strong>——包含帶有完整 <code>snapshot.element</code> 的 StructureDefinition（binding、slicing、choice type）、帶 <code>compose</code> 的 ValueSet、CodeSystem、ConceptMap、SearchParameter、ImplementationGuide、CapabilityStatement，以及全部 98 個 example。CodeSystem 的 concept 另外解析進 <code>twcore.concepts</code>。</p>
+<p>因此 <strong>25 個工具中有 17 個的資料已完全齊備</strong>——它們需要的是解析／服務程式碼，而不是新資料。在下列設計決策之後，<strong>不需要任何外部服務</strong>，也<strong>沒有「儲存式對應」的缺口</strong>：</p>
 <table>
 <thead>
 <tr>
-<th>Gap</th>
-<th>Tools affected</th>
-<th>Why</th>
-<th>In <code>package.tgz</code>?</th>
+<th>缺口</th>
+<th>影響工具</th>
+<th>原因</th>
+<th>在 <code>package.tgz</code> 裡？</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><strong>A built-in validator</strong> (in-process Python)</td>
-<td>24, 25</td>
-<td>Conformance checking (structure + terminology + FHIRPath invariants + slicing) — written natively in Python, <strong>no Java sidecar, no external service</strong> (see §3 Gap 1). All inputs (snapshot, constraint expressions, slicing rules, extension defs) are already in <code>raw_json</code>; FHIRPath is handled in-process via the pure-Python <code>fhirpathpy</code> library.</td>
-<td>✅ Data present; only serving code to write</td>
+<td><strong>內建驗證器</strong>（行程內 Python）</td>
+<td>24、25</td>
+<td>一致性檢查（結構 + 術語 + FHIRPath 不變式 + slicing）——以 Python 原生撰寫，<strong>不需 Java sidecar、不需外部服務</strong>（見 §3 缺口 1）。所有輸入（snapshot、constraint 運算式、slicing 規則、extension 定義）都已在 <code>raw_json</code> 內；FHIRPath 由純 Python 的 <code>fhirpathpy</code> 函式庫在行程內處理。</td>
+<td>✅ 資料齊備；只需撰寫服務程式碼</td>
 </tr>
 <tr>
-<td><strong>ValueSet expansion of external/filtered content</strong></td>
-<td>15, 16, 17</td>
-<td>Many TWCore ValueSets are <code>filter</code>-based over <code>http://snomed.info/sct</code> or reference HL7 THO systems, not inline enumerations. Inline + locally-held systems (we have SNOMED/LOINC/ICD schemas) expand fine; the rest need an imported dependency package or an external terminology server.</td>
-<td>⚠️ Partial — design already returns <code>TERMINOLOGY_SERVER_REQUIRED</code></td>
+<td><strong>外部／filter 型 ValueSet 的展開</strong></td>
+<td>15、16、17</td>
+<td>許多 TWCore ValueSet 是對 <code>http://snomed.info/sct</code> 做 <code>filter</code>，或參照 HL7 THO 系統，而非內嵌列舉。內嵌與本地持有的系統（我們有 SNOMED/LOINC/ICD schema）可正常展開；其餘需要匯入相依套件或外部術語伺服器。</td>
+<td>⚠️ 部分——設計上已回傳 <code>TERMINOLOGY_SERVER_REQUIRED</code></td>
 </tr>
 </tbody>
 </table>
-<p><strong>No stored mapping templates.</strong> The original spec's tools 19–21 (<code>get_mapping_template</code> / <code>plan_mapping</code> / <code>apply_mapping</code>) assumed a deterministic, pre-approved source→FHIR rule store — a pre-LLM construct. We <strong>replace</strong> that with <strong>schema-guided fill</strong> (§3 Gap 2): the server emits a blanked, annotated skeleton derived live from the profile's snapshot, the LLM fills the <em>semantic</em> blanks, and the system deterministically pins the <em>mechanical</em> ones + validates. This <strong>erases the only "no source data anywhere" gap</strong> — no new mapping schema, no admin authoring UI. Everything else is a parsing/serving exercise over data we already hold.</p>
+<p><strong>沒有儲存式對應樣板。</strong> 原規格的工具 19–21（<code>get_mapping_template</code> / <code>plan_mapping</code> / <code>apply_mapping</code>）假設存在一套決定性、事先核可的「來源→FHIR」規則庫——那是<strong>前 LLM 時代的產物</strong>。我們用 <strong>schema-guided fill</strong>（§3 缺口 2）<strong>取代</strong>它：伺服器依剖面 snapshot 即時產出一份空白、帶註解的骨架，LLM 填入<strong>語意</strong>空格，系統則決定性地釘住<strong>機制</strong>欄位並驗證。這<strong>消除了唯一「來源資料完全不存在」的缺口</strong>——不需要新的對應 schema，也不需要管理後台的編輯介面。其餘一切都只是對既有資料做解析與服務。</p>
 <hr />
-<h2 id="1-what-we-actually-store-today-data-inventory">1. What we actually store today (data inventory)<a class="headerlink" href="#1-what-we-actually-store-today-data-inventory" title="Permanent link">&para;</a></h2>
-<h3 id="11-twcoreartifacts-the-goldmine">1.1 <code>twcore.artifacts</code> — the goldmine<a class="headerlink" href="#11-twcoreartifacts-the-goldmine" title="Permanent link">&para;</a></h3>
-<p><code>src/admin_jobs.py</code> (the TWCore import) walks every <code>package/*.json</code> member, and for each resource with a <code>resourceType</code> writes one row:</p>
+<h2 id="1">1. 我們今天實際儲存了什麼（資料盤點）<a class="headerlink" href="#1" title="Permanent link">&para;</a></h2>
+<h3 id="11-twcoreartifacts">1.1 <code>twcore.artifacts</code> —— 金礦<a class="headerlink" href="#11-twcoreartifacts" title="Permanent link">&para;</a></h3>
+<p><code>src/admin_jobs.py</code>（TWCore 匯入）會走訪每一個 <code>package/*.json</code> 成員，對每個帶有 <code>resourceType</code> 的資源寫入一列：</p>
 <pre><code>twcore.artifacts(
-  artifact_key PK,            -- &quot;{resourceType}/{id}&quot;  ← NOTE: not package-scoped (multi-IG problem, §4)
+  artifact_key PK,            -- &quot;{resourceType}/{id}&quot;  ← 注意：非 package-scoped（多 IG 問題，§4）
   resource_type, artifact_id, canonical_url, name, title, status,
   kind, base_type, derivation,
-  grouping_id, grouping_name, -- from the IG's definition.grouping
+  grouping_id, grouping_name, -- 來自 IG 的 definition.grouping
   description, package_path,
   child_count, concept_count,
-  raw_json JSONB,             -- ★ the COMPLETE FHIR resource
+  raw_json JSONB,             -- ★ 完整的 FHIR 資源
   imported_at
 )
 </code></pre>
-<p>Verified against <code>package.tgz</code>:
-- <strong>StructureDefinition-Condition-twcore</strong>: <code>raw_json</code> carries <code>snapshot.element</code> (47 elements) and <code>differential.element</code> (35). Bindings (<code>element.binding.strength</code> + <code>valueSet</code>), slicing (<code>element.slicing.discriminator/rules</code>), and choice types (<code>Condition.onset[x]</code> → <code>[dateTime, Age, Period, Range, string]</code>) are all inside that snapshot. → <strong>Tools 7–13 are fully backed.</strong>
-- <strong>ValueSets</strong> are stored as artifacts → <code>raw_json.compose</code>. → Tools 14 backed; 15/16/17 partial (see §3).
-- <strong>98 examples</strong> are stored as artifacts too (their <code>resource_type</code> is the instance type, e.g. <code>AllergyIntolerance</code>, <code>Bundle</code>, <code>Condition</code>; they carry <code>meta.profile</code>). → <strong>Tool 12 backed</strong> by matching <code>raw_json.meta.profile</code>.
-- <strong>ImplementationGuide</strong>, <strong>CapabilityStatement</strong>, <strong>SearchParameter</strong>, <strong>OperationDefinition</strong>, <strong>ConceptMap (×6)</strong> — all present as artifacts with full raw_json.
-- FTS GIN index already exists on <code>artifact_id|canonical_url|name|title|...</code>.</p>
-<h3 id="12-twcorecodesystems-twcoreconcepts-parsed-terminology">1.2 <code>twcore.codesystems</code> + <code>twcore.concepts</code> — parsed terminology<a class="headerlink" href="#12-twcorecodesystems-twcoreconcepts-parsed-terminology" title="Permanent link">&para;</a></h3>
+<p>已對照 <code>package.tgz</code> 驗證：</p>
+<ul>
+<li><strong>StructureDefinition-Condition-twcore</strong>：<code>raw_json</code> 帶有 <code>snapshot.element</code>（47 個 element）與 <code>differential.element</code>（35 個）。Binding（<code>element.binding.strength</code> + <code>valueSet</code>）、slicing（<code>element.slicing.discriminator/rules</code>）與 choice type（<code>Condition.onset[x]</code> → <code>[dateTime, Age, Period, Range, string]</code>）全都在該 snapshot 內。→ <strong>工具 7–13 的資料完全齊備。</strong></li>
+<li><strong>ValueSet</strong> 以 artifact 形式儲存 → <code>raw_json.compose</code>。→ 工具 14 齊備；15/16/17 為部分（見 §3）。</li>
+<li><strong>98 個 example</strong> 也以 artifact 形式儲存（其 <code>resource_type</code> 是實例型別，例如 <code>AllergyIntolerance</code>、<code>Bundle</code>、<code>Condition</code>；並帶有 <code>meta.profile</code>）。→ <strong>工具 12 可透過比對 <code>raw_json.meta.profile</code> 支援。</strong></li>
+<li><strong>ImplementationGuide</strong>、<strong>CapabilityStatement</strong>、<strong>SearchParameter</strong>、<strong>OperationDefinition</strong>、<strong>ConceptMap（×6）</strong>——全部以 artifact 存在且具完整 raw_json。</li>
+<li><code>artifact_id|canonical_url|name|title|...</code> 上已建立 FTS GIN 索引。</li>
+</ul>
+<h3 id="12-twcorecodesystems-twcoreconcepts">1.2 <code>twcore.codesystems</code> + <code>twcore.concepts</code> —— 已解析的術語<a class="headerlink" href="#12-twcorecodesystems-twcoreconcepts" title="Permanent link">&para;</a></h3>
 <pre><code>twcore.codesystems(cs_id PK, name, category, fetched_at, concept_count)
-twcore.concepts(id, cs_id FK, code, display, definition)   -- GIN FTS on code+display
+twcore.concepts(id, cs_id FK, code, display, definition)   -- code+display 上有 GIN FTS
 </code></pre>
-<p>Populated for IG-defined CodeSystems (e.g. <code>category-code-tw</code>, the NHI/SNOMED-TW systems). → Tools 16 (lookup), 14/15 inline expansion backed for IG-internal systems.</p>
-<h3 id="13-already-shipped-service-methods-srctwcore_servicepy">1.3 Already-shipped service methods (<code>src/twcore_service.py</code>)<a class="headerlink" href="#13-already-shipped-service-methods-srctwcore_servicepy" title="Permanent link">&para;</a></h3>
-<p><code>list_codesystems</code>, <code>search_code</code>, <code>lookup_code</code>, <code>search_artifacts</code>, <code>get_artifact(include_raw)</code>. These already cover the <em>substrate</em> for tools 3, 4, 14, 16 and the discovery half of 7.</p>
-<h3 id="14-cross-domain-terminology-we-hold-elsewhere-matters-for-expansionlookup">1.4 Cross-domain terminology we hold elsewhere (matters for expansion/lookup)<a class="headerlink" href="#14-cross-domain-terminology-we-hold-elsewhere-matters-for-expansionlookup" title="Permanent link">&para;</a></h3>
-<p>Separate schemas <code>snomed.*</code>, <code>loinc.*</code>, <code>icd.*</code> hold full SNOMED CT / LOINC / ICD content. Because many TWCore ValueSets filter over SNOMED, <strong>we can do more local expansion than a naïve "IG-only" reading suggests</strong> — if we wire the ValueSet filter executor to those schemas.</p>
+<p>已為 IG 定義的 CodeSystem 填入資料（例如 <code>category-code-tw</code>、健保／SNOMED-TW 系統）。→ 工具 16（lookup）、以及 14/15 對 IG 內部系統的內嵌展開均有支援。</p>
+<h3 id="13-srctwcore_servicepy">1.3 已上線的服務方法（<code>src/twcore_service.py</code>）<a class="headerlink" href="#13-srctwcore_servicepy" title="Permanent link">&para;</a></h3>
+<p><code>list_codesystems</code>、<code>search_code</code>、<code>lookup_code</code>、<code>search_artifacts</code>、<code>get_artifact(include_raw)</code>。這些已涵蓋工具 3、4、14、16 的<strong>底層基礎</strong>，以及工具 7 探索面向的一半。</p>
+<h3 id="14">1.4 我們在別處持有的跨領域術語（影響展開／查詢）<a class="headerlink" href="#14" title="Permanent link">&para;</a></h3>
+<p>獨立的 <code>snomed.*</code>、<code>loinc.*</code>、<code>icd.*</code> schema 存有完整的 SNOMED CT / LOINC / ICD 內容。由於許多 TWCore ValueSet 是對 SNOMED 做 filter，<strong>我們能做的本地展開比「只看 IG」的直覺判斷更多</strong>——前提是把 ValueSet filter 執行器接到那些 schema。</p>
 <hr />
-<h2 id="2-per-tool-readiness-matrix-25-tools">2. Per-tool readiness matrix (25 tools)<a class="headerlink" href="#2-per-tool-readiness-matrix-25-tools" title="Permanent link">&para;</a></h2>
-<p>Legend: ✅ data fully present (needs serving code only) · 🟡 partial / needs derived logic or optional dependency package · 🔴 needs new storage or an external engine (data not in the IG).</p>
-<h3 id="a-ig-discovery">A. IG Discovery<a class="headerlink" href="#a-ig-discovery" title="Permanent link">&para;</a></h3>
+<h2 id="2-25">2. 逐工具就緒度矩陣（25 個工具）<a class="headerlink" href="#2-25" title="Permanent link">&para;</a></h2>
+<p>圖例：✅ 資料完全齊備（只需服務程式碼）· 🟡 部分／需衍生邏輯或選用相依套件 · 🔴 需要新的儲存或外部引擎（資料不在 IG 內）。</p>
+<h3 id="a-ig">A. IG 探索<a class="headerlink" href="#a-ig" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
 <tr>
 <th>#</th>
-<th>Tool</th>
-<th>Status</th>
-<th>Data source / gap</th>
+<th>工具</th>
+<th>狀態</th>
+<th>資料來源／缺口</th>
 </tr>
 </thead>
 <tbody>
@@ -3046,36 +3022,36 @@ twcore.concepts(id, cs_id FK, code, display, definition)   -- GIN FTS on code+di
 <td>1</td>
 <td><code>fhir_list_igs</code></td>
 <td>🟡</td>
-<td>Identity (packageId/version/canonical/fhirVersion) lives in <code>package.json</code> + the ImplementationGuide raw_json, but there is <strong>no IG registry table</strong> and no package columns yet. Needs <code>fhir.ig_packages</code> (§4).</td>
+<td>身分資訊（packageId/version/canonical/fhirVersion）存在於 <code>package.json</code> 與 ImplementationGuide 的 raw_json，但目前<strong>沒有 IG 註冊表</strong>，也還沒有 package 欄位。需要 <code>fhir.ig_packages</code>（§4）。</td>
 </tr>
 <tr>
 <td>2</td>
 <td><code>fhir_get_ig</code></td>
 <td>🟡</td>
-<td><code>dependencies</code> + <code>fhirVersion</code> from ImplementationGuide raw_json; <code>artifactCounts</code> = <code>GROUP BY resource_type</code>. Needs the registry.</td>
+<td><code>dependencies</code> 與 <code>fhirVersion</code> 取自 ImplementationGuide raw_json；<code>artifactCounts</code> = <code>GROUP BY resource_type</code>。需要註冊表。</td>
 </tr>
 <tr>
 <td>3</td>
 <td><code>fhir_list_artifacts</code></td>
 <td>✅</td>
-<td><code>twcore.artifacts</code> directly. Largely = existing <code>search_artifacts(list mode)</code>.</td>
+<td>直接查 <code>twcore.artifacts</code>。大致等同既有的 <code>search_artifacts(list mode)</code>。</td>
 </tr>
 <tr>
 <td>4</td>
 <td><code>fhir_search_artifacts</code></td>
 <td>✅</td>
-<td>Existing <code>search_artifacts</code> + FTS index.</td>
+<td>既有的 <code>search_artifacts</code> + FTS 索引。</td>
 </tr>
 </tbody>
 </table>
-<h3 id="b-profile-selection">B. Profile Selection<a class="headerlink" href="#b-profile-selection" title="Permanent link">&para;</a></h3>
+<h3 id="b">B. 剖面選擇<a class="headerlink" href="#b" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
 <tr>
 <th>#</th>
-<th>Tool</th>
-<th>Status</th>
-<th>Data source / gap</th>
+<th>工具</th>
+<th>狀態</th>
+<th>資料來源／缺口</th>
 </tr>
 </thead>
 <tbody>
@@ -3083,41 +3059,74 @@ twcore.concepts(id, cs_id FK, code, display, definition)   -- GIN FTS on code+di
 <td>5</td>
 <td><code>fhir_list_resource_profiles</code></td>
 <td>✅</td>
-<td><code>WHERE resource_type='StructureDefinition' AND kind='resource' AND derivation='constraint'</code>, group by <code>base_type</code>. All columns present.</td>
+<td><code>WHERE resource_type='StructureDefinition' AND kind='resource' AND derivation='constraint'</code>，再依 <code>base_type</code> 分組。所有欄位皆已存在。</td>
 </tr>
 <tr>
 <td>6</td>
 <td><code>fhir_rank_resource_profiles</code></td>
 <td>🟡</td>
-<td>New scoring logic: match input keys against profile element paths (parsed from snapshot). No external data; pure derivation. Must return candidates + <code>selectionRequired:true</code>, never auto-map.</td>
+<td>新的評分邏輯：把輸入的 keys 與剖面 element path（自 snapshot 解析）比對。不需外部資料，純衍生。必須回傳候選 + <code>selectionRequired:true</code>，絕不自動對應。</td>
 </tr>
 <tr>
 <td>7</td>
 <td><code>fhir_get_profile</code></td>
 <td>✅</td>
-<td>artifact columns + <code>raw_json.meta</code>.</td>
+<td>artifact 欄位 + <code>raw_json.meta</code>。</td>
 </tr>
 </tbody>
 </table>
-<h3 id="c-structuredefinition-consolidated-into-one-tool-with-a-view-param-all-parse-raw_jsonsnapshotelement-data-100-present">C. StructureDefinition — <strong>consolidated into one tool with a <code>view</code> param</strong> (all parse <code>raw_json.snapshot.element</code>, data 100% present)<a class="headerlink" href="#c-structuredefinition-consolidated-into-one-tool-with-a-view-param-all-parse-raw_jsonsnapshotelement-data-100-present" title="Permanent link">&para;</a></h3>
-<p><strong>Decided:</strong> spec tools 8–13 (the six snapshot readers, including <code>get_element_binding</code> from group D) collapse into a single <code>fhir_get_profile_elements(profile, view, path?)</code>. This sets the <strong>toolset-wide granularity rule: multiple read-views of the same underlying data fold behind a <code>view</code>/<code>mode</code> param</strong> to keep <code>tools/list</code> lean (it stacks on the existing 29 tools). Each spec tool becomes a <code>view</code> value:
-| <code>view</code> | replaces spec tool | returns |
-|---|---|---|
-| <code>elements</code> (default) | 8 <code>get_profile_elements</code> | full LLM-friendly element projection (min/max/types/mustSupport/binding/fixed/pattern/constraints) |
-| <code>element</code> | 9 <code>get_element</code> | single element by <code>path</code> (+ <code>sliceName</code>) |
-| <code>slices</code> | 10 <code>get_element_slices</code> | <code>element.slicing</code> + slice children (verified, e.g. <code>Condition.code.extension</code>) |
-| <code>choices</code> | 11 <code>get_choice_types</code> | <code>[x]</code> element types + <code>jsonProperty</code> + input-type recommendation (verified <code>Condition.onset[x]</code>) |
-| <code>binding</code> | 13 <code>get_element_binding</code> | <code>element.binding</code> strength + valueSet |
-| <code>examples</code> | 12 <code>get_profile_examples</code> | example artifacts where <code>raw_json.meta.profile</code> contains the canonical |</p>
-<p><code>path</code> is required for <code>element</code>/<code>slices</code>/<code>choices</code>/<code>binding</code>; omitted for <code>elements</code>/<code>examples</code>. All ✅ — data fully present.</p>
-<h3 id="d-terminology">D. Terminology<a class="headerlink" href="#d-terminology" title="Permanent link">&para;</a></h3>
+<h3 id="c-structuredefinition-view-raw_jsonsnapshotelement-100">C. StructureDefinition —— <strong>合併為單一工具，以 <code>view</code> 參數切換</strong>（皆解析 <code>raw_json.snapshot.element</code>，資料 100% 齊備）<a class="headerlink" href="#c-structuredefinition-view-raw_jsonsnapshotelement-100" title="Permanent link">&para;</a></h3>
+<p><strong>已決定：</strong> 規格中的工具 8–13（六個 snapshot 讀取器，含 D 組的 <code>get_element_binding</code>）合併為單一的 <code>fhir_get_profile_elements(profile, view, path?)</code>。這確立了<strong>工具集全域的粒度規則：同一份底層資料的多種讀取視圖，一律收斂到 <code>view</code>/<code>mode</code> 參數之後</strong>，以維持 <code>tools/list</code> 精簡（它是疊加在既有 29 個工具之上的）。每個規格工具成為一個 <code>view</code> 值：</p>
+<table>
+<thead>
+<tr>
+<th><code>view</code></th>
+<th>取代規格工具</th>
+<th>回傳</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>elements</code>（預設）</td>
+<td>8 <code>get_profile_elements</code></td>
+<td>完整且對 LLM 友善的 element 投影（min/max/types/mustSupport/binding/fixed/pattern/constraints）</td>
+</tr>
+<tr>
+<td><code>element</code></td>
+<td>9 <code>get_element</code></td>
+<td>依 <code>path</code>（+ <code>sliceName</code>）取單一 element</td>
+</tr>
+<tr>
+<td><code>slices</code></td>
+<td>10 <code>get_element_slices</code></td>
+<td><code>element.slicing</code> + slice 子元素（已驗證，例如 <code>Condition.code.extension</code>）</td>
+</tr>
+<tr>
+<td><code>choices</code></td>
+<td>11 <code>get_choice_types</code></td>
+<td><code>[x]</code> element 型別 + <code>jsonProperty</code> + 輸入型別建議（已驗證 <code>Condition.onset[x]</code>）</td>
+</tr>
+<tr>
+<td><code>binding</code></td>
+<td>13 <code>get_element_binding</code></td>
+<td><code>element.binding</code> 的 strength 與 valueSet</td>
+</tr>
+<tr>
+<td><code>examples</code></td>
+<td>12 <code>get_profile_examples</code></td>
+<td><code>raw_json.meta.profile</code> 含該 canonical 的 example artifact</td>
+</tr>
+</tbody>
+</table>
+<p><code>element</code>/<code>slices</code>/<code>choices</code>/<code>binding</code> 需帶 <code>path</code>；<code>elements</code>/<code>examples</code> 則省略。全部 ✅——資料完全齊備。</p>
+<h3 id="d">D. 術語<a class="headerlink" href="#d" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
 <tr>
 <th>#</th>
-<th>Tool</th>
-<th>Status</th>
-<th>Data source / gap</th>
+<th>工具</th>
+<th>狀態</th>
+<th>資料來源／缺口</th>
 </tr>
 </thead>
 <tbody>
@@ -3125,57 +3134,92 @@ twcore.concepts(id, cs_id FK, code, display, definition)   -- GIN FTS on code+di
 <td>13</td>
 <td>~~<code>fhir_get_element_binding</code>~~ → <code>view:"binding"</code></td>
 <td>✅</td>
-<td>Folded into the consolidated <code>fhir_get_profile_elements</code> (group C).</td>
+<td>已併入合併後的 <code>fhir_get_profile_elements</code>（C 組）。</td>
 </tr>
 <tr>
 <td>14</td>
 <td><code>fhir_get_valueset</code></td>
 <td>✅</td>
-<td>ValueSet artifact <code>raw_json.compose</code>.</td>
+<td>ValueSet artifact 的 <code>raw_json.compose</code>。</td>
 </tr>
 <tr>
 <td>15</td>
 <td><code>fhir_expand_valueset</code></td>
 <td>🟡</td>
-<td>Inline <code>compose.include.concept</code> → ✅. SNOMED <code>filter</code> (is-a etc.) → executable against <code>snomed.*</code> with new filter logic. HL7 THO / external → only if the dependency package is imported (optional source roles <code>twcore_tho</code>, <code>twcore_fhir_core</code> already exist), else return <code>TERMINOLOGY_SERVER_REQUIRED</code>.</td>
+<td>內嵌 <code>compose.include.concept</code> → ✅。SNOMED <code>filter</code>（is-a 等）→ 以新的 filter 邏輯對 <code>snomed.*</code> 執行。HL7 THO／外部 → 僅在相依套件已匯入時可行（選用的 source role <code>twcore_tho</code>、<code>twcore_fhir_core</code> 已存在），否則回傳 <code>TERMINOLOGY_SERVER_REQUIRED</code>。</td>
 </tr>
 <tr>
 <td>16</td>
 <td><code>fhir_lookup_code</code></td>
 <td>🟡</td>
-<td>IG systems → <code>twcore.concepts</code>; SNOMED/LOINC/ICD → cross-schema lookup; truly external → <code>found:null</code> + warning (must <strong>not</strong> fabricate display).</td>
+<td>IG 系統 → <code>twcore.concepts</code>；SNOMED/LOINC/ICD → 跨 schema 查詢；真正外部者 → <code>found:null</code> + 警告（<strong>絕不可</strong>編造 display）。</td>
 </tr>
 <tr>
 <td>17</td>
 <td><code>fhir_validate_code</code></td>
 <td>🟡</td>
-<td>Membership check = expand-then-contains; same coverage profile as #15.</td>
+<td>成員檢查 = 先展開再判斷包含；覆蓋範圍同 #15。</td>
 </tr>
 <tr>
 <td>18</td>
 <td><code>fhir_normalize_code</code></td>
 <td>🟡</td>
-<td>We have embeddings (semantic match) + <code>twcore.concepts</code> (alias/display) + 6 ConceptMaps. New recommender logic; output must be re-validated by #17.</td>
+<td>我們有 embedding（語意比對）+ <code>twcore.concepts</code>（別名／display）+ 6 個 ConceptMap。需新的推薦邏輯；輸出必須由 #17 再次驗證。</td>
 </tr>
 </tbody>
 </table>
-<h3 id="e-mapping-redesigned-schema-guided-fill-no-stored-templates">E. Mapping — <strong>redesigned: schema-guided fill (no stored templates)</strong><a class="headerlink" href="#e-mapping-redesigned-schema-guided-fill-no-stored-templates" title="Permanent link">&para;</a></h3>
-<p>The spec's 19–21 are <strong>dropped</strong> and replaced by two template-free tools (§3 Gap 2). The LLM does the semantic mapping; the system does the mechanical pinning + validation.
-| # | Tool | Status | Data source / gap |
-|---|---|---|---|
-| ~~19~~ | ~~<code>fhir_get_mapping_template</code>~~ | ❌ removed | Stored-template concept dropped (pre-LLM construct). |
-| ~~20~~ | ~~<code>fhir_plan_mapping</code>~~ | ❌ removed | Superseded by skeleton + validator loop. |
-| ~~21~~ | ~~<code>fhir_apply_mapping</code>~~ | ❌ removed | Superseded by <code>fhir_finalize_resource</code>. |
-| 19′ | <code>fhir_get_resource_skeleton</code> | ✅ | Blanked, annotated fill-form projected live from <code>snapshot.element</code> (path, cardinality, type, choice[x] property, required-binding ValueSet <strong>+ candidate codes</strong>, fixed/pattern marked auto-pinned, slicing, mustSupport, short, + official examples as few-shot). Data 100% present. |
-| 20′ | <code>fhir_finalize_resource</code> | 🟡 | Deterministic step over the LLM-filled draft: pin <code>fixed</code>/<code>pattern</code>/<code>meta.profile</code>, attach validated-code <code>system</code> URLs, resolve references (#22), run the built-in validator (#24), return <code>{resource, validation, trace}</code>. Pure logic; no stored mapping. |</p>
-<h3 id="f-reference-bundle">F. Reference / Bundle<a class="headerlink" href="#f-reference-bundle" title="Permanent link">&para;</a></h3>
+<h3 id="e-schema-guided-fill">E. 對應 —— <strong>重新設計：schema-guided fill（無儲存式樣板）</strong><a class="headerlink" href="#e-schema-guided-fill" title="Permanent link">&para;</a></h3>
+<p>規格中的 19–21 <strong>移除</strong>，改為兩個無樣板的工具（§3 缺口 2）。LLM 負責語意對應，系統負責機制釘定與驗證。</p>
 <table>
 <thead>
 <tr>
 <th>#</th>
-<th>Tool</th>
-<th>Status</th>
-<th>Data source / gap</th>
+<th>工具</th>
+<th>狀態</th>
+<th>資料來源／缺口</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>~~19~~</td>
+<td>~~<code>fhir_get_mapping_template</code>~~</td>
+<td>❌ 移除</td>
+<td>儲存式樣板概念捨棄（前 LLM 時代產物）。</td>
+</tr>
+<tr>
+<td>~~20~~</td>
+<td>~~<code>fhir_plan_mapping</code>~~</td>
+<td>❌ 移除</td>
+<td>由骨架 + 驗證器迴圈取代。</td>
+</tr>
+<tr>
+<td>~~21~~</td>
+<td>~~<code>fhir_apply_mapping</code>~~</td>
+<td>❌ 移除</td>
+<td>由 <code>fhir_finalize_resource</code> 取代。</td>
+</tr>
+<tr>
+<td>19′</td>
+<td><code>fhir_get_resource_skeleton</code></td>
+<td>✅</td>
+<td>自 <code>snapshot.element</code> 即時投影出的空白、帶註解填寫表單（path、cardinality、type、choice[x] 屬性、required binding 的 ValueSet <strong>與候選碼</strong>、標為 auto-pinned 的 fixed/pattern、slicing、mustSupport、short，並附官方 example 作為 few-shot）。資料 100% 齊備。</td>
+</tr>
+<tr>
+<td>20′</td>
+<td><code>fhir_finalize_resource</code></td>
+<td>🟡</td>
+<td>對 LLM 填好的 draft 執行決定性步驟：釘住 <code>fixed</code>/<code>pattern</code>/<code>meta.profile</code>、附上已驗證碼的 <code>system</code> URL、解析參照（#22）、執行內建驗證器（#24），回傳 <code>{resource, validation, trace}</code>。純邏輯，無儲存式對應。</td>
+</tr>
+</tbody>
+</table>
+<h3 id="f-bundle">F. 參照 / Bundle<a class="headerlink" href="#f-bundle" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>工具</th>
+<th>狀態</th>
+<th>資料來源／缺口</th>
 </tr>
 </thead>
 <tbody>
@@ -3183,24 +3227,24 @@ twcore.concepts(id, cs_id FK, code, display, definition)   -- GIN FTS on code+di
 <td>22</td>
 <td><code>fhir_resolve_reference</code></td>
 <td>🟡</td>
-<td>Pure logic, but needs an ephemeral <strong>reference-context store</strong> (per build session, keyed by <code>referenceContextId</code>). No IG data.</td>
+<td>純邏輯，但需要一個暫時性的<strong>參照脈絡儲存</strong>（以建置工作階段為單位，用 <code>referenceContextId</code> 索引）。不需 IG 資料。</td>
 </tr>
 <tr>
 <td>23</td>
 <td><code>fhir_build_bundle</code></td>
 <td>🟡</td>
-<td>Pure logic (urn:uuid rewrite, reference map). Bundle profiles exist in IG for later validation. Data-wise ✅.</td>
+<td>純邏輯（urn:uuid 改寫、參照對照表）。IG 內已有 Bundle 剖面可供後續驗證。資料面 ✅。</td>
 </tr>
 </tbody>
 </table>
-<h3 id="g-validation">G. Validation<a class="headerlink" href="#g-validation" title="Permanent link">&para;</a></h3>
+<h3 id="g">G. 驗證<a class="headerlink" href="#g" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
 <tr>
 <th>#</th>
-<th>Tool</th>
-<th>Status</th>
-<th>Data source / gap</th>
+<th>工具</th>
+<th>狀態</th>
+<th>資料來源／缺口</th>
 </tr>
 </thead>
 <tbody>
@@ -3208,63 +3252,63 @@ twcore.concepts(id, cs_id FK, code, display, definition)   -- GIN FTS on code+di
 <td>24</td>
 <td><code>fhir_validate_resource</code></td>
 <td>🟡</td>
-<td>Built <strong>in-process in Python</strong> (§3 Gap 2): structure (cardinality/required/type/fixed/pattern) + binding membership + FHIRPath invariants via <code>fhirpathpy</code> + common slicing. No Java, no sidecar. All inputs in <code>raw_json</code>. Positioned as a pre-flight check; the downstream FHIR server remains the authoritative validator.</td>
+<td><strong>以 Python 在行程內建置</strong>（§3 缺口 2）：結構（cardinality/required/type/fixed/pattern）+ binding 成員檢查 + 透過 <code>fhirpathpy</code> 的 FHIRPath 不變式 + 常見 slicing。無 Java、無 sidecar。所有輸入皆在 <code>raw_json</code>。定位為預檢；下游 FHIR 伺服器仍是權威驗證者。</td>
 </tr>
 <tr>
 <td>25</td>
 <td><code>fhir_validate_bundle</code></td>
 <td>🟡</td>
-<td>Per-entry = #24; internal-reference integrity = local logic. Same in-process validator.</td>
+<td>逐 entry = #24；內部參照完整性 = 本地邏輯。使用同一個行程內驗證器。</td>
 </tr>
 </tbody>
 </table>
-<p><strong>Tally (per spec capability, 24 after the mapping redesign):</strong> ✅ 12 · 🟡 12 · 🔴 0. The old 🔴 mapping trio is gone; <code>fhir_get_resource_skeleton</code> (✅) and <code>fhir_finalize_resource</code> (🟡) replace it with zero new source data. The validator (24, 25) is 🟡 in-process Python; terminology expansion (15–18) is 🟡 partial breadth — none blocked, none needs an external service.</p>
-<p><strong>Actual registered <code>fhir_*</code> tools after consolidation: ~19</strong> (group C's six snapshot readers collapse to one <code>view</code>-param tool, §C). Breakdown: A 4 · B 3 · C 1 · D 5 · E 2 · F 2 · G 2. Adding an IG package adds <strong>zero</strong> tools.</p>
+<p><strong>統計（依規格能力計，對應重新設計後為 24 項）：</strong> ✅ 12 · 🟡 12 · 🔴 0。舊的 🔴 對應三工具已消失；<code>fhir_get_resource_skeleton</code>（✅）與 <code>fhir_finalize_resource</code>（🟡）在不需任何新來源資料的前提下取代了它們。驗證器（24、25）為 🟡 行程內 Python；術語展開（15–18）為 🟡 廣度部分覆蓋——沒有任何一項被卡住，也沒有任何一項需要外部服務。</p>
+<p><strong>合併後實際註冊的 <code>fhir_*</code> 工具約 19 個</strong>（C 組的六個 snapshot 讀取器收斂為一個帶 <code>view</code> 參數的工具，見 §C）。分佈：A 4 · B 3 · C 1 · D 5 · E 2 · F 2 · G 2。新增一個 IG 套件<strong>不會</strong>增加任何工具。</p>
 <hr />
-<h2 id="3-the-gaps-options">3. The gaps — options<a class="headerlink" href="#3-the-gaps-options" title="Permanent link">&para;</a></h2>
-<h3 id="gap-1-built-in-validator-tools-2425-in-process-python-no-external-service">Gap 1 — Built-in validator (tools 24–25): in-process Python, <strong>no external service</strong><a class="headerlink" href="#gap-1-built-in-validator-tools-2425-in-process-python-no-external-service" title="Permanent link">&para;</a></h3>
-<p>We write the validator natively in Python and run it inside the MCP process. <strong>No Java sidecar, no <code>validator_cli.jar</code>, no extra container, no network hop.</strong> Everything it needs is already in <code>twcore.artifacts.raw_json</code> (snapshot, <code>constraint.expression</code> FHIRPath strings, <code>slicing</code>, and extension definitions — extensions are themselves StructureDefinition artifacts).</p>
-<p>The validator runs four checks in one pass over the parsed <code>snapshot.element</code>:</p>
+<h2 id="3">3. 缺口與選項<a class="headerlink" href="#3" title="Permanent link">&para;</a></h2>
+<h3 id="1-2425-python">缺口 1 —— 內建驗證器（工具 24–25）：行程內 Python，<strong>不需外部服務</strong><a class="headerlink" href="#1-2425-python" title="Permanent link">&para;</a></h3>
+<p>我們以 Python 原生撰寫驗證器並在 MCP 行程內執行。<strong>沒有 Java sidecar、沒有 <code>validator_cli.jar</code>、沒有額外容器、沒有網路往返。</strong>它需要的一切都已在 <code>twcore.artifacts.raw_json</code> 內（snapshot、<code>constraint.expression</code> 的 FHIRPath 字串、<code>slicing</code>，以及 extension 定義——extension 本身也是 StructureDefinition artifact）。</p>
+<p>驗證器對解析後的 <code>snapshot.element</code> 單次走訪即完成四項檢查：</p>
 <table>
 <thead>
 <tr>
-<th>Check</th>
-<th>How (all in-process)</th>
-<th>Coverage</th>
+<th>檢查</th>
+<th>做法（全部在行程內）</th>
+<th>覆蓋率</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><strong>Structure</strong></td>
-<td>walk <code>snapshot.element</code> vs the instance: required (<code>min≥1</code>), cardinality (<code>max</code>), type / <code>choice[x]</code> resolution, <code>fixed[x]</code> / <code>pattern[x]</code>, <code>maxLength</code></td>
-<td>~100% — catches the bulk of authoring errors</td>
+<td><strong>結構</strong></td>
+<td>以 <code>snapshot.element</code> 對照實例走訪：required（<code>min≥1</code>）、cardinality（<code>max</code>）、type / <code>choice[x]</code> 解析、<code>fixed[x]</code> / <code>pattern[x]</code>、<code>maxLength</code></td>
+<td>~100%——可攔下絕大多數撰寫錯誤</td>
 </tr>
 <tr>
-<td><strong>Terminology binding</strong></td>
-<td>for <code>required</code>-strength bindings, check the coding is a member via the §3 Gap 3 expansion resolver</td>
-<td>as broad as expansion allows; unresolvable external VS → <strong>warning, never a false error</strong></td>
+<td><strong>術語 binding</strong></td>
+<td>對 <code>required</code> 強度的 binding，透過 §3 缺口 3 的展開解析器檢查 coding 是否為成員</td>
+<td>與展開能力同寬；無法解析的外部 VS → <strong>警告，絕不誤判為錯誤</strong></td>
 </tr>
 <tr>
-<td><strong>Invariants (FHIRPath)</strong></td>
-<td>evaluate each <code>constraint.expression</code> with <strong><code>fhirpathpy</code></strong> (pure-Python port of fhirpath.js — a <code>pip install</code>, <strong>not</strong> a service)</td>
-<td>~85–95% of R4 invariants; expressions needing a terminology server (<code>memberOf</code> on external VS) → warning</td>
+<td><strong>不變式（FHIRPath）</strong></td>
+<td>以 <strong><code>fhirpathpy</code></strong>（fhirpath.js 的純 Python 移植，是一個 <code>pip install</code>，<strong>不是</strong>服務）評估每個 <code>constraint.expression</code></td>
+<td>R4 不變式的 ~85–95%；需要術語伺服器的運算式（對外部 VS 的 <code>memberOf</code>）→ 警告</td>
 </tr>
 <tr>
-<td><strong>Slicing / references</strong></td>
-<td>resolve <code>value</code> / <code>pattern</code> discriminators to assign array entries to slices then validate each; check Bundle internal <code>reference</code> ↔ <code>fullUrl</code> integrity</td>
-<td>common cases full; exotic <code>type</code>/<code>profile</code> discriminators deferred</td>
+<td><strong>Slicing / 參照</strong></td>
+<td>解析 <code>value</code> / <code>pattern</code> discriminator 以將陣列項目指派到 slice，再逐一驗證；檢查 Bundle 內部 <code>reference</code> ↔ <code>fullUrl</code> 的完整性</td>
+<td>常見情境完整覆蓋；罕見的 <code>type</code>/<code>profile</code> discriminator 延後</td>
 </tr>
 </tbody>
 </table>
-<p><strong>Why in-process is the right call, not a compromise:</strong> the resource's real destination is a live FHIR server (we already have <code>list_fhir_servers</code> / <code>crud_fhir_server</code>), and <strong>that server is the authoritative validator</strong>. Our job is a fast, explainable <strong>pre-flight</strong> check that catches 80–95% of mistakes before submit. For that purpose a native validator is fully fit — and it keeps <code>requirements.txt</code> as the only thing that changes (one pure-Python dep), with <code>docker compose</code> untouched.</p>
-<p><strong>Honesty contract:</strong> responses report <code>source: "builtin"</code>. Where a check can't be performed locally (e.g. external VS can't be expanded, or an unsupported FHIRPath function), it emits an <code>information</code>/<code>warning</code> issue saying so — it must <strong>never</strong> silently return <code>valid:true</code>. The <code>ok</code> (tool ran) vs <code>valid</code> (resource conforms) distinction from the spec is preserved.</p>
-<p><em>Not pursued:</em> a Java HL7-Validator sidecar. It would add a container, a JVM, and a network round-trip to gain exhaustive edge-case conformance we don't need given the downstream server is authoritative. If a future requirement demands official-grade conformance offline, it can be added later behind a setting without changing any tool's contract.</p>
-<h3 id="gap-2-mapping-redesigned-schema-guided-fill-replaces-tools-1921-no-stored-templates">Gap 2 — Mapping, redesigned: schema-guided fill (replaces tools 19–21, <strong>no stored templates</strong>)<a class="headerlink" href="#gap-2-mapping-redesigned-schema-guided-fill-replaces-tools-1921-no-stored-templates" title="Permanent link">&para;</a></h3>
-<p>The original spec stored a deterministic source→FHIR rule set (<code>get_mapping_template</code> → <code>plan_mapping</code> → <code>apply_mapping</code>). That is a <strong>pre-LLM construct</strong>: deterministic rule stores (FHIR Mapping Language / StructureMap / hand-coded ETL) exist precisely because a non-intelligent system can't infer that a source field <code>conditionCode</code> <em>means</em> <code>Condition.code</code>. With an LLM in the loop, the semantic mapping is the LLM's job. So we drop the stored template entirely and replace it with two template-free tools.</p>
-<p><strong>Division of labour — the one rule that survives from the template era:</strong> the LLM fills the <em>semantic</em> blanks; the system deterministically pins the <em>mechanical</em> ones. The LLM must <strong>never</strong> be asked to produce <code>fixed</code>/<code>pattern</code> values, <code>meta.profile</code>, code <code>system</code> URLs, or reference wiring — those are hallucination-prone and are pinned by code.</p>
-<p><strong>1. <code>fhir_get_resource_skeleton(profile)</code> — the annotated fill-form (✅ data present).</strong> Projected live from the chosen profile's <code>snapshot.element</code>. For every element the LLM may/must fill it provides: path, cardinality (required? array?), type, the <code>choice[x]</code> JSON property to use, the required-binding ValueSet <strong>with candidate codes</strong> (via Gap 3 expansion), <code>mustSupport</code>, a short description, and any <code>fixed</code>/<code>pattern</code> value <strong>marked as auto-pinned ("system fills this, don't touch")</strong>. Official IG examples (tool 12) are attached as few-shot. This is essentially a generation-oriented view of the same snapshot data tools 8–13 already read.</p>
-<p><strong>2. <code>fhir_finalize_resource(profile, draft, referenceContextId)</code> — deterministic close-out (🟡 pure logic).</strong> Takes the LLM-filled draft and: pins <code>fixed</code>/<code>pattern</code>, attaches <code>meta.profile</code>, fills validated-code <code>system</code> URLs, resolves references (#22), runs the built-in validator (#1 above / tools 24–25), and returns <code>{resource, validation, trace}</code>. If validation fails, the issues feed back to the LLM to fix, then re-finalize. No stored mapping, no <code>fhir.mapping_*</code> schema, <strong>no admin authoring UI</strong>.</p>
-<p><strong>Workflow:</strong></p>
+<p><strong>為什麼行程內是正確選擇，而非妥協：</strong>資源真正的目的地是一台運行中的 FHIR 伺服器（我們已有 <code>list_fhir_servers</code> / <code>crud_fhir_server</code>），而<strong>那台伺服器才是權威驗證者</strong>。我們的職責是快速、可解釋的<strong>預檢</strong>，在送出前攔下 80–95% 的錯誤。就這個目的而言，原生驗證器完全勝任——而且唯一會變動的只有 <code>requirements.txt</code>（一個純 Python 相依），<code>docker compose</code> 完全不動。</p>
+<p><strong>誠實契約：</strong>回應會標示 <code>source: "builtin"</code>。凡是無法在本地執行的檢查（例如外部 VS 無法展開、或不支援的 FHIRPath 函式），都會發出 <code>information</code>/<code>warning</code> issue 說明——<strong>絕不可</strong>靜默回傳 <code>valid:true</code>。規格中 <code>ok</code>（工具有執行）與 <code>valid</code>（資源符合）的區分予以保留。</p>
+<p><em>未採用：</em> Java HL7-Validator sidecar。它會增加一個容器、一個 JVM 與一次網路往返，換來的是在下游伺服器已具權威性的前提下我們並不需要的窮盡式邊界案例一致性。若未來出現需要離線官方級一致性的需求，可以在不改變任何工具契約的情況下，以設定開關的形式後補。</p>
+<h3 id="2-schema-guided-fill-1921">缺口 2 —— 對應的重新設計：schema-guided fill（取代工具 19–21，<strong>無儲存式樣板</strong>）<a class="headerlink" href="#2-schema-guided-fill-1921" title="Permanent link">&para;</a></h3>
+<p>原規格儲存一套決定性的「來源→FHIR」規則集（<code>get_mapping_template</code> → <code>plan_mapping</code> → <code>apply_mapping</code>）。那是<strong>前 LLM 時代的產物</strong>：決定性規則庫（FHIR Mapping Language / StructureMap / 手寫 ETL）之所以存在，正是因為不具智慧的系統無法推斷來源欄位 <code>conditionCode</code> <strong>意指</strong> <code>Condition.code</code>。有 LLM 在迴圈中，語意對應就是 LLM 的工作。因此我們完全捨棄儲存式樣板，改以兩個無樣板的工具取代。</p>
+<p><strong>分工——從樣板時代唯一存留下來的規則：</strong>LLM 填<strong>語意</strong>空格，系統決定性地釘住<strong>機制</strong>欄位。<strong>絕不可</strong>要求 LLM 產生 <code>fixed</code>/<code>pattern</code> 值、<code>meta.profile</code>、code 的 <code>system</code> URL 或參照接線——那些容易產生幻覺，一律由程式釘定。</p>
+<p><strong>1. <code>fhir_get_resource_skeleton(profile)</code> —— 帶註解的填寫表單（✅ 資料齊備）。</strong> 自所選剖面的 <code>snapshot.element</code> 即時投影。對每個 LLM 可填／須填的 element 提供：path、cardinality（是否必填？是否陣列？）、type、要使用的 <code>choice[x]</code> JSON 屬性、required binding 的 ValueSet <strong>與候選碼</strong>（透過缺口 3 的展開）、<code>mustSupport</code>、簡短說明，以及任何<strong>標為 auto-pinned（「由系統填寫，請勿碰」）</strong>的 <code>fixed</code>/<code>pattern</code> 值。官方 IG example（工具 12）作為 few-shot 一併附上。這本質上就是工具 8–13 已在讀取的同一份 snapshot 資料的「生成導向視圖」。</p>
+<p><strong>2. <code>fhir_finalize_resource(profile, draft, referenceContextId)</code> —— 決定性收尾（🟡 純邏輯）。</strong> 接收 LLM 填好的 draft，然後：釘住 <code>fixed</code>/<code>pattern</code>、附上 <code>meta.profile</code>、填入已驗證碼的 <code>system</code> URL、解析參照（#22）、執行內建驗證器（上述 #1／工具 24–25），並回傳 <code>{resource, validation, trace}</code>。驗證失敗時，issue 回饋給 LLM 修正，再重新 finalize。沒有儲存式對應、沒有 <code>fhir.mapping_*</code> schema、<strong>沒有管理後台編輯介面</strong>。</p>
+<p><strong>工作流程：</strong></p>
 <pre><code>list/rank profiles (5,6) → LLM picks profile
   → get_resource_skeleton → LLM fills semantic blanks
      (using terminology tools 13–18 to choose/validate codes)
@@ -3272,21 +3316,25 @@ twcore.concepts(id, cs_id FK, code, display, definition)   -- GIN FTS on code+di
   → on failure: feed validator issues back → LLM fixes → re-finalize
   → build_bundle (23) + validate_bundle (25)
 </code></pre>
-<p><strong>Trade-off the team is accepting consciously:</strong> stored templates are deterministic (same input → same output, compile-once, zero per-record inference) and suit unattended million-row registry loads. LLM-fill is stochastic (an ambiguous term may resolve to a different code across runs) and costs one inference per record — ideal for <strong>interactive / human-in-the-loop / small-to-mid volume</strong> (the MCP's actual use). The mechanical-pinning step + validator gate recover most of the governance/reproducibility guarantees; residual code-choice non-determinism is contained with low temperature + the validator. If a future unattended-batch requirement appears, a compiled template path can be added later <strong>without changing these tools' contracts</strong>.</p>
-<h3 id="gap-3-valueset-expansion-breadth-tools-1517">Gap 3 — ValueSet expansion breadth (tools 15–17)<a class="headerlink" href="#gap-3-valueset-expansion-breadth-tools-1517" title="Permanent link">&para;</a></h3>
-<p>Tiered expansion resolver:
-1. inline <code>compose.include.concept</code> → from raw_json (always works).
-2. <code>compose.include.system</code> pointing at a locally-held system (<code>twcore.concepts</code>, <code>snomed</code>, <code>loinc</code>, <code>icd</code>) → expand/lookup locally, <strong>including</strong> simple <code>filter</code> execution (<code>is-a</code>, <code>=</code>) against <code>snomed.*</code>.
-3. dependency-package systems (HL7 THO, base FHIR) → expand if that package was imported (the <code>twcore_tho</code> / <code>twcore_fhir_core</code> source roles already feed <code>twcore.artifacts</code>/<code>concepts</code>).
-4. otherwise → <code>TERMINOLOGY_SERVER_REQUIRED</code> (or delegate to configured external TS). The spec's response shapes already accommodate this.</p>
+<p><strong>團隊有意識接受的取捨：</strong>儲存式樣板是決定性的（相同輸入 → 相同輸出、編譯一次、每筆零推論成本），適合無人值守的百萬列登錄載入。LLM 填值則是隨機性的（模糊詞彙在不同執行間可能解析到不同的碼），且每筆需要一次推論——這對<strong>互動式／人在迴圈中／中小量</strong>（也就是本 MCP 的實際用途）最理想。機制釘定步驟加上驗證器把關，可回收大部分治理與可重現性保證；殘餘的選碼非決定性則以低 temperature 加驗證器加以控制。若未來出現無人值守批次的需求，可以在<strong>不改變這些工具契約</strong>的前提下後補一條編譯式樣板路徑。</p>
+<h3 id="3-valueset-1517">缺口 3 —— ValueSet 展開廣度（工具 15–17）<a class="headerlink" href="#3-valueset-1517" title="Permanent link">&para;</a></h3>
+<p>分層展開解析器：</p>
+<ol>
+<li>內嵌 <code>compose.include.concept</code> → 取自 raw_json（永遠可行）。</li>
+<li><code>compose.include.system</code> 指向本地持有的系統（<code>twcore.concepts</code>、<code>snomed</code>、<code>loinc</code>、<code>icd</code>）→ 在本地展開／查詢，<strong>包含</strong>對 <code>snomed.*</code> 執行簡單 <code>filter</code>（<code>is-a</code>、<code>=</code>）。</li>
+<li>相依套件的系統（HL7 THO、base FHIR）→ 若該套件已匯入則可展開（<code>twcore_tho</code> / <code>twcore_fhir_core</code> 這兩個 source role 已會餵進 <code>twcore.artifacts</code>/<code>concepts</code>）。</li>
+<li>其餘 → <code>TERMINOLOGY_SERVER_REQUIRED</code>（或委派給已設定的外部 TS）。規格的回應格式已可容納此情況。</li>
+</ol>
 <hr />
-<h2 id="4-multi-ig-architecture-design-from-day-one">4. Multi-IG architecture (design from day one)<a class="headerlink" href="#4-multi-ig-architecture-design-from-day-one" title="Permanent link">&para;</a></h2>
-<p><strong>Today the data model assumes a single IG.</strong> Concrete single-IG couplings to remove:
-- Schema is literally named <code>twcore</code>; <code>artifact_key = "{resourceType}/{id}"</code> and <code>cs_id</code> are <strong>not package-scoped</strong> → two IGs defining <code>StructureDefinition/Patient</code> or a CodeSystem with the same id would <strong>collide</strong>.
-- No registry of installed packages; <code>list_codesystems</code> falls back to a hardcoded registry.
-- Canonical-URL resolution is implicitly "within the one IG".</p>
-<h3 id="41-generalize-the-schema-logical-rename-twcore-fhir">4.1 Generalize the schema (logical rename <code>twcore</code> → <code>fhir</code>)<a class="headerlink" href="#41-generalize-the-schema-logical-rename-twcore-fhir" title="Permanent link">&para;</a></h3>
-<p>Introduce a package registry and add package identity to every artifact/terminology row:</p>
+<h2 id="4-ig">4. 多 IG 架構（從第一天就納入設計）<a class="headerlink" href="#4-ig" title="Permanent link">&para;</a></h2>
+<p><strong>目前的資料模型假設只有單一 IG。</strong>需要移除的具體單一 IG 耦合：</p>
+<ul>
+<li>Schema 名稱直接叫 <code>twcore</code>；<code>artifact_key = "{resourceType}/{id}"</code> 與 <code>cs_id</code> <strong>不是 package-scoped</strong> → 兩個 IG 若都定義 <code>StructureDefinition/Patient</code> 或同 id 的 CodeSystem 就會<strong>衝突</strong>。</li>
+<li>沒有已安裝套件的註冊表；<code>list_codesystems</code> 退回寫死的登錄表。</li>
+<li>Canonical URL 解析隱含地假設「在唯一那個 IG 之內」。</li>
+</ul>
+<h3 id="41-schema-twcore-fhir">4.1 一般化 schema（邏輯上把 <code>twcore</code> 更名為 <code>fhir</code>）<a class="headerlink" href="#41-schema-twcore-fhir" title="Permanent link">&para;</a></h3>
+<p>引入套件註冊表，並為每一列 artifact／術語加上套件身分：</p>
 <pre><code>fhir.ig_packages(
   package_id, version,            -- PK (package_id, version)
   canonical, fhir_version, title, status,
@@ -3294,54 +3342,54 @@ twcore.concepts(id, cs_id FK, code, display, definition)   -- GIN FTS on code+di
   imported_at)
 
 fhir.artifacts(
-  package_id, package_version,    -- ← NEW, part of PK
+  package_id, package_version,    -- ← 新增，屬於 PK 的一部分
   artifact_key, ... raw_json,     -- PK (package_id, package_version, artifact_key)
   ...)
 fhir.codesystems(package_id, package_version, cs_id, ...)   -- PK (..., cs_id)
 fhir.concepts(package_id, package_version, cs_id, code, ...)
 </code></pre>
-<p>Migration path: keep <code>twcore.*</code> as the physical home for now and add the package columns (default <code>tw.gov.mohw.twcore</code> / <code>1.0.0</code>), OR introduce <code>fhir.*</code> and have the import write package-scoped rows. The user has stated <strong>they will re-import</strong>, so a clean <code>fhir.*</code> schema with package keys is preferred over in-place migration; <code>db/schema.sql</code> is authoritative, no migration file required (mirror the existing project convention).</p>
-<h3 id="42-the-ig-selector-every-tool">4.2 The IG selector (every tool)<a class="headerlink" href="#42-the-ig-selector-every-tool" title="Permanent link">&para;</a></h3>
-<p>All IG-scoped tools accept:</p>
+<p>遷移路徑：暫時保留 <code>twcore.*</code> 作為實體位置並加上套件欄位（預設 <code>tw.gov.mohw.twcore</code> / <code>1.0.0</code>），或者引入 <code>fhir.*</code> 並讓匯入流程寫入 package-scoped 的列。使用者已表明<strong>會重新匯入</strong>，因此相較於原地遷移，採用帶套件鍵的全新 <code>fhir.*</code> schema 更佳；<code>db/schema.sql</code> 為權威來源，不需遷移檔（沿用專案既有慣例）。</p>
+<h3 id="42-ig">4.2 IG 選擇器（每個工具）<a class="headerlink" href="#42-ig" title="Permanent link">&para;</a></h3>
+<p>所有 IG-scoped 工具都接受：</p>
 <pre><code class="language-json">{ &quot;ig&quot;: { &quot;packageId&quot;: &quot;tw.gov.mohw.twcore&quot;, &quot;version&quot;: &quot;1.0.0&quot; } }
 </code></pre>
 <ul>
-<li><code>version</code> optional → resolve to the package marked <code>is_default</code> (or highest semver) in <code>fhir.ig_packages</code>.</li>
-<li>Reject ambiguous bare <code>"twcore"</code>; require a real <code>packageId</code>.</li>
-<li>Provenance block on every response echoes the resolved <code>packageId/version/fhirVersion</code> so callers can detect drift after an IG upgrade.</li>
+<li><code>version</code> 為選填 → 解析為 <code>fhir.ig_packages</code> 中標記 <code>is_default</code>（或最高 semver）的套件。</li>
+<li>拒絕模稜兩可的裸字串 <code>"twcore"</code>；必須提供真正的 <code>packageId</code>。</li>
+<li>每個回應的 provenance 區塊都回報解析後的 <code>packageId/version/fhirVersion</code>，讓呼叫端能在 IG 升級後偵測到漂移。</li>
 </ul>
-<h3 id="43-canonical-resolver-across-dependencies">4.3 Canonical resolver across dependencies<a class="headerlink" href="#43-canonical-resolver-across-dependencies" title="Permanent link">&para;</a></h3>
-<p>A profile in TW Core references base-FHIR R4 elements and HL7 THO ValueSets. The resolver, given a canonical URL + an originating package, searches: <strong>(a)</strong> the target package, then <strong>(b)</strong> its <code>dependencies</code> (transitively) in <code>fhir.ig_packages</code>. This is the generalization of today's optional <code>twcore_tho</code> / <code>twcore_fhir_core</code> side-loading. If unresolved → explicit <code>ARTIFACT_NOT_FOUND</code> / <code>VALUESET_NOT_FOUND</code>, never a guess.</p>
-<h3 id="44-mcp-tool-shape">4.4 MCP tool shape<a class="headerlink" href="#44-mcp-tool-shape" title="Permanent link">&para;</a></h3>
+<h3 id="43-canonical">4.3 跨相依的 canonical 解析器<a class="headerlink" href="#43-canonical" title="Permanent link">&para;</a></h3>
+<p>TW Core 的剖面會參照 base FHIR R4 的 element 與 HL7 THO 的 ValueSet。解析器在收到 canonical URL 與來源套件後，依序搜尋：<strong>(a)</strong> 目標套件，接著 <strong>(b)</strong> 它在 <code>fhir.ig_packages</code> 中的 <code>dependencies</code>（遞移）。這是目前選用式 <code>twcore_tho</code> / <code>twcore_fhir_core</code> 側載機制的一般化版本。若無法解析 → 明確回傳 <code>ARTIFACT_NOT_FOUND</code> / <code>VALUESET_NOT_FOUND</code>，絕不用猜的。</p>
+<h3 id="44-mcp">4.4 MCP 工具形態<a class="headerlink" href="#44-mcp" title="Permanent link">&para;</a></h3>
 <ul>
-<li>One generic toolset (<code>fhir_*</code>) parameterized by <code>ig</code>, <strong>not</strong> per-IG tools. Adding an IG = importing a package; no new tools.</li>
-<li><strong>Granularity rule (decided):</strong> multiple read-views of the same underlying data fold behind a <code>view</code>/<code>mode</code> param rather than separate tools — keeps <code>tools/list</code> lean on top of the existing 29 tools. First application: group C's six snapshot readers → one <code>fhir_get_profile_elements(profile, view, path?)</code>. ~19 registered <code>fhir_*</code> tools result.</li>
-<li>Reuse the existing common envelope (<code>{ok,data,warnings,provenance}</code>) + the error-code enum from the spec.</li>
-<li>Register under a new <code>_TOOL_GROUPS["fhir_ig"]</code> group; gate visibility on <code>fhir.ig_packages</code> being non-empty (consistent with <code>ModuleStatusManager</code> dynamic show/hide).</li>
+<li>一套以 <code>ig</code> 參數化的通用工具集（<code>fhir_*</code>），<strong>而非</strong>每個 IG 一套工具。新增 IG = 匯入一個套件；不需要新工具。</li>
+<li><strong>粒度規則（已決定）：</strong>同一份底層資料的多種讀取視圖收斂到 <code>view</code>/<code>mode</code> 參數之後，而非拆成多個工具——以在既有 29 個工具之上維持 <code>tools/list</code> 精簡。首次套用：C 組的六個 snapshot 讀取器 → 單一 <code>fhir_get_profile_elements(profile, view, path?)</code>。結果約為 19 個註冊的 <code>fhir_*</code> 工具。</li>
+<li>沿用既有的共同信封（<code>{ok,data,warnings,provenance}</code>）與規格中的錯誤碼列舉。</li>
+<li>註冊於新的 <code>_TOOL_GROUPS["fhir_ig"]</code> 群組；以 <code>fhir.ig_packages</code> 非空作為可見性閘門（與 <code>ModuleStatusManager</code> 的動態顯示／隱藏一致）。</li>
 </ul>
 <hr />
-<h2 id="5-phased-roadmap-data-first-lowest-risk-first">5. Phased roadmap (data-first, lowest-risk first)<a class="headerlink" href="#5-phased-roadmap-data-first-lowest-risk-first" title="Permanent link">&para;</a></h2>
-<p><strong>Phase 0 — Multi-IG foundation (enables everything).</strong> <code>fhir.ig_packages</code> registry + package columns on artifacts/codesystems/concepts; update the import to write package-scoped rows + register the package; IG selector + canonical resolver helpers. Tools 1, 2 fall out for free.</p>
-<p><strong>Phase 1 — Discovery &amp; StructureDefinition (all ✅ data).</strong> Tools 3–13: serve from <code>artifacts</code> + a <code>snapshot.element</code> projector. Highest value, zero new data, no external deps. This is the "LLM can explore any imported IG and read every profile/element/binding" milestone.</p>
-<p><strong>Phase 2 — Terminology (🟡).</strong> Tools 14–18: tiered expansion resolver (§3 Gap 3), lookup across local schemas, normalize via embeddings + ConceptMaps. Ship inline+local first; THO/external behind the resolver tiers.</p>
-<p><strong>Phase 3 — Reference/Bundle (🟡, pure logic).</strong> Tools 22, 23 + ephemeral reference-context store. Independent of mapping; can land alongside Phase 1/2.</p>
-<p><strong>Phase 4 — Validation (🟡, in-process Python).</strong> Tools 24/25: built-in validator (§3 Gap 2) — structure + binding + FHIRPath invariants (<code>fhirpathpy</code>) + common slicing, all in-process. Only new dependency is one pure-Python pip package; no container/infra change.</p>
-<p><strong>Phase 5 — Schema-guided fill (🟡, no stored templates).</strong> <code>fhir_get_resource_skeleton</code> (a generation-oriented projection of the Phase 1 snapshot reader + Gap 3 candidate codes + tool-12 examples) and <code>fhir_finalize_resource</code> (deterministic pin + reference resolve + validate). <strong>No <code>fhir.mapping_*</code> schema, no admin authoring UI.</strong> Last only because it composes everything before it — Phase 1 (element/skeleton), 2 (code choice/validation), 3 (reference resolution), 4 (validate output) — not because it needs new data.</p>
+<h2 id="5">5. 分階段路線圖（資料優先、風險最低者優先）<a class="headerlink" href="#5" title="Permanent link">&para;</a></h2>
+<p><strong>Phase 0 —— 多 IG 基礎（讓其餘一切成為可能）。</strong> <code>fhir.ig_packages</code> 註冊表 + artifacts/codesystems/concepts 的套件欄位；更新匯入流程以寫入 package-scoped 的列並註冊套件；IG 選擇器與 canonical 解析器輔助函式。工具 1、2 順帶完成。</p>
+<p><strong>Phase 1 —— 探索與 StructureDefinition（資料全部 ✅）。</strong> 工具 3–13：由 <code>artifacts</code> 加上一個 <code>snapshot.element</code> 投影器提供服務。價值最高、零新資料、無外部相依。這是「LLM 能探索任何已匯入 IG 並讀取每個剖面／element／binding」的里程碑。</p>
+<p><strong>Phase 2 —— 術語（🟡）。</strong> 工具 14–18：分層展開解析器（§3 缺口 3）、跨本地 schema 查詢、以 embedding 與 ConceptMap 做 normalize。先出內嵌 + 本地；THO／外部藏在解析器分層之後。</p>
+<p><strong>Phase 3 —— 參照/Bundle（🟡，純邏輯）。</strong> 工具 22、23 加上暫時性參照脈絡儲存。與對應無關；可與 Phase 1/2 並行落地。</p>
+<p><strong>Phase 4 —— 驗證（🟡，行程內 Python）。</strong> 工具 24/25：內建驗證器（§3 缺口 2）——結構 + binding + FHIRPath 不變式（<code>fhirpathpy</code>）+ 常見 slicing，全部在行程內。唯一新增相依是一個純 Python pip 套件；容器與基礎設施皆不變。</p>
+<p><strong>Phase 5 —— Schema-guided fill（🟡，無儲存式樣板）。</strong> <code>fhir_get_resource_skeleton</code>（Phase 1 snapshot 讀取器的生成導向投影 + 缺口 3 的候選碼 + 工具 12 的 example）與 <code>fhir_finalize_resource</code>（決定性釘定 + 參照解析 + 驗證）。<strong>沒有 <code>fhir.mapping_*</code> schema、沒有管理後台編輯介面。</strong>它排在最後，只是因為它組合了前面所有階段——Phase 1（element/骨架）、2（選碼／驗碼）、3（參照解析）、4（驗證輸出）——而不是因為它需要新資料。</p>
 <hr />
-<h2 id="6-open-decisions-need-user-input-before-building">6. Open decisions (need user input before building)<a class="headerlink" href="#6-open-decisions-need-user-input-before-building" title="Permanent link">&para;</a></h2>
+<h2 id="6">6. 待決事項（動工前需要使用者裁示）<a class="headerlink" href="#6" title="Permanent link">&para;</a></h2>
 <ol>
-<li><strong>Schema strategy:</strong> clean new <code>fhir.*</code> package-scoped schema (preferred, given planned re-import) vs. add package columns onto existing <code>twcore.*</code>?</li>
-<li><strong>Validator scope (decided → in-process Python, no sidecar):</strong> ship the full built-in validator (structure + binding + FHIRPath invariants via <code>fhirpathpy</code> + common slicing). Remaining sub-choice: include <code>value</code>/<code>pattern</code> slicing discriminators in the first cut, or defer all slicing to a follow-up?</li>
-<li><strong>Mapping (decided → no stored templates):</strong> dropped <code>get_mapping_template</code>/<code>plan_mapping</code>/<code>apply_mapping</code> in favour of schema-guided fill (<code>fhir_get_resource_skeleton</code> + <code>fhir_finalize_resource</code>). No mapping schema, no authoring UI. <strong>Decided:</strong> <code>finalize_resource</code> does <strong>not</strong> auto-loop — it validates and returns <code>{resource, validation issues}</code>; the LLM fixes the draft and re-calls. Tool only validates/pins; the LLM owns semantic fixes.</li>
-<li><strong>Tool granularity (decided → consolidate):</strong> the StructureDefinition readers (8–13) collapse into one <code>fhir_get_profile_elements(profile, view, path?)</code>; the <code>view</code>/<code>mode</code>-param rule is the toolset-wide style. Result: ~19 registered <code>fhir_*</code> tools. (Optional follow-up: the terminology group D could later fold the same way, but is kept discrete for now since each verb is semantically distinct.)</li>
+<li><strong>Schema 策略：</strong>採用全新的 package-scoped <code>fhir.*</code> schema（考量既定的重新匯入，較佳），還是在既有 <code>twcore.*</code> 上加套件欄位？</li>
+<li><strong>驗證器範圍（已決定 → 行程內 Python，無 sidecar）：</strong>出貨完整的內建驗證器（結構 + binding + 透過 <code>fhirpathpy</code> 的 FHIRPath 不變式 + 常見 slicing）。剩下的子選項：第一版是否納入 <code>value</code>/<code>pattern</code> 的 slicing discriminator，還是把所有 slicing 延到後續？</li>
+<li><strong>對應（已決定 → 無儲存式樣板）：</strong>移除 <code>get_mapping_template</code>/<code>plan_mapping</code>/<code>apply_mapping</code>，改採 schema-guided fill（<code>fhir_get_resource_skeleton</code> + <code>fhir_finalize_resource</code>）。沒有對應 schema、沒有編輯介面。<strong>已決定：</strong><code>finalize_resource</code> <strong>不</strong>自動迴圈——它驗證後回傳 <code>{resource, validation issues}</code>；由 LLM 修正 draft 再重新呼叫。工具只負責驗證／釘定，語意修正歸 LLM。</li>
+<li><strong>工具粒度（已決定 → 合併）：</strong>StructureDefinition 讀取器（8–13）收斂為單一 <code>fhir_get_profile_elements(profile, view, path?)</code>；<code>view</code>/<code>mode</code> 參數規則成為工具集全域風格。結果約 19 個註冊的 <code>fhir_*</code> 工具。（可選後續：術語 D 組未來也能同樣收斂，但目前保持分立，因為每個動詞在語意上各自獨立。）</li>
 </ol>
 <hr />
-<h2 id="7-bottom-line">7. Bottom line<a class="headerlink" href="#7-bottom-line" title="Permanent link">&para;</a></h2>
+<h2 id="7">7. 結論<a class="headerlink" href="#7" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>Data:</strong> ~70% of the spec is already sitting in <code>twcore.artifacts.raw_json</code> + <code>twcore.concepts</code>; <code>package.tgz</code> confirms nothing is missing for the StructureDefinition/Terminology/Profile/Example tools. We do <strong>not</strong> need to re-fetch the IG for those.</li>
-<li><strong>Genuine new build:</strong> (1) a multi-IG package registry + package-scoped keys, (2) <strong>schema-guided fill</strong> (<code>fhir_get_resource_skeleton</code> + <code>fhir_finalize_resource</code>) replacing stored mapping templates — no mapping schema, no authoring UI, (3) an <strong>in-process Python validator</strong> (structure + binding + FHIRPath via <code>fhirpathpy</code> + value/pattern slicing — <strong>no external service</strong>), (4) ValueSet-expansion breadth for external systems.</li>
-<li><strong>No external services, no stored mappings:</strong> the only new runtime dependency is one pure-Python pip package (<code>fhirpathpy</code>). <code>docker compose</code> is untouched; the LLM does semantic field mapping against a live annotated skeleton while the system pins mechanical fields and the validator gates output; the downstream FHIR server stays the authoritative validator, ours is the pre-flight check.</li>
-<li><strong>Design rule honored:</strong> one generic <code>fhir_*</code> toolset parameterized by <code>{packageId, version}</code>, with a dependency-aware canonical resolver — so importing the next IG package costs zero new tools.</li>
+<li><strong>資料：</strong>規格的 ~70% 已經躺在 <code>twcore.artifacts.raw_json</code> 與 <code>twcore.concepts</code> 裡；<code>package.tgz</code> 確認 StructureDefinition／術語／剖面／example 類工具所需資料無一缺漏。這些<strong>不需要</strong>重新抓取 IG。</li>
+<li><strong>真正要新建的：</strong>(1) 多 IG 套件註冊表 + package-scoped 鍵，(2) 以 <strong>schema-guided fill</strong>（<code>fhir_get_resource_skeleton</code> + <code>fhir_finalize_resource</code>）取代儲存式對應樣板——沒有對應 schema、沒有編輯介面，(3) 一個<strong>行程內 Python 驗證器</strong>（結構 + binding + 透過 <code>fhirpathpy</code> 的 FHIRPath + value/pattern slicing——<strong>無外部服務</strong>），(4) 外部系統的 ValueSet 展開廣度。</li>
+<li><strong>無外部服務、無儲存式對應：</strong>唯一新增的執行期相依是一個純 Python pip 套件（<code>fhirpathpy</code>）。<code>docker compose</code> 完全不動；LLM 對著即時產生的帶註解骨架做語意欄位對應，系統釘住機制欄位，驗證器把關輸出；下游 FHIR 伺服器仍是權威驗證者，我們的是預檢。</li>
+<li><strong>設計規則得以維持：</strong>一套以 <code>{packageId, version}</code> 參數化的通用 <code>fhir_*</code> 工具集，搭配具相依感知的 canonical 解析器——因此匯入下一個 IG 套件不會增加任何工具。</li>
 </ul>
 
 
@@ -3400,6 +3448,8 @@ fhir.concepts(package_id, package_version, cs_id, code, ...)
     
     
       <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+        <script src="../javascripts/lang-switch.js"></script>
       
     
   </body>
