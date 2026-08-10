@@ -18,7 +18,7 @@ import "react-pdf/dist/Page/TextLayer.css";
 import { Modal } from "./Modal";
 import { SmartCropImage } from "./SmartCropImage";
 
-pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
+pdfjs.GlobalWorkerOptions.workerSrc = "/admin/pdf.worker.min.mjs";
 
 export type AssetPreviewKind = "pdf" | "markdown" | "json" | "text" | "image";
 

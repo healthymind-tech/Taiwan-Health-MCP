@@ -34,7 +34,7 @@ import { StatusBadge } from "../../../components/StatusBadge";
 import { Modal } from "../../../components/Modal";
 import { SmartCropImage } from "../../../components/SmartCropImage";
 
-pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
+pdfjs.GlobalWorkerOptions.workerSrc = "/admin/pdf.worker.min.mjs";
 
 type DetailView = "overview" | "timeline" | "documents" | "llm";
 
