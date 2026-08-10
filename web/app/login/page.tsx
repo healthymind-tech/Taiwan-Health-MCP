@@ -74,7 +74,7 @@ export default function AdminLogin(): JSX.Element {
     <div className="login-wrap">
       <form className="login-card" onSubmit={submit}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img className="login-logo" src="/logo-h.png" alt="HealthyMind Tech" />
+        <img className="login-logo" src="/admin/logo-h.png" alt="HealthyMind Tech" />
         <h1>Taiwan Health MCP — Admin</h1>
         <p className="login-sub">Sign in to continue</p>
         {error && <div className="login-error">{error}</div>}

@@ -5,14 +5,20 @@ const BACKEND = process.env.BACKEND_INTERNAL_URL || "http://localhost:8000";
 
 const nextConfig = {
   output: "standalone",
+  basePath: "/admin",
   async rewrites() {
     return [
-      { source: "/mcp", destination: `${BACKEND}/mcp` },
-      { source: "/openapi.json", destination: `${BACKEND}/openapi.json` },
-      { source: "/tools/:path*", destination: `${BACKEND}/tools/:path*` },
-      { source: "/admin/api/:path*", destination: `${BACKEND}/admin/api/:path*` },
-      { source: "/fhir-client/:path*", destination: `${BACKEND}/fhir-client/:path*` },
-      { source: "/fhir-oauth/:path*", destination: `${BACKEND}/fhir-oauth/:path*` },
+      // These mirror nginx routes that live at the domain root in production
+      // (nginx never sends them through this Next app there); basePath:false
+      // keeps `next dev` matching the same root-level paths.
+      { source: "/mcp", destination: `${BACKEND}/mcp`, basePath: false },
+      { source: "/openapi.json", destination: `${BACKEND}/openapi.json`, basePath: false },
+      { source: "/tools/:path*", destination: `${BACKEND}/tools/:path*`, basePath: false },
+      { source: "/fhir-client/:path*", destination: `${BACKEND}/fhir-client/:path*`, basePath: false },
+      { source: "/fhir-oauth/:path*", destination: `${BACKEND}/fhir-oauth/:path*`, basePath: false },
+      // Frontend calls fetch("/admin/api/...") literally; basePath auto-prepends
+      // /admin to this source so it matches that request path.
+      { source: "/api/:path*", destination: `${BACKEND}/admin/api/:path*` },
     ];
   },
 };
