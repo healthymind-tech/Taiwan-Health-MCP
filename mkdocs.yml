@@ -63,6 +63,7 @@ plugins:
             FHIR Condition / Medication 工具: FHIR Condition / Medication Tools
             FHIR IG 工具: FHIR IG Tools
             FHIR 伺服器工具: FHIR Server Tools
+            臨床計算器工具: Clinical Calculator Tools
             資料來源: Data Sources
             測試資料檔清單: Test Data Files
             FHIR 授權: FHIR Authoring
@@ -123,6 +124,7 @@ nav:
     - FHIR Condition / Medication 工具: tools/fhir-tools.md
     - FHIR IG 工具: tools/fhir-ig-tools.md
     - FHIR 伺服器工具: tools/fhir-server-tools.md
+    - 臨床計算器工具: tools/clinical-calculator-tools.md
   - 資料來源:
     - data-sources/index.md
     - 測試資料檔清單: data-sources/test-data.md
