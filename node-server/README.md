@@ -5,7 +5,7 @@ services run from this one build:
 
 | Service | Entry point | Role |
 |---------|-------------|------|
-| `app` | `dist/server.js` | MCP server (`/mcp`), OpenAPI bridge (`/openapi.json`, `/tools/*`), `/status.json`, admin REST API (`/admin/api/*`), admin WebSocket (`/admin/ws`), FHIR OAuth/JWKS endpoints |
+| `app` | `dist/server.js` | MCP server (`/mcp`), OpenAPI bridge (`/openapi.json`, `/tools/*`), `/health` (compose-internal — nginx does not route it), admin REST API (`/admin/api/*`), admin WebSocket (`/admin/ws`), FHIR OAuth/JWKS endpoints |
 | `admin-worker` | `dist/admin/adminWorker.js` | Background job runner: every import, the embedding backfill, and the three-stage drug pipeline |
 
 This replaced the original Python backend in 2026-07. **No Python remains in the
