@@ -17,8 +17,17 @@
  *
  * Interpretation/notes are user-facing Traditional Chinese (matching
  * `labService.ts`); code and comments are English. `score` is rounded to two
- * decimals only when the formula is continuous.
+ * decimals only when the formula is continuous, and the risk band is always
+ * derived from that rounded value so the reported score and band never disagree.
+ *
+ * Input bounds live in the exported `*InputShape` zod shapes, which `mcp.ts`
+ * uses as each tool's `inputSchema`. Both the MCP transport and the OpenAPI
+ * bridge (`POST /tools/*`) parse arguments against them, so out-of-range or
+ * wrong-unit values are rejected before any formula runs, and the ranges are
+ * advertised in `tools/list` and `/openapi.json`.
  */
+
+import { z } from "zod";
 
 // Shared user-facing disclaimer — decision support, not diagnosis.
 const DISCLAIMER = "僅供臨床決策支援，不取代專業醫療判斷。";
@@ -27,6 +36,30 @@ const DISCLAIMER = "僅供臨床決策支援，不取代專業醫療判斷。";
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
+
+/**
+ * Round a continuous score and refuse a non-finite one. The input shapes make
+ * NaN/Infinity unreachable through the tools; this guards direct callers so an
+ * impossible input fails loudly instead of falling through to a risk band.
+ */
+function finiteScore(n: number, calculator: string): number {
+  if (!Number.isFinite(n)) {
+    throw new Error(`${calculator}: inputs produce a non-finite score`);
+  }
+  return round2(n);
+}
+
+// ── Shared input bounds ──────────────────────────────────────────────────────
+// Physiologically plausible ranges: wide enough for any real patient, narrow
+// enough to reject impossible values and common unit mix-ups.
+
+const ageYears = z.number().int().min(0).max(130).describe("Age in years");
+const sexField = z.enum(["M", "F"]);
+const respiratoryRate = z.number().min(0).max(100).describe("Respiratory rate (breaths/min)");
+const systolicBp = z.number().min(0).max(300).describe("Systolic blood pressure (mmHg)");
+const diastolicBp = z.number().min(0).max(250).describe("Diastolic blood pressure (mmHg)");
+// DAS28 and CDAI both use the 28-joint count.
+const jointCount28 = z.number().int().min(0).max(28);
 
 type Sex = "M" | "F";
 
@@ -56,6 +89,16 @@ export interface Chads2VascInput {
   stroke_or_tia?: boolean;
   vascular_disease?: boolean;
 }
+
+export const chads2VascInputShape = {
+  age: ageYears,
+  sex: sexField,
+  congestive_heart_failure: z.boolean().default(false),
+  hypertension: z.boolean().default(false),
+  diabetes: z.boolean().default(false),
+  stroke_or_tia: z.boolean().default(false),
+  vascular_disease: z.boolean().default(false),
+};
 
 export interface Chads2VascResult extends CalculatorResult {
   score: number;
@@ -153,6 +196,16 @@ export interface WellsPeInput {
   active_malignancy?: boolean;
 }
 
+export const wellsPeInputShape = {
+  clinical_signs_dvt: z.boolean().default(false),
+  alternative_diagnosis_less_likely: z.boolean().default(false),
+  heart_rate_bpm: z.number().min(0).max(350).nullish().default(null),
+  immobilization_or_recent_surgery: z.boolean().default(false),
+  previous_dvt_or_pe: z.boolean().default(false),
+  hemoptysis: z.boolean().default(false),
+  active_malignancy: z.boolean().default(false),
+};
+
 export interface WellsPeResult extends CalculatorResult {
   two_tier_risk: string;
   three_tier_risk: string;
@@ -221,6 +274,19 @@ export interface WellsDvtInput {
   previous_dvt?: boolean;
   alternative_diagnosis_as_likely?: boolean;
 }
+
+export const wellsDvtInputShape = {
+  active_cancer: z.boolean().default(false),
+  paralysis_paresis_or_immobilization: z.boolean().default(false),
+  bedridden_or_recent_surgery: z.boolean().default(false),
+  calf_swelling_gt_3cm: z.boolean().default(false),
+  collateral_superficial_veins: z.boolean().default(false),
+  entire_leg_swollen: z.boolean().default(false),
+  localized_tenderness: z.boolean().default(false),
+  pitting_edema: z.boolean().default(false),
+  previous_dvt: z.boolean().default(false),
+  alternative_diagnosis_as_likely: z.boolean().default(false),
+};
 
 export interface WellsDvtResult extends CalculatorResult {
   two_tier_risk: string;
@@ -312,6 +378,20 @@ export interface Das28Input {
   crp?: number | null;
 }
 
+export const das28InputShape = {
+  tender_count: jointCount28.describe("Tender joint count, 28-joint assessment (0–28)"),
+  swollen_count: jointCount28.describe("Swollen joint count, 28-joint assessment (0–28)"),
+  global_health: z
+    .number()
+    .min(0)
+    .max(100)
+    .describe("Patient global health VAS on a 0–100 mm scale (not the 0–10 scale CDAI uses)"),
+  formula: z.enum(["esr", "crp"]),
+  // ESR enters as ln(ESR), so it must be strictly positive.
+  esr: z.number().positive().max(200).nullish().default(null).describe("ESR in mm/h (>0); required when formula=esr"),
+  crp: z.number().min(0).max(500).nullish().default(null).describe("CRP in mg/L (not mg/dL); required when formula=crp"),
+};
+
 export interface Das28Result extends CalculatorResult {
   disease_activity: string;
   formula: "esr" | "crp";
@@ -321,12 +401,12 @@ export interface Das28Result extends CalculatorResult {
 export function calculateDas28(input: Das28Input): Das28Result {
   const { tender_count, swollen_count, global_health, formula } = input;
 
-  let score: number;
+  let raw: number;
   if (formula === "esr") {
     if (input.esr == null) {
       throw new Error("esr is required when formula is 'esr'");
     }
-    score =
+    raw =
       0.56 * Math.sqrt(tender_count) +
       0.28 * Math.sqrt(swollen_count) +
       0.7 * Math.log(input.esr) +
@@ -335,7 +415,7 @@ export function calculateDas28(input: Das28Input): Das28Result {
     if (input.crp == null) {
       throw new Error("crp is required when formula is 'crp'");
     }
-    score =
+    raw =
       0.56 * Math.sqrt(tender_count) +
       0.28 * Math.sqrt(swollen_count) +
       0.36 * Math.log(input.crp + 1) +
@@ -343,17 +423,18 @@ export function calculateDas28(input: Das28Input): Das28Result {
       0.96;
   }
 
+  const score = finiteScore(raw, "das28");
   const activity = activityLabel(score, DAS28_ACTIVITY);
 
   return withDisclaimer({
     calculator: "das28",
     formula,
-    score: round2(score),
+    score,
     disease_activity: activity,
-    interpretation: `DAS28-${formula.toUpperCase()} ${round2(score)}，${activity}`,
+    interpretation: `DAS28-${formula.toUpperCase()} ${score}，${activity}`,
     inputs: { tender_count, swollen_count, global_health, formula, esr: input.esr ?? null, crp: input.crp ?? null },
     notes: [
-      "ESR 單位 mm/h，CRP 單位 mg/L，global_health 為病人整體評估 VAS (0–100)。",
+      "關節數採 28 關節評估（0–28）；ESR 單位 mm/h，CRP 單位 mg/L，global_health 為病人整體評估 VAS (0–100)。",
       "分級：≤2.6 緩解、≤3.2 低、≤5.1 中、>5.1 高疾病活動度。",
     ],
   });
@@ -366,14 +447,23 @@ export interface CdaiInput {
   provider_global: number;
 }
 
+export const cdaiInputShape = {
+  tender_count: jointCount28.describe("Tender joint count, 28-joint assessment (0–28)"),
+  swollen_count: jointCount28.describe("Swollen joint count, 28-joint assessment (0–28)"),
+  patient_global: z.number().min(0).max(10).describe("Patient global assessment (0–10)"),
+  provider_global: z.number().min(0).max(10).describe("Evaluator global assessment (0–10)"),
+};
+
 export interface CdaiResult extends CalculatorResult {
   disease_activity: string;
 }
 
-/** CDAI — lab-free rheumatoid arthritis disease activity. */
+/** CDAI — lab-free rheumatoid arthritis disease activity (0–76). */
 export function calculateCdai(input: CdaiInput): CdaiResult {
   const { tender_count, swollen_count, patient_global, provider_global } = input;
-  const score = tender_count + swollen_count + patient_global + provider_global;
+  // Rounded so float noise in the global scores (e.g. 0.1 + 0.2) cannot push
+  // a value sitting exactly on a band edge into the next band.
+  const score = finiteScore(tender_count + swollen_count + patient_global + provider_global, "cdai");
   const activity = activityLabel(score, CDAI_ACTIVITY);
 
   return withDisclaimer({
@@ -383,7 +473,7 @@ export function calculateCdai(input: CdaiInput): CdaiResult {
     interpretation: `CDAI ${score}，${activity}`,
     inputs: { tender_count, swollen_count, patient_global, provider_global },
     notes: [
-      "四項皆 0–10：壓痛關節數、腫脹關節數、病人整體評估、評估者整體評估。",
+      "壓痛關節數、腫脹關節數採 28 關節評估（各 0–28）；病人整體評估、評估者整體評估各 0–10；總分 0–76。",
       "分級：≤2.8 緩解、≤10 低、≤22 中、>22 高疾病活動度。",
     ],
   });
@@ -396,6 +486,12 @@ export interface BmiInput {
   height_cm: number;
 }
 
+export const bmiInputShape = {
+  weight_kg: z.number().positive().max(700).describe("Body weight in kg"),
+  // A floor of 50 cm rejects height passed in metres (e.g. 1.65).
+  height_cm: z.number().min(50).max(280).describe("Height in centimetres (not metres)"),
+};
+
 export interface BmiResult extends CalculatorResult {
   category: string;
 }
@@ -404,7 +500,7 @@ export interface BmiResult extends CalculatorResult {
 export function calculateBmi(input: BmiInput): BmiResult {
   const { weight_kg, height_cm } = input;
   const heightM = height_cm / 100;
-  const bmi = weight_kg / (heightM * heightM);
+  const bmi = finiteScore(weight_kg / (heightM * heightM), "bmi");
 
   let category: string;
   if (bmi < 18.5) category = "過輕";
@@ -414,9 +510,9 @@ export function calculateBmi(input: BmiInput): BmiResult {
 
   return withDisclaimer({
     calculator: "bmi",
-    score: round2(bmi),
+    score: bmi,
     category,
-    interpretation: `BMI ${round2(bmi)}，${category}`,
+    interpretation: `BMI ${bmi}，${category}`,
     inputs: { weight_kg, height_cm },
     notes: [
       "台灣（亞洲）標準：<18.5 過輕、18.5–23.9 正常、24–26.9 過重、≥27 肥胖。",
@@ -433,14 +529,26 @@ export interface EgfrInput {
   serum_creatinine_mgdl: number;
 }
 
+export const egfrInputShape = {
+  // CKD-EPI 2021 is validated for adults only; children need e.g. bedside Schwartz.
+  age: z.number().int().min(18).max(130).describe("Age in years (adults only, ≥18)"),
+  sex: sexField,
+  // A ceiling of 30 mg/dL rejects creatinine passed in µmol/L (e.g. 88).
+  serum_creatinine_mgdl: z
+    .number()
+    .positive()
+    .max(30)
+    .describe("Serum creatinine in mg/dL (µmol/L ÷ 88.4)"),
+};
+
 export interface EgfrResult extends CalculatorResult {
   ckd_stage: string;
   unit: string;
 }
 
 /**
- * CKD-EPI 2021 creatinine equation (race-free). Serum creatinine in mg/dL.
- * Stages use the GFR categories from KDIGO.
+ * CKD-EPI 2021 creatinine equation (race-free), adults ≥18. Serum creatinine
+ * in mg/dL. Stages use the GFR categories from KDIGO.
  */
 export function calculateEgfr(input: EgfrInput): EgfrResult {
   const { age, sex, serum_creatinine_mgdl } = input;
@@ -450,12 +558,14 @@ export function calculateEgfr(input: EgfrInput): EgfrResult {
   const sexFactor = sex === "F" ? 1.012 : 1.0;
   const scrKappa = serum_creatinine_mgdl / kappa;
 
-  const egfr =
+  const egfr = finiteScore(
     142 *
-    Math.pow(Math.min(scrKappa, 1), alpha) *
-    Math.pow(Math.max(scrKappa, 1), -1.2) *
-    Math.pow(0.9938, age) *
-    sexFactor;
+      Math.pow(Math.min(scrKappa, 1), alpha) *
+      Math.pow(Math.max(scrKappa, 1), -1.2) *
+      Math.pow(0.9938, age) *
+      sexFactor,
+    "egfr",
+  );
 
   let ckdStage: string;
   if (egfr >= 90) ckdStage = "G1（正常或偏高）";
@@ -467,13 +577,13 @@ export function calculateEgfr(input: EgfrInput): EgfrResult {
 
   return withDisclaimer({
     calculator: "egfr",
-    score: round2(egfr),
+    score: egfr,
     ckd_stage: ckdStage,
     unit: "mL/min/1.73 m²",
-    interpretation: `eGFR ${round2(egfr)} mL/min/1.73m²，慢性腎病分期 ${ckdStage}`,
+    interpretation: `eGFR ${egfr} mL/min/1.73m²，慢性腎病分期 ${ckdStage}`,
     inputs: { age, sex, serum_creatinine_mgdl },
     notes: [
-      "CKD-EPI 2021（無種族係數）；serum_creatinine 單位為 mg/dL。",
+      "CKD-EPI 2021（無種族係數），僅適用 18 歲以上成人；serum_creatinine 單位為 mg/dL（µmol/L ÷ 88.4）。",
       "急性腎損傷或非穩定狀態下 eGFR 不適用。",
     ],
   });
@@ -492,6 +602,18 @@ export interface HasBledInput {
   drugs_antiplatelet_or_nsaid?: boolean;
   alcohol?: boolean;
 }
+
+export const hasBledInputShape = {
+  age: ageYears,
+  systolic_bp_mmhg: systolicBp.nullish().default(null),
+  abnormal_renal_function: z.boolean().default(false),
+  abnormal_liver_function: z.boolean().default(false),
+  stroke_history: z.boolean().default(false),
+  bleeding_history: z.boolean().default(false),
+  labile_inr: z.boolean().default(false),
+  drugs_antiplatelet_or_nsaid: z.boolean().default(false),
+  alcohol: z.boolean().default(false),
+};
 
 export interface HasBledResult extends CalculatorResult {
   risk_category: string;
@@ -586,6 +708,15 @@ export interface Curb65Input {
   dbp_mmhg?: number | null;
 }
 
+export const curb65InputShape = {
+  age: ageYears,
+  confusion: z.boolean().default(false),
+  bun_mgdl: z.number().min(0).max(300).nullish().default(null).describe("BUN in mg/dL"),
+  respiratory_rate: respiratoryRate.nullish().default(null),
+  sbp_mmhg: systolicBp.nullish().default(null),
+  dbp_mmhg: diastolicBp.nullish().default(null),
+};
+
 export interface Curb65Result extends CalculatorResult {
   risk_category: string;
 }
@@ -640,6 +771,12 @@ export interface QsofaInput {
   sbp_mmhg?: number | null;
 }
 
+export const qsofaInputShape = {
+  respiratory_rate: respiratoryRate.nullish().default(null),
+  gcs: z.number().int().min(3).max(15).nullish().default(null).describe("Total Glasgow Coma Scale (3–15)"),
+  sbp_mmhg: systolicBp.nullish().default(null),
+};
+
 export interface QsofaResult extends CalculatorResult {
   risk_category: string;
 }
@@ -683,18 +820,20 @@ export interface GcsInput {
   motor_response: number;
 }
 
+export const gcsInputShape = {
+  eye_response: z.number().int().min(1).max(4).describe("Eye opening E (1–4)"),
+  verbal_response: z.number().int().min(1).max(5).describe("Verbal response V (1–5)"),
+  motor_response: z.number().int().min(1).max(6).describe("Motor response M (1–6)"),
+};
+
 export interface GcsResult extends CalculatorResult {
   sub_scores: { eye: number; verbal: number; motor: number };
   severity: string;
 }
 
-/** Glasgow Coma Scale (3–15). */
+/** Glasgow Coma Scale (3–15). Sub-score ranges are enforced by `gcsInputShape`. */
 export function calculateGcs(input: GcsInput): GcsResult {
   const { eye_response, verbal_response, motor_response } = input;
-
-  if (eye_response < 1 || eye_response > 4) throw new Error("eye_response must be 1–4");
-  if (verbal_response < 1 || verbal_response > 5) throw new Error("verbal_response must be 1–5");
-  if (motor_response < 1 || motor_response > 6) throw new Error("motor_response must be 1–6");
 
   const score = eye_response + verbal_response + motor_response;
 
