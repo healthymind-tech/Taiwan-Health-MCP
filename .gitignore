@@ -34,6 +34,9 @@ config/datasets.yaml
 
 .gstack/
 
+# Local design notes — not part of the published site or source
+docs/plans/
+
 # Node.js build artifacts (Next.js web/ + node-server/ gateway)
 node_modules/
 .next/

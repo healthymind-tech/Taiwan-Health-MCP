@@ -56,7 +56,7 @@ comm -23 \
 > SPA — the real admin UI is `web/admin-app/`), and `config/datasets.yaml` (read by no code).
 
 Taiwan Health MCP Server — a Model Context Protocol server (Node MCP SDK,
-`@modelcontextprotocol/sdk`) exposing **49 tools** across 11 tool groups for Taiwan
+`@modelcontextprotocol/sdk`) exposing **60 tools** across 12 tool groups for Taiwan
 medical and health data. Designed for production SaaS deployment with hundreds of
 requests/second throughput.
 
@@ -181,9 +181,10 @@ Periodic re-imports are **not** scheduled inside the services. Scheduling is cen
 | Health Supplements | `search_health_supplements` |
 | Food Nutrition | `query_food_nutrition`, `query_food_ingredient`, `search_foods_by_nutrient`, `analyze_meal_nutrition` |
 | FHIR Servers | `list_fhir_servers`, `get_fhir_server_status`, `crud_fhir_server` (always registered) |
+| Clinical Calculators | `calculate_chads2_vasc`, `calculate_wells_pe`, `calculate_wells_dvt`, `calculate_das28`, `calculate_cdai`, `calculate_bmi`, `calculate_egfr`, `calculate_has_bled`, `calculate_curb65`, `calculate_qsofa`, `calculate_gcs` (always registered, stateless) |
 | System | `health_check` (always registered) |
 
-Module-gated groups are dynamically added/removed by `moduleStatus.ts` (`SERVICE_MODULES` row-count thresholds). FHIR Servers and System tools are always registered.
+Module-gated groups are dynamically added/removed by `moduleStatus.ts` (`SERVICE_MODULES` row-count thresholds). FHIR Servers, Clinical Calculators and System tools are always registered.
 
 **`crud_fhir_server` is the only tool that can write.** It relays create/update/patch/delete to an *external* FHIR server, and only when that server's allow-list permits the operation and the caller passes `confirm_write=true`. Every other tool is read-only.
 
@@ -276,6 +277,7 @@ Never interleave HTTP fetches with DB writes inside a transaction.
 ## Key Limitations
 
 - **Health supplements disease mappings** are developer-curated and not medically validated — not suitable for patient-facing use without expert review
+- **Clinical calculators** implement published scoring formulas for decision support only — they are not a validated medical device, and every result carries a disclaimer. Any change to a formula, weight or cutoff must cite its source literature (see the References table in `docs/tools/clinical-calculator-tools.md`) and keep the input bounds in the `*InputShape` exports in step
 - **FHIR validation** is in-process and profile-driven (snapshot + terminology binding checks); it is not a substitute for the official HL7 FHIR Validator for conformance certification
 - **SNOMED CT** requires an active SNOMED International license (free for most uses)
 - **Drug analysis** (MinerU OCR + LLM extraction of TFDA inserts) is machine-generated and must be verified by a clinician; it depends on external OCR/LLM endpoints being configured
