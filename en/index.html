@@ -1044,6 +1044,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="tools/clinical-calculator-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Clinical Calculator Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -2375,7 +2403,7 @@
 
 
 <h1 id="taiwan-health-mcp-server">Taiwan Health MCP Server<a class="headerlink" href="#taiwan-health-mcp-server" title="Permanent link">&para;</a></h1>
-<p>An MCP server for Taiwan medical and health data — a Node.js service built on the official TypeScript MCP SDK (<code>@modelcontextprotocol/sdk</code>), exposing <strong>49 tools</strong> across 11 tool groups covering international terminologies, Taiwan-local datasets, and FHIR R4 IG authoring / validation.</p>
+<p>An MCP server for Taiwan medical and health data — a Node.js service built on the official TypeScript MCP SDK (<code>@modelcontextprotocol/sdk</code>), exposing <strong>60 tools</strong> across 12 tool groups covering international terminologies, Taiwan-local datasets, clinical calculators, and FHIR R4 IG authoring / validation.</p>
 <h2 id="current-capabilities">Current capabilities<a class="headerlink" href="#current-capabilities" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong>ICD-10</strong>: diagnosis and procedure code search, nearby codes, category browsing, complication inference, diagnosis / procedure conflict checks.</li>
@@ -2387,6 +2415,7 @@
 <li><strong>FHIR R4</strong>: Condition / Medication generation and validation.</li>
 <li><strong>FHIR IG (multi-IG)</strong>: profile / ValueSet lookup and expansion, terminology lookup and validation, reference resolution, Bundle assembly, skeleton-fill resource generation and validation.</li>
 <li><strong>FHIR servers</strong>: external FHIR server registration, status queries, and CRUD operations.</li>
+<li><strong>Clinical calculators</strong>: validated clinical scores common in Taiwan practice (CHA₂DS₂-VASc, Wells, DAS28, BMI, eGFR, HAS-BLED, CURB-65, qSOFA, GCS, etc.) — pure functions, always registered.</li>
 </ul>
 <h2 id="architecture-at-a-glance">Architecture at a glance<a class="headerlink" href="#architecture-at-a-glance" title="Permanent link">&para;</a></h2>
 <ul>

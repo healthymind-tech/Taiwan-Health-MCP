@@ -1,0 +1,3881 @@
+
+<!doctype html>
+<html lang="zh-TW" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="台灣醫療健康資料整合 MCP 伺服器 - 技術文件">
+      
+      
+        <meta name="author" content="Taiwan Health MCP Team">
+      
+      
+        <link rel="canonical" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/tools/clinical-calculator-tools/">
+      
+      
+        <link rel="prev" href="../fhir-server-tools/">
+      
+      
+        <link rel="next" href="../../data-sources/">
+      
+      
+        
+          <link rel="alternate" href="./" hreflang="zh-TW">
+        
+          <link rel="alternate" href="../../en/tools/clinical-calculator-tools/" hreflang="en">
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>臨床計算器工具 - Taiwan Health MCP</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#clinical-calculator-tools" class="md-skip">
+          跳轉到
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="頁首">
+    <a href="../.." title="Taiwan Health MCP" class="md-header__button md-logo" aria-label="Taiwan Health MCP" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Taiwan Health MCP
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              臨床計算器工具
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+      <div class="md-header__option">
+  <div class="md-select">
+    
+    <button class="md-header__button md-icon" aria-label="選擇語言">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m12.87 15.07-2.54-2.51.03-.03A17.5 17.5 0 0 0 14.07 6H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2zm-2.62 7 1.62-4.33L19.12 17z"/></svg>
+    </button>
+    <div class="md-select__inner">
+      <ul class="md-select__list">
+        
+          <li class="md-select__item">
+            <a href="./" hreflang="zh-TW" class="md-select__link">
+              繁體中文
+            </a>
+          </li>
+        
+          <li class="md-select__item">
+            <a href="../../en/tools/clinical-calculator-tools/" hreflang="en" class="md-select__link">
+              English
+            </a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+</div>
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="搜尋" placeholder="搜尋" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="搜尋">
+        
+        <button type="reset" class="md-search__icon md-icon" title="清除" aria-label="清除" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            正在初始化搜尋引擎
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/healthymind-tech/Taiwan-Health-MCP" title="前往倉庫" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    healthymind-tech/Taiwan-Health-MCP
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="導覽列" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Taiwan Health MCP" class="md-nav__button md-logo" aria-label="Taiwan Health MCP" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Taiwan Health MCP
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/healthymind-tech/Taiwan-Health-MCP" title="前往倉庫" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    healthymind-tech/Taiwan-Health-MCP
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_1" id="__nav_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    首頁
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    首頁
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Taiwan Health MCP Server
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    快速開始
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    模組
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    模組
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../modules/icd-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ICD-10
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../modules/drug-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    藥品 / TFDA
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../modules/lab-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    檢驗 / LOINC
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../modules/snomed-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SNOMED CT
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../modules/health-supplements-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    健康補充品
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../modules/food-nutrition-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    食品營養
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../modules/fhir-condition-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FHIR Condition
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../modules/fhir-medication-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FHIR Medication
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../modules/fhir-ig-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FHIR IG
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MCP 工具
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    MCP 工具
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../icd-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ICD-10 工具
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../drug-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    藥品工具
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../lab-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    檢驗 / LOINC 工具
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../snomed-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SNOMED 工具
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../health-supplements-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    健康補充品工具
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../nutrition-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    食品營養工具
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fhir-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FHIR Condition / Medication 工具
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fhir-ig-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FHIR IG 工具
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fhir-server-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FHIR 伺服器工具
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    臨床計算器工具
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    臨床計算器工具
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="目錄">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目錄
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#calculate_chads2_vasc" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        calculate_chads2_vasc
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="calculate_chads2_vasc">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        參數
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        用途
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#calculate_wells_pe" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        calculate_wells_pe
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="calculate_wells_pe">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        參數
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#calculate_wells_dvt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        calculate_wells_dvt
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="calculate_wells_dvt">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        參數
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#calculate_das28" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        calculate_das28
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="calculate_das28">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        參數
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        分級
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#calculate_cdai" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        calculate_cdai
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="calculate_cdai">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        參數
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        分級
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#calculate_bmi" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        calculate_bmi
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="calculate_bmi">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_9" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        參數
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        分級（台灣/亞洲）
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#calculate_egfr" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        calculate_egfr
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="calculate_egfr">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_11" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        參數
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#kdigo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        分級（KDIGO）
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#calculate_has_bled" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        calculate_has_bled
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="calculate_has_bled">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_12" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        參數
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_13" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        分級
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#calculate_curb65" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        calculate_curb65
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="calculate_curb65">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_14" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        參數
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_15" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        分級
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#calculate_qsofa" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        calculate_qsofa
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="calculate_qsofa">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_16" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        參數
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_17" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        分級
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#calculate_gcs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        calculate_gcs
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="calculate_gcs">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_18" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        參數
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_19" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        分級
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#references" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        數值來源 (References)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    資料來源
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    資料來源
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../data-sources/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    資料來源
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../data-sources/test-data/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    測試資料檔清單
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../data-sources/icd10/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ICD-10
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../data-sources/loinc/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LOINC
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FHIR 授權
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    FHIR 授權
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../fhir-authoring-walkthrough/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    授權流程說明
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../fhir-ig-mcp-toolset-assessment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    工具集設計評估
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../fhir-resource-conversion-prompt/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    資源轉換提示（自動判斷型別）
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../fhir-bundle-conversion-prompt/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bundle 轉換提示
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    使用指南
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    使用指南
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    使用指南 (User Guides)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/lab-interpretation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    檢驗判讀
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guides/loinc-integration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LOINC 整合
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API 參考
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API 參考
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API 參考
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/fhir-services/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FHIR Services API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/icd-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ICD Service
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/lab-service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Lab Service
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    管理後台
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    管理後台
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../admin/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    管理後台 (Admin Console)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../admin/jobs-and-worker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    背景工作與排程
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9" >
+        
+          
+          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    部署
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    部署
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    部署指南
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/deployment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    架構與容器部署
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    環境變數配置
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/performance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    效能與監控
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10" >
+        
+          
+          <label class="md-nav__link" for="__nav_10" id="__nav_10_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    開發指南
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_10">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    開發指南
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    開發指南
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/code-style/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    程式風格
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    測試指南
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    貢獻流程
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../WEBSITE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    文件網站維護
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_11" >
+        
+          
+          <label class="md-nav__link" for="__nav_11" id="__nav_11_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    常見問題
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_11_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_11">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    常見問題
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../faq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    常見問題 (FAQ)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../faq/usage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    操作與使用
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../faq/loinc/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LOINC 相關
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="目錄">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目錄
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#calculate_chads2_vasc" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        calculate_chads2_vasc
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="calculate_chads2_vasc">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        參數
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        用途
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#calculate_wells_pe" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        calculate_wells_pe
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="calculate_wells_pe">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        參數
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#calculate_wells_dvt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        calculate_wells_dvt
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="calculate_wells_dvt">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        參數
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#calculate_das28" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        calculate_das28
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="calculate_das28">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        參數
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        分級
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#calculate_cdai" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        calculate_cdai
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="calculate_cdai">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        參數
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        分級
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#calculate_bmi" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        calculate_bmi
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="calculate_bmi">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_9" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        參數
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        分級（台灣/亞洲）
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#calculate_egfr" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        calculate_egfr
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="calculate_egfr">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_11" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        參數
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#kdigo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        分級（KDIGO）
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#calculate_has_bled" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        calculate_has_bled
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="calculate_has_bled">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_12" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        參數
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_13" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        分級
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#calculate_curb65" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        calculate_curb65
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="calculate_curb65">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_14" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        參數
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_15" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        分級
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#calculate_qsofa" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        calculate_qsofa
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="calculate_qsofa">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_16" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        參數
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_17" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        分級
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#calculate_gcs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        calculate_gcs
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="calculate_gcs">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_18" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        參數
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_19" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        分級
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#references" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        數值來源 (References)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="clinical-calculator-tools">臨床計算器工具 (Clinical Calculator Tools)<a class="headerlink" href="#clinical-calculator-tools" title="Permanent link">&para;</a></h1>
+<p>此類別工具提供台灣臨床場域常用的驗證計分與計算。所有計算器皆為<strong>純函數、無狀態</strong>：
+不存取資料庫、不需外部服務，且<strong>永久註冊</strong>（不隨模組資料載入狀態啟用/停用）。</p>
+<p>每個結果都回傳一致的信封：</p>
+<pre><code class="language-json">{
+  &quot;calculator&quot;: &quot;bmi&quot;,
+  &quot;score&quot;: 27.55,
+  &quot;category&quot;: &quot;肥胖&quot;,
+  &quot;interpretation&quot;: &quot;BMI 27.55，肥胖&quot;,
+  &quot;inputs&quot;: { &quot;weight_kg&quot;: 75, &quot;height_cm&quot;: 165 },
+  &quot;notes&quot;: [
+    &quot;台灣（亞洲）標準：&lt;18.5 過輕、18.5–23.9 正常、24–26.9 過重、≥27 肥胖。&quot;,
+    &quot;WHO 國際標準為 ≥25 過重、≥30 肥胖，與台灣標準不同。&quot;
+  ],
+  &quot;disclaimer&quot;: &quot;僅供臨床決策支援，不取代專業醫療判斷。&quot;
+}
+</code></pre>
+<p>除共同欄位外，各計算器另有自己的分級欄位（如 <code>category</code>、<code>risk_category</code>、
+<code>ckd_stage</code>、<code>disease_activity</code>）。<code>interpretation</code> 是一句完整的說明文字，
+不是單純的分級標籤；程式要判讀分級時請讀分級欄位。連續型分數四捨五入到小數
+兩位，分級一律依四捨五入後的數值判定，因此顯示的分數與分級不會互相矛盾。</p>
+<p><strong>輸入範圍檢查：</strong> 每個參數都有合理範圍（見下方各表），超出範圍或單位明顯
+錯誤（例如身高以公尺、肌酸酐以 µmol/L 傳入）時，工具直接拒絕並回傳驗證錯誤，
+不會算出分數。範圍同時列在 <code>tools/list</code> 與 <code>/openapi.json</code> 的 JSON Schema 中。</p>
+<blockquote>
+<p>所有計算結果僅供臨床決策支援，不取代專業醫療判斷。分數採用的切點與分級
+依各計分原始文獻與台灣現行指引；<code>interpretation</code> / <code>notes</code> 為正體中文。</p>
+</blockquote>
+<hr />
+<h2 id="calculate_chads2_vasc">calculate_chads2_vasc<a class="headerlink" href="#calculate_chads2_vasc" title="Permanent link">&para;</a></h2>
+<p>心房顫動（非瓣膜性）中風風險計分 CHA₂DS₂-VASc（0–9），並回傳 2024 ESC 的
+CHA₂DS₂-VA 調整分數（去除性別）。</p>
+<h3 id="_1">參數<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">參數名</th>
+<th style="text-align: left;">型別</th>
+<th style="text-align: left;">必填</th>
+<th style="text-align: left;">說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>age</code></td>
+<td style="text-align: left;">integer</td>
+<td style="text-align: left;">是</td>
+<td style="text-align: left;">年齡（歲，0–130），內部自動判斷 65–74 / ≥75 分組</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>sex</code></td>
+<td style="text-align: left;">string</td>
+<td style="text-align: left;">是</td>
+<td style="text-align: left;">性別：<code>"M"</code> / <code>"F"</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>congestive_heart_failure</code></td>
+<td style="text-align: left;">boolean</td>
+<td style="text-align: left;">否</td>
+<td style="text-align: left;">鬱血性心衰竭</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>hypertension</code></td>
+<td style="text-align: left;">boolean</td>
+<td style="text-align: left;">否</td>
+<td style="text-align: left;">高血壓</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>diabetes</code></td>
+<td style="text-align: left;">boolean</td>
+<td style="text-align: left;">否</td>
+<td style="text-align: left;">糖尿病</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>stroke_or_tia</code></td>
+<td style="text-align: left;">boolean</td>
+<td style="text-align: left;">否</td>
+<td style="text-align: left;">中風 / TIA 病史</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>vascular_disease</code></td>
+<td style="text-align: left;">boolean</td>
+<td style="text-align: left;">否</td>
+<td style="text-align: left;">血管疾病</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_2">用途<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h3>
+<p>分數 0–9；回傳 <code>adjusted_score</code>（去除性別）。風險分級依 CHA₂DS₂-VA：
+0 不需抗凝血、1 考慮、≥2 建議口服抗凝血。</p>
+<hr />
+<h2 id="calculate_wells_pe">calculate_wells_pe<a class="headerlink" href="#calculate_wells_pe" title="Permanent link">&para;</a></h2>
+<p>肺栓塞 Wells 機率計分（二層 + 三層風險分級）。</p>
+<h3 id="_3">參數<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">參數名</th>
+<th style="text-align: left;">型別</th>
+<th style="text-align: left;">必填</th>
+<th style="text-align: left;">說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>clinical_signs_dvt</code></td>
+<td style="text-align: left;">boolean</td>
+<td style="text-align: left;">否</td>
+<td style="text-align: left;">DVT 臨床徵象（+3）</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>alternative_diagnosis_less_likely</code></td>
+<td style="text-align: left;">boolean</td>
+<td style="text-align: left;">否</td>
+<td style="text-align: left;">其他診斷較不可能（+3）</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>heart_rate_bpm</code></td>
+<td style="text-align: left;">number</td>
+<td style="text-align: left;">否</td>
+<td style="text-align: left;">心率（0–350），&gt;100 自動 +1.5</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>immobilization_or_recent_surgery</code></td>
+<td style="text-align: left;">boolean</td>
+<td style="text-align: left;">否</td>
+<td style="text-align: left;">臥床 / 近 4 週手術（+1.5）</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>previous_dvt_or_pe</code></td>
+<td style="text-align: left;">boolean</td>
+<td style="text-align: left;">否</td>
+<td style="text-align: left;">過去 DVT/PE（+1.5）</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>hemoptysis</code></td>
+<td style="text-align: left;">boolean</td>
+<td style="text-align: left;">否</td>
+<td style="text-align: left;">咳血（+1）</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>active_malignancy</code></td>
+<td style="text-align: left;">boolean</td>
+<td style="text-align: left;">否</td>
+<td style="text-align: left;">活動性惡性腫瘤（+1）</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="calculate_wells_dvt">calculate_wells_dvt<a class="headerlink" href="#calculate_wells_dvt" title="Permanent link">&para;</a></h2>
+<p>深層靜脈栓塞 Wells 機率計分（二層 + 三層風險分級）。</p>
+<h3 id="_4">參數<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">參數名</th>
+<th style="text-align: left;">型別</th>
+<th style="text-align: left;">必填</th>
+<th style="text-align: left;">說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>active_cancer</code></td>
+<td style="text-align: left;">boolean</td>
+<td style="text-align: left;">否</td>
+<td style="text-align: left;">活動性癌症（+1）</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>paralysis_paresis_or_immobilization</code></td>
+<td style="text-align: left;">boolean</td>
+<td style="text-align: left;">否</td>
+<td style="text-align: left;">癱瘓 / 輕癱 / 石膏固定（+1）</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>bedridden_or_recent_surgery</code></td>
+<td style="text-align: left;">boolean</td>
+<td style="text-align: left;">否</td>
+<td style="text-align: left;">臥床 / 近 4 週手術（+1）</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>calf_swelling_gt_3cm</code></td>
+<td style="text-align: left;">boolean</td>
+<td style="text-align: left;">否</td>
+<td style="text-align: left;">小腿腫脹 &gt;3cm（+1）</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>collateral_superficial_veins</code></td>
+<td style="text-align: left;">boolean</td>
+<td style="text-align: left;">否</td>
+<td style="text-align: left;">表淺側枝靜脈（+1）</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>entire_leg_swollen</code></td>
+<td style="text-align: left;">boolean</td>
+<td style="text-align: left;">否</td>
+<td style="text-align: left;">整腿腫脹（+1）</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>localized_tenderness</code></td>
+<td style="text-align: left;">boolean</td>
+<td style="text-align: left;">否</td>
+<td style="text-align: left;">局部壓痛（+1）</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>pitting_edema</code></td>
+<td style="text-align: left;">boolean</td>
+<td style="text-align: left;">否</td>
+<td style="text-align: left;">凹陷性水腫（+1）</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>previous_dvt</code></td>
+<td style="text-align: left;">boolean</td>
+<td style="text-align: left;">否</td>
+<td style="text-align: left;">過去 DVT（+1）</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>alternative_diagnosis_as_likely</code></td>
+<td style="text-align: left;">boolean</td>
+<td style="text-align: left;">否</td>
+<td style="text-align: left;">其他診斷同等可能（−2）</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="calculate_das28">calculate_das28<a class="headerlink" href="#calculate_das28" title="Permanent link">&para;</a></h2>
+<p>類風濕關節炎疾病活動度 DAS28（ESR 或 CRP 版本）。</p>
+<h3 id="_5">參數<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">參數名</th>
+<th style="text-align: left;">型別</th>
+<th style="text-align: left;">必填</th>
+<th style="text-align: left;">說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>tender_count</code></td>
+<td style="text-align: left;">integer</td>
+<td style="text-align: left;">是</td>
+<td style="text-align: left;">壓痛關節數（28 關節評估，0–28）</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>swollen_count</code></td>
+<td style="text-align: left;">integer</td>
+<td style="text-align: left;">是</td>
+<td style="text-align: left;">腫脹關節數（28 關節評估，0–28）</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>global_health</code></td>
+<td style="text-align: left;">number</td>
+<td style="text-align: left;">是</td>
+<td style="text-align: left;">病人整體評估 VAS（0–100 mm；注意不是 CDAI 的 0–10）</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>formula</code></td>
+<td style="text-align: left;">string</td>
+<td style="text-align: left;">是</td>
+<td style="text-align: left;"><code>"esr"</code> 或 <code>"crp"</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>esr</code></td>
+<td style="text-align: left;">number</td>
+<td style="text-align: left;">視 formula</td>
+<td style="text-align: left;"><code>formula="esr"</code> 時必填，單位 mm/h（&gt;0，最大 200）</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>crp</code></td>
+<td style="text-align: left;">number</td>
+<td style="text-align: left;">視 formula</td>
+<td style="text-align: left;"><code>formula="crp"</code> 時必填，單位 mg/L（0–500，不是 mg/dL）</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_6">分級<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h3>
+<p>≤2.6 緩解、≤3.2 低、≤5.1 中、&gt;5.1 高疾病活動度。</p>
+<hr />
+<h2 id="calculate_cdai">calculate_cdai<a class="headerlink" href="#calculate_cdai" title="Permanent link">&para;</a></h2>
+<p>類風濕關節炎疾病活動度 CDAI（免抽血版本）。</p>
+<h3 id="_7">參數<a class="headerlink" href="#_7" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">參數名</th>
+<th style="text-align: left;">型別</th>
+<th style="text-align: left;">必填</th>
+<th style="text-align: left;">說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>tender_count</code></td>
+<td style="text-align: left;">integer</td>
+<td style="text-align: left;">是</td>
+<td style="text-align: left;">壓痛關節數（28 關節評估，0–28）</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>swollen_count</code></td>
+<td style="text-align: left;">integer</td>
+<td style="text-align: left;">是</td>
+<td style="text-align: left;">腫脹關節數（28 關節評估，0–28）</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>patient_global</code></td>
+<td style="text-align: left;">number</td>
+<td style="text-align: left;">是</td>
+<td style="text-align: left;">病人整體評估（0–10）</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>provider_global</code></td>
+<td style="text-align: left;">number</td>
+<td style="text-align: left;">是</td>
+<td style="text-align: left;">評估者整體評估（0–10）</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_8">分級<a class="headerlink" href="#_8" title="Permanent link">&para;</a></h3>
+<p>總分 0–76；≤2.8 緩解、≤10 低、≤22 中、&gt;22 高疾病活動度。</p>
+<hr />
+<h2 id="calculate_bmi">calculate_bmi<a class="headerlink" href="#calculate_bmi" title="Permanent link">&para;</a></h2>
+<p>身體質量指數（採用台灣/亞洲切點）。</p>
+<h3 id="_9">參數<a class="headerlink" href="#_9" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">參數名</th>
+<th style="text-align: left;">型別</th>
+<th style="text-align: left;">必填</th>
+<th style="text-align: left;">說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>weight_kg</code></td>
+<td style="text-align: left;">number</td>
+<td style="text-align: left;">是</td>
+<td style="text-align: left;">體重（公斤，&gt;0，最大 700）</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>height_cm</code></td>
+<td style="text-align: left;">number</td>
+<td style="text-align: left;">是</td>
+<td style="text-align: left;">身高（公分，50–280；以公尺傳入會被拒絕）</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_10">分級（台灣/亞洲）<a class="headerlink" href="#_10" title="Permanent link">&para;</a></h3>
+<p>&lt;18.5 過輕、18.5–23.9 正常、24–26.9 過重、≥27 肥胖。WHO 國際標準為 ≥25 過重、≥30 肥胖。</p>
+<hr />
+<h2 id="calculate_egfr">calculate_egfr<a class="headerlink" href="#calculate_egfr" title="Permanent link">&para;</a></h2>
+<p>估算腎絲球過濾率（CKD-EPI 2021，無種族係數）。</p>
+<h3 id="_11">參數<a class="headerlink" href="#_11" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">參數名</th>
+<th style="text-align: left;">型別</th>
+<th style="text-align: left;">必填</th>
+<th style="text-align: left;">說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>age</code></td>
+<td style="text-align: left;">integer</td>
+<td style="text-align: left;">是</td>
+<td style="text-align: left;">年齡（歲，18–130；CKD-EPI 2021 僅適用成人）</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>sex</code></td>
+<td style="text-align: left;">string</td>
+<td style="text-align: left;">是</td>
+<td style="text-align: left;">性別：<code>"M"</code> / <code>"F"</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>serum_creatinine_mgdl</code></td>
+<td style="text-align: left;">number</td>
+<td style="text-align: left;">是</td>
+<td style="text-align: left;">血清肌酸酐（mg/dL，&gt;0，最大 30；µmol/L ÷ 88.4）</td>
+</tr>
+</tbody>
+</table>
+<h3 id="kdigo">分級（KDIGO）<a class="headerlink" href="#kdigo" title="Permanent link">&para;</a></h3>
+<p>G1 ≥90、G2 60–89、G3a 45–59、G3b 30–44、G4 15–29、G5 &lt;15。急性腎損傷或非穩定狀態下不適用。</p>
+<hr />
+<h2 id="calculate_has_bled">calculate_has_bled<a class="headerlink" href="#calculate_has_bled" title="Permanent link">&para;</a></h2>
+<p>抗凝血治療出血風險 HAS-BLED（0–9）。</p>
+<h3 id="_12">參數<a class="headerlink" href="#_12" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">參數名</th>
+<th style="text-align: left;">型別</th>
+<th style="text-align: left;">必填</th>
+<th style="text-align: left;">說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>age</code></td>
+<td style="text-align: left;">integer</td>
+<td style="text-align: left;">是</td>
+<td style="text-align: left;">年齡（歲，0–130），&gt;65 自動 +1</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>systolic_bp_mmhg</code></td>
+<td style="text-align: left;">number</td>
+<td style="text-align: left;">否</td>
+<td style="text-align: left;">收縮壓（mmHg，0–300），&gt;160 自動視為未控制高血壓 +1</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>abnormal_renal_function</code></td>
+<td style="text-align: left;">boolean</td>
+<td style="text-align: left;">否</td>
+<td style="text-align: left;">腎功能異常</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>abnormal_liver_function</code></td>
+<td style="text-align: left;">boolean</td>
+<td style="text-align: left;">否</td>
+<td style="text-align: left;">肝功能異常</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>stroke_history</code></td>
+<td style="text-align: left;">boolean</td>
+<td style="text-align: left;">否</td>
+<td style="text-align: left;">中風病史</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>bleeding_history</code></td>
+<td style="text-align: left;">boolean</td>
+<td style="text-align: left;">否</td>
+<td style="text-align: left;">出血病史 / 傾向</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>labile_inr</code></td>
+<td style="text-align: left;">boolean</td>
+<td style="text-align: left;">否</td>
+<td style="text-align: left;">INR 不穩定</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>drugs_antiplatelet_or_nsaid</code></td>
+<td style="text-align: left;">boolean</td>
+<td style="text-align: left;">否</td>
+<td style="text-align: left;">抗血小板藥 / NSAID</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>alcohol</code></td>
+<td style="text-align: left;">boolean</td>
+<td style="text-align: left;">否</td>
+<td style="text-align: left;">飲酒 ≥8 杯/週</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_13">分級<a class="headerlink" href="#_13" title="Permanent link">&para;</a></h3>
+<p>≥3 分為高出血風險，應謹慎並定期追蹤。</p>
+<hr />
+<h2 id="calculate_curb65">calculate_curb65<a class="headerlink" href="#calculate_curb65" title="Permanent link">&para;</a></h2>
+<p>社區型肺炎嚴重度 CURB-65（0–5）。</p>
+<h3 id="_14">參數<a class="headerlink" href="#_14" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">參數名</th>
+<th style="text-align: left;">型別</th>
+<th style="text-align: left;">必填</th>
+<th style="text-align: left;">說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>age</code></td>
+<td style="text-align: left;">integer</td>
+<td style="text-align: left;">是</td>
+<td style="text-align: left;">年齡（歲，0–130），≥65 自動 +1</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>confusion</code></td>
+<td style="text-align: left;">boolean</td>
+<td style="text-align: left;">否</td>
+<td style="text-align: left;">意識混淆</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>bun_mgdl</code></td>
+<td style="text-align: left;">number</td>
+<td style="text-align: left;">否</td>
+<td style="text-align: left;">BUN（mg/dL，0–300），&gt;19 +1</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>respiratory_rate</code></td>
+<td style="text-align: left;">number</td>
+<td style="text-align: left;">否</td>
+<td style="text-align: left;">呼吸速率，≥30 +1</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>sbp_mmhg</code></td>
+<td style="text-align: left;">number</td>
+<td style="text-align: left;">否</td>
+<td style="text-align: left;">收縮壓（&lt;90 或 DBP≤60 為低血壓 +1）</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>dbp_mmhg</code></td>
+<td style="text-align: left;">number</td>
+<td style="text-align: left;">否</td>
+<td style="text-align: left;">舒張壓</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_15">分級<a class="headerlink" href="#_15" title="Permanent link">&para;</a></h3>
+<p>0–1 低風險、2 中風險、≥3 高風險（考慮加護病房）。BUN &gt;19 mg/dL ≈ 尿素 &gt;7 mmol/L。</p>
+<hr />
+<h2 id="calculate_qsofa">calculate_qsofa<a class="headerlink" href="#calculate_qsofa" title="Permanent link">&para;</a></h2>
+<p>敗血症篩檢 qSOFA（0–3）。</p>
+<h3 id="_16">參數<a class="headerlink" href="#_16" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">參數名</th>
+<th style="text-align: left;">型別</th>
+<th style="text-align: left;">必填</th>
+<th style="text-align: left;">說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>respiratory_rate</code></td>
+<td style="text-align: left;">number</td>
+<td style="text-align: left;">否</td>
+<td style="text-align: left;">呼吸速率，≥22 +1</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>gcs</code></td>
+<td style="text-align: left;">integer</td>
+<td style="text-align: left;">否</td>
+<td style="text-align: left;">格拉斯哥昏迷指數（3–15），&lt;15 自動視為意識改變 +1</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>sbp_mmhg</code></td>
+<td style="text-align: left;">number</td>
+<td style="text-align: left;">否</td>
+<td style="text-align: left;">收縮壓，≤100 +1</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_17">分級<a class="headerlink" href="#_17" title="Permanent link">&para;</a></h3>
+<p>≥2 分應懷疑敗血症並進一步評估；qSOFA 為篩檢工具，非診斷標準。</p>
+<hr />
+<h2 id="calculate_gcs">calculate_gcs<a class="headerlink" href="#calculate_gcs" title="Permanent link">&para;</a></h2>
+<p>格拉斯哥昏迷指數 GCS（3–15）。</p>
+<h3 id="_18">參數<a class="headerlink" href="#_18" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">參數名</th>
+<th style="text-align: left;">型別</th>
+<th style="text-align: left;">必填</th>
+<th style="text-align: left;">說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>eye_response</code></td>
+<td style="text-align: left;">integer</td>
+<td style="text-align: left;">是</td>
+<td style="text-align: left;">睜眼 E（1–4）</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>verbal_response</code></td>
+<td style="text-align: left;">integer</td>
+<td style="text-align: left;">是</td>
+<td style="text-align: left;">言語 V（1–5）</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>motor_response</code></td>
+<td style="text-align: left;">integer</td>
+<td style="text-align: left;">是</td>
+<td style="text-align: left;">動作 M（1–6）</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_19">分級<a class="headerlink" href="#_19" title="Permanent link">&para;</a></h3>
+<p>13–15 輕度、9–12 中度、≤8 重度（昏迷/需考慮插管）。</p>
+<hr />
+<blockquote>
+<p>所有工具都以 JSON 回傳（MCP <code>content[0].text</code> 內為 JSON 字串），沒有純文字格式的輸出。</p>
+</blockquote>
+<h2 id="references">數值來源 (References)<a class="headerlink" href="#references" title="Permanent link">&para;</a></h2>
+<p>各計分的權重、公式與切點均依下列原始文獻 / 權威來源，並於 2026-10-05 重新核對：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">計分</th>
+<th style="text-align: left;">來源</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">CHA₂DS₂-VASc / CHA₂DS₂-VA</td>
+<td style="text-align: left;">2024 ESC 心房顫動指引（CHA₂DS₂-VA，去除性別）</td>
+</tr>
+<tr>
+<td style="text-align: left;">Wells PE / DVT</td>
+<td style="text-align: left;">Wells 等（肺栓塞 / 深層靜脈栓塞臨床機率）</td>
+</tr>
+<tr>
+<td style="text-align: left;">DAS28 / CDAI</td>
+<td style="text-align: left;">Prevoo（DAS28）、Aletaha（CDAI）</td>
+</tr>
+<tr>
+<td style="text-align: left;">BMI</td>
+<td style="text-align: left;">衛生福利部國民健康署（台灣成人標準：24 過重、27 肥胖）</td>
+</tr>
+<tr>
+<td style="text-align: left;">eGFR</td>
+<td style="text-align: left;">CKD-EPI 2021（Inker 等，<em>NEJM</em> 2021；kidney.org）</td>
+</tr>
+<tr>
+<td style="text-align: left;">HAS-BLED</td>
+<td style="text-align: left;">Pisters 等，2010</td>
+</tr>
+<tr>
+<td style="text-align: left;">CURB-65</td>
+<td style="text-align: left;">Lim 等，2003</td>
+</tr>
+<tr>
+<td style="text-align: left;">qSOFA</td>
+<td style="text-align: left;">Singer 等，2016（Sepsis-3）</td>
+</tr>
+<tr>
+<td style="text-align: left;">GCS</td>
+<td style="text-align: left;">Teasdale &amp; Jennett，1974</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>HAS-BLED 與 qSOFA 對其較窄的原始定義改收原始數值（「未控制高血壓＝收縮壓</p>
+<blockquote>
+<p>160 mmHg」、「意識改變＝GCS &lt;15」），由工具內部計算。</p>
+</blockquote>
+</blockquote>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; 2024-2026 Taiwan Health MCP Team
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": [], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "\u5df2\u8907\u88fd", "clipboard.copy": "\u8907\u88fd", "search.result.more.one": "\u6b64\u9801\u5c1a\u6709 1 \u500b\u7b26\u5408\u7684\u9805\u76ee", "search.result.more.other": "\u6b64\u9801\u5c1a\u6709 # \u500b\u7b26\u5408\u7684\u9805\u76ee", "search.result.none": "\u6c92\u6709\u7b26\u5408\u7684\u9805\u76ee", "search.result.one": "\u627e\u5230 1 \u500b\u7b26\u5408\u7684\u9805\u76ee", "search.result.other": "\u627e\u5230 # \u500b\u7b26\u5408\u7684\u9805\u76ee", "search.result.placeholder": "\u6253\u5b57\u9032\u884c\u641c\u5c0b", "search.result.term.missing": "\u7f3a\u5c11\u5b57\u8a5e", "select.version": "\u9078\u64c7\u7248\u672c"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+        <script src="../../javascripts/lang-switch.js"></script>
+      
+    
+  </body>
+</html>
