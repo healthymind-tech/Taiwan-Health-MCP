@@ -69,6 +69,7 @@ plugins:
             FHIR 授權: FHIR Authoring
             授權流程說明: Authoring Walkthrough
             工具集設計評估: Toolset Design Assessment
+            生態盤點與路線圖: Landscape and Roadmap
             資源轉換提示（自動判斷型別）: Resource Conversion Prompt (auto type detection)
             Bundle 轉換提示: Bundle Conversion Prompt
             使用指南: Guides
@@ -133,6 +134,7 @@ nav:
   - FHIR 授權:
     - 授權流程說明: fhir-authoring-walkthrough.md
     - 工具集設計評估: fhir-ig-mcp-toolset-assessment.md
+    - 生態盤點與路線圖: fhir-mcp-landscape-and-roadmap.md
     - 資源轉換提示（自動判斷型別）: fhir-resource-conversion-prompt.md
     - Bundle 轉換提示: fhir-bundle-conversion-prompt.md
   - 使用指南:
