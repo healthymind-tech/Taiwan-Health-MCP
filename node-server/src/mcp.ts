@@ -30,6 +30,7 @@ import * as fhirReference from "./fhirReference.js";
 import { getEmbeddingService } from "./embeddingService.js";
 import { logError } from "./logger.js";
 import {
+  bmiInputShape,
   calculateBmi,
   calculateCdai,
   calculateChads2Vasc,
@@ -41,6 +42,16 @@ import {
   calculateQsofa,
   calculateWellsDvt,
   calculateWellsPe,
+  cdaiInputShape,
+  chads2VascInputShape,
+  curb65InputShape,
+  das28InputShape,
+  egfrInputShape,
+  gcsInputShape,
+  hasBledInputShape,
+  qsofaInputShape,
+  wellsDvtInputShape,
+  wellsPeInputShape,
 } from "./clinicalCalculators.js";
 
 const SERVER_NAME = "taiwan-health-mcp";
@@ -1436,8 +1447,9 @@ function registerLabTools(server: McpServer, svc: LabService): void {
  *
  * Pure scoring functions — no DB, no module gating. Registered unconditionally
  * like `health_check` and the FHIR Servers group. Each calculator is its own
- * tool with a precise zod inputSchema; handlers call the pure functions in
- * `clinicalCalculators.ts` and wrap via `jsonResult`.
+ * tool whose inputSchema is the bounded `*InputShape` exported next to its
+ * pure function in `clinicalCalculators.ts`, so out-of-range and wrong-unit
+ * values are rejected before any formula runs; handlers wrap via `jsonResult`.
  */
 function registerClinicalCalculatorTools(server: McpServer): void {
   server.registerTool(
@@ -1447,15 +1459,7 @@ function registerClinicalCalculatorTools(server: McpServer): void {
         "CHA₂DS₂-VASc stroke-risk score for non-valvular atrial fibrillation (0–9). " +
         "Accepts raw age/sex and computes brackets internally; also returns the 2024 ESC " +
         "CHA₂DS₂-VA adjusted score (sex removed). Decision support only.",
-      inputSchema: {
-        age: z.number().int(),
-        sex: z.enum(["M", "F"]),
-        congestive_heart_failure: z.boolean().default(false),
-        hypertension: z.boolean().default(false),
-        diabetes: z.boolean().default(false),
-        stroke_or_tia: z.boolean().default(false),
-        vascular_disease: z.boolean().default(false),
-      },
+      inputSchema: chads2VascInputShape,
     },
     async (args) => jsonResult(calculateChads2Vasc(args)),
   );
@@ -1466,15 +1470,7 @@ function registerClinicalCalculatorTools(server: McpServer): void {
       description:
         "Wells criteria for pulmonary embolism (two-tier + three-tier risk). " +
         "Binary findings are booleans; heart_rate_bpm is raw and the >100 criterion is computed.",
-      inputSchema: {
-        clinical_signs_dvt: z.boolean().default(false),
-        alternative_diagnosis_less_likely: z.boolean().default(false),
-        heart_rate_bpm: z.number().nullish().default(null),
-        immobilization_or_recent_surgery: z.boolean().default(false),
-        previous_dvt_or_pe: z.boolean().default(false),
-        hemoptysis: z.boolean().default(false),
-        active_malignancy: z.boolean().default(false),
-      },
+      inputSchema: wellsPeInputShape,
     },
     async (args) => jsonResult(calculateWellsPe(args)),
   );
@@ -1485,18 +1481,7 @@ function registerClinicalCalculatorTools(server: McpServer): void {
       description:
         "Wells criteria for deep-vein thrombosis (two-tier + three-tier risk). " +
         "All items are binary clinical findings.",
-      inputSchema: {
-        active_cancer: z.boolean().default(false),
-        paralysis_paresis_or_immobilization: z.boolean().default(false),
-        bedridden_or_recent_surgery: z.boolean().default(false),
-        calf_swelling_gt_3cm: z.boolean().default(false),
-        collateral_superficial_veins: z.boolean().default(false),
-        entire_leg_swollen: z.boolean().default(false),
-        localized_tenderness: z.boolean().default(false),
-        pitting_edema: z.boolean().default(false),
-        previous_dvt: z.boolean().default(false),
-        alternative_diagnosis_as_likely: z.boolean().default(false),
-      },
+      inputSchema: wellsDvtInputShape,
     },
     async (args) => jsonResult(calculateWellsDvt(args)),
   );
@@ -1506,15 +1491,9 @@ function registerClinicalCalculatorTools(server: McpServer): void {
     {
       description:
         "DAS28 rheumatoid arthritis disease activity. formula=esr needs esr (mm/h); " +
-        "formula=crp needs crp (mg/L). Returns score and activity band (remission/low/moderate/high).",
-      inputSchema: {
-        tender_count: z.number().int(),
-        swollen_count: z.number().int(),
-        global_health: z.number(),
-        formula: z.enum(["esr", "crp"]),
-        esr: z.number().nullish().default(null),
-        crp: z.number().nullish().default(null),
-      },
+        "formula=crp needs crp (mg/L). Joint counts are 28-joint (0–28); global_health is a 0–100 VAS " +
+        "(not the 0–10 scale CDAI uses). Returns score and activity band (remission/low/moderate/high).",
+      inputSchema: das28InputShape,
     },
     async (args) => {
       try {
@@ -1529,14 +1508,9 @@ function registerClinicalCalculatorTools(server: McpServer): void {
     "calculate_cdai",
     {
       description:
-        "CDAI (lab-free) rheumatoid arthritis disease activity. Four 0–10 components: " +
-        "tender/swollen joint counts and patient/provider global assessment.",
-      inputSchema: {
-        tender_count: z.number().int(),
-        swollen_count: z.number().int(),
-        patient_global: z.number(),
-        provider_global: z.number(),
-      },
+        "CDAI (lab-free) rheumatoid arthritis disease activity (0–76). Tender and swollen counts use " +
+        "the 28-joint assessment (0–28 each); patient and provider global assessments are 0–10.",
+      inputSchema: cdaiInputShape,
     },
     async (args) => jsonResult(calculateCdai(args)),
   );
@@ -1546,11 +1520,8 @@ function registerClinicalCalculatorTools(server: McpServer): void {
     {
       description:
         "Body mass index with Taiwan (Asian) cutoffs: <18.5 underweight, 18.5–23.9 normal, " +
-        "24–26.9 overweight, ≥27 obese. Height in cm, weight in kg.",
-      inputSchema: {
-        weight_kg: z.number(),
-        height_cm: z.number(),
-      },
+        "24–26.9 overweight, ≥27 obese. Height in cm (not metres), weight in kg.",
+      inputSchema: bmiInputShape,
     },
     async (args) => jsonResult(calculateBmi(args)),
   );
@@ -1560,12 +1531,9 @@ function registerClinicalCalculatorTools(server: McpServer): void {
     {
       description:
         "Estimated glomerular filtration rate using the CKD-EPI 2021 creatinine equation " +
-        "(race-free). serum_creatinine_mgdl in mg/dL. Returns eGFR in mL/min/1.73m² and KDIGO CKD stage.",
-      inputSchema: {
-        age: z.number().int(),
-        sex: z.enum(["M", "F"]),
-        serum_creatinine_mgdl: z.number(),
-      },
+        "(race-free), adults ≥18 only. serum_creatinine_mgdl in mg/dL (convert µmol/L by dividing by 88.4). " +
+        "Returns eGFR in mL/min/1.73m² and KDIGO CKD stage.",
+      inputSchema: egfrInputShape,
     },
     async (args) => jsonResult(calculateEgfr(args)),
   );
@@ -1577,17 +1545,7 @@ function registerClinicalCalculatorTools(server: McpServer): void {
         "HAS-BLED bleeding risk on oral anticoagulation (0–9). Accepts raw age (the >65 criterion " +
         "is computed) and raw systolic BP (the H criterion is computed as SBP >160 mmHg). " +
         "Returns score and high/low bleeding-risk category (≥3 high).",
-      inputSchema: {
-        age: z.number().int(),
-        systolic_bp_mmhg: z.number().nullish().default(null),
-        abnormal_renal_function: z.boolean().default(false),
-        abnormal_liver_function: z.boolean().default(false),
-        stroke_history: z.boolean().default(false),
-        bleeding_history: z.boolean().default(false),
-        labile_inr: z.boolean().default(false),
-        drugs_antiplatelet_or_nsaid: z.boolean().default(false),
-        alcohol: z.boolean().default(false),
-      },
+      inputSchema: hasBledInputShape,
     },
     async (args) => jsonResult(calculateHasBled(args)),
   );
@@ -1598,14 +1556,7 @@ function registerClinicalCalculatorTools(server: McpServer): void {
       description:
         "CURB-65 community-acquired pneumonia severity (0–5). BUN in mg/dL (threshold >19), " +
         "respiratory rate ≥30, hypotension SBP<90 or DBP≤60, confusion, age ≥65.",
-      inputSchema: {
-        age: z.number().int(),
-        confusion: z.boolean().default(false),
-        bun_mgdl: z.number().nullish().default(null),
-        respiratory_rate: z.number().nullish().default(null),
-        sbp_mmhg: z.number().nullish().default(null),
-        dbp_mmhg: z.number().nullish().default(null),
-      },
+      inputSchema: curb65InputShape,
     },
     async (args) => jsonResult(calculateCurb65(args)),
   );
@@ -1616,11 +1567,7 @@ function registerClinicalCalculatorTools(server: McpServer): void {
       description:
         "qSOFA sepsis screening (0–3): respiratory rate ≥22, altered mentation (GCS <15), systolic BP ≤100. " +
         "≥2 suggests sepsis and further evaluation.",
-      inputSchema: {
-        respiratory_rate: z.number().nullish().default(null),
-        gcs: z.number().int().nullish().default(null),
-        sbp_mmhg: z.number().nullish().default(null),
-      },
+      inputSchema: qsofaInputShape,
     },
     async (args) => jsonResult(calculateQsofa(args)),
   );
@@ -1631,19 +1578,9 @@ function registerClinicalCalculatorTools(server: McpServer): void {
       description:
         "Glasgow Coma Scale (3–15). eye_response 1–4, verbal_response 1–5, motor_response 1–6. " +
         "Returns total, E/V/M sub-scores, and mild/moderate/severe severity (≤8 severe).",
-      inputSchema: {
-        eye_response: z.number().int(),
-        verbal_response: z.number().int(),
-        motor_response: z.number().int(),
-      },
+      inputSchema: gcsInputShape,
     },
-    async (args) => {
-      try {
-        return jsonResult(calculateGcs(args));
-      } catch (err) {
-        return jsonResult({ error: String((err as Error).message) });
-      }
-    },
+    async (args) => jsonResult(calculateGcs(args)),
   );
 }
 

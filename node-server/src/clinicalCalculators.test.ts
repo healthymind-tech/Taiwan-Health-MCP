@@ -10,8 +10,10 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { z } from "zod";
 
 import {
+  bmiInputShape,
   calculateBmi,
   calculateCdai,
   calculateChads2Vasc,
@@ -23,7 +25,17 @@ import {
   calculateQsofa,
   calculateWellsDvt,
   calculateWellsPe,
+  cdaiInputShape,
+  das28InputShape,
+  egfrInputShape,
+  gcsInputShape,
+  qsofaInputShape,
 } from "./clinicalCalculators.js";
+
+/** Parse tool arguments exactly as the MCP transport and `POST /tools/*` do. */
+function accepts(shape: z.ZodRawShape, args: Record<string, unknown>): boolean {
+  return z.object(shape).safeParse(args).success;
+}
 
 test("CHA₂DS₂-VASc: no risk factors → 0, low risk", () => {
   const r = calculateChads2Vasc({ age: 50, sex: "M" });
@@ -184,8 +196,11 @@ test("GCS: E1 V2 M3 → 6 severe", () => {
   assert.match(r.severity, /重度/);
 });
 
-test("GCS: invalid sub-score throws", () => {
-  assert.throws(() => calculateGcs({ eye_response: 5, verbal_response: 5, motor_response: 6 }));
+test("GCS: out-of-range sub-scores are rejected by the input schema", () => {
+  assert.ok(accepts(gcsInputShape, { eye_response: 4, verbal_response: 5, motor_response: 6 }));
+  assert.ok(!accepts(gcsInputShape, { eye_response: 5, verbal_response: 5, motor_response: 6 }));
+  assert.ok(!accepts(gcsInputShape, { eye_response: 4, verbal_response: 0, motor_response: 6 }));
+  assert.ok(!accepts(gcsInputShape, { eye_response: 4, verbal_response: 5, motor_response: 7 }));
 });
 
 test("every result carries a non-empty disclaimer", () => {
@@ -205,4 +220,110 @@ test("every result carries a non-empty disclaimer", () => {
   for (const r of results) {
     assert.ok(r.disclaimer && r.disclaimer.length > 0, `${r.calculator} missing disclaimer`);
   }
+});
+
+// ── Input bounds (wrong units / impossible values never reach a formula) ─────
+
+test("eGFR schema: rejects zero/negative creatinine, µmol/L values and children", () => {
+  assert.ok(accepts(egfrInputShape, { age: 50, sex: "F", serum_creatinine_mgdl: 0.9 }));
+  assert.ok(!accepts(egfrInputShape, { age: 50, sex: "F", serum_creatinine_mgdl: 0 }));
+  assert.ok(!accepts(egfrInputShape, { age: 50, sex: "F", serum_creatinine_mgdl: -1 }));
+  // 88 µmol/L ≈ 1.0 mg/dL — passing the µmol/L number must not yield "G5".
+  assert.ok(!accepts(egfrInputShape, { age: 50, sex: "F", serum_creatinine_mgdl: 88 }));
+  // CKD-EPI 2021 is an adult equation.
+  assert.ok(!accepts(egfrInputShape, { age: 8, sex: "F", serum_creatinine_mgdl: 0.5 }));
+  assert.ok(!accepts(egfrInputShape, { age: -5, sex: "F", serum_creatinine_mgdl: 0.9 }));
+});
+
+test("DAS28 schema: rejects ESR ≤ 0, negative CRP, joint counts outside 0–28, VAS > 100", () => {
+  const base = { tender_count: 8, swollen_count: 4, global_health: 50, formula: "esr", esr: 30 };
+  assert.ok(accepts(das28InputShape, base));
+  assert.ok(!accepts(das28InputShape, { ...base, esr: 0 }));
+  assert.ok(!accepts(das28InputShape, { ...base, formula: "crp", esr: null, crp: -1 }));
+  assert.ok(!accepts(das28InputShape, { ...base, tender_count: -2 }));
+  assert.ok(!accepts(das28InputShape, { ...base, swollen_count: 29 }));
+  assert.ok(!accepts(das28InputShape, { ...base, global_health: 101 }));
+});
+
+test("CDAI schema: joint counts are 0–28 (28-joint count), globals 0–10", () => {
+  assert.ok(accepts(cdaiInputShape, { tender_count: 20, swollen_count: 15, patient_global: 5, provider_global: 5 }));
+  assert.ok(!accepts(cdaiInputShape, { tender_count: 29, swollen_count: 0, patient_global: 0, provider_global: 0 }));
+  assert.ok(!accepts(cdaiInputShape, { tender_count: 0, swollen_count: 0, patient_global: 11, provider_global: 0 }));
+});
+
+test("CDAI: 20 tender + 15 swollen joints score in full (not clamped to 10)", () => {
+  const r = calculateCdai({ tender_count: 20, swollen_count: 15, patient_global: 5, provider_global: 5 });
+  assert.equal(r.score, 45);
+  assert.match(r.disease_activity, /High|高/);
+});
+
+test("BMI schema: rejects zero weight, zero height and height given in metres", () => {
+  assert.ok(accepts(bmiInputShape, { weight_kg: 75, height_cm: 165 }));
+  assert.ok(!accepts(bmiInputShape, { weight_kg: 0, height_cm: 165 }));
+  assert.ok(!accepts(bmiInputShape, { weight_kg: 75, height_cm: 0 }));
+  assert.ok(!accepts(bmiInputShape, { weight_kg: 75, height_cm: 1.65 }));
+});
+
+test("qSOFA schema: GCS must be 3–15", () => {
+  assert.ok(accepts(qsofaInputShape, { gcs: 13 }));
+  assert.ok(!accepts(qsofaInputShape, { gcs: 0 }));
+  assert.ok(!accepts(qsofaInputShape, { gcs: 2 }));
+  assert.ok(!accepts(qsofaInputShape, { gcs: 20 }));
+});
+
+test("non-finite results throw instead of being labelled with a band", () => {
+  assert.throws(() => calculateEgfr({ age: 50, sex: "F", serum_creatinine_mgdl: 0 }), /non-finite/);
+  assert.throws(() => calculateBmi({ weight_kg: 75, height_cm: 0 }), /non-finite/);
+  assert.throws(
+    () => calculateDas28({ tender_count: -2, swollen_count: 4, global_health: 50, formula: "esr", esr: 30 }),
+    /non-finite/,
+  );
+});
+
+// ── Reported score and band always agree ─────────────────────────────────────
+
+function ckdStageOf(egfr: number): string {
+  if (egfr >= 90) return "G1";
+  if (egfr >= 60) return "G2";
+  if (egfr >= 45) return "G3a";
+  if (egfr >= 30) return "G3b";
+  if (egfr >= 15) return "G4";
+  return "G5";
+}
+
+test("eGFR: the stage always matches the reported (rounded) eGFR", () => {
+  for (const sex of ["M", "F"] as const) {
+    for (const age of [18, 40, 65, 90]) {
+      for (let scr = 0.3; scr <= 8; scr += 0.001) {
+        const r = calculateEgfr({ age, sex, serum_creatinine_mgdl: scr });
+        assert.ok(
+          r.ckd_stage.startsWith(`${ckdStageOf(r.score)}（`),
+          `eGFR ${r.score} reported with stage ${r.ckd_stage}`,
+        );
+      }
+    }
+  }
+});
+
+test("BMI: a value that rounds to 24 is classified as overweight, not normal", () => {
+  // 65.33 / 1.65² = 23.996… → reported as 24, which is the overweight cutoff.
+  const r = calculateBmi({ weight_kg: 65.33, height_cm: 165 });
+  assert.equal(r.score, 24);
+  assert.equal(r.category, "過重");
+});
+
+test("DAS28: the activity band always matches the reported (rounded) score", () => {
+  const bandOf = (s: number): RegExp =>
+    s <= 2.6 ? /Remission/ : s <= 3.2 ? /Low/ : s <= 5.1 ? /Moderate/ : /High/;
+  for (let esr = 1; esr <= 120; esr += 0.01) {
+    const r = calculateDas28({ tender_count: 1, swollen_count: 1, global_health: 20, formula: "esr", esr });
+    assert.match(r.disease_activity, bandOf(r.score), `DAS28 ${r.score} reported as ${r.disease_activity}`);
+  }
+});
+
+test("CDAI: float noise on a band edge does not change the band", () => {
+  // 0.1 + 2.7 sums to 2.8000000000000003 in IEEE-754; CDAI 2.8 is remission.
+  const r = calculateCdai({ tender_count: 0, swollen_count: 0, patient_global: 0.1, provider_global: 2.7 });
+  assert.equal(r.score, 2.8);
+  assert.match(r.disease_activity, /Remission|緩解/);
 });

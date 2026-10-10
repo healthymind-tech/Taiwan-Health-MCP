@@ -9,13 +9,28 @@ Every result returns a consistent envelope:
 ```json
 {
   "calculator": "bmi",
-  "score": 27.3,
-  "interpretation": "肥胖",
+  "score": 27.55,
+  "category": "肥胖",
+  "interpretation": "BMI 27.55，肥胖",
   "inputs": { "weight_kg": 75, "height_cm": 165 },
-  "notes": ["台灣標準：BMI≥27 為肥胖"],
+  "notes": [
+    "台灣（亞洲）標準：<18.5 過輕、18.5–23.9 正常、24–26.9 過重、≥27 肥胖。",
+    "WHO 國際標準為 ≥25 過重、≥30 肥胖，與台灣標準不同。"
+  ],
   "disclaimer": "僅供臨床決策支援，不取代專業醫療判斷。"
 }
 ```
+
+Besides the common fields, each calculator adds its own tier field (e.g. `category`,
+`risk_category`, `ckd_stage`, `disease_activity`). `interpretation` is a full sentence,
+not a bare tier label — read the tier field when parsing programmatically. Continuous
+scores are rounded to two decimals, and the tier is always derived from the rounded
+value, so the reported score and tier never contradict each other.
+
+**Input validation:** every parameter has a plausible range (see the tables below).
+Out-of-range values and obvious unit mix-ups (e.g. height in metres, creatinine in
+µmol/L) are rejected with a validation error instead of producing a score. The ranges
+are also published in the JSON Schema of `tools/list` and `/openapi.json`.
 
 > All results are decision support only and do not replace professional medical
 > judgment. Cutoffs and tiers follow each score's original literature and current
@@ -30,7 +45,7 @@ CHA₂DS₂-VASc stroke-risk score for non-valvular atrial fibrillation (0–9),
 ### Parameters
 | Parameter | Type | Required | Description |
 | :--- | :--- | :--- | :--- |
-| `age` | integer | Yes | Age in years; 65–74 / ≥75 brackets computed internally |
+| `age` | integer | Yes | Age in years (0–130); 65–74 / ≥75 brackets computed internally |
 | `sex` | string | Yes | `"M"` / `"F"` |
 | `congestive_heart_failure` | boolean | No | Congestive heart failure |
 | `hypertension` | boolean | No | Hypertension |
@@ -52,7 +67,7 @@ Wells criteria for pulmonary embolism (two-tier + three-tier risk).
 | :--- | :--- | :--- | :--- |
 | `clinical_signs_dvt` | boolean | No | Clinical signs of DVT (+3) |
 | `alternative_diagnosis_less_likely` | boolean | No | Alternative diagnosis less likely (+3) |
-| `heart_rate_bpm` | number | No | Heart rate; >100 auto +1.5 |
+| `heart_rate_bpm` | number | No | Heart rate (0–350); >100 auto +1.5 |
 | `immobilization_or_recent_surgery` | boolean | No | Immobilization / surgery ≤4 weeks (+1.5) |
 | `previous_dvt_or_pe` | boolean | No | Prior DVT/PE (+1.5) |
 | `hemoptysis` | boolean | No | Hemoptysis (+1) |
@@ -85,12 +100,12 @@ DAS28 rheumatoid arthritis disease activity (ESR or CRP variant).
 ### Parameters
 | Parameter | Type | Required | Description |
 | :--- | :--- | :--- | :--- |
-| `tender_count` | integer | Yes | Tender joint count |
-| `swollen_count` | integer | Yes | Swollen joint count |
-| `global_health` | number | Yes | Patient global assessment VAS (0–100) |
+| `tender_count` | integer | Yes | Tender joint count (28-joint assessment, 0–28) |
+| `swollen_count` | integer | Yes | Swollen joint count (28-joint assessment, 0–28) |
+| `global_health` | number | Yes | Patient global assessment VAS (0–100 mm; not the 0–10 scale CDAI uses) |
 | `formula` | string | Yes | `"esr"` or `"crp"` |
-| `esr` | number | per formula | Required when `formula="esr"`, mm/h |
-| `crp` | number | per formula | Required when `formula="crp"`, mg/L |
+| `esr` | number | per formula | Required when `formula="esr"`, mm/h (>0, max 200) |
+| `crp` | number | per formula | Required when `formula="crp"`, mg/L (0–500; not mg/dL) |
 
 ### Tiers
 ≤2.6 remission, ≤3.2 low, ≤5.1 moderate, >5.1 high disease activity.
@@ -103,13 +118,13 @@ CDAI (lab-free) rheumatoid arthritis disease activity.
 ### Parameters
 | Parameter | Type | Required | Description |
 | :--- | :--- | :--- | :--- |
-| `tender_count` | integer | Yes | Tender joint count (0–10) |
-| `swollen_count` | integer | Yes | Swollen joint count (0–10) |
+| `tender_count` | integer | Yes | Tender joint count (28-joint assessment, 0–28) |
+| `swollen_count` | integer | Yes | Swollen joint count (28-joint assessment, 0–28) |
 | `patient_global` | number | Yes | Patient global assessment (0–10) |
 | `provider_global` | number | Yes | Provider global assessment (0–10) |
 
 ### Tiers
-≤2.8 remission, ≤10 low, ≤22 moderate, >22 high disease activity.
+Total 0–76; ≤2.8 remission, ≤10 low, ≤22 moderate, >22 high disease activity.
 
 ---
 
@@ -119,8 +134,8 @@ Body mass index with Taiwan (Asian) cutoffs.
 ### Parameters
 | Parameter | Type | Required | Description |
 | :--- | :--- | :--- | :--- |
-| `weight_kg` | number | Yes | Weight in kg |
-| `height_cm` | number | Yes | Height in cm |
+| `weight_kg` | number | Yes | Weight in kg (>0, max 700) |
+| `height_cm` | number | Yes | Height in cm (50–280; height in metres is rejected) |
 
 ### Tiers (Taiwan/Asian)
 <18.5 underweight, 18.5–23.9 normal, 24–26.9 overweight, ≥27 obese. WHO
@@ -134,9 +149,9 @@ Estimated glomerular filtration rate (CKD-EPI 2021, race-free).
 ### Parameters
 | Parameter | Type | Required | Description |
 | :--- | :--- | :--- | :--- |
-| `age` | integer | Yes | Age in years |
+| `age` | integer | Yes | Age in years (18–130; CKD-EPI 2021 is adults-only) |
 | `sex` | string | Yes | `"M"` / `"F"` |
-| `serum_creatinine_mgdl` | number | Yes | Serum creatinine (mg/dL) |
+| `serum_creatinine_mgdl` | number | Yes | Serum creatinine (mg/dL, >0, max 30; µmol/L ÷ 88.4) |
 
 ### Tiers (KDIGO)
 G1 ≥90, G2 60–89, G3a 45–59, G3b 30–44, G4 15–29, G5 <15. Not applicable in acute
@@ -150,8 +165,8 @@ HAS-BLED bleeding risk on oral anticoagulation (0–9).
 ### Parameters
 | Parameter | Type | Required | Description |
 | :--- | :--- | :--- | :--- |
-| `age` | integer | Yes | Age in years; >65 auto +1 |
-| `systolic_bp_mmhg` | number | No | Systolic BP (mmHg); >160 auto counts as uncontrolled hypertension +1 |
+| `age` | integer | Yes | Age in years (0–130); >65 auto +1 |
+| `systolic_bp_mmhg` | number | No | Systolic BP (mmHg, 0–300); >160 auto counts as uncontrolled hypertension +1 |
 | `abnormal_renal_function` | boolean | No | Abnormal renal function |
 | `abnormal_liver_function` | boolean | No | Abnormal liver function |
 | `stroke_history` | boolean | No | Stroke history |
@@ -171,9 +186,9 @@ CURB-65 community-acquired pneumonia severity (0–5).
 ### Parameters
 | Parameter | Type | Required | Description |
 | :--- | :--- | :--- | :--- |
-| `age` | integer | Yes | Age in years; ≥65 auto +1 |
+| `age` | integer | Yes | Age in years (0–130); ≥65 auto +1 |
 | `confusion` | boolean | No | Confusion |
-| `bun_mgdl` | number | No | BUN (mg/dL); >19 +1 |
+| `bun_mgdl` | number | No | BUN (mg/dL, 0–300); >19 +1 |
 | `respiratory_rate` | number | No | Respiratory rate; ≥30 +1 |
 | `sbp_mmhg` | number | No | Systolic BP (<90, or DBP≤60, counts as hypotension +1) |
 | `dbp_mmhg` | number | No | Diastolic BP |

@@ -8,13 +8,26 @@
 ```json
 {
   "calculator": "bmi",
-  "score": 27.3,
-  "interpretation": "肥胖",
+  "score": 27.55,
+  "category": "肥胖",
+  "interpretation": "BMI 27.55，肥胖",
   "inputs": { "weight_kg": 75, "height_cm": 165 },
-  "notes": ["台灣標準：BMI≥27 為肥胖"],
+  "notes": [
+    "台灣（亞洲）標準：<18.5 過輕、18.5–23.9 正常、24–26.9 過重、≥27 肥胖。",
+    "WHO 國際標準為 ≥25 過重、≥30 肥胖，與台灣標準不同。"
+  ],
   "disclaimer": "僅供臨床決策支援，不取代專業醫療判斷。"
 }
 ```
+
+除共同欄位外，各計算器另有自己的分級欄位（如 `category`、`risk_category`、
+`ckd_stage`、`disease_activity`）。`interpretation` 是一句完整的說明文字，
+不是單純的分級標籤；程式要判讀分級時請讀分級欄位。連續型分數四捨五入到小數
+兩位，分級一律依四捨五入後的數值判定，因此顯示的分數與分級不會互相矛盾。
+
+**輸入範圍檢查：** 每個參數都有合理範圍（見下方各表），超出範圍或單位明顯
+錯誤（例如身高以公尺、肌酸酐以 µmol/L 傳入）時，工具直接拒絕並回傳驗證錯誤，
+不會算出分數。範圍同時列在 `tools/list` 與 `/openapi.json` 的 JSON Schema 中。
 
 > 所有計算結果僅供臨床決策支援，不取代專業醫療判斷。分數採用的切點與分級
 > 依各計分原始文獻與台灣現行指引；`interpretation` / `notes` 為正體中文。
@@ -28,7 +41,7 @@ CHA₂DS₂-VA 調整分數（去除性別）。
 ### 參數
 | 參數名 | 型別 | 必填 | 說明 |
 | :--- | :--- | :--- | :--- |
-| `age` | integer | 是 | 年齡（歲），內部自動判斷 65–74 / ≥75 分組 |
+| `age` | integer | 是 | 年齡（歲，0–130），內部自動判斷 65–74 / ≥75 分組 |
 | `sex` | string | 是 | 性別：`"M"` / `"F"` |
 | `congestive_heart_failure` | boolean | 否 | 鬱血性心衰竭 |
 | `hypertension` | boolean | 否 | 高血壓 |
@@ -50,7 +63,7 @@ CHA₂DS₂-VA 調整分數（去除性別）。
 | :--- | :--- | :--- | :--- |
 | `clinical_signs_dvt` | boolean | 否 | DVT 臨床徵象（+3） |
 | `alternative_diagnosis_less_likely` | boolean | 否 | 其他診斷較不可能（+3） |
-| `heart_rate_bpm` | number | 否 | 心率，>100 自動 +1.5 |
+| `heart_rate_bpm` | number | 否 | 心率（0–350），>100 自動 +1.5 |
 | `immobilization_or_recent_surgery` | boolean | 否 | 臥床 / 近 4 週手術（+1.5） |
 | `previous_dvt_or_pe` | boolean | 否 | 過去 DVT/PE（+1.5） |
 | `hemoptysis` | boolean | 否 | 咳血（+1） |
@@ -83,12 +96,12 @@ CHA₂DS₂-VA 調整分數（去除性別）。
 ### 參數
 | 參數名 | 型別 | 必填 | 說明 |
 | :--- | :--- | :--- | :--- |
-| `tender_count` | integer | 是 | 壓痛關節數 |
-| `swollen_count` | integer | 是 | 腫脹關節數 |
-| `global_health` | number | 是 | 病人整體評估 VAS（0–100） |
+| `tender_count` | integer | 是 | 壓痛關節數（28 關節評估，0–28） |
+| `swollen_count` | integer | 是 | 腫脹關節數（28 關節評估，0–28） |
+| `global_health` | number | 是 | 病人整體評估 VAS（0–100 mm；注意不是 CDAI 的 0–10） |
 | `formula` | string | 是 | `"esr"` 或 `"crp"` |
-| `esr` | number | 視 formula | `formula="esr"` 時必填，單位 mm/h |
-| `crp` | number | 視 formula | `formula="crp"` 時必填，單位 mg/L |
+| `esr` | number | 視 formula | `formula="esr"` 時必填，單位 mm/h（>0，最大 200） |
+| `crp` | number | 視 formula | `formula="crp"` 時必填，單位 mg/L（0–500，不是 mg/dL） |
 
 ### 分級
 ≤2.6 緩解、≤3.2 低、≤5.1 中、>5.1 高疾病活動度。
@@ -101,13 +114,13 @@ CHA₂DS₂-VA 調整分數（去除性別）。
 ### 參數
 | 參數名 | 型別 | 必填 | 說明 |
 | :--- | :--- | :--- | :--- |
-| `tender_count` | integer | 是 | 壓痛關節數（0–10） |
-| `swollen_count` | integer | 是 | 腫脹關節數（0–10） |
+| `tender_count` | integer | 是 | 壓痛關節數（28 關節評估，0–28） |
+| `swollen_count` | integer | 是 | 腫脹關節數（28 關節評估，0–28） |
 | `patient_global` | number | 是 | 病人整體評估（0–10） |
 | `provider_global` | number | 是 | 評估者整體評估（0–10） |
 
 ### 分級
-≤2.8 緩解、≤10 低、≤22 中、>22 高疾病活動度。
+總分 0–76；≤2.8 緩解、≤10 低、≤22 中、>22 高疾病活動度。
 
 ---
 
@@ -117,8 +130,8 @@ CHA₂DS₂-VA 調整分數（去除性別）。
 ### 參數
 | 參數名 | 型別 | 必填 | 說明 |
 | :--- | :--- | :--- | :--- |
-| `weight_kg` | number | 是 | 體重（公斤） |
-| `height_cm` | number | 是 | 身高（公分） |
+| `weight_kg` | number | 是 | 體重（公斤，>0，最大 700） |
+| `height_cm` | number | 是 | 身高（公分，50–280；以公尺傳入會被拒絕） |
 
 ### 分級（台灣/亞洲）
 <18.5 過輕、18.5–23.9 正常、24–26.9 過重、≥27 肥胖。WHO 國際標準為 ≥25 過重、≥30 肥胖。
@@ -131,9 +144,9 @@ CHA₂DS₂-VA 調整分數（去除性別）。
 ### 參數
 | 參數名 | 型別 | 必填 | 說明 |
 | :--- | :--- | :--- | :--- |
-| `age` | integer | 是 | 年齡（歲） |
+| `age` | integer | 是 | 年齡（歲，18–130；CKD-EPI 2021 僅適用成人） |
 | `sex` | string | 是 | 性別：`"M"` / `"F"` |
-| `serum_creatinine_mgdl` | number | 是 | 血清肌酸酐（mg/dL） |
+| `serum_creatinine_mgdl` | number | 是 | 血清肌酸酐（mg/dL，>0，最大 30；µmol/L ÷ 88.4） |
 
 ### 分級（KDIGO）
 G1 ≥90、G2 60–89、G3a 45–59、G3b 30–44、G4 15–29、G5 <15。急性腎損傷或非穩定狀態下不適用。
@@ -146,8 +159,8 @@ G1 ≥90、G2 60–89、G3a 45–59、G3b 30–44、G4 15–29、G5 <15。急性
 ### 參數
 | 參數名 | 型別 | 必填 | 說明 |
 | :--- | :--- | :--- | :--- |
-| `age` | integer | 是 | 年齡（歲），>65 自動 +1 |
-| `systolic_bp_mmhg` | number | 否 | 收縮壓（mmHg），>160 自動視為未控制高血壓 +1 |
+| `age` | integer | 是 | 年齡（歲，0–130），>65 自動 +1 |
+| `systolic_bp_mmhg` | number | 否 | 收縮壓（mmHg，0–300），>160 自動視為未控制高血壓 +1 |
 | `abnormal_renal_function` | boolean | 否 | 腎功能異常 |
 | `abnormal_liver_function` | boolean | 否 | 肝功能異常 |
 | `stroke_history` | boolean | 否 | 中風病史 |
@@ -167,9 +180,9 @@ G1 ≥90、G2 60–89、G3a 45–59、G3b 30–44、G4 15–29、G5 <15。急性
 ### 參數
 | 參數名 | 型別 | 必填 | 說明 |
 | :--- | :--- | :--- | :--- |
-| `age` | integer | 是 | 年齡（歲），≥65 自動 +1 |
+| `age` | integer | 是 | 年齡（歲，0–130），≥65 自動 +1 |
 | `confusion` | boolean | 否 | 意識混淆 |
-| `bun_mgdl` | number | 否 | BUN（mg/dL），>19 +1 |
+| `bun_mgdl` | number | 否 | BUN（mg/dL，0–300），>19 +1 |
 | `respiratory_rate` | number | 否 | 呼吸速率，≥30 +1 |
 | `sbp_mmhg` | number | 否 | 收縮壓（<90 或 DBP≤60 為低血壓 +1） |
 | `dbp_mmhg` | number | 否 | 舒張壓 |
