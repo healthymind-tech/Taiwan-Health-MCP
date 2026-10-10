@@ -5,9 +5,11 @@
 (`src/server.ts`, `src/mcp.ts`), the service layer (`src/*Service.ts` — ICD, drug, lab,
 FHIR, SNOMED, …), the admin console backend (`src/admin/*.ts`), and every
 dataset loader (`src/loaders/*.ts` — ICD, LOINC, SNOMED, RxNorm, FHIR IG, Taiwan FDA
-drug/supplements/food, embeddings). `web/` is the Next.js front-end (public pages in
-`app/`, the admin SPA in `admin-app/`, verbatim legacy HTML in `legacy/`). `db/` holds
-`schema.sql` and `migrations/`. `docs/` is the MkDocs source for the published site.
+drug/supplements/food, embeddings). `web/` is the Next.js front-end; it serves only the
+admin SPA (`admin-app/`, mounted by the `app/[[...slug]]` catch-all) and the login page
+(`app/login/`). The public landing/status/privacy/dpa pages moved to a standalone
+marketing-site project. `db/` holds `schema.sql` and `migrations/`. `docs/` is the
+MkDocs source for the published site.
 `src/prompts/` holds runtime LLM prompts and is the only thing left under `src/`.
 `fhir-code/` holds source datasets (untracked; see `docs/data-sources/test-data.md`).
 
@@ -90,8 +92,8 @@ overridden with `FHIR_CODE_DIR` / `*_ZIP` env vars.
   errors; override per profile via `llm_profiles.params.timeout_ms` (admin console).
 - **pgBouncer transaction mode**: never use named prepared statements (in `db.ts`, keep
   `pg` statements unnamed) and never use `LISTEN`/`NOTIFY`.
-- **`/health` exists on `app` but nginx does not route it** — health checks must use
-  `/status.json`.
+- **`/health` exists on `app` but nginx does not route it**, and there is no front-door
+  health endpoint — check liveness with `/openapi.json`.
 - **Chinese keyword search without embeddings finds almost nothing** (Postgres `simple`
   tokenizer treats a whole Chinese name as one token). Vectors are the intended path —
   do not "fix" with `ILIKE`.
