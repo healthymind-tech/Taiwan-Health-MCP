@@ -29,6 +29,30 @@ import { FHIRIGService } from "./fhirIgService.js";
 import * as fhirReference from "./fhirReference.js";
 import { getEmbeddingService } from "./embeddingService.js";
 import { logError } from "./logger.js";
+import {
+  bmiInputShape,
+  calculateBmi,
+  calculateCdai,
+  calculateChads2Vasc,
+  calculateCurb65,
+  calculateDas28,
+  calculateEgfr,
+  calculateGcs,
+  calculateHasBled,
+  calculateQsofa,
+  calculateWellsDvt,
+  calculateWellsPe,
+  cdaiInputShape,
+  chads2VascInputShape,
+  curb65InputShape,
+  das28InputShape,
+  egfrInputShape,
+  gcsInputShape,
+  hasBledInputShape,
+  qsofaInputShape,
+  wellsDvtInputShape,
+  wellsPeInputShape,
+} from "./clinicalCalculators.js";
 
 const SERVER_NAME = "taiwan-health-mcp";
 const SERVER_VERSION = "0.0.0";
@@ -1418,6 +1442,148 @@ function registerLabTools(server: McpServer, svc: LabService): void {
   );
 }
 
+/**
+ * Register the Clinical Calculators tool group (always-on, stateless).
+ *
+ * Pure scoring functions — no DB, no module gating. Registered unconditionally
+ * like `health_check` and the FHIR Servers group. Each calculator is its own
+ * tool whose inputSchema is the bounded `*InputShape` exported next to its
+ * pure function in `clinicalCalculators.ts`, so out-of-range and wrong-unit
+ * values are rejected before any formula runs; handlers wrap via `jsonResult`.
+ */
+function registerClinicalCalculatorTools(server: McpServer): void {
+  server.registerTool(
+    "calculate_chads2_vasc",
+    {
+      description:
+        "CHA₂DS₂-VASc stroke-risk score for non-valvular atrial fibrillation (0–9). " +
+        "Accepts raw age/sex and computes brackets internally; also returns the 2024 ESC " +
+        "CHA₂DS₂-VA adjusted score (sex removed). Decision support only.",
+      inputSchema: chads2VascInputShape,
+    },
+    async (args) => jsonResult(calculateChads2Vasc(args)),
+  );
+
+  server.registerTool(
+    "calculate_wells_pe",
+    {
+      description:
+        "Wells criteria for pulmonary embolism (two-tier + three-tier risk). " +
+        "Binary findings are booleans; heart_rate_bpm is raw and the >100 criterion is computed.",
+      inputSchema: wellsPeInputShape,
+    },
+    async (args) => jsonResult(calculateWellsPe(args)),
+  );
+
+  server.registerTool(
+    "calculate_wells_dvt",
+    {
+      description:
+        "Wells criteria for deep-vein thrombosis (two-tier + three-tier risk). " +
+        "All items are binary clinical findings.",
+      inputSchema: wellsDvtInputShape,
+    },
+    async (args) => jsonResult(calculateWellsDvt(args)),
+  );
+
+  server.registerTool(
+    "calculate_das28",
+    {
+      description:
+        "DAS28 rheumatoid arthritis disease activity. formula=esr needs esr (mm/h); " +
+        "formula=crp needs crp (mg/L). Joint counts are 28-joint (0–28); global_health is a 0–100 VAS " +
+        "(not the 0–10 scale CDAI uses). Returns score and activity band (remission/low/moderate/high).",
+      inputSchema: das28InputShape,
+    },
+    async (args) => {
+      try {
+        return jsonResult(calculateDas28(args));
+      } catch (err) {
+        return jsonResult({ error: String((err as Error).message) });
+      }
+    },
+  );
+
+  server.registerTool(
+    "calculate_cdai",
+    {
+      description:
+        "CDAI (lab-free) rheumatoid arthritis disease activity (0–76). Tender and swollen counts use " +
+        "the 28-joint assessment (0–28 each); patient and provider global assessments are 0–10.",
+      inputSchema: cdaiInputShape,
+    },
+    async (args) => jsonResult(calculateCdai(args)),
+  );
+
+  server.registerTool(
+    "calculate_bmi",
+    {
+      description:
+        "Body mass index with Taiwan (Asian) cutoffs: <18.5 underweight, 18.5–23.9 normal, " +
+        "24–26.9 overweight, ≥27 obese. Height in cm (not metres), weight in kg.",
+      inputSchema: bmiInputShape,
+    },
+    async (args) => jsonResult(calculateBmi(args)),
+  );
+
+  server.registerTool(
+    "calculate_egfr",
+    {
+      description:
+        "Estimated glomerular filtration rate using the CKD-EPI 2021 creatinine equation " +
+        "(race-free), adults ≥18 only. serum_creatinine_mgdl in mg/dL (convert µmol/L by dividing by 88.4). " +
+        "Returns eGFR in mL/min/1.73m² and KDIGO CKD stage.",
+      inputSchema: egfrInputShape,
+    },
+    async (args) => jsonResult(calculateEgfr(args)),
+  );
+
+  server.registerTool(
+    "calculate_has_bled",
+    {
+      description:
+        "HAS-BLED bleeding risk on oral anticoagulation (0–9). Accepts raw age (the >65 criterion " +
+        "is computed) and raw systolic BP (the H criterion is computed as SBP >160 mmHg). " +
+        "Returns score and high/low bleeding-risk category (≥3 high).",
+      inputSchema: hasBledInputShape,
+    },
+    async (args) => jsonResult(calculateHasBled(args)),
+  );
+
+  server.registerTool(
+    "calculate_curb65",
+    {
+      description:
+        "CURB-65 community-acquired pneumonia severity (0–5). BUN in mg/dL (threshold >19), " +
+        "respiratory rate ≥30, hypotension SBP<90 or DBP≤60, confusion, age ≥65.",
+      inputSchema: curb65InputShape,
+    },
+    async (args) => jsonResult(calculateCurb65(args)),
+  );
+
+  server.registerTool(
+    "calculate_qsofa",
+    {
+      description:
+        "qSOFA sepsis screening (0–3): respiratory rate ≥22, altered mentation (GCS <15), systolic BP ≤100. " +
+        "≥2 suggests sepsis and further evaluation.",
+      inputSchema: qsofaInputShape,
+    },
+    async (args) => jsonResult(calculateQsofa(args)),
+  );
+
+  server.registerTool(
+    "calculate_gcs",
+    {
+      description:
+        "Glasgow Coma Scale (3–15). eye_response 1–4, verbal_response 1–5, motor_response 1–6. " +
+        "Returns total, E/V/M sub-scores, and mild/moderate/severe severity (≤8 severe).",
+      inputSchema: gcsInputShape,
+    },
+    async (args) => jsonResult(calculateGcs(args)),
+  );
+}
+
 /** Construct a fresh McpServer with all currently-ported tools registered. */
 export async function buildMcpServer(): Promise<McpServer> {
   const server = new McpServer({ name: SERVER_NAME, version: SERVER_VERSION });
@@ -1440,6 +1606,9 @@ export async function buildMcpServer(): Promise<McpServer> {
       content: [{ type: "text" as const, text: await buildHealthCheck() }],
     }),
   );
+
+  // Always-on Clinical Calculators group (stateless, registered regardless of module data).
+  registerClinicalCalculatorTools(server);
 
   // Always-on FHIR Servers group (registered regardless of module data).
   {

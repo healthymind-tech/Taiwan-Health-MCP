@@ -35,7 +35,7 @@ it does not publish port 8000 to the host.
 | Path | Contents |
 |------|----------|
 | `src/server.ts` | HTTP surface + process initialization (pool, Redis, MinIO, services, metrics) |
-| `src/mcp.ts` | MCP tool registration — all 49 tools, grouped; groups are added/removed dynamically by `moduleStatus.ts` |
+| `src/mcp.ts` | MCP tool registration — all 60 tools, grouped; module-backed groups are added/removed dynamically by `moduleStatus.ts` |
 | `src/*Service.ts` | Domain services (ICD, drug, lab, SNOMED, FHIR Condition/Medication/IG, FHIR servers, embeddings) |
 | `src/fhir*.ts` | In-process FHIR R4 machinery: snapshot generation, terminology, validation, reference resolution, authoring |
 | `src/admin/` | Admin console backend: routing (`adminApp.ts`), jobs (`adminJobs.ts`), worker (`adminWorker.ts`), settings, sources, schedules, IG import, FHIR servers, WebAuthn |
