@@ -321,6 +321,7 @@ Never interleave HTTP fetches with DB writes inside a transaction.
 ## Key Limitations
 
 - **Health supplements disease mappings** are developer-curated and not medically validated — not suitable for patient-facing use without expert review
+- **Clinical calculators** implement published scoring formulas for decision support only — they are not a validated medical device, and every result carries a disclaimer. Any change to a formula, weight or cutoff must cite its source literature (see the References table in `docs/tools/clinical-calculator-tools.md`) and keep the input bounds in the `*InputShape` exports in step
 - **FHIR validation** is in-process and profile-driven (snapshot + terminology binding checks); it is not a substitute for the official HL7 FHIR Validator for conformance certification
 - **SNOMED CT** requires an active SNOMED International license (free for most uses)
 - **Drug analysis** (MinerU OCR + LLM extraction of TFDA inserts) is machine-generated and must be verified by a clinician; it depends on external OCR/LLM endpoints being configured
