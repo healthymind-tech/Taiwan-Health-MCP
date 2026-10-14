@@ -3091,10 +3091,19 @@ export async function runEmbedJob(opts: {
       jobId, level: "warn",
       message: "No embeddings created — Ollama may have been unreachable during embedding",
     });
+    // Calculate retry delay: 2min + exponential backoff based on attempt count
+    const attemptCount = (await query<{ attempt_count: number }>(
+      `SELECT attempt_count FROM admin.import_jobs WHERE job_id = $1`,
+      [jobId]
+    )).rows[0]?.attempt_count ?? 0;
+    const delayMinutes = 2 * Math.pow(2, Math.min(attemptCount, 4)); // Cap at 32min
+    const nextRetryAt = new Date(Date.now() + delayMinutes * 60 * 1000);
+
     await markJobStatus({
       jobId, status: "retryable_failed", currentStep: "embed", controlState: "idle",
       lastErrorCode: "zero_embeddings",
       lastErrorMessage: "No embeddings were created — Ollama returned no vectors",
+      nextRetryAt,
     });
     return;
   }
@@ -3110,11 +3119,20 @@ export async function runEmbedJob(opts: {
       jobId, level: "error",
       message: `Embedding incomplete: ${embeddedCount}/${sourceCount} (${(completionRatio * 100).toFixed(1)}%) — falling back to retryable failure`,
     });
+    // Calculate retry delay: 2min + exponential backoff based on attempt count
+    const attemptCount = (await query<{ attempt_count: number }>(
+      `SELECT attempt_count FROM admin.import_jobs WHERE job_id = $1`,
+      [jobId]
+    )).rows[0]?.attempt_count ?? 0;
+    const delayMinutes = 2 * Math.pow(2, Math.min(attemptCount, 4)); // Cap at 32min
+    const nextRetryAt = new Date(Date.now() + delayMinutes * 60 * 1000);
+
     await markJobStatus({
       jobId, status: "retryable_failed", currentStep: "embed", controlState: "idle",
       lastErrorCode: "partial_embedding_failure",
       lastErrorMessage: `Only ${embeddedCount}/${sourceCount} items embedded (${(completionRatio * 100).toFixed(1)}%) — expected >95%`,
       progressCurrent: embeddedCount, progressTotal: sourceCount,
+      nextRetryAt,
     });
     return;
   }
