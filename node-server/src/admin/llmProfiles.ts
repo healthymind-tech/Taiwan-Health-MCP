@@ -277,23 +277,48 @@ function validate(input: {
   }
 }
 
+/** Normalize model name by extracting base model identifier. */
+function normalizeModelName(name: string): string {
+  const trimmed = name.trim().toLowerCase();
+  // Remove provider prefix (e.g., "Qwen/" → "qwen")
+  const withoutPrefix = trimmed.split("/").pop() || trimmed;
+  // Extract base model name (e.g., "qwen3-embedding-0.6b-q8_0" → "qwen3-embedding")
+  const baseModel = withoutPrefix.split(":")[0] || withoutPrefix;
+  // Remove version suffixes (e.g., "-0.6b", "-v1.5", "-q8_0")
+  return baseModel.replace(/-v?\d+(\.\d+)?.*$/, "").replace(/-q\d+_\d+$/, "");
+}
+
 /**
  * Every enabled embedding profile must serve the same model and vector
  * dimensions. Vectors from two different models — or two dimensions — are not
  * comparable, and they all land in the same pgvector column, so mixing them
  * corrupts semantic search in a way nothing would flag at query time.
+ *
+ * Model names from different providers (e.g., Ollama vs SiliconFlow) are allowed
+ * if they represent the same base model (e.g., both "Qwen3-Embedding-0.6B").
  */
 export async function assertEmbeddingConsistency(pending?: LlmProfile[]): Promise<void> {
   const enabled = (pending ?? (await listProfiles("embedding"))).filter((p) => p.enabled);
-  const models = [...new Set(enabled.map((p) => p.model.trim()).filter(Boolean))];
-  if (models.length > 1) {
+  const normalizedModels = [...new Set(
+    enabled
+      .map((p) => normalizeModelName(p.model))
+      .filter(Boolean)
+  )];
+  if (normalizedModels.length > 1) {
+    const modelsByNormalized = new Map<string, string[]>();
+    for (const p of enabled) {
+      const norm = normalizeModelName(p.model);
+      if (!modelsByNormalized.has(norm)) modelsByNormalized.set(norm, []);
+      modelsByNormalized.get(norm)!.push(p.model);
+    }
     throw new ProfileValidationError(
-      `All enabled embedding profiles must serve the same model — found ${models
-        .map((m) => `'${m}'`)
-        .join(", ")}. Vectors from different embedding models (including different ` +
-        "quantisations of the same model) are not comparable, and every vector in the " +
+      `All enabled embedding profiles must serve the same base model. Found different models: ${
+        Array.from(modelsByNormalized.entries())
+          .map(([_, names]) => `${names.map((m) => `'${m}'`).join(", ")}`)
+          .join("; ")
+      }. Vectors from different embedding models are not comparable, and every vector in the ` +
         "database shares one column. Extra embedding profiles are for redundancy across " +
-        "hosts serving the same model; to change model, re-embed every module afterwards.",
+        "hosts serving the same model (possibly from different providers).",
     );
   }
   const dims = [...new Set(enabled.map((p) => embeddingDimensions(p)).filter(Boolean))];

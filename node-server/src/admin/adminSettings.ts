@@ -1082,6 +1082,31 @@ async function openaiModels(baseUrl: string, apiKey: string): Promise<ModelsResu
   }
 }
 
+function siliconflowModels(kind: string | undefined): ModelsResult {
+  const embeddingModels = [
+    "Qwen/Qwen3-Embedding-0.6B",
+    "Qwen/Qwen2-Embedding",
+    "BAAI/bge-large-zh-v1.5",
+    "BAAI/bge-large-en-v1.5",
+    "BAAI/bge-base-zh-v1.5",
+    "jinaai/jina-embeddings-v2-base-zh",
+  ];
+  const llmModels = [
+    "Qwen/Qwen2.5-72B-Instruct",
+    "Qwen/Qwen2.5-32B-Instruct",
+    "Qwen/Qwen2.5-14B-Instruct",
+    "meta-llama/Llama-3.1-70B-Instruct",
+    "meta-llama/Llama-3.1-8B-Instruct",
+    "deepseek-ai/DeepSeek-V3",
+  ];
+  const models = kind === "embedding" ? embeddingModels : llmModels;
+  return {
+    ok: true,
+    models: [...models].sort(),
+    message: `${models.length} model(s) available for ${kind === "embedding" ? "embedding" : "analysis"}.`,
+  };
+}
+
 const GOOGLE_BASE = "https://generativelanguage.googleapis.com";
 
 async function googleEmbeddingModels(apiKey: string): Promise<ModelsResult> {
@@ -1159,7 +1184,8 @@ export async function listProfileModels(draft: ProfileDraft): Promise<ModelsResu
   const key = await resolveProfileKey(draft);
   if (provider === "google") return googleEmbeddingModels(key);
   if (provider === "ollama") return ollamaTags(base);
-  if (provider === "siliconflow" || provider === "openai") return openaiModels(base, key);
+  if (provider === "siliconflow") return siliconflowModels(draft.kind);
+  if (provider === "openai") return openaiModels(base, key);
   return openaiModels(base, key);
 }
 
