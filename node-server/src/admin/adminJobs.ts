@@ -3099,6 +3099,33 @@ export async function runEmbedJob(opts: {
     return;
   }
 
+  // Validate embedding completeness
+  const completionRatio = sourceCount > 0 ? (embeddedCount / sourceCount) : 0;
+  const isIncomplete = embeddedCount < sourceCount;
+  const completionThreshold = 0.95; // Allow max 5% loss
+  const isPartiallyFailed = isIncomplete && completionRatio < completionThreshold;
+
+  if (isPartiallyFailed) {
+    await appendJobLog({
+      jobId, level: "error",
+      message: `Embedding incomplete: ${embeddedCount}/${sourceCount} (${(completionRatio * 100).toFixed(1)}%) — falling back to retryable failure`,
+    });
+    await markJobStatus({
+      jobId, status: "retryable_failed", currentStep: "embed", controlState: "idle",
+      lastErrorCode: "partial_embedding_failure",
+      lastErrorMessage: `Only ${embeddedCount}/${sourceCount} items embedded (${(completionRatio * 100).toFixed(1)}%) — expected >95%`,
+      progressCurrent: embeddedCount, progressTotal: sourceCount,
+    });
+    return;
+  }
+
+  if (isIncomplete) {
+    await appendJobLog({
+      jobId, level: "warn",
+      message: `Embedding slightly incomplete: ${embeddedCount}/${sourceCount} (${(completionRatio * 100).toFixed(1)}%) — within acceptable threshold`,
+    });
+  }
+
   await recordJobStep({
     jobId, stepKey: "embed", status: "success", progressCurrent: embeddedCount, progressTotal: sourceCount,
     checkpoint: { phase: "embedded", embedded_count: embeddedCount },
@@ -3118,6 +3145,7 @@ export async function runEmbedJob(opts: {
       module: cfg.label,
       embedded_count: embeddedCount,
       source_count: sourceCount,
+      completion_ratio: (completionRatio * 100).toFixed(1),
     },
   });
 }
