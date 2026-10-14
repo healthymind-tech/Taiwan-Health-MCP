@@ -55,77 +55,117 @@ async function providerEmbed(
     throw new Error(`Rate limit: ${reason}. Wait ${Math.ceil(waitMs / 1000)}s.`);
   }
 
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), s.timeout * 1000);
   const baseUrl = p.base_url.replace(/\/+$/, "");
   const dimensions = embeddingDimensions(p);
-  try {
-    if (p.provider === "openai" || p.provider === "siliconflow") {
-      const base = baseUrl.endsWith("/embeddings") ? baseUrl : `${baseUrl}/embeddings`;
-      const body: Record<string, unknown> = {
-        model: p.model,
-        input: texts,
-        encoding_format: "float",
-      };
-      if (dimensions && p.model.startsWith("text-embedding-3")) {
-        body.dimensions = dimensions;
+
+  // Retry logic for transient failures
+  const maxRetries = p.provider === "siliconflow" ? 3 : 1;
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), s.timeout * 1000);
+
+    try {
+      if (p.provider === "openai" || p.provider === "siliconflow") {
+        const base = baseUrl.endsWith("/embeddings") ? baseUrl : `${baseUrl}/embeddings`;
+        const body: Record<string, unknown> = {
+          model: p.model,
+          input: texts,
+          encoding_format: "float",
+        };
+        if (dimensions && p.model.startsWith("text-embedding-3")) {
+          body.dimensions = dimensions;
+        }
+        const headers: Record<string, string> = { "Content-Type": "application/json" };
+        if (p.api_key) headers.Authorization = `Bearer ${p.api_key}`;
+
+        const resp = await fetch(base, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(body),
+          signal: ctrl.signal
+        });
+
+        if (!resp.ok) {
+          throw new Error(`HTTP ${resp.status}`);
+        }
+
+        const json = (await resp.json()) as { data?: { index?: number; embedding?: number[] }[] };
+        const data = [...(json.data ?? [])].sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+        const result = data.map((d) => d.embedding ?? null);
+
+        // Record request for rate limiting (rough token estimate: 10 chars per token avg)
+        const totalTokens = Math.ceil(texts.join("").length / 10);
+        recordRequest(p.id, totalTokens);
+
+        return result;
       }
-      const headers: Record<string, string> = { "Content-Type": "application/json" };
-      if (p.api_key) headers.Authorization = `Bearer ${p.api_key}`;
-      const resp = await fetch(base, { method: "POST", headers, body: JSON.stringify(body), signal: ctrl.signal });
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const json = (await resp.json()) as { data?: { index?: number; embedding?: number[] }[] };
-      const data = [...(json.data ?? [])].sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
-      const result = data.map((d) => d.embedding ?? null);
+      if (p.provider === "google") {
+        const modelPath = p.model.startsWith("models/") ? p.model : `models/${p.model}`;
+        const reqs = texts.map((t) => {
+          const req: Record<string, unknown> = { model: modelPath, content: { parts: [{ text: t }] } };
+          if (dimensions) req.outputDimensionality = dimensions;
+          return req;
+        });
+        const resp = await fetch(`${GOOGLE_BASE}/v1beta/${modelPath}:batchEmbedContents`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-goog-api-key": p.api_key },
+          body: JSON.stringify({ requests: reqs }),
+          signal: ctrl.signal,
+        });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const json = (await resp.json()) as { embeddings?: { values?: number[] }[] };
+        const result = (json.embeddings ?? []).map((e) => e.values ?? null);
 
-      // Record request for rate limiting (rough token estimate: 10 chars per token avg)
-      const totalTokens = Math.ceil(texts.join("").length / 10);
-      recordRequest(p.id, totalTokens);
+        // Record request for rate limiting
+        const totalTokens = Math.ceil(texts.join("").length / 10);
+        recordRequest(p.id, totalTokens);
 
-      return result;
-    }
-    if (p.provider === "google") {
-      const modelPath = p.model.startsWith("models/") ? p.model : `models/${p.model}`;
-      const reqs = texts.map((t) => {
-        const req: Record<string, unknown> = { model: modelPath, content: { parts: [{ text: t }] } };
-        if (dimensions) req.outputDimensionality = dimensions;
-        return req;
-      });
-      const resp = await fetch(`${GOOGLE_BASE}/v1beta/${modelPath}:batchEmbedContents`, {
+        return result;
+      }
+
+      // ollama
+      const resp = await fetch(`${baseUrl}/api/embed`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-goog-api-key": p.api_key },
-        body: JSON.stringify({ requests: reqs }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: p.model, input: texts }),
         signal: ctrl.signal,
       });
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const json = (await resp.json()) as { embeddings?: { values?: number[] }[] };
-      const result = (json.embeddings ?? []).map((e) => e.values ?? null);
+      const json = (await resp.json()) as { embeddings?: number[][] };
+      const result = json.embeddings ?? [];
 
       // Record request for rate limiting
       const totalTokens = Math.ceil(texts.join("").length / 10);
       recordRequest(p.id, totalTokens);
 
       return result;
+    } catch (exc) {
+      lastError = exc as Error;
+      clearTimeout(timer);
+
+      // For SiliconFlow, retry on transient failures
+      if (p.provider === "siliconflow" && attempt < maxRetries) {
+        const errMsg = String(lastError.message ?? "");
+        const isTransient = errMsg.includes("fetch failed") ||
+                           errMsg.includes("timeout") ||
+                           errMsg.includes("ECONNREFUSED") ||
+                           errMsg.includes("ETIMEDOUT");
+        if (isTransient) {
+          // Exponential backoff: 100ms, 200ms, 400ms
+          await new Promise(resolve => setTimeout(resolve, 100 * Math.pow(2, attempt)));
+          continue; // Retry
+        }
+      }
+
+      // Not retryable or max retries reached
+      throw lastError;
     }
-    // ollama
-    const resp = await fetch(`${baseUrl}/api/embed`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model: p.model, input: texts }),
-      signal: ctrl.signal,
-    });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const json = (await resp.json()) as { embeddings?: number[][] };
-    const result = json.embeddings ?? [];
-
-    // Record request for rate limiting
-    const totalTokens = Math.ceil(texts.join("").length / 10);
-    recordRequest(p.id, totalTokens);
-
-    return result;
-  } finally {
-    clearTimeout(timer);
   }
+
+  // Should not reach here
+  throw lastError || new Error("Embedding failed after retries");
 }
 
 export class EmbeddingService {
