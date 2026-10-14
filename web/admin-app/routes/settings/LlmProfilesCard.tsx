@@ -12,14 +12,15 @@ import { toast } from "../../components/toast";
 import type { LlmProfile, LlmProfileKind, LlmProfileStats, LlmProfileStatsWindow } from "../../lib/types";
 
 const PROVIDERS: Record<LlmProfileKind, string[]> = {
-  analysis: ["openai", "ollama"],
-  embedding: ["ollama", "openai", "google"],
+  analysis: ["openai", "siliconflow", "ollama"],
+  embedding: ["ollama", "openai", "siliconflow", "google"],
 };
 
 const BASE_URL_DEFAULTS: Record<string, string> = {
   openai: "https://api.openai.com/v1",
   ollama: "http://host.docker.internal:11434",
   google: "https://generativelanguage.googleapis.com",
+  siliconflow: "https://api.siliconflow.cn/v1",
 };
 
 interface DraftProfile {
@@ -38,6 +39,8 @@ interface DraftProfile {
   max_tokens: number;
   max_token_budget: number;
   timeout_ms: number;
+  rpm?: number;
+  tpm?: number;
 }
 
 function emptyDraft(kind: LlmProfileKind): DraftProfile {
@@ -94,11 +97,27 @@ function toDraft(p: LlmProfile): DraftProfile {
     max_tokens: Number(p.params?.max_tokens ?? defaultMaxTokens(p.model)),
     max_token_budget: Number(p.params?.max_token_budget ?? 0),
     timeout_ms: Number(p.params?.timeout_ms ?? 600000),
+    rpm: p.params?.rpm ? Number(p.params.rpm) : undefined,
+    tpm: p.params?.tpm ? Number(p.params.tpm) : undefined,
   };
 }
 
 /** A blank key is omitted, not sent — the server keeps the stored one. */
 function toPayload(d: DraftProfile): Record<string, unknown> {
+  const params: Record<string, unknown> =
+    d.kind === "analysis"
+      ? {
+          temperature: d.temperature,
+          max_tokens: d.max_tokens,
+          max_token_budget: d.max_token_budget,
+          timeout_ms: d.timeout_ms,
+        }
+      : { dimensions: d.dimensions };
+
+  // Add RPM/TPM if specified
+  if (d.rpm) params.rpm = d.rpm;
+  if (d.tpm) params.tpm = d.tpm;
+
   const payload: Record<string, unknown> = {
     kind: d.kind,
     name: d.name,
@@ -108,15 +127,7 @@ function toPayload(d: DraftProfile): Record<string, unknown> {
     enabled: d.enabled,
     priority: d.priority,
     weight: d.weight,
-    params:
-      d.kind === "analysis"
-        ? {
-            temperature: d.temperature,
-            max_tokens: d.max_tokens,
-            max_token_budget: d.max_token_budget,
-            timeout_ms: d.timeout_ms,
-          }
-        : { dimensions: d.dimensions },
+    params,
   };
   if (d.api_key.trim()) payload.api_key = d.api_key.trim();
   return payload;
@@ -602,6 +613,38 @@ export function LlmProfilesCard({
               </span>
             </label>
           )}
+          <label className="settings-field">
+            <span className="settings-field__label">RPM (Requests Per Minute)</span>
+            <input
+              type="number"
+              name="rpm"
+              min={0}
+              placeholder="e.g., 30"
+              value={editing.rpm ?? ""}
+              onChange={(e) =>
+                setEditing({ ...editing, rpm: e.target.value ? Number(e.target.value) : undefined })
+              }
+            />
+            <span className="muted small">
+              Optional. Maximum requests per minute. Leave empty for no limit.
+            </span>
+          </label>
+          <label className="settings-field">
+            <span className="settings-field__label">TPM (Tokens Per Minute)</span>
+            <input
+              type="number"
+              name="tpm"
+              min={0}
+              placeholder="e.g., 100000"
+              value={editing.tpm ?? ""}
+              onChange={(e) =>
+                setEditing({ ...editing, tpm: e.target.value ? Number(e.target.value) : undefined })
+              }
+            />
+            <span className="muted small">
+              Optional. Maximum tokens per minute. Leave empty for no limit.
+            </span>
+          </label>
           <label className="settings-field">
             <span className="settings-field__label">Enabled</span>
             <input
