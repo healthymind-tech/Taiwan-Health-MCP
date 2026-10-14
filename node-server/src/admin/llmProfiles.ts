@@ -219,10 +219,20 @@ function isValidHttpUrl(value: string): boolean {
 export class ProfileValidationError extends Error {}
 
 function normalizeParams(kind: ProfileKind, params: Record<string, unknown> | undefined): Record<string, unknown> {
-  if (kind !== "embedding") return params ?? {};
   const next = { ...(params ?? {}) };
-  if (next.dimensions === undefined || next.dimensions === null || next.dimensions === "") {
-    next.dimensions = 1024;
+  if (kind === "embedding") {
+    if (next.dimensions === undefined || next.dimensions === null || next.dimensions === "") {
+      next.dimensions = 1024;
+    }
+  }
+  // Ensure RPM/TPM are positive integers if present
+  if (next.rpm !== undefined && next.rpm !== null && next.rpm !== "") {
+    const rpm = Number(next.rpm);
+    next.rpm = Number.isInteger(rpm) && rpm > 0 ? rpm : undefined;
+  }
+  if (next.tpm !== undefined && next.tpm !== null && next.tpm !== "") {
+    const tpm = Number(next.tpm);
+    next.tpm = Number.isInteger(tpm) && tpm > 0 ? tpm : undefined;
   }
   return next;
 }
@@ -250,6 +260,19 @@ function validate(input: {
     const dims = Math.trunc(Number(input.params?.dimensions ?? 1024));
     if (!Number.isFinite(dims) || dims <= 0) {
       throw new ProfileValidationError("Embedding dimensions must be a positive integer.");
+    }
+  }
+  // Validate RPM/TPM if present
+  if (input.params?.rpm !== undefined && input.params.rpm !== null && input.params.rpm !== "") {
+    const rpm = Number(input.params.rpm);
+    if (!Number.isInteger(rpm) || rpm <= 0) {
+      throw new ProfileValidationError("RPM (Requests Per Minute) must be a positive integer.");
+    }
+  }
+  if (input.params?.tpm !== undefined && input.params.tpm !== null && input.params.tpm !== "") {
+    const tpm = Number(input.params.tpm);
+    if (!Number.isInteger(tpm) || tpm <= 0) {
+      throw new ProfileValidationError("TPM (Tokens Per Minute) must be a positive integer.");
     }
   }
 }

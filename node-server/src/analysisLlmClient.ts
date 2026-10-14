@@ -10,6 +10,7 @@
 import { reportFailure, reportSuccess, type LlmProfile } from "./admin/llmProfiles.js";
 import { recordProfileStats, type LlmCallUsage } from "./admin/llmProfileStats.js";
 import { logWarning } from "./logger.js";
+import { canRequest, recordRequest, waitUntilMs } from "./rateLimiter.js";
 
 export type Message = { role: string; content: string };
 
@@ -199,9 +200,23 @@ async function callOneProfile(
   messages: Message[],
   maxTokens: number,
 ): Promise<{ content: string; usage: LlmCallUsage }> {
+  // Check rate limits before proceeding
+  const limits = {
+    rpm: Number(profile.params?.rpm) || undefined,
+    tpm: Number(profile.params?.tpm) || undefined,
+  };
+  const { allowed, reason } = canRequest(profile.id, limits);
+  if (!allowed) {
+    const waitMs = waitUntilMs(profile.id, limits);
+    throw new Error(`Rate limit: ${reason}. Wait ${Math.ceil(waitMs / 1000)}s.`);
+  }
+
   const startedAt = Date.now();
-  if (profile.provider === "openai" || profile.provider === "vllm") {
-    const url = `${normalizeOpenAiBaseUrl(profile.base_url)}/chat/completions`;
+  if (profile.provider === "openai" || profile.provider === "vllm" || profile.provider === "siliconflow") {
+    const baseUrl = profile.provider === "siliconflow"
+      ? profile.base_url.replace(/\/+$/, "")
+      : normalizeOpenAiBaseUrl(profile.base_url);
+    const url = `${baseUrl}/chat/completions`;
     const payload: Record<string, unknown> = {
       model: profile.model,
       messages,
@@ -209,7 +224,7 @@ async function callOneProfile(
       response_format: { type: "json_object" },
     };
     const tokenParam =
-      profile.provider === "openai" && isReasoningModel(profile.model)
+      (profile.provider === "openai" || profile.provider === "siliconflow") && isReasoningModel(profile.model)
         ? "max_completion_tokens"
         : "max_tokens";
     payload[tokenParam] = maxTokens;
@@ -299,6 +314,11 @@ async function callOneProfile(
         callUsage,
       );
     }
+
+    // Record usage for rate limiting
+    const totalTokens = (callUsage.promptTokens ?? 0) + (callUsage.completionTokens ?? 0);
+    recordRequest(profile.id, totalTokens);
+
     return { content, usage: callUsage };
   }
 
@@ -342,6 +362,11 @@ async function callOneProfile(
         callUsage,
       );
     }
+
+    // Record usage for rate limiting
+    const totalTokens = (callUsage.promptTokens ?? 0) + (callUsage.completionTokens ?? 0);
+    recordRequest(profile.id, totalTokens);
+
     return { content, usage: callUsage };
   }
 
