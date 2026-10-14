@@ -1159,6 +1159,7 @@ export async function listProfileModels(draft: ProfileDraft): Promise<ModelsResu
   const key = await resolveProfileKey(draft);
   if (provider === "google") return googleEmbeddingModels(key);
   if (provider === "ollama") return ollamaTags(base);
+  if (provider === "siliconflow" || provider === "openai") return openaiModels(base, key);
   return openaiModels(base, key);
 }
 
@@ -1186,10 +1187,10 @@ async function testEmbedding(draft: Record<string, unknown>): Promise<TestResult
   const key = String((draft.api_key ?? "") || "");
   const wantDim = Math.trunc(Number(draft.dimensions ?? 0)) || 0;
   if (!model) return { ok: false, message: "Model is required." };
-  if ((provider === "openai" || provider === "google") && !key) {
+  if ((provider === "openai" || provider === "siliconflow" || provider === "google") && !key) {
     return { ok: false, message: "API key is required for this provider." };
   }
-  if ((provider === "ollama" || provider === "openai") && !base) {
+  if ((provider === "ollama" || provider === "openai" || provider === "siliconflow") && !base) {
     return { ok: false, message: "Base URL is required." };
   }
   // Generous timeout: a cold embedding model can take 10-30s to load on first call.
@@ -1197,7 +1198,7 @@ async function testEmbedding(draft: Record<string, unknown>): Promise<TestResult
   try {
     const t0 = performance.now();
     let vec: unknown;
-    if (provider === "openai") {
+    if (provider === "openai" || provider === "siliconflow") {
       const url = base.endsWith("/embeddings") ? base : `${base}/embeddings`;
       const body: Record<string, unknown> = { model, input: ["health check"], encoding_format: "float" };
       if (wantDim && model.startsWith("text-embedding-3")) body.dimensions = wantDim;
@@ -1261,6 +1262,7 @@ async function testAnalysis(draft: Record<string, unknown>): Promise<TestResult>
       )) as Record<string, unknown>;
       text = String(((j.message as Record<string, unknown> | undefined) ?? {}).content ?? "");
     } else {
+      // OpenAI / vLLM / SiliconFlow (all use OpenAI-compatible API)
       const headers: Record<string, string> = apiKey ? { Authorization: `Bearer ${apiKey}` } : {};
       const body: Record<string, unknown> = {
         model,

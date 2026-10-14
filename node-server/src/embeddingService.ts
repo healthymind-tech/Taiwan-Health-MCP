@@ -1,5 +1,5 @@
 /**
- * EmbeddingService — async embedding client (Ollama / OpenAI / Google).
+ * EmbeddingService — async embedding client (Ollama / OpenAI / Google / SiliconFlow).
  *
  * Provides vector embeddings for hybrid (BM25 + pgvector) search. Every failure
  * degrades to `null` so callers fall back to keyword-only search rather than
@@ -28,6 +28,7 @@ import {
   type LlmProfile,
   type Strategy,
 } from "./admin/llmProfiles.js";
+import { canRequest, recordRequest, waitUntilMs } from "./rateLimiter.js";
 
 export interface EmbeddingSettings {
   strategy: Strategy;
@@ -43,12 +44,23 @@ async function providerEmbed(
   s: EmbeddingSettings,
   texts: string[],
 ): Promise<(number[] | null)[]> {
+  // Check rate limits
+  const limits = {
+    rpm: Number(p.params?.rpm) || undefined,
+    tpm: Number(p.params?.tpm) || undefined,
+  };
+  const { allowed, reason } = canRequest(p.id, limits);
+  if (!allowed) {
+    const waitMs = waitUntilMs(p.id, limits);
+    throw new Error(`Rate limit: ${reason}. Wait ${Math.ceil(waitMs / 1000)}s.`);
+  }
+
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), s.timeout * 1000);
   const baseUrl = p.base_url.replace(/\/+$/, "");
   const dimensions = embeddingDimensions(p);
   try {
-    if (p.provider === "openai") {
+    if (p.provider === "openai" || p.provider === "siliconflow") {
       const base = baseUrl.endsWith("/embeddings") ? baseUrl : `${baseUrl}/embeddings`;
       const body: Record<string, unknown> = {
         model: p.model,
@@ -64,7 +76,13 @@ async function providerEmbed(
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const json = (await resp.json()) as { data?: { index?: number; embedding?: number[] }[] };
       const data = [...(json.data ?? [])].sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
-      return data.map((d) => d.embedding ?? null);
+      const result = data.map((d) => d.embedding ?? null);
+
+      // Record request for rate limiting (rough token estimate: 10 chars per token avg)
+      const totalTokens = Math.ceil(texts.join("").length / 10);
+      recordRequest(p.id, totalTokens);
+
+      return result;
     }
     if (p.provider === "google") {
       const modelPath = p.model.startsWith("models/") ? p.model : `models/${p.model}`;
@@ -81,7 +99,13 @@ async function providerEmbed(
       });
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const json = (await resp.json()) as { embeddings?: { values?: number[] }[] };
-      return (json.embeddings ?? []).map((e) => e.values ?? null);
+      const result = (json.embeddings ?? []).map((e) => e.values ?? null);
+
+      // Record request for rate limiting
+      const totalTokens = Math.ceil(texts.join("").length / 10);
+      recordRequest(p.id, totalTokens);
+
+      return result;
     }
     // ollama
     const resp = await fetch(`${baseUrl}/api/embed`, {
@@ -92,7 +116,13 @@ async function providerEmbed(
     });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const json = (await resp.json()) as { embeddings?: number[][] };
-    return json.embeddings ?? [];
+    const result = json.embeddings ?? [];
+
+    // Record request for rate limiting
+    const totalTokens = Math.ceil(texts.join("").length / 10);
+    recordRequest(p.id, totalTokens);
+
+    return result;
   } finally {
     clearTimeout(timer);
   }
