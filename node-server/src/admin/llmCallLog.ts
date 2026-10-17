@@ -37,7 +37,7 @@ export async function ensureLlmCallLogSchema(): Promise<void> {
     id BIGSERIAL PRIMARY KEY,
     license_id TEXT NOT NULL,
     attempt INTEGER NOT NULL DEFAULT 1,
-    profile_id BIGINT REFERENCES admin.llm_profiles (id) ON DELETE SET NULL,
+    profile_id BIGINT, -- route member id (admin.llm_route_members)
     profile_name TEXT NOT NULL DEFAULT '',
     model TEXT NOT NULL DEFAULT '',
     provider TEXT NOT NULL DEFAULT '',

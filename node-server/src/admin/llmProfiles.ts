@@ -1,32 +1,26 @@
 /**
- * LLM profiles — several endpoints per role, with failover / weighted selection.
+ * The call-time view of model endpoints, for the roles that call a model server
+ * ("analysis", "embedding").
  *
- * A *role* (`kind`) is "analysis" or "embedding". Each profile is one endpoint:
- * provider + base URL + key + model, plus `enabled`, a failover `priority` and a
- * load-balancing `weight`. The strategy for a role lives in the corresponding
- * `admin.app_settings` group (`analysis.strategy` / `embedding.strategy`).
+ * Configuration lives in `llmRouting.ts` (provider accounts + composable
+ * profiles + role bindings). Callers never see that structure: they ask
+ * `candidateOrder(kind)` for the flat list of leaves to try for one request —
+ * each an `LlmProfile` (account URL/key + model + knobs) — and walk it, calling
+ * `reportSuccess` / `reportFailure` as they go.
  *
- * Callers do not pick an endpoint themselves: they ask for `candidateOrder(kind)`
- * and walk it, calling `reportSuccess`/`reportFailure` as they go. A profile that
- * fails repeatedly is put in a short cool-down (a process-local circuit breaker)
- * so a dead endpoint stops costing every request a timeout — but it is never
- * disabled behind the operator's back; `enabled` is theirs alone.
- *
- * Embedding is a special case, and the reason the UI shouts about it: vectors
- * from different models (even different quantisations of the "same" model) are
- * not comparable, and pgvector keeps them all in one column. Two enabled
- * embedding profiles serving different model strings would silently poison
- * semantic search, so `assertEmbeddingConsistency` refuses to let that be saved.
- * For embeddings, extra profiles buy redundancy across hosts serving the *same*
- * model — they are not a way to mix models.
+ * A leaf that fails repeatedly goes into a short cool-down (a process-local
+ * circuit breaker) so a dead endpoint stops costing every request a timeout —
+ * but nothing is ever disabled behind the operator's back.
  */
 
-import { query, withTransaction } from "../db.js";
 import { logWarning } from "../logger.js";
+import { roleLeaves, routeCandidates } from "./llmRouting.js";
 
 export type ProfileKind = "analysis" | "embedding";
+/** @deprecated The strategy now lives on each profile; kept for call-site compatibility. */
 export type Strategy = "failover" | "weighted";
 
+/** One callable leaf: a model on a provider account, with its knobs. `id` = route member id. */
 export interface LlmProfile {
   id: number;
   kind: ProfileKind;
@@ -39,83 +33,37 @@ export interface LlmProfile {
   priority: number;
   weight: number;
   params: Record<string, unknown>;
+  /** Provider account the leaf calls through (OAuth adapters fetch its token). */
+  account_id?: number;
 }
+
+export class ProfileValidationError extends Error {}
+
+/** The addressed account / profile does not exist (HTTP 404). */
+export class ProfileNotFoundError extends ProfileValidationError {}
 
 export function embeddingDimensions(p: Pick<LlmProfile, "params">, fallback = 1024): number {
   const n = Math.trunc(Number(p.params?.dimensions ?? fallback));
   return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
-/** A profile as the admin UI sees it: the key is never sent, only its presence. */
-export type LlmProfilePublic = Omit<LlmProfile, "api_key"> & { has_api_key: boolean };
-
-export function toPublic(p: LlmProfile): LlmProfilePublic {
-  const { api_key, ...rest } = p;
-  return { ...rest, has_api_key: Boolean(api_key) };
-}
-
-const ROW_COLS =
-  "id, kind, name, provider, base_url, api_key, model, enabled, priority, weight, params";
-
-interface Row {
-  id: string | number;
-  kind: string;
-  name: string;
-  provider: string;
-  base_url: string;
-  api_key: string;
-  model: string;
-  enabled: boolean;
-  priority: number;
-  weight: number;
-  params: Record<string, unknown> | null;
-}
-
-function fromRow(r: Row): LlmProfile {
-  return {
-    id: Number(r.id),
-    kind: r.kind as ProfileKind,
-    name: r.name,
-    provider: r.provider,
-    base_url: r.base_url,
-    api_key: r.api_key,
-    model: r.model,
-    enabled: r.enabled,
-    priority: Number(r.priority),
-    weight: Number(r.weight),
-    params: r.params ?? {},
-  };
-}
-
-export async function listProfiles(kind?: ProfileKind): Promise<LlmProfile[]> {
-  const res = kind
-    ? await query<Row>(
-        `SELECT ${ROW_COLS} FROM admin.llm_profiles WHERE kind = $1 ORDER BY priority, id`,
-        [kind],
-      )
-    : await query<Row>(`SELECT ${ROW_COLS} FROM admin.llm_profiles ORDER BY kind, priority, id`);
-  return res.rows.map(fromRow);
-}
-
-export async function getProfile(id: number): Promise<LlmProfile | null> {
-  const res = await query<Row>(`SELECT ${ROW_COLS} FROM admin.llm_profiles WHERE id = $1`, [id]);
-  return res.rows.length ? fromRow(res.rows[0]) : null;
-}
-
-/** Enabled profiles for a role, in failover order. */
+/** Every enabled leaf reachable from the role's profile (no strategy draw). */
 export async function listEnabled(kind: ProfileKind): Promise<LlmProfile[]> {
-  const res = await query<Row>(
-    `SELECT ${ROW_COLS} FROM admin.llm_profiles
-      WHERE kind = $1 AND enabled = TRUE ORDER BY priority, id`,
-    [kind],
-  );
-  return res.rows.map(fromRow);
+  return (await roleLeaves(kind)).filter((p) => p.enabled);
 }
 
-/** Is this role usable at all? (At least one enabled profile with an endpoint.) */
+/** Is this role usable at all? (Its profile reaches at least one enabled model.) */
 export async function isKindConfigured(kind: ProfileKind): Promise<boolean> {
-  const enabled = await listEnabled(kind);
-  return enabled.some((p) => p.base_url && p.model);
+  return (await listEnabled(kind)).some((p) => p.base_url && p.model);
+}
+
+/**
+ * The order to try leaves in for one request: the role's profile expanded by
+ * each level's strategy (single / fallback / round robin / load balance), with
+ * leaves in cool-down moved to the back. `_strategy` is ignored.
+ */
+export async function candidateOrder(kind: ProfileKind, _strategy?: Strategy): Promise<LlmProfile[]> {
+  return (await routeCandidates(kind)).filter((p) => p.base_url && p.model);
 }
 
 // ── Circuit breaker ──────────────────────────────────────────────────────────
@@ -141,398 +89,20 @@ export function reportFailure(id: number, error: string): void {
   breaker.set(id, s);
 }
 
-function isCoolingDown(id: number): boolean {
+export function isCoolingDown(id: number): boolean {
   const s = breaker.get(id);
   return s !== undefined && s.openUntil > Date.now();
+}
+
+/** Remaining cool-down per leaf id (ms), for the admin UI. */
+export function coolingDown(): Record<number, number> {
+  const out: Record<number, number> = {};
+  const now = Date.now();
+  for (const [id, s] of breaker) if (s.openUntil > now) out[id] = s.openUntil - now;
+  return out;
 }
 
 /** Forget every breaker decision (config changed, or tests). */
 export function resetBreakers(): void {
   breaker.clear();
-}
-
-/**
- * Pick one profile per the weighted strategy. Weight 0 means "only if everything
- * else is down": it stays in the fallback chain but never wins the draw.
- */
-function weightedPick(profiles: LlmProfile[]): LlmProfile {
-  const total = profiles.reduce((sum, p) => sum + Math.max(0, p.weight), 0);
-  if (total <= 0) return profiles[0];
-  let ticket = Math.random() * total;
-  for (const p of profiles) {
-    ticket -= Math.max(0, p.weight);
-    if (ticket < 0) return p;
-  }
-  return profiles[profiles.length - 1];
-}
-
-/**
- * The order a caller should try endpoints in, for one request.
- *
- * `failover`: strictly by priority. `weighted`: one profile drawn by weight goes
- * first and the rest follow as fallbacks in priority order — so load is spread,
- * but a request never fails just because the endpoint it happened to draw is down.
- *
- * Profiles in cool-down go to the back rather than being dropped: if every
- * endpoint is unhealthy we still try them all instead of failing outright.
- */
-export async function candidateOrder(kind: ProfileKind, strategy: Strategy): Promise<LlmProfile[]> {
-  const enabled = (await listEnabled(kind)).filter((p) => p.base_url && p.model);
-  if (enabled.length === 0) return [];
-
-  let order: LlmProfile[];
-  if (strategy === "weighted") {
-    const first = weightedPick(enabled);
-    order = [first, ...enabled.filter((p) => p.id !== first.id)];
-  } else {
-    order = enabled;
-  }
-  const healthy = order.filter((p) => !isCoolingDown(p.id));
-  const cooling = order.filter((p) => isCoolingDown(p.id));
-  return [...healthy, ...cooling];
-}
-
-// ── Writes ───────────────────────────────────────────────────────────────────
-
-export interface ProfileInput {
-  kind: ProfileKind;
-  name: string;
-  provider: string;
-  base_url: string;
-  api_key?: string;
-  model: string;
-  enabled?: boolean;
-  priority?: number;
-  weight?: number;
-  params?: Record<string, unknown>;
-}
-
-function isValidHttpUrl(value: string): boolean {
-  try {
-    const u = new URL(value);
-    return (u.protocol === "http:" || u.protocol === "https:") && u.host !== "";
-  } catch {
-    return false;
-  }
-}
-
-export class ProfileValidationError extends Error {}
-
-function normalizeParams(kind: ProfileKind, params: Record<string, unknown> | undefined): Record<string, unknown> {
-  const next = { ...(params ?? {}) };
-  if (kind === "embedding") {
-    if (next.dimensions === undefined || next.dimensions === null || next.dimensions === "") {
-      next.dimensions = 1024;
-    }
-  }
-  // Ensure RPM/TPM are positive integers if present
-  if (next.rpm !== undefined && next.rpm !== null && next.rpm !== "") {
-    const rpm = Number(next.rpm);
-    next.rpm = Number.isInteger(rpm) && rpm > 0 ? rpm : undefined;
-  }
-  if (next.tpm !== undefined && next.tpm !== null && next.tpm !== "") {
-    const tpm = Number(next.tpm);
-    next.tpm = Number.isInteger(tpm) && tpm > 0 ? tpm : undefined;
-  }
-  return next;
-}
-
-function validate(input: {
-  kind: string;
-  name: string;
-  base_url: string;
-  model: string;
-  weight?: number;
-  params?: Record<string, unknown>;
-}): void {
-  if (!input.name.trim()) throw new ProfileValidationError("Profile name is required.");
-  if (input.kind !== "analysis" && input.kind !== "embedding") {
-    throw new ProfileValidationError(`Unknown profile kind: ${input.kind}`);
-  }
-  if (!input.model.trim()) throw new ProfileValidationError("Model is required.");
-  if (!isValidHttpUrl(input.base_url.trim())) {
-    throw new ProfileValidationError(`'${input.base_url}' is not a valid http(s) URL`);
-  }
-  if (input.weight !== undefined && (!Number.isInteger(input.weight) || input.weight < 0)) {
-    throw new ProfileValidationError("Weight must be a non-negative integer.");
-  }
-  if (input.kind === "embedding") {
-    const dims = Math.trunc(Number(input.params?.dimensions ?? 1024));
-    if (!Number.isFinite(dims) || dims <= 0) {
-      throw new ProfileValidationError("Embedding dimensions must be a positive integer.");
-    }
-  }
-  // Validate RPM/TPM if present
-  if (input.params?.rpm !== undefined && input.params.rpm !== null && input.params.rpm !== "") {
-    const rpm = Number(input.params.rpm);
-    if (!Number.isInteger(rpm) || rpm <= 0) {
-      throw new ProfileValidationError("RPM (Requests Per Minute) must be a positive integer.");
-    }
-  }
-  if (input.params?.tpm !== undefined && input.params.tpm !== null && input.params.tpm !== "") {
-    const tpm = Number(input.params.tpm);
-    if (!Number.isInteger(tpm) || tpm <= 0) {
-      throw new ProfileValidationError("TPM (Tokens Per Minute) must be a positive integer.");
-    }
-  }
-}
-
-/** Normalize model name by extracting base model identifier. */
-function normalizeModelName(name: string): string {
-  const trimmed = name.trim().toLowerCase();
-  // Remove provider prefix (e.g., "Qwen/" → "qwen")
-  const withoutPrefix = trimmed.split("/").pop() || trimmed;
-  // Extract base model name (e.g., "qwen3-embedding-0.6b-q8_0" → "qwen3-embedding")
-  const baseModel = withoutPrefix.split(":")[0] || withoutPrefix;
-  // Remove version suffixes (e.g., "-0.6b", "-v1.5", "-q8_0")
-  return baseModel.replace(/-v?\d+(\.\d+)?.*$/, "").replace(/-q\d+_\d+$/, "");
-}
-
-/**
- * Every enabled embedding profile must serve the same model and vector
- * dimensions. Vectors from two different models — or two dimensions — are not
- * comparable, and they all land in the same pgvector column, so mixing them
- * corrupts semantic search in a way nothing would flag at query time.
- *
- * Model names from different providers (e.g., Ollama vs SiliconFlow) are allowed
- * if they represent the same base model (e.g., both "Qwen3-Embedding-0.6B").
- */
-export async function assertEmbeddingConsistency(pending?: LlmProfile[]): Promise<void> {
-  const enabled = (pending ?? (await listProfiles("embedding"))).filter((p) => p.enabled);
-  const normalizedModels = [...new Set(
-    enabled
-      .map((p) => normalizeModelName(p.model))
-      .filter(Boolean)
-  )];
-  if (normalizedModels.length > 1) {
-    const modelsByNormalized = new Map<string, string[]>();
-    for (const p of enabled) {
-      const norm = normalizeModelName(p.model);
-      if (!modelsByNormalized.has(norm)) modelsByNormalized.set(norm, []);
-      modelsByNormalized.get(norm)!.push(p.model);
-    }
-    throw new ProfileValidationError(
-      `All enabled embedding profiles must serve the same base model. Found different models: ${
-        Array.from(modelsByNormalized.entries())
-          .map(([_, names]) => `${names.map((m) => `'${m}'`).join(", ")}`)
-          .join("; ")
-      }. Vectors from different embedding models are not comparable, and every vector in the ` +
-        "database shares one column. Extra embedding profiles are for redundancy across " +
-        "hosts serving the same model (possibly from different providers).",
-    );
-  }
-  const dims = [...new Set(enabled.map((p) => embeddingDimensions(p)).filter(Boolean))];
-  if (dims.length > 1) {
-    throw new ProfileValidationError(
-      `All enabled embedding profiles must use the same dimensions — found ${dims.join(
-        ", ",
-      )}. The database stores embeddings in one halfvec column, so changing dimensions ` +
-        "requires re-embedding every module after the profile change.",
-    );
-  }
-}
-
-/** The embedding profiles as they would be after a change, for pre-write validation. */
-async function simulateEmbedding(change: {
-  upsert?: LlmProfile;
-  deleteId?: number;
-}): Promise<LlmProfile[]> {
-  let next = await listProfiles();
-  if (change.deleteId !== undefined) next = next.filter((p) => p.id !== change.deleteId);
-  if (change.upsert) {
-    const up = change.upsert;
-    next = next.filter((p) => p.id !== up.id);
-    next.push(up);
-  }
-  return next.filter((p) => p.kind === "embedding");
-}
-
-export async function createProfile(input: ProfileInput, updatedBy: string): Promise<LlmProfile> {
-  const candidate: LlmProfile = {
-    id: -1,
-    kind: input.kind,
-    name: String(input.name ?? "").trim(),
-    provider: input.provider,
-    base_url: String(input.base_url ?? "").trim(),
-    api_key: input.api_key ?? "",
-    model: String(input.model ?? "").trim(),
-    enabled: input.enabled ?? true,
-    priority: input.priority ?? 100,
-    weight: input.weight ?? 1,
-    params: normalizeParams(input.kind, input.params),
-  };
-  validate(candidate);
-  if (candidate.kind === "embedding") {
-    await assertEmbeddingConsistency(await simulateEmbedding({ upsert: candidate }));
-  }
-
-  const row = await withTransaction(async (client) => {
-    const r = await client.query(
-      `INSERT INTO admin.llm_profiles (kind, name, provider, base_url, api_key, model, enabled, priority, weight, params)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb)
-       RETURNING ${ROW_COLS}`,
-      [
-        candidate.kind,
-        candidate.name,
-        candidate.provider,
-        candidate.base_url,
-        candidate.api_key,
-        candidate.model,
-        candidate.enabled,
-        candidate.priority,
-        candidate.weight,
-        JSON.stringify(candidate.params),
-      ],
-    );
-    await audit(client, updatedBy, "create_llm_profile", candidate.name, candidate);
-    return r.rows[0] as Row;
-  });
-  return fromRow(row);
-}
-
-export async function updateProfile(
-  id: number,
-  patch: Partial<ProfileInput>,
-  updatedBy: string,
-): Promise<LlmProfile> {
-  const existing = await getProfile(id);
-  if (!existing) throw new ProfileValidationError(`No such profile: ${id}`);
-
-  const merged: LlmProfile = {
-    ...existing,
-    ...("name" in patch ? { name: String(patch.name).trim() } : {}),
-    ...("provider" in patch ? { provider: String(patch.provider) } : {}),
-    ...("base_url" in patch ? { base_url: String(patch.base_url).trim() } : {}),
-    ...("model" in patch ? { model: String(patch.model).trim() } : {}),
-    ...("enabled" in patch ? { enabled: Boolean(patch.enabled) } : {}),
-    ...("priority" in patch ? { priority: Number(patch.priority) } : {}),
-    ...("weight" in patch ? { weight: Number(patch.weight) } : {}),
-    ...("params" in patch ? { params: patch.params ?? {} } : {}),
-  };
-  // A blank/absent key means "keep the stored one" — same rule as the settings
-  // form: a secret is only ever replaced by a value the operator actually typed.
-  const incomingKey = typeof patch.api_key === "string" ? patch.api_key.trim() : "";
-  if (incomingKey) merged.api_key = incomingKey;
-  merged.params = normalizeParams(merged.kind, merged.params);
-
-  validate(merged);
-  if (merged.kind === "embedding") {
-    await assertEmbeddingConsistency(await simulateEmbedding({ upsert: merged }));
-  }
-
-  const row = await withTransaction(async (client) => {
-    const r = await client.query(
-      `UPDATE admin.llm_profiles
-          SET name=$2, provider=$3, base_url=$4, api_key=$5, model=$6,
-              enabled=$7, priority=$8, weight=$9, params=$10::jsonb, updated_at=NOW()
-        WHERE id=$1
-        RETURNING ${ROW_COLS}`,
-      [
-        id,
-        merged.name,
-        merged.provider,
-        merged.base_url,
-        merged.api_key,
-        merged.model,
-        merged.enabled,
-        merged.priority,
-        merged.weight,
-        JSON.stringify(merged.params),
-      ],
-    );
-    await audit(client, updatedBy, "update_llm_profile", merged.name, merged);
-    return r.rows[0] as Row;
-  });
-  reportSuccess(id); // config changed — give the endpoint a clean slate
-  return fromRow(row);
-}
-
-export async function deleteProfile(id: number, updatedBy: string): Promise<void> {
-  const existing = await getProfile(id);
-  if (!existing) throw new ProfileValidationError(`No such profile: ${id}`);
-  if (existing.kind === "embedding") {
-    await assertEmbeddingConsistency(await simulateEmbedding({ deleteId: id }));
-  }
-  await withTransaction(async (client) => {
-    await client.query("DELETE FROM admin.llm_profiles WHERE id = $1", [id]);
-    await audit(client, updatedBy, "delete_llm_profile", existing.name, existing);
-  });
-  breaker.delete(id);
-}
-
-async function audit(
-  client: { query: (sql: string, params?: unknown[]) => Promise<unknown> },
-  adminUser: string,
-  action: string,
-  target: string,
-  profile: LlmProfile,
-): Promise<void> {
-  const { api_key, ...safe } = profile; // never log the key
-  await client.query(
-    `INSERT INTO admin.admin_audit_log (admin_user, action, target_type, target_id, payload_json)
-     VALUES ($1, $2, 'llm_profile', $3, $4::jsonb)`,
-    [adminUser, action, target, JSON.stringify({ ...safe, has_api_key: Boolean(api_key) })],
-  );
-}
-
-// ── Export / import (part of the settings document) ──────────────────────────
-
-export async function exportProfiles(): Promise<Omit<LlmProfile, "id">[]> {
-  const all = await listProfiles();
-  return all.map(({ id: _id, ...rest }) => rest);
-}
-
-/** Replace every profile with the exported set. Validated exactly like a form write. */
-export async function importProfiles(docProfiles: unknown, updatedBy: string): Promise<number> {
-  if (docProfiles === undefined || docProfiles === null) return 0;
-  if (!Array.isArray(docProfiles)) throw new ProfileValidationError("'profiles' must be an array");
-
-  const parsed: LlmProfile[] = docProfiles.map((raw, i) => {
-    const p = (raw ?? {}) as Record<string, unknown>;
-    const profile: LlmProfile = {
-      id: -(i + 1),
-      kind: String(p.kind ?? "") as ProfileKind,
-      name: String(p.name ?? "").trim(),
-      provider: String(p.provider ?? ""),
-      base_url: String(p.base_url ?? "").trim(),
-      api_key: String(p.api_key ?? ""),
-      model: String(p.model ?? "").trim(),
-      enabled: p.enabled !== false,
-      priority: Number(p.priority ?? 100),
-      weight: Number(p.weight ?? 1),
-      params: normalizeParams(String(p.kind ?? "") as ProfileKind, (p.params as Record<string, unknown>) ?? {}),
-    };
-    validate(profile);
-    return profile;
-  });
-  await assertEmbeddingConsistency(parsed.filter((p) => p.kind === "embedding"));
-
-  await withTransaction(async (client) => {
-    await client.query("DELETE FROM admin.llm_profiles");
-    for (const p of parsed) {
-      await client.query(
-        `INSERT INTO admin.llm_profiles (kind, name, provider, base_url, api_key, model, enabled, priority, weight, params)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb)`,
-        [
-          p.kind,
-          p.name,
-          p.provider,
-          p.base_url,
-          p.api_key,
-          p.model,
-          p.enabled,
-          p.priority,
-          p.weight,
-          JSON.stringify(p.params),
-        ],
-      );
-    }
-    await client.query(
-      `INSERT INTO admin.admin_audit_log (admin_user, action, target_type, target_id, payload_json)
-       VALUES ($1, 'import_llm_profiles', 'llm_profile', 'all', $2::jsonb)`,
-      [updatedBy, JSON.stringify({ count: parsed.length })],
-    );
-  });
-  resetBreakers();
-  return parsed.length;
 }

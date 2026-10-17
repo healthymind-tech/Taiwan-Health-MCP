@@ -27,8 +27,15 @@ import crypto from "crypto";
 import pg from "pg";
 import { config } from "../config.js";
 import { logInfo, logWarning, logError, configureLogLevel } from "../logger.js";
-import { EmbeddingService, type EmbeddingSettings } from "../embeddingService.js";
+import {
+  DEFAULT_EMBEDDING_SETTINGS,
+  EmbeddingService,
+  parseEmbeddingSettings,
+  type EmbeddingSettings,
+} from "../embeddingService.js";
 import { candidateOrder, embeddingDimensions, type LlmProfile } from "../admin/llmProfiles.js";
+import { runBoundedPool } from "./batchPool.js";
+import { probeEndpoint } from "../providers/probe.js";
 
 const HNSW_MAX_DIMS = 4000; // pgvector halfvec HNSW limit
 
@@ -53,24 +60,62 @@ function textHash(text: string): string {
 }
 
 async function loadSettings(pool: pg.Pool): Promise<EmbeddingSettings> {
-  const defaults: EmbeddingSettings = {
-    strategy: "failover",
-    timeout: 30,
-    batchSize: 32,
-  };
   try {
     const res = await pool.query<{ key: string; value: string | null }>(
       "SELECT key, value FROM admin.app_settings WHERE group_key = 'embedding'",
     );
-    const m = new Map(res.rows.map((r) => [r.key, r.value ?? ""]));
-    const strategy = (m.get("strategy") || "failover").trim().toLowerCase();
-    return {
-      strategy: strategy === "weighted" ? "weighted" : "failover",
-      timeout: Number(m.get("timeout")) || 30,
-      batchSize: Number(m.get("batch_size")) || 32,
-    };
+    return parseEmbeddingSettings(new Map(res.rows.map((r) => [r.key, r.value ?? ""])));
   } catch {
-    return defaults;
+    return { ...DEFAULT_EMBEDDING_SETTINGS };
+  }
+}
+
+/** How often a running embed job re-reads `embedding.concurrency`. */
+const CONCURRENCY_REFRESH_MS = 10_000;
+
+/**
+ * Live view of `embedding.concurrency` for one run: returns the last known value
+ * synchronously and refreshes it from the DB in the background at most every
+ * {@link CONCURRENCY_REFRESH_MS}, so an operator can raise or lower it while a
+ * long module (SNOMED) is embedding. A failed refresh keeps the current value —
+ * a transient DB error must not silently drop the job back to 1.
+ */
+export function liveConcurrency(
+  initial: number,
+  read: () => Promise<number | null>,
+  refreshMs = CONCURRENCY_REFRESH_MS,
+): () => number {
+  let current = initial;
+  let lastRead = Date.now();
+  let reading = false;
+  return () => {
+    if (!reading && Date.now() - lastRead >= refreshMs) {
+      reading = true;
+      void read()
+        .then((n) => {
+          if (n !== null && n !== current) {
+            logInfo(`Embedding concurrency changed ${current} → ${n}`);
+            current = n;
+          }
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          reading = false;
+          lastRead = Date.now();
+        });
+    }
+    return current;
+  };
+}
+
+async function readConcurrency(pool: pg.Pool): Promise<number | null> {
+  try {
+    const res = await pool.query<{ key: string; value: string | null }>(
+      "SELECT key, value FROM admin.app_settings WHERE group_key = 'embedding'",
+    );
+    return parseEmbeddingSettings(new Map(res.rows.map((r) => [r.key, r.value ?? ""]))).concurrency;
+  } catch {
+    return null;
   }
 }
 
@@ -94,31 +139,15 @@ async function checkProvider(s: EmbeddingSettings, profiles: LlmProfile[]): Prom
     return false;
   }
   for (const p of profiles) {
-    const base = p.base_url.replace(/\/+$/, "");
-    if (p.provider !== "ollama") {
-      // Hosted providers: a key and a model is all we can check without spending a call.
-      if (p.model && p.api_key) {
-        logInfo(`${p.provider} embedding profile '${p.name}' model=${p.model} dimensions=${embeddingDimensions(p)}`);
-        return true;
-      }
-      logWarning(`Embedding profile '${p.name}' needs a model and API key — skipping it`);
-      continue;
+    // A real one-text embedding: verifies host, key, model and vector size.
+    const r = await probeEndpoint(p, "embedding", { deep: true, timeoutMs: 30_000 });
+    if (r.ok) {
+      logInfo(`Embedding endpoint OK profile='${p.name}' provider=${r.provider} model=${p.model} dimensions=${embeddingDimensions(p)} (${r.message})`);
+      return true;
     }
-    try {
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 5000);
-      const r = await fetch(`${base}/api/version`, { signal: ctrl.signal });
-      clearTimeout(timer);
-      if (r.ok) {
-        logInfo(`Ollama OK profile='${p.name}' url=${base} model=${p.model} dimensions=${embeddingDimensions(p)}`);
-        return true;
-      }
-    } catch {
-      /* try the next profile */
-    }
-    logWarning(`Embedding profile '${p.name}' not reachable at ${base}`);
+    logWarning(`Embedding profile '${p.name}' unreachable: ${r.message}`);
   }
-  logError("No embedding profile is reachable — skipping embedding");
+  logError("No embedding profile is reachable");
   return false;
 }
 
@@ -221,13 +250,38 @@ interface EmbedTableArgs {
   shouldStop?: ShouldStop;
 }
 
-/** Incrementally embed one source→embedding table. */
-async function embedTable(
+/** The slice of `EmbeddingService` the loader needs (fakeable in tests). */
+export interface BatchEmbedder {
+  embedBatch(texts: string[]): Promise<(number[] | null)[]>;
+  /** Optional pacing hook: wait while every profile is out of RPM/TPM budget. */
+  waitForCapacity?(): Promise<number>;
+}
+
+/** Per-run knobs shared by every table of a module. */
+export interface EmbedRunOptions {
+  batchSize: number;
+  /** In-flight batch limit, consulted before each dispatch (hot-reloadable). */
+  concurrency: () => number;
+}
+
+/**
+ * Incrementally embed one source→embedding table.
+ *
+ * Batches are embedded through a bounded pool (`concurrency()` requests in
+ * flight). Each batch is fetched over HTTP first and only then written with a
+ * single autocommit multi-row upsert — no transaction is held across a network
+ * call, each write holds one pooled connection for one statement, and the
+ * upsert is idempotent (keyed + content-hashed), so a batch that lands after a
+ * pause was requested is harmless and a resumed run re-derives exactly the
+ * rows still missing or stale.
+ */
+export async function embedTable(
   pool: pg.Pool,
-  svc: EmbeddingService,
-  batchSize: number,
+  svc: BatchEmbedder,
+  run: EmbedRunOptions,
   a: EmbedTableArgs,
 ): Promise<EmbedStats> {
+  const batchSize = Math.max(1, Math.floor(run.batchSize) || 1);
   await ensureEmbedInfra(pool, a.table);
 
   // An empty source means "not loaded yet" — never wipe existing embeddings.
@@ -249,38 +303,66 @@ async function embedTable(
   );
   const existing = new Map(existingRes.rows.map((r) => [String(r.k), r.h]));
 
-  // 3. New or content-changed rows only.
-  const toEmbed = current.filter((c) => existing.get(String(c.k)) !== c.h);
+  // 3. New or content-changed rows only. De-duplicated by key (last wins, as
+  //    sequential per-row upserts used to behave): one multi-row upsert must not
+  //    touch the same key twice.
+  const byKey = new Map<string, (typeof current)[number]>();
+  for (const c of current) {
+    if (existing.get(String(c.k)) !== c.h) byKey.set(String(c.k), c);
+  }
+  const toEmbed = [...byKey.values()];
   logInfo(`${a.desc}: ${a.rows.length} source, ${toEmbed.length} new/changed`);
 
   // 4-5. Embed just those, upserting the fresh hash alongside the vector.
   const sql =
     `INSERT INTO ${a.table} (${a.keyCol}, embedding, source_hash) ` +
-    `VALUES ($1, $2::halfvec, $3) ` +
+    `SELECT k, e::halfvec, h FROM unnest($1::${a.keySqlType}[], $2::text[], $3::text[]) AS u(k, e, h) ` +
     `ON CONFLICT (${a.keyCol}) DO UPDATE ` +
     `SET embedding = EXCLUDED.embedding, source_hash = EXCLUDED.source_hash, embedded_at = NOW()`;
-  for (let i = 0; i < toEmbed.length; i += batchSize) {
-    const batch = toEmbed.slice(i, i + batchSize);
-    const vecs = await svc.embedBatch(batch.map((b) => b.t));
-    for (let j = 0; j < batch.length; j += 1) {
-      const v = vecs[j];
-      if (v == null) continue;
-      await pool.query(sql, [batch[j].k, `[${v.join(",")}]`, batch[j].h]);
-    }
-    const done = Math.min(i + batchSize, toEmbed.length);
-    if (i === 0 || done % (batchSize * 20) === 0 || done === toEmbed.length) {
-      logInfo(`  ${a.desc}: ${done}/${toEmbed.length}`);
-    }
-    if (done < toEmbed.length && a.shouldStop && (await a.shouldStop())) {
-      logInfo(`  ${a.desc}: stopping at ${done}/${toEmbed.length} on request`);
-      const r = await pool.query<{ c: number }>(`SELECT COUNT(*)::int AS c FROM ${a.table}`);
-      // Orphan pruning is deliberately skipped: it is a whole-module sync step
-      // and must not run against a half-embedded table.
-      return {
-        source_total: a.rows.length, changed: done, embedded_total: r.rows[0].c,
-        deleted: 0, stopped: true,
-      };
-    }
+  const batchCount = Math.ceil(toEmbed.length / batchSize);
+  let done = 0;
+  let missing = 0;
+  let nextLogAt = batchSize * 20;
+  const result = await runBoundedPool({
+    count: batchCount,
+    concurrency: run.concurrency,
+    shouldStop: a.shouldStop,
+    task: async (b) => {
+      const batch = toEmbed.slice(b * batchSize, (b + 1) * batchSize);
+      if (svc.waitForCapacity) await svc.waitForCapacity();
+      const vecs = await svc.embedBatch(batch.map((x) => x.t));
+      const ks: (string | number)[] = [];
+      const es: string[] = [];
+      const hs: string[] = [];
+      for (let j = 0; j < batch.length; j += 1) {
+        const v = vecs[j];
+        if (v == null || v.length === 0) continue;
+        ks.push(batch[j].k);
+        es.push(`[${v.join(",")}]`);
+        hs.push(batch[j].h);
+      }
+      missing += batch.length - ks.length;
+      if (ks.length > 0) await pool.query(sql, [ks, es, hs]);
+      done += batch.length;
+      if (b === 0 || done >= nextLogAt || done === toEmbed.length) {
+        while (nextLogAt <= done) nextLogAt += batchSize * 20;
+        logInfo(`  ${a.desc}: ${done}/${toEmbed.length}`);
+      }
+    },
+  });
+  if (missing > 0) {
+    logWarning(`  ${a.desc}: ${missing} item(s) got no vector from any embedding profile`);
+  }
+
+  if (result.stopped) {
+    logInfo(`  ${a.desc}: stopping at ${done}/${toEmbed.length} on request`);
+    const r = await pool.query<{ c: number }>(`SELECT COUNT(*)::int AS c FROM ${a.table}`);
+    // Orphan pruning is deliberately skipped: it is a whole-module sync step
+    // and must not run against a half-embedded table.
+    return {
+      source_total: a.rows.length, changed: done, embedded_total: r.rows[0].c,
+      deleted: 0, stopped: true,
+    };
   }
 
   // 6. Prune embeddings whose source row is gone.
@@ -314,7 +396,7 @@ async function writeEmbedLog(
 // ── per-module functions ─────────────────────────────────────────────────────
 
 async function embedFoodNutrition(
-  pool: pg.Pool, svc: EmbeddingService, batch: number, shouldStop?: ShouldStop,
+  pool: pg.Pool, svc: BatchEmbedder, batch: EmbedRunOptions, shouldStop?: ShouldStop,
 ): Promise<boolean> {
   logInfo("=== Embedding: food_nutrition ===");
   const foods = (
@@ -361,7 +443,7 @@ async function embedFoodNutrition(
 }
 
 async function embedHealthSupplements(
-  pool: pg.Pool, svc: EmbeddingService, batch: number, shouldStop?: ShouldStop,
+  pool: pg.Pool, svc: BatchEmbedder, batch: EmbedRunOptions, shouldStop?: ShouldStop,
 ): Promise<boolean> {
   logInfo("=== Embedding: health_supplements ===");
   const items = (
@@ -386,7 +468,7 @@ async function embedHealthSupplements(
 }
 
 async function embedIcd(
-  pool: pg.Pool, svc: EmbeddingService, batch: number, shouldStop?: ShouldStop,
+  pool: pg.Pool, svc: BatchEmbedder, batch: EmbedRunOptions, shouldStop?: ShouldStop,
 ): Promise<boolean> {
   logInfo("=== Embedding: icd.diagnoses ===");
   const rows = (await pool.query("SELECT code, name_zh, name_en FROM icd.diagnoses")).rows;
@@ -407,7 +489,7 @@ async function embedIcd(
 }
 
 async function embedLoinc(
-  pool: pg.Pool, svc: EmbeddingService, batch: number, shouldStop?: ShouldStop,
+  pool: pg.Pool, svc: BatchEmbedder, batch: EmbedRunOptions, shouldStop?: ShouldStop,
 ): Promise<boolean> {
   logInfo("=== Embedding: loinc.concepts ===");
   const rows = (
@@ -441,7 +523,7 @@ async function embedLoinc(
 }
 
 async function embedSnomed(
-  pool: pg.Pool, svc: EmbeddingService, batch: number, shouldStop?: ShouldStop,
+  pool: pg.Pool, svc: BatchEmbedder, batch: EmbedRunOptions, shouldStop?: ShouldStop,
 ): Promise<boolean> {
   logInfo("=== Embedding: snomed.concept_embeddings (~360k FSNs — slow) ===");
   const rows = (
@@ -470,7 +552,7 @@ async function embedSnomed(
 
 const MODULES: Record<
   string,
-  (p: pg.Pool, s: EmbeddingService, b: number, stop?: ShouldStop) => Promise<boolean>
+  (p: pg.Pool, s: BatchEmbedder, run: EmbedRunOptions, stop?: ShouldStop) => Promise<boolean>
 > = {
   "food-nutrition": embedFoodNutrition,
   "health-supplements": embedHealthSupplements,
@@ -508,7 +590,11 @@ export async function runEmbedModule(
   const profiles = await loadProfiles(settings);
   await ensureDimensions(pool, activeDimensions(profiles));
   const svc = new EmbeddingService(settings, profiles);
-  return fn(pool, svc, settings.batchSize, shouldStop);
+  logInfo(`Embedding run: batch_size=${settings.batchSize} concurrency=${settings.concurrency}`);
+  return fn(pool, svc, {
+    batchSize: settings.batchSize,
+    concurrency: liveConcurrency(settings.concurrency, () => readConcurrency(pool)),
+  }, shouldStop);
 }
 
 async function main(): Promise<void> {
@@ -530,7 +616,7 @@ async function main(): Promise<void> {
     }
     const svc = new EmbeddingService(settings, profiles);
     for (const m of modules) {
-      await MODULES[m](pool, svc, settings.batchSize);
+      await MODULES[m](pool, svc, { batchSize: settings.batchSize, concurrency: () => settings.concurrency });
     }
   } finally {
     await pool.end();

@@ -26,7 +26,7 @@ const BUCKET_MS = 3_600_000;
 /** Idempotent boot migration (fresh installs get the table from db/schema.sql). */
 export async function ensureProfileStatsSchema(): Promise<void> {
   await query(`CREATE TABLE IF NOT EXISTS admin.llm_profile_stats (
-    profile_id BIGINT NOT NULL REFERENCES admin.llm_profiles (id) ON DELETE CASCADE,
+    profile_id BIGINT NOT NULL, -- route member id (admin.llm_route_members)
     bucket TIMESTAMPTZ NOT NULL,
     calls BIGINT NOT NULL DEFAULT 0,
     failures BIGINT NOT NULL DEFAULT 0,

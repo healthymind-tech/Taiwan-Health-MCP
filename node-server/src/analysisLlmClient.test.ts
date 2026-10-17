@@ -13,12 +13,7 @@ import { setProfileStatsEnabled } from "./admin/llmProfileStats.js";
 setProfileStatsEnabled(false); // unit tests never touch the database
 
 const lengthReply = () =>
-  ({
-    ok: true,
-    json: async () => ({
-      choices: [{ message: { content: "x" }, finish_reason: "length" }],
-    }),
-  }) as Response;
+  new Response(JSON.stringify({ choices: [{ message: { content: "x" }, finish_reason: "length" }] }), { status: 200 });
 
 function profile(model: string, params: Record<string, unknown> = {}) {
   return {
