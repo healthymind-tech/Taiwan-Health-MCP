@@ -32,8 +32,11 @@ export const SOURCE_CATALOG: readonly SourceCatalogEntry[] = [
   {
     module_key: "icd",
     source_role: "icd10cm",
-    label: "ICD-10-CM 2025 ZIP",
-    description: "Main ICD-10-CM release archive used for diagnosis import.",
+    label: "ICD-10-CM ZIP",
+    description:
+      "CMS ICD-10-CM release archive. Use \"Code Descriptions in Tabular Order\" " +
+      "(icd10cm_order_YYYY.txt — complete code set incl. 7th characters, enables strict FHIR code validation); " +
+      "\"Code Tables, Tabular and Index\" (tabular XML) is also accepted.",
     accepted_extensions: [".zip"],
     multi_source: false,
   },
@@ -51,6 +54,16 @@ export const SOURCE_CATALOG: readonly SourceCatalogEntry[] = [
     label: "Taiwan ICD bilingual XLSX",
     description: "Optional MOHW bilingual ICD Excel for Chinese names.",
     accepted_extensions: [".xlsx"],
+    multi_source: false,
+  },
+  {
+    module_key: "icd",
+    source_role: "icd10_who",
+    label: "WHO ICD-10 (FHIR JSON)",
+    description:
+      "Optional. WHO ICD-10 (http://hl7.org/fhir/sid/icd-10) as a FHIR CodeSystem or expanded ValueSet JSON — " +
+      "enables code / display checks for that system in FHIR validation. Imported by the ICD import job.",
+    accepted_extensions: [".json"],
     multi_source: false,
   },
   {
@@ -515,10 +528,12 @@ const ZIP_LABELS = ["zip"];
 const GZIP_LABELS = ["gzip"];
 const XLSX_LABELS = ["xlsx"];
 const CSV_LABELS = ["csv", "txt", "tsv"];
+const JSON_LABELS = ["json", "txt"];
 const ALLOWED_LABELS = new Map<string, string[]>([
   ["icd/icd10cm", ZIP_LABELS],
   ["icd/icd10pcs", ZIP_LABELS],
   ["icd/icd_zh_tw", XLSX_LABELS],
+  ["icd/icd10_who", JSON_LABELS],
   ["loinc/loinc", ZIP_LABELS],
   ["loinc/loinc_taiwan_mapping", CSV_LABELS],
   ["loinc/loinc_reference_ranges", CSV_LABELS],
@@ -1052,56 +1067,32 @@ export async function deleteUploadedSource(uploadedFileId: string, deletedBy: st
   if (fileRow.rows.length === 0) throw new SourceValueError("Uploaded file not found");
   const row = fileRow.rows[0];
 
-  if (row.module_key === "drug") {
-    const importing = await query(
-      `SELECT 1 FROM admin.import_jobs
-        WHERE job_type = 'drug_index_import' AND source_uploaded_file_id = $1
-          AND status IN ('queued', 'running', 'paused') LIMIT 1`,
-      [targetUuid],
+  // Deleting a source file never touches imported data, so the only thing that
+  // must block it is a job that is about to read the file. (The old rules refused
+  // any file that had ever been imported/activated — i.e. nearly every file —
+  // which surfaced in the console as "delete does not work".)
+  const busy = await query<{ job_type: string; status: string }>(
+    `SELECT job_type, status FROM admin.import_jobs
+      WHERE status IN ('queued', 'running', 'paused')
+        AND (source_uploaded_file_id = $1 OR (module_key = $2 AND job_type LIKE '%_import'))
+      LIMIT 1`,
+    [targetUuid, row.module_key],
+  );
+  if (busy.rows.length > 0) {
+    throw new SourceValueError(
+      `Cannot delete while a ${busy.rows[0].job_type} job is ${busy.rows[0].status}. Stop it in Jobs first.`,
     );
-    if (importing.rows.length > 0) {
-      throw new SourceValueError("Cannot delete: this file is already queued or importing.");
-    }
-    const imported = await query(
-      `SELECT 1 FROM admin.import_jobs
-        WHERE job_type = 'drug_index_import' AND status IN ('success', 'partial_success')
-          AND source_uploaded_file_id = $1 LIMIT 1`,
-      [targetUuid],
-    );
-    if (imported.rows.length > 0) {
-      throw new SourceValueError("Cannot delete: this file has already been imported into the drug index.");
-    }
-  } else {
-    let allowPendingModuleDelete = false;
-    if (row.module_key === "icd") {
-      const c = await query<{ n: string }>(
-        `SELECT (SELECT COUNT(*) FROM icd.diagnoses) + (SELECT COUNT(*) FROM icd.procedures) AS n`,
-      );
-      allowPendingModuleDelete = Number(c.rows[0]?.n ?? 0) === 0;
-    } else if (row.module_key === "loinc") {
-      const c = await query<{ n: string }>(`SELECT COUNT(*) AS n FROM loinc.concepts`);
-      allowPendingModuleDelete = Number(c.rows[0]?.n ?? 0) === 0;
-    } else if (row.module_key === "snomed") {
-      const c = await query<{ n: string }>(`SELECT COUNT(*) AS n FROM snomed.concepts`);
-      allowPendingModuleDelete = Number(c.rows[0]?.n ?? 0) === 0;
-    } else if (row.module_key === "ig") {
-      const c = await query<{ n: string }>(
-        `SELECT (SELECT COUNT(*) FROM fhir.codesystems) + (SELECT COUNT(*) FROM fhir.artifacts) AS n`,
-      );
-      allowPendingModuleDelete = Number(c.rows[0]?.n ?? 0) === 0;
-    }
-    if (!allowPendingModuleDelete) {
-      const imported = await query(
-        `SELECT 1 FROM admin.module_sources WHERE uploaded_file_id = $1 AND activated_at IS NOT NULL LIMIT 1`,
-        [targetUuid],
-      );
-      if (imported.rows.length > 0) {
-        throw new SourceValueError("Cannot delete: this file has already been imported.");
-      }
-    }
   }
 
   await withTransaction(async (client) => {
+    // import_jobs references the file (FK, NO ACTION) — detach job history first,
+    // otherwise deleting any file that was ever imported fails with a 500.
+    await client.query(
+      `UPDATE admin.import_jobs SET source_uploaded_file_id = NULL, source_module_source_id = NULL
+        WHERE source_uploaded_file_id = $1
+           OR source_module_source_id IN (SELECT module_source_id FROM admin.module_sources WHERE uploaded_file_id = $1)`,
+      [targetUuid],
+    );
     await client.query(`DELETE FROM admin.uploaded_files WHERE uploaded_file_id = $1`, [targetUuid]);
     await client.query(
       `INSERT INTO admin.admin_audit_log (admin_user, action, target_type, target_id, payload_json)

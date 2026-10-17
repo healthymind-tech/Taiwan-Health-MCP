@@ -73,11 +73,14 @@ export class IcdService {
                   OR code ILIKE $2
                LIMIT 20
            ),
+           -- Exact scan on purpose: "+ 0" keeps the planner off the HNSW index,
+           -- whose recall collapses on the ~50k near-duplicate 7th-character codes
+           -- (e.g. diabetes queries returned fracture codes). ~98k rows, ~0.35 s.
            vec AS (
                SELECT code,
-                      ROW_NUMBER() OVER (ORDER BY embedding <=> $3::halfvec) AS rank
+                      ROW_NUMBER() OVER (ORDER BY (embedding <=> $3::halfvec) + 0) AS rank
                FROM icd.diagnosis_embeddings
-               ORDER BY embedding <=> $3::halfvec LIMIT 20
+               ORDER BY (embedding <=> $3::halfvec) + 0 LIMIT 20
            ),
            rrf AS (
                SELECT COALESCE(f.code, v.code) AS code,

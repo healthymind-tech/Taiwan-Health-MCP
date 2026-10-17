@@ -2,8 +2,10 @@
  * LOINC 2.80 full loader (Node port of `loader/loaders/loinc_loader.py` plus
  * `loader/loaders/loinc_taiwan_seed.py`).
  *
- * Reads `Loinc_2.80.zip` (the root-level `LoincTable/Loinc.csv`, excluding the
- * AccessoryFiles subsets), writes `loinc.concepts`, then applies the Taiwan
+ * Reads `Loinc_2.80.zip` (the root-level `LoincTable/Loinc.csv`), writes
+ * `loinc.concepts`; the staged admin import additionally keeps the answer /
+ * part / group codes of the AccessoryFiles (`loinc.other_codes`) and the
+ * release version (`loinc.editions`) for the FHIR validator. Then applies the Taiwan
  * Chinese names (`taiwan_mapping.csv`) and reference ranges
  * (`lab_reference_ranges.csv`). Field mapping mirrors the Python loader
  * column-for-column so the loader golden-output diff matches.
@@ -180,8 +182,294 @@ export interface LoincStagePayload {
   conceptRows: (string | number)[][];
   /** 8-col reference-range tuples (loinc_num, age_min, age_max, gender, range_low, range_high, unit, interpretation). */
   rangeRows: (string | number)[][];
+  /** 5-col non-term code tuples (code, kind, display, alt_display, status) — see parseLoincOtherCodes. */
+  otherCodeRows: (string | null)[][];
+  /** Part links / answer lists / panels / MapTo (empty when the zip lacks those members). */
+  structure: LoincStructureRows;
+  /** LOINC release version ('2.80'): the highest VersionLastChanged in Loinc.csv. */
+  version: string | null;
   stats: { mapping_row_count: number; mapping_match_count: number };
 }
+
+/** Compare dotted LOINC versions numerically ('2.9' < '2.10'). */
+export function compareLoincVersion(a: string, b: string): number {
+  const pa = a.split(".").map((x) => parseInt(x, 10) || 0);
+  const pb = b.split(".").map((x) => parseInt(x, 10) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i += 1) {
+    const d = (pa[i] ?? 0) - (pb[i] ?? 0);
+    if (d !== 0) return d;
+  }
+  return 0;
+}
+
+/** Release version of a parsed Loinc.csv: the highest VersionLastChanged value. */
+export function loincReleaseVersion(rows: Record<string, string>[]): string | null {
+  let best: string | null = null;
+  for (const row of rows) {
+    const v = gs(row, "VersionLastChanged");
+    if (!/^\d+\.\d+$/.test(v)) continue;
+    if (best === null || compareLoincVersion(v, best) > 0) best = v;
+  }
+  return best;
+}
+
+/**
+ * LOINC codes outside the term table (LoincTable/Loinc.csv), as tx.fhir.org
+ * serves them in http://loinc.org:
+ *  - LA answer codes        AnswerFile/AnswerList.csv  display = DisplayText
+ *  - LL answer lists        AnswerFile/AnswerList.csv  display = AnswerListName
+ *  - LP parts               PartFile/Part.csv          display = PartDisplayName, alt = PartName
+ *  - LG groups              GroupFile/Group.csv        display = Group
+ *  - LG parent groups       GroupFile/ParentGroup.csv  display = ParentGroup
+ * First occurrence wins (AnswerList.csv repeats an answer once per list it
+ * belongs to; DisplayText is identical across lists in 2.80).
+ */
+export function parseLoincOtherCodes(files: {
+  answerList?: string | null;
+  part?: string | null;
+  group?: string | null;
+  parentGroup?: string | null;
+}): (string | null)[][] {
+  const out = new Map<string, (string | null)[]>();
+  const put = (code: string, kind: string, display: string, alt: string | null, status: string | null): void => {
+    if (!code || out.has(code)) return;
+    out.set(code, [code, kind, display || null, alt && alt !== display ? alt : null, status || null]);
+  };
+  if (files.answerList) {
+    const rows = parseCsvDict(files.answerList);
+    for (const r of rows) put(gs(r, "AnswerStringId"), "answer", gs(r, "DisplayText"), null, null);
+    for (const r of rows) put(gs(r, "AnswerListId"), "answer_list", gs(r, "AnswerListName"), null, null);
+  }
+  if (files.part) {
+    for (const r of parseCsvDict(files.part)) {
+      put(gs(r, "PartNumber"), "part", gs(r, "PartDisplayName"), gs(r, "PartName"), gs(r, "Status"));
+    }
+  }
+  if (files.parentGroup) {
+    for (const r of parseCsvDict(files.parentGroup)) put(gs(r, "ParentGroupId"), "parent_group", gs(r, "ParentGroup"), null, gs(r, "Status"));
+  }
+  if (files.group) {
+    for (const r of parseCsvDict(files.group)) put(gs(r, "GroupId"), "group", gs(r, "Group"), null, gs(r, "Status"));
+  }
+  return [...out.values()];
+}
+
+/**
+ * Callback CSV row iterator (same RFC 4180 rules as `parseCsv`) for the large
+ * AccessoryFiles (LoincPartLink_Primary.csv is ~111 MB): only one row's cells
+ * are alive at a time, and unquoted / quoted runs are sliced, not built
+ * char-by-char. A leading BOM is skipped.
+ */
+export function forEachCsvRow(text: string, onRow: (cells: string[], index: number) => void): void {
+  const n = text.length;
+  let i = text.charCodeAt(0) === 0xfeff ? 1 : 0;
+  let index = 0;
+  while (i < n) {
+    const cells: string[] = [];
+    // Parse one record.
+    for (;;) {
+      let field: string;
+      if (text[i] === '"') {
+        let out = "";
+        let j = i + 1;
+        for (;;) {
+          const q = text.indexOf('"', j);
+          if (q < 0) {
+            out += text.slice(j);
+            j = n;
+            break;
+          }
+          out += text.slice(j, q);
+          if (text[q + 1] === '"') {
+            out += '"';
+            j = q + 2;
+          } else {
+            j = q + 1;
+            break;
+          }
+        }
+        // Tolerate stray characters after a closing quote (csv.reader keeps them).
+        let k = j;
+        while (k < n && text[k] !== "," && text[k] !== "\n" && text[k] !== "\r") k += 1;
+        field = out + text.slice(j, k);
+        i = k;
+      } else {
+        let k = i;
+        while (k < n && text[k] !== "," && text[k] !== "\n" && text[k] !== "\r") k += 1;
+        field = text.slice(i, k);
+        i = k;
+      }
+      cells.push(field);
+      if (i < n && text[i] === ",") {
+        i += 1;
+        continue;
+      }
+      if (i < n && text[i] === "\r") i += 1;
+      if (i < n && text[i] === "\n") i += 1;
+      break;
+    }
+    onRow(cells, index);
+    index += 1;
+  }
+}
+
+/** Iterate data rows of a CSV, resolving the named columns to indexes once. */
+function forEachCsvRecord(
+  text: string,
+  columns: string[],
+  onRecord: (get: (col: string) => string) => void,
+): void {
+  let idx: Map<string, number> | null = null;
+  let current: string[] = [];
+  const get = (col: string): string => {
+    const k = idx!.get(col);
+    return k === undefined ? "" : (current[k] ?? "").trim();
+  };
+  forEachCsvRow(text, (cells, rowIndex) => {
+    if (rowIndex === 0) {
+      idx = new Map(cells.map((h, k) => [h.trim(), k] as [string, number]));
+      const missing = columns.filter((c) => !idx!.has(c));
+      if (missing.length) throw new Error(`CSV is missing column(s): ${missing.join(", ")}`);
+      return;
+    }
+    if (cells.length === 1 && cells[0] === "") return; // blank line
+    current = cells;
+    onRecord(get);
+  });
+}
+
+function intOrNull(v: string): number | null {
+  if (!/^-?\d+$/.test(v)) return null;
+  return Number.parseInt(v, 10);
+}
+
+/** LoincPartLink_Primary.csv → (loinc_num, part_type, part_number, part_name), deduped on the PK. */
+export function parseLoincPartLinks(text: string): (string | null)[][] {
+  const out = new Map<string, (string | null)[]>();
+  forEachCsvRecord(text, ["LoincNumber", "PartNumber", "PartName", "PartTypeName"], (g) => {
+    const linkType = g("LinkTypeName");
+    if (linkType && linkType !== "Primary") return;
+    const loinc = g("LoincNumber");
+    const type = g("PartTypeName");
+    const part = g("PartNumber");
+    if (!loinc || !type || !part) return;
+    const key = `${loinc}\u0000${type}\u0000${part}`;
+    if (!out.has(key)) out.set(key, [loinc, type, part, g("PartName") || null]);
+  });
+  return [...out.values()];
+}
+
+/**
+ * AnswerList.csv → answer list members (list_id, seq, answer_code, display, score).
+ * Externally-defined lists carry no AnswerStringId and are skipped. First
+ * occurrence of (list_id, answer_code) wins.
+ */
+export function parseLoincAnswerListItems(text: string): (string | number | null)[][] {
+  const out = new Map<string, (string | number | null)[]>();
+  forEachCsvRecord(text, ["AnswerListId", "AnswerStringId", "SequenceNumber", "DisplayText"], (g) => {
+    const list = g("AnswerListId");
+    const answer = g("AnswerStringId");
+    if (!list || !answer) return;
+    const key = `${list}\u0000${answer}`;
+    if (!out.has(key)) out.set(key, [list, intOrNull(g("SequenceNumber")), answer, g("DisplayText") || null, g("Score") || null]);
+  });
+  return [...out.values()];
+}
+
+/** LoincAnswerListLink.csv → (loinc_num, list_id, link_type, context). */
+export function parseLoincAnswerListLinks(text: string): (string | null)[][] {
+  const out = new Map<string, (string | null)[]>();
+  forEachCsvRecord(text, ["LoincNumber", "AnswerListId"], (g) => {
+    const loinc = g("LoincNumber");
+    const list = g("AnswerListId");
+    if (!loinc || !list) return;
+    const context = g("ApplicableContext");
+    const key = `${loinc}\u0000${list}\u0000${context}`;
+    if (!out.has(key)) out.set(key, [loinc, list, g("AnswerListLinkType") || null, context]);
+  });
+  return [...out.values()];
+}
+
+/**
+ * PanelsAndForms.csv → panel membership (parent_loinc, seq, loinc_num, display, required).
+ * ParentId is the row ID of the IMMEDIATE parent (a nested sub-panel's members
+ * point at the sub-panel's row) and ParentLoinc is always that row's Loinc, so
+ * ParentLoinc is the immediate parent panel. The panel's own row (ID ==
+ * ParentId) is skipped. A sub-panel used in several panels lists its members
+ * once per use; rows are deduped on (parent_loinc, loinc_num) keeping the
+ * lowest SEQUENCE.
+ */
+export function parsePanelItems(text: string): (string | number | null)[][] {
+  const out = new Map<string, (string | number | null)[]>();
+  forEachCsvRecord(text, ["ParentId", "ParentLoinc", "ID", "SEQUENCE", "Loinc"], (g) => {
+    const id = g("ID");
+    if (id && id === g("ParentId")) return;
+    const parent = g("ParentLoinc");
+    const loinc = g("Loinc");
+    if (!parent || !loinc || parent === loinc) return;
+    const seq = intOrNull(g("SEQUENCE")) ?? 0;
+    const key = `${parent}\u0000${loinc}`;
+    const prev = out.get(key);
+    if (prev && (prev[1] as number) <= seq) return;
+    out.set(key, [parent, seq, loinc, g("DisplayNameForForm") || g("LoincName") || null, g("ObservationRequiredInPanel") || null]);
+  });
+  return [...out.values()];
+}
+
+/** MapTo.csv → (loinc_num, map_to, comment). */
+export function parseLoincMapTo(text: string): (string | null)[][] {
+  const out = new Map<string, (string | null)[]>();
+  forEachCsvRecord(text, ["LOINC", "MAP_TO"], (g) => {
+    const from = g("LOINC");
+    const to = g("MAP_TO");
+    if (!from || !to) return;
+    const key = `${from}\u0000${to}`;
+    if (!out.has(key)) out.set(key, [from, to, g("COMMENT") || null]);
+  });
+  return [...out.values()];
+}
+
+/** Row sets of the LOINC structure tables (see db/migrations/20261020_loinc_structure.sql). */
+export interface LoincStructureRows {
+  partLinkRows: (string | null)[][];
+  answerListItemRows: (string | number | null)[][];
+  answerListLinkRows: (string | null)[][];
+  panelItemRows: (string | number | null)[][];
+  mapToRows: (string | null)[][];
+}
+
+/**
+ * Parse the structure members out of a LOINC release zip. Members absent from
+ * the zip (older or trimmed releases) yield empty row sets. Each member is
+ * decompressed, parsed and released before the next to bound peak memory.
+ */
+export function parseLoincStructure(buf: Uint8Array): LoincStructureRows {
+  const pick = (re: RegExp): string | null => {
+    const entries = unzipSync(buf, { filter: (f) => re.test(f.name) });
+    const names = Object.keys(entries).sort();
+    if (names.length === 0) return null;
+    return Buffer.from(entries[names[0]]).toString("utf-8");
+  };
+  const parse = <T>(re: RegExp, fn: (text: string) => T[]): T[] => {
+    const text = pick(re);
+    return text ? fn(text) : [];
+  };
+  return {
+    partLinkRows: parse(/(^|\/)PartFile\/LoincPartLink_Primary\.csv$/, parseLoincPartLinks),
+    answerListItemRows: parse(/(^|\/)AnswerFile\/AnswerList\.csv$/, parseLoincAnswerListItems),
+    answerListLinkRows: parse(/(^|\/)AnswerFile\/LoincAnswerListLink\.csv$/, parseLoincAnswerListLinks),
+    panelItemRows: parse(/(^|\/)PanelsAndForms\/PanelsAndForms\.csv$/, parsePanelItems),
+    mapToRows: parse(/(^|\/)LoincTable\/MapTo\.csv$/, parseLoincMapTo),
+  };
+}
+
+/** SQL recording the loaded LOINC version (params: version, term_count, other_code_count). */
+export const LOINC_EDITION_UPSERT_SQL = `
+  INSERT INTO loinc.editions (code_system, version, term_count, other_code_count, loaded_at)
+  VALUES ('loinc', $1, $2::integer, $3::integer, NOW())
+  ON CONFLICT (code_system) DO UPDATE SET
+    version = EXCLUDED.version, term_count = EXCLUDED.term_count,
+    other_code_count = EXCLUDED.other_code_count, loaded_at = NOW()`;
 
 /** Faithful port of `_build_loinc_stage_payload`. */
 export function buildLoincStagePayload(
@@ -201,6 +489,23 @@ export function buildLoincStagePayload(
   }
   const csvText = Buffer.from(entries[names[0]]).toString("utf-8");
   const rows = parseCsvDict(csvText);
+  const version = loincReleaseVersion(rows);
+
+  // Answer / part / group files (AccessoryFiles). Absent members simply yield
+  // no rows (older or trimmed release zips).
+  const accessory = unzipSync(buf, {
+    filter: (f) => /AccessoryFiles\/(AnswerFile\/AnswerList|PartFile\/Part|GroupFile\/Group|GroupFile\/ParentGroup)\.csv$/.test(f.name),
+  });
+  const member = (re: RegExp): string | null => {
+    const name = Object.keys(accessory).find((n) => re.test(n));
+    return name ? Buffer.from(accessory[name]).toString("utf-8") : null;
+  };
+  const otherCodeRows = parseLoincOtherCodes({
+    answerList: member(/AnswerFile\/AnswerList\.csv$/),
+    part: member(/PartFile\/Part\.csv$/),
+    group: member(/GroupFile\/Group\.csv$/),
+    parentGroup: member(/GroupFile\/ParentGroup\.csv$/),
+  });
 
   // Keyed by loinc_num, preserving CSV insertion order (mirrors Python dict).
   const conceptMap = new Map<string, (string | number)[]>();
@@ -284,9 +589,14 @@ export function buildLoincStagePayload(
       .filter((r) => conceptCodes.has(r[0] as string));
   }
 
+  const structure = parseLoincStructure(buf);
+
   return {
     conceptRows,
     rangeRows,
+    otherCodeRows,
+    structure,
+    version,
     stats: { mapping_row_count: mappingRowCount, mapping_match_count: mappingMatchCount },
   };
 }

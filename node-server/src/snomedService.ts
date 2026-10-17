@@ -99,7 +99,7 @@ export class SnomedService {
                           ts_rank(to_tsvector('english', d.term),
                                   plainto_tsquery('english', $1)) DESC) AS rank
                FROM snomed.descriptions d
-               JOIN descendants desc ON desc.concept_id = d.concept_id
+               JOIN descendants dsc ON dsc.concept_id = d.concept_id
                WHERE d.active = TRUE
                  AND to_tsvector('english', d.term) @@ plainto_tsquery('english', $1)
                LIMIT 20
@@ -108,7 +108,7 @@ export class SnomedService {
                SELECT e.concept_id,
                       ROW_NUMBER() OVER (ORDER BY e.embedding <=> $5::halfvec) AS rank
                FROM snomed.concept_embeddings e
-               JOIN descendants desc ON desc.concept_id = e.concept_id
+               JOIN descendants dsc ON dsc.concept_id = e.concept_id
                ORDER BY e.embedding <=> $5::halfvec LIMIT 20
            ),
            rrf AS (
@@ -138,7 +138,7 @@ export class SnomedService {
            SELECT d.concept_id, d.term AS preferred_term, d.type_id, c.active
            FROM snomed.descriptions d
            JOIN snomed.concepts c ON c.concept_id = d.concept_id
-           JOIN descendants desc ON desc.concept_id = d.concept_id
+           JOIN descendants dsc ON dsc.concept_id = d.concept_id
            WHERE d.active = TRUE
              AND to_tsvector('english', d.term) @@ plainto_tsquery('english', $1)
            ORDER BY
@@ -366,13 +366,15 @@ export class SnomedService {
                 dd.term AS target_term
          FROM snomed.relationships r
          LEFT JOIN snomed.descriptions dt
-             ON dt.concept_id = r.type_id AND dt.type_id = $4 AND dt.active = TRUE
+             ON dt.concept_id = r.type_id AND dt.type_id = $3 AND dt.active = TRUE
          LEFT JOIN snomed.descriptions dd
-             ON dd.concept_id = r.destination_id AND dd.type_id = $4 AND dd.active = TRUE
+             ON dd.concept_id = r.destination_id AND dd.type_id = $3 AND dd.active = TRUE
          WHERE r.source_id = $1 AND r.active = TRUE AND r.type_id = $2
          ORDER BY r.type_id, r.destination_id
          LIMIT 100`,
-        [String(conceptId), String(relationshipTypeId), IS_A_TYPE, FSN_TYPE],
+        // No IS_A_TYPE here: an unreferenced bind parameter has no inferable type and
+        // Postgres rejects the whole statement ("could not determine data type of parameter").
+        [String(conceptId), String(relationshipTypeId), FSN_TYPE],
       );
       rows = r.rows;
     } else {
