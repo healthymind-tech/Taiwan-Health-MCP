@@ -1031,6 +1031,28 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#grounding-completeness" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        依據原文檢查（grounding / completeness）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tool-versions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        工具版本
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -2428,6 +2450,28 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#grounding-completeness" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        依據原文檢查（grounding / completeness）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tool-versions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        工具版本
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -2450,10 +2494,24 @@
 
 <h1 id="fhir-ig-fhir-ig-tools">FHIR IG 工具 (FHIR IG Tools)<a class="headerlink" href="#fhir-ig-fhir-ig-tools" title="Permanent link">&para;</a></h1>
 <p>一套通用、以 IG 為範圍的工具集，建構於多 IG（multi-IG）的 <code>fhir.*</code> 儲存之上，用於探索 Implementation Guide、讀取剖面與術語、進行術語驗證，以及以骨架填值方式產生與驗證 FHIR R4 資源。</p>
+<blockquote>
+<p><strong>維護模式</strong>：管理後台把 <code>ig</code> 模組切到維護模式時，本組全部 22 個工具（含 <code>fhir_check_grounding</code> / <code>fhir_check_completeness</code>）呼叫會立即回傳 <code>isError</code> 結果，錯誤碼 <code>MODULE_MAINTENANCE</code>（<code>error.message</code> 英文、<code>error.message_zh</code> 正體中文，<code>error.module</code> 為模組鍵），約 5 秒內生效；工具仍留在 <code>tools/list</code> 中。詳見 <a href="../../api/#maintenance">API 參考</a>。</p>
+</blockquote>
 <h2 id="_1">共通慣例<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
 <ul>
-<li>每個工具都可帶入選用的 <code>package_id</code> + <code>version</code>；兩者皆省略時鎖定<strong>預設 IG</strong>（<code>isDefault</code>）。</li>
-<li>回應採用共同信封：<code>{ok, data, warnings, provenance, error?}</code>。</li>
+<li>每個工具都可帶入選用的 <code>package_id</code> + <code>version</code>。省略 <code>package_id</code> 時依下列優先順序決定目標套件，<code>provenance.resolved_by</code> 會註明採用哪一條：<ol>
+<li><code>explicit_version</code> — canonical 參數或 <code>meta.profile</code> 以 <code>url|version</code> 鎖定版本 → 持有該版本的套件；</li>
+<li><code>package_arg</code> / <code>latest</code> — 有給 <code>package_id</code>（有 <code>version</code> 用該版本；沒給 version 則用預設 IG 的版本，否則取最高正式版，只有在沒有正式版時才用 pre-release）；</li>
+<li><code>meta_profile</code> / <code>canonical_owner</code> — 擁有該 <code>meta.profile</code> 或 canonical 參數（profile / ValueSet / system）的套件，手動安裝的 IG 優先；</li>
+<li><code>default_ig</code> — 預設 IG（<code>isDefault</code>）；</li>
+<li><code>sole_manual_ig</code> — 沒有預設 IG 且恰好只有一個手動安裝的 IG。
+都不符合時回傳錯誤 <code>NO_DEFAULT_IG</code>（不會任意挑一個套件）。</li>
+</ol>
+</li>
+<li><code>|version</code> 一律被尊重：指定的版本未安裝時回傳 <code>ARTIFACT_NOT_FOUND</code>（訊息列出已安裝的版本），不會默默改用其他版本。</li>
+<li>回應採用共同信封：<code>{ok, data, warnings, provenance, error?}</code>。<code>provenance</code> 含 <code>packageId</code> / <code>version</code> / <code>fhirVersion</code> / <code>source</code>，以及 <code>resolved_by</code>；依賴閉包中同一套件有多個版本時另帶 <code>closure_versions</code>（說明 canonical 查詢實際採用哪個版本）。</li>
+<li>目標 IG 宣告的依賴有未安裝者時，<code>data.deps_missing</code> 會列出 <code>{package_id, version, required_by}</code>（閉包不完整，結果可能缺漏）。</li>
+<li>列表 / 搜尋類工具（<code>fhir_list_artifacts</code>、<code>fhir_search_artifacts</code>、<code>fhir_list_resource_profiles</code>）未給 <code>package_id</code> 時只查預設 IG；<code>all_packages=true</code> 改查所有已安裝套件（每列附 <code>package_id</code> / <code>package_version</code>，此時忽略 <code>package_id</code>）。查無結果時 <code>data.hint</code> 會指出其他有命中的套件。</li>
 <li>模組概念與建議工作流程見 <a href="../../modules/fhir-ig-service/">FHIR IG 服務模組</a>。</li>
 </ul>
 <h2 id="ig">IG 探索<a class="headerlink" href="#ig" title="Permanent link">&para;</a></h2>
@@ -2468,23 +2526,23 @@
 <tbody>
 <tr>
 <td style="text-align: left;"><code>fhir_list_igs</code></td>
-<td style="text-align: left;">列出已安裝 IG 套件（packageId / version / title / canonical / fhirVersion / status / isDefault / dependencies）</td>
+<td style="text-align: left;">列出已安裝 IG 套件（packageId / version / title / canonical / fhirVersion / status / isDefault / <code>installOrigin</code>（<code>manual</code> 手動安裝 / <code>dependency</code> 因其他 IG 的依賴而下載）/ dependencies）</td>
 <td style="text-align: left;">—</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_get_ig</code></td>
-<td style="text-align: left;">單一 IG 詳情與各資源型別 artifact 數量</td>
+<td style="text-align: left;">單一 IG 詳情、依賴與各資源型別 artifact 數量；<code>data.deps_missing</code> 列出未安裝的依賴</td>
 <td style="text-align: left;"><code>package_id</code>, <code>version</code></td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_list_artifacts</code></td>
 <td style="text-align: left;">列出 IG 的 conformance artifacts 摘要</td>
-<td style="text-align: left;"><code>resource_type</code>, <code>grouping_id</code>, <code>limit</code>（預設 50，上限 200）</td>
+<td style="text-align: left;"><code>resource_type</code>, <code>grouping_id</code>, <code>all_packages</code>, <code>limit</code>（預設 50，上限 200）</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_search_artifacts</code></td>
 <td style="text-align: left;">以 id / canonical / name / title / description 全文搜尋 artifacts</td>
-<td style="text-align: left;"><code>keyword</code>, <code>resource_type</code>, <code>limit</code>（預設 20，上限 100）</td>
+<td style="text-align: left;"><code>keyword</code>, <code>resource_type</code>, <code>all_packages</code>, <code>limit</code>（預設 20，上限 100）</td>
 </tr>
 </tbody>
 </table>
@@ -2501,7 +2559,7 @@
 <tr>
 <td style="text-align: left;"><code>fhir_list_resource_profiles</code></td>
 <td style="text-align: left;">列出可選資源剖面，依約束的基礎資源型別分組</td>
-<td style="text-align: left;"><code>base_type</code></td>
+<td style="text-align: left;"><code>base_type</code>, <code>all_packages</code></td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_rank_resource_profiles</code></td>
@@ -2510,13 +2568,18 @@
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_get_profile</code></td>
-<td style="text-align: left;">單一剖面摘要（身分 / base / derivation / element 數），支援 id / canonical / key 解析</td>
+<td style="text-align: left;">單一剖面摘要（身分 / base / derivation / element 數），支援 id / canonical / key 解析，canonical 可寫成 <code>url|version</code>（未安裝的版本回 <code>ARTIFACT_NOT_FOUND</code>）</td>
 <td style="text-align: left;"><code>identifier</code></td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_get_profile_elements</code></td>
 <td style="text-align: left;">讀取剖面 snapshot；<code>view</code> = <code>elements</code> / <code>element</code> / <code>slices</code> / <code>choices</code> / <code>binding</code> / <code>examples</code></td>
 <td style="text-align: left;"><code>profile</code>, <code>view</code>, <code>path</code>, <code>slice_name</code>, <code>limit</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>fhir_get_profile_required_elements</code></td>
+<td style="text-align: left;">列出剖面「實際必填」的元素：整條父鏈皆必填才算、必填 slice、choice 型別、invariant 隱含的 value[x] 或 dataAbsentReason（vs-2 / vs-3 / tw-core-4 類，依運算式自動偵測）、target-implied 主要內容；每列附 <code>grounding_class</code>（auto / coding / source_fact / workflow_default …）、<code>required_by</code>、小型 required binding 的 <code>allowedCodes</code> 與填寫提示 <code>hint</code>。有 profile 的 extension 會依其定義展開（url、ext-1 隱含的 value[x]、必填子 extension），已填元素的基礎資料型別必填子元素也會列出（Narrative.div、Extension.url …），剖面自訂的 error invariant 列在 <code>invariants</code>。給 <code>instance</code> 時依 discriminator 比對 slice，未出現的 slice 不會帶出其子元素</td>
+<td style="text-align: left;"><code>profile</code>, <code>instance</code>（草稿：已填的選填父元素其必填子元素也列出）, <code>include_target_implied</code>（預設 <code>true</code>）, <code>include_mustsupport</code>（預設 <code>false</code>）, <code>verbosity</code>（預設 <code>compact</code>：id / required_by / grounding_class / fixed·pattern·value / choices / allowedCodes / hint，剖面固定的子樹折疊成一個可直接複製的 <code>value</code>；<code>full</code> 另含 min / max / types / binding / mustSupport）</td>
 </tr>
 </tbody>
 </table>
@@ -2537,8 +2600,8 @@
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_expand_valueset</code></td>
-<td style="text-align: left;">展開 ValueSet 並列出成員碼</td>
-<td style="text-align: left;"><code>identifier</code>, <code>limit</code></td>
+<td style="text-align: left;">展開 ValueSet 並列出成員碼（盡量在本機解析；整個大型外部 code system 不列舉，回 <code>TOO_BROAD</code>）</td>
+<td style="text-align: left;"><code>identifier</code>, <code>limit</code>（預設 500，上限 2000）</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_lookup_code</code></td>
@@ -2547,7 +2610,7 @@
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_validate_code</code></td>
-<td style="text-align: left;">驗證 <code>system</code>+<code>code</code> 是否屬於指定 ValueSet</td>
+<td style="text-align: left;">驗證 <code>system</code>+<code>code</code> 是否屬於指定 ValueSet，回傳 <code>valid</code> / <code>invalid</code> / <code>unverifiable</code>；<code>value_set</code> 可寫成 <code>url|version</code></td>
 <td style="text-align: left;"><code>system</code>, <code>code</code>, <code>value_set</code></td>
 </tr>
 <tr>
@@ -2569,7 +2632,7 @@
 <tbody>
 <tr>
 <td style="text-align: left;"><code>fhir_get_resource_skeleton</code></td>
-<td style="text-align: left;">依剖面產生僅含必填 / mustSupport 結構的空白草稿</td>
+<td style="text-align: left;">依剖面產生僅含必填 / mustSupport 結構的空白草稿；<code>required</code> 為元素自身 min≥1，<code>effectiveRequired</code> 另要求所有父元素皆必填</td>
 <td style="text-align: left;"><code>profile</code>, <code>candidate_limit</code>（預設 20，上限 100）, <code>include_examples</code>（預設 <code>true</code>）</td>
 </tr>
 <tr>
@@ -2589,19 +2652,118 @@
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_validate_resource</code></td>
-<td style="text-align: left;">驗證單一資源（結構 + 術語綁定）；未給 <code>profile</code> 時取 <code>meta.profile</code></td>
-<td style="text-align: left;"><code>resource</code>, <code>profile</code></td>
+<td style="text-align: left;">驗證單一資源（結構 + 術語綁定）；未給 <code>profile</code> 時取 <code>meta.profile</code>。選用的 <code>source_text</code> 會另跑 grounding 檢查（見下節）</td>
+<td style="text-align: left;"><code>resource</code>, <code>profile</code>, <code>source_text</code>, <code>site_config</code>, <code>evidence_map</code>, <code>grounding</code>, <code>grounding_verbosity</code></td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_validate_bundle</code></td>
-<td style="text-align: left;">驗證整個 Bundle</td>
-<td style="text-align: left;"><code>bundle</code></td>
+<td style="text-align: left;">驗證整個 Bundle（各 entry 依其 <code>meta.profile</code> + Bundle 內參照完整性）。選用的 <code>source_text</code> 會另跑 grounding 檢查並合併結果（見下節）</td>
+<td style="text-align: left;"><code>bundle</code>, <code>source_text</code>, <code>site_config</code>, <code>evidence_map</code>, <code>grounding</code>, <code>grounding_verbosity</code></td>
 </tr>
 </tbody>
 </table>
+<p><code>fhir_validate_resource</code> / <code>fhir_validate_bundle</code> 的 <code>data</code> 另回報驗證是否完整：<code>checked_fully</code>（所有剖面與 ValueSet 都檢查到、且依賴閉包完整時為 <code>true</code>）、<code>profiles_unchecked</code>、<code>valuesets_unchecked</code>。<code>valid</code> 維持 HL7 語意（無法解析的剖面只是 warning），因此 <code>valid: true</code> 但 <code>checked_fully: false</code> 代表有部分內容沒有被檢查。<code>|version</code> canonical（<code>meta.profile</code>、binding、targetProfile、type profile、extension url）的解析方式比照 HL7 validator_cli 7.0.1。</p>
 <blockquote>
-<p>程序內驗證以剖面 snapshot 與術語綁定為基礎，不等同官方 HL7 FHIR Validator 的一致性認證。</p>
+<p>程序內驗證以剖面 snapshot 與術語綁定為基礎，比對基準為 HL7 validator_cli 7.0.1（稽核方式與結果見 <code>node-server/scripts/validator-audit/</code>），但不等同官方 HL7 FHIR Validator 的一致性認證。</p>
 </blockquote>
+<h2 id="grounding-completeness">依據原文檢查（grounding / completeness）<a class="headerlink" href="#grounding-completeness" title="Permanent link">&para;</a></h2>
+<p>符合剖面（conformance-valid）不代表忠於病歷：模型可能填入病歷沒寫的診斷碼、日期或劑量，而 validator 照樣通過。
+下列工具以<strong>確定性規則</strong>（不呼叫 LLM、不用 embedding、不用亂數）比對 Bundle 與病歷原文。術語名稱只查本機資料庫（ICD-10-CM / PCS、LOINC、SNOMED CT、RxNorm、CVX、IG CodeSystem），不呼叫外部 terminology server。</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">工具</th>
+<th style="text-align: left;">說明</th>
+<th style="text-align: left;">主要參數</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>fhir_check_grounding</code></td>
+<td style="text-align: left;">檢查 Bundle 中每個臨床事實與代碼是否有病歷原文支持（evidence map 或自動定位），含日期 / 數字 / 單位 / 身分證 / 劑量 / 頻次正規化，以及段落、否定、既往史規則。輸出與 <code>fhir_validate_bundle</code> 同構（<code>entries[].issues</code>、<code>issues</code>），另含 <code>grounding</code> 摘要（units_checked、coverage …）</td>
+<td style="text-align: left;"><code>bundle</code>, <code>source_text</code>（必填）, <code>site_config</code>, <code>evidence_map</code>, <code>mode</code>, <code>verbosity</code>（預設 <code>warnings</code>）, <code>policy</code>, <code>instruction_markers</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>fhir_check_completeness</code></td>
+<td style="text-align: left;">缺漏報告：依呼叫端提供的結構化 <code>targets</code>（resourceType、品項、別名、代碼、日期規則），逐一判斷病歷是否寫了必填事實，回傳 found / missing / stated_absent / unknown、缺漏清單、追問句模板與可直接使用的 <code>abstention</code>（insufficient_information）</td>
+<td style="text-align: left;"><code>targets</code>, <code>source_text</code>（必填）, <code>site_config</code>, <code>extracted_facts</code>（模型自述的事實，工具會驗證而非採信）, <code>instruction_markers</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>模式</strong>（<code>fhir_check_grounding.mode</code>；<code>fhir_validate_*</code> 的 <code>grounding</code>）</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">模式</th>
+<th style="text-align: left;">有 evidence 的元素</th>
+<th style="text-align: left;">沒有 evidence 的元素</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>strict</code></td>
+<td style="text-align: left;">驗證引文（必須逐字出現於病歷、值相符、段落與情境正確）</td>
+<td style="text-align: left;">error <code>G-UNGROUNDED</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>auto</code></td>
+<td style="text-align: left;">同上</td>
+<td style="text-align: left;">工具自動在病歷中定位支持文字；找到給 information <code>G-AUTO-LOCATED</code>，找不到或只在情境不符處找到給 error</td>
+</tr>
+</tbody>
+</table>
+<p>預設：有 <code>evidence_map</code> 時為 <code>strict</code>，否則 <code>auto</code>。<code>evidence_map</code> 可為 <code>[{path, quote}]</code> 或 <code>{path: quote}</code>；path 可寫 <code>Bundle.entry[2].resource.code</code>、<code>entry[2].code</code>、<code>&lt;fullUrl&gt;|code</code>、省略 list index 或 <code>value[x]</code>。
+每個 issue 帶 <code>rule</code>、<code>source:"grounding"</code>，<code>message</code> 以 <code>[grounding:&lt;RULE&gt;]</code> 開頭。<code>【轉換目標】</code> 等指示行（<code>instruction_markers</code>）永遠不算證據；<code>site_config</code> 只能作為 <code>identifier.system</code> 的依據。</p>
+<p><strong><code>fhir_validate_bundle</code> / <code>fhir_validate_resource</code> 的 grounding 參數</strong>（向下相容）</p>
+<ul>
+<li>沒有 <code>source_text</code>，或 <code>grounding="off"</code>：輸出與未擴充前<strong>逐位元相同</strong>。</li>
+<li>有 <code>source_text</code>：先跑原本的 conformance，再跑 grounding 並合併：
+  <code>data.conformanceValid</code>（原 <code>valid</code>）、<code>data.groundingValid</code>、<code>data.valid = conformanceValid ∧ groundingValid</code>、
+  grounding issue 依 entry 併入 <code>entries[i].issues</code>（Bundle 層級併入 <code>issues</code>）、<code>entries[i].valid</code> 同步、
+  <code>data.grounding</code> 摘要、<code>data.source = "builtin+grounding"</code>、<code>provenance.groundingVersion</code>。</li>
+<li>呼叫端應檢查回應中有 <code>data.groundingValid</code>；沒有代表伺服器版本不支援，不可當成已檢查。</li>
+<li><code>fhir_validate_resource</code> 把單一資源當作 Bundle 的唯一 entry 檢查，issue path 以資源為根（如 <code>Condition.code</code>）；無法跟隨參照，因此依賴其他資源的規則看不到上下文。</li>
+</ul>
+<p><strong>版本與隱私</strong></p>
+<ul>
+<li><code>provenance</code> 帶 <code>tool</code>、<code>toolVersion</code>、<code>lexiconVersion</code> / <code>lexiconSha256</code>、<code>terminologyVersion</code> 與 <code>sourceSha256</code>（病歷全文 SHA-256 的前 16 碼）。<code>health_check</code> 回報 <code>tools_version</code>、<code>lexicon_version</code>、<code>lexicon_sha256</code>。</li>
+<li>病歷全文（<code>source_text</code>）與院所設定不會寫入 log、metric label 或 provenance，只留 <code>sourceSha256</code>；格式錯誤的 JSON 請求本文也不會被記錄。</li>
+</ul>
+<blockquote>
+<p>規則與詞彙表（<code>tw-lexicon</code>）以台灣病歷寫法為準；<code>fhir_check_completeness</code> 需要呼叫端讀轉換目標後提供 <code>targets</code>，不解析自然語言目標。檢查結果是輔助，不取代臨床人員審閱。</p>
+</blockquote>
+<h2 id="tool-versions">工具版本<a class="headerlink" href="#tool-versions" title="Permanent link">&para;</a></h2>
+<p>行為由固定測資鎖定的工具各有自己的版本（<code>node-server/src/toolVersions.ts</code>）；同一輸入的輸出改變時就會升版。<code>health_check</code> 的 <code>tools_version</code> 回報目前值，其餘工具沿用伺服器版本（<code>version</code>，目前 <code>1.1.0</code>）。</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">工具</th>
+<th style="text-align: left;">版本</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>fhir_validate_resource</code>、<code>fhir_validate_bundle</code></td>
+<td style="text-align: left;">1.4.0</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>fhir_get_profile_required_elements</code></td>
+<td style="text-align: left;">1.2.0</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>fhir_list_igs</code>、<code>fhir_get_ig</code>、<code>fhir_list_artifacts</code>、<code>fhir_search_artifacts</code>、<code>fhir_list_resource_profiles</code>、<code>fhir_rank_resource_profiles</code>、<code>fhir_get_profile</code>、<code>fhir_get_profile_elements</code>、<code>fhir_get_valueset</code>、<code>fhir_expand_valueset</code>、<code>fhir_lookup_code</code>、<code>fhir_validate_code</code>、<code>fhir_normalize_code</code>、<code>fhir_get_resource_skeleton</code>、<code>fhir_finalize_resource</code></td>
+<td style="text-align: left;">1.2.0</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>fhir_check_grounding</code></td>
+<td style="text-align: left;">1.1.0</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>fhir_check_completeness</code></td>
+<td style="text-align: left;">1.1.1</td>
+</tr>
+</tbody>
+</table>
 
 
 

@@ -2729,7 +2729,10 @@
 
 
 <h1 id="icd-10-icd-tools">ICD-10 工具 (ICD Tools)<a class="headerlink" href="#icd-10-icd-tools" title="Permanent link">&para;</a></h1>
-<p>此類別工具提供對 ICD-10-CM (診斷) 與 ICD-10-PCS (處置) 的查詢與邏輯分析功能。</p>
+<p>此類別工具提供對 ICD-10-CM (診斷) 與 ICD-10-PCS (處置) 的查詢與階層瀏覽功能。資料來自 <code>icd_import</code> 匯入的 <code>icd.diagnoses</code> / <code>icd.procedures</code>；目前載入的 ICD-10-CM 版本（例如以 CMS「Code Descriptions in Tabular Order」載入的完整版 <code>2026-04-01</code>，含第 7 碼與佔位字元 X）可由 <code>health_check</code> 的 <code>terminology.icd10cm</code> 查得。<code>icd.diagnoses</code> 少於 10,000 筆時整組工具不會註冊。</p>
+<blockquote>
+<p><strong>維護模式</strong>：管理後台把 <code>icd</code> 模組切到維護模式時，本組工具呼叫會立即回傳 <code>isError</code> 結果，錯誤碼 <code>MODULE_MAINTENANCE</code>（<code>error.message</code> 英文、<code>error.message_zh</code> 正體中文，<code>error.module</code> 為模組鍵），約 5 秒內生效；工具仍留在 <code>tools/list</code> 中。詳見 <a href="../../api/#maintenance">API 參考</a>。</p>
+</blockquote>
 <h2 id="search_medical_codes">search_medical_codes<a class="headerlink" href="#search_medical_codes" title="Permanent link">&para;</a></h2>
 <p>搜尋 ICD-10 診斷或處置代碼。</p>
 <h3 id="_1">參數<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h3>
@@ -2762,17 +2765,20 @@
 <td style="text-align: left;"><code>limit</code></td>
 <td style="text-align: left;">integer</td>
 <td style="text-align: left;">否</td>
-<td style="text-align: left;">每類結果上限，預設 3</td>
+<td style="text-align: left;">每類結果上限，預設 3，上限 10</td>
 <td style="text-align: left;"><code>5</code></td>
 </tr>
 </tbody>
 </table>
 <h3 id="_2">搜尋方式<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h3>
 <p><code>diagnosis</code> 走 BM25 + 向量重排序的混合搜尋；<code>procedure</code> 只走 BM25；<code>all</code>（預設）兩者都做，
-並以獨立的 <code>diagnoses</code> / <code>procedures</code> 鍵分開回傳。結果依相關性排序，不是依代碼字母順序。</p>
+並以獨立的 <code>diagnoses</code> / <code>procedures</code> 鍵分開回傳。結果依相關性排序（關鍵字與向量結果以 RRF 融合），不是依代碼字母順序。
+向量部分刻意做精確掃描而不走 HNSW 索引：完整版 ICD-10-CM 有大量只差第 7 碼的近似碼，HNSW 的召回率在這種資料上會崩潰。
+embedding 端點不可用或 <code>icd.diagnosis_embeddings</code> 為空時退回純關鍵字搜尋，回應會帶 <code>search_mode: "keyword_only"</code>。
+未載入 ICD-10-PCS 時 <code>procedures</code> 為空陣列並附 <code>procedures_note</code>。</p>
 <hr />
 <h2 id="infer_complications">infer_complications<a class="headerlink" href="#infer_complications" title="Permanent link">&para;</a></h2>
-<p>根據 ICD-10 階層結構，推論潛在的併發症或子代碼。</p>
+<p>依 ICD-10-CM 階層列出代碼的子代碼（純階層查詢，不做臨床推論）。</p>
 <h3 id="_3">參數<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
@@ -2795,10 +2801,11 @@
 </tbody>
 </table>
 <h3 id="_4">用途<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h3>
-<p>當使用者僅提供模糊的診斷（如「糖尿病」）時，此工具可列出該類別下的具體細分（如「腎病變」、「視網膜病變」），協助釐清病情。</p>
+<p>當使用者僅提供模糊的診斷（如「糖尿病」）時，此工具可列出該類別下的具體細分（如「腎病變」、「視網膜病變」），協助釐清病情。
+有子代碼時回傳 <code>{base_code, potential_complications_or_specifics}</code>（最多 15 筆）；代碼已是末端碼時改回傳同一類別的其他代碼 <code>{message, related_codes}</code>（最多 10 筆）。</p>
 <hr />
 <h2 id="get_nearby_codes">get_nearby_codes<a class="headerlink" href="#get_nearby_codes" title="Permanent link">&para;</a></h2>
-<p>取得目標代碼在列表中的前後鄰近代碼。</p>
+<p>取得目標代碼依字母順序排列時的前 2 個與後 2 個代碼（排序上的鄰居，不是語意相近）。</p>
 <h3 id="_5">參數<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
@@ -2881,7 +2888,7 @@
 <td style="text-align: left;"><code>limit</code></td>
 <td style="text-align: left;">integer</td>
 <td style="text-align: left;">否</td>
-<td style="text-align: left;">展開類別時的代碼數上限，預設 50</td>
+<td style="text-align: left;">展開類別時的代碼數上限，預設 50，上限 200</td>
 <td style="text-align: left;"><code>100</code></td>
 </tr>
 </tbody>

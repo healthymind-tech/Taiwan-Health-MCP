@@ -2067,6 +2067,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#rollback-tags" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rollback tags
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#database-migrations" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2112,6 +2123,17 @@
         
       </ul>
     </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#isolated-staging-stack" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Isolated staging stack
+      
+    </span>
+  </a>
   
 </li>
       
@@ -2830,6 +2852,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#rollback-tags" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rollback tags
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#database-migrations" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2875,6 +2908,17 @@
         
       </ul>
     </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#isolated-staging-stack" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Isolated staging stack
+      
+    </span>
+  </a>
   
 </li>
       
@@ -3001,11 +3045,11 @@
 <tbody>
 <tr>
 <td><code>nginx</code></td>
-<td><strong>The front door</strong> (<code>:8080</code> by default, set by <code>WEB_PORT</code>). Routes <code>/mcp</code>, <code>/openapi.json</code>, <code>/tools/*</code>, <code>/admin/api/*</code>, <code>/admin/ws</code>, <code>/fhir-client/*</code>, and <code>/fhir-oauth/*</code> to <code>app</code>, and everything else to <code>web</code>.</td>
+<td><strong>The front door</strong> (<code>:8080</code> by default, set by <code>WEB_PORT</code>). Routes <code>/mcp</code>, <code>/openapi.json</code>, <code>/tools/*</code>, <code>/admin/api/*</code>, <code>/admin/ws</code>, <code>/fhir-client/*</code>, and <code>/fhir-oauth/*</code> to <code>app</code>, and everything else (the <code>/admin</code> pages) to <code>web-v2</code>.</td>
 </tr>
 <tr>
-<td><code>web</code></td>
-<td>Next.js front-end: the <code>/admin</code> console SPA.</td>
+<td><code>web-v2</code></td>
+<td>Static build of the admin console SPA (<code>web-v2/</code>, Vite + React + Mantine), served by the container's own nginx.</td>
 </tr>
 <tr>
 <td><code>app</code></td>
@@ -3025,14 +3069,15 @@
 </tr>
 <tr>
 <td><code>redis</code></td>
-<td>Response cache.</td>
+<td>Live event broadcast for the admin console and health probes (tool responses are <strong>not</strong> cached today).</td>
 </tr>
 <tr>
 <td><code>minio</code> + <code>minio-init</code></td>
-<td>Drug asset object storage and bucket initialisation.</td>
+<td>Object storage for source files, drug assets and system backups, plus bucket initialisation.</td>
 </tr>
 </tbody>
 </table>
+<p>The old Next.js front-end <code>web</code> is kept only in the compose profile <code>legacy-web</code> (for rollback) and is <strong>not started by default</strong>; bring it back with <code>docker compose --profile legacy-web up -d web</code> and restore <code>$th_frontend</code> in <code>nginx/nginx.conf</code> at the same time.</p>
 <p>Data imports are triggered from the admin console and run inside <code>admin-worker</code>; there is no longer a standalone data-loader container.</p>
 <div class="admonition warning">
 <p class="admonition-title">Application traffic goes through nginx only</p>
@@ -3150,15 +3195,15 @@ hash contains several <code>$</code>; double each one. The same applies when the
 <tbody>
 <tr>
 <td>TFDA crawler, FHIR package registry</td>
-<td>Edit directly in Admin → Settings (applied hot)</td>
+<td>Edit directly under External services (<code>/admin/integrations</code>) in the console (applied hot)</td>
 </tr>
 <tr>
 <td><strong>MinIO (Storage)</strong>, <strong>Worker Tuning</strong></td>
 <td><strong>Read-only</strong> in the console, labelled "Owned by the deployment (.env / compose)". But since the values were already seeded into the database and the code reads the database, <strong>editing <code>.env</code> has no effect either</strong> — the only way is a direct <code>UPDATE admin.app_settings</code> followed by a restart of the relevant service.</td>
 </tr>
 <tr>
-<td>Model endpoints (embedding / OCR / analysis LLM)</td>
-<td><strong>Never read from <code>.env</code></strong>; configurable only in Admin → Settings</td>
+<td>Model endpoints (embedding / analysis LLM), OCR</td>
+<td><strong>Never read from <code>.env</code></strong>: embedding and the analysis LLM are configured under Model endpoints (<code>/admin/models</code>), OCR under External services → OCR</td>
 </tr>
 </tbody>
 </table>
@@ -3171,7 +3216,7 @@ hash contains several <code>$</code>; double each one. The same applies when the
 <li><code>app</code> / <code>admin-worker</code> use the copy <strong>seeded into <code>admin.app_settings</code> on first boot</strong> (<code>seedIfEmpty()</code> writes with <code>ON CONFLICT DO NOTHING</code> and never overwrites).</li>
 </ul>
 <p>Changing <code>.env</code> after the first boot leaves the MinIO server's credentials <strong>out of sync</strong> with the stored application settings, breaking object storage reads and writes.</p>
-<p>Worse, the <strong>Storage group in Settings is read-only</strong> (labelled "Owned by the deployment (.env / compose)"), so it cannot be fixed from the console. If this has already happened, the only route is the database:</p>
+<p>Worse, the <strong>MinIO group under External services is read-only</strong> (labelled "Owned by the deployment (.env / compose)"), so it cannot be fixed from the console. If this has already happened, the only route is the database:</p>
 <p><code>sql
 UPDATE admin.app_settings SET value = '&lt;new-access-key&gt;'
  WHERE group_key = 'minio' AND key = 'access_key';
@@ -3211,9 +3256,10 @@ MINIO_SECRET_KEY=&lt;openssl rand -hex 16&gt;
 MINIO_BUCKET=taiwan-health-drug-assets
 </code></pre>
 <h3 id="step-3-build-and-start">Step 3: Build and start<a class="headerlink" href="#step-3-build-and-start" title="Permanent link">&para;</a></h3>
-<pre><code class="language-bash">docker compose build          # first build of the app / admin-worker / web images
+<pre><code class="language-bash">BUILD_SHA=$(git rev-parse --short HEAD) docker compose build   # builds the app / admin-worker / web-v2 images
 docker compose up -d
 </code></pre>
+<p><code>compose.yaml</code> passes the <code>BUILD_SHA</code> environment variable (default <code>dev</code>) as a build arg to <code>app</code> and <code>admin-worker</code>: <code>app</code> reports it in the <code>build</code> field of the <code>health_check</code> response, and <code>admin-worker</code> records it in its startup log (the <code>build</code> field of <code>Admin worker started</code>). <code>web-v2</code> does not use it.</p>
 <p>On first boot the PostgreSQL container applies <code>db/schema.sql</code> automatically, and <code>minio-init</code> creates the bucket and exits (an <code>exited</code> status is normal).</p>
 <h3 id="step-4-verify">Step 4: Verify<a class="headerlink" href="#step-4-verify" title="Permanent link">&para;</a></h3>
 <p>Check container status — <code>postgres</code> / <code>redis</code> / <code>minio</code> / <code>pgbouncer</code> should be <code>healthy</code>:</p>
@@ -3221,42 +3267,44 @@ docker compose up -d
 </code></pre>
 <p>Check the services and each module's status:</p>
 <pre><code class="language-bash">curl http://localhost:8080/openapi.json | head  # currently registered tools
+curl -X POST http://localhost:8080/tools/health_check -H 'Content-Type: application/json' -d '{}'
 </code></pre>
+<p><code>health_check</code> returns DB / cache / per-module status, the server <code>version</code>, <code>build</code> (git sha), <code>tools_version</code> (per-tool versions), the loaded terminology editions (<code>terminology</code>), the installed IG packages and <code>default_ig</code>.</p>
 <p>When startup fails, start with the logs:</p>
 <pre><code class="language-bash">docker compose logs -f app admin-worker
 </code></pre>
 <h3 id="step-5-sign-in-and-configure-the-model-endpoints">Step 5: Sign in and configure the model endpoints<a class="headerlink" href="#step-5-sign-in-and-configure-the-model-endpoints" title="Permanent link">&para;</a></h3>
 <p>Open <code>http://&lt;host&gt;:8080/admin</code> and sign in with the credentials from step 2.</p>
-<p>Then configure the external model endpoints under <strong>Settings</strong> (these <strong>cannot</strong> be set from <code>.env</code>):</p>
+<p>Then configure the external model endpoints (these <strong>cannot</strong> be set from <code>.env</code>):</p>
 <table>
 <thead>
 <tr>
-<th>Sub-page</th>
+<th>Page</th>
 <th>What it configures</th>
 <th>Consequence if unset</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Embedding</td>
-<td>Embedding endpoint / model (Ollama <code>qwen3-embedding</code> in the default scenario)</td>
+<td>Model endpoints (<code>/admin/models</code>) → Embedding</td>
+<td>Create a provider account, then an embedding profile bound to the embedding role (e.g. Ollama <code>qwen3-embedding</code>)</td>
 <td>Search falls back to keyword mode; <strong>Chinese keyword search finds almost nothing</strong></td>
 </tr>
 <tr>
-<td>Analysis LM</td>
-<td>The LLM used to extract drug inserts</td>
+<td>Model endpoints (<code>/admin/models</code>) → Analysis</td>
+<td>A profile for the LLM used to extract drug inserts</td>
 <td>The drug analysis stage cannot run</td>
 </tr>
 <tr>
-<td>OCR</td>
+<td>External services (<code>/admin/integrations</code>) → OCR</td>
 <td>MinerU service address</td>
 <td>Insert PDFs cannot be OCR'd</td>
 </tr>
 </tbody>
 </table>
-<p>Model settings can be moved between environments with the JSON Export / Import under Settings → Backup &amp; restore. See <a href="../admin/">Admin Console</a>.</p>
+<p>Settings can be moved between environments with the settings export / import under Backups &amp; settings (<code>/admin/system</code>). See <a href="../admin/">Admin Console</a>.</p>
 <h3 id="step-6-load-data">Step 6: Load data<a class="headerlink" href="#step-6-load-data" title="Permanent link">&para;</a></h3>
-<p>Import module by module from the Modules tab. Licensed source files (ICD-10, LOINC, SNOMED CT, RxNorm, FHIR IG) must be uploaded first; drugs, health supplements, and food nutrition are fetched automatically via API.</p>
+<p>Import module by module from each module page (Terminology, Drug, Health supplements, Food nutrition, IG library). Licensed source files (ICD-10, LOINC, SNOMED CT, RxNorm, FHIR IG) must be uploaded first; drugs, health supplements, and food nutrition are fetched automatically via API.</p>
 <div class="admonition warning">
 <p class="admonition-title">A manually queued <code>drug_enrichment</code> is not protected by the batch cap</p>
 <p><code>DRUG_AUTOCHAIN_BATCH_LIMIT</code> (default 200) <strong>applies only to auto-chained jobs</strong>.
@@ -3269,11 +3317,24 @@ issuing tens of thousands of requests against the TFDA site.</p>
 <h3 id="updating-and-redeploying">Updating and redeploying<a class="headerlink" href="#updating-and-redeploying" title="Permanent link">&para;</a></h3>
 <p>When only application code changed, there is no need to restart the whole stack:</p>
 <pre><code class="language-bash">git pull
-docker compose build app web admin-worker
-docker compose up -d --no-deps app web admin-worker
+BUILD_SHA=$(git rev-parse --short HEAD) docker compose build app admin-worker web-v2
+docker compose up -d --no-deps app admin-worker web-v2
 </code></pre>
-<p>After changing <code>nginx/nginx.conf</code>:</p>
-<pre><code class="language-bash">docker compose restart nginx
+<div class="admonition warning">
+<p class="admonition-title"><code>admin-worker</code> is a separate image</p>
+<p><code>admin-worker</code> is built by <code>Dockerfile.worker</code> from the same <code>node-server/</code> source. Changing job / loader code
+(<code>adminJobs.ts</code>, <code>*Service.ts</code>, <code>loaders/*</code>) but rebuilding only <code>app</code> leaves the worker running stale code with no error.</p>
+</div>
+<h3 id="rollback-tags">Rollback tags<a class="headerlink" href="#rollback-tags" title="Permanent link">&para;</a></h3>
+<p>Before redeploying, tag the images currently running so you can switch straight back if something breaks:</p>
+<pre><code class="language-bash">LABEL=rollback-pre-$(date +%Y%m%d)
+for svc in app admin-worker web-v2; do
+  docker tag taiwan-health-mcp-$svc:latest taiwan-health-mcp-$svc:$LABEL
+done
+</code></pre>
+<p>(The image-name prefix is the compose project name; check <code>docker images</code>.) To roll back, re-tag the image as <code>:latest</code> and run <code>docker compose up -d --no-deps &lt;service&gt;</code>. Database migrations do not roll back with the images — back up the database before applying one.</p>
+<p>After changing <code>nginx/nginx.conf</code> (a single-file bind mount — edit it in place and reload):</p>
+<pre><code class="language-bash">docker compose exec nginx nginx -s reload    # or: docker compose restart nginx
 </code></pre>
 <p>Containers only need recreating when a <strong>bootstrap variable</strong> in <code>.env</code> changed (DB / Redis / MCP / <code>ADMIN_*</code>):</p>
 <pre><code class="language-bash">docker compose up -d
@@ -3283,8 +3344,48 @@ docker compose up -d --no-deps app web admin-worker
 <p><code>db/schema.sql</code> is applied automatically on first boot. <strong>Existing environments</strong> must apply the incremental changes under <code>db/migrations/</code> themselves, in filename date order:</p>
 <pre><code class="language-bash">docker compose exec -T postgres \
   sh -c 'psql -U &quot;$POSTGRES_USER&quot; -d &quot;$POSTGRES_DB&quot; -v ON_ERROR_STOP=1' \
-  &lt; db/migrations/20260802_llm_call_log.sql
+  &lt; db/migrations/20261020_loinc_structure.sql
 </code></pre>
+<p>Migrations added in 2026-10 (apply in order; all are folded into <code>db/schema.sql</code>):</p>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Contents</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>20261015_llm_provider_registry.sql</code></td>
+<td>Data only: rewrites legacy provider values to registry ids (<code>vllm</code> → <code>openai_compatible</code>, <code>google</code> → <code>gemini</code>, …)</td>
+</tr>
+<tr>
+<td><code>20261016_llm_providers_and_routes.sql</code></td>
+<td>Adds <code>admin.llm_providers</code> / <code>llm_routes</code> / <code>llm_route_members</code> / <code>llm_role_routes</code>, migrates the old rows, renames <code>admin.llm_profiles</code> to <code>admin.llm_profiles_legacy</code></td>
+</tr>
+<tr>
+<td><code>20261017_icd10cm_complete_edition.sql</code></td>
+<td>Complete ICD-10-CM edition: <code>short_name_en</code>, <code>is_header</code> columns and <code>icd.editions</code></td>
+</tr>
+<tr>
+<td><code>20261018_terminology_completeness_v4.sql</code></td>
+<td>LOINC LA/LP/LL/LG codes and <code>loinc.editions</code>, SNOMED inactive concepts / descriptions, <code>first_released</code>, <code>snomed.editions</code>, WHO ICD-10 (<code>icd.icd10_who</code>)</td>
+</tr>
+<tr>
+<td><code>20261019_ig_install_origin.sql</code></td>
+<td><code>fhir.ig_packages.install_origin</code> / <code>installed_for</code></td>
+</tr>
+<tr>
+<td><code>20261020_loinc_structure.sql</code></td>
+<td>LOINC axis part links, answer lists, panels and MapTo tables</td>
+</tr>
+<tr>
+<td><code>20261021_embedding_identity.sql</code></td>
+<td><code>admin.embedding_identity</code> / <code>admin.embedding_fingerprints</code> (embedding identity; the code also creates them at runtime, so applying it is idempotent either way)</td>
+</tr>
+</tbody>
+</table>
+<p>After <code>20261017</code>, <code>20261018</code> and <code>20261020</code>, re-import the matching modules (ICD, LOINC, SNOMED CT) to fill the new tables.</p>
 <p>To apply all of them in order (drop the ones already applied yourself — the project has no built-in migration version tracking):</p>
 <pre><code class="language-bash">for f in $(ls db/migrations/*.sql | sort); do
   echo &quot;applying $f&quot;
@@ -3303,7 +3404,7 @@ whole command is wrapped in a single-quoted <code>sh -c</code>), so nothing need
 </div>
 <h3 id="backups">Backups<a class="headerlink" href="#backups" title="Permanent link">&para;</a></h3>
 <p>Two approaches:</p>
-<p><strong>(a) Admin console (recommended)</strong> — Settings → Backup &amp; restore lets you select settings and credentials, the PostgreSQL database, and MinIO object storage. It queues a <code>system_backup</code> background job; the resulting ZIP is written back to the <code>system-backups/</code> prefix in MinIO and can be downloaded from the backup history.</p>
+<p><strong>(a) Admin console (recommended)</strong> — Backups &amp; settings (<code>/admin/system</code>) lets you select settings and credentials, the PostgreSQL database, and MinIO object storage. It queues a <code>system_backup</code> background job; the resulting ZIP is written back to the <code>system-backups/</code> prefix in MinIO and can be downloaded from the backup history.</p>
 <p><strong>(b) Manual</strong>:</p>
 <pre><code class="language-bash"># PostgreSQL (custom format, for pg_restore)
 docker compose exec -T postgres \
@@ -3419,7 +3520,7 @@ docker run --rm -v taiwan-health-mcp_minio_data:/data -v &quot;$PWD&quot;:/backu
 <tr>
 <td>Changing the password in <code>.env</code> has no effect</td>
 <td>The credential was written to <code>admin.admin_credentials</code> on first boot, and seeding uses <code>ON CONFLICT DO NOTHING</code></td>
-<td>Change it under Settings → Privacy instead</td>
+<td>Change it under Account security (<code>/admin/security</code>) instead</td>
 </tr>
 <tr>
 <td>The worker raises <code>Illegal argument to function</code> / <code>Wrong key or corrupt data</code></td>
@@ -3429,7 +3530,7 @@ docker run --rm -v taiwan-health-mcp_minio_data:/data -v &quot;$PWD&quot;:/backu
 <tr>
 <td>Changing TFDA / registry settings in <code>.env</code> has no effect</td>
 <td>That group is seed-only, read only on first boot</td>
-<td>Change it in Admin → Settings</td>
+<td>Change it under External services (<code>/admin/integrations</code>)</td>
 </tr>
 <tr>
 <td>Changing MinIO / worker tuning in <code>.env</code> has no effect</td>
@@ -3439,7 +3540,7 @@ docker run --rm -v taiwan-health-mcp_minio_data:/data -v &quot;$PWD&quot;:/backu
 <tr>
 <td>Chinese search returns almost nothing</td>
 <td>No embedding endpoint configured, so search fell back to keyword mode</td>
-<td>Configure the endpoint under Settings → Embedding</td>
+<td>Configure an embedding profile under Model endpoints (<code>/admin/models</code>)</td>
 </tr>
 <tr>
 <td>The worker OOMs during an IG import</td>
@@ -3451,20 +3552,63 @@ docker run --rm -v taiwan-health-mcp_minio_data:/data -v &quot;$PWD&quot;:/backu
 <td>By design — <code>app</code> publishes no host port</td>
 <td>Always use <code>http://&lt;host&gt;:${WEB_PORT}</code></td>
 </tr>
+<tr>
+<td>A change to job / loader code has no effect</td>
+<td>Only <code>app</code> was rebuilt; <code>admin-worker</code> still runs the old image</td>
+<td><code>docker compose build admin-worker &amp;&amp; docker compose up -d --no-deps admin-worker</code></td>
+</tr>
 </tbody>
 </table>
+<hr />
+<h2 id="isolated-staging-stack">Isolated staging stack<a class="headerlink" href="#isolated-staging-stack" title="Permanent link">&para;</a></h2>
+<p><code>deploy/staging/compose.yaml</code> is a stack fully isolated from production (compose project <code>twh-staging</code>): its own Postgres, Redis, MinIO, <code>app</code>, <code>admin-worker</code> and <code>web-v2</code>. The <code>web-v2</code> container is the front door (its nginx proxies the backend via <code>BACKEND_UPSTREAM</code>), published on <code>${STAGING_PORT:-8090}</code>; the entry point is <code>http://&lt;host&gt;:8090/admin/</code>.</p>
+<p>Before starting it, create an <strong>untracked</strong> <code>deploy/staging/.env</code> containing at least:</p>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>STAGING_DB_PASSWORD</code></td>
+<td>Staging Postgres password (compose fails without it)</td>
+</tr>
+<tr>
+<td><code>STAGING_MINIO_PASSWORD</code></td>
+<td>Staging MinIO root password (compose fails without it)</td>
+</tr>
+<tr>
+<td><code>STAGING_RESTORE_DIR</code></td>
+<td>Host directory holding the production DB dump, mounted read-only at <code>/restore</code> in Postgres (compose fails without it)</td>
+</tr>
+<tr>
+<td><code>STAGING_HOST</code> / <code>STAGING_PORT</code></td>
+<td>Optional; used to build <code>PUBLIC_BASE_URL</code>, default port <code>8090</code></td>
+</tr>
+</tbody>
+</table>
+<pre><code class="language-bash">BUILD_SHA=$(git rev-parse --short HEAD) docker compose -p twh-staging -f deploy/staging/compose.yaml up -d --build
+</code></pre>
+<p>Notes:</p>
+<ul>
+<li><code>app</code> / <code>admin-worker</code> also read the root <code>.env</code> (<code>env_file</code>) and then override the DB / Redis / MinIO connections with staging values.</li>
+<li>Staging runs over http, so it sets <code>ADMIN_COOKIE_SECURE=false</code> and uses its own cookie name, <code>ADMIN_SESSION_COOKIE=tw_health_admin_session_staging</code> — cookies are scoped per host, not per port, so on a shared host production's <code>Secure</code> cookie of the default name would shadow it and loop the staging login.</li>
+<li>Postgres mounts the host directory <code>${STAGING_RESTORE_DIR}</code> read-only at <code>/restore</code> for restoring a production dump; after restoring, disable the inherited jobs / schedules and model endpoints so staging does not compete with production for external resources.</li>
+</ul>
 <hr />
 <h2 id="further-reading">Further reading<a class="headerlink" href="#further-reading" title="Permanent link">&para;</a></h2>
 <h3 id="architecture-container-deployment"><a href="../architecture/deployment/">Architecture &amp; Container Deployment</a><a class="headerlink" href="#architecture-container-deployment" title="Permanent link">&para;</a></h3>
 <p>Infrastructure topology, container composition, and the startup sequence.</p>
 <h3 id="configuration"><a href="configuration/">Configuration</a><a class="headerlink" href="#configuration" title="Permanent link">&para;</a></h3>
-<p>The full parameter reference, covering bootstrap variables (<code>.env</code>) and seed-only settings (managed in Admin → Settings after first boot).</p>
+<p>The full parameter reference, covering bootstrap variables (<code>.env</code>) and seed-only settings (managed under External services in the console after first boot).</p>
 <h3 id="performance-monitoring"><a href="performance/">Performance &amp; Monitoring</a><a class="headerlink" href="#performance-monitoring" title="Permanent link">&para;</a></h3>
 <p>Optimisation advice for high-concurrency scenarios, connection pool and cache strategy, and Prometheus monitoring.</p>
 <div class="admonition note">
 <p class="admonition-title">The public pages moved out of this repo</p>
 <p>The public-facing marketing and legal pages (<code>/</code>, <code>/status</code>, <code>/privacy</code>, <code>/dpa</code>) are
-now served by a standalone marketing-site project, not by the <code>web</code> service here.
+now served by a standalone marketing-site project, not by this repo's front-end.
 <code>/privacy</code> is the URL registered with the Anthropic Connectors Directory, so once the
 new site is live, add the 301 redirects in <code>nginx/nginx.conf</code> (a TODO block is in place).</p>
 </div>

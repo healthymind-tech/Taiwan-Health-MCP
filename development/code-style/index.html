@@ -2055,10 +2055,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#typescriptnode-serverweb" class="md-nav__link">
+  <a href="#typescriptnode-serverweb-v2" class="md-nav__link">
     <span class="md-ellipsis">
       
-        TypeScript（node-server/、web/）
+        TypeScript（node-server/、web-v2/）
       
     </span>
   </a>
@@ -2363,10 +2363,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#typescriptnode-serverweb" class="md-nav__link">
+  <a href="#typescriptnode-serverweb-v2" class="md-nav__link">
     <span class="md-ellipsis">
       
-        TypeScript（node-server/、web/）
+        TypeScript（node-server/、web-v2/）
       
     </span>
   </a>
@@ -2428,9 +2428,9 @@
 
 <h1 id="_1">程式風格<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h1>
 <p>本專案的程式碼與註解一律使用<strong>英文</strong>；面向使用者的文件為正體中文與英文雙語（見<a href="../../WEBSITE/">文件網站維護</a>）。</p>
-<h2 id="typescriptnode-serverweb">TypeScript（<code>node-server/</code>、<code>web/</code>）<a class="headerlink" href="#typescriptnode-serverweb" title="Permanent link">&para;</a></h2>
+<h2 id="typescriptnode-serverweb-v2">TypeScript（<code>node-server/</code>、<code>web-v2/</code>）<a class="headerlink" href="#typescriptnode-serverweb-v2" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>格式</strong>：TypeScript 5.7，ESM（<code>"type": "module"</code>），相對 import 需帶 <code>.js</code> 副檔名（對應編譯輸出）。</li>
+<li><strong>格式</strong>：ESM（<code>"type": "module"</code>）。<code>node-server/</code>（TypeScript 5.7+，<code>tsc</code> 編譯）的相對 import 需帶 <code>.js</code> 副檔名（對應編譯輸出）；<code>web-v2/</code>（TypeScript 5.9，Vite 打包）以 <code>@/</code> 路徑別名 import，不帶副檔名。</li>
 <li><strong>命名</strong>：檔案 camelCase（<code>drugService.ts</code>、<code>adminJobs.ts</code>）；型別與類別 PascalCase；函式與變數 camelCase。</li>
 <li><strong>型別</strong>：公開函式要標注參數與回傳型別。避免 <code>any</code>；不得已時加註原因。</li>
 <li><strong>驗證</strong>：MCP 工具的輸入 schema 以 <code>zod</code> 定義。</li>

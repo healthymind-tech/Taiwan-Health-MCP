@@ -2366,7 +2366,7 @@
 
     subgraph &quot;Docker Compose Stack&quot;
         NGX[&quot;nginx (single front door, :8080 = WEB_PORT)&quot;]
-        WEB[&quot;web (Next.js) — /admin SPA&quot;]
+        WEB[&quot;web-v2 (nginx + static Vite SPA) — /admin pages&quot;]
         Server[&quot;app (Node MCP server + admin REST API, internal :8000)&quot;]
         Worker[&quot;admin-worker (Node — imports, embeddings, drug pipeline)&quot;]
         PGB[&quot;pgbouncer (transaction mode, :5432)&quot;]
@@ -2377,15 +2377,17 @@
     end
 
     Client -- &quot;HTTP :8080&quot; --&gt; NGX
-    NGX -- &quot;/mcp, /openapi.json, /tools/*, /admin/api/*, /admin/ws&quot; --&gt; Server
-    NGX -- &quot;everything else&quot; --&gt; WEB
+    NGX -- &quot;/mcp, /openapi.json, /tools/*, /admin/api/*, /admin/ws, /fhir-client/*, /fhir-oauth/*&quot; --&gt; Server
+    NGX -- &quot;/admin pages + everything else&quot; --&gt; WEB
     Server --&gt; PGB --&gt; PG
     Server --&gt; RD
+    Worker --&gt; RD
     Server --&gt; MN
     Server --&gt; PM
     Worker --&gt; PGB
     Worker --&gt; MN
-    Worker -. &quot;OCR (MinerU) / Analysis LM / Embeddings&quot; .-&gt; Ext[External model endpoints]
+    Server -. &quot;Embeddings (query vectors)&quot; .-&gt; Ext[External model endpoints]
+    Worker -. &quot;OCR (MinerU) / Analysis LM / Embeddings&quot; .-&gt; Ext
 </code></pre>
 <h2 id="key-considerations">Key considerations<a class="headerlink" href="#key-considerations" title="Permanent link">&para;</a></h2>
 <ol>
@@ -2395,7 +2397,9 @@
 <li><strong>pgBouncer transaction mode</strong>: incompatible with <code>LISTEN/NOTIFY</code> and named prepared statements; the Node side uses <code>pg</code>'s unnamed statements for compatibility.</li>
 <li><strong>Data imports</strong>: triggered from the admin console and executed in the background by <code>admin-worker</code> (there is no longer a standalone data-loader container). Source files are uploaded to MinIO through the admin console and fetched back when a job runs.</li>
 <li><strong>MinIO</strong>: stores drug document assets (inserts / labels / pill images); the tools return time-limited presigned download links.</li>
-<li><strong>External model endpoints</strong>: embeddings, OCR (MinerU), and the analysis LLM are all external HTTP services. Their endpoints live in <code>admin.llm_profiles</code> and are configured in the admin console's Settings tab; when unavailable, the system degrades (search falls back to keywords, and analysis jobs fail without affecting queries).</li>
+<li><strong>External model endpoints</strong>: embeddings, OCR (MinerU), and the analysis LLM are all external HTTP services. Embedding and analysis-LLM endpoints live in the provider-account / profile tables (<code>admin.llm_providers</code>, <code>llm_routes</code>, <code>llm_route_members</code>, <code>llm_role_routes</code>) and are configured on the console's Model endpoints page; OCR lives in the <code>ocr</code> group of <code>admin.app_settings</code> and is configured under External services. When unavailable, the system degrades (search falls back to keywords and is stamped <code>search_mode: "keyword_only"</code>; analysis jobs pause and retry automatically, without affecting queries).</li>
+<li><strong>Legacy front-end</strong>: the Next.js <code>web</code> service is kept only in the compose profile <code>legacy-web</code> for rollback and is not started by default.</li>
+<li><strong>Images</strong>: <code>app</code> (<code>node-server/Dockerfile</code>), <code>admin-worker</code> (<code>Dockerfile.worker</code>) and <code>web-v2</code> (<code>web-v2/Dockerfile</code>) are three separate images; job / loader code changes must be rebuilt into <code>admin-worker</code> too.</li>
 </ol>
 
 

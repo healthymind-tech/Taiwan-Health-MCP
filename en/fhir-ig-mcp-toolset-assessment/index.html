@@ -2962,11 +2962,36 @@
 <div class="admonition info">
 <p class="admonition-title">Historical document (design assessment, since implemented)</p>
 <p>This is the <strong>design assessment</strong> for the FHIR IG toolset, written before implementation. It assumes a
-Python backend (<code>src/admin_jobs.py</code>, <code>src/twcore_service.py</code>, <code>pip install fhirpathpy</code>, and the like no
-longer exist). The toolset has since been implemented: the 19 <code>fhir_*</code> tools are now provided in
-TypeScript, and FHIRPath validation runs in process via the npm package <code>fhirpath</code> — <strong>no extra
-installation is required</strong>. This page is retained as a decision record; for the current tool
-documentation see <a href="../tools/fhir-ig-tools/">FHIR IG Tools</a>.</p>
+Python backend (<code>src/admin_jobs.py</code>, <code>src/twcore_service.py</code>, the <code>twcore.*</code> schema, <code>pip install fhirpathpy</code>,
+and the like no longer exist). This page is retained as a decision record and <strong>its body is no longer
+updated</strong>; for the current tool documentation see <a href="../tools/fhir-ig-tools/">FHIR IG Tools</a>.</p>
+<p><strong>How the implementation differs from this design (checked against the code 2026-10-17):</strong></p>
+<ul>
+<li><strong>Tool count:</strong> <strong>22</strong> <code>fhir_*</code> tools are registered (TypeScript, <code>node-server/src/mcp.ts</code>) — the 19 planned
+  here plus <code>fhir_get_profile_required_elements</code> (a profile's effective required elements),
+  <code>fhir_check_grounding</code> (checks each value against the source record) and <code>fhir_check_completeness</code>
+  (gap report of the facts the conversion targets need). The last two are deterministic rules, no LLM.</li>
+<li><strong>Schema:</strong> open question 1 was settled with a fresh package-scoped <code>fhir.*</code> schema (<code>ig_packages</code> /
+  <code>codesystems</code> / <code>concepts</code> / <code>artifacts</code>); <code>fhir.ig_packages</code> also records <code>install_origin</code>
+  (<code>manual</code> / <code>dependency</code>) and <code>installed_for</code>. Importing an IG downloads its declared dependencies; the admin
+  console refuses, unless <code>force</code> is given, to remove a package another installed IG still depends on (directly or
+  transitively) or the default IG (unless a replacement default is named).</li>
+<li><strong>IG selector:</strong> not the <code>ig = {packageId, version}</code> object of §4.2 but <code>package_id</code> + <code>version</code> arguments on
+  each tool. When omitted, resolution is: <code>|version</code> on a canonical / <code>meta.profile</code> → the package owning that
+  canonical / <code>meta.profile</code> (manual installs first) → the default IG → the only manually installed IG; otherwise
+  the call fails with <code>NO_DEFAULT_IG</code>. The rule applied is reported in <code>provenance.resolved_by</code>, missing closure
+  dependencies in <code>data.deps_missing</code>. List / search tools also take <code>all_packages</code>.</li>
+<li><strong>Validator:</strong> still in process with no Java sidecar (gap 1's decision stands), but the target moved from
+  "pre-flight catching 80–95%" to <strong>matching HL7 <code>validator_cli</code> 7.0.1 (+ tx.fhir.org) verdicts</strong>, audited case by
+  case — see <a href="https://github.com/healthymind-tech/Taiwan-Health-MCP/blob/main/node-server/scripts/validator-audit/REPORT.md"><code>node-server/scripts/validator-audit/REPORT.md</code></a> (v1–v6). <code>valid</code> keeps HL7
+  semantics (an unresolvable profile is only a warning); <code>checked_fully</code> / <code>profiles_unchecked</code> /
+  <code>valuesets_unchecked</code> state explicitly what could not be checked.</li>
+<li><strong>Optional grounding:</strong> <code>fhir_validate_resource</code> / <code>fhir_validate_bundle</code> accept <code>source_text</code> (plus
+  <code>site_config</code>, <code>evidence_map</code>, <code>grounding</code>, <code>grounding_verbosity</code>) to run grounding in the same call; without
+  them the output is unchanged.</li>
+<li><strong>Versions:</strong> per-tool versions live in <code>node-server/src/toolVersions.ts</code> and are reported in
+  <code>health_check.tools_version</code>.</li>
+</ul>
 </div>
 <p><strong>Status:</strong> assessment / planning (no code changes yet)
 <strong>Date:</strong> 2026-06-07

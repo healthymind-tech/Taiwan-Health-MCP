@@ -426,10 +426,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#modules" class="md-nav__link">
+  <a href="#_5" class="md-nav__link">
     <span class="md-ellipsis">
       
-        載入資料（管理後台 → Modules）
+        載入資料（管理後台各模組頁）
       
     </span>
   </a>
@@ -437,7 +437,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_5" class="md-nav__link">
+  <a href="#_6" class="md-nav__link">
     <span class="md-ellipsis">
       
         連線客戶端
@@ -476,7 +476,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_6" class="md-nav__link">
+  <a href="#_7" class="md-nav__link">
     <span class="md-ellipsis">
       
         驗證
@@ -2446,10 +2446,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#modules" class="md-nav__link">
+  <a href="#_5" class="md-nav__link">
     <span class="md-ellipsis">
       
-        載入資料（管理後台 → Modules）
+        載入資料（管理後台各模組頁）
       
     </span>
   </a>
@@ -2457,7 +2457,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_5" class="md-nav__link">
+  <a href="#_6" class="md-nav__link">
     <span class="md-ellipsis">
       
         連線客戶端
@@ -2496,7 +2496,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_6" class="md-nav__link">
+  <a href="#_7" class="md-nav__link">
     <span class="md-ellipsis">
       
         驗證
@@ -2530,7 +2530,7 @@
 <h2 id="_2">前置需求<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
 <ul>
 <li>Docker 與 Docker Compose</li>
-<li>（選用）一台可達的嵌入伺服器（預設為 Ollama，模型 <code>qwen3-embedding</code>），用於語意 / 混合搜尋。<strong>端點在管理後台的 Settings 頁籤設定，不是環境變數</strong>；未設定時，搜尋自動退回關鍵字模式。</li>
+<li>（選用）一台可達的嵌入伺服器（預設為 Ollama，模型 <code>qwen3-embedding</code>），用於語意 / 混合搜尋。<strong>端點在管理後台的「模型端點」頁（<code>/admin/models</code>）設定，不是環境變數</strong>；未設定時，搜尋自動退回關鍵字模式。</li>
 <li>部分資料來源需自行取得授權檔案（SNOMED CT、LOINC、ICD-10 zip 等），詳見<a href="../data-sources/">資料來源</a>。</li>
 </ul>
 <p>若要在本機開發（非 Docker），需要 <strong>Node.js 20 以上</strong>。本專案已無 Python 執行期相依。</p>
@@ -2552,8 +2552,8 @@ docker compose up -d
 <td><strong>單一對外入口</strong>，預設 <code>:8080</code>（可用 <code>WEB_PORT</code> 調整）</td>
 </tr>
 <tr>
-<td><code>web</code></td>
-<td>Next.js 前端：<code>/admin</code> 管理後台 SPA</td>
+<td><code>web-v2</code></td>
+<td>管理後台 SPA（<code>web-v2/</code>，Vite + React + Mantine），由容器內 nginx 提供</td>
 </tr>
 <tr>
 <td><code>app</code></td>
@@ -2573,7 +2573,7 @@ docker compose up -d
 </tr>
 <tr>
 <td><code>redis</code></td>
-<td>回應快取</td>
+<td>管理後台即時事件廣播與健康探測（工具回應目前不快取）</td>
 </tr>
 <tr>
 <td><code>minio</code> + <code>minio-init</code></td>
@@ -2587,7 +2587,7 @@ docker compose up -d
 請一律使用 <code>http://&lt;host&gt;:8080</code>；<code>http://&lt;host&gt;:8000</code> 連不到本系統。</p>
 </div>
 <h2 id="_4">啟用管理後台<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
-<p>資料匯入由管理後台觸發、交由 <code>admin-worker</code> 背景執行（無獨立的 CLI data-loader 容器），因此請先在 <code>.env</code> 啟用管理後台：</p>
+<p>資料匯入由管理後台觸發、交由 <code>admin-worker</code> 背景執行（無獨立的 CLI data-loader 容器）。管理後台預設已啟用（<code>ADMIN_ENABLED=true</code>），只需在 <code>.env</code> 設好登入憑證與 session 金鑰：</p>
 <pre><code class="language-dotenv">ADMIN_ENABLED=true
 ADMIN_USERNAME=admin
 # 產生密碼雜湊（Node）：
@@ -2595,11 +2595,13 @@ ADMIN_USERNAME=admin
 # ⚠️ 在 .env 中每個 $ 都要寫成 $$（Docker Compose 會把 $ 當變數展開，
 #    雜湊值以字母開頭時會被靜默截斷）。Compose 會把 $$ 還原成單一 $。
 ADMIN_PASSWORD_HASH=sha256$$...
-ADMIN_SESSION_SECRET=change_this_admin_session_secret
+# 或改用明文初始密碼（首次啟動時雜湊寫入資料庫）：ADMIN_INITIAL_PASSWORD=...
+# 必須換掉 .env.example 的預設值，否則 app 會拒絕啟動：openssl rand -hex 32
+ADMIN_SESSION_SECRET=&lt;隨機值&gt;
 </code></pre>
 <p>重新啟動後（<code>docker compose up -d</code>），於 <code>http://&lt;host&gt;:8080/admin</code> 登入。詳見<a href="../admin/">管理後台</a>。</p>
-<h2 id="modules">載入資料（管理後台 → Modules）<a class="headerlink" href="#modules" title="Permanent link">&para;</a></h2>
-<p>在 Modules 頁籤依模組匯入：</p>
+<h2 id="_5">載入資料（管理後台各模組頁）<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>
+<p>在側邊欄「資料」區（醫療術語、藥品、健康食品、食品營養）與「FHIR → IG 套件庫」依模組匯入：</p>
 <table>
 <thead>
 <tr>
@@ -2611,8 +2613,8 @@ ADMIN_SESSION_SECRET=change_this_admin_session_secret
 <tbody>
 <tr>
 <td>需上傳來源檔</td>
-<td>ICD-10-CM/PCS、LOINC、SNOMED CT、RxNorm、FHIR IG（<code>package.tgz</code>）</td>
-<td>於 Sources / Modules 上傳來源檔後按匯入</td>
+<td>ICD-10-CM（CMS order file）/ PCS、LOINC、SNOMED CT、RxNorm、FHIR IG（<code>package.tgz</code>）</td>
+<td>於模組頁上傳來源檔後按匯入（IG 也可直接從 FHIR package registry 取得）</td>
 </tr>
 <tr>
 <td>API 自動抓取</td>
@@ -2622,11 +2624,11 @@ ADMIN_SESSION_SECRET=change_this_admin_session_secret
 </tbody>
 </table>
 <ul>
-<li><strong>藥物域</strong>為三階段管線（索引 → 爬取豐富 → OCR/LLM 分析）。爬取的 TFDA base URL 可在 Settings 設定；OCR（MinerU）與分析 LLM 的端點則存於 <code>admin.llm_profiles</code>，同樣在 Settings 管理。</li>
+<li><strong>藥物域</strong>為三階段管線（索引 → 爬取豐富 → OCR/LLM 分析）。爬取的 TFDA base URL 與 OCR（MinerU）端點在「外部服務」（<code>/admin/integrations</code>）設定；分析 LLM 則在「模型端點」（<code>/admin/models</code>）建立 provider 帳號與 profile。</li>
 <li><strong>嵌入</strong>（語意搜尋）是各模組獨立的 <code>*_embed</code> 工作，可在模組頁面執行或排程。</li>
-<li>匯入進度、步驟時間軸與即時日誌見 <strong>Tasks</strong> 頁籤；背景機制見<a href="../admin/jobs-and-worker/">背景工作與排程</a>。</li>
+<li>匯入進度、步驟時間軸與即時日誌見 <strong>背景工作</strong>（<code>/admin/jobs</code>）頁；背景機制見<a href="../admin/jobs-and-worker/">背景工作與排程</a>。</li>
 </ul>
-<h2 id="_5">連線客戶端<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>
+<h2 id="_6">連線客戶端<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h2>
 <p>兩種介面都經由 nginx 前門提供（預設 <code>:8080</code>）：</p>
 <h3 id="1-mcp">1. MCP（原生）<a class="headerlink" href="#1-mcp" title="Permanent link">&para;</a></h3>
 <p>預設以 <code>streamable-http</code> 模式在 <code>http://&lt;host&gt;:8080/mcp</code> 提供服務。供原生 MCP 客戶端使用（Claude Desktop、Open WebUI v0.6.31+ 的 MCP 連線等）。</p>
@@ -2638,17 +2640,18 @@ ADMIN_SESSION_SECRET=change_this_admin_session_secret
 </ul>
 <p>在客戶端只要填基底網址 <code>http://&lt;host&gt;:8080</code>，它會自動抓 <code>/openapi.json</code> 並列出全部工具。</p>
 <blockquote>
-<p>注意：<code>/mcp</code> 與 OpenAPI bridge 目前皆<strong>未強制驗證</strong>；對外開放時請在前面加反向代理或 token。</p>
+<p>注意：<code>/mcp</code> 與 OpenAPI bridge 預設（<code>PUBLIC_TOOLS_AUTH_MODE=none</code>）<strong>不驗證</strong>；對外開放時請設 <code>PUBLIC_TOOLS_AUTH_MODE=bearer</code> 與高熵的 <code>PUBLIC_TOOLS_BEARER_TOKEN</code>，客戶端帶 <code>Authorization: Bearer &lt;token&gt;</code>。詳見<a href="../deployment/configuration/">環境變數配置</a>。</p>
 </blockquote>
-<h2 id="_6">驗證<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h2>
+<h2 id="_7">驗證<a class="headerlink" href="#_7" title="Permanent link">&para;</a></h2>
 <p>確認服務與各模組狀態：</p>
 <pre><code class="language-bash">curl http://localhost:8080/openapi.json | head  # 目前已註冊的工具（依模組資料載入狀態變動）
 </code></pre>
-<p>各模組的資料筆數與服務健康狀態請看管理後台的 Overview 分頁。</p>
+<p>各模組的資料筆數與服務健康狀態請看管理後台的「儀表板」與「服務健康」頁；所有工具（含未註冊者與其原因）可在「MCP 工具」頁（<code>/admin/mcp</code>）查看與試跑。</p>
 <p>也可直接呼叫 <code>health_check</code> 工具：</p>
 <pre><code class="language-bash">curl -X POST http://localhost:8080/tools/health_check \
   -H 'Content-Type: application/json' -d '{}'
 </code></pre>
+<p>回應包含 DB / 快取 / 各模組狀態、伺服器 <code>version</code> 與 <code>build</code>（git sha）、<code>tools_version</code>、已載入的術語版本（<code>terminology</code>）、已安裝的 IG 套件與 <code>default_ig</code>。</p>
 <p>程式碼層級的測試見<a href="../development/testing/">測試指南</a>。</p>
 
 

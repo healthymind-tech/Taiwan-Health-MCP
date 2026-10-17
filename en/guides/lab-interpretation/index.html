@@ -2484,7 +2484,7 @@ search_loinc(mode=&quot;code&quot;, keyword=&quot;三酸甘油酯&quot;)
 <pre><code class="language-python">interpret_lab_result(loinc_code=&quot;1558-6&quot;, value=110, age=55, gender=&quot;M&quot;)
 </code></pre>
 <p><strong>Result</strong>:
-The system points out that 110 mg/dL is slightly above the normal value (usually &lt; 100), which is Impaired Fasting Glucose — that is, pre-diabetes. Dietary control and follow-up are recommended.</p>
+The tool picks the reference interval that applies to the age / sex (fasting glucose is 70–100 mg/dL in <code>data/loinc/lab_reference_ranges.csv</code>) and returns <code>result.flag = "H"</code>, <code>status = "偏高 (High)"</code>, the interval and its source, and a generic sentence ("above the normal reference value; further evaluation advised"). The tool does <strong>not</strong> diagnose: a clinical reading such as impaired fasting glucose (pre-diabetes) is for the caller (the LLM) or a clinician to make from the result.</p>
 <h3 id="step-3-batch-interpretation">Step 3: Batch interpretation<a class="headerlink" href="#step-3-batch-interpretation" title="Permanent link">&para;</a></h3>
 <p>To analyse the whole report at once.</p>
 <p><strong>Tool call</strong>:</p>
@@ -2499,7 +2499,7 @@ The system points out that 110 mg/dL is slightly above the normal value (usually
 )
 </code></pre>
 <p><strong>Result</strong>:
-The system returns a summary noting that the patient is at risk of metabolic syndrome (high blood glucose, high blood lipids) and suggests consulting cardiology or endocrinology.</p>
+The tool returns <code>total_tests</code>, <code>abnormal_count</code>, <code>normal_count</code> and the per-item interpretations (all three are <code>H</code>). Tests without a reference range are skipped and not counted. An overall risk assessment (for example a metabolic-syndrome concern) is likewise left to the caller or a clinician.</p>
 
 
 

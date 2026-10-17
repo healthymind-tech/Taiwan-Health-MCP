@@ -1812,6 +1812,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#llm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        分析 LLM 不可用時的自動恢復
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#_5" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2407,6 +2418,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#llm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        分析 LLM 不可用時的自動恢復
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#_5" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2451,12 +2473,19 @@
 <h1 id="_1">背景工作與排程<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h1>
 <h2 id="_2">元件<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong><code>node-server/src/admin/adminWorker.ts</code></strong> 是獨立程序（compose 服務 <code>admin-worker</code>）。它輪詢 <code>admin.import_jobs</code> 認領排隊中的工作，執行對應的載入階段，並寫入 <code>admin.import_job_steps</code> / <code>admin.import_job_logs</code>。</li>
+<li><strong><code>node-server/src/admin/adminWorker.ts</code></strong> 是獨立程序（compose 服務 <code>admin-worker</code>，以 <code>Dockerfile.worker</code> 建置的<strong>獨立映像</strong>）。它輪詢 <code>admin.import_jobs</code> 認領排隊中的工作，執行對應的載入階段，並寫入 <code>admin.import_job_steps</code> / <code>admin.import_job_logs</code>。</li>
 <li><strong><code>node-server/src/admin/adminJobs.ts</code></strong> 提供工作 API（建立 / 查詢 / 取消 / 暫停）與所有工作型別的執行邏輯。</li>
-<li><strong><code>node-server/src/admin/adminJobStaging.ts</code></strong> 提供重量級匯入的 staging / promote 機制（先寫暫存表，再原子換上）。</li>
-<li><strong><code>node-server/src/admin/adminSchedule.ts</code></strong> 管理排程（<code>admin.module_schedules</code>）；worker 每輪檢查 <code>next_run_at</code> 以觸發定期匯入。</li>
+<li><strong><code>node-server/src/admin/adminJobStaging.ts</code></strong> 提供重量級匯入的 staging / promote 機制（先寫暫存表 <code>admin.stage_*</code>，再於單一交易內原子換上；各術語的 edition 列也在同一個 promote 交易內寫入）。</li>
+<li><strong><code>node-server/src/admin/adminSchedule.ts</code></strong> 管理排程（<code>admin.module_schedules</code>）；worker 每 <code>ADMIN_SCHEDULE_SCAN_INTERVAL_SECONDS</code>（預設 60 秒）檢查一次 <code>next_run_at</code> 以觸發定期匯入。</li>
 <li><strong><code>node-server/src/admin/adminWs.ts</code></strong> 透過 WebSocket（<code>/admin/ws</code>）推送即時日誌與進度給 UI。</li>
 </ul>
+<div class="admonition warning">
+<p class="admonition-title">改了工作 / 載入程式碼要連 worker 一起重建</p>
+<p><code>admin-worker</code> 與 <code>app</code> 是兩個映像。改動 <code>adminJobs.ts</code>、<code>*Service.ts</code>、<code>loaders/*</code> 後只重建 <code>app</code>，
+worker 會繼續執行舊程式碼且不會報錯：</p>
+<p><code>bash
+docker compose build admin-worker &amp;&amp; docker compose up -d --no-deps admin-worker</code></p>
+</div>
 <h2 id="_3">工作型別<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -2470,10 +2499,10 @@
 <tr>
 <td><code>icd_import</code> / <code>loinc_import</code> / <code>snomed_import</code> / <code>rxnorm_import</code> / <code>ig_import</code></td>
 <td>對應模組</td>
-<td>由管理後台上傳的來源檔匯入（來源檔存於 MinIO，工作執行時取回）。</td>
+<td>由管理後台上傳的來源檔匯入（來源檔存於 MinIO，工作執行時取回）。<code>ig_import</code> 另會自 FHIR package registry 下載缺少的相依套件，並記錄每個套件的 <code>install_origin</code>（<code>manual</code> / <code>dependency</code>）。</td>
 </tr>
 <tr>
-<td><code>health_supplements_import</code> / <code>food_nutrition_import</code></td>
+<td><code>health_supplements_sync</code> / <code>food_nutrition_sync</code></td>
 <td>對應模組</td>
 <td>由 TFDA Open Data API 抓取。</td>
 </tr>
@@ -2493,9 +2522,14 @@
 <td>仿單 PDF → MinerU OCR → 分析 LLM → <code>drug.insert_analysis</code>。</td>
 </tr>
 <tr>
-<td><code>*_embed</code></td>
+<td><code>icd_embed</code> / <code>loinc_embed</code> / <code>snomed_embed</code> / <code>health_supplements_embed</code> / <code>food_nutrition_embed</code></td>
 <td>對應模組</td>
-<td>回填 <code>*_embeddings</code> 向量表（需嵌入服務可用）。</td>
+<td>回填 <code>*_embeddings</code> 向量表（需嵌入角色有可用的 profile）。</td>
+</tr>
+<tr>
+<td><code>system_backup</code></td>
+<td>—</td>
+<td>系統備份（見<a href="../#system-backups">管理後台</a>）。</td>
 </tr>
 </tbody>
 </table>
@@ -2503,9 +2537,14 @@
 <h2 id="_4">控制與併發<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong>暫停 / 取消</strong>：以 checkpoint 為基礎——worker 在安全點檢查 <code>admin.job_control_requests</code>，因此暫停不會留下半套資料。</li>
-<li><strong>心跳</strong>：worker 定期寫入 <code>admin.worker_heartbeats</code>；超過 <code>ADMIN_WORKER_STALE_AFTER_SECONDS</code>（預設 45 秒）未更新即視為失聯。</li>
+<li><strong>心跳</strong>：worker 定期寫入 <code>admin.worker_heartbeats</code>；超過 <code>ADMIN_WORKER_STALE_AFTER_SECONDS</code>（預設 45 秒）未更新即視為失聯，其執行中的工作會被回收（reclaim）重新排隊；worker 啟動時也會回收自己名下遺留的 <code>running</code> 工作。</li>
 <li><strong>併發上限</strong>：<code>ADMIN_MAX_CONCURRENT_JOBS</code>（預設 4）限制同時執行的工作數；另有各模組的資源槽位，避免同一模組並行寫入。</li>
 </ul>
+<h2 id="llm">分析 LLM 不可用時的自動恢復<a class="headerlink" href="#llm" title="Permanent link">&para;</a></h2>
+<p>若某個 <code>drug_analysis</code> 工作因分析角色的所有 profile 都失敗而暫停（<code>last_error_code = 'llm_unavailable'</code>），
+worker 會在 <code>admin.import_jobs.next_retry_at</code> 到期後自動重新認領；退避時間每次加倍（2 分鐘 → 上限 30 分鐘），
+手動恢復可略過退避。由人手動暫停、或錯誤碼不是 <code>llm_unavailable</code> 的 <code>paused</code> 工作<strong>永遠不會</strong>被自動恢復。</p>
+<p>單次 LLM 呼叫逾時預設 600 秒、傳輸層重試 3 次；可在模型端點頁針對個別成員以 <code>timeout_ms</code> 參數覆寫。</p>
 <h2 id="_5">自動串接（藥品管線）<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>
 <p>藥品三階段會自動串接：<code>drug_index_import</code> 完成後排入 <code>drug_enrichment</code>，後者完成後排入 <code>drug_analysis</code>。</p>
 <p>自動串接產生的工作會帶上批次上限 <code>DRUG_AUTOCHAIN_BATCH_LIMIT</code>（預設 200 筆授權證），
@@ -2517,7 +2556,7 @@
 （可能是數萬筆對 TFDA 網站的爬取）。需要限量時請明確帶入 <code>limit</code>。</p>
 </div>
 <h2 id="_6">監控<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h2>
-<p>工作進度、步驟時間軸與即時日誌可在管理後台的 <strong>Tasks</strong> 頁籤查看。</p>
+<p>工作進度、步驟時間軸與即時日誌可在管理後台的 <strong>背景工作</strong>（<code>/admin/jobs</code>）頁查看；個別模組頁也會列出該模組的工作。</p>
 
 
 

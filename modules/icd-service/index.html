@@ -2556,7 +2556,7 @@
 <p>支援多種查詢方式，讓使用者能快速找到所需的 ICD-10 編碼：
 - <strong>關鍵字搜尋</strong>：支援透過中英文關鍵字搜尋（例如：「糖尿病」、「Diabetes」、「E11」）。
 - <strong>類型過濾</strong>：可指定搜尋「診斷碼」（Diagnosis）或「處置碼」（Procedure）。
-- <strong>模糊比對</strong>：能處理部分匹配的查詢請求。</p>
+- <strong>混合搜尋</strong>：診斷碼以 BM25 全文檢索 + 向量相似度（RRF 合併）排序；向量需先由 <code>icd_embed</code> 工作回填，嵌入端點不可用時退回關鍵字並標示 <code>search_mode: "keyword_only"</code>。</p>
 <h3 id="2-complication-inference">2. 併發症推論 (Complication Inference)<a class="headerlink" href="#2-complication-inference" title="Permanent link">&para;</a></h3>
 <p>利用 ICD-10 的階層結構，自動推論主要診斷可能伴隨的併發症或更細緻的子分類。
 - <strong>階層分析</strong>：從母代碼（例如 E11）推展至子代碼（例如 E11.2 伴有腎臟併發症）。
@@ -2570,21 +2570,31 @@
 - <strong>類別清單</strong>：依前三碼分類（如 E11.x、I10.x）
 - <strong>診斷碼列舉</strong>：回傳指定類別下所有診斷碼與名稱</p>
 <h3 id="5-conflict-detection">5. 診斷與處置衝突檢測 (Conflict Detection)<a class="headerlink" href="#5-conflict-detection" title="Permanent link">&para;</a></h3>
-<p>這是本模組的高級功能，用於驗證「診斷」與「處置」之間的邏輯相容性。
-- <strong>適應症檢查</strong>：確認該處置是否適用於該診斷。
-- <strong>禁忌症警示</strong>：標示出醫療上不合理的組合（例如：男性診斷代碼配對子宮手術）。
-- <strong>結構化分析</strong>：同時回傳雙方的詳細資訊以供比對。</p>
+<p><code>check_medical_conflict</code> 用於協助判斷「診斷」與「處置」之間的邏輯相容性（例如：男性診斷代碼配對子宮手術）。
+- <strong>結構化資料</strong>：同時回傳診斷碼與處置碼兩邊的完整資料列，並附上要求呼叫端（LLM）分析禁忌症的指示。
+- <strong>判斷由呼叫端進行</strong>：本工具<strong>不含</strong>內建的適應症 / 禁忌症規則庫，衝突判斷交由呼叫端依回傳資料推論。
+- <strong>PCS 未載入時</strong>：處置端回傳「ICD-10-PCS data not loaded」提示。</p>
 <h2 id="_3">技術架構<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>資料來源</strong>：ICD-10-CM 2025（NLM）及 ICD-10-PCS 2025（CMS），經由管理後台（Admin → Modules，匯入階段 <code>icd_import</code>）載入。</li>
-<li><strong>資料庫</strong>：PostgreSQL 16，<code>icd.diagnoses</code>（診斷碼）與 <code>icd.procedures</code>（手術碼）兩張資料表。</li>
-<li><strong>PCS 降級</strong>：<code>_pcs_available</code> flag — ICD-10-PCS 未載入時工具自動降級，回傳提示訊息而非錯誤。PCS 2025（78,948 筆）位於 <code>fhir-code/icd/10/icd10pcs/</code>，<code>icd_import</code> 自動同時載入。</li>
-<li><strong>全文搜尋</strong>：各表建有 FTS index，支援中英文關鍵字搜尋。</li>
+<li><strong>資料來源</strong>：ICD-10-CM 與 ICD-10-PCS（CMS），於管理後台 <strong>醫療術語 → ICD-10</strong> 的「資料生命週期」分頁上傳來源檔並匯入（匯入階段 <code>icd_import</code>）。來源角色（source role）：<ul>
+<li><code>icd10cm</code>（必要）：建議上傳 CMS「Code Descriptions in Tabular Order」zip（內含 <code>icd10cm_order_YYYY.txt</code>，例如 <code>april-1-2026-code-descriptions-tabular-order.zip</code>）。內含完整碼集（header 碼 + 含第 7 碼 / placeholder <code>X</code> 的 billable 碼，2026-04-01 版共 98,186 碼），並保留 CMS short title 與 header 旗標。也可上傳「Code Tables, Tabular and Index」zip（tabular XML），第 7 碼會自動展開，但不視為完整版。</li>
+<li><code>icd10pcs</code>：ICD-10-PCS zip（CMS flat codes TXT）。</li>
+<li><code>icd_zh_tw</code>（選用）：衛福部中英對照 XLSX，提供中文名稱。</li>
+<li><code>icd10_who</code>（選用）：「WHO ICD-10 (FHIR JSON)」——WHO ICD-10 的 FHIR CodeSystem 或展開後的 ValueSet（例如以 <code>node-server/scripts/validator-audit/harness/fetch_tx_terms.py</code> 取得的 tx.fhir.org 版本 <code>2019-covid-expanded</code>，13,831 碼），匯入 <code>icd.icd10_who</code>，FHIR validator 即可檢查 <code>http://hl7.org/fhir/sid/icd-10</code> 的代碼與 display。</li>
+</ul>
+</li>
+<li><strong>版本紀錄與嚴格判定</strong>：每次匯入在同一個 promote transaction 內寫入 <code>icd.editions</code>（<code>edition</code>、<code>source_format</code> = <code>cms-order</code> / <code>tabular-xml</code>、<code>complete</code>、<code>code_count</code>）。只有本地載入的是完整的 CMS order file 版本時，FHIR validator 才會對未知的 ICD-10-CM 碼報 <strong>error</strong>（與 tx.fhir.org 相同）；tabular XML 或未記錄版本時只給 warning。WHO ICD-10 亦同：僅在載入 <code>2019-covid-expanded</code> 完整版時才嚴格判定。</li>
+<li><strong>資料庫</strong>：PostgreSQL 16，<code>icd.diagnoses</code>（診斷碼，含 <code>short_name_en</code>、<code>is_header</code>）、<code>icd.procedures</code>（處置碼）、<code>icd.editions</code>、<code>icd.icd10_who</code>，以及向量表 <code>icd.diagnosis_embeddings</code>。</li>
+<li><strong>PCS 降級</strong>：<code>icdService.ts</code> 的 <code>pcsAvailable</code> 旗標——<code>icd.procedures</code> 為空時，處置相關功能自動降級，回傳提示訊息而非錯誤。</li>
+<li><strong>向量搜尋刻意走精確掃描</strong>：診斷碼的向量查詢以 <code>ORDER BY (embedding &lt;=&gt; $v) + 0</code> 讓 planner 不使用 HNSW 索引——約 5 萬筆近乎重複的第 7 碼會讓 HNSW 的 recall 崩潰（例如糖尿病查詢回傳骨折碼）；約 98k 筆精確掃描約 0.35 秒。</li>
+<li><strong>術語瀏覽</strong>：同一模組頁的「資料預覽」分頁提供 ICD-10-CM 章節樹、WHO ICD-10 樹與 ICD-10-PCS 七軸表格瀏覽，後端為 <code>/admin/api/terminology/icd/*</code>（<code>cm/children</code>、<code>cm/path</code>、<code>cm/search</code>、<code>who/*</code>、<code>pcs/browse</code>、<code>pcs/table</code>、<code>pcs/codes</code>、<code>pcs/code</code>、<code>pcs/search</code>）。</li>
+<li><strong>本機開發</strong>：未經管理後台上傳時，載入器退回讀取 <code>fhir-code/icd/10/</code>（可用 <code>ICD_CM_ZIP</code>、<code>ICD_PCS_ZIP</code> 等環境變數覆寫），見<a href="../../data-sources/test-data/">測試資料檔清單</a>。</li>
 </ul>
 <h2 id="_4">依賴關係<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
 <p>本模組為獨立基礎模組，但被以下進階服務所依賴：
 - <strong>FHIR Condition Service</strong>：轉換 ICD 代碼為 FHIR 標準格式。
-- <strong>Health Supplements Service</strong>：依據診斷建議相關保健資訊。</p>
+- <strong>Health Supplements Service</strong>：<code>condition</code> 模式以 ICD 搜尋解析診斷關鍵字。
+- <strong>FHIR IG 驗證器</strong>：以 <code>icd.*</code> 判定 ICD-10-CM / WHO ICD-10 的代碼與 display。</p>
 
 
 

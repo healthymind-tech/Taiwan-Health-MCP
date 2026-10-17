@@ -1812,10 +1812,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#auto-chaining-the-drug-pipeline" class="md-nav__link">
+  <a href="#self-healing-when-the-analysis-llm-is-unavailable" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Auto-chaining (the drug pipeline)
+        Self-healing when the analysis LLM is unavailable
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#auto-chaining-drug-pipeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Auto-chaining (drug pipeline)
       
     </span>
   </a>
@@ -2407,10 +2418,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#auto-chaining-the-drug-pipeline" class="md-nav__link">
+  <a href="#self-healing-when-the-analysis-llm-is-unavailable" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Auto-chaining (the drug pipeline)
+        Self-healing when the analysis LLM is unavailable
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#auto-chaining-drug-pipeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Auto-chaining (drug pipeline)
       
     </span>
   </a>
@@ -2451,12 +2473,19 @@
 <h1 id="jobs-scheduling">Jobs &amp; Scheduling<a class="headerlink" href="#jobs-scheduling" title="Permanent link">&para;</a></h1>
 <h2 id="components">Components<a class="headerlink" href="#components" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong><code>node-server/src/admin/adminWorker.ts</code></strong> is a standalone process (the <code>admin-worker</code> compose service). It polls <code>admin.import_jobs</code> to claim queued jobs, runs the corresponding loader stage, and writes <code>admin.import_job_steps</code> / <code>admin.import_job_logs</code>.</li>
+<li><strong><code>node-server/src/admin/adminWorker.ts</code></strong> is a standalone process (the <code>admin-worker</code> compose service, a <strong>separate image</strong> built from <code>Dockerfile.worker</code>). It polls <code>admin.import_jobs</code> to claim queued jobs, runs the matching load stage, and writes <code>admin.import_job_steps</code> / <code>admin.import_job_logs</code>.</li>
 <li><strong><code>node-server/src/admin/adminJobs.ts</code></strong> provides the job API (create / query / cancel / pause) and the execution logic for every job type.</li>
-<li><strong><code>node-server/src/admin/adminJobStaging.ts</code></strong> provides the staging / promote mechanism for heavyweight imports (write to a staging table first, then swap atomically).</li>
-<li><strong><code>node-server/src/admin/adminSchedule.ts</code></strong> manages schedules (<code>admin.module_schedules</code>); each worker round checks <code>next_run_at</code> to trigger periodic imports.</li>
+<li><strong><code>node-server/src/admin/adminJobStaging.ts</code></strong> provides the staging / promote mechanism for heavy imports (write to <code>admin.stage_*</code> tables first, then swap atomically in one transaction; each terminology's edition row is written in the same promote transaction).</li>
+<li><strong><code>node-server/src/admin/adminSchedule.ts</code></strong> manages schedules (<code>admin.module_schedules</code>); the worker checks <code>next_run_at</code> every <code>ADMIN_SCHEDULE_SCAN_INTERVAL_SECONDS</code> (default 60 s) to trigger periodic imports.</li>
 <li><strong><code>node-server/src/admin/adminWs.ts</code></strong> pushes live logs and progress to the UI over WebSocket (<code>/admin/ws</code>).</li>
 </ul>
+<div class="admonition warning">
+<p class="admonition-title">Changing job / loader code means rebuilding the worker too</p>
+<p><code>admin-worker</code> and <code>app</code> are two images. After changing <code>adminJobs.ts</code>, <code>*Service.ts</code> or <code>loaders/*</code>,
+rebuilding only <code>app</code> leaves the worker running stale code with no error:</p>
+<p><code>bash
+docker compose build admin-worker &amp;&amp; docker compose up -d --no-deps admin-worker</code></p>
+</div>
 <h2 id="job-types">Job types<a class="headerlink" href="#job-types" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -2469,23 +2498,23 @@
 <tbody>
 <tr>
 <td><code>icd_import</code> / <code>loinc_import</code> / <code>snomed_import</code> / <code>rxnorm_import</code> / <code>ig_import</code></td>
-<td>The corresponding module</td>
-<td>Import from source files uploaded through the admin console (stored in MinIO and fetched back when the job runs).</td>
+<td>Matching module</td>
+<td>Imports from source files uploaded through the admin console (source files live in MinIO and are fetched when the job runs). <code>ig_import</code> also downloads missing dependency packages from the FHIR package registry and records each package's <code>install_origin</code> (<code>manual</code> / <code>dependency</code>).</td>
 </tr>
 <tr>
-<td><code>health_supplements_import</code> / <code>food_nutrition_import</code></td>
-<td>The corresponding module</td>
+<td><code>health_supplements_sync</code> / <code>food_nutrition_sync</code></td>
+<td>Matching module</td>
 <td>Fetched from the TFDA Open Data API.</td>
 </tr>
 <tr>
 <td><code>drug_index_import</code></td>
 <td><code>drug</code></td>
-<td>Import the license index from <code>36_2.csv</code> into <code>drug.licenses</code> and queue enrichment.</td>
+<td>Imports the <code>36_2.csv</code> license index into <code>drug.licenses</code> and queues enrichment.</td>
 </tr>
 <tr>
 <td><code>drug_enrichment</code></td>
 <td><code>drug</code></td>
-<td>Crawl the TFDA site for insert / label / appearance assets and upload them to MinIO.</td>
+<td>Crawls the TFDA site for insert / label / appearance assets and uploads them to MinIO.</td>
 </tr>
 <tr>
 <td><code>drug_analysis</code></td>
@@ -2493,31 +2522,43 @@
 <td>Insert PDF → MinerU OCR → analysis LLM → <code>drug.insert_analysis</code>.</td>
 </tr>
 <tr>
-<td><code>*_embed</code></td>
-<td>The corresponding module</td>
-<td>Backfill the <code>*_embeddings</code> vector tables (requires the embedding service to be available).</td>
+<td><code>icd_embed</code> / <code>loinc_embed</code> / <code>snomed_embed</code> / <code>health_supplements_embed</code> / <code>food_nutrition_embed</code></td>
+<td>Matching module</td>
+<td>Backfills the <code>*_embeddings</code> vector tables (needs a usable profile on the embedding role).</td>
+</tr>
+<tr>
+<td><code>system_backup</code></td>
+<td>—</td>
+<td>System backup (see <a href="../#system-backups">Admin Console</a>).</td>
 </tr>
 </tbody>
 </table>
 <p>All three drug stages run natively in TypeScript (<code>node-server/src/loaders/drugIndex.ts</code>, <code>drugEnrichment.ts</code>, <code>drugAnalysis.ts</code>).</p>
 <h2 id="control-and-concurrency">Control and concurrency<a class="headerlink" href="#control-and-concurrency" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>Pause / cancel</strong>: checkpoint-based — the worker checks <code>admin.job_control_requests</code> at safe points, so pausing never leaves half-written data.</li>
-<li><strong>Heartbeat</strong>: the worker writes <code>admin.worker_heartbeats</code> periodically; no update for longer than <code>ADMIN_WORKER_STALE_AFTER_SECONDS</code> (45 seconds by default) counts as lost.</li>
-<li><strong>Concurrency cap</strong>: <code>ADMIN_MAX_CONCURRENT_JOBS</code> (4 by default) bounds how many jobs run at once; per-module resource slots additionally prevent parallel writes to the same module.</li>
+<li><strong>Pause / cancel</strong>: checkpoint-based — the worker checks <code>admin.job_control_requests</code> at safe points, so a pause never leaves half-written data.</li>
+<li><strong>Heartbeat</strong>: the worker writes <code>admin.worker_heartbeats</code> periodically; after <code>ADMIN_WORKER_STALE_AFTER_SECONDS</code> (default 45 s) without an update it is considered lost and its running jobs are reclaimed and re-queued. On startup the worker also reclaims <code>running</code> jobs left under its own name.</li>
+<li><strong>Concurrency limit</strong>: <code>ADMIN_MAX_CONCURRENT_JOBS</code> (default 4) bounds how many jobs run at once; per-module resource slots additionally prevent concurrent writes to the same module.</li>
 </ul>
-<h2 id="auto-chaining-the-drug-pipeline">Auto-chaining (the drug pipeline)<a class="headerlink" href="#auto-chaining-the-drug-pipeline" title="Permanent link">&para;</a></h2>
-<p>The three drug stages chain automatically: a completed <code>drug_index_import</code> queues <code>drug_enrichment</code>, whose completion queues <code>drug_analysis</code>.</p>
-<p>Auto-chained jobs carry the batch cap <code>DRUG_AUTOCHAIN_BATCH_LIMIT</code> (200 licenses by default) and re-chain from their own completion, draining the backlog gradually while leaving the operator a chance to stop between batches.</p>
+<h2 id="self-healing-when-the-analysis-llm-is-unavailable">Self-healing when the analysis LLM is unavailable<a class="headerlink" href="#self-healing-when-the-analysis-llm-is-unavailable" title="Permanent link">&para;</a></h2>
+<p>When a <code>drug_analysis</code> job pauses because every profile on the analysis role failed (<code>last_error_code = 'llm_unavailable'</code>),
+the worker re-claims it automatically once <code>admin.import_jobs.next_retry_at</code> passes; the backoff doubles per attempt (2 min → 30 min cap),
+and a manual resume skips it. A <code>paused</code> job that a human paused, or whose error code is not <code>llm_unavailable</code>, is <strong>never</strong> auto-resumed.</p>
+<p>A single LLM call times out after 600 s by default, with 3 transport retries; override it per member with the <code>timeout_ms</code> parameter on the model endpoints page.</p>
+<h2 id="auto-chaining-drug-pipeline">Auto-chaining (drug pipeline)<a class="headerlink" href="#auto-chaining-drug-pipeline" title="Permanent link">&para;</a></h2>
+<p>The three drug stages chain automatically: when <code>drug_index_import</code> completes it queues <code>drug_enrichment</code>, and when that completes it queues <code>drug_analysis</code>.</p>
+<p>Jobs created by auto-chaining carry a batch cap, <code>DRUG_AUTOCHAIN_BATCH_LIMIT</code> (default 200 licenses),
+and re-chain the next batch from their own completion. This drains the backlog gradually
+while still giving the operator a chance to stop between batches.</p>
 <div class="admonition warning">
 <p class="admonition-title">Manually queued jobs are not protected by the batch cap</p>
-<p>The batch cap applies only to <strong>auto-chained</strong> jobs. A <code>drug_enrichment</code> queued by hand
-through the API or UI without a <code>limit</code> processes the entire pending queue in one go
-(potentially tens of thousands of crawls against the TFDA site). Pass <code>limit</code> explicitly
-when you need it bounded.</p>
+<p>The batch cap only applies to jobs created by <strong>auto-chaining</strong>. If you manually
+queue <code>drug_enrichment</code> through the API or UI without specifying a <code>limit</code>, that job
+processes the entire backlog in one go (potentially tens of thousands of crawls
+against the TFDA site). Pass an explicit <code>limit</code> when you need to bound it.</p>
 </div>
 <h2 id="monitoring">Monitoring<a class="headerlink" href="#monitoring" title="Permanent link">&para;</a></h2>
-<p>Job progress, the step timeline, and live logs are visible on the <strong>Tasks</strong> tab of the admin console.</p>
+<p>Job progress, the step timeline, and live logs are available on the admin console's <strong>Jobs</strong> page (<code>/admin/jobs</code>); each module page also lists that module's jobs.</p>
 
 
 

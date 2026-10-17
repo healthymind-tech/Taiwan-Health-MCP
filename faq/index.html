@@ -2294,6 +2294,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#q-fhir-ig-no_default_ig" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Q: FHIR IG 工具回傳 NO_DEFAULT_IG？
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#q_2" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2492,6 +2503,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#q-fhir-ig-no_default_ig" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Q: FHIR IG 工具回傳 NO_DEFAULT_IG？
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#q_2" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2547,9 +2569,11 @@
 <p>LOINC 代碼對應與參考值疑問。</p>
 <h2 id="_3">快速解答<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
 <h3 id="q">Q: 為什麼有些工具沒有出現？<a class="headerlink" href="#q" title="Permanent link">&para;</a></h3>
-<p><strong>A</strong>: 模組相關工具會依資料載入狀態自動啟用 / 停用。若對應模組尚未匯入（未達 row-count 門檻），相關工具就不會註冊。先用 <code>health_check</code> 確認各模組狀態，或於 Admin → Modules 匯入對應模組。</p>
+<p><strong>A</strong>: 模組相關工具會依資料載入狀態自動啟用 / 停用。若對應模組尚未匯入（未達 row-count 門檻），相關工具就不會註冊。先用 <code>health_check</code> 確認各模組狀態（<code>services</code>），或於管理後台的模組頁匯入。管理後台 <strong>整合 → MCP 工具</strong> 的工具目錄也會列出每個工具目前是否註冊、以及未註冊的原因。</p>
 <h3 id="q_1">Q: 搜尋結果為什麼像是只用關鍵字、不夠「語意」？<a class="headerlink" href="#q_1" title="Permanent link">&para;</a></h3>
-<p><strong>A</strong>: 語意 / 混合搜尋需要一個可達的嵌入端點（預設為 Ollama）。端點設定在管理後台 <strong>Settings → LLM Profiles</strong>（存於 <code>admin.llm_profiles</code>），<strong>不是環境變數</strong>。未設定或無法連線時，搜尋會退回關鍵字模式，回應會帶 <code>keyword_only</code> 訊號。另外請注意：各模組的向量需先由 <code>*_embed</code> 工作回填，否則即使端點可用也只有關鍵字結果。</p>
+<p><strong>A</strong>: 語意 / 混合搜尋需要一個可達的嵌入端點（例如 Ollama）。端點設定在管理後台 <strong>整合 → 模型端點</strong>（provider 帳號 + embedding 路由，存於 <code>admin.llm_providers</code> / <code>admin.llm_routes</code> 等表），<strong>不是環境變數</strong>。未設定或無法連線時，搜尋會退回關鍵字模式，回應會帶 <code>keyword_only</code> 訊號。另外請注意：各模組的向量需先由 <code>*_embed</code> 工作回填，否則即使端點可用也只有關鍵字結果。</p>
+<h3 id="q-fhir-ig-no_default_ig">Q: FHIR IG 工具回傳 <code>NO_DEFAULT_IG</code>？<a class="headerlink" href="#q-fhir-ig-no_default_ig" title="Permanent link">&para;</a></h3>
+<p><strong>A</strong>: 呼叫時沒有帶 <code>package_id</code>、參數裡的 canonical 也找不到所屬套件，而系統又沒有設定預設 IG（且手動安裝的 IG 不只一個）。請在管理後台 <strong>FHIR → IG 套件庫</strong> 設定預設 IG，或呼叫時指定 <code>package_id</code>。實際採用的套件會寫在回應的 <code>provenance.resolved_by</code>。</p>
 <h3 id="q_2">Q: 安裝與部署問題？<a class="headerlink" href="#q_2" title="Permanent link">&para;</a></h3>
 <p><strong>A</strong>: 見<a href="../getting-started/">快速開始</a>與<a href="../deployment/">部署指南</a>。</p>
 <h3 id="q-fhir">Q: FHIR 格式與驗證問題？<a class="headerlink" href="#q-fhir" title="Permanent link">&para;</a></h3>

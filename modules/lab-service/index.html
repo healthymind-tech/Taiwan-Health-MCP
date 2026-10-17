@@ -576,10 +576,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#3" class="md-nav__link">
+  <a href="#3-interpret_lab_result" class="md-nav__link">
     <span class="md-ellipsis">
       
-        3. 異常判讀輔助
+        3. 異常判讀輔助（interpret_lab_result）
       
     </span>
   </a>
@@ -620,10 +620,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#7" class="md-nav__link">
+  <a href="#7-batch_interpret_lab_results" class="md-nav__link">
     <span class="md-ellipsis">
       
-        7. 批次結果判讀
+        7. 批次結果判讀（batch_interpret_lab_results）
       
     </span>
   </a>
@@ -2491,10 +2491,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#3" class="md-nav__link">
+  <a href="#3-interpret_lab_result" class="md-nav__link">
     <span class="md-ellipsis">
       
-        3. 異常判讀輔助
+        3. 異常判讀輔助（interpret_lab_result）
       
     </span>
   </a>
@@ -2535,10 +2535,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#7" class="md-nav__link">
+  <a href="#7-batch_interpret_lab_results" class="md-nav__link">
     <span class="md-ellipsis">
       
-        7. 批次結果判讀
+        7. 批次結果判讀（batch_interpret_lab_results）
       
     </span>
   </a>
@@ -2606,22 +2606,23 @@
 - <strong>數值範圍</strong>：提供正常值的上下限（如：血紅素 Hb 13.5-17.5 g/dL）。
 - <strong>單位換算</strong>：支援常見單位的識別。
 - <strong>性別與年齡差異</strong>：部分項目支援依據性別或年齡層提供不同的參考標準。</p>
-<h3 id="3">3. 異常判讀輔助<a class="headerlink" href="#3" title="Permanent link">&para;</a></h3>
-<p>不只是提供數字，更提供初步的臨床意義說明：
-- <strong>數值偏高</strong>：提示可能相關的病理狀態（如：白血球過高可能表示感染）。
-- <strong>數值偏低</strong>：提示可能的營養缺乏或功能低下。</p>
+<h3 id="3-interpret_lab_result">3. 異常判讀輔助（<code>interpret_lab_result</code>）<a class="headerlink" href="#3-interpret_lab_result" title="Permanent link">&para;</a></h3>
+<p>依病患年齡 / 性別挑選適用的參考區間，將數值標記為 <code>H</code>（偏高）、<code>L</code>（偏低）或 <code>N</code>（正常），並附上參考區間、來源備註與一句通用說明（例如「高於正常參考值，建議進一步評估」）。<strong>不</strong>產生病因推論；臨床意義由呼叫端或醫療人員判斷。只有在 <code>loinc.reference_ranges</code> 有該碼的參考值時才能判讀。</p>
 <h3 id="4">4. 依檢體類型搜尋<a class="headerlink" href="#4" title="Permanent link">&para;</a></h3>
 <p>依血液、尿液、糞便等檢體類型篩選 LOINC 檢驗項目。</p>
 <h3 id="5">5. 相關檢驗查詢<a class="headerlink" href="#5" title="Permanent link">&para;</a></h3>
 <p>找出相同 analyte（分析物）的所有相關 LOINC 檢驗，協助選擇最適合的檢驗方法。</p>
 <h3 id="6-loinc">6. LOINC 完整概念細節<a class="headerlink" href="#6-loinc" title="Permanent link">&para;</a></h3>
 <p>取得單一 LOINC 碼的完整資訊，包含中文病患友善名稱、單位、檢體、方法等。</p>
-<h3 id="7">7. 批次結果判讀<a class="headerlink" href="#7" title="Permanent link">&para;</a></h3>
-<p>一次傳入多項檢驗值，批次取得所有異常標記與解釋，適合健康檢查報告自動分析。</p>
+<h3 id="7-batch_interpret_lab_results">7. 批次結果判讀（<code>batch_interpret_lab_results</code>）<a class="headerlink" href="#7-batch_interpret_lab_results" title="Permanent link">&para;</a></h3>
+<p>一次傳入多項檢驗值（<code>results_json</code>，每筆含 <code>loinc_code</code> 與 <code>value</code>），回傳 <code>total_tests</code>、<code>abnormal_count</code>、<code>normal_count</code> 與每項的判讀結果；查不到參考值的項目會被略過。</p>
 <h2 id="_3">技術架構<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>資料來源</strong>：LOINC 2.80（87,000+ 碼，經由管理後台 Admin → Modules，匯入階段 <code>loinc_import</code> 載入），以及台灣常用檢驗種子資料（<code>node-server/src/loaders/loinc.ts</code> 內建，約 30 筆）。</li>
-<li><strong>資料庫</strong>：PostgreSQL 16，<code>loinc.concepts</code>（LOINC 碼）與 <code>loinc.reference_ranges</code>（年齡/性別分層參考值）。</li>
+<li><strong>資料來源</strong>：LOINC 2.80（<code>Loinc_2.80.zip</code>，約 10.5 萬個 concept），於管理後台 <strong>醫療術語 → LOINC</strong> 上傳並匯入（匯入階段 <code>loinc_import</code>）。另有兩個專案自行整理的選用來源：<code>loinc_taiwan_mapping</code>（台灣常用檢驗中文名稱，<code>data/loinc/taiwan_mapping.csv</code>，約 30 筆）與 <code>loinc_reference_ranges</code>（年齡 / 性別分層參考值，<code>data/loinc/lab_reference_ranges.csv</code>，約 40 筆）。</li>
+<li><strong>FHIR validator 用的附加內容</strong>：匯入時另保留 LOINC zip AccessoryFiles 中的 answer（LA）、part（LP）、answer list（LL）與 group（LG）代碼（<code>loinc.other_codes</code>）及版本（<code>loinc.editions</code>），供 FHIR validator 檢查這些代碼與 display；本地版本達到 tx.fhir.org 所用版本（目前 2.82）時，未知的 LOINC 碼才會報 error，否則為 warning（2.80 &lt; 2.82，因此目前是 warning）。</li>
+<li><strong>LOINC 結構表</strong>（migration <code>20261020_loinc_structure.sql</code>）：<code>loinc.part_links</code>（各軸 part：COMPONENT / PROPERTY / TIME / SYSTEM / SCALE / METHOD）、<code>loinc.answer_list_items</code> / <code>loinc.answer_list_links</code>（answer list）、<code>loinc.panel_items</code>（panel 成員）、<code>loinc.map_to</code>（MapTo 取代碼），與 <code>loinc.concepts</code> 在同一個 promote transaction 寫入，供管理後台的術語瀏覽使用。</li>
+<li><strong>資料庫</strong>：PostgreSQL 16，<code>loinc.concepts</code>（LOINC 碼）、<code>loinc.reference_ranges</code>（參考值）、上述附加表，以及向量表 <code>loinc.concept_embeddings</code>（由 <code>loinc_embed</code> 回填）。</li>
+<li><strong>術語瀏覽</strong>：模組頁的「資料預覽」分頁提供六軸 facet 篩選、單一 term 詳情（parts、answer list、panel、MapTo）與 LA/LP/LL/LG 代碼查詢，後端為 <code>/admin/api/terminology/loinc/*</code>（<code>facets</code>、<code>facet-values</code>、<code>term</code>、<code>code</code>）。</li>
 <li><strong>結構化輸出</strong>：回傳資料可直接用於產生 FHIR Observation 資源。</li>
 </ul>
 <h2 id="_4">應用場景<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>

@@ -2022,15 +2022,15 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#seed-only-settings-managed-in-admin-settings-after-first-boot" class="md-nav__link">
+  <a href="#seed-only-settings-managed-under-external-services-in-the-console-after-first-boot" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Seed-only settings (managed in Admin → Settings after first boot)
+        Seed-only settings (managed under External services in the console after first boot)
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Seed-only settings (managed in Admin → Settings after first boot)">
+    <nav class="md-nav" aria-label="Seed-only settings (managed under External services in the console after first boot)">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -2079,6 +2079,17 @@
         
       </ul>
     </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#image-build-arguments" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Image build arguments
+      
+    </span>
+  </a>
   
 </li>
       
@@ -2640,15 +2651,15 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#seed-only-settings-managed-in-admin-settings-after-first-boot" class="md-nav__link">
+  <a href="#seed-only-settings-managed-under-external-services-in-the-console-after-first-boot" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Seed-only settings (managed in Admin → Settings after first boot)
+        Seed-only settings (managed under External services in the console after first boot)
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Seed-only settings (managed in Admin → Settings after first boot)">
+    <nav class="md-nav" aria-label="Seed-only settings (managed under External services in the console after first boot)">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -2697,6 +2708,17 @@
         
       </ul>
     </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#image-build-arguments" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Image build arguments
+      
+    </span>
+  </a>
   
 </li>
       
@@ -2771,7 +2793,7 @@
 
 
 <h1 id="configuration">Configuration<a class="headerlink" href="#configuration" title="Permanent link">&para;</a></h1>
-<p>The system is configured through two layers: environment variables and database settings (<code>admin.app_settings</code> / <code>admin.llm_profiles</code>). Copy <code>.env.example</code> to <code>.env</code> and edit it:</p>
+<p>The system is configured through two layers: environment variables and database settings (<code>admin.app_settings</code>, plus the model-endpoint tables <code>admin.llm_providers</code> / <code>llm_routes</code> / <code>llm_route_members</code> / <code>llm_role_routes</code>). Copy <code>.env.example</code> to <code>.env</code> and edit it:</p>
 <pre><code class="language-bash">cp .env.example .env
 </code></pre>
 <h2 id="settings-precedence">Settings precedence (important)<a class="headerlink" href="#settings-precedence" title="Permanent link">&para;</a></h2>
@@ -2792,12 +2814,12 @@
 <tr>
 <td><strong>Seed-only settings</strong></td>
 <td><code>.env</code> → <code>admin.app_settings</code></td>
-<td>MinIO, the TFDA crawler, the FHIR package registry, worker tuning, and so on. <strong>Read exactly once, on first boot, for keys that do not yet exist</strong>, to seed the database; editing <code>.env</code> has no effect on an already-seeded database. TFDA and registry settings can then be managed in Admin → Settings (applied hot); <strong>MinIO and worker tuning are read-only groups in the console</strong>, so changing them later requires a direct <code>UPDATE admin.app_settings</code> and a service restart.</td>
+<td>MinIO, the TFDA crawler, the FHIR package registry, worker tuning, and so on. <strong>Read exactly once, on first boot, for keys that do not yet exist</strong>, to seed the database; editing <code>.env</code> has no effect on an already-seeded database. TFDA and registry settings can then be managed under External services (<code>/admin/integrations</code>) in the console (applied hot); <strong>MinIO and worker tuning are read-only groups in the console</strong>, so changing them later requires a direct <code>UPDATE admin.app_settings</code> and a service restart.</td>
 </tr>
 <tr>
 <td><strong>Model endpoints</strong></td>
-<td>Database only (<code>admin.llm_profiles</code>)</td>
-<td>Embedding, OCR (MinerU), and the analysis LLM. <strong>Never read from environment variables</strong>; configurable only in Admin → Settings, and movable between environments with Settings → Export / Import.</td>
+<td>Database only</td>
+<td>Embedding and the analysis LLM live in the provider-account / profile tables (<code>admin.llm_providers</code> etc.) and are configured under Model endpoints (<code>/admin/models</code>); OCR (MinerU) lives in the <code>ocr</code> group of <code>admin.app_settings</code> and is configured under External services → OCR. <strong>Never read from environment variables</strong>; movable between environments with the settings export / import (v3) under Backups &amp; settings (<code>/admin/system</code>).</td>
 </tr>
 </tbody>
 </table>
@@ -2977,6 +2999,11 @@
 <td>Session lifetime</td>
 </tr>
 <tr>
+<td><code>ADMIN_SESSION_COOKIE</code></td>
+<td><code>tw_health_admin_session</code></td>
+<td>Session cookie name (letters, digits, <code>_</code>, <code>-</code>, <code>.</code> only). Isolates several stacks on one host (cookies are scoped per host, not per port); staging uses <code>tw_health_admin_session_staging</code>.</td>
+</tr>
+<tr>
 <td><code>ADMIN_COOKIE_SECURE</code></td>
 <td>empty (automatic)</td>
 <td><code>true</code> / <code>false</code>. When empty, the cookie's <code>Secure</code> attribute is added if <code>PUBLIC_BASE_URL</code> uses HTTPS. Set it explicitly to <code>true</code> when TLS terminates at an external proxy and no public URL is configured.</td>
@@ -3038,7 +3065,7 @@ a letter). Write every <code>$</code> as <code>$$</code>; Compose collapses it b
 <p><code>compose.yaml</code> passes all four variables to <code>app</code>. A production deployment should at least set
 <code>PUBLIC_BASE_URL</code>; set <code>WEBAUTHN_*</code> only when the derived values need overriding.</p>
 <hr />
-<h2 id="seed-only-settings-managed-in-admin-settings-after-first-boot">Seed-only settings (managed in Admin → Settings after first boot)<a class="headerlink" href="#seed-only-settings-managed-in-admin-settings-after-first-boot" title="Permanent link">&para;</a></h2>
+<h2 id="seed-only-settings-managed-under-external-services-in-the-console-after-first-boot">Seed-only settings (managed under External services in the console after first boot)<a class="headerlink" href="#seed-only-settings-managed-under-external-services-in-the-console-after-first-boot" title="Permanent link">&para;</a></h2>
 <h3 id="minio-drug-assets">MinIO (drug assets)<a class="headerlink" href="#minio-drug-assets" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
@@ -3100,14 +3127,14 @@ a letter). Write every <code>$</code> as <code>$$</code>; Compose collapses it b
 <td>Crawler concurrency</td>
 </tr>
 <tr>
-<td><code>DRUG_AUTOCHAIN_BATCH_LIMIT</code></td>
+<td><code>DRUG_AUTOCHAIN_BATCH_LIMIT</code> (env var, not seeded)</td>
 <td><code>200</code></td>
 <td>The licenses each follow-on job processes when auto-chaining (index → enrichment → analysis). <strong>Applies only to auto-chained jobs</strong>; a manually queued job without a <code>limit</code> processes the entire pending queue.</td>
 </tr>
 <tr>
-<td><code>DRUG_ANALYSIS_PROMPT_PATH</code></td>
-<td><code>src/prompts/drug/analysis_prompt.txt</code></td>
-<td>Path to the analysis LLM's system prompt</td>
+<td><code>DRUG_ANALYSIS_PROMPT_PATH</code> (env var, not seeded)</td>
+<td><code>&lt;repo&gt;/src/prompts/drug/analysis_prompt.txt</code></td>
+<td>Path to the analysis LLM's system prompt (lets a container say where the repo is mounted; not meant for swapping the prompt)</td>
 </tr>
 </tbody>
 </table>
@@ -3142,12 +3169,17 @@ a letter). Write every <code>$</code> as <code>$$</code>; Compose collapses it b
 <td>No heartbeat for longer than this counts as lost</td>
 </tr>
 <tr>
-<td><code>ADMIN_MAX_CONCURRENT_JOBS</code></td>
+<td><code>ADMIN_RECLAIM_INTERVAL_SECONDS</code></td>
+<td><code>60</code></td>
+<td>How often lost jobs are checked for reclaim</td>
+</tr>
+<tr>
+<td><code>ADMIN_MAX_CONCURRENT_JOBS</code> (env var, not seeded)</td>
 <td><code>4</code></td>
 <td>Maximum concurrent jobs (per-module resource slots apply on top). Read from the environment on every worker start — not stored in <code>admin.app_settings</code>.</td>
 </tr>
 <tr>
-<td><code>ADMIN_SCHEDULE_SCAN_INTERVAL_SECONDS</code></td>
+<td><code>ADMIN_SCHEDULE_SCAN_INTERVAL_SECONDS</code> (env var, not seeded)</td>
 <td><code>60</code></td>
 <td>Schedule scan interval</td>
 </tr>
@@ -3174,7 +3206,7 @@ a letter). Write every <code>$</code> as <code>$$</code>; Compose collapses it b
 </tr>
 <tr>
 <td><code>ICD_CM_ZIP</code> / <code>ICD_PCS_ZIP</code> / <code>ICD_XLSX</code></td>
-<td>The matching files under <code>fhir-code/icd/10/...</code></td>
+<td>The matching files under <code>fhir-code/icd/10/...</code> (without <code>ICD_CM_ZIP</code> the CMS order-file zip is preferred; see <a href="../../data-sources/test-data/">Test data files</a>)</td>
 </tr>
 <tr>
 <td><code>LOINC_ZIP_PATH</code></td>
@@ -3199,6 +3231,24 @@ a letter). Write every <code>$</code> as <code>$$</code>; Compose collapses it b
 </tbody>
 </table>
 <hr />
+<h2 id="image-build-arguments">Image build arguments<a class="headerlink" href="#image-build-arguments" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Argument</th>
+<th>Applies to</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>BUILD_SHA</code></td>
+<td><code>node-server/Dockerfile</code> (<code>app</code>), <code>Dockerfile.worker</code> (<code>admin-worker</code>)</td>
+<td>Git sha; <code>app</code> reports it in the <code>build</code> field of <code>health_check</code>, <code>admin-worker</code> records it in its startup log. <code>compose.yaml</code> passes it from the environment variable of the same name, <code>dev</code> when unset. Usage: <code>BUILD_SHA=$(git rev-parse --short HEAD) docker compose build app admin-worker</code>.</td>
+</tr>
+</tbody>
+</table>
+<hr />
 <h2 id="mcp-client-configuration">MCP client configuration<a class="headerlink" href="#mcp-client-configuration" title="Permanent link">&para;</a></h2>
 <h3 id="streamable-http-production-recommended">streamable-http (production, recommended)<a class="headerlink" href="#streamable-http-production-recommended" title="Permanent link">&para;</a></h3>
 <p>Claude Desktop:</p>
@@ -3211,6 +3261,7 @@ a letter). Write every <code>$</code> as <code>$$</code>; Compose collapses it b
   }
 }
 </code></pre>
+<p>With <code>PUBLIC_TOOLS_AUTH_MODE=bearer</code>, clients must send an <code>Authorization: Bearer &lt;PUBLIC_TOOLS_BEARER_TOKEN&gt;</code> header. The console's MCP tools page (<code>/admin/mcp</code>) offers copy-ready client configs.</p>
 <hr />
 <h2 id="resource-limits">Recommended resource limits (production)<a class="headerlink" href="#resource-limits" title="Permanent link">&para;</a></h2>
 <p>Add resource limits in <code>docker-compose.override.yml</code>:</p>

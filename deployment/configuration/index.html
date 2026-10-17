@@ -2022,15 +2022,15 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#seed-only-admin-settings" class="md-nav__link">
+  <a href="#seed-only" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Seed-only 設定（首次啟動後改於 Admin → Settings）
+        Seed-only 設定（首次啟動後改於管理後台「外部服務」）
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Seed-only 設定（首次啟動後改於 Admin → Settings）">
+    <nav class="md-nav" aria-label="Seed-only 設定（首次啟動後改於管理後台「外部服務」）">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -2079,6 +2079,17 @@
         
       </ul>
     </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        映像建置參數
+      
+    </span>
+  </a>
   
 </li>
       
@@ -2640,15 +2651,15 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#seed-only-admin-settings" class="md-nav__link">
+  <a href="#seed-only" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Seed-only 設定（首次啟動後改於 Admin → Settings）
+        Seed-only 設定（首次啟動後改於管理後台「外部服務」）
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Seed-only 設定（首次啟動後改於 Admin → Settings）">
+    <nav class="md-nav" aria-label="Seed-only 設定（首次啟動後改於管理後台「外部服務」）">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -2697,6 +2708,17 @@
         
       </ul>
     </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        映像建置參數
+      
+    </span>
+  </a>
   
 </li>
       
@@ -2771,7 +2793,7 @@
 
 
 <h1 id="_1">環境配置<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h1>
-<p>系統透過環境變數與資料庫設定（<code>admin.app_settings</code> / <code>admin.llm_profiles</code>）兩層來配置。複製 <code>.env.example</code> 為 <code>.env</code> 後修改：</p>
+<p>系統透過環境變數與資料庫設定（<code>admin.app_settings</code>，以及模型端點的 <code>admin.llm_providers</code> / <code>llm_routes</code> / <code>llm_route_members</code> / <code>llm_role_routes</code>）兩層來配置。複製 <code>.env.example</code> 為 <code>.env</code> 後修改：</p>
 <pre><code class="language-bash">cp .env.example .env
 </code></pre>
 <h2 id="settings-precedence">設定優先序（重要）<a class="headerlink" href="#settings-precedence" title="Permanent link">&para;</a></h2>
@@ -2792,12 +2814,12 @@
 <tr>
 <td><strong>Seed-only 設定</strong></td>
 <td><code>.env</code> → <code>admin.app_settings</code></td>
-<td>MinIO、TFDA 爬蟲、FHIR package registry、worker 調校等。<strong>只在首次啟動、對應鍵尚未存在時讀取一次</strong>以種子化；編輯 <code>.env</code> 對已種子化的資料庫無效。TFDA / registry 之後可在 Admin → Settings 管理（支援熱套用）；<strong>MinIO 與 worker 調校在後台是唯讀群組</strong>，事後只能直接 <code>UPDATE admin.app_settings</code> 再重啟服務。</td>
+<td>MinIO、TFDA 爬蟲、FHIR package registry、worker 調校等。<strong>只在首次啟動、對應鍵尚未存在時讀取一次</strong>以種子化；編輯 <code>.env</code> 對已種子化的資料庫無效。TFDA / registry 之後可在管理後台「外部服務」（<code>/admin/integrations</code>）管理（支援熱套用）；<strong>MinIO 與 worker 調校在後台是唯讀群組</strong>，事後只能直接 <code>UPDATE admin.app_settings</code> 再重啟服務。</td>
 </tr>
 <tr>
 <td><strong>模型端點</strong></td>
-<td>只在資料庫（<code>admin.llm_profiles</code>）</td>
-<td>嵌入、OCR（MinerU）、分析 LLM。<strong>完全不從環境變數讀取</strong>，只能在 Admin → Settings 設定，可用 Settings → Export / Import 在不同環境間搬移。</td>
+<td>只在資料庫</td>
+<td>嵌入與分析 LLM 存於 provider 帳號 / profile 表（<code>admin.llm_providers</code> 等），於「模型端點」（<code>/admin/models</code>）設定；OCR（MinerU）存於 <code>admin.app_settings</code> 的 <code>ocr</code> 群組，於「外部服務 → OCR」設定。<strong>完全不從環境變數讀取</strong>，可用「備份與設定」（<code>/admin/system</code>）的設定匯出 / 匯入（v3）在不同環境間搬移。</td>
 </tr>
 </tbody>
 </table>
@@ -2977,6 +2999,11 @@
 <td>session 有效期</td>
 </tr>
 <tr>
+<td><code>ADMIN_SESSION_COOKIE</code></td>
+<td><code>tw_health_admin_session</code></td>
+<td>session cookie 名稱（僅允許英數、<code>_</code>、<code>-</code>、<code>.</code>）。同一主機上跑多套 stack 時用來隔離（cookie 依主機而非埠區分），staging 使用 <code>tw_health_admin_session_staging</code>。</td>
+</tr>
+<tr>
 <td><code>ADMIN_COOKIE_SECURE</code></td>
 <td>空（自動）</td>
 <td><code>true</code> / <code>false</code>。空值時，<code>PUBLIC_BASE_URL</code> 使用 HTTPS 就加入 cookie <code>Secure</code> 屬性。TLS 在外部 proxy 終止且未設定 public URL 時應明確設為 <code>true</code>。</td>
@@ -3038,7 +3065,7 @@ Compose 會還原成單一 <code>$</code>。</p>
 <p><code>compose.yaml</code> 會將這四個變數傳入 <code>app</code>。正式部署至少應設定
 <code>PUBLIC_BASE_URL</code>；只有需要覆寫自動推導值時才設定 <code>WEBAUTHN_*</code>。</p>
 <hr />
-<h2 id="seed-only-admin-settings">Seed-only 設定（首次啟動後改於 Admin → Settings）<a class="headerlink" href="#seed-only-admin-settings" title="Permanent link">&para;</a></h2>
+<h2 id="seed-only">Seed-only 設定（首次啟動後改於管理後台「外部服務」）<a class="headerlink" href="#seed-only" title="Permanent link">&para;</a></h2>
 <h3 id="minio">MinIO（藥品資產）<a class="headerlink" href="#minio" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
@@ -3100,14 +3127,14 @@ Compose 會還原成單一 <code>$</code>。</p>
 <td>爬蟲並行度</td>
 </tr>
 <tr>
-<td><code>DRUG_AUTOCHAIN_BATCH_LIMIT</code></td>
+<td><code>DRUG_AUTOCHAIN_BATCH_LIMIT</code>（環境變數，非 seed）</td>
 <td><code>200</code></td>
 <td>自動串接（index → enrichment → analysis）時，每個後續工作處理的授權證上限。<strong>只作用於自動串接產生的工作</strong>；手動排入的工作若沒帶 <code>limit</code>，會處理整個待辦佇列。</td>
 </tr>
 <tr>
-<td><code>DRUG_ANALYSIS_PROMPT_PATH</code></td>
-<td><code>src/prompts/drug/analysis_prompt.txt</code></td>
-<td>分析 LLM 的 system prompt 路徑</td>
+<td><code>DRUG_ANALYSIS_PROMPT_PATH</code>（環境變數，非 seed）</td>
+<td><code>&lt;repo&gt;/src/prompts/drug/analysis_prompt.txt</code></td>
+<td>分析 LLM 的 system prompt 路徑（供容器指出 repo 掛載位置，不是用來替換 prompt）</td>
 </tr>
 </tbody>
 </table>
@@ -3142,12 +3169,17 @@ Compose 會還原成單一 <code>$</code>。</p>
 <td>超過此秒數無心跳即視為失聯</td>
 </tr>
 <tr>
-<td><code>ADMIN_MAX_CONCURRENT_JOBS</code></td>
-<td><code>4</code></td>
-<td>同時執行的工作數上限（另有各模組資源槽位限制）</td>
+<td><code>ADMIN_RECLAIM_INTERVAL_SECONDS</code></td>
+<td><code>60</code></td>
+<td>回收失聯工作的檢查間隔</td>
 </tr>
 <tr>
-<td><code>ADMIN_SCHEDULE_SCAN_INTERVAL_SECONDS</code></td>
+<td><code>ADMIN_MAX_CONCURRENT_JOBS</code>（環境變數，非 seed）</td>
+<td><code>4</code></td>
+<td>同時執行的工作數上限（另有各模組資源槽位限制）。worker 每次啟動都直接讀環境變數，不存入 <code>admin.app_settings</code>。</td>
+</tr>
+<tr>
+<td><code>ADMIN_SCHEDULE_SCAN_INTERVAL_SECONDS</code>（環境變數，非 seed）</td>
 <td><code>60</code></td>
 <td>排程掃描間隔</td>
 </tr>
@@ -3174,7 +3206,7 @@ Compose 會還原成單一 <code>$</code>。</p>
 </tr>
 <tr>
 <td><code>ICD_CM_ZIP</code> / <code>ICD_PCS_ZIP</code> / <code>ICD_XLSX</code></td>
-<td><code>fhir-code/icd/10/...</code> 下的對應檔</td>
+<td><code>fhir-code/icd/10/...</code> 下的對應檔（<code>ICD_CM_ZIP</code> 未設定時優先找 CMS order-file zip，見<a href="../../data-sources/test-data/">測試資料檔清單</a>）</td>
 </tr>
 <tr>
 <td><code>LOINC_ZIP_PATH</code></td>
@@ -3199,6 +3231,24 @@ Compose 會還原成單一 <code>$</code>。</p>
 </tbody>
 </table>
 <hr />
+<h2 id="_6">映像建置參數<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>參數</th>
+<th>適用</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>BUILD_SHA</code></td>
+<td><code>node-server/Dockerfile</code>（<code>app</code>）、<code>Dockerfile.worker</code>（<code>admin-worker</code>）</td>
+<td>git sha；<code>app</code> 在 <code>health_check</code> 的 <code>build</code> 欄位回報，<code>admin-worker</code> 記在啟動日誌。<code>compose.yaml</code> 從同名環境變數傳入，未設定時為 <code>dev</code>。用法：<code>BUILD_SHA=$(git rev-parse --short HEAD) docker compose build app admin-worker</code>。</td>
+</tr>
+</tbody>
+</table>
+<hr />
 <h2 id="mcp_1">MCP 客戶端設定<a class="headerlink" href="#mcp_1" title="Permanent link">&para;</a></h2>
 <h3 id="streamable-http">streamable-http（生產環境，推薦）<a class="headerlink" href="#streamable-http" title="Permanent link">&para;</a></h3>
 <p>Claude Desktop：</p>
@@ -3211,6 +3261,7 @@ Compose 會還原成單一 <code>$</code>。</p>
   }
 }
 </code></pre>
+<p><code>PUBLIC_TOOLS_AUTH_MODE=bearer</code> 時，客戶端須帶 <code>Authorization: Bearer &lt;PUBLIC_TOOLS_BEARER_TOKEN&gt;</code> 標頭。管理後台的「MCP 工具」頁（<code>/admin/mcp</code>）提供可直接複製的用戶端設定範本。</p>
 <hr />
 <h2 id="resource-limits">資源限制建議（生產環境）<a class="headerlink" href="#resource-limits" title="Permanent link">&para;</a></h2>
 <p>在 <code>docker-compose.override.yml</code> 加入資源限制：</p>

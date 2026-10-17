@@ -2361,24 +2361,38 @@
 
 
 <h1 id="data-sources">Data Sources<a class="headerlink" href="#data-sources" title="Permanent link">&para;</a></h1>
-<p>Every data import is performed in the <strong>admin console (Admin → Modules)</strong> and executed in the background by <code>admin-worker</code> (there is no longer a CLI data loader). The "import stage" column below gives the actual <code>admin.import_jobs.job_type</code> value — these are the strings a job is created with.</p>
+<p>Every data import is performed in the <strong>admin console</strong> and executed in the background by <code>admin-worker</code> (there is no longer a CLI data loader): terminologies under <strong>Terminology → <module></strong>, FHIR IGs under <strong>FHIR → IG packages</strong>, drugs and TFDA open data under <strong>Data</strong>. Each module page's "Data lifecycle" tab handles source uploads, imports and vector backfills. The "import stage" column below gives the actual <code>admin.import_jobs.job_type</code> value — these are the strings a job is created with.</p>
 <table>
 <thead>
 <tr>
 <th>Dataset</th>
 <th>Version / source</th>
-<th>How to import (Admin → Modules)</th>
+<th>How to import</th>
 <th>Import stage</th>
 <th>Licensing</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>ICD-10-CM / PCS</td>
-<td>NLM / CMS 2025</td>
+<td>ICD-10-CM</td>
+<td>CMS 2026-04-01 ("Code Descriptions in Tabular Order", complete code set incl. 7th characters)</td>
 <td>Upload the zip → import</td>
 <td><code>icd_import</code></td>
 <td>Public (bring your own zip)</td>
+</tr>
+<tr>
+<td>ICD-10-PCS</td>
+<td>CMS 2025</td>
+<td>Upload the zip → import (same job as CM)</td>
+<td><code>icd_import</code></td>
+<td>Public</td>
+</tr>
+<tr>
+<td>WHO ICD-10 (optional)</td>
+<td>tx.fhir.org <code>2019-covid-expanded</code> (FHIR JSON)</td>
+<td>Upload the JSON → import (same job as CM)</td>
+<td><code>icd_import</code></td>
+<td>WHO</td>
 </tr>
 <tr>
 <td>LOINC</td>
@@ -2389,22 +2403,29 @@
 </tr>
 <tr>
 <td>SNOMED CT</td>
-<td>International RF2</td>
+<td>International RF2 (currently 20250601)</td>
 <td>Upload the RF2 zip → import</td>
 <td><code>snomed_import</code></td>
 <td>SNOMED license required</td>
 </tr>
 <tr>
+<td>RxNorm (concept reference)</td>
+<td>NLM</td>
+<td>Upload <code>RxNorm_full_*.zip</code> → import (for IG ValueSet expansion)</td>
+<td><code>rxnorm_import</code></td>
+<td>UMLS account required</td>
+</tr>
+<tr>
 <td>FHIR IG (TWCore and others)</td>
 <td>MoHW / packages.fhir.org</td>
-<td>Upload <code>package.tgz</code>, or fetch from Admin → IG</td>
+<td>Install from the registry or upload <code>package.tgz</code>; dependency IGs download automatically</td>
 <td><code>ig_import</code></td>
 <td>Public</td>
 </tr>
 <tr>
 <td>Drugs (Taiwan FDA / TFDA)</td>
 <td>TFDA <code>36_2.csv</code> + online crawl</td>
-<td>API fetch + crawl and analysis</td>
+<td>Upload the CSV + crawl and analysis</td>
 <td><code>drug_index_import</code> → <code>drug_enrichment</code> → <code>drug_analysis</code></td>
 <td>Open data</td>
 </tr>
@@ -2422,22 +2443,16 @@
 <td><code>food_nutrition_sync</code></td>
 <td>Open data</td>
 </tr>
-<tr>
-<td>RxNorm (concept reference)</td>
-<td>NLM</td>
-<td>Upload <code>RxNorm_full_*.zip</code> → import (for IG ValueSet expansion)</td>
-<td>—</td>
-<td>Public</td>
-</tr>
 </tbody>
 </table>
+<p>CVX (287 codes), ISO 3166 and UCUM need no import: they ship with the code as built-in tables / a library and are used only by the FHIR validator.</p>
 <h2 id="notes">Notes<a class="headerlink" href="#notes" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>Licensed source files</strong> (SNOMED, LOINC, the ICD zips, RxNorm, and so on) must be obtained yourself and uploaded under Admin → Sources / Modules.</li>
-<li>The <strong>drug domain</strong> is a three-stage pipeline (index → online enrichment crawl → OCR/LLM analysis). The crawl and analysis stages require TFDA / OCR / analysis-LLM endpoints to be configured (see <code>DRUG_*</code> in <code>.env</code>, or manage them in Admin → Settings). See <a href="../modules/drug-service/">Drug Service</a>.</li>
-<li><strong>FHIR IG</strong> uses a multi-IG (package-scoped) design; besides the primary IG, dependency packages (such as <code>hl7.terminology.r4</code> and <code>hl7.fhir.r4.core</code>) can be bound under Admin → Sources. See <a href="../modules/fhir-ig-service/">FHIR IG Service</a>.</li>
-<li><strong>RxNorm</strong> is currently loaded as concept-only reference terminology, used for TTY expansion of FHIR IG ValueSets. It does <strong>not</strong> expose a standalone drug interaction tool.</li>
-<li><strong>Embeddings</strong>: the <code>*_embeddings</code> vector tables are backfilled by each module's separate <code>*_embed</code> job, runnable or schedulable from the module page. The embedding endpoint lives in <code>admin.llm_profiles</code> (configured in Admin → Settings, Ollama by default); when the endpoint is unavailable, search falls back to keyword mode automatically.</li>
+<li><strong>Licensed source files</strong> (SNOMED, LOINC, the ICD zips, RxNorm, and so on) must be obtained yourself and uploaded on the corresponding module page. The files actually used are listed in <a href="test-data/">Test data files</a>.</li>
+<li>The <strong>drug domain</strong> is a three-stage pipeline (index → online enrichment crawl → OCR/LLM analysis). The TFDA address is set under <strong>Integrations → External services</strong> (the <code>DRUG_*</code> keys in <code>.env</code> only seed it on first boot); OCR (MinerU) under <strong>Integrations → External services → OCR Server</strong>; the analysis LM under <strong>Integrations → Model endpoints</strong>. See <a href="../modules/drug-service/">Drug Service</a>.</li>
+<li><strong>FHIR IG</strong> uses a multi-IG (package-scoped) design; declared dependency packages (such as <code>hl7.terminology.r4</code> and <code>hl7.fhir.r4.core</code>) are downloaded automatically from the FHIR registry — upload one by hand only when the registry cannot supply it. See <a href="../modules/fhir-ig-service/">FHIR IG Service</a>.</li>
+<li><strong>RxNorm</strong> is currently loaded as concept-only reference terminology, used for TTY expansion of FHIR IG ValueSets. It does <strong>not</strong> expose a standalone drug tool.</li>
+<li><strong>Embeddings</strong>: the <code>*_embeddings</code> vector tables are backfilled by each module's separate <code>*_embed</code> job (<code>icd_embed</code>, <code>loinc_embed</code>, <code>snomed_embed</code>, <code>health_supplements_embed</code>, <code>food_nutrition_embed</code>), runnable or schedulable from the module page. The embedding endpoint is configured under <strong>Integrations → Model endpoints</strong> (provider accounts + an embedding route, stored in <code>admin.llm_providers</code> / <code>admin.llm_routes</code> and related tables, never read from env); when the endpoint is unavailable, search falls back to keyword mode automatically.</li>
 </ul>
 <p>Per-source details: <a href="icd10/">ICD-10</a>, <a href="loinc/">LOINC</a>.</p>
 

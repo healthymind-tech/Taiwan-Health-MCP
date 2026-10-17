@@ -2674,6 +2674,9 @@
 
 <h1 id="drug-tools">Drug Tools<a class="headerlink" href="#drug-tools" title="Permanent link">&para;</a></h1>
 <p>This group integrates Taiwan FDA (TFDA) western-medicine license data, providing drug search, pill identification, drug details, and official document asset download links.</p>
+<blockquote>
+<p><strong>Maintenance mode</strong>: while the admin console has the <code>drug</code> module in maintenance mode, this group's (and the FHIR Medication tools') calls return an <code>isError</code> result immediately with error code <code>MODULE_MAINTENANCE</code> (<code>error.message</code> in English, <code>error.message_zh</code> in Traditional Chinese, <code>error.module</code> the module key), effective within about 5 seconds; the tools stay in <code>tools/list</code>. See the <a href="../../api/#maintenance">API reference</a>.</p>
+</blockquote>
 <h2 id="search_drug">search_drug<a class="headerlink" href="#search_drug" title="Permanent link">&para;</a></h2>
 <p>A single entry point with four search modes.</p>
 <h3 id="parameters">Parameters<a class="headerlink" href="#parameters" title="Permanent link">&para;</a></h3>
@@ -2778,7 +2781,7 @@
 </tbody>
 </table>
 <h3 id="purpose">Purpose<a class="headerlink" href="#purpose" title="Permanent link">&para;</a></h3>
-<p>Each keyword is matched conjunctively against the appearance description, colour, shape, symbol, score line, size, and engraving fields. English colour and shape terms are expanded through a built-in synonym table. Appearance data must be loaded first by a <code>drug_enrichment</code> job (Admin → Modules).</p>
+<p>Each keyword is matched conjunctively against the appearance description, colour, shape, symbol, score line, size, and engraving fields. English colour and shape terms are expanded through a built-in synonym table. Returns up to 5 results. Appearance data must be loaded first by a <code>drug_enrichment</code> job (admin console → Drug).</p>
 <hr />
 <h2 id="get_drug_details">get_drug_details<a class="headerlink" href="#get_drug_details" title="Permanent link">&para;</a></h2>
 <p>Return the normalized drug record for a single license.</p>

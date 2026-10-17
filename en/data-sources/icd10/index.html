@@ -1171,10 +1171,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#icd-10-cmpcs" class="md-nav__link">
+  <a href="#icd-10-cm-pcs" class="md-nav__link">
     <span class="md-ellipsis">
       
-        ICD-10-CM/PCS
+        ICD-10-CM / PCS
       
     </span>
   </a>
@@ -1182,10 +1182,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#taiwan-nhi-revisions" class="md-nav__link">
+  <a href="#who-icd-10-optional" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Taiwan NHI revisions
+        WHO ICD-10 (optional)
       
     </span>
   </a>
@@ -1193,10 +1193,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#file-format" class="md-nav__link">
+  <a href="#taiwan-chinese-names" class="md-nav__link">
     <span class="md-ellipsis">
       
-        File format
+        Taiwan Chinese names
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#file-format-and-import" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        File format and import
       
     </span>
   </a>
@@ -2352,10 +2363,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#icd-10-cmpcs" class="md-nav__link">
+  <a href="#icd-10-cm-pcs" class="md-nav__link">
     <span class="md-ellipsis">
       
-        ICD-10-CM/PCS
+        ICD-10-CM / PCS
       
     </span>
   </a>
@@ -2363,10 +2374,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#taiwan-nhi-revisions" class="md-nav__link">
+  <a href="#who-icd-10-optional" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Taiwan NHI revisions
+        WHO ICD-10 (optional)
       
     </span>
   </a>
@@ -2374,10 +2385,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#file-format" class="md-nav__link">
+  <a href="#taiwan-chinese-names" class="md-nav__link">
     <span class="md-ellipsis">
       
-        File format
+        Taiwan Chinese names
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#file-format-and-import" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        File format and import
       
     </span>
   </a>
@@ -2405,28 +2427,63 @@
 
 
 <h1 id="icd-10-data-source">ICD-10 Data Source<a class="headerlink" href="#icd-10-data-source" title="Permanent link">&para;</a></h1>
-<h2 id="icd-10-cmpcs">ICD-10-CM/PCS<a class="headerlink" href="#icd-10-cmpcs" title="Permanent link">&para;</a></h2>
+<h2 id="icd-10-cm-pcs">ICD-10-CM / PCS<a class="headerlink" href="#icd-10-cm-pcs" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong>CM (Clinical Modification)</strong>: used for diagnosis coding.<ul>
-<li>Source: the latest release from the US CMS (Centers for Medicare &amp; Medicaid Services).</li>
+<li>Source: the annual release from the US CMS (Centers for Medicare &amp; Medicaid Services) (<a href="https://www.cms.gov/medicare/coding-billing/icd-10-codes">https://www.cms.gov/medicare/coding-billing/icd-10-codes</a>).</li>
+<li>Recommended file: the "Code Descriptions in Tabular Order" zip (containing <code>icd10cm_order_YYYY.txt</code>) — the complete code set: header codes plus billable codes including 7th characters / placeholder <code>X</code> (98,186 codes in the 2026-04-01 release). Only with this file is <code>icd.editions.complete</code> true, and only then does the FHIR validator treat unknown ICD-10-CM codes as errors.</li>
+<li>Also accepted: the "Code Tables, Tabular and Index" zip (<code>icd10cm_tabular_YYYY.xml</code>); 7th characters are expanded, but unknown codes stay warnings.</li>
 </ul>
 </li>
 <li><strong>PCS (Procedure Coding System)</strong>: used for procedure and surgical coding.<ul>
-<li>Source: as above.</li>
+<li>Source: as above (the flat codes TXT inside the ICD-10-PCS zip).</li>
 </ul>
 </li>
 </ul>
-<h2 id="taiwan-nhi-revisions">Taiwan NHI revisions<a class="headerlink" href="#taiwan-nhi-revisions" title="Permanent link">&para;</a></h2>
+<h2 id="who-icd-10-optional">WHO ICD-10 (optional)<a class="headerlink" href="#who-icd-10-optional" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>Source</strong>: the National Health Insurance Administration, Ministry of Health and Welfare.</li>
-<li><strong>Handling of differences</strong>:<ul>
-<li>Some codes carry specific rules or are non-reimbursable in Taiwan's NHI claim system; this system annotates them in the notes field where possible (the international standard still governs by default).</li>
-<li>Chinese translations follow the NHIA-published Chinese edition of the International Classification of Diseases, 10th Revision.</li>
+<li><strong>Purpose</strong>: lets the FHIR validator check codes and displays of <code>http://hl7.org/fhir/sid/icd-10</code>; the ICD lookup tools are unaffected.</li>
+<li><strong>File</strong>: a WHO ICD-10 FHIR CodeSystem or expanded ValueSet JSON, e.g. <code>2019-covid-expanded</code> (13,831 codes) fetched from tx.fhir.org with <code>node-server/scripts/validator-audit/harness/fetch_tx_terms.py</code>. Written to <code>icd.icd10_who</code>.</li>
 </ul>
-</li>
+<h2 id="taiwan-chinese-names">Taiwan Chinese names<a class="headerlink" href="#taiwan-chinese-names" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Source</strong>: the Ministry of Health and Welfare's bilingual "Chinese edition of ICD-10-CM/PCS" XLSX (source role <code>icd_zh_tw</code>, optional).</li>
+<li>Chinese names only fill <code>name_zh</code>; the code set itself always follows the CMS release.</li>
 </ul>
-<h2 id="file-format">File format<a class="headerlink" href="#file-format" title="Permanent link">&para;</a></h2>
-<p>The system reads an Excel file (<code>icd10cm_pcs_xxxx.xlsx</code>) under the <code>data/</code> directory for initialisation. That file must contain two sheets: <code>diagnosis</code> and <code>procedure</code>.</p>
+<h2 id="file-format-and-import">File format and import<a class="headerlink" href="#file-format-and-import" title="Permanent link">&para;</a></h2>
+<p>Upload on the <strong>Terminology → ICD-10</strong> page of the admin console, "Data lifecycle" tab; the <code>icd_import</code> stage processes every role in one job:</p>
+<table>
+<thead>
+<tr>
+<th>Source role</th>
+<th>File</th>
+<th>Required</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>icd10cm</code></td>
+<td>CMS ICD-10-CM zip (order file or tabular XML)</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td><code>icd10pcs</code></td>
+<td>CMS ICD-10-PCS zip</td>
+<td>No (procedure features degrade without it)</td>
+</tr>
+<tr>
+<td><code>icd_zh_tw</code></td>
+<td>MOHW bilingual XLSX (sheets <code>ICD-10-CM</code> and <code>ICD-10-PCS</code>, code in column A, Chinese name in column D)</td>
+<td>No</td>
+</tr>
+<tr>
+<td><code>icd10_who</code></td>
+<td>WHO ICD-10 FHIR JSON</td>
+<td>No</td>
+</tr>
+</tbody>
+</table>
+<p>The import writes staging tables first, then swaps <code>icd.*</code> and writes <code>icd.editions</code> in one promote transaction.</p>
 
 
 

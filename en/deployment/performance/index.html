@@ -1967,10 +1967,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#handling-concurrency" class="md-nav__link">
+  <a href="#concurrency" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Handling concurrency
+        Concurrency
       
     </span>
   </a>
@@ -2396,10 +2396,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#handling-concurrency" class="md-nav__link">
+  <a href="#concurrency" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Handling concurrency
+        Concurrency
       
     </span>
   </a>
@@ -2452,32 +2452,60 @@
 <h2 id="startup-speed">Startup speed<a class="headerlink" href="#startup-speed" title="Permanent link">&para;</a></h2>
 <p>The system connects to PostgreSQL directly at server startup; the data is pre-loaded, so no ETL runs on each boot.</p>
 <ul>
-<li><strong>First deployment</strong>: terminology data must first be imported through the admin console (Admin → Modules) — roughly 1 minute for ICD, 5–15 minutes for SNOMED CT.</li>
+<li><strong>First deployment</strong>: terminology data must first be imported from the admin console's module pages (Terminology etc.) — roughly 1 minute for ICD, 5–15 minutes for SNOMED CT.</li>
 <li><strong>Subsequent starts</strong>: the service connects straight to PostgreSQL and starts within seconds.</li>
 <li><strong>Initialisation model</strong>: the Node server creates the connection pool, Redis, and each service exactly once at process start (<code>main()</code> in <code>node-server/src/server.ts</code>); each MCP session holds its own transport but shares these process-level singletons. (The old Python <code>mcp</code> SDK's lifespan-per-session problem no longer exists.)</li>
 </ul>
-<p><strong>Recommendation</strong>: keep the PostgreSQL data volume persistent (already configured by default in <code>compose.yaml</code>) so loaded terminology data survives restarts.</p>
+<p><strong>Recommendation</strong>: make sure the PostgreSQL data volume is persistent (<code>compose.yaml</code> sets this up by default) so the loaded terminology data survives.</p>
 <h2 id="query-performance">Query performance<a class="headerlink" href="#query-performance" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>pgBouncer connection pool</strong>: transaction mode, mapping 500 client connections onto 30 PG connections, supporting high concurrency.</li>
-<li><strong>Redis cache</strong>: <code>cached()</code> wraps common queries with a TTL-based cache (<code>node-server/src/cache.ts</code>), failing open on cache errors (the query runs against the DB, so availability is unaffected).</li>
-<li><strong>FTS indexes</strong>: every major search column has a PostgreSQL full-text search index.</li>
-<li><strong><code>pg</code> driver</strong>: uses unnamed prepared statements for compatibility with pgBouncer transaction mode.</li>
+<li><strong>pgBouncer connection pool</strong>: transaction mode, 500 client connections mapped onto 30 PG connections, for high concurrency.</li>
+<li><strong>Redis cache (not in use today)</strong>: <code>node-server/src/cache.ts</code> provides <code>cached(ttl, prefix)</code> — a Redis-backed, fail-open memoizer (on a cache error the function simply runs) — but <strong>no service or tool calls it yet</strong>, so every tool call hits PostgreSQL. Wrapping a hot read path in <code>cached()</code> is the intended way to add caching.</li>
+<li><strong>FTS indexes</strong>: every major search column has a PostgreSQL Full-Text Search index.</li>
+<li><strong>Vector search</strong>: the <code>*_embeddings</code> tables use pgvector. ICD semantic search deliberately <strong>bypasses the HNSW index</strong> with an exact scan (<code>ORDER BY (embedding &lt;=&gt; …) + 0</code>): the ~50k near-duplicate 7th-character codes make HNSW recall collapse, and the exact scan over ~98k rows takes about 0.35 s.</li>
+<li><strong><code>pg</code> driver</strong>: uses unnamed prepared statements to stay compatible with pgBouncer transaction mode.</li>
 </ul>
-<h2 id="handling-concurrency">Handling concurrency<a class="headerlink" href="#handling-concurrency" title="Permanent link">&para;</a></h2>
-<p>The MCP server is implemented in Node.js (Express + <code>@modelcontextprotocol/sdk</code>). For high request volumes:</p>
+<h2 id="concurrency">Concurrency<a class="headerlink" href="#concurrency" title="Permanent link">&para;</a></h2>
+<p>The MCP server is implemented in Node.js (Express + <code>@modelcontextprotocol/sdk</code>). To handle heavy request volumes:</p>
 <ol>
-<li>Tune pgBouncer's <code>MAX_CLIENT_CONN</code> (500 by default) and <code>DEFAULT_POOL_SIZE</code> (30 by default).</li>
-<li>Monitor the Redis cache hit rate through Prometheus (<code>mcp_cache_operations_total</code>).</li>
+<li>Tune pgBouncer's <code>MAX_CLIENT_CONN</code> (default 500) and <code>DEFAULT_POOL_SIZE</code> (default 30).</li>
+<li>Watch pool usage through Prometheus (<code>mcp_db_pool_size</code> / <code>mcp_db_pool_checked_out</code>).</li>
 <li>Multiple container instances can share one PostgreSQL and one Redis.</li>
 </ol>
 <h2 id="background-jobs">Background jobs<a class="headerlink" href="#background-jobs" title="Permanent link">&para;</a></h2>
 <ul>
 <li><code>ADMIN_MAX_CONCURRENT_JOBS</code> bounds how many jobs <code>admin-worker</code> runs at once (4 by default in compose); per-module resource slots additionally prevent parallel imports of the same module.</li>
 <li>The worker's <code>NODE_OPTIONS=--max-old-space-size=8192</code> is necessary: IG imports load whole dependency packages (such as <code>hl7.fhir.r4.examples</code>) into memory. <strong>Do not lower it.</strong></li>
+<li>On a memory-constrained host, avoid running several large imports at once (e.g. SNOMED CT and an IG); an idle worker may also retain gigabytes of heap, so restarting it before a large import can help.</li>
 </ul>
 <h2 id="monitoring">Monitoring<a class="headerlink" href="#monitoring" title="Permanent link">&para;</a></h2>
-<p>The Prometheus metrics endpoint is on <code>METRICS_PORT</code> (9090 by default, bound to <code>127.0.0.1</code> only).</p>
+<p>The Prometheus metrics endpoint is <code>/metrics</code> on <code>METRICS_PORT</code> (9090 by default, bound to <code>127.0.0.1</code> only). <code>node-server/src/metrics.ts</code> defines:</p>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>Type</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>mcp_db_pool_size</code> / <code>mcp_db_pool_checked_out</code></td>
+<td>Gauge</td>
+<td>Updated periodically by the DB stats collector</td>
+</tr>
+<tr>
+<td><code>mcp_tool_requests_total{tool,status}</code> / <code>mcp_tool_duration_seconds{tool}</code></td>
+<td>Counter / Histogram</td>
+<td>Recorded on every tool call (MCP, <code>POST /tools/&lt;name&gt;</code> and the admin playground share one dispatch point, <code>withToolMetrics</code> in <code>mcp.ts</code>). Labels are only the tool name and <code>status</code> (<code>success</code> / <code>error</code>; a throw or an <code>isError</code> result counts as <code>error</code>) — arguments are never recorded; calls rejected by argument validation before reaching the handler are not counted</td>
+</tr>
+<tr>
+<td><code>mcp_cache_operations_total{prefix,result}</code></td>
+<td>Counter</td>
+<td>Increments only when <code>cached()</code> is used; it currently has no call site</td>
+</tr>
+</tbody>
+</table>
 
 
 

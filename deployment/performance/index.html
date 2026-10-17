@@ -2452,7 +2452,7 @@
 <h2 id="_2">啟動速度<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
 <p>本系統在伺服器啟動時直接連接 PostgreSQL，資料已預先載入，無需每次 ETL。</p>
 <ul>
-<li><strong>首次部署</strong>：需先於管理後台（Admin → Modules）匯入術語資料（ICD 約 1 分鐘，SNOMED CT 約 5-15 分鐘）。</li>
+<li><strong>首次部署</strong>：需先於管理後台各模組頁（「醫療術語」等）匯入術語資料（ICD 約 1 分鐘，SNOMED CT 約 5-15 分鐘）。</li>
 <li><strong>後續啟動</strong>：服務直接連接 PostgreSQL，啟動時間秒級完成。</li>
 <li><strong>初始化模型</strong>：Node 伺服器在行程啟動時（<code>node-server/src/server.ts</code> 的 <code>main()</code>）建立一次連線池、Redis 與各服務；MCP session 各自持有 transport，但共用這些行程層級的單例。（舊 Python <code>mcp</code> SDK 的 lifespan-per-session 問題已不存在。）</li>
 </ul>
@@ -2460,24 +2460,52 @@
 <h2 id="_3">查詢效能<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong>pgBouncer 連線池</strong>：transaction mode，500 client 連線對應 30 PG 連線，支援高並發。</li>
-<li><strong>Redis 快取</strong>：<code>cached()</code> 包裝常用查詢做 TTL-based 快取（<code>node-server/src/cache.ts</code>），快取失效時 fail-open（直接查 DB，不影響可用性）。</li>
+<li><strong>Redis 快取（目前未啟用）</strong>：<code>node-server/src/cache.ts</code> 提供 <code>cached(ttl, prefix)</code>——Redis 為後端、fail-open（快取錯誤時直接執行函式）的 memoizer，但<strong>目前沒有任何服務或工具呼叫它</strong>，每次工具呼叫都會查 PostgreSQL。要為熱門讀取路徑加快取，以 <code>cached()</code> 包裝即可。</li>
 <li><strong>FTS 索引</strong>：各主要搜尋欄位均建有 PostgreSQL Full-Text Search index。</li>
+<li><strong>向量搜尋</strong>：各 <code>*_embeddings</code> 表使用 pgvector。ICD 的語意搜尋刻意<strong>不走 HNSW 索引</strong>、改為精確掃描（<code>ORDER BY (embedding &lt;=&gt; …) + 0</code>）：約 5 萬個幾乎重複的第 7 碼代碼會讓 HNSW 的召回率崩潰，精確掃描約 98k 列、約 0.35 秒。</li>
 <li><strong><code>pg</code> 驅動</strong>：使用 unnamed prepared statements，以相容 pgBouncer transaction mode。</li>
 </ul>
 <h2 id="_4">併發處理<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
 <p>MCP 伺服器以 Node.js（Express + <code>@modelcontextprotocol/sdk</code>）實作。若需處理大量請求：</p>
 <ol>
 <li>調整 pgBouncer <code>MAX_CLIENT_CONN</code>（預設 500）與 <code>DEFAULT_POOL_SIZE</code>（預設 30）。</li>
-<li>Redis 快取命中率可透過 Prometheus 監控（<code>mcp_cache_operations_total</code>）。</li>
+<li>以 Prometheus 的 <code>mcp_db_pool_size</code> / <code>mcp_db_pool_checked_out</code> 觀察連線池使用量。</li>
 <li>多個容器實例可共用同一 PostgreSQL 與 Redis。</li>
 </ol>
 <h2 id="_5">背景工作<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>
 <ul>
 <li><code>ADMIN_MAX_CONCURRENT_JOBS</code> 限制 <code>admin-worker</code> 同時執行的工作數（compose 預設 4）；各模組另有資源槽位，避免同一模組並行匯入。</li>
 <li><code>admin-worker</code> 的 <code>NODE_OPTIONS=--max-old-space-size=8192</code> 是必要的：IG 匯入會把相依套件（如 <code>hl7.fhir.r4.examples</code>）整包載入記憶體。<strong>不要調低</strong>。</li>
+<li>主機記憶體有限時，避免同時跑多個大型匯入（例如 SNOMED CT 與 IG）；閒置的 worker 也可能保留數 GB heap，大型匯入前可先重啟 worker。</li>
 </ul>
 <h2 id="_6">監控<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h2>
-<p>Prometheus 指標端點在 <code>METRICS_PORT</code>（預設 9090，僅綁定 <code>127.0.0.1</code>）。</p>
+<p>Prometheus 指標端點在 <code>METRICS_PORT</code>（預設 9090，僅綁定 <code>127.0.0.1</code>）的 <code>/metrics</code>。<code>node-server/src/metrics.ts</code> 定義了：</p>
+<table>
+<thead>
+<tr>
+<th>指標</th>
+<th>類型</th>
+<th>現況</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>mcp_db_pool_size</code> / <code>mcp_db_pool_checked_out</code></td>
+<td>Gauge</td>
+<td>由 DB 統計收集器定期更新</td>
+</tr>
+<tr>
+<td><code>mcp_tool_requests_total{tool,status}</code> / <code>mcp_tool_duration_seconds{tool}</code></td>
+<td>Counter / Histogram</td>
+<td>每次工具呼叫都會記錄（MCP、<code>POST /tools/&lt;name&gt;</code>、管理台 playground 共用同一個派送點，<code>mcp.ts</code> 的 <code>withToolMetrics</code>）。標籤只有工具名稱與 <code>status</code>（<code>success</code> / <code>error</code>，丟出例外或回傳 <code>isError</code> 算 <code>error</code>），不記錄任何參數；參數驗證失敗、未進入 handler 的呼叫不計入</td>
+</tr>
+<tr>
+<td><code>mcp_cache_operations_total{prefix,result}</code></td>
+<td>Counter</td>
+<td>只在 <code>cached()</code> 被使用時才會增加；目前沒有呼叫點</td>
+</tr>
+</tbody>
+</table>
 
 
 

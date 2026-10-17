@@ -2652,6 +2652,9 @@
 
 <h1 id="fhir-condition-medication-fhir-tools">FHIR Condition / Medication 工具 (FHIR Tools)<a class="headerlink" href="#fhir-condition-medication-fhir-tools" title="Permanent link">&para;</a></h1>
 <p>此類別工具將本地端的 ICD-10 診斷與台灣 FDA 藥品資料，轉換為 FHIR R4 <code>Condition</code> / <code>Medication</code> / <code>MedicationKnowledge</code> 資源，並提供基本驗證。進階的剖面 / 術語層級授權與驗證，請見 <a href="../fhir-ig-tools/">FHIR IG 工具</a>。</p>
+<blockquote>
+<p><strong>維護模式</strong>：Condition 工具跟隨 <code>icd</code> 模組、Medication 工具跟隨 <code>drug</code> 模組。管理後台把該模組切到維護模式時，呼叫會立即回傳 <code>isError</code> 結果，錯誤碼 <code>MODULE_MAINTENANCE</code>（<code>error.message</code> 英文、<code>error.message_zh</code> 正體中文，<code>error.module</code> 為模組鍵），約 5 秒內生效；工具仍留在 <code>tools/list</code> 中。詳見 <a href="../../api/#maintenance">API 參考</a>。</p>
+</blockquote>
 <h2 id="query_fhir_condition">query_fhir_condition<a class="headerlink" href="#query_fhir_condition" title="Permanent link">&para;</a></h2>
 <p>由 ICD-10 診斷產生 FHIR R4 <code>Condition</code> 資源。</p>
 <h3 id="_1">參數<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h3>
@@ -2670,14 +2673,14 @@
 <td style="text-align: left;"><code>icd_code</code></td>
 <td style="text-align: left;">string</td>
 <td style="text-align: left;">否</td>
-<td style="text-align: left;">直接指定 ICD-10-CM 碼（與 <code>diagnosis_keyword</code> 擇一，優先於關鍵字）</td>
+<td style="text-align: left;">直接指定 ICD-10-CM 碼（路徑 A，支援全部欄位；與 <code>diagnosis_keyword</code> 擇一）</td>
 <td style="text-align: left;"><code>"E11.9"</code></td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>diagnosis_keyword</code></td>
 <td style="text-align: left;">string</td>
 <td style="text-align: left;">否</td>
-<td style="text-align: left;">診斷關鍵字（中英文），用於反查 ICD 碼</td>
+<td style="text-align: left;">診斷關鍵字（中英文），先搜尋 ICD 碼再產生資源（路徑 B；同時給兩者時以關鍵字為準）</td>
 <td style="text-align: left;"><code>"第二型糖尿病"</code></td>
 </tr>
 <tr>
@@ -2739,7 +2742,7 @@
 </tbody>
 </table>
 <blockquote>
-<p><code>icd_code</code> 與 <code>diagnosis_keyword</code> 至少要給一個；兩者皆省略時無法決定要編碼哪個診斷。</p>
+<p><code>icd_code</code> 與 <code>diagnosis_keyword</code> 至少要給一個；兩者皆省略時回傳 <code>{"error": "Provide either icd_code or diagnosis_keyword"}</code>。路徑 B（關鍵字）只套用 <code>patient_id</code>、<code>clinical_status</code>、<code>verification_status</code>、<code>severity</code>，其餘欄位（category、日期、註記）只在路徑 A 生效。</p>
 </blockquote>
 <h3 id="_2">用途<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h3>
 <p>自動將 ICD-10-CM 碼映射至 <code>Condition.code.coding</code>，填入標準 system URI（<code>http://hl7.org/fhir/sid/icd-10-cm</code>）與疾病名稱，並依上述參數填入 clinicalStatus、verificationStatus、category、subject 等屬性。</p>
@@ -2791,27 +2794,27 @@
 <td style="text-align: left;"><code>keyword</code></td>
 <td style="text-align: left;">string</td>
 <td style="text-align: left;">否</td>
-<td style="text-align: left;">藥品關鍵字（與 <code>license_id</code> 擇一）</td>
+<td style="text-align: left;">藥品關鍵字，先搜尋再產生資源（路徑 B；與 <code>license_id</code> 擇一）</td>
 <td style="text-align: left;"><code>"普拿疼"</code></td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>license_id</code></td>
 <td style="text-align: left;">string</td>
 <td style="text-align: left;">否</td>
-<td style="text-align: left;">許可證字號</td>
+<td style="text-align: left;">許可證字號（路徑 A；同時給兩者時以許可證字號為準）</td>
 <td style="text-align: left;"><code>"衛署藥製字第000480號"</code></td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>resource_type</code></td>
 <td style="text-align: left;">string</td>
 <td style="text-align: left;">否</td>
-<td style="text-align: left;"><code>Medication</code> 或 <code>MedicationKnowledge</code></td>
+<td style="text-align: left;"><code>Medication</code>（預設）或 <code>MedicationKnowledge</code></td>
 <td style="text-align: left;"><code>"MedicationKnowledge"</code></td>
 </tr>
 </tbody>
 </table>
 <h3 id="_6">用途<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h3>
-<p>編碼採用 TFDA 許可證字號 CodeSystem（<code>https://mcp.fda.gov.tw/fhir/CodeSystem/tfda-license-id</code>），並帶入成分資訊。</p>
+<p>編碼採用 TFDA 許可證字號 CodeSystem（<code>https://mcp.fda.gov.tw/fhir/CodeSystem/tfda-license-id</code>），並帶入成分資訊。資源只由正規化的 TFDA 資料產生，不使用 RxNorm。</p>
 <hr />
 <h2 id="validate_fhir_medication">validate_fhir_medication<a class="headerlink" href="#validate_fhir_medication" title="Permanent link">&para;</a></h2>
 <p>驗證 FHIR <code>Medication</code> 資源的基本結構。</p>

@@ -576,10 +576,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#3-abnormality-interpretation" class="md-nav__link">
+  <a href="#3-abnormality-interpretation-interpret_lab_result" class="md-nav__link">
     <span class="md-ellipsis">
       
-        3. Abnormality interpretation
+        3. Abnormality interpretation (interpret_lab_result)
       
     </span>
   </a>
@@ -620,10 +620,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#7-batch-result-interpretation" class="md-nav__link">
+  <a href="#7-batch-result-interpretation-batch_interpret_lab_results" class="md-nav__link">
     <span class="md-ellipsis">
       
-        7. Batch result interpretation
+        7. Batch result interpretation (batch_interpret_lab_results)
       
     </span>
   </a>
@@ -2491,10 +2491,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#3-abnormality-interpretation" class="md-nav__link">
+  <a href="#3-abnormality-interpretation-interpret_lab_result" class="md-nav__link">
     <span class="md-ellipsis">
       
-        3. Abnormality interpretation
+        3. Abnormality interpretation (interpret_lab_result)
       
     </span>
   </a>
@@ -2535,10 +2535,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#7-batch-result-interpretation" class="md-nav__link">
+  <a href="#7-batch-result-interpretation-batch_interpret_lab_results" class="md-nav__link">
     <span class="md-ellipsis">
       
-        7. Batch result interpretation
+        7. Batch result interpretation (batch_interpret_lab_results)
       
     </span>
   </a>
@@ -2606,22 +2606,23 @@
 - <strong>Numeric ranges</strong>: upper and lower bounds of the normal range (for example haemoglobin Hb 13.5–17.5 g/dL).
 - <strong>Unit conversion</strong>: recognises common units.
 - <strong>Sex and age differences</strong>: some tests provide different reference standards by sex or age band.</p>
-<h3 id="3-abnormality-interpretation">3. Abnormality interpretation<a class="headerlink" href="#3-abnormality-interpretation" title="Permanent link">&para;</a></h3>
-<p>More than numbers — an initial explanation of clinical meaning:
-- <strong>High values</strong>: suggests potentially related pathological states (for example a high white cell count may indicate infection).
-- <strong>Low values</strong>: suggests possible nutritional deficiency or reduced function.</p>
+<h3 id="3-abnormality-interpretation-interpret_lab_result">3. Abnormality interpretation (<code>interpret_lab_result</code>)<a class="headerlink" href="#3-abnormality-interpretation-interpret_lab_result" title="Permanent link">&para;</a></h3>
+<p>Picks the reference interval that applies to the patient's age / sex, flags the value <code>H</code> (high), <code>L</code> (low) or <code>N</code> (normal), and returns the interval, its source note and a generic sentence (for example "above the normal reference value; further evaluation advised"). It does <strong>not</strong> infer causes — clinical meaning is for the caller or a clinician to judge. A value can only be interpreted when <code>loinc.reference_ranges</code> holds a range for that code.</p>
 <h3 id="4-search-by-specimen-type">4. Search by specimen type<a class="headerlink" href="#4-search-by-specimen-type" title="Permanent link">&para;</a></h3>
 <p>Filter LOINC tests by specimen type such as blood, urine, or stool.</p>
 <h3 id="5-related-test-lookup">5. Related test lookup<a class="headerlink" href="#5-related-test-lookup" title="Permanent link">&para;</a></h3>
 <p>Find all related LOINC tests for the same analyte, helping select the most appropriate method.</p>
 <h3 id="6-full-loinc-concept-details">6. Full LOINC concept details<a class="headerlink" href="#6-full-loinc-concept-details" title="Permanent link">&para;</a></h3>
 <p>Retrieve complete information for a single LOINC code, including a patient-friendly Chinese name, units, specimen, and method.</p>
-<h3 id="7-batch-result-interpretation">7. Batch result interpretation<a class="headerlink" href="#7-batch-result-interpretation" title="Permanent link">&para;</a></h3>
-<p>Submit many test values at once and get every abnormality flag and explanation back in one call — suitable for automated analysis of health check-up reports.</p>
+<h3 id="7-batch-result-interpretation-batch_interpret_lab_results">7. Batch result interpretation (<code>batch_interpret_lab_results</code>)<a class="headerlink" href="#7-batch-result-interpretation-batch_interpret_lab_results" title="Permanent link">&para;</a></h3>
+<p>Submit many values at once (<code>results_json</code>, each item with <code>loinc_code</code> and <code>value</code>) and get back <code>total_tests</code>, <code>abnormal_count</code>, <code>normal_count</code> and the per-item interpretations; items without a reference range are skipped.</p>
 <h2 id="technical-architecture">Technical architecture<a class="headerlink" href="#technical-architecture" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>Data sources</strong>: LOINC 2.80 (87,000+ codes, loaded through the admin console, Admin → Modules, import stage <code>loinc_import</code>), plus seed data for tests commonly used in Taiwan (built into <code>node-server/src/loaders/loinc.ts</code>, roughly 30 rows).</li>
-<li><strong>Database</strong>: PostgreSQL 16, with <code>loinc.concepts</code> (LOINC codes) and <code>loinc.reference_ranges</code> (age/sex-stratified reference values).</li>
+<li><strong>Data sources</strong>: LOINC 2.80 (<code>Loinc_2.80.zip</code>, about 105k concepts), uploaded and imported on the <strong>Terminology → LOINC</strong> page of the admin console (import stage <code>loinc_import</code>). Two optional, project-curated sources: <code>loinc_taiwan_mapping</code> (Chinese names of tests common in Taiwan, <code>data/loinc/taiwan_mapping.csv</code>, about 30 rows) and <code>loinc_reference_ranges</code> (age/sex-stratified reference ranges, <code>data/loinc/lab_reference_ranges.csv</code>, about 40 rows).</li>
+<li><strong>Extra content for the FHIR validator</strong>: the import also keeps the answer (LA), part (LP), answer-list (LL) and group (LG) codes of the LOINC zip AccessoryFiles (<code>loinc.other_codes</code>) and the release version (<code>loinc.editions</code>), so the FHIR validator can check those codes and displays; unknown LOINC codes are errors only when the local release is at least the version tx.fhir.org uses (currently 2.82), warnings otherwise (2.80 &lt; 2.82, so warnings today).</li>
+<li><strong>LOINC structure tables</strong> (migration <code>20261020_loinc_structure.sql</code>): <code>loinc.part_links</code> (per-axis parts: COMPONENT / PROPERTY / TIME / SYSTEM / SCALE / METHOD), <code>loinc.answer_list_items</code> / <code>loinc.answer_list_links</code> (answer lists), <code>loinc.panel_items</code> (panel membership) and <code>loinc.map_to</code> (MapTo replacements), written in the same promote transaction as <code>loinc.concepts</code> and read by the admin terminology browser.</li>
+<li><strong>Database</strong>: PostgreSQL 16 — <code>loinc.concepts</code> (LOINC codes), <code>loinc.reference_ranges</code> (reference values), the extra tables above, and the vector table <code>loinc.concept_embeddings</code> (backfilled by <code>loinc_embed</code>).</li>
+<li><strong>Terminology browsing</strong>: the module page's "Data preview" tab offers six-axis facet filtering, a single-term view (parts, answer lists, panels, MapTo) and LA/LP/LL/LG code lookup, backed by <code>/admin/api/terminology/loinc/*</code> (<code>facets</code>, <code>facet-values</code>, <code>term</code>, <code>code</code>).</li>
 <li><strong>Structured output</strong>: the returned data can be used directly to generate FHIR Observation resources.</li>
 </ul>
 <h2 id="use-cases">Use cases<a class="headerlink" href="#use-cases" title="Permanent link">&para;</a></h2>

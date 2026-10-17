@@ -1644,19 +1644,19 @@
   <a href="#class-icdservice" class="md-nav__link">
     <span class="md-ellipsis">
       
-        class ICDService
+        class IcdService
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="class ICDService">
+    <nav class="md-nav" aria-label="class IcdService">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#__init__self-pool" class="md-nav__link">
+  <a href="#constructorembeddingsvc-embeddingservice-null-null" class="md-nav__link">
     <span class="md-ellipsis">
       
-        __init__(self, pool)
+        constructor(embeddingSvc: EmbeddingService | null = null)
       
     </span>
   </a>
@@ -1664,10 +1664,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#async-initializeself" class="md-nav__link">
+  <a href="#async-initialize-promisevoid" class="md-nav__link">
     <span class="md-ellipsis">
       
-        async initialize(self)
+        async initialize(): Promise&lt;void&gt;
       
     </span>
   </a>
@@ -1675,10 +1675,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#async-search_codesself-keyword-str-type-str-all-str" class="md-nav__link">
+  <a href="#async-searchcodeskeyword-type-all-limit-3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        async search_codes(self, keyword: str, type: str = "all") -&gt; str
+        async searchCodes(keyword, type = "all", limit = 3)
       
     </span>
   </a>
@@ -1686,10 +1686,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#async-infer_complicationsself-code-str-str" class="md-nav__link">
+  <a href="#async-infercomplicationscode" class="md-nav__link">
     <span class="md-ellipsis">
       
-        async infer_complications(self, code: str) -&gt; str
+        async inferComplications(code)
       
     </span>
   </a>
@@ -1697,10 +1697,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#async-get_nearby_codesself-code-str-str" class="md-nav__link">
+  <a href="#async-getnearbycodescode" class="md-nav__link">
     <span class="md-ellipsis">
       
-        async get_nearby_codes(self, code: str) -&gt; str
+        async getNearbyCodes(code)
       
     </span>
   </a>
@@ -1708,10 +1708,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#async-browse_categoryself-category-str-none-limit-int-50-str" class="md-nav__link">
+  <a href="#async-browsecategorycategory-null-limit-50" class="md-nav__link">
     <span class="md-ellipsis">
       
-        async browse_category(self, category: str = None, limit: int = 50) -&gt; str
+        async browseCategory(category = null, limit = 50)
       
     </span>
   </a>
@@ -1719,10 +1719,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#async-get_conflict_infoself-diagnosis_code-str-procedure_code-str-dict" class="md-nav__link">
+  <a href="#async-getconflictinfodiagnosiscode-procedurecode" class="md-nav__link">
     <span class="md-ellipsis">
       
-        async get_conflict_info(self, diagnosis_code: str, procedure_code: str) -&gt; dict
+        async getConflictInfo(diagnosisCode, procedureCode)
       
     </span>
   </a>
@@ -2416,19 +2416,19 @@
   <a href="#class-icdservice" class="md-nav__link">
     <span class="md-ellipsis">
       
-        class ICDService
+        class IcdService
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="class ICDService">
+    <nav class="md-nav" aria-label="class IcdService">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#__init__self-pool" class="md-nav__link">
+  <a href="#constructorembeddingsvc-embeddingservice-null-null" class="md-nav__link">
     <span class="md-ellipsis">
       
-        __init__(self, pool)
+        constructor(embeddingSvc: EmbeddingService | null = null)
       
     </span>
   </a>
@@ -2436,10 +2436,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#async-initializeself" class="md-nav__link">
+  <a href="#async-initialize-promisevoid" class="md-nav__link">
     <span class="md-ellipsis">
       
-        async initialize(self)
+        async initialize(): Promise&lt;void&gt;
       
     </span>
   </a>
@@ -2447,10 +2447,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#async-search_codesself-keyword-str-type-str-all-str" class="md-nav__link">
+  <a href="#async-searchcodeskeyword-type-all-limit-3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        async search_codes(self, keyword: str, type: str = "all") -&gt; str
+        async searchCodes(keyword, type = "all", limit = 3)
       
     </span>
   </a>
@@ -2458,10 +2458,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#async-infer_complicationsself-code-str-str" class="md-nav__link">
+  <a href="#async-infercomplicationscode" class="md-nav__link">
     <span class="md-ellipsis">
       
-        async infer_complications(self, code: str) -&gt; str
+        async inferComplications(code)
       
     </span>
   </a>
@@ -2469,10 +2469,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#async-get_nearby_codesself-code-str-str" class="md-nav__link">
+  <a href="#async-getnearbycodescode" class="md-nav__link">
     <span class="md-ellipsis">
       
-        async get_nearby_codes(self, code: str) -&gt; str
+        async getNearbyCodes(code)
       
     </span>
   </a>
@@ -2480,10 +2480,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#async-browse_categoryself-category-str-none-limit-int-50-str" class="md-nav__link">
+  <a href="#async-browsecategorycategory-null-limit-50" class="md-nav__link">
     <span class="md-ellipsis">
       
-        async browse_category(self, category: str = None, limit: int = 50) -&gt; str
+        async browseCategory(category = null, limit = 50)
       
     </span>
   </a>
@@ -2491,10 +2491,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#async-get_conflict_infoself-diagnosis_code-str-procedure_code-str-dict" class="md-nav__link">
+  <a href="#async-getconflictinfodiagnosiscode-procedurecode" class="md-nav__link">
     <span class="md-ellipsis">
       
-        async get_conflict_info(self, diagnosis_code: str, procedure_code: str) -&gt; dict
+        async getConflictInfo(diagnosisCode, procedureCode)
       
     </span>
   </a>
@@ -2527,29 +2527,25 @@
 
 
 <h1 id="icd-service-api">ICD Service API<a class="headerlink" href="#icd-service-api" title="Permanent link">&para;</a></h1>
-<h2 id="class-icdservice">class <code>ICDService</code><a class="headerlink" href="#class-icdservice" title="Permanent link">&para;</a></h2>
-<h3 id="__init__self-pool"><code>__init__(self, pool)</code><a class="headerlink" href="#__init__self-pool" title="Permanent link">&para;</a></h3>
-<p>Initialise the ICD service; takes a <code>pg.Pool</code> connection pool (through pgBouncer).</p>
-<ul>
-<li><strong>pool</strong>: the <code>pg.Pool</code> connection pool, injected by the process startup sequence in <code>server.ts</code>.</li>
-</ul>
-<h3 id="async-initializeself"><code>async initialize(self)</code><a class="headerlink" href="#async-initializeself" title="Permanent link">&para;</a></h3>
-<p>Check whether the <code>icd.procedures</code> table has data and set the <code>_pcs_available</code> flag.</p>
-<h3 id="async-search_codesself-keyword-str-type-str-all-str"><code>async search_codes(self, keyword: str, type: str = "all") -&gt; str</code><a class="headerlink" href="#async-search_codesself-keyword-str-type-str-all-str" title="Permanent link">&para;</a></h3>
-<p>Full-text search over ICD-10-CM diagnosis codes or ICD-10-PCS procedure codes.</p>
-<ul>
-<li><strong>keyword</strong>: the search string (Chinese and English both supported).</li>
-<li><strong>type</strong>: <code>"diagnosis"</code>, <code>"procedure"</code>, or <code>"all"</code>.</li>
-<li><strong>Returns</strong>: a formatted text result.</li>
-</ul>
-<h3 id="async-infer_complicationsself-code-str-str"><code>async infer_complications(self, code: str) -&gt; str</code><a class="headerlink" href="#async-infer_complicationsself-code-str-str" title="Permanent link">&para;</a></h3>
-<p>Infer potential complications from the ICD hierarchy, listing child codes (such as E11.2) under a parent code (such as E11).</p>
-<h3 id="async-get_nearby_codesself-code-str-str"><code>async get_nearby_codes(self, code: str) -&gt; str</code><a class="headerlink" href="#async-get_nearby_codesself-code-str-str" title="Permanent link">&para;</a></h3>
-<p>Retrieve the codes adjacent to the target code within its classification.</p>
-<h3 id="async-browse_categoryself-category-str-none-limit-int-50-str"><code>async browse_category(self, category: str = None, limit: int = 50) -&gt; str</code><a class="headerlink" href="#async-browse_categoryself-category-str-none-limit-int-50-str" title="Permanent link">&para;</a></h3>
-<p>Browse the list of diagnosis codes by three-character category.</p>
-<h3 id="async-get_conflict_infoself-diagnosis_code-str-procedure_code-str-dict"><code>async get_conflict_info(self, diagnosis_code: str, procedure_code: str) -&gt; dict</code><a class="headerlink" href="#async-get_conflict_infoself-diagnosis_code-str-procedure_code-str-dict" title="Permanent link">&para;</a></h3>
-<p>Retrieve the detailed information used for diagnosis / procedure conflict analysis.</p>
+<p><code>IcdService</code> (<code>node-server/src/icdService.ts</code>) backs the MCP ICD-10 tool group.
+Every method returns a JSON-serialisable object (the MCP tool wraps it as a JSON string in <code>content[0].text</code>).
+Database access always goes through the shared <code>pg</code> pool in <code>db.ts</code> (via pgBouncer); nothing is injected through the constructor.</p>
+<h2 id="class-icdservice">class <code>IcdService</code><a class="headerlink" href="#class-icdservice" title="Permanent link">&para;</a></h2>
+<h3 id="constructorembeddingsvc-embeddingservice-null-null"><code>constructor(embeddingSvc: EmbeddingService | null = null)</code><a class="headerlink" href="#constructorembeddingsvc-embeddingservice-null-null" title="Permanent link">&para;</a></h3>
+<p>Takes the shared <code>EmbeddingService</code>; with <code>null</code> the diagnosis search is keyword-only. <code>mcp.ts</code> creates a lazy singleton.</p>
+<h3 id="async-initialize-promisevoid"><code>async initialize(): Promise&lt;void&gt;</code><a class="headerlink" href="#async-initialize-promisevoid" title="Permanent link">&para;</a></h3>
+<p>Checks whether <code>icd.procedures</code> has rows, which decides whether ICD-10-PCS search is available.</p>
+<h3 id="async-searchcodeskeyword-type-all-limit-3"><code>async searchCodes(keyword, type = "all", limit = 3)</code><a class="headerlink" href="#async-searchcodeskeyword-type-all-limit-3" title="Permanent link">&para;</a></h3>
+<p><code>type</code> is <code>"diagnosis" | "procedure" | "all"</code>; <code>limit</code> is capped at 10. Diagnoses use a BM25 + vector RRF hybrid search (exact vector scan, not HNSW); procedures are BM25 only.
+Returns <code>{diagnoses?, procedures?, procedures_note?}</code>, plus <code>search_mode: "keyword_only"</code> when vectors are unavailable; <code>{error}</code> when nothing matches. Backs <code>search_medical_codes</code>.</p>
+<h3 id="async-infercomplicationscode"><code>async inferComplications(code)</code><a class="headerlink" href="#async-infercomplicationscode" title="Permanent link">&para;</a></h3>
+<p>Pure hierarchy lookup: with children returns <code>{base_code, potential_complications_or_specifics}</code> (up to 15), otherwise codes of the same category as <code>{message, related_codes}</code> (up to 10). Backs <code>infer_complications</code>.</p>
+<h3 id="async-getnearbycodescode"><code>async getNearbyCodes(code)</code><a class="headerlink" href="#async-getnearbycodescode" title="Permanent link">&para;</a></h3>
+<p>Returns the 2 codes before and the 2 after in alphabetical order as <code>{target, nearby_options}</code>. Backs <code>get_nearby_codes</code>.</p>
+<h3 id="async-browsecategorycategory-null-limit-50"><code>async browseCategory(category = null, limit = 50)</code><a class="headerlink" href="#async-browsecategorycategory-null-limit-50" title="Permanent link">&para;</a></h3>
+<p>Without <code>category</code> lists every category with counts; with one, expands its codes (<code>limit</code> capped at 200). Backs <code>browse_icd_category</code>.</p>
+<h3 id="async-getconflictinfodiagnosiscode-procedurecode"><code>async getConflictInfo(diagnosisCode, procedureCode)</code><a class="headerlink" href="#async-getconflictinfodiagnosiscode-procedurecode" title="Permanent link">&para;</a></h3>
+<p>Returns full data for one diagnosis and one procedure code side by side — facts only, no verdict. Backs <code>check_medical_conflict</code>.</p>
 
 
 

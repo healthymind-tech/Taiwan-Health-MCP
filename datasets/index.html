@@ -3127,13 +3127,15 @@
 （<code>loader/loaders/*.py</code>、<code>src/*.py</code>）已不存在——所有 loader 現為
 <code>node-server/src/loaders/*.ts</code>。各模組的<strong>資料來源、輸入結構與最終 schema</strong>
 大致仍適用，但實作細節請以程式碼為準。
+其中 <strong>AI requirements</strong> 段落也已過時：OCR 現為外部 <strong>MinerU</strong> 服務（不再是 <code>DRUG_OCR_*</code> 環境變數 /
+dots_ocr），embedding 與分析 LLM 改由管理介面「模型端點」的 provider 帳號 + 路由設定，不讀任何環境變數。
 目前的說明請見<a href="../data-sources/">資料來源</a>與<a href="../admin/jobs-and-worker/">背景工作與排程</a>。</p>
 </div>
 <p>This document describes every module in the system: what the user must supply,
 the structure of the input data, the full processing pipeline, the final
 PostgreSQL schema, and which AI capabilities (embedding / OCR / LLM) are required.</p>
 <p><strong>Audience</strong>: developers building on or extending this codebase.<br />
-<strong>Authoritative code</strong>: <code>loader/</code>, <code>src/</code>, <code>db/schema.sql</code>.</p>
+<strong>Authoritative code</strong>: <code>node-server/src/loaders/</code>, <code>node-server/src/admin/</code>, <code>db/schema.sql</code>.</p>
 <hr />
 <h2 id="quick-reference-table">Quick-reference table<a class="headerlink" href="#quick-reference-table" title="Permanent link">&para;</a></h2>
 <table>

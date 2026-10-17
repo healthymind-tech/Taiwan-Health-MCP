@@ -2650,9 +2650,10 @@
 
 <h1 id="fhir">把你的資料轉成 FHIR —— 授權流程怎麼運作<a class="headerlink" href="#fhir" title="Permanent link">&para;</a></h1>
 <blockquote>
-<p><strong>狀態：</strong>說明 FHIR-IG 授權工具集（<code>fhir_*</code> 工具）的<strong>設計</strong>。工程規格與設計決策見
+<p><strong>狀態：<strong>說明已上線的 FHIR-IG 授權工具集（22 個 <code>fhir_*</code> 工具，2026-10 對照程式碼更新）。
+各工具參數見 <a href="../tools/fhir-ig-tools/">FHIR IG 工具</a>；當初的設計決策紀錄見
 <a href="../fhir-ig-mcp-toolset-assessment/"><code>fhir-ig-mcp-toolset-assessment.md</code></a>。
-本頁是<strong>面向使用者的操作導覽</strong>。</p>
+本頁是</strong>面向使用者的操作導覽</strong>。</p>
 </blockquote>
 <p>這個 MCP 伺服器讓語言模型（LLM）把你的來源資料——結構化的院內紀錄，<strong>或一段自由文字的臨床病歷</strong>——轉成符合某個 Implementation Guide（IG，例如 TW Core、US Core、IPS）的有效 FHIR 資源。本頁用一個具體範例逐步說明整個過程。</p>
 <hr />
@@ -2681,19 +2682,20 @@
 <h2 id="ig">開始之前：要用哪個 IG？<a class="headerlink" href="#ig" title="Permanent link">&para;</a></h2>
 <p>FHIR 資源只有對著目標 IG 才有意義。<strong>同一組</strong>臨床事實（一位病人、一個流感診斷）可以依<strong>資料要送到哪裡</strong>而對應到 TW Core、US Core 或 IPS——資料本身不會告訴你答案。所以 IG 是依<strong>情境</strong>決定，而不是從內容猜測，順序如下：</p>
 <ol>
-<li><strong>部署預設值</strong>——多數安裝綁定單一 IG（例如台灣的醫院 → TW Core）。有一個套件被標記為預設，LLM 不需要選。</li>
-<li><strong>明確指示</strong>——呼叫端應用或使用者說「產生 TW Core FHIR」。每個工具都接受 <code>ig = {packageId, version}</code> 參數，所以選擇永遠是明確的。</li>
-<li><strong>知情選擇</strong>——若安裝了多個 IG 且未指定，LLM 呼叫 <code>fhir_list_igs</code>（回傳每個套件的 <code>title</code>、<code>jurisdiction</code> 與預設旗標），再對照使用者意圖與內容線索（中文文字、中華民國身分證號、健保申報 → <code>jurisdiction = TW</code>）。</li>
-<li><strong>仍然模稜兩可 → 詢問。</strong>系統會問使用者，而不是用猜的。</li>
+<li><strong>部署預設值</strong>——多數安裝綁定單一 IG（例如台灣的醫院 → TW Core）。管理介面（IG 套件庫）把一個套件標記為預設，LLM 不需要選。</li>
+<li><strong>明確指示</strong>——呼叫端應用或使用者說「產生 TW Core FHIR」。每個 IG-scoped 工具都接受 <code>package_id</code>（+ 選填 <code>version</code>）參數，所以選擇可以永遠是明確的。</li>
+<li><strong>知情選擇</strong>——若安裝了多個 IG 且未指定，LLM 呼叫 <code>fhir_list_igs</code>（回傳每個套件的 <code>packageId</code>、<code>version</code>、<code>title</code>、<code>canonical</code>、<code>isDefault</code>、<code>installOrigin</code> 與相依套件），再對照使用者意圖與內容線索（中文文字、中華民國身分證號、健保申報 → <code>tw.gov.mohw.*</code> 套件）。</li>
+<li>**仍然模稜兩可 → 詢問。**系統會問使用者，而不是用猜的。</li>
 </ol>
-<p>因為每個 IG-scoped 工具都接受 <code>ig</code>，你可以明確指定<strong>任何已匯入的 IG</strong>：<code>fhir_get_profile(ig=US-Core, "Patient")</code> 與 <code>fhir_get_profile(ig=TW-Core, "Patient")</code> 會回傳不同的剖面。要支援新國家的 IG，只要匯入它的套件即可——不需要新工具。</p>
+<p>省略 <code>package_id</code> 時，伺服器依固定順序自動解析目標套件：canonical 參數或 <code>meta.profile</code> 帶 <code>|version</code> → 持有該版本的套件；否則 → 擁有該 canonical / <code>meta.profile</code> 的套件（手動安裝者優先）；否則 → 預設 IG；否則 → 唯一一個手動安裝的 IG。每個回應的 <code>provenance.resolved_by</code> 會說明套用了哪一條規則。若沒有預設 IG、也找不到擁有者，呼叫會以 <code>NO_DEFAULT_IG</code> 失敗，而不是隨便挑一個套件。</p>
+<p>因為每個 IG-scoped 工具都接受 <code>package_id</code>，你可以明確指定<strong>任何已匯入的 IG</strong>：<code>fhir_get_profile(identifier="Patient", package_id="hl7.fhir.us.core")</code> 與 <code>fhir_get_profile(identifier="Patient-twcore", package_id="tw.gov.mohw.twcore")</code> 會回傳不同的剖面；canonical 也可以寫成 <code>url|version</code> 釘住版本（未安裝的版本回傳 <code>ARTIFACT_NOT_FOUND</code>，不會默默改用其他版本）。要支援新國家的 IG，只要匯入它的套件即可——不需要新工具。</p>
 <hr />
 <h2 id="_2">實例演練<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
 <p><strong>輸入——一段非結構化的臨床病歷（自由文字）：</strong></p>
 <blockquote>
 <p>「病人王小明,男性,生日 1985年3月12日,身分證 A123456789。因急性發燒至門診就醫,經醫師確診為<strong>流行性感冒</strong>,2026/6/1 發病,目前持續追蹤中。」</p>
 </blockquote>
-<p><strong>目標：</strong>產生符合 TW Core 的 FHIR——一個 <code>Patient</code> 與一個 <code>Condition</code>，包進一個 Bundle。</p>
+<p>**目標：**產生符合 TW Core 的 FHIR——一個 <code>Patient</code> 與一個 <code>Condition</code>，包進一個 Bundle。</p>
 <p>圖例：<strong>[LLM]</strong> = 模型自行推理（沒有工具呼叫）· <strong>[MCP]</strong> = 一次工具呼叫。</p>
 <h3 id="0">階段 0 —— 讀懂文字 <em>（無工具呼叫）</em><a class="headerlink" href="#0" title="Permanent link">&para;</a></h3>
 <p><strong>[LLM]</strong> 讀病歷並抽出臨床事實：</p>
@@ -2702,16 +2704,17 @@ Diagnosis: influenza, clinical status=active, verification=confirmed, onset=2026
 </code></pre>
 <p>它也判斷需要一個 <strong>Patient</strong> 與一個 <strong>Condition</strong>。此時它<strong>還不知道</strong>要用哪些 FHIR 欄位或碼——那正是伺服器的職責。</p>
 <h3 id="1-ig">階段 1 —— 決定 IG<a class="headerlink" href="#1-ig" title="Permanent link">&para;</a></h3>
-<p>依照上述規則。在綁定台灣的部署中，答案就是「TW Core 1.0.0」。不確定時：<strong>[MCP] <code>fhir_list_igs</code></strong> → 依 <code>jurisdiction</code> / 意圖挑選 → 模稜兩可就詢問。</p>
+<p>依照上述規則。在綁定台灣的部署中，答案就是「TW Core 1.0.0」。不確定時：<strong>[MCP] <code>fhir_list_igs</code></strong> → 依 <code>packageId</code> / <code>title</code> 與意圖挑選 → 模稜兩可就詢問。</p>
 <h3 id="2">階段 2 —— 決定剖面<a class="headerlink" href="#2" title="Permanent link">&para;</a></h3>
 <ul>
-<li><strong>[MCP] <code>fhir_list_resource_profiles(ig)</code></strong> → 回傳該 IG 的剖面：<code>Patient-twcore</code>、<code>Condition-twcore</code>、<code>Encounter-twcore</code>……</li>
-<li><strong>[MCP] <code>fhir_rank_resource_profiles(ig, facts)</code></strong> <em>（選用）</em> → 把診斷事實餵進去，伺服器對候選剖面排名（<code>Condition-twcore</code> 居首，附上吻合欄位的佐證）。<strong>它只給建議</strong>——最終由 <strong>[LLM]</strong> 拍板。</li>
+<li><strong>[MCP] <code>fhir_list_resource_profiles()</code></strong> → 回傳該 IG 的剖面：<code>Patient-twcore</code>、<code>Condition-twcore</code>、<code>Encounter-twcore</code>……（要跨所有已安裝套件找，帶 <code>all_packages=true</code>；零筆結果會附 <code>data.hint</code> 指出哪些其他套件有符合項目）。</li>
+<li><strong>[MCP] <code>fhir_rank_resource_profiles(keys=[…])</code></strong> <em>（選用）</em> → 把來源欄位名（keys）餵進去，伺服器依「吻合剖面 element path 的數量」對候選剖面排名（<code>Condition-twcore</code> 居首）。回傳 <code>selectionRequired:true</code>——<strong>它只給建議</strong>，最終由 <strong>[LLM]</strong> 拍板。</li>
+<li><strong>[MCP] <code>fhir_get_profile_required_elements(profile)</code></strong> <em>（建議）</em> → 選定剖面後，取得它<strong>實際必填</strong>的完整清單（祖先也必填的 <code>min≥1</code>、必填 slice、choice type、不變式隱含的 value-或-dataAbsentReason），每列標示值的來源：<code>auto</code>（伺服器釘）、<code>coding</code>（要查碼）、<code>source_fact</code>（要從來源取）或 <code>workflow_default</code>。</li>
 </ul>
 <h3 id="3-patient-condition">階段 3 —— 逐一建立資源（先 Patient，因為 Condition 會參照它）<a class="headerlink" href="#3-patient-condition" title="Permanent link">&para;</a></h3>
 <h4 id="3a-patient">3A · Patient<a class="headerlink" href="#3a-patient" title="Permanent link">&para;</a></h4>
 <ol>
-<li><strong>[MCP] <code>fhir_get_resource_skeleton(ig, Patient-twcore)</code></strong> → 從剖面即時衍生出一份<strong>空白、帶註解的填寫表單</strong>：
+<li><strong>[MCP] <code>fhir_get_resource_skeleton(profile="Patient-twcore")</code></strong> → 從剖面即時衍生出一份<strong>空白、帶註解的填寫表單</strong>：
    <code>identifier  (1..*, required; sliced — national ID uses slice "NN";
                 system is auto-pinned, you only supply value)
    name        (1..*, required: family / given)
@@ -2724,11 +2727,11 @@ Diagnosis: influenza, clinical status=active, verification=confirmed, onset=2026
    gender = "male"          ← 取自骨架中列出的允許值
    birthDate = "1985-03-12"</code>
    對於編碼欄位，它可以用 <strong>[MCP] <code>fhir_validate_code</code></strong> 再確認一次。</li>
-<li><strong>[MCP] <code>fhir_finalize_resource(ig, Patient-twcore, draft, refCtx)</code></strong> → 伺服器釘住<strong>機制性</strong>欄位（身分證 slice 的 <code>identifier.system</code>、<code>identifier.type</code>、<code>meta.profile</code>），執行驗證器，回傳 <code>{ resource, validation: pass }</code>。這個 Patient 會登記進<strong>參照脈絡</strong>（<code>refCtx</code>），讓其他資源可以指向它。</li>
+<li><strong>[MCP] <code>fhir_finalize_resource(profile="Patient-twcore", draft, context_id, key="patient-1")</code></strong> → 伺服器釘住<strong>機制性</strong>欄位（身分證 slice 的 <code>identifier.system</code>、<code>identifier.type</code>、<code>meta.profile</code>），執行驗證器，回傳 <code>{ resource, validation }</code>（<code>validation.valid: true</code>）。這個 Patient 以 <code>key</code> 登記進<strong>參照脈絡</strong>（<code>context_id</code>），讓其他資源可以指向它。</li>
 </ol>
 <h4 id="3b-condition">3B · Condition<a class="headerlink" href="#3b-condition" title="Permanent link">&para;</a></h4>
 <ol>
-<li><strong>[MCP] <code>fhir_get_resource_skeleton(ig, Condition-twcore)</code></strong> →
+<li><strong>[MCP] <code>fhir_get_resource_skeleton(profile="Condition-twcore")</code></strong> →
    <code>clinicalStatus     (allowed: active | recurrence | ...)
    verificationStatus (allowed: confirmed | provisional | ...)
    category           (allowed: encounter-diagnosis | problem-list-item)
@@ -2737,18 +2740,19 @@ Diagnosis: influenza, clinical status=active, verification=confirmed, onset=2026
    onset[x]           (choice; use onsetDateTime for a date)</code></li>
 <li><strong>[LLM]</strong> 填入容易的語意空格：<code>clinicalStatus=active</code>、<code>verificationStatus=confirmed</code>、<code>onsetDateTime=2026-06-01</code>。</li>
 <li><strong>關鍵步驟——把自由文字「流行性感冒」轉成標準碼：</strong></li>
-<li><strong>[MCP] <code>fhir_normalize_code(input="流行性感冒", target = Condition.code 的 ValueSet)</code></strong> → 依語意相似度回傳<strong>候選碼</strong>，例如 SNOMED <code>6142004 | Influenza</code>。</li>
+<li><strong>[MCP] <code>fhir_normalize_code(text="流行性感冒", value_set = Condition.code 的 ValueSet)</code></strong> → 依語意相似度回傳<strong>候選碼</strong>，例如 SNOMED <code>6142004 | Influenza</code>。</li>
 <li><strong>[MCP] <code>fhir_validate_code</code></strong> → 確認該碼確實屬於綁定的 ValueSet → LLM 才寫入 <code>code</code>。</li>
 <li><em>（LLM 在這裡絕不可自行編造碼——一律先 normalize，再 validate。）</em></li>
-<li><strong>接上參照：[MCP] <code>fhir_resolve_reference(refCtx, target=Patient, source=王小明)</code></strong> → 回傳 <code>urn:uuid:…</code> → 寫入 <code>subject.reference</code>。</li>
-<li><strong>[MCP] <code>fhir_finalize_resource(ig, Condition-twcore, draft, refCtx)</code></strong> → 假設驗證器發現 <strong><code>category</code> 為必填但缺漏</strong>。伺服器<strong>不會替你修</strong>，而是回傳 <code>{ resource, issues: [category missing] }</code>。</li>
-<li><strong>[LLM]</strong> 讀取該問題，用 <strong>[MCP] <code>fhir_get_profile_elements(ig, Condition-twcore, view="binding", path="Condition.category")</code></strong> 查允許值，設定 <code>category="encounter-diagnosis"</code>，然後<strong>再呼叫一次 <code>fhir_finalize_resource</code></strong> → 這次<strong>通過</strong>。</li>
+<li><strong>接上參照：[MCP] <code>fhir_resolve_reference(key="patient-1", resource_type="Patient", context_id)</code></strong> → 回傳 <code>urn:uuid:…</code>；draft 裡寫 <code>subject = "Patient/patient-1"</code>，finalize 會改寫成該 urn。</li>
+<li><strong>[MCP] <code>fhir_finalize_resource(profile="Condition-twcore", draft, context_id, key="condition-1")</code></strong> → 假設驗證器發現 <strong><code>category</code> 為必填但缺漏</strong>。伺服器<strong>不會替你修</strong>（不自動迴圈），而是回傳 <code>validation.valid: false</code> 與 <code>issues: [category missing]</code>。</li>
+<li><strong>[LLM]</strong> 讀取該問題，用 <strong>[MCP] <code>fhir_get_profile_elements(profile="Condition-twcore", view="binding", path="Condition.category")</code></strong> 查允許值，設定 <code>category="encounter-diagnosis"</code>，然後<strong>再呼叫一次 <code>fhir_finalize_resource</code></strong> → 這次<strong>通過</strong>。</li>
 </ol>
 <h3 id="4">階段 4 —— 組裝與整體驗證<a class="headerlink" href="#4" title="Permanent link">&para;</a></h3>
 <ul>
-<li><strong>[MCP] <code>fhir_build_bundle([Patient, Condition], type="transaction", refCtx)</code></strong> → 把兩者包成 Bundle，將參照改寫為 <code>urn:uuid:</code>，回傳 bundle 與參照對照表。</li>
-<li><strong>[MCP] <code>fhir_validate_bundle(bundle)</code></strong> → 檢查每一個 entry <strong>以及</strong>內部參照完整性（Condition.subject 確實指向 bundle 內的 Patient）→ 通過。</li>
+<li><strong>[MCP] <code>fhir_build_bundle(entries=[{resource, key}, …], bundle_type="transaction", context_id)</code></strong> → 把兩者包成 Bundle，將參照改寫為 <code>urn:uuid:</code>，回傳 bundle 與未解析參照清單（<code>unresolved</code> 應為空）。</li>
+<li><strong>[MCP] <code>fhir_validate_bundle(bundle)</code></strong> → 檢查每一個 entry <strong>以及</strong>內部參照完整性（Condition.subject 確實指向 bundle 內的 Patient）→ 通過。另外看 <code>checked_fully</code>：<code>valid</code> 沿用 HL7 validator 語意（解析不到的剖面只是警告），所以若 <code>checked_fully: false</code>，<code>profiles_unchecked</code> / <code>valuesets_unchecked</code> 會列出沒能檢查的 canonical，<code>data.deps_missing</code> 列出缺少的相依套件。</li>
 </ul>
+<p>**選用——比對原始病歷（grounding）：**來源是自由文字時，可在同一次 <code>fhir_validate_bundle</code> / <code>fhir_validate_resource</code> 呼叫帶入 <code>source_text</code>（以及選填的 <code>site_config</code>、<code>evidence_map</code>、<code>grounding</code>），伺服器會額外以決定性規則（不用 LLM）檢查每個填入的值是否真的出現在病歷裡，回應中多出 <code>conformanceValid</code>、<code>groundingValid</code> 與 grounding issue；不帶 <code>source_text</code> 時輸出完全不變。也可以單獨呼叫 <code>fhir_check_grounding(bundle, source_text)</code>；而 <code>fhir_check_completeness(targets, source_text)</code> 則在動手前比對「轉換目標要求的事實」與「病歷實際寫了什麼」，列出缺漏項目、病歷中明確寫「無」的行，並給出可直接回問使用者的問題（或 <code>insufficient_information</code> 物件）。</p>
 <p><strong>通過驗證的 Bundle 就是你的輸出檔。</strong></p>
 <hr />
 <h2 id="_3">流程一覽<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
@@ -2759,6 +2763,7 @@ Diagnosis: influenza, clinical status=active, verification=confirmed, onset=2026
   ├─ resolve IG  (deployment default ▸ explicit ▸ informed choice ▸ ask)
   │
   ├─[MCP] list / rank profiles ──▶ [LLM] pick the profile
+  ├─[MCP] get_profile_required_elements   ← what the profile really requires
   │
   ├─ for each resource:
   │     [MCP] get_resource_skeleton     ← blanks + allowed values + candidate codes
@@ -2768,15 +2773,15 @@ Diagnosis: influenza, clinical status=active, verification=confirmed, onset=2026
   │     [MCP] finalize_resource         ← pin mechanical fields + validate
   │       └─ failed? returns issues → [LLM] fixes → finalize again
   │
-  └─[MCP] build_bundle → validate_bundle ──▶ final Bundle file
+  └─[MCP] build_bundle → validate_bundle (+ optional source_text grounding) ──▶ final Bundle file
 </code></pre>
 <hr />
 <h2 id="_4">為什麼這樣設計<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>沒有對應樣板要維護。</strong>舊系統需要手寫的「欄位 A → 欄位 B」規則檔，因為軟體無法理解語意。有了 LLM，模型會對著伺服器交給它的骨架即時完成語意對應——沒有東西需要撰寫或版本控管。</li>
-<li><strong>LLM 無法漂移成無效的 FHIR。</strong>它只填語意值；機制部分由伺服器釘住，結果由驗證器把關。任何伺服器無法在本地查證的事項都會以<strong>警告</strong>回報，絕不會靜默地標成「有效」。</li>
-<li><strong>這是預檢，不是最終權威。</strong>當你把 Bundle 送到真正的 FHIR 伺服器時，<strong>那台</strong>伺服器才做權威驗證。本流程的職責是及早攔下絕大多數錯誤，並給出清楚、可修正的回饋。</li>
-<li><strong>一套工具，多個 IG。</strong>每個工具都接受 <code>ig</code> 選擇器，所以同一套流程今天適用 TW Core，明天也適用任何你匯入的 IG——不需要新工具。</li>
+<li>**沒有對應樣板要維護。**舊系統需要手寫的「欄位 A → 欄位 B」規則檔，因為軟體無法理解語意。有了 LLM，模型會對著伺服器交給它的骨架即時完成語意對應——沒有東西需要撰寫或版本控管。</li>
+<li><strong>LLM 無法漂移成無效的 FHIR。<strong>它只填語意值；機制部分由伺服器釘住，結果由驗證器把關。任何伺服器無法在本地查證的事項都會以</strong>警告</strong>回報，絕不會靜默地標成「有效」。</li>
+<li>**這是預檢，不是最終權威。**當你把 Bundle 送到真正的 FHIR 伺服器時，<strong>那台</strong>伺服器才做權威驗證。本流程的職責是及早攔下絕大多數錯誤，並給出清楚、可修正的回饋。</li>
+<li>**一套工具，多個 IG。**每個 IG-scoped 工具都接受 <code>package_id</code>（省略時自動解析），所以同一套流程今天適用 TW Core，明天也適用任何你匯入的 IG——不需要新工具。</li>
 </ul>
 <hr />
 <h2 id="_5">工具速查<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>
@@ -2792,7 +2797,7 @@ Diagnosis: influenza, clinical status=active, verification=confirmed, onset=2026
 <tr>
 <td>IG</td>
 <td><code>fhir_list_igs</code> / <code>fhir_get_ig</code></td>
-<td>列出已安裝 IG（title、jurisdiction、預設）/ 單一 IG 詳情</td>
+<td>列出已安裝 IG（title、canonical、預設、installOrigin）/ 單一 IG 詳情（含 <code>data.deps_missing</code>）</td>
 </tr>
 <tr>
 <td>探索</td>
@@ -2808,6 +2813,11 @@ Diagnosis: influenza, clinical status=active, verification=confirmed, onset=2026
 <td>結構</td>
 <td><code>fhir_get_profile_elements(view=…)</code></td>
 <td>一個工具多種視圖：<code>elements</code>、<code>element</code>、<code>slices</code>、<code>choices</code>、<code>binding</code>、<code>examples</code></td>
+</tr>
+<tr>
+<td>必填</td>
+<td><code>fhir_get_profile_required_elements</code></td>
+<td>剖面實際必填的完整清單，每列標示值的來源（auto / coding / source_fact / workflow_default）</td>
 </tr>
 <tr>
 <td>術語</td>
@@ -2827,7 +2837,12 @@ Diagnosis: influenza, clinical status=active, verification=confirmed, onset=2026
 <tr>
 <td>驗證</td>
 <td><code>fhir_validate_resource</code> / <code>fhir_validate_bundle</code></td>
-<td>對單一資源 / 整個 bundle 做一致性檢查</td>
+<td>對單一資源 / 整個 bundle 做一致性檢查（選填 <code>source_text</code> 時同時做 grounding）</td>
+</tr>
+<tr>
+<td>忠實度</td>
+<td><code>fhir_check_grounding</code> / <code>fhir_check_completeness</code></td>
+<td>每個值是否有病歷佐證 / 轉換目標要求的事實病歷是否有寫（皆為決定性規則，不用 LLM）</td>
 </tr>
 </tbody>
 </table>

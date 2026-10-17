@@ -2962,10 +2962,30 @@
 <div class="admonition info">
 <p class="admonition-title">歷史文件（設計評估，已實作）</p>
 <p>這是 FHIR IG 工具集的<strong>設計評估</strong>，撰寫於實作之前，內容假設後端為 Python
-（文中的 <code>src/admin_jobs.py</code>、<code>src/twcore_service.py</code>、<code>pip install fhirpathpy</code>
-等均已不存在）。工具集已實作完成：19 個 <code>fhir_*</code> 工具現以 TypeScript 提供，
-FHIRPath 驗證由 npm 套件 <code>fhirpath</code> 在行程內執行，<strong>不需要任何額外安裝</strong>。
-本文保留作為決策紀錄；目前的工具說明請見 <a href="../tools/fhir-ig-tools/">FHIR IG 工具</a>。</p>
+（文中的 <code>src/admin_jobs.py</code>、<code>src/twcore_service.py</code>、<code>twcore.*</code> schema、<code>pip install fhirpathpy</code>
+等均已不存在）。本文保留作為決策紀錄，<strong>正文不再更新</strong>；目前的工具說明請見
+<a href="../tools/fhir-ig-tools/">FHIR IG 工具</a>。</p>
+<p><strong>目前實作與本文設計的差異（2026-10-17 對照程式碼）：</strong></p>
+<ul>
+<li>**工具數：**實際註冊 <strong>22</strong> 個 <code>fhir_*</code> 工具（TypeScript，<code>node-server/src/mcp.ts</code>）——本文規劃的 19 個，
+  加上 <code>fhir_get_profile_required_elements</code>（剖面實際必填元素清單）、<code>fhir_check_grounding</code>（逐值比對原始病歷）
+  與 <code>fhir_check_completeness</code>（轉換目標所需事實的缺口報告）。後兩者為決定性規則、不使用 LLM。</li>
+<li>**Schema：**待決事項 1 已採用全新、package-scoped 的 <code>fhir.*</code>（<code>ig_packages</code> / <code>codesystems</code> / <code>concepts</code> /
+  <code>artifacts</code>）；<code>fhir.ig_packages</code> 另記錄 <code>install_origin</code>（<code>manual</code> / <code>dependency</code>）與 <code>installed_for</code>。
+  匯入 IG 時會自動下載宣告的相依套件；管理介面移除 IG 時，仍被其他 IG（直接或遞移）依賴的套件與預設 IG 預設會被拒絕（需 <code>force</code>，或為預設 IG 指定替代者）。</li>
+<li>**IG 選擇器：**不是 §4.2 的 <code>ig = {packageId, version}</code> 物件，而是每個工具的 <code>package_id</code> + <code>version</code> 參數。
+  省略時的解析順序：canonical / <code>meta.profile</code> 上的 <code>|version</code> → 擁有該 canonical / <code>meta.profile</code> 的套件
+  （手動安裝優先）→ 預設 IG → 唯一的手動安裝 IG；都沒有時回傳 <code>NO_DEFAULT_IG</code>。實際套用的規則寫在
+  <code>provenance.resolved_by</code>，閉包缺少的相依套件寫在 <code>data.deps_missing</code>。列表 / 搜尋類工具另有 <code>all_packages</code>。</li>
+<li>**驗證器：**仍是行程內、無 Java sidecar（缺口 1 的決定不變），但目標已從「預檢、攔下 80–95%」提升為
+  <strong>與 HL7 <code>validator_cli</code> 7.0.1（+ tx.fhir.org）判定一致</strong>，以稽核工具逐筆對照，結果見
+  <a href="https://github.com/healthymind-tech/Taiwan-Health-MCP/blob/main/node-server/scripts/validator-audit/REPORT.md"><code>node-server/scripts/validator-audit/REPORT.md</code></a>（v1–v6）。
+  <code>valid</code> 沿用 HL7 語意（解析不到的剖面只是警告），另以 <code>checked_fully</code> / <code>profiles_unchecked</code> /
+  <code>valuesets_unchecked</code> 明示沒能檢查的部分。</li>
+<li><strong>選填 grounding：</strong><code>fhir_validate_resource</code> / <code>fhir_validate_bundle</code> 可帶 <code>source_text</code>（及 <code>site_config</code>、
+  <code>evidence_map</code>、<code>grounding</code>、<code>grounding_verbosity</code>）在同一次呼叫做 grounding；不帶時輸出不變。</li>
+<li>**版本：**各工具版本由 <code>node-server/src/toolVersions.ts</code> 管理，並回報在 <code>health_check.tools_version</code>。</li>
+</ul>
 </div>
 <p><strong>狀態：</strong> 評估／規劃（尚未變更程式碼）
 <strong>日期：</strong> 2026-06-07
@@ -3295,7 +3315,7 @@ twcore.concepts(id, cs_id FK, code, display, definition)   -- code+display 上�
 <hr />
 <h2 id="3">3. 缺口與選項<a class="headerlink" href="#3" title="Permanent link">&para;</a></h2>
 <h3 id="1-2425-python">缺口 1 —— 內建驗證器（工具 24–25）：行程內 Python，<strong>不需外部服務</strong><a class="headerlink" href="#1-2425-python" title="Permanent link">&para;</a></h3>
-<p>我們以 Python 原生撰寫驗證器並在 MCP 行程內執行。<strong>沒有 Java sidecar、沒有 <code>validator_cli.jar</code>、沒有額外容器、沒有網路往返。</strong>它需要的一切都已在 <code>twcore.artifacts.raw_json</code> 內（snapshot、<code>constraint.expression</code> 的 FHIRPath 字串、<code>slicing</code>，以及 extension 定義——extension 本身也是 StructureDefinition artifact）。</p>
+<p>我們以 Python 原生撰寫驗證器並在 MCP 行程內執行。**沒有 Java sidecar、沒有 <code>validator_cli.jar</code>、沒有額外容器、沒有網路往返。**它需要的一切都已在 <code>twcore.artifacts.raw_json</code> 內（snapshot、<code>constraint.expression</code> 的 FHIRPath 字串、<code>slicing</code>，以及 extension 定義——extension 本身也是 StructureDefinition artifact）。</p>
 <p>驗證器對解析後的 <code>snapshot.element</code> 單次走訪即完成四項檢查：</p>
 <table>
 <thead>
@@ -3328,13 +3348,13 @@ twcore.concepts(id, cs_id FK, code, display, definition)   -- code+display 上�
 </tr>
 </tbody>
 </table>
-<p><strong>為什麼行程內是正確選擇，而非妥協：</strong>資源真正的目的地是一台運行中的 FHIR 伺服器（我們已有 <code>list_fhir_servers</code> / <code>crud_fhir_server</code>），而<strong>那台伺服器才是權威驗證者</strong>。我們的職責是快速、可解釋的<strong>預檢</strong>，在送出前攔下 80–95% 的錯誤。就這個目的而言，原生驗證器完全勝任——而且唯一會變動的只有 <code>requirements.txt</code>（一個純 Python 相依），<code>docker compose</code> 完全不動。</p>
-<p><strong>誠實契約：</strong>回應會標示 <code>source: "builtin"</code>。凡是無法在本地執行的檢查（例如外部 VS 無法展開、或不支援的 FHIRPath 函式），都會發出 <code>information</code>/<code>warning</code> issue 說明——<strong>絕不可</strong>靜默回傳 <code>valid:true</code>。規格中 <code>ok</code>（工具有執行）與 <code>valid</code>（資源符合）的區分予以保留。</p>
+<p><strong>為什麼行程內是正確選擇，而非妥協：<strong>資源真正的目的地是一台運行中的 FHIR 伺服器（我們已有 <code>list_fhir_servers</code> / <code>crud_fhir_server</code>），而</strong>那台伺服器才是權威驗證者</strong>。我們的職責是快速、可解釋的<strong>預檢</strong>，在送出前攔下 80–95% 的錯誤。就這個目的而言，原生驗證器完全勝任——而且唯一會變動的只有 <code>requirements.txt</code>（一個純 Python 相依），<code>docker compose</code> 完全不動。</p>
+<p>**誠實契約：**回應會標示 <code>source: "builtin"</code>。凡是無法在本地執行的檢查（例如外部 VS 無法展開、或不支援的 FHIRPath 函式），都會發出 <code>information</code>/<code>warning</code> issue 說明——<strong>絕不可</strong>靜默回傳 <code>valid:true</code>。規格中 <code>ok</code>（工具有執行）與 <code>valid</code>（資源符合）的區分予以保留。</p>
 <p><em>未採用：</em> Java HL7-Validator sidecar。它會增加一個容器、一個 JVM 與一次網路往返，換來的是在下游伺服器已具權威性的前提下我們並不需要的窮盡式邊界案例一致性。若未來出現需要離線官方級一致性的需求，可以在不改變任何工具契約的情況下，以設定開關的形式後補。</p>
 <h3 id="2-schema-guided-fill-1921">缺口 2 —— 對應的重新設計：schema-guided fill（取代工具 19–21，<strong>無儲存式樣板</strong>）<a class="headerlink" href="#2-schema-guided-fill-1921" title="Permanent link">&para;</a></h3>
 <p>原規格儲存一套決定性的「來源→FHIR」規則集（<code>get_mapping_template</code> → <code>plan_mapping</code> → <code>apply_mapping</code>）。那是<strong>前 LLM 時代的產物</strong>：決定性規則庫（FHIR Mapping Language / StructureMap / 手寫 ETL）之所以存在，正是因為不具智慧的系統無法推斷來源欄位 <code>conditionCode</code> <strong>意指</strong> <code>Condition.code</code>。有 LLM 在迴圈中，語意對應就是 LLM 的工作。因此我們完全捨棄儲存式樣板，改以兩個無樣板的工具取代。</p>
-<p><strong>分工——從樣板時代唯一存留下來的規則：</strong>LLM 填<strong>語意</strong>空格，系統決定性地釘住<strong>機制</strong>欄位。<strong>絕不可</strong>要求 LLM 產生 <code>fixed</code>/<code>pattern</code> 值、<code>meta.profile</code>、code 的 <code>system</code> URL 或參照接線——那些容易產生幻覺，一律由程式釘定。</p>
-<p><strong>1. <code>fhir_get_resource_skeleton(profile)</code> —— 帶註解的填寫表單（✅ 資料齊備）。</strong> 自所選剖面的 <code>snapshot.element</code> 即時投影。對每個 LLM 可填／須填的 element 提供：path、cardinality（是否必填？是否陣列？）、type、要使用的 <code>choice[x]</code> JSON 屬性、required binding 的 ValueSet <strong>與候選碼</strong>（透過缺口 3 的展開）、<code>mustSupport</code>、簡短說明，以及任何<strong>標為 auto-pinned（「由系統填寫，請勿碰」）</strong>的 <code>fixed</code>/<code>pattern</code> 值。官方 IG example（工具 12）作為 few-shot 一併附上。這本質上就是工具 8–13 已在讀取的同一份 snapshot 資料的「生成導向視圖」。</p>
+<p><strong>分工——從樣板時代唯一存留下來的規則：<strong>LLM 填</strong>語意</strong>空格，系統決定性地釘住<strong>機制</strong>欄位。<strong>絕不可</strong>要求 LLM 產生 <code>fixed</code>/<code>pattern</code> 值、<code>meta.profile</code>、code 的 <code>system</code> URL 或參照接線——那些容易產生幻覺，一律由程式釘定。</p>
+<p><strong>1. <code>fhir_get_resource_skeleton(profile)</code> —— 帶註解的填寫表單（✅ 資料齊備）。</strong> 自所選剖面的 <code>snapshot.element</code> 即時投影。對每個 LLM 可填／須填的 element 提供：path、cardinality（是否必填？是否陣列？）、type、要使用的 <code>choice[x]</code> JSON 屬性、required binding 的 ValueSet <strong>與候選碼</strong>（透過缺口 3 的展開）、<code>mustSupport</code>、簡短說明，以及任何**標為 auto-pinned（「由系統填寫，請勿碰」）**的 <code>fixed</code>/<code>pattern</code> 值。官方 IG example（工具 12）作為 few-shot 一併附上。這本質上就是工具 8–13 已在讀取的同一份 snapshot 資料的「生成導向視圖」。</p>
 <p><strong>2. <code>fhir_finalize_resource(profile, draft, referenceContextId)</code> —— 決定性收尾（🟡 純邏輯）。</strong> 接收 LLM 填好的 draft，然後：釘住 <code>fixed</code>/<code>pattern</code>、附上 <code>meta.profile</code>、填入已驗證碼的 <code>system</code> URL、解析參照（#22）、執行內建驗證器（上述 #1／工具 24–25），並回傳 <code>{resource, validation, trace}</code>。驗證失敗時，issue 回饋給 LLM 修正，再重新 finalize。沒有儲存式對應、沒有 <code>fhir.mapping_*</code> schema、<strong>沒有管理後台編輯介面</strong>。</p>
 <p><strong>工作流程：</strong></p>
 <pre><code>list/rank profiles (5,6) → LLM picks profile
@@ -3344,7 +3364,7 @@ twcore.concepts(id, cs_id FK, code, display, definition)   -- code+display 上�
   → on failure: feed validator issues back → LLM fixes → re-finalize
   → build_bundle (23) + validate_bundle (25)
 </code></pre>
-<p><strong>團隊有意識接受的取捨：</strong>儲存式樣板是決定性的（相同輸入 → 相同輸出、編譯一次、每筆零推論成本），適合無人值守的百萬列登錄載入。LLM 填值則是隨機性的（模糊詞彙在不同執行間可能解析到不同的碼），且每筆需要一次推論——這對<strong>互動式／人在迴圈中／中小量</strong>（也就是本 MCP 的實際用途）最理想。機制釘定步驟加上驗證器把關，可回收大部分治理與可重現性保證；殘餘的選碼非決定性則以低 temperature 加驗證器加以控制。若未來出現無人值守批次的需求，可以在<strong>不改變這些工具契約</strong>的前提下後補一條編譯式樣板路徑。</p>
+<p><strong>團隊有意識接受的取捨：<strong>儲存式樣板是決定性的（相同輸入 → 相同輸出、編譯一次、每筆零推論成本），適合無人值守的百萬列登錄載入。LLM 填值則是隨機性的（模糊詞彙在不同執行間可能解析到不同的碼），且每筆需要一次推論——這對</strong>互動式／人在迴圈中／中小量</strong>（也就是本 MCP 的實際用途）最理想。機制釘定步驟加上驗證器把關，可回收大部分治理與可重現性保證；殘餘的選碼非決定性則以低 temperature 加驗證器加以控制。若未來出現無人值守批次的需求，可以在<strong>不改變這些工具契約</strong>的前提下後補一條編譯式樣板路徑。</p>
 <h3 id="3-valueset-1517">缺口 3 —— ValueSet 展開廣度（工具 15–17）<a class="headerlink" href="#3-valueset-1517" title="Permanent link">&para;</a></h3>
 <p>分層展開解析器：</p>
 <ol>
@@ -3355,7 +3375,7 @@ twcore.concepts(id, cs_id FK, code, display, definition)   -- code+display 上�
 </ol>
 <hr />
 <h2 id="4-ig">4. 多 IG 架構（從第一天就納入設計）<a class="headerlink" href="#4-ig" title="Permanent link">&para;</a></h2>
-<p><strong>目前的資料模型假設只有單一 IG。</strong>需要移除的具體單一 IG 耦合：</p>
+<p>**目前的資料模型假設只有單一 IG。**需要移除的具體單一 IG 耦合：</p>
 <ul>
 <li>Schema 名稱直接叫 <code>twcore</code>；<code>artifact_key = "{resourceType}/{id}"</code> 與 <code>cs_id</code> <strong>不是 package-scoped</strong> → 兩個 IG 若都定義 <code>StructureDefinition/Patient</code> 或同 id 的 CodeSystem 就會<strong>衝突</strong>。</li>
 <li>沒有已安裝套件的註冊表；<code>list_codesystems</code> 退回寫死的登錄表。</li>
@@ -3391,7 +3411,7 @@ fhir.concepts(package_id, package_version, cs_id, code, ...)
 <h3 id="44-mcp">4.4 MCP 工具形態<a class="headerlink" href="#44-mcp" title="Permanent link">&para;</a></h3>
 <ul>
 <li>一套以 <code>ig</code> 參數化的通用工具集（<code>fhir_*</code>），<strong>而非</strong>每個 IG 一套工具。新增 IG = 匯入一個套件；不需要新工具。</li>
-<li><strong>粒度規則（已決定）：</strong>同一份底層資料的多種讀取視圖收斂到 <code>view</code>/<code>mode</code> 參數之後，而非拆成多個工具——以在既有 29 個工具之上維持 <code>tools/list</code> 精簡。首次套用：C 組的六個 snapshot 讀取器 → 單一 <code>fhir_get_profile_elements(profile, view, path?)</code>。結果約為 19 個註冊的 <code>fhir_*</code> 工具。</li>
+<li>**粒度規則（已決定）：**同一份底層資料的多種讀取視圖收斂到 <code>view</code>/<code>mode</code> 參數之後，而非拆成多個工具——以在既有 29 個工具之上維持 <code>tools/list</code> 精簡。首次套用：C 組的六個 snapshot 讀取器 → 單一 <code>fhir_get_profile_elements(profile, view, path?)</code>。結果約為 19 個註冊的 <code>fhir_*</code> 工具。</li>
 <li>沿用既有的共同信封（<code>{ok,data,warnings,provenance}</code>）與規格中的錯誤碼列舉。</li>
 <li>註冊於新的 <code>_TOOL_GROUPS["fhir_ig"]</code> 群組；以 <code>fhir.ig_packages</code> 非空作為可見性閘門（與 <code>ModuleStatusManager</code> 的動態顯示／隱藏一致）。</li>
 </ul>
@@ -3402,22 +3422,22 @@ fhir.concepts(package_id, package_version, cs_id, code, ...)
 <p><strong>Phase 2 —— 術語（🟡）。</strong> 工具 14–18：分層展開解析器（§3 缺口 3）、跨本地 schema 查詢、以 embedding 與 ConceptMap 做 normalize。先出內嵌 + 本地；THO／外部藏在解析器分層之後。</p>
 <p><strong>Phase 3 —— 參照/Bundle（🟡，純邏輯）。</strong> 工具 22、23 加上暫時性參照脈絡儲存。與對應無關；可與 Phase 1/2 並行落地。</p>
 <p><strong>Phase 4 —— 驗證（🟡，行程內 Python）。</strong> 工具 24/25：內建驗證器（§3 缺口 2）——結構 + binding + FHIRPath 不變式（<code>fhirpathpy</code>）+ 常見 slicing，全部在行程內。唯一新增相依是一個純 Python pip 套件；容器與基礎設施皆不變。</p>
-<p><strong>Phase 5 —— Schema-guided fill（🟡，無儲存式樣板）。</strong> <code>fhir_get_resource_skeleton</code>（Phase 1 snapshot 讀取器的生成導向投影 + 缺口 3 的候選碼 + 工具 12 的 example）與 <code>fhir_finalize_resource</code>（決定性釘定 + 參照解析 + 驗證）。<strong>沒有 <code>fhir.mapping_*</code> schema、沒有管理後台編輯介面。</strong>它排在最後，只是因為它組合了前面所有階段——Phase 1（element/骨架）、2（選碼／驗碼）、3（參照解析）、4（驗證輸出）——而不是因為它需要新資料。</p>
+<p><strong>Phase 5 —— Schema-guided fill（🟡，無儲存式樣板）。</strong> <code>fhir_get_resource_skeleton</code>（Phase 1 snapshot 讀取器的生成導向投影 + 缺口 3 的候選碼 + 工具 12 的 example）與 <code>fhir_finalize_resource</code>（決定性釘定 + 參照解析 + 驗證）。**沒有 <code>fhir.mapping_*</code> schema、沒有管理後台編輯介面。**它排在最後，只是因為它組合了前面所有階段——Phase 1（element/骨架）、2（選碼／驗碼）、3（參照解析）、4（驗證輸出）——而不是因為它需要新資料。</p>
 <hr />
 <h2 id="6">6. 待決事項（動工前需要使用者裁示）<a class="headerlink" href="#6" title="Permanent link">&para;</a></h2>
 <ol>
-<li><strong>Schema 策略：</strong>採用全新的 package-scoped <code>fhir.*</code> schema（考量既定的重新匯入，較佳），還是在既有 <code>twcore.*</code> 上加套件欄位？</li>
-<li><strong>驗證器範圍（已決定 → 行程內 Python，無 sidecar）：</strong>出貨完整的內建驗證器（結構 + binding + 透過 <code>fhirpathpy</code> 的 FHIRPath 不變式 + 常見 slicing）。剩下的子選項：第一版是否納入 <code>value</code>/<code>pattern</code> 的 slicing discriminator，還是把所有 slicing 延到後續？</li>
-<li><strong>對應（已決定 → 無儲存式樣板）：</strong>移除 <code>get_mapping_template</code>/<code>plan_mapping</code>/<code>apply_mapping</code>，改採 schema-guided fill（<code>fhir_get_resource_skeleton</code> + <code>fhir_finalize_resource</code>）。沒有對應 schema、沒有編輯介面。<strong>已決定：</strong><code>finalize_resource</code> <strong>不</strong>自動迴圈——它驗證後回傳 <code>{resource, validation issues}</code>；由 LLM 修正 draft 再重新呼叫。工具只負責驗證／釘定，語意修正歸 LLM。</li>
-<li><strong>工具粒度（已決定 → 合併）：</strong>StructureDefinition 讀取器（8–13）收斂為單一 <code>fhir_get_profile_elements(profile, view, path?)</code>；<code>view</code>/<code>mode</code> 參數規則成為工具集全域風格。結果約 19 個註冊的 <code>fhir_*</code> 工具。（可選後續：術語 D 組未來也能同樣收斂，但目前保持分立，因為每個動詞在語意上各自獨立。）</li>
+<li>**Schema 策略：**採用全新的 package-scoped <code>fhir.*</code> schema（考量既定的重新匯入，較佳），還是在既有 <code>twcore.*</code> 上加套件欄位？</li>
+<li>**驗證器範圍（已決定 → 行程內 Python，無 sidecar）：**出貨完整的內建驗證器（結構 + binding + 透過 <code>fhirpathpy</code> 的 FHIRPath 不變式 + 常見 slicing）。剩下的子選項：第一版是否納入 <code>value</code>/<code>pattern</code> 的 slicing discriminator，還是把所有 slicing 延到後續？</li>
+<li>**對應（已決定 → 無儲存式樣板）：**移除 <code>get_mapping_template</code>/<code>plan_mapping</code>/<code>apply_mapping</code>，改採 schema-guided fill（<code>fhir_get_resource_skeleton</code> + <code>fhir_finalize_resource</code>）。沒有對應 schema、沒有編輯介面。<strong>已決定：</strong><code>finalize_resource</code> <strong>不</strong>自動迴圈——它驗證後回傳 <code>{resource, validation issues}</code>；由 LLM 修正 draft 再重新呼叫。工具只負責驗證／釘定，語意修正歸 LLM。</li>
+<li>**工具粒度（已決定 → 合併）：**StructureDefinition 讀取器（8–13）收斂為單一 <code>fhir_get_profile_elements(profile, view, path?)</code>；<code>view</code>/<code>mode</code> 參數規則成為工具集全域風格。結果約 19 個註冊的 <code>fhir_*</code> 工具。（可選後續：術語 D 組未來也能同樣收斂，但目前保持分立，因為每個動詞在語意上各自獨立。）</li>
 </ol>
 <hr />
 <h2 id="7">7. 結論<a class="headerlink" href="#7" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>資料：</strong>規格的 ~70% 已經躺在 <code>twcore.artifacts.raw_json</code> 與 <code>twcore.concepts</code> 裡；<code>package.tgz</code> 確認 StructureDefinition／術語／剖面／example 類工具所需資料無一缺漏。這些<strong>不需要</strong>重新抓取 IG。</li>
+<li><strong>資料：<strong>規格的 ~70% 已經躺在 <code>twcore.artifacts.raw_json</code> 與 <code>twcore.concepts</code> 裡；<code>package.tgz</code> 確認 StructureDefinition／術語／剖面／example 類工具所需資料無一缺漏。這些</strong>不需要</strong>重新抓取 IG。</li>
 <li><strong>真正要新建的：</strong>(1) 多 IG 套件註冊表 + package-scoped 鍵，(2) 以 <strong>schema-guided fill</strong>（<code>fhir_get_resource_skeleton</code> + <code>fhir_finalize_resource</code>）取代儲存式對應樣板——沒有對應 schema、沒有編輯介面，(3) 一個<strong>行程內 Python 驗證器</strong>（結構 + binding + 透過 <code>fhirpathpy</code> 的 FHIRPath + value/pattern slicing——<strong>無外部服務</strong>），(4) 外部系統的 ValueSet 展開廣度。</li>
-<li><strong>無外部服務、無儲存式對應：</strong>唯一新增的執行期相依是一個純 Python pip 套件（<code>fhirpathpy</code>）。<code>docker compose</code> 完全不動；LLM 對著即時產生的帶註解骨架做語意欄位對應，系統釘住機制欄位，驗證器把關輸出；下游 FHIR 伺服器仍是權威驗證者，我們的是預檢。</li>
-<li><strong>設計規則得以維持：</strong>一套以 <code>{packageId, version}</code> 參數化的通用 <code>fhir_*</code> 工具集，搭配具相依感知的 canonical 解析器——因此匯入下一個 IG 套件不會增加任何工具。</li>
+<li>**無外部服務、無儲存式對應：**唯一新增的執行期相依是一個純 Python pip 套件（<code>fhirpathpy</code>）。<code>docker compose</code> 完全不動；LLM 對著即時產生的帶註解骨架做語意欄位對應，系統釘住機制欄位，驗證器把關輸出；下游 FHIR 伺服器仍是權威驗證者，我們的是預檢。</li>
+<li>**設計規則得以維持：**一套以 <code>{packageId, version}</code> 參數化的通用 <code>fhir_*</code> 工具集，搭配具相依感知的 canonical 解析器——因此匯入下一個 IG 套件不會增加任何工具。</li>
 </ul>
 
 

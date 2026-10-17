@@ -2652,6 +2652,9 @@
 
 <h1 id="fhir-condition-medication-tools">FHIR Condition / Medication Tools<a class="headerlink" href="#fhir-condition-medication-tools" title="Permanent link">&para;</a></h1>
 <p>This group converts local ICD-10 diagnoses and Taiwan FDA drug data into FHIR R4 <code>Condition</code> / <code>Medication</code> / <code>MedicationKnowledge</code> resources, with basic validation. For advanced profile- and terminology-level authoring and validation, see <a href="../fhir-ig-tools/">FHIR IG Tools</a>.</p>
+<blockquote>
+<p><strong>Maintenance mode</strong>: the Condition tools follow the <code>icd</code> module and the Medication tools follow the <code>drug</code> module. While the admin console has that module in maintenance mode, calls return an <code>isError</code> result immediately with error code <code>MODULE_MAINTENANCE</code> (<code>error.message</code> in English, <code>error.message_zh</code> in Traditional Chinese, <code>error.module</code> the module key), effective within about 5 seconds; the tools stay in <code>tools/list</code>. See the <a href="../../api/#maintenance">API reference</a>.</p>
+</blockquote>
 <h2 id="query_fhir_condition">query_fhir_condition<a class="headerlink" href="#query_fhir_condition" title="Permanent link">&para;</a></h2>
 <p>Generate a FHIR R4 <code>Condition</code> resource from an ICD-10 diagnosis.</p>
 <h3 id="parameters">Parameters<a class="headerlink" href="#parameters" title="Permanent link">&para;</a></h3>
@@ -2670,14 +2673,14 @@
 <td style="text-align: left;"><code>icd_code</code></td>
 <td style="text-align: left;">string</td>
 <td style="text-align: left;">No</td>
-<td style="text-align: left;">An ICD-10-CM code given directly (supply this or <code>diagnosis_keyword</code>; takes precedence over the keyword)</td>
+<td style="text-align: left;">An ICD-10-CM code given directly (Path A, full field support; supply this or <code>diagnosis_keyword</code>)</td>
 <td style="text-align: left;"><code>"E11.9"</code></td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>diagnosis_keyword</code></td>
 <td style="text-align: left;">string</td>
 <td style="text-align: left;">No</td>
-<td style="text-align: left;">Diagnosis keyword (Chinese or English), used to look the ICD code up</td>
+<td style="text-align: left;">Diagnosis keyword (Chinese or English): searched first, then the resource is built (Path B; when both are given the keyword wins)</td>
 <td style="text-align: left;"><code>"第二型糖尿病"</code></td>
 </tr>
 <tr>
@@ -2739,7 +2742,7 @@
 </tbody>
 </table>
 <blockquote>
-<p>At least one of <code>icd_code</code> and <code>diagnosis_keyword</code> must be supplied; with both omitted there is no way to tell which diagnosis to code.</p>
+<p>At least one of <code>icd_code</code> and <code>diagnosis_keyword</code> must be supplied; with both omitted the tool returns <code>{"error": "Provide either icd_code or diagnosis_keyword"}</code>. Path B (keyword) applies only <code>patient_id</code>, <code>clinical_status</code>, <code>verification_status</code> and <code>severity</code>; the other fields (category, dates, notes) take effect on Path A only.</p>
 </blockquote>
 <h3 id="purpose">Purpose<a class="headerlink" href="#purpose" title="Permanent link">&para;</a></h3>
 <p>Maps the ICD-10-CM code into <code>Condition.code.coding</code> automatically, filling in the standard system URI (<code>http://hl7.org/fhir/sid/icd-10-cm</code>) and the disease name, then populates clinicalStatus, verificationStatus, category, subject, and the other attributes from the parameters above.</p>
@@ -2792,27 +2795,27 @@ reflects only whether <code>errors</code> is empty; warnings do not affect it.</
 <td style="text-align: left;"><code>keyword</code></td>
 <td style="text-align: left;">string</td>
 <td style="text-align: left;">No</td>
-<td style="text-align: left;">Drug keyword (supply this or <code>license_id</code>)</td>
+<td style="text-align: left;">Drug keyword: searched first, then the resource is built (Path B; supply this or <code>license_id</code>)</td>
 <td style="text-align: left;"><code>"普拿疼"</code></td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>license_id</code></td>
 <td style="text-align: left;">string</td>
 <td style="text-align: left;">No</td>
-<td style="text-align: left;">License number</td>
+<td style="text-align: left;">License number (Path A; when both are given the license number wins)</td>
 <td style="text-align: left;"><code>"衛署藥製字第000480號"</code></td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>resource_type</code></td>
 <td style="text-align: left;">string</td>
 <td style="text-align: left;">No</td>
-<td style="text-align: left;"><code>Medication</code> or <code>MedicationKnowledge</code></td>
+<td style="text-align: left;"><code>Medication</code> (default) or <code>MedicationKnowledge</code></td>
 <td style="text-align: left;"><code>"MedicationKnowledge"</code></td>
 </tr>
 </tbody>
 </table>
 <h3 id="purpose_1">Purpose<a class="headerlink" href="#purpose_1" title="Permanent link">&para;</a></h3>
-<p>Coding uses the TFDA license number CodeSystem (<code>https://mcp.fda.gov.tw/fhir/CodeSystem/tfda-license-id</code>) and carries ingredient information.</p>
+<p>Coding uses the TFDA license number CodeSystem (<code>https://mcp.fda.gov.tw/fhir/CodeSystem/tfda-license-id</code>) and carries ingredient information. Resources are derived from normalised TFDA data only — RxNorm is not used.</p>
 <hr />
 <h2 id="validate_fhir_medication">validate_fhir_medication<a class="headerlink" href="#validate_fhir_medication" title="Permanent link">&para;</a></h2>
 <p>Validate the basic structure of a FHIR <code>Medication</code> resource.</p>

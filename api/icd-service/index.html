@@ -1644,19 +1644,19 @@
   <a href="#class-icdservice" class="md-nav__link">
     <span class="md-ellipsis">
       
-        class ICDService
+        class IcdService
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="class ICDService">
+    <nav class="md-nav" aria-label="class IcdService">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#__init__self-pool" class="md-nav__link">
+  <a href="#constructorembeddingsvc-embeddingservice-null-null" class="md-nav__link">
     <span class="md-ellipsis">
       
-        __init__(self, pool)
+        constructor(embeddingSvc: EmbeddingService | null = null)
       
     </span>
   </a>
@@ -1664,10 +1664,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#async-initializeself" class="md-nav__link">
+  <a href="#async-initialize-promisevoid" class="md-nav__link">
     <span class="md-ellipsis">
       
-        async initialize(self)
+        async initialize(): Promise&lt;void&gt;
       
     </span>
   </a>
@@ -1675,10 +1675,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#async-search_codesself-keyword-str-type-str-all-str" class="md-nav__link">
+  <a href="#async-searchcodeskeyword-type-all-limit-3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        async search_codes(self, keyword: str, type: str = "all") -&gt; str
+        async searchCodes(keyword, type = "all", limit = 3)
       
     </span>
   </a>
@@ -1686,10 +1686,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#async-infer_complicationsself-code-str-str" class="md-nav__link">
+  <a href="#async-infercomplicationscode" class="md-nav__link">
     <span class="md-ellipsis">
       
-        async infer_complications(self, code: str) -&gt; str
+        async inferComplications(code)
       
     </span>
   </a>
@@ -1697,10 +1697,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#async-get_nearby_codesself-code-str-str" class="md-nav__link">
+  <a href="#async-getnearbycodescode" class="md-nav__link">
     <span class="md-ellipsis">
       
-        async get_nearby_codes(self, code: str) -&gt; str
+        async getNearbyCodes(code)
       
     </span>
   </a>
@@ -1708,10 +1708,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#async-browse_categoryself-category-str-none-limit-int-50-str" class="md-nav__link">
+  <a href="#async-browsecategorycategory-null-limit-50" class="md-nav__link">
     <span class="md-ellipsis">
       
-        async browse_category(self, category: str = None, limit: int = 50) -&gt; str
+        async browseCategory(category = null, limit = 50)
       
     </span>
   </a>
@@ -1719,10 +1719,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#async-get_conflict_infoself-diagnosis_code-str-procedure_code-str-dict" class="md-nav__link">
+  <a href="#async-getconflictinfodiagnosiscode-procedurecode" class="md-nav__link">
     <span class="md-ellipsis">
       
-        async get_conflict_info(self, diagnosis_code: str, procedure_code: str) -&gt; dict
+        async getConflictInfo(diagnosisCode, procedureCode)
       
     </span>
   </a>
@@ -2416,19 +2416,19 @@
   <a href="#class-icdservice" class="md-nav__link">
     <span class="md-ellipsis">
       
-        class ICDService
+        class IcdService
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="class ICDService">
+    <nav class="md-nav" aria-label="class IcdService">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#__init__self-pool" class="md-nav__link">
+  <a href="#constructorembeddingsvc-embeddingservice-null-null" class="md-nav__link">
     <span class="md-ellipsis">
       
-        __init__(self, pool)
+        constructor(embeddingSvc: EmbeddingService | null = null)
       
     </span>
   </a>
@@ -2436,10 +2436,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#async-initializeself" class="md-nav__link">
+  <a href="#async-initialize-promisevoid" class="md-nav__link">
     <span class="md-ellipsis">
       
-        async initialize(self)
+        async initialize(): Promise&lt;void&gt;
       
     </span>
   </a>
@@ -2447,10 +2447,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#async-search_codesself-keyword-str-type-str-all-str" class="md-nav__link">
+  <a href="#async-searchcodeskeyword-type-all-limit-3" class="md-nav__link">
     <span class="md-ellipsis">
       
-        async search_codes(self, keyword: str, type: str = "all") -&gt; str
+        async searchCodes(keyword, type = "all", limit = 3)
       
     </span>
   </a>
@@ -2458,10 +2458,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#async-infer_complicationsself-code-str-str" class="md-nav__link">
+  <a href="#async-infercomplicationscode" class="md-nav__link">
     <span class="md-ellipsis">
       
-        async infer_complications(self, code: str) -&gt; str
+        async inferComplications(code)
       
     </span>
   </a>
@@ -2469,10 +2469,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#async-get_nearby_codesself-code-str-str" class="md-nav__link">
+  <a href="#async-getnearbycodescode" class="md-nav__link">
     <span class="md-ellipsis">
       
-        async get_nearby_codes(self, code: str) -&gt; str
+        async getNearbyCodes(code)
       
     </span>
   </a>
@@ -2480,10 +2480,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#async-browse_categoryself-category-str-none-limit-int-50-str" class="md-nav__link">
+  <a href="#async-browsecategorycategory-null-limit-50" class="md-nav__link">
     <span class="md-ellipsis">
       
-        async browse_category(self, category: str = None, limit: int = 50) -&gt; str
+        async browseCategory(category = null, limit = 50)
       
     </span>
   </a>
@@ -2491,10 +2491,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#async-get_conflict_infoself-diagnosis_code-str-procedure_code-str-dict" class="md-nav__link">
+  <a href="#async-getconflictinfodiagnosiscode-procedurecode" class="md-nav__link">
     <span class="md-ellipsis">
       
-        async get_conflict_info(self, diagnosis_code: str, procedure_code: str) -&gt; dict
+        async getConflictInfo(diagnosisCode, procedureCode)
       
     </span>
   </a>
@@ -2527,29 +2527,25 @@
 
 
 <h1 id="icd-service-api">ICD Service API<a class="headerlink" href="#icd-service-api" title="Permanent link">&para;</a></h1>
-<h2 id="class-icdservice">class <code>ICDService</code><a class="headerlink" href="#class-icdservice" title="Permanent link">&para;</a></h2>
-<h3 id="__init__self-pool"><code>__init__(self, pool)</code><a class="headerlink" href="#__init__self-pool" title="Permanent link">&para;</a></h3>
-<p>初始化 ICD 服務，接受 <code>pg.Pool</code> 連線池（透過 pgBouncer）。</p>
-<ul>
-<li><strong>pool</strong>: <code>pg.Pool</code> 連線池，由 <code>server.ts</code> 的行程初始化流程注入。</li>
-</ul>
-<h3 id="async-initializeself"><code>async initialize(self)</code><a class="headerlink" href="#async-initializeself" title="Permanent link">&para;</a></h3>
-<p>檢查 <code>icd.procedures</code> 資料表是否有資料，設定 <code>_pcs_available</code> flag。</p>
-<h3 id="async-search_codesself-keyword-str-type-str-all-str"><code>async search_codes(self, keyword: str, type: str = "all") -&gt; str</code><a class="headerlink" href="#async-search_codesself-keyword-str-type-str-all-str" title="Permanent link">&para;</a></h3>
-<p>全文搜尋 ICD-10-CM 診斷碼或 ICD-10-PCS 手術碼。</p>
-<ul>
-<li><strong>keyword</strong>: 搜尋字串（支援中英文）。</li>
-<li><strong>type</strong>: <code>"diagnosis"</code>, <code>"procedure"</code> 或 <code>"all"</code>。</li>
-<li><strong>Returns</strong>: 格式化文字結果。</li>
-</ul>
-<h3 id="async-infer_complicationsself-code-str-str"><code>async infer_complications(self, code: str) -&gt; str</code><a class="headerlink" href="#async-infer_complicationsself-code-str-str" title="Permanent link">&para;</a></h3>
-<p>依 ICD 階層推論潛在併發症，從父代碼（如 E11）列出子代碼（如 E11.2）。</p>
-<h3 id="async-get_nearby_codesself-code-str-str"><code>async get_nearby_codes(self, code: str) -&gt; str</code><a class="headerlink" href="#async-get_nearby_codesself-code-str-str" title="Permanent link">&para;</a></h3>
-<p>取得目標碼在分類中的前後相鄰碼。</p>
-<h3 id="async-browse_categoryself-category-str-none-limit-int-50-str"><code>async browse_category(self, category: str = None, limit: int = 50) -&gt; str</code><a class="headerlink" href="#async-browse_categoryself-category-str-none-limit-int-50-str" title="Permanent link">&para;</a></h3>
-<p>依前三碼類別瀏覽診斷碼清單。</p>
-<h3 id="async-get_conflict_infoself-diagnosis_code-str-procedure_code-str-dict"><code>async get_conflict_info(self, diagnosis_code: str, procedure_code: str) -&gt; dict</code><a class="headerlink" href="#async-get_conflict_infoself-diagnosis_code-str-procedure_code-str-dict" title="Permanent link">&para;</a></h3>
-<p>取得用於診斷碼與手術碼衝突分析的詳細資訊。</p>
+<p><code>IcdService</code>（<code>node-server/src/icdService.ts</code>）提供 MCP ICD-10 工具群組背後的查詢。
+所有方法回傳可直接序列化成 JSON 的物件（MCP 工具再把它包成 <code>content[0].text</code> 的 JSON 字串）。
+資料庫存取一律經由 <code>db.ts</code> 的共用 <code>pg</code> 連線池（透過 pgBouncer），不由建構子注入。</p>
+<h2 id="class-icdservice">class <code>IcdService</code><a class="headerlink" href="#class-icdservice" title="Permanent link">&para;</a></h2>
+<h3 id="constructorembeddingsvc-embeddingservice-null-null"><code>constructor(embeddingSvc: EmbeddingService | null = null)</code><a class="headerlink" href="#constructorembeddingsvc-embeddingservice-null-null" title="Permanent link">&para;</a></h3>
+<p>傳入共用的 <code>EmbeddingService</code>；為 <code>null</code> 時診斷搜尋只走關鍵字。由 <code>mcp.ts</code> 延遲建立單例。</p>
+<h3 id="async-initialize-promisevoid"><code>async initialize(): Promise&lt;void&gt;</code><a class="headerlink" href="#async-initialize-promisevoid" title="Permanent link">&para;</a></h3>
+<p>檢查 <code>icd.procedures</code> 是否有資料，決定 ICD-10-PCS 搜尋是否可用。</p>
+<h3 id="async-searchcodeskeyword-type-all-limit-3"><code>async searchCodes(keyword, type = "all", limit = 3)</code><a class="headerlink" href="#async-searchcodeskeyword-type-all-limit-3" title="Permanent link">&para;</a></h3>
+<p><code>type</code> 為 <code>"diagnosis" | "procedure" | "all"</code>，<code>limit</code> 上限 10。診斷走 BM25 + 向量 RRF 混合搜尋（向量端精確掃描，不走 HNSW），處置只走 BM25。
+回傳 <code>{diagnoses?, procedures?, procedures_note?}</code>，向量不可用時另帶 <code>search_mode: "keyword_only"</code>；完全無結果時回傳 <code>{error}</code>。對應工具 <code>search_medical_codes</code>。</p>
+<h3 id="async-infercomplicationscode"><code>async inferComplications(code)</code><a class="headerlink" href="#async-infercomplicationscode" title="Permanent link">&para;</a></h3>
+<p>純階層查詢：有子代碼時回傳 <code>{base_code, potential_complications_or_specifics}</code>（最多 15 筆），否則回傳同類別代碼 <code>{message, related_codes}</code>（最多 10 筆）。對應 <code>infer_complications</code>。</p>
+<h3 id="async-getnearbycodescode"><code>async getNearbyCodes(code)</code><a class="headerlink" href="#async-getnearbycodescode" title="Permanent link">&para;</a></h3>
+<p>依代碼字母順序回傳前後各 2 碼 <code>{target, nearby_options}</code>。對應 <code>get_nearby_codes</code>。</p>
+<h3 id="async-browsecategorycategory-null-limit-50"><code>async browseCategory(category = null, limit = 50)</code><a class="headerlink" href="#async-browsecategorycategory-null-limit-50" title="Permanent link">&para;</a></h3>
+<p>不給 <code>category</code> 時列出所有類別與筆數；給類別時展開其代碼（<code>limit</code> 上限 200）。對應 <code>browse_icd_category</code>。</p>
+<h3 id="async-getconflictinfodiagnosiscode-procedurecode"><code>async getConflictInfo(diagnosisCode, procedureCode)</code><a class="headerlink" href="#async-getconflictinfodiagnosiscode-procedurecode" title="Permanent link">&para;</a></h3>
+<p>並列回傳一組診斷碼與處置碼的完整資料，只提供事實、不做判定。對應 <code>check_medical_conflict</code>。</p>
 
 
 

@@ -2055,10 +2055,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#typescript-node-server-web" class="md-nav__link">
+  <a href="#typescript-node-server-web-v2" class="md-nav__link">
     <span class="md-ellipsis">
       
-        TypeScript (node-server/, web/)
+        TypeScript (node-server/, web-v2/)
       
     </span>
   </a>
@@ -2363,10 +2363,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#typescript-node-server-web" class="md-nav__link">
+  <a href="#typescript-node-server-web-v2" class="md-nav__link">
     <span class="md-ellipsis">
       
-        TypeScript (node-server/, web/)
+        TypeScript (node-server/, web-v2/)
       
     </span>
   </a>
@@ -2428,9 +2428,9 @@
 
 <h1 id="code-style">Code Style<a class="headerlink" href="#code-style" title="Permanent link">&para;</a></h1>
 <p>Code and comments in this project are always written in <strong>English</strong>; user-facing documentation is bilingual, in Traditional Chinese and English (see <a href="../../WEBSITE/">Docs Site Maintenance</a>).</p>
-<h2 id="typescript-node-server-web">TypeScript (<code>node-server/</code>, <code>web/</code>)<a class="headerlink" href="#typescript-node-server-web" title="Permanent link">&para;</a></h2>
+<h2 id="typescript-node-server-web-v2">TypeScript (<code>node-server/</code>, <code>web-v2/</code>)<a class="headerlink" href="#typescript-node-server-web-v2" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>Format</strong>: TypeScript 5.7, ESM (<code>"type": "module"</code>); relative imports must carry the <code>.js</code> extension (matching the compiled output).</li>
+<li><strong>Format</strong>: ESM (<code>"type": "module"</code>). In <code>node-server/</code> (TypeScript 5.7+, compiled by <code>tsc</code>) relative imports must carry the <code>.js</code> extension (matching the compiled output); <code>web-v2/</code> (TypeScript 5.9, bundled by Vite) imports through the <code>@/</code> path alias, without extensions.</li>
 <li><strong>Naming</strong>: files in camelCase (<code>drugService.ts</code>, <code>adminJobs.ts</code>); types and classes in PascalCase; functions and variables in camelCase.</li>
 <li><strong>Types</strong>: annotate parameter and return types on public functions. Avoid <code>any</code>; when unavoidable, note why.</li>
 <li><strong>Validation</strong>: MCP tool input schemas are defined with <code>zod</code>.</li>

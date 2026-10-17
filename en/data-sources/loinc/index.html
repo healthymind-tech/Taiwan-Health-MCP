@@ -2407,23 +2407,21 @@
 <h1 id="loinc-data-source">LOINC Data Source<a class="headerlink" href="#loinc-data-source" title="Permanent link">&para;</a></h1>
 <h2 id="international-standard">International standard<a class="headerlink" href="#international-standard" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>Authority</strong>: the Regenstrief Institute</li>
-<li><strong>Version</strong>: the system currently supports LOINC 2.76.</li>
-<li><strong>Content</strong>: over 70,000 laboratory test and clinical observation codes.</li>
+<li><strong>Authority</strong>: the Regenstrief Institute (<a href="https://loinc.org/downloads/">https://loinc.org/downloads/</a>, account required)</li>
+<li><strong>Version</strong>: LOINC 2.80 (<code>Loinc_2.80.zip</code>).</li>
+<li><strong>Content</strong>: about 105k concepts (laboratory tests and clinical observations) from <code>LoincTable/Loinc.csv</code>, written to <code>loinc.concepts</code>.</li>
+<li><strong>AccessoryFiles</strong>: the import also takes the answer (LA), part (LP), answer-list (LL) and group (LG) codes (<code>loinc.other_codes</code>), per-axis part links, answer lists, panel membership and MapTo replacements (<code>loinc.part_links</code>, <code>loinc.answer_list_items</code> / <code>_links</code>, <code>loinc.panel_items</code>, <code>loinc.map_to</code>), and the release version (<code>loinc.editions</code>). The former are used by the FHIR validator, the structure tables by the LOINC browser in the admin console.</li>
 </ul>
 <h2 id="taiwan-chinese-mapping">Taiwan Chinese mapping<a class="headerlink" href="#taiwan-chinese-mapping" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>Source</strong>: the Ministry of Health and Welfare's EMR promotion portal — the Taiwan clinical laboratory code mapping table.</li>
-<li><strong>Value-added processing</strong>:<ul>
-<li>Keyword indexing that links official English names to clinical terms commonly used in Taiwan (for example「飯前血糖」to "Glucose pre meal").</li>
-<li>A Chinese alias library for specimen types and test methods.</li>
-</ul>
-</li>
+<li><strong>File</strong>: <code>data/loinc/taiwan_mapping.csv</code> (source role <code>loinc_taiwan_mapping</code>, optional), columns <code>loinc_code, name_zh, common_name_zh, specimen_type, unit</code>, about 30 tests common in Taiwan.</li>
+<li>Curated by the project and downloadable nowhere, so it is kept in version control; the import merges it into the Chinese columns of <code>loinc.concepts</code>.</li>
 </ul>
 <h2 id="reference-range-data">Reference range data<a class="headerlink" href="#reference-range-data" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>Source</strong>: compiled from the published laboratory manuals of several medical centres in Taiwan (such as National Taiwan University Hospital and Veterans General Hospital).</li>
-<li><strong>Caution</strong>: reference values vary slightly between laboratories depending on instruments and reagents. The values this system provides are for general reference only.</li>
+<li><strong>File</strong>: <code>data/loinc/lab_reference_ranges.csv</code> (source role <code>loinc_reference_ranges</code>, optional), about 40 rows stratified by age / sex, written to <code>loinc.reference_ranges</code>.</li>
+<li><strong>Source</strong>: compiled from published material of the NTUH Department of Laboratory Medicine and Taiwanese societies (diabetes, lipid, nephrology) — see each row's <code>source</code> column.</li>
+<li><strong>Caution</strong>: reference values vary slightly between laboratories depending on instruments and reagents. The values this system provides are for general reference only. <code>interpret_lab_result</code> can only interpret codes that have a reference range.</li>
 </ul>
 
 

@@ -2537,8 +2537,8 @@
 <tr>
 <td style="text-align: left;"><code>mode</code></td>
 <td style="text-align: left;">string</td>
-<td style="text-align: left;">是</td>
-<td style="text-align: left;"><code>keyword</code> / <code>permit_no</code> / <code>condition</code></td>
+<td style="text-align: left;">否</td>
+<td style="text-align: left;"><code>keyword</code> / <code>permit_no</code> / <code>condition</code>，預設 <code>keyword</code></td>
 <td style="text-align: left;"><code>"keyword"</code></td>
 </tr>
 <tr>
@@ -2552,7 +2552,7 @@
 <td style="text-align: left;"><code>limit</code></td>
 <td style="text-align: left;">integer</td>
 <td style="text-align: left;">否</td>
-<td style="text-align: left;">結果上限，預設 3</td>
+<td style="text-align: left;">結果上限，預設 3，上限 10（<code>permit_no</code> 模式忽略）</td>
 <td style="text-align: left;"><code>5</code></td>
 </tr>
 </tbody>
@@ -2565,17 +2565,17 @@
   &quot;results&quot;: [...]
 }
 </code></pre>
+<p><code>keyword</code> 模式走 BM25 + 語意混合搜尋；embedding 不可用時退回純關鍵字並帶 <code>search_mode: "keyword_only"</code> 與 <code>search_note</code>。
+未提供 <code>keyword</code> 時回傳 <code>{"error": "Provide keyword"}</code>。此工具組只在 <code>health_supplements.items</code> 至少有 10 筆時註冊。</p>
 <h3 id="_4">每筆結果欄位<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h3>
 <p>所有模式的每筆結果都使用相同欄位：</p>
 <ul>
 <li><code>permit_no</code></li>
 <li><code>product_name</code></li>
 <li><code>company</code></li>
+<li><code>category</code></li>
 <li><code>benefits</code></li>
-<li><code>ingredients</code></li>
-<li><code>specs</code></li>
-<li><code>status</code></li>
-<li><code>source_url</code></li>
+<li><code>approval_date</code></li>
 </ul>
 <p><code>condition</code> 模式會額外填入頂層：
 - <code>icd_code</code>

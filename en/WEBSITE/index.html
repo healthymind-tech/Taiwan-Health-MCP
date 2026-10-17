@@ -2657,7 +2657,7 @@ mkdocs build --strict # verification: any warning is an error
 <h2 id="deployment">Deployment<a class="headerlink" href="#deployment" title="Permanent link">&para;</a></h2>
 <p><code>.github/workflows/deploy-docs.yml</code>:</p>
 <ol>
-<li><strong>Trigger</strong>: a push to <code>main</code> whose changes touch <code>docs/**</code>, <code>mkdocs.yml</code>, or the workflow itself.
+<li><strong>Trigger</strong>: a push to <code>main</code> whose changes touch <code>docs/**</code>, <code>mkdocs.yml</code>, <code>requirements-docs.txt</code>, or the workflow itself.
    (Changing only <code>README.md</code> or source code does <strong>not</strong> rebuild the site.)</li>
 <li><strong>Build</strong>: Python 3.11, install <code>requirements-docs.txt</code>, run <code>mkdocs build --strict</code>.</li>
 <li><strong>Publish</strong>: <code>peaceiris/actions-gh-pages@v3</code> pushes <code>./site</code> to the <strong><code>gh-pages</code> branch</strong> (needs <code>contents: write</code>, using the built-in <code>GITHUB_TOKEN</code>).</li>
@@ -2682,7 +2682,8 @@ mkdocs build --strict # verification: any warning is an error
 <li>Never edit <code>site/</code> (build output).</li>
 <li>Command examples must run as-is from the directory the text specifies; use port <code>:8080</code> (the nginx front door), never <code>:8000</code>.</li>
 <li>For planning documents that are finished or superseded, add a status note at the top (every historical document on this site does this) rather than deleting them — they are decision records.</li>
-<li>The public-facing marketing and legal pages (<code>/</code>, <code>/status</code>, <code>/privacy</code>, <code>/dpa</code>) are <strong>no longer part of this repo</strong> — they moved to a standalone marketing site. The <code>web</code> service here only serves the <code>/admin</code> console.</li>
+<li>The public-facing marketing and legal pages (<code>/</code>, <code>/status</code>, <code>/privacy</code>, <code>/dpa</code>) are <strong>no longer part of this repo</strong> — they moved to a standalone marketing site. The <code>web-v2</code> service here (which replaced the old Next.js <code>web</code>, now only in compose profile <code>legacy-web</code>) only serves the <code>/admin</code> console.</li>
+<li><strong>This is a public repository and the site is published publicly.</strong> Never put clinical records, evaluation gold bundles or fixture contents (e.g. the data in the untracked <code>mcp_proposal/</code> directory), passwords or private host paths into the docs; describe the feature and the public tests instead.</li>
 </ul>
 
 

@@ -2390,8 +2390,7 @@
 欄位形狀</strong>,並用 MCP 工具查證後決定。</p>
 <blockquote>
 <p><strong>前置條件</strong>:這段提示假設 LLM 連的是本專案的 <code>fhir_*</code> 工具(FHIR-IG toolset)。
-需先部署:重建 <code>fhir.*</code> schema、匯入 TW Core IG(驗證器已內建於後端,無需額外安裝),
-並重啟 app + admin-worker。</p>
+需先在管理介面「IG 套件庫」匯入 TW Core(<code>tw.gov.mohw.twcore</code>)並設為預設 IG(宣告的相依套件會由匯入流程自動下載;驗證器已內建於後端,無需額外安裝)。</p>
 </blockquote>
 <hr />
 <h2 id="_1">提示詞(可直接複製)<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
@@ -2430,7 +2429,7 @@
 # 請依序執行
 
 **Step 0 — 確認 IG**
-- 呼叫 `fhir_list_igs`。確認預設 IG 是 TW Core(`tw.gov.mohw.twcore`)。之後所有工具都用這個預設 IG(不必每次帶 package_id)。
+- 呼叫 `fhir_list_igs`。確認預設 IG 是 TW Core(`tw.gov.mohw.twcore`)。之後所有工具都用這個預設 IG(不必每次帶 package_id;回應的 `provenance.resolved_by` 會說明實際用了哪個套件)。
 
 **Step 1 — 推斷要產生哪些資源(型別 + 數量)並選 Profile**
 - 先**自己分析來源欄位**,判斷這筆資料描述了什麼、需要產生哪些資源。一些欄位形狀的線索(僅供參考,實際以工具查證為準):
@@ -2449,6 +2448,7 @@
 **Step 2 — 取得填空表**
 - 對該資源呼叫 `fhir_get_resource_skeleton(profile=&lt;你選的 Profile&gt;)`。
 - 仔細讀回傳的 `fields`:哪些是 required、哪些是陣列、有沒有 slicing、各欄位的 `binding`(含 candidateCodes)、以及標了 `autoPinned` 的欄位(那些**不要碰**,留給 finalize)。
+- 再呼叫 `fhir_get_profile_required_elements(profile=&lt;你選的 Profile&gt;)`,取得該 Profile **實際必填**的完整清單(含必填 slice、choice type、不變式;每列標示值來自 auto / coding / source_fact / workflow_default),確認每一項都有著落。
 - 對照來源資料,列出你打算填入每個 field 的對應值。若有來源欄位在 skeleton 裡找不到合理對應,或 skeleton 的 required 欄位來源沒給,**據實說明**,不要硬塞。
 
 **Step 3 — 逐欄填語意值(通用規則,必要時查碼)**
@@ -2477,7 +2477,7 @@
 
 **Step 6 — 若有多個資源,組成 Bundle**
 - 若你只產生了一個資源,跳過本步。
-- 若產生了多個資源:用同一個 `contextId`,呼叫 `fhir_build_bundle(...)` 把所有 finalize 過的資源組成一個 `transaction` Bundle,再用 `fhir_validate_bundle` 驗證;若有 issue,回到對應資源修正後重組。
+- 若產生了多個資源:用同一個 `contextId`,呼叫 `fhir_build_bundle(...)` 把所有 finalize 過的資源組成一個 `transaction` Bundle,再用 `fhir_validate_bundle` 驗證;若有 issue,回到對應資源修正後重組。若回傳 `checked_fully: false`,在交付說明中列出 `profiles_unchecked` / `valuesets_unchecked`,不要宣稱已完整驗證。
 
 **Step 7 — 交付**
 - 輸出最終 `valid: true` 的資源 JSON;若有多個,輸出驗證通過的 Bundle。

@@ -707,10 +707,27 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="模組概述">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        目標套件的解析順序
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
-  <a href="#_2" class="md-nav__link">
+  <a href="#_3" class="md-nav__link">
     <span class="md-ellipsis">
       
         工具分組
@@ -765,13 +782,24 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#5-grounding-llm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. 紀錄忠實度（grounding，確定性、不使用 LLM）
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#_3" class="md-nav__link">
+  <a href="#_4" class="md-nav__link">
     <span class="md-ellipsis">
       
         技術架構
@@ -782,7 +810,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_4" class="md-nav__link">
+  <a href="#_5" class="md-nav__link">
     <span class="md-ellipsis">
       
         授權工作流程（建議）
@@ -793,7 +821,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_5" class="md-nav__link">
+  <a href="#_6" class="md-nav__link">
     <span class="md-ellipsis">
       
         關鍵限制
@@ -2432,10 +2460,27 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="模組概述">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        目標套件的解析順序
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
-  <a href="#_2" class="md-nav__link">
+  <a href="#_3" class="md-nav__link">
     <span class="md-ellipsis">
       
         工具分組
@@ -2490,13 +2535,24 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#5-grounding-llm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. 紀錄忠實度（grounding，確定性、不使用 LLM）
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#_3" class="md-nav__link">
+  <a href="#_4" class="md-nav__link">
     <span class="md-ellipsis">
       
         技術架構
@@ -2507,7 +2563,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_4" class="md-nav__link">
+  <a href="#_5" class="md-nav__link">
     <span class="md-ellipsis">
       
         授權工作流程（建議）
@@ -2518,7 +2574,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_5" class="md-nav__link">
+  <a href="#_6" class="md-nav__link">
     <span class="md-ellipsis">
       
         關鍵限制
@@ -2551,20 +2607,33 @@
 <h1 id="fhir-ig-fhir-ig-service">FHIR IG 服務模組 (FHIR IG Service)<a class="headerlink" href="#fhir-ig-fhir-ig-service" title="Permanent link">&para;</a></h1>
 <h2 id="_1">模組概述<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
 <p>FHIR IG 服務模組是一套通用、以 IG 為範圍（IG-scoped）的工具集，建構於多 IG（multi-IG）的 <code>fhir.*</code> 資料儲存之上。它讓 LLM 能探索已安裝的 Implementation Guide、讀取剖面（StructureDefinition）與術語（ValueSet / CodeSystem）、進行術語驗證，並以「骨架填值」（skeleton-fill）方式產生與驗證符合剖面的 FHIR R4 資源。預設 IG 為 TWCore v1.0.0，但可安裝並切換多個 IG。</p>
-<p>每個工具都可帶入選用的 <code>package_id</code> + <code>version</code>（皆省略時鎖定預設 IG），回應採用共同信封：<code>{ok, data, warnings, provenance, error?}</code>。</p>
-<h2 id="_2">工具分組<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
+<p>每個工具都可帶入選用的 <code>package_id</code> + <code>version</code>，回應採用共同信封：<code>{ok, data, warnings, provenance, error?}</code>。</p>
+<h3 id="_2">目標套件的解析順序<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h3>
+<p>未明確指定時，工具依下列優先順序決定要用哪個 IG 套件，並把結果寫在 <code>provenance.resolved_by</code>：</p>
+<ol>
+<li><code>explicit_version</code>：canonical 參數（或 <code>meta.profile</code>）帶 <code>|version</code>，且有已安裝套件持有該版本——<strong>不會</strong>悄悄改用其他版本；</li>
+<li><code>package_arg</code>：呼叫端給了 <code>package_id</code>（+ <code>version</code>）；<code>latest</code>：只給 <code>package_id</code> 未給版本時，取該套件最高的正式版；</li>
+<li><code>meta_profile</code>：未給 <code>package_id</code> 時，改用持有該資源 <code>meta.profile</code> 的套件（驗證工具）；</li>
+<li><code>canonical_owner</code>：未給 <code>package_id</code> 時，改用持有 canonical 參數（profile / ValueSet / system）的套件；</li>
+<li><code>default_ig</code>：預設 IG；</li>
+<li><code>sole_manual_ig</code>：未設定預設 IG、且恰好只有一個手動安裝的 IG。</li>
+</ol>
+<p>都不成立時回傳錯誤碼 <code>NO_DEFAULT_IG</code>（不會任意挑一個套件）。版本比較採 SemVer 2.0 precedence（<code>-ballot</code>、<code>-snapshot1</code>、<code>-cibuild</code> 等 FHIR 標籤視為 pre-release）；<code>|version</code> 依 HL7 規則比對（精確版本，否則同 major.minor 中最高者，或萬用字元）。若套件宣告的相依套件未安裝，<code>data.deps_missing</code> 會列出；同一閉包中同一套件有多個版本時，<code>provenance.closure_versions</code> 會標示 canonical 查詢實際使用的版本。</p>
+<h2 id="_3">工具分組<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
 <h3 id="1-ig">1. IG 探索<a class="headerlink" href="#1-ig" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong><code>fhir_list_igs</code></strong>：列出已安裝的 IG 套件，含 <code>packageId</code>、<code>version</code>、<code>title</code>、<code>canonical</code>、<code>fhirVersion</code>、<code>status</code>、<code>isDefault</code> 與宣告的相依套件。多個 IG 並存時先用此工具挑選。</li>
 <li><strong><code>fhir_get_ig</code></strong>：單一 IG 的詳情，含身分、相依與各資源型別的 artifact 數量。</li>
 <li><strong><code>fhir_list_artifacts</code></strong>：以摘要列出 IG 的 conformance artifacts（StructureDefinition / ValueSet / CodeSystem / examples…），可依 <code>resource_type</code> 或 <code>grouping_id</code> 過濾。</li>
 <li><strong><code>fhir_search_artifacts</code></strong>：以 id / canonical URL / name / title / description 全文搜尋 artifacts。</li>
+<li>上述列表 / 搜尋工具（含 <code>fhir_list_resource_profiles</code>）未給 <code>package_id</code> 時只看預設 IG；<code>all_packages=true</code> 改為涵蓋所有已安裝套件；零筆結果時 <code>data.hint</code> 會指出哪些其他套件有符合項目。</li>
 </ul>
 <h3 id="2">2. 剖面選擇與讀取<a class="headerlink" href="#2" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong><code>fhir_list_resource_profiles</code></strong>：列出 IG 可選的資源剖面（constraint StructureDefinition），依其約束的基礎資源型別分組（例如 <code>Patient</code> → <code>Patient-twcore</code>）。</li>
 <li><strong><code>fhir_rank_resource_profiles</code></strong>：依你打算填入的來源欄位鍵（keys）與各剖面 element path 的吻合度，對候選剖面排名。此工具<strong>僅供建議</strong>，回應帶有 <code>selectionRequired:true</code>，最終仍須自行挑選，不會自動對應。</li>
 <li><strong><code>fhir_get_profile</code></strong>：單一剖面 / StructureDefinition 的摘要（身分、base definition、derivation、element 數）。可用 artifact id、canonical URL 或 artifact_key 解析；相依 IG 定義的 canonical 會遞移解析。</li>
+<li><strong><code>fhir_get_profile_required_elements</code></strong>：列出剖面實際要求的所有元素（含必要祖先下的 min≥1、必要 slice、choice type、invariant 隱含的 value 或 dataAbsentReason，以及轉換目標隱含的主要內容），每列標示來源類別（<code>auto</code> / <code>coding</code> / <code>source_fact</code> / <code>workflow_default</code>）與填寫提示。<code>verbosity=compact</code>（預設）或 <code>full</code>；可帶 <code>instance</code>（草稿）讓已填的選用父節點連帶要求其子元素。撰寫資源前先呼叫，確保必填欄位齊全。</li>
 <li><strong><code>fhir_get_profile_elements</code></strong>：讀取剖面 snapshot 的結構真相（cardinality、types、bindings、slicing、choice[x]、constraints）。同一工具提供多種 <code>view</code>：<code>elements</code>、<code>element</code>、<code>slices</code>、<code>choices</code>、<code>binding</code>、<code>examples</code>。</li>
 </ul>
 <h3 id="3-valueset">3. 術語 / ValueSet<a class="headerlink" href="#3-valueset" title="Permanent link">&para;</a></h3>
@@ -2582,26 +2651,35 @@
 <li><strong><code>fhir_resolve_reference</code></strong>：以暫時鍵（key）解析資源參照，供 Bundle 內互相連結。</li>
 <li><strong><code>fhir_build_bundle</code></strong>：將多筆資源組裝為 <code>transaction</code> / <code>collection</code> 等型別的 Bundle。</li>
 <li><strong><code>fhir_validate_resource</code></strong>：依 <code>meta.profile</code> 指定的剖面驗證單一資源（結構 + 術語綁定）。</li>
-<li><strong><code>fhir_validate_bundle</code></strong>：驗證整個 Bundle。</li>
+<li><strong><code>fhir_validate_bundle</code></strong>：驗證整個 Bundle（每個 entry 依其 <code>meta.profile</code>，另檢查 Bundle 內參照完整性）。</li>
+<li>兩個驗證工具都回報驗證是否完整：<code>checked_fully</code>、<code>profiles_unchecked</code>、<code>valuesets_unchecked</code>（<code>valid</code> 的語意與 HL7 相同；有剖面或 ValueSet 無法檢查時會明確標出，而不是默默當作通過）。選用參數 <code>source_text</code> / <code>site_config</code> / <code>evidence_map</code> 會另外加上 grounding 檢查結果；不帶這些參數時輸出與未加 grounding 前完全相同。</li>
 </ul>
-<h2 id="_3">技術架構<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
+<h3 id="5-grounding-llm">5. 紀錄忠實度（grounding，確定性、不使用 LLM）<a class="headerlink" href="#5-grounding-llm" title="Permanent link">&para;</a></h3>
 <ul>
-<li><strong>資料來源</strong>：FHIR IG 套件（<code>package.tgz</code>），經由管理後台（Admin → Modules / IG，匯入階段 <code>ig_import</code>）匯入。相依套件（如 <code>hl7.terminology.r4</code>、<code>hl7.fhir.r4.core</code>）可額外綁定並各自以 package-scoped IG 索引，使跨系統的 ValueSet 綁定能展開出真實碼。</li>
-<li><strong>資料庫</strong>：<code>fhir</code> schema —<code>ig_packages</code>、<code>codesystems</code>、<code>concepts</code>、<code>artifacts</code>（皆 package-scoped，支援多 IG）。</li>
-<li><strong>驗證引擎</strong>：以 <code>fhirValidator.ts</code> / <code>fhirTerminology.ts</code> / <code>fhirSnapshot.ts</code> / <code>fhirReference.ts</code> / <code>fhirAuthoring.ts</code> 在程序內完成 snapshot 產生、術語綁定檢查、參照解析與骨架填值。</li>
+<li><strong><code>fhir_check_grounding</code></strong>：比對 Bundle 與來源病歷文字——每個已填的臨床事實與代碼都必須能在病歷中找到依據（evidence map 或自動定位），含日期 / 數值 / 單位 / 識別碼 / 劑量 / 頻次正規化，以及段落、否定與病史規則；問題以 <code>fhir_validate_bundle</code> 的格式回傳。</li>
+<li><strong><code>fhir_check_completeness</code></strong>：缺口報告——比較轉換目標所需的事實（剖面必要 + 目標隱含元素）與病歷實際記載的內容，回傳缺漏項目、病歷中明確記載「無」的行、範本化的澄清問題，以及現成的 <code>insufficient_information</code> 物件。</li>
 </ul>
-<h2 id="_4">授權工作流程（建議）<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
+<p><code>source_text</code> 屬於臨床資料，伺服器<strong>絕不記錄其內容</strong>（只記 SHA-256）。各工具的版本號由 <code>node-server/src/toolVersions.ts</code> 管理，可從 <code>health_check</code> 的 <code>tools_version</code> 取得。</p>
+<h2 id="_4">技術架構<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>資料來源</strong>：FHIR IG 套件（<code>package.tgz</code>），於管理後台 <strong>FHIR → IG 套件庫</strong> 從套件 registry 安裝或上傳 tgz（匯入階段 <code>ig_import</code>）。套件宣告的相依 IG（如 <code>hl7.terminology.r4</code>、<code>hl7.fhir.r4.core</code>）會<strong>自動從 FHIR registry 下載</strong>（預設 <code>https://packages.fhir.org</code>，失敗時退到 <code>https://packages2.fhir.org</code>；registry 位址可在 <strong>整合 → 外部服務</strong> 設定），各自以 package-scoped IG 索引，使跨系統的 ValueSet 綁定能展開出真實碼。registry 無法提供的相依套件才需要手動上傳。</li>
+<li><strong>安裝來源</strong>：<code>fhir.ig_packages.install_origin</code> 記錄套件是 <code>manual</code>（管理者安裝）或 <code>dependency</code>（為滿足其他 IG 的相依而下載），<code>installed_for</code> 記錄是哪個 IG 拉進來的（migration <code>20261019_ig_install_origin.sql</code>）；手動安裝的標記在重新匯入時保留。IG 套件庫會列出缺少的相依套件與無人使用的相依套件。</li>
+<li><strong>刪除保護</strong>：刪除其他已安裝 IG（直接或遞移）相依的套件，或刪除預設 IG，預設會被拒絕；必須指定新的預設 IG（<code>new_default</code>）或明確 <code>force</code>（記入稽核紀錄）。</li>
+<li><strong>資料庫</strong>：<code>fhir</code> schema —<code>ig_packages</code>、<code>codesystems</code>、<code>concepts</code>、<code>artifacts</code>（皆 package-scoped，支援多 IG）。管理後台的 IG 詳情可瀏覽 IG 內 CodeSystem 的概念樹（<code>/admin/api/terminology/ig/*</code>）。</li>
+<li><strong>驗證引擎</strong>：以 <code>fhirValidator.ts</code> / <code>fhirTerminology.ts</code> / <code>fhirSnapshot.ts</code> / <code>fhirReference.ts</code> / <code>fhirAuthoring.ts</code> 在程序內完成 snapshot 產生、術語綁定檢查、參照解析與骨架填值。判定規則以 HL7 <code>validator_cli</code> 7.0.1 + tx.fhir.org 為對照基準，並以 corpus 逐筆比對（稽核紀錄見 <code>node-server/scripts/validator-audit/REPORT.md</code>）。離線術語：ICD-10-CM / WHO ICD-10（<code>icd.*</code>）、LOINC（含 LA/LP/LL/LG）、SNOMED CT（含 inactive 內容）、RxNorm、CVX（內建 287 碼，版本 20250715）、ISO 3166（內建，版本 2018）、UCUM（<code>@lhncbc/ucum-lhc</code> 語法檢查，無法載入時標示 unchecked 而非判錯）。</li>
+</ul>
+<h2 id="_5">授權工作流程（建議）<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>
 <ol>
 <li><code>fhir_list_igs</code> →（必要時）選定目標 IG。</li>
 <li><code>fhir_list_resource_profiles</code> / <code>fhir_rank_resource_profiles</code> → 挑選剖面。</li>
 <li><code>fhir_get_profile_elements</code>（<code>choices</code> / <code>binding</code> / <code>slices</code>）→ 了解結構與術語約束。</li>
-<li><code>fhir_get_resource_skeleton</code> → 取得骨架，逐步填入欄位（必要時用 <code>fhir_normalize_code</code> / <code>fhir_validate_code</code> 處理編碼）。</li>
+<li><code>fhir_get_profile_required_elements</code> → 確認必填元素；<code>fhir_get_resource_skeleton</code> → 取得骨架，逐步填入欄位（必要時用 <code>fhir_normalize_code</code> / <code>fhir_validate_code</code> 處理編碼）。</li>
 <li><code>fhir_finalize_resource</code> → 定稿；多筆資源以 <code>fhir_resolve_reference</code> + <code>fhir_build_bundle</code> 組裝。</li>
-<li><code>fhir_validate_resource</code> / <code>fhir_validate_bundle</code> → 驗證。</li>
+<li><code>fhir_validate_resource</code> / <code>fhir_validate_bundle</code> → 驗證（有來源病歷時加 <code>source_text</code>，或另呼叫 <code>fhir_check_grounding</code> / <code>fhir_check_completeness</code>）。</li>
 </ol>
-<h2 id="_5">關鍵限制<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>
+<h2 id="_6">關鍵限制<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h2>
 <ul>
-<li>程序內驗證以剖面 snapshot 與術語綁定為基礎，<strong>不</strong>等同官方 HL7 FHIR Validator 的一致性認證。</li>
+<li>程序內驗證以剖面 snapshot 與術語綁定為基礎，雖以 HL7 validator_cli 7.0.1 為對照基準，仍<strong>不</strong>等同官方 HL7 FHIR Validator 的一致性認證。</li>
 <li>工具僅提供建議與結構協助，剖面選擇與最終內容由呼叫端負責。</li>
 </ul>
 <blockquote>

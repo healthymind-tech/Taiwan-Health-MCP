@@ -2540,8 +2540,28 @@
 <td>各模組載入器（<code>icd.ts</code>、<code>loinc.ts</code>、<code>snomed.ts</code>、<code>rxnorm.ts</code>、<code>ig.ts</code>、<code>drug*.ts</code>、<code>embeddings.ts</code> …）。</td>
 </tr>
 <tr>
+<td><code>node-server/src/admin/termViz/</code></td>
+<td>管理後台術語瀏覽的唯讀 API（<code>/admin/api/terminology/*</code>：ICD 樹、PCS 軸、SNOMED 圖、LOINC 軸、RxNorm、IG CodeSystem 樹）。</td>
+</tr>
+<tr>
+<td><code>node-server/src/providers/</code></td>
+<td>模型 provider adapter（OpenAI、Azure OpenAI、Anthropic、Gemini、Bedrock、Ollama、OpenAI 相容伺服器、ChatGPT 登入 … 共 24 個），供 embedding 與分析 LLM 路由使用。</td>
+</tr>
+<tr>
+<td><code>node-server/src/grounding/</code></td>
+<td>確定性的紀錄忠實度引擎（<code>fhir_check_grounding</code>、<code>fhir_check_completeness</code>）。</td>
+</tr>
+<tr>
+<td><code>node-server/scripts/validator-audit/</code></td>
+<td>內建 FHIR validator 與 HL7 validator_cli 7.0.1 的比對工具與稽核報告（<code>REPORT.md</code>）。</td>
+</tr>
+<tr>
+<td><code>web-v2/</code></td>
+<td><strong>正式環境的管理後台</strong>：Vite + React + Mantine 的靜態 SPA，由自己的 nginx 容器（compose 服務 <code>web-v2</code>）服務，掛在 <code>/admin/</code>。</td>
+</tr>
+<tr>
 <td><code>web/</code></td>
-<td>Next.js 前端：管理後台 SPA（<code>admin-app/</code>），透過 <code>app/admin/</code> 的 catch-all 路由掛載。</td>
+<td>舊版 Next.js 管理後台（<code>web/admin-app/</code>），已由 <code>web-v2/</code> 取代；compose 服務 <code>web</code> 只在 profile <code>legacy-web</code> 下才會啟動，僅留作回滾。</td>
 </tr>
 <tr>
 <td><code>db/</code></td>
@@ -2573,13 +2593,17 @@ npm run dev            # tsx watch src/server.ts
 npm run typecheck
 npm test
 
-# 前端
-cd web
+# 管理後台前端（web-v2）
+cd web-v2
 npm install
-npm run dev            # next dev -p 3000
+npm run dev            # vite，http://localhost:5173/admin/，API 代理到 ADMIN_BACKEND（預設 http://127.0.0.1:8090）
+npm run typecheck      # tsc -b --noEmit
+npm run build          # 輸出 dist/
 </code></pre>
 <p>完整堆疊請用 Docker：<code>docker compose up -d</code>（見<a href="../getting-started/">快速開始</a>）。
-改完程式碼後重新部署：<code>docker compose build app web &amp;&amp; docker compose up -d --no-deps app web</code>。</p>
+改完程式碼後重新部署：<code>docker compose build app web-v2 &amp;&amp; docker compose up -d --no-deps app web-v2</code>。
+<code>admin-worker</code> 是另一個映像（<code>Dockerfile.worker</code>），改到工作 / 載入器程式碼時也要重建：
+<code>docker compose build admin-worker &amp;&amp; docker compose up -d --no-deps admin-worker</code>。</p>
 <h2 id="_4">文件導引<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
 <h3 id="_5"><a href="code-style/">程式風格</a><a class="headerlink" href="#_5" title="Permanent link">&para;</a></h3>
 <p>命名、註解與程式碼慣例（程式碼與註解使用英文）。</p>
@@ -2592,7 +2616,8 @@ npm run dev            # next dev -p 3000
 <li>建立 <code>node-server/src/&lt;name&gt;Service.ts</code>（類別，建構子收 <code>pg.Pool</code>，提供 <code>async initialize()</code>）。</li>
 <li>在 <code>server.ts</code> 的初始化流程中建立該服務實例（任一服務初始化失敗時應優雅降級，不影響其他服務）。</li>
 <li>在 <code>mcp.ts</code> 新增工具註冊函式（輸入 schema 用 <code>zod</code>），並登錄到對應的工具群組。</li>
-<li>若需依資料載入狀態動態啟用，於 <code>moduleStatus.ts</code> 的 <code>SERVICE_MODULES</code> 加入門檻，並在每個工具開頭加上服務可用性守衛。</li>
+<li>若需依資料載入狀態動態啟用，於 <code>moduleStatus.ts</code> 的 <code>REQUIREMENTS</code>（對外匯出為 <code>MODULE_REQUIREMENTS</code>）加入資料表與最低筆數門檻，並在 <code>mcp.ts</code> 中以 <code>if (status.&lt;key&gt;)</code> 包住該群組的註冊。</li>
+<li>若工具輸出受 fixture 固定，在 <code>toolVersions.ts</code> 的 <code>TOOLS_VERSION</code> 登記版本；同一輸入的輸出改變時要調升。</li>
 </ol>
 
 

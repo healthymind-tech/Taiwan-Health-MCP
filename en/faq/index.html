@@ -2294,6 +2294,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#q-a-fhir-ig-tool-returns-no_default_ig" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Q: A FHIR IG tool returns NO_DEFAULT_IG?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#q-installation-and-deployment-questions" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2492,6 +2503,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#q-a-fhir-ig-tool-returns-no_default_ig" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Q: A FHIR IG tool returns NO_DEFAULT_IG?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#q-installation-and-deployment-questions" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2547,9 +2569,11 @@
 <p>Questions about LOINC code mapping and reference values.</p>
 <h2 id="quick-answers">Quick answers<a class="headerlink" href="#quick-answers" title="Permanent link">&para;</a></h2>
 <h3 id="q-why-are-some-tools-missing">Q: Why are some tools missing?<a class="headerlink" href="#q-why-are-some-tools-missing" title="Permanent link">&para;</a></h3>
-<p><strong>A</strong>: Module-backed tools are enabled and disabled automatically according to data-load status. If the corresponding module has not been imported (or has not reached the row-count threshold), its tools are not registered. Check each module's status with <code>health_check</code> first, or import the module under Admin → Modules.</p>
+<p><strong>A</strong>: Module-backed tools are enabled and disabled automatically according to data-load status. If the corresponding module has not been imported (or has not reached the row-count threshold), its tools are not registered. Check each module's status with <code>health_check</code> first (<code>services</code>), or import the module from its page in the admin console. The tool catalogue under <strong>Integrations → MCP tools</strong> in the admin console also shows whether each tool is currently registered, and why not.</p>
 <h3 id="q-why-do-search-results-look-keyword-only-rather-than-semantic">Q: Why do search results look keyword-only rather than semantic?<a class="headerlink" href="#q-why-do-search-results-look-keyword-only-rather-than-semantic" title="Permanent link">&para;</a></h3>
-<p><strong>A</strong>: Semantic / hybrid search needs a reachable embedding endpoint (Ollama by default). The endpoint is configured in the admin console under <strong>Settings → LLM Profiles</strong> (stored in <code>admin.llm_profiles</code>) — <strong>not</strong> through environment variables. When it is unset or unreachable, search falls back to keyword mode and the response carries a <code>keyword_only</code> signal. Note also that each module's vectors must be backfilled by its <code>*_embed</code> job first; otherwise you get keyword-only results even with a working endpoint.</p>
+<p><strong>A</strong>: Semantic / hybrid search needs a reachable embedding endpoint (for example Ollama). The endpoint is configured in the admin console under <strong>Integrations → Model endpoints</strong> (provider accounts + an embedding route, stored in <code>admin.llm_providers</code> / <code>admin.llm_routes</code> and related tables) — <strong>not</strong> through environment variables. When it is unset or unreachable, search falls back to keyword mode and the response carries a <code>keyword_only</code> signal. Note also that each module's vectors must be backfilled by its <code>*_embed</code> job first; otherwise you get keyword-only results even with a working endpoint.</p>
+<h3 id="q-a-fhir-ig-tool-returns-no_default_ig">Q: A FHIR IG tool returns <code>NO_DEFAULT_IG</code>?<a class="headerlink" href="#q-a-fhir-ig-tool-returns-no_default_ig" title="Permanent link">&para;</a></h3>
+<p><strong>A</strong>: The call passed no <code>package_id</code>, no canonical argument identified an owning package, and no default IG is set (with more than one manually installed IG). Set a default IG under <strong>FHIR → IG packages</strong> in the admin console, or pass <code>package_id</code>. The package actually used is reported in the response's <code>provenance.resolved_by</code>.</p>
 <h3 id="q-installation-and-deployment-questions">Q: Installation and deployment questions?<a class="headerlink" href="#q-installation-and-deployment-questions" title="Permanent link">&para;</a></h3>
 <p><strong>A</strong>: See <a href="../getting-started/">Getting Started</a> and the <a href="../deployment/">Deployment Guide</a>.</p>
 <h3 id="q-fhir-format-and-validation-questions">Q: FHIR format and validation questions?<a class="headerlink" href="#q-fhir-format-and-validation-questions" title="Permanent link">&para;</a></h3>

@@ -2434,32 +2434,64 @@
 <h2 id="running-the-tests">Running the tests<a class="headerlink" href="#running-the-tests" title="Permanent link">&para;</a></h2>
 <pre><code class="language-bash">cd node-server
 npm install
-npm test          # node --import tsx --test src/**/*.test.ts
+npm test          # node --import tsx --test 'src/**/*.test.ts' (node expands the glob: any depth)
 </code></pre>
 <p>Type checking (worth running before every commit):</p>
 <pre><code class="language-bash">cd node-server
-npm run typecheck # tsc --noEmit
+npm run typecheck # tsc -p tsconfig.dev.json --noEmit
 
-cd ../web
-npm run typecheck
+cd ../web-v2
+npm run typecheck # tsc -b --noEmit
 </code></pre>
+<p><code>web-v2/</code> has no test suite — only <code>typecheck</code>.</p>
+<div class="admonition warning">
+<p class="admonition-title">CI does not run tests</p>
+<p>The only GitHub Actions workflow is <code>deploy-docs.yml</code> (builds and publishes MkDocs when <code>docs/</code> or <code>mkdocs.yml</code> changes on <code>main</code>).
+Nothing blocks a merge on a failing <code>npm test</code> / <code>npm run typecheck</code> — run both locally in <code>node-server/</code> and <code>web-v2/</code> before committing.</p>
+</div>
 <h2 id="current-test-coverage">Current test coverage<a class="headerlink" href="#current-test-coverage" title="Permanent link">&para;</a></h2>
-<p>Test files sit beside the code they cover (<code>src/**/*.test.ts</code>). Currently covered:</p>
+<p>Test files sit beside the code they cover (<code>node-server/src/**/*.test.ts</code>). There are currently 61 test files with 721 test cases (2026-10-17; <code>npm test</code> takes about 40 s), by area:</p>
 <table>
 <thead>
 <tr>
-<th>Test file</th>
-<th>Scope</th>
+<th>Area</th>
+<th>Test files (under <code>node-server/src/</code>)</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>node-server/src/loaders/loinc.test.ts</code></td>
-<td>The LOINC loader's parsing logic</td>
+<td>FHIR validator / IG / terminology</td>
+<td><code>fhirValidator.test.ts</code>, <code>fhirValidatorV2.test.ts</code>, <code>fhirValidator.v6.test.ts</code>, <code>fhirIg.test.ts</code>, <code>fhirCodeSystem.test.ts</code>, <code>fhirExternalTerminology.test.ts</code>, <code>fhirPath.test.ts</code>, <code>fhirRequiredElements.test.ts</code>, <code>fhirTestKit.test.ts</code></td>
+</tr>
+<tr>
+<td>Grounding</td>
+<td><code>groundingTools.test.ts</code>, <code>grounding/*.test.ts</code></td>
+</tr>
+<tr>
+<td>Model providers and routing</td>
+<td><code>providers/*.test.ts</code>, <code>admin/llmRouting*.test.ts</code>, <code>admin/llmErrorCodes.test.ts</code>, <code>admin/embeddingIdentity*.test.ts</code>, <code>admin/chatgptOAuth.qa.test.ts</code>, <code>embeddingService*.test.ts</code>, <code>analysisLlmClient*.test.ts</code>, <code>drugAnalysisService*.test.ts</code>, <code>rateLimiter.qa.test.ts</code></td>
+</tr>
+<tr>
+<td>Loaders</td>
+<td><code>loaders/icd.test.ts</code>, <code>loaders/loinc.test.ts</code>, <code>loaders/ig.test.ts</code>, <code>loaders/igRegistry.test.ts</code>, <code>loaders/embeddings.test.ts</code>, <code>loaders/batchPool.test.ts</code>, <code>loaders/drugRecordBuilder.test.ts</code>, <code>loaders/drugImageVariant.test.ts</code></td>
+</tr>
+<tr>
+<td>Admin backend</td>
+<td><code>admin/adminAuth.test.ts</code>, <code>admin/adminJobs.test.ts</code>, <code>admin/adminMcp.test.ts</code>, <code>admin/mcpToolExamples.test.ts</code>, <code>admin/igDependencies.test.ts</code>, <code>admin/igOrigin.test.ts</code>, <code>admin/igRemoval.test.ts</code>, <code>admin/termViz/termViz.test.ts</code>, <code>admin/fhirServerService.test.ts</code>, <code>admin/publicToolsSecurity.test.ts</code>, <code>admin/draftTarget.test.ts</code>, <code>admin/drugAssetResponse.test.ts</code></td>
+</tr>
+<tr>
+<td>Other</td>
+<td><code>clinicalCalculators.test.ts</code>, <code>config.test.ts</code></td>
 </tr>
 </tbody>
 </table>
-<p>Coverage is currently thin — most behaviour was verified during the Python → Node migration by <strong>differential runs</strong> (feeding the same input to both implementations and comparing the output field by field) rather than being pinned down by unit tests. Please add tests alongside new functionality.</p>
+<p><code>*.qa.test.ts</code> files are QA regression tests; <code>npm test</code> runs them with the rest.</p>
+<p>Some parity tests (<code>fhirRequiredElements.test.ts</code>, <code>grounding/completeness.test.ts</code>, and others) read a fixture directory that is not in version control;
+when it is absent those cases are reported as skipped, not failed.</p>
+<p>The item-by-item comparison of the FHIR validator with the official HL7 validator_cli 7.0.1 is not part of <code>npm test</code>: it is a
+separate harness in <code>node-server/scripts/validator-audit/</code> (it needs a database with the IG packages loaded); results are in that directory's <code>REPORT.md</code>.</p>
+<p>The tests remain pure unit tests: no Postgres, Redis or MinIO is started, so write new tests against injected / faked collaborators.
+During the Python → Node migration most behaviour was verified by <strong>differential runs</strong> (feeding the same input to both implementations and comparing the output field by field); please add tests alongside new functionality.</p>
 <h2 id="writing-a-new-test">Writing a new test<a class="headerlink" href="#writing-a-new-test" title="Permanent link">&para;</a></h2>
 <p>Create <code>&lt;name&gt;.test.ts</code> next to the module under test, using Node's built-in <code>node:test</code> and <code>node:assert</code>:</p>
 <pre><code class="language-ts">import { test } from &quot;node:test&quot;;
@@ -2478,7 +2510,11 @@ curl http://localhost:8080/openapi.json
 curl -X POST http://localhost:8080/tools/search_medical_codes \
   -H 'Content-Type: application/json' \
   -d '{&quot;keyword&quot;: &quot;diabetes&quot;, &quot;limit&quot;: 3}'
+
+# Server version, build (git sha), per-tool versions and loaded terminology editions
+curl -X POST http://localhost:8080/tools/health_check -H 'Content-Type: application/json' -d '{}'
 </code></pre>
+<p>The admin console's <strong>Integrations → MCP tools</strong> page also offers a tool catalogue and a playground, which invokes tools exactly like <code>POST /tools/&lt;name&gt;</code>.</p>
 
 
 

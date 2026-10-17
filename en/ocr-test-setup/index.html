@@ -2626,7 +2626,7 @@
 
 <h1 id="ocr">OCR 測試工具設置指南<a class="headerlink" href="#ocr" title="Permanent link">&para;</a></h1>
 <h2 id="_1">概述<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
-<p>OCR 測試工具是一個集成在 Admin 控制台的浮動窗口，用於測試 MinerU OCR 功能。用戶可以：</p>
+<p>OCR 測試工具位於 Admin 控制台（web-v2）<strong>整合 → 外部服務 → OCR</strong> 分頁（<code>/admin/integrations?tab=ocr</code>），用於測試 MinerU OCR 功能。用戶可以：</p>
 <ol>
 <li><strong>上傳文件</strong> - 拖放或點擊上傳 PDF 和圖片</li>
 <li><strong>使用預加載樣本</strong> - 直接點擊使用已準備的樣本文件</li>
@@ -2672,6 +2672,13 @@
 <li>✅ 完整的錯誤處理和用戶反饋</li>
 </ul>
 <h2 id="_5">設置預加載樣本<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>
+<div class="admonition note">
+<p class="admonition-title">樣本位置</p>
+<p>樣本放在 repo 根目錄的 <code>public/samples/</code>，已內附兩個合成範例（<code>sample-drug-insert.pdf</code>、<code>sample-drug-label.png</code>，
+非真實藥品，共約 250 KB）。<code>node-server/Dockerfile</code> 會把它們複製進 <code>app</code> 映像的 <code>/app/public/samples/</code>；
+本機開發時後端直接讀 repo 根目錄的 <code>public/samples/</code>。要改用其他目錄，設定環境變數 <code>OCR_SAMPLES_DIR</code>
+（例如在 Docker 中掛載到 <code>app</code> 容器後指向該路徑）。新增或替換樣本後需重建 <code>app</code> 映像。</p>
+</div>
 <h3 id="1">步驟 1：創建樣本目錄<a class="headerlink" href="#1" title="Permanent link">&para;</a></h3>
 <pre><code class="language-bash">mkdir -p public/samples
 </code></pre>
@@ -2702,19 +2709,18 @@ docker compose up -d
 <h2 id="_6">使用流程<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h2>
 <h3 id="_7">基本測試<a class="headerlink" href="#_7" title="Permanent link">&para;</a></h3>
 <ol>
-<li>進入 Admin 控制台 → Settings → OCR Server</li>
-<li>點擊 "Test OCR" 按鈕</li>
-<li>在浮動窗口中：</li>
-<li><strong>使用樣本</strong>：在 "Sample Files" 區域點擊預加載的樣本</li>
-<li><strong>或上傳文件</strong>：拖放或點擊上傳區域選擇文件</li>
-<li>點擊 "Convert" 按鈕執行 OCR</li>
+<li>進入 Admin 控制台 → 外部服務（<code>/admin/integrations</code>）→ OCR 分頁</li>
+<li>在 OCR 測試區塊中：</li>
+<li><strong>使用樣本</strong>：切到「內建範例」點選預加載的樣本</li>
+<li><strong>或上傳文件</strong>：切到「上傳檔案」拖放或點擊選擇文件</li>
+<li>點擊「執行 OCR」</li>
 <li>查看結果：</li>
-<li><strong>OCR Markdown 標籤</strong>：原始 OCR 文本提取</li>
-<li><strong>Analysis JSON 標籤</strong>：LLM 結構化分析結果</li>
+<li><strong>預覽 / 原始 Markdown</strong>：OCR 文本提取</li>
+<li><strong>分析 LLM</strong>：結構化分析結果（未設定分析 LLM 路由時只執行 OCR）</li>
 </ol>
 <h3 id="_8">模型選擇（可選）<a class="headerlink" href="#_8" title="Permanent link">&para;</a></h3>
 <ol>
-<li>在 OCR Server 設定中找到 "Model name" 欄位</li>
+<li>在外部服務 → OCR 分頁的設定表單中找到模型名稱欄位</li>
 <li>點擊 "Load Models" 按鈕獲取 MinerU 已加載的模型列表</li>
 <li>從列表中選擇或手動輸入模型名稱</li>
 <li>點擊 "Save changes"</li>
@@ -2780,7 +2786,7 @@ file public/samples/*
 - OCR 服務器設定不正確
 - 文件格式不支持或損壞</p>
 <p><strong>解決方案：</strong>
-1. 進入 Settings → OCR Server
+1. 進入外部服務（<code>/admin/integrations</code>）→ OCR 分頁
 2. 點擊 "Test connection" 確認連接
 3. 檢查 Base URL 和其他設定
 4. 嘗試不同的文件</p>
@@ -2795,7 +2801,7 @@ file public/samples/*
 <h2 id="_12">性能注意事項<a class="headerlink" href="#_12" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong>文件大小限制</strong>：默認最大 100 MB（可在配置中調整）</li>
-<li><strong>超時設定</strong>：OCR 測試超時 600 秒（可在 Settings 中調整）</li>
+<li><strong>超時設定</strong>：OCR 測試超時 600 秒（可在外部服務 → OCR 設定中調整）</li>
 <li><strong>並發限制</strong>：單次一個測試（防止過載）</li>
 </ul>
 <h2 id="_13">安全考慮<a class="headerlink" href="#_13" title="Permanent link">&para;</a></h2>
@@ -2824,9 +2830,9 @@ interface SampleFile {
 <h2 id="_17">相關文件<a class="headerlink" href="#_17" title="Permanent link">&para;</a></h2>
 <ul>
 <li>後端樣本管理：<code>node-server/src/admin/ocrTestSamples.ts</code></li>
-<li>前端 UI 組件：<code>web/admin-app/routes/settings/OcrTestModal.tsx</code></li>
-<li>樣本文件目錄：<code>public/samples/</code></li>
-<li>API 端點：<code>node-server/src/admin/adminApp.ts</code> (第 1814-1836 行)</li>
+<li>前端 UI 組件：<code>web-v2/src/pages/integrations/OcrTestPanel.tsx</code></li>
+<li>樣本文件目錄：程式讀取 <code>node-server/public/samples/</code>（<code>ocrTestSamples.ts</code> 以 <code>dist/admin/../../public/samples</code> 解析；容器內為 <code>/app/public/samples</code>）</li>
+<li>API 端點：<code>node-server/src/admin/adminApp.ts</code>（<code>/admin/api/ocr/*</code> 區段）</li>
 </ul>
 <h2 id="_18">更新日誌<a class="headerlink" href="#_18" title="Permanent link">&para;</a></h2>
 <h3 id="v10-2026-08-01">v1.0 (2026-08-01)<a class="headerlink" href="#v10-2026-08-01" title="Permanent link">&para;</a></h3>

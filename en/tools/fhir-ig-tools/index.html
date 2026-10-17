@@ -1031,6 +1031,28 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#checking-against-the-source-record-grounding-completeness" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Checking against the source record (grounding / completeness)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tool-versions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tool versions
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -2428,6 +2450,28 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#checking-against-the-source-record-grounding-completeness" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Checking against the source record (grounding / completeness)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tool-versions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tool versions
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -2450,10 +2494,24 @@
 
 <h1 id="fhir-ig-tools">FHIR IG Tools<a class="headerlink" href="#fhir-ig-tools" title="Permanent link">&para;</a></h1>
 <p>A general, IG-scoped toolset built on the multi-IG <code>fhir.*</code> store, used to explore Implementation Guides, read profiles and terminology, perform terminology validation, and produce and validate FHIR R4 resources through skeleton-fill authoring.</p>
+<blockquote>
+<p><strong>Maintenance mode</strong>: while the admin console has the <code>ig</code> module in maintenance mode, all 22 tools of this group (including <code>fhir_check_grounding</code> / <code>fhir_check_completeness</code>) calls return an <code>isError</code> result immediately with error code <code>MODULE_MAINTENANCE</code> (<code>error.message</code> in English, <code>error.message_zh</code> in Traditional Chinese, <code>error.module</code> the module key), effective within about 5 seconds; the tools stay in <code>tools/list</code>. See the <a href="../../api/#maintenance">API reference</a>.</p>
+</blockquote>
 <h2 id="shared-conventions">Shared conventions<a class="headerlink" href="#shared-conventions" title="Permanent link">&para;</a></h2>
 <ul>
-<li>Every tool accepts an optional <code>package_id</code> + <code>version</code>; omitting both pins it to the <strong>default IG</strong> (<code>isDefault</code>).</li>
-<li>Responses use a shared envelope: <code>{ok, data, warnings, provenance, error?}</code>.</li>
+<li>Every tool accepts an optional <code>package_id</code> + <code>version</code>. When <code>package_id</code> is omitted, the target package is chosen by this precedence, and <code>provenance.resolved_by</code> says which rule applied:<ol>
+<li><code>explicit_version</code> — a canonical argument or <code>meta.profile</code> pinned as <code>url|version</code> → the package holding that version;</li>
+<li><code>package_arg</code> / <code>latest</code> — <code>package_id</code> was given (with <code>version</code>, that version; without it, the default IG's version, else the highest release — pre-releases only when no release exists);</li>
+<li><code>meta_profile</code> / <code>canonical_owner</code> — the package that owns the <code>meta.profile</code> or the canonical argument (profile / ValueSet / system), manually-installed IGs first;</li>
+<li><code>default_ig</code> — the default IG (<code>isDefault</code>);</li>
+<li><code>sole_manual_ig</code> — no default IG and exactly one manually-installed IG.
+If none applies the call fails with <code>NO_DEFAULT_IG</code> (no arbitrary package is picked).</li>
+</ol>
+</li>
+<li>A <code>|version</code> is always honoured: a version that is not installed returns <code>ARTIFACT_NOT_FOUND</code> (the message lists the installed versions) — never a silent fallback to another version.</li>
+<li>Responses use a shared envelope: <code>{ok, data, warnings, provenance, error?}</code>. <code>provenance</code> carries <code>packageId</code> / <code>version</code> / <code>fhirVersion</code> / <code>source</code> plus <code>resolved_by</code>; when the dependency closure holds several versions of one package it also carries <code>closure_versions</code> (which version canonical lookups use).</li>
+<li>When declared dependencies of the target IG are not installed, <code>data.deps_missing</code> lists them as <code>{package_id, version, required_by}</code> (incomplete closure — results may be missing content).</li>
+<li>List / search tools (<code>fhir_list_artifacts</code>, <code>fhir_search_artifacts</code>, <code>fhir_list_resource_profiles</code>) query only the default IG when <code>package_id</code> is omitted; <code>all_packages=true</code> queries every installed package instead (rows carry <code>package_id</code> / <code>package_version</code>; <code>package_id</code> is then ignored). Zero hits come with <code>data.hint</code> naming the other packages that match.</li>
 <li>For the module concepts and the suggested workflow, see <a href="../../modules/fhir-ig-service/">FHIR IG Service</a>.</li>
 </ul>
 <h2 id="ig-discovery">IG discovery<a class="headerlink" href="#ig-discovery" title="Permanent link">&para;</a></h2>
@@ -2468,23 +2526,23 @@
 <tbody>
 <tr>
 <td style="text-align: left;"><code>fhir_list_igs</code></td>
-<td style="text-align: left;">List installed IG packages (packageId / version / title / canonical / fhirVersion / status / isDefault / dependencies)</td>
+<td style="text-align: left;">List installed IG packages (packageId / version / title / canonical / fhirVersion / status / isDefault / <code>installOrigin</code> (<code>manual</code> = installed by an operator, <code>dependency</code> = fetched for another IG's dependencies) / dependencies)</td>
 <td style="text-align: left;">—</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_get_ig</code></td>
-<td style="text-align: left;">Details for a single IG plus artifact counts per resource type</td>
+<td style="text-align: left;">Details for a single IG: dependencies and artifact counts per resource type; <code>data.deps_missing</code> lists uninstalled dependencies</td>
 <td style="text-align: left;"><code>package_id</code>, <code>version</code></td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_list_artifacts</code></td>
 <td style="text-align: left;">List a summary of the IG's conformance artifacts</td>
-<td style="text-align: left;"><code>resource_type</code>, <code>grouping_id</code>, <code>limit</code> (50 by default, 200 maximum)</td>
+<td style="text-align: left;"><code>resource_type</code>, <code>grouping_id</code>, <code>all_packages</code>, <code>limit</code> (50 by default, 200 maximum)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_search_artifacts</code></td>
 <td style="text-align: left;">Full-text search over artifacts by id / canonical / name / title / description</td>
-<td style="text-align: left;"><code>keyword</code>, <code>resource_type</code>, <code>limit</code> (20 by default, 100 maximum)</td>
+<td style="text-align: left;"><code>keyword</code>, <code>resource_type</code>, <code>all_packages</code>, <code>limit</code> (20 by default, 100 maximum)</td>
 </tr>
 </tbody>
 </table>
@@ -2501,7 +2559,7 @@
 <tr>
 <td style="text-align: left;"><code>fhir_list_resource_profiles</code></td>
 <td style="text-align: left;">List selectable resource profiles, grouped by the base resource type they constrain</td>
-<td style="text-align: left;"><code>base_type</code></td>
+<td style="text-align: left;"><code>base_type</code>, <code>all_packages</code></td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_rank_resource_profiles</code></td>
@@ -2510,13 +2568,18 @@
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_get_profile</code></td>
-<td style="text-align: left;">Summary of a single profile (identity / base / derivation / element count), resolvable by id, canonical, or key</td>
+<td style="text-align: left;">Summary of a single profile (identity / base / derivation / element count), resolvable by id, canonical, or key; a canonical may be pinned as <code>url|version</code> (an uninstalled version is <code>ARTIFACT_NOT_FOUND</code>)</td>
 <td style="text-align: left;"><code>identifier</code></td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_get_profile_elements</code></td>
 <td style="text-align: left;">Read the profile snapshot; <code>view</code> = <code>elements</code> / <code>element</code> / <code>slices</code> / <code>choices</code> / <code>binding</code> / <code>examples</code></td>
 <td style="text-align: left;"><code>profile</code>, <code>view</code>, <code>path</code>, <code>slice_name</code>, <code>limit</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>fhir_get_profile_required_elements</code></td>
+<td style="text-align: left;">List the elements a profile <em>effectively</em> requires: required only when the whole parent chain is required, required slices, choice types, invariant-implied value[x]-or-dataAbsentReason (vs-2 / vs-3 / tw-core-4 style, detected from the expression), and target-implied primary content; each row carries <code>grounding_class</code> (auto / coding / source_fact / workflow_default …), <code>required_by</code>, <code>allowedCodes</code> for small required bindings and a fill <code>hint</code>. Profiled extensions are expanded from their definitions (url, value[x] via ext-1, required sub-extensions), base-datatype children of populated elements are added (Narrative.div, Extension.url …), and profile-specific error invariants are listed under <code>invariants</code>. With <code>instance</code>, slices are matched by their discriminators, so absent slices add nothing</td>
+<td style="text-align: left;"><code>profile</code>, <code>instance</code> (draft: populated optional parents add their required children), <code>include_target_implied</code> (<code>true</code> by default), <code>include_mustsupport</code> (<code>false</code> by default), <code>verbosity</code> (<code>compact</code> by default: id / required_by / grounding_class / fixed·pattern·value / choices / allowedCodes / hint, profile-pinned subtrees folded into one copyable <code>value</code>; <code>full</code> adds min / max / types / binding / mustSupport)</td>
 </tr>
 </tbody>
 </table>
@@ -2537,8 +2600,8 @@
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_expand_valueset</code></td>
-<td style="text-align: left;">Expand a ValueSet and list its member codes</td>
-<td style="text-align: left;"><code>identifier</code>, <code>limit</code></td>
+<td style="text-align: left;">Expand a ValueSet and list its member codes (resolved locally where possible; whole large external code systems are not enumerated — <code>TOO_BROAD</code>)</td>
+<td style="text-align: left;"><code>identifier</code>, <code>limit</code> (500 by default, 2000 maximum)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_lookup_code</code></td>
@@ -2547,7 +2610,7 @@
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_validate_code</code></td>
-<td style="text-align: left;">Validate whether a <code>system</code>+<code>code</code> belongs to a given ValueSet</td>
+<td style="text-align: left;">Validate whether a <code>system</code>+<code>code</code> belongs to a given ValueSet; returns <code>valid</code> / <code>invalid</code> / <code>unverifiable</code>; <code>value_set</code> may be pinned as <code>url|version</code></td>
 <td style="text-align: left;"><code>system</code>, <code>code</code>, <code>value_set</code></td>
 </tr>
 <tr>
@@ -2569,7 +2632,7 @@
 <tbody>
 <tr>
 <td style="text-align: left;"><code>fhir_get_resource_skeleton</code></td>
-<td style="text-align: left;">Generate an empty draft from a profile containing only required / mustSupport structure</td>
+<td style="text-align: left;">Generate an empty draft from a profile containing only required / mustSupport structure; <code>required</code> is the element's own min≥1, <code>effectiveRequired</code> also requires every ancestor to be required</td>
 <td style="text-align: left;"><code>profile</code>, <code>candidate_limit</code> (20 by default, capped at 100), <code>include_examples</code> (<code>true</code> by default)</td>
 </tr>
 <tr>
@@ -2589,19 +2652,118 @@
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_validate_resource</code></td>
-<td style="text-align: left;">Validate a single resource (structure + terminology bindings); falls back to <code>meta.profile</code> when <code>profile</code> is omitted</td>
-<td style="text-align: left;"><code>resource</code>, <code>profile</code></td>
+<td style="text-align: left;">Validate a single resource (structure + terminology bindings); falls back to <code>meta.profile</code> when <code>profile</code> is omitted. An optional <code>source_text</code> adds a grounding check (see below)</td>
+<td style="text-align: left;"><code>resource</code>, <code>profile</code>, <code>source_text</code>, <code>site_config</code>, <code>evidence_map</code>, <code>grounding</code>, <code>grounding_verbosity</code></td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_validate_bundle</code></td>
-<td style="text-align: left;">Validate an entire Bundle</td>
-<td style="text-align: left;"><code>bundle</code></td>
+<td style="text-align: left;">Validate an entire Bundle (each entry against its <code>meta.profile</code>, plus reference integrity inside the Bundle). An optional <code>source_text</code> adds a grounding check and merges the results (see below)</td>
+<td style="text-align: left;"><code>bundle</code>, <code>source_text</code>, <code>site_config</code>, <code>evidence_map</code>, <code>grounding</code>, <code>grounding_verbosity</code></td>
 </tr>
 </tbody>
 </table>
+<p><code>fhir_validate_resource</code> / <code>fhir_validate_bundle</code> also report whether validation was complete: <code>checked_fully</code> (<code>true</code> when every profile and ValueSet was checked and the dependency closure is complete), <code>profiles_unchecked</code>, <code>valuesets_unchecked</code>. <code>valid</code> keeps HL7 semantics (an unresolvable profile is only a warning), so <code>valid: true</code> with <code>checked_fully: false</code> means part of the content was not checked. <code>|version</code> canonicals (<code>meta.profile</code>, binding, targetProfile, type profile, extension url) are resolved like HL7 validator_cli 7.0.1.</p>
 <blockquote>
-<p>In-process validation is based on profile snapshots and terminology bindings. It is not equivalent to conformance certification by the official HL7 FHIR Validator.</p>
+<p>In-process validation is based on profile snapshots and terminology bindings, benchmarked against HL7 validator_cli 7.0.1 (method and results in <code>node-server/scripts/validator-audit/</code>). It is not equivalent to conformance certification by the official HL7 FHIR Validator.</p>
 </blockquote>
+<h2 id="checking-against-the-source-record-grounding-completeness">Checking against the source record (grounding / completeness)<a class="headerlink" href="#checking-against-the-source-record-grounding-completeness" title="Permanent link">&para;</a></h2>
+<p>Conformance-valid is not the same as faithful: a model can fill in a diagnosis code, date or dose the record never states, and the validator still passes.
+These tools compare a Bundle with the clinical record using <strong>deterministic rules</strong> (no LLM, no embeddings, no randomness). Code names are looked up in the local database only (ICD-10-CM / PCS, LOINC, SNOMED CT, RxNorm, CVX, IG CodeSystems); no external terminology server is called.</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Tool</th>
+<th style="text-align: left;">Description</th>
+<th style="text-align: left;">Key parameters</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>fhir_check_grounding</code></td>
+<td style="text-align: left;">Check that every clinical fact and code in a Bundle is supported by record text (evidence map or auto-locate), with date / number / unit / ID number / dose / frequency normalisation and section, negation and history rules. The output has the <code>fhir_validate_bundle</code> shape (<code>entries[].issues</code>, <code>issues</code>) plus a <code>grounding</code> summary (units_checked, coverage …)</td>
+<td style="text-align: left;"><code>bundle</code>, <code>source_text</code> (required), <code>site_config</code>, <code>evidence_map</code>, <code>mode</code>, <code>verbosity</code> (<code>warnings</code> by default), <code>policy</code>, <code>instruction_markers</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>fhir_check_completeness</code></td>
+<td style="text-align: left;">Gap report: for caller-supplied structured <code>targets</code> (resourceType, item, aliases, codes, date rule), decide whether the record states each required fact; returns found / missing / stated_absent / unknown, the missing list, a template follow-up question and a ready <code>abstention</code> object (insufficient_information)</td>
+<td style="text-align: left;"><code>targets</code>, <code>source_text</code> (required), <code>site_config</code>, <code>extracted_facts</code> (facts the model claims; verified, not trusted), <code>instruction_markers</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Modes</strong> (<code>fhir_check_grounding.mode</code>; <code>grounding</code> on <code>fhir_validate_*</code>)</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Mode</th>
+<th style="text-align: left;">Elements with evidence</th>
+<th style="text-align: left;">Elements without evidence</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>strict</code></td>
+<td style="text-align: left;">The quote is verified (must occur verbatim in the record, value matches, section and context are right)</td>
+<td style="text-align: left;">error <code>G-UNGROUNDED</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>auto</code></td>
+<td style="text-align: left;">Same</td>
+<td style="text-align: left;">The tool locates supporting record text itself: information <code>G-AUTO-LOCATED</code> when found, an error when not found or found only in the wrong context</td>
+</tr>
+</tbody>
+</table>
+<p>Default: <code>strict</code> when an <code>evidence_map</code> is given, otherwise <code>auto</code>. <code>evidence_map</code> is <code>[{path, quote}]</code> or <code>{path: quote}</code>; a path may be <code>Bundle.entry[2].resource.code</code>, <code>entry[2].code</code>, <code>&lt;fullUrl&gt;|code</code>, omit list indices, or use <code>value[x]</code>.
+Every issue carries <code>rule</code> and <code>source:"grounding"</code>, and its <code>message</code> starts with <code>[grounding:&lt;RULE&gt;]</code>. Instruction lines such as <code>【轉換目標】</code> (<code>instruction_markers</code>) never count as evidence; <code>site_config</code> can only support <code>identifier.system</code>.</p>
+<p><strong>Grounding parameters of <code>fhir_validate_bundle</code> / <code>fhir_validate_resource</code></strong> (backward compatible)</p>
+<ul>
+<li>No <code>source_text</code>, or <code>grounding="off"</code>: the output is <strong>byte-identical</strong> to the pre-extension version.</li>
+<li>With <code>source_text</code>: the conformance check runs first, then grounding, and the results are merged:
+  <code>data.conformanceValid</code> (the original <code>valid</code>), <code>data.groundingValid</code>, <code>data.valid = conformanceValid ∧ groundingValid</code>,
+  grounding issues appended per entry to <code>entries[i].issues</code> (Bundle-level ones to <code>issues</code>), <code>entries[i].valid</code> updated,
+  the <code>data.grounding</code> summary, <code>data.source = "builtin+grounding"</code> and <code>provenance.groundingVersion</code>.</li>
+<li>Callers should check for <code>data.groundingValid</code> in the response; if it is absent the server does not support grounding and the result must not be treated as checked.</li>
+<li><code>fhir_validate_resource</code> checks the resource as the only entry of a Bundle and reports issue paths rooted at the resource (e.g. <code>Condition.code</code>); references cannot be followed, so rules that need other resources see no context.</li>
+</ul>
+<p><strong>Versions and privacy</strong></p>
+<ul>
+<li><code>provenance</code> carries <code>tool</code>, <code>toolVersion</code>, <code>lexiconVersion</code> / <code>lexiconSha256</code>, <code>terminologyVersion</code> and <code>sourceSha256</code> (first 16 hex chars of the record's SHA-256). <code>health_check</code> reports <code>tools_version</code>, <code>lexicon_version</code> and <code>lexicon_sha256</code>.</li>
+<li>The record text (<code>source_text</code>) and the site configuration are never written to logs, metric labels or provenance — only <code>sourceSha256</code>; malformed JSON request bodies are not logged either.</li>
+</ul>
+<blockquote>
+<p>The rules and the lexicon (<code>tw-lexicon</code>) follow Taiwanese clinical writing; <code>fhir_check_completeness</code> needs the caller to read the conversion target and pass <code>targets</code> — it does not parse natural-language targets. Results support review; they do not replace a clinician.</p>
+</blockquote>
+<h2 id="tool-versions">Tool versions<a class="headerlink" href="#tool-versions" title="Permanent link">&para;</a></h2>
+<p>Tools whose behaviour is pinned by fixtures carry their own version (<code>node-server/src/toolVersions.ts</code>), bumped whenever their output for the same input changes. <code>health_check</code> reports the current values under <code>tools_version</code>; every other tool uses the server version (<code>version</code>, currently <code>1.1.0</code>).</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Tool</th>
+<th style="text-align: left;">Version</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>fhir_validate_resource</code>, <code>fhir_validate_bundle</code></td>
+<td style="text-align: left;">1.4.0</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>fhir_get_profile_required_elements</code></td>
+<td style="text-align: left;">1.2.0</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>fhir_list_igs</code>, <code>fhir_get_ig</code>, <code>fhir_list_artifacts</code>, <code>fhir_search_artifacts</code>, <code>fhir_list_resource_profiles</code>, <code>fhir_rank_resource_profiles</code>, <code>fhir_get_profile</code>, <code>fhir_get_profile_elements</code>, <code>fhir_get_valueset</code>, <code>fhir_expand_valueset</code>, <code>fhir_lookup_code</code>, <code>fhir_validate_code</code>, <code>fhir_normalize_code</code>, <code>fhir_get_resource_skeleton</code>, <code>fhir_finalize_resource</code></td>
+<td style="text-align: left;">1.2.0</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>fhir_check_grounding</code></td>
+<td style="text-align: left;">1.1.0</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>fhir_check_completeness</code></td>
+<td style="text-align: left;">1.1.1</td>
+</tr>
+</tbody>
+</table>
 
 
 

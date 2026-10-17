@@ -1607,6 +1607,28 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#maintenance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        維護模式
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#health_checksystem" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        health_check（System 群組）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#rest-api" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2396,6 +2418,28 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#maintenance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        維護模式
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#health_checksystem" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        health_check（System 群組）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#rest-api" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2510,7 +2554,8 @@
 <code>PUBLIC_TOOLS_CORS_ORIGINS</code> 明列 origin。<code>none</code> 僅適合受信任的本機或私有網路。</p>
 <blockquote>
 <p>後端另有一個 <code>/health</code> 端點，但 nginx 不會轉送它（從前門存取會得到 404）。要從前門確認 <code>app</code>
-是否存活，請改打 <code>/openapi.json</code>。各模組的資料筆數請看管理後台 Overview 分頁。</p>
+是否存活，請改打 <code>/openapi.json</code>。各模組的資料筆數請看管理後台儀表板；<code>health_check</code>（<code>POST /tools/health_check</code>）
+也會回報模組狀態、伺服器版本、build sha 與已載入的術語版本。</p>
 </blockquote>
 <h2 id="openapi-bridge">OpenAPI bridge<a class="headerlink" href="#openapi-bridge" title="Permanent link">&para;</a></h2>
 <p>給不支援原生 MCP、只能接 OpenAPI 工具伺服器的客戶端使用（例如 Open WebUI 的 External Tools）。</p>
@@ -2523,13 +2568,84 @@ curl -X POST http://localhost:8080/tools/search_medical_codes \
   -H 'Content-Type: application/json' \
   -d '{&quot;keyword&quot;: &quot;diabetes&quot;, &quot;limit&quot;: 3}'
 </code></pre>
-<p>工具清單會隨各模組的資料載入狀態動態增減（見 <code>moduleStatus.ts</code> 的 <code>SERVICE_MODULES</code> 門檻），
-因此 <code>/openapi.json</code> 的內容會依部署的資料狀態而不同。</p>
+<p>工具清單會隨各模組的資料載入狀態動態增減（門檻為 <code>moduleStatus.ts</code> 的 <code>REQUIREMENTS</code>，以 <code>MODULE_REQUIREMENTS</code> 匯出），
+因此 <code>/openapi.json</code> 的內容會依部署的資料狀態而不同。<code>mcp.ts</code> 共定義 <strong>63 個工具</strong>、12 個群組；其中 FHIR Servers、
+Clinical Calculators 與 System 三組（15 個工具）永遠註冊。管理後台的 <strong>MCP 工具</strong>頁（<code>/admin/mcp</code>）會列出完整目錄、
+每個未註冊工具缺少的條件，並提供可直接呼叫已註冊工具的 playground。</p>
 <p>工具已註冊只代表必要的來源資料存在，<strong>不代表 semantic embedding 已完整回填</strong>。
-向量不完整時，相關搜尋會退回或混用 keyword/BM25。請在 Admin → Modules 查看每個模組的
-Embeddings 計數，並執行或排程對應的 <code>*_embed</code> 工作。</p>
+向量不完整時，相關搜尋會退回或混用 keyword/BM25。請在管理後台各模組頁面查看嵌入計數，
+並執行或排程對應的 <code>*_embed</code> 工作。</p>
+<h2 id="maintenance">維護模式<a class="headerlink" href="#maintenance" title="Permanent link">&para;</a></h2>
+<p>管理後台可把 <code>icd</code>、<code>loinc</code>、<code>drug</code>、<code>snomed</code>、<code>ig</code>、<code>rxnorm</code> 模組切到維護模式（<code>POST /admin/api/module-maintenance</code>）。
+維護中的模組，其工具呼叫（<code>/mcp</code>、<code>POST /tools/&lt;name&gt;</code> 與後台 playground 都一樣）會在執行前立即回傳 <code>isError</code> 結果：</p>
+<pre><code class="language-json">{&quot;ok&quot;: false, &quot;data&quot;: null, &quot;warnings&quot;: [],
+ &quot;error&quot;: {&quot;code&quot;: &quot;MODULE_MAINTENANCE&quot;, &quot;module&quot;: &quot;loinc&quot;, &quot;tool&quot;: &quot;query_loinc&quot;, &quot;retryable&quot;: true,
+           &quot;message&quot;: &quot;Module 'loinc' is under maintenance (data is being updated); query_loinc is temporarily unavailable. Retry later.&quot;,
+           &quot;message_zh&quot;: &quot;模組「loinc」維護中（資料更新中），query_loinc 暫時無法使用，請稍後再試。&quot;}}
+</code></pre>
+<p><code>POST /tools/&lt;name&gt;</code> 以 HTTP 200 回傳上述 JSON（與其他工具錯誤一致）。對應關係：ICD-10 與 FHIR Condition → <code>icd</code>；
+Drug / TFDA 與 FHIR Medication → <code>drug</code>；Lab / LOINC → <code>loinc</code>；SNOMED CT → <code>snomed</code>；FHIR IG（含 grounding / completeness）→ <code>ig</code>。
+<code>rxnorm</code> 沒有自己的工具群組，維護旗標不影響任何工具；健康食品、食品營養、FHIR Servers、Clinical Calculators 與 System
+不受維護模式影響。為了避免用戶端工具清單反覆變動，維護中的工具<strong>仍留在 <code>tools/list</code> / <code>/openapi.json</code></strong>。狀態有 5 秒快取，
+切換後最多約 5 秒生效；讀取狀態失敗時放行（fail-open）。</p>
+<h2 id="health_checksystem"><code>health_check</code>（System 群組）<a class="headerlink" href="#health_checksystem" title="Permanent link">&para;</a></h2>
+<p>永遠註冊、不需參數。建議在任何工作流程開始前先呼叫，確認需要的模組已上線。回傳 JSON：</p>
+<table>
+<thead>
+<tr>
+<th>欄位</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>status</code></td>
+<td>資料庫可用時為 <code>ok</code>，否則 <code>degraded</code></td>
+</tr>
+<tr>
+<td><code>database</code> / <code>cache</code></td>
+<td><code>ok</code> / <code>error</code>（Postgres 查詢、Redis ping）</td>
+</tr>
+<tr>
+<td><code>db_health</code></td>
+<td>資料庫健康監視器快照（<code>state</code>、<code>healthy</code>、<code>since</code>、<code>last_ok_at</code>、<code>last_error</code> …）</td>
+</tr>
+<tr>
+<td><code>services</code></td>
+<td>各模組是否達到註冊門檻：<code>icd</code>、<code>drug</code>、<code>health_supplements</code>、<code>food_nutrition</code>、<code>fhir_condition</code>、<code>fhir_medication</code>、<code>lab</code>、<code>ig</code>、<code>snomed</code></td>
+</tr>
+<tr>
+<td><code>version</code></td>
+<td>伺服器版本（<code>toolVersions.ts</code> 的 <code>SERVER_VERSION</code>，目前 <code>1.1.0</code>），與 MCP <code>initialize</code> 的 <code>serverInfo.version</code> 相同</td>
+</tr>
+<tr>
+<td><code>build</code></td>
+<td>映像建置時的 git sha（<code>BUILD_SHA</code> build arg），未設定時為 <code>dev</code></td>
+</tr>
+<tr>
+<td><code>tools_version</code></td>
+<td>有獨立版本的工具及其版本（見 <a href="../tools/fhir-ig-tools/#tool-versions">FHIR IG 工具 → 工具版本</a>）</td>
+</tr>
+<tr>
+<td><code>lexicon_version</code> / <code>lexicon_sha256</code></td>
+<td>grounding 使用的台灣病歷詞彙表版本與雜湊</td>
+</tr>
+<tr>
+<td><code>terminology</code></td>
+<td>已載入的術語版本，例如 <code>icd10cm</code>（<code>2026-04-01</code>）、<code>icd10</code>（WHO ICD-10，選用）、<code>loinc</code>（<code>2.80</code>）、<code>snomed</code>（<code>&lt;module&gt;/&lt;YYYYMMDD&gt;</code>）；來自 <code>icd.editions</code>、<code>loinc.editions</code>、<code>snomed.editions</code></td>
+</tr>
+<tr>
+<td><code>ig_packages</code></td>
+<td>已安裝的 IG 套件（<code>package_id#version</code>），預設 IG 排第一</td>
+</tr>
+<tr>
+<td><code>default_ig</code></td>
+<td>預設 IG（<code>package_id#version</code>），未設定時為 <code>null</code></td>
+</tr>
+</tbody>
+</table>
 <h2 id="rest-api">管理後台 REST API<a class="headerlink" href="#rest-api" title="Permanent link">&para;</a></h2>
-<p>所有路徑以 <code>/admin/api/</code> 開頭，需帶 <code>tw_health_admin_session</code> cookie。主要端點：</p>
+<p>所有路徑以 <code>/admin/api/</code> 開頭，需帶 session cookie（預設名稱 <code>tw_health_admin_session</code>，可由 <code>ADMIN_SESSION_COOKIE</code> 改名）。主要端點：</p>
 <table>
 <thead>
 <tr>
@@ -2540,7 +2656,7 @@ Embeddings 計數，並執行或排程對應的 <code>*_embed</code> 工作。</
 <tbody>
 <tr>
 <td>認證</td>
-<td><code>POST /admin/api/login</code>、<code>POST /admin/api/logout</code>、<code>/admin/api/passkeys/*</code>、<code>POST /admin/api/privacy/password</code></td>
+<td><code>POST /admin/api/login</code>、<code>POST /admin/api/logout</code>、<code>GET /admin/api/me</code>、<code>/admin/api/passkeys/*</code>（含 <code>login/options</code>、<code>login/verify</code>、<code>register/options</code>、<code>register/verify</code>）、<code>POST /admin/api/privacy/password</code></td>
 </tr>
 <tr>
 <td>總覽與健康</td>
@@ -2548,15 +2664,27 @@ Embeddings 計數，並執行或排程對應的 <code>*_embed</code> 工作。</
 </tr>
 <tr>
 <td>模組與來源</td>
-<td><code>GET /admin/api/modules</code>、<code>POST /admin/api/uploads</code>、<code>/admin/api/module-sources/{activate,deactivate,delete}</code>、<code>POST /admin/api/module-maintenance</code></td>
+<td><code>GET /admin/api/modules</code>、<code>GET|POST /admin/api/modules/{key}/clear</code>、<code>GET /admin/api/modules/{key}/versions</code>、<code>GET /admin/api/modules/{key}/preview</code>、<code>POST /admin/api/modules/{key}/schedule/trigger</code>、<code>POST /admin/api/uploads</code>、<code>POST /admin/api/module-sources/{activate,deactivate,delete}</code>、<code>POST /admin/api/module-maintenance</code></td>
 </tr>
 <tr>
 <td>工作</td>
-<td><code>GET|POST /admin/api/jobs</code>（建立、查詢、暫停 / 取消）</td>
+<td><code>GET|POST /admin/api/jobs</code>、<code>GET /admin/api/jobs/{id}</code>、<code>GET /admin/api/jobs/{id}/{steps,logs}</code>、<code>POST /admin/api/jobs/{id}/{pause,resume,stop,restart}</code></td>
 </tr>
 <tr>
 <td>設定</td>
-<td><code>GET|POST /admin/api/settings</code>、<code>GET /admin/api/settings/export</code>、<code>POST /admin/api/settings/import</code>、<code>/admin/api/llm-profiles/*</code></td>
+<td><code>GET /admin/api/settings</code>、<code>POST /admin/api/settings/{group}[/{action}]</code>、<code>GET /admin/api/settings/export</code>、<code>POST /admin/api/settings/import</code>（匯出格式 v3；v1 / v2 檔案仍可匯入）</td>
+</tr>
+<tr>
+<td>模型端點</td>
+<td><code>GET /admin/api/llm-providers</code>（provider adapter 目錄）；<code>/admin/api/llm/accounts[/{id}][/models]</code>、<code>POST /admin/api/llm/accounts/test</code>、<code>POST /admin/api/llm/models/test</code>、<code>/admin/api/llm/routes[/{id}][/test]</code>、<code>PUT /admin/api/llm/roles</code>、<code>POST /admin/api/llm/oauth/chatgpt/{start,complete}</code></td>
+</tr>
+<tr>
+<td>MCP 工具</td>
+<td><code>GET /admin/api/mcp/overview</code>、<code>GET /admin/api/mcp/tools</code>、<code>POST /admin/api/mcp/tools/{name}/invoke</code></td>
+</tr>
+<tr>
+<td>術語瀏覽（唯讀）</td>
+<td><code>GET /admin/api/terminology/icd/{cm,who}/{children,path,search}</code>、<code>GET /admin/api/terminology/icd/pcs/{browse,table,codes,code,search}</code>、<code>GET /admin/api/terminology/snomed/{concept,children,search}</code>、<code>GET /admin/api/terminology/loinc/{facets,facet-values,term,code}</code>、<code>GET /admin/api/terminology/rxnorm/{summary,search,concept}</code>、<code>GET /admin/api/terminology/ig/{codesystems,codesystem,codesystem/children,codesystem/search}</code></td>
 </tr>
 <tr>
 <td>備份</td>
@@ -2572,15 +2700,15 @@ Embeddings 計數，並執行或排程對應的 <code>*_embed</code> 工作。</
 </tr>
 <tr>
 <td>OCR</td>
-<td><code>GET /admin/api/ocr/samples</code>、<code>POST /admin/api/ocr/test</code></td>
+<td><code>GET /admin/api/ocr/samples[/{id}]</code>、<code>POST /admin/api/ocr/test</code></td>
 </tr>
 <tr>
 <td>FHIR 伺服器</td>
-<td><code>GET|POST /admin/api/fhir-servers</code>、<code>/admin/api/fhir-servers/{discover,test,test-request,generate-key,export}</code></td>
+<td><code>GET|POST /admin/api/fhir-servers</code>、<code>/admin/api/fhir-servers/{discover,test,test-request,generate-key,export}</code>、<code>POST /admin/api/fhir-servers/{id}/{probe,set-default}</code>、<code>POST /admin/api/fhir-servers/{id}/oauth/{authorize,refresh,clear-cache}</code></td>
 </tr>
 <tr>
 <td>IG</td>
-<td><code>GET /admin/api/igs</code>、<code>POST /admin/api/igs/import</code>、<code>GET /admin/api/registry/search</code></td>
+<td><code>GET /admin/api/igs</code>、<code>GET|DELETE /admin/api/igs/{package_id}/{version}</code>、<code>GET /admin/api/igs/{package_id}/{version}/removal-impact</code>、<code>POST /admin/api/igs/{package_id}/{version}/{default,fill-dependencies}</code>、<code>POST /admin/api/igs/import</code>、<code>POST /admin/api/igs/inspect-upload</code>、<code>GET /admin/api/igs/dependencies</code>、<code>POST /admin/api/igs/dependencies/{download,download-all}</code>、<code>GET /admin/api/igs/unused-dependencies</code>、<code>POST /admin/api/igs/unused-dependencies/remove</code>、<code>GET /admin/api/registry/search</code></td>
 </tr>
 <tr>
 <td>嵌入</td>
@@ -2589,7 +2717,8 @@ Embeddings 計數，並執行或排程對應的 <code>*_embed</code> 工作。</
 </tbody>
 </table>
 <h2 id="typescript">服務層（TypeScript）<a class="headerlink" href="#typescript" title="Permanent link">&para;</a></h2>
-<p>各領域服務位於 <code>node-server/src/</code>，建構子接收 <code>pg.Pool</code>，並提供 <code>async initialize()</code>：</p>
+<p>各領域服務位於 <code>node-server/src/</code>，皆提供 <code>async initialize()</code>。資料庫存取經由 <code>db.ts</code> 的共用 <code>pg</code> 連線池（不是建構子參數），
+需要搜尋的服務在建構子接收共用的 <code>EmbeddingService</code>。<code>mcp.ts</code> 以延遲建立的單例使用它們；某個服務初始化失敗只會讓它自己的工具消失。</p>
 <table>
 <thead>
 <tr>
@@ -2600,7 +2729,7 @@ Embeddings 計數，並執行或排程對應的 <code>*_embed</code> 工作。</
 </thead>
 <tbody>
 <tr>
-<td><code>ICDService</code></td>
+<td><code>IcdService</code></td>
 <td><code>icdService.ts</code></td>
 <td><code>icd.*</code></td>
 </tr>
@@ -2615,12 +2744,12 @@ Embeddings 計數，並執行或排程對應的 <code>*_embed</code> 工作。</
 <td><code>drug.insert_analysis</code>（含 MinerU OCR 與分析 LLM 呼叫）</td>
 </tr>
 <tr>
-<td><code>SupplementsService</code></td>
+<td><code>HealthSupplementsService</code></td>
 <td><code>supplementsService.ts</code></td>
 <td><code>health_supplements.*</code></td>
 </tr>
 <tr>
-<td><code>FoodService</code></td>
+<td><code>FoodNutritionService</code></td>
 <td><code>foodService.ts</code></td>
 <td><code>food_nutrition.*</code></td>
 </tr>
@@ -2630,22 +2759,22 @@ Embeddings 計數，並執行或排程對應的 <code>*_embed</code> 工作。</
 <td><code>loinc.*</code></td>
 </tr>
 <tr>
-<td><code>FhirConditionService</code></td>
+<td><code>FHIRConditionService</code></td>
 <td><code>fhirConditionService.ts</code></td>
 <td>讀取 <code>icd.*</code></td>
 </tr>
 <tr>
-<td><code>FhirMedicationService</code></td>
+<td><code>FHIRMedicationService</code></td>
 <td><code>fhirMedicationService.ts</code></td>
-<td>讀取 drug 服務</td>
+<td>讀取 <code>drug.*</code></td>
 </tr>
 <tr>
-<td><code>FhirIgService</code></td>
+<td><code>FHIRIGService</code></td>
 <td><code>fhirIgService.ts</code></td>
 <td><code>fhir.*</code>（多 IG）</td>
 </tr>
 <tr>
-<td><code>FhirServerService</code></td>
+<td><code>FHIRServerService</code></td>
 <td><code>fhirServerService.ts</code></td>
 <td><code>admin.fhir_servers</code></td>
 </tr>
@@ -2657,7 +2786,7 @@ Embeddings 計數，並執行或排程對應的 <code>*_embed</code> 工作。</
 <tr>
 <td><code>EmbeddingService</code></td>
 <td><code>embeddingService.ts</code></td>
-<td>外部嵌入端點（設定存於 <code>admin.llm_profiles</code>）</td>
+<td>外部嵌入端點——指派給 <code>embedding</code> 角色的路由（<code>admin.llm_routes</code> / <code>admin.llm_role_routes</code>，底層帳號在 <code>admin.llm_providers</code>）</td>
 </tr>
 <tr>
 <td>MinIO helper</td>

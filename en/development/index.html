@@ -2540,8 +2540,28 @@
 <td>Per-module loaders (<code>icd.ts</code>, <code>loinc.ts</code>, <code>snomed.ts</code>, <code>rxnorm.ts</code>, <code>ig.ts</code>, <code>drug*.ts</code>, <code>embeddings.ts</code>, …).</td>
 </tr>
 <tr>
+<td><code>node-server/src/admin/termViz/</code></td>
+<td>Read-only API behind the admin terminology browser (<code>/admin/api/terminology/*</code>: ICD tree, PCS axes, SNOMED graph, LOINC axes, RxNorm, IG CodeSystem tree).</td>
+</tr>
+<tr>
+<td><code>node-server/src/providers/</code></td>
+<td>Model provider adapters (OpenAI, Azure OpenAI, Anthropic, Gemini, Bedrock, Ollama, OpenAI-compatible servers, ChatGPT sign-in … 24 in all), used by the embedding and analysis-LLM routes.</td>
+</tr>
+<tr>
+<td><code>node-server/src/grounding/</code></td>
+<td>Deterministic record-faithfulness engines (<code>fhir_check_grounding</code>, <code>fhir_check_completeness</code>).</td>
+</tr>
+<tr>
+<td><code>node-server/scripts/validator-audit/</code></td>
+<td>Tools and audit report (<code>REPORT.md</code>) comparing the built-in FHIR validator with HL7 validator_cli 7.0.1.</td>
+</tr>
+<tr>
+<td><code>web-v2/</code></td>
+<td><strong>The production admin console</strong>: a static Vite + React + Mantine SPA served by its own nginx container (compose service <code>web-v2</code>), mounted at <code>/admin/</code>.</td>
+</tr>
+<tr>
 <td><code>web/</code></td>
-<td>Next.js front-end: the admin console SPA (<code>admin-app/</code>), mounted through the <code>app/admin/</code> catch-all route.</td>
+<td>The old Next.js admin console (<code>web/admin-app/</code>), replaced by <code>web-v2/</code>; the compose service <code>web</code> only starts under the <code>legacy-web</code> profile and is kept for rollback only.</td>
 </tr>
 <tr>
 <td><code>db/</code></td>
@@ -2573,13 +2593,17 @@ npm run dev            # tsx watch src/server.ts
 npm run typecheck
 npm test
 
-# Front-end
-cd web
+# Admin console front-end (web-v2)
+cd web-v2
 npm install
-npm run dev            # next dev -p 3000
+npm run dev            # vite, http://localhost:5173/admin/, API proxied to ADMIN_BACKEND (default http://127.0.0.1:8090)
+npm run typecheck      # tsc -b --noEmit
+npm run build          # outputs dist/
 </code></pre>
 <p>For the full stack use Docker: <code>docker compose up -d</code> (see <a href="../getting-started/">Getting Started</a>).
-To redeploy after code changes: <code>docker compose build app web &amp;&amp; docker compose up -d --no-deps app web</code>.</p>
+To redeploy after code changes: <code>docker compose build app web-v2 &amp;&amp; docker compose up -d --no-deps app web-v2</code>.
+<code>admin-worker</code> is a separate image (<code>Dockerfile.worker</code>); rebuild it too whenever job / loader code changes:
+<code>docker compose build admin-worker &amp;&amp; docker compose up -d --no-deps admin-worker</code>.</p>
 <h2 id="documentation-index">Documentation index<a class="headerlink" href="#documentation-index" title="Permanent link">&para;</a></h2>
 <h3 id="code-style"><a href="code-style/">Code Style</a><a class="headerlink" href="#code-style" title="Permanent link">&para;</a></h3>
 <p>Naming, comments, and coding conventions (code and comments are written in English).</p>
@@ -2592,7 +2616,8 @@ To redeploy after code changes: <code>docker compose build app web &amp;&amp; do
 <li>Create <code>node-server/src/&lt;name&gt;Service.ts</code> (a class whose constructor takes a <code>pg.Pool</code> and which offers <code>async initialize()</code>).</li>
 <li>Instantiate it in the startup sequence in <code>server.ts</code> (a failing service must degrade gracefully without affecting the others).</li>
 <li>Add a tool registration function in <code>mcp.ts</code> (input schemas defined with <code>zod</code>) and register it in the appropriate tool group.</li>
-<li>For availability driven by data-load status, add a threshold to <code>SERVICE_MODULES</code> in <code>moduleStatus.ts</code> and guard each tool with a service availability check.</li>
+<li>For availability driven by data-load status, add the table and minimum row count to <code>REQUIREMENTS</code> in <code>moduleStatus.ts</code> (exported as <code>MODULE_REQUIREMENTS</code>), and wrap the group's registration in <code>mcp.ts</code> in <code>if (status.&lt;key&gt;)</code>.</li>
+<li>If the tool's output is pinned by fixtures, register its version in <code>TOOLS_VERSION</code> in <code>toolVersions.ts</code>, and bump it whenever its output for the same input changes.</li>
 </ol>
 
 

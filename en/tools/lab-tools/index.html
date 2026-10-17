@@ -2606,6 +2606,10 @@
 
 <h1 id="lab-tools-lab-loinc">Lab Tools (Lab / LOINC)<a class="headerlink" href="#lab-tools-lab-loinc" title="Permanent link">&para;</a></h1>
 <p>The LOINC surface has been consolidated into four tools: <code>search_loinc</code>, <code>query_loinc</code>, <code>interpret_lab_result</code>, and <code>batch_interpret_lab_results</code>.</p>
+<p>Defaults: <code>search_loinc</code> uses <code>mode</code> <code>code</code> and <code>limit</code> 3 (10 maximum); <code>query_loinc</code> uses <code>mode</code> <code>detail</code>; <code>gender</code> always defaults to <code>all</code>. The <code>code</code> / <code>specimen</code> / <code>component</code> modes run a hybrid BM25 + semantic search and fall back to keyword-only with <code>search_mode: "keyword_only"</code> when embeddings are unavailable. The whole group is unregistered while <code>loinc.concepts</code> holds fewer than 1,000 rows.</p>
+<blockquote>
+<p><strong>Maintenance mode</strong>: while the admin console has the <code>loinc</code> module in maintenance mode, this group's calls return an <code>isError</code> result immediately with error code <code>MODULE_MAINTENANCE</code> (<code>error.message</code> in English, <code>error.message_zh</code> in Traditional Chinese, <code>error.module</code> the module key), effective within about 5 seconds; the tools stay in <code>tools/list</code>. See the <a href="../../api/#maintenance">API reference</a>.</p>
+</blockquote>
 <h2 id="1-search_loinc-search-entry-point">1) <code>search_loinc</code> (search entry point)<a class="headerlink" href="#1-search_loinc-search-entry-point" title="Permanent link">&para;</a></h2>
 <p>A single search entry point; <code>mode</code> switches the query intent.</p>
 <h3 id="mode-code">Mode: <code>code</code><a class="headerlink" href="#mode-code" title="Permanent link">&para;</a></h3>

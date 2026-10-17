@@ -2070,7 +2070,7 @@
   <a href="#_8" class="md-nav__link">
     <span class="md-ellipsis">
       
-        資料庫遷移
+        回滾標籤
       
     </span>
   </a>
@@ -2079,6 +2079,17 @@
         
           <li class="md-nav__item">
   <a href="#_9" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        資料庫遷移
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_10" class="md-nav__link">
     <span class="md-ellipsis">
       
         備份
@@ -2100,7 +2111,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#_10" class="md-nav__link">
+  <a href="#_11" class="md-nav__link">
     <span class="md-ellipsis">
       
         疑難排解
@@ -2116,7 +2127,18 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_11" class="md-nav__link">
+  <a href="#staging" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        隔離測試環境（staging）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_12" class="md-nav__link">
     <span class="md-ellipsis">
       
         延伸閱讀
@@ -2128,7 +2150,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#_12" class="md-nav__link">
+  <a href="#_13" class="md-nav__link">
     <span class="md-ellipsis">
       
         架構與容器部署
@@ -2139,7 +2161,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#_13" class="md-nav__link">
+  <a href="#_14" class="md-nav__link">
     <span class="md-ellipsis">
       
         環境變數配置
@@ -2150,7 +2172,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#_14" class="md-nav__link">
+  <a href="#_15" class="md-nav__link">
     <span class="md-ellipsis">
       
         效能與監控
@@ -2833,7 +2855,7 @@
   <a href="#_8" class="md-nav__link">
     <span class="md-ellipsis">
       
-        資料庫遷移
+        回滾標籤
       
     </span>
   </a>
@@ -2842,6 +2864,17 @@
         
           <li class="md-nav__item">
   <a href="#_9" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        資料庫遷移
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_10" class="md-nav__link">
     <span class="md-ellipsis">
       
         備份
@@ -2863,7 +2896,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#_10" class="md-nav__link">
+  <a href="#_11" class="md-nav__link">
     <span class="md-ellipsis">
       
         疑難排解
@@ -2879,7 +2912,18 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_11" class="md-nav__link">
+  <a href="#staging" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        隔離測試環境（staging）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_12" class="md-nav__link">
     <span class="md-ellipsis">
       
         延伸閱讀
@@ -2891,7 +2935,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#_12" class="md-nav__link">
+  <a href="#_13" class="md-nav__link">
     <span class="md-ellipsis">
       
         架構與容器部署
@@ -2902,7 +2946,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#_13" class="md-nav__link">
+  <a href="#_14" class="md-nav__link">
     <span class="md-ellipsis">
       
         環境變數配置
@@ -2913,7 +2957,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#_14" class="md-nav__link">
+  <a href="#_15" class="md-nav__link">
     <span class="md-ellipsis">
       
         效能與監控
@@ -3001,11 +3045,11 @@
 <tbody>
 <tr>
 <td><code>nginx</code></td>
-<td><strong>對外入口</strong>（預設 <code>:8080</code>，由 <code>WEB_PORT</code> 設定）。把 <code>/mcp</code>、<code>/openapi.json</code>、<code>/tools/*</code>、<code>/admin/api/*</code>、<code>/admin/ws</code>、<code>/fhir-client/*</code>、<code>/fhir-oauth/*</code> 導向 <code>app</code>，其餘全部導向 <code>web</code>。</td>
+<td><strong>對外入口</strong>（預設 <code>:8080</code>，由 <code>WEB_PORT</code> 設定）。把 <code>/mcp</code>、<code>/openapi.json</code>、<code>/tools/*</code>、<code>/admin/api/*</code>、<code>/admin/ws</code>、<code>/fhir-client/*</code>、<code>/fhir-oauth/*</code> 導向 <code>app</code>，其餘（<code>/admin</code> 頁面）全部導向 <code>web-v2</code>。</td>
 </tr>
 <tr>
-<td><code>web</code></td>
-<td>Next.js 前端：<code>/admin</code> 管理後台 SPA。</td>
+<td><code>web-v2</code></td>
+<td>管理後台 SPA（<code>web-v2/</code>，Vite + React + Mantine）的靜態檔，由容器內的 nginx 提供。</td>
 </tr>
 <tr>
 <td><code>app</code></td>
@@ -3025,14 +3069,15 @@
 </tr>
 <tr>
 <td><code>redis</code></td>
-<td>回應快取。</td>
+<td>管理後台即時事件廣播與健康探測（工具回應目前<strong>沒有</strong>快取）。</td>
 </tr>
 <tr>
 <td><code>minio</code> + <code>minio-init</code></td>
-<td>藥品資產物件儲存與 bucket 初始化。</td>
+<td>來源檔、藥品資產與系統備份的物件儲存，以及 bucket 初始化。</td>
 </tr>
 </tbody>
 </table>
+<p>舊的 Next.js 前端 <code>web</code> 只保留在 compose profile <code>legacy-web</code>（供回滾），<strong>預設不啟動</strong>；需要時以 <code>docker compose --profile legacy-web up -d web</code> 啟動，並同時還原 <code>nginx/nginx.conf</code> 的 <code>$th_frontend</code>。</p>
 <p>資料匯入由管理後台觸發、在 <code>admin-worker</code> 內執行，已無獨立的 data-loader 容器。</p>
 <div class="admonition warning">
 <p class="admonition-title">應用流量只走 nginx</p>
@@ -3153,15 +3198,15 @@ echo &quot;PUBLIC_TOOLS_BEARER_TOKEN=$(openssl rand -hex 32)&quot;
 <tbody>
 <tr>
 <td>TFDA 爬蟲、FHIR package registry</td>
-<td>Admin → Settings 直接改（支援熱套用）</td>
+<td>管理後台「外部服務」（<code>/admin/integrations</code>）直接改（支援熱套用）</td>
 </tr>
 <tr>
 <td><strong>MinIO（Storage）</strong>、<strong>Worker Tuning</strong></td>
 <td>後台<strong>唯讀</strong>，標示為 "Owned by the deployment (.env / compose)"。但因為值早已種子化進資料庫、程式也是讀資料庫，<strong>改 <code>.env</code> 同樣沒有效果</strong> —— 只能直接 <code>UPDATE admin.app_settings</code> 再重啟對應服務。</td>
 </tr>
 <tr>
-<td>模型端點（嵌入 / OCR / 分析 LLM）</td>
-<td><strong>完全不從 <code>.env</code> 讀取</strong>，只能在 Admin → Settings 設定</td>
+<td>模型端點（嵌入 / 分析 LLM）、OCR</td>
+<td><strong>完全不從 <code>.env</code> 讀取</strong>：嵌入與分析 LLM 在「模型端點」（<code>/admin/models</code>）設定，OCR 在「外部服務 → OCR」設定</td>
 </tr>
 </tbody>
 </table>
@@ -3174,7 +3219,7 @@ echo &quot;PUBLIC_TOOLS_BEARER_TOKEN=$(openssl rand -hex 32)&quot;
 <li><code>app</code> / <code>admin-worker</code> 用的是<strong>首次啟動時種子化進 <code>admin.app_settings</code></strong> 的那份（<code>seedIfEmpty()</code> 以 <code>ON CONFLICT DO NOTHING</code> 寫入，之後永不覆寫）。</li>
 </ul>
 <p>首次啟動後才改 <code>.env</code>，會讓 MinIO 伺服器帳密與應用端儲存的設定<strong>不一致</strong>，導致物件儲存讀寫失敗。</p>
-<p>而且 <strong>Settings 中的 Storage 群組是唯讀的</strong>（標示為 "Owned by the deployment (.env / compose)"），
+<p>而且 <strong>「外部服務」中的 MinIO 群組是唯讀的</strong>（標示為 "Owned by the deployment (.env / compose)"），
 無法從後台修正。若已經發生，只能直接改資料庫：</p>
 <p><code>sql
 UPDATE admin.app_settings SET value = '&lt;new-access-key&gt;'
@@ -3215,9 +3260,10 @@ MINIO_SECRET_KEY=&lt;openssl rand -hex 16&gt;
 MINIO_BUCKET=taiwan-health-drug-assets
 </code></pre>
 <h3 id="3">步驟 3：建置與啟動<a class="headerlink" href="#3" title="Permanent link">&para;</a></h3>
-<pre><code class="language-bash">docker compose build          # 首次建置 app / admin-worker / web 三個映像
+<pre><code class="language-bash">BUILD_SHA=$(git rev-parse --short HEAD) docker compose build   # 建置 app / admin-worker / web-v2 映像
 docker compose up -d
 </code></pre>
+<p><code>compose.yaml</code> 會把環境變數 <code>BUILD_SHA</code>（未設定時為 <code>dev</code>）當作 build arg 傳給 <code>app</code> 與 <code>admin-worker</code>：<code>app</code> 在 <code>health_check</code> 回應的 <code>build</code> 欄位回報它，<code>admin-worker</code> 則記在啟動日誌（<code>Admin worker started</code> 的 <code>build</code> 欄位）。<code>web-v2</code> 不使用它。</p>
 <p>首次啟動時 PostgreSQL 容器會自動套用 <code>db/schema.sql</code>，<code>minio-init</code> 會建立 bucket 後結束（狀態顯示為 exited 屬正常）。</p>
 <h3 id="4">步驟 4：驗證<a class="headerlink" href="#4" title="Permanent link">&para;</a></h3>
 <p>確認容器狀態，<code>postgres</code> / <code>redis</code> / <code>minio</code> / <code>pgbouncer</code> 應為 <code>healthy</code>：</p>
@@ -3225,42 +3271,44 @@ docker compose up -d
 </code></pre>
 <p>確認服務與各模組狀態：</p>
 <pre><code class="language-bash">curl http://localhost:8080/openapi.json | head  # 目前已註冊的工具
+curl -X POST http://localhost:8080/tools/health_check -H 'Content-Type: application/json' -d '{}'
 </code></pre>
+<p><code>health_check</code> 回傳 DB / 快取 / 各模組狀態、伺服器 <code>version</code>、<code>build</code>（git sha）、<code>tools_version</code>（個別工具版本）、已載入的術語版本（<code>terminology</code>）、已安裝的 IG 套件與 <code>default_ig</code>。</p>
 <p>啟動失敗時先看日誌：</p>
 <pre><code class="language-bash">docker compose logs -f app admin-worker
 </code></pre>
 <h3 id="5">步驟 5：登入管理後台並設定模型端點<a class="headerlink" href="#5" title="Permanent link">&para;</a></h3>
 <p>瀏覽 <code>http://&lt;host&gt;:8080/admin</code>，以步驟 2 的帳密登入。</p>
-<p>登入後到 <strong>Settings</strong> 設定外部模型端點（這些<strong>不能</strong>由 <code>.env</code> 設定）：</p>
+<p>登入後設定外部模型端點（這些<strong>不能</strong>由 <code>.env</code> 設定）：</p>
 <table>
 <thead>
 <tr>
-<th>子頁</th>
+<th>頁面</th>
 <th>設定內容</th>
 <th>未設定的後果</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Embedding</td>
-<td>嵌入端點 / 模型（預設情境為 Ollama <code>qwen3-embedding</code>）</td>
+<td>模型端點（<code>/admin/models</code>）→ Embedding</td>
+<td>建立 provider 帳號，再建立 embedding profile 並綁到 embedding 角色（例如 Ollama <code>qwen3-embedding</code>）</td>
 <td>搜尋退回關鍵字模式；<strong>中文關鍵字搜尋幾乎查不到東西</strong></td>
 </tr>
 <tr>
-<td>Analysis LM</td>
-<td>藥品仿單抽取用 LLM</td>
+<td>模型端點（<code>/admin/models</code>）→ 分析</td>
+<td>藥品仿單抽取用 LLM 的 profile</td>
 <td>藥品分析階段無法執行</td>
 </tr>
 <tr>
-<td>OCR</td>
+<td>外部服務（<code>/admin/integrations</code>）→ OCR</td>
 <td>MinerU 服務位址</td>
 <td>仿單 PDF 無法 OCR</td>
 </tr>
 </tbody>
 </table>
-<p>模型設定可用 Settings → Backup &amp; restore 的 JSON Export / Import 在不同環境間搬移。詳見<a href="../admin/">管理後台</a>。</p>
+<p>設定可用「備份與設定」（<code>/admin/system</code>）的設定匯出 / 匯入在不同環境間搬移。詳見<a href="../admin/">管理後台</a>。</p>
 <h3 id="6">步驟 6：載入資料<a class="headerlink" href="#6" title="Permanent link">&para;</a></h3>
-<p>在 Modules 頁籤依模組匯入；需授權的來源檔（ICD-10、LOINC、SNOMED CT、RxNorm、FHIR IG）須先上傳，藥品 / 健康補充品 / 食品營養則由 API 自動抓取。</p>
+<p>在各模組頁（「醫療術語」、「藥品」、「健康食品」、「食品營養」、「IG 套件庫」）依模組匯入；需授權的來源檔（ICD-10、LOINC、SNOMED CT、RxNorm、FHIR IG）須先上傳，藥品 / 健康補充品 / 食品營養則由 API 自動抓取。</p>
 <div class="admonition warning">
 <p class="admonition-title">手動排入的 <code>drug_enrichment</code> 不受批次上限保護</p>
 <p><code>DRUG_AUTOCHAIN_BATCH_LIMIT</code>（預設 200）<strong>只作用於自動串接產生的工作</strong>。
@@ -3273,22 +3321,75 @@ docker compose up -d
 <h3 id="_7">更新與重新部署<a class="headerlink" href="#_7" title="Permanent link">&para;</a></h3>
 <p>只改了應用程式碼時，不需要重啟整個 stack：</p>
 <pre><code class="language-bash">git pull
-docker compose build app web admin-worker
-docker compose up -d --no-deps app web admin-worker
+BUILD_SHA=$(git rev-parse --short HEAD) docker compose build app admin-worker web-v2
+docker compose up -d --no-deps app admin-worker web-v2
 </code></pre>
-<p>改了 <code>nginx/nginx.conf</code>：</p>
-<pre><code class="language-bash">docker compose restart nginx
+<div class="admonition warning">
+<p class="admonition-title"><code>admin-worker</code> 是另一個映像</p>
+<p><code>admin-worker</code> 由 <code>Dockerfile.worker</code> 從同一份 <code>node-server/</code> 原始碼建置。改了工作 / 載入程式碼
+（<code>adminJobs.ts</code>、<code>*Service.ts</code>、<code>loaders/*</code>）卻只重建 <code>app</code>，worker 會繼續執行舊程式碼且不會報錯。</p>
+</div>
+<h3 id="_8">回滾標籤<a class="headerlink" href="#_8" title="Permanent link">&para;</a></h3>
+<p>重新部署前，先把目前執行中的映像加上回滾標籤，出問題時可以直接切回：</p>
+<pre><code class="language-bash">LABEL=rollback-pre-$(date +%Y%m%d)
+for svc in app admin-worker web-v2; do
+  docker tag taiwan-health-mcp-$svc:latest taiwan-health-mcp-$svc:$LABEL
+done
+</code></pre>
+<p>（映像名稱前綴為 compose 專案名，以 <code>docker images</code> 為準。）回滾時把標籤改回 <code>:latest</code> 再 <code>docker compose up -d --no-deps &lt;服務&gt;</code>。資料庫遷移不會隨映像回滾，套用 migration 前請另行備份資料庫。</p>
+<p>改了 <code>nginx/nginx.conf</code>（單一檔案 bind mount，原地編輯後 reload 即可）：</p>
+<pre><code class="language-bash">docker compose exec nginx nginx -s reload    # 或 docker compose restart nginx
 </code></pre>
 <p>改了 <code>.env</code> 中的 <strong>bootstrap 變數</strong>（DB / Redis / MCP / <code>ADMIN_*</code>）才需要重建容器：</p>
 <pre><code class="language-bash">docker compose up -d
 </code></pre>
 <p>（改 seed-only 區塊無效，見 2-4。）</p>
-<h3 id="_8">資料庫遷移<a class="headerlink" href="#_8" title="Permanent link">&para;</a></h3>
+<h3 id="_9">資料庫遷移<a class="headerlink" href="#_9" title="Permanent link">&para;</a></h3>
 <p>首次啟動時 <code>db/schema.sql</code> 會自動套用。<strong>既有環境</strong>升級後需自行套用 <code>db/migrations/</code> 下的增量變更，依檔名日期順序：</p>
 <pre><code class="language-bash">docker compose exec -T postgres \
   sh -c 'psql -U &quot;$POSTGRES_USER&quot; -d &quot;$POSTGRES_DB&quot; -v ON_ERROR_STOP=1' \
-  &lt; db/migrations/20260802_llm_call_log.sql
+  &lt; db/migrations/20261020_loinc_structure.sql
 </code></pre>
+<p>2026-10 新增的 migration（依序套用；內容已併入 <code>db/schema.sql</code>）：</p>
+<table>
+<thead>
+<tr>
+<th>檔案</th>
+<th>內容</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>20261015_llm_provider_registry.sql</code></td>
+<td>純資料：把舊 provider 值改寫為 registry id（<code>vllm</code> → <code>openai_compatible</code>、<code>google</code> → <code>gemini</code>…）</td>
+</tr>
+<tr>
+<td><code>20261016_llm_providers_and_routes.sql</code></td>
+<td>新增 <code>admin.llm_providers</code> / <code>llm_routes</code> / <code>llm_route_members</code> / <code>llm_role_routes</code>，搬移舊資料，<code>admin.llm_profiles</code> 改名為 <code>admin.llm_profiles_legacy</code></td>
+</tr>
+<tr>
+<td><code>20261017_icd10cm_complete_edition.sql</code></td>
+<td>ICD-10-CM 完整版：<code>short_name_en</code>、<code>is_header</code> 欄位與 <code>icd.editions</code></td>
+</tr>
+<tr>
+<td><code>20261018_terminology_completeness_v4.sql</code></td>
+<td>LOINC LA/LP/LL/LG 碼與 <code>loinc.editions</code>、SNOMED inactive 概念 / 描述、<code>first_released</code>、<code>snomed.editions</code>、WHO ICD-10（<code>icd.icd10_who</code>）</td>
+</tr>
+<tr>
+<td><code>20261019_ig_install_origin.sql</code></td>
+<td><code>fhir.ig_packages.install_origin</code> / <code>installed_for</code></td>
+</tr>
+<tr>
+<td><code>20261020_loinc_structure.sql</code></td>
+<td>LOINC 軸向 part link、answer list、panel、MapTo 表</td>
+</tr>
+<tr>
+<td><code>20261021_embedding_identity.sql</code></td>
+<td><code>admin.embedding_identity</code> / <code>admin.embedding_fingerprints</code>（embedding 身分；程式執行期也會補建，套用與否皆冪等）</td>
+</tr>
+</tbody>
+</table>
+<p>套用 <code>20261017</code>、<code>20261018</code>、<code>20261020</code> 後，需重新匯入對應模組（ICD、LOINC、SNOMED CT）才會填入新表。</p>
 <p>依序套用全部（已套用過的檔案請自行剔除，本專案未內建遷移版本追蹤）：</p>
 <pre><code class="language-bash">for f in $(ls db/migrations/*.sql | sort); do
   echo &quot;applying $f&quot;
@@ -3305,9 +3406,9 @@ done
 <p class="admonition-title">直連 postgres 而非 pgbouncer</p>
 <p>遷移請走 <code>postgres</code> 容器。pgBouncer 為 transaction mode，不適合執行 DDL 批次。</p>
 </div>
-<h3 id="_9">備份<a class="headerlink" href="#_9" title="Permanent link">&para;</a></h3>
+<h3 id="_10">備份<a class="headerlink" href="#_10" title="Permanent link">&para;</a></h3>
 <p>兩種做法：</p>
-<p><strong>(a) 管理後台（推薦）</strong> —— Settings → Backup &amp; restore 可勾選設定與憑證、PostgreSQL database、MinIO object storage，排入 <code>system_backup</code> 背景工作，產出的 ZIP 寫回 MinIO 的 <code>system-backups/</code> prefix，可從備份歷史下載。</p>
+<p><strong>(a) 管理後台（推薦）</strong> ——「備份與設定」（<code>/admin/system</code>）可勾選設定與憑證、PostgreSQL database、MinIO object storage，排入 <code>system_backup</code> 背景工作，產出的 ZIP 寫回 MinIO 的 <code>system-backups/</code> prefix，可從備份歷史下載。</p>
 <p><strong>(b) 手動</strong>：</p>
 <pre><code class="language-bash"># PostgreSQL（custom format，供 pg_restore 使用）
 docker compose exec -T postgres \
@@ -3390,7 +3491,7 @@ docker run --rm -v taiwan-health-mcp_minio_data:/data -v &quot;$PWD&quot;:/backu
       - &quot;127.0.0.1:9000:9000&quot;
 </code></pre>
 <p>同一份 override 也適合放<a href="configuration/#resource-limits">資源限制</a>。</p>
-<h3 id="_10">疑難排解<a class="headerlink" href="#_10" title="Permanent link">&para;</a></h3>
+<h3 id="_11">疑難排解<a class="headerlink" href="#_11" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
 <tr>
@@ -3423,7 +3524,7 @@ docker run --rm -v taiwan-health-mcp_minio_data:/data -v &quot;$PWD&quot;:/backu
 <tr>
 <td>改了 <code>.env</code> 的密碼卻沒生效</td>
 <td>憑證在首次啟動即寫入 <code>admin.admin_credentials</code>，seed 為 <code>ON CONFLICT DO NOTHING</code></td>
-<td>改用 Settings → Privacy 修改密碼</td>
+<td>改到「帳號安全」（<code>/admin/security</code>）修改密碼</td>
 </tr>
 <tr>
 <td>worker 拋 <code>Illegal argument to function</code> / <code>Wrong key or corrupt data</code></td>
@@ -3433,7 +3534,7 @@ docker run --rm -v taiwan-health-mcp_minio_data:/data -v &quot;$PWD&quot;:/backu
 <tr>
 <td>改了 <code>.env</code> 的 TFDA / registry 設定沒有效果</td>
 <td>該群組為 seed-only，只在首次啟動讀取</td>
-<td>改到 Admin → Settings</td>
+<td>改到「外部服務」（<code>/admin/integrations</code>）</td>
 </tr>
 <tr>
 <td>改了 <code>.env</code> 的 MinIO / worker 調校沒有效果</td>
@@ -3443,7 +3544,7 @@ docker run --rm -v taiwan-health-mcp_minio_data:/data -v &quot;$PWD&quot;:/backu
 <tr>
 <td>中文搜尋幾乎查不到結果</td>
 <td>嵌入端點未設定，退回關鍵字模式</td>
-<td>於 Settings → Embedding 設定端點</td>
+<td>於「模型端點」（<code>/admin/models</code>）設定 embedding profile</td>
 </tr>
 <tr>
 <td>IG 匯入時 worker OOM</td>
@@ -3455,20 +3556,63 @@ docker run --rm -v taiwan-health-mcp_minio_data:/data -v &quot;$PWD&quot;:/backu
 <td>設計如此，<code>app</code> 不對主機開埠</td>
 <td>一律使用 <code>http://&lt;host&gt;:${WEB_PORT}</code></td>
 </tr>
+<tr>
+<td>改了工作 / 載入程式碼卻沒生效</td>
+<td>只重建了 <code>app</code>，<code>admin-worker</code> 仍是舊映像</td>
+<td><code>docker compose build admin-worker &amp;&amp; docker compose up -d --no-deps admin-worker</code></td>
+</tr>
 </tbody>
 </table>
 <hr />
-<h2 id="_11">延伸閱讀<a class="headerlink" href="#_11" title="Permanent link">&para;</a></h2>
-<h3 id="_12"><a href="../architecture/deployment/">架構與容器部署</a><a class="headerlink" href="#_12" title="Permanent link">&para;</a></h3>
+<h2 id="staging">隔離測試環境（staging）<a class="headerlink" href="#staging" title="Permanent link">&para;</a></h2>
+<p><code>deploy/staging/compose.yaml</code> 是一套與正式環境完全隔離的 stack（compose 專案名 <code>twh-staging</code>）：自己的 Postgres、Redis、MinIO、<code>app</code>、<code>admin-worker</code> 與 <code>web-v2</code>；由 <code>web-v2</code> 容器直接擔任前門（其 nginx 以 <code>BACKEND_UPSTREAM</code> 代理後端），預設發佈在 <code>${STAGING_PORT:-8090}</code>，入口 <code>http://&lt;host&gt;:8090/admin/</code>。</p>
+<p>啟動前需建立<strong>不進版控</strong>的 <code>deploy/staging/.env</code>，至少包含：</p>
+<table>
+<thead>
+<tr>
+<th>變數</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>STAGING_DB_PASSWORD</code></td>
+<td>staging Postgres 密碼（未設定時 compose 直接失敗）</td>
+</tr>
+<tr>
+<td><code>STAGING_MINIO_PASSWORD</code></td>
+<td>staging MinIO root 密碼（未設定時 compose 直接失敗）</td>
+</tr>
+<tr>
+<td><code>STAGING_RESTORE_DIR</code></td>
+<td>主機上放正式 DB dump 的目錄，唯讀掛載到 Postgres 的 <code>/restore</code>（未設定時 compose 直接失敗）</td>
+</tr>
+<tr>
+<td><code>STAGING_HOST</code> / <code>STAGING_PORT</code></td>
+<td>選用；組出 <code>PUBLIC_BASE_URL</code>，預設埠 <code>8090</code></td>
+</tr>
+</tbody>
+</table>
+<pre><code class="language-bash">BUILD_SHA=$(git rev-parse --short HEAD) docker compose -p twh-staging -f deploy/staging/compose.yaml up -d --build
+</code></pre>
+<p>注意事項：</p>
+<ul>
+<li><code>app</code> / <code>admin-worker</code> 另外讀取根目錄 <code>.env</code>（<code>env_file</code>），再以 staging 專屬值覆寫 DB / Redis / MinIO 連線。</li>
+<li>staging 走 http，因此設 <code>ADMIN_COOKIE_SECURE=false</code>，並使用自己的 cookie 名稱 <code>ADMIN_SESSION_COOKIE=tw_health_admin_session_staging</code>——cookie 依主機而非埠區分，與正式環境同機時，正式環境的 <code>Secure</code> cookie 會蓋掉同名 cookie，導致 staging 登入迴圈。</li>
+<li>Postgres 把主機目錄 <code>${STAGING_RESTORE_DIR}</code> 唯讀掛載為 <code>/restore</code>以便從正式 DB dump 還原；還原後應停用繼承來的工作 / 排程與模型端點，避免與正式環境搶用外部資源。</li>
+</ul>
+<hr />
+<h2 id="_12">延伸閱讀<a class="headerlink" href="#_12" title="Permanent link">&para;</a></h2>
+<h3 id="_13"><a href="../architecture/deployment/">架構與容器部署</a><a class="headerlink" href="#_13" title="Permanent link">&para;</a></h3>
 <p>基礎設施拓樸、容器組成與啟動流程。</p>
-<h3 id="_13"><a href="configuration/">環境變數配置</a><a class="headerlink" href="#_13" title="Permanent link">&para;</a></h3>
-<p>各項系統參數的完整清單，含 bootstrap 變數（<code>.env</code>）與 seed-only 設定（首次啟動後改於 Admin → Settings 管理）。</p>
-<h3 id="_14"><a href="performance/">效能與監控</a><a class="headerlink" href="#_14" title="Permanent link">&para;</a></h3>
+<h3 id="_14"><a href="configuration/">環境變數配置</a><a class="headerlink" href="#_14" title="Permanent link">&para;</a></h3>
+<p>各項系統參數的完整清單，含 bootstrap 變數（<code>.env</code>）與 seed-only 設定（首次啟動後改於管理後台「外部服務」管理）。</p>
+<h3 id="_15"><a href="performance/">效能與監控</a><a class="headerlink" href="#_15" title="Permanent link">&para;</a></h3>
 <p>高併發場景的優化建議、連線池與快取策略、Prometheus 監控。</p>
 <div class="admonition note">
 <p class="admonition-title">公開頁面已移出本專案</p>
 <p>對外的宣傳頁與法務頁（<code>/</code>、<code>/status</code>、<code>/privacy</code>、<code>/dpa</code>）已改由獨立的宣傳網站專案提供，
-不再由 <code>web</code> 服務發送。<code>/privacy</code> 是登記於 Anthropic Connectors Directory 的網址，
+不再由本專案的前端服務發送。<code>/privacy</code> 是登記於 Anthropic Connectors Directory 的網址，
 移轉後務必在 <code>nginx/nginx.conf</code> 補上 301 導向（該檔已留有 TODO 區塊）。</p>
 </div>
 

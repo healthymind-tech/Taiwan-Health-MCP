@@ -2696,6 +2696,9 @@
 
 <h1 id="snomed-ct-snomed-ct-tools">SNOMED CT 工具 (SNOMED CT Tools)<a class="headerlink" href="#snomed-ct-snomed-ct-tools" title="Permanent link">&para;</a></h1>
 <p>目前對外 SNOMED 入口為 4 個工具：<code>search_snomed_concept</code>、<code>query_snomed_concept</code>、<code>get_snomed_relationships</code>、<code>query_snomed_mapping</code>。</p>
+<blockquote>
+<p><strong>維護模式</strong>：管理後台把 <code>snomed</code> 模組切到維護模式時，本組工具呼叫會立即回傳 <code>isError</code> 結果，錯誤碼 <code>MODULE_MAINTENANCE</code>（<code>error.message</code> 英文、<code>error.message_zh</code> 正體中文，<code>error.module</code> 為模組鍵），約 5 秒內生效；工具仍留在 <code>tools/list</code> 中。詳見 <a href="../../api/#maintenance">API 參考</a>。</p>
+</blockquote>
 <h2 id="search_snomed_concept"><code>search_snomed_concept</code><a class="headerlink" href="#search_snomed_concept" title="Permanent link">&para;</a></h2>
 <p>英文臨床詞彙搜尋 SNOMED 概念候選。</p>
 <h3 id="_1">何時使用<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h3>
@@ -2723,13 +2726,20 @@
 <td style="text-align: left;"><code>limit</code></td>
 <td style="text-align: left;">integer</td>
 <td style="text-align: left;">否</td>
-<td style="text-align: left;">回傳上限（預設 3）</td>
+<td style="text-align: left;">回傳上限（預設 3，上限 10）</td>
 <td style="text-align: left;"><code>5</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>hierarchy_filter</code></td>
+<td style="text-align: left;">integer</td>
+<td style="text-align: left;">否</td>
+<td style="text-align: left;">只回傳某概念（通常是頂層階層的 concept ID）的 IS-A 後代</td>
+<td style="text-align: left;"><code>404684003</code></td>
 </tr>
 </tbody>
 </table>
 <h3 id="_3">回傳重點<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h3>
-<p>每筆通常含 <code>concept_id</code>、FSN、active 狀態與相似度資訊，適合拿來挑選下一步要查的 concept。</p>
+<p>每筆含 <code>concept_id</code>、<code>fsn</code>、<code>preferred_term</code>、<code>active</code> 與 <code>hierarchy_tag</code>，適合拿來挑選下一步要查的 concept；完整資料用 <code>query_snomed_concept</code>。</p>
 <hr />
 <h2 id="query_snomed_concept"><code>query_snomed_concept</code><a class="headerlink" href="#query_snomed_concept" title="Permanent link">&para;</a></h2>
 <p>一次取得概念本體與階層脈絡（父/子）。</p>
@@ -2772,14 +2782,14 @@
 <td style="text-align: left;"><code>parent_limit</code></td>
 <td style="text-align: left;">integer</td>
 <td style="text-align: left;">否</td>
-<td style="text-align: left;">祖先展開上限，預設 10</td>
+<td style="text-align: left;">祖先展開上限，預設 10，上限 20</td>
 <td style="text-align: left;"><code>20</code></td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>child_limit</code></td>
 <td style="text-align: left;">integer</td>
 <td style="text-align: left;">否</td>
-<td style="text-align: left;">子概念展開上限，預設 20</td>
+<td style="text-align: left;">子概念展開上限，預設 20，上限 200</td>
 <td style="text-align: left;"><code>50</code></td>
 </tr>
 </tbody>
@@ -2808,8 +2818,15 @@
 <td style="text-align: left;">是</td>
 <td style="text-align: left;">SNOMED concept ID</td>
 </tr>
+<tr>
+<td style="text-align: left;"><code>relationship_type_id</code></td>
+<td style="text-align: left;">integer</td>
+<td style="text-align: left;">否</td>
+<td style="text-align: left;">只回傳某一種關聯類型（例如 <code>363698007</code> finding site）</td>
+</tr>
 </tbody>
 </table>
+<p>回傳 <code>{concept_id, relationship_count, relationships}</code>，依關聯類型分組，每組附易讀標籤與目標概念清單。</p>
 <hr />
 <h2 id="query_snomed_mapping"><code>query_snomed_mapping</code><a class="headerlink" href="#query_snomed_mapping" title="Permanent link">&para;</a></h2>
 <p>ICD ↔ SNOMED 雙向 mapping 單一入口。</p>
@@ -2836,7 +2853,7 @@
 <td style="text-align: left;"><code>mode</code></td>
 <td style="text-align: left;">string</td>
 <td style="text-align: left;">否</td>
-<td style="text-align: left;"><code>icd</code> 或 <code>snomed</code></td>
+<td style="text-align: left;"><code>icd</code> 或 <code>snomed</code>，預設 <code>icd</code></td>
 <td style="text-align: left;"><code>"icd"</code></td>
 </tr>
 <tr>

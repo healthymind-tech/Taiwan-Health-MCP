@@ -1751,10 +1751,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#enabling-it" class="md-nav__link">
+  <a href="#enabling-it-and-signing-in" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Enabling it
+        Enabling it and signing in
       
     </span>
   </a>
@@ -1766,6 +1766,28 @@
     <span class="md-ellipsis">
       
         Interface
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mcp-tools-page-adminmcp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCP tools page (/admin/mcp)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#model-endpoints-adminmodels" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Model endpoints (/admin/models)
       
     </span>
   </a>
@@ -1799,6 +1821,17 @@
     <span class="md-ellipsis">
       
         Source files
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#terminology-browsers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Terminology browsers
       
     </span>
   </a>
@@ -2407,10 +2440,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#enabling-it" class="md-nav__link">
+  <a href="#enabling-it-and-signing-in" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Enabling it
+        Enabling it and signing in
       
     </span>
   </a>
@@ -2422,6 +2455,28 @@
     <span class="md-ellipsis">
       
         Interface
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mcp-tools-page-adminmcp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCP tools page (/admin/mcp)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#model-endpoints-adminmodels" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Model endpoints (/admin/models)
       
     </span>
   </a>
@@ -2455,6 +2510,17 @@
     <span class="md-ellipsis">
       
         Source files
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#terminology-browsers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Terminology browsers
       
     </span>
   </a>
@@ -2515,86 +2581,179 @@
 
 
 <h1 id="admin-console">Admin Console<a class="headerlink" href="#admin-console" title="Permanent link">&para;</a></h1>
-<p>The admin console is a session-authenticated operator interface mounted at <code>/admin</code>, used to upload source files, run and schedule data imports, manage settings and external FHIR servers, and monitor background jobs in real time. It is <strong>disabled by default</strong>.</p>
-<h2 id="enabling-it">Enabling it<a class="headerlink" href="#enabling-it" title="Permanent link">&para;</a></h2>
+<p>The admin console is a session-authenticated operator interface mounted at <code>/admin</code>, used to upload source files, run and schedule data imports, manage model endpoints, settings and external FHIR servers, and monitor background jobs in real time. It is <strong>enabled by default</strong> (<code>ADMIN_ENABLED=true</code>) — it is the only way to import data; once the data is loaded you may set it to <code>false</code> to shrink a public deployment's attack surface (MCP tools, the worker and scheduled imports keep running).</p>
+<h2 id="enabling-it-and-signing-in">Enabling it and signing in<a class="headerlink" href="#enabling-it-and-signing-in" title="Permanent link">&para;</a></h2>
 <p>Set the following in <code>.env</code> and restart <code>app</code>:</p>
 <pre><code class="language-dotenv">ADMIN_ENABLED=true
 ADMIN_USERNAME=admin
+# One of the two: a plaintext initial password (hashed into the DB on first boot), or a precomputed hash
+ADMIN_INITIAL_PASSWORD=
 # Generate a password hash (Node):
 #   node -e &quot;console.log('sha256$' + require('crypto').createHash('sha256').update('change-me').digest('hex'))&quot;
 # ⚠️ Every $ must be written as $$ in .env (Docker Compose expands $ as a variable
 #    reference, and a hash starting with a letter gets silently truncated).
 #    Compose collapses $$ back to a single $.
 ADMIN_PASSWORD_HASH=sha256$$...
-ADMIN_SESSION_SECRET=change_this_admin_session_secret
+ADMIN_SESSION_SECRET=&lt;openssl rand -hex 32&gt;
 ADMIN_SESSION_TTL_MINUTES=240
 ADMIN_MAX_UPLOAD_MB=512
 # pgcrypto symmetric key for external FHIR servers' OAuth tokens / client secrets.
 # Falls back to ADMIN_SESSION_SECRET when unset.
 FHIR_SERVER_SECRET_KEY=
 </code></pre>
-<p>Password hashes support <code>sha256$&lt;hex&gt;</code> and <code>pbkdf2_sha256$&lt;iterations&gt;$&lt;salt&gt;$&lt;hex&gt;</code>. You may instead supply a plaintext initial password with <code>ADMIN_INITIAL_PASSWORD</code> (effective on first boot only). <code>/admin</code> opens when <code>ADMIN_ENABLED=true</code>, <code>ADMIN_USERNAME</code>, and <code>ADMIN_SESSION_SECRET</code> all have values, and at least one of <code>ADMIN_PASSWORD_HASH</code> / <code>ADMIN_INITIAL_PASSWORD</code> is set.</p>
+<p>Password hashes support <code>sha256$&lt;hex&gt;</code> and <code>pbkdf2_sha256$&lt;iterations&gt;$&lt;salt&gt;$&lt;hex&gt;</code>. When both <code>ADMIN_INITIAL_PASSWORD</code> and <code>ADMIN_PASSWORD_HASH</code> are set the former wins, and both are used only on first boot, while the database has no credential row. <code>/admin</code> opens when <code>ADMIN_ENABLED=true</code>, <code>ADMIN_USERNAME</code>, and <code>ADMIN_SESSION_SECRET</code> all have values, and at least one of <code>ADMIN_PASSWORD_HASH</code> / <code>ADMIN_INITIAL_PASSWORD</code> is set (404 = console off, 503 = on but misconfigured, 401 = wrong credentials).</p>
 <p>The sign-in URL is <code>http://&lt;host&gt;:8080/admin</code> (through the nginx front door; the <code>app</code> container publishes no host port).</p>
 <blockquote>
 <p>The admin console needs the <code>admin-worker</code> container running alongside it (the background job runner). <code>docker compose up -d</code> starts both.</p>
 <p><strong>Important:</strong> <code>FHIR_SERVER_SECRET_KEY</code> (or its fallback, <code>ADMIN_SESSION_SECRET</code>) must be <strong>identical</strong> on the <code>app</code> and <code>admin-worker</code> containers. The worker uses this key to <code>pgp_sym_decrypt</code> external FHIR servers' OAuth tokens and client secrets; if the worker's key is empty or different, background jobs raise <code>Illegal argument to function</code> (empty key) or <code>Wrong key or corrupt data</code> (mismatched key).</p>
 </blockquote>
 <h2 id="interface">Interface<a class="headerlink" href="#interface" title="Permanent link">&para;</a></h2>
-<p>The admin interface is a React SPA in <strong><code>web/admin-app/</code></strong>, mounted client-side by the Next.js front-end (the <code>web</code> service) under the <code>/admin</code> catch-all route; <code>web/middleware.ts</code> gates access on the <code>tw_health_admin_session</code> cookie.</p>
-<p>The main tabs:</p>
+<p>The admin interface is the React SPA in <strong><code>web-v2/</code></strong> (Vite + React 19 + Mantine 8). Its static build is served by a dedicated <code>web-v2</code> container (with its own nginx); the root <code>nginx/nginx.conf</code> routes <code>/admin</code> pages to <code>web-v2</code>, while <code>/admin/api/*</code> and <code>/admin/ws</code> go straight to <code>app</code>. Access control is enforced by the backend API's session cookie (default name <code>tw_health_admin_session</code>, overridable with <code>ADMIN_SESSION_COOKIE</code>); without a session the SPA redirects to <code>/admin/login</code>.</p>
+<blockquote>
+<p>The old Next.js front-end (<code>web/</code> + <code>web/admin-app/</code>) has been replaced. It is kept only in the compose profile <code>legacy-web</code> for rollback and is not started by default.</p>
+</blockquote>
+<p>The sidebar (<code>web-v2/src/layout/nav.ts</code>) has five sections:</p>
 <table>
 <thead>
 <tr>
-<th>Tab</th>
+<th>Section</th>
+<th>Pages (paths relative to <code>/admin</code>)</th>
 <th>Purpose</th>
 </tr>
 </thead>
 <tbody>
 <tr>
 <td><strong>Overview</strong></td>
-<td>System overview: DB, per-module, worker, and external FHIR server health.</td>
+<td>Dashboard <code>/</code>, Jobs <code>/jobs</code></td>
+<td>System status at a glance; the import / embedding / sync job queue, step timeline and live logs (see <a href="jobs-and-worker/">Jobs &amp; Scheduling</a>).</td>
 </tr>
 <tr>
-<td><strong>Services</strong></td>
-<td>Availability and probe results for each service / module.</td>
+<td><strong>Data</strong></td>
+<td>Terminology <code>/terminology</code> (per module <code>/terminology/&lt;icd\|loinc\|snomed\|rxnorm&gt;</code>), Drug <code>/drug</code> (drug explorer <code>/drug/explorer</code>), Health supplements <code>/data/health_supplements</code>, Food nutrition <code>/data/food_nutrition</code></td>
+<td>Per-module source files, imports, schedules, data preview, embeddings, maintenance mode and clearing; terminology modules also get a browser (see below).</td>
 </tr>
 <tr>
-<td><strong>Tasks</strong></td>
-<td>The import job queue, progress, step timeline, and live logs (see <a href="jobs-and-worker/">Jobs &amp; Scheduling</a>).</td>
+<td><strong>FHIR</strong></td>
+<td>IG library <code>/fhir/ig</code>, FHIR servers <code>/fhir-servers</code></td>
+<td>FHIR IG import / dependency packages / removal protection; registration, authentication and health checks for external FHIR R4 servers.</td>
 </tr>
 <tr>
-<td><strong>Modules</strong></td>
-<td>Per-module source files, imports, schedules, previews, embeddings, and maintenance mode.</td>
+<td><strong>Integrations</strong></td>
+<td>Model endpoints <code>/models</code>, MCP tools <code>/mcp</code>, External services <code>/integrations</code></td>
+<td>Provider accounts and profiles for embedding and the analysis LLM; MCP endpoints, tool catalog and playground; OCR (MinerU), object storage, TFDA, FHIR package registry and worker settings.</td>
 </tr>
 <tr>
-<td><strong>Settings</strong></td>
-<td>Organised into Embedding, Analysis LM, OCR, integrations, Privacy, and Backup sub-pages; manages DB-backed settings, LLM profiles, login credentials, and system backups.</td>
-</tr>
-<tr>
-<td><strong>FHIR Servers</strong></td>
-<td>Register and manage external FHIR R4 servers, authentication, and health checks.</td>
+<td><strong>System</strong></td>
+<td>Service health <code>/health</code>, Backups &amp; settings <code>/system</code>, Account security <code>/security</code></td>
+<td>Infrastructure probes and worker heartbeats; system backups and settings export / import; password and passkeys.</td>
 </tr>
 </tbody>
 </table>
 <p>The corresponding backend modules are in <code>node-server/src/admin/*.ts</code> (<code>adminApp.ts</code> is the routing entry point).</p>
-<p>Besides passwords, sign-in also supports <strong>passkeys / WebAuthn</strong> (<code>node-server/src/admin/webauthn.ts</code>); passkeys only work over HTTPS on the RP domain (or on localhost for development). See <a href="../deployment/configuration/">Configuration</a>.</p>
+<p>Besides passwords, sign-in also supports <strong>passkeys / WebAuthn</strong> (<code>node-server/src/admin/webauthn.ts</code>), managed on the Account security page; passkeys only work over HTTPS on the RP domain (or on localhost for development). See <a href="../deployment/configuration/">Configuration</a>.</p>
+<h2 id="mcp-tools-page-adminmcp">MCP tools page (<code>/admin/mcp</code>)<a class="headerlink" href="#mcp-tools-page-adminmcp" title="Permanent link">&para;</a></h2>
+<p>Backed by <code>node-server/src/admin/adminMcp.ts</code> (<code>GET /admin/api/mcp/overview</code>, <code>GET /admin/api/mcp/tools</code>, <code>POST /admin/api/mcp/tools/{name}/invoke</code>), with three tabs:</p>
+<ul>
+<li><strong>Overview</strong>: public endpoints (<code>/mcp</code>, <code>/openapi.json</code>, <code>/tools/{name}</code>, JWKS, OAuth callback), auth mode, server version and copy-ready client configs.</li>
+<li><strong>Catalog</strong>: all 63 tools defined in <code>mcp.ts</code> and whether each is registered; an unregistered tool shows why (gating table and row-count threshold); tools and groups whose module is in maintenance carry a 「維護中」 (under maintenance) badge.</li>
+<li><strong>Playground</strong>: runs any registered tool with pre-filled examples, through the same handler as <code>POST /tools/{name}</code> (rate-limited); while the tool's module is in maintenance the Run button is disabled with the reason shown.</li>
+</ul>
+<h2 id="model-endpoints-adminmodels">Model endpoints (<code>/admin/models</code>)<a class="headerlink" href="#model-endpoints-adminmodels" title="Permanent link">&para;</a></h2>
+<p>Embedding and analysis-LLM endpoints are <strong>never read from environment variables</strong>. They live in these tables (migration <code>20261016_llm_providers_and_routes.sql</code>):</p>
+<table>
+<thead>
+<tr>
+<th>Table</th>
+<th>Contents</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>admin.llm_providers</code></td>
+<td>Provider accounts: a named account of a provider type (several per type allowed) with URL, credentials and account-wide limits.</td>
+</tr>
+<tr>
+<td><code>admin.llm_routes</code></td>
+<td>Profiles: a strategy (<code>single</code> / <code>fallback</code> / <code>round_robin</code> / <code>load_balance</code>) over a set of members; <code>kind</code> is <code>analysis</code> or <code>embedding</code>.</td>
+</tr>
+<tr>
+<td><code>admin.llm_route_members</code></td>
+<td>Members: a model on a provider account (with its own knobs), <strong>or another profile</strong> (nesting; cycles are rejected).</td>
+</tr>
+<tr>
+<td><code>admin.llm_role_routes</code></td>
+<td>Which profile each role (<code>analysis</code> / <code>embedding</code>) uses.</td>
+</tr>
+</tbody>
+</table>
+<p>The old <code>admin.llm_profiles</code> table was renamed <code>admin.llm_profiles_legacy</code> and is kept for rollback only.</p>
+<ul>
+<li><strong>Provider adapters</strong>: <code>node-server/src/providers/registry.ts</code> registers 24 adapters — OpenAI, Azure OpenAI, Anthropic, Gemini, Bedrock, Mistral, Cohere, Voyage, Jina, DeepSeek, xAI, Groq, OpenRouter, Together, Fireworks, SiliconFlow, DashScope, Moonshot, Zhipu, Volcengine, MiniMax, OpenAI-compatible servers (vLLM, LM Studio, LiteLLM…), Ollama, and ChatGPT. Legacy values <code>vllm</code> / <code>google</code> / <code>azure</code> / <code>claude</code> resolve to the new ids (migration <code>20261015_llm_provider_registry.sql</code> also rewrites stored rows).</li>
+<li><strong>ChatGPT sign-in</strong>: the <code>chatgpt</code> provider uses OpenAI's "Sign in with ChatGPT" PKCE flow (<code>admin/chatgptOAuth.ts</code>). The redirect can only be a local loopback, so the operator pastes the browser's final URL back into the console to finish the exchange; tokens are stored in <code>admin.llm_providers.oauth</code> and never leave the server.</li>
+<li><strong>Embedding identity (fingerprint)</strong>: <code>admin/embeddingIdentity.ts</code> stores the vectors of a fixed set of probe texts as the system's embedding identity (<code>admin.embedding_identity</code> / <code>admin.embedding_fingerprints</code>, defined in <code>db/schema.sql</code> and <code>db/migrations/20261021_embedding_identity.sql</code>; the code also creates them at runtime with <code>CREATE TABLE IF NOT EXISTS</code> as a safety net). A new endpoint may join an embedding profile only if every probe reaches cosine ≥ 0.95 — i.e. it is the same model. Switching models while vectors exist goes through a guarded flow: turn the embedding role off → stop embed jobs → wipe vectors → adopt the new identity → re-queue every module's embed job.</li>
+<li>Role-level knobs (embedding timeout / batch size / concurrency, analysis max retries) live in the <code>embedding</code> / <code>analysis</code> groups of <code>admin.app_settings</code>.</li>
+</ul>
 <h2 id="settings-and-precedence">Settings and precedence<a class="headerlink" href="#settings-and-precedence" title="Permanent link">&para;</a></h2>
-<p>Bootstrap variables (DB / Redis / MCP transport / <code>ADMIN_*</code> auth) originate in <code>.env</code>. On first boot, <code>ADMIN_PASSWORD_HASH</code> is written into <code>admin.admin_credentials</code>, and subsequent sign-ins validate only against the hash in the database. Seeding uses <code>ON CONFLICT DO NOTHING</code>, so once the credential row exists, editing <code>.env</code> or restarting the service never overwrites a working password. Passwords and passkeys are both managed under Settings → Privacy.</p>
-<p>The other external-system settings (MinIO, TFDA base URL, worker tuning) are <strong>seed-only</strong>: <code>.env</code> is read exactly once, on first boot, while <code>admin.app_settings</code> is empty. Editing <code>.env</code> afterwards has no effect on an already-seeded database. TFDA and registry settings can then be managed and tested in the Settings tab (applied hot); <strong>MinIO and worker tuning are read-only groups</strong> there, so changing them later requires a direct <code>UPDATE admin.app_settings</code> and a service restart.</p>
-<p><strong>Model endpoints (embedding / OCR / analysis LLM) are never read from environment variables.</strong> They live only in <code>admin.llm_profiles</code> and are configurable only in the Settings sub-pages. Use the JSON Export / Import under Settings → Backup &amp; restore to move a working configuration between installs.</p>
+<p>Bootstrap variables (DB / Redis / MCP transport / <code>ADMIN_*</code> auth) originate in <code>.env</code>. On first boot, <code>ADMIN_INITIAL_PASSWORD</code> (hashed) or <code>ADMIN_PASSWORD_HASH</code> is written into <code>admin.admin_credentials</code>, and subsequent sign-ins validate only against the hash in the database. Seeding uses <code>ON CONFLICT DO NOTHING</code>, so once the credential row exists, editing <code>.env</code> or restarting the service never overwrites a working password. Passwords and passkeys are both managed under Account security (<code>/admin/security</code>).</p>
+<p>The other external-system settings (MinIO, TFDA base URL, FHIR package registry, worker tuning) are <strong>seed-only</strong>: <code>.env</code> is read exactly once, on first boot, for keys not yet present in <code>admin.app_settings</code>. Afterwards manage and test them under External services (<code>/admin/integrations</code>); editing <code>.env</code> has no effect on an already-seeded database. TFDA and registry can be edited there (applied hot); <strong>MinIO and worker tuning are read-only groups</strong>.</p>
+<p>The OCR (MinerU) endpoint lives in the <code>ocr</code> group of <code>admin.app_settings</code>. It is <strong>not seeded from <code>.env</code></strong> and is configured and tested only under External services → OCR.</p>
+<p>Settings export / import (format version 3) under Backups &amp; settings (<code>/admin/system</code>) moves a working configuration between installs: it carries every <code>admin.app_settings</code> group, the provider accounts / profiles / role bindings (keys included), and the passkeys with their RP ID. Older v1 / v2 exports still import. The export contains secrets in the clear — store it like a credential.</p>
 <h2 id="system-backups">System backups<a class="headerlink" href="#system-backups" title="Permanent link">&para;</a></h2>
-<p>Settings → Backup &amp; restore lets you select settings and credentials, the PostgreSQL database, and MinIO object storage individually.
+<p>The Backups &amp; settings page lets you select settings and credentials, the PostgreSQL database, and MinIO object storage individually.
 Creating a backup only queues a <code>system_backup</code> background job; the worker streams the PostgreSQL custom dump and the MinIO objects into a ZIP chunk by chunk, then writes it back to the <code>system-backups/</code> prefix in MinIO with a multipart upload — the whole backup is never assembled in a single HTTP request or in Node's memory. Once finished, it can be streamed down from the backup history through a same-origin API.</p>
 <p>Backups contain API keys, login credentials, and medical data, and should be managed as production secrets. The database dump restores with PostgreSQL 16 <code>pg_restore</code>; the object storage files are in the ZIP's <code>object-storage/</code> directory.</p>
 <h2 id="source-files">Source files<a class="headerlink" href="#source-files" title="Permanent link">&para;</a></h2>
-<p>Upload each module's source files under Modules / Sources (ICD zip, LOINC zip, SNOMED RF2, RxNorm zip, FHIR IG <code>package.tgz</code>, and so on), optionally specifying a source role (such as an IG dependency package). The system blocks duplicate uploads by file fingerprint; files are stored in MinIO and fetched back when a job runs.</p>
+<p>Upload each module's source files in the sources section of its module page (ICD-10-CM CMS order-file zip, ICD-10-PCS, LOINC zip, SNOMED RF2, RxNorm zip, FHIR IG <code>package.tgz</code>, and so on), optionally specifying a source role (such as an IG dependency package or the optional WHO ICD-10 source). The system blocks duplicate uploads by file fingerprint (SHA-256); files are stored in MinIO and fetched back when a job runs.</p>
 <blockquote>
-<p>Uploads must send <code>Content-Type: application/octet-stream</code>, or express's JSON parser intercepts them and returns 413.</p>
+<p>Uploads must send <code>Content-Type: application/octet-stream</code> (the SPA does), or express's JSON parser intercepts them and returns 413.</p>
 </blockquote>
+<h2 id="terminology-browsers">Terminology browsers<a class="headerlink" href="#terminology-browsers" title="Permanent link">&para;</a></h2>
+<p>The Terminology module pages and the IG library include read-only browsers backed by <code>GET /admin/api/terminology/*</code> (<code>node-server/src/admin/termViz/</code>):</p>
+<table>
+<thead>
+<tr>
+<th>Browser</th>
+<th>API prefix</th>
+<th>Contents</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ICD-10-CM tree / WHO ICD-10 tree</td>
+<td><code>icd/cm/*</code>, <code>icd/who/*</code></td>
+<td>Chapter → category → code hierarchy, paths and search</td>
+</tr>
+<tr>
+<td>ICD-10-PCS axes</td>
+<td><code>icd/pcs/*</code></td>
+<td>Tables by the first three characters, filtered on axes 4–7</td>
+</tr>
+<tr>
+<td>SNOMED CT graph</td>
+<td><code>snomed/*</code></td>
+<td>Concept neighbourhood (parents / children / attribute relationships) and search</td>
+</tr>
+<tr>
+<td>LOINC axes</td>
+<td><code>loinc/*</code></td>
+<td>Six-axis facet filtering, term detail, LA / LP / LL codes</td>
+</tr>
+<tr>
+<td>RxNorm</td>
+<td><code>rxnorm/*</code></td>
+<td>Summary, search by TTY, concept detail</td>
+</tr>
+<tr>
+<td>IG CodeSystem tree</td>
+<td><code>ig/codesystem*</code></td>
+<td>Concept hierarchy and search for CodeSystems inside an IG package</td>
+</tr>
+</tbody>
+</table>
 <h2 id="maintenance-mode">Maintenance mode<a class="headerlink" href="#maintenance-mode" title="Permanent link">&para;</a></h2>
-<p>Each module can be switched into maintenance mode: while it is on, that module's MCP tools stop responding (returning a maintenance message), so the data can be reloaded or cleared safely without read/write races.</p>
+<p>The <code>drug</code>, <code>icd</code>, <code>loinc</code>, <code>snomed</code>, <code>ig</code> and <code>rxnorm</code> modules can be switched into maintenance mode (<code>POST /admin/api/module-maintenance</code>; state lives in the <code>maintenance</code> group of <code>admin.app_settings</code>), to pause a module's MCP tools while its data is being reloaded or cleared: calls to the tools of a module in maintenance (over <code>/mcp</code>, <code>/tools/*</code> and the admin playground) return error code <code>MODULE_MAINTENANCE</code> immediately (English + Traditional Chinese message), while the tools stay in <code>tools/list</code> (no tool-list churn for clients). The state is cached for 5 seconds, so a toggle takes effect within about 5 seconds. ICD-10 and FHIR Condition follow <code>icd</code>, Drug and FHIR Medication follow <code>drug</code>, Lab follows <code>loinc</code>, FHIR IG follows <code>ig</code>; <code>rxnorm</code> has no tools of its own, so its flag is informational. The module page shows the tools as "paused (under maintenance)" and the MCP tools page marks the tool cards 「維護中」 (under maintenance). The error format is in the <a href="../api/#maintenance">API reference</a>.</p>
 <h2 id="external-fhir-servers">External FHIR servers<a class="headerlink" href="#external-fhir-servers" title="Permanent link">&para;</a></h2>
-<p>Register external FHIR R4 servers on the FHIR Servers tab, configuring the permitted resource types and operations, OAuth authentication (including <code>private_key_jwt</code> key generation, with the public JWKS hosted at <code>/fhir-client/&lt;id&gt;/jwks.json</code>), the token strategy, and the health check path.</p>
+<p>Register external FHIR R4 servers on the FHIR servers page, configuring the permitted resource types and operations, OAuth authentication (including <code>private_key_jwt</code> key generation, with the public JWKS hosted at <code>/fhir-client/&lt;id&gt;/jwks.json</code>), the token strategy, and the health check path. After the OAuth Authorization Code callback the browser is sent back to <code>/admin/fhir-servers</code>.</p>
 <p>The MCP side consumes them through <code>list_fhir_servers</code> / <code>get_fhir_server_status</code> / <code>crud_fhir_server</code>, with the server handling tokens on the caller's behalf — the caller never touches any secret.</p>
 <blockquote>
 <p><code>crud_fhir_server</code> is the only tool in the system that can produce a write: write operations require the server's allow-list to permit them and the caller to pass <code>confirm_write=true</code>.</p>

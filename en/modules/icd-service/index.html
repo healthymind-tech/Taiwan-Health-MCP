@@ -2556,7 +2556,7 @@
 <p>Several query modes let users find the ICD-10 code they need quickly:
 - <strong>Keyword search</strong>: search by Chinese or English keyword (for example「糖尿病」, "Diabetes", or "E11").
 - <strong>Type filter</strong>: restrict the search to diagnosis codes or procedure codes.
-- <strong>Fuzzy matching</strong>: handles partial-match queries.</p>
+- <strong>Hybrid search</strong>: diagnosis codes are ranked by BM25 full-text search plus vector similarity (merged with RRF). Vectors must first be backfilled by the <code>icd_embed</code> job; when the embedding endpoint is unavailable the search falls back to keywords and is marked <code>search_mode: "keyword_only"</code>.</p>
 <h3 id="2-complication-inference">2. Complication inference<a class="headerlink" href="#2-complication-inference" title="Permanent link">&para;</a></h3>
 <p>Uses the ICD-10 hierarchy to infer complications or finer subcategories that may accompany a principal diagnosis.
 - <strong>Hierarchical analysis</strong>: expands from a parent code (for example E11) to child codes (for example E11.2, with kidney complications).
@@ -2570,21 +2570,31 @@
 - <strong>Category list</strong>: grouped by the first three characters (for example E11.x, I10.x)
 - <strong>Code enumeration</strong>: returns every diagnosis code and name under a given category</p>
 <h3 id="5-diagnosis-procedure-conflict-detection">5. Diagnosis / procedure conflict detection<a class="headerlink" href="#5-diagnosis-procedure-conflict-detection" title="Permanent link">&para;</a></h3>
-<p>The module's advanced capability: validating logical compatibility between a diagnosis and a procedure.
-- <strong>Indication check</strong>: confirms the procedure is applicable to the diagnosis.
-- <strong>Contraindication warning</strong>: flags medically implausible combinations (for example a male-specific diagnosis code paired with uterine surgery).
-- <strong>Structured analysis</strong>: returns detailed information about both sides for comparison.</p>
+<p><code>check_medical_conflict</code> helps judge the logical compatibility of a diagnosis and a procedure (for example a male-specific diagnosis code paired with uterine surgery).
+- <strong>Structured data</strong>: returns the full rows for both the diagnosis code and the procedure code, with an instruction asking the caller (the LLM) to analyse contraindications.
+- <strong>The caller decides</strong>: the tool has <strong>no</strong> built-in indication / contraindication rule base; the conflict judgement is left to the caller, reasoning over the returned data.
+- <strong>When PCS is not loaded</strong>: the procedure side returns an "ICD-10-PCS data not loaded" notice.</p>
 <h2 id="technical-architecture">Technical architecture<a class="headerlink" href="#technical-architecture" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>Data sources</strong>: ICD-10-CM 2025 (NLM) and ICD-10-PCS 2025 (CMS), loaded through the admin console (Admin → Modules, import stage <code>icd_import</code>).</li>
-<li><strong>Database</strong>: PostgreSQL 16, with two tables — <code>icd.diagnoses</code> (diagnosis codes) and <code>icd.procedures</code> (procedure codes).</li>
-<li><strong>PCS degradation</strong>: the <code>_pcs_available</code> flag — when ICD-10-PCS is not loaded, the tools degrade automatically and return an informational message rather than an error. PCS 2025 (78,948 rows) lives in <code>fhir-code/icd/10/icd10pcs/</code> and is loaded by <code>icd_import</code> at the same time.</li>
-<li><strong>Full-text search</strong>: each table has an FTS index supporting Chinese and English keyword search.</li>
+<li><strong>Data sources</strong>: ICD-10-CM and ICD-10-PCS (CMS), uploaded and imported on the <strong>Terminology → ICD-10</strong> page of the admin console, "Data lifecycle" tab (import stage <code>icd_import</code>). Source roles:<ul>
+<li><code>icd10cm</code> (required): upload the CMS "Code Descriptions in Tabular Order" zip (it holds <code>icd10cm_order_YYYY.txt</code>, e.g. <code>april-1-2026-code-descriptions-tabular-order.zip</code>). It is the complete code set (header codes plus billable codes including 7th characters / placeholder <code>X</code> — 98,186 codes in the 2026-04-01 release) and keeps the CMS short title and the header flag. The "Code Tables, Tabular and Index" zip (tabular XML) is also accepted — 7th characters are expanded — but it does not count as a complete edition.</li>
+<li><code>icd10pcs</code>: the ICD-10-PCS zip (CMS flat codes TXT).</li>
+<li><code>icd_zh_tw</code> (optional): the MOHW bilingual XLSX, for Chinese names.</li>
+<li><code>icd10_who</code> (optional): "WHO ICD-10 (FHIR JSON)" — a WHO ICD-10 FHIR CodeSystem or expanded ValueSet (e.g. the tx.fhir.org edition <code>2019-covid-expanded</code>, 13,831 codes, fetched with <code>node-server/scripts/validator-audit/harness/fetch_tx_terms.py</code>), imported into <code>icd.icd10_who</code> so the FHIR validator can check codes and displays of <code>http://hl7.org/fhir/sid/icd-10</code>.</li>
+</ul>
+</li>
+<li><strong>Edition record and strict judgement</strong>: every import writes <code>icd.editions</code> (<code>edition</code>, <code>source_format</code> = <code>cms-order</code> / <code>tabular-xml</code>, <code>complete</code>, <code>code_count</code>) in the same promote transaction. Only when the local table is a complete CMS order-file edition does the FHIR validator report unknown ICD-10-CM codes as <strong>errors</strong> (as tx.fhir.org does); with tabular XML, or no recorded edition, they stay warnings. WHO ICD-10 works the same way: strict only when the complete <code>2019-covid-expanded</code> edition is loaded.</li>
+<li><strong>Database</strong>: PostgreSQL 16 — <code>icd.diagnoses</code> (diagnosis codes, with <code>short_name_en</code> and <code>is_header</code>), <code>icd.procedures</code> (procedure codes), <code>icd.editions</code>, <code>icd.icd10_who</code>, and the vector table <code>icd.diagnosis_embeddings</code>.</li>
+<li><strong>PCS degradation</strong>: the <code>pcsAvailable</code> flag in <code>icdService.ts</code> — when <code>icd.procedures</code> is empty, the procedure features degrade automatically and return an informational message rather than an error.</li>
+<li><strong>Vector search uses an exact scan on purpose</strong>: the diagnosis vector query orders by <code>(embedding &lt;=&gt; $v) + 0</code> so the planner stays off the HNSW index — the ~50k near-duplicate 7th-character codes make HNSW recall collapse (diabetes queries returned fracture codes). An exact scan of ~98k rows takes about 0.35 s.</li>
+<li><strong>Terminology browsing</strong>: the "Data preview" tab of the same module page offers an ICD-10-CM chapter tree, a WHO ICD-10 tree and an ICD-10-PCS seven-axis table browser, backed by <code>/admin/api/terminology/icd/*</code> (<code>cm/children</code>, <code>cm/path</code>, <code>cm/search</code>, <code>who/*</code>, <code>pcs/browse</code>, <code>pcs/table</code>, <code>pcs/codes</code>, <code>pcs/code</code>, <code>pcs/search</code>).</li>
+<li><strong>Local development</strong>: without an admin upload the loader falls back to <code>fhir-code/icd/10/</code> (overridable with <code>ICD_CM_ZIP</code>, <code>ICD_PCS_ZIP</code> and similar env vars); see <a href="../../data-sources/test-data/">Test data files</a>.</li>
 </ul>
 <h2 id="dependencies">Dependencies<a class="headerlink" href="#dependencies" title="Permanent link">&para;</a></h2>
 <p>This is a self-contained foundational module, but the following advanced services depend on it:
 - <strong>FHIR Condition Service</strong>: converts ICD codes to the FHIR standard format.
-- <strong>Health Supplements Service</strong>: recommends related health information based on a diagnosis.</p>
+- <strong>Health Supplements Service</strong>: its <code>condition</code> mode resolves a diagnosis keyword through ICD search.
+- <strong>FHIR IG validator</strong>: judges ICD-10-CM / WHO ICD-10 codes and displays against <code>icd.*</code>.</p>
 
 
 

@@ -707,6 +707,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Overview">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#how-the-target-package-is-resolved" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How the target package is resolved
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -759,6 +776,17 @@
     <span class="md-ellipsis">
       
         4. Authoring, assembly, and validation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-record-faithfulness-grounding-deterministic-no-llm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Record faithfulness (grounding — deterministic, no LLM)
       
     </span>
   </a>
@@ -2432,6 +2460,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Overview">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#how-the-target-package-is-resolved" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How the target package is resolved
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2484,6 +2529,17 @@
     <span class="md-ellipsis">
       
         4. Authoring, assembly, and validation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-record-faithfulness-grounding-deterministic-no-llm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Record faithfulness (grounding — deterministic, no LLM)
       
     </span>
   </a>
@@ -2551,7 +2607,18 @@
 <h1 id="fhir-ig-service">FHIR IG Service<a class="headerlink" href="#fhir-ig-service" title="Permanent link">&para;</a></h1>
 <h2 id="overview">Overview<a class="headerlink" href="#overview" title="Permanent link">&para;</a></h2>
 <p>The FHIR IG service is a general, IG-scoped toolset built on top of the multi-IG <code>fhir.*</code> data store. It lets an LLM explore installed Implementation Guides, read profiles (StructureDefinition) and terminology (ValueSet / CodeSystem), perform terminology validation, and produce and validate profile-conformant FHIR R4 resources through a "skeleton-fill" approach. The default IG is TWCore v1.0.0, but multiple IGs can be installed and switched between.</p>
-<p>Every tool accepts an optional <code>package_id</code> + <code>version</code> (omitting both pins it to the default IG), and responses use a shared envelope: <code>{ok, data, warnings, provenance, error?}</code>.</p>
+<p>Every tool accepts an optional <code>package_id</code> + <code>version</code>, and responses use a shared envelope: <code>{ok, data, warnings, provenance, error?}</code>.</p>
+<h3 id="how-the-target-package-is-resolved">How the target package is resolved<a class="headerlink" href="#how-the-target-package-is-resolved" title="Permanent link">&para;</a></h3>
+<p>When not stated explicitly, a tool picks the IG package in this order and records the outcome in <code>provenance.resolved_by</code>:</p>
+<ol>
+<li><code>explicit_version</code>: a canonical argument (or <code>meta.profile</code>) carries <code>|version</code> and an installed package holds that version — there is <strong>no</strong> silent fallback to another version;</li>
+<li><code>package_arg</code>: the caller passed <code>package_id</code> (+ <code>version</code>); <code>latest</code>: <code>package_id</code> without a version → that package's highest release;</li>
+<li><code>meta_profile</code>: no <code>package_id</code> — the package owning the resource's <code>meta.profile</code> (validation tools);</li>
+<li><code>canonical_owner</code>: no <code>package_id</code> — the package owning a canonical argument (profile / ValueSet / system);</li>
+<li><code>default_ig</code>: the default IG;</li>
+<li><code>sole_manual_ig</code>: no default IG is set and exactly one IG was installed manually.</li>
+</ol>
+<p>If none applies the error code is <code>NO_DEFAULT_IG</code> (no arbitrary package is picked). Versions compare by SemVer 2.0 precedence (FHIR labels such as <code>-ballot</code>, <code>-snapshot1</code>, <code>-cibuild</code> are pre-releases); <code>|version</code> matches by the HL7 rule (exact, else the highest of the same major.minor, else a wildcard). Declared dependencies that are not installed are listed in <code>data.deps_missing</code>; when one package appears at several versions in a closure, <code>provenance.closure_versions</code> shows which one canonical lookup uses.</p>
 <h2 id="tool-groups">Tool groups<a class="headerlink" href="#tool-groups" title="Permanent link">&para;</a></h2>
 <h3 id="1-ig-discovery">1. IG discovery<a class="headerlink" href="#1-ig-discovery" title="Permanent link">&para;</a></h3>
 <ul>
@@ -2565,6 +2632,7 @@
 <li><strong><code>fhir_list_resource_profiles</code></strong>: lists the IG's selectable resource profiles (constraint StructureDefinitions), grouped by the base resource type they constrain (for example <code>Patient</code> → <code>Patient-twcore</code>).</li>
 <li><strong><code>fhir_rank_resource_profiles</code></strong>: ranks candidate profiles by how well the source field keys you intend to populate match each profile's element paths. This tool is <strong>advisory only</strong> — the response carries <code>selectionRequired:true</code>, and you must still make the final choice; it never maps automatically.</li>
 <li><strong><code>fhir_get_profile</code></strong>: summary of a single profile / StructureDefinition (identity, base definition, derivation, element count). Resolvable by artifact id, canonical URL, or artifact_key; canonicals defined by dependency IGs resolve transitively.</li>
+<li><strong><code>fhir_get_profile_required_elements</code></strong>: every element the profile effectively requires (min≥1 under required ancestors, required slices, choice types, invariant-implied value-or-dataAbsentReason, plus target-implied primary content), each row classified by where its value comes from (<code>auto</code> / <code>coding</code> / <code>source_fact</code> / <code>workflow_default</code>) with a fill hint. <code>verbosity=compact</code> (default) or <code>full</code>; an optional <code>instance</code> (draft) makes the min≥1 children of optional parents it populates required too. Call it before writing a resource so every required field is filled.</li>
 <li><strong><code>fhir_get_profile_elements</code></strong>: reads the structural truth of a profile snapshot (cardinality, types, bindings, slicing, choice[x], constraints). One tool offers several <code>view</code> values: <code>elements</code>, <code>element</code>, <code>slices</code>, <code>choices</code>, <code>binding</code>, <code>examples</code>.</li>
 </ul>
 <h3 id="3-terminology-valueset">3. Terminology / ValueSet<a class="headerlink" href="#3-terminology-valueset" title="Permanent link">&para;</a></h3>
@@ -2582,26 +2650,35 @@
 <li><strong><code>fhir_resolve_reference</code></strong>: resolve resource references by temporary key, so resources can link to each other inside a Bundle.</li>
 <li><strong><code>fhir_build_bundle</code></strong>: assemble several resources into a Bundle of type <code>transaction</code>, <code>collection</code>, and so on.</li>
 <li><strong><code>fhir_validate_resource</code></strong>: validate a single resource against the profile named in <code>meta.profile</code> (structure + terminology bindings).</li>
-<li><strong><code>fhir_validate_bundle</code></strong>: validate an entire Bundle.</li>
+<li><strong><code>fhir_validate_bundle</code></strong>: validate a whole Bundle (each entry against its <code>meta.profile</code>, plus reference integrity inside the Bundle).</li>
+<li>Both validation tools report how complete the check was: <code>checked_fully</code>, <code>profiles_unchecked</code>, <code>valuesets_unchecked</code> (<code>valid</code> keeps the HL7 meaning; a profile or ValueSet that could not be checked is flagged rather than silently passed). The optional <code>source_text</code> / <code>site_config</code> / <code>evidence_map</code> parameters add grounding issues; without them the output is identical to the output before grounding existed.</li>
 </ul>
+<h3 id="5-record-faithfulness-grounding-deterministic-no-llm">5. Record faithfulness (grounding — deterministic, no LLM)<a class="headerlink" href="#5-record-faithfulness-grounding-deterministic-no-llm" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong><code>fhir_check_grounding</code></strong>: checks a Bundle against the source clinical record text — every populated clinical fact and code must be supported by the record (evidence map or auto-locate), with date / number / unit / identifier / dose / frequency normalisation and section, negation and history rules; issues come back in the <code>fhir_validate_bundle</code> shape.</li>
+<li><strong><code>fhir_check_completeness</code></strong>: a gap report — compares the facts the conversion targets require (profile-required plus target-implied elements) with what the record states, and returns the missing items, the record lines that state absence, a template clarification question and a ready <code>insufficient_information</code> object.</li>
+</ul>
+<p><code>source_text</code> is clinical data: the server <strong>never logs its content</strong> (only its SHA-256). Per-tool versions live in <code>node-server/src/toolVersions.ts</code> and are reported by <code>health_check</code> under <code>tools_version</code>.</p>
 <h2 id="technical-architecture">Technical architecture<a class="headerlink" href="#technical-architecture" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>Data source</strong>: FHIR IG packages (<code>package.tgz</code>), imported through the admin console (Admin → Modules / IG, import stage <code>ig_import</code>). Dependency packages (such as <code>hl7.terminology.r4</code> and <code>hl7.fhir.r4.core</code>) can be bound additionally and are each indexed as package-scoped IGs, so cross-system ValueSet bindings expand to real codes.</li>
-<li><strong>Database</strong>: the <code>fhir</code> schema — <code>ig_packages</code>, <code>codesystems</code>, <code>concepts</code>, and <code>artifacts</code> (all package-scoped, supporting multiple IGs).</li>
-<li><strong>Validation engine</strong>: <code>fhirValidator.ts</code> / <code>fhirTerminology.ts</code> / <code>fhirSnapshot.ts</code> / <code>fhirReference.ts</code> / <code>fhirAuthoring.ts</code> perform snapshot generation, terminology binding checks, reference resolution, and skeleton-fill authoring in process.</li>
+<li><strong>Data source</strong>: FHIR IG packages (<code>package.tgz</code>), installed from the package registry or uploaded as a tgz on the <strong>FHIR → IG packages</strong> page of the admin console (import stage <code>ig_import</code>). Declared dependency IGs (such as <code>hl7.terminology.r4</code> and <code>hl7.fhir.r4.core</code>) are <strong>downloaded automatically from the FHIR registry</strong> (default <code>https://packages.fhir.org</code>, falling back to <code>https://packages2.fhir.org</code>; the registry address is set under <strong>Integrations → External services</strong>) and each is indexed as a package-scoped IG, so cross-system ValueSet bindings expand to real codes. Upload a dependency by hand only when the registry cannot supply it.</li>
+<li><strong>Install origin</strong>: <code>fhir.ig_packages.install_origin</code> records whether a package was installed by an operator (<code>manual</code>) or fetched to satisfy another IG's dependencies (<code>dependency</code>), and <code>installed_for</code> records which IG pulled it in (migration <code>20261019_ig_install_origin.sql</code>); <code>manual</code> is sticky on re-import. The IG page lists missing dependencies and dependencies nothing uses any more.</li>
+<li><strong>Deletion protection</strong>: removing a package that another installed IG depends on (directly or transitively), or removing the default IG, is refused by default; the operator must name a new default (<code>new_default</code>) or pass <code>force</code> explicitly (recorded in the audit log).</li>
+<li><strong>Database</strong>: the <code>fhir</code> schema — <code>ig_packages</code>, <code>codesystems</code>, <code>concepts</code>, and <code>artifacts</code> (all package-scoped, supporting multiple IGs). The IG detail view in the admin console can browse the concept tree of a CodeSystem inside an IG (<code>/admin/api/terminology/ig/*</code>).</li>
+<li><strong>Validation engine</strong>: <code>fhirValidator.ts</code> / <code>fhirTerminology.ts</code> / <code>fhirSnapshot.ts</code> / <code>fhirReference.ts</code> / <code>fhirAuthoring.ts</code> perform snapshot generation, terminology binding checks, reference resolution, and skeleton-fill authoring in process. The rules are benchmarked against HL7 <code>validator_cli</code> 7.0.1 + tx.fhir.org, compared item by item over a corpus (audit record: <code>node-server/scripts/validator-audit/REPORT.md</code>). Offline terminology: ICD-10-CM / WHO ICD-10 (<code>icd.*</code>), LOINC (including LA/LP/LL/LG), SNOMED CT (including inactive content), RxNorm, CVX (built in, 287 codes, version 20250715), ISO 3166 (built in, version 2018), and UCUM (grammar check with <code>@lhncbc/ucum-lhc</code>; if the library cannot load, the code is reported unchecked, never invalid).</li>
 </ul>
 <h2 id="suggested-authoring-workflow">Suggested authoring workflow<a class="headerlink" href="#suggested-authoring-workflow" title="Permanent link">&para;</a></h2>
 <ol>
 <li><code>fhir_list_igs</code> → select the target IG (when necessary).</li>
 <li><code>fhir_list_resource_profiles</code> / <code>fhir_rank_resource_profiles</code> → pick a profile.</li>
 <li><code>fhir_get_profile_elements</code> (<code>choices</code> / <code>binding</code> / <code>slices</code>) → understand the structure and terminology constraints.</li>
-<li><code>fhir_get_resource_skeleton</code> → get the skeleton and fill fields in step by step (use <code>fhir_normalize_code</code> / <code>fhir_validate_code</code> for coding as needed).</li>
+<li><code>fhir_get_profile_required_elements</code> → confirm the required elements; <code>fhir_get_resource_skeleton</code> → get the skeleton and fill fields in step by step (use <code>fhir_normalize_code</code> / <code>fhir_validate_code</code> for coding as needed).</li>
 <li><code>fhir_finalize_resource</code> → finalise; assemble multiple resources with <code>fhir_resolve_reference</code> + <code>fhir_build_bundle</code>.</li>
-<li><code>fhir_validate_resource</code> / <code>fhir_validate_bundle</code> → validate.</li>
+<li><code>fhir_validate_resource</code> / <code>fhir_validate_bundle</code> → validate (pass <code>source_text</code> when the source record is available, or call <code>fhir_check_grounding</code> / <code>fhir_check_completeness</code>).</li>
 </ol>
 <h2 id="key-limitations">Key limitations<a class="headerlink" href="#key-limitations" title="Permanent link">&para;</a></h2>
 <ul>
-<li>In-process validation is based on profile snapshots and terminology bindings. It is <strong>not</strong> equivalent to conformance certification by the official HL7 FHIR Validator.</li>
+<li>In-process validation is based on profile snapshots and terminology bindings. Although it is benchmarked against HL7 validator_cli 7.0.1, it is <strong>not</strong> equivalent to conformance certification by the official HL7 FHIR Validator.</li>
 <li>The tools offer suggestions and structural assistance only; profile selection and final content remain the caller's responsibility.</li>
 </ul>
 <blockquote>

@@ -1754,7 +1754,7 @@
   <a href="#_1" class="md-nav__link">
     <span class="md-ellipsis">
       
-        啟用
+        啟用與登入
       
     </span>
   </a>
@@ -1773,6 +1773,28 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#mcp-adminmcp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCP 工具頁（/admin/mcp）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#adminmodels" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        模型端點（/admin/models）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#settings" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1784,7 +1806,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_3" class="md-nav__link">
+  <a href="#system-backups" class="md-nav__link">
     <span class="md-ellipsis">
       
         系統備份
@@ -1799,6 +1821,17 @@
     <span class="md-ellipsis">
       
         來源檔（Sources）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        術語瀏覽器
       
     </span>
   </a>
@@ -2410,7 +2443,7 @@
   <a href="#_1" class="md-nav__link">
     <span class="md-ellipsis">
       
-        啟用
+        啟用與登入
       
     </span>
   </a>
@@ -2429,6 +2462,28 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#mcp-adminmcp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCP 工具頁（/admin/mcp）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#adminmodels" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        模型端點（/admin/models）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#settings" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2440,7 +2495,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_3" class="md-nav__link">
+  <a href="#system-backups" class="md-nav__link">
     <span class="md-ellipsis">
       
         系統備份
@@ -2455,6 +2510,17 @@
     <span class="md-ellipsis">
       
         來源檔（Sources）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        術語瀏覽器
       
     </span>
   </a>
@@ -2515,95 +2581,186 @@
 
 
 <h1 id="admin-console">管理後台 (Admin Console)<a class="headerlink" href="#admin-console" title="Permanent link">&para;</a></h1>
-<p>管理後台是一個 session 認證的操作介面，掛載於 <code>/admin</code>，供操作者上傳來源檔、執行與排程資料匯入、管理設定與外部 FHIR 伺服器，並即時監控背景工作。<strong>預設停用</strong>。</p>
-<h2 id="_1">啟用<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
+<p>管理後台是一個 session 認證的操作介面，掛載於 <code>/admin</code>，供操作者上傳來源檔、執行與排程資料匯入、管理模型端點、設定與外部 FHIR 伺服器，並即時監控背景工作。<strong>預設啟用</strong>（<code>ADMIN_ENABLED=true</code>）——它是唯一能匯入資料的途徑；資料載入完成後可設為 <code>false</code> 以縮小公開部署的受攻擊面（MCP 工具、worker 與排程匯入照常運作）。</p>
+<h2 id="_1">啟用與登入<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
 <p>於 <code>.env</code> 設定下列變數後重新啟動 <code>app</code>：</p>
 <pre><code class="language-dotenv">ADMIN_ENABLED=true
 ADMIN_USERNAME=admin
+# 二擇一：明文初始密碼（首次啟動時雜湊後寫入資料庫），或預先算好的雜湊
+ADMIN_INITIAL_PASSWORD=
 # 產生密碼雜湊（Node）：
 #   node -e &quot;console.log('sha256$' + require('crypto').createHash('sha256').update('change-me').digest('hex'))&quot;
 # ⚠️ 在 .env 中每個 $ 都要寫成 $$（Docker Compose 會把 $ 當變數展開，
 #    雜湊值以字母開頭時會被靜默截斷）。Compose 會把 $$ 還原成單一 $。
 ADMIN_PASSWORD_HASH=sha256$$...
-ADMIN_SESSION_SECRET=change_this_admin_session_secret
+ADMIN_SESSION_SECRET=&lt;openssl rand -hex 32&gt;
 ADMIN_SESSION_TTL_MINUTES=240
 ADMIN_MAX_UPLOAD_MB=512
 # 外部 FHIR 伺服器 OAuth token / client secret 的對稱加密金鑰（pgcrypto）。
 # 未設定時回退至 ADMIN_SESSION_SECRET。
 FHIR_SERVER_SECRET_KEY=
 </code></pre>
-<p>密碼雜湊支援 <code>sha256$&lt;hex&gt;</code> 或 <code>pbkdf2_sha256$&lt;iterations&gt;$&lt;salt&gt;$&lt;hex&gt;</code>。也可改用 <code>ADMIN_INITIAL_PASSWORD</code> 直接給明文初始密碼（僅首次啟動有效）。<code>/admin</code> 開放的條件是 <code>ADMIN_ENABLED=true</code>、<code>ADMIN_USERNAME</code>、<code>ADMIN_SESSION_SECRET</code> 皆有值，且 <code>ADMIN_PASSWORD_HASH</code> 與 <code>ADMIN_INITIAL_PASSWORD</code> 至少其一有值。</p>
+<p>密碼雜湊支援 <code>sha256$&lt;hex&gt;</code> 或 <code>pbkdf2_sha256$&lt;iterations&gt;$&lt;salt&gt;$&lt;hex&gt;</code>。<code>ADMIN_INITIAL_PASSWORD</code> 與 <code>ADMIN_PASSWORD_HASH</code> 並存時以前者為準，且兩者都只在首次啟動、資料庫尚無憑證列時使用。<code>/admin</code> 開放的條件是 <code>ADMIN_ENABLED=true</code>、<code>ADMIN_USERNAME</code>、<code>ADMIN_SESSION_SECRET</code> 皆有值，且 <code>ADMIN_PASSWORD_HASH</code> 與 <code>ADMIN_INITIAL_PASSWORD</code> 至少其一有值（404 = 後台關閉、503 = 已啟用但設定不齊、401 = 帳密錯誤）。</p>
 <p>登入網址為 <code>http://&lt;host&gt;:8080/admin</code>（經由 nginx 前門；<code>app</code> 容器不對主機開埠）。</p>
 <blockquote>
 <p>管理後台需要 <code>admin-worker</code> 容器一起運作（背景工作執行器）。<code>docker compose up -d</code> 會一併啟動。</p>
 <p><strong>重要：</strong> <code>FHIR_SERVER_SECRET_KEY</code>（或其回退值 <code>ADMIN_SESSION_SECRET</code>）必須在 <code>app</code> 與 <code>admin-worker</code> 兩個容器上<strong>完全一致</strong>。worker 會以此金鑰 <code>pgp_sym_decrypt</code> 外部 FHIR 伺服器的 OAuth token 與 client secret；若 worker 的金鑰為空或不同，會在背景工作時拋出 <code>Illegal argument to function</code>（金鑰為空）或 <code>Wrong key or corrupt data</code>（金鑰不符）。</p>
 </blockquote>
 <h2 id="_2">介面組成<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
-<p>管理介面是 React SPA，位於 <strong><code>web/admin-app/</code></strong>，由 Next.js 前端（<code>web</code> 服務）以 <code>/admin</code> catch-all 路由掛載；<code>web/middleware.ts</code> 以 <code>tw_health_admin_session</code> cookie 做存取控制。</p>
-<p>主要頁籤：</p>
+<p>管理介面是 <strong><code>web-v2/</code></strong> 的 React SPA（Vite + React 19 + Mantine 8），建置後的靜態檔由獨立的 <code>web-v2</code> 容器（自帶 nginx）提供；根目錄 <code>nginx/nginx.conf</code> 把 <code>/admin</code> 頁面導向 <code>web-v2</code>，<code>/admin/api/*</code> 與 <code>/admin/ws</code> 則直接導向 <code>app</code>。存取控制由後端 API 的 session cookie（預設名稱 <code>tw_health_admin_session</code>，可用 <code>ADMIN_SESSION_COOKIE</code> 覆寫）負責，未登入時 SPA 會導向 <code>/admin/login</code>。</p>
+<blockquote>
+<p>舊的 Next.js 前端（<code>web/</code> + <code>web/admin-app/</code>）已被取代，僅保留在 compose profile <code>legacy-web</code> 供回滾使用，預設不啟動。</p>
+</blockquote>
+<p>側邊欄（<code>web-v2/src/layout/nav.ts</code>）分為五區：</p>
 <table>
 <thead>
 <tr>
-<th>頁籤</th>
+<th>區塊</th>
+<th>頁面（路徑相對於 <code>/admin</code>）</th>
 <th>用途</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><strong>Overview</strong></td>
-<td>系統總覽：DB / 各模組 / worker / 外部 FHIR 伺服器健康狀態。</td>
+<td><strong>總覽</strong></td>
+<td>儀表板 <code>/</code>、背景工作 <code>/jobs</code></td>
+<td>系統狀態一覽；匯入 / 嵌入 / 同步工作的佇列、步驟時間軸與即時日誌（見<a href="jobs-and-worker/">背景工作與排程</a>）。</td>
 </tr>
 <tr>
-<td><strong>Services</strong></td>
-<td>各服務 / 模組的可用性與探測（probe）結果。</td>
+<td><strong>資料</strong></td>
+<td>醫療術語 <code>/terminology</code>（各模組 <code>/terminology/&lt;icd\|loinc\|snomed\|rxnorm&gt;</code>）、藥品 <code>/drug</code>（藥品瀏覽器 <code>/drug/explorer</code>）、健康食品 <code>/data/health_supplements</code>、食品營養 <code>/data/food_nutrition</code></td>
+<td>各模組的來源檔、匯入、排程、資料預覽、嵌入、維護模式與清除；術語模組另有瀏覽器（見下文）。</td>
 </tr>
 <tr>
-<td><strong>Tasks</strong></td>
-<td>匯入工作佇列、進度、步驟時間軸與即時日誌（見<a href="jobs-and-worker/">背景工作與排程</a>）。</td>
+<td><strong>FHIR</strong></td>
+<td>IG 套件庫 <code>/fhir/ig</code>、FHIR 伺服器 <code>/fhir-servers</code></td>
+<td>FHIR IG 匯入 / 相依套件 / 移除保護；外部 FHIR R4 伺服器登錄、認證與健康檢查。</td>
 </tr>
 <tr>
-<td><strong>Modules</strong></td>
-<td>各資料模組的來源檔、匯入、排程、預覽、嵌入與維護模式。</td>
+<td><strong>整合</strong></td>
+<td>模型端點 <code>/models</code>、MCP 工具 <code>/mcp</code>、外部服務 <code>/integrations</code></td>
+<td>Embedding 與分析 LLM 的 provider 帳號與 profile；MCP 端點、工具目錄與線上測試；OCR（MinerU）、物件儲存、TFDA、FHIR package registry、worker 設定。</td>
 </tr>
 <tr>
-<td><strong>Settings</strong></td>
-<td>依 Embedding、Analysis LM、OCR、整合服務、Privacy、Backup 等子頁分類；可管理 DB-backed 設定、LLM Profiles、登入憑證與系統備份。</td>
-</tr>
-<tr>
-<td><strong>FHIR Servers</strong></td>
-<td>登錄與管理外部 FHIR R4 伺服器、認證與健康檢查。</td>
+<td><strong>系統</strong></td>
+<td>服務健康 <code>/health</code>、備份與設定 <code>/system</code>、帳號安全 <code>/security</code></td>
+<td>基礎設施探測與 worker 心跳；系統備份與設定匯出 / 匯入；密碼與 passkey。</td>
 </tr>
 </tbody>
 </table>
 <p>對應的後端模組見 <code>node-server/src/admin/*.ts</code>（<code>adminApp.ts</code> 為路由入口）。</p>
-<p>登入方式除密碼外，另支援 <strong>passkey / WebAuthn</strong>（<code>node-server/src/admin/webauthn.ts</code>）；
-passkey 僅能在 HTTPS 的 RP 網域（或本機 localhost）上使用，設定見<a href="../deployment/configuration/">環境變數配置</a>。</p>
+<p>登入方式除密碼外，另支援 <strong>passkey / WebAuthn</strong>（<code>node-server/src/admin/webauthn.ts</code>），於「帳號安全」頁管理；passkey 僅能在 HTTPS 的 RP 網域（或本機 localhost）上使用，設定見<a href="../deployment/configuration/">環境變數配置</a>。</p>
+<h2 id="mcp-adminmcp">MCP 工具頁（<code>/admin/mcp</code>）<a class="headerlink" href="#mcp-adminmcp" title="Permanent link">&para;</a></h2>
+<p>由 <code>node-server/src/admin/adminMcp.ts</code> 提供 API（<code>GET /admin/api/mcp/overview</code>、<code>GET /admin/api/mcp/tools</code>、<code>POST /admin/api/mcp/tools/{name}/invoke</code>），分三個分頁：</p>
+<ul>
+<li><strong>總覽</strong>：對外端點（<code>/mcp</code>、<code>/openapi.json</code>、<code>/tools/{name}</code>、JWKS、OAuth 回呼）、驗證模式、伺服器版本與用戶端設定範本。</li>
+<li><strong>工具目錄</strong>：<code>mcp.ts</code> 定義的全部 63 個工具，含是否已註冊；未註冊的工具會標示原因（模組資料表與門檻筆數）；模組維護中的工具與群組會加上「維護中」徽章。</li>
+<li><strong>測試台</strong>：以預填範例直接執行任一已註冊工具，與 <code>POST /tools/{name}</code> 走同一處理程序（有速率限制）；模組維護中時「執行」按鈕停用並說明原因。</li>
+</ul>
+<h2 id="adminmodels">模型端點（<code>/admin/models</code>）<a class="headerlink" href="#adminmodels" title="Permanent link">&para;</a></h2>
+<p>嵌入與分析 LLM 的端點<strong>完全不從環境變數讀取</strong>，存放於下列資料表（migration <code>20261016_llm_providers_and_routes.sql</code>）：</p>
+<table>
+<thead>
+<tr>
+<th>資料表</th>
+<th>內容</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>admin.llm_providers</code></td>
+<td>Provider 帳號：某一 provider 類型的具名帳號（同類型可多個），含 URL、憑證、帳號層級限制。</td>
+</tr>
+<tr>
+<td><code>admin.llm_routes</code></td>
+<td>Profile：一個策略（<code>single</code> / <code>fallback</code> / <code>round_robin</code> / <code>load_balance</code>）加上一組成員；<code>kind</code> 為 <code>analysis</code> 或 <code>embedding</code>。</td>
+</tr>
+<tr>
+<td><code>admin.llm_route_members</code></td>
+<td>成員：某 provider 帳號上的一個模型（帶自己的參數），<strong>或另一個 profile</strong>（可巢狀，禁止循環）。</td>
+</tr>
+<tr>
+<td><code>admin.llm_role_routes</code></td>
+<td>每個角色（<code>analysis</code> / <code>embedding</code>）使用哪個 profile。</td>
+</tr>
+</tbody>
+</table>
+<p>舊的 <code>admin.llm_profiles</code> 已改名為 <code>admin.llm_profiles_legacy</code>，只供回滾。</p>
+<ul>
+<li><strong>Provider adapter</strong>：<code>node-server/src/providers/registry.ts</code> 共註冊 24 個 adapter——OpenAI、Azure OpenAI、Anthropic、Gemini、Bedrock、Mistral、Cohere、Voyage、Jina、DeepSeek、xAI、Groq、OpenRouter、Together、Fireworks、SiliconFlow、DashScope、Moonshot、Zhipu、Volcengine、MiniMax、OpenAI 相容伺服器（vLLM、LM Studio、LiteLLM…）、Ollama，以及 ChatGPT。舊值 <code>vllm</code> / <code>google</code> / <code>azure</code> / <code>claude</code> 會自動對應到新 id（migration <code>20261015_llm_provider_registry.sql</code> 一併改寫已存資料）。</li>
+<li><strong>ChatGPT 登入</strong>：<code>chatgpt</code> provider 使用 OpenAI 的「Sign in with ChatGPT」PKCE 流程（<code>admin/chatgptOAuth.ts</code>）。由於 redirect 只能是本機 loopback，操作者需把瀏覽器最後的網址貼回後台完成交換；token 存於 <code>admin.llm_providers.oauth</code>，不會離開伺服器。</li>
+<li><strong>Embedding 身分（fingerprint）</strong>：<code>admin/embeddingIdentity.ts</code> 以一組固定探測文字的向量作為系統的嵌入身分（<code>admin.embedding_identity</code> / <code>admin.embedding_fingerprints</code>，定義在 <code>db/schema.sql</code> 與 <code>db/migrations/20261021_embedding_identity.sql</code>；程式啟動時也會以 <code>CREATE TABLE IF NOT EXISTS</code> 補建）。任何新端點要加入 embedding profile，每個探測文字的 cosine 都必須 ≥ 0.95，才算「同一個模型」。已有向量時要換模型，必須走受保護的切換流程：停用嵌入角色 → 停止 embed 工作 → 清除向量 → 採用新身分 → 重新排入各模組的 embed 工作。</li>
+<li>角色層級參數（嵌入的 timeout / batch size / concurrency、分析的 max retries）存於 <code>admin.app_settings</code> 的 <code>embedding</code> / <code>analysis</code> 群組。</li>
+</ul>
 <h2 id="settings">設定（Settings）與優先序<a class="headerlink" href="#settings" title="Permanent link">&para;</a></h2>
 <p>Bootstrap 變數（DB / Redis / MCP transport / <code>ADMIN_*</code> 認證）起始於 <code>.env</code>。首次啟動會把
-<code>ADMIN_PASSWORD_HASH</code> 寫入 <code>admin.admin_credentials</code>，之後登入只驗證資料庫中的 hash。
+<code>ADMIN_INITIAL_PASSWORD</code>（雜湊後）或 <code>ADMIN_PASSWORD_HASH</code> 寫入 <code>admin.admin_credentials</code>，之後登入只驗證資料庫中的 hash。
 seed 使用 <code>ON CONFLICT DO NOTHING</code>，因此 credential row 建立後修改 <code>.env</code> 或重啟服務都不會
-覆蓋有效密碼。密碼與 passkey 都在 Settings → Privacy 管理。</p>
-<p>其餘外部系統設定（MinIO、TFDA base URL、worker 調校）為 <strong>seed-only</strong>：<code>.env</code> 僅在首次啟動、
-<code>admin.app_settings</code> 為空時讀取一次以種子化；之後請在 Settings 頁籤管理與測試（支援熱套用），
-編輯 <code>.env</code> 對已種子化的資料庫無效。</p>
-<p><strong>模型端點（嵌入 / OCR / 分析 LLM）完全不從環境變數讀取</strong>，只存在於 <code>admin.llm_profiles</code>，
-僅能在 Settings 子頁設定。可用 Settings → Backup &amp; restore 的 JSON Export / Import 在不同環境間搬移一份可用的設定。</p>
-<h2 id="_3">系統備份<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
-<p>Settings → Backup &amp; restore 可逐項選擇設定與憑證、PostgreSQL database、MinIO object storage。
+覆蓋有效密碼。密碼與 passkey 都在「帳號安全」（<code>/admin/security</code>）管理。</p>
+<p>其餘外部系統設定（MinIO、TFDA base URL、FHIR package registry、worker 調校）為 <strong>seed-only</strong>：<code>.env</code> 僅在首次啟動、
+對應鍵尚未存在時讀取一次以種子化 <code>admin.app_settings</code>；之後請在「外部服務」（<code>/admin/integrations</code>）管理與測試，
+編輯 <code>.env</code> 對已種子化的資料庫無效。其中 TFDA 與 registry 可直接修改（熱套用）；<strong>MinIO 與 worker 調校在後台為唯讀群組</strong>。</p>
+<p>OCR（MinerU）端點存於 <code>admin.app_settings</code> 的 <code>ocr</code> 群組，<strong>不從 <code>.env</code> 種子化</strong>，只能在「外部服務 → OCR」設定與測試。</p>
+<p>「備份與設定」（<code>/admin/system</code>）的設定匯出 / 匯入（格式版本 3）可在不同環境間搬移一份可用的設定：內含 <code>admin.app_settings</code> 各群組、provider 帳號 / profile / 角色綁定（含金鑰）、passkey 與其 RP ID。舊的 v1 / v2 匯出檔仍可匯入。匯出檔含明文密鑰，請視同憑證保管。</p>
+<h2 id="system-backups">系統備份<a class="headerlink" href="#system-backups" title="Permanent link">&para;</a></h2>
+<p>「備份與設定」頁可逐項選擇設定與憑證、PostgreSQL database、MinIO object storage。
 建立備份只會排入 <code>system_backup</code> 背景工作；worker 將 PostgreSQL custom dump 與 MinIO 物件
 逐段串流進 ZIP，再以 multipart upload 寫回 MinIO 的 <code>system-backups/</code> prefix，不會在單一
 HTTP request 或 Node 記憶體中組裝整份備份。完成後可由備份歷史透過同源 API 串流下載。</p>
 <p>備份包含 API keys、登入憑證與醫療資料，應視同 production secret 管理。資料庫 dump 可用
 PostgreSQL 16 <code>pg_restore</code> 還原；object storage 檔案位於 ZIP 的 <code>object-storage/</code> 目錄。</p>
 <h2 id="sources">來源檔（Sources）<a class="headerlink" href="#sources" title="Permanent link">&para;</a></h2>
-<p>於 Modules / Sources 上傳各模組的來源檔（ICD zip、LOINC zip、SNOMED RF2、RxNorm zip、FHIR IG <code>package.tgz</code> 等），並可指定 source role（例如 IG 相依套件）。系統會以檔案指紋阻擋重複上傳；檔案存於 MinIO，工作執行時再取回。</p>
+<p>於各模組頁的來源檔區上傳來源檔（ICD-10-CM CMS order file zip、ICD-10-PCS、LOINC zip、SNOMED RF2、RxNorm zip、FHIR IG <code>package.tgz</code> 等），並可指定 source role（例如 IG 相依套件、選用的 WHO ICD-10 來源）。系統會以檔案指紋（SHA-256）阻擋重複上傳；檔案存於 MinIO，工作執行時再取回。</p>
 <blockquote>
-<p>上傳需送出 <code>Content-Type: application/octet-stream</code>，否則會被 express 的 JSON parser 攔下並回 413。</p>
+<p>上傳需送出 <code>Content-Type: application/octet-stream</code>（SPA 已如此送出），否則會被 express 的 JSON parser 攔下並回 413。</p>
 </blockquote>
+<h2 id="_3">術語瀏覽器<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
+<p>「醫療術語」各模組頁與 IG 套件庫內建唯讀瀏覽器，資料來自 <code>GET /admin/api/terminology/*</code>（<code>node-server/src/admin/termViz/</code>）：</p>
+<table>
+<thead>
+<tr>
+<th>瀏覽器</th>
+<th>API 前綴</th>
+<th>內容</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ICD-10-CM 樹 / WHO ICD-10 樹</td>
+<td><code>icd/cm/*</code>、<code>icd/who/*</code></td>
+<td>章節 → 類目 → 碼的階層、路徑與搜尋</td>
+</tr>
+<tr>
+<td>ICD-10-PCS 軸向</td>
+<td><code>icd/pcs/*</code></td>
+<td>依前三碼表格與第 4–7 軸篩選</td>
+</tr>
+<tr>
+<td>SNOMED CT 圖</td>
+<td><code>snomed/*</code></td>
+<td>概念鄰域（父 / 子 / 屬性關聯）與搜尋</td>
+</tr>
+<tr>
+<td>LOINC 軸向</td>
+<td><code>loinc/*</code></td>
+<td>六軸 facet 篩選、單一 term 詳情、LA / LP / LL 碼</td>
+</tr>
+<tr>
+<td>RxNorm</td>
+<td><code>rxnorm/*</code></td>
+<td>摘要、依 TTY 搜尋、概念詳情</td>
+</tr>
+<tr>
+<td>IG CodeSystem 樹</td>
+<td><code>ig/codesystem*</code></td>
+<td>IG 套件內 CodeSystem 的概念階層與搜尋</td>
+</tr>
+</tbody>
+</table>
 <h2 id="maintenance-mode">維護模式（Maintenance Mode）<a class="headerlink" href="#maintenance-mode" title="Permanent link">&para;</a></h2>
-<p>各模組可切換維護模式：開啟後，該模組的 MCP 工具會暫停回應（回傳維護中訊息），可安全地進行重載或清除，避免讀寫競態。</p>
+<p><code>drug</code>、<code>icd</code>、<code>loinc</code>、<code>snomed</code>、<code>ig</code>、<code>rxnorm</code> 模組可切換維護模式（<code>POST /admin/api/module-maintenance</code>，狀態存於 <code>admin.app_settings</code> 的 <code>maintenance</code> 群組），用來在重載或清除資料時暫停該模組的 MCP 工具：維護中的模組，其工具呼叫（<code>/mcp</code>、<code>/tools/*</code>、後台 playground）會立即回傳錯誤碼 <code>MODULE_MAINTENANCE</code>（中英文訊息），工具仍留在 <code>tools/list</code> 中（避免用戶端工具清單變動）。狀態快取 5 秒，切換後約 5 秒內生效。ICD-10 與 FHIR Condition 跟隨 <code>icd</code>、Drug 與 FHIR Medication 跟隨 <code>drug</code>、Lab 跟隨 <code>loinc</code>、FHIR IG 跟隨 <code>ig</code>；<code>rxnorm</code> 沒有自己的工具，旗標只作標示。模組頁會顯示工具「暫停（維護中）」，MCP 工具頁的工具卡也會標示「維護中」。錯誤格式見 <a href="../api/#maintenance">API 參考</a>。</p>
 <h2 id="fhir">外部 FHIR 伺服器<a class="headerlink" href="#fhir" title="Permanent link">&para;</a></h2>
-<p>在 FHIR Servers 頁籤登錄外部 FHIR R4 伺服器，設定允許的資源型別 / 操作、OAuth 認證（含 <code>private_key_jwt</code> 金鑰產生與公開 JWKS 託管於 <code>/fhir-client/&lt;id&gt;/jwks.json</code>）、token 策略與健康檢查路徑。</p>
+<p>在「FHIR 伺服器」頁登錄外部 FHIR R4 伺服器，設定允許的資源型別 / 操作、OAuth 認證（含 <code>private_key_jwt</code> 金鑰產生與公開 JWKS 託管於 <code>/fhir-client/&lt;id&gt;/jwks.json</code>）、token 策略與健康檢查路徑。OAuth Authorization Code 回呼完成後會導回 <code>/admin/fhir-servers</code>。</p>
 <p>MCP 端透過 <code>list_fhir_servers</code> / <code>get_fhir_server_status</code> / <code>crud_fhir_server</code> 使用，並由伺服器代為處理 token —— 呼叫端不經手任何密鑰。</p>
 <blockquote>
 <p><code>crud_fhir_server</code> 是系統中唯一可能產生寫入的工具：寫入操作必須該伺服器的 allow-list 允許，且呼叫端帶入 <code>confirm_write=true</code>。</p>

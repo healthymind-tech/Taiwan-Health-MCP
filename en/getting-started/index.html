@@ -426,10 +426,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#load-data-admin-console-modules" class="md-nav__link">
+  <a href="#load-data-admin-console-module-pages" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Load data (Admin console → Modules)
+        Load data (admin console module pages)
       
     </span>
   </a>
@@ -2446,10 +2446,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#load-data-admin-console-modules" class="md-nav__link">
+  <a href="#load-data-admin-console-module-pages" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Load data (Admin console → Modules)
+        Load data (admin console module pages)
       
     </span>
   </a>
@@ -2530,7 +2530,7 @@
 <h2 id="prerequisites">Prerequisites<a class="headerlink" href="#prerequisites" title="Permanent link">&para;</a></h2>
 <ul>
 <li>Docker and Docker Compose</li>
-<li>(Optional) A reachable embedding server (Ollama with the <code>qwen3-embedding</code> model by default) for semantic / hybrid search. <strong>Its endpoint is configured in the admin console's Settings tab, not through environment variables</strong>; without it, search falls back to keyword mode automatically.</li>
+<li>(Optional) A reachable embedding server (Ollama with the <code>qwen3-embedding</code> model by default) for semantic / hybrid search. <strong>Its endpoint is configured on the admin console's Model endpoints page (<code>/admin/models</code>), not through environment variables</strong>; without it, search falls back to keyword mode automatically.</li>
 <li>Some data sources require licensed files you must obtain yourself (SNOMED CT, LOINC, the ICD-10 zips, and so on) — see <a href="../data-sources/">Data Sources</a>.</li>
 </ul>
 <p>For local development outside Docker you need <strong>Node.js 20 or newer</strong>. The project has no Python runtime dependency.</p>
@@ -2552,8 +2552,8 @@ docker compose up -d
 <td><strong>The single front door</strong>, <code>:8080</code> by default (adjustable via <code>WEB_PORT</code>)</td>
 </tr>
 <tr>
-<td><code>web</code></td>
-<td>Next.js front-end: the <code>/admin</code> console SPA</td>
+<td><code>web-v2</code></td>
+<td>The admin console SPA (<code>web-v2/</code>, Vite + React + Mantine), served by the container's nginx</td>
 </tr>
 <tr>
 <td><code>app</code></td>
@@ -2573,7 +2573,7 @@ docker compose up -d
 </tr>
 <tr>
 <td><code>redis</code></td>
-<td>Response cache</td>
+<td>Live event broadcast for the admin console and health probes (tool responses are not cached today)</td>
 </tr>
 <tr>
 <td><code>minio</code> + <code>minio-init</code></td>
@@ -2587,7 +2587,7 @@ docker compose up -d
 Always use <code>http://&lt;host&gt;:8080</code>; <code>http://&lt;host&gt;:8000</code> does not reach this system.</p>
 </div>
 <h2 id="enable-the-admin-console">Enable the admin console<a class="headerlink" href="#enable-the-admin-console" title="Permanent link">&para;</a></h2>
-<p>Data imports are triggered from the admin console and executed by <code>admin-worker</code> in the background (there is no standalone CLI data-loader container), so enable the console in <code>.env</code> first:</p>
+<p>Data imports are triggered from the admin console and executed by <code>admin-worker</code> in the background (there is no standalone CLI data-loader container). The console is enabled by default (<code>ADMIN_ENABLED=true</code>); you only need to set the sign-in credential and session key in <code>.env</code>:</p>
 <pre><code class="language-dotenv">ADMIN_ENABLED=true
 ADMIN_USERNAME=admin
 # Generate a password hash (Node):
@@ -2596,11 +2596,13 @@ ADMIN_USERNAME=admin
 #    reference, and a hash starting with a letter gets silently truncated).
 #    Compose collapses $$ back to a single $.
 ADMIN_PASSWORD_HASH=sha256$$...
-ADMIN_SESSION_SECRET=change_this_admin_session_secret
+# Or a plaintext initial password (hashed into the DB on first boot): ADMIN_INITIAL_PASSWORD=...
+# Must replace the .env.example placeholder, or app refuses to start: openssl rand -hex 32
+ADMIN_SESSION_SECRET=&lt;random value&gt;
 </code></pre>
 <p>After restarting (<code>docker compose up -d</code>), sign in at <code>http://&lt;host&gt;:8080/admin</code>. See <a href="../admin/">Admin Console</a> for details.</p>
-<h2 id="load-data-admin-console-modules">Load data (Admin console → Modules)<a class="headerlink" href="#load-data-admin-console-modules" title="Permanent link">&para;</a></h2>
-<p>Import module by module from the Modules tab:</p>
+<h2 id="load-data-admin-console-module-pages">Load data (admin console module pages)<a class="headerlink" href="#load-data-admin-console-module-pages" title="Permanent link">&para;</a></h2>
+<p>Import module by module from the sidebar's Data section (Terminology, Drug, Health supplements, Food nutrition) and FHIR → IG library:</p>
 <table>
 <thead>
 <tr>
@@ -2612,8 +2614,8 @@ ADMIN_SESSION_SECRET=change_this_admin_session_secret
 <tbody>
 <tr>
 <td>Source file upload required</td>
-<td>ICD-10-CM/PCS, LOINC, SNOMED CT, RxNorm, FHIR IG (<code>package.tgz</code>)</td>
-<td>Upload the source file under Sources / Modules, then press import</td>
+<td>ICD-10-CM (CMS order file) / PCS, LOINC, SNOMED CT, RxNorm, FHIR IG (<code>package.tgz</code>)</td>
+<td>Upload the source file on the module page, then press import (IGs can also be fetched straight from the FHIR package registry)</td>
 </tr>
 <tr>
 <td>Fetched automatically via API</td>
@@ -2623,9 +2625,9 @@ ADMIN_SESSION_SECRET=change_this_admin_session_secret
 </tbody>
 </table>
 <ul>
-<li>The <strong>drug domain</strong> is a three-stage pipeline (index → enrichment crawl → OCR/LLM analysis). The TFDA base URL used by the crawler is configurable in Settings; the OCR (MinerU) and analysis LLM endpoints live in <code>admin.llm_profiles</code> and are likewise managed in Settings.</li>
+<li>The <strong>drug domain</strong> is a three-stage pipeline (index → enrichment crawl → OCR/LLM analysis). The crawler's TFDA base URL and the OCR (MinerU) endpoint are configured under External services (<code>/admin/integrations</code>); the analysis LLM gets a provider account and profile under Model endpoints (<code>/admin/models</code>).</li>
 <li><strong>Embeddings</strong> (semantic search) are separate <code>*_embed</code> jobs per module, runnable or schedulable from each module's page.</li>
-<li>Import progress, the step timeline, and live logs are on the <strong>Tasks</strong> tab; the background mechanism is described in <a href="../admin/jobs-and-worker/">Jobs &amp; Scheduling</a>.</li>
+<li>Import progress, the step timeline, and live logs are on the <strong>Jobs</strong> page (<code>/admin/jobs</code>); the background mechanism is described in <a href="../admin/jobs-and-worker/">Jobs &amp; Scheduling</a>.</li>
 </ul>
 <h2 id="connect-a-client">Connect a client<a class="headerlink" href="#connect-a-client" title="Permanent link">&para;</a></h2>
 <p>Both interfaces are served through the nginx front door (<code>:8080</code> by default):</p>
@@ -2639,17 +2641,18 @@ ADMIN_SESSION_SECRET=change_this_admin_session_secret
 </ul>
 <p>In the client, just fill in the base URL <code>http://&lt;host&gt;:8080</code>; it fetches <code>/openapi.json</code> and lists every tool.</p>
 <blockquote>
-<p>Note: <code>/mcp</code> and the OpenAPI bridge currently perform <strong>no authentication by default</strong>. When exposing them publicly, put a reverse proxy or token in front.</p>
+<p>Note: by default (<code>PUBLIC_TOOLS_AUTH_MODE=none</code>) <code>/mcp</code> and the OpenAPI bridge perform <strong>no authentication</strong>. When exposing them publicly, set <code>PUBLIC_TOOLS_AUTH_MODE=bearer</code> with a high-entropy <code>PUBLIC_TOOLS_BEARER_TOKEN</code>, and have clients send <code>Authorization: Bearer &lt;token&gt;</code>. See <a href="../deployment/configuration/">Configuration</a>.</p>
 </blockquote>
 <h2 id="verification">Verification<a class="headerlink" href="#verification" title="Permanent link">&para;</a></h2>
 <p>Check the services and each module's status:</p>
 <pre><code class="language-bash">curl http://localhost:8080/openapi.json | head  # currently registered tools
 </code></pre>
-<p>Per-module row counts and service health are on the admin console's Overview tab.</p>
+<p>Per-module row counts and service health are on the admin console's Dashboard and Service health pages; every tool (including unregistered ones and why) can be browsed and tried on the MCP tools page (<code>/admin/mcp</code>).</p>
 <p>You can also call the <code>health_check</code> tool directly:</p>
 <pre><code class="language-bash">curl -X POST http://localhost:8080/tools/health_check \
   -H 'Content-Type: application/json' -d '{}'
 </code></pre>
+<p>The response includes DB / cache / per-module status, the server <code>version</code> and <code>build</code> (git sha), <code>tools_version</code>, the loaded terminology editions (<code>terminology</code>), the installed IG packages and <code>default_ig</code>.</p>
 <p>For code-level tests see <a href="../development/testing/">Testing</a>.</p>
 
 

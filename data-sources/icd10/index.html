@@ -1171,10 +1171,21 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#icd-10-cmpcs" class="md-nav__link">
+  <a href="#icd-10-cm-pcs" class="md-nav__link">
     <span class="md-ellipsis">
       
-        ICD-10-CM/PCS
+        ICD-10-CM / PCS
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#who-icd-10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        WHO ICD-10（選用）
       
     </span>
   </a>
@@ -1185,7 +1196,7 @@
   <a href="#_1" class="md-nav__link">
     <span class="md-ellipsis">
       
-        台灣健保修訂
+        台灣中文名稱
       
     </span>
   </a>
@@ -1196,7 +1207,7 @@
   <a href="#_2" class="md-nav__link">
     <span class="md-ellipsis">
       
-        檔案格式
+        檔案格式與匯入
       
     </span>
   </a>
@@ -2352,10 +2363,21 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#icd-10-cmpcs" class="md-nav__link">
+  <a href="#icd-10-cm-pcs" class="md-nav__link">
     <span class="md-ellipsis">
       
-        ICD-10-CM/PCS
+        ICD-10-CM / PCS
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#who-icd-10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        WHO ICD-10（選用）
       
     </span>
   </a>
@@ -2366,7 +2388,7 @@
   <a href="#_1" class="md-nav__link">
     <span class="md-ellipsis">
       
-        台灣健保修訂
+        台灣中文名稱
       
     </span>
   </a>
@@ -2377,7 +2399,7 @@
   <a href="#_2" class="md-nav__link">
     <span class="md-ellipsis">
       
-        檔案格式
+        檔案格式與匯入
       
     </span>
   </a>
@@ -2405,28 +2427,63 @@
 
 
 <h1 id="icd-10">ICD-10 資料來源<a class="headerlink" href="#icd-10" title="Permanent link">&para;</a></h1>
-<h2 id="icd-10-cmpcs">ICD-10-CM/PCS<a class="headerlink" href="#icd-10-cmpcs" title="Permanent link">&para;</a></h2>
+<h2 id="icd-10-cm-pcs">ICD-10-CM / PCS<a class="headerlink" href="#icd-10-cm-pcs" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong>CM (Clinical Modification)</strong>：用於診斷編碼。<ul>
-<li>來源：美國 CMS (Centers for Medicare &amp; Medicaid Services) 發布之最新版本。</li>
+<li>來源：美國 CMS (Centers for Medicare &amp; Medicaid Services) 年度釋出（<a href="https://www.cms.gov/medicare/coding-billing/icd-10-codes">https://www.cms.gov/medicare/coding-billing/icd-10-codes</a>）。</li>
+<li>建議檔案：「Code Descriptions in Tabular Order」zip（內含 <code>icd10cm_order_YYYY.txt</code>），即完整碼集——header 碼加上含第 7 碼 / placeholder <code>X</code> 的 billable 碼（2026-04-01 版共 98,186 碼）。只有載入這種檔案時，<code>icd.editions.complete</code> 才為真，FHIR validator 才會把未知的 ICD-10-CM 碼當 error。</li>
+<li>亦可接受：「Code Tables, Tabular and Index」zip（<code>icd10cm_tabular_YYYY.xml</code>），第 7 碼會自動展開，但未知碼只給 warning。</li>
 </ul>
 </li>
 <li><strong>PCS (Procedure Coding System)</strong>：用於處置與手術編碼。<ul>
-<li>來源：同上。</li>
+<li>來源：同上（ICD-10-PCS zip 內的 flat codes TXT）。</li>
 </ul>
 </li>
 </ul>
-<h2 id="_1">台灣健保修訂<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
+<h2 id="who-icd-10">WHO ICD-10（選用）<a class="headerlink" href="#who-icd-10" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>來源</strong>：衛生福利部中央健康保險署。</li>
-<li><strong>差異處理</strong>：<ul>
-<li>部分代碼在台灣健保申報系統中有特定規範或不給付項目，本系統在備註欄位中會盡量標註（目前主要仍以國際標準為主）。</li>
-<li>中文譯名採用健保署公告之「國際疾病分類第十版中文版」。</li>
+<li><strong>用途</strong>：讓 FHIR validator 檢查 <code>http://hl7.org/fhir/sid/icd-10</code> 的代碼與 display，不影響 ICD 查詢工具。</li>
+<li><strong>檔案</strong>：WHO ICD-10 的 FHIR CodeSystem 或展開後的 ValueSet JSON，例如以 <code>node-server/scripts/validator-audit/harness/fetch_tx_terms.py</code> 從 tx.fhir.org 取得的 <code>2019-covid-expanded</code>（13,831 碼）。寫入 <code>icd.icd10_who</code>。</li>
 </ul>
-</li>
+<h2 id="_1">台灣中文名稱<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>來源</strong>：衛生福利部「中文版 ICD-10-CM/PCS」中英對照 XLSX（來源角色 <code>icd_zh_tw</code>，選用）。</li>
+<li>中文名稱只補進 <code>name_zh</code>；代碼集合仍以 CMS 版本為準。</li>
 </ul>
-<h2 id="_2">檔案格式<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
-<p>系統讀取位於 <code>data/</code> 目錄下的 Excel 檔案 (<code>icd10cm_pcs_xxxx.xlsx</code>) 進行初始化。該檔案需包含兩個 Sheet：<code>diagnosis</code> 與 <code>procedure</code>。</p>
+<h2 id="_2">檔案格式與匯入<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
+<p>於管理後台 <strong>醫療術語 → ICD-10</strong> 的「資料生命週期」分頁上傳，匯入階段 <code>icd_import</code> 一次處理所有角色：</p>
+<table>
+<thead>
+<tr>
+<th>來源角色</th>
+<th>檔案</th>
+<th>必要</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>icd10cm</code></td>
+<td>CMS ICD-10-CM zip（order file 或 tabular XML）</td>
+<td>是</td>
+</tr>
+<tr>
+<td><code>icd10pcs</code></td>
+<td>CMS ICD-10-PCS zip</td>
+<td>否（未載入時處置功能降級）</td>
+</tr>
+<tr>
+<td><code>icd_zh_tw</code></td>
+<td>衛福部中英對照 XLSX（工作表 <code>ICD-10-CM</code>、<code>ICD-10-PCS</code>，A 欄代碼、D 欄中文名稱）</td>
+<td>否</td>
+</tr>
+<tr>
+<td><code>icd10_who</code></td>
+<td>WHO ICD-10 FHIR JSON</td>
+<td>否</td>
+</tr>
+</tbody>
+</table>
+<p>匯入先寫入 staging 表，再於單一 promote transaction 內替換 <code>icd.*</code> 並寫入 <code>icd.editions</code>。</p>
 
 
 

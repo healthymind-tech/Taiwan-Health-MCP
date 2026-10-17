@@ -2531,7 +2531,7 @@
 <p>SNOMED CT 服務模組整合 SNOMED CT International 版術語，提供概念搜尋、概念詳情、關聯（階層與屬性）查詢，以及 SNOMED ↔ ICD-10 對應。SNOMED CT 是目前涵蓋面最廣的臨床術語系統，本模組讓系統能以標準概念表達臨床語意並與 ICD-10 互通。</p>
 <h2 id="_2">主要功能<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
 <h3 id="1-search_snomed_concept">1. 概念搜尋（<code>search_snomed_concept</code>）<a class="headerlink" href="#1-search_snomed_concept" title="Permanent link">&para;</a></h3>
-<p>以中英文關鍵字搜尋 SNOMED CT 概念，回傳 concept ID、FSN（完整指定名稱）與 preferred term。支援語意 / 混合搜尋（需可用的嵌入端點，於 Admin → Settings 設定），無嵌入時退回關鍵字。</p>
+<p>以中英文關鍵字搜尋 SNOMED CT 概念，回傳 concept ID、FSN（完整指定名稱）與 preferred term。支援語意 / 混合搜尋（需可用的嵌入端點，於管理後台 <strong>整合 → 模型端點</strong> 設定，並先由 <code>snomed_embed</code> 回填向量），無嵌入時退回關鍵字。</p>
 <h3 id="2-query_snomed_concept">2. 概念詳情（<code>query_snomed_concept</code>）<a class="headerlink" href="#2-query_snomed_concept" title="Permanent link">&para;</a></h3>
 <p>以 concept ID 取得單一概念的完整資訊，包含：
 - <strong>FSN 與 preferred term</strong>
@@ -2545,8 +2545,9 @@
 - <strong><code>mode="snomed"</code></strong>：輸入 SNOMED concept ID（例如 <code>44054006</code>），回傳對應的 ICD-10 對照。</p>
 <h2 id="_3">技術架構<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>資料來源</strong>：SNOMED CT International RF2（<code>SnomedCT_InternationalRF2_PRODUCTION_*.zip</code>），經由管理後台（Admin → Modules，匯入階段 <code>snomed_import</code>）載入（資料量大，約 5–15 分鐘）。</li>
+<li><strong>資料來源</strong>：SNOMED CT International RF2（<code>SnomedCT_InternationalRF2_PRODUCTION_*.zip</code>），於管理後台 <strong>醫療術語 → SNOMED CT</strong> 上傳並匯入（來源角色 <code>snomed_ct</code>，匯入階段 <code>snomed_import</code>）（資料量大，約 5–15 分鐘）。 匯入時另保留 inactive concept 與 inactive／inactive concept 的英文描述（<code>snomed.inactive_concepts</code>、<code>snomed.inactive_descriptions</code>）、各元件首次發佈日（取自 RF2 Full 檔）及版本（<code>snomed.editions</code>），供 FHIR validator 以 tx.fhir.org 所用版本判定：inactive concept 為 warning、未知碼與 inactive 描述當 display 為 error。這些表不影響 SNOMED 查詢工具（仍只看 active concept）。歷史關聯（SAME AS / REPLACED BY …，<code>snomed.historical_associations</code>）則讓 inactive concept 能指向現行概念。</li>
 <li><strong>資料庫</strong>：<code>snomed</code> schema，含 <code>concepts</code>、<code>descriptions</code>、<code>relationships</code>、<code>icd10_map</code>、<code>historical_associations</code> 與 <code>concept_embeddings</code>。</li>
+<li><strong>術語瀏覽</strong>：模組頁的「資料預覽」分頁提供概念關聯圖（is-a 上下位、屬性關聯、ICD-10 對應；inactive concept 另顯示其歷史關聯），後端為 <code>/admin/api/terminology/snomed/*</code>（<code>concept</code>、<code>children</code>、<code>search</code>）。</li>
 <li><strong>可用性閘門</strong>：<code>snomed.concepts</code> 需達門檻（10 萬筆）才會註冊對應工具，否則自動降級。</li>
 </ul>
 <h2 id="_4">關鍵限制<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>

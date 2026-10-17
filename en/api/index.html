@@ -1607,6 +1607,28 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#maintenance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Maintenance mode
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#health_check-system-group" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        health_check (System group)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#admin-console-rest-api" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2396,6 +2418,28 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#maintenance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Maintenance mode
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#health_check-system-group" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        health_check (System group)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#admin-console-rest-api" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2507,7 +2551,7 @@
 </table>
 <p><code>PUBLIC_TOOLS_AUTH_MODE=bearer</code> protects <code>/mcp</code>, <code>/openapi.json</code>, and <code>/tools/*</code> together. The token is set by <code>PUBLIC_TOOLS_BEARER_TOKEN</code>; cross-origin browser calls additionally require the origin to be listed in <code>PUBLIC_TOOLS_CORS_ORIGINS</code>. <code>none</code> is only suitable for trusted local or private networks.</p>
 <blockquote>
-<p>The backend also has a <code>/health</code> endpoint, but nginx does not proxy it (reaching it through the front door returns 404). To check from the front door whether <code>app</code> is alive, hit <code>/openapi.json</code> instead. Per-module row counts are on the admin console's Overview tab.</p>
+<p>The backend also has a <code>/health</code> endpoint, but nginx does not proxy it (reaching it through the front door returns 404). To check from the front door whether <code>app</code> is alive, hit <code>/openapi.json</code> instead. Per-module row counts are on the admin console's dashboard; <code>health_check</code> (<code>POST /tools/health_check</code>) also reports module status, server version, build sha and loaded terminology editions.</p>
 </blockquote>
 <h2 id="openapi-bridge">OpenAPI bridge<a class="headerlink" href="#openapi-bridge" title="Permanent link">&para;</a></h2>
 <p>For clients that cannot speak MCP natively and only connect to OpenAPI tool servers (such as Open WebUI's External Tools).</p>
@@ -2520,10 +2564,74 @@ curl -X POST http://localhost:8080/tools/search_medical_codes \
   -H 'Content-Type: application/json' \
   -d '{&quot;keyword&quot;: &quot;diabetes&quot;, &quot;limit&quot;: 3}'
 </code></pre>
-<p>The tool list grows and shrinks with each module's data-load status (see the <code>SERVICE_MODULES</code> thresholds in <code>moduleStatus.ts</code>), so the content of <code>/openapi.json</code> differs according to the deployment's data state.</p>
-<p>A registered tool only means the required source data exists — it does <strong>not</strong> mean semantic embeddings have been fully backfilled. When vectors are incomplete, the related search falls back to, or mixes in, keyword/BM25. Check each module's Embeddings count under Admin → Modules and run or schedule the corresponding <code>*_embed</code> job.</p>
+<p>The tool list grows and shrinks with each module's data-load status (row-count thresholds in <code>REQUIREMENTS</code>, exported as <code>MODULE_REQUIREMENTS</code>, in <code>moduleStatus.ts</code>), so the content of <code>/openapi.json</code> differs according to the deployment's data state. <code>mcp.ts</code> defines <strong>63 tools</strong> in 12 groups; the FHIR Servers, Clinical Calculators and System groups (15 tools) are always registered. The admin console's <strong>MCP tools</strong> page (<code>/admin/mcp</code>) shows the full catalog, why each unregistered tool is missing, and a playground for calling registered tools.</p>
+<p>A registered tool only means the required source data exists — it does <strong>not</strong> mean semantic embeddings have been fully backfilled. When vectors are incomplete, the related search falls back to, or mixes in, keyword/BM25. Check each module's embedding count on its page in the admin console and run or schedule the corresponding <code>*_embed</code> job.</p>
+<h2 id="maintenance">Maintenance mode<a class="headerlink" href="#maintenance" title="Permanent link">&para;</a></h2>
+<p>The admin console can switch the <code>icd</code>, <code>loinc</code>, <code>drug</code>, <code>snomed</code>, <code>ig</code> and <code>rxnorm</code> modules into maintenance mode (<code>POST /admin/api/module-maintenance</code>). While a module is in maintenance, calls to its tools (over <code>/mcp</code>, <code>POST /tools/&lt;name&gt;</code> and the admin playground alike) return an <code>isError</code> result immediately, before the tool runs:</p>
+<pre><code class="language-json">{&quot;ok&quot;: false, &quot;data&quot;: null, &quot;warnings&quot;: [],
+ &quot;error&quot;: {&quot;code&quot;: &quot;MODULE_MAINTENANCE&quot;, &quot;module&quot;: &quot;loinc&quot;, &quot;tool&quot;: &quot;query_loinc&quot;, &quot;retryable&quot;: true,
+           &quot;message&quot;: &quot;Module 'loinc' is under maintenance (data is being updated); query_loinc is temporarily unavailable. Retry later.&quot;,
+           &quot;message_zh&quot;: &quot;模組「loinc」維護中（資料更新中），query_loinc 暫時無法使用，請稍後再試。&quot;}}
+</code></pre>
+<p><code>POST /tools/&lt;name&gt;</code> returns this JSON with HTTP 200 (like every other tool error). Mapping: ICD-10 and FHIR Condition → <code>icd</code>; Drug / TFDA and FHIR Medication → <code>drug</code>; Lab / LOINC → <code>loinc</code>; SNOMED CT → <code>snomed</code>; FHIR IG (including grounding / completeness) → <code>ig</code>. <code>rxnorm</code> has no tool group of its own, so its flag gates no tool; Health Supplements, Food Nutrition, FHIR Servers, Clinical Calculators and System are never affected. To avoid tool-list churn for clients, tools under maintenance <strong>stay in <code>tools/list</code> / <code>/openapi.json</code></strong>. The state is cached for 5 seconds, so a toggle takes effect within about 5 seconds; a failing state lookup fails open.</p>
+<h2 id="health_check-system-group"><code>health_check</code> (System group)<a class="headerlink" href="#health_check-system-group" title="Permanent link">&para;</a></h2>
+<p>Always registered, no arguments. Call it before any workflow to confirm the modules you need are online. Returns JSON:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>status</code></td>
+<td><code>ok</code> when the database is reachable, otherwise <code>degraded</code></td>
+</tr>
+<tr>
+<td><code>database</code> / <code>cache</code></td>
+<td><code>ok</code> / <code>error</code> (Postgres query, Redis ping)</td>
+</tr>
+<tr>
+<td><code>db_health</code></td>
+<td>Snapshot of the DB health monitor (<code>state</code>, <code>healthy</code>, <code>since</code>, <code>last_ok_at</code>, <code>last_error</code> …)</td>
+</tr>
+<tr>
+<td><code>services</code></td>
+<td>Whether each module meets its registration threshold: <code>icd</code>, <code>drug</code>, <code>health_supplements</code>, <code>food_nutrition</code>, <code>fhir_condition</code>, <code>fhir_medication</code>, <code>lab</code>, <code>ig</code>, <code>snomed</code></td>
+</tr>
+<tr>
+<td><code>version</code></td>
+<td>Server version (<code>SERVER_VERSION</code> in <code>toolVersions.ts</code>, currently <code>1.1.0</code>), same as MCP <code>initialize</code> <code>serverInfo.version</code></td>
+</tr>
+<tr>
+<td><code>build</code></td>
+<td>Git sha baked in at image build time (<code>BUILD_SHA</code> build arg); <code>dev</code> when unset</td>
+</tr>
+<tr>
+<td><code>tools_version</code></td>
+<td>Tools that carry their own version, and those versions (see <a href="../tools/fhir-ig-tools/#tool-versions">FHIR IG Tools → Tool versions</a>)</td>
+</tr>
+<tr>
+<td><code>lexicon_version</code> / <code>lexicon_sha256</code></td>
+<td>Version and hash of the Taiwan clinical-record lexicon used by grounding</td>
+</tr>
+<tr>
+<td><code>terminology</code></td>
+<td>Loaded terminology editions, e.g. <code>icd10cm</code> (<code>2026-04-01</code>), <code>icd10</code> (WHO ICD-10, optional), <code>loinc</code> (<code>2.80</code>), <code>snomed</code> (<code>&lt;module&gt;/&lt;YYYYMMDD&gt;</code>); read from <code>icd.editions</code>, <code>loinc.editions</code>, <code>snomed.editions</code></td>
+</tr>
+<tr>
+<td><code>ig_packages</code></td>
+<td>Installed IG packages (<code>package_id#version</code>), default IG first</td>
+</tr>
+<tr>
+<td><code>default_ig</code></td>
+<td>The default IG (<code>package_id#version</code>), or <code>null</code> when none is set</td>
+</tr>
+</tbody>
+</table>
 <h2 id="admin-console-rest-api">Admin console REST API<a class="headerlink" href="#admin-console-rest-api" title="Permanent link">&para;</a></h2>
-<p>Every path starts with <code>/admin/api/</code> and requires the <code>tw_health_admin_session</code> cookie. The main endpoints:</p>
+<p>Every path starts with <code>/admin/api/</code> and requires the session cookie (named <code>tw_health_admin_session</code> by default; <code>ADMIN_SESSION_COOKIE</code> renames it). The main endpoints:</p>
 <table>
 <thead>
 <tr>
@@ -2534,7 +2642,7 @@ curl -X POST http://localhost:8080/tools/search_medical_codes \
 <tbody>
 <tr>
 <td>Authentication</td>
-<td><code>POST /admin/api/login</code>, <code>POST /admin/api/logout</code>, <code>/admin/api/passkeys/*</code>, <code>POST /admin/api/privacy/password</code></td>
+<td><code>POST /admin/api/login</code>, <code>POST /admin/api/logout</code>, <code>GET /admin/api/me</code>, <code>/admin/api/passkeys/*</code> (incl. <code>login/options</code>, <code>login/verify</code>, <code>register/options</code>, <code>register/verify</code>), <code>POST /admin/api/privacy/password</code></td>
 </tr>
 <tr>
 <td>Overview and health</td>
@@ -2542,15 +2650,27 @@ curl -X POST http://localhost:8080/tools/search_medical_codes \
 </tr>
 <tr>
 <td>Modules and sources</td>
-<td><code>GET /admin/api/modules</code>, <code>POST /admin/api/uploads</code>, <code>/admin/api/module-sources/{activate,deactivate,delete}</code>, <code>POST /admin/api/module-maintenance</code></td>
+<td><code>GET /admin/api/modules</code>, <code>GET|POST /admin/api/modules/{key}/clear</code>, <code>GET /admin/api/modules/{key}/versions</code>, <code>GET /admin/api/modules/{key}/preview</code>, <code>POST /admin/api/modules/{key}/schedule/trigger</code>, <code>POST /admin/api/uploads</code>, <code>POST /admin/api/module-sources/{activate,deactivate,delete}</code>, <code>POST /admin/api/module-maintenance</code></td>
 </tr>
 <tr>
 <td>Jobs</td>
-<td><code>GET|POST /admin/api/jobs</code> (create, query, pause / cancel)</td>
+<td><code>GET|POST /admin/api/jobs</code>, <code>GET /admin/api/jobs/{id}</code>, <code>GET /admin/api/jobs/{id}/{steps,logs}</code>, <code>POST /admin/api/jobs/{id}/{pause,resume,stop,restart}</code></td>
 </tr>
 <tr>
 <td>Settings</td>
-<td><code>GET|POST /admin/api/settings</code>, <code>GET /admin/api/settings/export</code>, <code>POST /admin/api/settings/import</code>, <code>/admin/api/llm-profiles/*</code></td>
+<td><code>GET /admin/api/settings</code>, <code>POST /admin/api/settings/{group}[/{action}]</code>, <code>GET /admin/api/settings/export</code>, <code>POST /admin/api/settings/import</code> (export format v3; v1/v2 files still import)</td>
+</tr>
+<tr>
+<td>Model endpoints</td>
+<td><code>GET /admin/api/llm-providers</code> (provider adapter catalog); <code>/admin/api/llm/accounts[/{id}][/models]</code>, <code>POST /admin/api/llm/accounts/test</code>, <code>POST /admin/api/llm/models/test</code>, <code>/admin/api/llm/routes[/{id}][/test]</code>, <code>PUT /admin/api/llm/roles</code>, <code>POST /admin/api/llm/oauth/chatgpt/{start,complete}</code></td>
+</tr>
+<tr>
+<td>MCP tools</td>
+<td><code>GET /admin/api/mcp/overview</code>, <code>GET /admin/api/mcp/tools</code>, <code>POST /admin/api/mcp/tools/{name}/invoke</code></td>
+</tr>
+<tr>
+<td>Terminology explorer (read-only)</td>
+<td><code>GET /admin/api/terminology/icd/{cm,who}/{children,path,search}</code>, <code>GET /admin/api/terminology/icd/pcs/{browse,table,codes,code,search}</code>, <code>GET /admin/api/terminology/snomed/{concept,children,search}</code>, <code>GET /admin/api/terminology/loinc/{facets,facet-values,term,code}</code>, <code>GET /admin/api/terminology/rxnorm/{summary,search,concept}</code>, <code>GET /admin/api/terminology/ig/{codesystems,codesystem,codesystem/children,codesystem/search}</code></td>
 </tr>
 <tr>
 <td>Backups</td>
@@ -2566,15 +2686,15 @@ curl -X POST http://localhost:8080/tools/search_medical_codes \
 </tr>
 <tr>
 <td>OCR</td>
-<td><code>GET /admin/api/ocr/samples</code>, <code>POST /admin/api/ocr/test</code></td>
+<td><code>GET /admin/api/ocr/samples[/{id}]</code>, <code>POST /admin/api/ocr/test</code></td>
 </tr>
 <tr>
 <td>FHIR servers</td>
-<td><code>GET|POST /admin/api/fhir-servers</code>, <code>/admin/api/fhir-servers/{discover,test,test-request,generate-key,export}</code></td>
+<td><code>GET|POST /admin/api/fhir-servers</code>, <code>/admin/api/fhir-servers/{discover,test,test-request,generate-key,export}</code>, <code>POST /admin/api/fhir-servers/{id}/{probe,set-default}</code>, <code>POST /admin/api/fhir-servers/{id}/oauth/{authorize,refresh,clear-cache}</code></td>
 </tr>
 <tr>
 <td>IG</td>
-<td><code>GET /admin/api/igs</code>, <code>POST /admin/api/igs/import</code>, <code>GET /admin/api/registry/search</code></td>
+<td><code>GET /admin/api/igs</code>, <code>GET|DELETE /admin/api/igs/{package_id}/{version}</code>, <code>GET /admin/api/igs/{package_id}/{version}/removal-impact</code>, <code>POST /admin/api/igs/{package_id}/{version}/{default,fill-dependencies}</code>, <code>POST /admin/api/igs/import</code>, <code>POST /admin/api/igs/inspect-upload</code>, <code>GET /admin/api/igs/dependencies</code>, <code>POST /admin/api/igs/dependencies/{download,download-all}</code>, <code>GET /admin/api/igs/unused-dependencies</code>, <code>POST /admin/api/igs/unused-dependencies/remove</code>, <code>GET /admin/api/registry/search</code></td>
 </tr>
 <tr>
 <td>Embeddings</td>
@@ -2583,7 +2703,7 @@ curl -X POST http://localhost:8080/tools/search_medical_codes \
 </tbody>
 </table>
 <h2 id="service-layer-typescript">Service layer (TypeScript)<a class="headerlink" href="#service-layer-typescript" title="Permanent link">&para;</a></h2>
-<p>The domain services live in <code>node-server/src/</code>; each constructor takes a <code>pg.Pool</code> and each service offers <code>async initialize()</code>:</p>
+<p>The domain services live in <code>node-server/src/</code>. Each offers <code>async initialize()</code>; database access goes through the shared <code>pg</code> pool in <code>db.ts</code> (not a constructor argument), and search services take the shared <code>EmbeddingService</code> in their constructor. <code>mcp.ts</code> creates each one as a lazy singleton; a service that fails to initialise only removes its own tools.</p>
 <table>
 <thead>
 <tr>
@@ -2594,7 +2714,7 @@ curl -X POST http://localhost:8080/tools/search_medical_codes \
 </thead>
 <tbody>
 <tr>
-<td><code>ICDService</code></td>
+<td><code>IcdService</code></td>
 <td><code>icdService.ts</code></td>
 <td><code>icd.*</code></td>
 </tr>
@@ -2609,12 +2729,12 @@ curl -X POST http://localhost:8080/tools/search_medical_codes \
 <td><code>drug.insert_analysis</code> (including MinerU OCR and analysis-LLM calls)</td>
 </tr>
 <tr>
-<td><code>SupplementsService</code></td>
+<td><code>HealthSupplementsService</code></td>
 <td><code>supplementsService.ts</code></td>
 <td><code>health_supplements.*</code></td>
 </tr>
 <tr>
-<td><code>FoodService</code></td>
+<td><code>FoodNutritionService</code></td>
 <td><code>foodService.ts</code></td>
 <td><code>food_nutrition.*</code></td>
 </tr>
@@ -2624,22 +2744,22 @@ curl -X POST http://localhost:8080/tools/search_medical_codes \
 <td><code>loinc.*</code></td>
 </tr>
 <tr>
-<td><code>FhirConditionService</code></td>
+<td><code>FHIRConditionService</code></td>
 <td><code>fhirConditionService.ts</code></td>
 <td>reads <code>icd.*</code></td>
 </tr>
 <tr>
-<td><code>FhirMedicationService</code></td>
+<td><code>FHIRMedicationService</code></td>
 <td><code>fhirMedicationService.ts</code></td>
-<td>reads the drug service</td>
+<td>reads <code>drug.*</code></td>
 </tr>
 <tr>
-<td><code>FhirIgService</code></td>
+<td><code>FHIRIGService</code></td>
 <td><code>fhirIgService.ts</code></td>
 <td><code>fhir.*</code> (multi-IG)</td>
 </tr>
 <tr>
-<td><code>FhirServerService</code></td>
+<td><code>FHIRServerService</code></td>
 <td><code>fhirServerService.ts</code></td>
 <td><code>admin.fhir_servers</code></td>
 </tr>
@@ -2651,7 +2771,7 @@ curl -X POST http://localhost:8080/tools/search_medical_codes \
 <tr>
 <td><code>EmbeddingService</code></td>
 <td><code>embeddingService.ts</code></td>
-<td>External embedding endpoint (configuration stored in <code>admin.llm_profiles</code>)</td>
+<td>External embedding endpoint — the route assigned to the <code>embedding</code> role (<code>admin.llm_routes</code> / <code>admin.llm_role_routes</code> over provider accounts in <code>admin.llm_providers</code>)</td>
 </tr>
 <tr>
 <td>MinIO helper</td>

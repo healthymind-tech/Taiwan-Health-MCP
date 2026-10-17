@@ -2654,7 +2654,7 @@ mkdocs build --strict # 驗證：任何警告都視為錯誤
 <h2 id="_5">部署流程<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>
 <p><code>.github/workflows/deploy-docs.yml</code>：</p>
 <ol>
-<li><strong>觸發條件</strong>：push 到 <code>main</code>，且變更包含 <code>docs/**</code>、<code>mkdocs.yml</code> 或該 workflow 自身。
+<li><strong>觸發條件</strong>：push 到 <code>main</code>，且變更包含 <code>docs/**</code>、<code>mkdocs.yml</code>、<code>requirements-docs.txt</code> 或該 workflow 自身。
    （只改 <code>README.md</code> 或程式碼<strong>不會</strong>觸發網站重建。）</li>
 <li><strong>建置</strong>：Python 3.11，安裝 <code>requirements-docs.txt</code>，執行 <code>mkdocs build --strict</code>。</li>
 <li><strong>發佈</strong>：<code>peaceiris/actions-gh-pages@v3</code> 把 <code>./site</code> 推送到 <strong><code>gh-pages</code> 分支</strong>（需要 <code>contents: write</code> 權限，使用內建的 <code>GITHUB_TOKEN</code>）。</li>
@@ -2678,7 +2678,8 @@ mkdocs build --strict # 驗證：任何警告都視為錯誤
 <li>不要編輯 <code>site/</code>（產物）。</li>
 <li>指令範例要能從文中指定的目錄直接執行；埠號請用 <code>:8080</code>（nginx 前門），不要用 <code>:8000</code>。</li>
 <li>已完成或被取代的規劃文件，請在開頭加上狀態標註（本站的歷史文件都採此作法），不要直接刪除——它們是決策紀錄。</li>
-<li>對外的宣傳頁與法務頁（<code>/</code>、<code>/status</code>、<code>/privacy</code>、<code>/dpa</code>）<strong>已不在本專案內</strong>，改由獨立的宣傳網站專案提供。本專案的 <code>web</code> 服務只負責 <code>/admin</code> 管理後台。</li>
+<li>對外的宣傳頁與法務頁（<code>/</code>、<code>/status</code>、<code>/privacy</code>、<code>/dpa</code>）<strong>已不在本專案內</strong>，改由獨立的宣傳網站專案提供。本專案的 <code>web-v2</code> 服務（取代舊的 Next.js <code>web</code>，後者僅留在 compose profile <code>legacy-web</code>）只負責 <code>/admin</code> 管理後台。</li>
+<li><strong>這是公開倉庫，網站也公開發佈。</strong> 不要把臨床紀錄、評測用的 gold bundle 或 fixture 內容（例如未納入版控的 <code>mcp_proposal/</code> 內的資料）、密碼、主機上的私有路徑寫進文件；描述功能與公開的測試即可。</li>
 </ul>
 
 

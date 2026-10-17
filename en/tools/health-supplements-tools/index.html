@@ -2537,8 +2537,8 @@
 <tr>
 <td style="text-align: left;"><code>mode</code></td>
 <td style="text-align: left;">string</td>
-<td style="text-align: left;">Yes</td>
-<td style="text-align: left;"><code>keyword</code> / <code>permit_no</code> / <code>condition</code></td>
+<td style="text-align: left;">No</td>
+<td style="text-align: left;"><code>keyword</code> / <code>permit_no</code> / <code>condition</code>, <code>keyword</code> by default</td>
 <td style="text-align: left;"><code>"keyword"</code></td>
 </tr>
 <tr>
@@ -2552,7 +2552,7 @@
 <td style="text-align: left;"><code>limit</code></td>
 <td style="text-align: left;">integer</td>
 <td style="text-align: left;">No</td>
-<td style="text-align: left;">Result cap, 3 by default</td>
+<td style="text-align: left;">Result cap, 3 by default, 10 maximum (ignored in <code>permit_no</code> mode)</td>
 <td style="text-align: left;"><code>5</code></td>
 </tr>
 </tbody>
@@ -2565,17 +2565,17 @@
   &quot;results&quot;: [...]
 }
 </code></pre>
+<p><code>keyword</code> mode runs a hybrid BM25 + semantic search; without embeddings it falls back to keyword-only and adds <code>search_mode: "keyword_only"</code> and <code>search_note</code>.
+Without <code>keyword</code> the tool returns <code>{"error": "Provide keyword"}</code>. The group is registered only while <code>health_supplements.items</code> holds at least 10 rows.</p>
 <h3 id="fields-on-each-result">Fields on each result<a class="headerlink" href="#fields-on-each-result" title="Permanent link">&para;</a></h3>
 <p>Every mode uses the same fields on each result:</p>
 <ul>
 <li><code>permit_no</code></li>
 <li><code>product_name</code></li>
 <li><code>company</code></li>
+<li><code>category</code></li>
 <li><code>benefits</code></li>
-<li><code>ingredients</code></li>
-<li><code>specs</code></li>
-<li><code>status</code></li>
-<li><code>source_url</code></li>
+<li><code>approval_date</code></li>
 </ul>
 <p><code>condition</code> mode additionally populates, at the top level:
 - <code>icd_code</code>

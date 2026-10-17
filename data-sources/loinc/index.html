@@ -2407,23 +2407,21 @@
 <h1 id="loinc">LOINC 資料來源<a class="headerlink" href="#loinc" title="Permanent link">&para;</a></h1>
 <h2 id="_1">國際標準<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>來源權威</strong>：Regenstrief Institute</li>
-<li><strong>版本</strong>：目前系統支援 LOINC 2.76 版本。</li>
-<li><strong>內容</strong>：包含超過 70,000 筆實驗室檢驗與臨床觀察代碼。</li>
+<li><strong>來源權威</strong>：Regenstrief Institute（<a href="https://loinc.org/downloads/">https://loinc.org/downloads/</a>，需註冊帳號）</li>
+<li><strong>版本</strong>：LOINC 2.80（<code>Loinc_2.80.zip</code>）。</li>
+<li><strong>內容</strong>：<code>LoincTable/Loinc.csv</code> 約 10.5 萬個 concept（實驗室檢驗與臨床觀察），寫入 <code>loinc.concepts</code>。</li>
+<li><strong>AccessoryFiles</strong>：匯入時另取 answer（LA）、part（LP）、answer list（LL）、group（LG）代碼（<code>loinc.other_codes</code>）、各軸 part 連結、answer list、panel 成員與 MapTo 取代碼（<code>loinc.part_links</code>、<code>loinc.answer_list_items</code> / <code>_links</code>、<code>loinc.panel_items</code>、<code>loinc.map_to</code>），以及版本（<code>loinc.editions</code>）。前者供 FHIR validator 使用，結構表供管理後台的 LOINC 瀏覽使用。</li>
 </ul>
 <h2 id="_2">台灣中文化對應<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>來源</strong>：衛福部電子病歷推動專區 - 台灣臨床檢驗代碼對應表。</li>
-<li><strong>加值處理</strong>：<ul>
-<li>將官方英文名稱與台灣常用臨床術語（如「飯前血糖」對應 "Glucose pre meal"）進行關鍵字索引。</li>
-<li>建立檢體類別 (Specimen) 與檢驗方法 (Method) 的中文別名庫。</li>
-</ul>
-</li>
+<li><strong>檔案</strong>：<code>data/loinc/taiwan_mapping.csv</code>（來源角色 <code>loinc_taiwan_mapping</code>，選用），欄位 <code>loinc_code, name_zh, common_name_zh, specimen_type, unit</code>，約 30 筆台灣常用檢驗。</li>
+<li>專案自行整理、網路上下載不到，因此放在版控中；匯入時合併進 <code>loinc.concepts</code> 的中文欄位。</li>
 </ul>
 <h2 id="_3">參考值資料<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>來源</strong>：彙整自國內數家醫學中心之公開檢驗手冊（如台大醫院、榮民總醫院）。</li>
-<li><strong>注意</strong>：各實驗室因儀器試劑不同，參考值可能略有差異，本系統提供之參考值僅供通用性參考。</li>
+<li><strong>檔案</strong>：<code>data/loinc/lab_reference_ranges.csv</code>（來源角色 <code>loinc_reference_ranges</code>，選用），約 40 筆，依年齡 / 性別分層，寫入 <code>loinc.reference_ranges</code>。</li>
+<li><strong>來源</strong>：彙整自台大醫院檢驗科與台灣糖尿病學會、台灣血脂學會、台灣腎臟醫學會等公開資料（每筆的 <code>source</code> 欄位）。</li>
+<li><strong>注意</strong>：各實驗室因儀器試劑不同，參考值可能略有差異，本系統提供之參考值僅供通用性參考。<code>interpret_lab_result</code> 只能判讀有參考值的代碼。</li>
 </ul>
 
 

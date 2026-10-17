@@ -2594,15 +2594,16 @@
 <ol>
 <li><strong><code>drug_index_import</code></strong> — 從 TFDA 標準 <code>36_2.csv</code> 載入許可證索引，建立 <code>drug.licenses</code> 等基礎表。</li>
 <li><strong><code>drug_enrichment</code></strong> — 爬取 TFDA 取得電子仿單、文件資產與藥錠外觀紀錄，並將檔案存入 MinIO。</li>
-<li><strong><code>drug_analysis</code></strong> — 對仿單文件執行 MinerU OCR 與分析 LLM，萃取結構化內容寫入 <code>drug.insert_analysis</code>。OCR 與分析 LLM 的端點在 Admin → Settings 設定（存於 <code>admin.llm_profiles</code>），<strong>不從環境變數讀取</strong>。</li>
+<li><strong><code>drug_analysis</code></strong> — 對仿單文件執行 MinerU OCR 與分析 LLM，萃取結構化內容寫入 <code>drug.insert_analysis</code>。OCR 端點（MinerU）在管理後台 <strong>整合 → 外部服務 → OCR Server</strong> 設定（存於 <code>admin.app_settings</code>）；分析 LLM 在 <strong>整合 → 模型端點</strong> 設定（provider 帳號 + 路由：<code>admin.llm_providers</code> / <code>admin.llm_routes</code> / <code>admin.llm_route_members</code> / <code>admin.llm_role_routes</code>）。兩者都<strong>不從環境變數讀取</strong>。</li>
 </ol>
-<p>另有 <code>drug_pipeline</code> 工作型別可一次串起三個階段。三者也會自動串接：每個自動串接的工作以 <code>DRUG_AUTOCHAIN_BATCH_LIMIT</code>（預設 200）為上限；<strong>手動排入且未指定 <code>limit</code> 的 <code>drug_enrichment</code> 不受此限</strong>，會爬完整個待處理佇列。</p>
+<p>另有 <code>drug_pipeline</code> 工作型別，在同一個工作內對每張許可證依序跑完三個階段。三者也會自動串接：每個自動串接的工作以 <code>DRUG_AUTOCHAIN_BATCH_LIMIT</code>（預設 200）為上限；<strong>手動排入且未指定 <code>limit</code> 的 <code>drug_enrichment</code> 不受此限</strong>，會爬完整個待處理佇列。</p>
 <h2 id="_4">技術架構<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong>資料來源</strong>：台灣 FDA 西藥許可證（<code>mcp.fda.gov.tw</code>），透過 <code>DRUG_TFDA_BASE_URL</code> 設定。</li>
-<li><strong>資料庫</strong>：<code>drug</code> schema，含 <code>licenses</code>、<code>ingredients</code>、<code>atc</code>、<code>electronic_inserts</code>、<code>appearance_records</code>、<code>assets</code>、<code>insert_analysis</code>、<code>normalized_records</code> 等資料表，以及匯入狀態追蹤表（<code>import_runs</code>、<code>import_license_state</code>、<code>enrichment_queue</code> 等）。</li>
+<li><strong>資料庫</strong>：<code>drug</code> schema，含 <code>licenses</code>、<code>ingredients</code>、<code>atc</code>、<code>electronic_inserts</code>、<code>appearance_records</code>、<code>assets</code>、<code>asset_variants</code>、<code>insert_analysis</code>、<code>normalized_records</code> 等資料表，以及匯入狀態追蹤表（<code>import_runs</code>、<code>import_license_state</code>、<code>enrichment_queue</code> 等）。</li>
 <li><strong>物件儲存</strong>：仿單 / 標籤 / 外觀圖檔案存於 MinIO，工具回傳時即時產生有時效的預簽連結。</li>
-<li><strong>嵌入搜尋</strong>：藥品索引支援語意 / 混合搜尋（需可用的嵌入端點，於 Admin → Settings 設定；未設定時退回關鍵字）。</li>
+<li><strong>搜尋方式</strong>：藥品搜尋為關鍵字比對（<code>ILIKE</code> 子字串 + <code>simple</code> 全文檢索），<strong>沒有</strong>向量 / 語意搜尋，也沒有 <code>drug_embed</code> 工作。</li>
+<li><strong>管理介面</strong>：管理後台 <strong>資料 → 藥品</strong> 顯示管線概況、上傳 <code>36_2.csv</code>、排程與觸發工作；<strong>藥品瀏覽器</strong>（<code>/admin/drug/explorer</code>）可檢視單張許可證的仿單、外觀、檔案、歷程與 LLM 呼叫紀錄。</li>
 </ul>
 <h2 id="_5">依賴關係<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>
 <ul>

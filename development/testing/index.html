@@ -2434,33 +2434,64 @@
 <h2 id="_2">執行測試<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
 <pre><code class="language-bash">cd node-server
 npm install
-npm test          # node --import tsx --test src/**/*.test.ts
+npm test          # node --import tsx --test 'src/**/*.test.ts'（由 node 展開 glob，任意深度）
 </code></pre>
 <p>型別檢查（提交前建議都跑）：</p>
 <pre><code class="language-bash">cd node-server
-npm run typecheck # tsc --noEmit
+npm run typecheck # tsc -p tsconfig.dev.json --noEmit
 
-cd ../web
-npm run typecheck
+cd ../web-v2
+npm run typecheck # tsc -b --noEmit
 </code></pre>
+<p><code>web-v2/</code> 沒有測試套件，只有 <code>typecheck</code>。</p>
+<div class="admonition warning">
+<p class="admonition-title">CI 不跑測試</p>
+<p>唯一的 GitHub Actions workflow 是 <code>deploy-docs.yml</code>（<code>main</code> 上的 <code>docs/</code> 或 <code>mkdocs.yml</code> 有變更時建置並發佈 MkDocs）。
+沒有任何檢查會擋下 <code>npm test</code> / <code>npm run typecheck</code> 失敗的合併——提交前請在 <code>node-server/</code> 與 <code>web-v2/</code> 本機都跑過。</p>
+</div>
 <h2 id="_3">目前的測試範疇<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
-<p>測試檔與被測程式放在一起（<code>src/**/*.test.ts</code>）。目前涵蓋：</p>
+<p>測試檔與被測程式放在一起（<code>node-server/src/**/*.test.ts</code>）。目前共 61 個測試檔、721 個測試案例（2026-10-17，<code>npm test</code> 約 40 秒），依領域分布：</p>
 <table>
 <thead>
 <tr>
-<th>測試檔</th>
-<th>範疇</th>
+<th>領域</th>
+<th>測試檔（<code>node-server/src/</code> 底下）</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>node-server/src/loaders/loinc.test.ts</code></td>
-<td>LOINC loader 的解析邏輯</td>
+<td>FHIR validator / IG / 術語</td>
+<td><code>fhirValidator.test.ts</code>、<code>fhirValidatorV2.test.ts</code>、<code>fhirValidator.v6.test.ts</code>、<code>fhirIg.test.ts</code>、<code>fhirCodeSystem.test.ts</code>、<code>fhirExternalTerminology.test.ts</code>、<code>fhirPath.test.ts</code>、<code>fhirRequiredElements.test.ts</code>、<code>fhirTestKit.test.ts</code></td>
+</tr>
+<tr>
+<td>Grounding</td>
+<td><code>groundingTools.test.ts</code>、<code>grounding/*.test.ts</code></td>
+</tr>
+<tr>
+<td>模型 provider 與路由</td>
+<td><code>providers/*.test.ts</code>、<code>admin/llmRouting*.test.ts</code>、<code>admin/llmErrorCodes.test.ts</code>、<code>admin/embeddingIdentity*.test.ts</code>、<code>admin/chatgptOAuth.qa.test.ts</code>、<code>embeddingService*.test.ts</code>、<code>analysisLlmClient*.test.ts</code>、<code>drugAnalysisService*.test.ts</code>、<code>rateLimiter.qa.test.ts</code></td>
+</tr>
+<tr>
+<td>載入器</td>
+<td><code>loaders/icd.test.ts</code>、<code>loaders/loinc.test.ts</code>、<code>loaders/ig.test.ts</code>、<code>loaders/igRegistry.test.ts</code>、<code>loaders/embeddings.test.ts</code>、<code>loaders/batchPool.test.ts</code>、<code>loaders/drugRecordBuilder.test.ts</code>、<code>loaders/drugImageVariant.test.ts</code></td>
+</tr>
+<tr>
+<td>管理後台後端</td>
+<td><code>admin/adminAuth.test.ts</code>、<code>admin/adminJobs.test.ts</code>、<code>admin/adminMcp.test.ts</code>、<code>admin/mcpToolExamples.test.ts</code>、<code>admin/igDependencies.test.ts</code>、<code>admin/igOrigin.test.ts</code>、<code>admin/igRemoval.test.ts</code>、<code>admin/termViz/termViz.test.ts</code>、<code>admin/fhirServerService.test.ts</code>、<code>admin/publicToolsSecurity.test.ts</code>、<code>admin/draftTarget.test.ts</code>、<code>admin/drugAssetResponse.test.ts</code></td>
+</tr>
+<tr>
+<td>其他</td>
+<td><code>clinicalCalculators.test.ts</code>、<code>config.test.ts</code></td>
 </tr>
 </tbody>
 </table>
-<p>測試覆蓋率目前偏低——多數行為是在 Python → Node 遷移期間以<strong>對照執行</strong>的方式驗證的
-（同一份輸入分別餵給新舊實作，逐欄位比對輸出），而不是以單元測試固定下來。
+<p><code>*.qa.test.ts</code> 是 QA 回歸測試，與一般測試一起由 <code>npm test</code> 執行。</p>
+<p>部分對照測試（<code>fhirRequiredElements.test.ts</code>、<code>grounding/completeness.test.ts</code> 等）讀取不在版控中的 fixture 目錄；
+該目錄不存在時，這些案例會標記為 skipped 而不是失敗。</p>
+<p>FHIR validator 與 HL7 官方 validator_cli 7.0.1 的逐筆比對不在 <code>npm test</code> 內，而是 <code>node-server/scripts/validator-audit/</code>
+的獨立 harness（需要連得到載有 IG 套件的 DB），結果見該目錄的 <code>REPORT.md</code>。</p>
+<p>測試仍是純單元測試：不啟動 Postgres、Redis 或 MinIO，新測試請以注入 / 假的協作者撰寫。
+Python → Node 遷移期間，多數行為是以<strong>對照執行</strong>的方式驗證的（同一份輸入分別餵給新舊實作，逐欄位比對輸出），
 新增功能時請補上對應測試。</p>
 <h2 id="_4">撰寫新測試<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
 <p>在被測模組旁建立 <code>&lt;name&gt;.test.ts</code>，使用 Node 內建的 <code>node:test</code> 與 <code>node:assert</code>：</p>
@@ -2480,7 +2511,11 @@ curl http://localhost:8080/openapi.json
 curl -X POST http://localhost:8080/tools/search_medical_codes \
   -H 'Content-Type: application/json' \
   -d '{&quot;keyword&quot;: &quot;diabetes&quot;, &quot;limit&quot;: 3}'
+
+# 伺服器版本、build（git sha）、各工具版本與已載入的術語版本
+curl -X POST http://localhost:8080/tools/health_check -H 'Content-Type: application/json' -d '{}'
 </code></pre>
+<p>管理後台 <strong>整合 → MCP 工具</strong> 也提供工具目錄與線上測試（playground），呼叫方式與 <code>POST /tools/&lt;name&gt;</code> 相同。</p>
 
 
 

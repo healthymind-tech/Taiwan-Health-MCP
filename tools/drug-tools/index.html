@@ -2674,6 +2674,9 @@
 
 <h1 id="drug-tools">藥品工具 (Drug Tools)<a class="headerlink" href="#drug-tools" title="Permanent link">&para;</a></h1>
 <p>此類別工具整合台灣 FDA（TFDA）西藥許可證資料，提供藥品搜尋、藥錠外觀辨識、藥品詳情與官方文件資產下載連結。</p>
+<blockquote>
+<p><strong>維護模式</strong>：管理後台把 <code>drug</code> 模組切到維護模式時，本組工具（以及 FHIR Medication 工具）呼叫會立即回傳 <code>isError</code> 結果，錯誤碼 <code>MODULE_MAINTENANCE</code>（<code>error.message</code> 英文、<code>error.message_zh</code> 正體中文，<code>error.module</code> 為模組鍵），約 5 秒內生效；工具仍留在 <code>tools/list</code> 中。詳見 <a href="../../api/#maintenance">API 參考</a>。</p>
+</blockquote>
 <h2 id="search_drug">search_drug<a class="headerlink" href="#search_drug" title="Permanent link">&para;</a></h2>
 <p>單一入口，四種搜尋模式。</p>
 <h3 id="_1">參數<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h3>
@@ -2778,7 +2781,7 @@
 </tbody>
 </table>
 <h3 id="_5">用途<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h3>
-<p>每個關鍵字以交集（conjunctive）比對外觀描述、顏色、形狀、符號、刻痕、尺寸與刻字欄位。英文顏色 / 形狀詞會以內建同義詞表擴展。外觀資料需先由 <code>drug_enrichment</code> 工作載入（Admin → Modules）。</p>
+<p>每個關鍵字以交集（conjunctive）比對外觀描述、顏色、形狀、符號、刻痕、尺寸與刻字欄位。英文顏色 / 形狀詞會以內建同義詞表擴展。最多回傳 5 筆。外觀資料需先由 <code>drug_enrichment</code> 工作載入（管理介面 → 藥品）。</p>
 <hr />
 <h2 id="get_drug_details">get_drug_details<a class="headerlink" href="#get_drug_details" title="Permanent link">&para;</a></h2>
 <p>回傳單一許可證的正規化藥品紀錄。</p>

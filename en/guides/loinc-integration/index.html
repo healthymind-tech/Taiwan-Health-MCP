@@ -2502,6 +2502,9 @@ When choosing a LOINC code, confirm that these six axes agree:
 search_loinc(mode=&quot;code&quot;, keyword=&quot;Urine Protein&quot;)
 # The results distinguish qualitative from quantitative
 </code></pre>
+<blockquote>
+<p>Operators can also use the "Data preview" tab on <strong>Terminology → LOINC</strong> in the admin console to filter by the six axes and inspect a single term's parts, answer lists, panels and MapTo (the LOINC structure tables behind it are loaded by <code>loinc_import</code>).</p>
+</blockquote>
 <h3 id="2-verify-the-reference-ranges">2. Verify the reference ranges<a class="headerlink" href="#2-verify-the-reference-ranges" title="Permanent link">&para;</a></h3>
 <p>Once mapped, use <code>query_loinc(mode="reference_range", ...)</code> to confirm that the standard reference values for that LOINC code are close to the in-house laboratory's. A large discrepancy may mean the wrong code was chosen (for example a code with different units or a different measurement method).</p>
 <h3 id="3-automate-the-conversion">3. Automate the conversion<a class="headerlink" href="#3-automate-the-conversion" title="Permanent link">&para;</a></h3>

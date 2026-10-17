@@ -2502,6 +2502,9 @@
 search_loinc(mode=&quot;code&quot;, keyword=&quot;Urine Protein&quot;)
 # 結果中區分 &quot;定性 (Qualitative)&quot; 與 &quot;定量 (Quantitative)&quot;
 </code></pre>
+<blockquote>
+<p>管理者也可以在管理後台 <strong>醫療術語 → LOINC</strong> 的「資料預覽」分頁，以六個軸做 facet 篩選並查看單一 term 的 parts、answer list、panel 與 MapTo（該頁的 LOINC 結構表需由 <code>loinc_import</code> 匯入）。</p>
+</blockquote>
 <h3 id="2">2. 驗證參考值<a class="headerlink" href="#2" title="Permanent link">&para;</a></h3>
 <p>Mapping 完成後，使用 <code>query_loinc(mode="reference_range", ...)</code> 確認該 LOINC 碼的標準參考值是否與院內實驗室的標準相近。若差異過大，可能選錯了代碼（例如選到不同單位或不同檢測方法的碼）。</p>
 <h3 id="3">3. 自動化轉換流程<a class="headerlink" href="#3" title="Permanent link">&para;</a></h3>

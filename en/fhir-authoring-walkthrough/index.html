@@ -2650,7 +2650,7 @@
 
 <h1 id="turning-your-data-into-fhir-how-the-authoring-flow-works">Turning your data into FHIR — how the authoring flow works<a class="headerlink" href="#turning-your-data-into-fhir-how-the-authoring-flow-works" title="Permanent link">&para;</a></h1>
 <blockquote>
-<p><strong>Status:</strong> describes the <em>designed</em> FHIR-IG authoring toolset (the <code>fhir_*</code> tools). For the engineering spec and design decisions, see <a href="../fhir-ig-mcp-toolset-assessment/"><code>fhir-ig-mcp-toolset-assessment.md</code></a>. This page is the <strong>user-facing walkthrough</strong>.</p>
+<p><strong>Status:</strong> describes the shipped FHIR-IG authoring toolset (22 <code>fhir_*</code> tools; checked against the code 2026-10). For each tool's parameters see <a href="../tools/fhir-ig-tools/">FHIR IG Tools</a>; the original design-decision record is <a href="../fhir-ig-mcp-toolset-assessment/"><code>fhir-ig-mcp-toolset-assessment.md</code></a>. This page is the <strong>user-facing walkthrough</strong>.</p>
 </blockquote>
 <p>This MCP server lets a language model (LLM) turn your source data — a structured hospital record <strong>or a free-text clinical note</strong> — into a valid FHIR resource that conforms to an Implementation Guide (IG) such as TW Core, US Core, or IPS. This page walks through exactly how that happens, step by step, with a concrete example.</p>
 <hr />
@@ -2679,12 +2679,13 @@
 <h2 id="before-you-start-which-ig">Before you start: which IG?<a class="headerlink" href="#before-you-start-which-ig" title="Permanent link">&para;</a></h2>
 <p>A FHIR resource is only meaningful against a target IG. The <strong>same</strong> clinical facts (a patient, an influenza diagnosis) can be mapped to TW Core, US Core, or IPS depending on <strong>where the data is going</strong> — the data itself doesn't tell you. So the IG is chosen by <em>context</em>, not guessed from the content, in this order:</p>
 <ol>
-<li><strong>Deployment default</strong> — most installations are bound to one IG (e.g. a Taiwan hospital → TW Core). One package is marked the default; the LLM doesn't choose.</li>
-<li><strong>Explicit instruction</strong> — the calling app or the user says "produce TW Core FHIR". Every tool takes an <code>ig = {packageId, version}</code> argument, so the choice is always explicit.</li>
-<li><strong>Informed choice</strong> — if several IGs are installed and none is specified, the LLM calls <code>fhir_list_igs</code> (which returns each package's <code>title</code>, <code>jurisdiction</code>, and default flag) and matches it to the user's intent and content hints (Chinese text, ROC national ID, NHI billing → <code>jurisdiction = TW</code>).</li>
+<li><strong>Deployment default</strong> — most installations are bound to one IG (e.g. a Taiwan hospital → TW Core). One package is marked the default in the admin console (IG packages); the LLM doesn't choose.</li>
+<li><strong>Explicit instruction</strong> — the calling app or the user says "produce TW Core FHIR". Every IG-scoped tool takes a <code>package_id</code> (+ optional <code>version</code>) argument, so the choice can always be explicit.</li>
+<li><strong>Informed choice</strong> — if several IGs are installed and none is specified, the LLM calls <code>fhir_list_igs</code> (which returns each package's <code>packageId</code>, <code>version</code>, <code>title</code>, <code>canonical</code>, <code>isDefault</code>, <code>installOrigin</code> and dependencies) and matches it to the user's intent and content hints (Chinese text, ROC national ID, NHI billing → a <code>tw.gov.mohw.*</code> package).</li>
 <li><strong>If still ambiguous → ask.</strong> The system asks the user rather than guessing.</li>
 </ol>
-<p>Because every IG-scoped tool takes <code>ig</code>, you can target <strong>any imported IG</strong> explicitly: <code>fhir_get_profile(ig=US-Core, "Patient")</code> and <code>fhir_get_profile(ig=TW-Core, "Patient")</code> return different profiles. Adding a new country's IG is just importing its package — no new tools.</p>
+<p>When <code>package_id</code> is omitted the server resolves the target package in a fixed order: a canonical argument or <code>meta.profile</code> pinned with <code>|version</code> → the package holding that version; otherwise → the package that owns the canonical / <code>meta.profile</code> (manually installed IGs first); otherwise → the default IG; otherwise → the only manually installed IG. Every response's <code>provenance.resolved_by</code> says which rule applied. With no default IG and no owner, the call fails with <code>NO_DEFAULT_IG</code> instead of picking an arbitrary package.</p>
+<p>Because every IG-scoped tool takes <code>package_id</code>, you can target <strong>any imported IG</strong> explicitly: <code>fhir_get_profile(identifier="Patient", package_id="hl7.fhir.us.core")</code> and <code>fhir_get_profile(identifier="Patient-twcore", package_id="tw.gov.mohw.twcore")</code> return different profiles; a canonical may also be written <code>url|version</code> to pin a version (an uninstalled version returns <code>ARTIFACT_NOT_FOUND</code> — there is no silent fallback to another version). Adding a new country's IG is just importing its package — no new tools.</p>
 <hr />
 <h2 id="worked-example">Worked example<a class="headerlink" href="#worked-example" title="Permanent link">&para;</a></h2>
 <p><strong>Input — an unstructured clinical note (free text):</strong></p>
@@ -2700,16 +2701,17 @@ Diagnosis: influenza, clinical status=active, verification=confirmed, onset=2026
 </code></pre>
 <p>It also decides it needs a <strong>Patient</strong> + a <strong>Condition</strong>. It does <em>not</em> yet know which FHIR fields or codes to use — that's what the server is for.</p>
 <h3 id="stage-1-resolve-the-ig">Stage 1 — Resolve the IG<a class="headerlink" href="#stage-1-resolve-the-ig" title="Permanent link">&para;</a></h3>
-<p>Per the rules above. In a TW-bound deployment this is just "TW Core 1.0.0". If unsure: <strong>[MCP] <code>fhir_list_igs</code></strong> → pick by <code>jurisdiction</code>/intent → ask if ambiguous.</p>
+<p>Per the rules above. In a TW-bound deployment this is just "TW Core 1.0.0". If unsure: <strong>[MCP] <code>fhir_list_igs</code></strong> → pick by <code>packageId</code> / <code>title</code> and intent → ask if ambiguous.</p>
 <h3 id="stage-2-decide-the-profiles">Stage 2 — Decide the profiles<a class="headerlink" href="#stage-2-decide-the-profiles" title="Permanent link">&para;</a></h3>
 <ul>
-<li><strong>[MCP] <code>fhir_list_resource_profiles(ig)</code></strong> → returns the IG's profiles: <code>Patient-twcore</code>, <code>Condition-twcore</code>, <code>Encounter-twcore</code>, …</li>
-<li><strong>[MCP] <code>fhir_rank_resource_profiles(ig, facts)</code></strong> <em>(optional)</em> → feeds the diagnosis facts in; the server ranks candidates (<code>Condition-twcore</code> top, with matching-field evidence). <strong>It only suggests</strong> — <strong>[LLM]</strong> makes the final pick.</li>
+<li><strong>[MCP] <code>fhir_list_resource_profiles()</code></strong> → returns the IG's profiles: <code>Patient-twcore</code>, <code>Condition-twcore</code>, <code>Encounter-twcore</code>, … (pass <code>all_packages=true</code> to look across every installed package; zero rows come with a <code>data.hint</code> naming other packages that match).</li>
+<li><strong>[MCP] <code>fhir_rank_resource_profiles(keys=[…])</code></strong> <em>(optional)</em> → feeds the source field names (keys) in; the server ranks candidates by how many keys match each profile's element paths (<code>Condition-twcore</code> top). It returns <code>selectionRequired:true</code> — <strong>it only suggests</strong>, <strong>[LLM]</strong> makes the final pick.</li>
+<li><strong>[MCP] <code>fhir_get_profile_required_elements(profile)</code></strong> <em>(recommended)</em> → once a profile is chosen, get the complete list of what it <em>effectively</em> requires (<code>min≥1</code> with required ancestors, required slices, choice types, invariant-implied value-or-dataAbsentReason), each row classified by where its value comes from: <code>auto</code> (pinned by the server), <code>coding</code> (look up a code), <code>source_fact</code> (from the source) or <code>workflow_default</code>.</li>
 </ul>
 <h3 id="stage-3-build-each-resource-patient-first-because-condition-references-it">Stage 3 — Build each resource (Patient first, because Condition references it)<a class="headerlink" href="#stage-3-build-each-resource-patient-first-because-condition-references-it" title="Permanent link">&para;</a></h3>
 <h4 id="3a-patient">3A · Patient<a class="headerlink" href="#3a-patient" title="Permanent link">&para;</a></h4>
 <ol>
-<li><strong>[MCP] <code>fhir_get_resource_skeleton(ig, Patient-twcore)</code></strong> → a <em>blank, annotated fill-form</em> derived live from the profile:
+<li><strong>[MCP] <code>fhir_get_resource_skeleton(profile="Patient-twcore")</code></strong> → a <em>blank, annotated fill-form</em> derived live from the profile:
    <code>identifier  (1..*, required; sliced — national ID uses slice "NN";
                 system is auto-pinned, you only supply value)
    name        (1..*, required: family / given)
@@ -2722,11 +2724,11 @@ Diagnosis: influenza, clinical status=active, verification=confirmed, onset=2026
    gender = "male"          ← taken from the allowed list in the skeleton
    birthDate = "1985-03-12"</code>
    For coded fields it may double-check with <strong>[MCP] <code>fhir_validate_code</code></strong>.</li>
-<li><strong>[MCP] <code>fhir_finalize_resource(ig, Patient-twcore, draft, refCtx)</code></strong> → the server pins the <strong>mechanical</strong> fields (<code>identifier.system</code> for the national-ID slice, <code>identifier.type</code>, <code>meta.profile</code>), runs the validator, and returns <code>{ resource, validation: pass }</code>. The Patient is registered in the <em>reference context</em> (<code>refCtx</code>) so other resources can point to it.</li>
+<li><strong>[MCP] <code>fhir_finalize_resource(profile="Patient-twcore", draft, context_id, key="patient-1")</code></strong> → the server pins the <strong>mechanical</strong> fields (<code>identifier.system</code> for the national-ID slice, <code>identifier.type</code>, <code>meta.profile</code>), runs the validator, and returns <code>{ resource, validation }</code> (<code>validation.valid: true</code>). The Patient is registered under its <code>key</code> in the <em>reference context</em> (<code>context_id</code>) so other resources can point to it.</li>
 </ol>
 <h4 id="3b-condition">3B · Condition<a class="headerlink" href="#3b-condition" title="Permanent link">&para;</a></h4>
 <ol>
-<li><strong>[MCP] <code>fhir_get_resource_skeleton(ig, Condition-twcore)</code></strong> →
+<li><strong>[MCP] <code>fhir_get_resource_skeleton(profile="Condition-twcore")</code></strong> →
    <code>clinicalStatus     (allowed: active | recurrence | ...)
    verificationStatus (allowed: confirmed | provisional | ...)
    category           (allowed: encounter-diagnosis | problem-list-item)
@@ -2735,18 +2737,19 @@ Diagnosis: influenza, clinical status=active, verification=confirmed, onset=2026
    onset[x]           (choice; use onsetDateTime for a date)</code></li>
 <li><strong>[LLM]</strong> fills the easy semantic blanks: <code>clinicalStatus=active</code>, <code>verificationStatus=confirmed</code>, <code>onsetDateTime=2026-06-01</code>.</li>
 <li><strong>The key step — turn free text "流行性感冒" into a standard code:</strong></li>
-<li><strong>[MCP] <code>fhir_normalize_code(input="流行性感冒", target = Condition.code's ValueSet)</code></strong> → returns <strong>candidate codes</strong> by semantic match, e.g. SNOMED <code>6142004 | Influenza</code>.</li>
+<li><strong>[MCP] <code>fhir_normalize_code(text="流行性感冒", value_set = Condition.code's ValueSet)</code></strong> → returns <strong>candidate codes</strong> by semantic match, e.g. SNOMED <code>6142004 | Influenza</code>.</li>
 <li><strong>[MCP] <code>fhir_validate_code</code></strong> → confirms that code really is a member of the bound ValueSet → the LLM writes it into <code>code</code>.</li>
 <li><em>(The LLM must not invent a code here — always normalize, then validate.)</em></li>
-<li><strong>Wire the reference:</strong> <strong>[MCP] <code>fhir_resolve_reference(refCtx, target=Patient, source=王小明)</code></strong> → returns <code>urn:uuid:…</code> → written into <code>subject.reference</code>.</li>
-<li><strong>[MCP] <code>fhir_finalize_resource(ig, Condition-twcore, draft, refCtx)</code></strong> → suppose the validator finds <strong><code>category</code> is required but missing</strong>. The server <strong>does not fix it for you</strong> — it returns <code>{ resource, issues: [category missing] }</code>.</li>
-<li><strong>[LLM]</strong> reads the issue, checks the allowed values with <strong>[MCP] <code>fhir_get_profile_elements(ig, Condition-twcore, view="binding", path="Condition.category")</code></strong>, sets <code>category="encounter-diagnosis"</code>, and <strong>calls <code>fhir_finalize_resource</code> again</strong> → this time it <strong>passes</strong>.</li>
+<li><strong>Wire the reference:</strong> <strong>[MCP] <code>fhir_resolve_reference(key="patient-1", resource_type="Patient", context_id)</code></strong> → returns <code>urn:uuid:…</code>; the draft says <code>subject = "Patient/patient-1"</code> and finalize rewrites it to that urn.</li>
+<li><strong>[MCP] <code>fhir_finalize_resource(profile="Condition-twcore", draft, context_id, key="condition-1")</code></strong> → suppose the validator finds <strong><code>category</code> is required but missing</strong>. The server <strong>does not fix it for you</strong> (no auto-loop) — it returns <code>validation.valid: false</code> with <code>issues: [category missing]</code>.</li>
+<li><strong>[LLM]</strong> reads the issue, checks the allowed values with <strong>[MCP] <code>fhir_get_profile_elements(profile="Condition-twcore", view="binding", path="Condition.category")</code></strong>, sets <code>category="encounter-diagnosis"</code>, and <strong>calls <code>fhir_finalize_resource</code> again</strong> → this time it <strong>passes</strong>.</li>
 </ol>
 <h3 id="stage-4-assemble-validate-the-whole-thing">Stage 4 — Assemble &amp; validate the whole thing<a class="headerlink" href="#stage-4-assemble-validate-the-whole-thing" title="Permanent link">&para;</a></h3>
 <ul>
-<li><strong>[MCP] <code>fhir_build_bundle([Patient, Condition], type="transaction", refCtx)</code></strong> → wraps both into a Bundle, rewrites references to <code>urn:uuid:</code>, returns the bundle + a reference map.</li>
-<li><strong>[MCP] <code>fhir_validate_bundle(bundle)</code></strong> → checks every entry <strong>and</strong> internal reference integrity (Condition.subject really points to the Patient in the bundle) → passes.</li>
+<li><strong>[MCP] <code>fhir_build_bundle(entries=[{resource, key}, …], bundle_type="transaction", context_id)</code></strong> → wraps both into a Bundle, rewrites references to <code>urn:uuid:</code>, returns the bundle + the list of unresolved references (<code>unresolved</code> should be empty).</li>
+<li><strong>[MCP] <code>fhir_validate_bundle(bundle)</code></strong> → checks every entry <strong>and</strong> internal reference integrity (Condition.subject really points to the Patient in the bundle) → passes. Also read <code>checked_fully</code>: <code>valid</code> keeps HL7 validator semantics (an unresolvable profile is only a warning), so when <code>checked_fully: false</code>, <code>profiles_unchecked</code> / <code>valuesets_unchecked</code> list the canonicals that could not be checked and <code>data.deps_missing</code> lists missing dependency packages.</li>
 </ul>
+<p><strong>Optional — check against the source record (grounding):</strong> when the source is free text, pass <code>source_text</code> (plus optional <code>site_config</code>, <code>evidence_map</code>, <code>grounding</code>) to the same <code>fhir_validate_bundle</code> / <code>fhir_validate_resource</code> call and the server additionally checks, with deterministic rules (no LLM), that every populated value is actually stated in the record; the response gains <code>conformanceValid</code>, <code>groundingValid</code> and grounding issues. Without <code>source_text</code> the output is unchanged. <code>fhir_check_grounding(bundle, source_text)</code> runs the same check on its own, and <code>fhir_check_completeness(targets, source_text)</code> compares — before you write anything — the facts the conversion targets require with what the record states, returning missing items, the record lines that state absence, a ready clarification question (or an <code>insufficient_information</code> object).</p>
 <p><strong>The validated Bundle is your output file.</strong></p>
 <hr />
 <h2 id="the-flow-at-a-glance">The flow at a glance<a class="headerlink" href="#the-flow-at-a-glance" title="Permanent link">&para;</a></h2>
@@ -2757,6 +2760,7 @@ Diagnosis: influenza, clinical status=active, verification=confirmed, onset=2026
   ├─ resolve IG  (deployment default ▸ explicit ▸ informed choice ▸ ask)
   │
   ├─[MCP] list / rank profiles ──▶ [LLM] pick the profile
+  ├─[MCP] get_profile_required_elements   ← what the profile really requires
   │
   ├─ for each resource:
   │     [MCP] get_resource_skeleton     ← blanks + allowed values + candidate codes
@@ -2766,7 +2770,7 @@ Diagnosis: influenza, clinical status=active, verification=confirmed, onset=2026
   │     [MCP] finalize_resource         ← pin mechanical fields + validate
   │       └─ failed? returns issues → [LLM] fixes → finalize again
   │
-  └─[MCP] build_bundle → validate_bundle ──▶ final Bundle file
+  └─[MCP] build_bundle → validate_bundle (+ optional source_text grounding) ──▶ final Bundle file
 </code></pre>
 <hr />
 <h2 id="why-its-built-this-way">Why it's built this way<a class="headerlink" href="#why-its-built-this-way" title="Permanent link">&para;</a></h2>
@@ -2774,7 +2778,7 @@ Diagnosis: influenza, clinical status=active, verification=confirmed, onset=2026
 <li><strong>No mapping templates to maintain.</strong> Older systems needed a hand-written "field A → field B" rule file because software couldn't understand meaning. With an LLM, the model does the semantic mapping live against the skeleton the server hands it — nothing to author or version.</li>
 <li><strong>The LLM can't drift into invalid FHIR.</strong> It only fills semantic values; the server pins the mechanical parts and the validator gates the result. Anything the server can't verify locally comes back as a <em>warning</em>, never a silent "valid".</li>
 <li><strong>A pre-flight check, not the final authority.</strong> When you submit the Bundle to a real FHIR server, <em>that</em> server does the authoritative validation. This flow's job is to catch the great majority of mistakes early, with clear, fixable feedback.</li>
-<li><strong>One toolset, many IGs.</strong> Every tool takes an <code>ig</code> selector, so the same flow works for TW Core today and any IG you import tomorrow — no new tools.</li>
+<li><strong>One toolset, many IGs.</strong> Every IG-scoped tool takes <code>package_id</code> (auto-resolved when omitted), so the same flow works for TW Core today and any IG you import tomorrow — no new tools.</li>
 </ul>
 <hr />
 <h2 id="quick-tool-reference">Quick tool reference<a class="headerlink" href="#quick-tool-reference" title="Permanent link">&para;</a></h2>
@@ -2790,7 +2794,7 @@ Diagnosis: influenza, clinical status=active, verification=confirmed, onset=2026
 <tr>
 <td>IG</td>
 <td><code>fhir_list_igs</code> / <code>fhir_get_ig</code></td>
-<td>list installed IGs (title, jurisdiction, default) / one IG's details</td>
+<td>list installed IGs (title, canonical, default, installOrigin) / one IG's details (incl. <code>data.deps_missing</code>)</td>
 </tr>
 <tr>
 <td>Discover</td>
@@ -2806,6 +2810,11 @@ Diagnosis: influenza, clinical status=active, verification=confirmed, onset=2026
 <td>Structure</td>
 <td><code>fhir_get_profile_elements(view=…)</code></td>
 <td>one tool, many views: <code>elements</code>, <code>element</code>, <code>slices</code>, <code>choices</code>, <code>binding</code>, <code>examples</code></td>
+</tr>
+<tr>
+<td>Required</td>
+<td><code>fhir_get_profile_required_elements</code></td>
+<td>the profile's complete effective required list, each row tagged with its value source (auto / coding / source_fact / workflow_default)</td>
 </tr>
 <tr>
 <td>Terminology</td>
@@ -2825,7 +2834,12 @@ Diagnosis: influenza, clinical status=active, verification=confirmed, onset=2026
 <tr>
 <td>Validate</td>
 <td><code>fhir_validate_resource</code> / <code>fhir_validate_bundle</code></td>
-<td>conformance check a resource / a whole bundle</td>
+<td>conformance check a resource / a whole bundle (plus grounding when <code>source_text</code> is given)</td>
+</tr>
+<tr>
+<td>Faithfulness</td>
+<td><code>fhir_check_grounding</code> / <code>fhir_check_completeness</code></td>
+<td>is every value supported by the record / does the record state the facts the targets require (both deterministic, no LLM)</td>
 </tr>
 </tbody>
 </table>

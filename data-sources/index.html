@@ -2361,24 +2361,38 @@
 
 
 <h1 id="_1">資料來源<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h1>
-<p>所有資料匯入都在<strong>管理後台（Admin → Modules）</strong>操作,由 <code>admin-worker</code> 背景執行（已無 CLI data-loader）。下表的「匯入階段」是 <code>admin.import_jobs.job_type</code> 的實際值——建立工作時送出的就是這些字串。</p>
+<p>所有資料匯入都在<strong>管理後台</strong>操作，由 <code>admin-worker</code> 背景執行（已無 CLI data-loader）：術語類在 <strong>醫療術語 → &lt;模組&gt;</strong>、FHIR IG 在 <strong>FHIR → IG 套件庫</strong>、藥品與 TFDA 開放資料在 <strong>資料</strong> 區。每個模組頁的「資料生命週期」分頁負責上傳來源檔、匯入與向量回填。下表的「匯入階段」是 <code>admin.import_jobs.job_type</code> 的實際值——建立工作時送出的就是這些字串。</p>
 <table>
 <thead>
 <tr>
 <th>資料集</th>
 <th>版本 / 來源</th>
-<th>匯入方式（Admin → Modules）</th>
+<th>匯入方式</th>
 <th>匯入階段</th>
 <th>授權</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>ICD-10-CM / PCS</td>
-<td>NLM / CMS 2025</td>
+<td>ICD-10-CM</td>
+<td>CMS 2026-04-01（「Code Descriptions in Tabular Order」，完整碼集含第 7 碼）</td>
 <td>上傳 zip → 匯入</td>
 <td><code>icd_import</code></td>
 <td>公開（zip 需自備）</td>
+</tr>
+<tr>
+<td>ICD-10-PCS</td>
+<td>CMS 2025</td>
+<td>上傳 zip → 匯入（與 CM 同一個工作）</td>
+<td><code>icd_import</code></td>
+<td>公開</td>
+</tr>
+<tr>
+<td>WHO ICD-10（選用）</td>
+<td>tx.fhir.org <code>2019-covid-expanded</code>（FHIR JSON）</td>
+<td>上傳 JSON → 匯入（與 CM 同一個工作）</td>
+<td><code>icd_import</code></td>
+<td>WHO</td>
 </tr>
 <tr>
 <td>LOINC</td>
@@ -2389,22 +2403,29 @@
 </tr>
 <tr>
 <td>SNOMED CT</td>
-<td>International RF2</td>
+<td>International RF2（目前 20250601）</td>
 <td>上傳 RF2 zip → 匯入</td>
 <td><code>snomed_import</code></td>
 <td>需 SNOMED 授權</td>
 </tr>
 <tr>
+<td>RxNorm（概念參考）</td>
+<td>NLM</td>
+<td>上傳 <code>RxNorm_full_*.zip</code> → 匯入（IG ValueSet 展開用）</td>
+<td><code>rxnorm_import</code></td>
+<td>需 UMLS 帳號</td>
+</tr>
+<tr>
 <td>FHIR IG（TWCore 等）</td>
 <td>MoHW / packages.fhir.org</td>
-<td>上傳 <code>package.tgz</code> 或 Admin → IG 抓取</td>
+<td>從 registry 安裝或上傳 <code>package.tgz</code>；相依 IG 自動下載</td>
 <td><code>ig_import</code></td>
 <td>公開</td>
 </tr>
 <tr>
 <td>藥品（台灣 FDA / TFDA）</td>
 <td>TFDA <code>36_2.csv</code> + 線上爬取</td>
-<td>API 抓取 + 爬取分析</td>
+<td>上傳 CSV + 爬取分析</td>
 <td><code>drug_index_import</code> → <code>drug_enrichment</code> → <code>drug_analysis</code></td>
 <td>開放資料</td>
 </tr>
@@ -2422,22 +2443,16 @@
 <td><code>food_nutrition_sync</code></td>
 <td>開放資料</td>
 </tr>
-<tr>
-<td>RxNorm（概念參考）</td>
-<td>NLM</td>
-<td>上傳 <code>RxNorm_full_*.zip</code> → 匯入（IG ValueSet 展開用）</td>
-<td>—</td>
-<td>公開</td>
-</tr>
 </tbody>
 </table>
+<p>CVX（287 碼）、ISO 3166 與 UCUM 不需匯入：它們以內建表 / 函式庫的形式隨程式碼提供，只供 FHIR validator 使用。</p>
 <h2 id="_2">說明<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>受授權限制的來源檔</strong>（SNOMED、LOINC、ICD zip、RxNorm 等）請自行取得後,於 Admin → Sources / Modules 上傳。</li>
-<li><strong>藥品域</strong>為三階段管線（索引 → 線上爬取豐富 → OCR/LLM 分析），其中爬取與分析階段需設定 TFDA / OCR / 分析 LLM 端點（見 <code>.env</code> 的 <code>DRUG_*</code>,或於 Admin → Settings 管理）。詳見<a href="../modules/drug-service/">藥品服務模組</a>。</li>
-<li><strong>FHIR IG</strong> 採多 IG（package-scoped）設計；除主 IG 外，可在 Admin → Sources 綁定相依套件（如 <code>hl7.terminology.r4</code>、<code>hl7.fhir.r4.core</code>）。詳見<a href="../modules/fhir-ig-service/">FHIR IG 服務模組</a>。</li>
-<li><strong>RxNorm</strong> 目前僅作為概念參考術語載入，用於 FHIR IG ValueSet 的 TTY 展開，<strong>不</strong>對外提供獨立的藥物交互作用工具。</li>
-<li><strong>嵌入</strong>：<code>*_embeddings</code> 向量表由各模組獨立的 <code>*_embed</code> 工作回填，可在模組頁面執行或排程。嵌入端點存於 <code>admin.llm_profiles</code>（於 Admin → Settings 設定，預設為 Ollama）；端點不可用時，搜尋自動退回關鍵字模式。</li>
+<li><strong>受授權限制的來源檔</strong>（SNOMED、LOINC、ICD zip、RxNorm 等）請自行取得後，於對應模組頁上傳。實際用過的檔案清單見<a href="test-data/">測試資料檔清單</a>。</li>
+<li><strong>藥品域</strong>為三階段管線（索引 → 線上爬取豐富 → OCR/LLM 分析）。TFDA 位址在 <strong>整合 → 外部服務</strong> 設定（<code>.env</code> 的 <code>DRUG_*</code> 只在首次啟動時當種子值）；OCR（MinerU）在 <strong>整合 → 外部服務 → OCR Server</strong>；分析 LLM 在 <strong>整合 → 模型端點</strong>。詳見<a href="../modules/drug-service/">藥品服務模組</a>。</li>
+<li><strong>FHIR IG</strong> 採多 IG（package-scoped）設計；套件宣告的相依套件（如 <code>hl7.terminology.r4</code>、<code>hl7.fhir.r4.core</code>）會自動從 FHIR registry 下載，registry 無法提供時才需手動上傳。詳見<a href="../modules/fhir-ig-service/">FHIR IG 服務模組</a>。</li>
+<li><strong>RxNorm</strong> 目前僅作為概念參考術語載入，用於 FHIR IG ValueSet 的 TTY 展開，<strong>不</strong>對外提供獨立的藥品工具。</li>
+<li><strong>嵌入</strong>：<code>*_embeddings</code> 向量表由各模組獨立的 <code>*_embed</code> 工作（<code>icd_embed</code>、<code>loinc_embed</code>、<code>snomed_embed</code>、<code>health_supplements_embed</code>、<code>food_nutrition_embed</code>）回填，可在模組頁執行或排程。嵌入端點在 <strong>整合 → 模型端點</strong> 設定（provider 帳號 + embedding 路由，存於 <code>admin.llm_providers</code> / <code>admin.llm_routes</code> 等表，不從環境變數讀取）；端點不可用時，搜尋自動退回關鍵字模式。</li>
 </ul>
 <p>各別來源細節：<a href="icd10/">ICD-10</a>、<a href="loinc/">LOINC</a>。</p>
 
