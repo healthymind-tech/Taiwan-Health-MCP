@@ -1,6 +1,6 @@
 /**
  * Parity tests: lexicon.ts vs the Python reference tw_lexicon.py.
- * Golden outputs were generated once by scripts/gen_golden.py (python3 -I, reference unmodified) into
+ * Golden outputs were generated once by the private __fixtures__/private/gen_golden.py (python3 -I, reference unmodified) into
  * __fixtures__/private/lexicon_golden.json, so this test is pure (no Python, no DB).
  *
  * The golden contains CARVE-TW record lines and is private (git-ignored); the parity tests skip when it is absent.
