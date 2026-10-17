@@ -45,6 +45,7 @@ The main tabs:
 | **Modules** | Per-module source files, imports, schedules, previews, embeddings, and maintenance mode. |
 | **Settings** | Organised into Embedding, Analysis LM, OCR, integrations, Privacy, and Backup sub-pages; manages DB-backed settings, LLM profiles, login credentials, and system backups. |
 | **FHIR Servers** | Register and manage external FHIR R4 servers, authentication, and health checks. |
+| **MCP Tools** (new console, `/admin/mcp`) | Public endpoints (`/mcp`, `/openapi.json`, `/tools/{name}`, JWKS, OAuth callback), auth mode and copy-ready client configs; all 63 tools with their enabled state (disabled reason with the gating table and row-count threshold); a playground that runs any enabled tool with pre-filled examples (same handler as `POST /tools/{name}`). |
 
 The corresponding backend modules are in `node-server/src/admin/*.ts` (`adminApp.ts` is the routing entry point).
 

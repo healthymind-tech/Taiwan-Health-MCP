@@ -33,7 +33,7 @@ ICD 服務模組是本系統的核心組件之一，專門負責處理國際疾�
 - **結構化分析**：同時回傳雙方的詳細資訊以供比對。
 
 ## 技術架構
-- **資料來源**：ICD-10-CM 2025（NLM）及 ICD-10-PCS 2025（CMS），經由管理後台（Admin → Modules，匯入階段 `icd_import`）載入。
+- **資料來源**：ICD-10-CM 與 ICD-10-PCS（CMS），經由管理後台（Admin → Modules，匯入階段 `icd_import`）載入。ICD-10-CM 建議上傳 CMS「Code Descriptions in Tabular Order」zip（例如 `april-1-2026-code-descriptions-tabular-order.zip`）：內含完整碼集（header 碼 + 含第 7 碼的 billable 碼，2026-04-01 版共 98,186 碼），匯入後 FHIR validator 對未知的 ICD-10-CM 碼會報 error（與 tx.fhir.org 相同）。只上傳「Code Tables, Tabular and Index」zip（tabular XML）也可匯入，第 7 碼會自動展開，但未知碼只給 warning。 另可上傳選用來源「WHO ICD-10 (FHIR JSON)」（WHO ICD-10 的 FHIR CodeSystem 或展開後的 ValueSet，例如以 `node-server/scripts/validator-audit/harness/fetch_tx_terms.py` 取得的 tx.fhir.org 版本 `2019-covid-expanded`，13,831 碼），由同一個 `icd_import` 匯入 `icd.icd10_who`，FHIR validator 即可檢查 `http://hl7.org/fhir/sid/icd-10` 的代碼與 display。
 - **資料庫**：PostgreSQL 16，`icd.diagnoses`（診斷碼）與 `icd.procedures`（手術碼）兩張資料表。
 - **PCS 降級**：`_pcs_available` flag — ICD-10-PCS 未載入時工具自動降級，回傳提示訊息而非錯誤。PCS 2025（78,948 筆）位於 `fhir-code/icd/10/icd10pcs/`，`icd_import` 自動同時載入。
 - **全文搜尋**：各表建有 FTS index，支援中英文關鍵字搜尋。

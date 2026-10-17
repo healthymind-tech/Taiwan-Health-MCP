@@ -44,6 +44,7 @@ FHIR_SERVER_SECRET_KEY=
 | **Modules** | 各資料模組的來源檔、匯入、排程、預覽、嵌入與維護模式。 |
 | **Settings** | 依 Embedding、Analysis LM、OCR、整合服務、Privacy、Backup 等子頁分類；可管理 DB-backed 設定、LLM Profiles、登入憑證與系統備份。 |
 | **FHIR Servers** | 登錄與管理外部 FHIR R4 伺服器、認證與健康檢查。 |
+| **MCP 工具**（新版控制台 `/admin/mcp`） | 對外端點（`/mcp`、`/openapi.json`、`/tools/{name}`、JWKS、OAuth 回呼）與驗證模式、用戶端設定範本；全部 63 個工具的啟用狀態（停用原因含模組資料表與門檻筆數）；測試台可用預填範例直接執行任一已啟用工具（與 `POST /tools/{name}` 同一處理程序）。 |
 
 對應的後端模組見 `node-server/src/admin/*.ts`（`adminApp.ts` 為路由入口）。
 

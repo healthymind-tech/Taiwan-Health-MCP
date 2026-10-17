@@ -23,7 +23,7 @@ Bidirectional mapping:
 - **`mode="snomed"`**: given a SNOMED concept ID (for example `44054006`), return the corresponding ICD-10 mapping.
 
 ## Technical architecture
-- **Data source**: SNOMED CT International RF2 (`SnomedCT_InternationalRF2_PRODUCTION_*.zip`), loaded through the admin console (Admin → Modules, import stage `snomed_import`). The dataset is large — expect roughly 5–15 minutes.
+- **Data source**: SNOMED CT International RF2 (`SnomedCT_InternationalRF2_PRODUCTION_*.zip`), loaded through the admin console (Admin → Modules, import stage `snomed_import`). The dataset is large — expect roughly 5–15 minutes. The import also keeps inactive concepts and the English descriptions of inactive concepts / inactive descriptions (`snomed.inactive_concepts`, `snomed.inactive_descriptions`), each component's first release date (from the RF2 Full files) and the edition (`snomed.editions`), so the FHIR validator answers as the edition tx.fhir.org serves: an inactive concept is a warning, an unknown code or an inactive description used as display is an error. The SNOMED search tools are unaffected (they still use active concepts only).
 - **Database**: the `snomed` schema, with `concepts`, `descriptions`, `relationships`, `icd10_map`, `historical_associations`, and `concept_embeddings`.
 - **Availability gate**: `snomed.concepts` must reach the threshold (100,000 rows) before the corresponding tools are registered; otherwise they degrade automatically.
 

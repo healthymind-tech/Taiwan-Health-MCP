@@ -23,7 +23,7 @@ SNOMED CT 服務模組整合 SNOMED CT International 版術語，提供概念搜
 - **`mode="snomed"`**：輸入 SNOMED concept ID（例如 `44054006`），回傳對應的 ICD-10 對照。
 
 ## 技術架構
-- **資料來源**：SNOMED CT International RF2（`SnomedCT_InternationalRF2_PRODUCTION_*.zip`），經由管理後台（Admin → Modules，匯入階段 `snomed_import`）載入（資料量大，約 5–15 分鐘）。
+- **資料來源**：SNOMED CT International RF2（`SnomedCT_InternationalRF2_PRODUCTION_*.zip`），經由管理後台（Admin → Modules，匯入階段 `snomed_import`）載入（資料量大，約 5–15 分鐘）。 匯入時另保留 inactive concept 與 inactive／inactive concept 的英文描述（`snomed.inactive_concepts`、`snomed.inactive_descriptions`）、各元件首次發佈日（取自 RF2 Full 檔）及版本（`snomed.editions`），供 FHIR validator 以 tx.fhir.org 所用版本判定：inactive concept 為 warning、未知碼與 inactive 描述當 display 為 error。這些表不影響 SNOMED 查詢工具（仍只看 active concept）。
 - **資料庫**：`snomed` schema，含 `concepts`、`descriptions`、`relationships`、`icd10_map`、`historical_associations` 與 `concept_embeddings`。
 - **可用性閘門**：`snomed.concepts` 需達門檻（10 萬筆）才會註冊對應工具，否則自動降級。
 

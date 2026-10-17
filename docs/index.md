@@ -1,6 +1,6 @@
 # Taiwan Health MCP Server
 
-台灣醫療健康資料整合 MCP 伺服器，以官方 TypeScript MCP SDK（`@modelcontextprotocol/sdk`）建構的 Node.js 服務，提供 **60 個工具**（12 個工具群組），涵蓋國際術語、台灣在地資料、臨床計算器，以及 FHIR R4 IG 授權 / 驗證。
+台灣醫療健康資料整合 MCP 伺服器，以官方 TypeScript MCP SDK（`@modelcontextprotocol/sdk`）建構的 Node.js 服務，提供 **63 個工具**（12 個工具群組），涵蓋國際術語、台灣在地資料、臨床計算器，以及 FHIR R4 IG 授權 / 驗證。
 
 ## 目前能力
 
@@ -11,7 +11,7 @@
 - **健康補充品（台灣 FDA）**：關鍵字 / 許可字號 / 病症對應搜尋。
 - **食品營養（台灣 FDA）**：營養素查詢、成分查詢、依營養素找食物、餐點營養分析。
 - **FHIR R4**：Condition / Medication 產生與驗證。
-- **FHIR IG（多 IG）**：剖面 / ValueSet 查詢與展開、術語查詢與驗證、參照解析、Bundle 組裝、骨架填值資源產生與驗證。
+- **FHIR IG（多 IG）**：剖面 / ValueSet 查詢與展開、術語查詢與驗證、參照解析、Bundle 組裝、骨架填值資源產生與驗證，以及依病歷原文檢查 Bundle 的忠實度（grounding）與缺漏（completeness）。
 - **FHIR 伺服器**：外部 FHIR 伺服器登錄、狀態查詢與 CRUD 操作。
 - **臨床計算器**：台灣臨床常用驗證計分（CHA₂DS₂-VASc、Wells、DAS28、BMI、eGFR、HAS-BLED、CURB-65、qSOFA、GCS 等），純函數、永久註冊。
 

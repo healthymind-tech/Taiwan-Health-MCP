@@ -1,6 +1,6 @@
 # Taiwan Health MCP Server
 
-An MCP server for Taiwan medical and health data — a Node.js service built on the official TypeScript MCP SDK (`@modelcontextprotocol/sdk`), exposing **60 tools** across 12 tool groups covering international terminologies, Taiwan-local datasets, clinical calculators, and FHIR R4 IG authoring / validation.
+An MCP server for Taiwan medical and health data — a Node.js service built on the official TypeScript MCP SDK (`@modelcontextprotocol/sdk`), exposing **63 tools** across 12 tool groups covering international terminologies, Taiwan-local datasets, clinical calculators, and FHIR R4 IG authoring / validation.
 
 ## Current capabilities
 
@@ -11,7 +11,7 @@ An MCP server for Taiwan medical and health data — a Node.js service built on 
 - **Health supplements (Taiwan FDA)**: search by keyword, license number, or disease mapping.
 - **Food nutrition (Taiwan FDA)**: nutrient lookup, ingredient lookup, find foods by nutrient, meal nutrition analysis.
 - **FHIR R4**: Condition / Medication generation and validation.
-- **FHIR IG (multi-IG)**: profile / ValueSet lookup and expansion, terminology lookup and validation, reference resolution, Bundle assembly, skeleton-fill resource generation and validation.
+- **FHIR IG (multi-IG)**: profile / ValueSet lookup and expansion, terminology lookup and validation, reference resolution, Bundle assembly, skeleton-fill resource generation and validation, plus checking a Bundle against the source record for faithfulness (grounding) and gaps (completeness).
 - **FHIR servers**: external FHIR server registration, status queries, and CRUD operations.
 - **Clinical calculators**: validated clinical scores common in Taiwan practice (CHA₂DS₂-VASc, Wells, DAS28, BMI, eGFR, HAS-BLED, CURB-65, qSOFA, GCS, etc.) — pure functions, always registered.
 

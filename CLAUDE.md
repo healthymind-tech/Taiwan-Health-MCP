@@ -56,7 +56,7 @@ comm -23 \
 > SPA — the real admin UI is `web/admin-app/`), and `config/datasets.yaml` (read by no code).
 
 Taiwan Health MCP Server — a Model Context Protocol server (Node MCP SDK,
-`@modelcontextprotocol/sdk`) exposing **60 tools** across 12 tool groups for Taiwan
+`@modelcontextprotocol/sdk`) exposing **63 tools** across 12 tool groups for Taiwan
 medical and health data. Designed for production SaaS deployment with hundreds of
 requests/second throughput.
 
@@ -79,7 +79,7 @@ cd node-server
 npm install
 npm run build                                 # tsc -> dist/
 npm run typecheck                             # tsc --noEmit
-npm test                                      # node --import tsx --test src/**/*.test.ts
+npm test                                      # node --import tsx --test 'src/**/*.test.ts' (node expands the glob: any depth)
 npm run dev                                   # tsx watch src/server.ts (no build step)
 
 # Run a single test file (npm test has no path passthrough — call node directly):
@@ -177,7 +177,7 @@ Periodic re-imports are **not** scheduled inside the services. Scheduling is cen
 | SNOMED CT | `search_snomed_concept`, `query_snomed_concept`, `get_snomed_relationships`, `query_snomed_mapping` |
 | FHIR R4 (Condition) | `query_fhir_condition`, `validate_fhir_condition` |
 | FHIR R4 (Medication) | `query_fhir_medication`, `validate_fhir_medication` |
-| FHIR IG | `fhir_list_igs`, `fhir_get_ig`, `fhir_list_artifacts`, `fhir_search_artifacts`, `fhir_list_resource_profiles`, `fhir_rank_resource_profiles`, `fhir_get_profile`, `fhir_get_profile_elements`, `fhir_get_valueset`, `fhir_expand_valueset`, `fhir_lookup_code`, `fhir_validate_code`, `fhir_normalize_code`, `fhir_resolve_reference`, `fhir_build_bundle`, `fhir_validate_resource`, `fhir_validate_bundle`, `fhir_get_resource_skeleton`, `fhir_finalize_resource` |
+| FHIR IG | `fhir_list_igs`, `fhir_get_ig`, `fhir_list_artifacts`, `fhir_search_artifacts`, `fhir_list_resource_profiles`, `fhir_rank_resource_profiles`, `fhir_get_profile`, `fhir_get_profile_elements`, `fhir_get_profile_required_elements`, `fhir_get_valueset`, `fhir_expand_valueset`, `fhir_lookup_code`, `fhir_validate_code`, `fhir_normalize_code`, `fhir_resolve_reference`, `fhir_build_bundle`, `fhir_validate_resource`, `fhir_validate_bundle`, `fhir_get_resource_skeleton`, `fhir_finalize_resource`, `fhir_check_grounding`, `fhir_check_completeness` |
 | Health Supplements | `search_health_supplements` |
 | Food Nutrition | `query_food_nutrition`, `query_food_ingredient`, `search_foods_by_nutrient`, `analyze_meal_nutrition` |
 | FHIR Servers | `list_fhir_servers`, `get_fhir_server_status`, `crud_fhir_server` (always registered) |
@@ -209,6 +209,7 @@ Module-gated groups are dynamically added/removed by `moduleStatus.ts` (`SERVICE
 - **`moduleStatus.ts`** — queries each schema's row count against a minimum threshold and adds/removes tools accordingly, refreshed on `tools/list`.
 - **`embeddingService.ts`** — embeddings for semantic / hybrid search; fails open to keyword-only when unavailable. Profiles come from `admin.llm_profiles`, with failover across enabled profiles.
 - **`searchQuality.ts`** — decides when a hybrid search has degraded (embedding provider returned nothing, or the module's `*_embeddings` table is empty) and stamps `search_mode: "keyword_only"` on the response so the calling LLM knows results are literal matches. Any new hybrid-search tool should go through it rather than silently returning BM25 hits.
+- **`grounding/` + `groundingTools.ts`** — deterministic record-faithfulness engines (no LLM): `fhir_check_grounding`, `fhir_check_completeness`, and the optional `source_text` grounding of `fhir_validate_bundle` / `fhir_validate_resource` (without it their output must stay byte-identical). Spec: `mcp_proposal/MCP_GROUNDING_SPEC.md`; acceptance gates: `node-server/scripts/grounding-acceptance/run_gates.py`. `source_text` is clinical data — never log it (only `sourceSha256`). Tool versions live in `toolVersions.ts`; bump one whenever its output for the same input changes. Test-only helpers (`grounding/testkit.ts`, `pas*.ts`, `grounding/scripts/`) are excluded from the build by `tsconfig.json`; `npm run typecheck` uses `tsconfig.dev.json` to still check them.
 - **`publicToolsSecurity.ts`** — bearer/CORS policy for the public `/mcp` + `/tools/*` surface (see "HTTP surface" above).
 - **`fhirValidator.ts` / `fhirTerminology.ts` / `fhirSnapshot.ts` / `fhirReference.ts` / `fhirAuthoring.ts`** — in-process FHIR R4 profile snapshot generation, terminology validation, reference resolution, and skeleton-fill authoring used by the FHIR IG tools.
 - **`metrics.ts`** — Prometheus counters/histograms.
