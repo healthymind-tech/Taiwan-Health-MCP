@@ -283,36 +283,65 @@ CREATE TABLE IF NOT EXISTS admin.app_settings (
     PRIMARY KEY (group_key, key)
 );
 
--- LLM endpoints, one row per profile, for the roles that call a model server.
--- The selection strategy (failover / weighted) stays in app_settings; the
--- endpoint, its key, its model and its per-model knobs live here.
---   kind     — 'analysis' | 'embedding'
---   priority — failover order, lowest first
---   weight   — traffic share under the weighted strategy
---   params   — analysis: {temperature, max_tokens}; embedding: {dimensions}
-CREATE TABLE IF NOT EXISTS admin.llm_profiles (
+-- Model endpoints (see db/migrations/20261016_llm_providers_and_routes.sql):
+--   llm_providers      — named provider accounts (several per provider type)
+--   llm_routes         — named profiles: a strategy over members
+--   llm_route_members  — a model on an account (with knobs) or another profile
+--   llm_role_routes    — which profile the analysis / embedding role uses
+CREATE TABLE IF NOT EXISTS admin.llm_providers (
     id          BIGSERIAL PRIMARY KEY,
-    kind        TEXT NOT NULL CHECK (kind IN ('analysis', 'embedding')),
-    name        TEXT NOT NULL,
-    provider    TEXT NOT NULL,
+    name        TEXT NOT NULL UNIQUE,
+    provider    TEXT NOT NULL,                 -- registry id (providers/registry.ts)
     base_url    TEXT NOT NULL DEFAULT '',
+    auth_type   TEXT NOT NULL DEFAULT 'api_key' CHECK (auth_type IN ('api_key', 'oauth', 'none')),
     api_key     TEXT NOT NULL DEFAULT '',
-    model       TEXT NOT NULL DEFAULT '',
+    oauth       JSONB NOT NULL DEFAULT '{}'::jsonb,   -- reserved: tokens for subscription logins
     enabled     BOOLEAN NOT NULL DEFAULT TRUE,
-    priority    INTEGER NOT NULL DEFAULT 100,
-    weight      INTEGER NOT NULL DEFAULT 1 CHECK (weight >= 0),
-    params      JSONB NOT NULL DEFAULT '{}'::jsonb,
+    params      JSONB NOT NULL DEFAULT '{}'::jsonb,   -- account-wide: rpm, tpm, base_model…
+    last_test   JSONB,                                -- {ok, message, at, model_count}
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE (kind, name)
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_llm_profiles_kind_enabled
-    ON admin.llm_profiles (kind, enabled, priority);
+CREATE TABLE IF NOT EXISTS admin.llm_routes (
+    id          BIGSERIAL PRIMARY KEY,
+    name        TEXT NOT NULL UNIQUE,
+    kind        TEXT NOT NULL CHECK (kind IN ('analysis', 'embedding')),
+    strategy    TEXT NOT NULL DEFAULT 'fallback'
+                CHECK (strategy IN ('single', 'fallback', 'round_robin', 'load_balance')),
+    description TEXT NOT NULL DEFAULT '',
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 
--- Per-profile Analysis LM call stats (see db/migrations/20260802_llm_profile_stats.sql).
+CREATE TABLE IF NOT EXISTS admin.llm_route_members (
+    id              BIGSERIAL PRIMARY KEY,
+    route_id        BIGINT NOT NULL REFERENCES admin.llm_routes (id) ON DELETE CASCADE,
+    position        INTEGER NOT NULL DEFAULT 0,
+    member_type     TEXT NOT NULL CHECK (member_type IN ('model', 'route')),
+    provider_id     BIGINT REFERENCES admin.llm_providers (id) ON DELETE RESTRICT,
+    model           TEXT NOT NULL DEFAULT '',
+    child_route_id  BIGINT REFERENCES admin.llm_routes (id) ON DELETE RESTRICT,
+    weight          INTEGER NOT NULL DEFAULT 1 CHECK (weight >= 0),
+    enabled         BOOLEAN NOT NULL DEFAULT TRUE,
+    params          JSONB NOT NULL DEFAULT '{}'::jsonb,   -- model knobs (temperature, think, dimensions…)
+    CHECK (
+        (member_type = 'model' AND provider_id IS NOT NULL AND model <> '' AND child_route_id IS NULL)
+     OR (member_type = 'route' AND child_route_id IS NOT NULL AND provider_id IS NULL)
+    ),
+    CHECK (child_route_id IS NULL OR child_route_id <> route_id)
+);
+CREATE INDEX IF NOT EXISTS idx_llm_route_members_route ON admin.llm_route_members (route_id, position);
+
+CREATE TABLE IF NOT EXISTS admin.llm_role_routes (
+    role        TEXT PRIMARY KEY CHECK (role IN ('analysis', 'embedding')),
+    route_id    BIGINT REFERENCES admin.llm_routes (id) ON DELETE SET NULL,
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Per-model (route member) Analysis LM call stats (see db/migrations/20260802_llm_profile_stats.sql).
 CREATE TABLE IF NOT EXISTS admin.llm_profile_stats (
-    profile_id         BIGINT NOT NULL REFERENCES admin.llm_profiles (id) ON DELETE CASCADE,
+    profile_id         BIGINT NOT NULL,  -- route member id
     bucket             TIMESTAMPTZ NOT NULL,
     calls              BIGINT NOT NULL DEFAULT 0,
     failures           BIGINT NOT NULL DEFAULT 0,
@@ -331,7 +360,7 @@ CREATE TABLE IF NOT EXISTS admin.llm_call_log (
     id                BIGSERIAL PRIMARY KEY,
     license_id        TEXT NOT NULL,
     attempt           INTEGER NOT NULL DEFAULT 1,
-    profile_id        BIGINT REFERENCES admin.llm_profiles (id) ON DELETE SET NULL,
+    profile_id        BIGINT,  -- route member id
     profile_name      TEXT NOT NULL DEFAULT '',
     model             TEXT NOT NULL DEFAULT '',
     provider          TEXT NOT NULL DEFAULT '',
@@ -458,6 +487,8 @@ CREATE TABLE IF NOT EXISTS admin.stage_icd_diagnoses (
     name_en       TEXT,
     name_zh       TEXT,
     category      TEXT,
+    short_name_en TEXT,
+    is_header     BOOLEAN,
     PRIMARY KEY (job_id, code)
 );
 
@@ -561,6 +592,7 @@ CREATE TABLE IF NOT EXISTS admin.stage_snomed_concepts (
     active                  BOOLEAN,
     module_id               BIGINT,
     definition_status_id    BIGINT,
+    first_released          DATE,
     PRIMARY KEY (job_id, concept_id)
 );
 
@@ -573,6 +605,7 @@ CREATE TABLE IF NOT EXISTS admin.stage_snomed_descriptions (
     active           BOOLEAN,
     language_code    TEXT,
     us_preferred     BOOLEAN NOT NULL DEFAULT FALSE,
+    first_released   DATE,
     PRIMARY KEY (job_id, description_id)
 );
 
@@ -616,6 +649,98 @@ CREATE TABLE IF NOT EXISTS admin.stage_rxnorm_concepts (
     PRIMARY KEY (job_id, rxcui)
 );
 
+-- Validator audit v4 (20261018_terminology_completeness_v4.sql)
+CREATE TABLE IF NOT EXISTS admin.stage_loinc_other_codes (
+    job_id       UUID NOT NULL REFERENCES admin.import_jobs (job_id) ON DELETE CASCADE,
+    code         TEXT NOT NULL,
+    kind         TEXT NOT NULL,
+    display      TEXT,
+    alt_display  TEXT,
+    status       TEXT,
+    PRIMARY KEY (job_id, code)
+);
+CREATE INDEX IF NOT EXISTS idx_admin_stage_loinc_other_codes_job
+    ON admin.stage_loinc_other_codes (job_id);
+
+-- LOINC structure staging (20261020_loinc_structure.sql)
+CREATE TABLE IF NOT EXISTS admin.stage_loinc_part_links (
+    job_id       UUID NOT NULL REFERENCES admin.import_jobs (job_id) ON DELETE CASCADE,
+    loinc_num    TEXT NOT NULL,
+    part_type    TEXT NOT NULL,
+    part_number  TEXT NOT NULL,
+    part_name    TEXT,
+    PRIMARY KEY (job_id, loinc_num, part_type, part_number)
+);
+CREATE TABLE IF NOT EXISTS admin.stage_loinc_answer_list_items (
+    job_id       UUID NOT NULL REFERENCES admin.import_jobs (job_id) ON DELETE CASCADE,
+    list_id      TEXT NOT NULL,
+    seq          INTEGER,
+    answer_code  TEXT NOT NULL,
+    display      TEXT,
+    score        TEXT,
+    PRIMARY KEY (job_id, list_id, answer_code)
+);
+CREATE TABLE IF NOT EXISTS admin.stage_loinc_answer_list_links (
+    job_id       UUID NOT NULL REFERENCES admin.import_jobs (job_id) ON DELETE CASCADE,
+    loinc_num    TEXT NOT NULL,
+    list_id      TEXT NOT NULL,
+    link_type    TEXT,
+    context      TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (job_id, loinc_num, list_id, context)
+);
+CREATE TABLE IF NOT EXISTS admin.stage_loinc_panel_items (
+    job_id       UUID NOT NULL REFERENCES admin.import_jobs (job_id) ON DELETE CASCADE,
+    parent_loinc TEXT NOT NULL,
+    seq          INTEGER NOT NULL,
+    loinc_num    TEXT NOT NULL,
+    display      TEXT,
+    required     TEXT,
+    PRIMARY KEY (job_id, parent_loinc, loinc_num)
+);
+CREATE TABLE IF NOT EXISTS admin.stage_loinc_map_to (
+    job_id       UUID NOT NULL REFERENCES admin.import_jobs (job_id) ON DELETE CASCADE,
+    loinc_num    TEXT NOT NULL,
+    map_to       TEXT NOT NULL,
+    comment      TEXT,
+    PRIMARY KEY (job_id, loinc_num, map_to)
+);
+
+CREATE TABLE IF NOT EXISTS admin.stage_snomed_inactive_concepts (
+    job_id          UUID NOT NULL REFERENCES admin.import_jobs (job_id) ON DELETE CASCADE,
+    concept_id      BIGINT NOT NULL,
+    effective_time  DATE,
+    module_id       BIGINT,
+    first_released  DATE,
+    PRIMARY KEY (job_id, concept_id)
+);
+CREATE INDEX IF NOT EXISTS idx_admin_stage_snomed_inactive_concepts_job
+    ON admin.stage_snomed_inactive_concepts (job_id);
+
+CREATE TABLE IF NOT EXISTS admin.stage_snomed_inactive_descriptions (
+    job_id          UUID NOT NULL REFERENCES admin.import_jobs (job_id) ON DELETE CASCADE,
+    description_id  BIGINT NOT NULL,
+    concept_id      BIGINT NOT NULL,
+    type_id         BIGINT,
+    term            TEXT,
+    active          BOOLEAN NOT NULL,
+    effective_time  DATE,
+    first_released  DATE,
+    PRIMARY KEY (job_id, description_id)
+);
+CREATE INDEX IF NOT EXISTS idx_admin_stage_snomed_inactive_descriptions_job
+    ON admin.stage_snomed_inactive_descriptions (job_id);
+
+CREATE TABLE IF NOT EXISTS admin.stage_icd10_who (
+    job_id        UUID NOT NULL REFERENCES admin.import_jobs (job_id) ON DELETE CASCADE,
+    code          TEXT NOT NULL,
+    display       TEXT NOT NULL,
+    kind          TEXT,
+    alt_displays  TEXT[] NOT NULL DEFAULT '{}',
+    PRIMARY KEY (job_id, code)
+);
+CREATE INDEX IF NOT EXISTS idx_admin_stage_icd10_who_job
+    ON admin.stage_icd10_who (job_id);
+
 CREATE INDEX IF NOT EXISTS idx_admin_stage_icd_diagnoses_job
     ON admin.stage_icd_diagnoses (job_id);
 CREATE INDEX IF NOT EXISTS idx_admin_stage_icd_procedures_job
@@ -650,10 +775,30 @@ CREATE INDEX IF NOT EXISTS idx_admin_stage_rxnorm_concepts_job
 CREATE SCHEMA IF NOT EXISTS icd;
 
 CREATE TABLE IF NOT EXISTS icd.diagnoses (
-    code        TEXT PRIMARY KEY,
-    name_en     TEXT,
-    name_zh     TEXT,
-    category    TEXT    -- first 3 chars of code
+    code          TEXT PRIMARY KEY,
+    name_en       TEXT,
+    name_zh       TEXT,
+    category      TEXT,    -- first 3 chars of code
+    short_name_en TEXT,    -- CMS short title (tx.fhir.org synonym display)
+    is_header     BOOLEAN  -- non-billable header code (category / subcategory)
+);
+
+-- Which ICD-10-CM edition is loaded (written by the icd_import promote).
+CREATE TABLE IF NOT EXISTS icd.editions (
+    code_system   TEXT PRIMARY KEY,            -- 'icd-10-cm'
+    edition       TEXT NOT NULL,               -- '2026-04-01' (tx.fhir.org style) or 'FY2026'
+    source_format TEXT NOT NULL,               -- 'cms-order' | 'tabular-xml'
+    complete      BOOLEAN NOT NULL,            -- exact CMS code set (order file, >= 90k rows)
+    code_count    INTEGER NOT NULL,
+    loaded_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- WHO ICD-10 (optional source; validator display / existence checks; 20261018).
+CREATE TABLE IF NOT EXISTS icd.icd10_who (
+    code          TEXT PRIMARY KEY,         -- 'A09', 'A09.0', block 'A00-A09', chapter 'I'
+    display       TEXT NOT NULL,
+    kind          TEXT,                     -- chapter | block | category | NULL
+    alt_displays  TEXT[] NOT NULL DEFAULT '{}'
 );
 
 CREATE TABLE IF NOT EXISTS icd.procedures (
@@ -1121,6 +1266,69 @@ CREATE INDEX IF NOT EXISTS idx_loinc_fts ON loinc.concepts
         COALESCE(loinc_num,'') || ' ' || COALESCE(long_common_name,'') || ' ' ||
         COALESCE(shortname,'') || ' ' || COALESCE(name_zh,'') || ' ' || COALESCE(common_name_zh,'')));
 
+-- LOINC answer / part / answer-list / group codes and the loaded version (validator; 20261018).
+CREATE TABLE IF NOT EXISTS loinc.other_codes (
+    code         TEXT PRIMARY KEY,          -- LA… / LP… / LL… / LG…
+    kind         TEXT NOT NULL,             -- answer | part | answer_list | group | parent_group
+    display      TEXT,                      -- tx.fhir.org display (DisplayText / PartDisplayName / AnswerListName / Group)
+    alt_display  TEXT,                      -- second accepted display (PartName), or NULL
+    status       TEXT
+);
+
+CREATE TABLE IF NOT EXISTS loinc.editions (
+    code_system       TEXT PRIMARY KEY,     -- 'loinc'
+    version           TEXT NOT NULL,        -- '2.80' (max VersionLastChanged of Loinc.csv)
+    term_count        INTEGER NOT NULL,
+    other_code_count  INTEGER NOT NULL,
+    loaded_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- LOINC structure (20261020): part links per axis, answer lists, panels, MapTo.
+-- Read by the admin terminology visualisation; loaded by the staged loinc_import.
+CREATE TABLE IF NOT EXISTS loinc.part_links (
+    loinc_num    TEXT NOT NULL,
+    part_type    TEXT NOT NULL,             -- COMPONENT | PROPERTY | TIME | SYSTEM | SCALE | METHOD
+    part_number  TEXT NOT NULL,             -- LP…
+    part_name    TEXT,
+    PRIMARY KEY (loinc_num, part_type, part_number)
+);
+CREATE INDEX IF NOT EXISTS idx_loinc_part_links_part ON loinc.part_links (part_number);
+
+CREATE TABLE IF NOT EXISTS loinc.answer_list_items (
+    list_id      TEXT NOT NULL,             -- LL…
+    seq          INTEGER,
+    answer_code  TEXT NOT NULL,             -- LA…
+    display      TEXT,
+    score        TEXT,
+    PRIMARY KEY (list_id, answer_code)
+);
+
+CREATE TABLE IF NOT EXISTS loinc.answer_list_links (
+    loinc_num    TEXT NOT NULL,
+    list_id      TEXT NOT NULL,
+    link_type    TEXT,                      -- NORMATIVE | EXAMPLE | PREFERRED
+    context      TEXT NOT NULL DEFAULT '',  -- ApplicableContext (panel LOINC) or ''
+    PRIMARY KEY (loinc_num, list_id, context)
+);
+CREATE INDEX IF NOT EXISTS idx_loinc_answer_list_links_list ON loinc.answer_list_links (list_id);
+
+CREATE TABLE IF NOT EXISTS loinc.panel_items (
+    parent_loinc TEXT NOT NULL,             -- immediate parent panel
+    seq          INTEGER NOT NULL,
+    loinc_num    TEXT NOT NULL,
+    display      TEXT,
+    required     TEXT,                      -- ObservationRequiredInPanel: R | O | C | …
+    PRIMARY KEY (parent_loinc, loinc_num)
+);
+CREATE INDEX IF NOT EXISTS idx_loinc_panel_items_loinc ON loinc.panel_items (loinc_num);
+
+CREATE TABLE IF NOT EXISTS loinc.map_to (
+    loinc_num    TEXT NOT NULL,             -- deprecated / discouraged term
+    map_to       TEXT NOT NULL,             -- replacement
+    comment      TEXT,
+    PRIMARY KEY (loinc_num, map_to)
+);
+
 -- Embedding table for hybrid search
 CREATE TABLE IF NOT EXISTS loinc.concept_embeddings (
     loinc_num   TEXT PRIMARY KEY,
@@ -1152,6 +1360,12 @@ CREATE TABLE IF NOT EXISTS fhir.ig_packages (
     is_default      BOOLEAN NOT NULL DEFAULT FALSE,
     dependencies    JSONB,          -- {packageId: version, ...} from package.json
     imported_at     TIMESTAMPTZ DEFAULT NOW(),
+    -- 'manual' = imported by an operator; 'dependency' = fetched for another IG
+    -- (migration 20261019_ig_install_origin.sql). installed_for = the IG that
+    -- pulled a dependency in, {package_id, version}, when known.
+    install_origin  TEXT NOT NULL DEFAULT 'manual'
+        CONSTRAINT ig_packages_install_origin_check CHECK (install_origin IN ('manual', 'dependency')),
+    installed_for   JSONB,
     PRIMARY KEY (package_id, version)
 );
 
@@ -1242,7 +1456,8 @@ CREATE TABLE IF NOT EXISTS snomed.concepts (
     effective_time  DATE,
     active          BOOLEAN,
     module_id       BIGINT,
-    definition_status_id BIGINT
+    definition_status_id BIGINT,
+    first_released  DATE                -- earliest effectiveTime in the RF2 Full file
 );
 
 CREATE TABLE IF NOT EXISTS snomed.descriptions (
@@ -1255,7 +1470,8 @@ CREATE TABLE IF NOT EXISTS snomed.descriptions (
     -- TRUE when the US English Language refset marks this description as the
     -- Preferred term — used to display the official preferred name instead of
     -- the shortest synonym.
-    us_preferred    BOOLEAN NOT NULL DEFAULT FALSE
+    us_preferred    BOOLEAN NOT NULL DEFAULT FALSE,
+    first_released  DATE                -- earliest effectiveTime in the RF2 Full file
 );
 
 CREATE TABLE IF NOT EXISTS snomed.relationships (
@@ -1291,6 +1507,40 @@ CREATE TABLE IF NOT EXISTS snomed.historical_associations (
 );
 CREATE INDEX IF NOT EXISTS idx_snomed_hist_assoc_ref
     ON snomed.historical_associations (referenced_component_id);
+
+-- Inactive concepts of the loaded snapshot (snomed.concepts stays active-only:
+-- the search / hierarchy tools rely on that).
+CREATE TABLE IF NOT EXISTS snomed.inactive_concepts (
+    concept_id      BIGINT PRIMARY KEY,
+    effective_time  DATE,                   -- inactivation date
+    module_id       BIGINT,
+    first_released  DATE
+);
+
+-- English FSN / synonym descriptions that snomed.descriptions does not hold:
+-- every description of an inactive concept, and inactive descriptions of active
+-- concepts. effective_time of an inactive row is its inactivation date.
+CREATE TABLE IF NOT EXISTS snomed.inactive_descriptions (
+    description_id  BIGINT PRIMARY KEY,
+    concept_id      BIGINT NOT NULL,
+    type_id         BIGINT,
+    term            TEXT,
+    active          BOOLEAN NOT NULL,
+    effective_time  DATE,
+    first_released  DATE
+);
+CREATE INDEX IF NOT EXISTS idx_snomed_inactive_desc_concept
+    ON snomed.inactive_descriptions (concept_id);
+
+CREATE TABLE IF NOT EXISTS snomed.editions (
+    code_system             TEXT PRIMARY KEY,   -- 'snomed'
+    module_id               TEXT NOT NULL,      -- '900000000000207008' (International)
+    version_date            DATE NOT NULL,      -- release date of the RF2 snapshot
+    includes_inactive       BOOLEAN NOT NULL,
+    concept_count           INTEGER NOT NULL,   -- active
+    inactive_concept_count  INTEGER NOT NULL,
+    loaded_at               TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 
 CREATE INDEX IF NOT EXISTS idx_snomed_desc_concept ON snomed.descriptions (concept_id);
 CREATE INDEX IF NOT EXISTS idx_snomed_desc_active  ON snomed.descriptions (active);
