@@ -12,10 +12,11 @@ Use it first when you only have a text term and do not yet know the concept ID. 
 | Parameter | Type | Required | Description | Example |
 | :--- | :--- | :--- | :--- | :--- |
 | `query` | string | Yes | English clinical term | `"diabetes mellitus"` |
-| `limit` | integer | No | Result cap (3 by default) | `5` |
+| `limit` | integer | No | Result cap (3 by default, 10 maximum) | `5` |
+| `hierarchy_filter` | integer | No | Return only IS-A descendants of one concept (usually a top-level hierarchy concept ID) | `404684003` |
 
 ### What comes back
-Each row typically carries `concept_id`, the FSN, active status, and similarity information — enough to pick the concept to query next.
+Each row carries `concept_id`, `fsn`, `preferred_term`, `active` and `hierarchy_tag` — enough to pick the concept to query next; use `query_snomed_concept` for the full record.
 
 ---
 
@@ -31,8 +32,8 @@ Use it when you already have a concept ID and want concept details, ancestors, a
 | `concept_id` | integer | Yes | SNOMED concept ID | `73211009` |
 | `include_parents` | boolean | No | Return the ancestor chain, `true` by default | `false` |
 | `include_children` | boolean | No | Return direct child concepts, `true` by default | `false` |
-| `parent_limit` | integer | No | Cap on ancestors expanded, 10 by default | `20` |
-| `child_limit` | integer | No | Cap on children expanded, 20 by default | `50` |
+| `parent_limit` | integer | No | Cap on ancestors expanded, 10 by default, 20 maximum | `20` |
+| `child_limit` | integer | No | Cap on children expanded, 20 by default, 200 maximum | `50` |
 
 ### What comes back
 `concept` is always present; `ancestors`, `children`, and their counts are attached according to the parameters.
@@ -49,6 +50,9 @@ Use it to see clinical semantic attributes rather than hierarchy — for example
 | Parameter | Type | Required | Description |
 | :--- | :--- | :--- | :--- |
 | `concept_id` | integer | Yes | SNOMED concept ID |
+| `relationship_type_id` | integer | No | Return only one relationship type (e.g. `363698007` finding site) |
+
+Returns `{concept_id, relationship_count, relationships}`, grouped by relationship type, each group with a readable label and its target concepts.
 
 ---
 
@@ -64,5 +68,5 @@ A single entry point for bidirectional ICD ↔ SNOMED mapping.
 ### Parameters
 | Parameter | Type | Required | Description | Example |
 | :--- | :--- | :--- | :--- | :--- |
-| `mode` | string | No | `icd` or `snomed` | `"icd"` |
+| `mode` | string | No | `icd` or `snomed`, `icd` by default | `"icd"` |
 | `keyword` | string | Yes | ICD code, concept ID, or English term | `"E11.9"`, `"44054006"` |

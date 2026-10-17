@@ -35,7 +35,7 @@ interpret_lab_result(loinc_code="1558-6", value=110, age=55, gender="M")
 ```
 
 **Result**:
-The system points out that 110 mg/dL is slightly above the normal value (usually < 100), which is Impaired Fasting Glucose — that is, pre-diabetes. Dietary control and follow-up are recommended.
+The tool picks the reference interval that applies to the age / sex (fasting glucose is 70–100 mg/dL in `data/loinc/lab_reference_ranges.csv`) and returns `result.flag = "H"`, `status = "偏高 (High)"`, the interval and its source, and a generic sentence ("above the normal reference value; further evaluation advised"). The tool does **not** diagnose: a clinical reading such as impaired fasting glucose (pre-diabetes) is for the caller (the LLM) or a clinician to make from the result.
 
 ### Step 3: Batch interpretation
 
@@ -55,4 +55,4 @@ batch_interpret_lab_results(
 ```
 
 **Result**:
-The system returns a summary noting that the patient is at risk of metabolic syndrome (high blood glucose, high blood lipids) and suggests consulting cardiology or endocrinology.
+The tool returns `total_tests`, `abnormal_count`, `normal_count` and the per-item interpretations (all three are `H`). Tests without a reference range are skipped and not counted. An overall risk assessment (for example a metabolic-syndrome concern) is likewise left to the caller or a clinician.

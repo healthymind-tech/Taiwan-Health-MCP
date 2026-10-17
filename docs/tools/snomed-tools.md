@@ -12,10 +12,11 @@
 | 參數名 | 型別 | 必填 | 說明 | 範例 |
 | :--- | :--- | :--- | :--- | :--- |
 | `query` | string | 是 | 英文臨床詞彙 | `"diabetes mellitus"` |
-| `limit` | integer | 否 | 回傳上限（預設 3） | `5` |
+| `limit` | integer | 否 | 回傳上限（預設 3，上限 10） | `5` |
+| `hierarchy_filter` | integer | 否 | 只回傳某概念（通常是頂層階層的 concept ID）的 IS-A 後代 | `404684003` |
 
 ### 回傳重點
-每筆通常含 `concept_id`、FSN、active 狀態與相似度資訊，適合拿來挑選下一步要查的 concept。
+每筆含 `concept_id`、`fsn`、`preferred_term`、`active` 與 `hierarchy_tag`，適合拿來挑選下一步要查的 concept；完整資料用 `query_snomed_concept`。
 
 ---
 
@@ -31,8 +32,8 @@
 | `concept_id` | integer | 是 | SNOMED concept ID | `73211009` |
 | `include_parents` | boolean | 否 | 回傳祖先鏈，預設 `true` | `false` |
 | `include_children` | boolean | 否 | 回傳直接子概念，預設 `true` | `false` |
-| `parent_limit` | integer | 否 | 祖先展開上限，預設 10 | `20` |
-| `child_limit` | integer | 否 | 子概念展開上限，預設 20 | `50` |
+| `parent_limit` | integer | 否 | 祖先展開上限，預設 10，上限 20 | `20` |
+| `child_limit` | integer | 否 | 子概念展開上限，預設 20，上限 200 | `50` |
 
 ### 回傳重點
 固定有 `concept`；依參數附帶 `ancestors`、`children` 與對應 count。
@@ -49,6 +50,9 @@
 | 參數名 | 型別 | 必填 | 說明 |
 | :--- | :--- | :--- | :--- |
 | `concept_id` | integer | 是 | SNOMED concept ID |
+| `relationship_type_id` | integer | 否 | 只回傳某一種關聯類型（例如 `363698007` finding site） |
+
+回傳 `{concept_id, relationship_count, relationships}`，依關聯類型分組，每組附易讀標籤與目標概念清單。
 
 ---
 
@@ -64,5 +68,5 @@ ICD ↔ SNOMED 雙向 mapping 單一入口。
 ### 參數
 | 參數名 | 型別 | 必填 | 說明 | 範例 |
 | :--- | :--- | :--- | :--- | :--- |
-| `mode` | string | 否 | `icd` 或 `snomed` | `"icd"` |
+| `mode` | string | 否 | `icd` 或 `snomed`，預設 `icd` | `"icd"` |
 | `keyword` | string | 是 | ICD code、concept ID 或英文詞彙 | `"E11.9"`, `"44054006"` |

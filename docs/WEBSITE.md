@@ -94,7 +94,7 @@ mkdocs build --strict -f mkdocs.yml   # 兩種語言
 
 `.github/workflows/deploy-docs.yml`：
 
-1. **觸發條件**：push 到 `main`，且變更包含 `docs/**`、`mkdocs.yml` 或該 workflow 自身。
+1. **觸發條件**：push 到 `main`，且變更包含 `docs/**`、`mkdocs.yml`、`requirements-docs.txt` 或該 workflow 自身。
    （只改 `README.md` 或程式碼**不會**觸發網站重建。）
 2. **建置**：Python 3.11，安裝 `requirements-docs.txt`，執行 `mkdocs build --strict`。
 3. **發佈**：`peaceiris/actions-gh-pages@v3` 把 `./site` 推送到 **`gh-pages` 分支**（需要 `contents: write` 權限，使用內建的 `GITHUB_TOKEN`）。
@@ -121,4 +121,5 @@ mkdocs build --strict -f mkdocs.yml   # 兩種語言
 - 不要編輯 `site/`（產物）。
 - 指令範例要能從文中指定的目錄直接執行；埠號請用 `:8080`（nginx 前門），不要用 `:8000`。
 - 已完成或被取代的規劃文件，請在開頭加上狀態標註（本站的歷史文件都採此作法），不要直接刪除——它們是決策紀錄。
-- 對外的宣傳頁與法務頁（`/`、`/status`、`/privacy`、`/dpa`）**已不在本專案內**，改由獨立的宣傳網站專案提供。本專案的 `web` 服務只負責 `/admin` 管理後台。
+- 對外的宣傳頁與法務頁（`/`、`/status`、`/privacy`、`/dpa`）**已不在本專案內**，改由獨立的宣傳網站專案提供。本專案的 `web-v2` 服務（取代舊的 Next.js `web`，後者僅留在 compose profile `legacy-web`）只負責 `/admin` 管理後台。
+- **這是公開倉庫，網站也公開發佈。** 不要把臨床紀錄、評測用的 gold bundle 或 fixture 內容（例如未納入版控的 `mcp_proposal/` 內的資料）、密碼、主機上的私有路徑寫進文件；描述功能與公開的測試即可。

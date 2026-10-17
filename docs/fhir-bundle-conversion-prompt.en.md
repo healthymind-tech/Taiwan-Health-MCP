@@ -7,7 +7,7 @@ Differences from the [single-resource version](fhir-resource-conversion-prompt.m
 - Conversion order is **referenced-first**: handle resources that reference nobody (such as Organization) first, then the resources that reference them, and finally the ones that reference the most (such as Observation / Encounter).
 - It closes with `fhir_build_bundle` + `fhir_validate_bundle` to assemble and validate the whole Bundle.
 
-> **Prerequisites**: the LLM is connected to this project's `fhir_*` tools (the FHIR-IG toolset). You must have deployed it first: rebuild the `fhir.*` schema, import the TW Core IG (the validator is built into the backend, no extra installation required), and restart app + admin-worker.
+> **Prerequisites**: the LLM is connected to this project's `fhir_*` tools (the FHIR-IG toolset). Import TW Core (`tw.gov.mohw.twcore`) in the admin console's **IG packages** page and set it as the default IG first (declared dependency packages are downloaded by the import; the validator is built into the backend, no extra installation required).
 
 ---
 
@@ -61,7 +61,7 @@ Your task: convert the whole package of flat JSON below (many resources, cross-r
 # Phase 1 — Inventory, resolve references, order, pre-mint urns
 
 **Step 0 — Confirm the IG**
-- Call `fhir_list_igs` and confirm the default IG is TW Core (`tw.gov.mohw.twcore`). No need to pass package_id thereafter.
+- Call `fhir_list_igs` and confirm the default IG is TW Core (`tw.gov.mohw.twcore`). No need to pass package_id thereafter (when omitted, tools use the package owning the profile, else the default IG; the response's `provenance.resolved_by` says which).
 
 **Step 1 — Inventory every resource and give each a stable key**
 - Walk every top-level list; **each element = one resource**.
@@ -96,7 +96,7 @@ For each resource in the sorted order, repeat a–e below. **Efficiency tip**: t
 
 - **a. Choose a profile**: for that record, call `fhir_rank_resource_profiles(keys=[<that record's field names>])` (without base_type), combined with `fhir_list_resource_profiles()` when necessary; select one specific profile and explain why.
   - **Observations must be chosen record by record**: different `observationCode` values map to different profiles (heart rate → `Observation-heart-rate-twcore`, oxygen saturation → `Observation-pulse-oximetry-twcore`). Decide from that record's code/text; do not apply one profile to all of them.
-- **b. Get the skeleton**: `fhir_get_resource_skeleton(profile=<the chosen profile>)`. Read required / arrays / slicing / each field's binding (including candidateCodes) / `autoPinned` (do not touch).
+- **b. Get the skeleton**: `fhir_get_resource_skeleton(profile=<the chosen profile>)`. Read required / arrays / slicing / each field's binding (including candidateCodes) / `autoPinned` (do not touch). Then call `fhir_get_profile_required_elements(profile=<the chosen profile>)` for the complete list of what the profile **effectively** requires (required slices, choice types, invariants included) and make sure every item is covered.
 - **c. Fill semantic values**: against that source record.
   - Reference fields take `"<Type>/<key>"` (for example `subject` = `"Patient/patient-1"`, `encounter` = `"Encounter/encounter-1"`).
   - Fields needing a code go through `fhir_normalize_code` (using the human-readable text) → `fhir_validate_code`; handle opaque internal codes per core principle 4.
@@ -117,8 +117,8 @@ For each resource in the sorted order, repeat a–e below. **Efficiency tip**: t
 - Read the returned `unresolved`: **it must be empty**. An unresolved reference means some `"<Type>/<key>"` matched no entry → go back and fix it (usually a misspelled key or a record you forgot to convert), then reassemble.
 
 **Step 6 — Validate the whole package**
-- `fhir_validate_bundle(bundle=<the bundle from the previous step>)`. Read each entry's `valid` and `referenceIssues`.
-  - All valid with no referenceIssues → done.
+- `fhir_validate_bundle(bundle=<the bundle from the previous step>)`. Read each entry's `valid`, `referenceIssues` and `checked_fully`.
+  - All valid with no referenceIssues → done. If `checked_fully: false`, list `profiles_unchecked` / `valuesets_unchecked` (profiles / ValueSets that could not be checked) in your delivery notes and do not claim full validation.
   - Otherwise fix only the problematic records (return to Phase 2 and finalize those), then rebuild and revalidate.
 
 **Step 7 — Deliver**

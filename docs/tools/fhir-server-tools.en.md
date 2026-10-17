@@ -31,7 +31,7 @@ Perform a FHIR REST operation against a given server.
 | Parameter | Type | Required | Description |
 | :--- | :--- | :--- | :--- |
 | `server_key` | string | Yes | Target server identifier (`"default"` selects the default server) |
-| `operation` | string | Yes | `metadata` / `read` / `search` / `create` / `update` / `patch` / `delete` |
+| `operation` | string | No | `metadata` by default; `metadata` / `read` / `search` / `create` / `update` / `patch` / `delete` |
 | `resource_type` | string | Depends on operation | FHIR resource type (such as `Patient` or `Observation`) |
 | `resource_id` | string | Depends on operation | Target resource ID (read / update / patch / delete) |
 | `query_json` | string | Used by `search` | Search parameters as a JSON object string, e.g. `'{"name":"Chen","_count":"10"}'` |

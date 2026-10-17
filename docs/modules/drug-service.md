@@ -29,15 +29,16 @@
 
 1. **`drug_index_import`** — 從 TFDA 標準 `36_2.csv` 載入許可證索引，建立 `drug.licenses` 等基礎表。
 2. **`drug_enrichment`** — 爬取 TFDA 取得電子仿單、文件資產與藥錠外觀紀錄，並將檔案存入 MinIO。
-3. **`drug_analysis`** — 對仿單文件執行 MinerU OCR 與分析 LLM，萃取結構化內容寫入 `drug.insert_analysis`。OCR 與分析 LLM 的端點在 Admin → Settings 設定（存於 `admin.llm_profiles`），**不從環境變數讀取**。
+3. **`drug_analysis`** — 對仿單文件執行 MinerU OCR 與分析 LLM，萃取結構化內容寫入 `drug.insert_analysis`。OCR 端點（MinerU）在管理後台 **整合 → 外部服務 → OCR Server** 設定（存於 `admin.app_settings`）；分析 LLM 在 **整合 → 模型端點** 設定（provider 帳號 + 路由：`admin.llm_providers` / `admin.llm_routes` / `admin.llm_route_members` / `admin.llm_role_routes`）。兩者都**不從環境變數讀取**。
 
-另有 `drug_pipeline` 工作型別可一次串起三個階段。三者也會自動串接：每個自動串接的工作以 `DRUG_AUTOCHAIN_BATCH_LIMIT`（預設 200）為上限；**手動排入且未指定 `limit` 的 `drug_enrichment` 不受此限**，會爬完整個待處理佇列。
+另有 `drug_pipeline` 工作型別，在同一個工作內對每張許可證依序跑完三個階段。三者也會自動串接：每個自動串接的工作以 `DRUG_AUTOCHAIN_BATCH_LIMIT`（預設 200）為上限；**手動排入且未指定 `limit` 的 `drug_enrichment` 不受此限**，會爬完整個待處理佇列。
 
 ## 技術架構
 - **資料來源**：台灣 FDA 西藥許可證（`mcp.fda.gov.tw`），透過 `DRUG_TFDA_BASE_URL` 設定。
-- **資料庫**：`drug` schema，含 `licenses`、`ingredients`、`atc`、`electronic_inserts`、`appearance_records`、`assets`、`insert_analysis`、`normalized_records` 等資料表，以及匯入狀態追蹤表（`import_runs`、`import_license_state`、`enrichment_queue` 等）。
+- **資料庫**：`drug` schema，含 `licenses`、`ingredients`、`atc`、`electronic_inserts`、`appearance_records`、`assets`、`asset_variants`、`insert_analysis`、`normalized_records` 等資料表，以及匯入狀態追蹤表（`import_runs`、`import_license_state`、`enrichment_queue` 等）。
 - **物件儲存**：仿單 / 標籤 / 外觀圖檔案存於 MinIO，工具回傳時即時產生有時效的預簽連結。
-- **嵌入搜尋**：藥品索引支援語意 / 混合搜尋（需可用的嵌入端點，於 Admin → Settings 設定；未設定時退回關鍵字）。
+- **搜尋方式**：藥品搜尋為關鍵字比對（`ILIKE` 子字串 + `simple` 全文檢索），**沒有**向量 / 語意搜尋，也沒有 `drug_embed` 工作。
+- **管理介面**：管理後台 **資料 → 藥品** 顯示管線概況、上傳 `36_2.csv`、排程與觸發工作；**藥品瀏覽器**（`/admin/drug/explorer`）可檢視單張許可證的仿單、外觀、檔案、歷程與 LLM 呼叫紀錄。
 
 ## 依賴關係
 - **FHIR Medication Service**：以本模組的藥品資料產生 FHIR Medication / MedicationKnowledge 資源。

@@ -2,6 +2,8 @@
 
 The LOINC surface has been consolidated into four tools: `search_loinc`, `query_loinc`, `interpret_lab_result`, and `batch_interpret_lab_results`.
 
+Defaults: `search_loinc` uses `mode` `code` and `limit` 3 (10 maximum); `query_loinc` uses `mode` `detail`; `gender` always defaults to `all`. The `code` / `specimen` / `component` modes run a hybrid BM25 + semantic search and fall back to keyword-only with `search_mode: "keyword_only"` when embeddings are unavailable. The whole group is unregistered while `loinc.concepts` holds fewer than 1,000 rows.
+
 ## 1) `search_loinc` (search entry point)
 
 A single search entry point; `mode` switches the query intent.

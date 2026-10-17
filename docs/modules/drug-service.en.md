@@ -29,15 +29,16 @@ Drug data is built by three import stages, triggered and monitored from the drug
 
 1. **`drug_index_import`** — loads the license index from TFDA's standard `36_2.csv`, creating `drug.licenses` and the other base tables.
 2. **`drug_enrichment`** — crawls TFDA for electronic inserts, document assets, and pill appearance records, storing the files in MinIO.
-3. **`drug_analysis`** — runs MinerU OCR and the analysis LM over the insert documents, extracting structured content into `drug.insert_analysis`. The OCR and analysis-LM endpoints are configured in Admin → Settings (stored in `admin.llm_profiles`) and are **never read from environment variables**.
+3. **`drug_analysis`** — runs MinerU OCR and the analysis LM over the insert documents, extracting structured content into `drug.insert_analysis`. The OCR endpoint (MinerU) is configured in the admin console under **Integrations → External services → OCR Server** (stored in `admin.app_settings`); the analysis LM under **Integrations → Model endpoints** (provider accounts + routes: `admin.llm_providers` / `admin.llm_routes` / `admin.llm_route_members` / `admin.llm_role_routes`). Neither is **ever read from environment variables**.
 
-A `drug_pipeline` job type also exists to chain all three stages in one go. The three stages auto-chain as well: each auto-chained job is capped at `DRUG_AUTOCHAIN_BATCH_LIMIT` (200 by default); **a manually queued `drug_enrichment` with no `limit` is not capped** and will crawl the entire backlog.
+A `drug_pipeline` job type also exists: one job that runs all three stages per license. The three stages auto-chain as well: each auto-chained job is capped at `DRUG_AUTOCHAIN_BATCH_LIMIT` (200 by default); **a manually queued `drug_enrichment` with no `limit` is not capped** and will crawl the entire backlog.
 
 ## Technical architecture
 - **Data source**: Taiwan FDA western-medicine licenses (`mcp.fda.gov.tw`), configured via `DRUG_TFDA_BASE_URL`.
-- **Database**: the `drug` schema, with tables including `licenses`, `ingredients`, `atc`, `electronic_inserts`, `appearance_records`, `assets`, `insert_analysis`, and `normalized_records`, plus import-state tracking tables (`import_runs`, `import_license_state`, `enrichment_queue`, and so on).
+- **Database**: the `drug` schema, with tables including `licenses`, `ingredients`, `atc`, `electronic_inserts`, `appearance_records`, `assets`, `asset_variants`, `insert_analysis`, and `normalized_records`, plus import-state tracking tables (`import_runs`, `import_license_state`, `enrichment_queue`, and so on).
 - **Object storage**: insert / label / pill-image files are stored in MinIO, and the tools generate time-limited presigned links at response time.
-- **Embedding search**: the drug index supports semantic / hybrid search (requires a working embedding endpoint, configured in Admin → Settings; falls back to keyword search when unset).
+- **Search**: drug search is keyword matching (`ILIKE` substring + `simple` full-text search); there is **no** vector / semantic search and no `drug_embed` job.
+- **Admin UI**: the admin console's **Data → Drugs** page shows the pipeline overview, takes `36_2.csv` uploads, and schedules and runs jobs; the **drug explorer** (`/admin/drug/explorer`) shows a single license's inserts, appearance, files, history and LLM calls.
 
 ## Dependencies
 - **FHIR Medication Service**: generates FHIR Medication / MedicationKnowledge resources from this module's drug data.

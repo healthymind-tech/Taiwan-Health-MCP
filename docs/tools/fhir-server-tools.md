@@ -31,7 +31,7 @@
 | 參數名 | 型別 | 必填 | 說明 |
 | :--- | :--- | :--- | :--- |
 | `server_key` | string | 是 | 目標伺服器識別碼（`"default"` 對應預設伺服器） |
-| `operation` | string | 是 | `metadata` / `read` / `search` / `create` / `update` / `patch` / `delete` |
+| `operation` | string | 否 | 預設 `metadata`；`metadata` / `read` / `search` / `create` / `update` / `patch` / `delete` |
 | `resource_type` | string | 視操作 | FHIR 資源型別（如 `Patient`、`Observation`） |
 | `resource_id` | string | 視操作 | 目標資源 ID（read / update / patch / delete） |
 | `query_json` | string | `search` 時使用 | 搜尋參數的 JSON 物件字串，例如 `'{"name":"Chen","_count":"10"}'` |

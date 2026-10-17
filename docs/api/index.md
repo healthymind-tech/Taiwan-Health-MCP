@@ -19,7 +19,8 @@
 `PUBLIC_TOOLS_CORS_ORIGINS` 明列 origin。`none` 僅適合受信任的本機或私有網路。
 
 > 後端另有一個 `/health` 端點，但 nginx 不會轉送它（從前門存取會得到 404）。要從前門確認 `app`
-> 是否存活，請改打 `/openapi.json`。各模組的資料筆數請看管理後台 Overview 分頁。
+> 是否存活，請改打 `/openapi.json`。各模組的資料筆數請看管理後台儀表板；`health_check`（`POST /tools/health_check`）
+> 也會回報模組狀態、伺服器版本、build sha 與已載入的術語版本。
 
 ## OpenAPI bridge
 
@@ -36,50 +37,74 @@ curl -X POST http://localhost:8080/tools/search_medical_codes \
   -d '{"keyword": "diabetes", "limit": 3}'
 ```
 
-工具清單會隨各模組的資料載入狀態動態增減（見 `moduleStatus.ts` 的 `SERVICE_MODULES` 門檻），
-因此 `/openapi.json` 的內容會依部署的資料狀態而不同。
+工具清單會隨各模組的資料載入狀態動態增減（門檻為 `moduleStatus.ts` 的 `REQUIREMENTS`，以 `MODULE_REQUIREMENTS` 匯出），
+因此 `/openapi.json` 的內容會依部署的資料狀態而不同。`mcp.ts` 共定義 **63 個工具**、12 個群組；其中 FHIR Servers、
+Clinical Calculators 與 System 三組（15 個工具）永遠註冊。管理後台的 **MCP 工具**頁（`/admin/mcp`）會列出完整目錄、
+每個未註冊工具缺少的條件，並提供可直接呼叫已註冊工具的 playground。
 
 工具已註冊只代表必要的來源資料存在，**不代表 semantic embedding 已完整回填**。
-向量不完整時，相關搜尋會退回或混用 keyword/BM25。請在 Admin → Modules 查看每個模組的
-Embeddings 計數，並執行或排程對應的 `*_embed` 工作。
+向量不完整時，相關搜尋會退回或混用 keyword/BM25。請在管理後台各模組頁面查看嵌入計數，
+並執行或排程對應的 `*_embed` 工作。
+
+## `health_check`（System 群組）
+
+永遠註冊、不需參數。建議在任何工作流程開始前先呼叫，確認需要的模組已上線。回傳 JSON：
+
+| 欄位 | 說明 |
+|------|------|
+| `status` | 資料庫可用時為 `ok`，否則 `degraded` |
+| `database` / `cache` | `ok` / `error`（Postgres 查詢、Redis ping） |
+| `db_health` | 資料庫健康監視器快照（`state`、`healthy`、`since`、`last_ok_at`、`last_error` …） |
+| `services` | 各模組是否達到註冊門檻：`icd`、`drug`、`health_supplements`、`food_nutrition`、`fhir_condition`、`fhir_medication`、`lab`、`ig`、`snomed` |
+| `version` | 伺服器版本（`toolVersions.ts` 的 `SERVER_VERSION`，目前 `1.1.0`），與 MCP `initialize` 的 `serverInfo.version` 相同 |
+| `build` | 映像建置時的 git sha（`BUILD_SHA` build arg），未設定時為 `dev` |
+| `tools_version` | 有獨立版本的工具及其版本（見 [FHIR IG 工具 → 工具版本](../tools/fhir-ig-tools.md#tool-versions)） |
+| `lexicon_version` / `lexicon_sha256` | grounding 使用的台灣病歷詞彙表版本與雜湊 |
+| `terminology` | 已載入的術語版本，例如 `icd10cm`（`2026-04-01`）、`icd10`（WHO ICD-10，選用）、`loinc`（`2.80`）、`snomed`（`<module>/<YYYYMMDD>`）；來自 `icd.editions`、`loinc.editions`、`snomed.editions` |
+| `ig_packages` | 已安裝的 IG 套件（`package_id#version`），預設 IG 排第一 |
+| `default_ig` | 預設 IG（`package_id#version`），未設定時為 `null` |
 
 ## 管理後台 REST API
 
-所有路徑以 `/admin/api/` 開頭，需帶 `tw_health_admin_session` cookie。主要端點：
+所有路徑以 `/admin/api/` 開頭，需帶 session cookie（預設名稱 `tw_health_admin_session`，可由 `ADMIN_SESSION_COOKIE` 改名）。主要端點：
 
 | 群組 | 端點 |
 |------|------|
-| 認證 | `POST /admin/api/login`、`POST /admin/api/logout`、`/admin/api/passkeys/*`、`POST /admin/api/privacy/password` |
+| 認證 | `POST /admin/api/login`、`POST /admin/api/logout`、`GET /admin/api/me`、`/admin/api/passkeys/*`（含 `login/options`、`login/verify`、`register/options`、`register/verify`）、`POST /admin/api/privacy/password` |
 | 總覽與健康 | `GET /admin/api/overview`、`GET /admin/api/health`、`GET /admin/api/services`、`POST /admin/api/services/probe`、`GET /admin/api/workers` |
-| 模組與來源 | `GET /admin/api/modules`、`POST /admin/api/uploads`、`/admin/api/module-sources/{activate,deactivate,delete}`、`POST /admin/api/module-maintenance` |
-| 工作 | `GET|POST /admin/api/jobs`（建立、查詢、暫停 / 取消） |
-| 設定 | `GET|POST /admin/api/settings`、`GET /admin/api/settings/export`、`POST /admin/api/settings/import`、`/admin/api/llm-profiles/*` |
+| 模組與來源 | `GET /admin/api/modules`、`GET|POST /admin/api/modules/{key}/clear`、`GET /admin/api/modules/{key}/versions`、`GET /admin/api/modules/{key}/preview`、`POST /admin/api/modules/{key}/schedule/trigger`、`POST /admin/api/uploads`、`POST /admin/api/module-sources/{activate,deactivate,delete}`、`POST /admin/api/module-maintenance` |
+| 工作 | `GET|POST /admin/api/jobs`、`GET /admin/api/jobs/{id}`、`GET /admin/api/jobs/{id}/{steps,logs}`、`POST /admin/api/jobs/{id}/{pause,resume,stop,restart}` |
+| 設定 | `GET /admin/api/settings`、`POST /admin/api/settings/{group}[/{action}]`、`GET /admin/api/settings/export`、`POST /admin/api/settings/import`（匯出格式 v3；v1 / v2 檔案仍可匯入） |
+| 模型端點 | `GET /admin/api/llm-providers`（provider adapter 目錄）；`/admin/api/llm/accounts[/{id}][/models]`、`POST /admin/api/llm/accounts/test`、`POST /admin/api/llm/models/test`、`/admin/api/llm/routes[/{id}][/test]`、`PUT /admin/api/llm/roles`、`POST /admin/api/llm/oauth/chatgpt/{start,complete}` |
+| MCP 工具 | `GET /admin/api/mcp/overview`、`GET /admin/api/mcp/tools`、`POST /admin/api/mcp/tools/{name}/invoke` |
+| 術語瀏覽（唯讀） | `GET /admin/api/terminology/icd/{cm,who}/{children,path,search}`、`GET /admin/api/terminology/icd/pcs/{browse,table,codes,code,search}`、`GET /admin/api/terminology/snomed/{concept,children,search}`、`GET /admin/api/terminology/loinc/{facets,facet-values,term,code}`、`GET /admin/api/terminology/rxnorm/{summary,search,concept}`、`GET /admin/api/terminology/ig/{codesystems,codesystem,codesystem/children,codesystem/search}` |
 | 備份 | `GET /admin/api/backups`、`GET /admin/api/backups/{job_id}/download`；以 `POST /admin/api/jobs` 建立 `system_backup` 工作 |
 | 藥品管線 | `GET /admin/api/drug/pipeline-status`、`/admin/api/drug/{status,details,assets,asset-content,events}` |
 | 藥品瀏覽器 | `GET /admin/api/drug/explorer`、`GET /admin/api/drug/explorer-detail`、`GET /admin/api/drug/llm-calls`、`GET /admin/api/drug/llm-call` |
-| OCR | `GET /admin/api/ocr/samples`、`POST /admin/api/ocr/test` |
-| FHIR 伺服器 | `GET|POST /admin/api/fhir-servers`、`/admin/api/fhir-servers/{discover,test,test-request,generate-key,export}` |
-| IG | `GET /admin/api/igs`、`POST /admin/api/igs/import`、`GET /admin/api/registry/search` |
+| OCR | `GET /admin/api/ocr/samples[/{id}]`、`POST /admin/api/ocr/test` |
+| FHIR 伺服器 | `GET|POST /admin/api/fhir-servers`、`/admin/api/fhir-servers/{discover,test,test-request,generate-key,export}`、`POST /admin/api/fhir-servers/{id}/{probe,set-default}`、`POST /admin/api/fhir-servers/{id}/oauth/{authorize,refresh,clear-cache}` |
+| IG | `GET /admin/api/igs`、`GET|DELETE /admin/api/igs/{package_id}/{version}`、`GET /admin/api/igs/{package_id}/{version}/removal-impact`、`POST /admin/api/igs/{package_id}/{version}/{default,fill-dependencies}`、`POST /admin/api/igs/import`、`POST /admin/api/igs/inspect-upload`、`GET /admin/api/igs/dependencies`、`POST /admin/api/igs/dependencies/{download,download-all}`、`GET /admin/api/igs/unused-dependencies`、`POST /admin/api/igs/unused-dependencies/remove`、`GET /admin/api/registry/search` |
 | 嵌入 | `GET /admin/api/embedding/status` |
 
 ## 服務層（TypeScript）
 
-各領域服務位於 `node-server/src/`，建構子接收 `pg.Pool`，並提供 `async initialize()`：
+各領域服務位於 `node-server/src/`，皆提供 `async initialize()`。資料庫存取經由 `db.ts` 的共用 `pg` 連線池（不是建構子參數），
+需要搜尋的服務在建構子接收共用的 `EmbeddingService`。`mcp.ts` 以延遲建立的單例使用它們；某個服務初始化失敗只會讓它自己的工具消失。
 
 | 類別 | 檔案 | 資料 |
 |------|------|------|
-| `ICDService` | `icdService.ts` | `icd.*` |
+| `IcdService` | `icdService.ts` | `icd.*` |
 | `DrugService` | `drugService.ts` | `drug.*` |
 | `DrugAnalysisService` | `drugAnalysisService.ts` | `drug.insert_analysis`（含 MinerU OCR 與分析 LLM 呼叫） |
-| `SupplementsService` | `supplementsService.ts` | `health_supplements.*` |
-| `FoodService` | `foodService.ts` | `food_nutrition.*` |
+| `HealthSupplementsService` | `supplementsService.ts` | `health_supplements.*` |
+| `FoodNutritionService` | `foodService.ts` | `food_nutrition.*` |
 | `LabService` | `labService.ts` | `loinc.*` |
-| `FhirConditionService` | `fhirConditionService.ts` | 讀取 `icd.*` |
-| `FhirMedicationService` | `fhirMedicationService.ts` | 讀取 drug 服務 |
-| `FhirIgService` | `fhirIgService.ts` | `fhir.*`（多 IG） |
-| `FhirServerService` | `fhirServerService.ts` | `admin.fhir_servers` |
+| `FHIRConditionService` | `fhirConditionService.ts` | 讀取 `icd.*` |
+| `FHIRMedicationService` | `fhirMedicationService.ts` | 讀取 `drug.*` |
+| `FHIRIGService` | `fhirIgService.ts` | `fhir.*`（多 IG） |
+| `FHIRServerService` | `fhirServerService.ts` | `admin.fhir_servers` |
 | `SnomedService` | `snomedService.ts` | `snomed.*` |
-| `EmbeddingService` | `embeddingService.ts` | 外部嵌入端點（設定存於 `admin.llm_profiles`） |
+| `EmbeddingService` | `embeddingService.ts` | 外部嵌入端點——指派給 `embedding` 角色的路由（`admin.llm_routes` / `admin.llm_role_routes`，底層帳號在 `admin.llm_providers`） |
 | MinIO helper | `minioService.ts` | MinIO bucket（藥品資產） |
 
 ## 相關文件

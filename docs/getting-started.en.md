@@ -3,7 +3,7 @@
 ## Prerequisites
 
 - Docker and Docker Compose
-- (Optional) A reachable embedding server (Ollama with the `qwen3-embedding` model by default) for semantic / hybrid search. **Its endpoint is configured in the admin console's Settings tab, not through environment variables**; without it, search falls back to keyword mode automatically.
+- (Optional) A reachable embedding server (Ollama with the `qwen3-embedding` model by default) for semantic / hybrid search. **Its endpoint is configured on the admin console's Model endpoints page (`/admin/models`), not through environment variables**; without it, search falls back to keyword mode automatically.
 - Some data sources require licensed files you must obtain yourself (SNOMED CT, LOINC, the ICD-10 zips, and so on) — see [Data Sources](data-sources/index.md).
 
 For local development outside Docker you need **Node.js 20 or newer**. The project has no Python runtime dependency.
@@ -20,12 +20,12 @@ docker compose up -d
 | Service | Description |
 |---------|-------------|
 | `nginx` | **The single front door**, `:8080` by default (adjustable via `WEB_PORT`) |
-| `web` | Next.js front-end: the `/admin` console SPA |
+| `web-v2` | The admin console SPA (`web-v2/`, Vite + React + Mantine), served by the container's nginx |
 | `app` | Node MCP server + admin REST API (internal network only) |
 | `admin-worker` | Background job runner (all imports and embedding jobs) |
 | `postgres` | PostgreSQL 16 + pgvector |
 | `pgbouncer` | Connection pool (transaction mode) |
-| `redis` | Response cache |
+| `redis` | Live event broadcast for the admin console and health probes (tool responses are not cached today) |
 | `minio` + `minio-init` | Drug asset object storage and bucket initialisation |
 
 !!! warning "All traffic goes through nginx"
@@ -34,7 +34,7 @@ docker compose up -d
 
 ## Enable the admin console
 
-Data imports are triggered from the admin console and executed by `admin-worker` in the background (there is no standalone CLI data-loader container), so enable the console in `.env` first:
+Data imports are triggered from the admin console and executed by `admin-worker` in the background (there is no standalone CLI data-loader container). The console is enabled by default (`ADMIN_ENABLED=true`); you only need to set the sign-in credential and session key in `.env`:
 
 ```dotenv
 ADMIN_ENABLED=true
@@ -45,23 +45,25 @@ ADMIN_USERNAME=admin
 #    reference, and a hash starting with a letter gets silently truncated).
 #    Compose collapses $$ back to a single $.
 ADMIN_PASSWORD_HASH=sha256$$...
-ADMIN_SESSION_SECRET=change_this_admin_session_secret
+# Or a plaintext initial password (hashed into the DB on first boot): ADMIN_INITIAL_PASSWORD=...
+# Must replace the .env.example placeholder, or app refuses to start: openssl rand -hex 32
+ADMIN_SESSION_SECRET=<random value>
 ```
 
 After restarting (`docker compose up -d`), sign in at `http://<host>:8080/admin`. See [Admin Console](admin/index.md) for details.
 
-## Load data (Admin console → Modules)
+## Load data (admin console module pages)
 
-Import module by module from the Modules tab:
+Import module by module from the sidebar's Data section (Terminology, Drug, Health supplements, Food nutrition) and FHIR → IG library:
 
 | Type | Modules | Action |
 |------|---------|--------|
-| Source file upload required | ICD-10-CM/PCS, LOINC, SNOMED CT, RxNorm, FHIR IG (`package.tgz`) | Upload the source file under Sources / Modules, then press import |
+| Source file upload required | ICD-10-CM (CMS order file) / PCS, LOINC, SNOMED CT, RxNorm, FHIR IG (`package.tgz`) | Upload the source file on the module page, then press import (IGs can also be fetched straight from the FHIR package registry) |
 | Fetched automatically via API | Drugs (TFDA), health supplements, food nutrition | Press import directly, or set up a schedule |
 
-- The **drug domain** is a three-stage pipeline (index → enrichment crawl → OCR/LLM analysis). The TFDA base URL used by the crawler is configurable in Settings; the OCR (MinerU) and analysis LLM endpoints live in `admin.llm_profiles` and are likewise managed in Settings.
+- The **drug domain** is a three-stage pipeline (index → enrichment crawl → OCR/LLM analysis). The crawler's TFDA base URL and the OCR (MinerU) endpoint are configured under External services (`/admin/integrations`); the analysis LLM gets a provider account and profile under Model endpoints (`/admin/models`).
 - **Embeddings** (semantic search) are separate `*_embed` jobs per module, runnable or schedulable from each module's page.
-- Import progress, the step timeline, and live logs are on the **Tasks** tab; the background mechanism is described in [Jobs & Scheduling](admin/jobs-and-worker.md).
+- Import progress, the step timeline, and live logs are on the **Jobs** page (`/admin/jobs`); the background mechanism is described in [Jobs & Scheduling](admin/jobs-and-worker.md).
 
 ## Connect a client
 
@@ -80,7 +82,7 @@ For clients that cannot speak MCP natively and only connect to OpenAPI tool serv
 
 In the client, just fill in the base URL `http://<host>:8080`; it fetches `/openapi.json` and lists every tool.
 
-> Note: `/mcp` and the OpenAPI bridge currently perform **no authentication by default**. When exposing them publicly, put a reverse proxy or token in front.
+> Note: by default (`PUBLIC_TOOLS_AUTH_MODE=none`) `/mcp` and the OpenAPI bridge perform **no authentication**. When exposing them publicly, set `PUBLIC_TOOLS_AUTH_MODE=bearer` with a high-entropy `PUBLIC_TOOLS_BEARER_TOKEN`, and have clients send `Authorization: Bearer <token>`. See [Configuration](deployment/configuration.md).
 
 ## Verification
 
@@ -90,7 +92,7 @@ Check the services and each module's status:
 curl http://localhost:8080/openapi.json | head  # currently registered tools
 ```
 
-Per-module row counts and service health are on the admin console's Overview tab.
+Per-module row counts and service health are on the admin console's Dashboard and Service health pages; every tool (including unregistered ones and why) can be browsed and tried on the MCP tools page (`/admin/mcp`).
 
 You can also call the `health_check` tool directly:
 
@@ -98,5 +100,7 @@ You can also call the `health_check` tool directly:
 curl -X POST http://localhost:8080/tools/health_check \
   -H 'Content-Type: application/json' -d '{}'
 ```
+
+The response includes DB / cache / per-module status, the server `version` and `build` (git sha), `tools_version`, the loaded terminology editions (`terminology`), the installed IG packages and `default_ig`.
 
 For code-level tests see [Testing](development/testing.md).

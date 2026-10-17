@@ -2,11 +2,36 @@
 
 !!! info "Historical document (design assessment, since implemented)"
     This is the **design assessment** for the FHIR IG toolset, written before implementation. It assumes a
-    Python backend (`src/admin_jobs.py`, `src/twcore_service.py`, `pip install fhirpathpy`, and the like no
-    longer exist). The toolset has since been implemented: the 19 `fhir_*` tools are now provided in
-    TypeScript, and FHIRPath validation runs in process via the npm package `fhirpath` — **no extra
-    installation is required**. This page is retained as a decision record; for the current tool
-    documentation see [FHIR IG Tools](tools/fhir-ig-tools.md).
+    Python backend (`src/admin_jobs.py`, `src/twcore_service.py`, the `twcore.*` schema, `pip install fhirpathpy`,
+    and the like no longer exist). This page is retained as a decision record and **its body is no longer
+    updated**; for the current tool documentation see [FHIR IG Tools](tools/fhir-ig-tools.md).
+
+    **How the implementation differs from this design (checked against the code 2026-10-17):**
+
+    - **Tool count:** **22** `fhir_*` tools are registered (TypeScript, `node-server/src/mcp.ts`) — the 19 planned
+      here plus `fhir_get_profile_required_elements` (a profile's effective required elements),
+      `fhir_check_grounding` (checks each value against the source record) and `fhir_check_completeness`
+      (gap report of the facts the conversion targets need). The last two are deterministic rules, no LLM.
+    - **Schema:** open question 1 was settled with a fresh package-scoped `fhir.*` schema (`ig_packages` /
+      `codesystems` / `concepts` / `artifacts`); `fhir.ig_packages` also records `install_origin`
+      (`manual` / `dependency`) and `installed_for`. Importing an IG downloads its declared dependencies; the admin
+      console refuses, unless `force` is given, to remove a package another installed IG still depends on (directly or
+      transitively) or the default IG (unless a replacement default is named).
+    - **IG selector:** not the `ig = {packageId, version}` object of §4.2 but `package_id` + `version` arguments on
+      each tool. When omitted, resolution is: `|version` on a canonical / `meta.profile` → the package owning that
+      canonical / `meta.profile` (manual installs first) → the default IG → the only manually installed IG; otherwise
+      the call fails with `NO_DEFAULT_IG`. The rule applied is reported in `provenance.resolved_by`, missing closure
+      dependencies in `data.deps_missing`. List / search tools also take `all_packages`.
+    - **Validator:** still in process with no Java sidecar (gap 1's decision stands), but the target moved from
+      "pre-flight catching 80–95%" to **matching HL7 `validator_cli` 7.0.1 (+ tx.fhir.org) verdicts**, audited case by
+      case — see [`node-server/scripts/validator-audit/REPORT.md`](https://github.com/healthymind-tech/Taiwan-Health-MCP/blob/main/node-server/scripts/validator-audit/REPORT.md) (v1–v6). `valid` keeps HL7
+      semantics (an unresolvable profile is only a warning); `checked_fully` / `profiles_unchecked` /
+      `valuesets_unchecked` state explicitly what could not be checked.
+    - **Optional grounding:** `fhir_validate_resource` / `fhir_validate_bundle` accept `source_text` (plus
+      `site_config`, `evidence_map`, `grounding`, `grounding_verbosity`) to run grounding in the same call; without
+      them the output is unchanged.
+    - **Versions:** per-tool versions live in `node-server/src/toolVersions.ts` and are reported in
+      `health_check.tools_version`.
 
 **Status:** assessment / planning (no code changes yet)
 **Date:** 2026-06-07

@@ -15,10 +15,8 @@
 - **單位換算**：支援常見單位的識別。
 - **性別與年齡差異**：部分項目支援依據性別或年齡層提供不同的參考標準。
 
-### 3. 異常判讀輔助
-不只是提供數字，更提供初步的臨床意義說明：
-- **數值偏高**：提示可能相關的病理狀態（如：白血球過高可能表示感染）。
-- **數值偏低**：提示可能的營養缺乏或功能低下。
+### 3. 異常判讀輔助（`interpret_lab_result`）
+依病患年齡 / 性別挑選適用的參考區間，將數值標記為 `H`（偏高）、`L`（偏低）或 `N`（正常），並附上參考區間、來源備註與一句通用說明（例如「高於正常參考值，建議進一步評估」）。**不**產生病因推論；臨床意義由呼叫端或醫療人員判斷。只有在 `loinc.reference_ranges` 有該碼的參考值時才能判讀。
 
 ### 4. 依檢體類型搜尋
 依血液、尿液、糞便等檢體類型篩選 LOINC 檢驗項目。
@@ -29,12 +27,15 @@
 ### 6. LOINC 完整概念細節
 取得單一 LOINC 碼的完整資訊，包含中文病患友善名稱、單位、檢體、方法等。
 
-### 7. 批次結果判讀
-一次傳入多項檢驗值，批次取得所有異常標記與解釋，適合健康檢查報告自動分析。
+### 7. 批次結果判讀（`batch_interpret_lab_results`）
+一次傳入多項檢驗值（`results_json`，每筆含 `loinc_code` 與 `value`），回傳 `total_tests`、`abnormal_count`、`normal_count` 與每項的判讀結果；查不到參考值的項目會被略過。
 
 ## 技術架構
-- **資料來源**：LOINC 2.80（87,000+ 碼，經由管理後台 Admin → Modules，匯入階段 `loinc_import` 載入），以及台灣常用檢驗種子資料（`node-server/src/loaders/loinc.ts` 內建，約 30 筆）。 匯入時另保留 LOINC zip 附檔中的 answer（LA）、part（LP）、answer list（LL）與 group（LG）代碼（`loinc.other_codes`）及版本（`loinc.editions`），供 FHIR validator 檢查這些代碼與 display；本地版本達到 tx.fhir.org 所用版本（目前 2.82）時，未知的 LOINC 碼才會報 error，否則為 warning。
-- **資料庫**：PostgreSQL 16，`loinc.concepts`（LOINC 碼）與 `loinc.reference_ranges`（年齡/性別分層參考值）。
+- **資料來源**：LOINC 2.80（`Loinc_2.80.zip`，約 10.5 萬個 concept），於管理後台 **醫療術語 → LOINC** 上傳並匯入（匯入階段 `loinc_import`）。另有兩個專案自行整理的選用來源：`loinc_taiwan_mapping`（台灣常用檢驗中文名稱，`data/loinc/taiwan_mapping.csv`，約 30 筆）與 `loinc_reference_ranges`（年齡 / 性別分層參考值，`data/loinc/lab_reference_ranges.csv`，約 40 筆）。
+- **FHIR validator 用的附加內容**：匯入時另保留 LOINC zip AccessoryFiles 中的 answer（LA）、part（LP）、answer list（LL）與 group（LG）代碼（`loinc.other_codes`）及版本（`loinc.editions`），供 FHIR validator 檢查這些代碼與 display；本地版本達到 tx.fhir.org 所用版本（目前 2.82）時，未知的 LOINC 碼才會報 error，否則為 warning（2.80 < 2.82，因此目前是 warning）。
+- **LOINC 結構表**（migration `20261020_loinc_structure.sql`）：`loinc.part_links`（各軸 part：COMPONENT / PROPERTY / TIME / SYSTEM / SCALE / METHOD）、`loinc.answer_list_items` / `loinc.answer_list_links`（answer list）、`loinc.panel_items`（panel 成員）、`loinc.map_to`（MapTo 取代碼），與 `loinc.concepts` 在同一個 promote transaction 寫入，供管理後台的術語瀏覽使用。
+- **資料庫**：PostgreSQL 16，`loinc.concepts`（LOINC 碼）、`loinc.reference_ranges`（參考值）、上述附加表，以及向量表 `loinc.concept_embeddings`（由 `loinc_embed` 回填）。
+- **術語瀏覽**：模組頁的「資料預覽」分頁提供六軸 facet 篩選、單一 term 詳情（parts、answer list、panel、MapTo）與 LA/LP/LL/LG 代碼查詢，後端為 `/admin/api/terminology/loinc/*`（`facets`、`facet-values`、`term`、`code`）。
 - **結構化輸出**：回傳資料可直接用於產生 FHIR Observation 資源。
 
 ## 應用場景

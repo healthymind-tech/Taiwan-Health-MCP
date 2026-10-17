@@ -97,7 +97,7 @@ mkdocs build --strict -f mkdocs.yml   # both languages
 
 `.github/workflows/deploy-docs.yml`:
 
-1. **Trigger**: a push to `main` whose changes touch `docs/**`, `mkdocs.yml`, or the workflow itself.
+1. **Trigger**: a push to `main` whose changes touch `docs/**`, `mkdocs.yml`, `requirements-docs.txt`, or the workflow itself.
    (Changing only `README.md` or source code does **not** rebuild the site.)
 2. **Build**: Python 3.11, install `requirements-docs.txt`, run `mkdocs build --strict`.
 3. **Publish**: `peaceiris/actions-gh-pages@v3` pushes `./site` to the **`gh-pages` branch** (needs `contents: write`, using the built-in `GITHUB_TOKEN`).
@@ -125,4 +125,5 @@ No custom domain is configured (no `CNAME`). `.nojekyll` is written to the publi
 - Never edit `site/` (build output).
 - Command examples must run as-is from the directory the text specifies; use port `:8080` (the nginx front door), never `:8000`.
 - For planning documents that are finished or superseded, add a status note at the top (every historical document on this site does this) rather than deleting them — they are decision records.
-- The public-facing marketing and legal pages (`/`, `/status`, `/privacy`, `/dpa`) are **no longer part of this repo** — they moved to a standalone marketing site. The `web` service here only serves the `/admin` console.
+- The public-facing marketing and legal pages (`/`, `/status`, `/privacy`, `/dpa`) are **no longer part of this repo** — they moved to a standalone marketing site. The `web-v2` service here (which replaced the old Next.js `web`, now only in compose profile `legacy-web`) only serves the `/admin` console.
+- **This is a public repository and the site is published publicly.** Never put clinical records, evaluation gold bundles or fixture contents (e.g. the data in the untracked `mcp_proposal/` directory), passwords or private host paths into the docs; describe the feature and the public tests instead.

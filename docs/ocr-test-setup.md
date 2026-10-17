@@ -2,7 +2,7 @@
 
 ## 概述
 
-OCR 測試工具是一個集成在 Admin 控制台的浮動窗口，用於測試 MinerU OCR 功能。用戶可以：
+OCR 測試工具位於 Admin 控制台（web-v2）**整合 → 外部服務 → OCR** 分頁（`/admin/integrations?tab=ocr`），用於測試 MinerU OCR 功能。用戶可以：
 
 1. **上傳文件** - 拖放或點擊上傳 PDF 和圖片
 2. **使用預加載樣本** - 直接點擊使用已準備的樣本文件
@@ -30,6 +30,12 @@ OCR 測試工具是一個集成在 Admin 控制台的浮動窗口，用於測試
 - ✅ 完整的錯誤處理和用戶反饋
 
 ## 設置預加載樣本
+
+!!! note "樣本位置"
+    樣本放在 repo 根目錄的 `public/samples/`，已內附兩個合成範例（`sample-drug-insert.pdf`、`sample-drug-label.png`，
+    非真實藥品，共約 250 KB）。`node-server/Dockerfile` 會把它們複製進 `app` 映像的 `/app/public/samples/`；
+    本機開發時後端直接讀 repo 根目錄的 `public/samples/`。要改用其他目錄，設定環境變數 `OCR_SAMPLES_DIR`
+    （例如在 Docker 中掛載到 `app` 容器後指向該路徑）。新增或替換樣本後需重建 `app` 映像。
 
 ### 步驟 1：創建樣本目錄
 
@@ -77,19 +83,18 @@ docker compose up -d
 
 ### 基本測試
 
-1. 進入 Admin 控制台 → Settings → OCR Server
-2. 點擊 "Test OCR" 按鈕
-3. 在浮動窗口中：
-   - **使用樣本**：在 "Sample Files" 區域點擊預加載的樣本
-   - **或上傳文件**：拖放或點擊上傳區域選擇文件
-4. 點擊 "Convert" 按鈕執行 OCR
-5. 查看結果：
-   - **OCR Markdown 標籤**：原始 OCR 文本提取
-   - **Analysis JSON 標籤**：LLM 結構化分析結果
+1. 進入 Admin 控制台 → 外部服務（`/admin/integrations`）→ OCR 分頁
+2. 在 OCR 測試區塊中：
+   - **使用樣本**：切到「內建範例」點選預加載的樣本
+   - **或上傳文件**：切到「上傳檔案」拖放或點擊選擇文件
+3. 點擊「執行 OCR」
+4. 查看結果：
+   - **預覽 / 原始 Markdown**：OCR 文本提取
+   - **分析 LLM**：結構化分析結果（未設定分析 LLM 路由時只執行 OCR）
 
 ### 模型選擇（可選）
 
-1. 在 OCR Server 設定中找到 "Model name" 欄位
+1. 在外部服務 → OCR 分頁的設定表單中找到模型名稱欄位
 2. 點擊 "Load Models" 按鈕獲取 MinerU 已加載的模型列表
 3. 從列表中選擇或手動輸入模型名稱
 4. 點擊 "Save changes"
@@ -169,7 +174,7 @@ file public/samples/*
 - 文件格式不支持或損壞
 
 **解決方案：**
-1. 進入 Settings → OCR Server
+1. 進入外部服務（`/admin/integrations`）→ OCR 分頁
 2. 點擊 "Test connection" 確認連接
 3. 檢查 Base URL 和其他設定
 4. 嘗試不同的文件
@@ -188,7 +193,7 @@ file public/samples/*
 ## 性能注意事項
 
 - **文件大小限制**：默認最大 100 MB（可在配置中調整）
-- **超時設定**：OCR 測試超時 600 秒（可在 Settings 中調整）
+- **超時設定**：OCR 測試超時 600 秒（可在外部服務 → OCR 設定中調整）
 - **並發限制**：單次一個測試（防止過載）
 
 ## 安全考慮
@@ -224,9 +229,9 @@ interface SampleFile {
 ## 相關文件
 
 - 後端樣本管理：`node-server/src/admin/ocrTestSamples.ts`
-- 前端 UI 組件：`web/admin-app/routes/settings/OcrTestModal.tsx`
-- 樣本文件目錄：`public/samples/`
-- API 端點：`node-server/src/admin/adminApp.ts` (第 1814-1836 行)
+- 前端 UI 組件：`web-v2/src/pages/integrations/OcrTestPanel.tsx`
+- 樣本文件目錄：程式讀取 `node-server/public/samples/`（`ocrTestSamples.ts` 以 `dist/admin/../../public/samples` 解析；容器內為 `/app/public/samples`）
+- API 端點：`node-server/src/admin/adminApp.ts`（`/admin/api/ocr/*` 區段）
 
 ## 更新日誌
 

@@ -17,7 +17,7 @@ repository.**
 npm install
 npm run build        # tsc -> dist/
 npm run dev          # tsx watch src/server.ts
-npm run typecheck    # tsc --noEmit
+npm run typecheck    # tsc -p tsconfig.dev.json --noEmit (also checks the test-only helpers the build excludes)
 npm test             # node --test over src/**/*.test.ts
 ```
 
@@ -27,6 +27,11 @@ Run the server locally in HTTP mode:
 DATABASE_URL=postgresql://... node dist/server.js
 ```
 
+Docker images: `app` builds from `node-server/Dockerfile`, `admin-worker` from the root
+`Dockerfile.worker` — a change to job / loader code must be rebuilt into **both**.
+`node-server/Dockerfile` takes `--build-arg BUILD_SHA=$(git rev-parse --short HEAD)`, which
+`health_check` reports as `build` (`dev` when not given; `compose.yaml` does not pass it).
+
 In Docker, `app` is only reachable through the nginx front door (`:8080` by default) —
 it does not publish port 8000 to the host.
 
@@ -35,10 +40,13 @@ it does not publish port 8000 to the host.
 | Path | Contents |
 |------|----------|
 | `src/server.ts` | HTTP surface + process initialization (pool, Redis, MinIO, services, metrics) |
-| `src/mcp.ts` | MCP tool registration — all 60 tools, grouped; module-backed groups are added/removed dynamically by `moduleStatus.ts` |
+| `src/mcp.ts` | MCP tool registration — all 63 tools, grouped; module-backed groups are added/removed dynamically by `moduleStatus.ts` |
+| `src/toolVersions.ts` | `SERVER_VERSION`, `BUILD` (from `BUILD_SHA`) and the per-tool `TOOLS_VERSION` map reported by `health_check` — bump a tool's entry whenever its output for the same input changes |
 | `src/*Service.ts` | Domain services (ICD, drug, lab, SNOMED, FHIR Condition/Medication/IG, FHIR servers, embeddings) |
-| `src/fhir*.ts` | In-process FHIR R4 machinery: snapshot generation, terminology, validation, reference resolution, authoring |
-| `src/admin/` | Admin console backend: routing (`adminApp.ts`), jobs (`adminJobs.ts`), worker (`adminWorker.ts`), settings, sources, schedules, IG import, FHIR servers, WebAuthn |
+| `src/fhir*.ts` | In-process FHIR R4 machinery: snapshot generation, terminology (incl. CVX, ISO 3166, UCUM), validation (parity target: HL7 `validator_cli` 7.0.1 — see `scripts/validator-audit/`), FHIRPath, reference resolution, required elements, authoring |
+| `src/grounding/`, `src/groundingTools.ts` | Deterministic (no-LLM) record-faithfulness engines behind `fhir_check_grounding`, `fhir_check_completeness` and the optional `source_text` grounding of the validate tools. `source_text` is clinical data — it is never logged (only its SHA-256) |
+| `src/providers/` | LLM / embedding provider adapters (24, incl. ChatGPT sign-in) and the registry (`registry.ts`) used by the model routes |
+| `src/admin/` | Admin console backend: routing (`adminApp.ts`), jobs (`adminJobs.ts`), worker (`adminWorker.ts`), settings + export/import (`adminSettings.ts`), model routing (`llmRouting.ts`, `adminLlmApi.ts`, `chatgptOAuth.ts`, `embeddingIdentity.ts`), sources, schedules, IG import / dependencies / removal, MCP tool catalog + playground (`adminMcp.ts`), terminology explorer API (`termViz/`), FHIR servers, backups, WebAuthn |
 | `src/loaders/` | Dataset loaders: `icd.ts`, `loinc.ts`, `snomed.ts`, `rxnorm.ts`, `ig.ts`, `healthSupplements.ts`, `foodNutrition.ts`, `embeddings.ts`, and the drug pipeline (`drugIndex.ts`, `drugEnrichment.ts`, `drugAnalysis.ts`, `tfdaCrawler.ts`, `drugRecordBuilder.ts`) |
 | `src/{db,cache,config,logger,metrics,moduleStatus,minioService}.ts` | Cross-cutting infrastructure |
 
@@ -58,5 +66,7 @@ it does not publish port 8000 to the host.
 
 See [`docs/deployment/configuration.md`](../docs/deployment/configuration.md). In short:
 bootstrap vars in `.env`; infrastructure settings seeded once into `admin.app_settings`
-and then managed in Admin → Settings; model endpoints (embedding / OCR / Analysis LM)
-**only** in `admin.llm_profiles`, never from env.
+and then managed in the admin console (外部服務 page); model endpoints (embedding /
+Analysis LM) **only** as provider accounts + routes (`admin.llm_providers`,
+`admin.llm_routes`, `admin.llm_route_members`, `admin.llm_role_routes`) and the OCR server
+in `admin.app_settings` — never from env.

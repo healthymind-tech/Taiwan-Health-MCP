@@ -2,9 +2,9 @@
 
 本專案的程式碼與註解一律使用**英文**；面向使用者的文件為正體中文與英文雙語（見[文件網站維護](../WEBSITE.md)）。
 
-## TypeScript（`node-server/`、`web/`）
+## TypeScript（`node-server/`、`web-v2/`）
 
-- **格式**：TypeScript 5.7，ESM（`"type": "module"`），相對 import 需帶 `.js` 副檔名（對應編譯輸出）。
+- **格式**：ESM（`"type": "module"`）。`node-server/`（TypeScript 5.7+，`tsc` 編譯）的相對 import 需帶 `.js` 副檔名（對應編譯輸出）；`web-v2/`（TypeScript 5.9，Vite 打包）以 `@/` 路徑別名 import，不帶副檔名。
 - **命名**：檔案 camelCase（`drugService.ts`、`adminJobs.ts`）；型別與類別 PascalCase；函式與變數 camelCase。
 - **型別**：公開函式要標注參數與回傳型別。避免 `any`；不得已時加註原因。
 - **驗證**：MCP 工具的輸入 schema 以 `zod` 定義。

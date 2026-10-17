@@ -6,7 +6,7 @@ SNOMED CT 服務模組整合 SNOMED CT International 版術語，提供概念搜
 ## 主要功能
 
 ### 1. 概念搜尋（`search_snomed_concept`）
-以中英文關鍵字搜尋 SNOMED CT 概念，回傳 concept ID、FSN（完整指定名稱）與 preferred term。支援語意 / 混合搜尋（需可用的嵌入端點，於 Admin → Settings 設定），無嵌入時退回關鍵字。
+以中英文關鍵字搜尋 SNOMED CT 概念，回傳 concept ID、FSN（完整指定名稱）與 preferred term。支援語意 / 混合搜尋（需可用的嵌入端點，於管理後台 **整合 → 模型端點** 設定，並先由 `snomed_embed` 回填向量），無嵌入時退回關鍵字。
 
 ### 2. 概念詳情（`query_snomed_concept`）
 以 concept ID 取得單一概念的完整資訊，包含：
@@ -23,8 +23,9 @@ SNOMED CT 服務模組整合 SNOMED CT International 版術語，提供概念搜
 - **`mode="snomed"`**：輸入 SNOMED concept ID（例如 `44054006`），回傳對應的 ICD-10 對照。
 
 ## 技術架構
-- **資料來源**：SNOMED CT International RF2（`SnomedCT_InternationalRF2_PRODUCTION_*.zip`），經由管理後台（Admin → Modules，匯入階段 `snomed_import`）載入（資料量大，約 5–15 分鐘）。 匯入時另保留 inactive concept 與 inactive／inactive concept 的英文描述（`snomed.inactive_concepts`、`snomed.inactive_descriptions`）、各元件首次發佈日（取自 RF2 Full 檔）及版本（`snomed.editions`），供 FHIR validator 以 tx.fhir.org 所用版本判定：inactive concept 為 warning、未知碼與 inactive 描述當 display 為 error。這些表不影響 SNOMED 查詢工具（仍只看 active concept）。
+- **資料來源**：SNOMED CT International RF2（`SnomedCT_InternationalRF2_PRODUCTION_*.zip`），於管理後台 **醫療術語 → SNOMED CT** 上傳並匯入（來源角色 `snomed_ct`，匯入階段 `snomed_import`）（資料量大，約 5–15 分鐘）。 匯入時另保留 inactive concept 與 inactive／inactive concept 的英文描述（`snomed.inactive_concepts`、`snomed.inactive_descriptions`）、各元件首次發佈日（取自 RF2 Full 檔）及版本（`snomed.editions`），供 FHIR validator 以 tx.fhir.org 所用版本判定：inactive concept 為 warning、未知碼與 inactive 描述當 display 為 error。這些表不影響 SNOMED 查詢工具（仍只看 active concept）。歷史關聯（SAME AS / REPLACED BY …，`snomed.historical_associations`）則讓 inactive concept 能指向現行概念。
 - **資料庫**：`snomed` schema，含 `concepts`、`descriptions`、`relationships`、`icd10_map`、`historical_associations` 與 `concept_embeddings`。
+- **術語瀏覽**：模組頁的「資料預覽」分頁提供概念關聯圖（is-a 上下位、屬性關聯、ICD-10 對應；inactive concept 另顯示其歷史關聯），後端為 `/admin/api/terminology/snomed/*`（`concept`、`children`、`search`）。
 - **可用性閘門**：`snomed.concepts` 需達門檻（10 萬筆）才會註冊對應工具，否則自動降級。
 
 ## 關鍵限制

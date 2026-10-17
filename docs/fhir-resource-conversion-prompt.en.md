@@ -4,7 +4,7 @@ This prompt demonstrates how to have a language model use this project's `fhir_*
 
 **The key point**: the prompt **does not specify** `resourceType` up front (it is not necessarily `Patient`). Which resource type, which profile, and even **how many** resources a single source record should become are all decided by the LLM **observing the shape of the source fields itself** and verifying with the MCP tools.
 
-> **Prerequisites**: this prompt assumes the LLM is connected to this project's `fhir_*` tools (the FHIR-IG toolset). You must have deployed it first: rebuild the `fhir.*` schema, import the TW Core IG (the validator is built into the backend, no extra installation required), and restart app + admin-worker.
+> **Prerequisites**: this prompt assumes the LLM is connected to this project's `fhir_*` tools (the FHIR-IG toolset). Import TW Core (`tw.gov.mohw.twcore`) in the admin console's **IG packages** page and set it as the default IG first (declared dependency packages are downloaded by the import; the validator is built into the backend, no extra installation required).
 
 ---
 
@@ -46,7 +46,7 @@ Your task: convert the flat JSON below into a "conformant and complete" TW Core 
 # Execute in order
 
 **Step 0 — Confirm the IG**
-- Call `fhir_list_igs`. Confirm the default IG is TW Core (`tw.gov.mohw.twcore`). Use this default IG for every subsequent tool call (no need to pass package_id each time).
+- Call `fhir_list_igs`. Confirm the default IG is TW Core (`tw.gov.mohw.twcore`). Use this default IG for every subsequent tool call (no need to pass package_id each time; the response's `provenance.resolved_by` says which package was actually used).
 
 **Step 1 — Infer which resources to produce (types + count) and choose profiles**
 - First **analyse the source fields yourself** to judge what this record describes and which resources are needed. Some field-shape hints (indicative only; the tools are the authority):
@@ -65,6 +65,7 @@ Your task: convert the flat JSON below into a "conformant and complete" TW Core 
 **Step 2 — Get the fill-in form**
 - For that resource, call `fhir_get_resource_skeleton(profile=<the profile you chose>)`.
 - Read the returned `fields` carefully: which are required, which are arrays, whether there is slicing, each field's `binding` (including candidateCodes), and any field marked `autoPinned` (**do not touch those** — leave them to finalize).
+- Then call `fhir_get_profile_required_elements(profile=<the profile you chose>)` for the complete list of what the profile **effectively** requires (required slices, choice types, invariants; each row tagged auto / coding / source_fact / workflow_default) and make sure every item is covered.
 - Against the source data, list the value you intend to fill into each field. If a source field has no reasonable counterpart in the skeleton, or a required skeleton field has no source value, **say so truthfully** rather than forcing something in.
 
 **Step 3 — Fill in semantic values field by field (general rules; look codes up when needed)**
@@ -93,7 +94,7 @@ Your task: convert the flat JSON below into a "conformant and complete" TW Core 
 
 **Step 6 — Build a Bundle when there are several resources**
 - If you produced only one resource, skip this step.
-- If you produced several: using the same `contextId`, call `fhir_build_bundle(...)` to assemble all finalized resources into a `transaction` Bundle, then validate it with `fhir_validate_bundle`; if there are issues, go back to the relevant resource, fix it, and reassemble.
+- If you produced several: using the same `contextId`, call `fhir_build_bundle(...)` to assemble all finalized resources into a `transaction` Bundle, then validate it with `fhir_validate_bundle`; if there are issues, go back to the relevant resource, fix it, and reassemble. If it returns `checked_fully: false`, list `profiles_unchecked` / `valuesets_unchecked` in your delivery notes and do not claim full validation.
 
 **Step 7 — Deliver**
 - Output the final resource JSON with `valid: true`; if there are several, output the validated Bundle.

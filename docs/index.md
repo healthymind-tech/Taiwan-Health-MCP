@@ -4,7 +4,7 @@
 
 ## 目前能力
 
-- **ICD-10**：診斷與手術碼搜尋、鄰近碼、分類瀏覽、併發症推論、診斷 / 手術衝突檢查。
+- **ICD-10**（ICD-10-CM 2026-04-01 CMS 完整版含第 7 碼、ICD-10-PCS；FHIR 驗證另可選用 WHO ICD-10）：診斷與手術碼搜尋、鄰近碼、分類瀏覽、併發症推論、診斷 / 手術衝突檢查。
 - **LOINC**：檢驗項目搜尋、參考區間查詢、單筆與批次檢驗判讀。
 - **SNOMED CT**：概念搜尋、概念詳情、關聯（階層 / 屬性）查詢、SNOMED ↔ ICD-10 對應。
 - **藥品（台灣 FDA / TFDA）**：藥品搜尋（藥名 / 成分 / 許可證號 / ATC）、外觀辨識、藥品詳情、文件資產下載連結。
@@ -17,12 +17,12 @@
 
 ## 架構摘要
 
-- **執行環境**：後端全部為 Node.js / TypeScript（`node-server/`）；前端為 Next.js（`web/`）。
-- **對外入口**：nginx 單一前門（預設 `:8080`），將 `/mcp`、`/openapi.json`、`/tools/*`、`/admin/api/*` 導向 `app`，其餘（`/admin` SPA）導向 `web`。
+- **執行環境**：後端全部為 Node.js / TypeScript（`node-server/`）；管理後台前端為 `web-v2/`（Vite + React + Mantine 的靜態 SPA，由 `web-v2` 容器的 nginx 提供）。舊的 Next.js `web/` 只保留在 compose profile `legacy-web` 供回滾。
+- **對外入口**：nginx 單一前門（預設 `:8080`），將 `/mcp`、`/openapi.json`、`/tools/*`、`/admin/api/*`、`/admin/ws`、`/fhir-client/*`、`/fhir-oauth/*` 導向 `app`，其餘（`/admin` 頁面）導向 `web-v2`。
 - **基礎設施**：PostgreSQL 16（pgvector）、pgBouncer、Redis、MinIO、Prometheus，以及可選的嵌入服務（預設 Ollama）。
-- **動態工具註冊**：依各模組資料載入狀態自動啟用 / 停用對應工具。
+- **動態工具註冊**：63 個工具中，模組相依的工具依各模組資料載入狀態（資料表筆數門檻）自動啟用 / 停用；FHIR 伺服器、臨床計算器與 `health_check` 永遠註冊。實際註冊的工具以 `GET /openapi.json` 或管理後台「MCP 工具」頁為準。
 - **語意 / 混合搜尋**：以嵌入向量強化搜尋，無嵌入時退回關鍵字。
-- **管理後台與背景 worker**：可選的 Admin Console 與 `admin-worker` 處理資料匯入與排程。
+- **管理後台與背景 worker**：Admin Console（預設啟用，是唯一的資料匯入途徑）與 `admin-worker` 處理資料匯入、排程、模型端點（provider 帳號 + profile）與 MCP 工具目錄 / 線上測試。
 
 ## 快速入口
 

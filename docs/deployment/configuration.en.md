@@ -1,6 +1,6 @@
 # Configuration
 
-The system is configured through two layers: environment variables and database settings (`admin.app_settings` / `admin.llm_profiles`). Copy `.env.example` to `.env` and edit it:
+The system is configured through two layers: environment variables and database settings (`admin.app_settings`, plus the model-endpoint tables `admin.llm_providers` / `llm_routes` / `llm_route_members` / `llm_role_routes`). Copy `.env.example` to `.env` and edit it:
 
 ```bash
 cp .env.example .env
@@ -11,8 +11,8 @@ cp .env.example .env
 | Category | Stored in | Notes |
 |----------|-----------|-------|
 | **Bootstrap variables** | `.env` only | DB / Redis / MCP transport / `ADMIN_*` auth / `WEB_PORT`. These must be known before startup and never enter the database. |
-| **Seed-only settings** | `.env` → `admin.app_settings` | MinIO, the TFDA crawler, the FHIR package registry, worker tuning, and so on. **Read exactly once, on first boot, for keys that do not yet exist**, to seed the database; editing `.env` has no effect on an already-seeded database. TFDA and registry settings can then be managed in Admin → Settings (applied hot); **MinIO and worker tuning are read-only groups in the console**, so changing them later requires a direct `UPDATE admin.app_settings` and a service restart. |
-| **Model endpoints** | Database only (`admin.llm_profiles`) | Embedding, OCR (MinerU), and the analysis LLM. **Never read from environment variables**; configurable only in Admin → Settings, and movable between environments with Settings → Export / Import. |
+| **Seed-only settings** | `.env` → `admin.app_settings` | MinIO, the TFDA crawler, the FHIR package registry, worker tuning, and so on. **Read exactly once, on first boot, for keys that do not yet exist**, to seed the database; editing `.env` has no effect on an already-seeded database. TFDA and registry settings can then be managed under External services (`/admin/integrations`) in the console (applied hot); **MinIO and worker tuning are read-only groups in the console**, so changing them later requires a direct `UPDATE admin.app_settings` and a service restart. |
+| **Model endpoints** | Database only | Embedding and the analysis LLM live in the provider-account / profile tables (`admin.llm_providers` etc.) and are configured under Model endpoints (`/admin/models`); OCR (MinerU) lives in the `ocr` group of `admin.app_settings` and is configured under External services → OCR. **Never read from environment variables**; movable between environments with the settings export / import (v3) under Backups & settings (`/admin/system`). |
 
 ---
 
@@ -69,6 +69,7 @@ cp .env.example .env
 | `ADMIN_INITIAL_PASSWORD` | empty | A plaintext initial password, used **only on first boot while the database has no credential row**: it is hashed into `admin.admin_credentials` once and ignored forever afterwards. Takes precedence over `ADMIN_PASSWORD_HASH` when both are set. The plaintext is never persisted. |
 | `ADMIN_SESSION_SECRET` | empty | Session cookie signing key |
 | `ADMIN_SESSION_TTL_MINUTES` | `240` | Session lifetime |
+| `ADMIN_SESSION_COOKIE` | `tw_health_admin_session` | Session cookie name (letters, digits, `_`, `-`, `.` only). Isolates several stacks on one host (cookies are scoped per host, not per port); staging uses `tw_health_admin_session_staging`. |
 | `ADMIN_COOKIE_SECURE` | empty (automatic) | `true` / `false`. When empty, the cookie's `Secure` attribute is added if `PUBLIC_BASE_URL` uses HTTPS. Set it explicitly to `true` when TLS terminates at an external proxy and no public URL is configured. |
 | `ADMIN_MAX_UPLOAD_MB` | `512` | Source file upload cap |
 | `FHIR_SERVER_SECRET_KEY` | empty (falls back to `ADMIN_SESSION_SECRET`) | pgcrypto symmetric key for external FHIR servers' OAuth tokens and client secrets. **Must be identical on `app` and `admin-worker`**, or the worker's decryption raises `Illegal argument to function` (empty key) or `Wrong key or corrupt data` (mismatched key). |
@@ -100,7 +101,7 @@ node -e "console.log('sha256$' + require('crypto').createHash('sha256').update('
 
 ---
 
-## Seed-only settings (managed in Admin → Settings after first boot)
+## Seed-only settings (managed under External services in the console after first boot)
 
 ### MinIO (drug assets)
 
@@ -120,8 +121,8 @@ node -e "console.log('sha256$' + require('crypto').createHash('sha256').update('
 | `DRUG_TFDA_BASE_URL` | `https://mcp.fda.gov.tw` | TFDA site base URL |
 | `DRUG_HTTP_TIMEOUT` | `30` | Per-request HTTP timeout (seconds) |
 | `DRUG_CRAWLER_CONCURRENCY` | `4` | Crawler concurrency |
-| `DRUG_AUTOCHAIN_BATCH_LIMIT` | `200` | The licenses each follow-on job processes when auto-chaining (index → enrichment → analysis). **Applies only to auto-chained jobs**; a manually queued job without a `limit` processes the entire pending queue. |
-| `DRUG_ANALYSIS_PROMPT_PATH` | `src/prompts/drug/analysis_prompt.txt` | Path to the analysis LLM's system prompt |
+| `DRUG_AUTOCHAIN_BATCH_LIMIT` (env var, not seeded) | `200` | The licenses each follow-on job processes when auto-chaining (index → enrichment → analysis). **Applies only to auto-chained jobs**; a manually queued job without a `limit` processes the entire pending queue. |
+| `DRUG_ANALYSIS_PROMPT_PATH` (env var, not seeded) | `<repo>/src/prompts/drug/analysis_prompt.txt` | Path to the analysis LLM's system prompt (lets a container say where the repo is mounted; not meant for swapping the prompt) |
 
 ### Background worker tuning
 
@@ -131,8 +132,9 @@ node -e "console.log('sha256$' + require('crypto').createHash('sha256').update('
 | `ADMIN_WORKER_POLL_SECONDS` | `3` | Queue poll interval |
 | `ADMIN_HEARTBEAT_INTERVAL_SECONDS` | `15` | Heartbeat interval |
 | `ADMIN_WORKER_STALE_AFTER_SECONDS` | `45` | No heartbeat for longer than this counts as lost |
-| `ADMIN_MAX_CONCURRENT_JOBS` | `4` | Maximum concurrent jobs (per-module resource slots apply on top). Read from the environment on every worker start — not stored in `admin.app_settings`. |
-| `ADMIN_SCHEDULE_SCAN_INTERVAL_SECONDS` | `60` | Schedule scan interval |
+| `ADMIN_RECLAIM_INTERVAL_SECONDS` | `60` | How often lost jobs are checked for reclaim |
+| `ADMIN_MAX_CONCURRENT_JOBS` (env var, not seeded) | `4` | Maximum concurrent jobs (per-module resource slots apply on top). Read from the environment on every worker start — not stored in `admin.app_settings`. |
+| `ADMIN_SCHEDULE_SCAN_INTERVAL_SECONDS` (env var, not seeded) | `60` | Schedule scan interval |
 | `NODE_OPTIONS` | `--max-old-space-size=8192` (set by compose on the worker) | IG imports load whole dependency packages — **do not lower this**. |
 
 ### Source file paths for local development
@@ -142,12 +144,20 @@ In production, source files are uploaded to MinIO through the admin console; the
 | Variable | Default |
 |----------|---------|
 | `FHIR_CODE_DIR` | `<repo>/fhir-code` |
-| `ICD_CM_ZIP` / `ICD_PCS_ZIP` / `ICD_XLSX` | The matching files under `fhir-code/icd/10/...` |
+| `ICD_CM_ZIP` / `ICD_PCS_ZIP` / `ICD_XLSX` | The matching files under `fhir-code/icd/10/...` (without `ICD_CM_ZIP` the CMS order-file zip is preferred; see [Test data files](../data-sources/test-data.md)) |
 | `LOINC_ZIP_PATH` | `fhir-code/loinc/2.80/Loinc_2.80.zip` |
 | `LOINC_MAPPING_CSV` / `LOINC_RANGES_CSV` | The mapping tables under `data/loinc/` |
 | `SNOMED_ZIP` | `fhir-code/snomed/SnomedCT_InternationalRF2_PRODUCTION_*.zip` |
 | `RXNORM_ZIP` | `fhir-code/rxnorm/RxNorm_full_*.zip` |
 | `IG_TGZ` | `fhir-code/twcoreig/**/package.tgz` |
+
+---
+
+## Image build arguments
+
+| Argument | Applies to | Description |
+|----------|------------|-------------|
+| `BUILD_SHA` | `node-server/Dockerfile` (`app`), `Dockerfile.worker` (`admin-worker`) | Git sha; `app` reports it in the `build` field of `health_check`, `admin-worker` records it in its startup log. `compose.yaml` passes it from the environment variable of the same name, `dev` when unset. Usage: `BUILD_SHA=$(git rev-parse --short HEAD) docker compose build app admin-worker`. |
 
 ---
 
@@ -167,6 +177,8 @@ Claude Desktop:
   }
 }
 ```
+
+With `PUBLIC_TOOLS_AUTH_MODE=bearer`, clients must send an `Authorization: Bearer <PUBLIC_TOOLS_BEARER_TOKEN>` header. The console's MCP tools page (`/admin/mcp`) offers copy-ready client configs.
 
 ---
 

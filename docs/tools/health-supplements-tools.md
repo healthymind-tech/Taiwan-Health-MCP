@@ -19,9 +19,9 @@
 ### 參數
 | 參數名 | 型別 | 必填 | 說明 | 範例 |
 | :--- | :--- | :--- | :--- | :--- |
-| `mode` | string | 是 | `keyword` / `permit_no` / `condition` | `"keyword"` |
+| `mode` | string | 否 | `keyword` / `permit_no` / `condition`，預設 `keyword` | `"keyword"` |
 | `keyword` | string | 是 | 查詢關鍵字；`condition` 時可填疾病名稱或 ICD-10 代碼 | `"魚油"`, `"A00022"`, `"E11"` |
-| `limit` | integer | 否 | 結果上限，預設 3 | `5` |
+| `limit` | integer | 否 | 結果上限，預設 3，上限 10（`permit_no` 模式忽略） | `5` |
 
 ### 回傳格式
 所有模式都回傳相同 top-level 結構，但只有 `condition` 模式會額外帶出頂層的 `icd_code` 與 `recommended_benefits`：
@@ -34,17 +34,18 @@
 }
 ```
 
+`keyword` 模式走 BM25 + 語意混合搜尋；embedding 不可用時退回純關鍵字並帶 `search_mode: "keyword_only"` 與 `search_note`。
+未提供 `keyword` 時回傳 `{"error": "Provide keyword"}`。此工具組只在 `health_supplements.items` 至少有 10 筆時註冊。
+
 ### 每筆結果欄位
 所有模式的每筆結果都使用相同欄位：
 
 - `permit_no`
 - `product_name`
 - `company`
+- `category`
 - `benefits`
-- `ingredients`
-- `specs`
-- `status`
-- `source_url`
+- `approval_date`
 
 `condition` 模式會額外填入頂層：
 - `icd_code`
