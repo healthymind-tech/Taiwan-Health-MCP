@@ -3,10 +3,10 @@
  *   cd node-server && node --import tsx src/grounding/scripts/parity.ts [caseIdSubstring]
  */
 import { checkGrounding } from "../checkGrounding.js";
-import { comparable, firstDiff, loadFixture, referenceTerminology, withoutExtendedEntries } from "../testkit.js";
+import { comparable, firstDiff, requirePrivateFixture, referenceTerminology, withoutExtendedEntries } from "../testkit.js";
 
 const filter = process.argv[2] ?? "";
-const G = loadFixture("grounding_golden.json");
+const G = requirePrivateFixture("grounding_golden.json");
 const terminology = referenceTerminology();
 let ok = 0;
 let bad = 0;

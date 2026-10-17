@@ -3,10 +3,10 @@
  *   cd node-server && node --import tsx src/grounding/scripts/bench.ts [reps]
  */
 import { checkGrounding } from "../checkGrounding.js";
-import { loadFixture, referenceTerminology } from "../testkit.js";
+import { requirePrivateFixture, referenceTerminology } from "../testkit.js";
 
 const reps = Number(process.argv[2] ?? 5);
-const G = loadFixture("grounding_golden.json");
+const G = requirePrivateFixture("grounding_golden.json");
 const terminology = referenceTerminology();
 const t0 = performance.now();
 await checkGrounding(G.cases[0].input, { terminology });

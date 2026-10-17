@@ -9,6 +9,10 @@
  * block (per-fact status, quote/reason, question, abstention) to match.
  * Derived targets: gold Bundles available in mcp_proposal/fixtures/grounding → targets derived
  * mechanically (derived_targets.py) → must be complete; golden generated from the reference.
+ *
+ * The mcp_proposal fixtures and both goldens (src/grounding/__fixtures__/private/, git-ignored) are private
+ * CARVE-TW data: those tests skip when absent. The hand-written records below and syntheticExamples.test.ts
+ * keep the engine covered without them.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -20,10 +24,11 @@ import { FACT_TABLE, defaultFacts, primaryContentGaps } from "./completeness/fac
 import { staticTerminologyNames } from "./terminologyNames.js";
 import { completenessInputSchema, type CompletenessInput } from "./completeness/types.js";
 import { PRIMARY_CONTENT, groundingClassOfPath } from "../fhirRequiredElements.js";
+import { privateFixturePath, privateSkip } from "./testkit.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FX = join(HERE, "../../../mcp_proposal/fixtures/completeness");
-const GOLDEN = join(HERE, "completeness/testdata/derivedTargets.golden.json");
+const GOLDEN = privateFixturePath("derivedTargets.golden.json");
 
 interface Fixture {
   name: string;
@@ -44,8 +49,9 @@ function loadFixtures(): Fixture[] {
 }
 
 const fixtures = loadFixtures();
+const fixturesSkip = fixtures.length === 0 && "mcp_proposal/fixtures/completeness absent (private CARVE-TW fixtures, not in git by design)";
 
-test("T4: 30 completeness fixtures — status and missing identical", { skip: fixtures.length === 0 && "fixtures absent" }, async () => {
+test("T4: 30 completeness fixtures — status and missing identical", { skip: fixturesSkip }, async () => {
   assert.equal(fixtures.length, 30);
   const failures: string[] = [];
   for (const fx of fixtures) {
@@ -59,14 +65,14 @@ test("T4: 30 completeness fixtures — status and missing identical", { skip: fi
   assert.deepEqual(failures, []);
 });
 
-test("T4+: full data block (facts, quotes, reasons, question, abstention) matches the reference", { skip: fixtures.length === 0 && "fixtures absent" }, async () => {
+test("T4+: full data block (facts, quotes, reasons, question, abstention) matches the reference", { skip: fixturesSkip }, async () => {
   for (const fx of fixtures) {
     const out = await checkCompleteness(completenessInputSchema.parse(fx.input));
     assert.deepEqual(JSON.parse(JSON.stringify(out.data)), fx.expected, fx.name);
   }
 });
 
-test("derived targets from gold Bundles → complete, identical to reference", async () => {
+test("derived targets from gold Bundles → complete, identical to reference", { skip: privateSkip("derivedTargets.golden.json") }, async () => {
   const g = JSON.parse(readFileSync(GOLDEN, "utf8")) as {
     terminology: Record<string, string[]>;
     cases: Array<{ case: string; targets: unknown; source_text: string; site_config: string | null; expected: unknown }>;
@@ -83,8 +89,8 @@ test("derived targets from gold Bundles → complete, identical to reference", a
   }
 });
 
-test("differential: 180 target/record variants identical to the reference", { skip: fixtures.length === 0 && "fixtures absent" }, () => {
-  const g = JSON.parse(readFileSync(join(HERE, "completeness/testdata/variants.golden.json"), "utf8")) as {
+test("differential: 180 target/record variants identical to the reference", { skip: fixturesSkip || privateSkip("variants.golden.json") }, () => {
+  const g = JSON.parse(readFileSync(privateFixturePath("variants.golden.json"), "utf8")) as {
     cases: Array<{
       fixture: string;
       variant: string;
@@ -221,7 +227,7 @@ test("fact table: grounding classes come from the required-elements classifier (
   assert.equal(FACT_TABLE.Immunization.find((r) => r.fact === "vaccine")?.groundingClass, "coding");
 });
 
-test("deterministic and fast (< 200 ms per call)", async () => {
+test("deterministic and fast (< 200 ms per call)", { skip: fixturesSkip }, async () => {
   for (const fx of fixtures) {
     const t0 = performance.now();
     const a = await checkCompleteness(completenessInputSchema.parse(fx.input));

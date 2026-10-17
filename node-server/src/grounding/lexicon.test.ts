@@ -1,11 +1,13 @@
 /**
  * Parity tests: lexicon.ts vs the Python reference tw_lexicon.py.
  * Golden outputs were generated once by scripts/gen_golden.py (python3 -I, reference unmodified) into
- * __fixtures__/lexicon_golden.json, so this test is pure (no Python, no DB).
+ * __fixtures__/private/lexicon_golden.json, so this test is pure (no Python, no DB).
+ *
+ * The golden contains CARVE-TW record lines and is private (git-ignored); the parity tests skip when it is absent.
+ * Public lexicon coverage on hand-written strings: syntheticExamples.test.ts.
  */
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
 import {
@@ -35,8 +37,10 @@ import {
   unitsCompatible,
 } from "./lexicon.js";
 import { isAlnum, isAlpha, isSpaceCp, pyFixed, pyRepr, pyRound } from "./py.js";
+import { loadPrivateFixture, privateSkip } from "./testkit.js";
 
-const G = JSON.parse(readFileSync(new URL("./__fixtures__/lexicon_golden.json", import.meta.url), "utf8"));
+const skip = privateSkip("lexicon_golden.json");
+const G = loadPrivateFixture<any>("lexicon_golden.json", {});
 
 const LOINC_AXIS = new Set(["acnc", "auto", "automated", "bld", "ccnc", "mcnc", "ncnc", "ord", "plas", "pnl", "pt", "ql", "qn", "scnc", "ser", "serpl", "vfr"]);
 const sorted = (xs: Iterable<string>): string[] => [...xs].sort();
@@ -57,12 +61,12 @@ const has030 = (s: string): boolean => {
 test("lexicon version and sha are exposed", () => {
   // the data module started as a port of the reference lexicon and has since gained PAS tables (0.2.0) and the
   // issues-v1 fixes (0.3.0)
-  assert.equal(G.version, "tw-lexicon 0.1.0");
+  if (!skip) assert.equal(G.version, "tw-lexicon 0.1.0");
   assert.equal(LEXICON_VERSION, "tw-lexicon 0.3.0");
   assert.match(LEXICON_SHA256, /^[0-9a-f]{64}$/);
 });
 
-test("per-string lexicon functions match the reference", () => {
+test("per-string lexicon functions match the reference", { skip }, () => {
   const fails: string[] = [];
   const cmp = (name: string, s: string, got: unknown, exp: unknown): void => {
     try {
@@ -98,24 +102,24 @@ test("per-string lexicon functions match the reference", () => {
   assert.ok(G.rows.length > 300);
 });
 
-test("segmentation and structure detection match the reference", () => {
+test("segmentation and structure detection match the reference", { skip }, () => {
   for (const sg of G.segments) {
     assert.deepStrictEqual(segment(sg.text), sg.lines);
     assert.equal(hasStructure(segment(sg.text)), sg.structured);
   }
 });
 
-test("FHIR dateTime parsing (with time-zone conversion to +08:00)", () => {
+test("FHIR dateTime parsing (with time-zone conversion to +08:00)", { skip }, () => {
   for (const [s, exp] of G.fhir_dt) assert.deepStrictEqual(parseFhirDatetime(s), exp, s);
 });
 
-test("units, national-ID checksum", () => {
+test("units, national-ID checksum", { skip }, () => {
   for (const [u, exp] of G.canon) assert.equal(canonUnit(u), exp, String(u));
   for (const [a, b, exp] of G.compat) assert.equal(unitsCompatible(a, b), exp, `${a} ~ ${b}`);
   for (const [v, exp] of G.ids) assert.equal(twIdChecksumOk(v), exp, v);
 });
 
-test("name similarity matches the reference on record-line x authoritative-name pairs", () => {
+test("name similarity matches the reference on record-line x authoritative-name pairs", { skip }, () => {
   const fails: string[] = [];
   let deviated = 0;
   for (const [q, n, exp] of G.similarity) {
@@ -160,7 +164,7 @@ function bmpHash(fn: (c: string) => string, unassigned: (c: string) => string): 
   return h.digest("hex");
 }
 
-test("character classes over the whole BMP match Python (norm / NFKC / isalpha / isalnum / isspace / lower)", () => {
+test("character classes over the whole BMP match Python (norm / NFKC / isalpha / isalnum / isspace / lower)", { skip }, () => {
   const same = (c: string): string => c;
   const zero = (): string => "0";
   const got = {
