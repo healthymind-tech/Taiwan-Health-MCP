@@ -1,9 +1,12 @@
 /**
- * ICD-10-CM / ICD-10-PCS 2025 loader (Node port of `loader/loaders/icd_loader.py`
+ * ICD-10-CM / ICD-10-PCS loader (Node port of `loader/loaders/icd_loader.py`
  * plus the `load_icd` wiring in `loader/main.py`).
  *
- *   - ICD-10-CM: parse the NLM tabular XML (`icd-10-cm-tabular-2025.xml`) inside
- *     `icd10cm-table-index-2025.zip` → `icd.diagnoses`.
+ *   - ICD-10-CM: the complete code set (headers + billable codes incl. 7th
+ *     characters) from either the CMS "Code Descriptions in Tabular Order" zip
+ *     (`icd10cm_order_YYYY.txt`, preferred) or the "Code Tables, Tabular and
+ *     Index" zip (`icd10cm_tabular_YYYY.xml`, 7th characters expanded)
+ *     → `icd.diagnoses`, edition recorded in `icd.editions`.
  *   - ICD-10-PCS: parse the flat CMS codes TXT inside `icd10pcs_tables_2025.zip`
  *     → `icd.procedures`.
  *   - Chinese names: parse the Taiwan MOHW bilingual XLSX (sheets "ICD-10-CM" and
@@ -83,12 +86,21 @@ function decodeEntities(s: string): string {
 
 interface XmlNode {
   tag: string;
+  attrs: Record<string, string>;
   children: XmlNode[];
   text: string;
 }
 
+function parseAttrs(body: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  const re = /([A-Za-z_:][\w:.-]*)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(body))) out[m[1]] = decodeEntities(m[2] ?? m[3] ?? "");
+  return out;
+}
+
 function parseXml(s: string): XmlNode {
-  const root: XmlNode = { tag: "#root", children: [], text: "" };
+  const root: XmlNode = { tag: "#root", attrs: {}, children: [], text: "" };
   const stack: XmlNode[] = [root];
   const n = s.length;
   let i = 0;
@@ -129,7 +141,7 @@ function parseXml(s: string): XmlNode {
       if (selfClose) body = body.slice(0, -1);
       const sp = body.search(/[\s/]/);
       const tag = sp < 0 ? body : body.slice(0, sp);
-      const node: XmlNode = { tag, children: [], text: "" };
+      const node: XmlNode = { tag, attrs: sp < 0 ? {} : parseAttrs(body.slice(sp)), children: [], text: "" };
       stack[stack.length - 1].children.push(node);
       if (!selfClose) stack.push(node);
       i = e < 0 ? n : e + 1;
@@ -323,48 +335,206 @@ function parseIcdChineseXlsx(xlsxPath: string): {
   return { cmZh, pcsZh };
 }
 
-// ── ICD-10-CM tabular XML walk ──────────────────────────────────────────────
+// ── ICD-10-CM release parsing ───────────────────────────────────────────────
+//
+// The complete ICD-10-CM code set (what tx.fhir.org serves as
+// http://hl7.org/fhir/sid/icd-10-cm, e.g. version '2026-04-01') is every code
+// of the CMS "Code Descriptions in Tabular Order" file: header (non-billable)
+// codes such as S93.41 / S93.411 plus billable codes, including codes that
+// carry a 7th character (S93.411A) and the placeholder X (S06.0X0A, T36.0X1A).
+// The tabular XML lists the same codes except the 7th-character ones, which
+// are only defined by `sevenChrDef` blocks on an ancestor; `expandTabular`
+// generates them the way the CMS order file spells them.
 
-function* walkDiag(node: XmlNode): Generator<[string, string]> {
-  const nameNode = find(node, "name");
-  const descNode = find(node, "desc");
-  if (nameNode && descNode) {
-    const code = (nameNode.text || "").trim();
-    const desc = (descNode.text || "").trim();
-    if (code && /^[A-Z]\d/.test(code)) yield [code, desc];
-  }
-  for (const child of findall(node, "diag")) yield* walkDiag(child);
+/** One ICD-10-CM concept parsed from a CMS release. */
+export interface Icd10cmCode {
+  /** Dotted code as used in FHIR (`S93.411A`). */
+  code: string;
+  /** Long description (tx.fhir.org display). */
+  nameEn: string;
+  /** CMS short description (tx.fhir.org synonym designation); "" when unknown. */
+  shortNameEn: string;
+  /** Non-billable header code (category / subcategory). */
+  isHeader: boolean;
 }
 
-function parseTabularXml(xmlText: string): [string, string][] {
+/** Below this row count a parsed ICD-10-CM table is never treated as complete. */
+export const ICD10CM_COMPLETE_MIN_ROWS = 90_000;
+
+/** Insert the ICD-10-CM dot after the 3-character category (`S93411A` → `S93.411A`). */
+export function dottedIcd10cm(raw: string): string {
+  const c = raw.trim().toUpperCase();
+  return c.length > 3 && !c.includes(".") ? `${c.slice(0, 3)}.${c.slice(3)}` : c;
+}
+
+/**
+ * Parse the CMS order file (`icd10cm_order_YYYY.txt`), fixed width:
+ * cols 1-5 order number, 7-13 code (no dot), 15 header flag (0 = header,
+ * 1 = valid for HIPAA transactions), 17-76 short description, 78- long
+ * description. Every row is kept (headers are valid concepts at tx.fhir.org).
+ */
+export function parseCmsOrderTxt(text: string): Icd10cmCode[] {
+  const out: Icd10cmCode[] = [];
+  for (const line of text.split(/\r?\n/)) {
+    if (line.length < 16) continue;
+    const raw = line.slice(6, 13).trim();
+    // Category = letter + 2 alphanumerics (QA0 since April 2026), then up to 4.
+    if (!/^[A-Z][0-9A-Z]{2,6}$/.test(raw)) continue;
+    const flag = line[14];
+    if (flag !== "0" && flag !== "1") continue;
+    const shortName = line.slice(16, 76).trim();
+    const longName = line.slice(77).trim() || shortName;
+    out.push({ code: dottedIcd10cm(raw), nameEn: longName, shortNameEn: shortName, isHeader: flag === "0" });
+  }
+  return out;
+}
+
+/**
+ * The tabular XML spells eponyms with diacritics ("Sézary disease") where the
+ * CMS order file — and therefore tx.fhir.org — uses ASCII ("Sezary disease").
+ * The folded form is kept as the alternative display; "" when identical.
+ */
+function asciiFold(s: string): string {
+  const folded = s.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  return folded === s ? "" : folded;
+}
+
+/**
+ * Walk the tabular XML (`icd10cm_tabular_YYYY.xml`), expanding 7th characters:
+ * a `sevenChrDef` applies to every leaf code below the diag that declares it
+ * (the nearest declaration wins); the leaf is padded with the placeholder X to
+ * six characters and each extension character appended, with the description
+ * "<leaf description>, <extension text>" (the CMS long-title convention).
+ * A leaf that receives 7th characters becomes a header itself. This is an
+ * approximation: tabular notes that restrict 7th characters for some codes
+ * (e.g. S06.1X7 / S06.1X8 take only "A") are prose, so a handful of generated
+ * codes do not exist in the order file — the result is never marked complete.
+ */
+export function expandTabular(xmlText: string): { codes: Icd10cmCode[]; sevenChrDefs: number; version: string } {
   const root = parseXml(xmlText);
-  const out: [string, string][] = [];
+  const codes: Icd10cmCode[] = [];
+  let sevenChrDefs = 0;
+  const readSeven = (node: XmlNode): Array<[string, string]> | null => {
+    const def = find(node, "sevenChrDef");
+    if (!def) return null;
+    sevenChrDefs += 1;
+    return findall(def, "extension")
+      .map((e): [string, string] => [(e.attrs.char || "").trim().toUpperCase(), (e.text || "").trim()])
+      .filter(([c]) => /^[0-9A-Z]$/.test(c));
+  };
+  const walk = (node: XmlNode, inherited: Array<[string, string]> | null): void => {
+    const seven = readSeven(node) ?? inherited;
+    const nameNode = find(node, "name");
+    const descNode = find(node, "desc");
+    const children = findall(node, "diag");
+    const code = nameNode ? (nameNode.text || "").trim().toUpperCase() : "";
+    if (code && /^[A-Z][0-9A-Z]{2}(\.[0-9A-Z]{1,4})?$/.test(code)) {
+      const desc = descNode ? (descNode.text || "").trim() : "";
+      const expand = children.length === 0 && seven !== null && seven.length > 0;
+      codes.push({ code, nameEn: desc, shortNameEn: asciiFold(desc), isHeader: children.length > 0 || expand });
+      if (expand) {
+        const base = code.replace(".", "").padEnd(6, "X");
+        for (const [ch, text] of seven!) {
+          const name = text ? `${desc}, ${text}` : desc;
+          codes.push({ code: dottedIcd10cm(base + ch), nameEn: name, shortNameEn: asciiFold(name), isHeader: false });
+        }
+      }
+    }
+    for (const child of children) walk(child, seven);
+  };
   for (const chapter of iter(root, "chapter")) {
     const sections = findall(chapter, "section");
     const secs = sections.length ? sections : [chapter];
-    for (const section of secs) {
-      for (const diag of findall(section, "diag")) {
-        for (const rec of walkDiag(diag)) out.push(rec);
-      }
-    }
+    for (const section of secs) for (const diag of findall(section, "diag")) walk(diag, null);
   }
-  return out;
+  const versionNode = find(root, "version");
+  return { codes, sevenChrDefs, version: versionNode ? (versionNode.text || "").trim() : "" };
 }
 
-// ── Flat-text parsers (shared by legacy load + staged import) ───────────────
+const MONTHS: Record<string, string> = { january: "01", april: "04", july: "07", october: "10" };
 
-/** Mirror `_parse_order_txt`: yield [code, name_en] from the fixed-width order TXT. */
-function parseOrderTxt(text: string): [string, string][] {
-  const out: [string, string][] = [];
-  for (const line of text.split(/\r?\n/)) {
-    if (line.length < 77) continue;
-    const code = line.slice(6, 13).trim();
-    const isHeader = line[14] ? line[14].trim() : "";
-    if (isHeader === "1") continue;
-    const longDesc = line.slice(77).trim();
-    if (code && /^[A-Z]\d/.test(code)) out.push([code, longDesc]);
+/**
+ * Edition label of a CMS ICD-10-CM release. The CMS archive names carry the
+ * effective date of interim updates ("april-1-2026-code-descriptions-…zip"),
+ * which is how tx.fhir.org labels the version ('2026-04-01'); otherwise the
+ * fiscal year of the inner file ("icd10cm_order_2026.txt" → "FY2026").
+ */
+export function icd10cmEdition(archiveName: string, innerNames: string[], xmlVersion = ""): string {
+  const base = path.basename(archiveName).toLowerCase();
+  const dated = /(january|april|july|october)[-_ ]?0?1[-_, ]+(\d{4})/.exec(base);
+  if (dated) return `${dated[2]}-${MONTHS[dated[1]]}-01`;
+  for (const n of [...innerNames, base]) {
+    const m = /icd-?10-?cm[-_a-z]*?[-_](\d{4})\b/i.exec(path.basename(n));
+    if (m) return `FY${m[1]}`;
   }
-  return out;
+  return /^\d{4}$/.test(xmlVersion) ? `FY${xmlVersion}` : "unknown";
+}
+
+/** A parsed ICD-10-CM release: stage rows plus edition metadata. */
+export interface Icd10cmRelease {
+  /** [code, name_en, name_zh, category, short_name_en, is_header] */
+  records: string[][];
+  edition: string;
+  sourceFormat: "cms-order" | "tabular-xml";
+  /** Exact CMS code set (order file: headers + billable codes incl. 7th characters), above the row threshold. */
+  complete: boolean;
+}
+
+/**
+ * Parse an uploaded ICD-10-CM archive. Accepts the CMS "Code Descriptions in
+ * Tabular Order" zip (order TXT — preferred, carries short titles) or the
+ * "Code Tables, Tabular and Index" zip (tabular XML, 7th characters expanded).
+ * Duplicate codes keep the first occurrence.
+ */
+export function parseIcd10cmRelease(zipPath: string, nameZhMap: Map<string, string>): Icd10cmRelease {
+  const allNames: string[] = [];
+  const isOrder = (n: string): boolean => {
+    const lo = path.basename(n).toLowerCase();
+    return lo.endsWith(".txt") && lo.includes("order") && !lo.includes("addenda");
+  };
+  const isTabular = (n: string): boolean => {
+    const lo = path.basename(n).toLowerCase();
+    return lo.endsWith(".xml") && lo.includes("tabular");
+  };
+  const entries = unzipSync(new Uint8Array(fs.readFileSync(zipPath)), {
+    filter: (f) => {
+      allNames.push(f.name);
+      return isOrder(f.name) || isTabular(f.name);
+    },
+  });
+  const orderFiles = allNames.filter(isOrder).sort();
+  const xmlFiles = allNames.filter(isTabular).sort();
+  let codes: Icd10cmCode[];
+  let sourceFormat: Icd10cmRelease["sourceFormat"];
+  let xmlVersion = "";
+  let expanded = true;
+  if (orderFiles.length) {
+    codes = parseCmsOrderTxt(Buffer.from(entries[orderFiles[0]]).toString("utf-8"));
+    sourceFormat = "cms-order";
+  } else if (xmlFiles.length) {
+    const t = expandTabular(Buffer.from(entries[xmlFiles[0]]).toString("utf-8"));
+    codes = t.codes;
+    xmlVersion = t.version;
+    expanded = t.sevenChrDefs > 0;
+    sourceFormat = "tabular-xml";
+  } else {
+    throw new Error("No usable ICD-10-CM order TXT or tabular XML found in ZIP");
+  }
+  const seen = new Set<string>();
+  const records: string[][] = [];
+  for (const c of codes) {
+    if (seen.has(c.code)) continue;
+    seen.add(c.code);
+    records.push([c.code, c.nameEn, nameZhMap.get(c.code) ?? "", c.code.slice(0, 3), c.shortNameEn, c.isHeader ? "true" : "false"]);
+  }
+  const headers = codes.some((c) => c.isHeader);
+  return {
+    records,
+    edition: icd10cmEdition(zipPath, [...orderFiles, ...xmlFiles], xmlVersion),
+    sourceFormat,
+    // Only the CMS order file is the exact code set tx.fhir.org serves.
+    complete: sourceFormat === "cms-order" && expanded && headers && records.length >= ICD10CM_COMPLETE_MIN_ROWS,
+  };
 }
 
 /** Mirror `_parse_pcs_codes_txt`: yield [code, name_en] from the flat CMS codes TXT. */
@@ -380,50 +550,11 @@ function parsePcsCodesTxt(text: string): [string, string][] {
   return out;
 }
 
-// ── Stage-record parsers (Node port of admin_jobs._parse_icd10*_stage_records) ──
+// ── Stage-record parsers ─────────────────────────────────────────────────────
 // These RETURN row tuples (rather than writing tables directly) so the admin
-// worker can stage → promote them. Tuple shapes match the Python stagers exactly:
-//   diagnoses:  [code, name_en, name_zh, category]
+// worker can stage → promote them:
+//   diagnoses:  parseIcd10cmRelease().records — [code, name_en, name_zh, category, short_name_en, is_header]
 //   procedures: [code, name_en, name_zh]
-
-/** Faithful port of `_parse_icd10cm_stage_records`. */
-export function parseIcd10cmStageRecords(
-  zipPath: string,
-  nameZhMap: Map<string, string>,
-): string[][] {
-  const allNames: string[] = [];
-  const entries = unzipSync(new Uint8Array(fs.readFileSync(zipPath)), {
-    filter: (f) => {
-      allNames.push(f.name);
-      const n = f.name.toLowerCase();
-      return (
-        (n.endsWith(".xml") && n.includes("tabular")) ||
-        (n.endsWith(".txt") && n.includes("order"))
-      );
-    },
-  });
-  const xmlFiles = allNames.filter(
-    (n) => n.toLowerCase().endsWith(".xml") && n.toLowerCase().includes("tabular"),
-  );
-  const txtFiles = allNames.filter(
-    (n) => n.toLowerCase().endsWith(".txt") && n.toLowerCase().includes("order"),
-  );
-  const records: string[][] = [];
-  if (xmlFiles.length) {
-    const xmlText = Buffer.from(entries[xmlFiles[0]]).toString("utf-8");
-    for (const [code, nameEn] of parseTabularXml(xmlText)) {
-      records.push([code, nameEn, nameZhMap.get(code) ?? "", code.slice(0, 3)]);
-    }
-  } else if (txtFiles.length) {
-    const text = Buffer.from(entries[txtFiles[0]]).toString("utf-8");
-    for (const [code, nameEn] of parseOrderTxt(text)) {
-      records.push([code, nameEn, nameZhMap.get(code) ?? "", code.slice(0, 3)]);
-    }
-  } else {
-    throw new Error("No usable ICD-10-CM XML/TXT found in ZIP");
-  }
-  return records;
-}
 
 /** Faithful port of `_parse_icd10pcs_stage_records`. */
 export function parseIcd10pcsStageRecords(
@@ -495,69 +626,122 @@ async function batchInsert(
 
 // ── ICD-10-CM ───────────────────────────────────────────────────────────────
 
+/** SQL that records the loaded ICD-10-CM edition (params: edition, format, complete, count). */
+export const ICD10CM_EDITION_UPSERT_SQL = `
+  INSERT INTO icd.editions (code_system, edition, source_format, complete, code_count, loaded_at)
+  VALUES ('icd-10-cm', $1, $2, $3::boolean, $4::integer, NOW())
+  ON CONFLICT (code_system) DO UPDATE SET
+    edition = EXCLUDED.edition, source_format = EXCLUDED.source_format,
+    complete = EXCLUDED.complete, code_count = EXCLUDED.code_count, loaded_at = NOW()`;
+
+// ── WHO ICD-10 (http://hl7.org/fhir/sid/icd-10) ─────────────────────────────
+
+export interface Icd10WhoRelease {
+  /** (code, display, kind, alt_displays[]) */
+  records: [string, string, string | null, string[]][];
+  version: string | null;
+}
+
+/**
+ * Parse a WHO ICD-10 code system delivered as FHIR JSON: a CodeSystem
+ * (`concept`, nested) or a ValueSet `$expand` result (`expansion.contains`,
+ * nested) — e.g. the tx.fhir.org edition fetched by
+ * scripts/validator-audit/harness/fetch_tx_terms.py. Chapters ('I') and blocks
+ * ('A00-A09') are concepts too (tx.fhir.org validates them). Designation values
+ * other than the display (the long description) are kept as alt displays.
+ */
+export function parseIcd10WhoJson(text: string): Icd10WhoRelease {
+  const doc = JSON.parse(text.charCodeAt(0) === 0xfeff ? text.slice(1) : text) as Record<string, any>;
+  const out = new Map<string, [string, string, string | null, string[]]>();
+  let version: string | null = null;
+  const visit = (c: Record<string, any>): void => {
+    const code = typeof c.code === "string" ? c.code.trim() : "";
+    const display = typeof c.display === "string" ? c.display : "";
+    if (code && display && !out.has(code)) {
+      const alts: string[] = [];
+      for (const d of Array.isArray(c.designation) ? c.designation : []) {
+        if (typeof d?.value === "string" && d.value && d.value !== display && !alts.includes(d.value)) alts.push(d.value);
+      }
+      let kind: string | null = null;
+      for (const p of Array.isArray(c.property) ? c.property : []) {
+        if (p?.code === "kind" && typeof p.valueCode === "string") kind = p.valueCode;
+      }
+      out.set(code, [code, display, kind, alts]);
+    }
+    for (const child of [...(Array.isArray(c.concept) ? c.concept : []), ...(Array.isArray(c.contains) ? c.contains : [])]) visit(child);
+  };
+  if (doc.resourceType === "CodeSystem") {
+    if (doc.url && doc.url !== "http://hl7.org/fhir/sid/icd-10") {
+      throw new Error(`Not a WHO ICD-10 CodeSystem: url = ${doc.url}`);
+    }
+    version = typeof doc.version === "string" ? doc.version : null;
+    for (const c of doc.concept || []) visit(c);
+  } else if (doc.resourceType === "ValueSet" && doc.expansion) {
+    for (const p of doc.expansion.parameter || []) {
+      if (p?.name === "used-codesystem" && typeof p.valueUri === "string" && p.valueUri.startsWith("http://hl7.org/fhir/sid/icd-10|")) {
+        version = p.valueUri.split("|")[1];
+      }
+    }
+    for (const c of doc.expansion.contains || []) {
+      if (c.system && c.system !== "http://hl7.org/fhir/sid/icd-10") continue;
+      visit(c);
+    }
+  } else {
+    throw new Error("WHO ICD-10 source must be a FHIR CodeSystem or an expanded ValueSet (JSON)");
+  }
+  if (out.size === 0) throw new Error("WHO ICD-10 source contains no concepts");
+  return { records: [...out.values()], version };
+}
+
+export function parseIcd10WhoFile(filePath: string): Icd10WhoRelease {
+  return parseIcd10WhoJson(fs.readFileSync(filePath, "utf-8"));
+}
+
+/** SQL recording the loaded WHO ICD-10 edition (params: edition, count). */
+export const ICD10_WHO_EDITION_UPSERT_SQL = `
+  INSERT INTO icd.editions (code_system, edition, source_format, complete, code_count, loaded_at)
+  VALUES ('icd-10', $1, 'fhir-json', TRUE, $2::integer, NOW())
+  ON CONFLICT (code_system) DO UPDATE SET
+    edition = EXCLUDED.edition, source_format = EXCLUDED.source_format,
+    complete = EXCLUDED.complete, code_count = EXCLUDED.code_count, loaded_at = NOW()`;
+
 export async function loadIcd10cm(
   pool: pg.Pool,
   zipPath: string,
   zh: Map<string, string>,
 ): Promise<void> {
   logInfo(`Parsing ${zipPath} ...`);
-  const entries = unzipSync(new Uint8Array(fs.readFileSync(zipPath)), {
-    filter: (f) => {
-      const n = f.name.toLowerCase();
-      return (
-        (n.endsWith(".xml") && n.includes("tabular")) ||
-        (n.endsWith(".txt") && n.includes("order"))
-      );
-    },
-  });
-  const names = Object.keys(entries);
-  const xmlFiles = names.filter(
-    (n) => n.toLowerCase().endsWith(".xml") && n.toLowerCase().includes("tabular"),
-  );
-  const txtFiles = names.filter(
-    (n) => n.toLowerCase().endsWith(".txt") && n.toLowerCase().includes("order"),
-  );
-
-  const records: string[][] = [];
-  if (xmlFiles.length) {
-    logInfo(`  Using XML: ${xmlFiles[0]}`);
-    const xmlText = Buffer.from(entries[xmlFiles[0]]).toString("utf-8");
-    for (const [code, nameEn] of parseTabularXml(xmlText)) {
-      records.push([code, nameEn, zh.get(code) ?? "", code.slice(0, 3)]);
-    }
-  } else if (txtFiles.length) {
-    logInfo(`  Using TXT: ${txtFiles[0]}`);
-    const text = Buffer.from(entries[txtFiles[0]]).toString("utf-8");
-    for (const line of text.split(/\r?\n/)) {
-      if (line.length < 77) continue;
-      const code = line.slice(6, 13).trim();
-      const isHeader = line[14] ? line[14].trim() : "";
-      if (isHeader === "1") continue;
-      const longDesc = line.slice(77).trim();
-      if (code && /^[A-Z]\d/.test(code)) {
-        records.push([code, longDesc, zh.get(code) ?? "", code.slice(0, 3)]);
-      }
-    }
-  } else {
-    logError(`  ERROR: No usable file found in ${zipPath}. Contents: ${names}`);
-    return;
-  }
-
+  // Sync correctness: parse everything first, then write in one transaction.
+  const release = parseIcd10cmRelease(zipPath, zh);
+  const records = release.records;
   const matched = records.filter((r) => r[2]).length;
   logInfo(
-    `  Parsed ${records.length} ICD-10-CM diagnoses (${matched} with Chinese names). Writing to DB ...`,
+    `  Parsed ${records.length} ICD-10-CM codes (${release.sourceFormat}, edition ${release.edition}, ` +
+      `complete=${release.complete}, ${matched} with Chinese names). Writing to DB ...`,
   );
 
   const client = await pool.connect();
   try {
+    await client.query("BEGIN");
     await client.query("TRUNCATE icd.diagnoses");
     await batchInsert(
       client,
-      "INSERT INTO icd.diagnoses (code, name_en, name_zh, category)",
-      "ON CONFLICT (code) DO UPDATE SET name_en=EXCLUDED.name_en, name_zh=EXCLUDED.name_zh, category=EXCLUDED.category",
-      4,
+      "INSERT INTO icd.diagnoses (code, name_en, name_zh, category, short_name_en, is_header)",
+      "ON CONFLICT (code) DO UPDATE SET name_en=EXCLUDED.name_en, name_zh=EXCLUDED.name_zh, category=EXCLUDED.category, " +
+        "short_name_en=EXCLUDED.short_name_en, is_header=EXCLUDED.is_header",
+      6,
       records,
     );
+    await client.query(ICD10CM_EDITION_UPSERT_SQL, [
+      release.edition,
+      release.sourceFormat,
+      release.complete,
+      records.length,
+    ]);
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw err;
   } finally {
     client.release();
   }
