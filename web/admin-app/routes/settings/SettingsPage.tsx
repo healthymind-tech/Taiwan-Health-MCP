@@ -331,6 +331,8 @@ function FieldInput({
       type={inputType}
       name={field.key}
       value={value == null ? "" : String(value)}
+      min={field.min ?? undefined}
+      max={field.max ?? undefined}
       disabled={disabled}
       onChange={(e) => onChange(e.target.value)}
     />

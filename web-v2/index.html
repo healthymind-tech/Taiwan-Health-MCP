@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <link rel="icon" type="image/svg+xml" href="/admin/favicon.svg" />
+    <title>Taiwan Health MCP · 管理控制台</title>
+    <script>
+      // No-flash color scheme bootstrap (Mantine reads the same key).
+      try {
+        var s = localStorage.getItem("twh-color-scheme");
+        if (s !== "light" && s !== "dark") s = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        document.documentElement.setAttribute("data-mantine-color-scheme", s);
+      } catch (e) {}
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

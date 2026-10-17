@@ -1,0 +1,95 @@
+/* Global tokens layered on top of Mantine. */
+:root {
+  --app-bg: #f4f6f9;
+  --sidebar-bg: #ffffff;
+  --log-bg: #0f172a;
+  --log-fg: #e2e8f0;
+  --log-border: #1e293b;
+}
+[data-mantine-color-scheme="dark"] {
+  --app-bg: #0f141a;
+  --sidebar-bg: #121821;
+  --log-bg: #0a0e13;
+  --log-fg: #d5dde6;
+  --log-border: #1d2530;
+}
+[data-mantine-color-scheme="light"] body {
+  background: var(--app-bg);
+}
+[data-mantine-color-scheme="dark"] body {
+  background: var(--app-bg);
+}
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "cv11", "ss01";
+  text-rendering: optimizeLegibility;
+}
+/* Light-mode cards sit on a tinted page; dark cards get a hair of lift. */
+[data-mantine-color-scheme="dark"] .mantine-Card-root,
+[data-mantine-color-scheme="dark"] .mantine-Paper-root[data-with-border] {
+  background: var(--mantine-color-dark-7);
+}
+.hover-lift {
+  transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+}
+.hover-lift:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--mantine-shadow-md);
+  border-color: var(--mantine-primary-color-light-color);
+}
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+/* Table header tone */
+.mantine-Table-th {
+  font-size: var(--mantine-font-size-xs);
+  text-transform: none;
+  color: var(--mantine-color-dimmed);
+  font-weight: 600;
+  background: var(--mantine-color-body);
+}
+[data-mantine-color-scheme="dark"] .mantine-Table-th {
+  background: var(--mantine-color-dark-7);
+}
+::selection {
+  background: rgba(11, 122, 131, 0.22);
+}
+@media (prefers-reduced-motion: reduce) {
+  * { scroll-behavior: auto !important; transition: none !important; }
+}
+.row-hover {
+  transition: background-color 100ms ease;
+}
+.row-hover:hover {
+  background: var(--mantine-color-default-hover);
+}
+
+/* ---- Theme switch animation (see lib/themeTransition.ts) ---- */
+/* View Transitions: replace the default cross-fade with a clip-path reveal
+   driven from JS; the old snapshot stays still underneath. */
+.theme-vt::view-transition-old(root),
+.theme-vt::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+.theme-vt::view-transition-old(root) { z-index: 1; }
+.theme-vt::view-transition-new(root) { z-index: 2; }
+/* Fallback: short colour cross-fade, only while the class is present. */
+html.theme-fading,
+html.theme-fading *,
+html.theme-fading *::before,
+html.theme-fading *::after {
+  transition:
+    background-color 260ms cubic-bezier(.4, 0, .2, 1),
+    color 260ms cubic-bezier(.4, 0, .2, 1),
+    border-color 260ms cubic-bezier(.4, 0, .2, 1),
+    fill 260ms cubic-bezier(.4, 0, .2, 1),
+    stroke 260ms cubic-bezier(.4, 0, .2, 1),
+    box-shadow 260ms cubic-bezier(.4, 0, .2, 1) !important;
+}
+html.theme-fading [data-theme-toggle] svg {
+  transition:
+    transform 450ms cubic-bezier(.4, 0, .2, 1),
+    opacity 300ms cubic-bezier(.4, 0, .2, 1) !important;
+}

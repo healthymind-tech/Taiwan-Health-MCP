@@ -1,0 +1,100 @@
+.tree {
+  font-family: var(--mantine-font-family-monospace);
+  font-size: 12px;
+  line-height: 1.6;
+  padding: 10px 12px;
+  border-radius: var(--mantine-radius-md);
+  background: light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-8));
+  border: 1px solid light-dark(var(--mantine-color-gray-2), var(--mantine-color-dark-5));
+  overflow-x: auto;
+}
+.line {
+  white-space: pre;
+  display: flex;
+  align-items: center;
+  min-height: 19px;
+}
+.toggle {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  color: var(--mantine-color-dimmed);
+  flex-shrink: 0;
+}
+.toggle:hover {
+  background: var(--mantine-color-default-hover);
+}
+.summary {
+  font-family: inherit;
+  font-size: 11px;
+  padding: 0 6px;
+  margin: 0 4px;
+  border-radius: 4px;
+  color: var(--mantine-color-dimmed);
+  background: light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-6));
+}
+.jKey { color: light-dark(#7c3aed, #c4b5fd); }
+.jString { color: light-dark(#047857, #6ee7b7); white-space: pre-wrap; word-break: break-word; }
+.jNumber { color: light-dark(#b45309, #fcd34d); }
+.jBool { color: light-dark(#1d4ed8, #93c5fd); }
+.jNull { color: var(--mantine-color-dimmed); font-style: italic; }
+.jPunct { color: var(--mantine-color-dimmed); }
+
+.groupCard {
+  cursor: pointer;
+  transition: border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
+}
+.groupCard:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--mantine-shadow-md);
+}
+.groupCard[data-active] {
+  border-color: var(--group-color);
+  box-shadow: 0 0 0 1px var(--group-color);
+}
+.toolCard {
+  border-left: 3px solid var(--group-color);
+  height: 100%;
+}
+.toolCard[data-disabled] {
+  opacity: 0.86;
+  border-left-style: dashed;
+}
+.code {
+  font-family: var(--mantine-font-family-monospace);
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-all;
+  padding: 12px 14px;
+  border-radius: var(--mantine-radius-md);
+  background: var(--log-bg);
+  color: var(--log-fg);
+  border: 1px solid var(--log-border);
+  margin: 0;
+}
+.codeWithCopy {
+  padding-top: 40px;
+}
+.fieldRow {
+  padding: 10px 12px;
+  border-radius: var(--mantine-radius-md);
+  border: 1px solid light-dark(var(--mantine-color-gray-2), var(--mantine-color-dark-5));
+  background: var(--mantine-color-body);
+}
+.fieldRow[data-omitted] {
+  border-style: dashed;
+  background: transparent;
+}
+.endpointRow + .endpointRow {
+  border-top: 1px solid light-dark(var(--mantine-color-gray-2), var(--mantine-color-dark-5));
+}
+@media (min-width: 62em) {
+  .sticky {
+    position: sticky;
+    top: calc(var(--app-shell-header-offset, 60px) + 12px);
+  }
+}

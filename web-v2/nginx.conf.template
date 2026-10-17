@@ -1,0 +1,72 @@
+# Front door for the admin console v2 (envsubst: ${BACKEND_UPSTREAM}).
+map $http_upgrade $connection_upgrade {
+  default upgrade;
+  ''      close;
+}
+
+server {
+  listen 80;
+  server_name _;
+  # Relative Location headers: the container listens on 80 but is published
+  # on another host port, so absolute redirects would drop that port.
+  absolute_redirect off;
+  client_max_body_size 4g;
+
+  resolver 127.0.0.11 valid=10s ipv6=off;
+  set $backend "${BACKEND_UPSTREAM}";
+
+  proxy_set_header Host              $host;
+  proxy_set_header X-Real-IP         $remote_addr;
+  proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+  proxy_set_header X-Forwarded-Proto $scheme;
+
+  gzip on;
+  gzip_types text/css application/javascript application/json image/svg+xml;
+  gzip_min_length 1024;
+
+  location = /admin/ws {
+    proxy_pass http://$backend;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade    $http_upgrade;
+    proxy_set_header Connection $connection_upgrade;
+    proxy_read_timeout 3600s;
+  }
+
+  location /admin/api/ {
+    proxy_pass http://$backend;
+    proxy_http_version 1.1;
+    proxy_read_timeout 600s;
+    proxy_request_buffering off;
+    client_max_body_size 10g;
+  }
+
+  location = /mcp {
+    proxy_pass http://$backend;
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+    proxy_buffering off;
+    proxy_read_timeout 3600s;
+  }
+  location = /openapi.json { proxy_pass http://$backend; }
+  location /tools/         { proxy_pass http://$backend; }
+  location /fhir-client/   { proxy_pass http://$backend; }
+  location /fhir-oauth/    { proxy_pass http://$backend; }
+
+  # Hashed build assets: cache forever.
+  location /admin/assets/ {
+    root /usr/share/nginx/html;
+    expires 1y;
+    add_header Cache-Control "public, immutable";
+    try_files $uri =404;
+  }
+
+  # SPA: every other /admin path serves index.html (never cached).
+  location /admin/ {
+    root /usr/share/nginx/html;
+    try_files $uri /admin/index.html;
+    add_header Cache-Control "no-cache";
+  }
+
+  location = /admin { return 302 /admin/; }
+  location = /      { return 302 /admin/; }
+}

@@ -1,0 +1,68 @@
+.header {
+  background: color-mix(in srgb, var(--mantine-color-body) 86%, transparent);
+  backdrop-filter: saturate(160%) blur(10px);
+  border-bottom: 1px solid var(--mantine-color-default-border);
+}
+.navbar {
+  background: var(--sidebar-bg);
+  border-right: 1px solid var(--mantine-color-default-border);
+}
+.navBrand {
+  border-bottom: 1px solid var(--mantine-color-default-border);
+  height: 60px;
+  flex-shrink: 0;
+}
+.navFooter {
+  border-top: 1px solid var(--mantine-color-default-border);
+}
+.navLink {
+  border-radius: var(--mantine-radius-md);
+  font-size: var(--mantine-font-size-sm);
+  padding-block: 7px;
+  font-weight: 500;
+}
+.navLink[data-active] {
+  font-weight: 650;
+}
+.logo {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: linear-gradient(140deg, #0b7a83 0%, #2ba6ac 100%);
+  box-shadow: 0 2px 6px rgba(11, 122, 131, 0.35);
+  flex-shrink: 0;
+}
+.search {
+  width: 280px;
+  padding: 6px 10px;
+  border-radius: var(--mantine-radius-md);
+  border: 1px solid var(--mantine-color-default-border);
+  background: var(--mantine-color-default);
+  color: var(--mantine-color-dimmed);
+  transition: border-color 120ms ease;
+}
+.search:hover {
+  border-color: var(--mantine-primary-color-filled);
+}
+.user {
+  padding: 4px 8px 4px 4px;
+  border-radius: 999px;
+}
+.user:hover {
+  background: var(--mantine-color-default-hover);
+}
+.main {
+  background: var(--app-bg);
+  min-height: 100dvh;
+}
+.content {
+  max-width: 1360px;
+  margin: 0 auto;
+  padding: 28px 32px 64px;
+}
+@media (max-width: 48em) {
+  .content { padding: 18px 16px 48px; }
+}

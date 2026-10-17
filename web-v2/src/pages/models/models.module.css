@@ -1,0 +1,691 @@
+/* ── shared entrance ─────────────────────────────────────────────────────── */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes pop {
+  0% {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+  70% {
+    transform: scale(1.12);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.popIn {
+  animation: pop 420ms cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+}
+
+/* ── accounts ────────────────────────────────────────────────────────────── */
+.accountCard,
+.profileCard {
+  animation: rise 360ms ease both;
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease,
+    border-color 160ms ease;
+}
+
+.accountCard:hover,
+.profileCard:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--mantine-shadow-md);
+}
+
+.profileCard {
+  cursor: pointer;
+}
+
+.profileCard[data-bound] {
+  border-color: color-mix(in srgb, var(--mantine-color-teal-5) 55%, var(--mantine-color-default-border));
+}
+
+.testLine {
+  min-height: 22px;
+  border-top: 1px dashed var(--mantine-color-default-border);
+  padding-top: 8px;
+}
+
+.providerTile {
+  display: block;
+  padding: 12px;
+  border-radius: var(--mantine-radius-md);
+  border: 1px solid var(--mantine-color-default-border);
+  background: var(--mantine-color-body);
+  transition:
+    border-color 140ms ease,
+    transform 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.providerTile:hover {
+  border-color: var(--mantine-color-brand-filled);
+  transform: translateY(-1px);
+  box-shadow: var(--mantine-shadow-sm);
+}
+
+.providerTile[data-selected] {
+  border-color: var(--mantine-color-brand-filled);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--mantine-color-brand-filled) 20%, transparent);
+}
+
+.testing {
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--mantine-color-brand-filled) 12%, transparent), transparent);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s linear infinite;
+}
+
+.resultCard {
+  animation: rise 280ms ease both;
+  border-color: var(--mantine-color-red-outline);
+}
+
+.resultCard[data-ok] {
+  border-color: color-mix(in srgb, var(--mantine-color-teal-5) 60%, var(--mantine-color-default-border));
+}
+
+.modelCloud {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 2px;
+}
+
+.modelChip {
+  animation: rise 260ms ease both;
+  max-width: 100%;
+}
+
+.oauthStatus {
+  padding: 10px 12px;
+  border-radius: var(--mantine-radius-md);
+  border: 1px solid color-mix(in srgb, var(--mantine-color-teal-5) 50%, var(--mantine-color-default-border));
+}
+
+.oauthStatus[data-bad] {
+  border-color: var(--mantine-color-red-5);
+}
+
+.signInSteps {
+  padding: 14px;
+  border-radius: var(--mantine-radius-md);
+  border: 1px solid var(--mantine-color-default-border);
+  background: color-mix(in srgb, var(--mantine-color-brand-filled) 4%, transparent);
+}
+
+/* ── profile builder ─────────────────────────────────────────────────────── */
+.builderGrid {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(240px, 300px) minmax(320px, 1fr) minmax(360px, 1.1fr);
+}
+
+.builderCol {
+  min-height: 0;
+  min-width: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  border-right: 1px solid var(--mantine-color-default-border);
+}
+
+.builderCol:last-child {
+  border-right: 0;
+  background: color-mix(in srgb, var(--mantine-color-default-border) 18%, transparent);
+}
+
+.strategyTile {
+  padding: 8px 10px;
+  border-radius: var(--mantine-radius-md);
+  border: 1px solid var(--mantine-color-default-border);
+  transition:
+    border-color 140ms ease,
+    background-color 140ms ease;
+}
+
+.strategyTile:hover {
+  border-color: var(--mantine-color-brand-filled);
+}
+
+.strategyTile[data-active] {
+  border-color: var(--mantine-color-brand-filled);
+  background: color-mix(in srgb, var(--mantine-color-brand-filled) 10%, transparent);
+}
+
+.strategyIcon {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--mantine-color-brand-filled);
+}
+
+.palette {
+  min-width: 0;
+}
+
+.paletteItem {
+  border-color: var(--mantine-color-default-border);
+}
+
+.paletteRow,
+.paletteRoute {
+  padding: 4px 6px;
+  border-radius: var(--mantine-radius-sm);
+  cursor: grab;
+  transition: background-color 120ms ease;
+}
+
+.paletteRoute[data-added] {
+  cursor: default;
+  opacity: 0.6;
+}
+
+/* Mobile builder: the pane switcher stays reachable while the settings scroll away. */
+.stickyPanes {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--mantine-color-body);
+}
+
+/* Mobile account wizard: three short labels on one line. */
+.compactStepper :global(.mantine-Stepper-steps) {
+  flex-wrap: nowrap;
+}
+
+.compactStepper :global(.mantine-Stepper-separator) {
+  margin-inline: 6px;
+  min-width: 8px;
+}
+
+.compactStepper :global(.mantine-Stepper-stepLabel) {
+  white-space: nowrap;
+}
+
+.paletteRoute {
+  padding: 8px;
+  border: 1px dashed var(--mantine-color-default-border);
+}
+
+.paletteRow:hover,
+.paletteRoute:hover {
+  background: color-mix(in srgb, var(--mantine-color-brand-filled) 9%, transparent);
+}
+
+.paletteRow[data-dragging],
+.paletteRoute[data-dragging] {
+  opacity: 0.4;
+}
+
+.grip {
+  cursor: grab;
+  color: var(--mantine-color-dimmed);
+  flex-shrink: 0;
+  touch-action: none;
+}
+
+.dropZone {
+  border-radius: var(--mantine-radius-md);
+  transition:
+    background-color 160ms ease,
+    outline-color 160ms ease;
+  outline: 2px dashed transparent;
+  outline-offset: 4px;
+}
+
+.dropZone[data-empty] {
+  outline-color: var(--mantine-color-default-border);
+}
+
+.dropZone[data-over] {
+  outline-color: var(--mantine-color-brand-filled);
+  background: color-mix(in srgb, var(--mantine-color-brand-filled) 6%, transparent);
+}
+
+/* A member block: a coloured "brick" with a left rail. */
+.block {
+  position: relative;
+  padding: 10px 10px 10px 12px;
+  border-radius: var(--mantine-radius-md);
+  border: 1px solid var(--mantine-color-default-border);
+  background: var(--mantine-color-body);
+  box-shadow: var(--mantine-shadow-xs);
+  animation: rise 240ms ease both;
+}
+
+.block::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 3px;
+  background: var(--mantine-color-brand-filled);
+}
+
+.block[data-type="route"] {
+  background: color-mix(in srgb, var(--mantine-color-indigo-filled) 6%, var(--mantine-color-body));
+}
+
+.block[data-type="route"]::before {
+  background: var(--mantine-color-indigo-filled);
+}
+
+.block[data-dragging] {
+  z-index: 2;
+  box-shadow: var(--mantine-shadow-lg);
+  opacity: 0.92;
+}
+
+.block[data-disabled] {
+  opacity: 0.55;
+}
+
+.block[data-state="ok"] {
+  border-color: var(--mantine-color-teal-5);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--mantine-color-teal-5) 25%, transparent);
+}
+
+.block[data-state="failed"] {
+  border-color: var(--mantine-color-red-5);
+}
+
+.blockStack {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--mantine-radius-md);
+  color: var(--mantine-color-indigo-filled);
+  background: color-mix(in srgb, var(--mantine-color-indigo-filled) 14%, transparent);
+  flex-shrink: 0;
+}
+
+.dragGhost {
+  padding: 8px 12px;
+  border-radius: var(--mantine-radius-md);
+  border: 1px solid var(--mantine-color-brand-filled);
+  background: var(--mantine-color-body);
+  box-shadow: var(--mantine-shadow-lg);
+  cursor: grabbing;
+}
+
+.previewEmpty {
+  display: grid;
+  place-items: center;
+  min-height: 220px;
+  border-radius: var(--mantine-radius-md);
+  border: 1px dashed var(--mantine-color-default-border);
+}
+
+.traceList {
+  padding: 10px;
+  border-radius: var(--mantine-radius-md);
+  border: 1px solid var(--mantine-color-default-border);
+  background: var(--mantine-color-body);
+}
+
+.traceStep {
+  animation: rise 300ms ease both;
+}
+
+/* ── profile list chain ──────────────────────────────────────────────────── */
+.chain {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  border-radius: var(--mantine-radius-md);
+  background: color-mix(in srgb, var(--mantine-color-default-border) 22%, transparent);
+}
+
+.chainItem[data-disabled] {
+  opacity: 0.5;
+  text-decoration: line-through;
+}
+
+/* ── route flow ──────────────────────────────────────────────────────────── */
+.flowScroll {
+  max-width: 100%;
+  overflow-x: auto;
+  padding: 4px 2px 8px;
+}
+
+/* More diagram to the right: fade the edge so the cut-off reads as "scroll", not "clipped". */
+.flowScroll[data-more] {
+  mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+}
+
+.flowRow {
+  display: flex;
+  align-items: center;
+  min-width: min-content;
+}
+
+.flowSource {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  color: var(--mantine-color-white);
+  background: var(--mantine-color-brand-filled);
+  text-align: center;
+  padding: 6px;
+  z-index: 1;
+}
+
+.sourcePulse {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid var(--mantine-color-brand-filled);
+  animation: ripple 2.4s cubic-bezier(0.2, 0.6, 0.3, 1) infinite;
+}
+
+@keyframes ripple {
+  from {
+    transform: scale(1);
+    opacity: 0.55;
+  }
+  to {
+    transform: scale(1.7);
+    opacity: 0;
+  }
+}
+
+.flowLevel {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.flowLevel::before {
+  content: "";
+  width: 18px;
+  height: 2px;
+  background: var(--mantine-color-brand-filled);
+  opacity: 0.5;
+  flex-shrink: 0;
+}
+
+.hub {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  width: 92px;
+  padding: 8px 6px;
+  flex-shrink: 0;
+  border-radius: var(--mantine-radius-md);
+  border: 1px solid color-mix(in srgb, var(--mantine-color-brand-filled) 45%, var(--mantine-color-default-border));
+  background: var(--mantine-color-body);
+  box-shadow: var(--mantine-shadow-xs);
+  color: var(--mantine-color-brand-filled);
+}
+
+.hub[data-depth="1"],
+.hub[data-depth="2"],
+.hub[data-depth="3"] {
+  border-color: color-mix(in srgb, var(--mantine-color-indigo-filled) 45%, var(--mantine-color-default-border));
+  color: var(--mantine-color-indigo-filled);
+}
+
+.flowConnector {
+  position: relative;
+  flex: 0 0 64px;
+  align-self: center;
+}
+
+.flowConnector svg {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+}
+
+.edge {
+  transition:
+    stroke 220ms ease,
+    stroke-width 220ms ease,
+    opacity 220ms ease;
+}
+
+.edgeIdle {
+  stroke-dasharray: 3 6;
+  animation: dash 1.6s linear infinite;
+}
+
+.edgeMuted {
+  opacity: 0.25;
+}
+
+@keyframes dash {
+  to {
+    stroke-dashoffset: -18;
+  }
+}
+
+.flowColumn {
+  position: relative; /* children's offsetTop is measured against this column */
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.leaf {
+  width: 240px;
+  padding: 7px 10px;
+  border-radius: var(--mantine-radius-md);
+  border: 1px solid var(--mantine-color-default-border);
+  border-left: 3px solid var(--leaf-accent, var(--mantine-color-brand-filled));
+  background: var(--mantine-color-body);
+  transition:
+    border-color 220ms ease,
+    box-shadow 220ms ease,
+    opacity 220ms ease;
+}
+
+.leaf[data-disabled] {
+  opacity: 0.45;
+  border-left-color: var(--mantine-color-gray-5);
+}
+
+.leaf[data-state="ok"] {
+  border-color: var(--mantine-color-teal-5);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--mantine-color-teal-5) 25%, transparent);
+  animation: pop 420ms cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+
+.leaf[data-state="failed"] {
+  border-color: var(--mantine-color-red-5);
+  animation: shake 360ms ease;
+}
+
+@keyframes shake {
+  20%,
+  60% {
+    transform: translateX(-3px);
+  }
+  40%,
+  80% {
+    transform: translateX(3px);
+  }
+}
+
+.nested {
+  position: relative;
+  padding: 18px 8px 8px 0;
+  border-radius: var(--mantine-radius-md);
+  border: 1px dashed color-mix(in srgb, var(--mantine-color-indigo-filled) 45%, var(--mantine-color-default-border));
+  background: color-mix(in srgb, var(--mantine-color-indigo-filled) 4%, transparent);
+}
+
+.nested[data-disabled] {
+  opacity: 0.45;
+}
+
+.nestedLabel {
+  position: absolute;
+  top: 3px;
+  left: 10px;
+  color: var(--mantine-color-indigo-filled);
+}
+
+/*
+ * Compact (builder preview): fit the column instead of a fixed width. Hubs and
+ * connectors keep their size; member columns share what is left, down to a
+ * readable minimum — below that the preview scrolls sideways (flowRow is
+ * min-content wide), never clipped. Room on the left for the source ripple.
+ */
+.flowScroll[data-compact] {
+  padding: 14px 4px 10px 14px;
+}
+
+.flowScroll[data-compact] .flowRow,
+.flowScroll[data-compact] .flowLevel {
+  flex: 1 1 auto;
+}
+
+.flowScroll[data-compact] .flowRow {
+  width: 100%;
+}
+
+.flowScroll[data-compact] .flowColumn {
+  flex: 1 1 auto;
+  min-width: 132px;
+}
+
+.flowScroll[data-compact] .leaf {
+  width: auto;
+  min-width: 132px;
+  /* Long model names truncate: they must not count toward the row's min-content width. */
+  contain: inline-size;
+}
+
+.flowScroll[data-compact] .nested {
+  padding-right: 6px;
+}
+
+.flowScroll[data-compact] .hub {
+  width: 76px;
+}
+
+.flowScroll[data-compact] .flowConnector {
+  flex-basis: 40px;
+}
+
+.flowScroll[data-compact] .flowSource {
+  width: 52px;
+  height: 52px;
+}
+
+.flowScroll[data-compact] .sourcePulse {
+  animation-name: ripple-compact;
+}
+
+@keyframes ripple-compact {
+  from {
+    transform: scale(1);
+    opacity: 0.55;
+  }
+  to {
+    transform: scale(1.45);
+    opacity: 0;
+  }
+}
+
+@media (max-width: 48em) {
+  .leaf {
+    width: 190px;
+  }
+  .hub {
+    width: 78px;
+  }
+  .flowConnector {
+    flex-basis: 40px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .accountCard,
+  .profileCard,
+  .block,
+  .modelChip,
+  .traceStep,
+  .resultCard,
+  .popIn,
+  .leaf[data-state],
+  .sourcePulse,
+  .edgeIdle,
+  .testing {
+    animation: none;
+  }
+}
+
+/* ── delete impact ───────────────────────────────────────────────────────── */
+.impact {
+  padding: 10px 12px;
+  border-radius: var(--mantine-radius-md);
+  border: 1px solid var(--mantine-color-default-border);
+  animation: rise 260ms ease both;
+}
+
+.impact[data-tone="red"] {
+  border-color: color-mix(in srgb, var(--mantine-color-red-5) 55%, var(--mantine-color-default-border));
+  background: color-mix(in srgb, var(--mantine-color-red-5) 6%, transparent);
+}
+
+.impact[data-tone="amber"] {
+  border-color: color-mix(in srgb, var(--mantine-color-amber-5) 55%, var(--mantine-color-default-border));
+  background: color-mix(in srgb, var(--mantine-color-amber-5) 6%, transparent);
+}
+
+.impactList {
+  padding-left: 10px;
+  border-left: 2px dashed var(--mantine-color-default-border);
+  margin-left: 10px;
+}
+
+.impactItem {
+  animation: rise 260ms ease both;
+}
+
+.impactArrow {
+  margin-top: 4px;
+  flex-shrink: 0;
+  color: var(--mantine-color-dimmed);
+}
+
+.impactArrow[data-tone="red"] {
+  color: var(--mantine-color-red-6);
+}
+
+.impactArrow[data-tone="amber"] {
+  color: var(--mantine-color-amber-7);
+}

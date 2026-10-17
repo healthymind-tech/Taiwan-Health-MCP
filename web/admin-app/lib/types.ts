@@ -310,6 +310,9 @@ export interface SettingsField {
   /** Per-provider default, keyed by the value of the group's provider_field. */
   provider_defaults: Record<string, string> | null;
   is_url: boolean;
+  /** Inclusive numeric bounds (int/float fields); the server rejects values outside. */
+  min?: number | null;
+  max?: number | null;
   value: string | number | boolean | null;
 }
 
