@@ -13,11 +13,13 @@ export interface ModuleStatus {
   snomed: boolean;
 }
 
-const REQUIREMENTS: Array<{
+export interface ModuleRequirement {
   key: keyof Omit<ModuleStatus, "fhir_condition" | "fhir_medication">;
   table: string;
   minimum: number;
-}> = [
+}
+
+const REQUIREMENTS: ModuleRequirement[] = [
   { key: "icd", table: "icd.diagnoses", minimum: 10_000 },
   { key: "drug", table: "drug.licenses", minimum: 1 },
   {
@@ -46,6 +48,46 @@ const EMPTY_STATUS: ModuleStatus = {
   ig: false,
   snomed: false,
 };
+
+/** Row-count thresholds that gate each module's tool group (read-only view). */
+export const MODULE_REQUIREMENTS: ReadonlyArray<Readonly<ModuleRequirement>> = REQUIREMENTS;
+
+/** Modules derived from another module's data (no table of their own). */
+export const DERIVED_MODULES: Readonly<Record<"fhir_condition" | "fhir_medication", ModuleRequirement["key"]>> = {
+  fhir_condition: "icd",
+  fhir_medication: "drug",
+};
+
+export interface ModuleCount {
+  table: string;
+  minimum: number;
+  /** null when the count query failed (error carries the message). */
+  count: number | null;
+  error?: string;
+}
+
+/**
+ * Current row count of every gating table, uncached. For the admin console's
+ * "why is this tool disabled" view; tool registration keeps using getModuleStatus.
+ */
+export async function getModuleCounts(): Promise<Record<ModuleRequirement["key"], ModuleCount>> {
+  const out = {} as Record<ModuleRequirement["key"], ModuleCount>;
+  await Promise.all(
+    REQUIREMENTS.map(async ({ key, table, minimum }) => {
+      try {
+        const result = await query<{ count: string }>(
+          `SELECT COUNT(*)::text AS count FROM ${table}`,
+          [],
+          `module_counts.${String(key)}`,
+        );
+        out[key] = { table, minimum, count: Number.parseInt(result.rows[0]?.count ?? "0", 10) };
+      } catch (err) {
+        out[key] = { table, minimum, count: null, error: String((err as Error).message) };
+      }
+    }),
+  );
+  return out;
+}
 
 let cachedStatus: ModuleStatus | null = null;
 let cachedAt = 0;
