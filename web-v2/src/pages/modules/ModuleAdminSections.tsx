@@ -14,6 +14,8 @@ import { useClearModule, useClearPreview, useInvalidateModule, type ClearPreview
 
 // ── Maintenance mode ─────────────────────────────────────────────────────────
 export function MaintenanceSection({ meta, enabled }: { meta: ModuleMeta; enabled: boolean }) {
+  // Modules whose MCP tools are gated by the flag (node-server mcp.ts GROUP_MAINTENANCE_MODULE); rxnorm has none.
+  const hasTools = meta.key !== "rxnorm";
   const invalidate = useInvalidateModule(meta.key);
   const toggle = useMutation({
     mutationFn: (next: boolean) =>
@@ -24,8 +26,8 @@ export function MaintenanceSection({ meta, enabled }: { meta: ModuleMeta; enable
   const apply = async (next: boolean) => {
     try {
       await toggle.mutateAsync(next);
-      if (next) notify.warn(`${meta.shortLabel} 已標示為維護中。`, "維護模式已開啟");
-      else notify.success(`${meta.shortLabel} 已取消維護中標示。`, "維護模式已關閉");
+      if (next) notify.warn(hasTools ? `${meta.shortLabel} 的 MCP 工具將回應「維護中」（約 5 秒內生效）。` : `${meta.shortLabel} 已標示為維護中。`, "維護模式已開啟");
+      else notify.success(hasTools ? `${meta.shortLabel} 的 MCP 工具已恢復服務。` : `${meta.shortLabel} 已取消維護中標示。`, "維護模式已關閉");
     } catch (e) {
       notify.error(e, "切換維護模式失敗");
       throw e;
@@ -38,7 +40,11 @@ export function MaintenanceSection({ meta, enabled }: { meta: ModuleMeta; enable
     <SectionCard
       title="維護模式"
       icon={<IconTool size={18} />}
-      description="標記此模組正在維護，主控台與總覽會以「維護中」顯示。適合在手動清除、大幅更換版本或排查資料問題時，提醒其他管理者。"
+      description={
+        hasTools
+          ? "暫停此模組的 MCP 工具對外服務：呼叫會立即回傳 MODULE_MAINTENANCE 錯誤，主控台與總覽以「維護中」顯示。適合在手動清除、大幅更換版本或排查資料問題時使用。"
+          : "標記此模組正在維護，主控台與總覽會以「維護中」顯示。"
+      }
       actions={
         enabled ? (
           <Badge color="amber" variant="filled">
@@ -54,8 +60,14 @@ export function MaintenanceSection({ meta, enabled }: { meta: ModuleMeta; enable
       <Stack gap="sm">
         <Alert color="amber" variant="light" p="sm" icon={<IconAlertTriangle size={16} />}>
           <Text fz="sm">
-            注意：目前後端只儲存這個旗標並顯示在主控台，MCP 工具（<Text span ff="monospace">mcp.ts</Text>）尚未讀取它，
-            開啟後工具仍會照常查詢並回應。若需要真正停止對外服務，請改用清除資料或停用 MCP 端點。
+            {hasTools ? (
+              <>
+                開啟後，此模組的 MCP 工具（/mcp、/tools/*、後台 Playground）會立即回傳錯誤碼{" "}
+                <Text span ff="monospace">MODULE_MAINTENANCE</Text>（「模組維護中，請稍後再試」），約 5 秒內生效；工具仍留在 tools/list 中，用戶端不需重新載入工具清單。
+              </>
+            ) : (
+              <>此模組沒有自己的 MCP 工具，維護旗標只在主控台標示，不影響任何工具回應。</>
+            )}
           </Text>
         </Alert>
         <Switch
@@ -70,7 +82,9 @@ export function MaintenanceSection({ meta, enabled }: { meta: ModuleMeta; enable
                 title: `讓 ${meta.shortLabel} 進入維護模式？`,
                 consequences: [
                   "主控台與總覽會將此模組標示為「維護中」",
-                  "MCP 工具目前不會因此停止回應（後端尚未實作此旗標的攔截）",
+                  hasTools
+                    ? "此模組的 MCP 工具呼叫會回傳 MODULE_MAINTENANCE 錯誤，直到關閉維護模式"
+                    : "此模組沒有自己的 MCP 工具，不影響任何工具回應",
                   "資料、向量與來源檔都不會被修改；匯入、預覽與排程仍可正常操作",
                 ],
                 confirmLabel: "開啟維護模式",
@@ -81,7 +95,7 @@ export function MaintenanceSection({ meta, enabled }: { meta: ModuleMeta; enable
             }
           }}
           label={enabled ? "維護模式：開啟" : "維護模式：關閉"}
-          description={enabled ? "關閉後移除維護中標示。" : "目前未標示維護中。"}
+          description={enabled ? (hasTools ? "關閉後 MCP 工具恢復服務。" : "關閉後移除維護中標示。") : "目前未標示維護中。"}
         />
       </Stack>
     </SectionCard>

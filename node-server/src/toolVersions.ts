@@ -26,7 +26,9 @@ export const TOOLS_VERSION: Record<string, string> = {
   // the 【轉換目標】 line never joins another line's window; zh->en bridges for Chinese-only NHI displays.
   fhir_check_grounding: "1.1.0",
   // 1.1.0: stated absences by whole-label matching (shared with fhir_check_grounding, lexicon 0.3.0).
-  fhir_check_completeness: "1.1.0",
+  // 1.1.1: instruction / site-config lines never join a value or duration window, even when no blank line
+  // separates them from the item line (a value on the 【轉換目標】 line was reported as found).
+  fhir_check_completeness: "1.1.1",
   // 1.1.0: optional source_text / site_config / evidence_map / grounding (spec §2.4). Without them the
   // output is unchanged; builtin validator: a code-less Coding matches every required-binding slice (HL7 7.0.1).
   // 1.2.0: without package_id the package owning meta.profile is used (was: always the default IG);

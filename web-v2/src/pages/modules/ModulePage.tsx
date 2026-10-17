@@ -60,9 +60,9 @@ function StatusStrip({
     toolColor = "gray";
     toolHint = "此模組是參考術語，供其他工具（如 IG ValueSet 展開）使用，本身沒有 MCP 工具。";
   } else if (rows >= threshold.min) {
-    toolValue = maintenance ? "可用（維護中）" : "可用";
+    toolValue = maintenance ? "暫停（維護中）" : "可用";
     toolColor = maintenance ? "amber" : "teal";
-    toolHint = maintenance ? "已標示維護中，但 MCP 工具仍照常回應。" : "MCP 工具已註冊，可供 LLM 呼叫。";
+    toolHint = maintenance ? "維護中：MCP 工具仍在清單上，但呼叫會回傳 MODULE_MAINTENANCE 錯誤。" : "MCP 工具已註冊，可供 LLM 呼叫。";
   } else {
     toolValue = "未上線";
     toolColor = "gray";
@@ -316,7 +316,7 @@ export default function ModulePage() {
           {maintenance && (
             <Alert color="amber" icon={<IconAlertTriangle size={16} />} mb="lg" p="sm">
               <Text fz="sm">
-                此模組已標示為維護中。{" "}
+                此模組維護中{meta.key === "rxnorm" ? "。" : "，相關 MCP 工具呼叫會回傳 MODULE_MAINTENANCE 錯誤。"}{" "}
                 <Anchor component={Link} to="?tab=schedule" fz="sm">
                   前往維護設定
                 </Anchor>

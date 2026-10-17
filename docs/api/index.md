@@ -46,6 +46,24 @@ Clinical Calculators 與 System 三組（15 個工具）永遠註冊。管理後
 向量不完整時，相關搜尋會退回或混用 keyword/BM25。請在管理後台各模組頁面查看嵌入計數，
 並執行或排程對應的 `*_embed` 工作。
 
+## 維護模式 {#maintenance}
+
+管理後台可把 `icd`、`loinc`、`drug`、`snomed`、`ig`、`rxnorm` 模組切到維護模式（`POST /admin/api/module-maintenance`）。
+維護中的模組，其工具呼叫（`/mcp`、`POST /tools/<name>` 與後台 playground 都一樣）會在執行前立即回傳 `isError` 結果：
+
+```json
+{"ok": false, "data": null, "warnings": [],
+ "error": {"code": "MODULE_MAINTENANCE", "module": "loinc", "tool": "query_loinc", "retryable": true,
+           "message": "Module 'loinc' is under maintenance (data is being updated); query_loinc is temporarily unavailable. Retry later.",
+           "message_zh": "模組「loinc」維護中（資料更新中），query_loinc 暫時無法使用，請稍後再試。"}}
+```
+
+`POST /tools/<name>` 以 HTTP 200 回傳上述 JSON（與其他工具錯誤一致）。對應關係：ICD-10 與 FHIR Condition → `icd`；
+Drug / TFDA 與 FHIR Medication → `drug`；Lab / LOINC → `loinc`；SNOMED CT → `snomed`；FHIR IG（含 grounding / completeness）→ `ig`。
+`rxnorm` 沒有自己的工具群組，維護旗標不影響任何工具；健康食品、食品營養、FHIR Servers、Clinical Calculators 與 System
+不受維護模式影響。為了避免用戶端工具清單反覆變動，維護中的工具**仍留在 `tools/list` / `/openapi.json`**。狀態有 5 秒快取，
+切換後最多約 5 秒生效；讀取狀態失敗時放行（fail-open）。
+
 ## `health_check`（System 群組）
 
 永遠註冊、不需參數。建議在任何工作流程開始前先呼叫，確認需要的模組已上線。回傳 JSON：

@@ -2,6 +2,8 @@
 
 此類別工具整合台灣 FDA（TFDA）西藥許可證資料，提供藥品搜尋、藥錠外觀辨識、藥品詳情與官方文件資產下載連結。
 
+> **維護模式**：管理後台把 `drug` 模組切到維護模式時，本組工具（以及 FHIR Medication 工具）呼叫會立即回傳 `isError` 結果，錯誤碼 `MODULE_MAINTENANCE`（`error.message` 英文、`error.message_zh` 正體中文，`error.module` 為模組鍵），約 5 秒內生效；工具仍留在 `tools/list` 中。詳見 [API 參考](../api/index.md#maintenance)。
+
 ## search_drug
 單一入口，四種搜尋模式。
 

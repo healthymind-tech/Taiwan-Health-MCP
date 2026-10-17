@@ -37,6 +37,19 @@ The tool list grows and shrinks with each module's data-load status (row-count t
 
 A registered tool only means the required source data exists — it does **not** mean semantic embeddings have been fully backfilled. When vectors are incomplete, the related search falls back to, or mixes in, keyword/BM25. Check each module's embedding count on its page in the admin console and run or schedule the corresponding `*_embed` job.
 
+## Maintenance mode {#maintenance}
+
+The admin console can switch the `icd`, `loinc`, `drug`, `snomed`, `ig` and `rxnorm` modules into maintenance mode (`POST /admin/api/module-maintenance`). While a module is in maintenance, calls to its tools (over `/mcp`, `POST /tools/<name>` and the admin playground alike) return an `isError` result immediately, before the tool runs:
+
+```json
+{"ok": false, "data": null, "warnings": [],
+ "error": {"code": "MODULE_MAINTENANCE", "module": "loinc", "tool": "query_loinc", "retryable": true,
+           "message": "Module 'loinc' is under maintenance (data is being updated); query_loinc is temporarily unavailable. Retry later.",
+           "message_zh": "模組「loinc」維護中（資料更新中），query_loinc 暫時無法使用，請稍後再試。"}}
+```
+
+`POST /tools/<name>` returns this JSON with HTTP 200 (like every other tool error). Mapping: ICD-10 and FHIR Condition → `icd`; Drug / TFDA and FHIR Medication → `drug`; Lab / LOINC → `loinc`; SNOMED CT → `snomed`; FHIR IG (including grounding / completeness) → `ig`. `rxnorm` has no tool group of its own, so its flag gates no tool; Health Supplements, Food Nutrition, FHIR Servers, Clinical Calculators and System are never affected. To avoid tool-list churn for clients, tools under maintenance **stay in `tools/list` / `/openapi.json`**. The state is cached for 5 seconds, so a toggle takes effect within about 5 seconds; a failing state lookup fails open.
+
 ## `health_check` (System group)
 
 Always registered, no arguments. Call it before any workflow to confirm the modules you need are online. Returns JSON:

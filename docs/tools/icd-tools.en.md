@@ -2,6 +2,8 @@
 
 This group provides lookup and hierarchy browsing over ICD-10-CM (diagnoses) and ICD-10-PCS (procedures). Data comes from `icd.diagnoses` / `icd.procedures`, populated by the `icd_import` job; the loaded ICD-10-CM edition (for example the complete `2026-04-01` edition loaded from the CMS "Code Descriptions in Tabular Order" file, including 7th characters and placeholder X) is reported by `health_check` under `terminology.icd10cm`. The whole group is unregistered while `icd.diagnoses` holds fewer than 10,000 rows.
 
+> **Maintenance mode**: while the admin console has the `icd` module in maintenance mode, this group's calls return an `isError` result immediately with error code `MODULE_MAINTENANCE` (`error.message` in English, `error.message_zh` in Traditional Chinese, `error.module` the module key), effective within about 5 seconds; the tools stay in `tools/list`. See the [API reference](../api/index.md#maintenance).
+
 ## search_medical_codes
 Search ICD-10 diagnosis or procedure codes.
 

@@ -2,6 +2,8 @@
 
 This group converts local ICD-10 diagnoses and Taiwan FDA drug data into FHIR R4 `Condition` / `Medication` / `MedicationKnowledge` resources, with basic validation. For advanced profile- and terminology-level authoring and validation, see [FHIR IG Tools](fhir-ig-tools.md).
 
+> **Maintenance mode**: the Condition tools follow the `icd` module and the Medication tools follow the `drug` module. While the admin console has that module in maintenance mode, calls return an `isError` result immediately with error code `MODULE_MAINTENANCE` (`error.message` in English, `error.message_zh` in Traditional Chinese, `error.module` the module key), effective within about 5 seconds; the tools stay in `tools/list`. See the [API reference](../api/index.md#maintenance).
+
 ## query_fhir_condition
 Generate a FHIR R4 `Condition` resource from an ICD-10 diagnosis.
 

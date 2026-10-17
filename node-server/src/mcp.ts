@@ -30,6 +30,7 @@ import * as fhirReference from "./fhirReference.js";
 import { getEmbeddingService } from "./embeddingService.js";
 import { logError } from "./logger.js";
 import { recordToolCall } from "./metrics.js";
+import { getStates as getMaintenanceStates } from "./admin/adminMaintenance.js";
 import { BUILD, SERVER_VERSION, TOOLS_VERSION } from "./toolVersions.js";
 import { LEXICON_SHA256, LEXICON_VERSION, groundingInputShape, validateBundleGroundingShape } from "./grounding/index.js";
 import { completenessInputShape, type CompletenessInput } from "./grounding/completeness/index.js";
@@ -119,12 +120,97 @@ export function withToolMetrics<A extends unknown[], R>(
   };
 }
 
+// ── Maintenance gate ──────────────────────────────────────────────────────────
+
+/**
+ * Maintenance module (admin/adminMaintenance.ts MAINTENANCE_MODULES) that gates each tool group, or null when the
+ * group is never gated. Derived groups follow the module whose data they read (FHIR Condition -> icd, FHIR
+ * Medication -> drug). rxnorm has a toggle but no tool group of its own, so it gates no tool. Always-on groups
+ * (FHIR Servers, Clinical Calculators, System) and the TFDA Open Data groups have no maintenance toggle.
+ */
+export const GROUP_MAINTENANCE_MODULE: Readonly<Record<ToolGroupKey, string | null>> = {
+  icd: "icd",
+  fhir_condition: "icd",
+  drug: "drug",
+  fhir_medication: "drug",
+  lab: "loinc",
+  snomed: "snomed",
+  fhir_ig: "ig",
+  health_supplements: null,
+  food_nutrition: null,
+  fhir_servers: null,
+  calculators: null,
+  system: null,
+};
+
+let _toolMaintenanceModule: Map<string, string> | null = null;
+
+/** Maintenance module gating `tool`, or null (unknown tools and always-on groups are never gated). */
+export function maintenanceModuleForTool(tool: string): string | null {
+  if (!_toolMaintenanceModule) {
+    const m = new Map<string, string>();
+    for (const t of toolCatalog()) {
+      const mod = GROUP_MAINTENANCE_MODULE[t.group];
+      if (mod) m.set(t.name, mod);
+    }
+    _toolMaintenanceModule = m;
+  }
+  return _toolMaintenanceModule.get(tool) ?? null;
+}
+
+export const MODULE_MAINTENANCE_CODE = "MODULE_MAINTENANCE";
+
+/** The isError tool result returned while `module` is in maintenance mode (same envelope as other tool errors). */
+export function maintenanceToolResult(tool: string, module: string): { content: Array<{ type: "text"; text: string }>; isError: true } {
+  const body = {
+    ok: false,
+    data: null,
+    warnings: [],
+    error: {
+      code: MODULE_MAINTENANCE_CODE,
+      module,
+      tool,
+      retryable: true,
+      message: `Module '${module}' is under maintenance (data is being updated); ${tool} is temporarily unavailable. Retry later.`,
+      message_zh: `模組「${module}」維護中（資料更新中），${tool} 暫時無法使用，請稍後再試。`,
+    },
+  };
+  return { content: [{ type: "text", text: JSON.stringify(body) }], isError: true };
+}
+
+/**
+ * Wrap a tool handler so calls fail fast with MODULE_MAINTENANCE while the tool's module is in maintenance mode.
+ * Shares the dispatch point with withToolMetrics (MCP transport, POST /tools/<name>, admin playground). The tool
+ * stays in tools/list — clients see a clear error instead of tool-list churn. State comes from adminMaintenance's
+ * 5 s cache; a failing state lookup fails open (the call proceeds), so a DB hiccup never blocks every tool.
+ */
+export function withMaintenanceGate<A extends unknown[], R>(
+  name: string,
+  handler: (...args: A) => Promise<R> | R,
+  states: (keys: readonly string[]) => Promise<Record<string, boolean>> = getMaintenanceStates,
+  moduleOf: (tool: string) => string | null = maintenanceModuleForTool,
+): (...args: A) => Promise<R> {
+  return async (...args: A): Promise<R> => {
+    const module = moduleOf(name);
+    if (module) {
+      let inMaintenance = false;
+      try {
+        inMaintenance = (await states([module]))[module] === true;
+      } catch {
+        inMaintenance = false;
+      }
+      if (inMaintenance) return maintenanceToolResult(name, module) as unknown as R;
+    }
+    return handler(...args);
+  };
+}
+
 /** Patch `server.registerTool` so every registration is also recorded in `into`. */
 function captureToolRegistrations(server: McpServer, into: Map<string, RegisteredTool>): void {
   const orig = server.registerTool.bind(server) as (...a: unknown[]) => unknown;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (server as any).registerTool = (name: string, config: any, handler: any) => {
-    const instrumented = withToolMetrics(name, handler as (...a: unknown[]) => Promise<unknown>);
+    const instrumented = withToolMetrics(name, withMaintenanceGate(name, handler as (...a: unknown[]) => Promise<unknown>));
     into.set(name, {
       name,
       description: typeof config?.description === "string" ? config.description : "",

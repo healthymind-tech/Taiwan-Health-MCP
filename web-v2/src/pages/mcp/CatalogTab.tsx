@@ -19,7 +19,7 @@ import {
   Title,
   Tooltip,
 } from "@mantine/core";
-import { IconAlertTriangle, IconChevronDown, IconChevronUp, IconFilterOff, IconLock, IconPencil, IconPlayerPlay, IconSearch } from "@tabler/icons-react";
+import { IconAlertTriangle, IconChevronDown, IconChevronUp, IconFilterOff, IconLock, IconPencil, IconPlayerPlay, IconSearch, IconTool } from "@tabler/icons-react";
 import { useMemo, useState } from "react";
 import { Link } from "react-router";
 import { EmptyState } from "@/components/EmptyState";
@@ -27,7 +27,7 @@ import { QueryBoundary } from "@/components/QueryBoundary";
 import { useDebounced } from "@/lib/hooks";
 import { fmtNumber } from "@/lib/format";
 import { useMcpCatalog } from "./mcpApi";
-import { gateModulePage, groupMeta, toolStatusView } from "./mcpMeta";
+import { gateModulePage, groupMeta, inMaintenance, maintenanceExplain, maintenancePage, toolStatusView } from "./mcpMeta";
 import classes from "./mcp.module.css";
 import type { CatalogGroup, CatalogPayload, CatalogTool } from "./mcpTypes";
 import { formModel, typeLabel } from "./schema";
@@ -162,6 +162,7 @@ function ToolCard({ t, onTry, highlight }: { t: CatalogTool; onTry: (name: strin
   const meta = groupMeta(t.group);
   const status = toolStatusView(t);
   const modulePage = !t.enabled ? gateModulePage(t.gate) : null;
+  const maint = inMaintenance(t);
   const mark = (s: string) => {
     if (highlight.length === 0) return s;
     const re = new RegExp(`(${highlight.map((h) => h.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`, "ig");
@@ -179,11 +180,20 @@ function ToolCard({ t, onTry, highlight }: { t: CatalogTool; onTry: (name: strin
               {mark(t.name)}
             </Text>
           </Box>
-          <Tooltip label={status.explain} maw={300}>
-            <Badge color={status.color} size="sm" style={{ flexShrink: 0 }} variant={t.enabled ? "light" : "outline"}>
-              {status.label}
-            </Badge>
-          </Tooltip>
+          <Group gap={4} wrap="nowrap" style={{ flexShrink: 0 }}>
+            {maint && (
+              <Tooltip label={maintenanceExplain(t)} maw={300}>
+                <Badge color="amber" size="sm" variant="filled" leftSection={<IconTool size={11} />} data-testid="mcp-maintenance-badge">
+                  維護中
+                </Badge>
+              </Tooltip>
+            )}
+            <Tooltip label={status.explain} maw={300}>
+              <Badge color={status.color} size="sm" style={{ flexShrink: 0 }} variant={t.enabled ? "light" : "outline"}>
+                {status.label}
+              </Badge>
+            </Tooltip>
+          </Group>
         </Group>
         <Text fz="xs" c="dimmed" lineClamp={open ? undefined : 2}>
           {mark(t.summary)}
@@ -210,6 +220,19 @@ function ToolCard({ t, onTry, highlight }: { t: CatalogTool; onTry: (name: strin
           )}
         </Group>
         <ParamChips t={t} />
+        {maint && t.enabled && (
+          <Group gap={6} wrap="nowrap" align="flex-start">
+            <IconTool size={14} color="var(--mantine-color-amber-6)" style={{ flexShrink: 0, marginTop: 2 }} />
+            <Text fz="xs" c="dimmed">
+              {maintenanceExplain(t)}{" "}
+              {maintenancePage(t) && (
+                <Anchor component={Link} to={maintenancePage(t)!} fz="xs">
+                  前往模組
+                </Anchor>
+              )}
+            </Text>
+          </Group>
+        )}
         {!t.enabled && (
           <Group gap={6} wrap="nowrap" align="flex-start">
             <IconAlertTriangle size={14} color="var(--mantine-color-amber-6)" style={{ flexShrink: 0, marginTop: 2 }} />
@@ -360,6 +383,11 @@ function CatalogView({
                     <Badge size="sm" variant="light" color={g.disabled ? "amber" : "teal"} className="tabular">
                       {g.enabled}/{g.total}
                     </Badge>
+                    {g.maintenance?.active && (
+                      <Badge size="sm" color="amber" variant="filled" leftSection={<IconTool size={11} />}>
+                        維護中
+                      </Badge>
+                    )}
                   </Group>
                   <Text fz="xs" c="dimmed">
                     {meta.description}

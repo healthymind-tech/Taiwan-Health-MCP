@@ -82,7 +82,7 @@ export default function DrugPage() {
       message: "適合在大量匯入或資料修正期間使用。",
       consequences: [
         "後台會把藥品模組標示為維護中，提醒其他管理者正在處理資料",
-        "注意：目前 MCP 工具尚未讀取這個標示，search_drug 等工具仍會照常回應",
+        "search_drug 等藥品工具（含 FHIR Medication）呼叫會回傳 MODULE_MAINTENANCE 錯誤",
         "背景工作不受影響，仍會繼續執行",
         "完成後記得關閉，工具才會恢復服務",
       ],
@@ -148,7 +148,7 @@ export default function DrugPage() {
       <Stack gap="lg">
         {maintenance && (
           <Alert color="amber" variant="light" icon={<IconTool size={18} />} title="維護模式已開啟">
-            藥品模組已標示為維護中。此標示目前只在管理後台生效，MCP 工具仍照常回應；資料處理完成後請關閉。
+            藥品模組維護中：藥品與 FHIR Medication 的 MCP 工具呼叫會回傳 MODULE_MAINTENANCE 錯誤；資料處理完成後請關閉。
           </Alert>
         )}
         {storage && !storage.minio_enabled && (

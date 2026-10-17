@@ -57,8 +57,8 @@ FHIR_SERVER_SECRET_KEY=
 由 `node-server/src/admin/adminMcp.ts` 提供 API（`GET /admin/api/mcp/overview`、`GET /admin/api/mcp/tools`、`POST /admin/api/mcp/tools/{name}/invoke`），分三個分頁：
 
 - **總覽**：對外端點（`/mcp`、`/openapi.json`、`/tools/{name}`、JWKS、OAuth 回呼）、驗證模式、伺服器版本與用戶端設定範本。
-- **工具目錄**：`mcp.ts` 定義的全部 63 個工具，含是否已註冊；未註冊的工具會標示原因（模組資料表與門檻筆數）。
-- **測試台**：以預填範例直接執行任一已註冊工具，與 `POST /tools/{name}` 走同一處理程序（有速率限制）。
+- **工具目錄**：`mcp.ts` 定義的全部 63 個工具，含是否已註冊；未註冊的工具會標示原因（模組資料表與門檻筆數）；模組維護中的工具與群組會加上「維護中」徽章。
+- **測試台**：以預填範例直接執行任一已註冊工具，與 `POST /tools/{name}` 走同一處理程序（有速率限制）；模組維護中時「執行」按鈕停用並說明原因。
 
 ## 模型端點（`/admin/models`）
 
@@ -124,7 +124,7 @@ PostgreSQL 16 `pg_restore` 還原；object storage 檔案位於 ZIP 的 `object-
 
 ## 維護模式（Maintenance Mode）
 
-`drug`、`icd`、`loinc`、`snomed`、`ig`、`rxnorm` 模組可切換維護模式（`POST /admin/api/module-maintenance`，狀態存於 `admin.app_settings` 的 `maintenance` 群組），用來在重載或清除資料時標示該模組正在維護。目前它是**後台層級的標記**：模組頁會顯示工具「可用（維護中）」，但 MCP 工具本身**不會**因此停止回應。
+`drug`、`icd`、`loinc`、`snomed`、`ig`、`rxnorm` 模組可切換維護模式（`POST /admin/api/module-maintenance`，狀態存於 `admin.app_settings` 的 `maintenance` 群組），用來在重載或清除資料時暫停該模組的 MCP 工具：維護中的模組，其工具呼叫（`/mcp`、`/tools/*`、後台 playground）會立即回傳錯誤碼 `MODULE_MAINTENANCE`（中英文訊息），工具仍留在 `tools/list` 中（避免用戶端工具清單變動）。狀態快取 5 秒，切換後約 5 秒內生效。ICD-10 與 FHIR Condition 跟隨 `icd`、Drug 與 FHIR Medication 跟隨 `drug`、Lab 跟隨 `loinc`、FHIR IG 跟隨 `ig`；`rxnorm` 沒有自己的工具，旗標只作標示。模組頁會顯示工具「暫停（維護中）」，MCP 工具頁的工具卡也會標示「維護中」。錯誤格式見 [API 參考](../api/index.md#maintenance)。
 
 ## 外部 FHIR 伺服器
 

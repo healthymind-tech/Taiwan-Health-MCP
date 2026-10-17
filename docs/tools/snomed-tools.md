@@ -2,6 +2,8 @@
 
 目前對外 SNOMED 入口為 4 個工具：`search_snomed_concept`、`query_snomed_concept`、`get_snomed_relationships`、`query_snomed_mapping`。
 
+> **維護模式**：管理後台把 `snomed` 模組切到維護模式時，本組工具呼叫會立即回傳 `isError` 結果，錯誤碼 `MODULE_MAINTENANCE`（`error.message` 英文、`error.message_zh` 正體中文，`error.module` 為模組鍵），約 5 秒內生效；工具仍留在 `tools/list` 中。詳見 [API 參考](../api/index.md#maintenance)。
+
 ## `search_snomed_concept`
 英文臨床詞彙搜尋 SNOMED 概念候選。
 

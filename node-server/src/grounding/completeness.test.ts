@@ -170,6 +170,17 @@ test("instruction markers are configurable and excluded from the record", () => 
   assert.deepEqual(data.missing, ["HbA1c 數值"]);
 });
 
+test("an instruction line directly after a lab item line never supplies its value (no blank line between)", () => {
+  // The item line names the analyte without a value; the instruction line that follows in the same blank-line block
+  // carries a value, which must not be found through the table-header window.
+  const text = "病人：王小明 男 生日：1980/01/02 病歷號：A1234567\n就診日期：115/03/02\n檢驗：HbA1c\n【轉換目標】HbA1c 7.2 %";
+  const tg = [{ key: "a1c", resourceType: "Observation", item: "HbA1c", aliases: ["HbA1c"], require: ["value"] }];
+  const data = computeCompleteness({ targets: tg, source_text: text });
+  assert.deepEqual(data.missing, ["HbA1c 數值"]);
+  // the same lines without the marker are ordinary record text: the value is found on the following line
+  assert.equal(computeCompleteness({ targets: tg, source_text: text.replace("【轉換目標】", "") }).status, "complete");
+});
+
 test("extracted_facts are verified, not trusted", () => {
   const base = { targets: [{ key: "a1c", resourceType: "Observation", item: "HbA1c", require: ["value"] }], source_text: RECORD };
   const fake = computeCompleteness({ ...base, extracted_facts: [{ target: "a1c", fact: "value", status: "stated", quote: "HbA1c 7.2%" }] });
