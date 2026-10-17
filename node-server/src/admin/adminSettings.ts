@@ -14,13 +14,10 @@
 import { config } from "../config.js";
 import { query, withTransaction } from "../db.js";
 import { logWarning } from "../logger.js";
-import {
-  exportProfiles,
-  getProfile,
-  importProfiles,
-  type LlmProfile,
-  type ProfileKind,
-} from "./llmProfiles.js";
+import { canonicalProviderId, getAdapter } from "../providers/registry.js";
+import { ProviderHttpError, snippet, type CallContext, type ProviderAdapter } from "../providers/types.js";
+import { type LlmProfile, type ProfileKind } from "./llmProfiles.js";
+import { exportRouting, getAccount, importRouting, legacyProfilesToRouting, type RoutingExport } from "./llmRouting.js";
 import { ensureCredentialTable } from "./webauthn.js";
 
 export const SECRET_MASK = "●●●●●●●●";
@@ -40,6 +37,9 @@ export interface SettingsField {
   provider_defaults: Record<string, string> | null;
   /** Value must be an absolute http(s) URL; enforced on seed and on save. */
   is_url: boolean;
+  /** Inclusive numeric bounds for int/float fields; enforced on save and import. */
+  min: number | null;
+  max: number | null;
 }
 
 export interface SettingsGroupSpec {
@@ -82,6 +82,8 @@ function field(
     is_model?: boolean;
     provider_defaults?: Record<string, string> | null;
     is_url?: boolean;
+    min?: number;
+    max?: number;
   } = {},
 ): SettingsField {
   return {
@@ -97,7 +99,20 @@ function field(
     is_model: Boolean(opts.is_model),
     provider_defaults: opts.provider_defaults ?? null,
     is_url: Boolean(opts.is_url),
+    min: opts.min ?? null,
+    max: opts.max ?? null,
   };
+}
+
+/** Reject a numeric value outside the field's declared [min, max]. */
+function checkRange(group: string, f: SettingsField, value: string | number | boolean): void {
+  if (f.type !== "int" && f.type !== "float") return;
+  const n = Number(value);
+  if ((f.min !== null && n < f.min) || (f.max !== null && n > f.max)) {
+    throw new Error(
+      `${group}.${f.key}: ${String(value)} is out of range (${f.min ?? "-∞"}..${f.max ?? "∞"})`,
+    );
+  }
 }
 
 /** Absolute http(s) URL check — the guard that keeps junk like `ho` out of the DB. */
@@ -124,14 +139,16 @@ export const SETTINGS_SCHEMA: Record<string, SettingsGroupSpec> = {
       "settings. Endpoints, models and dimensions are the profiles below.",
     seed_from_env: false,
     fields: [
-      field("strategy", "str", "failover", "EMBEDDING_STRATEGY", "Strategy", {
-        options: ["failover", "weighted"],
-        help:
-          "failover = always the highest-priority healthy profile; weighted = spread by weight, " +
-          "still falling back on failure.",
-      }),
       field("timeout", "int", 30, "OLLAMA_EMBED_TIMEOUT", "Timeout (s)"),
       field("batch_size", "int", 32, "OLLAMA_EMBED_BATCH_SIZE", "Batch size"),
+      // Bounds mirror MIN_CONCURRENCY / MAX_CONCURRENCY in loaders/batchPool.ts.
+      field("concurrency", "int", 1, "EMBEDDING_CONCURRENCY", "Concurrency", {
+        min: 1,
+        max: 32,
+        help:
+          "Embedding batch requests an embed job keeps in flight at once (1-32). Higher is " +
+          "faster, but watch the provider's rate limits. Picked up by running jobs within ~10s.",
+      }),
     ],
   },
   analysis: {
@@ -141,12 +158,6 @@ export const SETTINGS_SCHEMA: Record<string, SettingsGroupSpec> = {
       "models and keys are the profiles below.",
     seed_from_env: false,
     fields: [
-      field("strategy", "str", "failover", "DRUG_ANALYSIS_STRATEGY", "Strategy", {
-        options: ["failover", "weighted"],
-        help:
-          "failover = always the highest-priority healthy profile; weighted = spread by weight, " +
-          "still falling back on failure. Either way a failed call moves on to the next profile.",
-      }),
       field("max_retries", "int", 3, "DRUG_ANALYSIS_MAX_RETRIES", "Max retries", {
         help: "Attempts at getting well-formed JSON out of a profile before moving to the next one.",
       }),
@@ -372,6 +383,8 @@ export function groupMetadata(
     is_model: f.is_model,
     provider_defaults: f.provider_defaults,
     is_url: f.is_url,
+    min: f.min,
+    max: f.max,
     value: valuesMasked[f.key],
   }));
   return {
@@ -593,6 +606,7 @@ export async function saveGroup(
       }
     }
     const coerced = coerce(f, incoming);
+    checkRange(group, f, coerced);
     toWrite.push([group, key, valueToStr(f, coerced), updatedBy]);
   }
 
@@ -640,7 +654,7 @@ export async function isGroupConfigured(group: string): Promise<boolean> {
 
 // v2 added `rp_id` + `passkeys`. v1 documents still import — they simply carry no
 // passkeys — so the version gate in importSettings accepts anything up to this.
-export const SETTINGS_EXPORT_VERSION = 2;
+export const SETTINGS_EXPORT_VERSION = 3;
 
 /** One registered passkey, as carried in an export document. */
 export interface ExportedPasskey {
@@ -662,8 +676,8 @@ export interface SettingsExport {
   version: number;
   exported_at: string;
   groups: Record<string, Record<string, string>>;
-  /** LLM endpoints (admin.llm_profiles), keys included — see exportSettings. */
-  profiles: Omit<LlmProfile, "id">[];
+  /** Provider accounts, profiles and role bindings, keys included — see exportSettings. (v2: flat `profiles`.) */
+  llm: RoutingExport;
   /**
    * The WebAuthn Relying Party ID the passkeys below are bound to. Carried so an
    * import can tell whether they could possibly work: a browser only offers a
@@ -702,7 +716,7 @@ export async function exportSettings(): Promise<SettingsExport> {
     version: SETTINGS_EXPORT_VERSION,
     exported_at: new Date().toISOString(),
     groups,
-    profiles: await exportProfiles(),
+    llm: await exportRouting(),
     rp_id: config().webauthnRpId,
     passkeys: await exportPasskeys(),
   };
@@ -802,7 +816,9 @@ export async function importSettings(
           throw new Error(`${group}.${key}: '${String(rawValue)}' is not a valid http(s) URL`);
         }
       }
-      toWrite.push([group, key, valueToStr(f, coerce(f, rawValue))]);
+      const coerced = coerce(f, rawValue);
+      checkRange(group, f, coerced);
+      toWrite.push([group, key, valueToStr(f, coerced)]);
       touched.add(group);
     }
   }
@@ -835,9 +851,20 @@ export async function importSettings(
       );
     });
   }
-  // Profiles are replaced wholesale (they are a list, not a merge), and validated
-  // by importProfiles — including the "one embedding model" rule.
-  const profileCount = await importProfiles((root as { profiles?: unknown }).profiles, updatedBy);
+  // Accounts, profiles and role bindings are replaced wholesale and validated
+  // like a form save (including the one-embedding-model rule). v2 documents carry
+  // flat endpoint profiles, converted the same way as the database migration.
+  const r = root as { llm?: unknown; profiles?: unknown; groups?: Record<string, Record<string, string>> };
+  let profileCount = 0;
+  if (r.llm) {
+    profileCount = (await importRouting(r.llm, updatedBy)).profiles;
+  } else if (Array.isArray(r.profiles)) {
+    const legacy = legacyProfilesToRouting(r.profiles, {
+      analysis: r.groups?.analysis?.strategy,
+      embedding: r.groups?.embedding?.strategy,
+    });
+    profileCount = (await importRouting(legacy, updatedBy)).profiles;
+  }
   const passkeyCount = await importPasskeys(root, updatedBy, skipped);
 
   bustCache();
@@ -1049,91 +1076,7 @@ export async function listModels(group: string, draftIn: Record<string, unknown>
   return { ok: false, models: [], message: "This service has no model list." };
 }
 
-async function ollamaTags(baseUrl: string): Promise<ModelsResult> {
-  if (!baseUrl) return { ok: false, models: [], message: "Base URL is empty." };
-  try {
-    const j = (await httpGetJson(`${baseUrl}/api/tags`, {}, 8000)) as Record<string, unknown>;
-    const models = (Array.isArray(j.models) ? j.models : []) as Record<string, unknown>[];
-    const names = models.map((m) => String(m.name ?? "")).filter((n) => n);
-    return {
-      ok: true,
-      models: [...names].sort(),
-      message: names.length ? `${names.length} model(s) found.` : "No models loaded on the server.",
-    };
-  } catch (exc) {
-    return { ok: false, models: [], message: `Failed to list models: ${errStr(exc)}` };
-  }
-}
-
-async function openaiModels(baseUrl: string, apiKey: string): Promise<ModelsResult> {
-  if (!baseUrl) return { ok: false, models: [], message: "Base URL is empty." };
-  const headers: Record<string, string> = apiKey ? { Authorization: `Bearer ${apiKey}` } : {};
-  try {
-    const j = (await httpGetJson(`${baseUrl.replace(/\/+$/, "")}/models`, headers, 8000)) as Record<string, unknown>;
-    const data = (Array.isArray(j.data) ? j.data : []) as Record<string, unknown>[];
-    const names = data.map((m) => String(m.id ?? "")).filter((n) => n);
-    return {
-      ok: true,
-      models: [...names].sort(),
-      message: names.length ? `${names.length} model(s) found.` : "Server returned no models.",
-    };
-  } catch (exc) {
-    return { ok: false, models: [], message: `Failed to list models: ${errStr(exc)}` };
-  }
-}
-
-function siliconflowModels(kind: string | undefined): ModelsResult {
-  const embeddingModels = [
-    "Qwen/Qwen3-Embedding-0.6B",
-    "Qwen/Qwen2-Embedding",
-    "BAAI/bge-large-zh-v1.5",
-    "BAAI/bge-large-en-v1.5",
-    "BAAI/bge-base-zh-v1.5",
-    "jinaai/jina-embeddings-v2-base-zh",
-  ];
-  const llmModels = [
-    "Qwen/Qwen2.5-72B-Instruct",
-    "Qwen/Qwen2.5-32B-Instruct",
-    "Qwen/Qwen2.5-14B-Instruct",
-    "meta-llama/Llama-3.1-70B-Instruct",
-    "meta-llama/Llama-3.1-8B-Instruct",
-    "deepseek-ai/DeepSeek-V3",
-  ];
-  const models = kind === "embedding" ? embeddingModels : llmModels;
-  return {
-    ok: true,
-    models: [...models].sort(),
-    message: `${models.length} model(s) available for ${kind === "embedding" ? "embedding" : "analysis"}.`,
-  };
-}
-
 const GOOGLE_BASE = "https://generativelanguage.googleapis.com";
-
-async function googleEmbeddingModels(apiKey: string): Promise<ModelsResult> {
-  if (!apiKey) return { ok: false, models: [], message: "API key is required for Google." };
-  try {
-    const j = (await httpGetJson(`${GOOGLE_BASE}/v1beta/models`, { "x-goog-api-key": apiKey }, 8000)) as Record<
-      string,
-      unknown
-    >;
-    const models = (Array.isArray(j.models) ? j.models : []) as Record<string, unknown>[];
-    const names: string[] = [];
-    for (const m of models) {
-      const methods = (Array.isArray(m.supportedGenerationMethods) ? m.supportedGenerationMethods : []) as string[];
-      if (methods.includes("embedContent") || methods.includes("batchEmbedContents")) {
-        const name = String(m.name ?? "");
-        names.push(name.startsWith("models/") ? name.slice("models/".length) : name);
-      }
-    }
-    return {
-      ok: true,
-      models: [...names].sort(),
-      message: names.length ? `${names.length} embedding model(s) found.` : "No embedding models found.",
-    };
-  } catch (exc) {
-    return { ok: false, models: [], message: `Failed to list models: ${errStr(exc)}` };
-  }
-}
 
 interface TestResult {
   ok: boolean;
@@ -1171,93 +1114,113 @@ async function resolveProfileKey(draft: ProfileDraft): Promise<string> {
   const typed = String(draft.api_key ?? "").trim();
   if (typed && typed !== SECRET_MASK) return typed;
   if (draft.id !== undefined && draft.id > 0) {
-    const stored = await getProfile(draft.id);
-    if (stored) return stored.api_key;
+    const stored = await getAccount(draft.id);
+    // The stored key only ever goes to the endpoint it was saved for: a draft
+    // naming the account but another provider / URL gets no key.
+    if (stored && draftTargetsAccount(draft, stored)) return stored.api_key;
   }
   return "";
 }
 
+/** The URL a draft would actually call (fixed-URL providers ignore the typed one). */
+export function draftBaseUrl(draft: Pick<ProfileDraft, "provider" | "base_url">): string {
+  const spec = getAdapter(draft.provider)?.spec;
+  if (spec?.baseUrl.fixed && spec.baseUrl.default) return spec.baseUrl.default;
+  return String(draft.base_url ?? "").trim();
+}
+
+/** Does this draft address the stored account's own endpoint (same provider type and URL)? */
+export function draftTargetsAccount(draft: Pick<ProfileDraft, "provider" | "base_url">, stored: { provider: string; base_url: string }): boolean {
+  const norm = (u: string) => u.trim().replace(/\/+$/, "").toLowerCase();
+  return canonicalProviderId(draft.provider) === canonicalProviderId(stored.provider) && norm(draftBaseUrl(draft)) === norm(stored.base_url);
+}
+
+/** A profile-shaped object from a draft (no id/name needed by adapters). */
+function draftProfile(draft: ProfileDraft, apiKey: string): LlmProfile {
+  return {
+    id: draft.id ?? 0,
+    kind: draft.kind,
+    name: "draft",
+    provider: canonicalProviderId(draft.provider),
+    base_url: draftBaseUrl(draft),
+    api_key: apiKey,
+    model: String(draft.model ?? "").trim(),
+    enabled: true,
+    priority: 0,
+    weight: 1,
+    params: (draft.params ?? {}) as LlmProfile["params"],
+    account_id: draft.id,
+  };
+}
+
+/** Fetch with a per-call timeout, as the adapters' CallContext expects. */
+function timedContext(timeoutMs: number): CallContext {
+  return { fetch: (url, init) => fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) }) };
+}
+
+function isTimeout(exc: unknown): boolean {
+  return exc instanceof Error && (exc.name === "TimeoutError" || exc.name === "AbortError" || /aborted|timed? ?out/i.test(exc.message));
+}
+
+function adapterError(exc: unknown): string {
+  if (exc instanceof ProviderHttpError) {
+    let detail = "";
+    try {
+      const j = JSON.parse(exc.body) as Record<string, unknown>;
+      const e = j.error;
+      detail = typeof e === "string" ? e : String((e as Record<string, unknown> | undefined)?.message ?? j.message ?? "");
+    } catch {
+      /* not JSON */
+    }
+    return `HTTP ${exc.status}: ${detail || snippet(exc.body)}`;
+  }
+  return errStr(exc);
+}
+
 /** Models the profile's server actually serves, for the model picker. */
 export async function listProfileModels(draft: ProfileDraft): Promise<ModelsResult> {
-  const provider = String(draft.provider || "").toLowerCase();
-  const base = String(draft.base_url || "").replace(/\/+$/, "");
+  const adapter = getAdapter(draft.provider, draft.base_url);
+  if (!adapter) return { ok: false, models: [], message: `Unknown provider '${draft.provider}'.` };
+  if (!adapter.listModels) return { ok: false, models: [], message: "This provider has no model listing; type the model id." };
   const key = await resolveProfileKey(draft);
-  if (provider === "google") return googleEmbeddingModels(key);
-  if (provider === "ollama") return ollamaTags(base);
-  if (provider === "siliconflow") return siliconflowModels(draft.kind);
-  if (provider === "openai") return openaiModels(base, key);
-  return openaiModels(base, key);
+  if (adapter.spec.keyRequired && !key) return { ok: false, models: [], message: "API key is required for this provider." };
+  try {
+    const models = await adapter.listModels(draftProfile(draft, key), draft.kind, timedContext(15_000));
+    return { ok: true, models, message: `Found ${models.length} model(s).` };
+  } catch (exc) {
+    return { ok: false, models: [], message: `Could not list models: ${adapterError(exc)}` };
+  }
 }
 
 /** Run a real call against one profile's endpoint. */
 export async function testProfile(draft: ProfileDraft): Promise<TestResult> {
-  const key = await resolveProfileKey(draft);
-  const common = {
-    provider: draft.provider,
-    base_url: draft.base_url,
-    model: draft.model,
-    api_key: key,
-  };
-  if (draft.kind === "embedding") {
-    const emb = await getGroup("embedding");
-    const dimensions = Number(draft.params?.dimensions ?? 1024) || 1024;
-    return testEmbedding({ ...common, dimensions, timeout: emb.timeout });
+  const adapter = getAdapter(draft.provider, draft.base_url);
+  if (!adapter) return { ok: false, message: `Unknown provider '${draft.provider}'.` };
+  if (!adapter.spec.roles.includes(draft.kind)) {
+    return { ok: false, message: `${adapter.spec.label} does not offer ${draft.kind === "embedding" ? "embeddings" : "chat models"}.` };
   }
-  return testAnalysis(common);
+  const key = await resolveProfileKey(draft);
+  if (!String(draft.model ?? "").trim()) return { ok: false, message: "Model is required." };
+  if (adapter.spec.keyRequired && !key) return { ok: false, message: "API key is required for this provider." };
+  if (!adapter.spec.baseUrl.fixed && !String(draft.base_url ?? "").trim()) return { ok: false, message: "Base URL is required." };
+  const profile = draftProfile(draft, key);
+  return draft.kind === "embedding" ? testEmbedding(adapter, profile) : testAnalysis(adapter, profile);
 }
 
-async function testEmbedding(draft: Record<string, unknown>): Promise<TestResult> {
-  const provider = String((draft.provider ?? "ollama") || "ollama").toLowerCase();
-  const base = String((draft.base_url ?? "") || "").replace(/\/+$/, "");
-  const model = String((draft.model ?? "") || "");
-  const key = String((draft.api_key ?? "") || "");
-  const wantDim = Math.trunc(Number(draft.dimensions ?? 0)) || 0;
-  if (!model) return { ok: false, message: "Model is required." };
-  if ((provider === "openai" || provider === "siliconflow" || provider === "google") && !key) {
-    return { ok: false, message: "API key is required for this provider." };
-  }
-  if ((provider === "ollama" || provider === "openai" || provider === "siliconflow") && !base) {
-    return { ok: false, message: "Base URL is required." };
-  }
+async function testEmbedding(adapter: ProviderAdapter, profile: LlmProfile): Promise<TestResult> {
+  const emb = await getGroup("embedding");
+  const wantDim = Math.trunc(Number(profile.params?.dimensions ?? 1024)) || 1024;
   // Generous timeout: a cold embedding model can take 10-30s to load on first call.
-  const timeout = Math.max(Number(draft.timeout ?? 30) || 30, 90.0) * 1000;
+  const timeoutMs = Math.max(Number(emb.timeout ?? 30) || 30, 90) * 1000;
   try {
     const t0 = performance.now();
-    let vec: unknown;
-    if (provider === "openai" || provider === "siliconflow") {
-      const url = base.endsWith("/embeddings") ? base : `${base}/embeddings`;
-      const body: Record<string, unknown> = { model, input: ["health check"], encoding_format: "float" };
-      if (wantDim && model.startsWith("text-embedding-3")) body.dimensions = wantDim;
-      const authHeaders: Record<string, string> = key ? { Authorization: `Bearer ${key}` } : {};
-      const j = (await httpPostJson(url, authHeaders, body, timeout)) as Record<string, unknown>;
-      const data = (Array.isArray(j.data) ? j.data : [{}]) as Record<string, unknown>[];
-      vec = data[0]?.embedding;
-    } else if (provider === "google") {
-      const mp = model.startsWith("models/") ? model : `models/${model}`;
-      const req: Record<string, unknown> = { content: { parts: [{ text: "health check" }] } };
-      if (wantDim) req.outputDimensionality = wantDim;
-      const j = (await httpPostJson(
-        `${GOOGLE_BASE}/v1beta/${mp}:embedContent`,
-        { "x-goog-api-key": key },
-        req,
-        timeout,
-      )) as Record<string, unknown>;
-      vec = (j.embedding as Record<string, unknown> | undefined)?.values;
-    } else {
-      const j = (await httpPostJson(`${base}/api/embed`, {}, { model, input: ["health check"] }, timeout)) as Record<
-        string,
-        unknown
-      >;
-      const embs = (Array.isArray(j.embeddings) ? j.embeddings : []) as unknown[];
-      vec = embs.length ? embs[0] : null;
-    }
+    const vecs = await adapter.embed!(profile, { texts: ["health check"], inputType: "document", dimensions: wantDim }, timedContext(timeoutMs));
     const ms = Math.trunc(performance.now() - t0);
-    if (!vec || !Array.isArray(vec) || vec.length === 0) {
-      return { ok: false, message: "Provider returned no embedding vector." };
-    }
+    const vec = vecs[0];
+    if (!vec || vec.length === 0) return { ok: false, message: "Provider returned no embedding vector." };
     const dim = vec.length;
     const msg = `Embedded sample in ${ms} ms — vector dim = ${dim}.`;
-    if (wantDim && dim !== wantDim) {
+    if (dim !== wantDim) {
       return {
         ok: false,
         message: msg + ` ⚠ Configured dimensions = ${wantDim} does not match!`,
@@ -1266,71 +1229,122 @@ async function testEmbedding(draft: Record<string, unknown>): Promise<TestResult
     }
     return { ok: true, message: msg, details: { returned_dim: dim, latency_ms: ms } };
   } catch (exc) {
-    return { ok: false, message: `Embedding test failed: ${errStr(exc)}` };
+    return { ok: false, message: `Embedding test failed: ${adapterError(exc)}` };
   }
 }
 
-async function testAnalysis(draft: Record<string, unknown>): Promise<TestResult> {
-  const provider = String((draft.provider ?? "openai") || "openai").toLowerCase();
-  const base = String((draft.base_url ?? "") || "").replace(/\/+$/, "");
-  const model = String((draft.model ?? "") || "");
-  const apiKey = String((draft.api_key ?? "") || "");
-  if (!base || !model) return { ok: false, message: "Base URL and model are required." };
+/** Bounds for the analysis probe: long enough for a slow local model, short enough for a UI click. */
+const ANALYSIS_TEST_MIN_TIMEOUT_MS = 30_000;
+const ANALYSIS_TEST_MAX_TIMEOUT_MS = 180_000;
+/** Output room for the probe. A thinking model spends this before answering. */
+const ANALYSIS_TEST_MAX_TOKENS = 1024;
+const ANALYSIS_TEST_MESSAGES = [
+  { role: "system", content: "You are a JSON API. Reply with a single JSON object and nothing else." },
+  { role: "user", content: 'Return exactly this JSON object: {"ok": true}' },
+];
+
+/** Warning codes the admin UI explains (web-v2 AnalysisProbe.tsx). */
+type AnalysisTestWarning =
+  | "partial_gpu"
+  | "large_context"
+  | "slow_generation"
+  | "thinking_used"
+  | "budget_exhausted"
+  | "json_invalid"
+  | "params_dropped";
+
+/**
+ * Probe one analysis endpoint through its adapter — the same request a job
+ * sends (thinking, sampling, JSON mode, provider knobs) — and report where the
+ * time went, so a slow or misconfigured endpoint is diagnosable from the UI.
+ */
+async function testAnalysis(adapter: ProviderAdapter, profile: LlmProfile): Promise<TestResult> {
+  const configured = Math.trunc(Number(profile.params?.timeout_ms ?? 0)) || ANALYSIS_TEST_MAX_TIMEOUT_MS;
+  const timeoutMs = Math.min(ANALYSIS_TEST_MAX_TIMEOUT_MS, Math.max(ANALYSIS_TEST_MIN_TIMEOUT_MS, configured));
+  const ctx = timedContext(timeoutMs);
+  const warnings: AnalysisTestWarning[] = [];
+  const details: Record<string, unknown> = {
+    timeout_ms: timeoutMs,
+    max_tokens: ANALYSIS_TEST_MAX_TOKENS,
+    thinking_off: adapter.spec.thinkingOff ?? null,
+  };
+  const residency = async (): Promise<Record<string, unknown> | null> => {
+    const info = adapter.inspect ? await adapter.inspect(profile, timedContext(5000)).catch(() => null) : null;
+    return (info?.residency as Record<string, unknown> | undefined) ?? null;
+  };
+
+  const t0 = performance.now();
+  let result: Awaited<ReturnType<NonNullable<ProviderAdapter["chat"]>>>;
   try {
-    const t0 = performance.now();
-    let text: string;
-    if (provider === "ollama") {
-      const j = (await httpPostJson(
-        `${base}/api/chat`,
-        {},
-        { model, stream: false, messages: [{ role: "user", content: "Reply with the word OK." }] },
-        20000,
-      )) as Record<string, unknown>;
-      text = String(((j.message as Record<string, unknown> | undefined) ?? {}).content ?? "");
-    } else {
-      // OpenAI / vLLM / SiliconFlow (all use OpenAI-compatible API)
-      const headers: Record<string, string> = apiKey ? { Authorization: `Bearer ${apiKey}` } : {};
-      const body: Record<string, unknown> = {
-        model,
-        max_tokens: 16,
-        messages: [{ role: "user", content: "Reply with the word OK." }],
-      };
-      const hdrs = { ...headers, "content-type": "application/json" };
-      let r = await fetchWithTimeout(
-        `${base}/chat/completions`,
-        { method: "POST", headers: hdrs, body: JSON.stringify(body) },
-        20000,
-      );
-      // Newer OpenAI models reject `max_tokens` (400) and require
-      // `max_completion_tokens`. Retry once with the new parameter.
-      if (r.status === 400) {
-        const errText = await r.text();
-        if (errText.includes("max_completion_tokens")) {
-          delete body.max_tokens;
-          body.max_completion_tokens = 256;
-          r = await fetchWithTimeout(
-            `${base}/chat/completions`,
-            { method: "POST", headers: hdrs, body: JSON.stringify(body) },
-            20000,
-          );
-        } else {
-          throw new HttpStatusError(r.status, errText);
-        }
-      }
-      if (!r.ok) throw new HttpStatusError(r.status, await r.text());
-      const j = (await r.json()) as Record<string, unknown>;
-      const choices = (j.choices as Record<string, unknown>[]) ?? [];
-      text = String(((choices[0]?.message as Record<string, unknown>) ?? {}).content ?? "");
-    }
-    const ms = Math.trunc(performance.now() - t0);
-    return {
-      ok: true,
-      message: `Completion in ${ms} ms.`,
-      details: { sample: (text || "").trim().slice(0, 200), latency_ms: ms },
-    };
+    result = await adapter.chat!(profile, { messages: ANALYSIS_TEST_MESSAGES, maxTokens: ANALYSIS_TEST_MAX_TOKENS, json: true }, ctx);
   } catch (exc) {
-    return { ok: false, message: `Analysis test failed: ${errStr(exc)}` };
+    details.latency_ms = Math.trunc(performance.now() - t0);
+    details.residency = await residency();
+    if (isTimeout(exc)) {
+      details.timed_out = true;
+      return {
+        ok: false,
+        message: `No reply within ${Math.round(timeoutMs / 1000)} s (test limit). The endpoint is reachable but too slow, or still loading the model.`,
+        details,
+      };
+    }
+    return { ok: false, message: `Analysis test failed: ${adapterError(exc)}`, details };
   }
+  const ms = Math.trunc(performance.now() - t0);
+  const content = result.content;
+  const elapsedTps =
+    result.usage.completionTokens > 0 ? Math.round((result.usage.completionTokens / Math.max(ms, 1)) * 10_000) / 10 : null;
+  Object.assign(details, {
+    latency_ms: ms,
+    output_tokens: result.usage.completionTokens,
+    prompt_tokens: result.usage.promptTokens,
+    reasoning_tokens: result.usage.reasoningTokens,
+    reasoning_chars: result.reasoningChars,
+    // Ollama reports pure decode speed; elsewhere this includes network + prompt time.
+    tokens_per_sec: elapsedTps,
+    ...(result.diagnostics ?? {}),
+    finish_reason: result.finishReason || null,
+    sample: content.trim().slice(0, 200),
+  });
+  if (result.droppedParams.length) {
+    details.params_dropped = result.droppedParams;
+    warnings.push("params_dropped");
+  }
+  let jsonOk = false;
+  try {
+    const parsed = JSON.parse(content) as unknown;
+    jsonOk = parsed !== null && typeof parsed === "object";
+  } catch {
+    /* not JSON */
+  }
+  details.json_ok = jsonOk;
+
+  const res = await residency();
+  details.residency = res;
+  if (res) {
+    const ratio = res.gpu_ratio;
+    if (typeof ratio === "number" && ratio < 0.99) warnings.push("partial_gpu");
+    const ctxLen = Number(res.context_length) || 0;
+    if (ctxLen >= 131_072 && profile.params?.num_ctx === undefined) warnings.push("large_context");
+  }
+  const tps = Number(details.tokens_per_sec);
+  // A handful of tokens right after a model load says nothing about decode speed.
+  if (result.usage.completionTokens >= 20 && Number.isFinite(tps) && tps > 0 && tps < 5) warnings.push("slow_generation");
+  if (result.reasoningChars > 0 || (result.usage.reasoningTokens ?? 0) > 0) warnings.push("thinking_used");
+  if (result.truncated && content.trim()) warnings.push("budget_exhausted");
+  if (content.trim() && !jsonOk) warnings.push("json_invalid");
+  details.warnings = warnings;
+
+  if (!content.trim()) {
+    return {
+      ok: false,
+      message: result.truncated
+        ? `The model used all ${ANALYSIS_TEST_MAX_TOKENS} output tokens without answering (likely spent on thinking).`
+        : "The endpoint replied with an empty message.",
+      details,
+    };
+  }
+  return { ok: true, message: `Completion in ${ms} ms.`, details };
 }
 
 /** MinerU exposes `/health`, which also reports its version and queue depth. */

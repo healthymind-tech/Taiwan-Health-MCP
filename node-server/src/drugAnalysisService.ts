@@ -15,6 +15,7 @@ import { candidateOrder, type LlmProfile, type Strategy } from "./admin/llmProfi
 import { recordLlmCall } from "./admin/llmCallLog.js";
 import { callAnalysisLlm, type LlmCallAttempt, type Message } from "./analysisLlmClient.js";
 import { logInfo, logWarning } from "./logger.js";
+import { getAdapter } from "./providers/registry.js";
 
 export { isReasoningModel, MAX_TOKEN_BUDGET, TokenBudgetExceeded } from "./analysisLlmClient.js";
 
@@ -419,8 +420,17 @@ export interface DrugAnalysisConfig {
   ocrTimeoutSeconds: number;
   analysisPromptPath: string;
   analysisMaxRetries: number;
-  /** Already ordered for this run (failover by priority, or weighted). */
+  /**
+   * Snapshot of the candidate order taken when the config was loaded — used for
+   * readiness checks and as the fallback when re-resolving fails.
+   */
   analysisProfiles: LlmProfile[];
+  /**
+   * Re-resolve the candidate order. Called once per document so the route's
+   * strategy (round robin / load balance) and the circuit breaker's cool-down
+   * ordering apply across a long job instead of being frozen at its start.
+   */
+  analysisProfileSource?: () => Promise<LlmProfile[]>;
   analysisStrategy: string;
   /** Whether an operator has actually set OCR up — it is never seeded from env. */
   ocrConfigured: boolean;
@@ -431,10 +441,17 @@ function str(value: unknown, fallback: string): string {
   return text || fallback;
 }
 
+/**
+ * How long one document may wait for a profile's own RPM/TPM window. Batch
+ * jobs can afford a full window (60 s) rather than failing the document.
+ */
+const ANALYSIS_RATE_LIMIT_WAIT_MS = 65_000;
+
 export function configFromValues(opts: {
   ocr: Record<string, unknown>;
   analysis: Record<string, unknown>;
   analysisProfiles?: LlmProfile[];
+  analysisProfileSource?: () => Promise<LlmProfile[]>;
   ocrConfigured?: boolean;
 }): DrugAnalysisConfig {
   const { ocr, analysis } = opts;
@@ -451,6 +468,7 @@ export function configFromValues(opts: {
     analysisPromptPath: DEFAULT_ANALYSIS_PROMPT_PATH,
     analysisMaxRetries: Number(analysis.max_retries || 3) || 3,
     analysisProfiles: opts.analysisProfiles ?? [],
+    analysisProfileSource: opts.analysisProfileSource,
     analysisStrategy: str(analysis.strategy, "failover"),
     ocrConfigured: opts.ocrConfigured ?? true,
   };
@@ -459,7 +477,7 @@ export function configFromValues(opts: {
 /**
  * The one way to build a drug OCR/analysis config. OCR settings come from
  * `admin.app_settings` (group `ocr`), the Analysis LM endpoints from
- * `admin.llm_profiles`, already ordered by the configured strategy. Neither is
+ * the analysis profile, already expanded by its strategy (llmRouting.ts). Neither is
  * seeded from the environment, so "nothing there" means the operator has not set
  * it up — which `getGroup` alone cannot say, since it answers with schema defaults
  * so the admin form has something to prefill.
@@ -471,6 +489,7 @@ export async function loadDrugAnalysisConfig(): Promise<DrugAnalysisConfig> {
     ocr: await adminSettings.getGroup("ocr"),
     analysis,
     analysisProfiles: await candidateOrder("analysis", strategy),
+    analysisProfileSource: () => candidateOrder("analysis", strategy),
     ocrConfigured: await adminSettings.isGroupConfigured("ocr"),
   });
 }
@@ -511,11 +530,28 @@ export class DrugAnalysisService {
       return [false, `Analysis prompt not found: ${this.config.analysisPromptPath}`];
     }
     for (const profile of this.config.analysisProfiles) {
-      if (!["openai", "vllm", "ollama"].includes(profile.provider)) {
+      const adapter = getAdapter(profile.provider, profile.base_url);
+      if (!adapter || !adapter.spec.roles.includes("analysis")) {
         return [false, `Profile '${profile.name}': unsupported provider '${profile.provider}'`];
       }
     }
     return [true, ""];
+  }
+
+  /**
+   * The candidate order for the next document: freshly resolved, so routing
+   * strategy and cool-downs apply mid-job. A failed lookup (DB blip) falls back
+   * to the snapshot taken at load time rather than failing the document.
+   */
+  async profilesForDocument(): Promise<LlmProfile[]> {
+    const source = this.config.analysisProfileSource;
+    if (!source) return this.config.analysisProfiles;
+    try {
+      return await source();
+    } catch (exc) {
+      logWarning("analysis_profiles_reload_failed", { error: String((exc as Error).message) });
+      return this.config.analysisProfiles;
+    }
   }
 
   readiness(): [boolean, string] {
@@ -700,6 +736,7 @@ export class DrugAnalysisService {
     // out — constant context keeps a retry as cheap as the first try.
     let lastError = "";
     let contentGap: { parsed: Record<string, unknown>; errors: string[] } | null = null;
+    const profiles = await this.profilesForDocument();
     for (let attempt = 1; attempt <= this.config.analysisMaxRetries; attempt += 1) {
       const messages: Message[] = [
         { role: "system", content: prompt },
@@ -714,7 +751,7 @@ export class DrugAnalysisService {
         },
       ];
       const { content, profileUsed } = await callAnalysisLlm(
-        this.config.analysisProfiles,
+        profiles,
         messages,
         licenseId
           ? (call: LlmCallAttempt): void => {
@@ -735,6 +772,7 @@ export class DrugAnalysisService {
               });
             }
           : undefined,
+        { maxRateLimitWaitMs: ANALYSIS_RATE_LIMIT_WAIT_MS },
       );
       this.lastProfileUsed = profileUsed;
       try {

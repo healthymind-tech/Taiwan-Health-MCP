@@ -24,6 +24,8 @@ import { query } from "../db.js";
 import { tsIsoExpr, pyIso } from "./adminJobs.js";
 import * as adminSettings from "./adminSettings.js";
 import { candidateOrder, embeddingDimensions } from "./llmProfiles.js";
+import { probeEndpoint } from "../providers/probe.js";
+import { getAdapter } from "../providers/registry.js";
 
 /**
  * Ping Ollama: reachable AND ≥1 model loaded. Returns true only when
@@ -106,10 +108,13 @@ export async function getEmbeddingStatus(): Promise<Record<string, unknown>> {
   if (provider === "ollama") {
     configured = Boolean(ollamaBaseUrl);
     ollamaOk = await pingOllama(ollamaBaseUrl);
+  } else if (primary) {
+    // Any other provider: ask its adapter (model listing / host reachability).
+    const spec = getAdapter(primary.provider, primary.base_url)?.spec;
+    configured = Boolean(ollamaModel) && (!spec?.keyRequired || Boolean(primary.api_key));
+    ollamaOk = configured && (await probeEndpoint(primary, "embedding", { timeoutMs: 5000 })).ok;
   } else {
-    configured = Boolean(ollamaModel) && Boolean(primary?.api_key);
-    // Non-ollama reachability (admin_settings.list_models) lands with the
-    // write-path port; treat unverified providers as unreachable until then.
+    configured = false;
     ollamaOk = false;
   }
 

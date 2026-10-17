@@ -1,35 +1,77 @@
 /**
  * Per-profile rate limiter — RPM (requests per minute) and TPM (tokens per minute).
  *
- * Maintains a sliding window of requests/tokens per profile. Before each request,
- * callers check `canRequest()` and optionally `waitUntil()` for availability.
- * After a successful request, they call `recordRequest()` with token usage.
+ * Maintains a sliding window of requests per profile. Each entry stores the
+ * request time and its token count, with running sums kept alongside so that a
+ * check costs O(expired entries) rather than O(tokens). The window is pruned
+ * before every check, so `canRequest()` and `waitUntilMs()` always see the same
+ * state: "not allowed" always comes with a positive wait.
+ *
+ * Callers check `canRequest()` and optionally `waitUntilMs()` before a request,
+ * and call `recordRequest()` afterwards with the tokens it consumed (including
+ * calls whose reply was truncated — those tokens were still billed).
  */
 
+interface WindowEntry {
+  at: number;
+  tokens: number;
+}
+
 interface RateLimitState {
-  rpms: number[];
-  tpms: number[];
-  lastCleanupAt: number;
+  /** Entries in time order (oldest first); `head` marks the first live one. */
+  entries: WindowEntry[];
+  head: number;
+  tokenSum: number;
 }
 
 const WINDOW_MS = 60_000; // 1 minute
-const CLEANUP_INTERVAL_MS = 10_000;
+
+/**
+ * A profile's own (local) RPM/TPM budget is exhausted; no request was sent.
+ * The endpoint is healthy, so callers must not feed this to the circuit breaker.
+ */
+export class ProfileRateLimited extends Error {
+  constructor(
+    message: string,
+    readonly waitMs: number,
+  ) {
+    super(message);
+    this.name = "ProfileRateLimited";
+  }
+}
 
 const state = new Map<number, RateLimitState>();
 
 function ensureState(profileId: number): RateLimitState {
-  if (!state.has(profileId)) {
-    state.set(profileId, { rpms: [], tpms: [], lastCleanupAt: Date.now() });
+  let s = state.get(profileId);
+  if (!s) {
+    s = { entries: [], head: 0, tokenSum: 0 };
+    state.set(profileId, s);
   }
-  return state.get(profileId)!;
+  return s;
 }
 
-function cleanup(s: RateLimitState): void {
-  const now = Date.now();
+/** Drop entries that have left the window. Amortised O(1) per entry. */
+function prune(s: RateLimitState, now: number): void {
   const cutoff = now - WINDOW_MS;
-  s.rpms = s.rpms.filter((ts) => ts > cutoff);
-  s.tpms = s.tpms.filter((ts) => ts > cutoff);
-  s.lastCleanupAt = now;
+  while (s.head < s.entries.length && s.entries[s.head].at <= cutoff) {
+    s.tokenSum -= s.entries[s.head].tokens;
+    s.head += 1;
+  }
+  // Compact occasionally so the array does not grow without bound.
+  if (s.head > 1024 && s.head * 2 > s.entries.length) {
+    s.entries = s.entries.slice(s.head);
+    s.head = 0;
+  }
+  if (s.head === s.entries.length) {
+    s.entries = [];
+    s.head = 0;
+    s.tokenSum = 0;
+  }
+}
+
+function liveCount(s: RateLimitState): number {
+  return s.entries.length - s.head;
 }
 
 interface ProfileRateLimit {
@@ -38,17 +80,13 @@ interface ProfileRateLimit {
 }
 
 /**
- * Current request count in the sliding window (last minute).
+ * Current usage in the sliding window (last minute).
  * Returns [usedRequests, usedTokens].
  */
-function currentUsage(
-  profileId: number,
-): [requests: number, tokens: number] {
+function currentUsage(profileId: number): [requests: number, tokens: number] {
   const s = ensureState(profileId);
-  if (Date.now() - s.lastCleanupAt > CLEANUP_INTERVAL_MS) {
-    cleanup(s);
-  }
-  return [s.rpms.length, s.tpms.reduce((sum, _) => sum + 1, 0)];
+  prune(s, Date.now());
+  return [liveCount(s), s.tokenSum];
 }
 
 /**
@@ -72,35 +110,34 @@ export function canRequest(
 
 /**
  * How many ms until the profile can make another request?
- * Returns 0 if it can now, or the ms to wait.
+ * Returns 0 if it can now, or the ms to wait. Consistent with `canRequest()`:
+ * after waiting the returned time (+1 ms), `canRequest()` is allowed unless new
+ * requests were recorded in between.
  */
-export function waitUntilMs(
-  profileId: number,
-  limits: ProfileRateLimit,
-): number {
+export function waitUntilMs(profileId: number, limits: ProfileRateLimit): number {
   const s = ensureState(profileId);
-  if (Date.now() - s.lastCleanupAt > CLEANUP_INTERVAL_MS) {
-    cleanup(s);
-  }
-
   const now = Date.now();
+  prune(s, now);
   let earliestOpenTime = now;
 
-  // Check RPM limit
-  if (limits.rpm && s.rpms.length >= limits.rpm) {
-    const oldest = s.rpms[0];
-    const reopenAt = oldest + WINDOW_MS;
-    if (reopenAt > earliestOpenTime) {
-      earliestOpenTime = reopenAt;
-    }
+  // RPM: the window reopens when enough of the oldest requests have expired
+  // to bring the count below the limit.
+  const count = liveCount(s);
+  if (limits.rpm && count >= limits.rpm) {
+    const mustExpire = count - limits.rpm + 1;
+    const entry = s.entries[s.head + mustExpire - 1];
+    earliestOpenTime = Math.max(earliestOpenTime, entry.at + WINDOW_MS);
   }
 
-  // Check TPM limit
-  if (limits.tpm && s.tpms.length >= limits.tpm) {
-    const oldest = Math.min(...s.tpms);
-    const reopenAt = oldest + WINDOW_MS;
-    if (reopenAt > earliestOpenTime) {
-      earliestOpenTime = reopenAt;
+  // TPM: walk the oldest entries until the remaining sum drops below the limit.
+  if (limits.tpm && s.tokenSum >= limits.tpm) {
+    let remaining = s.tokenSum;
+    for (let i = s.head; i < s.entries.length; i += 1) {
+      remaining -= s.entries[i].tokens;
+      if (remaining < limits.tpm) {
+        earliestOpenTime = Math.max(earliestOpenTime, s.entries[i].at + WINDOW_MS);
+        break;
+      }
     }
   }
 
@@ -108,29 +145,16 @@ export function waitUntilMs(
 }
 
 /**
- * Record a successful request. Call this after a successful API call.
+ * Record a request and the tokens it consumed. Call after every billed API
+ * call — successful or truncated.
  */
-export function recordRequest(
-  profileId: number,
-  tokenCount: number = 0,
-): void {
+export function recordRequest(profileId: number, tokenCount: number = 0): void {
   const s = ensureState(profileId);
   const now = Date.now();
-
-  // Record the request timestamp (for RPM)
-  s.rpms.push(now);
-
-  // Record token timestamps (for TPM)
-  if (tokenCount > 0) {
-    for (let i = 0; i < tokenCount; i++) {
-      s.tpms.push(now);
-    }
-  }
-
-  // Cleanup if needed
-  if (Date.now() - s.lastCleanupAt > CLEANUP_INTERVAL_MS) {
-    cleanup(s);
-  }
+  prune(s, now);
+  const tokens = Number.isFinite(tokenCount) && tokenCount > 0 ? Math.floor(tokenCount) : 0;
+  s.entries.push({ at: now, tokens });
+  s.tokenSum += tokens;
 }
 
 /**

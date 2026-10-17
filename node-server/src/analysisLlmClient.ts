@@ -1,5 +1,5 @@
 /**
- * Shared "Analysis LM" chat-completion client: failover across `admin.llm_profiles`
+ * Shared "Analysis LM" chat-completion client: failover across the analysis role's profile (llmRouting.ts)
  * (`kind='analysis'`), per-profile output-budget escalation, and the OpenAI/vLLM
  * parameter-adaptation retries. Extracted from `drugAnalysisService.ts` so other
  * document-analysis pipelines can reuse the exact same
@@ -10,9 +10,19 @@
 import { reportFailure, reportSuccess, type LlmProfile } from "./admin/llmProfiles.js";
 import { recordProfileStats, type LlmCallUsage } from "./admin/llmProfileStats.js";
 import { logWarning } from "./logger.js";
-import { canRequest, recordRequest, waitUntilMs } from "./rateLimiter.js";
+import { canRequest, ProfileRateLimited, recordRequest, waitUntilMs } from "./rateLimiter.js";
+import { getAdapter } from "./providers/registry.js";
+import type { Message } from "./providers/types.js";
 
-export type Message = { role: string; content: string };
+export type { Message };
+
+const REASONING_MODEL_PREFIXES = ["gpt-5", "gpt-6", "o1", "o3", "o4"];
+
+/** True for model families that bill hidden reasoning against the output budget. */
+export function isReasoningModel(model: string): boolean {
+  const name = (model || "").trim().toLowerCase();
+  return REASONING_MODEL_PREFIXES.some((prefix) => name.startsWith(prefix));
+}
 
 // Starting output budget. Both families now start here: a locally hosted thinking
 // model is indistinguishable from a plain one by name (see REASONING_MODEL_PREFIXES),
@@ -21,13 +31,18 @@ export type Message = { role: string; content: string };
 const DEFAULT_MAX_TOKENS = 16384;
 const DEFAULT_REASONING_MAX_TOKENS = 16384;
 const DEFAULT_TIMEOUT_MS = 600_000;
-const REASONING_MODEL_PREFIXES = ["gpt-5", "o1", "o3", "o4"];
 
-/** How many times a single endpoint call retries on a transport failure
- * (timeout / network error) before the profile counts as failed. */
-const TRANSPORT_RETRIES = 3;
-/** Backoff (ms) between transport retries. */
-const TRANSPORT_BACKOFF_MS = [2_000, 4_000, 8_000];
+/** How many times a single endpoint call retries on a connection-level failure
+ * (reset / refused / DNS) before the profile counts as failed. A *timeout* is
+ * never retried: an endpoint that let a request run for the whole timeout is
+ * not going to answer the same request faster, so the next profile is tried
+ * immediately instead of burning several more timeouts on it. */
+const TRANSPORT_RETRIES = 2;
+/** Backoff (ms) between transport retries — short: these are blips, not outages. */
+const TRANSPORT_BACKOFF_MS = [1_000, 2_000];
+
+/** Default cap on how long one call waits for a profile's own RPM/TPM window. */
+export const DEFAULT_RATE_LIMIT_WAIT_MS = 15_000;
 
 function profileTimeoutMs(profile: LlmProfile): number {
   const value = Math.trunc(Number(profile.params?.timeout_ms ?? DEFAULT_TIMEOUT_MS));
@@ -52,11 +67,6 @@ export const MAX_TOKEN_BUDGET = 65536;
  */
 const NON_REASONING_MAX_TOKEN_BUDGET = 32768;
 
-/** True for model families that bill hidden reasoning against the output budget. */
-export function isReasoningModel(model: string): boolean {
-  const name = (model || "").trim().toLowerCase();
-  return REASONING_MODEL_PREFIXES.some((prefix) => name.startsWith(prefix));
-}
 
 /**
  * The model ran out of output budget before finishing the JSON.
@@ -92,9 +102,20 @@ export class AnalysisLlmUnavailable extends Error {
   }
 }
 
-function profileTemperature(profile: LlmProfile, fallback = 0.1): number {
-  const value = Number(profile.params?.temperature ?? fallback);
-  return Number.isFinite(value) ? value : fallback;
+/**
+ * Every profile that could have answered is only held back by its own local
+ * RPM/TPM limit, and the window does not reopen within the caller's wait cap.
+ * The endpoints are healthy — this is "retry later", never "the fleet is down",
+ * and it never feeds the circuit breaker.
+ */
+export class AnalysisLlmRateLimited extends Error {
+  constructor(
+    message: string,
+    readonly retryAfterMs: number,
+  ) {
+    super(message);
+    this.name = "AnalysisLlmRateLimited";
+  }
 }
 
 /** Usage counts can be absent or 0 on some providers — never negative/NaN. */
@@ -109,11 +130,6 @@ function profileMaxTokens(profile: LlmProfile): number {
     : DEFAULT_MAX_TOKENS;
   const value = Math.trunc(Number(profile.params?.max_tokens ?? fallback));
   return Number.isFinite(value) && value > 0 ? value : fallback;
-}
-
-function normalizeOpenAiBaseUrl(baseUrl: string): string {
-  const trimmed = baseUrl.replace(/\/+$/, "");
-  return trimmed.endsWith("/v1") ? trimmed : `${trimmed}/v1`;
 }
 
 /**
@@ -142,7 +158,10 @@ async function callProfileWithBudget(
   messages: Message[],
 ): Promise<{ content: string; usage: LlmCallUsage }> {
   let budget = profileMaxTokens(profile);
-  const ceiling = Math.max(budget, profileBudgetCeiling(profile));
+  // A provider that cannot be given an output budget would only repeat the
+  // identical request: no escalation there.
+  const fixedBudget = getAdapter(profile.provider, profile.base_url)?.ignoresMaxTokens === true;
+  const ceiling = fixedBudget ? budget : Math.max(budget, profileBudgetCeiling(profile));
   for (;;) {
     try {
       return await callOneProfile(profile, messages, budget);
@@ -162,20 +181,15 @@ async function callProfileWithBudget(
   }
 }
 
-/**
- * Endpoints behind a proxy/CDN answer failures with a full HTML error page
- * (e.g. a Cloudflare 5xx). Embedding that whole body in the error — which then
- * becomes a job's `last_error_message` and floods the task log with markup — is
- * useless. Keep a short single-line snippet: enough to identify the failure.
- */
-function httpErrorSnippet(body: string, max = 300): string {
-  const oneLine = body.replace(/\s+/g, " ").trim();
-  return oneLine.length > max ? `${oneLine.slice(0, max)}… (${oneLine.length} chars total)` : oneLine;
+function isTimeout(err: unknown): boolean {
+  const name = (err as { name?: string } | null)?.name;
+  return name === "TimeoutError" || name === "AbortError";
 }
 
-/** Retry a single endpoint call on transient transport failures (timeout,
- * network error). A fresh `AbortSignal.timeout` is created per attempt, so a
- * timed-out signal never leaks into the next try. */
+/** Retry a single endpoint call on connection-level failures (reset, refused).
+ * A timeout fails at once (see TRANSPORT_RETRIES). A fresh
+ * `AbortSignal.timeout` is created per attempt, so a timed-out signal never
+ * leaks into the next try. */
 async function fetchWithTransportRetry(
   url: string,
   init: RequestInit,
@@ -186,6 +200,9 @@ async function fetchWithTransportRetry(
     try {
       return await fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
     } catch (err) {
+      if (isTimeout(err)) {
+        throw new Error(`No reply within ${Math.round(timeoutMs / 1000)}s (timeout) from ${url}`);
+      }
       lastError = err;
       if (attempt === TRANSPORT_RETRIES) break;
       const backoff = TRANSPORT_BACKOFF_MS[attempt] ?? TRANSPORT_BACKOFF_MS[TRANSPORT_BACKOFF_MS.length - 1];
@@ -208,169 +225,42 @@ async function callOneProfile(
   const { allowed, reason } = canRequest(profile.id, limits);
   if (!allowed) {
     const waitMs = waitUntilMs(profile.id, limits);
-    throw new Error(`Rate limit: ${reason}. Wait ${Math.ceil(waitMs / 1000)}s.`);
+    throw new ProfileRateLimited(`Rate limit: ${reason}. Wait ${Math.ceil(waitMs / 1000)}s.`, waitMs);
   }
 
+  const adapter = getAdapter(profile.provider, profile.base_url);
+  if (!adapter?.chat) throw new Error(`Unsupported analysis provider: ${profile.provider}`);
+  const timeoutMs = profileTimeoutMs(profile);
   const startedAt = Date.now();
-  if (profile.provider === "openai" || profile.provider === "vllm" || profile.provider === "siliconflow") {
-    const baseUrl = profile.provider === "siliconflow"
-      ? profile.base_url.replace(/\/+$/, "")
-      : normalizeOpenAiBaseUrl(profile.base_url);
-    const url = `${baseUrl}/chat/completions`;
-    const payload: Record<string, unknown> = {
-      model: profile.model,
-      messages,
-      temperature: profileTemperature(profile),
-      response_format: { type: "json_object" },
-    };
-    const tokenParam =
-      (profile.provider === "openai" || profile.provider === "siliconflow") && isReasoningModel(profile.model)
-        ? "max_completion_tokens"
-        : "max_tokens";
-    payload[tokenParam] = maxTokens;
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (profile.api_key) headers.Authorization = `Bearer ${profile.api_key}`;
-
-    let data: Record<string, unknown> | null = null;
-    let lastMessage = "";
-    for (let attempt = 0; attempt < 4; attempt += 1) {
-      const response = await fetchWithTransportRetry(
-        url,
-        {
-          method: "POST",
-          headers,
-          body: JSON.stringify(payload),
-        },
-        profileTimeoutMs(profile),
-      );
-      if (response.ok) {
-        data = (await response.json()) as Record<string, unknown>;
-        break;
-      }
-      const body = await response.text().catch(() => "");
-      const low = body.toLowerCase();
-      lastMessage = `HTTP ${response.status} from ${url}: ${httpErrorSnippet(body)}`;
-      let adapted = false;
-      if (low.includes("max_completion_tokens") && "max_tokens" in payload) {
-        payload.max_completion_tokens = payload.max_tokens;
-        delete payload.max_tokens;
-        adapted = true;
-      } else if (
-        low.includes("max_tokens") &&
-        "max_completion_tokens" in payload &&
-        (low.includes("unsupported") || low.includes("not supported"))
-      ) {
-        payload.max_tokens = payload.max_completion_tokens;
-        delete payload.max_completion_tokens;
-        adapted = true;
-      }
-      if (
-        !adapted &&
-        "temperature" in payload &&
-        low.includes("temperature") &&
-        (low.includes("unsupported") || low.includes("does not support"))
-      ) {
-        delete payload.temperature;
-        adapted = true;
-      }
-      if (
-        !adapted &&
-        "response_format" in payload &&
-        low.includes("response_format") &&
-        (low.includes("unsupported") || low.includes("not supported"))
-      ) {
-        delete payload.response_format;
-        adapted = true;
-      }
-      if (!adapted) throw new Error(lastMessage);
-    }
-    if (data === null) {
-      throw new Error(lastMessage || "Analysis LLM call failed after parameter-adaptation retries");
-    }
-
-    const choices = (data.choices ?? []) as Record<string, unknown>[];
-    const choice = choices[0] ?? {};
-    const message = (choice.message ?? {}) as Record<string, unknown>;
-    const content = String(message.content ?? "");
-    const finishReason = String(choice.finish_reason ?? "");
-    const usage = (data.usage ?? {}) as Record<string, unknown>;
-    const details = (usage.completion_tokens_details ?? {}) as Record<string, unknown>;
-    const reasoningTokens =
-      details.reasoning_tokens === undefined ? null : Number(details.reasoning_tokens);
-    const callUsage: LlmCallUsage = {
-      promptTokens: positiveNum(usage.prompt_tokens),
-      completionTokens: positiveNum(usage.completion_tokens),
-      latencyMs: Date.now() - startedAt,
-    };
-
-    if (finishReason === "length" || !content.trim()) {
-      throw new TokenBudgetExceeded(
-        `${profile.model} ran out of output budget at ${maxTokens} tokens` +
-          (reasoningTokens ? ` (${reasoningTokens} of them spent on reasoning)` : "") +
-          `; finish_reason=${finishReason || "none"}`,
-        maxTokens,
-        finishReason,
-        reasoningTokens,
-        callUsage,
-      );
-    }
-
-    // Record usage for rate limiting
-    const totalTokens = (callUsage.promptTokens ?? 0) + (callUsage.completionTokens ?? 0);
-    recordRequest(profile.id, totalTokens);
-
-    return { content, usage: callUsage };
+  const result = await adapter.chat(
+    profile,
+    { messages, maxTokens, json: true },
+    { fetch: (url, init) => fetchWithTransportRetry(url, init, timeoutMs) },
+  );
+  const callUsage: LlmCallUsage = {
+    promptTokens: result.usage.promptTokens,
+    completionTokens: result.usage.completionTokens,
+    latencyMs: Date.now() - startedAt,
+  };
+  // Every answered call is billed — a truncated one included — so it counts
+  // toward the profile's RPM/TPM window either way.
+  recordRequest(profile.id, callUsage.promptTokens + callUsage.completionTokens);
+  if (result.droppedParams.length) {
+    logWarning("analysis_params_dropped", { profile: profile.name, model: profile.model, dropped: result.droppedParams });
   }
-
-  if (profile.provider === "ollama") {
-    const url = `${profile.base_url.replace(/\/+$/, "")}/api/chat`;
-    const response = await fetchWithTransportRetry(
-      url,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: profile.model,
-          messages,
-          stream: false,
-          format: "json",
-          options: { temperature: profileTemperature(profile), num_predict: maxTokens },
-        }),
-      },
-      profileTimeoutMs(profile),
+  if (result.truncated) {
+    throw new TokenBudgetExceeded(
+      `${profile.model} ran out of output budget at ${maxTokens} tokens` +
+        (result.usage.reasoningTokens ? ` (${result.usage.reasoningTokens} of them spent on reasoning)` : "") +
+        `; finish_reason=${result.finishReason || "none"}`,
+      maxTokens,
+      result.finishReason,
+      result.usage.reasoningTokens,
+      callUsage,
     );
-    if (!response.ok) {
-      const body = await response.text().catch(() => "");
-      throw new Error(`HTTP ${response.status} from ${url}: ${httpErrorSnippet(body)}`);
-    }
-    const data = (await response.json()) as Record<string, unknown>;
-    const message = (data.message ?? {}) as Record<string, unknown>;
-    const content = String(message.content ?? "");
-    const doneReason = String(data.done_reason ?? "");
-    const callUsage: LlmCallUsage = {
-      promptTokens: positiveNum(data.prompt_eval_count),
-      completionTokens: positiveNum(data.eval_count),
-      latencyMs: Date.now() - startedAt,
-    };
-    if (doneReason === "length" || !content.trim()) {
-      throw new TokenBudgetExceeded(
-        `${profile.model} ran out of output budget at ${maxTokens} tokens; ` +
-          `done_reason=${doneReason || "none"}`,
-        maxTokens,
-        doneReason,
-        null,
-        callUsage,
-      );
-    }
-
-    // Record usage for rate limiting
-    const totalTokens = (callUsage.promptTokens ?? 0) + (callUsage.completionTokens ?? 0);
-    recordRequest(profile.id, totalTokens);
-
-    return { content, usage: callUsage };
   }
 
-  throw new Error(`Unsupported analysis provider: ${profile.provider}`);
+  return { content: result.content, usage: callUsage };
 }
 
 export interface AnalysisLlmCallResult {
@@ -405,69 +295,97 @@ export async function callAnalysisLlm(
   profiles: LlmProfile[],
   messages: Message[],
   onCall?: (attempt: LlmCallAttempt) => void | Promise<void>,
+  opts: { maxRateLimitWaitMs?: number } = {},
 ): Promise<AnalysisLlmCallResult> {
   if (profiles.length === 0) {
     throw new AnalysisLlmUnavailable(
       "Analysis LM is not configured yet — set it up in the admin console.",
     );
   }
+  const maxWaitMs = Math.max(0, opts.maxRateLimitWaitMs ?? DEFAULT_RATE_LIMIT_WAIT_MS);
 
   const failures: string[] = [];
   // A budget failure means the endpoint is healthy (see below), so it must not
   // make the whole call read as "LM unavailable". Only a real transport/HTTP
   // failure does — track whether at least one profile failed for that reason.
   let anyEndpointFailure = false;
-  for (const profile of profiles) {
-    try {
-      const { content, usage } = await callProfileWithBudget(profile, messages);
-      reportSuccess(profile.id);
-      await recordProfileStats(profile.id, { ok: true, budgetFailure: false, usage });
-      await onCall?.({ messages, profileUsed: profile, content, usage, status: "ok", error: "" });
-      return { content, profileUsed: profile };
-    } catch (err) {
-      if (err instanceof TokenBudgetExceeded) {
-        // The endpoint is healthy — we just could not buy enough room, even at the
-        // ceiling. Do NOT feed the circuit breaker: cooling down a working endpoint
-        // over our own budget would take it out of rotation for every other caller.
-        failures.push(`${profile.name}: ${err.message}`);
-        await recordProfileStats(profile.id, { ok: false, budgetFailure: true, usage: err.usage });
+  let waited = 0;
+  let pending = profiles;
+  for (;;) {
+    // Profiles skipped only because their own RPM/TPM window is full: healthy,
+    // so never reported to the breaker; retried below after a bounded wait.
+    const limited: { profile: LlmProfile; waitMs: number; message: string }[] = [];
+    for (const profile of pending) {
+      try {
+        const { content, usage } = await callProfileWithBudget(profile, messages);
+        reportSuccess(profile.id);
+        await recordProfileStats(profile.id, { ok: true, budgetFailure: false, usage });
+        await onCall?.({ messages, profileUsed: profile, content, usage, status: "ok", error: "" });
+        return { content, profileUsed: profile };
+      } catch (err) {
+        if (err instanceof ProfileRateLimited) {
+          limited.push({ profile, waitMs: err.waitMs, message: err.message });
+          continue;
+        }
+        if (err instanceof TokenBudgetExceeded) {
+          // The endpoint is healthy — we just could not buy enough room, even at the
+          // ceiling. Do NOT feed the circuit breaker: cooling down a working endpoint
+          // over our own budget would take it out of rotation for every other caller.
+          failures.push(`${profile.name}: ${err.message}`);
+          await recordProfileStats(profile.id, { ok: false, budgetFailure: true, usage: err.usage });
+          await onCall?.({
+            messages,
+            profileUsed: profile,
+            content: "",
+            usage: err.usage,
+            status: "budget",
+            error: err.message,
+          });
+          logWarning("analysis_profile_out_of_budget", {
+            profile: profile.name,
+            model: profile.model,
+            budget: err.budget,
+            finish_reason: err.finishReason,
+            reasoning_tokens: err.reasoningTokens,
+          });
+          continue;
+        }
+        const message = String(err instanceof Error ? err.message : err);
+        anyEndpointFailure = true;
+        failures.push(`${profile.name}: ${message}`);
+        reportFailure(profile.id, message);
+        await recordProfileStats(profile.id, { ok: false, budgetFailure: false, usage: null });
         await onCall?.({
           messages,
           profileUsed: profile,
           content: "",
-          usage: err.usage,
-          status: "budget",
-          error: err.message,
+          usage: null,
+          status: "failed",
+          error: message,
         });
-        logWarning("analysis_profile_out_of_budget", {
+        logWarning("analysis_profile_failed", {
           profile: profile.name,
+          provider: profile.provider,
           model: profile.model,
-          budget: err.budget,
-          finish_reason: err.finishReason,
-          reasoning_tokens: err.reasoningTokens,
+          error: message,
         });
-        continue;
       }
-      const message = String(err instanceof Error ? err.message : err);
-      anyEndpointFailure = true;
-      failures.push(`${profile.name}: ${message}`);
-      reportFailure(profile.id, message);
-      await recordProfileStats(profile.id, { ok: false, budgetFailure: false, usage: null });
-      await onCall?.({
-        messages,
-        profileUsed: profile,
-        content: "",
-        usage: null,
-        status: "failed",
-        error: message,
-      });
-      logWarning("analysis_profile_failed", {
-        profile: profile.name,
-        provider: profile.provider,
-        model: profile.model,
-        error: message,
-      });
     }
+    if (limited.length === 0) break;
+    const soonest = Math.max(1, Math.min(...limited.map((l) => l.waitMs)));
+    if (waited + soonest > maxWaitMs) {
+      throw new AnalysisLlmRateLimited(
+        `Every usable Analysis LM profile is at its own rate limit: ${[
+          ...failures,
+          ...limited.map((l) => `${l.profile.name}: ${l.message}`),
+        ].join("; ")}`,
+        soonest,
+      );
+    }
+    logWarning("analysis_rate_limit_wait", { wait_ms: soonest, profiles: limited.map((l) => l.profile.name) });
+    await new Promise((resolve) => setTimeout(resolve, soonest));
+    waited += soonest;
+    pending = limited.map((l) => l.profile);
   }
   const message = `Every Analysis LM profile failed: ${failures.join("; ")}`;
   // At least one endpoint failed for a non-budget reason → the fleet is (partly
