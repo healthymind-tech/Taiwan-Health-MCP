@@ -9,7 +9,7 @@
 [![MCP SDK](https://img.shields.io/badge/MCP%20SDK-1.12-orange)](https://modelcontextprotocol.io)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
 
-以官方 **TypeScript MCP SDK**（`@modelcontextprotocol/sdk`）建構的 Node.js 伺服器，對外提供 **60 個工具**，涵蓋 12 個工具群組。專為高吞吐量的生產級 SaaS 部署設計。
+以官方 **TypeScript MCP SDK**（`@modelcontextprotocol/sdk`）建構的 Node.js 伺服器，對外提供 **63 個工具**，涵蓋 12 個工具群組。專為高吞吐量的生產級 SaaS 部署設計。
 
 > **後端執行環境**：整個後端（MCP server、管理後台 REST API、背景 worker、所有資料載入器）皆為 **Node.js / TypeScript**，程式碼位於 [`node-server/`](node-server/)。前端（管理後台 SPA）為 Next.js，位於 [`web/`](web/)。本專案已無 Python 執行期相依。
 > 對外的宣傳頁與法務頁（`/`、`/status`、`/privacy`、`/dpa`）已移出本專案，改由獨立的宣傳網站提供。
@@ -94,7 +94,7 @@ docker compose build app web && docker compose up -d --no-deps app web
 | SNOMED CT | `search_snomed_concept`、`query_snomed_concept`、`get_snomed_relationships`、`query_snomed_mapping` |
 | FHIR Condition | `query_fhir_condition`、`validate_fhir_condition` |
 | FHIR Medication | `query_fhir_medication`、`validate_fhir_medication` |
-| FHIR IG（授權 / 驗證） | `fhir_list_igs`、`fhir_get_ig`、`fhir_list_artifacts`、`fhir_search_artifacts`、`fhir_list_resource_profiles`、`fhir_rank_resource_profiles`、`fhir_get_profile`、`fhir_get_profile_elements`、`fhir_get_valueset`、`fhir_expand_valueset`、`fhir_lookup_code`、`fhir_validate_code`、`fhir_normalize_code`、`fhir_resolve_reference`、`fhir_build_bundle`、`fhir_validate_resource`、`fhir_validate_bundle`、`fhir_get_resource_skeleton`、`fhir_finalize_resource` |
+| FHIR IG（授權 / 驗證） | `fhir_list_igs`、`fhir_get_ig`、`fhir_list_artifacts`、`fhir_search_artifacts`、`fhir_list_resource_profiles`、`fhir_rank_resource_profiles`、`fhir_get_profile`、`fhir_get_profile_elements`、`fhir_get_profile_required_elements`、`fhir_get_valueset`、`fhir_expand_valueset`、`fhir_lookup_code`、`fhir_validate_code`、`fhir_normalize_code`、`fhir_resolve_reference`、`fhir_build_bundle`、`fhir_validate_resource`、`fhir_validate_bundle`、`fhir_get_resource_skeleton`、`fhir_finalize_resource`、`fhir_check_grounding`、`fhir_check_completeness` |
 | 健康補充品 | `search_health_supplements` |
 | 食品營養 | `query_food_nutrition`、`query_food_ingredient`、`search_foods_by_nutrient`、`analyze_meal_nutrition` |
 | FHIR 伺服器 | `list_fhir_servers`、`get_fhir_server_status`、`crud_fhir_server` |

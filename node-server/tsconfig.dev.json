@@ -1,0 +1,10 @@
+{
+  // Typecheck-only config: the production build (tsconfig.json) leaves out the
+  // test-only helpers (grounding testkits / PAS eval / scripts, providers/testUtil);
+  // `npm run typecheck` still checks them through this file. Tests (*.test.ts)
+  // run through tsx and are not part of either config.
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "noEmit": true },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist", "src/**/*.test.ts"]
+}

@@ -672,7 +672,7 @@ interface HeavyJobSourceSpec {
 
 /** Faithful port of `HEAVY_JOB_SOURCE_SPECS` (note: ig_import deliberately absent). */
 const HEAVY_JOB_SOURCE_SPECS: Record<string, HeavyJobSourceSpec> = {
-  icd_import: { module_key: "icd", required_roles: ["icd10cm", "icd10pcs", "icd_zh_tw"], optional_roles: [] },
+  icd_import: { module_key: "icd", required_roles: ["icd10cm", "icd10pcs", "icd_zh_tw"], optional_roles: ["icd10_who"] },
   loinc_import: { module_key: "loinc", required_roles: ["loinc", "loinc_taiwan_mapping", "loinc_reference_ranges"], optional_roles: [] },
   snomed_import: { module_key: "snomed", required_roles: ["snomed_ct"], optional_roles: [] },
   rxnorm_import: { module_key: "rxnorm", required_roles: ["rxnorm_full"], optional_roles: [] },
@@ -1853,9 +1853,12 @@ export async function runIcdImportJob(opts: {
   const { workerName, job } = opts;
   const jobId = String(job.job_id);
   const {
-    parseIcd10cmStageRecords,
+    parseIcd10cmRelease,
     parseIcd10pcsStageRecords,
     parseIcdBilingualNames,
+    ICD10CM_EDITION_UPSERT_SQL,
+    parseIcd10WhoFile,
+    ICD10_WHO_EDITION_UPSERT_SQL,
   } = await import("../loaders/icd.js");
   const {
     withMaterializedSources,
@@ -1867,7 +1870,7 @@ export async function runIcdImportJob(opts: {
   } = await import("./adminJobStaging.js");
 
   const manifest = parseJsonb(parseJsonb(job.job_options).source_manifest);
-  const total = 5;
+  const total = 6;
   let progress = Math.max(Number(job.progress_current || 0), 0);
 
   await appendJobLog({
@@ -1904,9 +1907,24 @@ export async function runIcdImportJob(opts: {
       ({ cmZh, pcsZh } = parseIcdBilingualNames(bilingualPath));
     }
 
-    const diagnoses = parseIcd10cmStageRecords(paths.icd10cm, cmZh);
+    const cmRelease = parseIcd10cmRelease(paths.icd10cm, cmZh);
+    const diagnoses = cmRelease.records;
+    await appendJobLog({
+      jobId,
+      level: "info",
+      message: `ICD-10-CM ${cmRelease.edition} (${cmRelease.sourceFormat}): ${fmt(diagnoses.length)} codes, complete=${cmRelease.complete}`,
+    });
     const procedures =
       "icd10pcs" in paths ? parseIcd10pcsStageRecords(paths.icd10pcs, pcsZh) : [];
+    // Optional WHO ICD-10 (FHIR JSON). Absent → icd.icd10_who is left as is.
+    const who = paths.icd10_who ? parseIcd10WhoFile(paths.icd10_who) : null;
+    if (who) {
+      await appendJobLog({
+        jobId,
+        level: "info",
+        message: `WHO ICD-10 ${who.version ?? "(no version)"}: ${fmt(who.records.length)} codes`,
+      });
+    }
 
     if (progress < 2) {
       const interrupted = await stageRows({
@@ -1916,11 +1934,13 @@ export async function runIcdImportJob(opts: {
         runningStepName: "staging_diagnoses",
         rows: diagnoses,
         table: "admin.stage_icd_diagnoses",
-        columns: ["code", "name_en", "name_zh", "category"],
+        columns: ["code", "name_en", "name_zh", "category", "short_name_en", "is_header"],
         conflictSql: `ON CONFLICT (job_id, code) DO UPDATE SET
           name_en = EXCLUDED.name_en,
           name_zh = EXCLUDED.name_zh,
-          category = EXCLUDED.category`,
+          category = EXCLUDED.category,
+          short_name_en = EXCLUDED.short_name_en,
+          is_header = EXCLUDED.is_header`,
         batchSize: 5000,
         jobProgressBefore: 1,
         jobProgressAfter: 2,
@@ -1954,12 +1974,32 @@ export async function runIcdImportJob(opts: {
     }
 
     if (progress < 4) {
+      const interrupted = await stageRows({
+        jobId,
+        workerName,
+        stepKey: "stage_icd10_who",
+        runningStepName: "staging_icd10_who",
+        rows: who ? who.records : [],
+        table: "admin.stage_icd10_who",
+        columns: ["code", "display", "kind", "alt_displays"],
+        conflictSql: "ON CONFLICT (job_id, code) DO NOTHING",
+        batchSize: 5000,
+        jobProgressBefore: 3,
+        jobProgressAfter: 4,
+        jobProgressTotal: total,
+        checkpointLabel: "staging_icd10_who",
+      });
+      if (interrupted) return;
+      progress = 4;
+    }
+
+    if (progress < 5) {
       if (
         await checkpointBeforePromote({
           jobId,
           workerName,
           stepKey: "promote",
-          jobProgressBefore: 3,
+          jobProgressBefore: 4,
           jobProgressTotal: total,
         })
       ) {
@@ -1973,13 +2013,20 @@ export async function runIcdImportJob(opts: {
         copies: [
           {
             sql: `
-              INSERT INTO icd.diagnoses (code, name_en, name_zh, category)
-              SELECT code, name_en, name_zh, category
+              INSERT INTO icd.diagnoses (code, name_en, name_zh, category, short_name_en, is_header)
+              SELECT code, name_en, name_zh, category, NULLIF(short_name_en, ''), is_header
               FROM admin.stage_icd_diagnoses
               WHERE job_id = $1::uuid
             `,
             args: [jobId],
             label: `diagnoses (${fmt(diagnoses.length)})`,
+          },
+          {
+            // Same transaction as the code table: the edition row never
+            // describes a table it was not loaded with.
+            sql: ICD10CM_EDITION_UPSERT_SQL,
+            args: [cmRelease.edition, cmRelease.sourceFormat, cmRelease.complete, diagnoses.length],
+            label: `ICD-10-CM edition ${cmRelease.edition}`,
           },
           {
             sql: `
@@ -1991,20 +2038,44 @@ export async function runIcdImportJob(opts: {
             args: [jobId],
             label: `procedures (${fmt(procedures.length)})`,
           },
+          ...(who
+            ? [
+                { sql: "TRUNCATE icd.icd10_who", args: [], label: "WHO ICD-10 (cleared)" },
+                {
+                  sql: `
+                    INSERT INTO icd.icd10_who (code, display, kind, alt_displays)
+                    SELECT code, display, kind, alt_displays
+                    FROM admin.stage_icd10_who
+                    WHERE job_id = $1::uuid
+                  `,
+                  args: [jobId],
+                  label: `WHO ICD-10 (${fmt(who.records.length)})`,
+                },
+                {
+                  sql: who.version ? ICD10_WHO_EDITION_UPSERT_SQL : "DELETE FROM icd.editions WHERE code_system = 'icd-10'",
+                  args: who.version ? [who.version, who.records.length] : [],
+                  label: `WHO ICD-10 edition ${who.version ?? "unknown"}`,
+                },
+              ]
+            : []),
         ],
         finalCheckpoint: {
           phase: "promoted",
           diagnosis_count: diagnoses.length,
           procedure_count: procedures.length,
+          icd10cm_edition: cmRelease.edition,
+          icd10cm_complete: cmRelease.complete,
+          icd10_who_count: who ? who.records.length : null,
+          icd10_who_edition: who ? who.version : null,
         },
         promotedStepName: "promoted_icd",
-        jobProgressAfter: 4,
+        jobProgressAfter: 5,
         jobProgressTotal: total,
       });
-      progress = 4;
+      progress = 5;
     }
 
-    await clearStageRows(jobId, ["admin.stage_icd_diagnoses", "admin.stage_icd_procedures"]);
+    await clearStageRows(jobId, ["admin.stage_icd_diagnoses", "admin.stage_icd_procedures", "admin.stage_icd10_who"]);
     await recordJobStep({
       jobId,
       stepKey: "cleanup_staging",
@@ -2017,14 +2088,19 @@ export async function runIcdImportJob(opts: {
       jobId,
       status: "success",
       currentStep: "completed",
-      progressCurrent: 5,
+      progressCurrent: total,
       progressTotal: total,
       controlState: "idle",
       resultSummary: {
         job_type: "icd_import",
+        icd10_who_count: who ? who.records.length : null,
+        icd10_who_edition: who ? who.version : null,
         source_manifest: manifest,
         diagnosis_count: diagnoses.length,
         procedure_count: procedures.length,
+        icd10cm_edition: cmRelease.edition,
+        icd10cm_source_format: cmRelease.sourceFormat,
+        icd10cm_complete: cmRelease.complete,
         cm_chinese_name_count: diagnoses.filter((row) => row[2]).length,
         pcs_chinese_name_count: procedures.filter((row) => row[2]).length,
       },
@@ -2039,7 +2115,7 @@ export async function runLoincImportJob(opts: {
 }): Promise<void> {
   const { workerName, job } = opts;
   const jobId = String(job.job_id);
-  const { buildLoincStagePayload } = await import("../loaders/loinc.js");
+  const { buildLoincStagePayload, LOINC_EDITION_UPSERT_SQL } = await import("../loaders/loinc.js");
   const {
     withMaterializedSources,
     runValidateStep,
@@ -2050,8 +2126,13 @@ export async function runLoincImportJob(opts: {
   } = await import("./adminJobStaging.js");
 
   const manifest = parseJsonb(parseJsonb(job.job_options).source_manifest);
-  const total = 5;
+  // 1 validate · 2–4 core stages · 5–9 structure stages · 10 promote · 11 cleanup.
+  const total = 11;
   let progress = Math.max(Number(job.progress_current || 0), 0);
+  // A job started before the structure stages existed numbered promote as 5:
+  // trust the promote step's own checkpoint, not the job counter, for that.
+  const promoted = (await getJobStepCheckpoint(jobId, "promote")).phase === "promoted";
+  if (promoted) progress = Math.max(progress, 10);
 
   await appendJobLog({
     jobId,
@@ -2061,11 +2142,18 @@ export async function runLoincImportJob(opts: {
   });
 
   await withMaterializedSources(manifest, async (paths) => {
-    const { conceptRows, rangeRows, stats } = buildLoincStagePayload(
+    const { conceptRows, rangeRows, otherCodeRows, structure, version, stats } = buildLoincStagePayload(
       paths.loinc,
       paths.loinc_taiwan_mapping ?? null,
       paths.loinc_reference_ranges ?? null,
     );
+    const structureCounts = {
+      part_link_count: structure.partLinkRows.length,
+      answer_list_item_count: structure.answerListItemRows.length,
+      answer_list_link_count: structure.answerListLinkRows.length,
+      panel_item_count: structure.panelItemRows.length,
+      map_to_count: structure.mapToRows.length,
+    };
 
     if (progress < 1) {
       await runValidateStep({
@@ -2077,6 +2165,9 @@ export async function runLoincImportJob(opts: {
           source_roles: Object.keys(paths).sort(),
           concept_count: conceptRows.length,
           reference_range_count: rangeRows.length,
+          other_code_count: otherCodeRows.length,
+          ...structureCounts,
+          loinc_version: version,
           ...stats,
         },
         jobProgressAfter: 1,
@@ -2149,12 +2240,100 @@ export async function runLoincImportJob(opts: {
     }
 
     if (progress < 4) {
+      // Answer / part / group codes (validator: tx.fhir.org serves them in http://loinc.org).
+      const interrupted = await stageRows({
+        jobId,
+        workerName,
+        stepKey: "stage_other_codes",
+        runningStepName: "staging_loinc_other_codes",
+        rows: otherCodeRows,
+        table: "admin.stage_loinc_other_codes",
+        columns: ["code", "kind", "display", "alt_display", "status"],
+        conflictSql: "ON CONFLICT (job_id, code) DO NOTHING",
+        batchSize: 5000,
+        jobProgressBefore: 3,
+        jobProgressAfter: 4,
+        jobProgressTotal: total,
+        checkpointLabel: "staging_loinc_other_codes",
+      });
+      if (interrupted) return;
+      progress = 4;
+    }
+
+    // Structure tables for the terminology viz (20261020_loinc_structure.sql).
+    const structureStages: Array<{
+      key: string;
+      rows: unknown[][];
+      table: string;
+      columns: string[];
+      conflict: string;
+    }> = [
+      {
+        key: "part_links",
+        rows: structure.partLinkRows,
+        table: "admin.stage_loinc_part_links",
+        columns: ["loinc_num", "part_type", "part_number", "part_name"],
+        conflict: "ON CONFLICT (job_id, loinc_num, part_type, part_number) DO NOTHING",
+      },
+      {
+        key: "answer_list_items",
+        rows: structure.answerListItemRows,
+        table: "admin.stage_loinc_answer_list_items",
+        columns: ["list_id", "seq", "answer_code", "display", "score"],
+        conflict: "ON CONFLICT (job_id, list_id, answer_code) DO NOTHING",
+      },
+      {
+        key: "answer_list_links",
+        rows: structure.answerListLinkRows,
+        table: "admin.stage_loinc_answer_list_links",
+        columns: ["loinc_num", "list_id", "link_type", "context"],
+        conflict: "ON CONFLICT (job_id, loinc_num, list_id, context) DO NOTHING",
+      },
+      {
+        key: "panel_items",
+        rows: structure.panelItemRows,
+        table: "admin.stage_loinc_panel_items",
+        columns: ["parent_loinc", "seq", "loinc_num", "display", "required"],
+        conflict: "ON CONFLICT (job_id, parent_loinc, loinc_num) DO NOTHING",
+      },
+      {
+        key: "map_to",
+        rows: structure.mapToRows,
+        table: "admin.stage_loinc_map_to",
+        columns: ["loinc_num", "map_to", "comment"],
+        conflict: "ON CONFLICT (job_id, loinc_num, map_to) DO NOTHING",
+      },
+    ];
+    for (let i = 0; i < structureStages.length; i += 1) {
+      const st = structureStages[i];
+      const after = 5 + i;
+      if (progress >= after) continue;
+      const interrupted = await stageRows({
+        jobId,
+        workerName,
+        stepKey: `stage_${st.key}`,
+        runningStepName: `staging_loinc_${st.key}`,
+        rows: st.rows as (string | number | null)[][],
+        table: st.table,
+        columns: st.columns,
+        conflictSql: st.conflict,
+        batchSize: 5000,
+        jobProgressBefore: after - 1,
+        jobProgressAfter: after,
+        jobProgressTotal: total,
+        checkpointLabel: `staging_loinc_${st.key}`,
+      });
+      if (interrupted) return;
+      progress = after;
+    }
+
+    if (progress < 10) {
       if (
         await checkpointBeforePromote({
           jobId,
           workerName,
           stepKey: "promote",
-          jobProgressBefore: 3,
+          jobProgressBefore: 9,
           jobProgressTotal: total,
         })
       ) {
@@ -2163,8 +2342,14 @@ export async function runLoincImportJob(opts: {
       await optimizedPromote({
         jobId,
         stepKey: "promote",
-        indexTables: ["loinc.concepts", "loinc.reference_ranges"],
-        truncateSql: "TRUNCATE loinc.reference_ranges, loinc.concepts CASCADE",
+        indexTables: [
+          "loinc.concepts", "loinc.reference_ranges", "loinc.other_codes",
+          "loinc.part_links", "loinc.answer_list_items", "loinc.answer_list_links",
+          "loinc.panel_items", "loinc.map_to",
+        ],
+        truncateSql:
+          "TRUNCATE loinc.reference_ranges, loinc.concepts, loinc.other_codes, loinc.part_links, " +
+          "loinc.answer_list_items, loinc.answer_list_links, loinc.panel_items, loinc.map_to CASCADE",
         copies: [
           {
             sql: `
@@ -2200,20 +2385,53 @@ export async function runLoincImportJob(opts: {
             args: [jobId],
             label: `reference ranges (${fmt(rangeRows.length)})`,
           },
+          {
+            sql: `
+              INSERT INTO loinc.other_codes (code, kind, display, alt_display, status)
+              SELECT code, kind, display, alt_display, status
+              FROM admin.stage_loinc_other_codes
+              WHERE job_id = $1::uuid
+            `,
+            args: [jobId],
+            label: `answer / part / group codes (${fmt(otherCodeRows.length)})`,
+          },
+          ...structureStages.map((st) => ({
+            sql: `
+              INSERT INTO loinc.${st.key} (${st.columns.join(", ")})
+              SELECT ${st.columns.join(", ")}
+              FROM ${st.table}
+              WHERE job_id = $1::uuid
+            `,
+            args: [jobId],
+            label: `${st.key.replace(/_/g, " ")} (${fmt(st.rows.length)})`,
+          })),
+          {
+            // Same transaction as the code tables: the edition row always
+            // describes the tables it was loaded with.
+            // (No recognisable version: drop the row so the validator stays lenient.)
+            sql: version ? LOINC_EDITION_UPSERT_SQL : "DELETE FROM loinc.editions WHERE code_system = 'loinc'",
+            args: version ? [version, conceptRows.length, otherCodeRows.length] : [],
+            label: `LOINC version ${version ?? "unknown"}`,
+          },
         ],
         finalCheckpoint: {
           phase: "promoted",
           concept_count: conceptRows.length,
           reference_range_count: rangeRows.length,
+          other_code_count: otherCodeRows.length,
+          ...structureCounts,
+          loinc_version: version,
         },
         promotedStepName: "promoted_loinc",
-        jobProgressAfter: 4,
+        jobProgressAfter: 10,
         jobProgressTotal: total,
       });
-      progress = 4;
+      progress = 10;
     }
 
     await clearStageRows(jobId, [
+      ...structureStages.map((st) => st.table),
+      "admin.stage_loinc_other_codes",
       "admin.stage_loinc_reference_ranges",
       "admin.stage_loinc_concepts",
     ]);
@@ -2229,7 +2447,7 @@ export async function runLoincImportJob(opts: {
       jobId,
       status: "success",
       currentStep: "completed",
-      progressCurrent: 5,
+      progressCurrent: total,
       progressTotal: total,
       controlState: "idle",
       resultSummary: {
@@ -2237,6 +2455,9 @@ export async function runLoincImportJob(opts: {
         source_manifest: manifest,
         concept_count: conceptRows.length,
         reference_range_count: rangeRows.length,
+        other_code_count: otherCodeRows.length,
+        ...structureCounts,
+        loinc_version: version,
         ...stats,
       },
     });
@@ -2250,7 +2471,7 @@ export async function runSnomedImportJob(opts: {
 }): Promise<void> {
   const { workerName, job } = opts;
   const jobId = String(job.job_id);
-  const { buildSnomedStagePayload } = await import("../loaders/snomed.js");
+  const { buildSnomedStagePayload, SNOMED_EDITION_UPSERT_SQL, SNOMED_INT_MODULE } = await import("../loaders/snomed.js");
   const {
     withMaterializedSources,
     runValidateStep,
@@ -2261,7 +2482,7 @@ export async function runSnomedImportJob(opts: {
   } = await import("./adminJobStaging.js");
 
   const manifest = parseJsonb(parseJsonb(job.job_options).source_manifest);
-  const total = 8;
+  const total = 10;
   let progress = Math.max(Number(job.progress_current || 0), 0);
 
   await appendJobLog({
@@ -2272,8 +2493,16 @@ export async function runSnomedImportJob(opts: {
   });
 
   await withMaterializedSources(manifest, async (paths) => {
-    const { conceptRows, descriptionRows, relationshipRows, icd10MapRows, associationRows } =
-      await buildSnomedStagePayload(paths.snomed_ct);
+    const {
+      conceptRows,
+      descriptionRows,
+      relationshipRows,
+      icd10MapRows,
+      associationRows,
+      inactiveConceptRows,
+      inactiveDescriptionRows,
+      releaseDate,
+    } = await buildSnomedStagePayload(paths.snomed_ct);
 
     if (progress < 1) {
       await runValidateStep({
@@ -2288,6 +2517,9 @@ export async function runSnomedImportJob(opts: {
           relationship_count: relationshipRows.length,
           icd10_map_count: icd10MapRows.length,
           association_count: associationRows.length,
+          inactive_concept_count: inactiveConceptRows.length,
+          inactive_description_count: inactiveDescriptionRows.length,
+          release_date: releaseDate,
         },
         jobProgressAfter: 1,
         jobProgressTotal: total,
@@ -2303,12 +2535,13 @@ export async function runSnomedImportJob(opts: {
         runningStepName: "staging_snomed_concepts",
         rows: conceptRows,
         table: "admin.stage_snomed_concepts",
-        columns: ["concept_id", "effective_time", "active", "module_id", "definition_status_id"],
+        columns: ["concept_id", "effective_time", "active", "module_id", "definition_status_id", "first_released"],
         conflictSql: `ON CONFLICT (job_id, concept_id) DO UPDATE SET
           effective_time = EXCLUDED.effective_time,
           active = EXCLUDED.active,
           module_id = EXCLUDED.module_id,
-          definition_status_id = EXCLUDED.definition_status_id`,
+          definition_status_id = EXCLUDED.definition_status_id,
+          first_released = EXCLUDED.first_released`,
         batchSize: 5000,
         jobProgressBefore: 1, jobProgressAfter: 2, jobProgressTotal: total,
         checkpointLabel: "staging_snomed_concepts",
@@ -2324,14 +2557,15 @@ export async function runSnomedImportJob(opts: {
         runningStepName: "staging_snomed_descriptions",
         rows: descriptionRows,
         table: "admin.stage_snomed_descriptions",
-        columns: ["description_id", "concept_id", "type_id", "term", "active", "language_code", "us_preferred"],
+        columns: ["description_id", "concept_id", "type_id", "term", "active", "language_code", "us_preferred", "first_released"],
         conflictSql: `ON CONFLICT (job_id, description_id) DO UPDATE SET
           concept_id = EXCLUDED.concept_id,
           type_id = EXCLUDED.type_id,
           term = EXCLUDED.term,
           active = EXCLUDED.active,
           language_code = EXCLUDED.language_code,
-          us_preferred = EXCLUDED.us_preferred`,
+          us_preferred = EXCLUDED.us_preferred,
+          first_released = EXCLUDED.first_released`,
         batchSize: 5000,
         jobProgressBefore: 2, jobProgressAfter: 3, jobProgressTotal: total,
         checkpointLabel: "staging_snomed_descriptions",
@@ -2399,10 +2633,45 @@ export async function runSnomedImportJob(opts: {
     }
 
     if (progress < 7) {
+      // Inactive concepts / descriptions (validator: tx.fhir.org knows them).
+      const interrupted = await stageRows({
+        jobId, workerName,
+        stepKey: "stage_inactive_concepts",
+        runningStepName: "staging_snomed_inactive_concepts",
+        rows: inactiveConceptRows,
+        table: "admin.stage_snomed_inactive_concepts",
+        columns: ["concept_id", "effective_time", "module_id", "first_released"],
+        conflictSql: "ON CONFLICT (job_id, concept_id) DO NOTHING",
+        batchSize: 5000,
+        jobProgressBefore: 6, jobProgressAfter: 7, jobProgressTotal: total,
+        checkpointLabel: "staging_snomed_inactive_concepts",
+      });
+      if (interrupted) return;
+      progress = 7;
+    }
+
+    if (progress < 8) {
+      const interrupted = await stageRows({
+        jobId, workerName,
+        stepKey: "stage_inactive_descriptions",
+        runningStepName: "staging_snomed_inactive_descriptions",
+        rows: inactiveDescriptionRows,
+        table: "admin.stage_snomed_inactive_descriptions",
+        columns: ["description_id", "concept_id", "type_id", "term", "active", "effective_time", "first_released"],
+        conflictSql: "ON CONFLICT (job_id, description_id) DO NOTHING",
+        batchSize: 5000,
+        jobProgressBefore: 7, jobProgressAfter: 8, jobProgressTotal: total,
+        checkpointLabel: "staging_snomed_inactive_descriptions",
+      });
+      if (interrupted) return;
+      progress = 8;
+    }
+
+    if (progress < 9) {
       if (
         await checkpointBeforePromote({
           jobId, workerName, stepKey: "promote",
-          jobProgressBefore: 6, jobProgressTotal: total,
+          jobProgressBefore: 8, jobProgressTotal: total,
         })
       ) {
         return;
@@ -2416,20 +2685,23 @@ export async function runSnomedImportJob(opts: {
           "snomed.relationships",
           "snomed.icd10_map",
           "snomed.historical_associations",
+          "snomed.inactive_concepts",
+          "snomed.inactive_descriptions",
         ],
         truncateSql:
-          "TRUNCATE snomed.historical_associations, snomed.icd10_map, snomed.relationships, snomed.descriptions, snomed.concepts CASCADE",
+          "TRUNCATE snomed.historical_associations, snomed.icd10_map, snomed.relationships, snomed.descriptions, snomed.concepts, " +
+          "snomed.inactive_descriptions, snomed.inactive_concepts CASCADE",
         copies: [
           {
-            sql: `INSERT INTO snomed.concepts (concept_id, effective_time, active, module_id, definition_status_id)
-                  SELECT concept_id, effective_time, active, module_id, definition_status_id
+            sql: `INSERT INTO snomed.concepts (concept_id, effective_time, active, module_id, definition_status_id, first_released)
+                  SELECT concept_id, effective_time, active, module_id, definition_status_id, first_released
                   FROM admin.stage_snomed_concepts WHERE job_id = $1::uuid`,
             args: [jobId],
             label: `concepts (${fmt(conceptRows.length)})`,
           },
           {
-            sql: `INSERT INTO snomed.descriptions (description_id, concept_id, type_id, term, active, language_code, us_preferred)
-                  SELECT description_id, concept_id, type_id, term, active, language_code, us_preferred
+            sql: `INSERT INTO snomed.descriptions (description_id, concept_id, type_id, term, active, language_code, us_preferred, first_released)
+                  SELECT description_id, concept_id, type_id, term, active, language_code, us_preferred, first_released
                   FROM admin.stage_snomed_descriptions WHERE job_id = $1::uuid`,
             args: [jobId],
             label: `descriptions (${fmt(descriptionRows.length)})`,
@@ -2456,6 +2728,27 @@ export async function runSnomedImportJob(opts: {
             args: [jobId],
             label: `historical associations (${fmt(associationRows.length)})`,
           },
+          {
+            sql: `INSERT INTO snomed.inactive_concepts (concept_id, effective_time, module_id, first_released)
+                  SELECT concept_id, effective_time, module_id, first_released
+                  FROM admin.stage_snomed_inactive_concepts WHERE job_id = $1::uuid`,
+            args: [jobId],
+            label: `inactive concepts (${fmt(inactiveConceptRows.length)})`,
+          },
+          {
+            sql: `INSERT INTO snomed.inactive_descriptions (description_id, concept_id, type_id, term, active, effective_time, first_released)
+                  SELECT description_id, concept_id, type_id, term, active, effective_time, first_released
+                  FROM admin.stage_snomed_inactive_descriptions WHERE job_id = $1::uuid`,
+            args: [jobId],
+            label: `inactive / inactive-concept descriptions (${fmt(inactiveDescriptionRows.length)})`,
+          },
+          {
+            // Same transaction as the tables it describes. Without a release
+            // date the edition row is dropped (validator stays warning-only).
+            sql: releaseDate ? SNOMED_EDITION_UPSERT_SQL : "DELETE FROM snomed.editions WHERE code_system = 'snomed'",
+            args: releaseDate ? [SNOMED_INT_MODULE, releaseDate, conceptRows.length, inactiveConceptRows.length] : [],
+            label: `SNOMED CT edition ${releaseDate ?? "unknown"}`,
+          },
         ],
         finalCheckpoint: {
           phase: "promoted",
@@ -2464,15 +2757,20 @@ export async function runSnomedImportJob(opts: {
           relationship_count: relationshipRows.length,
           icd10_map_count: icd10MapRows.length,
           association_count: associationRows.length,
+          inactive_concept_count: inactiveConceptRows.length,
+          inactive_description_count: inactiveDescriptionRows.length,
+          release_date: releaseDate,
         },
         promotedStepName: "promoted_snomed",
-        jobProgressAfter: 7,
+        jobProgressAfter: 9,
         jobProgressTotal: total,
       });
-      progress = 7;
+      progress = 9;
     }
 
     await clearStageRows(jobId, [
+      "admin.stage_snomed_inactive_descriptions",
+      "admin.stage_snomed_inactive_concepts",
       "admin.stage_snomed_associations",
       "admin.stage_snomed_icd10_map",
       "admin.stage_snomed_relationships",
@@ -2501,9 +2799,30 @@ export async function runSnomedImportJob(opts: {
         description_count: descriptionRows.length,
         relationship_count: relationshipRows.length,
         icd10_map_count: icd10MapRows.length,
+        inactive_concept_count: inactiveConceptRows.length,
+        inactive_description_count: inactiveDescriptionRows.length,
+        release_date: releaseDate,
       },
     });
   });
+}
+
+/** `job_options.packages` of a dependency-only IG import → validated `{package_id, version}` list. */
+export function parseDependencyTargets(raw: unknown): { package_id: string; version: string }[] {
+  if (!Array.isArray(raw)) return [];
+  const out: { package_id: string; version: string }[] = [];
+  const seen = new Set<string>();
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const pid = String((item as Record<string, unknown>).package_id ?? "").trim();
+    const ver = String((item as Record<string, unknown>).version ?? "").trim();
+    if (!pid || !ver) continue;
+    const k = `${pid}@${ver}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push({ package_id: pid, version: ver });
+  }
+  return out;
 }
 
 /** Faithful port of `_run_ig_import_job` (registry/upload source → staged FHIR IG import). */
@@ -2517,7 +2836,7 @@ export async function runIgImportJob(opts: {
   const registry = await import("../loaders/igRegistry.js");
   const minioService = await import("../minioService.js");
   const { getGroup } = await import("./adminSettings.js");
-  const { runValidateStep, stageRows, checkpointBeforePromote, optimizedPromote, clearStageRows } =
+  const { runValidateStep, insertStageRows, checkpointBeforePromote, optimizedPromote, clearStageRows } =
     await import("./adminJobStaging.js");
   const fsp = await import("node:fs/promises");
   const os = await import("node:os");
@@ -2544,42 +2863,95 @@ export async function runIgImportJob(opts: {
   const tmpdir = await fsp.mkdtemp(path.join(os.tmpdir(), "admin-ig-import-"));
   try {
     // 1. Acquire the root IG .tgz (registry coordinate or uploaded MinIO object).
+    // The dependency-only source has no root: it fetches the requested missing
+    // packages (and their own missing dependencies) without re-importing an IG.
     const dest = path.join(tmpdir, "ig-root.tgz");
-    if (igSource === "registry") {
-      const packageId = String(jobOpts.package_id ?? "").trim();
-      if (!packageId) throw new Error("registry IG import requires 'package_id' in job_options");
-      const version = String(jobOpts.version ?? "").trim() || null;
-      const meta = await registry.getMetadata(base, packageId);
-      const resolved = registry.resolveVersion(meta, version);
-      const data = await registry.downloadTarball(base, packageId, resolved, { meta, fallback });
-      await fsp.writeFile(dest, data);
-      // Best-effort archive of the fetched tarball (non-critical, mirrors _store_ig_tarball).
-      try {
-        if (minioService.enabled()) {
-          await minioService.uploadBytes({
-            objectKey: `ig-packages/${packageId}/${resolved}/package.tgz`,
-            data,
-            contentType: "application/gzip",
-          });
-        }
-      } catch {
-        /* archival is non-critical */
+    const dependencyOnly = igSource === "dependencies";
+    let pkgPaths: string[];
+    let missing: { package_id: string; version: string; reason: string; reason_code: string }[];
+    // Requested packages that could not be fetched → the job ends partial_success.
+    let requestedFailedCount = 0;
+    if (dependencyOnly) {
+      const requested = parseDependencyTargets(jobOpts.packages);
+      if (requested.length === 0) throw new Error("dependency IG import requires 'packages' in job_options");
+      const labels = requested.map((r) => `${r.package_id}@${r.version}`);
+      await appendJobLog({ jobId, level: "info", message: `Fetching ${requested.length} dependency package(s): ${labels.join(", ")}` });
+      const closure = await igMod.fetchPackageClosure(
+        getPool(),
+        requested.map((r) => [r.package_id, r.version] as [string, string]),
+        tmpdir,
+        base,
+        fallback,
+      );
+      for (const m of closure.missing) {
+        await appendJobLog({ jobId, level: "warning", message: `Could not fetch ${m.package_id}@${m.version}: ${m.reason}`, payload: { reason_code: m.reason_code } });
       }
-      await appendJobLog({ jobId, level: "info", message: `Fetched root IG ${packageId}@${resolved} from registry` });
+      const requestedKeys = new Set(labels);
+      const requestedFailed = closure.missing.filter((m) => requestedKeys.has(`${m.package_id}@${m.version}`));
+      if (closure.depPaths.length === 0) {
+        if (requestedFailed.length === 0) {
+          // Everything asked for got installed meanwhile (another job, bulk retry).
+          await markJobStatus({
+            jobId, status: "success", currentStep: "completed", progressCurrent: total, progressTotal: total,
+            controlState: "idle",
+            resultSummary: { job_type: "ig_import", ig_source: igSource, requested: labels, packages: [], missing_dependencies: [], already_installed: true },
+          });
+          await appendJobLog({ jobId, level: "info", message: "All requested dependency packages are already installed — nothing to do" });
+          return;
+        }
+        const code = requestedFailed.every((m) => m.reason_code === requestedFailed[0].reason_code)
+          ? requestedFailed[0].reason_code
+          : "unknown";
+        await markJobStatus({
+          jobId, status: "permanent_failed", currentStep: "dependency_unavailable", controlState: "idle",
+          lastErrorCode: `ig_dependency_${code}`,
+          lastErrorMessage: requestedFailed.map((m) => m.reason).join(" | "),
+          resultSummary: { job_type: "ig_import", ig_source: igSource, requested: labels, packages: [], missing_dependencies: closure.missing },
+        });
+        return;
+      }
+      pkgPaths = closure.depPaths;
+      missing = closure.missing;
+      requestedFailedCount = requestedFailed.length;
     } else {
-      const objectKey = String(jobOpts.object_key ?? "").trim();
-      if (!objectKey) throw new Error("upload IG import requires 'object_key' in job_options");
-      if (!minioService.enabled()) throw new Error("MinIO is required to read the uploaded IG package");
-      const data = await minioService.downloadBytes(objectKey);
-      await fsp.writeFile(dest, data);
+      if (igSource === "registry") {
+        const packageId = String(jobOpts.package_id ?? "").trim();
+        if (!packageId) throw new Error("registry IG import requires 'package_id' in job_options");
+        const version = String(jobOpts.version ?? "").trim() || null;
+        const { data, version: resolved } = await registry.fetchPackage(base, packageId, version, { fallback });
+        await fsp.writeFile(dest, data);
+        // Best-effort archive of the fetched tarball (non-critical, mirrors _store_ig_tarball).
+        try {
+          if (minioService.enabled()) {
+            await minioService.uploadBytes({
+              objectKey: `ig-packages/${packageId}/${resolved}/package.tgz`,
+              data,
+              contentType: "application/gzip",
+            });
+          }
+        } catch {
+          /* archival is non-critical */
+        }
+        await appendJobLog({ jobId, level: "info", message: `Fetched root IG ${packageId}@${resolved} from registry` });
+      } else {
+        const objectKey = String(jobOpts.object_key ?? "").trim();
+        if (!objectKey) throw new Error("upload IG import requires 'object_key' in job_options");
+        if (!minioService.enabled()) throw new Error("MinIO is required to read the uploaded IG package");
+        const data = await minioService.downloadBytes(objectKey);
+        await fsp.writeFile(dest, data);
+      }
+      const rootPath = dest;
+
+      // 2. Recursively fetch declared dependency IGs not already installed (BFS).
+      const fetchedDeps = await igMod.fetchIgDependencies(getPool(), rootPath, tmpdir, base, fallback);
+      pkgPaths = [rootPath, ...fetchedDeps.depPaths];
+      missing = fetchedDeps.missing;
     }
-    const rootPath = dest;
 
-    // 2. Recursively fetch declared dependency IGs not already installed (BFS).
-    const { depPaths, missing } = await igMod.fetchIgDependencies(getPool(), rootPath, tmpdir, base, fallback);
-
-    // 3. Build the per-package stage payloads (primary first).
-    const { identities, codesystems, concepts, artifacts } = igMod.buildTwcoreStagePayload(rootPath, depPaths);
+    // 3. Package identities only — rows are built one package at a time below.
+    // Building every package's rows up front (a twcore closure is ~1M concepts
+    // and ~300 MB of JSON per package) exhausted the worker heap.
+    const identities = pkgPaths.map((p) => igMod.readIgPackageIdentity(p));
     const packageLabels = identities.map((i) => `${i.package_id}@${i.version}`);
 
     if (progress < 1) {
@@ -2587,14 +2959,7 @@ export async function runIgImportJob(opts: {
         jobId,
         stepKey: "validate_sources",
         currentStep: "validated_sources",
-        checkpoint: {
-          phase: "validated",
-          packages: packageLabels,
-          missing_dependencies: missing,
-          codesystem_count: codesystems.length,
-          concept_count: concepts.length,
-          artifact_count: artifacts.length,
-        },
+        checkpoint: { phase: "validated", packages: packageLabels, missing_dependencies: missing },
         jobProgressAfter: 1,
         jobProgressTotal: total,
       });
@@ -2602,63 +2967,102 @@ export async function runIgImportJob(opts: {
       if (await applyControlCheckpoint({ jobId, workerName })) return;
     }
 
-    if (progress < 2) {
-      const interrupted = await stageRows({
-        jobId, workerName,
-        stepKey: "stage_codesystems",
-        runningStepName: "staging_twcore_codesystems",
-        rows: codesystems,
-        table: "admin.stage_twcore_codesystems",
-        columns: ["package_id", "package_version", "cs_id", "name", "category", "concept_count"],
-        conflictSql: `ON CONFLICT (job_id, package_id, package_version, cs_id) DO UPDATE SET
-          name = EXCLUDED.name, category = EXCLUDED.category, concept_count = EXCLUDED.concept_count`,
-        batchSize: 1000,
-        jobProgressBefore: 1, jobProgressAfter: 2, jobProgressTotal: total,
-        checkpointLabel: "staging_twcore_codesystems",
-      });
-      if (interrupted) return;
-      progress = 2;
-    }
-
     if (progress < 3) {
-      let interrupted = await stageRows({
-        jobId, workerName,
-        stepKey: "stage_artifacts",
-        runningStepName: "staging_twcore_artifacts",
-        rows: artifacts,
-        table: "admin.stage_twcore_artifacts",
-        columns: [
-          "package_id", "package_version", "artifact_key", "resource_type", "artifact_id", "canonical_url",
-          "name", "title", "status", "kind", "base_type", "derivation", "grouping_id", "grouping_name",
-          "description", "package_path", "child_count", "concept_count", "raw_json",
-        ],
-        conflictSql: `ON CONFLICT (job_id, package_id, package_version, artifact_key) DO UPDATE SET
-          resource_type = EXCLUDED.resource_type, artifact_id = EXCLUDED.artifact_id, canonical_url = EXCLUDED.canonical_url,
-          name = EXCLUDED.name, title = EXCLUDED.title, status = EXCLUDED.status, kind = EXCLUDED.kind,
-          base_type = EXCLUDED.base_type, derivation = EXCLUDED.derivation, grouping_id = EXCLUDED.grouping_id,
-          grouping_name = EXCLUDED.grouping_name, description = EXCLUDED.description, package_path = EXCLUDED.package_path,
-          child_count = EXCLUDED.child_count, concept_count = EXCLUDED.concept_count, raw_json = EXCLUDED.raw_json`,
-        batchSize: 500,
-        jobProgressBefore: 2, jobProgressAfter: 2, jobProgressTotal: total,
-        checkpointLabel: "staging_twcore_artifacts",
+      const stepKey = "stage_packages";
+      const checkpoint = await getJobStepCheckpoint(jobId, stepKey);
+      let done = Math.max(0, Math.min(Number(checkpoint.packages_done ?? 0) || 0, pkgPaths.length));
+      if (done > 0) {
+        await appendJobLog({ jobId, level: "info", message: `Resuming staging: ${done} / ${pkgPaths.length} packages already staged` });
+      }
+      await markJobStatus({
+        jobId, status: "running", currentStep: "staging_ig_packages",
+        progressCurrent: 1, progressTotal: total,
       });
-      if (interrupted) return;
-      interrupted = await stageRows({
-        jobId, workerName,
-        stepKey: "stage_concepts",
-        runningStepName: "staging_twcore_concepts",
-        rows: concepts,
-        table: "admin.stage_twcore_concepts",
-        columns: ["package_id", "package_version", "cs_id", "code", "display", "definition"],
-        conflictSql: `ON CONFLICT (job_id, package_id, package_version, cs_id, code) DO UPDATE SET
-          display = EXCLUDED.display, definition = EXCLUDED.definition`,
-        batchSize: 5000,
-        jobProgressBefore: 2, jobProgressAfter: 3, jobProgressTotal: total,
-        checkpointLabel: "staging_twcore_concepts",
+      for (; done < pkgPaths.length; done += 1) {
+        const t0 = Date.now();
+        const label = packageLabels[done];
+        await recordJobStep({
+          jobId, stepKey, status: "running", progressCurrent: done, progressTotal: pkgPaths.length,
+          checkpoint: { phase: "staging", packages_done: done, package_count: pkgPaths.length, current: label },
+        });
+        let payload: ReturnType<typeof igMod.buildIgPackagePayload> | null = igMod.buildIgPackagePayload(pkgPaths[done]);
+        await insertStageRows({
+          jobId,
+          table: "admin.stage_twcore_codesystems",
+          columns: ["package_id", "package_version", "cs_id", "name", "category", "concept_count"],
+          conflictSql: `ON CONFLICT (job_id, package_id, package_version, cs_id) DO UPDATE SET
+            name = EXCLUDED.name, category = EXCLUDED.category, concept_count = EXCLUDED.concept_count`,
+          rows: payload.codesystems,
+        });
+        await insertStageRows({
+          jobId,
+          table: "admin.stage_twcore_artifacts",
+          columns: [
+            "package_id", "package_version", "artifact_key", "resource_type", "artifact_id", "canonical_url",
+            "name", "title", "status", "kind", "base_type", "derivation", "grouping_id", "grouping_name",
+            "description", "package_path", "child_count", "concept_count", "raw_json",
+          ],
+          conflictSql: `ON CONFLICT (job_id, package_id, package_version, artifact_key) DO UPDATE SET
+            resource_type = EXCLUDED.resource_type, artifact_id = EXCLUDED.artifact_id, canonical_url = EXCLUDED.canonical_url,
+            name = EXCLUDED.name, title = EXCLUDED.title, status = EXCLUDED.status, kind = EXCLUDED.kind,
+            base_type = EXCLUDED.base_type, derivation = EXCLUDED.derivation, grouping_id = EXCLUDED.grouping_id,
+            grouping_name = EXCLUDED.grouping_name, description = EXCLUDED.description, package_path = EXCLUDED.package_path,
+            child_count = EXCLUDED.child_count, concept_count = EXCLUDED.concept_count, raw_json = EXCLUDED.raw_json`,
+          rows: payload.artifacts,
+        });
+        await insertStageRows({
+          jobId,
+          table: "admin.stage_twcore_concepts",
+          columns: ["package_id", "package_version", "cs_id", "code", "display", "definition"],
+          conflictSql: `ON CONFLICT (job_id, package_id, package_version, cs_id, code) DO UPDATE SET
+            display = EXCLUDED.display, definition = EXCLUDED.definition`,
+          rows: payload.concepts,
+        });
+        await appendJobLog({
+          jobId, level: "info",
+          message:
+            `Staged ${label} (${done + 1}/${pkgPaths.length}): ${fmt(payload.codesystems.length)} CodeSystems, ` +
+            `${fmt(payload.concepts.length)} concepts, ${fmt(payload.artifacts.length)} artifacts ` +
+            `in ${((Date.now() - t0) / 1000).toFixed(1)}s`,
+        });
+        payload = null; // release before parsing the next package
+        await recordJobStep({
+          jobId, stepKey, status: "running", progressCurrent: done + 1, progressTotal: pkgPaths.length,
+          checkpoint: { phase: "staging", packages_done: done + 1, package_count: pkgPaths.length },
+        });
+        const control = await checkpointJobControl({ jobId, workerName });
+        if (control !== null) {
+          const stepStatus = control.action === "pause" ? "paused" : "stopped";
+          await recordJobStep({
+            jobId, stepKey, status: stepStatus, progressCurrent: done + 1, progressTotal: pkgPaths.length,
+            checkpoint: { phase: stepStatus, packages_done: done + 1, package_count: pkgPaths.length, message: control.message },
+          });
+          return;
+        }
+      }
+      await recordJobStep({
+        jobId, stepKey, status: "success", progressCurrent: pkgPaths.length, progressTotal: pkgPaths.length,
+        checkpoint: { phase: "staged", packages_done: pkgPaths.length, package_count: pkgPaths.length },
       });
-      if (interrupted) return;
+      await markJobStatus({
+        jobId, status: "running", currentStep: "staging_ig_packages_completed",
+        progressCurrent: 3, progressTotal: total,
+      });
       progress = 3;
     }
+
+    // Counts come from the stage tables, so they are right after a resume too.
+    const countRow = (
+      await getPool().query<{ cs: string; concepts: string; artifacts: string }>(
+        `SELECT (SELECT count(*) FROM admin.stage_twcore_codesystems WHERE job_id = $1::uuid) AS cs,
+                (SELECT count(*) FROM admin.stage_twcore_concepts WHERE job_id = $1::uuid) AS concepts,
+                (SELECT count(*) FROM admin.stage_twcore_artifacts WHERE job_id = $1::uuid) AS artifacts`,
+        [jobId],
+      )
+    ).rows[0];
+    const codesystemCount = Number(countRow?.cs ?? 0);
+    const conceptCount = Number(countRow?.concepts ?? 0);
+    const artifactCount = Number(countRow?.artifacts ?? 0);
 
     if (progress < 4) {
       if (
@@ -2672,22 +3076,33 @@ export async function runIgImportJob(opts: {
         (await pool.query<{ package_id: string }>("SELECT package_id FROM fhir.ig_packages WHERE is_default LIMIT 1"))
           .rows[0]?.package_id ?? null;
       const primaryId = identities.length ? identities[0].package_id : null;
-      const makePrimaryDefault = existingDefault === null || existingDefault === primaryId;
+      // A dependency-only import has no primary IG and never moves the default.
+      const makePrimaryDefault = !dependencyOnly && (existingDefault === null || existingDefault === primaryId);
 
-      const packageCopies = identities.map((ident, idx) => ({
-        sql: `INSERT INTO fhir.ig_packages
-                (package_id, version, canonical, fhir_version, title, status, is_default, dependencies, imported_at)
-              VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, NOW())
-              ON CONFLICT (package_id, version) DO UPDATE SET
-                canonical = EXCLUDED.canonical, fhir_version = EXCLUDED.fhir_version,
-                title = EXCLUDED.title, status = EXCLUDED.status,
-                dependencies = EXCLUDED.dependencies, imported_at = NOW()`,
-        args: [
-          ident.package_id, ident.version, ident.canonical, ident.fhir_version, ident.title, ident.status,
-          idx === 0 && makePrimaryDefault, JSON.stringify(ident.dependencies),
-        ] as unknown[],
-        label: `registered IG ${ident.package_id}#${ident.version}`,
-      }));
+      const { originForImportedPackage, ORIGIN_UPSERT_SQL } = await import("./igOrigin.js");
+      const rootCoord = !dependencyOnly && identities.length
+        ? { package_id: identities[0].package_id, version: identities[0].version }
+        : null;
+      const packageCopies = identities.map((ident, idx) => {
+        const origin = originForImportedPackage({ igSource, index: idx, jobOptions: jobOpts, root: rootCoord });
+        return {
+          sql: `INSERT INTO fhir.ig_packages
+                  (package_id, version, canonical, fhir_version, title, status, is_default, dependencies, imported_at,
+                   install_origin, installed_for)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, NOW(), $9, $10::jsonb)
+                ON CONFLICT (package_id, version) DO UPDATE SET
+                  canonical = EXCLUDED.canonical, fhir_version = EXCLUDED.fhir_version,
+                  title = EXCLUDED.title, status = EXCLUDED.status,
+                  dependencies = EXCLUDED.dependencies, imported_at = NOW(),
+                  ${ORIGIN_UPSERT_SQL}`,
+          args: [
+            ident.package_id, ident.version, ident.canonical, ident.fhir_version, ident.title, ident.status,
+            idx === 0 && makePrimaryDefault, JSON.stringify(ident.dependencies),
+            origin.origin, origin.installed_for ? JSON.stringify(origin.installed_for) : null,
+          ] as unknown[],
+          label: `registered IG ${ident.package_id}#${ident.version} (${origin.origin})`,
+        };
+      });
 
       // Per-package DELETE (not a global TRUNCATE) so re-importing one IG never
       // wipes the others; fhir.concepts cascade from codesystems. job_id is a
@@ -2712,14 +3127,14 @@ export async function runIgImportJob(opts: {
                   SELECT package_id, package_version, cs_id, name, category, NOW(), concept_count
                   FROM admin.stage_twcore_codesystems WHERE job_id = $1::uuid`,
             args: [jobId],
-            label: `codesystems (${fmt(codesystems.length)})`,
+            label: `codesystems (${fmt(codesystemCount)})`,
           },
           {
             sql: `INSERT INTO fhir.concepts (package_id, package_version, cs_id, code, display, definition)
                   SELECT package_id, package_version, cs_id, code, display, definition
                   FROM admin.stage_twcore_concepts WHERE job_id = $1::uuid`,
             args: [jobId],
-            label: `concepts (${fmt(concepts.length)})`,
+            label: `concepts (${fmt(conceptCount)})`,
           },
           {
             sql: `INSERT INTO fhir.artifacts (
@@ -2732,15 +3147,15 @@ export async function runIgImportJob(opts: {
                     package_path, child_count, concept_count, raw_json, NOW()
                   FROM admin.stage_twcore_artifacts WHERE job_id = $1::uuid`,
             args: [jobId],
-            label: `artifacts (${fmt(artifacts.length)})`,
+            label: `artifacts (${fmt(artifactCount)})`,
           },
         ],
         finalCheckpoint: {
           phase: "promoted",
           package_count: identities.length,
-          codesystem_count: codesystems.length,
-          concept_count: concepts.length,
-          artifact_count: artifacts.length,
+          codesystem_count: codesystemCount,
+          concept_count: conceptCount,
+          artifact_count: artifactCount,
         },
         promotedStepName: "promoted_twcore",
         jobProgressAfter: 4,
@@ -2759,16 +3174,19 @@ export async function runIgImportJob(opts: {
       progressCurrent: 1, progressTotal: 1, checkpoint: { phase: "cleaned" },
     });
     await markJobStatus({
-      jobId, status: "success", currentStep: "completed",
+      jobId, status: requestedFailedCount > 0 ? "partial_success" : "success", currentStep: "completed",
       progressCurrent: 5, progressTotal: total, controlState: "idle",
       resultSummary: {
         job_type: "ig_import",
         ig_source: igSource,
+        ...(dependencyOnly
+          ? { requested: parseDependencyTargets(jobOpts.packages).map((r) => `${r.package_id}@${r.version}`) }
+          : {}),
         packages: packageLabels,
         missing_dependencies: missing,
-        codesystem_count: codesystems.length,
-        concept_count: concepts.length,
-        artifact_count: artifacts.length,
+        codesystem_count: codesystemCount,
+        concept_count: conceptCount,
+        artifact_count: artifactCount,
       },
     });
   } finally {
@@ -2962,23 +3380,15 @@ export async function runEmbedJob(opts: {
     // One healthy endpoint is enough: the service fails over across the rest.
     let reachable: string | null = null;
     let lastProbeError = "";
+    const { probeEndpoint } = await import("../providers/probe.js");
     for (const p of profiles) {
-      const base = p.base_url.replace(/\/+$/, "");
-      const url = p.provider === "ollama" ? `${base}/api/version` : `${base}/models`;
-      const headers: Record<string, string> = p.api_key ? { Authorization: `Bearer ${p.api_key}` } : {};
-      try {
-        const ctrl = new AbortController();
-        const timer = setTimeout(() => ctrl.abort(), 5000);
-        const r = await fetch(url, { headers, signal: ctrl.signal });
-        clearTimeout(timer);
-        if (r.ok) {
-          reachable = p.name;
-          break;
-        }
-        lastProbeError = `${p.name}: HTTP ${r.status}`;
-      } catch (exc) {
-        lastProbeError = `${p.name}: ${String((exc as Error).message)}`;
+      // Through the provider adapter (model listing): every vendor's auth and URL scheme.
+      const r = await probeEndpoint(p, "embedding", { timeoutMs: 8000 });
+      if (r.ok) {
+        reachable = p.name;
+        break;
       }
+      lastProbeError = `${p.name}: ${r.message}`;
     }
     if (reachable === null) {
       await markJobStatus({
@@ -3012,7 +3422,10 @@ export async function runEmbedJob(opts: {
   await appendJobLog({
     jobId, level: "info",
     message: `Generating ${cfg.label} embeddings via Ollama (${fmt(sourceCount)} items)`,
-    payload: { resumed: Boolean(stepAtStart), source_count: sourceCount },
+    payload: {
+      resumed: Boolean(stepAtStart), source_count: sourceCount,
+      batch_size: settings.batchSize, concurrency: settings.concurrency,
+    },
   });
   await recordJobStep({
     jobId, stepKey: "embed", status: "running", progressCurrent: 0, progressTotal: sourceCount,

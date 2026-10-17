@@ -27,12 +27,11 @@ import {
   clearAdminSessionCookie,
   parseAdminSessionToken,
   parseCookieHeader,
+  SESSION_COOKIE_NAME,
 } from "../adminAuth.js";
 import { changePassword, verifyPassword } from "./adminCredentials.js";
 import { listBackups, openBackupDownload } from "./adminBackup.js";
 import * as adminSettings from "./adminSettings.js";
-import * as llmProfiles from "./llmProfiles.js";
-import * as llmProfileStats from "./llmProfileStats.js";
 import * as ocrTestSamples from "./ocrTestSamples.js";
 import {
   listWorkerHeartbeats,
@@ -47,9 +46,24 @@ import {
   JobValueError,
 } from "./adminJobs.js";
 import { listServiceProbes, runServiceProbes, ValueError as ServiceProbeValueError } from "./adminServices.js";
-import { listIgs, getIgDetail, setDefault as setIgDefault, removeIg } from "./adminIg.js";
+import {
+  listIgs,
+  getIgDetail,
+  setDefault as setIgDefault,
+  removeIg,
+  removalImpact as igRemovalImpact,
+  listUnusedDependencies as listUnusedIgDependencies,
+  removeUnusedDependencies as removeUnusedIgDependencies,
+  listMissingDependencies,
+  queueDependencyImport,
+  missingForIg,
+  isInstalled as isIgInstalled,
+  inspectUploadedIg,
+} from "./adminIg.js";
+import { parseDependencyRequest } from "./igDependencies.js";
 import { query } from "../db.js";
 import { broadcast } from "./adminWs.js";
+import { clearModule, previewModuleClear, ModuleClearError, type ClearScope } from "./adminModuleClear.js";
 import {
   listFhirServers,
   getFhirServer,
@@ -120,6 +134,8 @@ import { getDrugService as getDrugServiceForAdmin } from "../mcp.js";
 import { parseByteRange } from "./drugAssetResponse.js";
 import { reconfigureEmbeddingService } from "../embeddingService.js";
 import { logWarning } from "../logger.js";
+import { codeFields } from "./llmErrorCodes.js";
+import { ProfileValidationError } from "./llmProfiles.js";
 import { dispatchPreview, PREVIEW_SUPPORTED_MODULES } from "./adminPreview.js";
 
 /** Send a JSON body with the same content-type Python `_send_json` uses. */
@@ -144,6 +160,15 @@ export function oauthRedirectUri(req: Request): string {
   return base ? `${base.replace(/\/+$/, "")}${OAUTH_CALLBACK_PATH}` : OAUTH_CALLBACK_PATH;
 }
 
+/** Public origin for user-facing URLs: PUBLIC_BASE_URL, else the request origin (proxy-aware). */
+export function publicBaseUrlFromReq(req: Request): string {
+  const configured = config().publicBaseUrl;
+  if (configured) return configured.replace(/\/+$/, "");
+  const proto = String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim() || req.protocol || "http";
+  const host = String(req.headers["x-forwarded-host"] || req.headers.host || "").split(",")[0].trim();
+  return host ? `${proto}://${host}` : "";
+}
+
 /** Mirror Python `_send_404`: status 404, body "Not Found". */
 function send404(res: Response): void {
   res.status(404).set("content-length", "9").send("Not Found");
@@ -152,7 +177,7 @@ function send404(res: Response): void {
 function adminUsernameFromReq(req: Request): string | null {
   const cookies = parseCookieHeader(req.headers.cookie);
   const cfg = config();
-  return parseAdminSessionToken(cookies["tw_health_admin_session"], cfg.adminSessionSecret);
+  return parseAdminSessionToken(cookies[SESSION_COOKIE_NAME], cfg.adminSessionSecret);
 }
 
 /** True for `/admin` and any `/admin/...` path (mirrors Python is_admin_route). */
@@ -286,6 +311,12 @@ export async function adminHandler(req: Request, res: Response, next: NextFuncti
     } else {
       res.redirect(303, "/admin/login");
     }
+    return;
+  }
+
+  // 5b. Who am I — lets the SPA show the signed-in operator (cookie is HttpOnly).
+  if (method === "GET" && path === "/admin/api/me") {
+    sendJson(res, 200, { username: adminUsername, session_ttl_minutes: cfg.adminSessionTtlMinutes });
     return;
   }
 
@@ -446,66 +477,66 @@ export async function adminHandler(req: Request, res: Response, next: NextFuncti
       return;
     }
 
-    // ── LLM profiles (endpoints for the analysis / embedding roles) ──────────
-    if (path === "/admin/api/llm-profiles" || path.startsWith("/admin/api/llm-profiles/")) {
-      const rest = path.slice("/admin/api/llm-profiles".length).replace(/^\//, "");
-      const [idPart, action] = rest.split("/");
-      const body = (req.body ?? {}) as Record<string, unknown>;
-      try {
-        if (method === "GET" && rest === "") {
-          const kind = req.query.kind as llmProfiles.ProfileKind | undefined;
-          const rows = await llmProfiles.listProfiles(kind);
-          const stats = kind === "analysis" ? await llmProfileStats.readProfileStats() : new Map<number, llmProfileStats.ProfileStats>();
-          const statsJson: Record<string, llmProfileStats.ProfileStats> = {};
-          for (const [id, s] of stats) statsJson[String(id)] = s;
-          sendJson(res, 200, { profiles: rows.map(llmProfiles.toPublic), stats: statsJson });
-          return;
-        }
-        if (method === "POST" && rest === "") {
-          const created = await llmProfiles.createProfile(
-            body as unknown as llmProfiles.ProfileInput,
-            adminUsername,
-          );
-          await refreshSettingsSingletons(created.kind);
-          sendJson(res, 200, { ok: true, profile: llmProfiles.toPublic(created) });
-          return;
-        }
-        // Draft-based probes: no id yet when the operator is adding a profile.
-        if (method === "POST" && idPart === "test") {
-          sendJson(res, 200, await adminSettings.testProfile(body as unknown as adminSettings.ProfileDraft));
-          return;
-        }
-        if (method === "POST" && idPart === "models") {
-          sendJson(res, 200, await adminSettings.listProfileModels(body as unknown as adminSettings.ProfileDraft));
-          return;
-        }
-        const id = Number(idPart);
-        if (Number.isFinite(id) && id > 0) {
-          if ((method === "PATCH" || method === "PUT") && !action) {
-            const updated = await llmProfiles.updateProfile(id, body, adminUsername);
-            await refreshSettingsSingletons(updated.kind);
-            sendJson(res, 200, { ok: true, profile: llmProfiles.toPublic(updated) });
-            return;
-          }
-          if (method === "DELETE" && !action) {
-            const existing = await llmProfiles.getProfile(id);
-            await llmProfiles.deleteProfile(id, adminUsername);
-            if (existing) await refreshSettingsSingletons(existing.kind);
-            sendJson(res, 200, { ok: true });
-            return;
-          }
-        }
-        sendJson(res, 404, { error: `Unknown LLM profile route: ${method} ${path}` });
-      } catch (exc) {
-        if (exc instanceof llmProfiles.ProfileValidationError) {
-          sendJson(res, 400, { error: String(exc.message) });
-        } else {
-          sendJson(res, 500, {
-            error: "LLM profile operation failed",
-            detail: String((exc as Error).message),
-          });
-        }
+    // ── Terminology explorer (read-only tree / graph / facet views) ─────────
+    if (path.startsWith("/admin/api/terminology/")) {
+      const { handleTerminologyApi } = await import("./termViz/router.js");
+      const { query: dbQuery } = await import("../db.js");
+      const out = await handleTerminologyApi(
+        (sql, params) => dbQuery(sql, params as unknown[]),
+        method,
+        path,
+        req.query as Record<string, unknown>,
+      );
+      if (out) {
+        sendJson(res, out.status, out.body);
+        return;
       }
+    }
+
+    // ── MCP 工具: endpoint overview, tool catalog, playground (/admin/api/mcp/*) ──
+    if (path.startsWith("/admin/api/mcp/")) {
+      const { handleMcpApi } = await import("./adminMcp.js");
+      const { productionMcpAdminDeps, mcpInvokeLimiter } = await import("./adminMcpDeps.js");
+      try {
+        const out = await handleMcpApi(
+          productionMcpAdminDeps(publicBaseUrlFromReq(req)),
+          mcpInvokeLimiter,
+          method,
+          path,
+          (req.body ?? {}) as Record<string, unknown>,
+          adminUsername,
+        );
+        if (out) {
+          sendJson(res, out.status, out.body);
+          return;
+        }
+      } catch (exc) {
+        sendJson(res, 500, { error: "mcp_admin_failed", detail: String((exc as Error).message) });
+        return;
+      }
+    }
+
+    // ── Provider registry: what each vendor supports, for the profile form ───
+    if (method === "GET" && path === "/admin/api/llm-providers") {
+      const { providerSpecs } = await import("../providers/registry.js");
+      sendJson(res, 200, { providers: providerSpecs() });
+      return;
+    }
+
+    // ── Provider accounts, profiles, role bindings (/admin/api/llm/*) ────────
+    if (path.startsWith("/admin/api/llm/")) {
+      const { handleLlmApi } = await import("./adminLlmApi.js");
+      await handleLlmApi(
+        method,
+        path,
+        (req.body ?? {}) as Record<string, unknown>,
+        adminUsername,
+        (status, payload) => sendJson(res, status, payload),
+        async () => {
+          await refreshSettingsSingletons("embedding");
+          await refreshSettingsSingletons("analysis");
+        },
+      );
       return;
     }
 
@@ -539,7 +570,10 @@ export async function adminHandler(req: Request, res: Response, next: NextFuncti
         sendJson(res, 200, result);
       } catch (exc) {
         const msg = String((exc as Error).message);
-        if (/Unsupported settings export version|Malformed export|is not one of|is not a valid/.test(msg)) {
+        // A rejected LLM section (validation, fingerprint) is the document's fault: 400, nothing was changed.
+        if (exc instanceof ProfileValidationError) {
+          sendJson(res, 400, { error: msg, ...codeFields(msg) });
+        } else if (/Unsupported settings export version|Malformed export|is not one of|is not a valid/.test(msg)) {
           sendJson(res, 400, { error: msg });
         } else {
           sendJson(res, 500, { error: "Failed to import settings", detail: msg });
@@ -837,6 +871,25 @@ export async function adminHandler(req: Request, res: Response, next: NextFuncti
           return;
         }
         options = { ig_source: "upload", object_key: objectKey };
+        // Optional: the missing dependency this upload is meant to supply, so the
+        // dependency list can show it as "downloading" while the job runs.
+        if (body.expected_package !== undefined) {
+          const exp = parseDependencyRequest(body.expected_package);
+          if ("error" in exp) {
+            sendJson(res, 400, { error: `expected_package: ${exp.error}` });
+            return;
+          }
+          options.expected_package = exp;
+          // Optional: the installed IG that needs it (recorded as installed_for).
+          if (body.requested_for !== undefined && body.requested_for !== null) {
+            const rf = parseDependencyRequest(body.requested_for);
+            if ("error" in rf) {
+              sendJson(res, 400, { error: `requested_for: ${rf.error}` });
+              return;
+            }
+            options.requested_for = rf;
+          }
+        }
       } else {
         sendJson(res, 400, { error: "source must be 'registry' or 'upload'" });
         return;
@@ -851,6 +904,154 @@ export async function adminHandler(req: Request, res: Response, next: NextFuncti
         sendJson(res, 201, { job });
       } catch (exc) {
         sendJson(res, 500, { error: "Failed to start IG import", detail: String((exc as Error).message) });
+      }
+      return;
+    }
+
+    // GET /admin/api/igs/dependencies — missing dependencies + download state
+    if (method === "GET" && path === "/admin/api/igs/dependencies") {
+      try {
+        sendJson(res, 200, { dependencies: await listMissingDependencies() });
+      } catch (exc) {
+        sendJson(res, 500, { error: "Failed to list missing IG dependencies", detail: String((exc as Error).message) });
+      }
+      return;
+    }
+
+    // POST /admin/api/igs/dependencies/download {package_id, version}
+    //   → queue a dependency-only ig_import for that exact package (+ its own missing deps)
+    if (method === "POST" && path === "/admin/api/igs/dependencies/download") {
+      const parsed = parseDependencyRequest(req.body);
+      if ("error" in parsed) {
+        sendJson(res, 400, { error: parsed.error });
+        return;
+      }
+      try {
+        if (await isIgInstalled(parsed.package_id, parsed.version)) {
+          sendJson(res, 409, {
+            error: `${parsed.package_id}@${parsed.version} is already installed`,
+            code: "already_installed",
+          });
+          return;
+        }
+        const out = await queueDependencyImport({ packages: [parsed], requestedBy: adminUsername });
+        sendJson(res, out.packages.length ? 201 : 200, out);
+      } catch (exc) {
+        sendJson(res, 500, { error: "Failed to queue dependency download", detail: String((exc as Error).message) });
+      }
+      return;
+    }
+
+    // POST /admin/api/igs/dependencies/download-all → one job for every missing dependency
+    if (method === "POST" && path === "/admin/api/igs/dependencies/download-all") {
+      try {
+        const missing = await listMissingDependencies();
+        const out = await queueDependencyImport({
+          packages: missing.map((d) => ({ package_id: d.package_id, version: d.version })),
+          requestedBy: adminUsername,
+        });
+        sendJson(res, out.packages.length ? 201 : 200, out);
+      } catch (exc) {
+        sendJson(res, 500, { error: "Failed to queue dependency downloads", detail: String((exc as Error).message) });
+      }
+      return;
+    }
+
+    // POST /admin/api/igs/inspect-upload {uploaded_file_id} → package identity of an uploaded .tgz
+    if (method === "POST" && path === "/admin/api/igs/inspect-upload") {
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const id = String(body.uploaded_file_id ?? "").trim();
+      if (!/^[0-9a-f-]{36}$/i.test(id)) {
+        sendJson(res, 400, { error: "uploaded_file_id must be a UUID" });
+        return;
+      }
+      try {
+        const out = await inspectUploadedIg(id);
+        if (out.ok) sendJson(res, 200, out);
+        else sendJson(res, out.status, { error: out.error, ...(out.detail ? { detail: out.detail } : {}) });
+      } catch (exc) {
+        sendJson(res, 500, { error: "Failed to read the uploaded package", detail: String((exc as Error).message) });
+      }
+      return;
+    }
+
+    // POST /admin/api/igs/{package_id}/{version}/fill-dependencies → fetch this IG's missing deps
+    const igFillMatch = /^\/admin\/api\/igs\/([^/]+)\/([^/]+)\/fill-dependencies$/.exec(path);
+    if (method === "POST" && igFillMatch) {
+      const pkgId = decodeURIComponent(igFillMatch[1]);
+      const pkgVer = decodeURIComponent(igFillMatch[2]);
+      try {
+        const missing = await missingForIg(pkgId, pkgVer);
+        if (missing === null) {
+          sendJson(res, 404, { error: "IG not found" });
+          return;
+        }
+        if (missing.length === 0) {
+          sendJson(res, 200, { job: null, packages: [], already_queued: [], nothing_missing: true });
+          return;
+        }
+        const out = await queueDependencyImport({
+          packages: missing.map((d) => ({ package_id: d.package_id, version: d.version })),
+          requestedBy: adminUsername,
+          requestedFor: { package_id: pkgId, version: pkgVer },
+        });
+        sendJson(res, out.packages.length ? 201 : 200, out);
+      } catch (exc) {
+        sendJson(res, 500, { error: "Failed to queue dependency downloads", detail: String((exc as Error).message) });
+      }
+      return;
+    }
+
+    // GET /admin/api/igs/unused-dependencies — dependency installs no installed IG needs any more
+    if (method === "GET" && path === "/admin/api/igs/unused-dependencies") {
+      try {
+        sendJson(res, 200, { packages: await listUnusedIgDependencies() });
+      } catch (exc) {
+        sendJson(res, 500, { error: "Failed to list unused IG dependencies", detail: String((exc as Error).message) });
+      }
+      return;
+    }
+
+    // POST /admin/api/igs/unused-dependencies/remove {packages?: [{package_id, version}]}
+    //   → remove those (default: every unused dependency) as one set; 409 IG_DEPENDENCY_IN_USE
+    //     when any of them is still needed.
+    if (method === "POST" && path === "/admin/api/igs/unused-dependencies/remove") {
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      let packages: { package_id: string; version: string }[] | null = null;
+      if (body.packages !== undefined && body.packages !== null) {
+        if (!Array.isArray(body.packages)) {
+          sendJson(res, 400, { error: "packages must be an array when provided" });
+          return;
+        }
+        packages = [];
+        for (const raw of body.packages) {
+          const p = parseDependencyRequest(raw);
+          if ("error" in p) {
+            sendJson(res, 400, { error: `packages: ${p.error}` });
+            return;
+          }
+          packages.push(p);
+        }
+      }
+      try {
+        const result = await removeUnusedIgDependencies({ packages, removedBy: adminUsername });
+        if (result.removed) await broadcast("module_changed", { module_key: "ig" });
+        sendJson(res, result.ok ? 200 : result.status, result);
+      } catch (exc) {
+        sendJson(res, 500, { error: "Failed to remove unused IG dependencies", detail: String((exc as Error).message) });
+      }
+      return;
+    }
+
+    // GET /admin/api/igs/{package_id}/{version}/removal-impact — what deleting this IG would break
+    const igImpactMatch = /^\/admin\/api\/igs\/([^/]+)\/([^/]+)\/removal-impact$/.exec(path);
+    if (method === "GET" && igImpactMatch) {
+      try {
+        const impact = await igRemovalImpact(decodeURIComponent(igImpactMatch[1]), decodeURIComponent(igImpactMatch[2]));
+        if (impact === null) sendJson(res, 404, { error: "IG not found", code: "IG_NOT_FOUND" });
+        else sendJson(res, 200, impact);
+      } catch (exc) {
+        sendJson(res, 500, { error: "Failed to compute IG removal impact", detail: String((exc as Error).message) });
       }
       return;
     }
@@ -875,9 +1076,36 @@ export async function adminHandler(req: Request, res: Response, next: NextFuncti
         return;
       }
       // DELETE — remove the IG package, then broadcast the module change.
-      const result = await removeIg({ packageId: pkgId, version: pkgVer, removedBy: adminUsername });
-      await broadcast("module_changed", { module_key: "ig" });
-      sendJson(res, result.removed ? 200 : 404, result);
+      // Refused (409 IG_HAS_DEPENDENTS / IG_IS_DEFAULT) unless force=true or,
+      // for the default IG, new_default names a replacement.
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const force = String(req.query.force ?? body.force ?? "").trim().toLowerCase() === "true";
+      let newDefault: { package_id: string; version: string } | null = null;
+      const rawNd = body.new_default ?? (typeof req.query.new_default === "string" ? req.query.new_default : undefined);
+      if (rawNd !== undefined && rawNd !== null && rawNd !== "") {
+        const nd = typeof rawNd === "string" ? (() => {
+          const at = rawNd.lastIndexOf("@");
+          return parseDependencyRequest(at > 0 ? { package_id: rawNd.slice(0, at), version: rawNd.slice(at + 1) } : {});
+        })() : parseDependencyRequest(rawNd);
+        if ("error" in nd) {
+          sendJson(res, 400, { error: `new_default: ${nd.error}`, code: "IG_INVALID_NEW_DEFAULT" });
+          return;
+        }
+        newDefault = nd;
+      }
+      try {
+        const result = await removeIg({
+          packageId: decodeURIComponent(pkgId),
+          version: decodeURIComponent(pkgVer),
+          removedBy: adminUsername,
+          force,
+          newDefault,
+        });
+        if (result.removed) await broadcast("module_changed", { module_key: "ig" });
+        sendJson(res, result.removed ? 200 : result.status, result);
+      } catch (exc) {
+        sendJson(res, 500, { error: "Failed to remove IG", detail: String((exc as Error).message) });
+      }
       return;
     }
 
@@ -1110,6 +1338,30 @@ export async function adminHandler(req: Request, res: Response, next: NextFuncti
           error: "Failed to list module sources",
           detail: String((exc as Error).message),
         });
+      }
+      return;
+    }
+
+    // GET  /admin/api/modules/{key}/clear  — counts a clear would remove
+    // POST /admin/api/modules/{key}/clear  — body {scope, confirm}
+    const clearMatch = /^\/admin\/api\/modules\/([A-Za-z0-9_-]+)\/clear$/.exec(path);
+    if (clearMatch && (method === "GET" || method === "POST")) {
+      const moduleKey = clearMatch[1];
+      try {
+        if (method === "GET") {
+          sendJson(res, 200, await previewModuleClear(moduleKey));
+          return;
+        }
+        const body = (req.body ?? {}) as Record<string, unknown>;
+        const scope = String(body.scope ?? "all") as ClearScope;
+        if (String(body.confirm ?? "") !== moduleKey) {
+          sendJson(res, 400, { error: `Type the module key '${moduleKey}' to confirm` });
+          return;
+        }
+        sendJson(res, 200, await clearModule({ moduleKey, scope, requestedBy: adminUsername }));
+      } catch (exc) {
+        if (exc instanceof ModuleClearError) sendJson(res, exc.status, { error: exc.message });
+        else sendJson(res, 500, { error: "Failed to clear module", detail: String((exc as Error).message) });
       }
       return;
     }
@@ -1493,6 +1745,12 @@ export async function adminHandler(req: Request, res: Response, next: NextFuncti
         });
         res.end(body);
       } catch (exc) {
+        // The DB row exists but the object is gone from storage → 404, not 500.
+        const e = exc as Error & { code?: string };
+        if (e.code === "NoSuchKey" || e.code === "NotFound" || /does not exist|NoSuchKey|Not Found/i.test(String(e.message))) {
+          sendJson(res, 404, { error: "Asset file is missing from object storage", detail: String(e.message) });
+          return;
+        }
         sendJson(res, 500, {
           error: "Failed to load asset content",
           detail: String((exc as Error).message),
@@ -1534,7 +1792,8 @@ export async function adminHandler(req: Request, res: Response, next: NextFuncti
 
     if (method === "GET" && path === "/admin/api/jobs") {
       try {
-        sendJson(res, 200, { jobs: await listJobs() });
+        const limit = Math.min(Math.max(Number.parseInt(String(req.query.limit ?? "50"), 10) || 50, 1), 500);
+        sendJson(res, 200, { jobs: await listJobs(limit) });
       } catch (exc) {
         sendJson(res, 500, { error: "Failed to list admin jobs", detail: String((exc as Error).message) });
       }

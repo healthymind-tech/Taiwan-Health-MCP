@@ -12,6 +12,9 @@ RUN npm run build
 
 FROM node:20-slim AS runtime
 ENV NODE_ENV=production
+# Git sha reported by health_check.build (docker build --build-arg BUILD_SHA=$(git rev-parse --short HEAD)).
+ARG BUILD_SHA=dev
+ENV BUILD_SHA=$BUILD_SHA
 WORKDIR /app
 COPY node-server/package.json node-server/package-lock.json ./
 RUN npm ci --omit=dev

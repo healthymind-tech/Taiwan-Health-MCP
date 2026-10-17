@@ -15,7 +15,23 @@
 
 import crypto from "node:crypto";
 
-export const SESSION_COOKIE_NAME = "tw_health_admin_session";
+const DEFAULT_SESSION_COOKIE_NAME = "tw_health_admin_session";
+
+/**
+ * Session cookie name. Overridable (ADMIN_SESSION_COOKIE) because cookies are
+ * scoped by host, not port: two deployments on one host (e.g. production :8080
+ * and staging :8090) would otherwise share — and clobber — the same cookie, and
+ * a `Secure` cookie set by one cannot even be overwritten by an http sibling.
+ */
+export function resolveSessionCookieName(raw: string | undefined): string {
+  const name = (raw ?? "").trim();
+  if (!name) return DEFAULT_SESSION_COOKIE_NAME;
+  // RFC 6265 cookie-name token characters only.
+  if (!/^[A-Za-z0-9_.-]+$/.test(name)) throw new Error("ADMIN_SESSION_COOKIE may only contain letters, digits, '_', '-' and '.'");
+  return name;
+}
+
+export const SESSION_COOKIE_NAME = resolveSessionCookieName(process.env.ADMIN_SESSION_COOKIE);
 
 /** base64url without padding (mirrors Python `base64.urlsafe_b64encode().rstrip("=")`). */
 function b64urlEncode(data: Buffer): string {

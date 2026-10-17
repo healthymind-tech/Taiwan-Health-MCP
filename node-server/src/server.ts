@@ -14,6 +14,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { config, adminReady, type AppConfig } from "./config.js";
 import { configureLogLevel, logError, logInfo, logWarning } from "./logger.js";
+import { finalErrorHandler } from "./httpErrors.js";
 import { WebSocketServer } from "ws";
 import { parseCookieHeader, parseAdminSessionToken, SESSION_COOKIE_NAME } from "./adminAuth.js";
 import { initBroadcast, startWsRelay, handleAdminWsConnection } from "./admin/adminWs.js";
@@ -330,7 +331,7 @@ function buildApp(): express.Express {
   // unguessable `state` nonce is the capability. Redirects back to the admin SPA.
   app.get(OAUTH_CALLBACK_PATH, (req: Request, res: Response) => {
     void (async () => {
-      const fhirTab = "/admin/modules/fhir-servers";
+      const fhirTab = "/admin/fhir-servers";
       const err = String(req.query.error ?? "");
       if (err) {
         const reason = encodeURIComponent(String(req.query.error_description || err).slice(0, 200));
@@ -406,6 +407,9 @@ function buildApp(): express.Express {
 
   app.get(mcpPath, handleSessionRequest);
   app.delete(mcpPath, handleSessionRequest);
+
+  // Last: body-parser failures and unhandled errors, without echoing request bodies to the logs.
+  app.use(finalErrorHandler);
 
   return app;
 }

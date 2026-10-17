@@ -1,0 +1,116 @@
+# Isolated staging stack for the admin console v2.
+#
+#   docker compose -p twh-staging -f deploy/staging/compose.yaml up -d
+#
+# Nothing here is shared with the live stack: its own Postgres (restored from a
+# dump of the live DB), Redis, MinIO, app, worker and front door. Front door:
+# http://<host>:${STAGING_PORT:-8090}/admin
+name: twh-staging
+
+x-backend-env: &backend-env
+  DATABASE_URL: postgresql://mcp:${STAGING_DB_PASSWORD:?set STAGING_DB_PASSWORD in deploy/staging/.env}@postgres:5432/taiwan_health
+  REDIS_URL: redis://redis:6379/0
+  MINIO_ENDPOINT: minio:9000
+  # Staging is served over plain http on a LAN IP; a Secure session cookie
+  # would be dropped by the browser (login loops back to the login page).
+  ADMIN_COOKIE_SECURE: "false"
+  # Own cookie name: cookies are per host, not per port, so production on :8080
+  # (which sets a Secure cookie of the default name) would otherwise shadow ours.
+  ADMIN_SESSION_COOKIE: tw_health_admin_session_staging
+  PUBLIC_BASE_URL: http://${STAGING_HOST:?set STAGING_HOST in deploy/staging/.env}:${STAGING_PORT:-8090}
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    # Docker's 64 MB default is too small for parallel HNSW builds / parallel queries.
+    shm_size: 1gb
+    environment:
+      POSTGRES_DB: taiwan_health
+      POSTGRES_USER: mcp
+      POSTGRES_PASSWORD: ${STAGING_DB_PASSWORD:?set STAGING_DB_PASSWORD in deploy/staging/.env}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ${STAGING_RESTORE_DIR:?set STAGING_RESTORE_DIR (host dir holding the live-DB dump) in deploy/staging/.env}:/restore:ro
+    ports:
+      - "127.0.0.1:15432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mcp -d taiwan_health"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru --save ""
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: ${STAGING_MINIO_PASSWORD:?set STAGING_MINIO_PASSWORD in deploy/staging/.env}
+    volumes:
+      - minio_data:/data
+    ports:
+      - "127.0.0.1:19000:9000"
+    restart: unless-stopped
+
+  app:
+    build:
+      context: ../..
+      dockerfile: node-server/Dockerfile
+      args:
+        BUILD_SHA: ${BUILD_SHA:-dev}
+    env_file: ../../.env
+    environment:
+      <<: *backend-env
+      ADMIN_ENABLED: "true"
+      PUBLIC_TOOLS_AUTH_MODE: none
+      PUBLIC_TOOLS_BEARER_TOKEN: ""
+      PUBLIC_TOOLS_CORS_ORIGINS: ""
+      METRICS_PORT: "9091"
+    ports:
+      - "127.0.0.1:18000:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_started }
+      minio: { condition: service_started }
+    restart: unless-stopped
+
+  admin-worker:
+    build:
+      context: ../..
+      dockerfile: Dockerfile.worker
+      args:
+        BUILD_SHA: ${BUILD_SHA:-dev}
+    env_file: ../../.env
+    environment:
+      <<: *backend-env
+      ADMIN_WORKER_NAME: staging-worker
+      ADMIN_MAX_CONCURRENT_JOBS: "2"
+      NODE_OPTIONS: --max-old-space-size=4096
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: unless-stopped
+
+  # New admin console: static SPA + front door proxy for this stack.
+  web-v2:
+    build:
+      context: ../../web-v2
+    environment:
+      BACKEND_UPSTREAM: app:8000
+    ports:
+      - "${STAGING_PORT:-8090}:80"
+    depends_on:
+      - app
+    restart: unless-stopped
+
+volumes:
+  pg_data:
+  minio_data:

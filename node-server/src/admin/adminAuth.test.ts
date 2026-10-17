@@ -29,3 +29,11 @@ test("admin password hashes round-trip without storing the plaintext", () => {
   assert.equal(verifyAdminPassword("a sufficiently long password", hash), true);
   assert.equal(verifyAdminPassword("wrong password", hash), false);
 });
+
+test("session cookie name: default, override, and invalid characters rejected", async () => {
+  const { resolveSessionCookieName } = await import("../adminAuth.js");
+  assert.equal(resolveSessionCookieName(undefined), "tw_health_admin_session");
+  assert.equal(resolveSessionCookieName("  "), "tw_health_admin_session");
+  assert.equal(resolveSessionCookieName("tw_health_admin_session_staging"), "tw_health_admin_session_staging");
+  assert.throws(() => resolveSessionCookieName("bad name;"), /ADMIN_SESSION_COOKIE/);
+});

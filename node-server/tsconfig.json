@@ -15,5 +15,15 @@
     "sourceMap": true
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", "dist", "src/**/*.test.ts"]
+  "exclude": [
+    "node_modules",
+    "dist",
+    "src/**/*.test.ts",
+    "src/providers/testUtil.ts",
+    "src/grounding/testkit.ts",
+    "src/grounding/pasEval.ts",
+    "src/grounding/pasTestkit.ts",
+    "src/grounding/pasHandRecords.ts",
+    "src/grounding/scripts/**"
+  ]
 }

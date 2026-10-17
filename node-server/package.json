@@ -11,10 +11,11 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
     "dev": "tsx watch src/server.ts",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node --import tsx --test src/*.test.ts src/**/*.test.ts"
+    "typecheck": "tsc -p tsconfig.dev.json --noEmit",
+    "test": "node --import tsx --test 'src/**/*.test.ts'"
   },
   "dependencies": {
+    "@lhncbc/ucum-lhc": "7.1.9",
     "@modelcontextprotocol/sdk": "^1.12.0",
     "@simplewebauthn/server": "^13.3.2",
     "archiver": "^8.0.0",

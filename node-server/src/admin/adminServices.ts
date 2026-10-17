@@ -18,6 +18,7 @@ import { getClient as getRedisClient } from "../cache.js";
 import { getGroup, isGroupConfigured } from "./adminSettings.js";
 import { listEnabled, type LlmProfile } from "./llmProfiles.js";
 import * as minioService from "../minioService.js";
+import { probeEndpoint } from "../providers/probe.js";
 
 export const SERVICE_PROBE_ORDER = [
   "database",
@@ -254,6 +255,15 @@ function openaiCandidates(baseUrl: string): string[] {
   return [`${base}/models`, `${base}/v1/models`];
 }
 
+/** One model endpoint, through its provider adapter (shallow: model listing). */
+async function probeProfileEndpoint(
+  p: LlmProfile,
+  role: "analysis" | "embedding",
+): Promise<{ ok: boolean; endpoint: string; latencyMs: number | null; message: string; details: Record<string, unknown> }> {
+  const r = await probeEndpoint(p, role);
+  return { ok: r.ok, endpoint: r.endpoint, latencyMs: r.latencyMs, message: r.message, details: { provider: r.provider, http_status: r.httpStatus } };
+}
+
 async function probeDatabase(): Promise<ProbeResult> {
   const started = performance.now();
   await query("SELECT 1");
@@ -361,12 +371,7 @@ async function probeProfiles(
 }
 
 async function probeEmbedding(): Promise<ProbeResult> {
-  return probeProfiles("embedding", "Embedding", async (p) => {
-    const base = p.base_url.replace(/\/+$/, "");
-    const headers: Record<string, string> = p.api_key ? { Authorization: `Bearer ${p.api_key}` } : {};
-    const candidates = p.provider === "ollama" ? ollamaCandidates(base) : openaiCandidates(base);
-    return probeHttpCandidates(candidates, headers);
-  });
+  return probeProfiles("embedding", "Embedding", (p) => probeProfileEndpoint(p, "embedding"));
 }
 
 /** Probe the MinerU server the drug pipeline uploads insert PDFs to. */
@@ -395,12 +400,7 @@ async function probeOcrServer(): Promise<ProbeResult> {
 
 /** Probe every Analysis LM profile and fold failover endpoints into one row. */
 async function probeAnalysis(): Promise<ProbeResult> {
-  return probeProfiles("analysis", "Analysis LM", async (p) => {
-    const base = p.base_url.replace(/\/+$/, "");
-    const headers: Record<string, string> = p.api_key ? { Authorization: `Bearer ${p.api_key}` } : {};
-    const candidates = p.provider === "ollama" ? ollamaCandidates(base) : openaiCandidates(base);
-    return probeHttpCandidates(candidates, headers);
-  });
+  return probeProfiles("analysis", "Analysis LM", (p) => probeProfileEndpoint(p, "analysis"));
 }
 
 /**

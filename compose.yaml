@@ -211,8 +211,28 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  # ── Next.js front-end (public pages + admin SPA) ──────────────────────────────
+  # ── Admin console v2 (static Vite SPA served by its own nginx) ────────────────
+  # nginx (below) routes /admin pages here; API / MCP / WS still go straight to
+  # `app`. web-v2's own nginx can also proxy the backend (BACKEND_UPSTREAM), so it
+  # can stand alone as a front door (see deploy/staging/compose.yaml).
+  web-v2:
+    build:
+      context: ./web-v2
+    image: taiwan-health-mcp-web-v2:latest
+    container_name: taiwanHealthMcp_web_v2
+    restart: unless-stopped
+    environment:
+      - BACKEND_UPSTREAM=app:${MCP_PORT:-8000}
+    depends_on:
+      - app
+    expose:
+      - "80"
+
+  # ── Legacy Next.js admin (replaced by web-v2) ─────────────────────────────────
+  # Kept only for rollback; not started by default. To bring it back:
+  #   docker compose --profile legacy-web up -d web   (and restore nginx.conf)
   web:
+    profiles: ["legacy-web"]
     build:
       context: ./web
       dockerfile: Dockerfile
@@ -225,7 +245,7 @@ services:
     expose:
       - "3000"
 
-  # ── nginx single front door (routes API/MCP/WS -> app, rest -> web) ───────────
+  # ── nginx single front door (routes API/MCP/WS -> app, rest -> web-v2) ────────
   nginx:
     image: nginx:1.27-alpine
     container_name: taiwanHealthMcp_nginx
@@ -235,7 +255,7 @@ services:
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
-      - web
+      - web-v2
       - app
 
 volumes:
