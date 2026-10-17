@@ -22,6 +22,7 @@
  */
 
 import { query } from "../db.js";
+import { minOf, pushAll } from "../arrayUtils.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -1476,7 +1477,7 @@ async function previewIg(params: Params): Promise<Row> {
         }
       }
       if (!tiers.length) return [[], ""];
-      const bestRank = Math.min(...tiers.map((t) => t[0]));
+      const bestRank = minOf(tiers.map((t) => t[0]));
       const bestRefset = tiers.find((t) => t[0] === bestRank)![1];
       const targets = [
         ...new Map(tiers.filter((t) => t[1] === bestRefset).map((t) => [t[2], t[2]])).keys(),
@@ -1706,7 +1707,7 @@ async function previewIg(params: Params): Promise<Row> {
             new Set([...visitedSet, valueSetId]),
           );
           for (const nested of nestedRows) nested.source = `ValueSet/${refId}`;
-          rows.push(...nestedRows);
+          pushAll(rows, nestedRows);
         } else {
           addRow({
             row_type: "ValueSet reference",

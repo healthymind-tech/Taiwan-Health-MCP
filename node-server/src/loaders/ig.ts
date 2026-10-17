@@ -27,6 +27,8 @@ import { gunzipSync, strFromU8 } from "fflate";
 import { config } from "../config.js";
 import { logInfo, logError, logWarning, configureLogLevel } from "../logger.js";
 import * as registry from "./igRegistry.js";
+import { pushAll } from "../arrayUtils.js";
+import { originForImportedPackage, ORIGIN_UPSERT_SQL } from "../admin/igOrigin.js";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..");
 const FHIR_CODE_DIR = process.env.FHIR_CODE_DIR || path.join(REPO_ROOT, "fhir-code");
@@ -505,29 +507,51 @@ function artifactChildCount(resourceType: string, data: any): number {
 
 type ArtifactCore = (string | number)[]; // 17 fields, see buildArtifactPayload
 
-function buildArtifactPayload(entries: TarEntry[]): ArtifactCore[] {
-  const resources: [string, any][] = [];
-  for (const e of entries) {
-    const packagePath = e.name;
-    if (!(packagePath.startsWith("package/") && packagePath.endsWith(".json"))) continue;
-    let data: any;
-    try {
-      data = parseJsonPy(strFromU8(e.data));
-    } catch {
-      continue;
-    }
-    if (!data || typeof data !== "object" || Array.isArray(data)) continue;
-    const resourceType = String(data.resourceType ?? "");
-    // Mirror Python's precedence: `not rt or rt in {Bundle} and path.endswith(.index.json)`
-    if (!resourceType || (resourceType === "Bundle" && packagePath.endsWith(".index.json"))) continue;
-    resources.push([packagePath, data]);
-  }
+/** Package JSON files that can hold a FHIR resource (same filter as before). */
+function resourceEntries(entries: TarEntry[]): TarEntry[] {
+  return entries.filter((e) => e.name.startsWith("package/") && e.name.endsWith(".json"));
+}
 
+/** Decoded file text, minus a UTF-8 BOM (jsonb rejects it). */
+function entryText(e: TarEntry): string {
+  const text = strFromU8(e.data);
+  return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+}
+
+/** Parse one package file as a top-level FHIR resource, or null when it is not one. */
+function parseResource(packagePath: string, text: string): any | null {
+  let data: any;
+  try {
+    data = parseJsonPy(text);
+  } catch {
+    return null;
+  }
+  if (!data || typeof data !== "object" || Array.isArray(data)) return null;
+  const resourceType = String(data.resourceType ?? "");
+  // Mirror Python's precedence: `not rt or rt in {Bundle} and path.endswith(.index.json)`
+  if (!resourceType || (resourceType === "Bundle" && packagePath.endsWith(".index.json"))) return null;
+  return data;
+}
+
+/**
+ * One row per FHIR resource in the package. Resources are parsed one at a time
+ * and dropped right after their row is built: a package such as twcore 0.3.2 is
+ * ~300 MB of JSON, and holding every parsed tree at once exhausted the heap.
+ * `raw_json` is the file's own text — the column is jsonb, so Postgres
+ * normalizes it, and re-serializing a 47 MB CodeSystem only doubled the peak.
+ */
+function buildArtifactPayload(entries: TarEntry[]): ArtifactCore[] {
+  const files = resourceEntries(entries);
+
+  // Pass 1: grouping maps from the ImplementationGuide resource(s) only.
   const groupingNames: Record<string, string> = {};
   const groupingByResource = new Map<string, [string, string]>();
   const groupingByUrl = new Map<string, [string, string]>();
-  for (const [, data] of resources) {
-    if (data.resourceType !== "ImplementationGuide") continue;
+  for (const e of files) {
+    const text = entryText(e);
+    if (!text.includes('"ImplementationGuide"')) continue;
+    const data = parseResource(e.name, text);
+    if (!data || data.resourceType !== "ImplementationGuide") continue;
     const definition = data.definition || {};
     for (const grouping of definition.grouping || []) {
       const gid = String(grouping.id ?? "");
@@ -547,8 +571,13 @@ function buildArtifactPayload(entries: TarEntry[]): ArtifactCore[] {
     }
   }
 
+  // Pass 2: one resource at a time.
   const rows: ArtifactCore[] = [];
-  for (const [packagePath, data] of resources) {
+  for (const e of files) {
+    const packagePath = e.name;
+    const text = entryText(e);
+    const data = parseResource(packagePath, text);
+    if (!data) continue;
     const resourceType = pyStrOr(data.resourceType);
     const artifactId = pyStrOr(data.id);
     const canonicalUrl = pyStrOr(data.url);
@@ -570,7 +599,7 @@ function buildArtifactPayload(entries: TarEntry[]): ArtifactCore[] {
     rows.push([
       artifactKey, resourceType, artifactId, canonicalUrl, name, title, status, kind,
       baseType, derivation, groupingId, groupingName, description, packagePath,
-      childCount, conceptCount, pyJsonStringify(data),
+      childCount, conceptCount, text,
     ]);
   }
   return rows;
@@ -596,11 +625,21 @@ function* iterCodesystems(entries: TarEntry[]): Generator<[string, any]> {
 
 // ── per-package stage payload (mirror _build_twcore_stage_payload._ingest) ───
 
-interface PackagePayload {
+export interface PackagePayload {
   identity: Identity;
   codesystems: (string | number)[][]; // pid,pver,cs_id,name,category,count
   concepts: (string | number)[][]; // pid,pver,cs_id,code,display,definition
   artifacts: (string | number)[][]; // pid,pver,...artifactCore
+}
+
+/** Stage payload for a single package file — callers process packages one at a time. */
+export function buildIgPackagePayload(tgzPath: string): PackagePayload {
+  return buildPackagePayload(readTgz(tgzPath), tgzPath);
+}
+
+/** Identity only (package.json / ImplementationGuide), without building rows. */
+export function readIgPackageIdentity(tgzPath: string): Identity {
+  return parseIdentity(readTgz(tgzPath), tgzPath);
 }
 
 function buildPackagePayload(entries: TarEntry[], tgzPath: string): PackagePayload {
@@ -637,41 +676,6 @@ function buildPackagePayload(entries: TarEntry[], tgzPath: string): PackagePaylo
   }
 
   return { identity, codesystems, concepts, artifacts };
-}
-
-// ── multi-package stage payload (mirror _build_twcore_stage_payload) ─────────
-
-export interface TwcoreStagePayload {
-  identities: Identity[];
-  /** pid, pver, cs_id, name, category, concept_count */
-  codesystems: (string | number)[][];
-  /** pid, pver, cs_id, code, display, definition */
-  concepts: (string | number)[][];
-  /** pid, pver, ...17 artifact fields (artifact_key … raw_json) */
-  artifacts: (string | number)[][];
-}
-
-/**
- * Faithful port of `_build_twcore_stage_payload`: ingest the primary package
- * (candidate default IG) first, then any dependency packages, each as its own
- * package-scoped payload. Returns the aggregated tuple lists for staging.
- */
-export function buildTwcoreStagePayload(
-  rootPath: string,
-  extraPaths: string[] = [],
-): TwcoreStagePayload {
-  const identities: Identity[] = [];
-  const codesystems: (string | number)[][] = [];
-  const concepts: (string | number)[][] = [];
-  const artifacts: (string | number)[][] = [];
-  for (const p of [rootPath, ...extraPaths]) {
-    const pp = buildPackagePayload(readTgz(p), p);
-    identities.push(pp.identity);
-    codesystems.push(...pp.codesystems);
-    concepts.push(...pp.concepts);
-    artifacts.push(...pp.artifacts);
-  }
-  return { identities, codesystems, concepts, artifacts };
 }
 
 // ── DB write ────────────────────────────────────────────────────────────────
@@ -713,10 +717,8 @@ const ARTIFACT_COLS = [
 /** Index one or more packages (primary first) into fhir.* in a single
  * transaction, mirroring the promote step of `_run_ig_import_job`. */
 export async function indexPackages(pool: pg.Pool, tgzPaths: string[]): Promise<void> {
-  const payloads = tgzPaths.map((p) => {
-    logInfo(`Parsing ${p} ...`);
-    return buildPackagePayload(readTgz(p), p);
-  });
+  // Identities first; each package's rows are built (and released) in turn below.
+  const payloads = tgzPaths.map((p) => ({ path: p, identity: readIgPackageIdentity(p) }));
 
   const existingDefault = await pool.query<{ package_id: string }>(
     "SELECT package_id FROM fhir.ig_packages WHERE is_default LIMIT 1",
@@ -732,18 +734,28 @@ export async function indexPackages(pool: pg.Pool, tgzPaths: string[]): Promise<
     for (let idx = 0; idx < payloads.length; idx += 1) {
       const { identity } = payloads[idx];
       const isDefault = idx === 0 && makePrimaryDefault;
+      // Primary = the package the operator asked for; the rest were fetched as its dependencies.
+      const origin = originForImportedPackage({
+        igSource: "cli",
+        index: idx,
+        jobOptions: {},
+        root: payloads.length ? { package_id: payloads[0].identity.package_id, version: payloads[0].identity.version } : null,
+      });
       await client.query(
         `INSERT INTO fhir.ig_packages
-           (package_id, version, canonical, fhir_version, title, status, is_default, dependencies, imported_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,NOW())
+           (package_id, version, canonical, fhir_version, title, status, is_default, dependencies, imported_at,
+            install_origin, installed_for)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,NOW(),$9,$10::jsonb)
          ON CONFLICT (package_id, version) DO UPDATE SET
            canonical=EXCLUDED.canonical, fhir_version=EXCLUDED.fhir_version,
            title=EXCLUDED.title, status=EXCLUDED.status,
-           dependencies=EXCLUDED.dependencies, imported_at=NOW()`,
+           dependencies=EXCLUDED.dependencies, imported_at=NOW(),
+           ${ORIGIN_UPSERT_SQL}`,
         [
           identity.package_id, identity.version, identity.canonical, identity.fhir_version,
           identity.title, identity.status, isDefault,
           pyJsonStringify(identity.dependencies),
+          origin.origin, origin.installed_for ? JSON.stringify(origin.installed_for) : null,
         ],
       );
     }
@@ -760,7 +772,9 @@ export async function indexPackages(pool: pg.Pool, tgzPaths: string[]): Promise<
       );
     }
 
-    for (const { identity, codesystems, concepts, artifacts } of payloads) {
+    for (const { path: tgzPath } of payloads) {
+      logInfo(`Parsing ${tgzPath} ...`);
+      const { identity, codesystems, concepts, artifacts } = buildIgPackagePayload(tgzPath);
       if (codesystems.length) {
         await batchInsertWithNow(
           client,
@@ -819,17 +833,32 @@ function parseIgPackageIdentity(tgzPath: string): Identity {
 }
 
 /** `(package_id, version)` set already present in fhir.ig_packages. */
-async function installedIgPackages(pool: pg.Pool): Promise<Set<string>> {
-  const res = await pool.query<{ package_id: string; version: string }>(
-    "SELECT package_id, version FROM fhir.ig_packages",
+/** Installed packages → their declared dependencies (fhir.ig_packages.dependencies). */
+async function installedIgPackages(pool: pg.Pool): Promise<Map<string, Record<string, string>>> {
+  const res = await pool.query<{ package_id: string; version: string; dependencies: unknown }>(
+    "SELECT package_id, version, dependencies FROM fhir.ig_packages",
   );
-  return new Set(res.rows.map((r) => `${r.package_id}\t${r.version}`));
+  const out = new Map<string, Record<string, string>>();
+  for (const r of res.rows) {
+    let deps = r.dependencies;
+    if (typeof deps === "string") {
+      try {
+        deps = JSON.parse(deps);
+      } catch {
+        deps = {};
+      }
+    }
+    out.set(`${r.package_id}\t${r.version}`, deps && typeof deps === "object" && !Array.isArray(deps) ? (deps as Record<string, string>) : {});
+  }
+  return out;
 }
 
-interface MissingDep {
+export interface MissingDep {
   package_id: string;
   version: string;
   reason: string;
+  /** `classifyRegistryFailure(reason)` — lets the admin UI suggest the next step. */
+  reason_code: registry.RegistryFailureKind;
 }
 
 /**
@@ -845,25 +874,59 @@ export async function fetchIgDependencies(
   base: string,
   fallback: string | null,
 ): Promise<{ depPaths: string[]; missing: MissingDep[] }> {
-  const installed = await installedIgPackages(pool);
   const rootIdentity = parseIgPackageIdentity(rootPath);
-  const seen = new Set<string>([`${rootIdentity.package_id}\t${rootIdentity.version}`]);
+  return fetchPackageClosure(pool, Object.entries(rootIdentity.dependencies || {}), tmpdir, base, fallback, {
+    exclude: [[rootIdentity.package_id, rootIdentity.version]],
+  });
+}
+
+/**
+ * Fetch the given packages plus (BFS) every dependency of theirs that is not
+ * installed yet. `roots` are `[packageId, version]` pairs; declared versions
+ * are canonicalized (core 4.0.0 → 4.0.1). Installed packages are skipped but
+ * their own dependencies are still walked, so a dependency that failed on an
+ * earlier import is retried. Shared by the root-IG import (roots = the root's
+ * declared dependencies) and the dependency-only import (roots = the missing
+ * packages the admin asked for).
+ */
+export async function fetchPackageClosure(
+  pool: pg.Pool,
+  roots: [string, string][],
+  tmpdir: string,
+  base: string,
+  fallback: string | null,
+  opts: { exclude?: [string, string][]; fetch?: typeof registry.fetchPackage } = {},
+): Promise<{ depPaths: string[]; missing: MissingDep[]; fetched: { package_id: string; version: string }[] }> {
+  const fetchOne = opts.fetch ?? registry.fetchPackage;
+  const installed = await installedIgPackages(pool);
+  const seen = new Set<string>((opts.exclude ?? []).map(([id, ver]) => `${id}\t${ver}`));
 
   const queue: [string, string][] = [];
   const queueKeys = new Set<string>();
-  const enqueue = (deps: Record<string, string>): void => {
-    for (const [depId, depVer] of Object.entries(deps || {})) {
+  const enqueue = (deps: Iterable<[string, string]>): void => {
+    for (const [depId, rawVer] of deps) {
+      const depVer = registry.canonicalDependencyVersion(String(depId), String(rawVer));
       const key = `${depId}\t${depVer}`;
-      if (seen.has(key) || installed.has(key) || queueKeys.has(key)) continue;
+      if (seen.has(key) || queueKeys.has(key)) continue;
+      const installedDeps = installed.get(key);
+      if (installedDeps) {
+        // Already installed: nothing to download, but keep walking its own
+        // dependencies — one that failed to fetch on an earlier import would
+        // otherwise never be retried, since its parent is always skipped.
+        seen.add(key);
+        enqueue(Object.entries(installedDeps));
+        continue;
+      }
       queue.push([String(depId), String(depVer)]);
       queueKeys.add(key);
     }
   };
 
-  enqueue(rootIdentity.dependencies || {});
+  enqueue(roots);
 
   const depPaths: string[] = [];
   const missing: MissingDep[] = [];
+  const fetched: { package_id: string; version: string }[] = [];
   let idx = 0;
   while (queue.length && depPaths.length < IG_DEP_MAX_PACKAGES) {
     const [depId, depVer] = queue.shift()!;
@@ -873,13 +936,12 @@ export async function fetchIgDependencies(
     let data: Buffer;
     let resolved: string;
     try {
-      const meta = await registry.getMetadata(base, depId);
-      resolved = registry.resolveVersion(meta, depVer || null);
-      data = await registry.downloadTarball(base, depId, resolved, { meta, fallback });
+      ({ data, version: resolved } = await fetchOne(base, depId, depVer || null, { fallback }));
     } catch (exc) {
       if (exc instanceof registry.RegistryError) {
-        missing.push({ package_id: depId, version: depVer, reason: String(exc.message) });
-        logWarning(`Dependency ${depId}@${depVer} could not be fetched: ${exc.message}`);
+        const reason = String(exc.message);
+        missing.push({ package_id: depId, version: depVer, reason, reason_code: registry.classifyRegistryFailure(reason) });
+        logWarning(`Dependency ${depId}@${depVer} could not be fetched: ${reason}`);
         continue;
       }
       throw exc;
@@ -888,12 +950,13 @@ export async function fetchIgDependencies(
     const depPath = path.join(tmpdir, `ig-dep-${idx}.tgz`);
     fs.writeFileSync(depPath, data);
     depPaths.push(depPath);
+    fetched.push({ package_id: depId, version: resolved });
     logInfo(`Fetched dependency IG ${depId}@${resolved}`);
     const depIdentity = parseIgPackageIdentity(depPath);
-    enqueue(depIdentity.dependencies || {});
+    enqueue(Object.entries(depIdentity.dependencies || {}));
   }
 
-  return { depPaths, missing };
+  return { depPaths, missing, fetched };
 }
 
 /** Materialize the root IG .tgz to a local path (registry coordinate or local file). */
@@ -907,9 +970,7 @@ export async function acquireIgRoot(
   if (coordinate) {
     const [packageId, version] = registry.parseCoordinate(coordinate);
     if (!packageId) throw new Error("registry IG import requires a package id");
-    const meta = await registry.getMetadata(base, packageId);
-    const resolved = registry.resolveVersion(meta, version);
-    const data = await registry.downloadTarball(base, packageId, resolved, { meta, fallback });
+    const { data, version: resolved } = await registry.fetchPackage(base, packageId, version, { fallback });
     const dest = path.join(tmpdir, "ig-root.tgz");
     fs.writeFileSync(dest, data);
     logInfo(`Fetched root IG ${packageId}@${resolved} from registry`);
@@ -989,7 +1050,7 @@ async function main(): Promise<void> {
       const allPaths = [root];
       if (fetchDeps) {
         const { depPaths, missing } = await fetchIgDependencies(pool, root, tmpdir, base, fallback);
-        allPaths.push(...depPaths);
+        pushAll(allPaths, depPaths);
         if (missing.length) {
           for (const m of missing) {
             logWarning(`Missing dependency: ${m.package_id}@${m.version} — ${m.reason}`);

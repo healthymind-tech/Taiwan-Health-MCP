@@ -1,0 +1,151 @@
+{
+ "examples": {
+  "n": 159,
+  "agree": 159,
+  "both_invalid": 4,
+  "both_valid": 155,
+  "false_reject": 0,
+  "false_accept": 0,
+  "precision_invalid": 1.0,
+  "recall_invalid": 1.0,
+  "per_ig": {
+   "tw.gov.mohw.twcore": "98/98",
+   "tw.gov.mohw.nhi.pas": "61/61"
+  }
+ },
+ "bundles": {
+  "n": 30,
+  "agree": 30,
+  "both_invalid": 2,
+  "both_valid": 28,
+  "false_reject": 0,
+  "false_accept": 0,
+  "precision_invalid": 1.0,
+  "recall_invalid": 1.0,
+  "per_ig": {
+   "tw.gov.mohw.twcore": "20/20",
+   "tw.gov.mohw.nhi.pas": "10/10"
+  }
+ },
+ "mutations": {
+  "n": 1910,
+  "agree": 1910,
+  "both_invalid": 1804,
+  "both_valid": 106,
+  "false_reject": 0,
+  "false_accept": 0,
+  "precision_invalid": 1.0,
+  "recall_invalid": 1.0,
+  "per_ig": {
+   "tw.gov.mohw.twcore": "1232/1232",
+   "tw.gov.mohw.nhi.pas": "678/678"
+  }
+ },
+ "user_cases": {
+  "n": 93,
+  "agree": 93,
+  "both_invalid": 58,
+  "both_valid": 35,
+  "false_reject": 0,
+  "false_accept": 0,
+  "precision_invalid": 1.0,
+  "recall_invalid": 1.0,
+  "per_ig": {
+   "tw.gov.mohw.twcore": "75/75",
+   "tw.gov.mohw.nhi.pas": "18/18"
+  }
+ },
+ "mut_dis": {
+  "n": 31,
+  "agree": 31,
+  "both_invalid": 31,
+  "both_valid": 0,
+  "false_reject": 0,
+  "false_accept": 0,
+  "precision_invalid": 1.0,
+  "recall_invalid": 1.0,
+  "per_ig": {
+   "tw.gov.mohw.twcore": "31/31"
+  }
+ },
+ "perf": {
+  "n": 6,
+  "agree": 6,
+  "both_invalid": 0,
+  "both_valid": 6,
+  "false_reject": 0,
+  "false_accept": 0,
+  "precision_invalid": null,
+  "recall_invalid": null,
+  "per_ig": {
+   "tw.gov.mohw.nhi.pas": "6/6"
+  }
+ },
+ "refprobe": {
+  "n": 20,
+  "agree": 20,
+  "both_invalid": 7,
+  "both_valid": 13,
+  "false_reject": 0,
+  "false_accept": 0,
+  "precision_invalid": 1.0,
+  "recall_invalid": 1.0,
+  "per_ig": {
+   "tw.gov.mohw.twcore": "20/20"
+  }
+ },
+ "refprobe2": {
+  "n": 23,
+  "agree": 23,
+  "both_invalid": 17,
+  "both_valid": 6,
+  "false_reject": 0,
+  "false_accept": 0,
+  "precision_invalid": 1.0,
+  "recall_invalid": 1.0,
+  "per_ig": {
+   "tw.gov.mohw.twcore": "23/23"
+  }
+ },
+ "refprobe3": {
+  "n": 8,
+  "agree": 8,
+  "both_invalid": 3,
+  "both_valid": 5,
+  "false_reject": 0,
+  "false_accept": 0,
+  "precision_invalid": 1.0,
+  "recall_invalid": 1.0,
+  "per_ig": {
+   "tw.gov.mohw.twcore": "8/8"
+  }
+ },
+ "http_staging": {
+  "n": 174,
+  "agree": 174,
+  "tp_invalid": 87,
+  "tn_valid": 87,
+  "false_reject": 0,
+  "false_accept": 0,
+  "precision": 1.0,
+  "recall": 1.0,
+  "per_ig": {
+   "tw.gov.mohw.twcore": "146/146",
+   "tw.gov.mohw.nhi.pas": "28/28"
+  }
+ },
+ "baseline_examples_HEAD": {
+  "n": 159,
+  "agree": 99,
+  "tp_invalid": 3,
+  "tn_valid": 96,
+  "false_reject": 59,
+  "false_accept": 1,
+  "precision": 0.04838709677419355,
+  "recall": 0.75,
+  "per_ig": {
+   "tw.gov.mohw.twcore": "63/98",
+   "tw.gov.mohw.nhi.pas": "36/61"
+  }
+ }
+}

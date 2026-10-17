@@ -1,0 +1,90 @@
+{
+ "oracle": "validator_cli 7.0.1 + tx.fhir.org (ICD-10-CM 2026-04-01)",
+ "db": "staging, ICD-10-CM CMS order file 2026-04-01 (98186 codes)",
+ "results": {
+  "examples": {
+   "n": 159,
+   "agree": 155,
+   "false_reject": 0,
+   "false_accept": 4
+  },
+  "bundles": {
+   "n": 30,
+   "agree": 27,
+   "false_reject": 0,
+   "false_accept": 3
+  },
+  "mutations": {
+   "n": 1910,
+   "agree": 1909,
+   "false_reject": 0,
+   "false_accept": 1
+  },
+  "user_cases": {
+   "n": 93,
+   "agree": 93,
+   "false_reject": 0,
+   "false_accept": 0
+  },
+  "mut_dis": {
+   "n": 31,
+   "agree": 31,
+   "false_reject": 0,
+   "false_accept": 0
+  },
+  "perf": {
+   "n": 6,
+   "agree": 3,
+   "false_reject": 0,
+   "false_accept": 3
+  },
+  "refprobe": {
+   "n": 20,
+   "agree": 20,
+   "false_reject": 0,
+   "false_accept": 0
+  },
+  "refprobe2": {
+   "n": 23,
+   "agree": 23,
+   "false_reject": 0,
+   "false_accept": 0
+  },
+  "refprobe3": {
+   "n": 8,
+   "agree": 8,
+   "false_reject": 0,
+   "false_accept": 0
+  },
+  "v2_probes": {
+   "n": 456,
+   "agree": 454,
+   "false_reject": 0,
+   "false_accept": 2
+  },
+  "mut_v2": {
+   "n": 945,
+   "agree": 931,
+   "false_reject": 0,
+   "false_accept": 14
+  },
+  "icd_v3_probes": {
+   "n": 29,
+   "agree": 29,
+   "false_reject": 0,
+   "false_accept": 0
+  },
+  "icd_v3_mut": {
+   "n": 145,
+   "agree": 145,
+   "false_reject": 0,
+   "false_accept": 0
+  },
+  "_total": {
+   "n": 3855,
+   "agree": 3828,
+   "false_reject": 0,
+   "false_accept": 27
+  }
+ }
+}

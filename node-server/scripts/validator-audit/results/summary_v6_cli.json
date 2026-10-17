@@ -1,0 +1,5 @@
+{
+ "oracle": "validator_cli 7.0.1 + tx.fhir.org, cache regenerated 2026-10-17 (F2b-nhi-vs-as-system: single-resource result)",
+ "all_15_corpora": {"n": 4310, "before": {"agree": 4309, "false_accept": 1, "false_reject": 0}, "after": {"agree": 4309, "false_accept": 1, "false_reject": 0}, "verdict_changes_local": 0},
+ "v6_probes": {"n": 30, "agree": 30, "false_accept": 0, "false_reject": 0}
+}

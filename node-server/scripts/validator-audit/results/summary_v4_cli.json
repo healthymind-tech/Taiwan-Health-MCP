@@ -1,0 +1,189 @@
+{
+ "oracle": "validator_cli 7.0.1 + tx.fhir.org (single-resource results from results/oracle_isolated.json take precedence)",
+ "db": "staging: ICD-10-CM 2026-04-01 (98,186), WHO ICD-10 2019-covid-expanded (13,831), LOINC 2.80 + 104,607 LA/LP/LL/LG, SNOMED CT INT 2025-06-01 incl. inactive (148,382 concepts / 671,772 descriptions), CVX 20250715 (bundled)",
+ "results": {
+  "examples": {
+   "n": 159,
+   "agree": 159,
+   "false_reject": 0,
+   "false_accept": 0,
+   "before_v3": {
+    "n": 159,
+    "agree": 155,
+    "false_reject": 0,
+    "false_accept": 4
+   }
+  },
+  "bundles": {
+   "n": 30,
+   "agree": 30,
+   "false_reject": 0,
+   "false_accept": 0,
+   "before_v3": {
+    "n": 30,
+    "agree": 27,
+    "false_reject": 0,
+    "false_accept": 3
+   }
+  },
+  "mutations": {
+   "n": 1910,
+   "agree": 1910,
+   "false_reject": 0,
+   "false_accept": 0,
+   "before_v3": {
+    "n": 1910,
+    "agree": 1909,
+    "false_reject": 0,
+    "false_accept": 1
+   }
+  },
+  "user_cases": {
+   "n": 93,
+   "agree": 93,
+   "false_reject": 0,
+   "false_accept": 0,
+   "before_v3": {
+    "n": 93,
+    "agree": 93,
+    "false_reject": 0,
+    "false_accept": 0
+   }
+  },
+  "mut_dis": {
+   "n": 31,
+   "agree": 31,
+   "false_reject": 0,
+   "false_accept": 0,
+   "before_v3": {
+    "n": 31,
+    "agree": 31,
+    "false_reject": 0,
+    "false_accept": 0
+   }
+  },
+  "perf": {
+   "n": 6,
+   "agree": 6,
+   "false_reject": 0,
+   "false_accept": 0,
+   "before_v3": {
+    "n": 6,
+    "agree": 3,
+    "false_reject": 0,
+    "false_accept": 3
+   }
+  },
+  "refprobe": {
+   "n": 20,
+   "agree": 20,
+   "false_reject": 0,
+   "false_accept": 0,
+   "before_v3": {
+    "n": 20,
+    "agree": 20,
+    "false_reject": 0,
+    "false_accept": 0
+   }
+  },
+  "refprobe2": {
+   "n": 23,
+   "agree": 23,
+   "false_reject": 0,
+   "false_accept": 0,
+   "before_v3": {
+    "n": 23,
+    "agree": 23,
+    "false_reject": 0,
+    "false_accept": 0
+   }
+  },
+  "refprobe3": {
+   "n": 8,
+   "agree": 8,
+   "false_reject": 0,
+   "false_accept": 0,
+   "before_v3": {
+    "n": 8,
+    "agree": 8,
+    "false_reject": 0,
+    "false_accept": 0
+   }
+  },
+  "v2_probes": {
+   "n": 456,
+   "agree": 456,
+   "false_reject": 0,
+   "false_accept": 0,
+   "before_v3": {
+    "n": 456,
+    "agree": 454,
+    "false_reject": 0,
+    "false_accept": 2
+   }
+  },
+  "mut_v2": {
+   "n": 945,
+   "agree": 945,
+   "false_reject": 0,
+   "false_accept": 0,
+   "before_v3": {
+    "n": 945,
+    "agree": 931,
+    "false_reject": 0,
+    "false_accept": 14
+   }
+  },
+  "icd_v3_probes": {
+   "n": 29,
+   "agree": 29,
+   "false_reject": 0,
+   "false_accept": 0,
+   "before_v3": {
+    "n": 29,
+    "agree": 29,
+    "false_reject": 0,
+    "false_accept": 0
+   }
+  },
+  "icd_v3_mut": {
+   "n": 145,
+   "agree": 145,
+   "false_reject": 0,
+   "false_accept": 0,
+   "before_v3": {
+    "n": 145,
+    "agree": 145,
+    "false_reject": 0,
+    "false_accept": 0
+   }
+  },
+  "v4_probes": {
+   "n": 79,
+   "agree": 78,
+   "false_reject": 0,
+   "false_accept": 1,
+   "before_v3": null
+  },
+  "v4_mut": {
+   "n": 376,
+   "agree": 376,
+   "false_reject": 0,
+   "false_accept": 0,
+   "before_v3": null
+  },
+  "_total": {
+   "n": 4310,
+   "agree": 4309,
+   "false_reject": 0,
+   "false_accept": 1
+  },
+  "_residual": [
+   {
+    "corpus": "v4_probes",
+    "key": "S-us-version-fab",
+    "reason": "fabricated International-namespace SCTID with Coding.version = SNOMED US edition; tx.fhir.org checks the US edition 20250901 (not held; may be based on a newer International release), so only a warning is safe offline"
+   }
+  ]
+ }
+}
