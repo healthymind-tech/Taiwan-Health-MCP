@@ -1,0 +1,298 @@
+{
+ "oracle": "validator_cli 7.0.1 + tx.fhir.org, one resource per CLI run (fresh JVM)",
+ "note": "items = the 22 distinct resources behind the 27 v3 false accepts",
+ "items": [
+  {
+   "key": "examples:Observation/obs-pregnancy-status-example",
+   "pkg": "tw.gov.mohw.twcore",
+   "batch_valid": false,
+   "isolated_valid": false,
+   "batch_error_ids": [
+    "VALUESET_VALUE_MISMATCH_CHANGED"
+   ],
+   "isolated_error_ids": [
+    "VALUESET_VALUE_MISMATCH_CHANGED"
+   ],
+   "same": true
+  },
+  {
+   "key": "examples:Bundle/bun-imm",
+   "pkg": "tw.gov.mohw.nhi.pas",
+   "batch_valid": false,
+   "isolated_valid": false,
+   "batch_error_ids": [
+    "Reference_REF_CantMatchChoice",
+    "Validation_VAL_Profile_Minimum_SLICE",
+    "Validation_VAL_Profile_NotSlice"
+   ],
+   "isolated_error_ids": [
+    "Reference_REF_CantMatchChoice",
+    "Validation_VAL_Profile_Minimum_SLICE",
+    "Validation_VAL_Profile_NotSlice"
+   ],
+   "same": true
+  },
+  {
+   "key": "examples:Condition/con-comorbidity",
+   "pkg": "tw.gov.mohw.nhi.pas",
+   "batch_valid": false,
+   "isolated_valid": false,
+   "batch_error_ids": [
+    "Validation_VAL_Profile_NotSlice"
+   ],
+   "isolated_error_ids": [
+    "Validation_VAL_Profile_NotSlice"
+   ],
+   "same": true
+  },
+  {
+   "key": "examples:Condition/con-diagnosis",
+   "pkg": "tw.gov.mohw.nhi.pas",
+   "batch_valid": false,
+   "isolated_valid": false,
+   "batch_error_ids": [
+    "Validation_VAL_Profile_NotSlice"
+   ],
+   "isolated_error_ids": [
+    "Validation_VAL_Profile_NotSlice"
+   ],
+   "same": true
+  },
+  {
+   "key": "bundles:GenBundle/twcore-6-collection",
+   "pkg": "tw.gov.mohw.twcore",
+   "batch_valid": false,
+   "isolated_valid": false,
+   "batch_error_ids": [
+    "VALUESET_VALUE_MISMATCH_CHANGED"
+   ],
+   "isolated_error_ids": [
+    "VALUESET_VALUE_MISMATCH_CHANGED"
+   ],
+   "same": true
+  },
+  {
+   "key": "bundles:GenBundle/twcore-18-collection",
+   "pkg": "tw.gov.mohw.twcore",
+   "batch_valid": false,
+   "isolated_valid": false,
+   "batch_error_ids": [
+    "VALUESET_VALUE_MISMATCH_CHANGED"
+   ],
+   "isolated_error_ids": [
+    "VALUESET_VALUE_MISMATCH_CHANGED"
+   ],
+   "same": true
+  },
+  {
+   "key": "bundles:GenBundle/pas-0-collection",
+   "pkg": "tw.gov.mohw.nhi.pas",
+   "batch_valid": false,
+   "isolated_valid": false,
+   "batch_error_ids": [
+    "Validation_VAL_Profile_NotSlice"
+   ],
+   "isolated_error_ids": [
+    "Validation_VAL_Profile_NotSlice"
+   ],
+   "same": true
+  },
+  {
+   "key": "mutations:Observation/obs-pregnancy-status-example#M15-required-slice-missing",
+   "pkg": "tw.gov.mohw.twcore",
+   "batch_valid": false,
+   "isolated_valid": false,
+   "batch_error_ids": [
+    "VALUESET_VALUE_MISMATCH_CHANGED"
+   ],
+   "isolated_error_ids": [
+    "VALUESET_VALUE_MISMATCH_CHANGED"
+   ],
+   "same": true
+  },
+  {
+   "key": "v2_probes:A-icd10who-A09",
+   "pkg": "tw.gov.mohw.twcore",
+   "batch_valid": false,
+   "isolated_valid": false,
+   "batch_error_ids": [
+    "Display_Name_for__should_be_one_of__instead_of"
+   ],
+   "isolated_error_ids": [
+    "Display_Name_for__should_be_one_of__instead_of"
+   ],
+   "same": true
+  },
+  {
+   "key": "v2_probes:F2b-nhi-vs-as-system",
+   "pkg": "tw.gov.mohw.twcore",
+   "batch_valid": false,
+   "isolated_valid": true,
+   "batch_error_ids": [
+    "Terminology_TX_System_ValueSet2"
+   ],
+   "isolated_error_ids": [],
+   "same": false
+  },
+  {
+   "key": "mut_v2:Observation/obs-pregnancy-status-example#A-case-0",
+   "pkg": "tw.gov.mohw.twcore",
+   "batch_valid": false,
+   "isolated_valid": false,
+   "batch_error_ids": [
+    "VALUESET_VALUE_MISMATCH_CHANGED"
+   ],
+   "isolated_error_ids": [
+    "VALUESET_VALUE_MISMATCH_CHANGED"
+   ],
+   "same": true
+  },
+  {
+   "key": "mut_v2:Condition/con-comorbidity#A-lcn-0",
+   "pkg": "tw.gov.mohw.nhi.pas",
+   "batch_valid": false,
+   "isolated_valid": false,
+   "batch_error_ids": [
+    "Validation_VAL_Profile_NotSlice"
+   ],
+   "isolated_error_ids": [
+    "Validation_VAL_Profile_NotSlice"
+   ],
+   "same": true
+  },
+  {
+   "key": "mut_v2:Condition/con-diagnosis#A-lcn-0",
+   "pkg": "tw.gov.mohw.nhi.pas",
+   "batch_valid": false,
+   "isolated_valid": false,
+   "batch_error_ids": [
+    "Validation_VAL_Profile_NotSlice"
+   ],
+   "isolated_error_ids": [
+    "Validation_VAL_Profile_NotSlice"
+   ],
+   "same": true
+  },
+  {
+   "key": "mut_v2:Observation/obs-pregnancy-status-example#A-sctsyn-0",
+   "pkg": "tw.gov.mohw.twcore",
+   "batch_valid": false,
+   "isolated_valid": false,
+   "batch_error_ids": [
+    "VALUESET_VALUE_MISMATCH_CHANGED"
+   ],
+   "isolated_error_ids": [
+    "VALUESET_VALUE_MISMATCH_CHANGED"
+   ],
+   "same": true
+  },
+  {
+   "key": "mut_v2:Condition/con-comorbidity#A-short-0",
+   "pkg": "tw.gov.mohw.nhi.pas",
+   "batch_valid": false,
+   "isolated_valid": false,
+   "batch_error_ids": [
+    "Validation_VAL_Profile_NotSlice"
+   ],
+   "isolated_error_ids": [
+    "Validation_VAL_Profile_NotSlice"
+   ],
+   "same": true
+  },
+  {
+   "key": "mut_v2:Condition/con-diagnosis#A-short-0",
+   "pkg": "tw.gov.mohw.nhi.pas",
+   "batch_valid": false,
+   "isolated_valid": false,
+   "batch_error_ids": [
+    "Validation_VAL_Profile_NotSlice"
+   ],
+   "isolated_error_ids": [
+    "Validation_VAL_Profile_NotSlice"
+   ],
+   "same": true
+  },
+  {
+   "key": "mut_v2:Condition/con-example#A-swap-0",
+   "pkg": "tw.gov.mohw.twcore",
+   "batch_valid": false,
+   "isolated_valid": false,
+   "batch_error_ids": [
+    "Display_Name_for__should_be_one_of__instead_of"
+   ],
+   "isolated_error_ids": [
+    "Display_Name_for__should_be_one_of__instead_of"
+   ],
+   "same": true
+  },
+  {
+   "key": "mut_v2:QuestionnaireResponse/qr-example#A-swap-0",
+   "pkg": "tw.gov.mohw.twcore",
+   "batch_valid": false,
+   "isolated_valid": false,
+   "batch_error_ids": [
+    "Display_Name_for__should_be_one_of__instead_of",
+    "Questionnaire_QR_Item_BadOption"
+   ],
+   "isolated_error_ids": [
+    "Display_Name_for__should_be_one_of__instead_of",
+    "Questionnaire_QR_Item_BadOption"
+   ],
+   "same": true
+  },
+  {
+   "key": "mut_v2:Observation/obs-diagnostic-min#A-ws-0",
+   "pkg": "tw.gov.mohw.nhi.pas",
+   "batch_valid": false,
+   "isolated_valid": false,
+   "batch_error_ids": [
+    "Display_Name_WS_for__should_be_one_of__instead_of"
+   ],
+   "isolated_error_ids": [
+    "Display_Name_WS_for__should_be_one_of__instead_of"
+   ],
+   "same": true
+  },
+  {
+   "key": "mut_v2:Immunization/imm-example#A-ws-0",
+   "pkg": "tw.gov.mohw.twcore",
+   "batch_valid": false,
+   "isolated_valid": false,
+   "batch_error_ids": [
+    "Display_Name_WS_for__should_be_one_of__instead_of"
+   ],
+   "isolated_error_ids": [
+    "Display_Name_WS_for__should_be_one_of__instead_of"
+   ],
+   "same": true
+  },
+  {
+   "key": "mut_v2:QuestionnaireResponse/qr-example#A-zh-0",
+   "pkg": "tw.gov.mohw.twcore",
+   "batch_valid": false,
+   "isolated_valid": false,
+   "batch_error_ids": [
+    "Display_Name_for__should_be_one_of__instead_of",
+    "Questionnaire_QR_Item_BadOption"
+   ],
+   "isolated_error_ids": [
+    "Display_Name_for__should_be_one_of__instead_of",
+    "Questionnaire_QR_Item_BadOption"
+   ],
+   "same": true
+  },
+  {
+   "key": "mut_v2:Procedure/pro-example#A-zh-0",
+   "pkg": "tw.gov.mohw.twcore",
+   "batch_valid": false,
+   "isolated_valid": false,
+   "batch_error_ids": [
+    "Display_Name_for__should_be_one_of__instead_of"
+   ],
+   "isolated_error_ids": [
+    "Display_Name_for__should_be_one_of__instead_of"
+   ],
+   "same": true
+  }
+ ]
+}

@@ -1,0 +1,262 @@
+cmp_f2_examples.json {'strict_oracle_only': 0, 'strict_ours_only': 0, 'strict_items_with_mismatch': 0, 'oracle_error_locations': 6, 'ours_error_locations': 6, 'oracle_only': 0, 'ours_only': 0, 'items': 159}
+
+cmp_f2_bundles.json {'strict_oracle_only': 0, 'strict_ours_only': 0, 'strict_items_with_mismatch': 0, 'oracle_error_locations': 2, 'ours_error_locations': 2, 'oracle_only': 0, 'ours_only': 0, 'items': 30}
+
+cmp_f2_mutations.json {'strict_oracle_only': 72, 'strict_ours_only': 34, 'strict_items_with_mismatch': 87, 'oracle_error_locations': 2148, 'ours_error_locations': 2107, 'oracle_only': 5, 'ours_only': 5, 'items_with_mismatch': 4, 'items': 1910}
+-- STRICT tw.gov.mohw.twcore AllergyIntolerance/all-cat-example#M10-wrong-display-clinicalStatus.coding.0
+   S-ORACLE-ONLY AllergyIntolerance.clinicalStatus [Terminology_TX_NoValid_1_CC] None of the codings provided are in the value set 'AllergyIntolerance Clinical Status Codes' (http://hl7.org/fhir/ValueSet/allergyintolerance-clinical|4.0.1), a
+-- STRICT tw.gov.mohw.twcore AllergyIntolerance/all-medication-example#M10-wrong-display-clinicalStatus.coding.0
+   S-ORACLE-ONLY AllergyIntolerance.clinicalStatus [Terminology_TX_NoValid_1_CC] None of the codings provided are in the value set 'AllergyIntolerance Clinical Status Codes' (http://hl7.org/fhir/ValueSet/allergyintolerance-clinical|4.0.1), a
+-- STRICT tw.gov.mohw.twcore AllergyIntolerance/all-nut-example#M10-wrong-display-clinicalStatus.coding.0
+   S-ORACLE-ONLY AllergyIntolerance.clinicalStatus [Terminology_TX_NoValid_1_CC] None of the codings provided are in the value set 'AllergyIntolerance Clinical Status Codes' (http://hl7.org/fhir/ValueSet/allergyintolerance-clinical|4.0.1), a
+-- STRICT tw.gov.mohw.twcore AllergyIntolerance/all-seafood-example#M10-wrong-display-clinicalStatus.coding.0
+   S-ORACLE-ONLY AllergyIntolerance.clinicalStatus [Terminology_TX_NoValid_1_CC] None of the codings provided are in the value set 'AllergyIntolerance Clinical Status Codes' (http://hl7.org/fhir/ValueSet/allergyintolerance-clinical|4.0.1), a
+-- STRICT tw.gov.mohw.twcore CareTeam/careteam-example#M14-empty-string-participant.2.role.0.coding.0.code
+   S-ORACLE-ONLY CareTeam.participant[2].role[0].coding[0] [None] Coding has no code for system http://snomed.info/sct and cannot be validated
+-- STRICT tw.gov.mohw.twcore ImagingStudy/img-example#M2-number-for-string-identifier.0.system
+   S-ORACLE-ONLY ImagingStudy.identifier[0] [Type_Specific_Checks_DT_Identifier_System] Identifier.system must be an absolute reference, not a local reference
+-- STRICT tw.gov.mohw.twcore ImagingStudy/img-mr-example#M2-number-for-string-series.0.instance.1.sopClass.system
+   S-ORACLE-ONLY ImagingStudy.series[0].instance[1].sopClass [Terminology_TX_System_Relative] Coding.system must be an absolute reference, not a local reference
+-- STRICT tw.gov.mohw.twcore Media/media-example#M14-empty-string-view.coding.0.code
+   S-ORACLE-ONLY Media.view.coding[0] [None] Coding has no code for system http://snomed.info/sct and cannot be validated
+-- STRICT tw.gov.mohw.twcore MedicationDispense/med-dis-drop-example#M2-number-for-string-quantity.system
+   S-ORACLE-ONLY MedicationDispense.quantity [Terminology_TX_System_Relative] Coding.system must be an absolute reference, not a local reference
+-- STRICT tw.gov.mohw.twcore MedicationRequest/med-req-cod-example#M2-number-for-string-dispenseRequest.validityPeriod.end
+   S-ORACLE-ONLY MedicationRequest.dispenseRequest.validityPeriod [http://hl7.org/fhir/StructureDefinition/Period#per-1] Constraint failed: per-1: 'If present, start SHALL have a lower value than end'Invalid date/time format: "12345": Expected character '-' at index 4 but found 5 
+-- STRICT tw.gov.mohw.twcore MessageHeader/mes-request-example#M2-number-for-string-eventCoding.code
+   S-ORACLE-ONLY MessageHeader.event.ofType(Coding).code [Unknown_Code_in_Version] Unknown code '12345' in the CodeSystem 'http://loinc.org' version 'LOINC-2.83'
+   S-OURS-ONLY   MessageHeader.eventCoding.code [structure] Error parsing JSON: the primitive value must be a string
+-- tw.gov.mohw.twcore MessageHeader/mes-request-example#M2-number-for-string-eventCoding.code (oracle_valid=False ours_valid=False)
+   ORACLE-ONLY MessageHeader.event.ofType(Coding).code [Unknown_Code_in_Version] Unknown code '12345' in the CodeSystem 'http://loinc.org' version 'LOINC-2.83'
+   OURS-ONLY   MessageHeader.eventCoding.code [structure] Error parsing JSON: the primitive value must be a string
+-- STRICT tw.gov.mohw.twcore MessageHeader/mes-response-example#M2-number-for-string-eventCoding.code
+   S-ORACLE-ONLY MessageHeader.event.ofType(Coding).code [Unknown_Code_in_Version] Unknown code '12345' in the CodeSystem 'http://loinc.org' version 'LOINC-2.83'
+   S-OURS-ONLY   MessageHeader.eventCoding.code [structure] Error parsing JSON: the primitive value must be a string
+-- tw.gov.mohw.twcore MessageHeader/mes-response-example#M2-number-for-string-eventCoding.code (oracle_valid=False ours_valid=False)
+   ORACLE-ONLY MessageHeader.event.ofType(Coding).code [Unknown_Code_in_Version] Unknown code '12345' in the CodeSystem 'http://loinc.org' version 'LOINC-2.83'
+   OURS-ONLY   MessageHeader.eventCoding.code [structure] Error parsing JSON: the primitive value must be a string
+-- STRICT tw.gov.mohw.twcore MessageHeader/mes-response-example#M14-empty-string-eventCoding.display
+   S-ORACLE-ONLY MessageHeader.event.ofType(Coding).display [Type_Specific_Checks_DT_Primitive_NotEmpty] value cannot be empty
+   S-OURS-ONLY   MessageHeader.eventCoding.display [invalid] @value cannot be empty
+-- tw.gov.mohw.twcore MessageHeader/mes-response-example#M14-empty-string-eventCoding.display (oracle_valid=False ours_valid=False)
+   ORACLE-ONLY MessageHeader.event.ofType(Coding).display [Type_Specific_Checks_DT_Primitive_NotEmpty] value cannot be empty
+   OURS-ONLY   MessageHeader.eventCoding.display [invalid] @value cannot be empty
+-- STRICT tw.gov.mohw.twcore Observation/obs-bmi-example#M14-empty-string-code.coding.0.code
+   S-ORACLE-ONLY Observation.code.coding[0] [None] Coding has no code for system http://loinc.org and cannot be validated
+-- STRICT tw.gov.mohw.twcore Observation/obs-head-circumference-example#M14-empty-string-code.coding.0.code
+   S-ORACLE-ONLY Observation.code.coding[0] [None] Coding has no code for system http://loinc.org and cannot be validated
+-- STRICT tw.gov.mohw.twcore Observation/obs-pulse-oximetry-example#M14-empty-string-valueQuantity.system
+   S-ORACLE-ONLY Observation.value.ofType(Quantity) [Terminology_TX_System_Relative] Coding.system must be an absolute reference, not a local reference
+-- STRICT tw.gov.mohw.twcore Patient/pat-child-example#M2-number-for-string-identifier.1.system
+   S-ORACLE-ONLY Patient.identifier[1] [Type_Specific_Checks_DT_Identifier_System] Identifier.system must be an absolute reference, not a local reference
+-- STRICT tw.gov.mohw.twcore Patient/pat-child-example#M13-ext-wrong-type
+   S-OURS-ONLY   Patient.extension[2].valueString [structure] The type 'string' is not allowed for Extension.value[x] (allowed: Address) by profile http://hl7.org/fhir/StructureDefinition/patient-birthPlace
+-- STRICT tw.gov.mohw.twcore Patient/pat-example#M2-number-for-string-identifier.1.system
+   S-ORACLE-ONLY Patient.identifier[1] [Type_Specific_Checks_DT_Identifier_System] Identifier.system must be an absolute reference, not a local reference
+-- STRICT tw.gov.mohw.twcore Patient/pat-example#M13-ext-wrong-type
+   S-OURS-ONLY   Patient.extension[2].valueString [structure] The type 'string' is not allowed for Extension.value[x] (allowed: Address) by profile http://hl7.org/fhir/StructureDefinition/patient-birthPlace
+-- STRICT tw.gov.mohw.twcore Observation/obs-temperature-example#M2-number-for-string-valueQuantity.system
+   S-ORACLE-ONLY Observation.value.ofType(Quantity) [Terminology_TX_System_Relative] Coding.system must be an absolute reference, not a local reference
+-- STRICT tw.gov.mohw.twcore Observation/obs-weight-example#M2-number-for-string-valueQuantity.system
+   S-ORACLE-ONLY Observation.value.ofType(Quantity) [Terminology_TX_System_Relative] Coding.system must be an absolute reference, not a local reference
+-- STRICT tw.gov.mohw.twcore Patient/pat-residentNumber-example#M14-empty-string-identifier.1.system
+   S-ORACLE-ONLY Patient.identifier[1] [Type_Specific_Checks_DT_Identifier_System] Identifier.system must be an absolute reference, not a local reference
+-- STRICT tw.gov.mohw.twcore Patient/pat-residentNumber-example#M13-ext-wrong-type
+   S-OURS-ONLY   Patient.extension[0].valueString [structure] The type 'string' is not allowed for Extension.value[x] (allowed: Address) by profile http://hl7.org/fhir/StructureDefinition/patient-birthPlace
+-- STRICT tw.gov.mohw.twcore Practitioner/pra-dr-example#M2-number-for-string-telecom.0.period.start
+   S-ORACLE-ONLY Practitioner.telecom[0].period [http://hl7.org/fhir/StructureDefinition/Period#per-1] Constraint failed: per-1: 'If present, start SHALL have a lower value than end'Invalid date/time format: "12345": Expected character '-' at index 4 but found 5 
+-- STRICT tw.gov.mohw.twcore PractitionerRole/praro-dr-example#M14-empty-string-code.0.coding.0.code
+   S-ORACLE-ONLY PractitionerRole.code[0].coding[0] [None] Coding has no code for system http://snomed.info/sct and cannot be validated
+-- STRICT tw.gov.mohw.twcore Provenance/pov-example#M14-empty-string-agent.0.type.coding.0.code
+   S-ORACLE-ONLY Provenance.agent[0].type [None] Coding has no code for system http://terminology.hl7.org/CodeSystem/provenance-participant-type and cannot be validated
+-- STRICT tw.gov.mohw.twcore QuestionnaireResponse/qr-example#M2-number-for-string-item.1.item.1.item.3.answer.0.valueCoding.display
+   S-ORACLE-ONLY QuestionnaireResponse.item[1].item[1].item[3].answer[0] [Questionnaire_QR_Item_BadOption] The code 'LA33-6' in the system 'http://loinc.org' is not in the options value set (AHRQ_Y/N) specified by the questionnaire. Terminology Error: Wrong Display N
+-- STRICT tw.gov.mohw.twcore QuestionnaireResponse/qr-example#M14-empty-string-item.1.item.1.item.0.linkId
+   S-ORACLE-ONLY QuestionnaireResponse.item[1].item[1] [Questionnaire_QR_Item_NoLinkId] No LinkId, so can't be validated
+-- STRICT tw.gov.mohw.twcore Specimen/spe-blood-example#M2-number-for-string-collection.quantity.system
+   S-ORACLE-ONLY Specimen.collection.quantity [Terminology_TX_System_Relative] Coding.system must be an absolute reference, not a local reference
+-- STRICT tw.gov.mohw.nhi.pas Claim/cla-1#M10-wrong-display-item.0.modifier.0.coding.0
+   S-ORACLE-ONLY Claim.item[0].modifier[0] [Terminology_TX_NoValid_1_CC] None of the codings provided are in the value set 'NHI-健保事前審查-續用註記值集' (https://nhicore.nhi.gov.tw/pas/ValueSet/nhi-continuation-status|1.2.8), and a coding from
+-- STRICT tw.gov.mohw.nhi.pas Claim/cla-3#M10-wrong-display-item.0.modifier.0.coding.0
+   S-ORACLE-ONLY Claim.item[0].modifier[0] [Terminology_TX_NoValid_1_CC] None of the codings provided are in the value set 'NHI-健保事前審查-續用註記值集' (https://nhicore.nhi.gov.tw/pas/ValueSet/nhi-continuation-status|1.2.8), and a coding from
+-- STRICT tw.gov.mohw.nhi.pas Claim/cla-imm#M2-number-for-string-supportingInfo.1.valueQuantity.system
+   S-ORACLE-ONLY Claim.supportingInfo[1].value.ofType(Quantity) [Terminology_TX_System_Relative] Coding.system must be an absolute reference, not a local reference
+-- STRICT tw.gov.mohw.nhi.pas Claim/cla-imm#M14-empty-string-supportingInfo.0.valueQuantity.code
+   S-ORACLE-ONLY Claim.supportingInfo[0].value.ofType(Quantity) [None] Coding has no code for system http://unitsofmeasure.org and cannot be validated
+-- STRICT tw.gov.mohw.nhi.pas Claim/cla-imm#M10-wrong-display-item.0.modifier.0.coding.0
+   S-ORACLE-ONLY Claim.item[0].modifier[0] [Terminology_TX_NoValid_1_CC] None of the codings provided are in the value set 'NHI-健保事前審查-續用註記值集' (https://nhicore.nhi.gov.tw/pas/ValueSet/nhi-continuation-status|1.2.8), and a coding from
+-- STRICT tw.gov.mohw.nhi.pas ClaimResponse/self-assessment-example#M14-empty-string-extension.1.valueIdentifier.system
+   S-ORACLE-ONLY ClaimResponse.extension[1].value.ofType(Identifier) [Type_Specific_Checks_DT_Identifier_System] Identifier.system must be an absolute reference, not a local reference
+-- STRICT tw.gov.mohw.nhi.pas Condition/con-comorbidity#M2-number-for-string-clinicalStatus.coding.0.system
+   S-ORACLE-ONLY Condition.clinicalStatus [Terminology_TX_NoValid_1_CC] None of the codings provided are in the value set 'Condition Clinical Status Codes' (http://hl7.org/fhir/ValueSet/condition-clinical|4.0.1), and a coding from t
+   S-OURS-ONLY   Condition.clinicalStatus.coding[0] [value] The value does not match the required pattern {"code":"active","system":"http://terminology.hl7.org/CodeSystem/condition-clinical"} (from https://nhicore.nhi.go
+-- STRICT tw.gov.mohw.nhi.pas Condition/con-comorbidity#N-clinicalStatus-foo
+   S-OURS-ONLY   Condition.clinicalStatus.coding[0] [value] The value does not match the required pattern {"code":"active","system":"http://terminology.hl7.org/CodeSystem/condition-clinical"} (from https://nhicore.nhi.go
+-- STRICT tw.gov.mohw.nhi.pas Condition/con-comorbidity#N-clinicalStatus-resolved
+   S-ORACLE-ONLY Condition.clinicalStatus.coding[0].code [_DT_Fixed_Wrong] Value is 'resolved' but is fixed to 'active' in the profile https://nhicore.nhi.gov.tw/pas/StructureDefinition/Condition-twpas|1.2.8#Condition.clinicalStatus
+   S-OURS-ONLY   Condition.clinicalStatus.coding[0] [value] The value does not match the required pattern {"code":"active","system":"http://terminology.hl7.org/CodeSystem/condition-clinical"} (from https://nhicore.nhi.go
+-- STRICT tw.gov.mohw.nhi.pas Condition/con-comorbidity#N-clinicalStatus-remission
+   S-ORACLE-ONLY Condition.clinicalStatus.coding[0].code [_DT_Fixed_Wrong] Value is 'remission' but is fixed to 'active' in the profile https://nhicore.nhi.gov.tw/pas/StructureDefinition/Condition-twpas|1.2.8#Condition.clinicalStatus
+   S-OURS-ONLY   Condition.clinicalStatus.coding[0] [value] The value does not match the required pattern {"code":"active","system":"http://terminology.hl7.org/CodeSystem/condition-clinical"} (from https://nhicore.nhi.go
+-- STRICT tw.gov.mohw.nhi.pas Condition/con-comorbidity#N-clinicalStatus-relapse
+   S-ORACLE-ONLY Condition.clinicalStatus.coding[0].code [_DT_Fixed_Wrong] Value is 'relapse' but is fixed to 'active' in the profile https://nhicore.nhi.gov.tw/pas/StructureDefinition/Condition-twpas|1.2.8#Condition.clinicalStatus
+   S-OURS-ONLY   Condition.clinicalStatus.coding[0] [value] The value does not match the required pattern {"code":"active","system":"http://terminology.hl7.org/CodeSystem/condition-clinical"} (from https://nhicore.nhi.go
+-- STRICT tw.gov.mohw.nhi.pas Condition/con-diagnosis#M2-number-for-string-category.0.coding.0.system
+   S-OURS-ONLY   Condition.category[0].coding[0] [value] The value does not match the required pattern {"code":"29548-5","system":"http://loinc.org"} (from https://nhicore.nhi.gov.tw/pas/StructureDefinition/Condition-
+-- STRICT tw.gov.mohw.nhi.pas Condition/con-diagnosis#M14-empty-string-category.0.coding.0.system
+   S-OURS-ONLY   Condition.category[0].coding[0] [value] The value does not match the required pattern {"code":"29548-5","system":"http://loinc.org"} (from https://nhicore.nhi.gov.tw/pas/StructureDefinition/Condition-
+-- STRICT tw.gov.mohw.nhi.pas Condition/con-diagnosis#N-clinicalStatus-foo
+   S-OURS-ONLY   Condition.clinicalStatus.coding[0] [value] The value does not match the required pattern {"code":"active","system":"http://terminology.hl7.org/CodeSystem/condition-clinical"} (from https://nhicore.nhi.go
+-- STRICT tw.gov.mohw.nhi.pas Condition/con-diagnosis#N-clinicalStatus-resolved
+   S-ORACLE-ONLY Condition.clinicalStatus.coding[0].code [_DT_Fixed_Wrong] Value is 'resolved' but is fixed to 'active' in the profile https://nhicore.nhi.gov.tw/pas/StructureDefinition/Condition-twpas|1.2.8#Condition.clinicalStatus
+   S-OURS-ONLY   Condition.clinicalStatus.coding[0] [value] The value does not match the required pattern {"code":"active","system":"http://terminology.hl7.org/CodeSystem/condition-clinical"} (from https://nhicore.nhi.go
+-- STRICT tw.gov.mohw.nhi.pas Condition/con-diagnosis#N-clinicalStatus-remission
+   S-ORACLE-ONLY Condition.clinicalStatus.coding[0].code [_DT_Fixed_Wrong] Value is 'remission' but is fixed to 'active' in the profile https://nhicore.nhi.gov.tw/pas/StructureDefinition/Condition-twpas|1.2.8#Condition.clinicalStatus
+   S-OURS-ONLY   Condition.clinicalStatus.coding[0] [value] The value does not match the required pattern {"code":"active","system":"http://terminology.hl7.org/CodeSystem/condition-clinical"} (from https://nhicore.nhi.go
+-- STRICT tw.gov.mohw.nhi.pas Condition/con-diagnosis#N-clinicalStatus-relapse
+   S-ORACLE-ONLY Condition.clinicalStatus.coding[0].code [_DT_Fixed_Wrong] Value is 'relapse' but is fixed to 'active' in the profile https://nhicore.nhi.gov.tw/pas/StructureDefinition/Condition-twpas|1.2.8#Condition.clinicalStatus
+   S-OURS-ONLY   Condition.clinicalStatus.coding[0] [value] The value does not match the required pattern {"code":"active","system":"http://terminology.hl7.org/CodeSystem/condition-clinical"} (from https://nhicore.nhi.go
+-- STRICT tw.gov.mohw.nhi.pas Media/med-min#M14-empty-string-bodySite.coding.0.code
+   S-ORACLE-ONLY Media.bodySite.coding[0] [None] Coding has no code for system http://snomed.info/sct and cannot be validated
+-- STRICT tw.gov.mohw.nhi.pas Specimen/spe-min#M2-number-for-string-type.coding.0.system
+   S-ORACLE-ONLY Specimen.type [Terminology_TX_NoValid_1_CC] None of the codings provided are in the value set 'LOINC-健保事前審查-基因檢測檢體類型值集' (https://nhicore.nhi.gov.tw/pas/ValueSet/specime-type|1.2.8), and a coding from this
+-- STRICT tw.gov.mohw.nhi.pas MedicationRequest/medReq-apply-2#M9-bad-code-dosageInstruction.0.timing.code.coding.0
+   S-ORACLE-ONLY MedicationRequest.dosageInstruction[0].timing.code [Terminology_TX_NoValid_1_CC] None of the codings provided are in the value set 'HL7 TimingAbbreviation + NHI-健保事前審查-藥品使用頻率值集' (https://nhicore.nhi.gov.tw/pas/ValueSet/medication-frequency-h
+-- STRICT tw.gov.mohw.nhi.pas MedicationRequest/medReq-apply#M2-number-for-string-dosageInstruction.0.route.coding.0.system
+   S-ORACLE-ONLY MedicationRequest.dosageInstruction[0].route [Terminology_TX_NoValid_1_CC] None of the codings provided are in the value set 'SNOMED CT + 臺灣健保署-健保事前審查-給藥途徑值集' (https://nhicore.nhi.gov.tw/pas/ValueSet/medication-path-sct-tw|0.3.0), and 
+-- STRICT tw.gov.mohw.nhi.pas MedicationRequest/medReq-apply#M9-bad-code-dosageInstruction.0.timing.code.coding.0
+   S-ORACLE-ONLY MedicationRequest.dosageInstruction[0].timing.code [Terminology_TX_NoValid_1_CC] None of the codings provided are in the value set 'HL7 TimingAbbreviation + NHI-健保事前審查-藥品使用頻率值集' (https://nhicore.nhi.gov.tw/pas/ValueSet/medication-frequency-h
+-- STRICT tw.gov.mohw.nhi.pas Observation/obs-lab-cbc#M2-number-for-string-component.3.code.coding.0.system
+   S-ORACLE-ONLY Observation.component[3].code [Terminology_TX_NoValid_1_CC] None of the codings provided are in the value set 'LOINC Codes' (http://hl7.org/fhir/ValueSet/observation-codes|4.0.1), and a coding from this value set is requ
+-- STRICT tw.gov.mohw.nhi.pas Observation/obs-lab-min#M14-empty-string-referenceRange.0.low.system
+   S-ORACLE-ONLY Observation.referenceRange[0].low [Terminology_TX_System_Relative] Coding.system must be an absolute reference, not a local reference
+-- STRICT tw.gov.mohw.nhi.pas Observation/obs-objective#M14-empty-string-code.coding.0.code
+   S-ORACLE-ONLY Observation.code.coding[0] [None] Coding has no code for system http://loinc.org and cannot be validated
+-- STRICT tw.gov.mohw.nhi.pas Observation/obs-pat-nyha#M2-number-for-string-code.coding.0.system
+   S-ORACLE-ONLY Observation.code [Terminology_TX_NoValid_1_CC] None of the codings provided are in the value set 'LOINC + SCT + NHI-健保事前審查-病人狀態評估項目值集' (https://nhicore.nhi.gov.tw/pas/ValueSet/pat-ast|1.2.8), and a coding fr
+-- STRICT tw.gov.mohw.nhi.pas Observation/obs-tx-min#M10-wrong-display-code.coding.0
+   S-ORACLE-ONLY Observation.code [Terminology_TX_NoValid_1_CC] None of the codings provided are in the value set 'NHI-健保事前審查-治療後疾病狀態評估項目值集' (https://nhicore.nhi.gov.tw/pas/ValueSet/nhi-tx-ast|1.2.8), and a coding from this 
+-- STRICT tw.gov.mohw.nhi.pas Organization/org-gene-example#M14-empty-string-identifier.0.system
+   S-ORACLE-ONLY Organization.identifier[0] [Type_Specific_Checks_DT_Identifier_System] Identifier.system must be an absolute reference, not a local reference
+-- STRICT tw.gov.mohw.nhi.pas Patient/pat-min#M13-ext-wrong-type
+   S-OURS-ONLY   Patient.extension[0].valueString [structure] The type 'string' is not allowed for Extension.value[x] (allowed: Address) by profile http://hl7.org/fhir/StructureDefinition/patient-birthPlace
+-- STRICT tw.gov.mohw.nhi.pas Patient/pat-resident#M13-ext-wrong-type
+   S-OURS-ONLY   Patient.extension[0].valueString [structure] The type 'string' is not allowed for Extension.value[x] (allowed: Address) by profile http://hl7.org/fhir/StructureDefinition/patient-birthPlace
+-- STRICT tw.gov.mohw.nhi.pas Procedure/pro-phototherapy#M10-wrong-display-code.coding.0
+   S-ORACLE-ONLY Procedure.code [Terminology_TX_NoValid_1_CC] None of the codings provided are in the value set 'NHI-健保事前審查-照光治療種類值集' (https://nhicore.nhi.gov.tw/pas/ValueSet/nhi-phototherapy|1.2.8), and a coding from this
+-- STRICT tw.gov.mohw.nhi.pas Substance/sub-min#M2-number-for-string-ingredient.0.substanceCodeableConcept.coding.0.system
+   S-ORACLE-ONLY Substance.ingredient[0].substance[x].coding[0].system [None] Error parsing JSON: the primitive value must be a string
+   S-ORACLE-ONLY Substance.ingredient[0].substance.ofType(CodeableConcept).coding[0] [Validation_VAL_Profile_NotSlice] This element does not match any known slice defined in the profile https://nhicore.nhi.gov.tw/pas/StructureDefinition/Substance-twpas|1.2.8 and slicing is CLOSE
+   S-OURS-ONLY   Substance.ingredient[0].substanceCodeableConcept.coding[0].system [structure] Error parsing JSON: the primitive value must be a string
+   S-OURS-ONLY   Substance.ingredient[0].substanceCodeableConcept.coding[0] [structure] This element does not match any known slice defined in the profile https://nhicore.nhi.gov.tw/pas/StructureDefinition/Substance-twpas and slicing is CLOSED
+-- tw.gov.mohw.nhi.pas Substance/sub-min#M2-number-for-string-ingredient.0.substanceCodeableConcept.coding.0.system (oracle_valid=False ours_valid=False)
+   ORACLE-ONLY Substance.ingredient[0].substance[x].coding[0].system [None] Error parsing JSON: the primitive value must be a string
+   ORACLE-ONLY Substance.ingredient[0].substance.ofType(CodeableConcept).coding[0] [Validation_VAL_Profile_NotSlice] This element does not match any known slice defined in the profile https://nhicore.nhi.gov.tw/pas/StructureDefinition/Substance-twpas|1.2.8 and slicing is CLOSED: Substance.ingredi
+   OURS-ONLY   Substance.ingredient[0].substanceCodeableConcept.coding[0].system [structure] Error parsing JSON: the primitive value must be a string
+   OURS-ONLY   Substance.ingredient[0].substanceCodeableConcept.coding[0] [structure] This element does not match any known slice defined in the profile https://nhicore.nhi.gov.tw/pas/StructureDefinition/Substance-twpas and slicing is CLOSED
+-- STRICT tw.gov.mohw.nhi.pas Substance/sub-phototherapy#M2-number-for-string-code.coding.0.system
+   S-ORACLE-ONLY Substance.code [Terminology_TX_NoValid_1_CC] None of the codings provided are in the value set 'NHI-健保事前審查-照光治療種類值集' (https://nhicore.nhi.gov.tw/pas/ValueSet/nhi-phototherapy|1.2.8), and a coding from this
+-- STRICT tw.gov.mohw.twcore Observation/obs-bmi-example#M7-fixed-system-wrong
+   S-ORACLE-ONLY Observation.value.ofType(Quantity) [Terminology_TX_System_Invalid] Invalid System URI: http://unitsofmeasure.org/wrong
+-- STRICT tw.gov.mohw.twcore Observation/obs-head-circumference-example#M7-fixed-system-wrong
+   S-ORACLE-ONLY Observation.value.ofType(Quantity) [Terminology_TX_System_Invalid] Invalid System URI: http://unitsofmeasure.org/wrong
+-- STRICT tw.gov.mohw.twcore Observation/obs-heart-rate-example#M7-fixed-system-wrong
+   S-ORACLE-ONLY Observation.value.ofType(Quantity) [Terminology_TX_System_Invalid] Invalid System URI: http://unitsofmeasure.org/wrong
+-- STRICT tw.gov.mohw.twcore Observation/obs-height-example#M7-fixed-system-wrong
+   S-ORACLE-ONLY Observation.value.ofType(Quantity) [Terminology_TX_System_Invalid] Invalid System URI: http://unitsofmeasure.org/wrong
+-- STRICT tw.gov.mohw.twcore Observation/obs-ofc-percentile-example#M7-fixed-system-wrong
+   S-ORACLE-ONLY Observation.value.ofType(Quantity) [Terminology_TX_System_Invalid] Invalid System URI: http://unitsofmeasure.org/wrong
+-- STRICT tw.gov.mohw.twcore Observation/obs-pediatric-bmi-age-example#M7-fixed-system-wrong
+   S-ORACLE-ONLY Observation.value.ofType(Quantity) [Terminology_TX_System_Invalid] Invalid System URI: http://unitsofmeasure.org/wrong
+-- STRICT tw.gov.mohw.twcore Observation/obs-pediatric-weight-height-example#M7-fixed-system-wrong
+   S-ORACLE-ONLY Observation.value.ofType(Quantity) [Terminology_TX_System_Invalid] Invalid System URI: http://unitsofmeasure.org/wrong
+-- STRICT tw.gov.mohw.twcore Observation/obs-pulse-oximetry-example#M7-fixed-system-wrong
+   S-ORACLE-ONLY Observation.value.ofType(Quantity) [Terminology_TX_System_Invalid] Invalid System URI: http://unitsofmeasure.org/wrong
+-- STRICT tw.gov.mohw.twcore Observation/obs-respiratory-rate-example#M7-fixed-system-wrong
+   S-ORACLE-ONLY Observation.value.ofType(Quantity) [Terminology_TX_System_Invalid] Invalid System URI: http://unitsofmeasure.org/wrong
+-- STRICT tw.gov.mohw.twcore Observation/obs-temperature-example#M7-fixed-system-wrong
+   S-ORACLE-ONLY Observation.value.ofType(Quantity) [Terminology_TX_System_Invalid] Invalid System URI: http://unitsofmeasure.org/wrong
+-- STRICT tw.gov.mohw.twcore Observation/obs-vital#M7-fixed-system-wrong
+   S-ORACLE-ONLY Observation.value.ofType(Quantity) [Terminology_TX_System_Invalid] Invalid System URI: http://unitsofmeasure.org/wrong
+-- STRICT tw.gov.mohw.twcore Observation/obs-weight-example#M7-fixed-system-wrong
+   S-ORACLE-ONLY Observation.value.ofType(Quantity) [Terminology_TX_System_Invalid] Invalid System URI: http://unitsofmeasure.org/wrong
+-- STRICT tw.gov.mohw.twcore Bundle/bun-document-example#B-drop-first-entry
+   S-ORACLE-ONLY Bundle.entry[1].resource [Bundle_BUNDLE_Entry_Document] The first entry in a document must be a composition
+-- STRICT tw.gov.mohw.twcore Bundle/bun-document-example#B-entry-unknown-prop
+   S-OURS-ONLY   Bundle [required] Slice 'Bundle.entry:TWCoreComposition': a matching slice is required, but not found (from https://twcore.mohw.gov.tw/ig/twcore/StructureDefinition/Bundle-docume
+-- STRICT tw.gov.mohw.twcore Bundle/bun-document-uuid-example#B-drop-first-entry
+   S-ORACLE-ONLY Bundle.entry[1].resource [Bundle_BUNDLE_Entry_Document] The first entry in a document must be a composition
+-- STRICT tw.gov.mohw.twcore Bundle/bun-document-uuid-example#B-entry-unknown-prop
+   S-OURS-ONLY   Bundle [required] Slice 'Bundle.entry:TWCoreComposition': a matching slice is required, but not found (from https://twcore.mohw.gov.tw/ig/twcore/StructureDefinition/Bundle-docume
+-- STRICT tw.gov.mohw.twcore Bundle/bun-message-request-example#B-drop-first-entry
+   S-ORACLE-ONLY Bundle.entry[1].resource [Validation_BUNDLE_Message] The first entry in a message must be a MessageHeader
+-- STRICT tw.gov.mohw.twcore Bundle/bun-message-request-example#B-entry-unknown-prop
+   S-OURS-ONLY   Bundle [required] Slice 'Bundle.entry:TWCoreMessageHeader': a matching slice is required, but not found (from https://twcore.mohw.gov.tw/ig/twcore/StructureDefinition/Bundle-mess
+-- STRICT tw.gov.mohw.nhi.pas Bundle/bun-1#B-entry-unknown-prop
+   S-OURS-ONLY   Bundle.entry[0] [structure] This element does not match any known slice defined in the profile https://nhicore.nhi.gov.tw/pas/StructureDefinition/Bundle-twpas and slicing is CLOSED
+   S-OURS-ONLY   Bundle [required] Slice 'Bundle.entry:claim': a matching slice is required, but not found (from https://nhicore.nhi.gov.tw/pas/StructureDefinition/Bundle-twpas)
+-- STRICT tw.gov.mohw.nhi.pas Bundle/bun-3#B-entry-unknown-prop
+   S-OURS-ONLY   Bundle.entry[0] [structure] This element does not match any known slice defined in the profile https://nhicore.nhi.gov.tw/pas/StructureDefinition/Bundle-twpas and slicing is CLOSED
+   S-OURS-ONLY   Bundle [required] Slice 'Bundle.entry:claim': a matching slice is required, but not found (from https://nhicore.nhi.gov.tw/pas/StructureDefinition/Bundle-twpas)
+-- STRICT tw.gov.mohw.nhi.pas Bundle/bun-imm#B-entry-unknown-prop
+   S-OURS-ONLY   Bundle.entry[0] [structure] This element does not match any known slice defined in the profile https://nhicore.nhi.gov.tw/pas/StructureDefinition/Bundle-immunologic-agent-twpas and slicing
+   S-OURS-ONLY   Bundle [required] Slice 'Bundle.entry:claim': a matching slice is required, but not found (from https://nhicore.nhi.gov.tw/pas/StructureDefinition/Bundle-immunologic-agent-twpas)
+-- STRICT tw.gov.mohw.nhi.pas Bundle/bun-self#B-entry-unknown-prop
+   S-OURS-ONLY   Bundle.entry[0] [structure] This element does not match any known slice defined in the profile https://nhicore.nhi.gov.tw/pas/StructureDefinition/Bundle-twpas and slicing is CLOSED
+   S-OURS-ONLY   Bundle [required] Slice 'Bundle.entry:claim': a matching slice is required, but not found (from https://nhicore.nhi.gov.tw/pas/StructureDefinition/Bundle-twpas)
+-- STRICT tw.gov.mohw.nhi.pas Bundle/bun-self#B-duplicate-first-entry
+   S-ORACLE-ONLY Bundle.entry[28].resource/*ClaimResponse/inline-2-claRes-self-assessment*/.request [Bundle_BUNDLE_MultipleMatches] Multiple matches in bundle for reference urn:uuid:ee37d6e5-26c4-43b3-a036-6675c739a340
+   S-ORACLE-ONLY Bundle.entry[28] [Validation_VAL_Profile_NotSlice] This element does not match any known slice defined in the profile https://nhicore.nhi.gov.tw/pas/StructureDefinition/Bundle-twpas|1.2.8 and slicing is CLOSED: 
+-- STRICT tw.gov.mohw.nhi.pas Bundle/bun-uuid-example#B-entry-unknown-prop
+   S-OURS-ONLY   Bundle.entry[0] [structure] This element does not match any known slice defined in the profile https://nhicore.nhi.gov.tw/pas/StructureDefinition/Bundle-twpas and slicing is CLOSED
+   S-OURS-ONLY   Bundle [required] Slice 'Bundle.entry:claim': a matching slice is required, but not found (from https://nhicore.nhi.gov.tw/pas/StructureDefinition/Bundle-twpas)
+cmp_f2_user_cases.json {'strict_oracle_only': 6, 'strict_ours_only': 8, 'strict_items_with_mismatch': 8, 'oracle_error_locations': 78, 'ours_error_locations': 80, 'oracle_only': 0, 'ours_only': 0, 'items': 93}
+-- STRICT tw.gov.mohw.nhi.pas Condition/con-comorbidity#N-clinicalStatus-foo
+   S-OURS-ONLY   Condition.clinicalStatus.coding[0] [value] The value does not match the required pattern {"code":"active","system":"http://terminology.hl7.org/CodeSystem/condition-clinical"} (from https://nhicore.nhi.go
+-- STRICT tw.gov.mohw.nhi.pas Condition/con-comorbidity#N-clinicalStatus-resolved
+   S-ORACLE-ONLY Condition.clinicalStatus.coding[0].code [_DT_Fixed_Wrong] Value is 'resolved' but is fixed to 'active' in the profile https://nhicore.nhi.gov.tw/pas/StructureDefinition/Condition-twpas|1.2.8#Condition.clinicalStatus
+   S-OURS-ONLY   Condition.clinicalStatus.coding[0] [value] The value does not match the required pattern {"code":"active","system":"http://terminology.hl7.org/CodeSystem/condition-clinical"} (from https://nhicore.nhi.go
+-- STRICT tw.gov.mohw.nhi.pas Condition/con-comorbidity#N-clinicalStatus-remission
+   S-ORACLE-ONLY Condition.clinicalStatus.coding[0].code [_DT_Fixed_Wrong] Value is 'remission' but is fixed to 'active' in the profile https://nhicore.nhi.gov.tw/pas/StructureDefinition/Condition-twpas|1.2.8#Condition.clinicalStatus
+   S-OURS-ONLY   Condition.clinicalStatus.coding[0] [value] The value does not match the required pattern {"code":"active","system":"http://terminology.hl7.org/CodeSystem/condition-clinical"} (from https://nhicore.nhi.go
+-- STRICT tw.gov.mohw.nhi.pas Condition/con-comorbidity#N-clinicalStatus-relapse
+   S-ORACLE-ONLY Condition.clinicalStatus.coding[0].code [_DT_Fixed_Wrong] Value is 'relapse' but is fixed to 'active' in the profile https://nhicore.nhi.gov.tw/pas/StructureDefinition/Condition-twpas|1.2.8#Condition.clinicalStatus
+   S-OURS-ONLY   Condition.clinicalStatus.coding[0] [value] The value does not match the required pattern {"code":"active","system":"http://terminology.hl7.org/CodeSystem/condition-clinical"} (from https://nhicore.nhi.go
+-- STRICT tw.gov.mohw.nhi.pas Condition/con-diagnosis#N-clinicalStatus-foo
+   S-OURS-ONLY   Condition.clinicalStatus.coding[0] [value] The value does not match the required pattern {"code":"active","system":"http://terminology.hl7.org/CodeSystem/condition-clinical"} (from https://nhicore.nhi.go
+-- STRICT tw.gov.mohw.nhi.pas Condition/con-diagnosis#N-clinicalStatus-resolved
+   S-ORACLE-ONLY Condition.clinicalStatus.coding[0].code [_DT_Fixed_Wrong] Value is 'resolved' but is fixed to 'active' in the profile https://nhicore.nhi.gov.tw/pas/StructureDefinition/Condition-twpas|1.2.8#Condition.clinicalStatus
+   S-OURS-ONLY   Condition.clinicalStatus.coding[0] [value] The value does not match the required pattern {"code":"active","system":"http://terminology.hl7.org/CodeSystem/condition-clinical"} (from https://nhicore.nhi.go
+-- STRICT tw.gov.mohw.nhi.pas Condition/con-diagnosis#N-clinicalStatus-remission
+   S-ORACLE-ONLY Condition.clinicalStatus.coding[0].code [_DT_Fixed_Wrong] Value is 'remission' but is fixed to 'active' in the profile https://nhicore.nhi.gov.tw/pas/StructureDefinition/Condition-twpas|1.2.8#Condition.clinicalStatus
+   S-OURS-ONLY   Condition.clinicalStatus.coding[0] [value] The value does not match the required pattern {"code":"active","system":"http://terminology.hl7.org/CodeSystem/condition-clinical"} (from https://nhicore.nhi.go
+-- STRICT tw.gov.mohw.nhi.pas Condition/con-diagnosis#N-clinicalStatus-relapse
+   S-ORACLE-ONLY Condition.clinicalStatus.coding[0].code [_DT_Fixed_Wrong] Value is 'relapse' but is fixed to 'active' in the profile https://nhicore.nhi.gov.tw/pas/StructureDefinition/Condition-twpas|1.2.8#Condition.clinicalStatus
+   S-OURS-ONLY   Condition.clinicalStatus.coding[0] [value] The value does not match the required pattern {"code":"active","system":"http://terminology.hl7.org/CodeSystem/condition-clinical"} (from https://nhicore.nhi.go
+cmp_f2_mut_dis.json {'strict_oracle_only': 0, 'strict_ours_only': 0, 'strict_items_with_mismatch': 0, 'oracle_error_locations': 31, 'ours_error_locations': 31, 'oracle_only': 0, 'ours_only': 0, 'items': 31}
+
+cmp_f2_perf.json {'strict_oracle_only': 0, 'strict_ours_only': 0, 'strict_items_with_mismatch': 0, 'oracle_error_locations': 0, 'ours_error_locations': 0, 'oracle_only': 0, 'ours_only': 0, 'items': 6}
+
+cmp_f2_refprobe.json {'strict_oracle_only': 2, 'strict_ours_only': 2, 'strict_items_with_mismatch': 2, 'oracle_error_locations': 11, 'ours_error_locations': 11, 'oracle_only': 0, 'ours_only': 0, 'items': 20}
+-- STRICT tw.gov.mohw.twcore RefProbe/c_contained_missing
+   S-ORACLE-ONLY Bundle.entry[0].resource/*Observation/ob1*/.contained[0] [CONTAINED_ORPHAN_DOM3] The contained resource 'p' is not referenced to from elsewhere in the containing resource nor does it refer to the containing resource (dom-3)
+   S-OURS-ONLY   Bundle.entry[0].resource [invariant] Constraint failed: dom-3: 'If the resource is contained in another resource, it SHALL be referred to from elsewhere in the resource or SHALL refer to the contai
+-- STRICT tw.gov.mohw.twcore RefProbe/s_contained_missing
+   S-ORACLE-ONLY Observation.contained[0] [CONTAINED_ORPHAN_DOM3] The contained resource 'p' is not referenced to from elsewhere in the containing resource nor does it refer to the containing resource (dom-3)
+   S-OURS-ONLY   Observation [invariant] Constraint failed: dom-3: 'If the resource is contained in another resource, it SHALL be referred to from elsewhere in the resource or SHALL refer to the contai
+cmp_f2_refprobe2.json {'strict_oracle_only': 2, 'strict_ours_only': 2, 'strict_items_with_mismatch': 2, 'oracle_error_locations': 23, 'ours_error_locations': 23, 'oracle_only': 2, 'ours_only': 2, 'items_with_mismatch': 2, 'items': 23}
+-- STRICT tw.gov.mohw.twcore RefProbe2/m_orphan
+   S-ORACLE-ONLY Bundle.entry[0].resource/*MessageHeader/mh*/.event.ofType(Coding).system [TYPE_SPECIFIC_CHECKS_DT_URL_EXAMPLE] Example URLs are not allowed in this context (http://example.org/ev)
+   S-OURS-ONLY   Bundle.entry[0].resource.eventCoding.system [invalid] Example URLs are not allowed in this context (http://example.org/ev)
+-- tw.gov.mohw.twcore RefProbe2/m_orphan (oracle_valid=False ours_valid=False)
+   ORACLE-ONLY Bundle.entry[0].resource/*MessageHeader/mh*/.event.ofType(Coding).system [TYPE_SPECIFIC_CHECKS_DT_URL_EXAMPLE] Example URLs are not allowed in this context (http://example.org/ev)
+   OURS-ONLY   Bundle.entry[0].resource.eventCoding.system [invalid] Example URLs are not allowed in this context (http://example.org/ev)
+-- STRICT tw.gov.mohw.twcore RefProbe2/m_focus_dangling
+   S-ORACLE-ONLY Bundle.entry[0].resource/*MessageHeader/mh*/.event.ofType(Coding).system [TYPE_SPECIFIC_CHECKS_DT_URL_EXAMPLE] Example URLs are not allowed in this context (http://example.org/ev)
+   S-OURS-ONLY   Bundle.entry[0].resource.eventCoding.system [invalid] Example URLs are not allowed in this context (http://example.org/ev)
+-- tw.gov.mohw.twcore RefProbe2/m_focus_dangling (oracle_valid=False ours_valid=False)
+   ORACLE-ONLY Bundle.entry[0].resource/*MessageHeader/mh*/.event.ofType(Coding).system [TYPE_SPECIFIC_CHECKS_DT_URL_EXAMPLE] Example URLs are not allowed in this context (http://example.org/ev)
+   OURS-ONLY   Bundle.entry[0].resource.eventCoding.system [invalid] Example URLs are not allowed in this context (http://example.org/ev)
+cmp_f2_refprobe3.json {'strict_oracle_only': 0, 'strict_ours_only': 0, 'strict_items_with_mismatch': 0, 'oracle_error_locations': 6, 'ours_error_locations': 6, 'oracle_only': 0, 'ours_only': 0, 'items': 8}
+
+TOTAL {'strict_oracle_only': 82, 'strict_ours_only': 46, 'strict_items_with_mismatch': 99, 'oracle_error_locations': 2305, 'ours_error_locations': 2266, 'oracle_only': 7, 'ours_only': 7, 'items': 2280, 'items_with_mismatch': 6}

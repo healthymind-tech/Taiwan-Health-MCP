@@ -17,8 +17,29 @@ import type { PackageRow } from "./fhirIg.js";
 import * as snapshot from "./fhirSnapshot.js";
 import * as terminology from "./fhirTerminology.js";
 import * as validator from "./fhirValidator.js";
+import { DbValidatorResolver, icd10cmStrict } from "./fhirValidationResolver.js";
+import { composeContains } from "./fhirCodeSystem.js";
 import * as reference from "./fhirReference.js";
 import * as authoring from "./fhirAuthoring.js";
+import { pushAll } from "./arrayUtils.js";
+import {
+  compactRow,
+  compactView,
+  effectiveRequiredPaths,
+  instanceExtensionSites,
+  nodesAt,
+  projectForRequired,
+  READING_GUIDE,
+  READING_GUIDE_COMPACT,
+  requiredElements,
+  type ProjectedElement,
+  type RequiredElementRow,
+  type RequiredElementsResult,
+} from "./fhirRequiredElements.js";
+import { toolVersion } from "./toolVersions.js";
+
+/** fhir_get_profile_required_elements compact view: profile invariants listed in full before the rest are named only. */
+const COMPACT_INVARIANTS = 8;
 
 const SKELETON_SKIP = new Set(["id", "meta", "text", "implicitRules", "language", "contained"]);
 
@@ -76,38 +97,88 @@ export class FHIRIGService {
   // --- Envelope + resolution helpers --------------------------------------- //
 
   private provenance(pkg: PackageRow): Record<string, any> {
-    return {
+    const prov: Record<string, any> = {
       packageId: pkg.package_id,
       version: pkg.version,
       fhirVersion: pkg.fhir_version,
       source: "ig",
     };
+    // How the package was chosen (fhirIg.ResolvedBy) and, when the closure holds several
+    // versions of a package, which one canonical lookups use.
+    if (pkg._resolvedBy) prov.resolved_by = pkg._resolvedBy;
+    if (pkg._closureVersions) prov.closure_versions = pkg._closureVersions;
+    return prov;
   }
 
   private ok(data: any, pkg: PackageRow | null, warnings: any[] | null = null): string {
+    const notes = (pkg?._notes as string[] | undefined) || [];
     const env = {
       ok: true,
       data,
-      warnings: warnings || [],
+      warnings: notes.length ? [...notes, ...(warnings || [])] : warnings || [],
       provenance: pkg ? this.provenance(pkg) : null,
     };
     return JSON.stringify(env);
+  }
+
+  /** Add `deps_missing` (declared dependencies not installed) to a data object when the closure is incomplete. */
+  private withDeps<T extends Record<string, any>>(data: T, pkg: PackageRow): T {
+    const missing = (pkg._depsMissing as fhirIg.DepMissing[] | undefined) || [];
+    if (missing.length && data && typeof data === "object") (data as Record<string, any>).deps_missing = missing;
+    return data;
+  }
+
+  /**
+   * Envelope provenance ({packageId, version, fhirVersion, source}) of the IG package a request
+   * names (default IG when packageId is null), or null when it is not installed. Never throws.
+   */
+  async packageProvenance(packageId: string | null, version: string | null): Promise<Record<string, any> | null> {
+    try {
+      const [pid, ver] = await fhirIg.resolvePackage(packageId ? { packageId, version } : null);
+      const pkg = await fhirIg.getPackage(pid, ver);
+      return pkg ? this.provenance(pkg) : null;
+    } catch {
+      return null;
+    }
   }
 
   private err(code: string, message: string): string {
     return JSON.stringify({ ok: false, data: null, warnings: [], error: { code, message } });
   }
 
-  private async resolve(packageId: string | null | undefined, version: string | null | undefined): Promise<PackageRow> {
-    const ig = packageId ? { packageId, version } : null;
-    const [pid, ver] = await fhirIg.resolvePackage(ig);
-    const pkg = await fhirIg.getPackage(pid, ver);
-    if (pkg === null) throw new fhirIg.IGNotFoundError(`IG package not found: ${pid}#${ver}`);
-    pkg._closure = await fhirIg.packageClosure(pkg.package_id, pkg.version);
-    return pkg;
+  /**
+   * Resolve the target package (fhirIg.resolveTarget precedence: explicit |version on a canonical →
+   * package_id/version → owner of the meta.profile / canonical arguments → default IG → sole manual IG).
+   * The row carries `_closure` plus `_resolvedBy`, `_closureVersions`, `_depsMissing`, `_notes`.
+   */
+  private async resolve(
+    packageId: string | null | undefined,
+    version: string | null | undefined,
+    hints: { canonicals?: Array<string | null | undefined>; metaProfiles?: string[] } = {},
+  ): Promise<PackageRow> {
+    const t = await fhirIg.resolveTarget({
+      packageId: packageId || null,
+      version: packageId ? version ?? null : null,
+      canonicals: hints.canonicals,
+      metaProfiles: hints.metaProfiles,
+    });
+    return {
+      ...t.pkg,
+      _closure: t.closure,
+      _resolvedBy: t.resolvedBy,
+      _closureVersions: t.closureVersions,
+      _depsMissing: t.depsMissing,
+      _notes: t.notes,
+    };
   }
 
-  private async loadArtifact(pid: string, ver: string, identifier: string): Promise<Record<string, any> | null> {
+  private async loadArtifact(pkg: PackageRow, identifier: string): Promise<Record<string, any> | null> {
+    const pid = pkg.package_id;
+    const ver = pkg.version;
+    if (identifier.includes("|")) {
+      // Versioned canonical: only that version (artifact version, else package version) in the closure.
+      return (await fhirIg.resolveCanonicalVersioned(identifier, pkg)) as Record<string, any> | null;
+    }
     const row = (
       await query<Record<string, any>>(
         `SELECT ${ARTIFACT_SUMMARY_COLS}, raw_json
@@ -121,6 +192,22 @@ export class FHIRIGService {
     ).rows[0];
     if (row) return row;
     return fhirIg.resolveCanonical(identifier, pid, ver);
+  }
+
+  /** ARTIFACT_NOT_FOUND message; for a versioned canonical, list the versions that are installed. */
+  private async notFound(kind: string, identifier: string): Promise<string> {
+    const { url, version } = fhirIg.splitCanonical(identifier);
+    if (!version) return `${kind} not found: ${identifier}`;
+    let have: string[] = [];
+    try {
+      have = [...new Set((await fhirIg.findPackagesForCanonical(url)).map((o) => `${o.artifact_version} (${o.package_id}#${o.package_version})`))];
+    } catch {
+      have = [];
+    }
+    return (
+      `${kind} not found: ${url} version ${version} is not in the resolved package closure` +
+      (have.length ? `; installed versions: ${have.join(", ")}` : "; no installed package holds this canonical")
+    );
   }
 
   private isIGNotFound(e: unknown): e is fhirIg.IGNotFoundError {
@@ -141,6 +228,7 @@ export class FHIRIGService {
         fhirVersion: p.fhir_version ?? null,
         status: p.status ?? null,
         isDefault: Boolean(p.is_default),
+        installOrigin: p.install_origin ?? null,
         dependencies: p.dependencies || {},
       })),
     };
@@ -152,7 +240,7 @@ export class FHIRIGService {
     try {
       pkg = await this.resolve(packageId, version);
     } catch (e) {
-      if (this.isIGNotFound(e)) return this.err("IG_NOT_FOUND", e.message);
+      if (this.isIGNotFound(e)) return this.err(e.code, e.message);
       throw e;
     }
     const rows = (
@@ -173,10 +261,51 @@ export class FHIRIGService {
       fhirVersion: pkg.fhir_version ?? null,
       status: pkg.status ?? null,
       isDefault: Boolean(pkg.is_default),
+      installOrigin: pkg.install_origin ?? null,
       dependencies: pkg.dependencies || {},
       artifactCounts,
     };
-    return this.ok(data, pkg);
+    return this.ok(this.withDeps(data, pkg), pkg);
+  }
+
+  /**
+   * Zero hits in the target package: which other installed packages match the same filters
+   * (so a caller searching the default IG for e.g. "Claim" learns that the PAS package has it).
+   */
+  private async zeroHitHint(filters: (q: SqlParams) => string[], pkg: PackageRow | null): Promise<Record<string, any> | null> {
+    const q = new SqlParams();
+    const where = filters(q);
+    const origin = new Map((await fhirIg.loadRegistry()).map((r) => [`${r.package_id} ${r.version}`, r.install_origin ?? null]));
+    const rows = (
+      await query<{ package_id: string; package_version: string; n: string }>(
+        "SELECT package_id, package_version, COUNT(*) AS n FROM fhir.artifacts" +
+          (where.length ? ` WHERE ${where.join(" AND ")}` : "") +
+          " GROUP BY package_id, package_version",
+        q.params,
+      )
+    ).rows
+      .filter((r) => !pkg || r.package_id !== pkg.package_id || r.package_version !== pkg.version)
+      .map((r) => ({
+        packageId: r.package_id,
+        version: r.package_version,
+        installOrigin: origin.get(`${r.package_id} ${r.package_version}`) ?? null,
+        matches: Number(r.n),
+      }))
+      // Manually-installed IGs first (what the caller most likely means), then by match count.
+      .sort(
+        (x, y) =>
+          (y.installOrigin === "manual" ? 1 : 0) - (x.installOrigin === "manual" ? 1 : 0) ||
+          y.matches - x.matches ||
+          (x.packageId < y.packageId ? -1 : x.packageId > y.packageId ? 1 : 0) ||
+          fhirIg.compareVersions(y.version, x.version),
+      );
+    if (!rows.length) return null;
+    return {
+      message:
+        `0 results in ${pkg ? `${pkg.package_id}#${pkg.version}` : "the target package"}, but ${rows.length} other installed ` +
+        "package(s) match: pass package_id (and version) to search one of them, or all_packages=true to search every installed package.",
+      packages: rows.slice(0, 10),
+    };
   }
 
   async listArtifacts(
@@ -185,35 +314,16 @@ export class FHIRIGService {
     resourceType: string | null = null,
     groupingId: string | null = null,
     limit = 50,
+    allPackages = false,
   ): Promise<string> {
-    let pkg: PackageRow;
-    try {
-      pkg = await this.resolve(packageId, version);
-    } catch (e) {
-      if (this.isIGNotFound(e)) return this.err("IG_NOT_FOUND", e.message);
-      throw e;
-    }
     limit = Math.min(Math.max(1, limit), 200);
-    const params: any[] = [pkg.package_id, pkg.version];
-    const clauses = ["package_id = $1", "package_version = $2"];
-    if (resourceType) {
-      params.push(resourceType);
-      clauses.push(`resource_type = $${params.length}`);
-    }
-    if (groupingId) {
-      params.push(groupingId);
-      clauses.push(`grouping_id = $${params.length}`);
-    }
-    params.push(limit);
-    const rows = (
-      await query<Record<string, any>>(
-        `SELECT ${ARTIFACT_SUMMARY_COLS} FROM fhir.artifacts ` +
-          `WHERE ${clauses.join(" AND ")} ` +
-          `ORDER BY resource_type, name LIMIT $${params.length}`,
-        params,
-      )
-    ).rows;
-    return this.ok({ count: rows.length, artifacts: rows }, pkg);
+    const filters = (q: SqlParams): string[] => {
+      const out: string[] = [];
+      if (resourceType) out.push(`resource_type = ${q.add(resourceType)}`);
+      if (groupingId) out.push(`grouping_id = ${q.add(groupingId)}`);
+      return out;
+    };
+    return this.artifactQuery(packageId, version, allPackages, filters, limit, "ORDER BY resource_type, name");
   }
 
   async searchArtifacts(
@@ -222,41 +332,70 @@ export class FHIRIGService {
     version: string | null = null,
     resourceType: string | null = null,
     limit = 20,
+    allPackages = false,
   ): Promise<string> {
+    limit = Math.min(Math.max(1, limit), 100);
+    const filters = (q: SqlParams): string[] => {
+      const out: string[] = [];
+      if (resourceType) out.push(`resource_type = ${q.add(resourceType)}`);
+      const kw = q.add(keyword);
+      const like = q.add(`%${keyword}%`);
+      out.push(
+        "(to_tsvector('simple', COALESCE(artifact_id,'') || ' ' || " +
+          "COALESCE(canonical_url,'') || ' ' || COALESCE(name,'') || ' ' || " +
+          "COALESCE(title,'') || ' ' || COALESCE(description,'')) " +
+          `@@ plainto_tsquery('simple', ${kw}) OR artifact_id ILIKE ${like})`,
+      );
+      return out;
+    };
+    return this.artifactQuery(packageId, version, allPackages, filters, limit, "ORDER BY resource_type, name");
+  }
+
+  /** Shared body of list/search: one package (default resolution) or every installed package. */
+  private async artifactQuery(
+    packageId: string | null,
+    version: string | null,
+    allPackages: boolean,
+    filters: (q: SqlParams) => string[],
+    limit: number,
+    orderBy: string,
+  ): Promise<string> {
+    if (allPackages) {
+      const q = new SqlParams();
+      const where = filters(q);
+      const lim = q.add(limit);
+      const rows = (
+        await query<Record<string, any>>(
+          `SELECT package_id, package_version, ${ARTIFACT_SUMMARY_COLS} FROM fhir.artifacts ` +
+            (where.length ? `WHERE ${where.join(" AND ")} ` : "") +
+            `${orderBy}, package_id, package_version LIMIT ${lim}`,
+          q.params,
+        )
+      ).rows;
+      return this.ok({ scope: "all_packages", count: rows.length, artifacts: rows }, null);
+    }
     let pkg: PackageRow;
     try {
       pkg = await this.resolve(packageId, version);
     } catch (e) {
-      if (this.isIGNotFound(e)) return this.err("IG_NOT_FOUND", e.message);
+      if (this.isIGNotFound(e)) return this.err(e.code, e.message);
       throw e;
     }
-    limit = Math.min(Math.max(1, limit), 100);
-    const params: any[] = [pkg.package_id, pkg.version];
-    const clauses = ["package_id = $1", "package_version = $2"];
-    if (resourceType) {
-      params.push(resourceType);
-      clauses.push(`resource_type = $${params.length}`);
-    }
-    params.push(keyword);
-    const kwIdx = params.length;
-    params.push(`%${keyword}%`);
-    const likeIdx = params.length;
-    clauses.push(
-      "(to_tsvector('simple', COALESCE(artifact_id,'') || ' ' || " +
-        "COALESCE(canonical_url,'') || ' ' || COALESCE(name,'') || ' ' || " +
-        "COALESCE(title,'') || ' ' || COALESCE(description,'')) " +
-        `@@ plainto_tsquery('simple', $${kwIdx}) OR artifact_id ILIKE $${likeIdx})`,
-    );
-    params.push(limit);
+    const q = new SqlParams();
+    const clauses = [`package_id = ${q.add(pkg.package_id)}`, `package_version = ${q.add(pkg.version)}`, ...filters(q)];
+    const lim = q.add(limit);
     const rows = (
       await query<Record<string, any>>(
-        `SELECT ${ARTIFACT_SUMMARY_COLS} FROM fhir.artifacts ` +
-          `WHERE ${clauses.join(" AND ")} ` +
-          `ORDER BY resource_type, name LIMIT $${params.length}`,
-        params,
+        `SELECT ${ARTIFACT_SUMMARY_COLS} FROM fhir.artifacts WHERE ${clauses.join(" AND ")} ${orderBy} LIMIT ${lim}`,
+        q.params,
       )
     ).rows;
-    return this.ok({ count: rows.length, artifacts: rows }, pkg);
+    const data: Record<string, any> = { count: rows.length, artifacts: rows };
+    if (!rows.length) {
+      const hint = await this.zeroHitHint(filters, pkg);
+      if (hint) data.hint = hint;
+    }
+    return this.ok(data, pkg);
   }
 
   // --- B. Profile selection ------------------------------------------------ //
@@ -265,47 +404,57 @@ export class FHIRIGService {
     packageId: string | null = null,
     version: string | null = null,
     baseType: string | null = null,
+    allPackages = false,
   ): Promise<string> {
-    let pkg: PackageRow;
-    try {
-      pkg = await this.resolve(packageId, version);
-    } catch (e) {
-      if (this.isIGNotFound(e)) return this.err("IG_NOT_FOUND", e.message);
-      throw e;
+    const filters = (q: SqlParams): string[] => {
+      const out = ["resource_type = 'StructureDefinition'", "derivation = 'constraint'", "kind = 'resource'"];
+      if (baseType) out.push(`base_type = ${q.add(baseType)}`);
+      return out;
+    };
+    let pkg: PackageRow | null = null;
+    if (!allPackages) {
+      try {
+        pkg = await this.resolve(packageId, version);
+      } catch (e) {
+        if (this.isIGNotFound(e)) return this.err(e.code, e.message);
+        throw e;
+      }
     }
-    const params: any[] = [pkg.package_id, pkg.version];
-    const clauses = [
-      "package_id = $1",
-      "package_version = $2",
-      "resource_type = 'StructureDefinition'",
-      "derivation = 'constraint'",
-      "kind = 'resource'",
-    ];
-    if (baseType) {
-      params.push(baseType);
-      clauses.push(`base_type = $${params.length}`);
-    }
+    const q = new SqlParams();
+    const clauses = pkg ? [`package_id = ${q.add(pkg.package_id)}`, `package_version = ${q.add(pkg.version)}`] : [];
+    clauses.push(...filters(q));
     const rows = (
       await query<Record<string, any>>(
-        `SELECT artifact_id, canonical_url, name, title, base_type, status
+        `SELECT ${pkg ? "" : "package_id, package_version, "}artifact_id, canonical_url, name, title, base_type, status
          FROM fhir.artifacts
          WHERE ${clauses.join(" AND ")}
-         ORDER BY base_type, COALESCE(NULLIF(title,''), name, artifact_id)`,
-        params,
+         ORDER BY base_type, COALESCE(NULLIF(title,''), name, artifact_id)${pkg ? "" : ", package_id, package_version"}`,
+        q.params,
       )
     ).rows;
     const byType: Record<string, any[]> = {};
     for (const r of rows) {
       const key = r.base_type || "";
       if (!byType[key]) byType[key] = [];
-      byType[key].push({
+      const item: Record<string, any> = {
         profile: r.artifact_id,
         canonical: r.canonical_url,
         title: r.title || r.name || r.artifact_id,
         status: r.status,
-      });
+      };
+      if (!pkg) {
+        item.packageId = r.package_id;
+        item.version = r.package_version;
+      }
+      byType[key].push(item);
     }
-    return this.ok({ count: rows.length, byResourceType: byType }, pkg);
+    if (!pkg) return this.ok({ scope: "all_packages", count: rows.length, byResourceType: byType }, null);
+    const data: Record<string, any> = { count: rows.length, byResourceType: byType };
+    if (!rows.length) {
+      const hint = await this.zeroHitHint(filters, pkg);
+      if (hint) data.hint = hint;
+    }
+    return this.ok(data, pkg);
   }
 
   async rankResourceProfiles(
@@ -319,7 +468,7 @@ export class FHIRIGService {
     try {
       pkg = await this.resolve(packageId, version);
     } catch (e) {
-      if (this.isIGNotFound(e)) return this.err("IG_NOT_FOUND", e.message);
+      if (this.isIGNotFound(e)) return this.err(e.code, e.message);
       throw e;
     }
     limit = Math.min(Math.max(1, limit), 20);
@@ -362,7 +511,16 @@ export class FHIRIGService {
       });
     }
     scored.sort((a, b) => (b.score - a.score) || (a.profile < b.profile ? -1 : a.profile > b.profile ? 1 : 0));
-    return this.ok({ selectionRequired: true, inputKeys: want, candidates: scored.slice(0, limit) }, pkg);
+    const data: Record<string, any> = { selectionRequired: true, inputKeys: want, candidates: scored.slice(0, limit) };
+    if (!rows.length) {
+      const hint = await this.zeroHitHint((q) => {
+        const out = ["resource_type = 'StructureDefinition'", "derivation = 'constraint'", "kind = 'resource'"];
+        if (baseType) out.push(`base_type = ${q.add(baseType)}`);
+        return out;
+      }, pkg);
+      if (hint) data.hint = hint;
+    }
+    return this.ok(data, pkg);
   }
 
   async getProfile(
@@ -372,13 +530,13 @@ export class FHIRIGService {
   ): Promise<string> {
     let pkg: PackageRow;
     try {
-      pkg = await this.resolve(packageId, version);
+      pkg = await this.resolve(packageId, version, { canonicals: [identifier] });
     } catch (e) {
-      if (this.isIGNotFound(e)) return this.err("IG_NOT_FOUND", e.message);
+      if (this.isIGNotFound(e)) return this.err(e.code, e.message);
       throw e;
     }
-    const row = await this.loadArtifact(pkg.package_id, pkg.version, identifier);
-    if (row === null) return this.err("ARTIFACT_NOT_FOUND", `profile not found: ${identifier}`);
+    const row = await this.loadArtifact(pkg, identifier);
+    if (row === null) return this.err("ARTIFACT_NOT_FOUND", await this.notFound("profile", identifier));
     const sd = jsonValue(row.raw_json);
     const data = {
       artifactId: row.artifact_id ?? null,
@@ -393,7 +551,7 @@ export class FHIRIGService {
       description: sd.description,
       elementCount: ((sd.snapshot || {}).element || []).length,
     };
-    return this.ok(data, pkg);
+    return this.ok(this.withDeps(data, pkg), pkg);
   }
 
   // --- C. Snapshot reader -------------------------------------------------- //
@@ -415,18 +573,18 @@ export class FHIRIGService {
     }
     let pkg: PackageRow;
     try {
-      pkg = await this.resolve(packageId, version);
+      pkg = await this.resolve(packageId, version, { canonicals: [profile] });
     } catch (e) {
-      if (this.isIGNotFound(e)) return this.err("IG_NOT_FOUND", e.message);
+      if (this.isIGNotFound(e)) return this.err(e.code, e.message);
       throw e;
     }
-    const row = await this.loadArtifact(pkg.package_id, pkg.version, profile);
-    if (row === null) return this.err("ARTIFACT_NOT_FOUND", `profile not found: ${profile}`);
+    const row = await this.loadArtifact(pkg, profile);
+    if (row === null) return this.err("ARTIFACT_NOT_FOUND", await this.notFound("profile", profile));
     const sd = jsonValue(row.raw_json);
 
     if (view === "examples") {
       const data = await this.profileExamples(pkg, row.canonical_url);
-      return this.ok(data, pkg);
+      return this.ok(this.withDeps(data, pkg), pkg);
     }
 
     let result: any;
@@ -447,7 +605,282 @@ export class FHIRIGService {
 
     const warnings: string[] = [];
     if (result === null) warnings.push(`no ${view} found at path '${path}'`);
-    return this.ok({ view, result }, pkg, warnings);
+    return this.ok(this.withDeps({ view, result }, pkg), pkg, warnings);
+  }
+
+  /**
+   * fhir_get_profile_required_elements: every element the profile effectively
+   * requires (required ancestor chain, required slices, value-or-dataAbsentReason
+   * invariants, target-implied primary content), classified by where its value
+   * comes from. Reads the same snapshot projection as getProfileElements.
+   */
+  async getProfileRequiredElements(
+    profile: string,
+    packageId: string | null = null,
+    version: string | null = null,
+    instance: Record<string, any> | null = null,
+    includeTargetImplied = true,
+    includeMustSupport = false,
+    verbosity: "compact" | "full" = "compact",
+  ): Promise<string> {
+    if (!profile || !String(profile).trim()) return this.err("INVALID_ARGUMENT", "profile is required");
+    let pkg: PackageRow;
+    try {
+      pkg = await this.resolve(packageId, version, { canonicals: [String(profile).trim()] });
+    } catch (e) {
+      if (this.isIGNotFound(e)) return this.err(e.code, e.message);
+      throw e;
+    }
+    const ident = String(profile).trim();
+    // A "|version" is honoured: a version that is not installed is ARTIFACT_NOT_FOUND (no silent fallback).
+    const row = await this.loadArtifact(pkg, ident);
+    if (row === null) return this.err("ARTIFACT_NOT_FOUND", await this.notFound("profile", profile));
+    const sd = jsonValue(row.raw_json);
+    if (sd.resourceType !== "StructureDefinition" || !((sd.snapshot || {}).element || []).length) {
+      return this.err("INVALID_ARGUMENT", `${profile} is not a StructureDefinition with a snapshot`);
+    }
+    const warnings: string[] = [];
+    if (instance && instance.resourceType && sd.type && instance.resourceType !== sd.type) {
+      warnings.push(`instance.resourceType '${instance.resourceType}' does not match profile type '${sd.type}'`);
+    }
+    const els = projectForRequired(sd.snapshot.element, snapshot.projectElement);
+    const E = new Map(els.map((e) => [e.id, e]));
+    const result = requiredElements(row.artifact_id ?? ident, els, {
+      instance: instance ?? null,
+      includeTargetImplied,
+      includeMustSupport,
+    });
+    await this.expandExtensionRows(pkg, result, E, instance ?? null, 0);
+    if (instance) await this.expandInstanceExtensions(pkg, result, els, E, instance);
+
+    // Small required bindings: list the allowed codes so the caller need not expand the ValueSet.
+    const vsCache = new Map<string, { codes: string[]; system: string | null } | null>();
+    for (const r of result.elements) {
+      const b = r.binding;
+      if (!b?.valueSet || b.strength !== "required" || r.fixed || r.pattern) continue;
+      const types = r.types.map((t) => t.split(".").pop());
+      if (!types.some((t) => t === "code" || t === "Coding" || t === "CodeableConcept")) continue;
+      const vsUrl = String(b.valueSet).split("|")[0];
+      if (!vsCache.has(vsUrl)) {
+        let entry: { codes: string[]; system: string | null } | null = null;
+        try {
+          const vs = await this.loadValueset(pkg, vsUrl);
+          if (vs !== null) {
+            const exp = await terminology.expandCompose(vs.compose || {}, pkg, 13);
+            if (!exp.truncated && exp.codings.length > 0 && exp.codings.length <= 12) {
+              const systems = new Set(exp.codings.map((c: any) => c.system ?? null));
+              const single = systems.size === 1 ? ([...systems][0] as string | null) : null;
+              entry = {
+                codes: exp.codings.map((c: any) => (single === null && c.system ? `${c.system}|${c.code}` : String(c.code))),
+                system: single,
+              };
+            }
+          }
+        } catch {
+          entry = null;
+        }
+        vsCache.set(vsUrl, entry);
+      }
+      const entry = vsCache.get(vsUrl);
+      if (entry && entry.codes.length) {
+        r.allowedCodes = entry.codes;
+        if (entry.system && !types.includes("code")) {
+          r.hint = [r.hint, `coding.system ${entry.system}`].filter(Boolean).join("; ");
+        }
+      }
+    }
+
+    const full = verbosity === "full";
+    const data: Record<string, unknown> = {
+      profile: result.profile,
+      canonical: row.canonical_url ?? sd.url ?? null,
+      resourceType: result.resourceType,
+      verbosity: full ? "full" : "compact",
+      count: result.count,
+      summary: result.summary,
+      guide: full ? READING_GUIDE : READING_GUIDE_COMPACT,
+      elements: full ? result.elements.map(compactRow) : compactView(result.elements, E),
+    };
+    if (result.invariants.length) {
+      if (full) data.invariants = result.invariants;
+      else {
+        // Compact: first COMPACT_INVARIANTS rules (FHIRPath when short, else the human text, clipped);
+        // the remaining keys are named so the caller knows to ask for verbosity='full'.
+        const clip = (t: string): string => (t.length > 200 ? `${t.slice(0, 199)}…` : t);
+        data.invariants = result.invariants.slice(0, COMPACT_INVARIANTS).map((i) => ({
+          key: i.key,
+          on: i.on.length === 1 ? i.on[0] : i.on,
+          rule: clip(i.expression && i.expression.length <= 200 ? i.expression : i.human || i.expression),
+        }));
+        if (result.invariants.length > COMPACT_INVARIANTS) {
+          data.moreInvariants = result.invariants.slice(COMPACT_INVARIANTS).map((i) => i.key);
+        }
+      }
+    }
+    this.withDeps(data, pkg);
+    const notes = (pkg._notes as string[] | undefined) || [];
+    const env = {
+      ok: true,
+      data,
+      warnings: notes.length ? [...notes, ...warnings] : warnings,
+      provenance: { ...this.provenance(pkg), tool: "fhir_get_profile_required_elements", toolVersion: toolVersion("fhir_get_profile_required_elements") },
+    };
+    return JSON.stringify(env);
+  }
+
+  /**
+   * Required extension rows whose type is a profiled Extension the snapshot does not
+   * expand: splice in the extension definition's own required elements (url, value[x]
+   * via ext-1, required sub-extensions), re-rooted under the row id. Recurses into nested
+   * extension definitions (depth-limited).
+   */
+  private async expandExtensionRows(
+    pkg: PackageRow,
+    result: RequiredElementsResult,
+    E: Map<string, ProjectedElement>,
+    instance: Record<string, any> | null,
+    depth: number,
+  ): Promise<void> {
+    if (depth > 2) return;
+    const ids = new Set(result.elements.map((r) => r.id));
+    // Targets: listed extension rows, plus (given a draft) optional profiled extensions it populates.
+    type Target = { id: string; path: string; populatedOnly: boolean };
+    const targets: Target[] = result.elements.map((r) => ({ id: r.id, path: r.path, populatedOnly: false }));
+    if (instance) {
+      for (const e of E.values()) {
+        if (ids.has(e.id) || !e.types?.[0]?.profile?.length || e.types.length !== 1 || e.types[0].code !== "Extension") continue;
+        if (nodesAt(instance, e.id, E).length) targets.push({ id: e.id, path: e.path, populatedOnly: true });
+      }
+    }
+    const inserts = new Map<string, RequiredElementRow[]>();
+    const appended: RequiredElementRow[] = [];
+    for (const tg of targets) {
+      const el = E.get(tg.id);
+      const url = el?.types?.length === 1 && el.types[0].code === "Extension" ? el.types[0].profile?.[0] : undefined;
+      if (!url) continue;
+      if ([...E.keys()].some((k) => k.startsWith(`${tg.id}.value`) || k.startsWith(`${tg.id}.extension:`))) continue; // expanded in place
+      const canon = String(url).split("|")[0];
+      const via = tg.populatedOnly ? `; parent ${tg.id} populated` : "";
+      let extSd: Record<string, any> | null = null;
+      try {
+        const art = await fhirIg.resolveCanonical(canon, pkg.package_id, pkg.version);
+        extSd = art ? jsonValue((art as any).raw_json) : null;
+      } catch {
+        extSd = null;
+      }
+      const add: RequiredElementRow[] = [];
+      if (!extSd || extSd.type !== "Extension" || !((extSd.snapshot || {}).element || []).length) {
+        // Definition not installed: the url is still known and mandatory.
+        const id = `${tg.id}.url`;
+        if (!ids.has(id)) {
+          ids.add(id);
+          add.push({
+            id, path: `${tg.path}.url`, min: 1, max: "1", types: ["uri"], binding: null,
+            fixed: { field: "fixedUri", value: canon }, pattern: null, mustSupport: false,
+            required_by: `extension:${canon.split("/").pop()} (definition not installed${via})`, grounding_class: "auto",
+            hint: "extension definition not installed: give exactly one value[x] or nested extensions as it defines",
+          });
+        }
+      } else {
+        const xEls = projectForRequired(extSd.snapshot.element, snapshot.projectElement);
+        const xE = new Map(xEls.map((e) => [e.id, e]));
+        const item = instance ? ((nodesAt(instance, tg.id, E)[0] as Record<string, any> | undefined) ?? null) : null;
+        const sub = requiredElements(extSd.id ?? canon, xEls, { instance: item ? { resourceType: "Extension", ...item } : null, includeTargetImplied: false });
+        await this.expandExtensionRows(pkg, sub, xE, item ? { resourceType: "Extension", ...item } : null, depth + 1);
+        const tag = `extension:${extSd.id ?? canon.split("/").pop()}`;
+        for (const x of sub.elements) {
+          const id = `${tg.id}${x.id.slice("Extension".length)}`;
+          if (ids.has(id)) continue;
+          ids.add(id);
+          const path = `${tg.path}${x.path.slice("Extension".length)}`;
+          add.push({ ...x, id, path, required_by: `${tag} (${x.required_by}${via})` });
+          const xe = xE.get(x.id);
+          if (xe) E.set(id, { ...xe, id, path });
+        }
+        for (const inv of sub.invariants) {
+          if (!result.invariants.some((i) => i.key === inv.key && i.expression === inv.expression)) {
+            result.invariants.push({ ...inv, on: inv.on.map((o) => `${tg.id}${o.slice("Extension".length)}`) });
+          }
+        }
+      }
+      if (!add.length) continue;
+      if (tg.populatedOnly) appended.push(...add);
+      else inserts.set(tg.id, add);
+    }
+    if (!inserts.size && !appended.length) return;
+    const out: RequiredElementRow[] = [];
+    for (const r of result.elements) {
+      out.push(r);
+      const add = inserts.get(r.id);
+      if (add) out.push(...add);
+    }
+    out.push(...appended);
+    result.elements = out;
+    result.count = out.length;
+    for (const k of Object.keys(result.summary) as Array<keyof typeof result.summary>) result.summary[k] = out.filter((x) => x.grounding_class === k).length;
+  }
+
+  /**
+   * Extensions the draft carries outside any declared slice (unknown extensions, or inside
+   * datatypes the profile does not expand): when the definition is installed, add its
+   * required elements under a pseudo-slice id `<path>:<definition id>` (e.g. a core HL7
+   * extension such as ordinalValue needs value[x]).
+   */
+  private async expandInstanceExtensions(
+    pkg: PackageRow,
+    result: RequiredElementsResult,
+    els: ProjectedElement[],
+    E: Map<string, ProjectedElement>,
+    instance: Record<string, any>,
+  ): Promise<void> {
+    const sites = instanceExtensionSites(instance, els);
+    if (!sites.length) return;
+    const ids = new Set(result.elements.map((r) => r.id));
+    const resolvedAt = new Map<string, boolean>(); // path -> every site resolved
+    const added: RequiredElementRow[] = [];
+    const seen = new Set<string>();
+    for (const site of sites) {
+      if (!site.url) {
+        resolvedAt.set(site.path, false);
+        continue;
+      }
+      let extSd: Record<string, any> | null = null;
+      try {
+        const art = await fhirIg.resolveCanonical(site.url, pkg.package_id, pkg.version);
+        extSd = art ? jsonValue((art as any).raw_json) : null;
+      } catch {
+        extSd = null;
+      }
+      if (!extSd || extSd.type !== "Extension" || !((extSd.snapshot || {}).element || []).length) {
+        resolvedAt.set(site.path, false);
+        continue;
+      }
+      if (!resolvedAt.has(site.path)) resolvedAt.set(site.path, true);
+      const tail = String(extSd.id ?? site.url.split("/").pop());
+      const base = `${site.path}:${tail}`;
+      if (seen.has(base)) continue;
+      seen.add(base);
+      const xEls = projectForRequired(extSd.snapshot.element, snapshot.projectElement);
+      const xE = new Map(xEls.map((e) => [e.id, e]));
+      const item = { resourceType: "Extension", ...site.item };
+      const sub = requiredElements(tail, xEls, { instance: item, includeTargetImplied: false });
+      await this.expandExtensionRows(pkg, sub, xE, item, 1);
+      for (const x of sub.elements) {
+        const id = `${base}${x.id.slice("Extension".length)}`;
+        if (ids.has(id)) continue;
+        ids.add(id);
+        const path = `${site.path}${x.path.slice("Extension".length)}`;
+        added.push({ ...x, id, path, required_by: `extension:${tail} (${x.required_by}; parent ${site.path} populated)` });
+        const xe = xE.get(x.id);
+        if (xe) E.set(id, { ...xe, id, path });
+      }
+    }
+    if (!added.length) return;
+    const out = result.elements.filter((r) => !(r.required_by.startsWith("datatype:Extension") && resolvedAt.get(r.id.replace(/\.url$/, "")) === true));
+    out.push(...added);
+    result.elements = out;
+    result.count = out.length;
+    for (const k of Object.keys(result.summary) as Array<keyof typeof result.summary>) result.summary[k] = out.filter((x) => x.grounding_class === k).length;
   }
 
   private async profileExamples(pkg: PackageRow, canonical: string | null | undefined): Promise<Record<string, any>> {
@@ -476,7 +909,7 @@ export class FHIRIGService {
   // --- D. Terminology ------------------------------------------------------ //
 
   private async loadValueset(pkg: PackageRow, identifier: string): Promise<Record<string, any> | null> {
-    const row = await this.loadArtifact(pkg.package_id, pkg.version, identifier);
+    const row = await this.loadArtifact(pkg, identifier);
     if (row === null) return null;
     if (
       (row.resource_type || "").toLowerCase() !== "valueset" &&
@@ -494,13 +927,13 @@ export class FHIRIGService {
   ): Promise<string> {
     let pkg: PackageRow;
     try {
-      pkg = await this.resolve(packageId, version);
+      pkg = await this.resolve(packageId, version, { canonicals: [identifier] });
     } catch (e) {
-      if (this.isIGNotFound(e)) return this.err("IG_NOT_FOUND", e.message);
+      if (this.isIGNotFound(e)) return this.err(e.code, e.message);
       throw e;
     }
     const vs = await this.loadValueset(pkg, identifier);
-    if (vs === null) return this.err("VALUESET_NOT_FOUND", `ValueSet not found: ${identifier}`);
+    if (vs === null) return this.err("VALUESET_NOT_FOUND", await this.notFound("ValueSet", identifier));
     const data = {
       valueSetId: vs.id,
       canonical: vs.url,
@@ -521,13 +954,13 @@ export class FHIRIGService {
   ): Promise<string> {
     let pkg: PackageRow;
     try {
-      pkg = await this.resolve(packageId, version);
+      pkg = await this.resolve(packageId, version, { canonicals: [identifier] });
     } catch (e) {
-      if (this.isIGNotFound(e)) return this.err("IG_NOT_FOUND", e.message);
+      if (this.isIGNotFound(e)) return this.err(e.code, e.message);
       throw e;
     }
     const vs = await this.loadValueset(pkg, identifier);
-    if (vs === null) return this.err("VALUESET_NOT_FOUND", `ValueSet not found: ${identifier}`);
+    if (vs === null) return this.err("VALUESET_NOT_FOUND", await this.notFound("ValueSet", identifier));
     limit = Math.min(Math.max(1, limit), 2000);
     const exp = await terminology.expandCompose(vs.compose || {}, pkg, limit);
     const data = {
@@ -549,18 +982,24 @@ export class FHIRIGService {
   ): Promise<string> {
     let pkg: PackageRow;
     try {
-      pkg = await this.resolve(packageId, version);
+      pkg = await this.resolve(packageId, version, { canonicals: [system] });
     } catch (e) {
-      if (this.isIGNotFound(e)) return this.err("IG_NOT_FOUND", e.message);
+      if (this.isIGNotFound(e)) return this.err(e.code, e.message);
       throw e;
     }
     const found = await terminology.lookup(system, code, pkg);
     const warnings: string[] = [];
     if (found === null) {
-      warnings.push(
-        "code not found in locally held terminology — it may belong to an " +
-          "external system (TERMINOLOGY_SERVER_REQUIRED)",
-      );
+      const edition = system === "http://hl7.org/fhir/sid/icd-10-cm" ? await terminology.icd10cmEdition() : null;
+      if (icd10cmStrict(edition)) {
+        // Complete current local edition: the code does not exist (tx.fhir.org agrees).
+        warnings.push(`Unknown code '${code}' in the CodeSystem '${system}' version '${edition!.edition}'`);
+      } else {
+        warnings.push(
+          "code not found in locally held terminology — it may belong to an " +
+            "external system (TERMINOLOGY_SERVER_REQUIRED)",
+        );
+      }
     }
     const data = {
       system,
@@ -581,29 +1020,31 @@ export class FHIRIGService {
   ): Promise<string> {
     let pkg: PackageRow;
     try {
-      pkg = await this.resolve(packageId, version);
+      pkg = await this.resolve(packageId, version, { canonicals: [valueSet] });
     } catch (e) {
-      if (this.isIGNotFound(e)) return this.err("IG_NOT_FOUND", e.message);
+      if (this.isIGNotFound(e)) return this.err(e.code, e.message);
       throw e;
     }
     const vs = await this.loadValueset(pkg, valueSet);
-    if (vs === null) return this.err("VALUESET_NOT_FOUND", `ValueSet not found: ${valueSet}`);
-    const exp = await terminology.expandCompose(vs.compose || {}, pkg);
-    const member = exp.codings.some((c) => c.system === system && c.code === code);
-    const sysUnresolved = exp.unresolved.some((u: any) => u.system === system);
-    const warnings = [...exp.warnings];
+    if (vs === null) return this.err("VALUESET_NOT_FOUND", await this.notFound("ValueSet", valueSet));
+    // Rule-based membership: nested CodeSystem hierarchies and filters, no expansion cap.
+    const membership = vs.url
+      ? await terminology.valueSetMembership(vs.url, system, code, pkg)
+      : await composeMembership(vs, system, code, pkg);
+    const warnings: string[] = [];
     let result: string;
-    if (member) {
+    if (membership === true) {
       result = "valid";
-    } else if (exp.truncated || sysUnresolved) {
+    } else if (membership === undefined) {
       result = "unverifiable";
       warnings.push(
-        "membership could not be confirmed locally (expansion truncated or " +
-          "system not held); confirm against a terminology server",
+        "membership could not be confirmed locally (system not held or filter " +
+          "not evaluable); confirm against a terminology server",
       );
     } else {
       result = "invalid";
     }
+    const member = membership === true;
     const data = { system, code, valueSet: vs.url || valueSet, result, valid: member };
     return this.ok(data, pkg, warnings);
   }
@@ -621,9 +1062,9 @@ export class FHIRIGService {
     }
     let pkg: PackageRow;
     try {
-      pkg = await this.resolve(packageId, version);
+      pkg = await this.resolve(packageId, version, { canonicals: [valueSet, system] });
     } catch (e) {
-      if (this.isIGNotFound(e)) return this.err("IG_NOT_FOUND", e.message);
+      if (this.isIGNotFound(e)) return this.err(e.code, e.message);
       throw e;
     }
     limit = Math.min(Math.max(1, limit), 50);
@@ -696,7 +1137,7 @@ export class FHIRIGService {
             if (sys_ === terminology.SNOMED_SYSTEM && ["is-a", "descendent-of"].includes(f.op)) {
               const ids = await terminology.snomedDescendants(f.value, 5000);
               if (!scopeIds[sys_]) scopeIds[sys_] = [];
-              scopeIds[sys_].push(...ids);
+              pushAll(scopeIds[sys_], ids);
             }
           }
         }
@@ -864,9 +1305,11 @@ export class FHIRIGService {
     if (kind === "icd_dx") {
       const rows = (
         await query<{ code: string; name_en: string; dist: number }>(
+          // Exact scan ("+ 0" bypasses HNSW): the index's recall collapses on the
+          // ~50k near-duplicate 7th-character codes. See icdService.searchCodes.
           "SELECT e.code, c.name_en, e.embedding <=> $1::halfvec AS dist " +
             "FROM icd.diagnosis_embeddings e JOIN icd.diagnoses c ON c.code = e.code " +
-            "ORDER BY dist LIMIT $2",
+            "ORDER BY (e.embedding <=> $1::halfvec) + 0 LIMIT $2",
           [vecStr, limit],
         )
       ).rows;
@@ -877,97 +1320,58 @@ export class FHIRIGService {
 
   // --- G. Validation ------------------------------------------------------- //
 
-  private async resolveProfileSd(
-    pkg: PackageRow,
-    resource: Record<string, any>,
-    profile: string | null,
-  ): Promise<[Record<string, any> | null, string | null]> {
-    let identifier = profile;
-    if (!identifier) {
-      const metas = (resource.meta || {}).profile || [];
-      if (metas.length) identifier = String(metas[0]).split("|")[0];
-    }
-    if (!identifier) return [null, null];
-    const row = await this.loadArtifact(pkg.package_id, pkg.version, identifier);
+  /** Resolve a profile identifier (id / canonical / key) to its canonical URL and id. */
+  private async resolveProfileCanonical(pkg: PackageRow, identifier: string): Promise<[string | null, string]> {
+    // "url|version" must resolve to that version; the returned canonical keeps the version so the
+    // validator can pin it.
+    const { url, version } = fhirIg.splitCanonical(identifier);
+    const row = await this.loadArtifact(pkg, version ? identifier : url);
     if (row === null) return [null, identifier];
-    return [jsonValue(row.raw_json), row.artifact_id || identifier];
+    const sd = jsonValue(row.raw_json);
+    const canonical: string | null = sd.url || row.canonical_url || null;
+    return [canonical && version ? `${canonical}|${version}` : canonical, row.artifact_id || identifier];
   }
 
-  private async bindingIssues(pkg: PackageRow, sd: Record<string, any>, resource: Record<string, any>): Promise<any[]> {
-    const root = sd.type || resource.resourceType || "";
-    const issues: any[] = [];
-    for (const el of (sd.snapshot || {}).element || []) {
-      if (snapshot.isSliceMember(el)) continue;
-      const binding = el.binding || {};
-      if (binding.strength !== "required" || !binding.valueSet) continue;
-      const path = el.path || "";
-      const rel = validator.relPath(path, root);
-      if (!rel) continue;
-      const nodes = validator.getAtPath(resource, rel);
-      if (!nodes.length) continue;
-      const typeCode = (el.type || [{}])[0].code;
-      const vs = await this.loadValueset(pkg, String(binding.valueSet).split("|")[0]);
-      if (vs === null) {
-        issues.push(
-          validator.issue("warning", path, "binding-unresolved", `required binding ValueSet not held locally: ${binding.valueSet}`),
-        );
-        continue;
-      }
-      const exp = await terminology.expandCompose(vs.compose || {}, pkg);
-      const members = new Set(exp.codings.map((c) => `${c.system} ${c.code}`));
-      const codesOnly = new Set(exp.codings.map((c) => c.code));
-      const unverifiable = exp.truncated || exp.unresolved.length > 0;
-      for (const node of nodes) {
-        for (const [system, code] of codingsOf(node, typeCode)) {
-          if (code === null) continue;
-          const okMember = members.has(`${system} ${code}`) || (system === null && codesOnly.has(code));
-          if (okMember) continue;
-          if (unverifiable) {
-            issues.push(
-              validator.issue(
-                "warning",
-                path,
-                "binding-unverifiable",
-                `${path}: code ${system}|${code} could not be confirmed ` +
-                  `(binding ValueSet not fully expandable locally)`,
-              ),
-            );
-          } else {
-            issues.push(
-              validator.issue("error", path, "binding", `${path}: code ${system}|${code} is not in the required binding`),
-            );
-          }
-        }
-      }
-    }
-    return issues;
-  }
-
+  /**
+   * Validate one resource (a Bundle validates its entries too) with the
+   * in-process instance validator: base definition + meta.profile + `profile`.
+   */
   private async validateCore(pkg: PackageRow, resource: Record<string, any>, profile: string | null): Promise<Record<string, any>> {
-    const [sd, profileId] = await this.resolveProfileSd(pkg, resource, profile);
-    if (sd === null) {
-      return {
-        valid: true,
-        profile: profileId,
-        source: validator.SOURCE,
-        issues: [
-          validator.issue(
-            "warning",
-            "",
-            "no-profile",
-            "no resolvable profile (meta.profile absent and base " +
-              "StructureDefinition not held) — structure not validated",
-          ),
-        ],
-      };
+    const profiles: string[] = [];
+    let profileId: string | null = null;
+    const issues: Record<string, any>[] = [];
+    if (profile) {
+      const [canonical, id] = await this.resolveProfileCanonical(pkg, profile);
+      profileId = id;
+      if (canonical) profiles.push(canonical);
+      else {
+        issues.push(
+          validator.issue("error", "", "not-found", `profile not found in ${pkg.package_id}#${pkg.version}: ${profile}`),
+        );
+      }
+    } else {
+      const metas = (resource.meta || {}).profile || [];
+      if (metas.length) {
+        // Display id only: an uninstalled "|version" still names the profile it pins.
+        let [canon, id] = await this.resolveProfileCanonical(pkg, String(metas[0]));
+        if (canon === null && String(metas[0]).includes("|")) {
+          const [c2, id2] = await this.resolveProfileCanonical(pkg, String(metas[0]).split("|")[0]);
+          if (c2 !== null) id = id2;
+        }
+        profileId = id;
+      }
     }
-    const issues = [
-      ...validator.validateStructure(sd, resource),
-      ...validator.validateSlicing(sd, resource),
-      ...validator.evaluateInvariants(sd, resource),
-      ...(await this.bindingIssues(pkg, sd, resource)),
-    ];
-    return { valid: validator.isValid(issues), profile: profileId, source: validator.SOURCE, issues };
+    const engine = new validator.InstanceValidator(new DbValidatorResolver(pkg));
+    pushAll(issues, (await engine.validate(resource, { profiles })) as Record<string, any>[]);
+    return {
+      valid: validator.isValid(issues),
+      profile: profileId,
+      source: validator.SOURCE,
+      issues,
+      // checked_fully / profiles_unchecked / valuesets_unchecked: `valid` keeps HL7
+      // semantics (an unresolvable profile is only a warning), so incompleteness is explicit.
+      ...validator.completenessOf(issues, (pkg._depsMissing as unknown[] | undefined) || []),
+    };
   }
 
   async validateResource(
@@ -981,13 +1385,13 @@ export class FHIRIGService {
     }
     let pkg: PackageRow;
     try {
-      pkg = await this.resolve(packageId, version);
+      pkg = await this.resolve(packageId, version, { canonicals: [profile], metaProfiles: metaProfilesOf(resource) });
     } catch (e) {
-      if (this.isIGNotFound(e)) return this.err("IG_NOT_FOUND", e.message);
+      if (this.isIGNotFound(e)) return this.err(e.code, e.message);
       throw e;
     }
     const data = await this.validateCore(pkg, resource, profile);
-    return this.ok(data, pkg);
+    return this.ok(this.withDeps(data, pkg), pkg);
   }
 
   async validateBundle(
@@ -1000,52 +1404,67 @@ export class FHIRIGService {
     }
     let pkg: PackageRow;
     try {
-      pkg = await this.resolve(packageId, version);
+      pkg = await this.resolve(packageId, version, { metaProfiles: metaProfilesOf(bundle) });
     } catch (e) {
-      if (this.isIGNotFound(e)) return this.err("IG_NOT_FOUND", e.message);
+      if (this.isIGNotFound(e)) return this.err(e.code, e.message);
       throw e;
     }
-    const bundleEntries = bundle.entry || [];
-    const fullUrls = new Set(bundleEntries.filter((e: any) => e.fullUrl).map((e: any) => e.fullUrl));
+    const core = await this.validateCore(pkg, bundle, null);
+    const bundleEntries: any[] = Array.isArray(bundle.entry) ? bundle.entry : [];
+    // Split the issues: Bundle-level vs per entry (by instance path prefix).
+    const perEntry: Record<string, any>[][] = bundleEntries.map(() => []);
+    const bundleIssues: Record<string, any>[] = [];
+    for (const i of core.issues as Record<string, any>[]) {
+      const m = /^Bundle\.entry\[(\d+)\]/.exec(String(i.path || ""));
+      if (m && perEntry[Number(m[1])]) perEntry[Number(m[1])].push(i);
+      else bundleIssues.push(i);
+    }
+    const fullUrls = new Set(bundleEntries.filter((e: any) => e && e.fullUrl).map((e: any) => e.fullUrl));
     const entryResults: any[] = [];
     const referenceIssues: any[] = [];
-    let allValid = true;
-    for (const be of bundleEntries) {
-      const resource = be.resource || {};
-      if (!resource.resourceType) continue;
-      const core = await this.validateCore(pkg, resource, null);
-      allValid = allValid && core.valid;
+    bundleEntries.forEach((be: any, idx: number) => {
+      const resource = (be && be.resource) || {};
+      if (!resource.resourceType) return;
+      const metas = (resource.meta || {}).profile || [];
       entryResults.push({
         fullUrl: be.fullUrl ?? null,
         resourceType: resource.resourceType,
-        valid: core.valid,
-        profile: core.profile,
-        issues: core.issues,
+        valid: validator.isValid(perEntry[idx]),
+        profile: metas.length ? String(metas[0]).split("|")[0].split("/").pop() : null,
+        issues: perEntry[idx],
       });
       const refs: string[] = [];
       reference.collectReferences(resource, refs);
       const containedIds = new Set(
-        (resource.contained || []).filter((c: any) => c.id).map((c: any) => "#" + c.id),
+        (resource.contained || []).filter((c: any) => c && c.id).map((c: any) => "#" + c.id),
       );
       for (const ref of refs) {
         if (ref.startsWith("urn:uuid:")) {
           if (!fullUrls.has(ref)) referenceIssues.push({ resourceType: resource.resourceType, reference: ref });
-        } else if (ref.startsWith("#")) {
+        } else if (ref.startsWith("#") && ref !== "#") {
           if (!containedIds.has(ref)) referenceIssues.push({ resourceType: resource.resourceType, reference: ref });
         }
       }
-    }
+    });
     const data = {
-      valid: allValid && referenceIssues.length === 0,
+      // Unresolved bundle-internal references are reported (referenceIssues +
+      // warning) but, like the HL7 validator, do not by themselves make a
+      // collection/transaction Bundle invalid.
+      valid: core.valid,
       source: validator.SOURCE,
+      profile: core.profile,
+      issues: bundleIssues,
       entries: entryResults,
       referenceIssues,
+      checked_fully: core.checked_fully,
+      profiles_unchecked: core.profiles_unchecked,
+      valuesets_unchecked: core.valuesets_unchecked,
     };
     const warnings: string[] = [];
     if (referenceIssues.length) {
       warnings.push(`${referenceIssues.length} internal reference(s) did not resolve within the bundle`);
     }
-    return this.ok(data, pkg, warnings);
+    return this.ok(this.withDeps(data, pkg), pkg, warnings);
   }
 
   // --- E. Schema-guided fill (authoring) ----------------------------------- //
@@ -1098,13 +1517,13 @@ export class FHIRIGService {
   ): Promise<string> {
     let pkg: PackageRow;
     try {
-      pkg = await this.resolve(packageId, version);
+      pkg = await this.resolve(packageId, version, { canonicals: [profile] });
     } catch (e) {
-      if (this.isIGNotFound(e)) return this.err("IG_NOT_FOUND", e.message);
+      if (this.isIGNotFound(e)) return this.err(e.code, e.message);
       throw e;
     }
-    const row = await this.loadArtifact(pkg.package_id, pkg.version, profile);
-    if (row === null) return this.err("ARTIFACT_NOT_FOUND", `profile not found: ${profile}`);
+    const row = await this.loadArtifact(pkg, profile);
+    if (row === null) return this.err("ARTIFACT_NOT_FOUND", await this.notFound("profile", profile));
     const sd = jsonValue(row.raw_json);
     const root = sd.type || "";
     const prefix = root + ".";
@@ -1112,6 +1531,10 @@ export class FHIRIGService {
 
     const fields: any[] = [];
     const warnings: string[] = [];
+    // Additive: `required` keeps its historical meaning (own min>=1); `effectiveRequired`
+    // additionally needs every ancestor to be required (Patient.telecom.system is
+    // required:true but effectiveRequired:false because Patient.telecom is optional).
+    const effRequired = effectiveRequiredPaths((sd.snapshot || {}).element || []);
     for (const el of (sd.snapshot || {}).element || []) {
       if (snapshot.isSliceMember(el)) continue;
       const path = el.path || "";
@@ -1124,6 +1547,7 @@ export class FHIRIGService {
         path,
         jsonPath: rel,
         required: typeof el.min === "number" && el.min >= 1,
+        effectiveRequired: effRequired.has(path),
         array: maxCard === "*" || (/^\d+$/.test(String(maxCard)) && parseInt(String(maxCard), 10) > 1),
         types: proj.types,
         mustSupport: proj.mustSupport,
@@ -1168,14 +1592,16 @@ export class FHIRIGService {
       canonical: row.canonical_url,
       resourceType: root,
       instructions:
-        "Fill the semantic blanks below. Leave 'autoPinned' fields and " +
+        "Fill the semantic blanks below. Fields with effectiveRequired:true must be present; " +
+        "fhir_get_profile_required_elements lists the full required set (slices, invariants). " +
+        "Leave 'autoPinned' fields and " +
         "meta.profile to fhir_finalize_resource. Use the candidateCodes for " +
         "bound elements (confirm with fhir_validate_code). Then call " +
         "fhir_finalize_resource with your draft.",
       fields,
       examples,
     };
-    return this.ok(data, pkg, warnings);
+    return this.ok(this.withDeps(data, pkg), pkg, warnings);
   }
 
   private async inferSystems(pkg: PackageRow, sd: Record<string, any>, resource: Record<string, any>): Promise<string[]> {
@@ -1193,7 +1619,7 @@ export class FHIRIGService {
       const targetCodings: any[] = [];
       for (const node of nodes) {
         if (node && typeof node === "object" && Array.isArray(node.coding)) {
-          targetCodings.push(...node.coding);
+          pushAll(targetCodings, node.coding);
         } else if (node && typeof node === "object" && "code" in node) {
           targetCodings.push(node);
         }
@@ -1231,13 +1657,13 @@ export class FHIRIGService {
     }
     let pkg: PackageRow;
     try {
-      pkg = await this.resolve(packageId, version);
+      pkg = await this.resolve(packageId, version, { canonicals: [profile] });
     } catch (e) {
-      if (this.isIGNotFound(e)) return this.err("IG_NOT_FOUND", e.message);
+      if (this.isIGNotFound(e)) return this.err(e.code, e.message);
       throw e;
     }
-    const row = await this.loadArtifact(pkg.package_id, pkg.version, profile);
-    if (row === null) return this.err("ARTIFACT_NOT_FOUND", `profile not found: ${profile}`);
+    const row = await this.loadArtifact(pkg, profile);
+    if (row === null) return this.err("ARTIFACT_NOT_FOUND", await this.notFound("profile", profile));
     const sd = jsonValue(row.raw_json);
     const canonical = sd.url || row.canonical_url;
 
@@ -1273,10 +1699,31 @@ export class FHIRIGService {
       contextId,
       reference: referenceUrn,
     };
+    this.withDeps(data, pkg);
     if (!core.valid) {
       warnings.push("validation found errors — fix the draft and call finalize again");
     }
     return this.ok(data, pkg, warnings);
+  }
+}
+
+/** meta.profile values of a resource, plus those of Bundle entries (nested Bundles included). */
+export function metaProfilesOf(resource: Record<string, any> | null | undefined, depth = 0): string[] {
+  if (!resource || typeof resource !== "object" || depth > 4) return [];
+  const out: string[] = [];
+  for (const p of (resource.meta || {}).profile || []) if (typeof p === "string") out.push(p);
+  if (resource.resourceType === "Bundle" && Array.isArray(resource.entry)) {
+    for (const e of resource.entry) for (const p of metaProfilesOf(e && e.resource, depth + 1)) out.push(p);
+  }
+  return [...new Set(out)];
+}
+
+/** Positional-parameter builder: add(v) returns the "$n" placeholder. */
+class SqlParams {
+  params: unknown[] = [];
+  add(v: unknown): string {
+    this.params.push(v);
+    return `$${this.params.length}`;
   }
 }
 
@@ -1286,4 +1733,13 @@ function round4(x: number): number {
 
 function pySortedSet(s: Set<string>): string {
   return "[" + [...s].sort().map((x) => `'${x}'`).join(", ") + "]";
+}
+
+async function composeMembership(
+  vs: Record<string, any>,
+  system: string,
+  code: string,
+  pkg: PackageRow,
+): Promise<boolean | undefined> {
+  return composeContains(vs.compose || {}, system, code, terminology.dbTerminologyDeps(pkg), 0, new Set(), vs.expansion);
 }

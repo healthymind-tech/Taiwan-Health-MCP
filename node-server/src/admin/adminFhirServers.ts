@@ -641,10 +641,14 @@ export async function updateFhirServer(
   const existing = serverPublic(existingRow);
   const data = validateServerPayload(payload, existing);
   const newSecret = cleanText(payload.client_secret);
-  const keepSecret = !newSecret && data.auth_type === AUTH_OAUTH2_CC;
+  // Keep the stored secret on any OAuth server when the payload carries none —
+  // previously only client-credentials kept it, so any PATCH (even {enabled})
+  // silently wiped the secret of an authorization-code (IUA/SMART) server.
+  const isOauth = data.auth_type === AUTH_OAUTH2_CC || data.auth_type === AUTH_OAUTH2_AC;
+  const keepSecret = !newSecret && isOauth;
   const newPrivateKey = cleanText(payload.client_private_key);
   const keepPrivateKey =
-    !newPrivateKey && data.auth_type === AUTH_OAUTH2_CC && data.token_auth_method === TOKEN_AUTH_PRIVATE_KEY_JWT;
+    !newPrivateKey && isOauth && data.token_auth_method === TOKEN_AUTH_PRIVATE_KEY_JWT;
   const effectivePrivateKey = newPrivateKey || (keepPrivateKey ? String(existingRow.client_private_key || "") : "");
   const [publicJwkJson, kid] = resolvePublicJwk(
     data.token_auth_method as string,
@@ -873,6 +877,7 @@ export async function discoverFhirMetadata(payload: Json): Promise<Json> {
 
 const RESOURCE_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._~-]{0,127}$/;
 const MAX_RESPONSE_CHARS = 300_000;
+const MAX_PARSE_CHARS = 20_000_000;
 const CLIENT_ASSERTION_TYPE = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer";
 const CLIENT_ASSERTION_LIFETIME_SECONDS = 300;
 const TOKEN_CACHE_SKEW_SECONDS = 60;
@@ -1295,7 +1300,9 @@ async function callFhir(
   const durationMs = Date.now() - start;
   const truncated = response.text.length > MAX_RESPONSE_CHARS;
   let parsedJson: unknown = null;
-  if (!truncated) {
+  // Parse well past the display limit: a real CapabilityStatement (e.g. HAPI's)
+  // is several hundred KB, and skipping the parse left capability_summary empty.
+  if (response.text.length <= MAX_PARSE_CHARS) {
     try {
       parsedJson = JSON.parse(response.text);
     } catch {
@@ -1651,7 +1658,9 @@ async function sendTestRequest(
   let content: string | null = null;
   if (args.body !== null && args.body !== undefined && ["POST", "PUT", "PATCH"].includes(args.method)) {
     content = typeof args.body === "string" ? args.body : JSON.stringify(args.body);
-    if (!("Content-Type" in headers)) headers["Content-Type"] = "application/fhir+json";
+    if (!Object.keys(headers).some((h) => h.toLowerCase() === "content-type")) {
+      headers["Content-Type"] = "application/fhir+json";
+    }
   }
   const start = Date.now();
   const response = await rawRequest({

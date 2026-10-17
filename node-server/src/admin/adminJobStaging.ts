@@ -195,6 +195,53 @@ export async function stageRows(opts: StageRowsInput): Promise<boolean> {
   return false;
 }
 
+/**
+ * Insert rows into a stage table without any step/progress bookkeeping — for
+ * loaders that stage in units of their own (e.g. one IG package at a time).
+ * Statements are cut by row count (bind-parameter limit) *and* by payload size,
+ * since a single FHIR artifact's raw JSON can be tens of MB. Each statement
+ * commits on its own; `conflictSql` must make re-runs idempotent.
+ */
+export async function insertStageRows(opts: {
+  jobId: string;
+  table: string;
+  columns: string[];
+  conflictSql: string;
+  rows: ReadonlyArray<StageRow>;
+  maxCharsPerStatement?: number;
+}): Promise<void> {
+  const { jobId, table, columns, conflictSql, rows } = opts;
+  const maxChars = opts.maxCharsPerStatement ?? 32_000_000;
+  const ncols = columns.length + 1; // + job_id
+  const maxRowsPerStmt = Math.max(1, Math.floor(60000 / ncols));
+  const insertHead = `INSERT INTO ${table} (job_id, ${columns.join(", ")}) VALUES `;
+  let i = 0;
+  while (i < rows.length) {
+    const tuples: string[] = [];
+    const params: unknown[] = [];
+    let chars = 0;
+    let p = 0;
+    while (i < rows.length && tuples.length < maxRowsPerStmt) {
+      const row = rows[i];
+      let rowChars = 0;
+      for (const v of row) if (typeof v === "string") rowChars += v.length;
+      if (tuples.length > 0 && chars + rowChars > maxChars) break;
+      chars += rowChars;
+      const ph: string[] = [`$${(p += 1)}`];
+      params.push(jobId);
+      for (const v of row) {
+        ph.push(`$${(p += 1)}`);
+        params.push(v);
+      }
+      tuples.push(`(${ph.join(", ")})`);
+      i += 1;
+    }
+    await withTransaction(async (client) => {
+      await client.query(`${insertHead}${tuples.join(", ")} ${conflictSql}`, params);
+    });
+  }
+}
+
 /** Faithful port of `_run_validate_step`. */
 export async function runValidateStep(opts: {
   jobId: string;

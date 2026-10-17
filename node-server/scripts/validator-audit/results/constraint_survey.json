@@ -1,0 +1,386 @@
+{
+ "engineFunctionCount": 125,
+ "targets": {
+  "tw.gov.mohw.twcore#1.0.0": {
+   "closure": [
+    "tw.gov.mohw.twcore#1.0.0",
+    "hl7.fhir.uv.ips#1.1.0",
+    "hl7.fhir.uv.sdc#3.0.0",
+    "hl7.fhir.r4.core#4.0.1",
+    "hl7.terminology.r4#7.0.0",
+    "hl7.fhir.uv.extensions.r4#5.2.0",
+    "fhir.dicom#2022.4.20221006",
+    "hl7.terminology.r4#5.0.0",
+    "hl7.fhir.r4.examples#4.0.1"
+   ],
+   "structureDefinitions": 1115,
+   "constraintUses": 8092,
+   "distinctConstraints": 282,
+   "parseErrors": [],
+   "unknownFunctionConstraints": [],
+   "deliberatelyUnevaluable": [],
+   "functionsUsed": {
+    "exists": {
+     "constraints": 143,
+     "source": "fhirpath.js"
+    },
+    "empty": {
+     "constraints": 102,
+     "source": "fhirpath.js"
+    },
+    "matches": {
+     "constraints": 35,
+     "source": "ours(override)"
+    },
+    "not": {
+     "constraints": 30,
+     "source": "fhirpath.js"
+    },
+    "where": {
+     "constraints": 26,
+     "source": "fhirpath.js"
+    },
+    "all": {
+     "constraints": 17,
+     "source": "fhirpath.js"
+    },
+    "count": {
+     "constraints": 16,
+     "source": "fhirpath.js"
+    },
+    "isDistinct": {
+     "constraints": 13,
+     "source": "fhirpath.js"
+    },
+    "select": {
+     "constraints": 11,
+     "source": "fhirpath.js"
+    },
+    "first": {
+     "constraints": 7,
+     "source": "fhirpath.js"
+    },
+    "extension": {
+     "constraints": 7,
+     "source": "fhirpath.js"
+    },
+    "startsWith": {
+     "constraints": 7,
+     "source": "ours(override)"
+    },
+    "contains": {
+     "constraints": 6,
+     "source": "ours(override)"
+    },
+    "trace": {
+     "constraints": 5,
+     "source": "fhirpath.js"
+    },
+    "toString": {
+     "constraints": 5,
+     "source": "fhirpath.js"
+    },
+    "length": {
+     "constraints": 4,
+     "source": "fhirpath.js"
+    },
+    "hasValue": {
+     "constraints": 4,
+     "source": "fhirpath.js"
+    },
+    "is": {
+     "constraints": 4,
+     "source": "fhirpath.js"
+    },
+    "descendants": {
+     "constraints": 3,
+     "source": "fhirpath.js"
+    },
+    "resolve": {
+     "constraints": 3,
+     "source": "ours(override)"
+    },
+    "ofType": {
+     "constraints": 3,
+     "source": "fhirpath.js"
+    },
+    "tail": {
+     "constraints": 3,
+     "source": "fhirpath.js"
+    },
+    "toInteger": {
+     "constraints": 3,
+     "source": "fhirpath.js"
+    },
+    "htmlChecks": {
+     "constraints": 2,
+     "source": "ours"
+    },
+    "iif": {
+     "constraints": 2,
+     "source": "fhirpath.js"
+    },
+    "as": {
+     "constraints": 1,
+     "source": "ours(override)"
+    },
+    "intersect": {
+     "constraints": 1,
+     "source": "fhirpath.js"
+    },
+    "repeat": {
+     "constraints": 1,
+     "source": "fhirpath.js"
+    },
+    "allTrue": {
+     "constraints": 1,
+     "source": "fhirpath.js"
+    },
+    "memberOf": {
+     "constraints": 1,
+     "source": "ours(override)"
+    },
+    "combine": {
+     "constraints": 1,
+     "source": "fhirpath.js"
+    },
+    "children": {
+     "constraints": 1,
+     "source": "fhirpath.js"
+    },
+    "replaceMatches": {
+     "constraints": 1,
+     "source": "fhirpath.js"
+    },
+    "substring": {
+     "constraints": 1,
+     "source": "fhirpath.js"
+    }
+   }
+  },
+  "tw.gov.mohw.nhi.pas#1.2.7": {
+   "closure": [
+    "tw.gov.mohw.nhi.pas#1.2.7",
+    "hl7.fhir.r4.core#4.0.1",
+    "hl7.terminology.r4#7.4.0",
+    "tw.gov.mohw.twcore#0.3.2",
+    "hl7.fhir.us.davinci-pas#2.2.1",
+    "hl7.fhir.uv.extensions.r4#5.3.0",
+    "hl7.fhir.uv.ips#1.1.0",
+    "hl7.fhir.uv.sdc#3.0.0",
+    "hl7.terminology.r4#6.1.0",
+    "hl7.fhir.uv.extensions.r4#5.1.0",
+    "hl7.fhir.uv.sdc#4.0.0",
+    "hl7.fhir.us.core#7.0.0",
+    "hl7.terminology.r4#7.1.0",
+    "hl7.fhir.uv.tools.r4#1.1.2",
+    "hl7.fhir.us.core.v311#3.1.1",
+    "hl7.fhir.us.core.v610#6.1.0",
+    "hl7.fhir.uv.xver-r5.r4#0.1.0",
+    "hl7.fhir.us.davinci-crd#2.2.1",
+    "hl7.fhir.us.davinci-cdex#2.1.0",
+    "hl7.fhir.us.davinci-hrex#1.2.0",
+    "hl7.fhir.uv.extensions.r4#5.2.0",
+    "hl7.fhir.uv.subscriptions-backport.r4#1.1.0",
+    "fhir.dicom#2022.4.20221006",
+    "hl7.terminology.r4#5.0.0",
+    "hl7.fhir.r4.examples#4.0.1",
+    "hl7.fhir.uv.extensions.r4#5.3.0-ballot-tc1",
+    "us.nlm.vsac#0.18.0",
+    "us.cdc.phinvads#0.12.0",
+    "hl7.terminology.r4#5.5.0",
+    "hl7.fhir.uv.extensions#5.1.0-snapshot1",
+    "hl7.fhir.uv.smart-app-launch#2.0.0",
+    "hl7.fhir.us.core#3.1.1",
+    "hl7.fhir.us.core#6.1.0",
+    "us.nlm.vsac#0.19.0",
+    "hl7.fhir.uv.cds-hooks#3.0.0-ballot",
+    "hl7.fhir.uv.cds-hooks-library#1.0.1",
+    "hl7.terminology.r4#6.2.0",
+    "hl7.fhir.us.carin-bb#2.0.0",
+    "hl7.fhir.us.davinci-dtr#2.1.0",
+    "hl7.fhir.us.davinci-pas#2.1.0",
+    "hl7.fhir.us.davinci-hrex#1.1.0",
+    "hl7.terminology.r4#6.5.0",
+    "hl7.terminology.r5#5.3.0",
+    "us.nlm.vsac#0.11.0",
+    "ihe.formatcode.fhir#1.1.0",
+    "hl7.fhir.uv.bulkdata#2.0.0",
+    "hl7.fhir.uv.extensions.r4#1.0.0",
+    "hl7.fhir.uv.smart-app-launch#2.1.0",
+    "hl7.terminology.r4#7.0.1",
+    "us.nlm.vsac#0.7.0",
+    "hl7.fhir.us.davinci-crd#2.1.0",
+    "hl7.fhir.us.davinci-crd#2.0.0",
+    "hl7.fhir.r5.core#5.0.0",
+    "hl7.terminology.r4#5.3.0",
+    "hl7.fhir.us.davinci-hrex#1.0.0",
+    "hl7.fhir.us.udap-security#0.1.0"
+   ],
+   "structureDefinitions": 3112,
+   "constraintUses": 26273,
+   "distinctConstraints": 522,
+   "parseErrors": [],
+   "unknownFunctionConstraints": [],
+   "deliberatelyUnevaluable": [],
+   "functionsUsed": {
+    "exists": {
+     "constraints": 322,
+     "source": "fhirpath.js"
+    },
+    "empty": {
+     "constraints": 130,
+     "source": "fhirpath.js"
+    },
+    "where": {
+     "constraints": 128,
+     "source": "fhirpath.js"
+    },
+    "matches": {
+     "constraints": 72,
+     "source": "ours(override)"
+    },
+    "all": {
+     "constraints": 55,
+     "source": "fhirpath.js"
+    },
+    "not": {
+     "constraints": 48,
+     "source": "fhirpath.js"
+    },
+    "count": {
+     "constraints": 39,
+     "source": "fhirpath.js"
+    },
+    "ofType": {
+     "constraints": 36,
+     "source": "fhirpath.js"
+    },
+    "resolve": {
+     "constraints": 29,
+     "source": "ours(override)"
+    },
+    "isDistinct": {
+     "constraints": 18,
+     "source": "fhirpath.js"
+    },
+    "select": {
+     "constraints": 17,
+     "source": "fhirpath.js"
+    },
+    "startsWith": {
+     "constraints": 17,
+     "source": "ours(override)"
+    },
+    "length": {
+     "constraints": 15,
+     "source": "fhirpath.js"
+    },
+    "extension": {
+     "constraints": 15,
+     "source": "fhirpath.js"
+    },
+    "first": {
+     "constraints": 14,
+     "source": "fhirpath.js"
+    },
+    "is": {
+     "constraints": 11,
+     "source": "fhirpath.js"
+    },
+    "toString": {
+     "constraints": 11,
+     "source": "fhirpath.js"
+    },
+    "contains": {
+     "constraints": 9,
+     "source": "ours(override)"
+    },
+    "trace": {
+     "constraints": 7,
+     "source": "fhirpath.js"
+    },
+    "memberOf": {
+     "constraints": 7,
+     "source": "ours(override)"
+    },
+    "descendants": {
+     "constraints": 6,
+     "source": "fhirpath.js"
+    },
+    "hasValue": {
+     "constraints": 5,
+     "source": "fhirpath.js"
+    },
+    "repeat": {
+     "constraints": 5,
+     "source": "fhirpath.js"
+    },
+    "iif": {
+     "constraints": 4,
+     "source": "fhirpath.js"
+    },
+    "toInteger": {
+     "constraints": 4,
+     "source": "fhirpath.js"
+    },
+    "substring": {
+     "constraints": 3,
+     "source": "fhirpath.js"
+    },
+    "tail": {
+     "constraints": 3,
+     "source": "fhirpath.js"
+    },
+    "combine": {
+     "constraints": 3,
+     "source": "fhirpath.js"
+    },
+    "as": {
+     "constraints": 2,
+     "source": "ours(override)"
+    },
+    "htmlChecks": {
+     "constraints": 2,
+     "source": "ours"
+    },
+    "round": {
+     "constraints": 2,
+     "source": "fhirpath.js"
+    },
+    "intersect": {
+     "constraints": 2,
+     "source": "fhirpath.js"
+    },
+    "allTrue": {
+     "constraints": 2,
+     "source": "fhirpath.js"
+    },
+    "subsetOf": {
+     "constraints": 2,
+     "source": "fhirpath.js"
+    },
+    "children": {
+     "constraints": 1,
+     "source": "fhirpath.js"
+    },
+    "replaceMatches": {
+     "constraints": 1,
+     "source": "fhirpath.js"
+    },
+    "distinct": {
+     "constraints": 1,
+     "source": "fhirpath.js"
+    },
+    "lowBoundary": {
+     "constraints": 1,
+     "source": "fhirpath.js"
+    },
+    "highBoundary": {
+     "constraints": 1,
+     "source": "fhirpath.js"
+    }
+   }
+  }
+ }
+}
