@@ -16,6 +16,7 @@
  */
 
 import { config } from "../config.js";
+import { BUILD } from "../toolVersions.js";
 import { configureLogLevel, logError, logInfo, logWarning } from "../logger.js";
 import * as database from "../db.js";
 import { initPool, getPool, closePool, query, withTransaction } from "../db.js";
@@ -349,6 +350,7 @@ export async function runWorker(): Promise<void> {
   logInfo("Admin worker started (resource-aware parallel mode)", {
     worker_name: workerName,
     process_id: processId,
+    build: BUILD,
     poll_interval: pollInterval,
     heartbeat_interval: heartbeatInterval,
     resources: [...JOB_TYPE_RESOURCES.keys()].sort(),

@@ -1,10 +1,10 @@
 /**
  * ICD-10-CM / ICD-10-PCS service.
  *
- * Faithful port of `src/icd_service.py` (deterministic methods only). Data is
- * pre-loaded into PostgreSQL by the loader. `searchCodes` (hybrid BM25 + vector)
- * is intentionally NOT ported yet — it depends on the embedding service, which
- * is a separate Phase-1 port; until then `search_medical_codes` stays unported.
+ * Port of `src/icd_service.py`. Data is loaded into PostgreSQL by the admin
+ * console's ICD import (`icd_import` job, run by the admin worker).
+ * `searchCodes` backs `search_medical_codes`: hybrid BM25 + vector re-ranking for
+ * diagnoses (keyword-only when embeddings are unavailable), BM25 for procedures.
  *
  * Output objects mirror the Python `dict(row)` shapes value-for-value. BIGINT
  * COUNT results are coerced to `number` (pg returns them as strings) so they
@@ -38,7 +38,7 @@ export class IcdService {
     const procCount = Number(proc.rows[0]?.count ?? 0);
     this.pcsAvailable = procCount > 0;
     if (diagCount === 0) {
-      logError("ICD diagnoses table is empty — run data-loader (--icd) first");
+      logError("ICD diagnoses table is empty — run the ICD import from the admin console (ICD module)");
     } else {
       logInfo("ICD Service ready", { diagnoses: diagCount, procedures: procCount });
     }
@@ -124,7 +124,8 @@ export class IcdService {
         results.procedures = [];
         results.procedures_note =
           "ICD-10-PCS data not loaded. " +
-          "Add icd10pcs_tables_<year>.zip to fhir-code/icd10pcs/ and re-run data-loader.";
+          "Upload the ICD-10-PCS tables zip (icd10pcs_tables_<year>.zip) in the admin console's ICD module " +
+          "and re-run the ICD import.";
       }
     }
 

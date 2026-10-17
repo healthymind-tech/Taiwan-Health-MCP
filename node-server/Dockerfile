@@ -24,6 +24,10 @@ COPY --from=build /app/dist ./dist
 # time; the services resolve them from /src/prompts (dist/../../src/prompts).
 COPY src/prompts/ /src/prompts/
 
+# Built-in OCR test samples (Integrations → OCR), read from /app/public/samples
+# by admin/ocrTestSamples.ts. Small synthetic files (~250 KB total).
+COPY public/samples/ ./public/samples/
+
 # MCP transport port (overridden by MCP_PORT at runtime).
 EXPOSE 8000
 # Metrics port.

@@ -4,10 +4,12 @@
  * (`search_by_*`, `get_drug_details`, `get_drug_asset_links`,
  * `identify_unknown_pill`). The MCP tool wrappers live in `mcp.ts`.
  *
- * The TFDA crawl / OCR / analysis loader pipeline is NOT ported here — it is
- * deferred to a later phase. MinIO presigning is also not wired in the Node
- * backend yet; `presigned_url` is emitted as `null` (same as the Python server
- * when MinIO is unconfigured), so asset-link output stays parity-faithful.
+ * The write side (TFDA index import, crawl → MinIO, OCR + analysis) lives in
+ * `loaders/drugIndex.ts` / `drugEnrichment.ts` / `drugAnalysis.ts`, run by the
+ * admin worker. Asset bytes are read from MinIO (`getDrugAssetContent`, behind a
+ * same-origin admin proxy), but `get_drug_asset_links` does not presign: its
+ * `presigned_url` is always `null` (same as the Python server when MinIO is
+ * unconfigured).
  */
 
 import { query } from "./db.js";
@@ -497,7 +499,7 @@ export class DrugService {
 
     const assets = r.rows.map((row) => {
       const objectKey = (row.object_key as string) || "";
-      // MinIO presigning is not wired in the Node backend yet — emit null,
+      // No presigning (minioService has no presign helper) — always null,
       // matching the Python server when MinIO is unconfigured.
       const presignedUrl: string | null = null;
       return {

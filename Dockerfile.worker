@@ -23,6 +23,9 @@ RUN npm prune --omit=dev
 
 # ── runtime ───────────────────────────────────────────────────────────────────
 FROM node:20-slim
+# Git sha reported in the worker startup log (compose passes BUILD_SHA; see compose.yaml).
+ARG BUILD_SHA=dev
+ENV BUILD_SHA=$BUILD_SHA
 WORKDIR /app
 
 # Full-system backup jobs stream a PostgreSQL 16 custom-format dump. Install a

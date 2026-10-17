@@ -64,7 +64,7 @@ export const GROUP_META: Record<string, GroupMeta> = {
   },
   worker: {
     label: "背景工作程序",
-    description: "admin-worker 的輪詢與心跳節奏，只在工作程序啟動時讀取一次。由部署環境管理；請改 .env 後重啟 worker。",
+    description: "admin-worker 的輪詢與心跳節奏，只在工作程序啟動時讀取一次。首次啟動時由 .env 種子化並存入 admin.app_settings（群組 worker），之後再改 .env 不會生效；如需調整，請直接更新這些資料列後重啟 worker。",
   },
 };
 

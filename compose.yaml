@@ -88,6 +88,8 @@ services:
     build:
       context: .
       dockerfile: node-server/Dockerfile
+      args:
+        BUILD_SHA: ${BUILD_SHA:-dev}
     container_name: taiwanHealthMcp
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -174,6 +176,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.worker
+      args:
+        BUILD_SHA: ${BUILD_SHA:-dev}
     container_name: taiwanHealthMcp_admin_worker
     # CMD in Dockerfile.worker runs `node dist/admin/adminWorker.js`.
     extra_hosts:

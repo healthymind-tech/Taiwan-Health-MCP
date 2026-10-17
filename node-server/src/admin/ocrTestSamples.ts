@@ -8,7 +8,33 @@ import fs from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const SAMPLES_DIR = path.resolve(HERE, "..", "..", "public", "samples");
+
+/**
+ * Candidate sample directories, first existing one wins:
+ *   1. OCR_SAMPLES_DIR (explicit override);
+ *   2. <dist|src>/../../public/samples — /app/public/samples in the app image
+ *      (node-server/Dockerfile copies the repo's public/samples there);
+ *   3. <repo>/public/samples — local dev (tsx src/ or node dist/ under node-server/).
+ */
+const SAMPLE_DIR_CANDIDATES: string[] = [
+  process.env.OCR_SAMPLES_DIR?.trim() || "",
+  path.resolve(HERE, "..", "..", "public", "samples"),
+  path.resolve(HERE, "..", "..", "..", "public", "samples"),
+].filter(Boolean);
+
+let resolvedSamplesDir: string | null = null;
+async function samplesDir(): Promise<string> {
+  if (resolvedSamplesDir) return resolvedSamplesDir;
+  for (const dir of SAMPLE_DIR_CANDIDATES) {
+    try {
+      if ((await fs.stat(dir)).isDirectory()) return (resolvedSamplesDir = dir);
+    } catch {
+      // try the next candidate
+    }
+  }
+  // None exists: fall through to the first candidate (listSamples returns []).
+  return SAMPLE_DIR_CANDIDATES[0];
+}
 
 export interface SampleFile {
   id: string;
@@ -25,8 +51,9 @@ export interface SampleFile {
  * Returns metadata without loading file contents.
  */
 export async function listSamples(): Promise<SampleFile[]> {
+  const dir = await samplesDir();
   try {
-    const entries = await fs.readdir(SAMPLES_DIR, { withFileTypes: true });
+    const entries = await fs.readdir(dir, { withFileTypes: true });
     const samples: SampleFile[] = [];
 
     for (const entry of entries) {
@@ -37,10 +64,10 @@ export async function listSamples(): Promise<SampleFile[]> {
       const stem = path.basename(filename, ext);
 
       // Only include supported file types
-      if (![".pdf", ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".tiff"].includes(ext))
+      if (![".pdf", ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".tiff", ".tif"].includes(ext))
         continue;
 
-      const filepath = path.join(SAMPLES_DIR, filename);
+      const filepath = path.join(dir, filename);
       const stats = await fs.stat(filepath);
 
       let sampleType: "pdf" | "image" = "image";
@@ -95,7 +122,7 @@ export async function getSampleData(sampleId: string): Promise<Buffer | null> {
     const sample = samples.find((s) => s.id === sampleId);
     if (!sample) return null;
 
-    const filepath = path.join(SAMPLES_DIR, sample.filename);
+    const filepath = path.join(await samplesDir(), sample.filename);
     return await fs.readFile(filepath);
   } catch {
     return null;

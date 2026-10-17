@@ -339,6 +339,36 @@ CREATE TABLE IF NOT EXISTS admin.llm_role_routes (
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Embedding identity (see db/migrations/20261021_embedding_identity.sql): probe vectors
+-- of the adopted model (single row) — also created at runtime by admin/embeddingIdentity.ts.
+CREATE TABLE IF NOT EXISTS admin.embedding_identity (
+    id SMALLINT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+    version INTEGER NOT NULL DEFAULT 1,
+    state TEXT NOT NULL DEFAULT 'active' CHECK (state IN ('active', 'switching')),
+    model TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    account_name TEXT NOT NULL DEFAULT '',
+    dimensions INTEGER NOT NULL,
+    probe_texts JSONB NOT NULL,
+    probe_vectors JSONB NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_by TEXT NOT NULL DEFAULT ''
+);
+
+-- Per (provider account, model, dimensions) fingerprint check against the identity.
+CREATE TABLE IF NOT EXISTS admin.embedding_fingerprints (
+    account_id BIGINT NOT NULL REFERENCES admin.llm_providers (id) ON DELETE CASCADE,
+    model TEXT NOT NULL,
+    dimensions INTEGER NOT NULL,
+    identity_version INTEGER NOT NULL,
+    ok BOOLEAN NOT NULL,
+    min_similarity DOUBLE PRECISION,
+    mean_similarity DOUBLE PRECISION,
+    message TEXT NOT NULL DEFAULT '',
+    checked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (account_id, model, dimensions)
+);
+
 -- Per-model (route member) Analysis LM call stats (see db/migrations/20260802_llm_profile_stats.sql).
 CREATE TABLE IF NOT EXISTS admin.llm_profile_stats (
     profile_id         BIGINT NOT NULL,  -- route member id

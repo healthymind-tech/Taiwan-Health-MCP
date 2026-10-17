@@ -1,11 +1,12 @@
 /**
  * LOINC lab service (deterministic lookups only).
  *
- * Faithful port of the `query_loinc`-backing methods of `src/lab_service.py`:
- * `get_patient_friendly_name` (detail mode) and `get_reference_range`
- * (reference_range mode). The embedding-backed `search_loinc` /
- * `interpret_lab_result` / `batch_interpret_lab_results` are NOT ported here
- * (search needs the embedding service; interpretation is a later batch).
+ * Port of `src/lab_service.py`. Backs the whole Lab / LOINC tool group:
+ * `search_loinc` (`searchLoincCode` — hybrid when embeddings are available,
+ * keyword-only otherwise, plus specimen / related-test lookups),
+ * `query_loinc` (`getPatientFriendlyName` / `getReferenceRange`), and
+ * `interpret_lab_result` / `batch_interpret_lab_results`
+ * (`interpretLabResult` / `batchInterpretResults`).
  *
  * NUMERIC columns (`range_low`/`range_high`) come back from pg as strings; they
  * are coerced to `number` to match Python's `float(...)`.
