@@ -1,0 +1,284 @@
+"""Acceptance gates of mcp_proposal/MCP_GROUNDING_SPEC.md §5.2, run against a deployed server over the
+real MCP protocol (streamable HTTP, /mcp) — a standalone port of mcp_proposal/reference/run_tests.py
+`--impl mcp` for the gates whose inputs ship in this repo (the CARVE datasets do not).
+
+    python3 -I node-server/scripts/grounding-acceptance/run_gates.py --url http://<staging>:8090/mcp [--bridge]
+
+--bridge   also run T1/T4/T6 through the OpenAPI bridge (POST /tools/<name>) and require identical results.
+
+Gates:
+  T1  21 grounding fixtures: valid + exact (rule, path) error set           (mcp_proposal/fixtures/grounding)
+  T2* gold strict, 7 of 60 gold Bundles with their gold evidence maps: 0 errors (node-server grounding __fixtures__)
+  T3* gold auto, the same 7 gold Bundles: 0 errors
+  T4  30 completeness fixtures: status + missing
+  T5  24 profiles: (id, required_by head, grounding_class) set
+  T6  2 combined fhir_validate_bundle fixtures: valid / conformanceValid / groundingValid
+  T7  every grounding call < 2000 ms (p95 reported)
+  T8* the 82 recorded single-value mutations of those 7 gold Bundles: detected at their entry (rate >= 0.95)
+  T9* fhir_validate_bundle WITHOUT source_text vs fixtures/conformance_baseline.json, for every baseline
+      Bundle whose content is available here (matched by bundle_sha256); differences are listed
+  DET determinism: the same grounding call twice -> identical output except elapsed_ms
+  (* = partial: the remainder needs the CARVE datasets / model outputs)
+Read-only tool calls only.
+"""
+import argparse, glob, gzip, hashlib, json, os, sys, time, urllib.request
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+REPO = os.path.abspath(os.path.join(HERE, "../../.."))
+FX = os.path.join(REPO, "mcp_proposal/fixtures")
+NFX = os.path.join(REPO, "node-server/src/grounding/__fixtures__")
+PKG = {"package_id": "tw.gov.mohw.twcore", "version": "1.0.0"}
+
+ap = argparse.ArgumentParser()
+ap.add_argument("--url", required=True, help="MCP endpoint, e.g. http://host:8090/mcp")
+ap.add_argument("--bridge", action="store_true")
+ap.add_argument("--max-ms", type=float, default=2000.0)
+ap.add_argument("--out", default=None, help="write per-gate details as JSON")
+a = ap.parse_args()
+
+
+class MCP:
+    def __init__(self, url):
+        self.url, self.sid, self.n = url, None, 0
+        self.server_info = self.rpc("initialize", {"protocolVersion": "2025-03-26", "capabilities": {}, "clientInfo": {"name": "run_gates", "version": "1"}})["serverInfo"]
+        self.rpc("notifications/initialized", {}, notify=True)
+
+    def rpc(self, method, params, notify=False):
+        body = {"jsonrpc": "2.0", "method": method, "params": params}
+        if not notify:
+            self.n += 1
+            body["id"] = self.n
+        h = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream"}
+        if self.sid:
+            h["mcp-session-id"] = self.sid
+        req = urllib.request.Request(self.url, data=json.dumps(body).encode(), headers=h, method="POST")
+        with urllib.request.urlopen(req, timeout=600) as r:
+            self.sid = r.headers.get("mcp-session-id") or self.sid
+            raw = r.read().decode("utf-8")
+            ctype = r.headers.get("content-type") or ""
+        if notify:
+            return None
+        if "text/event-stream" in ctype:
+            raw = [l[5:] for l in raw.splitlines() if l.startswith("data:")][-1]
+        msg = json.loads(raw)
+        if "error" in msg:
+            raise RuntimeError(f"{method}: {msg['error']}")
+        return msg["result"]
+
+    def call(self, name, args):
+        res = self.rpc("tools/call", {"name": name, "arguments": args})
+        if res.get("isError"):
+            raise RuntimeError(f"{name}: {res['content'][0]['text'][:300]}")
+        return json.loads(res["content"][0]["text"])
+
+    def tools(self):
+        return self.rpc("tools/list", {})["tools"]
+
+
+def bridge_call(name, args):
+    base = a.url.rsplit("/mcp", 1)[0]
+    req = urllib.request.Request(f"{base}/tools/{name}", data=json.dumps(args).encode(), headers={"Content-Type": "application/json"}, method="POST")
+    with urllib.request.urlopen(req, timeout=600) as r:
+        return json.loads(r.read().decode("utf-8"))
+
+
+C = MCP(a.url)
+TIMES, RES, DETAIL = [], {}, {}
+
+
+def timed(name, args):
+    t0 = time.perf_counter()
+    out = C.call(name, args)
+    TIMES.append((time.perf_counter() - t0) * 1000)
+    return out
+
+
+def errset(out):
+    d = out["data"]
+    return sorted({(i["rule"], i["path"]) for e in d["entries"] for i in e["issues"] if i["severity"] == "error"} |
+                  {(i["rule"], i["path"]) for i in d.get("issues", []) if i["severity"] == "error"})
+
+
+def strip_elapsed(o):
+    o = json.loads(json.dumps(o))
+    o.get("data", {}).pop("elapsed_ms", None)
+    return o
+
+
+def suite(name, fn):
+    ok, msgs = fn()
+    RES[name] = ok
+    DETAIL[name] = msgs
+    print(f"[{'PASS' if ok else 'FAIL'}] {name}")
+    for m in msgs[:30]:
+        print("       ", m)
+
+
+def jload(p):
+    return json.load(gzip.open(p) if p.endswith(".gz") else open(p, encoding="utf-8"))
+
+
+GOLDEN = jload(os.path.join(NFX, "grounding_golden.json"))
+CASES = {c["id"]: c for c in GOLDEN["cases"]}
+
+
+def t1():
+    msgs, n = [], 0
+    for f in sorted(glob.glob(os.path.join(FX, "grounding/G*.input.json"))):
+        x = jload(f); exp = jload(f.replace(".input.", ".expected."))["assert"]
+        out = timed("fhir_check_grounding", x["input"]); n += 1
+        got = [list(e) for e in errset(out)]
+        if out["data"]["valid"] != exp["valid"] or got != exp["errors"]:
+            msgs.append(f"{x['fixture']}: valid {out['data']['valid']} (exp {exp['valid']}); errors {got} (exp {exp['errors']})")
+        if a.bridge and strip_elapsed(bridge_call("fhir_check_grounding", x["input"])) != strip_elapsed(out):
+            msgs.append(f"{x['fixture']}: /tools bridge output differs from MCP output")
+    return not msgs, msgs + [f"{n} fixtures"]
+
+
+def gold(mode):
+    def run():
+        msgs, n = [], 0
+        for cid in GOLDEN["gold_cases"]:
+            inp = dict(CASES[f"V_{cid}_gold_{mode}"]["input"]); n += 1
+            out = timed("fhir_check_grounding", inp)
+            if out["data"]["mode"] != mode:
+                msgs.append(f"{cid}: mode {out['data']['mode']}")
+            if errset(out):
+                msgs.append(f"{cid}: {errset(out)[:3]}")
+        return not msgs, msgs + [f"{n}/60 gold Bundles available here, {len([m for m in msgs if ':' in m])} with errors"]
+    return run
+
+
+def t4():
+    msgs, n = [], 0
+    for f in sorted(glob.glob(os.path.join(FX, "completeness/C*.input.json"))):
+        x = jload(f); exp = jload(f.replace(".input.", ".expected."))["assert"]
+        out = C.call("fhir_check_completeness", x["input"])["data"]; n += 1
+        if out["status"] != exp["status"] or out["missing"] != exp["missing"]:
+            msgs.append(f"{x['fixture']}: {out['status']} {out['missing']} (exp {exp['status']} {exp['missing']})")
+        if a.bridge and bridge_call("fhir_check_completeness", x["input"])["data"] != out:
+            msgs.append(f"{x['fixture']}: /tools bridge output differs from MCP output")
+    return not msgs, msgs + [f"{n} fixtures"]
+
+
+# Documented deviation of fhir_get_profile_required_elements from the reference (fhirRequiredElements.ts header,
+# KNOWN_DEVIATIONS in fhirRequiredElements.test.ts): vs-2's guard can never hold on the blood-pressure profile
+# (component 1..*), so neither the invariant row nor a target-implied value[x] row is emitted.
+T5_KNOWN = {"Observation-bloodPressure-twcore": {"missing": [["Observation.value[x]", "invariant:vs-2", "source_fact"]], "extra": []}}
+
+
+def t5():
+    msgs, n, dev = [], 0, []
+    for f in sorted(glob.glob(os.path.join(FX, "required_elements/*.expected.json"))):
+        exp = jload(f); n += 1
+        # verbosity=full: the compact default (toolVersion 1.1.0) omits required_by when it is plain "profile"
+        out = C.call("fhir_get_profile_required_elements", {"profile": exp["fixture"], **PKG, "verbosity": "full"})["data"]
+        got = sorted([e["id"], e["required_by"].split(" ")[0], e["grounding_class"]] for e in out["elements"])
+        missing = [x for x in exp["assert"] if x not in got]
+        extra = [x for x in got if x not in exp["assert"]]
+        known = T5_KNOWN.get(exp["fixture"], {"missing": [], "extra": []})
+        if missing == known["missing"] and extra == known["extra"]:
+            if missing or extra:
+                dev.append(f"{exp['fixture']}: documented deviation, missing {missing} / extra {extra}")
+            continue
+        msgs.append(f"{exp['fixture']}: missing {missing[:3]} / extra {extra[:3]}")
+    return not msgs, msgs + dev + [f"{n} profiles ({len(dev)} with a documented deviation)"]
+
+
+def t6():
+    msgs = []
+    for f in sorted(glob.glob(os.path.join(FX, "validate_bundle_combined/*.input.json"))):
+        x = jload(f); exp = jload(f.replace(".input.", ".expected."))["assert"]
+        t0 = time.perf_counter(); out = C.call("fhir_validate_bundle", x["input"]); TIMES.append((time.perf_counter() - t0) * 1000)
+        d = out["data"]
+        got = {k: d.get(k) for k in exp}
+        if got != exp:
+            msgs.append(f"{os.path.basename(f)}: {got} (exp {exp})")
+        if d.get("source") != "builtin+grounding" or "groundingVersion" not in (out.get("provenance") or {}):
+            msgs.append(f"{os.path.basename(f)}: source/provenance not marked as grounding")
+        if a.bridge and bridge_call("fhir_validate_bundle", x["input"])["data"] != d:
+            msgs.append(f"{os.path.basename(f)}: /tools bridge output differs from MCP output")
+        msgs.append(f"{os.path.basename(f)}: {got}")
+    return not [m for m in msgs if "exp" in m or "differs" in m or "not marked" in m], msgs
+
+
+def t8():
+    mut = jload(os.path.join(NFX, "mutation_golden.json"))
+    det = tot = 0; miss = []
+    for m in mut["mutations"]:
+        base = CASES[f"V_{m['case_id']}_gold_auto"]["input"]
+        b = json.loads(json.dumps(base["bundle"])); b["entry"][m["ei"]]["resource"] = m["resource"]
+        out = timed("fhir_check_grounding", {**base, "bundle": b, "mode": "auto"})
+        tot += 1
+        if any(i["severity"] == "error" for i in out["data"]["entries"][m["ei"]]["issues"]):
+            det += 1
+        else:
+            miss.append(f"{m['case_id']} {m['kind']} {m['path']}")
+    rate = det / tot
+    return rate >= 0.95, [f"{det}/{tot} = {rate:.3f} (subset recorded in mutation_golden.json; reference full run 714/739 = 0.966)"] + miss
+
+
+def sig(d):
+    d = d.get("data", d)
+    errs = sorted({(i.get("code"), i.get("path")) for e in d.get("entries", []) for i in e.get("issues", []) if i.get("severity") in ("error", "fatal")} |
+                  {(i.get("code"), i.get("path")) for i in d.get("issues", []) if i.get("severity") in ("error", "fatal")})
+    return {"valid": d.get("valid"), "n_errors": len(errs), "errors": [list(x) for x in errs]}
+
+
+def bsha(b):
+    return hashlib.sha256(json.dumps(b, sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:16]
+
+
+def t9():
+    base = jload(os.path.join(FX, "conformance_baseline.json"))["results"]
+    have = {}
+    for f in glob.glob(os.path.join(FX, "grounding/G*.input.json")):
+        b = jload(f)["input"]["bundle"]; have[bsha(b)] = b
+    for f in glob.glob(os.path.join(FX, "validate_bundle_combined/*.input.json")):
+        b = jload(f)["input"]["bundle"]; have[bsha(b)] = b
+    for c in GOLDEN["cases"]:
+        b = c["input"]["bundle"]; have[bsha(b)] = b
+    msgs, n, same = [], 0, 0
+    for k, v in sorted(base.items()):
+        b = have.get(v["bundle_sha256"])
+        if b is None:
+            continue
+        n += 1
+        out = C.call("fhir_validate_bundle", {"bundle": b, **PKG})
+        if "groundingValid" in out["data"] or out["data"].get("source") != "builtin":
+            msgs.append(f"{k}: grounding ran without source_text")
+        r = sig(out)
+        if r["valid"] == v["valid"] and r["errors"] == v["errors"]:
+            same += 1
+        else:
+            msgs.append(f"{k}: now valid={r['valid']} errors={r['errors']}  | baseline valid={v['valid']} errors={v['errors']}")
+    return not msgs, msgs + [f"{n}/{len(base)} baseline Bundles available here; {same} identical"]
+
+
+def det():
+    x = jload(sorted(glob.glob(os.path.join(FX, "grounding/G05*.input.json")))[0])["input"]
+    o1, o2 = strip_elapsed(C.call("fhir_check_grounding", x)), strip_elapsed(C.call("fhir_check_grounding", x))
+    h = lambda o: hashlib.sha256(json.dumps(o, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+    return h(o1) == h(o2), [h(o1)[:16]]
+
+
+def t7():
+    s = sorted(TIMES); p95 = s[int(0.95 * (len(s) - 1))]
+    return s[-1] < a.max_ms, [f"n={len(s)} max={s[-1]:.0f} ms p95={p95:.0f} ms mean={sum(s) / len(s):.0f} ms (limit {a.max_ms:.0f} ms, target p95 < 500 ms)"]
+
+
+print("server", C.server_info, "| tools", len(C.tools()))
+suite("T1 grounding fixtures", t1)
+suite("T2* gold strict (subset)", gold("strict"))
+suite("T3* gold auto (subset)", gold("auto"))
+suite("T4 completeness fixtures", t4)
+suite("T5 required elements", t5)
+suite("T6 combined fhir_validate_bundle", t6)
+suite("T8* mutation sensitivity (subset)", t8)
+suite("T9* conformance non-regression (subset)", t9)
+suite("DET determinism", det)
+suite("T7 performance", t7)
+if a.out:
+    json.dump({"server": C.server_info, "results": RES, "detail": DETAIL}, open(a.out, "w"), ensure_ascii=False, indent=1)
+print("ALL PASS" if all(RES.values()) else "SOME FAILED")
+sys.exit(0 if all(RES.values()) else 1)

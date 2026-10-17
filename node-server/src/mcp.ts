@@ -12,10 +12,10 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
-import { healthcheck as dbHealthcheck } from "./db.js";
+import { healthcheck as dbHealthcheck, query as dbQuery } from "./db.js";
 import { monitor as dbHealthMonitor } from "./dbHealth.js";
 import { getClient } from "./cache.js";
-import { getModuleStatus } from "./moduleStatus.js";
+import { getModuleStatus, type ModuleStatus } from "./moduleStatus.js";
 import { IcdService } from "./icdService.js";
 import { LabService } from "./labService.js";
 import { SnomedService } from "./snomedService.js";
@@ -29,6 +29,21 @@ import { FHIRIGService } from "./fhirIgService.js";
 import * as fhirReference from "./fhirReference.js";
 import { getEmbeddingService } from "./embeddingService.js";
 import { logError } from "./logger.js";
+import { BUILD, SERVER_VERSION, TOOLS_VERSION } from "./toolVersions.js";
+import { LEXICON_SHA256, LEXICON_VERSION, groundingInputShape, validateBundleGroundingShape } from "./grounding/index.js";
+import { completenessInputShape, type CompletenessInput } from "./grounding/completeness/index.js";
+import {
+  TOOL_DESCRIPTIONS,
+  addBundleGrounding,
+  addResourceGrounding,
+  dbTerminologyNames,
+  groundingLogger,
+  runCheckCompletenessTool,
+  runCheckGroundingTool,
+  type CheckGroundingArgs,
+  type GroundingToolDeps,
+  type ValidateGroundingArgs,
+} from "./groundingTools.js";
 import {
   bmiInputShape,
   calculateBmi,
@@ -54,8 +69,7 @@ import {
   wellsPeInputShape,
 } from "./clinicalCalculators.js";
 
-const SERVER_NAME = "taiwan-health-mcp";
-const SERVER_VERSION = "0.0.0";
+export const SERVER_NAME = "taiwan-health-mcp";
 
 // ── Tool registry (OpenAPI bridge) ────────────────────────────────────────────
 // Mirrors the Python OpenAPI bridge (`_build_openapi_spec` + `_handle_openapi_tool_call`):
@@ -71,14 +85,14 @@ interface RegisteredTool {
   handler: (args: Record<string, unknown>) => Promise<{ content: Array<{ type: string; text?: string }> }>;
 }
 
-const toolRegistry = new Map<string, RegisteredTool>();
+let toolRegistry = new Map<string, RegisteredTool>();
 
-/** Patch `server.registerTool` so every registration is also recorded in `toolRegistry`. */
-function captureToolRegistrations(server: McpServer): void {
+/** Patch `server.registerTool` so every registration is also recorded in `into`. */
+function captureToolRegistrations(server: McpServer, into: Map<string, RegisteredTool>): void {
   const orig = server.registerTool.bind(server) as (...a: unknown[]) => unknown;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (server as any).registerTool = (name: string, config: any, handler: any) => {
-    toolRegistry.set(name, {
+    into.set(name, {
       name,
       description: typeof config?.description === "string" ? config.description : "",
       shape: (config?.inputSchema ?? {}) as z.ZodRawShape,
@@ -227,13 +241,64 @@ async function buildHealthCheck(): Promise<string> {
     // leave all-false
   }
 
+  const versions = dbOk ? await versionInfo() : { terminology: {}, ig_packages: [], default_ig: null };
+
   return JSON.stringify({
     status: dbOk ? "ok" : "degraded",
     database: dbOk ? "ok" : "error",
     db_health: dbHealthMonitor().snapshot(),
     cache: cacheOk ? "ok" : "error",
     services,
+    version: SERVER_VERSION,
+    build: BUILD,
+    tools_version: TOOLS_VERSION,
+    lexicon_version: LEXICON_VERSION,
+    lexicon_sha256: LEXICON_SHA256,
+    terminology: versions.terminology,
+    ig_packages: versions.ig_packages,
+    default_ig: versions.default_ig,
   });
+}
+
+/**
+ * Loaded terminology editions + installed IG packages for health_check
+ * (MCP_GROUNDING_SPEC §6.3). Every query is independent and fail-soft: a
+ * missing editions table (older schema) just omits that entry.
+ */
+async function versionInfo(): Promise<{
+  terminology: Record<string, string>;
+  ig_packages: string[];
+  default_ig: string | null;
+}> {
+  const terminology: Record<string, string> = {};
+  const safe = async <T extends Record<string, any>>(sql: string): Promise<T[]> => {
+    try {
+      return (await dbQuery<T>(sql)).rows;
+    } catch {
+      return [];
+    }
+  };
+  for (const r of await safe<{ code_system: string; edition: string; code_count: number }>(
+    "SELECT code_system, edition, code_count FROM icd.editions ORDER BY code_system",
+  )) {
+    const key = r.code_system === "icd-10-cm" ? "icd10cm" : r.code_system === "icd-10" ? "icd10" : r.code_system;
+    terminology[key] = String(r.edition);
+  }
+  for (const r of await safe<{ version: string }>("SELECT version FROM loinc.editions WHERE code_system = 'loinc'")) {
+    terminology.loinc = String(r.version);
+  }
+  for (const r of await safe<{ module_id: string; version_date: string | Date }>(
+    "SELECT module_id, version_date FROM snomed.editions WHERE code_system = 'snomed'",
+  )) {
+    const d = r.version_date instanceof Date ? r.version_date.toISOString().slice(0, 10) : String(r.version_date).slice(0, 10);
+    terminology.snomed = `${r.module_id}/${d.replace(/-/g, "")}`;
+  }
+  const igRows = await safe<{ package_id: string; version: string; is_default: boolean }>(
+    "SELECT package_id, version, is_default FROM fhir.ig_packages ORDER BY is_default DESC, package_id, version",
+  );
+  const ig_packages = igRows.map((r) => `${r.package_id}#${r.version}`);
+  const def = igRows.find((r) => r.is_default);
+  return { terminology, ig_packages, default_ig: def ? `${def.package_id}#${def.version}` : null };
 }
 
 /** Wrap any value as the MCP text-content result holding its JSON string. */
@@ -663,50 +728,98 @@ async function getFhirIgService(): Promise<FHIRIGService | null> {
   }
 }
 
-/** Register the FHIR IG tool group (19 tools). Mirrors `_TOOL_GROUPS["FHIR IG"]`. */
+/** Register the FHIR IG tool group (22 tools): `_TOOL_GROUPS["FHIR IG"]` + required elements + grounding / completeness checks. */
 function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
-  const pkg = { package_id: z.string().nullish().default(null), version: z.string().nullish().default(null) };
+  const pkg = {
+    package_id: z
+      .string()
+      .nullish()
+      .default(null)
+      .describe(
+        "IG package id (e.g. tw.gov.mohw.twcore). Omit to auto-resolve: a canonical argument or meta.profile pinned " +
+          "with '|version' → the package holding that version; otherwise the package that owns the canonical / " +
+          "meta.profile (manually-installed IG first); otherwise the default IG. provenance.resolved_by says which rule applied. " +
+          "With no default IG and no owner, the call fails with NO_DEFAULT_IG.",
+      ),
+    version: z
+      .string()
+      .nullish()
+      .default(null)
+      .describe("Package version (with package_id). Omitted → the default IG's version, else the highest release (pre-releases only if no release exists)."),
+  };
+  const allPackages = {
+    all_packages: z
+      .boolean()
+      .default(false)
+      .describe("Search every installed package instead of one (rows then carry package_id / package_version); package_id is ignored."),
+  };
 
   server.registerTool(
     "fhir_list_igs",
-    { description: "List the FHIR Implementation Guide (IG) packages installed on this server.", inputSchema: {} },
+    {
+      description:
+        "List the FHIR Implementation Guide (IG) packages installed on this server (isDefault, installOrigin manual|dependency, dependencies). " +
+        "Tools that omit package_id use the package owning the canonical / meta.profile involved, else the default IG.",
+      inputSchema: {},
+    },
     async () => rawResult(await svc.listIgs()),
   );
 
   server.registerTool(
     "fhir_get_ig",
-    { description: "Details of one IG package: identity, dependencies, and per-resource-type artifact counts.", inputSchema: { ...pkg } },
+    {
+      description:
+        "Details of one IG package: identity, dependencies, and per-resource-type artifact counts. " +
+        "data.deps_missing lists declared dependencies that are not installed (incomplete closure).",
+      inputSchema: { ...pkg },
+    },
     async ({ package_id, version }) => rawResult(await svc.getIg(package_id ?? null, version ?? null)),
   );
 
   server.registerTool(
     "fhir_list_artifacts",
     {
-      description: "List an IG's conformance artifacts (StructureDefinitions, ValueSets, CodeSystems, examples) as summary rows.",
-      inputSchema: { resource_type: z.string().nullish().default(null), grouping_id: z.string().nullish().default(null), ...pkg, limit: z.number().int().default(50) },
+      description:
+        "List an IG's conformance artifacts (StructureDefinitions, ValueSets, CodeSystems, examples) as summary rows. " +
+        "Without package_id only the default IG is listed; all_packages=true lists every installed package. " +
+        "Zero rows comes with data.hint naming the other packages that match.",
+      inputSchema: {
+        resource_type: z.string().nullish().default(null),
+        grouping_id: z.string().nullish().default(null),
+        ...pkg,
+        ...allPackages,
+        limit: z.number().int().default(50),
+      },
     },
-    async ({ resource_type, grouping_id, package_id, version, limit }) =>
-      rawResult(await svc.listArtifacts(package_id ?? null, version ?? null, resource_type ?? null, grouping_id ?? null, limit ?? 50)),
+    async ({ resource_type, grouping_id, package_id, version, all_packages, limit }) =>
+      rawResult(
+        await svc.listArtifacts(package_id ?? null, version ?? null, resource_type ?? null, grouping_id ?? null, limit ?? 50, all_packages ?? false),
+      ),
   );
 
   server.registerTool(
     "fhir_search_artifacts",
     {
-      description: "Full-text search an IG's artifacts by id / canonical URL / name / title / description.",
-      inputSchema: { keyword: z.string(), resource_type: z.string().nullish().default(null), ...pkg, limit: z.number().int().default(20) },
+      description:
+        "Full-text search an IG's artifacts by id / canonical URL / name / title / description. " +
+        "Without package_id only the default IG is searched; all_packages=true searches every installed package. " +
+        "Zero hits comes with data.hint naming the other packages that match (e.g. Claim → the PAS IG).",
+      inputSchema: { keyword: z.string(), resource_type: z.string().nullish().default(null), ...pkg, ...allPackages, limit: z.number().int().default(20) },
     },
-    async ({ keyword, resource_type, package_id, version, limit }) =>
-      rawResult(await svc.searchArtifacts(keyword, package_id ?? null, version ?? null, resource_type ?? null, limit ?? 20)),
+    async ({ keyword, resource_type, package_id, version, all_packages, limit }) =>
+      rawResult(await svc.searchArtifacts(keyword, package_id ?? null, version ?? null, resource_type ?? null, limit ?? 20, all_packages ?? false)),
   );
 
   server.registerTool(
     "fhir_list_resource_profiles",
     {
-      description: "List the IG's selectable resource Profiles (constraint StructureDefinitions), grouped by base FHIR resource type.",
-      inputSchema: { base_type: z.string().nullish().default(null), ...pkg },
+      description: "List the IG's selectable resource Profiles (constraint StructureDefinitions), grouped by base FHIR resource type. " +
+        "Without package_id: the default IG (all_packages=true: every installed package; zero rows → data.hint). " +
+        "After choosing one, call fhir_get_profile_required_elements to learn exactly which elements it requires.",
+      inputSchema: { base_type: z.string().nullish().default(null), ...pkg, ...allPackages },
     },
-    async ({ base_type, package_id, version }) =>
-      rawResult(await svc.listResourceProfiles(package_id ?? null, version ?? null, base_type ?? null)),
+    async ({ base_type, package_id, version, all_packages }) =>
+      rawResult(await svc.listResourceProfiles(package_id ?? null, version ?? null, base_type ?? null, all_packages ?? false)),
   );
 
   server.registerTool(
@@ -722,7 +835,9 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
   server.registerTool(
     "fhir_get_profile",
     {
-      description: "Summary of one Profile / StructureDefinition: identity, base definition, derivation, element count.",
+      description:
+        "Summary of one Profile / StructureDefinition: identity, base definition, derivation, element count. " +
+        "identifier may be an id or a canonical URL, optionally pinned as 'url|version' (an uninstalled version is ARTIFACT_NOT_FOUND).",
       inputSchema: { identifier: z.string(), ...pkg },
     },
     async ({ identifier, package_id, version }) =>
@@ -732,7 +847,8 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
   server.registerTool(
     "fhir_get_profile_elements",
     {
-      description: "Read a Profile's StructureDefinition snapshot via a view: elements | element | slices | choices | binding | examples. path is required for element/slices/choices/binding.",
+      description: "Read a Profile's StructureDefinition snapshot via a view: elements | element | slices | choices | binding | examples. path is required for element/slices/choices/binding. " +
+        "Raw min is per element and ignores parent optionality — for the effective required set use fhir_get_profile_required_elements.",
       inputSchema: {
         profile: z.string(),
         view: z.enum(["elements", "element", "slices", "choices", "binding", "examples"]).default("elements"),
@@ -744,6 +860,51 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
     },
     async ({ profile, view, path, slice_name, package_id, version, limit }) =>
       rawResult(await svc.getProfileElements(profile, package_id ?? null, version ?? null, view ?? "elements", path ?? null, slice_name ?? null, limit ?? 200)),
+  );
+
+  server.registerTool(
+    "fhir_get_profile_required_elements",
+    {
+      description:
+        "Return every element a profile effectively requires (min>=1 with required ancestors, required slices, choice types, " +
+        "invariant-implied value-or-dataAbsentReason) plus target-implied primary content, each classified as auto, coding, " +
+        "source_fact or workflow_default, with cardinality, type, binding, fixed/pattern, mustSupport and a short fill hint. " +
+        "Use it before writing a resource so every required field is filled; works for any installed IG " +
+        "(without package_id the package owning the profile is used; 'url|version' pins a version). " +
+        "Profiled extensions are expanded from their definitions, and profile-specific error invariants are listed under `invariants`. " +
+        "verbosity='compact' (default) keeps id/required_by/grounding_class/fixed|pattern|value/choices/allowedCodes/hint and folds " +
+        "profile-pinned subtrees into one copyable `value`; verbosity='full' adds min/max/types/binding/mustSupport per row.",
+      inputSchema: {
+        profile: z.string().describe("Profile id (e.g. Patient-twcore) or canonical URL"),
+        ...pkg,
+        instance: z
+          .record(z.any())
+          .nullish()
+          .default(null)
+          .describe("Optional draft resource: optional parents it populates make their min>=1 children required too"),
+        include_target_implied: z.boolean().default(true),
+        include_mustsupport: z
+          .boolean()
+          .default(false)
+          .describe("Also list mustSupport-but-optional elements (required_by='mustSupport-only'). mustSupport is not required."),
+        verbosity: z
+          .enum(["compact", "full"])
+          .default("compact")
+          .describe("compact (default): minimal keys per row, pinned subtrees folded; full: every row with min/max/types/binding/mustSupport"),
+      },
+    },
+    async ({ profile, package_id, version, instance, include_target_implied, include_mustsupport, verbosity }) =>
+      rawResult(
+        await svc.getProfileRequiredElements(
+          profile,
+          package_id ?? null,
+          version ?? null,
+          (instance as Record<string, any> | null) ?? null,
+          include_target_implied ?? true,
+          include_mustsupport ?? false,
+          verbosity ?? "compact",
+        ),
+      ),
   );
 
   server.registerTool(
@@ -773,7 +934,9 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
   server.registerTool(
     "fhir_validate_code",
     {
-      description: "Check whether a (system, code) is a member of a ValueSet. Returns valid | invalid | unverifiable.",
+      description:
+        "Check whether a (system, code) is a member of a ValueSet. Returns valid | invalid | unverifiable. " +
+        "value_set may be pinned as 'url|version'.",
       inputSchema: { system: z.string(), code: z.string(), value_set: z.string(), ...pkg },
     },
     async ({ system, code, value_set, package_id, version }) =>
@@ -830,30 +993,55 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
     },
   );
 
+  // Grounding collaborators: local-DB terminology names + the IG package for provenance.
+  const groundingDeps: GroundingToolDeps = {
+    terminology: dbTerminologyNames(),
+    packageProvenance: (pid, ver) => svc.packageProvenance(pid, ver),
+    logger: groundingLogger,
+  };
+
   server.registerTool(
     "fhir_validate_resource",
     {
-      description: "Validate a FHIR resource against an IG profile, in-process (source:builtin). Pre-flight only.",
-      inputSchema: { resource: z.record(z.any()), profile: z.string().nullish().default(null), ...pkg },
+      description: TOOL_DESCRIPTIONS.fhir_validate_resource,
+      inputSchema: { resource: z.record(z.any()), profile: z.string().nullish().default(null), ...pkg, ...validateBundleGroundingShape },
     },
-    async ({ resource, profile, package_id, version }) =>
-      rawResult(await svc.validateResource(resource as Record<string, any>, profile ?? null, package_id ?? null, version ?? null)),
+    async ({ resource, profile, package_id, version, ...g }) => {
+      const conformance = await svc.validateResource(resource as Record<string, any>, profile ?? null, package_id ?? null, version ?? null);
+      return rawResult(await addResourceGrounding(conformance, resource as Record<string, any>, { ...g, package_id, version } as ValidateGroundingArgs, groundingDeps));
+    },
   );
 
   server.registerTool(
     "fhir_validate_bundle",
     {
-      description: "Validate a FHIR Bundle in-process: each entry's resource against its meta.profile plus internal reference integrity.",
-      inputSchema: { bundle: z.record(z.any()), ...pkg },
+      description: TOOL_DESCRIPTIONS.fhir_validate_bundle,
+      inputSchema: { bundle: z.record(z.any()), ...pkg, ...validateBundleGroundingShape },
     },
-    async ({ bundle, package_id, version }) =>
-      rawResult(await svc.validateBundle(bundle as Record<string, any>, package_id ?? null, version ?? null)),
+    async ({ bundle, package_id, version, ...g }) => {
+      const conformance = await svc.validateBundle(bundle as Record<string, any>, package_id ?? null, version ?? null);
+      return rawResult(await addBundleGrounding(conformance, bundle as Record<string, any>, { ...g, package_id, version } as ValidateGroundingArgs, groundingDeps));
+    },
+  );
+
+  server.registerTool(
+    "fhir_check_grounding",
+    { description: TOOL_DESCRIPTIONS.fhir_check_grounding, inputSchema: groundingInputShape },
+    async (args) => rawResult(await runCheckGroundingTool(args as CheckGroundingArgs, groundingDeps)),
+  );
+
+  server.registerTool(
+    "fhir_check_completeness",
+    { description: TOOL_DESCRIPTIONS.fhir_check_completeness, inputSchema: completenessInputShape },
+    async (args) => rawResult(await runCheckCompletenessTool(args as CompletenessInput, groundingDeps)),
   );
 
   server.registerTool(
     "fhir_get_resource_skeleton",
     {
-      description: "Get a blanked, annotated fill-form for authoring a resource against a profile (paths, cardinality, types, candidate codes, examples).",
+      description: "Get a blanked, annotated fill-form for authoring a resource against a profile (paths, cardinality, types, candidate codes, examples). " +
+        "Each field's `required` is the element's own min>=1; `effectiveRequired` also requires every ancestor to be required. " +
+        "For the complete required list (slices, invariants, where each value comes from) call fhir_get_profile_required_elements.",
       inputSchema: { profile: z.string(), ...pkg, candidate_limit: z.number().int().default(20), include_examples: z.boolean().default(true) },
     },
     async ({ profile, package_id, version, candidate_limit, include_examples }) =>
@@ -1584,16 +1772,8 @@ function registerClinicalCalculatorTools(server: McpServer): void {
   );
 }
 
-/** Construct a fresh McpServer with all currently-ported tools registered. */
-export async function buildMcpServer(): Promise<McpServer> {
-  const server = new McpServer({ name: SERVER_NAME, version: SERVER_VERSION });
-
-  // Repopulate the OpenAPI tool registry from this build (mirrors Python, where
-  // the spec reflects the currently-registered tools). Cleared first so a rebuild
-  // with different module gating replaces — never accumulates — entries.
-  toolRegistry.clear();
-  captureToolRegistrations(server);
-
+/** Register the always-on System group (`health_check`). */
+function registerSystemTools(server: McpServer): void {
   server.registerTool(
     "health_check",
     {
@@ -1606,6 +1786,132 @@ export async function buildMcpServer(): Promise<McpServer> {
       content: [{ type: "text" as const, text: await buildHealthCheck() }],
     }),
   );
+}
+
+// ── Static tool catalog (admin console) ───────────────────────────────────────
+// Every tool this server can expose, registered or not, derived from the same
+// register* functions buildMcpServer uses — so the catalog can never drift from
+// what MCP / the OpenAPI bridge would serve. The register functions are run
+// against a recording stub; handlers are captured but never invoked, and the
+// service argument is a placeholder that throws if anything touches it.
+
+/** Tool group keys, in catalog display order. */
+export type ToolGroupKey =
+  | "icd"
+  | "drug"
+  | "lab"
+  | "snomed"
+  | "fhir_condition"
+  | "fhir_medication"
+  | "fhir_ig"
+  | "health_supplements"
+  | "food_nutrition"
+  | "fhir_servers"
+  | "calculators"
+  | "system";
+
+export interface ToolGroupInfo {
+  key: ToolGroupKey;
+  label: string;
+  /** ModuleStatus key gating the group; null = always registered. */
+  module: keyof ModuleStatus | null;
+}
+
+export const TOOL_GROUPS: readonly ToolGroupInfo[] = [
+  { key: "icd", label: "ICD-10", module: "icd" },
+  { key: "drug", label: "Drug / TFDA", module: "drug" },
+  { key: "lab", label: "Lab / LOINC", module: "lab" },
+  { key: "snomed", label: "SNOMED CT", module: "snomed" },
+  { key: "fhir_condition", label: "FHIR R4 (Condition)", module: "fhir_condition" },
+  { key: "fhir_medication", label: "FHIR R4 (Medication)", module: "fhir_medication" },
+  { key: "fhir_ig", label: "FHIR IG", module: "ig" },
+  { key: "health_supplements", label: "Health Supplements", module: "health_supplements" },
+  { key: "food_nutrition", label: "Food Nutrition", module: "food_nutrition" },
+  { key: "fhir_servers", label: "FHIR Servers", module: null },
+  { key: "calculators", label: "Clinical Calculators", module: null },
+  { key: "system", label: "System", module: null },
+];
+
+/** Tools that can change state outside this server (everything else is read-only). */
+export const WRITE_CAPABLE_TOOLS: ReadonlySet<string> = new Set(["crud_fhir_server"]);
+
+export interface CatalogTool {
+  name: string;
+  group: ToolGroupKey;
+  description: string;
+  shape: z.ZodRawShape;
+}
+
+const CATALOG_PLACEHOLDER_SERVICE: never = new Proxy(
+  {},
+  {
+    get(_t, prop) {
+      throw new Error(`tool catalog: service accessed during registration (${String(prop)})`);
+    },
+  },
+) as never;
+
+const CATALOG_REGISTRARS: ReadonlyArray<[ToolGroupKey, (server: McpServer) => void]> = [
+  ["icd", (s) => registerIcdTools(s, CATALOG_PLACEHOLDER_SERVICE)],
+  ["drug", (s) => registerDrugTools(s, CATALOG_PLACEHOLDER_SERVICE)],
+  ["lab", (s) => registerLabTools(s, CATALOG_PLACEHOLDER_SERVICE)],
+  ["snomed", (s) => registerSnomedTools(s, CATALOG_PLACEHOLDER_SERVICE)],
+  ["fhir_condition", (s) => registerFhirConditionTools(s, CATALOG_PLACEHOLDER_SERVICE)],
+  ["fhir_medication", (s) => registerFhirMedicationTools(s, CATALOG_PLACEHOLDER_SERVICE)],
+  ["fhir_ig", (s) => registerFhirIgTools(s, CATALOG_PLACEHOLDER_SERVICE)],
+  ["health_supplements", (s) => registerSupplementsTools(s, CATALOG_PLACEHOLDER_SERVICE)],
+  ["food_nutrition", (s) => registerFoodTools(s, CATALOG_PLACEHOLDER_SERVICE)],
+  ["fhir_servers", (s) => registerFhirServerTools(s, CATALOG_PLACEHOLDER_SERVICE)],
+  ["calculators", (s) => registerClinicalCalculatorTools(s)],
+  ["system", (s) => registerSystemTools(s)],
+];
+
+let _catalog: CatalogTool[] | null = null;
+
+/** Every tool definition in mcp.ts, grouped and ordered by TOOL_GROUPS. Computed once. */
+export function toolCatalog(): readonly CatalogTool[] {
+  if (_catalog) return _catalog;
+  const out: CatalogTool[] = [];
+  for (const [group, register] of CATALOG_REGISTRARS) {
+    const recorder = {
+      registerTool: (name: string, cfg: { description?: unknown; inputSchema?: z.ZodRawShape }) => {
+        out.push({
+          name,
+          group,
+          description: typeof cfg?.description === "string" ? cfg.description : "",
+          shape: (cfg?.inputSchema ?? {}) as z.ZodRawShape,
+        });
+      },
+    } as unknown as McpServer;
+    register(recorder);
+  }
+  _catalog = out;
+  return out;
+}
+
+/** JSON Schema for a catalog tool's input — identical to the OpenAPI bridge's request schema. */
+export function catalogToolInputSchema(tool: CatalogTool): Record<string, unknown> {
+  return toolInputJsonSchema(tool.shape);
+}
+
+/** Names of the tools registered by the most recent buildMcpServer (what MCP / OpenAPI serve now). */
+export function registeredToolNames(): Set<string> {
+  return new Set(toolRegistry.keys());
+}
+
+/** Construct a fresh McpServer with all currently-ported tools registered. */
+export async function buildMcpServer(): Promise<McpServer> {
+  const server = new McpServer({ name: SERVER_NAME, version: SERVER_VERSION });
+
+  // Repopulate the OpenAPI tool registry from this build (mirrors Python, where
+  // the spec reflects the currently-registered tools). Built into a fresh map and
+  // swapped in at the end, so a rebuild with different module gating replaces —
+  // never accumulates — entries, and a concurrent /tools call never sees a
+  // half-built registry.
+  const nextRegistry = new Map<string, RegisteredTool>();
+  captureToolRegistrations(server, nextRegistry);
+
+  registerSystemTools(server);
 
   // Always-on Clinical Calculators group (stateless, registered regardless of module data).
   registerClinicalCalculatorTools(server);
@@ -1661,5 +1967,6 @@ export async function buildMcpServer(): Promise<McpServer> {
     });
   }
 
+  toolRegistry = nextRegistry;
   return server;
 }
