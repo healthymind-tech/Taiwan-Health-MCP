@@ -47,3 +47,11 @@ next-env.d.ts
 
 # Playwright MCP test artifacts
 .playwright-mcp/
+
+# CARVE-TW fixtures — private, never commit.
+# CARVE-TW is an external research project: its spec, fixtures and reference implementation
+# (mcp_proposal/) and every file derived from its datasets (clinical records, gold Bundles,
+# gold evidence maps, expected outputs, mutation cases, its terminology cache, goldens
+# generated from its reference implementation) stay local. Tests that need them skip when absent.
+/mcp_proposal/
+node-server/src/grounding/__fixtures__/private/

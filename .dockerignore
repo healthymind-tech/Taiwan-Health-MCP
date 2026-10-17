@@ -43,3 +43,7 @@ IUA_POC/
 .env
 .env.*
 !.env.example
+
+# CARVE-TW fixtures — private, never baked into any image layer (see .gitignore)
+mcp_proposal/
+node-server/src/grounding/__fixtures__/private/

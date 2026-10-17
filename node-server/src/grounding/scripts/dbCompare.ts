@@ -13,7 +13,7 @@ import pg from "pg";
 
 import { checkGrounding, type GroundingIssue, type GroundingResult } from "../checkGrounding.js";
 import { createDbTerminologyNames } from "../terminologyDb.js";
-import { loadFixture, referenceTerminology } from "../testkit.js";
+import { requirePrivateFixture, referenceTerminology } from "../testkit.js";
 
 const url = process.env.GROUNDING_DB_URL;
 if (!url) {
@@ -27,9 +27,9 @@ const db = createDbTerminologyNames({ query: (sql, params) => client.query(sql, 
 const ref = referenceTerminology();
 console.log("terminology:", await db.version());
 
-const G = loadFixture("grounding_golden.json");
-const MUT = loadFixture("mutation_golden.json");
-const cache = loadFixture("terminology_cache.json").codes as Record<string, { found: boolean; names: string[] }>;
+const G = requirePrivateFixture("grounding_golden.json");
+const MUT = requirePrivateFixture("mutation_golden.json");
+const cache = requirePrivateFixture("terminology_cache.json").codes as Record<string, { found: boolean; names: string[] }>;
 
 // ---- per-code names
 const keys = Object.keys(cache).sort();
