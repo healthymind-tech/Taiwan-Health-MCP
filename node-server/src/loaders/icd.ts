@@ -31,8 +31,9 @@ const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..");
 const FHIR_CODE_DIR = process.env.FHIR_CODE_DIR || path.join(REPO_ROOT, "fhir-code");
 const ICD_DIR = path.join(FHIR_CODE_DIR, "icd", "10");
 
-const CM_ZIP =
-  process.env.ICD_CM_ZIP || path.join(ICD_DIR, "icd10cm", "icd10cm-table-index-2025.zip");
+const CM_DIR = path.join(ICD_DIR, "icd10cm");
+/** Pre-2026-10 default; still used when nothing else is found in CM_DIR. */
+const LEGACY_CM_ZIP = path.join(CM_DIR, "icd10cm-table-index-2025.zip");
 const PCS_ZIP_GLOB_DIR = path.join(ICD_DIR, "icd10pcs");
 const XLSX_GLOB_DIR = ICD_DIR;
 
@@ -824,6 +825,28 @@ function firstGlob(dir: string, test: (name: string) => boolean): string | null 
   return matches.length ? path.join(dir, matches[0]) : null;
 }
 
+/**
+ * Local-dev ICD-10-CM zip discovery. `ICD_CM_ZIP` wins; otherwise, in `dir`,
+ * prefer the CMS "Code Descriptions in Tabular Order" zip (complete code set,
+ * e.g. `april-1-2026-code-descriptions-tabular-order.zip`), then a "Code Tables,
+ * Tabular and Index" zip (`icd10cm-table-index-YYYY.zip`), newest name first;
+ * falls back to the legacy `icd10cm-table-index-2025.zip` path.
+ */
+export function resolveIcd10cmZip(
+  dir: string = CM_DIR,
+  envPath: string | undefined = process.env.ICD_CM_ZIP,
+): string {
+  if (envPath) return envPath;
+  const zips = fs.existsSync(dir)
+    ? fs.readdirSync(dir).filter((n) => n.toLowerCase().endsWith(".zip")).sort().reverse()
+    : [];
+  const orderZip = zips.find((n) => /order|code-descriptions/i.test(n));
+  if (orderZip) return path.join(dir, orderZip);
+  const tableZip = zips.find((n) => /table-index|tabular/i.test(n));
+  if (tableZip) return path.join(dir, tableZip);
+  return dir === CM_DIR ? LEGACY_CM_ZIP : path.join(dir, path.basename(LEGACY_CM_ZIP));
+}
+
 export async function loadIcd(pool: pg.Pool): Promise<void> {
   const xlsxPath =
     process.env.ICD_XLSX ||
@@ -836,10 +859,11 @@ export async function loadIcd(pool: pg.Pool): Promise<void> {
     logInfo("  No Taiwan ICD bilingual XLSX resolved — loading English-only.");
   }
 
-  if (fs.existsSync(CM_ZIP)) {
-    await loadIcd10cm(pool, CM_ZIP, cmZh);
+  const cmZip = resolveIcd10cmZip();
+  if (fs.existsSync(cmZip)) {
+    await loadIcd10cm(pool, cmZip, cmZh);
   } else {
-    logError(`  ICD-10-CM zip not found: ${CM_ZIP}`);
+    logError(`  ICD-10-CM zip not found: ${cmZip}`);
   }
 
   const pcsZip =

@@ -10,6 +10,7 @@ import {
   icd10cmEdition,
   parseCmsOrderTxt,
   parseIcd10cmRelease,
+  resolveIcd10cmZip,
 } from "./icd.js";
 import { icd10cmStrict } from "../fhirValidationResolver.js";
 
@@ -110,4 +111,18 @@ test("icd10cmStrict: only a complete, current edition reports unknown codes as e
   assert.equal(icd10cmStrict({ edition: "2026-04-01", complete: false }), false);
   assert.equal(icd10cmStrict({ edition: "FY2026", complete: true }), false); // Oct 2025 release
   assert.equal(icd10cmStrict({ edition: "unknown", complete: true }), false);
+});
+
+test("resolveIcd10cmZip prefers the CMS order-file zip, keeps the table-index fallback", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "icdcm-"));
+  try {
+    assert.equal(resolveIcd10cmZip(dir, "/explicit.zip"), "/explicit.zip");
+    assert.equal(resolveIcd10cmZip(dir, undefined), path.join(dir, "icd10cm-table-index-2025.zip"));
+    fs.writeFileSync(path.join(dir, "icd10cm-table-index-2025.zip"), "");
+    assert.equal(resolveIcd10cmZip(dir, undefined), path.join(dir, "icd10cm-table-index-2025.zip"));
+    fs.writeFileSync(path.join(dir, "april-1-2026-code-descriptions-tabular-order.zip"), "");
+    assert.equal(resolveIcd10cmZip(dir, undefined), path.join(dir, "april-1-2026-code-descriptions-tabular-order.zip"));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });

@@ -15,6 +15,8 @@ export const SERVER_VERSION = "1.1.0";
 export const BUILD: string = (process.env.BUILD_SHA || process.env.GIT_SHA || "").trim() || "dev";
 
 export const TOOLS_VERSION: Record<string, string> = {
+  // 1.1.1: description is edition-agnostic (was "ICD-10-CM/PCS 2025"); output unchanged.
+  search_medical_codes: "1.1.1",
   // 1.2.0: version-aware package resolution (fhirIg.resolveTarget): provenance.resolved_by /
   // closure_versions, data.deps_missing, "|version" honoured (no silent fallback to another version).
   fhir_get_profile_required_elements: "1.2.0",

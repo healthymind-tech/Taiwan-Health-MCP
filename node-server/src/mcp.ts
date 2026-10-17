@@ -29,6 +29,7 @@ import { FHIRIGService } from "./fhirIgService.js";
 import * as fhirReference from "./fhirReference.js";
 import { getEmbeddingService } from "./embeddingService.js";
 import { logError } from "./logger.js";
+import { recordToolCall } from "./metrics.js";
 import { BUILD, SERVER_VERSION, TOOLS_VERSION } from "./toolVersions.js";
 import { LEXICON_SHA256, LEXICON_VERSION, groundingInputShape, validateBundleGroundingShape } from "./grounding/index.js";
 import { completenessInputShape, type CompletenessInput } from "./grounding/completeness/index.js";
@@ -87,18 +88,50 @@ interface RegisteredTool {
 
 let toolRegistry = new Map<string, RegisteredTool>();
 
+/**
+ * Wrap a tool handler so every invocation records Prometheus
+ * `mcp_tool_requests_total{tool,status}` / `mcp_tool_duration_seconds{tool}`.
+ * This is the single dispatch point shared by the MCP transport, the
+ * `POST /tools/<name>` bridge and the admin playground (both go through
+ * `toolRegistry`). Labels are the tool name and "success" / "error" only —
+ * arguments are never recorded.
+ */
+export function withToolMetrics<A extends unknown[], R>(
+  name: string,
+  handler: (...args: A) => Promise<R> | R,
+  record: (tool: string, status: string, durationS: number) => void = recordToolCall,
+): (...args: A) => Promise<R> {
+  return async (...args: A): Promise<R> => {
+    const started = process.hrtime.bigint();
+    let status = "error";
+    try {
+      const result = await handler(...args);
+      const isError = (result as { isError?: unknown } | null | undefined)?.isError === true;
+      status = isError ? "error" : "success";
+      return result;
+    } finally {
+      try {
+        record(name, status, Number(process.hrtime.bigint() - started) / 1e9);
+      } catch {
+        // Metrics must never break a tool call.
+      }
+    }
+  };
+}
+
 /** Patch `server.registerTool` so every registration is also recorded in `into`. */
 function captureToolRegistrations(server: McpServer, into: Map<string, RegisteredTool>): void {
   const orig = server.registerTool.bind(server) as (...a: unknown[]) => unknown;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (server as any).registerTool = (name: string, config: any, handler: any) => {
+    const instrumented = withToolMetrics(name, handler as (...a: unknown[]) => Promise<unknown>);
     into.set(name, {
       name,
       description: typeof config?.description === "string" ? config.description : "",
       shape: (config?.inputSchema ?? {}) as z.ZodRawShape,
-      handler: handler as RegisteredTool["handler"],
+      handler: instrumented as RegisteredTool["handler"],
     });
-    return orig(name, config, handler);
+    return orig(name, config, instrumented);
   };
 }
 
@@ -327,9 +360,8 @@ async function getIcdService(): Promise<IcdService | null> {
 }
 
 /**
- * Register the ICD-10 tool group. Mirrors `_TOOL_GROUPS["ICD-10"]` minus
- * `search_medical_codes` (hybrid search — pending the embedding-service port).
- * Only called when the `icd` module is active, matching Python's dynamic
+ * Register the ICD-10 tool group (`_TOOL_GROUPS["ICD-10"]`, including the
+ * hybrid `search_medical_codes`). Only called when the `icd` module is active, matching Python's dynamic
  * add/remove via ModuleStatusManager.
  */
 function registerIcdTools(server: McpServer, svc: IcdService): void {
@@ -337,7 +369,8 @@ function registerIcdTools(server: McpServer, svc: IcdService): void {
     "search_medical_codes",
     {
       description:
-        "Search ICD-10-CM 2025 diagnosis codes and ICD-10-PCS 2025 procedure codes. " +
+        "Search ICD-10-CM diagnosis codes and ICD-10-PCS procedure codes " +
+        "(the editions loaded on this server; see health_check.terminology). " +
         "diagnosis: hybrid BM25 + vector embedding re-ranking; procedure: BM25 only; " +
         "all (default): both, returned under separate diagnoses/procedures keys. " +
         "Results are ranked by relevance, not alphabetical.",

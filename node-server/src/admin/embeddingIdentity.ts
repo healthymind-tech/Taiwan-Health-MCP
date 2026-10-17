@@ -58,6 +58,8 @@ export interface EmbeddingIdentity {
   created_by: string;
 }
 
+// Safety net: the same DDL lives in db/schema.sql and
+// db/migrations/20261021_embedding_identity.sql — keep the three in step.
 let ensured = false;
 async function ensureSchema(): Promise<void> {
   if (ensured) return;

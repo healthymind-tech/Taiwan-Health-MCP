@@ -62,7 +62,8 @@ export interface SettingsGroupSpec {
    * would not move the running container — it would just point the app somewhere
    * else and orphan every object key already stored against the old bucket. The
    * worker's cadence is only read at worker start-up, so a form that appeared to
-   * change it live would simply be lying. Both come from `.env` / compose.
+   * change it live would simply be lying. Both are seeded from `.env` on first
+   * boot; afterwards the `admin.app_settings` rows are authoritative.
    */
   readonly?: boolean;
   fields: SettingsField[];
@@ -243,8 +244,9 @@ export const SETTINGS_SCHEMA: Record<string, SettingsGroupSpec> = {
   worker: {
     label: "Admin Worker Tuning",
     description:
-      "Background worker loop cadence, read once when the worker starts. Owned by the " +
-      "deployment (.env / compose); change it there and restart the worker.",
+      "Background worker loop cadence, read once when the worker starts. Seeded from .env " +
+      "on first boot and stored in admin.app_settings (group 'worker'); editing .env afterwards " +
+      "has no effect. To change it, UPDATE those rows and restart the worker.",
     readonly: true,
     fields: [
       field("name", "str", "admin-worker", "ADMIN_WORKER_NAME", "Worker name"),
