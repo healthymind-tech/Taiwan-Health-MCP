@@ -22,6 +22,19 @@
 | `rxnorm/RxNorm_full_06032024.zip` | 241 MB | `fc612ca0abee8955` | rxnorm / `rxnorm_full` |
 | `twcoreig/v1.0.0/package.tgz` | 2.8 MB | `2fa1419fa48d1545` | ig / `ig` |
 | （下載後才有）`36_2.csv` | 44 MB | — | drug / `drug_index_csv` |
+| （2026-10 起建議）`icd/10/icd10cm/april-1-2026-code-descriptions-tabular-order.zip` | — | — | icd / `icd10cm` |
+| （選用，以腳本產生）`icd10who.json` | — | — | icd / `icd10_who` |
+
+!!! note "ICD-10-CM 改用 CMS order file"
+    上表的 `icd10cm-table-index-2025.zip`（tabular XML）是 2026-07-14 重建時用的檔案。自 2026-10 起建議改用 CMS
+    「Code Descriptions in Tabular Order」zip（2026-04-01 版，內含 `icd10cm_order_2026.txt`，98,186 碼）：只有這種完整版
+    （`icd.editions.complete = true`）才會讓 FHIR validator 對未知 ICD-10-CM 碼報 error。WHO ICD-10 的 `icd10who.json`
+    以 `node-server/scripts/validator-audit/harness/fetch_tx_terms.py` 從 tx.fhir.org 取得。兩者都還沒有收進本機的
+    `fhir-code/`，故無 sha256。
+
+    本機載入器（未經管理後台上傳時）在 `fhir-code/icd/10/icd10cm/` 找 ICD-10-CM zip 的順序：`ICD_CM_ZIP` 環境變數 →
+    檔名含 `order` / `code-descriptions` 的 CMS order-file zip → 檔名含 `table-index` / `tabular` 的 zip（同類取檔名排序最後者）→
+    舊預設 `icd10cm-table-index-2025.zip`。所以把 order-file zip 放進該資料夾即可，舊的 table-index zip 可以留著。
 
 `umls/umls-2024AA-metathesaurus-full.zip`（4 GB）也在資料夾裡，但目前**沒有任何匯入流程
 用到它**，重建時可以略過。
@@ -31,12 +44,12 @@
 `data/loinc/taiwan_mapping.csv`（loinc / `loinc_taiwan_mapping`）和
 `data/loinc/lab_reference_ranges.csv`（loinc / `loinc_reference_ranges`）是專案自己整理的
 （台灣檢驗代碼對應、各醫學中心參考值彙整），**網路上下載不到**，所以它們放在 `data/`
-底下、跟著 repo 走——不是 `fhir-code/`（那整個資料夾都不進版控）。`loinc_import` 需要這
-兩個 role，記得跟 LOINC zip 一起上傳。
+底下、跟著 repo 走——不是 `fhir-code/`（那整個資料夾都不進版控）。這兩個 role 在來源目錄中是選用的，但少了它們就沒有中文名稱與參考值（`interpret_lab_result` 無法判讀），
+記得跟 LOINC zip 一起上傳。
 
 ## 各檔案從哪裡來
 
-**ICD-10-CM / PCS 2025**：CMS 官方年度釋出（<https://www.cms.gov/medicare/coding-billing/icd-10-codes>）。
+**ICD-10-CM / PCS**：CMS 官方年度釋出（CM 建議用 2026-04-01 的「Code Descriptions in Tabular Order」）（<https://www.cms.gov/medicare/coding-billing/icd-10-codes>）。
 中文名稱 XLSX 來自衛福部的中文版 ICD-10-CM/PCS 對照檔。
 
 **LOINC 2.80**：Regenstrief Institute（<https://loinc.org/downloads/>），需註冊帳號後下載。
@@ -49,8 +62,9 @@
 
 **TW Core IG `package.tgz`**：從 <https://packages.fhir.org> 取得 `tw.gov.mohw.twcore`。
 匯入時會**自動遞迴抓取相依套件**（hl7.terminology、hl7.fhir.r4.core、
-hl7.fhir.r4.examples…），最後 DB 裡會有 9 個 package、約 21,000 個 artifact——所以只需要
-準備這一個 tgz。
+hl7.fhir.r4.examples…，來自 packages.fhir.org，失敗時退到 packages2.fhir.org），2026-07-14 重建時 DB 裡有
+9 個 package、約 21,000 個 artifact——所以只需要準備這一個 tgz。相依下載而來的套件會標記
+`install_origin = 'dependency'`。
 
 **TFDA 藥品許可證 `36_2.csv`**：repo 裡沒有，也不必手動放進 `fhir-code/`，直接下載：
 
@@ -66,7 +80,8 @@ curl -L "https://data.fda.gov.tw/data/opendata/export/36/csv" -o drug36.zip
 
 ## 重建步驟
 
-設定（OCR / TFDA / registry 位址、LLM profiles、passkey）用 Settings 匯出檔還原：
+設定（OCR / TFDA / registry 位址、模型 provider 帳號與路由、passkey）用設定匯出檔還原（管理後台
+**系統 → 備份與設定**，或下列 API；目前匯出格式為 v3，仍可匯入 v1 / v2 檔案）：
 
 ```bash
 curl -X POST localhost:8080/admin/api/settings/import \
@@ -76,13 +91,13 @@ curl -X POST localhost:8080/admin/api/settings/import \
 
 > 該匯出檔含 API key 與 passkey，**不要進版控**。自己留一份備份。
 
-來源檔透過 Admin → Sources 上傳（或用 API；注意要帶 `Content-Type: application/octet-stream`，
+來源檔透過各模組頁的「資料生命週期」分頁上傳（或用 API；注意要帶 `Content-Type: application/octet-stream`，
 否則 body 會被 express 的 4 MB parser 攔下）：
 
 ```bash
-curl -X POST "localhost:8080/admin/api/uploads?module_key=icd&source_role=icd10cm&filename=icd10cm-table-index-2025.zip&auto_activate=true" \
+curl -X POST "localhost:8080/admin/api/uploads?module_key=icd&source_role=icd10cm&filename=april-1-2026-code-descriptions-tabular-order.zip&auto_activate=true" \
      -H 'Content-Type: application/octet-stream' \
-     --data-binary @fhir-code/icd/10/icd10cm/icd10cm-table-index-2025.zip
+     --data-binary @fhir-code/icd/10/icd10cm/april-1-2026-code-descriptions-tabular-order.zip
 ```
 
 接著依序排入 job：`icd_import`、`loinc_import`、`snomed_import`、`rxnorm_import`、
@@ -98,7 +113,8 @@ curl -X POST "localhost:8080/admin/api/uploads?module_key=icd&source_role=icd10c
 
 ## 這份清單對應的資料量
 
-2026-07-14 全清重建後的實際結果，可以拿來核對匯入是否完整：
+2026-07-14 全清重建後的實際結果，可以拿來核對匯入是否完整（ICD 診斷碼數為當時的 tabular XML；改用
+2026-04-01 order file 後為 98,186 碼）：
 
 | 模組 | 筆數 |
 |---|---|
@@ -111,6 +127,6 @@ curl -X POST "localhost:8080/admin/api/uploads?module_key=icd&source_role=icd10c
 | 保健食品 | 565 |
 | 食品營養 | 1,702 |
 
-語意搜尋要另外跑 `*_embed` job（需要可連線的 Ollama）。**沒有 embedding 時，中文關鍵字
+語意搜尋要另外跑 `*_embed` job（需要可連線的嵌入端點，於 **整合 → 模型端點** 設定，例如 Ollama）。**沒有 embedding 時，中文關鍵字
 搜尋幾乎搜不到東西**——因為 Postgres 的 `simple` tokenizer 會把整串中文品名當成一個 token，
 子字串比對不到。這不是 bug，是設計上就靠向量搜尋來補。

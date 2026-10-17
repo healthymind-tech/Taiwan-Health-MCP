@@ -1,30 +1,29 @@
 # ICD Service API
 
-## class `ICDService`
+`IcdService` (`node-server/src/icdService.ts`) backs the MCP ICD-10 tool group.
+Every method returns a JSON-serialisable object (the MCP tool wraps it as a JSON string in `content[0].text`).
+Database access always goes through the shared `pg` pool in `db.ts` (via pgBouncer); nothing is injected through the constructor.
 
-### `__init__(self, pool)`
-Initialise the ICD service; takes a `pg.Pool` connection pool (through pgBouncer).
+## class `IcdService`
 
-- **pool**: the `pg.Pool` connection pool, injected by the process startup sequence in `server.ts`.
+### `constructor(embeddingSvc: EmbeddingService | null = null)`
+Takes the shared `EmbeddingService`; with `null` the diagnosis search is keyword-only. `mcp.ts` creates a lazy singleton.
 
-### `async initialize(self)`
-Check whether the `icd.procedures` table has data and set the `_pcs_available` flag.
+### `async initialize(): Promise<void>`
+Checks whether `icd.procedures` has rows, which decides whether ICD-10-PCS search is available.
 
-### `async search_codes(self, keyword: str, type: str = "all") -> str`
-Full-text search over ICD-10-CM diagnosis codes or ICD-10-PCS procedure codes.
+### `async searchCodes(keyword, type = "all", limit = 3)`
+`type` is `"diagnosis" | "procedure" | "all"`; `limit` is capped at 10. Diagnoses use a BM25 + vector RRF hybrid search (exact vector scan, not HNSW); procedures are BM25 only.
+Returns `{diagnoses?, procedures?, procedures_note?}`, plus `search_mode: "keyword_only"` when vectors are unavailable; `{error}` when nothing matches. Backs `search_medical_codes`.
 
-- **keyword**: the search string (Chinese and English both supported).
-- **type**: `"diagnosis"`, `"procedure"`, or `"all"`.
-- **Returns**: a formatted text result.
+### `async inferComplications(code)`
+Pure hierarchy lookup: with children returns `{base_code, potential_complications_or_specifics}` (up to 15), otherwise codes of the same category as `{message, related_codes}` (up to 10). Backs `infer_complications`.
 
-### `async infer_complications(self, code: str) -> str`
-Infer potential complications from the ICD hierarchy, listing child codes (such as E11.2) under a parent code (such as E11).
+### `async getNearbyCodes(code)`
+Returns the 2 codes before and the 2 after in alphabetical order as `{target, nearby_options}`. Backs `get_nearby_codes`.
 
-### `async get_nearby_codes(self, code: str) -> str`
-Retrieve the codes adjacent to the target code within its classification.
+### `async browseCategory(category = null, limit = 50)`
+Without `category` lists every category with counts; with one, expands its codes (`limit` capped at 200). Backs `browse_icd_category`.
 
-### `async browse_category(self, category: str = None, limit: int = 50) -> str`
-Browse the list of diagnosis codes by three-character category.
-
-### `async get_conflict_info(self, diagnosis_code: str, procedure_code: str) -> dict`
-Retrieve the detailed information used for diagnosis / procedure conflict analysis.
+### `async getConflictInfo(diagnosisCode, procedureCode)`
+Returns full data for one diagnosis and one procedure code side by side — facts only, no verdict. Backs `check_medical_conflict`.

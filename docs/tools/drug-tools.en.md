@@ -37,7 +37,7 @@ Identify an unknown drug from tablet appearance keywords.
 | `features` | string | Yes | Space-separated appearance keywords (colour / shape / score line / marking / size / engraving) | `"white round"`, `"白 圓形"` |
 
 ### Purpose
-Each keyword is matched conjunctively against the appearance description, colour, shape, symbol, score line, size, and engraving fields. English colour and shape terms are expanded through a built-in synonym table. Appearance data must be loaded first by a `drug_enrichment` job (Admin → Modules).
+Each keyword is matched conjunctively against the appearance description, colour, shape, symbol, score line, size, and engraving fields. English colour and shape terms are expanded through a built-in synonym table. Returns up to 5 results. Appearance data must be loaded first by a `drug_enrichment` job (admin console → Drug).
 
 ---
 

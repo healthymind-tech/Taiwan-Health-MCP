@@ -6,7 +6,7 @@ The SNOMED CT service integrates the SNOMED CT International edition terminology
 ## Features
 
 ### 1. Concept search (`search_snomed_concept`)
-Search SNOMED CT concepts by Chinese or English keyword, returning the concept ID, FSN (Fully Specified Name), and preferred term. Semantic / hybrid search is supported (requires a working embedding endpoint, configured in Admin → Settings); without embeddings it falls back to keyword search.
+Search SNOMED CT concepts by Chinese or English keyword, returning the concept ID, FSN (Fully Specified Name), and preferred term. Semantic / hybrid search is supported (requires a working embedding endpoint, configured in the admin console under **Integrations → Model endpoints**, and vectors backfilled by `snomed_embed`); without embeddings it falls back to keyword search.
 
 ### 2. Concept details (`query_snomed_concept`)
 Retrieve full information for a single concept by concept ID, including:
@@ -23,8 +23,9 @@ Bidirectional mapping:
 - **`mode="snomed"`**: given a SNOMED concept ID (for example `44054006`), return the corresponding ICD-10 mapping.
 
 ## Technical architecture
-- **Data source**: SNOMED CT International RF2 (`SnomedCT_InternationalRF2_PRODUCTION_*.zip`), loaded through the admin console (Admin → Modules, import stage `snomed_import`). The dataset is large — expect roughly 5–15 minutes. The import also keeps inactive concepts and the English descriptions of inactive concepts / inactive descriptions (`snomed.inactive_concepts`, `snomed.inactive_descriptions`), each component's first release date (from the RF2 Full files) and the edition (`snomed.editions`), so the FHIR validator answers as the edition tx.fhir.org serves: an inactive concept is a warning, an unknown code or an inactive description used as display is an error. The SNOMED search tools are unaffected (they still use active concepts only).
+- **Data source**: SNOMED CT International RF2 (`SnomedCT_InternationalRF2_PRODUCTION_*.zip`), uploaded and imported on the **Terminology → SNOMED CT** page of the admin console (source role `snomed_ct`, import stage `snomed_import`). The dataset is large — expect roughly 5–15 minutes. The import also keeps inactive concepts and the English descriptions of inactive concepts / inactive descriptions (`snomed.inactive_concepts`, `snomed.inactive_descriptions`), each component's first release date (from the RF2 Full files) and the edition (`snomed.editions`), so the FHIR validator answers as the edition tx.fhir.org serves: an inactive concept is a warning, an unknown code or an inactive description used as display is an error. The SNOMED search tools are unaffected (they still use active concepts only). Historical associations (SAME AS / REPLACED BY …, `snomed.historical_associations`) let an inactive concept point at live content.
 - **Database**: the `snomed` schema, with `concepts`, `descriptions`, `relationships`, `icd10_map`, `historical_associations`, and `concept_embeddings`.
+- **Terminology browsing**: the module page's "Data preview" tab shows a concept graph (is-a parents and children, attribute relationships, ICD-10 maps; for an inactive concept also its historical associations), backed by `/admin/api/terminology/snomed/*` (`concept`, `children`, `search`).
 - **Availability gate**: `snomed.concepts` must reach the threshold (100,000 rows) before the corresponding tools are registered; otherwise they degrade automatically.
 
 ## Key limitations

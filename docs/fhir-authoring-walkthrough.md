@@ -1,6 +1,7 @@
 # 把你的資料轉成 FHIR —— 授權流程怎麼運作
 
-> **狀態：**說明 FHIR-IG 授權工具集（`fhir_*` 工具）的**設計**。工程規格與設計決策見
+> **狀態：**說明已上線的 FHIR-IG 授權工具集（22 個 `fhir_*` 工具，2026-10 對照程式碼更新）。
+> 各工具參數見 [FHIR IG 工具](tools/fhir-ig-tools.md)；當初的設計決策紀錄見
 > [`fhir-ig-mcp-toolset-assessment.md`](./fhir-ig-mcp-toolset-assessment.md)。
 > 本頁是**面向使用者的操作導覽**。
 
@@ -25,12 +26,14 @@
 
 FHIR 資源只有對著目標 IG 才有意義。**同一組**臨床事實（一位病人、一個流感診斷）可以依**資料要送到哪裡**而對應到 TW Core、US Core 或 IPS——資料本身不會告訴你答案。所以 IG 是依**情境**決定，而不是從內容猜測，順序如下：
 
-1. **部署預設值**——多數安裝綁定單一 IG（例如台灣的醫院 → TW Core）。有一個套件被標記為預設，LLM 不需要選。
-2. **明確指示**——呼叫端應用或使用者說「產生 TW Core FHIR」。每個工具都接受 `ig = {packageId, version}` 參數，所以選擇永遠是明確的。
-3. **知情選擇**——若安裝了多個 IG 且未指定，LLM 呼叫 `fhir_list_igs`（回傳每個套件的 `title`、`jurisdiction` 與預設旗標），再對照使用者意圖與內容線索（中文文字、中華民國身分證號、健保申報 → `jurisdiction = TW`）。
+1. **部署預設值**——多數安裝綁定單一 IG（例如台灣的醫院 → TW Core）。管理介面（IG 套件庫）把一個套件標記為預設，LLM 不需要選。
+2. **明確指示**——呼叫端應用或使用者說「產生 TW Core FHIR」。每個 IG-scoped 工具都接受 `package_id`（+ 選填 `version`）參數，所以選擇可以永遠是明確的。
+3. **知情選擇**——若安裝了多個 IG 且未指定，LLM 呼叫 `fhir_list_igs`（回傳每個套件的 `packageId`、`version`、`title`、`canonical`、`isDefault`、`installOrigin` 與相依套件），再對照使用者意圖與內容線索（中文文字、中華民國身分證號、健保申報 → `tw.gov.mohw.*` 套件）。
 4. **仍然模稜兩可 → 詢問。**系統會問使用者，而不是用猜的。
 
-因為每個 IG-scoped 工具都接受 `ig`，你可以明確指定**任何已匯入的 IG**：`fhir_get_profile(ig=US-Core, "Patient")` 與 `fhir_get_profile(ig=TW-Core, "Patient")` 會回傳不同的剖面。要支援新國家的 IG，只要匯入它的套件即可——不需要新工具。
+省略 `package_id` 時，伺服器依固定順序自動解析目標套件：canonical 參數或 `meta.profile` 帶 `|version` → 持有該版本的套件；否則 → 擁有該 canonical / `meta.profile` 的套件（手動安裝者優先）；否則 → 預設 IG；否則 → 唯一一個手動安裝的 IG。每個回應的 `provenance.resolved_by` 會說明套用了哪一條規則。若沒有預設 IG、也找不到擁有者，呼叫會以 `NO_DEFAULT_IG` 失敗，而不是隨便挑一個套件。
+
+因為每個 IG-scoped 工具都接受 `package_id`，你可以明確指定**任何已匯入的 IG**：`fhir_get_profile(identifier="Patient", package_id="hl7.fhir.us.core")` 與 `fhir_get_profile(identifier="Patient-twcore", package_id="tw.gov.mohw.twcore")` 會回傳不同的剖面；canonical 也可以寫成 `url|version` 釘住版本（未安裝的版本回傳 `ARTIFACT_NOT_FOUND`，不會默默改用其他版本）。要支援新國家的 IG，只要匯入它的套件即可——不需要新工具。
 
 ---
 
@@ -57,18 +60,19 @@ Diagnosis: influenza, clinical status=active, verification=confirmed, onset=2026
 
 ### 階段 1 —— 決定 IG
 
-依照上述規則。在綁定台灣的部署中，答案就是「TW Core 1.0.0」。不確定時：**[MCP] `fhir_list_igs`** → 依 `jurisdiction` / 意圖挑選 → 模稜兩可就詢問。
+依照上述規則。在綁定台灣的部署中，答案就是「TW Core 1.0.0」。不確定時：**[MCP] `fhir_list_igs`** → 依 `packageId` / `title` 與意圖挑選 → 模稜兩可就詢問。
 
 ### 階段 2 —— 決定剖面
 
-- **[MCP] `fhir_list_resource_profiles(ig)`** → 回傳該 IG 的剖面：`Patient-twcore`、`Condition-twcore`、`Encounter-twcore`……
-- **[MCP] `fhir_rank_resource_profiles(ig, facts)`** *（選用）* → 把診斷事實餵進去，伺服器對候選剖面排名（`Condition-twcore` 居首，附上吻合欄位的佐證）。**它只給建議**——最終由 **[LLM]** 拍板。
+- **[MCP] `fhir_list_resource_profiles()`** → 回傳該 IG 的剖面：`Patient-twcore`、`Condition-twcore`、`Encounter-twcore`……（要跨所有已安裝套件找，帶 `all_packages=true`；零筆結果會附 `data.hint` 指出哪些其他套件有符合項目）。
+- **[MCP] `fhir_rank_resource_profiles(keys=[…])`** *（選用）* → 把來源欄位名（keys）餵進去，伺服器依「吻合剖面 element path 的數量」對候選剖面排名（`Condition-twcore` 居首）。回傳 `selectionRequired:true`——**它只給建議**，最終由 **[LLM]** 拍板。
+- **[MCP] `fhir_get_profile_required_elements(profile)`** *（建議）* → 選定剖面後，取得它**實際必填**的完整清單（祖先也必填的 `min≥1`、必填 slice、choice type、不變式隱含的 value-或-dataAbsentReason），每列標示值的來源：`auto`（伺服器釘）、`coding`（要查碼）、`source_fact`（要從來源取）或 `workflow_default`。
 
 ### 階段 3 —— 逐一建立資源（先 Patient，因為 Condition 會參照它）
 
 #### 3A · Patient
 
-1. **[MCP] `fhir_get_resource_skeleton(ig, Patient-twcore)`** → 從剖面即時衍生出一份**空白、帶註解的填寫表單**：
+1. **[MCP] `fhir_get_resource_skeleton(profile="Patient-twcore")`** → 從剖面即時衍生出一份**空白、帶註解的填寫表單**：
    ```
    identifier  (1..*, required; sliced — national ID uses slice "NN";
                 system is auto-pinned, you only supply value)
@@ -85,11 +89,11 @@ Diagnosis: influenza, clinical status=active, verification=confirmed, onset=2026
    birthDate = "1985-03-12"
    ```
    對於編碼欄位，它可以用 **[MCP] `fhir_validate_code`** 再確認一次。
-3. **[MCP] `fhir_finalize_resource(ig, Patient-twcore, draft, refCtx)`** → 伺服器釘住**機制性**欄位（身分證 slice 的 `identifier.system`、`identifier.type`、`meta.profile`），執行驗證器，回傳 `{ resource, validation: pass }`。這個 Patient 會登記進**參照脈絡**（`refCtx`），讓其他資源可以指向它。
+3. **[MCP] `fhir_finalize_resource(profile="Patient-twcore", draft, context_id, key="patient-1")`** → 伺服器釘住**機制性**欄位（身分證 slice 的 `identifier.system`、`identifier.type`、`meta.profile`），執行驗證器，回傳 `{ resource, validation }`（`validation.valid: true`）。這個 Patient 以 `key` 登記進**參照脈絡**（`context_id`），讓其他資源可以指向它。
 
 #### 3B · Condition
 
-1. **[MCP] `fhir_get_resource_skeleton(ig, Condition-twcore)`** →
+1. **[MCP] `fhir_get_resource_skeleton(profile="Condition-twcore")`** →
    ```
    clinicalStatus     (allowed: active | recurrence | ...)
    verificationStatus (allowed: confirmed | provisional | ...)
@@ -100,17 +104,19 @@ Diagnosis: influenza, clinical status=active, verification=confirmed, onset=2026
    ```
 2. **[LLM]** 填入容易的語意空格：`clinicalStatus=active`、`verificationStatus=confirmed`、`onsetDateTime=2026-06-01`。
 3. **關鍵步驟——把自由文字「流行性感冒」轉成標準碼：**
-   - **[MCP] `fhir_normalize_code(input="流行性感冒", target = Condition.code 的 ValueSet)`** → 依語意相似度回傳**候選碼**，例如 SNOMED `6142004 | Influenza`。
+   - **[MCP] `fhir_normalize_code(text="流行性感冒", value_set = Condition.code 的 ValueSet)`** → 依語意相似度回傳**候選碼**，例如 SNOMED `6142004 | Influenza`。
    - **[MCP] `fhir_validate_code`** → 確認該碼確實屬於綁定的 ValueSet → LLM 才寫入 `code`。
    - *（LLM 在這裡絕不可自行編造碼——一律先 normalize，再 validate。）*
-4. **接上參照：[MCP] `fhir_resolve_reference(refCtx, target=Patient, source=王小明)`** → 回傳 `urn:uuid:…` → 寫入 `subject.reference`。
-5. **[MCP] `fhir_finalize_resource(ig, Condition-twcore, draft, refCtx)`** → 假設驗證器發現 **`category` 為必填但缺漏**。伺服器**不會替你修**，而是回傳 `{ resource, issues: [category missing] }`。
-6. **[LLM]** 讀取該問題，用 **[MCP] `fhir_get_profile_elements(ig, Condition-twcore, view="binding", path="Condition.category")`** 查允許值，設定 `category="encounter-diagnosis"`，然後**再呼叫一次 `fhir_finalize_resource`** → 這次**通過**。
+4. **接上參照：[MCP] `fhir_resolve_reference(key="patient-1", resource_type="Patient", context_id)`** → 回傳 `urn:uuid:…`；draft 裡寫 `subject = "Patient/patient-1"`，finalize 會改寫成該 urn。
+5. **[MCP] `fhir_finalize_resource(profile="Condition-twcore", draft, context_id, key="condition-1")`** → 假設驗證器發現 **`category` 為必填但缺漏**。伺服器**不會替你修**（不自動迴圈），而是回傳 `validation.valid: false` 與 `issues: [category missing]`。
+6. **[LLM]** 讀取該問題，用 **[MCP] `fhir_get_profile_elements(profile="Condition-twcore", view="binding", path="Condition.category")`** 查允許值，設定 `category="encounter-diagnosis"`，然後**再呼叫一次 `fhir_finalize_resource`** → 這次**通過**。
 
 ### 階段 4 —— 組裝與整體驗證
 
-- **[MCP] `fhir_build_bundle([Patient, Condition], type="transaction", refCtx)`** → 把兩者包成 Bundle，將參照改寫為 `urn:uuid:`，回傳 bundle 與參照對照表。
-- **[MCP] `fhir_validate_bundle(bundle)`** → 檢查每一個 entry **以及**內部參照完整性（Condition.subject 確實指向 bundle 內的 Patient）→ 通過。
+- **[MCP] `fhir_build_bundle(entries=[{resource, key}, …], bundle_type="transaction", context_id)`** → 把兩者包成 Bundle，將參照改寫為 `urn:uuid:`，回傳 bundle 與未解析參照清單（`unresolved` 應為空）。
+- **[MCP] `fhir_validate_bundle(bundle)`** → 檢查每一個 entry **以及**內部參照完整性（Condition.subject 確實指向 bundle 內的 Patient）→ 通過。另外看 `checked_fully`：`valid` 沿用 HL7 validator 語意（解析不到的剖面只是警告），所以若 `checked_fully: false`，`profiles_unchecked` / `valuesets_unchecked` 會列出沒能檢查的 canonical，`data.deps_missing` 列出缺少的相依套件。
+
+**選用——比對原始病歷（grounding）：**來源是自由文字時，可在同一次 `fhir_validate_bundle` / `fhir_validate_resource` 呼叫帶入 `source_text`（以及選填的 `site_config`、`evidence_map`、`grounding`），伺服器會額外以決定性規則（不用 LLM）檢查每個填入的值是否真的出現在病歷裡，回應中多出 `conformanceValid`、`groundingValid` 與 grounding issue；不帶 `source_text` 時輸出完全不變。也可以單獨呼叫 `fhir_check_grounding(bundle, source_text)`；而 `fhir_check_completeness(targets, source_text)` 則在動手前比對「轉換目標要求的事實」與「病歷實際寫了什麼」，列出缺漏項目、病歷中明確寫「無」的行，並給出可直接回問使用者的問題（或 `insufficient_information` 物件）。
 
 **通過驗證的 Bundle 就是你的輸出檔。**
 
@@ -126,6 +132,7 @@ free-text / source data
   ├─ resolve IG  (deployment default ▸ explicit ▸ informed choice ▸ ask)
   │
   ├─[MCP] list / rank profiles ──▶ [LLM] pick the profile
+  ├─[MCP] get_profile_required_elements   ← what the profile really requires
   │
   ├─ for each resource:
   │     [MCP] get_resource_skeleton     ← blanks + allowed values + candidate codes
@@ -135,7 +142,7 @@ free-text / source data
   │     [MCP] finalize_resource         ← pin mechanical fields + validate
   │       └─ failed? returns issues → [LLM] fixes → finalize again
   │
-  └─[MCP] build_bundle → validate_bundle ──▶ final Bundle file
+  └─[MCP] build_bundle → validate_bundle (+ optional source_text grounding) ──▶ final Bundle file
 ```
 
 ---
@@ -145,7 +152,7 @@ free-text / source data
 - **沒有對應樣板要維護。**舊系統需要手寫的「欄位 A → 欄位 B」規則檔，因為軟體無法理解語意。有了 LLM，模型會對著伺服器交給它的骨架即時完成語意對應——沒有東西需要撰寫或版本控管。
 - **LLM 無法漂移成無效的 FHIR。**它只填語意值；機制部分由伺服器釘住，結果由驗證器把關。任何伺服器無法在本地查證的事項都會以**警告**回報，絕不會靜默地標成「有效」。
 - **這是預檢，不是最終權威。**當你把 Bundle 送到真正的 FHIR 伺服器時，**那台**伺服器才做權威驗證。本流程的職責是及早攔下絕大多數錯誤，並給出清楚、可修正的回饋。
-- **一套工具，多個 IG。**每個工具都接受 `ig` 選擇器，所以同一套流程今天適用 TW Core，明天也適用任何你匯入的 IG——不需要新工具。
+- **一套工具，多個 IG。**每個 IG-scoped 工具都接受 `package_id`（省略時自動解析），所以同一套流程今天適用 TW Core，明天也適用任何你匯入的 IG——不需要新工具。
 
 ---
 
@@ -153,11 +160,13 @@ free-text / source data
 
 | 階段 | 工具 | 作用 |
 |---|---|---|
-| IG | `fhir_list_igs` / `fhir_get_ig` | 列出已安裝 IG（title、jurisdiction、預設）/ 單一 IG 詳情 |
+| IG | `fhir_list_igs` / `fhir_get_ig` | 列出已安裝 IG（title、canonical、預設、installOrigin）/ 單一 IG 詳情（含 `data.deps_missing`） |
 | 探索 | `fhir_list_artifacts` / `fhir_search_artifacts` | 瀏覽 / 搜尋某 IG 的剖面、ValueSet 等 |
 | 剖面 | `fhir_list_resource_profiles` / `fhir_rank_resource_profiles` / `fhir_get_profile` | 列出可選剖面 / 依你的資料排名候選 / 剖面摘要 |
 | 結構 | `fhir_get_profile_elements(view=…)` | 一個工具多種視圖：`elements`、`element`、`slices`、`choices`、`binding`、`examples` |
+| 必填 | `fhir_get_profile_required_elements` | 剖面實際必填的完整清單，每列標示值的來源（auto / coding / source_fact / workflow_default） |
 | 術語 | `fhir_get_valueset` / `fhir_expand_valueset` / `fhir_lookup_code` / `fhir_validate_code` / `fhir_normalize_code` | 檢視 / 展開 ValueSet、查詢或驗證碼、自由文字 → 候選碼 |
 | 授權 | `fhir_get_resource_skeleton` / `fhir_finalize_resource` | 取得帶註解的填寫表單 / 釘住機制欄位並驗證 |
 | 組裝 | `fhir_resolve_reference` / `fhir_build_bundle` | 連結資源 / 打包成 Bundle |
-| 驗證 | `fhir_validate_resource` / `fhir_validate_bundle` | 對單一資源 / 整個 bundle 做一致性檢查 |
+| 驗證 | `fhir_validate_resource` / `fhir_validate_bundle` | 對單一資源 / 整個 bundle 做一致性檢查（選填 `source_text` 時同時做 grounding） |
+| 忠實度 | `fhir_check_grounding` / `fhir_check_completeness` | 每個值是否有病歷佐證 / 轉換目標要求的事實病歷是否有寫（皆為決定性規則，不用 LLM） |

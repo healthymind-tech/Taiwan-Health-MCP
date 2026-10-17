@@ -25,14 +25,16 @@
 
 | 服務 | 說明 |
 |------|------|
-| `nginx` | **對外入口**（預設 `:8080`，由 `WEB_PORT` 設定）。把 `/mcp`、`/openapi.json`、`/tools/*`、`/admin/api/*`、`/admin/ws`、`/fhir-client/*`、`/fhir-oauth/*` 導向 `app`，其餘全部導向 `web`。 |
-| `web` | Next.js 前端：`/admin` 管理後台 SPA。 |
+| `nginx` | **對外入口**（預設 `:8080`，由 `WEB_PORT` 設定）。把 `/mcp`、`/openapi.json`、`/tools/*`、`/admin/api/*`、`/admin/ws`、`/fhir-client/*`、`/fhir-oauth/*` 導向 `app`，其餘（`/admin` 頁面）全部導向 `web-v2`。 |
+| `web-v2` | 管理後台 SPA（`web-v2/`，Vite + React + Mantine）的靜態檔，由容器內的 nginx 提供。 |
 | `app` | Node MCP 伺服器 + 管理後台 REST API。**只在 compose 內部網路上 `expose` 8000 埠，不對主機發佈。** |
 | `admin-worker` | 背景工作執行器：所有匯入（含藥品三階段管線）與嵌入工作。 |
 | `postgres` | PostgreSQL 16 + pgvector。 |
 | `pgbouncer` | 連線池（transaction mode）。 |
-| `redis` | 回應快取。 |
-| `minio` + `minio-init` | 藥品資產物件儲存與 bucket 初始化。 |
+| `redis` | 管理後台即時事件廣播與健康探測（工具回應目前**沒有**快取）。 |
+| `minio` + `minio-init` | 來源檔、藥品資產與系統備份的物件儲存，以及 bucket 初始化。 |
+
+舊的 Next.js 前端 `web` 只保留在 compose profile `legacy-web`（供回滾），**預設不啟動**；需要時以 `docker compose --profile legacy-web up -d web` 啟動，並同時還原 `nginx/nginx.conf` 的 `$th_frontend`。
 
 資料匯入由管理後台觸發、在 `admin-worker` 內執行，已無獨立的 data-loader 容器。
 
@@ -131,9 +133,9 @@ seed-only 設定（MinIO、TFDA 爬蟲、FHIR package registry、worker 調校�
 
 | 設定群組 | 首次啟動後如何修改 |
 |----------|-------------------|
-| TFDA 爬蟲、FHIR package registry | Admin → Settings 直接改（支援熱套用） |
+| TFDA 爬蟲、FHIR package registry | 管理後台「外部服務」（`/admin/integrations`）直接改（支援熱套用） |
 | **MinIO（Storage）**、**Worker Tuning** | 後台**唯讀**，標示為 "Owned by the deployment (.env / compose)"。但因為值早已種子化進資料庫、程式也是讀資料庫，**改 `.env` 同樣沒有效果** —— 只能直接 `UPDATE admin.app_settings` 再重啟對應服務。 |
-| 模型端點（嵌入 / OCR / 分析 LLM） | **完全不從 `.env` 讀取**，只能在 Admin → Settings 設定 |
+| 模型端點（嵌入 / 分析 LLM）、OCR | **完全不從 `.env` 讀取**：嵌入與分析 LLM 在「模型端點」（`/admin/models`）設定，OCR 在「外部服務 → OCR」設定 |
 
 `ADMIN_MAX_CONCURRENT_JOBS` 是例外：它不進 `admin.app_settings`，worker 每次啟動都直接讀環境變數，改 `.env` 後重啟 worker 即生效。
 
@@ -145,7 +147,7 @@ seed-only 設定（MinIO、TFDA 爬蟲、FHIR package registry、worker 調校�
 
     首次啟動後才改 `.env`，會讓 MinIO 伺服器帳密與應用端儲存的設定**不一致**，導致物件儲存讀寫失敗。
 
-    而且 **Settings 中的 Storage 群組是唯讀的**（標示為 "Owned by the deployment (.env / compose)"），
+    而且 **「外部服務」中的 MinIO 群組是唯讀的**（標示為 "Owned by the deployment (.env / compose)"），
     無法從後台修正。若已經發生，只能直接改資料庫：
 
     ```sql
@@ -195,9 +197,11 @@ MINIO_BUCKET=taiwan-health-drug-assets
 ### 步驟 3：建置與啟動
 
 ```bash
-docker compose build          # 首次建置 app / admin-worker / web 三個映像
+BUILD_SHA=$(git rev-parse --short HEAD) docker compose build   # 建置 app / admin-worker / web-v2 映像
 docker compose up -d
 ```
+
+`compose.yaml` 會把環境變數 `BUILD_SHA`（未設定時為 `dev`）當作 build arg 傳給 `app` 與 `admin-worker`：`app` 在 `health_check` 回應的 `build` 欄位回報它，`admin-worker` 則記在啟動日誌（`Admin worker started` 的 `build` 欄位）。`web-v2` 不使用它。
 
 首次啟動時 PostgreSQL 容器會自動套用 `db/schema.sql`，`minio-init` 會建立 bucket 後結束（狀態顯示為 exited 屬正常）。
 
@@ -213,7 +217,10 @@ docker compose ps
 
 ```bash
 curl http://localhost:8080/openapi.json | head  # 目前已註冊的工具
+curl -X POST http://localhost:8080/tools/health_check -H 'Content-Type: application/json' -d '{}'
 ```
+
+`health_check` 回傳 DB / 快取 / 各模組狀態、伺服器 `version`、`build`（git sha）、`tools_version`（個別工具版本）、已載入的術語版本（`terminology`）、已安裝的 IG 套件與 `default_ig`。
 
 啟動失敗時先看日誌：
 
@@ -225,19 +232,19 @@ docker compose logs -f app admin-worker
 
 瀏覽 `http://<host>:8080/admin`，以步驟 2 的帳密登入。
 
-登入後到 **Settings** 設定外部模型端點（這些**不能**由 `.env` 設定）：
+登入後設定外部模型端點（這些**不能**由 `.env` 設定）：
 
-| 子頁 | 設定內容 | 未設定的後果 |
+| 頁面 | 設定內容 | 未設定的後果 |
 |------|----------|--------------|
-| Embedding | 嵌入端點 / 模型（預設情境為 Ollama `qwen3-embedding`） | 搜尋退回關鍵字模式；**中文關鍵字搜尋幾乎查不到東西** |
-| Analysis LM | 藥品仿單抽取用 LLM | 藥品分析階段無法執行 |
-| OCR | MinerU 服務位址 | 仿單 PDF 無法 OCR |
+| 模型端點（`/admin/models`）→ Embedding | 建立 provider 帳號，再建立 embedding profile 並綁到 embedding 角色（例如 Ollama `qwen3-embedding`） | 搜尋退回關鍵字模式；**中文關鍵字搜尋幾乎查不到東西** |
+| 模型端點（`/admin/models`）→ 分析 | 藥品仿單抽取用 LLM 的 profile | 藥品分析階段無法執行 |
+| 外部服務（`/admin/integrations`）→ OCR | MinerU 服務位址 | 仿單 PDF 無法 OCR |
 
-模型設定可用 Settings → Backup & restore 的 JSON Export / Import 在不同環境間搬移。詳見[管理後台](../admin/index.md)。
+設定可用「備份與設定」（`/admin/system`）的設定匯出 / 匯入在不同環境間搬移。詳見[管理後台](../admin/index.md)。
 
 ### 步驟 6：載入資料
 
-在 Modules 頁籤依模組匯入；需授權的來源檔（ICD-10、LOINC、SNOMED CT、RxNorm、FHIR IG）須先上傳，藥品 / 健康補充品 / 食品營養則由 API 自動抓取。
+在各模組頁（「醫療術語」、「藥品」、「健康食品」、「食品營養」、「IG 套件庫」）依模組匯入；需授權的來源檔（ICD-10、LOINC、SNOMED CT、RxNorm、FHIR IG）須先上傳，藥品 / 健康補充品 / 食品營養則由 API 自動抓取。
 
 !!! warning "手動排入的 `drug_enrichment` 不受批次上限保護"
     `DRUG_AUTOCHAIN_BATCH_LIMIT`（預設 200）**只作用於自動串接產生的工作**。
@@ -256,14 +263,31 @@ docker compose logs -f app admin-worker
 
 ```bash
 git pull
-docker compose build app web admin-worker
-docker compose up -d --no-deps app web admin-worker
+BUILD_SHA=$(git rev-parse --short HEAD) docker compose build app admin-worker web-v2
+docker compose up -d --no-deps app admin-worker web-v2
 ```
 
-改了 `nginx/nginx.conf`：
+!!! warning "`admin-worker` 是另一個映像"
+    `admin-worker` 由 `Dockerfile.worker` 從同一份 `node-server/` 原始碼建置。改了工作 / 載入程式碼
+    （`adminJobs.ts`、`*Service.ts`、`loaders/*`）卻只重建 `app`，worker 會繼續執行舊程式碼且不會報錯。
+
+### 回滾標籤
+
+重新部署前，先把目前執行中的映像加上回滾標籤，出問題時可以直接切回：
 
 ```bash
-docker compose restart nginx
+LABEL=rollback-pre-$(date +%Y%m%d)
+for svc in app admin-worker web-v2; do
+  docker tag taiwan-health-mcp-$svc:latest taiwan-health-mcp-$svc:$LABEL
+done
+```
+
+（映像名稱前綴為 compose 專案名，以 `docker images` 為準。）回滾時把標籤改回 `:latest` 再 `docker compose up -d --no-deps <服務>`。資料庫遷移不會隨映像回滾，套用 migration 前請另行備份資料庫。
+
+改了 `nginx/nginx.conf`（單一檔案 bind mount，原地編輯後 reload 即可）：
+
+```bash
+docker compose exec nginx nginx -s reload    # 或 docker compose restart nginx
 ```
 
 改了 `.env` 中的 **bootstrap 變數**（DB / Redis / MCP / `ADMIN_*`）才需要重建容器：
@@ -281,8 +305,22 @@ docker compose up -d
 ```bash
 docker compose exec -T postgres \
   sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1' \
-  < db/migrations/20260802_llm_call_log.sql
+  < db/migrations/20261020_loinc_structure.sql
 ```
+
+2026-10 新增的 migration（依序套用；內容已併入 `db/schema.sql`）：
+
+| 檔案 | 內容 |
+|------|------|
+| `20261015_llm_provider_registry.sql` | 純資料：把舊 provider 值改寫為 registry id（`vllm` → `openai_compatible`、`google` → `gemini`…） |
+| `20261016_llm_providers_and_routes.sql` | 新增 `admin.llm_providers` / `llm_routes` / `llm_route_members` / `llm_role_routes`，搬移舊資料，`admin.llm_profiles` 改名為 `admin.llm_profiles_legacy` |
+| `20261017_icd10cm_complete_edition.sql` | ICD-10-CM 完整版：`short_name_en`、`is_header` 欄位與 `icd.editions` |
+| `20261018_terminology_completeness_v4.sql` | LOINC LA/LP/LL/LG 碼與 `loinc.editions`、SNOMED inactive 概念 / 描述、`first_released`、`snomed.editions`、WHO ICD-10（`icd.icd10_who`） |
+| `20261019_ig_install_origin.sql` | `fhir.ig_packages.install_origin` / `installed_for` |
+| `20261020_loinc_structure.sql` | LOINC 軸向 part link、answer list、panel、MapTo 表 |
+| `20261021_embedding_identity.sql` | `admin.embedding_identity` / `admin.embedding_fingerprints`（embedding 身分；程式執行期也會補建，套用與否皆冪等） |
+
+套用 `20261017`、`20261018`、`20261020` 後，需重新匯入對應模組（ICD、LOINC、SNOMED CT）才會填入新表。
 
 依序套用全部（已套用過的檔案請自行剔除，本專案未內建遷移版本追蹤）：
 
@@ -305,7 +343,7 @@ done
 
 兩種做法：
 
-**(a) 管理後台（推薦）** —— Settings → Backup & restore 可勾選設定與憑證、PostgreSQL database、MinIO object storage，排入 `system_backup` 背景工作，產出的 ZIP 寫回 MinIO 的 `system-backups/` prefix，可從備份歷史下載。
+**(a) 管理後台（推薦）** ——「備份與設定」（`/admin/system`）可勾選設定與憑證、PostgreSQL database、MinIO object storage，排入 `system_backup` 背景工作，產出的 ZIP 寫回 MinIO 的 `system-backups/` prefix，可從備份歷史下載。
 
 **(b) 手動**：
 
@@ -367,13 +405,39 @@ services:
 | `/admin` 回 404 | `ADMIN_ENABLED` 被設為 false | 改回 `true` 後 `docker compose up -d` |
 | `/admin` 回 503 | 已啟用但認證變數不齊 | 看啟動日誌的 `missing` 欄位,補齊後重啟 |
 | 管理後台密碼正確卻登入失敗 | `.env` 中的 `$` 未寫成 `$$`，雜湊被截斷 | 見 2-2 的警告框 |
-| 改了 `.env` 的密碼卻沒生效 | 憑證在首次啟動即寫入 `admin.admin_credentials`，seed 為 `ON CONFLICT DO NOTHING` | 改用 Settings → Privacy 修改密碼 |
+| 改了 `.env` 的密碼卻沒生效 | 憑證在首次啟動即寫入 `admin.admin_credentials`，seed 為 `ON CONFLICT DO NOTHING` | 改到「帳號安全」（`/admin/security`）修改密碼 |
 | worker 拋 `Illegal argument to function` / `Wrong key or corrupt data` | `FHIR_SERVER_SECRET_KEY` 為空或 `app` 與 worker 不一致 | 見 2-3 |
-| 改了 `.env` 的 TFDA / registry 設定沒有效果 | 該群組為 seed-only，只在首次啟動讀取 | 改到 Admin → Settings |
+| 改了 `.env` 的 TFDA / registry 設定沒有效果 | 該群組為 seed-only，只在首次啟動讀取 | 改到「外部服務」（`/admin/integrations`） |
 | 改了 `.env` 的 MinIO / worker 調校沒有效果 | seed-only，且後台為唯讀群組 | 直接 `UPDATE admin.app_settings` 後重啟服務（見 2-4） |
-| 中文搜尋幾乎查不到結果 | 嵌入端點未設定，退回關鍵字模式 | 於 Settings → Embedding 設定端點 |
+| 中文搜尋幾乎查不到結果 | 嵌入端點未設定，退回關鍵字模式 | 於「模型端點」（`/admin/models`）設定 embedding profile |
 | IG 匯入時 worker OOM | `NODE_OPTIONS` 被調低，或容器記憶體上限不足 | 保留 `--max-old-space-size=8192`，容器上限給到 10G |
 | `http://<host>:8000` 連不上 | 設計如此，`app` 不對主機開埠 | 一律使用 `http://<host>:${WEB_PORT}` |
+| 改了工作 / 載入程式碼卻沒生效 | 只重建了 `app`，`admin-worker` 仍是舊映像 | `docker compose build admin-worker && docker compose up -d --no-deps admin-worker` |
+
+---
+
+## 隔離測試環境（staging）
+
+`deploy/staging/compose.yaml` 是一套與正式環境完全隔離的 stack（compose 專案名 `twh-staging`）：自己的 Postgres、Redis、MinIO、`app`、`admin-worker` 與 `web-v2`；由 `web-v2` 容器直接擔任前門（其 nginx 以 `BACKEND_UPSTREAM` 代理後端），預設發佈在 `${STAGING_PORT:-8090}`，入口 `http://<host>:8090/admin/`。
+
+啟動前需建立**不進版控**的 `deploy/staging/.env`，至少包含：
+
+| 變數 | 用途 |
+|------|------|
+| `STAGING_DB_PASSWORD` | staging Postgres 密碼（未設定時 compose 直接失敗） |
+| `STAGING_MINIO_PASSWORD` | staging MinIO root 密碼（未設定時 compose 直接失敗） |
+| `STAGING_RESTORE_DIR` | 主機上放正式 DB dump 的目錄，唯讀掛載到 Postgres 的 `/restore`（未設定時 compose 直接失敗） |
+| `STAGING_HOST` / `STAGING_PORT` | 選用；組出 `PUBLIC_BASE_URL`，預設埠 `8090` |
+
+```bash
+BUILD_SHA=$(git rev-parse --short HEAD) docker compose -p twh-staging -f deploy/staging/compose.yaml up -d --build
+```
+
+注意事項：
+
+- `app` / `admin-worker` 另外讀取根目錄 `.env`（`env_file`），再以 staging 專屬值覆寫 DB / Redis / MinIO 連線。
+- staging 走 http，因此設 `ADMIN_COOKIE_SECURE=false`，並使用自己的 cookie 名稱 `ADMIN_SESSION_COOKIE=tw_health_admin_session_staging`——cookie 依主機而非埠區分，與正式環境同機時，正式環境的 `Secure` cookie 會蓋掉同名 cookie，導致 staging 登入迴圈。
+- Postgres 把主機目錄 `${STAGING_RESTORE_DIR}` 唯讀掛載為 `/restore`以便從正式 DB dump 還原；還原後應停用繼承來的工作 / 排程與模型端點，避免與正式環境搶用外部資源。
 
 ---
 
@@ -383,12 +447,12 @@ services:
 基礎設施拓樸、容器組成與啟動流程。
 
 ### [環境變數配置](configuration.md)
-各項系統參數的完整清單，含 bootstrap 變數（`.env`）與 seed-only 設定（首次啟動後改於 Admin → Settings 管理）。
+各項系統參數的完整清單，含 bootstrap 變數（`.env`）與 seed-only 設定（首次啟動後改於管理後台「外部服務」管理）。
 
 ### [效能與監控](performance.md)
 高併發場景的優化建議、連線池與快取策略、Prometheus 監控。
 
 !!! note "公開頁面已移出本專案"
     對外的宣傳頁與法務頁（`/`、`/status`、`/privacy`、`/dpa`）已改由獨立的宣傳網站專案提供，
-    不再由 `web` 服務發送。`/privacy` 是登記於 Anthropic Connectors Directory 的網址，
+    不再由本專案的前端服務發送。`/privacy` 是登記於 Anthropic Connectors Directory 的網址，
     移轉後務必在 `nginx/nginx.conf` 補上 301 導向（該檔已留有 TODO 區塊）。

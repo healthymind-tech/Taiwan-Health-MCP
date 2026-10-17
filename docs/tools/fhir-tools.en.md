@@ -8,8 +8,8 @@ Generate a FHIR R4 `Condition` resource from an ICD-10 diagnosis.
 ### Parameters
 | Parameter | Type | Required | Description | Example |
 | :--- | :--- | :--- | :--- | :--- |
-| `icd_code` | string | No | An ICD-10-CM code given directly (supply this or `diagnosis_keyword`; takes precedence over the keyword) | `"E11.9"` |
-| `diagnosis_keyword` | string | No | Diagnosis keyword (Chinese or English), used to look the ICD code up | `"第二型糖尿病"` |
+| `icd_code` | string | No | An ICD-10-CM code given directly (Path A, full field support; supply this or `diagnosis_keyword`) | `"E11.9"` |
+| `diagnosis_keyword` | string | No | Diagnosis keyword (Chinese or English): searched first, then the resource is built (Path B; when both are given the keyword wins) | `"第二型糖尿病"` |
 | `patient_id` | string | No | The Patient reference to link; empty string by default | `"patient-001"` |
 | `clinical_status` | string | No | `active` (default) / `inactive` / `resolved` / `remission` | `"resolved"` |
 | `verification_status` | string | No | `confirmed` (default) / `provisional` / `differential` / `refuted` | `"provisional"` |
@@ -19,7 +19,7 @@ Generate a FHIR R4 `Condition` resource from an ICD-10 diagnosis.
 | `recorded_date` | string | No | Recorded date | `"2026-02-01"` |
 | `additional_notes` | string | No | Extra notes, written into `Condition.note` | `"under follow-up"` |
 
-> At least one of `icd_code` and `diagnosis_keyword` must be supplied; with both omitted there is no way to tell which diagnosis to code.
+> At least one of `icd_code` and `diagnosis_keyword` must be supplied; with both omitted the tool returns `{"error": "Provide either icd_code or diagnosis_keyword"}`. Path B (keyword) applies only `patient_id`, `clinical_status`, `verification_status` and `severity`; the other fields (category, dates, notes) take effect on Path A only.
 
 ### Purpose
 Maps the ICD-10-CM code into `Condition.code.coding` automatically, filling in the standard system URI (`http://hl7.org/fhir/sid/icd-10-cm`) and the disease name, then populates clinicalStatus, verificationStatus, category, subject, and the other attributes from the parameters above.
@@ -51,12 +51,12 @@ Generate a FHIR R4 `Medication` or `MedicationKnowledge` resource from Taiwan FD
 ### Parameters
 | Parameter | Type | Required | Description | Example |
 | :--- | :--- | :--- | :--- | :--- |
-| `keyword` | string | No | Drug keyword (supply this or `license_id`) | `"普拿疼"` |
-| `license_id` | string | No | License number | `"衛署藥製字第000480號"` |
-| `resource_type` | string | No | `Medication` or `MedicationKnowledge` | `"MedicationKnowledge"` |
+| `keyword` | string | No | Drug keyword: searched first, then the resource is built (Path B; supply this or `license_id`) | `"普拿疼"` |
+| `license_id` | string | No | License number (Path A; when both are given the license number wins) | `"衛署藥製字第000480號"` |
+| `resource_type` | string | No | `Medication` (default) or `MedicationKnowledge` | `"MedicationKnowledge"` |
 
 ### Purpose
-Coding uses the TFDA license number CodeSystem (`https://mcp.fda.gov.tw/fhir/CodeSystem/tfda-license-id`) and carries ingredient information.
+Coding uses the TFDA license number CodeSystem (`https://mcp.fda.gov.tw/fhir/CodeSystem/tfda-license-id`) and carries ingredient information. Resources are derived from normalised TFDA data only — RxNorm is not used.
 
 ---
 

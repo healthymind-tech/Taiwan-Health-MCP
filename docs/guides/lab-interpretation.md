@@ -35,7 +35,7 @@ interpret_lab_result(loinc_code="1558-6", value=110, age=55, gender="M")
 ```
 
 **結果**：
-系統會指出 110 mg/dL 略高於正常值 (通常 < 100)，屬於「空腹血糖受損 (Impaired Fasting Glucose)」，即糖尿病前期。建議飲食控制並追蹤。
+工具依年齡 / 性別選出適用的參考區間（`data/loinc/lab_reference_ranges.csv` 中空腹血糖為 70–100 mg/dL），回傳 `result.flag = "H"`、`status = "偏高 (High)"`、參考區間與來源，以及一句通用說明「高於正常參考值，建議進一步評估」。工具**不會**下診斷；「空腹血糖受損（糖尿病前期）」這類臨床解讀由呼叫端（LLM）或醫療人員依結果判斷。
 
 ### 步驟三：批次判讀
 
@@ -55,4 +55,4 @@ batch_interpret_lab_results(
 ```
 
 **結果**：
-系統會回傳一份摘要，指出患者有「代謝症候群」的風險（血糖高、血脂高），建議諮詢心臟科或新陳代謝科。
+工具回傳 `total_tests`、`abnormal_count`、`normal_count` 與每一項的判讀（三項皆為 `H`）。沒有參考值的檢驗會被略過，不計入總數。整體風險評估（例如是否有代謝症候群的疑慮）同樣交由呼叫端或醫療人員判斷。

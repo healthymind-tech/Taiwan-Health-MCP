@@ -19,9 +19,9 @@ A single entry point with three modes:
 ### Parameters
 | Parameter | Type | Required | Description | Example |
 | :--- | :--- | :--- | :--- | :--- |
-| `mode` | string | Yes | `keyword` / `permit_no` / `condition` | `"keyword"` |
+| `mode` | string | No | `keyword` / `permit_no` / `condition`, `keyword` by default | `"keyword"` |
 | `keyword` | string | Yes | Search keyword; for `condition`, a disease name or ICD-10 code | `"魚油"`, `"A00022"`, `"E11"` |
-| `limit` | integer | No | Result cap, 3 by default | `5` |
+| `limit` | integer | No | Result cap, 3 by default, 10 maximum (ignored in `permit_no` mode) | `5` |
 
 ### Response format
 Every mode returns the same top-level structure, but only `condition` mode adds the top-level `icd_code` and `recommended_benefits`:
@@ -34,17 +34,18 @@ Every mode returns the same top-level structure, but only `condition` mode adds 
 }
 ```
 
+`keyword` mode runs a hybrid BM25 + semantic search; without embeddings it falls back to keyword-only and adds `search_mode: "keyword_only"` and `search_note`.
+Without `keyword` the tool returns `{"error": "Provide keyword"}`. The group is registered only while `health_supplements.items` holds at least 10 rows.
+
 ### Fields on each result
 Every mode uses the same fields on each result:
 
 - `permit_no`
 - `product_name`
 - `company`
+- `category`
 - `benefits`
-- `ingredients`
-- `specs`
-- `status`
-- `source_url`
+- `approval_date`
 
 `condition` mode additionally populates, at the top level:
 - `icd_code`

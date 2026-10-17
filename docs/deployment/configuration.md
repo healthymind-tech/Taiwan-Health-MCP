@@ -1,6 +1,6 @@
 # 環境配置
 
-系統透過環境變數與資料庫設定（`admin.app_settings` / `admin.llm_profiles`）兩層來配置。複製 `.env.example` 為 `.env` 後修改：
+系統透過環境變數與資料庫設定（`admin.app_settings`，以及模型端點的 `admin.llm_providers` / `llm_routes` / `llm_route_members` / `llm_role_routes`）兩層來配置。複製 `.env.example` 為 `.env` 後修改：
 
 ```bash
 cp .env.example .env
@@ -11,8 +11,8 @@ cp .env.example .env
 | 類別 | 存放位置 | 說明 |
 |------|----------|------|
 | **Bootstrap 變數** | 只在 `.env` | DB / Redis / MCP transport / `ADMIN_*` 認證 / `WEB_PORT`。系統啟動前就要知道，不進資料庫。 |
-| **Seed-only 設定** | `.env` → `admin.app_settings` | MinIO、TFDA 爬蟲、FHIR package registry、worker 調校等。**只在首次啟動、對應鍵尚未存在時讀取一次**以種子化；編輯 `.env` 對已種子化的資料庫無效。TFDA / registry 之後可在 Admin → Settings 管理（支援熱套用）；**MinIO 與 worker 調校在後台是唯讀群組**，事後只能直接 `UPDATE admin.app_settings` 再重啟服務。 |
-| **模型端點** | 只在資料庫（`admin.llm_profiles`） | 嵌入、OCR（MinerU）、分析 LLM。**完全不從環境變數讀取**，只能在 Admin → Settings 設定，可用 Settings → Export / Import 在不同環境間搬移。 |
+| **Seed-only 設定** | `.env` → `admin.app_settings` | MinIO、TFDA 爬蟲、FHIR package registry、worker 調校等。**只在首次啟動、對應鍵尚未存在時讀取一次**以種子化；編輯 `.env` 對已種子化的資料庫無效。TFDA / registry 之後可在管理後台「外部服務」（`/admin/integrations`）管理（支援熱套用）；**MinIO 與 worker 調校在後台是唯讀群組**，事後只能直接 `UPDATE admin.app_settings` 再重啟服務。 |
+| **模型端點** | 只在資料庫 | 嵌入與分析 LLM 存於 provider 帳號 / profile 表（`admin.llm_providers` 等），於「模型端點」（`/admin/models`）設定；OCR（MinerU）存於 `admin.app_settings` 的 `ocr` 群組，於「外部服務 → OCR」設定。**完全不從環境變數讀取**，可用「備份與設定」（`/admin/system`）的設定匯出 / 匯入（v3）在不同環境間搬移。 |
 
 ---
 
@@ -69,6 +69,7 @@ cp .env.example .env
 | `ADMIN_INITIAL_PASSWORD` | 空 | 明文初始密碼，**僅在首次啟動、資料庫尚無憑證列時**使用：雜湊後寫入 `admin.admin_credentials`，之後永久忽略。與 `ADMIN_PASSWORD_HASH` 並存時優先採用。明文不會被持久化。 |
 | `ADMIN_SESSION_SECRET` | 空 | session cookie 簽章金鑰 |
 | `ADMIN_SESSION_TTL_MINUTES` | `240` | session 有效期 |
+| `ADMIN_SESSION_COOKIE` | `tw_health_admin_session` | session cookie 名稱（僅允許英數、`_`、`-`、`.`）。同一主機上跑多套 stack 時用來隔離（cookie 依主機而非埠區分），staging 使用 `tw_health_admin_session_staging`。 |
 | `ADMIN_COOKIE_SECURE` | 空（自動） | `true` / `false`。空值時，`PUBLIC_BASE_URL` 使用 HTTPS 就加入 cookie `Secure` 屬性。TLS 在外部 proxy 終止且未設定 public URL 時應明確設為 `true`。 |
 | `ADMIN_MAX_UPLOAD_MB` | `512` | 來源檔上傳上限 |
 | `FHIR_SERVER_SECRET_KEY` | 空（回退為 `ADMIN_SESSION_SECRET`） | 外部 FHIR 伺服器 OAuth token / client secret 的 pgcrypto 對稱金鑰。**`app` 與 `admin-worker` 必須一致**，否則 worker 解密會拋 `Illegal argument to function`（金鑰為空）或 `Wrong key or corrupt data`（金鑰不符）。 |
@@ -100,7 +101,7 @@ node -e "console.log('sha256$' + require('crypto').createHash('sha256').update('
 
 ---
 
-## Seed-only 設定（首次啟動後改於 Admin → Settings）
+## Seed-only 設定（首次啟動後改於管理後台「外部服務」）
 
 ### MinIO（藥品資產）
 
@@ -120,8 +121,8 @@ node -e "console.log('sha256$' + require('crypto').createHash('sha256').update('
 | `DRUG_TFDA_BASE_URL` | `https://mcp.fda.gov.tw` | TFDA 網站 base URL |
 | `DRUG_HTTP_TIMEOUT` | `30` | 單次 HTTP 逾時（秒） |
 | `DRUG_CRAWLER_CONCURRENCY` | `4` | 爬蟲並行度 |
-| `DRUG_AUTOCHAIN_BATCH_LIMIT` | `200` | 自動串接（index → enrichment → analysis）時，每個後續工作處理的授權證上限。**只作用於自動串接產生的工作**；手動排入的工作若沒帶 `limit`，會處理整個待辦佇列。 |
-| `DRUG_ANALYSIS_PROMPT_PATH` | `src/prompts/drug/analysis_prompt.txt` | 分析 LLM 的 system prompt 路徑 |
+| `DRUG_AUTOCHAIN_BATCH_LIMIT`（環境變數，非 seed） | `200` | 自動串接（index → enrichment → analysis）時，每個後續工作處理的授權證上限。**只作用於自動串接產生的工作**；手動排入的工作若沒帶 `limit`，會處理整個待辦佇列。 |
+| `DRUG_ANALYSIS_PROMPT_PATH`（環境變數，非 seed） | `<repo>/src/prompts/drug/analysis_prompt.txt` | 分析 LLM 的 system prompt 路徑（供容器指出 repo 掛載位置，不是用來替換 prompt） |
 
 ### 背景 worker 調校
 
@@ -131,8 +132,9 @@ node -e "console.log('sha256$' + require('crypto').createHash('sha256').update('
 | `ADMIN_WORKER_POLL_SECONDS` | `3` | 佇列輪詢間隔 |
 | `ADMIN_HEARTBEAT_INTERVAL_SECONDS` | `15` | 心跳間隔 |
 | `ADMIN_WORKER_STALE_AFTER_SECONDS` | `45` | 超過此秒數無心跳即視為失聯 |
-| `ADMIN_MAX_CONCURRENT_JOBS` | `4` | 同時執行的工作數上限（另有各模組資源槽位限制） |
-| `ADMIN_SCHEDULE_SCAN_INTERVAL_SECONDS` | `60` | 排程掃描間隔 |
+| `ADMIN_RECLAIM_INTERVAL_SECONDS` | `60` | 回收失聯工作的檢查間隔 |
+| `ADMIN_MAX_CONCURRENT_JOBS`（環境變數，非 seed） | `4` | 同時執行的工作數上限（另有各模組資源槽位限制）。worker 每次啟動都直接讀環境變數，不存入 `admin.app_settings`。 |
+| `ADMIN_SCHEDULE_SCAN_INTERVAL_SECONDS`（環境變數，非 seed） | `60` | 排程掃描間隔 |
 | `NODE_OPTIONS` | `--max-old-space-size=8192`（compose 設定於 worker） | IG 匯入會整包載入相依套件，**不要調低**。 |
 
 ### 本機開發用的來源檔路徑
@@ -142,12 +144,20 @@ node -e "console.log('sha256$' + require('crypto').createHash('sha256').update('
 | 變數 | 預設值 |
 |------|--------|
 | `FHIR_CODE_DIR` | `<repo>/fhir-code` |
-| `ICD_CM_ZIP` / `ICD_PCS_ZIP` / `ICD_XLSX` | `fhir-code/icd/10/...` 下的對應檔 |
+| `ICD_CM_ZIP` / `ICD_PCS_ZIP` / `ICD_XLSX` | `fhir-code/icd/10/...` 下的對應檔（`ICD_CM_ZIP` 未設定時優先找 CMS order-file zip，見[測試資料檔清單](../data-sources/test-data.md)） |
 | `LOINC_ZIP_PATH` | `fhir-code/loinc/2.80/Loinc_2.80.zip` |
 | `LOINC_MAPPING_CSV` / `LOINC_RANGES_CSV` | `data/loinc/` 下的對照表 |
 | `SNOMED_ZIP` | `fhir-code/snomed/SnomedCT_InternationalRF2_PRODUCTION_*.zip` |
 | `RXNORM_ZIP` | `fhir-code/rxnorm/RxNorm_full_*.zip` |
 | `IG_TGZ` | `fhir-code/twcoreig/**/package.tgz` |
+
+---
+
+## 映像建置參數
+
+| 參數 | 適用 | 說明 |
+|------|------|------|
+| `BUILD_SHA` | `node-server/Dockerfile`（`app`）、`Dockerfile.worker`（`admin-worker`） | git sha；`app` 在 `health_check` 的 `build` 欄位回報，`admin-worker` 記在啟動日誌。`compose.yaml` 從同名環境變數傳入，未設定時為 `dev`。用法：`BUILD_SHA=$(git rev-parse --short HEAD) docker compose build app admin-worker`。 |
 
 ---
 
@@ -167,6 +177,8 @@ Claude Desktop：
   }
 }
 ```
+
+`PUBLIC_TOOLS_AUTH_MODE=bearer` 時，客戶端須帶 `Authorization: Bearer <PUBLIC_TOOLS_BEARER_TOKEN>` 標頭。管理後台的「MCP 工具」頁（`/admin/mcp`）提供可直接複製的用戶端設定範本。
 
 ---
 

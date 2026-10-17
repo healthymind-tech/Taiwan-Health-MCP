@@ -2,9 +2,9 @@
 
 Code and comments in this project are always written in **English**; user-facing documentation is bilingual, in Traditional Chinese and English (see [Docs Site Maintenance](../WEBSITE.md)).
 
-## TypeScript (`node-server/`, `web/`)
+## TypeScript (`node-server/`, `web-v2/`)
 
-- **Format**: TypeScript 5.7, ESM (`"type": "module"`); relative imports must carry the `.js` extension (matching the compiled output).
+- **Format**: ESM (`"type": "module"`). In `node-server/` (TypeScript 5.7+, compiled by `tsc`) relative imports must carry the `.js` extension (matching the compiled output); `web-v2/` (TypeScript 5.9, bundled by Vite) imports through the `@/` path alias, without extensions.
 - **Naming**: files in camelCase (`drugService.ts`, `adminJobs.ts`); types and classes in PascalCase; functions and variables in camelCase.
 - **Types**: annotate parameter and return types on public functions. Avoid `any`; when unavoidable, note why.
 - **Validation**: MCP tool input schemas are defined with `zod`.

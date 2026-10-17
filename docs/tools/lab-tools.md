@@ -2,6 +2,8 @@
 
 目前 LOINC 對外入口已收斂為 4 個工具：`search_loinc`、`query_loinc`、`interpret_lab_result`、`batch_interpret_lab_results`。
 
+預設值：`search_loinc` 的 `mode` 預設 `code`、`limit` 預設 3（上限 10）；`query_loinc` 的 `mode` 預設 `detail`；`gender` 一律預設 `all`。`code` / `specimen` / `component` 模式為 BM25 + 語意混合搜尋，embedding 不可用時退回純關鍵字並帶 `search_mode: "keyword_only"`。`loinc.concepts` 少於 1,000 筆時整組工具不會註冊。
+
 ## 1) `search_loinc`（搜尋入口）
 
 單一搜尋入口，透過 `mode` 切換查詢意圖。

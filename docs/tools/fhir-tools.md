@@ -8,8 +8,8 @@
 ### 參數
 | 參數名 | 型別 | 必填 | 說明 | 範例 |
 | :--- | :--- | :--- | :--- | :--- |
-| `icd_code` | string | 否 | 直接指定 ICD-10-CM 碼（與 `diagnosis_keyword` 擇一，優先於關鍵字） | `"E11.9"` |
-| `diagnosis_keyword` | string | 否 | 診斷關鍵字（中英文），用於反查 ICD 碼 | `"第二型糖尿病"` |
+| `icd_code` | string | 否 | 直接指定 ICD-10-CM 碼（路徑 A，支援全部欄位；與 `diagnosis_keyword` 擇一） | `"E11.9"` |
+| `diagnosis_keyword` | string | 否 | 診斷關鍵字（中英文），先搜尋 ICD 碼再產生資源（路徑 B；同時給兩者時以關鍵字為準） | `"第二型糖尿病"` |
 | `patient_id` | string | 否 | 連結的 Patient 參照，預設空字串 | `"patient-001"` |
 | `clinical_status` | string | 否 | `active`（預設）/ `inactive` / `resolved` / `remission` | `"resolved"` |
 | `verification_status` | string | 否 | `confirmed`（預設）/ `provisional` / `differential` / `refuted` | `"provisional"` |
@@ -19,7 +19,7 @@
 | `recorded_date` | string | 否 | 記錄日期 | `"2026-02-01"` |
 | `additional_notes` | string | 否 | 補充註記，寫入 `Condition.note` | `"追蹤中"` |
 
-> `icd_code` 與 `diagnosis_keyword` 至少要給一個；兩者皆省略時無法決定要編碼哪個診斷。
+> `icd_code` 與 `diagnosis_keyword` 至少要給一個；兩者皆省略時回傳 `{"error": "Provide either icd_code or diagnosis_keyword"}`。路徑 B（關鍵字）只套用 `patient_id`、`clinical_status`、`verification_status`、`severity`，其餘欄位（category、日期、註記）只在路徑 A 生效。
 
 ### 用途
 自動將 ICD-10-CM 碼映射至 `Condition.code.coding`，填入標準 system URI（`http://hl7.org/fhir/sid/icd-10-cm`）與疾病名稱，並依上述參數填入 clinicalStatus、verificationStatus、category、subject 等屬性。
@@ -50,12 +50,12 @@
 ### 參數
 | 參數名 | 型別 | 必填 | 說明 | 範例 |
 | :--- | :--- | :--- | :--- | :--- |
-| `keyword` | string | 否 | 藥品關鍵字（與 `license_id` 擇一） | `"普拿疼"` |
-| `license_id` | string | 否 | 許可證字號 | `"衛署藥製字第000480號"` |
-| `resource_type` | string | 否 | `Medication` 或 `MedicationKnowledge` | `"MedicationKnowledge"` |
+| `keyword` | string | 否 | 藥品關鍵字，先搜尋再產生資源（路徑 B；與 `license_id` 擇一） | `"普拿疼"` |
+| `license_id` | string | 否 | 許可證字號（路徑 A；同時給兩者時以許可證字號為準） | `"衛署藥製字第000480號"` |
+| `resource_type` | string | 否 | `Medication`（預設）或 `MedicationKnowledge` | `"MedicationKnowledge"` |
 
 ### 用途
-編碼採用 TFDA 許可證字號 CodeSystem（`https://mcp.fda.gov.tw/fhir/CodeSystem/tfda-license-id`），並帶入成分資訊。
+編碼採用 TFDA 許可證字號 CodeSystem（`https://mcp.fda.gov.tw/fhir/CodeSystem/tfda-license-id`），並帶入成分資訊。資源只由正規化的 TFDA 資料產生，不使用 RxNorm。
 
 ---
 

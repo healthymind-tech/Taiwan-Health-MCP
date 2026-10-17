@@ -26,6 +26,8 @@ search_loinc(mode="code", keyword="Urine Protein")
 # The results distinguish qualitative from quantitative
 ```
 
+> Operators can also use the "Data preview" tab on **Terminology → LOINC** in the admin console to filter by the six axes and inspect a single term's parts, answer lists, panels and MapTo (the LOINC structure tables behind it are loaded by `loinc_import`).
+
 ### 2. Verify the reference ranges
 Once mapped, use `query_loinc(mode="reference_range", ...)` to confirm that the standard reference values for that LOINC code are close to the in-house laboratory's. A large discrepancy may mean the wrong code was chosen (for example a code with different units or a different measurement method).
 

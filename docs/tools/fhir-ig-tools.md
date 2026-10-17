@@ -3,24 +3,33 @@
 一套通用、以 IG 為範圍的工具集，建構於多 IG（multi-IG）的 `fhir.*` 儲存之上，用於探索 Implementation Guide、讀取剖面與術語、進行術語驗證，以及以骨架填值方式產生與驗證 FHIR R4 資源。
 
 ## 共通慣例
-- 每個工具都可帶入選用的 `package_id` + `version`；兩者皆省略時鎖定**預設 IG**（`isDefault`）。
-- 回應採用共同信封：`{ok, data, warnings, provenance, error?}`。
+- 每個工具都可帶入選用的 `package_id` + `version`。省略 `package_id` 時依下列優先順序決定目標套件，`provenance.resolved_by` 會註明採用哪一條：
+    1. `explicit_version` — canonical 參數或 `meta.profile` 以 `url|version` 鎖定版本 → 持有該版本的套件；
+    2. `package_arg` / `latest` — 有給 `package_id`（有 `version` 用該版本；沒給 version 則用預設 IG 的版本，否則取最高正式版，只有在沒有正式版時才用 pre-release）；
+    3. `meta_profile` / `canonical_owner` — 擁有該 `meta.profile` 或 canonical 參數（profile / ValueSet / system）的套件，手動安裝的 IG 優先；
+    4. `default_ig` — 預設 IG（`isDefault`）；
+    5. `sole_manual_ig` — 沒有預設 IG 且恰好只有一個手動安裝的 IG。
+    都不符合時回傳錯誤 `NO_DEFAULT_IG`（不會任意挑一個套件）。
+- `|version` 一律被尊重：指定的版本未安裝時回傳 `ARTIFACT_NOT_FOUND`（訊息列出已安裝的版本），不會默默改用其他版本。
+- 回應採用共同信封：`{ok, data, warnings, provenance, error?}`。`provenance` 含 `packageId` / `version` / `fhirVersion` / `source`，以及 `resolved_by`；依賴閉包中同一套件有多個版本時另帶 `closure_versions`（說明 canonical 查詢實際採用哪個版本）。
+- 目標 IG 宣告的依賴有未安裝者時，`data.deps_missing` 會列出 `{package_id, version, required_by}`（閉包不完整，結果可能缺漏）。
+- 列表 / 搜尋類工具（`fhir_list_artifacts`、`fhir_search_artifacts`、`fhir_list_resource_profiles`）未給 `package_id` 時只查預設 IG；`all_packages=true` 改查所有已安裝套件（每列附 `package_id` / `package_version`，此時忽略 `package_id`）。查無結果時 `data.hint` 會指出其他有命中的套件。
 - 模組概念與建議工作流程見 [FHIR IG 服務模組](../modules/fhir-ig-service.md)。
 
 ## IG 探索
 | 工具 | 說明 | 主要參數 |
 | :--- | :--- | :--- |
-| `fhir_list_igs` | 列出已安裝 IG 套件（packageId / version / title / canonical / fhirVersion / status / isDefault / dependencies） | — |
-| `fhir_get_ig` | 單一 IG 詳情與各資源型別 artifact 數量 | `package_id`, `version` |
-| `fhir_list_artifacts` | 列出 IG 的 conformance artifacts 摘要 | `resource_type`, `grouping_id`, `limit`（預設 50，上限 200） |
-| `fhir_search_artifacts` | 以 id / canonical / name / title / description 全文搜尋 artifacts | `keyword`, `resource_type`, `limit`（預設 20，上限 100） |
+| `fhir_list_igs` | 列出已安裝 IG 套件（packageId / version / title / canonical / fhirVersion / status / isDefault / `installOrigin`（`manual` 手動安裝 / `dependency` 因其他 IG 的依賴而下載）/ dependencies） | — |
+| `fhir_get_ig` | 單一 IG 詳情、依賴與各資源型別 artifact 數量；`data.deps_missing` 列出未安裝的依賴 | `package_id`, `version` |
+| `fhir_list_artifacts` | 列出 IG 的 conformance artifacts 摘要 | `resource_type`, `grouping_id`, `all_packages`, `limit`（預設 50，上限 200） |
+| `fhir_search_artifacts` | 以 id / canonical / name / title / description 全文搜尋 artifacts | `keyword`, `resource_type`, `all_packages`, `limit`（預設 20，上限 100） |
 
 ## 剖面選擇與讀取
 | 工具 | 說明 | 主要參數 |
 | :--- | :--- | :--- |
-| `fhir_list_resource_profiles` | 列出可選資源剖面，依約束的基礎資源型別分組 | `base_type` |
+| `fhir_list_resource_profiles` | 列出可選資源剖面，依約束的基礎資源型別分組 | `base_type`, `all_packages` |
 | `fhir_rank_resource_profiles` | 依來源欄位鍵與剖面 element path 吻合度排名（僅建議，`selectionRequired:true`） | `keys`, `base_type`, `limit`（預設 5，上限 20） |
-| `fhir_get_profile` | 單一剖面摘要（身分 / base / derivation / element 數），支援 id / canonical / key 解析 | `identifier` |
+| `fhir_get_profile` | 單一剖面摘要（身分 / base / derivation / element 數），支援 id / canonical / key 解析，canonical 可寫成 `url|version`（未安裝的版本回 `ARTIFACT_NOT_FOUND`） | `identifier` |
 | `fhir_get_profile_elements` | 讀取剖面 snapshot；`view` = `elements` / `element` / `slices` / `choices` / `binding` / `examples` | `profile`, `view`, `path`, `slice_name`, `limit` |
 | `fhir_get_profile_required_elements` | 列出剖面「實際必填」的元素：整條父鏈皆必填才算、必填 slice、choice 型別、invariant 隱含的 value[x] 或 dataAbsentReason（vs-2 / vs-3 / tw-core-4 類，依運算式自動偵測）、target-implied 主要內容；每列附 `grounding_class`（auto / coding / source_fact / workflow_default …）、`required_by`、小型 required binding 的 `allowedCodes` 與填寫提示 `hint`。有 profile 的 extension 會依其定義展開（url、ext-1 隱含的 value[x]、必填子 extension），已填元素的基礎資料型別必填子元素也會列出（Narrative.div、Extension.url …），剖面自訂的 error invariant 列在 `invariants`。給 `instance` 時依 discriminator 比對 slice，未出現的 slice 不會帶出其子元素 | `profile`, `instance`（草稿：已填的選填父元素其必填子元素也列出）, `include_target_implied`（預設 `true`）, `include_mustsupport`（預設 `false`）, `verbosity`（預設 `compact`：id / required_by / grounding_class / fixed·pattern·value / choices / allowedCodes / hint，剖面固定的子樹折疊成一個可直接複製的 `value`；`full` 另含 min / max / types / binding / mustSupport） |
 
@@ -28,9 +37,9 @@
 | 工具 | 說明 | 主要參數 |
 | :--- | :--- | :--- |
 | `fhir_get_valueset` | ValueSet 定義摘要 | `identifier` |
-| `fhir_expand_valueset` | 展開 ValueSet 並列出成員碼 | `identifier`, `limit` |
+| `fhir_expand_valueset` | 展開 ValueSet 並列出成員碼（盡量在本機解析；整個大型外部 code system 不列舉，回 `TOO_BROAD`） | `identifier`, `limit`（預設 500，上限 2000） |
 | `fhir_lookup_code` | 在 CodeSystem 中查詢單一碼的顯示名稱與屬性 | `system`, `code` |
-| `fhir_validate_code` | 驗證 `system`+`code` 是否屬於指定 ValueSet | `system`, `code`, `value_set` |
+| `fhir_validate_code` | 驗證 `system`+`code` 是否屬於指定 ValueSet，回傳 `valid` / `invalid` / `unverifiable`；`value_set` 可寫成 `url|version` | `system`, `code`, `value_set` |
 | `fhir_normalize_code` | 以自由文字對照 ValueSet，回傳最合適標準碼 | `text`, `value_set`, `system`, `limit`（預設 10） |
 
 ## 授權、組裝與驗證
@@ -43,7 +52,9 @@
 | `fhir_validate_resource` | 驗證單一資源（結構 + 術語綁定）；未給 `profile` 時取 `meta.profile`。選用的 `source_text` 會另跑 grounding 檢查（見下節） | `resource`, `profile`, `source_text`, `site_config`, `evidence_map`, `grounding`, `grounding_verbosity` |
 | `fhir_validate_bundle` | 驗證整個 Bundle（各 entry 依其 `meta.profile` + Bundle 內參照完整性）。選用的 `source_text` 會另跑 grounding 檢查並合併結果（見下節） | `bundle`, `source_text`, `site_config`, `evidence_map`, `grounding`, `grounding_verbosity` |
 
-> 程序內驗證以剖面 snapshot 與術語綁定為基礎，不等同官方 HL7 FHIR Validator 的一致性認證。
+`fhir_validate_resource` / `fhir_validate_bundle` 的 `data` 另回報驗證是否完整：`checked_fully`（所有剖面與 ValueSet 都檢查到、且依賴閉包完整時為 `true`）、`profiles_unchecked`、`valuesets_unchecked`。`valid` 維持 HL7 語意（無法解析的剖面只是 warning），因此 `valid: true` 但 `checked_fully: false` 代表有部分內容沒有被檢查。`|version` canonical（`meta.profile`、binding、targetProfile、type profile、extension url）的解析方式比照 HL7 validator_cli 7.0.1。
+
+> 程序內驗證以剖面 snapshot 與術語綁定為基礎，比對基準為 HL7 validator_cli 7.0.1（稽核方式與結果見 `node-server/scripts/validator-audit/`），但不等同官方 HL7 FHIR Validator 的一致性認證。
 
 ## 依據原文檢查（grounding / completeness）
 
@@ -81,3 +92,14 @@
 - 病歷全文（`source_text`）與院所設定不會寫入 log、metric label 或 provenance，只留 `sourceSha256`；格式錯誤的 JSON 請求本文也不會被記錄。
 
 > 規則與詞彙表（`tw-lexicon`）以台灣病歷寫法為準；`fhir_check_completeness` 需要呼叫端讀轉換目標後提供 `targets`，不解析自然語言目標。檢查結果是輔助，不取代臨床人員審閱。
+
+## 工具版本 {#tool-versions}
+
+行為由固定測資鎖定的工具各有自己的版本（`node-server/src/toolVersions.ts`）；同一輸入的輸出改變時就會升版。`health_check` 的 `tools_version` 回報目前值，其餘工具沿用伺服器版本（`version`，目前 `1.1.0`）。
+
+| 工具 | 版本 |
+| :--- | :--- |
+| `fhir_validate_resource`、`fhir_validate_bundle` | 1.4.0 |
+| `fhir_get_profile_required_elements` | 1.2.0 |
+| `fhir_list_igs`、`fhir_get_ig`、`fhir_list_artifacts`、`fhir_search_artifacts`、`fhir_list_resource_profiles`、`fhir_rank_resource_profiles`、`fhir_get_profile`、`fhir_get_profile_elements`、`fhir_get_valueset`、`fhir_expand_valueset`、`fhir_lookup_code`、`fhir_validate_code`、`fhir_normalize_code`、`fhir_get_resource_skeleton`、`fhir_finalize_resource` | 1.2.0 |
+| `fhir_check_grounding`、`fhir_check_completeness` | 1.1.0 |

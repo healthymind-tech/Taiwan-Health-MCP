@@ -2,10 +2,30 @@
 
 !!! info "歷史文件（設計評估，已實作）"
     這是 FHIR IG 工具集的**設計評估**，撰寫於實作之前，內容假設後端為 Python
-    （文中的 `src/admin_jobs.py`、`src/twcore_service.py`、`pip install fhirpathpy`
-    等均已不存在）。工具集已實作完成：19 個 `fhir_*` 工具現以 TypeScript 提供，
-    FHIRPath 驗證由 npm 套件 `fhirpath` 在行程內執行，**不需要任何額外安裝**。
-    本文保留作為決策紀錄；目前的工具說明請見 [FHIR IG 工具](tools/fhir-ig-tools.md)。
+    （文中的 `src/admin_jobs.py`、`src/twcore_service.py`、`twcore.*` schema、`pip install fhirpathpy`
+    等均已不存在）。本文保留作為決策紀錄，**正文不再更新**；目前的工具說明請見
+    [FHIR IG 工具](tools/fhir-ig-tools.md)。
+
+    **目前實作與本文設計的差異（2026-10-17 對照程式碼）：**
+
+    - **工具數：**實際註冊 **22** 個 `fhir_*` 工具（TypeScript，`node-server/src/mcp.ts`）——本文規劃的 19 個，
+      加上 `fhir_get_profile_required_elements`（剖面實際必填元素清單）、`fhir_check_grounding`（逐值比對原始病歷）
+      與 `fhir_check_completeness`（轉換目標所需事實的缺口報告）。後兩者為決定性規則、不使用 LLM。
+    - **Schema：**待決事項 1 已採用全新、package-scoped 的 `fhir.*`（`ig_packages` / `codesystems` / `concepts` /
+      `artifacts`）；`fhir.ig_packages` 另記錄 `install_origin`（`manual` / `dependency`）與 `installed_for`。
+      匯入 IG 時會自動下載宣告的相依套件；管理介面移除 IG 時，仍被其他 IG（直接或遞移）依賴的套件與預設 IG 預設會被拒絕（需 `force`，或為預設 IG 指定替代者）。
+    - **IG 選擇器：**不是 §4.2 的 `ig = {packageId, version}` 物件，而是每個工具的 `package_id` + `version` 參數。
+      省略時的解析順序：canonical / `meta.profile` 上的 `|version` → 擁有該 canonical / `meta.profile` 的套件
+      （手動安裝優先）→ 預設 IG → 唯一的手動安裝 IG；都沒有時回傳 `NO_DEFAULT_IG`。實際套用的規則寫在
+      `provenance.resolved_by`，閉包缺少的相依套件寫在 `data.deps_missing`。列表 / 搜尋類工具另有 `all_packages`。
+    - **驗證器：**仍是行程內、無 Java sidecar（缺口 1 的決定不變），但目標已從「預檢、攔下 80–95%」提升為
+      **與 HL7 `validator_cli` 7.0.1（+ tx.fhir.org）判定一致**，以稽核工具逐筆對照，結果見
+      [`node-server/scripts/validator-audit/REPORT.md`](https://github.com/healthymind-tech/Taiwan-Health-MCP/blob/main/node-server/scripts/validator-audit/REPORT.md)（v1–v6）。
+      `valid` 沿用 HL7 語意（解析不到的剖面只是警告），另以 `checked_fully` / `profiles_unchecked` /
+      `valuesets_unchecked` 明示沒能檢查的部分。
+    - **選填 grounding：**`fhir_validate_resource` / `fhir_validate_bundle` 可帶 `source_text`（及 `site_config`、
+      `evidence_map`、`grounding`、`grounding_verbosity`）在同一次呼叫做 grounding；不帶時輸出不變。
+    - **版本：**各工具版本由 `node-server/src/toolVersions.ts` 管理，並回報在 `health_check.tools_version`。
 
 **狀態：** 評估／規劃（尚未變更程式碼）
 **日期：** 2026-06-07

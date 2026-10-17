@@ -1,32 +1,36 @@
 # Lab Service API
 
-`LabService` handles LOINC search, category browsing, reference range lookup, and lab result interpretation.
+`LabService` (`node-server/src/labService.ts`) handles LOINC search, category browsing, reference-range lookup and lab-result interpretation,
+backing the four tools `search_loinc`, `query_loinc`, `interpret_lab_result` and `batch_interpret_lab_results`.
+Database access goes through the shared pool in `db.ts`; methods return JSON-serialisable objects.
 
 ## class `LabService`
 
-### `__init__(self, pool)`
-Initialise the lab service; takes a `pg.Pool` connection pool.
+### `constructor(embeddingSvc: EmbeddingService | null = null)`
+Takes the shared `EmbeddingService`; with `null` searches are keyword-only.
 
-### `async search_loinc_code(self, keyword: str, category: str = None) -> str`
-Search for candidate LOINC codes. Suitable for finding likely test codes from a test name, abbreviation, analyte, or specimen phrase.
+### `async searchLoincCode(keyword, category = null, limit = 3)`
+Searches candidate LOINC codes by test name, abbreviation or analyte (BM25 + semantic hybrid); `category` narrows to one LOINC class. Carries `search_mode: "keyword_only"` when vectors are unavailable.
 
-### `async list_categories(self) -> str`
-List the LOINC top-level categories available in the database.
+### `async searchBySpecimen(specimenType, limit = 3)`
+Searches LOINC items by specimen type.
 
-### `async get_reference_range(self, loinc_num: str, age: int, gender: str = "all") -> str`
-Retrieve the reference range for a single LOINC code by age and sex.
+### `async findRelatedTests(component, limit = 3)`
+Finds related LOINC tests for the same analyte, grouped by specimen system (`by_system`).
 
-### `async interpret_lab_result(self, loinc_num: str, value: float, age: int, gender: str = "all") -> str`
-Interpret a single lab value, producing a structured high / normal / low result.
+### `async listCategories()`
+Lists the LOINC classes available in the database.
 
-### `async search_by_specimen(self, specimen_type: str) -> str`
-Search LOINC entries by specimen type.
+### `async getPatientFriendlyName(loincNum)`
+Full concept detail and patient-friendly name for one LOINC code (`query_loinc` `detail` mode).
 
-### `async find_related_tests(self, component: str) -> str`
-Find related LOINC tests for the same analyte, usually grouped by specimen system.
+### `async getReferenceRange(loincNum, age, gender = "all")`
+Reference range by age and sex (`"M" | "F" | "all"`) (`query_loinc` `reference_range` mode).
 
-### `async get_patient_friendly_name(self, loinc_num: str) -> str`
-Retrieve the full LOINC concept detail and a patient-friendly name.
+### `async interpretLabResult(loincNum, value, age, gender = "all")`
+Interprets one value: returns the range, the measured value and a normal / high / low flag.
 
-### `async batch_interpret_results(self, results: list, age: int, gender: str = "all") -> str`
-Interpret many results at once — suitable for a full panel or an entire report.
+### `async batchInterpretResults(results, age, gender = "all")`
+Interprets an array of `{loinc_code, value}` in one call — suited to a full lab report.
+
+> Reference values are general guidance only and do not replace clinical judgement.

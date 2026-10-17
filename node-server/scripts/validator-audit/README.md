@@ -30,7 +30,7 @@ validator（經 <https://validator.dicom.tw/app/> 包裝，下稱 oracle 或 dic
 | `harness/gen_v2_mutations.py` | （v2）A–F 各類 mutation（display 互換 / 中文 display / 大小寫 / 空白、LOINC LCN / short name、SNOMED 同義詞與 inactive 描述、偽造 THO / HL7 URL、巢狀 extension、UCUM、OID、ValueSet 當 system、vital-sign 替代碼）。需要 `corpus/v2_terms.json.gz`。 |
 | `requiredElementsAudit.ts` | `fhir_get_profile_required_elements` 的 oracle 稽核：對每個通過驗證的範例（含 Bundle entry），檢查 (a) 回報的必要元素都存在於範例（necessity）、(b) 刪掉回報元素後 validator 必報錯（sufficiency）、(c) 逐一刪除範例中每個元素，validator 報的 required / cardinality / invariant 錯誤都有對應列（under-report）。可疑 mutant 寫到 `required_audit_cli_items.json` 供 `cli_oracle.py` 複核；`CLI_SAMPLE=n` 另抽樣通過的刪除。 |
 | `requiredElementsSizes.ts` | 該 tool 在 TW Core 1.0.0 / PAS 1.2.7 全部 profile 上的輸出大小（compact vs full）。 |
-| `requiredElementsFixtures.ts` | 重新產生 `mcp_proposal/fixtures/required_elements_pas`（單元測試用的 PAS 投影與範例）。 |
+| `requiredElementsFixtures.ts` | 重新產生 `mcp_proposal/fixtures/required_elements_pas`（單元測試用的 PAS 投影與範例）。`mcp_proposal/` 是私有、未納入版控的目錄；沒有它時 `src/fhirRequiredElements.test.ts` 的相關案例會自動略過。 |
 | `corpus/*.json.gz` | 本次稽核實際使用的 corpus（見下表）。 |
 | `results/` | 最終結果：`summary.json`、`alignment.txt`、`constraint_survey.json`。 |
 
