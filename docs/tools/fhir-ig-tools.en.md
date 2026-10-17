@@ -2,6 +2,8 @@
 
 A general, IG-scoped toolset built on the multi-IG `fhir.*` store, used to explore Implementation Guides, read profiles and terminology, perform terminology validation, and produce and validate FHIR R4 resources through skeleton-fill authoring.
 
+> **Maintenance mode**: while the admin console has the `ig` module in maintenance mode, all 22 tools of this group (including `fhir_check_grounding` / `fhir_check_completeness`) calls return an `isError` result immediately with error code `MODULE_MAINTENANCE` (`error.message` in English, `error.message_zh` in Traditional Chinese, `error.module` the module key), effective within about 5 seconds; the tools stay in `tools/list`. See the [API reference](../api/index.md#maintenance).
+
 ## Shared conventions
 - Every tool accepts an optional `package_id` + `version`. When `package_id` is omitted, the target package is chosen by this precedence, and `provenance.resolved_by` says which rule applied:
     1. `explicit_version` — a canonical argument or `meta.profile` pinned as `url|version` → the package holding that version;
@@ -102,4 +104,5 @@ Tools whose behaviour is pinned by fixtures carry their own version (`node-serve
 | `fhir_validate_resource`, `fhir_validate_bundle` | 1.4.0 |
 | `fhir_get_profile_required_elements` | 1.2.0 |
 | `fhir_list_igs`, `fhir_get_ig`, `fhir_list_artifacts`, `fhir_search_artifacts`, `fhir_list_resource_profiles`, `fhir_rank_resource_profiles`, `fhir_get_profile`, `fhir_get_profile_elements`, `fhir_get_valueset`, `fhir_expand_valueset`, `fhir_lookup_code`, `fhir_validate_code`, `fhir_normalize_code`, `fhir_get_resource_skeleton`, `fhir_finalize_resource` | 1.2.0 |
-| `fhir_check_grounding`, `fhir_check_completeness` | 1.1.0 |
+| `fhir_check_grounding` | 1.1.0 |
+| `fhir_check_completeness` | 1.1.1 |

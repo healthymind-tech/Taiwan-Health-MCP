@@ -12,6 +12,12 @@ export interface ToolGate {
   error?: string;
 }
 
+/** Maintenance toggle gating a tool / group; `active` = calls currently fail with MODULE_MAINTENANCE. */
+export interface ToolMaintenance {
+  module: string;
+  active: boolean;
+}
+
 export interface ToolExample {
   id: string;
   label: string;
@@ -31,6 +37,8 @@ export interface CatalogTool {
   reason: ToolStatusReason;
   gate: ToolGate | null;
   write_capable: boolean;
+  /** Absent on older backends. */
+  maintenance?: ToolMaintenance | null;
   input_schema: JsonSchema;
   examples: ToolExample[];
 }
@@ -44,6 +52,7 @@ export interface CatalogGroup {
   enabled: number;
   disabled: number;
   gate: ToolGate | null;
+  maintenance?: ToolMaintenance | null;
 }
 
 export interface CatalogPayload {

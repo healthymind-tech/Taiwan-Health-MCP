@@ -62,6 +62,8 @@ function fakeDeps(overrides: Partial<McpAdminDeps> = {}): McpAdminDeps & { calls
     },
     moduleStatus: async () => STATUS,
     moduleCounts: async () => COUNTS,
+    maintenanceModules: () => ({ icd: "icd", fhir_condition: "icd", food_nutrition: null, fhir_servers: null, system: null }),
+    maintenanceStates: async () => ({ icd: false }),
     overviewInfo: async () => OVERVIEW,
     now: () => (t += 7),
     log: (_m, extra) => logs.push(extra),
@@ -238,4 +240,20 @@ test("GET tools refreshes the registry and returns the catalog", async () => {
   assert.equal((out!.body as any).totals.total, 5);
   const ov = await handleMcpApi(deps, new InvokeRateLimiter(30, () => 0), "GET", "/admin/api/mcp/overview", {}, "a");
   assert.deepEqual((ov!.body as any).tools, { total: 5, enabled: 4 });
+});
+
+test("GET tools: maintenance state per tool and group (only modules with a toggle; always-on groups never)", async () => {
+  const deps = fakeDeps({ maintenanceStates: async () => ({ icd: true }) });
+  const body = (await handleMcpApi(deps, new InvokeRateLimiter(30, () => 0), "GET", "/admin/api/mcp/tools", {}, "a"))!.body as any;
+  const by = Object.fromEntries(body.tools.map((t: any) => [t.name, t]));
+  assert.deepEqual(by.search_medical_codes.maintenance, { module: "icd", active: true });
+  assert.deepEqual(by.query_fhir_condition.maintenance, { module: "icd", active: true }, "derived group follows icd");
+  assert.equal(by.query_food_nutrition.maintenance, null);
+  assert.equal(by.health_check.maintenance, null);
+  assert.equal(by.search_medical_codes.enabled, true, "maintenance does not change registration (tools/list unchanged)");
+  assert.deepEqual(body.groups.find((g: any) => g.key === "icd").maintenance, { module: "icd", active: true });
+  // a failing state lookup leaves the catalog usable (maintenance reported inactive)
+  const failing = fakeDeps({ maintenanceStates: async () => { throw new Error("db down"); } });
+  const b2 = (await handleMcpApi(failing, new InvokeRateLimiter(30, () => 0), "GET", "/admin/api/mcp/tools", {}, "a"))!.body as any;
+  assert.deepEqual(b2.tools.find((t: any) => t.name === "search_medical_codes").maintenance, { module: "icd", active: false });
 });

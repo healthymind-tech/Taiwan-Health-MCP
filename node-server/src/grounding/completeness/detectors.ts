@@ -46,6 +46,8 @@ const DOSE_UNITS = new Set(["mg", "g", "ug", "[iu]", "{tab}", "{puff}", "ml", "m
 const GENDER_WORD = new RegExp(`性別|sex|男|女|male|female|${B_BEFORE}m${B_AFTER}|${B_BEFORE}f${B_AFTER}`, "u");
 const AGE_RE = new RegExp(`\\d+\\s*(歲|y/o|yo|y${B_AFTER})`, "u");
 
+/** Instruction (e.g. 【轉換目標】) and site-config lines are not record text: they never join a value / context window. */
+const isNonRecordLine = (l: SourceLine): boolean => l.section === "instruction" || l.section === "site_config";
 const isAsciiAlpha = (ch: string): boolean => /^[A-Za-z]$/.test(ch);
 
 export interface AliasMatch {
@@ -235,12 +237,14 @@ export function detect(src: SourceIndex, target: CompletenessTarget, fact: strin
           }
         }
       }
-      // table / list header: alias on one line, values on the following lines of the same block
+      // table / list header: alias on one line, values on the following lines of the same block. Instruction /
+      // site-config lines never join a value window, even without a blank line before them (the same rule the
+      // grounding engine applies to its evidence windows).
       for (const [i, l] of lines) {
         if (!hasAlias(l.line, aliases)) continue;
         const nxt: string[] = [];
         for (let j = i + 1; j < Math.min(i + 6, src.lines.length); j++) {
-          if (src.blocks[j] === src.blocks[i]) nxt.push(src.lines[j].line);
+          if (src.blocks[j] === src.blocks[i] && !isNonRecordLine(src.lines[j])) nxt.push(src.lines[j].line);
         }
         const hit = nxt.find((x) => /\d/u.test(nfkc(x)));
         if (hit !== undefined) return ["found", pyStrip(l.line) + " / " + pyStrip(hit)];
@@ -319,7 +323,7 @@ export function detect(src: SourceIndex, target: CompletenessTarget, fact: strin
     }
     if (fact === "duration") {
       const ctx = [line];
-      for (let j = Math.max(0, i - 4); j < i; j++) ctx.push(src.lines[j].line);
+      for (let j = Math.max(0, i - 4); j < i; j++) if (!isNonRecordLine(src.lines[j])) ctx.push(src.lines[j].line);
       for (const c of ctx) {
         if (/\d+\s*(天|日|days?|週|weeks?)/u.test(nfkc(c))) return ["found", pyStrip(c)];
       }

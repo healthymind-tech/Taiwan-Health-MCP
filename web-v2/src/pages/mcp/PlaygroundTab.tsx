@@ -36,6 +36,7 @@ import {
   IconPencil,
   IconPlayerPlay,
   IconTerminal2,
+  IconTool,
   IconTrash,
 } from "@tabler/icons-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -50,7 +51,7 @@ import { fmtNumber } from "@/lib/format";
 import { JsonTree } from "./JsonTree";
 import { clearHistory, loadHistory, pushHistory, type HistoryEntry } from "./history";
 import { invokeMcpTool, useMcpCatalog, useMcpOverview } from "./mcpApi";
-import { gateModulePage, groupMeta, toolStatusView } from "./mcpMeta";
+import { gateModulePage, groupMeta, inMaintenance, maintenanceExplain, maintenancePage, toolStatusView } from "./mcpMeta";
 import type { CatalogPayload, CatalogTool, InvokeResponse } from "./mcpTypes";
 import { SchemaForm } from "./SchemaForm";
 import classes from "./mcp.module.css";
@@ -427,7 +428,7 @@ function Playground({ data, toolName, setToolName }: { data: CatalogPayload; too
   };
 
   const onRun = () => {
-    if (!tool.enabled || running) return;
+    if (!tool.enabled || inMaintenance(tool) || running) return;
     const { args, problem } = currentArgs();
     if (!args) {
       notify.warn(problem ?? "參數有誤", "無法執行");
@@ -470,6 +471,7 @@ function Playground({ data, toolName, setToolName }: { data: CatalogPayload; too
   const Icon = meta.icon;
   const status = toolStatusView(tool);
   const modulePage = gateModulePage(tool.gate);
+  const maint = inMaintenance(tool);
   const preset = tool.examples.find((e) => e.id === presetId);
   const basePreset = tool.examples.find((e) => e.id === basePresetId);
   const baseUrl = overviewQ.data?.base_url ?? window.location.origin;
@@ -481,7 +483,7 @@ function Playground({ data, toolName, setToolName }: { data: CatalogPayload; too
     group: groupMeta(g.key).label,
     items: data.tools
       .filter((t) => t.group === g.key)
-      .map((t) => ({ value: t.name, label: `${t.name}${t.enabled ? "" : "（未啟用）"}` })),
+      .map((t) => ({ value: t.name, label: `${t.name}${!t.enabled ? "（未啟用）" : inMaintenance(t) ? "（維護中）" : ""}` })),
   }));
 
   return (
@@ -518,6 +520,11 @@ function Playground({ data, toolName, setToolName }: { data: CatalogPayload; too
                   <Badge size="sm" color={status.color} variant={tool.enabled ? "light" : "outline"}>
                     {status.label}
                   </Badge>
+                  {maint && (
+                    <Badge size="sm" color="amber" variant="filled" leftSection={<IconTool size={11} />}>
+                      維護中
+                    </Badge>
+                  )}
                   <Badge size="sm" variant="outline" color="gray" ff="monospace" tt="none">
                     v{tool.version}
                   </Badge>
@@ -532,6 +539,18 @@ function Playground({ data, toolName, setToolName }: { data: CatalogPayload; too
                 </Text>
               </Box>
             </Group>
+            {tool.enabled && maint && (
+              <Alert color="amber" icon={<IconTool size={18} />} p="sm" title="模組維護中，無法執行" data-testid="mcp-maintenance-alert">
+                <Text fz="xs">
+                  {maintenanceExplain(tool)}{" "}
+                  {maintenancePage(tool) && (
+                    <Anchor component={Link} to={maintenancePage(tool)!} fz="xs">
+                      前往模組關閉維護模式
+                    </Anchor>
+                  )}
+                </Text>
+              </Alert>
+            )}
             {!tool.enabled && (
               <Alert color="amber" icon={<IconAlertTriangle size={18} />} p="sm" title="此工具目前未啟用，無法執行">
                 <Text fz="xs">
@@ -638,12 +657,12 @@ function Playground({ data, toolName, setToolName }: { data: CatalogPayload; too
               <Text fz="xs" c="dimmed">
                 <Kbd size="xs">Ctrl</Kbd> + <Kbd size="xs">Enter</Kbd> 執行
               </Text>
-              <Tooltip label={tool.enabled ? "以管理員身分呼叫（每分鐘上限 60 次）" : "工具未啟用"}>
+              <Tooltip label={!tool.enabled ? "工具未啟用" : maint ? "模組維護中，暫停執行" : "以管理員身分呼叫（每分鐘上限 60 次）"}>
                 <Button
                   leftSection={<IconPlayerPlay size={16} />}
                   onClick={onRun}
                   loading={running}
-                  disabled={!tool.enabled}
+                  disabled={!tool.enabled || maint}
                   color={writeArmed ? "red" : undefined}
                   data-testid="mcp-run"
                 >

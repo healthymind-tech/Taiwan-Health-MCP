@@ -58,8 +58,8 @@ Besides passwords, sign-in also supports **passkeys / WebAuthn** (`node-server/s
 Backed by `node-server/src/admin/adminMcp.ts` (`GET /admin/api/mcp/overview`, `GET /admin/api/mcp/tools`, `POST /admin/api/mcp/tools/{name}/invoke`), with three tabs:
 
 - **Overview**: public endpoints (`/mcp`, `/openapi.json`, `/tools/{name}`, JWKS, OAuth callback), auth mode, server version and copy-ready client configs.
-- **Catalog**: all 63 tools defined in `mcp.ts` and whether each is registered; an unregistered tool shows why (gating table and row-count threshold).
-- **Playground**: runs any registered tool with pre-filled examples, through the same handler as `POST /tools/{name}` (rate-limited).
+- **Catalog**: all 63 tools defined in `mcp.ts` and whether each is registered; an unregistered tool shows why (gating table and row-count threshold); tools and groups whose module is in maintenance carry a 「維護中」 (under maintenance) badge.
+- **Playground**: runs any registered tool with pre-filled examples, through the same handler as `POST /tools/{name}` (rate-limited); while the tool's module is in maintenance the Run button is disabled with the reason shown.
 
 ## Model endpoints (`/admin/models`)
 
@@ -117,7 +117,7 @@ The Terminology module pages and the IG library include read-only browsers backe
 
 ## Maintenance mode
 
-The `drug`, `icd`, `loinc`, `snomed`, `ig` and `rxnorm` modules can be switched into maintenance mode (`POST /admin/api/module-maintenance`; state lives in the `maintenance` group of `admin.app_settings`), to flag a module while its data is being reloaded or cleared. Today it is a **console-level flag**: the module page shows the tools as "available (under maintenance)", but the MCP tools themselves do **not** stop responding.
+The `drug`, `icd`, `loinc`, `snomed`, `ig` and `rxnorm` modules can be switched into maintenance mode (`POST /admin/api/module-maintenance`; state lives in the `maintenance` group of `admin.app_settings`), to pause a module's MCP tools while its data is being reloaded or cleared: calls to the tools of a module in maintenance (over `/mcp`, `/tools/*` and the admin playground) return error code `MODULE_MAINTENANCE` immediately (English + Traditional Chinese message), while the tools stay in `tools/list` (no tool-list churn for clients). The state is cached for 5 seconds, so a toggle takes effect within about 5 seconds. ICD-10 and FHIR Condition follow `icd`, Drug and FHIR Medication follow `drug`, Lab follows `loinc`, FHIR IG follows `ig`; `rxnorm` has no tools of its own, so its flag is informational. The module page shows the tools as "paused (under maintenance)" and the MCP tools page marks the tool cards 「維護中」 (under maintenance). The error format is in the [API reference](../api/index.md#maintenance).
 
 ## External FHIR servers
 

@@ -2,6 +2,8 @@
 
 此類別工具提供對 ICD-10-CM (診斷) 與 ICD-10-PCS (處置) 的查詢與階層瀏覽功能。資料來自 `icd_import` 匯入的 `icd.diagnoses` / `icd.procedures`；目前載入的 ICD-10-CM 版本（例如以 CMS「Code Descriptions in Tabular Order」載入的完整版 `2026-04-01`，含第 7 碼與佔位字元 X）可由 `health_check` 的 `terminology.icd10cm` 查得。`icd.diagnoses` 少於 10,000 筆時整組工具不會註冊。
 
+> **維護模式**：管理後台把 `icd` 模組切到維護模式時，本組工具呼叫會立即回傳 `isError` 結果，錯誤碼 `MODULE_MAINTENANCE`（`error.message` 英文、`error.message_zh` 正體中文，`error.module` 為模組鍵），約 5 秒內生效；工具仍留在 `tools/list` 中。詳見 [API 參考](../api/index.md#maintenance)。
+
 ## search_medical_codes
 搜尋 ICD-10 診斷或處置代碼。
 

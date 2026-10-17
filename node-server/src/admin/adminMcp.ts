@@ -54,8 +54,15 @@ export interface CatalogToolPayload {
   reason: ToolStatusReason;
   gate: ToolGate | null;
   write_capable: boolean;
+  /** Maintenance toggle gating this tool (null = never gated); `active` = calls fail with MODULE_MAINTENANCE now. */
+  maintenance: ToolMaintenance | null;
   input_schema: Record<string, unknown>;
   examples: ToolExample[];
+}
+
+export interface ToolMaintenance {
+  module: string;
+  active: boolean;
 }
 
 export interface CatalogGroupPayload {
@@ -67,6 +74,7 @@ export interface CatalogGroupPayload {
   enabled: number;
   disabled: number;
   gate: ToolGate | null;
+  maintenance: ToolMaintenance | null;
 }
 
 export interface CatalogPayload {
@@ -89,6 +97,10 @@ export interface McpAdminDeps {
   invoke(name: string, args: Record<string, unknown>): Promise<string>;
   moduleStatus(): Promise<ModuleStatus>;
   moduleCounts(): Promise<Partial<Record<ModuleRequirement["key"], ModuleCount>>>;
+  /** Maintenance module gating each tool group (mcp.ts GROUP_MAINTENANCE_MODULE). */
+  maintenanceModules(): Readonly<Record<string, string | null>>;
+  /** Current maintenance flags {module_key: enabled} (adminMaintenance.getStates). */
+  maintenanceStates(): Promise<Record<string, boolean>>;
   overviewInfo(): Promise<OverviewInfo>;
   now(): number;
   log(message: string, extra: Record<string, unknown>): void;
@@ -152,8 +164,14 @@ export function buildCatalogPayload(input: {
   status: ModuleStatus | null;
   counts: Partial<Record<ModuleRequirement["key"], ModuleCount>>;
   inputSchema: (tool: CatalogTool) => Record<string, unknown>;
+  /** Group -> maintenance module and the current flags; omitted = no maintenance info. */
+  maintenance?: { modules: Readonly<Record<string, string | null>>; states: Record<string, boolean> };
 }): CatalogPayload {
   const groupInfo = new Map(input.groups.map((g) => [g.key, g]));
+  const maintenanceOf = (group: string): ToolMaintenance | null => {
+    const module = input.maintenance?.modules[group] ?? null;
+    return module ? { module, active: input.maintenance?.states[module] === true } : null;
+  };
   const tools: CatalogToolPayload[] = input.catalog.map((t) => {
     const info = groupInfo.get(t.group);
     const gate = gateFor(info?.module ?? null, input.status, input.counts);
@@ -177,6 +195,7 @@ export function buildCatalogPayload(input: {
       reason,
       gate,
       write_capable: input.writeCapable.has(t.name),
+      maintenance: maintenanceOf(t.group),
       input_schema: input.inputSchema(t),
       examples: ex?.examples ?? [],
     };
@@ -194,6 +213,7 @@ export function buildCatalogPayload(input: {
       enabled,
       disabled: members.length - enabled,
       gate: gateFor(g.module, input.status, input.counts),
+      maintenance: maintenanceOf(g.key),
     };
   });
   const enabled = tools.filter((t) => t.enabled).length;
@@ -380,7 +400,11 @@ export async function handleMcpApi(
 ): Promise<McpApiResult | null> {
   if (method === "GET" && path === "/admin/api/mcp/tools") {
     await deps.refreshRegistry();
-    const [status, counts] = await Promise.all([deps.moduleStatus().catch(() => null), deps.moduleCounts().catch(() => ({}))]);
+    const [status, counts, states] = await Promise.all([
+      deps.moduleStatus().catch(() => null),
+      deps.moduleCounts().catch(() => ({})),
+      deps.maintenanceStates().catch(() => ({}) as Record<string, boolean>),
+    ]);
     return {
       status: 200,
       body: buildCatalogPayload({
@@ -391,6 +415,7 @@ export async function handleMcpApi(
         status,
         counts,
         inputSchema: deps.inputSchema,
+        maintenance: { modules: deps.maintenanceModules(), states },
       }),
     };
   }

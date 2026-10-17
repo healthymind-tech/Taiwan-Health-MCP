@@ -2,6 +2,8 @@
 
 The public SNOMED surface consists of four tools: `search_snomed_concept`, `query_snomed_concept`, `get_snomed_relationships`, and `query_snomed_mapping`.
 
+> **Maintenance mode**: while the admin console has the `snomed` module in maintenance mode, this group's calls return an `isError` result immediately with error code `MODULE_MAINTENANCE` (`error.message` in English, `error.message_zh` in Traditional Chinese, `error.module` the module key), effective within about 5 seconds; the tools stay in `tools/list`. See the [API reference](../api/index.md#maintenance).
+
 ## `search_snomed_concept`
 Search SNOMED concept candidates by English clinical term.
 

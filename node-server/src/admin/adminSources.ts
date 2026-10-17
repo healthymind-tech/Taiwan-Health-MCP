@@ -43,8 +43,8 @@ export const SOURCE_CATALOG: readonly SourceCatalogEntry[] = [
   {
     module_key: "icd",
     source_role: "icd10pcs",
-    label: "ICD-10-PCS 2025 ZIP",
-    description: "Procedure code archive for ICD-10-PCS import.",
+    label: "ICD-10-PCS ZIP",
+    description: "CMS ICD-10-PCS release archive (any fiscal-year edition; the flat codes TXT inside, e.g. icd10pcs_codes_YYYY.txt).",
     accepted_extensions: [".zip"],
     multi_source: false,
   },

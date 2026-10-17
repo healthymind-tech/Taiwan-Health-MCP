@@ -2,6 +2,8 @@
 
 This group integrates Taiwan FDA (TFDA) western-medicine license data, providing drug search, pill identification, drug details, and official document asset download links.
 
+> **Maintenance mode**: while the admin console has the `drug` module in maintenance mode, this group's (and the FHIR Medication tools') calls return an `isError` result immediately with error code `MODULE_MAINTENANCE` (`error.message` in English, `error.message_zh` in Traditional Chinese, `error.module` the module key), effective within about 5 seconds; the tools stay in `tools/list`. See the [API reference](../api/index.md#maintenance).
+
 ## search_drug
 A single entry point with four search modes.
 

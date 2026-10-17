@@ -72,6 +72,24 @@ const MODULE_LABEL: Record<string, string> = {
   fhir_medication: "FHIR Medication",
 };
 
+/** True while the tool's module is in maintenance mode (its calls return MODULE_MAINTENANCE). */
+export function inMaintenance(t: Pick<CatalogTool, "maintenance">): boolean {
+  return t.maintenance?.active === true;
+}
+
+const MAINTENANCE_MODULE_LABEL: Record<string, string> = { icd: "ICD-10", loinc: "LOINC", snomed: "SNOMED CT", drug: "藥品", ig: "FHIR IG", rxnorm: "RxNorm" };
+
+/** Explanation for the 「維護中」 badge / disabled Run button. */
+export function maintenanceExplain(t: Pick<CatalogTool, "maintenance">): string {
+  const m = t.maintenance?.module ?? "";
+  return `${MAINTENANCE_MODULE_LABEL[m] ?? m} 模組維護中：工具仍在 tools/list 中，但呼叫會回傳 MODULE_MAINTENANCE 錯誤，關閉維護模式後恢復。`;
+}
+
+/** Admin page holding the module's maintenance switch. */
+export function maintenancePage(t: Pick<CatalogTool, "maintenance">): string | null {
+  return t.maintenance ? moduleHref(t.maintenance.module) : null;
+}
+
 export function moduleName(key: string): string {
   return MODULE_LABEL[key] ?? key;
 }

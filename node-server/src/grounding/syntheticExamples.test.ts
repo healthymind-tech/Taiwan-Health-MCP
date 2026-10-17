@@ -237,9 +237,7 @@ test("merge into fhir_validate_bundle: valid = conformanceValid ∧ groundingVal
 
 test("completeness: the instruction line is excluded from the record", () => {
   const input = completenessInputSchema.parse(COMPLETENESS_INSUFFICIENT_INPUT);
-  // (blank line before the instruction, as in real records: a value window can still join an instruction line that
-  // directly follows the item line)
-  const withLine = computeCompleteness({ ...input, source_text: `${input.source_text}\n\n【轉換目標】HbA1c 7.4 %，Metformin 500 mg BID` });
+  const withLine = computeCompleteness({ ...input, source_text: `${input.source_text}\n【轉換目標】HbA1c 7.4 %，Metformin 500 mg BID` });
   assert.deepEqual(withLine.missing, ["HbA1c 數值", "Metformin 劑量", "Metformin 頻次"]);
 });
 

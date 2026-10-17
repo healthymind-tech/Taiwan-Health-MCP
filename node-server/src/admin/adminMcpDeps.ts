@@ -6,6 +6,7 @@ import { config } from "../config.js";
 import { query } from "../db.js";
 import { logInfo } from "../logger.js";
 import {
+  GROUP_MAINTENANCE_MODULE,
   SERVER_NAME,
   TOOL_GROUPS,
   WRITE_CAPABLE_TOOLS,
@@ -17,6 +18,7 @@ import {
   toolRegistryReady,
 } from "../mcp.js";
 import { getModuleCounts, getModuleStatus } from "../moduleStatus.js";
+import { getStates as getMaintenanceStates } from "./adminMaintenance.js";
 import { BUILD, SERVER_VERSION } from "../toolVersions.js";
 import { LEXICON_VERSION } from "../grounding/index.js";
 import { InvokeRateLimiter, INVOKE_LIMIT_PER_MINUTE, type McpAdminDeps } from "./adminMcp.js";
@@ -50,6 +52,8 @@ export function productionMcpAdminDeps(publicBaseUrl: string): McpAdminDeps {
     invoke: invokeRegisteredTool,
     moduleStatus: () => getModuleStatus(),
     moduleCounts: () => getModuleCounts(),
+    maintenanceModules: () => GROUP_MAINTENANCE_MODULE,
+    maintenanceStates: () => getMaintenanceStates(),
     overviewInfo: async () => ({
       serverName: SERVER_NAME,
       serverVersion: SERVER_VERSION,

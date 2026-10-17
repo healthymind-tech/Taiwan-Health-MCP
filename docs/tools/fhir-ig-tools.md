@@ -2,6 +2,8 @@
 
 一套通用、以 IG 為範圍的工具集，建構於多 IG（multi-IG）的 `fhir.*` 儲存之上，用於探索 Implementation Guide、讀取剖面與術語、進行術語驗證，以及以骨架填值方式產生與驗證 FHIR R4 資源。
 
+> **維護模式**：管理後台把 `ig` 模組切到維護模式時，本組全部 22 個工具（含 `fhir_check_grounding` / `fhir_check_completeness`）呼叫會立即回傳 `isError` 結果，錯誤碼 `MODULE_MAINTENANCE`（`error.message` 英文、`error.message_zh` 正體中文，`error.module` 為模組鍵），約 5 秒內生效；工具仍留在 `tools/list` 中。詳見 [API 參考](../api/index.md#maintenance)。
+
 ## 共通慣例
 - 每個工具都可帶入選用的 `package_id` + `version`。省略 `package_id` 時依下列優先順序決定目標套件，`provenance.resolved_by` 會註明採用哪一條：
     1. `explicit_version` — canonical 參數或 `meta.profile` 以 `url|version` 鎖定版本 → 持有該版本的套件；
@@ -102,4 +104,5 @@
 | `fhir_validate_resource`、`fhir_validate_bundle` | 1.4.0 |
 | `fhir_get_profile_required_elements` | 1.2.0 |
 | `fhir_list_igs`、`fhir_get_ig`、`fhir_list_artifacts`、`fhir_search_artifacts`、`fhir_list_resource_profiles`、`fhir_rank_resource_profiles`、`fhir_get_profile`、`fhir_get_profile_elements`、`fhir_get_valueset`、`fhir_expand_valueset`、`fhir_lookup_code`、`fhir_validate_code`、`fhir_normalize_code`、`fhir_get_resource_skeleton`、`fhir_finalize_resource` | 1.2.0 |
-| `fhir_check_grounding`、`fhir_check_completeness` | 1.1.0 |
+| `fhir_check_grounding` | 1.1.0 |
+| `fhir_check_completeness` | 1.1.1 |

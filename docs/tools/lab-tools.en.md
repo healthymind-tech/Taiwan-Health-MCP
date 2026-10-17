@@ -4,6 +4,8 @@ The LOINC surface has been consolidated into four tools: `search_loinc`, `query_
 
 Defaults: `search_loinc` uses `mode` `code` and `limit` 3 (10 maximum); `query_loinc` uses `mode` `detail`; `gender` always defaults to `all`. The `code` / `specimen` / `component` modes run a hybrid BM25 + semantic search and fall back to keyword-only with `search_mode: "keyword_only"` when embeddings are unavailable. The whole group is unregistered while `loinc.concepts` holds fewer than 1,000 rows.
 
+> **Maintenance mode**: while the admin console has the `loinc` module in maintenance mode, this group's calls return an `isError` result immediately with error code `MODULE_MAINTENANCE` (`error.message` in English, `error.message_zh` in Traditional Chinese, `error.module` the module key), effective within about 5 seconds; the tools stay in `tools/list`. See the [API reference](../api/index.md#maintenance).
+
 ## 1) `search_loinc` (search entry point)
 
 A single search entry point; `mode` switches the query intent.

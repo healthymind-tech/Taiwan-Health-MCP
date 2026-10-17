@@ -118,7 +118,7 @@ function collectProblems(o: Overview, jobs: JobSummary[]): Problem[] {
   }
   for (const m of MODULES) {
     const svc = m.serviceKey ? o.services[m.serviceKey] : undefined;
-    if (svc?.maintenance) out.push({ level: "warn", text: `${m.shortLabel} 已開啟維護模式（目前僅為後台標示，MCP 工具仍照常回應）。`, to: moduleLink(m) });
+    if (svc?.maintenance) out.push({ level: "warn", text: `${m.shortLabel} 已開啟維護模式（相關 MCP 工具暫停服務，回傳 MODULE_MAINTENANCE）。`, to: moduleLink(m) });
     else if (svc && svc.health.status === "degraded" && svc.health.reason) {
       out.push({ level: "warn", text: `${m.shortLabel}：${translateReason(svc.health.reason)}`, to: moduleLink(m) });
     }

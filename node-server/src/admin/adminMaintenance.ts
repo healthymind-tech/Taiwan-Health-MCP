@@ -1,12 +1,18 @@
 /**
- * Per-module maintenance mode (read surface).
+ * Per-module maintenance mode: state, cached reads and the toggle.
  *
- * Faithful port of the read pieces of `src/admin_maintenance.py`:
- * `MAINTENANCE_MODULES`, the short-TTL cache, and `get_states`. The toggle
- * write path (`set_enabled`) belongs to the write chunk.
+ * Originally a port of `src/admin_maintenance.py` (`MAINTENANCE_MODULES`, the short-TTL cache, `get_states`,
+ * `set_enabled`).
  *
- * State lives in `admin.app_settings` (group_key "maintenance", one row per
- * module_key, value "true"/"false").
+ * State lives in `admin.app_settings` (group_key "maintenance", one row per module_key, value "true"/"false").
+ *
+ * Effect: the flag gates MCP tools. `withMaintenanceGate` in ../mcp.ts (composed into the single dispatch wrapper
+ * next to `withToolMetrics`, so /mcp, POST /tools/<name> and the admin playground are all covered) reads
+ * `getStates` (5 s cache — a toggle takes effect within ~5 s in every process) and makes calls to the tools of a
+ * module in maintenance return an isError result with code MODULE_MAINTENANCE (en + zh-TW message). Group → module
+ * mapping: mcp.ts `GROUP_MAINTENANCE_MODULE` (rxnorm has no tool group, so its flag gates nothing). tools/list is
+ * deliberately left unchanged so clients see no tool-list churn. The admin console also shows the flag (module
+ * pages, dashboard, MCP tool catalog / playground).
  */
 
 import { query, withTransaction } from "../db.js";

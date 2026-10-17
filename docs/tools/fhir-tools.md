@@ -2,6 +2,8 @@
 
 此類別工具將本地端的 ICD-10 診斷與台灣 FDA 藥品資料，轉換為 FHIR R4 `Condition` / `Medication` / `MedicationKnowledge` 資源，並提供基本驗證。進階的剖面 / 術語層級授權與驗證，請見 [FHIR IG 工具](fhir-ig-tools.md)。
 
+> **維護模式**：Condition 工具跟隨 `icd` 模組、Medication 工具跟隨 `drug` 模組。管理後台把該模組切到維護模式時，呼叫會立即回傳 `isError` 結果，錯誤碼 `MODULE_MAINTENANCE`（`error.message` 英文、`error.message_zh` 正體中文，`error.module` 為模組鍵），約 5 秒內生效；工具仍留在 `tools/list` 中。詳見 [API 參考](../api/index.md#maintenance)。
+
 ## query_fhir_condition
 由 ICD-10 診斷產生 FHIR R4 `Condition` 資源。
 

@@ -7,7 +7,7 @@
  *     (`icd10cm_order_YYYY.txt`, preferred) or the "Code Tables, Tabular and
  *     Index" zip (`icd10cm_tabular_YYYY.xml`, 7th characters expanded)
  *     → `icd.diagnoses`, edition recorded in `icd.editions`.
- *   - ICD-10-PCS: parse the flat CMS codes TXT inside `icd10pcs_tables_2025.zip`
+ *   - ICD-10-PCS: parse the flat CMS codes TXT inside the CMS PCS release ZIP (any edition, e.g. `icd10pcs_tables_YYYY.zip`)
  *     → `icd.procedures`.
  *   - Chinese names: parse the Taiwan MOHW bilingual XLSX (sheets "ICD-10-CM" and
  *     "ICD-10-PCS", col A = code, col D = 中文名稱).
