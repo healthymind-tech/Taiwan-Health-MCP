@@ -1,0 +1,468 @@
+/* ── system map ──────────────────────────────────────────────────────────── */
+.map {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(150px, 0.8fr) minmax(190px, 1fr) minmax(260px, 1.4fr);
+  column-gap: clamp(48px, 9vw, 140px);
+  row-gap: 12px;
+  padding: 4px 2px 0;
+}
+
+.mapEdges {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.edgeGroup {
+  transition: opacity 200ms ease;
+}
+
+.edgeDash {
+  animation: dash 1.8s linear infinite;
+}
+
+@keyframes dash {
+  to {
+    stroke-dashoffset: -20;
+  }
+}
+
+.col {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.colTitle {
+  position: relative;
+  z-index: 1;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--mantine-color-default-border);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--mantine-color-dimmed);
+  text-transform: uppercase;
+}
+
+.legend {
+  grid-column: 1 / -1;
+  padding-top: 10px;
+  margin-top: 6px;
+  border-top: 1px dashed var(--mantine-color-default-border);
+}
+
+.legendDot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+
+.roleNode,
+.routeNode,
+.accountGroup {
+  border-radius: var(--mantine-radius-md);
+  border: 1px solid var(--mantine-color-default-border);
+  background: var(--mantine-color-body);
+  box-shadow: var(--mantine-shadow-xs);
+  transition:
+    opacity 200ms ease,
+    border-color 200ms ease,
+    box-shadow 200ms ease;
+}
+
+.roleNode {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  color: var(--accent);
+  border-left: 4px solid var(--accent);
+}
+
+.roleNode:hover,
+.roleNode:focus-visible {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+.roleNode[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--accent) 10%, var(--mantine-color-body));
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.rolePulse {
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.rolePulse::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: beacon 1.8s ease-out infinite;
+}
+
+@keyframes beacon {
+  from {
+    transform: scale(1);
+    opacity: 0.6;
+  }
+  to {
+    transform: scale(2.6);
+    opacity: 0;
+  }
+}
+
+.routeNode {
+  padding: 12px 14px;
+  border-top: 3px solid var(--accent);
+}
+
+.routeIcon {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.routeEmpty {
+  padding: 14px;
+  border-radius: var(--mantine-radius-md);
+  border: 1px dashed var(--mantine-color-default-border);
+  text-align: center;
+}
+
+.accountGroup {
+  padding: 10px 10px 8px;
+}
+
+.accountGroup[data-disabled] {
+  opacity: 0.55;
+}
+
+.statusDot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--mantine-color-gray-5);
+}
+
+.statusDot[data-color="teal"] {
+  background: var(--mantine-color-teal-5);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--mantine-color-teal-5) 22%, transparent);
+}
+
+.statusDot[data-color="red"] {
+  background: var(--mantine-color-red-5);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--mantine-color-red-5) 22%, transparent);
+}
+
+.leafRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  margin-top: 4px;
+  border-radius: var(--mantine-radius-sm);
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  border-left: 3px solid var(--accent);
+  transition: opacity 200ms ease;
+}
+
+.leafRow[data-state="backup"] {
+  background: transparent;
+  border-left-style: dashed;
+}
+
+.leafRow[data-state="cool"] {
+  border-left-color: var(--mantine-color-amber-5);
+  background: color-mix(in srgb, var(--mantine-color-amber-5) 10%, transparent);
+}
+
+.leafRow[data-state="off"] {
+  opacity: 0.45;
+  border-left-color: var(--mantine-color-gray-5);
+  background: transparent;
+}
+
+.leafDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--accent);
+}
+
+.leafRow[data-state="cool"] .leafDot {
+  background: var(--mantine-color-amber-5);
+}
+
+.leafRow[data-state="off"] .leafDot,
+.leafRow[data-state="backup"] .leafDot {
+  background: transparent;
+  border: 1.5px solid var(--mantine-color-gray-5);
+}
+
+.leafTag {
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
+.leafRow[data-state="backup"] .leafTag,
+.leafRow[data-state="off"] .leafTag {
+  color: var(--mantine-color-dimmed);
+}
+
+.leafRow[data-state="cool"] .leafTag {
+  color: var(--mantine-color-amber-7);
+}
+
+[data-dim] {
+  opacity: 0.35;
+}
+
+/* Phones: stack the columns; edges would only cross text. */
+@media (max-width: 62em) {
+  .map {
+    grid-template-columns: 1fr;
+  }
+  .mapEdges {
+    display: none;
+  }
+  /* Stacked: each column introduces itself instead of a header row. */
+  .colTitle {
+    display: none;
+  }
+  .col::before {
+    font-size: 10.5px;
+    font-weight: 700;
+    color: var(--mantine-color-dimmed);
+  }
+  .col:nth-of-type(1)::before {
+    content: "角色";
+  }
+  .col:nth-of-type(2)::before {
+    content: "PROFILE";
+  }
+  .col:nth-of-type(3)::before {
+    content: "帳號與模型";
+  }
+}
+
+/* ── role cards ──────────────────────────────────────────────────────────── */
+.roleCard {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px;
+  border-radius: var(--mantine-radius-lg);
+  border: 1px solid var(--mantine-color-default-border);
+  border-top: 4px solid var(--accent);
+  background: var(--mantine-color-body);
+  box-shadow: var(--mantine-shadow-xs);
+}
+
+.roleIcon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: var(--mantine-radius-md);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  flex-shrink: 0;
+}
+
+.picker {
+  display: block;
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: var(--mantine-radius-md);
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--mantine-color-default-border));
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  transition:
+    box-shadow 150ms ease,
+    border-color 150ms ease;
+}
+
+.picker:hover {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.warn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: var(--mantine-radius-md);
+  color: var(--mantine-color-amber-text);
+  background: color-mix(in srgb, var(--mantine-color-amber-5) 12%, transparent);
+}
+
+.orderRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--mantine-radius-md);
+  border: 1px solid var(--mantine-color-default-border);
+}
+
+.orderRow[data-skipped] {
+  opacity: 0.5;
+}
+
+.rank {
+  width: 18px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--mantine-color-dimmed);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.share {
+  width: 40px;
+  text-align: right;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.calls {
+  width: 66px;
+  text-align: right;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.shareBar {
+  max-width: 220px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .edgeDash,
+  .rolePulse::after {
+    animation: none;
+  }
+}
+
+/* ── embedding identity ──────────────────────────────────────────────────── */
+.identity {
+  padding: 12px 14px;
+  border-radius: var(--mantine-radius-md);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--mantine-color-default-border));
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 8%, transparent), transparent 60%);
+}
+
+.fingerprint {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  flex-shrink: 0;
+}
+
+.fingerprint::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  opacity: 0;
+  animation: scan 2.8s ease-in-out infinite;
+}
+
+.fingerprint[data-switching]::after {
+  border-color: var(--mantine-color-amber-5);
+  animation-duration: 1s;
+}
+
+@keyframes scan {
+  0%,
+  100% {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  50% {
+    opacity: 0.6;
+    transform: scale(1.08);
+  }
+}
+
+.fromTo {
+  padding: 10px 12px;
+  border-radius: var(--mantine-radius-md);
+  border: 1px solid var(--mantine-color-default-border);
+}
+
+.checkResult {
+  padding: 10px 12px;
+  border-radius: var(--mantine-radius-md);
+  border: 1px solid var(--mantine-color-amber-5);
+  animation: rise 260ms ease both;
+}
+
+.checkResult[data-same] {
+  border-color: var(--mantine-color-teal-5);
+}
+
+.popIn {
+  animation: pop 420ms cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+}
+
+.stepIn {
+  animation: rise 320ms ease both;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes pop {
+  0% {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+  70% {
+    transform: scale(1.12);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fingerprint::after,
+  .checkResult,
+  .popIn,
+  .stepIn {
+    animation: none;
+  }
+}

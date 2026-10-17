@@ -1,0 +1,84 @@
+/* Rendered OCR markdown (MinerU output) — readable in light and dark themes. */
+.markdown {
+  font-size: var(--mantine-font-size-sm);
+  line-height: 1.7;
+  word-break: break-word;
+  color: var(--mantine-color-text);
+}
+.markdown h1,
+.markdown h2,
+.markdown h3,
+.markdown h4 {
+  margin: 1.2em 0 0.5em;
+  line-height: 1.35;
+  font-weight: 650;
+}
+.markdown h1 { font-size: 1.35em; }
+.markdown h2 { font-size: 1.2em; }
+.markdown h3 { font-size: 1.08em; }
+.markdown p { margin: 0.5em 0; }
+.markdown ul,
+.markdown ol { padding-left: 1.4em; margin: 0.4em 0; }
+.markdown img { max-width: 100%; height: auto; }
+.markdown code {
+  font-family: var(--mantine-font-family-monospace);
+  font-size: 0.9em;
+  background: var(--mantine-color-default-hover);
+  padding: 1px 4px;
+  border-radius: 4px;
+}
+.markdown pre {
+  overflow-x: auto;
+  background: var(--mantine-color-default-hover);
+  padding: 10px;
+  border-radius: 8px;
+}
+.markdown blockquote {
+  margin: 0.6em 0;
+  padding-left: 12px;
+  border-left: 3px solid var(--mantine-color-default-border);
+  color: var(--mantine-color-dimmed);
+}
+.tableWrap {
+  overflow-x: auto;
+  margin: 0.6em 0;
+}
+.markdown table {
+  border-collapse: collapse;
+  font-size: 0.92em;
+  min-width: 100%;
+}
+.markdown th,
+.markdown td {
+  border: 1px solid var(--mantine-color-default-border);
+  padding: 4px 8px;
+  vertical-align: top;
+  text-align: left;
+}
+.markdown th { background: var(--mantine-color-default-hover); font-weight: 600; }
+
+/* Nested structured-analysis sections. */
+.nested {
+  border-left: 2px solid var(--mantine-color-brand-light-color);
+  padding-left: 12px;
+  margin-left: 2px;
+}
+.prewrap {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.thumbButton {
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--mantine-color-default-border);
+  background: var(--mantine-color-default-hover);
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+.thumbButton:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--mantine-shadow-sm);
+}
+.thumbButton:focus-visible {
+  outline: 2px solid var(--mantine-primary-color-filled);
+  outline-offset: 2px;
+}

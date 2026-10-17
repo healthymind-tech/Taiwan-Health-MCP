@@ -1,0 +1,907 @@
+/* Terminology explorer — shared visual language (tree, drill list, cards, graph, axis bars). */
+
+.shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
+  gap: 16px;
+  align-items: start;
+}
+@media (max-width: 62em) {
+  .shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.panel {
+  border: 1px solid var(--mantine-color-default-border);
+  border-radius: var(--mantine-radius-md);
+  background: var(--mantine-color-body);
+  overflow: hidden;
+  min-width: 0;
+}
+[data-mantine-color-scheme="dark"] .panel {
+  background: var(--mantine-color-dark-7);
+}
+.panelHead {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--mantine-color-default-border);
+}
+.sticky {
+  position: sticky;
+  top: 72px;
+}
+@media (max-width: 62em) {
+  .sticky {
+    position: static;
+  }
+}
+
+/* ── Tree ─────────────────────────────────────────────────────────────── */
+.treeScroller {
+  position: relative;
+  overflow-y: auto;
+  overflow-x: hidden;
+  outline: none;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+.treeScroller:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--mantine-primary-color-light-color);
+}
+.treeRow {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  display: flex;
+  align-items: center;
+  padding-right: 10px;
+  will-change: transform;
+}
+.treeNode {
+  cursor: pointer;
+  border-left: 3px solid transparent;
+  transition:
+    background-color 120ms ease,
+    border-color 160ms ease;
+}
+.treeNode:hover {
+  background: var(--mantine-color-default-hover);
+}
+.treeNode[data-focused] {
+  background: color-mix(in srgb, var(--mantine-primary-color-filled) 7%, transparent);
+}
+.treeNode[data-onpath] {
+  border-left-color: color-mix(in srgb, var(--mantine-primary-color-filled) 45%, transparent);
+}
+.treeNode[data-selected] {
+  background: color-mix(in srgb, var(--mantine-primary-color-filled) 14%, transparent);
+  border-left-color: var(--mantine-primary-color-filled);
+}
+.treeGuide {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--mantine-color-default-border);
+}
+.treeChevron {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  margin-right: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  color: var(--mantine-color-dimmed);
+  transition:
+    transform 180ms cubic-bezier(0.4, 0, 0.2, 1),
+    background-color 120ms ease;
+}
+.treeChevron:hover {
+  background: var(--mantine-color-default-hover);
+  color: var(--mantine-color-text);
+}
+.treeChevron[data-open] {
+  transform: rotate(90deg);
+  color: var(--mantine-primary-color-filled);
+}
+.treeChevron[data-leaf] {
+  visibility: hidden;
+}
+.treeContent {
+  flex: 1;
+  min-width: 0;
+}
+.treeMore {
+  margin-left: 26px;
+  font-size: var(--mantine-font-size-xs);
+  color: var(--mantine-primary-color-filled);
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px dashed var(--mantine-primary-color-light-color);
+}
+.treeMore:hover {
+  background: var(--mantine-primary-color-light);
+}
+
+.enter {
+  animation: rowEnter 260ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+.exit {
+  animation: rowExit 150ms ease-in both;
+  pointer-events: none;
+}
+@keyframes rowEnter {
+  from {
+    opacity: 0;
+    translate: 0 -6px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+@keyframes rowExit {
+  to {
+    opacity: 0;
+    translate: 0 -6px;
+  }
+}
+
+/* ── Drill-down list (phones) ─────────────────────────────────────────── */
+.drill {
+  overflow: hidden;
+}
+.drillCrumbs {
+  padding: 8px 10px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  border-bottom: 1px solid var(--mantine-color-default-border);
+}
+.drillBack {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--mantine-primary-color-light);
+  color: var(--mantine-primary-color-filled);
+}
+.drillCrumb {
+  flex: 0 0 auto;
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  color: var(--mantine-color-dimmed);
+  white-space: nowrap;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.drillCrumb::before {
+  content: "›";
+  margin-right: 6px;
+  opacity: 0.6;
+}
+.drillCrumb:first-of-type::before,
+.drillBack + .drillCrumb::before {
+  content: none;
+}
+.drillCrumb[data-last] {
+  color: var(--mantine-color-text);
+  font-weight: 600;
+  background: var(--mantine-color-default-hover);
+}
+.drillItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--mantine-color-default-border);
+  cursor: pointer;
+  min-height: 52px;
+}
+.drillItem:active,
+.drillItem[data-selected] {
+  background: color-mix(in srgb, var(--mantine-primary-color-filled) 10%, transparent);
+}
+.drillChevron {
+  color: var(--mantine-color-dimmed);
+  flex: 0 0 auto;
+}
+.slideFwd {
+  animation: slideFwd 240ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+.slideBack {
+  animation: slideBack 240ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+@keyframes slideFwd {
+  from {
+    opacity: 0;
+    translate: 28px 0;
+  }
+}
+@keyframes slideBack {
+  from {
+    opacity: 0;
+    translate: -28px 0;
+  }
+}
+
+/* ── Code chips & badges ──────────────────────────────────────────────── */
+.code {
+  font-family: var(--mantine-font-family-monospace);
+  font-weight: 650;
+  font-size: 13px;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+.kindDot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+.seventh {
+  display: inline-flex;
+  gap: 4px;
+  flex-wrap: nowrap;
+}
+.seventhChip {
+  font-family: var(--mantine-font-family-monospace);
+  font-size: 11px;
+  font-weight: 700;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--mantine-color-default-border);
+  background: var(--mantine-color-body);
+  color: var(--mantine-color-text);
+  cursor: pointer;
+  transition:
+    transform 120ms ease,
+    background-color 120ms ease,
+    border-color 120ms ease;
+}
+.seventhChip:hover {
+  transform: translateY(-1px);
+  border-color: var(--mantine-primary-color-filled);
+}
+.seventhChip[data-active] {
+  background: var(--mantine-primary-color-filled);
+  border-color: var(--mantine-primary-color-filled);
+  color: var(--mantine-color-white);
+}
+.hl {
+  background: color-mix(in srgb, var(--mantine-color-yellow-5) 38%, transparent);
+  border-radius: 3px;
+  padding: 0 1px;
+}
+
+/* ── Detail card ──────────────────────────────────────────────────────── */
+.detailCard {
+  padding: 16px;
+  animation: cardIn 280ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+@keyframes cardIn {
+  from {
+    opacity: 0;
+    translate: 0 8px;
+  }
+}
+.bigCode {
+  font-family: var(--mantine-font-family-monospace);
+  font-size: 28px;
+  font-weight: 750;
+  letter-spacing: 0.02em;
+  line-height: 1.1;
+}
+.crumbs {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  position: relative;
+  margin: 4px 0;
+}
+.crumb {
+  position: relative;
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  padding: 4px 6px 4px 18px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12.5px;
+  animation: cardIn 240ms ease both;
+}
+.crumb::before {
+  content: "";
+  position: absolute;
+  left: 6px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--mantine-color-default-border);
+}
+.crumb::after {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  margin-top: -3px;
+  border-radius: 50%;
+  background: var(--mantine-color-body);
+  border: 1.5px solid var(--mantine-primary-color-filled);
+}
+.crumb[data-last]::after {
+  background: var(--mantine-primary-color-filled);
+}
+.crumb:hover {
+  background: var(--mantine-color-default-hover);
+}
+
+/* ── Search popover ───────────────────────────────────────────────────── */
+.results {
+  max-height: 360px;
+  overflow-y: auto;
+}
+.result {
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 8px;
+  text-align: left;
+}
+.result:hover,
+.result[data-active] {
+  background: var(--mantine-color-default-hover);
+}
+
+/* ── PCS axis code ────────────────────────────────────────────────────── */
+.axisCode {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+}
+@media (max-width: 36em) {
+  .axisCode {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+.axisCell {
+  --ax: var(--mantine-color-brand-6);
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--ax) 40%, var(--mantine-color-default-border));
+  background: color-mix(in srgb, var(--ax) 8%, var(--mantine-color-body));
+  padding: 8px 8px 10px;
+  min-width: 0;
+  position: relative;
+  overflow: hidden;
+  animation: axisIn 360ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+.axisCell::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: var(--ax);
+}
+.axisCell[data-empty] {
+  opacity: 0.45;
+}
+.axisCell[data-bad] {
+  border-style: dashed;
+}
+.axisChar {
+  font-family: var(--mantine-font-family-monospace);
+  font-size: 26px;
+  font-weight: 800;
+  color: var(--ax);
+  line-height: 1.1;
+}
+.axisTitle {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--mantine-color-dimmed);
+}
+.axisLabel {
+  font-size: 12px;
+  line-height: 1.3;
+  margin-top: 2px;
+  word-break: break-word;
+}
+@keyframes axisIn {
+  from {
+    opacity: 0;
+    translate: 0 10px;
+    scale: 0.96;
+  }
+}
+
+.pcsValue {
+  font-size: 12px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--mantine-color-default-border);
+  background: var(--mantine-color-body);
+  cursor: pointer;
+  display: inline-flex;
+  gap: 6px;
+  align-items: baseline;
+  text-align: left;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    transform 120ms ease;
+}
+.pcsValue:hover {
+  border-color: var(--ax, var(--mantine-primary-color-filled));
+}
+.pcsValue[data-active] {
+  background: color-mix(in srgb, var(--ax, var(--mantine-primary-color-filled)) 18%, var(--mantine-color-body));
+  border-color: var(--ax, var(--mantine-primary-color-filled));
+  font-weight: 600;
+}
+.pcsValue[data-dim] {
+  opacity: 0.4;
+}
+.pcsGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-top: 1px solid var(--mantine-color-default-border);
+}
+.pcsGrid > div {
+  padding: 8px;
+  border-right: 1px solid var(--mantine-color-default-border);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.pcsGrid > div:last-child {
+  border-right: none;
+}
+@media (max-width: 48em) {
+  .pcsGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .pcsGrid > div:nth-child(2) {
+    border-right: none;
+  }
+}
+.pcsRowBox {
+  border: 1px solid var(--mantine-color-default-border);
+  border-radius: 10px;
+  overflow: hidden;
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    opacity 160ms ease;
+}
+.pcsRowBox[data-match] {
+  border-color: var(--mantine-primary-color-filled);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--mantine-primary-color-filled) 15%, transparent);
+}
+.pcsRowBox[data-nomatch] {
+  opacity: 0.45;
+}
+
+/* ── LOINC axis bar ───────────────────────────────────────────────────── */
+.axisBar {
+  display: grid;
+  grid-template-columns: 1.5fr 1fr 0.7fr 1fr 0.7fr 1fr;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--mantine-color-default-border);
+}
+@media (max-width: 48em) {
+  .axisBar {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+.axisSeg {
+  --ax: var(--mantine-color-brand-6);
+  padding: 10px 12px 12px;
+  background: color-mix(in srgb, var(--ax) 9%, var(--mantine-color-body));
+  border-right: 1px solid var(--mantine-color-default-border);
+  position: relative;
+  min-width: 0;
+  cursor: pointer;
+  transition: background-color 140ms ease;
+  animation: axisIn 360ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+.axisSeg:last-child {
+  border-right: none;
+}
+.axisSeg::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  background: var(--ax);
+  transform-origin: left;
+  animation: barGrow 520ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  animation-delay: inherit;
+}
+.axisSeg:hover {
+  background: color-mix(in srgb, var(--ax) 16%, var(--mantine-color-body));
+}
+.axisSeg[data-empty] {
+  opacity: 0.55;
+}
+@keyframes barGrow {
+  from {
+    transform: scaleX(0);
+  }
+}
+.miniAxis {
+  display: flex;
+  gap: 3px;
+  flex-wrap: wrap;
+}
+.miniAxis > span {
+  --ax: var(--mantine-color-brand-6);
+  font-size: 10.5px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--ax) 12%, transparent);
+  color: color-mix(in srgb, var(--ax) 80%, var(--mantine-color-text));
+  white-space: nowrap;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Facet bars */
+.facetRow {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  cursor: pointer;
+  overflow: hidden;
+  width: 100%;
+  text-align: left;
+}
+.facetRow::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--w, 0%);
+  background: color-mix(in srgb, var(--ax, var(--mantine-primary-color-filled)) 12%, transparent);
+  transition: width 420ms cubic-bezier(0.2, 0.7, 0.2, 1);
+  z-index: 0;
+}
+.facetRow > * {
+  position: relative;
+  z-index: 1;
+}
+.facetRow:hover {
+  background: var(--mantine-color-default-hover);
+}
+.facetRow[data-active] {
+  font-weight: 650;
+  outline: 1.5px solid var(--ax, var(--mantine-primary-color-filled));
+}
+
+/* Reference range band */
+.rangeTrack {
+  position: relative;
+  height: 26px;
+  border-radius: 999px;
+  background: repeating-linear-gradient(90deg, var(--mantine-color-default-border) 0 1px, transparent 1px 10%);
+  background-color: var(--mantine-color-default-hover);
+  overflow: hidden;
+}
+.rangeBand {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--mantine-color-teal-5) 70%, transparent), var(--mantine-color-teal-6));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px;
+  color: white;
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  transform-origin: center;
+  animation: bandIn 600ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  white-space: nowrap;
+}
+@keyframes bandIn {
+  from {
+    transform: scaleX(0.2);
+    opacity: 0;
+  }
+}
+
+/* Nested list (answers / panel members) */
+.nested {
+  position: relative;
+  margin-left: 10px;
+  padding-left: 14px;
+  border-left: 1.5px solid var(--mantine-color-default-border);
+}
+.nestedItem {
+  position: relative;
+  padding: 3px 0;
+  animation: cardIn 240ms ease both;
+}
+.nestedItem::before {
+  content: "";
+  position: absolute;
+  left: -14px;
+  top: 13px;
+  width: 10px;
+  height: 1.5px;
+  background: var(--mantine-color-default-border);
+}
+
+/* ── Graph (SNOMED / RxNorm) ──────────────────────────────────────────── */
+.graph {
+  position: relative;
+  padding: 8px 4px 4px;
+}
+.graphEdges {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: visible;
+  z-index: 0;
+}
+.edge {
+  fill: none;
+  stroke: color-mix(in srgb, var(--mantine-color-dimmed) 55%, transparent);
+  stroke-width: 1.4;
+  stroke-dasharray: var(--len, 600);
+  stroke-dashoffset: var(--len, 600);
+  animation: draw 700ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+.edge[data-kind="attr"] {
+  stroke: color-mix(in srgb, var(--mantine-color-indigo-5) 70%, transparent);
+}
+.edge[data-kind="assoc"] {
+  stroke: var(--mantine-color-orange-6);
+  stroke-width: 1.8;
+}
+.edgeFlow {
+  fill: none;
+  stroke: var(--mantine-primary-color-filled);
+  stroke-width: 2;
+  stroke-dasharray: 3 12;
+  opacity: 0.55;
+  animation: flow 1.6s linear infinite;
+}
+@keyframes draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes flow {
+  to {
+    stroke-dashoffset: -30;
+  }
+}
+.edgeLabel {
+  font-size: 10px;
+  font-weight: 650;
+  fill: var(--mantine-color-indigo-6);
+  paint-order: stroke;
+  stroke: var(--mantine-color-body);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+}
+.tier {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+}
+.tierLabel {
+  position: relative;
+  z-index: 1;
+  width: fit-content;
+  margin-inline: auto;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--mantine-color-body);
+  text-align: center;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--mantine-color-dimmed);
+  margin: 6px 0;
+}
+.focusRow {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 420px) minmax(0, 1fr);
+  gap: 28px;
+  align-items: center;
+  margin: 26px 0;
+}
+@media (max-width: 62em) {
+  .focusRow {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+    margin: 14px 0;
+  }
+}
+.attrCol {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.node {
+  --accent: var(--mantine-color-gray-5);
+  position: relative;
+  max-width: 260px;
+  min-width: 0;
+  padding: 7px 10px 7px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--mantine-color-default-border);
+  border-left: 3px solid var(--accent);
+  background: var(--mantine-color-body);
+  box-shadow: var(--mantine-shadow-xs);
+  cursor: pointer;
+  text-align: left;
+  transition:
+    transform 140ms ease,
+    box-shadow 140ms ease,
+    border-color 140ms ease;
+  animation: nodeIn 380ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+[data-mantine-color-scheme="dark"] .node {
+  background: var(--mantine-color-dark-6);
+}
+.node:hover,
+.node:focus-visible {
+  transform: translateY(-2px);
+  box-shadow: var(--mantine-shadow-md);
+  outline: none;
+  border-color: var(--accent);
+}
+.node[data-inactive] {
+  border-style: dashed;
+  opacity: 0.8;
+}
+.nodeAttr {
+  max-width: none;
+  border-left-color: var(--mantine-color-indigo-5);
+}
+@keyframes nodeIn {
+  from {
+    opacity: 0;
+    translate: 0 8px;
+    scale: 0.97;
+  }
+}
+.focus {
+  --accent: var(--mantine-primary-color-filled);
+  position: relative;
+  border-radius: 16px;
+  padding: 16px 18px;
+  border: 1.5px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 6%, var(--mantine-color-body));
+  box-shadow:
+    0 0 0 6px color-mix(in srgb, var(--accent) 10%, transparent),
+    var(--mantine-shadow-md);
+  animation: focusIn 420ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+[data-mantine-color-scheme="dark"] .focus {
+  background: color-mix(in srgb, var(--accent) 10%, var(--mantine-color-dark-7));
+}
+.focus[data-inactive] {
+  --accent: var(--mantine-color-gray-6);
+  border-style: dashed;
+}
+@keyframes focusIn {
+  from {
+    opacity: 0;
+    scale: 0.94;
+  }
+}
+.pulse {
+  position: absolute;
+  right: 12px;
+  top: 12px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.pulse::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: beacon 1.8s ease-out infinite;
+}
+@keyframes beacon {
+  to {
+    transform: scale(2.8);
+    opacity: 0;
+  }
+}
+
+/* TTY layer map (RxNorm) */
+.layers {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+}
+@media (max-width: 62em) {
+  .layers {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.layer {
+  border: 1px solid var(--mantine-color-default-border);
+  border-radius: 12px;
+  padding: 10px;
+  background: var(--mantine-color-body);
+  animation: nodeIn 380ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+[data-mantine-color-scheme="dark"] .layer {
+  background: var(--mantine-color-dark-6);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .enter,
+  .exit,
+  .slideFwd,
+  .slideBack,
+  .detailCard,
+  .crumb,
+  .axisCell,
+  .axisSeg,
+  .axisSeg::after,
+  .rangeBand,
+  .nestedItem,
+  .node,
+  .focus,
+  .layer {
+    animation: none !important;
+  }
+  .edge {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+  .edgeFlow,
+  .pulse::after {
+    display: none;
+  }
+}
+
+/* Centered tier caption (Mantine's Text margin reset would otherwise pin it left). */
+.tierCenter {
+  margin-left: auto !important;
+  margin-right: auto !important;
+}

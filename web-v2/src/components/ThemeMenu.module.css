@@ -1,0 +1,29 @@
+/* Stacked sun / moon / monitor icons that morph into each other. */
+.icon {
+  position: relative;
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+}
+.icon > svg {
+  position: absolute;
+  inset: 0;
+  transition:
+    transform 450ms cubic-bezier(.4, 0, .2, 1),
+    opacity 300ms cubic-bezier(.4, 0, .2, 1);
+  opacity: 0;
+}
+.icon > svg[data-active="true"] {
+  opacity: 1;
+  transform: rotate(0deg) scale(1);
+}
+/* Sun spins out clockwise, moon rises in from the other side. */
+.icon > svg[data-kind="sun"]:not([data-active="true"]) {
+  transform: rotate(90deg) scale(0.4);
+}
+.icon > svg[data-kind="moon"]:not([data-active="true"]) {
+  transform: rotate(-90deg) scale(0.4);
+}
+.icon > svg[data-kind="auto"]:not([data-active="true"]) {
+  transform: translateY(6px) scale(0.5);
+}

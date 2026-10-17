@@ -1,0 +1,59 @@
+.root {
+  min-height: 100dvh;
+}
+.hero {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px;
+  background:
+    radial-gradient(1200px 600px at -10% -10%, rgba(82, 182, 187, 0.45), transparent 60%),
+    radial-gradient(900px 500px at 110% 110%, rgba(67, 56, 202, 0.35), transparent 60%),
+    linear-gradient(150deg, #053e44 0%, #0b5f68 45%, #0f2a3d 100%);
+  overflow: hidden;
+}
+.hero::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px);
+  background-size: 22px 22px;
+  mask-image: linear-gradient(to bottom, black, transparent 85%);
+  pointer-events: none;
+}
+.hero > * {
+  position: relative;
+  z-index: 1;
+}
+.logo {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: linear-gradient(140deg, #0b7a83 0%, #2ba6ac 100%);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+}
+.featIcon {
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+}
+.formSide {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 16px;
+  background: var(--app-bg);
+}
+.card {
+  width: 100%;
+  max-width: 420px;
+}
+.themeCorner {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+}
