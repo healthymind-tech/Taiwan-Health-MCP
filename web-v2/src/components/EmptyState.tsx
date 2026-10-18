@@ -1,7 +1,7 @@
 import { Button, Center, Stack, Text, ThemeIcon, Title } from "@mantine/core";
 import { IconAlertTriangle, IconInbox, IconRefresh } from "@tabler/icons-react";
 import type { ReactNode } from "react";
-import { errorMessage } from "@/lib/api";
+import { errorParts } from "@/lib/api";
 
 export function EmptyState({
   icon,
@@ -41,7 +41,7 @@ export function ErrorState({ error, onRetry, title = "載入失敗" }: { error: 
     <EmptyState
       icon={<IconAlertTriangle size={28} color="var(--mantine-color-red-6)" />}
       title={title}
-      description={errorMessage(error)}
+      description={<ErrorDescription error={error} />}
       action={
         onRetry && (
           <Button variant="light" leftSection={<IconRefresh size={16} />} onClick={onRetry}>
@@ -50,5 +50,25 @@ export function ErrorState({ error, onRetry, title = "載入失敗" }: { error: 
         )
       }
     />
+  );
+}
+
+function ErrorDescription({ error }: { error: unknown }) {
+  const p = errorParts(error);
+  return (
+    <>
+      {p.message}
+      {p.hint && (
+        <>
+          <br />
+          {p.hint}
+        </>
+      )}
+      {p.detail && (
+        <Text component="span" display="block" mt={6} fz="xs" ff="monospace" style={{ wordBreak: "break-word" }}>
+          技術細節：{p.detail.length > 300 ? `${p.detail.slice(0, 300)}…` : p.detail}
+        </Text>
+      )}
+    </>
   );
 }

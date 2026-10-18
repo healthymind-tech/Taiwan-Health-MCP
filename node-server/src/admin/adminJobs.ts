@@ -617,13 +617,13 @@ export class JobValueError extends Error {}
 
 const PHASE2_JOB_TYPES = ["noop", "system_backup"];
 const SIMPLE_LOADER_JOB_TYPES = ["health_supplements_sync", "food_nutrition_sync"];
-const HEAVY_LOADER_JOB_TYPES = ["icd_import", "loinc_import", "ig_import", "snomed_import", "rxnorm_import"];
+const HEAVY_LOADER_JOB_TYPES = ["icd_import", "loinc_import", "ig_import", "snomed_import", "rxnorm_import", "ig_concept_index", "umls_import"];
 // drug_index_import/drug_enrichment/drug_analysis are kept fully functional
 // (dispatchable, restartable) for backward compatibility with any job rows
 // already in history, but nothing creates new ones any more — the admin UI
 // only triggers drug_pipeline, which does all three per license in one job.
 const DRUG_JOB_TYPES = ["drug_index_import", "drug_enrichment", "drug_analysis", "drug_pipeline"];
-const EMBED_JOB_TYPES = ["icd_embed", "loinc_embed", "health_supplements_embed", "food_nutrition_embed", "snomed_embed"];
+const EMBED_JOB_TYPES = ["icd_embed", "loinc_embed", "health_supplements_embed", "food_nutrition_embed", "snomed_embed", "ig_embed"];
 
 /** Faithful port of `ADMIN_JOB_TYPES`. */
 export const ADMIN_JOB_TYPES: ReadonlySet<string> = new Set([
@@ -651,6 +651,8 @@ const JOB_TYPE_MODULE_KEYS: Record<string, string> = {
   icd_import: "icd",
   loinc_import: "loinc",
   ig_import: "ig",
+  ig_concept_index: "ig",
+  umls_import: "ig",
   snomed_import: "snomed",
   rxnorm_import: "rxnorm",
   drug_index_import: "drug",
@@ -662,6 +664,7 @@ const JOB_TYPE_MODULE_KEYS: Record<string, string> = {
   health_supplements_embed: "health_supplements",
   food_nutrition_embed: "food_nutrition",
   snomed_embed: "snomed",
+  ig_embed: "ig",
 };
 
 interface HeavyJobSourceSpec {
@@ -676,6 +679,7 @@ const HEAVY_JOB_SOURCE_SPECS: Record<string, HeavyJobSourceSpec> = {
   loinc_import: { module_key: "loinc", required_roles: ["loinc", "loinc_taiwan_mapping", "loinc_reference_ranges"], optional_roles: [] },
   snomed_import: { module_key: "snomed", required_roles: ["snomed_ct"], optional_roles: [] },
   rxnorm_import: { module_key: "rxnorm", required_roles: ["rxnorm_full"], optional_roles: [] },
+  umls_import: { module_key: "ig", required_roles: ["umls_metathesaurus"], optional_roles: [] },
   drug_index_import: { module_key: "drug", required_roles: ["drug_index_csv"], optional_roles: [] },
   drug_pipeline: { module_key: "drug", required_roles: ["drug_index_csv"], optional_roles: [] },
 };
@@ -760,6 +764,14 @@ async function fetchModuleSourceRow(
   return null;
 }
 
+/**
+ * The binding for a single-file source role: the active upload, else the newest
+ * (rows arrive newest first). Exported for tests.
+ */
+export function pickSingleSourceBinding<T extends { is_active: unknown }>(rows: T[]): T {
+  return rows.find((r) => Boolean(r.is_active)) ?? rows[0];
+}
+
 /** Mirror `_resolve_job_source_manifest`. */
 async function resolveJobSourceManifest(
   client: pg.PoolClient,
@@ -801,7 +813,10 @@ async function resolveJobSourceManifest(
       const active = rows.filter((r) => r.is_active);
       bindingsByRole.set(role, active.length > 0 ? active : rows);
     } else {
-      bindingsByRole.set(role, rows[0]);
+      // The active upload wins; the newest upload is only a fallback when the
+      // role has no active file. (Picking rows[0] — newest — let any fresh,
+      // never-activated upload silently replace the active source.)
+      bindingsByRole.set(role, pickSingleSourceBinding(rows));
     }
   }
 
@@ -1147,7 +1162,7 @@ export const JOB_RESOURCES: Record<string, ReadonlySet<string>> = {
   system_backup: new Set(["system_backup"]),
   db_write_icd: new Set(["icd_import"]),
   db_write_loinc: new Set(["loinc_import"]),
-  db_write_ig: new Set(["ig_import"]),
+  db_write_ig: new Set(["ig_import", "ig_concept_index", "umls_import"]),
   db_write_snomed: new Set(["snomed_import"]),
   db_write_rxnorm: new Set(["rxnorm_import"]),
   db_write_health_supplements: new Set(["health_supplements_sync"]),
@@ -2918,7 +2933,25 @@ export async function runIgImportJob(opts: {
         const packageId = String(jobOpts.package_id ?? "").trim();
         if (!packageId) throw new Error("registry IG import requires 'package_id' in job_options");
         const version = String(jobOpts.version ?? "").trim() || null;
-        const { data, version: resolved } = await registry.fetchPackage(base, packageId, version, { fallback });
+        let fetched: Awaited<ReturnType<typeof registry.fetchPackage>>;
+        try {
+          fetched = await registry.fetchPackage(base, packageId, version, { fallback });
+        } catch (exc) {
+          const reason = String((exc as Error).message);
+          const kind = registry.classifyRegistryFailure(reason);
+          // A package / version no registry has will not appear by retrying:
+          // fail permanently with a stable code instead of a retryable worker exception.
+          if (kind !== "not_found" && kind !== "invalid_package") throw exc;
+          await markJobStatus({
+            jobId, status: "permanent_failed", currentStep: "fetch_package", controlState: "idle",
+            lastErrorCode: `ig_package_${kind}`,
+            lastErrorMessage: `IG package ${packageId}${version ? `@${version}` : ""} is not available from the registry: ${reason}`,
+            resultSummary: { job_type: "ig_import", ig_source: igSource, packages: [], reason_code: kind },
+          });
+          await appendJobLog({ jobId, level: "error", message: `Registry has no ${packageId}${version ? `@${version}` : ""}`, payload: { reason_code: kind } });
+          return;
+        }
+        const { data, version: resolved } = fetched;
         await fsp.writeFile(dest, data);
         // Best-effort archive of the fetched tarball (non-critical, mirrors _store_ig_tarball).
         try {
@@ -3169,6 +3202,40 @@ export async function runIgImportJob(opts: {
       "admin.stage_twcore_concepts",
       "admin.stage_twcore_codesystems",
     ]);
+
+    // Concept-search index for the packages just installed (+ CodeSystems elsewhere
+    // that their supplements / ConceptMaps touch are refreshed by the next backfill).
+    // A failure here never fails the import: a backfill job is queued instead.
+    let conceptIndex: Record<string, unknown> | null = null;
+    try {
+      const { buildConceptIndex, buildThesaurus } = await import("../conceptSearch/indexBuilder.js");
+      const pool = getPool();
+      const stats = await buildConceptIndex(pool, {
+        packages: identities.map((i) => ({ package_id: i.package_id, version: i.version })),
+        log: (m) => appendJobLog({ jobId, level: "info", message: m }),
+      });
+      if (stats.rebuilt > 0) await buildThesaurus(pool, (m) => appendJobLog({ jobId, level: "info", message: m }));
+      conceptIndex = { ...stats };
+      await recordJobStep({
+        jobId, stepKey: "index_concepts", status: "success", progressCurrent: 1, progressTotal: 1,
+        checkpoint: { phase: "indexed", ...stats },
+      });
+      if (stats.rebuilt > 0) {
+        const embedJob = await queueIgEmbed({ parentJobId: jobId, requestedBy: String(job.requested_by ?? "system"), reason: "ig_import" });
+        if (embedJob) conceptIndex.ig_embed_job = embedJob;
+      }
+    } catch (exc) {
+      await appendJobLog({ jobId, level: "warn", message: `Concept-search index not built: ${(exc as Error).message}; queuing ig_concept_index` });
+      try {
+        const j = await createJob({
+          moduleKey: "ig", jobType: "ig_concept_index", requestedBy: String(job.requested_by ?? "system"), parentJobId: jobId,
+          jobOptions: { packages: identities.map((i) => ({ package_id: i.package_id, version: i.version })) },
+        });
+        conceptIndex = { queued_job: String(j.job_id) };
+      } catch {
+        /* best effort */
+      }
+    }
     await recordJobStep({
       jobId, stepKey: "cleanup_staging", status: "success",
       progressCurrent: 1, progressTotal: 1, checkpoint: { phase: "cleaned" },
@@ -3187,7 +3254,157 @@ export async function runIgImportJob(opts: {
         codesystem_count: codesystemCount,
         concept_count: conceptCount,
         artifact_count: artifactCount,
+        concept_index: conceptIndex,
       },
+    });
+  } finally {
+    await fsp.rm(tmpdir, { recursive: true, force: true });
+  }
+}
+
+/**
+ * Queue an ig_embed job unless one is already queued / running / waiting to retry, and only
+ * when an embedding profile is configured. Never throws (best-effort chaining).
+ */
+export async function queueIgEmbed(opts: { parentJobId: string | null; requestedBy: string; reason: string }): Promise<string | null> {
+  try {
+    const { loadEmbeddingSettings, loadEmbeddingProfiles } = await import("../loaders/embeddings.js");
+    const profiles = await loadEmbeddingProfiles(await loadEmbeddingSettings(getPool()));
+    if (profiles.length === 0) return null;
+    const open = await query(
+      "SELECT 1 FROM admin.import_jobs WHERE job_type = 'ig_embed' AND status IN ('queued', 'running', 'paused', 'retryable_failed') LIMIT 1",
+    );
+    if (open.rows.length) return null;
+    const job = await createJob({
+      moduleKey: "ig", jobType: "ig_embed", requestedBy: opts.requestedBy,
+      jobOptions: { reason: opts.reason }, ...(opts.parentJobId ? { parentJobId: opts.parentJobId } : {}),
+    });
+    return String(job.job_id);
+  } catch (exc) {
+    await appendJobLog({
+      jobId: opts.parentJobId ?? "", level: "warn",
+      message: `Could not queue ig_embed: ${(exc as Error).message}`,
+    }).catch(() => undefined);
+    return null;
+  }
+}
+
+/**
+ * Build / refresh the IG concept-search index (fhir.concept_index_*) and the mined
+ * thesaurus; then chain ig_embed. job_options: packages?: [{package_id, version}],
+ * force?: boolean, embed_max_concepts?: number, thesaurus?: boolean (default true),
+ * queue_embed?: boolean (default true).
+ */
+export async function runIgConceptIndexJob(opts: { workerName: string; job: Record<string, unknown> }): Promise<void> {
+  const { workerName, job } = opts;
+  const jobId = String(job.job_id);
+  const jobOpts = parseJsonb(job.job_options);
+  const { buildConceptIndex, buildThesaurus, DEFAULT_EMBED_MAX_CONCEPTS } = await import("../conceptSearch/indexBuilder.js");
+  const pool = getPool();
+  const packages = Array.isArray(jobOpts.packages) ? parseDependencyTargets(jobOpts.packages) : undefined;
+  const embedMax = Number(jobOpts.embed_max_concepts) > 0 ? Number(jobOpts.embed_max_concepts) : DEFAULT_EMBED_MAX_CONCEPTS;
+  await markJobStatus({ jobId, status: "running", currentStep: "indexing", progressCurrent: 0, progressTotal: 2 });
+  await appendJobLog({
+    jobId, level: "info", message: "Building IG concept-search index",
+    payload: { packages: packages ?? "all", force: Boolean(jobOpts.force), embed_max_concepts: embedMax },
+  });
+  let thesaurusCount: number | null = null;
+  let lastCheck = 0;
+  let stopRequested = false;
+  const stats = await buildConceptIndex(pool, {
+    packages,
+    force: Boolean(jobOpts.force),
+    embedMaxConcepts: embedMax,
+    log: (m) => appendJobLog({ jobId, level: "info", message: m }),
+    shouldStop: async () => {
+      if (stopRequested) return true;
+      if (Date.now() - lastCheck < 2000) return false;
+      lastCheck = Date.now();
+      const r = await pool.query<{ control_state: string | null }>("SELECT control_state FROM admin.import_jobs WHERE job_id = $1", [jobId]);
+      stopRequested = ["pause_requested", "stop_requested", "restart_requested"].includes(String(r.rows[0]?.control_state ?? ""));
+      return stopRequested;
+    },
+  });
+  await recordJobStep({
+    jobId, stepKey: "index_concepts", status: stats.stopped ? "stopped" : "success", progressCurrent: 1, progressTotal: 1,
+    checkpoint: { phase: "indexed", ...stats },
+  });
+  if (stats.stopped && (await applyControlCheckpoint({ jobId, workerName }))) return;
+  // After the index: the thesaurus also mines abbreviations defined in the indexed names.
+  if (jobOpts.thesaurus !== false) {
+    thesaurusCount = await buildThesaurus(pool, (m) => appendJobLog({ jobId, level: "info", message: m }));
+  }
+  let needEmbed = jobOpts.queue_embed !== false;
+  if (needEmbed && stats.rebuilt === 0) {
+    // Nothing re-indexed: embed only when vectors are missing (e.g. an earlier ig_embed failed).
+    const r = await pool.query<{ missing: boolean }>(
+      `SELECT EXISTS (SELECT 1 FROM fhir.concept_index_terms t WHERE t.text_hash IS NOT NULL
+                        AND NOT EXISTS (SELECT 1 FROM fhir.concept_embeddings e WHERE e.text_hash = t.text_hash)) AS missing`,
+    );
+    needEmbed = Boolean(r.rows[0]?.missing);
+  }
+  const embedJob = needEmbed ? await queueIgEmbed({ parentJobId: jobId, requestedBy: String(job.requested_by ?? "system"), reason: "ig_concept_index" }) : null;
+  await markJobStatus({
+    jobId, status: "success", currentStep: "completed", progressCurrent: 2, progressTotal: 2, controlState: "idle",
+    resultSummary: { job_type: "ig_concept_index", ...stats, thesaurus_entries: thesaurusCount, ig_embed_job: embedJob },
+  });
+  await appendJobLog({
+    jobId, level: "info",
+    message: `Concept index: ${fmt(stats.rebuilt)} CodeSystem(s) rebuilt, ${fmt(stats.skipped)} unchanged, ` +
+      `${fmt(stats.concepts)} concepts / ${fmt(stats.terms)} terms written` + (embedJob ? `; queued ig_embed ${embedJob}` : ""),
+  });
+}
+
+/**
+ * Load the optional UMLS synonym store (fhir.umls_terms) from the active
+ * ig/umls_metathesaurus source (full release zip or the loader's compact subset). The file
+ * is streamed from MinIO to a temp file and parsed member-by-member (no 4 GB buffer), then
+ * the concept index is rebuilt (its signature includes the UMLS release).
+ */
+export async function runUmlsImportJob(opts: { workerName: string; job: Record<string, unknown> }): Promise<void> {
+  const { workerName, job } = opts;
+  const jobId = String(job.job_id);
+  const manifest = parseJsonb(parseJsonb(job.job_options).source_manifest);
+  const bindings = (manifest.bindings as Record<string, unknown>) || {};
+  const binding = (bindings.umls_metathesaurus || {}) as Record<string, unknown>;
+  const objectKey = String(binding.object_key ?? "").trim();
+  if (!objectKey) throw new Error("no active umls_metathesaurus source — upload the UMLS file first");
+  const minioService = await import("../minioService.js");
+  const { openUmls, fileSource, loadUmls } = await import("../loaders/umls.js");
+  const fs = await import("node:fs");
+  const fsp = await import("node:fs/promises");
+  const os = await import("node:os");
+  const path = await import("node:path");
+  const { pipeline } = await import("node:stream/promises");
+  const pool = getPool();
+  const tmpdir = await fsp.mkdtemp(path.join(os.tmpdir(), "umls-import-"));
+  try {
+    await markJobStatus({ jobId, status: "running", currentStep: "download", progressCurrent: 0, progressTotal: 3 });
+    const local = path.join(tmpdir, "umls.bin");
+    await pipeline(await minioService.getObjectStream(objectKey), fs.createWriteStream(local));
+    await appendJobLog({ jobId, level: "info", message: `UMLS source downloaded (${String(binding.original_filename ?? objectKey)})` });
+    await markJobStatus({ jobId, status: "running", currentStep: "loading_umls", progressCurrent: 1, progressTotal: 3 });
+    let lastCheck = 0;
+    let stop = false;
+    const stats = await loadUmls(pool, await openUmls(fileSource(local)), {
+      sourceFile: String(binding.original_filename ?? objectKey),
+      log: (m) => appendJobLog({ jobId, level: "info", message: m }),
+      shouldStop: async () => {
+        if (stop) return true;
+        if (Date.now() - lastCheck < 2000) return false;
+        lastCheck = Date.now();
+        const r = await pool.query<{ control_state: string | null }>("SELECT control_state FROM admin.import_jobs WHERE job_id = $1", [jobId]);
+        stop = ["pause_requested", "stop_requested", "restart_requested"].includes(String(r.rows[0]?.control_state ?? ""));
+        return stop;
+      },
+    });
+    if (stats.stopped && (await applyControlCheckpoint({ jobId, workerName }))) return;
+    await recordJobStep({ jobId, stepKey: "load_umls", status: "success", progressCurrent: 1, progressTotal: 1, checkpoint: { phase: "loaded", ...stats } });
+    // The concept index links IG concepts to UMLS synonyms: rebuild it (and the thesaurus).
+    const idx = await createJob({ moduleKey: "ig", jobType: "ig_concept_index", requestedBy: String(job.requested_by ?? "system"), parentJobId: jobId, jobOptions: { reason: "umls_import" } });
+    await markJobStatus({
+      jobId, status: "success", currentStep: "completed", progressCurrent: 3, progressTotal: 3, controlState: "idle",
+      resultSummary: { job_type: "umls_import", ...stats, ig_concept_index_job: String(idx.job_id) },
     });
   } finally {
     await fsp.rm(tmpdir, { recursive: true, force: true });
@@ -3334,6 +3551,11 @@ const EMBED_JOBS: Record<string, { module: string; label: string; srcQ: string; 
     srcQ: "SELECT COUNT(DISTINCT concept_id) FROM snomed.descriptions"
       + " WHERE active = TRUE AND type_id = 900000000000003001",
     embQ: "SELECT COUNT(*) FROM snomed.concept_embeddings",
+  },
+  ig_embed: {
+    module: "ig", label: "FHIR IG CodeSystem terms",
+    srcQ: "SELECT COUNT(DISTINCT text_hash) FROM fhir.concept_index_terms WHERE text_hash IS NOT NULL",
+    embQ: "SELECT COUNT(*) FROM fhir.concept_embeddings",
   },
 };
 
@@ -4552,6 +4774,14 @@ export async function executeAdminJob(opts: {
     }
     if (jobType === "ig_import") {
       await runIgImportJob({ workerName, job });
+      return;
+    }
+    if (jobType === "ig_concept_index") {
+      await runIgConceptIndexJob({ workerName, job });
+      return;
+    }
+    if (jobType === "umls_import") {
+      await runUmlsImportJob({ workerName, job });
       return;
     }
     if (jobType === "rxnorm_import") {

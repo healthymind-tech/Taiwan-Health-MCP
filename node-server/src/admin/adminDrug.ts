@@ -21,6 +21,7 @@
 
 import { query } from "../db.js";
 import { tsIsoExpr, pyIso } from "./adminJobs.js";
+import { explainJobError } from "./adminErrorCodes.js";
 
 // ── drug_status_utils.display_drug_statuses ────────────────────────────────────
 
@@ -492,6 +493,8 @@ export async function getDrugAdminStatus(
     stage: row.stage || "",
     status: row.to_status || "",
     error_message: row.error_message || "",
+    // zh-TW explanation of a recognised raw error (OCR 504, empty markdown, network …).
+    error_zh: explainJobError(row.error_message)?.message_zh ?? "",
     created_at: iso(row.created_at),
   }));
 

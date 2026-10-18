@@ -50,7 +50,7 @@ FHIR_SERVER_SECRET_KEY=
 
 對應的後端模組見 `node-server/src/admin/*.ts`（`adminApp.ts` 為路由入口）。
 
-登入方式除密碼外，另支援 **passkey / WebAuthn**（`node-server/src/admin/webauthn.ts`），於「帳號安全」頁管理；passkey 僅能在 HTTPS 的 RP 網域（或本機 localhost）上使用，設定見[環境變數配置](../deployment/configuration.md)。
+登入方式除密碼外，另支援 **passkey / WebAuthn**（`node-server/src/admin/webauthn.ts`），於「帳號安全」頁管理（該頁變更密碼時，新密碼至少 12 個字元，伺服器端同樣檢查）；passkey 僅能在 HTTPS 的 RP 網域（或本機 localhost）上使用，設定見[環境變數配置](../deployment/configuration.md)。
 
 ## MCP 工具頁（`/admin/mcp`）
 
@@ -75,8 +75,25 @@ FHIR_SERVER_SECRET_KEY=
 
 - **Provider adapter**：`node-server/src/providers/registry.ts` 共註冊 24 個 adapter——OpenAI、Azure OpenAI、Anthropic、Gemini、Bedrock、Mistral、Cohere、Voyage、Jina、DeepSeek、xAI、Groq、OpenRouter、Together、Fireworks、SiliconFlow、DashScope、Moonshot、Zhipu、Volcengine、MiniMax、OpenAI 相容伺服器（vLLM、LM Studio、LiteLLM…）、Ollama，以及 ChatGPT。舊值 `vllm` / `google` / `azure` / `claude` 會自動對應到新 id（migration `20261015_llm_provider_registry.sql` 一併改寫已存資料）。
 - **ChatGPT 登入**：`chatgpt` provider 使用 OpenAI 的「Sign in with ChatGPT」PKCE 流程（`admin/chatgptOAuth.ts`）。由於 redirect 只能是本機 loopback，操作者需把瀏覽器最後的網址貼回後台完成交換；token 存於 `admin.llm_providers.oauth`，不會離開伺服器。
-- **Embedding 身分（fingerprint）**：`admin/embeddingIdentity.ts` 以一組固定探測文字的向量作為系統的嵌入身分（`admin.embedding_identity` / `admin.embedding_fingerprints`，定義在 `db/schema.sql` 與 `db/migrations/20261021_embedding_identity.sql`；程式啟動時也會以 `CREATE TABLE IF NOT EXISTS` 補建）。任何新端點要加入 embedding profile，每個探測文字的 cosine 都必須 ≥ 0.95，才算「同一個模型」。已有向量時要換模型，必須走受保護的切換流程：停用嵌入角色 → 停止 embed 工作 → 清除向量 → 採用新身分 → 重新排入各模組的 embed 工作。
+- **Embedding 身分（fingerprint）**：`admin/embeddingIdentity.ts` 以一組固定探測文字的向量作為系統的嵌入身分（`admin.embedding_identity` / `admin.embedding_fingerprints`，定義在 `db/schema.sql` 與 `db/migrations/20261021_embedding_identity.sql`；程式啟動時也會以 `CREATE TABLE IF NOT EXISTS` 補建）。任何新端點要加入 embedding profile，每個探測文字的 cosine 都必須 ≥ 0.95，才算「同一個模型」。已有向量時要換模型，必須走受保護的切換流程：停用嵌入角色 → 停止 embed 工作 → 清除向量（維度不同時在同一交易內調整所有 `*_embeddings` 向量欄位，例如 1024 → 2560）→ 採用新身分 → 重新排入各模組的 embed 工作。
+- **還沒有身分列、但已有向量**（舊版載入的資料）：第一次儲存 Embedding profile、指定角色，或在「總覽」按「確認現有向量的模型並建立指紋」時，系統會從資料庫取幾筆既有向量與其原文（以 `source_hash` 驗證原文），請角色內的端點、其他 Embedding profile 的端點、最後是這次要加入的端點逐一重新產生來比對，採用第一個對得上的；連不上或回 404 的端點會被略過，絕不會被採用。都對不上時回傳 `embedding_identity_unresolved`（列出每個端點的失敗原因），不會丟出原始 HTTP 錯誤。
+- **錯誤一律帶代碼**：模型端點相關的錯誤（儲存 profile、指定角色、測試帳號／模型、比對指紋、切換、匯入設定）都回傳 `code` + `params`，後台翻成中文並附下一步；原始伺服器訊息只放在可展開的「技術細節」。主要代碼見下方〈更換 Embedding 模型〉。
 - 角色層級參數（嵌入的 timeout / batch size / concurrency、分析的 max retries）存於 `admin.app_settings` 的 `embedding` / `analysis` 群組。
+
+### 更換 Embedding 模型（切換流程）
+
+**不能用編輯 Profile 更換 Embedding 模型。** 把成員改成另一個模型（或另一個向量維度）時，儲存會被拒絕（HTTP 409，`embedding_model_change_requires_switch`），後台改為顯示說明對話框：目前模型與維度、要改成的模型、會重建的向量數與預估時間，並提供「改用切換模型流程」——切換對話框會帶入同一個帳號、模型與參數。指定一個不同模型的 profile 給 Embedding 角色也一樣。
+
+切換步驟（模型端點 → 總覽 → Embedding → 「切換模型…」）：
+
+1. 選帳號、模型與向量維度，按 **預先檢查**（`POST /admin/api/llm/embedding/precheck`，不會變更任何東西）。它會實際呼叫新模型，並在刪除任何資料前回報：
+    - `embedding_model_not_found`：伺服器沒有這個模型，列出它實際提供的模型，可點選改用。
+    - `embedding_dims_unsupported`：回傳的向量不是設定的維度。沒有送出 `dimensions` 時，代表模型原生維度不同（例如 Qwen3-Embedding-4B 為 2560）；有送出時，代表伺服器拒絕或忽略了它。兩種修法：改用模型原生維度，或（Matryoshka 模型）開啟「送出維度參數」——vLLM 須以 `--hf-overrides '{"is_matryoshka": true}'` 啟動，否則會回 HTTP 400。
+    - `embedding_switch_same_model`：新端點其實產生相同向量，不需要切換，直接加進 profile 當備援即可。
+    - 通過時顯示回傳維度，以及向量欄位是否會改維度（例如 1024 → 2560）。
+2. 有向量時輸入 `REINDEX` 確認後執行。系統關閉 Embedding 角色、停止 embed 工作、清除向量並調整欄位維度、採用新身分、建立並綁定新的 profile，再為每個有資料的模組排入重建工作。重建期間語意搜尋改為關鍵字比對；約 60 萬筆向量在共用 GPU 上約需 1–2 小時。
+
+「總覽」的 Embedding 卡片會實際探測角色內每個成員（快取 60 秒）：成員失敗時顯示「Embedding 路由降級：成員 X 失敗（原因）——正由 Y 備援」與修正建議，服務健康頁的 Embedding 列也用同一份探測結果。
 
 ## 設定（Settings）與優先序
 
@@ -107,6 +124,13 @@ PostgreSQL 16 `pg_restore` 還原；object storage 檔案位於 ZIP 的 `object-
 
 於各模組頁的來源檔區上傳來源檔（ICD-10-CM CMS order file zip、ICD-10-PCS、LOINC zip、SNOMED RF2、RxNorm zip、FHIR IG `package.tgz` 等），並可指定 source role（例如 IG 相依套件、選用的 WHO ICD-10 來源）。系統會以檔案指紋（SHA-256）阻擋重複上傳；檔案存於 MinIO，工作執行時再取回。
 
+上傳當下就會檢查內容，錯的檔案立即被拒（附中文原因）：檔案類型（magic bytes）、官方發布壓縮檔必須含 loader 需要的成員
+（LOINC `LoincTable/Loinc.csv`、SNOMED `sct2_Concept_*`、RxNorm `RXNCONSO.RRF`、ICD-10-CM / PCS order 檔、UMLS `MRCONSO.RRF`；
+zip64 等無法列目錄的檔案略過此檢查）、CSV 必須有必要欄位（藥品索引；LOINC 台灣對照 `loinc_code,name_zh`；參考值範圍
+`loinc_code,age_min,age_max,gender,range_low,range_high`）。IG 上傳匯入前會先讀 `package/package.json`，不是 FHIR 套件就回 422，不會建立工作。
+
+匯入工作綁定來源時，單一檔案的 source role 使用**使用中**（active）的那一版；只有該 role 沒有任何使用中版本時才退回最近一次上傳的檔案。
+
 > 上傳需送出 `Content-Type: application/octet-stream`（SPA 已如此送出），否則會被 express 的 JSON parser 攔下並回 413。
 
 ## 術語瀏覽器
@@ -133,6 +157,28 @@ PostgreSQL 16 `pg_restore` 還原；object storage 檔案位於 ZIP 的 `object-
 MCP 端透過 `list_fhir_servers` / `get_fhir_server_status` / `crud_fhir_server` 使用，並由伺服器代為處理 token —— 呼叫端不經手任何密鑰。
 
 > `crud_fhir_server` 是系統中唯一可能產生寫入的工具：寫入操作必須該伺服器的 allow-list 允許，且呼叫端帶入 `confirm_write=true`。
+
+## 錯誤訊息與下一步 { #errors }
+
+後台 API 的錯誤回應（HTTP ≥ 400）除了原本的 `error`（英文）與 `detail`（原始技術訊息）外，一律附上：
+
+| 欄位 | 內容 |
+|------|------|
+| `code` | 穩定的機器代碼，例如 `SOURCE_MISSING`、`DB_SCHEMA_OUTDATED`、`UPSTREAM_UNREACHABLE`、`JOB_ALREADY_ACTIVE` |
+| `message_zh` | 發生了什麼（繁體中文） |
+| `hint_zh` | 下一步該怎麼做（到哪一頁、改哪個設定、跑哪個指令） |
+
+由 `node-server/src/admin/adminErrorCodes.ts` 統一產生：先比對已知的英文訊息（來源檔缺漏、設定值超出範圍、OAuth 失敗…），
+再從 `detail` 辨識技術原因（PostgreSQL 錯誤如缺資料表／欄位 → 提示套用 migration、重複鍵、外鍵；連線拒絕、DNS、逾時、TLS、
+上游 HTTP 狀態；MinIO），都不符合時仍會說明「哪個操作失敗」並給通用的下一步。已帶 `code` 的回應（模型端點 API、IG 移除、
+`MODULE_MAINTENANCE`）不會被改寫。介面上的提示訊息依序顯示說明、下一步，原始訊息只以小字「技術細節」呈現。
+
+同樣的說明也套用在：
+
+- **外部服務的「測試連線」**（OCR / MinIO / TFDA）：結果多了 `message_zh` / `hint_zh`。
+- **服務健康**的探測結果與**儀表板**的基礎設施狀態：`message_zh` / `detail_zh` + `hint_zh`。
+- **失敗的背景工作**：`last_error_zh` / `last_error_hint_zh`（工作詳情與模組頁「上次匯入失敗的原因」）。
+- **閘道錯誤**：app 沒有回應時（nginx 回 502 / 504 的 HTML），前端直接說明「後端服務沒有回應」與檢查方式。
 
 ## DB 健康閘門
 

@@ -40,9 +40,9 @@
 | :--- | :--- | :--- |
 | `fhir_get_valueset` | ValueSet 定義摘要 | `identifier` |
 | `fhir_expand_valueset` | 展開 ValueSet 並列出成員碼（盡量在本機解析；整個大型外部 code system 不列舉，回 `TOO_BROAD`） | `identifier`, `limit`（預設 500，上限 2000） |
-| `fhir_lookup_code` | 在 CodeSystem 中查詢單一碼的顯示名稱與屬性 | `system`, `code` |
+| `fhir_lookup_code` | 在 CodeSystem 中查詢單一碼的顯示名稱與屬性；查無此碼時附 `hint`（改用 `fhir_normalize_code`）與 `near_codes`（IG CodeSystem 中相近的碼） | `system`, `code` |
 | `fhir_validate_code` | 驗證 `system`+`code` 是否屬於指定 ValueSet，回傳 `valid` / `invalid` / `unverifiable`；`value_set` 可寫成 `url|version` | `system`, `code`, `value_set` |
-| `fhir_normalize_code` | 以自由文字對照 ValueSet，回傳最合適標準碼 | `text`, `value_set`, `system`, `limit`（預設 10） |
+| `fhir_normalize_code` | 自由文字（中英文、縮寫、病歷寫法）轉候選碼：SNOMED CT / LOINC / ICD-10，以及任何已安裝 IG 的 CodeSystem（例如健保支付碼 `medical-service-payment-tw`，見 [IG 術語搜尋](../modules/ig-concept-search.md)）。IG 候選附 `matched_term`、`matched_language`、`group`/`siblings`；`system` 可給 canonical、id 或別名（`nhi_payment`） | `text`, `value_set`, `system`, `limit`（預設 10） |
 
 ## 授權、組裝與驗證
 | 工具 | 說明 | 主要參數 |
@@ -103,6 +103,7 @@
 | :--- | :--- |
 | `fhir_validate_resource`、`fhir_validate_bundle` | 1.4.0 |
 | `fhir_get_profile_required_elements` | 1.2.0 |
-| `fhir_list_igs`、`fhir_get_ig`、`fhir_list_artifacts`、`fhir_search_artifacts`、`fhir_list_resource_profiles`、`fhir_rank_resource_profiles`、`fhir_get_profile`、`fhir_get_profile_elements`、`fhir_get_valueset`、`fhir_expand_valueset`、`fhir_lookup_code`、`fhir_validate_code`、`fhir_normalize_code`、`fhir_get_resource_skeleton`、`fhir_finalize_resource` | 1.2.0 |
+| `fhir_list_igs`、`fhir_get_ig`、`fhir_list_artifacts`、`fhir_search_artifacts`、`fhir_list_resource_profiles`、`fhir_rank_resource_profiles`、`fhir_get_profile`、`fhir_get_profile_elements`、`fhir_get_valueset`、`fhir_expand_valueset`、`fhir_validate_code`、`fhir_get_resource_skeleton`、`fhir_finalize_resource` | 1.2.0 |
+| `fhir_lookup_code`、`fhir_normalize_code` | 1.3.0 |
 | `fhir_check_grounding` | 1.1.0 |
 | `fhir_check_completeness` | 1.1.1 |

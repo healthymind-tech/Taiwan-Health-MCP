@@ -64,6 +64,23 @@ Drug / TFDA 與 FHIR Medication → `drug`；Lab / LOINC → `loinc`；SNOMED CT
 不受維護模式影響。為了避免用戶端工具清單反覆變動，維護中的工具**仍留在 `tools/list` / `/openapi.json`**。狀態有 5 秒快取，
 切換後最多約 5 秒生效；讀取狀態失敗時放行（fail-open）。
 
+## 工具錯誤格式 {#tool-errors}
+
+工具呼叫失敗時（`/mcp`、`POST /tools/<name>`、後台 playground 都一樣），回應會告訴呼叫端的 LLM **代碼、原因與下一步**
+（`node-server/src/toolErrors.ts`）。`POST /tools/<name>` 仍以 HTTP 400 回傳原本的 `error: "tool_call_failed"`、`tool`、`detail`，並多出：
+
+| 欄位 | 說明 |
+|------|------|
+| `code` | 例如 `INVALID_ARGUMENTS`、`UNKNOWN_TOOL`、`TOOL_NOT_AVAILABLE`、`DATA_NOT_LOADED`、`SERVER_SCHEMA_OUTDATED`、`DATABASE_UNAVAILABLE`、`QUERY_TIMEOUT`、`INTERNAL_QUERY_FAILED` |
+| `message` / `hint` | 英文說明與下一步（給 LLM 讀） |
+| `retryable` | 原樣重試是否可能成功 |
+| `problems`、`unknown_parameters`、`expected_parameters`、`example_arguments` | 參數錯誤時：逐項問題（參數、規則、範例值）、傳了但不存在的參數（含近似名稱建議）、完整參數清單與範例參數 |
+
+SQL / 連線錯誤不再把原始訊息傳給用戶端（原始內容只寫入伺服器日誌）。外部 FHIR 伺服器的連線失敗會分類成
+`UPSTREAM_TIMEOUT`、`UPSTREAM_DNS_FAILED`、`UPSTREAM_UNREACHABLE`、`UPSTREAM_TLS_ERROR`、`UPSTREAM_CONNECTION_RESET`、`UPSTREAM_AUTH_FAILED`。
+查無資料的工具結果則多了 `hint` / `suggestions`（例如 ICD 近似代碼、`concept_found: false`、IG 找不到時列出 `installed_igs`），
+原有欄位不變。
+
 ## `health_check`（System 群組）
 
 永遠註冊、不需參數。建議在任何工作流程開始前先呼叫，確認需要的模組已上線。回傳 JSON：

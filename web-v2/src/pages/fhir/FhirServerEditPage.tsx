@@ -208,7 +208,7 @@ function Editor({
   };
 
   const applyBackendError = (err: unknown): void => {
-    const text = err instanceof ApiError ? `${err.message} ${err.detail ?? ""}` : errorMessage(err);
+    const text = err instanceof ApiError ? `${err.rawMessage} ${err.detail ?? ""}` : errorMessage(err);
     const field = backendErrorField(text);
     if (field) {
       const msg = /duplicate key|unique/i.test(text) ? "已有伺服器使用這個 server_key" : err instanceof ApiError ? err.message : text;

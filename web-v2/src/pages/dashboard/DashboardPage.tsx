@@ -48,6 +48,9 @@ import { Dot, HealthBadge, JobStatusBadge, probeHealth, type Health } from "@/co
 interface InfraEntry {
   status: string;
   detail: string;
+  /** zh-TW explanation + fix (backend adminErrorCodes.explainInfrastructure). */
+  detail_zh?: string;
+  hint_zh?: string;
 }
 interface ServiceEntry {
   initialized: boolean;
@@ -109,8 +112,9 @@ interface Problem {
 function collectProblems(o: Overview, jobs: JobSummary[]): Problem[] {
   const out: Problem[] = [];
   for (const [key, v] of Object.entries(o.infrastructure)) {
-    if (v.status === "error") out.push({ level: "error", text: `${INFRA_LABELS[key]?.label ?? key} 無法使用：${v.detail}`, to: "/health" });
-    else if (v.status === "degraded") out.push({ level: "warn", text: `${INFRA_LABELS[key]?.label ?? key}：${v.detail}`, to: "/health" });
+    const why = `${v.detail_zh ?? v.detail}${v.hint_zh ? ` ${v.hint_zh}` : ""}`;
+    if (v.status === "error") out.push({ level: "error", text: `${INFRA_LABELS[key]?.label ?? key} 無法使用：${why}`, to: "/health" });
+    else if (v.status === "degraded") out.push({ level: "warn", text: `${INFRA_LABELS[key]?.label ?? key}：${why}`, to: "/health" });
   }
   const live = o.workers.filter((w) => !w.stale);
   if (o.workers.length === 0 || live.length === 0) {
@@ -437,7 +441,7 @@ export default function DashboardPage() {
                             </Text>
                             <Tooltip label={v.detail} disabled={!v.detail}>
                               <Text fz="xs" c="dimmed" truncate="end" maw={360}>
-                                {v.detail || INFRA_LABELS[key]?.hint}
+                                {v.detail_zh || v.detail || INFRA_LABELS[key]?.hint}
                               </Text>
                             </Tooltip>
                           </Box>

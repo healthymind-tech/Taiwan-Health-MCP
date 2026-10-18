@@ -19,7 +19,7 @@ import type { PublicKeyCredentialRequestOptionsJSON } from "@simplewebauthn/brow
 import { IconAlertCircle, IconFingerprint, IconLock, IconShieldLock, IconStethoscope, IconUser, IconBolt } from "@tabler/icons-react";
 import { useEffect, useState, type FormEvent } from "react";
 import { useSearchParams } from "react-router";
-import { api, errorMessage } from "@/lib/api";
+import { api, ApiError, errorMessage } from "@/lib/api";
 import { safeNext } from "@/lib/loginRedirect";
 import { ThemeMenu } from "@/components/ThemeMenu";
 import classes from "./LoginPage.module.css";
@@ -68,7 +68,7 @@ export default function LoginPage() {
       await api.post("/admin/api/login", { username, password }, { skipAuthRedirect: true });
       await go();
     } catch (err) {
-      setError(errorMessage(err).includes("Invalid") ? "帳號或密碼錯誤" : errorMessage(err));
+      setError(err instanceof ApiError && /Invalid username or password/.test(err.rawMessage) ? "帳號或密碼錯誤" : errorMessage(err));
     } finally {
       setBusy(false);
     }

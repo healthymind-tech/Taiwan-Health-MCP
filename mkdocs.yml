@@ -49,6 +49,7 @@ plugins:
             首頁: Home
             快速開始: Getting Started
             模組: Modules
+            IG 術語搜尋: IG Concept Search
             藥品 / TFDA: Drugs / TFDA
             檢驗 / LOINC: Labs / LOINC
             健康補充品: Health Supplements
@@ -114,6 +115,7 @@ nav:
     - FHIR Condition: modules/fhir-condition-service.md
     - FHIR Medication: modules/fhir-medication-service.md
     - FHIR IG: modules/fhir-ig-service.md
+    - IG 術語搜尋: modules/ig-concept-search.md
   - MCP 工具:
     - ICD-10 工具: tools/icd-tools.md
     - 藥品工具: tools/drug-tools.md

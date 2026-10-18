@@ -333,7 +333,7 @@ function RecentEvents({
         e.error_message ? (
           <Tooltip label={e.error_message} multiline maw={420}>
             <Text fz="xs" c="red" lineClamp={2} maw={360} style={{ wordBreak: "break-word" }}>
-              {e.error_message}
+              {e.error_zh || e.error_message}
             </Text>
           </Tooltip>
         ) : (

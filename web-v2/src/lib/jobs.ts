@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./api";
+import { notify } from "@/components/notify";
 import { qk } from "./queryKeys";
 import { ACTIVE_STATUSES } from "./meta";
 import type { JobSummary, JobsPayload } from "./types";
@@ -42,9 +43,12 @@ export interface StartJobBody {
 export function useStartJob() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: StartJobBody) => api.post<{ job: JobSummary }>("/admin/api/jobs", body),
-    onSuccess: () => {
+    mutationFn: (body: StartJobBody) =>
+      api.post<{ job: JobSummary; worker_warning?: { message_zh: string; hint_zh?: string } }>("/admin/api/jobs", body),
+    onSuccess: (r) => {
       void qc.invalidateQueries({ queryKey: qk.jobs });
+      // Queued, but no admin-worker is alive to run it — say so right away.
+      if (r.worker_warning) notify.warn(`${r.worker_warning.message_zh}${r.worker_warning.hint_zh ? ` ${r.worker_warning.hint_zh}` : ""}`, "工作暫時不會執行");
     },
   });
 }

@@ -50,6 +50,23 @@ The admin console can switch the `icd`, `loinc`, `drug`, `snomed`, `ig` and `rxn
 
 `POST /tools/<name>` returns this JSON with HTTP 200 (like every other tool error). Mapping: ICD-10 and FHIR Condition → `icd`; Drug / TFDA and FHIR Medication → `drug`; Lab / LOINC → `loinc`; SNOMED CT → `snomed`; FHIR IG (including grounding / completeness) → `ig`. `rxnorm` has no tool group of its own, so its flag gates no tool; Health Supplements, Food Nutrition, FHIR Servers, Clinical Calculators and System are never affected. To avoid tool-list churn for clients, tools under maintenance **stay in `tools/list` / `/openapi.json`**. The state is cached for 5 seconds, so a toggle takes effect within about 5 seconds; a failing state lookup fails open.
 
+## Tool error format {#tool-errors}
+
+A failed tool call (over `/mcp`, `POST /tools/<name>` or the admin playground) tells the calling LLM a **code, the reason and the next step**
+(`node-server/src/toolErrors.ts`). `POST /tools/<name>` still answers HTTP 400 with the original `error: "tool_call_failed"`, `tool` and `detail`, plus:
+
+| Field | Meaning |
+|-------|---------|
+| `code` | e.g. `INVALID_ARGUMENTS`, `UNKNOWN_TOOL`, `TOOL_NOT_AVAILABLE`, `DATA_NOT_LOADED`, `SERVER_SCHEMA_OUTDATED`, `DATABASE_UNAVAILABLE`, `QUERY_TIMEOUT`, `INTERNAL_QUERY_FAILED` |
+| `message` / `hint` | What went wrong and what to do next (English, for the LLM) |
+| `retryable` | Whether retrying unchanged can succeed |
+| `problems`, `unknown_parameters`, `expected_parameters`, `example_arguments` | For argument errors: per-parameter problems (parameter, rule, example value), parameters that do not exist (with "did you mean"), the full parameter list and example arguments |
+
+SQL / connection errors are no longer passed through to the client (the raw text goes to the server log only). Transport failures
+against an external FHIR server are classified as `UPSTREAM_TIMEOUT`, `UPSTREAM_DNS_FAILED`, `UPSTREAM_UNREACHABLE`, `UPSTREAM_TLS_ERROR`,
+`UPSTREAM_CONNECTION_RESET` or `UPSTREAM_AUTH_FAILED`. Tool results that find nothing gain `hint` / `suggestions` (e.g. nearby ICD codes,
+`concept_found: false`, `installed_igs` when an IG is not found); existing fields are unchanged.
+
 ## `health_check` (System group)
 
 Always registered, no arguments. Call it before any workflow to confirm the modules you need are online. Returns JSON:

@@ -41,7 +41,11 @@ export function useServerActions() {
     try {
       const r = await run(s.fhir_server_id, "probe", () => fhirApi.probe(s.fhir_server_id));
       if (r.ok) notify.success(`${serverTitle(s)}：連線正常（${r.probe.latency_ms} ms）`, "探測完成");
-      else notify.error(r.probe.message || "連線失敗", `${serverTitle(s)} 探測失敗`);
+      else
+        notify.error(
+          r.probe.message_zh ? `${r.probe.message_zh}${r.probe.hint_zh ? ` ${r.probe.hint_zh}` : ""}` : r.probe.message || "連線失敗",
+          `${serverTitle(s)} 探測失敗`,
+        );
       return r;
     } catch (e) {
       notify.error(e, "探測失敗");

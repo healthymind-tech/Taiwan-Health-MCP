@@ -9,6 +9,7 @@
 
 import { randomBytes } from "node:crypto";
 import { query } from "./db.js";
+import { icdNotFoundHint } from "./icdService.js";
 import { logInfo, logError } from "./logger.js";
 
 const FHIR_ICD10_CM_SYSTEM = "http://hl7.org/fhir/sid/icd-10-cm";
@@ -111,7 +112,7 @@ export class FHIRConditionService {
     try {
       const icdInfo = await this.getIcdInfo(icdCode);
       if (!icdInfo) {
-        return { error: `ICD-10 code '${icdCode}' not found in database` };
+        return { error: `ICD-10 code '${icdCode}' not found in database`, hint: icdNotFoundHint(icdCode) };
       }
 
       const now = nowStamp();
@@ -170,7 +171,12 @@ export class FHIRConditionService {
       return condition;
     } catch (e) {
       logError(`create_condition error: ${String((e as Error).message)}`);
-      return { error: String((e as Error).message), icd_code: icdCode };
+      return {
+        error: "Building the Condition failed on the server (database error); this is not caused by your arguments.",
+        code: "INTERNAL_QUERY_FAILED",
+        hint: "Retry once; if it fails again, tell the user the ICD lookup is failing on the server.",
+        icd_code: icdCode,
+      };
     }
   }
 
@@ -188,7 +194,12 @@ export class FHIRConditionService {
       [keyword],
     );
     if (r.rows.length === 0) {
-      return { error: `No diagnosis found for keyword: ${keyword}` };
+      return {
+        error: `No diagnosis found for keyword: ${keyword}`,
+        hint:
+          "This keyword lookup matches whole words only (Chinese phrases rarely match). Use an English diagnosis term, or " +
+          "find the code with search_medical_codes(keyword) and call again with icd_code.",
+      };
     }
     const first = r.rows[0];
     const condition = await this.createCondition(first.code, patientId, opts);

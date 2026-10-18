@@ -27,6 +27,10 @@ export type DraftValues = Record<string, FieldValue>;
 export interface ActionResult {
   ok: boolean;
   message?: string;
+  /** zh-TW explanation + next step added by the backend (adminErrorCodes.explainServiceTest). */
+  message_zh?: string;
+  hint_zh?: string;
+  code?: string;
   details?: Record<string, unknown>;
   models?: string[];
 }

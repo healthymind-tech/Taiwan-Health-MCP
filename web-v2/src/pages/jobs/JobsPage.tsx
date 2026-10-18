@@ -130,6 +130,8 @@ export default function JobsPage() {
     () => ({
       active: all.filter((j) => ACTIVE_STATUSES.has(j.status)).length,
       running: all.filter((j) => j.status === "running").length,
+      queued: all.filter((j) => j.status === "queued").length,
+      paused: all.filter((j) => j.status === "paused").length,
       failed: all.filter((j) => j.status === "retryable_failed" || j.status === "permanent_failed").length,
       success: all.filter((j) => j.status === "success" || j.status === "partial_success").length,
     }),
@@ -193,7 +195,14 @@ export default function JobsPage() {
       />
 
       <SimpleGrid cols={{ base: 2, md: 4 }} spacing="md" mb="lg">
-        <StatCard label="進行中" value={counts.active} hint={`${counts.running} 個正在執行`} color="blue" onClick={() => set("status", "active")} loading={jobsQ.isPending} />
+        <StatCard
+          label="執行中"
+          value={counts.running}
+          hint={[counts.queued ? `${counts.queued} 個排隊中` : "", counts.paused ? `${counts.paused} 個已暫停` : ""].filter(Boolean).join("、") || "沒有排隊中的工作"}
+          color="blue"
+          onClick={() => set("status", "running")}
+          loading={jobsQ.isPending}
+        />
         <StatCard label="成功" value={counts.success} color="teal" onClick={() => set("status", "success")} loading={jobsQ.isPending} />
         <StatCard label="失敗" value={counts.failed} color="red" onClick={() => set("status", "failed")} loading={jobsQ.isPending} />
         <StatCard label="最近工作總數" value={all.length} hint="顯示最近 300 筆" color="gray" onClick={() => set("status", "all")} loading={jobsQ.isPending} />
@@ -207,7 +216,9 @@ export default function JobsPage() {
               onChange={(v) => set("status", v)}
               data={[
                 { value: "all", label: "全部" },
-                { value: "active", label: `進行中${counts.active ? ` ${counts.active}` : ""}` },
+                { value: "running", label: `執行中${counts.running ? ` ${counts.running}` : ""}` },
+                { value: "queued", label: `排隊中${counts.queued ? ` ${counts.queued}` : ""}` },
+                ...(counts.paused || status === "paused" ? [{ value: "paused", label: `已暫停${counts.paused ? ` ${counts.paused}` : ""}` }] : []),
                 { value: "success", label: "成功" },
                 { value: "failed", label: `失敗${counts.failed ? ` ${counts.failed}` : ""}` },
                 { value: "stopped", label: "已停止" },

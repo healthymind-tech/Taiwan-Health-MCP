@@ -15,14 +15,22 @@
  *   DELETE /admin/api/llm/routes/:id
  *   POST   /admin/api/llm/routes/:id/test           walk the profile as a real request would → attempt trace
  *   PUT    /admin/api/llm/roles                     { role, route_id }
+ *   GET    /admin/api/llm/embedding                 → system identity + vector counts
+ *   POST   /admin/api/llm/embedding/check           { provider_id, model, params, cached? } → fingerprint verdict
+ *   POST   /admin/api/llm/embedding/precheck        { provider_id, model, params } → what a switch would find (no side effects)
+ *   POST   /admin/api/llm/embedding/switch          { provider_id, model, params, confirm } → re-index with a new model
+ *   POST   /admin/api/llm/embedding/establish       record the identity from the endpoint that made the stored vectors
+ *   GET    /admin/api/llm/embedding/health      → per-member probe of the embedding role (cached 60 s; POST {fresh:true} re-probes)
  *   POST   /admin/api/llm/oauth/chatgpt/start       { name, account_id?, allow_role_use? } → { authorize_url, redirect_uri }
  *   POST   /admin/api/llm/oauth/chatgpt/complete    { callback_url } → { account_id, email }
  */
 
 import * as adminSettings from "./adminSettings.js";
 import { ProviderHttpError } from "../providers/types.js";
-import { coolingDown, ProfileNotFoundError, ProfileValidationError, type ProfileKind } from "./llmProfiles.js";
-import { codeFields, providerDetail } from "./llmErrorCodes.js";
+import { CodedProfileError, coolingDown, ProfileNotFoundError, ProfileValidationError, type ProfileKind } from "./llmProfiles.js";
+import { codeFields, errorFields } from "./llmErrorCodes.js";
+import { diagnoseEmbedFailure } from "./embeddingDiagnosis.js";
+import { embeddingDimensions } from "./llmProfiles.js";
 import * as llmProfileStats from "./llmProfileStats.js";
 import {
   accountPublic,
@@ -75,6 +83,7 @@ async function testAccount(body: Record<string, unknown>): Promise<{ result: Rec
   const ownEndpoint = Boolean(stored && adminSettings.draftTargetsAccount(draftTarget, stored));
   const draft: adminSettings.ProfileDraft = {
     id: ownEndpoint ? stored!.id : undefined,
+    account_name: ownEndpoint ? stored!.name : typeof body.name === "string" ? body.name : "",
     kind,
     provider: String(body.provider ?? ""),
     base_url: String(body.base_url ?? ""),
@@ -90,12 +99,12 @@ async function testAccount(body: Record<string, unknown>): Promise<{ result: Rec
   const result = {
     ok,
     message,
-    ...codeFields(message),
+    ...(call?.code ? { code: call.code, params: call.params } : codeFields(message)),
     models: listing.models,
     models_ok: listing.ok,
     models_message: listing.message,
     ...codeFields(listing.message, "models_"),
-    call: call && { ...call, ...codeFields(String(call.message ?? "")) },
+    call: call && { ...call, ...(call.code ? {} : codeFields(String(call.message ?? ""))) },
   };
   return { result, recordFor: ownEndpoint ? stored!.id : null };
 }
@@ -150,7 +159,7 @@ export async function handleLlmApi(
             ok: result.ok,
             message: result.message,
             model_count: (result.models as string[]).length,
-            ...codeFields(String(result.message ?? "")),
+            ...(result.code ? { code: result.code, params: result.params } : codeFields(String(result.message ?? ""))),
           });
         }
         reply(200, result);
@@ -190,13 +199,14 @@ export async function handleLlmApi(
       if (!acc) throw new ProfileValidationError("Unknown provider account.");
       const r = await adminSettings.testProfile({
         id: acc.id,
+        account_name: acc.name,
         kind: kindOf(body.kind),
         provider: acc.provider,
         base_url: acc.base_url,
         model: String(body.model ?? "").trim(),
         params: { ...acc.params, ...((body.params as Record<string, unknown>) ?? {}) },
       });
-      reply(200, { ...r, ...codeFields(r.message) });
+      reply(200, { ...r, ...(r.code ? {} : codeFields(r.message)) });
       return true;
     }
 
@@ -260,6 +270,7 @@ export async function handleLlmApi(
           const t0 = Date.now();
           const r = await adminSettings.testProfile({
             id: leaf.account_id,
+            account_name: leaf.name.slice(0, Math.max(0, leaf.name.lastIndexOf(" · "))),
             kind: route.kind,
             provider: leaf.provider,
             base_url: leaf.base_url,
@@ -267,7 +278,7 @@ export async function handleLlmApi(
             model: leaf.model,
             params: leaf.params,
           });
-          attempts.push({ member_id: leaf.id, name: leaf.name, ok: r.ok, latency_ms: Date.now() - t0, message: r.message, ...codeFields(r.message), details: r.details ?? null });
+          attempts.push({ member_id: leaf.id, name: leaf.name, ok: r.ok, latency_ms: Date.now() - t0, message: r.message, ...(r.code ? { code: r.code, params: r.params } : codeFields(r.message)), details: r.details ?? null });
           if (r.ok) {
             answered = leaf.id;
             break;
@@ -324,7 +335,18 @@ export async function handleLlmApi(
         });
         return true;
       }
-      if (method === "POST" && (idPart === "check" || idPart === "switch")) {
+      if ((method === "GET" || method === "POST") && idPart === "health") {
+        reply(200, await ident.embeddingRoleHealth({ fresh: method === "POST" && body.fresh === true }));
+        return true;
+      }
+      if (method === "POST" && idPart === "establish") {
+        const existing = await ident.getIdentity();
+        const identity =
+          existing ?? (await ident.establishIdentity({ user, candidates: [], roleLeaves: async () => (await import("./llmRouting.js")).roleLeaves("embedding") }));
+        reply(200, { ok: identity !== null, created: !existing && identity !== null, identity: identity && { model: identity.model, dimensions: identity.dimensions, account_name: identity.account_name, version: identity.version } });
+        return true;
+      }
+      if (method === "POST" && (idPart === "check" || idPart === "switch" || idPart === "precheck")) {
         const acc = await getAccount(Number(body.provider_id));
         if (!acc) throw new ProfileValidationError("Unknown provider account.");
         const model = String(body.model ?? "").trim();
@@ -337,36 +359,30 @@ export async function handleLlmApi(
             reply(200, { ...r, ...codeFields(r.message) });
           } catch (exc) {
             const message = String((exc as Error).message);
-            // It answered, but not with embeddings (HTTP 4xx/5xx, e.g. 501 for a chat-only
-            // model, or no vectors): reachable but incompatible — not an outage.
-            if (exc instanceof ProviderHttpError || exc instanceof ProfileValidationError) {
-              reply(200, {
-                ok: false,
-                unreachable: false,
-                incompatible: true,
-                anchor_missing: false,
-                min_similarity: null,
-                mean_similarity: null,
-                dimensions: null,
-                message,
-                code: "embedding_incompatible",
-                params: { status: exc instanceof ProviderHttpError ? exc.status : 0, detail: message },
-              });
-              return true;
-            }
-            // The endpoint did not answer: a verdict about reachability, not a server error.
+            // Not a server error: a verdict about this endpoint. "Unreachable" is an
+            // outage; anything else (model missing, HTTP 4xx/5xx, no vectors) means
+            // it answered but cannot serve as this embedding model.
+            const issue = exc instanceof ProfileValidationError && !(exc instanceof CodedProfileError)
+              ? { code: "embedding_incompatible", params: { status: 0, detail: message } }
+              : await diagnoseEmbedFailure(leaf, exc);
+            const unreachable = issue.code === "embedding_endpoint_unreachable";
             reply(200, {
               ok: false,
-              unreachable: true,
+              unreachable,
+              incompatible: !unreachable,
               anchor_missing: false,
               min_similarity: null,
               mean_similarity: null,
               dimensions: null,
               message,
-              code: "embedding_unreachable",
-              params: providerDetail(message),
+              code: issue.code,
+              params: issue.params,
             });
           }
+          return true;
+        }
+        if (idPart === "precheck") {
+          reply(200, await ident.precheckSwitch(leaf));
           return true;
         }
         const has = await ident.systemHasEmbeddings();
@@ -380,7 +396,14 @@ export async function handleLlmApi(
             let name = base;
             for (let n = 2; names.has(name); n += 1) name = `${base} ${n}`;
             const route = await saveRoute(
-              { name, kind: "embedding", strategy: "single", description: "由切換 Embedding 模型建立", members: [{ member_type: "model", provider_id: acc.id, model: l.model, weight: 1, enabled: true, params: (body.params as Record<string, unknown>) ?? {} }] },
+              {
+                name,
+                kind: "embedding",
+                strategy: "single",
+                description: "由切換 Embedding 模型建立",
+                // `dimensions` is written explicitly: it is what the vector columns now hold.
+                members: [{ member_type: "model", provider_id: acc.id, model: l.model, weight: 1, enabled: true, params: { ...((body.params as Record<string, unknown>) ?? {}), dimensions: embeddingDimensions(l) } }],
+              },
               null,
               user,
               { skipFingerprint: true },
@@ -408,9 +431,13 @@ export async function handleLlmApi(
     reply(404, { error: `Unknown LLM route: ${method} ${path}` });
     return true;
   } catch (exc) {
-    if (exc instanceof ProfileNotFoundError) reply(404, { error: exc.message, ...codeFields(exc.message) });
+    // Coded errors carry their own code + params (and status: 409 when the request
+    // conflicts with the system's embedding model); the raw text goes to `detail`
+    // for the console's "技術細節" disclosure only.
+    if (exc instanceof CodedProfileError) reply(exc.status, { error: exc.message, detail: exc.message, code: exc.code, params: exc.params });
+    else if (exc instanceof ProfileNotFoundError) reply(404, { error: exc.message, ...codeFields(exc.message) });
     else if (exc instanceof ProfileValidationError) reply(400, { error: exc.message, ...codeFields(exc.message) });
-    else reply(500, { error: "LLM configuration operation failed", detail: String((exc as Error).message), ...codeFields(String((exc as Error).message)) });
+    else reply(500, { error: "LLM configuration operation failed", detail: String((exc as Error).message), ...errorFields(exc) });
     return true;
   }
 }

@@ -271,8 +271,14 @@ function Overview({
           {s.last_probe_error && !probeResult && (
             <Alert color="red" icon={<IconAlertTriangle size={16} />} p="xs">
               <Text fz="sm" style={{ wordBreak: "break-word" }}>
-                {s.last_probe_error}
+                {s.last_probe_error_zh ?? s.last_probe_error}
               </Text>
+              {s.last_probe_error_hint_zh && <Text fz="sm">{s.last_probe_error_hint_zh}</Text>}
+              {s.last_probe_error_zh && (
+                <Text fz="xs" c="dimmed" ff="monospace" style={{ wordBreak: "break-word" }}>
+                  技術細節：{s.last_probe_error}
+                </Text>
+              )}
             </Alert>
           )}
           {probeResult && <ConnectionResult result={probeResult} />}

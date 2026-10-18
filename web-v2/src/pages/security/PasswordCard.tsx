@@ -75,9 +75,9 @@ export function PasswordCard() {
       notify.success("下次登入請使用新密碼。", "密碼已變更");
     },
     onError: (err) => {
-      const msg = err instanceof ApiError ? err.message : errorMessage(err);
+      const msg = err instanceof ApiError ? err.rawMessage : errorMessage(err);
       if (/current password is incorrect/i.test(msg)) setCurrentError("目前密碼不正確");
-      else setFormError(translate(msg));
+      else setFormError(err instanceof ApiError && err.explained ? errorMessage(err) : translate(msg));
     },
   });
 

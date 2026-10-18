@@ -16,10 +16,12 @@ export const BUILD: string = (process.env.BUILD_SHA || process.env.GIT_SHA || ""
 
 export const TOOLS_VERSION: Record<string, string> = {
   // 1.1.1: description is edition-agnostic (was "ICD-10-CM/PCS 2025"); output unchanged.
-  search_medical_codes: "1.1.1",
+  // 1.2.0: optional `system` (icd10cm | icd10pcs | any installed IG CodeSystem canonical / id / alias) routes
+  // IG CodeSystems to the concept-search engine (results, clauses, search_mode); calls without `system` are unchanged.
+  search_medical_codes: "1.2.1",
   // 1.2.0: version-aware package resolution (fhirIg.resolveTarget): provenance.resolved_by /
   // closure_versions, data.deps_missing, "|version" honoured (no silent fallback to another version).
-  fhir_get_profile_required_elements: "1.2.0",
+  fhir_get_profile_required_elements: "1.2.1",
   // 1.1.0 (lexicon tw-lexicon 0.3.0, issues v1): time-only evidence takes the date in force at its line;
   // whole-label stated-absent concepts (出生地 is not the birth date) and no stated-absent when the record states
   // the patient field; zh/en department / setting aliases with whole-token short forms (ED / ER / OPD / ICU);
@@ -38,26 +40,72 @@ export const TOOLS_VERSION: Record<string, string> = {
   // also checked against the slicing base element; not-checked profiles carry `unchecked` (completenessOf →
   // checked_fully / profiles_unchecked / valuesets_unchecked); partial-CodeSystem information hint.
   // 1.4.0: the optional source_text grounding follows fhir_check_grounding 1.1.0 (output without source_text unchanged).
-  fhir_validate_bundle: "1.4.0",
-  fhir_validate_resource: "1.4.0",
+  fhir_validate_bundle: "1.4.1",
+  fhir_validate_resource: "1.4.1",
   // 1.2.0 (all below): provenance.resolved_by / closure_versions; canonical arguments resolve to their
   // owning package when package_id is omitted; "|version" honoured; list/search: all_packages + zero-hit hint;
   // NO_DEFAULT_IG instead of an arbitrary package when no default IG is set.
   fhir_list_igs: "1.2.0",
-  fhir_get_ig: "1.2.0",
-  fhir_list_artifacts: "1.2.0",
-  fhir_search_artifacts: "1.2.0",
-  fhir_list_resource_profiles: "1.2.0",
-  fhir_rank_resource_profiles: "1.2.0",
-  fhir_get_profile: "1.2.0",
-  fhir_get_profile_elements: "1.2.0",
-  fhir_get_valueset: "1.2.0",
-  fhir_expand_valueset: "1.2.0",
-  fhir_lookup_code: "1.2.0",
-  fhir_validate_code: "1.2.0",
-  fhir_normalize_code: "1.2.0",
-  fhir_get_resource_skeleton: "1.2.0",
-  fhir_finalize_resource: "1.2.0",
+  fhir_get_ig: "1.2.1",
+  fhir_list_artifacts: "1.2.1",
+  fhir_search_artifacts: "1.2.1",
+  fhir_list_resource_profiles: "1.2.1",
+  fhir_rank_resource_profiles: "1.2.1",
+  fhir_get_profile: "1.2.1",
+  fhir_get_profile_elements: "1.2.1",
+  fhir_get_valueset: "1.2.1",
+  fhir_expand_valueset: "1.2.1",
+  // 1.3.0: found:false adds `hint` (use fhir_normalize_code with the system) and `near_codes` (IG CodeSystems).
+  fhir_lookup_code: "1.3.1",
+  fhir_validate_code: "1.2.1",
+  // 1.3.0: IG CodeSystems use the concept-search engine (designations in any language, supplements, linked
+  // names, abbreviation expansion, hybrid lexical + semantic): candidates carry matched_term / matched_language /
+  // category / group / siblings; `system` may be a CodeSystem id or alias; search_mode=keyword_only when degraded;
+  // `clauses` (best code per clause) for multi-item text; optional UMLS synonyms steer matching (never shown).
+  fhir_normalize_code: "1.3.1",
+  fhir_get_resource_skeleton: "1.2.1",
+  fhir_finalize_resource: "1.2.1",
+  // ── 2026-10-19 actionable errors (additive fields only; successful outputs unchanged) ──
+  // search_medical_codes 1.2.1: IG_UNAVAILABLE adds `hint`.
+  // FHIR IG tools above (+.0.1): error envelopes add error.hint; IG_NOT_FOUND / NO_DEFAULT_IG add
+  // error.installed_igs / installed_ig_count.
+  // The tools below (were SERVER_VERSION 1.1.0) add `hint` / `suggestions` / found-flags on not-found and empty results:
+  // ICD: infer_complications / get_nearby_codes (code_found / target_found:false + hint + suggestions for an unknown
+  // code), browse_icd_category (hint + suggestions), check_medical_conflict (diagnosis_suggestions + hint; a DB error
+  // no longer returns the raw SQL message).
+  infer_complications: "1.1.1",
+  get_nearby_codes: "1.1.1",
+  browse_icd_category: "1.1.1",
+  check_medical_conflict: "1.1.1",
+  // LOINC: not-found / no-range hints; batch_interpret_lab_results reports items it could not interpret in `skipped`
+  // (they used to vanish silently).
+  search_loinc: "1.1.1",
+  query_loinc: "1.1.1",
+  interpret_lab_result: "1.1.1",
+  batch_interpret_lab_results: "1.1.1",
+  // SNOMED: not-found hint; get_snomed_relationships flags an unknown concept (concept_found:false); mapping hints.
+  query_snomed_concept: "1.1.1",
+  get_snomed_relationships: "1.1.1",
+  query_snomed_mapping: "1.1.1",
+  // Drug: empty-search / not-found hints; get_drug_details `reason` (unknown_license | cancelled | not_enriched).
+  search_drug: "1.1.1",
+  identify_unknown_pill: "1.1.1",
+  get_drug_details: "1.1.1",
+  get_drug_asset_links: "1.1.1",
+  // FHIR Condition / Medication: not-found hints; DB errors no longer return the raw message.
+  query_fhir_condition: "1.1.1",
+  query_fhir_medication: "1.1.1",
+  // FHIR servers: unknown server_key → code + available_servers + hint; allow-list errors list what is allowed;
+  // transport failures are classified (UPSTREAM_TIMEOUT / _DNS_FAILED / _UNREACHABLE / _TLS_ERROR / _AUTH_FAILED);
+  // non-2xx responses carry `hint`.
+  list_fhir_servers: "1.1.1",
+  get_fhir_server_status: "1.1.1",
+  crud_fhir_server: "1.1.1",
+  // INVALID_ARGUMENT envelopes add error.hint.
+  fhir_resolve_reference: "1.1.1",
+  fhir_build_bundle: "1.1.1",
+  // All tools: invalid arguments (MCP and POST /tools) name the parameter, rule, example and parameter list, and
+  // exceptions return a coded message instead of raw SQL / driver text (cross-cutting, see toolErrors.ts).
 };
 
 /** Version for one tool (falls back to the server version). */

@@ -99,9 +99,16 @@ function ProbeCard({ p, onProbe, probing }: { p: ServiceProbe; onProbe: () => vo
           </Text>
           <RelativeTime value={p.checked_at} fz="xs" />
         </Group>
-        {p.message && (
-          <Text fz="xs" c={state === "error" ? "red" : "dimmed"} mt={4} lineClamp={3} style={{ wordBreak: "break-word" }}>
-            {p.message}
+        {(p.message_zh || p.message) && (
+          <Tooltip label={p.message} disabled={!p.message_zh || !p.message} multiline maw={360}>
+            <Text fz="xs" c={state === "error" ? "red" : "dimmed"} mt={4} lineClamp={3} style={{ wordBreak: "break-word" }}>
+              {p.message_zh ?? p.message}
+            </Text>
+          </Tooltip>
+        )}
+        {p.hint_zh && state !== "ok" && (
+          <Text fz="xs" c="dimmed" lineClamp={3}>
+            {p.hint_zh}
           </Text>
         )}
       </Stack>
@@ -151,7 +158,7 @@ export default function HealthPage() {
       render: (p) => <HealthBadge state={probeHealth(p.status)} label={p.status} size="xs" />,
     },
     { key: "latency", header: "延遲", render: (p) => <Text fz="sm" className="tabular">{p.latency_ms === null ? "—" : `${p.latency_ms} ms`}</Text> },
-    { key: "msg", header: "訊息", hideOnMobile: true, render: (p) => <Text fz="xs" c="dimmed" lineClamp={2}>{p.message || "—"}</Text> },
+    { key: "msg", header: "訊息", hideOnMobile: true, render: (p) => <Text fz="xs" c="dimmed" lineClamp={2}>{p.message_zh || p.message || "—"}</Text> },
     { key: "at", header: "時間", render: (p) => <RelativeTime value={p.checked_at} fz="sm" />, nowrap: true },
   ];
 

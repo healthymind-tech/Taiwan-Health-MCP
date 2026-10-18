@@ -110,7 +110,13 @@ export function ProbeStatus({ server, withTime = true }: { server: FhirServer; w
         state={health}
         label={PROBE_LABEL[st] ?? st}
         size="xs"
-        tooltip={server.last_probe_error ? <Box maw={360} style={{ whiteSpace: "normal" }}>{server.last_probe_error}</Box> : undefined}
+        tooltip={
+          server.last_probe_error ? (
+            <Box maw={360} style={{ whiteSpace: "normal" }}>
+              {server.last_probe_error_zh ? `${server.last_probe_error_zh}${server.last_probe_error_hint_zh ? ` ${server.last_probe_error_hint_zh}` : ""}` : server.last_probe_error}
+            </Box>
+          ) : undefined
+        }
       />
       {withTime && <RelativeTime value={server.last_probe_at} fz="xs" c="dimmed" />}
     </Stack>
@@ -152,9 +158,16 @@ export function WorkflowSteps({ steps }: { steps: WorkflowStep[] }) {
                   </Text>
                 )}
               </Group>
-              {s.message && (
-                <Text fz="sm" c={s.status === "error" ? "red" : "dimmed"} style={{ wordBreak: "break-word" }}>
-                  {s.message}
+              {(s.message_zh || s.message) && (
+                <Tooltip label={s.message} disabled={!s.message_zh || !s.message} multiline maw={360}>
+                  <Text fz="sm" c={s.status === "error" ? "red" : "dimmed"} style={{ wordBreak: "break-word" }}>
+                    {s.message_zh ?? s.message}
+                  </Text>
+                </Tooltip>
+              )}
+              {s.hint_zh && s.status === "error" && (
+                <Text fz="xs" mt={2}>
+                  {s.hint_zh}
                 </Text>
               )}
               {explanation && (

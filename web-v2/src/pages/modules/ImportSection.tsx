@@ -1,5 +1,5 @@
 import { Alert, Anchor, Button, Group, List, Stack, Text, Tooltip } from "@mantine/core";
-import { IconCloudDownload, IconDatabaseImport, IconInfoCircle, IconPlayerPlay } from "@tabler/icons-react";
+import { IconAlertTriangle, IconCloudDownload, IconDatabaseImport, IconInfoCircle, IconPlayerPlay } from "@tabler/icons-react";
 import { Link } from "react-router";
 import { SectionCard } from "@/components/SectionCard";
 import { RelativeTime } from "@/components/RelativeTime";
@@ -139,6 +139,22 @@ export function ImportSection({
             <Text fz="sm">尚未執行過</Text>
           )}
         </Group>
+        {!activeImport &&
+          lastImport &&
+          (lastImport.status === "permanent_failed" || lastImport.status === "retryable_failed") &&
+          (lastImport.last_error_zh || lastImport.last_error_message) && (
+            <Alert color="red" icon={<IconAlertTriangle size={16} />} p="sm" title={`上次${isSync ? "同步" : "匯入"}失敗的原因`}>
+              <Stack gap={4}>
+                <Text fz="sm" style={{ wordBreak: "break-word" }}>
+                  {lastImport.last_error_zh ?? lastImport.last_error_message}
+                </Text>
+                {lastImport.last_error_hint_zh && <Text fz="sm">{lastImport.last_error_hint_zh}</Text>}
+                <Text fz="xs" c="dimmed">
+                  舊資料不受影響。修正後按「{isSync ? "立即同步" : hasData ? "重新匯入" : "開始匯入"}」即可重試。
+                </Text>
+              </Stack>
+            </Alert>
+          )}
         <List size="xs" c="dimmed" spacing={2} icon={<IconInfoCircle size={12} />}>
           <List.Item>
             整批替換：資料先{isSync ? "完整下載" : "暫存並驗證"}，最後在單一交易中取代舊資料，失敗時舊資料不受影響，不需要先開維護模式。

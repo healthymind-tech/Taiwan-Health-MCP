@@ -12,7 +12,8 @@
 | :--- | :--- | :--- | :--- | :--- |
 | `keyword` | string | 是 | 搜尋關鍵字（代碼、中文名稱或英文名稱） | `"糖尿病"`, `"E11"`, `"Appendectomy"` |
 | `type` | string | 否 | 搜尋類型，預設為 `"all"`。<br>可選值：`"diagnosis"` (診斷), `"procedure"` (處置), `"all"` | `"diagnosis"` |
-| `limit` | integer | 否 | 每類結果上限，預設 3，上限 10 | `5` |
+| `limit` | integer | 否 | 每類結果上限，預設 3，上限 10（IG CodeSystem 上限 50） | `5` |
+| `system` | string | 否 | 省略時為 ICD-10（依 `type`）。`icd10cm` / `icd10pcs`，或任何已安裝 IG 的 CodeSystem：canonical、id 或別名字詞（例如 `nhi_payment` = 健保醫療服務給付項目代碼）。IG CodeSystem 改走 [IG 術語搜尋](../modules/ig-concept-search.md)，回傳 `{keyword, system, codesystem, results[], clauses?, search_mode?}` | `"nhi_payment"` |
 
 ### 搜尋方式
 `diagnosis` 走 BM25 + 向量重排序的混合搜尋；`procedure` 只走 BM25；`all`（預設）兩者都做，

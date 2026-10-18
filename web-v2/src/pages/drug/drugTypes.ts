@@ -48,6 +48,8 @@ export interface DrugRecentEvent {
   stage: string;
   status: string;
   error_message: string;
+  /** zh-TW explanation of a recognised error (backend adminErrorCodes.explainJobError). */
+  error_zh?: string;
   created_at: string;
 }
 

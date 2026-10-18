@@ -14,7 +14,8 @@
  */
 
 import { query } from "./db.js";
-import { logInfo } from "./logger.js";
+import { logError, logInfo } from "./logger.js";
+import { classifyFetchError, type ToolErrorInfo } from "./toolErrors.js";
 import { config } from "./config.js";
 import {
   fetchServerRow,
@@ -22,7 +23,7 @@ import {
   getClientCredentialsAccessToken,
   serverPrivate,
 } from "./admin/adminFhirServers.js";
-import { getValidUserAccessToken } from "./admin/fhirOauthService.js";
+import { OAuthError, getValidUserAccessToken } from "./admin/fhirOauthService.js";
 
 const AUTH_NONE = "none";
 const AUTH_OAUTH2_CC = "oauth2_client_credentials";
@@ -280,7 +281,7 @@ export class FHIRServerService {
   async getFhirServerStatus(serverKey: string): Promise<Json> {
     const server = await this.fetchServer(serverKey);
     if (!server) {
-      return { error: "FHIR server not found", detail: `No server matches '${serverKey}'.` };
+      return { error: "FHIR server not found", detail: `No server matches '${serverKey}'.`, ...(await this.serverNotFoundFields(serverKey)) };
     }
     await attachOauthStatus([server]);
     return serverMcpSummary(server);
@@ -302,7 +303,7 @@ export class FHIRServerService {
       const server = await this.fetchServer(args.server_key, false);
       if (!server) {
         // Mirror perform_fhir_crud's ValueError → _json_error(str(exc)).
-        return { error: "FHIR server not found or disabled" };
+        return { error: "FHIR server not found or disabled", ...(await this.serverNotFoundFields(args.server_key)) };
       }
 
       const op = args.operation.trim().toLowerCase();
@@ -310,16 +311,30 @@ export class FHIRServerService {
         ((server.allowed_operations as string[]) || DEFAULT_OPERATIONS),
       );
       if (!allowedOps.has(op)) {
-        return { error: `Operation '${op}' is not allowed for server '${server.server_key}'` };
+        return {
+          error: `Operation '${op}' is not allowed for server '${server.server_key}'`,
+          code: "OPERATION_NOT_ALLOWED",
+          allowed_operations: [...allowedOps],
+          hint: "Use one of allowed_operations. Only an administrator can widen a server's allow-list (admin console → FHIR 伺服器).",
+        };
       }
       if (WRITE_OPERATIONS.has(op) && !args.confirm_write) {
-        return { error: "Write operations require confirm_write=true" };
+        return {
+          error: "Write operations require confirm_write=true",
+          code: "WRITE_CONFIRMATION_REQUIRED",
+          hint: "Confirm with the user that this change to the external FHIR server is intended, then call again with confirm_write=true.",
+        };
       }
       if (op !== "metadata") {
         const rt = this.validateResourceType(args.resource_type);
         const allowedTypes = new Set((server.allowed_resource_types as string[]) || []);
         if (allowedTypes.size > 0 && !allowedTypes.has(rt)) {
-          return { error: `Resource type '${rt}' is not allowed for server '${server.server_key}'` };
+          return {
+            error: `Resource type '${rt}' is not allowed for server '${server.server_key}'`,
+            code: "RESOURCE_TYPE_NOT_ALLOWED",
+            allowed_resource_types: [...allowedTypes],
+            hint: "Use one of allowed_resource_types (case-sensitive FHIR type, e.g. Patient). Only an administrator can widen the allow-list.",
+          };
         }
       }
 
@@ -346,10 +361,50 @@ export class FHIRServerService {
     } catch (exc) {
       const msg = String((exc as Error).message);
       // ValueError-equivalents (validation) surface as plain {error}; everything
-      // else mirrors the generic catch in the Python tool.
-      if ((exc as { isValidation?: boolean }).isValidation) return { error: msg };
-      return { error: "FHIR CRUD request failed", detail: msg };
+      // else mirrors the generic catch in the Python tool. code / hint / retryable are additive.
+      if ((exc as { isValidation?: boolean }).isValidation) {
+        return { error: msg, code: "INVALID_ARGUMENTS", hint: crudValidationHint(msg) };
+      }
+      const transport = (exc as { toolError?: ToolErrorInfo }).toolError;
+      if (transport) return { error: "FHIR CRUD request failed", detail: msg, ...transport };
+      if (exc instanceof OAuthError || /token/i.test(msg)) {
+        return {
+          error: "FHIR CRUD request failed",
+          detail: msg.slice(0, 300),
+          code: "UPSTREAM_AUTH_FAILED",
+          hint:
+            "Could not obtain an access token for this server. Do not retry with the same settings: tell the user an " +
+            "administrator must (re-)authorize the server or fix its OAuth client settings in the admin console (FHIR 伺服器 → OAuth).",
+          retryable: false,
+        };
+      }
+      logError("crud_fhir_server failed", { server_key: args.server_key, error: (exc as Error)?.name, message: msg.slice(0, 200) });
+      return {
+        error: "FHIR CRUD request failed",
+        detail: msg.slice(0, 300),
+        code: "UPSTREAM_REQUEST_FAILED",
+        hint: "Retry once; if it fails again, tell the user the call to the external FHIR server is failing.",
+        retryable: true,
+      };
     }
+  }
+
+  /** Additive fields for an unknown / disabled server_key: the keys that do exist and the next step. */
+  private async serverNotFoundFields(serverKey: string): Promise<Record<string, unknown>> {
+    let keys: string[] = [];
+    try {
+      keys = (await this.listRegistered(false)).map((sv) => String(sv.server_key));
+    } catch {
+      keys = [];
+    }
+    const near = keys.find((k) => k.toLowerCase() === String(serverKey).toLowerCase());
+    return {
+      code: "FHIR_SERVER_NOT_FOUND",
+      available_servers: keys,
+      hint: keys.length
+        ? `Use one of available_servers as server_key${near ? ` (did you mean '${near}'?)` : ""}; list_fhir_servers shows details.`
+        : "No external FHIR server is enabled on this server; an administrator must add one in the admin console (FHIR 伺服器).",
+    };
   }
 
   // ── crud helpers (mirror the Python privates) ──────────────────────────
@@ -513,6 +568,11 @@ export class FHIRServerService {
         body: body !== null ? JSON.stringify(body) : undefined,
         signal: controller.signal,
       });
+    } catch (err) {
+      // No HTTP response (DNS, refused, timeout, TLS): a coded error instead of "fetch failed".
+      const where = `FHIR server '${String(server.server_key)}' (${String(server.base_url ?? "")})`;
+      const info = classifyFetchError(err, where, Number(server.timeout_seconds) || undefined);
+      throw Object.assign(new Error(info.message), { toolError: info });
     } finally {
       clearTimeout(timer);
     }
@@ -541,8 +601,39 @@ export class FHIRServerService {
     };
     if (parsedJson !== null) result.json = parsedJson;
     else result.text = rawText.slice(0, MAX_RESPONSE_CHARS);
+    const hint = fhirHttpStatusHint(response.status, opts.operation);
+    if (hint) result.hint = hint;
     return result;
   }
+}
+
+/** Next step for a non-2xx FHIR response (additive `hint`; null for success). */
+export function fhirHttpStatusHint(status: number, operation: string): string | null {
+  if (status >= 200 && status < 300) return null;
+  if (status === 401 || status === 403) {
+    return "The FHIR server rejected the credentials. Retry once with token_strategy=fresh; if it still fails, tell the user an administrator must re-authorize the server (admin console → FHIR 伺服器).";
+  }
+  if (status === 404) {
+    return operation === "read"
+      ? "No resource with this id on the FHIR server. Use operation=search (with query_json, e.g. {\"name\":\"...\"}) to find the id."
+      : "The FHIR server does not have this endpoint / resource type; check resource_type (case-sensitive) and the server's supported_resources (get_fhir_server_status).";
+  }
+  if (status === 400 || status === 422) {
+    return "The FHIR server rejected the request; read the OperationOutcome in json.issue for the field to fix (search parameter names, resource content), then call again.";
+  }
+  if (status === 409 || status === 412) return "Version conflict on the FHIR server: read the resource again and retry the change on its current version.";
+  if (status === 429) return "The FHIR server is rate-limiting; wait a little before retrying.";
+  if (status >= 500) return "The FHIR server had an internal error; retry later. This is not caused by your arguments.";
+  return null;
+}
+
+/** Next step for a crud_fhir_server validation error (bad resource_type / JSON arguments). */
+export function crudValidationHint(message: string): string {
+  if (/is required for/i.test(message)) return `${message}: pass it as a JSON string, e.g. resource_json='{"resourceType":"Patient",...}'.`;
+  if (/resource_type/i.test(message)) return "resource_type must be a FHIR resource type name such as Patient or Observation (case-sensitive).";
+  if (/json/i.test(message)) return "query_json / resource_json / patch_json must be JSON text, e.g. query_json='{\"family\":\"Chen\",\"_count\":\"5\"}'.";
+  if (/resource_id/i.test(message)) return "resource_id is required for read / update / patch / delete (the id part of Patient/<id>).";
+  return "Check the arguments against the crud_fhir_server description and call again.";
 }
 
 export function buildFhirRequestHeaders(

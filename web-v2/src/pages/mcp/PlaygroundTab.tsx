@@ -97,7 +97,11 @@ function ResultPanel({ run, running, baseUrl, bearer, tool }: { run: RunState | 
     );
   }
   const r = run.response;
-  const body: unknown = r ? (r.ok ? r.result : { error: r.error, detail: r.detail, issues: r.issues }) : { error: run.failure?.message };
+  const body: unknown = r
+    ? r.ok
+      ? r.result
+      : { error: r.error, code: r.code, message: r.message, hint: r.hint, detail: r.detail, issues: r.issues, example_arguments: r.example_arguments }
+    : { error: run.failure?.message };
   const curl = curlFor(baseUrl, tool, run.args, bearer);
   const status = r?.http_status ?? run.failure?.status ?? 0;
   const toolOk = Boolean(r?.ok && r.tool_ok);
@@ -192,8 +196,23 @@ function ResultPanel({ run, running, baseUrl, bearer, tool }: { run: RunState | 
       </Group>
 
       {!r?.ok && (
-        <Alert color="red" icon={<IconCircleX size={18} />} title={r?.error ?? run.failure?.message ?? "呼叫失敗"} p="sm">
-          {r?.detail && !r.issues && (
+        <Alert
+          color="red"
+          icon={<IconCircleX size={18} />}
+          title={r ? (r.code ? `工具呼叫失敗（${r.code}）` : r.error === "tool_call_failed" ? "工具呼叫失敗" : (r.error ?? "呼叫失敗")) : (run.failure?.message ?? "呼叫失敗")}
+          p="sm"
+        >
+          {r?.message && (
+            <Text fz="xs" style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+              {r.message}
+            </Text>
+          )}
+          {r?.hint && (
+            <Text fz="xs" c="dimmed" mt={4} style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+              下一步（LLM 看到的提示）：{r.hint}
+            </Text>
+          )}
+          {r?.detail && !r.issues && !r.message && (
             <Text fz="xs" style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
               {r.detail}
             </Text>

@@ -321,3 +321,68 @@ export async function search(base: string, query: string): Promise<
   }
   return out;
 }
+
+export interface RegistrySearchHit {
+  name: string;
+  description: string;
+  fhirVersion: string;
+}
+
+/** Map a catalog response (FHIR registry `op=find` or packages2 `/packages/catalog`) to hits. */
+export function parseCatalog(data: unknown): RegistrySearchHit[] | null {
+  if (!Array.isArray(data)) return null;
+  const out: RegistrySearchHit[] = [];
+  const seen = new Set<string>();
+  for (const item of data) {
+    if (!item || typeof item !== "object") continue;
+    const it = item as Record<string, unknown>;
+    const name = it.Name || it.name;
+    if (!name || seen.has(String(name))) continue; // packages2 lists one row per version
+    seen.add(String(name));
+    out.push({
+      name: String(name),
+      description: String(it.Description || it.description || ""),
+      fhirVersion: String(it.FhirVersion || it.fhirVersion || ""),
+    });
+  }
+  return out;
+}
+
+/**
+ * Registry autocomplete with a fallback: the configured registry first, then
+ * packages2.fhir.org (different API: `/packages/catalog?name=`). Unlike
+ * `search`, a failure of every registry throws (with each attempt's reason)
+ * instead of looking like "no package matches".
+ */
+export async function searchWithFallback(
+  base: string,
+  query: string,
+  fetchImpl: (url: string) => Promise<Response> = (url) => fetchWithTimeout(url, "application/json"),
+): Promise<{ results: RegistrySearchHit[]; registry: string; fallback_used: boolean }> {
+  const q = (query || "").trim();
+  const primary = normalizeBase(base);
+  if (!q) return { results: [], registry: primary, fallback_used: false };
+  const attempts: Array<[string, string]> = [[primary, `${primary}/catalog?op=find&name=${encodeURIComponent(q)}`]];
+  if (normalizeBase(FALLBACK_REGISTRY) !== primary) {
+    attempts.push([FALLBACK_REGISTRY, `${FALLBACK_REGISTRY}/packages/catalog?name=${encodeURIComponent(q)}`]);
+  }
+  const errors: string[] = [];
+  for (const [registry, url] of attempts) {
+    try {
+      const resp = await fetchImpl(url);
+      if (resp.status !== 200) {
+        errors.push(`HTTP ${resp.status} from ${url}`);
+        continue;
+      }
+      const parsed = parseCatalog(await resp.json());
+      if (!parsed) {
+        errors.push(`${url}: response is not a package list`);
+        continue;
+      }
+      return { results: parsed, registry, fallback_used: registry !== primary };
+    } catch (exc) {
+      errors.push(`${url}: ${String((exc as Error).message)}`);
+    }
+  }
+  throw new Error(`Registry search failed: ${errors.join(" | ")}`);
+}

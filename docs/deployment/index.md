@@ -319,6 +319,8 @@ docker compose exec -T postgres \
 | `20261019_ig_install_origin.sql` | `fhir.ig_packages.install_origin` / `installed_for` |
 | `20261020_loinc_structure.sql` | LOINC 軸向 part link、answer list、panel、MapTo 表 |
 | `20261021_embedding_identity.sql` | `admin.embedding_identity` / `admin.embedding_fingerprints`（embedding 身分；程式執行期也會補建，套用與否皆冪等） |
+| `20261022_ig_concept_search.sql` | IG 術語搜尋：`fhir.concept_index_cs` / `_concepts` / `_terms`、`fhir.concept_embeddings`、`fhir.term_thesaurus`、`fhir.codesystem_supplements`。套用後於管理後台 IG 套件庫 → 術語搜尋索引按「補建索引」（`ig_concept_index`，會接著跑 `ig_embed`） |
+| `20261023_umls_terms.sql` | 選用的 UMLS 同義字表 `fhir.umls_terms` / `fhir.umls_release`（需 UMLS 授權；未載入時引擎照常運作） |
 
 套用 `20261017`、`20261018`、`20261020` 後，需重新匯入對應模組（ICD、LOINC、SNOMED CT）才會填入新表。
 

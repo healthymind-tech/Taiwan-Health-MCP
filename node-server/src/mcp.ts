@@ -10,6 +10,7 @@
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { healthcheck as dbHealthcheck, query as dbQuery } from "./db.js";
@@ -29,6 +30,14 @@ import { FHIRIGService } from "./fhirIgService.js";
 import * as fhirReference from "./fhirReference.js";
 import { getEmbeddingService } from "./embeddingService.js";
 import { logError } from "./logger.js";
+import {
+  ToolArgumentError,
+  ToolExecutionError,
+  classifyToolException,
+  describeArgumentIssues,
+  toolUnavailableInfo,
+  type CatalogRef,
+} from "./toolErrors.js";
 import { recordToolCall } from "./metrics.js";
 import { getStates as getMaintenanceStates } from "./admin/adminMaintenance.js";
 import { BUILD, SERVER_VERSION, TOOLS_VERSION } from "./toolVersions.js";
@@ -80,7 +89,7 @@ export const SERVER_NAME = "taiwan-health-mcp";
 // `buildMcpServer` wraps `server.registerTool` to populate this on each build.
 const _OPENAPI_TOOL_PREFIX = "/tools/";
 
-interface RegisteredTool {
+export interface RegisteredTool {
   name: string;
   description: string;
   shape: z.ZodRawShape;
@@ -205,12 +214,122 @@ export function withMaintenanceGate<A extends unknown[], R>(
   };
 }
 
+/** Tools whose arguments carry clinical text: never log even a clipped error message for them. */
+const SENSITIVE_ARGUMENT_TOOLS: ReadonlySet<string> = new Set([
+  "fhir_check_grounding",
+  "fhir_check_completeness",
+  "fhir_validate_bundle",
+  "fhir_validate_resource",
+]);
+
+/**
+ * Wrap a tool handler so an exception never reaches the client as a raw SQL / driver / stack message. The raw error
+ * is logged (tool name, error name, SQLSTATE, clipped message — never arguments); the client gets a ToolExecutionError
+ * whose message carries a stable code, a plain-language explanation and the next step. Still a thrown error, so the
+ * MCP transport answers isError, POST /tools/<name> answers 400 tool_call_failed and metrics count an error, as before.
+ */
+export function withToolErrorBoundary<A extends unknown[], R>(
+  name: string,
+  handler: (...args: A) => Promise<R> | R,
+  log: (msg: string, fields: Record<string, unknown>) => void = logError,
+): (...args: A) => Promise<R> {
+  return async (...args: A): Promise<R> => {
+    try {
+      return await handler(...args);
+    } catch (err) {
+      if (err instanceof ToolExecutionError || err instanceof z.ZodError || err instanceof McpError) throw err;
+      const info = classifyToolException(name, err);
+      try {
+        log("MCP tool failed", {
+          tool: name,
+          code: info.code,
+          error: err instanceof Error ? err.name : typeof err,
+          sqlstate: (err as { code?: unknown } | null)?.code ?? null,
+          message: SENSITIVE_ARGUMENT_TOOLS.has(name) ? undefined : String((err as Error)?.message ?? err).slice(0, 300),
+        });
+      } catch {
+        // logging must never mask the tool error
+      }
+      const { internal: _internal, ...clean } = info;
+      throw new ToolExecutionError(clean);
+    }
+  };
+}
+
+/** Catalog view used for "unknown / not available tool" errors. */
+export function catalogRefs(): CatalogRef[] {
+  const groups = new Map(TOOL_GROUPS.map((g) => [g.key, g]));
+  return toolCatalog().map((t) => {
+    const g = groups.get(t.group);
+    let mod = g?.module ?? null;
+    if (mod === "fhir_condition") mod = "icd";
+    if (mod === "fhir_medication") mod = "drug";
+    return { name: t.name, groupLabel: g?.label ?? t.group, dataModule: mod };
+  });
+}
+
+/** Actionable error for a tool call whose arguments fail the input schema. */
+export function toolArgumentError(name: string, shape: z.ZodRawShape, issues: z.ZodIssue[], args: unknown): ToolArgumentError {
+  return new ToolArgumentError(issues, describeArgumentIssues(name, shape, issues, args));
+}
+
+interface McpServerInternals {
+  validateToolInput?: (tool: unknown, args: unknown, toolName: string) => Promise<unknown>;
+  createToolError?: (message: string) => unknown;
+}
+
+/**
+ * Make the SDK's own tool errors actionable: argument validation failures name the parameter, the rule, an example
+ * and the parameter list (the SDK prints the raw zod issue array), and "Tool X not found" explains whether the tool
+ * is unknown or not registered because its module has no data. Messages keep the SDK's original prefix.
+ */
+function improveSdkToolErrors(server: McpServer, into: Map<string, RegisteredTool>): void {
+  const internals = server as unknown as McpServerInternals;
+  const origValidate = internals.validateToolInput?.bind(server);
+  if (origValidate) {
+    internals.validateToolInput = async (tool, args, toolName) => {
+      try {
+        return await origValidate(tool, args, toolName);
+      } catch (e) {
+        const reg = into.get(toolName);
+        if (!reg || !(e instanceof McpError)) throw e;
+        const parsed = z.object(reg.shape ?? {}).safeParse(args ?? {});
+        if (parsed.success) throw e;
+        const info = describeArgumentIssues(toolName, reg.shape, parsed.error.issues, args);
+        throw new McpError(
+          ErrorCode.InvalidParams,
+          `Input validation error: Invalid arguments for tool ${toolName}: ${info.message} Hint: ${info.hint}`,
+        );
+      }
+    };
+  }
+  const origCreate = internals.createToolError?.bind(server);
+  if (origCreate) {
+    internals.createToolError = (message: string) => {
+      const m = /Tool (\S+) (?:not found|disabled)$/.exec(String(message));
+      if (m) {
+        try {
+          const info = toolUnavailableInfo(m[1], catalogRefs());
+          return origCreate(`${message}. [${info.code}] ${info.message} Hint: ${info.hint}`);
+        } catch {
+          return origCreate(message);
+        }
+      }
+      return origCreate(message);
+    };
+  }
+}
+
 /** Patch `server.registerTool` so every registration is also recorded in `into`. */
-function captureToolRegistrations(server: McpServer, into: Map<string, RegisteredTool>): void {
+export function captureToolRegistrations(server: McpServer, into: Map<string, RegisteredTool>): void {
+  improveSdkToolErrors(server, into);
   const orig = server.registerTool.bind(server) as (...a: unknown[]) => unknown;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (server as any).registerTool = (name: string, config: any, handler: any) => {
-    const instrumented = withToolMetrics(name, withMaintenanceGate(name, handler as (...a: unknown[]) => Promise<unknown>));
+    const instrumented = withToolMetrics(
+      name,
+      withToolErrorBoundary(name, withMaintenanceGate(name, handler as (...a: unknown[]) => Promise<unknown>)),
+    );
     into.set(name, {
       name,
       description: typeof config?.description === "string" ? config.description : "",
@@ -304,9 +423,14 @@ export async function invokeRegisteredTool(
   args: Record<string, unknown>,
 ): Promise<string> {
   const tool = toolRegistry.get(name);
-  if (!tool) throw new Error(`unknown_tool: ${name}`);
+  if (!tool) {
+    const info = toolUnavailableInfo(name, catalogRefs());
+    throw Object.assign(new Error(`unknown_tool: ${name}`), { toolError: info });
+  }
   // Validate + coerce (applies zod defaults) the same way the MCP transport would.
-  const parsed = z.object(tool.shape ?? {}).parse(args) as Record<string, unknown>;
+  const check = z.object(tool.shape ?? {}).safeParse(args);
+  if (!check.success) throw toolArgumentError(name, tool.shape, check.error.issues, args);
+  const parsed = check.data as Record<string, unknown>;
   const result = await tool.handler(parsed);
   return extractToolText(result);
 }
@@ -450,6 +574,14 @@ async function getIcdService(): Promise<IcdService | null> {
  * hybrid `search_medical_codes`). Only called when the `icd` module is active, matching Python's dynamic
  * add/remove via ModuleStatusManager.
  */
+/** ICD-10 search type for a `system` value naming ICD-10-CM / ICD-10-PCS, else null. */
+export function icdSystemType(system: string): "diagnosis" | "procedure" | null {
+  const k = system.trim().toLowerCase().replace(/[\s_-]+/g, "");
+  if (["icd10cm", "icd10", "http://hl7.org/fhir/sid/icd10cm"].includes(k)) return "diagnosis";
+  if (["icd10pcs", "http://www.cms.gov/medicare/coding/icd10"].includes(k)) return "procedure";
+  return null;
+}
+
 function registerIcdTools(server: McpServer, svc: IcdService): void {
   server.registerTool(
     "search_medical_codes",
@@ -459,15 +591,43 @@ function registerIcdTools(server: McpServer, svc: IcdService): void {
         "(the editions loaded on this server; see health_check.terminology). " +
         "diagnosis: hybrid BM25 + vector embedding re-ranking; procedure: BM25 only; " +
         "all (default): both, returned under separate diagnoses/procedures keys. " +
-        "Results are ranked by relevance, not alphabetical.",
+        "Results are ranked by relevance, not alphabetical. " +
+        "Optional system: icd10cm | icd10pcs, or any CodeSystem of an installed FHIR IG (canonical URL, id, or name " +
+        "words, e.g. nhi_payment = TW Core medical-service-payment-tw, the Taiwan NHI payment / fee-schedule codes for " +
+        "lab tests and procedures). For an IG CodeSystem the keyword may be Chinese or English free text, an abbreviation " +
+        "or chart wording; results carry code, display, matched_term and same-group siblings. " +
+        "fhir_normalize_code(text, system) does the same within an IG; fhir_lookup_code gives the display of a known code.",
       inputSchema: {
         keyword: z.string(),
         type: z.enum(["diagnosis", "procedure", "all"]).default("all"),
         limit: z.number().int().default(3),
+        system: z
+          .string()
+          .nullish()
+          .describe(
+            "Code system to search. Omit for ICD-10 (see type). icd10cm | icd10pcs, or an installed IG CodeSystem: " +
+              "canonical URL, id (medical-service-payment-tw) or alias words (nhi_payment).",
+          ),
       },
     },
-    async ({ keyword, type, limit }) =>
-      jsonResult(await svc.searchCodes(keyword, type ?? "all", limit ?? 3)),
+    async ({ keyword, type, limit, system }) => {
+      const sys = (system ?? "").trim();
+      if (!sys) return jsonResult(await svc.searchCodes(keyword, type ?? "all", limit ?? 3));
+      const icdType = icdSystemType(sys);
+      if (icdType) return jsonResult(await svc.searchCodes(keyword, icdType, limit ?? 3));
+      const ig = await getFhirIgService();
+      if (!ig) {
+        return jsonResult({
+          keyword,
+          system: sys,
+          error: "IG_UNAVAILABLE",
+          message: "FHIR IG service unavailable",
+          results: [],
+          hint: "IG CodeSystem search is unavailable right now (no FHIR IG package loaded or the IG service failed to start). Omit system to search ICD-10, or retry later.",
+        });
+      }
+      return jsonResult(await ig.searchIgCodeSystem(keyword, sys, limit ?? 3));
+    },
   );
 
   server.registerTool(
@@ -736,6 +896,23 @@ export async function getDrugService(): Promise<DrugService | null> {
   }
 }
 
+/** Next step when search_drug finds nothing (additive `hint`). */
+export function drugSearchEmptyHint(mode: string, includeCancelled: boolean, payload: Record<string, unknown> | { results: unknown[] }): string {
+  const parts: string[] = [];
+  const keywordOnly = (payload as Record<string, unknown>).search_mode === "keyword_only";
+  if (mode === "drug_name") {
+    parts.push(
+      keywordOnly
+        ? "Semantic search is unavailable right now, so only literal name matches are found: try a shorter part of the name, the English name, or mode=ingredient."
+        : "Try a shorter part of the product name, the English name, or mode=ingredient with the active ingredient.",
+    );
+  } else if (mode === "ingredient") parts.push("Use the ingredient's English (INN) name, e.g. acetaminophen, or mode=drug_name.");
+  else if (mode === "license_id") parts.push("Pass the license id or its number part, e.g. 衛署藥製字第042915號 or 042915.");
+  else if (mode === "atc_code") parts.push("ATC codes look like N02BE01 (a prefix such as N02BE also works).");
+  if (!includeCancelled) parts.push("Cancelled / expired licenses are excluded; pass include_cancelled=true to include them.");
+  return parts.join(" ");
+}
+
 /** Register the Drug / TFDA tool group. Mirrors `_TOOL_GROUPS["Drug / TFDA"]`. */
 function registerDrugTools(server: McpServer, svc: DrugService): void {
   server.registerTool(
@@ -770,7 +947,9 @@ function registerDrugTools(server: McpServer, svc: DrugService): void {
           allowed_modes: ["drug_name", "ingredient", "license_id", "atc_code"],
         });
       }
-      return jsonResult({ ...payload, mode: m, keyword: kw, include_cancelled: inc });
+      const out: Record<string, unknown> = { ...payload, mode: m, keyword: kw, include_cancelled: inc };
+      if (Array.isArray(payload.results) && payload.results.length === 0) out.hint = drugSearchEmptyHint(m, inc, payload);
+      return jsonResult(out);
     },
   );
 
@@ -785,8 +964,20 @@ function registerDrugTools(server: McpServer, svc: DrugService): void {
       },
     },
     async ({ features }) => {
-      if (!features.trim()) return jsonResult({ error: "features is required", results: [] });
-      return jsonResult(await svc.identifyUnknownPill(features));
+      if (!features.trim()) {
+        return jsonResult({
+          error: "features is required",
+          results: [],
+          hint: 'Pass space-separated appearance keywords, e.g. {"features":"白色 圓形 錠"} (color, shape, imprint).',
+        });
+      }
+      const res = (await svc.identifyUnknownPill(features)) as Record<string, unknown>;
+      if (Array.isArray(res?.results) && res.results.length === 0 && !("hint" in res)) {
+        res.hint =
+          "No pill matches ALL keywords (they are combined with AND). Drop the least certain keyword (e.g. the imprint) " +
+          "and retry; use Chinese colour / shape words such as 白色 / 圓形 / 膜衣錠.";
+      }
+      return jsonResult(res);
     },
   );
 
@@ -1065,7 +1256,13 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
   server.registerTool(
     "fhir_normalize_code",
     {
-      description: "Turn free text into ranked candidate codes for a target system or ValueSet (ConceptMap + lexical + semantic). Provide at least one of value_set or system.",
+      description:
+        "Turn free text into ranked candidate codes for a target system or ValueSet (ConceptMap + lexical + semantic). Provide at least one of value_set or system. " +
+        "Supported: SNOMED CT, LOINC, ICD-10-CM/PCS and every CodeSystem of an installed IG (e.g. TW Core " +
+        "medical-service-payment-tw = Taiwan NHI payment codes for lab tests and procedures, occupation, department codes). " +
+        "For IG CodeSystems the text may be Chinese or English, an abbreviation or chart wording (CRP, TKA, 清創縫合 …); " +
+        "system may also be the CodeSystem id or alias words (nhi_payment). Candidates carry matched_term / matched_language " +
+        "and same-group siblings (e.g. the same test by another method).",
       inputSchema: { text: z.string(), value_set: z.string().nullish().default(null), system: z.string().nullish().default(null), ...pkg, limit: z.number().int().default(10) },
     },
     async ({ text, value_set, system, package_id, version, limit }) =>
@@ -1080,7 +1277,7 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
     },
     async ({ key, resource_type, context_id, display }) => {
       if (!key || !String(key).trim()) {
-        return rawResult(JSON.stringify({ ok: false, data: null, warnings: [], error: { code: "INVALID_ARGUMENT", message: "key is required" } }));
+        return rawResult(JSON.stringify({ ok: false, data: null, warnings: [], error: { code: "INVALID_ARGUMENT", message: "key is required", hint: "key is the reference key you assign to a resource (e.g. \"patient-1\"); the same key returns the same urn:uuid within context_id." } }));
       }
       const [cid, urn] = fhirReference.mint(context_id ?? null, String(key));
       return rawResult(
@@ -1102,7 +1299,7 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
     },
     async ({ entries, bundle_type, context_id }) => {
       if (!Array.isArray(entries) || !entries.length) {
-        return rawResult(JSON.stringify({ ok: false, data: null, warnings: [], error: { code: "INVALID_ARGUMENT", message: "entries must be a non-empty list" } }));
+        return rawResult(JSON.stringify({ ok: false, data: null, warnings: [], error: { code: "INVALID_ARGUMENT", message: "entries must be a non-empty list", hint: "Pass entries as a non-empty array of {resource, key?, fullUrl?, request?} objects, e.g. [{\"resource\":{\"resourceType\":\"Patient\"},\"key\":\"patient-1\"}]." } }));
       }
       const result = fhirReference.buildBundle(entries as any[], bundle_type ?? "transaction", context_id ?? null);
       const warnings = result.unresolved.length
@@ -1419,7 +1616,9 @@ function registerFhirServerTools(server: McpServer, svc: FHIRServerService): voi
       try {
         return jsonResult(await svc.listFhirServers(include_disabled ?? false));
       } catch (e) {
-        return jsonResult({ error: "Failed to list FHIR servers", detail: String((e as Error).message) });
+        const { internal: _i, ...info } = classifyToolException("list_fhir_servers", e);
+        logError("list_fhir_servers failed", { error: (e as Error)?.name, message: String((e as Error)?.message).slice(0, 200) });
+        return jsonResult({ error: "Failed to list FHIR servers", detail: info.message, ...info });
       }
     },
   );
@@ -1437,7 +1636,9 @@ function registerFhirServerTools(server: McpServer, svc: FHIRServerService): voi
       try {
         return jsonResult(await svc.getFhirServerStatus(server_key));
       } catch (e) {
-        return jsonResult({ error: "Failed to get FHIR server status", detail: String((e as Error).message) });
+        const { internal: _i, ...info } = classifyToolException("get_fhir_server_status", e);
+        logError("get_fhir_server_status failed", { error: (e as Error)?.name, message: String((e as Error)?.message).slice(0, 200) });
+        return jsonResult({ error: "Failed to get FHIR server status", detail: info.message, ...info });
       }
     },
   );
@@ -1479,6 +1680,10 @@ function registerFhirServerTools(server: McpServer, svc: FHIRServerService): voi
       ),
   );
 }
+
+const SNOMED_NOT_FOUND_HINT =
+  "concept_id must be a SNOMED CT concept id from the loaded International release (6-18 digits, e.g. 44054006). " +
+  "Find it with search_snomed_concept(query=<English clinical term>); for an ICD-10-CM code use query_snomed_mapping(mode=icd).";
 
 /**
  * Register the SNOMED CT tool group. Mirrors `_TOOL_GROUPS["SNOMED CT"]`.
@@ -1524,7 +1729,7 @@ function registerSnomedTools(server: McpServer, svc: SnomedService): void {
     async ({ concept_id, include_parents, include_children, parent_limit, child_limit }) => {
       const concept = await svc.getConcept(concept_id);
       if (concept === null) {
-        return jsonResult({ error: `Concept ${concept_id} not found` });
+        return jsonResult({ error: `Concept ${concept_id} not found`, hint: SNOMED_NOT_FOUND_HINT });
       }
       const result: Record<string, unknown> = { concept_id, concept };
       if (include_parents ?? true) {
@@ -1560,11 +1765,17 @@ function registerSnomedTools(server: McpServer, svc: SnomedService): void {
         (sum, r) => sum + (r.targets as unknown[]).length,
         0,
       );
-      return jsonResult({
+      const out: Record<string, unknown> = {
         concept_id,
         relationship_count: relationshipCount,
         relationships: results,
-      });
+      };
+      if (relationshipCount === 0 && (await svc.getConcept(concept_id)) === null) {
+        // Unknown concept: say so instead of an empty, plausible-looking answer.
+        out.concept_found = false;
+        out.hint = SNOMED_NOT_FOUND_HINT;
+      }
+      return jsonResult(out);
     },
   );
 
@@ -1584,12 +1795,28 @@ function registerSnomedTools(server: McpServer, svc: SnomedService): void {
       mode = mode ?? "icd";
       keyword = keyword ?? "";
       if (mode === "icd") {
-        if (!keyword) return jsonResult({ error: "Provide keyword when mode is icd" });
+        if (!keyword) {
+          return jsonResult({
+            error: "Provide keyword when mode is icd",
+            hint: 'Pass keyword=<ICD-10-CM code>, e.g. {"mode":"icd","keyword":"E11.9"}; for SNOMED → ICD use mode=snomed with a concept id or English term.',
+          });
+        }
         const results = await svc.mapIcdToSnomed(keyword);
-        return jsonResult({ mode: "icd", keyword: keyword.toUpperCase(), snomed_concepts: results });
+        const out: Record<string, unknown> = { mode: "icd", keyword: keyword.toUpperCase(), snomed_concepts: results };
+        if (!results.length) {
+          out.hint =
+            "No SNOMED CT map for this ICD-10-CM code (the maps cover a subset of codes, usually billable ones like E11.9). " +
+            "Try the parent or a more specific code, or search_snomed_concept(query=<diagnosis in English>).";
+        }
+        return jsonResult(out);
       }
       if (mode === "snomed") {
-        if (!keyword) return jsonResult({ error: "Provide keyword when mode is snomed" });
+        if (!keyword) {
+          return jsonResult({
+            error: "Provide keyword when mode is snomed",
+            hint: 'Pass keyword=<SNOMED concept id or English term>, e.g. {"mode":"snomed","keyword":"44054006"}.',
+          });
+        }
         let conceptId: number;
         if (/^\d+$/.test(keyword.trim())) {
           conceptId = Number(keyword.trim());
@@ -1599,12 +1826,20 @@ function registerSnomedTools(server: McpServer, svc: SnomedService): void {
             return jsonResult({
               error:
                 "For mode=snomed, keyword must be a numeric concept_id or match a SNOMED concept",
+              hint: SNOMED_NOT_FOUND_HINT,
             });
           }
           conceptId = Number(matches[0].concept_id);
         }
         const results = await svc.mapSnomedToIcd(conceptId);
-        return jsonResult({ mode: "snomed", keyword: conceptId, icd10_mappings: results });
+        const out: Record<string, unknown> = { mode: "snomed", keyword: conceptId, icd10_mappings: results };
+        if (!results.length) {
+          out.hint =
+            (await svc.getConcept(conceptId)) === null
+              ? SNOMED_NOT_FOUND_HINT
+              : "This concept has no ICD-10-CM map; try its parent concept (query_snomed_concept with include_parents) or search_medical_codes(keyword).";
+        }
+        return jsonResult(out);
       }
       return jsonResult({ error: "Provide mode as icd or snomed" });
     },

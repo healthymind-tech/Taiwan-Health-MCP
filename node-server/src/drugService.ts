@@ -431,7 +431,7 @@ export class DrugService {
     );
     const row = r.rows[0];
     if (!row || row.normalized_json === null || row.normalized_json === undefined) {
-      return { error: `Drug ${licenseId} not found`, license_id: licenseId };
+      return { error: `Drug ${licenseId} not found`, license_id: licenseId, ...(await this.licenseMissDiagnosis(licenseId, includeCancelled)) };
     }
     return {
       license_id: licenseId,
@@ -525,13 +525,66 @@ export class DrugService {
       };
     });
 
-    return {
+    const out: Record<string, unknown> = {
       license_id,
       asset_id,
       asset_group,
       latest_insert_only,
       assets,
     };
+    if (!assets.length) {
+      if (license_id) {
+        const miss = await this.licenseMissDiagnosis(license_id, true);
+        out.hint =
+          miss.reason === "unknown_license"
+            ? miss.hint
+            : "No stored documents match. The license exists but its inserts / labels / pill images have not been " +
+              "downloaded yet (or the asset_group / latest_insert_only filter excludes them); get_drug_details shows the document status.";
+      } else {
+        out.hint = "No asset with this asset_id. asset ids come from get_drug_asset_links(license_id=...).";
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Why a license lookup found nothing: not in the TFDA index, cancelled (and include_cancelled=false), or indexed but
+   * its detail record has not been built yet. Returned as additive `reason` + `hint` fields.
+   */
+  private async licenseMissDiagnosis(licenseId: string, includeCancelled: boolean): Promise<{ reason: string; hint: string }> {
+    let row: { is_active: boolean; is_listed: boolean; has_record: boolean } | undefined;
+    try {
+      row = (
+        await query<{ is_active: boolean; is_listed: boolean; has_record: boolean }>(
+          `SELECT l.is_active, l.is_listed, (n.normalized_json IS NOT NULL) AS has_record
+             FROM drug.licenses l LEFT JOIN drug.normalized_records n ON n.license_id = l.license_id
+            WHERE l.license_id = $1`,
+          [licenseId],
+        )
+      ).rows[0];
+    } catch {
+      row = undefined;
+    }
+    if (!row || !row.is_listed) {
+      return {
+        reason: "unknown_license",
+        hint:
+          "No Taiwan FDA license with this exact id (format like 衛署藥製字第042915號 / 衛部藥輸字第026xxx號). " +
+          "Find the license_id with search_drug(keyword=<drug name>, or mode=license_id with the number part).",
+      };
+    }
+    if (!row.is_active && !includeCancelled) {
+      return { reason: "cancelled", hint: "This license is cancelled / expired. Call again with include_cancelled=true to see its record." };
+    }
+    if (!row.has_record) {
+      return {
+        reason: "not_enriched",
+        hint:
+          "The license is in the TFDA index but its detailed record has not been built yet (the server's drug enrichment " +
+          "has not reached it). Use search_drug results for the basic fields; tell the user the full record is pending.",
+      };
+    }
+    return { reason: "unknown", hint: "Check the license_id with search_drug." };
   }
 
   /**

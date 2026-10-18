@@ -430,8 +430,18 @@ export default function JobDetailPage() {
               {failed && (job.last_error_message || job.last_error_code) && (
                 <Alert color="red" icon={<IconAlertCircle size={20} />} title={job.status === "retryable_failed" ? "工作失敗（可重試）" : "工作失敗"}>
                   <Text fz="sm" style={{ wordBreak: "break-word" }}>
-                    {job.last_error_message || "未提供錯誤訊息"}
+                    {job.last_error_zh || job.last_error_message || "未提供錯誤訊息"}
                   </Text>
+                  {job.last_error_hint_zh && (
+                    <Text fz="sm" mt={4}>
+                      {job.last_error_hint_zh}
+                    </Text>
+                  )}
+                  {job.last_error_zh && job.last_error_message && (
+                    <Text fz="xs" c="dimmed" mt={4} ff="monospace" style={{ wordBreak: "break-word" }}>
+                      技術細節：{job.last_error_message}
+                    </Text>
+                  )}
                   {job.last_error_code && (
                     <Text fz="xs" c="dimmed" mt={4} ff="monospace">
                       錯誤代碼：{job.last_error_code}

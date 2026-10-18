@@ -42,6 +42,25 @@ export class ProfileValidationError extends Error {}
 /** The addressed account / profile does not exist (HTTP 404). */
 export class ProfileNotFoundError extends ProfileValidationError {}
 
+/**
+ * A validation failure that already knows its console code + params (so the UI
+ * can explain it and offer the next step) — no message pattern matching needed.
+ * `message` stays plain English for logs; `params` may carry structured data
+ * (lists, nested objects) for dialogs.
+ */
+export class CodedProfileError extends ProfileValidationError {
+  constructor(
+    message: string,
+    readonly code: string,
+    readonly params: Record<string, unknown> = {},
+    /** HTTP status the admin API answers with (409: the request conflicts with the system state). */
+    readonly status = 400,
+  ) {
+    super(message);
+    this.name = "CodedProfileError";
+  }
+}
+
 export function embeddingDimensions(p: Pick<LlmProfile, "params">, fallback = 1024): number {
   const n = Math.trunc(Number(p.params?.dimensions ?? fallback));
   return Number.isFinite(n) && n > 0 ? n : fallback;

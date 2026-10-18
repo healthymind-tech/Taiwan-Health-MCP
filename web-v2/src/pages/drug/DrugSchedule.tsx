@@ -277,7 +277,7 @@ function ScheduleModal({ opened, onClose, current, onSaved }: { opened: boolean;
     },
     onError: (e) => {
       const msg = errorMessage(e);
-      if (e instanceof ApiError && e.status === 400 && /fetch_url/i.test(msg)) setUrlError(msg);
+      if (e instanceof ApiError && e.status === 400 && /fetch_url/i.test(e.rawMessage)) setUrlError(msg);
       else if (e instanceof ApiError && e.status === 400) setFormError(msg);
       notify.error(e, "儲存失敗");
     },

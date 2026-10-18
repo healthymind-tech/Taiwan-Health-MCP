@@ -38,6 +38,7 @@ import { Dot } from "@/components/StatusBadge";
 import { ThemeMenu } from "@/components/ThemeMenu";
 import { switchColorScheme } from "@/lib/themeTransition";
 import { DbHealthGate } from "./DbHealthGate";
+import { WorkerOfflineBanner } from "./WorkerOfflineBanner";
 import { ALL_NAV_ITEMS, EXTRA_SEARCH, NAV, type NavItem } from "./nav";
 import classes from "./AppLayout.module.css";
 
@@ -165,7 +166,7 @@ export function AppLayout() {
               <Tooltip label={`${runningJobs} 個執行中，${activeJobs.length - runningJobs} 個排隊或暫停`}>
                 <Badge
                   component={Link}
-                  to="/jobs?status=active"
+                  to={runningJobs > 0 ? "/jobs?status=running" : "/jobs?status=queued"}
                   variant="light"
                   color="blue"
                   size="lg"
@@ -173,7 +174,9 @@ export function AppLayout() {
                   style={{ cursor: "pointer" }}
                   visibleFrom="xs"
                 >
-                  {activeJobs.length} 個工作進行中
+                  {runningJobs > 0
+                    ? `${runningJobs} 個執行中${activeJobs.length - runningJobs > 0 ? `・${activeJobs.length - runningJobs} 個排隊` : ""}`
+                    : `${activeJobs.length} 個排隊中`}
                 </Badge>
               </Tooltip>
             )}
@@ -264,6 +267,7 @@ export function AppLayout() {
 
       <AppShell.Main className={classes.main}>
         <Box className={classes.content}>
+          <WorkerOfflineBanner />
           <Outlet />
         </Box>
       </AppShell.Main>

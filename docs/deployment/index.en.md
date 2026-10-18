@@ -315,6 +315,8 @@ Migrations added in 2026-10 (apply in order; all are folded into `db/schema.sql`
 | `20261019_ig_install_origin.sql` | `fhir.ig_packages.install_origin` / `installed_for` |
 | `20261020_loinc_structure.sql` | LOINC axis part links, answer lists, panels and MapTo tables |
 | `20261021_embedding_identity.sql` | `admin.embedding_identity` / `admin.embedding_fingerprints` (embedding identity; the code also creates them at runtime, so applying it is idempotent either way) |
+| `20261022_ig_concept_search.sql` | IG concept search: `fhir.concept_index_cs` / `_concepts` / `_terms`, `fhir.concept_embeddings`, `fhir.term_thesaurus`, `fhir.codesystem_supplements`. Afterwards press "補建索引" in admin → IG packages → 術語搜尋索引 (`ig_concept_index`, followed by `ig_embed`) |
+| `20261023_umls_terms.sql` | Optional UMLS synonym store `fhir.umls_terms` / `fhir.umls_release` (needs a UMLS licence; the engine works without it) |
 
 After `20261017`, `20261018` and `20261020`, re-import the matching modules (ICD, LOINC, SNOMED CT) to fill the new tables.
 

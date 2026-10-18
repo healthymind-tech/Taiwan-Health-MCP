@@ -9,6 +9,7 @@ import {
   IconFilterOff,
   IconPackage,
   IconPlus,
+  IconSearch,
   IconSettings,
   IconStar,
 } from "@tabler/icons-react";
@@ -32,6 +33,7 @@ import { useModuleJobs } from "../modules/moduleData";
 import { InlineJobProgress, RecentJobsList } from "../modules/JobProgress";
 import { DangerZone, MaintenanceSection } from "../modules/ModuleAdminSections";
 import { AddIgModal } from "./AddIgModal";
+import { ConceptIndexPanel } from "./ConceptIndexPanel";
 import { IgDetailDrawer } from "./IgDetailDrawer";
 import { MissingDepsBadge, MissingDepsModal, type MissingDepsTarget } from "./MissingDepsModal";
 import { FAILURE_COPY, failureKindFromCode } from "./igDepCopy";
@@ -240,7 +242,7 @@ export default function IgPage() {
   const activeImport = jobs.activeOf("ig_import");
   const anyActive = jobs.active[0] ?? null;
   const maintenance = Boolean(catalog.data?.maintenance?.ig);
-  const igEntry = catalog.data?.modules.find((e) => e.module_key === "ig") ?? null;
+  const igEntry = catalog.data?.modules.find((e) => e.module_key === "ig" && e.source_role === "ig") ?? null;
   const maxUploadMb = catalog.data?.upload_limits.max_upload_mb ?? 512;
 
   useEffect(() => {
@@ -412,6 +414,9 @@ export default function IgPage() {
             <Tabs.Tab value="jobs" leftSection={<IconHistory size={16} />}>
               匯入紀錄
             </Tabs.Tab>
+            <Tabs.Tab value="concepts" leftSection={<IconSearch size={16} />}>
+              術語搜尋索引
+            </Tabs.Tab>
             <Tabs.Tab value="settings" leftSection={<IconSettings size={16} />}>
               維護與危險操作
             </Tabs.Tab>
@@ -541,6 +546,10 @@ export default function IgPage() {
             >
               <RecentJobsList jobs={jobs.all} limit={20} />
             </SectionCard>
+          </Tabs.Panel>
+
+          <Tabs.Panel value="concepts">
+            <ConceptIndexPanel />
           </Tabs.Panel>
 
           <Tabs.Panel value="settings">

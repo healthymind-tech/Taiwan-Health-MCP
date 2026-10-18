@@ -150,12 +150,22 @@ export class FHIRMedicationService {
     try {
       const record = await this.getDrugRecord(licenseId);
       if (!record) {
-        return { error: `Drug license '${licenseId}' not found in database` };
+        return {
+          error: `Drug license '${licenseId}' not found in database`,
+          hint:
+            "Use the exact Taiwan FDA license id (e.g. 衛署藥製字第042915號); find it with search_drug(keyword=<drug name>) " +
+            "or call again with keyword instead of license_id.",
+        };
       }
       return this.buildResource(record.normalized_json, record.license_id, record.is_active, resourceType);
     } catch (exc) {
       logError(`create_medication error: ${String((exc as Error).message)}`);
-      return { error: String((exc as Error).message), license_id: licenseId };
+      return {
+        error: "Building the Medication failed on the server (database error); this is not caused by your arguments.",
+        code: "INTERNAL_QUERY_FAILED",
+        hint: "Retry once; if it fails again, tell the user the drug lookup is failing on the server.",
+        license_id: licenseId,
+      };
     }
   }
 
@@ -163,7 +173,10 @@ export class FHIRMedicationService {
   async createMedicationFromSearch(keyword: string, resourceType: ResourceType = "Medication"): Promise<Json> {
     const matches = await this.searchDrugRecords(keyword);
     if (matches.length === 0) {
-      return { error: `No drug found for keyword: ${keyword}` };
+      return {
+        error: `No drug found for keyword: ${keyword}`,
+        hint: "Try a shorter part of the product name or its English name; search_drug(keyword) shows candidates and their license_id.",
+      };
     }
     const first = matches[0];
     const resource = this.buildResource(first.normalized_json, first.license_id, first.is_active, resourceType);

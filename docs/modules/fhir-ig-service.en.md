@@ -37,7 +37,7 @@ If none applies the error code is `NO_DEFAULT_IG` (no arbitrary package is picke
 - **`fhir_expand_valueset`**: expand a ValueSet and list the actual member codes.
 - **`fhir_lookup_code`**: look up a single code's display name and properties in a given CodeSystem.
 - **`fhir_validate_code`**: validate whether a `system`+`code` belongs to a given ValueSet.
-- **`fhir_normalize_code`**: match free text (for example「流行性感冒」/ influenza) against a ValueSet and return the most appropriate standard code.
+- **`fhir_normalize_code`**: match free text (for example「流行性感冒」/ influenza) against a ValueSet or code system and return ranked candidate codes. For CodeSystems of installed IGs (e.g. the NHI payment codes) it uses the [IG Concept Search](ig-concept-search.md) engine.
 
 ### 4. Authoring, assembly, and validation
 - **`fhir_get_resource_skeleton`**: generate a "skeleton" resource from a profile — an empty draft containing only required / mustSupport structure, for filling in step by step.

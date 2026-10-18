@@ -20,12 +20,15 @@
 
 | Job type | Module | Description |
 |----------|--------|-------------|
-| `icd_import` / `loinc_import` / `snomed_import` / `rxnorm_import` / `ig_import` | Matching module | Imports from source files uploaded through the admin console (source files live in MinIO and are fetched when the job runs). `ig_import` also downloads missing dependency packages from the FHIR package registry and records each package's `install_origin` (`manual` / `dependency`). |
+| `icd_import` / `loinc_import` / `snomed_import` / `rxnorm_import` / `ig_import` | Matching module | Imports from source files uploaded through the admin console (source files live in MinIO and are fetched when the job runs). `ig_import` also downloads missing dependency packages from the FHIR package registry and records each package's `install_origin` (`manual` / `dependency`); it finally indexes the imported packages for the IG concept search and queues `ig_embed`. |
 | `health_supplements_sync` / `food_nutrition_sync` | Matching module | Fetched from the TFDA Open Data API. |
 | `drug_index_import` | `drug` | Imports the `36_2.csv` license index into `drug.licenses` and queues enrichment. |
 | `drug_enrichment` | `drug` | Crawls the TFDA site for insert / label / appearance assets and uploads them to MinIO. |
 | `drug_analysis` | `drug` | Insert PDF → MinerU OCR → analysis LLM → `drug.insert_analysis`. |
 | `icd_embed` / `loinc_embed` / `snomed_embed` / `health_supplements_embed` / `food_nutrition_embed` | Matching module | Backfills the `*_embeddings` vector tables (needs a usable profile on the embedding role). |
+| `ig_concept_index` | `ig` | Builds / backfills the IG concept-search index (CodeSystem names, designations in every language, supplements, linked names, optional UMLS synonyms) and the thesaurus, then queues `ig_embed` when needed. See [IG Concept Search](../modules/ig-concept-search.md). |
+| `ig_embed` | `ig` | Embeds IG concept names (`fhir.concept_embeddings`, content-addressed, incremental). |
+| `umls_import` | `ig` | Optional (UMLS licence): loads UMLS synonyms (`fhir.umls_terms`) from the source `ig/umls_metathesaurus`, then queues `ig_concept_index`. |
 | `system_backup` | — | System backup (see [Admin Console](index.md#system-backups)). |
 
 All three drug stages run natively in TypeScript (`node-server/src/loaders/drugIndex.ts`, `drugEnrichment.ts`, `drugAnalysis.ts`).
@@ -35,6 +38,24 @@ All three drug stages run natively in TypeScript (`node-server/src/loaders/drugI
 - **Pause / cancel**: checkpoint-based — the worker checks `admin.job_control_requests` at safe points, so a pause never leaves half-written data.
 - **Heartbeat**: the worker writes `admin.worker_heartbeats` periodically; after `ADMIN_WORKER_STALE_AFTER_SECONDS` (default 45 s) without an update it is considered lost and its running jobs are reclaimed and re-queued. On startup the worker also reclaims `running` jobs left under its own name.
 - **Concurrency limit**: `ADMIN_MAX_CONCURRENT_JOBS` (default 4) bounds how many jobs run at once; per-module resource slots additionally prevent concurrent writes to the same module.
+
+## Checks before a job is created
+
+`POST /admin/api/jobs` checks a few preconditions before queueing (`node-server/src/admin/jobPrechecks.ts`), so problems are reported immediately with a zh-TW explanation instead of failing later in the worker:
+
+- **Duplicate whole-module jobs**: `icd_import`, `loinc_import`, `snomed_import`, `rxnorm_import`, `umls_import`, `ig_concept_index`,
+  the two TFDA syncs, every `*_embed` and `system_backup` are refused with 409 `JOB_ALREADY_ACTIVE` (plus `active_job_id`) while a job of the same
+  type is queued / running / paused. `ig_import` and the drug jobs are not limited (they can target different packages / licenses).
+- **Drug insert analysis prerequisites**: `drug_analysis` (except `retry_stage=normalize`) and `drug_pipeline` return 409 when OCR or the analysis LLM
+  is not configured (`OCR_NOT_CONFIGURED` / `ANALYSIS_LM_NOT_CONFIGURED`, pointing to External services → OCR or Model endpoints).
+- **No live worker**: the job is still queued (a worker picks it up once it is back), but the response carries `worker_warning` and the console says
+  the job will not run yet. Whenever no worker is heartbeating, every page also shows a "background worker offline" banner with the start command.
+
+A failing lookup lets the request through (fail-open); the worker then reports the real error.
+
+The worker's **service dependency check** before a job runs (e.g. the drug jobs need MinIO, OCR and the analysis LLM) re-probes any service whose
+last stored probe in `admin.service_probes` is `error`, and fails the job (`permanent_failed`) only if it still fails — once a service is fixed there
+is no need to run a manual probe on Service health first.
 
 ## Self-healing when the analysis LLM is unavailable
 

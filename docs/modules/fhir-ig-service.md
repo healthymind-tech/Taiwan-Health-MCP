@@ -38,7 +38,7 @@ FHIR IG 服務模組是一套通用、以 IG 為範圍（IG-scoped）的工具�
 - **`fhir_expand_valueset`**：展開 ValueSet，列出實際成員碼。
 - **`fhir_lookup_code`**：在指定 CodeSystem 中查詢單一碼的顯示名稱與屬性。
 - **`fhir_validate_code`**：驗證某 `system`+`code` 是否屬於指定 ValueSet。
-- **`fhir_normalize_code`**：以自由文字（例如「流行性感冒」）對照 ValueSet，回傳最合適的標準碼。
+- **`fhir_normalize_code`**：以自由文字（例如「流行性感冒」）對照 ValueSet 或 code system，回傳排序後的候選碼；已安裝 IG 的 CodeSystem（例如健保支付碼）走 [IG 術語搜尋](ig-concept-search.md) 引擎。
 
 ### 4. 授權、組裝與驗證
 - **`fhir_get_resource_skeleton`**：依剖面產生「骨架」資源—僅含必填 / mustSupport 結構的空白草稿，供逐步填值。

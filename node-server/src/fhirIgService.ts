@@ -37,6 +37,8 @@ import {
   type RequiredElementsResult,
 } from "./fhirRequiredElements.js";
 import { toolVersion } from "./toolVersions.js";
+import { IgConceptSearch, type CsLocation } from "./conceptSearch/service.js";
+import { KEYWORD_ONLY_MODE, KEYWORD_ONLY_NOTE } from "./searchQuality.js";
 
 /** fhir_get_profile_required_elements compact view: profile invariants listed in full before the rest are named only. */
 const COMPACT_INVARIANTS = 8;
@@ -77,11 +79,31 @@ function codingsOf(node: any, typeCode: string | null | undefined): Array<[strin
   return [];
 }
 
+/** Next step for each FHIR IG tool error code (added as error.hint; the code and message are unchanged). */
+export const IG_ERROR_HINTS: Readonly<Record<string, string>> = {
+  IG_NOT_FOUND:
+    "That IG package/version is not installed. Pick one from error.installed_igs (or call fhir_list_igs) and pass it as " +
+    "package_id (+ version), or omit package_id to use the default IG.",
+  NO_DEFAULT_IG:
+    "Pass package_id (one of error.installed_igs) on every FHIR IG call, or ask an administrator to set a default IG " +
+    "in the admin console (IG 套件庫).",
+  ARTIFACT_NOT_FOUND:
+    "Find the profile's canonical URL or id with fhir_list_resource_profiles (by base_type, e.g. Condition) or " +
+    "fhir_search_artifacts (keyword), then call again with that value; if it belongs to another installed IG, pass its package_id.",
+  VALUESET_NOT_FOUND:
+    "Find the ValueSet canonical with fhir_search_artifacts (keyword, resource_type=ValueSet) or read the element binding " +
+    "with fhir_get_profile_elements(view=binding); if it belongs to another installed IG, pass its package_id.",
+  INVALID_ARGUMENT: "Check the arguments against this tool's description and input schema, then call again.",
+};
+
 export class FHIRIGService {
   private embeddingSvc: EmbeddingService | null;
+  /** Free-text search over IG CodeSystems (fhir_normalize_code, search_medical_codes system=…). */
+  readonly conceptSearch: IgConceptSearch;
 
   constructor(embeddingSvc: EmbeddingService | null = null) {
     this.embeddingSvc = embeddingSvc;
+    this.conceptSearch = new IgConceptSearch(embeddingSvc);
   }
 
   async initialize(): Promise<void> {
@@ -142,8 +164,20 @@ export class FHIRIGService {
     }
   }
 
-  private err(code: string, message: string): string {
-    return JSON.stringify({ ok: false, data: null, warnings: [], error: { code, message } });
+  private err(code: string, message: string, extra: Record<string, unknown> = {}): string {
+    const hint = IG_ERROR_HINTS[code];
+    return JSON.stringify({ ok: false, data: null, warnings: [], error: { code, message, ...(hint ? { hint } : {}), ...extra } });
+  }
+
+  /** IG_NOT_FOUND / NO_DEFAULT_IG envelope, listing the installed packages so the caller can pick a package_id. */
+  private async igErr(e: fhirIg.IGNotFoundError): Promise<string> {
+    let installed: string[] = [];
+    try {
+      installed = (await fhirIg.listPackages()).map((p) => `${p.package_id}#${p.version}${p.is_default ? " (default)" : ""}`);
+    } catch {
+      installed = [];
+    }
+    return this.err(e.code, e.message, { installed_igs: installed.slice(0, 50), installed_ig_count: installed.length });
   }
 
   /**
@@ -240,7 +274,7 @@ export class FHIRIGService {
     try {
       pkg = await this.resolve(packageId, version);
     } catch (e) {
-      if (this.isIGNotFound(e)) return this.err(e.code, e.message);
+      if (this.isIGNotFound(e)) return await this.igErr(e);
       throw e;
     }
     const rows = (
@@ -378,7 +412,7 @@ export class FHIRIGService {
     try {
       pkg = await this.resolve(packageId, version);
     } catch (e) {
-      if (this.isIGNotFound(e)) return this.err(e.code, e.message);
+      if (this.isIGNotFound(e)) return await this.igErr(e);
       throw e;
     }
     const q = new SqlParams();
@@ -416,7 +450,7 @@ export class FHIRIGService {
       try {
         pkg = await this.resolve(packageId, version);
       } catch (e) {
-        if (this.isIGNotFound(e)) return this.err(e.code, e.message);
+        if (this.isIGNotFound(e)) return await this.igErr(e);
         throw e;
       }
     }
@@ -468,7 +502,7 @@ export class FHIRIGService {
     try {
       pkg = await this.resolve(packageId, version);
     } catch (e) {
-      if (this.isIGNotFound(e)) return this.err(e.code, e.message);
+      if (this.isIGNotFound(e)) return await this.igErr(e);
       throw e;
     }
     limit = Math.min(Math.max(1, limit), 20);
@@ -532,7 +566,7 @@ export class FHIRIGService {
     try {
       pkg = await this.resolve(packageId, version, { canonicals: [identifier] });
     } catch (e) {
-      if (this.isIGNotFound(e)) return this.err(e.code, e.message);
+      if (this.isIGNotFound(e)) return await this.igErr(e);
       throw e;
     }
     const row = await this.loadArtifact(pkg, identifier);
@@ -575,7 +609,7 @@ export class FHIRIGService {
     try {
       pkg = await this.resolve(packageId, version, { canonicals: [profile] });
     } catch (e) {
-      if (this.isIGNotFound(e)) return this.err(e.code, e.message);
+      if (this.isIGNotFound(e)) return await this.igErr(e);
       throw e;
     }
     const row = await this.loadArtifact(pkg, profile);
@@ -628,7 +662,7 @@ export class FHIRIGService {
     try {
       pkg = await this.resolve(packageId, version, { canonicals: [String(profile).trim()] });
     } catch (e) {
-      if (this.isIGNotFound(e)) return this.err(e.code, e.message);
+      if (this.isIGNotFound(e)) return await this.igErr(e);
       throw e;
     }
     const ident = String(profile).trim();
@@ -929,7 +963,7 @@ export class FHIRIGService {
     try {
       pkg = await this.resolve(packageId, version, { canonicals: [identifier] });
     } catch (e) {
-      if (this.isIGNotFound(e)) return this.err(e.code, e.message);
+      if (this.isIGNotFound(e)) return await this.igErr(e);
       throw e;
     }
     const vs = await this.loadValueset(pkg, identifier);
@@ -956,7 +990,7 @@ export class FHIRIGService {
     try {
       pkg = await this.resolve(packageId, version, { canonicals: [identifier] });
     } catch (e) {
-      if (this.isIGNotFound(e)) return this.err(e.code, e.message);
+      if (this.isIGNotFound(e)) return await this.igErr(e);
       throw e;
     }
     const vs = await this.loadValueset(pkg, identifier);
@@ -984,7 +1018,7 @@ export class FHIRIGService {
     try {
       pkg = await this.resolve(packageId, version, { canonicals: [system] });
     } catch (e) {
-      if (this.isIGNotFound(e)) return this.err(e.code, e.message);
+      if (this.isIGNotFound(e)) return await this.igErr(e);
       throw e;
     }
     const found = await terminology.lookup(system, code, pkg);
@@ -1001,14 +1035,39 @@ export class FHIRIGService {
         );
       }
     }
-    const data = {
+    const data: Record<string, unknown> = {
       system,
       code,
       found: found !== null,
       display: found ? found.display : null,
       definition: found ? found.definition : null,
     };
+    if (found === null) {
+      const loc = terminology.routeSystem(system) === "ig" || !system.includes("/") ? await this.locateIgCodeSystem(system, pkg) : null;
+      if (loc) {
+        const near = await this.conceptSearch.nearCodes(loc, code, 5).catch(() => []);
+        if (near.length) data.near_codes = near;
+      }
+      data.hint =
+        "To find the code for a name or free text (Chinese or English), call fhir_normalize_code with " +
+        `text=<the name> and system=${loc ? loc.url : system}` +
+        (loc ? "" : " (an IG CodeSystem canonical or id)") +
+        (data.near_codes ? "; near_codes lists existing codes that look like this one." : ".");
+    }
     return this.ok(data, pkg, warnings);
+  }
+
+  /** The IG CodeSystem a canonical / id / alias names (closure first, then any installed IG). */
+  async locateIgCodeSystem(system: string, pkg: PackageRow): Promise<CsLocation | null> {
+    try {
+      const loc = await this.conceptSearch.locate(system, pkg);
+      if (loc) return loc;
+      if (/^[a-z][a-z0-9+.-]*:/i.test(system)) return null; // a URI that is not an IG CodeSystem
+      return (await this.conceptSearch.resolveAlias(system, pkg)).location;
+    } catch (e) {
+      logError("IG CodeSystem resolution failed", { error: String((e as Error).message) });
+      return null;
+    }
   }
 
   async validateCode(
@@ -1022,7 +1081,7 @@ export class FHIRIGService {
     try {
       pkg = await this.resolve(packageId, version, { canonicals: [valueSet] });
     } catch (e) {
-      if (this.isIGNotFound(e)) return this.err(e.code, e.message);
+      if (this.isIGNotFound(e)) return await this.igErr(e);
       throw e;
     }
     const vs = await this.loadValueset(pkg, valueSet);
@@ -1064,7 +1123,7 @@ export class FHIRIGService {
     try {
       pkg = await this.resolve(packageId, version, { canonicals: [valueSet, system] });
     } catch (e) {
-      if (this.isIGNotFound(e)) return this.err(e.code, e.message);
+      if (this.isIGNotFound(e)) return await this.igErr(e);
       throw e;
     }
     limit = Math.min(Math.max(1, limit), 50);
@@ -1089,7 +1148,41 @@ export class FHIRIGService {
     for (const [sys_, code, display] of await this.normalizeConceptmap(pkg, text, targets)) {
       add(sys_, code, display, "conceptmap", 1.0);
     }
+    // IG CodeSystems: the concept-search engine (designations in any language, supplements,
+    // linked names, abbreviations, hybrid lexical + semantic). Its order is kept as ranked.
+    const engine: any[] = [];
+    const clauses: Array<Record<string, unknown>> = [];
+    let keywordOnly = false;
+    const engineSystems = new Set<string>();
     for (const tgt of targets) {
+      if (tgt.kind !== "ig") continue;
+      const loc = await this.locateIgCodeSystem(tgt.system, pkg);
+      if (!loc) continue;
+      engineSystems.add(tgt.system);
+      const res = await this.conceptSearch.search(loc, text, limit);
+      if (res.keywordOnly) keywordOnly = true;
+      if (res.clauses) clauses.push(...res.clauses.map((c) => ({ ...c, system: tgt.system })));
+      for (const w of res.warnings) warnings.push(w);
+      for (const c of res.candidates) {
+        const key = `${tgt.system} ${c.code}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        engine.push({
+          system: tgt.system,
+          code: c.code,
+          display: c.display,
+          source: c.match === "exact" ? "lexical" : c.match,
+          score: c.score,
+          matched_term: c.matched_term,
+          matched_language: c.matched_language,
+          ...(c.match === "exact" ? { exact: true } : {}),
+          ...(c.category ? { category: c.category } : {}),
+          ...(c.siblings ? { group: c.group, siblings: c.siblings } : {}),
+        });
+      }
+    }
+    for (const tgt of targets) {
+      if (engineSystems.has(tgt.system)) continue;
       for (const [sys_, code, display] of await this.normalizeLexical(pkg, tgt, text, scopeIds[tgt.system], limit)) {
         add(sys_, code, display, "lexical", 0.6);
       }
@@ -1100,14 +1193,68 @@ export class FHIRIGService {
 
     const order: Record<string, number> = { conceptmap: 0, lexical: 1, semantic: 2 };
     candidates.sort((a, b) => ((order[a.source] ?? 9) - (order[b.source] ?? 9)) || (b.score - a.score));
+    const conceptmapHits = candidates.filter((c) => c.source === "conceptmap");
+    const rest = candidates.filter((c) => c.source !== "conceptmap");
+    const merged = [...conceptmapHits, ...engine, ...rest];
     if (this.embeddingSvc === null) warnings.push("semantic search unavailable (no embedding service)");
-    const data = {
+    const data: Record<string, unknown> = {
       text,
       targets: targets.map((t) => t.system),
-      candidates: candidates.slice(0, limit),
+      candidates: merged.slice(0, limit),
       note: "candidates are suggestions — confirm with fhir_validate_code",
     };
+    if (clauses.length) data.clauses = clauses;
+    if (engineSystems.size && keywordOnly) {
+      data.search_mode = KEYWORD_ONLY_MODE;
+      data.search_note = KEYWORD_ONLY_NOTE;
+    }
     return this.ok(data, pkg, warnings);
+  }
+
+  /**
+   * search_medical_codes(system=<IG CodeSystem canonical | id | alias>): free text → codes of
+   * one IG CodeSystem, resolved across every installed IG (default IG's closure first).
+   */
+  async searchIgCodeSystem(keyword: string, system: string, limit: number): Promise<Record<string, unknown>> {
+    let pkg: PackageRow | null = null;
+    try {
+      pkg = await this.resolve(null, null, { canonicals: [system.includes("/") ? system : null] });
+    } catch {
+      pkg = null;
+    }
+    let loc: CsLocation | null = pkg ? await this.locateIgCodeSystem(system, pkg) : null;
+    let alternatives: string[] = [];
+    if (!loc) {
+      const alias = await this.conceptSearch.resolveAlias(system, pkg);
+      loc = alias.location;
+      alternatives = alias.alternatives;
+    }
+    if (!loc) {
+      return {
+        keyword,
+        system,
+        error: "UNKNOWN_SYSTEM",
+        message:
+          "system is not icd10cm / icd10pcs nor a CodeSystem of an installed IG (give its canonical URL, id, or words of its " +
+          "name such as nhi_payment)",
+        results: [],
+      };
+    }
+    const res = await this.conceptSearch.search(loc, keyword, Math.min(Math.max(1, limit), 50));
+    const out: Record<string, unknown> = {
+      keyword,
+      system: loc.url,
+      codesystem: { id: res.codesystem.id, title: res.codesystem.title, version: res.codesystem.version, package: `${loc.packageId}@${loc.packageVersion}` },
+      results: res.candidates,
+    };
+    if (res.clauses) out.clauses = res.clauses;
+    if (alternatives.length) out.other_matching_systems = alternatives;
+    if (res.warnings.length) out.warnings = res.warnings;
+    if (res.keywordOnly) {
+      out.search_mode = KEYWORD_ONLY_MODE;
+      out.search_note = KEYWORD_ONLY_NOTE;
+    }
+    return out;
   }
 
   private async normalizeTargets(
@@ -1124,7 +1271,17 @@ export class FHIRIGService {
       seen.add(sys_);
       targets.push({ system: sys_, kind: terminology.routeSystem(sys_) });
     };
-    if (system) addTarget(system);
+    if (system) {
+      let sys_ = system;
+      if (terminology.routeSystem(system) === "external" && !/^[a-z][a-z0-9+.-]*:/i.test(system)) {
+        const loc = await this.locateIgCodeSystem(system, pkg);
+        if (loc) {
+          sys_ = loc.url;
+          if (loc.url !== system) warnings.push(`system '${system}' resolved to the IG CodeSystem ${loc.url}`);
+        }
+      }
+      addTarget(sys_);
+    }
     if (valueSet) {
       const vs = await this.loadValueset(pkg, valueSet);
       if (vs === null) {
@@ -1387,7 +1544,7 @@ export class FHIRIGService {
     try {
       pkg = await this.resolve(packageId, version, { canonicals: [profile], metaProfiles: metaProfilesOf(resource) });
     } catch (e) {
-      if (this.isIGNotFound(e)) return this.err(e.code, e.message);
+      if (this.isIGNotFound(e)) return await this.igErr(e);
       throw e;
     }
     const data = await this.validateCore(pkg, resource, profile);
@@ -1406,7 +1563,7 @@ export class FHIRIGService {
     try {
       pkg = await this.resolve(packageId, version, { metaProfiles: metaProfilesOf(bundle) });
     } catch (e) {
-      if (this.isIGNotFound(e)) return this.err(e.code, e.message);
+      if (this.isIGNotFound(e)) return await this.igErr(e);
       throw e;
     }
     const core = await this.validateCore(pkg, bundle, null);
@@ -1519,7 +1676,7 @@ export class FHIRIGService {
     try {
       pkg = await this.resolve(packageId, version, { canonicals: [profile] });
     } catch (e) {
-      if (this.isIGNotFound(e)) return this.err(e.code, e.message);
+      if (this.isIGNotFound(e)) return await this.igErr(e);
       throw e;
     }
     const row = await this.loadArtifact(pkg, profile);
@@ -1659,7 +1816,7 @@ export class FHIRIGService {
     try {
       pkg = await this.resolve(packageId, version, { canonicals: [profile] });
     } catch (e) {
-      if (this.isIGNotFound(e)) return this.err(e.code, e.message);
+      if (this.isIGNotFound(e)) return await this.igErr(e);
       throw e;
     }
     const row = await this.loadArtifact(pkg, profile);

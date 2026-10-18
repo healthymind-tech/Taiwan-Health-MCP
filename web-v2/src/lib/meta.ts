@@ -48,8 +48,14 @@ export const JOB_STATUS_FILTERS: { value: string; label: string }[] = [
 
 export function matchesStatusFilter(status: JobStatus | string, filter: string): boolean {
   switch (filter) {
-    case "active":
+    case "active": // legacy URL value: everything not finished yet
       return ACTIVE_STATUSES.has(status);
+    case "running":
+      return status === "running";
+    case "queued":
+      return status === "queued";
+    case "paused":
+      return status === "paused";
     case "success":
       return status === "success" || status === "partial_success";
     case "failed":
@@ -70,6 +76,7 @@ export const JOB_TYPE_LABELS: Record<string, string> = {
   snomed_import: "SNOMED CT 匯入",
   rxnorm_import: "RxNorm 匯入",
   ig_import: "FHIR IG 匯入",
+  ig_concept_index: "IG 術語搜尋索引",
   health_supplements_sync: "健康食品同步",
   food_nutrition_sync: "食品營養同步",
   drug_index_import: "藥品許可證索引匯入",
@@ -81,6 +88,7 @@ export const JOB_TYPE_LABELS: Record<string, string> = {
   snomed_embed: "SNOMED CT 向量嵌入",
   health_supplements_embed: "健康食品向量嵌入",
   food_nutrition_embed: "食品營養向量嵌入",
+  ig_embed: "IG 術語向量嵌入",
 };
 
 export function jobTypeLabel(jobType: string | null | undefined): string {

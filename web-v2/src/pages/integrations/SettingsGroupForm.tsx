@@ -127,18 +127,26 @@ export function SettingsGroupForm({ group, segmented, cols = 2, footer }: Settin
 
   const save = useMutation({
     mutationFn: () =>
-      api.post<{ ok: boolean }>(`/admin/api/settings/${group.group}`, { values: payloadFor(group, draft, dirtyKeys) }),
-    onSuccess: async () => {
+      api.post<{ ok: boolean; connection?: ActionResult }>(`/admin/api/settings/${group.group}`, { values: payloadFor(group, draft, dirtyKeys) }),
+    onSuccess: async (r) => {
       setFormError(null);
       notify.success(`已儲存「${groupLabel(group)}」，服務會立即套用新設定`);
+      // The backend tries the saved endpoint once; a failure does not undo the save.
+      if (r.connection && !r.connection.ok) {
+        setTestResult({ ...r.connection, withUnsaved: false });
+        notify.warn(
+          `${r.connection.message_zh ?? r.connection.message ?? "連線測試失敗"}${r.connection.hint_zh ? ` ${r.connection.hint_zh}` : ""}`,
+          "已儲存，但目前連不上這個服務",
+        );
+      }
       await qc.invalidateQueries({ queryKey: qk.settings });
       void qc.invalidateQueries({ queryKey: qk.services });
       void qc.invalidateQueries({ queryKey: qk.overview });
     },
     onError: (err) => {
-      const msg = err instanceof ApiError ? (err.detail ?? err.message) : errorMessage(err);
-      const key = fieldFromError(group.group, msg);
-      if (key) setServerErrors({ [key]: msg.replace(`${group.group}.${key}: `, "") });
+      const raw = err instanceof ApiError ? (err.detail ?? err.rawMessage) : errorMessage(err);
+      const key = fieldFromError(group.group, raw);
+      if (key) setServerErrors({ [key]: err instanceof ApiError && err.explained ? errorMessage(err) : raw.replace(`${group.group}.${key}: `, "") });
       setFormError(errorMessage(err));
       notify.error(err, "儲存失敗");
     },
@@ -367,8 +375,18 @@ export function SettingsGroupForm({ group, segmented, cols = 2, footer }: Settin
         >
           <Stack gap={6}>
             <Text fz="sm" style={{ wordBreak: "break-word" }}>
-              {testResult.message ?? (testResult.ok ? "成功" : "失敗")}
+              {testResult.message_zh ?? testResult.message ?? (testResult.ok ? "成功" : "失敗")}
             </Text>
+            {testResult.hint_zh && (
+              <Text fz="sm" c="dimmed">
+                {testResult.hint_zh}
+              </Text>
+            )}
+            {!testResult.ok && testResult.message_zh && testResult.message && (
+              <Text fz="xs" c="dimmed" ff="monospace" style={{ wordBreak: "break-word" }}>
+                技術細節：{testResult.message.length > 300 ? `${testResult.message.slice(0, 300)}…` : testResult.message}
+              </Text>
+            )}
             {testResult.details && Object.keys(testResult.details).length > 0 && (
               <Group gap={6} wrap="wrap">
                 {Object.entries(testResult.details)

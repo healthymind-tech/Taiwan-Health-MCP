@@ -23,6 +23,7 @@ import { monitor as dbHealthMonitor } from "./dbHealth.js";
 import { initClient, closeClient } from "./cache.js";
 import { startDbStatsCollector, startMetricsServer } from "./metrics.js";
 import { buildMcpServer, buildOpenApiSpec, invokeRegisteredTool, toolRegistryReady } from "./mcp.js";
+import { toolErrorFields } from "./toolErrors.js";
 import { seedIfEmpty } from "./admin/adminSettings.js";
 import { seedAdminCredential } from "./admin/adminCredentials.js";
 import { ensureDrugExplorerIndexes } from "./admin/adminDrugExplorer.js";
@@ -301,10 +302,13 @@ function buildApp(): express.Express {
         }
         res.json(bodyObj);
       } catch (exc) {
+        // `error` / `tool` / `detail` are unchanged; code / message / hint (+ argument details) tell an LLM client
+        // what went wrong and what to do next.
         res.status(400).json({
           error: "tool_call_failed",
           tool: req.params.name,
           detail: String((exc as Error).message),
+          ...toolErrorFields(req.params.name, exc),
         });
       }
     })();

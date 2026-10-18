@@ -51,7 +51,7 @@ The sidebar (`web-v2/src/layout/nav.ts`) has five sections:
 
 The corresponding backend modules are in `node-server/src/admin/*.ts` (`adminApp.ts` is the routing entry point).
 
-Besides passwords, sign-in also supports **passkeys / WebAuthn** (`node-server/src/admin/webauthn.ts`), managed on the Account security page; passkeys only work over HTTPS on the RP domain (or on localhost for development). See [Configuration](../deployment/configuration.md).
+Besides passwords, sign-in also supports **passkeys / WebAuthn** (`node-server/src/admin/webauthn.ts`), managed on the Account security page (a new password set there must be at least 12 characters, also enforced server-side); passkeys only work over HTTPS on the RP domain (or on localhost for development). See [Configuration](../deployment/configuration.md).
 
 ## MCP tools page (`/admin/mcp`)
 
@@ -76,8 +76,25 @@ The old `admin.llm_profiles` table was renamed `admin.llm_profiles_legacy` and i
 
 - **Provider adapters**: `node-server/src/providers/registry.ts` registers 24 adapters — OpenAI, Azure OpenAI, Anthropic, Gemini, Bedrock, Mistral, Cohere, Voyage, Jina, DeepSeek, xAI, Groq, OpenRouter, Together, Fireworks, SiliconFlow, DashScope, Moonshot, Zhipu, Volcengine, MiniMax, OpenAI-compatible servers (vLLM, LM Studio, LiteLLM…), Ollama, and ChatGPT. Legacy values `vllm` / `google` / `azure` / `claude` resolve to the new ids (migration `20261015_llm_provider_registry.sql` also rewrites stored rows).
 - **ChatGPT sign-in**: the `chatgpt` provider uses OpenAI's "Sign in with ChatGPT" PKCE flow (`admin/chatgptOAuth.ts`). The redirect can only be a local loopback, so the operator pastes the browser's final URL back into the console to finish the exchange; tokens are stored in `admin.llm_providers.oauth` and never leave the server.
-- **Embedding identity (fingerprint)**: `admin/embeddingIdentity.ts` stores the vectors of a fixed set of probe texts as the system's embedding identity (`admin.embedding_identity` / `admin.embedding_fingerprints`, defined in `db/schema.sql` and `db/migrations/20261021_embedding_identity.sql`; the code also creates them at runtime with `CREATE TABLE IF NOT EXISTS` as a safety net). A new endpoint may join an embedding profile only if every probe reaches cosine ≥ 0.95 — i.e. it is the same model. Switching models while vectors exist goes through a guarded flow: turn the embedding role off → stop embed jobs → wipe vectors → adopt the new identity → re-queue every module's embed job.
+- **Embedding identity (fingerprint)**: `admin/embeddingIdentity.ts` stores the vectors of a fixed set of probe texts as the system's embedding identity (`admin.embedding_identity` / `admin.embedding_fingerprints`, defined in `db/schema.sql` and `db/migrations/20261021_embedding_identity.sql`; the code also creates them at runtime with `CREATE TABLE IF NOT EXISTS` as a safety net). A new endpoint may join an embedding profile only if every probe reaches cosine ≥ 0.95 — i.e. it is the same model. Switching models while vectors exist goes through a guarded flow: turn the embedding role off → stop embed jobs → wipe vectors (re-typing every `*_embeddings` vector column in the same transaction when the size changes, e.g. 1024 → 2560) → adopt the new identity → re-queue every module's embed job.
+- **No identity row yet, but vectors exist** (data loaded by older versions): on the first embedding profile save, role binding, or the Overview button "確認現有向量的模型並建立指紋" (confirm the model of the stored vectors), the system takes a few stored vectors with their source text (verified against `source_hash`) and asks the role's endpoints, then every other embedding profile's endpoints, then the endpoints being added, to re-embed them; the first one that reproduces them is adopted. An unreachable or 404 endpoint is skipped, never adopted. If none matches, the API answers `embedding_identity_unresolved` (listing why each endpoint failed) instead of a raw HTTP error.
+- **Every error carries a code**: model-endpoint failures (profile save, role binding, account / model test, fingerprint check, switch, settings import) answer with `code` + `params`; the console translates them into Chinese with the next step and keeps the raw server text in a collapsible "技術細節" (technical details). The main codes are listed under "Changing the embedding model" below.
 - Role-level knobs (embedding timeout / batch size / concurrency, analysis max retries) live in the `embedding` / `analysis` groups of `admin.app_settings`.
+
+### Changing the embedding model (switch flow)
+
+**Editing a profile cannot change the embedding model.** Saving a member with another model (or another vector size) is refused (HTTP 409, `embedding_model_change_requires_switch`) and the console shows a guidance dialog instead: the current model and size, the requested model, how many vectors would be rebuilt and an estimated time, and a "改用切換模型流程" (use the switch flow) button that opens the switch dialog pre-filled with the same account, model and parameters. Binding a profile of a different model to the embedding role behaves the same way.
+
+Switch steps (Model endpoints → Overview → Embedding → "切換模型…"):
+
+1. Pick the account, model and vector size, then run the **pre-check** (`POST /admin/api/llm/embedding/precheck`, no side effects). It calls the new model and reports, before anything is deleted:
+    - `embedding_model_not_found`: the server does not serve that model; the models it does serve are listed and can be picked with one click.
+    - `embedding_dims_unsupported`: the vectors are not the configured size. Without `dimensions` sent, the model's native size differs (Qwen3-Embedding-4B is 2560); with it sent, the server rejected or ignored it. Two fixes: use the native size, or (Matryoshka models) enable "send dimensions" — vLLM must then be started with `--hf-overrides '{"is_matryoshka": true}'`, otherwise it answers HTTP 400.
+    - `embedding_switch_same_model`: the endpoint already produces the system's vectors — no switch needed, add it to the profile as a fallback.
+    - On success it shows the returned size and whether the vector columns will be re-typed (e.g. 1024 → 2560).
+2. With vectors present, type `REINDEX` and run it. The system shuts the embedding role, stops embed jobs, wipes the vectors and re-types the columns, adopts the new identity, creates and binds a new profile, and queues a rebuild for every module that had vectors. Semantic search falls back to keyword matching meanwhile; ~600k vectors take roughly 1–2 h on a shared GPU.
+
+The Overview's embedding card probes every member of the role (cached 60 s): a failing member shows "Embedding route degraded: member X failing (reason) — failing over to Y" with a fix hint; the Service health page's embedding row uses the same probe.
 
 ## Settings and precedence
 
@@ -99,6 +116,15 @@ Backups contain API keys, login credentials, and medical data, and should be man
 ## Source files
 
 Upload each module's source files in the sources section of its module page (ICD-10-CM CMS order-file zip, ICD-10-PCS, LOINC zip, SNOMED RF2, RxNorm zip, FHIR IG `package.tgz`, and so on), optionally specifying a source role (such as an IG dependency package or the optional WHO ICD-10 source). The system blocks duplicate uploads by file fingerprint (SHA-256); files are stored in MinIO and fetched back when a job runs.
+
+Content is checked at upload time, so a wrong file is refused right away (with a zh-TW reason): file type (magic bytes); release archives must
+contain the member the loader needs (LOINC `LoincTable/Loinc.csv`, SNOMED `sct2_Concept_*`, RxNorm `RXNCONSO.RRF`, the ICD-10-CM / PCS order file,
+UMLS `MRCONSO.RRF`; archives whose directory cannot be listed, such as zip64, skip this check); CSVs must have their required columns (drug index;
+LOINC Taiwan mapping `loinc_code,name_zh`; reference ranges `loinc_code,age_min,age_max,gender,range_low,range_high`). An IG upload import reads
+`package/package.json` first and answers 422 — without creating a job — when the file is not a FHIR package.
+
+When an import job binds its sources, a single-file source role uses its **active** version; only when the role has no active version does it fall
+back to the most recent upload.
 
 > Uploads must send `Content-Type: application/octet-stream` (the SPA does), or express's JSON parser intercepts them and returns 413.
 
@@ -126,6 +152,30 @@ Register external FHIR R4 servers on the FHIR servers page, configuring the perm
 The MCP side consumes them through `list_fhir_servers` / `get_fhir_server_status` / `crud_fhir_server`, with the server handling tokens on the caller's behalf — the caller never touches any secret.
 
 > `crud_fhir_server` is the only tool in the system that can produce a write: write operations require the server's allow-list to permit them and the caller to pass `confirm_write=true`.
+
+## Error messages and next steps { #errors }
+
+Every admin API error response (HTTP ≥ 400) keeps its original `error` (English) and `detail` (raw technical text) and also carries:
+
+| Field | Content |
+|-------|---------|
+| `code` | Stable machine code, e.g. `SOURCE_MISSING`, `DB_SCHEMA_OUTDATED`, `UPSTREAM_UNREACHABLE`, `JOB_ALREADY_ACTIVE` |
+| `message_zh` | What happened (Traditional Chinese) |
+| `hint_zh` | What to do next (which page, which setting, which command) |
+
+`node-server/src/admin/adminErrorCodes.ts` produces them in one place: known English messages first (missing source files,
+out-of-range settings, OAuth failures…), then the technical cause found in `detail` (PostgreSQL errors such as a missing
+table / column → apply the migration, duplicate key, foreign key; connection refused, DNS, timeout, TLS, upstream HTTP status;
+MinIO). When nothing matches, the message still names the failed operation and gives a generic next step. Responses that
+already carry a `code` (model-endpoint API, IG removal, `MODULE_MAINTENANCE`) are left alone. Toasts show the explanation,
+then the next step; the raw text appears only as small "技術細節" (technical details).
+
+The same explanations apply to:
+
+- **External services "Test connection"** (OCR / MinIO / TFDA): results gain `message_zh` / `hint_zh`.
+- **Service health** probe rows and the **dashboard** infrastructure status: `message_zh` / `detail_zh` + `hint_zh`.
+- **Failed background jobs**: `last_error_zh` / `last_error_hint_zh` (job detail, and "why the last import failed" on module pages).
+- **Gateway errors**: when the app does not answer (nginx returns a 502 / 504 HTML page) the console says the backend is not responding and how to check it.
 
 ## DB health gate
 

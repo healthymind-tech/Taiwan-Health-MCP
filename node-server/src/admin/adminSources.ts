@@ -81,6 +81,8 @@ export const SOURCE_CATALOG: readonly SourceCatalogEntry[] = [
     description: "Optional Taiwan mapping file for local names.",
     accepted_extensions: [".csv"],
     multi_source: false,
+    // Header keys read by loaders/loinc.ts applyTaiwanSeed.
+    expected_columns: { required: ["loinc_code", "name_zh"], suggested: ["common_name_zh", "specimen_type", "unit"] },
   },
   {
     module_key: "loinc",
@@ -89,6 +91,10 @@ export const SOURCE_CATALOG: readonly SourceCatalogEntry[] = [
     description: "Optional age/gender reference ranges.",
     accepted_extensions: [".csv"],
     multi_source: false,
+    expected_columns: {
+      required: ["loinc_code", "age_min", "age_max", "gender", "range_low", "range_high"],
+      suggested: ["unit", "interpretation"],
+    },
   },
   {
     module_key: "snomed",
@@ -115,6 +121,17 @@ export const SOURCE_CATALOG: readonly SourceCatalogEntry[] = [
       "FHIR NPM package (package.tgz) for any Implementation Guide — its resources, profiles, terminology, and examples. Declared dependency IGs are auto-fetched from the FHIR registry; upload one here only when the registry cannot supply it.",
     accepted_extensions: [".tgz", ".tar.gz"],
     multi_source: true,
+  },
+  {
+    module_key: "ig",
+    source_role: "umls_metathesaurus",
+    label: "UMLS Metathesaurus (optional)",
+    description:
+      "Optional, needs a UMLS licence: the UMLS Metathesaurus release zip (or the compact subset written by " +
+      "`node dist/loaders/umls.js --subset`). English synonyms and abbreviations of SRL-0 vocabularies plus " +
+      "SNOMEDCT_US steer the IG concept search (fhir_normalize_code); UMLS strings are never shown in tool output.",
+    accepted_extensions: [".zip", ".gz"],
+    multi_source: false,
   },
   {
     module_key: "drug",
@@ -227,6 +244,7 @@ export const ROLE_JOB_TYPE = new Map<string, string>([
   ["loinc|loinc", "loinc_import"],
   ["drug|drug_index_csv", "drug_pipeline"],
   ["ig|ig", "ig_import"],
+  ["ig|umls_metathesaurus", "umls_import"],
   ["snomed|snomed_ct", "snomed_import"],
   ["rxnorm|rxnorm_full", "rxnorm_import"],
 ]);
@@ -540,6 +558,7 @@ const ALLOWED_LABELS = new Map<string, string[]>([
   ["snomed/snomed_ct", ZIP_LABELS],
   ["rxnorm/rxnorm_full", ZIP_LABELS],
   ["ig/ig", GZIP_LABELS],
+  ["ig/umls_metathesaurus", [...ZIP_LABELS, ...GZIP_LABELS]],
   ["drug/drug_index_csv", CSV_LABELS],
 ]);
 
@@ -661,6 +680,82 @@ export function validateDrugIndexCsv(data: Buffer): void {
   }
   if (!hasData) {
     throw new SourceValueError("CSV has no data rows with a 許可證字號 value.");
+  }
+}
+
+/** Header check for a CSV source with `expected_columns` (required ones must all be present). */
+export function validateCsvColumns(data: Buffer, entry: SourceCatalogEntry): void {
+  const required = entry.expected_columns?.required ?? [];
+  if (required.length === 0) return;
+  let text = data.subarray(0, Math.min(data.length, 65536)).toString("utf-8");
+  if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
+  const firstLine = text.split(/\r?\n/, 1)[0] ?? "";
+  const header = (parseCsv(firstLine)[0] ?? []).map((h) => h.trim());
+  const missing = required.filter((c) => !header.includes(c));
+  if (missing.length > 0) {
+    throw new SourceValueError(
+      `CSV for ${entry.source_role} is missing required column(s): ${missing.join(", ")}. Expected header: ${required.join(", ")}.`,
+    );
+  }
+}
+
+/**
+ * Member names a release archive must contain, per source role (what the
+ * loader looks for). Checked at upload so a wrong zip is refused right away
+ * instead of failing the import minutes later.
+ */
+const ARCHIVE_MEMBER_RULES = new Map<string, { pattern: RegExp; expect: string }>([
+  ["icd/icd10cm", { pattern: /order|tabular|code-descriptions|icd10cm/i, expect: "CMS ICD-10-CM Code Descriptions / Tabular（icd10cm_order_*.txt 或 tabular XML）" }],
+  ["icd/icd10pcs", { pattern: /pcs|order|codes/i, expect: "CMS ICD-10-PCS order / codes 檔" }],
+  ["loinc/loinc", { pattern: /(^|\/)Loinc\.csv$/i, expect: "LoincTable/Loinc.csv" }],
+  ["snomed/snomed_ct", { pattern: /sct2_Concept_/i, expect: "RF2 sct2_Concept_*.txt" }],
+  ["rxnorm/rxnorm_full", { pattern: /RXNCONSO\.RRF$/i, expect: "rrf/RXNCONSO.RRF" }],
+  ["ig/umls_metathesaurus", { pattern: /MRCONSO\.RRF/i, expect: "META/MRCONSO.RRF" }],
+]);
+
+/**
+ * Entry names from a zip's central directory (no decompression). Returns null
+ * when the buffer is not a parseable zip (e.g. gzip, zip64 layouts we do not
+ * read) — the caller then skips the check (fail open).
+ */
+export function zipMemberNames(data: Buffer): string[] | null {
+  if (data.length < 22 || data.readUInt32LE(0) !== 0x04034b50) return null;
+  const minEocd = Math.max(0, data.length - 22 - 0xffff);
+  let eocd = -1;
+  for (let i = data.length - 22; i >= minEocd; i -= 1) {
+    if (data.readUInt32LE(i) === 0x06054b50) {
+      eocd = i;
+      break;
+    }
+  }
+  if (eocd < 0) return null;
+  const count = data.readUInt16LE(eocd + 10);
+  const cdOffset = data.readUInt32LE(eocd + 16);
+  if (count === 0xffff || cdOffset === 0xffffffff || cdOffset >= data.length) return null; // zip64
+  const names: string[] = [];
+  let p = cdOffset;
+  for (let n = 0; n < count; n += 1) {
+    if (p + 46 > data.length || data.readUInt32LE(p) !== 0x02014b50) return null;
+    const nameLen = data.readUInt16LE(p + 28);
+    const extraLen = data.readUInt16LE(p + 30);
+    const commentLen = data.readUInt16LE(p + 32);
+    names.push(data.subarray(p + 46, p + 46 + nameLen).toString("utf-8"));
+    p += 46 + nameLen + extraLen + commentLen;
+  }
+  return names;
+}
+
+/** Refuse a release zip that does not contain the member the loader needs. */
+export function validateArchiveMembers(data: Buffer, entry: SourceCatalogEntry): void {
+  const rule = ARCHIVE_MEMBER_RULES.get(`${entry.module_key}/${entry.source_role}`);
+  if (!rule) return;
+  const names = zipMemberNames(data);
+  if (names === null) return; // not a zip we can list (gzip subset, zip64) — the loader checks it
+  if (!names.some((n) => rule.pattern.test(n))) {
+    const sample = names.slice(0, 5).join(", ") || "(empty)";
+    throw new SourceValueError(
+      `Archive for ${entry.source_role} does not contain the expected file (${rule.expect}). Found: ${sample}${names.length > 5 ? ", …" : ""}`,
+    );
   }
 }
 
@@ -786,6 +881,8 @@ export async function createUploadedSource(opts: {
   const mime = opts.mimeType || "application/octet-stream";
 
   if (entry.module_key === "drug") validateDrugIndexCsv(opts.data);
+  else if (entry.expected_columns) validateCsvColumns(opts.data, entry);
+  validateArchiveMembers(opts.data, entry);
 
   // Drug index is cumulative: refuse a CSV whose bytes were already imported.
   if (entry.module_key === "drug") {

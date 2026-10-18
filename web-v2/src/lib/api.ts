@@ -8,27 +8,63 @@
 
 import { notifyDbUnavailable } from "./dbHealth";
 
+/**
+ * A failed admin API call.
+ *
+ * The backend (node-server/src/admin/adminErrorCodes.ts) explains every error
+ * body with a stable `code`, a zh-TW `message_zh` and a next step `hint_zh`.
+ * `message` is the zh text when present (else the server's `error`),
+ * `rawMessage` the server's original `error` (English; for field matching),
+ * `detail` the raw technical cause — shown only under 「技術細節」.
+ */
 export class ApiError extends Error {
   status: number;
   detail?: string;
   body?: unknown;
+  code?: string;
+  hint?: string;
+  rawMessage: string;
   constructor(message: string, status: number, detail?: string, body?: unknown) {
-    super(message);
+    const obj = (body && typeof body === "object" ? body : {}) as Record<string, unknown>;
+    const zh = typeof obj.message_zh === "string" && obj.message_zh ? obj.message_zh : undefined;
+    super(zh ?? message);
     this.name = "ApiError";
     this.status = status;
     this.detail = detail;
     this.body = body;
+    this.rawMessage = message;
+    this.code = typeof obj.code === "string" ? obj.code : undefined;
+    this.hint = typeof obj.hint_zh === "string" && obj.hint_zh ? obj.hint_zh : undefined;
+  }
+  /** True when the server explained the error (zh message), so the raw detail is only technical context. */
+  get explained(): boolean {
+    return this.message !== this.rawMessage || this.hint !== undefined;
   }
   override toString(): string {
     return this.detail ? `${this.message}: ${this.detail}` : this.message;
   }
 }
 
-/** Human-readable message for any thrown value (toasts, inline errors). */
+/** The parts of an error for rich rendering: what happened, what to do, raw technical text. */
+export interface ErrorParts {
+  message: string;
+  hint?: string;
+  detail?: string;
+}
+
+export function errorParts(err: unknown): ErrorParts {
+  if (err instanceof ApiError) {
+    if (err.explained) return { message: err.message, hint: err.hint, detail: err.detail ?? (err.rawMessage !== err.message ? err.rawMessage : undefined) };
+    return { message: err.detail ? `${err.message}（${err.detail}）` : err.message };
+  }
+  if (err instanceof Error) return { message: err.message };
+  return { message: String(err) };
+}
+
+/** Human-readable message for any thrown value (toasts, inline errors): what happened + what to do. */
 export function errorMessage(err: unknown): string {
-  if (err instanceof ApiError) return err.detail ? `${err.message}（${err.detail}）` : err.message;
-  if (err instanceof Error) return err.message;
-  return String(err);
+  const p = errorParts(err);
+  return p.hint ? `${p.message} ${p.hint}` : p.message;
 }
 
 let onUnauthorized: (() => void) | null = null;
@@ -69,9 +105,25 @@ export async function request<T>(path: string, init: Init = {}): Promise<T> {
   if (!res.ok) {
     const msg = (typeof obj.error === "string" && obj.error) || (typeof obj.message === "string" && obj.message) || `請求失敗（HTTP ${res.status}）`;
     const detail = typeof obj.detail === "string" ? obj.detail : undefined;
-    throw new ApiError(msg, res.status, detail, payload);
+    throw new ApiError(msg, res.status, detail, typeof payload === "object" && payload ? payload : gatewayExplanation(res.status) ?? payload);
   }
   return payload as T;
+}
+
+/**
+ * A non-JSON error page means the request never reached the app (nginx answered):
+ * explain the common gateway statuses instead of "HTTP 502".
+ */
+function gatewayExplanation(status: number): Record<string, string> | null {
+  if (status === 502 || status === 504)
+    return {
+      code: "BACKEND_UNAVAILABLE",
+      message_zh: status === 504 ? "後端服務沒有在時限內回應（HTTP 504）。" : "後端服務目前沒有回應（HTTP 502）。",
+      hint_zh: "app 容器可能正在重新啟動或已停止；請稍候數十秒再試，若持續發生請檢查 app 容器狀態與日誌。",
+    };
+  if (status === 503) return { code: "SERVICE_UNAVAILABLE", message_zh: "服務暫時無法使用（HTTP 503）。", hint_zh: "請稍候再試。" };
+  if (status === 413) return { code: "PAYLOAD_TOO_LARGE", message_zh: "送出的內容太大，被伺服器拒絕（HTTP 413）。", hint_zh: "請確認檔案是否正確；大型檔案請用上傳功能，或調高 nginx 的 client_max_body_size。" };
+  return null;
 }
 
 export const api = {
@@ -135,7 +187,13 @@ export function uploadFile<T>(
           xhr.status === 413
             ? `檔案超過上傳上限${obj.max_upload_mb ? `（${obj.max_upload_mb} MB）` : ""}`
             : (typeof obj.error === "string" && obj.error) || `上傳失敗（HTTP ${xhr.status}）`;
-        reject(new ApiError(msg, xhr.status, typeof obj.detail === "string" ? obj.detail : undefined, payload));
+        const body =
+          xhr.status === 413
+            ? { ...obj, code: "UPLOAD_TOO_LARGE", message_zh: `${msg}。`, hint_zh: obj.hint_zh ?? "請確認檔案是否正確；大型官方檔案可調高 ADMIN_MAX_UPLOAD_MB（.env）後重啟 app。" }
+            : typeof payload === "object" && payload
+              ? payload
+              : (gatewayExplanation(xhr.status) ?? payload);
+        reject(new ApiError(msg, xhr.status, typeof obj.detail === "string" ? obj.detail : undefined, body));
       }
     };
     xhr.onerror = () => reject(new ApiError("上傳時網路中斷", 0));

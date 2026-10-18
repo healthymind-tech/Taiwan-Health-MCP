@@ -12,7 +12,8 @@ Search ICD-10 diagnosis or procedure codes.
 | :--- | :--- | :--- | :--- | :--- |
 | `keyword` | string | Yes | Search keyword (code, Chinese name, or English name) | `"糖尿病"`, `"E11"`, `"Appendectomy"` |
 | `type` | string | No | Search type, `"all"` by default.<br>Allowed values: `"diagnosis"`, `"procedure"`, `"all"` | `"diagnosis"` |
-| `limit` | integer | No | Cap per result class, 3 by default, 10 maximum | `5` |
+| `limit` | integer | No | Cap per result class, 3 by default, 10 maximum (50 for an IG CodeSystem) | `5` |
+| `system` | string | No | Omit for ICD-10 (by `type`). `icd10cm` / `icd10pcs`, or any CodeSystem of an installed IG: canonical, id or alias words (e.g. `nhi_payment` = the NHI medical service payment codes). IG CodeSystems go through [IG Concept Search](../modules/ig-concept-search.md) and return `{keyword, system, codesystem, results[], clauses?, search_mode?}` | `"nhi_payment"` |
 
 ### How the search works
 `diagnosis` runs a hybrid BM25 + vector re-ranking search; `procedure` is BM25 only; `all`

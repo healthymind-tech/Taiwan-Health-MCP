@@ -30,11 +30,25 @@ export const finalErrorHandler: ErrorRequestHandler = (err, req, res, next) => {
   if (status) {
     const type = String((err as { type: string }).type);
     logWarning("request body rejected", { route: req.path, type });
-    res.status(status).json({ error: type === "entity.too.large" ? "payload_too_large" : "invalid_request_body" });
+    const tooLarge = type === "entity.too.large";
+    res.status(status).json({
+      error: tooLarge ? "payload_too_large" : "invalid_request_body",
+      // Admin console: say what happened and what to do (additive fields; MCP clients keep the bare code).
+      ...(req.path.startsWith("/admin/")
+        ? tooLarge
+          ? { code: "PAYLOAD_TOO_LARGE", message_zh: "送出的內容超過 4 MB 上限。", hint_zh: "大型檔案請改用上傳功能（來源檔案 / IG 上傳）。" }
+          : { code: "INVALID_JSON", message_zh: "送出的內容不是有效的 JSON。", hint_zh: "請檢查檔案或輸入是否完整（括號、逗號、引號），再重新送出。" }
+        : {}),
+    });
     return;
   }
   const name = err instanceof Error ? err.name : typeof err;
   const message = err instanceof Error ? err.message.slice(0, 300) : "";
   logError("unhandled request error", { route: req.path, error: name, message });
-  res.status(500).json({ error: "internal_error" });
+  res.status(500).json({
+    error: "internal_error",
+    ...(req.path.startsWith("/admin/")
+      ? { code: "INTERNAL_ERROR", message_zh: "伺服器發生未預期的錯誤。", hint_zh: "請稍後再試；若持續發生，請查看 app 容器日誌（docker compose logs app）。" }
+      : {}),
+  });
 };

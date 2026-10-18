@@ -289,6 +289,19 @@ export function coerce(f: SettingsField, raw: unknown): string | number | boolea
   return raw as never;
 }
 
+/**
+ * Incoming (form / import) values for numeric fields must parse: `coerce`
+ * silently falls back to the default, which is right for stored values but
+ * hid typos on save / import ("imported 1" while nothing changed).
+ */
+function assertNumericInput(group: string, f: SettingsField, raw: unknown): void {
+  if (raw === null || raw === undefined || (f.type !== "int" && f.type !== "float")) return;
+  const s = String(raw).trim();
+  if (s === "") return;
+  const ok = f.type === "int" ? /^[+-]?\d+$/.test(s) : Number.isFinite(Number(s));
+  if (!ok) throw new Error(`${group}.${f.key}: '${s}' is not ${f.type === "int" ? "an integer" : "a number"}`);
+}
+
 // ── Short-TTL cache (mirrors _CACHE_TTL_SECONDS = 5.0). ──────────────────────
 const CACHE_TTL_MS = 5000;
 const cache = new Map<string, { at: number; stored: Record<string, string | null> }>();
@@ -607,6 +620,7 @@ export async function saveGroup(
         throw new Error(`${group}.${key}: '${incoming}' is not a valid http(s) URL`);
       }
     }
+    assertNumericInput(group, f, incoming);
     const coerced = coerce(f, incoming);
     checkRange(group, f, coerced);
     toWrite.push([group, key, valueToStr(f, coerced), updatedBy]);
@@ -818,6 +832,7 @@ export async function importSettings(
           throw new Error(`${group}.${key}: '${String(rawValue)}' is not a valid http(s) URL`);
         }
       }
+      assertNumericInput(group, f, rawValue);
       const coerced = coerce(f, rawValue);
       checkRange(group, f, coerced);
       toWrite.push([group, key, valueToStr(f, coerced)]);
@@ -825,6 +840,23 @@ export async function importSettings(
     }
   }
 
+  // Accounts, profiles and role bindings are replaced wholesale and validated
+  // like a form save (including the one-embedding-model rule). This runs BEFORE
+  // the group values are written: a rejected LLM section (fingerprint mismatch,
+  // bad reference …) must leave the whole configuration untouched instead of
+  // half-applied. The group values were already fully validated above. v2 documents carry
+  // flat endpoint profiles, converted the same way as the database migration.
+  const r = root as { llm?: unknown; profiles?: unknown; groups?: Record<string, Record<string, string>> };
+  let profileCount = 0;
+  if (r.llm) {
+    profileCount = (await importRouting(r.llm, updatedBy)).profiles;
+  } else if (Array.isArray(r.profiles)) {
+    const legacy = legacyProfilesToRouting(r.profiles, {
+      analysis: r.groups?.analysis?.strategy,
+      embedding: r.groups?.embedding?.strategy,
+    });
+    profileCount = (await importRouting(legacy, updatedBy)).profiles;
+  }
   if (toWrite.length > 0) {
     await withTransaction(async (client) => {
       for (const [g, key, val] of toWrite) {
@@ -852,20 +884,6 @@ export async function importSettings(
         ],
       );
     });
-  }
-  // Accounts, profiles and role bindings are replaced wholesale and validated
-  // like a form save (including the one-embedding-model rule). v2 documents carry
-  // flat endpoint profiles, converted the same way as the database migration.
-  const r = root as { llm?: unknown; profiles?: unknown; groups?: Record<string, Record<string, string>> };
-  let profileCount = 0;
-  if (r.llm) {
-    profileCount = (await importRouting(r.llm, updatedBy)).profiles;
-  } else if (Array.isArray(r.profiles)) {
-    const legacy = legacyProfilesToRouting(r.profiles, {
-      analysis: r.groups?.analysis?.strategy,
-      embedding: r.groups?.embedding?.strategy,
-    });
-    profileCount = (await importRouting(legacy, updatedBy)).profiles;
   }
   const passkeyCount = await importPasskeys(root, updatedBy, skipped);
 
@@ -1084,6 +1102,9 @@ interface TestResult {
   ok: boolean;
   message: string;
   details?: Record<string, unknown>;
+  /** Console code + params when the test already knows what went wrong (see embeddingDiagnosis.ts). */
+  code?: string;
+  params?: Record<string, unknown>;
 }
 
 /** Run a real test against the draft config. Returns {ok, message, details}. */
@@ -1104,6 +1125,8 @@ export async function testGroup(group: string, draftIn: Record<string, unknown>)
  */
 export interface ProfileDraft {
   id?: number;
+  /** Account name, for messages that must say which account failed. */
+  account_name?: string;
   kind: ProfileKind;
   provider: string;
   base_url: string;
@@ -1138,11 +1161,12 @@ export function draftTargetsAccount(draft: Pick<ProfileDraft, "provider" | "base
 }
 
 /** A profile-shaped object from a draft (no id/name needed by adapters). */
-function draftProfile(draft: ProfileDraft, apiKey: string): LlmProfile {
+function draftProfile(draft: ProfileDraft, apiKey: string): LlmProfile & { account_name: string } {
   return {
+    account_name: draft.account_name ?? "",
     id: draft.id ?? 0,
     kind: draft.kind,
-    name: "draft",
+    name: `${draft.account_name ?? ""} · ${String(draft.model ?? "").trim()}`,
     provider: canonicalProviderId(draft.provider),
     base_url: draftBaseUrl(draft),
     api_key: apiKey,
@@ -1214,24 +1238,31 @@ async function testEmbedding(adapter: ProviderAdapter, profile: LlmProfile): Pro
   const wantDim = Math.trunc(Number(profile.params?.dimensions ?? 1024)) || 1024;
   // Generous timeout: a cold embedding model can take 10-30s to load on first call.
   const timeoutMs = Math.max(Number(emb.timeout ?? 30) || 30, 90) * 1000;
+  const { diagnoseEmbedFailure, dimsIssue } = await import("./embeddingDiagnosis.js");
   try {
     const t0 = performance.now();
     const vecs = await adapter.embed!(profile, { texts: ["health check"], inputType: "document", dimensions: wantDim }, timedContext(timeoutMs));
     const ms = Math.trunc(performance.now() - t0);
     const vec = vecs[0];
-    if (!vec || vec.length === 0) return { ok: false, message: "Provider returned no embedding vector." };
+    if (!vec || vec.length === 0) return { ok: false, message: "Provider returned no embedding vector.", code: "embedding_no_vectors", params: { model: profile.model } };
     const dim = vec.length;
     const msg = `Embedded sample in ${ms} ms — vector dim = ${dim}.`;
     if (dim !== wantDim) {
+      // Explains both fixes: set the size the model really returns, or have it truncate (Matryoshka).
+      const issue = dimsIssue(profile, dim)!;
       return {
         ok: false,
         message: msg + ` ⚠ Configured dimensions = ${wantDim} does not match!`,
         details: { returned_dim: dim, configured_dim: wantDim, latency_ms: ms },
+        code: issue.code,
+        params: { ...issue.params, latency_ms: ms },
       };
     }
-    return { ok: true, message: msg, details: { returned_dim: dim, latency_ms: ms } };
+    return { ok: true, message: msg, details: { returned_dim: dim, latency_ms: ms }, code: "embedding_test_ok", params: { dims: dim, latency_ms: ms } };
   } catch (exc) {
-    return { ok: false, message: `Embedding test failed: ${adapterError(exc)}` };
+    // Model missing → what the server does serve; unreachable → which URL; etc.
+    const issue = await diagnoseEmbedFailure(profile, exc, timedContext(15_000));
+    return { ok: false, message: `Embedding test failed: ${adapterError(exc)}`, code: issue.code, params: issue.params };
   }
 }
 

@@ -61,6 +61,7 @@ import {
   inspectUploadedIg,
 } from "./adminIg.js";
 import { parseDependencyRequest } from "./igDependencies.js";
+import { conceptIndexStatus, deleteSupplement, listSupplements, queueConceptIndexRebuild, saveSupplement } from "./igSupplements.js";
 import { query } from "../db.js";
 import { broadcast } from "./adminWs.js";
 import { clearModule, previewModuleClear, ModuleClearError, type ClearScope } from "./adminModuleClear.js";
@@ -129,17 +130,58 @@ import { listDrugLlmCalls, getDrugLlmCall } from "./llmCallLog.js";
 import { getStates as getMaintenanceStates, setEnabled as setMaintenanceEnabled, MaintenanceValueError } from "./adminMaintenance.js";
 import * as minioService from "../minioService.js";
 import { buildAdminOverview } from "./adminOverview.js";
-import { search as registrySearch } from "../loaders/igRegistry.js";
+import { searchWithFallback as registrySearchWithFallback } from "../loaders/igRegistry.js";
 import { getDrugService as getDrugServiceForAdmin } from "../mcp.js";
 import { parseByteRange } from "./drugAssetResponse.js";
 import { reconfigureEmbeddingService } from "../embeddingService.js";
 import { logWarning } from "../logger.js";
-import { codeFields } from "./llmErrorCodes.js";
+import { codeFields, errorFields } from "./llmErrorCodes.js";
+import {
+  enrichErrorBody,
+  explainFhirConnection,
+  withFhirProbeErrorExplanation,
+  explainInfrastructure,
+  explainProbe,
+  explainServiceTest,
+  withJobErrorExplanation,
+  workerOfflineWarning,
+  type ProbeRowLike,
+} from "./adminErrorCodes.js";
+import { precheckJobCreate } from "./jobPrechecks.js";
 import { ProfileValidationError } from "./llmProfiles.js";
 import { dispatchPreview, PREVIEW_SUPPORTED_MODULES } from "./adminPreview.js";
 
-/** Send a JSON body with the same content-type Python `_send_json` uses. */
+/**
+ * Send a JSON body with the same content-type Python `_send_json` uses.
+ * Error bodies (status ≥ 400) gain `code` / `message_zh` / `hint_zh` so the
+ * console can say what happened and what to do (adminErrorCodes.ts); the
+ * original `error` / `detail` fields are kept.
+ */
 function sendJson(res: Response, status: number, payload: unknown): void {
+  sendRawJson(res, status, enrichErrorBody(status, payload));
+}
+
+/**
+ * `{ worker_warning }` when no admin-worker is heartbeating, so a response that
+ * queued a job can tell the operator it will not start yet. Best-effort.
+ */
+async function workerWarningFields(): Promise<Record<string, unknown>> {
+  try {
+    const w = workerOfflineWarning(await listWorkerHeartbeats());
+    return w ? { worker_warning: w } : {};
+  } catch {
+    return {};
+  }
+}
+
+/** Add zh-TW explanations to the `services` rows of a probe payload. */
+function withProbeExplanations(payload: Record<string, unknown>): Record<string, unknown> {
+  const explain = (rows: unknown): unknown => (Array.isArray(rows) ? (rows as ProbeRowLike[]).map((r) => explainProbe(r)) : rows);
+  return { ...payload, services: explain(payload.services), history: explain(payload.history) };
+}
+
+/** sendJson without error enrichment — for APIs that attach their own codes (LLM / model endpoints). */
+function sendRawJson(res: Response, status: number, payload: unknown): void {
   res.status(status).set("content-type", "application/json; charset=utf-8").send(JSON.stringify(payload));
 }
 
@@ -440,8 +482,8 @@ export async function adminHandler(req: Request, res: Response, next: NextFuncti
       const q = String(req.query.q ?? "");
       try {
         const cfg = await adminSettings.getGroup("registry");
-        const results = await registrySearch(String(cfg.base_url ?? ""), q);
-        sendJson(res, 200, { results });
+        const out = await registrySearchWithFallback(String(cfg.base_url ?? ""), q);
+        sendJson(res, 200, out);
       } catch (exc) {
         sendJson(res, 502, {
           error: "Registry search failed",
@@ -453,7 +495,11 @@ export async function adminHandler(req: Request, res: Response, next: NextFuncti
 
     if (method === "GET" && path === "/admin/api/overview") {
       try {
-        sendJson(res, 200, await buildAdminOverview());
+        const overview = (await buildAdminOverview()) as unknown as Record<string, unknown>;
+        if (overview.infrastructure && typeof overview.infrastructure === "object") {
+          overview.infrastructure = explainInfrastructure(overview.infrastructure as Record<string, { status: string; detail: string }>);
+        }
+        sendJson(res, 200, overview);
       } catch (exc) {
         sendJson(res, 500, {
           error: "Failed to build admin overview",
@@ -531,7 +577,7 @@ export async function adminHandler(req: Request, res: Response, next: NextFuncti
         path,
         (req.body ?? {}) as Record<string, unknown>,
         adminUsername,
-        (status, payload) => sendJson(res, status, payload),
+        (status, payload) => sendRawJson(res, status, payload),
         async () => {
           await refreshSettingsSingletons("embedding");
           await refreshSettingsSingletons("analysis");
@@ -572,8 +618,8 @@ export async function adminHandler(req: Request, res: Response, next: NextFuncti
         const msg = String((exc as Error).message);
         // A rejected LLM section (validation, fingerprint) is the document's fault: 400, nothing was changed.
         if (exc instanceof ProfileValidationError) {
-          sendJson(res, 400, { error: msg, ...codeFields(msg) });
-        } else if (/Unsupported settings export version|Malformed export|is not one of|is not a valid/.test(msg)) {
+          sendJson(res, (exc as { status?: number }).status ?? 400, { error: msg, detail: msg, ...errorFields(exc) });
+        } else if (/Unsupported settings export version|Malformed export|is not one of|is not a valid|is not an integer|is not a number|is out of range/.test(msg)) {
           sendJson(res, 400, { error: msg });
         } else {
           sendJson(res, 500, { error: "Failed to import settings", detail: msg });
@@ -595,18 +641,26 @@ export async function adminHandler(req: Request, res: Response, next: NextFuncti
         if (action === "models") {
           sendJson(res, 200, await adminSettings.listModels(group, values));
         } else if (action === "test") {
-          sendJson(res, 200, await adminSettings.testGroup(group, values));
+          sendJson(res, 200, explainServiceTest(group, await adminSettings.testGroup(group, values)));
         } else if (action === "") {
           const saved = await adminSettings.saveGroup(group, values, adminUsername);
           await refreshSettingsSingletons(group);
-          sendJson(res, 200, { ok: true, values: saved });
+          // Saving never blocks on reachability, but say right away when the
+          // saved endpoint does not answer (instead of failing jobs later).
+          let connection: Record<string, unknown> | undefined;
+          if (group === "ocr" || group === "tfda") {
+            const probe = adminSettings.testGroup(group, saved as Record<string, unknown>).then((r) => explainServiceTest(group, r) as unknown as Record<string, unknown>);
+            const timeout = new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 6000));
+            connection = await Promise.race([probe, timeout]).catch(() => undefined);
+          }
+          sendJson(res, 200, { ok: true, values: saved, ...(connection ? { connection } : {}) });
         } else {
           sendJson(res, 404, { error: `Unknown action '${action}'` });
         }
       } catch (exc) {
         // Python raises ValueError → 400; any other exception → 500.
         const msg = String((exc as Error).message);
-        if (/Unknown settings group|is not one of/.test(msg)) {
+        if (/Unknown settings group|is not one of|is not a valid http|is out of range|is managed by the deployment|is not an integer|is not a number/.test(msg)) {
           sendJson(res, 400, { error: msg });
         } else {
           sendJson(res, 500, { error: "Settings operation failed", detail: msg });
@@ -739,6 +793,27 @@ export async function adminHandler(req: Request, res: Response, next: NextFuncti
         return;
       }
       try {
+        const jobOptions = (body.job_options as Record<string, unknown>) || {};
+        const blocked = await precheckJobCreate(jobType, jobOptions, {
+          activeJobs: async (t) =>
+            (
+              await query<{ job_id: string; status: string }>(
+                `SELECT job_id::text AS job_id, status FROM admin.import_jobs
+                  WHERE job_type = $1 AND status IN ('queued', 'running', 'paused')
+                  ORDER BY created_at DESC LIMIT 1`,
+                [t],
+              )
+            ).rows,
+          drugReadiness: async (stage) => {
+            const { DrugAnalysisService, loadDrugAnalysisConfig } = await import("../drugAnalysisService.js");
+            const service = new DrugAnalysisService(await loadDrugAnalysisConfig());
+            return stage === "analysis" ? service.analysisReadiness() : service.readiness();
+          },
+        });
+        if (blocked) {
+          sendJson(res, blocked.status, blocked.body);
+          return;
+        }
         const job = await createJob({
           moduleKey,
           jobType,
@@ -747,7 +822,7 @@ export async function adminHandler(req: Request, res: Response, next: NextFuncti
           sourceModuleSourceId: String((body.source_module_source_id ?? "") || "").trim(),
           sourceUploadedFileId: String((body.source_uploaded_file_id ?? "") || "").trim(),
         });
-        sendJson(res, 201, { job });
+        sendJson(res, 201, { ...(await workerWarningFields()), job });
       } catch (exc) {
         if (exc instanceof JobValueError) sendJson(res, 400, { error: exc.message });
         else sendJson(res, 500, { error: "Failed to create admin job", detail: String((exc as Error).message) });
@@ -799,7 +874,7 @@ export async function adminHandler(req: Request, res: Response, next: NextFuncti
 
     if (method === "GET" && path === "/admin/api/services") {
       try {
-        sendJson(res, 200, await listServiceProbes());
+        sendJson(res, 200, withProbeExplanations(await listServiceProbes()));
       } catch (exc) {
         sendJson(res, 500, { error: "Failed to load cached service probes", detail: String((exc as Error).message) });
       }
@@ -816,7 +891,7 @@ export async function adminHandler(req: Request, res: Response, next: NextFuncti
       }
       try {
         const serviceKeys = (rawKeys as unknown[]).map((k) => String(k));
-        sendJson(res, 200, await runServiceProbes(serviceKeys));
+        sendJson(res, 200, withProbeExplanations(await runServiceProbes(serviceKeys)));
       } catch (exc) {
         if (exc instanceof ServiceProbeValueError) {
           sendJson(res, 400, { error: String(exc.message) });
@@ -832,6 +907,83 @@ export async function adminHandler(req: Request, res: Response, next: NextFuncti
         sendJson(res, 200, { igs: await listIgs() });
       } catch (exc) {
         sendJson(res, 500, { error: "Failed to list IGs", detail: String((exc as Error).message) });
+      }
+      return;
+    }
+
+    // GET /admin/api/igs/supplements — uploaded + package-shipped CodeSystem supplements
+    if (method === "GET" && path === "/admin/api/igs/supplements") {
+      try {
+        sendJson(res, 200, { supplements: await listSupplements() });
+      } catch (exc) {
+        sendJson(res, 500, { error: "Failed to list CodeSystem supplements", detail: String((exc as Error).message) });
+      }
+      return;
+    }
+
+    // POST /admin/api/igs/supplements — upload a CodeSystem supplement (FHIR JSON).
+    // application/json bodies are parsed by express (4 MB cap); larger files are sent with
+    // another content type (e.g. application/fhir+json) and read raw here (64 MB cap).
+    if (method === "POST" && path === "/admin/api/igs/supplements") {
+      let resource: unknown = req.body;
+      const ctype = String(req.headers["content-type"] ?? "");
+      if (!/^application\/json\b/i.test(ctype)) {
+        try {
+          const raw = await readRawBody(req);
+          if (raw.length > 64 * 1024 * 1024) {
+            sendJson(res, 413, { error: "Supplement exceeds 64 MB" });
+            return;
+          }
+          resource = JSON.parse(raw.toString("utf8").replace(/^\uFEFF/, ""));
+        } catch (exc) {
+          sendJson(res, 400, { error: "Body is not valid JSON", detail: String((exc as Error).message) });
+          return;
+        }
+      }
+      try {
+        const out = await saveSupplement(resource as Record<string, unknown>, adminUsername);
+        sendJson(res, out.status, out.body);
+      } catch (exc) {
+        sendJson(res, 500, { error: "Failed to save CodeSystem supplement", detail: String((exc as Error).message) });
+      }
+      return;
+    }
+
+    // DELETE /admin/api/igs/supplements?url=&version= — remove an uploaded supplement
+    if (method === "DELETE" && path === "/admin/api/igs/supplements") {
+      const url = String(req.query.url ?? "").trim();
+      const version = String(req.query.version ?? "").trim();
+      if (!url) {
+        sendJson(res, 400, { error: "url is required" });
+        return;
+      }
+      try {
+        const out = await deleteSupplement(url, version, adminUsername);
+        sendJson(res, out.status, out.body);
+      } catch (exc) {
+        sendJson(res, 500, { error: "Failed to delete CodeSystem supplement", detail: String((exc as Error).message) });
+      }
+      return;
+    }
+
+    // GET /admin/api/igs/concept-index — concept-search index + embedding coverage
+    if (method === "GET" && path === "/admin/api/igs/concept-index") {
+      try {
+        sendJson(res, 200, await conceptIndexStatus());
+      } catch (exc) {
+        sendJson(res, 500, { error: "Failed to read concept index status", detail: String((exc as Error).message) });
+      }
+      return;
+    }
+
+    // POST /admin/api/igs/concept-index/rebuild {force?} — queue the ig_concept_index backfill
+    if (method === "POST" && path === "/admin/api/igs/concept-index/rebuild") {
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      try {
+        const jobId = await queueConceptIndexRebuild(adminUsername, body.force === true);
+        sendJson(res, 201, { ...(await workerWarningFields()), job_id: jobId });
+      } catch (exc) {
+        sendJson(res, 500, { error: "Failed to queue concept index rebuild", detail: String((exc as Error).message) });
       }
       return;
     }
@@ -870,6 +1022,16 @@ export async function adminHandler(req: Request, res: Response, next: NextFuncti
           sendJson(res, 400, { error: "object_key or a valid uploaded_file_id is required" });
           return;
         }
+        // Refuse a file that is not a FHIR package before queueing: the loader
+        // would otherwise install it under its file name (e.g. "ig-root@0.0.0")
+        // as an empty, "successful" manual IG.
+        if (uploadedFileId) {
+          const inspected = await inspectUploadedIg(uploadedFileId).catch(() => null); // lookup failure: let the job report it
+          if (inspected && !inspected.ok && (inspected.status === 422 || inspected.status === 404)) {
+            sendJson(res, inspected.status, { error: inspected.error, ...(inspected.detail ? { detail: inspected.detail } : {}) });
+            return;
+          }
+        }
         options = { ig_source: "upload", object_key: objectKey };
         // Optional: the missing dependency this upload is meant to supply, so the
         // dependency list can show it as "downloading" while the job runs.
@@ -901,7 +1063,7 @@ export async function adminHandler(req: Request, res: Response, next: NextFuncti
           requestedBy: adminUsername,
           jobOptions: options,
         });
-        sendJson(res, 201, { job });
+        sendJson(res, 201, { ...(await workerWarningFields()), job });
       } catch (exc) {
         sendJson(res, 500, { error: "Failed to start IG import", detail: String((exc as Error).message) });
       }
@@ -1115,7 +1277,7 @@ export async function adminHandler(req: Request, res: Response, next: NextFuncti
         const includeDisabled = String(req.query.include_disabled ?? "false").trim().toLowerCase() === "true";
         const servers = await listFhirServers(includeDisabled);
         await attachOauthStatus(servers);
-        sendJson(res, 200, { servers });
+        sendJson(res, 200, { servers: servers.map((sv) => withFhirProbeErrorExplanation(sv as { last_probe_error?: unknown })) });
       } catch (exc) {
         sendJson(res, 500, { error: "Failed to list FHIR servers", detail: String((exc as Error).message) });
       }
@@ -1141,6 +1303,13 @@ export async function adminHandler(req: Request, res: Response, next: NextFuncti
         sendJson(res, 201, { server });
       } catch (exc) {
         if (exc instanceof FhirServerValueError) sendJson(res, 400, { error: exc.message });
+        else if (/duplicate key value violates unique constraint "[^"]*server_key/.test(String((exc as Error).message)))
+          sendJson(res, 409, {
+            error: "server_key already in use",
+            code: "FHIR_SERVER_KEY_TAKEN",
+            message_zh: "已有另一台 FHIR 伺服器使用這個識別碼（server_key）。",
+            hint_zh: "請換一個識別碼；若要修改既有伺服器，請到它的詳情頁按「編輯」。",
+          });
         else sendJson(res, 500, { error: "Failed to create FHIR server", detail: String((exc as Error).message) });
       }
       return;
@@ -1218,7 +1387,7 @@ export async function adminHandler(req: Request, res: Response, next: NextFuncti
     if (method === "POST" && path === "/admin/api/fhir-servers/test") {
       try {
         const result = await testFhirServerConfig((req.body ?? {}) as Record<string, unknown>, fhirServerSecretKey(cfg.adminSessionSecret));
-        sendJson(res, 200, result);
+        sendJson(res, 200, explainFhirConnection(result));
       } catch (exc) {
         if (exc instanceof FhirServerValueError) sendJson(res, 400, { error: exc.message });
         else sendJson(res, 500, { error: "FHIR server connection test failed", detail: String((exc as Error).message) });
@@ -1243,7 +1412,7 @@ export async function adminHandler(req: Request, res: Response, next: NextFuncti
     if (method === "POST" && fhirProbeMatch) {
       try {
         const result = await probeFhirServer(fhirProbeMatch[1], fhirServerSecretKey(cfg.adminSessionSecret));
-        sendJson(res, 200, result);
+        sendJson(res, 200, explainFhirConnection(result));
       } catch (exc) {
         if (exc instanceof FhirServerValueError) sendJson(res, 404, { error: exc.message });
         else sendJson(res, 500, { error: "FHIR server probe failed", detail: String((exc as Error).message) });
@@ -1275,7 +1444,7 @@ export async function adminHandler(req: Request, res: Response, next: NextFuncti
             sendJson(res, 404, { error: "FHIR server not found" });
           } else {
             await attachOauthStatus([server]);
-            sendJson(res, 200, { server });
+            sendJson(res, 200, { server: withFhirProbeErrorExplanation(server as { last_probe_error?: unknown }) });
           }
         } catch (exc) {
           sendJson(res, 500, { error: "Failed to load FHIR server", detail: String((exc as Error).message) });
@@ -1291,7 +1460,14 @@ export async function adminHandler(req: Request, res: Response, next: NextFuncti
           sendJson(res, 200, { server });
         } catch (exc) {
           if (exc instanceof FhirServerValueError) sendJson(res, 400, { error: exc.message });
-          else sendJson(res, 500, { error: "Failed to update FHIR server", detail: String((exc as Error).message) });
+          else if (/duplicate key value violates unique constraint "[^"]*server_key/.test(String((exc as Error).message)))
+          sendJson(res, 409, {
+            error: "server_key already in use",
+            code: "FHIR_SERVER_KEY_TAKEN",
+            message_zh: "已有另一台 FHIR 伺服器使用這個識別碼（server_key）。",
+            hint_zh: "請換一個識別碼；若要修改既有伺服器，請到它的詳情頁按「編輯」。",
+          });
+        else sendJson(res, 500, { error: "Failed to update FHIR server", detail: String((exc as Error).message) });
         }
         return;
       }
@@ -1793,7 +1969,7 @@ export async function adminHandler(req: Request, res: Response, next: NextFuncti
     if (method === "GET" && path === "/admin/api/jobs") {
       try {
         const limit = Math.min(Math.max(Number.parseInt(String(req.query.limit ?? "50"), 10) || 50, 1), 500);
-        sendJson(res, 200, { jobs: await listJobs(limit) });
+        sendJson(res, 200, { jobs: (await listJobs(limit)).map(withJobErrorExplanation) });
       } catch (exc) {
         sendJson(res, 500, { error: "Failed to list admin jobs", detail: String((exc as Error).message) });
       }
@@ -1831,7 +2007,7 @@ export async function adminHandler(req: Request, res: Response, next: NextFuncti
       try {
         const job = await getJob(jobDetailMatch[1]);
         if (job === null) sendJson(res, 404, { error: "Admin job not found" });
-        else sendJson(res, 200, { job });
+        else sendJson(res, 200, { job: withJobErrorExplanation(job) });
       } catch (exc) {
         sendJson(res, 500, { error: "Failed to load admin job", detail: String((exc as Error).message) });
       }

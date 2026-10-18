@@ -36,18 +36,8 @@ import {
 import { candidateOrder, embeddingDimensions, type LlmProfile } from "../admin/llmProfiles.js";
 import { runBoundedPool } from "./batchPool.js";
 import { probeEndpoint } from "../providers/probe.js";
-
-const HNSW_MAX_DIMS = 4000; // pgvector halfvec HNSW limit
-
-// All (schema, table, column) triples that hold embedding vectors.
-const EMBEDDING_COLUMNS: [string, string, string][] = [
-  ["icd", "diagnosis_embeddings", "embedding"],
-  ["health_supplements", "item_embeddings", "embedding"],
-  ["food_nutrition", "food_embeddings", "embedding"],
-  ["food_nutrition", "ingredient_embeddings", "embedding"],
-  ["loinc", "concept_embeddings", "embedding"],
-  ["snomed", "concept_embeddings", "embedding"],
-];
+import { alterEmbeddingColumns } from "../admin/embeddingColumns.js";
+import { identityDimensions } from "../admin/embeddingIdentity.js";
 
 /** Python `" ".join(filter(None, parts))`: drop null/undefined/"" then join. */
 function joinText(parts: (string | null | undefined)[]): string {
@@ -154,39 +144,17 @@ async function checkProvider(s: EmbeddingSettings, profiles: LlmProfile[]): Prom
 /** ALTER all embedding halfvec columns to match the configured dimensions. */
 async function ensureDimensions(pool: pg.Pool, dims: number): Promise<void> {
   logInfo(`Ensuring embedding dimensions = ${dims}`);
-  if (dims > HNSW_MAX_DIMS) {
-    logWarning(`${dims}d > ${HNSW_MAX_DIMS} halfvec HNSW limit — index skipped (exact scan)`);
-  }
-  for (const [schema, table, col] of EMBEDDING_COLUMNS) {
-    const row = await pool.query<{ atttypmod: number }>(
-      `SELECT atttypmod FROM pg_attribute pa
-         JOIN pg_class pc ON pc.oid = pa.attrelid
-         JOIN pg_namespace pn ON pn.oid = pc.relnamespace
-        WHERE pn.nspname = $1 AND pc.relname = $2 AND pa.attname = $3
-          AND pa.attnum > 0 AND NOT pa.attisdropped`,
-      [schema, table, col],
-    );
-    if (row.rows.length === 0) {
-      logInfo(`  ${schema}.${table} not found, skipping`);
-      continue;
-    }
-    const current = row.rows[0].atttypmod;
-    if (current === dims) {
-      logInfo(`  ${schema}.${table}.${col}: already ${dims}d — OK`);
-      continue;
-    }
-    logInfo(`  ${schema}.${table}.${col}: ${current}d → ${dims}d (ALTER TABLE)`);
-    const fqt = `${schema}.${table}`;
-    await pool.query(`ALTER TABLE ${fqt} DROP COLUMN IF EXISTS ${col} CASCADE`);
-    await pool.query(`ALTER TABLE ${fqt} ADD COLUMN ${col} halfvec(${dims})`);
-    if (dims <= HNSW_MAX_DIMS) {
-      const idx = `idx_${schema.slice(0, 2)}_${table.slice(0, 6)}_emb_hnsw`;
-      await pool.query(
-        `CREATE INDEX IF NOT EXISTS ${idx} ON ${fqt} USING hnsw (${col} halfvec_cosine_ops)`,
-      );
-      logInfo(`    → HNSW index recreated: ${idx}`);
-    }
-  }
+  await alterEmbeddingColumns(pool, dims);
+}
+
+/**
+ * The vector size this run writes: the system identity's (what the stored
+ * vectors are) when there is one, else the first endpoint's configured size.
+ * Preferring the identity means a profile with a missing / wrong `dimensions`
+ * knob can never re-type (and so empty) the columns.
+ */
+async function targetDimensions(profiles: LlmProfile[]): Promise<number> {
+  return (await identityDimensions().catch(() => null)) ?? activeDimensions(profiles);
 }
 
 async function ensureEmbedInfra(pool: pg.Pool, table: string): Promise<void> {
@@ -550,6 +518,37 @@ async function embedSnomed(
   return false;
 }
 
+/**
+ * IG concept terms (fhir.concept_index_terms, built by the ig_concept_index job). Vectors
+ * are content-addressed by sha256(term): the same name in several package versions /
+ * CodeSystems is embedded once. Only terms the index marked embeddable carry a hash.
+ */
+async function embedIg(
+  pool: pg.Pool, svc: BatchEmbedder, batch: EmbedRunOptions, shouldStop?: ShouldStop,
+): Promise<boolean> {
+  logInfo("=== Embedding: fhir.concept_index_terms (IG CodeSystem terms) ===");
+  const rows = (
+    await pool.query(
+      `SELECT DISTINCT ON (text_hash) text_hash, term
+         FROM fhir.concept_index_terms WHERE text_hash IS NOT NULL ORDER BY text_hash`,
+    )
+  ).rows;
+  const s = await embedTable(pool, svc, batch, {
+    table: "fhir.concept_embeddings",
+    keyCol: "text_hash",
+    keySqlType: "TEXT",
+    rows,
+    keyOf: (r) => r.text_hash,
+    textOf: (r) => r.term || "",
+    desc: "IG concept terms",
+    shouldStop,
+  });
+  if (s.stopped) return true;
+  await writeEmbedLog(pool, "ig", s.source_total, s.embedded_total, s.changed);
+  logInfo(`IG concept terms done: ${s.changed} (re)embedded, ${s.deleted} orphans pruned, ${s.embedded_total} total`);
+  return false;
+}
+
 const MODULES: Record<
   string,
   (p: pg.Pool, s: BatchEmbedder, run: EmbedRunOptions, stop?: ShouldStop) => Promise<boolean>
@@ -559,6 +558,7 @@ const MODULES: Record<
   icd: embedIcd,
   loinc: embedLoinc,
   snomed: embedSnomed,
+  ig: embedIg,
 };
 
 /** Shared embedding settings for the admin worker's validate phase. */
@@ -588,7 +588,7 @@ export async function runEmbedModule(
   if (!fn) throw new Error(`unknown embed module: ${moduleKey}`);
   const settings = await loadSettings(pool);
   const profiles = await loadProfiles(settings);
-  await ensureDimensions(pool, activeDimensions(profiles));
+  await ensureDimensions(pool, await targetDimensions(profiles));
   const svc = new EmbeddingService(settings, profiles);
   logInfo(`Embedding run: batch_size=${settings.batchSize} concurrency=${settings.concurrency}`);
   return fn(pool, svc, {
@@ -609,7 +609,7 @@ async function main(): Promise<void> {
   try {
     const settings = await loadSettings(pool);
     const profiles = await loadProfiles(settings);
-    if (ensureDims) await ensureDimensions(pool, activeDimensions(profiles));
+    if (ensureDims) await ensureDimensions(pool, await targetDimensions(profiles));
     if (!(await checkProvider(settings, profiles))) {
       logError("Embedding provider not ready — nothing embedded");
       return;

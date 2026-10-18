@@ -40,9 +40,9 @@ A general, IG-scoped toolset built on the multi-IG `fhir.*` store, used to explo
 | :--- | :--- | :--- |
 | `fhir_get_valueset` | ValueSet definition summary | `identifier` |
 | `fhir_expand_valueset` | Expand a ValueSet and list its member codes (resolved locally where possible; whole large external code systems are not enumerated — `TOO_BROAD`) | `identifier`, `limit` (500 by default, 2000 maximum) |
-| `fhir_lookup_code` | Look up a single code's display name and properties in a CodeSystem | `system`, `code` |
+| `fhir_lookup_code` | Look up a single code's display name and properties in a CodeSystem; when the code is not found, `hint` (use `fhir_normalize_code`) and `near_codes` (similar codes of an IG CodeSystem) | `system`, `code` |
 | `fhir_validate_code` | Validate whether a `system`+`code` belongs to a given ValueSet; returns `valid` / `invalid` / `unverifiable`; `value_set` may be pinned as `url|version` | `system`, `code`, `value_set` |
-| `fhir_normalize_code` | Match free text against a ValueSet and return the most appropriate standard code | `text`, `value_set`, `system`, `limit` (10 by default) |
+| `fhir_normalize_code` | Free text (Chinese or English, abbreviations, chart wording) → candidate codes: SNOMED CT / LOINC / ICD-10 and any CodeSystem of an installed IG (e.g. the NHI payment codes `medical-service-payment-tw`, see [IG Concept Search](../modules/ig-concept-search.md)). IG candidates carry `matched_term`, `matched_language`, `group`/`siblings`; `system` may be a canonical, id or alias (`nhi_payment`) | `text`, `value_set`, `system`, `limit` (10 by default) |
 
 ## Authoring, assembly, and validation
 | Tool | Description | Key parameters |
@@ -103,6 +103,7 @@ Tools whose behaviour is pinned by fixtures carry their own version (`node-serve
 | :--- | :--- |
 | `fhir_validate_resource`, `fhir_validate_bundle` | 1.4.0 |
 | `fhir_get_profile_required_elements` | 1.2.0 |
-| `fhir_list_igs`, `fhir_get_ig`, `fhir_list_artifacts`, `fhir_search_artifacts`, `fhir_list_resource_profiles`, `fhir_rank_resource_profiles`, `fhir_get_profile`, `fhir_get_profile_elements`, `fhir_get_valueset`, `fhir_expand_valueset`, `fhir_lookup_code`, `fhir_validate_code`, `fhir_normalize_code`, `fhir_get_resource_skeleton`, `fhir_finalize_resource` | 1.2.0 |
+| `fhir_list_igs`, `fhir_get_ig`, `fhir_list_artifacts`, `fhir_search_artifacts`, `fhir_list_resource_profiles`, `fhir_rank_resource_profiles`, `fhir_get_profile`, `fhir_get_profile_elements`, `fhir_get_valueset`, `fhir_expand_valueset`, `fhir_validate_code`, `fhir_get_resource_skeleton`, `fhir_finalize_resource` | 1.2.0 |
+| `fhir_lookup_code`, `fhir_normalize_code` | 1.3.0 |
 | `fhir_check_grounding` | 1.1.0 |
 | `fhir_check_completeness` | 1.1.1 |

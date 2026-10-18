@@ -16,12 +16,13 @@ import { useState } from "react";
 import { confirmAction } from "@/components/confirm";
 import { notify } from "@/components/notify";
 import { SectionCard } from "@/components/SectionCard";
-import { api, errorMessage } from "@/lib/api";
+import { api, ApiError, errorMessage } from "@/lib/api";
 import { fmtDateTime } from "@/lib/format";
 import { qk } from "@/lib/queryKeys";
 import type { SettingsGroup } from "@/lib/types";
 import { GROUP_META, SECRET_MASK, fieldLabel, groupLabel, useSettings } from "../integrations/settingsModel";
 import { useAccounts } from "../models/llmApi";
+import { llmErrorText } from "../models/llmErrors";
 
 /** Max export version this console understands (adminSettings.SETTINGS_EXPORT_VERSION). */
 const MAX_VERSION = 3;
@@ -194,7 +195,7 @@ export function SettingsTransferSection() {
       const res = await fetch("/admin/api/settings/export", { credentials: "same-origin" });
       if (!res.ok) {
         const body = (await res.json().catch(() => null)) as { error?: string; detail?: string } | null;
-        throw new Error(body?.detail ?? body?.error ?? `HTTP ${res.status}`);
+        throw new ApiError(body?.error ?? `匯出失敗（HTTP ${res.status}）`, res.status, body?.detail, body);
       }
       const blob = await res.blob();
       const cd = res.headers.get("content-disposition") ?? "";
@@ -273,9 +274,11 @@ export function SettingsTransferSection() {
           void qc.invalidateQueries({ queryKey: qk.services });
           void qc.invalidateQueries({ queryKey: qk.overview });
         } catch (e) {
-          notify.error(e, "匯入失敗");
-          // The backend writes group values before validating profiles: a profile
-          // failure can leave the settings half-applied, so refresh what's shown.
+          // Model-endpoint rejections (fingerprint, unreachable endpoint…) come coded: translate them.
+          notify.error(llmErrorText(e), "匯入失敗");
+          // The backend validates the model endpoints before writing any group
+          // value, so a rejection changes nothing; refresh anyway (cheap, and
+          // covers a DB error mid-way).
           void qc.invalidateQueries({ queryKey: qk.settings });
           throw e;
         }

@@ -90,6 +90,12 @@ export interface InvokeResponse {
   error?: string;
   detail?: string;
   issues?: Array<{ path: Array<string | number>; message: string; code?: string }>;
+  /** Tool-error explanation shared with POST /tools (node-server/src/toolErrors.ts) — English, as the LLM sees it. */
+  code?: string;
+  message?: string;
+  hint?: string;
+  retryable?: boolean;
+  example_arguments?: Record<string, unknown>;
 }
 
 /** The subset of JSON Schema that zod-to-json-schema emits for our tools. */

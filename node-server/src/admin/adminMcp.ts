@@ -19,6 +19,7 @@ import type { ModuleStatus, ModuleCount, ModuleRequirement } from "../moduleStat
 import { DERIVED_MODULES } from "../moduleStatus.js";
 import type { CatalogTool, ToolGroupInfo } from "../mcp.js";
 import { TOOLS_VERSION, toolVersion } from "../toolVersions.js";
+import { toolErrorFields } from "../toolErrors.js";
 import { MCP_TOOL_EXAMPLES_VERSION, toolExamples, type ToolExample } from "./mcpToolExamples.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -370,6 +371,8 @@ export async function invokeTool(
     status = 400;
     payload = { ok: false, tool_ok: false, error: "tool_call_failed", tool: name, detail: String((exc as Error).message) };
     if (exc instanceof z.ZodError) payload.issues = exc.issues;
+    // Same explanation fields POST /tools/{name} adds (code, message, hint, expected parameters…).
+    Object.assign(payload, toolErrorFields(name, exc));
   }
   const elapsed = Math.max(0, Math.round(deps.now() - started));
   deps.log("Admin MCP playground invocation", {

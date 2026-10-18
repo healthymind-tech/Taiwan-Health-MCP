@@ -237,7 +237,10 @@ export class LabService {
       rows = r.rows;
     }
     if (!rows.length) {
-      return { message: `找不到含有 '${component}' 的 LOINC 檢驗項目` };
+      return {
+        message: `找不到含有 '${component}' 的 LOINC 檢驗項目`,
+        hint: "component matches the LOINC analyte name in English (e.g. Glucose, Hemoglobin A1c/Hemoglobin.total); for Chinese or abbreviations use mode=code.",
+      };
     }
     const bySystem: Record<string, unknown[]> = {};
     for (const r of rows) {
@@ -277,7 +280,7 @@ export class LabService {
     );
     const row = res.rows[0];
     if (!row) {
-      return { error: `找不到 LOINC 碼: ${loincNum}` };
+      return { error: `找不到 LOINC 碼: ${loincNum}`, hint: loincNotFoundHint(loincNum) };
     }
     // consumer_name is empty in current module; fall back to common_name_zh / shortname.
     const displayName =
@@ -306,7 +309,7 @@ export class LabService {
     );
     const concept = conceptRes.rows[0];
     if (!concept) {
-      return { error: `找不到 LOINC 碼: ${loincNum}` };
+      return { error: `找不到 LOINC 碼: ${loincNum}`, hint: loincNotFoundHint(loincNum) };
     }
 
     const refRes = await query<{
@@ -334,6 +337,9 @@ export class LabService {
         test_name_zh: concept.name_zh,
         message: `找不到適用於年齡 ${age} 歲、性別 ${gender} 的參考值`,
         unit: concept.unit,
+        hint:
+          `No reference range is stored for ${loincNum} at age ${age} / gender ${gender}. Try gender="all"; otherwise ` +
+          "interpret the value against the reporting laboratory's own reference range (this server cannot flag it).",
       };
     }
 
@@ -419,22 +425,39 @@ export class LabService {
     gender: "M" | "F" | "all" = "all",
   ): Promise<unknown> {
     const interpretations: Record<string, unknown>[] = [];
+    const skipped: Array<{ index: number; loinc_code: string | null; reason: string; detail: string }> = [];
     let abnormalCount = 0;
 
-    for (const item of results) {
-      const loincNum = (item.loinc_code ?? item.loinc_num) as string | undefined;
-      const value = item.value;
-      if (!loincNum || value === undefined || value === null) continue;
+    for (const [index, item] of results.entries()) {
+      const loincNum = (item?.loinc_code ?? item?.loinc_num) as string | undefined;
+      const value = item?.value;
+      if (!loincNum || value === undefined || value === null) {
+        skipped.push({
+          index,
+          loinc_code: loincNum ? String(loincNum) : null,
+          reason: "missing_field",
+          detail: "each item needs loinc_code and a numeric value, e.g. {\"loinc_code\":\"2345-7\",\"value\":105}",
+        });
+        continue;
+      }
+      if (!Number.isFinite(Number(value))) {
+        skipped.push({ index, loinc_code: String(loincNum), reason: "non_numeric_value", detail: `value ${JSON.stringify(value)} is not a number` });
+        continue;
+      }
       const interp = await this.interpretLabResult(loincNum, Number(value), age, gender);
       if (!("error" in interp) && !("message" in interp)) {
         interpretations.push(interp);
         if ((interp.result as { flag: string }).flag !== "N") {
           abnormalCount += 1;
         }
+      } else if ("error" in interp) {
+        skipped.push({ index, loinc_code: String(loincNum), reason: "unknown_loinc_code", detail: String(interp.error) });
+      } else {
+        skipped.push({ index, loinc_code: String(loincNum), reason: "no_reference_range", detail: String(interp.message) });
       }
     }
 
-    return {
+    const out: Record<string, unknown> = {
       total_tests: interpretations.length,
       abnormal_count: abnormalCount,
       normal_count: interpretations.length - abnormalCount,
@@ -444,5 +467,23 @@ export class LabService {
       },
       results: interpretations,
     };
+    if (skipped.length) {
+      // Items that could not be interpreted used to vanish silently; report them so the caller can say so.
+      out.skipped = skipped;
+      out.hint =
+        `${skipped.length} of ${results.length} item(s) were not interpreted (see skipped[].reason). Fix unknown codes with ` +
+        "search_loinc(keyword=<test name>); for no_reference_range interpret against the lab's own range.";
+    }
+    return out;
   }
+}
+
+/** Next-step text for a LOINC code that is not in the loaded release. */
+export function loincNotFoundHint(code: string): string {
+  const shaped = /^\d{1,7}-\d$/.test(String(code ?? "").trim());
+  return (
+    `'${code}' is not in the loaded LOINC release` +
+    (shaped ? "" : " (LOINC codes look like 2345-7: digits, a hyphen and one check digit)") +
+    ". Find the code with search_loinc(keyword=<test name or abbreviation>, e.g. glucose / HbA1c)."
+  );
 }

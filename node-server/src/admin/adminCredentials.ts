@@ -52,6 +52,8 @@ export async function verifyPassword(username: string, password: string): Promis
   return verifyAdminPassword(password, await storedHash(username));
 }
 
+export const MIN_NEW_PASSWORD_LENGTH = 12;
+
 export async function changePassword(opts: {
   username: string;
   currentPassword: string;
@@ -61,6 +63,10 @@ export async function changePassword(opts: {
     throw new Error("Current password is incorrect.");
   }
   if (opts.newPassword.length === 0) throw new Error("New password is required.");
+  // Same minimum the console enforces (PasswordCard MIN_LENGTH): the API must not accept "x".
+  if (opts.newPassword.length < MIN_NEW_PASSWORD_LENGTH) {
+    throw new Error(`New password must be at least ${MIN_NEW_PASSWORD_LENGTH} characters.`);
+  }
   if (opts.newPassword.length > 512) throw new Error("New password is too long.");
   const nextHash = hashAdminPassword(opts.newPassword);
   await withTransaction(async (client) => {

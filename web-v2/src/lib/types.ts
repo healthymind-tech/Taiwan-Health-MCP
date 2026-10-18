@@ -92,6 +92,9 @@ export interface ServiceProbe {
   endpoint: string;
   latency_ms: number | null;
   message: string;
+  /** zh-TW explanation + where to fix it (backend adminErrorCodes.explainProbe). */
+  message_zh?: string;
+  hint_zh?: string;
   details: Record<string, unknown>;
   checked_at: string | null;
 }
@@ -180,6 +183,9 @@ export interface FhirServer {
   last_probe_status: string;
   last_probe_at: string | null;
   last_probe_error: string;
+  /** zh-TW explanation of last_probe_error (backend adminErrorCodes). */
+  last_probe_error_zh?: string;
+  last_probe_error_hint_zh?: string;
   capability_summary: {
     resourceType?: string;
     fhirVersion?: string;
@@ -247,6 +253,9 @@ export interface JobSummary {
   updated_at?: string;
   last_error_code?: string;
   last_error_message?: string;
+  /** zh-TW explanation + next step for a recognised error (backend adminErrorCodes.explainJobError). */
+  last_error_zh?: string;
+  last_error_hint_zh?: string;
 }
 
 export interface JobsPayload {

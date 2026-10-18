@@ -102,6 +102,9 @@ export interface WorkflowStep {
   name: string;
   status: string; // ok | error | skipped
   message: string;
+  /** zh-TW explanation + next step (backend adminErrorCodes.explainFhirConnection). */
+  message_zh?: string;
+  hint_zh?: string;
   duration_ms?: number;
   details?: Record<string, unknown>;
 }
@@ -115,7 +118,7 @@ export interface CapabilitySummary {
 }
 export interface ConnectionTestResult {
   ok: boolean;
-  probe: { status: string; message: string; latency_ms: number; details: { steps?: WorkflowStep[]; error?: string } };
+  probe: { status: string; message: string; message_zh?: string; hint_zh?: string; latency_ms: number; details: { steps?: WorkflowStep[]; error?: string } };
   capability_summary: CapabilitySummary;
   raw_result?: Record<string, unknown> | null;
   server?: FhirServer;

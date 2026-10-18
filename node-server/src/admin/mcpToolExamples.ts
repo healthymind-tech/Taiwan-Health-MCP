@@ -25,7 +25,7 @@ import {
   TWCORE_PATIENT_EXAMPLE,
 } from "./mcpToolExampleFixtures.js";
 
-export const MCP_TOOL_EXAMPLES_VERSION = "2";
+export const MCP_TOOL_EXAMPLES_VERSION = "3";
 
 export interface ToolExample {
   /** Stable id within the tool (used by the UI and in tests). */
@@ -46,6 +46,7 @@ const TWCORE = "tw.gov.mohw.twcore";
 const TWCORE_VERSION = "1.0.0";
 const TWCORE_SD = "https://twcore.mohw.gov.tw/ig/twcore/StructureDefinition";
 const TWCORE_VS = "https://twcore.mohw.gov.tw/ig/twcore/ValueSet";
+const NHI_PAYMENT_CS = "https://twcore.mohw.gov.tw/ig/twcore/CodeSystem/medical-service-payment-tw";
 const PANADOL_LICENSE = "衛署藥製字第048683號";
 
 const example = (id: string, label: string, args: Record<string, unknown>, description?: string): ToolExample =>
@@ -126,6 +127,13 @@ export const MCP_TOOL_EXAMPLES: Record<string, ToolExampleSet> = {
       example("dx", "診斷：第二型糖尿病", { keyword: "第二型糖尿病", type: "diagnosis", limit: 3 }),
       example("pcs", "處置：Resection of Appendix", { keyword: "Resection of Appendix", type: "procedure", limit: 3 }),
       example("all", "診斷 + 處置：hypertension", { keyword: "hypertension", type: "all", limit: 3 }),
+      example("nhi", "健保支付代碼（別名）：CRP", { keyword: "CRP", type: "all", limit: 5, system: "nhi_payment" }),
+      example("nhi_zh", "健保支付代碼：清創縫合（淺部創傷，傷口 < 5 cm）", {
+        keyword: "清創縫合 4-0 Nylon 5 針（淺部創傷處理，傷口 < 5 cm）",
+        type: "all",
+        limit: 5,
+        system: NHI_PAYMENT_CS,
+      }),
     ],
   },
   infer_complications: {
@@ -372,6 +380,8 @@ export const MCP_TOOL_EXAMPLES: Record<string, ToolExampleSet> = {
     examples: [
       example("v2", "v2-0203 MR（病歷號）", { system: "http://terminology.hl7.org/CodeSystem/v2-0203", code: "MR", package_id: TWCORE, version: TWCORE_VERSION }),
       example("icd", "ICD-10-CM E11.9", { system: "http://hl7.org/fhir/sid/icd-10-cm", code: "E11.9", package_id: TWCORE, version: TWCORE_VERSION }),
+      example("nhi", "健保支付代碼 09005C", { system: NHI_PAYMENT_CS, code: "09005C", package_id: TWCORE, version: TWCORE_VERSION }),
+      example("typo", "打錯的代碼（回傳 near_codes 與 hint）", { system: NHI_PAYMENT_CS, code: "09005", package_id: TWCORE, version: TWCORE_VERSION }),
     ],
   },
   fhir_validate_code: {
@@ -398,6 +408,9 @@ export const MCP_TOOL_EXAMPLES: Record<string, ToolExampleSet> = {
     examples: [
       example("icd", "「第二型糖尿病」→ ICD-10-CM", { text: "第二型糖尿病", value_set: null, system: "http://hl7.org/fhir/sid/icd-10-cm", package_id: TWCORE, version: TWCORE_VERSION, limit: 5 }),
       example("vs", "「已婚」→ marital-status-tw", { text: "已婚", value_set: `${TWCORE_VS}/marital-status-tw`, system: null, package_id: TWCORE, version: TWCORE_VERSION, limit: 5 }),
+      example("nhi_en", "「Emergent hemodialysis」→ 健保支付代碼", { text: "Emergent hemodialysis", value_set: null, system: NHI_PAYMENT_CS, package_id: TWCORE, version: TWCORE_VERSION, limit: 5 }),
+      example("nhi_abbr", "「TKA」→ 健保支付代碼", { text: "TKA", value_set: null, system: NHI_PAYMENT_CS, package_id: TWCORE, version: TWCORE_VERSION, limit: 5 }),
+      example("nhi_alias", "「全膝關節置換術 右側」→ system 別名 nhi_payment", { text: "全膝關節置換術 右側", value_set: null, system: "nhi_payment", package_id: null, version: null, limit: 5 }),
     ],
   },
   fhir_resolve_reference: {

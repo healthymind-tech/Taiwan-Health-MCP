@@ -19,6 +19,7 @@ import { getGroup, isGroupConfigured } from "./adminSettings.js";
 import { listEnabled, type LlmProfile } from "./llmProfiles.js";
 import * as minioService from "../minioService.js";
 import { probeEndpoint } from "../providers/probe.js";
+import { logWarning } from "../logger.js";
 
 export const SERVICE_PROBE_ORDER = [
   "database",
@@ -370,8 +371,49 @@ async function probeProfiles(
   };
 }
 
+/**
+ * Embedding: a real one-text embedding per member (shared, cached 60 s with the
+ * models page) — a listing alone says "ok" for a server that no longer serves
+ * the configured model. A failing member names its issue and who answers instead.
+ */
 async function probeEmbedding(): Promise<ProbeResult> {
-  return probeProfiles("embedding", "Embedding", (p) => probeProfileEndpoint(p, "embedding"));
+  const { embeddingRoleHealth } = await import("./embeddingIdentity.js");
+  const h = await embeddingRoleHealth();
+  if (h.members.length === 0) return unconfigured("Embedding");
+  const why = (m: (typeof h.members)[number]): string => {
+    const p = m.issue?.params ?? {};
+    switch (m.issue?.code) {
+      case "embedding_model_not_found":
+        return `model not found on the server${Array.isArray(p.available) && p.available.length ? ` (serves: ${(p.available as string[]).join(", ")})` : ""}`;
+      case "embedding_dims_unsupported":
+        return `returns ${String(p.returned ?? "?")}-dimension vectors, ${String(p.configured)} configured`;
+      case "embedding_dims_returned":
+        return `returns ${String(p.dims)}-dimension vectors, the system uses ${String(p.system_dims)}`;
+      case "embedding_endpoint_unreachable":
+        return `unreachable (${String(p.base_url ?? "")})`;
+      default:
+        return m.issue?.code ?? "failed";
+    }
+  };
+  const failed = h.members.filter((m) => !m.ok);
+  const first = h.members.find((m) => m.ok) ?? h.members[0];
+  const status = h.down ? "error" : failed.length ? "degraded" : "ok";
+  const message = h.down
+    ? `Embedding: no member answers — ${failed.map((m) => `${m.name}: ${why(m)}`).join("; ")}.`
+    : failed.length
+      ? `Embedding degraded: ${failed.map((m) => `${m.name}: ${why(m)}`).join("; ")} — failing over to ${h.answering}.`
+      : `Embedding: all ${h.members.length} member(s) answer.`;
+  return {
+    status,
+    endpoint: first.name,
+    latency_ms: first.latency_ms,
+    message,
+    details: {
+      profiles: h.members.map((m) => ({ name: m.name, model: m.model, ok: m.ok, latency_ms: m.latency_ms, message: m.ok ? `${m.returned_dims} dims` : why(m), code: m.issue?.code ?? null, params: m.issue?.params ?? null })),
+      answering: h.answering,
+      checked_at: h.checked_at,
+    },
+  };
 }
 
 /** Probe the MinerU server the drug pipeline uploads insert PDFs to. */
@@ -525,5 +567,20 @@ export async function getUnhealthyDependencies(jobType: string): Promise<string[
   );
   const byKey = new Map<string, string>();
   for (const row of res.rows) byKey.set(row.service_key, row.status);
-  return required.filter((key) => byKey.get(key) === "error");
+  const cachedErrors = required.filter((key) => byKey.get(key) === "error");
+  if (cachedErrors.length === 0) return [];
+  // The stored status may be days old (the service was fixed since the last
+  // probe). Re-probe just those services before failing the job, so a stale
+  // "error" never blocks work that would succeed now.
+  try {
+    await runServiceProbes(cachedErrors);
+  } catch (exc) {
+    logWarning("dependency re-probe failed; using cached status", { services: cachedErrors, error: String((exc as Error).message) });
+    return cachedErrors;
+  }
+  const fresh = await query<{ service_key: string; status: string }>(
+    `SELECT service_key, status FROM admin.service_probes WHERE service_key = ANY($1::text[])`,
+    [cachedErrors],
+  );
+  return fresh.rows.filter((r) => r.status === "error").map((r) => r.service_key);
 }

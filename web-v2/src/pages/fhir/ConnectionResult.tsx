@@ -19,7 +19,7 @@ export function ConnectionResult({ result }: { result: ConnectionTestResult }) {
         title={result.ok ? "連線成功" : "連線失敗"}
       >
         <Text fz="sm" style={{ wordBreak: "break-word" }}>
-          {result.ok ? "完整連線流程皆通過。" : result.probe?.message}
+          {result.ok ? "完整連線流程皆通過。" : (result.probe?.message_zh ?? result.probe?.message)}
           {typeof result.probe?.latency_ms === "number" && (
             <Text span c="dimmed" fz="xs">
               {" "}
@@ -27,6 +27,16 @@ export function ConnectionResult({ result }: { result: ConnectionTestResult }) {
             </Text>
           )}
         </Text>
+        {!result.ok && result.probe?.hint_zh && (
+          <Text fz="sm" mt={4}>
+            {result.probe.hint_zh}
+          </Text>
+        )}
+        {!result.ok && result.probe?.message_zh && result.probe.message && (
+          <Text fz="xs" c="dimmed" mt={4} ff="monospace" style={{ wordBreak: "break-word" }}>
+            技術細節：{result.probe.message}
+          </Text>
+        )}
         {result.ok && cap.fhirVersion && (
           <Text fz="xs" c="dimmed" mt={4}>
             FHIR {cap.fhirVersion} · {resCount} 種資源類型

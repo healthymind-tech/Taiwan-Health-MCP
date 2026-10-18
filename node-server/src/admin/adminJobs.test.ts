@@ -19,3 +19,13 @@ test("llmUnavailableBackoffMs caps at 30 minutes", () => {
   assert.equal(llmUnavailableBackoffMs(5), 30 * 60_000);
   assert.equal(llmUnavailableBackoffMs(50), 30 * 60_000);
 });
+
+test("pickSingleSourceBinding: the active upload wins over a newer inactive one", async () => {
+  const { pickSingleSourceBinding } = await import("./adminJobs.js");
+  const rows = [
+    { id: "newest-inactive", is_active: false },
+    { id: "older-active", is_active: true },
+  ];
+  assert.equal(pickSingleSourceBinding(rows).id, "older-active");
+  assert.equal(pickSingleSourceBinding([{ id: "a", is_active: false }, { id: "b", is_active: false }]).id, "a");
+});

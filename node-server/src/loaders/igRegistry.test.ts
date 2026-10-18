@@ -119,3 +119,29 @@ test("classifyRegistryFailure maps old and new messages to stable codes", () => 
   assert.equal(classifyRegistryFailure("Maximum call stack size exceeded"), "unknown");
   assert.equal(classifyRegistryFailure(""), "unknown");
 });
+
+test("searchWithFallback: primary registry down → packages2 catalog, de-duplicated per package", async () => {
+  const { searchWithFallback } = await import("./igRegistry.js");
+  const calls: string[] = [];
+  const fake = async (url: string): Promise<Response> => {
+    calls.push(url);
+    if (url.includes("packages.fhir.org/catalog")) throw new Error("fetch failed");
+    return new Response(
+      JSON.stringify([
+        { name: "tw.gov.mohw.twcore", version: "1.0.0", fhirVersion: "4.0.1", description: "TW Core" },
+        { name: "tw.gov.mohw.twcore", version: "0.3.2", fhirVersion: "4.0.1", description: "TW Core" },
+      ]),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+  };
+  const out = await searchWithFallback("https://packages.fhir.org", "twcore", fake);
+  assert.equal(out.fallback_used, true);
+  assert.deepEqual(out.results.map((r) => r.name), ["tw.gov.mohw.twcore"]);
+  assert.match(calls[1], /packages2\.fhir\.org\/packages\/catalog\?name=twcore/);
+});
+
+test("searchWithFallback: every registry failing throws instead of returning an empty list", async () => {
+  const { searchWithFallback } = await import("./igRegistry.js");
+  const fake = async (): Promise<Response> => new Response("nope", { status: 503 });
+  await assert.rejects(() => searchWithFallback("https://packages.fhir.org", "x", fake), /Registry search failed: HTTP 503/);
+});
