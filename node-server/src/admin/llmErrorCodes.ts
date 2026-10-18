@@ -28,6 +28,7 @@ export function providerDetail(detail: string): LlmCodeParams {
   let reason = "other";
   if (/Failed to parse URL|Invalid URL|ERR_INVALID_URL/i.test(d)) reason = "bad_url";
   else if (/HTTP 40[13]\b/.test(d)) reason = "auth";
+  else if (/HTTP 404\b/.test(d) && /model/i.test(d) && /does not exist|not found|no such model|try pulling/i.test(d)) reason = "model_not_found";
   else if (/HTTP 404\b/.test(d)) reason = "not_found";
   else if (/HTTP 429\b/.test(d)) reason = "rate_limited";
   else if (/HTTP 5\d\d\b/.test(d)) reason = "server_error";
@@ -99,6 +100,7 @@ const RULES: Rule[] = [
   [/^An embedding model switch is already in progress/, "embedding_switch_busy", none],
   [/^Embedding jobs did not stop within/, "embedding_jobs_busy", none],
   [/^Confirm the ChatGPT subscription terms/, "chatgpt_terms_required", none],
+  [/^Embedding test failed: (.*)$/s, "embedding_test_failed", (m) => providerDetail(m[1])],
   ...FINGERPRINT_RULES,
 ];
 
@@ -171,4 +173,24 @@ export function classifyLlmMessage(message: string | null | undefined): LlmCode 
 export function codeFields(message: string | null | undefined, prefix = ""): Record<string, unknown> {
   const c = classifyLlmMessage(message);
   return c ? { [`${prefix}code`]: c.code, [`${prefix}params`]: c.params } : {};
+}
+
+/**
+ * `{ code, params }` for a thrown error: a `CodedProfileError` carries its own;
+ * anything else is classified by message. Provider transport errors that reach
+ * the API layer unhandled still get a code (`endpoint_failed`) so the console
+ * never has to show a raw HTTP body.
+ */
+export function errorFields(exc: unknown): Record<string, unknown> {
+  const e = exc as { code?: unknown; params?: unknown; message?: unknown; name?: unknown } | null;
+  if (e && typeof e.code === "string" && e.params && typeof e.params === "object" && e.name === "CodedProfileError") {
+    return { code: e.code, params: e.params };
+  }
+  const message = String(e?.message ?? exc ?? "");
+  const known = codeFields(message);
+  if (Object.keys(known).length) return known;
+  if (/^HTTP \d{3} from |fetch failed|ECONNREFUSED|ENOTFOUND|ETIMEDOUT|aborted|TimeoutError/i.test(message)) {
+    return { code: "endpoint_failed", params: providerDetail(message) };
+  }
+  return {};
 }

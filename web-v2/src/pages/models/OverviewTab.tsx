@@ -1,4 +1,4 @@
-import { Accordion, Anchor, Badge, Box, Button, Group, Menu, Progress, SimpleGrid, Skeleton, Stack, Text, Tooltip, UnstyledButton } from "@mantine/core";
+import { Accordion, Alert, Anchor, Badge, Box, Button, Group, Menu, Progress, SimpleGrid, Skeleton, Stack, Text, Tooltip, UnstyledButton } from "@mantine/core";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { IconAlertTriangle, IconBrain, IconCheck, IconChevronDown, IconCpu, IconFingerprint, IconKey, IconRoute, IconSettings, IconStack2, IconVectorTriangle } from "@tabler/icons-react";
 import { useMemo, useState, type CSSProperties } from "react";
@@ -7,14 +7,29 @@ import { notify } from "@/components/notify";
 import { SectionCard } from "@/components/SectionCard";
 import { StatCard } from "@/components/StatCard";
 import { api } from "@/lib/api";
-import { llmErrorText } from "./llmErrors";
+import { codeText, GUIDE_CODES, llmErrorInfo, llmErrorText, type LlmErrorInfo } from "./llmErrors";
+import { EmbeddingGuide } from "./EmbeddingGuide";
 import { fmtNumber, fmtPercent } from "@/lib/format";
 import { qk } from "@/lib/queryKeys";
 import type { LlmProfileKind, LlmProfileStats } from "@/lib/types";
 import { SettingsGroupForm } from "../integrations/SettingsGroupForm";
 import { useSettings } from "../integrations/settingsModel";
 import { EmbeddingSwitchModal } from "./EmbeddingSwitch";
-import { flattenRoute, llmKeys, STRATEGY_META, useAccounts, useEmbeddingIdentity, useRoutes, type FlatLeaf, type ProviderAccount, type Route } from "./llmApi";
+import {
+  embeddingHealthKey,
+  embeddingKeys,
+  flattenRoute,
+  llmKeys,
+  STRATEGY_META,
+  useAccounts,
+  useEmbeddingHealth,
+  useEmbeddingIdentity,
+  useRoutes,
+  type EmbeddingHealth,
+  type FlatLeaf,
+  type ProviderAccount,
+  type Route,
+} from "./llmApi";
 import { useProviders } from "./profileModel";
 import { ProviderAvatar } from "./ProviderAvatar";
 import { SystemMap } from "./SystemMap";
@@ -127,6 +142,9 @@ function RoleCard({
   const group = settings.data?.groups.find((g) => g.group === role);
   const bound = routes.find((r) => r.id === boundId);
   const options = routes.filter((r) => r.kind === role);
+  const [guide, setGuide] = useState<LlmErrorInfo | null>(null);
+  const health = useEmbeddingHealth(role === "embedding" && Boolean(bound));
+  const healthBy = new Map((health.data?.members ?? []).map((m) => [m.member_id, m]));
 
   const bind = useMutation({
     mutationFn: (routeId: number) => api.put("/admin/api/llm/roles", { role, route_id: routeId }),
@@ -136,7 +154,14 @@ function RoleCard({
       void qc.invalidateQueries({ queryKey: qk.services });
       if (role === "embedding") void qc.invalidateQueries({ queryKey: qk.embedding });
     },
-    onError: (e) => notify.error(llmErrorText(e), "無法切換"),
+    onError: (e) => {
+      const info = llmErrorInfo(e);
+      // Binding a profile of another embedding model is a model change: explain and offer the switch.
+      if (info.code && GUIDE_CODES.has(info.code)) setGuide(info);
+      else notify.error(info.text, "無法切換");
+      // A refused binding may still have established the identity (first check).
+      void qc.invalidateQueries({ queryKey: ["llm", "embedding"] });
+    },
   });
 
   return (
@@ -235,6 +260,13 @@ function RoleCard({
                           略過
                         </Badge>
                       )}
+                      {!l.skipped && healthBy.get(l.member.id)?.ok === false && (
+                        <Tooltip label={codeText(healthBy.get(l.member.id)!.issue?.code, healthBy.get(l.member.id)!.issue?.params) ?? "探測失敗"} multiline maw={320}>
+                          <Badge size="xs" color="red" variant="light">
+                            失敗
+                          </Badge>
+                        </Tooltip>
+                      )}
                     </Group>
                     <Text fz={10.5} c="dimmed" truncate="end">
                       {l.account?.name ?? "（帳號已刪除）"}
@@ -261,7 +293,9 @@ function RoleCard({
         </Box>
       )}
 
+      {role === "embedding" && bound && health.data?.degraded && <EmbeddingHealthAlert health={health.data} />}
       {role === "embedding" && <EmbeddingIdentityPanel />}
+      <EmbeddingGuide info={guide} onClose={() => setGuide(null)} />
 
       {group && (
         <Accordion variant="contained" radius="md" chevronPosition="right">
@@ -292,10 +326,72 @@ function RoleCard({
   );
 }
 
+/**
+ * "Member X fails (model not found) — requests go to Y": visible on the
+ * overview so a broken endpoint is noticed before anyone edits the profile.
+ */
+function EmbeddingHealthAlert({ health }: { health: EmbeddingHealth }) {
+  const qc = useQueryClient();
+  const [, setParams] = useSearchParams();
+  const recheck = useMutation({
+    mutationFn: () => api.post<EmbeddingHealth>("/admin/api/llm/embedding/health", { fresh: true }),
+    onSuccess: (h) => qc.setQueryData(embeddingHealthKey, h),
+    onError: (e) => notify.error(llmErrorText(e), "重新檢查失敗"),
+  });
+  const failing = health.members.filter((m) => !m.ok);
+  return (
+    <Alert
+      color={health.down ? "red" : "amber"}
+      icon={<IconAlertTriangle size={18} />}
+      title={health.down ? "Embedding 全部成員都失敗：語意搜尋已退回關鍵字比對" : `Embedding 路由降級：${failing.length} 個成員失敗，正由「${health.answering}」備援`}
+    >
+      <Stack gap={6}>
+        {failing.map((m) => (
+          <Box key={m.member_id}>
+            <Text fz="xs" fw={650} ff="monospace" style={{ wordBreak: "break-all" }}>
+              {m.name}
+            </Text>
+            <Text fz="xs">{codeText(m.issue?.code, m.issue?.params) ?? "探測失敗。"}</Text>
+          </Box>
+        ))}
+        <Text fz="xs" c="dimmed">
+          修正方式：到 Profiles 把這個成員改成伺服器實際提供的同一個模型，或先停用／移除它。若伺服器已換成不同的模型，請用下方「切換模型…」重建向量——直接改 Profile 會被拒絕。
+        </Text>
+        <Group gap="xs">
+          <Button size="compact-xs" variant="light" onClick={() => setParams({ tab: "profiles" })}>
+            前往 Profiles
+          </Button>
+          <Button size="compact-xs" variant="subtle" color="gray" loading={recheck.isPending} onClick={() => recheck.mutate()}>
+            重新檢查
+          </Button>
+          <Text fz={10.5} c="dimmed">
+            檢查於 {new Date(health.checked_at).toLocaleTimeString("zh-TW", { hour12: false })}
+          </Text>
+        </Group>
+      </Stack>
+    </Alert>
+  );
+}
+
 /** The system's embedding fingerprint: which model every vector comes from, and the switch entry point. */
 function EmbeddingIdentityPanel() {
   const q = useEmbeddingIdentity();
+  const qc = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [guide, setGuide] = useState<LlmErrorInfo | null>(null);
+  const establish = useMutation({
+    mutationFn: () => api.post<{ ok: boolean; created: boolean; identity: { model: string; dimensions: number } | null }>("/admin/api/llm/embedding/establish", {}),
+    onSuccess: (r) => {
+      if (r.identity) notify.success(`已確認現有向量來自 ${r.identity.model}（${r.identity.dimensions} 維），並建立系統指紋`);
+      else notify.info("目前沒有可用的 Embedding 端點；系統尚無向量，之後儲存時會自動建立。");
+      void qc.invalidateQueries({ queryKey: embeddingKeys.identity });
+    },
+    onError: (e) => {
+      const info = llmErrorInfo(e);
+      if (info.code && GUIDE_CODES.has(info.code)) setGuide(info);
+      else notify.error(info.text, "無法建立指紋");
+    },
+  });
   const id = q.data?.identity;
   const total = (q.data?.counts ?? []).reduce((s, c) => s + c.count, 0);
   return (
@@ -324,12 +420,12 @@ function EmbeddingIdentityPanel() {
               </>
             ) : (
               <Text fz="xs" c="dimmed">
-                尚未建立。下次儲存或指定 Embedding Profile 時，會以實際產生向量的模型自動建立。
+                尚未建立。系統會請各端點重新產生幾筆既有向量來比對，以確認它們是哪個模型產生的（下次儲存 Embedding Profile 時也會自動進行）。
               </Text>
             )}
           </Box>
         </Group>
-        <Button size="xs" variant="light" color="red" onClick={() => setOpen(true)} leftSection={<IconFingerprint size={14} />}>
+        <Button size="xs" variant="light" color="red" onClick={() => setOpen(true)} leftSection={<IconFingerprint size={14} />} style={{ flexShrink: 0 }}>
           切換模型…
         </Button>
       </Group>
@@ -346,9 +442,15 @@ function EmbeddingIdentityPanel() {
         ))}
       </Group>
       <Text fz={11} c="dimmed" mt={6}>
-        共 {fmtNumber(total)} 筆向量都來自這個模型。新加入的 Embedding 模型會用 {q.data?.probe_count ?? 6} 句固定文字比對，相似度須 ≥ {q.data?.min_similarity ?? 0.95} 才視為同一模型。
+        {id ? `共 ${fmtNumber(total)} 筆向量都來自這個模型。` : `共 ${fmtNumber(total)} 筆向量，來源模型尚未確認。`}新加入的 Embedding 模型會用 {q.data?.probe_count ?? 6} 句固定文字比對，相似度須 ≥ {q.data?.min_similarity ?? 0.95} 才視為同一模型。
       </Text>
+      {!q.isPending && !id && total > 0 && (
+        <Button size="xs" variant="light" mt="xs" leftSection={<IconFingerprint size={14} />} loading={establish.isPending} onClick={() => establish.mutate()}>
+          確認現有向量的模型並建立指紋
+        </Button>
+      )}
       <EmbeddingSwitchModal opened={open} onClose={() => setOpen(false)} payload={q.data} />
+      <EmbeddingGuide info={guide} onClose={() => setGuide(null)} />
     </Box>
   );
 }

@@ -22,7 +22,10 @@ import { query, withTransaction } from "../db.js";
 import { logInfo, logWarning } from "../logger.js";
 import { getAdapter } from "../providers/registry.js";
 import { createJob, requestJobControl } from "./adminJobs.js";
-import { embeddingDimensions, ProfileValidationError, type LlmProfile } from "./llmProfiles.js";
+import { alterEmbeddingColumns, embeddingColumnDims, HNSW_MAX_DIMS } from "./embeddingColumns.js";
+import { classifyEmbedFailure, diagnoseEmbedFailure, dimsIssue, leafContext, probeEmbedding, type EmbedIssue } from "./embeddingDiagnosis.js";
+import { sampleStoredVectors, type StoredSample } from "./embeddingSamples.js";
+import { CodedProfileError, embeddingDimensions, ProfileValidationError, type LlmProfile } from "./llmProfiles.js";
 
 /** Per-probe cosine an endpoint must reach to count as the same model. */
 export const MIN_SIMILARITY = 0.95;
@@ -37,10 +40,12 @@ export const PROBE_TEXTS = [
 ];
 
 /** Every vector table, and the job that rebuilds it. */
-export const EMBEDDING_TABLES: { table: string; module: string; jobType: string; label: string }[] = [
+export const EMBEDDING_TABLES: { table: string; module: string; jobType: string; label: string; optional?: boolean }[] = [
   { table: "icd.diagnosis_embeddings", module: "icd", jobType: "icd_embed", label: "ICD-10" },
   { table: "loinc.concept_embeddings", module: "loinc", jobType: "loinc_embed", label: "LOINC" },
   { table: "snomed.concept_embeddings", module: "snomed", jobType: "snomed_embed", label: "SNOMED CT" },
+  // optional: created by migration 20261022 — a database without it has nothing to wipe.
+  { table: "fhir.concept_embeddings", module: "ig", jobType: "ig_embed", label: "FHIR IG CodeSystem 概念", optional: true },
   { table: "health_supplements.item_embeddings", module: "health_supplements", jobType: "health_supplements_embed", label: "健康食品" },
   { table: "food_nutrition.food_embeddings", module: "food_nutrition", jobType: "food_nutrition_embed", label: "食品營養（食品）" },
   { table: "food_nutrition.ingredient_embeddings", module: "food_nutrition", jobType: "food_nutrition_embed", label: "食品營養（成分）" },
@@ -318,25 +323,241 @@ export async function identityDimensions(): Promise<number | null> {
   return dimsCache.dims;
 }
 
+// ── guidance: what the operator sees when a save would break the one-model rule ─
+
+type Leaf = LlmProfile & { account_name?: string };
+
+/** The shared pool in the minimal shape the sample / column helpers take. */
+const DB = { query: <R,>(sql: string, params?: unknown[]) => query(sql, params) as unknown as Promise<{ rows: R[] }> };
+
+/**
+ * Re-index throughput assumed for the operator's time estimate (vectors per
+ * second through a shared GPU with the default batch size / concurrency). Only
+ * an estimate: production measured ~1–1.5 h for ~0.5 M vectors with a 0.6B model.
+ */
+export const REINDEX_VECTORS_PER_SECOND = 120;
+
+export function estimateReindexMinutes(total: number): { low: number; high: number } {
+  if (total <= 0) return { low: 0, high: 0 };
+  const mid = total / REINDEX_VECTORS_PER_SECOND / 60;
+  return { low: Math.max(1, Math.round(mid * 0.7)), high: Math.max(1, Math.round(mid * 1.5)) };
+}
+
+/** Identity + vector counts + re-index estimate: the "current state" block of every guidance dialog. */
+async function systemSummary(identity: EmbeddingIdentity | null): Promise<Record<string, unknown>> {
+  const counts = await vectorCounts();
+  const total = counts.reduce((s, c) => s + c.count, 0);
+  const est = estimateReindexMinutes(total);
+  return {
+    current_model: identity?.model ?? null,
+    current_dims: identity?.dimensions ?? null,
+    current_account: identity?.account_name || identity?.provider || null,
+    vector_total: total,
+    vector_counts: counts.filter((c) => c.count > 0).map((c) => ({ label: c.label, count: c.count })),
+    estimate_minutes_low: est.low,
+    estimate_minutes_high: est.high,
+  };
+}
+
+/** What the switch dialog should be pre-filled with for this leaf (member knobs only). */
+function requestedFields(leaf: Leaf, returned: number | null): Record<string, unknown> {
+  const params: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(leaf.params ?? {})) if (!["rpm", "tpm", "base_model"].includes(k)) params[k] = v;
+  params.dimensions = embeddingDimensions(leaf);
+  return {
+    requested_name: leaf.name,
+    requested_account_id: leaf.account_id ?? null,
+    requested_account: leafContext(leaf).account,
+    requested_model: leaf.model,
+    requested_dims: embeddingDimensions(leaf),
+    requested_returned_dims: returned,
+    requested_params: params,
+  };
+}
+
+/**
+ * The save would put a different model (or vector size) next to the system's.
+ * That is never done by editing a profile — only the guarded switch re-indexes
+ * — so say so, with everything the dialog needs to offer the switch.
+ */
+async function modelChangeError(leaf: Leaf, identity: EmbeddingIdentity, r: FingerprintResult): Promise<CodedProfileError> {
+  const configured = embeddingDimensions(leaf);
+  const returned = r.message.startsWith("The endpoint returned") ? r.dimensions : configured;
+  const reason = r.message.startsWith("Configured dimensions") ? "dims_config" : r.message.startsWith("The endpoint returned") ? "dims_returned" : "different_model";
+  // Same model, only the size knob differs: not a model change, a typo to fix.
+  if (reason === "dims_config" && leaf.model === identity.model) {
+    return new CodedProfileError(
+      `'${leaf.name}' is not the system's embedding model (${identity.model}, ${identity.dimensions} dims): ${r.message} Every embedding endpoint must produce the same vectors.`,
+      "embedding_rejected_same_model_dims",
+      { name: leaf.name, model: leaf.model, system_model: identity.model, system_dims: identity.dimensions, dims: configured, detail: r.message },
+    );
+  }
+  const endpointIssue = returned !== null && returned !== configured ? dimsIssue(leaf, returned) : null;
+  return new CodedProfileError(
+    `'${leaf.name}' is not the system's embedding model (${identity.model}, ${identity.dimensions} dims): ${r.message} ` +
+      "Every embedding endpoint must produce the same vectors. To change models, use 'Switch embedding model', which re-indexes all vectors.",
+    "embedding_model_change_requires_switch",
+    {
+      ...(await systemSummary(identity)),
+      ...requestedFields(leaf, returned),
+      reason,
+      similarity: r.min_similarity,
+      min_similarity: MIN_SIMILARITY,
+      endpoint_issue: endpointIssue,
+      detail: r.message,
+    },
+    409,
+  );
+}
+
+/** Re-embed stored texts with `leaf`: does it reproduce the stored vectors? */
+async function verifyAgainstSamples(leaf: Leaf, samples: StoredSample[]): Promise<{ ok: boolean; similarity: number | null; issue: EmbedIssue | null; returned: number | null }> {
+  const probe = await probeEmbedding(leaf, samples.map((s) => s.text), { timeoutMs: 60_000 });
+  if (!probe.vectors) return { ok: false, similarity: null, issue: probe.issue, returned: probe.returned_dims };
+  const cmp = compareFingerprint(probe.vectors, samples.map((s) => s.vector));
+  return { ok: cmp.ok, similarity: cmp.min, issue: probe.issue, returned: probe.returned_dims };
+}
+
+const dedupeKey = (l: Leaf): string => `${l.account_id ?? l.base_url}:${l.model}:${embeddingDimensions(l)}`;
+
+/** Every enabled embedding leaf of every embedding profile (the candidates for "who made these vectors"). */
+async function allEmbeddingLeaves(): Promise<Leaf[]> {
+  const { listRoutes, roleLeaves } = await import("./llmRouting.js");
+  const out: Leaf[] = [];
+  for (const r of await listRoutes("embedding")) out.push(...(await roleLeaves("embedding", r.id)).filter((l) => l.enabled));
+  return out;
+}
+
+export interface SeedAttempt {
+  name: string;
+  model: string;
+  account: string;
+  ok: boolean;
+  /** Why this one was not adopted: an endpoint issue code, or "different_model". */
+  code: string | null;
+  similarity: number | null;
+  detail: string;
+}
+
+/**
+ * No identity row yet. With vectors in the database, the identity must be the
+ * model that made them: every candidate (the role's endpoints first, then every
+ * other embedding endpoint, then the ones being saved) re-embeds a few stored
+ * texts and the first that reproduces their vectors is adopted. An unreachable
+ * endpoint is skipped, never adopted. With no vectors, the first candidate that
+ * answers becomes the identity (nothing to protect yet), and when none answers
+ * the save simply proceeds without one.
+ *
+ * Throws `embedding_identity_unresolved` (structured, with every attempt) when
+ * vectors exist and no configured endpoint can be shown to have made them.
+ */
+export async function establishIdentity(opts: {
+  user: string;
+  /** The endpoints a save would add (tried last when vectors exist). */
+  candidates: Leaf[];
+  roleLeaves: () => Promise<Leaf[]>;
+  otherLeaves?: () => Promise<Leaf[]>;
+}): Promise<EmbeddingIdentity | null> {
+  const attempts: SeedAttempt[] = [];
+  const note = (leaf: Leaf, a: Omit<SeedAttempt, "name" | "model" | "account">) => attempts.push({ name: leaf.name, model: leaf.model, account: String(leafContext(leaf).account), ...a });
+
+  if (!(await systemHasEmbeddings())) {
+    for (const leaf of opts.candidates) {
+      try {
+        return await adoptIdentity(leaf, opts.user);
+      } catch (exc) {
+        const issue = classifyEmbedFailure(leaf, exc);
+        note(leaf, { ok: false, code: issue.code, similarity: null, detail: String(issue.params.detail ?? "") });
+      }
+    }
+    logWarning("embedding_identity_deferred", { reason: "no endpoint answered; no vectors to protect", attempts });
+    return null;
+  }
+
+  const role = await opts.roleLeaves();
+  const others = await (opts.otherLeaves ?? allEmbeddingLeaves)().catch(() => [] as Leaf[]);
+  const seen = new Set<string>();
+  const pool: { leaf: Leaf; fromRole: boolean }[] = [];
+  for (const [list, fromRole] of [[role, true], [others, false], [opts.candidates, false]] as const) {
+    for (const leaf of list) {
+      const k = dedupeKey(leaf);
+      if (seen.has(k)) continue;
+      seen.add(k);
+      pool.push({ leaf, fromRole });
+    }
+  }
+  const samples = await sampleStoredVectors(DB).catch(() => [] as StoredSample[]);
+  const storedDims = samples[0]?.vector.length ?? (await embeddingColumnDims(DB).catch(() => []))[0]?.dims ?? null;
+
+  for (const { leaf, fromRole } of pool) {
+    try {
+      if (samples.length) {
+        const v = await verifyAgainstSamples(leaf, samples);
+        if (!v.ok) {
+          note(leaf, {
+            ok: false,
+            code: v.issue?.code ?? "different_model",
+            similarity: v.similarity,
+            detail: v.issue ? String(v.issue.params.detail ?? "") : `Similarity to the stored vectors ${v.similarity?.toFixed(3) ?? "?"} (needs ≥ ${MIN_SIMILARITY}).`,
+          });
+          continue;
+        }
+      } else if (!fromRole) {
+        // Without stored texts to compare, only the role's own endpoints are trusted (they made the vectors).
+        note(leaf, { ok: false, code: "unverifiable", similarity: null, detail: "No stored text could be rebuilt to compare against; only the role's own endpoints are trusted." });
+        continue;
+      }
+      const identity = await adoptIdentity(leaf, opts.user);
+      if (storedDims && identity.dimensions !== storedDims) {
+        // Reachable, but cannot be what made the stored vectors.
+        await query("DELETE FROM admin.embedding_identity WHERE id = 1");
+        invalidateSwitchState();
+        note(leaf, { ok: false, code: "embedding_dims_unsupported", similarity: null, detail: `Returns ${identity.dimensions}-dimension vectors; the stored vectors have ${storedDims}.` });
+        continue;
+      }
+      logInfo("embedding_identity_seeded", { model: leaf.model, account: leafContext(leaf).account, verified: samples.length > 0, tried: attempts.length + 1 });
+      return identity;
+    } catch (exc) {
+      const issue = await diagnoseEmbedFailure(leaf, exc);
+      note(leaf, { ok: false, code: issue.code, similarity: null, detail: String(issue.params.detail ?? "") });
+    }
+  }
+  const first = opts.candidates[0];
+  throw new CodedProfileError(
+    "Vectors exist but no configured embedding endpoint reproduces them, so the system embedding model cannot be established. " +
+      "Bring the original model back online, or use 'Switch embedding model' to re-index with a new one.",
+    "embedding_identity_unresolved",
+    {
+      ...(await systemSummary(null)),
+      ...(first ? requestedFields(first, null) : {}),
+      stored_dims: storedDims,
+      verified_by_samples: samples.length > 0,
+      attempts,
+      detail: attempts.map((a) => `${a.name}: ${a.code ?? "?"} — ${a.detail}`).join("\n"),
+    },
+    409,
+  );
+}
+
 /**
  * Validate every leaf an embedding profile can answer with. With no identity
- * yet: if vectors already exist they came from the role's current model, so
- * that becomes the identity first; otherwise the first leaf here does.
+ * yet it is established first (see `establishIdentity`). Failures are coded
+ * (`CodedProfileError`) so the console can explain them and offer the switch.
  */
 export async function assertSameEmbeddingModel(
-  leaves: (LlmProfile & { account_name?: string })[],
+  leaves: Leaf[],
   user: string,
-  currentRoleLeaves: () => Promise<(LlmProfile & { account_name?: string })[]>,
+  currentRoleLeaves: () => Promise<Leaf[]>,
   /** `${account_id}:${model}` already in service: an outage must not block editing the profile. */
   grandfathered: Set<string> = new Set(),
+  opts: { otherLeaves?: () => Promise<Leaf[]> } = {},
 ): Promise<void> {
   if (leaves.length === 0) return;
   let identity = await getIdentity();
   if (!identity) {
-    const has = await systemHasEmbeddings();
-    const seed = has ? (await currentRoleLeaves())[0] : leaves[0];
-    if (!seed) throw new ProfileValidationError("Vectors exist but no embedding model is bound to produce the system fingerprint; bind the original embedding profile first.");
-    identity = await adoptIdentity(seed, user);
+    identity = await establishIdentity({ user, candidates: leaves, roleLeaves: currentRoleLeaves, otherLeaves: opts.otherLeaves });
+    // Nothing answered and nothing is stored: there is no model to protect yet.
+    if (!identity) return;
   }
   for (const leaf of leaves) {
     let r: FingerprintResult;
@@ -349,15 +570,140 @@ export async function assertSameEmbeddingModel(
         logWarning("embedding_fingerprint_unverified", { leaf: leaf.name, error: (exc as Error).message });
         continue;
       }
-      throw new ProfileValidationError(`Could not verify '${leaf.name}' against the system embedding model: ${(exc as Error).message}`);
-    }
-    if (!r.ok) {
-      throw new ProfileValidationError(
-        `'${leaf.name}' is not the system's embedding model (${identity.model}, ${identity.dimensions} dims): ${r.message} ` +
-          "Every embedding endpoint must produce the same vectors. To change models, use 'Switch embedding model', which re-indexes all vectors.",
+      const issue = await diagnoseEmbedFailure(leaf, exc);
+      throw new CodedProfileError(
+        `Could not verify '${leaf.name}' against the system embedding model: ${(exc as Error).message}`,
+        "embedding_endpoint_failed",
+        { ...issue.params, issue: issue.code, system_model: identity.model, system_dims: identity.dimensions },
       );
     }
+    if (!r.ok) throw await modelChangeError(leaf, identity, r);
   }
+}
+
+// ── switch pre-check and role health ────────────────────────────────────────
+
+export interface SwitchPrecheck {
+  /** Nothing blocks the switch (the caller still needs REINDEX when vectors exist). */
+  ok: boolean;
+  /** The first problem that blocks the switch, coded for the console. */
+  blocking: EmbedIssue | null;
+  warnings: EmbedIssue[];
+  returned_dims: number | null;
+  configured_dims: number;
+  latency_ms: number | null;
+  /** This endpoint already makes the system's vectors (a switch would only rebuild them). */
+  same_model: boolean;
+  similarity: number | null;
+  identity: { model: string; dimensions: number; account: string } | null;
+  /** Declared size of the vector columns today, and whether the switch re-types them. */
+  column_dims: number | null;
+  alter_columns: boolean;
+  hnsw: boolean;
+  summary: Record<string, unknown>;
+}
+
+/**
+ * Everything the switch would find out before it shuts anything — run on its
+ * own so the dialog can show problems (model missing, `dimensions` rejected,
+ * native size differs, same model) before the operator types REINDEX.
+ */
+export async function precheckSwitch(leaf: Leaf): Promise<SwitchPrecheck> {
+  await ensureSchema();
+  const identity = await getIdentity();
+  const summary = await systemSummary(identity);
+  const columns = await embeddingColumnDims(DB).catch(() => []);
+  const columnDims = columns[0]?.dims ?? null;
+  const configured = embeddingDimensions(leaf);
+  const probe = await probeEmbedding(leaf, PROBE_TEXTS);
+  const warnings: EmbedIssue[] = [];
+  let blocking: EmbedIssue | null = probe.issue;
+  let same = false;
+  let similarity: number | null = null;
+  if (probe.vectors && !blocking) {
+    if (identity && probe.returned_dims === identity.dimensions) {
+      const cmp = compareFingerprint(probe.vectors, identity.probe_vectors);
+      similarity = cmp.min;
+      same = cmp.ok;
+    } else if (!identity && Number(summary.vector_total) > 0) {
+      // No identity row: compare with stored vectors directly.
+      const samples = await sampleStoredVectors(DB).catch(() => [] as StoredSample[]);
+      if (samples.length && samples[0].vector.length === probe.returned_dims) {
+        const v = await verifyAgainstSamples(leaf, samples).catch(() => null);
+        similarity = v?.similarity ?? null;
+        same = Boolean(v?.ok);
+      }
+    }
+    if (same) {
+      blocking = {
+        code: "embedding_switch_same_model",
+        params: { ...leafContext(leaf), similarity, detail: "This model already produces the system's vectors; add it to the embedding profile instead." },
+      };
+    }
+  }
+  const finalDims = probe.returned_dims ?? configured;
+  if (finalDims > HNSW_MAX_DIMS) warnings.push({ code: "embedding_dims_no_hnsw", params: { dims: finalDims, max: HNSW_MAX_DIMS } });
+  return {
+    ok: blocking === null,
+    blocking,
+    warnings,
+    returned_dims: probe.returned_dims,
+    configured_dims: configured,
+    latency_ms: probe.latency_ms,
+    same_model: same,
+    similarity,
+    identity: identity && { model: identity.model, dimensions: identity.dimensions, account: identity.account_name || identity.provider },
+    column_dims: columnDims,
+    alter_columns: columns.some((c) => c.dims !== finalDims),
+    hnsw: finalDims <= HNSW_MAX_DIMS,
+    summary,
+  };
+}
+
+export interface MemberHealth {
+  member_id: number;
+  name: string;
+  account: string;
+  model: string;
+  ok: boolean;
+  latency_ms: number | null;
+  returned_dims: number | null;
+  issue: EmbedIssue | null;
+}
+
+const HEALTH_TTL_MS = 60_000;
+let healthCache: { at: number; value: Promise<{ members: MemberHealth[]; degraded: boolean; down: boolean; answering: string | null; checked_at: string }> } | null = null;
+
+/**
+ * Probe each endpoint of the embedding role with one short text (cached for a
+ * minute): which members fail and why, and which one is answering instead —
+ * so an operator sees "member X: model not found, failing over to Y" before
+ * touching the profile.
+ */
+export function embeddingRoleHealth(opts: { fresh?: boolean } = {}) {
+  if (!opts.fresh && healthCache && Date.now() - healthCache.at < HEALTH_TTL_MS) return healthCache.value;
+  const value = (async () => {
+    const { roleLeaves } = await import("./llmRouting.js");
+    const identityDims = await identityDimensions();
+    const leaves = (await roleLeaves("embedding")).filter((l) => l.enabled && l.base_url && l.model);
+    const members = await Promise.all(
+      leaves.map(async (leaf): Promise<MemberHealth> => {
+        const p = await probeEmbedding(leaf, ["health check"], { timeoutMs: 20_000, inputType: "query" });
+        let issue = p.issue;
+        if (!issue && identityDims && p.returned_dims !== null && p.returned_dims !== identityDims) {
+          issue = { code: "embedding_dims_returned", params: { ...leafContext(leaf), dims: p.returned_dims, system_dims: identityDims } };
+        }
+        return { member_id: leaf.id, name: leaf.name, account: String(leafContext(leaf).account), model: leaf.model, ok: !issue, latency_ms: p.latency_ms, returned_dims: p.returned_dims, issue };
+      }),
+    );
+    const answering = members.find((m) => m.ok)?.name ?? null;
+    return { members, degraded: members.some((m) => !m.ok), down: members.length > 0 && !answering, answering, checked_at: new Date().toISOString() };
+  })();
+  healthCache = { at: Date.now(), value };
+  value.catch(() => {
+    healthCache = null;
+  });
+  return value;
 }
 
 // ── switching models ─────────────────────────────────────────────────────────
@@ -411,13 +757,18 @@ async function switchEmbeddingModelUnlocked(opts: SwitchOptions): Promise<Switch
   const steps: SwitchStep[] = [];
   const step = (key: string, label: string, detail: string) => steps.push({ key, label, ok: true, detail });
 
-  // 0. The new model must answer before anything is shut.
-  const probe = await embedProbes(leaf).catch((exc: Error) => {
-    throw new ProfileValidationError(`The new model did not answer: ${exc.message}`);
-  });
-  if (probe[0].length !== embeddingDimensions(leaf)) {
-    throw new ProfileValidationError(`The new model returned ${probe[0].length}-dimension vectors but ${embeddingDimensions(leaf)} were configured.`);
+  // 0. The new model must answer — with vectors of the configured size — before
+  //    anything is shut. Failures carry the same codes as the pre-check.
+  const checked = await probeEmbedding(leaf, PROBE_TEXTS);
+  if (!checked.vectors || checked.issue) {
+    const issue = checked.issue ?? { code: "embedding_no_vectors", params: leafContext(leaf) };
+    const message =
+      checked.returned_dims !== null && checked.returned_dims !== checked.configured_dims
+        ? `The new model returned ${checked.returned_dims}-dimension vectors but ${checked.configured_dims} were configured.`
+        : `The new model did not answer: ${String(issue.params.detail ?? issue.code)}`;
+    throw new CodedProfileError(message, issue.code, { ...issue.params, stage: "switch" });
   }
+  const probe = checked.vectors;
   await ensureSchema();
   const before = await getIdentity();
   // Same vectors as today: switching would wipe and rebuild everything for nothing.
@@ -430,6 +781,7 @@ async function switchEmbeddingModelUnlocked(opts: SwitchOptions): Promise<Switch
   let adopted = false;
   let bound = false;
   let reindexAttempted = false;
+  let altered: { table: string; from: number; to: number }[] = [];
 
   // 1. Shut every embedding endpoint (search drops to keyword-only). With no
   //    identity row yet (legacy vectors) there is nothing to flag, so the new
@@ -506,13 +858,26 @@ async function switchEmbeddingModelUnlocked(opts: SwitchOptions): Promise<Switch
     //       transaction, using the probe vectors from step 0 (no network here).
     counts = await vectorCounts();
     await withTransaction(async (client) => {
-      for (const t of EMBEDDING_TABLES) await client.query(`TRUNCATE ${t.table}`);
+      for (const t of EMBEDDING_TABLES) {
+        if (t.optional) {
+          const exists = await client.query<{ t: string | null }>("SELECT to_regclass($1)::text AS t", [t.table]);
+          if (!exists.rows[0]?.t) continue;
+        }
+        await client.query(`TRUNCATE ${t.table}`);
+      }
+      // The tables are empty now: re-type the vector columns to the new size
+      // (e.g. 1024 → 2560) here, not lazily in the first embed job.
+      altered = await alterEmbeddingColumns(client, probe[0].length);
       if (!adopted) await writeIdentity(client, leaf, probe, user, "switching");
     });
     adopted = true;
     logInfo("embedding_identity_adopted", { model: leaf.model, provider: leaf.provider, dimensions: probe[0].length, by: user });
     const wiped = counts.reduce((s, c) => s + c.count, 0);
     step("wipe", "清除舊向量", hadEmbeddings ? `刪除 ${wiped.toLocaleString()} 筆舊模型向量。` : "原本沒有向量。");
+    if (altered.length) {
+      const from = [...new Set(altered.map((a) => a.from))].join("/");
+      step("alter", "調整向量欄位維度", `${altered.length} 個向量表的欄位由 ${from} 維改為 ${probe[0].length} 維。`);
+    }
 
     // 4b. Point the role at the new model.
     const profile = await opts.bindNewProfile(leaf);
@@ -531,7 +896,7 @@ async function switchEmbeddingModelUnlocked(opts: SwitchOptions): Promise<Switch
 
     await query(
       `INSERT INTO admin.admin_audit_log (admin_user, action, target_type, target_id, payload_json) VALUES ($1, 'switch_embedding_model', 'embedding', 'system', $2::jsonb)`,
-      [user, JSON.stringify({ from: before?.model ?? null, to: leaf.model, wiped, jobs })],
+      [user, JSON.stringify({ from: before?.model ?? null, to: leaf.model, dims: probe[0].length, altered, wiped, jobs })],
     );
     return { steps, jobs, profile };
   } catch (exc) {

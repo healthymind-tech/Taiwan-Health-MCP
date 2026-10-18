@@ -35,6 +35,8 @@ function providerReason(p: CodeParams): string {
       return "Base URL 格式不正確，無法連線。請確認網址（例如 https://api.example.com/v1）。";
     case "auth":
       return `伺服器拒絕授權，請確認 API 金鑰是否正確、仍有效。（${detail}）`;
+    case "model_not_found":
+      return "伺服器上沒有這個模型（HTTP 404）。請到「Provider 帳號」查看伺服器目前提供的模型，改選其中一個。";
     case "not_found":
       return `找不到端點（HTTP 404），請確認 Base URL 的路徑（OpenAI 相容服務通常以 /v1 結尾）。`;
     case "rate_limited":
@@ -58,6 +60,40 @@ function paramRule(rule: string): string {
   const oneOf = rule.match(/^one of: (.+)$/);
   if (oneOf) return `必須是下列之一：${oneOf[1]}`;
   return rule;
+}
+
+const list = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : []);
+const who = (p: CodeParams): string => {
+  const account = s(p.account).trim();
+  if (!account) return p.base_url ? `端點 ${s(p.base_url)} ` : "端點";
+  return `「${account}」${p.base_url ? `（${s(p.base_url)}）` : ""}`;
+};
+const minutes = (p: CodeParams): string => {
+  const lo = Number(p.estimate_minutes_low);
+  const hi = Number(p.estimate_minutes_high);
+  if (!Number.isFinite(hi) || hi <= 0) return "";
+  const fmt = (m: number) => (m >= 90 ? `${(m / 60).toFixed(1)} 小時` : `${m} 分鐘`);
+  return lo === hi ? `約 ${fmt(hi)}` : `約 ${fmt(lo)}–${fmt(hi)}`;
+};
+
+/** The vLLM flag that makes a Matryoshka model accept `dimensions`. */
+export const VLLM_MATRYOSHKA_FLAG = `--hf-overrides '{"is_matryoshka": true}'`;
+
+/** Why the vectors are not the configured size, and both ways to fix it. */
+function dimsUnsupported(p: CodeParams): string {
+  const returned = p.returned === null || p.returned === undefined ? null : Number(p.returned);
+  const head =
+    returned !== null
+      ? `「${s(p.model)}」回傳 ${returned} 維向量，但設定為 ${s(p.configured)} 維。`
+      : `伺服器拒絕了 dimensions 參數（要求 ${s(p.configured)} 維）。`;
+  const why = p.send_dimensions
+    ? "已開啟「送出維度參數」，但伺服器拒絕或忽略了它——這個模型（或伺服器設定）不支援截短維度。"
+    : "目前沒有送出 dimensions 參數，伺服器回傳的是模型原生維度。";
+  const fixNative = returned !== null ? `① 把向量維度改為 ${returned}（模型原生維度）` : "① 關閉「送出維度參數」並把向量維度改為模型原生維度";
+  const fixTruncate = p.matryoshka
+    ? `② 保留 ${s(p.configured)} 維：開啟「送出維度參數（dimensions）」${p.self_hosted ? `，且 vLLM 必須以 ${VLLM_MATRYOSHKA_FLAG} 啟動（Qwen3-Embedding 等 Matryoshka 模型適用；改完需重啟 vLLM）` : ""}`
+    : "② 這個模型多半不支援截短維度（Matryoshka），只能使用原生維度";
+  return `${head}${why}修正方式（擇一）：${fixNative}；${fixTruncate}。`;
 }
 
 const TEXT: Record<string, (p: CodeParams) => string> = {
@@ -136,7 +172,46 @@ const TEXT: Record<string, (p: CodeParams) => string> = {
   embedding_reindex_confirm: () => "請輸入 REINDEX 確認：所有現有向量都會被刪除並重建。",
   embedding_jobs_busy: () => "向量工作在 2 分鐘內沒有停止，請等它們結束後再試。",
   chatgpt_terms_required: () => "請先勾選所有確認項目。",
+  // embedding endpoint diagnosis (node-server/src/admin/embeddingDiagnosis.ts)
+  embedding_model_not_found: (p) => {
+    const avail = list(p.available);
+    return (
+      `${who(p)}目前沒有提供模型「${s(p.model)}」（伺服器回 HTTP ${s(p.status || 404)}）。` +
+      (avail.length
+        ? `伺服器目前提供：${avail.join("、")}。請改選其中一個；若那是不同的模型，須用「切換模型…」流程更換系統 Embedding 模型。`
+        : p.listing_ok
+          ? "伺服器目前沒有列出任何 Embedding 模型，請確認模型已部署。"
+          : "也無法取得伺服器的模型清單，請確認伺服器上已部署該模型。")
+    );
+  },
+  embedding_dims_unsupported: dimsUnsupported,
+  embedding_endpoint_unreachable: (p) =>
+    `無法連線到${who(p)}${p.reason === "timeout" ? "：連線逾時" : p.reason === "bad_url" ? "：網址格式不正確" : ""}。請確認伺服器已啟動、網址與連接埠正確。若它在 Embedding Profile 裡，請求會自動改由下一個成員處理。`,
+  embedding_endpoint_auth: (p) => `${who(p)}拒絕授權（HTTP ${s(p.status)}）。請到「Provider 帳號」更新 API 金鑰。`,
+  embedding_endpoint_error: (p) =>
+    p.path_problem
+      ? `${who(p)}回應 HTTP 404：找不到 Embedding 端點。請確認 Base URL 的路徑（OpenAI 相容服務通常以 /v1 結尾）。`
+      : `${who(p)}回應錯誤（HTTP ${s(p.status)}）。伺服器可能暫時故障，請稍後再試；持續發生請查看伺服器日誌。`,
+  embedding_no_vectors: (p) => `「${s(p.model)}」有回應，但沒有為每段文字傳回向量；它可能不是 Embedding 模型。`,
+  embedding_endpoint_failed: (p) => `無法驗證「${s(p.name)}」：${codeText(s(p.issue), p) ?? "端點呼叫失敗。"}`,
+  embedding_test_failed: (p) => `Embedding 測試失敗：${providerReason(p)}`,
+  embedding_test_ok: (p) => `測試成功：回傳 ${s(p.dims)} 維向量，耗時 ${s(p.latency_ms)} ms。`,
+  endpoint_failed: (p) => `呼叫模型端點失敗：${providerReason(p)}`,
+  embedding_dims_no_hnsw: (p) => `${s(p.dims)} 維超過 HNSW 索引上限（${s(p.max)} 維），語意搜尋會改用精確掃描，速度較慢。`,
+  // guidance (shown as a dialog by EmbeddingGuide.tsx; this is the one-line version)
+  embedding_model_change_requires_switch: (p) =>
+    `「${s(p.requested_model)}」和系統目前的 Embedding 模型（${s(p.current_model)}，${s(p.current_dims)} 維）不同。編輯 Profile 不能更換模型：現有 ${Number(p.vector_total ?? 0).toLocaleString()} 筆向量都是舊模型產生的，混用會讓語意搜尋失準。請改用「切換模型…」流程，它會重建全部向量${minutes(p) ? `（${minutes(p)}）` : ""}。`,
+  embedding_identity_unresolved: (p) =>
+    `系統已有 ${Number(p.vector_total ?? 0).toLocaleString()} 筆向量，但目前沒有任何 Embedding 端點能重現它們，無法確認系統模型。請讓原本的模型重新上線後再儲存，或改用「切換模型…」以新模型重建全部向量。`,
 };
+
+/** Codes that come with a guidance dialog (EmbeddingGuide.tsx) rather than a one-line error. */
+export const GUIDE_CODES = new Set(["embedding_model_change_requires_switch", "embedding_identity_unresolved"]);
+
+/** Re-index time estimate for a guidance payload ("約 50 分鐘–1.8 小時"), or "". */
+export function reindexEstimate(p: CodeParams | undefined): string {
+  return p ? minutes(p) : "";
+}
 
 /** Known English phrasings without a code (older server, sign-in flow). */
 const LEGACY: [RegExp, string][] = [
@@ -175,15 +250,38 @@ export function llmText(obj: Coded | null | undefined, fallback = ""): string {
   return codeText(obj.code, obj.params) ?? (obj.message ? localizeMessage(obj.message) : fallback);
 }
 
-/** Text for any thrown value from the LLM admin API. */
-export function llmErrorText(err: unknown): string {
+/** Structured view of a thrown API error: translated text + the raw detail for "技術細節". */
+export interface LlmErrorInfo {
+  text: string;
+  code?: string;
+  params?: CodeParams;
+  /** Raw server text (never shown by default). */
+  detail?: string;
+  status?: number;
+}
+
+/** Looks like a raw provider reply (HTTP status line, JSON body): never shown as the main text. */
+const RAW = /HTTP \d{3}\b|[{}]|https?:\/\//;
+
+export function llmErrorInfo(err: unknown): LlmErrorInfo {
   if (err instanceof ApiError) {
     const body = (err.body && typeof err.body === "object" ? err.body : {}) as Record<string, unknown>;
-    const coded = codeText(typeof body.code === "string" ? body.code : undefined, body.params as CodeParams | undefined);
-    if (coded) return coded;
-    // 500s carry the useful text in `detail`; 4xx in the message itself.
-    if (err.status >= 500 && err.detail) return `操作失敗：${localizeMessage(err.detail)}`;
-    return localizeMessage(err.message);
+    const code = typeof body.code === "string" ? body.code : undefined;
+    const params = (body.params && typeof body.params === "object" ? body.params : undefined) as CodeParams | undefined;
+    const rawDetail = [err.detail, typeof params?.detail === "string" ? params.detail : undefined, err.message].find((x) => x && x.trim()) ?? undefined;
+    const coded = codeText(code, params);
+    if (coded) return { text: coded, code, params, detail: rawDetail, status: err.status };
+    if (err.status >= 500) {
+      const d = err.detail ? localizeMessage(err.detail) : "";
+      return { text: d && !RAW.test(d) ? `操作失敗：${d}` : "操作失敗：伺服器處理時發生錯誤。原因請展開「技術細節」，或查看伺服器日誌。", detail: rawDetail, status: err.status };
+    }
+    const m = localizeMessage(err.message);
+    return { text: RAW.test(m) ? "操作失敗：端點回傳錯誤。原因請展開「技術細節」。" : m, detail: rawDetail, status: err.status };
   }
-  return localizeMessage(errorMessage(err));
+  return { text: localizeMessage(errorMessage(err)) };
+}
+
+/** Text for any thrown value from the LLM admin API. */
+export function llmErrorText(err: unknown): string {
+  return llmErrorInfo(err).text;
 }

@@ -56,7 +56,7 @@ import {
   IconTrash,
   IconX,
 } from "@tabler/icons-react";
-import { useEffect, useMemo, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { confirmAction, confirmIsOpen } from "@/components/confirm";
 import { notify } from "@/components/notify";
 import { api } from "@/lib/api";
@@ -64,13 +64,16 @@ import { useIsMobile } from "@/lib/hooks";
 import type { LlmProfileKind } from "@/lib/types";
 import { AnalysisProbe, type ProbeResult } from "./AnalysisProbe";
 import { KnobField, MONO_INPUT } from "./fields";
-import { llmErrorText, llmText, type CodeParams } from "./llmErrors";
+import { GUIDE_CODES, llmErrorInfo, llmErrorText, llmText, type CodeParams, type LlmErrorInfo } from "./llmErrors";
+import { EmbeddingGuide } from "./EmbeddingGuide";
+import { EmbeddingIssueFixes, LlmErrorAlert } from "./ErrorDetails";
 import {
   STRATEGY_META,
   llmKeys,
   nestableRoutes,
   specFor,
   useAccountModels,
+  useEmbeddingIdentity,
   useFingerprint,
   type ProviderAccount,
   type Route,
@@ -165,7 +168,10 @@ export function ProfileBuilder({ opened, onClose, route, kind, routes, accounts,
   const qc = useQueryClient();
   const [d, setD] = useState<Draft>(toDraft(route, kind));
   const [initial, setInitial] = useState<string>("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<LlmErrorInfo | null>(null);
+  /** A refused embedding save that needs the model-switch guidance dialog. */
+  const [guide, setGuide] = useState<LlmErrorInfo | null>(null);
+  const switched = useRef(false);
   const [dragging, setDragging] = useState<{ label: string; sub?: string; provider?: string } | null>(null);
   const [trace, setTrace] = useState<TestTrace | null>(null);
   const [mobilePane, setMobilePane] = useState<"blocks" | "members" | "preview">("members");
@@ -263,8 +269,23 @@ export function ProfileBuilder({ opened, onClose, route, kind, routes, accounts,
       setInitial(JSON.stringify(toPayload(next)));
       setError(null);
     },
-    onError: (e) => setError(llmErrorText(e)),
+    onError: (e) => {
+      const info = llmErrorInfo(e);
+      // A refused embedding save may still have established the system identity
+      // (first fingerprint check): refresh it and the per-member verdicts.
+      if (d.kind === "embedding") void qc.invalidateQueries({ queryKey: ["llm", "embedding"] });
+      if (info.code && GUIDE_CODES.has(info.code)) {
+        setError(null);
+        setGuide(info);
+      } else setError(info);
+    },
   });
+
+  /** Replace a member's model (one-click fix from "model not found → the server serves …"). */
+  const swapModel = (accountId: unknown, from: unknown, to: string) => {
+    setD((cur) => ({ ...cur, members: cur.members.map((m) => (m.member_type === "model" && m.provider_id === Number(accountId) && m.model === from ? { ...m, model: to } : m)) }));
+    setError(null);
+  };
 
   const runTest = useMutation({
     mutationFn: () => api.post<TestTrace>(`/admin/api/llm/routes/${d.id}/test`, {}),
@@ -596,12 +617,28 @@ export function ProfileBuilder({ opened, onClose, route, kind, routes, accounts,
       </DndContext>
 
       {error && (
-        <Alert color="red" mx="lg" mb="xs" icon={<IconAlertTriangle size={18} />} title="無法儲存" withCloseButton onClose={() => setError(null)}>
-          <Text fz="sm" style={{ wordBreak: "break-word" }}>
-            {error}
-          </Text>
-        </Alert>
+        <LlmErrorAlert info={error} title="無法儲存" mx="lg" mb="xs" onClose={() => setError(null)}>
+          <EmbeddingIssueFixes
+            code={typeof error.params?.issue === "string" ? error.params.issue : error.code}
+            params={error.params}
+            onPickModel={(m) => swapModel(error.params?.account_id, error.params?.model, m)}
+          />
+        </LlmErrorAlert>
       )}
+      <EmbeddingGuide
+        info={guide}
+        onSwitched={() => {
+          switched.current = true;
+        }}
+        onClose={() => {
+          setGuide(null);
+          // The switch created and bound its own profile: this draft is moot.
+          if (switched.current) {
+            switched.current = false;
+            onClose();
+          }
+        }}
+      />
       <Group justify="space-between" px="lg" py="sm" style={{ borderTop: "1px solid var(--mantine-color-default-border)" }}>
         <Text fz="xs" c="dimmed">
           {dirty ? "有未儲存的變更" : "所有變更都已儲存"}
@@ -803,6 +840,7 @@ function MemberBlock({
   traceState?: "ok" | "failed";
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: m.key });
+  const systemDims = useEmbeddingIdentity().data?.identity?.dimensions ?? null;
   const [open, setOpen] = useState(false);
   const [probe, setProbe] = useState<ProbeResult | null>(null);
   const acc = m.provider_id !== null ? accounts.find((a) => a.id === m.provider_id) : undefined;
@@ -929,7 +967,7 @@ function MemberBlock({
               <NumberInput
                 size="xs"
                 label="向量維度"
-                description="必須等於資料庫向量欄位（1024），且整個 Profile 一致。"
+                description={`必須等於系統 Embedding 指紋的維度（目前 ${systemDims ?? "未建立"}），且整個 Profile 一致。`}
                 min={1}
                 max={16384}
                 allowDecimal={false}
@@ -966,6 +1004,25 @@ function MemberBlock({
               ) : (
                 <Alert color={probe.ok ? "teal" : "red"} p="xs" withCloseButton onClose={() => setProbe(null)}>
                   <Text fz="xs">{llmText(probe)}</Text>
+                  {!probe.ok && (
+                    <EmbeddingIssueFixes
+                      code={probe.code}
+                      params={probe.params}
+                      onPickModel={(model) => {
+                        onChange({ model });
+                        setProbe(null);
+                      }}
+                      onSetDims={(dims) => {
+                        const { send_dimensions: _drop, ...rest } = m.params;
+                        onChange({ params: { ...rest, dimensions: dims } });
+                        setProbe(null);
+                      }}
+                      onSendDims={(on) => {
+                        onChange({ params: { ...m.params, send_dimensions: on } });
+                        setProbe(null);
+                      }}
+                    />
+                  )}
                 </Alert>
               ))}
           </Stack>
@@ -1000,7 +1057,7 @@ function FingerprintBadge({ providerId, model, dims }: { providerId: number | nu
     return (
       <Tooltip label={llmText(r)} multiline maw={280}>
         <Badge size="sm" variant="light" color="red" tt="none" leftSection={<IconX size={10} />}>
-          不支援 Embedding
+          {r.code === "embedding_model_not_found" ? "伺服器無此模型" : r.code === "embedding_dims_unsupported" ? "維度不符" : "不支援 Embedding"}
         </Badge>
       </Tooltip>
     );

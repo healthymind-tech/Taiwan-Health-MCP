@@ -254,3 +254,48 @@ export function useFingerprint(providerId: number | null, model: string, dims: n
     retry: false,
   });
 }
+
+/** An endpoint problem, coded like errors (see llmErrors.ts). */
+export interface EmbedIssue {
+  code: string;
+  params: Record<string, unknown>;
+}
+
+/** POST /admin/api/llm/embedding/precheck — what a switch would find, without side effects. */
+export interface SwitchPrecheck {
+  ok: boolean;
+  blocking: EmbedIssue | null;
+  warnings: EmbedIssue[];
+  returned_dims: number | null;
+  configured_dims: number;
+  latency_ms: number | null;
+  same_model: boolean;
+  similarity: number | null;
+  identity: { model: string; dimensions: number; account: string } | null;
+  column_dims: number | null;
+  alter_columns: boolean;
+  hnsw: boolean;
+  summary: Record<string, unknown>;
+}
+
+export interface EmbeddingHealth {
+  members: { member_id: number; name: string; account: string; model: string; ok: boolean; latency_ms: number | null; returned_dims: number | null; issue: EmbedIssue | null }[];
+  degraded: boolean;
+  down: boolean;
+  answering: string | null;
+  checked_at: string;
+}
+
+export const embeddingHealthKey = ["llm", "embedding", "health"] as const;
+
+/** Live probe of each embedding-role member (server caches it for a minute). */
+export function useEmbeddingHealth(enabled = true) {
+  return useQuery({
+    queryKey: embeddingHealthKey,
+    queryFn: () => api.get<EmbeddingHealth>("/admin/api/llm/embedding/health"),
+    enabled,
+    staleTime: 60_000,
+    refetchInterval: 120_000,
+    retry: false,
+  });
+}
