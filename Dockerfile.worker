@@ -45,6 +45,11 @@ COPY --from=nodebuild /nb/dist ./node-server/dist
 COPY --from=nodebuild /nb/node_modules ./node-server/node_modules
 COPY node-server/package.json ./node-server/package.json
 
+# Reference data bundled with the code (CodeSystem supplements, abbreviation lexicon),
+# applied before every IG concept-index build. Resolved as dist/../data
+# (conceptSearch/bundled.ts bundledDataDir) → /app/node-server/data.
+COPY node-server/data/ ./node-server/data/
+
 # The Analysis LM system prompt ships with the code and is read at analysis time.
 COPY src/prompts/ ./src/prompts/
 

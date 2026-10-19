@@ -20,6 +20,9 @@ test("known validation messages map to codes with zh text and a next step", () =
     ["Current password is incorrect.", "PASSWORD_CURRENT_WRONG"],
     ["Backup not found", "BACKUP_NOT_FOUND"],
     ["A snomed_import job is running. Stop it in Jobs before clearing this module.", "MODULE_BUSY"],
+    ["Supplement not found", "SUPPLEMENT_NOT_FOUND"],
+    ["Bundled supplement not found", "BUNDLED_SUPPLEMENT_NOT_FOUND"],
+    ["content must be 'supplement' (FHIR R4 CodeSystem supplement)", "SUPPLEMENT_INVALID"],
   ];
   for (const [msg, code] of cases) {
     const d = classifyMessage(msg);

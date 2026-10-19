@@ -28,6 +28,11 @@ COPY src/prompts/ /src/prompts/
 # by admin/ocrTestSamples.ts. Small synthetic files (~250 KB total).
 COPY public/samples/ ./public/samples/
 
+# Reference data bundled with the code (CodeSystem supplements, abbreviation lexicon),
+# applied by the worker on IG import; the app reads it for the IG page (bundled list and
+# restore). Resolved as dist/../data (conceptSearch/bundled.ts bundledDataDir). ~2.6 MB.
+COPY node-server/data/ ./data/
+
 # MCP transport port (overridden by MCP_PORT at runtime).
 EXPOSE 8000
 # Metrics port.

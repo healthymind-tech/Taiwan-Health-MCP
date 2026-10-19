@@ -3304,12 +3304,14 @@ export async function runIgImportJob(opts: {
     try {
       const { buildConceptIndex, buildThesaurus } = await import("../conceptSearch/indexBuilder.js");
       const pool = getPool();
+      // Bundled supplements / abbreviation lexicon first, so this build already includes them.
+      const bundled = await prepareConceptIndexInputs(jobId);
       const stats = await buildConceptIndex(pool, {
-        packages: identities.map((i) => ({ package_id: i.package_id, version: i.version })),
+        packages: mergePackages(identities.map((i) => ({ package_id: i.package_id, version: i.version })), bundled.packages),
         log: (m) => appendJobLog({ jobId, level: "info", message: m }),
       });
       if (stats.rebuilt > 0) await buildThesaurus(pool, (m) => appendJobLog({ jobId, level: "info", message: m }));
-      conceptIndex = { ...stats };
+      conceptIndex = { ...stats, bundled_supplements_applied: bundled.applied, bundled_lexicon_loaded: bundled.lexiconRows };
       await recordJobStep({
         jobId, stepKey: "index_concepts", status: "success", progressCurrent: 1, progressTotal: 1,
         checkpoint: { phase: "indexed", ...stats },
@@ -3356,6 +3358,55 @@ export async function runIgImportJob(opts: {
   }
 }
 
+/** Union of package lists (dedup by id + version). */
+function mergePackages(
+  a: Array<{ package_id: string; version: string }>,
+  b: Array<{ package_id: string; version: string }>,
+): Array<{ package_id: string; version: string }> {
+  const out = [...a];
+  for (const p of b) if (!out.some((q) => q.package_id === p.package_id && q.version === p.version)) out.push(p);
+  return out;
+}
+
+/**
+ * Apply the data bundled with the code before a concept-index build (conceptSearch/bundled.ts):
+ * the CodeSystem supplements whose target CodeSystem is installed (idempotent; operator
+ * deletions are respected) and, when fhir.abbreviation_lexicon is empty, the bundled LRABR
+ * lexicon. Never fails the job: a problem is logged as a warning and the build goes on.
+ * `packages`: installed packages whose CodeSystems a newly applied supplement touches —
+ * the caller adds them to a package-restricted build so no second rebuild is needed.
+ */
+export async function prepareConceptIndexInputs(jobId: string): Promise<{
+  applied: string[];
+  packages: Array<{ package_id: string; version: string }>;
+  lexiconRows: number;
+}> {
+  const { applyBundledSupplements, ensureBundledAbbreviationLexicon } = await import("../conceptSearch/bundled.js");
+  const pool = getPool();
+  const log = (m: string) => appendJobLog({ jobId, level: "info", message: m });
+  const out = { applied: [] as string[], packages: [] as Array<{ package_id: string; version: string }>, lexiconRows: 0 };
+  try {
+    const r = await applyBundledSupplements(pool, { log });
+    out.applied = r.applied.map((a) => `${a.url}|${a.version}`);
+    out.packages = r.packages;
+  } catch (exc) {
+    await appendJobLog({
+      jobId, level: "warn",
+      message: `Bundled CodeSystem supplements not applied: ${(exc as Error).message}. The index is built without them; run 補建索引 (ig_concept_index) again after fixing the cause.`,
+    });
+  }
+  try {
+    const lx = await ensureBundledAbbreviationLexicon(pool, { log });
+    out.lexiconRows = lx.rows ?? 0;
+  } catch (exc) {
+    await appendJobLog({
+      jobId, level: "warn",
+      message: `Bundled abbreviation lexicon not loaded: ${(exc as Error).message}. Search works without it; the next ig_concept_index run retries.`,
+    });
+  }
+  return out;
+}
+
 /**
  * Queue an ig_embed job unless one is already queued / running / waiting to retry, and only
  * when an embedding profile is configured. Never throws (best-effort chaining).
@@ -3397,16 +3448,26 @@ export async function runIgConceptIndexJob(opts: { workerName: string; job: Reco
   const pool = getPool();
   const packages = Array.isArray(jobOpts.packages) ? parseDependencyTargets(jobOpts.packages) : undefined;
   const embedMax = Number(jobOpts.embed_max_concepts) > 0 ? Number(jobOpts.embed_max_concepts) : DEFAULT_EMBED_MAX_CONCEPTS;
-  await markJobStatus({ jobId, status: "running", currentStep: "indexing", progressCurrent: 0, progressTotal: 2 });
+  await markJobStatus({ jobId, status: "running", currentStep: "applying_bundled_data", progressCurrent: 0, progressTotal: 0 });
   await appendJobLog({
     jobId, level: "info", message: "Building IG concept-search index",
     payload: { packages: packages ?? "all", force: Boolean(jobOpts.force), embed_max_concepts: embedMax },
   });
+  const bundled = await prepareConceptIndexInputs(jobId);
   let thesaurusCount: number | null = null;
   let lastCheck = 0;
   let stopRequested = false;
+  // Progress = CodeSystems checked / to check (most are signature-skipped when unchanged).
+  let csTotal = 0;
+  let lastProgress = 0;
   const stats = await buildConceptIndex(pool, {
-    packages,
+    packages: packages ? mergePackages(packages, bundled.packages) : undefined,
+    onProgress: async (done, total) => {
+      csTotal = total;
+      if (done !== 0 && done !== total && Date.now() - lastProgress < 2000) return;
+      lastProgress = Date.now();
+      await markJobStatus({ jobId, status: "running", currentStep: "indexing_codesystems", progressCurrent: done, progressTotal: total });
+    },
     force: Boolean(jobOpts.force),
     embedMaxConcepts: embedMax,
     log: (m) => appendJobLog({ jobId, level: "info", message: m }),
@@ -3426,6 +3487,7 @@ export async function runIgConceptIndexJob(opts: { workerName: string; job: Reco
   if (stats.stopped && (await applyControlCheckpoint({ jobId, workerName }))) return;
   // After the index: the thesaurus also mines abbreviations defined in the indexed names.
   if (jobOpts.thesaurus !== false) {
+    await markJobStatus({ jobId, status: "running", currentStep: "building_thesaurus", progressCurrent: csTotal, progressTotal: csTotal });
     thesaurusCount = await buildThesaurus(pool, (m) => appendJobLog({ jobId, level: "info", message: m }));
   }
   let needEmbed = jobOpts.queue_embed !== false;
@@ -3439,13 +3501,19 @@ export async function runIgConceptIndexJob(opts: { workerName: string; job: Reco
   }
   const embedJob = needEmbed ? await queueIgEmbed({ parentJobId: jobId, requestedBy: String(job.requested_by ?? "system"), reason: "ig_concept_index" }) : null;
   await markJobStatus({
-    jobId, status: "success", currentStep: "completed", progressCurrent: 2, progressTotal: 2, controlState: "idle",
-    resultSummary: { job_type: "ig_concept_index", ...stats, thesaurus_entries: thesaurusCount, ig_embed_job: embedJob },
+    jobId, status: "success", currentStep: "completed", progressCurrent: csTotal, progressTotal: csTotal, controlState: "idle",
+    resultSummary: {
+      job_type: "ig_concept_index", ...stats, thesaurus_entries: thesaurusCount, ig_embed_job: embedJob,
+      bundled_supplements_applied: bundled.applied, bundled_lexicon_loaded: bundled.lexiconRows,
+    },
   });
   await appendJobLog({
     jobId, level: "info",
-    message: `Concept index: ${fmt(stats.rebuilt)} CodeSystem(s) rebuilt, ${fmt(stats.skipped)} unchanged, ` +
-      `${fmt(stats.concepts)} concepts / ${fmt(stats.terms)} terms written` + (embedJob ? `; queued ig_embed ${embedJob}` : ""),
+    message:
+      stats.rebuilt === 0
+        ? `Concept index is up to date: all ${fmt(stats.skipped)} CodeSystem(s) unchanged` + (embedJob ? `; queued ig_embed ${embedJob} for missing vectors` : "")
+        : `Concept index: ${fmt(stats.rebuilt)} CodeSystem(s) rebuilt, ${fmt(stats.skipped)} unchanged, ` +
+          `${fmt(stats.concepts)} concepts / ${fmt(stats.terms)} terms written` + (embedJob ? `; queued ig_embed ${embedJob}` : ""),
   });
 }
 

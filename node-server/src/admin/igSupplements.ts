@@ -8,70 +8,35 @@
  * packages stay in fhir.artifacts; uploaded ones live in fhir.codesystem_supplements.
  * Both are merged into the concept-search index by the ig_concept_index job, which
  * saving / deleting a supplement queues for the affected packages.
+ *
+ * Supplements bundled with the code (node-server/data/supplements, conceptSearch/bundled.ts)
+ * are written to the same table by the worker before each index build (uploaded_by
+ * 'system:bundled'); deleting one records an opt-out, restoreBundledSupplements undoes it.
  */
 
 import { query } from "../db.js";
 import { createJob } from "./adminJobs.js";
+import { checkSupplement, packagesHoldingCodeSystems, writeSupplementRow, type Db } from "../conceptSearch/supplements.js";
+import {
+  BUNDLED_LEXICON_SOURCE_PREFIX,
+  BUNDLED_ORIGIN,
+  bundledLexiconInfo,
+  bundledSupplementPlan,
+  clearOptOuts,
+  listBundledSupplements,
+  recordOptOut,
+} from "../conceptSearch/bundled.js";
+import { selectIndexableCodeSystems } from "../conceptSearch/indexBuilder.js";
 
-export interface SupplementCheck {
-  ok: boolean;
-  error?: string;
-  url?: string;
-  version?: string;
-  supplements?: string;
-  name?: string | null;
-  title?: string | null;
-  conceptCount?: number;
-}
+export { checkSupplement, type SupplementCheck } from "../conceptSearch/supplements.js";
 
-function countConcepts(list: unknown): number {
-  if (!Array.isArray(list)) return 0;
-  let n = 0;
-  for (const c of list) {
-    if (!c || typeof c !== "object") continue;
-    n += 1 + countConcepts((c as Record<string, unknown>).concept);
-  }
-  return n;
-}
-
-/** Structural check of an uploaded supplement (pure). */
-export function checkSupplement(res: unknown): SupplementCheck {
-  if (!res || typeof res !== "object" || Array.isArray(res)) return { ok: false, error: "body must be a FHIR CodeSystem JSON object" };
-  const r = res as Record<string, unknown>;
-  if (r.resourceType !== "CodeSystem") return { ok: false, error: "resourceType must be CodeSystem" };
-  if (r.content !== "supplement") return { ok: false, error: "content must be 'supplement' (FHIR R4 CodeSystem supplement)" };
-  const url = typeof r.url === "string" ? r.url.trim() : "";
-  if (!url) return { ok: false, error: "url is required" };
-  const supplements = typeof r.supplements === "string" ? r.supplements.trim() : "";
-  if (!supplements) return { ok: false, error: "supplements (canonical of the supplemented CodeSystem) is required" };
-  if (supplements.split("|")[0] === url) return { ok: false, error: "a supplement cannot supplement itself" };
-  const conceptCount = countConcepts(r.concept);
-  if (conceptCount === 0) return { ok: false, error: "the supplement has no concept entries" };
-  for (const c of (r.concept as unknown[]) || []) {
-    if (!c || typeof c !== "object" || typeof (c as Record<string, unknown>).code !== "string") {
-      return { ok: false, error: "every concept needs a string code" };
-    }
-  }
-  return {
-    ok: true,
-    url,
-    version: typeof r.version === "string" ? r.version : "",
-    supplements,
-    name: typeof r.name === "string" ? r.name : null,
-    title: typeof r.title === "string" ? r.title : null,
-    conceptCount,
-  };
-}
+const db: Db = {
+  query: <R extends Record<string, any>>(sql: string, params?: unknown[]) => query<R>(sql, params ?? []),
+};
 
 /** Installed packages holding the CodeSystem a supplement targets. */
 async function packagesHolding(supplements: string): Promise<Array<{ package_id: string; version: string }>> {
-  const url = supplements.split("|")[0];
-  const r = await query<{ package_id: string; version: string }>(
-    `SELECT DISTINCT package_id, package_version AS version FROM fhir.artifacts
-      WHERE resource_type = 'CodeSystem' AND (canonical_url = $1 OR raw_json->>'url' = $1)`,
-    [url],
-  );
-  return r.rows;
+  return packagesHoldingCodeSystems(db, [supplements]);
 }
 
 async function queueReindex(supplements: string, user: string, reason: string): Promise<string | null> {
@@ -93,13 +58,7 @@ export async function saveSupplement(
   const chk = checkSupplement(res);
   if (!chk.ok) return { status: 400, body: { error: chk.error } };
   const targets = await packagesHolding(chk.supplements!);
-  await query(
-    `INSERT INTO fhir.codesystem_supplements (url, version, supplements, name, title, concept_count, raw_json, uploaded_by, uploaded_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, NOW())
-     ON CONFLICT (url, version) DO UPDATE SET supplements = EXCLUDED.supplements, name = EXCLUDED.name, title = EXCLUDED.title,
-       concept_count = EXCLUDED.concept_count, raw_json = EXCLUDED.raw_json, uploaded_by = EXCLUDED.uploaded_by, uploaded_at = NOW()`,
-    [chk.url, chk.version ?? "", chk.supplements, chk.name, chk.title, chk.conceptCount, JSON.stringify(res), user],
-  );
+  await writeSupplementRow(db, chk, res, user, "replace");
   const job = await queueReindex(chk.supplements!, user, "supplement_uploaded");
   return {
     status: 201,
@@ -112,10 +71,17 @@ export async function saveSupplement(
   };
 }
 
-export async function listSupplements(): Promise<Record<string, unknown>[]> {
+/**
+ * Uploaded + bundled (stored rows) + package-shipped supplements, plus `bundled`: every
+ * supplement shipped with the code and its state (applied / pending / opted_out / conflict /
+ * target_missing) so the console can offer the restore action.
+ */
+export async function listSupplements(): Promise<{ supplements: Record<string, unknown>[]; bundled: Record<string, unknown>[] }> {
   const up = await query<Record<string, unknown>>(
-    `SELECT url, version, supplements, name, title, concept_count, uploaded_by, uploaded_at, 'upload' AS origin, NULL AS package
+    `SELECT url, version, supplements, name, title, concept_count, uploaded_by, uploaded_at,
+            CASE WHEN uploaded_by = $1 THEN 'bundled' ELSE 'upload' END AS origin, NULL AS package
        FROM fhir.codesystem_supplements ORDER BY uploaded_at DESC`,
+    [BUNDLED_ORIGIN],
   );
   const pkg = await query<Record<string, unknown>>(
     `SELECT raw_json->>'url' AS url, COALESCE(raw_json->>'version', '') AS version, raw_json->>'supplements' AS supplements,
@@ -133,17 +99,97 @@ export async function listSupplements(): Promise<Record<string, unknown>[]> {
     const k = `${a.url}|${a.version ?? ""}`;
     appliedBy.set(k, [...(appliedBy.get(k) || []), a.cs]);
   }
-  return [...up.rows, ...pkg.rows].map((r) => ({ ...r, applied_to: appliedBy.get(`${r.url}|${r.version ?? ""}`) || [] }));
+  const bundledList = await listBundledSupplements();
+  const bundledKeys = new Set(bundledList.map((b) => `${b.url}|${b.version}`));
+  const plan = (await bundledSupplementPlan(db, bundledList)) ?? [];
+  const bundled = plan.map((e) => {
+    const b = bundledList.find((x) => x.url === e.url && x.version === e.version)!;
+    const state =
+      e.action === "present" ? "applied" : e.action === "insert" || e.action === "upgrade" ? "pending" : e.action;
+    return {
+      url: e.url, version: e.version, supplements: e.supplements, title: b.title, name: b.name, concept_count: b.conceptCount,
+      file: b.file, state, ...(e.versions ? { other_versions: e.versions } : {}), ...(e.storedBy ? { stored_by: e.storedBy } : {}),
+    };
+  });
+  const supplements = [...up.rows, ...pkg.rows].map((r) => ({
+    ...r,
+    bundled: r.origin !== "package" && bundledKeys.has(`${r.url}|${r.version ?? ""}`),
+    applied_to: appliedBy.get(`${r.url}|${r.version ?? ""}`) || [],
+  }));
+  return { supplements, bundled };
 }
 
+/**
+ * Delete a stored supplement. Deleting the url+version of a bundled supplement (whoever
+ * stored it) records an opt-out so the next IG import / index run does not bring it back.
+ */
 export async function deleteSupplement(url: string, version: string, user: string): Promise<{ status: number; body: Record<string, unknown> }> {
   const r = await query<{ supplements: string }>(
     "DELETE FROM fhir.codesystem_supplements WHERE url = $1 AND version = $2 RETURNING supplements",
     [url, version],
   );
-  if (!r.rows.length) return { status: 404, body: { error: "supplement not found" } };
+  if (!r.rows.length) return { status: 404, body: { error: "Supplement not found", detail: `${url}|${version}` } };
+  const isBundled = (await listBundledSupplements()).some((b) => b.url === url && b.version === version);
+  if (isBundled) await recordOptOut(db, url, version, user);
   const job = await queueReindex(r.rows[0].supplements, user, "supplement_deleted");
-  return { status: 200, body: { deleted: { url, version }, reindex_job: job } };
+  return { status: 200, body: { deleted: { url, version }, bundled_opt_out: isBundled, reindex_job: job } };
+}
+
+/**
+ * Undo opt-outs of bundled supplements (one url, or all) and queue an ig_concept_index job,
+ * which applies them and rebuilds the affected CodeSystems.
+ */
+export async function restoreBundledSupplements(url: string | null, user: string): Promise<{ status: number; body: Record<string, unknown> }> {
+  const list = await listBundledSupplements();
+  if (url && !list.some((b) => b.url === url)) return { status: 404, body: { error: "Bundled supplement not found", detail: url } };
+  const restored = await clearOptOuts(db, url ?? undefined);
+  const targets = list.filter((b) => restored.includes(b.url)).map((b) => b.supplements);
+  const packages = await packagesHoldingCodeSystems(db, targets);
+  let job: string | null = null;
+  if (packages.length) {
+    const j = await createJob({ moduleKey: "ig", jobType: "ig_concept_index", requestedBy: user, jobOptions: { packages, thesaurus: false, reason: "bundled_supplement_restored" } });
+    job = String(j.job_id);
+  }
+  return {
+    status: 200,
+    body: {
+      restored,
+      reindex_job: job,
+      ...(restored.length && !packages.length ? { warning: "No installed IG holds the supplemented CodeSystem yet; it is applied when one is installed." } : {}),
+    },
+  };
+}
+
+/**
+ * Packages without index rows, split into those that have CodeSystems the index builder
+ * would index (really unindexed) and those that have none (nothing to index — e.g. a
+ * package of profiles only, or of LOINC / SNOMED-routed / content=not-present CodeSystems).
+ */
+export async function unindexedPackages(dbx: Db = db): Promise<{
+  unindexed: Array<{ package_id: string; version: string; codesystems: number }>;
+  nothingToIndex: Array<{ package_id: string; version: string }>;
+}> {
+  const missing = await dbx.query<{ package_id: string; version: string }>(
+    `SELECT p.package_id, p.version FROM fhir.ig_packages p
+      WHERE NOT EXISTS (SELECT 1 FROM fhir.concept_index_cs c WHERE c.package_id = p.package_id AND c.package_version = p.version)
+      ORDER BY 1, 2`,
+  );
+  if (!missing.rows.length) return { unindexed: [], nothingToIndex: [] };
+  const arts = await dbx.query<{ package_id: string; package_version: string; artifact_id: string | null; url: string | null; content: string | null }>(
+    `SELECT package_id, package_version, artifact_id, COALESCE(raw_json->>'url', canonical_url) AS url, raw_json->>'content' AS content
+       FROM fhir.artifacts
+      WHERE resource_type = 'CodeSystem'
+        AND (package_id || '#' || package_version) = ANY($1::text[])`,
+    [missing.rows.map((m) => `${m.package_id}#${m.version}`)],
+  );
+  const unindexed: Array<{ package_id: string; version: string; codesystems: number }> = [];
+  const nothingToIndex: Array<{ package_id: string; version: string }> = [];
+  for (const m of missing.rows) {
+    const n = selectIndexableCodeSystems(arts.rows.filter((a) => a.package_id === m.package_id && a.package_version === m.version)).length;
+    if (n > 0) unindexed.push({ ...m, codesystems: n });
+    else nothingToIndex.push(m);
+  }
+  return { unindexed, nothingToIndex };
 }
 
 /** Concept-search index status: per-package totals, embedding coverage, latest jobs. */
@@ -153,11 +199,7 @@ export async function conceptIndexStatus(): Promise<Record<string, unknown>> {
             SUM(term_count)::int AS terms, COUNT(*) FILTER (WHERE embed)::int AS embedded_codesystems, MAX(built_at) AS built_at
        FROM fhir.concept_index_cs GROUP BY package_id, package_version ORDER BY package_id, package_version`,
   );
-  const missing = await query<{ package_id: string; version: string }>(
-    `SELECT p.package_id, p.version FROM fhir.ig_packages p
-      WHERE NOT EXISTS (SELECT 1 FROM fhir.concept_index_cs c WHERE c.package_id = p.package_id AND c.package_version = p.version)
-      ORDER BY 1, 2`,
-  );
+  const { unindexed, nothingToIndex } = await unindexedPackages();
   const emb = await query<{ terms: string; vectors: string }>(
     `SELECT (SELECT COUNT(DISTINCT text_hash) FROM fhir.concept_index_terms WHERE text_hash IS NOT NULL) AS terms,
             (SELECT COUNT(*) FROM fhir.concept_embeddings) AS vectors`,
@@ -170,22 +212,39 @@ export async function conceptIndexStatus(): Promise<Record<string, unknown>> {
     umls = null; // migration 20261023 not applied
   }
   let abbreviations: number | null = null;
+  let lexicon: Record<string, unknown> | null = null;
   try {
-    abbreviations = Number((await query<{ n: string }>("SELECT COUNT(*) AS n FROM fhir.abbreviation_lexicon")).rows[0]?.n ?? 0);
+    const rows = (await query<{ source: string; n: string }>("SELECT source, COUNT(*) AS n FROM fhir.abbreviation_lexicon GROUP BY source")).rows;
+    abbreviations = rows.reduce((s, r) => s + Number(r.n), 0);
+    const bundledSrc = rows.find((r) => r.source.startsWith(BUNDLED_LEXICON_SOURCE_PREFIX));
+    const info = await bundledLexiconInfo();
+    lexicon = {
+      entries: abbreviations,
+      // "umls": loaded from an uploaded UMLS file (umls_import); "bundled": the copy shipped with the code.
+      source: abbreviations === 0 ? null : bundledSrc ? "bundled" : "umls",
+      label: bundledSrc ? bundledSrc.source.slice(BUNDLED_LEXICON_SOURCE_PREFIX.length) : rows[0]?.source ?? null,
+      bundled_available: info,
+    };
   } catch {
     abbreviations = null; // migration 20261027 not applied
   }
   const jobs = await query<Record<string, unknown>>(
-    `SELECT job_id, job_type, status, created_at, finished_at FROM admin.import_jobs
+    `SELECT job_id, job_type, status, current_step, progress_current, progress_total, created_at, finished_at,
+            CASE WHEN job_type = 'ig_concept_index' THEN jsonb_build_object(
+              'rebuilt', result_summary_json->'rebuilt', 'skipped', result_summary_json->'skipped', 'codesystems', result_summary_json->'codesystems',
+              'bundled_supplements_applied', result_summary_json->'bundled_supplements_applied') END AS summary
+       FROM admin.import_jobs
       WHERE job_type IN ('ig_concept_index', 'ig_embed', 'umls_import') ORDER BY created_at DESC LIMIT 6`,
   );
   return {
     packages: per.rows,
-    unindexed_packages: missing.rows,
+    unindexed_packages: unindexed,
+    packages_without_indexable_codesystems: nothingToIndex,
     embeddings: { embeddable_terms: Number(emb.rows[0]?.terms ?? 0), vectors: Number(emb.rows[0]?.vectors ?? 0) },
     thesaurus_entries: Number(thes.rows[0]?.n ?? 0),
     umls,
     abbreviation_lexicon_entries: abbreviations,
+    abbreviation_lexicon: lexicon,
     recent_jobs: jobs.rows,
   };
 }
@@ -195,3 +254,4 @@ export async function queueConceptIndexRebuild(user: string, force: boolean): Pr
   const job = await createJob({ moduleKey: "ig", jobType: "ig_concept_index", requestedBy: user, jobOptions: { force, reason: "admin_rebuild" } });
   return String(job.job_id);
 }
+

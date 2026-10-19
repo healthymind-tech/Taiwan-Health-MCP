@@ -303,7 +303,7 @@ function pyStrOr(...vals: any[]): string {
 
 // ── tar.gz reading ──────────────────────────────────────────────────────────
 
-interface TarEntry {
+export interface TarEntry {
   name: string;
   data: Uint8Array;
 }
@@ -361,7 +361,7 @@ function untar(buf: Uint8Array): TarEntry[] {
   return out;
 }
 
-function readTgz(tgzPath: string): TarEntry[] {
+export function readTgz(tgzPath: string): TarEntry[] {
   return untar(gunzipSync(new Uint8Array(fs.readFileSync(tgzPath))));
 }
 

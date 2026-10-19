@@ -14,7 +14,7 @@ Every IG CodeSystem is indexed by `ig_import` (automatically after an IG is inst
 | Source | Notes |
 |--------|-------|
 | The CodeSystem JSON | display, **designations in every language** (e.g. the English names TW Core already ships), nested `concept.concept`, string properties (e.g. ingredients), short definitions (≤ 120 characters, low weight) |
-| CodeSystem supplements | FHIR R4 `content = supplement`, merged by `supplements` (optionally `|version`): designations and properties. Supplements shipped in IG packages and those uploaded in the admin console both apply. A numeric usage property (code or description mentions `claim-volume` / `usage` / `popularity` / `申報量` / `使用量`, e.g. a `claim-volume` built from the NHI open dataset 診療項目醫令申報量(年)) is not a name: it becomes a **usage prior** for ranking (see "Usage" below) |
+| CodeSystem supplements | FHIR R4 `content = supplement`, merged by `supplements` (optionally `|version`): designations and properties. Supplements shipped in IG packages, uploaded in the admin console, or bundled with the code (see "Bundled data" below) all apply. A numeric usage property (code or description mentions `claim-volume` / `usage` / `popularity` / `申報量` / `使用量`, e.g. a `claim-volume` built from the NHI open dataset 診療項目醫令申報量(年)) is not a name: it becomes a **usage prior** for ranking (see "Usage" below) |
 | Linked names | Coding properties (e.g. a supplement's `loinc`) and the targets of IG ConceptMaps whose `group.source` is the CodeSystem: the shared LOINC COMPONENT, SNOMED descriptions, otherwise the coding display |
 | UMLS (optional) | When a concept's English name is a string of a UMLS concept (CUI), that CUI's other synonyms / abbreviations become **match-only** terms (at most 12 per concept) |
 
@@ -40,8 +40,8 @@ whether a CodeSystem needs rebuilding; unchanged ones are skipped.
   ("… lithotripsy (ESWL)", Schwartz–Hearst validated), English ↔ Chinese word pairs mined from ICD-10 / IG bilingual
   names (Dice + mutual best match), the abbrev / zhEn tables of `grounding/twLexiconData.ts`, and optionally UMLS —
   stored in `fhir.term_thesaurus` / `fhir.umls_terms`.
-- **General abbreviation lexicon fills gaps** (optional, `fhir.abbreviation_lexicon`, the SPECIALIST Lexicon's LRABR,
-  loaded with the UMLS file): an abbreviation in the query's **first clause** is looked up there only when the
+- **General abbreviation lexicon fills gaps** (`fhir.abbreviation_lexicon`, the SPECIALIST Lexicon's LRABR; a copy is
+  bundled with the code and loaded while the table is empty, a UMLS file carrying LRABR replaces it): an abbreviation in the query's **first clause** is looked up there only when the
   CodeSystem does not use it as a word itself (e.g. "Procalcitonin (PCT)" already contains PCT) and no thesaurus
   expansion is supported by the CodeSystem (support < 0.45). A general lexicon gives an abbreviation dozens of senses
   (LP → lipoprotein, lumbar puncture …); each sense is scored by how well the CodeSystem's own names name it — the best
@@ -81,11 +81,52 @@ not found.
 
 ## Admin console (IG packages → 術語搜尋索引)
 
-- Index / vector / thesaurus status; "補建索引" (skips unchanged CodeSystems) and "全部重建" (force).
+- Index / vector / thesaurus / abbreviation-lexicon status (the lexicon shows its source: bundled or an uploaded UMLS
+  file); "補建索引" (skips unchanged CodeSystems) and "全部重建" (force). While an index job runs the panel shows its step
+  and "CodeSystems checked / total"; when it ends it shows the result — "索引已是最新（N 個 CodeSystem 未變更）" (index up to
+  date, N unchanged) when nothing was rebuilt.
+- "N 個套件尚未建立索引" (N packages not indexed yet) counts only packages that **have indexable CodeSystems**; packages
+  with profiles only, or whose CodeSystems are served by the ICD / LOINC / SNOMED tables or are `content = not-present`,
+  are listed as a neutral note ("no indexable CodeSystem") and need no action.
 - **Upload a CodeSystem supplement JSON** (`application/fhir+json`, up to 64 MB); the list shows the package
-  versions it applies to; uploads and deletions rebuild the affected index. API:
-  `GET/POST/DELETE /admin/api/igs/supplements`, `GET /admin/api/igs/concept-index`,
+  versions it applies to; uploads and deletions rebuild the affected index. Bundled supplements carry a 「內建」 badge;
+  deleting one is remembered (it is not re-applied by the next import) and "還原" / "還原內建 supplement" restores it
+  (queues `ig_concept_index`, which applies it). API: `GET/POST/DELETE /admin/api/igs/supplements`,
+  `POST /admin/api/igs/supplements/bundled/restore` (`{url?}`, all when omitted), `GET /admin/api/igs/concept-index`,
   `POST /admin/api/igs/concept-index/rebuild`.
+
+## Bundled data (no manual upload)
+
+The code ships openly licensed reference data (`node-server/data/`, copied into both images; sources, versions,
+licences and how to regenerate them: `node-server/data/README.md`, generators in `node-server/scripts/supplements/`).
+On a fresh install the operator imports an IG (e.g. TW Core) through the normal admin flow — no file uploads, no
+direct DB writes:
+
+| File | Supplements | Content |
+|------|-------------|---------|
+| `nhi-payment-en-supplement` | TW Core `medical-service-payment-tw` | NHI English item names of the payment codes |
+| `nhi-payment-loinc-supplement` | same | LOINC links of the TWPAS ConceptMap `nhi-loinc` (with LOINC names) |
+| `nhi-payment-usage-supplement` | same | NHI annual claim volume — a usage prior for ranking |
+| `nhi-medication-supplement` | TW Core `medication-nhi-tw` | Chinese / English names, ingredients and ATC of NHI drug codes |
+| `lrabr-2024AA.tsv.gz` | — | SPECIALIST Lexicon LRABR abbreviation lexicon (filtered like the loader keeps it, 115,233 rows) |
+
+- **When**: before every index build — `ig_import` (including dependency installs) and `ig_concept_index`
+  ("補建索引") — each bundled supplement whose `supplements` canonical names an **installed** CodeSystem is written to
+  `fhir.codesystem_supplements` (`uploaded_by = 'system:bundled'`, the same write path as uploads); the same job then
+  builds the index, including the packages a newly applied supplement touches — no second rebuild. A supplement whose
+  target is not installed yet is applied when it is.
+- **Idempotent, never overwrites**: a row with the same url + version (whoever stored it) is left alone; when an
+  **operator-uploaded different version** of the url exists the bundled version is not written; only an older
+  **bundled** version is replaced by a newer bundled one.
+- **Deletion is respected**: deleting a bundled supplement records an opt-out (`admin.app_settings`, group
+  `bundled_supplements`, key = url); it does not come back until restored.
+- **Abbreviation lexicon**: the bundled LRABR is loaded only while `fhir.abbreviation_lexicon` is empty
+  (`source = 'bundled:LRABR-2024AA'`; parsed fully first, written in one transaction); uploading a UMLS file that
+  carries LRABR (`umls_import`) still replaces it. The lexicon is not part of the index signature, so loading it
+  triggers no rebuild.
+- **Installs that already hold them** (e.g. production, where the same 4 supplements were uploaded by hand with the
+  same url + version and the lexicon came from a UMLS file): nothing is written, nothing re-indexed or re-embedded; the
+  list marks those rows 「內建」.
 
 ## UMLS (optional, requires a UMLS licence)
 
@@ -105,7 +146,7 @@ FMA, MTHSPL, USP, USPMG, HL7V2.5, HL7V3.0, CDCREC, MVX, CVX, TKMT, SPN, MCM, QMR
 (2024AA: ~2.53 M strings / 0.76 M concepts, `fhir.umls_terms` ≈ 610 MB). The SAB is recorded internally only
 (`fhir.concept_index_terms.source`); **no UMLS string is ever returned by a tool**.
 
-**Abbreviation lexicon (optional)**: `LRABR` of the SPECIALIST Lexicon (NLM Lexical Systems Group; `LEX/LRABR` inside
+**Abbreviation lexicon** (a copy is bundled — see "Bundled data"; this is how to load it from a UMLS file): `LRABR` of the SPECIALIST Lexicon (NLM Lexical Systems Group; `LEX/LRABR` inside
 `LEX.tgz`, ~20 MB; open source and freely available — no UMLS licence needed). Only acronym / abbreviation rows with a 2–10 character abbreviation and a 3–80 character ASCII
 expansion are kept, spelling variants (plasma exchange / plasma-exchange) collapse (2024 release: ~115 k rows /
 34 k abbreviations). Add it as a third argument when writing the subset:
@@ -118,8 +159,8 @@ strings likewise **only steer matching and never appear in tool output**.
 
 | Job | Description |
 |-----|-------------|
-| `ig_import` | Indexes the packages it installed, then queues `ig_embed` |
-| `ig_concept_index` | Backfill / rebuild (options: `packages`, `force`, `embed_max_concepts`, `thesaurus`, `queue_embed`); then rebuilds the thesaurus and queues `ig_embed` when vectors are missing |
+| `ig_import` | Applies the bundled data (supplements / lexicon), indexes the packages it installed (plus those a newly applied supplement touches), then queues `ig_embed` |
+| `ig_concept_index` | Applies the bundled data, then backfill / rebuild; progress counts CodeSystems (options: `packages`, `force`, `embed_max_concepts`, `thesaurus`, `queue_embed`); then rebuilds the thesaurus and queues `ig_embed` when vectors are missing |
 | `ig_embed` | Embeds the embeddable names (incremental, content-addressed) |
 | `umls_import` | Loads UMLS (optional; also the abbreviation lexicon when the file carries LRABR), then queues `ig_concept_index` |
 

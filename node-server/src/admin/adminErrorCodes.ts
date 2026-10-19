@@ -108,6 +108,12 @@ const MESSAGE_RULES: Rule[] = [
   [/^(No file data provided|Upload body is empty)/, () => info("UPLOAD_EMPTY", "沒有收到檔案內容（檔案是空的或上傳中斷）。", "請重新選擇檔案上傳。")],
   [/^Upload exceeds max size/, () => info("UPLOAD_TOO_LARGE", "檔案超過上傳大小上限。", "請確認檔案是否正確；大型官方檔案可調高 ADMIN_MAX_UPLOAD_MB（.env）後重啟 app。")],
   [/^Supplement exceeds 64 MB/, () => info("UPLOAD_TOO_LARGE", "CodeSystem supplement 超過 64 MB 上限。")],
+  [/^Supplement not found/, () => info("SUPPLEMENT_NOT_FOUND", "找不到這個 CodeSystem supplement（可能已被刪除）。", "請重新整理 IG 頁面的「術語搜尋索引」分頁。")],
+  [
+    /^(body must be a FHIR CodeSystem JSON object|resourceType must be CodeSystem|content must be 'supplement'|supplements \(canonical of the supplemented CodeSystem\) is required|a supplement cannot supplement itself|the supplement has no concept entries|every concept needs a string code)/,
+    (m) => info("SUPPLEMENT_INVALID", `這不是有效的 FHIR R4 CodeSystem supplement：${m[1]}。`, "請上傳 resourceType = CodeSystem、content = supplement、含 url 與 supplements（被補充 CodeSystem 的 canonical）且至少一個 concept 的 JSON 檔。"),
+  ],
+  [/^Bundled supplement not found/, () => info("BUNDLED_SUPPLEMENT_NOT_FOUND", "這個版本的程式沒有內建這個 supplement。", "請重新整理頁面；內建清單以目前部署的 app 映像為準（node-server/data/supplements）。")],
   [/^uploaded_file_id must be a UUID|^uploaded_file_id is required|^object_key or a valid uploaded_file_id is required/, () => info("UPLOAD_REFERENCE_INVALID", "找不到要匯入的上傳檔。", "請重新上傳檔案後再匯入。")],
 
   // ── jobs ──

@@ -61,7 +61,7 @@ import {
   inspectUploadedIg,
 } from "./adminIg.js";
 import { parseDependencyRequest } from "./igDependencies.js";
-import { conceptIndexStatus, deleteSupplement, listSupplements, queueConceptIndexRebuild, saveSupplement } from "./igSupplements.js";
+import { conceptIndexStatus, deleteSupplement, listSupplements, queueConceptIndexRebuild, restoreBundledSupplements, saveSupplement } from "./igSupplements.js";
 import { query } from "../db.js";
 import { broadcast } from "./adminWs.js";
 import { clearModule, previewModuleClear, ModuleClearError, type ClearScope } from "./adminModuleClear.js";
@@ -911,10 +911,11 @@ export async function adminHandler(req: Request, res: Response, next: NextFuncti
       return;
     }
 
-    // GET /admin/api/igs/supplements — uploaded + package-shipped CodeSystem supplements
+    // GET /admin/api/igs/supplements — uploaded / bundled / package-shipped CodeSystem
+    // supplements, plus the state of every supplement bundled with the code.
     if (method === "GET" && path === "/admin/api/igs/supplements") {
       try {
-        sendJson(res, 200, { supplements: await listSupplements() });
+        sendJson(res, 200, await listSupplements());
       } catch (exc) {
         sendJson(res, 500, { error: "Failed to list CodeSystem supplements", detail: String((exc as Error).message) });
       }
@@ -962,6 +963,20 @@ export async function adminHandler(req: Request, res: Response, next: NextFuncti
         sendJson(res, out.status, out.body);
       } catch (exc) {
         sendJson(res, 500, { error: "Failed to delete CodeSystem supplement", detail: String((exc as Error).message) });
+      }
+      return;
+    }
+
+    // POST /admin/api/igs/supplements/bundled/restore {url?} — undo the opt-out of a bundled
+    // supplement (all when url is omitted) and queue the ig_concept_index job that applies it.
+    if (method === "POST" && path === "/admin/api/igs/supplements/bundled/restore") {
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const url = typeof body.url === "string" && body.url.trim() ? body.url.trim() : null;
+      try {
+        const out = await restoreBundledSupplements(url, adminUsername);
+        sendJson(res, out.status, out.status < 300 ? { ...(await workerWarningFields()), ...out.body } : out.body);
+      } catch (exc) {
+        sendJson(res, 500, { error: "Failed to restore bundled CodeSystem supplement", detail: String((exc as Error).message) });
       }
       return;
     }

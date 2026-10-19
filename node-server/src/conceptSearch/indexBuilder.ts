@@ -34,6 +34,30 @@ export interface BuildOptions {
   embedMaxConcepts?: number;
   log?: (message: string) => void | Promise<void>;
   shouldStop?: () => boolean | Promise<boolean>;
+  /** CodeSystems processed so far / to process (called before each one; the caller throttles). */
+  onProgress?: (done: number, total: number) => void | Promise<void>;
+}
+
+/**
+ * The CodeSystems of one package the index builder indexes (pure): with a url, not a
+ * supplement / content=not-present, routed to the IG engine (ICD / LOINC / SNOMED … have
+ * dedicated tables), first artifact per url. Shared with the status API so a package with
+ * nothing indexable is not reported as "not indexed yet".
+ */
+export function selectIndexableCodeSystems<T extends { url: string | null; artifact_id: string | null; content: string | null }>(
+  arts: T[],
+): Array<T & { url: string }> {
+  const seen = new Set<string>();
+  const out: Array<T & { url: string }> = [];
+  for (const a of arts) {
+    if (!a.url) continue;
+    if (a.content === "supplement" || a.content === "not-present") continue;
+    if (routeSystem(a.url, a.artifact_id) !== "ig") continue;
+    if (seen.has(a.url)) continue;
+    seen.add(a.url);
+    out.push(a as T & { url: string });
+  }
+  return out;
 }
 
 export interface BuildStats {
@@ -303,28 +327,35 @@ export async function buildConceptIndex(pool: pg.Pool, opts: BuildOptions = {}):
   const conceptMaps = await listConceptMaps(pool);
   const umlsStamp = await umlsReleaseStamp(pool);
 
+  type ArtRow = { artifact_key: string; artifact_id: string | null; url: string | null; version: string | null; content: string | null; imported_at: Date; title: string | null; name: string | null; language: string | null };
+  // Prefetch the indexable CodeSystems of every package so progress has a real total.
+  const work: Array<{ p: { package_id: string; version: string }; arts: Array<ArtRow & { url: string }> }> = [];
   for (const p of pkgRows) {
-    if (opts.shouldStop && (await opts.shouldStop())) {
-      stats.stopped = true;
-      break;
-    }
-    stats.packages += 1;
     const arts = (
-      await pool.query<{ artifact_key: string; artifact_id: string | null; url: string | null; version: string | null; content: string | null; imported_at: Date; title: string | null; name: string | null; language: string | null }>(
+      await pool.query<ArtRow>(
         `SELECT artifact_key, artifact_id, COALESCE(raw_json->>'url', canonical_url) AS url, raw_json->>'version' AS version,
                 raw_json->>'content' AS content, imported_at, title, name, raw_json->>'language' AS language
            FROM fhir.artifacts WHERE package_id = $1 AND package_version = $2 AND resource_type = 'CodeSystem'`,
         [p.package_id, p.version],
       )
     ).rows;
-    const keep = new Set<string>();
+    work.push({ p, arts: selectIndexableCodeSystems(arts) });
+  }
+  const total = work.reduce((n, w) => n + w.arts.length, 0);
+  let done = 0;
+  if (opts.onProgress) await opts.onProgress(0, total);
+
+  for (const { p, arts } of work) {
+    if (opts.shouldStop && (await opts.shouldStop())) {
+      stats.stopped = true;
+      break;
+    }
+    stats.packages += 1;
+    const keep = new Set<string>(arts.map((a) => a.url));
     let pkgRebuilt = 0;
     for (const a of arts) {
-      if (!a.url) continue;
-      if (a.content === "supplement" || a.content === "not-present") continue;
-      if (routeSystem(a.url, a.artifact_id) !== "ig") continue;
-      if (keep.has(a.url)) continue;
-      keep.add(a.url);
+      done += 1;
+      if (opts.onProgress) await opts.onProgress(done, total);
       stats.codesystems += 1;
       const sups = supplements.filter((s) => supplementApplies(s.supplements, a.url!, a.version));
       const maps = conceptMaps.filter((m) => m.sources.has(a.url!));

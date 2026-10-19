@@ -12,7 +12,7 @@
 | 來源 | 說明 |
 |------|------|
 | CodeSystem 原始 JSON | display、**所有語言的 designation**（例如 TW Core 已附的英文名稱）、巢狀 `concept.concept`、字串型 property（例如成分）、短的 definition（≤ 120 字，低權重） |
-| CodeSystem supplement | FHIR R4 `content = supplement`，依 `supplements`（可含 `|version`）合併 designation 與 property；IG 套件內附的與管理後台上傳的都會套用。數值型的使用量 property（code 或描述含 `claim-volume` / `usage` / `popularity` / `申報量` / `使用量`，例如健保署「診療項目醫令申報量(年)」做成的 `claim-volume`）不當成名稱，而成為排序用的**使用量先驗**（見下方「融合」） |
+| CodeSystem supplement | FHIR R4 `content = supplement`，依 `supplements`（可含 `|version`）合併 designation 與 property；IG 套件內附的、管理後台上傳的與程式內建的（見下方「內建資料」）都會套用。數值型的使用量 property（code 或描述含 `claim-volume` / `usage` / `popularity` / `申報量` / `使用量`，例如健保署「診療項目醫令申報量(年)」做成的 `claim-volume`）不當成名稱，而成為排序用的**使用量先驗**（見下方「融合」） |
 | 連結名稱 | Coding 型 property（例如 supplement 的 `loinc`）與 IG 內 ConceptMap（`group.source` 為該 CodeSystem）的目標：LOINC 取共同的 COMPONENT、SNOMED 取描述，其他取 coding 的 display |
 | UMLS（選用） | 概念的英文名稱若剛好是某個 UMLS 概念（CUI）的字串，該 CUI 的其他同義字 / 縮寫成為**只用於比對**的詞（每概念最多 12 個） |
 
@@ -33,7 +33,7 @@
   縮寫與橋接全部來自資料：SNOMED CT「ACR - 展開」描述、LOINC shortname ↔ component、IG 名稱內定義的縮寫
   （「… lithotripsy (ESWL)」，Schwartz–Hearst 驗證）、ICD-10 / IG 中英對照名稱挖出的英 ↔ 中詞對（Dice + 雙向最佳配對）、
   `grounding/twLexiconData.ts` 的 abbrev / zhEn 表，以及（選用）UMLS。全部存在 `fhir.term_thesaurus` / `fhir.umls_terms`。
-- **一般縮寫表補缺**（選用，`fhir.abbreviation_lexicon`，SPECIALIST Lexicon 的 LRABR，隨 UMLS 檔載入）：查詢**第一個子句**中的縮寫，
+- **一般縮寫表補缺**（`fhir.abbreviation_lexicon`，SPECIALIST Lexicon 的 LRABR；程式內建一份，表為空時自動載入，帶 LRABR 的 UMLS 檔會取代）：查詢**第一個子句**中的縮寫，
   若 CodeSystem 本身沒有這個字（例如「Procalcitonin (PCT)」已含 PCT）、上述縮寫表的展開也都不被 CodeSystem 支持
   （支持度 < 0.45），才從縮寫表取候選意義。一般縮寫表一個縮寫常有數十個意義（LP → lipoprotein、lumbar puncture …），
   每個意義以「CodeSystem 自己的名稱能多好地命名它」評分：該意義單獨查詢的最佳字詞分數（上限 1）+ 0.3 × 該概念的使用量，
@@ -64,9 +64,42 @@
 
 ## 管理後台（IG 套件庫 → 術語搜尋索引）
 
-- 索引 / 向量 / 縮寫表狀態；「補建索引」（未變動者略過）與「全部重建」。
+- 索引 / 向量 / 縮寫表狀態（縮寫表標示來源：內建或上傳的 UMLS 檔）；「補建索引」（未變動者略過）與「全部重建」。
+  索引工作執行中顯示目前步驟與「CodeSystem 已檢查 / 總數」；完成時顯示結果，未重建任何 CodeSystem 時顯示
+  「索引已是最新（N 個 CodeSystem 未變更）」。
+- 「N 個套件尚未建立索引」只計入**有可索引 CodeSystem** 的套件；只含 profile、或其 CodeSystem 由 ICD / LOINC / SNOMED
+  專用表處理或 `content = not-present` 的套件，另以灰字「沒有可索引的 CodeSystem」列出，不需處理。
 - **上傳 CodeSystem supplement JSON**（`application/fhir+json`，上限 64 MB），列表顯示已套用的套件版本；上傳或刪除會自動重建受影響的索引。
-  API：`GET/POST/DELETE /admin/api/igs/supplements`、`GET /admin/api/igs/concept-index`、`POST /admin/api/igs/concept-index/rebuild`。
+  內建 supplement 標示「內建」；刪除後不會被下次匯入自動加回，可按「還原」或「還原內建 supplement」恢復（排入 `ig_concept_index` 套用）。
+  API：`GET/POST/DELETE /admin/api/igs/supplements`、`POST /admin/api/igs/supplements/bundled/restore`（`{url?}`，省略則全部還原）、
+  `GET /admin/api/igs/concept-index`、`POST /admin/api/igs/concept-index/rebuild`。
+
+## 內建資料（不需手動上傳）
+
+程式隨附一份公開授權的參考資料（`node-server/data/`，兩個映像都會複製；來源、版本、授權與重新產生方式見
+`node-server/data/README.md`，產生器在 `node-server/scripts/supplements/`）。全新安裝時，管理者照一般流程匯入 IG
+（例如 TW Core）即可，不需上傳檔案、也不需直接寫資料庫：
+
+| 檔案 | 補充的 CodeSystem | 內容 |
+|------|------------------|------|
+| `nhi-payment-en-supplement` | TW Core `medical-service-payment-tw` | 健保署支付標準的英文項目名稱 |
+| `nhi-payment-loinc-supplement` | 同上 | TWPAS ConceptMap `nhi-loinc` 的 LOINC 連結（含 LOINC 名稱） |
+| `nhi-payment-usage-supplement` | 同上 | 健保署醫令申報量（年）— 排序用的使用量先驗 |
+| `nhi-medication-supplement` | TW Core `medication-nhi-tw` | 健保用藥品項的中文名稱、英文名稱、成分、ATC |
+| `lrabr-2024AA.tsv.gz` | — | SPECIALIST Lexicon LRABR 縮寫表（已依載入規則篩選，115,233 筆） |
+
+- **套用時機**：每次建立索引之前——`ig_import`（含相依套件的匯入）與 `ig_concept_index`（「補建索引」）——
+  先把 `supplements` 指向**已安裝**CodeSystem 的內建 supplement 寫入 `fhir.codesystem_supplements`
+  （`uploaded_by = 'system:bundled'`，與上傳同一個寫入路徑），同一個工作接著建索引，受影響的套件一併納入，不會再多跑一輪。
+  目標 CodeSystem 尚未安裝者等之後安裝時再套用。
+- **冪等、不覆蓋**：已有相同 url + version 的列（不論誰寫入）不動；同一 url 有**管理者上傳的其他版本**時不寫入內建版本；
+  只有舊的**內建**版本會被新的內建版本取代。
+- **尊重刪除**：管理者刪除內建 supplement 會記錄 opt-out（`admin.app_settings`，group `bundled_supplements`，key = url），
+  之後不再自動加回，直到按「還原」。
+- **縮寫表**：只在 `fhir.abbreviation_lexicon` 為空時載入內建 LRABR（`source = 'bundled:LRABR-2024AA'`；先完整解析再單一交易寫入）；
+  上傳帶 LRABR 的 UMLS 檔（`umls_import`）仍會取代它。縮寫表不在索引簽章中，載入不會觸發重建。
+- **已手動上傳過的安裝**（例如正式環境已有相同 url + version 的這 4 個 supplement、縮寫表已由 UMLS 檔載入）：
+  不寫入任何列、不重建索引、不重新嵌入；列表上這些列會標示「內建」。
 
 ## UMLS（選用，需 UMLS 授權）
 
@@ -84,7 +117,7 @@ CDCREC、MVX、CVX、TKMT、SPN、MCM、QMR、RAM、CCS、CCSR_*、DXP、ICPC。
 且只保留至少有 2 個不同字串的概念（2024AA：約 253 萬字串 / 76 萬概念，`fhir.umls_terms` 約 610 MB）。
 來源 SAB 只記在內部（`fhir.concept_index_terms.source`），**UMLS 字串不會出現在任何工具輸出**。
 
-**縮寫表（選用）**：SPECIALIST Lexicon（NLM Lexical Systems Group）的 `LRABR`（`LEX.tgz` 內 `LEX/LRABR`，約 20 MB；開源、免費取得，不需 UMLS 授權），
+**縮寫表**（程式已內建一份，見「內建資料」；以下為從 UMLS 檔載入的方式）：SPECIALIST Lexicon（NLM Lexical Systems Group）的 `LRABR`（`LEX.tgz` 內 `LEX/LRABR`，約 20 MB；開源、免費取得，不需 UMLS 授權），
 只取 acronym / abbreviation、縮寫 2–10 字元、展開 3–80 個 ASCII 字元，拼法變體（plasma exchange / plasma-exchange）合併
 （2024 版約 11.5 萬筆 / 3.4 萬個縮寫）。產生精簡檔時加上第三個參數即可一併帶入：
 `node dist/loaders/umls.js --subset <umls.zip> umls-subset-2024AA-lrabr.rrf.gz LEX/LRABR`；
@@ -95,8 +128,8 @@ CDCREC、MVX、CVX、TKMT、SPN、MCM、QMR、RAM、CCS、CCSR_*、DXP、ICPC。
 
 | 工作 | 說明 |
 |------|------|
-| `ig_import` | 安裝後即建立該批套件的索引，再排入 `ig_embed` |
-| `ig_concept_index` | 補建 / 重建索引（選項：`packages`、`force`、`embed_max_concepts`、`thesaurus`、`queue_embed`），之後重建縮寫表並視需要排入 `ig_embed` |
+| `ig_import` | 安裝後套用內建資料（supplement / 縮寫表），即建立該批套件（及新套用 supplement 影響的套件）的索引，再排入 `ig_embed` |
+| `ig_concept_index` | 套用內建資料後補建 / 重建索引，進度以 CodeSystem 計（選項：`packages`、`force`、`embed_max_concepts`、`thesaurus`、`queue_embed`），之後重建縮寫表並視需要排入 `ig_embed` |
 | `ig_embed` | 為可嵌入的名稱補齊向量（增量、內容定址） |
 | `umls_import` | 載入 UMLS（選用；檔案帶 LRABR 時一併載入縮寫表），之後排入 `ig_concept_index` |
 

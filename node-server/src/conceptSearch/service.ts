@@ -444,7 +444,7 @@ export class IgConceptSearch {
 
   /**
    * Candidate expansions of the query's abbreviations from the optional abbreviation lexicon
-   * (fhir.abbreviation_lexicon, SPECIALIST LRABR — loaded with the UMLS store). Acronyms
+   * (fhir.abbreviation_lexicon, SPECIALIST LRABR — the bundled copy, or loaded with the UMLS store). Acronyms
    * apply to words written like abbreviations, lower-case clippings ("chole") to words the
    * CodeSystem does not know. The engine ranks the senses against the CodeSystem.
    */
