@@ -24,6 +24,7 @@ import { monitor as dbHealthMonitor, isDbDownError } from "../dbHealth.js";
 import { initClient } from "../cache.js";
 import * as minioService from "../minioService.js";
 import { initBroadcast } from "./adminWs.js";
+import { prewarmSnomedOnStartup } from "./prewarm.js";
 import { getGroup, seedIfEmpty } from "./adminSettings.js";
 import { ensureLlmCallLogSchema } from "./llmCallLog.js";
 import { listDueSchedules, fireSchedule, type DueSchedule } from "./adminSchedule.js";
@@ -346,6 +347,9 @@ export async function runWorker(): Promise<void> {
   } catch (err) {
     logWarning("Startup orphan reclaim failed (non-fatal)", { error: String((err as Error).message) });
   }
+
+  // Warm the SNOMED search path in the background (cold HDD reads otherwise make the first searches slow).
+  void prewarmSnomedOnStartup(getPool());
 
   logInfo("Admin worker started (resource-aware parallel mode)", {
     worker_name: workerName,

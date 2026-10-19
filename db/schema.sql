@@ -30,6 +30,8 @@ CREATE INDEX IF NOT EXISTS idx_audit_tool ON audit.query_log (tool_name);
 -- ============================================================
 CREATE SCHEMA IF NOT EXISTS admin;
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
+-- Startup cache prewarm of the SNOMED search path (admin/prewarm.ts) + autoprewarm (compose.yaml).
+CREATE EXTENSION IF NOT EXISTS pg_prewarm;
 
 CREATE TABLE IF NOT EXISTS admin.uploaded_files (
     uploaded_file_id    UUID PRIMARY KEY,

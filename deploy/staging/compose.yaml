@@ -22,6 +22,8 @@ x-backend-env: &backend-env
 services:
   postgres:
     image: pgvector/pgvector:pg16
+    # autoprewarm: restore the buffer cache (SNOMED HNSW index etc.) after a restart.
+    command: ["postgres", "-c", "shared_preload_libraries=pg_prewarm", "-c", "pg_prewarm.autoprewarm=true"]
     # Docker's 64 MB default is too small for parallel HNSW builds / parallel queries.
     shm_size: 1gb
     environment:

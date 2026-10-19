@@ -2,6 +2,8 @@ services:
   postgres:
     image: pgvector/pgvector:pg16
     container_name: taiwanHealthMcp_postgres
+    # autoprewarm: restore the buffer cache (SNOMED HNSW index etc.) after a restart.
+    command: ["postgres", "-c", "shared_preload_libraries=pg_prewarm", "-c", "pg_prewarm.autoprewarm=true"]
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-taiwan_health}
       POSTGRES_USER: ${POSTGRES_USER:-mcp}
