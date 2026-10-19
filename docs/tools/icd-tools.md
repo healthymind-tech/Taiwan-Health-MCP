@@ -17,7 +17,7 @@
 
 ### 搜尋方式
 `diagnosis` 走 BM25 + 向量重排序的混合搜尋；`procedure` 只走 BM25；`all`（預設）兩者都做，
-並以獨立的 `diagnoses` / `procedures` 鍵分開回傳。結果依相關性排序（關鍵字與向量結果以 RRF 融合），不是依代碼字母順序。
+並以獨立的 `diagnoses` / `procedures` 鍵分開回傳。結果依相關性排序，不是依代碼字母順序：候選為全文比對（名稱最短者優先）與最近向量的聯集，以「分數感知」融合排序——字面分數看查詢與名稱互相涵蓋的程度（查詢「就是」這個名稱勝過只「包含」它的較長子概念；「unspecified／未明示」等泛稱字不扣分），語意分數為候選池內重新縮放的 cosine 相似度，再加上很小的代碼深度先驗（短查詢偏好 I50 / I50.9 而非 I50.813）。向量端最相近的前 2 名一定保留在結果中，不會被大量弱字面命中擠出 top-k（舊版 RRF 的問題）。
 向量部分刻意做精確掃描而不走 HNSW 索引：完整版 ICD-10-CM 有大量只差第 7 碼的近似碼，HNSW 的召回率在這種資料上會崩潰。
 embedding 端點不可用或 `icd.diagnosis_embeddings` 為空時退回純關鍵字搜尋，回應會帶 `search_mode: "keyword_only"`。
 未載入 ICD-10-PCS 時 `procedures` 為空陣列並附 `procedures_note`。

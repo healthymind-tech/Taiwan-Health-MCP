@@ -149,3 +149,18 @@ test("structure rows are empty when the zip lacks the accessory members", () => 
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+test("COMMON_TEST_RANK / COMMON_ORDER_RANK become columns 17/18 (0 or blank → null)", () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "loinc-rank-"));
+  try {
+    const csv = "LOINC_NUM,COMPONENT,CLASSTYPE,COMMON_TEST_RANK,COMMON_ORDER_RANK\n718-7,Hemoglobin,1,17,66\n1234-5,Glucose,1,0,\n";
+    const zipPath = path.join(tmp, "Loinc_2.80.zip");
+    fs.writeFileSync(zipPath, zipSync({ "LoincTable/Loinc.csv": strToU8(csv) }));
+    const rows = buildLoincStagePayload(zipPath, null, null).conceptRows;
+    assert.equal(rows[0].length, 19);
+    assert.deepEqual(rows[0].slice(17), [17, 66]);
+    assert.deepEqual(rows[1].slice(17), [null, null]);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});

@@ -2,7 +2,7 @@
 
 目前 LOINC 對外入口已收斂為 4 個工具：`search_loinc`、`query_loinc`、`interpret_lab_result`、`batch_interpret_lab_results`。
 
-預設值：`search_loinc` 的 `mode` 預設 `code`、`limit` 預設 3（上限 10）；`query_loinc` 的 `mode` 預設 `detail`；`gender` 一律預設 `all`。`code` / `specimen` / `component` 模式為 BM25 + 語意混合搜尋，embedding 不可用時退回純關鍵字並帶 `search_mode: "keyword_only"`。`loinc.concepts` 少於 1,000 筆時整組工具不會註冊。
+預設值：`search_loinc` 的 `mode` 預設 `code`、`limit` 預設 3（上限 10）；`query_loinc` 的 `mode` 預設 `detail`；`gender` 一律預設 `all`。`code` / `specimen` / `component` 模式為 BM25 + 語意混合搜尋（`code` 模式以分數感知融合排序，並以 LOINC 的 `COMMON_TEST_RANK` 與狀態作為弱先驗：短查詢如「hemoglobin」偏好最常用的 718-7；需 migration `20261024` 並重新匯入 LOINC），embedding 不可用時退回純關鍵字並帶 `search_mode: "keyword_only"`。`loinc.concepts` 少於 1,000 筆時整組工具不會註冊。
 
 > **維護模式**：管理後台把 `loinc` 模組切到維護模式時，本組工具呼叫會立即回傳 `isError` 結果，錯誤碼 `MODULE_MAINTENANCE`（`error.message` 英文、`error.message_zh` 正體中文，`error.module` 為模組鍵），約 5 秒內生效；工具仍留在 `tools/list` 中。詳見 [API 參考](../api/index.md#maintenance)。
 

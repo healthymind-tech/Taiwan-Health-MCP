@@ -31,6 +31,9 @@ import {
 } from "./admin/llmProfiles.js";
 import { canRequest, ProfileRateLimited, recordRequest, waitUntilMs } from "./rateLimiter.js";
 import { clampConcurrency } from "./loaders/batchPool.js";
+import { formatQueryText, type QueryTask } from "./providers/queryInstruction.js";
+
+export type { QueryTask } from "./providers/queryInstruction.js";
 
 export interface EmbeddingSettings {
   strategy: Strategy;
@@ -81,6 +84,7 @@ async function providerEmbed(
   s: EmbeddingSettings,
   texts: string[],
   inputType: "query" | "document",
+  task?: QueryTask,
 ): Promise<(number[] | null)[]> {
   // Check rate limits. The limiter is process-wide (shared by every parallel
   // batch of an embed job), and the slot is *reserved* synchronously right after
@@ -99,9 +103,13 @@ async function providerEmbed(
   const adapter = getAdapter(p.provider, p.base_url);
   if (!adapter?.embed) throw new Error(`Provider '${p.provider}' does not offer embeddings`);
   const timeoutMs = s.timeout * 1000;
+  // Search queries get the model's task instruction (per leaf: the instruction is a
+  // property of the model it is sent to). Documents never do — stored vectors and
+  // the identity probes stay un-instructed.
+  const sent = inputType === "query" && task ? texts.map((t) => formatQueryText(p, task, t)) : texts;
   return adapter.embed(
     p,
-    { texts, inputType, dimensions: embeddingDimensions(p) },
+    { texts: sent, inputType, dimensions: embeddingDimensions(p) },
     // A fresh timeout per HTTP call: adapters may split a batch into several requests.
     { fetch: (url, init) => fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) }) },
   );
@@ -141,9 +149,12 @@ export class EmbeddingService {
     await this.embed("ping");
   }
 
-  /** Embed a single text string. Returns the vector, or null when unavailable. */
-  async embed(text: string): Promise<number[] | null> {
-    const results = await this.embedBatch([text], "query");
+  /**
+   * Embed a single search query. Returns the vector, or null when unavailable.
+   * `task` names what is searched (picks the model's query instruction, if it uses one).
+   */
+  async embed(text: string, task?: QueryTask): Promise<number[] | null> {
+    const results = await this.embedBatch([text], "query", task);
     return results[0] ?? null;
   }
 
@@ -195,7 +206,7 @@ export class EmbeddingService {
    * Never throws: a routing lookup failure (DB down) or an embedding-model
    * switch in progress also yields nulls, i.e. keyword-only search.
    */
-  async embedBatch(texts: string[], inputType: "query" | "document" = "document"): Promise<(number[] | null)[]> {
+  async embedBatch(texts: string[], inputType: "query" | "document" = "document", task?: QueryTask): Promise<(number[] | null)[]> {
     if (!this.enabled || texts.length === 0) return texts.map(() => null);
 
     let candidates: LlmProfile[];
@@ -234,7 +245,7 @@ export class EmbeddingService {
       const explicit = Number(p.params?.dimensions);
       const expected = batchDims ?? (Number.isInteger(explicit) && explicit > 0 ? explicit : null);
       try {
-        const embeddings = await providerEmbed(p, this.settings, missing.map((i) => texts[i]), inputType);
+        const embeddings = await providerEmbed(p, this.settings, missing.map((i) => texts[i]), inputType, task);
         const stillMissing: number[] = [];
         let wrongSize = 0;
         missing.forEach((textIdx, k) => {

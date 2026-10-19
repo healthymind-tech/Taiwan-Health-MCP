@@ -1,0 +1,71 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { lexicalMatch, rankHybrid, type RankCandidate } from "./hybridRank.js";
+import { icdDepthPrior, loincPrior, snomedPrior, stripSemanticTag } from "./terminologyRanking.js";
+
+test("lexicalMatch: the query that IS the name beats names that merely contain it", () => {
+  const is = lexicalMatch("heart failure", "Heart failure");
+  const contains = lexicalMatch("heart failure", "Heart failure with reduced ejection fraction");
+  assert.equal(is.exact, true);
+  assert.equal(is.score, 1);
+  assert.ok(contains.score > 0 && contains.score < 0.9, String(contains.score));
+  // Generic qualifiers do not count against a name.
+  assert.equal(lexicalMatch("heart failure", "Heart failure, unspecified").exact, true);
+  assert.equal(lexicalMatch("肺炎", "肺炎，未明示病原體").score > lexicalMatch("肺炎", "吸入性肺炎及其他肺炎").score, true);
+  assert.equal(lexicalMatch("asthma", "Diabetes").score, 0);
+});
+
+test("rankHybrid: a strong semantic match is not pushed out by weak lexical hits (RRF failure mode)", () => {
+  const weak = (i: number): RankCandidate => ({ key: `lex${i}`, texts: [{ text: `Heart failure due to cause number ${i} of something` }], sim: 0.55 - i * 0.001 });
+  const cands: RankCandidate[] = [
+    ...Array.from({ length: 20 }, (_, i) => weak(i)),
+    { key: "target", texts: [{ text: "Cardiac insufficiency" }], sim: 0.9 },
+    ...Array.from({ length: 20 }, (_, i) => ({ key: `vec${i}`, texts: [{ text: `unrelated ${i}` }], sim: 0.6 - i * 0.002 })),
+  ];
+  const out = rankHybrid("heart failure", cands, 5);
+  assert.ok(out.some((c) => c.key === "target"), JSON.stringify(out.map((c) => c.key)));
+});
+
+test("rankHybrid: exact name match plus top similarity ranks first; priors break near-ties", () => {
+  const out = rankHybrid(
+    "hemoglobin",
+    [
+      { key: "special", texts: [{ text: "Hemoglobin [Mass/volume] in Blood by calculation" }, { text: "Hemoglobin", weight: 0.85 }], sim: 0.8, prior: loincPrior(244, "ACTIVE") },
+      { key: "common", texts: [{ text: "Hemoglobin [Mass/volume] in Blood" }, { text: "Hemoglobin", weight: 0.85 }], sim: 0.79, prior: loincPrior(17, "ACTIVE") },
+      { key: "far", texts: [{ text: "Glucose" }], sim: 0.5 },
+    ],
+    3,
+  );
+  assert.equal(out[0].key, "common");
+});
+
+test("rankHybrid: the semantic guard keeps the vector channel's best two in the top-k", () => {
+  const cands: RankCandidate[] = Array.from({ length: 10 }, (_, i) => ({ key: `exactish${i}`, texts: [{ text: `asthma attack ${i}` }], sim: 0.3, prior: 0.1 }));
+  cands.push({ key: "sem1", texts: [{ text: "Bronchial hyperreactivity" }], sim: 0.95 });
+  cands.push({ key: "sem2", texts: [{ text: "Reactive airway disease" }], sim: 0.94 });
+  const out = rankHybrid("asthma attack", cands, 5, { lexWeight: 0.9, semWeight: 0.1 });
+  assert.ok(out.some((c) => c.key === "sem1") && out.some((c) => c.key === "sem2"));
+  assert.equal(out.length, 5);
+});
+
+test("rankHybrid without vectors is lexical (keyword-only mode)", () => {
+  const out = rankHybrid("asthma", [{ key: "a", texts: [{ text: "Asthma" }], sim: null }, { key: "b", texts: [{ text: "Allergic asthma" }], sim: null }], 2);
+  assert.deepEqual(out.map((c) => c.key), ["a", "b"]);
+  assert.equal(out[0].source, "lexical");
+});
+
+test("priors", () => {
+  assert.equal(icdDepthPrior("I50"), 0);
+  assert.ok(icdDepthPrior("I50.9") > icdDepthPrior("S93.401A"));
+  assert.ok(loincPrior(1, "ACTIVE") > loincPrior(5000, "ACTIVE"));
+  assert.ok(loincPrior(null, "DEPRECATED") < 0);
+  assert.equal(loincPrior(null, "ACTIVE"), 0);
+  assert.ok(snomedPrior(false, "Asthma") < snomedPrior(true, "Asthma"));
+  assert.equal(stripSemanticTag("Myocardial infarction (disorder)"), "Myocardial infarction");
+});
+
+test("lexicalMatch: a query that is a whole delimited part of the name scores high", () => {
+  assert.ok(lexicalMatch("高血壓", "本態性(原發性)高血壓").score >= 0.85);
+  assert.ok(lexicalMatch("hypertension", "Essential (primary) hypertension").score >= 0.85);
+  assert.ok(lexicalMatch("高血壓", "高血壓性腦病變").score < 0.85);
+});

@@ -13,7 +13,7 @@
 檢查 `icd.procedures` 是否有資料，決定 ICD-10-PCS 搜尋是否可用。
 
 ### `async searchCodes(keyword, type = "all", limit = 3)`
-`type` 為 `"diagnosis" | "procedure" | "all"`，`limit` 上限 10。診斷走 BM25 + 向量 RRF 混合搜尋（向量端精確掃描，不走 HNSW），處置只走 BM25。
+`type` 為 `"diagnosis" | "procedure" | "all"`，`limit` 上限 10。診斷走全文 + 向量的分數感知混合排序（`terminologyRanking.ts` + `hybridRank.ts`；向量端精確掃描，不走 HNSW），處置只走 BM25。
 回傳 `{diagnoses?, procedures?, procedures_note?}`，向量不可用時另帶 `search_mode: "keyword_only"`；完全無結果時回傳 `{error}`。對應工具 `search_medical_codes`。
 
 ### `async inferComplications(code)`

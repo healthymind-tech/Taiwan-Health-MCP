@@ -158,7 +158,7 @@ export class FoodNutritionService {
   /** Mirror of `search_nutrition`. */
   async searchNutrition(foodName: string, nutrient: string | null = null, limit = 3): Promise<unknown> {
     limit = Math.min(Math.max(1, limit), 10);
-    const vec = this.embeddingSvc ? await this.embeddingSvc.embed(foodName) : null;
+    const vec = this.embeddingSvc ? await this.embeddingSvc.embed(foodName, "food") : null;
     const vecStr = vecLiteral(vec);
 
     const names = await this.matchSampleNames(foodName, vecStr, limit);
@@ -203,7 +203,7 @@ export class FoodNutritionService {
 
   /** Mirror of `get_detailed_nutrition`. */
   async getDetailedNutrition(foodName: string): Promise<unknown> {
-    const vec = this.embeddingSvc ? await this.embeddingSvc.embed(foodName) : null;
+    const vec = this.embeddingSvc ? await this.embeddingSvc.embed(foodName, "food") : null;
     const vecStr = vecLiteral(vec);
 
     const names = await this.matchSampleNames(foodName, vecStr, 3);
@@ -257,7 +257,7 @@ export class FoodNutritionService {
   /** Mirror of `search_food_ingredient`. */
   async searchFoodIngredient(keyword: string, limit = 3, category: string | null = null): Promise<unknown> {
     limit = Math.min(Math.max(1, limit), 10);
-    const vec = this.embeddingSvc ? await this.embeddingSvc.embed(keyword) : null;
+    const vec = this.embeddingSvc ? await this.embeddingSvc.embed(keyword, "food") : null;
     const vecStr = vecLiteral(vec);
 
     let rows: Record<string, unknown>[];
@@ -338,7 +338,7 @@ export class FoodNutritionService {
     }
     if (!this.nutrientEmbeddings.size) return null;
 
-    const queryVec = await this.embeddingSvc.embed(queryText);
+    const queryVec = await this.embeddingSvc.embed(queryText, "generic");
     if (!queryVec) return null;
 
     const cosine = (a: number[], b: number[]): number => {
@@ -420,7 +420,7 @@ export class FoodNutritionService {
     // Embed all food names first (never hold a DB connection during HTTP calls).
     const vecStrs = new Map<string, string | null>();
     if (this.embeddingSvc) {
-      const vecs = await Promise.all(foods.map((f) => this.embeddingSvc!.embed(f)));
+      const vecs = await Promise.all(foods.map((f) => this.embeddingSvc!.embed(f, "food")));
       foods.forEach((food, i) => vecStrs.set(food, vecLiteral(vecs[i])));
     }
 

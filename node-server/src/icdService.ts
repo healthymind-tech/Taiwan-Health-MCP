@@ -16,6 +16,7 @@ import { logError, logInfo } from "./logger.js";
 import type { EmbeddingService } from "./embeddingService.js";
 import { vecLiteral } from "./embeddingService.js";
 import { annotate, embeddingsPresent } from "./searchQuality.js";
+import { rankIcdDiagnoses } from "./terminologyRanking.js";
 
 interface CodeRow {
   code: string;
@@ -47,64 +48,22 @@ export class IcdService {
   /**
    * Mirror of `ICDService.search_codes` (hybrid BM25 + vector re-ranking).
    *
-   * When the embedding provider yields a vector, the diagnosis branch runs the
-   * RRF hybrid query (identical SQL to Python); the vec CTE contributes only if
+   * When the embedding provider yields a vector, the diagnosis branch ranks the
+   * union of full-text matches and nearest vectors with score-aware fusion
+   * (terminologyRanking.ts); the vector half contributes only if
    * `icd.diagnosis_embeddings` is populated. The `search_mode: keyword_only`
    * marker is added whenever the semantic half could not contribute.
    */
   async searchCodes(keyword: string, type: "diagnosis" | "procedure" | "all" = "all", limit = 3): Promise<unknown> {
     limit = Math.min(Math.max(1, limit), 10);
-    const vec = this.embeddingSvc ? await this.embeddingSvc.embed(keyword) : null;
+    const vec = this.embeddingSvc ? await this.embeddingSvc.embed(keyword, "icd") : null;
     const vecStr = vecLiteral(vec);
     const results: Record<string, unknown> = {};
 
     if (type === "diagnosis" || type === "all") {
-      let rows: CodeRow[];
-      if (vecStr) {
-        const r = await query<CodeRow>(
-          `WITH fts AS (
-               SELECT code,
-                      ROW_NUMBER() OVER (ORDER BY ts_rank_cd(
-                          to_tsvector('simple', code || ' ' || COALESCE(name_zh,'') || ' ' || COALESCE(name_en,'')),
-                          plainto_tsquery('simple', $1)) DESC) AS rank
-               FROM icd.diagnoses
-               WHERE to_tsvector('simple', code || ' ' || COALESCE(name_zh,'') || ' ' || COALESCE(name_en,''))
-                     @@ plainto_tsquery('simple', $1)
-                  OR code ILIKE $2
-               LIMIT 20
-           ),
-           -- Exact scan on purpose: "+ 0" keeps the planner off the HNSW index,
-           -- whose recall collapses on the ~50k near-duplicate 7th-character codes
-           -- (e.g. diabetes queries returned fracture codes). ~98k rows, ~0.35 s.
-           vec AS (
-               SELECT code,
-                      ROW_NUMBER() OVER (ORDER BY (embedding <=> $3::halfvec) + 0) AS rank
-               FROM icd.diagnosis_embeddings
-               ORDER BY (embedding <=> $3::halfvec) + 0 LIMIT 20
-           ),
-           rrf AS (
-               SELECT COALESCE(f.code, v.code) AS code,
-                      COALESCE(1.0/(60+f.rank), 0.0) + COALESCE(1.0/(60+v.rank), 0.0) AS score
-               FROM fts f FULL OUTER JOIN vec v ON f.code = v.code
-           )
-           SELECT d.code, d.name_zh, d.name_en
-           FROM rrf JOIN icd.diagnoses d ON d.code = rrf.code
-           ORDER BY rrf.score DESC LIMIT $4`,
-          [keyword, `${keyword}%`, vecStr, limit],
-        );
-        rows = r.rows;
-      } else {
-        const r = await query<CodeRow>(
-          `SELECT code, name_zh, name_en
-           FROM icd.diagnoses
-           WHERE to_tsvector('simple', code || ' ' || COALESCE(name_zh,'') || ' ' || COALESCE(name_en,''))
-                 @@ plainto_tsquery('simple', $1)
-              OR code ILIKE $2
-           ORDER BY code LIMIT $3`,
-          [keyword, `${keyword}%`, limit],
-        );
-        rows = r.rows;
-      }
+      // Hybrid: full-text ∪ nearest vectors, ordered by score-aware fusion
+      // (terminologyRanking.ts); keyword-only when there is no query vector.
+      const rows: CodeRow[] = (await rankIcdDiagnoses(keyword, vecStr, limit)).rows;
       results.diagnoses = rows;
     }
 

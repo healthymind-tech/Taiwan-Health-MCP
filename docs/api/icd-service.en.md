@@ -13,7 +13,7 @@ Takes the shared `EmbeddingService`; with `null` the diagnosis search is keyword
 Checks whether `icd.procedures` has rows, which decides whether ICD-10-PCS search is available.
 
 ### `async searchCodes(keyword, type = "all", limit = 3)`
-`type` is `"diagnosis" | "procedure" | "all"`; `limit` is capped at 10. Diagnoses use a BM25 + vector RRF hybrid search (exact vector scan, not HNSW); procedures are BM25 only.
+`type` is `"diagnosis" | "procedure" | "all"`; `limit` is capped at 10. Diagnoses use score-aware hybrid ranking of full-text and vector candidates (`terminologyRanking.ts` + `hybridRank.ts`; exact vector scan, not HNSW); procedures are BM25 only.
 Returns `{diagnoses?, procedures?, procedures_note?}`, plus `search_mode: "keyword_only"` when vectors are unavailable; `{error}` when nothing matches. Backs `search_medical_codes`.
 
 ### `async inferComplications(code)`

@@ -124,6 +124,12 @@ function gs(row: Record<string, string>, key: string): string {
   return (row[key] ?? "").trim();
 }
 
+/** COMMON_TEST_RANK / COMMON_ORDER_RANK: a positive integer, or null (0 / blank = not ranked). */
+export function loincRank(row: Record<string, string>, key: string): number | null {
+  const n = parseInt(gs(row, key), 10);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
 /**
  * Exact decimal expansion of a float64, matching what the Python loader stores
  * in a `numeric` column. asyncpg encodes a Python `float` as `Decimal(value)` —
@@ -169,7 +175,7 @@ function floatToExactNumeric(x: number): string {
   return negative ? `-${out}` : out;
 }
 
-type Concept = (string | number)[];
+type Concept = (string | number | null)[];
 
 // ── Staged-import payload (Node port of admin_jobs._build_loinc_stage_payload) ──
 // Returns row tuples (rather than writing tables directly) so the admin worker
@@ -178,8 +184,8 @@ type Concept = (string | number)[];
 // the Python stager — unlike the legacy direct-write loader which UPDATEs.
 
 export interface LoincStagePayload {
-  /** 17-col concept tuples (loinc_num … unit). */
-  conceptRows: (string | number)[][];
+  /** 19-col concept tuples (loinc_num … unit, common_test_rank, common_order_rank). */
+  conceptRows: (string | number | null)[][];
   /** 8-col reference-range tuples (loinc_num, age_min, age_max, gender, range_low, range_high, unit, interpretation). */
   rangeRows: (string | number)[][];
   /** 5-col non-term code tuples (code, kind, display, alt_display, status) — see parseLoincOtherCodes. */
@@ -508,7 +514,7 @@ export function buildLoincStagePayload(
   });
 
   // Keyed by loinc_num, preserving CSV insertion order (mirrors Python dict).
-  const conceptMap = new Map<string, (string | number)[]>();
+  const conceptMap = new Map<string, (string | number | null)[]>();
   for (const row of rows) {
     const loincNum = gs(row, "LOINC_NUM");
     if (!loincNum) continue;
@@ -532,6 +538,8 @@ export function buildLoincStagePayload(
       "", // common_name_zh
       "", // specimen_type
       "", // unit
+      loincRank(row, "COMMON_TEST_RANK"),
+      loincRank(row, "COMMON_ORDER_RANK"),
     ]);
   }
 
@@ -650,12 +658,14 @@ export async function loadLoincFull(pool: pg.Pool): Promise<void> {
       "", // common_name_zh
       "", // specimen_type
       "", // unit
+      loincRank(row, "COMMON_TEST_RANK"),
+      loincRank(row, "COMMON_ORDER_RANK"),
     ]);
   }
 
   logInfo(`  Parsed ${records.length} LOINC concepts. Writing to DB ...`);
 
-  const ncols = 17;
+  const ncols = 19;
   const batchRows = Math.floor(PARAM_LIMIT / ncols);
   const client = await pool.connect();
   try {
@@ -663,7 +673,7 @@ export async function loadLoincFull(pool: pg.Pool): Promise<void> {
     for (let i = 0; i < records.length; i += batchRows) {
       const slice = records.slice(i, i + batchRows);
       const values: string[] = [];
-      const params: (string | number)[] = [];
+      const params: (string | number | null)[] = [];
       slice.forEach((rec, ri) => {
         const ph = rec.map((_, ci) => `$${ri * ncols + ci + 1}`);
         values.push(`(${ph.join(",")})`);
@@ -673,11 +683,12 @@ export async function loadLoincFull(pool: pg.Pool): Promise<void> {
         `INSERT INTO loinc.concepts
            (loinc_num, component, property, time_aspect, system, scale_type, method_type,
             long_common_name, shortname, class, classtype, status, consumer_name,
-            name_zh, common_name_zh, specimen_type, unit)
+            name_zh, common_name_zh, specimen_type, unit, common_test_rank, common_order_rank)
          VALUES ${values.join(",")}
          ON CONFLICT (loinc_num) DO UPDATE SET
            long_common_name=EXCLUDED.long_common_name, shortname=EXCLUDED.shortname,
-           class=EXCLUDED.class, status=EXCLUDED.status`,
+           class=EXCLUDED.class, status=EXCLUDED.status,
+           common_test_rank=EXCLUDED.common_test_rank, common_order_rank=EXCLUDED.common_order_rank`,
         params,
       );
     }

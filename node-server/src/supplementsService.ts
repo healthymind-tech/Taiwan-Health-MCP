@@ -90,7 +90,7 @@ export class HealthSupplementsService {
   /** Mirror of `HealthSupplementsService.search_health_supplements`. */
   async searchHealthSupplements(keyword: string, limit = 3): Promise<unknown> {
     limit = Math.min(Math.max(1, limit), 10);
-    const vec = this.embeddingSvc ? await this.embeddingSvc.embed(keyword) : null;
+    const vec = this.embeddingSvc ? await this.embeddingSvc.embed(keyword, "supplement") : null;
     const vecStr = vecLiteral(vec);
 
     let rows: ItemRow[];

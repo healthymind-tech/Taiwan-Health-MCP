@@ -17,6 +17,7 @@ import { query } from "./db.js";
 import { logError, logInfo } from "./logger.js";
 import type { EmbeddingService } from "./embeddingService.js";
 import { vecLiteral } from "./embeddingService.js";
+import { rankSnomed } from "./terminologyRanking.js";
 
 // SNOMED type constants (kept as strings to avoid JS precision loss on the
 // 18-digit metadata IDs; compared against bigint columns returned as strings).
@@ -46,12 +47,6 @@ function hierarchyTag(fsn: string | null): string | null {
   return match ? match[1] : null;
 }
 
-interface SearchRow {
-  concept_id: string;
-  preferred_term: string | null;
-  type_id: string;
-  active: boolean;
-}
 
 export class SnomedService {
   private embeddingSvc: EmbeddingService | null;
@@ -70,181 +65,27 @@ export class SnomedService {
     }
   }
 
-  /** Mirror of `SNOMEDService.search_concepts` (hybrid BM25 + vector). */
+  /**
+   * Hybrid concept search: full-text over active descriptions ∪ nearest FSN vectors,
+   * ordered by score-aware fusion over every active name of each concept
+   * (terminologyRanking.ts). Keyword-only without a query vector.
+   */
   async searchConcepts(
     queryText: string,
     limit = 3,
     hierarchyFilter: number | null = null,
   ): Promise<Record<string, unknown>[]> {
     limit = Math.min(Math.max(1, limit), 10);
-    const vec = this.embeddingSvc ? await this.embeddingSvc.embed(queryText) : null;
+    const vec = this.embeddingSvc ? await this.embeddingSvc.embed(queryText, "snomed") : null;
     const vecStr = vecLiteral(vec);
-
-    let rows: SearchRow[];
-    if (hierarchyFilter) {
-      const hf = String(hierarchyFilter);
-      if (vecStr) {
-        const r = await query<SearchRow>(
-          `WITH RECURSIVE descendants AS (
-               SELECT concept_id FROM snomed.concepts WHERE concept_id = $3
-               UNION ALL
-               SELECT r.source_id
-               FROM snomed.relationships r
-               JOIN descendants d ON r.destination_id = d.concept_id
-               WHERE r.type_id = $4 AND r.active = TRUE
-           ),
-           fts AS (
-               SELECT d.concept_id,
-                      ROW_NUMBER() OVER (ORDER BY
-                          ts_rank(to_tsvector('english', d.term),
-                                  plainto_tsquery('english', $1)) DESC) AS rank
-               FROM snomed.descriptions d
-               JOIN descendants dsc ON dsc.concept_id = d.concept_id
-               WHERE d.active = TRUE
-                 AND to_tsvector('english', d.term) @@ plainto_tsquery('english', $1)
-               LIMIT 20
-           ),
-           vec AS (
-               SELECT e.concept_id,
-                      ROW_NUMBER() OVER (ORDER BY e.embedding <=> $5::halfvec) AS rank
-               FROM snomed.concept_embeddings e
-               JOIN descendants dsc ON dsc.concept_id = e.concept_id
-               ORDER BY e.embedding <=> $5::halfvec LIMIT 20
-           ),
-           rrf AS (
-               SELECT COALESCE(f.concept_id, v.concept_id) AS concept_id,
-                      COALESCE(1.0/(60+f.rank), 0.0) + COALESCE(1.0/(60+v.rank), 0.0) AS score
-               FROM fts f FULL OUTER JOIN vec v ON f.concept_id = v.concept_id
-           )
-           SELECT d.concept_id, d.term AS preferred_term, d.type_id, c.active
-           FROM rrf
-           JOIN snomed.descriptions d ON d.concept_id = rrf.concept_id AND d.active = TRUE
-           JOIN snomed.concepts c ON c.concept_id = rrf.concept_id
-           ORDER BY rrf.score DESC, CASE WHEN d.type_id = $6 THEN 0 ELSE 1 END
-           LIMIT $2`,
-          [queryText, limit, hf, IS_A_TYPE, vecStr, FSN_TYPE],
-        );
-        rows = r.rows;
-      } else {
-        const r = await query<SearchRow>(
-          `WITH RECURSIVE descendants AS (
-               SELECT concept_id FROM snomed.concepts WHERE concept_id = $3
-               UNION ALL
-               SELECT r.source_id
-               FROM snomed.relationships r
-               JOIN descendants d ON r.destination_id = d.concept_id
-               WHERE r.type_id = $4 AND r.active = TRUE
-           )
-           SELECT d.concept_id, d.term AS preferred_term, d.type_id, c.active
-           FROM snomed.descriptions d
-           JOIN snomed.concepts c ON c.concept_id = d.concept_id
-           JOIN descendants dsc ON dsc.concept_id = d.concept_id
-           WHERE d.active = TRUE
-             AND to_tsvector('english', d.term) @@ plainto_tsquery('english', $1)
-           ORDER BY
-               CASE WHEN d.type_id = $5 THEN 0 ELSE 1 END,
-               ts_rank(to_tsvector('english', d.term), plainto_tsquery('english', $1)) DESC
-           LIMIT $2`,
-          [queryText, limit, hf, IS_A_TYPE, FSN_TYPE],
-        );
-        rows = r.rows;
-      }
-    } else if (vecStr) {
-      const r = await query<SearchRow>(
-        `WITH fts AS (
-             SELECT d.concept_id,
-                    ROW_NUMBER() OVER (ORDER BY
-                        ts_rank(to_tsvector('english', d.term),
-                                plainto_tsquery('english', $1)) DESC) AS rank
-             FROM snomed.descriptions d
-             WHERE d.active = TRUE
-               AND to_tsvector('english', d.term) @@ plainto_tsquery('english', $1)
-             LIMIT 20
-         ),
-         vec AS (
-             SELECT concept_id,
-                    ROW_NUMBER() OVER (ORDER BY embedding <=> $3::halfvec) AS rank
-             FROM snomed.concept_embeddings
-             ORDER BY embedding <=> $3::halfvec LIMIT 20
-         ),
-         rrf AS (
-             SELECT COALESCE(f.concept_id, v.concept_id) AS concept_id,
-                    COALESCE(1.0/(60+f.rank), 0.0) + COALESCE(1.0/(60+v.rank), 0.0) AS score
-             FROM fts f FULL OUTER JOIN vec v ON f.concept_id = v.concept_id
-         )
-         SELECT d.concept_id, d.term AS preferred_term, d.type_id, c.active
-         FROM rrf
-         JOIN snomed.descriptions d ON d.concept_id = rrf.concept_id AND d.active = TRUE
-         JOIN snomed.concepts c ON c.concept_id = rrf.concept_id
-         ORDER BY rrf.score DESC, CASE WHEN d.type_id = $4 THEN 0 ELSE 1 END
-         LIMIT $2`,
-        [queryText, limit, vecStr, FSN_TYPE],
-      );
-      rows = r.rows;
-    } else {
-      const r = await query<SearchRow>(
-        `SELECT d.concept_id, d.term AS preferred_term, d.type_id, c.active
-         FROM snomed.descriptions d
-         JOIN snomed.concepts c ON c.concept_id = d.concept_id
-         WHERE d.active = TRUE
-           AND to_tsvector('english', d.term) @@ plainto_tsquery('english', $1)
-         ORDER BY
-             CASE WHEN d.type_id = $3 THEN 0 ELSE 1 END,
-             ts_rank(to_tsvector('english', d.term), plainto_tsquery('english', $1)) DESC
-         LIMIT $2`,
-        [queryText, limit, FSN_TYPE],
-      );
-      rows = r.rows;
-    }
-
-    // Collapse ranked match rows to score-ordered unique concept_ids.
-    const orderedIds: string[] = [];
-    const activeById = new Map<string, boolean>();
-    for (const row of rows) {
-      if (!activeById.has(row.concept_id)) {
-        orderedIds.push(row.concept_id);
-        activeById.set(row.concept_id, row.active);
-      }
-    }
-    const topIds = orderedIds.slice(0, limit);
-    if (!topIds.length) return [];
-
-    // Second pass: canonical FSN + US-preferred term per concept.
-    const detail = await query<{
-      concept_id: string;
-      type_id: string;
-      term: string;
-      us_preferred: boolean | null;
-    }>(
-      `SELECT concept_id, type_id, term, us_preferred
-       FROM snomed.descriptions
-       WHERE concept_id = ANY($1::bigint[]) AND active = TRUE`,
-      [topIds],
-    );
-
-    const fsnById = new Map<string, string>();
-    const preferredById = new Map<string, string>();
-    const synonymById = new Map<string, string>();
-    for (const r of detail.rows) {
-      if (r.type_id === FSN_TYPE) {
-        fsnById.set(r.concept_id, r.term);
-      } else {
-        if (!synonymById.has(r.concept_id)) synonymById.set(r.concept_id, r.term);
-        if (r.us_preferred) preferredById.set(r.concept_id, r.term);
-      }
-    }
-
-    return topIds.map((cid) => {
-      const fsn = fsnById.get(cid) ?? null;
-      const preferred = preferredById.get(cid) ?? synonymById.get(cid) ?? fsn;
-      return {
-        concept_id: asNum(cid),
-        fsn,
-        preferred_term: preferred,
-        hierarchy_tag: hierarchyTag(fsn),
-        active: activeById.get(cid) ?? null,
-      };
-    });
+    const ranked = await rankSnomed(queryText, vecStr, limit, { hierarchy: hierarchyFilter ? String(hierarchyFilter) : null });
+    return ranked.map((r) => ({
+      concept_id: asNum(r.concept_id),
+      fsn: r.fsn,
+      preferred_term: r.preferred,
+      hierarchy_tag: hierarchyTag(r.fsn),
+      active: r.active,
+    }));
   }
 
   /** Mirror of `SNOMEDService.get_concept`. Returns null when not found. */

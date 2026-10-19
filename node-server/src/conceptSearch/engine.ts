@@ -469,19 +469,31 @@ export class ConceptIndex {
 export interface FuseOptions {
   lexWeight?: number;
   semWeight?: number;
-  /** Cosine similarity at or below which a semantic hit carries no weight. */
+  /**
+   * Absolute cosine similarity at or below which a semantic hit carries no weight. Off by
+   * default: absolute similarity levels are model-specific (Qwen3-Embedding-0.6B put unrelated
+   * text at ~0.7, the 4B model with a query instruction puts the best match at ~0.6–0.75), so
+   * the channel is calibrated on the query's own similarity distribution instead.
+   */
   semFloor?: number;
-  /** Top similarity at which the semantic channel gets full confidence. */
+  /** Absolute top similarity for full confidence (only with semFloor). */
   semFull?: number;
+  /** Rank in the similarity list whose value is the "zero" of the rescaled score. */
+  semFloorRank?: number;
+  /** Gap between the best similarity and the floor at which the channel gets full confidence. */
+  semGap?: number;
 }
+
+/** Defaults of {@link FuseOptions} (one object so evaluation harnesses can sweep them). */
+export const FUSE_DEFAULTS = { lexWeight: 0.55, semWeight: 0.45, semFloorRank: 40, semGap: 0.12 };
 
 /**
  * Hybrid fusion of lexical hits and semantic hits (cosine similarities of the query
  * vector to term vectors, best per concept). Exact name/code matches stay on top.
  */
 export function fuse(index: ConceptIndex, lex: LexHit[], sem: SemHit[] | null, limit: number, opts: FuseOptions = {}): RankedConcept[] {
-  const lw = opts.lexWeight ?? 0.55;
-  const sw = opts.semWeight ?? 0.45;
+  const lw = opts.lexWeight ?? FUSE_DEFAULTS.lexWeight;
+  const sw = opts.semWeight ?? FUSE_DEFAULTS.semWeight;
   const semBest = new Map<number, SemHit>();
   for (const h of sem || []) {
     const ci = index.indexOf(h.code);
@@ -491,13 +503,16 @@ export function fuse(index: ConceptIndex, lex: LexHit[], sem: SemHit[] | null, l
   }
   const sims = [...semBest.values()].map((h) => h.sim).sort((a, b) => b - a);
   const top = sims[0] ?? 0;
-  // Similarities of this embedding model sit high even for unrelated text, so they are
-  // rescaled from an absolute floor, and the whole channel is trusted less when even the
-  // best hit is weak (a short abbreviation embeds poorly).
-  const floor = Math.max(opts.semFloor ?? 0.7, sims.length ? sims[Math.min(sims.length - 1, 40)] : 0);
-  const full = opts.semFull ?? 0.9;
+  // Similarities are rescaled within the query's own distribution (best = 1, the value at
+  // rank semFloorRank = 0), and the whole channel is trusted less when the best hit barely
+  // stands out from the crowd (a short abbreviation embeds poorly).
+  const rankFloor = sims.length ? sims[Math.min(sims.length - 1, opts.semFloorRank ?? FUSE_DEFAULTS.semFloorRank)] : 0;
+  const floor = Math.max(opts.semFloor ?? 0, rankFloor);
   const span = Math.max(top - floor, 0.03);
-  const conf = Math.max(0, Math.min(1, (top - floor) / Math.max(full - floor, 0.01)));
+  const conf =
+    opts.semFloor !== undefined
+      ? Math.max(0, Math.min(1, (top - floor) / Math.max((opts.semFull ?? 0.9) - floor, 0.01)))
+      : Math.max(0, Math.min(1, (top - floor) / (opts.semGap ?? FUSE_DEFAULTS.semGap)));
   const semNorm = (sim: number): number => Math.max(0, Math.min(1, (sim - floor) / span)) * conf;
 
   const lexBest = new Map<number, LexHit>();

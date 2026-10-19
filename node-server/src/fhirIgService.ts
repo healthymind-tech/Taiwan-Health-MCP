@@ -11,7 +11,10 @@
 
 import { query } from "./db.js";
 import { logError, logInfo } from "./logger.js";
-import type { EmbeddingService } from "./embeddingService.js";
+import type { EmbeddingService, QueryTask } from "./embeddingService.js";
+import { vecLiteral } from "./embeddingService.js";
+import type { RankedCandidate } from "./hybridRank.js";
+import { rankIcdDiagnoses, rankLoinc, rankSnomed } from "./terminologyRanking.js";
 import * as fhirIg from "./fhirIg.js";
 import type { PackageRow } from "./fhirIg.js";
 import * as snapshot from "./fhirSnapshot.js";
@@ -1181,13 +1184,22 @@ export class FHIRIGService {
         });
       }
     }
+    // SNOMED CT / LOINC / ICD-10-CM: the same hybrid ranking as the module search tools
+    // (terminologyRanking.ts), kept in its own order.
+    const hybrid: any[] = [];
     for (const tgt of targets) {
-      if (engineSystems.has(tgt.system)) continue;
+      if (engineSystems.has(tgt.system) || !HYBRID_KINDS.has(tgt.kind)) continue;
+      for (const c of await this.normalizeHybrid(tgt, text, scopeIds[tgt.system], limit)) {
+        const key = `${c.system} ${c.code}`;
+        if (seen.has(key) || !c.code) continue;
+        seen.add(key);
+        hybrid.push(c);
+      }
+    }
+    for (const tgt of targets) {
+      if (engineSystems.has(tgt.system) || HYBRID_KINDS.has(tgt.kind)) continue;
       for (const [sys_, code, display] of await this.normalizeLexical(pkg, tgt, text, scopeIds[tgt.system], limit)) {
         add(sys_, code, display, "lexical", 0.6);
-      }
-      for (const [sys_, code, display, dist] of await this.normalizeSemantic(tgt, text, scopeIds[tgt.system], limit)) {
-        add(sys_, code, display, "semantic", Math.max(0.0, 1.0 - dist));
       }
     }
 
@@ -1195,7 +1207,7 @@ export class FHIRIGService {
     candidates.sort((a, b) => ((order[a.source] ?? 9) - (order[b.source] ?? 9)) || (b.score - a.score));
     const conceptmapHits = candidates.filter((c) => c.source === "conceptmap");
     const rest = candidates.filter((c) => c.source !== "conceptmap");
-    const merged = [...conceptmapHits, ...engine, ...rest];
+    const merged = [...conceptmapHits, ...engine, ...hybrid, ...rest];
     if (this.embeddingSvc === null) warnings.push("semantic search unavailable (no embedding service)");
     const data: Record<string, unknown> = {
       text,
@@ -1349,39 +1361,9 @@ export class FHIRIGService {
     const kind = target.kind;
     const sys_ = target.system;
     const like = `%${(text || "").trim()}%`;
-    if (kind === "snomed") {
-      let rows;
-      if (scopeIds && scopeIds.length) {
-        rows = (
-          await query<{ concept_id: number; term: string }>(
-            "SELECT DISTINCT ON (concept_id) concept_id, term FROM snomed.descriptions " +
-              "WHERE active = TRUE AND term ILIKE $1 AND concept_id = ANY($2::bigint[]) " +
-              "ORDER BY concept_id LIMIT $3",
-            [like, scopeIds, limit],
-          )
-        ).rows;
-      } else {
-        rows = (
-          await query<{ concept_id: number; term: string }>(
-            "SELECT DISTINCT ON (concept_id) concept_id, term FROM snomed.descriptions " +
-              "WHERE active = TRUE AND term ILIKE $1 ORDER BY concept_id LIMIT $2",
-            [like, limit],
-          )
-        ).rows;
-      }
-      return rows.map((r) => [sys_, String(r.concept_id), r.term] as [string, string, any]);
-    }
-    if (kind === "loinc") {
-      const rows = (
-        await query<{ loinc_num: string; long_common_name: string }>(
-          "SELECT loinc_num, long_common_name FROM loinc.concepts WHERE long_common_name ILIKE $1 LIMIT $2",
-          [like, limit],
-        )
-      ).rows;
-      return rows.map((r) => [sys_, r.loinc_num, r.long_common_name] as [string, string, any]);
-    }
-    if (kind === "icd_dx" || kind === "icd_pcs") {
-      const table = kind === "icd_dx" ? "icd.diagnoses" : "icd.procedures";
+    // (SNOMED CT / LOINC / ICD-10-CM targets go through normalizeHybrid.)
+    if (kind === "icd_pcs") {
+      const table = "icd.procedures";
       const rows = (
         await query<{ code: string; name_en: string; name_zh: string }>(
           `SELECT code, name_en, name_zh FROM ${table} WHERE name_en ILIKE $1 OR name_zh ILIKE $1 LIMIT $2`,
@@ -1404,75 +1386,41 @@ export class FHIRIGService {
     return rows.map((r) => [sys_, r.code, r.display] as [string, string, any]);
   }
 
-  private async normalizeSemantic(
+  /** Hybrid candidates for a SNOMED CT / LOINC / ICD-10-CM target (see terminologyRanking.ts). */
+  private async normalizeHybrid(
     target: { system: string; kind: string },
     text: string,
     scopeIds: number[] | undefined,
     limit: number,
-  ): Promise<Array<[string, string, any, number]>> {
-    if (this.embeddingSvc === null) return [];
+  ): Promise<Array<Record<string, unknown>>> {
     const kind = target.kind;
-    const sys_ = target.system;
-    let vec: number[] | null = null;
-    try {
-      vec = await this.embeddingSvc.embed(text);
-    } catch {
-      vec = null;
-    }
-    if (!vec) return [];
-    const vecStr = `[${vec.join(",")}]`;
-    if (kind === "snomed") {
-      let rows;
-      if (scopeIds && scopeIds.length) {
-        rows = (
-          await query<{ concept_id: number; term: string; dist: number }>(
-            "SELECT e.concept_id, " +
-              "(SELECT term FROM snomed.descriptions d WHERE d.concept_id = e.concept_id " +
-              " AND d.active = TRUE ORDER BY d.us_preferred DESC NULLS LAST LIMIT 1) AS term, " +
-              "e.embedding <=> $1::halfvec AS dist FROM snomed.concept_embeddings e " +
-              "WHERE e.concept_id = ANY($2::bigint[]) ORDER BY dist LIMIT $3",
-            [vecStr, scopeIds, limit],
-          )
-        ).rows;
-      } else {
-        rows = (
-          await query<{ concept_id: number; term: string; dist: number }>(
-            "SELECT e.concept_id, " +
-              "(SELECT term FROM snomed.descriptions d WHERE d.concept_id = e.concept_id " +
-              " AND d.active = TRUE ORDER BY d.us_preferred DESC NULLS LAST LIMIT 1) AS term, " +
-              "e.embedding <=> $1::halfvec AS dist FROM snomed.concept_embeddings e " +
-              "ORDER BY dist LIMIT $2",
-            [vecStr, limit],
-          )
-        ).rows;
+    const task: QueryTask = kind === "snomed" ? "snomed" : kind === "loinc" ? "loinc" : "icd";
+    let vecStr: string | null = null;
+    if (this.embeddingSvc) {
+      try {
+        vecStr = vecLiteral(await this.embeddingSvc.embed(text, task));
+      } catch {
+        vecStr = null;
       }
-      return rows.map((r) => [sys_, String(r.concept_id), r.term, Number(r.dist)] as [string, string, any, number]);
+    }
+    const cand = (code: string, display: unknown, r: RankedCandidate): Record<string, unknown> => ({
+      system: target.system,
+      code,
+      display,
+      source: r.exact ? "lexical" : r.source,
+      score: round4(r.score),
+      ...(r.exact ? { exact: true } : {}),
+    });
+    if (kind === "snomed") {
+      const rows = await rankSnomed(text, vecStr, limit, { scope: scopeIds && scopeIds.length ? scopeIds : null });
+      return rows.map((r) => cand(r.concept_id, r.preferred, r.ranked));
     }
     if (kind === "loinc") {
-      const rows = (
-        await query<{ loinc_num: string; long_common_name: string; dist: number }>(
-          "SELECT e.loinc_num, c.long_common_name, e.embedding <=> $1::halfvec AS dist " +
-            "FROM loinc.concept_embeddings e JOIN loinc.concepts c ON c.loinc_num = e.loinc_num " +
-            "ORDER BY dist LIMIT $2",
-          [vecStr, limit],
-        )
-      ).rows;
-      return rows.map((r) => [sys_, r.loinc_num, r.long_common_name, Number(r.dist)] as [string, string, any, number]);
+      const { rows, ranked } = await rankLoinc(text, vecStr, limit);
+      return rows.map((r, i) => cand(String(r.loinc_num), r.long_common_name, ranked[i]));
     }
-    if (kind === "icd_dx") {
-      const rows = (
-        await query<{ code: string; name_en: string; dist: number }>(
-          // Exact scan ("+ 0" bypasses HNSW): the index's recall collapses on the
-          // ~50k near-duplicate 7th-character codes. See icdService.searchCodes.
-          "SELECT e.code, c.name_en, e.embedding <=> $1::halfvec AS dist " +
-            "FROM icd.diagnosis_embeddings e JOIN icd.diagnoses c ON c.code = e.code " +
-            "ORDER BY (e.embedding <=> $1::halfvec) + 0 LIMIT $2",
-          [vecStr, limit],
-        )
-      ).rows;
-      return rows.map((r) => [sys_, r.code, r.name_en, Number(r.dist)] as [string, string, any, number]);
-    }
-    return [];
+    const { rows, ranked } = await rankIcdDiagnoses(text, vecStr, limit);
+    return rows.map((r, i) => cand(r.code, r.name_en || r.name_zh, ranked[i]));
   }
 
   // --- G. Validation ------------------------------------------------------- //
@@ -1883,6 +1831,9 @@ class SqlParams {
     return `$${this.params.length}`;
   }
 }
+
+/** Target kinds ranked by terminologyRanking.ts (the module search tools' hybrid). */
+const HYBRID_KINDS = new Set(["snomed", "loinc", "icd_dx"]);
 
 function round4(x: number): number {
   return Math.round(x * 10000) / 10000;

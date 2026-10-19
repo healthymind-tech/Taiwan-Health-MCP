@@ -8,7 +8,7 @@ The public SNOMED surface consists of four tools: `search_snomed_concept`, `quer
 Search SNOMED concept candidates by English clinical term.
 
 ### When to use it
-Use it first when you only have a text term and do not yet know the concept ID. The tool ranks with BM25 + embeddings, returning the closest concepts semantically rather than only exact literal matches.
+Use it first when you only have a text term and do not yet know the concept ID. The tool ranks full-text and embedding candidates with score-aware fusion over every active name of a concept (FSN and synonyms), returning the closest concepts semantically rather than only exact literal matches; a concept whose name the query is ranks first, and inactive concepts sink.
 
 ### Parameters
 | Parameter | Type | Required | Description | Example |

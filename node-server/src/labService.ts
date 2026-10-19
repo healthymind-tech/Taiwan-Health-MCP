@@ -16,18 +16,7 @@ import { query } from "./db.js";
 import type { EmbeddingService } from "./embeddingService.js";
 import { vecLiteral } from "./embeddingService.js";
 import { annotate, embeddingsPresent } from "./searchQuality.js";
-
-// LOINC concept columns returned by code-mode search (mirror of `_fts_cols`).
-const FTS_COLS =
-  "loinc_num, long_common_name, shortname, name_zh, common_name_zh, " +
-  "component, property, time_aspect, system, scale_type, method_type, " +
-  "class, classtype, specimen_type, unit, status";
-
-// The full-text vector expression shared by code-mode search (mirror of `_fts_vector`).
-const FTS_VECTOR =
-  "to_tsvector('simple', " +
-  "COALESCE(loinc_num,'') || ' ' || COALESCE(long_common_name,'') || ' ' || " +
-  "COALESCE(shortname,'') || ' ' || COALESCE(name_zh,'') || ' ' || COALESCE(common_name_zh,''))";
+import { rankLoinc } from "./terminologyRanking.js";
 
 export class LabService {
   private embeddingSvc: EmbeddingService | null;
@@ -39,64 +28,12 @@ export class LabService {
   /** Mirror of `LabService.search_loinc_code` (hybrid BM25 + vector re-ranking). */
   async searchLoincCode(keyword: string, category: string | null = null, limit = 3): Promise<unknown> {
     limit = Math.min(Math.max(1, limit), 10);
-    const vec = this.embeddingSvc ? await this.embeddingSvc.embed(keyword) : null;
+    const vec = this.embeddingSvc ? await this.embeddingSvc.embed(keyword, "loinc") : null;
     const vecStr = vecLiteral(vec);
 
-    let rows: Record<string, unknown>[];
-    if (vecStr) {
-      const catFilter = category ? "AND c.class ILIKE $5" : "";
-      const params: unknown[] = [keyword, `%${keyword}%`, vecStr, limit];
-      if (category) params.push(`%${category}%`);
-      const r = await query<Record<string, unknown>>(
-        `WITH fts AS (
-             SELECT loinc_num,
-                    ROW_NUMBER() OVER (ORDER BY ts_rank_cd(
-                        ${FTS_VECTOR},
-                        plainto_tsquery('simple', $1)) DESC) AS rank
-             FROM loinc.concepts
-             WHERE (${FTS_VECTOR} @@ plainto_tsquery('simple', $1)
-                OR loinc_num ILIKE $2)
-             LIMIT 20
-         ),
-         vec AS (
-             SELECT loinc_num,
-                    ROW_NUMBER() OVER (ORDER BY embedding <=> $3::halfvec) AS rank
-             FROM loinc.concept_embeddings
-             ORDER BY embedding <=> $3::halfvec LIMIT 20
-         ),
-         rrf AS (
-             SELECT COALESCE(f.loinc_num, v.loinc_num) AS loinc_num,
-                    COALESCE(1.0/(60+f.rank), 0.0) + COALESCE(1.0/(60+v.rank), 0.0) AS score
-             FROM fts f FULL OUTER JOIN vec v ON f.loinc_num = v.loinc_num
-         )
-         SELECT c.${FTS_COLS}
-         FROM rrf JOIN loinc.concepts c ON c.loinc_num = rrf.loinc_num
-         ${catFilter}
-         ORDER BY rrf.score DESC LIMIT $4`,
-        params,
-      );
-      rows = r.rows;
-    } else if (category) {
-      const r = await query<Record<string, unknown>>(
-        `SELECT ${FTS_COLS}
-         FROM loinc.concepts
-         WHERE ${FTS_VECTOR} @@ plainto_tsquery('simple', $1)
-           AND class ILIKE $2
-         ORDER BY loinc_num LIMIT $3`,
-        [keyword, `%${category}%`, limit],
-      );
-      rows = r.rows;
-    } else {
-      const r = await query<Record<string, unknown>>(
-        `SELECT ${FTS_COLS}
-         FROM loinc.concepts
-         WHERE ${FTS_VECTOR} @@ plainto_tsquery('simple', $1)
-            OR loinc_num ILIKE $2
-         ORDER BY loinc_num LIMIT $3`,
-        [keyword, `%${keyword}%`, limit],
-      );
-      rows = r.rows;
-    }
+    // Hybrid: full-text ∪ nearest vectors, ordered by score-aware fusion with the
+    // common-test-rank / status prior (terminologyRanking.ts); keyword-only without a vector.
+    const rows = (await rankLoinc(keyword, vecStr, limit, category)).rows;
 
     if (!rows.length) {
       return {
@@ -111,7 +48,7 @@ export class LabService {
   /** Mirror of `LabService.search_by_specimen`. */
   async searchBySpecimen(specimenType: string, limit = 3): Promise<unknown> {
     limit = Math.min(Math.max(1, limit), 10);
-    const vec = this.embeddingSvc ? await this.embeddingSvc.embed(specimenType) : null;
+    const vec = this.embeddingSvc ? await this.embeddingSvc.embed(specimenType, "loinc") : null;
     const vecStr = vecLiteral(vec);
 
     let rows: Record<string, unknown>[];
@@ -176,7 +113,7 @@ export class LabService {
   /** Mirror of `LabService.find_related_tests` (component search, grouped by system). */
   async findRelatedTests(component: string, limit = 3): Promise<unknown> {
     limit = Math.min(Math.max(1, limit), 10);
-    const vec = this.embeddingSvc ? await this.embeddingSvc.embed(component) : null;
+    const vec = this.embeddingSvc ? await this.embeddingSvc.embed(component, "loinc") : null;
     const vecStr = vecLiteral(vec);
 
     interface CompRow {

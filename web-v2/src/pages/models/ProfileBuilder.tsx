@@ -975,6 +975,7 @@ function MemberBlock({
                 onChange={(v) => onChange({ params: { ...m.params, dimensions: v === "" ? 1024 : Number(v) } })}
               />
             )}
+            {draft.kind === "embedding" && <QueryInstructionField model={m.model} value={m.params.query_instruction} onChange={(v) => setKnob("query_instruction", v)} />}
             {draft.kind === "analysis" && (
               <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="xs">
                 <NumberInput size="xs" label="起始輸出 token" description="不夠時自動加倍。" min={1} allowDecimal={false} thousandSeparator="," placeholder="16,384" value={(m.params.max_tokens as number | undefined) ?? ""} onChange={(v) => setKnob("max_tokens", v === "" ? "" : Number(v))} />
@@ -1090,5 +1091,56 @@ function FingerprintBadge({ providerId, model, dims }: { providerId: number | nu
         {r.ok ? "指紋一致" : r.code === "embedding_dims_mismatch" || r.code === "embedding_dims_returned" ? "維度不符" : "不同模型"}
       </Badge>
     </Tooltip>
+  );
+}
+
+/** Models that take a query-side task instruction by default (node-server providers/queryInstruction.ts). */
+const INSTRUCTED_MODEL_RE = [/qwen3[-_ .:/]?embedding/i, /gte[-_]?qwen2.*instruct/i];
+
+/**
+ * Query instruction knob of an embedding member: only search queries are prefixed
+ * ("Instruct: <task>\nQuery: <text>"); stored vectors never are, so changing it needs no re-index.
+ */
+function QueryInstructionField({ model, value, onChange }: { model: string; value: unknown; onChange: (v: string) => void }) {
+  const raw = typeof value === "string" ? value.trim() : "";
+  const mode = !raw || raw.toLowerCase() === "auto" ? "auto" : raw.toLowerCase() === "off" ? "off" : "custom";
+  const [custom, setCustom] = useState(mode === "custom" ? raw : "");
+  const auto = INSTRUCTED_MODEL_RE.some((re) => re.test(model));
+  return (
+    <Stack gap={6}>
+      <Select
+        size="xs"
+        label="查詢指令（query instruction）"
+        description={
+          auto
+            ? "此模型（Qwen3-Embedding 系列）建議在搜尋查詢前加上任務指令；只影響查詢，已存的向量不變，不需重建索引。"
+            : "此模型預設不加指令。自訂指令只在模型支援時有用；只影響查詢，不需重建索引。"
+        }
+        allowDeselect={false}
+        data={[
+          { value: "auto", label: auto ? "自動（依模組加上任務指令）" : "自動（此模型不加指令）" },
+          { value: "off", label: "關閉" },
+          { value: "custom", label: "自訂" },
+        ]}
+        value={mode}
+        onChange={(v) => {
+          if (v !== "custom") return onChange(v === "off" ? "off" : "");
+          const text = custom || "Given a medical search query, retrieve the matching terminology entry";
+          setCustom(text);
+          onChange(text);
+        }}
+      />
+      {mode === "custom" && (
+        <Textarea
+          size="xs"
+          autosize
+          minRows={2}
+          label="自訂任務描述（所有模組共用）"
+          value={custom}
+          onChange={(e) => setCustom(e.currentTarget.value)}
+          onBlur={() => onChange(custom.trim() || "")}
+        />
+      )}
+    </Stack>
   );
 }

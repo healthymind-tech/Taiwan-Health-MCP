@@ -18,7 +18,11 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.1.1: description is edition-agnostic (was "ICD-10-CM/PCS 2025"); output unchanged.
   // 1.2.0: optional `system` (icd10cm | icd10pcs | any installed IG CodeSystem canonical / id / alias) routes
   // IG CodeSystems to the concept-search engine (results, clauses, search_mode); calls without `system` are unchanged.
-  search_medical_codes: "1.2.1",
+  // 1.3.0 (2026-10-19 hybrid ranking): diagnoses = full-text ∪ nearest vectors ordered by score-aware fusion
+  // (terminologyRanking.ts) instead of RRF — a strong semantic match is never pushed out of the top-k, a short
+  // query prefers the concept it names over longer sub-concepts (name coverage, ICD code depth); the query
+  // vector carries the model's task instruction (Qwen3-Embedding). Output shape unchanged.
+  search_medical_codes: "1.3.0",
   // 1.2.0: version-aware package resolution (fhirIg.resolveTarget): provenance.resolved_by /
   // closure_versions, data.deps_missing, "|version" honoured (no silent fallback to another version).
   fhir_get_profile_required_elements: "1.2.1",
@@ -62,7 +66,10 @@ export const TOOLS_VERSION: Record<string, string> = {
   // names, abbreviation expansion, hybrid lexical + semantic): candidates carry matched_term / matched_language /
   // category / group / siblings; `system` may be a CodeSystem id or alias; search_mode=keyword_only when degraded;
   // `clauses` (best code per clause) for multi-item text; optional UMLS synonyms steer matching (never shown).
-  fhir_normalize_code: "1.3.1",
+  // 1.4.0: SNOMED CT / LOINC / ICD-10-CM targets use the module search tools' hybrid ranking (candidates keep
+  // that order; source lexical | semantic | hybrid, score = fused score, exact:true on a verbatim name) instead
+  // of ILIKE-first-then-semantic; query vectors carry the model's task instruction (IG concepts: ig_concept).
+  fhir_normalize_code: "1.4.0",
   fhir_get_resource_skeleton: "1.2.1",
   fhir_finalize_resource: "1.2.1",
   // ── 2026-10-19 actionable errors (additive fields only; successful outputs unchanged) ──
@@ -79,11 +86,16 @@ export const TOOLS_VERSION: Record<string, string> = {
   check_medical_conflict: "1.1.1",
   // LOINC: not-found / no-range hints; batch_interpret_lab_results reports items it could not interpret in `skipped`
   // (they used to vanish silently).
-  search_loinc: "1.1.1",
+  // 1.2.0 (2026-10-19): hybrid ranking as search_medical_codes 1.3.0 with a LOINC prior (COMMON_TEST_RANK,
+  // status — needs migration 20261024 + a LOINC re-import; neutral before) and the loinc query instruction.
+  search_loinc: "1.2.0",
   query_loinc: "1.1.1",
   interpret_lab_result: "1.1.1",
   batch_interpret_lab_results: "1.1.1",
   // SNOMED: not-found hint; get_snomed_relationships flags an unknown concept (concept_found:false); mapping hints.
+  // search_snomed_concept 1.2.0 (2026-10-19): hybrid ranking over every active name of a concept (was RRF whose
+  // row LIMIT before the per-concept collapse could return fewer concepts than asked); inactive concepts sink.
+  search_snomed_concept: "1.2.0",
   query_snomed_concept: "1.1.1",
   get_snomed_relationships: "1.1.1",
   query_snomed_mapping: "1.1.1",
@@ -104,6 +116,12 @@ export const TOOLS_VERSION: Record<string, string> = {
   // INVALID_ARGUMENT envelopes add error.hint.
   fhir_resolve_reference: "1.1.1",
   fhir_build_bundle: "1.1.1",
+  // 2026-10-19 query-side embedding instructions (Qwen3-Embedding): semantic matches may reorder.
+  search_health_supplements: "1.2.0",
+  query_food_nutrition: "1.2.0",
+  query_food_ingredient: "1.2.0",
+  search_foods_by_nutrient: "1.2.0",
+  analyze_meal_nutrition: "1.2.0",
   // All tools: invalid arguments (MCP and POST /tools) name the parameter, rule, example and parameter list, and
   // exceptions return a coded message instead of raw SQL / driver text (cross-cutting, see toolErrors.ts).
 };

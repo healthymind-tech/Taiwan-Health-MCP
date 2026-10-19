@@ -549,6 +549,8 @@ CREATE TABLE IF NOT EXISTS admin.stage_loinc_concepts (
     common_name_zh       TEXT,
     specimen_type        TEXT,
     unit                 TEXT,
+    common_test_rank     INTEGER,
+    common_order_rank    INTEGER,
     PRIMARY KEY (job_id, loinc_num)
 );
 
@@ -1274,7 +1276,11 @@ CREATE TABLE IF NOT EXISTS loinc.concepts (
     name_zh             TEXT,
     common_name_zh      TEXT,
     specimen_type       TEXT,
-    unit                TEXT
+    unit                TEXT,
+    -- Regenstrief usage ranks from Loinc.csv (COMMON_TEST_RANK / COMMON_ORDER_RANK;
+    -- 1 = most common, NULL = not ranked). A weak prior in search_loinc ranking.
+    common_test_rank    INTEGER,
+    common_order_rank   INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS loinc.reference_ranges (

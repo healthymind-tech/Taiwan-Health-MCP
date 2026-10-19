@@ -297,7 +297,7 @@ export class IgConceptSearch {
     if (!this.embeddingSvc || !texts.length) return { hits: null, hasVectors: false };
     let vecs: (number[] | null)[] = [];
     try {
-      vecs = await this.embeddingSvc.embedBatch(texts.map((t) => t.text), "query");
+      vecs = await this.embeddingSvc.embedBatch(texts.map((t) => t.text), "query", "ig_concept");
     } catch {
       vecs = [];
     }

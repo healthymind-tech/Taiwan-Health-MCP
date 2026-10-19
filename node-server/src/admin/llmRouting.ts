@@ -49,7 +49,7 @@ export const MAX_NAME_LENGTH = 120;
  */
 const COMMON_MEMBER_KNOBS: Record<Role, string[]> = {
   analysis: ["max_tokens", "max_token_budget", "timeout_ms", "rpm", "tpm"],
-  embedding: ["dimensions", "rpm", "tpm"],
+  embedding: ["dimensions", "rpm", "tpm", "query_instruction"],
 };
 
 export interface ProviderAccount {

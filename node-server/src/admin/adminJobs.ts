@@ -2123,6 +2123,16 @@ export async function runIcdImportJob(opts: {
   });
 }
 
+/** Both LOINC concept tables carry the usage-rank columns (migration 20261024)? */
+async function loincRankColumnsPresent(): Promise<boolean> {
+  const r = await query<{ n: string }>(
+    `SELECT count(*) AS n FROM information_schema.columns
+      WHERE column_name = 'common_test_rank'
+        AND ((table_schema = 'loinc' AND table_name = 'concepts') OR (table_schema = 'admin' AND table_name = 'stage_loinc_concepts'))`,
+  );
+  return Number(r.rows[0]?.n ?? 0) === 2;
+}
+
 /** Faithful port of `_run_loinc_import_job` (staged import: validate → stage → promote). */
 export async function runLoincImportJob(opts: {
   workerName: string;
@@ -2157,11 +2167,17 @@ export async function runLoincImportJob(opts: {
   });
 
   await withMaterializedSources(manifest, async (paths) => {
-    const { conceptRows, rangeRows, otherCodeRows, structure, version, stats } = buildLoincStagePayload(
+    const payload = buildLoincStagePayload(
       paths.loinc,
       paths.loinc_taiwan_mapping ?? null,
       paths.loinc_reference_ranges ?? null,
     );
+    const { rangeRows, otherCodeRows, structure, version, stats } = payload;
+    // Usage ranks need migration 20261024; a database without it imports the
+    // 17 classic columns (search then ranks without the prior).
+    const withRanks = await loincRankColumnsPresent();
+    const conceptRows = withRanks ? payload.conceptRows : payload.conceptRows.map((r) => r.slice(0, 17));
+    const rankCols = withRanks ? ", common_test_rank, common_order_rank" : "";
     const structureCounts = {
       part_link_count: structure.partLinkRows.length,
       answer_list_item_count: structure.answerListItemRows.length,
@@ -2204,7 +2220,7 @@ export async function runLoincImportJob(opts: {
           "loinc_num", "component", "property", "time_aspect", "system",
           "scale_type", "method_type", "long_common_name", "shortname", "class",
           "classtype", "status", "consumer_name", "name_zh", "common_name_zh",
-          "specimen_type", "unit",
+          "specimen_type", "unit", ...(withRanks ? ["common_test_rank", "common_order_rank"] : []),
         ],
         conflictSql: `ON CONFLICT (job_id, loinc_num) DO UPDATE SET
           component = EXCLUDED.component,
@@ -2222,7 +2238,7 @@ export async function runLoincImportJob(opts: {
           name_zh = EXCLUDED.name_zh,
           common_name_zh = EXCLUDED.common_name_zh,
           specimen_type = EXCLUDED.specimen_type,
-          unit = EXCLUDED.unit`,
+          unit = EXCLUDED.unit${withRanks ? ", common_test_rank = EXCLUDED.common_test_rank, common_order_rank = EXCLUDED.common_order_rank" : ""}`,
         batchSize: 5000,
         jobProgressBefore: 1,
         jobProgressAfter: 2,
@@ -2372,13 +2388,13 @@ export async function runLoincImportJob(opts: {
                 loinc_num, component, property, time_aspect, system,
                 scale_type, method_type, long_common_name, shortname, class,
                 classtype, status, consumer_name, name_zh, common_name_zh,
-                specimen_type, unit
+                specimen_type, unit${rankCols}
               )
               SELECT
                 loinc_num, component, property, time_aspect, system,
                 scale_type, method_type, long_common_name, shortname, class,
                 classtype, status, consumer_name, name_zh, common_name_zh,
-                specimen_type, unit
+                specimen_type, unit${rankCols}
               FROM admin.stage_loinc_concepts
               WHERE job_id = $1::uuid
             `,

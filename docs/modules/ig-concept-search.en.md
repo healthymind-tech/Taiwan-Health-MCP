@@ -41,7 +41,7 @@ whether a CodeSystem needs rebuilding; unchanged ones are skipped.
   clause are embedded in one call and scanned exactly against that CodeSystem's vectors (no HNSW). CodeSystems with
   more than 20,000 concepts are indexed lexically only. Without a usable embedding endpoint, or before the
   CodeSystem has vectors, responses carry `search_mode: "keyword_only"`.
-- **Fusion**: 0.55 × lexical + 0.45 × semantic (similarities rescaled from a 0.7 floor and weighted by confidence).
+- **Fusion**: 0.55 × lexical + 0.45 × semantic (similarities rescaled within the query's own similarity distribution — best = 1, rank 40 = 0 — and weighted by a confidence of (best − rank-40 value) ÷ 0.12; no absolute 0.7 floor any more: absolute similarity levels are model-specific, and Qwen3-Embedding-4B with a query instruction puts the best match at ~0.6–0.75. The query vector carries the `ig_concept` task instruction).
 - **Multi-item text** ("Na/K/Cl", "CBC/DC, Hb …"): the response carries `clauses` (each clause's best code, in text
   order) and the first clause's concept gets a small boost.
 

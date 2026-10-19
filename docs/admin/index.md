@@ -91,7 +91,10 @@ FHIR_SERVER_SECRET_KEY=
     - `embedding_dims_unsupported`：回傳的向量不是設定的維度。沒有送出 `dimensions` 時，代表模型原生維度不同（例如 Qwen3-Embedding-4B 為 2560）；有送出時，代表伺服器拒絕或忽略了它。兩種修法：改用模型原生維度，或（Matryoshka 模型）開啟「送出維度參數」——vLLM 須以 `--hf-overrides '{"is_matryoshka": true}'` 啟動，否則會回 HTTP 400。
     - `embedding_switch_same_model`：新端點其實產生相同向量，不需要切換，直接加進 profile 當備援即可。
     - 通過時顯示回傳維度，以及向量欄位是否會改維度（例如 1024 → 2560）。
-2. 有向量時輸入 `REINDEX` 確認後執行。系統關閉 Embedding 角色、停止 embed 工作、清除向量並調整欄位維度、採用新身分、建立並綁定新的 profile，再為每個有資料的模組排入重建工作。重建期間語意搜尋改為關鍵字比對；約 60 萬筆向量在共用 GPU 上約需 1–2 小時。
+2. 有向量時輸入 `REINDEX` 確認後執行。系統關閉 Embedding 角色、停止 embed 工作、清除向量並調整欄位維度、採用新身分、建立並綁定新的 profile，再為每個有資料的模組排入重建工作。重建期間語意搜尋改為關鍵字比對；約 60 萬筆向量在共用 GPU 上約需 1–2 小時（0.6B），4B 模型約 3 小時。
+    若 GPU 同時服務正式環境的即時查詢，重建前先在「外部服務 → Embedding」把 `batch_size` 調小（例如 8）、`concurrency` 保持 1：每批越小，單一查詢被一個大批次擋住的時間越短（實測 Qwen3-Embedding-4B：批次 16 時線上單筆查詢 p95 約 110–170 ms，批次 8 約 80 ms）。`batch_size` 在每個工作開始時讀取，`concurrency` 執行中即時生效；成員的 `rpm` 只限制平均速率，不會讓尖峰變小。
+
+**查詢指令（query instruction）。** 模型成員的參數「查詢指令」決定搜尋查詢是否加上任務描述。預設「自動」：Qwen3-Embedding 系列（以及 gte-Qwen2-instruct）會依模組加上 `Instruct: <任務>\nQuery: <查詢>`（ICD、LOINC、SNOMED、IG 概念、食品、健康食品各有一句英文任務描述），其他模型不加；也可「關閉」或「自訂」一句所有模組共用的描述（`params.query_instruction`：省略 / `off` / 文字）。只有查詢向量會加指令，已存的向量與身分指紋的探測文字都不加，所以調整這個設定**不需要重建索引**。
 
 「總覽」的 Embedding 卡片會實際探測角色內每個成員（快取 60 秒）：成員失敗時顯示「Embedding 路由降級：成員 X 失敗（原因）——正由 Y 備援」與修正建議，服務健康頁的 Embedding 列也用同一份探測結果。
 

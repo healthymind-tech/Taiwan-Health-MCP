@@ -18,7 +18,7 @@ Search ICD-10 diagnosis or procedure codes.
 ### How the search works
 `diagnosis` runs a hybrid BM25 + vector re-ranking search; `procedure` is BM25 only; `all`
 (the default) does both and returns them under separate `diagnoses` / `procedures` keys.
-Results are ordered by relevance (keyword and vector hits fused with RRF), not alphabetically by code.
+Results are ordered by relevance, not alphabetically by code: the candidates are the union of full-text matches (shortest names first) and the nearest vectors, ordered by score-aware fusion — the lexical score measures how far query and name cover each other (a query that *is* a name beats longer sub-concepts that merely contain it; qualifiers such as "unspecified" / 未明示 cost nothing), the semantic score is the cosine similarity rescaled within the pool, plus a small code-depth prior (a short query prefers I50 / I50.9 over I50.813). The two nearest vectors always stay in the result, so weak keyword hits can no longer push a strong semantic match out of the top-k (the old RRF failure).
 The vector side deliberately runs an exact scan instead of the HNSW index: the complete ICD-10-CM has many near-duplicate codes that differ only in the 7th character, and HNSW recall collapses on that data.
 When the embedding endpoint is unavailable or `icd.diagnosis_embeddings` is empty the search falls back to keyword-only and the response carries `search_mode: "keyword_only"`.
 When ICD-10-PCS is not loaded, `procedures` is an empty array with a `procedures_note`.
