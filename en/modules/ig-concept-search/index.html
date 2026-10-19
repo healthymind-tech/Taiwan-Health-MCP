@@ -2561,7 +2561,11 @@ whether a CodeSystem needs rebuilding; unchanged ones are skipped.</p>
 <ul>
 <li><strong>Normalisation</strong>: NFKC (full-width → half-width), case, Unicode dashes, variant characters (臺/台, 脢/酶 …), Chinese
   numerals before measure words (小於五公分 → 小於5公分), <code>cm</code> → 公分, <code>&lt;</code> → 小於, dotted abbreviations (C.R.P → crp), <code>w/o</code>.</li>
-<li><strong>Chart noise removed</strong>: laterality, <code>x1</code>, <code>5針</code>, suture specs (4-0 Nylon), <code>r/o</code>, <code>f/u</code>, <code>s/p</code>.</li>
+<li><strong>Chart noise removed</strong>: laterality, <code>x1</code>, <code>5針</code>, suture specs (4-0 Nylon), <code>r/o</code>, <code>f/u</code>, <code>s/p</code>, dosing / sampling
+  frequencies (<code>q6h</code>, <code>q3m</code>, <code>bid</code>, <code>prn</code>), measured values and doses with a unit (<code>7.8%</code>, <code>0.5mg</code>, <code>25 cmH2O</code>, <code>28Fr</code>,
+  <code>2.4 ATA</code>) and decimal lab values (<code>Hb 9.1</code>). Sizes (公分), durations and ages are kept.</li>
+<li><strong>Shorthand</strong>: short shorthand joined by <code>&amp;</code> / <code>/</code> (<code>I&amp;D</code>, <code>U/A</code>, <code>B/C</code>) is one word; its parts remain words of their
+  own (<code>Na/K</code> → na, k).</li>
 <li><strong>Tokens</strong>: English words (-s / -ing / -ed folded), Chinese character bigrams plus low-weight unigrams; an English
   word absent from the index matches as a prefix (abd → abdominal, vanco → vancomycin); an English word of 7+ letters
   that a name lacks also matches, at a discount, another form sharing its first 6 letters (recurrent ↔ recurrence,
@@ -2572,6 +2576,17 @@ whether a CodeSystem needs rebuilding; unchanged ones are skipped.</p>
   ("… lithotripsy (ESWL)", Schwartz–Hearst validated), English ↔ Chinese word pairs mined from ICD-10 / IG bilingual
   names (Dice + mutual best match), the abbrev / zhEn tables of <code>grounding/twLexiconData.ts</code>, and optionally UMLS —
   stored in <code>fhir.term_thesaurus</code> / <code>fhir.umls_terms</code>.</li>
+<li><strong>General abbreviation lexicon fills gaps</strong> (optional, <code>fhir.abbreviation_lexicon</code>, the SPECIALIST Lexicon's LRABR,
+  loaded with the UMLS file): an abbreviation in the query's <strong>first clause</strong> is looked up there only when the
+  CodeSystem does not use it as a word itself (e.g. "Procalcitonin (PCT)" already contains PCT) and no thesaurus
+  expansion is supported by the CodeSystem (support &lt; 0.45). A general lexicon gives an abbreviation dozens of senses
+  (LP → lipoprotein, lumbar puncture …); each sense is scored by how well the CodeSystem's own names name it — the best
+  lexical score of the sense on its own (capped at 1) + 0.3 × usage of that concept — kept at support ≥ 0.45, one
+  reading per concept, best first (the best one is also embedded). Upper-case acronyms (PLEX, BMA) apply only to words
+  written like abbreviations, lower-case clippings (chole, trach) only to words the CodeSystem does not know;
+  abbreviations of fewer than 3 letters / digits are too ambiguous to expand from it; a one-word expansion must be a
+  clipping (trach → tracheostomy) — ABO → antibody, where the letters merely occur, is dropped. Abbreviations in later
+  clauses (indication, notes) are not expanded, so a wrong sense there adds no noise.</li>
 <li><strong>Scoring</strong>: BM25-like with query / name coverage; only the <strong>text as typed</strong> matching a name exactly is <code>exact</code>
   and always ranks first (official Chinese names typed verbatim: top-1 ≥ 98%).</li>
 <li><strong>Semantic</strong>: the same embedding model and identity as ICD (<code>ig_embed</code> job; vectors keyed by <code>sha256(name)</code>, so a
@@ -2622,6 +2637,14 @@ FMA, MTHSPL, USP, USPMG, HL7V2.5, HL7V3.0, CDCREC, MVX, CVX, TKMT, SPN, MCM, QMR
 <code>LAT = ENG</code>, <code>SUPPRESS = N</code> strings of ≤ 80 characters, and only concepts with at least 2 distinct strings, are kept
 (2024AA: ~2.53 M strings / 0.76 M concepts, <code>fhir.umls_terms</code> ≈ 610 MB). The SAB is recorded internally only
 (<code>fhir.concept_index_terms.source</code>); <strong>no UMLS string is ever returned by a tool</strong>.</p>
+<p><strong>Abbreviation lexicon (optional)</strong>: <code>LRABR</code> of the SPECIALIST Lexicon (NLM Lexical Systems Group; <code>LEX/LRABR</code> inside
+<code>LEX.tgz</code>, ~20 MB). Only acronym / abbreviation rows with a 2–10 character abbreviation and a 3–80 character ASCII
+expansion are kept, spelling variants (plasma exchange / plasma-exchange) collapse (2024 release: ~115 k rows /
+34 k abbreviations). Add it as a third argument when writing the subset:
+<code>node dist/loaders/umls.js --subset &lt;umls.zip&gt; umls-subset-2024AA-lrabr.rrf.gz LEX/LRABR</code>; an <code>LRABR</code> member of an
+uploaded UMLS zip is read as well. <code>umls_import</code> replaces <code>fhir.abbreviation_lexicon</code> only when the file carries it
+(apply migration <code>20261027_abbreviation_lexicon.sql</code> first; without the table it logs a warning and skips). Lexicon
+strings likewise <strong>only steer matching and never appear in tool output</strong>.</p>
 <h2 id="jobs-and-tables">Jobs and tables<a class="headerlink" href="#jobs-and-tables" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -2645,17 +2668,18 @@ FMA, MTHSPL, USP, USPMG, HL7V2.5, HL7V3.0, CDCREC, MVX, CVX, TKMT, SPN, MCM, QMR
 </tr>
 <tr>
 <td><code>umls_import</code></td>
-<td>Loads UMLS (optional), then queues <code>ig_concept_index</code></td>
+<td>Loads UMLS (optional; also the abbreviation lexicon when the file carries LRABR), then queues <code>ig_concept_index</code></td>
 </tr>
 </tbody>
 </table>
 <p>Tables: <code>fhir.concept_index_cs</code> / <code>_concepts</code> / <code>_terms</code>, <code>fhir.concept_embeddings</code>, <code>fhir.term_thesaurus</code>,
 <code>fhir.codesystem_supplements</code> (migration <code>20261022_ig_concept_search.sql</code>), <code>fhir.umls_terms</code> /
-<code>fhir.umls_release</code> (<code>20261023_umls_terms.sql</code>).</p>
+<code>fhir.umls_release</code> (<code>20261023_umls_terms.sql</code>), <code>fhir.abbreviation_lexicon</code> (<code>20261027_abbreviation_lexicon.sql</code>).</p>
 <h2 id="limitations">Limitations<a class="headerlink" href="#limitations" title="Permanent link">&para;</a></h2>
 <ul>
-<li>Taiwan-specific chart abbreviations (TTE, CVC, NSD, Foley, OB, "echo" for ultrasound …) are mostly absent from
-  SNOMED / LOINC / UMLS and may still not be found.</li>
+<li>Taiwan-specific chart abbreviations (NSD, Foley, OB, "echo" for ultrasound …) are mostly absent from
+  SNOMED / LOINC / UMLS / LRABR and may still not be found; two-letter abbreviations (PD, LP, VF) are not expanded from
+  the general lexicon and rely on the CodeSystem itself, the thesaurus and the embedding.</li>
 <li>CodeSystems with Chinese names only and no English designation (e.g. occupations) rely on the embedding for
   English queries.</li>
 <li>A very large CodeSystem (tens of thousands of concepts) takes a few seconds to load on its first query; it is
