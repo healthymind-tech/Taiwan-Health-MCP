@@ -937,6 +937,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#how-hierarchy_filter-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How hierarchy_filter works
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -2569,6 +2580,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#how-hierarchy_filter-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How hierarchy_filter works
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -2768,6 +2790,13 @@
 </table>
 <h3 id="what-comes-back">What comes back<a class="headerlink" href="#what-comes-back" title="Permanent link">&para;</a></h3>
 <p>Each row carries <code>concept_id</code>, <code>fsn</code>, <code>preferred_term</code>, <code>active</code> and <code>hierarchy_tag</code> — enough to pick the concept to query next; use <code>query_snomed_concept</code> for the full record.</p>
+<h3 id="how-hierarchy_filter-works">How <code>hierarchy_filter</code> works<a class="headerlink" href="#how-hierarchy_filter-works" title="Permanent link">&para;</a></h3>
+<p><code>hierarchy_filter</code> restricts results to that concept and its IS-A descendants (the concept itself included). The full-text half is always the hierarchy's best literal matches; the vector half depends on the hierarchy's size:</p>
+<ul>
+<li><strong>≤ 1,000 concepts</strong> (e.g. Heart structure): an exact vector comparison against every member (the same ordering as an unfiltered search).</li>
+<li><strong>&gt; 1,000 concepts</strong> (e.g. Body structure 42,697, Procedure 59,616, Substance 27,725): a walk of the HNSW vector index that keeps only members, bounded to 1,000 visited entries. Membership is one primary-key probe into <code>snomed.concept_ancestors</code> (each concept's IS-A ancestors, built at import). A filtered search therefore costs about as much as an unfiltered one (an exact scan of a large hierarchy used to take 40–130 s); the trade-off is that a query with no literal or semantic tie to the hierarchy (e.g. "fracture of femur" within Substance) can return fewer results, or none, instead of the hierarchy's "least distant" concepts.</li>
+</ul>
+<p>Until <code>snomed.concept_ancestors</code> exists (migration <code>20261028_snomed_concept_ancestors.sql</code> not applied), the descendant set is expanded on every call instead — same results, 0.2–0.5 s more per call (warm cache).</p>
 <hr />
 <h2 id="query_snomed_concept"><code>query_snomed_concept</code><a class="headerlink" href="#query_snomed_concept" title="Permanent link">&para;</a></h2>
 <p>Retrieve the concept itself plus its hierarchical context (parents / children) in one call.</p>

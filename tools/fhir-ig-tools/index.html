@@ -2540,6 +2540,7 @@
 <li>回應採用共同信封：<code>{ok, data, warnings, provenance, error?}</code>。<code>provenance</code> 含 <code>packageId</code> / <code>version</code> / <code>fhirVersion</code> / <code>source</code>，以及 <code>resolved_by</code>；依賴閉包中同一套件有多個版本時另帶 <code>closure_versions</code>（說明 canonical 查詢實際採用哪個版本）。</li>
 <li>目標 IG 宣告的依賴有未安裝者時，<code>data.deps_missing</code> 會列出 <code>{package_id, version, required_by}</code>（閉包不完整，結果可能缺漏）。</li>
 <li>列表 / 搜尋類工具（<code>fhir_list_artifacts</code>、<code>fhir_search_artifacts</code>、<code>fhir_list_resource_profiles</code>）未給 <code>package_id</code> 時只查預設 IG；<code>all_packages=true</code> 改查所有已安裝套件（每列附 <code>package_id</code> / <code>package_version</code>，此時忽略 <code>package_id</code>）。查無結果時 <code>data.hint</code> 會指出其他有命中的套件。</li>
+<li><strong>精簡輸出 <code>compact=true</code></strong>（<code>fhir_list_igs</code>、<code>fhir_list_artifacts</code>、<code>fhir_search_artifacts</code>、<code>fhir_list_resource_profiles</code>，預設 <code>false</code>，預設輸出完全不變）：給工具輸出預算有限的 LLM 用。每個型別只回傳 <code>{id: title}</code> 對照表，canonical 的共同前綴只寫一次（<code>canonical_base</code>；canonical = <code>canonical_base/&lt;ResourceType&gt;/&lt;id&gt;</code>），不符合此規則的才列在 <code>canonicals</code>；剖面另以 <code>status</code> 列出非 active 者；<code>data.compact</code> 是一行閱讀說明。<code>all_packages=true</code> 時改以 <code>packages</code>（<code>packageId#version</code> → 該套件的分組）呈現。<code>fhir_list_igs</code> 則回傳 <code>default</code> 與依安裝來源分組的 <code>manual</code> / <code>dependency</code>（<code>packageId#version</code> → 標題）。TW Core 實測：<code>fhir_list_resource_profiles</code> 12.9k → 4.8k 字元、<code>fhir_list_artifacts</code>（50 筆）19.9k → 2.8k、<code>fhir_search_artifacts</code>（20 筆）8.6k → 1.5k、<code>fhir_list_igs</code>（58 個套件）19.6k → 3.7k。</li>
 <li>模組概念與建議工作流程見 <a href="../../modules/fhir-ig-service/">FHIR IG 服務模組</a>。</li>
 </ul>
 <h2 id="ig">IG 探索<a class="headerlink" href="#ig" title="Permanent link">&para;</a></h2>
@@ -2555,7 +2556,7 @@
 <tr>
 <td style="text-align: left;"><code>fhir_list_igs</code></td>
 <td style="text-align: left;">列出已安裝 IG 套件（packageId / version / title / canonical / fhirVersion / status / isDefault / <code>installOrigin</code>（<code>manual</code> 手動安裝 / <code>dependency</code> 因其他 IG 的依賴而下載）/ dependencies）</td>
-<td style="text-align: left;">—</td>
+<td style="text-align: left;"><code>compact</code></td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_get_ig</code></td>
@@ -2565,12 +2566,12 @@
 <tr>
 <td style="text-align: left;"><code>fhir_list_artifacts</code></td>
 <td style="text-align: left;">列出 IG 的 conformance artifacts 摘要</td>
-<td style="text-align: left;"><code>resource_type</code>, <code>grouping_id</code>, <code>all_packages</code>, <code>limit</code>（預設 50，上限 200）</td>
+<td style="text-align: left;"><code>resource_type</code>, <code>grouping_id</code>, <code>all_packages</code>, <code>limit</code>（預設 50，上限 200）, <code>compact</code></td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_search_artifacts</code></td>
 <td style="text-align: left;">以 id / canonical / name / title / description 全文搜尋 artifacts</td>
-<td style="text-align: left;"><code>keyword</code>, <code>resource_type</code>, <code>all_packages</code>, <code>limit</code>（預設 20，上限 100）</td>
+<td style="text-align: left;"><code>keyword</code>, <code>resource_type</code>, <code>all_packages</code>, <code>limit</code>（預設 20，上限 100）, <code>compact</code></td>
 </tr>
 </tbody>
 </table>
@@ -2587,7 +2588,7 @@
 <tr>
 <td style="text-align: left;"><code>fhir_list_resource_profiles</code></td>
 <td style="text-align: left;">列出可選資源剖面，依約束的基礎資源型別分組</td>
-<td style="text-align: left;"><code>base_type</code>, <code>all_packages</code></td>
+<td style="text-align: left;"><code>base_type</code>, <code>all_packages</code>, <code>compact</code></td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_rank_resource_profiles</code></td>
@@ -2779,7 +2780,11 @@
 <td style="text-align: left;">1.2.0</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>fhir_list_igs</code>、<code>fhir_get_ig</code>、<code>fhir_list_artifacts</code>、<code>fhir_search_artifacts</code>、<code>fhir_list_resource_profiles</code>、<code>fhir_rank_resource_profiles</code>、<code>fhir_get_profile</code>、<code>fhir_get_profile_elements</code>、<code>fhir_get_valueset</code>、<code>fhir_expand_valueset</code>、<code>fhir_validate_code</code>、<code>fhir_get_resource_skeleton</code>、<code>fhir_finalize_resource</code></td>
+<td style="text-align: left;"><code>fhir_list_igs</code>、<code>fhir_list_artifacts</code>、<code>fhir_search_artifacts</code>、<code>fhir_list_resource_profiles</code>（新增 <code>compact</code>）</td>
+<td style="text-align: left;">1.3.0</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>fhir_get_ig</code>、<code>fhir_rank_resource_profiles</code>、<code>fhir_get_profile</code>、<code>fhir_get_profile_elements</code>、<code>fhir_get_valueset</code>、<code>fhir_expand_valueset</code>、<code>fhir_validate_code</code>、<code>fhir_get_resource_skeleton</code>、<code>fhir_finalize_resource</code></td>
 <td style="text-align: left;">1.2.0</td>
 </tr>
 <tr>

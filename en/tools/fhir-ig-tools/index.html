@@ -2540,6 +2540,7 @@ If none applies the call fails with <code>NO_DEFAULT_IG</code> (no arbitrary pac
 <li>Responses use a shared envelope: <code>{ok, data, warnings, provenance, error?}</code>. <code>provenance</code> carries <code>packageId</code> / <code>version</code> / <code>fhirVersion</code> / <code>source</code> plus <code>resolved_by</code>; when the dependency closure holds several versions of one package it also carries <code>closure_versions</code> (which version canonical lookups use).</li>
 <li>When declared dependencies of the target IG are not installed, <code>data.deps_missing</code> lists them as <code>{package_id, version, required_by}</code> (incomplete closure — results may be missing content).</li>
 <li>List / search tools (<code>fhir_list_artifacts</code>, <code>fhir_search_artifacts</code>, <code>fhir_list_resource_profiles</code>) query only the default IG when <code>package_id</code> is omitted; <code>all_packages=true</code> queries every installed package instead (rows carry <code>package_id</code> / <code>package_version</code>; <code>package_id</code> is then ignored). Zero hits come with <code>data.hint</code> naming the other packages that match.</li>
+<li><strong>Compact output <code>compact=true</code></strong> (<code>fhir_list_igs</code>, <code>fhir_list_artifacts</code>, <code>fhir_search_artifacts</code>, <code>fhir_list_resource_profiles</code>; default <code>false</code>, and the default output is unchanged) is for LLMs with a tight tool-output budget. Each type becomes an <code>{id: title}</code> map, the common canonical prefix is written once (<code>canonical_base</code>; canonical = <code>canonical_base/&lt;ResourceType&gt;/&lt;id&gt;</code>), and only canonicals that break that rule are listed in <code>canonicals</code>; profiles also list non-active ones in <code>status</code>; <code>data.compact</code> is a one-line reading guide. With <code>all_packages=true</code> the groups sit under <code>packages</code> (<code>packageId#version</code> → that package's group). <code>fhir_list_igs</code> returns <code>default</code> plus <code>manual</code> / <code>dependency</code> maps by install origin (<code>packageId#version</code> → title). Measured on TW Core: <code>fhir_list_resource_profiles</code> 12.9k → 4.8k characters, <code>fhir_list_artifacts</code> (50 rows) 19.9k → 2.8k, <code>fhir_search_artifacts</code> (20 rows) 8.6k → 1.5k, <code>fhir_list_igs</code> (58 packages) 19.6k → 3.7k.</li>
 <li>For the module concepts and the suggested workflow, see <a href="../../modules/fhir-ig-service/">FHIR IG Service</a>.</li>
 </ul>
 <h2 id="ig-discovery">IG discovery<a class="headerlink" href="#ig-discovery" title="Permanent link">&para;</a></h2>
@@ -2555,7 +2556,7 @@ If none applies the call fails with <code>NO_DEFAULT_IG</code> (no arbitrary pac
 <tr>
 <td style="text-align: left;"><code>fhir_list_igs</code></td>
 <td style="text-align: left;">List installed IG packages (packageId / version / title / canonical / fhirVersion / status / isDefault / <code>installOrigin</code> (<code>manual</code> = installed by an operator, <code>dependency</code> = fetched for another IG's dependencies) / dependencies)</td>
-<td style="text-align: left;">—</td>
+<td style="text-align: left;"><code>compact</code></td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_get_ig</code></td>
@@ -2565,12 +2566,12 @@ If none applies the call fails with <code>NO_DEFAULT_IG</code> (no arbitrary pac
 <tr>
 <td style="text-align: left;"><code>fhir_list_artifacts</code></td>
 <td style="text-align: left;">List a summary of the IG's conformance artifacts</td>
-<td style="text-align: left;"><code>resource_type</code>, <code>grouping_id</code>, <code>all_packages</code>, <code>limit</code> (50 by default, 200 maximum)</td>
+<td style="text-align: left;"><code>resource_type</code>, <code>grouping_id</code>, <code>all_packages</code>, <code>limit</code> (50 by default, 200 maximum), <code>compact</code></td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_search_artifacts</code></td>
 <td style="text-align: left;">Full-text search over artifacts by id / canonical / name / title / description</td>
-<td style="text-align: left;"><code>keyword</code>, <code>resource_type</code>, <code>all_packages</code>, <code>limit</code> (20 by default, 100 maximum)</td>
+<td style="text-align: left;"><code>keyword</code>, <code>resource_type</code>, <code>all_packages</code>, <code>limit</code> (20 by default, 100 maximum), <code>compact</code></td>
 </tr>
 </tbody>
 </table>
@@ -2587,7 +2588,7 @@ If none applies the call fails with <code>NO_DEFAULT_IG</code> (no arbitrary pac
 <tr>
 <td style="text-align: left;"><code>fhir_list_resource_profiles</code></td>
 <td style="text-align: left;">List selectable resource profiles, grouped by the base resource type they constrain</td>
-<td style="text-align: left;"><code>base_type</code>, <code>all_packages</code></td>
+<td style="text-align: left;"><code>base_type</code>, <code>all_packages</code>, <code>compact</code></td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_rank_resource_profiles</code></td>
@@ -2779,7 +2780,11 @@ Every issue carries <code>rule</code> and <code>source:"grounding"</code>, and i
 <td style="text-align: left;">1.2.0</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>fhir_list_igs</code>, <code>fhir_get_ig</code>, <code>fhir_list_artifacts</code>, <code>fhir_search_artifacts</code>, <code>fhir_list_resource_profiles</code>, <code>fhir_rank_resource_profiles</code>, <code>fhir_get_profile</code>, <code>fhir_get_profile_elements</code>, <code>fhir_get_valueset</code>, <code>fhir_expand_valueset</code>, <code>fhir_validate_code</code>, <code>fhir_get_resource_skeleton</code>, <code>fhir_finalize_resource</code></td>
+<td style="text-align: left;"><code>fhir_list_igs</code>, <code>fhir_list_artifacts</code>, <code>fhir_search_artifacts</code>, <code>fhir_list_resource_profiles</code> (new <code>compact</code>)</td>
+<td style="text-align: left;">1.3.0</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>fhir_get_ig</code>, <code>fhir_rank_resource_profiles</code>, <code>fhir_get_profile</code>, <code>fhir_get_profile_elements</code>, <code>fhir_get_valueset</code>, <code>fhir_expand_valueset</code>, <code>fhir_validate_code</code>, <code>fhir_get_resource_skeleton</code>, <code>fhir_finalize_resource</code></td>
 <td style="text-align: left;">1.2.0</td>
 </tr>
 <tr>

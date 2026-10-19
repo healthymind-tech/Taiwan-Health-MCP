@@ -937,6 +937,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#hierarchy_filter" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        hierarchy_filter 的行為
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -2569,6 +2580,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#hierarchy_filter" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        hierarchy_filter 的行為
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -2768,6 +2790,13 @@
 </table>
 <h3 id="_3">回傳重點<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h3>
 <p>每筆含 <code>concept_id</code>、<code>fsn</code>、<code>preferred_term</code>、<code>active</code> 與 <code>hierarchy_tag</code>，適合拿來挑選下一步要查的 concept；完整資料用 <code>query_snomed_concept</code>。</p>
+<h3 id="hierarchy_filter"><code>hierarchy_filter</code> 的行為<a class="headerlink" href="#hierarchy_filter" title="Permanent link">&para;</a></h3>
+<p><code>hierarchy_filter</code> 限定為該概念本身與其 IS-A 後代（自身也算）。全文那一半一律是該階層內最佳的字面匹配；向量那一半依階層大小而定：</p>
+<ul>
+<li><strong>≤ 1,000 個概念</strong>（例如 Heart structure）：對階層內每個概念做精確向量比對（與未過濾時同樣的排序方式）。</li>
+<li><strong>&gt; 1,000 個概念</strong>（例如 Body structure 42,697、Procedure 59,616、Substance 27,725）：沿 HNSW 向量索引走訪並只保留階層成員，走訪上限 1,000 筆。成員判斷靠 <code>snomed.concept_ancestors</code>（每個概念的 IS-A 祖先集合，匯入時建立）做一次主鍵查詢。這讓有過濾的搜尋和未過濾的花費相當（先前精確掃描整個大階層要 40–130 秒）；代價是當查詢詞與該階層毫無字面或語意關聯時（例如在 Substance 階層查 "fracture of femur"），可能回傳較少或空結果，而不是該階層中「最不遠」的概念。</li>
+</ul>
+<p><code>snomed.concept_ancestors</code> 尚未建立（未套用 migration <code>20261028_snomed_concept_ancestors.sql</code>）時，會改用每次展開後代集合的方式，結果相同、但每次多花 0.2–0.5 秒（熱快取）。</p>
 <hr />
 <h2 id="query_snomed_concept"><code>query_snomed_concept</code><a class="headerlink" href="#query_snomed_concept" title="Permanent link">&para;</a></h2>
 <p>一次取得概念本體與階層脈絡（父/子）。</p>
