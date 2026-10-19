@@ -3060,7 +3060,7 @@
 </tr>
 </tbody>
 </table>
-<p>The embedding service, OCR (MinerU), and the analysis LLM are all <strong>external HTTP services</strong>. They are not part of this compose stack — provision them separately and configure them in the admin console.</p>
+<p>The embedding service, OCR (MinerU), and the analysis LLM are all <strong>external HTTP services</strong>. They are not part of this compose stack — provision them separately and configure them in the admin console. The one exception is the optional CPU OCR container <code>ocr-indra</code> (<code>services/ocr-indra/</code>, Indra OCR): it starts with compose, sits only on the internal <code>ocr</code> network (no route out, no host port), and is used only once External services → OCR sets the provider (or the fallback) to <code>indra</code>; see <code>services/ocr-indra/README.md</code> for the model-licence restrictions.</p>
 <h2 id="services">Services<a class="headerlink" href="#services" title="Permanent link">&para;</a></h2>
 <p><code>docker compose up -d</code> starts the following services:</p>
 <table>
@@ -3325,7 +3325,7 @@ curl -X POST http://localhost:8080/tools/health_check -H 'Content-Type: applicat
 </tr>
 <tr>
 <td>External services (<code>/admin/integrations</code>) → OCR</td>
-<td>MinerU service address</td>
+<td>Provider (MinerU address, or <code>indra</code> → <code>http://ocr-indra:8000</code>) and an optional fallback</td>
 <td>Insert PDFs cannot be OCR'd</td>
 </tr>
 </tbody>

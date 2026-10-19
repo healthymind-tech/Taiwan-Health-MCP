@@ -586,6 +586,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#ocr-providers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        OCR providers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#technical-architecture" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2546,6 +2557,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#ocr-providers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        OCR providers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#technical-architecture" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2622,9 +2644,43 @@
 <ol>
 <li><strong><code>drug_index_import</code></strong> — loads the license index from TFDA's standard <code>36_2.csv</code>, creating <code>drug.licenses</code> and the other base tables.</li>
 <li><strong><code>drug_enrichment</code></strong> — crawls TFDA for electronic inserts, document assets, and pill appearance records, storing the files in MinIO.</li>
-<li><strong><code>drug_analysis</code></strong> — runs MinerU OCR and the analysis LM over the insert documents, extracting structured content into <code>drug.insert_analysis</code>. The OCR endpoint (MinerU) is configured in the admin console under <strong>Integrations → External services → OCR Server</strong> (stored in <code>admin.app_settings</code>); the analysis LM under <strong>Integrations → Model endpoints</strong> (provider accounts + routes: <code>admin.llm_providers</code> / <code>admin.llm_routes</code> / <code>admin.llm_route_members</code> / <code>admin.llm_role_routes</code>). Neither is <strong>ever read from environment variables</strong>.</li>
+<li><strong><code>drug_analysis</code></strong> — runs OCR (MinerU or Indra, see <a href="#ocr-providers">OCR providers</a> below) and the analysis LM over the insert documents, extracting structured content into <code>drug.insert_analysis</code>. OCR is configured in the admin console under <strong>Integrations → External services → OCR Server</strong> (stored in the <code>ocr</code> group of <code>admin.app_settings</code>); the analysis LM under <strong>Integrations → Model endpoints</strong> (provider accounts + routes: <code>admin.llm_providers</code> / <code>admin.llm_routes</code> / <code>admin.llm_route_members</code> / <code>admin.llm_role_routes</code>). Neither is <strong>ever read from environment variables</strong>.</li>
 </ol>
 <p>A <code>drug_pipeline</code> job type also exists: one job that runs all three stages per license. The three stages auto-chain as well: each auto-chained job is capped at <code>DRUG_AUTOCHAIN_BATCH_LIMIT</code> (200 by default); <strong>a manually queued <code>drug_enrichment</code> with no <code>limit</code> is not capped</strong> and will crawl the entire backlog.</p>
+<h2 id="ocr-providers">OCR providers<a class="headerlink" href="#ocr-providers" title="Permanent link">&para;</a></h2>
+<p><code>drug_analysis</code> sends each insert PDF to OCR for Markdown and hands that to the analysis LLM; the LLM stage does not depend on which OCR provider ran.
+Choose under External services → OCR:</p>
+<table>
+<thead>
+<tr>
+<th>Provider</th>
+<th>Runs where</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>mineru</code> (default)</td>
+<td>External HTTP service (<code>POST {base_url}/file_parse</code>), usually on a GPU box</td>
+<td>Most robust on complex tables and layouts. Settings: base URL, backend, effort, parse method, language, timeout.</td>
+</tr>
+<tr>
+<td><code>indra</code></td>
+<td>The bundled <code>ocr-indra</code> compose container (<code>POST http://ocr-indra:8000/ocr</code>), CPU only</td>
+<td><a href="https://github.com/datalab-to/indra">Indra OCR</a> (<code>indra-ocr</code> 0.3.2, ONNX Runtime, ~18 MB of models baked into the image — no internet needed at runtime). Reads a digital PDF's text layer directly and OCRs only scanned pages. Settings: Indra base URL, timeout, DPI (72–400), mode (<code>auto</code> / <code>ocr</code> / <code>text</code>).</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>Fallback provider</strong> (<code>fallback_provider</code>: <code>none</code> / <code>mineru</code> / <code>indra</code>): tried once when the primary is unreachable, returns an HTTP error, times out or produces empty output;
+  not tried when the file itself is unreadable (encrypted, corrupt, not a PDF). <code>drug.insert_analysis.ocr_provider</code> records the provider that actually produced the Markdown.</li>
+<li><strong>Service health</strong>: with a fallback configured both are probed; one side down is <code>degraded</code> (does not block jobs), only both down is <code>error</code>.</li>
+<li><strong>Test connection</strong>: for Indra it also OCRs the built-in sample PDF, proving Markdown really comes back.</li>
+<li><strong>Indra limitations</strong>: occasional misreads of rare Traditional Chinese characters on scanned pages; merged cells and ruling-less key/value tables can land in the wrong columns.</li>
+<li><strong>Indra model licence</strong>: the code is Apache-2.0, the weights are under a <strong>modified OpenRAIL-M</strong> licence — not usable by an entity with more than
+  US$20M gross revenue in the prior year or more than US$20M total funding (except personal / research use), or one offering a product that competes with
+  Datalab; the restrictions extend to the OCR output. Read the licence section of <code>services/ocr-indra/README.md</code> before enabling it.</li>
+</ul>
 <h2 id="technical-architecture">Technical architecture<a class="headerlink" href="#technical-architecture" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong>Data source</strong>: Taiwan FDA western-medicine licenses (<code>mcp.fda.gov.tw</code>), configured via <code>DRUG_TFDA_BASE_URL</code>.</li>
@@ -2640,7 +2696,7 @@
 <h2 id="key-limitations">Key limitations<a class="headerlink" href="#key-limitations" title="Permanent link">&para;</a></h2>
 <ul>
 <li>Insert OCR + LLM analysis is machine-generated and must be reviewed by a clinician.</li>
-<li><code>drug_enrichment</code> and <code>drug_analysis</code> require reachable TFDA / OCR / analysis-LM endpoints.</li>
+<li><code>drug_enrichment</code> and <code>drug_analysis</code> require reachable TFDA / OCR (MinerU or ocr-indra) / analysis-LM endpoints.</li>
 </ul>
 
 

@@ -2724,7 +2724,7 @@ FHIR_SERVER_SECRET_KEY=
 <tr>
 <td><strong>Integrations</strong></td>
 <td>Model endpoints <code>/models</code>, MCP tools <code>/mcp</code>, External services <code>/integrations</code></td>
-<td>Provider accounts and profiles for embedding and the analysis LLM; MCP endpoints, tool catalog and playground; OCR (MinerU), object storage, TFDA, FHIR package registry and worker settings.</td>
+<td>Provider accounts and profiles for embedding and the analysis LLM; MCP endpoints, tool catalog and playground; OCR (MinerU / Indra), object storage, TFDA, FHIR package registry and worker settings.</td>
 </tr>
 <tr>
 <td><strong>System</strong></td>
@@ -2798,7 +2798,7 @@ FHIR_SERVER_SECRET_KEY=
 <h2 id="settings-and-precedence">Settings and precedence<a class="headerlink" href="#settings-and-precedence" title="Permanent link">&para;</a></h2>
 <p>Bootstrap variables (DB / Redis / MCP transport / <code>ADMIN_*</code> auth) originate in <code>.env</code>. On first boot, <code>ADMIN_INITIAL_PASSWORD</code> (hashed) or <code>ADMIN_PASSWORD_HASH</code> is written into <code>admin.admin_credentials</code>, and subsequent sign-ins validate only against the hash in the database. Seeding uses <code>ON CONFLICT DO NOTHING</code>, so once the credential row exists, editing <code>.env</code> or restarting the service never overwrites a working password. Passwords and passkeys are both managed under Account security (<code>/admin/security</code>).</p>
 <p>The other external-system settings (MinIO, TFDA base URL, FHIR package registry, worker tuning) are <strong>seed-only</strong>: <code>.env</code> is read exactly once, on first boot, for keys not yet present in <code>admin.app_settings</code>. Afterwards manage and test them under External services (<code>/admin/integrations</code>); editing <code>.env</code> has no effect on an already-seeded database. TFDA and registry can be edited there (applied hot); <strong>MinIO and worker tuning are read-only groups</strong>.</p>
-<p>The OCR (MinerU) endpoint lives in the <code>ocr</code> group of <code>admin.app_settings</code>. It is <strong>not seeded from <code>.env</code></strong> and is configured and tested only under External services → OCR.</p>
+<p>OCR settings live in the <code>ocr</code> group of <code>admin.app_settings</code>. They are <strong>not seeded from <code>.env</code></strong> and are configured and tested only under External services → OCR: provider <code>mineru</code> (default, external MinerU) or <code>indra</code> (the bundled CPU OCR container <code>ocr-indra</code>, <code>http://ocr-indra:8000</code>), plus an optional fallback provider. Field reference: <a href="../modules/drug-service/#ocr-providers">Drug Service → OCR providers</a>.</p>
 <p>Settings export / import (format version 3) under Backups &amp; settings (<code>/admin/system</code>) moves a working configuration between installs: it carries every <code>admin.app_settings</code> group, the provider accounts / profiles / role bindings (keys included), and the passkeys with their RP ID. Older v1 / v2 exports still import. The export contains secrets in the clear — store it like a credential.</p>
 <h2 id="system-backups">System backups<a class="headerlink" href="#system-backups" title="Permanent link">&para;</a></h2>
 <p>The Backups &amp; settings page lets you select settings and credentials, the PostgreSQL database, and MinIO object storage individually.

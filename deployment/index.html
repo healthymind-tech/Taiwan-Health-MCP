@@ -3060,7 +3060,7 @@
 </tr>
 </tbody>
 </table>
-<p>嵌入、OCR（MinerU）與分析 LLM 都是<strong>外部 HTTP 服務</strong>，不含在本 compose stack 內，需另行準備並在管理後台設定。</p>
+<p>嵌入、OCR（MinerU）與分析 LLM 都是<strong>外部 HTTP 服務</strong>，不含在本 compose stack 內，需另行準備並在管理後台設定。唯一的例外是選用的 CPU OCR 容器 <code>ocr-indra</code>（<code>services/ocr-indra/</code>，Indra OCR）：它隨 compose 啟動、只接在內部網路 <code>ocr</code>（不對外連線、無 host port），在「外部服務 → OCR」把供應者（或備援）設為 <code>indra</code> 才會被使用；模型授權限制見 <code>services/ocr-indra/README.md</code>。</p>
 <h2 id="_4">服務組成<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
 <p><code>docker compose up -d</code> 會啟動下列服務：</p>
 <table>
@@ -3329,7 +3329,7 @@ curl -X POST http://localhost:8080/tools/health_check -H 'Content-Type: applicat
 </tr>
 <tr>
 <td>外部服務（<code>/admin/integrations</code>）→ OCR</td>
-<td>MinerU 服務位址</td>
+<td>供應者（MinerU 位址，或 <code>indra</code> → <code>http://ocr-indra:8000</code>）與選用的備援</td>
 <td>仿單 PDF 無法 OCR</td>
 </tr>
 </tbody>

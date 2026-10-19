@@ -2723,7 +2723,7 @@ FHIR_SERVER_SECRET_KEY=
 <tr>
 <td><strong>整合</strong></td>
 <td>模型端點 <code>/models</code>、MCP 工具 <code>/mcp</code>、外部服務 <code>/integrations</code></td>
-<td>Embedding 與分析 LLM 的 provider 帳號與 profile；MCP 端點、工具目錄與線上測試；OCR（MinerU）、物件儲存、TFDA、FHIR package registry、worker 設定。</td>
+<td>Embedding 與分析 LLM 的 provider 帳號與 profile；MCP 端點、工具目錄與線上測試；OCR（MinerU / Indra）、物件儲存、TFDA、FHIR package registry、worker 設定。</td>
 </tr>
 <tr>
 <td><strong>系統</strong></td>
@@ -2802,7 +2802,7 @@ seed 使用 <code>ON CONFLICT DO NOTHING</code>，因此 credential row 建立�
 <p>其餘外部系統設定（MinIO、TFDA base URL、FHIR package registry、worker 調校）為 <strong>seed-only</strong>：<code>.env</code> 僅在首次啟動、
 對應鍵尚未存在時讀取一次以種子化 <code>admin.app_settings</code>；之後請在「外部服務」（<code>/admin/integrations</code>）管理與測試，
 編輯 <code>.env</code> 對已種子化的資料庫無效。其中 TFDA 與 registry 可直接修改（熱套用）；<strong>MinIO 與 worker 調校在後台為唯讀群組</strong>。</p>
-<p>OCR（MinerU）端點存於 <code>admin.app_settings</code> 的 <code>ocr</code> 群組，<strong>不從 <code>.env</code> 種子化</strong>，只能在「外部服務 → OCR」設定與測試。</p>
+<p>OCR 設定存於 <code>admin.app_settings</code> 的 <code>ocr</code> 群組，<strong>不從 <code>.env</code> 種子化</strong>，只能在「外部服務 → OCR」設定與測試：供應者 <code>mineru</code>（預設，外部 MinerU）或 <code>indra</code>（compose 內建的 CPU OCR 容器 <code>ocr-indra</code>，<code>http://ocr-indra:8000</code>），以及選用的備援供應者。各欄位見<a href="../modules/drug-service/#ocr-providers">藥品服務 → OCR 供應者</a>。</p>
 <p>「備份與設定」（<code>/admin/system</code>）的設定匯出 / 匯入（格式版本 3）可在不同環境間搬移一份可用的設定：內含 <code>admin.app_settings</code> 各群組、provider 帳號 / profile / 角色綁定（含金鑰）、passkey 與其 RP ID。舊的 v1 / v2 匯出檔仍可匯入。匯出檔含明文密鑰，請視同憑證保管。</p>
 <h2 id="system-backups">系統備份<a class="headerlink" href="#system-backups" title="Permanent link">&para;</a></h2>
 <p>「備份與設定」頁可逐項選擇設定與憑證、PostgreSQL database、MinIO object storage。

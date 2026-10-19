@@ -586,6 +586,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#ocr-providers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        OCR 供應者
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#_4" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2546,6 +2557,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#ocr-providers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        OCR 供應者
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#_4" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2622,9 +2644,43 @@
 <ol>
 <li><strong><code>drug_index_import</code></strong> — 從 TFDA 標準 <code>36_2.csv</code> 載入許可證索引，建立 <code>drug.licenses</code> 等基礎表。</li>
 <li><strong><code>drug_enrichment</code></strong> — 爬取 TFDA 取得電子仿單、文件資產與藥錠外觀紀錄，並將檔案存入 MinIO。</li>
-<li><strong><code>drug_analysis</code></strong> — 對仿單文件執行 MinerU OCR 與分析 LLM，萃取結構化內容寫入 <code>drug.insert_analysis</code>。OCR 端點（MinerU）在管理後台 <strong>整合 → 外部服務 → OCR Server</strong> 設定（存於 <code>admin.app_settings</code>）；分析 LLM 在 <strong>整合 → 模型端點</strong> 設定（provider 帳號 + 路由：<code>admin.llm_providers</code> / <code>admin.llm_routes</code> / <code>admin.llm_route_members</code> / <code>admin.llm_role_routes</code>）。兩者都<strong>不從環境變數讀取</strong>。</li>
+<li><strong><code>drug_analysis</code></strong> — 對仿單文件執行 OCR（MinerU 或 Indra，見下方「<a href="#ocr-providers">OCR 供應者</a>」）與分析 LLM，萃取結構化內容寫入 <code>drug.insert_analysis</code>。OCR 在管理後台 <strong>整合 → 外部服務 → OCR Server</strong> 設定（存於 <code>admin.app_settings</code> 的 <code>ocr</code> 群組）；分析 LLM 在 <strong>整合 → 模型端點</strong> 設定（provider 帳號 + 路由：<code>admin.llm_providers</code> / <code>admin.llm_routes</code> / <code>admin.llm_route_members</code> / <code>admin.llm_role_routes</code>）。兩者都<strong>不從環境變數讀取</strong>。</li>
 </ol>
 <p>另有 <code>drug_pipeline</code> 工作型別，在同一個工作內對每張許可證依序跑完三個階段。三者也會自動串接：每個自動串接的工作以 <code>DRUG_AUTOCHAIN_BATCH_LIMIT</code>（預設 200）為上限；<strong>手動排入且未指定 <code>limit</code> 的 <code>drug_enrichment</code> 不受此限</strong>，會爬完整個待處理佇列。</p>
+<h2 id="ocr-providers">OCR 供應者<a class="headerlink" href="#ocr-providers" title="Permanent link">&para;</a></h2>
+<p><code>drug_analysis</code> 把仿單 PDF 交給 OCR 取得 Markdown，再交給分析 LLM；分析 LLM 那一段與 OCR 供應者無關。
+在「外部服務 → OCR」選擇：</p>
+<table>
+<thead>
+<tr>
+<th>供應者</th>
+<th>執行位置</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>mineru</code>（預設）</td>
+<td>外部 HTTP 服務（<code>POST {base_url}/file_parse</code>），通常在 GPU 機器上</td>
+<td>複雜表格與版面最穩定。設定：Base URL、backend、effort、parse method、語言、逾時。</td>
+</tr>
+<tr>
+<td><code>indra</code></td>
+<td>compose 內建的 <code>ocr-indra</code> 容器（<code>POST http://ocr-indra:8000/ocr</code>），只用 CPU</td>
+<td><a href="https://github.com/datalab-to/indra">Indra OCR</a>（<code>indra-ocr</code> 0.3.2，ONNX Runtime，模型約 18 MB 已打包進映像，執行時不需連網）。數位 PDF 直接讀文字層，掃描頁才做影像辨識。設定：Indra Base URL、逾時、DPI（72–400）、模式（<code>auto</code> / <code>ocr</code> / <code>text</code>）。</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>備援供應者</strong>（<code>fallback_provider</code>：<code>none</code> / <code>mineru</code> / <code>indra</code>）：主要供應者無法連線、HTTP 錯誤、逾時或輸出為空時改用備援重試一次；
+  檔案本身無法讀取（加密、損毀、非 PDF）時不重試。<code>drug.insert_analysis.ocr_provider</code> 記錄實際產出 Markdown 的供應者。</li>
+<li><strong>服務健康</strong>：設定了備援時兩者都會探測；只有一邊失敗為「受限」（不阻擋工作），兩邊都失敗才是「錯誤」。</li>
+<li><strong>測試連線</strong>：Indra 除了 <code>/health</code> 還會辨識一次內建範例 PDF，確認真的能回傳 Markdown。</li>
+<li><strong>Indra 的限制</strong>：繁體中文掃描頁偶有罕用字誤認；合併儲存格、沒有格線的欄位表可能錯欄。</li>
+<li><strong>Indra 模型授權</strong>：程式碼 Apache-2.0，模型權重為<strong>修改版 OpenRAIL-M</strong>——前一年營收或累計募資超過 2,000 萬美元的單位
+  （研究與個人用途除外），或提供與 Datalab 競爭之產品者不得使用，且限制延伸到 OCR 輸出。啟用前請閱讀
+  <code>services/ocr-indra/README.md</code> 的授權一節。</li>
+</ul>
 <h2 id="_4">技術架構<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong>資料來源</strong>：台灣 FDA 西藥許可證（<code>mcp.fda.gov.tw</code>），透過 <code>DRUG_TFDA_BASE_URL</code> 設定。</li>
@@ -2640,7 +2696,7 @@
 <h2 id="_6">關鍵限制<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h2>
 <ul>
 <li>仿單 OCR + LLM 分析為機器產生，必須由臨床人員覆核。</li>
-<li><code>drug_enrichment</code> 與 <code>drug_analysis</code> 需要可達的 TFDA / OCR / 分析 LLM 端點。</li>
+<li><code>drug_enrichment</code> 與 <code>drug_analysis</code> 需要可達的 TFDA / OCR（MinerU 或 ocr-indra）/ 分析 LLM 端點。</li>
 </ul>
 
 

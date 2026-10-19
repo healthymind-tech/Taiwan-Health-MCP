@@ -2652,7 +2652,7 @@ ADMIN_SESSION_SECRET=&lt;隨機值&gt;
 </tbody>
 </table>
 <ul>
-<li><strong>藥物域</strong>為三階段管線（索引 → 爬取豐富 → OCR/LLM 分析）。爬取的 TFDA base URL 與 OCR（MinerU）端點在「外部服務」（<code>/admin/integrations</code>）設定；分析 LLM 則在「模型端點」（<code>/admin/models</code>）建立 provider 帳號與 profile。</li>
+<li><strong>藥物域</strong>為三階段管線（索引 → 爬取豐富 → OCR/LLM 分析）。爬取的 TFDA base URL 與 OCR（MinerU 或內建的 Indra）設定在「外部服務」（<code>/admin/integrations</code>）設定；分析 LLM 則在「模型端點」（<code>/admin/models</code>）建立 provider 帳號與 profile。</li>
 <li><strong>嵌入</strong>（語意搜尋）是各模組獨立的 <code>*_embed</code> 工作，可在模組頁面執行或排程。</li>
 <li>匯入進度、步驟時間軸與即時日誌見 <strong>背景工作</strong>（<code>/admin/jobs</code>）頁；背景機制見<a href="../admin/jobs-and-worker/">背景工作與排程</a>。</li>
 </ul>

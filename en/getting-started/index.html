@@ -2653,7 +2653,7 @@ ADMIN_SESSION_SECRET=&lt;random value&gt;
 </tbody>
 </table>
 <ul>
-<li>The <strong>drug domain</strong> is a three-stage pipeline (index → enrichment crawl → OCR/LLM analysis). The crawler's TFDA base URL and the OCR (MinerU) endpoint are configured under External services (<code>/admin/integrations</code>); the analysis LLM gets a provider account and profile under Model endpoints (<code>/admin/models</code>).</li>
+<li>The <strong>drug domain</strong> is a three-stage pipeline (index → enrichment crawl → OCR/LLM analysis). The crawler's TFDA base URL and the OCR settings (MinerU or the bundled Indra) are configured under External services (<code>/admin/integrations</code>); the analysis LLM gets a provider account and profile under Model endpoints (<code>/admin/models</code>).</li>
 <li><strong>Embeddings</strong> (semantic search) are separate <code>*_embed</code> jobs per module, runnable or schedulable from each module's page.</li>
 <li>Import progress, the step timeline, and live logs are on the <strong>Jobs</strong> page (<code>/admin/jobs</code>); the background mechanism is described in <a href="../admin/jobs-and-worker/">Jobs &amp; Scheduling</a>.</li>
 </ul>

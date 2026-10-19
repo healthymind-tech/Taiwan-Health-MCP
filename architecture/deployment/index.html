@@ -2416,6 +2416,7 @@
     Worker --&gt; MN
     Server -. &quot;Embeddings (query vectors)&quot; .-&gt; Ext[External model endpoints]
     Worker -. &quot;OCR (MinerU) / Analysis LM / Embeddings&quot; .-&gt; Ext
+    Worker -. &quot;OCR (Indra, internal network ocr)&quot; .-&gt; OcrIndra[&quot;ocr-indra (CPU OCR)&quot;]
 </code></pre>
 <h2 id="_2">關鍵考量<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
 <ol>
@@ -2425,7 +2426,7 @@
 <li><strong>pgBouncer transaction mode</strong>：不相容 <code>LISTEN/NOTIFY</code> 與 named prepared statements；Node 端使用 <code>pg</code> 的 unnamed statements 以相容此模式。</li>
 <li><strong>資料匯入</strong>：由管理後台觸發、<code>admin-worker</code> 背景執行（已無獨立的 data-loader 容器）。來源檔由管理後台上傳至 MinIO，工作執行時再取回。</li>
 <li><strong>MinIO</strong>：儲存藥品文件資產（仿單 / 標籤 / 外觀圖），工具回傳有時效的預簽下載連結。</li>
-<li><strong>外部模型端點</strong>：嵌入、OCR（MinerU）與分析 LLM 都是外部 HTTP 服務。嵌入與分析 LLM 存於 provider 帳號 / profile 表（<code>admin.llm_providers</code>、<code>llm_routes</code>、<code>llm_route_members</code>、<code>llm_role_routes</code>），於管理後台「模型端點」設定；OCR 存於 <code>admin.app_settings</code> 的 <code>ocr</code> 群組，於「外部服務」設定。不可用時系統降級（搜尋退回關鍵字並標示 <code>search_mode: "keyword_only"</code>、分析工作暫停並自動重試，但不影響查詢）。</li>
+<li><strong>外部模型端點</strong>：嵌入、OCR（MinerU）與分析 LLM 都是外部 HTTP 服務（OCR 也可改用 compose 內建、只接內部網路的 CPU OCR 容器 <code>ocr-indra</code>）。嵌入與分析 LLM 存於 provider 帳號 / profile 表（<code>admin.llm_providers</code>、<code>llm_routes</code>、<code>llm_route_members</code>、<code>llm_role_routes</code>），於管理後台「模型端點」設定；OCR 存於 <code>admin.app_settings</code> 的 <code>ocr</code> 群組，於「外部服務」設定。不可用時系統降級（搜尋退回關鍵字並標示 <code>search_mode: "keyword_only"</code>、分析工作暫停並自動重試，但不影響查詢）。</li>
 <li><strong>舊前端</strong>：Next.js <code>web</code> 服務只保留在 compose profile <code>legacy-web</code> 供回滾，預設不啟動。</li>
 <li><strong>映像</strong>：<code>app</code>（<code>node-server/Dockerfile</code>）、<code>admin-worker</code>（<code>Dockerfile.worker</code>）與 <code>web-v2</code>（<code>web-v2/Dockerfile</code>）是三個獨立映像；改了工作 / 載入程式碼要連 <code>admin-worker</code> 一起重建。</li>
 </ol>

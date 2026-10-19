@@ -2847,7 +2847,7 @@
 <tr>
 <td><strong>Model endpoints</strong></td>
 <td>Database only</td>
-<td>Embedding and the analysis LLM live in the provider-account / profile tables (<code>admin.llm_providers</code> etc.) and are configured under Model endpoints (<code>/admin/models</code>); OCR (MinerU) lives in the <code>ocr</code> group of <code>admin.app_settings</code> and is configured under External services → OCR. <strong>Never read from environment variables</strong>; movable between environments with the settings export / import (v3) under Backups &amp; settings (<code>/admin/system</code>).</td>
+<td>Embedding and the analysis LLM live in the provider-account / profile tables (<code>admin.llm_providers</code> etc.) and are configured under Model endpoints (<code>/admin/models</code>); OCR (MinerU / Indra and the fallback) lives in the <code>ocr</code> group of <code>admin.app_settings</code> and is configured under External services → OCR. <strong>Never read from environment variables</strong>; movable between environments with the settings export / import (v3) under Backups &amp; settings (<code>/admin/system</code>).</td>
 </tr>
 </tbody>
 </table>

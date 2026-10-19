@@ -2416,6 +2416,7 @@
     Worker --&gt; MN
     Server -. &quot;Embeddings (query vectors)&quot; .-&gt; Ext[External model endpoints]
     Worker -. &quot;OCR (MinerU) / Analysis LM / Embeddings&quot; .-&gt; Ext
+    Worker -. &quot;OCR (Indra, internal network ocr)&quot; .-&gt; OcrIndra[&quot;ocr-indra (CPU OCR)&quot;]
 </code></pre>
 <h2 id="key-considerations">Key considerations<a class="headerlink" href="#key-considerations" title="Permanent link">&para;</a></h2>
 <ol>
@@ -2425,7 +2426,7 @@
 <li><strong>pgBouncer transaction mode</strong>: incompatible with <code>LISTEN/NOTIFY</code> and named prepared statements; the Node side uses <code>pg</code>'s unnamed statements for compatibility.</li>
 <li><strong>Data imports</strong>: triggered from the admin console and executed in the background by <code>admin-worker</code> (there is no longer a standalone data-loader container). Source files are uploaded to MinIO through the admin console and fetched back when a job runs.</li>
 <li><strong>MinIO</strong>: stores drug document assets (inserts / labels / pill images); the tools return time-limited presigned download links.</li>
-<li><strong>External model endpoints</strong>: embeddings, OCR (MinerU), and the analysis LLM are all external HTTP services. Embedding and analysis-LLM endpoints live in the provider-account / profile tables (<code>admin.llm_providers</code>, <code>llm_routes</code>, <code>llm_route_members</code>, <code>llm_role_routes</code>) and are configured on the console's Model endpoints page; OCR lives in the <code>ocr</code> group of <code>admin.app_settings</code> and is configured under External services. When unavailable, the system degrades (search falls back to keywords and is stamped <code>search_mode: "keyword_only"</code>; analysis jobs pause and retry automatically, without affecting queries).</li>
+<li><strong>External model endpoints</strong>: embeddings, OCR (MinerU), and the analysis LLM are all external HTTP services (OCR can instead use the bundled CPU OCR container <code>ocr-indra</code>, which sits on an internal-only network). Embedding and analysis-LLM endpoints live in the provider-account / profile tables (<code>admin.llm_providers</code>, <code>llm_routes</code>, <code>llm_route_members</code>, <code>llm_role_routes</code>) and are configured on the console's Model endpoints page; OCR lives in the <code>ocr</code> group of <code>admin.app_settings</code> and is configured under External services. When unavailable, the system degrades (search falls back to keywords and is stamped <code>search_mode: "keyword_only"</code>; analysis jobs pause and retry automatically, without affecting queries).</li>
 <li><strong>Legacy front-end</strong>: the Next.js <code>web</code> service is kept only in the compose profile <code>legacy-web</code> for rollback and is not started by default.</li>
 <li><strong>Images</strong>: <code>app</code> (<code>node-server/Dockerfile</code>), <code>admin-worker</code> (<code>Dockerfile.worker</code>) and <code>web-v2</code> (<code>web-v2/Dockerfile</code>) are three separate images; job / loader code changes must be rebuilt into <code>admin-worker</code> too.</li>
 </ol>
