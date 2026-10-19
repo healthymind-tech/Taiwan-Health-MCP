@@ -16,20 +16,21 @@ A general, IG-scoped toolset built on the multi-IG `fhir.*` store, used to explo
 - Responses use a shared envelope: `{ok, data, warnings, provenance, error?}`. `provenance` carries `packageId` / `version` / `fhirVersion` / `source` plus `resolved_by`; when the dependency closure holds several versions of one package it also carries `closure_versions` (which version canonical lookups use).
 - When declared dependencies of the target IG are not installed, `data.deps_missing` lists them as `{package_id, version, required_by}` (incomplete closure — results may be missing content).
 - List / search tools (`fhir_list_artifacts`, `fhir_search_artifacts`, `fhir_list_resource_profiles`) query only the default IG when `package_id` is omitted; `all_packages=true` queries every installed package instead (rows carry `package_id` / `package_version`; `package_id` is then ignored). Zero hits come with `data.hint` naming the other packages that match.
+- **Compact output `compact=true`** (`fhir_list_igs`, `fhir_list_artifacts`, `fhir_search_artifacts`, `fhir_list_resource_profiles`; default `false`, and the default output is unchanged) is for LLMs with a tight tool-output budget. Each type becomes an `{id: title}` map, the common canonical prefix is written once (`canonical_base`; canonical = `canonical_base/<ResourceType>/<id>`), and only canonicals that break that rule are listed in `canonicals`; profiles also list non-active ones in `status`; `data.compact` is a one-line reading guide. With `all_packages=true` the groups sit under `packages` (`packageId#version` → that package's group). `fhir_list_igs` returns `default` plus `manual` / `dependency` maps by install origin (`packageId#version` → title). Measured on TW Core: `fhir_list_resource_profiles` 12.9k → 4.8k characters, `fhir_list_artifacts` (50 rows) 19.9k → 2.8k, `fhir_search_artifacts` (20 rows) 8.6k → 1.5k, `fhir_list_igs` (58 packages) 19.6k → 3.7k.
 - For the module concepts and the suggested workflow, see [FHIR IG Service](../modules/fhir-ig-service.md).
 
 ## IG discovery
 | Tool | Description | Key parameters |
 | :--- | :--- | :--- |
-| `fhir_list_igs` | List installed IG packages (packageId / version / title / canonical / fhirVersion / status / isDefault / `installOrigin` (`manual` = installed by an operator, `dependency` = fetched for another IG's dependencies) / dependencies) | — |
+| `fhir_list_igs` | List installed IG packages (packageId / version / title / canonical / fhirVersion / status / isDefault / `installOrigin` (`manual` = installed by an operator, `dependency` = fetched for another IG's dependencies) / dependencies) | `compact` |
 | `fhir_get_ig` | Details for a single IG: dependencies and artifact counts per resource type; `data.deps_missing` lists uninstalled dependencies | `package_id`, `version` |
-| `fhir_list_artifacts` | List a summary of the IG's conformance artifacts | `resource_type`, `grouping_id`, `all_packages`, `limit` (50 by default, 200 maximum) |
-| `fhir_search_artifacts` | Full-text search over artifacts by id / canonical / name / title / description | `keyword`, `resource_type`, `all_packages`, `limit` (20 by default, 100 maximum) |
+| `fhir_list_artifacts` | List a summary of the IG's conformance artifacts | `resource_type`, `grouping_id`, `all_packages`, `limit` (50 by default, 200 maximum), `compact` |
+| `fhir_search_artifacts` | Full-text search over artifacts by id / canonical / name / title / description | `keyword`, `resource_type`, `all_packages`, `limit` (20 by default, 100 maximum), `compact` |
 
 ## Profile selection and reading
 | Tool | Description | Key parameters |
 | :--- | :--- | :--- |
-| `fhir_list_resource_profiles` | List selectable resource profiles, grouped by the base resource type they constrain | `base_type`, `all_packages` |
+| `fhir_list_resource_profiles` | List selectable resource profiles, grouped by the base resource type they constrain | `base_type`, `all_packages`, `compact` |
 | `fhir_rank_resource_profiles` | Rank by how well source field keys match profile element paths (advisory only, `selectionRequired:true`) | `keys`, `base_type`, `limit` (5 by default, 20 maximum) |
 | `fhir_get_profile` | Summary of a single profile (identity / base / derivation / element count), resolvable by id, canonical, or key; a canonical may be pinned as `url|version` (an uninstalled version is `ARTIFACT_NOT_FOUND`) | `identifier` |
 | `fhir_get_profile_elements` | Read the profile snapshot; `view` = `elements` / `element` / `slices` / `choices` / `binding` / `examples` | `profile`, `view`, `path`, `slice_name`, `limit` |
@@ -103,7 +104,8 @@ Tools whose behaviour is pinned by fixtures carry their own version (`node-serve
 | :--- | :--- |
 | `fhir_validate_resource`, `fhir_validate_bundle` | 1.4.0 |
 | `fhir_get_profile_required_elements` | 1.2.0 |
-| `fhir_list_igs`, `fhir_get_ig`, `fhir_list_artifacts`, `fhir_search_artifacts`, `fhir_list_resource_profiles`, `fhir_rank_resource_profiles`, `fhir_get_profile`, `fhir_get_profile_elements`, `fhir_get_valueset`, `fhir_expand_valueset`, `fhir_validate_code`, `fhir_get_resource_skeleton`, `fhir_finalize_resource` | 1.2.0 |
+| `fhir_list_igs`, `fhir_list_artifacts`, `fhir_search_artifacts`, `fhir_list_resource_profiles` (new `compact`) | 1.3.0 |
+| `fhir_get_ig`, `fhir_rank_resource_profiles`, `fhir_get_profile`, `fhir_get_profile_elements`, `fhir_get_valueset`, `fhir_expand_valueset`, `fhir_validate_code`, `fhir_get_resource_skeleton`, `fhir_finalize_resource` | 1.2.0 |
 | `fhir_lookup_code`, `fhir_normalize_code` | 1.3.0 |
 | `fhir_check_grounding` | 1.1.0 |
 | `fhir_check_completeness` | 1.1.1 |

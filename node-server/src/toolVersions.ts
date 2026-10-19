@@ -34,7 +34,10 @@ export const TOOLS_VERSION: Record<string, string> = {
   // whole-label stated-absent concepts (出生地 is not the birth date) and no stated-absent when the record states
   // the patient field; zh/en department / setting aliases with whole-token short forms (ED / ER / OPD / ICU);
   // the 【轉換目標】 line never joins another line's window; zh->en bridges for Chinese-only NHI displays.
-  fhir_check_grounding: "1.1.0",
+  // 1.2.0 (lexicon tw-lexicon 0.4.0, issues v2): an as-needed Timing (code PRN, or text such as 'as needed' /
+  // 需要時使用) is grounded by any PRN phrasing in the record ('PO PRN', '視需要'); a frequency written with it must
+  // still match. New PRN phrasings 視需要 / 發作時 / as required / when needed / on demand (asNeededBoolean too).
+  fhir_check_grounding: "1.2.0",
   // 1.1.0: stated absences by whole-label matching (shared with fhir_check_grounding, lexicon 0.3.0).
   // 1.1.1: instruction / site-config lines never join a value or duration window, even when no blank line
   // separates them from the item line (a value on the 【轉換目標】 line was reported as found).
@@ -48,16 +51,19 @@ export const TOOLS_VERSION: Record<string, string> = {
   // also checked against the slicing base element; not-checked profiles carry `unchecked` (completenessOf →
   // checked_fully / profiles_unchecked / valuesets_unchecked); partial-CodeSystem information hint.
   // 1.4.0: the optional source_text grounding follows fhir_check_grounding 1.1.0 (output without source_text unchanged).
-  fhir_validate_bundle: "1.4.1",
-  fhir_validate_resource: "1.4.1",
+  // 1.5.0: the optional source_text grounding follows fhir_check_grounding 1.2.0 (output without source_text unchanged).
+  fhir_validate_bundle: "1.5.0",
+  fhir_validate_resource: "1.5.0",
   // 1.2.0 (all below): provenance.resolved_by / closure_versions; canonical arguments resolve to their
   // owning package when package_id is omitted; "|version" honoured; list/search: all_packages + zero-hit hint;
   // NO_DEFAULT_IG instead of an arbitrary package when no default IG is set.
-  fhir_list_igs: "1.2.0",
+  // 1.3.0 (fhir_list_igs / fhir_list_artifacts / fhir_search_artifacts / fhir_list_resource_profiles): opt-in
+  // compact=true (id → title per type, canonical base once, only exceptional canonicals). Default output unchanged.
+  fhir_list_igs: "1.3.0",
   fhir_get_ig: "1.2.1",
-  fhir_list_artifacts: "1.2.1",
-  fhir_search_artifacts: "1.2.1",
-  fhir_list_resource_profiles: "1.2.1",
+  fhir_list_artifacts: "1.3.0",
+  fhir_search_artifacts: "1.3.0",
+  fhir_list_resource_profiles: "1.3.0",
   fhir_rank_resource_profiles: "1.2.1",
   fhir_get_profile: "1.2.1",
   fhir_get_profile_elements: "1.2.1",
@@ -121,7 +127,10 @@ export const TOOLS_VERSION: Record<string, string> = {
   // SNOMED: not-found hint; get_snomed_relationships flags an unknown concept (concept_found:false); mapping hints.
   // search_snomed_concept 1.2.0 (2026-10-19): hybrid ranking over every active name of a concept (was RRF whose
   // row LIMIT before the per-concept collapse could return fewer concepts than asked); inactive concepts sink.
-  search_snomed_concept: "1.2.0",
+  // 1.3.0: hierarchy_filter over a hierarchy of more than 1,000 concepts takes the vector half from the
+  // HNSW walk filtered by membership (snomed.concept_ancestors), bounded — was an exact scan of every
+  // member's vector (40–130 s cold); a query far from such a hierarchy can now return fewer results.
+  search_snomed_concept: "1.3.0",
   query_snomed_concept: "1.1.1",
   get_snomed_relationships: "1.1.1",
   query_snomed_mapping: "1.1.1",

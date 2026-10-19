@@ -60,9 +60,9 @@ const has030 = (s: string): boolean => {
 
 test("lexicon version and sha are exposed", () => {
   // the data module started as a port of the reference lexicon and has since gained PAS tables (0.2.0) and the
-  // issues-v1 fixes (0.3.0)
+  // issues-v1 fixes (0.3.0) and the issues-v2 PRN phrasings (0.4.0)
   if (!skip) assert.equal(G.version, "tw-lexicon 0.1.0");
-  assert.equal(LEXICON_VERSION, "tw-lexicon 0.3.0");
+  assert.equal(LEXICON_VERSION, "tw-lexicon 0.4.0");
   assert.match(LEXICON_SHA256, /^[0-9a-f]{64}$/);
 });
 

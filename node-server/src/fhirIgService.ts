@@ -253,8 +253,9 @@ export class FHIRIGService {
 
   // --- A. IG discovery ----------------------------------------------------- //
 
-  async listIgs(): Promise<string> {
+  async listIgs(compact = false): Promise<string> {
     const packages = await fhirIg.listPackages();
+    if (compact) return this.ok(compactIgList(packages), null);
     const data = {
       count: packages.length,
       igs: packages.map((p) => ({
@@ -352,6 +353,7 @@ export class FHIRIGService {
     groupingId: string | null = null,
     limit = 50,
     allPackages = false,
+    compact = false,
   ): Promise<string> {
     limit = Math.min(Math.max(1, limit), 200);
     const filters = (q: SqlParams): string[] => {
@@ -360,7 +362,7 @@ export class FHIRIGService {
       if (groupingId) out.push(`grouping_id = ${q.add(groupingId)}`);
       return out;
     };
-    return this.artifactQuery(packageId, version, allPackages, filters, limit, "ORDER BY resource_type, name");
+    return this.artifactQuery(packageId, version, allPackages, filters, limit, "ORDER BY resource_type, name", compact);
   }
 
   async searchArtifacts(
@@ -370,6 +372,7 @@ export class FHIRIGService {
     resourceType: string | null = null,
     limit = 20,
     allPackages = false,
+    compact = false,
   ): Promise<string> {
     limit = Math.min(Math.max(1, limit), 100);
     const filters = (q: SqlParams): string[] => {
@@ -385,7 +388,7 @@ export class FHIRIGService {
       );
       return out;
     };
-    return this.artifactQuery(packageId, version, allPackages, filters, limit, "ORDER BY resource_type, name");
+    return this.artifactQuery(packageId, version, allPackages, filters, limit, "ORDER BY resource_type, name", compact);
   }
 
   /** Shared body of list/search: one package (default resolution) or every installed package. */
@@ -396,6 +399,7 @@ export class FHIRIGService {
     filters: (q: SqlParams) => string[],
     limit: number,
     orderBy: string,
+    compact = false,
   ): Promise<string> {
     if (allPackages) {
       const q = new SqlParams();
@@ -409,6 +413,7 @@ export class FHIRIGService {
           q.params,
         )
       ).rows;
+      if (compact) return this.ok({ scope: "all_packages", count: rows.length, ...compactByPackage(rows, ARTIFACTS_COMPACT) }, null);
       return this.ok({ scope: "all_packages", count: rows.length, artifacts: rows }, null);
     }
     let pkg: PackageRow;
@@ -427,7 +432,9 @@ export class FHIRIGService {
         q.params,
       )
     ).rows;
-    const data: Record<string, any> = { count: rows.length, artifacts: rows };
+    const data: Record<string, any> = compact
+      ? { count: rows.length, ...compactArtifactGroup(rows, ARTIFACTS_COMPACT) }
+      : { count: rows.length, artifacts: rows };
     if (!rows.length) {
       const hint = await this.zeroHitHint(filters, pkg);
       if (hint) data.hint = hint;
@@ -442,6 +449,7 @@ export class FHIRIGService {
     version: string | null = null,
     baseType: string | null = null,
     allPackages = false,
+    compact = false,
   ): Promise<string> {
     const filters = (q: SqlParams): string[] => {
       const out = ["resource_type = 'StructureDefinition'", "derivation = 'constraint'", "kind = 'resource'"];
@@ -469,6 +477,16 @@ export class FHIRIGService {
         q.params,
       )
     ).rows;
+    if (compact) {
+      const sdRows = rows.map((r) => ({ ...r, resource_type: "StructureDefinition" }));
+      if (!pkg) return this.ok({ scope: "all_packages", count: rows.length, ...compactByPackage(sdRows, PROFILES_COMPACT) }, null);
+      const data: Record<string, any> = { count: rows.length, ...compactArtifactGroup(sdRows, PROFILES_COMPACT) };
+      if (!rows.length) {
+        const hint = await this.zeroHitHint(filters, pkg);
+        if (hint) data.hint = hint;
+      }
+      return this.ok(data, pkg);
+    }
     const byType: Record<string, any[]> = {};
     for (const r of rows) {
       const key = r.base_type || "";
@@ -1824,6 +1842,116 @@ export function metaProfilesOf(resource: Record<string, any> | null | undefined,
 }
 
 /** Positional-parameter builder: add(v) returns the "$n" placeholder. */
+// --- Compact list rendering (opt-in `compact: true`) ----------------------- //
+//
+// The default list outputs repeat every artifact's full canonical URL and summary columns, which
+// runs past a small tool-output budget (fhir_list_resource_profiles on TW Core: 12.9k chars). The
+// compact form keeps what choosing an artifact needs: per group a map id → title, the canonical
+// base once (canonical = base/<ResourceType>/<id>), and only the canonicals that break that rule.
+
+export interface CompactSpec {
+  /** Group key of a row (base FHIR type for profiles, resource type for artifacts). */
+  group: (r: Record<string, any>) => string;
+  /** Key of a row in the `canonicals` / `status` exception maps. */
+  key: (r: Record<string, any>) => string;
+  /** Report non-active statuses (`status` map). */
+  status: boolean;
+  /** One-line reading guide placed in the output. */
+  legend: string;
+}
+
+export const PROFILES_COMPACT: CompactSpec = {
+  group: (r) => r.base_type || "",
+  key: (r) => r.artifact_id,
+  status: true,
+  legend:
+    "byResourceType maps base type → {profile id: title}. canonical = canonical_base + '/StructureDefinition/' + id, " +
+    "except the ids listed in canonicals. Profiles not listed in status are active. compact=false adds per-profile rows.",
+};
+
+export const ARTIFACTS_COMPACT: CompactSpec = {
+  group: (r) => r.resource_type || "",
+  key: (r) => `${r.resource_type}/${r.artifact_id}`,
+  status: false,
+  legend:
+    "byResourceType maps resource type → {id: title}. Conformance resources (StructureDefinition, ValueSet, CodeSystem, …) " +
+    "have canonical = canonical_base + '/' + resourceType + '/' + id, except the ResourceType/id keys listed in canonicals; " +
+    "instance examples have none. compact=false adds the summary columns.",
+};
+
+/** The canonical base most rows follow (canonical = base/<ResourceType>/<id>), or null. */
+export function canonicalBaseOf(rows: Record<string, any>[]): string | null {
+  const counts = new Map<string, number>();
+  for (const r of rows) {
+    const url = String(r.canonical_url || "");
+    const suffix = `/${r.resource_type}/${r.artifact_id}`;
+    if (url.length > suffix.length && url.endsWith(suffix)) {
+      const base = url.slice(0, -suffix.length);
+      counts.set(base, (counts.get(base) ?? 0) + 1);
+    }
+  }
+  let best: string | null = null;
+  let n = 0;
+  for (const [base, c] of counts) if (c > n || (c === n && best !== null && base < best)) [best, n] = [base, c];
+  return best;
+}
+
+/** Compact rendering of one package's rows (see CompactSpec). */
+export function compactArtifactGroup(rows: Record<string, any>[], spec: CompactSpec): Record<string, any> {
+  const base = canonicalBaseOf(rows);
+  const byResourceType: Record<string, Record<string, string>> = {};
+  const canonicals: Record<string, string> = {};
+  const status: Record<string, string> = {};
+  for (const r of rows) {
+    const g = spec.group(r);
+    // An instance without an id (e.g. a Bundle example) is keyed by its artifact_key.
+    (byResourceType[g] ??= {})[r.artifact_id || r.artifact_key || ""] = r.title || r.name || "";
+    const url = String(r.canonical_url || "");
+    if (url && url !== `${base}/${r.resource_type}/${r.artifact_id}`) canonicals[spec.key(r)] = url;
+    if (spec.status && r.status && r.status !== "active") status[spec.key(r)] = r.status;
+  }
+  const out: Record<string, any> = { compact: spec.legend, canonical_base: base, byResourceType };
+  if (Object.keys(canonicals).length) out.canonicals = canonicals;
+  if (Object.keys(status).length) out.status = status;
+  return out;
+}
+
+/** all_packages compact rendering: one compact group per "packageId#version". */
+export function compactByPackage(rows: Record<string, any>[], spec: CompactSpec): Record<string, any> {
+  const groups = new Map<string, Record<string, any>[]>();
+  for (const r of rows) {
+    const k = `${r.package_id}#${r.package_version}`;
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k)!.push(r);
+  }
+  const packages: Record<string, any> = {};
+  for (const [k, g] of groups) {
+    const { compact: _legend, ...rest } = compactArtifactGroup(g, spec);
+    packages[k] = rest;
+  }
+  return { compact: `packages maps packageId#version → its group. ${spec.legend}`, packages };
+}
+
+/** fhir_list_igs compact rendering: "packageId#version" → title, split by install origin. */
+export function compactIgList(packages: Array<Record<string, any>>): Record<string, any> {
+  const byOrigin: Record<string, Record<string, string>> = {};
+  let def: string | null = null;
+  for (const p of packages) {
+    const k = `${p.package_id}#${p.version}`;
+    if (p.is_default) def = k;
+    const title = p.title && p.title !== p.package_id ? String(p.title) : "";
+    (byOrigin[p.install_origin || "unknown"] ??= {})[k] = title;
+  }
+  return {
+    compact:
+      "manual / dependency map packageId#version → title (\"\" when the title is the package id); manual = installed by an " +
+      "operator, dependency = pulled in by another IG. compact=false adds canonical, fhirVersion, status and dependencies.",
+    count: packages.length,
+    default: def,
+    ...byOrigin,
+  };
+}
+
 class SqlParams {
   params: unknown[] = [];
   add(v: unknown): string {

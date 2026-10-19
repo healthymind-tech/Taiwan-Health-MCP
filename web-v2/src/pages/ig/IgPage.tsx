@@ -34,7 +34,8 @@ import { InlineJobProgress, RecentJobsList } from "../modules/JobProgress";
 import { DangerZone, MaintenanceSection } from "../modules/ModuleAdminSections";
 import { AddIgModal } from "./AddIgModal";
 import { ConceptIndexPanel } from "./ConceptIndexPanel";
-import { IgDetailDrawer } from "./IgDetailDrawer";
+import { IgDetailView } from "./IgDetailDrawer";
+import { DETAIL_KEYS, DP, igParam, parseIgParam } from "./detail/detailMeta";
 import { MissingDepsBadge, MissingDepsModal, type MissingDepsTarget } from "./MissingDepsModal";
 import { FAILURE_COPY, failureKindFromCode } from "./igDepCopy";
 import type { IgDetail, IgRef, IgSummary } from "./igTypes";
@@ -189,7 +190,6 @@ export default function IgPage() {
   const tabParam = sp.get("tab") ?? "";
   const tab = (IG_TABS as readonly string[]).includes(tabParam) ? tabParam : "gallery";
   const [addOpen, setAddOpen] = useState(false);
-  const [selected, setSelected] = useState<IgRef | null>(null);
   // Missing-dependency dialog: null = closed, "all" = every IG, else one IG.
   const [depsFor, setDepsFor] = useState<MissingDepsTarget | "all" | null>(null);
   // Jobs started from the dependency dialog → toast when they finish.
@@ -204,6 +204,30 @@ export default function IgPage() {
   const spRef = useRef(sp);
   spRef.current = sp;
   const galleryTop = useRef<HTMLDivElement>(null);
+
+  // IG detail page state lives in the URL: ?open=<package>@<version> (see detail/detailMeta.tsx DP).
+  // `fix_deps=1` (profile viewer's igHref) opens that IG's missing-dependency dialog once.
+  const selected = parseIgParam(sp.get(DP.ig));
+  useEffect(() => {
+    if (sp.get("fix_deps") !== "1") return;
+    if (selected) setDepsFor(selected);
+    const next = new URLSearchParams(sp);
+    next.delete("fix_deps");
+    setSp(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sp.get("fix_deps")]);
+  /** Open an IG's detail page (pushes history; gallery filters stay in the URL for "back"). */
+  const openIg = (r: IgRef) => {
+    const next = new URLSearchParams(spRef.current);
+    for (const k of DETAIL_KEYS) next.delete(k);
+    next.set(DP.ig, igParam(r));
+    setSp(next);
+  };
+  const closeIg = () => {
+    const next = new URLSearchParams(spRef.current);
+    for (const k of DETAIL_KEYS) next.delete(k);
+    setSp(next);
+  };
 
   /** Apply URL changes; any filter change goes back to page 1. Discrete changes push history. */
   const patchParams = (patch: Record<string, string | null>, opts: { replace?: boolean; keepPage?: boolean } = {}) => {
@@ -300,7 +324,7 @@ export default function IgPage() {
       notify.success(`${label} 已移除${r.new_default ? `，預設 IG 改為 ${removedLabel(r.new_default)}` : ""}`);
     }
     setRemoveTarget(null);
-    setSelected(null);
+    closeIg();
     invalidate();
   };
 
@@ -358,6 +382,20 @@ export default function IgPage() {
 
   return (
     <>
+      {selected ? (
+        <IgDetailView
+          key={igParam(selected)}
+          target={selected}
+          onBack={closeIg}
+          onOpenIg={openIg}
+          onSetDefault={(ig) => setDefault.mutate(ig)}
+          onRemove={askRemove}
+          settingDefault={setDefault.isPending}
+          removeBlock={removeBlock}
+          onOpenDeps={(d) => setDepsFor({ package_id: d.package_id, version: d.version, title: d.title })}
+        />
+      ) : (
+      <>
       <PageHeader
         title="FHIR Implementation Guides"
         description={meta.description}
@@ -497,7 +535,7 @@ export default function IgPage() {
                         key={`${ig.package_id}@${ig.version}`}
                         ig={ig}
                         query={f.q}
-                        onOpen={() => setSelected({ package_id: ig.package_id, version: ig.version })}
+                        onOpen={() => openIg({ package_id: ig.package_id, version: ig.version })}
                         onOpenDeps={() => setDepsFor({ package_id: ig.package_id, version: ig.version, title: ig.title })}
                       />
                     ))}
@@ -586,18 +624,10 @@ export default function IgPage() {
           </Tabs.Panel>
         </Tabs>
       </Stack>
+      </>
+      )}
 
       <AddIgModal opened={addOpen} onClose={() => setAddOpen(false)} installed={list} catalogEntry={igEntry} maxUploadMb={maxUploadMb} busy={addBusy} />
-      <IgDetailDrawer
-        target={selected}
-        onClose={() => setSelected(null)}
-        onSetDefault={(ig) => setDefault.mutate(ig)}
-        onRemove={askRemove}
-        settingDefault={setDefault.isPending}
-        removeBlock={removeBlock}
-        onOpenDeps={(d) => setDepsFor({ package_id: d.package_id, version: d.version, title: d.title })}
-        closeOnEscape={depsFor === null && removeTarget === null}
-      />
       <RemoveIgModal target={removeTarget} onClose={() => setRemoveTarget(null)} onRemoved={onRemoved} />
       <UnusedDepsModal opened={unusedOpen} onClose={() => setUnusedOpen(false)} onRemoved={onUnusedRemoved} busyReason={removeBlock} />
       <MissingDepsModal

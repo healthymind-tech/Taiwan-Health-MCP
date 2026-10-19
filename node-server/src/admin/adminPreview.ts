@@ -928,11 +928,16 @@ interface IgScope {
 async function igPackageScope(params: Params): Promise<IgScope | { error: string }> {
   const pkg = pStr(params, "package_id");
   if (!pkg) return { error: "package_id is required" };
-  const known = await query("SELECT 1 FROM fhir.ig_packages WHERE package_id = $1 LIMIT 1", [pkg]);
-  if (known.rows.length === 0) return { error: `Unknown IG package '${pkg}'` };
+  // Optional: several versions of one package can be installed side by side.
+  const ver = pStr(params, "package_version");
+  const known = ver
+    ? await query("SELECT 1 FROM fhir.ig_packages WHERE package_id = $1 AND version = $2 LIMIT 1", [pkg, ver])
+    : await query("SELECT 1 FROM fhir.ig_packages WHERE package_id = $1 LIMIT 1", [pkg]);
+  if (known.rows.length === 0) return { error: `Unknown IG package '${pkg}${ver ? `@${ver}` : ""}'` };
   const lit = `'${pkg.replace(/'/g, "''")}'`;
+  const verCond = ver ? ` AND package_version = '${ver.replace(/'/g, "''")}'` : "";
   const scoped = (table: string, alias: string): string =>
-    `(SELECT * FROM ${table} WHERE package_id = ${lit}) AS ${alias}`;
+    `(SELECT * FROM ${table} WHERE package_id = ${lit}${verCond}) AS ${alias}`;
   return {
     artifacts: scoped("fhir.artifacts", "artifacts"),
     concepts: scoped("fhir.concepts", "concepts"),

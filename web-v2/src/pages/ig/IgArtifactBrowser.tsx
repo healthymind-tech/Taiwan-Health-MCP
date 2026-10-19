@@ -1,299 +1,312 @@
-import {
-  Badge,
-  Box,
-  Button,
-  Chip,
-  CloseButton,
-  Group,
-  Pagination,
-  ScrollArea,
-  Skeleton,
-  Stack,
-  Text,
-  TextInput,
-} from "@mantine/core";
-import { IconArrowLeft, IconSearch } from "@tabler/icons-react";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
-import { DataTable, type Column } from "@/components/DataTable";
+import { Badge, Box, Button, Chip, CloseButton, Group, Kbd, ScrollArea, Select, Skeleton, Stack, Text, TextInput } from "@mantine/core";
+import { IconCategory, IconFilterOff, IconSearch } from "@tabler/icons-react";
+import { useEffect, useMemo, useRef, useState, type JSX, type ReactNode } from "react";
 import { EmptyState, ErrorState } from "@/components/EmptyState";
-import { KeyValue } from "@/components/KeyValue";
-import { CopyText } from "@/components/CopyText";
-import { api, qs } from "@/lib/api";
-import { qk } from "@/lib/queryKeys";
 import { fmtNumber } from "@/lib/format";
-import { useDebounced } from "@/lib/hooks";
-import { IgCodeSystemTree } from "@/pages/terminology/explorer/IgCodeSystemTree";
-import type { IgArtifact, IgPreviewPayload } from "./igTypes";
+import { useDebounced, useIsMobile } from "@/lib/hooks";
+import type { IgRef } from "./igTypes";
+import { ArtifactDrawer } from "./detail/ArtifactDrawer";
+import { ExampleList, ExtensionGrid, GenericList, ProfileGrid, SearchParamTable, TerminologyList, type ViewProps } from "./detail/ArtifactViews";
+import { CATEGORY_META, CATEGORY_ORDER, DP, isCategory, useDetailParams } from "./detail/detailMeta";
+import { useIgArtifacts, useIgOverview, type ArtifactItem, type Category, type CategoryCount } from "./detail/explorerApi";
+import classes from "./detail/detail.module.css";
 
-type Row = Record<string, unknown>;
+const ALL = "all";
+const PAGE = 300;
 
-const s = (v: unknown): string => (v === null || v === undefined ? "" : typeof v === "string" ? v : typeof v === "number" || typeof v === "boolean" ? String(v) : JSON.stringify(v));
+const VIEW: Record<Category, (p: ViewProps) => JSX.Element> = {
+  profile: ProfileGrid,
+  datatype: ProfileGrid,
+  logical: ProfileGrid,
+  base: ProfileGrid,
+  extension: ExtensionGrid,
+  terminology: TerminologyList,
+  search: SearchParamTable,
+  example: ExampleList,
+  capability: GenericList,
+};
 
-function usePreview(packageId: string, params: Record<string, string>, enabled = true) {
-  const all = useMemo(() => ({ package_id: packageId, ...params }), [packageId, params]);
-  return useQuery({
-    queryKey: qk.modulePreview("ig", all),
-    queryFn: () => api.get<IgPreviewPayload>("/admin/api/modules/ig/preview" + qs(all)),
-    enabled,
-    placeholderData: keepPreviousData,
-    staleTime: 60_000,
-  });
+function groupLabel(cat: Category, key: string): string {
+  if (!key) return cat === "logical" ? "邏輯模型" : cat === "extension" ? "未宣告使用位置" : "其他";
+  return key;
 }
 
-const PER_PAGE = 25;
+interface Segment {
+  key: string;
+  cat: Category;
+  group: string;
+  /** Singleton groups merged into one segment ("其他"). */
+  merged: boolean;
+  items: ArtifactItem[];
+}
 
-/** Detail rows differ by resource type: concepts, profile elements, ValueSet members. */
-function detailColumns(resourceType: string): Column<Row>[] {
-  if (resourceType === "StructureDefinition") {
-    return [
-      {
-        key: "path",
-        header: "元素路徑",
-        primary: true,
-        render: (r) => (
-          <Text fz="sm" ff="monospace" style={{ wordBreak: "break-all" }}>
-            {s(r.path)}
-            {s(r.slice_name) && <Text span c="dimmed">:{s(r.slice_name)}</Text>}
-          </Text>
-        ),
-      },
-      { key: "card", header: "基數", render: (r) => <Text fz="sm" ff="monospace">{s(r.cardinality)}</Text>, nowrap: true },
-      { key: "type", header: "型別", render: (r) => <Text fz="xs" style={{ wordBreak: "break-word" }}>{s(r.type) || "—"}</Text>, hideOnMobile: true },
-      {
-        key: "flags",
-        header: "旗標",
-        render: (r) => (
-          <Group gap={4}>
-            {r.must_support === true && <Badge size="xs" color="brand">MS</Badge>}
-            {r.is_modifier === true && <Badge size="xs" color="amber">?!</Badge>}
-            {s(r.binding_strength) && <Badge size="xs" variant="outline" color="gray">{s(r.binding_strength)}</Badge>}
-          </Group>
-        ),
-      },
-      { key: "short", header: "說明", render: (r) => <Text fz="xs" lineClamp={2}>{s(r.short) || "—"}</Text>, hideOnMobile: true },
-    ];
+/**
+ * Items in server order, split into (category, group) runs. Within a category,
+ * groups of one item are merged into a trailing "其他" segment so a long tail
+ * of one-profile resources renders as one grid instead of one card per row.
+ */
+export function segmentsOf(items: ArtifactItem[], byCategory: boolean): Segment[] {
+  const runs: Segment[] = [];
+  for (const it of items) {
+    const k = byCategory ? it.category : `${it.category}|${it.group}`;
+    const last = runs[runs.length - 1];
+    if (last && last.key === k) last.items.push(it);
+    else runs.push({ key: k, cat: it.category, group: it.group, merged: false, items: [it] });
   }
-  if (resourceType === "CodeSystem") {
-    return [
-      { key: "code", header: "Code", primary: true, render: (r) => <Text fz="sm" ff="monospace">{s(r.code)}</Text> },
-      { key: "display", header: "Display", render: (r) => <Text fz="sm">{s(r.display) || "—"}</Text> },
-      { key: "definition", header: "定義", render: (r) => <Text fz="xs" lineClamp={2}>{s(r.definition) || "—"}</Text>, hideOnMobile: true },
-    ];
-  }
-  return [
-    { key: "code", header: "Code", primary: true, render: (r) => <Text fz="sm" ff="monospace">{s(r.code) || "—"}</Text> },
-    { key: "display", header: "Display", render: (r) => <Text fz="sm" style={{ wordBreak: "break-word" }}>{s(r.display) || "—"}</Text> },
-    { key: "system", header: "System", render: (r) => <Text fz="xs" ff="monospace" style={{ wordBreak: "break-all" }}>{s(r.system) || "—"}</Text>, hideOnMobile: true },
-    { key: "row_type", header: "來源", render: (r) => <Badge size="xs" variant="light" color="gray">{s(r.row_type) || "—"}</Badge> },
+  if (byCategory) return runs;
+  const big = runs.filter((r) => r.items.length > 1);
+  const singles = runs.filter((r) => r.items.length === 1);
+  if (singles.length < 2) return runs;
+  return [...big, { key: `${singles[0].cat}|~merged`, cat: singles[0].cat, group: "", merged: true, items: singles.flatMap((r) => r.items) }];
+}
+
+const CHIP_LIMIT = 12;
+
+function Rail({ facets, active, onPick, searching, total }: { facets: CategoryCount[]; active: string; onPick: (c: string) => void; searching: boolean; total: number }) {
+  const count = (c: Category) => facets.find((f) => f.key === c)?.count ?? 0;
+  const present = CATEGORY_ORDER.filter((c) => count(c) > 0 || c === active);
+  const items: { key: string; label: string; n: number; color?: string; icon?: ReactNode }[] = [
+    ...(searching ? [{ key: ALL, label: "全部分類", n: total, icon: <IconCategory size={16} /> }] : []),
+    ...present.map((c) => ({ key: c, label: CATEGORY_META[c].label, n: count(c), color: CATEGORY_META[c].color, icon: CATEGORY_META[c].icon(16) })),
   ];
-}
-
-function ArtifactDetail({ packageId, artifactKey, onBack }: { packageId: string; artifactKey: string; onBack: () => void }) {
-  const [page, setPage] = useState(1);
-  const params = useMemo(() => ({ node: `artifact:${artifactKey}`, page: String(page), per_page: String(PER_PAGE) }), [artifactKey, page]);
-  const q = usePreview(packageId, params);
-  const d = q.data;
-  const sel = d?.selected;
-  const det = d?.detail ?? {};
-  const total = Number(d?.total ?? 0);
-  const pages = Math.max(1, Math.ceil(total / PER_PAGE));
-  const rows = (d?.rows ?? []) as Row[];
-
   return (
-    <Stack gap="md">
-      <Group gap="xs">
-        <Button variant="subtle" size="xs" leftSection={<IconArrowLeft size={14} />} onClick={onBack}>
-          返回構件列表
-        </Button>
-      </Group>
-      {q.isError ? (
-        <ErrorState error={q.error} onRetry={() => void q.refetch()} />
-      ) : q.isPending ? (
-        <Skeleton h={160} />
-      ) : d?.type === "error" ? (
-        <ErrorState error={new Error(d.message ?? "找不到構件")} />
-      ) : sel ? (
-        <>
-          <Box>
-            <Group gap={6} wrap="wrap">
-              <Badge variant="light">{sel.resource_type}</Badge>
-              {sel.status && <Badge variant="outline" color="gray">{sel.status}</Badge>}
-            </Group>
-            <Text fw={650} fz="lg" mt={6} style={{ wordBreak: "break-word" }}>
-              {sel.title}
-            </Text>
-            {sel.description && (
-              <Text fz="sm" c="dimmed" mt={4} lineClamp={6} style={{ whiteSpace: "pre-wrap" }}>
-                {sel.description}
-              </Text>
-            )}
+    <Stack gap={2} role="tablist" aria-orientation="vertical" aria-label="構件分類">
+      {items.map((it) => (
+        <button
+          key={it.key}
+          type="button"
+          role="tab"
+          aria-selected={active === it.key}
+          className={classes.railItem}
+          data-active={active === it.key || undefined}
+          data-disabled={it.n === 0 || undefined}
+          style={{ ["--rail-color" as string]: it.color }}
+          onClick={() => onPick(it.key)}
+        >
+          <Box c={it.color ? undefined : "dimmed"} style={{ display: "flex", color: it.color }}>
+            {it.icon}
           </Box>
-          <KeyValue
-            cols={2}
-            items={[
-              { label: "Artifact key", value: <CopyText value={sel.artifact_key} mono /> },
-              { label: "ID", value: <CopyText value={sel.artifact_id} mono /> },
-              { label: "Canonical URL", value: <CopyText value={s(det.url)} mono />, full: true, hidden: !s(det.url) },
-              { label: "基底", value: <CopyText value={s(det.base_definition)} mono />, full: true, hidden: !s(det.base_definition) },
-              { label: "型別", value: s(det.type) || sel.base_type, hidden: !(s(det.type) || sel.base_type) },
-              { label: "Derivation", value: sel.derivation, hidden: !sel.derivation },
-              { label: "分組", value: sel.grouping_name || sel.grouping_id, hidden: !(sel.grouping_name || sel.grouping_id) },
-              { label: "版本", value: s(det.version), hidden: !s(det.version) },
-              { label: "Expression", value: <Text fz="xs" ff="monospace">{s(det.expression)}</Text>, full: true, hidden: !s(det.expression) },
-            ]}
-          />
-          {sel.resource_type === "CodeSystem" && (
-            <Stack gap={6}>
-              <Text fw={600} fz="sm">
-                概念階層
-              </Text>
-              <IgCodeSystemTree packageId={packageId} artifactKey={sel.artifact_key} />
-            </Stack>
-          )}
-          {["StructureDefinition", "ValueSet"].includes(sel.resource_type) && (
-            <Stack gap={6}>
-              <Text fw={600} fz="sm">
-                {sel.resource_type === "StructureDefinition" ? "元素（differential）" : sel.resource_type === "CodeSystem" ? "概念" : "允許的代碼"}
-                <Text span c="dimmed" fz="xs" ml={6}>
-                  共 {fmtNumber(total)} 筆
-                </Text>
-              </Text>
-              <Box style={{ border: "1px solid var(--mantine-color-default-border)", borderRadius: "var(--mantine-radius-md)", overflow: "hidden" }}>
-                <DataTable
-                  columns={detailColumns(sel.resource_type)}
-                  rows={rows}
-                  rowKey={(r) => `${s(r.id ?? r.element_id)}|${s(r.system)}|${s(r.code)}|${rows.indexOf(r)}`}
-                  minWidth={560}
-                  empty={<EmptyState compact title="沒有內容" />}
-                />
-              </Box>
-              {pages > 1 && (
-                <Group justify="flex-end">
-                  <Pagination size="sm" total={pages} value={page} onChange={setPage} siblings={0} />
-                </Group>
-              )}
-            </Stack>
-          )}
-        </>
-      ) : null}
+          <Text fz="sm" style={{ flex: 1, minWidth: 0 }} truncate>
+            {it.label}
+          </Text>
+          <Text fz="xs" c="dimmed" className="tabular">
+            {fmtNumber(it.n)}
+          </Text>
+        </button>
+      ))}
     </Stack>
   );
 }
 
-/** Artifacts of one IG, browsable by resource type with search. */
-export function IgArtifactBrowser({ packageId }: { packageId: string }) {
-  const [type, setType] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
-  const [page, setPage] = useState(1);
-  const [openKey, setOpenKey] = useState<string | null>(null);
-  const q = useDebounced(search.trim(), 350);
+/** 構件: category rail + per-category presentation, URL-synced (cat / grp / aq / art). */
+export function IgArtifactBrowser({ ig, onOpenCodeSystem }: { ig: IgRef; onOpenCodeSystem: (csId: string) => void }) {
+  const isMobile = useIsMobile();
+  const { get, patch } = useDetailParams();
+  const urlQ = get(DP.q) ?? "";
+  const [search, setSearch] = useState(urlQ);
+  const debounced = useDebounced(search.trim(), 300);
+  const [limit, setLimit] = useState(PAGE);
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  const root = usePreview(packageId, useMemo(() => ({}), []));
-  const typeCounts = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const g of root.data?.tree ?? []) for (const c of g.children ?? []) m.set(c.resource_type, (m.get(c.resource_type) ?? 0) + Number(c.artifact_count ?? 0));
-    return [...m.entries()].sort((a, b) => b[1] - a[1]);
-  }, [root.data]);
-  const selectedType = type ?? (typeCounts.find(([t]) => t === "StructureDefinition")?.[0] ?? typeCounts[0]?.[0] ?? null);
+  useEffect(() => {
+    if (debounced !== urlQ) patch({ [DP.q]: debounced || null, [DP.group]: null }, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debounced]);
+  useEffect(() => {
+    setSearch((cur) => (cur.trim() === urlQ ? cur : urlQ));
+  }, [urlQ]);
 
-  const listParams = useMemo(
-    () => ({ resource_type: selectedType ?? "", q, page: String(page), per_page: String(PER_PAGE) }),
-    [selectedType, q, page],
-  );
-  const list = usePreview(packageId, listParams, Boolean(selectedType));
+  const overview = useIgOverview(ig);
+  const searching = urlQ !== "";
+  const catParam = get(DP.cat);
+  const firstCat = overview.data?.categories[0]?.key ?? "profile";
+  const cat: string = catParam === ALL && searching ? ALL : isCategory(catParam) ? catParam : searching ? ALL : firstCat;
+  const group = cat !== ALL ? get(DP.group) : null;
+  const artKey = get(DP.artifact);
 
-  if (openKey) return <ArtifactDetail packageId={packageId} artifactKey={openKey} onBack={() => setOpenKey(null)} />;
+  useEffect(() => setLimit(PAGE), [cat, group, urlQ]);
 
-  if (root.isError) return <ErrorState error={root.error} onRetry={() => void root.refetch()} />;
-  if (root.isPending) return <Skeleton h={200} />;
-  if (root.data?.type === "empty" || root.data?.type === "error" || typeCounts.length === 0) {
-    return <EmptyState compact title="沒有構件索引" description={root.data?.message ?? "此 IG 沒有可瀏覽的構件。"} />;
-  }
+  const list = useIgArtifacts(ig, { category: cat === ALL ? "" : cat, group, q: urlQ, limit }, Boolean(overview.data) || Boolean(catParam));
+  const data = list.data;
+  const facets = data?.facets ?? overview.data?.categories ?? [];
+  const facetTotal = facets.reduce((n, f) => n + f.count, 0);
+  const groups = data?.groups ?? [];
 
-  const rows = (list.data?.rows ?? []) as unknown as IgArtifact[];
-  const total = Number(list.data?.total ?? 0);
-  const pages = Math.max(1, Math.ceil(total / PER_PAGE));
-  const columns: Column<IgArtifact>[] = [
-    {
-      key: "title",
-      header: "名稱",
-      primary: true,
-      render: (a) => (
-        <Stack gap={0} style={{ minWidth: 0 }}>
-          <Text fz="sm" fw={600} style={{ wordBreak: "break-word" }}>
-            {a.title}
-          </Text>
-          <Text fz="xs" c="dimmed" ff="monospace" style={{ wordBreak: "break-all" }}>
-            {a.artifact_id}
-          </Text>
-        </Stack>
-      ),
-    },
-    { key: "type", header: "類型", render: (a) => <Badge size="xs" variant="light">{a.resource_type}</Badge>, nowrap: true },
-    { key: "base", header: "基底 / Kind", render: (a) => <Text fz="xs">{a.base_type || a.kind || "—"}</Text>, hideOnMobile: true },
-    { key: "status", header: "狀態", render: (a) => <Text fz="xs">{a.status || "—"}</Text>, hideOnMobile: true },
-  ];
+  // "/" focuses the search box (outside inputs).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (e.key === "/" && !(t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable))) {
+        e.preventDefault();
+        inputRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  const pick = (c: string) => patch({ [DP.cat]: c === firstCat && !searching ? null : c, [DP.group]: null });
+  const open = (key: string) => patch({ [DP.artifact]: key });
+  const segments = useMemo(() => segmentsOf(data?.items ?? [], cat === ALL), [data?.items, cat]);
+  const [allChips, setAllChips] = useState(false);
+  useEffect(() => setAllChips(false), [cat]);
+  const chipGroups = allChips || groups.length <= CHIP_LIMIT + 2 ? groups : groups.slice(0, CHIP_LIMIT);
+  const showGroupHeads = cat === ALL || (!group && groups.length > 1);
+
+  if (overview.isError) return <ErrorState error={overview.error} onRetry={() => void overview.refetch()} />;
+  if (overview.data && overview.data.total === 0) return <EmptyState title="此 IG 沒有構件" description="套件中沒有可瀏覽的 FHIR 資源。" />;
 
   return (
-    <Stack gap="sm">
-      <ScrollArea type="never" offsetScrollbars={false}>
-        <Chip.Group
-          value={selectedType ?? ""}
-          onChange={(v) => {
-            setType(typeof v === "string" ? v : null);
-            setPage(1);
-          }}
-        >
-          <Group gap={6} wrap="wrap">
-            {typeCounts.map(([t, n]) => (
-              <Chip key={t} value={t} size="xs" variant="light">
-                {t}（{fmtNumber(n)}）
-              </Chip>
-            ))}
-          </Group>
-        </Chip.Group>
-      </ScrollArea>
-      <TextInput
-        leftSection={<IconSearch size={16} />}
-        placeholder={`在 ${selectedType ?? "所有類型"} 中搜尋 ID、名稱、標題、URL`}
-        value={search}
-        onChange={(e) => {
-          setSearch(e.currentTarget.value);
-          setPage(1);
-        }}
-        rightSection={search ? <CloseButton size="sm" aria-label="清除搜尋" onClick={() => setSearch("")} /> : null}
-      />
-      {list.isError ? (
-        <ErrorState error={list.error} onRetry={() => void list.refetch()} />
-      ) : (
-        <Box
-          style={{
-            border: "1px solid var(--mantine-color-default-border)",
-            borderRadius: "var(--mantine-radius-md)",
-            overflow: "hidden",
-            opacity: list.isFetching && list.isPlaceholderData ? 0.6 : 1,
-          }}
-        >
-          <DataTable
-            columns={columns}
-            rows={rows}
-            rowKey={(a) => a.artifact_key}
-            loading={list.isPending}
-            onRowClick={(a) => setOpenKey(a.artifact_key)}
-            minWidth={560}
-            empty={<EmptyState compact icon={<IconSearch size={20} />} title="沒有符合的構件" description="換個關鍵字或類型試試。" />}
+    <div className={classes.layout}>
+      <Box className={isMobile ? undefined : classes.rail}>
+        {isMobile ? (
+          <Select
+            aria-label="構件分類"
+            value={cat}
+            onChange={(v) => v && pick(v)}
+            allowDeselect={false}
+            data={[
+              ...(searching ? [{ value: ALL, label: `全部分類（${facetTotal}）` }] : []),
+              ...CATEGORY_ORDER.filter((c) => facets.some((f) => f.key === c && f.count > 0) || c === cat).map((c) => ({
+                value: c,
+                label: `${CATEGORY_META[c].label}（${facets.find((f) => f.key === c)?.count ?? 0}）`,
+              })),
+            ]}
+            comboboxProps={{ withinPortal: true }}
           />
-        </Box>
-      )}
-      {total > 0 && (
-        <Group justify="space-between" gap="xs" wrap="wrap">
-          <Text fz="xs" c="dimmed">
-            共 {fmtNumber(total)} 筆
-          </Text>
-          {pages > 1 && <Pagination size="sm" total={pages} value={Math.min(page, pages)} onChange={setPage} siblings={0} />}
-        </Group>
-      )}
-    </Stack>
+        ) : !overview.data && !data ? (
+          <Stack gap={6}>
+            {Array.from({ length: 7 }, (_, i) => (
+              <Skeleton key={i} h={34} />
+            ))}
+          </Stack>
+        ) : (
+          <Rail facets={facets} active={cat} onPick={pick} searching={searching} total={facetTotal} />
+        )}
+      </Box>
+
+      <Stack gap="md" style={{ minWidth: 0 }}>
+        <TextInput
+          ref={inputRef}
+          leftSection={<IconSearch size={16} />}
+          placeholder="搜尋所有構件：ID、名稱、標題、canonical、說明"
+          aria-label="搜尋構件"
+          value={search}
+          onChange={(e) => setSearch(e.currentTarget.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape" && search) {
+              e.stopPropagation();
+              setSearch("");
+            }
+          }}
+          rightSectionWidth={search ? 36 : 44}
+          rightSection={search ? <CloseButton size="sm" aria-label="清除搜尋" onClick={() => setSearch("")} /> : isMobile ? null : <Kbd size="xs">/</Kbd>}
+        />
+
+        {cat !== ALL && isCategory(cat) && (
+          <Group justify="space-between" gap="xs" wrap="wrap" className={classes.fadeUp} key={cat}>
+            <Box style={{ minWidth: 0 }}>
+              <Group gap={8}>
+                <span className={classes.swatch} style={{ background: CATEGORY_META[cat].color }} />
+                <Text fw={650}>{CATEGORY_META[cat].label}</Text>
+                <Badge variant="light" color="gray">
+                  {fmtNumber(data?.total ?? facets.find((f) => f.key === cat)?.count ?? 0)}
+                </Badge>
+              </Group>
+              <Text fz="xs" c="dimmed" mt={2}>
+                {CATEGORY_META[cat].hint}
+              </Text>
+            </Box>
+          </Group>
+        )}
+
+        {cat !== ALL && groups.length > 1 && (
+          <ScrollArea type="auto" offsetScrollbars scrollbarSize={6}>
+            <Chip.Group value={group ?? ""} onChange={(v) => patch({ [DP.group]: typeof v === "string" && v !== "" ? v : null })}>
+              <Group gap={6} wrap={isMobile ? "nowrap" : "wrap"}>
+                <Chip value="" size="xs" variant="light" checked={group === null} onClick={() => patch({ [DP.group]: null })}>
+                  全部（{fmtNumber(groups.reduce((n, g) => n + g.count, 0))}）
+                </Chip>
+                {chipGroups.map((g) => (
+                  <Chip key={g.key || "∅"} value={g.key} size="xs" variant="light">
+                    {groupLabel(cat as Category, g.key)}（{fmtNumber(g.count)}）
+                  </Chip>
+                ))}
+                {chipGroups.length < groups.length && (
+                  <Button size="compact-xs" variant="subtle" onClick={() => setAllChips(true)}>
+                    再顯示 {groups.length - chipGroups.length} 個
+                  </Button>
+                )}
+              </Group>
+            </Chip.Group>
+          </ScrollArea>
+        )}
+
+        <Text fz="xs" c="dimmed" aria-live="polite">
+          {data ? (searching ? `「${urlQ}」：${cat === ALL ? "全部分類" : CATEGORY_META[cat as Category]?.label} 共 ${fmtNumber(data.total)} 筆` : `共 ${fmtNumber(data.total)} 筆`) : " "}
+        </Text>
+
+        {list.isError ? (
+          <ErrorState error={list.error} onRetry={() => void list.refetch()} />
+        ) : !data ? (
+          <Stack gap="sm">
+            <Skeleton h={24} w={180} />
+            <Group grow>
+              <Skeleton h={120} />
+              <Skeleton h={120} />
+            </Group>
+            <Group grow>
+              <Skeleton h={120} />
+              <Skeleton h={120} />
+            </Group>
+          </Stack>
+        ) : data.items.length === 0 ? (
+          <EmptyState
+            compact
+            icon={<IconFilterOff size={20} />}
+            title={searching ? "沒有符合的構件" : "這個分類沒有構件"}
+            description={searching ? "換個關鍵字，或切到「全部分類」。" : undefined}
+            action={
+              searching ? (
+                <Button variant="light" size="xs" onClick={() => setSearch("")}>
+                  清除搜尋
+                </Button>
+              ) : undefined
+            }
+          />
+        ) : (
+          <Stack gap="lg" style={{ opacity: list.isPlaceholderData ? 0.55 : 1, transition: "opacity 150ms ease" }}>
+            {segments.map((s) => {
+              const View = VIEW[s.cat];
+              return (
+                <Stack key={s.key} gap="xs">
+                  {showGroupHeads && (
+                    <Group gap={8} className={classes.groupHead}>
+                      {cat === ALL && <span className={classes.swatch} style={{ background: CATEGORY_META[s.cat].color }} />}
+                      <Text fz="sm" fw={650}>
+                        {cat === ALL ? CATEGORY_META[s.cat].label : s.merged ? "其他（各 1 個）" : groupLabel(s.cat, s.group)}
+                      </Text>
+                      <Text fz="xs" c="dimmed" className="tabular">
+                        {cat === ALL || s.merged ? `${s.items.length}` : `${groups.find((g) => g.key === s.group)?.count ?? s.items.length}`}
+                      </Text>
+                    </Group>
+                  )}
+                  <View ig={ig} showGroup={s.merged || cat === ALL} items={s.items} resolved={data.resolved ?? {}} activeKey={artKey} onOpen={open} onOpenCodeSystem={onOpenCodeSystem} />
+                </Stack>
+              );
+            })}
+            {data.items.length < data.total && (
+              <Group justify="center">
+                <Button variant="default" loading={list.isFetching} onClick={() => setLimit((n) => Math.min(1000, n + PAGE))} disabled={limit >= 1000}>
+                  {limit >= 1000 ? `僅顯示前 1,000 筆，請用搜尋縮小範圍` : `再載入（已顯示 ${fmtNumber(data.items.length)} / ${fmtNumber(data.total)}）`}
+                </Button>
+              </Group>
+            )}
+          </Stack>
+        )}
+      </Stack>
+
+      <ArtifactDrawer ig={ig} artifactKey={artKey} onClose={() => patch({ [DP.artifact]: null })} onOpenArtifact={open} onOpenCodeSystem={onOpenCodeSystem} />
+    </div>
   );
 }

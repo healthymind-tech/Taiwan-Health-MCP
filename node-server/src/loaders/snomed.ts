@@ -404,6 +404,46 @@ export const SNOMED_EDITION_UPSERT_SQL = `
 /** International edition module (the only edition this loader imports). */
 export const SNOMED_INT_MODULE = "900000000000207008";
 
+/**
+ * Rebuild snomed.concept_ancestors (migration 20261028) — the transitive closure of the active
+ * is-a relationships, one row per concept with its proper ancestors — from snomed.concepts /
+ * snomed.relationships as they stand. Simple-query multi-statement (no parameters), meant to run
+ * inside the import transaction right after the relationships are written: ~30 s and ~80 MB for
+ * the International edition (7.4 M ancestor links). The table is created when the migration has
+ * not been applied, so an import also brings an older database up to date.
+ *
+ * The relationships were just bulk-inserted (no statistics, secondary indexes possibly dropped),
+ * so the table is analyzed and nested loops are disabled for the recursion: both sides of its
+ * join are CTE scans, and a nested loop over them would be quadratic.
+ *
+ * Used by search_snomed_concept's hierarchy_filter (terminologyRanking.rankSnomed).
+ */
+export const SNOMED_ANCESTORS_REBUILD_SQL = `
+  CREATE TABLE IF NOT EXISTS snomed.concept_ancestors (
+    concept_id   BIGINT PRIMARY KEY,
+    ancestor_ids BIGINT[] NOT NULL
+  );
+  TRUNCATE snomed.concept_ancestors;
+  ANALYZE snomed.relationships;
+  SET LOCAL work_mem = '256MB';
+  SET LOCAL enable_nestloop = off;
+  INSERT INTO snomed.concept_ancestors (concept_id, ancestor_ids)
+  WITH RECURSIVE isa AS MATERIALIZED (
+    SELECT source_id AS s, destination_id AS d FROM snomed.relationships
+     WHERE type_id = 116680003 AND active = TRUE AND source_id <> destination_id
+  ),
+  closure (s, d) AS (
+    SELECT s, d FROM isa
+    UNION
+    SELECT c.s, i.d FROM closure c JOIN isa i ON i.s = c.d
+  )
+  SELECT k.concept_id, COALESCE(array_agg(c.d ORDER BY c.d) FILTER (WHERE c.d IS NOT NULL), '{}'::bigint[])
+    FROM snomed.concepts k LEFT JOIN closure c ON c.s = k.concept_id
+   GROUP BY k.concept_id;
+  RESET enable_nestloop;
+  RESET work_mem;
+  ANALYZE snomed.concept_ancestors;`;
+
 async function parseRelationships(text: string, loaded: Set<string>): Promise<Cell[][]> {
   const rows: Cell[][] = [];
   for await (const row of dictRows(text)) {
@@ -725,6 +765,9 @@ export async function loadSnomed(pool: pg.Pool, zipPath: string): Promise<void> 
         assocRows,
       );
     }
+
+    logInfo("  Building is-a ancestor closure ...");
+    await client.query(SNOMED_ANCESTORS_REBUILD_SQL);
 
     await client.query("COMMIT");
   } catch (err) {

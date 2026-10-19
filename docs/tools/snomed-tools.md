@@ -20,6 +20,14 @@
 ### 回傳重點
 每筆含 `concept_id`、`fsn`、`preferred_term`、`active` 與 `hierarchy_tag`，適合拿來挑選下一步要查的 concept；完整資料用 `query_snomed_concept`。
 
+### `hierarchy_filter` 的行為
+`hierarchy_filter` 限定為該概念本身與其 IS-A 後代（自身也算）。全文那一半一律是該階層內最佳的字面匹配；向量那一半依階層大小而定：
+
+- **≤ 1,000 個概念**（例如 Heart structure）：對階層內每個概念做精確向量比對（與未過濾時同樣的排序方式）。
+- **> 1,000 個概念**（例如 Body structure 42,697、Procedure 59,616、Substance 27,725）：沿 HNSW 向量索引走訪並只保留階層成員，走訪上限 1,000 筆。成員判斷靠 `snomed.concept_ancestors`（每個概念的 IS-A 祖先集合，匯入時建立）做一次主鍵查詢。這讓有過濾的搜尋和未過濾的花費相當（先前精確掃描整個大階層要 40–130 秒）；代價是當查詢詞與該階層毫無字面或語意關聯時（例如在 Substance 階層查 "fracture of femur"），可能回傳較少或空結果，而不是該階層中「最不遠」的概念。
+
+`snomed.concept_ancestors` 尚未建立（未套用 migration `20261028_snomed_concept_ancestors.sql`）時，會改用每次展開後代集合的方式，結果相同、但每次多花 0.2–0.5 秒（熱快取）。
+
 ---
 
 ## `query_snomed_concept`

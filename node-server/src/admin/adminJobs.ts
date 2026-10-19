@@ -2580,7 +2580,7 @@ export async function runSnomedImportJob(opts: {
 }): Promise<void> {
   const { workerName, job } = opts;
   const jobId = String(job.job_id);
-  const { buildSnomedStagePayload, SNOMED_EDITION_UPSERT_SQL, SNOMED_INT_MODULE } = await import("../loaders/snomed.js");
+  const { buildSnomedStagePayload, SNOMED_EDITION_UPSERT_SQL, SNOMED_INT_MODULE, SNOMED_ANCESTORS_REBUILD_SQL } = await import("../loaders/snomed.js");
   const {
     withMaterializedSources,
     runValidateStep,
@@ -2850,6 +2850,13 @@ export async function runSnomedImportJob(opts: {
                   FROM admin.stage_snomed_inactive_descriptions WHERE job_id = $1::uuid`,
             args: [jobId],
             label: `inactive / inactive-concept descriptions (${fmt(inactiveDescriptionRows.length)})`,
+          },
+          {
+            // Is-a ancestor closure (hierarchy_filter of search_snomed_concept), rebuilt from the
+            // relationships just copied. No parameters: a simple-query multi-statement.
+            sql: SNOMED_ANCESTORS_REBUILD_SQL,
+            args: [],
+            label: "is-a ancestor closure",
           },
           {
             // Same transaction as the tables it describes. Without a release

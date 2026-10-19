@@ -523,6 +523,16 @@ export async function adminHandler(req: Request, res: Response, next: NextFuncti
       return;
     }
 
+    // ── FHIR profile viewer (read-only; before the /igs/{id}/{version} routes) ──
+    if (path === "/admin/api/igs/profile" || path.startsWith("/admin/api/igs/profile/")) {
+      const { handleIgProfileApi, defaultProfileApiDeps } = await import("./igProfileApi.js");
+      const out = await handleIgProfileApi(await defaultProfileApiDeps(), method, path, req.query as Record<string, unknown>);
+      if (out) {
+        sendJson(res, out.status, out.body);
+        return;
+      }
+    }
+
     // ── Terminology explorer (read-only tree / graph / facet views) ─────────
     if (path.startsWith("/admin/api/terminology/")) {
       const { handleTerminologyApi } = await import("./termViz/router.js");
@@ -533,6 +543,17 @@ export async function adminHandler(req: Request, res: Response, next: NextFuncti
         path,
         req.query as Record<string, unknown>,
       );
+      if (out) {
+        sendJson(res, out.status, out.body);
+        return;
+      }
+    }
+
+    // ── IG explorer (read-only IG detail page: composition, artifacts, CodeSystems) ──
+    if (path.startsWith("/admin/api/ig-explorer/")) {
+      const { handleIgExplorerApi } = await import("./igExplorer.js");
+      const { query: dbQuery } = await import("../db.js");
+      const out = await handleIgExplorerApi((sql, params) => dbQuery(sql, params as unknown[]), method, path, req.query as Record<string, unknown>);
       if (out) {
         sendJson(res, out.status, out.body);
         return;

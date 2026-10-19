@@ -309,7 +309,10 @@ export const MCP_TOOL_EXAMPLES: Record<string, ToolExampleSet> = {
   },
 
   // ── FHIR IG ──────────────────────────────────────────────────────────────
-  fhir_list_igs: { title: "列出已安裝 IG", examples: [example("default", "全部 IG", {})] },
+  fhir_list_igs: {
+    title: "列出已安裝 IG",
+    examples: [example("default", "全部 IG", { compact: false }), example("compact", "精簡輸出（套件 → 標題）", { compact: true })],
+  },
   fhir_get_ig: {
     title: "IG 套件詳細資料",
     examples: [example("twcore", "TW Core 1.0.0", { package_id: TWCORE, version: TWCORE_VERSION })],
@@ -319,6 +322,7 @@ export const MCP_TOOL_EXAMPLES: Record<string, ToolExampleSet> = {
     examples: [
       example("sd", "TW Core 的 StructureDefinition", { resource_type: "StructureDefinition", package_id: TWCORE, version: TWCORE_VERSION, all_packages: false, limit: 20 }),
       example("vs", "TW Core 的 ValueSet", { resource_type: "ValueSet", package_id: TWCORE, version: TWCORE_VERSION, all_packages: false, limit: 20 }),
+      example("compact", "精簡輸出（id → 標題）", { resource_type: "StructureDefinition", package_id: TWCORE, version: TWCORE_VERSION, all_packages: false, limit: 50, compact: true }),
     ],
   },
   fhir_search_artifacts: {
@@ -326,6 +330,7 @@ export const MCP_TOOL_EXAMPLES: Record<string, ToolExampleSet> = {
     examples: [
       example("patient", "搜尋 Patient", { keyword: "Patient", resource_type: "StructureDefinition", package_id: TWCORE, version: TWCORE_VERSION, all_packages: false, limit: 10 }),
       example("all", "所有套件搜尋 Claim", { keyword: "Claim", resource_type: null, all_packages: true, limit: 10 }),
+      example("compact", "精簡輸出搜尋 Condition", { keyword: "Condition", resource_type: null, all_packages: false, limit: 20, compact: true }),
     ],
   },
   fhir_list_resource_profiles: {
@@ -333,6 +338,7 @@ export const MCP_TOOL_EXAMPLES: Record<string, ToolExampleSet> = {
     examples: [
       example("patient", "Patient 的 Profile", { base_type: "Patient", package_id: TWCORE, version: TWCORE_VERSION, all_packages: false }),
       example("all", "TW Core 全部 Profile", { base_type: null, package_id: TWCORE, version: TWCORE_VERSION, all_packages: false }),
+      example("compact", "TW Core 全部 Profile（精簡）", { base_type: null, package_id: TWCORE, version: TWCORE_VERSION, all_packages: false, compact: true }),
     ],
   },
   fhir_rank_resource_profiles: {

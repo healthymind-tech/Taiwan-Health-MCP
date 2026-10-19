@@ -20,6 +20,14 @@ Use it first when you only have a text term and do not yet know the concept ID. 
 ### What comes back
 Each row carries `concept_id`, `fsn`, `preferred_term`, `active` and `hierarchy_tag` — enough to pick the concept to query next; use `query_snomed_concept` for the full record.
 
+### How `hierarchy_filter` works
+`hierarchy_filter` restricts results to that concept and its IS-A descendants (the concept itself included). The full-text half is always the hierarchy's best literal matches; the vector half depends on the hierarchy's size:
+
+- **≤ 1,000 concepts** (e.g. Heart structure): an exact vector comparison against every member (the same ordering as an unfiltered search).
+- **> 1,000 concepts** (e.g. Body structure 42,697, Procedure 59,616, Substance 27,725): a walk of the HNSW vector index that keeps only members, bounded to 1,000 visited entries. Membership is one primary-key probe into `snomed.concept_ancestors` (each concept's IS-A ancestors, built at import). A filtered search therefore costs about as much as an unfiltered one (an exact scan of a large hierarchy used to take 40–130 s); the trade-off is that a query with no literal or semantic tie to the hierarchy (e.g. "fracture of femur" within Substance) can return fewer results, or none, instead of the hierarchy's "least distant" concepts.
+
+Until `snomed.concept_ancestors` exists (migration `20261028_snomed_concept_ancestors.sql` not applied), the descendant set is expanded on every call instead — same results, 0.2–0.5 s more per call (warm cache).
+
 ---
 
 ## `query_snomed_concept`

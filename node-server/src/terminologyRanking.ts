@@ -38,12 +38,16 @@ export const HNSW_EF_SEARCH = 200;
  * search — SNOMED hierarchy / ValueSet scope — still fills its LIMIT). SET LOCAL needs a
  * transaction (pgBouncer transaction mode keeps it on one server connection).
  */
-const vectorQuery: Q = async <T extends pg.QueryResultRow = pg.QueryResultRow>(sql: string, params: unknown[] = []): Promise<pg.QueryResult<T>> =>
-  withTransaction(async (c) => {
-    await c.query(`SET LOCAL hnsw.ef_search = ${HNSW_EF_SEARCH}`);
-    await c.query("SET LOCAL hnsw.iterative_scan = relaxed_order");
-    return c.query<T>(sql, params as never[]);
-  });
+function vectorQueryWith(maxScanTuples: number | null): Q {
+  return async <T extends pg.QueryResultRow = pg.QueryResultRow>(sql: string, params: unknown[] = []): Promise<pg.QueryResult<T>> =>
+    withTransaction(async (c) => {
+      await c.query(`SET LOCAL hnsw.ef_search = ${HNSW_EF_SEARCH}`);
+      await c.query("SET LOCAL hnsw.iterative_scan = relaxed_order");
+      if (maxScanTuples) await c.query(`SET LOCAL hnsw.max_scan_tuples = ${maxScanTuples}`);
+      return c.query<T>(sql, params as never[]);
+    });
+}
+const vectorQuery: Q = vectorQueryWith(null);
 
 // ── ICD-10-CM diagnoses ──────────────────────────────────────────────────────
 
@@ -450,8 +454,66 @@ export interface SnomedRanked {
 }
 
 /**
+ * Hierarchy filters with at most this many descendants-or-self (e.g. Heart structure, 928) get
+ * an exact vector scan over them — the nearest members however far they lie from the query, as
+ * before. Each member costs a vector read (~9 pages), so a larger hierarchy (Body structure
+ * 42,697, Procedure 59,616, Substance 27,725 — an exact scan of those took 40–130 s cold) is
+ * searched by the HNSW index walk filtered by membership instead.
+ */
+export const SNOMED_HIERARCHY_EXACT_MAX = 1000;
+/**
+ * Larger hierarchies: hnsw.max_scan_tuples of the filtered HNSW walk. The walk stops after this
+ * many index tuples and returns the members met so far, so a query far from the hierarchy costs
+ * about as much as an unfiltered search (≈ 0.36 page reads per tuple when cold; an unbounded
+ * walk read 6,400 pages — 32 s on the production disks — before this bound existed). The lexical
+ * half is not bounded: it still returns the hierarchy's best full-text matches.
+ */
+export const SNOMED_HIERARCHY_SCAN_TUPLES = 1000;
+
+/** Vector query of a large-hierarchy search: the filtered HNSW walk bounded as above. */
+const snomedFilteredVectorQuery: Q = vectorQueryWith(SNOMED_HIERARCHY_SCAN_TUPLES);
+
+let ancestorsTable: { at: number; present: boolean } | null = null;
+
+/** snomed.concept_ancestors (migration 20261028) exists and is filled? Cached 5 min; false on error. */
+async function hasSnomedAncestors(q: Q): Promise<boolean> {
+  if (ancestorsTable && Date.now() - ancestorsTable.at < 300_000) return ancestorsTable.present;
+  let present = false;
+  try {
+    present = (await q("SELECT to_regclass('snomed.concept_ancestors') IS NOT NULL AS ok")).rows[0]?.ok === true;
+    if (present) present = (await q("SELECT EXISTS (SELECT 1 FROM snomed.concept_ancestors) AS ok")).rows[0]?.ok === true;
+  } catch {
+    present = false;
+  }
+  ancestorsTable = { at: Date.now(), present };
+  return present;
+}
+
+/** Forget the cached snomed.concept_ancestors probe (tests). */
+export function resetSnomedAncestorsProbe(): void {
+  ancestorsTable = null;
+}
+
+/** Descendants-or-self of $h over active is-a (a recursive CTE body; $h / $isa are bigint params). */
+function descendantsCte(h: number, isa: number, materialized = false): string {
+  return `descendants AS ${materialized ? "MATERIALIZED " : ""}(
+              SELECT concept_id FROM snomed.concepts WHERE concept_id = $${h}::bigint
+              UNION
+              SELECT r.source_id FROM snomed.relationships r JOIN descendants d ON r.destination_id = d.concept_id
+               WHERE r.type_id = $${isa}::bigint AND r.active = TRUE
+            ),`;
+}
+
+/**
  * `scope`: restrict to these concept ids (a ValueSet's is-a expansion);
  * `hierarchy`: restrict to the descendants-or-self of this concept.
+ *
+ * Hierarchy filter: the lexical half is the hierarchy's best full-text matches (as without a
+ * filter, restricted to members); the vector half is exact over a small hierarchy
+ * (≤ SNOMED_HIERARCHY_EXACT_MAX members) and otherwise the HNSW walk filtered by membership,
+ * bounded by SNOMED_HIERARCHY_SCAN_TUPLES. Membership is one snomed.concept_ancestors probe per
+ * candidate; without that table (migration not applied / not filled yet) it is the expanded
+ * descendant set, hashed once per call. Ordering is the same rankHybrid fusion either way.
  */
 export async function rankSnomed(
   text: string,
@@ -464,33 +526,62 @@ export async function rankSnomed(
   let ctes = "";
   let restrictD = "";
   let restrictE = "";
+  // Large-hierarchy mode: membership test per candidate (lazily, in rank order).
+  let member: ((col: string) => string) | null = null;
   if (opts.hierarchy) {
     const h = params.push(String(opts.hierarchy));
-    const isa = params.push(SNOMED_IS_A);
-    ctes = `descendants AS (
-              SELECT concept_id FROM snomed.concepts WHERE concept_id = $${h}::bigint
-              UNION
-              SELECT r.source_id FROM snomed.relationships r JOIN descendants d ON r.destination_id = d.concept_id
-               WHERE r.type_id = $${isa}::bigint AND r.active = TRUE
-            ),`;
-    restrictD = "AND d.concept_id IN (SELECT concept_id FROM descendants)";
-    restrictE = "WHERE e.concept_id IN (SELECT concept_id FROM descendants)";
+    // How big is the hierarchy? (Bounded: the recursion stops after EXACT_MAX + 1 members.)
+    const size = Number(
+      (
+        await q<{ n: number }>(
+          `WITH RECURSIVE ${descendantsCte(1, 2).replace(/,$/, "")}
+           SELECT count(*)::int AS n FROM (SELECT 1 FROM descendants LIMIT ${SNOMED_HIERARCHY_EXACT_MAX + 1}) x`,
+          [String(opts.hierarchy), SNOMED_IS_A],
+        )
+      ).rows[0]?.n ?? 0,
+    );
+    if (size === 0) return []; // not an active concept
+    if (size <= SNOMED_HIERARCHY_EXACT_MAX) {
+      ctes = descendantsCte(h, params.push(SNOMED_IS_A));
+      restrictD = "AND d.concept_id IN (SELECT concept_id FROM descendants)";
+      restrictE = "WHERE e.concept_id IN (SELECT concept_id FROM descendants)";
+    } else if (await hasSnomedAncestors(q)) {
+      member = (col) =>
+        `(${col} = $${h}::bigint OR (SELECT a.ancestor_ids FROM snomed.concept_ancestors a WHERE a.concept_id = ${col}) @> ARRAY[$${h}::bigint])`;
+    } else {
+      ctes = descendantsCte(h, params.push(SNOMED_IS_A), true);
+      // IS TRUE keeps the planner from turning the test into a join (it stays a hashed
+      // filter, so the full-text GIN scan and the HNSW walk drive the plan).
+      member = (col) => `(${col} IN (SELECT concept_id FROM descendants)) IS TRUE`;
+    }
   } else if (opts.scope && opts.scope.length) {
     const s = params.push(opts.scope.map(String));
     restrictD = `AND d.concept_id = ANY($${s}::bigint[])`;
     restrictE = `WHERE e.concept_id = ANY($${s}::bigint[])`;
   }
+  const fts = "d.active = TRUE AND to_tsvector('english', COALESCE(d.term,'')) @@ plainto_tsquery('english', $1)";
   // Full text over active descriptions (expression matches idx_snomed_desc_fts); per
   // concept its shortest matching description, shortest first.
-  const lex = `SELECT d.concept_id FROM snomed.descriptions d
-                WHERE d.active = TRUE AND to_tsvector('english', COALESCE(d.term,'')) @@ plainto_tsquery('english', $1) ${restrictD}
+  let lex = `SELECT d.concept_id FROM snomed.descriptions d
+                WHERE ${fts} ${restrictD}
                 GROUP BY d.concept_id ORDER BY min(length(d.term)), d.concept_id LIMIT ${POOL}`;
+  if (member) {
+    // Same order; members are tested on the sorted matches until the pool is full (OFFSET 0
+    // keeps the test out of the subquery, where it would run on every match).
+    lex = `SELECT m.concept_id FROM (
+               SELECT d.concept_id, min(length(d.term)) AS len FROM snomed.descriptions d WHERE ${fts}
+                GROUP BY d.concept_id ORDER BY len, d.concept_id OFFSET 0) m
+              WHERE ${member("m.concept_id")} LIMIT ${POOL}`;
+  }
+  // A small hierarchy is scanned exactly ("+ 0" keeps the HNSW index out of it).
+  const exact = restrictE && opts.hierarchy ? " + 0" : "";
+  if (member) restrictE = `WHERE ${member("e.concept_id")}`;
   let sql: string;
   if (vecStr) {
     const v = params.push(vecStr);
     sql = `WITH RECURSIVE ${ctes}
            lex AS (${lex}),
-           vec AS (SELECT e.concept_id FROM snomed.concept_embeddings e ${restrictE} ORDER BY e.embedding <=> $${v}::halfvec LIMIT ${POOL}),
+           vec AS (SELECT e.concept_id FROM snomed.concept_embeddings e ${restrictE} ORDER BY (e.embedding <=> $${v}::halfvec)${exact} LIMIT ${POOL}),
            pool AS (SELECT concept_id FROM lex UNION SELECT concept_id FROM vec)
            SELECT pool.concept_id::text AS concept_id, c.active, 1 - (e.embedding <=> $${v}::halfvec) AS sim
              FROM pool JOIN snomed.concepts c ON c.concept_id = pool.concept_id
@@ -500,7 +591,8 @@ export async function rankSnomed(
            SELECT lex.concept_id::text AS concept_id, c.active, NULL::float8 AS sim
              FROM lex JOIN snomed.concepts c ON c.concept_id = lex.concept_id`;
   }
-  const pool = (await (vecStr && q === query ? vectorQuery : q)<{ concept_id: string; active: boolean; sim: number | null }>(sql, params)).rows;
+  const run = vecStr && q === query ? (member ? snomedFilteredVectorQuery : vectorQuery) : q;
+  const pool = (await run<{ concept_id: string; active: boolean; sim: number | null }>(sql, params)).rows;
   if (!pool.length) return [];
   const desc = (
     await q<{ concept_id: string; type_id: string; term: string; us_preferred: boolean | null }>(

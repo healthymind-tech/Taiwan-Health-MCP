@@ -12,6 +12,7 @@ import { AppLayout } from "./layout/AppLayout";
 import { PageSkeleton } from "./components/QueryBoundary";
 import { MODULE_BY_KEY, moduleHref } from "./lib/meta";
 import { loginPath } from "@/lib/loginRedirect";
+import { PROFILE_ROUTE } from "./pages/ig/profile/links";
 
 const LoginPage = lazy(() => import("./pages/login/LoginPage"));
 const DashboardPage = lazy(() => import("./pages/dashboard/DashboardPage"));
@@ -20,6 +21,7 @@ const JobDetailPage = lazy(() => import("./pages/jobs/JobDetailPage"));
 const ModulePage = lazy(() => import("./pages/modules/ModulePage"));
 const TerminologyPage = lazy(() => import("./pages/terminology/TerminologyPage"));
 const IgPage = lazy(() => import("./pages/ig/IgPage"));
+const ProfilePage = lazy(() => import("./pages/ig/profile/ProfilePage"));
 const DrugPage = lazy(() => import("./pages/drug/DrugPage"));
 const DrugExplorerPage = lazy(() => import("./pages/drug/DrugExplorerPage"));
 const DrugDetailPage = lazy(() => import("./pages/drug/DrugDetailPage"));
@@ -121,6 +123,7 @@ const router = createBrowserRouter(
         <Route path="terminology" element={<Page><TerminologyPage /></Page>} />
         <Route path="terminology/:moduleKey" element={<Page><ModulePage /></Page>} />
         <Route path="fhir/ig" element={<Page><IgPage /></Page>} />
+        <Route path={PROFILE_ROUTE} element={<Page><ProfilePage /></Page>} />
         <Route path="data/:moduleKey" element={<LegacyDataRoute />} />
         <Route path="drug" element={<Page><DrugPage /></Page>} />
         <Route path="drug/explorer" element={<Page><DrugExplorerPage /></Page>} />

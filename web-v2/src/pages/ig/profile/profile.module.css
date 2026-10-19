@@ -1,0 +1,437 @@
+/* FHIR profile viewer — element tree, base chain, JSON code, detail panel. */
+
+/* ── Layout ─────────────────────────────────────────────────────────── */
+.split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+.split[data-panel] {
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 420px);
+}
+.sticky {
+  position: sticky;
+  top: 72px;
+  max-height: calc(100dvh - 88px);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  animation: panelIn 240ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+@keyframes panelIn {
+  from {
+    opacity: 0;
+    translate: 12px 0;
+  }
+}
+
+.panel {
+  border: 1px solid var(--mantine-color-default-border);
+  border-radius: var(--mantine-radius-lg);
+  background: var(--mantine-color-body);
+  overflow: hidden;
+  min-width: 0;
+}
+[data-mantine-color-scheme="dark"] .panel {
+  background: var(--mantine-color-dark-7);
+}
+
+/* ── Element tree ───────────────────────────────────────────────────── */
+.treeWrap {
+  container-type: inline-size;
+}
+.treeHead,
+.treeRow {
+  display: grid;
+  grid-template-columns: minmax(200px, 2.3fr) 96px 64px minmax(120px, 1.5fr) minmax(140px, 2fr);
+  align-items: center;
+  column-gap: 10px;
+  padding-right: 12px;
+}
+@container (max-width: 860px) {
+  .treeHead,
+  .treeRow {
+    grid-template-columns: minmax(180px, 2.2fr) 92px 60px minmax(110px, 1.5fr);
+  }
+  .colShort {
+    display: none;
+  }
+}
+.treeHead {
+  height: 34px;
+  font-size: var(--mantine-font-size-xs);
+  font-weight: 600;
+  color: var(--mantine-color-dimmed);
+  border-bottom: 1px solid var(--mantine-color-default-border);
+  padding-left: 12px;
+  background: var(--mantine-color-default-hover);
+}
+.scroller {
+  position: relative;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  outline: none;
+}
+.scroller:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--mantine-primary-color-light-color);
+}
+.treeRow {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  cursor: pointer;
+  border-left: 3px solid transparent;
+  transition:
+    background-color 120ms ease,
+    border-color 160ms ease;
+  will-change: transform;
+  font-size: var(--mantine-font-size-sm);
+}
+.treeRow:hover {
+  background: var(--mantine-color-default-hover);
+}
+.treeRow[data-focused] {
+  background: color-mix(in srgb, var(--mantine-primary-color-filled) 7%, transparent);
+}
+.treeRow[data-selected] {
+  background: color-mix(in srgb, var(--mantine-primary-color-filled) 14%, transparent);
+  border-left-color: var(--mantine-primary-color-filled);
+}
+.treeRow[data-flash] {
+  animation: flash 1400ms ease-out;
+}
+@keyframes flash {
+  0%,
+  30% {
+    background: color-mix(in srgb, var(--mantine-color-yellow-filled) 28%, transparent);
+  }
+}
+.treeRow[data-muted] .nameText {
+  color: var(--mantine-color-dimmed);
+}
+.treeRow[data-removed] {
+  opacity: 0.5;
+}
+.treeRow[data-removed] .nameText {
+  text-decoration: line-through;
+}
+
+/* compact (phones / narrow): two lines per row */
+.treeRow[data-compact] {
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: auto auto;
+  row-gap: 2px;
+  align-content: center;
+}
+.treeRow[data-compact] .cellName {
+  grid-column: 1;
+  grid-row: 1;
+}
+.treeRow[data-compact] .cellCard {
+  grid-column: 2;
+  grid-row: 1;
+}
+.treeRow[data-compact] .cellType {
+  grid-column: 1;
+  grid-row: 2;
+}
+.treeRow[data-compact] .cellFlags {
+  grid-column: 2;
+  grid-row: 2;
+  justify-self: end;
+}
+
+.cellName {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  position: relative;
+  height: 100%;
+}
+.cellName > .nameText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nameText {
+  font-family: var(--mantine-font-family-monospace);
+  font-size: 12.5px;
+}
+.slice {
+  color: var(--mantine-color-violet-text);
+  font-weight: 600;
+}
+.cellCard {
+  font-family: var(--mantine-font-family-monospace);
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+.cardReq {
+  color: var(--mantine-color-red-text);
+  font-weight: 700;
+}
+.cardChanged {
+  border-bottom: 2px solid color-mix(in srgb, var(--mantine-color-orange-filled) 70%, transparent);
+}
+.cardZero {
+  color: var(--mantine-color-dimmed);
+  text-decoration: line-through;
+}
+.cellType,
+.cellShort {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+}
+.cellShort {
+  color: var(--mantine-color-dimmed);
+}
+.cellFlags {
+  display: flex;
+  gap: 3px;
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+
+.guide {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--mantine-color-default-border);
+}
+.chevron {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  margin-right: 2px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  color: var(--mantine-color-dimmed);
+  transition:
+    transform 180ms cubic-bezier(0.4, 0, 0.2, 1),
+    background-color 120ms ease;
+}
+.chevron:hover {
+  background: var(--mantine-color-default-hover);
+  color: var(--mantine-color-text);
+}
+.chevron[data-open] {
+  transform: rotate(90deg);
+  color: var(--mantine-primary-color-filled);
+}
+.chevron[data-leaf] {
+  visibility: hidden;
+}
+.icon {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  margin-right: 6px;
+  border-radius: 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  font-family: var(--mantine-font-family-monospace);
+}
+
+.enter {
+  animation: rowEnter 260ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+@keyframes rowEnter {
+  from {
+    opacity: 0;
+    translate: 0 -6px;
+  }
+}
+
+/* Flags (MS / ?! / Σ / I / fixed) */
+.flag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 4px;
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 1;
+  font-family: var(--mantine-font-family-monospace);
+}
+.flagMs {
+  background: var(--mantine-color-red-light);
+  color: var(--mantine-color-red-light-color);
+}
+.flagMod {
+  background: var(--mantine-color-orange-light);
+  color: var(--mantine-color-orange-light-color);
+}
+.flagSum {
+  background: var(--mantine-color-gray-light);
+  color: var(--mantine-color-gray-light-color);
+}
+.flagInv {
+  background: var(--mantine-color-violet-light);
+  color: var(--mantine-color-violet-light-color);
+}
+.flagFix {
+  background: var(--mantine-color-teal-light);
+  color: var(--mantine-color-teal-light-color);
+}
+.flagReq {
+  font-family: inherit;
+  background: var(--mantine-color-brand-light);
+  color: var(--mantine-color-brand-light-color);
+}
+
+mark.hit {
+  background: color-mix(in srgb, var(--mantine-color-yellow-filled) 35%, transparent);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+/* ── Base chain ─────────────────────────────────────────────────────── */
+.chain {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.chainNode {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px 10px;
+  border-radius: var(--mantine-radius-md);
+  border: 1px solid var(--mantine-color-default-border);
+  background: var(--mantine-color-body);
+  text-decoration: none;
+  color: inherit;
+  max-width: 260px;
+  min-width: 0;
+  animation: rowEnter 320ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  transition:
+    border-color 120ms ease,
+    transform 120ms ease,
+    box-shadow 120ms ease;
+}
+a.chainNode:hover {
+  border-color: var(--mantine-primary-color-light-color);
+  transform: translateY(-1px);
+  box-shadow: var(--mantine-shadow-sm);
+}
+.chainNode[data-current] {
+  border-color: var(--mantine-primary-color-filled);
+  background: var(--mantine-primary-color-light);
+}
+.chainNode[data-missing] {
+  border-style: dashed;
+  opacity: 0.75;
+}
+.chainArrow {
+  color: var(--mantine-color-dimmed);
+  flex: 0 0 auto;
+}
+
+/* ── JSON code ──────────────────────────────────────────────────────── */
+.code {
+  margin: 0;
+  padding: 12px 14px;
+  font-family: var(--mantine-font-family-monospace);
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre;
+  background: var(--log-bg);
+  color: var(--log-fg);
+  min-width: 100%;
+  width: max-content;
+}
+.codeBox {
+  position: relative;
+  border-radius: var(--mantine-radius-md);
+  overflow: hidden;
+  border: 1px solid var(--log-border);
+  background: var(--log-bg);
+}
+.codeCopy {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+}
+.jKey {
+  color: #7dd3fc;
+}
+.jStr {
+  color: #86efac;
+}
+.jNum {
+  color: #fca5a5;
+}
+.jLit {
+  color: #c4b5fd;
+}
+
+/* ── Required list ──────────────────────────────────────────────────── */
+.reqRow {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--mantine-color-default-border);
+  animation: rowEnter 260ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+.reqRow:last-child {
+  border-bottom: none;
+}
+.reqRow:hover {
+  background: var(--mantine-color-default-hover);
+}
+
+/* ── Markdown (definitions) ─────────────────────────────────────────── */
+.prose {
+  font-size: var(--mantine-font-size-sm);
+  line-height: 1.6;
+  word-break: break-word;
+}
+.prose p {
+  margin: 0 0 6px;
+}
+.prose p:last-child {
+  margin-bottom: 0;
+}
+.prose ul,
+.prose ol {
+  margin: 4px 0;
+  padding-left: 20px;
+}
+.prose code {
+  font-family: var(--mantine-font-family-monospace);
+  font-size: 0.92em;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--mantine-color-default-hover);
+}
+.prose a {
+  color: var(--mantine-color-anchor);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .enter,
+  .sticky,
+  .chainNode,
+  .reqRow,
+  .treeRow[data-flash] {
+    animation: none;
+  }
+}

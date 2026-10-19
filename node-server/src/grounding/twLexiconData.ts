@@ -11,8 +11,8 @@
 
 export const TW_LEXICON_DATA = {
  "name": "tw-lexicon",
- "version": "0.3.0",
- "basedOn": "tw_lexicon.py 0.1.0 (reference) + PAS tables (0.2.0) + issues-v1 fixes (0.3.0: whole-label stated-absent concepts, zh/en department and setting aliases, NHI lab bridges)",
+ "version": "0.4.0",
+ "basedOn": "tw_lexicon.py 0.1.0 (reference) + PAS tables (0.2.0) + issues-v1 fixes (0.3.0: whole-label stated-absent concepts, zh/en department and setting aliases, NHI lab bridges) + issues-v2 fixes (0.4.0: as-needed (PRN) phrasings 視需要 / 發作時 / as required / when needed / on demand)",
  "normalization": {
   "dashes": "‐‑‒–—―−－ー",
   "keepSymbols": "#%*+-./<>^~°×"
@@ -956,7 +956,7 @@ export const TW_LEXICON_DATA = {
    ]
   ],
   "everyNHours": "每\\s*(\\d+)\\s*小時|every\\s+(\\d+)\\s*h(?:ours?)?|\\bq\\s*(\\d+)\\s*h\\b",
-  "prn": "\\bprn\\b|需要時|必要時|疼痛時|發燒時|as needed|p\\.r\\.n|咳嗽時|不適時",
+  "prn": "\\bprn\\b|需要時|必要時|疼痛時|發燒時|as needed|p\\.r\\.n|咳嗽時|不適時|視需要|發作時|\\bas required\\b|\\bwhen required\\b|\\bwhen needed\\b|\\bon demand\\b",
   "hs": "\\bhs\\b|睡前|bedtime|\\bqn\\b",
   "routes": {
    "oral": [

@@ -68,6 +68,7 @@ export const MODULE_CLEAR_SPECS: Record<string, ModuleClearSpec> = {
       "snomed.concepts",
       "snomed.inactive_descriptions",
       "snomed.inactive_concepts",
+      "snomed.concept_ancestors",
       "snomed.editions",
     ],
     embeddings: ["snomed.concept_embeddings"],

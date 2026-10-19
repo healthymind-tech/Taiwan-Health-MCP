@@ -1063,16 +1063,26 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
       .default(false)
       .describe("Search every installed package instead of one (rows then carry package_id / package_version); package_id is ignored."),
   };
+  const compact = {
+    compact: z
+      .boolean()
+      .default(false)
+      .describe(
+        "Short output for a tight tool-output budget: per type a map id → title, the canonical base once and only the " +
+          "canonicals that do not follow it (data.compact explains how to read it). Default false = the full rows.",
+      ),
+  };
 
   server.registerTool(
     "fhir_list_igs",
     {
       description:
         "List the FHIR Implementation Guide (IG) packages installed on this server (isDefault, installOrigin manual|dependency, dependencies). " +
-        "Tools that omit package_id use the package owning the canonical / meta.profile involved, else the default IG.",
-      inputSchema: {},
+        "Tools that omit package_id use the package owning the canonical / meta.profile involved, else the default IG. " +
+        "compact=true: just packageId#version → title by install origin, plus the default IG.",
+      inputSchema: { ...compact },
     },
-    async () => rawResult(await svc.listIgs()),
+    async ({ compact }) => rawResult(await svc.listIgs(compact ?? false)),
   );
 
   server.registerTool(
@@ -1092,18 +1102,28 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
       description:
         "List an IG's conformance artifacts (StructureDefinitions, ValueSets, CodeSystems, examples) as summary rows. " +
         "Without package_id only the default IG is listed; all_packages=true lists every installed package. " +
-        "Zero rows comes with data.hint naming the other packages that match.",
+        "Zero rows comes with data.hint naming the other packages that match. compact=true returns id → title per resource type " +
+        "(about a fifth of the size) instead of full summary rows.",
       inputSchema: {
         resource_type: z.string().nullish().default(null),
         grouping_id: z.string().nullish().default(null),
         ...pkg,
         ...allPackages,
         limit: z.number().int().default(50),
+        ...compact,
       },
     },
-    async ({ resource_type, grouping_id, package_id, version, all_packages, limit }) =>
+    async ({ resource_type, grouping_id, package_id, version, all_packages, limit, compact }) =>
       rawResult(
-        await svc.listArtifacts(package_id ?? null, version ?? null, resource_type ?? null, grouping_id ?? null, limit ?? 50, all_packages ?? false),
+        await svc.listArtifacts(
+          package_id ?? null,
+          version ?? null,
+          resource_type ?? null,
+          grouping_id ?? null,
+          limit ?? 50,
+          all_packages ?? false,
+          compact ?? false,
+        ),
       ),
   );
 
@@ -1113,11 +1133,21 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
       description:
         "Full-text search an IG's artifacts by id / canonical URL / name / title / description. " +
         "Without package_id only the default IG is searched; all_packages=true searches every installed package. " +
-        "Zero hits comes with data.hint naming the other packages that match (e.g. Claim → the PAS IG).",
-      inputSchema: { keyword: z.string(), resource_type: z.string().nullish().default(null), ...pkg, ...allPackages, limit: z.number().int().default(20) },
+        "Zero hits comes with data.hint naming the other packages that match (e.g. Claim → the PAS IG). " +
+        "compact=true returns id → title per resource type instead of full summary rows.",
+      inputSchema: {
+        keyword: z.string(),
+        resource_type: z.string().nullish().default(null),
+        ...pkg,
+        ...allPackages,
+        limit: z.number().int().default(20),
+        ...compact,
+      },
     },
-    async ({ keyword, resource_type, package_id, version, all_packages, limit }) =>
-      rawResult(await svc.searchArtifacts(keyword, package_id ?? null, version ?? null, resource_type ?? null, limit ?? 20, all_packages ?? false)),
+    async ({ keyword, resource_type, package_id, version, all_packages, limit, compact }) =>
+      rawResult(
+        await svc.searchArtifacts(keyword, package_id ?? null, version ?? null, resource_type ?? null, limit ?? 20, all_packages ?? false, compact ?? false),
+      ),
   );
 
   server.registerTool(
@@ -1125,11 +1155,13 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
     {
       description: "List the IG's selectable resource Profiles (constraint StructureDefinitions), grouped by base FHIR resource type. " +
         "Without package_id: the default IG (all_packages=true: every installed package; zero rows → data.hint). " +
-        "After choosing one, call fhir_get_profile_required_elements to learn exactly which elements it requires.",
-      inputSchema: { base_type: z.string().nullish().default(null), ...pkg, ...allPackages },
+        "After choosing one, call fhir_get_profile_required_elements to learn exactly which elements it requires. " +
+        "compact=true (recommended when tool output is limited, e.g. all of TW Core: ~4k instead of ~13k chars) returns per base " +
+        "type a map profile id → title plus the canonical base; pass base_type to narrow further.",
+      inputSchema: { base_type: z.string().nullish().default(null), ...pkg, ...allPackages, ...compact },
     },
-    async ({ base_type, package_id, version, all_packages }) =>
-      rawResult(await svc.listResourceProfiles(package_id ?? null, version ?? null, base_type ?? null, all_packages ?? false)),
+    async ({ base_type, package_id, version, all_packages, compact }) =>
+      rawResult(await svc.listResourceProfiles(package_id ?? null, version ?? null, base_type ?? null, all_packages ?? false, compact ?? false)),
   );
 
   server.registerTool(
@@ -1705,7 +1737,15 @@ function registerSnomedTools(server: McpServer, svc: SnomedService): void {
         // (.default(null) on a non-nullable number marks it required and rejects
         // null). nullish().default(null) is runtime-faithful; only the strict-schema
         // type rendering (nullable union vs bare integer) differs — cosmetic.
-        hierarchy_filter: z.number().int().nullish().default(null),
+        hierarchy_filter: z
+          .number()
+          .int()
+          .nullish()
+          .default(null)
+          .describe(
+            "Restrict to this concept and its is-a descendants, e.g. 404684003 Clinical finding, 71388002 Procedure, " +
+              "123037004 Body structure, 105590001 Substance.",
+          ),
       },
     },
     async ({ query, limit, hierarchy_filter }) =>

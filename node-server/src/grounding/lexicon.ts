@@ -659,6 +659,10 @@ const RE_FREQ_CODE = pyRe(D.medication.freqCodePattern, "g");
 const FREQ_ZH: Array<[RegExp, number]> = (D.medication.freqZh as Array<[string, number]>).map(([p, n]) => [pyRe(p), n]);
 const EVERY_N_H = pyRe(D.medication.everyNHours, "g");
 export const PRN_RE = pyRe(D.medication.prn);
+/** Whether a text states as-needed (PRN) use in any phrasing of the lexicon ('PO PRN', '需要時使用', 'as needed', '視需要'). */
+export function statesPrn(text: string): boolean {
+  return PRN_RE.test(nfkc(text));
+}
 const HS_RE = pyRe(D.medication.hs);
 export const UNIT_DOSE_FORM_RE = pyRe(D.medication.unitDoseForm);
 

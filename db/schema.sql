@@ -1736,6 +1736,15 @@ CREATE TABLE IF NOT EXISTS snomed.editions (
     loaded_at               TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Is-a ancestor closure (migration 20261028): per active concept its proper ancestors over the
+-- active is-a relationships ('{}' for the root). Rebuilt by every snomed_import
+-- (loaders/snomed.ts SNOMED_ANCESTORS_REBUILD_SQL); search_snomed_concept's hierarchy_filter
+-- tests membership with one primary-key probe (ancestor_ids @> ARRAY[filter]).
+CREATE TABLE IF NOT EXISTS snomed.concept_ancestors (
+    concept_id   BIGINT PRIMARY KEY,
+    ancestor_ids BIGINT[] NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_snomed_desc_concept ON snomed.descriptions (concept_id);
 CREATE INDEX IF NOT EXISTS idx_snomed_desc_active  ON snomed.descriptions (active);
 CREATE INDEX IF NOT EXISTS idx_snomed_rel_src      ON snomed.relationships (source_id);

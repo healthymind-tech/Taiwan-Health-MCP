@@ -16,20 +16,21 @@
 - 回應採用共同信封：`{ok, data, warnings, provenance, error?}`。`provenance` 含 `packageId` / `version` / `fhirVersion` / `source`，以及 `resolved_by`；依賴閉包中同一套件有多個版本時另帶 `closure_versions`（說明 canonical 查詢實際採用哪個版本）。
 - 目標 IG 宣告的依賴有未安裝者時，`data.deps_missing` 會列出 `{package_id, version, required_by}`（閉包不完整，結果可能缺漏）。
 - 列表 / 搜尋類工具（`fhir_list_artifacts`、`fhir_search_artifacts`、`fhir_list_resource_profiles`）未給 `package_id` 時只查預設 IG；`all_packages=true` 改查所有已安裝套件（每列附 `package_id` / `package_version`，此時忽略 `package_id`）。查無結果時 `data.hint` 會指出其他有命中的套件。
+- **精簡輸出 `compact=true`**（`fhir_list_igs`、`fhir_list_artifacts`、`fhir_search_artifacts`、`fhir_list_resource_profiles`，預設 `false`，預設輸出完全不變）：給工具輸出預算有限的 LLM 用。每個型別只回傳 `{id: title}` 對照表，canonical 的共同前綴只寫一次（`canonical_base`；canonical = `canonical_base/<ResourceType>/<id>`），不符合此規則的才列在 `canonicals`；剖面另以 `status` 列出非 active 者；`data.compact` 是一行閱讀說明。`all_packages=true` 時改以 `packages`（`packageId#version` → 該套件的分組）呈現。`fhir_list_igs` 則回傳 `default` 與依安裝來源分組的 `manual` / `dependency`（`packageId#version` → 標題）。TW Core 實測：`fhir_list_resource_profiles` 12.9k → 4.8k 字元、`fhir_list_artifacts`（50 筆）19.9k → 2.8k、`fhir_search_artifacts`（20 筆）8.6k → 1.5k、`fhir_list_igs`（58 個套件）19.6k → 3.7k。
 - 模組概念與建議工作流程見 [FHIR IG 服務模組](../modules/fhir-ig-service.md)。
 
 ## IG 探索
 | 工具 | 說明 | 主要參數 |
 | :--- | :--- | :--- |
-| `fhir_list_igs` | 列出已安裝 IG 套件（packageId / version / title / canonical / fhirVersion / status / isDefault / `installOrigin`（`manual` 手動安裝 / `dependency` 因其他 IG 的依賴而下載）/ dependencies） | — |
+| `fhir_list_igs` | 列出已安裝 IG 套件（packageId / version / title / canonical / fhirVersion / status / isDefault / `installOrigin`（`manual` 手動安裝 / `dependency` 因其他 IG 的依賴而下載）/ dependencies） | `compact` |
 | `fhir_get_ig` | 單一 IG 詳情、依賴與各資源型別 artifact 數量；`data.deps_missing` 列出未安裝的依賴 | `package_id`, `version` |
-| `fhir_list_artifacts` | 列出 IG 的 conformance artifacts 摘要 | `resource_type`, `grouping_id`, `all_packages`, `limit`（預設 50，上限 200） |
-| `fhir_search_artifacts` | 以 id / canonical / name / title / description 全文搜尋 artifacts | `keyword`, `resource_type`, `all_packages`, `limit`（預設 20，上限 100） |
+| `fhir_list_artifacts` | 列出 IG 的 conformance artifacts 摘要 | `resource_type`, `grouping_id`, `all_packages`, `limit`（預設 50，上限 200）, `compact` |
+| `fhir_search_artifacts` | 以 id / canonical / name / title / description 全文搜尋 artifacts | `keyword`, `resource_type`, `all_packages`, `limit`（預設 20，上限 100）, `compact` |
 
 ## 剖面選擇與讀取
 | 工具 | 說明 | 主要參數 |
 | :--- | :--- | :--- |
-| `fhir_list_resource_profiles` | 列出可選資源剖面，依約束的基礎資源型別分組 | `base_type`, `all_packages` |
+| `fhir_list_resource_profiles` | 列出可選資源剖面，依約束的基礎資源型別分組 | `base_type`, `all_packages`, `compact` |
 | `fhir_rank_resource_profiles` | 依來源欄位鍵與剖面 element path 吻合度排名（僅建議，`selectionRequired:true`） | `keys`, `base_type`, `limit`（預設 5，上限 20） |
 | `fhir_get_profile` | 單一剖面摘要（身分 / base / derivation / element 數），支援 id / canonical / key 解析，canonical 可寫成 `url|version`（未安裝的版本回 `ARTIFACT_NOT_FOUND`） | `identifier` |
 | `fhir_get_profile_elements` | 讀取剖面 snapshot；`view` = `elements` / `element` / `slices` / `choices` / `binding` / `examples` | `profile`, `view`, `path`, `slice_name`, `limit` |
@@ -103,7 +104,8 @@
 | :--- | :--- |
 | `fhir_validate_resource`、`fhir_validate_bundle` | 1.4.0 |
 | `fhir_get_profile_required_elements` | 1.2.0 |
-| `fhir_list_igs`、`fhir_get_ig`、`fhir_list_artifacts`、`fhir_search_artifacts`、`fhir_list_resource_profiles`、`fhir_rank_resource_profiles`、`fhir_get_profile`、`fhir_get_profile_elements`、`fhir_get_valueset`、`fhir_expand_valueset`、`fhir_validate_code`、`fhir_get_resource_skeleton`、`fhir_finalize_resource` | 1.2.0 |
+| `fhir_list_igs`、`fhir_list_artifacts`、`fhir_search_artifacts`、`fhir_list_resource_profiles`（新增 `compact`） | 1.3.0 |
+| `fhir_get_ig`、`fhir_rank_resource_profiles`、`fhir_get_profile`、`fhir_get_profile_elements`、`fhir_get_valueset`、`fhir_expand_valueset`、`fhir_validate_code`、`fhir_get_resource_skeleton`、`fhir_finalize_resource` | 1.2.0 |
 | `fhir_lookup_code`、`fhir_normalize_code` | 1.3.0 |
 | `fhir_check_grounding` | 1.1.0 |
 | `fhir_check_completeness` | 1.1.1 |
