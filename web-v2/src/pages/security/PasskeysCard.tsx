@@ -18,6 +18,7 @@ import { api, errorMessage } from "@/lib/api";
 import { fmtDateTime } from "@/lib/format";
 import { useIsMobile } from "@/lib/hooks";
 import { qk } from "@/lib/queryKeys";
+import { usePrefetchedWebAuthnOptions } from "@/lib/webauthnOptions";
 
 interface Credential {
   id: string;
@@ -92,18 +93,14 @@ export function PasskeysCard() {
   const creds = q.data?.credentials ?? [];
 
   const register = useMutation({
-    mutationFn: async (name: string) => {
-      const options = await api.post<PublicKeyCredentialCreationOptionsJSON>("/admin/api/passkeys/register/options");
-      const rpId = options.rp.id ?? null;
-      if (rpId && !hostMatchesRp(window.location.hostname, rpId)) {
-        throw Object.assign(new Error(), { rpMismatch: rpId });
-      }
+    mutationFn: async ({ ceremony, name, rpId }: { ceremony: ReturnType<typeof startRegistration>; name: string; rpId: string | null }) => {
+      let response: Awaited<typeof ceremony>;
       try {
-        const response = await startRegistration({ optionsJSON: options });
-        return await api.post<{ ok: boolean }>("/admin/api/passkeys/register/verify", { response, label: name.trim() || null });
+        response = await ceremony;
       } catch (err) {
         throw Object.assign(err instanceof Error ? err : new Error(String(err)), { rpId });
       }
+      return api.post<{ ok: boolean }>("/admin/api/passkeys/register/verify", { response, label: name.trim() || null });
     },
     onSuccess: async () => {
       setOpen(false);
@@ -112,20 +109,37 @@ export function PasskeysCard() {
       await qc.invalidateQueries({ queryKey: qk.passkeys });
     },
     onError: (err) => {
-      const e = err as Error & { rpMismatch?: string; rpId?: string | null };
-      if (e.rpMismatch) {
-        setRegError(
-          `此系統的 passkey 綁定在「${e.rpMismatch}」，但你目前是從「${window.location.hostname}」開啟。請改用 https://${e.rpMismatch} 開啟主控台再註冊，否則註冊出來的 passkey 也無法登入。`,
-        );
-        return;
-      }
+      const e = err as Error & { rpId?: string | null };
       const d = describeWebAuthnError(err, e.rpId ?? null);
       if (d.level === "info") {
         setRegError(null);
         notify.info(d.message);
       } else setRegError(d.message);
     },
+    // The challenge is single-use: fetch a fresh one for the next attempt.
+    onSettled: () => void regOptions.refetch(),
   });
+
+  const regOptions = usePrefetchedWebAuthnOptions(
+    "register",
+    () => api.post<PublicKeyCredentialCreationOptionsJSON>("/admin/api/passkeys/register/options"),
+    { enabled: open, paused: register.isPending },
+  );
+
+  /** Runs inside the click: startRegistration must not wait on the network (Safari). */
+  const beginRegistration = () => {
+    const options = regOptions.data;
+    if (!options) return;
+    const rpId = options.rp.id ?? null;
+    if (rpId && !hostMatchesRp(window.location.hostname, rpId)) {
+      setRegError(
+        `此系統的 passkey 綁定在「${rpId}」，但你目前是從「${window.location.hostname}」開啟。請改用 https://${rpId} 開啟主控台再註冊，否則註冊出來的 passkey 也無法登入。`,
+      );
+      return;
+    }
+    setRegError(null);
+    register.mutate({ ceremony: startRegistration({ optionsJSON: options }), name: label, rpId });
+  };
 
   const remove = (c: Credential) => {
     const last = creds.length === 1;
@@ -276,6 +290,13 @@ export function PasskeysCard() {
             maxLength={80}
             data-autofocus
           />
+          {regOptions.isError && (
+            <Alert color="red" icon={<IconAlertTriangle size={18} />} p="sm">
+              <Text fz="sm" style={{ wordBreak: "break-word" }}>
+                無法向伺服器取得註冊參數：{errorMessage(regOptions.error)}。請關閉此視窗後再試一次。
+              </Text>
+            </Alert>
+          )}
           {regError && (
             <Alert color="red" icon={<IconAlertTriangle size={18} />} p="sm">
               <Text fz="sm" style={{ wordBreak: "break-word" }}>
@@ -287,7 +308,12 @@ export function PasskeysCard() {
             <Button variant="default" onClick={() => setOpen(false)} disabled={register.isPending}>
               取消
             </Button>
-            <Button leftSection={<IconFingerprint size={16} />} onClick={() => register.mutate(label)} loading={register.isPending}>
+            <Button
+              leftSection={<IconFingerprint size={16} />}
+              onClick={beginRegistration}
+              loading={register.isPending || (regOptions.isPending && regOptions.fetchStatus === "fetching")}
+              disabled={!regOptions.data}
+            >
               開始註冊
             </Button>
           </Group>

@@ -22,6 +22,7 @@ import { useSearchParams } from "react-router";
 import { api, ApiError, errorMessage } from "@/lib/api";
 import { safeNext } from "@/lib/loginRedirect";
 import { ThemeMenu } from "@/components/ThemeMenu";
+import { usePrefetchedWebAuthnOptions } from "@/lib/webauthnOptions";
 import classes from "./LoginPage.module.css";
 
 export default function LoginPage() {
@@ -35,6 +36,11 @@ export default function LoginPage() {
   const [pkSupported, setPkSupported] = useState(false);
 
   useEffect(() => setPkSupported(browserSupportsWebAuthn()), []);
+  const loginOptions = usePrefetchedWebAuthnOptions(
+    "login",
+    () => api.post<PublicKeyCredentialRequestOptionsJSON>("/admin/api/passkeys/login/options", {}, { skipAuthRedirect: true }),
+    { enabled: pkSupported, paused: pkBusy },
+  );
 
   /**
    * Leave only once the session is really usable. The server can accept the
@@ -74,12 +80,19 @@ export default function LoginPage() {
     }
   };
 
+  /** Runs inside the click: startAuthentication must not wait on the network (Safari). */
   const passkey = async () => {
+    const options = loginOptions.data;
+    if (!options) {
+      setError(loginOptions.isError ? `無法取得通行金鑰參數：${errorMessage(loginOptions.error)}` : "通行金鑰還在準備中，請稍候一秒再試。");
+      void loginOptions.refetch();
+      return;
+    }
+    const ceremony = startAuthentication({ optionsJSON: options });
     setPkBusy(true);
     setError(null);
     try {
-      const options = await api.post<PublicKeyCredentialRequestOptionsJSON>("/admin/api/passkeys/login/options", {}, { skipAuthRedirect: true });
-      const assertion = await startAuthentication({ optionsJSON: options });
+      const assertion = await ceremony;
       await api.post("/admin/api/passkeys/login/verify", assertion, { skipAuthRedirect: true });
       await go();
     } catch (err) {
@@ -87,6 +100,8 @@ export default function LoginPage() {
       setError(/NotAllowed|abort|cancel/i.test(msg) ? "已取消通行金鑰登入" : `通行金鑰登入失敗：${msg}`);
     } finally {
       setPkBusy(false);
+      // The challenge is single-use: fetch a fresh one for the next attempt.
+      void loginOptions.refetch();
     }
   };
 
