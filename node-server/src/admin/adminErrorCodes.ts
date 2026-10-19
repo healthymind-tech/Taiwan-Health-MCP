@@ -52,6 +52,34 @@ const MODULE_ZH: Record<string, string> = {
 };
 const moduleLabel = (k: string): string => MODULE_ZH[k] ?? k;
 
+const INDRA_FIX = "請到「外部服務 → OCR」按「測試連線」，並查看 ocr-indra 容器日誌（docker compose logs ocr-indra）。";
+
+/** Error codes returned by services/ocr-indra (`Indra OCR error <CODE> (HTTP n) from …`). */
+const INDRA_CODE_ZH: Record<string, [string, string, string]> = {
+  BUSY: ["OCR_BUSY", "Indra OCR 目前忙碌，排隊已滿。", "稍後重試失敗項目；若經常發生，可提高 ocr-indra 的 INDRA_WORKERS / INDRA_MAX_QUEUE（需要更多 CPU / 記憶體）。"],
+  NOT_READY: ["OCR_NOT_READY", "Indra OCR 模型尚未載入完成。", "容器剛啟動時需要數秒載入模型，請稍後再試；持續發生請查看 ocr-indra 日誌。"],
+  WORKER_CRASHED: ["OCR_WORKER_CRASHED", "Indra OCR 的工作程序異常結束（多半是超大頁面耗盡記憶體），服務正在重新啟動。", "稍後重試；若同一份 PDF 反覆失敗，請調高 ocr-indra 的記憶體上限或降低 Indra DPI。"],
+  TIMEOUT: ["OCR_TIMEOUT", "Indra OCR 在時限內沒有完成。", "請調高「Indra 逾時」，或降低 Indra DPI 後重試失敗項目。"],
+  PDF_ENCRYPTED: ["OCR_INPUT_ENCRYPTED", "仿單 PDF 有密碼保護，無法辨識。", "這份檔案需要人工處理；其他仿單不受影響。"],
+  PDF_UNREADABLE: ["OCR_INPUT_UNREADABLE", "仿單 PDF 已損毀或格式無法讀取。", "請重新執行該藥品的「資料補全」重新下載仿單後再試。"],
+  UNSUPPORTED_FILE: ["OCR_INPUT_UNSUPPORTED", "檔案不是 PDF 或支援的圖片格式（PNG、JPEG、TIFF、BMP、WebP）。", "請確認上傳的檔案類型。"],
+  FILE_EMPTY: ["OCR_INPUT_UNSUPPORTED", "上傳的檔案是空的。", "請確認檔案內容後再試。"],
+  UPLOAD_TOO_LARGE: ["OCR_INPUT_TOO_LARGE", "檔案超過 Indra OCR 的上傳上限。", "可調高 ocr-indra 的 INDRA_MAX_UPLOAD_MB，或改用 MinerU 處理這份檔案。"],
+  BAD_OPTION: ["OCR_BAD_OPTION", "送給 Indra OCR 的參數不被接受。", "請到「外部服務 → OCR」檢查 Indra DPI / 模式 / 逾時設定。"],
+};
+
+const INDRA_RULES: Rule[] = [
+  [
+    /^Indra OCR error (\w+) \(HTTP (\d{3})\)/,
+    (m) => {
+      const z = INDRA_CODE_ZH[m[1]];
+      return z ? info(z[0], z[1], z[2]) : info("OCR_HTTP_ERROR", `OCR 伺服器（Indra）回應 HTTP ${m[2]}（${m[1]}）。`, INDRA_FIX);
+    },
+  ],
+  [/^Indra OCR timed out after (\d+) of (\S+) page/, (m) => info("OCR_TIMEOUT", `Indra OCR 逾時：只完成 ${m[1]} / ${m[2]} 頁。`, "請調高「Indra 逾時」，或降低 Indra DPI 後重試失敗項目。")],
+  [/^Indra OCR sample failed: (.*)$/, () => info("OCR_SAMPLE_FAILED", "Indra OCR 可以連線，但範例 PDF 辨識失敗。", INDRA_FIX)],
+];
+
 /** Known English messages thrown by the admin modules (4xx validation + named failures). */
 const MESSAGE_RULES: Rule[] = [
   // ── auth / security ──
@@ -195,13 +223,15 @@ const MESSAGE_RULES: Rule[] = [
   [/^rate_limited$/, () => info("RATE_LIMITED", "執行太頻繁（每分鐘上限 60 次）。", "請稍候一分鐘再試。")],
   [/^write_confirmation_required$/, () => info("WRITE_CONFIRMATION_REQUIRED", "這個呼叫會寫入外部 FHIR 伺服器，需要先確認。", "請在測試台勾選寫入確認（輸入伺服器識別碼）後再送出。")],
 
+  ...INDRA_RULES,
   [/^HTTP (\d{3}) from \S*\/file_parse/, (m) => info("OCR_HTTP_ERROR", `OCR 伺服器（MinerU）回應 HTTP ${m[1]}${m[1] === "504" ? "（處理逾時）" : ""}。`, m[1] === "504" ? "大型 PDF 可能超過 MinerU 前端代理的逾時；請調高代理逾時或檢查 MinerU 負載，再重試失敗項目。" : "請查看 MinerU 的日誌，修正後再重試失敗項目。")],
 
   // ── drug pipeline preconditions (drugAnalysisService readiness) ──
-  [/^OCR (server|base URL) is not configured yet/, () => info("OCR_NOT_CONFIGURED", "尚未設定 OCR 伺服器（MinerU），藥品仿單無法辨識。", "請到「外部服務 → OCR」填入 MinerU 網址並按「測試連線」，成功後再重試。")],
+  [/^OCR base URL is not configured yet — set the Indra base URL/, () => info("OCR_NOT_CONFIGURED", "尚未設定 Indra OCR 的網址，藥品仿單無法辨識。", "請到「外部服務 → OCR」填入 Indra base URL（compose 內建服務為 http://ocr-indra:8000）並按「測試連線」，成功後再重試。")],
+  [/^OCR (server|base URL) is not configured yet/, () => info("OCR_NOT_CONFIGURED", "尚未設定 OCR 伺服器（MinerU 或 Indra），藥品仿單無法辨識。", "請到「外部服務 → OCR」選擇供應者並填入網址，按「測試連線」成功後再重試。")],
   [/^Analysis LM is not configured yet/, () => info("ANALYSIS_LM_NOT_CONFIGURED", "尚未設定分析 LLM，藥品仿單無法分析。", "請到「模型端點」建立模型帳號，並把一個路由指定給「分析」角色後再重試。")],
   [/^Analysis prompt not found/, () => info("ANALYSIS_PROMPT_MISSING", "找不到分析用的系統提示詞檔（src/prompts/）。", "部署映像缺少 src/prompts/，請重新建置 app 與 admin-worker 映像。")],
-  [/^Unsupported OCR provider: (.+)$/, (m) => info("OCR_PROVIDER_UNSUPPORTED", `不支援的 OCR 服務類型「${m[1]}」。`, "請到「外部服務 → OCR」改為 MinerU。")],
+  [/^Unsupported OCR provider: (.+)$/, (m) => info("OCR_PROVIDER_UNSUPPORTED", `不支援的 OCR 服務類型「${m[1]}」。`, "請到「外部服務 → OCR」把供應者改為 mineru 或 indra。")],
   [/^Profile '(.+)': unsupported provider '(.+)'$/, (m) => info("ANALYSIS_PROVIDER_UNSUPPORTED", `分析路由裡的「${m[1]}」使用了不支援分析的供應商（${m[2]}）。`, "請到「模型端點」把它換成支援聊天模型的帳號。")],
   [/^MinIO not configured/, () => info("STORAGE_UNAVAILABLE", "物件儲存（MinIO）無法使用。", MINIO_HINT)],
 
@@ -288,7 +318,7 @@ function operationZh(error: string): string | null {
 }
 
 function serviceZh(k: string): string {
-  return ({ minio: "物件儲存（MinIO）", ocr_server: "OCR（MinerU）", analysis_server: "分析 LLM", embedding_model: "Embedding", database: "資料庫", redis: "Redis" } as Record<string, string>)[k] ?? k;
+  return ({ minio: "物件儲存（MinIO）", ocr_server: "OCR 伺服器", analysis_server: "分析 LLM", embedding_model: "Embedding", database: "資料庫", redis: "Redis" } as Record<string, string>)[k] ?? k;
 }
 
 function statusZh(s: string): string {
@@ -401,6 +431,7 @@ export interface ServiceTestResult {
 
 const SERVICE_ZH: Record<string, { label: string; where: string }> = {
   ocr: { label: "OCR（MinerU）", where: "請確認 MinerU 服務正在執行，Base URL 為其根網址（例如 http://mineru:8000，不含 /file_parse），且 app 容器能連到它。" },
+  ocr_indra: { label: "OCR（Indra）", where: "請確認 ocr-indra 容器正在執行（docker compose up -d ocr-indra），Indra base URL 為其根網址（compose 內建為 http://ocr-indra:8000，不含 /ocr），且 app / admin-worker 與它在同一個 ocr 網路。" },
   minio: { label: "物件儲存（MinIO）", where: "請確認端點（host:port，不含 http://）、Access / Secret Key 與 bucket 名稱，以及是否需要勾選 TLS。" },
   tfda: { label: "TFDA 網站", where: "請確認 Base URL 正確，且伺服器能連上網際網路（TFDA 偶爾維護，可稍後再試）。" },
 };
@@ -412,20 +443,36 @@ const SERVICE_ZH: Record<string, { label: string; where: string }> = {
  */
 export function explainServiceTest(group: string, r: ServiceTestResult): ServiceTestResult {
   if (r.code || r.message_zh) return r;
-  const svc = SERVICE_ZH[group];
+  const isIndra = group === "ocr" && r.details?.provider === "indra";
+  const svc = SERVICE_ZH[isIndra ? "ocr_indra" : group];
   if (!svc) return r;
   const msg = String(r.message ?? "");
+  const withFallback = (x: ServiceTestResult): ServiceTestResult => {
+    const fb = r.details?.fallback_provider;
+    if (group !== "ocr" || !fb) return x;
+    const note = r.details?.fallback_ok ? `備援 ${String(fb)} 可以連線。` : `備援 ${String(fb)} 目前無法連線，主要供應者失敗時不會有備援。`;
+    return { ...x, message_zh: `${x.message_zh ?? ""}${note}` };
+  };
   if (r.ok) {
     let m: RegExpMatchArray | null;
-    if ((m = /^MinerU (\S+) reachable at (\S+?)\.?$/.exec(msg))) return { ...r, message_zh: `已連線到 MinerU ${m[1]}（${m[2]}）。` };
+    if ((m = /^MinerU (\S+) reachable at (\S+?)\.?$/.exec(msg))) return withFallback({ ...r, message_zh: `已連線到 MinerU ${m[1]}（${m[2]}）。` });
+    if ((m = /^Indra OCR (\S+) reachable at (\S+?)(?:; sample OCR: (\d+) chars in (\d+) ms)?\.?$/.exec(msg))) {
+      const sample = m[3] ? `範例 PDF 辨識出 ${m[3]} 個字元（${m[4]} ms）。` : "";
+      return withFallback({ ...r, message_zh: `已連線到 Indra OCR ${m[1]}（${m[2]}）。${sample}` });
+    }
     if ((m = /^Connected; bucket '(.+)' available\.?$/.exec(msg))) return { ...r, message_zh: `連線成功，bucket「${m[1]}」可以使用。` };
     if ((m = /^GET (\S+) → HTTP (\d+) in (\d+) ms\.?$/.exec(msg))) return { ...r, message_zh: `連線成功：${m[1]} 回應 HTTP ${m[2]}（${m[3]} ms）。` };
     return { ...r, message_zh: `${svc.label}連線測試成功。` };
   }
   if (/^(Base URL is (empty|required))/.test(msg)) return { ...r, code: "SERVICE_URL_MISSING", message_zh: `請先填入${svc.label}的網址。`, hint_zh: svc.where };
   if (/not reachable \/ bucket missing/.test(msg)) return { ...r, code: "SERVICE_CONFIG_INCOMPLETE", message_zh: `${svc.label}設定不完整（端點、帳密與 bucket 都必須填寫）。`, hint_zh: svc.where };
+  const indraRule = classifyMessage(msg);
+  if (isIndra && indraRule && indraRule.code !== "SERVICE_TEST_FAILED") return withFallback({ ...r, ...indraRule });
   let m = /reports status '(.+)'/.exec(msg);
-  if (m) return { ...r, code: "SERVICE_UNHEALTHY", message_zh: `${svc.label}有回應，但回報狀態為「${m[1]}」。`, hint_zh: "服務本身尚未就緒（模型載入中或發生錯誤），請查看 MinerU 的日誌後再試。" };
+  if (m) {
+    const logs = isIndra ? "ocr-indra 容器（docker compose logs ocr-indra）" : "MinerU";
+    return withFallback({ ...r, code: "SERVICE_UNHEALTHY", message_zh: `${svc.label}有回應，但回報狀態為「${m[1]}」。`, hint_zh: `服務本身尚未就緒（模型載入中或發生錯誤），請查看 ${logs} 的日誌後再試。` });
+  }
   if (group === "tfda" && (m = /HTTP (\d{3})/.exec(msg))) return { ...r, code: "UPSTREAM_ERROR", message_zh: `TFDA 網站回應 HTTP ${m[1]}。`, hint_zh: svc.where };
   const cause = classifyCause(msg);
   if (cause) {
@@ -473,7 +520,7 @@ const PROBE_FIX: Record<string, string> = {
   database: "請確認 postgres / pgbouncer 容器正在執行。",
   redis: "請確認 redis 容器正在執行；Redis 只影響即時事件，資料不受影響。",
   minio: MINIO_HINT,
-  ocr_server: "請到「外部服務 → OCR」確認 MinerU 網址並按「測試連線」。",
+  ocr_server: "請到「外部服務 → OCR」確認供應者（MinerU / Indra）與其網址，並按「測試連線」。",
   embedding_model: "請到「模型端點」確認 Embedding 角色的路由與帳號。",
   analysis_server: "請到「模型端點」確認分析角色的路由與帳號。",
 };
@@ -496,6 +543,12 @@ export function explainProbe<T extends ProbeRowLike>(row: T): T & { message_zh?:
     m = /^OCR server reachable \((.+)\)\.$/.exec(msg);
     if (m) return out(`OCR 伺服器連線正常（${m[1]}）。`);
     return row;
+  }
+  if (row.service_key === "ocr_server" && row.status === "degraded") {
+    let m = /^OCR server reachable \((.+?)\); fallback (\w+) probe failed: (.*)$/.exec(msg);
+    if (m) return out(`主要 OCR 伺服器連線正常（${m[1]}），但備援 ${m[2]} 無法連線。`, fix);
+    m = /^OCR server probe failed: (.*); fallback (\w+) reachable\.$/.exec(msg);
+    if (m) return out(`主要 OCR 伺服器無法連線，目前改用備援 ${m[2]}。`, fix);
   }
   if (/is not configured yet/.test(msg)) return out("尚未設定。", fix);
   // Model-endpoint rows carry their own issue codes (llmErrorCodes) — leave them to that layer.

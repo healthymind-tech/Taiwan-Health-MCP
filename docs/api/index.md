@@ -130,7 +130,7 @@ SQL / 連線錯誤不再把原始訊息傳給用戶端（原始內容只寫入�
 |------|------|------|
 | `IcdService` | `icdService.ts` | `icd.*` |
 | `DrugService` | `drugService.ts` | `drug.*` |
-| `DrugAnalysisService` | `drugAnalysisService.ts` | `drug.insert_analysis`（含 MinerU OCR 與分析 LLM 呼叫） |
+| `DrugAnalysisService` | `drugAnalysisService.ts` | `drug.insert_analysis`（含 OCR（MinerU / Indra，`ocrProviders.ts`）與分析 LLM 呼叫） |
 | `HealthSupplementsService` | `supplementsService.ts` | `health_supplements.*` |
 | `FoodNutritionService` | `foodService.ts` | `food_nutrition.*` |
 | `LabService` | `labService.ts` | `loinc.*` |

@@ -1,9 +1,11 @@
 /**
  * OCR and structured analysis for drug insert PDFs.
  *
- * Node port of `src/drug_analysis_service.py`. A PDF goes to MinerU's synchronous
- * `/file_parse` endpoint, the Markdown that comes back goes to the Analysis LM,
- * and the LM's JSON is normalized and shape-checked against `ANALYSIS_TEMPLATE`.
+ * Node port of `src/drug_analysis_service.py`. A PDF goes to the configured OCR
+ * provider (MinerU's `/file_parse` or the Indra OCR service — see ocrProviders.ts,
+ * with an optional fallback provider), the Markdown that comes back goes to the
+ * Analysis LM, and the LM's JSON is normalized and shape-checked against
+ * `ANALYSIS_TEMPLATE`.
  * Stays independent of RxNorm: it only touches TFDA-backed drug assets.
  */
 
@@ -15,6 +17,14 @@ import { candidateOrder, type LlmProfile, type Strategy } from "./admin/llmProfi
 import { recordLlmCall } from "./admin/llmCallLog.js";
 import { callAnalysisLlm, type LlmCallAttempt, type Message } from "./analysisLlmClient.js";
 import { logInfo, logWarning } from "./logger.js";
+import {
+  ocrSettingsFromValues,
+  providerReadiness,
+  runOcr,
+  type FetchLike,
+  type OcrProviderId,
+  type OcrSettings,
+} from "./ocrProviders.js";
 import { getAdapter } from "./providers/registry.js";
 
 export { isReasoningModel, MAX_TOKEN_BUDGET, TokenBudgetExceeded } from "./analysisLlmClient.js";
@@ -411,13 +421,17 @@ export function normalizeAnalysisData(input: unknown): Record<string, unknown> {
 // ── Config ──────────────────────────────────────────────────────────────────
 
 export interface DrugAnalysisConfig {
+  /** Primary OCR provider (`mineru` | `indra`; anything else fails readiness). */
   ocrProvider: string;
+  /** MinerU settings, kept flat for existing callers. */
   ocrBaseUrl: string;
   ocrBackend: string;
   ocrEffort: string;
   ocrParseMethod: string;
   ocrLang: string;
   ocrTimeoutSeconds: number;
+  /** The whole OCR configuration (both providers + fallback), what `runOcr` consumes. */
+  ocr: OcrSettings;
   analysisPromptPath: string;
   analysisMaxRetries: number;
   /**
@@ -455,16 +469,16 @@ export function configFromValues(opts: {
   ocrConfigured?: boolean;
 }): DrugAnalysisConfig {
   const { ocr, analysis } = opts;
+  const ocrSettings = ocrSettingsFromValues(ocr);
   return {
-    ocrProvider: str(ocr.provider, "mineru").toLowerCase(),
-    ocrBaseUrl: String(ocr.base_url ?? "")
-      .trim()
-      .replace(/\/+$/, ""),
-    ocrBackend: str(ocr.backend, "hybrid-engine"),
-    ocrEffort: str(ocr.effort, "medium"),
-    ocrParseMethod: str(ocr.parse_method, "auto"),
-    ocrLang: str(ocr.lang, "ch"),
-    ocrTimeoutSeconds: Number(ocr.timeout_seconds || 600) || 600,
+    ocrProvider: ocrSettings.provider,
+    ocrBaseUrl: ocrSettings.mineru.baseUrl,
+    ocrBackend: ocrSettings.mineru.backend,
+    ocrEffort: ocrSettings.mineru.effort,
+    ocrParseMethod: ocrSettings.mineru.parseMethod,
+    ocrLang: ocrSettings.mineru.lang,
+    ocrTimeoutSeconds: ocrSettings.mineru.timeoutSeconds,
+    ocr: ocrSettings,
     analysisPromptPath: DEFAULT_ANALYSIS_PROMPT_PATH,
     analysisMaxRetries: Number(analysis.max_retries || 3) || 3,
     analysisProfiles: opts.analysisProfiles ?? [],
@@ -510,16 +524,19 @@ const NOT_CONFIGURED = (what: string, group: string): string =>
 export class DrugAnalysisService {
   /** The profile that served the last call — failover may make it not the primary. */
   lastProfileUsed: LlmProfile | null = null;
+  /** The OCR provider that produced the last Markdown — the fallback may make it not the primary. */
+  lastOcrProvider: OcrProviderId | null = null;
 
-  constructor(readonly config: DrugAnalysisConfig) {}
+  /** `fetchImpl` is for tests; production uses the global fetch. */
+  constructor(
+    readonly config: DrugAnalysisConfig,
+    private readonly fetchImpl?: FetchLike,
+  ) {}
 
   ocrReadiness(): [boolean, string] {
     if (!this.config.ocrConfigured) return [false, NOT_CONFIGURED("OCR server", "OCR Server")];
-    if (this.config.ocrProvider !== "mineru") {
-      return [false, `Unsupported OCR provider: ${this.config.ocrProvider}`];
-    }
-    if (!this.config.ocrBaseUrl) return [false, NOT_CONFIGURED("OCR base URL", "OCR Server")];
-    return [true, ""];
+    // Only the primary must be usable; a broken fallback is reported by the probe.
+    return providerReadiness(this.config.ocr, this.config.ocrProvider);
   }
 
   analysisReadiness(): [boolean, string] {
@@ -575,6 +592,7 @@ export class DrugAnalysisService {
     // OCR is not sensitive to analysis configuration — always available.
     return this.ocrPdfBytes(opts.pdfBytes, opts.sourceFilename, {
       embedImages: opts.embedImages,
+      allowImages: true,
     });
   }
 
@@ -616,7 +634,8 @@ export class DrugAnalysisService {
     return {
       markdown,
       analysisJson,
-      ocrProvider: this.config.ocrProvider,
+      // Re-used Markdown keeps the configured provider; a fresh OCR records the one that answered.
+      ocrProvider: opts.existingMarkdown ? this.config.ocrProvider : (this.lastOcrProvider ?? this.config.ocrProvider),
       // The profile that actually answered, which failover may have made a
       // different one from the primary.
       analysisProvider: used ? used.provider : (this.config.analysisProfiles[0]?.provider ?? ""),
@@ -624,74 +643,35 @@ export class DrugAnalysisService {
   }
 
   /**
-   * Turn one insert PDF into Markdown via MinerU's synchronous endpoint.
-   *
-   * `/file_parse` parses the upload and answers with the Markdown inline, so there
-   * is no task to poll and no archive to unpack. Markdown only: the Analysis LM
-   * cannot use the images or the layout JSON anyway.
+   * Turn one insert PDF into Markdown via the configured OCR provider (and its
+   * fallback, if one is set). Markdown only: the Analysis LM cannot use the
+   * images or the layout JSON anyway. `allowImages` lets the admin OCR test send
+   * PNG/JPEG samples; the drug pipeline only ever OCRs PDFs.
    */
   private async ocrPdfBytes(
     pdfBytes: Buffer,
     sourceFilename: string,
-    opts: { embedImages?: boolean } = {},
+    opts: { embedImages?: boolean; allowImages?: boolean } = {},
   ): Promise<string> {
+    let mimeType = "application/pdf";
     if (!pdfBytes.subarray(0, 5).equals(Buffer.from("%PDF-"))) {
-      throw new Error(
-        `${sourceFilename} is not a PDF (leading bytes: ${JSON.stringify(
-          pdfBytes.subarray(0, 8).toString("latin1"),
-        )})`,
-      );
+      const image = opts.allowImages ? imageMimeType(pdfBytes) : null;
+      if (!image) {
+        throw new Error(
+          `${sourceFilename} is not a PDF (leading bytes: ${JSON.stringify(
+            pdfBytes.subarray(0, 8).toString("latin1"),
+          )})`,
+        );
+      }
+      mimeType = image;
     }
-
-    const form = new FormData();
-    form.append(
-      "files",
-      new Blob([new Uint8Array(pdfBytes)], { type: "application/pdf" }),
-      sourceFilename,
+    const out = await runOcr(
+      this.config.ocr,
+      { bytes: pdfBytes, filename: sourceFilename, mimeType, embedImages: opts.embedImages },
+      { fetchImpl: this.fetchImpl },
     );
-    form.append("backend", this.config.ocrBackend);
-    form.append("effort", this.config.ocrEffort);
-    form.append("parse_method", this.config.ocrParseMethod);
-    form.append("lang_list", this.config.ocrLang);
-    form.append("table_enable", "true");
-    form.append("return_md", "true");
-    form.append("return_images", opts.embedImages ? "true" : "false");
-    form.append("return_middle_json", "false");
-    form.append("return_content_list", "false");
-    form.append("response_format_zip", "false");
-
-    const url = `${this.config.ocrBaseUrl}/file_parse`;
-    const response = await fetch(url, {
-      method: "POST",
-      body: form,
-      signal: AbortSignal.timeout(this.config.ocrTimeoutSeconds * 1000),
-    });
-    if (!response.ok) {
-      const body = (await response.text().catch(() => "")).slice(0, 300);
-      throw new Error(`HTTP ${response.status} from ${url}: ${body}`);
-    }
-    const payload = (await response.json()) as Record<string, unknown>;
-
-    const results = (payload.results ?? {}) as Record<
-      string,
-      { md_content?: string; images?: Record<string, string> }
-    >;
-    const first = Object.values(results)[0];
-    if (!first) {
-      throw new Error(
-        `OCR returned no results: ${String(payload.error ?? JSON.stringify(payload))}`,
-      );
-    }
-    // `results` is keyed by the uploaded file's stem, and we upload exactly one.
-    let markdown = String(first.md_content ?? "");
-    if (opts.embedImages && first.images) {
-      markdown = markdown.replace(/!\[([^\]]*)\]\(images\/([^)]+)\)/g, (match, alt, name) => {
-        const uri = first.images?.[name];
-        return uri ? `![${alt}](${uri})` : match;
-      });
-    }
-    if (!markdown.trim()) throw new Error("OCR markdown is empty");
-    return markdown;
+    this.lastOcrProvider = out.provider;
+    return out.markdown;
   }
 
   private async runAnalysis(
@@ -821,6 +801,16 @@ export class DrugAnalysisService {
     );
   }
 
+}
+
+/** MIME type of a PNG / JPEG / TIFF / WebP upload from its magic bytes, else null. */
+export function imageMimeType(bytes: Buffer): string | null {
+  if (bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return "image/png";
+  if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "image/jpeg";
+  const head4 = bytes.subarray(0, 4).toString("latin1");
+  if (head4 === "II*\u0000" || head4 === "MM\u0000*") return "image/tiff";
+  if (head4 === "RIFF" && bytes.subarray(8, 12).toString("latin1") === "WEBP") return "image/webp";
+  return null;
 }
 
 export function extractJsonObject(content: string): unknown {

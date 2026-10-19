@@ -60,7 +60,7 @@ ADMIN_SESSION_SECRET=<隨機值>
 | 需上傳來源檔 | ICD-10-CM（CMS order file）/ PCS、LOINC、SNOMED CT、RxNorm、FHIR IG（`package.tgz`） | 於模組頁上傳來源檔後按匯入（IG 也可直接從 FHIR package registry 取得） |
 | API 自動抓取 | 藥品（TFDA）、健康補充品、食品營養 | 直接按匯入，或設定排程 |
 
-- **藥物域**為三階段管線（索引 → 爬取豐富 → OCR/LLM 分析）。爬取的 TFDA base URL 與 OCR（MinerU）端點在「外部服務」（`/admin/integrations`）設定；分析 LLM 則在「模型端點」（`/admin/models`）建立 provider 帳號與 profile。
+- **藥物域**為三階段管線（索引 → 爬取豐富 → OCR/LLM 分析）。爬取的 TFDA base URL 與 OCR（MinerU 或內建的 Indra）設定在「外部服務」（`/admin/integrations`）設定；分析 LLM 則在「模型端點」（`/admin/models`）建立 provider 帳號與 profile。
 - **嵌入**（語意搜尋）是各模組獨立的 `*_embed` 工作，可在模組頁面執行或排程。
 - 匯入進度、步驟時間軸與即時日誌見 **背景工作**（`/admin/jobs`）頁；背景機制見[背景工作與排程](admin/jobs-and-worker.md)。
 

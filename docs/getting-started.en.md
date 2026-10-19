@@ -61,7 +61,7 @@ Import module by module from the sidebar's Data section (Terminology, Drug, Heal
 | Source file upload required | ICD-10-CM (CMS order file) / PCS, LOINC, SNOMED CT, RxNorm, FHIR IG (`package.tgz`) | Upload the source file on the module page, then press import (IGs can also be fetched straight from the FHIR package registry) |
 | Fetched automatically via API | Drugs (TFDA), health supplements, food nutrition | Press import directly, or set up a schedule |
 
-- The **drug domain** is a three-stage pipeline (index → enrichment crawl → OCR/LLM analysis). The crawler's TFDA base URL and the OCR (MinerU) endpoint are configured under External services (`/admin/integrations`); the analysis LLM gets a provider account and profile under Model endpoints (`/admin/models`).
+- The **drug domain** is a three-stage pipeline (index → enrichment crawl → OCR/LLM analysis). The crawler's TFDA base URL and the OCR settings (MinerU or the bundled Indra) are configured under External services (`/admin/integrations`); the analysis LLM gets a provider account and profile under Model endpoints (`/admin/models`).
 - **Embeddings** (semantic search) are separate `*_embed` jobs per module, runnable or schedulable from each module's page.
 - Import progress, the step timeline, and live logs are on the **Jobs** page (`/admin/jobs`); the background mechanism is described in [Jobs & Scheduling](admin/jobs-and-worker.md).
 

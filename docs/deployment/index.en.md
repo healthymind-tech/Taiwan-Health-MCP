@@ -17,7 +17,7 @@ For the full variable reference see [Configuration](configuration.md). This page
 | Memory | 8 GB | 16 GB+ | `admin-worker` alone is configured with `--max-old-space-size=8192` (required by FHIR IG imports) |
 | Disk | 20 GB | 100 GB+ | PostgreSQL plus MinIO drug assets (inserts / labels / pill images) grow continuously |
 
-The embedding service, OCR (MinerU), and the analysis LLM are all **external HTTP services**. They are not part of this compose stack — provision them separately and configure them in the admin console.
+The embedding service, OCR (MinerU), and the analysis LLM are all **external HTTP services**. They are not part of this compose stack — provision them separately and configure them in the admin console. The one exception is the optional CPU OCR container `ocr-indra` (`services/ocr-indra/`, Indra OCR): it starts with compose, sits only on the internal `ocr` network (no route out, no host port), and is used only once External services → OCR sets the provider (or the fallback) to `indra`; see `services/ocr-indra/README.md` for the model-licence restrictions.
 
 ## Services
 
@@ -234,7 +234,7 @@ Then configure the external model endpoints (these **cannot** be set from `.env`
 |------|--------------------|----------------------|
 | Model endpoints (`/admin/models`) → Embedding | Create a provider account, then an embedding profile bound to the embedding role (e.g. Ollama `qwen3-embedding`) | Search falls back to keyword mode; **Chinese keyword search finds almost nothing** |
 | Model endpoints (`/admin/models`) → Analysis | A profile for the LLM used to extract drug inserts | The drug analysis stage cannot run |
-| External services (`/admin/integrations`) → OCR | MinerU service address | Insert PDFs cannot be OCR'd |
+| External services (`/admin/integrations`) → OCR | Provider (MinerU address, or `indra` → `http://ocr-indra:8000`) and an optional fallback | Insert PDFs cannot be OCR'd |
 
 Settings can be moved between environments with the settings export / import under Backups & settings (`/admin/system`). See [Admin Console](../admin/index.md).
 

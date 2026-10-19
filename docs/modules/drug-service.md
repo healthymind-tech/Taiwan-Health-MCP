@@ -29,9 +29,28 @@
 
 1. **`drug_index_import`** — 從 TFDA 標準 `36_2.csv` 載入許可證索引，建立 `drug.licenses` 等基礎表。
 2. **`drug_enrichment`** — 爬取 TFDA 取得電子仿單、文件資產與藥錠外觀紀錄，並將檔案存入 MinIO。
-3. **`drug_analysis`** — 對仿單文件執行 MinerU OCR 與分析 LLM，萃取結構化內容寫入 `drug.insert_analysis`。OCR 端點（MinerU）在管理後台 **整合 → 外部服務 → OCR Server** 設定（存於 `admin.app_settings`）；分析 LLM 在 **整合 → 模型端點** 設定（provider 帳號 + 路由：`admin.llm_providers` / `admin.llm_routes` / `admin.llm_route_members` / `admin.llm_role_routes`）。兩者都**不從環境變數讀取**。
+3. **`drug_analysis`** — 對仿單文件執行 OCR（MinerU 或 Indra，見下方「[OCR 供應者](#ocr-providers)」）與分析 LLM，萃取結構化內容寫入 `drug.insert_analysis`。OCR 在管理後台 **整合 → 外部服務 → OCR Server** 設定（存於 `admin.app_settings` 的 `ocr` 群組）；分析 LLM 在 **整合 → 模型端點** 設定（provider 帳號 + 路由：`admin.llm_providers` / `admin.llm_routes` / `admin.llm_route_members` / `admin.llm_role_routes`）。兩者都**不從環境變數讀取**。
 
 另有 `drug_pipeline` 工作型別，在同一個工作內對每張許可證依序跑完三個階段。三者也會自動串接：每個自動串接的工作以 `DRUG_AUTOCHAIN_BATCH_LIMIT`（預設 200）為上限；**手動排入且未指定 `limit` 的 `drug_enrichment` 不受此限**，會爬完整個待處理佇列。
+
+## OCR 供應者 { #ocr-providers }
+
+`drug_analysis` 把仿單 PDF 交給 OCR 取得 Markdown，再交給分析 LLM；分析 LLM 那一段與 OCR 供應者無關。
+在「外部服務 → OCR」選擇：
+
+| 供應者 | 執行位置 | 說明 |
+|--------|----------|------|
+| `mineru`（預設） | 外部 HTTP 服務（`POST {base_url}/file_parse`），通常在 GPU 機器上 | 複雜表格與版面最穩定。設定：Base URL、backend、effort、parse method、語言、逾時。 |
+| `indra` | compose 內建的 `ocr-indra` 容器（`POST http://ocr-indra:8000/ocr`），只用 CPU | [Indra OCR](https://github.com/datalab-to/indra)（`indra-ocr` 0.3.2，ONNX Runtime，模型約 18 MB 已打包進映像，執行時不需連網）。數位 PDF 直接讀文字層，掃描頁才做影像辨識。設定：Indra Base URL、逾時、DPI（72–400）、模式（`auto` / `ocr` / `text`）。 |
+
+- **備援供應者**（`fallback_provider`：`none` / `mineru` / `indra`）：主要供應者無法連線、HTTP 錯誤、逾時或輸出為空時改用備援重試一次；
+  檔案本身無法讀取（加密、損毀、非 PDF）時不重試。`drug.insert_analysis.ocr_provider` 記錄實際產出 Markdown 的供應者。
+- **服務健康**：設定了備援時兩者都會探測；只有一邊失敗為「受限」（不阻擋工作），兩邊都失敗才是「錯誤」。
+- **測試連線**：Indra 除了 `/health` 還會辨識一次內建範例 PDF，確認真的能回傳 Markdown。
+- **Indra 的限制**：繁體中文掃描頁偶有罕用字誤認；合併儲存格、沒有格線的欄位表可能錯欄。
+- **Indra 模型授權**：程式碼 Apache-2.0，模型權重為**修改版 OpenRAIL-M**——前一年營收或累計募資超過 2,000 萬美元的單位
+  （研究與個人用途除外），或提供與 Datalab 競爭之產品者不得使用，且限制延伸到 OCR 輸出。啟用前請閱讀
+  `services/ocr-indra/README.md` 的授權一節。
 
 ## 技術架構
 - **資料來源**：台灣 FDA 西藥許可證（`mcp.fda.gov.tw`），透過 `DRUG_TFDA_BASE_URL` 設定。
@@ -45,4 +64,4 @@
 
 ## 關鍵限制
 - 仿單 OCR + LLM 分析為機器產生，必須由臨床人員覆核。
-- `drug_enrichment` 與 `drug_analysis` 需要可達的 TFDA / OCR / 分析 LLM 端點。
+- `drug_enrichment` 與 `drug_analysis` 需要可達的 TFDA / OCR（MinerU 或 ocr-indra）/ 分析 LLM 端點。

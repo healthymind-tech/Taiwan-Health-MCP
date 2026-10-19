@@ -38,14 +38,18 @@ comm -23 \
 ## Project Overview
 
 > **Backend runtime — READ FIRST.** The backend is **100% Node.js / TypeScript**, under
-> `node-server/`. There is **no Python anywhere in this repository** — `src/*.py`,
-> `loader/` and `requirements.txt` were deleted when the drug pipeline was ported in
-> 2026-07. Two compose services run from `node-server/`: `app` (`node dist/server.js` —
+> `node-server/`. There is **no Python in the backend** — `src/*.py`, `loader/` and
+> `requirements.txt` were deleted when the drug pipeline was ported in 2026-07. The
+> **only** Python in the repository is `services/ocr-indra/` — a separate, optional OCR
+> container (Indra OCR on CPU, FastAPI) that the backend calls over HTTP like MinerU; it
+> is not backend code and nothing in `node-server/` imports or spawns it. Two compose services run from `node-server/`: `app` (`node dist/server.js` —
 > MCP + admin REST) and `admin-worker` (`node dist/admin/adminWorker.js` — every job
 > type, including the three drug stages). The admin front end is the `web-v2` service
 > (static Vite + React + Mantine SPA from `web-v2/`, served by its own nginx container).
-> OCR is an external **MinerU** HTTP service (admin → 外部服務 → OCR), not an in-process
-> model. Make backend changes in `node-server/src/`, admin UI changes in `web-v2/src/`.
+> OCR is an HTTP service, never an in-process model: provider `mineru` (external
+> **MinerU**, the default) or `indra` (the bundled `ocr-indra` container), with an
+> optional fallback provider — admin → 外部服務 → OCR, adapters in
+> `node-server/src/ocrProviders.ts`. Make backend changes in `node-server/src/`, admin UI changes in `web-v2/src/`.
 >
 > The only remaining thing under `src/` is `src/prompts/` — the Analysis-LM system
 > prompt, read at runtime by `drugAnalysisService.ts`. Do not delete it.
@@ -104,7 +108,7 @@ npm run typecheck                             # tsc -b --noEmit (no web-v2 test 
 
 # --- Docker (production — recommended) -------------------------------------
 cp .env.example .env                          # then edit .env (set POSTGRES_PASSWORD, ADMIN_*)
-docker compose up -d                          # nginx (:8080), web-v2, app, admin-worker, postgres, pgbouncer, redis, minio (+ minio-init)
+docker compose up -d                          # nginx (:8080), web-v2, app, admin-worker, postgres, pgbouncer, redis, minio (+ minio-init), ocr-indra
 docker compose build app web-v2 && docker compose up -d --no-deps app web-v2   # redeploy after code changes
 # health_check reports `build` from the BUILD_SHA build arg (the worker logs it at startup).
 # compose.yaml passes ${BUILD_SHA:-dev} to app and admin-worker, so set it in the environment:
@@ -119,6 +123,10 @@ docker compose build app web-v2 && docker compose up -d --no-deps app web-v2   #
 # loaders/*) must be deployed to it too — rebuilding only `app` leaves the
 # worker executing stale code with no error:
 docker compose build admin-worker && docker compose up -d --no-deps admin-worker
+
+# ocr-indra (services/ocr-indra, the only Python; model weights baked in at build time):
+docker compose build ocr-indra && docker compose up -d --no-deps ocr-indra
+docker run --rm --network none taiwan-health-mcp-ocr-indra python -m unittest discover -s tests
 
 # --- Staging (isolated stack, compose project twh-staging) ----------------
 # Needs an untracked deploy/staging/.env with STAGING_DB_PASSWORD,
@@ -152,7 +160,8 @@ lint commands to a task's "done" checklist expecting one to exist.
 | Redis 7 | Pub/sub relay for admin live events (`adminWs.ts`: worker + app `broadcast()` → `/admin/ws`) and health pings, but **no tool response is cached today** — `cached()` in `cache.ts` has zero call sites (see "Cross-cutting concerns") |
 | MinIO | Object storage for admin source uploads and drug assets (inserts, labels, pill images); presigned download links |
 | Embedding endpoint (external) | Semantic / hybrid search vectors (default Ollama `qwen3-embedding`). Configured as the **embedding** role's route (provider accounts + routes, admin → 模型端點), **not** env. Unavailable → keyword-only fallback |
-| MinerU (external) | OCR for drug insert PDFs (`POST /file_parse`). Configured in admin → 外部服務 → OCR (`admin.app_settings`) |
+| MinerU (external) | Default OCR provider for drug insert PDFs (`POST /file_parse`). Configured in admin → 外部服務 → OCR (`admin.app_settings` group `ocr`) |
+| ocr-indra | Optional CPU OCR provider (`services/ocr-indra/`, Indra OCR, `POST /ocr`, `GET /health`) at `http://ocr-indra:8000`. On the compose network `ocr` (`internal: true` — no route out; `app` + `admin-worker` also join it), no host port, 2 CPU / 2 GB. Used only when the `ocr` group's `provider` or `fallback_provider` is `indra`. Model weights are modified-OpenRAIL-M (commercial restrictions) — see its README |
 | Analysis LM (external) | Drug insert extraction. Configured as the **analysis** role's route (admin → 模型端點) |
 | Prometheus | Metrics on `METRICS_PORT` (default 9090, bound to localhost) |
 
@@ -177,7 +186,7 @@ HTTP surface exposed by `app`:
 |---------|------|-------------|--------------|
 | ICD Service | `icdService.ts` | `icd.diagnoses` / `icd.procedures` | `icd_import` job |
 | Drug Service | `drugService.ts` | `drug.*` tables | `drug_index_import` / `drug_enrichment` / `drug_analysis` jobs |
-| Drug Analysis Service | `drugAnalysisService.ts` | `drug.insert_analysis` | MinerU OCR + Analysis-LM stage |
+| Drug Analysis Service | `drugAnalysisService.ts` | `drug.insert_analysis` | OCR (`ocrProviders.ts`: MinerU / Indra + fallback) + Analysis-LM stage |
 | Supplements Service | `supplementsService.ts` | `health_supplements.items` | `health_supplements_sync` (TFDA Open Data) |
 | Food Service | `foodService.ts` | `food_nutrition.*` | `food_nutrition_sync` (TFDA Open Data) |
 | Lab Service | `labService.ts` | `loinc.*` | `loinc_import` |
@@ -217,7 +226,7 @@ Module-gated groups are dynamically added/removed by `moduleStatus.ts` (`REQUIRE
 - File-based imports (ICD / LOINC / SNOMED / RxNorm / FHIR IG) consume source files **uploaded via the admin console**, staged through MinIO; API-based imports (drug / health-supplements / food-nutrition) fetch from upstream APIs.
 - For local development the source-file locations fall back to `fhir-code/` and can each be overridden by env (`FHIR_CODE_DIR`, `ICD_CM_ZIP`, `LOINC_ZIP_PATH`, `SNOMED_ZIP`, `RXNORM_ZIP`, `IG_TGZ`, …). `fhir-code/` is **not in git** — see `docs/data-sources/test-data.md`. `config/datasets.yaml` is a Python-era leftover and is read by **no code**.
 - ICD-10-CM (`icd.ts`) accepts the CMS "Code Descriptions in Tabular Order" zip (`icd10cm_order_<FY>.txt`, `source_format = cms-order`) or the older tabular XML zip; only an order file with ≥ 90,000 rows (headers + 7th characters) is recorded as `complete` in `icd.editions`, and the FHIR validator reports ICD-10-CM "Unknown code" errors only against a complete edition. WHO ICD-10 (`icd.icd10_who`, source role `icd10_who`) is optional. LOINC (`loinc.ts`) also loads the AccessoryFiles: answer / part / answer-list / group codes (`loinc.other_codes`), part links, answer lists, panels and MapTo. SNOMED (`snomed.ts`) keeps inactive concepts / descriptions, `first_released` dates and historical associations.
-- Drug pipeline: `drugIndex.ts` (the TFDA `36_2.csv` license index) → `drugEnrichment.ts` (TFDA crawl → MinIO) → `drugAnalysis.ts` (insert PDF → MinerU OCR → Analysis LM). Shared: `tfdaCrawler.ts`, `tfdaParserUtils.ts`, `drugRecordBuilder.ts`.
+- Drug pipeline: `drugIndex.ts` (the TFDA `36_2.csv` license index) → `drugEnrichment.ts` (TFDA crawl → MinIO) → `drugAnalysis.ts` (insert PDF → OCR → Analysis LM). OCR goes through `ocrProviders.ts` (`runOcr`: primary provider, then the optional `fallback_provider` once unless the input itself is unreadable); `drug.insert_analysis.ocr_provider` records the provider that answered. Shared: `tfdaCrawler.ts`, `tfdaParserUtils.ts`, `drugRecordBuilder.ts`.
 - Embedding stage (`embeddings.ts`) backfills `*_embeddings` vector tables as separate `*_embed` jobs (`ig_embed` → `fhir.concept_embeddings`, content-addressed by sha256 of the name, exact scan only — no HNSW).
 - **Bundled reference data** (`node-server/data/`, ~2.6 MB, tracked): CodeSystem supplements (`data/supplements/*.json.gz` — NHI payment English names / LOINC links / claim volume, NHI drug names + ATC, all for TW Core) and the SPECIALIST LRABR abbreviation lexicon (`data/abbreviations/lrabr-<release>.tsv.gz`). `conceptSearch/bundled.ts` applies them before every concept-index build (`ig_import` + `ig_concept_index`): supplements whose target CodeSystem is installed go into `fhir.codesystem_supplements` as `uploaded_by = 'system:bundled'` (idempotent; never overwrites an operator's other version; an admin deletion is an opt-out in `admin.app_settings` group `bundled_supplements`, restorable in the UI); the lexicon loads only while `fhir.abbreviation_lexicon` is empty. Both images COPY the dir (resolved as `dist/../data`, override `BUNDLED_DATA_DIR`) — a new runtime data file needs no Dockerfile change, but a new data *directory* outside `node-server/data/` does. Sources / licences / regeneration: `node-server/data/README.md`; generators (TS, tsx): `node-server/scripts/supplements/`.
 - UMLS (`umls.ts`, optional, needs a UMLS licence): streams `MRCONSO.RRF` / `MRSAB.RRF` out of the Metathesaurus zip (ZIP64, no extraction) or reads the compact subset it writes (`node dist/loaders/umls.js --subset <zip> <out.rrf.gz>`, ~36 MB — upload that, not the 4 GB zip); SABs = SRL 0 + SNOMEDCT_US minus non-clinical sources (`EXCLUDED_SABS`). Source role `ig/umls_metathesaurus`, job `umls_import`.
@@ -317,7 +326,7 @@ Never interleave HTTP fetches with DB writes inside a transaction.
 - **Clinical calculators** implement published scoring formulas for decision support only — they are not a validated medical device, and every result carries a disclaimer. Any change to a formula, weight or cutoff must cite its source literature (see the References table in `docs/tools/clinical-calculator-tools.md`) and keep the input bounds in the `*InputShape` exports in step
 - **FHIR validation** is in-process and profile-driven (snapshot + terminology binding checks); it is not a substitute for the official HL7 FHIR Validator for conformance certification
 - **SNOMED CT** requires an active SNOMED International license (free for most uses)
-- **Drug analysis** (MinerU OCR + LLM extraction of TFDA inserts) is machine-generated and must be verified by a clinician; it depends on external OCR/LLM endpoints being configured
+- **Drug analysis** (MinerU / Indra OCR + LLM extraction of TFDA inserts) is machine-generated and must be verified by a clinician; it depends on external OCR/LLM endpoints being configured
 - **Embeddings** require a reachable embedding endpoint; without it, search degrades to keyword-only and a `keyword_only` signal is returned
 - **Chinese keyword search without embeddings finds almost nothing** — Postgres' `simple` tokenizer treats a whole Chinese product name as one token. Vectors are the intended path; this is by design, not a bug to patch with `ILIKE`
 - **pgBouncer transaction mode** is incompatible with `LISTEN/NOTIFY` and named prepared statements

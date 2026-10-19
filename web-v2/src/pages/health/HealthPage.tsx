@@ -31,7 +31,7 @@ const PROBE_META: Record<string, { label: string; description: string; icon: typ
   redis: { label: "Redis", description: "即時事件廣播與快取", icon: IconStack },
   minio: { label: "物件儲存", description: "來源檔、藥品資產與系統備份", icon: IconCloud, settings: "/integrations" },
   embedding_model: { label: "Embedding 模型", description: "語意搜尋的向量端點", icon: IconBrain, settings: "/models" },
-  ocr_server: { label: "OCR 伺服器（MinerU）", description: "藥品仿單 PDF 文字辨識", icon: IconFileText, settings: "/integrations?tab=ocr" },
+  ocr_server: { label: "OCR 伺服器", description: "藥品仿單 PDF 文字辨識（MinerU / Indra，含備援）", icon: IconFileText, settings: "/integrations?tab=ocr" },
   analysis_server: { label: "分析 LLM", description: "仿單結構化抽取", icon: IconBrain, settings: "/models" },
 };
 

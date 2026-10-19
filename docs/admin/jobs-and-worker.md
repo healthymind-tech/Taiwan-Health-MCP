@@ -24,7 +24,7 @@
 | `health_supplements_sync` / `food_nutrition_sync` | 對應模組 | 由 TFDA Open Data API 抓取。 |
 | `drug_index_import` | `drug` | 由 `36_2.csv` 授權證索引匯入 `drug.licenses`，並排入 enrichment 佇列。 |
 | `drug_enrichment` | `drug` | 爬取 TFDA 網站取得仿單 / 標籤 / 外觀資產，上傳 MinIO。 |
-| `drug_analysis` | `drug` | 仿單 PDF → MinerU OCR → 分析 LLM → `drug.insert_analysis`。 |
+| `drug_analysis` | `drug` | 仿單 PDF → OCR（MinerU / Indra，可設備援）→ 分析 LLM → `drug.insert_analysis`。 |
 | `icd_embed` / `loinc_embed` / `snomed_embed` / `health_supplements_embed` / `food_nutrition_embed` | 對應模組 | 回填 `*_embeddings` 向量表（需嵌入角色有可用的 profile）。 |
 | `ig_concept_index` | `ig` | 建立 / 補建 IG 術語搜尋索引（CodeSystem 名稱、所有語言 designation、supplement、連結名稱、選用的 UMLS 同義字）與縮寫表，之後視需要排入 `ig_embed`。見 [IG 術語搜尋](../modules/ig-concept-search.md)。 |
 | `ig_embed` | `ig` | 為 IG 術語名稱補齊向量（`fhir.concept_embeddings`，內容定址、增量）。 |

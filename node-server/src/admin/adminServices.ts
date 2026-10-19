@@ -20,6 +20,7 @@ import { listEnabled, type LlmProfile } from "./llmProfiles.js";
 import * as minioService from "../minioService.js";
 import { probeEndpoint } from "../providers/probe.js";
 import { logWarning } from "../logger.js";
+import { baseUrlOf, foldOcrProbes, ocrSettingsFromValues, providerReadiness, type OcrProviderId } from "../ocrProviders.js";
 
 export const SERVICE_PROBE_ORDER = [
   "database",
@@ -416,27 +417,36 @@ async function probeEmbedding(): Promise<ProbeResult> {
   };
 }
 
-/** Probe the MinerU server the drug pipeline uploads insert PDFs to. */
+/** Probe the OCR provider(s) the drug pipeline uploads insert PDFs to. */
 async function probeOcrServer(): Promise<ProbeResult> {
   if (!(await isGroupConfigured("ocr"))) return unconfigured("OCR server");
-  const ocr = await getGroup("ocr");
-  const provider = String((ocr.provider ?? "mineru") || "mineru").trim().toLowerCase();
-  const endpoint = String((ocr.base_url ?? "") || "").trim().replace(/\/+$/, "");
-  const backend = String((ocr.backend ?? "hybrid-engine") || "hybrid-engine").trim();
-  const effort = String((ocr.effort ?? "medium") || "medium").trim();
-  if (provider !== "mineru") {
-    return { status: "error", endpoint, latency_ms: null, message: `Unsupported OCR provider: ${provider}`, details: { provider, backend } };
-  }
-  if (!endpoint) {
-    return { status: "error", endpoint, latency_ms: null, message: "OCR base URL is not configured yet.", details: { provider, backend } };
+  const s = ocrSettingsFromValues(await getGroup("ocr"));
+  const provider = s.provider;
+  const backend = s.mineru.backend;
+  const effort = s.mineru.effort;
+  const [ready, reason] = providerReadiness(s, provider);
+  const endpoint = ready ? baseUrlOf(s, provider as OcrProviderId) : "";
+  if (!ready) {
+    const message = reason.startsWith("Unsupported") ? reason : "OCR base URL is not configured yet.";
+    return { status: "error", endpoint, latency_ms: null, message, details: { provider, backend } };
   }
   const probe = await probeHttpCandidates([`${endpoint}/health`]);
+  let fallback: Awaited<ReturnType<typeof probeHttpCandidates>> | null = null;
+  if (s.fallbackProvider && providerReadiness(s, s.fallbackProvider)[0]) {
+    fallback = await probeHttpCandidates([`${baseUrlOf(s, s.fallbackProvider)}/health`]);
+  }
+  const folded = foldOcrProbes(s, probe, fallback);
   return {
-    status: probe.ok ? "ok" : "error",
+    status: folded.status,
     endpoint: probe.endpoint,
     latency_ms: probe.latencyMs,
-    message: probe.ok ? `OCR server reachable (${backend}).` : `OCR server probe failed: ${probe.message}`,
-    details: { provider, backend, effort, ...probe.details },
+    message: folded.message,
+    details: {
+      provider,
+      ...(provider === "mineru" ? { backend, effort } : { dpi: s.indra.dpi, mode: s.indra.mode }),
+      ...probe.details,
+      ...(s.fallbackProvider ? { fallback_provider: s.fallbackProvider, fallback_ok: fallback?.ok ?? false } : {}),
+    },
   };
 }
 

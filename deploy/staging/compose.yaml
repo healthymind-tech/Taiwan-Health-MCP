@@ -75,6 +75,7 @@ services:
       METRICS_PORT: "9091"
     ports:
       - "127.0.0.1:18000:8000"
+    networks: [default, ocr]
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -95,10 +96,38 @@ services:
       ADMIN_WORKER_NAME: staging-worker
       ADMIN_MAX_CONCURRENT_JOBS: "2"
       NODE_OPTIONS: --max-old-space-size=4096
+    networks: [default, ocr]
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
       postgres: { condition: service_healthy }
+    restart: unless-stopped
+
+  # Optional CPU OCR provider (services/ocr-indra) — base URL http://ocr-indra:8000
+  # in this stack's admin → 外部服務 → OCR. Internal network only, like production.
+  ocr-indra:
+    build:
+      context: ../../services/ocr-indra
+    networks: [ocr]
+    expose:
+      - "8000"
+    environment:
+      INDRA_WORKERS: "1"
+      INDRA_THREADS_PER_WORKER: "2"
+    cpus: 2
+    mem_limit: 2g
+    pids_limit: 256
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4).status == 200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 60s
+      retries: 3
     restart: unless-stopped
 
   # New admin console: static SPA + front door proxy for this stack.
@@ -112,6 +141,11 @@ services:
     depends_on:
       - app
     restart: unless-stopped
+
+networks:
+  default:
+  ocr:
+    internal: true
 
 volumes:
   pg_data:

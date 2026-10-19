@@ -16,6 +16,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { QueryBoundary } from "@/components/QueryBoundary";
 import { SectionCard } from "@/components/SectionCard";
 import type { SettingsGroup } from "@/lib/types";
+import { OcrProviderNotes, OCR_SEGMENTED } from "./OcrProviderNotes";
 import { OcrTestPanel } from "./OcrTestPanel";
 import { SettingsGroupForm } from "./SettingsGroupForm";
 import { HIDDEN_GROUPS, MODEL_GROUPS, groupDescription, groupLabel, useSettings } from "./settingsModel";
@@ -109,7 +110,11 @@ function IntegrationTabs({ groups }: { groups: SettingsGroup[] }) {
               description={groupDescription(g)}
               icon={GROUP_ICON[g.group] ?? <IconDatabase size={18} />}
             >
-              <SettingsGroupForm group={g} />
+              {g.group === "ocr" ? (
+                <SettingsGroupForm group={g} segmented={OCR_SEGMENTED} footer={<OcrProviderNotes />} />
+              ) : (
+                <SettingsGroupForm group={g} />
+              )}
             </SectionCard>
             {g.group === "ocr" && (
               <Box ref={testRef} style={{ scrollMarginTop: 80 }}>

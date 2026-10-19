@@ -45,7 +45,7 @@ FHIR_SERVER_SECRET_KEY=
 | **總覽** | 儀表板 `/`、背景工作 `/jobs` | 系統狀態一覽；匯入 / 嵌入 / 同步工作的佇列、步驟時間軸與即時日誌（見[背景工作與排程](jobs-and-worker.md)）。 |
 | **資料** | 醫療術語 `/terminology`（各模組 `/terminology/<icd\|loinc\|snomed\|rxnorm>`）、藥品 `/drug`（藥品瀏覽器 `/drug/explorer`）、健康食品 `/data/health_supplements`、食品營養 `/data/food_nutrition` | 各模組的來源檔、匯入、排程、資料預覽、嵌入、維護模式與清除；術語模組另有瀏覽器（見下文）。 |
 | **FHIR** | IG 套件庫 `/fhir/ig`、FHIR 伺服器 `/fhir-servers` | FHIR IG 匯入 / 相依套件 / 移除保護；外部 FHIR R4 伺服器登錄、認證與健康檢查。 |
-| **整合** | 模型端點 `/models`、MCP 工具 `/mcp`、外部服務 `/integrations` | Embedding 與分析 LLM 的 provider 帳號與 profile；MCP 端點、工具目錄與線上測試；OCR（MinerU）、物件儲存、TFDA、FHIR package registry、worker 設定。 |
+| **整合** | 模型端點 `/models`、MCP 工具 `/mcp`、外部服務 `/integrations` | Embedding 與分析 LLM 的 provider 帳號與 profile；MCP 端點、工具目錄與線上測試；OCR（MinerU / Indra）、物件儲存、TFDA、FHIR package registry、worker 設定。 |
 | **系統** | 服務健康 `/health`、備份與設定 `/system`、帳號安全 `/security` | 基礎設施探測與 worker 心跳；系統備份與設定匯出 / 匯入；密碼與 passkey。 |
 
 對應的後端模組見 `node-server/src/admin/*.ts`（`adminApp.ts` 為路由入口）。
@@ -109,7 +109,7 @@ seed 使用 `ON CONFLICT DO NOTHING`，因此 credential row 建立後修改 `.e
 對應鍵尚未存在時讀取一次以種子化 `admin.app_settings`；之後請在「外部服務」（`/admin/integrations`）管理與測試，
 編輯 `.env` 對已種子化的資料庫無效。其中 TFDA 與 registry 可直接修改（熱套用）；**MinIO 與 worker 調校在後台為唯讀群組**。
 
-OCR（MinerU）端點存於 `admin.app_settings` 的 `ocr` 群組，**不從 `.env` 種子化**，只能在「外部服務 → OCR」設定與測試。
+OCR 設定存於 `admin.app_settings` 的 `ocr` 群組，**不從 `.env` 種子化**，只能在「外部服務 → OCR」設定與測試：供應者 `mineru`（預設，外部 MinerU）或 `indra`（compose 內建的 CPU OCR 容器 `ocr-indra`，`http://ocr-indra:8000`），以及選用的備援供應者。各欄位見[藥品服務 → OCR 供應者](../modules/drug-service.md#ocr-providers)。
 
 「備份與設定」（`/admin/system`）的設定匯出 / 匯入（格式版本 3）可在不同環境間搬移一份可用的設定：內含 `admin.app_settings` 各群組、provider 帳號 / profile / 角色綁定（含金鑰）、passkey 與其 RP ID。舊的 v1 / v2 匯出檔仍可匯入。匯出檔含明文密鑰，請視同憑證保管。
 

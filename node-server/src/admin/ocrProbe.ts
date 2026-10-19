@@ -1,14 +1,15 @@
 /**
  * OCR server reachability probe for the admin overview `infrastructure.ocr` block.
  *
- * The OCR backend is MinerU: a standalone HTTP service the drug pipeline uploads
- * insert PDFs to. Reachability is the whole story — unlike the dots_ocr VLM it
- * replaced, there is no in-process runtime that could be absent from an image, so
- * this probe now says the same thing as its Python twin
- * (`admin_services._probe_ocr_server`) rather than deliberately diverging from it.
+ * The OCR backend is MinerU or Indra OCR (ocrProviders.ts): standalone HTTP
+ * services the drug pipeline uploads insert PDFs to. Reachability of `/health`
+ * is the whole story. With a fallback provider configured, both are probed and
+ * folded like the services page does (`foldOcrProbes`): one side down is
+ * `degraded`, only both down is `error`.
  */
 
 import * as adminSettings from "./adminSettings.js";
+import { baseUrlOf, foldOcrProbes, ocrSettingsFromValues, providerReadiness, type OcrProviderId } from "../ocrProviders.js";
 
 /**
  * Map Node's generic `fetch` failure message to the httpx-equivalent string the
@@ -39,7 +40,7 @@ async function probeHttpCandidates(candidates: string[]): Promise<{ ok: boolean;
   return { ok: false, message: lastMessage };
 }
 
-/** Probe the configured MinerU server → `{status, detail}` for the overview. */
+/** Probe the configured OCR provider(s) → `{status, detail}` for the overview. */
 export async function probeOcr(): Promise<{ status: string; detail: string }> {
   try {
     // Not seeded from env — no rows means the operator has not set it up, and
@@ -47,26 +48,23 @@ export async function probeOcr(): Promise<{ status: string; detail: string }> {
     if (!(await adminSettings.isGroupConfigured("ocr"))) {
       return { status: "degraded", detail: "OCR server is not configured yet — set it up in Admin → Settings." };
     }
-    const ocr = await adminSettings.getGroup("ocr");
-    const provider = String((ocr.provider ?? "mineru") || "mineru").trim().toLowerCase();
-    const baseUrl = String((ocr.base_url ?? "") || "").trim().replace(/\/+$/, "");
-    const backend = String((ocr.backend ?? "hybrid-engine") || "hybrid-engine").trim();
+    const s = ocrSettingsFromValues(await adminSettings.getGroup("ocr"));
 
     // Mirror the `ocr_readiness` hard-config failures.
-    if (provider !== "mineru") {
-      return { status: "error", detail: `Unsupported OCR provider: ${provider}` };
-    }
-    if (!baseUrl) {
+    const [ready, reason] = providerReadiness(s, s.provider);
+    if (!ready) {
       return {
         status: "error",
-        detail: "OCR base URL is not configured yet — set it up in the admin console (Settings → OCR Server).",
+        detail: reason.startsWith("Unsupported")
+          ? reason
+          : "OCR base URL is not configured yet — set it up in the admin console (Settings → OCR Server).",
       };
     }
-
-    const { ok, message } = await probeHttpCandidates([`${baseUrl}/health`]);
-    return ok
-      ? { status: "ok", detail: `OCR server reachable (${backend}).` }
-      : { status: "error", detail: `OCR server probe failed: ${message}` };
+    const primary = await probeHttpCandidates([`${baseUrlOf(s, s.provider as OcrProviderId)}/health`]);
+    const fb = s.fallbackProvider;
+    const fallback = fb && providerReadiness(s, fb)[0] ? await probeHttpCandidates([`${baseUrlOf(s, fb)}/health`]) : null;
+    const folded = foldOcrProbes(s, primary, fallback);
+    return { status: folded.status, detail: folded.message };
   } catch (exc) {
     return { status: "error", detail: String((exc as Error).message) };
   }

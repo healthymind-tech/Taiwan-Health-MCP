@@ -28,6 +28,7 @@ graph TD
     Worker --> MN
     Server -. "Embeddings (query vectors)" .-> Ext[External model endpoints]
     Worker -. "OCR (MinerU) / Analysis LM / Embeddings" .-> Ext
+    Worker -. "OCR (Indra, internal network ocr)" .-> OcrIndra["ocr-indra (CPU OCR)"]
 ```
 
 ## 關鍵考量
@@ -38,6 +39,6 @@ graph TD
 4. **pgBouncer transaction mode**：不相容 `LISTEN/NOTIFY` 與 named prepared statements；Node 端使用 `pg` 的 unnamed statements 以相容此模式。
 5. **資料匯入**：由管理後台觸發、`admin-worker` 背景執行（已無獨立的 data-loader 容器）。來源檔由管理後台上傳至 MinIO，工作執行時再取回。
 6. **MinIO**：儲存藥品文件資產（仿單 / 標籤 / 外觀圖），工具回傳有時效的預簽下載連結。
-7. **外部模型端點**：嵌入、OCR（MinerU）與分析 LLM 都是外部 HTTP 服務。嵌入與分析 LLM 存於 provider 帳號 / profile 表（`admin.llm_providers`、`llm_routes`、`llm_route_members`、`llm_role_routes`），於管理後台「模型端點」設定；OCR 存於 `admin.app_settings` 的 `ocr` 群組，於「外部服務」設定。不可用時系統降級（搜尋退回關鍵字並標示 `search_mode: "keyword_only"`、分析工作暫停並自動重試，但不影響查詢）。
+7. **外部模型端點**：嵌入、OCR（MinerU）與分析 LLM 都是外部 HTTP 服務（OCR 也可改用 compose 內建、只接內部網路的 CPU OCR 容器 `ocr-indra`）。嵌入與分析 LLM 存於 provider 帳號 / profile 表（`admin.llm_providers`、`llm_routes`、`llm_route_members`、`llm_role_routes`），於管理後台「模型端點」設定；OCR 存於 `admin.app_settings` 的 `ocr` 群組，於「外部服務」設定。不可用時系統降級（搜尋退回關鍵字並標示 `search_mode: "keyword_only"`、分析工作暫停並自動重試，但不影響查詢）。
 8. **舊前端**：Next.js `web` 服務只保留在 compose profile `legacy-web` 供回滾，預設不啟動。
 9. **映像**：`app`（`node-server/Dockerfile`）、`admin-worker`（`Dockerfile.worker`）與 `web-v2`（`web-v2/Dockerfile`）是三個獨立映像；改了工作 / 載入程式碼要連 `admin-worker` 一起重建。

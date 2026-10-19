@@ -15,7 +15,7 @@ import { ValueView } from "./StructuredView";
 import { asDict, asText, isEmptyValue, type ExplorerDetail } from "./drugTypes";
 
 const SOURCE: Record<string, { label: string; color: string; help: string }> = {
-  pdf_insert: { label: "仿單 PDF · LLM 分析", color: "indigo", help: "由 MinerU OCR 讀取仿單 PDF，再由 Analysis LM 整理為結構化欄位。" },
+  pdf_insert: { label: "仿單 PDF · LLM 分析", color: "indigo", help: "由 OCR（MinerU 或 Indra）讀取仿單 PDF，再由 Analysis LM 整理為結構化欄位。" },
   electronic_insert: { label: "TFDA 電子仿單", color: "teal", help: "取自 TFDA 網站的電子仿單（HTML），未經 LLM 分析。" },
   index_only: { label: "僅許可證索引", color: "gray", help: "尚未取得仿單內容。" },
 };

@@ -93,6 +93,10 @@ services:
       args:
         BUILD_SHA: ${BUILD_SHA:-dev}
     container_name: taiwanHealthMcp
+    # `ocr`: internal network shared with ocr-indra only.
+    networks:
+      - default
+      - ocr
     extra_hosts:
       - "host.docker.internal:host-gateway"
     # No public host port: the MCP/admin app is reached only through the nginx
@@ -182,6 +186,9 @@ services:
         BUILD_SHA: ${BUILD_SHA:-dev}
     container_name: taiwanHealthMcp_admin_worker
     # CMD in Dockerfile.worker runs `node dist/admin/adminWorker.js`.
+    networks:
+      - default
+      - ocr
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
@@ -216,6 +223,44 @@ services:
       minio:
         condition: service_healthy
     restart: unless-stopped
+
+  # ── OCR: Indra (CPU-only, optional second OCR provider for drug inserts) ──────
+  # The only Python in the repo (services/ocr-indra). Nothing uses it until an
+  # operator picks provider `indra` (or fallback `indra`) in admin → 外部服務 → OCR;
+  # its base URL there is http://ocr-indra:8000. No host port, and the `ocr`
+  # network is internal (no route out): uploaded inserts cannot leave this box.
+  # Model weights are baked into the image (modified OpenRAIL-M licence — see
+  # services/ocr-indra/README.md before enabling it).
+  ocr-indra:
+    build:
+      context: ./services/ocr-indra
+    image: taiwan-health-mcp-ocr-indra:latest
+    container_name: taiwanHealthMcp_ocr_indra
+    restart: unless-stopped
+    networks:
+      - ocr
+    expose:
+      - "8000"
+    environment:
+      - INDRA_WORKERS=${INDRA_WORKERS:-1}
+      - INDRA_THREADS_PER_WORKER=${INDRA_THREADS_PER_WORKER:-2}
+      - INDRA_MAX_PAGES=${INDRA_MAX_PAGES:-60}
+      - INDRA_MAX_UPLOAD_MB=${INDRA_MAX_UPLOAD_MB:-50}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    cpus: 2
+    mem_limit: 2g
+    pids_limit: 256
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4).status == 200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 60s
+      retries: 3
 
   # ── Admin console v2 (static Vite SPA served by its own nginx) ────────────────
   # nginx (below) routes /admin pages here; API / MCP / WS still go straight to
@@ -263,6 +308,12 @@ services:
     depends_on:
       - web-v2
       - app
+
+networks:
+  default:
+  # No external route: only app, admin-worker and ocr-indra are attached.
+  ocr:
+    internal: true
 
 volumes:
   postgres_data:

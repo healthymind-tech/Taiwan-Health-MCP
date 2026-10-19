@@ -1,0 +1,37 @@
+# Exact pins for the ocr-indra image (resolved on python:3.12.13-slim, linux/amd64,
+# 2026-10-19). Bump deliberately and re-run the README's smoke test.
+indra-ocr==0.3.2
+numpy==2.5.4
+opencv-python-headless==5.0.0.93
+onnxruntime==1.31.0
+pypdfium2==5.14.0
+# indra-ocr imports huggingface_hub only to download models; the models are baked
+# into the image, but the dependency is declared, so it is installed.
+huggingface_hub==2.2.0
+hf-xet==1.7.0
+filelock==4.2.4
+fsspec==2026.9.0
+httpcore2==2.14.0
+httpx2==2.14.0
+truststore==0.10.5
+tqdm==4.70.1
+PyYAML==6.0.3
+packaging==26.3
+flatbuffers==25.12.19
+protobuf==7.36.2
+opentelemetry-api==1.45.1
+# HTTP server
+fastapi==0.147.0
+starlette==1.9.0
+pydantic==2.14.1
+pydantic_core==2.50.1
+annotated-doc==0.0.5
+annotated-types==0.8.0
+typing-inspection==0.4.4
+typing_extensions==4.16.0
+anyio==4.15.1
+idna==3.20
+uvicorn==0.54.0
+click==8.5.0
+h11==0.16.0
+python-multipart==0.0.32

@@ -24,7 +24,7 @@
 | `health_supplements_sync` / `food_nutrition_sync` | Matching module | Fetched from the TFDA Open Data API. |
 | `drug_index_import` | `drug` | Imports the `36_2.csv` license index into `drug.licenses` and queues enrichment. |
 | `drug_enrichment` | `drug` | Crawls the TFDA site for insert / label / appearance assets and uploads them to MinIO. |
-| `drug_analysis` | `drug` | Insert PDF → MinerU OCR → analysis LLM → `drug.insert_analysis`. |
+| `drug_analysis` | `drug` | Insert PDF → OCR (MinerU / Indra, optional fallback) → analysis LLM → `drug.insert_analysis`. |
 | `icd_embed` / `loinc_embed` / `snomed_embed` / `health_supplements_embed` / `food_nutrition_embed` | Matching module | Backfills the `*_embeddings` vector tables (needs a usable profile on the embedding role). |
 | `ig_concept_index` | `ig` | Builds / backfills the IG concept-search index (CodeSystem names, designations in every language, supplements, linked names, optional UMLS synonyms) and the thesaurus, then queues `ig_embed` when needed. See [IG Concept Search](../modules/ig-concept-search.md). |
 | `ig_embed` | `ig` | Embeds IG concept names (`fhir.concept_embeddings`, content-addressed, incremental). |

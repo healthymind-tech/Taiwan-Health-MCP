@@ -2100,7 +2100,7 @@ export async function adminHandler(req: Request, res: Response, next: NextFuncti
         const markdown = await service.ocrOnly({
           sourceFilename: filename,
           pdfBytes: fileData,
-          // Inline MinerU result images so the preview can render them.
+          // Inline MinerU result images so the preview can render them (Indra returns none).
           embedImages: true,
         });
 
@@ -2122,7 +2122,8 @@ export async function adminHandler(req: Request, res: Response, next: NextFuncti
           ok: true,
           markdown,
           analysis: analysisJson,
-          ocrProvider: service.config.ocrProvider,
+          // The provider that answered — the fallback may have stepped in.
+          ocrProvider: service.lastOcrProvider ?? service.config.ocrProvider,
           analysisProvider: analysisProvider || null,
           analysisConfigured: analysisReady,
         });

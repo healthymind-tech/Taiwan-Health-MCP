@@ -17,7 +17,7 @@
 | 記憶體 | 8 GB | 16 GB 以上 | `admin-worker` 單一容器就設定了 `--max-old-space-size=8192`（FHIR IG 匯入需要） |
 | 磁碟 | 20 GB | 100 GB 以上 | PostgreSQL + MinIO 藥品資產（仿單 / 標籤 / 外觀圖）會持續成長 |
 
-嵌入、OCR（MinerU）與分析 LLM 都是**外部 HTTP 服務**，不含在本 compose stack 內，需另行準備並在管理後台設定。
+嵌入、OCR（MinerU）與分析 LLM 都是**外部 HTTP 服務**，不含在本 compose stack 內，需另行準備並在管理後台設定。唯一的例外是選用的 CPU OCR 容器 `ocr-indra`（`services/ocr-indra/`，Indra OCR）：它隨 compose 啟動、只接在內部網路 `ocr`（不對外連線、無 host port），在「外部服務 → OCR」把供應者（或備援）設為 `indra` 才會被使用；模型授權限制見 `services/ocr-indra/README.md`。
 
 ## 服務組成
 
@@ -238,7 +238,7 @@ docker compose logs -f app admin-worker
 |------|----------|--------------|
 | 模型端點（`/admin/models`）→ Embedding | 建立 provider 帳號，再建立 embedding profile 並綁到 embedding 角色（例如 Ollama `qwen3-embedding`） | 搜尋退回關鍵字模式；**中文關鍵字搜尋幾乎查不到東西** |
 | 模型端點（`/admin/models`）→ 分析 | 藥品仿單抽取用 LLM 的 profile | 藥品分析階段無法執行 |
-| 外部服務（`/admin/integrations`）→ OCR | MinerU 服務位址 | 仿單 PDF 無法 OCR |
+| 外部服務（`/admin/integrations`）→ OCR | 供應者（MinerU 位址，或 `indra` → `http://ocr-indra:8000`）與選用的備援 | 仿單 PDF 無法 OCR |
 
 設定可用「備份與設定」（`/admin/system`）的設定匯出 / 匯入在不同環境間搬移。詳見[管理後台](../admin/index.md)。
 

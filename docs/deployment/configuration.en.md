@@ -12,7 +12,7 @@ cp .env.example .env
 |----------|-----------|-------|
 | **Bootstrap variables** | `.env` only | DB / Redis / MCP transport / `ADMIN_*` auth / `WEB_PORT`. These must be known before startup and never enter the database. |
 | **Seed-only settings** | `.env` → `admin.app_settings` | MinIO, the TFDA crawler, the FHIR package registry, worker tuning, and so on. **Read exactly once, on first boot, for keys that do not yet exist**, to seed the database; editing `.env` has no effect on an already-seeded database. TFDA and registry settings can then be managed under External services (`/admin/integrations`) in the console (applied hot); **MinIO and worker tuning are read-only groups in the console**, so changing them later requires a direct `UPDATE admin.app_settings` and a service restart. |
-| **Model endpoints** | Database only | Embedding and the analysis LLM live in the provider-account / profile tables (`admin.llm_providers` etc.) and are configured under Model endpoints (`/admin/models`); OCR (MinerU) lives in the `ocr` group of `admin.app_settings` and is configured under External services → OCR. **Never read from environment variables**; movable between environments with the settings export / import (v3) under Backups & settings (`/admin/system`). |
+| **Model endpoints** | Database only | Embedding and the analysis LLM live in the provider-account / profile tables (`admin.llm_providers` etc.) and are configured under Model endpoints (`/admin/models`); OCR (MinerU / Indra and the fallback) lives in the `ocr` group of `admin.app_settings` and is configured under External services → OCR. **Never read from environment variables**; movable between environments with the settings export / import (v3) under Backups & settings (`/admin/system`). |
 
 ---
 

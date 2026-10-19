@@ -54,8 +54,9 @@ export const GROUP_META: Record<string, GroupMeta> = {
   embedding: { label: "Embedding 共用設定", description: "向量請求如何分配到各 Embedding 端點，以及所有端點共用的逾時、批次大小與並行請求數。" },
   analysis: { label: "分析 LLM 共用設定", description: "藥品仿單分析請求如何分配到各分析 LLM 端點，以及取得合法 JSON 的重試次數。" },
   ocr: {
-    label: "OCR 伺服器（MinerU）",
-    description: "將藥品仿單 PDF 轉為 Markdown 的 MinerU HTTP 服務。藥品分析流程會把 PDF 上傳到這裡，再讀回 Markdown。",
+    label: "OCR 伺服器",
+    description:
+      "將藥品仿單 PDF 轉為 Markdown 的 OCR 服務：MinerU（外部 HTTP 服務，GPU）或 Indra OCR（compose 內建的 ocr-indra 容器，只用 CPU）。藥品分析流程會把 PDF 上傳到所選的供應者，再讀回 Markdown；可另設備援供應者，主要供應者失敗時改用它重試一次。",
   },
   minio: {
     label: "物件儲存（MinIO）",
@@ -88,13 +89,30 @@ export const FIELD_META: Record<string, FieldMeta> = {
   "embedding.batch_size": { label: "批次大小", help: "每次送往端點的文字筆數。雲端服務若有 TPM 限制，可調小以避免觸發速率限制。" },
   "analysis.strategy": { label: "分流策略", help: "failover：永遠使用優先序最高且健康的端點；weighted：依權重隨機分配。任一呼叫失敗都會改試下一個端點。" },
   "analysis.max_retries": { label: "最大重試次數", help: "同一端點嘗試取得格式正確 JSON 的次數，用完才換下一個端點。" },
-  "ocr.provider": { label: "供應者" },
-  "ocr.base_url": { label: "Base URL", help: "MinerU API 根網址，例如 http://10.0.0.5:8000" },
-  "ocr.backend": { label: "解析後端", help: "hybrid-engine 對食藥署仿單的文字／表格混合版面效果最好。" },
-  "ocr.effort": { label: "解析強度", help: "僅 hybrid 後端適用。high 會額外分析圖片與圖表，速度較慢。" },
-  "ocr.parse_method": { label: "解析方式", help: "auto 自動判斷；txt 直接抽取文字層；ocr 強制影像辨識（掃描檔適用）。" },
-  "ocr.lang": { label: "語言", help: "僅 pipeline 後端適用。ch 同時涵蓋繁體中文與英文。" },
-  "ocr.timeout_seconds": { label: "逾時（秒）", help: "單一 PDF 的處理上限。一般仿單數秒內即可完成。" },
+  "ocr.provider": {
+    label: "供應者",
+    help: "MinerU：外部 GPU 服務，複雜表格最穩定。Indra：compose 內建的 CPU OCR（ocr-indra），不需 GPU；啟用前請先確認模型授權（見下方說明）。",
+  },
+  "ocr.fallback_provider": {
+    label: "備援供應者",
+    help: "主要供應者無法連線、回應錯誤、逾時或沒有輸出時，改用這個供應者重試一次；檔案本身無法讀取時不會重試。與主要供應者相同等於不使用。",
+  },
+  "ocr.base_url": { label: "MinerU Base URL", help: "MinerU API 根網址，例如 http://10.0.0.5:8000" },
+  "ocr.backend": { label: "MinerU 解析後端", help: "hybrid-engine 對食藥署仿單的文字／表格混合版面效果最好。" },
+  "ocr.effort": { label: "MinerU 解析強度", help: "僅 hybrid 後端適用。high 會額外分析圖片與圖表，速度較慢。" },
+  "ocr.parse_method": { label: "MinerU 解析方式", help: "auto 自動判斷；txt 直接抽取文字層；ocr 強制影像辨識（掃描檔適用）。" },
+  "ocr.lang": { label: "MinerU 語言", help: "僅 pipeline 後端適用。ch 同時涵蓋繁體中文與英文。" },
+  "ocr.timeout_seconds": { label: "MinerU 逾時（秒）", help: "單一 PDF 的處理上限。一般仿單數秒內即可完成。" },
+  "ocr.indra_base_url": { label: "Indra Base URL", help: "ocr-indra 服務根網址（不含 /ocr）。compose 內建服務為 http://ocr-indra:8000。" },
+  "ocr.indra_timeout_seconds": {
+    label: "Indra 逾時（秒）",
+    help: "超過後不再開始新的一頁（10–3600）；服務本身另有上限 INDRA_MAX_TIMEOUT_SECONDS（預設 600）。CPU 上掃描頁約數秒一頁。",
+  },
+  "ocr.indra_dpi": { label: "Indra 解析度（DPI）", help: "掃描頁的渲染解析度（72–400），預設 200。調高有助於小字，但會變慢。" },
+  "ocr.indra_mode": {
+    label: "Indra 模式",
+    help: "auto：PDF 文字層可信時直接使用、其餘頁面 OCR（建議）；ocr：一律影像辨識；text：一律使用文字層。",
+  },
   "minio.endpoint": { label: "Endpoint", help: "host:port，例如 minio:9000" },
   "minio.access_key": { label: "Access key" },
   "minio.secret_key": { label: "Secret key" },
@@ -158,10 +176,16 @@ export function secretIsSet(f: SettingsField): boolean {
   return f.secret && typeof f.value === "string" && f.value !== "";
 }
 
-/** `show_if` = every listed field's current value must be one of the allowed values. */
+/**
+ * `show_if` = every listed field's current value must be one of the allowed values;
+ * `show_if_any` = at least one listed field must match (e.g. a provider's fields
+ * show when it is the primary OR the fallback).
+ */
 export function isVisible(f: SettingsField, draft: DraftValues): boolean {
-  if (!f.show_if) return true;
-  return Object.entries(f.show_if).every(([k, allowed]) => allowed.includes(String(draft[k] ?? "")));
+  const matches = ([k, allowed]: [string, string[]]) => allowed.includes(String(draft[k] ?? ""));
+  if (f.show_if && !Object.entries(f.show_if).every(matches)) return false;
+  if (f.show_if_any && !Object.entries(f.show_if_any).some(matches)) return false;
+  return true;
 }
 
 export function changedKeys(g: SettingsGroup, initial: DraftValues, draft: DraftValues): string[] {

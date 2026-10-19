@@ -116,7 +116,7 @@ test("service tests and probes get zh explanations; LLM-coded results are untouc
   assert.equal(explainProbe(llm), llm);
   assert.equal(
     explainJobError("Required service(s) not healthy: minio, ocr_server. Run an active service probe from the Services tab, then retry.")?.message_zh,
-    "必要的服務目前無法使用：物件儲存（MinIO）、OCR（MinerU）。",
+    "必要的服務目前無法使用：物件儲存（MinIO）、OCR 伺服器。",
   );
   assert.equal(explainJobError("some loader message nobody knows"), null);
 });

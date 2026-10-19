@@ -115,7 +115,7 @@ The domain services live in `node-server/src/`. Each offers `async initialize()`
 |-------|------|------|
 | `IcdService` | `icdService.ts` | `icd.*` |
 | `DrugService` | `drugService.ts` | `drug.*` |
-| `DrugAnalysisService` | `drugAnalysisService.ts` | `drug.insert_analysis` (including MinerU OCR and analysis-LLM calls) |
+| `DrugAnalysisService` | `drugAnalysisService.ts` | `drug.insert_analysis` (including OCR — MinerU / Indra, `ocrProviders.ts` — and analysis-LLM calls) |
 | `HealthSupplementsService` | `supplementsService.ts` | `health_supplements.*` |
 | `FoodNutritionService` | `foodService.ts` | `food_nutrition.*` |
 | `LabService` | `labService.ts` | `loinc.*` |

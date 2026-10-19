@@ -81,7 +81,7 @@ function kindOf(file: File): SourceFile["kind"] {
   return "other";
 }
 
-/** Upload a PDF/image (or pick a built-in sample) and run it through MinerU OCR. */
+/** Upload a PDF/image (or pick a built-in sample) and run it through the saved OCR provider (MinerU / Indra). */
 export function OcrTestPanel() {
   const isMobile = useIsMobile();
   const samples = useQuery({
@@ -160,7 +160,7 @@ export function OcrTestPanel() {
   return (
     <Stack gap="lg">
       <Alert color="blue" variant="light" icon={<IconScan size={18} />}>
-        將 PDF 或圖片送到目前<Text span fw={600}>已儲存</Text>的 OCR 伺服器設定，檢視 MinerU 輸出的 Markdown。若已設定「分析 LLM」，
+        將 PDF 或圖片送到目前<Text span fw={600}>已儲存</Text>的 OCR 伺服器設定，檢視 OCR（MinerU 或 Indra，依已儲存的供應者；主要供應者失敗時可能由備援接手）輸出的 Markdown。若已設定「分析 LLM」，
         伺服器也會順便對結果跑一次分析（會呼叫 LLM、消耗 token），分析結果顯示在「分析 JSON」分頁。
       </Alert>
 
@@ -416,7 +416,7 @@ function ResultCard({
                 {error}
               </Text>
               <Text fz="xs" c="dimmed" mt={6}>
-                請確認上方 OCR 伺服器設定已儲存，並先按「測試連線」確認 MinerU 可連線。
+                請確認上方 OCR 伺服器設定已儲存，並先按「測試連線」確認所選的供應者（MinerU / Indra）可連線。
               </Text>
             </Alert>
           </Box>

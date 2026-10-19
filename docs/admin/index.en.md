@@ -46,7 +46,7 @@ The sidebar (`web-v2/src/layout/nav.ts`) has five sections:
 | **Overview** | Dashboard `/`, Jobs `/jobs` | System status at a glance; the import / embedding / sync job queue, step timeline and live logs (see [Jobs & Scheduling](jobs-and-worker.md)). |
 | **Data** | Terminology `/terminology` (per module `/terminology/<icd\|loinc\|snomed\|rxnorm>`), Drug `/drug` (drug explorer `/drug/explorer`), Health supplements `/data/health_supplements`, Food nutrition `/data/food_nutrition` | Per-module source files, imports, schedules, data preview, embeddings, maintenance mode and clearing; terminology modules also get a browser (see below). |
 | **FHIR** | IG library `/fhir/ig`, FHIR servers `/fhir-servers` | FHIR IG import / dependency packages / removal protection; registration, authentication and health checks for external FHIR R4 servers. |
-| **Integrations** | Model endpoints `/models`, MCP tools `/mcp`, External services `/integrations` | Provider accounts and profiles for embedding and the analysis LLM; MCP endpoints, tool catalog and playground; OCR (MinerU), object storage, TFDA, FHIR package registry and worker settings. |
+| **Integrations** | Model endpoints `/models`, MCP tools `/mcp`, External services `/integrations` | Provider accounts and profiles for embedding and the analysis LLM; MCP endpoints, tool catalog and playground; OCR (MinerU / Indra), object storage, TFDA, FHIR package registry and worker settings. |
 | **System** | Service health `/health`, Backups & settings `/system`, Account security `/security` | Infrastructure probes and worker heartbeats; system backups and settings export / import; password and passkeys. |
 
 The corresponding backend modules are in `node-server/src/admin/*.ts` (`adminApp.ts` is the routing entry point).
@@ -105,7 +105,7 @@ Bootstrap variables (DB / Redis / MCP transport / `ADMIN_*` auth) originate in `
 
 The other external-system settings (MinIO, TFDA base URL, FHIR package registry, worker tuning) are **seed-only**: `.env` is read exactly once, on first boot, for keys not yet present in `admin.app_settings`. Afterwards manage and test them under External services (`/admin/integrations`); editing `.env` has no effect on an already-seeded database. TFDA and registry can be edited there (applied hot); **MinIO and worker tuning are read-only groups**.
 
-The OCR (MinerU) endpoint lives in the `ocr` group of `admin.app_settings`. It is **not seeded from `.env`** and is configured and tested only under External services → OCR.
+OCR settings live in the `ocr` group of `admin.app_settings`. They are **not seeded from `.env`** and are configured and tested only under External services → OCR: provider `mineru` (default, external MinerU) or `indra` (the bundled CPU OCR container `ocr-indra`, `http://ocr-indra:8000`), plus an optional fallback provider. Field reference: [Drug Service → OCR providers](../modules/drug-service.md#ocr-providers).
 
 Settings export / import (format version 3) under Backups & settings (`/admin/system`) moves a working configuration between installs: it carries every `admin.app_settings` group, the provider accounts / profiles / role bindings (keys included), and the passkeys with their RP ID. Older v1 / v2 exports still import. The export contains secrets in the clear — store it like a credential.
 

@@ -20,7 +20,7 @@ CVX（287 碼）、ISO 3166 與 UCUM 不需匯入：它們以內建表 / 函式�
 ## 說明
 
 - **受授權限制的來源檔**（SNOMED、LOINC、ICD zip、RxNorm 等）請自行取得後，於對應模組頁上傳。實際用過的檔案清單見[測試資料檔清單](test-data.md)。
-- **藥品域**為三階段管線（索引 → 線上爬取豐富 → OCR/LLM 分析）。TFDA 位址在 **整合 → 外部服務** 設定（`.env` 的 `DRUG_*` 只在首次啟動時當種子值）；OCR（MinerU）在 **整合 → 外部服務 → OCR Server**；分析 LLM 在 **整合 → 模型端點**。詳見[藥品服務模組](../modules/drug-service.md)。
+- **藥品域**為三階段管線（索引 → 線上爬取豐富 → OCR/LLM 分析）。TFDA 位址在 **整合 → 外部服務** 設定（`.env` 的 `DRUG_*` 只在首次啟動時當種子值）；OCR（MinerU 或 Indra）在 **整合 → 外部服務 → OCR Server**；分析 LLM 在 **整合 → 模型端點**。詳見[藥品服務模組](../modules/drug-service.md)。
 - **FHIR IG** 採多 IG（package-scoped）設計；套件宣告的相依套件（如 `hl7.terminology.r4`、`hl7.fhir.r4.core`）會自動從 FHIR registry 下載，registry 無法提供時才需手動上傳。詳見[FHIR IG 服務模組](../modules/fhir-ig-service.md)。
 - **RxNorm** 目前僅作為概念參考術語載入，用於 FHIR IG ValueSet 的 TTY 展開，**不**對外提供獨立的藥品工具。
 - **嵌入**：`*_embeddings` 向量表由各模組獨立的 `*_embed` 工作（`icd_embed`、`loinc_embed`、`snomed_embed`、`health_supplements_embed`、`food_nutrition_embed`）回填，可在模組頁執行或排程。嵌入端點在 **整合 → 模型端點** 設定（provider 帳號 + embedding 路由，存於 `admin.llm_providers` / `admin.llm_routes` 等表，不從環境變數讀取）；端點不可用時，搜尋自動退回關鍵字模式。

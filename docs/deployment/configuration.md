@@ -12,7 +12,7 @@ cp .env.example .env
 |------|----------|------|
 | **Bootstrap 變數** | 只在 `.env` | DB / Redis / MCP transport / `ADMIN_*` 認證 / `WEB_PORT`。系統啟動前就要知道，不進資料庫。 |
 | **Seed-only 設定** | `.env` → `admin.app_settings` | MinIO、TFDA 爬蟲、FHIR package registry、worker 調校等。**只在首次啟動、對應鍵尚未存在時讀取一次**以種子化；編輯 `.env` 對已種子化的資料庫無效。TFDA / registry 之後可在管理後台「外部服務」（`/admin/integrations`）管理（支援熱套用）；**MinIO 與 worker 調校在後台是唯讀群組**，事後只能直接 `UPDATE admin.app_settings` 再重啟服務。 |
-| **模型端點** | 只在資料庫 | 嵌入與分析 LLM 存於 provider 帳號 / profile 表（`admin.llm_providers` 等），於「模型端點」（`/admin/models`）設定；OCR（MinerU）存於 `admin.app_settings` 的 `ocr` 群組，於「外部服務 → OCR」設定。**完全不從環境變數讀取**，可用「備份與設定」（`/admin/system`）的設定匯出 / 匯入（v3）在不同環境間搬移。 |
+| **模型端點** | 只在資料庫 | 嵌入與分析 LLM 存於 provider 帳號 / profile 表（`admin.llm_providers` 等），於「模型端點」（`/admin/models`）設定；OCR（MinerU / Indra 與備援）存於 `admin.app_settings` 的 `ocr` 群組，於「外部服務 → OCR」設定。**完全不從環境變數讀取**，可用「備份與設定」（`/admin/system`）的設定匯出 / 匯入（v3）在不同環境間搬移。 |
 
 ---
 

@@ -19,6 +19,23 @@ import { ProviderHttpError, snippet, type CallContext, type ProviderAdapter } fr
 import { type LlmProfile, type ProfileKind } from "./llmProfiles.js";
 import { exportRouting, getAccount, importRouting, legacyProfilesToRouting, type RoutingExport } from "./llmRouting.js";
 import { ensureCredentialTable } from "./webauthn.js";
+import {
+  INDRA_DEFAULT_BASE_URL,
+  INDRA_MODES,
+  OCR_FALLBACK_OPTIONS,
+  OCR_PROVIDERS,
+  isOcrProvider,
+  ocrHealth,
+  ocrSettingsFromValues,
+  ocrWith,
+  type FetchLike,
+  type OcrProviderId,
+} from "../ocrProviders.js";
+import { getSampleData } from "./ocrTestSamples.js";
+
+/** `show_if_any` for fields of one OCR provider: shown when it is the primary or the fallback. */
+const MINERU_USED = { provider: ["mineru"], fallback_provider: ["mineru"] };
+const INDRA_USED = { provider: ["indra"], fallback_provider: ["indra"] };
 
 export const SECRET_MASK = "●●●●●●●●";
 
@@ -32,6 +49,8 @@ export interface SettingsField {
   help: string;
   options: string[] | null;
   show_if: Record<string, string[]> | null;
+  /** Visible when ANY listed field holds one of its values (`show_if` needs all of them). */
+  show_if_any: Record<string, string[]> | null;
   is_model: boolean;
   /** Per-provider default, keyed by the value of the group's `provider_field`. */
   provider_defaults: Record<string, string> | null;
@@ -80,6 +99,7 @@ function field(
     help?: string;
     options?: string[] | null;
     show_if?: Record<string, string[]> | null;
+    show_if_any?: Record<string, string[]> | null;
     is_model?: boolean;
     provider_defaults?: Record<string, string> | null;
     is_url?: boolean;
@@ -97,6 +117,7 @@ function field(
     help: opts.help ?? "",
     options: opts.options ?? null,
     show_if: opts.show_if ?? null,
+    show_if_any: opts.show_if_any ?? null,
     is_model: Boolean(opts.is_model),
     provider_defaults: opts.provider_defaults ?? null,
     is_url: Boolean(opts.is_url),
@@ -167,38 +188,74 @@ export const SETTINGS_SCHEMA: Record<string, SettingsGroupSpec> = {
   ocr: {
     label: "OCR Server",
     description:
-      "MinerU server that turns drug insert PDFs into Markdown. Runs as a standalone " +
-      "HTTP service; the pipeline uploads each PDF and reads the Markdown straight back.",
+      "OCR service that turns drug insert PDFs into Markdown: MinerU (external HTTP service) or " +
+      "Indra OCR (the CPU-only ocr-indra container). The pipeline uploads each PDF and reads the " +
+      "Markdown straight back; an optional fallback provider is tried once when the primary fails.",
     provider_field: "provider",
     test: "ocr",
     seed_from_env: false,
     fields: [
       field("provider", "str", "mineru", "DRUG_OCR_PROVIDER", "Provider", {
-        options: ["mineru"],
+        options: [...OCR_PROVIDERS],
+        help: "mineru: external MinerU server (GPU, best on complex tables). indra: CPU-only Indra OCR container (http://ocr-indra:8000).",
       }),
-      field("base_url", "str", "http://127.0.0.1:8000", "DRUG_OCR_BASE_URL", "Base URL", {
+      field("fallback_provider", "str", "none", "DRUG_OCR_FALLBACK_PROVIDER", "Fallback provider", {
+        options: [...OCR_FALLBACK_OPTIONS],
+        help:
+          "Tried once when the primary provider fails (unreachable, HTTP error, timeout, empty output). " +
+          "Not tried for unreadable inputs. Same as the primary = no fallback.",
+      }),
+      field("base_url", "str", "http://127.0.0.1:8000", "DRUG_OCR_BASE_URL", "MinerU base URL", {
         is_url: true,
         help: "Root of the MinerU API, e.g. http://10.0.0.5:8000",
+        show_if_any: MINERU_USED,
       }),
       // The *-http-client backends are excluded on purpose: they make MinerU call out
       // to an arbitrary `server_url`, which would hand a request-forgery lever to
       // whoever edits this form.
-      field("backend", "str", "hybrid-engine", "DRUG_OCR_BACKEND", "Backend", {
+      field("backend", "str", "hybrid-engine", "DRUG_OCR_BACKEND", "MinerU backend", {
         options: ["hybrid-engine", "pipeline", "vlm-engine"],
         help: "hybrid-engine handles the mixed text/table layout of TFDA inserts best.",
+        show_if_any: MINERU_USED,
       }),
-      field("effort", "str", "medium", "DRUG_OCR_EFFORT", "Effort", {
+      field("effort", "str", "medium", "DRUG_OCR_EFFORT", "MinerU effort", {
         options: ["medium", "high"],
         help: "hybrid backend only. high adds image/chart analysis and is slower.",
+        show_if_any: MINERU_USED,
       }),
-      field("parse_method", "str", "auto", "DRUG_OCR_PARSE_METHOD", "Parse method", {
+      field("parse_method", "str", "auto", "DRUG_OCR_PARSE_METHOD", "MinerU parse method", {
         options: ["auto", "txt", "ocr"],
+        show_if_any: MINERU_USED,
       }),
-      field("lang", "str", "ch", "DRUG_OCR_LANG", "Language", {
+      field("lang", "str", "ch", "DRUG_OCR_LANG", "MinerU language", {
         help: "pipeline backend only. 'ch' covers Traditional Chinese and English.",
+        show_if_any: MINERU_USED,
       }),
-      field("timeout_seconds", "int", 600, "DRUG_OCR_TIMEOUT_SECONDS", "Timeout (seconds)", {
+      field("timeout_seconds", "int", 600, "DRUG_OCR_TIMEOUT_SECONDS", "MinerU timeout (seconds)", {
         help: "Upper bound on one PDF. Inserts typically parse in a few seconds.",
+        show_if_any: MINERU_USED,
+      }),
+      field("indra_base_url", "str", INDRA_DEFAULT_BASE_URL, "DRUG_OCR_INDRA_BASE_URL", "Indra base URL", {
+        is_url: true,
+        help: "Root of the ocr-indra service. In the bundled compose stack: http://ocr-indra:8000",
+        show_if_any: INDRA_USED,
+      }),
+      field("indra_timeout_seconds", "int", 300, "DRUG_OCR_INDRA_TIMEOUT_SECONDS", "Indra timeout (seconds)", {
+        min: 10,
+        max: 3600,
+        help: "No new page starts after this; the service's own cap (INDRA_MAX_TIMEOUT_SECONDS, default 600) still applies.",
+        show_if_any: INDRA_USED,
+      }),
+      field("indra_dpi", "int", 200, "DRUG_OCR_INDRA_DPI", "Indra render DPI", {
+        min: 72,
+        max: 400,
+        help: "PDF render resolution for OCR'd pages. 200 is Indra's default; higher helps small print, costs time.",
+        show_if_any: INDRA_USED,
+      }),
+      field("indra_mode", "str", "auto", "DRUG_OCR_INDRA_MODE", "Indra mode", {
+        options: [...INDRA_MODES],
+        help: "auto: use a trustworthy PDF text layer, OCR the rest. ocr: always OCR. text: always use the text layer.",
+        show_if_any: INDRA_USED,
       }),
     ],
   },
@@ -395,6 +452,7 @@ export function groupMetadata(
     help: f.help,
     options: f.options,
     show_if: f.show_if,
+    show_if_any: f.show_if_any,
     is_model: f.is_model,
     provider_defaults: f.provider_defaults,
     is_url: f.is_url,
@@ -1380,29 +1438,63 @@ async function testAnalysis(adapter: ProviderAdapter, profile: LlmProfile): Prom
   return { ok: true, message: `Completion in ${ms} ms.`, details };
 }
 
-/** MinerU exposes `/health`, which also reports its version and queue depth. */
-async function testOcr(draft: Record<string, unknown>): Promise<TestResult> {
-  const base = String((draft.base_url ?? "") || "").trim().replace(/\/+$/, "");
-  if (!base) return { ok: false, message: "Base URL is empty." };
+/** Built-in sample sent through Indra by the connection test (public/samples; ids are file stems). */
+const OCR_TEST_SAMPLE = "sample-drug-insert";
+
+/**
+ * Both providers expose `/health` (status, version, queue depth). For Indra the
+ * test also OCRs the built-in sample PDF (~1 s on CPU), because "healthy" only
+ * proves the model loaded, not that a document comes back as Markdown. MinerU
+ * is not sent a sample: it is an external GPU service and its health is enough.
+ * A configured fallback is checked too and reported in `details`; only the
+ * primary decides `ok`.
+ */
+export async function testOcr(
+  draft: Record<string, unknown>,
+  fetchImpl: FetchLike = fetch,
+  loadSample: (id: string) => Promise<Buffer | null> = getSampleData,
+): Promise<TestResult> {
+  const s = ocrSettingsFromValues(draft);
+  if (!isOcrProvider(s.provider)) return { ok: false, message: `Unsupported OCR provider: ${s.provider}` };
+  const primary = await checkOcrProvider(s, s.provider, fetchImpl, loadSample);
+  const details: Record<string, unknown> = { ...primary.details };
+  if (s.fallbackProvider) {
+    const fb = await checkOcrProvider(s, s.fallbackProvider, fetchImpl, loadSample, false);
+    details.fallback_provider = s.fallbackProvider;
+    details.fallback_ok = fb.ok;
+    details.fallback_message = fb.message;
+  }
+  return { ok: primary.ok, message: primary.message, details };
+}
+
+async function checkOcrProvider(
+  s: ReturnType<typeof ocrSettingsFromValues>,
+  provider: OcrProviderId,
+  fetchImpl: FetchLike,
+  loadSample: (id: string) => Promise<Buffer | null>,
+  withSample = true,
+): Promise<{ ok: boolean; message: string; details: Record<string, unknown> }> {
+  const h = await ocrHealth(s, provider, fetchImpl);
+  if (!h.ok || provider !== "indra" || !withSample) return h;
+  const sample = await loadSample(OCR_TEST_SAMPLE).catch(() => null);
+  if (!sample) return { ...h, details: { ...h.details, sample: "not available" } };
   try {
-    const j = (await httpGetJson(`${base}/health`, {}, 8000)) as Record<string, unknown>;
-    const status = String(j.status ?? "");
-    if (status && status !== "healthy") {
-      return { ok: false, message: `OCR server at ${base} reports status '${status}'.`, details: j };
-    }
-    const version = String(j.version ?? "unknown");
+    const started = Date.now();
+    // A one-page sample: 30 s is generous and keeps the test button from hanging.
+    const out = await ocrWith(
+      { ...s, indra: { ...s.indra, timeoutSeconds: Math.min(s.indra.timeoutSeconds, 30) } },
+      "indra",
+      { bytes: sample, filename: `${OCR_TEST_SAMPLE}.pdf` },
+      fetchImpl,
+    );
+    const ms = Date.now() - started;
     return {
       ok: true,
-      message: `MinerU ${version} reachable at ${base}.`,
-      details: {
-        version,
-        max_concurrent_requests: j.max_concurrent_requests ?? null,
-        processing_tasks: j.processing_tasks ?? null,
-        queued_tasks: j.queued_tasks ?? null,
-      },
+      message: `${h.message.replace(/\.$/, "")}; sample OCR: ${out.markdown.length} chars in ${ms} ms.`,
+      details: { ...h.details, sample_chars: out.markdown.length, sample_ms: ms },
     };
   } catch (exc) {
-    return { ok: false, message: `OCR test failed: ${errStr(exc)}` };
+    return { ok: false, message: `Indra OCR sample failed: ${errStr(exc)}`, details: h.details };
   }
 }
 

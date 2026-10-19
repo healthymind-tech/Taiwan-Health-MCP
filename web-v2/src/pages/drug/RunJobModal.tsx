@@ -46,7 +46,7 @@ const RUN_KINDS: { value: JobKind; label: string; help: string }[] = [
   {
     value: "drug_pipeline",
     label: "完整管線",
-    help: "每張許可證依序完成：TFDA 爬取（電子仿單、PDF、外觀圖）→ 存入物件儲存 → MinerU OCR → LLM 分析 → 正規化。建議使用。",
+    help: "每張許可證依序完成：TFDA 爬取（電子仿單、PDF、外觀圖）→ 存入物件儲存 → OCR（MinerU / Indra）→ LLM 分析 → 正規化。建議使用。",
   },
   {
     value: "drug_enrichment",
@@ -315,7 +315,7 @@ export function RunJobModal({
                 placeholder="不限定"
                 clearable
                 data={[
-                  { value: "ocr", label: "OCR（MinerU）" },
+                  { value: "ocr", label: "OCR" },
                   { value: "analysis", label: "LLM 分析" },
                   { value: "normalize", label: "正規化" },
                 ]}

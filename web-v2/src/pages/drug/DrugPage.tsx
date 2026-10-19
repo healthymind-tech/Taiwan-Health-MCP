@@ -115,7 +115,7 @@ export default function DrugPage() {
         title="藥品管線"
         icon={<IconPill size={24} />}
         breadcrumbs={[{ label: "資料模組" }, { label: "藥品" }]}
-        description="管理食藥署藥品資料：許可證索引匯入、TFDA 仿單與外觀圖爬取、MinerU OCR 與 LLM 結構化分析。"
+        description="管理食藥署藥品資料：許可證索引匯入、TFDA 仿單與外觀圖爬取、OCR（MinerU / Indra）與 LLM 結構化分析。"
         badge={
           maintenance ? (
             <Tooltip label="藥品 MCP 工具目前回應「服務維護中」">

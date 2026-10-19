@@ -92,7 +92,7 @@ const INFRA_LABELS: Record<string, { label: string; hint: string }> = {
   database: { label: "PostgreSQL", hint: "主資料庫與向量儲存" },
   redis: { label: "Redis", hint: "即時事件廣播" },
   minio: { label: "物件儲存", hint: "來源檔、藥品仿單與圖片、備份" },
-  ocr: { label: "OCR（MinerU）", hint: "藥品仿單文字辨識" },
+  ocr: { label: "OCR 伺服器", hint: "藥品仿單文字辨識（MinerU / Indra）" },
   mcp: { label: "MCP 端點", hint: "LLM 用戶端連線入口" },
   admin_control_plane: { label: "工作控制面", hint: "背景工作佇列" },
 };
