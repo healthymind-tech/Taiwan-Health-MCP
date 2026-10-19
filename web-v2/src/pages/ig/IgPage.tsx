@@ -47,6 +47,7 @@ import { applyFilters, excerpt, normalizeQuery, P, PAGE_SIZES, paginate, readFil
 
 const meta = MODULE_BY_KEY.ig;
 
+const IG_TABS = ["gallery", "jobs", "concepts", "settings"] as const;
 const igLabel = (r: IgRef) => `${r.package_id}@${r.version}`;
 
 /** Who pulled a dependency install in: the recorded installer, else the installed IGs that need it. */
@@ -185,7 +186,8 @@ function IgCard({ ig, query, onOpen, onOpenDeps }: { ig: IgSummary; query: strin
 export default function IgPage() {
   const qc = useQueryClient();
   const [sp, setSp] = useSearchParams();
-  const tab = sp.get("tab") === "settings" ? "settings" : sp.get("tab") === "jobs" ? "jobs" : "gallery";
+  const tabParam = sp.get("tab") ?? "";
+  const tab = (IG_TABS as readonly string[]).includes(tabParam) ? tabParam : "gallery";
   const [addOpen, setAddOpen] = useState(false);
   const [selected, setSelected] = useState<IgRef | null>(null);
   // Missing-dependency dialog: null = closed, "all" = every IG, else one IG.
