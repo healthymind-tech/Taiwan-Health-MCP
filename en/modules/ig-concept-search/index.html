@@ -771,6 +771,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#bundled-data-no-manual-upload" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Bundled data (no manual upload)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#umls-optional-requires-a-umls-licence" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2468,6 +2479,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#bundled-data-no-manual-upload" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Bundled data (no manual upload)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#umls-optional-requires-a-umls-licence" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2543,7 +2565,7 @@ SNOMED CT / LOINC / ICD-10 keep their own tables.</p>
 </tr>
 <tr>
 <td>CodeSystem supplements</td>
-<td>FHIR R4 <code>content = supplement</code>, merged by <code>supplements</code> (optionally <code>|version</code>): designations and properties. Supplements shipped in IG packages and those uploaded in the admin console both apply. A numeric usage property (code or description mentions <code>claim-volume</code> / <code>usage</code> / <code>popularity</code> / <code>申報量</code> / <code>使用量</code>, e.g. a <code>claim-volume</code> built from the NHI open dataset 診療項目醫令申報量(年)) is not a name: it becomes a <strong>usage prior</strong> for ranking (see "Usage" below)</td>
+<td>FHIR R4 <code>content = supplement</code>, merged by <code>supplements</code> (optionally <code>|version</code>): designations and properties. Supplements shipped in IG packages, uploaded in the admin console, or bundled with the code (see "Bundled data" below) all apply. A numeric usage property (code or description mentions <code>claim-volume</code> / <code>usage</code> / <code>popularity</code> / <code>申報量</code> / <code>使用量</code>, e.g. a <code>claim-volume</code> built from the NHI open dataset 診療項目醫令申報量(年)) is not a name: it becomes a <strong>usage prior</strong> for ranking (see "Usage" below)</td>
 </tr>
 <tr>
 <td>Linked names</td>
@@ -2576,8 +2598,8 @@ whether a CodeSystem needs rebuilding; unchanged ones are skipped.</p>
   ("… lithotripsy (ESWL)", Schwartz–Hearst validated), English ↔ Chinese word pairs mined from ICD-10 / IG bilingual
   names (Dice + mutual best match), the abbrev / zhEn tables of <code>grounding/twLexiconData.ts</code>, and optionally UMLS —
   stored in <code>fhir.term_thesaurus</code> / <code>fhir.umls_terms</code>.</li>
-<li><strong>General abbreviation lexicon fills gaps</strong> (optional, <code>fhir.abbreviation_lexicon</code>, the SPECIALIST Lexicon's LRABR,
-  loaded with the UMLS file): an abbreviation in the query's <strong>first clause</strong> is looked up there only when the
+<li><strong>General abbreviation lexicon fills gaps</strong> (<code>fhir.abbreviation_lexicon</code>, the SPECIALIST Lexicon's LRABR; a copy is
+  bundled with the code and loaded while the table is empty, a UMLS file carrying LRABR replaces it): an abbreviation in the query's <strong>first clause</strong> is looked up there only when the
   CodeSystem does not use it as a word itself (e.g. "Procalcitonin (PCT)" already contains PCT) and no thesaurus
   expansion is supported by the CodeSystem (support &lt; 0.45). A general lexicon gives an abbreviation dozens of senses
   (LP → lipoprotein, lumbar puncture …); each sense is scored by how well the CodeSystem's own names name it — the best
@@ -2615,11 +2637,79 @@ CodeSystem id or alias words (e.g. <code>nhi_payment</code>). <code>fhir_lookup_
 not found.</p>
 <h2 id="admin-console-ig-packages">Admin console (IG packages → 術語搜尋索引)<a class="headerlink" href="#admin-console-ig-packages" title="Permanent link">&para;</a></h2>
 <ul>
-<li>Index / vector / thesaurus status; "補建索引" (skips unchanged CodeSystems) and "全部重建" (force).</li>
+<li>Index / vector / thesaurus / abbreviation-lexicon status (the lexicon shows its source: bundled or an uploaded UMLS
+  file); "補建索引" (skips unchanged CodeSystems) and "全部重建" (force). While an index job runs the panel shows its step
+  and "CodeSystems checked / total"; when it ends it shows the result — "索引已是最新（N 個 CodeSystem 未變更）" (index up to
+  date, N unchanged) when nothing was rebuilt.</li>
+<li>"N 個套件尚未建立索引" (N packages not indexed yet) counts only packages that <strong>have indexable CodeSystems</strong>; packages
+  with profiles only, or whose CodeSystems are served by the ICD / LOINC / SNOMED tables or are <code>content = not-present</code>,
+  are listed as a neutral note ("no indexable CodeSystem") and need no action.</li>
 <li><strong>Upload a CodeSystem supplement JSON</strong> (<code>application/fhir+json</code>, up to 64 MB); the list shows the package
-  versions it applies to; uploads and deletions rebuild the affected index. API:
-  <code>GET/POST/DELETE /admin/api/igs/supplements</code>, <code>GET /admin/api/igs/concept-index</code>,
+  versions it applies to; uploads and deletions rebuild the affected index. Bundled supplements carry a 「內建」 badge;
+  deleting one is remembered (it is not re-applied by the next import) and "還原" / "還原內建 supplement" restores it
+  (queues <code>ig_concept_index</code>, which applies it). API: <code>GET/POST/DELETE /admin/api/igs/supplements</code>,
+  <code>POST /admin/api/igs/supplements/bundled/restore</code> (<code>{url?}</code>, all when omitted), <code>GET /admin/api/igs/concept-index</code>,
   <code>POST /admin/api/igs/concept-index/rebuild</code>.</li>
+</ul>
+<h2 id="bundled-data-no-manual-upload">Bundled data (no manual upload)<a class="headerlink" href="#bundled-data-no-manual-upload" title="Permanent link">&para;</a></h2>
+<p>The code ships openly licensed reference data (<code>node-server/data/</code>, copied into both images; sources, versions,
+licences and how to regenerate them: <code>node-server/data/README.md</code>, generators in <code>node-server/scripts/supplements/</code>).
+On a fresh install the operator imports an IG (e.g. TW Core) through the normal admin flow — no file uploads, no
+direct DB writes:</p>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Supplements</th>
+<th>Content</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>nhi-payment-en-supplement</code></td>
+<td>TW Core <code>medical-service-payment-tw</code></td>
+<td>NHI English item names of the payment codes</td>
+</tr>
+<tr>
+<td><code>nhi-payment-loinc-supplement</code></td>
+<td>same</td>
+<td>LOINC links of the TWPAS ConceptMap <code>nhi-loinc</code> (with LOINC names)</td>
+</tr>
+<tr>
+<td><code>nhi-payment-usage-supplement</code></td>
+<td>same</td>
+<td>NHI annual claim volume — a usage prior for ranking</td>
+</tr>
+<tr>
+<td><code>nhi-medication-supplement</code></td>
+<td>TW Core <code>medication-nhi-tw</code></td>
+<td>Chinese / English names, ingredients and ATC of NHI drug codes</td>
+</tr>
+<tr>
+<td><code>lrabr-2024AA.tsv.gz</code></td>
+<td>—</td>
+<td>SPECIALIST Lexicon LRABR abbreviation lexicon (filtered like the loader keeps it, 115,233 rows)</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>When</strong>: before every index build — <code>ig_import</code> (including dependency installs) and <code>ig_concept_index</code>
+  ("補建索引") — each bundled supplement whose <code>supplements</code> canonical names an <strong>installed</strong> CodeSystem is written to
+  <code>fhir.codesystem_supplements</code> (<code>uploaded_by = 'system:bundled'</code>, the same write path as uploads); the same job then
+  builds the index, including the packages a newly applied supplement touches — no second rebuild. A supplement whose
+  target is not installed yet is applied when it is.</li>
+<li><strong>Idempotent, never overwrites</strong>: a row with the same url + version (whoever stored it) is left alone; when an
+  <strong>operator-uploaded different version</strong> of the url exists the bundled version is not written; only an older
+  <strong>bundled</strong> version is replaced by a newer bundled one.</li>
+<li><strong>Deletion is respected</strong>: deleting a bundled supplement records an opt-out (<code>admin.app_settings</code>, group
+  <code>bundled_supplements</code>, key = url); it does not come back until restored.</li>
+<li><strong>Abbreviation lexicon</strong>: the bundled LRABR is loaded only while <code>fhir.abbreviation_lexicon</code> is empty
+  (<code>source = 'bundled:LRABR-2024AA'</code>; parsed fully first, written in one transaction); uploading a UMLS file that
+  carries LRABR (<code>umls_import</code>) still replaces it. The lexicon is not part of the index signature, so loading it
+  triggers no rebuild.</li>
+<li><strong>Installs that already hold them</strong> (e.g. production, where the same 4 supplements were uploaded by hand with the
+  same url + version and the lexicon came from a UMLS file): nothing is written, nothing re-indexed or re-embedded; the
+  list marks those rows 「內建」.</li>
 </ul>
 <h2 id="umls-optional-requires-a-umls-licence">UMLS (optional, requires a UMLS licence)<a class="headerlink" href="#umls-optional-requires-a-umls-licence" title="Permanent link">&para;</a></h2>
 <p>Without UMLS the engine works as described, just without UMLS synonyms. To enable it:</p>
@@ -2637,7 +2727,7 @@ FMA, MTHSPL, USP, USPMG, HL7V2.5, HL7V3.0, CDCREC, MVX, CVX, TKMT, SPN, MCM, QMR
 <code>LAT = ENG</code>, <code>SUPPRESS = N</code> strings of ≤ 80 characters, and only concepts with at least 2 distinct strings, are kept
 (2024AA: ~2.53 M strings / 0.76 M concepts, <code>fhir.umls_terms</code> ≈ 610 MB). The SAB is recorded internally only
 (<code>fhir.concept_index_terms.source</code>); <strong>no UMLS string is ever returned by a tool</strong>.</p>
-<p><strong>Abbreviation lexicon (optional)</strong>: <code>LRABR</code> of the SPECIALIST Lexicon (NLM Lexical Systems Group; <code>LEX/LRABR</code> inside
+<p><strong>Abbreviation lexicon</strong> (a copy is bundled — see "Bundled data"; this is how to load it from a UMLS file): <code>LRABR</code> of the SPECIALIST Lexicon (NLM Lexical Systems Group; <code>LEX/LRABR</code> inside
 <code>LEX.tgz</code>, ~20 MB; open source and freely available — no UMLS licence needed). Only acronym / abbreviation rows with a 2–10 character abbreviation and a 3–80 character ASCII
 expansion are kept, spelling variants (plasma exchange / plasma-exchange) collapse (2024 release: ~115 k rows /
 34 k abbreviations). Add it as a third argument when writing the subset:
@@ -2656,11 +2746,11 @@ strings likewise <strong>only steer matching and never appear in tool output</st
 <tbody>
 <tr>
 <td><code>ig_import</code></td>
-<td>Indexes the packages it installed, then queues <code>ig_embed</code></td>
+<td>Applies the bundled data (supplements / lexicon), indexes the packages it installed (plus those a newly applied supplement touches), then queues <code>ig_embed</code></td>
 </tr>
 <tr>
 <td><code>ig_concept_index</code></td>
-<td>Backfill / rebuild (options: <code>packages</code>, <code>force</code>, <code>embed_max_concepts</code>, <code>thesaurus</code>, <code>queue_embed</code>); then rebuilds the thesaurus and queues <code>ig_embed</code> when vectors are missing</td>
+<td>Applies the bundled data, then backfill / rebuild; progress counts CodeSystems (options: <code>packages</code>, <code>force</code>, <code>embed_max_concepts</code>, <code>thesaurus</code>, <code>queue_embed</code>); then rebuilds the thesaurus and queues <code>ig_embed</code> when vectors are missing</td>
 </tr>
 <tr>
 <td><code>ig_embed</code></td>

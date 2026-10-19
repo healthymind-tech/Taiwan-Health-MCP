@@ -771,6 +771,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        內建資料（不需手動上傳）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#umls-umls" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -782,7 +793,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_4" class="md-nav__link">
+  <a href="#_5" class="md-nav__link">
     <span class="md-ellipsis">
       
         工作與資料表
@@ -793,7 +804,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_5" class="md-nav__link">
+  <a href="#_6" class="md-nav__link">
     <span class="md-ellipsis">
       
         限制
@@ -2468,6 +2479,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        內建資料（不需手動上傳）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#umls-umls" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2479,7 +2501,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_4" class="md-nav__link">
+  <a href="#_5" class="md-nav__link">
     <span class="md-ellipsis">
       
         工作與資料表
@@ -2490,7 +2512,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_5" class="md-nav__link">
+  <a href="#_6" class="md-nav__link">
     <span class="md-ellipsis">
       
         限制
@@ -2541,7 +2563,7 @@
 </tr>
 <tr>
 <td>CodeSystem supplement</td>
-<td>FHIR R4 <code>content = supplement</code>，依 <code>supplements</code>（可含 <code>|version</code>）合併 designation 與 property；IG 套件內附的與管理後台上傳的都會套用。數值型的使用量 property（code 或描述含 <code>claim-volume</code> / <code>usage</code> / <code>popularity</code> / <code>申報量</code> / <code>使用量</code>，例如健保署「診療項目醫令申報量(年)」做成的 <code>claim-volume</code>）不當成名稱，而成為排序用的<strong>使用量先驗</strong>（見下方「融合」）</td>
+<td>FHIR R4 <code>content = supplement</code>，依 <code>supplements</code>（可含 <code>|version</code>）合併 designation 與 property；IG 套件內附的、管理後台上傳的與程式內建的（見下方「內建資料」）都會套用。數值型的使用量 property（code 或描述含 <code>claim-volume</code> / <code>usage</code> / <code>popularity</code> / <code>申報量</code> / <code>使用量</code>，例如健保署「診療項目醫令申報量(年)」做成的 <code>claim-volume</code>）不當成名稱，而成為排序用的<strong>使用量先驗</strong>（見下方「融合」）</td>
 </tr>
 <tr>
 <td>連結名稱</td>
@@ -2569,7 +2591,7 @@
   縮寫與橋接全部來自資料：SNOMED CT「ACR - 展開」描述、LOINC shortname ↔ component、IG 名稱內定義的縮寫
   （「… lithotripsy (ESWL)」，Schwartz–Hearst 驗證）、ICD-10 / IG 中英對照名稱挖出的英 ↔ 中詞對（Dice + 雙向最佳配對）、
   <code>grounding/twLexiconData.ts</code> 的 abbrev / zhEn 表，以及（選用）UMLS。全部存在 <code>fhir.term_thesaurus</code> / <code>fhir.umls_terms</code>。</li>
-<li><strong>一般縮寫表補缺</strong>（選用，<code>fhir.abbreviation_lexicon</code>，SPECIALIST Lexicon 的 LRABR，隨 UMLS 檔載入）：查詢<strong>第一個子句</strong>中的縮寫，
+<li><strong>一般縮寫表補缺</strong>（<code>fhir.abbreviation_lexicon</code>，SPECIALIST Lexicon 的 LRABR；程式內建一份，表為空時自動載入，帶 LRABR 的 UMLS 檔會取代）：查詢<strong>第一個子句</strong>中的縮寫，
   若 CodeSystem 本身沒有這個字（例如「Procalcitonin (PCT)」已含 PCT）、上述縮寫表的展開也都不被 CodeSystem 支持
   （支持度 &lt; 0.45），才從縮寫表取候選意義。一般縮寫表一個縮寫常有數十個意義（LP → lipoprotein、lumbar puncture …），
   每個意義以「CodeSystem 自己的名稱能多好地命名它」評分：該意義單獨查詢的最佳字詞分數（上限 1）+ 0.3 × 該概念的使用量，
@@ -2598,9 +2620,69 @@
 <code>system</code> 可給 canonical、CodeSystem id 或別名字詞（例如 <code>nhi_payment</code>）。<code>fhir_lookup_code</code> 查不到時附 <code>hint</code> 與 <code>near_codes</code>。</p>
 <h2 id="ig">管理後台（IG 套件庫 → 術語搜尋索引）<a class="headerlink" href="#ig" title="Permanent link">&para;</a></h2>
 <ul>
-<li>索引 / 向量 / 縮寫表狀態；「補建索引」（未變動者略過）與「全部重建」。</li>
+<li>索引 / 向量 / 縮寫表狀態（縮寫表標示來源：內建或上傳的 UMLS 檔）；「補建索引」（未變動者略過）與「全部重建」。
+  索引工作執行中顯示目前步驟與「CodeSystem 已檢查 / 總數」；完成時顯示結果，未重建任何 CodeSystem 時顯示
+  「索引已是最新（N 個 CodeSystem 未變更）」。</li>
+<li>「N 個套件尚未建立索引」只計入<strong>有可索引 CodeSystem</strong> 的套件；只含 profile、或其 CodeSystem 由 ICD / LOINC / SNOMED
+  專用表處理或 <code>content = not-present</code> 的套件，另以灰字「沒有可索引的 CodeSystem」列出，不需處理。</li>
 <li><strong>上傳 CodeSystem supplement JSON</strong>（<code>application/fhir+json</code>，上限 64 MB），列表顯示已套用的套件版本；上傳或刪除會自動重建受影響的索引。
-  API：<code>GET/POST/DELETE /admin/api/igs/supplements</code>、<code>GET /admin/api/igs/concept-index</code>、<code>POST /admin/api/igs/concept-index/rebuild</code>。</li>
+  內建 supplement 標示「內建」；刪除後不會被下次匯入自動加回，可按「還原」或「還原內建 supplement」恢復（排入 <code>ig_concept_index</code> 套用）。
+  API：<code>GET/POST/DELETE /admin/api/igs/supplements</code>、<code>POST /admin/api/igs/supplements/bundled/restore</code>（<code>{url?}</code>，省略則全部還原）、
+  <code>GET /admin/api/igs/concept-index</code>、<code>POST /admin/api/igs/concept-index/rebuild</code>。</li>
+</ul>
+<h2 id="_4">內建資料（不需手動上傳）<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
+<p>程式隨附一份公開授權的參考資料（<code>node-server/data/</code>，兩個映像都會複製；來源、版本、授權與重新產生方式見
+<code>node-server/data/README.md</code>，產生器在 <code>node-server/scripts/supplements/</code>）。全新安裝時，管理者照一般流程匯入 IG
+（例如 TW Core）即可，不需上傳檔案、也不需直接寫資料庫：</p>
+<table>
+<thead>
+<tr>
+<th>檔案</th>
+<th>補充的 CodeSystem</th>
+<th>內容</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>nhi-payment-en-supplement</code></td>
+<td>TW Core <code>medical-service-payment-tw</code></td>
+<td>健保署支付標準的英文項目名稱</td>
+</tr>
+<tr>
+<td><code>nhi-payment-loinc-supplement</code></td>
+<td>同上</td>
+<td>TWPAS ConceptMap <code>nhi-loinc</code> 的 LOINC 連結（含 LOINC 名稱）</td>
+</tr>
+<tr>
+<td><code>nhi-payment-usage-supplement</code></td>
+<td>同上</td>
+<td>健保署醫令申報量（年）— 排序用的使用量先驗</td>
+</tr>
+<tr>
+<td><code>nhi-medication-supplement</code></td>
+<td>TW Core <code>medication-nhi-tw</code></td>
+<td>健保用藥品項的中文名稱、英文名稱、成分、ATC</td>
+</tr>
+<tr>
+<td><code>lrabr-2024AA.tsv.gz</code></td>
+<td>—</td>
+<td>SPECIALIST Lexicon LRABR 縮寫表（已依載入規則篩選，115,233 筆）</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>套用時機</strong>：每次建立索引之前——<code>ig_import</code>（含相依套件的匯入）與 <code>ig_concept_index</code>（「補建索引」）——
+  先把 <code>supplements</code> 指向<strong>已安裝</strong>CodeSystem 的內建 supplement 寫入 <code>fhir.codesystem_supplements</code>
+  （<code>uploaded_by = 'system:bundled'</code>，與上傳同一個寫入路徑），同一個工作接著建索引，受影響的套件一併納入，不會再多跑一輪。
+  目標 CodeSystem 尚未安裝者等之後安裝時再套用。</li>
+<li><strong>冪等、不覆蓋</strong>：已有相同 url + version 的列（不論誰寫入）不動；同一 url 有<strong>管理者上傳的其他版本</strong>時不寫入內建版本；
+  只有舊的<strong>內建</strong>版本會被新的內建版本取代。</li>
+<li><strong>尊重刪除</strong>：管理者刪除內建 supplement 會記錄 opt-out（<code>admin.app_settings</code>，group <code>bundled_supplements</code>，key = url），
+  之後不再自動加回，直到按「還原」。</li>
+<li><strong>縮寫表</strong>：只在 <code>fhir.abbreviation_lexicon</code> 為空時載入內建 LRABR（<code>source = 'bundled:LRABR-2024AA'</code>；先完整解析再單一交易寫入）；
+  上傳帶 LRABR 的 UMLS 檔（<code>umls_import</code>）仍會取代它。縮寫表不在索引簽章中，載入不會觸發重建。</li>
+<li><strong>已手動上傳過的安裝</strong>（例如正式環境已有相同 url + version 的這 4 個 supplement、縮寫表已由 UMLS 檔載入）：
+  不寫入任何列、不重建索引、不重新嵌入；列表上這些列會標示「內建」。</li>
 </ul>
 <h2 id="umls-umls">UMLS（選用，需 UMLS 授權）<a class="headerlink" href="#umls-umls" title="Permanent link">&para;</a></h2>
 <p>沒有 UMLS 時引擎照常運作（只是少了 UMLS 同義字）。啟用方式：</p>
@@ -2616,13 +2698,13 @@
 CDCREC、MVX、CVX、TKMT、SPN、MCM、QMR、RAM、CCS、CCSR_*、DXP、ICPC。只取 <code>LAT = ENG</code>、<code>SUPPRESS = N</code>、長度 ≤ 80 的字串，
 且只保留至少有 2 個不同字串的概念（2024AA：約 253 萬字串 / 76 萬概念，<code>fhir.umls_terms</code> 約 610 MB）。
 來源 SAB 只記在內部（<code>fhir.concept_index_terms.source</code>），<strong>UMLS 字串不會出現在任何工具輸出</strong>。</p>
-<p><strong>縮寫表（選用）</strong>：SPECIALIST Lexicon（NLM Lexical Systems Group）的 <code>LRABR</code>（<code>LEX.tgz</code> 內 <code>LEX/LRABR</code>，約 20 MB；開源、免費取得，不需 UMLS 授權），
+<p><strong>縮寫表</strong>（程式已內建一份，見「內建資料」；以下為從 UMLS 檔載入的方式）：SPECIALIST Lexicon（NLM Lexical Systems Group）的 <code>LRABR</code>（<code>LEX.tgz</code> 內 <code>LEX/LRABR</code>，約 20 MB；開源、免費取得，不需 UMLS 授權），
 只取 acronym / abbreviation、縮寫 2–10 字元、展開 3–80 個 ASCII 字元，拼法變體（plasma exchange / plasma-exchange）合併
 （2024 版約 11.5 萬筆 / 3.4 萬個縮寫）。產生精簡檔時加上第三個參數即可一併帶入：
 <code>node dist/loaders/umls.js --subset &lt;umls.zip&gt; umls-subset-2024AA-lrabr.rrf.gz LEX/LRABR</code>；
 若上傳的 UMLS zip 本身含 <code>LRABR</code> 成員也會讀取。<code>umls_import</code> 只有在檔案帶有縮寫表時才取代 <code>fhir.abbreviation_lexicon</code>
 （需先套用 migration <code>20261027_abbreviation_lexicon.sql</code>；沒有該表時記錄警告並略過）。縮寫表字串同樣<strong>只用於比對，不會出現在工具輸出</strong>。</p>
-<h2 id="_4">工作與資料表<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
+<h2 id="_5">工作與資料表<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
 <tr>
@@ -2633,11 +2715,11 @@ CDCREC、MVX、CVX、TKMT、SPN、MCM、QMR、RAM、CCS、CCSR_*、DXP、ICPC。
 <tbody>
 <tr>
 <td><code>ig_import</code></td>
-<td>安裝後即建立該批套件的索引，再排入 <code>ig_embed</code></td>
+<td>安裝後套用內建資料（supplement / 縮寫表），即建立該批套件（及新套用 supplement 影響的套件）的索引，再排入 <code>ig_embed</code></td>
 </tr>
 <tr>
 <td><code>ig_concept_index</code></td>
-<td>補建 / 重建索引（選項：<code>packages</code>、<code>force</code>、<code>embed_max_concepts</code>、<code>thesaurus</code>、<code>queue_embed</code>），之後重建縮寫表並視需要排入 <code>ig_embed</code></td>
+<td>套用內建資料後補建 / 重建索引，進度以 CodeSystem 計（選項：<code>packages</code>、<code>force</code>、<code>embed_max_concepts</code>、<code>thesaurus</code>、<code>queue_embed</code>），之後重建縮寫表並視需要排入 <code>ig_embed</code></td>
 </tr>
 <tr>
 <td><code>ig_embed</code></td>
@@ -2652,7 +2734,7 @@ CDCREC、MVX、CVX、TKMT、SPN、MCM、QMR、RAM、CCS、CCSR_*、DXP、ICPC。
 <p>資料表：<code>fhir.concept_index_cs</code> / <code>_concepts</code> / <code>_terms</code>、<code>fhir.concept_embeddings</code>、<code>fhir.term_thesaurus</code>、
 <code>fhir.codesystem_supplements</code>（migration <code>20261022_ig_concept_search.sql</code>），<code>fhir.umls_terms</code> / <code>fhir.umls_release</code>
 （<code>20261023_umls_terms.sql</code>），<code>fhir.abbreviation_lexicon</code>（<code>20261027_abbreviation_lexicon.sql</code>）。</p>
-<h2 id="_5">限制<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>
+<h2 id="_6">限制<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h2>
 <ul>
 <li>台灣病歷特有縮寫（NSD、Foley、OB、echo 指超音波…）多數不在 SNOMED / LOINC / UMLS / LRABR 中，仍可能找不到；
   只有 2 個字母的縮寫（PD、LP、VF）不從一般縮寫表展開，靠 CodeSystem 自身、縮寫表與 embedding 判斷。</li>
