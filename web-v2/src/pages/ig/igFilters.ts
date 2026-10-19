@@ -26,6 +26,9 @@ export interface IgFilters {
 /** Query-param names (kept short; `tab` is the page's tab param). */
 export const P = { q: "q", origin: "origin", deps: "deps", fhir: "fhir", def: "default", ex: "examples", sort: "sort", page: "page", size: "size" } as const;
 
+/** `origin` param value that clears the default "manual" origin filter. */
+export const ORIGIN_ALL = "all";
+
 export function readFilters(sp: URLSearchParams): IgFilters {
   const origin = sp.get(P.origin);
   const deps = sp.get(P.deps);
@@ -34,7 +37,8 @@ export function readFilters(sp: URLSearchParams): IgFilters {
   const page = Math.floor(Number(sp.get(P.page)));
   return {
     q: sp.get(P.q) ?? "",
-    origin: origin === "manual" || origin === "dependency" ? origin : "",
+    // No param → the default view (manually installed IGs only); "all" → no origin filter.
+    origin: origin === "manual" || origin === "dependency" ? origin : origin === ORIGIN_ALL ? "" : "manual",
     deps: deps === "missing" || deps === "complete" ? deps : "",
     fhir: sp.get(P.fhir) ?? "",
     defaultOnly: sp.get(P.def) === "1",

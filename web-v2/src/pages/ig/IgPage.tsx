@@ -43,7 +43,7 @@ import { OriginBadge } from "./igOriginBadge";
 import { RemoveIgModal } from "./RemoveIgModal";
 import { UnusedDepsModal, useUnusedDependencies } from "./UnusedDepsModal";
 import { refLabel as removedLabel, type IgRemovalResult } from "./igRemoval";
-import { applyFilters, excerpt, normalizeQuery, P, PAGE_SIZES, paginate, readFilters, sortIgs } from "./igFilters";
+import { applyFilters, excerpt, normalizeQuery, ORIGIN_ALL, P, PAGE_SIZES, paginate, readFilters, sortIgs } from "./igFilters";
 
 const meta = MODULE_BY_KEY.ig;
 
@@ -227,11 +227,12 @@ export default function IgPage() {
 
   const onFilterChange = (patch: FilterPatch) => {
     const map: Record<string, string> = { origin: P.origin, deps: P.deps, fhir: P.fhir, default: P.def, examples: P.ex, sort: P.sort };
-    patchParams(Object.fromEntries(Object.entries(patch).map(([k, v]) => [map[k], v ?? null])));
+    // Clearing the origin filter must be explicit ("all"): no param means the default "manual" view.
+    patchParams(Object.fromEntries(Object.entries(patch).map(([k, v]) => [map[k], k === "origin" ? (v ?? ORIGIN_ALL) : (v ?? null)])));
   };
   const clearFilters = () => {
     setSearch("");
-    patchParams({ [P.q]: null, [P.origin]: null, [P.deps]: null, [P.fhir]: null, [P.def]: null, [P.ex]: null });
+    patchParams({ [P.q]: null, [P.origin]: ORIGIN_ALL, [P.deps]: null, [P.fhir]: null, [P.def]: null, [P.ex]: null });
   };
   const goPage = (page: number) => {
     patchParams({ [P.page]: page > 1 ? String(page) : null }, { keepPage: true });
@@ -318,6 +319,8 @@ export default function IgPage() {
   };
 
   const list = useMemo(() => igs.data?.igs ?? [], [igs.data]);
+  // Default to "manual" only when there is something manual to show (fresh installs / unknown origins see everything).
+  if (!sp.has(P.origin) && igs.data && !list.some((i) => i.install_origin === "manual")) f.origin = "";
   const filtered = useMemo(() => sortIgs(applyFilters(list, f), f.sort), [list, f.q, f.origin, f.deps, f.fhir, f.defaultOnly, f.examples, f.sort]); // eslint-disable-line react-hooks/exhaustive-deps
   const paged = paginate(filtered, f.page, f.size);
   const facets: FacetCounts = useMemo(() => {
