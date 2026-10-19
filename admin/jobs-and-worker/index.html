@@ -658,6 +658,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../modules/ig-concept-search/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IG 術語搜尋
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1812,6 +1840,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        建立工作前的檢查
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#llm" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1823,7 +1862,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_5" class="md-nav__link">
+  <a href="#_6" class="md-nav__link">
     <span class="md-ellipsis">
       
         自動串接（藥品管線）
@@ -1834,7 +1873,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_6" class="md-nav__link">
+  <a href="#_7" class="md-nav__link">
     <span class="md-ellipsis">
       
         監控
@@ -2418,6 +2457,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        建立工作前的檢查
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#llm" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2429,7 +2479,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_5" class="md-nav__link">
+  <a href="#_6" class="md-nav__link">
     <span class="md-ellipsis">
       
         自動串接（藥品管線）
@@ -2440,7 +2490,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_6" class="md-nav__link">
+  <a href="#_7" class="md-nav__link">
     <span class="md-ellipsis">
       
         監控
@@ -2499,7 +2549,7 @@ docker compose build admin-worker &amp;&amp; docker compose up -d --no-deps admi
 <tr>
 <td><code>icd_import</code> / <code>loinc_import</code> / <code>snomed_import</code> / <code>rxnorm_import</code> / <code>ig_import</code></td>
 <td>對應模組</td>
-<td>由管理後台上傳的來源檔匯入（來源檔存於 MinIO，工作執行時取回）。<code>ig_import</code> 另會自 FHIR package registry 下載缺少的相依套件，並記錄每個套件的 <code>install_origin</code>（<code>manual</code> / <code>dependency</code>）。</td>
+<td>由管理後台上傳的來源檔匯入（來源檔存於 MinIO，工作執行時取回）。<code>ig_import</code> 另會自 FHIR package registry 下載缺少的相依套件，並記錄每個套件的 <code>install_origin</code>（<code>manual</code> / <code>dependency</code>），最後為匯入的套件建立 IG 術語搜尋索引並排入 <code>ig_embed</code>。</td>
 </tr>
 <tr>
 <td><code>health_supplements_sync</code> / <code>food_nutrition_sync</code></td>
@@ -2527,6 +2577,21 @@ docker compose build admin-worker &amp;&amp; docker compose up -d --no-deps admi
 <td>回填 <code>*_embeddings</code> 向量表（需嵌入角色有可用的 profile）。</td>
 </tr>
 <tr>
+<td><code>ig_concept_index</code></td>
+<td><code>ig</code></td>
+<td>建立 / 補建 IG 術語搜尋索引（CodeSystem 名稱、所有語言 designation、supplement、連結名稱、選用的 UMLS 同義字）與縮寫表，之後視需要排入 <code>ig_embed</code>。見 <a href="../../modules/ig-concept-search/">IG 術語搜尋</a>。</td>
+</tr>
+<tr>
+<td><code>ig_embed</code></td>
+<td><code>ig</code></td>
+<td>為 IG 術語名稱補齊向量（<code>fhir.concept_embeddings</code>，內容定址、增量）。</td>
+</tr>
+<tr>
+<td><code>umls_import</code></td>
+<td><code>ig</code></td>
+<td>選用（需 UMLS 授權）：由來源 <code>ig/umls_metathesaurus</code> 載入 UMLS 同義字（<code>fhir.umls_terms</code>），之後排入 <code>ig_concept_index</code>。</td>
+</tr>
+<tr>
 <td><code>system_backup</code></td>
 <td>—</td>
 <td>系統備份（見<a href="../#system-backups">管理後台</a>）。</td>
@@ -2540,12 +2605,26 @@ docker compose build admin-worker &amp;&amp; docker compose up -d --no-deps admi
 <li><strong>心跳</strong>：worker 定期寫入 <code>admin.worker_heartbeats</code>；超過 <code>ADMIN_WORKER_STALE_AFTER_SECONDS</code>（預設 45 秒）未更新即視為失聯，其執行中的工作會被回收（reclaim）重新排隊；worker 啟動時也會回收自己名下遺留的 <code>running</code> 工作。</li>
 <li><strong>併發上限</strong>：<code>ADMIN_MAX_CONCURRENT_JOBS</code>（預設 4）限制同時執行的工作數；另有各模組的資源槽位，避免同一模組並行寫入。</li>
 </ul>
+<h2 id="_5">建立工作前的檢查<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>
+<p><code>POST /admin/api/jobs</code> 在排入工作前先檢查（<code>node-server/src/admin/jobPrechecks.ts</code>），問題會立即以中文說明回報，而不是等 worker 執行後才失敗：</p>
+<ul>
+<li><strong>重複的整模組工作</strong>：<code>icd_import</code>、<code>loinc_import</code>、<code>snomed_import</code>、<code>rxnorm_import</code>、<code>umls_import</code>、<code>ig_concept_index</code>、
+  兩個 TFDA 同步、所有 <code>*_embed</code> 與 <code>system_backup</code>，若已有同類型工作在排隊 / 執行 / 暫停，回 409 <code>JOB_ALREADY_ACTIVE</code>（附 <code>active_job_id</code>）。
+  <code>ig_import</code> 與藥品工作不受限（可針對不同套件 / 許可證並行）。</li>
+<li><strong>藥品仿單分析的前置設定</strong>：<code>drug_analysis</code>（<code>retry_stage=normalize</code> 除外）與 <code>drug_pipeline</code> 在 OCR 或分析 LLM 未設定時回 409
+  （<code>OCR_NOT_CONFIGURED</code> / <code>ANALYSIS_LM_NOT_CONFIGURED</code>，提示到「外部服務 → OCR」或「模型端點」）。</li>
+<li><strong>沒有 Worker 在線</strong>：工作照常排入（Worker 上線後會自動接手），但回應附 <code>worker_warning</code>，介面會提示「工作暫時不會執行」。
+  另外，只要沒有任何 Worker 回報心跳，每一頁上方都會顯示「背景 Worker 已失聯」橫幅與啟動指令。</li>
+</ul>
+<p>查詢失敗時這些檢查一律放行（fail-open），由 worker 回報真正的錯誤。</p>
+<p>Worker 執行前的<strong>服務相依檢查</strong>（例如藥品工作需要 MinIO、OCR、分析 LLM）若在 <code>admin.service_probes</code> 看到上次探測為 <code>error</code>，
+會先對那幾個服務重新探測一次，只有仍然失敗才把工作標為 <code>permanent_failed</code>——服務修好後不必先到「服務健康」手動探測。</p>
 <h2 id="llm">分析 LLM 不可用時的自動恢復<a class="headerlink" href="#llm" title="Permanent link">&para;</a></h2>
 <p>若某個 <code>drug_analysis</code> 工作因分析角色的所有 profile 都失敗而暫停（<code>last_error_code = 'llm_unavailable'</code>），
 worker 會在 <code>admin.import_jobs.next_retry_at</code> 到期後自動重新認領；退避時間每次加倍（2 分鐘 → 上限 30 分鐘），
 手動恢復可略過退避。由人手動暫停、或錯誤碼不是 <code>llm_unavailable</code> 的 <code>paused</code> 工作<strong>永遠不會</strong>被自動恢復。</p>
 <p>單次 LLM 呼叫逾時預設 600 秒、傳輸層重試 3 次；可在模型端點頁針對個別成員以 <code>timeout_ms</code> 參數覆寫。</p>
-<h2 id="_5">自動串接（藥品管線）<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>
+<h2 id="_6">自動串接（藥品管線）<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h2>
 <p>藥品三階段會自動串接：<code>drug_index_import</code> 完成後排入 <code>drug_enrichment</code>，後者完成後排入 <code>drug_analysis</code>。</p>
 <p>自動串接產生的工作會帶上批次上限 <code>DRUG_AUTOCHAIN_BATCH_LIMIT</code>（預設 200 筆授權證），
 完成後再從自身串接下一批，讓待辦佇列逐步消化，同時保留操作者在批次之間停止的機會。</p>
@@ -2555,7 +2634,7 @@ worker 會在 <code>admin.import_jobs.next_retry_at</code> 到期後自動重新
 <code>drug_enrichment</code> 而未指定 <code>limit</code>，該工作會一次處理整個待辦佇列
 （可能是數萬筆對 TFDA 網站的爬取）。需要限量時請明確帶入 <code>limit</code>。</p>
 </div>
-<h2 id="_6">監控<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h2>
+<h2 id="_7">監控<a class="headerlink" href="#_7" title="Permanent link">&para;</a></h2>
 <p>工作進度、步驟時間軸與即時日誌可在管理後台的 <strong>背景工作</strong>（<code>/admin/jobs</code>）頁查看；個別模組頁也會列出該模組的工作。</p>
 
 

@@ -658,6 +658,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/ig-concept-search/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IG Concept Search
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -3382,6 +3410,14 @@ done
 <tr>
 <td><code>20261021_embedding_identity.sql</code></td>
 <td><code>admin.embedding_identity</code> / <code>admin.embedding_fingerprints</code> (embedding identity; the code also creates them at runtime, so applying it is idempotent either way)</td>
+</tr>
+<tr>
+<td><code>20261022_ig_concept_search.sql</code></td>
+<td>IG concept search: <code>fhir.concept_index_cs</code> / <code>_concepts</code> / <code>_terms</code>, <code>fhir.concept_embeddings</code>, <code>fhir.term_thesaurus</code>, <code>fhir.codesystem_supplements</code>. Afterwards press "補建索引" in admin → IG packages → 術語搜尋索引 (<code>ig_concept_index</code>, followed by <code>ig_embed</code>)</td>
+</tr>
+<tr>
+<td><code>20261023_umls_terms.sql</code></td>
+<td>Optional UMLS synonym store <code>fhir.umls_terms</code> / <code>fhir.umls_release</code> (needs a UMLS licence; the engine works without it)</td>
 </tr>
 </tbody>
 </table>

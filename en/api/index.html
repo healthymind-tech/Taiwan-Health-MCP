@@ -658,6 +658,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/ig-concept-search/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IG Concept Search
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1618,6 +1646,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#tool-errors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tool error format
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#health_check-system-group" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2429,6 +2468,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#tool-errors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tool error format
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#health_check-system-group" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2574,6 +2624,39 @@ curl -X POST http://localhost:8080/tools/search_medical_codes \
            &quot;message_zh&quot;: &quot;模組「loinc」維護中（資料更新中），query_loinc 暫時無法使用，請稍後再試。&quot;}}
 </code></pre>
 <p><code>POST /tools/&lt;name&gt;</code> returns this JSON with HTTP 200 (like every other tool error). Mapping: ICD-10 and FHIR Condition → <code>icd</code>; Drug / TFDA and FHIR Medication → <code>drug</code>; Lab / LOINC → <code>loinc</code>; SNOMED CT → <code>snomed</code>; FHIR IG (including grounding / completeness) → <code>ig</code>. <code>rxnorm</code> has no tool group of its own, so its flag gates no tool; Health Supplements, Food Nutrition, FHIR Servers, Clinical Calculators and System are never affected. To avoid tool-list churn for clients, tools under maintenance <strong>stay in <code>tools/list</code> / <code>/openapi.json</code></strong>. The state is cached for 5 seconds, so a toggle takes effect within about 5 seconds; a failing state lookup fails open.</p>
+<h2 id="tool-errors">Tool error format<a class="headerlink" href="#tool-errors" title="Permanent link">&para;</a></h2>
+<p>A failed tool call (over <code>/mcp</code>, <code>POST /tools/&lt;name&gt;</code> or the admin playground) tells the calling LLM a <strong>code, the reason and the next step</strong>
+(<code>node-server/src/toolErrors.ts</code>). <code>POST /tools/&lt;name&gt;</code> still answers HTTP 400 with the original <code>error: "tool_call_failed"</code>, <code>tool</code> and <code>detail</code>, plus:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>code</code></td>
+<td>e.g. <code>INVALID_ARGUMENTS</code>, <code>UNKNOWN_TOOL</code>, <code>TOOL_NOT_AVAILABLE</code>, <code>DATA_NOT_LOADED</code>, <code>SERVER_SCHEMA_OUTDATED</code>, <code>DATABASE_UNAVAILABLE</code>, <code>QUERY_TIMEOUT</code>, <code>INTERNAL_QUERY_FAILED</code></td>
+</tr>
+<tr>
+<td><code>message</code> / <code>hint</code></td>
+<td>What went wrong and what to do next (English, for the LLM)</td>
+</tr>
+<tr>
+<td><code>retryable</code></td>
+<td>Whether retrying unchanged can succeed</td>
+</tr>
+<tr>
+<td><code>problems</code>, <code>unknown_parameters</code>, <code>expected_parameters</code>, <code>example_arguments</code></td>
+<td>For argument errors: per-parameter problems (parameter, rule, example value), parameters that do not exist (with "did you mean"), the full parameter list and example arguments</td>
+</tr>
+</tbody>
+</table>
+<p>SQL / connection errors are no longer passed through to the client (the raw text goes to the server log only). Transport failures
+against an external FHIR server are classified as <code>UPSTREAM_TIMEOUT</code>, <code>UPSTREAM_DNS_FAILED</code>, <code>UPSTREAM_UNREACHABLE</code>, <code>UPSTREAM_TLS_ERROR</code>,
+<code>UPSTREAM_CONNECTION_RESET</code> or <code>UPSTREAM_AUTH_FAILED</code>. Tool results that find nothing gain <code>hint</code> / <code>suggestions</code> (e.g. nearby ICD codes,
+<code>concept_found: false</code>, <code>installed_igs</code> when an IG is not found); existing fields are unchanged.</p>
 <h2 id="health_check-system-group"><code>health_check</code> (System group)<a class="headerlink" href="#health_check-system-group" title="Permanent link">&para;</a></h2>
 <p>Always registered, no arguments. Call it before any workflow to confirm the modules you need are online. Returns JSON:</p>
 <table>

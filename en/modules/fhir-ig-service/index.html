@@ -18,7 +18,7 @@
         <link rel="prev" href="../fhir-medication-service/">
       
       
-        <link rel="next" href="../../tools/icd-tools/">
+        <link rel="next" href="../ig-concept-search/">
       
       
         
@@ -835,6 +835,34 @@
   
 </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ig-concept-search/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IG Concept Search
+  
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -2641,7 +2669,7 @@
 <li><strong><code>fhir_expand_valueset</code></strong>: expand a ValueSet and list the actual member codes.</li>
 <li><strong><code>fhir_lookup_code</code></strong>: look up a single code's display name and properties in a given CodeSystem.</li>
 <li><strong><code>fhir_validate_code</code></strong>: validate whether a <code>system</code>+<code>code</code> belongs to a given ValueSet.</li>
-<li><strong><code>fhir_normalize_code</code></strong>: match free text (for example「流行性感冒」/ influenza) against a ValueSet and return the most appropriate standard code.</li>
+<li><strong><code>fhir_normalize_code</code></strong>: match free text (for example「流行性感冒」/ influenza) against a ValueSet or code system and return ranked candidate codes. For CodeSystems of installed IGs (e.g. the NHI payment codes) it uses the <a href="../ig-concept-search/">IG Concept Search</a> engine.</li>
 </ul>
 <h3 id="4-authoring-assembly-and-validation">4. Authoring, assembly, and validation<a class="headerlink" href="#4-authoring-assembly-and-validation" title="Permanent link">&para;</a></h3>
 <ul>

@@ -658,6 +658,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/ig-concept-search/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IG 術語搜尋
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1618,6 +1646,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#tool-errors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        工具錯誤格式
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#health_checksystem" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2429,6 +2468,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#tool-errors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        工具錯誤格式
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#health_checksystem" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2588,6 +2638,39 @@ Drug / TFDA 與 FHIR Medication → <code>drug</code>；Lab / LOINC → <code>lo
 <code>rxnorm</code> 沒有自己的工具群組，維護旗標不影響任何工具；健康食品、食品營養、FHIR Servers、Clinical Calculators 與 System
 不受維護模式影響。為了避免用戶端工具清單反覆變動，維護中的工具<strong>仍留在 <code>tools/list</code> / <code>/openapi.json</code></strong>。狀態有 5 秒快取，
 切換後最多約 5 秒生效；讀取狀態失敗時放行（fail-open）。</p>
+<h2 id="tool-errors">工具錯誤格式<a class="headerlink" href="#tool-errors" title="Permanent link">&para;</a></h2>
+<p>工具呼叫失敗時（<code>/mcp</code>、<code>POST /tools/&lt;name&gt;</code>、後台 playground 都一樣），回應會告訴呼叫端的 LLM <strong>代碼、原因與下一步</strong>
+（<code>node-server/src/toolErrors.ts</code>）。<code>POST /tools/&lt;name&gt;</code> 仍以 HTTP 400 回傳原本的 <code>error: "tool_call_failed"</code>、<code>tool</code>、<code>detail</code>，並多出：</p>
+<table>
+<thead>
+<tr>
+<th>欄位</th>
+<th>說明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>code</code></td>
+<td>例如 <code>INVALID_ARGUMENTS</code>、<code>UNKNOWN_TOOL</code>、<code>TOOL_NOT_AVAILABLE</code>、<code>DATA_NOT_LOADED</code>、<code>SERVER_SCHEMA_OUTDATED</code>、<code>DATABASE_UNAVAILABLE</code>、<code>QUERY_TIMEOUT</code>、<code>INTERNAL_QUERY_FAILED</code></td>
+</tr>
+<tr>
+<td><code>message</code> / <code>hint</code></td>
+<td>英文說明與下一步（給 LLM 讀）</td>
+</tr>
+<tr>
+<td><code>retryable</code></td>
+<td>原樣重試是否可能成功</td>
+</tr>
+<tr>
+<td><code>problems</code>、<code>unknown_parameters</code>、<code>expected_parameters</code>、<code>example_arguments</code></td>
+<td>參數錯誤時：逐項問題（參數、規則、範例值）、傳了但不存在的參數（含近似名稱建議）、完整參數清單與範例參數</td>
+</tr>
+</tbody>
+</table>
+<p>SQL / 連線錯誤不再把原始訊息傳給用戶端（原始內容只寫入伺服器日誌）。外部 FHIR 伺服器的連線失敗會分類成
+<code>UPSTREAM_TIMEOUT</code>、<code>UPSTREAM_DNS_FAILED</code>、<code>UPSTREAM_UNREACHABLE</code>、<code>UPSTREAM_TLS_ERROR</code>、<code>UPSTREAM_CONNECTION_RESET</code>、<code>UPSTREAM_AUTH_FAILED</code>。
+查無資料的工具結果則多了 <code>hint</code> / <code>suggestions</code>（例如 ICD 近似代碼、<code>concept_found: false</code>、IG 找不到時列出 <code>installed_igs</code>），
+原有欄位不變。</p>
 <h2 id="health_checksystem"><code>health_check</code>（System 群組）<a class="headerlink" href="#health_checksystem" title="Permanent link">&para;</a></h2>
 <p>永遠註冊、不需參數。建議在任何工作流程開始前先呼叫，確認需要的模組已上線。回傳 JSON：</p>
 <table>

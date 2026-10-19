@@ -658,6 +658,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../modules/ig-concept-search/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IG Concept Search
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -2536,7 +2564,7 @@ Database access always goes through the shared <code>pg</code> pool in <code>db.
 <h3 id="async-initialize-promisevoid"><code>async initialize(): Promise&lt;void&gt;</code><a class="headerlink" href="#async-initialize-promisevoid" title="Permanent link">&para;</a></h3>
 <p>Checks whether <code>icd.procedures</code> has rows, which decides whether ICD-10-PCS search is available.</p>
 <h3 id="async-searchcodeskeyword-type-all-limit-3"><code>async searchCodes(keyword, type = "all", limit = 3)</code><a class="headerlink" href="#async-searchcodeskeyword-type-all-limit-3" title="Permanent link">&para;</a></h3>
-<p><code>type</code> is <code>"diagnosis" | "procedure" | "all"</code>; <code>limit</code> is capped at 10. Diagnoses use a BM25 + vector RRF hybrid search (exact vector scan, not HNSW); procedures are BM25 only.
+<p><code>type</code> is <code>"diagnosis" | "procedure" | "all"</code>; <code>limit</code> is capped at 10. Diagnoses use score-aware hybrid ranking of full-text and vector candidates (<code>terminologyRanking.ts</code> + <code>hybridRank.ts</code>; exact vector scan, not HNSW); procedures are BM25 only.
 Returns <code>{diagnoses?, procedures?, procedures_note?}</code>, plus <code>search_mode: "keyword_only"</code> when vectors are unavailable; <code>{error}</code> when nothing matches. Backs <code>search_medical_codes</code>.</p>
 <h3 id="async-infercomplicationscode"><code>async inferComplications(code)</code><a class="headerlink" href="#async-infercomplicationscode" title="Permanent link">&para;</a></h3>
 <p>Pure hierarchy lookup: with children returns <code>{base_code, potential_complications_or_specifics}</code> (up to 15), otherwise codes of the same category as <code>{message, related_codes}</code> (up to 10). Backs <code>infer_complications</code>.</p>

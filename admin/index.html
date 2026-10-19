@@ -658,6 +658,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/ig-concept-search/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IG 術語搜尋
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1792,6 +1820,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="模型端點（/admin/models）">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#embedding" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        更換 Embedding 模型（切換流程）
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1854,6 +1899,17 @@
     <span class="md-ellipsis">
       
         外部 FHIR 伺服器
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#errors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        錯誤訊息與下一步
       
     </span>
   </a>
@@ -2481,6 +2537,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="模型端點（/admin/models）">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#embedding" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        更換 Embedding 模型（切換流程）
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2543,6 +2616,17 @@
     <span class="md-ellipsis">
       
         外部 FHIR 伺服器
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#errors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        錯誤訊息與下一步
       
     </span>
   </a>
@@ -2649,7 +2733,7 @@ FHIR_SERVER_SECRET_KEY=
 </tbody>
 </table>
 <p>對應的後端模組見 <code>node-server/src/admin/*.ts</code>（<code>adminApp.ts</code> 為路由入口）。</p>
-<p>登入方式除密碼外，另支援 <strong>passkey / WebAuthn</strong>（<code>node-server/src/admin/webauthn.ts</code>），於「帳號安全」頁管理；passkey 僅能在 HTTPS 的 RP 網域（或本機 localhost）上使用，設定見<a href="../deployment/configuration/">環境變數配置</a>。</p>
+<p>登入方式除密碼外，另支援 <strong>passkey / WebAuthn</strong>（<code>node-server/src/admin/webauthn.ts</code>），於「帳號安全」頁管理（該頁變更密碼時，新密碼至少 12 個字元，伺服器端同樣檢查）；passkey 僅能在 HTTPS 的 RP 網域（或本機 localhost）上使用，設定見<a href="../deployment/configuration/">環境變數配置</a>。</p>
 <h2 id="mcp-adminmcp">MCP 工具頁（<code>/admin/mcp</code>）<a class="headerlink" href="#mcp-adminmcp" title="Permanent link">&para;</a></h2>
 <p>由 <code>node-server/src/admin/adminMcp.ts</code> 提供 API（<code>GET /admin/api/mcp/overview</code>、<code>GET /admin/api/mcp/tools</code>、<code>POST /admin/api/mcp/tools/{name}/invoke</code>），分三個分頁：</p>
 <ul>
@@ -2689,9 +2773,27 @@ FHIR_SERVER_SECRET_KEY=
 <ul>
 <li><strong>Provider adapter</strong>：<code>node-server/src/providers/registry.ts</code> 共註冊 24 個 adapter——OpenAI、Azure OpenAI、Anthropic、Gemini、Bedrock、Mistral、Cohere、Voyage、Jina、DeepSeek、xAI、Groq、OpenRouter、Together、Fireworks、SiliconFlow、DashScope、Moonshot、Zhipu、Volcengine、MiniMax、OpenAI 相容伺服器（vLLM、LM Studio、LiteLLM…）、Ollama，以及 ChatGPT。舊值 <code>vllm</code> / <code>google</code> / <code>azure</code> / <code>claude</code> 會自動對應到新 id（migration <code>20261015_llm_provider_registry.sql</code> 一併改寫已存資料）。</li>
 <li><strong>ChatGPT 登入</strong>：<code>chatgpt</code> provider 使用 OpenAI 的「Sign in with ChatGPT」PKCE 流程（<code>admin/chatgptOAuth.ts</code>）。由於 redirect 只能是本機 loopback，操作者需把瀏覽器最後的網址貼回後台完成交換；token 存於 <code>admin.llm_providers.oauth</code>，不會離開伺服器。</li>
-<li><strong>Embedding 身分（fingerprint）</strong>：<code>admin/embeddingIdentity.ts</code> 以一組固定探測文字的向量作為系統的嵌入身分（<code>admin.embedding_identity</code> / <code>admin.embedding_fingerprints</code>，定義在 <code>db/schema.sql</code> 與 <code>db/migrations/20261021_embedding_identity.sql</code>；程式啟動時也會以 <code>CREATE TABLE IF NOT EXISTS</code> 補建）。任何新端點要加入 embedding profile，每個探測文字的 cosine 都必須 ≥ 0.95，才算「同一個模型」。已有向量時要換模型，必須走受保護的切換流程：停用嵌入角色 → 停止 embed 工作 → 清除向量 → 採用新身分 → 重新排入各模組的 embed 工作。</li>
+<li><strong>Embedding 身分（fingerprint）</strong>：<code>admin/embeddingIdentity.ts</code> 以一組固定探測文字的向量作為系統的嵌入身分（<code>admin.embedding_identity</code> / <code>admin.embedding_fingerprints</code>，定義在 <code>db/schema.sql</code> 與 <code>db/migrations/20261021_embedding_identity.sql</code>；程式啟動時也會以 <code>CREATE TABLE IF NOT EXISTS</code> 補建）。任何新端點要加入 embedding profile，每個探測文字的 cosine 都必須 ≥ 0.95，才算「同一個模型」。已有向量時要換模型，必須走受保護的切換流程：停用嵌入角色 → 停止 embed 工作 → 清除向量（維度不同時在同一交易內調整所有 <code>*_embeddings</code> 向量欄位，例如 1024 → 2560）→ 採用新身分 → 重新排入各模組的 embed 工作。</li>
+<li><strong>還沒有身分列、但已有向量</strong>（舊版載入的資料）：第一次儲存 Embedding profile、指定角色，或在「總覽」按「確認現有向量的模型並建立指紋」時，系統會從資料庫取幾筆既有向量與其原文（以 <code>source_hash</code> 驗證原文），請角色內的端點、其他 Embedding profile 的端點、最後是這次要加入的端點逐一重新產生來比對，採用第一個對得上的；連不上或回 404 的端點會被略過，絕不會被採用。都對不上時回傳 <code>embedding_identity_unresolved</code>（列出每個端點的失敗原因），不會丟出原始 HTTP 錯誤。</li>
+<li><strong>錯誤一律帶代碼</strong>：模型端點相關的錯誤（儲存 profile、指定角色、測試帳號／模型、比對指紋、切換、匯入設定）都回傳 <code>code</code> + <code>params</code>，後台翻成中文並附下一步；原始伺服器訊息只放在可展開的「技術細節」。主要代碼見下方〈更換 Embedding 模型〉。</li>
 <li>角色層級參數（嵌入的 timeout / batch size / concurrency、分析的 max retries）存於 <code>admin.app_settings</code> 的 <code>embedding</code> / <code>analysis</code> 群組。</li>
 </ul>
+<h3 id="embedding">更換 Embedding 模型（切換流程）<a class="headerlink" href="#embedding" title="Permanent link">&para;</a></h3>
+<p><strong>不能用編輯 Profile 更換 Embedding 模型。</strong> 把成員改成另一個模型（或另一個向量維度）時，儲存會被拒絕（HTTP 409，<code>embedding_model_change_requires_switch</code>），後台改為顯示說明對話框：目前模型與維度、要改成的模型、會重建的向量數與預估時間，並提供「改用切換模型流程」——切換對話框會帶入同一個帳號、模型與參數。指定一個不同模型的 profile 給 Embedding 角色也一樣。</p>
+<p>切換步驟（模型端點 → 總覽 → Embedding → 「切換模型…」）：</p>
+<ol>
+<li>選帳號、模型與向量維度，按 <strong>預先檢查</strong>（<code>POST /admin/api/llm/embedding/precheck</code>，不會變更任何東西）。它會實際呼叫新模型，並在刪除任何資料前回報：<ul>
+<li><code>embedding_model_not_found</code>：伺服器沒有這個模型，列出它實際提供的模型，可點選改用。</li>
+<li><code>embedding_dims_unsupported</code>：回傳的向量不是設定的維度。沒有送出 <code>dimensions</code> 時，代表模型原生維度不同（例如 Qwen3-Embedding-4B 為 2560）；有送出時，代表伺服器拒絕或忽略了它。兩種修法：改用模型原生維度，或（Matryoshka 模型）開啟「送出維度參數」——vLLM 須以 <code>--hf-overrides '{"is_matryoshka": true}'</code> 啟動，否則會回 HTTP 400。</li>
+<li><code>embedding_switch_same_model</code>：新端點其實產生相同向量，不需要切換，直接加進 profile 當備援即可。</li>
+<li>通過時顯示回傳維度，以及向量欄位是否會改維度（例如 1024 → 2560）。</li>
+</ul>
+</li>
+<li>有向量時輸入 <code>REINDEX</code> 確認後執行。系統關閉 Embedding 角色、停止 embed 工作、清除向量並調整欄位維度、採用新身分、建立並綁定新的 profile，再為每個有資料的模組排入重建工作。重建期間語意搜尋改為關鍵字比對；約 60 萬筆向量在共用 GPU 上約需 1–2 小時（0.6B），4B 模型約 3 小時。
+    若 GPU 同時服務正式環境的即時查詢，重建前先在「外部服務 → Embedding」把 <code>batch_size</code> 調小（例如 8）、<code>concurrency</code> 保持 1：每批越小，單一查詢被一個大批次擋住的時間越短（實測 Qwen3-Embedding-4B：批次 16 時線上單筆查詢 p95 約 110–170 ms，批次 8 約 80 ms）。<code>batch_size</code> 在每個工作開始時讀取，<code>concurrency</code> 執行中即時生效；成員的 <code>rpm</code> 只限制平均速率，不會讓尖峰變小。</li>
+</ol>
+<p><strong>查詢指令（query instruction）。</strong> 模型成員的參數「查詢指令」決定搜尋查詢是否加上任務描述。預設「自動」：Qwen3-Embedding 系列（以及 gte-Qwen2-instruct）會依模組加上 <code>Instruct: &lt;任務&gt;\nQuery: &lt;查詢&gt;</code>（ICD、LOINC、SNOMED、IG 概念、食品、健康食品各有一句英文任務描述），其他模型不加；也可「關閉」或「自訂」一句所有模組共用的描述（<code>params.query_instruction</code>：省略 / <code>off</code> / 文字）。只有查詢向量會加指令，已存的向量與身分指紋的探測文字都不加，所以調整這個設定<strong>不需要重建索引</strong>。</p>
+<p>「總覽」的 Embedding 卡片會實際探測角色內每個成員（快取 60 秒）：成員失敗時顯示「Embedding 路由降級：成員 X 失敗（原因）——正由 Y 備援」與修正建議，服務健康頁的 Embedding 列也用同一份探測結果。</p>
 <h2 id="settings">設定（Settings）與優先序<a class="headerlink" href="#settings" title="Permanent link">&para;</a></h2>
 <p>Bootstrap 變數（DB / Redis / MCP transport / <code>ADMIN_*</code> 認證）起始於 <code>.env</code>。首次啟動會把
 <code>ADMIN_INITIAL_PASSWORD</code>（雜湊後）或 <code>ADMIN_PASSWORD_HASH</code> 寫入 <code>admin.admin_credentials</code>，之後登入只驗證資料庫中的 hash。
@@ -2711,6 +2813,11 @@ HTTP request 或 Node 記憶體中組裝整份備份。完成後可由備份歷�
 PostgreSQL 16 <code>pg_restore</code> 還原；object storage 檔案位於 ZIP 的 <code>object-storage/</code> 目錄。</p>
 <h2 id="sources">來源檔（Sources）<a class="headerlink" href="#sources" title="Permanent link">&para;</a></h2>
 <p>於各模組頁的來源檔區上傳來源檔（ICD-10-CM CMS order file zip、ICD-10-PCS、LOINC zip、SNOMED RF2、RxNorm zip、FHIR IG <code>package.tgz</code> 等），並可指定 source role（例如 IG 相依套件、選用的 WHO ICD-10 來源）。系統會以檔案指紋（SHA-256）阻擋重複上傳；檔案存於 MinIO，工作執行時再取回。</p>
+<p>上傳當下就會檢查內容，錯的檔案立即被拒（附中文原因）：檔案類型（magic bytes）、官方發布壓縮檔必須含 loader 需要的成員
+（LOINC <code>LoincTable/Loinc.csv</code>、SNOMED <code>sct2_Concept_*</code>、RxNorm <code>RXNCONSO.RRF</code>、ICD-10-CM / PCS order 檔、UMLS <code>MRCONSO.RRF</code>；
+zip64 等無法列目錄的檔案略過此檢查）、CSV 必須有必要欄位（藥品索引；LOINC 台灣對照 <code>loinc_code,name_zh</code>；參考值範圍
+<code>loinc_code,age_min,age_max,gender,range_low,range_high</code>）。IG 上傳匯入前會先讀 <code>package/package.json</code>，不是 FHIR 套件就回 422，不會建立工作。</p>
+<p>匯入工作綁定來源時，單一檔案的 source role 使用<strong>使用中</strong>（active）的那一版；只有該 role 沒有任何使用中版本時才退回最近一次上傳的檔案。</p>
 <blockquote>
 <p>上傳需送出 <code>Content-Type: application/octet-stream</code>（SPA 已如此送出），否則會被 express 的 JSON parser 攔下並回 413。</p>
 </blockquote>
@@ -2765,6 +2872,41 @@ PostgreSQL 16 <code>pg_restore</code> 還原；object storage 檔案位於 ZIP �
 <blockquote>
 <p><code>crud_fhir_server</code> 是系統中唯一可能產生寫入的工具：寫入操作必須該伺服器的 allow-list 允許，且呼叫端帶入 <code>confirm_write=true</code>。</p>
 </blockquote>
+<h2 id="errors">錯誤訊息與下一步<a class="headerlink" href="#errors" title="Permanent link">&para;</a></h2>
+<p>後台 API 的錯誤回應（HTTP ≥ 400）除了原本的 <code>error</code>（英文）與 <code>detail</code>（原始技術訊息）外，一律附上：</p>
+<table>
+<thead>
+<tr>
+<th>欄位</th>
+<th>內容</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>code</code></td>
+<td>穩定的機器代碼，例如 <code>SOURCE_MISSING</code>、<code>DB_SCHEMA_OUTDATED</code>、<code>UPSTREAM_UNREACHABLE</code>、<code>JOB_ALREADY_ACTIVE</code></td>
+</tr>
+<tr>
+<td><code>message_zh</code></td>
+<td>發生了什麼（繁體中文）</td>
+</tr>
+<tr>
+<td><code>hint_zh</code></td>
+<td>下一步該怎麼做（到哪一頁、改哪個設定、跑哪個指令）</td>
+</tr>
+</tbody>
+</table>
+<p>由 <code>node-server/src/admin/adminErrorCodes.ts</code> 統一產生：先比對已知的英文訊息（來源檔缺漏、設定值超出範圍、OAuth 失敗…），
+再從 <code>detail</code> 辨識技術原因（PostgreSQL 錯誤如缺資料表／欄位 → 提示套用 migration、重複鍵、外鍵；連線拒絕、DNS、逾時、TLS、
+上游 HTTP 狀態；MinIO），都不符合時仍會說明「哪個操作失敗」並給通用的下一步。已帶 <code>code</code> 的回應（模型端點 API、IG 移除、
+<code>MODULE_MAINTENANCE</code>）不會被改寫。介面上的提示訊息依序顯示說明、下一步，原始訊息只以小字「技術細節」呈現。</p>
+<p>同樣的說明也套用在：</p>
+<ul>
+<li><strong>外部服務的「測試連線」</strong>（OCR / MinIO / TFDA）：結果多了 <code>message_zh</code> / <code>hint_zh</code>。</li>
+<li><strong>服務健康</strong>的探測結果與<strong>儀表板</strong>的基礎設施狀態：<code>message_zh</code> / <code>detail_zh</code> + <code>hint_zh</code>。</li>
+<li><strong>失敗的背景工作</strong>：<code>last_error_zh</code> / <code>last_error_hint_zh</code>（工作詳情與模組頁「上次匯入失敗的原因」）。</li>
+<li><strong>閘道錯誤</strong>：app 沒有回應時（nginx 回 502 / 504 的 HTML），前端直接說明「後端服務沒有回應」與檢查方式。</li>
+</ul>
 <h2 id="db">DB 健康閘門<a class="headerlink" href="#db" title="Permanent link">&para;</a></h2>
 <p><code>node-server/src/dbHealth.ts</code> 為中央 DB 健康監測：當 PostgreSQL 無法連線時，會鎖定所有變動性操作並在 UI 顯示遮罩（overlay），避免在資料庫異常時進行匯入或修改。</p>
 

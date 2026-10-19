@@ -15,7 +15,7 @@
         <link rel="canonical" href="https://healthymind-tech.github.io/Taiwan-Health-MCP/en/tools/icd-tools/">
       
       
-        <link rel="prev" href="../../modules/fhir-ig-service/">
+        <link rel="prev" href="../../modules/ig-concept-search/">
       
       
         <link rel="next" href="../drug-tools/">
@@ -645,6 +645,34 @@
     
   
     FHIR IG
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../modules/ig-concept-search/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IG Concept Search
   
 
     
@@ -2765,15 +2793,22 @@
 <td style="text-align: left;"><code>limit</code></td>
 <td style="text-align: left;">integer</td>
 <td style="text-align: left;">No</td>
-<td style="text-align: left;">Cap per result class, 3 by default, 10 maximum</td>
+<td style="text-align: left;">Cap per result class, 3 by default, 10 maximum (50 for an IG CodeSystem)</td>
 <td style="text-align: left;"><code>5</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>system</code></td>
+<td style="text-align: left;">string</td>
+<td style="text-align: left;">No</td>
+<td style="text-align: left;">Omit for ICD-10 (by <code>type</code>). <code>icd10cm</code> / <code>icd10pcs</code>, or any CodeSystem of an installed IG: canonical, id or alias words (e.g. <code>nhi_payment</code> = the NHI medical service payment codes). IG CodeSystems go through <a href="../../modules/ig-concept-search/">IG Concept Search</a> and return <code>{keyword, system, codesystem, results[], clauses?, search_mode?}</code></td>
+<td style="text-align: left;"><code>"nhi_payment"</code></td>
 </tr>
 </tbody>
 </table>
 <h3 id="how-the-search-works">How the search works<a class="headerlink" href="#how-the-search-works" title="Permanent link">&para;</a></h3>
 <p><code>diagnosis</code> runs a hybrid BM25 + vector re-ranking search; <code>procedure</code> is BM25 only; <code>all</code>
 (the default) does both and returns them under separate <code>diagnoses</code> / <code>procedures</code> keys.
-Results are ordered by relevance (keyword and vector hits fused with RRF), not alphabetically by code.
+Results are ordered by relevance, not alphabetically by code: the candidates are the union of full-text matches (shortest names first) and the nearest vectors, ordered by score-aware fusion — the lexical score measures how far query and name cover each other (a query that <em>is</em> a name beats longer sub-concepts that merely contain it; qualifiers such as "unspecified" / 未明示 cost nothing), the semantic score is the cosine similarity rescaled within the pool, plus a small code-depth prior (a short query prefers I50 / I50.9 over I50.813). The two nearest vectors always stay in the result, so weak keyword hits can no longer push a strong semantic match out of the top-k (the old RRF failure).
 The vector side deliberately runs an exact scan instead of the HNSW index: the complete ICD-10-CM has many near-duplicate codes that differ only in the 7th character, and HNSW recall collapses on that data.
 When the embedding endpoint is unavailable or <code>icd.diagnosis_embeddings</code> is empty the search falls back to keyword-only and the response carries <code>search_mode: "keyword_only"</code>.
 When ICD-10-PCS is not loaded, <code>procedures</code> is an empty array with a <code>procedures_note</code>.</p>

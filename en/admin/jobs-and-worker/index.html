@@ -658,6 +658,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../modules/ig-concept-search/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IG Concept Search
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1812,6 +1840,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#checks-before-a-job-is-created" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Checks before a job is created
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#self-healing-when-the-analysis-llm-is-unavailable" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2418,6 +2457,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#checks-before-a-job-is-created" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Checks before a job is created
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#self-healing-when-the-analysis-llm-is-unavailable" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2499,7 +2549,7 @@ docker compose build admin-worker &amp;&amp; docker compose up -d --no-deps admi
 <tr>
 <td><code>icd_import</code> / <code>loinc_import</code> / <code>snomed_import</code> / <code>rxnorm_import</code> / <code>ig_import</code></td>
 <td>Matching module</td>
-<td>Imports from source files uploaded through the admin console (source files live in MinIO and are fetched when the job runs). <code>ig_import</code> also downloads missing dependency packages from the FHIR package registry and records each package's <code>install_origin</code> (<code>manual</code> / <code>dependency</code>).</td>
+<td>Imports from source files uploaded through the admin console (source files live in MinIO and are fetched when the job runs). <code>ig_import</code> also downloads missing dependency packages from the FHIR package registry and records each package's <code>install_origin</code> (<code>manual</code> / <code>dependency</code>); it finally indexes the imported packages for the IG concept search and queues <code>ig_embed</code>.</td>
 </tr>
 <tr>
 <td><code>health_supplements_sync</code> / <code>food_nutrition_sync</code></td>
@@ -2527,6 +2577,21 @@ docker compose build admin-worker &amp;&amp; docker compose up -d --no-deps admi
 <td>Backfills the <code>*_embeddings</code> vector tables (needs a usable profile on the embedding role).</td>
 </tr>
 <tr>
+<td><code>ig_concept_index</code></td>
+<td><code>ig</code></td>
+<td>Builds / backfills the IG concept-search index (CodeSystem names, designations in every language, supplements, linked names, optional UMLS synonyms) and the thesaurus, then queues <code>ig_embed</code> when needed. See <a href="../../modules/ig-concept-search/">IG Concept Search</a>.</td>
+</tr>
+<tr>
+<td><code>ig_embed</code></td>
+<td><code>ig</code></td>
+<td>Embeds IG concept names (<code>fhir.concept_embeddings</code>, content-addressed, incremental).</td>
+</tr>
+<tr>
+<td><code>umls_import</code></td>
+<td><code>ig</code></td>
+<td>Optional (UMLS licence): loads UMLS synonyms (<code>fhir.umls_terms</code>) from the source <code>ig/umls_metathesaurus</code>, then queues <code>ig_concept_index</code>.</td>
+</tr>
+<tr>
 <td><code>system_backup</code></td>
 <td>—</td>
 <td>System backup (see <a href="../#system-backups">Admin Console</a>).</td>
@@ -2540,6 +2605,21 @@ docker compose build admin-worker &amp;&amp; docker compose up -d --no-deps admi
 <li><strong>Heartbeat</strong>: the worker writes <code>admin.worker_heartbeats</code> periodically; after <code>ADMIN_WORKER_STALE_AFTER_SECONDS</code> (default 45 s) without an update it is considered lost and its running jobs are reclaimed and re-queued. On startup the worker also reclaims <code>running</code> jobs left under its own name.</li>
 <li><strong>Concurrency limit</strong>: <code>ADMIN_MAX_CONCURRENT_JOBS</code> (default 4) bounds how many jobs run at once; per-module resource slots additionally prevent concurrent writes to the same module.</li>
 </ul>
+<h2 id="checks-before-a-job-is-created">Checks before a job is created<a class="headerlink" href="#checks-before-a-job-is-created" title="Permanent link">&para;</a></h2>
+<p><code>POST /admin/api/jobs</code> checks a few preconditions before queueing (<code>node-server/src/admin/jobPrechecks.ts</code>), so problems are reported immediately with a zh-TW explanation instead of failing later in the worker:</p>
+<ul>
+<li><strong>Duplicate whole-module jobs</strong>: <code>icd_import</code>, <code>loinc_import</code>, <code>snomed_import</code>, <code>rxnorm_import</code>, <code>umls_import</code>, <code>ig_concept_index</code>,
+  the two TFDA syncs, every <code>*_embed</code> and <code>system_backup</code> are refused with 409 <code>JOB_ALREADY_ACTIVE</code> (plus <code>active_job_id</code>) while a job of the same
+  type is queued / running / paused. <code>ig_import</code> and the drug jobs are not limited (they can target different packages / licenses).</li>
+<li><strong>Drug insert analysis prerequisites</strong>: <code>drug_analysis</code> (except <code>retry_stage=normalize</code>) and <code>drug_pipeline</code> return 409 when OCR or the analysis LLM
+  is not configured (<code>OCR_NOT_CONFIGURED</code> / <code>ANALYSIS_LM_NOT_CONFIGURED</code>, pointing to External services → OCR or Model endpoints).</li>
+<li><strong>No live worker</strong>: the job is still queued (a worker picks it up once it is back), but the response carries <code>worker_warning</code> and the console says
+  the job will not run yet. Whenever no worker is heartbeating, every page also shows a "background worker offline" banner with the start command.</li>
+</ul>
+<p>A failing lookup lets the request through (fail-open); the worker then reports the real error.</p>
+<p>The worker's <strong>service dependency check</strong> before a job runs (e.g. the drug jobs need MinIO, OCR and the analysis LLM) re-probes any service whose
+last stored probe in <code>admin.service_probes</code> is <code>error</code>, and fails the job (<code>permanent_failed</code>) only if it still fails — once a service is fixed there
+is no need to run a manual probe on Service health first.</p>
 <h2 id="self-healing-when-the-analysis-llm-is-unavailable">Self-healing when the analysis LLM is unavailable<a class="headerlink" href="#self-healing-when-the-analysis-llm-is-unavailable" title="Permanent link">&para;</a></h2>
 <p>When a <code>drug_analysis</code> job pauses because every profile on the analysis role failed (<code>last_error_code = 'llm_unavailable'</code>),
 the worker re-claims it automatically once <code>admin.import_jobs.next_retry_at</code> passes; the backoff doubles per attempt (2 min → 30 min cap),

@@ -658,6 +658,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../modules/ig-concept-search/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IG Concept Search
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -2702,7 +2730,7 @@
 <h2 id="search_snomed_concept"><code>search_snomed_concept</code><a class="headerlink" href="#search_snomed_concept" title="Permanent link">&para;</a></h2>
 <p>Search SNOMED concept candidates by English clinical term.</p>
 <h3 id="when-to-use-it">When to use it<a class="headerlink" href="#when-to-use-it" title="Permanent link">&para;</a></h3>
-<p>Use it first when you only have a text term and do not yet know the concept ID. The tool ranks with BM25 + embeddings, returning the closest concepts semantically rather than only exact literal matches.</p>
+<p>Use it first when you only have a text term and do not yet know the concept ID. The tool ranks full-text and embedding candidates with score-aware fusion over every active name of a concept (FSN and synonyms), returning the closest concepts semantically rather than only exact literal matches; a concept whose name the query is ranks first, and inactive concepts sink.</p>
 <h3 id="parameters">Parameters<a class="headerlink" href="#parameters" title="Permanent link">&para;</a></h3>
 <table>
 <thead>

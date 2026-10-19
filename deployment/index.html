@@ -658,6 +658,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/ig-concept-search/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IG 術語搜尋
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -3386,6 +3414,14 @@ done
 <tr>
 <td><code>20261021_embedding_identity.sql</code></td>
 <td><code>admin.embedding_identity</code> / <code>admin.embedding_fingerprints</code>（embedding 身分；程式執行期也會補建，套用與否皆冪等）</td>
+</tr>
+<tr>
+<td><code>20261022_ig_concept_search.sql</code></td>
+<td>IG 術語搜尋：<code>fhir.concept_index_cs</code> / <code>_concepts</code> / <code>_terms</code>、<code>fhir.concept_embeddings</code>、<code>fhir.term_thesaurus</code>、<code>fhir.codesystem_supplements</code>。套用後於管理後台 IG 套件庫 → 術語搜尋索引按「補建索引」（<code>ig_concept_index</code>，會接著跑 <code>ig_embed</code>）</td>
+</tr>
+<tr>
+<td><code>20261023_umls_terms.sql</code></td>
+<td>選用的 UMLS 同義字表 <code>fhir.umls_terms</code> / <code>fhir.umls_release</code>（需 UMLS 授權；未載入時引擎照常運作）</td>
 </tr>
 </tbody>
 </table>

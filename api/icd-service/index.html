@@ -658,6 +658,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../modules/ig-concept-search/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IG 術語搜尋
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -2536,7 +2564,7 @@
 <h3 id="async-initialize-promisevoid"><code>async initialize(): Promise&lt;void&gt;</code><a class="headerlink" href="#async-initialize-promisevoid" title="Permanent link">&para;</a></h3>
 <p>檢查 <code>icd.procedures</code> 是否有資料，決定 ICD-10-PCS 搜尋是否可用。</p>
 <h3 id="async-searchcodeskeyword-type-all-limit-3"><code>async searchCodes(keyword, type = "all", limit = 3)</code><a class="headerlink" href="#async-searchcodeskeyword-type-all-limit-3" title="Permanent link">&para;</a></h3>
-<p><code>type</code> 為 <code>"diagnosis" | "procedure" | "all"</code>，<code>limit</code> 上限 10。診斷走 BM25 + 向量 RRF 混合搜尋（向量端精確掃描，不走 HNSW），處置只走 BM25。
+<p><code>type</code> 為 <code>"diagnosis" | "procedure" | "all"</code>，<code>limit</code> 上限 10。診斷走全文 + 向量的分數感知混合排序（<code>terminologyRanking.ts</code> + <code>hybridRank.ts</code>；向量端精確掃描，不走 HNSW），處置只走 BM25。
 回傳 <code>{diagnoses?, procedures?, procedures_note?}</code>，向量不可用時另帶 <code>search_mode: "keyword_only"</code>；完全無結果時回傳 <code>{error}</code>。對應工具 <code>search_medical_codes</code>。</p>
 <h3 id="async-infercomplicationscode"><code>async inferComplications(code)</code><a class="headerlink" href="#async-infercomplicationscode" title="Permanent link">&para;</a></h3>
 <p>純階層查詢：有子代碼時回傳 <code>{base_code, potential_complications_or_specifics}</code>（最多 15 筆），否則回傳同類別代碼 <code>{message, related_codes}</code>（最多 10 筆）。對應 <code>infer_complications</code>。</p>

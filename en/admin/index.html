@@ -658,6 +658,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../modules/ig-concept-search/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IG Concept Search
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1792,6 +1820,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Model endpoints (/admin/models)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#changing-the-embedding-model-switch-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Changing the embedding model (switch flow)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1854,6 +1899,17 @@
     <span class="md-ellipsis">
       
         External FHIR servers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#errors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Error messages and next steps
       
     </span>
   </a>
@@ -2481,6 +2537,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Model endpoints (/admin/models)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#changing-the-embedding-model-switch-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Changing the embedding model (switch flow)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2543,6 +2616,17 @@
     <span class="md-ellipsis">
       
         External FHIR servers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#errors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Error messages and next steps
       
     </span>
   </a>
@@ -2650,7 +2734,7 @@ FHIR_SERVER_SECRET_KEY=
 </tbody>
 </table>
 <p>The corresponding backend modules are in <code>node-server/src/admin/*.ts</code> (<code>adminApp.ts</code> is the routing entry point).</p>
-<p>Besides passwords, sign-in also supports <strong>passkeys / WebAuthn</strong> (<code>node-server/src/admin/webauthn.ts</code>), managed on the Account security page; passkeys only work over HTTPS on the RP domain (or on localhost for development). See <a href="../deployment/configuration/">Configuration</a>.</p>
+<p>Besides passwords, sign-in also supports <strong>passkeys / WebAuthn</strong> (<code>node-server/src/admin/webauthn.ts</code>), managed on the Account security page (a new password set there must be at least 12 characters, also enforced server-side); passkeys only work over HTTPS on the RP domain (or on localhost for development). See <a href="../deployment/configuration/">Configuration</a>.</p>
 <h2 id="mcp-tools-page-adminmcp">MCP tools page (<code>/admin/mcp</code>)<a class="headerlink" href="#mcp-tools-page-adminmcp" title="Permanent link">&para;</a></h2>
 <p>Backed by <code>node-server/src/admin/adminMcp.ts</code> (<code>GET /admin/api/mcp/overview</code>, <code>GET /admin/api/mcp/tools</code>, <code>POST /admin/api/mcp/tools/{name}/invoke</code>), with three tabs:</p>
 <ul>
@@ -2690,9 +2774,27 @@ FHIR_SERVER_SECRET_KEY=
 <ul>
 <li><strong>Provider adapters</strong>: <code>node-server/src/providers/registry.ts</code> registers 24 adapters — OpenAI, Azure OpenAI, Anthropic, Gemini, Bedrock, Mistral, Cohere, Voyage, Jina, DeepSeek, xAI, Groq, OpenRouter, Together, Fireworks, SiliconFlow, DashScope, Moonshot, Zhipu, Volcengine, MiniMax, OpenAI-compatible servers (vLLM, LM Studio, LiteLLM…), Ollama, and ChatGPT. Legacy values <code>vllm</code> / <code>google</code> / <code>azure</code> / <code>claude</code> resolve to the new ids (migration <code>20261015_llm_provider_registry.sql</code> also rewrites stored rows).</li>
 <li><strong>ChatGPT sign-in</strong>: the <code>chatgpt</code> provider uses OpenAI's "Sign in with ChatGPT" PKCE flow (<code>admin/chatgptOAuth.ts</code>). The redirect can only be a local loopback, so the operator pastes the browser's final URL back into the console to finish the exchange; tokens are stored in <code>admin.llm_providers.oauth</code> and never leave the server.</li>
-<li><strong>Embedding identity (fingerprint)</strong>: <code>admin/embeddingIdentity.ts</code> stores the vectors of a fixed set of probe texts as the system's embedding identity (<code>admin.embedding_identity</code> / <code>admin.embedding_fingerprints</code>, defined in <code>db/schema.sql</code> and <code>db/migrations/20261021_embedding_identity.sql</code>; the code also creates them at runtime with <code>CREATE TABLE IF NOT EXISTS</code> as a safety net). A new endpoint may join an embedding profile only if every probe reaches cosine ≥ 0.95 — i.e. it is the same model. Switching models while vectors exist goes through a guarded flow: turn the embedding role off → stop embed jobs → wipe vectors → adopt the new identity → re-queue every module's embed job.</li>
+<li><strong>Embedding identity (fingerprint)</strong>: <code>admin/embeddingIdentity.ts</code> stores the vectors of a fixed set of probe texts as the system's embedding identity (<code>admin.embedding_identity</code> / <code>admin.embedding_fingerprints</code>, defined in <code>db/schema.sql</code> and <code>db/migrations/20261021_embedding_identity.sql</code>; the code also creates them at runtime with <code>CREATE TABLE IF NOT EXISTS</code> as a safety net). A new endpoint may join an embedding profile only if every probe reaches cosine ≥ 0.95 — i.e. it is the same model. Switching models while vectors exist goes through a guarded flow: turn the embedding role off → stop embed jobs → wipe vectors (re-typing every <code>*_embeddings</code> vector column in the same transaction when the size changes, e.g. 1024 → 2560) → adopt the new identity → re-queue every module's embed job.</li>
+<li><strong>No identity row yet, but vectors exist</strong> (data loaded by older versions): on the first embedding profile save, role binding, or the Overview button "確認現有向量的模型並建立指紋" (confirm the model of the stored vectors), the system takes a few stored vectors with their source text (verified against <code>source_hash</code>) and asks the role's endpoints, then every other embedding profile's endpoints, then the endpoints being added, to re-embed them; the first one that reproduces them is adopted. An unreachable or 404 endpoint is skipped, never adopted. If none matches, the API answers <code>embedding_identity_unresolved</code> (listing why each endpoint failed) instead of a raw HTTP error.</li>
+<li><strong>Every error carries a code</strong>: model-endpoint failures (profile save, role binding, account / model test, fingerprint check, switch, settings import) answer with <code>code</code> + <code>params</code>; the console translates them into Chinese with the next step and keeps the raw server text in a collapsible "技術細節" (technical details). The main codes are listed under "Changing the embedding model" below.</li>
 <li>Role-level knobs (embedding timeout / batch size / concurrency, analysis max retries) live in the <code>embedding</code> / <code>analysis</code> groups of <code>admin.app_settings</code>.</li>
 </ul>
+<h3 id="changing-the-embedding-model-switch-flow">Changing the embedding model (switch flow)<a class="headerlink" href="#changing-the-embedding-model-switch-flow" title="Permanent link">&para;</a></h3>
+<p><strong>Editing a profile cannot change the embedding model.</strong> Saving a member with another model (or another vector size) is refused (HTTP 409, <code>embedding_model_change_requires_switch</code>) and the console shows a guidance dialog instead: the current model and size, the requested model, how many vectors would be rebuilt and an estimated time, and a "改用切換模型流程" (use the switch flow) button that opens the switch dialog pre-filled with the same account, model and parameters. Binding a profile of a different model to the embedding role behaves the same way.</p>
+<p>Switch steps (Model endpoints → Overview → Embedding → "切換模型…"):</p>
+<ol>
+<li>Pick the account, model and vector size, then run the <strong>pre-check</strong> (<code>POST /admin/api/llm/embedding/precheck</code>, no side effects). It calls the new model and reports, before anything is deleted:<ul>
+<li><code>embedding_model_not_found</code>: the server does not serve that model; the models it does serve are listed and can be picked with one click.</li>
+<li><code>embedding_dims_unsupported</code>: the vectors are not the configured size. Without <code>dimensions</code> sent, the model's native size differs (Qwen3-Embedding-4B is 2560); with it sent, the server rejected or ignored it. Two fixes: use the native size, or (Matryoshka models) enable "send dimensions" — vLLM must then be started with <code>--hf-overrides '{"is_matryoshka": true}'</code>, otherwise it answers HTTP 400.</li>
+<li><code>embedding_switch_same_model</code>: the endpoint already produces the system's vectors — no switch needed, add it to the profile as a fallback.</li>
+<li>On success it shows the returned size and whether the vector columns will be re-typed (e.g. 1024 → 2560).</li>
+</ul>
+</li>
+<li>With vectors present, type <code>REINDEX</code> and run it. The system shuts the embedding role, stops embed jobs, wipes the vectors and re-types the columns, adopts the new identity, creates and binds a new profile, and queues a rebuild for every module that had vectors. Semantic search falls back to keyword matching meanwhile; ~600k vectors take roughly 1–2 h on a shared GPU (0.6B), about 3 h with the 4B model.
+    When the GPU also serves production's live queries, lower <code>batch_size</code> (e.g. 8) under External services → Embedding before the rebuild and keep <code>concurrency</code> at 1: the smaller the batch, the shorter a single query waits behind one (measured with Qwen3-Embedding-4B: live single-query p95 ≈ 110–170 ms at batch 16, ≈ 80 ms at batch 8). <code>batch_size</code> is read when each job starts, <code>concurrency</code> applies live; a member's <code>rpm</code> caps only the average rate, not the peaks.</li>
+</ol>
+<p><strong>Query instruction.</strong> The model member's "query instruction" parameter decides whether search queries carry a task description. The default, "auto", prefixes <code>Instruct: &lt;task&gt;\nQuery: &lt;query&gt;</code> for the Qwen3-Embedding family (and gte-Qwen2-instruct) with one English task sentence per module (ICD, LOINC, SNOMED, IG concepts, food, health supplements) and leaves other models alone; it can also be "off" or a custom sentence used for every module (<code>params.query_instruction</code>: absent / <code>off</code> / text). Only query vectors are instructed — stored vectors and the identity-fingerprint probes never are — so changing it needs <strong>no re-index</strong>.</p>
+<p>The Overview's embedding card probes every member of the role (cached 60 s): a failing member shows "Embedding route degraded: member X failing (reason) — failing over to Y" with a fix hint; the Service health page's embedding row uses the same probe.</p>
 <h2 id="settings-and-precedence">Settings and precedence<a class="headerlink" href="#settings-and-precedence" title="Permanent link">&para;</a></h2>
 <p>Bootstrap variables (DB / Redis / MCP transport / <code>ADMIN_*</code> auth) originate in <code>.env</code>. On first boot, <code>ADMIN_INITIAL_PASSWORD</code> (hashed) or <code>ADMIN_PASSWORD_HASH</code> is written into <code>admin.admin_credentials</code>, and subsequent sign-ins validate only against the hash in the database. Seeding uses <code>ON CONFLICT DO NOTHING</code>, so once the credential row exists, editing <code>.env</code> or restarting the service never overwrites a working password. Passwords and passkeys are both managed under Account security (<code>/admin/security</code>).</p>
 <p>The other external-system settings (MinIO, TFDA base URL, FHIR package registry, worker tuning) are <strong>seed-only</strong>: <code>.env</code> is read exactly once, on first boot, for keys not yet present in <code>admin.app_settings</code>. Afterwards manage and test them under External services (<code>/admin/integrations</code>); editing <code>.env</code> has no effect on an already-seeded database. TFDA and registry can be edited there (applied hot); <strong>MinIO and worker tuning are read-only groups</strong>.</p>
@@ -2704,6 +2806,13 @@ Creating a backup only queues a <code>system_backup</code> background job; the w
 <p>Backups contain API keys, login credentials, and medical data, and should be managed as production secrets. The database dump restores with PostgreSQL 16 <code>pg_restore</code>; the object storage files are in the ZIP's <code>object-storage/</code> directory.</p>
 <h2 id="source-files">Source files<a class="headerlink" href="#source-files" title="Permanent link">&para;</a></h2>
 <p>Upload each module's source files in the sources section of its module page (ICD-10-CM CMS order-file zip, ICD-10-PCS, LOINC zip, SNOMED RF2, RxNorm zip, FHIR IG <code>package.tgz</code>, and so on), optionally specifying a source role (such as an IG dependency package or the optional WHO ICD-10 source). The system blocks duplicate uploads by file fingerprint (SHA-256); files are stored in MinIO and fetched back when a job runs.</p>
+<p>Content is checked at upload time, so a wrong file is refused right away (with a zh-TW reason): file type (magic bytes); release archives must
+contain the member the loader needs (LOINC <code>LoincTable/Loinc.csv</code>, SNOMED <code>sct2_Concept_*</code>, RxNorm <code>RXNCONSO.RRF</code>, the ICD-10-CM / PCS order file,
+UMLS <code>MRCONSO.RRF</code>; archives whose directory cannot be listed, such as zip64, skip this check); CSVs must have their required columns (drug index;
+LOINC Taiwan mapping <code>loinc_code,name_zh</code>; reference ranges <code>loinc_code,age_min,age_max,gender,range_low,range_high</code>). An IG upload import reads
+<code>package/package.json</code> first and answers 422 — without creating a job — when the file is not a FHIR package.</p>
+<p>When an import job binds its sources, a single-file source role uses its <strong>active</strong> version; only when the role has no active version does it fall
+back to the most recent upload.</p>
 <blockquote>
 <p>Uploads must send <code>Content-Type: application/octet-stream</code> (the SPA does), or express's JSON parser intercepts them and returns 413.</p>
 </blockquote>
@@ -2758,6 +2867,43 @@ Creating a backup only queues a <code>system_backup</code> background job; the w
 <blockquote>
 <p><code>crud_fhir_server</code> is the only tool in the system that can produce a write: write operations require the server's allow-list to permit them and the caller to pass <code>confirm_write=true</code>.</p>
 </blockquote>
+<h2 id="errors">Error messages and next steps<a class="headerlink" href="#errors" title="Permanent link">&para;</a></h2>
+<p>Every admin API error response (HTTP ≥ 400) keeps its original <code>error</code> (English) and <code>detail</code> (raw technical text) and also carries:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Content</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>code</code></td>
+<td>Stable machine code, e.g. <code>SOURCE_MISSING</code>, <code>DB_SCHEMA_OUTDATED</code>, <code>UPSTREAM_UNREACHABLE</code>, <code>JOB_ALREADY_ACTIVE</code></td>
+</tr>
+<tr>
+<td><code>message_zh</code></td>
+<td>What happened (Traditional Chinese)</td>
+</tr>
+<tr>
+<td><code>hint_zh</code></td>
+<td>What to do next (which page, which setting, which command)</td>
+</tr>
+</tbody>
+</table>
+<p><code>node-server/src/admin/adminErrorCodes.ts</code> produces them in one place: known English messages first (missing source files,
+out-of-range settings, OAuth failures…), then the technical cause found in <code>detail</code> (PostgreSQL errors such as a missing
+table / column → apply the migration, duplicate key, foreign key; connection refused, DNS, timeout, TLS, upstream HTTP status;
+MinIO). When nothing matches, the message still names the failed operation and gives a generic next step. Responses that
+already carry a <code>code</code> (model-endpoint API, IG removal, <code>MODULE_MAINTENANCE</code>) are left alone. Toasts show the explanation,
+then the next step; the raw text appears only as small "技術細節" (technical details).</p>
+<p>The same explanations apply to:</p>
+<ul>
+<li><strong>External services "Test connection"</strong> (OCR / MinIO / TFDA): results gain <code>message_zh</code> / <code>hint_zh</code>.</li>
+<li><strong>Service health</strong> probe rows and the <strong>dashboard</strong> infrastructure status: <code>message_zh</code> / <code>detail_zh</code> + <code>hint_zh</code>.</li>
+<li><strong>Failed background jobs</strong>: <code>last_error_zh</code> / <code>last_error_hint_zh</code> (job detail, and "why the last import failed" on module pages).</li>
+<li><strong>Gateway errors</strong>: when the app does not answer (nginx returns a 502 / 504 HTML page) the console says the backend is not responding and how to check it.</li>
+</ul>
 <h2 id="db-health-gate">DB health gate<a class="headerlink" href="#db-health-gate" title="Permanent link">&para;</a></h2>
 <p><code>node-server/src/dbHealth.ts</code> is the central DB health monitor: when PostgreSQL is unreachable, it locks every mutating operation and shows an overlay in the UI, preventing imports or edits while the database is unhealthy.</p>
 

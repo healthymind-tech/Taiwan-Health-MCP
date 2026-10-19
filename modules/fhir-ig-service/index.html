@@ -18,7 +18,7 @@
         <link rel="prev" href="../fhir-medication-service/">
       
       
-        <link rel="next" href="../../tools/icd-tools/">
+        <link rel="next" href="../ig-concept-search/">
       
       
         
@@ -835,6 +835,34 @@
   
 </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ig-concept-search/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IG 術語搜尋
+  
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -2642,7 +2670,7 @@
 <li><strong><code>fhir_expand_valueset</code></strong>：展開 ValueSet，列出實際成員碼。</li>
 <li><strong><code>fhir_lookup_code</code></strong>：在指定 CodeSystem 中查詢單一碼的顯示名稱與屬性。</li>
 <li><strong><code>fhir_validate_code</code></strong>：驗證某 <code>system</code>+<code>code</code> 是否屬於指定 ValueSet。</li>
-<li><strong><code>fhir_normalize_code</code></strong>：以自由文字（例如「流行性感冒」）對照 ValueSet，回傳最合適的標準碼。</li>
+<li><strong><code>fhir_normalize_code</code></strong>：以自由文字（例如「流行性感冒」）對照 ValueSet 或 code system，回傳排序後的候選碼；已安裝 IG 的 CodeSystem（例如健保支付碼）走 <a href="../ig-concept-search/">IG 術語搜尋</a> 引擎。</li>
 </ul>
 <h3 id="4">4. 授權、組裝與驗證<a class="headerlink" href="#4" title="Permanent link">&para;</a></h3>
 <ul>

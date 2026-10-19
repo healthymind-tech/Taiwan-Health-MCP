@@ -658,6 +658,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../modules/ig-concept-search/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IG 術語搜尋
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -2702,7 +2730,7 @@
 <h2 id="search_snomed_concept"><code>search_snomed_concept</code><a class="headerlink" href="#search_snomed_concept" title="Permanent link">&para;</a></h2>
 <p>英文臨床詞彙搜尋 SNOMED 概念候選。</p>
 <h3 id="_1">何時使用<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h3>
-<p>當你只有文字詞彙（還不知道 concept ID）時先用它找候選。此工具使用 BM25 + embedding 排序，回傳最接近語意的概念，不只限完全字面匹配。</p>
+<p>當你只有文字詞彙（還不知道 concept ID）時先用它找候選。此工具以全文 + embedding 的分數感知混合排序（比對每個概念所有有效名稱：FSN 與同義詞），回傳最接近語意的概念，不只限完全字面匹配；完全等於某名稱的概念優先，停用（inactive）概念排在後面。</p>
 <h3 id="_2">參數<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h3>
 <table>
 <thead>

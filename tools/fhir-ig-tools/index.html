@@ -658,6 +658,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../modules/ig-concept-search/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IG 術語搜尋
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -2605,7 +2633,7 @@
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_lookup_code</code></td>
-<td style="text-align: left;">在 CodeSystem 中查詢單一碼的顯示名稱與屬性</td>
+<td style="text-align: left;">在 CodeSystem 中查詢單一碼的顯示名稱與屬性；查無此碼時附 <code>hint</code>（改用 <code>fhir_normalize_code</code>）與 <code>near_codes</code>（IG CodeSystem 中相近的碼）</td>
 <td style="text-align: left;"><code>system</code>, <code>code</code></td>
 </tr>
 <tr>
@@ -2615,7 +2643,7 @@
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_normalize_code</code></td>
-<td style="text-align: left;">以自由文字對照 ValueSet，回傳最合適標準碼</td>
+<td style="text-align: left;">自由文字（中英文、縮寫、病歷寫法）轉候選碼：SNOMED CT / LOINC / ICD-10，以及任何已安裝 IG 的 CodeSystem（例如健保支付碼 <code>medical-service-payment-tw</code>，見 <a href="../../modules/ig-concept-search/">IG 術語搜尋</a>）。IG 候選附 <code>matched_term</code>、<code>matched_language</code>、<code>group</code>/<code>siblings</code>；<code>system</code> 可給 canonical、id 或別名（<code>nhi_payment</code>）</td>
 <td style="text-align: left;"><code>text</code>, <code>value_set</code>, <code>system</code>, <code>limit</code>（預設 10）</td>
 </tr>
 </tbody>
@@ -2751,8 +2779,12 @@
 <td style="text-align: left;">1.2.0</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>fhir_list_igs</code>、<code>fhir_get_ig</code>、<code>fhir_list_artifacts</code>、<code>fhir_search_artifacts</code>、<code>fhir_list_resource_profiles</code>、<code>fhir_rank_resource_profiles</code>、<code>fhir_get_profile</code>、<code>fhir_get_profile_elements</code>、<code>fhir_get_valueset</code>、<code>fhir_expand_valueset</code>、<code>fhir_lookup_code</code>、<code>fhir_validate_code</code>、<code>fhir_normalize_code</code>、<code>fhir_get_resource_skeleton</code>、<code>fhir_finalize_resource</code></td>
+<td style="text-align: left;"><code>fhir_list_igs</code>、<code>fhir_get_ig</code>、<code>fhir_list_artifacts</code>、<code>fhir_search_artifacts</code>、<code>fhir_list_resource_profiles</code>、<code>fhir_rank_resource_profiles</code>、<code>fhir_get_profile</code>、<code>fhir_get_profile_elements</code>、<code>fhir_get_valueset</code>、<code>fhir_expand_valueset</code>、<code>fhir_validate_code</code>、<code>fhir_get_resource_skeleton</code>、<code>fhir_finalize_resource</code></td>
 <td style="text-align: left;">1.2.0</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>fhir_lookup_code</code>、<code>fhir_normalize_code</code></td>
+<td style="text-align: left;">1.3.0</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_check_grounding</code></td>
