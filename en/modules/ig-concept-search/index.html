@@ -2543,7 +2543,7 @@ SNOMED CT / LOINC / ICD-10 keep their own tables.</p>
 </tr>
 <tr>
 <td>CodeSystem supplements</td>
-<td>FHIR R4 <code>content = supplement</code>, merged by <code>supplements</code> (optionally <code>|version</code>): designations and properties. Supplements shipped in IG packages and those uploaded in the admin console both apply</td>
+<td>FHIR R4 <code>content = supplement</code>, merged by <code>supplements</code> (optionally <code>|version</code>): designations and properties. Supplements shipped in IG packages and those uploaded in the admin console both apply. A numeric usage property (code or description mentions <code>claim-volume</code> / <code>usage</code> / <code>popularity</code> / <code>申報量</code> / <code>使用量</code>, e.g. a <code>claim-volume</code> built from the NHI open dataset 診療項目醫令申報量(年)) is not a name: it becomes a <strong>usage prior</strong> for ranking (see "Usage" below)</td>
 </tr>
 <tr>
 <td>Linked names</td>
@@ -2563,7 +2563,9 @@ whether a CodeSystem needs rebuilding; unchanged ones are skipped.</p>
   numerals before measure words (小於五公分 → 小於5公分), <code>cm</code> → 公分, <code>&lt;</code> → 小於, dotted abbreviations (C.R.P → crp), <code>w/o</code>.</li>
 <li><strong>Chart noise removed</strong>: laterality, <code>x1</code>, <code>5針</code>, suture specs (4-0 Nylon), <code>r/o</code>, <code>f/u</code>, <code>s/p</code>.</li>
 <li><strong>Tokens</strong>: English words (-s / -ing / -ed folded), Chinese character bigrams plus low-weight unigrams; an English
-  word absent from the index matches as a prefix (abd → abdominal, vanco → vancomycin).</li>
+  word absent from the index matches as a prefix (abd → abdominal, vanco → vancomycin); an English word of 7+ letters
+  that a name lacks also matches, at a discount, another form sharing its first 6 letters (recurrent ↔ recurrence,
+  laparoscopic ↔ laparoscopy).</li>
 <li><strong>Query variants</strong> (each scored, the best kept, agreement between variants adds a little): the text, its clinical
   core, without brackets, abbreviation expansions, zh ↔ en bridges, UMLS synonyms. Every expansion comes from data:
   SNOMED CT "ACR - expansion" descriptions, LOINC shortname ↔ component, abbreviations defined inside IG names
@@ -2578,6 +2580,14 @@ whether a CodeSystem needs rebuilding; unchanged ones are skipped.</p>
   more than 20,000 concepts are indexed lexically only. Without a usable embedding endpoint, or before the
   CodeSystem has vectors, responses carry <code>search_mode: "keyword_only"</code>.</li>
 <li><strong>Fusion</strong>: 0.55 × lexical + 0.45 × semantic (similarities rescaled within the query's own similarity distribution — best = 1, rank 40 = 0 — and weighted by a confidence of (best − rank-40 value) ÷ 0.12; no absolute 0.7 floor any more: absolute similarity levels are model-specific, and Qwen3-Embedding-4B with a query instruction puts the best match at ~0.6–0.75. The query vector carries the <code>ig_concept</code> task instruction).</li>
+<li><strong>Usage</strong> (only when the CodeSystem carries a usage property; otherwise ranking is unchanged):</li>
+<li>prior: + 0.3 × usage (log-scaled to 0–1 relative to the CodeSystem's most used code);</li>
+<li><strong>sibling ordering</strong>: among codes of one <code>group</code> (same name stem, differing only by a method / setting / size
+    qualifier — 白蛋白 vs 白蛋白(免疫比濁法), 血液透析(一次)-住院 vs -門診), the members the query <strong>cannot tell apart</strong> —
+    same exact-match status and the same share of the query's words covered (within 0.05), or, when no word of the
+    query matched, a similarity within 0.02 — are ordered by usage instead of by vector noise. The group keeps its
+    place among the candidates; only its representative changes. A query that names the qualifier ("住院 洗腎",
+    "recurrent") covers more words with that sibling, so usage never overrides it.</li>
 <li><strong>Multi-item text</strong> ("Na/K/Cl", "CBC/DC, Hb …"): the response carries <code>clauses</code> (each clause's best code, in text
   order) and the first clause's concept gets a small boost.</li>
 </ul>
