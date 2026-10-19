@@ -2638,7 +2638,7 @@ FMA, MTHSPL, USP, USPMG, HL7V2.5, HL7V3.0, CDCREC, MVX, CVX, TKMT, SPN, MCM, QMR
 (2024AA: ~2.53 M strings / 0.76 M concepts, <code>fhir.umls_terms</code> ≈ 610 MB). The SAB is recorded internally only
 (<code>fhir.concept_index_terms.source</code>); <strong>no UMLS string is ever returned by a tool</strong>.</p>
 <p><strong>Abbreviation lexicon (optional)</strong>: <code>LRABR</code> of the SPECIALIST Lexicon (NLM Lexical Systems Group; <code>LEX/LRABR</code> inside
-<code>LEX.tgz</code>, ~20 MB). Only acronym / abbreviation rows with a 2–10 character abbreviation and a 3–80 character ASCII
+<code>LEX.tgz</code>, ~20 MB; open source and freely available — no UMLS licence needed). Only acronym / abbreviation rows with a 2–10 character abbreviation and a 3–80 character ASCII
 expansion are kept, spelling variants (plasma exchange / plasma-exchange) collapse (2024 release: ~115 k rows /
 34 k abbreviations). Add it as a third argument when writing the subset:
 <code>node dist/loaders/umls.js --subset &lt;umls.zip&gt; umls-subset-2024AA-lrabr.rrf.gz LEX/LRABR</code>; an <code>LRABR</code> member of an
