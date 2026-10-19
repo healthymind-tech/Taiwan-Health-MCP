@@ -34,7 +34,7 @@ import { adminHandler } from "./admin/adminApp.js";
 import { getFhirServerJwks, fhirServerSecretKey } from "./admin/adminFhirServers.js";
 import { completeAuthorization, OAuthError } from "./admin/fhirOauthService.js";
 import * as minioService from "./minioService.js";
-import { allowedCorsOrigin, bearerTokenMatches } from "./publicToolsSecurity.js";
+import { allowedCorsOrigin, bearerTokenMatches, publicOrigin } from "./publicToolsSecurity.js";
 
 const OAUTH_CALLBACK_PATH = "/fhir-oauth/callback";
 
@@ -193,13 +193,7 @@ function buildApp(): express.Express {
     // bridge works before any /mcp session exists. Idempotent (registry cleared+rebuilt).
     if (!toolRegistryReady()) await buildMcpServer();
   };
-  const originFrom = (req: Request): string => {
-    const host = String(req.headers["host"] ?? "").trim();
-    if (!host) return "";
-    const fwd = String(req.headers["x-forwarded-proto"] ?? "").split(",")[0].trim();
-    const scheme = fwd || req.protocol || "http";
-    return `${scheme}://${host}`;
-  };
+  const originFrom = (req: Request): string => publicOrigin(cfg.publicBaseUrl, req.headers, req.protocol);
 
   const publicPaths = [cfg.path, "/openapi.json", "/tools"];
   app.use(publicPaths, (req: Request, res: Response, next) => {

@@ -49,3 +49,20 @@ export function allowedCorsOrigin(requestOrigin: string, allowedOrigins: string[
   if (allowedOrigins.includes("*")) return "*";
   return allowedOrigins.includes(origin) ? origin : null;
 }
+
+/**
+ * Public origin of a /mcp, /openapi.json or /tools request: the configured PUBLIC_BASE_URL
+ * when set (stable behind a CDN / proxy that rewrites Host), else scheme + Host of the request.
+ */
+export function publicOrigin(
+  publicBaseUrl: string,
+  headers: { host?: string | string[]; "x-forwarded-proto"?: string | string[] },
+  protocol: string,
+): string {
+  const configured = publicBaseUrl.trim().replace(/\/+$/, "");
+  if (configured) return configured;
+  const host = String(headers.host ?? "").trim();
+  if (!host) return "";
+  const fwd = String(headers["x-forwarded-proto"] ?? "").split(",")[0].trim();
+  return `${fwd || protocol || "http"}://${host}`;
+}
