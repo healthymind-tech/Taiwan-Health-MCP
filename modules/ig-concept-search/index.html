@@ -2616,7 +2616,11 @@
 <h2 id="_3">回應欄位<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
 <p><code>fhir_normalize_code</code> 的 IG 候選：<code>code</code>、<code>display</code>、<code>source</code>（<code>lexical</code> / <code>semantic</code> / <code>hybrid</code>）、<code>score</code>、
 <code>matched_term</code> / <code>matched_language</code>（命中的 IG 名稱，<strong>永遠是 IG 自己的 display 或 designation，不會是 UMLS 字串</strong>）、
-<code>exact</code>、<code>category</code>（CodeSystem 有分類 property 或階層時）、<code>group</code> + <code>siblings</code>（名稱主幹相同的近似碼，例如同一檢驗的不同方法）。
+<code>exact</code>、<code>category</code>（CodeSystem 有分類 property 或階層時）、<code>group</code> + <code>siblings</code>（名稱主幹相同的近似碼，例如同一檢驗的不同方法）、
+<code>linked</code>（Coding property 連到的其他系統代碼，最多 3 個 + <code>linked_more</code>，例如健保藥品的 ATC 碼）。
+解析出的 IG 只收錄某 CodeSystem 的節錄版、而另一個已安裝套件收錄同一 canonical 的完整版（概念數 ≥ 10 倍且多 1,000 以上，
+例如 TW Core 1.0.0 vs 0.3.2 的 <code>medication-nhi-tw</code>）時，未指定 <code>package_id</code> / <code>version</code> 會改查完整版，並以 <code>warnings</code> 與
+<code>data.codesystem_copies</code> 註明。
 <code>system</code> 可給 canonical、CodeSystem id 或別名字詞（例如 <code>nhi_payment</code>）。<code>fhir_lookup_code</code> 查不到時附 <code>hint</code> 與 <code>near_codes</code>。</p>
 <h2 id="ig">管理後台（IG 套件庫 → 術語搜尋索引）<a class="headerlink" href="#ig" title="Permanent link">&para;</a></h2>
 <ul>

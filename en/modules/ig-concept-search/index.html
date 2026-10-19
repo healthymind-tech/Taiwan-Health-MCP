@@ -2632,7 +2632,11 @@ whether a CodeSystem needs rebuilding; unchanged ones are skipped.</p>
 <p>IG candidates of <code>fhir_normalize_code</code>: <code>code</code>, <code>display</code>, <code>source</code> (<code>lexical</code> / <code>semantic</code> / <code>hybrid</code>), <code>score</code>,
 <code>matched_term</code> / <code>matched_language</code> (the IG name that matched — <strong>always the IG's own display or designation, never a
 UMLS string</strong>), <code>exact</code>, <code>category</code> (from a categorical property or the hierarchy), <code>group</code> + <code>siblings</code>
-(near-duplicate codes with the same name stem, e.g. the same test by another method). <code>system</code> may be a canonical, a
+(near-duplicate codes with the same name stem, e.g. the same test by another method), <code>linked</code> (codes of other systems
+reached through Coding properties, at most 3 + <code>linked_more</code>, e.g. an NHI drug's ATC code). When the resolved IG holds
+only an excerpt of a CodeSystem and another installed package holds a full copy of the same canonical (≥ 10× the
+concepts and ≥ 1,000 more, e.g. TW Core 1.0.0 vs 0.3.2 <code>medication-nhi-tw</code>), the full copy is searched unless
+<code>package_id</code> / <code>version</code> is given, noted in <code>warnings</code> and <code>data.codesystem_copies</code>. <code>system</code> may be a canonical, a
 CodeSystem id or alias words (e.g. <code>nhi_payment</code>). <code>fhir_lookup_code</code> adds <code>hint</code> and <code>near_codes</code> when a code is
 not found.</p>
 <h2 id="admin-console-ig-packages">Admin console (IG packages → 術語搜尋索引)<a class="headerlink" href="#admin-console-ig-packages" title="Permanent link">&para;</a></h2>

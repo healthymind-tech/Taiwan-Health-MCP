@@ -1035,6 +1035,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Profile selection and reading">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#derived-and-mustsupport" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Derived elements and Must Support
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1056,6 +1073,23 @@
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="Authoring, assembly, and validation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#validation-suggestions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fix suggestions (suggestions / caused_by)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -2454,6 +2488,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Profile selection and reading">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#derived-and-mustsupport" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Derived elements and Must Support
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2475,6 +2526,23 @@
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="Authoring, assembly, and validation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#validation-suggestions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fix suggestions (suggestions / caused_by)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -2607,11 +2675,51 @@ If none applies the call fails with <code>NO_DEFAULT_IG</code> (no arbitrary pac
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_get_profile_required_elements</code></td>
-<td style="text-align: left;">List the elements a profile <em>effectively</em> requires: required only when the whole parent chain is required, required slices, choice types, invariant-implied value[x]-or-dataAbsentReason (vs-2 / vs-3 / tw-core-4 style, detected from the expression), and target-implied primary content; each row carries <code>grounding_class</code> (auto / coding / source_fact / workflow_default …), <code>required_by</code>, <code>allowedCodes</code> for small required bindings and a fill <code>hint</code>. Profiled extensions are expanded from their definitions (url, value[x] via ext-1, required sub-extensions), base-datatype children of populated elements are added (Narrative.div, Extension.url …), and profile-specific error invariants are listed under <code>invariants</code>. With <code>instance</code>, slices are matched by their discriminators, so absent slices add nothing</td>
-<td style="text-align: left;"><code>profile</code>, <code>instance</code> (draft: populated optional parents add their required children), <code>include_target_implied</code> (<code>true</code> by default), <code>include_mustsupport</code> (<code>false</code> by default), <code>verbosity</code> (<code>compact</code> by default: id / required_by / grounding_class / fixed·pattern·value / choices / allowedCodes / hint, profile-pinned subtrees folded into one copyable <code>value</code>; <code>full</code> adds min / max / types / binding / mustSupport)</td>
+<td style="text-align: left;">List the elements a profile <em>effectively</em> requires: required only when the whole parent chain is required, required slices, choice types, invariant-implied value[x]-or-dataAbsentReason (vs-2 / vs-3 / tw-core-4 style, detected from the expression), and target-implied primary content; each row carries <code>grounding_class</code> (auto / coding / source_fact / workflow_default …), <code>required_by</code>, <code>allowedCodes</code> for small required bindings and a fill <code>hint</code>; <code>derived</code> rows (e.g. <code>Condition.category</code>) also carry the binding's <code>allowedCodes</code> (extensible / preferred too, up to 20 codes) and a derivation rule (see "Derived elements and Must Support" below). Profiled extensions are expanded from their definitions (url, value[x] via ext-1, required sub-extensions), base-datatype children of populated elements are added (Narrative.div, Extension.url …), and profile-specific error invariants are listed under <code>invariants</code>. With <code>instance</code>, slices are matched by their discriminators, so absent slices add nothing</td>
+<td style="text-align: left;"><code>profile</code>, <code>instance</code> (draft: populated optional parents add their required children), <code>include_target_implied</code> (<code>true</code> by default), <code>include_mustsupport</code> (<code>false</code> by default; <code>"defaults"</code> = only the mustSupport elements with a fixed / default / derivable value; <code>true</code> = every mustSupport element; added rows carry <code>optional: true</code>), <code>verbosity</code> (<code>compact</code> by default: id / required_by / grounding_class / fixed·pattern·value / choices / allowedCodes / hint, profile-pinned subtrees folded into one copyable <code>value</code>; <code>full</code> adds min / max / types / binding / mustSupport)</td>
 </tr>
 </tbody>
 </table>
+<h3 id="derived-and-mustsupport">Derived elements and Must Support<a class="headerlink" href="#derived-and-mustsupport" title="Permanent link">&para;</a></h3>
+<p>Elements with <code>grounding_class: "derived"</code> are not copied from the record but follow from other filled values. For well-known derived elements, <code>hint</code> starts with <code>derive:</code> and states the rule (each rule paraphrases the published definitions of the codes it names; the citation is <code>derivation_source</code> in <code>verbosity="full"</code>). A rule applies only when the element's binding is the ValueSet the rule describes:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Element</th>
+<th style="text-align: left;">Rule (summary)</th>
+<th style="text-align: left;">Source</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>Condition.category</code></td>
+<td style="text-align: left;">diagnosed or assessed in this visit (outpatient, admission, discharge) → <code>encounter-diagnosis</code> (and point <code>Condition.encounter</code> at that encounter); an entry of the longitudinal problem list kept across visits → <code>problem-list-item</code>; a diagnosis written in a visit note is <code>encounter-diagnosis</code> even when the disease is chronic</td>
+<td style="text-align: left;">FHIR R4 condition-category; US Core Condition Encounter Diagnosis / Problems and Health Concerns</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>Observation.category</code></td>
+<td style="text-align: left;">by what was measured: lab test → <code>laboratory</code>, BP / heart rate / temperature / height / weight … → <code>vital-signs</code>, imaging, exam, survey, social history …</td>
+<td style="text-align: left;">FHIR R4 observation-category; R4 Vital Signs profile</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>Encounter.diagnosis.use</code> / <code>.rank</code></td>
+<td style="text-align: left;">admission AD, discharge DD, chief complaint CC, comorbidity CM …; principal diagnosis rank 1, the rest in record order</td>
+<td style="text-align: left;">FHIR R4 diagnosis-role; Encounter.diagnosis.rank</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>MedicationRequest.category</code> / <code>MedicationStatement.category</code> / <code>courseOfTherapyType</code></td>
+<td style="text-align: left;">by the setting of the order (inpatient / outpatient / community / discharge); long-term <code>continuous</code>, short course <code>acute</code></td>
+<td style="text-align: left;">FHIR R4 code systems</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>AllergyIntolerance.category</code> / <code>.type</code> / <code>.criticality</code>, <code>Observation.interpretation</code></td>
+<td style="text-align: left;">by the substance; immune vs non-immune reaction; life-threatening → <code>high</code>; against the reference range N / H / L / HH / LL</td>
+<td style="text-align: left;">FHIR R4 code systems</td>
+</tr>
+</tbody>
+</table>
+<p>Derived elements without a rule get the CodeSystem definitions of the binding's codes in <code>hint</code> (<code>pick the code whose meaning fits the record: …</code>).</p>
+<p><strong>mustSupport is not required.</strong> <code>include_mustsupport="defaults"</code> adds only the mustSupport elements that need no source fact (a profile fixed value / pattern, a conventional default such as <code>verificationStatus</code>, a derivable value from the table above) and whose parents are all listed; <code>true</code> adds every mustSupport element. Rows added either way carry <code>optional: true</code> and a "may be left out, never refuse over it" hint, and <code>guide</code> says the same. The default (<code>false</code>) output is unchanged except for the derived rows.</p>
 <h2 id="terminology-valueset">Terminology / ValueSet<a class="headerlink" href="#terminology-valueset" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -2634,7 +2742,7 @@ If none applies the call fails with <code>NO_DEFAULT_IG</code> (no arbitrary pac
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_lookup_code</code></td>
-<td style="text-align: left;">Look up a single code's display name and properties in a CodeSystem; when the code is not found, <code>hint</code> (use <code>fhir_normalize_code</code>) and <code>near_codes</code> (similar codes of an IG CodeSystem)</td>
+<td style="text-align: left;">Look up a single code's display name and properties in a CodeSystem (RxNorm from the local <code>rxnorm.concepts</code>); when the code is not found, <code>hint</code> (use <code>fhir_normalize_code</code>) and <code>near_codes</code> (similar codes of an IG CodeSystem)</td>
 <td style="text-align: left;"><code>system</code>, <code>code</code></td>
 </tr>
 <tr>
@@ -2644,7 +2752,7 @@ If none applies the call fails with <code>NO_DEFAULT_IG</code> (no arbitrary pac
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_normalize_code</code></td>
-<td style="text-align: left;">Free text (Chinese or English, abbreviations, chart wording) → candidate codes: SNOMED CT / LOINC / ICD-10 and any CodeSystem of an installed IG (e.g. the NHI payment codes <code>medical-service-payment-tw</code>, see <a href="../../modules/ig-concept-search/">IG Concept Search</a>). IG candidates carry <code>matched_term</code>, <code>matched_language</code>, <code>group</code>/<code>siblings</code>; <code>system</code> may be a canonical, id or alias (<code>nhi_payment</code>)</td>
+<td style="text-align: left;">Free text (Chinese or English, abbreviations, chart wording) → candidate codes: SNOMED CT / LOINC / ICD-10 and any CodeSystem of an installed IG (e.g. the NHI payment codes <code>medical-service-payment-tw</code>, see <a href="../../modules/ig-concept-search/">IG Concept Search</a>). IG candidates carry <code>matched_term</code>, <code>matched_language</code>, <code>group</code>/<code>siblings</code> and <code>linked</code> (codes of other systems the concept links to, e.g. a drug's ATC code); <code>system</code> may be a canonical, id or alias (<code>nhi_payment</code>). <strong>Drugs</strong>: Taiwan NHI drug codes are supported — <code>system="medication-nhi-tw"</code> (TW Core) or <code>"nhi-medication"</code> (TWPAS), text = brand or generic name in English or Chinese (<code>Glucophage 500mg</code>, <code>脈優錠 5mg</code>); when the default IG ships only an excerpt of a CodeSystem (TW Core 1.0.0 <code>medication-nhi-tw</code>: 35 codes) and another installed package holds the full list (TW Core 0.3.2: 44,709 codes), the full copy is searched unless <code>package_id</code> / <code>version</code> is given (noted in <code>warnings</code> and <code>data.codesystem_copies</code>). <strong>ATC</strong>: no searchable WHO ATC is held (TW Core <code>medcation-atc-tw</code> has only 27 Taiwan-specific codes) — look up the NHI drug; its candidate's <code>linked</code> is its ATC code (from the bundled NHI medication supplement)</td>
 <td style="text-align: left;"><code>text</code>, <code>value_set</code>, <code>system</code>, <code>limit</code> (10 by default)</td>
 </tr>
 </tbody>
@@ -2692,6 +2800,73 @@ If none applies the call fails with <code>NO_DEFAULT_IG</code> (no arbitrary pac
 </tbody>
 </table>
 <p><code>fhir_validate_resource</code> / <code>fhir_validate_bundle</code> also report whether validation was complete: <code>checked_fully</code> (<code>true</code> when every profile and ValueSet was checked and the dependency closure is complete), <code>profiles_unchecked</code>, <code>valuesets_unchecked</code>. <code>valid</code> keeps HL7 semantics (an unresolvable profile is only a warning), so <code>valid: true</code> with <code>checked_fully: false</code> means part of the content was not checked. <code>|version</code> canonicals (<code>meta.profile</code>, binding, targetProfile, type profile, extension url) are resolved like HL7 validator_cli 7.0.1.</p>
+<p>The builtin validator also checks, like HL7 validator_cli 7.0.1 (same release, 1.6.0):</p>
+<ul>
+<li><strong>Where an extension may be used</strong>: the extension definition's <code>context</code> (element / extension types; contexts restricted to other FHIR versions by <code>version-specific-use</code> are skipped) and <code>contextInvariant</code>. A violation is an error at the host element: <code>The extension &lt;url&gt; v&lt;version&gt; is not allowed to be used at this point (this element is [...]; allowed for this version = e:...)</code> or <code>... (based on context invariant '...')</code>. fhirpath contexts are not evaluated locally (never an error).</li>
+<li>An unversioned StructureDefinition resolves to the highest-version copy in the closure (e.g. the <code>hl7.fhir.uv.extensions.r4</code> extension over the R4 core one with the same URL), so the extension's own invariants (e.g. var-1 of <code>variable</code>) are checked too.</li>
+<li><strong><code>Unrecognized property</code></strong> is judged against the core definitions for the whole resource (as the HL7 JSON parser does), including below a choice type the profile does not allow and inside the value of an unknown extension; like HL7, nothing is checked below an element with the wrong JSON shape (an array for a single element).</li>
+<li><strong>RxNorm</strong>: code and display are checked against <code>rxnorm.concepts</code> (tx.fhir.org accepts every SAB=RXNORM name of the RXCUI, case-insensitively): <code>Wrong Display Name '...' for http://www.nlm.nih.gov/research/umls/rxnorm#&lt;code&gt;. Valid display is '...'</code>. An unknown code is an error only when the local RxNorm release is not older than tx.fhir.org's (03022026), otherwise a warning; when only the preferred name is held (imported before migration 20261030) a display mismatch is a warning; without RxNorm loaded: warning <code>Display not checked (RxNorm)</code>.</li>
+<li><code>Unknown code</code> in an IG CodeSystem with <code>content = complete</code> stays an error; when another installed package has a fuller copy of the same CodeSystem containing the code (e.g. TW Core 0.3.2 <code>medication-nhi-tw</code>), an information issue names that package and version.</li>
+<li>A Coding element bound directly to a ValueSet (e.g. <code>Encounter.class</code>) whose system is a ValueSet URL only gets the binding warning, no <code>The Coding references a value set</code> error (as HL7).</li>
+</ul>
+<h3 id="validation-suggestions">Fix suggestions (suggestions / caused_by)<a class="headerlink" href="#validation-suggestions" title="Permanent link">&para;</a></h3>
+<p>Besides saying what is wrong, validation issues carry, where possible, "what to change it to": <code>suggestions</code> is a list of candidates ordered by <code>confidence</code> (at most 5 per issue; up to 12 for a binding error on a small ValueSet), and reference-chain errors get <code>caused_by</code>. Both are <strong>additive</strong> — the set of issues, their severity and message, and <code>valid</code> are unchanged; the field is absent when there is no suggestion.</p>
+<pre><code class="language-json">{&quot;severity&quot;: &quot;error&quot;, &quot;path&quot;: &quot;MedicationRequest.dosageInstruction[0].timing.repeat&quot;, &quot;message&quot;: &quot;Unrecognized property 'periodUnits'&quot;,
+ &quot;suggestions&quot;: [{&quot;value&quot;: &quot;periodUnit&quot;, &quot;kind&quot;: &quot;rename_property&quot;, &quot;confidence&quot;: 0.82, &quot;reason&quot;: &quot;closest element name at this level: 'periodUnit'&quot;,
+                  &quot;patch&quot;: {&quot;op&quot;: &quot;move&quot;, &quot;from&quot;: &quot;MedicationRequest.dosageInstruction[0].timing.repeat.periodUnits&quot;, &quot;path&quot;: &quot;MedicationRequest.dosageInstruction[0].timing.repeat.periodUnit&quot;}}]}
+</code></pre>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Error</th>
+<th style="text-align: left;"><code>kind</code></th>
+<th style="text-align: left;">Suggestion</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>Unknown code 'X' in the CodeSystem 'http://unitsofmeasure.org'</code></td>
+<td style="text-align: left;"><code>replace_code</code></td>
+<td style="text-align: left;">The closest valid UCUM: case (UCUM is case-sensitive), square brackets (<code>[U]</code> → <code>U</code>, <code>[UI]/mL</code> → <code>[iU]/mL</code>), prefix + unit from the UCUM table, common clinical spellings (<code>mcg</code> → <code>ug</code>, <code>mmHg</code> → <code>mm[Hg]</code>), and an annotation for dose-form words that are not units (<code>tab</code> → <code>{tablet}</code>); every candidate is checked with the same UCUM parser the validator uses</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>No definition could be found for URL value 'U'</code>, <code>A definition for CodeSystem 'S' could not be found</code>, <code>The Coding references a value set, not a code system</code></td>
+<td style="text-align: left;"><code>replace_system</code></td>
+<td style="text-align: left;">The CodeSystem(s) the misused ValueSet (or the ValueSet of that name) draws from (<code>…/CodeSystem/v3-ActEncounterCode</code> → <code>…/CodeSystem/v3-ActCode</code>), and the closest canonical in the package closure; when the Coding has a code, systems that hold it rank first</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>Unrecognized property 'p'</code></td>
+<td style="text-align: left;"><code>rename_property</code> / <code>move_property</code></td>
+<td style="text-align: left;">The closest element name at the same level (datatype children and typed names of choice elements included, e.g. <code>value</code> → <code>valueQuantity</code>), or the level where an element of that name actually lives (<code>timing.periodUnit</code> → <code>timing.repeat.periodUnit</code>)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>The type 'date' is not allowed for Condition.onset[x]</code></td>
+<td style="text-align: left;"><code>rename_property</code></td>
+<td style="text-align: left;">The typed name of an allowed type that fits the value (<code>onsetDate</code> → <code>onsetDateTime</code>)</td>
+</tr>
+<tr>
+<td style="text-align: left;">Value not in a required / extensible ValueSet</td>
+<td style="text-align: left;"><code>choose_code</code></td>
+<td style="text-align: left;">Codes of the expanded ValueSet: all of them, ranked by similarity, for a small ValueSet; the closest to the given code / display (incl. <code>fhir_normalize_code</code>) for a large one</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>Unknown code</code> in other CodeSystems</td>
+<td style="text-align: left;"><code>replace_code</code> / <code>replace_system</code></td>
+<td style="text-align: left;">Spelling repairs the validator accepts (case, ICD dot, LOINC hyphen), codes whose name matches the display / text (<code>fhir_normalize_code</code>), near codes of an IG CodeSystem, and another terminology whose code shape fits (a LOINC code under the SNOMED system)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>Wrong Display Name</code></td>
+<td style="text-align: left;"><code>replace_display</code> (+ <code>replace_code</code>)</td>
+<td style="text-align: left;">The valid display(s) the validator names (uniform across terminologies); if the written display is the name of another code, also a code change</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>Unable to find a profile match for urn:uuid:X</code></td>
+<td style="text-align: left;"><code>caused_by</code></td>
+<td style="text-align: left;">The referenced resource's own errors (<code>fullUrl</code>, <code>entry</code>, <code>path</code>, <code>message</code>); when it has none, its errors against the profile the reference requires (with <code>profile</code>)</td>
+</tr>
+</tbody>
+</table>
+<p><code>patch</code> uses the validator's dotted paths (<code>op</code>: <code>replace</code> / <code>move</code>; <code>move</code> also has <code>from</code>). <code>confidence</code> is a heuristic score, not a probability; suggestions are an aid — validate again after applying one. Suggestions are deterministic for the same input; if computing one fails, that issue simply has none and the validation result is unaffected. Evaluation method and figures: <code>node-server/scripts/suggestions-eval/</code>.</p>
 <blockquote>
 <p>In-process validation is based on profile snapshots and terminology bindings, benchmarked against HL7 validator_cli 7.0.1 (method and results in <code>node-server/scripts/validator-audit/</code>). It is not equivalent to conformance certification by the official HL7 FHIR Validator.</p>
 </blockquote>
@@ -2773,23 +2948,31 @@ Every issue carries <code>rule</code> and <code>source:"grounding"</code>, and i
 <tbody>
 <tr>
 <td style="text-align: left;"><code>fhir_validate_resource</code>, <code>fhir_validate_bundle</code></td>
-<td style="text-align: left;">1.4.0</td>
+<td style="text-align: left;">1.6.0 (issue <code>suggestions</code> / <code>caused_by</code>)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_get_profile_required_elements</code></td>
-<td style="text-align: left;">1.2.0</td>
+<td style="text-align: left;">1.3.0 (derived rows: allowedCodes + derivation rule; <code>include_mustsupport="defaults"</code>; <code>optional</code>)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_list_igs</code>, <code>fhir_list_artifacts</code>, <code>fhir_search_artifacts</code>, <code>fhir_list_resource_profiles</code> (new <code>compact</code>)</td>
 <td style="text-align: left;">1.3.0</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>fhir_get_ig</code>, <code>fhir_rank_resource_profiles</code>, <code>fhir_get_profile</code>, <code>fhir_get_profile_elements</code>, <code>fhir_get_valueset</code>, <code>fhir_expand_valueset</code>, <code>fhir_validate_code</code>, <code>fhir_get_resource_skeleton</code>, <code>fhir_finalize_resource</code></td>
+<td style="text-align: left;"><code>fhir_get_ig</code>, <code>fhir_rank_resource_profiles</code>, <code>fhir_get_profile</code>, <code>fhir_get_profile_elements</code>, <code>fhir_get_valueset</code>, <code>fhir_expand_valueset</code>, <code>fhir_validate_code</code>, <code>fhir_get_resource_skeleton</code></td>
 <td style="text-align: left;">1.2.0</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>fhir_lookup_code</code>, <code>fhir_normalize_code</code></td>
-<td style="text-align: left;">1.3.0</td>
+<td style="text-align: left;"><code>fhir_finalize_resource</code></td>
+<td style="text-align: left;">1.3.0 (validation issue <code>suggestions</code> / <code>caused_by</code>)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>fhir_lookup_code</code></td>
+<td style="text-align: left;">1.3.2 (RxNorm codes)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>fhir_normalize_code</code></td>
+<td style="text-align: left;">1.8.0 (excerpt CodeSystems → the installed full copy, candidate <code>linked</code>, aliases resolved outside the default IG)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_check_grounding</code></td>

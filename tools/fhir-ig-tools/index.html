@@ -1035,6 +1035,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="剖面選擇與讀取">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#derived-and-mustsupport" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        推導欄位與 Must Support
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1056,6 +1073,23 @@
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="授權、組裝與驗證">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#suggestions-caused_byvalidation-suggestions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        修正建議（suggestions / caused_by）{#validation-suggestions}
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -2454,6 +2488,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="剖面選擇與讀取">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#derived-and-mustsupport" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        推導欄位與 Must Support
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2475,6 +2526,23 @@
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="授權、組裝與驗證">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#suggestions-caused_byvalidation-suggestions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        修正建議（suggestions / caused_by）{#validation-suggestions}
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -2607,11 +2675,51 @@
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_get_profile_required_elements</code></td>
-<td style="text-align: left;">列出剖面「實際必填」的元素：整條父鏈皆必填才算、必填 slice、choice 型別、invariant 隱含的 value[x] 或 dataAbsentReason（vs-2 / vs-3 / tw-core-4 類，依運算式自動偵測）、target-implied 主要內容；每列附 <code>grounding_class</code>（auto / coding / source_fact / workflow_default …）、<code>required_by</code>、小型 required binding 的 <code>allowedCodes</code> 與填寫提示 <code>hint</code>。有 profile 的 extension 會依其定義展開（url、ext-1 隱含的 value[x]、必填子 extension），已填元素的基礎資料型別必填子元素也會列出（Narrative.div、Extension.url …），剖面自訂的 error invariant 列在 <code>invariants</code>。給 <code>instance</code> 時依 discriminator 比對 slice，未出現的 slice 不會帶出其子元素</td>
-<td style="text-align: left;"><code>profile</code>, <code>instance</code>（草稿：已填的選填父元素其必填子元素也列出）, <code>include_target_implied</code>（預設 <code>true</code>）, <code>include_mustsupport</code>（預設 <code>false</code>）, <code>verbosity</code>（預設 <code>compact</code>：id / required_by / grounding_class / fixed·pattern·value / choices / allowedCodes / hint，剖面固定的子樹折疊成一個可直接複製的 <code>value</code>；<code>full</code> 另含 min / max / types / binding / mustSupport）</td>
+<td style="text-align: left;">列出剖面「實際必填」的元素：整條父鏈皆必填才算、必填 slice、choice 型別、invariant 隱含的 value[x] 或 dataAbsentReason（vs-2 / vs-3 / tw-core-4 類，依運算式自動偵測）、target-implied 主要內容；每列附 <code>grounding_class</code>（auto / coding / source_fact / workflow_default …）、<code>required_by</code>、小型 required binding 的 <code>allowedCodes</code> 與填寫提示 <code>hint</code>；<code>derived</code> 列（如 <code>Condition.category</code>）另附 binding 展開的 <code>allowedCodes</code>（extensible / preferred 亦然，上限 20 碼）與推導規則（見下方「推導欄位與 Must Support」）。有 profile 的 extension 會依其定義展開（url、ext-1 隱含的 value[x]、必填子 extension），已填元素的基礎資料型別必填子元素也會列出（Narrative.div、Extension.url …），剖面自訂的 error invariant 列在 <code>invariants</code>。給 <code>instance</code> 時依 discriminator 比對 slice，未出現的 slice 不會帶出其子元素</td>
+<td style="text-align: left;"><code>profile</code>, <code>instance</code>（草稿：已填的選填父元素其必填子元素也列出）, <code>include_target_implied</code>（預設 <code>true</code>）, <code>include_mustsupport</code>（預設 <code>false</code>；<code>"defaults"</code> = 只加有固定值 / 預設值 / 可推導值的 mustSupport 元素；<code>true</code> = 所有 mustSupport 元素；加入的列帶 <code>optional: true</code>）, <code>verbosity</code>（預設 <code>compact</code>：id / required_by / grounding_class / fixed·pattern·value / choices / allowedCodes / hint，剖面固定的子樹折疊成一個可直接複製的 <code>value</code>；<code>full</code> 另含 min / max / types / binding / mustSupport）</td>
 </tr>
 </tbody>
 </table>
+<h3 id="derived-and-mustsupport">推導欄位與 Must Support<a class="headerlink" href="#derived-and-mustsupport" title="Permanent link">&para;</a></h3>
+<p><code>grounding_class: "derived"</code> 的元素不是照抄原文，而是由其他已填的值推得。對常見的推導欄位，<code>hint</code> 以 <code>derive:</code> 開頭給出規則（每條規則轉述所列代碼的官方定義，出處見 <code>verbosity="full"</code> 的 <code>derivation_source</code>），只在元素的 binding 正是規則描述的 ValueSet 時才套用：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">元素</th>
+<th style="text-align: left;">規則重點</th>
+<th style="text-align: left;">出處</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>Condition.category</code></td>
+<td style="text-align: left;">本次就醫（門診、住院、出院）所下或評估的診斷 → <code>encounter-diagnosis</code>（並以 <code>Condition.encounter</code> 指向該次就醫）；跨就醫維護的長期問題清單項目 → <code>problem-list-item</code>；就醫紀錄中寫下的診斷即使是慢性病也算 <code>encounter-diagnosis</code></td>
+<td style="text-align: left;">FHIR R4 condition-category；US Core Condition Encounter Diagnosis / Problems and Health Concerns</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>Observation.category</code></td>
+<td style="text-align: left;">依量測內容：檢驗 → <code>laboratory</code>，血壓 / 心跳 / 體溫 / 身高體重等 → <code>vital-signs</code>，影像、理學檢查、問卷、社會史…</td>
+<td style="text-align: left;">FHIR R4 observation-category；R4 Vital Signs profile</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>Encounter.diagnosis.use</code> / <code>.rank</code></td>
+<td style="text-align: left;">入院 AD、出院 DD、主訴 CC、共病 CM…；主診斷 rank 1，其餘依紀錄順序</td>
+<td style="text-align: left;">FHIR R4 diagnosis-role；Encounter.diagnosis.rank</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>MedicationRequest.category</code> / <code>MedicationStatement.category</code> / <code>courseOfTherapyType</code></td>
+<td style="text-align: left;">依開立情境（住院 / 門診 / 居家 / 出院帶藥）；長期用藥 <code>continuous</code>、短期療程 <code>acute</code></td>
+<td style="text-align: left;">FHIR R4 對應 CodeSystem</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>AllergyIntolerance.category</code> / <code>.type</code> / <code>.criticality</code>、<code>Observation.interpretation</code></td>
+<td style="text-align: left;">依過敏原種類；免疫 vs 非免疫反應；危及生命 → <code>high</code>；依參考範圍 N / H / L / HH / LL</td>
+<td style="text-align: left;">FHIR R4 對應 CodeSystem</td>
+</tr>
+</tbody>
+</table>
+<p>沒有規則的 derived 元素，<code>hint</code> 改列 binding 中各代碼的 CodeSystem 定義（<code>pick the code whose meaning fits the record: …</code>）。</p>
+<p><strong>mustSupport 不等於必填。</strong> <code>include_mustsupport="defaults"</code> 只多列出不需原文事實就能填的 mustSupport 元素（剖面固定值 / pattern、如 <code>verificationStatus</code> 的慣用預設值、上表的可推導值），而且其父元素都已列出；<code>true</code> 則列出全部 mustSupport 元素。兩者加入的列都帶 <code>optional: true</code> 與「可省略、不可因此拒答」的提示，<code>guide</code> 也會補上同樣說明。預設（<code>false</code>）的輸出除 derived 列外不變。</p>
 <h2 id="valueset">術語 / ValueSet<a class="headerlink" href="#valueset" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -2634,7 +2742,7 @@
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_lookup_code</code></td>
-<td style="text-align: left;">在 CodeSystem 中查詢單一碼的顯示名稱與屬性；查無此碼時附 <code>hint</code>（改用 <code>fhir_normalize_code</code>）與 <code>near_codes</code>（IG CodeSystem 中相近的碼）</td>
+<td style="text-align: left;">在 CodeSystem 中查詢單一碼的顯示名稱與屬性（RxNorm 查本機 <code>rxnorm.concepts</code>）；查無此碼時附 <code>hint</code>（改用 <code>fhir_normalize_code</code>）與 <code>near_codes</code>（IG CodeSystem 中相近的碼）</td>
 <td style="text-align: left;"><code>system</code>, <code>code</code></td>
 </tr>
 <tr>
@@ -2644,7 +2752,7 @@
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_normalize_code</code></td>
-<td style="text-align: left;">自由文字（中英文、縮寫、病歷寫法）轉候選碼：SNOMED CT / LOINC / ICD-10，以及任何已安裝 IG 的 CodeSystem（例如健保支付碼 <code>medical-service-payment-tw</code>，見 <a href="../../modules/ig-concept-search/">IG 術語搜尋</a>）。IG 候選附 <code>matched_term</code>、<code>matched_language</code>、<code>group</code>/<code>siblings</code>；<code>system</code> 可給 canonical、id 或別名（<code>nhi_payment</code>）</td>
+<td style="text-align: left;">自由文字（中英文、縮寫、病歷寫法）轉候選碼：SNOMED CT / LOINC / ICD-10，以及任何已安裝 IG 的 CodeSystem（例如健保支付碼 <code>medical-service-payment-tw</code>，見 <a href="../../modules/ig-concept-search/">IG 術語搜尋</a>）。IG 候選附 <code>matched_term</code>、<code>matched_language</code>、<code>group</code>/<code>siblings</code>、<code>linked</code>（概念連到的其他系統代碼，例如藥品的 ATC 碼）；<code>system</code> 可給 canonical、id 或別名（<code>nhi_payment</code>）。<strong>藥品</strong>：健保藥品代碼可查 —— <code>system="medication-nhi-tw"</code>（TW Core）或 <code>"nhi-medication"</code>（TWPAS），文字可為中英文商品名或成分名（<code>Glucophage 500mg</code>、<code>脈優錠 5mg</code>）；預設 IG 只收錄節錄版 CodeSystem（TW Core 1.0.0 的 <code>medication-nhi-tw</code> 僅 35 碼）而另有安裝的套件收錄完整版（TW Core 0.3.2，44,709 碼）時，未指定 <code>package_id</code> / <code>version</code> 會改查完整版（<code>warnings</code> 與 <code>data.codesystem_copies</code> 會註明）。<strong>ATC</strong>：本機沒有可搜尋的 WHO ATC（TW Core <code>medcation-atc-tw</code> 只有 27 個台灣自訂碼），請先查健保藥品，候選的 <code>linked</code> 即其 ATC 碼（來自內建健保用藥 supplement）</td>
 <td style="text-align: left;"><code>text</code>, <code>value_set</code>, <code>system</code>, <code>limit</code>（預設 10）</td>
 </tr>
 </tbody>
@@ -2692,6 +2800,73 @@
 </tbody>
 </table>
 <p><code>fhir_validate_resource</code> / <code>fhir_validate_bundle</code> 的 <code>data</code> 另回報驗證是否完整：<code>checked_fully</code>（所有剖面與 ValueSet 都檢查到、且依賴閉包完整時為 <code>true</code>）、<code>profiles_unchecked</code>、<code>valuesets_unchecked</code>。<code>valid</code> 維持 HL7 語意（無法解析的剖面只是 warning），因此 <code>valid: true</code> 但 <code>checked_fully: false</code> 代表有部分內容沒有被檢查。<code>|version</code> canonical（<code>meta.profile</code>、binding、targetProfile、type profile、extension url）的解析方式比照 HL7 validator_cli 7.0.1。</p>
+<p>內建 validator 另比照 HL7 validator_cli 7.0.1 檢查（1.6.0 同版）：</p>
+<ul>
+<li><strong>Extension 使用位置</strong>：依 extension 定義的 <code>context</code>（element / extension 型別；<code>version-specific-use</code> 限其他 FHIR 版本的 context 略過）與 <code>contextInvariant</code> 判斷能否用在該元素，不符時於宿主元素回報 error <code>The extension &lt;url&gt; v&lt;version&gt; is not allowed to be used at this point (this element is [...]; allowed for this version = e:...)</code> 或 <code>... (based on context invariant '...')</code>；fhirpath 型 context 不在本機評估（不判錯）。</li>
+<li>未指定版本的 StructureDefinition 取閉包內版本最高的一份（例如 <code>hl7.fhir.uv.extensions.r4</code> 的 extension 優先於 R4 core 的同 URL 版本），因此 extension 自身的 invariant（如 <code>variable</code> 的 var-1）也會檢查。</li>
+<li><strong><code>Unrecognized property</code></strong> 依 core 定義檢查整份資源（同 HL7 JSON parser），剖面不允許的 choice 型別、未知 extension 的 value 底下也會回報；JSON 形狀錯誤（單值寫成陣列）的元素不再往下檢查，與 HL7 相同。</li>
+<li><strong>RxNorm</strong>：依 <code>rxnorm.concepts</code> 檢查碼與 display（tx.fhir.org 接受該 RXCUI 所有 SAB=RXNORM 名稱，不分大小寫），錯誤為 <code>Wrong Display Name '...' for http://www.nlm.nih.gov/research/umls/rxnorm#&lt;code&gt;. Valid display is '...'</code>。未知碼只有在本機 RxNorm 版本不舊於 tx.fhir.org（03022026）時才是 error，否則 warning；本機只有偏好名稱（migration 20261030 前匯入）時 display 不符只給 warning；未載入 RxNorm 時給 warning <code>Display not checked (RxNorm)</code>。</li>
+<li>IG CodeSystem（<code>content = complete</code>）的 <code>Unknown code</code> 維持 error；若另一個已安裝套件有同一 CodeSystem 較完整的版本且含此碼（例如 TW Core 0.3.2 的 <code>medication-nhi-tw</code>），另附 information 指出該套件與版本。</li>
+<li>直接綁定 ValueSet 的 Coding 元素（如 <code>Encounter.class</code>）以 ValueSet URL 當 system 時，只回報綁定 warning，不再報 <code>The Coding references a value set</code> error（與 HL7 相同）。</li>
+</ul>
+<h3 id="suggestions-caused_byvalidation-suggestions">修正建議（suggestions / caused_by）{#validation-suggestions}<a class="headerlink" href="#suggestions-caused_byvalidation-suggestions" title="Permanent link">&para;</a></h3>
+<p>驗證結果的 issue 除了指出錯在哪裡，也盡量附上「要改成什麼」：<code>suggestions</code> 是依 <code>confidence</code> 由高到低排序的候選（每個 issue 最多 5 個；小型 ValueSet 的綁定錯誤最多 12 個），參照鏈錯誤另有 <code>caused_by</code>。兩者都是<strong>附加欄位</strong>——issue 的集合、severity、message 與 <code>valid</code> 完全不變；沒有建議時不出現該欄位。</p>
+<pre><code class="language-json">{&quot;severity&quot;: &quot;error&quot;, &quot;path&quot;: &quot;MedicationRequest.dosageInstruction[0].timing.repeat&quot;, &quot;message&quot;: &quot;Unrecognized property 'periodUnits'&quot;,
+ &quot;suggestions&quot;: [{&quot;value&quot;: &quot;periodUnit&quot;, &quot;kind&quot;: &quot;rename_property&quot;, &quot;confidence&quot;: 0.82, &quot;reason&quot;: &quot;closest element name at this level: 'periodUnit'&quot;,
+                  &quot;patch&quot;: {&quot;op&quot;: &quot;move&quot;, &quot;from&quot;: &quot;MedicationRequest.dosageInstruction[0].timing.repeat.periodUnits&quot;, &quot;path&quot;: &quot;MedicationRequest.dosageInstruction[0].timing.repeat.periodUnit&quot;}}]}
+</code></pre>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">錯誤</th>
+<th style="text-align: left;"><code>kind</code></th>
+<th style="text-align: left;">建議內容</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>Unknown code 'X' in the CodeSystem 'http://unitsofmeasure.org'</code></td>
+<td style="text-align: left;"><code>replace_code</code></td>
+<td style="text-align: left;">最接近的合法 UCUM：大小寫（UCUM 區分大小寫）、方括號（<code>[U]</code> → <code>U</code>、<code>[UI]/mL</code> → <code>[iU]/mL</code>）、UCUM 單位表的前綴 + 單位、常見臨床寫法（<code>mcg</code> → <code>ug</code>、<code>mmHg</code> → <code>mm[Hg]</code>）、非單位的劑型字改用註記（<code>tab</code> → <code>{tablet}</code>）；每個候選都以 validator 用的同一套 UCUM parser 驗證過</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>No definition could be found for URL value 'U'</code>、<code>A definition for CodeSystem 'S' could not be found</code>、<code>The Coding references a value set, not a code system</code></td>
+<td style="text-align: left;"><code>replace_system</code></td>
+<td style="text-align: left;">誤用的 ValueSet（或同名 ValueSet）所引用的 CodeSystem（<code>…/CodeSystem/v3-ActEncounterCode</code> → <code>…/CodeSystem/v3-ActCode</code>），以及套件閉包內最接近的 canonical；Coding 有代碼時，含有該代碼的 system 排前面</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>Unrecognized property 'p'</code></td>
+<td style="text-align: left;"><code>rename_property</code> / <code>move_property</code></td>
+<td style="text-align: left;">同一層最接近的元素名（含 datatype 子元素、choice 元素的具型別名稱，如 <code>value</code> → <code>valueQuantity</code>），或該名稱實際所在的層級（<code>timing.periodUnit</code> → <code>timing.repeat.periodUnit</code>）</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>The type 'date' is not allowed for Condition.onset[x]</code></td>
+<td style="text-align: left;"><code>rename_property</code></td>
+<td style="text-align: left;">允許型別中符合值形狀的具型別名稱（<code>onsetDate</code> → <code>onsetDateTime</code>）</td>
+</tr>
+<tr>
+<td style="text-align: left;">值不在 required / extensible ValueSet 內</td>
+<td style="text-align: left;"><code>choose_code</code></td>
+<td style="text-align: left;">ValueSet 展開後的代碼：小型 ValueSet 全列並依相似度排序，大型者取與原代碼 / display 最接近者（含 <code>fhir_normalize_code</code>）</td>
+</tr>
+<tr>
+<td style="text-align: left;">其他 CodeSystem 的 <code>Unknown code</code></td>
+<td style="text-align: left;"><code>replace_code</code> / <code>replace_system</code></td>
+<td style="text-align: left;">validator 會接受的拼寫修正（大小寫、ICD 小數點、LOINC 連字號）、名稱與 display / text 相符的代碼（<code>fhir_normalize_code</code>）、IG CodeSystem 的相近代碼，以及代碼形狀相符的其他術語（LOINC 代碼放在 SNOMED system）</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>Wrong Display Name</code></td>
+<td style="text-align: left;"><code>replace_display</code>（+ <code>replace_code</code>）</td>
+<td style="text-align: left;">validator 列出的有效 display（各術語格式一致），若寫的 display 其實是另一個代碼的名稱，也提示改代碼</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>Unable to find a profile match for urn:uuid:X</code></td>
+<td style="text-align: left;"><code>caused_by</code></td>
+<td style="text-align: left;">被參照資源本身的錯誤（<code>fullUrl</code>、<code>entry</code>、<code>path</code>、<code>message</code>）；它本身沒有錯時，改列它對該參照要求的剖面驗證時的錯誤（附 <code>profile</code>）</td>
+</tr>
+</tbody>
+</table>
+<p><code>patch</code> 以 validator 的點路徑表示（<code>op</code>: <code>replace</code> / <code>move</code>，<code>move</code> 另有 <code>from</code>）。<code>confidence</code> 是啟發式分數，不是機率；建議是輔助，套用後請再驗證一次。建議的排序與內容對同一輸入是固定的（決定性），計算失敗時該 issue 只是沒有建議，不影響驗證結果。評估方式與數據見 <code>node-server/scripts/suggestions-eval/</code>。</p>
 <blockquote>
 <p>程序內驗證以剖面 snapshot 與術語綁定為基礎，比對基準為 HL7 validator_cli 7.0.1（稽核方式與結果見 <code>node-server/scripts/validator-audit/</code>），但不等同官方 HL7 FHIR Validator 的一致性認證。</p>
 </blockquote>
@@ -2773,23 +2948,31 @@
 <tbody>
 <tr>
 <td style="text-align: left;"><code>fhir_validate_resource</code>、<code>fhir_validate_bundle</code></td>
-<td style="text-align: left;">1.4.0</td>
+<td style="text-align: left;">1.6.0（issue 的 <code>suggestions</code> / <code>caused_by</code>）</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_get_profile_required_elements</code></td>
-<td style="text-align: left;">1.2.0</td>
+<td style="text-align: left;">1.3.0（derived 列的 allowedCodes 與推導規則、<code>include_mustsupport="defaults"</code>、<code>optional</code>）</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_list_igs</code>、<code>fhir_list_artifacts</code>、<code>fhir_search_artifacts</code>、<code>fhir_list_resource_profiles</code>（新增 <code>compact</code>）</td>
 <td style="text-align: left;">1.3.0</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>fhir_get_ig</code>、<code>fhir_rank_resource_profiles</code>、<code>fhir_get_profile</code>、<code>fhir_get_profile_elements</code>、<code>fhir_get_valueset</code>、<code>fhir_expand_valueset</code>、<code>fhir_validate_code</code>、<code>fhir_get_resource_skeleton</code>、<code>fhir_finalize_resource</code></td>
+<td style="text-align: left;"><code>fhir_get_ig</code>、<code>fhir_rank_resource_profiles</code>、<code>fhir_get_profile</code>、<code>fhir_get_profile_elements</code>、<code>fhir_get_valueset</code>、<code>fhir_expand_valueset</code>、<code>fhir_validate_code</code>、<code>fhir_get_resource_skeleton</code></td>
 <td style="text-align: left;">1.2.0</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>fhir_lookup_code</code>、<code>fhir_normalize_code</code></td>
-<td style="text-align: left;">1.3.0</td>
+<td style="text-align: left;"><code>fhir_finalize_resource</code></td>
+<td style="text-align: left;">1.3.0（驗證 issue 的 <code>suggestions</code> / <code>caused_by</code>）</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>fhir_lookup_code</code></td>
+<td style="text-align: left;">1.3.2（RxNorm 碼可查）</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>fhir_normalize_code</code></td>
+<td style="text-align: left;">1.8.0（節錄版 CodeSystem 改查已安裝的完整版、候選 <code>linked</code>、別名解析到預設 IG 以外的 CodeSystem）</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_check_grounding</code></td>
