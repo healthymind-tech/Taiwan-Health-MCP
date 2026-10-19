@@ -18,6 +18,7 @@ import type pg from "pg";
 import { query, withTransaction } from "./db.js";
 import { rankHybrid, type RankCandidate, type RankedCandidate } from "./hybridRank.js";
 import { queryNameKeys } from "./loincComponentNames.js";
+import { axisAgreement, buildAxisVocab, parseAxisConstraints, type AxisConstraint, type AxisVocab } from "./loincAxisNames.js";
 
 /** Lexical and vector halves of the candidate pool (each). */
 const POOL = 40;
@@ -138,22 +139,80 @@ async function hasComponentNames(q: Q): Promise<boolean> {
 }
 
 /** Analyte synonyms (loinc.component_names) named in the query: component → matched names. */
-async function componentSynonyms(keyword: string, q: Q): Promise<Map<string, string[]>> {
+async function componentSynonyms(keyword: string, q: Q, wantsRatio = false): Promise<Map<string, string[]>> {
   const out = new Map<string, string[]>();
   if (!(await hasComponentNames(q))) return out;
   const keys = queryNameKeys(keyword);
   if (!keys.length) return out;
   try {
     const r = await q<{ component: string; name: string }>(
-      `SELECT component, name FROM loinc.component_names WHERE name_key = ANY($1::text[])
-        ORDER BY length(name_key) DESC, component LIMIT ${SYNONYM_COMPONENTS}`,
+      // Longest matched name first; among the analytes sharing it ("White blood cell" names
+      // Leukocytes and 200 leukocyte ratios), those with the most terms — the analyte the
+      // name most plainly means — before the cut.
+      `SELECT n.component, n.name FROM loinc.component_names n WHERE n.name_key = ANY($1::text[])
+        ORDER BY length(n.name_key) DESC,
+                 (SELECT count(*) FROM loinc.concepts c WHERE c.component = n.component) DESC,
+                 n.component
+        LIMIT ${SYNONYM_COMPONENTS}`,
       [keys],
     );
-    for (const x of r.rows) out.set(x.component, [...(out.get(x.component) ?? []), x.name]);
+    // A name of an analyte is no name of its ratios: when "白蛋白" names Albumin, the
+    // linguistic variant listing it on Albumin/Protein.total (numerator) is dropped — unless
+    // the query asks for a fraction / ratio ("neutrophils %").
+    const named = new Map<string, Set<string>>();
+    for (const x of r.rows) named.set(x.name, (named.get(x.name) ?? new Set()).add(x.component));
+    for (const x of r.rows) {
+      const slash = x.component.indexOf("/");
+      if (!wantsRatio && slash > 0 && named.get(x.name)!.has(x.component.slice(0, slash))) continue;
+      out.set(x.component, [...(out.get(x.component) ?? []), x.name]);
+    }
   } catch {
     /* table not migrated / unreadable: rank without synonyms */
   }
   return out;
+}
+
+let axisVocab: { at: number; vocab: AxisVocab | null; pinned?: boolean } | null = null;
+
+/**
+ * The LOINC axis vocabulary (loinc.axis_names, migration 20261026), held in memory: a few
+ * thousand rows, re-read every 5 minutes. null when the table is missing or empty (a
+ * database not migrated / re-imported yet ranks without axis constraints).
+ */
+async function loincAxisVocab(q: Q): Promise<AxisVocab | null> {
+  if (axisVocab && (axisVocab.pinned || Date.now() - axisVocab.at < 300_000)) return axisVocab.vocab;
+  let vocab: AxisVocab | null = null;
+  try {
+    const ok = (await q("SELECT to_regclass('loinc.axis_names') IS NOT NULL AS ok")).rows[0]?.ok === true;
+    if (ok) {
+      const r = await q<{ axis: string; value: string; name_key: string; source: string }>(
+        "SELECT axis, value, name_key, source FROM loinc.axis_names",
+      );
+      vocab = r.rows.length ? buildAxisVocab(r.rows) : null;
+    }
+  } catch {
+    vocab = null;
+  }
+  axisVocab = { at: Date.now(), vocab };
+  return vocab;
+}
+
+/** Use this axis vocabulary instead of loinc.axis_names (tests / evaluation harnesses); null clears it. */
+export function setLoincAxisVocab(vocab: AxisVocab | null): void {
+  axisVocab = vocab ? { at: Date.now(), vocab, pinned: true } : null;
+}
+
+/** Weight of the query's axis constraints (one object so evaluation harnesses can sweep it). */
+export const LOINC_AXIS = { weight: 0.1 };
+
+/**
+ * Prior from the query's explicit axis constraints: +weight when the term satisfies all of
+ * them, −weight when it contradicts all (see loincAxisNames.axisAgreement).
+ */
+export function loincAxisPrior(constraints: AxisConstraint[], agreement: number): number {
+  if (!constraints.length) return 0;
+  const total = constraints.reduce((n, c) => n + c.weight, 0);
+  return total > 0 ? (LOINC_AXIS.weight * agreement) / total : 0;
 }
 
 /** loinc.concepts.common_test_rank exists (migration 20261024)? Cached; false on error. */
@@ -196,15 +255,18 @@ export function loincPrior(rank: number | null | undefined, status: string | nul
 /** Penalties (one object so evaluation harnesses can sweep them). */
 export const LOINC_SHAPE = { panel: 0.1, ratio: 0.08 };
 
+/** Words of a query that asks for a ratio / fraction of two analytes. */
+const RATIO_WORDS = /\/|ratio|index|比|%|percent/i;
+
 /**
  * A panel or a ratio of two analytes is rarely what a test name means: it sinks a little
- * unless the query asks for one ("panel", "profile", "ratio", "/", 比值 …).
+ * unless the query asks for one ("panel", "profile", "ratio", "/", "%", 比值 …).
  */
 export function loincShapePrior(query: string, x: { long_common_name?: unknown; component?: unknown }): number {
   const q = query.toLowerCase();
   let p = 0;
   if (/\bpanel\b/i.test(String(x.long_common_name ?? "")) && !/panel|profile|battery|組套|套組|組合/.test(q)) p -= LOINC_SHAPE.panel;
-  if (String(x.component ?? "").includes("/") && !/\/|ratio|index|比/.test(q)) p -= LOINC_SHAPE.ratio;
+  if (String(x.component ?? "").includes("/") && !RATIO_WORDS.test(q)) p -= LOINC_SHAPE.ratio;
   return p;
 }
 
@@ -253,7 +315,10 @@ export async function rankLoinc(
 ): Promise<{ rows: Record<string, unknown>[]; ranked: RankedCandidate[] }> {
   const ranks = await hasLoincRanks(q);
   const rankCol = ranks ? "c.common_test_rank" : "NULL::int";
-  const synonyms = await componentSynonyms(keyword, q);
+  // Specimen / timing / method / property / scale the query states ("venous", "24 hour",
+  // "dipstick", "%"), from LOINC's own part names (loinc.axis_names).
+  const constraints = parseAxisConstraints(keyword, await loincAxisVocab(q));
+  const synonyms = await componentSynonyms(keyword, q, constraints.some((c) => c.axis === "property") || RATIO_WORDS.test(keyword));
   const params: unknown[] = [keyword, `%${keyword}%`];
   const synIdx = params.push([...synonyms.keys()]);
   const catSql = category ? `AND c.class ILIKE $${params.push(`%${category}%`)}` : "";
@@ -267,21 +332,38 @@ export async function rankLoinc(
   // Family defaults: for every analyte (component) in the pool, its most commonly resulted
   // terms join the pool, so a generic query can land on the default term of the analyte
   // even when neither half retrieved it (orderFamilies in hybridRank.ts picks it).
-  // Analytes the query names by a synonym ("uric acid" → Urate) join the same way.
+  // Analytes the query names by a synonym ("uric acid" → Urate) join the same way, and so
+  // does the plain analyte of a challenge / timing variant ("Renin^baseline" → Renin).
+  // When the query names a specimen or timing, the most common terms of each analyte with
+  // that specimen / timing join too ("salivary cortisol" → Cortisol in Saliva, which neither
+  // half nor the analyte's overall defaults retrieve).
   // Needs idx_loinc_concepts_component (migration 20261025, with loinc.component_names): without
   // it the lookup is a sequential scan, so a database not migrated yet skips the expansion.
   const famOk = await hasComponentNames(q);
+  const axisValues = (axis: string): string[] => [...new Set(constraints.filter((c) => c.axis === axis).flatMap((c) => [...c.values]))];
+  const sysVals = axisValues("system");
+  const timeVals = axisValues("time");
+  const famTop = (where: string): string =>
+    `SELECT loinc_num FROM (
+       SELECT f.loinc_num, row_number() OVER (
+                PARTITION BY f.component
+                ORDER BY ${ranks ? "f.common_test_rank IS NULL, f.common_test_rank," : ""} (f.status = 'ACTIVE') DESC, length(f.long_common_name), f.loinc_num) AS rn
+         FROM loinc.concepts f
+        WHERE f.component IN (SELECT component FROM comps) ${where}) x
+     WHERE rn <= ${FAMILY_DEFAULTS}`;
+  let famAxis = "";
+  if (famOk && (sysVals.length || timeVals.length)) {
+    const sysSql = sysVals.length ? `AND f.system = ANY($${params.push(sysVals)}::text[])` : "";
+    const timeSql = timeVals.length ? `AND f.time_aspect = ANY($${params.push(timeVals)}::text[])` : "";
+    famAxis = ` UNION ${famTop(`${sysSql} ${timeSql}`)}`;
+  }
   const fam = (from: string): string =>
     !famOk
       ? `fam AS (SELECT NULL::text AS loinc_num WHERE $${synIdx}::text[] IS NOT NULL AND FALSE),`
-      : `fam AS (SELECT loinc_num FROM (
-               SELECT f.loinc_num, row_number() OVER (
-                        PARTITION BY f.component
-                        ORDER BY ${ranks ? "f.common_test_rank IS NULL, f.common_test_rank," : ""} (f.status = 'ACTIVE') DESC, length(f.long_common_name), f.loinc_num) AS rn
-                 FROM loinc.concepts f
-                WHERE f.component IN (SELECT p.component FROM ${from} JOIN loinc.concepts p ON p.loinc_num = ${from}.loinc_num
-                                      UNION SELECT unnest($${synIdx}::text[]))) x
-             WHERE rn <= ${FAMILY_DEFAULTS}),`;
+      : `comps AS (SELECT p.component FROM ${from} JOIN loinc.concepts p ON p.loinc_num = ${from}.loinc_num
+                   UNION SELECT split_part(p.component, '^', 1) FROM ${from} JOIN loinc.concepts p ON p.loinc_num = ${from}.loinc_num
+                   UNION SELECT unnest($${synIdx}::text[])),
+         fam AS (${famTop("")}${famAxis}),`;
   const sql = vecStr
     ? `WITH lex AS (${lex}),
        vec AS (SELECT loinc_num FROM loinc.concept_embeddings ORDER BY embedding <=> $${vecIdx}::halfvec LIMIT ${POOL}),
@@ -300,26 +382,35 @@ export async function rankLoinc(
         WHERE TRUE ${catSql}`;
   const r = await (vecStr && q === query ? vectorQuery : q)<Record<string, unknown>>(sql, params);
   const byNum = new Map(r.rows.map((x) => [String(x.loinc_num), x]));
-  const cands: RankCandidate[] = r.rows.map((x) => ({
-    key: String(x.loinc_num),
-    texts: [
-      ...(synonyms.get(String(x.component)) ?? []).map((t) => ({ text: t, weight: 0.9 })),
-      { text: x.long_common_name as string, weight: 1 },
-      { text: x.shortname as string, weight: 0.9 },
-      // Both names together: a query mixing a long-name word and a short-name abbreviation
-      // ("CSF protein": "Protein … in Cerebral spinal fluid" + "Prot CSF-mCnc").
-      { text: x.shortname ? `${x.long_common_name} ${x.shortname}` : null, weight: 0.9 },
-      { text: x.component as string, weight: 0.85 },
-      { text: x.consumer_name as string, weight: 0.9 },
-      { text: x.name_zh as string, weight: 1 },
-      { text: x.common_name_zh as string, weight: 0.95 },
-      { text: x.loinc_num as string, weight: 1 },
-    ],
-    sim: x.sim === null || x.sim === undefined ? null : Number(x.sim),
-    prior: loincPrior(x.common_test_rank as number | null, x.status as string | null) + loincShapePrior(keyword, x),
-    family: loincFamily(x.component, x.property),
-    defaultness: loincDefaultness(x),
-  }));
+  const cands: RankCandidate[] = r.rows.map((x) => {
+    const syn = synonyms.get(String(x.component)) ?? [];
+    const agreement = axisAgreement(
+      constraints,
+      { system: x.system as string, time: x.time_aspect as string, method: x.method_type as string, property: x.property as string, scale: x.scale_type as string },
+      [x.long_common_name as string, x.shortname as string, x.component as string, x.consumer_name as string, ...syn],
+    );
+    return {
+      key: String(x.loinc_num),
+      texts: [
+        ...syn.map((t) => ({ text: t, weight: 0.9 })),
+        { text: x.long_common_name as string, weight: 1 },
+        { text: x.shortname as string, weight: 0.9 },
+        // Both names together: a query mixing a long-name word and a short-name abbreviation
+        // ("CSF protein": "Protein … in Cerebral spinal fluid" + "Prot CSF-mCnc").
+        { text: x.shortname ? `${x.long_common_name} ${x.shortname}` : null, weight: 0.9 },
+        { text: x.component as string, weight: 0.85 },
+        { text: x.consumer_name as string, weight: 0.9 },
+        { text: x.name_zh as string, weight: 1 },
+        { text: x.common_name_zh as string, weight: 0.95 },
+        { text: x.loinc_num as string, weight: 1 },
+      ],
+      sim: x.sim === null || x.sim === undefined ? null : Number(x.sim),
+      prior: loincPrior(x.common_test_rank as number | null, x.status as string | null) + loincShapePrior(keyword, x) + loincAxisPrior(constraints, agreement),
+      family: loincFamily(x.component, x.property),
+      defaultness: loincDefaultness(x),
+      qualifier: agreement,
+    };
+  });
   const ranked = rankHybrid(keyword, cands, limit);
   const rows = ranked.map((k) => {
     const x = byNum.get(k.key)!;

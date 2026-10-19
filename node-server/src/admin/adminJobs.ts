@@ -2156,6 +2156,29 @@ export async function writeLoincComponentNames(rows: string[][]): Promise<number
   return rows.length;
 }
 
+/**
+ * Replace loinc.axis_names (axis, value, name, name_key, source) in one transaction.
+ * Returns the row count, or null when the table does not exist (migration not applied).
+ */
+export async function writeLoincAxisNames(rows: string[][]): Promise<number | null> {
+  const exists = (await query<{ ok: boolean }>("SELECT to_regclass('loinc.axis_names') IS NOT NULL AS ok")).rows[0]?.ok === true;
+  if (!exists) return null;
+  await withTransaction(async (client) => {
+    await client.query("TRUNCATE loinc.axis_names");
+    const BATCH = 20000;
+    for (let i = 0; i < rows.length; i += BATCH) {
+      const part = rows.slice(i, i + BATCH);
+      await client.query(
+        `INSERT INTO loinc.axis_names (axis, value, name, name_key, source)
+         SELECT * FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[])
+         ON CONFLICT (axis, value, name_key) DO NOTHING`,
+        [0, 1, 2, 3, 4].map((c) => part.map((r) => r[c])),
+      );
+    }
+  });
+  return rows.length;
+}
+
 /** Faithful port of `_run_loinc_import_job` (staged import: validate → stage → promote). */
 export async function runLoincImportJob(opts: {
   workerName: string;
@@ -2498,6 +2521,21 @@ export async function runLoincImportJob(opts: {
       });
     } catch (err) {
       await appendJobLog({ jobId, level: "warn", message: `LOINC analyte synonyms not loaded: ${(err as Error).message}` });
+    }
+    // Axis vocabulary for search (migration 20261026): same pattern — derived lookup data,
+    // rebuilt after the promote; a failure only costs the axis constraints.
+    try {
+      const written = await writeLoincAxisNames(payload.axisNameRows);
+      await appendJobLog({
+        jobId,
+        level: written === null ? "warn" : "info",
+        message:
+          written === null
+            ? "loinc.axis_names missing (apply migration 20261026_loinc_axis_names.sql); specimen / timing / method words not loaded"
+            : `Loaded ${fmt(written)} LOINC axis names (specimen / timing / method / property / scale vocabulary)`,
+      });
+    } catch (err) {
+      await appendJobLog({ jobId, level: "warn", message: `LOINC axis names not loaded: ${(err as Error).message}` });
     }
 
     await clearStageRows(jobId, [

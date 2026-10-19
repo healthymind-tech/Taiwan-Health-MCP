@@ -11,6 +11,12 @@
  *      UMLS-SUBSET|<release>
  *      S|<RSAB>|<SRL>
  *      C|<CUI>|<SAB>|<TTY>|<STR>
+ *      A|<abbreviation>|<acronym|abbreviation>|<expansion>     (optional, see below)
+ *
+ * Optional abbreviation lexicon (fhir.abbreviation_lexicon): the SPECIALIST Lexicon's LRABR
+ * table (NLM; LEX/LRABR of a lexicon release, also inside a full UMLS release zip). Read from
+ * a LRABR member of the zip, or from the A lines of a subset written with an LRABR file
+ * (`--subset <umls.zip> <out.rrf.gz> <LRABR>`). Replaced only when the file carries it.
  *
  * Filter (documented in docs): MRSAB current versions (CURVER=Y) with SRL=0 (no additional
  * licence restrictions) plus SNOMEDCT_US (SNOMED CT licence held), minus vocabularies that
@@ -21,7 +27,7 @@
  * UMLS strings are never returned by a tool: they only steer matching (see conceptSearch).
  *
  * Run standalone:
- *   node dist/loaders/umls.js --subset <umls.zip> <out.rrf.gz>   # write the compact subset
+ *   node dist/loaders/umls.js --subset <umls.zip> <out.rrf.gz> [LRABR]   # write the compact subset
  *   node dist/loaders/umls.js <umls.zip | subset.rrf.gz>          # load into DATABASE_URL
  */
 
@@ -34,6 +40,7 @@ import pg from "pg";
 import { config } from "../config.js";
 import { logInfo, logError, configureLogLevel } from "../logger.js";
 import { umlsNorm } from "../conceptSearch/text.js";
+import { parseLrabrLine, type AbbreviationRow } from "../conceptSearch/abbreviations.js";
 
 /** Non-clinical SRL-0 vocabularies left out (genes, proteins, taxonomy, atlases, product labels, code sets). */
 export const EXCLUDED_SABS = new Set([
@@ -206,6 +213,27 @@ export interface UmlsSource {
   release: string;
   sabs: Map<string, number>;
   rows: AsyncIterable<UmlsRow>;
+  /** Abbreviation lexicon rows carried by the file (read after `rows`; empty when none). */
+  abbreviations: () => AsyncIterable<AbbreviationRow>;
+}
+
+/** Deduplicated abbreviation rows of LRABR lines (same rule as conceptSearch/abbreviations lrabrRows). */
+export async function* lrabrRowsAsync(lines: AsyncIterable<string>): AsyncGenerator<AbbreviationRow> {
+  const seen = new Set<string>();
+  for await (const line of lines) {
+    const r = parseLrabrLine(line);
+    if (!r) continue;
+    const k = `${r.abbr}\u0000${umlsNorm(r.expansion)}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    yield r;
+  }
+}
+
+/** One subset A line → row. */
+function parseSubsetAbbreviation(p: string[]): AbbreviationRow | null {
+  if (p[0] !== "A" || p.length < 4) return null;
+  return parseLrabrLine(`|${p[1]}|${p[2]}||${p.slice(3).join("|")}|`);
 }
 
 /** Lines of a byte stream (UTF-8, \n or \r\n). Not readline: its async iterator can throw
@@ -239,6 +267,7 @@ export async function openUmls(src: ByteSource, fallbackRelease = "unknown"): Pr
     if (!header.startsWith("UMLS-SUBSET|")) throw new Error("gzip file is not a UMLS subset written by this loader");
     const release = header.split("|")[1] || fallbackRelease;
     const sabs = new Map<string, number>();
+    const abbreviations: AbbreviationRow[] = [];
     let pending: UmlsRow | null = null;
     // S lines come first; read until the first C line.
     for (;;) {
@@ -246,7 +275,10 @@ export async function openUmls(src: ByteSource, fallbackRelease = "unknown"): Pr
       if (n.done) break;
       const p = n.value.split("|");
       if (p[0] === "S") sabs.set(p[1], Number(p[2]));
-      else if (p[0] === "C" && p.length >= 5) {
+      else if (p[0] === "A") {
+        const a = parseSubsetAbbreviation(p);
+        if (a) abbreviations.push(a);
+      } else if (p[0] === "C" && p.length >= 5) {
         pending = { cui: p[1], sab: p[2], tty: p[3], str: p.slice(4).join("|") };
         break;
       }
@@ -258,14 +290,22 @@ export async function openUmls(src: ByteSource, fallbackRelease = "unknown"): Pr
         if (n.done) return;
         const p = n.value.split("|");
         if (p[0] === "C" && p.length >= 5 && sabs.has(p[2])) yield { cui: p[1], sab: p[2], tty: p[3], str: p.slice(4).join("|") };
+        else if (p[0] === "A") {
+          const a = parseSubsetAbbreviation(p);
+          if (a) abbreviations.push(a);
+        }
       }
     }
-    return { release, sabs, rows: rows() };
+    async function* abbrevs(): AsyncGenerator<AbbreviationRow> {
+      yield* abbreviations;
+    }
+    return { release, sabs, rows: rows(), abbreviations: abbrevs };
   }
   const entries = await zipEntries(src);
   const find = (file: string): ZipEntry | undefined => entries.find((e) => e.name.split("/").pop()?.toUpperCase() === file);
   const mrsab = find("MRSAB.RRF");
   const mrconso = find("MRCONSO.RRF");
+  const lrabr = find("LRABR");
   if (!mrsab || !mrconso) throw new Error("MRSAB.RRF / MRCONSO.RRF not found in the zip");
   const conso: ZipEntry = mrconso;
   const release = (mrconso.name.match(/(\d{4}A[AB])/) || [])[1] || fallbackRelease;
@@ -278,11 +318,19 @@ export async function openUmls(src: ByteSource, fallbackRelease = "unknown"): Pr
       if (r) yield r;
     }
   }
-  return { release, sabs, rows: rows() };
+  async function* abbrevs(): AsyncGenerator<AbbreviationRow> {
+    if (lrabr) yield* lrabrRowsAsync(linesOf(await zipEntryStream(src, lrabr)));
+  }
+  return { release, sabs, rows: rows(), abbreviations: abbrevs };
+}
+
+/** Abbreviation rows of a plain LRABR file. */
+export function lrabrFile(path: string): AsyncIterable<AbbreviationRow> {
+  return lrabrRowsAsync(linesOf(fs.createReadStream(path, { highWaterMark: 1 << 20 })));
 }
 
 /** Write the compact subset (same filter) — small enough to upload through the admin console. */
-export async function writeSubset(src: UmlsSource, outPath: string): Promise<number> {
+export async function writeSubset(src: UmlsSource, outPath: string, extraAbbreviations?: AsyncIterable<AbbreviationRow>): Promise<number> {
   const gz = zlib.createGzip({ level: 9 });
   const out = fs.createWriteStream(outPath);
   gz.pipe(out);
@@ -294,6 +342,16 @@ export async function writeSubset(src: UmlsSource, outPath: string): Promise<num
   for await (const r of src.rows) {
     await write(`C|${r.cui}|${r.sab}|${r.tty}|${r.str}\n`);
     n += 1;
+  }
+  const seen = new Set<string>();
+  for (const it of [src.abbreviations(), extraAbbreviations]) {
+    if (!it) continue;
+    for await (const a of it) {
+      const k = `${a.abbr}\u0000${umlsNorm(a.expansion)}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      await write(`A|${a.abbr}|${a.kind}|${a.expansion}\n`);
+    }
   }
   await new Promise<void>((resolve, reject) => {
     out.on("finish", () => resolve());
@@ -311,6 +369,8 @@ export interface UmlsLoadStats {
   rows_read: number;
   terms: number;
   concepts: number;
+  /** Abbreviation lexicon rows written (null = the file carries none; the table was left as is). */
+  abbreviations?: number | null;
   stopped: boolean;
 }
 
@@ -362,6 +422,22 @@ export async function loadUmls(
   }
   await flush();
   if (read === 0) throw new Error("no UMLS rows passed the filter (wrong file?)");
+  // The abbreviation lexicon is small (~10^5 rows): read it whole before the transaction.
+  const abbr: string[][] = [[], [], [], []];
+  const abbrSeen = new Set<string>();
+  for await (const a of src.abbreviations()) {
+    const k = `${a.key}\u0000${a.abbr}\u0000${a.expansion}`;
+    if (abbrSeen.has(k)) continue;
+    abbrSeen.add(k);
+    abbr[0].push(a.key);
+    abbr[1].push(a.abbr);
+    abbr[2].push(a.expansion);
+    abbr[3].push(a.kind);
+  }
+  const lexiconTable = abbr[0].length
+    ? Boolean((await pool.query<{ t: string | null }>("SELECT to_regclass('fhir.abbreviation_lexicon')::text AS t")).rows[0]?.t)
+    : false;
+  if (abbr[0].length && !lexiconTable) await log("UMLS: the file carries an abbreviation lexicon but fhir.abbreviation_lexicon does not exist (apply migration 20261027) — skipped");
   await log(`UMLS: ${read.toLocaleString("en-US")} rows staged; promoting`);
   const client = await pool.connect();
   let terms = 0;
@@ -379,6 +455,15 @@ export async function loadUmls(
     );
     terms = ins.rowCount ?? 0;
     concepts = Number((await client.query("SELECT COUNT(DISTINCT cui) AS n FROM fhir.umls_terms")).rows[0]?.n ?? 0);
+    if (lexiconTable) {
+      await client.query("TRUNCATE fhir.abbreviation_lexicon");
+      for (let i = 0; i < abbr[0].length; i += 10000) {
+        await client.query(
+          "INSERT INTO fhir.abbreviation_lexicon (key, abbr, expansion, kind, source) SELECT k, a, e, t, 'LRABR' FROM unnest($1::text[], $2::text[], $3::text[], $4::text[]) AS u(k, a, e, t) ON CONFLICT DO NOTHING",
+          abbr.map((c) => c.slice(i, i + 10000)),
+        );
+      }
+    }
     await client.query(
       `INSERT INTO fhir.umls_release (id, release, sabs, terms, concepts, source_file, loaded_at)
        VALUES (1, $1, $2::jsonb, $3, $4, $5, NOW())
@@ -395,22 +480,26 @@ export async function loadUmls(
     await pool.query("DROP TABLE IF EXISTS admin.stage_umls_terms").catch(() => undefined);
   }
   await pool.query("ANALYZE fhir.umls_terms").catch(() => undefined);
-  await log(`UMLS ${src.release}: ${terms.toLocaleString("en-US")} terms / ${concepts.toLocaleString("en-US")} concepts from ${src.sabs.size} SABs`);
-  return { release: src.release, sabs: [...src.sabs.keys()].sort(), rows_read: read, terms, concepts, stopped: false };
+  const abbreviations = lexiconTable ? abbr[0].length : null;
+  await log(
+    `UMLS ${src.release}: ${terms.toLocaleString("en-US")} terms / ${concepts.toLocaleString("en-US")} concepts from ${src.sabs.size} SABs` +
+      (abbreviations !== null ? `; abbreviation lexicon: ${abbreviations.toLocaleString("en-US")} rows` : ""),
+  );
+  return { release: src.release, sabs: [...src.sabs.keys()].sort(), rows_read: read, terms, concepts, abbreviations, stopped: false };
 }
 
 async function main(): Promise<void> {
   const cfg = config();
   configureLogLevel(cfg.logLevel);
   const argv = process.argv.slice(2);
-  if (argv[0] === "--subset" && argv.length === 3) {
+  if (argv[0] === "--subset" && (argv.length === 3 || argv.length === 4)) {
     const src = await openUmls(fileSource(argv[1]));
-    const n = await writeSubset(src, argv[2]);
+    const n = await writeSubset(src, argv[2], argv[3] ? lrabrFile(argv[3]) : undefined);
     logInfo(`UMLS subset written: ${n} rows → ${argv[2]}`);
     return;
   }
   if (argv.length !== 1) {
-    logError("usage: umls.js --subset <umls.zip> <out.rrf.gz> | umls.js <umls.zip | subset.rrf.gz>");
+    logError("usage: umls.js --subset <umls.zip> <out.rrf.gz> [LRABR] | umls.js <umls.zip | subset.rrf.gz>");
     process.exit(2);
   }
   const pool = new pg.Pool({ connectionString: cfg.databaseUrl, max: 2 });

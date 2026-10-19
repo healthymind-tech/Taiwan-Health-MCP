@@ -169,6 +169,12 @@ export async function conceptIndexStatus(): Promise<Record<string, unknown>> {
   } catch {
     umls = null; // migration 20261023 not applied
   }
+  let abbreviations: number | null = null;
+  try {
+    abbreviations = Number((await query<{ n: string }>("SELECT COUNT(*) AS n FROM fhir.abbreviation_lexicon")).rows[0]?.n ?? 0);
+  } catch {
+    abbreviations = null; // migration 20261027 not applied
+  }
   const jobs = await query<Record<string, unknown>>(
     `SELECT job_id, job_type, status, created_at, finished_at FROM admin.import_jobs
       WHERE job_type IN ('ig_concept_index', 'ig_embed', 'umls_import') ORDER BY created_at DESC LIMIT 6`,
@@ -179,6 +185,7 @@ export async function conceptIndexStatus(): Promise<Record<string, unknown>> {
     embeddings: { embeddable_terms: Number(emb.rows[0]?.terms ?? 0), vectors: Number(emb.rows[0]?.vectors ?? 0) },
     thesaurus_entries: Number(thes.rows[0]?.n ?? 0),
     umls,
+    abbreviation_lexicon_entries: abbreviations,
     recent_jobs: jobs.rows,
   };
 }

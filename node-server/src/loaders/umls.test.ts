@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import fsp from "node:fs/promises";
 import { zipSync, strToU8 } from "fflate";
-import { allowedSabs, bufferSource, fileSource, openUmls, parseMrconsoLine, writeSubset, zipEntries, type UmlsRow } from "./umls.js";
+import { allowedSabs, bufferSource, fileSource, lrabrFile, openUmls, parseMrconsoLine, writeSubset, zipEntries, type UmlsRow } from "./umls.js";
 
 // MRSAB: VCUI|RCUI|VSAB|RSAB|SON|SF|SVER|VSTART|VEND|IMETA|RMETA|SLC|SCC|SRL|TFR|CFR|CXTY|TTYL|ATNL|LAT|CENC|CURVER|SABIN|SSN|SCIT|
 const sab = (rsab: string, srl: number, curver = "Y"): string =>
@@ -50,6 +50,42 @@ test("streams members out of a zip and round-trips through the subset format", a
     const rows: UmlsRow[] = [];
     for await (const r of again.rows) rows.push(r);
     assert.deepEqual(rows.map((r) => [r.cui, r.sab, r.tty]), [["C0001", "MSH", "MH"], ["C0001", "SNOMEDCT_US", "SY"], ["C0001", "MSH", "AB"]]);
+  } finally {
+    await fsp.rm(dir, { recursive: true, force: true });
+  }
+});
+
+const LRABR = [
+  "E0000001|PLEX|acronym|E0000002|plasma exchange|",
+  "E0000001|PLEX|acronym|E0000003|plasma-exchange|",
+  "E0000004|chole|abbreviation|E0000005|cholecystectomy|",
+  "E0000006|X|acronym|E0000007|single letter|",
+].join("\n") + "\n";
+
+test("abbreviation lexicon (LRABR): read from a zip member and carried through the subset", async () => {
+  const zip = Buffer.from(zipSync({ "META/MRSAB.RRF": strToU8(MRSAB), "META/MRCONSO.RRF": strToU8(MRCONSO), "LEX/LRABR": strToU8(LRABR) }));
+  const src = await openUmls(bufferSource(zip));
+  const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "umls-test-"));
+  try {
+    const out = path.join(dir, "subset.rrf.gz");
+    await writeSubset(src, out);
+    const again = await openUmls(fileSource(out));
+    for await (const _ of again.rows) void _;
+    const abbr = [];
+    for await (const a of again.abbreviations()) abbr.push([a.key, a.abbr, a.expansion, a.kind]);
+    // Spelling variants collapse, one-letter abbreviations are dropped.
+    assert.deepEqual(abbr, [["plex", "PLEX", "plasma exchange", "acronym"], ["chole", "chole", "cholecystectomy", "abbreviation"]]);
+    // A plain LRABR file can be added when writing the subset.
+    const lr = path.join(dir, "LRABR");
+    await fsp.writeFile(lr, "E1|TAH|acronym|E2|total abdominal hysterectomy|\n");
+    const plain = await openUmls(bufferSource(Buffer.from(zipSync({ "META/MRSAB.RRF": strToU8(MRSAB), "META/MRCONSO.RRF": strToU8(MRCONSO) }))));
+    const out2 = path.join(dir, "subset2.rrf.gz");
+    await writeSubset(plain, out2, lrabrFile(lr));
+    const third = await openUmls(fileSource(out2));
+    for await (const _ of third.rows) void _;
+    const keys = [];
+    for await (const a of third.abbreviations()) keys.push(a.key);
+    assert.deepEqual(keys, ["tah"]);
   } finally {
     await fsp.rm(dir, { recursive: true, force: true });
   }

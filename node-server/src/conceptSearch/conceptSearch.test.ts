@@ -2,7 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { clinicalCore, cnToInt, groupKey, normalizeText, tokenize } from "./text.js";
 import { buildEntries, mineLoincAcronyms, mineSnomedAcronyms, plausibleAbbreviation, Thesaurus } from "./thesaurus.js";
-import { ConceptIndex, editDistance, fuse, nearCodes, prepareQuery } from "./engine.js";
+import { abbreviationWords, ConceptIndex, editDistance, fuse, nearCodes, prepareQuery, queryWords, rankSenses } from "./engine.js";
+import { abbreviationKey, applicableExpansions, parseLrabrLine, plausibleSense } from "./abbreviations.js";
 import { assembleCodeSystem, conceptMapLinks, supplementApplies } from "./assemble.js";
 
 test("normalizeText: NFKC, dashes, variants, Chinese numerals before measure words, units, comparators", () => {
@@ -289,4 +290,65 @@ test("ConceptIndex.search: a long English word also matches another form of its 
   ]);
   const hits = ix.search(prepareQuery("recurrent inguinal hernia repair", null), 5);
   assert.equal(ix.conceptAt(hits[0].concept).code, "R");
+});
+
+test("clinicalCore strips dosing frequencies, measured values and doses but keeps sizes and test numbers", () => {
+  const core = (q: string): string => clinicalCore(normalizeText(q));
+  assert.equal(core("Hct 28% (UGI bleed) f/u q6h"), "hct (ugi bleed)");
+  assert.equal(core("PLEX #3 (GBS, 5% albumin replacement)"), "plex (gbs, albumin replacement)");
+  assert.equal(core("Hb 9.1 recheck bid"), "hb recheck");
+  assert.equal(core("CA19-9 f/u"), "ca19-9");
+  assert.equal(core("B12 0.5mg"), "b12");
+  assert.ok(core("傷口 < 5 cm").includes("5公分"));
+  assert.ok(core("ETGA < 2 hr").includes("2 hr"));
+});
+
+test("abbreviation lexicon rows: LRABR parsing, case rules, plausible senses", () => {
+  assert.deepEqual(parseLrabrLine("E0000048|PLEX|acronym|E0001|plasma exchange|"), { key: "plex", abbr: "PLEX", expansion: "plasma exchange", kind: "acronym" });
+  assert.equal(parseLrabrLine("E1|A|acronym|E2|alpha|"), null); // one letter
+  assert.equal(parseLrabrLine("E1|ABC|other|E2|a b c thing|"), null); // not an abbreviation type
+  assert.equal(parseLrabrLine("E1|ABC|acronym|E2|ab c|"), null); // expansion is the abbreviation
+  assert.equal(abbreviationKey("Ｉ＆Ｄ"), "i&d");
+  assert.ok(plausibleSense("PLEX", "plasma exchange"));
+  assert.ok(plausibleSense("trach", "tracheostomy"));
+  assert.ok(!plausibleSense("ABO", "antibody"));
+  const rows = [
+    { abbr: "BMA", expansion: "bone marrow aspirate" },
+    { abbr: "chole", expansion: "cholecystectomy" },
+  ];
+  // Acronym rows need an abbreviation-like word; lower-case clippings apply to words the CodeSystem lacks.
+  assert.deepEqual(applicableExpansions(rows.slice(0, 1), false, false), []);
+  assert.deepEqual(applicableExpansions(rows.slice(0, 1), true, false), ["bone marrow aspirate"]);
+  assert.deepEqual(applicableExpansions(rows.slice(1), false, false), ["cholecystectomy"]);
+  assert.deepEqual(applicableExpansions(rows.slice(1), false, true), []);
+});
+
+test("general-lexicon senses fill thesaurus gaps, ranked by the CodeSystem's own names", () => {
+  const ix = new ConceptIndex([
+    { code: "29014B", display: "骨髓穿刺", terms: [{ text: "骨髓穿刺", lang: "zh", kind: "display" }, { text: "Bone marrow puncture", lang: "en", kind: "designation" }] },
+    { code: "58008C", display: "血漿置換術", terms: [{ text: "血漿置換術", lang: "zh", kind: "display" }, { text: "Plasma exchange", lang: "en", kind: "designation" }] },
+    { code: "12192C", display: "前降鈣素原", terms: [{ text: "前降鈣素原", lang: "zh", kind: "display" }, { text: "Procalcitonin (PCT)", lang: "en", kind: "designation" }] },
+    { code: "23203C", display: "三稜鏡檢查", terms: [{ text: "三稜鏡檢查", lang: "zh", kind: "display" }, { text: "Prism cover test", lang: "en", kind: "designation" }] },
+  ]);
+  const lexicon = new Map([
+    ["plex", ["plexin", "plasma exchange"]],
+    ["bma", ["British Medical Association", "bone marrow aspirate"]],
+    ["pct", ["prism cover test", "postcoital test"]],
+  ]);
+  const rank = (q: string): string[] => ix.search(prepareQuery(q, th, { index: ix, lexicon }), 5).map((h) => ix.conceptAt(h.concept).code);
+  assert.equal(rank("PLEX")[0], "58008C");
+  assert.equal(rank("BMA")[0], "29014B");
+  // The CodeSystem itself uses "PCT" as a word: the general lexicon is not consulted.
+  assert.equal(rank("PCT")[0], "12192C");
+  assert.deepEqual(rankSenses("pct", th, ix, lexicon.get("pct"), 3), []);
+  // Without the index nothing is taken from the lexicon.
+  assert.deepEqual(rankSenses("plex", th, null, lexicon.get("plex"), 3), []);
+  assert.deepEqual(rankSenses("plex", th, ix, lexicon.get("plex"), 3), ["plasma exchange"]);
+});
+
+test("shorthand joined by & or / is one query word; its parts stay words", () => {
+  assert.deepEqual(queryWords("i&d of abscess"), ["i&d", "i", "d", "of", "abscess"]);
+  assert.deepEqual(queryWords("na/k f"), ["na/k", "na", "k", "f"]);
+  assert.ok(abbreviationWords("U/A").has("u/a"));
+  assert.ok(!abbreviationWords("C/S").has("c"));
 });

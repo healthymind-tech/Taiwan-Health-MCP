@@ -129,7 +129,9 @@ export const SOURCE_CATALOG: readonly SourceCatalogEntry[] = [
     description:
       "Optional, needs a UMLS licence: the UMLS Metathesaurus release zip (or the compact subset written by " +
       "`node dist/loaders/umls.js --subset`). English synonyms and abbreviations of SRL-0 vocabularies plus " +
-      "SNOMEDCT_US steer the IG concept search (fhir_normalize_code); UMLS strings are never shown in tool output.",
+      "SNOMEDCT_US steer the IG concept search (fhir_normalize_code); UMLS strings are never shown in tool output. " +
+      "A SPECIALIST Lexicon LRABR table in the zip (LEX/LRABR) or appended to the subset " +
+      "(`--subset <zip> <out.rrf.gz> <LRABR>`) loads the optional abbreviation lexicon.",
     accepted_extensions: [".zip", ".gz"],
     multi_source: false,
   },

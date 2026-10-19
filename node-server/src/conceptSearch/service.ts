@@ -15,7 +15,8 @@ import type { EmbeddingService } from "../embeddingService.js";
 import * as terminology from "../fhirTerminology.js";
 import type { PackageRow } from "../fhirIg.js";
 import { assembleCodeSystem } from "./assemble.js";
-import { abbreviationWords, ConceptIndex, fuse, nearCodes, querySegments, type FuseOptions, type PhraseSynonyms, type QueryVariant, prepareQuery, type ConceptInput, type RankedConcept, type SemHit, type TermKind } from "./engine.js";
+import { abbreviationWords, ConceptIndex, SENSES, fuse, nearCodes, querySegments, queryWords, type FuseOptions, type PhraseSynonyms, type QueryVariant, prepareQuery, type ConceptInput, type RankedConcept, type SemHit, type TermKind } from "./engine.js";
+import { abbreviationKey, applicableExpansions } from "./abbreviations.js";
 import { clinicalCore, compact, LATIN_STOP, normalizeText, tokenize, umlsNorm } from "./text.js";
 import { Thesaurus, type ThesaurusEntry } from "./thesaurus.js";
 import { KEYWORD_ONLY_MODE, KEYWORD_ONLY_NOTE } from "../searchQuality.js";
@@ -417,6 +418,63 @@ export class IgConceptSearch {
     }
   }
 
+  private lexiconState: { at: number; on: boolean } | null = null;
+
+  protected async lexiconAvailable(): Promise<boolean> {
+    if (this.lexiconState && Date.now() - this.lexiconState.at < 10 * 60_000) return this.lexiconState.on;
+    let on = false;
+    try {
+      on = (await query("SELECT 1 FROM fhir.abbreviation_lexicon LIMIT 1")).rows.length > 0;
+    } catch {
+      on = false;
+    }
+    this.lexiconState = { at: Date.now(), on };
+    return on;
+  }
+
+  /** Abbreviation lexicon rows for lookup keys. */
+  protected async lexiconRows(keys: string[]): Promise<Array<{ key: string; abbr: string; expansion: string }>> {
+    return (
+      await query<{ key: string; abbr: string; expansion: string }>(
+        "SELECT key, abbr, expansion FROM fhir.abbreviation_lexicon WHERE key = ANY($1::text[])",
+        [keys],
+      )
+    ).rows;
+  }
+
+  /**
+   * Candidate expansions of the query's abbreviations from the optional abbreviation lexicon
+   * (fhir.abbreviation_lexicon, SPECIALIST LRABR — loaded with the UMLS store). Acronyms
+   * apply to words written like abbreviations, lower-case clippings ("chole") to words the
+   * CodeSystem does not know. The engine ranks the senses against the CodeSystem.
+   */
+  async lexiconExpansions(text: string, index: ConceptIndex): Promise<Map<string, string[]>> {
+    const out = new Map<string, string[]>();
+    if (!(await this.lexiconAvailable())) return out;
+    // Only the head of the text (its first clause) — the ordered item; acronyms in the
+    // indication / notes that follow are context, and a wrong general-lexicon sense there
+    // would only add noise.
+    const full = normalizeText(text);
+    const core = clinicalCore(full) || full;
+    const words = queryWords(querySegments(core)[0] ?? core).slice(0, 16);
+    if (!words.length) return out;
+    const abbrevLike = abbreviationWords(text);
+    try {
+      const rows = await this.lexiconRows([...new Set(words.map(abbreviationKey))]);
+      const byKey = new Map<string, Array<{ abbr: string; expansion: string }>>();
+      for (const r of rows) byKey.set(r.key, [...(byKey.get(r.key) || []), r]);
+      for (const w of words) {
+        const rs = byKey.get(abbreviationKey(w));
+        if (!rs || w.replace(/[^a-z0-9]/g, "").length < SENSES.minLength) continue;
+        const exps = applicableExpansions(rs, abbrevLike.has(w), index.hasWord(w));
+        if (exps.length) out.set(w, exps);
+      }
+    } catch (err) {
+      logWarning("abbreviation lexicon lookup failed", { error: String((err as Error).message) });
+    }
+    return out;
+  }
+
   /** Free text → ranked concepts of one IG CodeSystem. */
   async search(loc: CsLocation, text: string, limit: number, opts: { siblings?: boolean; fuse?: FuseOptions } = {}): Promise<ConceptSearchResult> {
     const warnings: string[] = [];
@@ -427,7 +485,8 @@ export class IgConceptSearch {
           "searching its own displays/designations only",
       );
     }
-    const variants = prepareQuery(text, thesaurus, { synonyms: await this.umlsSynonyms(text, index) });
+    const [synonyms, lexicon] = await Promise.all([this.umlsSynonyms(text, index), this.lexiconExpansions(text, index)]);
+    const variants = prepareQuery(text, thesaurus, { synonyms, index, lexicon });
     const lex = index.search(variants, Math.max(60, limit * 4));
     const sem = indexed ? await this.semantic(loc, semanticTexts(text, variants)) : { hits: null, hasVectors: false };
     const keywordOnly = !sem.hits || !sem.hasVectors;

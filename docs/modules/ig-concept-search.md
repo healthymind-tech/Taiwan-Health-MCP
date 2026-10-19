@@ -23,7 +23,9 @@
 
 - **正規化**：NFKC（全形 → 半形）、大小寫、各種破折號、異體字（臺/台、脢/酶…）、量詞前的中文數字（小於五公分 → 小於5公分）、
   `cm` → 公分、`<` → 小於、點號縮寫（C.R.P → crp）、`w/o`。
-- **去除病歷雜訊**：左右側、`x1`、`5針`、縫線規格（4-0 Nylon）、`r/o`、`f/u`、`s/p`。
+- **去除病歷雜訊**：左右側、`x1`、`5針`、縫線規格（4-0 Nylon）、`r/o`、`f/u`、`s/p`、給藥 / 採檢頻率（`q6h`、`q3m`、`bid`、`prn`）、
+  帶單位的數值與劑量（`7.8%`、`0.5mg`、`25 cmH2O`、`28Fr`、`2.4 ATA`）與小數檢驗值（`Hb 9.1`）。大小（公分）、時間長度與年齡保留。
+- **速記詞**：以 `&` / `/` 連接的短速記（`I&D`、`U/A`、`B/C`）視為一個詞，其中各段仍各自是詞（`Na/K` → na、k）。
 - **斷詞**：英文詞（字尾 -s / -ing / -ed 簡化）、中文雙字詞加低權重單字；查詢中不存在於索引的英文截詞會以字首比對
   （abd → abdominal、vanco → vancomycin）；7 個字母以上的英文詞，名稱裡沒有它時也以前 6 個字母相同的其他詞形打折比對
   （recurrent ↔ recurrence、laparoscopic ↔ laparoscopy）。
@@ -31,6 +33,14 @@
   縮寫與橋接全部來自資料：SNOMED CT「ACR - 展開」描述、LOINC shortname ↔ component、IG 名稱內定義的縮寫
   （「… lithotripsy (ESWL)」，Schwartz–Hearst 驗證）、ICD-10 / IG 中英對照名稱挖出的英 ↔ 中詞對（Dice + 雙向最佳配對）、
   `grounding/twLexiconData.ts` 的 abbrev / zhEn 表，以及（選用）UMLS。全部存在 `fhir.term_thesaurus` / `fhir.umls_terms`。
+- **一般縮寫表補缺**（選用，`fhir.abbreviation_lexicon`，SPECIALIST Lexicon 的 LRABR，隨 UMLS 檔載入）：查詢**第一個子句**中的縮寫，
+  若 CodeSystem 本身沒有這個字（例如「Procalcitonin (PCT)」已含 PCT）、上述縮寫表的展開也都不被 CodeSystem 支持
+  （支持度 < 0.45），才從縮寫表取候選意義。一般縮寫表一個縮寫常有數十個意義（LP → lipoprotein、lumbar puncture …），
+  每個意義以「CodeSystem 自己的名稱能多好地命名它」評分：該意義單獨查詢的最佳字詞分數（上限 1）+ 0.3 × 該概念的使用量，
+  支持度 ≥ 0.45 才採用、同一概念只留一個讀法，依分數排序成為查詢變體（第一名也送去 embedding）。
+  大寫縮寫（PLEX、BMA）只套用在寫成縮寫樣子的詞；小寫截詞（chole、trach）只套用在 CodeSystem 不認得的詞；
+  少於 3 個字母 / 數字的縮寫太歧義不展開；單字展開必須是截詞（trach → tracheostomy），ABO → antibody 這類只是字母剛好出現的不採用。
+  後面子句（適應症、備註）裡的縮寫不展開，以免錯誤意義帶進雜訊。
 - **評分**：類 BM25 加查詢 / 名稱涵蓋率；**原文**與某個名稱完全相同才算 `exact`，一定排第一（官方中文名稱直接查詢的 top-1 ≥ 98%）。
 - **語意**：與 ICD 相同的 embedding 模型與身分（`ig_embed` 工作，向量以 `sha256(名稱)` 定址，同名只嵌一次）；
   查詢時把核心句、縮寫展開句與第一個子句一次送去 embedding，對該 CodeSystem 的向量做精確掃描（不建 HNSW）。
@@ -74,6 +84,13 @@ CDCREC、MVX、CVX、TKMT、SPN、MCM、QMR、RAM、CCS、CCSR_*、DXP、ICPC。
 且只保留至少有 2 個不同字串的概念（2024AA：約 253 萬字串 / 76 萬概念，`fhir.umls_terms` 約 610 MB）。
 來源 SAB 只記在內部（`fhir.concept_index_terms.source`），**UMLS 字串不會出現在任何工具輸出**。
 
+**縮寫表（選用）**：SPECIALIST Lexicon（NLM Lexical Systems Group）的 `LRABR`（`LEX.tgz` 內 `LEX/LRABR`，約 20 MB），
+只取 acronym / abbreviation、縮寫 2–10 字元、展開 3–80 個 ASCII 字元，拼法變體（plasma exchange / plasma-exchange）合併
+（2024 版約 11.5 萬筆 / 3.4 萬個縮寫）。產生精簡檔時加上第三個參數即可一併帶入：
+`node dist/loaders/umls.js --subset <umls.zip> umls-subset-2024AA-lrabr.rrf.gz LEX/LRABR`；
+若上傳的 UMLS zip 本身含 `LRABR` 成員也會讀取。`umls_import` 只有在檔案帶有縮寫表時才取代 `fhir.abbreviation_lexicon`
+（需先套用 migration `20261027_abbreviation_lexicon.sql`；沒有該表時記錄警告並略過）。縮寫表字串同樣**只用於比對，不會出現在工具輸出**。
+
 ## 工作與資料表
 
 | 工作 | 說明 |
@@ -81,14 +98,15 @@ CDCREC、MVX、CVX、TKMT、SPN、MCM、QMR、RAM、CCS、CCSR_*、DXP、ICPC。
 | `ig_import` | 安裝後即建立該批套件的索引，再排入 `ig_embed` |
 | `ig_concept_index` | 補建 / 重建索引（選項：`packages`、`force`、`embed_max_concepts`、`thesaurus`、`queue_embed`），之後重建縮寫表並視需要排入 `ig_embed` |
 | `ig_embed` | 為可嵌入的名稱補齊向量（增量、內容定址） |
-| `umls_import` | 載入 UMLS（選用），之後排入 `ig_concept_index` |
+| `umls_import` | 載入 UMLS（選用；檔案帶 LRABR 時一併載入縮寫表），之後排入 `ig_concept_index` |
 
 資料表：`fhir.concept_index_cs` / `_concepts` / `_terms`、`fhir.concept_embeddings`、`fhir.term_thesaurus`、
 `fhir.codesystem_supplements`（migration `20261022_ig_concept_search.sql`），`fhir.umls_terms` / `fhir.umls_release`
-（`20261023_umls_terms.sql`）。
+（`20261023_umls_terms.sql`），`fhir.abbreviation_lexicon`（`20261027_abbreviation_lexicon.sql`）。
 
 ## 限制
 
-- 台灣病歷特有縮寫（TTE、CVC、NSD、Foley、OB、echo 指超音波…）多數不在 SNOMED / LOINC / UMLS 中，仍可能找不到。
+- 台灣病歷特有縮寫（NSD、Foley、OB、echo 指超音波…）多數不在 SNOMED / LOINC / UMLS / LRABR 中，仍可能找不到；
+  只有 2 個字母的縮寫（PD、LP、VF）不從一般縮寫表展開，靠 CodeSystem 自身、縮寫表與 embedding 判斷。
 - 只有中文名稱、沒有英文 designation 的 CodeSystem（例如職業分類）對英文查詢只能靠 embedding。
 - 概念數很大的 CodeSystem（數萬筆）第一次查詢需數秒載入索引，之後快取於記憶體。

@@ -21,6 +21,7 @@ import { unzipSync } from "fflate";
 import { config } from "../config.js";
 import { logInfo, logError, configureLogLevel } from "../logger.js";
 import { buildComponentNames } from "../loincComponentNames.js";
+import { buildAxisNames } from "../loincAxisNames.js";
 
 // Source-file locations. Mirror the Python loaders' `FHIR_CODE_DIR` default and
 // the `config/datasets.yaml` layout; each path is individually overridable.
@@ -101,7 +102,7 @@ function parseCsv(text: string): string[][] {
 }
 
 /** Parse CSV text into header-keyed records (mirrors `csv.DictReader`). */
-function parseCsvDict(text: string): Record<string, string>[] {
+export function parseCsvDict(text: string): Record<string, string>[] {
   const rows = parseCsv(text);
   if (rows.length === 0) return [];
   // Trim surrounding whitespace from header names so lookups tolerate padded
@@ -195,6 +196,8 @@ export interface LoincStagePayload {
   structure: LoincStructureRows;
   /** 4-col (component, name, lang, name_key) analyte synonyms — see loincComponentNames.ts. */
   componentNameRows: string[][];
+  /** 5-col (axis, value, name, name_key, source) axis vocabulary — see loincAxisNames.ts. */
+  axisNameRows: string[][];
   /** LOINC release version ('2.80'): the highest VersionLastChanged in Loinc.csv. */
   version: string | null;
   stats: { mapping_row_count: number; mapping_match_count: number };
@@ -483,6 +486,17 @@ export function parseLoincComponentNames(buf: Uint8Array, rows: Record<string, s
   return buildComponentNames({ rows, zhRows });
 }
 
+/**
+ * Axis vocabulary (Part.csv part / display names + Loinc.csv RELATEDNAMES2) as
+ * loinc.axis_names rows. Without Part.csv only part names and related names are derived.
+ */
+export function parseLoincAxisNames(rows: Record<string, string>[], partText: string | null): string[][] {
+  const parts = partText
+    ? parseCsvDict(partText).map((p) => ({ partType: p.PartTypeName, partName: p.PartName, displayName: p.PartDisplayName, status: p.Status }))
+    : null;
+  return buildAxisNames({ rows, parts });
+}
+
 /** SQL recording the loaded LOINC version (params: version, term_count, other_code_count). */
 export const LOINC_EDITION_UPSERT_SQL = `
   INSERT INTO loinc.editions (code_system, version, term_count, other_code_count, loaded_at)
@@ -520,9 +534,10 @@ export function buildLoincStagePayload(
     const name = Object.keys(accessory).find((n) => re.test(n));
     return name ? Buffer.from(accessory[name]).toString("utf-8") : null;
   };
+  const partText = member(/PartFile\/Part\.csv$/);
   const otherCodeRows = parseLoincOtherCodes({
     answerList: member(/AnswerFile\/AnswerList\.csv$/),
-    part: member(/PartFile\/Part\.csv$/),
+    part: partText,
     group: member(/GroupFile\/Group\.csv$/),
     parentGroup: member(/GroupFile\/ParentGroup\.csv$/),
   });
@@ -613,6 +628,7 @@ export function buildLoincStagePayload(
 
   const structure = parseLoincStructure(buf);
   const componentNameRows = parseLoincComponentNames(buf, rows);
+  const axisNameRows = parseLoincAxisNames(rows, partText);
 
   return {
     conceptRows,
@@ -620,6 +636,7 @@ export function buildLoincStagePayload(
     otherCodeRows,
     structure,
     componentNameRows,
+    axisNameRows,
     version,
     stats: { mapping_row_count: mappingRowCount, mapping_match_count: mappingMatchCount },
   };

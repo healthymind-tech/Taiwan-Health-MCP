@@ -15,6 +15,7 @@ interface IndexStatus {
   embeddings: { embeddable_terms: number; vectors: number };
   thesaurus_entries: number;
   umls: { release: string; sabs: string[]; terms: number; concepts: number; source_file: string | null; loaded_at: string } | null;
+  abbreviation_lexicon_entries?: number | null;
   recent_jobs: Array<{ job_id: string; job_type: string; status: string; created_at: string; finished_at: string | null }>;
 }
 
@@ -162,7 +163,7 @@ export function ConceptIndexPanel() {
       <SectionCard
         title="UMLS 同義字（選用）"
         icon={<IconVectorTriangle size={18} />}
-        description="需 UMLS 授權。載入後，查詢與 IG 概念的英文名稱會以 UMLS 同義字 / 縮寫輔助比對（SRL 0 詞彙 + SNOMEDCT_US）；UMLS 字串不會出現在工具輸出。請上傳以 node dist/loaders/umls.js --subset 產生的精簡檔（.rrf.gz），或只含 MRCONSO / MRSAB 的 zip。"
+        description="需 UMLS 授權。載入後，查詢與 IG 概念的英文名稱會以 UMLS 同義字 / 縮寫輔助比對（SRL 0 詞彙 + SNOMEDCT_US）；UMLS 字串不會出現在工具輸出。請上傳以 node dist/loaders/umls.js --subset 產生的精簡檔（.rrf.gz），或只含 MRCONSO / MRSAB 的 zip。產生精簡檔時可再加上 SPECIALIST Lexicon 的 LRABR 檔（縮寫表），查詢中 CodeSystem 與詞庫都不認得的縮寫會依此展開。"
         actions={
           <FileButton onChange={(f) => f && umlsUpload.mutate(f)} accept=".gz,.zip">
             {(props) => (
@@ -177,6 +178,7 @@ export function ConceptIndexPanel() {
           {st?.umls
             ? `已載入 ${st.umls.release}：${fmtNumber(st.umls.terms)} 個字串 / ${fmtNumber(st.umls.concepts)} 個概念，來自 ${st.umls.sabs.length} 個來源詞彙（${st.umls.source_file ?? ""}）。`
             : "未載入（搜尋照常運作，只是沒有 UMLS 同義字）。"}
+          {st?.abbreviation_lexicon_entries ? ` 縮寫表（LRABR）：${fmtNumber(st.abbreviation_lexicon_entries)} 筆。` : ""}
         </Text>
       </SectionCard>
 

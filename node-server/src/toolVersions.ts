@@ -24,7 +24,9 @@ export const TOOLS_VERSION: Record<string, string> = {
   // vector carries the model's task instruction (Qwen3-Embedding). Output shape unchanged.
   // 1.4.0 (2026-10-20): `system` = IG CodeSystem follows fhir_normalize_code 1.5.0 (usage prior / sibling
   // ordering / stem forms); ICD-10-CM output unchanged.
-  search_medical_codes: "1.4.0",
+  // 1.5.0: `system` = IG CodeSystem follows fhir_normalize_code 1.7.0 (noise stripping, abbreviation lexicon);
+  // ICD-10-CM output unchanged.
+  search_medical_codes: "1.5.0",
   // 1.2.0: version-aware package resolution (fhirIg.resolveTarget): provenance.resolved_by /
   // closure_versions, data.deps_missing, "|version" honoured (no silent fallback to another version).
   fhir_get_profile_required_elements: "1.2.1",
@@ -75,7 +77,13 @@ export const TOOLS_VERSION: Record<string, string> = {
   // usage prior and order near-identical siblings the query cannot tell apart (same name, different method /
   // setting) by usage; long English words also match other forms of their stem (recurrent ↔ recurrence).
   // LOINC targets follow search_loinc 1.3.0.
-  fhir_normalize_code: "1.5.0",
+  // 1.6.0: LOINC targets follow search_loinc 1.4.0 (specimen / timing / method words honoured).
+  // 1.7.0: IG CodeSystems — dosing frequencies / measured values / doses in the text are noise (q6h, 7.8%,
+  // 0.5mg, 28Fr, "Hb 9.1"); shorthand joined by "&" / "/" (I&D, U/A) is one word; an abbreviation in the
+  // text's first clause that neither the CodeSystem nor the thesaurus explains is expanded from the optional
+  // abbreviation lexicon (SPECIALIST LRABR, loaded with the UMLS store; migration 20261027), its senses
+  // ranked by how well the CodeSystem names them. Lexicon strings are never shown.
+  fhir_normalize_code: "1.7.0",
   fhir_get_resource_skeleton: "1.2.1",
   fhir_finalize_resource: "1.2.1",
   // ── 2026-10-19 actionable errors (additive fields only; successful outputs unchanged) ──
@@ -99,7 +107,14 @@ export const TOOLS_VERSION: Record<string, string> = {
   // most common terms of every pooled analyte join the pool, a stronger usage prior, panels / ratios sink unless
   // asked for; analyte synonyms from RELATEDNAMES2 + the zh-CN linguistic variant (loinc.component_names,
   // migration 20261025 + LOINC re-import; neutral before) match the query.
-  search_loinc: "1.3.0",
+  // 1.4.0: axis constraints — specimen / timing / method / property / scale words in the query
+  // ("venous", "salivary", "CSF", "24 hour", "random", "dipstick", "HPLC", "%", "titer") are read from LOINC's
+  // own part names (loinc.axis_names: Part.csv part + display names, RELATEDNAMES2 synonyms; migration 20261026
+  // + LOINC re-import; neutral before); within an analyte family the terms honouring them come before the most
+  // common term, and each analyte's most common terms with that specimen / timing join the pool. Also: the plain
+  // analyte of a challenge variant joins the pool ("Renin^baseline" → Renin), a name of an analyte no longer
+  // matches its ratios unless the query asks for a ratio / %, and the semantic guard never displaces the top two.
+  search_loinc: "1.4.0",
   query_loinc: "1.1.1",
   interpret_lab_result: "1.1.1",
   batch_interpret_lab_results: "1.1.1",

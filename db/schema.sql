@@ -1378,6 +1378,19 @@ CREATE TABLE IF NOT EXISTS loinc.component_names (
 CREATE INDEX IF NOT EXISTS idx_loinc_component_names_key ON loinc.component_names (name_key);
 CREATE INDEX IF NOT EXISTS idx_loinc_concepts_component ON loinc.concepts (component);
 
+-- Axis vocabulary for search (20261026): names of the SYSTEM / TIME / METHOD / PROPERTY /
+-- SCALE values (Part.csv part + display names, RELATEDNAMES2 synonyms), so a query's
+-- specimen / timing / method words ("venous", "24 hour", "dipstick", "%") are honoured.
+-- Built by loincAxisNames.ts on LOINC import; search_loinc holds it in memory.
+CREATE TABLE IF NOT EXISTS loinc.axis_names (
+    axis         TEXT NOT NULL,             -- system | time | method | property | scale
+    value        TEXT NOT NULL,             -- the loinc.concepts column value ("BldV", "24H")
+    name         TEXT NOT NULL,
+    name_key     TEXT NOT NULL,             -- normalised lookup key (loincAxisNames.axisKey)
+    source       TEXT NOT NULL,             -- part | display | related | word
+    PRIMARY KEY (axis, value, name_key)
+);
+
 -- Embedding table for hybrid search
 CREATE TABLE IF NOT EXISTS loinc.concept_embeddings (
     loinc_num   TEXT PRIMARY KEY,
@@ -1609,6 +1622,19 @@ CREATE TABLE IF NOT EXISTS fhir.umls_release (
     concepts    INTEGER NOT NULL DEFAULT 0,
     source_file TEXT,
     loaded_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Optional abbreviation lexicon (SPECIALIST Lexicon LRABR) for the IG concept search, loaded
+-- by umls_import when the UMLS file carries LRABR (migration 20261027). Only steers matching:
+-- an abbreviation unknown to the CodeSystem and the thesaurus is expanded, its senses ranked
+-- by how well the CodeSystem names them; never returned by a tool.
+CREATE TABLE IF NOT EXISTS fhir.abbreviation_lexicon (
+    key       TEXT NOT NULL,          -- abbreviation lower-cased (NFKC), punctuation kept
+    abbr      TEXT NOT NULL,          -- as written in the source ("LP", "chole")
+    expansion TEXT NOT NULL,
+    kind      TEXT NOT NULL,          -- acronym | abbreviation
+    source    TEXT NOT NULL DEFAULT 'LRABR',
+    PRIMARY KEY (key, abbr, expansion)
 );
 
 

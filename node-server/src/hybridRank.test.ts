@@ -101,3 +101,33 @@ test("rankHybrid families: a qualifier the query names still picks its member", 
   assert.equal(out[0].key, "arterial");
   assert.ok(out[0].coverage > out[1].coverage);
 });
+
+test("rankHybrid families: members honouring the query's stated qualifiers come before the default", () => {
+  // "salivary cortisol": every Cortisol term covers "cortisol"; only the saliva term agrees
+  // with the stated specimen, and it wins although the serum term is far more common.
+  const fam = (key: string, sim: number, defaultness: number, qualifier: number): RankCandidate => ({
+    key,
+    texts: [{ text: "Cortisol" }],
+    sim,
+    family: "loinc:cortisol",
+    defaultness,
+    qualifier,
+  });
+  const out = rankHybrid("salivary cortisol", [fam("serum", 0.8, 0.9, -1), fam("saliva", 0.7, 0.3, 1), fam("urine", 0.75, 0.5, -1)], 3);
+  assert.equal(out[0].key, "saliva");
+  // No qualifier stated: the default reading wins as before.
+  const plain = rankHybrid("cortisol", [fam("serum", 0.7, 0.9, 0), fam("saliva", 0.8, 0.3, 0)], 2);
+  assert.equal(plain[0].key, "serum");
+});
+
+test("rankHybrid: the semantic guard never pushes out the top candidates", () => {
+  // Everything below the best candidate is an exact name match (an analyte synonym on the
+  // challenge variants): the guard must not replace the best one to make room.
+  const cands: RankCandidate[] = [
+    { key: "best", texts: [{ text: "Renin [Enzymatic activity/volume] in Plasma" }], sim: 0.6, prior: 0.3 },
+    ...Array.from({ length: 4 }, (_, i) => ({ key: `exact${i}`, texts: [{ text: "Plasma renin activity" }], sim: 0.55 - i * 0.01 })),
+    { key: "vec", texts: [{ text: "Aldosterone and renin panel" }], sim: 0.9 },
+  ];
+  const out = rankHybrid("plasma renin activity", cands, 5);
+  assert.ok(out.some((c) => c.key === "best"), JSON.stringify(out.map((c) => c.key)));
+});

@@ -25,7 +25,11 @@ whether a CodeSystem needs rebuilding; unchanged ones are skipped.
 
 - **Normalisation**: NFKC (full-width → half-width), case, Unicode dashes, variant characters (臺/台, 脢/酶 …), Chinese
   numerals before measure words (小於五公分 → 小於5公分), `cm` → 公分, `<` → 小於, dotted abbreviations (C.R.P → crp), `w/o`.
-- **Chart noise removed**: laterality, `x1`, `5針`, suture specs (4-0 Nylon), `r/o`, `f/u`, `s/p`.
+- **Chart noise removed**: laterality, `x1`, `5針`, suture specs (4-0 Nylon), `r/o`, `f/u`, `s/p`, dosing / sampling
+  frequencies (`q6h`, `q3m`, `bid`, `prn`), measured values and doses with a unit (`7.8%`, `0.5mg`, `25 cmH2O`, `28Fr`,
+  `2.4 ATA`) and decimal lab values (`Hb 9.1`). Sizes (公分), durations and ages are kept.
+- **Shorthand**: short shorthand joined by `&` / `/` (`I&D`, `U/A`, `B/C`) is one word; its parts remain words of their
+  own (`Na/K` → na, k).
 - **Tokens**: English words (-s / -ing / -ed folded), Chinese character bigrams plus low-weight unigrams; an English
   word absent from the index matches as a prefix (abd → abdominal, vanco → vancomycin); an English word of 7+ letters
   that a name lacks also matches, at a discount, another form sharing its first 6 letters (recurrent ↔ recurrence,
@@ -36,6 +40,17 @@ whether a CodeSystem needs rebuilding; unchanged ones are skipped.
   ("… lithotripsy (ESWL)", Schwartz–Hearst validated), English ↔ Chinese word pairs mined from ICD-10 / IG bilingual
   names (Dice + mutual best match), the abbrev / zhEn tables of `grounding/twLexiconData.ts`, and optionally UMLS —
   stored in `fhir.term_thesaurus` / `fhir.umls_terms`.
+- **General abbreviation lexicon fills gaps** (optional, `fhir.abbreviation_lexicon`, the SPECIALIST Lexicon's LRABR,
+  loaded with the UMLS file): an abbreviation in the query's **first clause** is looked up there only when the
+  CodeSystem does not use it as a word itself (e.g. "Procalcitonin (PCT)" already contains PCT) and no thesaurus
+  expansion is supported by the CodeSystem (support < 0.45). A general lexicon gives an abbreviation dozens of senses
+  (LP → lipoprotein, lumbar puncture …); each sense is scored by how well the CodeSystem's own names name it — the best
+  lexical score of the sense on its own (capped at 1) + 0.3 × usage of that concept — kept at support ≥ 0.45, one
+  reading per concept, best first (the best one is also embedded). Upper-case acronyms (PLEX, BMA) apply only to words
+  written like abbreviations, lower-case clippings (chole, trach) only to words the CodeSystem does not know;
+  abbreviations of fewer than 3 letters / digits are too ambiguous to expand from it; a one-word expansion must be a
+  clipping (trach → tracheostomy) — ABO → antibody, where the letters merely occur, is dropped. Abbreviations in later
+  clauses (indication, notes) are not expanded, so a wrong sense there adds no noise.
 - **Scoring**: BM25-like with query / name coverage; only the **text as typed** matching a name exactly is `exact`
   and always ranks first (official Chinese names typed verbatim: top-1 ≥ 98%).
 - **Semantic**: the same embedding model and identity as ICD (`ig_embed` job; vectors keyed by `sha256(name)`, so a
@@ -90,6 +105,15 @@ FMA, MTHSPL, USP, USPMG, HL7V2.5, HL7V3.0, CDCREC, MVX, CVX, TKMT, SPN, MCM, QMR
 (2024AA: ~2.53 M strings / 0.76 M concepts, `fhir.umls_terms` ≈ 610 MB). The SAB is recorded internally only
 (`fhir.concept_index_terms.source`); **no UMLS string is ever returned by a tool**.
 
+**Abbreviation lexicon (optional)**: `LRABR` of the SPECIALIST Lexicon (NLM Lexical Systems Group; `LEX/LRABR` inside
+`LEX.tgz`, ~20 MB). Only acronym / abbreviation rows with a 2–10 character abbreviation and a 3–80 character ASCII
+expansion are kept, spelling variants (plasma exchange / plasma-exchange) collapse (2024 release: ~115 k rows /
+34 k abbreviations). Add it as a third argument when writing the subset:
+`node dist/loaders/umls.js --subset <umls.zip> umls-subset-2024AA-lrabr.rrf.gz LEX/LRABR`; an `LRABR` member of an
+uploaded UMLS zip is read as well. `umls_import` replaces `fhir.abbreviation_lexicon` only when the file carries it
+(apply migration `20261027_abbreviation_lexicon.sql` first; without the table it logs a warning and skips). Lexicon
+strings likewise **only steer matching and never appear in tool output**.
+
 ## Jobs and tables
 
 | Job | Description |
@@ -97,16 +121,17 @@ FMA, MTHSPL, USP, USPMG, HL7V2.5, HL7V3.0, CDCREC, MVX, CVX, TKMT, SPN, MCM, QMR
 | `ig_import` | Indexes the packages it installed, then queues `ig_embed` |
 | `ig_concept_index` | Backfill / rebuild (options: `packages`, `force`, `embed_max_concepts`, `thesaurus`, `queue_embed`); then rebuilds the thesaurus and queues `ig_embed` when vectors are missing |
 | `ig_embed` | Embeds the embeddable names (incremental, content-addressed) |
-| `umls_import` | Loads UMLS (optional), then queues `ig_concept_index` |
+| `umls_import` | Loads UMLS (optional; also the abbreviation lexicon when the file carries LRABR), then queues `ig_concept_index` |
 
 Tables: `fhir.concept_index_cs` / `_concepts` / `_terms`, `fhir.concept_embeddings`, `fhir.term_thesaurus`,
 `fhir.codesystem_supplements` (migration `20261022_ig_concept_search.sql`), `fhir.umls_terms` /
-`fhir.umls_release` (`20261023_umls_terms.sql`).
+`fhir.umls_release` (`20261023_umls_terms.sql`), `fhir.abbreviation_lexicon` (`20261027_abbreviation_lexicon.sql`).
 
 ## Limitations
 
-- Taiwan-specific chart abbreviations (TTE, CVC, NSD, Foley, OB, "echo" for ultrasound …) are mostly absent from
-  SNOMED / LOINC / UMLS and may still not be found.
+- Taiwan-specific chart abbreviations (NSD, Foley, OB, "echo" for ultrasound …) are mostly absent from
+  SNOMED / LOINC / UMLS / LRABR and may still not be found; two-letter abbreviations (PD, LP, VF) are not expanded from
+  the general lexicon and rely on the CodeSystem itself, the thesaurus and the embedding.
 - CodeSystems with Chinese names only and no English designation (e.g. occupations) rely on the embedding for
   English queries.
 - A very large CodeSystem (tens of thousands of concepts) takes a few seconds to load on its first query; it is

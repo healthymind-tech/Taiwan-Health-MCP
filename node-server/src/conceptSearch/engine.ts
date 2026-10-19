@@ -136,17 +136,39 @@ export function querySegments(normalized: string): string[] {
 }
 
 /** Lower-cased words of `text` that are written like abbreviations. */
+/** Shorthand joined by "&" / "/" (I&D, U/A, Na/K) or a (hyphenated) word. */
+const SHORTHAND_OR_WORD = /(?<![a-z0-9])[a-z]{1,2}[&/][a-z]{1,2}(?![a-z0-9/])|[a-z][a-z0-9]*(?:-[a-z0-9]+)?/gi;
+
 export function abbreviationWords(text: string): Set<string> {
   const raw = String(text || "").normalize("NFKC");
-  const words = raw.match(/[A-Za-z][A-Za-z0-9]*(?:-[A-Za-z0-9]+)?/g) || [];
+  const primary = raw.match(SHORTHAND_OR_WORD) || [];
   const out = new Set<string>();
-  const latinOnly = words.length === 1 && !/[\p{Script=Han}]/u.test(raw);
-  for (const w of words) {
+  const latinOnly = primary.length === 1 && !/[\p{Script=Han}]/u.test(raw);
+  const check = (w: string, lone: boolean): void => {
     const upper = (w.match(/[A-Z]/g) || []).length;
-    const abbr = upper >= 2 || (/\d/.test(w) && /[A-Za-z]/.test(w)) || (latinOnly && w.length <= 6) || (upper === 1 && w.length <= 3 && w[0] !== w[0].toUpperCase());
+    const abbr = upper >= 2 || (/\d/.test(w) && /[A-Za-z]/.test(w)) || (lone && w.length <= 6) || (upper === 1 && w.length <= 3 && w[0] !== w[0].toUpperCase());
     if (abbr) out.add(normalizeText(w));
+  };
+  for (const w of primary) {
+    check(w, latinOnly);
+    // The parts of shorthand ("Na/K") are judged as words of a longer text.
+    if (/[&/]/.test(w)) for (const x of w.split(/[&/]/)) if (/^[A-Za-z]/.test(x)) check(x, false);
   }
   return out;
+}
+
+/**
+ * Latin words of a normalised query that may be abbreviations: words, hyphenated words
+ * (ca19-9, t-bil) and short shorthand joined by "&" or "/" (i&d, u/a, b/c).
+ */
+export function queryWords(normalized: string): string[] {
+  const out: string[] = [];
+  for (const w of normalized.match(SHORTHAND_OR_WORD) || []) {
+    out.push(w);
+    // The parts of "na/k" are words of their own.
+    if (/[&/]/.test(w)) out.push(...w.split(/[&/]/).filter((x) => /^[a-z]/.test(x)));
+  }
+  return [...new Set(out)];
 }
 
 /** A phrase of the query (umlsNorm form) and other names of the same concept (synonym store). */
@@ -157,8 +179,54 @@ export interface PhraseSynonyms {
 
 const MAX_SYNONYM_VARIANTS = 14;
 
+/**
+ * Sense selection for gap-filling expansions from the general abbreviation lexicon (one
+ * object so evaluation harnesses can sweep it). A sense is scored by how well the
+ * CodeSystem's own vocabulary names it ({@link ConceptIndex.supportHit}: lexical score capped
+ * at `lexCap` + `popWeight` × usage of the concept it names) and must reach `lexiconMin`;
+ * abbreviations shorter than `minLength` letters/digits are too ambiguous to expand from it.
+ */
+export const SENSES = { lexiconMin: 0.45, maxCandidates: 48, popWeight: 0.3, lexCap: 1, minLength: 3 };
+
+/** Optional inputs of {@link prepareQuery}. */
+export interface PrepareOptions {
+  synonyms?: PhraseSynonyms[];
+  /** Index of the target CodeSystem: ranks abbreviation senses by its vocabulary. */
+  index?: ConceptIndex | null;
+  /** Lower-cased query word → expansions from the abbreviation lexicon (already filtered by case rules). */
+  lexicon?: Map<string, string[]>;
+}
+
+/**
+ * Expansions of one abbreviation, best first: the thesaurus readings in their own order
+ * (curated lexicon, then the most frequent mined expansion). Only when none of them is
+ * named by the CodeSystem (support below `lexiconMin`) and the CodeSystem does not use the
+ * abbreviation itself as a word, the general abbreviation lexicon fills the gap: its
+ * senses are ranked by how well the CodeSystem names them, one reading per concept.
+ */
+export function rankSenses(
+  word: string,
+  thesaurus: Thesaurus,
+  index: ConceptIndex | null | undefined,
+  lexicon: string[] | undefined,
+  max: number,
+): string[] {
+  const own = thesaurus.expansions(word, max);
+  if (!index || !lexicon?.length || index.hasWord(word)) return own;
+  if (thesaurus.expansions(word, 12).some((e) => index.support(e) >= SENSES.lexiconMin)) return own;
+  const byConcept = new Set<number>();
+  const ranked = [...new Set(lexicon)]
+    .slice(0, SENSES.maxCandidates)
+    .map((exp) => ({ exp, ...index.supportHit(exp) }))
+    .filter((c) => c.score >= SENSES.lexiconMin)
+    .sort((a, b) => b.score - a.score)
+    .filter((c) => !byConcept.has(c.concept) && byConcept.add(c.concept) !== undefined)
+    .map((c) => c.exp);
+  return [...ranked, ...own].slice(0, max);
+}
+
 /** Build the weighted query variants of a free-text query. */
-export function prepareQuery(text: string, thesaurus: Thesaurus | null, opts: { synonyms?: PhraseSynonyms[] } = {}): QueryVariant[] {
+export function prepareQuery(text: string, thesaurus: Thesaurus | null, opts: PrepareOptions = {}): QueryVariant[] {
   const full = normalizeText(text);
   const core = clinicalCore(full);
   const bare = withoutBrackets(core);
@@ -194,15 +262,16 @@ export function prepareQuery(text: string, thesaurus: Thesaurus | null, opts: { 
 
   const base = core || full;
   // Acronym / abbreviation expansion, only for words written like abbreviations (TKA, HbA1c,
-  // aPTT, CA19-9) or a lone short query word — never ordinary words ("test", "blood").
-  const words = [...new Set(base.match(/[a-z][a-z0-9]*(?:-[a-z0-9]+)?/g) || [])];
+  // aPTT, CA19-9, I&D) or a lone short query word — never ordinary words ("test", "blood").
+  const words = queryWords(base);
   const abbrevLike = abbreviationWords(text);
+  const lexicon = opts.index ? opts.lexicon : undefined;
   const slots = words
-    .filter((w) => abbrevLike.has(w) || thesaurus.curated.has(w))
-    .map((w, _i, all) => ({ w, exps: thesaurus.expansions(w, all.length === 1 ? 5 : 3) }))
+    .filter((w) => abbrevLike.has(w) || thesaurus.curated.has(w) || Boolean(lexicon?.get(w)?.length))
+    .map((w, _i, all) => ({ w, exps: rankSenses(w, thesaurus, opts.index, lexicon?.get(w), all.length === 1 ? 5 : 3) }))
     .filter((s) => s.exps.length > 0);
   const replaceWord = (s: string, w: string, rep: string): string =>
-    s.replace(new RegExp(`(?<![a-z0-9])${w.replace(/[-]/g, "\\-")}(?![a-z0-9])`, "g"), ` ${normalizeText(rep)} `);
+    s.replace(new RegExp(`(?<![a-z0-9])${w.replace(/[-&/]/g, "\\$&")}(?![a-z0-9])`, "g"), ` ${normalizeText(rep)} `);
   if (slots.length) {
     const rounds = Math.max(...slots.map((x) => x.exps.length));
     for (let k = 0; k < rounds; k += 1) {
@@ -316,6 +385,31 @@ export class ConceptIndex {
 
   get size(): number {
     return this.concepts.length;
+  }
+
+  private supportCache = new Map<string, { score: number; concept: number }>();
+
+  /**
+   * How well the CodeSystem names a phrase on its own: the best lexical score of the phrase
+   * against the index (capped at 1.2; ≈ 1 when it is a term) plus the usage prior of that
+   * best concept, and which concept that is. Used to pick an abbreviation's sense: a sense
+   * the CodeSystem names, and names for a commonly used concept, wins.
+   */
+  supportHit(phrase: string): { score: number; concept: number } {
+    const key = normalizeText(phrase);
+    const hit = this.supportCache.get(key);
+    if (hit) return hit;
+    const toks = tokenize(key);
+    let out = { score: 0, concept: -1 };
+    const top = toks.length ? this.search([{ label: "sense", weight: 1, toks, compact: compact(key), text: key }], 1)[0] : undefined;
+    if (top) out = { score: Math.min(top.score, SENSES.lexCap) + SENSES.popWeight * this.popularity(top.concept), concept: top.concept };
+    if (this.supportCache.size > 20000) this.supportCache.clear();
+    this.supportCache.set(key, out);
+    return out;
+  }
+
+  support(phrase: string): number {
+    return this.supportHit(phrase).score;
   }
 
   /** Whether a (Latin, normalised) word occurs in the index, as is or stemmed. */

@@ -54,6 +54,7 @@ export const MODULE_CLEAR_SPECS: Record<string, ModuleClearSpec> = {
     data: [
       "loinc.reference_ranges", "loinc.concepts", "loinc.other_codes", "loinc.editions",
       "loinc.part_links", "loinc.answer_list_items", "loinc.answer_list_links", "loinc.panel_items", "loinc.map_to", "loinc.component_names",
+      "loinc.axis_names",
     ],
     embeddings: ["loinc.concept_embeddings"],
     jobTypes: ["loinc_import", "loinc_embed"],

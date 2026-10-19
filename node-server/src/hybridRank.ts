@@ -50,6 +50,13 @@ export interface RankCandidate {
   family?: string | null;
   /** How much this member is the family's default reading (higher = more standard / common). */
   defaultness?: number;
+  /**
+   * How well this member agrees with qualifiers the query states explicitly (e.g. a LOINC
+   * term's specimen / timing / method against "venous", "24 hour", "dipstick"). Within a
+   * family it is compared before {@link defaultness}: the default reading only decides among
+   * members that honour the stated qualifiers equally. Default 0 (no qualifier stated).
+   */
+  qualifier?: number;
 }
 
 export interface RankedCandidate {
@@ -185,18 +192,25 @@ export const RANK_DEFAULTS: Required<RankOptions> = {
   familySimTol: 0.2,
 };
 
+interface FamilyMeta {
+  family: string;
+  defaultness: number;
+  qualifier: number;
+  prior: number;
+}
+
 /**
  * Within each family, hand the family's scores (best first) to its members in this order:
  * the members the query cannot tell apart from the family's best match — the same share of
  * the query's words covered, or, when the query matched no name of the family, nearly the
- * same similarity — most
- * default first; then the rest by their own score. The family's place among other
+ * same similarity — those agreeing best with the query's explicit qualifiers first, then
+ * most default; then the rest by their own score. The family's place among other
  * candidates is unchanged; only which member holds it changes. "hemoglobin" thus lands on
  * the commonly resulted Hemoglobin [Mass/volume] in Blood rather than on whichever
  * specimen / unit variant the embedding happens to put first, while "arterial lactate"
  * still prefers the arterial term (it matches more of the query).
  */
-function orderFamilies(scored: RankedCandidate[], meta: Map<string, { family: string; defaultness: number; prior: number }>, o: Required<RankOptions>): void {
+function orderFamilies(scored: RankedCandidate[], meta: Map<string, FamilyMeta>, o: Required<RankOptions>): void {
   const fams = new Map<string, RankedCandidate[]>();
   for (const c of scored) {
     const m = meta.get(c.key);
@@ -219,7 +233,8 @@ function orderFamilies(scored: RankedCandidate[], meta: Map<string, { family: st
     const tied = (m: RankedCandidate): boolean =>
       maxCov >= o.familyLexSignal ? m.coverage >= maxCov - o.familyLexTol : m.sim !== null && m.sim >= maxSim - o.familySimTol;
     const def = (m: RankedCandidate): number => meta.get(m.key)!.defaultness;
-    const head = members.filter(tied).sort((a, b) => def(b) - def(a) || b.score - a.score);
+    const qual = (m: RankedCandidate): number => meta.get(m.key)!.qualifier;
+    const head = members.filter(tied).sort((a, b) => qual(b) - qual(a) || def(b) - def(a) || b.score - a.score);
     const rest = members.filter((m) => !tied(m)).sort((a, b) => b.score - a.score);
     [...head, ...rest].forEach((m, i) => (m.score = scores[i] + prior(m)));
   }
@@ -260,8 +275,10 @@ export function rankHybrid(query: string, candidates: RankCandidate[], limit: nu
     const source: RankedCandidate["source"] = lex > 0.2 && sem > 0.5 ? "hybrid" : lex >= sem ? "lexical" : "semantic";
     return { key: c.key, score, lexical: lex, semantic: sem, sim: c.sim, exact, source, coverage };
   });
-  const meta = new Map<string, { family: string; defaultness: number; prior: number }>();
-  for (const c of candidates) if (c.family) meta.set(c.key, { family: c.family, defaultness: c.defaultness ?? 0, prior: c.prior ?? 0 });
+  const meta = new Map<string, FamilyMeta>();
+  for (const c of candidates) {
+    if (c.family) meta.set(c.key, { family: c.family, defaultness: c.defaultness ?? 0, qualifier: c.qualifier ?? 0, prior: c.prior ?? 0 });
+  }
   if (meta.size > 1) orderFamilies(scored, meta, all);
   scored.sort((a, b) => b.score - a.score || (b.sim ?? -1) - (a.sim ?? -1) || a.key.localeCompare(b.key));
   const out = scored.slice(0, limit);
@@ -270,8 +287,10 @@ export function rankHybrid(query: string, candidates: RankCandidate[], limit: nu
     const bySim = [...scored].filter((c) => c.sim !== null).sort((a, b) => (b.sim ?? 0) - (a.sim ?? 0)).slice(0, keep);
     for (const s of bySim) {
       if (out.some((o) => o.key === s.key)) continue;
-      // Replace the lowest-ranked candidate that is not itself protected or exact.
-      for (let i = out.length - 1; i >= 0; i -= 1) {
+      // Replace the lowest-ranked candidate that is not itself protected or exact — never one
+      // of the first `keep` places (when everything below is an exact name match, the best
+      // non-exact candidate would otherwise be the one pushed out).
+      for (let i = out.length - 1; i >= keep; i -= 1) {
         if (out[i].exact || bySim.some((b) => b.key === out[i].key)) continue;
         out[i] = s;
         break;

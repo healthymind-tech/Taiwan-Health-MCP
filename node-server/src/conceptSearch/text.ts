@@ -15,7 +15,8 @@
  *    bigrams plus low-weight unigrams.
  *
  * `clinicalCore` strips record-writing noise that never belongs to a code's name:
- * laterality, counts (x1, ×2, 5針), suture sizes/materials (4-0 Nylon).
+ * laterality, counts (x1, ×2, 5針), dosing frequencies (q6h, bid), measured values and
+ * doses (Hb 9.1, 7.8%, 0.5mg, 28Fr), suture sizes/materials (4-0 Nylon).
  */
 
 /** Unicode dash-like characters folded to "-" (same set as the grounding lexicon). */
@@ -206,6 +207,12 @@ const NOISE_PATTERNS: RegExp[] = [
   /\d+\s*(?:針|次|顆|支|個|處|片|根|枚|袋|瓶|劑|pcs?|units?|times?|shots?|stitch(?:es)?)/g,
   // chart shorthand that never names the coded concept: r/o (rule out), f/u, s/p, c/o, stat
   /(?<![a-z])(?:r\/o|f\/u|s\/p|c\/o|stat)(?![a-z])/g,
+  // dosing / sampling frequencies: q6h, q3m, bid, prn …
+  /(?<![a-z0-9])(?:q\d+(?:h|hr|d|w|wk|m|mo|y)|qd|bid|tid|qid|qod|qhs|qn|prn|qw|biw|tiw)(?![a-z0-9])/g,
+  // measured values and doses with a unit (7.8%, 0.5mg, 25 cmh2o, 28fr, 2.4 ata) and bare
+  // decimals (lab results: "hb 9.1"). Sizes (公分 …), counts of time and ages are kept.
+  /(?<![a-z0-9.])\d+(?:\.\d+)?\s*(?:%|mg\/dl|g\/dl|u\/l|mg|mcg|ug|μg|g|iu|meq|mmol|mmhg|cmh2o|fr|ata)(?![a-z0-9])/g,
+  /(?<![a-z0-9.\-])\d+\.\d+(?![a-z0-9.%])/g,
   // suture size and material
   /\b\d-0\b/g,
   /\b(?:nylon|vicryl|silk|prolene|dexon|monocryl|chromic|pds|ethilon|dermabond)\b/g,
