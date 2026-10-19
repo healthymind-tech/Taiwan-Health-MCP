@@ -28,13 +28,17 @@ import { pushAll } from "./arrayUtils.js";
 import {
   compactRow,
   compactView,
+  derivationRuleFor,
+  derivedCodeMeanings,
   effectiveRequiredPaths,
   instanceExtensionSites,
   nodesAt,
+  OPTIONAL_ROWS_NOTE,
   projectForRequired,
   READING_GUIDE,
   READING_GUIDE_COMPACT,
   requiredElements,
+  type MustSupportMode,
   type ProjectedElement,
   type RequiredElementRow,
   type RequiredElementsResult,
@@ -42,9 +46,14 @@ import {
 import { toolVersion } from "./toolVersions.js";
 import { IgConceptSearch, type CsLocation } from "./conceptSearch/service.js";
 import { KEYWORD_ONLY_MODE, KEYWORD_ONLY_NOTE } from "./searchQuality.js";
+import { attachSuggestions } from "./fhirSuggestions/index.js";
+import { dbSuggestionDeps, type ServiceHooks } from "./fhirSuggestions/dbDeps.js";
 
 /** fhir_get_profile_required_elements compact view: profile invariants listed in full before the rest are named only. */
 const COMPACT_INVARIANTS = 8;
+/** fhir_get_profile_required_elements: allowedCodes cap for a required binding / for a derived row's binding. */
+const REQUIRED_CODES_CAP = 12;
+const DERIVED_CODES_CAP = 20;
 
 const SKELETON_SKIP = new Set(["id", "meta", "text", "implicitRules", "language", "contained"]);
 
@@ -675,7 +684,7 @@ export class FHIRIGService {
     version: string | null = null,
     instance: Record<string, any> | null = null,
     includeTargetImplied = true,
-    includeMustSupport = false,
+    includeMustSupport: MustSupportMode = false,
     verbosity: "compact" | "full" = "compact",
   ): Promise<string> {
     if (!profile || !String(profile).trim()) return this.err("INVALID_ARGUMENT", "profile is required");
@@ -709,38 +718,51 @@ export class FHIRIGService {
     if (instance) await this.expandInstanceExtensions(pkg, result, els, E, instance);
 
     // Small required bindings: list the allowed codes so the caller need not expand the ValueSet.
-    const vsCache = new Map<string, { codes: string[]; system: string | null } | null>();
+    // Derived rows (Condition.category, ...) also for extensible / preferred bindings, with a
+    // larger cap and — when no curated derivation rule applies — the codes' meanings.
+    type VsEntry = { codes: string[]; system: string | null; codings: Array<{ system: string | null; code: string; display: string | null }> };
+    const vsCache = new Map<string, VsEntry | null>();
     for (const r of result.elements) {
       const b = r.binding;
-      if (!b?.valueSet || b.strength !== "required" || r.fixed || r.pattern) continue;
+      if (!b?.valueSet || r.fixed || r.pattern) continue;
+      const derived = r.grounding_class === "derived";
+      if (b.strength !== "required" && !(derived && (b.strength === "extensible" || b.strength === "preferred"))) continue;
       const types = r.types.map((t) => t.split(".").pop());
       if (!types.some((t) => t === "code" || t === "Coding" || t === "CodeableConcept")) continue;
       const vsUrl = String(b.valueSet).split("|")[0];
-      if (!vsCache.has(vsUrl)) {
-        let entry: { codes: string[]; system: string | null } | null = null;
+      const cap = derived ? DERIVED_CODES_CAP : REQUIRED_CODES_CAP;
+      const key = `${cap}\u0000${vsUrl}`;
+      if (!vsCache.has(key)) {
+        let entry: VsEntry | null = null;
         try {
           const vs = await this.loadValueset(pkg, vsUrl);
           if (vs !== null) {
-            const exp = await terminology.expandCompose(vs.compose || {}, pkg, 13);
-            if (!exp.truncated && exp.codings.length > 0 && exp.codings.length <= 12) {
+            const exp = await terminology.expandCompose(vs.compose || {}, pkg, cap + 1);
+            if (!exp.truncated && exp.codings.length > 0 && exp.codings.length <= cap) {
               const systems = new Set(exp.codings.map((c: any) => c.system ?? null));
               const single = systems.size === 1 ? ([...systems][0] as string | null) : null;
               entry = {
                 codes: exp.codings.map((c: any) => (single === null && c.system ? `${c.system}|${c.code}` : String(c.code))),
                 system: single,
+                codings: exp.codings.map((c: any) => ({ system: c.system ?? null, code: String(c.code), display: c.display ?? null })),
               };
             }
           }
         } catch {
           entry = null;
         }
-        vsCache.set(vsUrl, entry);
+        vsCache.set(key, entry);
       }
-      const entry = vsCache.get(vsUrl);
+      const entry = vsCache.get(key);
       if (entry && entry.codes.length) {
         r.allowedCodes = entry.codes;
         if (entry.system && !types.includes("code")) {
           r.hint = [r.hint, `coding.system ${entry.system}`].filter(Boolean).join("; ");
+        }
+        if (derived && !derivationRuleFor(r.path, r.binding)) {
+          const defs = await this.conceptDefinitions(pkg, entry.codings).catch(() => new Map<string, string>());
+          const meanings = derivedCodeMeanings(entry.codings.map((c) => ({ code: c.code, display: c.display, definition: defs.get(`${c.system}|${c.code}`) ?? null })));
+          if (meanings) r.hint = [r.hint, meanings].filter(Boolean).join("; ");
         }
       }
     }
@@ -753,7 +775,7 @@ export class FHIRIGService {
       verbosity: full ? "full" : "compact",
       count: result.count,
       summary: result.summary,
-      guide: full ? READING_GUIDE : READING_GUIDE_COMPACT,
+      guide: (full ? READING_GUIDE : READING_GUIDE_COMPACT) + (result.elements.some((r) => r.optional) ? ` ${OPTIONAL_ROWS_NOTE}` : ""),
       elements: full ? result.elements.map(compactRow) : compactView(result.elements, E),
     };
     if (result.invariants.length) {
@@ -781,6 +803,35 @@ export class FHIRIGService {
       provenance: { ...this.provenance(pkg), tool: "fhir_get_profile_required_elements", toolVersion: toolVersion("fhir_get_profile_required_elements") },
     };
     return JSON.stringify(env);
+  }
+
+  /** CodeSystem definitions of `codings` (closure order: the first package that defines a code wins). */
+  private async conceptDefinitions(pkg: PackageRow, codings: Array<{ system: string | null; code: string }>): Promise<Map<string, string>> {
+    const out = new Map<string, string>();
+    const bySystem = new Map<string, string[]>();
+    for (const c of codings) {
+      if (!c.system) continue;
+      if (!bySystem.has(c.system)) bySystem.set(c.system, []);
+      bySystem.get(c.system)!.push(c.code);
+    }
+    const [pids, pvers] = terminology.closureArrays(pkg);
+    for (const [system, codes] of bySystem) {
+      const tail = terminology.canonicalTail(system);
+      if (!tail) continue;
+      const rows = (
+        await query<{ code: string; definition: string | null }>(
+          "SELECT c.code, c.definition FROM fhir.concepts c " +
+            "JOIN unnest($1::text[], $2::text[]) WITH ORDINALITY AS dep(pid, pver, ord) ON c.package_id = dep.pid AND c.package_version = dep.pver " +
+            "WHERE c.cs_id = $3 AND c.code = ANY($4::text[]) AND c.definition IS NOT NULL AND c.definition <> '' ORDER BY dep.ord",
+          [pids, pvers, tail, codes],
+        )
+      ).rows;
+      for (const r of rows) {
+        const k = `${system}|${r.code}`;
+        if (!out.has(k) && r.definition) out.set(k, r.definition);
+      }
+    }
+    return out;
   }
 
   /**
@@ -1149,7 +1200,7 @@ export class FHIRIGService {
     }
     limit = Math.min(Math.max(1, limit), 50);
 
-    const { targets, scopeIds, warnings } = await this.normalizeTargets(pkg, valueSet, system);
+    const { targets, scopeIds, warnings, locations } = await this.normalizeTargets(pkg, valueSet, system);
     if (!targets.length) {
       return this.err(
         valueSet ? "VALUESET_NOT_FOUND" : "INVALID_ARGUMENT",
@@ -1175,12 +1226,32 @@ export class FHIRIGService {
     const clauses: Array<Record<string, unknown>> = [];
     let keywordOnly = false;
     const engineSystems = new Set<string>();
+    const fullerCopies: Array<Record<string, unknown>> = [];
     for (const tgt of targets) {
       if (tgt.kind !== "ig") continue;
-      const loc = await this.locateIgCodeSystem(tgt.system, pkg);
+      let loc = locations.get(tgt.system) ?? (await this.locateIgCodeSystem(tgt.system, pkg));
       if (!loc) continue;
+      // The resolved IG ships only an excerpt of this CodeSystem (e.g. TW Core 1.0.0 medication-nhi-tw:
+      // 35 codes) while another installed package holds the full list: search the full copy unless
+      // the caller pinned package_id / version.
+      const fuller = await this.conceptSearch.fullerCopy(loc).catch(() => null);
+      if (fuller && (packageId !== null || version !== null)) {
+        warnings.push(
+          `${tgt.system}: ${loc.packageId}@${loc.packageVersion} holds only ${fuller.ownConcepts} codes of this CodeSystem (an excerpt); ` +
+            `a fuller copy (${fuller.concepts} codes) is installed in ${fuller.location.packageId}@${fuller.location.packageVersion} — ` +
+            "pass that package_id / version, or omit both, to search it.",
+        );
+      } else if (fuller) {
+        warnings.push(
+          `${tgt.system}: ${loc.packageId}@${loc.packageVersion} holds only ${fuller.ownConcepts} codes of this CodeSystem (an excerpt); ` +
+            `searched the fuller copy in ${fuller.location.packageId}@${fuller.location.packageVersion} (${fuller.concepts} codes). ` +
+            `Validation against ${loc.packageId}@${loc.packageVersion} may not recognise codes outside its excerpt.`,
+        );
+        fullerCopies.push({ system: tgt.system, packageId: fuller.location.packageId, version: fuller.location.packageVersion, concepts: fuller.concepts, excerpt: { packageId: loc.packageId, version: loc.packageVersion, concepts: fuller.ownConcepts } });
+        loc = fuller.location;
+      }
       engineSystems.add(tgt.system);
-      const res = await this.conceptSearch.search(loc, text, limit);
+      const res = await this.conceptSearch.search(loc, text, limit, { links: true });
       if (res.keywordOnly) keywordOnly = true;
       if (res.clauses) clauses.push(...res.clauses.map((c) => ({ ...c, system: tgt.system })));
       for (const w of res.warnings) warnings.push(w);
@@ -1199,6 +1270,8 @@ export class FHIRIGService {
           ...(c.match === "exact" ? { exact: true } : {}),
           ...(c.category ? { category: c.category } : {}),
           ...(c.siblings ? { group: c.group, siblings: c.siblings } : {}),
+          ...(c.linked ? { linked: c.linked } : {}),
+          ...(c.linked_more ? { linked_more: c.linked_more } : {}),
         });
       }
     }
@@ -1234,6 +1307,7 @@ export class FHIRIGService {
       note: "candidates are suggestions — confirm with fhir_validate_code",
     };
     if (clauses.length) data.clauses = clauses;
+    if (fullerCopies.length) data.codesystem_copies = fullerCopies;
     if (engineSystems.size && keywordOnly) {
       data.search_mode = KEYWORD_ONLY_MODE;
       data.search_note = KEYWORD_ONLY_NOTE;
@@ -1291,10 +1365,13 @@ export class FHIRIGService {
     pkg: PackageRow,
     valueSet: string | null,
     system: string | null,
-  ): Promise<{ targets: Array<{ system: string; kind: string }>; scopeIds: Record<string, number[]>; warnings: string[] }> {
+  ): Promise<{ targets: Array<{ system: string; kind: string }>; scopeIds: Record<string, number[]>; warnings: string[]; locations: Map<string, CsLocation> }> {
     const warnings: string[] = [];
     const targets: Array<{ system: string; kind: string }> = [];
     const scopeIds: Record<string, number[]> = {};
+    // IG CodeSystems resolved from an id / alias (possibly outside pkg's closure, e.g. a PAS
+    // CodeSystem named while TW Core is the default IG): searched where they were found.
+    const locations = new Map<string, CsLocation>();
     const seen = new Set<string>();
     const addTarget = (sys_: string | null | undefined) => {
       if (!sys_ || seen.has(sys_)) return;
@@ -1307,6 +1384,7 @@ export class FHIRIGService {
         const loc = await this.locateIgCodeSystem(system, pkg);
         if (loc) {
           sys_ = loc.url;
+          locations.set(loc.url, loc);
           if (loc.url !== system) warnings.push(`system '${system}' resolved to the IG CodeSystem ${loc.url}`);
         }
       }
@@ -1330,7 +1408,7 @@ export class FHIRIGService {
         }
       }
     }
-    return { targets, scopeIds, warnings };
+    return { targets, scopeIds, warnings, locations };
   }
 
   private async normalizeConceptmap(
@@ -1484,8 +1562,11 @@ export class FHIRIGService {
         profileId = id;
       }
     }
-    const engine = new validator.InstanceValidator(new DbValidatorResolver(pkg));
+    const resolver = new DbValidatorResolver(pkg);
+    const engine = new validator.InstanceValidator(resolver);
     pushAll(issues, (await engine.validate(resource, { profiles })) as Record<string, any>[]);
+    // Additive `suggestions` / `caused_by` on issues (fhirSuggestions/); never changes the verdict.
+    await attachSuggestions(issues, resource, dbSuggestionDeps(pkg, resolver, this.suggestionHooks(pkg)));
     return {
       valid: validator.isValid(issues),
       profile: profileId,
@@ -1494,6 +1575,17 @@ export class FHIRIGService {
       // checked_fully / profiles_unchecked / valuesets_unchecked: `valid` keeps HL7
       // semantics (an unresolvable profile is only a warning), so incompleteness is explicit.
       ...validator.completenessOf(issues, (pkg._depsMissing as unknown[] | undefined) || []),
+    };
+  }
+
+  /** fhir_normalize_code / near codes for the suggestion layer, bound to one package. */
+  private suggestionHooks(pkg: PackageRow): ServiceHooks {
+    return {
+      normalize: (text, valueSet, system, limit) => this.normalizeCode(text, valueSet, system, pkg.package_id, pkg.version, limit),
+      nearCodes: async (system, code, limit) => {
+        const loc = await this.locateIgCodeSystem(system, pkg);
+        return loc ? this.conceptSearch.nearCodes(loc, code, limit) : [];
+      },
     };
   }
 

@@ -29,7 +29,14 @@ export const TOOLS_VERSION: Record<string, string> = {
   search_medical_codes: "1.5.0",
   // 1.2.0: version-aware package resolution (fhirIg.resolveTarget): provenance.resolved_by /
   // closure_versions, data.deps_missing, "|version" honoured (no silent fallback to another version).
-  fhir_get_profile_required_elements: "1.2.1",
+  // 1.3.0 (2026-10-20, eval v5 R4): `derived` rows carry allowedCodes (binding expansion, extensible / preferred
+  // too, cap 20) and a derivation rule in `hint` (curated, cited per rule in `derivation_source` (full view):
+  // Condition.category, Observation.category, Encounter.diagnosis.use / rank, MedicationRequest / Statement category,
+  // courseOfTherapyType, AllergyIntolerance category / type / criticality, Observation.interpretation), else the
+  // codes' CodeSystem definitions. include_mustsupport="defaults" (only mustSupport elements with a fixed /
+  // pattern / workflow-default / derivable value); mustSupport-only rows carry optional:true and an optional hint
+  // (also with include_mustsupport=true, which no longer lists max=0 elements). Other rows of the default output unchanged.
+  fhir_get_profile_required_elements: "1.3.0",
   // 1.1.0 (lexicon tw-lexicon 0.3.0, issues v1): time-only evidence takes the date in force at its line;
   // whole-label stated-absent concepts (出生地 is not the birth date) and no stated-absent when the record states
   // the patient field; zh/en department / setting aliases with whole-token short forms (ED / ER / OPD / ICU);
@@ -52,8 +59,18 @@ export const TOOLS_VERSION: Record<string, string> = {
   // checked_fully / profiles_unchecked / valuesets_unchecked); partial-CodeSystem information hint.
   // 1.4.0: the optional source_text grounding follows fhir_check_grounding 1.1.0 (output without source_text unchanged).
   // 1.5.0: the optional source_text grounding follows fhir_check_grounding 1.2.0 (output without source_text unchanged).
-  fhir_validate_bundle: "1.5.0",
-  fhir_validate_resource: "1.5.0",
+  // 1.6.0 (fhirSuggestions/, R1): issues may carry ranked `suggestions` [{value, kind, confidence, reason,
+  // system?, display?, patch?}] (UCUM repairs, closest canonical / CodeSystem, rename / move property, allowed
+  // codes of the bound ValueSet, codes named like the display, valid displays) and reference-chain errors
+  // `caused_by` (the referenced resource's errors). Additive only: issue set, severities, messages, valid unchanged.
+  //   Same release, builtin validator v7 (evaluation v5 false negatives): extension context
+  //   (StructureDefinition.context + contextInvariant, HL7 checkExtensionContext), unversioned
+  //   StructureDefinitions resolve to the highest-version copy (extensions pack over R4 core → var-1),
+  //   "Unrecognized property" judged on core definitions everywhere (also below disallowed choice types /
+  //   unknown extensions), RxNorm code + display (rxnorm.concepts), fuller-copy hint on Unknown code in an IG
+  //   CodeSystem, no ValueSet-as-system error on a directly bound Coding.
+  fhir_validate_bundle: "1.6.0",
+  fhir_validate_resource: "1.6.0",
   // 1.2.0 (all below): provenance.resolved_by / closure_versions; canonical arguments resolve to their
   // owning package when package_id is omitted; "|version" honoured; list/search: all_packages + zero-hit hint;
   // NO_DEFAULT_IG instead of an arbitrary package when no default IG is set.
@@ -70,7 +87,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   fhir_get_valueset: "1.2.1",
   fhir_expand_valueset: "1.2.1",
   // 1.3.0: found:false adds `hint` (use fhir_normalize_code with the system) and `near_codes` (IG CodeSystems).
-  fhir_lookup_code: "1.3.1",
+  // 1.3.2: RxNorm codes (http://www.nlm.nih.gov/research/umls/rxnorm) are looked up in rxnorm.concepts (was: not found).
+  fhir_lookup_code: "1.3.2",
   fhir_validate_code: "1.2.1",
   // 1.3.0: IG CodeSystems use the concept-search engine (designations in any language, supplements, linked
   // names, abbreviation expansion, hybrid lexical + semantic): candidates carry matched_term / matched_language /
@@ -89,9 +107,16 @@ export const TOOLS_VERSION: Record<string, string> = {
   // text's first clause that neither the CodeSystem nor the thesaurus explains is expanded from the optional
   // abbreviation lexicon (SPECIALIST LRABR, loaded with the UMLS store; migration 20261027), its senses
   // ranked by how well the CodeSystem names them. Lexicon strings are never shown.
-  fhir_normalize_code: "1.7.0",
+  // 1.8.0 (eval v5 R3): when the resolved IG holds only an excerpt of a CodeSystem (e.g. TW Core 1.0.0
+  // medication-nhi-tw: 35 codes) and another installed package holds a ≥10× larger copy of the same canonical,
+  // that copy is searched unless package_id / version is given (warning + data.codesystem_copies; pinned calls
+  // only get the warning); IG candidates carry `linked` codings of other systems (≤3, + linked_more), e.g. an NHI
+  // drug's ATC code; a CodeSystem resolved from an id / alias outside the default IG's closure (TWPAS
+  // nhi-medication) is searched where it was found (was: no candidates).
+  fhir_normalize_code: "1.8.0",
   fhir_get_resource_skeleton: "1.2.1",
-  fhir_finalize_resource: "1.2.1",
+  // 1.3.0: validation issues carry `suggestions` / `caused_by` (as fhir_validate_resource 1.6.0).
+  fhir_finalize_resource: "1.3.0",
   // ── 2026-10-19 actionable errors (additive fields only; successful outputs unchanged) ──
   // search_medical_codes 1.2.1: IG_UNAVAILABLE adds `hint`.
   // FHIR IG tools above (+.0.1): error envelopes add error.hint; IG_NOT_FOUND / NO_DEFAULT_IG add

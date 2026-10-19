@@ -34,16 +34,32 @@ A general, IG-scoped toolset built on the multi-IG `fhir.*` store, used to explo
 | `fhir_rank_resource_profiles` | Rank by how well source field keys match profile element paths (advisory only, `selectionRequired:true`) | `keys`, `base_type`, `limit` (5 by default, 20 maximum) |
 | `fhir_get_profile` | Summary of a single profile (identity / base / derivation / element count), resolvable by id, canonical, or key; a canonical may be pinned as `url|version` (an uninstalled version is `ARTIFACT_NOT_FOUND`) | `identifier` |
 | `fhir_get_profile_elements` | Read the profile snapshot; `view` = `elements` / `element` / `slices` / `choices` / `binding` / `examples` | `profile`, `view`, `path`, `slice_name`, `limit` |
-| `fhir_get_profile_required_elements` | List the elements a profile *effectively* requires: required only when the whole parent chain is required, required slices, choice types, invariant-implied value[x]-or-dataAbsentReason (vs-2 / vs-3 / tw-core-4 style, detected from the expression), and target-implied primary content; each row carries `grounding_class` (auto / coding / source_fact / workflow_default …), `required_by`, `allowedCodes` for small required bindings and a fill `hint`. Profiled extensions are expanded from their definitions (url, value[x] via ext-1, required sub-extensions), base-datatype children of populated elements are added (Narrative.div, Extension.url …), and profile-specific error invariants are listed under `invariants`. With `instance`, slices are matched by their discriminators, so absent slices add nothing | `profile`, `instance` (draft: populated optional parents add their required children), `include_target_implied` (`true` by default), `include_mustsupport` (`false` by default), `verbosity` (`compact` by default: id / required_by / grounding_class / fixed·pattern·value / choices / allowedCodes / hint, profile-pinned subtrees folded into one copyable `value`; `full` adds min / max / types / binding / mustSupport) |
+| `fhir_get_profile_required_elements` | List the elements a profile *effectively* requires: required only when the whole parent chain is required, required slices, choice types, invariant-implied value[x]-or-dataAbsentReason (vs-2 / vs-3 / tw-core-4 style, detected from the expression), and target-implied primary content; each row carries `grounding_class` (auto / coding / source_fact / workflow_default …), `required_by`, `allowedCodes` for small required bindings and a fill `hint`; `derived` rows (e.g. `Condition.category`) also carry the binding's `allowedCodes` (extensible / preferred too, up to 20 codes) and a derivation rule (see "Derived elements and Must Support" below). Profiled extensions are expanded from their definitions (url, value[x] via ext-1, required sub-extensions), base-datatype children of populated elements are added (Narrative.div, Extension.url …), and profile-specific error invariants are listed under `invariants`. With `instance`, slices are matched by their discriminators, so absent slices add nothing | `profile`, `instance` (draft: populated optional parents add their required children), `include_target_implied` (`true` by default), `include_mustsupport` (`false` by default; `"defaults"` = only the mustSupport elements with a fixed / default / derivable value; `true` = every mustSupport element; added rows carry `optional: true`), `verbosity` (`compact` by default: id / required_by / grounding_class / fixed·pattern·value / choices / allowedCodes / hint, profile-pinned subtrees folded into one copyable `value`; `full` adds min / max / types / binding / mustSupport) |
+
+### Derived elements and Must Support {#derived-and-mustsupport}
+
+Elements with `grounding_class: "derived"` are not copied from the record but follow from other filled values. For well-known derived elements, `hint` starts with `derive:` and states the rule (each rule paraphrases the published definitions of the codes it names; the citation is `derivation_source` in `verbosity="full"`). A rule applies only when the element's binding is the ValueSet the rule describes:
+
+| Element | Rule (summary) | Source |
+| :--- | :--- | :--- |
+| `Condition.category` | diagnosed or assessed in this visit (outpatient, admission, discharge) → `encounter-diagnosis` (and point `Condition.encounter` at that encounter); an entry of the longitudinal problem list kept across visits → `problem-list-item`; a diagnosis written in a visit note is `encounter-diagnosis` even when the disease is chronic | FHIR R4 condition-category; US Core Condition Encounter Diagnosis / Problems and Health Concerns |
+| `Observation.category` | by what was measured: lab test → `laboratory`, BP / heart rate / temperature / height / weight … → `vital-signs`, imaging, exam, survey, social history … | FHIR R4 observation-category; R4 Vital Signs profile |
+| `Encounter.diagnosis.use` / `.rank` | admission AD, discharge DD, chief complaint CC, comorbidity CM …; principal diagnosis rank 1, the rest in record order | FHIR R4 diagnosis-role; Encounter.diagnosis.rank |
+| `MedicationRequest.category` / `MedicationStatement.category` / `courseOfTherapyType` | by the setting of the order (inpatient / outpatient / community / discharge); long-term `continuous`, short course `acute` | FHIR R4 code systems |
+| `AllergyIntolerance.category` / `.type` / `.criticality`, `Observation.interpretation` | by the substance; immune vs non-immune reaction; life-threatening → `high`; against the reference range N / H / L / HH / LL | FHIR R4 code systems |
+
+Derived elements without a rule get the CodeSystem definitions of the binding's codes in `hint` (`pick the code whose meaning fits the record: …`).
+
+**mustSupport is not required.** `include_mustsupport="defaults"` adds only the mustSupport elements that need no source fact (a profile fixed value / pattern, a conventional default such as `verificationStatus`, a derivable value from the table above) and whose parents are all listed; `true` adds every mustSupport element. Rows added either way carry `optional: true` and a "may be left out, never refuse over it" hint, and `guide` says the same. The default (`false`) output is unchanged except for the derived rows.
 
 ## Terminology / ValueSet
 | Tool | Description | Key parameters |
 | :--- | :--- | :--- |
 | `fhir_get_valueset` | ValueSet definition summary | `identifier` |
 | `fhir_expand_valueset` | Expand a ValueSet and list its member codes (resolved locally where possible; whole large external code systems are not enumerated — `TOO_BROAD`) | `identifier`, `limit` (500 by default, 2000 maximum) |
-| `fhir_lookup_code` | Look up a single code's display name and properties in a CodeSystem; when the code is not found, `hint` (use `fhir_normalize_code`) and `near_codes` (similar codes of an IG CodeSystem) | `system`, `code` |
+| `fhir_lookup_code` | Look up a single code's display name and properties in a CodeSystem (RxNorm from the local `rxnorm.concepts`); when the code is not found, `hint` (use `fhir_normalize_code`) and `near_codes` (similar codes of an IG CodeSystem) | `system`, `code` |
 | `fhir_validate_code` | Validate whether a `system`+`code` belongs to a given ValueSet; returns `valid` / `invalid` / `unverifiable`; `value_set` may be pinned as `url|version` | `system`, `code`, `value_set` |
-| `fhir_normalize_code` | Free text (Chinese or English, abbreviations, chart wording) → candidate codes: SNOMED CT / LOINC / ICD-10 and any CodeSystem of an installed IG (e.g. the NHI payment codes `medical-service-payment-tw`, see [IG Concept Search](../modules/ig-concept-search.md)). IG candidates carry `matched_term`, `matched_language`, `group`/`siblings`; `system` may be a canonical, id or alias (`nhi_payment`) | `text`, `value_set`, `system`, `limit` (10 by default) |
+| `fhir_normalize_code` | Free text (Chinese or English, abbreviations, chart wording) → candidate codes: SNOMED CT / LOINC / ICD-10 and any CodeSystem of an installed IG (e.g. the NHI payment codes `medical-service-payment-tw`, see [IG Concept Search](../modules/ig-concept-search.md)). IG candidates carry `matched_term`, `matched_language`, `group`/`siblings` and `linked` (codes of other systems the concept links to, e.g. a drug's ATC code); `system` may be a canonical, id or alias (`nhi_payment`). **Drugs**: Taiwan NHI drug codes are supported — `system="medication-nhi-tw"` (TW Core) or `"nhi-medication"` (TWPAS), text = brand or generic name in English or Chinese (`Glucophage 500mg`, `脈優錠 5mg`); when the default IG ships only an excerpt of a CodeSystem (TW Core 1.0.0 `medication-nhi-tw`: 35 codes) and another installed package holds the full list (TW Core 0.3.2: 44,709 codes), the full copy is searched unless `package_id` / `version` is given (noted in `warnings` and `data.codesystem_copies`). **ATC**: no searchable WHO ATC is held (TW Core `medcation-atc-tw` has only 27 Taiwan-specific codes) — look up the NHI drug; its candidate's `linked` is its ATC code (from the bundled NHI medication supplement) | `text`, `value_set`, `system`, `limit` (10 by default) |
 
 ## Authoring, assembly, and validation
 | Tool | Description | Key parameters |
@@ -56,6 +72,38 @@ A general, IG-scoped toolset built on the multi-IG `fhir.*` store, used to explo
 | `fhir_validate_bundle` | Validate an entire Bundle (each entry against its `meta.profile`, plus reference integrity inside the Bundle). An optional `source_text` adds a grounding check and merges the results (see below) | `bundle`, `source_text`, `site_config`, `evidence_map`, `grounding`, `grounding_verbosity` |
 
 `fhir_validate_resource` / `fhir_validate_bundle` also report whether validation was complete: `checked_fully` (`true` when every profile and ValueSet was checked and the dependency closure is complete), `profiles_unchecked`, `valuesets_unchecked`. `valid` keeps HL7 semantics (an unresolvable profile is only a warning), so `valid: true` with `checked_fully: false` means part of the content was not checked. `|version` canonicals (`meta.profile`, binding, targetProfile, type profile, extension url) are resolved like HL7 validator_cli 7.0.1.
+
+The builtin validator also checks, like HL7 validator_cli 7.0.1 (same release, 1.6.0):
+
+- **Where an extension may be used**: the extension definition's `context` (element / extension types; contexts restricted to other FHIR versions by `version-specific-use` are skipped) and `contextInvariant`. A violation is an error at the host element: `The extension <url> v<version> is not allowed to be used at this point (this element is [...]; allowed for this version = e:...)` or `... (based on context invariant '...')`. fhirpath contexts are not evaluated locally (never an error).
+- An unversioned StructureDefinition resolves to the highest-version copy in the closure (e.g. the `hl7.fhir.uv.extensions.r4` extension over the R4 core one with the same URL), so the extension's own invariants (e.g. var-1 of `variable`) are checked too.
+- **`Unrecognized property`** is judged against the core definitions for the whole resource (as the HL7 JSON parser does), including below a choice type the profile does not allow and inside the value of an unknown extension; like HL7, nothing is checked below an element with the wrong JSON shape (an array for a single element).
+- **RxNorm**: code and display are checked against `rxnorm.concepts` (tx.fhir.org accepts every SAB=RXNORM name of the RXCUI, case-insensitively): `Wrong Display Name '...' for http://www.nlm.nih.gov/research/umls/rxnorm#<code>. Valid display is '...'`. An unknown code is an error only when the local RxNorm release is not older than tx.fhir.org's (03022026), otherwise a warning; when only the preferred name is held (imported before migration 20261030) a display mismatch is a warning; without RxNorm loaded: warning `Display not checked (RxNorm)`.
+- `Unknown code` in an IG CodeSystem with `content = complete` stays an error; when another installed package has a fuller copy of the same CodeSystem containing the code (e.g. TW Core 0.3.2 `medication-nhi-tw`), an information issue names that package and version.
+- A Coding element bound directly to a ValueSet (e.g. `Encounter.class`) whose system is a ValueSet URL only gets the binding warning, no `The Coding references a value set` error (as HL7).
+
+### Fix suggestions (suggestions / caused_by) {#validation-suggestions}
+
+Besides saying what is wrong, validation issues carry, where possible, "what to change it to": `suggestions` is a list of candidates ordered by `confidence` (at most 5 per issue; up to 12 for a binding error on a small ValueSet), and reference-chain errors get `caused_by`. Both are **additive** — the set of issues, their severity and message, and `valid` are unchanged; the field is absent when there is no suggestion.
+
+```json
+{"severity": "error", "path": "MedicationRequest.dosageInstruction[0].timing.repeat", "message": "Unrecognized property 'periodUnits'",
+ "suggestions": [{"value": "periodUnit", "kind": "rename_property", "confidence": 0.82, "reason": "closest element name at this level: 'periodUnit'",
+                  "patch": {"op": "move", "from": "MedicationRequest.dosageInstruction[0].timing.repeat.periodUnits", "path": "MedicationRequest.dosageInstruction[0].timing.repeat.periodUnit"}}]}
+```
+
+| Error | `kind` | Suggestion |
+| :--- | :--- | :--- |
+| `Unknown code 'X' in the CodeSystem 'http://unitsofmeasure.org'` | `replace_code` | The closest valid UCUM: case (UCUM is case-sensitive), square brackets (`[U]` → `U`, `[UI]/mL` → `[iU]/mL`), prefix + unit from the UCUM table, common clinical spellings (`mcg` → `ug`, `mmHg` → `mm[Hg]`), and an annotation for dose-form words that are not units (`tab` → `{tablet}`); every candidate is checked with the same UCUM parser the validator uses |
+| `No definition could be found for URL value 'U'`, `A definition for CodeSystem 'S' could not be found`, `The Coding references a value set, not a code system` | `replace_system` | The CodeSystem(s) the misused ValueSet (or the ValueSet of that name) draws from (`…/CodeSystem/v3-ActEncounterCode` → `…/CodeSystem/v3-ActCode`), and the closest canonical in the package closure; when the Coding has a code, systems that hold it rank first |
+| `Unrecognized property 'p'` | `rename_property` / `move_property` | The closest element name at the same level (datatype children and typed names of choice elements included, e.g. `value` → `valueQuantity`), or the level where an element of that name actually lives (`timing.periodUnit` → `timing.repeat.periodUnit`) |
+| `The type 'date' is not allowed for Condition.onset[x]` | `rename_property` | The typed name of an allowed type that fits the value (`onsetDate` → `onsetDateTime`) |
+| Value not in a required / extensible ValueSet | `choose_code` | Codes of the expanded ValueSet: all of them, ranked by similarity, for a small ValueSet; the closest to the given code / display (incl. `fhir_normalize_code`) for a large one |
+| `Unknown code` in other CodeSystems | `replace_code` / `replace_system` | Spelling repairs the validator accepts (case, ICD dot, LOINC hyphen), codes whose name matches the display / text (`fhir_normalize_code`), near codes of an IG CodeSystem, and another terminology whose code shape fits (a LOINC code under the SNOMED system) |
+| `Wrong Display Name` | `replace_display` (+ `replace_code`) | The valid display(s) the validator names (uniform across terminologies); if the written display is the name of another code, also a code change |
+| `Unable to find a profile match for urn:uuid:X` | `caused_by` | The referenced resource's own errors (`fullUrl`, `entry`, `path`, `message`); when it has none, its errors against the profile the reference requires (with `profile`) |
+
+`patch` uses the validator's dotted paths (`op`: `replace` / `move`; `move` also has `from`). `confidence` is a heuristic score, not a probability; suggestions are an aid — validate again after applying one. Suggestions are deterministic for the same input; if computing one fails, that issue simply has none and the validation result is unaffected. Evaluation method and figures: `node-server/scripts/suggestions-eval/`.
 
 > In-process validation is based on profile snapshots and terminology bindings, benchmarked against HL7 validator_cli 7.0.1 (method and results in `node-server/scripts/validator-audit/`). It is not equivalent to conformance certification by the official HL7 FHIR Validator.
 
@@ -102,10 +150,12 @@ Tools whose behaviour is pinned by fixtures carry their own version (`node-serve
 
 | Tool | Version |
 | :--- | :--- |
-| `fhir_validate_resource`, `fhir_validate_bundle` | 1.4.0 |
-| `fhir_get_profile_required_elements` | 1.2.0 |
+| `fhir_validate_resource`, `fhir_validate_bundle` | 1.6.0 (issue `suggestions` / `caused_by`) |
+| `fhir_get_profile_required_elements` | 1.3.0 (derived rows: allowedCodes + derivation rule; `include_mustsupport="defaults"`; `optional`) |
 | `fhir_list_igs`, `fhir_list_artifacts`, `fhir_search_artifacts`, `fhir_list_resource_profiles` (new `compact`) | 1.3.0 |
-| `fhir_get_ig`, `fhir_rank_resource_profiles`, `fhir_get_profile`, `fhir_get_profile_elements`, `fhir_get_valueset`, `fhir_expand_valueset`, `fhir_validate_code`, `fhir_get_resource_skeleton`, `fhir_finalize_resource` | 1.2.0 |
-| `fhir_lookup_code`, `fhir_normalize_code` | 1.3.0 |
+| `fhir_get_ig`, `fhir_rank_resource_profiles`, `fhir_get_profile`, `fhir_get_profile_elements`, `fhir_get_valueset`, `fhir_expand_valueset`, `fhir_validate_code`, `fhir_get_resource_skeleton` | 1.2.0 |
+| `fhir_finalize_resource` | 1.3.0 (validation issue `suggestions` / `caused_by`) |
+| `fhir_lookup_code` | 1.3.2 (RxNorm codes) |
+| `fhir_normalize_code` | 1.8.0 (excerpt CodeSystems → the installed full copy, candidate `linked`, aliases resolved outside the default IG) |
 | `fhir_check_grounding` | 1.1.0 |
 | `fhir_check_completeness` | 1.1.1 |

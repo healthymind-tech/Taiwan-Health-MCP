@@ -26,6 +26,7 @@ import { CVX_CODES } from "./fhirCvx.js";
 
 export const SNOMED_SYSTEM = "http://snomed.info/sct";
 export const LOINC_SYSTEM = "http://loinc.org";
+export const RXNORM_SYSTEM = "http://www.nlm.nih.gov/research/umls/rxnorm";
 export const SNOMED_IS_A = 116680003;
 
 export const DEFAULT_EXPAND_LIMIT = 500;
@@ -170,11 +171,60 @@ export function rankCandidates<T extends ArtifactCandidate>(canonical: string, r
   });
 }
 
+/** HL7 VersionUtilities.getMajMin-like key of a resource version (null when not semver-shaped). */
+function majMinParts(v: string | null | undefined): [number, number] | null {
+  const m = /^(\d+)\.(\d+)/.exec(String(v ?? ""));
+  return m ? [Number(m[1]), Number(m[2])] : null;
+}
+
+/**
+ * Port of CanonicalResourceManager's "current" resource for an unversioned
+ * canonical (org.hl7.fhir.r5 context, validator_cli 7.0.1): every loaded copy of
+ * a canonical is kept sorted by MetadataResourceVersionComparator (major.minor of
+ * the resource's own `version`; a resource without a version sorts first; equal
+ * keys keep load order) and the last one answers `fetchResource(url)`. So an
+ * extension that both R4 core (version 4.0.1) and hl7.fhir.uv.extensions.r4
+ * (5.2.0) define resolves to the extensions-pack copy — the one carrying e.g.
+ * var-1 and the current contexts (confirmed with validator_cli: v5.x messages).
+ * Applied after rankCandidates' rules (other FHIR major releases last, THO
+ * packages first for terminology.hl7.org canonicals); ties keep closure order.
+ */
+export function rankHl7Current<T extends ArtifactCandidate & { version?: string | null }>(canonical: string, rows: T[]): T[] {
+  const ranked = rankCandidates(canonical, rows);
+  if (canonical.startsWith("http://terminology.hl7.org/")) return ranked;
+  const foreign = (r: T): boolean => {
+    const fv = r.fhirVersion || "";
+    return /\.r5(\.|$)/.test(r.packageId) || (fv !== "" && !fv.startsWith("4"));
+  };
+  const pos = new Map(ranked.map((r, i) => [r, i]));
+  const cmp = (a: T, b: T): number => {
+    const fa = Number(foreign(a)) - Number(foreign(b));
+    if (fa !== 0) return fa;
+    const va = a.version ?? null;
+    const vb = b.version ?? null;
+    if (va !== vb) {
+      if (va === null) return 1;
+      if (vb === null) return -1;
+      const ma = majMinParts(va);
+      const mb = majMinParts(vb);
+      if (ma && mb) {
+        if (ma[0] !== mb[0]) return mb[0] - ma[0];
+        if (ma[1] !== mb[1]) return mb[1] - ma[1];
+      } else if (!ma && !mb && va !== vb) {
+        return va < vb ? 1 : -1;
+      }
+    }
+    return pos.get(a)! - pos.get(b)!;
+  };
+  return [...ranked].sort(cmp);
+}
+
 /** Load a conformance/terminology resource by canonical across the package closure (best candidate). */
 export async function loadArtifactByCanonical(
   resourceType: string,
   url: string,
   pkg: PackageRow,
+  opts: { hl7Current?: boolean } = {},
 ): Promise<Record<string, any> | null> {
   const [pids, pvers] = closureArrays(pkg);
   const canonical = url.split("|")[0];
@@ -188,10 +238,15 @@ export async function loadArtifactByCanonical(
       [pids, pvers, resourceType, canonical],
     )
   ).rows;
-  const ranked = rankCandidates(
-    canonical,
-    rows.map((r) => ({ ...r, packageId: r.package_id, packageVersion: r.package_version, fhirVersion: r.fhir_version, ord: Number(r.ord) })),
-  );
+  const cands = rows.map((r) => ({ ...r, packageId: r.package_id, packageVersion: r.package_version, fhirVersion: r.fhir_version, ord: Number(r.ord) }));
+  if (opts.hl7Current) {
+    const parsed = cands
+      .map((r) => ({ ...r, json: jsonOf(r.raw_json) }))
+      .filter((r) => r.json)
+      .map((r) => ({ ...r, version: typeof r.json!.version === "string" ? (r.json!.version as string) : null }));
+    return rankHl7Current(canonical, parsed)[0]?.json ?? null;
+  }
+  const ranked = rankCandidates(canonical, cands);
   for (const r of ranked) {
     const json = jsonOf(r.raw_json);
     if (json) return json;
@@ -263,8 +318,12 @@ async function tableHasRows(table: string): Promise<boolean> {
   let held = false;
   try {
     held = (await query(`SELECT 1 FROM ${table} LIMIT 1`)).rows.length > 0;
-  } catch {
-    held = false;
+  } catch (e) {
+    // A missing table (42P01) is permanent; any other (transient) DB error is not
+    // cached, so it cannot turn a terminology "not held" (checks silently skipped)
+    // for the cache lifetime.
+    if ((e as { code?: string } | null)?.code === "42P01") heldCache.set(table, false);
+    return false;
   }
   heldCache.set(table, held);
   return held;
@@ -602,6 +661,66 @@ export async function icd10WhoEdition(): Promise<{ edition: string; complete: bo
   return info;
 }
 
+// --------------------------------------------------------------------------- //
+// RxNorm (rxnorm.concepts: one row per RXCUI, SAB=RXNORM; alt_names = the other
+// RXNORM atom strings, filled by the RxNorm import since migration 20261030).
+// --------------------------------------------------------------------------- //
+
+export interface RxnormRow {
+  name: string;
+  /** Other SAB=RXNORM atom strings of the RXCUI; null on a database imported before 20261030. */
+  altNames: string[] | null;
+  tty: string | null;
+  suppress: string | null;
+}
+
+/** RxNorm concept by RXCUI, or null (also when the table / column is missing). */
+export async function rxnormConcept(code: string): Promise<RxnormRow | null> {
+  if (!isDigits(code)) return null;
+  try {
+    const row = (
+      await query<{ name: string; alt_names: string[] | null; tty: string | null; suppress: string | null }>(
+        "SELECT name, alt_names, tty, suppress FROM rxnorm.concepts WHERE rxcui = $1",
+        [code],
+      )
+    ).rows[0];
+    return row ? { name: row.name, altNames: row.alt_names ?? null, tty: row.tty, suppress: row.suppress } : null;
+  } catch {
+    try {
+      const row = (await query<{ name: string; tty: string | null; suppress: string | null }>("SELECT name, tty, suppress FROM rxnorm.concepts WHERE rxcui = $1", [code])).rows[0];
+      return row ? { name: row.name, altNames: null, tty: row.tty, suppress: row.suppress } : null;
+    } catch {
+      return null;
+    }
+  }
+}
+
+/** Whether rxnorm.concepts is populated. */
+export async function rxnormHeld(): Promise<boolean> {
+  return tableHasRows("rxnorm.concepts");
+}
+
+const rxnormEditionCache = new TtlCache<{ version: string; releaseDate: string | null } | null>();
+
+/** Loaded RxNorm release (rxnorm.editions, migration 20261030), or null. */
+export async function rxnormEdition(): Promise<{ version: string; releaseDate: string | null } | null> {
+  const hit = rxnormEditionCache.get("rxnorm");
+  if (hit !== undefined) return hit;
+  let info: { version: string; releaseDate: string | null } | null = null;
+  try {
+    const row = (
+      await query<{ version: string; release_date: string | null }>(
+        "SELECT version, to_char(release_date, 'YYYY-MM-DD') AS release_date FROM rxnorm.editions WHERE code_system = 'rxnorm'",
+      )
+    ).rows[0];
+    info = row ? { version: row.version, releaseDate: row.release_date } : null;
+  } catch {
+    info = null;
+  }
+  rxnormEditionCache.set("rxnorm", info);
+  return info;
+}
+
 /** Resolve a `(system, code)` to `{display, definition}` from local data, or null. */
 export async function lookup(
   system: string | null | undefined,
@@ -612,6 +731,11 @@ export async function lookup(
   const kind = routeSystem(system, csId);
   if (kind === "snomed" || kind === "loinc") return lookupExternalTables(system, code);
   if (system === "http://hl7.org/fhir/sid/cvx" || system === "http://hl7.org/fhir/sid/icd-10") return lookupExternalTables(system, code);
+  if (system === RXNORM_SYSTEM) {
+    // RxNorm (concept-only reference table): preferred name of the RXCUI.
+    const row = await rxnormConcept(code);
+    return row ? { display: row.name, definition: null } : null;
+  }
   if (system) {
     // Prefer the IG-held CodeSystem (full nested hierarchy).
     const idx = await loadCodeSystemIndex(system, pkg);

@@ -130,10 +130,22 @@ export function RequiredTab({ profile, knownIds, onJump }: { profile: ProfileRef
                         MS
                       </Badge>
                     )}
+                    {r.optional && (
+                      <Tooltip label="mustSupport 但非必填：有資料才填，缺少不構成拒答理由">
+                        <Badge size="xs" color="gray" variant="outline">
+                          選填
+                        </Badge>
+                      </Tooltip>
+                    )}
                   </Group>
                   {r.hint && (
                     <Text fz="xs" c="dimmed" mt={4}>
                       {r.hint}
+                    </Text>
+                  )}
+                  {r.derivation_source && (
+                    <Text fz="xs" c="dimmed" mt={2} fs="italic" style={{ wordBreak: "break-word" }}>
+                      推導規則出處：{r.derivation_source}
                     </Text>
                   )}
                   {r.choices && (

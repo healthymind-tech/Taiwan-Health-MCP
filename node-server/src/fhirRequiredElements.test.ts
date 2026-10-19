@@ -18,6 +18,8 @@ import { fileURLToPath } from "node:url";
 import {
   classifyElement,
   compactView,
+  derivationRuleFor,
+  derivedCodeMeanings,
   nodesAt,
   sliceMatches,
   effectiveRequiredPaths,
@@ -358,4 +360,87 @@ test("PAS Claim: closed slicing names the allowed slices (and their code systems
   assert.match(si.hint || "", /closed slicing: each item must match one of .*weight/);
   const dx = out.elements.find((e) => e.id === "Claim.diagnosis.diagnosis[x]")!;
   assert.ok(dx);
+});
+
+// --------------------------------------------------------------------------- //
+// Derived rows (derivation rules) and include_mustsupport="defaults"          //
+// --------------------------------------------------------------------------- //
+
+test("derived Condition.category: curated rule in hint, cited source, compact keeps the rule", { skip: fixtureFiles.length === 0 }, () => {
+  const els = loadElements("Condition-twcore");
+  const out = requiredElements("Condition-twcore", els);
+  const cat = out.elements.find((e) => e.id === "Condition.category")!;
+  assert.equal(cat.grounding_class, "derived");
+  assert.match(cat.hint || "", /^derive: encounter-diagnosis when .*problem-list-item only for/);
+  assert.match(cat.derivation_source || "", /codesystem-condition-category/);
+  const compact = compactView(out.elements, new Map(els.map((e) => [e.id, e])));
+  const c = compact.find((r) => r.id === "Condition.category")!;
+  assert.match(String(c.hint), /encounter-diagnosis/);
+  assert.ok(!("derivation_source" in c), "compact view leaves the citation to verbosity=full");
+  // no other row of the default output gains the new keys
+  for (const r of out.elements) {
+    assert.ok(!r.optional);
+    if (r.id !== "Condition.category") assert.equal(r.derivation_source, undefined);
+  }
+});
+
+test("derivationRuleFor: applies to the rule's ValueSets (any version) or no binding, never to another code list", () => {
+  assert.ok(derivationRuleFor("Condition.category", { valueSet: "http://hl7.org/fhir/ValueSet/condition-category|4.0.1" }));
+  assert.ok(derivationRuleFor("Condition.category", null));
+  assert.equal(derivationRuleFor("Condition.category", { valueSet: "http://example.org/ValueSet/local-categories" }), null);
+  assert.ok(derivationRuleFor("Encounter.diagnosis.rank", { valueSet: "http://x/any" }), "a rule without valueSets is binding-independent");
+  assert.equal(derivationRuleFor("Patient.gender", null), null);
+});
+
+test("derivedCodeMeanings: definitions first, displays as fallback, clipped and capped", () => {
+  const h = derivedCodeMeanings([
+    { code: "a", display: "Alpha", definition: "First letter" },
+    { code: "b", display: "Beta", definition: null },
+    { code: "c", display: "c", definition: null },
+  ])!;
+  assert.equal(h, "pick the code whose meaning fits the record: a = First letter; b = Beta");
+  assert.equal(derivedCodeMeanings([{ code: "x", display: null }]), undefined);
+  const many = derivedCodeMeanings(Array.from({ length: 12 }, (_, i) => ({ code: `k${i}`, display: "d".repeat(200) })))!;
+  assert.match(many, /\(\+2 more\)$/);
+  assert.ok(many.includes(`k0 = ${"d".repeat(89)}…`));
+});
+
+test("include_mustsupport='defaults': only defaultable mustSupport rows, all optional", { skip: fixtureFiles.length === 0 }, () => {
+  const els = loadElements("Condition-twcore");
+  const base = requiredElements("Condition-twcore", els);
+  const dflt = requiredElements("Condition-twcore", els, { includeMustSupport: "defaults" });
+  const all = requiredElements("Condition-twcore", els, { includeMustSupport: true });
+  const added = dflt.elements.filter((e) => !base.elements.some((b) => b.id === e.id));
+  assert.deepEqual(added.map((e) => e.id), ["Condition.verificationStatus"]);
+  assert.ok(added.every((e) => e.optional && e.required_by === "mustSupport-only"));
+  assert.match(added[0].hint || "", /optional \(mustSupport, not required\)/);
+  // a subset of include_mustsupport=true, whose added rows are all optional too
+  const allAdded = all.elements.filter((e) => !base.elements.some((b) => b.id === e.id));
+  assert.ok(allAdded.length > added.length);
+  assert.ok(allAdded.every((e) => e.optional));
+  for (const a of added) assert.ok(allAdded.some((x) => x.id === a.id));
+});
+
+test("include_mustsupport='defaults' on a synthetic profile: fixed / workflow / derivable only, under listed parents", () => {
+  const els: ProjectedElement[] = [
+    { id: "Observation", path: "Observation", min: 0, max: "*", types: [] },
+    { id: "Observation.status", path: "Observation.status", min: 1, max: "1", types: [{ code: "code" }], mustSupport: true },
+    { id: "Observation.category", path: "Observation.category", min: 0, max: "*", types: [{ code: "CodeableConcept" }], mustSupport: true, binding: { strength: "preferred", valueSet: "http://hl7.org/fhir/ValueSet/observation-category" } },
+    { id: "Observation.code", path: "Observation.code", min: 1, max: "1", types: [{ code: "CodeableConcept" }], mustSupport: true },
+    { id: "Observation.code.text", path: "Observation.code.text", min: 0, max: "1", types: [{ code: "string" }], mustSupport: true },
+    { id: "Observation.valueQuantity", path: "Observation.valueQuantity", min: 0, max: "1", types: [{ code: "Quantity" }], mustSupport: true },
+    { id: "Observation.valueQuantity.system", path: "Observation.valueQuantity.system", min: 0, max: "1", types: [{ code: "uri" }], mustSupport: true, fixed: { field: "fixedUri", value: "http://unitsofmeasure.org" } },
+    { id: "Observation.method", path: "Observation.method", min: 0, max: "1", types: [{ code: "CodeableConcept" }], mustSupport: true, pattern: { field: "patternCodeableConcept", value: { text: "m" } } },
+    { id: "Observation.note", path: "Observation.note", min: 0, max: "0", types: [{ code: "Annotation" }], mustSupport: true, fixed: { field: "fixedString", value: "x" } },
+  ];
+  const out = requiredElements("obs", els, { includeMustSupport: "defaults", includeTargetImplied: false });
+  const ids = out.elements.map((e) => e.id);
+  assert.ok(ids.includes("Observation.category"), "derivable (curated rule)");
+  assert.ok(ids.includes("Observation.method"), "pattern");
+  assert.ok(!ids.includes("Observation.code.text"), "a source fact is not a default");
+  assert.ok(!ids.includes("Observation.valueQuantity.system"), "its parent is neither required nor listed");
+  assert.ok(!ids.includes("Observation.note"), "max=0 is never listed");
+  const cat = out.elements.find((e) => e.id === "Observation.category")!;
+  assert.ok(cat.optional);
+  assert.match(cat.hint || "", /^derive: /);
 });

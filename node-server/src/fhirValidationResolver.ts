@@ -34,7 +34,10 @@ import {
   judgeCvx,
   judgeIcd10Who,
   judgeLoincOther,
+  judgeRxnorm,
   judgeSnomed,
+  RXNORM,
+  rxnormStrict,
   loincNonTermCheckDigitValid,
   loincUnknownMessage,
   snomedStrict,
@@ -59,7 +62,6 @@ const SILENT_SYSTEMS = [
   "urn:iso:std:iso:11073:10101",
   "http://hl7.org/fhir/sid/icd-9-cm",
   "http://hl7.org/fhir/sid/ndc",
-  "http://www.nlm.nih.gov/research/umls/rxnorm",
   "http://www.whocc.no/atc",
 ];
 
@@ -197,7 +199,7 @@ function noLocalDisplay(system: string, display: string | null): CodeCheck {
  */
 function txKnownSystem(system: string): boolean {
   if (SILENT_SYSTEMS.includes(system)) return true;
-  if ([ISO3166, ICD10CM, CVX, ICD10_WHO, "http://snomed.info/sct", "http://loinc.org", "http://unitsofmeasure.org"].includes(system)) return true;
+  if ([ISO3166, ICD10CM, CVX, ICD10_WHO, RXNORM, "http://snomed.info/sct", "http://loinc.org", "http://unitsofmeasure.org"].includes(system)) return true;
   if (system.startsWith("urn:")) return true;
   return /^https?:\/\/(terminology\.)?hl7\.org\//.test(system) || system.startsWith("http://snomed.info/") || system.startsWith("http://dicom.nema.org/");
 }
@@ -307,7 +309,9 @@ export class DbValidatorResolver implements ValidatorResolver {
     const sd =
       version !== null
         ? await this.loadVersioned("StructureDefinition", canonical, version)
-        : await terminology.loadArtifactByCanonical("StructureDefinition", canonical, this.pkg);
+        : // Unversioned: the closure's "current" copy as HL7 picks it (highest
+          // major.minor, e.g. the hl7.fhir.uv.extensions.r4 copy of a core extension).
+          await terminology.loadArtifactByCanonical("StructureDefinition", canonical, this.pkg, { hl7Current: true });
     if (sdCache.size >= SD_CACHE_MAX) {
       const first = sdCache.keys().next().value;
       if (first !== undefined) sdCache.delete(first);
@@ -365,7 +369,9 @@ export class DbValidatorResolver implements ValidatorResolver {
     try {
       ok = (await query("SELECT 1 FROM fhir.artifacts WHERE canonical_url = $1 LIMIT 1", [canonical])).rows.length > 0;
     } catch {
-      ok = true;
+      // Not cached: a transient DB error must not suppress the check for the next
+      // 30 minutes (the "reported in some rounds only" nondeterminism).
+      return true;
     }
     if (defCache.size >= SD_CACHE_MAX) {
       const first = defCache.keys().next().value;
@@ -380,6 +386,7 @@ export class DbValidatorResolver implements ValidatorResolver {
     // CVX: bundled tx.fhir.org table (fhirCvx.ts).
     if (system === CVX) return judgeCvx(code, display);
     if (system === ICD10_WHO) return this.checkIcd10Who(code, display);
+    if (system === RXNORM) return this.checkRxnorm(code, display);
     if (SILENT_SYSTEMS.includes(system) || system.startsWith("urn:oid:") || system.startsWith("urn:uuid:")) {
       return noLocalDisplay(system, display);
     }
@@ -400,9 +407,14 @@ export class DbValidatorResolver implements ValidatorResolver {
           const sev = EXTERNAL_EDITION_SYSTEMS.includes(system) ? "warning" : "error";
           const out: CodeCheck = { status: "invalid-code", severity: sev, message: `Unknown code '${code}' in the CodeSystem '${system}'${ver}` };
           // Verdict as HL7 (content = complete → Unknown code); add a hint when the
-          // CodeSystem itself says it is a partial list.
+          // CodeSystem itself says it is a partial list, and when another installed
+          // package holds a fuller copy of the same CodeSystem that has the code.
+          const hints: Array<{ severity: "information"; message: string }> = [];
           const hint = await this.partialHint(system);
-          if (hint) out.extra = [{ severity: "information", message: hint }];
+          if (hint) hints.push({ severity: "information", message: hint });
+          const fuller = await this.fullerCopyHint(system, code, idx.concepts.size);
+          if (fuller) hints.push({ severity: "information", message: fuller });
+          if (hints.length) out.extra = hints;
           return out;
         }
         if (idx.content === "fragment" || idx.content === "example") {
@@ -494,6 +506,57 @@ export class DbValidatorResolver implements ValidatorResolver {
     }
     if (idx) return noLocalDisplay(system, display);
     return { status: "unknown-system" };
+  }
+
+  /**
+   * Another installed package (outside this closure, or another version) holding a
+   * larger copy of the same CodeSystem (same canonical, or TW Core 0.3.2's copy
+   * published under the ValueSet URL) that does contain `code`, e.g. TW Core 1.0.0
+   * medication-nhi-tw (35 example codes, content complete) vs TW Core 0.3.2 (the
+   * full list). The verdict stays the HL7 one (Unknown code); this only says where
+   * the code is defined so the caller can choose that package.
+   */
+  private async fullerCopyHint(system: string, code: string, held: number): Promise<string | null> {
+    const csId = terminology.canonicalTail(system);
+    if (!csId) return null;
+    try {
+      const rows = (
+        await query<{ package_id: string; package_version: string; concept_count: number | null; url: string | null }>(
+          "SELECT c.package_id, c.package_version, cs.concept_count, a.canonical_url AS url FROM fhir.concepts c " +
+            "JOIN fhir.codesystems cs ON cs.package_id = c.package_id AND cs.package_version = c.package_version AND cs.cs_id = c.cs_id " +
+            "JOIN fhir.artifacts a ON a.package_id = c.package_id AND a.package_version = c.package_version " +
+            "  AND a.resource_type = 'CodeSystem' AND a.artifact_id = c.cs_id " +
+            "WHERE c.cs_id = $1 AND c.code = $2 ORDER BY cs.concept_count DESC NULLS LAST LIMIT 5",
+          [csId, code],
+        )
+      ).rows;
+      const want = system.replace(/\/(CodeSystem|ValueSet)\//, "/");
+      const [pids, pvers] = terminology.closureArrays(this.pkg);
+      const inClosure = (r: { package_id: string; package_version: string }): boolean =>
+        pids.some((p, i) => p === r.package_id && pvers[i] === r.package_version);
+      const hit = rows.find(
+        (r) => !inClosure(r) && String(r.url || "").replace(/\/(CodeSystem|ValueSet)\//, "/") === want && Number(r.concept_count ?? 0) > held,
+      );
+      if (!hit) return null;
+      return (
+        `Code '${code}' is defined in a fuller copy of this CodeSystem installed from ${hit.package_id}#${hit.package_version} ` +
+        `(${hit.concept_count} concepts, canonical '${hit.url}'); the package validated against (${this.pkg.package_id}#${this.pkg.version}) carries ${held}. ` +
+        `Validate with package_id='${hit.package_id}' version='${hit.package_version}' if that release is intended.`
+      );
+    } catch {
+      return null;
+    }
+  }
+
+  /** RxNorm from rxnorm.concepts (concept-only reference terminology); a warning when not loaded. */
+  private async checkRxnorm(code: string, display: string | null): Promise<CodeCheck> {
+    if (!(await terminology.rxnormHeld())) {
+      return display === null
+        ? { status: "silent" }
+        : { status: "display-unchecked", severity: "warning", message: `Display not checked (RxNorm): no local RxNorm terminology is loaded for ${RXNORM}` };
+    }
+    const edition = await terminology.rxnormEdition();
+    return judgeRxnorm(code, display, await terminology.rxnormConcept(code), rxnormStrict(edition), edition?.version ?? null);
   }
 
   private async partialHint(system: string): Promise<string | null> {

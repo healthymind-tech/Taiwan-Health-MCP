@@ -59,7 +59,11 @@
 
 `fhir_normalize_code` 的 IG 候選：`code`、`display`、`source`（`lexical` / `semantic` / `hybrid`）、`score`、
 `matched_term` / `matched_language`（命中的 IG 名稱，**永遠是 IG 自己的 display 或 designation，不會是 UMLS 字串**）、
-`exact`、`category`（CodeSystem 有分類 property 或階層時）、`group` + `siblings`（名稱主幹相同的近似碼，例如同一檢驗的不同方法）。
+`exact`、`category`（CodeSystem 有分類 property 或階層時）、`group` + `siblings`（名稱主幹相同的近似碼，例如同一檢驗的不同方法）、
+`linked`（Coding property 連到的其他系統代碼，最多 3 個 + `linked_more`，例如健保藥品的 ATC 碼）。
+解析出的 IG 只收錄某 CodeSystem 的節錄版、而另一個已安裝套件收錄同一 canonical 的完整版（概念數 ≥ 10 倍且多 1,000 以上，
+例如 TW Core 1.0.0 vs 0.3.2 的 `medication-nhi-tw`）時，未指定 `package_id` / `version` 會改查完整版，並以 `warnings` 與
+`data.codesystem_copies` 註明。
 `system` 可給 canonical、CodeSystem id 或別名字詞（例如 `nhi_payment`）。`fhir_lookup_code` 查不到時附 `hint` 與 `near_codes`。
 
 ## 管理後台（IG 套件庫 → 術語搜尋索引）

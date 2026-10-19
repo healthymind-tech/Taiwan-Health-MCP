@@ -1210,7 +1210,10 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
       description:
         "Return every element a profile effectively requires (min>=1 with required ancestors, required slices, choice types, " +
         "invariant-implied value-or-dataAbsentReason) plus target-implied primary content, each classified as auto, coding, " +
-        "source_fact or workflow_default, with cardinality, type, binding, fixed/pattern, mustSupport and a short fill hint. " +
+        "source_fact, workflow_default, derived, ... with cardinality, type, binding, fixed/pattern, mustSupport and a short fill hint. " +
+        "derived rows (e.g. Condition.category) carry allowedCodes and a derivation rule in `hint` " +
+        "(Condition.category: encounter-diagnosis for this visit's diagnoses, problem-list-item only for a longitudinal problem list). " +
+        "mustSupport is NOT required: unlisted and optional:true rows may be left out — never refuse a task because one is missing. " +
         "Use it before writing a resource so every required field is filled; works for any installed IG " +
         "(without package_id the package owning the profile is used; 'url|version' pins a version). " +
         "Profiled extensions are expanded from their definitions, and profile-specific error invariants are listed under `invariants`. " +
@@ -1226,9 +1229,13 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
           .describe("Optional draft resource: optional parents it populates make their min>=1 children required too"),
         include_target_implied: z.boolean().default(true),
         include_mustsupport: z
-          .boolean()
+          .union([z.boolean(), z.literal("defaults")])
           .default(false)
-          .describe("Also list mustSupport-but-optional elements (required_by='mustSupport-only'). mustSupport is not required."),
+          .describe(
+            "false (default): required elements only. \"defaults\": also the optional mustSupport elements whose value needs no source fact " +
+              "(fixed/pattern, a workflow default such as status, or a derivation rule). true: every mustSupport element. " +
+              "Added rows have required_by='mustSupport-only' and optional:true — they are NOT required.",
+          ),
         verbosity: z
           .enum(["compact", "full"])
           .default("compact")
@@ -1294,7 +1301,13 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
         "medical-service-payment-tw = Taiwan NHI payment codes for lab tests and procedures, occupation, department codes). " +
         "For IG CodeSystems the text may be Chinese or English, an abbreviation or chart wording (CRP, TKA, 清創縫合 …); " +
         "system may also be the CodeSystem id or alias words (nhi_payment). Candidates carry matched_term / matched_language " +
-        "and same-group siblings (e.g. the same test by another method).",
+        "and same-group siblings (e.g. the same test by another method). " +
+        "Drugs: Taiwan NHI drug codes (健保藥品代碼) ARE supported — system='medication-nhi-tw' (TW Core) or 'nhi-medication' (TWPAS), " +
+        "text = brand or generic name in English or Chinese, strength optional (e.g. 'Glucophage 500mg', '脈優錠 5mg', 'amlodipine'); " +
+        "when the default IG ships only an excerpt of a CodeSystem the full installed copy is searched (see warnings / codesystem_copies). " +
+        "ATC: WHO ATC (http://www.whocc.no/atc) is not held as a searchable CodeSystem (TW Core medcation-atc-tw has only 27 Taiwan-specific codes); " +
+        "find the NHI drug instead — its candidate's `linked` lists the drug's ATC code (e.g. {system:'http://www.whocc.no/atc', code:'A10BA02'}). " +
+        "TFDA licence numbers: system='medication-fda-tw'. Taiwan FDA product details (ingredients, inserts): search_drug / get_drug_details.",
       inputSchema: { text: z.string(), value_set: z.string().nullish().default(null), system: z.string().nullish().default(null), ...pkg, limit: z.number().int().default(10) },
     },
     async ({ text, value_set, system, package_id, version, limit }) =>

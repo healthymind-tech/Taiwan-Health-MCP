@@ -28,6 +28,7 @@ validator（經 <https://validator.dicom.tw/app/> 包裝，下稱 oracle 或 dic
 | `harness/gen_v4.py` | （v4）LOINC LA/LP/LL/LG、SNOMED inactive／版本、CVX、WHO ICD-10、Coding.version、ValueSet 當 system、PAS ICD-10-CM slice 的規則探針與 seed 固定（20261018）的 mutation 家族。需要 LOINC 2.80 zip、SNOMED RF2 zip、`fetch_tx_terms.py` 的輸出。 |
 | `harness/gen_v6.py` | （v6）`|version` 探針（meta.profile / Extension.url / binding ValueSet / targetProfile / type profile，含已安裝、maj.min 版本線、萬用字元、閉包外的其他已安裝版本、不存在版本）與 slice 成員須同時符合 base element 的探針。項目可帶 `ver`（用該 IG 版本驗證；CLI 跑 `-ig <pkg>#<ver>`）與 `overlay`（額外 StructureDefinition；CLI 以 `-ig <file>` 載入，`localValidate.ts` 疊在 DB 閉包之前）。 |
 | `harness/gen_v2_mutations.py` | （v2）A–F 各類 mutation（display 互換 / 中文 display / 大小寫 / 空白、LOINC LCN / short name、SNOMED 同義詞與 inactive 描述、偽造 THO / HL7 URL、巢狀 extension、UCUM、OID、ValueSet 當 system、vital-sign 替代碼）。需要 `corpus/v2_terms.json.gz`。 |
+| `harness/gen_v7.py` | （v7）評估報告 v5 的漏報探針：X-* extension context（element / extension 型別、contextInvariant、extension 自身 invariant 如 var-1）、U-* `Unrecognized property`（剖面不允許的 choice 型別、未知 extension 的 value、單值寫成陣列）、A-* HL7 空間 URL（v3-ActEncounterCode）、I-* IG CodeSystem 未知碼、R-* RxNorm 碼 / display。 |
 | `requiredElementsAudit.ts` | `fhir_get_profile_required_elements` 的 oracle 稽核：對每個通過驗證的範例（含 Bundle entry），檢查 (a) 回報的必要元素都存在於範例（necessity）、(b) 刪掉回報元素後 validator 必報錯（sufficiency）、(c) 逐一刪除範例中每個元素，validator 報的 required / cardinality / invariant 錯誤都有對應列（under-report）。可疑 mutant 寫到 `required_audit_cli_items.json` 供 `cli_oracle.py` 複核；`CLI_SAMPLE=n` 另抽樣通過的刪除。 |
 | `requiredElementsSizes.ts` | 該 tool 在 TW Core 1.0.0 / PAS 1.2.7 全部 profile 上的輸出大小（compact vs full）。 |
 | `requiredElementsFixtures.ts` | 重新產生 `mcp_proposal/fixtures/required_elements_pas`（單元測試用的 PAS 投影與範例）。`mcp_proposal/` 是私有、未納入版控的目錄；沒有它時 `src/fhirRequiredElements.test.ts` 的相關案例會自動略過。 |
@@ -48,6 +49,7 @@ validator（經 <https://validator.dicom.tw/app/> 包裝，下稱 oracle 或 dic
 | `v6_probes` | 30 | （v6）`gen_v6.py`：M-* meta.profile 版本、E-* extension url 版本、S-* slice vs base、B-* binding、T-* targetProfile、Y-* type profile |
 | `v4_mut` | 376 | （v4）mutation 家族：LA 有效／display 互換／空白／偽造、LP 有效／錯 display、SNOMED inactive 有效／互換／無 display、偽造 SCTID、active＋inactive 描述、CVX 有效／互換／偽造、ICD-10 有效／互換／偽造 |
 | `mut_dis` | 31 | MedicationDispense mutation |
+| `v7_probes` | 48 | （v7）`gen_v7.py`：X-* / U-* / A-* / I-* / R-*（見上） |
 | `perf` | 6 | 大型 PAS bundle（效能 + 正確性） |
 | `refprobe*` | 51 | Bundle reference 解析探針 |
 

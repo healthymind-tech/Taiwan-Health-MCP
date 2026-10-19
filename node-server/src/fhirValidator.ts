@@ -154,8 +154,8 @@ export type CodeCheck = (
   | { status: "silent" }
   | { status: "invalid-code"; severity: "error" | "warning"; message: string }
   | { status: "invalid-display"; severity: "error" | "warning" | "information"; message: string }
-  /** A display was given but there is no local terminology to check it against. */
-  | { status: "display-unchecked"; message: string }
+  /** A display was given but there is no local terminology to check it against (default severity information). */
+  | { status: "display-unchecked"; message: string; severity?: "warning" | "information" }
 ) &
   CodeCheckExtra;
 
@@ -572,6 +572,119 @@ interface Item {
   /** JSON property the item came from (choice elements: e.g. valueQuantity). */
   key: string;
   path: string;
+  /** Type the item is validated as (set by walkChildren). */
+  typeCode?: string;
+  /**
+   * HL7 NodeStack logical paths of the item (validator_cli 7.0.1
+   * NodeStack.pushInternal): the parent's logical paths extended by the element
+   * name, plus the type name(s). Used for extension context checks.
+   */
+  lp?: string[];
+  /** Url of the Extension this item is the value[x] of (HL7: context type "extension"). */
+  parentExtUrl?: string;
+  /** For an extension item: the element that holds it (its context). */
+  host?: ExtensionHost;
+}
+
+/** The element an extension sits on, as InstanceValidator.checkExtensionContext sees it. */
+interface ExtensionHost {
+  path: string;
+  value: any;
+  /** Literal path (indexes stripped) + logical paths, sorted, de-duplicated. */
+  plist: string[];
+  isResource: boolean;
+  /** Url of the host when it is itself an Extension (or the value[x] of one). */
+  extUrl: string | null;
+  typeCode: string;
+  defPath: string;
+  modifier: boolean;
+}
+
+/** R4 canonical resource types (HL7 VersionUtilities.getExtendedCanonicalResourceNames, R4 subset). */
+const CANONICAL_RESOURCE_TYPES = new Set(
+  (
+    "ActivityDefinition CapabilityStatement ChargeItemDefinition CodeSystem CompartmentDefinition ConceptMap EffectEvidenceSynthesis " +
+    "EventDefinition Evidence EvidenceVariable ExampleScenario GraphDefinition ImplementationGuide Library Measure MessageDefinition " +
+    "NamingSystem OperationDefinition PlanDefinition Questionnaire ResearchDefinition ResearchElementDefinition RiskEvidenceSynthesis " +
+    "SearchParameter StructureDefinition StructureMap TerminologyCapabilities TestScript ValueSet"
+  ).split(" "),
+);
+
+/** Port of NodeStack.isRealPath (7.0.1): which children of an abstract logical path are real. */
+function isRealPath(lp: string, name: string): boolean {
+  if (lp === "Element") return name === "id" || name === "extension";
+  if (lp === "BackboneElement" || lp === "BackboneType") return name === "modifierExtension";
+  if (lp === "Resource") return ["id", "meta", "implicitRules", "language"].includes(name);
+  if (lp === "DomainResource") return ["text", "contained", "extension", "modifierExtension"].includes(name);
+  return true;
+}
+
+function stripIndexes(path: string): string {
+  return path.replace(/\[[^\]]*\]/g, "");
+}
+
+/**
+ * Logical paths of a child item (port of NodeStack.pushInternal, 7.0.1). Complex
+ * datatypes (validated against their type definition): parent paths + "." +
+ * the element name of the definition, plus the type name. Primitives / backbone
+ * elements: parent paths + "." + the JSON name, plus the definition's type names
+ * (or the contentReference target).
+ */
+function childLogicalPaths(parent: string[] | undefined, def: Record<string, any>, key: string, typeCode: string): string[] {
+  const out = new Set<string>();
+  const defPath = String(def.path || "");
+  const tail = defPath.slice(defPath.lastIndexOf(".") + 1) || key;
+  const complex = !isPrimitive(typeCode) && typeCode !== "BackboneElement" && typeCode !== "Element" && !def.contentReference;
+  for (const lp of parent || []) {
+    if (complex) {
+      if (!isRealPath(lp, tail)) continue;
+      out.add(`${lp}.${tail}`);
+      if (tail.endsWith("[x]")) out.add(`${lp}.${key}`);
+    } else {
+      if (!isRealPath(lp, key) && !isRealPath(lp, tail)) continue;
+      out.add(`${lp}.${key}`);
+      if (tail !== key) out.add(`${lp}.${tail}`);
+    }
+  }
+  if (complex) out.add(typeCode);
+  else if (def.contentReference) out.add(String(def.contentReference).slice(String(def.contentReference).indexOf("#") + 1));
+  else for (const t of def.type || []) out.add(typeCodeOf(t));
+  if (!complex && !(def.type || []).length && !def.contentReference) out.add(typeCode);
+  return [...out];
+}
+
+/** Port of InstanceValidator.hasElementName (7.0.1): segment-wise match, `x[x]` matching a typed choice name. */
+function hasElementName(plist: string[], en: string): boolean {
+  const ep = en.split(".");
+  for (const p of plist) {
+    if (p === en) return true;
+    const sp = p.split(".");
+    if (sp.length !== ep.length) continue;
+    let ok = true;
+    for (let i = 0; i < sp.length && ok; i++) {
+      if (sp[i] === ep[i] || ep[i] === "*") continue;
+      if (ep[i].endsWith("[x]") && sp[i].startsWith(ep[i].slice(0, -3))) continue;
+      ok = false;
+    }
+    if (ok) return true;
+  }
+  return false;
+}
+
+/** Does a context (or the definition) apply to FHIR R4 (version-specific-use start/endFhirVersion)? */
+function appliesToR4(node: Record<string, any>): boolean {
+  for (const e of node.extension || []) {
+    if (!isObject(e) || e.url !== "http://hl7.org/fhir/StructureDefinition/version-specific-use") continue;
+    for (const sub of e.extension || []) {
+      const v = typeof sub?.valueCode === "string" ? sub.valueCode : typeof sub?.valueString === "string" ? sub.valueString : null;
+      const mm = v ? /^(\d+)\.(\d+)/.exec(v) : null;
+      if (!mm) continue;
+      const n = Number(mm[1]) * 100 + Number(mm[2]);
+      if (sub.url === "startFhirVersion" && n > 400) return false;
+      if (sub.url === "endFhirVersion" && n < 400) return false;
+    }
+  }
+  return true;
 }
 
 const MAX_DEPTH = 60;
@@ -602,6 +715,7 @@ export class InstanceValidator {
     const extra = (opts.profiles || []).map((p) => String(p || "").trim()).filter((p) => p !== "");
     await this.validateResource(rctx, resource.resourceType, extra, issues, 0);
     if (bundle) this.validateBundleRules(bundle, resource.resourceType, issues);
+    await this.structuralPass(resource, resource.resourceType, issues, 0);
     return dedupe(issues);
   }
 
@@ -944,7 +1058,14 @@ export class InstanceValidator {
         await this.validateItemAgainst(
           sdx,
           sdx.root,
-          { value: rctx.resource, ext: undefined, key: rctx.resource.resourceType, path: ROOT_TOKEN },
+          {
+            value: rctx.resource,
+            ext: undefined,
+            key: rctx.resource.resourceType,
+            path: ROOT_TOKEN,
+            typeCode: rctx.resource.resourceType,
+            lp: [rctx.resource.resourceType],
+          },
           rctx.resource.resourceType,
           rctx,
           out,
@@ -1066,6 +1187,9 @@ export class InstanceValidator {
           childSdx = tsdx;
           childEl = tsdx.root;
           typeRootConstraints.push([tsdx, tsdx.root]);
+          if (typeCode === "Extension" && item.host && tsdx.type === "Extension" && tsdx.url !== CORE + "Extension") {
+            await this.checkExtensionContext(tsdx, item.host, rctx, issues, item.value);
+          }
         }
       }
     } else if (!isResourceRoot && /^[A-Z]/.test(typeCode) && typeCode !== "BackboneElement" && typeCode !== "Element") {
@@ -1078,7 +1202,7 @@ export class InstanceValidator {
 
     if (!isResourceRoot) this.checkFixedPattern(el, v, item, sdx, issues);
     await this.checkBinding(el, v, typeCode, item, issues, null);
-    if (typeCode === "Coding") await this.checkCoding(v, item, issues);
+    if (typeCode === "Coding") await this.checkCoding(v, item, issues, el);
     if (QUANTITY_TYPES.includes(typeCode)) await this.checkQuantity(v, item, issues);
     if (typeCode === "Reference") await this.checkReference(el, v, item, rctx, issues, depth);
     await this.checkConstraints(sdx, el, item, typeCode, rctx, issues);
@@ -1170,11 +1294,23 @@ export class InstanceValidator {
     }
     const extSdx = await this.sdx(CORE + "Extension");
     if (!extSdx) return;
+    const literal = stripIndexes(path.startsWith(ROOT_TOKEN) ? rctx.resource.resourceType + path.slice(ROOT_TOKEN.length) : path);
+    const host: ExtensionHost = {
+      path,
+      value: item.value,
+      plist: [...new Set([literal, ...(item.lp || [])])].sort(),
+      isResource: false,
+      extUrl: null,
+      typeCode: item.typeCode || "",
+      defPath: "",
+      modifier: false,
+    };
+    const extLp = (item.lp || []).filter((lp) => isRealPath(lp, "extension")).map((lp) => `${lp}.extension`).concat(["Extension"]);
     for (let i = 0; i < list.length; i++) {
       await this.validateItemAgainst(
         extSdx,
         { id: "Element.extension", path: "Element.extension", min: 0, max: "*", type: [{ code: "Extension" }] },
-        { value: list[i], ext: undefined, key: "extension", path: `${path}.extension[${i}]` },
+        { value: list[i], ext: undefined, key: "extension", path: `${path}.extension[${i}]`, typeCode: "Extension", lp: extLp, host },
         "Extension",
         rctx,
         issues,
@@ -1196,6 +1332,25 @@ export class InstanceValidator {
     const node = item.value as Record<string, any>;
     const groups = sdx.children(el);
     if (!groups || groups.size === 0) return; // nothing known about the children
+    // Context of extensions held by this element (InstanceValidator.checkExtensionContext).
+    let hostCache: Omit<ExtensionHost, "modifier"> | null = null;
+    const hostOf = (modifier: boolean): ExtensionHost => {
+      if (!hostCache) {
+        const literal = stripIndexes(item.path.startsWith(ROOT_TOKEN) ? rctx.resource.resourceType + item.path.slice(ROOT_TOKEN.length) : item.path);
+        const plist = [...new Set([literal, ...(item.lp || [])])].sort();
+        const typeCode = item.typeCode || "";
+        hostCache = {
+          path: item.path,
+          value: node,
+          plist,
+          isResource: isResourceRoot,
+          extUrl: typeCode === "Extension" && typeof node.url === "string" ? node.url : item.parentExtUrl ?? null,
+          typeCode,
+          defPath: String(el.path || typeCode),
+        };
+      }
+      return { ...hostCache, modifier };
+    };
     const used = new Set<string>();
     if (isResourceRoot) used.add("resourceType");
     used.add("fhir_comments");
@@ -1211,6 +1366,10 @@ export class InstanceValidator {
       const collect = (key: string, typeCode: string): void => {
         used.add(key);
         used.add("_" + key);
+        const lp = childLogicalPaths(item.lp, def, key, typeCode);
+        const parentExtUrl = item.typeCode === "Extension" && key.startsWith("value") && typeof node.url === "string" ? node.url : undefined;
+        const host = name === "extension" || name === "modifierExtension" ? hostOf(name === "modifierExtension") : undefined;
+        const mk = (value: any, ext: any, p: string): Item => ({ value, ext, key, path: p, typeCode, lp, parentExtUrl, host });
         const raw = node[key];
         const rawExt = node["_" + key];
         const baseMax = String((def.base && def.base.max) ?? def.max ?? "*");
@@ -1218,7 +1377,7 @@ export class InstanceValidator {
         const path = `${item.path}.${key}`;
         if (raw !== undefined && expectArray && !Array.isArray(raw)) {
           issues.push({ severity: "error", path, code: "structure", message: `The property ${key} must be a JSON Array, not ${isObject(raw) ? "an Object" : "a primitive property"} (at ${item.path})` });
-          const it = { value: raw, ext: Array.isArray(rawExt) ? rawExt[0] : rawExt, key, path };
+          const it = mk(raw, Array.isArray(rawExt) ? rawExt[0] : rawExt, path);
           items.push(it);
           typedItems.push({ item: it, type: typeCode });
           return;
@@ -1242,7 +1401,7 @@ export class InstanceValidator {
               issues.push({ severity: "error", path: `${path}[${i}]`, code: "structure", message: "Array entries cannot be null" });
               continue;
             }
-            const it = { value: val, ext: ex ?? undefined, key, path: `${path}[${i}]` };
+            const it = mk(val, ex ?? undefined, `${path}[${i}]`);
             items.push(it);
             typedItems.push({ item: it, type: typeCode });
           }
@@ -1253,7 +1412,7 @@ export class InstanceValidator {
           issues.push({ severity: "error", path, code: "structure", message: `The property ${key} cannot be null` });
           return;
         }
-        const it = { value: raw === undefined ? null : raw, ext: rawExt, key, path };
+        const it = mk(raw === undefined ? null : raw, rawExt, path);
         items.push(it);
         typedItems.push({ item: it, type: typeCode });
       };
@@ -2031,7 +2190,7 @@ export class InstanceValidator {
     issues.push({ severity: "error", path: item.path, code: "invalid", message: urlResolveMessage(v) });
   }
 
-  private async checkCoding(v: Record<string, any>, item: Item, issues: Issue[]): Promise<void> {
+  private async checkCoding(v: Record<string, any>, item: Item, issues: Issue[], el: Record<string, any> | null = null): Promise<void> {
     const system = v.system;
     const code = v.code;
     if (typeof system === "string" && system) {
@@ -2057,7 +2216,14 @@ export class InstanceValidator {
     }
     if (r.status === "unknown-system") {
       // Port of InstanceValidator.checkTerminologyCoding → isValueSet (7.0.1).
-      if (await this.isValueSetUrl(system)) {
+      const isVs = await this.isValueSetUrl(system);
+      // A Coding element bound directly (e.g. Encounter.class, extensible) goes through
+      // checkCoding → checkCodedElement: the binding check answers (warning
+      // "not in the value set") and neither Terminology_TX_System_ValueSet2 nor
+      // UNKNOWN_CODESYSTEM is reported (validator_cli, probe v7 A-class-vs).
+      const b = el && isObject(el.binding) ? el.binding : null;
+      if (isVs && b && b.valueSet && ["required", "extensible", "preferred"].includes(b.strength)) return;
+      if (isVs) {
         issues.push({
           severity: "error",
           path: `${item.path}.system`,
@@ -2077,7 +2243,7 @@ export class InstanceValidator {
     } else if (r.status === "invalid-display") {
       issues.push({ severity: r.severity, path: `${item.path}.display`, code: "code-invalid", message: r.message });
     } else if (r.status === "display-unchecked") {
-      issues.push({ severity: "information", path: `${item.path}.display`, code: "informational", message: r.message });
+      issues.push({ severity: r.severity ?? "information", path: `${item.path}.display`, code: "informational", message: r.message });
     }
   }
 
@@ -2210,6 +2376,234 @@ export class InstanceValidator {
       code: "structure",
       message: `Unable to find a profile match for ${ref} among choices: ${candidates.map((c) => c.url).join(", ")}`,
     });
+  }
+
+  /**
+   * Port of InstanceValidator.checkExtensionContext (validator_cli 7.0.1): an
+   * extension may only be used where its StructureDefinition.context allows it.
+   *  - element contexts: `Element` / `Any` anywhere; `Resource` on a resource root;
+   *    `CanonicalResource` on a canonical resource; otherwise the host's literal
+   *    path (indexes stripped) or one of its logical paths (NodeStack) must match
+   *    the expression segment-wise, or after replacing the leading type by one of
+   *    its base types (Observation → DomainResource → Resource);
+   *  - extension contexts: the host is that extension (or its value[x]);
+   *  - fhirpath contexts and `profile#path` element contexts are not evaluated
+   *    here and count as allowed (never a false error);
+   *  - contexts restricted to other FHIR versions (version-specific-use) are skipped.
+   * Failing all: Extension_EXTP_Context_Wrong(_VER) / Extension_EXTM_Context_Wrong,
+   * error at the host element. When allowed, each StructureDefinition.contextInvariant
+   * must hold on the host (Profile_EXT_Not_Here); an invariant that cannot be
+   * evaluated locally is skipped.
+   */
+  private async checkExtensionContext(ext: SdIndex, host: ExtensionHost, rctx: ResourceCtx, issues: Issue[], extValue: any): Promise<void> {
+    const sd = ext.sd;
+    const contexts: Array<Record<string, any>> = Array.isArray(sd.context) ? sd.context.filter(isObject) : [];
+    if (!contexts.length) return;
+    const label = `${ext.url}${typeof sd.version === "string" && sd.version ? ` v${sd.version}` : ""}`;
+    const plist = host.plist;
+    const shown: string[] = [];
+    let skippedForVersion = false;
+    let ok = false;
+    for (const c of contexts) {
+      if (ok) break;
+      if (!appliesToR4(c)) {
+        skippedForVersion = true;
+        continue;
+      }
+      const expr = String(c.expression ?? "");
+      if (c.type === "element") {
+        shown.push(`e:${expr}`);
+        let en = expr;
+        let pu: string | null = null;
+        if (en.includes("#")) {
+          pu = en.slice(0, en.indexOf("#"));
+          en = en.slice(en.indexOf("#") + 1);
+        }
+        if (en === "Element" || en === "Any") ok = true;
+        else if (en === "Resource" && host.isResource) ok = true;
+        else if (en === "CanonicalResource" && plist.some((p) => CANONICAL_RESOURCE_TYPES.has(p))) ok = true;
+        else if (pu === null && hasElementName(plist, en)) ok = true;
+        else if (pu !== null) ok = true; // profile-scoped context: conformance to that profile not checked here
+        else ok = await this.contextByBaseType(plist, en);
+      } else if (c.type === "extension") {
+        shown.push(`x:${expr}`);
+        if (host.extUrl !== null && stripVersion(expr) === stripVersion(host.extUrl)) ok = true;
+      } else {
+        if (c.type === "fhirpath") shown.push(`p:${expr}`);
+        ok = true; // fhirpath (or unknown) context: not evaluated locally
+      }
+    }
+    if (!ok) {
+      const allowed = shown.join(", ");
+      const elementIs = `[${plist.join(", ")}]`;
+      issues.push({
+        severity: "error",
+        path: host.path,
+        code: "structure",
+        message: host.modifier
+          ? `The modifier extension ${label} is not allowed to be used at this point (this element is ${elementIs}; ${skippedForVersion ? "allowed for this version" : "allowed"} = ${allowed})`
+          : `The extension ${label} is not allowed to be used at this point (this element is ${elementIs}; allowed for this version = ${allowed})`,
+        profile: ext.url,
+      });
+      return;
+    }
+    const invariants: string[] = Array.isArray(sd.contextInvariant) ? sd.contextInvariant.filter((x: any) => typeof x === "string" && x) : [];
+    if (!invariants.length || host.value === null || typeof host.value !== "object") return;
+    const env: FhirPathEnv = {
+      resource: rctx.resource,
+      rootResource: rctx.container || rctx.resource,
+      resolveReference: (ref: string) => this.resolveRef(ref, rctx),
+    };
+    const base = fhirPathBase(host.defPath || host.typeCode, host.typeCode || null);
+    for (const inv of invariants) {
+      const outcome = evaluateConstraint(host.value, base, inv, env, { extension: extValue });
+      if (outcome.status !== "fail") continue;
+      issues.push({
+        severity: "error",
+        path: host.path,
+        code: "business-rule",
+        message: `The extension ${label} is not allowed to be used at this point (based on context invariant '${inv}')`,
+        profile: ext.url,
+      });
+      return;
+    }
+  }
+
+  /** checkExtensionContext's fallback: `<Type><rest>` where Type is the path's leading type or one of its bases. */
+  private async contextByBaseType(plist: string[], en: string): Promise<boolean> {
+    for (const p of plist) {
+      const dot = p.indexOf(".");
+      const pn = dot >= 0 ? p.slice(0, dot) : p;
+      const pt = dot >= 0 ? p.slice(dot) : "";
+      if (!/^[A-Za-z][A-Za-z0-9]*$/.test(pn)) continue;
+      let cur = await this.sdx(CORE + pn);
+      for (let guard = 0; cur && guard < 10; guard++) {
+        if (cur.type + pt === en) return true;
+        const baseDef = typeof cur.sd.baseDefinition === "string" ? cur.sd.baseDefinition : null;
+        cur = baseDef ? await this.sdx(baseDef) : null;
+      }
+    }
+    return false;
+  }
+
+  // ------------------------------------------------------------------ structure
+
+  /**
+   * "Unrecognized property" anywhere in the instance, judged against the core
+   * definitions like the HL7 JSON parser (org.hl7.fhir.r5.elementmodel.JsonParser,
+   * 7.0.1), which runs before — and independently of — profile validation. The
+   * profile walk already reports unknown properties where it descends; this pass
+   * covers what it does not reach (a choice type the profile does not allow, the
+   * content of an unknown extension …). Like the parser it does not descend into a
+   * value of the wrong JSON shape (array for a single element, object for a
+   * primitive) nor into a second value of the same choice element.
+   */
+  private async structuralPass(resource: Record<string, any>, path: string, issues: Issue[], depth: number): Promise<void> {
+    if (depth > MAX_DEPTH || typeof resource.resourceType !== "string") return;
+    const sdx = await this.sdx(CORE + resource.resourceType);
+    if (!sdx) return;
+    await this.structObject(sdx, sdx.root, resource, path, issues, depth, true);
+  }
+
+  private async structObject(
+    sdx: SdIndex,
+    el: Record<string, any>,
+    node: Record<string, any>,
+    path: string,
+    issues: Issue[],
+    depth: number,
+    isRoot: boolean,
+  ): Promise<void> {
+    if (depth > MAX_DEPTH) return;
+    const groups = sdx.children(el);
+    if (!groups || groups.size === 0) return;
+    const unknown = (key: string): void => {
+      issues.push({ severity: "error", path, code: "structure", message: `Unrecognized property '${key}'` });
+    };
+    const choiceSeen = new Map<string, string>();
+    for (const key of Object.keys(node)) {
+      if (key === "fhir_comments" || (isRoot && key === "resourceType")) continue;
+      const primExt = key.startsWith("_");
+      const name = primExt ? key.slice(1) : key;
+      let def: Record<string, any> | null = null;
+      let typeCode = "";
+      const direct = groups.get(name);
+      if (direct && !name.endsWith("[x]")) {
+        def = direct.base || direct.slices[0] || null;
+        const types: string[] = (def?.type || []).map(typeCodeOf);
+        typeCode = types.length === 1 ? types[0] : types[0] || "BackboneElement";
+      } else {
+        let stemHit = false;
+        for (const g of groups.values()) {
+          if (!g.name.endsWith("[x]")) continue;
+          const stem = g.name.slice(0, -3);
+          if (!(name.startsWith(stem) && name.length > stem.length && /[A-Z]/.test(name[stem.length]))) continue;
+          stemHit = true;
+          const d = g.base || g.slices[0];
+          const suffix = name.slice(stem.length);
+          const t = ((d?.type || []) as any[]).map(typeCodeOf).find((a: string) => a[0].toUpperCase() + a.slice(1) === suffix);
+          if (d && t) {
+            const prev = choiceSeen.get(stem);
+            if (prev !== undefined && prev !== name) {
+              def = null; // a second value of this choice: reported by the profile walk
+              typeCode = "";
+            } else {
+              choiceSeen.set(stem, name);
+              def = d;
+              typeCode = t;
+            }
+          }
+          break;
+        }
+        if (stemHit && !def) continue; // type not allowed / second choice value: reported by the profile walk
+      }
+      if (!def) {
+        unknown(key);
+        continue;
+      }
+      const raw = node[key];
+      const childPath = `${path}.${name}`;
+      if (primExt) {
+        const list = Array.isArray(raw) ? raw : [raw];
+        for (let i = 0; i < list.length; i++) {
+          const pe = list[i];
+          if (!isObject(pe)) continue;
+          const pp = Array.isArray(raw) ? `${childPath}[${i}]` : childPath;
+          for (const k of Object.keys(pe)) {
+            if (k !== "id" && k !== "extension" && k !== "fhir_comments") {
+              issues.push({ severity: "error", path: pp, code: "structure", message: `Unrecognized property '${k}'` });
+            }
+          }
+          if (Array.isArray(pe.extension)) {
+            const extSdx = await this.sdx(CORE + "Extension");
+            if (!extSdx) continue;
+            for (let j = 0; j < pe.extension.length; j++) {
+              if (isObject(pe.extension[j])) await this.structObject(extSdx, extSdx.root, pe.extension[j], `${pp}.extension[${j}]`, issues, depth + 1, false);
+            }
+          }
+        }
+        continue;
+      }
+      if (isPrimitive(typeCode)) continue;
+      const baseMax = String((def.base && def.base.max) ?? def.max ?? "*");
+      const expectArray = baseMax !== "1" && baseMax !== "0";
+      if (expectArray !== Array.isArray(raw)) continue; // wrong JSON shape: the parser drops it
+      const values: Array<[any, string]> = Array.isArray(raw) ? raw.map((v, i) => [v, `${childPath}[${i}]`]) : [[raw, childPath]];
+      for (const [v, p] of values) {
+        if (!isObject(v)) continue;
+        if (typeCode === "Resource" || typeCode === "DomainResource" || (typeof v.resourceType === "string" && !COMPLEX_TYPES.includes(typeCode) && !(await this.isDatatype(typeCode)))) {
+          await this.structuralPass(v, p, issues, depth + 1);
+        } else if (def.contentReference) {
+          const target = sdx.byId.get(String(def.contentReference).replace(/^.*#/, ""));
+          if (target) await this.structObject(sdx, target, v, p, issues, depth + 1, false);
+        } else if (sdx.hasChildren(def)) {
+          await this.structObject(sdx, def, v, p, issues, depth + 1, false);
+        } else {
+          const tsdx = await this.sdx(CORE + typeCode);
+          if (tsdx) await this.structObject(tsdx, tsdx.root, v, p, issues, depth + 1, false);
+        }
+      }
+    }
   }
 
   private async checkConstraints(

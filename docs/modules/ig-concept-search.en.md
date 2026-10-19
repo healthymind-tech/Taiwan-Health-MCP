@@ -75,7 +75,11 @@ whether a CodeSystem needs rebuilding; unchanged ones are skipped.
 IG candidates of `fhir_normalize_code`: `code`, `display`, `source` (`lexical` / `semantic` / `hybrid`), `score`,
 `matched_term` / `matched_language` (the IG name that matched — **always the IG's own display or designation, never a
 UMLS string**), `exact`, `category` (from a categorical property or the hierarchy), `group` + `siblings`
-(near-duplicate codes with the same name stem, e.g. the same test by another method). `system` may be a canonical, a
+(near-duplicate codes with the same name stem, e.g. the same test by another method), `linked` (codes of other systems
+reached through Coding properties, at most 3 + `linked_more`, e.g. an NHI drug's ATC code). When the resolved IG holds
+only an excerpt of a CodeSystem and another installed package holds a full copy of the same canonical (≥ 10× the
+concepts and ≥ 1,000 more, e.g. TW Core 1.0.0 vs 0.3.2 `medication-nhi-tw`), the full copy is searched unless
+`package_id` / `version` is given, noted in `warnings` and `data.codesystem_copies`. `system` may be a canonical, a
 CodeSystem id or alias words (e.g. `nhi_payment`). `fhir_lookup_code` adds `hint` and `near_codes` when a code is
 not found.
 

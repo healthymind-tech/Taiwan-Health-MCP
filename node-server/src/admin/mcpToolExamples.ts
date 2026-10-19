@@ -368,6 +368,8 @@ export const MCP_TOOL_EXAMPLES: Record<string, ToolExampleSet> = {
     examples: [
       example("patient", "Patient-twcore（精簡）", { profile: "Patient-twcore", package_id: TWCORE, version: TWCORE_VERSION, instance: null, include_target_implied: true, include_mustsupport: false, verbosity: "compact" }),
       example("observation", "Observation-laboratoryResult-twcore（完整）", { profile: "Observation-laboratoryResult-twcore", package_id: TWCORE, version: TWCORE_VERSION, instance: null, include_target_implied: true, include_mustsupport: false, verbosity: "full" }),
+      example("condition", "Condition-twcore（category 推導規則 + allowedCodes）", { profile: "Condition-twcore", package_id: TWCORE, version: TWCORE_VERSION, instance: null, include_target_implied: true, include_mustsupport: false, verbosity: "compact" }),
+      example("ms_defaults", "Condition-twcore + 有預設值的 Must Support（optional:true）", { profile: "Condition-twcore", package_id: TWCORE, version: TWCORE_VERSION, instance: null, include_target_implied: true, include_mustsupport: "defaults", verbosity: "compact" }),
     ],
   },
   fhir_get_valueset: {
@@ -417,6 +419,7 @@ export const MCP_TOOL_EXAMPLES: Record<string, ToolExampleSet> = {
       example("nhi_en", "「Emergent hemodialysis」→ 健保支付代碼", { text: "Emergent hemodialysis", value_set: null, system: NHI_PAYMENT_CS, package_id: TWCORE, version: TWCORE_VERSION, limit: 5 }),
       example("nhi_abbr", "「TKA」→ 健保支付代碼", { text: "TKA", value_set: null, system: NHI_PAYMENT_CS, package_id: TWCORE, version: TWCORE_VERSION, limit: 5 }),
       example("nhi_alias", "「全膝關節置換術 右側」→ system 別名 nhi_payment", { text: "全膝關節置換術 右側", value_set: null, system: "nhi_payment", package_id: null, version: null, limit: 5 }),
+      example("nhi_drug", "「脈優錠 5mg」→ 健保藥品代碼（含 ATC linked）", { text: "脈優錠 5mg", value_set: null, system: "medication-nhi-tw", package_id: null, version: null, limit: 5 }),
     ],
   },
   fhir_resolve_reference: {

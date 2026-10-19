@@ -203,12 +203,13 @@ export function evaluateConstraint(
   base: string,
   expression: string,
   env: FhirPathEnv,
+  extraVars: Record<string, any> = {},
 ): ConstraintOutcome {
   const prev = current;
   current = env;
   try {
     const fn = compile(base, expression);
-    const vars = { resource: typedNode(env.resource)[0], rootResource: typedNode(env.rootResource)[0] };
+    const vars = { ...extraVars, resource: typedNode(env.resource)[0], rootResource: typedNode(env.rootResource)[0] };
     const result = fn(node, vars);
     if (!Array.isArray(result) || result.length === 0) {
       // Same as the HL7 Java engine (convertToBoolean): an empty result is false.

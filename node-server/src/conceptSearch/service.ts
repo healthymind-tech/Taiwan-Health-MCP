@@ -41,7 +41,13 @@ export interface ConceptCandidate {
   category?: string;
   group?: string;
   siblings?: Array<{ code: string; display: string | null }>;
+  /** Codings of other systems the concept links to (Coding properties, e.g. a drug's ATC code); opt-in. */
+  linked?: Array<{ system: string; code: string }>;
+  linked_more?: number;
 }
+
+/** Max linked codings per candidate (search opts.links). */
+const MAX_LINKED = 3;
 
 export interface ConceptSearchResult {
   codesystem: { url: string; id: string | null; title: string | null; version: string | null; packageId: string; packageVersion: string };
@@ -58,6 +64,9 @@ export interface ConceptSearchResult {
 }
 
 const CACHE_TERM_BUDGET = 800_000;
+/** fullerCopy: how much larger another installed copy of a CodeSystem must be to be preferred. */
+const FULLER_COPY_FACTOR = 10;
+const FULLER_COPY_MIN_EXTRA = 1000;
 const FIRST_CLAUSE_BOOST = 0.15;
 const RECHECK_MS = 60_000;
 const SEM_LIMIT = 200;
@@ -139,6 +148,40 @@ export class IgConceptSearch {
     );
     const r = ranked[0];
     return { packageId: r.package_id, packageVersion: r.package_version, url: r.url, csId: r.artifact_id, title: r.title || r.name, version: r.version, artifactKey: r.artifact_key };
+  }
+
+  /**
+   * Another installed copy of the same CodeSystem canonical that is far larger than `loc`'s
+   * (an IG that ships only an excerpt, e.g. TW Core 1.0.0 medication-nhi-tw with 35 of the ~45k
+   * NHI drug codes, while TW Core 0.3.2 carries the full list). Larger = at least
+   * FULLER_COPY_FACTOR times the concepts and FULLER_COPY_MIN_EXTRA more, both counted in the
+   * concept-search index. Null when `loc` is not indexed or no such copy exists.
+   */
+  async fullerCopy(loc: CsLocation): Promise<{ location: CsLocation; concepts: number; ownConcepts: number } | null> {
+    type Row = { package_id: string; package_version: string; concept_count: number };
+    const rows = (
+      await query<Row>("SELECT package_id, package_version, concept_count FROM fhir.concept_index_cs WHERE cs_url = $1 ORDER BY concept_count DESC", [loc.url])
+    ).rows;
+    const own = rows.find((r) => r.package_id === loc.packageId && r.package_version === loc.packageVersion);
+    if (!own) return null;
+    const best = rows.find((r) => !(r.package_id === loc.packageId && r.package_version === loc.packageVersion));
+    const n = Number(best?.concept_count ?? 0);
+    const m = Number(own.concept_count ?? 0);
+    if (!best || n < m * FULLER_COPY_FACTOR || n - m < FULLER_COPY_MIN_EXTRA) return null;
+    const a = (
+      await query<{ artifact_key: string; artifact_id: string | null; url: string; title: string | null; name: string | null; version: string | null }>(
+        "SELECT a.artifact_key, a.artifact_id, COALESCE(a.raw_json->>'url', a.canonical_url) AS url, a.title, a.name, a.raw_json->>'version' AS version " +
+          "FROM fhir.artifacts a WHERE a.package_id = $1 AND a.package_version = $2 AND a.resource_type = 'CodeSystem' " +
+          "AND (a.canonical_url = $3 OR a.raw_json->>'url' = $3) LIMIT 1",
+        [best.package_id, best.package_version, loc.url],
+      )
+    ).rows[0];
+    if (!a) return null;
+    return {
+      location: { packageId: best.package_id, packageVersion: best.package_version, url: a.url, csId: a.artifact_id, title: a.title || a.name, version: a.version, artifactKey: a.artifact_key },
+      concepts: n,
+      ownConcepts: m,
+    };
   }
 
   /**
@@ -476,7 +519,7 @@ export class IgConceptSearch {
   }
 
   /** Free text → ranked concepts of one IG CodeSystem. */
-  async search(loc: CsLocation, text: string, limit: number, opts: { siblings?: boolean; fuse?: FuseOptions } = {}): Promise<ConceptSearchResult> {
+  async search(loc: CsLocation, text: string, limit: number, opts: { siblings?: boolean; fuse?: FuseOptions; links?: boolean } = {}): Promise<ConceptSearchResult> {
     const warnings: string[] = [];
     const [{ index, indexed }, thesaurus] = await Promise.all([this.index(loc), this.loadThesaurus()]);
     if (!indexed) {
@@ -500,7 +543,7 @@ export class IgConceptSearch {
     ranked = ranked.slice(0, limit);
     return {
       codesystem: { url: loc.url, id: loc.csId, title: loc.title, version: loc.version, packageId: loc.packageId, packageVersion: loc.packageVersion },
-      candidates: ranked.map((r) => this.candidate(index, r, opts.siblings !== false)),
+      candidates: ranked.map((r) => this.candidate(index, r, opts.siblings !== false, opts.links === true ? loc.url : null)),
       keywordOnly,
       indexed,
       warnings,
@@ -522,7 +565,7 @@ export class IgConceptSearch {
     return out.length >= 2 ? out : undefined;
   }
 
-  private candidate(index: ConceptIndex, r: RankedConcept, withSiblings: boolean): ConceptCandidate {
+  private candidate(index: ConceptIndex, r: RankedConcept, withSiblings: boolean, linksExcept: string | null = null): ConceptCandidate {
     const out: ConceptCandidate = {
       code: r.code,
       display: r.display,
@@ -533,6 +576,15 @@ export class IgConceptSearch {
     };
     const cat = r.info?.category;
     if (typeof cat === "string" && cat) out.category = cat;
+    if (linksExcept !== null && Array.isArray(r.info?.links)) {
+      const links = (r.info!.links as Array<Record<string, unknown>>)
+        .filter((l) => l && typeof l.system === "string" && l.system && l.system !== linksExcept && typeof l.code === "string" && l.code)
+        .map((l) => ({ system: String(l.system), code: String(l.code) }));
+      if (links.length) {
+        out.linked = links.slice(0, MAX_LINKED);
+        if (links.length > MAX_LINKED) out.linked_more = links.length - MAX_LINKED;
+      }
+    }
     if (withSiblings) {
       const ci = index.indexOf(r.code);
       const sib = ci === undefined ? [] : index.siblings(ci, 6);

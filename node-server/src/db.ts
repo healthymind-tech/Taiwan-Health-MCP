@@ -35,6 +35,14 @@ export function initPool(opts: InitPoolOptions = {}): pg.Pool {
     // Idle client errors must never crash the process.
     logError("pg pool idle client error", { error: String(err.message) });
   });
+  // A checked-out client emits 'error' when the server goes away mid-query (e.g. Postgres
+  // crash recovery); without a listener Node treats it as an unhandled 'error' event and
+  // exits. The pending query still rejects, so callers see the failure normally.
+  _pool.on("connect", (client: pg.PoolClient) => {
+    client.on("error", (err: Error) => {
+      logError("pg client error", { error: String(err.message) });
+    });
+  });
   return _pool;
 }
 

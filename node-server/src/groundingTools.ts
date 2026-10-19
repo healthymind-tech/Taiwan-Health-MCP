@@ -353,9 +353,11 @@ export const TOOL_DESCRIPTIONS = {
   fhir_validate_bundle:
     "Validate a FHIR Bundle in-process: each entry's resource against its meta.profile plus internal reference integrity. Optional " +
     "source_text/site_config/evidence_map add grounding issues (is each value stated in the record). Without package_id the IG " +
-    "owning the meta.profile canonicals is used ('|version' pins a version; provenance.resolved_by).",
+    "owning the meta.profile canonicals is used ('|version' pins a version; provenance.resolved_by). Issues may carry ranked " +
+    "suggestions [{value, kind, confidence, reason, patch}] (what to change the value to) and, for reference-chain errors, caused_by.",
   fhir_validate_resource:
     "Validate a FHIR resource against an IG profile, in-process (source:builtin). Pre-flight only. Optional source_text/site_config/" +
     "evidence_map add grounding issues for this resource (is each value stated in the record). Without package_id the IG owning " +
-    "its meta.profile is used ('|version' pins a version; provenance.resolved_by).",
+    "its meta.profile is used ('|version' pins a version; provenance.resolved_by). Issues may carry ranked suggestions " +
+    "[{value, kind, confidence, reason, patch}] (what to change the value to).",
 } as const;

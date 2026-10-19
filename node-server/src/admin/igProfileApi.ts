@@ -43,7 +43,7 @@ export interface ProfileToolService {
     version: string | null,
     instance?: Json | null,
     includeTargetImplied?: boolean,
-    includeMustSupport?: boolean,
+    includeMustSupport?: boolean | "defaults",
     verbosity?: "compact" | "full",
   ): Promise<string>;
   getResourceSkeleton(profile: string, packageId: string | null, version: string | null, candidateLimit?: number, includeExamples?: boolean): Promise<string>;
@@ -685,7 +685,8 @@ export async function handleIgProfileApi(deps: ProfileApiDeps, method: string, p
     if (route === "") return await profileView(deps, t);
     if (route === "required") {
       const verbosity = param(params, "verbosity") === "full" ? "full" : "compact";
-      const ms = param(params, "include_mustsupport") === "true";
+      const msRaw = param(params, "include_mustsupport");
+      const ms = msRaw === "defaults" ? "defaults" : msRaw === "true";
       return await toolPassThrough(deps, t, (svc, c) => svc.getProfileRequiredElements(c, t.packageId, t.version, null, true, ms, verbosity));
     }
     if (route === "skeleton") {

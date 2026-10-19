@@ -3587,7 +3587,7 @@ export async function runRxnormImportJob(opts: {
 }): Promise<void> {
   const { workerName, job } = opts;
   const jobId = String(job.job_id);
-  const { loadRxnormConcepts } = await import("../loaders/rxnorm.js");
+  const { parseRxnormZip } = await import("../loaders/rxnorm.js");
   const {
     withMaterializedSources,
     runValidateStep,
@@ -3607,9 +3607,21 @@ export async function runRxnormImportJob(opts: {
     message: "Starting RxNorm staged import",
     payload: { source_manifest: manifest },
   });
+  // Columns / table of migration 20261030 (idempotent), so the import works before
+  // the migration is applied by hand.
+  await query("ALTER TABLE rxnorm.concepts ADD COLUMN IF NOT EXISTS alt_names TEXT[]");
+  await query("ALTER TABLE admin.stage_rxnorm_concepts ADD COLUMN IF NOT EXISTS alt_names TEXT[]");
+  await query(
+    "CREATE TABLE IF NOT EXISTS rxnorm.editions (code_system TEXT PRIMARY KEY, version TEXT NOT NULL, release_date DATE, " +
+      "concept_count INTEGER, loaded_at TIMESTAMPTZ NOT NULL DEFAULT NOW())",
+  );
 
   await withMaterializedSources(manifest, async (paths) => {
-    const conceptRows = loadRxnormConcepts(paths.rxnorm_full);
+    const { rows: conceptRows, release } = parseRxnormZip(paths.rxnorm_full);
+    // The materialized path may not keep the uploaded file name: fall back to it.
+    const rxRelease = release ?? (await import("../loaders/rxnorm.js")).rxnormReleaseFromNames([
+      String(((manifest as any)?.bindings?.rxnorm_full ?? {}).original_filename ?? ""),
+    ]);
 
     if (progress < 1) {
       await runValidateStep({
@@ -3635,9 +3647,9 @@ export async function runRxnormImportJob(opts: {
         runningStepName: "staging_rxnorm_concepts",
         rows: conceptRows,
         table: "admin.stage_rxnorm_concepts",
-        columns: ["rxcui", "name", "tty", "suppress"],
+        columns: ["rxcui", "name", "tty", "suppress", "alt_names"],
         conflictSql: `ON CONFLICT (job_id, rxcui) DO UPDATE SET
-          name = EXCLUDED.name, tty = EXCLUDED.tty, suppress = EXCLUDED.suppress`,
+          name = EXCLUDED.name, tty = EXCLUDED.tty, suppress = EXCLUDED.suppress, alt_names = EXCLUDED.alt_names`,
         batchSize: 5000,
         jobProgressBefore: 1, jobProgressAfter: 2, jobProgressTotal: total,
         checkpointLabel: "staging_rxnorm_concepts",
@@ -3659,12 +3671,26 @@ export async function runRxnormImportJob(opts: {
         truncateSql: "TRUNCATE rxnorm.concepts",
         copies: [
           {
-            sql: `INSERT INTO rxnorm.concepts (rxcui, name, tty, suppress)
-                  SELECT rxcui, name, tty, suppress
+            sql: `INSERT INTO rxnorm.concepts (rxcui, name, tty, suppress, alt_names)
+                  SELECT rxcui, name, tty, suppress, alt_names
                   FROM admin.stage_rxnorm_concepts WHERE job_id = $1::uuid`,
             args: [jobId],
             label: `concepts (${fmt(conceptRows.length)})`,
           },
+          // Release used by the FHIR validator (unknown RXCUI is an error only for a
+          // release at least as new as the one tx.fhir.org serves).
+          ...(rxRelease
+            ? [
+                {
+                  sql: `INSERT INTO rxnorm.editions (code_system, version, release_date, concept_count)
+                        VALUES ('rxnorm', $1, $2::date, $3)
+                        ON CONFLICT (code_system) DO UPDATE SET version = EXCLUDED.version,
+                          release_date = EXCLUDED.release_date, concept_count = EXCLUDED.concept_count, loaded_at = NOW()`,
+                  args: [rxRelease.version, rxRelease.releaseDate, conceptRows.length],
+                  label: `edition ${rxRelease.version}`,
+                },
+              ]
+            : []),
         ],
         finalCheckpoint: { phase: "promoted", concept_count: conceptRows.length },
         promotedStepName: "promoted_rxnorm",

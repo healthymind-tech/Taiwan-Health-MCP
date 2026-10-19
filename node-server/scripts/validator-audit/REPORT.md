@@ -456,3 +456,32 @@ B / T / Y 用自建 profile（overlay：CLI 以 `-ig <file>` 載入，`localVali
 2. ~~已解決：`fhirIg` 改用 `pickCanonicalVersion`（HL7 規則），`|1.0.9` 兩邊都解析到 1.0.0~~ 原狀況：`fhirIg.resolveCanonicalVersioned` 的 `versionMatches` 只接受同版本或 `1.0` / `1.0.x`；HL7 另把 `|1.0.9` 解析到 1.0.0（maj.min 索引）。validator 以 `pickCanonicalVersion`（HL7 規則，CLI 確認）為準，兩者在「不存在的 patch 版本」上不同。
 3. Extension.url 帶版本：HL7 另報 `EXT_VER_URL_NOT_ALLOWED / _REVERSION`，我們只報 fixed url 不符（判定相同）。
 4. 未帶版本、閉包內也找不到的 targetProfile：維持不判定（只加 information + unchecked）；HL7 為 error，但目前所有閉包的無版本 targetProfile 都解析得到。
+
+---
+
+# v7：評估報告 v5 的漏報（2026-10-20）
+
+探針 `corpus/v7_probes.json.gz`（`harness/gen_v7.py`，48 筆，全部由 TW Core 1.0.0 範例合成，無 CARVE 內容），以 validator_cli 7.0.1 + tx.fhir.org（`-ig tw.gov.mohw.twcore#1.0.0`）產生 oracle。staging 已停用，本輪 `localValidate.ts` 以唯讀方式連 production DB。
+
+## v7.1 根因與修正
+
+| # | 漏報 | 根因 | 修正（HL7 來源） |
+|---|------|------|------------------|
+| 1 | `The extension …/variable … is not allowed to be used at this point` + var-1 | (a) 完全沒有檢查 `StructureDefinition.context`；(b) 無版本的 extension URL 取到 R4 core 的副本（4.0.1，沒有 var-1），HL7 取版本最高的副本（`hl7.fhir.uv.extensions.r4`，訊息帶 `v5.x`） | (a) `checkExtensionContext` 移植：宿主元素的 literal path + NodeStack logical paths（`pushInternal` / `isRealPath`）比對 element context（`Element`/`Any`、`Resource`、`CanonicalResource`、逐段比對含 `x[x]`、基底型別鏈），extension context，`version-specific-use` 過濾，`contextInvariant`（`Profile_EXT_Not_Here`）；fhirpath context 不評估（不判錯）。(b) `rankHl7Current`：無版本 StructureDefinition 依 `CanonicalResourceManager` 的 MetadataResourceVersionComparator（major.minor 最高者為 current）選副本 |
+| 2 | `Unrecognized property 'slice'`（code.coding[0] 底下） | 未知屬性只在 profile walk 走得到的地方報；剖面不允許的 choice 型別（如 bodyweight 的 valueCodeableConcept）、未知 extension 的 value 底下不會往下走。HL7 的未知屬性由 JSON parser 依 core 定義檢查，與剖面無關 | `structuralPass`：依 core 定義走整份資源；同 HL7 parser，單值寫成陣列、primitive 寫成物件、同一 choice 的第二個值都不往下（CLI 確認） |
+| 3 | `Unknown code 'I13.0'`（icd-10-cm-2023-tw） | validator 在 TW Core 1.0.0 閉包下本來就報 error（探針 I-* 與 CLI 一致）；漏報出現在「驗證時閉包不同」（例如 meta.profile 指向 PAS → TW Core 0.3.2 閉包，該版 CodeSystem 掛在 ValueSet URL，HL7 也只 warning）或 coding 根本沒被走到（同 #2） | 判定不變；另加 information：其他已安裝套件有同一 CodeSystem 較完整且含此碼的版本時指出 `package#version`（例：TW Core 1.0.0 `medication-nhi-tw` 35 碼 vs 0.3.2 全量） |
+| 4 | `No definition could be found for URL value …/v3-ActEncounterCode` 時有時無 | 本機判定對同一輸入是確定的；CLI 只有在 `Encounter.class` 是物件時才報（R5 寫法的陣列被 parser 丟棄，兩邊都只報形狀錯誤 + min 1），所以不同回合的輸出形狀會讓結果不同。另找到兩個真的非確定來源：`definitionExists` 在 DB 錯誤時把 fail-open 的 `true` 快取 30 分鐘（期間該 URL 不再檢查）；`tableHasRows` 在 DB 錯誤時把「術語未載入」快取 30 分鐘（期間 LOINC / SNOMED / ICD 檢查靜默略過） | 兩者 DB 錯誤不再快取（缺表 42P01 仍快取）。另：直接綁定的 Coding（`Encounter.class`，extensible）以 ValueSet URL 當 system 時 HL7 只給 binding warning，不報 `The Coding references a value set`（A-class-vs，原為誤拒） |
+| 5 | RxNorm Wrong Display Name | RxNorm 在 `SILENT_SYSTEMS`，完全不檢查 | `judgeRxnorm`：碼 + display 對 `rxnorm.concepts`（tx.fhir.org 接受 RXCUI 的所有 SAB=RXNORM 名稱，不分大小寫；探針 R-psn-atom / R-sy-atom 確認）；未知碼只有本機版本 ≥ tx 版本（03022026）才 error；只有偏好名稱時（舊匯入）display 不符為 warning；未載入為 warning `Display not checked (RxNorm)`。loader 改存所有 RXNORM 名稱（`alt_names`）與版本（`rxnorm.editions`，migration `20261030_rxnorm_display_names`，匯入 job 會自行套用 DDL） |
+
+## v7.2 結果（vs CLI）
+
+| | 一致 | 誤收 | 誤拒 |
+|---|---|---|---|
+| 既有 16 個 corpus（4,340 筆）修改前 | 4,339 | 1（`S-us-version-fab`） | 0 |
+| 修改後 | **4,339** | **1**（同一筆） | **0** |
+| v7 探針（48）修改前 | 32 | 16 | 0 |
+| v7 探針修改後 | **45** | **3** | **0** |
+
+- 既有語料本機 verdict 改變 **0 筆**；新增 error 72 則（mut_v2 `B-extnested` 的 patient-nationality / birthPlace context 錯誤），CLI 全部也有。
+- v7 剩餘 3 筆：R-wrong-display / R-unknown 是資料面（production `rxnorm.concepts` 尚無 `alt_names`，版本 06032024 舊於 tx 的 03022026 → 目前只給 warning；重跑 `rxnorm_import` 後 display 錯誤即為 error，未知碼要等匯入新版 RxNorm）；X-resource-context-on-observation 是 CLI 自動載入 `hl7.fhir.uv.extensions#5.3.0`（本機未安裝；已安裝的 5.2.0 副本 context 為 `Resource`）。
+- 訊息格式：`The extension <url> v<version> is not allowed to be used at this point (this element is [<paths>]; allowed for this version = e:…)`，與 CLI 的 `Extension_EXTP_Context_Wrong(_VER)` 相同；CLI 對同一 extension 會用 core 與 extensions 兩份定義各報一次，我們只用選中的那份報一次。

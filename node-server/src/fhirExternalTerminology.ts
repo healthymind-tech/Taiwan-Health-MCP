@@ -30,7 +30,12 @@ export const SNOMED_TX_VERSION = `${SNOMED_INT_EDITION_URI}/version/${SNOMED_TX_
 /** WHO ICD-10 edition tx.fhir.org serves (http://hl7.org/fhir/sid/icd-10). */
 export const ICD10_WHO_TX_EDITION = "2019-covid-expanded";
 
+/** RxNorm release tx.fhir.org serves ("Unknown code … version '03022026'", 2026-10). */
+export const RXNORM_TX_VERSION = "03022026";
+export const RXNORM_TX_RELEASE_DATE = "2026-03-02";
+
 export const LOINC = "http://loinc.org";
+export const RXNORM = "http://www.nlm.nih.gov/research/umls/rxnorm";
 export const SNOMED = "http://snomed.info/sct";
 export const CVX = "http://hl7.org/fhir/sid/cvx";
 export const ICD10_WHO = "http://hl7.org/fhir/sid/icd-10";
@@ -368,4 +373,58 @@ export function codingVersionIssue(vs: Record<string, any> | null, system: strin
     return `The code system '${system}' version '${result}' resulting from the version '' in the ValueSet include is different to the one in the value ('${versionCoding}')`;
   }
   return `The code system '${system}' version '${versionVS}' in the ValueSet include is different to the one in the value ('${versionCoding}')`;
+}
+
+// --------------------------------------------------------------------------- //
+// RxNorm
+// --------------------------------------------------------------------------- //
+
+export interface RxnormConceptInfo {
+  /** RXNCONSO STR of the preferred SAB=RXNORM atom. */
+  name: string;
+  /** The other SAB=RXNORM atom strings (PSN, SY, TMSY …); null when the import did not keep them. */
+  altNames: string[] | null;
+}
+
+/** Strict (unknown RXCUI → error) when the local release is at least the one tx.fhir.org serves. */
+export function rxnormStrict(edition: { releaseDate: string | null } | null): boolean {
+  return !!edition && !!edition.releaseDate && edition.releaseDate >= RXNORM_TX_RELEASE_DATE;
+}
+
+/**
+ * RxNorm code + display, as tx.fhir.org answers it (validator_cli 7.0.1
+ * checkCodeOnServer relays Unknown_Code_in_Version /
+ * Display_Name_for__should_be_one_of__instead_of; confirmed with probes v7 R-*):
+ *  - unknown RXCUI: error when the local release is at least the tx.fhir.org one
+ *    (`strict`), else a warning (newer RXCUIs exist there);
+ *  - display: valid displays are every SAB=RXNORM atom string of the RXCUI (the
+ *    preferred SCD / SBD name plus PSN / SY / TMSY designations), compared
+ *    ignoring case; anything else is "Wrong Display Name" (error) naming the
+ *    preferred name;
+ *  - when the local table holds only the preferred name (an import before
+ *    migration 20261030), a display matching none of what is held may still be a
+ *    valid PSN / SY atom: warning, never an error.
+ */
+export function judgeRxnorm(code: string, display: string | null, row: RxnormConceptInfo | null, strict: boolean, localVersion: string | null): CodeCheck {
+  if (!row) {
+    return strict
+      ? { status: "invalid-code", severity: "error", message: `Unknown code '${code}' in the CodeSystem '${RXNORM}' version '${RXNORM_TX_VERSION}'` }
+      : {
+          status: "invalid-code",
+          severity: "warning",
+          message: `Code '${code}' was not found in the locally held RxNorm release${localVersion ? ` (${localVersion})` : ""}; it may exist in the release used by the terminology server (${RXNORM_TX_VERSION})`,
+        };
+  }
+  if (display === null) return { status: "ok" };
+  const accepted = [row.name, ...(row.altNames ?? [])];
+  const bad = judgeExternalDisplay(RXNORM, code, display, accepted, [row.name]);
+  if (!bad) return { status: "ok" };
+  if (row.altNames === null) {
+    return {
+      status: "invalid-display",
+      severity: "warning",
+      message: `${bad.status === "invalid-display" ? bad.message : ""}; only the preferred RxNorm name is held locally, so another RxNorm name (PSN / SY) could not be ruled out — re-run the RxNorm import to check displays fully`,
+    };
+  }
+  return bad;
 }

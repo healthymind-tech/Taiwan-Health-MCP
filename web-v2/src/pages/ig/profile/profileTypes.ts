@@ -171,6 +171,10 @@ export interface RequiredRow {
   choices?: string[];
   allowedCodes?: string[];
   hint?: string;
+  /** mustSupport-only rows (include_mustsupport): not required. */
+  optional?: boolean;
+  /** Citation of the derivation rule in `hint` (derived rows, verbosity=full). */
+  derivation_source?: string;
 }
 
 export interface RequiredData {

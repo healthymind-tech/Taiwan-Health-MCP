@@ -1,0 +1,7 @@
+{
+ "oracle": "validator_cli 7.0.1 + tx.fhir.org (CLI cache; v7_probes generated 2026-10-20 with -ig tw.gov.mohw.twcore#1.0.0)",
+ "db": "production DB, read-only (staging stopped)",
+ "previous_16_corpora": {"n": 4340, "before": {"agree": 4339, "false_accept": 1, "false_reject": 0}, "after": {"agree": 4339, "false_accept": 1, "false_reject": 0}, "verdict_changes_local": 0, "new_error_issues": "72 extension-context errors (patient-nationality / patient-birthPlace in mut_v2 B-extnested), all also reported by the CLI"},
+ "v7_probes": {"n": 48, "before": {"agree": 32, "false_accept": 16, "false_reject": 0}, "after": {"agree": 45, "false_accept": 3, "false_reject": 0},
+   "remaining": ["R-wrong-display / R-unknown: production rxnorm.concepts lacks alt_names and the release (RxNorm_full_06032024) is older than tx.fhir.org 03022026 -> warnings until rxnorm_import is re-run (and the release is current)", "X-resource-context-on-observation: the CLI auto-loads hl7.fhir.uv.extensions#5.3.0 (not installed here); the installed 5.2.0 copy allows context Resource"]}
+}

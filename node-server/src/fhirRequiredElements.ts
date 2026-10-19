@@ -85,12 +85,23 @@ export interface RequiredElementRow {
   choices?: string[];
   /** Allowed codes for a small required binding (filled by the service from the local ValueSet). */
   allowedCodes?: string[];
+  /** True on rows that are not required (mustSupport-only rows): fill when the record has the value. */
+  optional?: boolean;
+  /** Citation of the curated derivation rule quoted in `hint` (derived rows, see DERIVATION_RULES). */
+  derivation_source?: string;
 }
+
+/**
+ * include_mustsupport: false = required rows only; true = also every mustSupport element;
+ * "defaults" = only the mustSupport elements whose value needs no source fact (fixed / pattern,
+ * a conventional workflow default, or a curated derivation rule).
+ */
+export type MustSupportMode = boolean | "defaults";
 
 export interface RequiredElementsOptions {
   instance?: Record<string, unknown> | null;
   includeTargetImplied?: boolean;
-  includeMustSupport?: boolean;
+  includeMustSupport?: MustSupportMode;
 }
 
 export interface ProfileInvariant {
@@ -250,6 +261,130 @@ export const WORKFLOW_DEFAULTS: Record<string, unknown[]> = {
   "AllergyIntolerance.clinicalStatus": ["active"],
   "AllergyIntolerance.verificationStatus": ["confirmed"],
 };
+
+/**
+ * Curated derivation rules for well-known `derived` elements (small and closed on purpose: every
+ * rule paraphrases the published definitions of the codes it names, cited in `source`). A rule is
+ * used only when the element's binding is one of `valueSets` (or the element has no binding), so a
+ * profile that binds a different code list never gets a rule about codes it does not allow.
+ * Elements without a rule get the binding's code meanings from the local ValueSet expansion
+ * (service side, see `derivedCodeMeanings`).
+ */
+export interface DerivationRule {
+  rule: string;
+  source: string;
+  /** Canonical URLs (no version) of the bindings this rule describes. */
+  valueSets: string[];
+}
+
+export const DERIVATION_RULES: Record<string, DerivationRule> = {
+  "Condition.category": {
+    rule:
+      "encounter-diagnosis when the condition is diagnosed or assessed in this visit / admission (an outpatient, " +
+      "admission or discharge diagnosis of the record's encounter; also set Condition.encounter to that encounter); " +
+      "problem-list-item only for an entry of the patient's longitudinal problem list kept across visits (e.g. a " +
+      "chronic problem list or past history the record presents as such); a diagnosis written in a visit note is " +
+      "encounter-diagnosis even when the disease is chronic",
+    source:
+      "FHIR R4 condition-category code definitions (http://hl7.org/fhir/R4/codesystem-condition-category.html); " +
+      "US Core Condition Encounter Diagnosis vs Problems and Health Concerns profiles " +
+      "(http://hl7.org/fhir/us/core/STU6.1/StructureDefinition-us-core-condition-encounter-diagnosis.html)",
+    valueSets: [
+      "http://hl7.org/fhir/ValueSet/condition-category",
+      "http://hl7.org/fhir/us/core/ValueSet/us-core-condition-category",
+      "http://hl7.org/fhir/us/core/ValueSet/us-core-problem-or-health-concern",
+    ],
+  },
+  "Observation.category": {
+    rule:
+      "from what was measured: laboratory = a lab test on a specimen; vital-signs = BP, heart / respiratory rate, " +
+      "body temperature, SpO2, height, weight, BMI, head circumference; imaging = an imaging result; exam = a " +
+      "physical-exam finding; survey = a questionnaire or assessment score; social-history = smoking, alcohol, " +
+      "occupation and other lifestyle facts; procedure / therapy / activity / symptom as their names say",
+    source:
+      "FHIR R4 observation-category code definitions (http://hl7.org/fhir/R4/codesystem-observation-category.html); " +
+      "FHIR R4 Vital Signs profile (http://hl7.org/fhir/R4/observation-vitalsigns.html)",
+    valueSets: ["http://hl7.org/fhir/ValueSet/observation-category", "http://hl7.org/fhir/us/core/ValueSet/us-core-observation-category"],
+  },
+  "Encounter.diagnosis.use": {
+    rule:
+      "from where the record lists the diagnosis: admission diagnosis = AD, discharge diagnosis = DD, chief complaint = " +
+      "CC, comorbidity = CM, pre- / post-operative diagnosis = pre-op / post-op, a claim's billing diagnosis = billing",
+    source: "FHIR R4 diagnosis-role code definitions (http://hl7.org/fhir/R4/codesystem-diagnosis-role.html)",
+    valueSets: ["http://hl7.org/fhir/ValueSet/diagnosis-role"],
+  },
+  "Encounter.diagnosis.rank": {
+    rule: "1 for the principal (primary) diagnosis, then 2, 3 … in the order the record lists them; ranks count per use",
+    source: "FHIR R4 Encounter.diagnosis.rank: 'Ranking of the diagnosis (for each role type)' (http://hl7.org/fhir/R4/encounter-definitions.html#Encounter.diagnosis.rank)",
+    valueSets: [],
+  },
+  "MedicationRequest.category": {
+    rule:
+      "from the setting of the order: inpatient = to be administered during an inpatient stay; outpatient = ordered " +
+      "in a clinic / outpatient visit; community = to be taken by the patient at home (incl. OTC); discharge = a " +
+      "discharge prescription",
+    source: "FHIR R4 medicationrequest-category code definitions (http://hl7.org/fhir/R4/codesystem-medicationrequest-category.html)",
+    valueSets: ["http://hl7.org/fhir/ValueSet/medicationrequest-category"],
+  },
+  "MedicationStatement.category": {
+    rule:
+      "from where the medication is used: inpatient = during an inpatient stay; outpatient = in an outpatient " +
+      "setting; community = at home by the patient; patientspecified = as reported by the patient or a relative",
+    source: "FHIR R4 medication-statement-category code definitions (http://hl7.org/fhir/R4/codesystem-medication-statement-category.html)",
+    valueSets: ["http://hl7.org/fhir/ValueSet/medication-statement-category"],
+  },
+  "MedicationRequest.courseOfTherapyType": {
+    rule: "continuous = long-term / chronic medication (incl. refill prescriptions); acute = a short, defined course; seasonal = taken only in a season",
+    source: "FHIR R4 medicationrequest-course-of-therapy code definitions (http://hl7.org/fhir/R4/codesystem-medicationrequest-course-of-therapy.html)",
+    valueSets: ["http://hl7.org/fhir/ValueSet/medicationrequest-course-of-therapy"],
+  },
+  "AllergyIntolerance.category": {
+    rule: "from the substance: medication = a drug; food = a food or food additive; environment = pollen, dust, animal, latex and other environmental substances; biologic = blood products, vaccines, other biologics",
+    source: "FHIR R4 allergy-intolerance-category code definitions (http://hl7.org/fhir/R4/codesystem-allergy-intolerance-category.html)",
+    valueSets: ["http://hl7.org/fhir/ValueSet/allergy-intolerance-category"],
+  },
+  "AllergyIntolerance.type": {
+    rule: "allergy = an immune-mediated reaction (what records usually call an allergy); intolerance = a non-immune reaction (e.g. a side effect the record calls intolerance)",
+    source: "FHIR R4 allergy-intolerance-type code definitions (http://hl7.org/fhir/R4/codesystem-allergy-intolerance-type.html)",
+    valueSets: ["http://hl7.org/fhir/ValueSet/allergy-intolerance-type"],
+  },
+  "AllergyIntolerance.criticality": {
+    rule: "high = the record reports a life-threatening reaction (e.g. anaphylaxis) or calls it severe / critical; low = the record states a low risk; otherwise unable-to-assess",
+    source: "FHIR R4 allergy-intolerance-criticality code definitions (http://hl7.org/fhir/R4/codesystem-allergy-intolerance-criticality.html)",
+    valueSets: ["http://hl7.org/fhir/ValueSet/allergy-intolerance-criticality"],
+  },
+  "Observation.interpretation": {
+    rule: "the record's flag, or the value compared with its reference range: N normal, H high, L low, HH / LL critically high / low, A abnormal (non-numeric)",
+    source: "FHIR R4 observation-interpretation (v3 ObservationInterpretation) code definitions (http://hl7.org/fhir/R4/v3/ObservationInterpretation/cs.html)",
+    valueSets: ["http://hl7.org/fhir/ValueSet/observation-interpretation"],
+  },
+};
+
+/** The curated rule for a derived row, or null when none applies to its binding. */
+export function derivationRuleFor(path: string, binding: { valueSet?: string } | null | undefined): DerivationRule | null {
+  const rule = DERIVATION_RULES[stripSlices(path)];
+  if (!rule) return null;
+  const vs = binding?.valueSet ? String(binding.valueSet).split("|")[0] : null;
+  if (vs && rule.valueSets.length && !rule.valueSets.includes(vs)) return null;
+  return rule;
+}
+
+/**
+ * "codes: a = meaning; b = meaning" for a derived row without a curated rule, from the local
+ * ValueSet expansion (CodeSystem definitions, else displays). Undefined when nothing to say.
+ */
+export function derivedCodeMeanings(codes: Array<{ code: string; display?: string | null; definition?: string | null }>, max = 10): string | undefined {
+  const clip = (t: string, n: number): string => (t.length > n ? `${t.slice(0, n - 1)}…` : t);
+  const parts = codes
+    .slice(0, max)
+    .map((c) => {
+      const m = (c.definition || c.display || "").replace(/\s+/g, " ").trim();
+      return m && m.toLowerCase() !== c.code.toLowerCase() ? `${c.code} = ${clip(m, 90)}` : null;
+    })
+    .filter((x): x is string => Boolean(x));
+  if (!parts.length) return undefined;
+  return `pick the code whose meaning fits the record: ${parts.join("; ")}${codes.length > max ? `; (+${codes.length - max} more)` : ""}`;
+}
 
 /** Target-implied primary content: optional in the profile, but the entry is meaningless without it. */
 export const PRIMARY_CONTENT: Record<string, Array<[string, string]>> = {
@@ -768,7 +903,9 @@ export function hintFor(
     if (dflt) parts.push(`usual default ${compactJson(dflt[0])}; use another value only if the record says so`);
   }
   if (row.grounding_class === "derived") {
-    parts.push("derivable from other filled values (e.g. the code's kind); pick from the binding");
+    const rule = derivationRuleFor(row.path, row.binding);
+    if (rule) parts.push(`derive: ${rule.rule}`);
+    else parts.push("derivable from other filled values (e.g. the code's kind); pick from the binding");
   }
   if (row.grounding_class === "site") {
     parts.push("namespace URI of the issuing organisation (site config or the profile's identifier slice pattern)");
@@ -801,6 +938,16 @@ export function hintFor(
     }
   }
   if (row.min > 1) parts.push(`at least ${row.min} items`);
+  if (row.optional) {
+    const gp = stripSlices(row.path);
+    const defaultable =
+      Boolean(row.fixed || row.pattern) || row.grounding_class === "auto" || gp in WORKFLOW_DEFAULTS || (row.grounding_class === "derived" && derivationRuleFor(row.path, row.binding) !== null);
+    parts.push(
+      defaultable
+        ? "optional (mustSupport, not required): fill it with the value or rule above when it applies, or leave it out (never refuse because it is missing)"
+        : "optional (mustSupport, not required): include it when the record gives the value, otherwise leave it out (never refuse because it is missing)",
+    );
+  }
   return parts.length ? parts.join("; ") : undefined;
 }
 
@@ -992,22 +1139,33 @@ export function requiredElements(
   }
 
   // 4) mustSupport-only (opt-in): MS elements whose ancestors are required or MS themselves.
+  //    "defaults": only MS elements whose value needs no source fact (fixed / pattern, a workflow
+  //    default, a curated derivation rule) and whose ancestors are all listed.
   if (includeMustSupport) {
+    const defaultsOnly = includeMustSupport === "defaults";
     const listed = new Set(rows.map((r) => r.id));
     for (const e of els) {
-      if (!e.mustSupport || !e.id.includes(".") || listed.has(e.id)) continue;
+      if (!e.mustSupport || !e.id.includes(".") || listed.has(e.id) || e.max === "0") continue;
       let ok = true;
       let p = parentId(e.id);
       while (p && p.includes(".")) {
         const pe = E.get(p);
-        if (pe && !included.has(p) && !pe.mustSupport) {
+        if (pe && !included.has(p) && (defaultsOnly ? !listed.has(p) : !pe.mustSupport)) {
           ok = false;
           break;
         }
         p = parentId(p);
       }
       if (!ok) continue;
-      rows.push(rowFrom(e, e.id, e.path, "mustSupport-only", classifyElement(rt, e, codeFixed)));
+      const cls = classifyElement(rt, e, codeFixed);
+      if (defaultsOnly) {
+        const gp = stripSlices(e.path || e.id);
+        const defaultable =
+          Boolean(e.fixed || e.pattern) || cls === "auto" || gp in WORKFLOW_DEFAULTS || (cls === "derived" && derivationRuleFor(e.path, e.binding) !== null);
+        if (!defaultable) continue;
+      }
+      rows.push(rowFrom(e, e.id, e.path, "mustSupport-only", cls, { optional: true }));
+      listed.add(e.id);
     }
   }
 
@@ -1019,6 +1177,10 @@ export function requiredElements(
     }
     const h = hintFor(row, E, rowsById);
     if (h) row.hint = h;
+    if (row.grounding_class === "derived") {
+      const rule = derivationRuleFor(row.path, row.binding);
+      if (rule) row.derivation_source = rule.source;
+    }
   }
 
   // Profile-defined error invariants on the root, on listed elements and on populated ones.
@@ -1113,9 +1275,16 @@ export function compactRow(row: RequiredElementRow): Record<string, unknown> {
   if (row.condition) out.condition = row.condition;
   if (row.choices) out.choices = row.choices;
   if (row.allowedCodes) out.allowedCodes = row.allowedCodes;
+  if (row.optional) out.optional = true;
   if (row.hint) out.hint = row.hint;
+  if (row.derivation_source) out.derivation_source = row.derivation_source;
   return out;
 }
+
+/** Appended to the guide when the output carries optional (mustSupport) rows. */
+export const OPTIONAL_ROWS_NOTE =
+  "Rows with optional:true are mustSupport elements, NOT required: fill them when the record (or the listed default / " +
+  "fixed value / derivation) gives the value, otherwise leave them out — a missing optional element is never a reason to refuse.";
 
 /** Shorter guide for the compact view (the per-row keys it explains are fewer). */
 export const READING_GUIDE_COMPACT =
@@ -1206,6 +1375,7 @@ export function compactView(rows: RequiredElementRow[], E: Map<string, Projected
         .join("; ");
       if (row.grounding_class === "container") hint = [hint, containerShape(row, E)].filter(Boolean).join("; ");
     } else if (row.grounding_class === "container") hint = containerShape(row, E);
+    if (row.optional) o.optional = true;
     if (hint) o.hint = hint;
     out.push(o);
   }
@@ -1234,6 +1404,8 @@ function compactHintPart(h: string): string {
   ) {
     return "";
   }
+  if (h.startsWith("optional (mustSupport, not required): fill it with")) return "optional: use this value / rule or leave it out";
+  if (h.startsWith("optional (mustSupport, not required)")) return "optional: leave it out if the record lacks it";
   if (h.startsWith("type slice: write it as JSON property")) return h.replace("type slice: write it as JSON property", "JSON property");
   const dar = /^give (\S+); only if the value is genuinely unknown use dataAbsentReason/.exec(h);
   if (dar) return "or dataAbsentReason only if genuinely unknown";

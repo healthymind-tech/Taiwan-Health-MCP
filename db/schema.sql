@@ -680,6 +680,7 @@ CREATE TABLE IF NOT EXISTS admin.stage_rxnorm_concepts (
     name        TEXT NOT NULL,
     tty         TEXT NOT NULL,
     suppress    TEXT,
+    alt_names   TEXT[],
     PRIMARY KEY (job_id, rxcui)
 );
 
@@ -1769,7 +1770,7 @@ CREATE INDEX IF NOT EXISTS idx_snomed_emb_hnsw ON snomed.concept_embeddings
 
 
 -- ============================================================
--- RxNorm (reference terminology — IG ValueSet expansion only)
+-- RxNorm (reference terminology — IG ValueSet expansion + FHIR validator code / display checks)
 -- ============================================================
 -- Concept-only import: one row per RXCUI (SAB=RXNORM), keeping the preferred
 -- atom. Used to expand IG ValueSet filters such as `TTY in (SCD,SBD,GPCK,BPCK)`
@@ -1780,7 +1781,17 @@ CREATE TABLE IF NOT EXISTS rxnorm.concepts (
     rxcui     BIGINT PRIMARY KEY,
     name      TEXT NOT NULL,   -- RXNCONSO STR (preferred atom)
     tty       TEXT NOT NULL,   -- term type: SCD/SBD/GPCK/BPCK/IN/BN/…
-    suppress  TEXT             -- RXNCONSO SUPPRESS flag (N/O/Y/E)
+    suppress  TEXT,            -- RXNCONSO SUPPRESS flag (N/O/Y/E)
+    alt_names TEXT[]           -- the other SAB=RXNORM atom strings (20261030; FHIR validator displays)
+);
+
+-- Loaded RxNorm release (20261030_rxnorm_display_names).
+CREATE TABLE IF NOT EXISTS rxnorm.editions (
+    code_system    TEXT PRIMARY KEY,      -- 'rxnorm'
+    version        TEXT NOT NULL,         -- 'MMDDYYYY' (as tx.fhir.org reports it)
+    release_date   DATE,
+    concept_count  INTEGER,
+    loaded_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_rxnorm_concepts_tty ON rxnorm.concepts (tty);
 CREATE INDEX IF NOT EXISTS idx_rxnorm_concepts_name_fts ON rxnorm.concepts
