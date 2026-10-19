@@ -86,6 +86,8 @@ export interface LexHit {
   term: number;
   exact: boolean;
   variant: string;
+  /** Share of the (variant's) query mass the best term covers, 0..1. */
+  coverage?: number;
 }
 
 export interface SemHit {
@@ -108,9 +110,13 @@ export interface RankedConcept {
   source: "lexical" | "semantic" | "hybrid";
   info: Record<string, unknown> | null;
   group: string;
+  /** Share of the query the best lexical term covers (0 without a lexical hit). */
+  coverage: number;
 }
 
 const MAX_VARIANTS = 28;
+/** Credit of a query word matched through another form of the same stem. */
+const STEM_FORM_FACTOR = 0.8;
 /** Variants that are the caller's own text (an exact match on them is an exact match). */
 const LITERAL_VARIANTS = new Set(["text", "core", "core_no_brackets"]);
 
@@ -248,6 +254,9 @@ export function prepareQuery(text: string, thesaurus: Thesaurus | null, opts: { 
   return out;
 }
 
+/** Usage below 10^floorLog10 counts as no usage (one object so harnesses can sweep it). */
+export const POPULARITY = { floorLog10: 0 };
+
 export class ConceptIndex {
   private readonly concepts: Concept[] = [];
   private readonly terms: Term[] = [];
@@ -256,6 +265,7 @@ export class ConceptIndex {
   private readonly byCode = new Map<string, number>();
   private readonly groups = new Map<string, number[]>();
   private maxIdf = 1;
+  private maxPopularity = 0;
   readonly termCount: number;
 
   constructor(input: Iterable<ConceptInput>) {
@@ -263,6 +273,8 @@ export class ConceptIndex {
       const ci = this.concepts.length;
       const group = groupKey(c.display || c.terms.find((t) => t.kind === "display")?.text || "");
       this.concepts.push({ code: c.code, display: c.display, info: c.info ?? null, group });
+      const pop = Number(c.info?.popularity);
+      if (Number.isFinite(pop) && pop > this.maxPopularity) this.maxPopularity = pop;
       this.byCode.set(c.code, ci);
       if (group) {
         const g = this.groups.get(group);
@@ -309,6 +321,25 @@ export class ConceptIndex {
   /** Whether a (Latin, normalised) word occurs in the index, as is or stemmed. */
   hasWord(word: string): boolean {
     return this.postings.has(word) || this.postings.has(stemLatin(word));
+  }
+
+  /**
+   * How commonly the concept is used, 0..1 on a log scale relative to the CodeSystem's most
+   * used concept (info.popularity, e.g. annual claim volume); 0 when the CodeSystem carries
+   * no usage data or the concept has none.
+   */
+  /** Whether any concept carries usage data. */
+  get hasPopularity(): boolean {
+    return this.maxPopularity > 0;
+  }
+
+  popularity(i: number): number {
+    if (this.maxPopularity <= 0) return 0;
+    const pop = Number(this.concepts[i]?.info?.popularity);
+    if (!(Number.isFinite(pop) && pop > 0)) return 0;
+    const floor = POPULARITY.floorLog10;
+    const top = Math.log10(1 + this.maxPopularity);
+    return top <= floor ? Math.log1p(pop) / Math.log1p(this.maxPopularity) : Math.max(0, (Math.log10(1 + pop) - floor) / (top - floor));
   }
 
   conceptAt(i: number): Concept {
@@ -373,6 +404,35 @@ export class ConceptIndex {
     return out;
   }
 
+  private stemCache = new Map<string, string[] | null>();
+
+  /**
+   * Other forms of a long Latin query word: index words sharing its first 6 letters
+   * ("recurrent" ↔ recurrence, "laparoscopic" ↔ laparoscopy, "anesthesia" ↔ anesthetic).
+   * Matched at a discount when the word itself is not in a term. Up to 12 forms.
+   */
+  private stemForms(key: string): string[] | null {
+    if (this.stemCache.has(key)) return this.stemCache.get(key)!;
+    let out: string[] | null = null;
+    if (key.length >= 7 && /^[a-z]+$/.test(key)) {
+      if (!this.vocab) this.vocab = [...this.postings.keys()].filter((k) => /^[a-z][a-z0-9]{3,}$/.test(k)).sort();
+      const v = this.vocab;
+      const stem = key.slice(0, 6);
+      let lo = 0;
+      let hi = v.length;
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (v[mid] < stem) lo = mid + 1;
+        else hi = mid;
+      }
+      const forms: string[] = [];
+      for (let i = lo; i < v.length && v[i].startsWith(stem); i += 1) if (v[i] !== key && v[i].length >= 7) forms.push(v[i]);
+      if (forms.length && forms.length <= 12) out = forms;
+    }
+    this.stemCache.set(key, out);
+    return out;
+  }
+
   /** Lexical ranking: best (concept, term) score over all variants. */
   search(variants: QueryVariant[], limit = 50): LexHit[] {
     const best = new Map<number, { hit: LexHit; sum: number }>();
@@ -382,7 +442,8 @@ export class ConceptIndex {
       const qtoks = v.toks.map((t) => {
         const key = tokKey(t);
         const fam = t.k === "w" ? this.prefixFamily(key) : null;
-        return { key, w: t.w, k: t.k, fam, idf: fam ? fam.idf : this.tokIdf(key) };
+        const forms = t.k === "w" && !fam ? this.stemForms(key) : null;
+        return { key, w: t.w, k: t.k, fam, forms, idf: fam ? fam.idf : this.tokIdf(key) };
       });
       let qMass = 0;
       for (const q of qtoks) qMass += q.w * q.idf;
@@ -396,6 +457,7 @@ export class ConceptIndex {
           for (const k of q.fam.keys) for (const ti of this.postings.get(k)!) cand.add(ti);
           continue;
         }
+        if (q.forms) for (const k of q.forms) for (const ti of this.postings.get(k)!) cand.add(ti);
         const p = this.postings.get(q.key);
         if (!p) continue;
         if (nTerms > 200 && p.length > nTerms * 0.25 && qtoks.length > 1) continue;
@@ -423,6 +485,16 @@ export class ConceptIndex {
               }
             }
           }
+          if (tw === undefined && q.forms) {
+            for (const k of q.forms) {
+              const x = t.toks.get(k);
+              if (x !== undefined) {
+                tw = x;
+                factor = STEM_FORM_FACTOR;
+                break;
+              }
+            }
+          }
           if (tw === undefined) continue;
           matched += Math.min(q.w, tw) * q.idf * factor;
           matchedTermSide += tw * q.idf;
@@ -446,7 +518,7 @@ export class ConceptIndex {
         s *= KIND_WEIGHT[t.kind] * v.weight;
         if (t.kind === "code" && !exact) s *= 0.3;
         const prev = perVariant.get(t.concept);
-        if (!prev || s > prev.score) perVariant.set(t.concept, { concept: t.concept, score: s, term: ti, exact, variant: v.label });
+        if (!prev || s > prev.score) perVariant.set(t.concept, { concept: t.concept, score: s, term: ti, exact, variant: v.label, coverage: exact ? 1 : qcov * v.weight });
       }
       for (const [ci, h] of perVariant) {
         const agg = best.get(ci);
@@ -482,10 +554,20 @@ export interface FuseOptions {
   semFloorRank?: number;
   /** Gap between the best similarity and the floor at which the channel gets full confidence. */
   semGap?: number;
+  /** Weight of the usage prior ({@link ConceptIndex.popularity}). */
+  popWeight?: number;
+  /**
+   * Sibling ordering (needs usage data): within a group of near-duplicate siblings (same
+   * name before a method / setting / size qualifier), members whose query coverage is within
+   * this of the group's best are ordered by usage instead of by vector noise. ≤ 0 = off.
+   */
+  siblingLexTol?: number;
+  /** …and when the query matched none of the group lexically, members within this similarity. */
+  siblingSimTol?: number;
 }
 
 /** Defaults of {@link FuseOptions} (one object so evaluation harnesses can sweep them). */
-export const FUSE_DEFAULTS = { lexWeight: 0.55, semWeight: 0.45, semFloorRank: 40, semGap: 0.12 };
+export const FUSE_DEFAULTS = { lexWeight: 0.55, semWeight: 0.45, semFloorRank: 40, semGap: 0.12, popWeight: 0.3, siblingLexTol: 0.05, siblingSimTol: 0.02 };
 
 /**
  * Hybrid fusion of lexical hits and semantic hits (cosine similarities of the query
@@ -494,6 +576,7 @@ export const FUSE_DEFAULTS = { lexWeight: 0.55, semWeight: 0.45, semFloorRank: 4
 export function fuse(index: ConceptIndex, lex: LexHit[], sem: SemHit[] | null, limit: number, opts: FuseOptions = {}): RankedConcept[] {
   const lw = opts.lexWeight ?? FUSE_DEFAULTS.lexWeight;
   const sw = opts.semWeight ?? FUSE_DEFAULTS.semWeight;
+  const pw = opts.popWeight ?? FUSE_DEFAULTS.popWeight;
   const semBest = new Map<number, SemHit>();
   for (const h of sem || []) {
     const ci = index.indexOf(h.code);
@@ -527,6 +610,7 @@ export function fuse(index: ConceptIndex, lex: LexHit[], sem: SemHit[] | null, l
     const semScore = s ? semNorm(s.sim) : 0;
     let score = hasSem ? lw * Math.min(lexScore, 1.2) + sw * semScore : lexScore;
     if (l?.exact) score += 1;
+    score += pw * index.popularity(ci);
     const c = index.conceptAt(ci);
     const useLexTerm = l && (!s || lw * lexScore >= sw * semScore);
     let term = useLexTerm ? index.termAt(l!.term) : null;
@@ -545,11 +629,56 @@ export function fuse(index: ConceptIndex, lex: LexHit[], sem: SemHit[] | null, l
       source: l && s ? "hybrid" : l ? "lexical" : "semantic",
       info: c.info,
       group: c.group,
+      coverage: l?.coverage ?? 0,
     });
   }
+  orderSiblings(index, out, pw, opts.siblingLexTol ?? FUSE_DEFAULTS.siblingLexTol, opts.siblingSimTol ?? FUSE_DEFAULTS.siblingSimTol);
   out.sort((a, b) => b.score - a.score || a.code.localeCompare(b.code));
   return out.slice(0, limit);
 }
+
+/** Query coverage above which a group is said to be matched by the query's words. */
+const SIBLING_LEX_SIGNAL = 0.3;
+
+/**
+ * Within each sibling group, hand the group's relevance scores (best first) to its members
+ * the query cannot tell apart from the best one — same exact-match status and nearly the
+ * same lexical score (or, without lexical evidence, nearly the same similarity) — most used
+ * first; the rest keep their order. The group keeps its place among other candidates. A
+ * query naming the qualifier ("住院 洗腎", "復發性") still wins: it lifts that sibling's
+ * lexical score out of the tie. No-op without usage data.
+ */
+function orderSiblings(index: ConceptIndex, out: RankedConcept[], pw: number, lexTol: number, simTol: number): void {
+  if (lexTol <= 0 || !index.hasPopularity) return;
+  const groups = new Map<string, RankedConcept[]>();
+  for (const r of out) {
+    if (!r.group) continue;
+    const g = groups.get(r.group);
+    if (g) g.push(r);
+    else groups.set(r.group, [r]);
+  }
+  const pop = (r: RankedConcept): number => {
+    const ci = index.indexOf(r.code);
+    return ci === undefined ? 0 : index.popularity(ci);
+  };
+  for (const members of groups.values()) {
+    if (members.length < 2) continue;
+    const rel = (r: RankedConcept): number => r.score - pw * pop(r);
+    const best = members.reduce((a, b) => (rel(b) > rel(a) ? b : a));
+    // Tied = covers as much of the query as the best-covering sibling (a qualifier the query
+    // names is covered by one sibling only), or nearly the same similarity without words.
+    const maxCov = Math.max(...members.map((m) => m.coverage));
+    const maxSim = Math.max(...members.map((m) => m.semantic ?? -1));
+    const tied = (m: RankedConcept): boolean =>
+      m.exact === best.exact &&
+      (maxCov >= SIBLING_LEX_SIGNAL ? m.coverage >= maxCov - lexTol : m.semantic !== null && m.semantic >= maxSim - simTol);
+    const scores = members.map(rel).sort((a, b) => b - a);
+    const head = members.filter(tied).sort((a, b) => pop(b) - pop(a) || rel(b) - rel(a));
+    const rest = members.filter((m) => !tied(m)).sort((a, b) => rel(b) - rel(a));
+    [...head, ...rest].forEach((m, i) => (m.score = scores[i] + pw * pop(m)));
+  }
+}
+
 
 /** Codes that look like a mistyped `code` (same prefix / small edit distance). */
 export function nearCodes(codes: Iterable<string>, code: string, max = 5): string[] {

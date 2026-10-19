@@ -14,7 +14,7 @@ Every IG CodeSystem is indexed by `ig_import` (automatically after an IG is inst
 | Source | Notes |
 |--------|-------|
 | The CodeSystem JSON | display, **designations in every language** (e.g. the English names TW Core already ships), nested `concept.concept`, string properties (e.g. ingredients), short definitions (≤ 120 characters, low weight) |
-| CodeSystem supplements | FHIR R4 `content = supplement`, merged by `supplements` (optionally `|version`): designations and properties. Supplements shipped in IG packages and those uploaded in the admin console both apply |
+| CodeSystem supplements | FHIR R4 `content = supplement`, merged by `supplements` (optionally `|version`): designations and properties. Supplements shipped in IG packages and those uploaded in the admin console both apply. A numeric usage property (code or description mentions `claim-volume` / `usage` / `popularity` / `申報量` / `使用量`, e.g. a `claim-volume` built from the NHI open dataset 診療項目醫令申報量(年)) is not a name: it becomes a **usage prior** for ranking (see "Usage" below) |
 | Linked names | Coding properties (e.g. a supplement's `loinc`) and the targets of IG ConceptMaps whose `group.source` is the CodeSystem: the shared LOINC COMPONENT, SNOMED descriptions, otherwise the coding display |
 | UMLS (optional) | When a concept's English name is a string of a UMLS concept (CUI), that CUI's other synonyms / abbreviations become **match-only** terms (at most 12 per concept) |
 
@@ -27,7 +27,9 @@ whether a CodeSystem needs rebuilding; unchanged ones are skipped.
   numerals before measure words (小於五公分 → 小於5公分), `cm` → 公分, `<` → 小於, dotted abbreviations (C.R.P → crp), `w/o`.
 - **Chart noise removed**: laterality, `x1`, `5針`, suture specs (4-0 Nylon), `r/o`, `f/u`, `s/p`.
 - **Tokens**: English words (-s / -ing / -ed folded), Chinese character bigrams plus low-weight unigrams; an English
-  word absent from the index matches as a prefix (abd → abdominal, vanco → vancomycin).
+  word absent from the index matches as a prefix (abd → abdominal, vanco → vancomycin); an English word of 7+ letters
+  that a name lacks also matches, at a discount, another form sharing its first 6 letters (recurrent ↔ recurrence,
+  laparoscopic ↔ laparoscopy).
 - **Query variants** (each scored, the best kept, agreement between variants adds a little): the text, its clinical
   core, without brackets, abbreviation expansions, zh ↔ en bridges, UMLS synonyms. Every expansion comes from data:
   SNOMED CT "ACR - expansion" descriptions, LOINC shortname ↔ component, abbreviations defined inside IG names
@@ -42,6 +44,14 @@ whether a CodeSystem needs rebuilding; unchanged ones are skipped.
   more than 20,000 concepts are indexed lexically only. Without a usable embedding endpoint, or before the
   CodeSystem has vectors, responses carry `search_mode: "keyword_only"`.
 - **Fusion**: 0.55 × lexical + 0.45 × semantic (similarities rescaled within the query's own similarity distribution — best = 1, rank 40 = 0 — and weighted by a confidence of (best − rank-40 value) ÷ 0.12; no absolute 0.7 floor any more: absolute similarity levels are model-specific, and Qwen3-Embedding-4B with a query instruction puts the best match at ~0.6–0.75. The query vector carries the `ig_concept` task instruction).
+- **Usage** (only when the CodeSystem carries a usage property; otherwise ranking is unchanged):
+  - prior: + 0.3 × usage (log-scaled to 0–1 relative to the CodeSystem's most used code);
+  - **sibling ordering**: among codes of one `group` (same name stem, differing only by a method / setting / size
+    qualifier — 白蛋白 vs 白蛋白(免疫比濁法), 血液透析(一次)-住院 vs -門診), the members the query **cannot tell apart** —
+    same exact-match status and the same share of the query's words covered (within 0.05), or, when no word of the
+    query matched, a similarity within 0.02 — are ordered by usage instead of by vector noise. The group keeps its
+    place among the candidates; only its representative changes. A query that names the qualifier ("住院 洗腎",
+    "recurrent") covers more words with that sibling, so usage never overrides it.
 - **Multi-item text** ("Na/K/Cl", "CBC/DC, Hb …"): the response carries `clauses` (each clause's best code, in text
   order) and the first clause's concept gets a small boost.
 

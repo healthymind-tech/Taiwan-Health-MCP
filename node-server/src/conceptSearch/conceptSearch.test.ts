@@ -240,3 +240,53 @@ test("UMLS match-only terms and query synonyms never surface as matched_term", (
   assert.equal(r2[0].code, "18005C");
   assert.notEqual(r2[0].matchedTerm, "Transthoracic echocardiography");
 });
+
+test("assembleCodeSystem: a numeric usage property of a supplement becomes info.popularity (a year property does not)", () => {
+  const cs = { resourceType: "CodeSystem", url: "http://x/cs", concept: [{ code: "A", display: "白蛋白" }, { code: "B", display: "白蛋白(免疫比濁法)" }] };
+  const sup = {
+    resourceType: "CodeSystem",
+    content: "supplement",
+    supplements: "http://x/cs",
+    property: [
+      { code: "claim-volume", type: "integer", description: "Annual claim volume" },
+      { code: "claim-year", type: "integer", description: "Fee year of that figure" },
+    ],
+    concept: [
+      { code: "A", property: [{ code: "claim-volume", valueInteger: 5000000 }, { code: "claim-year", valueInteger: 2025 }] },
+      { code: "B", property: [{ code: "claim-volume", valueInteger: 5700 }, { code: "claim-year", valueInteger: 2025 }] },
+    ],
+  };
+  const out = assembleCodeSystem(cs, [{ url: "http://x/sup", version: null, resource: sup }]);
+  assert.equal(out.find((c) => c.code === "A")!.info.popularity, 5000000);
+  assert.equal(out.find((c) => c.code === "B")!.info.popularity, 5700);
+  assert.ok(!out.some((c) => c.terms.some((t) => t.text === "2025" || t.text === "5700")));
+});
+
+test("fuse: usage orders siblings the query cannot tell apart; a named qualifier still wins", () => {
+  const mk = (pop: Record<string, number>) =>
+    new ConceptIndex([
+      { code: "09038C", display: "白蛋白", terms: [{ text: "白蛋白", lang: "zh", kind: "display" }, { text: "Albumin", lang: "en", kind: "designation" }], info: { popularity: pop["09038C"] } },
+      { code: "12112B", display: "白蛋白(免疫比濁法)", terms: [{ text: "白蛋白(免疫比濁法)", lang: "zh", kind: "display" }, { text: "Albumin (immunoturbidimetry)", lang: "en", kind: "designation" }], info: { popularity: pop["12112B"] } },
+      { code: "58001C", display: "血液透析(一次)-住院", terms: [{ text: "血液透析(一次)-住院", lang: "zh", kind: "display" }], info: { popularity: pop["58001C"] } },
+      { code: "58029C", display: "血液透析(一次)-門診", terms: [{ text: "血液透析(一次)-門診", lang: "zh", kind: "display" }], info: { popularity: pop["58029C"] } },
+    ]);
+  const sem = [{ code: "12112B", sim: 0.8, term: "Albumin (immunoturbidimetry)", lang: "en" }, { code: "09038C", sim: 0.7, term: "Albumin", lang: "en" }];
+  const pops = { "09038C": 5_000_000, "12112B": 5_700, "58001C": 600_000, "58029C": 10_000_000 };
+  const withUsage = mk(pops);
+  assert.equal(fuse(withUsage, withUsage.search(prepareQuery("albumin", null), 10), sem, 3)[0].code, "09038C");
+  // No usage data: unchanged behaviour (the vector channel decides).
+  assert.equal(mk({}).hasPopularity, false);
+  assert.equal(mk({}).popularity(0), 0);
+  // The query names the setting: the inpatient sibling wins despite lower usage.
+  const r = fuse(withUsage, withUsage.search(prepareQuery("血液透析 住院", null), 10), null, 2);
+  assert.equal(r[0].code, "58001C");
+});
+
+test("ConceptIndex.search: a long English word also matches another form of its stem", () => {
+  const ix = new ConceptIndex([
+    { code: "R", display: "x", terms: [{ text: "Repair of inguinal hernia recurrence", lang: "en", kind: "designation" }] },
+    { code: "N", display: "y", terms: [{ text: "Repair of inguinal hernia", lang: "en", kind: "designation" }] },
+  ]);
+  const hits = ix.search(prepareQuery("recurrent inguinal hernia repair", null), 5);
+  assert.equal(ix.conceptAt(hits[0].concept).code, "R");
+});

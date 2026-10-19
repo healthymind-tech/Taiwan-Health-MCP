@@ -69,3 +69,35 @@ test("lexicalMatch: a query that is a whole delimited part of the name scores hi
   assert.ok(lexicalMatch("hypertension", "Essential (primary) hypertension").score >= 0.85);
   assert.ok(lexicalMatch("高血壓", "高血壓性腦病變").score < 0.85);
 });
+
+test("rankHybrid families: members the query cannot tell apart are ordered by defaultness, not vector noise", () => {
+  const fam = (key: string, name: string, sim: number, defaultness: number): RankCandidate => ({
+    key,
+    texts: [{ text: name }, { text: "Hemoglobin", weight: 0.85 }],
+    sim,
+    family: "loinc:hemoglobin",
+    defaultness,
+  });
+  const cands = [
+    fam("molar", "Hemoglobin [Moles/volume] in Blood", 0.69, 0.3),
+    fam("arterial", "Hemoglobin [Moles/volume] in Arterial blood", 0.68, 0),
+    fam("common", "Hemoglobin [Mass/volume] in Blood", 0.59, 0.75),
+    { key: "other", texts: [{ text: "Glucose [Mass/volume] in Blood" }], sim: 0.6 },
+  ];
+  const out = rankHybrid("hemoglobin", cands, 4);
+  assert.equal(out[0].key, "common");
+  // Without the family information the vector order wins (the failure mode this fixes).
+  const plain = rankHybrid("hemoglobin", cands.map(({ family: _f, defaultness: _d, ...c }) => c), 4);
+  assert.equal(plain[0].key, "molar");
+});
+
+test("rankHybrid families: a qualifier the query names still picks its member", () => {
+  const fam = (key: string, name: string, sim: number, defaultness: number): RankCandidate => ({ key, texts: [{ text: name }], sim, family: "loinc:lactate", defaultness });
+  const out = rankHybrid(
+    "arterial lactate",
+    [fam("serum", "Lactate [Moles/volume] in Serum or Plasma", 0.7, 0.5), fam("arterial", "Lactate [Moles/volume] in Arterial blood", 0.68, 0.4)],
+    2,
+  );
+  assert.equal(out[0].key, "arterial");
+  assert.ok(out[0].coverage > out[1].coverage);
+});

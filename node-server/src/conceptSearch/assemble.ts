@@ -10,7 +10,9 @@
  * - Coding-valued properties are returned as links for the caller to resolve into names
  *   (LOINC component, SNOMED term, the coding's own display);
  * - short definitions become low-weight `definition` terms;
- * - `info.category` from a declared categorical property, else the parent concept's display.
+ * - `info.category` from a declared categorical property, else the parent concept's display;
+ * - `info.popularity` from a numeric usage property (claim / order volume, e.g. the NHI
+ *   annual claim counts as a supplement): a "how common is this code" prior for ranking.
  */
 
 import { guessLang, normalizeText } from "./text.js";
@@ -41,6 +43,19 @@ const DEFINITION_MAX = 120;
 const PROPERTY_MAX = 200;
 const SKIP_PROPERTIES = /^(status|effectivedate|retirementdate|deprecated|deprecationdate|inactive|notselectable|parent|child|subsumedby|itemweight|order|comment|comments|use)$/i;
 const CATEGORY_PROP = /categor|class|group|kind|type|section|chapter|分類|類別|類型|章|節/i;
+/** A numeric property that says how often a code is used (claims, orders, results). */
+export const POPULARITY_PROP = /popularity|usage|claim[-_ ]?(volume|count)|order[-_ ]?(volume|count)|申報量|使用量|醫令量/i;
+
+/** Numeric value of a property (valueInteger / valueDecimal, or a numeric string). */
+function numericValue(p: Record<string, any>): number | null {
+  for (const k of ["valueInteger", "valueDecimal", "valueString", "valueCode"]) {
+    const v = p[k];
+    if (v === undefined || v === null) continue;
+    const n = typeof v === "number" ? v : /^\s*\d+(\.\d+)?\s*$/.test(String(v)) ? Number(v) : NaN;
+    return Number.isFinite(n) && n >= 0 ? n : null;
+  }
+  return null;
+}
 
 /** Does a supplement apply to this CodeSystem (canonical, optional "|version")? */
 export function supplementApplies(supplements: string | null | undefined, csUrl: string, csVersion: string | null): boolean {
@@ -161,6 +176,13 @@ export function assembleCodeSystem(cs: Record<string, any>, supplements: Supplem
       const code = String(p.code);
       if (SKIP_PROPERTIES.test(code)) continue;
       const decl = props.get(code);
+      if (POPULARITY_PROP.test(code) || (!/year|date|time|年/i.test(code) && POPULARITY_PROP.test(decl?.description || ""))) {
+        const n = numericValue(p);
+        if (n !== null) {
+          info.popularity = Math.max(Number(info.popularity ?? 0), n);
+          continue;
+        }
+      }
       const v = propValue(p);
       const categorical = CATEGORY_PROP.test(code) || CATEGORY_PROP.test(decl?.description || "");
       if (v.kind === "coding") {

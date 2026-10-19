@@ -20,6 +20,7 @@ import pg from "pg";
 import { unzipSync } from "fflate";
 import { config } from "../config.js";
 import { logInfo, logError, configureLogLevel } from "../logger.js";
+import { buildComponentNames } from "../loincComponentNames.js";
 
 // Source-file locations. Mirror the Python loaders' `FHIR_CODE_DIR` default and
 // the `config/datasets.yaml` layout; each path is individually overridable.
@@ -192,6 +193,8 @@ export interface LoincStagePayload {
   otherCodeRows: (string | null)[][];
   /** Part links / answer lists / panels / MapTo (empty when the zip lacks those members). */
   structure: LoincStructureRows;
+  /** 4-col (component, name, lang, name_key) analyte synonyms — see loincComponentNames.ts. */
+  componentNameRows: string[][];
   /** LOINC release version ('2.80'): the highest VersionLastChanged in Loinc.csv. */
   version: string | null;
   stats: { mapping_row_count: number; mapping_match_count: number };
@@ -469,6 +472,17 @@ export function parseLoincStructure(buf: Uint8Array): LoincStructureRows {
   };
 }
 
+/**
+ * Analyte synonyms (Loinc.csv RELATEDNAMES2 + the zh-CN linguistic variant, when the zip
+ * has it) as loinc.component_names rows.
+ */
+export function parseLoincComponentNames(buf: Uint8Array, rows: Record<string, string>[]): string[][] {
+  const zh = unzipSync(buf, { filter: (f) => /(^|\/)LinguisticVariants\/zhCN\d*LinguisticVariant\.csv$/.test(f.name) });
+  const zhName = Object.keys(zh).sort()[0];
+  const zhRows = zhName ? parseCsvDict(Buffer.from(zh[zhName]).toString("utf-8")) : null;
+  return buildComponentNames({ rows, zhRows });
+}
+
 /** SQL recording the loaded LOINC version (params: version, term_count, other_code_count). */
 export const LOINC_EDITION_UPSERT_SQL = `
   INSERT INTO loinc.editions (code_system, version, term_count, other_code_count, loaded_at)
@@ -598,12 +612,14 @@ export function buildLoincStagePayload(
   }
 
   const structure = parseLoincStructure(buf);
+  const componentNameRows = parseLoincComponentNames(buf, rows);
 
   return {
     conceptRows,
     rangeRows,
     otherCodeRows,
     structure,
+    componentNameRows,
     version,
     stats: { mapping_row_count: mappingRowCount, mapping_match_count: mappingMatchCount },
   };

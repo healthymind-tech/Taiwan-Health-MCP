@@ -22,7 +22,9 @@ export const TOOLS_VERSION: Record<string, string> = {
   // (terminologyRanking.ts) instead of RRF — a strong semantic match is never pushed out of the top-k, a short
   // query prefers the concept it names over longer sub-concepts (name coverage, ICD code depth); the query
   // vector carries the model's task instruction (Qwen3-Embedding). Output shape unchanged.
-  search_medical_codes: "1.3.0",
+  // 1.4.0 (2026-10-20): `system` = IG CodeSystem follows fhir_normalize_code 1.5.0 (usage prior / sibling
+  // ordering / stem forms); ICD-10-CM output unchanged.
+  search_medical_codes: "1.4.0",
   // 1.2.0: version-aware package resolution (fhirIg.resolveTarget): provenance.resolved_by /
   // closure_versions, data.deps_missing, "|version" honoured (no silent fallback to another version).
   fhir_get_profile_required_elements: "1.2.1",
@@ -69,7 +71,11 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.4.0: SNOMED CT / LOINC / ICD-10-CM targets use the module search tools' hybrid ranking (candidates keep
   // that order; source lexical | semantic | hybrid, score = fused score, exact:true on a verbatim name) instead
   // of ILIKE-first-then-semantic; query vectors carry the model's task instruction (IG concepts: ig_concept).
-  fhir_normalize_code: "1.4.0",
+  // 1.5.0 (2026-10-20): IG CodeSystems with a usage property (e.g. the NHI claim-volume supplement) rank by a
+  // usage prior and order near-identical siblings the query cannot tell apart (same name, different method /
+  // setting) by usage; long English words also match other forms of their stem (recurrent ↔ recurrence).
+  // LOINC targets follow search_loinc 1.3.0.
+  fhir_normalize_code: "1.5.0",
   fhir_get_resource_skeleton: "1.2.1",
   fhir_finalize_resource: "1.2.1",
   // ── 2026-10-19 actionable errors (additive fields only; successful outputs unchanged) ──
@@ -88,7 +94,12 @@ export const TOOLS_VERSION: Record<string, string> = {
   // (they used to vanish silently).
   // 1.2.0 (2026-10-19): hybrid ranking as search_medical_codes 1.3.0 with a LOINC prior (COMMON_TEST_RANK,
   // status — needs migration 20261024 + a LOINC re-import; neutral before) and the loinc query instruction.
-  search_loinc: "1.2.0",
+  // 1.3.0 (2026-10-20): analyte families — the terms of one analyte the query cannot tell apart (same words
+  // matched; specimen / unit / method variants) are ordered by COMMON_TEST_RANK instead of vector noise, the
+  // most common terms of every pooled analyte join the pool, a stronger usage prior, panels / ratios sink unless
+  // asked for; analyte synonyms from RELATEDNAMES2 + the zh-CN linguistic variant (loinc.component_names,
+  // migration 20261025 + LOINC re-import; neutral before) match the query.
+  search_loinc: "1.3.0",
   query_loinc: "1.1.1",
   interpret_lab_result: "1.1.1",
   batch_interpret_lab_results: "1.1.1",

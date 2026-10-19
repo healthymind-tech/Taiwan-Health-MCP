@@ -2133,6 +2133,29 @@ async function loincRankColumnsPresent(): Promise<boolean> {
   return Number(r.rows[0]?.n ?? 0) === 2;
 }
 
+/**
+ * Replace loinc.component_names (component, name, lang, name_key) in one transaction.
+ * Returns the row count, or null when the table does not exist (migration not applied).
+ */
+export async function writeLoincComponentNames(rows: string[][]): Promise<number | null> {
+  const exists = (await query<{ ok: boolean }>("SELECT to_regclass('loinc.component_names') IS NOT NULL AS ok")).rows[0]?.ok === true;
+  if (!exists) return null;
+  await withTransaction(async (client) => {
+    await client.query("TRUNCATE loinc.component_names");
+    const BATCH = 20000;
+    for (let i = 0; i < rows.length; i += BATCH) {
+      const part = rows.slice(i, i + BATCH);
+      await client.query(
+        `INSERT INTO loinc.component_names (component, name, lang, name_key)
+         SELECT * FROM unnest($1::text[], $2::text[], $3::text[], $4::text[])
+         ON CONFLICT (component, name_key) DO NOTHING`,
+        [part.map((r) => r[0]), part.map((r) => r[1]), part.map((r) => r[2]), part.map((r) => r[3])],
+      );
+    }
+  });
+  return rows.length;
+}
+
 /** Faithful port of `_run_loinc_import_job` (staged import: validate → stage → promote). */
 export async function runLoincImportJob(opts: {
   workerName: string;
@@ -2458,6 +2481,23 @@ export async function runLoincImportJob(opts: {
         jobProgressTotal: total,
       });
       progress = 10;
+    }
+
+    // Analyte synonyms for search (migration 20261025): derived lookup data, rebuilt in
+    // one transaction after the promote (idempotent on resume). A failure only costs the
+    // synonyms — search_loinc then ranks without them — so it never fails the import.
+    try {
+      const written = await writeLoincComponentNames(payload.componentNameRows);
+      await appendJobLog({
+        jobId,
+        level: written === null ? "warn" : "info",
+        message:
+          written === null
+            ? "loinc.component_names missing (apply migration 20261025_loinc_component_names.sql); analyte synonyms not loaded"
+            : `Loaded ${fmt(written)} LOINC analyte synonyms (RELATEDNAMES2 + zh-CN linguistic variant)`,
+      });
+    } catch (err) {
+      await appendJobLog({ jobId, level: "warn", message: `LOINC analyte synonyms not loaded: ${(err as Error).message}` });
     }
 
     await clearStageRows(jobId, [

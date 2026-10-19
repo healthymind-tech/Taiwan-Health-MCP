@@ -12,7 +12,7 @@
 | 來源 | 說明 |
 |------|------|
 | CodeSystem 原始 JSON | display、**所有語言的 designation**（例如 TW Core 已附的英文名稱）、巢狀 `concept.concept`、字串型 property（例如成分）、短的 definition（≤ 120 字，低權重） |
-| CodeSystem supplement | FHIR R4 `content = supplement`，依 `supplements`（可含 `|version`）合併 designation 與 property；IG 套件內附的與管理後台上傳的都會套用 |
+| CodeSystem supplement | FHIR R4 `content = supplement`，依 `supplements`（可含 `|version`）合併 designation 與 property；IG 套件內附的與管理後台上傳的都會套用。數值型的使用量 property（code 或描述含 `claim-volume` / `usage` / `popularity` / `申報量` / `使用量`，例如健保署「診療項目醫令申報量(年)」做成的 `claim-volume`）不當成名稱，而成為排序用的**使用量先驗**（見下方「融合」） |
 | 連結名稱 | Coding 型 property（例如 supplement 的 `loinc`）與 IG 內 ConceptMap（`group.source` 為該 CodeSystem）的目標：LOINC 取共同的 COMPONENT、SNOMED 取描述，其他取 coding 的 display |
 | UMLS（選用） | 概念的英文名稱若剛好是某個 UMLS 概念（CUI）的字串，該 CUI 的其他同義字 / 縮寫成為**只用於比對**的詞（每概念最多 12 個） |
 
@@ -25,7 +25,8 @@
   `cm` → 公分、`<` → 小於、點號縮寫（C.R.P → crp）、`w/o`。
 - **去除病歷雜訊**：左右側、`x1`、`5針`、縫線規格（4-0 Nylon）、`r/o`、`f/u`、`s/p`。
 - **斷詞**：英文詞（字尾 -s / -ing / -ed 簡化）、中文雙字詞加低權重單字；查詢中不存在於索引的英文截詞會以字首比對
-  （abd → abdominal、vanco → vancomycin）。
+  （abd → abdominal、vanco → vancomycin）；7 個字母以上的英文詞，名稱裡沒有它時也以前 6 個字母相同的其他詞形打折比對
+  （recurrent ↔ recurrence、laparoscopic ↔ laparoscopy）。
 - **查詢變體**（各自評分取最佳，多個變體一致時再加分）：原文、去雜訊、去括號、縮寫展開、中 ↔ 英橋接、UMLS 同義字。
   縮寫與橋接全部來自資料：SNOMED CT「ACR - 展開」描述、LOINC shortname ↔ component、IG 名稱內定義的縮寫
   （「… lithotripsy (ESWL)」，Schwartz–Hearst 驗證）、ICD-10 / IG 中英對照名稱挖出的英 ↔ 中詞對（Dice + 雙向最佳配對）、
@@ -35,6 +36,12 @@
   查詢時把核心句、縮寫展開句與第一個子句一次送去 embedding，對該 CodeSystem 的向量做精確掃描（不建 HNSW）。
   概念數超過 20,000 的 CodeSystem 只建字詞索引。embedding 不可用或該 CodeSystem 尚無向量時回 `search_mode: "keyword_only"`。
 - **融合**：0.55 × 字詞分數 + 0.45 × 語意分數（語意相似度在該查詢自己的相似度分布內重新縮放：最佳 = 1、第 40 名 = 0，再乘上信心值＝最佳與第 40 名差距 ÷ 0.12；不再用絕對下限 0.7——絕對相似度因模型而異，Qwen3-Embedding-4B 加查詢指令後最佳匹配約 0.6–0.75。查詢向量帶 `ig_concept` 任務指令）。
+- **使用量**（CodeSystem 有使用量 property 時才生效，沒有時排序與以前相同）：
+  - 先驗：+ 0.3 × 使用量（以對數換成 0–1，相對於該 CodeSystem 最常用的碼）；
+  - **同族排序**：`group` 相同的近似碼（同一名稱主幹，只差方法 / 場合 / 大小等限定詞，例如「白蛋白」與「白蛋白(免疫比濁法)」、
+    「血液透析(一次)-住院 / -門診」）中，查詢**分不出來**的成員——涵蓋的查詢字詞與最佳成員相同（差距 ≤ 0.05）、精確比對狀態相同；
+    查詢沒有任何字詞命中時則是語意相似度差距 ≤ 0.02——改依使用量排序，而不是由向量雜訊決定。整族在候選中的位置不變，只換由誰代表；
+    查詢寫出限定詞（「住院 洗腎」、「復發性」）時，該成員涵蓋較多字詞，不會被使用量蓋過。
 - **多項目句子**（「Na/K/Cl」、「CBC/DC, Hb …」）：回應附 `clauses`（每個子句各自最佳的代碼，依原文順序），
   排序對第一個子句的概念略加分。
 

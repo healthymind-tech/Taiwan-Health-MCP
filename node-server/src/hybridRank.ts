@@ -42,6 +42,14 @@ export interface RankCandidate {
   sim: number | null;
   /** Additive prior (keep within about ±0.15). */
   prior?: number;
+  /**
+   * Candidates that name the same thing and differ only in qualifiers (e.g. the LOINC terms
+   * of one analyte: specimen, mass vs molar unit, method). Within a family the members the
+   * query text cannot tell apart are ordered by {@link defaultness}, not by vector noise.
+   */
+  family?: string | null;
+  /** How much this member is the family's default reading (higher = more standard / common). */
+  defaultness?: number;
 }
 
 export interface RankedCandidate {
@@ -52,6 +60,8 @@ export interface RankedCandidate {
   sim: number | null;
   exact: boolean;
   source: "lexical" | "semantic" | "hybrid";
+  /** Share of the query's words found in the best-covering name (0..1). */
+  coverage: number;
 }
 
 export interface RankOptions {
@@ -69,6 +79,16 @@ export interface RankOptions {
    * blowing a 0.02 cosine difference up to the full range.
    */
   semSpan?: number;
+  /**
+   * Family ordering: members whose query coverage (share of the query's words their names
+   * contain) is within this of the family's best are indistinguishable by the query's words
+   * (it named the family, not a qualifier).
+   */
+  familyLexTol?: number;
+  /** Below this best coverage the query matched the family only through the vector channel. */
+  familyLexSignal?: number;
+  /** …and then members within this cosine similarity of the family's best are indistinguishable. */
+  familySimTol?: number;
 }
 
 /** Qualifier words that never make a name less specific to the query. */
@@ -125,13 +145,13 @@ function segments(name: string): string[] {
  * Lexical match of a query to one name, 0..1 (1 = the query is the name).
  * Query coverage dominates; name coverage separates "is" from "contains".
  */
-export function lexicalMatch(query: string, name: string): { score: number; exact: boolean } {
+export function lexicalMatch(query: string, name: string): { score: number; exact: boolean; coverage: number } {
   const q = prepare(query, false);
-  if (!q.mass || !name) return { score: 0, exact: false };
+  if (!q.mass || !name) return { score: 0, exact: false, coverage: 0 };
   const qc = q.compact;
-  if (qc && (compact(normalizeText(name)) === qc || compactCore(name) === qc)) return { score: 1, exact: true };
+  if (qc && (compact(normalizeText(name)) === qc || compactCore(name) === qc)) return { score: 1, exact: true, coverage: 1 };
   const t = prepare(name, true);
-  if (!t.mass) return { score: 0, exact: false };
+  if (!t.mass) return { score: 0, exact: false, coverage: 0 };
   let qm = 0;
   let tm = 0;
   for (const [k, w] of q.toks) {
@@ -140,7 +160,7 @@ export function lexicalMatch(query: string, name: string): { score: number; exac
     qm += Math.min(w, tw);
     tm += tw;
   }
-  if (qm <= 0) return { score: 0, exact: false };
+  if (qm <= 0) return { score: 0, exact: false, coverage: 0 };
   const qcov = Math.min(1, qm / q.mass);
   const tcov = Math.min(1, tm / t.mass);
   let s = qcov * (0.35 + 0.65 * tcov);
@@ -149,7 +169,7 @@ export function lexicalMatch(query: string, name: string): { score: number; exac
   if (qc.length >= 2 && segments(name).includes(qc)) s = Math.max(s, SEGMENT_SCORE);
   // Whole-query containment ("heart failure" inside "congestive heart failure").
   if (qc.length >= 2 && t.compact.includes(qc)) s *= 1.1;
-  return { score: Math.min(s, 0.95), exact: false };
+  return { score: Math.min(s, 0.95), exact: false, coverage: qcov };
 }
 
 /** Defaults of {@link RankOptions} (one object so evaluation harnesses can sweep them). */
@@ -160,7 +180,50 @@ export const RANK_DEFAULTS: Required<RankOptions> = {
   semanticKeep: 2,
   semFloorRank: 30,
   semSpan: 0.1,
+  familyLexTol: 0.03,
+  familyLexSignal: 0.3,
+  familySimTol: 0.2,
 };
+
+/**
+ * Within each family, hand the family's scores (best first) to its members in this order:
+ * the members the query cannot tell apart from the family's best match — the same share of
+ * the query's words covered, or, when the query matched no name of the family, nearly the
+ * same similarity — most
+ * default first; then the rest by their own score. The family's place among other
+ * candidates is unchanged; only which member holds it changes. "hemoglobin" thus lands on
+ * the commonly resulted Hemoglobin [Mass/volume] in Blood rather than on whichever
+ * specimen / unit variant the embedding happens to put first, while "arterial lactate"
+ * still prefers the arterial term (it matches more of the query).
+ */
+function orderFamilies(scored: RankedCandidate[], meta: Map<string, { family: string; defaultness: number; prior: number }>, o: Required<RankOptions>): void {
+  const fams = new Map<string, RankedCandidate[]>();
+  for (const c of scored) {
+    const m = meta.get(c.key);
+    if (!m) continue;
+    const list = fams.get(m.family);
+    if (list) list.push(c);
+    else fams.set(m.family, [c]);
+  }
+  for (const members of fams.values()) {
+    if (members.length < 2) continue;
+    // Relevance (score without the member's own prior) moves; each member keeps its prior.
+    const prior = (m: RankedCandidate): number => meta.get(m.key)!.prior;
+    const scores = members.map((m) => m.score - prior(m)).sort((a, b) => b - a);
+    // "Cannot tell apart": the member's names cover as much of the query as the family's
+    // best-covering member ("hemoglobin" — every specimen / unit variant; "CSF protein" —
+    // only the CSF term covers "csf"), or, when no name of the family covers the query
+    // (a Chinese query against English names), nearly the same similarity.
+    const maxCov = Math.max(...members.map((m) => m.coverage));
+    const maxSim = Math.max(...members.map((m) => m.sim ?? -1));
+    const tied = (m: RankedCandidate): boolean =>
+      maxCov >= o.familyLexSignal ? m.coverage >= maxCov - o.familyLexTol : m.sim !== null && m.sim >= maxSim - o.familySimTol;
+    const def = (m: RankedCandidate): number => meta.get(m.key)!.defaultness;
+    const head = members.filter(tied).sort((a, b) => def(b) - def(a) || b.score - a.score);
+    const rest = members.filter((m) => !tied(m)).sort((a, b) => b.score - a.score);
+    [...head, ...rest].forEach((m, i) => (m.score = scores[i] + prior(m)));
+  }
+}
 
 /** Order a candidate pool. Returns at most `limit` candidates, best first. */
 export function rankHybrid(query: string, candidates: RankCandidate[], limit: number, opts: RankOptions = {}): RankedCandidate[] {
@@ -170,6 +233,7 @@ export function rankHybrid(query: string, candidates: RankCandidate[], limit: nu
   const keep = opts.semanticKeep ?? RANK_DEFAULTS.semanticKeep;
   const floorRank = opts.semFloorRank ?? RANK_DEFAULTS.semFloorRank;
   const minSpan = opts.semSpan ?? RANK_DEFAULTS.semSpan;
+  const all: Required<RankOptions> = { ...RANK_DEFAULTS, ...Object.fromEntries(Object.entries(opts).filter(([, v]) => v !== undefined)) };
 
   const sims = candidates.map((c) => c.sim).filter((s): s is number => typeof s === "number" && Number.isFinite(s)).sort((a, b) => b - a);
   const hasSem = sims.length > 0;
@@ -181,19 +245,24 @@ export function rankHybrid(query: string, candidates: RankCandidate[], limit: nu
   const scored: RankedCandidate[] = candidates.map((c) => {
     let lex = 0;
     let exact = false;
+    let coverage = 0;
     for (const t of c.texts) {
       if (!t.text) continue;
       const m = lexicalMatch(query, t.text);
       const w = t.weight ?? 1;
       const v = m.score * w;
       if (v > lex) lex = v;
+      if (m.coverage > coverage) coverage = m.coverage;
       if (m.exact && w >= 0.85) exact = true;
     }
     const sem = semNorm(c.sim);
     const score = (hasSem ? lw * lex + sw * sem : lex) + (exact ? exactBonus : 0) + (c.prior ?? 0);
     const source: RankedCandidate["source"] = lex > 0.2 && sem > 0.5 ? "hybrid" : lex >= sem ? "lexical" : "semantic";
-    return { key: c.key, score, lexical: lex, semantic: sem, sim: c.sim, exact, source };
+    return { key: c.key, score, lexical: lex, semantic: sem, sim: c.sim, exact, source, coverage };
   });
+  const meta = new Map<string, { family: string; defaultness: number; prior: number }>();
+  for (const c of candidates) if (c.family) meta.set(c.key, { family: c.family, defaultness: c.defaultness ?? 0, prior: c.prior ?? 0 });
+  if (meta.size > 1) orderFamilies(scored, meta, all);
   scored.sort((a, b) => b.score - a.score || (b.sim ?? -1) - (a.sim ?? -1) || a.key.localeCompare(b.key));
   const out = scored.slice(0, limit);
   if (hasSem && keep > 0 && limit >= 3) {

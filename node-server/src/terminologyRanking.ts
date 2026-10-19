@@ -17,6 +17,7 @@
 import type pg from "pg";
 import { query, withTransaction } from "./db.js";
 import { rankHybrid, type RankCandidate, type RankedCandidate } from "./hybridRank.js";
+import { queryNameKeys } from "./loincComponentNames.js";
 
 /** Lexical and vector halves of the candidate pool (each). */
 const POOL = 40;
@@ -121,6 +122,39 @@ export const LOINC_FTS_VECTOR =
   "COALESCE(shortname,'') || ' ' || COALESCE(name_zh,'') || ' ' || COALESCE(common_name_zh,''))";
 
 let rankColumns: { at: number; present: boolean } | null = null;
+let namesTable: { at: number; present: boolean } | null = null;
+
+/** loinc.component_names exists (migration 20261025)? Cached; false on error. */
+async function hasComponentNames(q: Q): Promise<boolean> {
+  if (namesTable && Date.now() - namesTable.at < 300_000) return namesTable.present;
+  let present = false;
+  try {
+    present = (await q("SELECT to_regclass('loinc.component_names') IS NOT NULL AS ok")).rows[0]?.ok === true;
+  } catch {
+    present = false;
+  }
+  namesTable = { at: Date.now(), present };
+  return present;
+}
+
+/** Analyte synonyms (loinc.component_names) named in the query: component → matched names. */
+async function componentSynonyms(keyword: string, q: Q): Promise<Map<string, string[]>> {
+  const out = new Map<string, string[]>();
+  if (!(await hasComponentNames(q))) return out;
+  const keys = queryNameKeys(keyword);
+  if (!keys.length) return out;
+  try {
+    const r = await q<{ component: string; name: string }>(
+      `SELECT component, name FROM loinc.component_names WHERE name_key = ANY($1::text[])
+        ORDER BY length(name_key) DESC, component LIMIT ${SYNONYM_COMPONENTS}`,
+      [keys],
+    );
+    for (const x of r.rows) out.set(x.component, [...(out.get(x.component) ?? []), x.name]);
+  } catch {
+    /* table not migrated / unreadable: rank without synonyms */
+  }
+  return out;
+}
 
 /** loinc.concepts.common_test_rank exists (migration 20261024)? Cached; false on error. */
 async function hasLoincRanks(q: Q): Promise<boolean> {
@@ -140,19 +174,74 @@ async function hasLoincRanks(q: Q): Promise<boolean> {
   return present;
 }
 
+/** Weight of the usage-rank prior (one object so evaluation harnesses can sweep it). */
+export const LOINC_PRIOR = { rankWeight: 0.3 };
+
 /**
  * Prior for a LOINC term: Regenstrief's COMMON_TEST_RANK (1 = most commonly
  * resulted test in their usage data; null = not ranked) and the term status.
  */
+
 export function loincPrior(rank: number | null | undefined, status: string | null | undefined): number {
   let p = 0;
   const r = Number(rank);
-  if (Number.isFinite(r) && r > 0) p += 0.12 * Math.max(0, 1 - Math.log10(r) / 4.5);
+  if (Number.isFinite(r) && r > 0) p += LOINC_PRIOR.rankWeight * Math.max(0, 1 - Math.log10(r) / 4.5);
   const s = String(status ?? "").toUpperCase();
   if (s === "DEPRECATED") p -= 0.2;
   else if (s === "DISCOURAGED") p -= 0.05;
   else if (s === "TRIAL") p -= 0.02;
   return p;
+}
+
+/** Penalties (one object so evaluation harnesses can sweep them). */
+export const LOINC_SHAPE = { panel: 0.1, ratio: 0.08 };
+
+/**
+ * A panel or a ratio of two analytes is rarely what a test name means: it sinks a little
+ * unless the query asks for one ("panel", "profile", "ratio", "/", 比值 …).
+ */
+export function loincShapePrior(query: string, x: { long_common_name?: unknown; component?: unknown }): number {
+  const q = query.toLowerCase();
+  let p = 0;
+  if (/\bpanel\b/i.test(String(x.long_common_name ?? "")) && !/panel|profile|battery|組套|套組|組合/.test(q)) p -= LOINC_SHAPE.panel;
+  if (String(x.component ?? "").includes("/") && !/\/|ratio|index|比/.test(q)) p -= LOINC_SHAPE.ratio;
+  return p;
+}
+
+/** Most common terms of each pooled analyte added to the pool. */
+const FAMILY_DEFAULTS = 2;
+/** At most this many analytes found through their synonyms. */
+const SYNONYM_COMPONENTS = 30;
+
+/**
+ * Family of a LOINC term: its analyte without challenge / timing suffixes ("Glucose^post
+ * CFst" → glucose), split where the property makes it a different measurement: per-cell
+ * (entitic: MCH / MCHC are component Hemoglobin too) and fractions (HbA1c %).
+ */
+export function loincFamily(component: unknown, property?: unknown): string | null {
+  const c = String(component ?? "").split("^")[0].trim().toLowerCase();
+  if (!c) return null;
+  const prop = String(property ?? "");
+  const kind = /^Ent/i.test(prop) ? "|ent" : /Fr$/i.test(prop) ? "|fr" : "";
+  return `loinc:${c}${kind}`;
+}
+
+/**
+ * How much a LOINC term is its analyte's default reading: Regenstrief's COMMON_TEST_RANK
+ * first (every ranked term beats every unranked one), then — among unranked terms — no
+ * method and a point-in-time measurement. Deprecated / discouraged terms sink.
+ */
+export function loincDefaultness(x: { common_test_rank?: unknown; status?: unknown; method_type?: unknown; time_aspect?: unknown }): number {
+  const r = Number(x.common_test_rank);
+  let d = Number.isFinite(r) && r > 0 ? 1 - Math.log10(r) / 5 : 0;
+  if (!(Number.isFinite(r) && r > 0)) {
+    if (x.method_type) d -= 0.05;
+    if (x.time_aspect && String(x.time_aspect) !== "Pt") d -= 0.05;
+  }
+  const s = String(x.status ?? "").toUpperCase();
+  if (s === "DEPRECATED") d -= 2;
+  else if (s === "DISCOURAGED") d -= 1;
+  return d;
 }
 
 export async function rankLoinc(
@@ -164,7 +253,9 @@ export async function rankLoinc(
 ): Promise<{ rows: Record<string, unknown>[]; ranked: RankedCandidate[] }> {
   const ranks = await hasLoincRanks(q);
   const rankCol = ranks ? "c.common_test_rank" : "NULL::int";
+  const synonyms = await componentSynonyms(keyword, q);
   const params: unknown[] = [keyword, `%${keyword}%`];
+  const synIdx = params.push([...synonyms.keys()]);
   const catSql = category ? `AND c.class ILIKE $${params.push(`%${category}%`)}` : "";
   let vecIdx = 0;
   if (vecStr) vecIdx = params.push(vecStr);
@@ -173,24 +264,51 @@ export async function rankLoinc(
                ORDER BY ${ranks ? "c.common_test_rank IS NULL, c.common_test_rank," : ""} length(long_common_name), loinc_num
                LIMIT ${POOL}`;
   const cols = LOINC_COLS.map((c) => `c.${c}`).join(", ");
+  // Family defaults: for every analyte (component) in the pool, its most commonly resulted
+  // terms join the pool, so a generic query can land on the default term of the analyte
+  // even when neither half retrieved it (orderFamilies in hybridRank.ts picks it).
+  // Analytes the query names by a synonym ("uric acid" → Urate) join the same way.
+  // Needs idx_loinc_concepts_component (migration 20261025, with loinc.component_names): without
+  // it the lookup is a sequential scan, so a database not migrated yet skips the expansion.
+  const famOk = await hasComponentNames(q);
+  const fam = (from: string): string =>
+    !famOk
+      ? `fam AS (SELECT NULL::text AS loinc_num WHERE $${synIdx}::text[] IS NOT NULL AND FALSE),`
+      : `fam AS (SELECT loinc_num FROM (
+               SELECT f.loinc_num, row_number() OVER (
+                        PARTITION BY f.component
+                        ORDER BY ${ranks ? "f.common_test_rank IS NULL, f.common_test_rank," : ""} (f.status = 'ACTIVE') DESC, length(f.long_common_name), f.loinc_num) AS rn
+                 FROM loinc.concepts f
+                WHERE f.component IN (SELECT p.component FROM ${from} JOIN loinc.concepts p ON p.loinc_num = ${from}.loinc_num
+                                      UNION SELECT unnest($${synIdx}::text[]))) x
+             WHERE rn <= ${FAMILY_DEFAULTS}),`;
   const sql = vecStr
     ? `WITH lex AS (${lex}),
        vec AS (SELECT loinc_num FROM loinc.concept_embeddings ORDER BY embedding <=> $${vecIdx}::halfvec LIMIT ${POOL}),
-       pool AS (SELECT loinc_num FROM lex UNION SELECT loinc_num FROM vec)
+       pool0 AS (SELECT loinc_num FROM lex UNION SELECT loinc_num FROM vec),
+       ${fam("pool0")}
+       pool AS (SELECT loinc_num FROM pool0 UNION SELECT loinc_num FROM fam)
        SELECT ${cols}, c.consumer_name, ${rankCol} AS common_test_rank, 1 - (e.embedding <=> $${vecIdx}::halfvec) AS sim
          FROM pool JOIN loinc.concepts c ON c.loinc_num = pool.loinc_num
          LEFT JOIN loinc.concept_embeddings e ON e.loinc_num = pool.loinc_num
         WHERE TRUE ${catSql}`
-    : `WITH lex AS (${lex})
+    : `WITH lex AS (${lex}),
+       ${fam("lex")}
+       pool AS (SELECT loinc_num FROM lex UNION SELECT loinc_num FROM fam)
        SELECT ${cols}, c.consumer_name, ${rankCol} AS common_test_rank, NULL::float8 AS sim
-         FROM lex JOIN loinc.concepts c ON c.loinc_num = lex.loinc_num`;
+         FROM pool JOIN loinc.concepts c ON c.loinc_num = pool.loinc_num
+        WHERE TRUE ${catSql}`;
   const r = await (vecStr && q === query ? vectorQuery : q)<Record<string, unknown>>(sql, params);
   const byNum = new Map(r.rows.map((x) => [String(x.loinc_num), x]));
   const cands: RankCandidate[] = r.rows.map((x) => ({
     key: String(x.loinc_num),
     texts: [
+      ...(synonyms.get(String(x.component)) ?? []).map((t) => ({ text: t, weight: 0.9 })),
       { text: x.long_common_name as string, weight: 1 },
       { text: x.shortname as string, weight: 0.9 },
+      // Both names together: a query mixing a long-name word and a short-name abbreviation
+      // ("CSF protein": "Protein … in Cerebral spinal fluid" + "Prot CSF-mCnc").
+      { text: x.shortname ? `${x.long_common_name} ${x.shortname}` : null, weight: 0.9 },
       { text: x.component as string, weight: 0.85 },
       { text: x.consumer_name as string, weight: 0.9 },
       { text: x.name_zh as string, weight: 1 },
@@ -198,7 +316,9 @@ export async function rankLoinc(
       { text: x.loinc_num as string, weight: 1 },
     ],
     sim: x.sim === null || x.sim === undefined ? null : Number(x.sim),
-    prior: loincPrior(x.common_test_rank as number | null, x.status as string | null),
+    prior: loincPrior(x.common_test_rank as number | null, x.status as string | null) + loincShapePrior(keyword, x),
+    family: loincFamily(x.component, x.property),
+    defaultness: loincDefaultness(x),
   }));
   const ranked = rankHybrid(keyword, cands, limit);
   const rows = ranked.map((k) => {

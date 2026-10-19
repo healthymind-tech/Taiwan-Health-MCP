@@ -1365,6 +1365,19 @@ CREATE TABLE IF NOT EXISTS loinc.map_to (
     PRIMARY KEY (loinc_num, map_to)
 );
 
+-- Other names of a LOINC component (analyte) for search (20261025): Loinc.csv RELATEDNAMES2
+-- + the zh-CN linguistic variant (Traditional script), filtered by loincComponentNames.ts.
+-- name_key = normalised lookup key matched against query n-grams.
+CREATE TABLE IF NOT EXISTS loinc.component_names (
+    component    TEXT NOT NULL,             -- loinc.concepts.component (English)
+    name         TEXT NOT NULL,
+    lang         TEXT NOT NULL,             -- en | zh
+    name_key     TEXT NOT NULL,
+    PRIMARY KEY (component, name_key)
+);
+CREATE INDEX IF NOT EXISTS idx_loinc_component_names_key ON loinc.component_names (name_key);
+CREATE INDEX IF NOT EXISTS idx_loinc_concepts_component ON loinc.concepts (component);
+
 -- Embedding table for hybrid search
 CREATE TABLE IF NOT EXISTS loinc.concept_embeddings (
     loinc_num   TEXT PRIMARY KEY,
