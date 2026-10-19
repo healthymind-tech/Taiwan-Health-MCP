@@ -106,7 +106,7 @@ FMA, MTHSPL, USP, USPMG, HL7V2.5, HL7V3.0, CDCREC, MVX, CVX, TKMT, SPN, MCM, QMR
 (`fhir.concept_index_terms.source`); **no UMLS string is ever returned by a tool**.
 
 **Abbreviation lexicon (optional)**: `LRABR` of the SPECIALIST Lexicon (NLM Lexical Systems Group; `LEX/LRABR` inside
-`LEX.tgz`, ~20 MB). Only acronym / abbreviation rows with a 2–10 character abbreviation and a 3–80 character ASCII
+`LEX.tgz`, ~20 MB; open source and freely available — no UMLS licence needed). Only acronym / abbreviation rows with a 2–10 character abbreviation and a 3–80 character ASCII
 expansion are kept, spelling variants (plasma exchange / plasma-exchange) collapse (2024 release: ~115 k rows /
 34 k abbreviations). Add it as a third argument when writing the subset:
 `node dist/loaders/umls.js --subset <umls.zip> umls-subset-2024AA-lrabr.rrf.gz LEX/LRABR`; an `LRABR` member of an

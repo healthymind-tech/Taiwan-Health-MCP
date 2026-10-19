@@ -84,7 +84,7 @@ CDCREC、MVX、CVX、TKMT、SPN、MCM、QMR、RAM、CCS、CCSR_*、DXP、ICPC。
 且只保留至少有 2 個不同字串的概念（2024AA：約 253 萬字串 / 76 萬概念，`fhir.umls_terms` 約 610 MB）。
 來源 SAB 只記在內部（`fhir.concept_index_terms.source`），**UMLS 字串不會出現在任何工具輸出**。
 
-**縮寫表（選用）**：SPECIALIST Lexicon（NLM Lexical Systems Group）的 `LRABR`（`LEX.tgz` 內 `LEX/LRABR`，約 20 MB），
+**縮寫表（選用）**：SPECIALIST Lexicon（NLM Lexical Systems Group）的 `LRABR`（`LEX.tgz` 內 `LEX/LRABR`，約 20 MB；開源、免費取得，不需 UMLS 授權），
 只取 acronym / abbreviation、縮寫 2–10 字元、展開 3–80 個 ASCII 字元，拼法變體（plasma exchange / plasma-exchange）合併
 （2024 版約 11.5 萬筆 / 3.4 萬個縮寫）。產生精簡檔時加上第三個參數即可一併帶入：
 `node dist/loaders/umls.js --subset <umls.zip> umls-subset-2024AA-lrabr.rrf.gz LEX/LRABR`；
