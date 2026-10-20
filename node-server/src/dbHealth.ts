@@ -39,6 +39,16 @@ const PROBE_INTERVAL_DOWN = 2.0;
 // Substrings that indicate the database connection itself is gone (used by the
 // fail-fast hook to distinguish infra failures from ordinary query errors).
 const DB_DOWN_MARKERS = [
+  // Node `pg` / libuv wording (the list below it is the Python-era wording, kept for parity).
+  "econnrefused",
+  "econnreset",
+  "etimedout",
+  "ehostunreach",
+  "enotfound",
+  "connection terminated",
+  "the database system is shutting down",
+  "server login has been failing",
+  "terminating connection due to administrator command",
   "connection was closed",
   "connectiondoesnotexist",
   "the database system is in recovery",
