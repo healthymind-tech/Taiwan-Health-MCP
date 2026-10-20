@@ -2,6 +2,8 @@ services:
   postgres:
     image: pgvector/pgvector:pg16
     container_name: taiwanHealthMcp_postgres
+    # Docker's 64 MB default is too small for parallel HNSW builds / parallel queries.
+    shm_size: 1gb
     # autoprewarm: restore the buffer cache (SNOMED HNSW index etc.) after a restart.
     command: ["postgres", "-c", "shared_preload_libraries=pg_prewarm", "-c", "pg_prewarm.autoprewarm=true"]
     environment:
