@@ -37,6 +37,8 @@ services:
       MIN_POOL_SIZE: 5
       RESERVE_POOL_SIZE: 10
       RESERVE_POOL_TIMEOUT: 3
+      # Re-try backend logins after 2 s (default 15 s) so a Postgres restart is a short blip, not a 30 s outage.
+      SERVER_LOGIN_RETRY: 2
       SERVER_IDLE_TIMEOUT: 600
       SERVER_LIFETIME: 3600
       IGNORE_STARTUP_PARAMETERS: extra_float_digits

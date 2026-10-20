@@ -590,10 +590,21 @@ export async function runWorker(): Promise<void> {
 // Entry point — run when executed directly (compose `admin-worker` service).
 const invokedPath = process.argv[1] ?? "";
 if (invokedPath.endsWith("adminWorker.js") || invokedPath.endsWith("adminWorker.ts")) {
-  runWorker().catch((err) => {
-    logError("Fatal worker error", { error: String((err as Error).message) });
-    process.exit(1);
-  });
+  // A database outage at startup (restart, failover) is not fatal: wait and start again,
+  // so a short Postgres restart does not cost a worker crash-loop. Anything else still exits.
+  const start = (attempt: number): void => {
+    runWorker().catch((err) => {
+      if (isDbDownError(err)) {
+        const delay = Math.min(60_000, 5_000 * 2 ** Math.min(attempt, 4));
+        logWarning("Database unavailable at worker startup — retrying", { attempt: attempt + 1, delay_ms: delay, error: String((err as Error).message) });
+        setTimeout(() => start(attempt + 1), delay);
+        return;
+      }
+      logError("Fatal worker error", { error: String((err as Error).message) });
+      process.exit(1);
+    });
+  };
+  start(0);
 }
 
 // Keep the namespace/handle imports referenced for parity with the Python

@@ -11,6 +11,7 @@
  */
 import type pg from "pg";
 import { logInfo, logWarning } from "../logger.js";
+import { isDbDownError } from "../dbHealth.js";
 
 /** Relations read by `search_snomed_concept` (hybrid + hierarchy_filter), most important first. */
 export const SNOMED_PREWARM_RELATIONS = [
@@ -83,8 +84,21 @@ export async function prewarmRelations(
   return out;
 }
 
-/** Background prewarm on worker startup; never throws. */
+/**
+ * Background prewarm on worker startup; never throws. While the database is still coming up
+ * (worker started during a Postgres restart) it retries every 30 s for up to 15 minutes.
+ */
 export async function prewarmSnomedOnStartup(pool: pg.Pool): Promise<void> {
+  for (let attempt = 1; attempt <= 30; attempt++) {
+    const outcome = await prewarmSnomedOnce(pool);
+    if (outcome !== "db_down") return;
+    if (attempt === 1) logWarning("SNOMED prewarm deferred: database unavailable, retrying every 30 s");
+    await new Promise((r) => setTimeout(r, 30_000));
+  }
+  logWarning("SNOMED prewarm given up: database stayed unavailable for 15 minutes");
+}
+
+async function prewarmSnomedOnce(pool: pg.Pool): Promise<"done" | "db_down"> {
   const started = Date.now();
   let client: pg.PoolClient | null = null;
   try {
@@ -98,7 +112,7 @@ export async function prewarmSnomedOnStartup(pool: pg.Pool): Promise<void> {
     await client.query("COMMIT");
     if (results === null) {
       logWarning("SNOMED prewarm skipped: pg_prewarm extension not installed (apply db/migrations/20261029_pg_prewarm.sql)");
-      return;
+      return "done";
     }
     const loaded = results.filter((r) => r.blocks !== null);
     logInfo("SNOMED search cache prewarmed", {
@@ -114,8 +128,10 @@ export async function prewarmSnomedOnStartup(pool: pg.Pool): Promise<void> {
     } catch {
       /* ignore */
     }
+    if (isDbDownError(err)) return "db_down";
     logWarning("SNOMED prewarm failed (non-fatal)", { error: String((err as Error).message) });
   } finally {
     client?.release();
   }
+  return "done";
 }
