@@ -9,6 +9,7 @@
  * Call `initPool()` once at startup; use `query()` / `getPool()` anywhere.
  */
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import pg from "pg";
 import { config } from "./config.js";
 import { logError } from "./logger.js";
@@ -66,7 +67,66 @@ export async function query<T extends pg.QueryResultRow = pg.QueryResultRow>(
   params: unknown[] = [],
   _label?: string,
 ): Promise<pg.QueryResult<T>> {
-  return getPool().query<T>(text, params as never[]);
+  try {
+    return await getPool().query<T>(text, params as never[]);
+  } catch (err) {
+    recordQueryFailure(err);
+    throw err;
+  }
+}
+
+// --------------------------------------------------------------------------- //
+// Query-failure tracking (validator v8)
+// --------------------------------------------------------------------------- //
+
+/** One failed `query()` inside a `trackQueryFailures` scope. */
+export interface QueryFailure {
+  /** PostgreSQL SQLSTATE when the server answered (e.g. 57P03 cannot_connect_now), else null. */
+  code: string | null;
+  message: string;
+}
+
+interface FailureStore {
+  failures: QueryFailure[];
+  total: number;
+}
+
+const failureScope = new AsyncLocalStorage<FailureStore>();
+const FAILURES_KEPT = 10;
+
+/**
+ * SQLSTATEs that mean "this table / column does not exist on this database"
+ * (an optional terminology table or a migration not yet applied). Callers handle
+ * those by design (fallback query, feature off), so they are not infrastructure
+ * failures and are not tracked.
+ */
+const SCHEMA_MISSING = new Set(["42P01", "42703", "3F000"]);
+
+function recordQueryFailure(err: unknown): void {
+  const store = failureScope.getStore();
+  if (!store) return;
+  const e = err as { code?: unknown; message?: unknown } | null;
+  const code = e && typeof e.code === "string" ? e.code : null;
+  if (code !== null && SCHEMA_MISSING.has(code)) return;
+  store.total++;
+  if (store.failures.length < FAILURES_KEPT) {
+    store.failures.push({ code, message: String((e && e.message) || err) });
+  }
+}
+
+/**
+ * Run `fn` and report every `query()` that failed while it ran (transient
+ * database trouble: connection refused, crash recovery, pool / statement
+ * timeouts …), excluding missing-table / missing-column errors. Lets a caller
+ * that degrades gracefully on lookup errors (the FHIR validator resolves
+ * definitions and terminology fail-open) still tell "checked and fine" from
+ * "could not check": a verdict reached while lookups were failing must not be
+ * reported as a clean pass.
+ */
+export async function trackQueryFailures<T>(fn: () => Promise<T>): Promise<{ result: T; failures: QueryFailure[]; total: number }> {
+  const store: FailureStore = { failures: [], total: 0 };
+  const result = await failureScope.run(store, fn);
+  return { result, failures: store.failures, total: store.total };
 }
 
 /**

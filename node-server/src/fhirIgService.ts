@@ -9,7 +9,7 @@
  * service for semantic normalize_code.
  */
 
-import { query } from "./db.js";
+import { query, trackQueryFailures } from "./db.js";
 import { logError, logInfo } from "./logger.js";
 import type { EmbeddingService, QueryTask } from "./embeddingService.js";
 import { vecLiteral } from "./embeddingService.js";
@@ -1564,9 +1564,23 @@ export class FHIRIGService {
     }
     const resolver = new DbValidatorResolver(pkg);
     const engine = new validator.InstanceValidator(resolver);
-    pushAll(issues, (await engine.validate(resource, { profiles })) as Record<string, any>[]);
+    // v8: the resolver degrades gracefully on database trouble (a definition that
+    // cannot be fetched counts as absent, a code system as unknown …), which must
+    // not read as a clean pass: every failed lookup is tracked and reported as an
+    // error issue (`exception`) that makes the verdict invalid and incomplete.
+    const tracked = await trackQueryFailures(() => engine.validate(resource, { profiles }));
+    pushAll(issues, tracked.result as Record<string, any>[]);
+    if (tracked.total > 0) {
+      logError("fhir validation: definition / terminology lookups failed", { failed: tracked.total, first: tracked.failures[0]?.message });
+      issues.push(validator.lookupFailureIssue(tracked.total, tracked.failures));
+    }
     // Additive `suggestions` / `caused_by` on issues (fhirSuggestions/); never changes the verdict.
-    await attachSuggestions(issues, resource, dbSuggestionDeps(pkg, resolver, this.suggestionHooks(pkg)));
+    try {
+      await attachSuggestions(issues, resource, dbSuggestionDeps(pkg, resolver, this.suggestionHooks(pkg)));
+    } catch (e) {
+      // Suggestions are decoration: a failure here must not lose the validation result.
+      logError("fhir validation: suggestions failed", { error: String((e as Error).message) });
+    }
     return {
       valid: validator.isValid(issues),
       profile: profileId,
@@ -1603,10 +1617,38 @@ export class FHIRIGService {
       pkg = await this.resolve(packageId, version, { canonicals: [profile], metaProfiles: metaProfilesOf(resource) });
     } catch (e) {
       if (this.isIGNotFound(e)) return await this.igErr(e);
-      throw e;
+      // Database trouble before validation even started (v8): a well-formed
+      // invalid result with a fatal issue, never a failed call.
+      return this.ok(this.validationCrash(e, "fhir_validate_resource"), null);
     }
-    const data = await this.validateCore(pkg, resource, profile);
+    let data: Record<string, any>;
+    try {
+      data = await this.validateCore(pkg, resource, profile);
+    } catch (e) {
+      data = this.validationCrash(e, "fhir_validate_resource");
+    }
     return this.ok(this.withDeps(data, pkg), pkg);
+  }
+
+  /**
+   * v8: an unexpected exception inside the validator is reported the way HL7
+   * validator_cli reports one — as a fatal `exception` issue on an otherwise
+   * well-formed result (`valid: false`, `checked_fully: false`) — instead of a
+   * failed tool call that a caller acting only on issues would read as "no
+   * errors found". The error is logged with its stack for diagnosis.
+   */
+  private validationCrash(e: unknown, tool: string): Record<string, any> {
+    const err = e as Error;
+    logError(`${tool}: validator crashed`, { error: String(err?.message ?? e), stack: String(err?.stack ?? "").split("\n").slice(0, 6).join(" | ") });
+    const issues = [
+      validator.issue(
+        "fatal",
+        "",
+        validator.LOOKUP_FAILURE_CODE,
+        `Validation failed with an internal error (${String(err?.message ?? e).slice(0, 300)}); the resource was not fully checked — retry the call, and report the error if it persists`,
+      ),
+    ];
+    return { valid: false, profile: null, source: validator.SOURCE, issues, checked_fully: false, profiles_unchecked: [], valuesets_unchecked: [] };
   }
 
   async validateBundle(
@@ -1622,9 +1664,15 @@ export class FHIRIGService {
       pkg = await this.resolve(packageId, version, { metaProfiles: metaProfilesOf(bundle) });
     } catch (e) {
       if (this.isIGNotFound(e)) return await this.igErr(e);
-      throw e;
+      const crash = this.validationCrash(e, "fhir_validate_bundle");
+      return this.ok({ ...crash, entries: [], referenceIssues: [] }, null);
     }
-    const core = await this.validateCore(pkg, bundle, null);
+    let core: Record<string, any>;
+    try {
+      core = await this.validateCore(pkg, bundle, null);
+    } catch (e) {
+      core = this.validationCrash(e, "fhir_validate_bundle");
+    }
     const bundleEntries: any[] = Array.isArray(bundle.entry) ? bundle.entry : [];
     // Split the issues: Bundle-level vs per entry (by instance path prefix).
     const perEntry: Record<string, any>[][] = bundleEntries.map(() => []);
@@ -1639,7 +1687,15 @@ export class FHIRIGService {
     const referenceIssues: any[] = [];
     bundleEntries.forEach((be: any, idx: number) => {
       const resource = (be && be.resource) || {};
-      if (!resource.resourceType) return;
+      if (!resource.resourceType) {
+        // v8: an entry without a usable resource (missing, not an object, no
+        // resourceType) gets no `entries` row, but its issues — e.g. "must be an
+        // Object, not an Array", a missing fullUrl — must still be reported: they
+        // are surfaced at Bundle level instead of being dropped (the verdict was
+        // already invalid, but a reader of the issue lists saw nothing).
+        pushAll(bundleIssues, perEntry[idx]);
+        return;
+      }
       const metas = (resource.meta || {}).profile || [];
       entryResults.push({
         fullUrl: be.fullUrl ?? null,

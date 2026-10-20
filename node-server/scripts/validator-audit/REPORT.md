@@ -485,3 +485,65 @@ B / T / Y 用自建 profile（overlay：CLI 以 `-ig <file>` 載入，`localVali
 - 既有語料本機 verdict 改變 **0 筆**；新增 error 72 則（mut_v2 `B-extnested` 的 patient-nationality / birthPlace context 錯誤），CLI 全部也有。
 - v7 剩餘 3 筆：R-wrong-display / R-unknown 是資料面（production `rxnorm.concepts` 尚無 `alt_names`，版本 06032024 舊於 tx 的 03022026 → 目前只給 warning；重跑 `rxnorm_import` 後 display 錯誤即為 error，未知碼要等匯入新版 RxNorm）；X-resource-context-on-observation 是 CLI 自動載入 `hl7.fhir.uv.extensions#5.3.0`（本機未安裝；已安裝的 5.2.0 副本 context 為 `Resource`）。
 - 訊息格式：`The extension <url> v<version> is not allowed to be used at this point (this element is [<paths>]; allowed for this version = e:…)`，與 CLI 的 `Extension_EXTP_Context_Wrong(_VER)` 相同；CLI 對同一 extension 會用 core 與 extensions 兩份定義各報一次，我們只用選中的那份報一次。
+
+---
+
+# v8：評估報告 v6 的漏報（2026-10-20）
+
+探針 `corpus/v8_probes.json.gz`（`harness/gen_v8.py`，48 筆，45 筆為 Bundle，全部由 TW Core 1.0.0 範例合成），以 validator_cli 7.0.1 + tx.fhir.org（`-ig tw.gov.mohw.twcore#1.0.0`）產生 oracle。本輪**不碰 production DB**：只啟動 staging 的 Postgres 容器（`twh-staging-postgres-1`，與 production 相同的 IG 套件與術語版本，`rxnorm.concepts` 同樣沒有 `alt_names`）作為本機 package cache，跑完即停。「修正前」數字以 production（build aa6362c = HEAD）的 `POST /tools/fhir_validate_*` 取得（48 筆，唯讀）。
+
+## v8.1 根因
+
+評估端回報 6 份 bundle「明明含 `…/CodeSystem/v3-ActEncounterCode` 卻被判 valid、單獨重送又報 error」。本機以 18 種元素 / 情境（Encounter.class、Encounter.type、Condition.category、Observation.category slice、extension 的 valueCoding / valueCodeableConcept、contained、classHistory、Identifier.type、Meta.tag、Quantity.system、`|version`、無 meta.profile、R5 陣列、巢狀 Bundle、transaction、document 樣式、resource tool）對 production 逐一重送，**18/18 都報 error**，判定對同一輸入是確定的。真正的「時有時無」來自兩個基礎設施事件，production Postgres 日誌可證：
+
+| 時間（UTC） | 事件 | validator 的行為（修正前） |
+|---|---|---|
+| 2026-10-19 17:48、18:13–18:19 | `column "alt_names" does not exist`（migration 20261030 尚未套用；RxNorm 查詢退回第二道 SQL） | 無害（有 fallback） |
+| 2026-10-19 17:57:45 | `server process (PID 20537) exited with exit code 2` → `terminating any other active server processes` → `the database system is in recovery mode`（**Postgres 當機**，正在跑評估） | 所有定義 / 術語查詢失敗 → resolver 全部 **fail-open**（`definitionExists` → true、`codeSystemResolvable` → true、`tableHasRows` → false）→ 該 URL 不檢查、術語檢查靜默略過、剖面抓不到 → 回傳 `valid: true` 或 400 `tool_call_failed`（評估端「只看 error」兩者都等於沒抓到） |
+
+其餘各類漏報（`extension-observation-category-tw` + slice required、`Unrecognized property`、`Invalid Resource id`、`variable`）本機探針全部命中（C-* 3/3、U-* 4/4、D-* 3/3、X-* 2/2，CLI 同），與上面同一根因。另外找到四個**確定性**的漏報與一個回報面的漏失：
+
+| # | 漏報 | 根因 | 修正（HL7 來源） |
+|---|------|------|------------------|
+| 1 | `No definition could be found for URL value 'http://hl7.org/fhir/sid/icd-10-pcs'` | `fhirUriRules.ts` 的 `KNOWN_SIDS` 比 HL7 `SIDUtilities` 多了 `icd-10-pcs`、`us-mbi`、`eui-48`（「為安全起見視為已知」），URL 解析規則因此跳過 | 清單改為與反編譯的 `SIDUtilities.CODE_SYSTEMS` / `ID_SYSTEMS` / `isPassPortSID` 完全相同（`isKnownSid`）。CLI 探針確認：icd-10-pcs 只有 URL error + `UNKNOWN_CODESYSTEM` warning，**沒有** `Terminology_TX_System_Unknown`（一度加上的 `Unknown Code System` error 已拿掉以維持訊息層級的一致） |
+| 2 | `The reference '…' is not a valid reference` | 沒有這條規則；含空白的參照只會「解析不到」→ collection bundle 裡只剩 near-miss warning | `checkReference`：`ref` 不符 `\S+` → error `REFERENCE_REF_INVALID_REF`（`InstanceValidator.checkReference`，rule 2025-05-07） |
+| 3 | RxNorm display 是另一個藥（`code 是 thyroglobulin、display 寫 Clopidogrel`） | 本機只有偏好名稱（無 `alt_names`）時一律 warning，評估端只看 error | `displayDenotesDifferentDrug`：display 與該 RXCUI 所有已知名稱去掉劑量 / 單位 / 劑型 / 途徑 / 鹽類 / 功能詞後，沒有任何共同藥名詞（≥5 字字首相同視為同字），或不含拉丁字母（中文商品名）→ **error**，訊息為 tx 原句 + `; the display denotes a different concept: …`；同一藥的另一種寫法維持 warning（載入 alt_names 後即 error）。SNOMED / LOINC / ICD / CVX 的 display 本來就是 error（CLI 亦同），不變 |
+| 4 | entry 的 resource 寫成陣列 / 缺 resourceType | `validateBundle` 只為有 `resourceType` 的 entry 產生 `entries` 列，該 entry 的 issue（`must be a simple value, not an Array` 等）**整個不出現在回應**（`valid` 已是 false，但只看 issue 的讀者看不到任何 error） | 這類 entry 的 issue 改列在 Bundle 層 `issues` |
+| 5 | 查詢失敗被當成通過 | resolver 各處 fail-open（刻意「寧可放過」），DB 當機 / 復原期間回傳乾淨的 `valid: true`；validator 例外則變成 400 | `db.ts` `trackQueryFailures()`（AsyncLocalStorage）記錄驗證期間每一次失敗的 `query()`（缺表 42P01 / 缺欄位 42703 / 3F000 除外，那是設計內的 fallback）；`validateCore` 有失敗即加一則 error issue `code: "exception"`（`Validation incomplete: N … lookups failed …`），`valid: false`、`checked_fully: false`、`lookups_failed`。validator 例外、以及驗證開始前的 DB 失敗（`resolve()`）改回傳帶 fatal `exception` issue 的正常結果（HL7 validator_cli 對內部例外也是 fatal issue），不再是失敗的工具呼叫。以 `DATABASE_URL` 指向關閉的 port 驗證：兩個 tool 都回 `ok: true, valid: false, [fatal exception]` |
+
+## v8.2 探針結果
+
+| 類別 | 筆數 | 修正前（production）命中目標 error | 修正後（本機）| CLI |
+|---|---|---|---|---|
+| A 無法解析的 THO CodeSystem URL（18 種元素 / 情境） | 18 | 18 | 18 | 18 |
+| P `sid/icd-10-pcs` | 5 | **0** | 5 | 5 |
+| C category 寫成 extension / 錯 system（slice `category:twcore`） | 3 | 3 | 3 | 3 |
+| U `Unrecognized property` | 4 | 4 | 4 | 4 |
+| D `Invalid Resource id` | 3 | 3 | 3 | 3 |
+| F 參照含空白 | 2 | **0** | 2 | 2 |
+| X `variable`（context + var-1） | 2 | 2 | 2 | 2 |
+| R RxNorm display | 4 | **0** | 3 | 4 |
+| S entry 沒有可用 resource | 3 | **0**（issue 遺失） | 3 | 3 |
+| **合計（應為 invalid 的 44 筆）** | 44 | **30（68.2%）** | **43（97.7%）** | 44 |
+| V 有效對照 | 3 | 3 valid | 3 valid | 3 valid |
+
+vs CLI（verdict）：48 筆 **47 一致、誤收 1、誤拒 0**。唯一不一致 `R-synonym-display`（`Thyroglobulin 100 mg tablet`）：tx.fhir.org 判 Wrong Display Name，本機只有偏好名稱、而且 display 與它共享藥名詞，依設計維持 warning；重跑 `rxnorm_import`（載入 `alt_names`）後即為 error。
+
+## v8.3 既有語料回歸（本機 vs CLI 快取，staging Postgres 容器）
+
+| 語料 | 筆數 | 一致 / 誤收 / 誤拒 |
+|------|------|------|
+| examples、bundles、mutations、user_cases、mut_dis、perf、refprobe×3、v2_probes、mut_v2、icd_v3_probes、icd_v3_mut、v4_mut、v6_probes | 4,261 | **4,261 / 0 / 0** |
+| v4_probes | 79 | 78 / 1（`S-us-version-fab`，v4 起即存在）/ 0 |
+| v7_probes | 48 | **46** / 2 / 0（修正前 45 / 3：`R-wrong-display` 改為命中——同 v8 #3；剩 `R-unknown`（本機 RxNorm 版本舊於 tx）與 `X-resource-context-on-observation`（CLI 自動載入 extensions 5.3.0）） |
+| v8_probes | 48 | 47 / 1（`R-synonym-display`）/ 0 |
+| **合計** | **4,436** | **4,432 / 4 / 0** |
+
+既有 16 個語料 + v7（4,388 筆）：修正前 4,384 / 4 / 0 → 修正後 **4,385 / 3 / 0**，沒有新的誤拒。
+
+## v8.4 其他
+
+- `toolVersions.ts`：`fhir_validate_resource` / `fhir_validate_bundle` 1.6.0 → **1.6.1**，`fhir_finalize_resource` 1.3.0 → **1.3.1**；`docs/tools/fhir-ig-tools.md` 與 `.en.md` 同步更新。
+- 單元測試：`src/fhirValidator.v8.test.ts`（SIDUtilities 對齊、icd-10-pcs 在 Coding / extension value 的 URL error、非 HL7 空間維持 warning、參照空白、`rxDrugWords` / `displayDenotesDifferentDrug` / `judgeRxnorm` 升級、`trackQueryFailures` + `lookupFailureIssue` + `completenessOf`）。`npm test` 956 項：955 通過、1 略過（私有 fixture 不在本機）、0 失敗；`npm run typecheck` 通過。
+- 評估端 harness 注意：`compare_local.py` 把「工具呼叫失敗」算成 invalid（`ours_valid = bool(valid) and not errors`），所以 parity 數字看不到 DB 當機造成的 400；評估端只看 issue，因此看到的是「valid」。修正 #5 後兩種讀法都會看到 error / fatal。
+- `harness/gen_v8.py` 的 V-* 對照把 `Encounter/enc-example` 的 `identifier.system`（`http://healthcare.example.org/…`）拿掉：example.org URL 對 CLI 與本機都是 error（`TYPE_SPECIFIC_CHECKS_DT_URL_EXAMPLE`），不是本輪的對象。

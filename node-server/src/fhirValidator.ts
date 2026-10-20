@@ -77,6 +77,37 @@ export interface Completeness {
   profiles_unchecked: string[];
   /** Required-binding ValueSets (as written) that could not be resolved, so the binding was not checked. */
   valuesets_unchecked: string[];
+  /**
+   * Number of definition / terminology lookups that failed while validating
+   * (database trouble; v8). Present only when > 0: the run then also carries
+   * an error issue with code `exception` and `checked_fully` is false.
+   */
+  lookups_failed?: number;
+}
+
+/** Issue code of the "validation incomplete: lookups failed" error (v8). */
+export const LOOKUP_FAILURE_CODE = "exception";
+
+/**
+ * The error issue reported when definition / terminology lookups failed during
+ * a validation (v8). HL7 validator_cli reports an internal failure as a fatal
+ * `exception` issue rather than passing the resource; a verdict reached while
+ * lookups were failing is likewise never a clean pass: the issue makes `valid`
+ * false and `checked_fully` false, and names the first failures.
+ */
+export function lookupFailureIssue(total: number, samples: Array<{ code: string | null; message: string }>): Issue {
+  const detail = samples
+    .slice(0, 3)
+    .map((f) => `${f.code ? `[${f.code}] ` : ""}${f.message}`)
+    .join("; ");
+  return {
+    severity: "error",
+    path: "",
+    code: LOOKUP_FAILURE_CODE,
+    message:
+      `Validation incomplete: ${total} definition / terminology lookup${total === 1 ? "" : "s"} failed during validation (${detail}); ` +
+      "profiles, code systems or references could not be checked, so this verdict is not reliable — retry the call once the database is reachable",
+  };
 }
 
 /**
@@ -90,15 +121,21 @@ export interface Completeness {
 export function completenessOf(issues: Array<Record<string, any>>, depsMissing: unknown[] = []): Completeness {
   const profiles = new Set<string>();
   const valueSets = new Set<string>();
+  let lookupsFailed = 0;
   for (const i of issues) {
+    if (i && i.code === LOOKUP_FAILURE_CODE) {
+      const m = /^Validation incomplete: (\d+) /.exec(String(i.message || ""));
+      lookupsFailed += m ? Number(m[1]) : 1;
+    }
     const u = i && i.unchecked;
     if (!u || typeof u.canonical !== "string") continue;
     (u.kind === "valueSet" ? valueSets : profiles).add(u.canonical);
   }
   return {
-    checked_fully: profiles.size === 0 && valueSets.size === 0 && !(Array.isArray(depsMissing) && depsMissing.length),
+    checked_fully: profiles.size === 0 && valueSets.size === 0 && lookupsFailed === 0 && !(Array.isArray(depsMissing) && depsMissing.length),
     profiles_unchecked: [...profiles],
     valuesets_unchecked: [...valueSets],
+    ...(lookupsFailed > 0 ? { lookups_failed: lookupsFailed } : {}),
   };
 }
 
@@ -2232,6 +2269,10 @@ export class InstanceValidator {
         });
         return;
       }
+      // An unknown system is only this warning (UNKNOWN_CODESYSTEM) — also in the
+      // hl7.org/fhir space: validator_cli 7.0.1 + tx.fhir.org answers
+      // http://hl7.org/fhir/sid/icd-10-pcs with this warning plus the URL-resolution
+      // error from checkUri (v8 probes P-*), not Terminology_TX_System_Unknown.
       issues.push({
         severity: "warning",
         path: `${item.path}.system`,
@@ -2282,6 +2323,12 @@ export class InstanceValidator {
   ): Promise<void> {
     const ref = v.reference;
     if (typeof ref !== "string" || !ref) return;
+    // Port of InstanceValidator.checkReference (7.0.1): a reference containing
+    // whitespace is REFERENCE_REF_INVALID_REF (error, rule 2025-05-07) — the JSON
+    // parser keeps it, so "Patient/ 123" or "Patient/p1 " is not just unresolved.
+    if (!/^\S+$/.test(ref)) {
+      issues.push({ severity: "error", path: item.path, code: "invalid", message: `The reference '${ref}' is not a valid reference` });
+    }
     const target = this.resolveRef(ref, rctx);
     if (!target) {
       if (ref.startsWith("#")) {

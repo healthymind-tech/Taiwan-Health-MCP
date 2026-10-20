@@ -12,6 +12,7 @@ export type SuggestionKind =
   | "replace_system"
   | "rename_property"
   | "move_property"
+  | "remove_property"
   | "choose_code"
   | "replace_display";
 
@@ -25,7 +26,7 @@ export interface SuggestionPatch {
 }
 
 export interface Suggestion {
-  /** The proposed replacement (a code, system URL, property name, display ...). */
+  /** The proposed replacement (a code, system URL, property name, display ...); remove_property: the property removed. */
   value: string;
   kind: SuggestionKind;
   /** Heuristic confidence in [0, 1] (2 decimals). Higher first; the list is ordered by it. */
@@ -86,6 +87,12 @@ export interface SuggestionDeps {
   canonicalsUnder?(prefix: string, resourceTypes: string[]): Promise<string[]>;
   /** Errors of `resource` validated stand-alone against `profile` (reference-chain causes). */
   validateAgainst?(resource: Record<string, any>, profile: string): Promise<Array<Record<string, any>>>;
+  /**
+   * Snapshot element paths of every base resource StructureDefinition (kind `resource`,
+   * derivation `specialization`) in the closure — which resource types carry an element of a
+   * given name (remove_property reasons). Small and cacheable; null = unavailable.
+   */
+  resourceElementPaths?(): Promise<Array<{ type: string; paths: string[] }> | null>;
 }
 
 export interface SuggestOptions {

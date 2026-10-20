@@ -171,6 +171,25 @@ export class FilePackages {
           .map((x) => ({ code: x.c.code, display: x.c.display })),
       canonicalsUnder: async (prefix, types) => this.urls.filter((u) => types.includes(u.type) && u.url.startsWith(prefix)).map((u) => u.url).sort(),
       validateAgainst: async (resource, profile) => (await new InstanceValidator(resolver).validate(resource, { profiles: [profile] })) as Array<Record<string, any>>,
+      resourceElementPaths: async () => this.resourceElementPaths(),
     };
+  }
+
+  private resourceElements: Array<{ type: string; paths: string[] }> | null = null;
+
+  /** Element paths of the base resource StructureDefinitions (the core package), as dbDeps reads them. */
+  resourceElementPaths(): Array<{ type: string; paths: string[] }> {
+    if (!this.resourceElements) {
+      this.resourceElements = [];
+      for (const { url, type } of this.urls) {
+        if (type !== "StructureDefinition" || !url.startsWith("http://hl7.org/fhir/StructureDefinition/")) continue;
+        const j = this.byUrl.get(url)!;
+        if (j.kind !== "resource" || j.derivation !== "specialization" || typeof j.type !== "string") continue;
+        const paths = (Array.isArray(j.snapshot?.element) ? j.snapshot.element : []).map((e: any) => String(e.path || "")).filter((p: string) => p !== "");
+        this.resourceElements.push({ type: j.type, paths });
+      }
+      this.resourceElements.sort((a, b) => (a.type < b.type ? -1 : 1));
+    }
+    return this.resourceElements;
   }
 }

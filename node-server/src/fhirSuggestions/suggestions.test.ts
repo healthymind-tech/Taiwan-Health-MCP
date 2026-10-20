@@ -51,9 +51,36 @@ for (const s of [
   sd(CORE + "Coding", "Coding", "complex-type", [el("Coding", 0, "*"), el("Coding.system", 0, "1", ["uri"]), el("Coding.code", 0, "1", ["code"]), el("Coding.display", 0, "1", ["string"])]),
   sd(CORE + "Quantity", "Quantity", "complex-type", [el("Quantity", 0, "*"), el("Quantity.value", 0, "1", ["decimal"]), el("Quantity.unit", 0, "1", ["string"]), el("Quantity.system", 0, "1", ["uri"]), el("Quantity.code", 0, "1", ["code"])]),
   sd(CORE + "Reference", "Reference", "complex-type", [el("Reference", 0, "*"), el("Reference.reference", 0, "1", ["string"])]),
+  sd(CORE + "Range", "Range", "complex-type", [el("Range", 0, "*"), el("Range.low", 0, "1", ["Quantity"], { short: "Low limit" }), el("Range.high", 0, "1", ["Quantity"], { short: "High limit" })]),
+  sd(CORE + "Annotation", "Annotation", "complex-type", [el("Annotation", 0, "*"), el("Annotation.time", 0, "1", ["dateTime"]), el("Annotation.text", 1, "1", ["markdown"])]),
+  sd(CORE + "Period", "Period", "complex-type", [el("Period", 0, "*"), el("Period.start", 0, "1", ["dateTime"]), el("Period.end", 0, "1", ["dateTime"])]),
+  sd(CORE + "Address", "Address", "complex-type", [el("Address", 0, "*"), el("Address.city", 0, "1", ["string"]), el("Address.postalCode", 0, "1", ["string"], { alias: ["Zip"] })]),
+  sd(CORE + "HumanName", "HumanName", "complex-type", [el("HumanName", 0, "*"), el("HumanName.family", 0, "1", ["string"], { alias: ["surname"] }), el("HumanName.given", 0, "*", ["string"])]),
+  sd(CORE + "Patient", "Patient", "resource", [
+    el("Patient", 0, "*"),
+    el("Patient.identifier", 0, "*", ["Identifier"]),
+    el("Patient.name", 0, "*", ["HumanName"]),
+    el("Patient.gender", 0, "1", ["code"], { short: "male | female | other | unknown" }),
+    el("Patient.birthDate", 0, "1", ["date"], { short: "The date of birth for the individual" }),
+    el("Patient.address", 0, "*", ["Address"]),
+    el("Patient.contact", 0, "*", ["BackboneElement"]),
+    el("Patient.contact.name", 0, "1", ["HumanName"]),
+    el("Patient.contact.period", 0, "1", ["Period"]),
+  ]),
+  sd(CORE + "Observation", "Observation", "resource", [
+    el("Observation", 0, "*"),
+    el("Observation.status", 1, "1", ["code"]),
+    el("Observation.code", 1, "1", ["CodeableConcept"]),
+    el("Observation.effective[x]", 0, "1", ["dateTime", "Period"], { alias: ["Occurrence"], short: "Clinically relevant time/time-period for observation" }),
+    el("Observation.value[x]", 0, "1", ["Quantity", "Range", "string"], { short: "Actual result" }),
+    el("Observation.note", 0, "*", ["Annotation"], { short: "Comments about the observation" }),
+  ]),
 ]) {
   SDS[s.url] = s;
 }
+// Timing.repeat.period short text (rename evidence); Timing.repeat.periodMax for a precision check.
+SDS[CORE + "Timing"].snapshot.element.find((e: any) => e.path === "Timing.repeat.period").short = "Event occurs frequency times per period";
+SDS[CORE + "Timing"].snapshot.element.push(el("Timing.repeat.periodMax", 0, "1", ["decimal"], { short: "Upper limit of period (3-4 hours)" }));
 
 /** A tiny code table: system → code → display. */
 const CODES: Record<string, Record<string, string>> = {
@@ -127,7 +154,7 @@ test("properties: rename at the same level, move to the level that has the eleme
   assert.equal(r2[0].value, "MedicationRequest.dosageInstruction[0].timing.repeat.periodUnit");
   assert.deepEqual(r2[0].patch, { op: "move", from: "MedicationRequest.dosageInstruction[0].timing.periodUnit", path: "MedicationRequest.dosageInstruction[0].timing.repeat.periodUnit" });
   const r3 = rankSuggestions(await suggestProperty(deps, mr({ doseQuantity: { value: 1 } }), "MedicationRequest.dosageInstruction[0]", "doseQuantity"), 5);
-  assert.equal(r3[0].value, "MedicationRequest.dosageInstruction[0].doseAndRate.doseQuantity");
+  assert.equal(r3[0].value, "MedicationRequest.dosageInstruction[0].doseAndRate[0].doseQuantity");
   // Choice stem: the value's JSON shape picks the typed name.
   const r4 = rankSuggestions(await suggestProperty(deps, { resourceType: "MedicationRequest", status: "active", medication: { reference: "Medication/1" } }, "MedicationRequest", "medication"), 5);
   assert.equal(r4[0].value, "medicationReference");
@@ -211,6 +238,82 @@ test("references: caused_by = the target's own errors, else its errors against t
   assert.deepEqual(await causedBy(deps, bundle, chain, [chain], { left: 2 }), [
     { fullUrl: "urn:uuid:b", entry: 1, severity: "error", path: "Bundle.entry[1].resource", message: "Patient.identifier: minimum required = 1", profile: "http://x/Patient-p" },
   ]);
+});
+
+
+test("properties: remove_property when the name exists nowhere, with the level's element names and the resources that carry it", async () => {
+  const deps = fakeDeps({ resourceElementPaths: async () => [{ type: "Encounter", paths: ["Encounter", "Encounter.reasonCode"] }, { type: "Procedure", paths: ["Procedure", "Procedure.reasonCode"] }, { type: "Observation", paths: ["Observation", "Observation.code"] }] });
+  const r = rankSuggestions(await suggestProperty(deps, { resourceType: "Observation", status: "final", reasonCode: [{ text: "x" }] }, "Observation", "reasonCode"), 5);
+  assert.equal(r.length, 1);
+  assert.equal(r[0].kind, "remove_property");
+  assert.equal(r[0].value, "reasonCode");
+  assert.equal(r[0].confidence, 0.5);
+  assert.deepEqual(r[0].patch, { op: "remove", path: "Observation.reasonCode" });
+  assert.match(r[0].reason, /no element named 'reasonCode' on Observation/);
+  assert.match(r[0].reason, /'reasonCode' is an element of Encounter, Procedure/);
+  assert.match(r[0].reason, /elements of Observation are: status, code, effective\[x\], value\[x\], note$/);
+  // No element-path collaborator: the same suggestion without the carrier list.
+  const r2 = await suggestProperty(fakeDeps(), { resourceType: "Observation", foo: 1 }, "Observation", "foo");
+  assert.equal(r2.length, 1);
+  assert.equal(r2[0].kind, "remove_property");
+  assert.doesNotMatch(r2[0].reason, /is an element of/);
+});
+
+test("properties: evidence rename from short text / alias / synonyms, gated by the value shape; remove ranks below it", async () => {
+  const mr = { resourceType: "MedicationRequest", dosageInstruction: [{ timing: { repeat: { frequency: 1, periodUnit: "h", every: 8 } } }] };
+  const r = rankSuggestions(await suggestProperty(fakeDeps(), mr, "MedicationRequest.dosageInstruction[0].timing.repeat", "every"), 5);
+  assert.deepEqual(r.map((s) => `${s.kind}:${s.value}`), ["rename_property:period", "rename_property:periodMax", "remove_property:every"]);
+  assert.ok(r[0].confidence < 0.68 && r[0].confidence > r[1].confidence && r[1].confidence > r[2].confidence, JSON.stringify(r));
+  assert.equal(r[2].confidence, 0.4, "remove below an evidence rename");
+  assert.match(r[0].reason, /'period' \("Event occurs frequency times per period"\) means the same and the value fits its type/);
+  assert.deepEqual(r[0].patch, { op: "move", from: "MedicationRequest.dosageInstruction[0].timing.repeat.every", path: "MedicationRequest.dosageInstruction[0].timing.repeat.period" });
+  // A string cannot be a decimal: the rename is dropped, remove stays (alone, so 0.5).
+  const bad = { resourceType: "MedicationRequest", dosageInstruction: [{ timing: { repeat: { periodUnit: "h", every: "eight" } } }] };
+  const rb = await suggestProperty(fakeDeps(), bad, "MedicationRequest.dosageInstruction[0].timing.repeat", "every");
+  assert.deepEqual(rb.map((s) => `${s.kind}:${s.value}@${s.confidence}`), ["remove_property:every@0.5"]);
+  // Alias ('Zip' on Address.postalCode), whole-name synonym (dob), Range.high from "High limit" + the upper/high group.
+  const zip = await suggestProperty(fakeDeps(), { resourceType: "Patient", address: [{ city: "Taipei", zip: "100" }] }, "Patient.address[0]", "zip");
+  assert.equal(zip[0].value, "postalCode");
+  assert.match(zip[0].reason, /alias 'Zip'/);
+  const dob = await suggestProperty(fakeDeps(), { resourceType: "Patient", dob: "1990-01-01" }, "Patient", "dob");
+  assert.equal(dob[0].value, "birthDate");
+  const high = rankSuggestions(await suggestProperty(fakeDeps(), { resourceType: "Observation", valueRange: { low: { value: 1 }, upperLimit: { value: 5 } } }, "Observation.valueRange", "upperLimit"), 5);
+  assert.equal(high[0].value, "high");
+  assert.equal(high[0].kind, "rename_property");
+  // A string into an Annotation-typed element: allowed as a restructuring (Annotation.text takes it), flagged in the reason.
+  const note = await suggestProperty(fakeDeps(), { resourceType: "Observation", comment: "x" }, "Observation", "comment");
+  assert.equal(note[0].value, "note");
+  assert.match(note[0].reason, /restructured as Annotation/);
+  // A number into a Period (no child takes a number): no rename, remove only.
+  const every = await suggestProperty(fakeDeps(), { resourceType: "Patient", contact: [{ every: 2 }] }, "Patient.contact[0]", "every");
+  assert.deepEqual(every.map((s) => s.kind), ["remove_property"]);
+});
+
+test("properties: moves reach datatype children anywhere, nearest route first, absent repeating elements indexed", async () => {
+  // A descendant two levels down through an absent repeating element.
+  const city = await suggestProperty(fakeDeps(), { resourceType: "Patient", city: "Taipei" }, "Patient", "city");
+  assert.equal(city[0].kind, "move_property");
+  assert.equal(city[0].value, "Patient.address[0].city");
+  assert.deepEqual(city[0].patch, { op: "move", from: "Patient.city", path: "Patient.address[0].city" });
+  // A sibling datatype of the ancestor (HumanName under contact → Patient.address), via the parent's children.
+  const fam = await suggestProperty(fakeDeps(), { resourceType: "Patient", contact: [{ name: { given: ["A"] }, city: "Taipei" }] }, "Patient.contact[0]", "city");
+  assert.equal(fam[0].value, "Patient.address[0].city");
+  // Period is reachable under contact.period (depth 2) and nowhere nearer: the nearest route is reported once.
+  const start = await suggestProperty(fakeDeps(), { resourceType: "Patient", start: "2020-01-01" }, "Patient", "start");
+  assert.deepEqual(start.filter((s) => s.kind === "move_property").map((s) => s.value), ["Patient.contact[0].period.start"]);
+  // A choice value that is present is searched (Quantity under valueQuantity); a stem at another level takes the fitting typed name.
+  const unit = await suggestProperty(fakeDeps(), { resourceType: "Observation", valueQuantity: { value: 1 }, unit: "mg" }, "Observation", "unit");
+  assert.equal(unit[0].value, "Observation.valueQuantity.unit");
+  const dose = await suggestProperty(fakeDeps(), { resourceType: "MedicationRequest", dose: { value: 1, unit: "mg" } }, "MedicationRequest", "dose");
+  assert.equal(dose[0].value, "MedicationRequest.dosageInstruction[0].doseAndRate[0].doseQuantity");
+  assert.match(dose[0].reason, /'dose' is a choice element of Dosage.doseAndRate/);
+  // Parent-level evidence move when nothing exact exists (`comment` under Dosage → MedicationRequest.note needs a note element: here Patient.contact → Patient.gender for `sex`).
+  const sex = await suggestProperty(fakeDeps(), { resourceType: "Patient", contact: [{ sex: "male" }] }, "Patient.contact[0]", "sex");
+  assert.deepEqual(sex.map((s) => `${s.kind}:${s.value}`), ["move_property:Patient.gender", "remove_property:sex"]);
+  assert.ok(sex[0].confidence <= 0.6 && sex[0].confidence > sex[1].confidence);
+  // Exact and case renames outrank everything; a typo rename never matches a short fragment inside a long name (`age` in `language`).
+  const age = await suggestProperty(fakeDeps(), { resourceType: "Patient", age: 30 }, "Patient", "age");
+  assert.deepEqual(age.map((s) => s.kind), ["remove_property"]);
 });
 
 test("attachSuggestions: additive only, deterministic, fail-open", async () => {

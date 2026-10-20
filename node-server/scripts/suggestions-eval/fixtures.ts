@@ -13,6 +13,10 @@ export interface Fixture {
   profile?: string;
   expect: string[];
   suffix?: boolean;
+  /** When set, the first suggestion must also be of this kind (remove_property / move_property ...). */
+  kind?: string;
+  /** Sub-category for the per-kind breakdown (unrecognized_property: prop/rename, prop/move, prop/shape-rename, prop/shape-move, prop/remove). */
+  sub?: string;
 }
 
 const UCUM = "http://unitsofmeasure.org";
@@ -68,6 +72,29 @@ function enc(classCoding: Record<string, any>): Record<string, any> {
   return { resourceType: "Encounter", status: "finished", class: classCoding, subject: { reference: "Patient/p1" } };
 }
 
+
+function pat(extra: Record<string, any> = {}): Record<string, any> {
+  return { resourceType: "Patient", name: [{ family: "Chen", given: ["A"] }], ...extra };
+}
+
+function proc(extra: Record<string, any> = {}): Record<string, any> {
+  return { resourceType: "Procedure", status: "completed", subject: { reference: "Patient/p1" }, ...extra };
+}
+
+function allergy(extra: Record<string, any> = {}): Record<string, any> {
+  return { resourceType: "AllergyIntolerance", patient: { reference: "Patient/p1" }, ...extra };
+}
+
+const AMB = { system: THO + "v3-ActCode", code: "AMB" };
+const P = "unrecognized_property" as const;
+const MOVE = "move_property";
+const RENAME = "rename_property";
+const REMOVE = "remove_property";
+
+function encX(extra: Record<string, any> = {}): Record<string, any> {
+  return { ...enc(AMB), ...extra };
+}
+
 export const FIXTURES: Fixture[] = [
   // --- UCUM ----------------------------------------------------------------
   { id: "ucum-ui-ml", category: "ucum", resource: qty("[UI]/mL"), expect: ["[iU]/mL", "[IU]/mL"] },
@@ -102,20 +129,69 @@ export const FIXTURES: Fixture[] = [
   { id: "url-dose-rate-type", category: "unknown_url", resource: medReq({ text: "x", doseAndRate: [{ type: { coding: [{ system: THO + "dose-rate-types", code: "ordered" }] } }] }), expect: [THO + "dose-rate-type"] },
 
   // --- Unrecognized property -------------------------------------------------
-  { id: "prop-periodUnits", category: "unrecognized_property", resource: medReq({ text: "x", timing: { repeat: { frequency: 1, period: 1, periodUnits: "d" } } }), expect: ["periodUnit"] },
-  { id: "prop-periodUnit-level", category: "unrecognized_property", resource: medReq({ text: "x", timing: { repeat: { frequency: 1, period: 1 }, periodUnit: "d" } }), expect: ["timing.repeat.periodUnit"], suffix: true },
-  { id: "prop-doseQuantity-level", category: "unrecognized_property", resource: medReq({ text: "x", doseQuantity: { value: 1, unit: "mg", system: UCUM, code: "mg" } }), expect: ["doseAndRate.doseQuantity"], suffix: true },
-  { id: "prop-typo", category: "unrecognized_property", resource: obs({ valueQuantiy: { value: 1 } }), expect: ["valueQuantity"] },
-  { id: "prop-case", category: "unrecognized_property", resource: (({ status, ...o }) => ({ ...o, Status: "final" }))(obs()), expect: ["status"] },
-  { id: "prop-choice-stem", category: "unrecognized_property", resource: obs({ value: { value: 72, unit: "/min", system: UCUM, code: "/min" } }), expect: ["valueQuantity"] },
-  { id: "prop-birthdate", category: "unrecognized_property", resource: { resourceType: "Patient", birthdate: "1990-01-01" }, expect: ["birthDate"] },
+  { id: "prop-periodUnits", category: "unrecognized_property", sub: "prop/rename", resource: medReq({ text: "x", timing: { repeat: { frequency: 1, period: 1, periodUnits: "d" } } }), expect: ["periodUnit"] },
+  { id: "prop-periodUnit-level", category: "unrecognized_property", sub: "prop/move", resource: medReq({ text: "x", timing: { repeat: { frequency: 1, period: 1 }, periodUnit: "d" } }), expect: ["timing.repeat.periodUnit"], suffix: true },
+  { id: "prop-doseQuantity-level", category: "unrecognized_property", sub: "prop/move", resource: medReq({ text: "x", doseQuantity: { value: 1, unit: "mg", system: UCUM, code: "mg" } }), expect: ["doseAndRate[0].doseQuantity"], suffix: true },
+  { id: "prop-typo", category: "unrecognized_property", sub: "prop/rename", resource: obs({ valueQuantiy: { value: 1 } }), expect: ["valueQuantity"] },
+  { id: "prop-case", category: "unrecognized_property", sub: "prop/rename", resource: (({ status, ...o }) => ({ ...o, Status: "final" }))(obs()), expect: ["status"] },
+  { id: "prop-choice-stem", category: "unrecognized_property", sub: "prop/rename", resource: obs({ value: { value: 72, unit: "/min", system: UCUM, code: "/min" } }), expect: ["valueQuantity"] },
+  { id: "prop-birthdate", category: "unrecognized_property", sub: "prop/rename", resource: { resourceType: "Patient", birthdate: "1990-01-01" }, expect: ["birthDate"] },
   { id: "prop-onsetDate", category: "choice_type", resource: { ...cond({ system: SCT, code: "44054006" }), onsetDate: "2020-01-01" }, expect: ["onsetDateTime"] },
   { id: "prop-effectiveDate", category: "choice_type", resource: obs({ effectiveDate: "2020-01-01" }), expect: ["effectiveDateTime"] },
-  { id: "prop-medication-stem", category: "unrecognized_property", resource: { ...medReq({ text: "x" }), medicationCodeableConcept: undefined, medication: { reference: "Medication/m1" } }, expect: ["medicationReference"] },
-  { id: "prop-coding-Code", category: "unrecognized_property", resource: obs({ code: { coding: [{ system: LOINC, Code: "8867-4" }] } }), expect: ["code"] },
-  { id: "prop-snake", category: "unrecognized_property", resource: medReq({ text: "x", timing: { repeat: { duration: 1, duration_unit: "h" } } }), expect: ["durationUnit"] },
-  { id: "prop-familyName", category: "unrecognized_property", resource: { resourceType: "Patient", name: [{ familyName: "Chen" }] }, expect: ["family"] },
-  { id: "prop-route-level", category: "unrecognized_property", resource: medReq({ text: "x", timing: { route: { text: "oral" } } }), expect: ["dosageInstruction[0].route"], suffix: true },
+  { id: "prop-medication-stem", category: "unrecognized_property", sub: "prop/rename", resource: { ...medReq({ text: "x" }), medicationCodeableConcept: undefined, medication: { reference: "Medication/m1" } }, expect: ["medicationReference"] },
+  { id: "prop-coding-Code", category: "unrecognized_property", sub: "prop/rename", resource: obs({ code: { coding: [{ system: LOINC, Code: "8867-4" }] } }), expect: ["code"] },
+  { id: "prop-snake", category: "unrecognized_property", sub: "prop/rename", resource: medReq({ text: "x", timing: { repeat: { duration: 1, duration_unit: "h" } } }), expect: ["durationUnit"] },
+  { id: "prop-familyName", category: "unrecognized_property", sub: "prop/rename", resource: { resourceType: "Patient", name: [{ familyName: "Chen" }] }, expect: ["family"] },
+  { id: "prop-route-level", category: "unrecognized_property", sub: "prop/move", resource: medReq({ text: "x", timing: { route: { text: "oral" } } }), expect: ["dosageInstruction[0].route"], suffix: true },
+
+
+  // --- Unrecognized property: move (the name lives at another level of this resource) -------
+  { id: "mv-note-in-dosage", category: P, sub: "prop/move", kind: MOVE, resource: medReq({ text: "x", note: [{ text: "n" }] }), expect: ["MedicationRequest.note"], suffix: true },
+  { id: "mv-reasonCode-in-diagnosis", category: P, sub: "prop/move", kind: MOVE, resource: encX({ diagnosis: [{ condition: { reference: "Condition/c1" }, reasonCode: [{ text: "x" }] }] }) , expect: ["Encounter.reasonCode"], suffix: true },
+  { id: "mv-family-root", category: P, sub: "prop/move", kind: MOVE, resource: { resourceType: "Patient", family: "Chen" }, expect: ["name[0].family"], suffix: true },
+  { id: "mv-city-root", category: P, sub: "prop/move", kind: MOVE, resource: pat({ city: "Taipei" }), expect: ["address[0].city"], suffix: true },
+  { id: "mv-unit-root-choice-present", category: P, sub: "prop/move", kind: MOVE, resource: obs({ valueQuantity: { value: 1 }, unit: "mg" }), expect: ["valueQuantity.unit"], suffix: true },
+  { id: "mv-severity-allergy", category: P, sub: "prop/move", kind: MOVE, resource: allergy({ severity: "severe" }), expect: ["reaction[0].severity"], suffix: true },
+  { id: "mv-start-encounter", category: P, sub: "prop/move", kind: MOVE, resource: encX({ start: "2020-01-01" }), expect: ["Encounter.period.start"], suffix: true },
+  { id: "mv-timing-in-doseAndRate", category: P, sub: "prop/move", kind: MOVE, resource: medReq({ doseAndRate: [{ doseQuantity: { value: 1 }, timing: { repeat: { frequency: 1 } } }] }), expect: ["dosageInstruction[0].timing"], suffix: true },
+  { id: "mv-birthDate-in-name", category: P, sub: "prop/move", kind: MOVE, resource: pat({ name: [{ family: "Chen", birthDate: "1990-01-01" }] }), expect: ["Patient.birthDate"], suffix: true },
+  { id: "mv-city-in-telecom", category: P, sub: "prop/move", kind: MOVE, resource: pat({ telecom: [{ system: "phone", value: "1", city: "Taipei" }] }), expect: ["address[0].city"], suffix: true },
+  { id: "mv-dose-root", category: P, sub: "prop/move", kind: MOVE, resource: medReq({ text: "x" }, { dose: { value: 1, unit: "mg" } }), expect: ["doseAndRate[0].doseQuantity"], suffix: true },
+  { id: "mv-class-in-hospitalization", category: P, sub: "prop/move", kind: MOVE, resource: { resourceType: "Encounter", status: "finished", hospitalization: { class: AMB } }, expect: ["Encounter.class"], suffix: true },
+  { id: "mv-clinicalStatus-in-code", category: P, sub: "prop/move", kind: MOVE, resource: { resourceType: "Condition", subject: { reference: "Patient/p1" }, code: { coding: [{ system: SCT, code: "44054006" }], clinicalStatus: { coding: [{ system: THO + "condition-clinical", code: "active" }] } } }, expect: ["Condition.clinicalStatus"], suffix: true },
+  { id: "mv-authoredOn-in-dosage", category: P, sub: "prop/move", kind: MOVE, resource: medReq({ text: "x", authoredOn: "2020-01-01" }), expect: ["MedicationRequest.authoredOn"], suffix: true },
+
+  // --- Unrecognized property: value-shape / synonym rename -----------------------------------
+  { id: "sr-every-period", category: P, sub: "prop/shape-rename", kind: RENAME, resource: medReq({ timing: { repeat: { frequency: 1, periodUnit: "h", every: 8 } } }), expect: ["period"] },
+  { id: "sr-upperLimit-high", category: P, sub: "prop/shape-rename", kind: RENAME, resource: obs({ valueRange: { low: { value: 1, unit: "mg" }, upperLimit: { value: 5, unit: "mg" } } }), expect: ["high"] },
+  { id: "sr-comment-note", category: P, sub: "prop/shape-rename", kind: RENAME, resource: obs({ comment: "text" }), expect: ["note"] },
+  { id: "sr-sex-gender", category: P, sub: "prop/shape-rename", kind: RENAME, resource: pat({ sex: "male" }), expect: ["gender"] },
+  { id: "sr-dob-birthDate", category: P, sub: "prop/shape-rename", kind: RENAME, resource: pat({ dob: "1990-01-01" }), expect: ["birthDate"] },
+  { id: "sr-surname-family", category: P, sub: "prop/shape-rename", kind: RENAME, resource: { resourceType: "Patient", name: [{ surname: "Chen" }] }, expect: ["family"] },
+  { id: "sr-firstName-given", category: P, sub: "prop/shape-rename", kind: RENAME, resource: { resourceType: "Patient", name: [{ family: "Chen", firstName: "A" }] }, expect: ["given"] },
+  { id: "sr-phone-telecom", category: P, sub: "prop/shape-rename", kind: RENAME, resource: pat({ phone: "02-1234" }), expect: ["telecom"] },
+  { id: "sr-prescriber-requester", category: P, sub: "prop/shape-rename", kind: RENAME, resource: medReq({ text: "x" }, { prescriber: { reference: "Practitioner/x" } }), expect: ["requester"] },
+  { id: "sr-interval-period", category: P, sub: "prop/shape-rename", kind: RENAME, resource: medReq({ timing: { repeat: { periodUnit: "h", interval: 6 } } }), expect: ["period"] },
+  { id: "sr-result-value", category: P, sub: "prop/shape-rename", kind: RENAME, resource: obs({ result: 5 }), expect: ["valueInteger", "valueQuantity"] },
+  { id: "sr-from-start", category: P, sub: "prop/shape-rename", kind: RENAME, resource: encX({ period: { from: "2020-01-01", end: "2020-01-02" } }), expect: ["start"] },
+  { id: "sr-uom-unit", category: P, sub: "prop/shape-rename", kind: RENAME, resource: obs({ valueQuantity: { value: 1, uom: "mg" } }), expect: ["unit"] },
+  { id: "sr-kind-type", category: P, sub: "prop/shape-rename", kind: RENAME, resource: encX({ kind: [{ text: "consult" }] }), expect: ["type"] },
+  { id: "sr-comment-in-dosage", category: P, sub: "prop/shape-move", kind: MOVE, resource: medReq({ text: "x", comment: "with food" }), expect: ["MedicationRequest.note"], suffix: true },
+  { id: "sr-notes-in-stage", category: P, sub: "prop/shape-move", kind: MOVE, resource: { ...cond({ system: SCT, code: "44054006" }), stage: [{ summary: { text: "II" }, notes: "x" }] }, expect: ["Condition.note"], suffix: true },
+
+  // --- Unrecognized property: remove (the name exists nowhere plausible) ---------------------
+  { id: "rm-note-patient", category: P, sub: "prop/remove", kind: REMOVE, resource: pat({ note: "follow up" }), expect: ["note"] },
+  { id: "rm-reasonCode-observation", category: P, sub: "prop/remove", kind: REMOVE, resource: obs({ reasonCode: [{ text: "x" }] }), expect: ["reasonCode"] },
+  { id: "rm-foo-observation", category: P, sub: "prop/remove", kind: REMOVE, resource: obs({ foo: 1 }), expect: ["foo"] },
+  { id: "rm-priority-condition", category: P, sub: "prop/remove", kind: REMOVE, resource: { ...cond({ system: SCT, code: "44054006" }), priority: "high" }, expect: ["priority"] },
+  { id: "rm-age-patient", category: P, sub: "prop/remove", kind: REMOVE, resource: pat({ age: 30 }), expect: ["age"] },
+  { id: "rm-weight-patient", category: P, sub: "prop/remove", kind: REMOVE, resource: pat({ weight: 70 }), expect: ["weight"] },
+  { id: "rm-every-encounter", category: P, sub: "prop/remove", kind: REMOVE, resource: encX({ every: 2 }), expect: ["every"] },
+  { id: "rm-bed-location", category: P, sub: "prop/remove", kind: REMOVE, resource: encX({ location: [{ location: { reference: "Location/l1" }, bed: "12A" }] }), expect: ["bed"] },
+  { id: "rm-anesthesia-procedure", category: P, sub: "prop/remove", kind: REMOVE, resource: proc({ anesthesia: "general" }), expect: ["anesthesia"] },
+  { id: "rm-mrn-identifier", category: P, sub: "prop/remove", kind: REMOVE, resource: pat({ identifier: [{ system: "urn:x", mrn: "1" }] }), expect: ["mrn"] },
+  { id: "rm-units-observation", category: P, sub: "prop/remove", kind: REMOVE, resource: obs({ units: "mg" }), expect: ["units"] },
+  { id: "rm-labName-observation", category: P, sub: "prop/remove", kind: REMOVE, resource: obs({ labName: "Lab A" }), expect: ["labName"] },
 
   // --- Required / extensible binding -----------------------------------------
   { id: "bind-case", category: "binding", resource: { ...obs(), status: "Final" }, expect: ["final"] },
@@ -217,11 +293,11 @@ export const HELDOUT: Fixture[] = [
   { id: "h-url-actcodes", category: "unknown_url", resource: enc({ system: THO + "v3-ActCodes", code: "IMP" }), expect: [THO + "v3-ActCode"] },
   { id: "h-url-allergy-ver", category: "unknown_url", resource: { resourceType: "AllergyIntolerance", patient: { reference: "Patient/p1" }, verificationStatus: { coding: [{ system: THO + "allergyintolerance-verification-status", code: "confirmed" }] } }, expect: [THO + "allergyintolerance-verification"] },
   { id: "h-url-interp", category: "unknown_url", resource: obs({ interpretation: [{ coding: [{ system: THO + "observation-interpretation", code: "H" }] }] }), expect: [THO + "v3-ObservationInterpretation"] },
-  { id: "h-prop-telecoms", category: "unrecognized_property", resource: { resourceType: "Patient", telecoms: [{ system: "phone", value: "1" }] }, expect: ["telecom"] },
-  { id: "h-prop-asNeeded", category: "unrecognized_property", resource: medReq({ text: "x", asNeeded: true }), expect: ["asNeededBoolean"] },
-  { id: "h-prop-periods", category: "unrecognized_property", resource: { ...enc({ system: THO + "v3-ActCode", code: "AMB" }), periods: { start: "2020-01-01" } }, expect: ["period"] },
-  { id: "h-prop-reactions", category: "unrecognized_property", resource: { resourceType: "AllergyIntolerance", patient: { reference: "Patient/p1" }, reactions: [{ manifestation: [{ text: "rash" }] }] }, expect: ["reaction"] },
-  { id: "h-prop-zip", category: "unrecognized_property", resource: { resourceType: "Patient", address: [{ city: "Taipei", zip: "100" }] }, expect: ["postalCode"] },
+  { id: "h-prop-telecoms", category: "unrecognized_property", sub: "prop/rename", resource: { resourceType: "Patient", telecoms: [{ system: "phone", value: "1" }] }, expect: ["telecom"] },
+  { id: "h-prop-asNeeded", category: "unrecognized_property", sub: "prop/rename", resource: medReq({ text: "x", asNeeded: true }), expect: ["asNeededBoolean"] },
+  { id: "h-prop-periods", category: "unrecognized_property", sub: "prop/rename", resource: { ...enc({ system: THO + "v3-ActCode", code: "AMB" }), periods: { start: "2020-01-01" } }, expect: ["period"] },
+  { id: "h-prop-reactions", category: "unrecognized_property", sub: "prop/rename", resource: { resourceType: "AllergyIntolerance", patient: { reference: "Patient/p1" }, reactions: [{ manifestation: [{ text: "rash" }] }] }, expect: ["reaction"] },
+  { id: "h-prop-zip", category: "unrecognized_property", sub: "prop/shape-rename", resource: { resourceType: "Patient", address: [{ city: "Taipei", zip: "100" }] }, expect: ["postalCode"] },
   { id: "h-bind-prelim", category: "binding", resource: { ...obs(), status: "Preliminary" }, expect: ["preliminary"] },
   { id: "h-bind-gender-F", category: "binding", resource: { resourceType: "Patient", gender: "F" }, expect: ["female"] },
   { id: "h-bind-in-progress", category: "binding", resource: { ...enc({ system: THO + "v3-ActCode", code: "AMB" }), status: "in progress" }, expect: ["in-progress"] },
@@ -237,5 +313,28 @@ export const HELDOUT: Fixture[] = [
   { id: "h-disp-weight", category: "wrong_display", resource: codeOf(LOINC, "29463-7", "Weight"), expect: ["Body weight"] },
   { id: "h-disp-htn", category: "wrong_display", resource: cond({ system: ICD, code: "I10", display: "Hypertension" }), expect: ["Essential (primary) hypertension"] },
   { id: "h-disp-lab", category: "wrong_display", resource: coded(THO + "observation-category", "laboratory", "Lab"), expect: ["Laboratory"] },
+
+  // --- Unrecognized property (held-out): move / shape rename / remove ------------------------
+  { id: "h-mv-interpretation-in-quantity", category: P, sub: "prop/move", kind: MOVE, resource: obs({ valueQuantity: { value: 1, interpretation: [{ text: "high" }] } }), expect: ["Observation.interpretation"], suffix: true },
+  { id: "h-mv-postalCode-root", category: P, sub: "prop/move", kind: MOVE, resource: pat({ postalCode: "100" }), expect: ["address[0].postalCode"], suffix: true },
+  { id: "h-mv-periodUnit-in-dosage", category: P, sub: "prop/move", kind: MOVE, resource: medReq({ text: "x", periodUnit: "d" }), expect: ["timing.repeat.periodUnit"], suffix: true },
+  { id: "h-mv-onsetDateTime-in-code", category: P, sub: "prop/move", kind: MOVE, resource: { resourceType: "Condition", subject: { reference: "Patient/p1" }, code: { coding: [{ system: SCT, code: "44054006" }], onsetDateTime: "2020-01-01" } }, expect: ["Condition.onsetDateTime"], suffix: true },
+  { id: "h-mv-individual-root", category: P, sub: "prop/move", kind: MOVE, resource: encX({ individual: { reference: "Practitioner/x" } }), expect: ["participant[0].individual"], suffix: true },
+  { id: "h-mv-doseNumber-root", category: P, sub: "prop/move", kind: MOVE, resource: { resourceType: "Immunization", status: "completed", vaccineCode: { text: "x" }, patient: { reference: "Patient/p1" }, occurrenceDateTime: "2020-01-01", doseNumberPositiveInt: 1 }, expect: ["protocolApplied[0].doseNumberPositiveInt"], suffix: true },
+  { id: "h-mv-relationship-root", category: P, sub: "prop/move", kind: MOVE, resource: pat({ relationship: [{ text: "mother" }] }), expect: ["contact[0].relationship"], suffix: true },
+  { id: "h-sr-birthday", category: P, sub: "prop/shape-rename", kind: RENAME, resource: pat({ birthday: "1990-01-01" }), expect: ["birthDate"] },
+  { id: "h-sr-telephone", category: P, sub: "prop/shape-rename", kind: RENAME, resource: pat({ telephone: "02-1234" }), expect: ["telecom"] },
+  { id: "h-sr-remarks", category: P, sub: "prop/shape-rename", kind: RENAME, resource: obs({ remarks: "x" }), expect: ["note"] },
+  { id: "h-sr-physician", category: P, sub: "prop/shape-rename", kind: RENAME, resource: proc({ physician: { reference: "Practitioner/x" } }), expect: ["performer"] },
+  { id: "h-sr-indication", category: P, sub: "prop/shape-rename", kind: RENAME, resource: encX({ indication: [{ text: "x" }] }), expect: ["reasonCode"] },
+  { id: "h-sr-lowerLimit", category: P, sub: "prop/shape-rename", kind: RENAME, resource: obs({ valueRange: { lowerLimit: { value: 1, unit: "mg" }, high: { value: 5, unit: "mg" } } }), expect: ["low"] },
+  { id: "h-sr-amount-quantity", category: P, sub: "prop/shape-rename", kind: RENAME, resource: medReq({ text: "x" }, { dispenseRequest: { amount: { value: 30, unit: "tablet" } } }), expect: ["quantity"] },
+  { id: "h-sr-beginDate", category: P, sub: "prop/shape-rename", kind: RENAME, resource: { ...cond({ system: SCT, code: "44054006" }), beginDate: "2020-01-01" }, expect: ["onsetDateTime"] },
+  { id: "h-rm-department", category: P, sub: "prop/remove", kind: REMOVE, resource: obs({ department: "cardiology" }), expect: ["department"] },
+  { id: "h-rm-hospital", category: P, sub: "prop/remove", kind: REMOVE, resource: { ...cond({ system: SCT, code: "44054006" }), hospital: "A" }, expect: ["hospital"] },
+  { id: "h-rm-insurance", category: P, sub: "prop/remove", kind: REMOVE, resource: pat({ insurance: "NHI" }), expect: ["insurance"] },
+  { id: "h-rm-refills", category: P, sub: "prop/remove", kind: REMOVE, resource: medReq({ text: "x" }, { refills: 2 }), expect: ["refills"] },
+  { id: "h-rm-floor", category: P, sub: "prop/remove", kind: REMOVE, resource: encX({ location: [{ location: { reference: "Location/l1" }, floor: 3 }] }), expect: ["floor"] },
+  { id: "h-rm-strength-dosage", category: P, sub: "prop/remove", kind: REMOVE, resource: medReq({ text: "x", strength: "500 mg" }), expect: ["strength"] },
   { id: "h-choice-onsetString", category: "choice_type", resource: { ...cond({ system: SCT, code: "44054006" }), onsetInteger: 5 }, expect: ["onsetAge"] },
 ];

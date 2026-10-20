@@ -69,8 +69,22 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   "Unrecognized property" judged on core definitions everywhere (also below disallowed choice types /
   //   unknown extensions), RxNorm code + display (rxnorm.concepts), fuller-copy hint on Unknown code in an IG
   //   CodeSystem, no ValueSet-as-system error on a directly bound Coding.
-  fhir_validate_bundle: "1.6.0",
-  fhir_validate_resource: "1.6.0",
+  // 1.6.1 (builtin validator v8, evaluation v6): the known-SID list is exactly SIDUtilities (icd-10-pcs / us-mbi /
+  //   eui-48 dropped), so http://hl7.org/fhir/sid/icd-10-pcs fails URL resolution on every element
+  //   ("No definition could be found for URL value", error; the code keeps the unknown-system warning); whitespace in a reference is
+  //   an error (REFERENCE_REF_INVALID_REF); an RxNorm display that names a different drug (no drug-name word in
+  //   common with any name of the RXCUI, or no Latin letters) is an error even when only the preferred name is
+  //   held; failed definition / terminology lookups (database trouble) add an error issue (code `exception`)
+  //   and `lookups_failed` — never a clean pass; a validator crash is a fatal `exception` issue on a well-formed
+  //   result instead of a failed call; issues of bundle entries without a usable resource are reported at
+  //   Bundle level instead of being dropped.
+  //   Same release (fhirSuggestions/properties): "Unrecognized property" issues add `remove_property` (patch.op
+  //   "remove"; reason lists the level's element names and the resource types that carry the name), evidence
+  //   renames from element alias / short text + FHIR-generic synonyms gated by the value shape, and
+  //   whole-resource moves (datatype children, present choice values, sibling backbones); move paths into
+  //   absent repeating elements now carry `[0]`.
+  fhir_validate_bundle: "1.6.1",
+  fhir_validate_resource: "1.6.1",
   // 1.2.0 (all below): provenance.resolved_by / closure_versions; canonical arguments resolve to their
   // owning package when package_id is omitted; "|version" honoured; list/search: all_packages + zero-hit hint;
   // NO_DEFAULT_IG instead of an arbitrary package when no default IG is set.
@@ -116,7 +130,9 @@ export const TOOLS_VERSION: Record<string, string> = {
   fhir_normalize_code: "1.8.0",
   fhir_get_resource_skeleton: "1.2.1",
   // 1.3.0: validation issues carry `suggestions` / `caused_by` (as fhir_validate_resource 1.6.0).
-  fhir_finalize_resource: "1.3.0",
+  // 1.3.1: validation as fhir_validate_resource 1.6.1 (unknown hl7.org/fhir code systems, reference whitespace,
+  //   RxNorm different-drug displays, lookup-failure / crash issues).
+  fhir_finalize_resource: "1.3.1",
   // ── 2026-10-19 actionable errors (additive fields only; successful outputs unchanged) ──
   // search_medical_codes 1.2.1: IG_UNAVAILABLE adds `hint`.
   // FHIR IG tools above (+.0.1): error envelopes add error.hint; IG_NOT_FOUND / NO_DEFAULT_IG add

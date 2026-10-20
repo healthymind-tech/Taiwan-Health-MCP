@@ -418,13 +418,108 @@ export function judgeRxnorm(code: string, display: string | null, row: RxnormCon
   if (display === null) return { status: "ok" };
   const accepted = [row.name, ...(row.altNames ?? [])];
   const bad = judgeExternalDisplay(RXNORM, code, display, accepted, [row.name]);
-  if (!bad) return { status: "ok" };
+  if (!bad || bad.status !== "invalid-display") return bad ?? { status: "ok" };
   if (row.altNames === null) {
+    const different = displayDenotesDifferentDrug(display, accepted);
+    if (different) {
+      // v8: the display names another drug altogether (no drug-name word in common
+      // with the preferred name, or not an English RxNorm string at all). tx.fhir.org
+      // rejects it as Wrong Display Name; an unknown PSN / SY atom cannot explain it,
+      // so it is an error even though only the preferred name is held locally.
+      return { ...bad, severity: "error", message: `${bad.message}; ${different}` };
+    }
     return {
       status: "invalid-display",
       severity: "warning",
-      message: `${bad.status === "invalid-display" ? bad.message : ""}; only the preferred RxNorm name is held locally, so another RxNorm name (PSN / SY) could not be ruled out — re-run the RxNorm import to check displays fully`,
+      message: `${bad.message}; only the preferred RxNorm name is held locally, so another RxNorm name (PSN / SY) could not be ruled out — re-run the RxNorm import to check displays fully`,
     };
   }
   return bad;
+}
+
+/**
+ * Words of an RxNorm name that carry no drug identity: strengths and units,
+ * dose forms and routes, packaging, salts / esters, and function words. What is
+ * left of a name after removing them (and numbers) is its ingredient and brand
+ * words — "Clopidogrel 75 MG Oral Tablet [Plavix]" → clopidogrel, plavix.
+ */
+const RX_NOISE_WORDS = new Set(
+  (
+    // units / strength
+    "mg mcg ug g gm kg ml l mmol meq iu unt unit units u hr hrs hour hours min day days actuat actuation actuations dose doses " +
+    "percent pct mg/ml mg/l mcg/ml meq/ml unt/ml iu/ml mg/hr mcg/hr mg/actuat mcg/actuat x " +
+    // dose forms
+    "tablet tablets tab tabs capsule capsules cap caps caplet solution soln suspension susp syrup elixir injection inj injectable " +
+    "cream ointment gel lotion paste foam powder granules granule drops drop spray patch film strip lozenge troche pellet pill pills " +
+    "suppository enema emulsion liquid concentrate aerosol inhaler inhalant inhalation insert ring implant wafer bead beads " +
+    "chewable disintegrating orally dissolving effervescent extended delayed immediate release releasing sustained controlled " +
+    "coated enteric buffered scored prefilled filled auto-injector autoinjector pen cartridge vial ampule ampoule syringe kit pack package " +
+    "metered dry transdermal topical oral sublingual buccal nasal ophthalmic otic rectal vaginal intravenous intramuscular subcutaneous " +
+    "intrathecal intravitreal epidural intradermal inhaled irrigation dental mouthwash shampoo soap bar swab " +
+    "per in of and with for as by the a an to or on from plus & / - — " +
+    // salts / esters / hydrates (the same drug under another salt is the same drug)
+    "hydrochloride hcl sodium potassium calcium magnesium zinc besylate maleate mesylate mesilate sulfate sulphate bisulfate " +
+    "acetate citrate tartrate bitartrate succinate fumarate phosphate diphosphate chloride bromide hydrobromide nitrate " +
+    "carbonate bicarbonate gluconate lactate stearate oxalate tosylate pamoate hydrate dihydrate monohydrate anhydrous " +
+    "disodium dipotassium trihydrate hemihydrate propionate valerate dipropionate butyrate pivalate palmitate decanoate " +
+    "enanthate undecanoate ethylsuccinate estolate axetil proxetil pivoxil medoxomil cilexetil " +
+    // generic qualifiers
+    "generic brand product preparation formulation combination compound mixture multi multiple strength strengths standard " +
+    "human recombinant synthetic equivalent approx approximately total each"
+  ).split(/\s+/),
+);
+
+/**
+ * Drug-identity words of an RxNorm name / a Coding.display: lower-cased
+ * alphabetic tokens of at least three letters that are not strength, unit, dose
+ * form, route, salt or function words. Hyphenated words also contribute their
+ * parts (co-trimoxazole → co-trimoxazole, trimoxazole).
+ */
+export function rxDrugWords(s: string): Set<string> {
+  const out = new Set<string>();
+  const raw = s.toLowerCase().replace(/[\[\](){},;:+*"'`]/g, " ");
+  for (const t0 of raw.split(/\s+/)) {
+    const t = t0.replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, "");
+    if (!t || RX_NOISE_WORDS.has(t)) continue;
+    const cands = t.includes("-") ? [t, ...t.split("-")] : t.includes("/") ? [t, ...t.split("/")] : [t];
+    for (const c of cands) {
+      if (c.length < 3 || RX_NOISE_WORDS.has(c) || !/[a-z]/.test(c) || /^\d/.test(c)) continue;
+      out.add(c);
+    }
+  }
+  return out;
+}
+
+/** Two drug words denote the same name when equal or one is a ≥5-letter prefix of the other (stems: "ibuprofen" / "ibuprofeno"). */
+function drugWordsMatch(a: string, b: string): boolean {
+  if (a === b) return true;
+  const [s, l] = a.length <= b.length ? [a, b] : [b, a];
+  return s.length >= 5 && l.startsWith(s);
+}
+
+/**
+ * v8 general rule for a display that fails the exact-name check: does it denote
+ * a *different* concept than the code — none of its drug-name words appears in
+ * any known name of the code (preferred name + alt names), or it is not an
+ * English RxNorm string at all (no Latin letters, e.g. a Chinese brand name)?
+ * Returns the reason (for the issue message) or null when the display may still
+ * be another name / spelling / formatting of the same drug. A display with no
+ * drug-name words left ("75 MG Oral Tablet") is never judged different.
+ * Lexical only: RxNorm ingredient relations are not loaded locally (the
+ * `rxnorm.concepts` table is concept-only), so a brand name alone ("Plavix"
+ * vs "clopidogrel 75 MG Oral Tablet") can only match when a held name carries
+ * the brand in brackets — the import's alt_names (SBD / PSN atoms) do.
+ */
+export function displayDenotesDifferentDrug(display: string, names: string[]): string | null {
+  if (!/[A-Za-z]/.test(display)) {
+    return "the display denotes a different concept: it contains no Latin letters, so it cannot be an RxNorm name of this code";
+  }
+  const want = rxDrugWords(display);
+  if (!want.size) return null;
+  const have = new Set<string>();
+  for (const n of names) for (const w of rxDrugWords(n)) have.add(w);
+  if (!have.size) return null;
+  for (const w of want) for (const h of have) if (drugWordsMatch(w, h)) return null;
+  const words = [...want].slice(0, 4).join(", ");
+  return `the display denotes a different concept: none of its drug-name words (${words}) appears in any RxNorm name of this code`;
 }

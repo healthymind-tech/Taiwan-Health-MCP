@@ -71,7 +71,7 @@
 | `fhir_validate_resource` | 驗證單一資源（結構 + 術語綁定）；未給 `profile` 時取 `meta.profile`。選用的 `source_text` 會另跑 grounding 檢查（見下節） | `resource`, `profile`, `source_text`, `site_config`, `evidence_map`, `grounding`, `grounding_verbosity` |
 | `fhir_validate_bundle` | 驗證整個 Bundle（各 entry 依其 `meta.profile` + Bundle 內參照完整性）。選用的 `source_text` 會另跑 grounding 檢查並合併結果（見下節） | `bundle`, `source_text`, `site_config`, `evidence_map`, `grounding`, `grounding_verbosity` |
 
-`fhir_validate_resource` / `fhir_validate_bundle` 的 `data` 另回報驗證是否完整：`checked_fully`（所有剖面與 ValueSet 都檢查到、且依賴閉包完整時為 `true`）、`profiles_unchecked`、`valuesets_unchecked`。`valid` 維持 HL7 語意（無法解析的剖面只是 warning），因此 `valid: true` 但 `checked_fully: false` 代表有部分內容沒有被檢查。`|version` canonical（`meta.profile`、binding、targetProfile、type profile、extension url）的解析方式比照 HL7 validator_cli 7.0.1。
+`fhir_validate_resource` / `fhir_validate_bundle` 的 `data` 另回報驗證是否完整：`checked_fully`（所有剖面與 ValueSet 都檢查到、且依賴閉包完整時為 `true`）、`profiles_unchecked`、`valuesets_unchecked`。`valid` 維持 HL7 語意（無法解析的剖面只是 warning），因此 `valid: true` 但 `checked_fully: false` 代表有部分內容沒有被檢查。驗證期間定義 / 術語查詢因資料庫問題失敗時另附 `lookups_failed`（失敗次數），此時一定有一則 `code: "exception"` 的 error issue，`valid` 為 `false`（1.6.1）。`|version` canonical（`meta.profile`、binding、targetProfile、type profile、extension url）的解析方式比照 HL7 validator_cli 7.0.1。
 
 內建 validator 另比照 HL7 validator_cli 7.0.1 檢查（1.6.0 同版）：
 
@@ -81,6 +81,14 @@
 - **RxNorm**：依 `rxnorm.concepts` 檢查碼與 display（tx.fhir.org 接受該 RXCUI 所有 SAB=RXNORM 名稱，不分大小寫），錯誤為 `Wrong Display Name '...' for http://www.nlm.nih.gov/research/umls/rxnorm#<code>. Valid display is '...'`。未知碼只有在本機 RxNorm 版本不舊於 tx.fhir.org（03022026）時才是 error，否則 warning；本機只有偏好名稱（migration 20261030 前匯入）時 display 不符只給 warning；未載入 RxNorm 時給 warning `Display not checked (RxNorm)`。
 - IG CodeSystem（`content = complete`）的 `Unknown code` 維持 error；若另一個已安裝套件有同一 CodeSystem 較完整的版本且含此碼（例如 TW Core 0.3.2 的 `medication-nhi-tw`），另附 information 指出該套件與版本。
 - 直接綁定 ValueSet 的 Coding 元素（如 `Encounter.class`）以 ValueSet URL 當 system 時，只回報綁定 warning，不再報 `The Coding references a value set` error（與 HL7 相同）。
+
+1.6.1（validator v8，評估報告 v6）新增：
+
+- **無法解析的 CodeSystem URL 一律是 error，不分元素**：HL7 空間（`http://hl7.org/fhir…`、`http://terminology.hl7.org/…`）的 `Coding.system` / `Quantity.system` 若不是任何已安裝套件的定義，於該 `system` 元素回報 `No definition could be found for URL value '…'`（Coding、CodeableConcept、Encounter.class、Identifier.type、Meta.tag、extension 的 value、contained 資源、巢狀 Bundle 皆同）。`http://hl7.org/fhir/sid/…` 只承認 HL7 validator `SIDUtilities` 的清單（ndc、icpc-2、icd-9、icd-10、cvx、srt、icd-10-cm、icd-9-cm、dsm5 …）；`icd-10-pcs`、`us-mbi` 等不在清單內，因此在任何元素上都會報這個 URL error（1.6.0 把它們視為已知，漏報）。代碼本身維持 warning `A definition for CodeSystem '…' could not be found`（HL7 `UNKNOWN_CODESYSTEM`），HL7 空間以外（IG 自有 URL 等）找不到的 system 也只有這個 warning，與 validator_cli 相同。
+- **參照含空白**（`Patient/ 123`、尾端空白）：error `The reference '…' is not a valid reference`（HL7 `REFERENCE_REF_INVALID_REF`）。
+- **RxNorm display 指到另一個藥**：display 與該 RXCUI 所有已知名稱（偏好名稱 + alt_names）沒有任何共同的藥名詞（去掉劑量、單位、劑型、途徑、鹽類與功能詞後比對；5 字以上字首相同視為同字），或根本不含拉丁字母（中文商品名）時，即使本機只有偏好名稱也判 **error**，訊息為 `Wrong Display Name '…' for …#<code>. Valid display is '…'; the display denotes a different concept: …`；只是同一藥的另一種寫法（同義詞、鹽類、劑型）在只有偏好名稱時維持 warning，重跑 `rxnorm_import` 載入 alt_names 後即與 tx.fhir.org 相同判 error。SNOMED / LOINC / ICD / CVX 的 display 本來就是 error（validator_cli 亦同），不受影響。
+- **查詢失敗絕不當成通過**：驗證期間任何定義 / 術語查詢因資料庫問題失敗（連線中斷、復原模式、timeout；缺表 / 缺欄位除外）時，結果多一則 error issue（`code: "exception"`，`Validation incomplete: N … lookups failed …`），`valid: false`、`checked_fully: false` 並附 `lookups_failed`；validator 本身發生例外時改回傳帶 fatal `exception` issue 的正常結果，而不是失敗的工具呼叫。
+- `fhir_validate_bundle`：沒有可用 resource 的 entry（寫成陣列、缺 `resourceType`）不會出現在 `entries`，其 issue（如 `must be a simple value, not an Array`）改列在 Bundle 層的 `issues`，不再遺失。
 
 ### 修正建議（suggestions / caused_by）{#validation-suggestions}
 
@@ -96,14 +104,14 @@
 | :--- | :--- | :--- |
 | `Unknown code 'X' in the CodeSystem 'http://unitsofmeasure.org'` | `replace_code` | 最接近的合法 UCUM：大小寫（UCUM 區分大小寫）、方括號（`[U]` → `U`、`[UI]/mL` → `[iU]/mL`）、UCUM 單位表的前綴 + 單位、常見臨床寫法（`mcg` → `ug`、`mmHg` → `mm[Hg]`）、非單位的劑型字改用註記（`tab` → `{tablet}`）；每個候選都以 validator 用的同一套 UCUM parser 驗證過 |
 | `No definition could be found for URL value 'U'`、`A definition for CodeSystem 'S' could not be found`、`The Coding references a value set, not a code system` | `replace_system` | 誤用的 ValueSet（或同名 ValueSet）所引用的 CodeSystem（`…/CodeSystem/v3-ActEncounterCode` → `…/CodeSystem/v3-ActCode`），以及套件閉包內最接近的 canonical；Coding 有代碼時，含有該代碼的 system 排前面 |
-| `Unrecognized property 'p'` | `rename_property` / `move_property` | 同一層最接近的元素名（含 datatype 子元素、choice 元素的具型別名稱，如 `value` → `valueQuantity`），或該名稱實際所在的層級（`timing.periodUnit` → `timing.repeat.periodUnit`） |
+| `Unrecognized property 'p'` | `rename_property` / `move_property` / `remove_property` | 依序：同一層最接近的元素名（大小寫、拼字；含 datatype 子元素、choice 元素的具型別名稱，如 `value` → `valueQuantity`）；該名稱在本資源實際所在的層級（祖先、三層內的子孫含 datatype 子元素、祖先的同層 backbone / datatype；`timing.periodUnit` → `timing.repeat.periodUnit`、`dosageInstruction[0].note` → `MedicationRequest.note`、`Patient.city` → `Patient.address[0].city`）；語意相同且值形狀相符的同層元素（信心較低，證據來自 FHIR 元素的 `alias` / `short` 與一小張 FHIR 通用同義詞表：`every: 8` 旁有 `periodUnit` → `period`、Range 的 `upperLimit` → `high`、`zip` → `postalCode`、`comment` → `note`）；都沒有時才建議移除（`patch.op = remove`），`reason` 列出該層的元素名（上限 14 個）與帶有此名稱的其他資源型別（如 `reasonCode` 放在 Observation → 「是 Encounter、Procedure… 的元素」） |
 | `The type 'date' is not allowed for Condition.onset[x]` | `rename_property` | 允許型別中符合值形狀的具型別名稱（`onsetDate` → `onsetDateTime`） |
 | 值不在 required / extensible ValueSet 內 | `choose_code` | ValueSet 展開後的代碼：小型 ValueSet 全列並依相似度排序，大型者取與原代碼 / display 最接近者（含 `fhir_normalize_code`） |
 | 其他 CodeSystem 的 `Unknown code` | `replace_code` / `replace_system` | validator 會接受的拼寫修正（大小寫、ICD 小數點、LOINC 連字號）、名稱與 display / text 相符的代碼（`fhir_normalize_code`）、IG CodeSystem 的相近代碼，以及代碼形狀相符的其他術語（LOINC 代碼放在 SNOMED system） |
 | `Wrong Display Name` | `replace_display`（+ `replace_code`） | validator 列出的有效 display（各術語格式一致），若寫的 display 其實是另一個代碼的名稱，也提示改代碼 |
 | `Unable to find a profile match for urn:uuid:X` | `caused_by` | 被參照資源本身的錯誤（`fullUrl`、`entry`、`path`、`message`）；它本身沒有錯時，改列它對該參照要求的剖面驗證時的錯誤（附 `profile`） |
 
-`patch` 以 validator 的點路徑表示（`op`: `replace` / `move`，`move` 另有 `from`）。`confidence` 是啟發式分數，不是機率；建議是輔助，套用後請再驗證一次。建議的排序與內容對同一輸入是固定的（決定性），計算失敗時該 issue 只是沒有建議，不影響驗證結果。評估方式與數據見 `node-server/scripts/suggestions-eval/`。
+`patch` 以 validator 的點路徑表示（`op`: `replace` / `move` / `remove`，`move` 另有 `from`；移到尚不存在的重複元素時路徑帶 `[0]`）。`confidence` 是啟發式分數，不是機率，但各 `kind` 的區間固定：完全 / 大小寫改名 > 移動 > 語意改名 > 移除；建議是輔助，套用後請再驗證一次。建議的排序與內容對同一輸入是固定的（決定性），計算失敗時該 issue 只是沒有建議，不影響驗證結果。評估方式與數據見 `node-server/scripts/suggestions-eval/`。
 
 > 程序內驗證以剖面 snapshot 與術語綁定為基礎，比對基準為 HL7 validator_cli 7.0.1（稽核方式與結果見 `node-server/scripts/validator-audit/`），但不等同官方 HL7 FHIR Validator 的一致性認證。
 
@@ -150,11 +158,11 @@
 
 | 工具 | 版本 |
 | :--- | :--- |
-| `fhir_validate_resource`、`fhir_validate_bundle` | 1.6.0（issue 的 `suggestions` / `caused_by`） |
+| `fhir_validate_resource`、`fhir_validate_bundle` | 1.6.1（validator v8：HL7 空間未知 CodeSystem 一律 error、參照含空白、RxNorm display 指到另一個藥、查詢失敗 / 例外的 `exception` issue；1.6.0：issue 的 `suggestions` / `caused_by`） |
 | `fhir_get_profile_required_elements` | 1.3.0（derived 列的 allowedCodes 與推導規則、`include_mustsupport="defaults"`、`optional`） |
 | `fhir_list_igs`、`fhir_list_artifacts`、`fhir_search_artifacts`、`fhir_list_resource_profiles`（新增 `compact`） | 1.3.0 |
 | `fhir_get_ig`、`fhir_rank_resource_profiles`、`fhir_get_profile`、`fhir_get_profile_elements`、`fhir_get_valueset`、`fhir_expand_valueset`、`fhir_validate_code`、`fhir_get_resource_skeleton` | 1.2.0 |
-| `fhir_finalize_resource` | 1.3.0（驗證 issue 的 `suggestions` / `caused_by`） |
+| `fhir_finalize_resource` | 1.3.1（驗證規則同 `fhir_validate_resource` 1.6.1；1.3.0：驗證 issue 的 `suggestions` / `caused_by`） |
 | `fhir_lookup_code` | 1.3.2（RxNorm 碼可查） |
 | `fhir_normalize_code` | 1.8.0（節錄版 CodeSystem 改查已安裝的完整版、候選 `linked`、別名解析到預設 IG 以外的 CodeSystem） |
 | `fhir_check_grounding` | 1.1.0 |

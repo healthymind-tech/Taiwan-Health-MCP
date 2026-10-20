@@ -1,0 +1,8 @@
+{
+ "oracle": "validator_cli 7.0.1 + tx.fhir.org (CLI cache; v8_probes generated 2026-10-20 with -ig tw.gov.mohw.twcore#1.0.0)",
+ "db": "staging Postgres container (twh-staging-postgres-1, started for this round only; same IG packages / terminology editions as production, rxnorm.concepts without alt_names)",
+ "v8_probes": {"n": 48, "before_production_http": {"target_error_detected": "30/44 (68.2%)"}, "after_local": {"target_error_detected": "43/44 (97.7%)", "vs_cli": {"agree": 47, "false_accept": 1, "false_reject": 0}},
+   "per_category_after": {"A": "18/18", "P": "5/5", "C": "3/3", "U": "4/4", "D": "3/3", "F": "2/2", "X": "2/2", "R": "3/4", "S": "3/3"},
+   "remaining": ["R-synonym-display: 'Thyroglobulin 100 mg tablet' for RXCUI 313375 — tx.fhir.org rejects it (error); locally only the preferred name is held (no alt_names until rxnorm_import is re-run), and the display shares a drug word with it, so it stays a warning by design"]},
+ "previous_corpora": "see REPORT.md v8.3 (16 corpora + v7, 4,388 items)"
+}

@@ -67,17 +67,38 @@ export function isKnownSpace(url: string): boolean {
   return url.startsWith("http://hl7.org/fhir") || url.startsWith("http://terminology.hl7.org/") || url.startsWith("http://fhir.org/guides");
 }
 
-/** Port of SIDUtilities.CODE_SYSTEMS + ID_SYSTEMS (+ isPassPortSID), 7.0.1. */
-const KNOWN_SIDS = new Set([
+/**
+ * Port of SIDUtilities.CODE_SYSTEMS (7.0.1, verified against the decompiled
+ * class): the `http://hl7.org/fhir/sid/...` code systems the HL7 validator
+ * treats as known without a CodeSystem resource. Everything else under
+ * `/sid/` — notably `icd-10-pcs`, `us-mbi`, `eui-48` — is NOT in the list:
+ * validator_cli reports "No definition could be found for URL value" for it
+ * (evaluation v6: `http://hl7.org/fhir/sid/icd-10-pcs`; the code itself only
+ * gets the UNKNOWN_CODESYSTEM warning, confirmed with the v8 P-* probes).
+ */
+const SID_CODE_SYSTEMS = new Set([
   "http://hl7.org/fhir/sid/ndc", "http://hl7.org/fhir/sid/icpc-2", "http://hl7.org/fhir/sid/icpc-1", "http://hl7.org/fhir/sid/icpc-1-nl",
   "http://hl7.org/fhir/sid/icd-9", "http://hl7.org/fhir/sid/icd-10", "http://hl7.org/fhir/sid/cvx", "http://hl7.org/fhir/sid/srt",
   "http://hl7.org/fhir/sid/icd-10-vn", "http://hl7.org/fhir/sid/icd-10-cm", "http://hl7.org/fhir/sid/icd-10-am", "http://hl7.org/fhir/sid/icd-9-cm",
   "http://hl7.org/fhir/sid/icf-nl", "http://hl7.org/fhir/sid/ca-hc-npn", "http://hl7.org/fhir/sid/ca-hc-din", "http://hl7.org/fhir/sid/dsm5",
-  "http://hl7.org/fhir/sid/ex-icd-10-procedures", "http://hl7.org/fhir/sid/us-ssn", "http://hl7.org/fhir/sid/us-npi",
-  "http://hl7.org/fhir/sid/eui-48/bluetooth", "http://hl7.org/fhir/sid/eui-48/ethernet", "http://hl7.org/fhir/sid/icpc2",
-  // Not in SIDUtilities but defined by THO NamingSystems / tx.fhir.org; kept known to stay fail-safe.
-  "http://hl7.org/fhir/sid/icd-10-pcs", "http://hl7.org/fhir/sid/us-mbi", "http://hl7.org/fhir/sid/eui-48",
+  "http://hl7.org/fhir/sid/ex-icd-10-procedures",
 ]);
+
+/** Port of SIDUtilities.ID_SYSTEMS (7.0.1); `isPassPortSID` is matched separately. */
+const SID_ID_SYSTEMS = new Set([
+  "http://hl7.org/fhir/sid/us-ssn", "http://hl7.org/fhir/sid/us-npi",
+  "http://hl7.org/fhir/sid/eui-48/bluetooth", "http://hl7.org/fhir/sid/eui-48/ethernet",
+]);
+
+/** SIDUtilities.isknownCodeSystem: a `/sid/` code system the HL7 validator accepts as a Coding.system without a definition. */
+export function isKnownSidCodeSystem(system: string): boolean {
+  return SID_CODE_SYSTEMS.has(system);
+}
+
+/** SIDUtilities.isKnownSID (code systems + id systems + passport SIDs). */
+export function isKnownSid(url: string): boolean {
+  return SID_CODE_SYSTEMS.has(url) || SID_ID_SYSTEMS.has(url) || /^http:\/\/hl7\.org\/fhir\/sid\/passport-[a-zA-Z]{3}$/.test(url);
+}
 
 /** Port of InstanceValidator.isDefinitionURL / isKnownMappingUri + SpecialExtensions.KNOWN_EXTENSIONS (7.0.1). */
 const KNOWN_URLS = new Set([
@@ -145,7 +166,7 @@ export function findBaseUrl(url: string): string | null {
 export function hl7UrlMustResolve(url: string): boolean {
   if (!isKnownSpace(url)) return false;
   const u = url.includes("|") ? url.slice(0, url.lastIndexOf("|")) : url;
-  if (KNOWN_URLS.has(u) || KNOWN_SIDS.has(u) || /^http:\/\/hl7\.org\/fhir\/sid\/passport-[a-zA-Z]{3}$/.test(u)) return false;
+  if (KNOWN_URLS.has(u) || isKnownSid(u)) return false;
   // Versioned core URLs (http://hl7.org/fhir/5.0/StructureDefinition/...) are resolved
   // from another FHIR version's package: we cannot judge — treat as resolvable.
   if (/^http:\/\/hl7\.org\/fhir\/(\d+\.\d+|R\d|R4B)\//.test(u)) return false;

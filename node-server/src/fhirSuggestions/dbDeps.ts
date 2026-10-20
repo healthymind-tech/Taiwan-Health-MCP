@@ -26,6 +26,34 @@ function likeEscape(s: string): string {
   return s.replace(/[\\%_]/g, (c) => "\\" + c);
 }
 
+/** Element paths of the closure's base resource definitions, per closure (one query, ~150 rows). */
+const elementPathCache = new Map<string, { at: number; rows: Promise<Array<{ type: string; paths: string[] }>> }>();
+const ELEMENT_PATH_CACHE_MAX = 20;
+
+function resourceElementPaths(pkg: PackageRow): Promise<Array<{ type: string; paths: string[] }>> {
+  const key = terminology.closureKey(pkg);
+  const hit = elementPathCache.get(key);
+  if (hit && Date.now() - hit.at < CANONICAL_TTL_MS) return hit.rows;
+  const [pids, pvers] = terminology.closureArrays(pkg);
+  const rows = query<{ type: string; paths: string[] | null }>(
+    "SELECT DISTINCT ON (a.raw_json ->> 'type') a.raw_json ->> 'type' AS type, " +
+      "ARRAY(SELECT e ->> 'path' FROM jsonb_array_elements(a.raw_json -> 'snapshot' -> 'element') AS e) AS paths " +
+      "FROM fhir.artifacts a " +
+      "JOIN unnest($1::text[], $2::text[]) WITH ORDINALITY AS dep(pid, pver, ord) ON a.package_id = dep.pid AND a.package_version = dep.pver " +
+      "WHERE a.resource_type = 'StructureDefinition' AND a.kind = 'resource' AND a.derivation = 'specialization' " +
+      "AND a.canonical_url LIKE 'http://hl7.org/fhir/StructureDefinition/%' " +
+      "ORDER BY a.raw_json ->> 'type', dep.ord",
+    [pids, pvers],
+  ).then((r) => r.rows.filter((x) => typeof x.type === "string" && x.type !== "").map((x) => ({ type: x.type, paths: Array.isArray(x.paths) ? x.paths : [] })));
+  if (elementPathCache.size >= ELEMENT_PATH_CACHE_MAX) {
+    const first = elementPathCache.keys().next().value;
+    if (first !== undefined) elementPathCache.delete(first);
+  }
+  elementPathCache.set(key, { at: Date.now(), rows });
+  rows.catch(() => elementPathCache.delete(key));
+  return rows;
+}
+
 export function dbSuggestionDeps(pkg: PackageRow, resolver: ValidatorResolver, hooks: ServiceHooks = {}): SuggestionDeps {
   return {
     fetchStructureDefinition: (url) => resolver.fetchStructureDefinition(url),
@@ -71,5 +99,6 @@ export function dbSuggestionDeps(pkg: PackageRow, resolver: ValidatorResolver, h
       return urls;
     },
     validateAgainst: async (resource, profile) => (await new InstanceValidator(resolver).validate(resource, { profiles: [profile] })) as Array<Record<string, any>>,
+    resourceElementPaths: () => resourceElementPaths(pkg),
   };
 }
