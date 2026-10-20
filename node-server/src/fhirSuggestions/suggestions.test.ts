@@ -364,3 +364,8 @@ test("acceptance: fixture evaluation on the TW Core closure (needs FHIR_PACKAGE_
     assert.ok(rows.filter((r) => r.correct).length / det.length >= 0.8, "top-1 ≥ 80 %");
   }
 });
+
+test("parseValidDisplays ignores the language note and the different-concept clause", () => {
+  const msg = "Wrong Display Name 'Clopidogrel 75 MG Oral Tablet' for http://www.nlm.nih.gov/research/umls/rxnorm#313375. Valid display is 'thyroglobulin 100 MG Oral Tablet' (for the language(s) 'en'); the display denotes a different concept: none of its drug-name words (clopidogrel) appears in any RxNorm name of this code";
+  assert.deepEqual(parseValidDisplays(msg), ["thyroglobulin 100 MG Oral Tablet"]);
+});

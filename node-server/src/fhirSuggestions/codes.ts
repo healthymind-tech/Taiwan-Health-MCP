@@ -178,7 +178,9 @@ export function parseValidDisplays(message: string): string[] {
     while ((m = re.exec(s))) if (m[1] && !out.includes(m[1])) out.push(m[1]);
   };
   const valid = /Valid display is (.*)$/s.exec(message);
-  if (valid) grab(valid[1].replace(/\s*\(for the language\(s\) '[^']*'\)\s*$/, ""));
+  // The language note may be followed by further clauses ("; the display denotes a different concept: …"),
+  // so strip it wherever it sits and stop at the first clause separator outside the quoted list.
+  if (valid) grab(valid[1].replace(/\s*\(for the language\(s\) '[^']*'\)/g, "").replace(/;\s+the display denotes[\s\S]*$/, ""));
   const def = /Default display is (.*)$/s.exec(message);
   if (def) grab(def[1]);
   return out;
