@@ -20,6 +20,7 @@ import { abbreviationKey, applicableExpansions } from "./abbreviations.js";
 import { clinicalCore, compact, LATIN_STOP, normalizeText, tokenize, umlsNorm } from "./text.js";
 import { Thesaurus, type ThesaurusEntry } from "./thesaurus.js";
 import { KEYWORD_ONLY_MODE, KEYWORD_ONLY_NOTE } from "../searchQuality.js";
+import { TtlMemo } from "../ttlMemo.js";
 
 export interface CsLocation {
   packageId: string;
@@ -70,6 +71,23 @@ const FULLER_COPY_MIN_EXTRA = 1000;
 const FIRST_CLAUSE_BOOST = 0.15;
 const RECHECK_MS = 60_000;
 const SEM_LIMIT = 200;
+
+/**
+ * Process-wide memos of the per-closure CodeSystem resolution (`locate`) and of the
+ * fuller-copy lookup. Both are pure functions of installed package content; a package
+ * version is immutable once imported, so a TTL only bounds staleness after a re-import
+ * of the same version (`locate`) or a rebuild of the concept index (`fullerCopy`, which
+ * reads concept_index_cs and therefore re-checks as often as `index()` does).
+ */
+const LOCATE_TTL_MS = 10 * 60_000;
+const locateMemo = new TtlMemo<CsLocation | null>(LOCATE_TTL_MS, 2000);
+const fullerCopyMemo = new TtlMemo<FullerCopy | null>(RECHECK_MS, 2000);
+
+export interface FullerCopy {
+  location: CsLocation;
+  concepts: number;
+  ownConcepts: number;
+}
 
 interface CacheEntry {
   index: ConceptIndex;
@@ -124,9 +142,13 @@ export class IgConceptSearch {
   // ------------------------------------------------------------------ resolution
 
   /** The IG CodeSystem a canonical (or bare id) names, best package first within the closure. */
-  async locate(system: string, pkg: PackageRow): Promise<CsLocation | null> {
-    const [pids, pvers] = terminology.closureArrays(pkg);
+  locate(system: string, pkg: PackageRow): Promise<CsLocation | null> {
     const canonical = system.split("|")[0];
+    return locateMemo.get(`${terminology.closureKey(pkg)}|${canonical}`, () => this.locateUncached(canonical, pkg));
+  }
+
+  private async locateUncached(canonical: string, pkg: PackageRow): Promise<CsLocation | null> {
+    const [pids, pvers] = terminology.closureArrays(pkg);
     const sql = (where: string) =>
       "SELECT a.package_id, a.package_version, a.artifact_key, a.artifact_id, COALESCE(a.raw_json->>'url', a.canonical_url) AS url, " +
       "a.title, a.name, a.raw_json->>'version' AS version, dep.ord, p.fhir_version FROM fhir.artifacts a " +
@@ -134,7 +156,11 @@ export class IgConceptSearch {
       "JOIN fhir.ig_packages p ON p.package_id = a.package_id AND p.version = a.package_version " +
       `WHERE a.resource_type = 'CodeSystem' AND COALESCE(a.raw_json->>'content', '') NOT IN ('supplement', 'not-present') AND ${where}`;
     type Row = { package_id: string; package_version: string; artifact_key: string; artifact_id: string | null; url: string; title: string | null; name: string | null; version: string | null; ord: number; fhir_version: string | null };
-    let rows = (await query<Row>(sql("(a.canonical_url = $3 OR a.raw_json->>'url' = $3)"), [pids, pvers, canonical])).rows;
+    // canonical_url is the resource's own `url` (loaders/ig.ts), so the indexed predicate
+    // answers alone; the raw_json form (no index: a scan of every CodeSystem in the closure,
+    // ~40x slower) is kept only as the fallback for rows that lack a canonical_url.
+    let rows = (await query<Row>(sql("a.canonical_url = $3"), [pids, pvers, canonical])).rows;
+    if (!rows.length) rows = (await query<Row>(sql("(a.canonical_url = $3 OR a.raw_json->>'url' = $3)"), [pids, pvers, canonical])).rows;
     if (!rows.length) {
       const tail = terminology.canonicalTail(canonical);
       if (tail && (!canonical.includes("/") || canonical.includes("/CodeSystem/"))) {
@@ -157,7 +183,11 @@ export class IgConceptSearch {
    * FULLER_COPY_FACTOR times the concepts and FULLER_COPY_MIN_EXTRA more, both counted in the
    * concept-search index. Null when `loc` is not indexed or no such copy exists.
    */
-  async fullerCopy(loc: CsLocation): Promise<{ location: CsLocation; concepts: number; ownConcepts: number } | null> {
+  fullerCopy(loc: CsLocation): Promise<FullerCopy | null> {
+    return fullerCopyMemo.get(`${loc.packageId}#${loc.packageVersion}|${loc.url}`, () => this.fullerCopyUncached(loc));
+  }
+
+  private async fullerCopyUncached(loc: CsLocation): Promise<FullerCopy | null> {
     type Row = { package_id: string; package_version: string; concept_count: number };
     const rows = (
       await query<Row>("SELECT package_id, package_version, concept_count FROM fhir.concept_index_cs WHERE cs_url = $1 ORDER BY concept_count DESC", [loc.url])

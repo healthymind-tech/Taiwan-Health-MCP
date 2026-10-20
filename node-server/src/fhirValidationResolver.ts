@@ -42,7 +42,8 @@ import {
   loincUnknownMessage,
   snomedStrict,
 } from "./fhirExternalTerminology.js";
-import { query } from "./db.js";
+import { probeQueryFailures, query } from "./db.js";
+import { TtlMemo } from "./ttlMemo.js";
 
 const SD_TTL_MS = 30 * 60 * 1000;
 const SD_CACHE_MAX = 1500;
@@ -252,9 +253,34 @@ interface VersionedRow {
   fhir_version: string | null;
 }
 
+/**
+ * `url|version` lookups, process-wide (keyed by closure): the resource of exactly that
+ * version in a package closure is immutable, and the same versioned bindings
+ * (identifier-type|4.0.1 …) recur on every validation.
+ */
+const versionedMemo = new TtlMemo<Record<string, any> | null>(SD_TTL_MS, SD_CACHE_MAX);
+
+/**
+ * Code checks and ValueSet membership, process-wide (keyed by closure): a verdict is a
+ * pure function of the installed packages and terminology editions, which change only
+ * through an import job (the same staleness bound as the edition / held caches). A
+ * verdict reached while a lookup failed (fail-open degradation) is never memoised.
+ */
+const VERDICT_TTL_MS = 10 * 60 * 1000;
+const VERDICT_CACHE_MAX = 20000;
+const codeCheckMemo = new TtlMemo<CodeCheck>(VERDICT_TTL_MS, VERDICT_CACHE_MAX);
+const membershipMemo = new TtlMemo<boolean | undefined>(VERDICT_TTL_MS, VERDICT_CACHE_MAX);
+
+async function memoised<V>(memo: TtlMemo<V>, key: string, compute: () => Promise<V>): Promise<V> {
+  const hit = memo.peek(key);
+  if (hit) return hit;
+  const { result, failed } = await probeQueryFailures(compute);
+  if (failed === 0) memo.set(key, result);
+  return result;
+}
+
 export class DbValidatorResolver implements ValidatorResolver {
   private readonly closure: string;
-  private readonly versionedCache = new Map<string, Promise<Record<string, any> | null>>();
 
   constructor(private readonly pkg: PackageRow) {
     this.closure = terminology.closureKey(pkg);
@@ -269,36 +295,31 @@ export class DbValidatorResolver implements ValidatorResolver {
    * version (the HL7 validator then reports the reference as not found).
    */
   private loadVersioned(resourceType: string, canonical: string, version: string): Promise<Record<string, any> | null> {
-    const key = `${resourceType}|${canonical}|${version}`;
-    let p = this.versionedCache.get(key);
-    if (!p) {
-      p = (async () => {
-        const [pids, pvers] = terminology.closureArrays(this.pkg);
-        const rows = (
-          await query<VersionedRow>(
-            "SELECT a.raw_json, dep.ord, a.package_id, a.package_version, p.fhir_version FROM fhir.artifacts a " +
-              "JOIN unnest($1::text[], $2::text[]) WITH ORDINALITY AS dep(pid, pver, ord) " +
-              "  ON a.package_id = dep.pid AND a.package_version = dep.pver " +
-              "JOIN fhir.ig_packages p ON p.package_id = a.package_id AND p.version = a.package_version " +
-              "WHERE a.resource_type = $3 AND a.canonical_url = $4",
-            [pids, pvers, resourceType, canonical],
-          )
-        ).rows;
-        const ranked = terminology.rankCandidates(
-          canonical,
-          rows.map((r) => ({ ...r, packageId: r.package_id, packageVersion: r.package_version, fhirVersion: r.fhir_version, ord: Number(r.ord) })),
-        );
-        const cands = ranked
-          .map((r) => {
-            const json = typeof r.raw_json === "string" ? safeJson(r.raw_json) : r.raw_json;
-            return json && typeof json === "object" ? { json, version: typeof json.version === "string" ? json.version : null } : null;
-          })
-          .filter((c): c is { json: Record<string, any>; version: string | null } => c !== null);
-        return pickCanonicalVersion(cands, version)?.json ?? null;
-      })();
-      this.versionedCache.set(key, p);
-    }
-    return p;
+    const key = `${this.closure}|${resourceType}|${canonical}|${version}`;
+    return versionedMemo.get(key, async () => {
+      const [pids, pvers] = terminology.closureArrays(this.pkg);
+      const rows = (
+        await query<VersionedRow>(
+          "SELECT a.raw_json, dep.ord, a.package_id, a.package_version, p.fhir_version FROM fhir.artifacts a " +
+            "JOIN unnest($1::text[], $2::text[]) WITH ORDINALITY AS dep(pid, pver, ord) " +
+            "  ON a.package_id = dep.pid AND a.package_version = dep.pver " +
+            "JOIN fhir.ig_packages p ON p.package_id = a.package_id AND p.version = a.package_version " +
+            "WHERE a.resource_type = $3 AND a.canonical_url = $4",
+          [pids, pvers, resourceType, canonical],
+        )
+      ).rows;
+      const ranked = terminology.rankCandidates(
+        canonical,
+        rows.map((r) => ({ ...r, packageId: r.package_id, packageVersion: r.package_version, fhirVersion: r.fhir_version, ord: Number(r.ord) })),
+      );
+      const cands = ranked
+        .map((r) => {
+          const json = typeof r.raw_json === "string" ? safeJson(r.raw_json) : r.raw_json;
+          return json && typeof json === "object" ? { json, version: typeof json.version === "string" ? json.version : null } : null;
+        })
+        .filter((c): c is { json: Record<string, any>; version: string | null } => c !== null);
+      return pickCanonicalVersion(cands, version)?.json ?? null;
+    });
   }
 
   async fetchStructureDefinition(url: string): Promise<Record<string, any> | null> {
@@ -326,7 +347,11 @@ export class DbValidatorResolver implements ValidatorResolver {
     return this.loadVersioned("ValueSet", canonical, version);
   }
 
-  async valueSetContains(url: string, system: string | null, code: string): Promise<boolean | undefined> {
+  valueSetContains(url: string, system: string | null, code: string): Promise<boolean | undefined> {
+    return memoised(membershipMemo, `${this.closure}\0${url}\0${system}\0${code}`, () => this.valueSetContainsUncached(url, system, code));
+  }
+
+  private async valueSetContainsUncached(url: string, system: string | null, code: string): Promise<boolean | undefined> {
     const { url: canonical, version } = splitCanonicalVersion(url);
     // Exact canonicals only (HL7 resolves include.system by canonical, no id fallback).
     if (version === null) return terminology.valueSetMembership(url, system, code, this.pkg, true);
@@ -381,7 +406,11 @@ export class DbValidatorResolver implements ValidatorResolver {
     return ok;
   }
 
-  async checkCode(system: string, code: string, display: string | null, version: string | null = null): Promise<CodeCheck> {
+  checkCode(system: string, code: string, display: string | null, version: string | null = null): Promise<CodeCheck> {
+    return memoised(codeCheckMemo, `${this.closure}\0${system}\0${code}\0${display}\0${version}`, () => this.checkCodeUncached(system, code, display, version));
+  }
+
+  private async checkCodeUncached(system: string, code: string, display: string | null, version: string | null = null): Promise<CodeCheck> {
     if (system === ISO3166) return this.checkIso3166(code, display);
     // CVX: bundled tx.fhir.org table (fhirCvx.ts).
     if (system === CVX) return judgeCvx(code, display);

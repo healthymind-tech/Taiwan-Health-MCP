@@ -9,7 +9,9 @@
  * service for semantic normalize_code.
  */
 
-import { query, trackQueryFailures } from "./db.js";
+import { performance } from "node:perf_hooks";
+import { query, queryCount, trackQueryFailures } from "./db.js";
+import { TtlMemo } from "./ttlMemo.js";
 import { logError, logInfo } from "./logger.js";
 import type { EmbeddingService, QueryTask } from "./embeddingService.js";
 import { vecLiteral } from "./embeddingService.js";
@@ -54,6 +56,12 @@ const COMPACT_INVARIANTS = 8;
 /** fhir_get_profile_required_elements: allowedCodes cap for a required binding / for a derived row's binding. */
 const REQUIRED_CODES_CAP = 12;
 const DERIVED_CODES_CAP = 20;
+/** FHIR_VALIDATE_PROFILE=1 logs per-phase timings + DB round-trips of every validation (stderr). */
+const VALIDATE_PROFILE = process.env.FHIR_VALIDATE_PROFILE === "1";
+/** loadArtifact memo: (closure, identifier) → artifact row; package content is immutable per version. */
+const artifactMemo = new TtlMemo<Record<string, any> | null>(10 * 60_000, 400);
+/** The parsed ConceptMaps of a closure (fhir_normalize_code reads every one of them per call). */
+const conceptMapsMemo = new TtlMemo<Array<Record<string, any>>>(10 * 60_000, 8);
 
 const SKELETON_SKIP = new Set(["id", "meta", "text", "implicitRules", "language", "contained"]);
 
@@ -218,7 +226,17 @@ export class FHIRIGService {
     };
   }
 
-  private async loadArtifact(pkg: PackageRow, identifier: string): Promise<Record<string, any> | null> {
+  /**
+   * Artifact row by id / canonical / key within a package (closure fallback), memoised: the
+   * same (package version, identifier) is asked on every validation (meta.profile) and by every
+   * binding suggestion (the bound ValueSet), and a package version's content is immutable.
+   */
+  private loadArtifact(pkg: PackageRow, identifier: string): Promise<Record<string, any> | null> {
+    const key = `${terminology.closureKey(pkg)}|${identifier}`;
+    return artifactMemo.get(key, () => this.loadArtifactUncached(pkg, identifier));
+  }
+
+  private async loadArtifactUncached(pkg: PackageRow, identifier: string): Promise<Record<string, any> | null> {
     const pid = pkg.package_id;
     const ver = pkg.version;
     if (identifier.includes("|")) {
@@ -1198,6 +1216,23 @@ export class FHIRIGService {
       if (this.isIGNotFound(e)) return await this.igErr(e);
       throw e;
     }
+    return this.normalizeCodeIn(pkg, packageId !== null || version !== null, text, valueSet, system, limit);
+  }
+
+  /**
+   * fhir_normalize_code within an already resolved package. `pinned`: the caller named the
+   * package (package_id / version), so an excerpt CodeSystem is searched as is and the fuller
+   * copy only mentioned. The suggestion layer calls this directly with the validation's
+   * package (pinned) instead of resolving the same package again per suggestion.
+   */
+  private async normalizeCodeIn(
+    pkg: PackageRow,
+    pinned: boolean,
+    text: string,
+    valueSet: string | null,
+    system: string | null,
+    limit: number,
+  ): Promise<string> {
     limit = Math.min(Math.max(1, limit), 50);
 
     const { targets, scopeIds, warnings, locations } = await this.normalizeTargets(pkg, valueSet, system);
@@ -1235,7 +1270,7 @@ export class FHIRIGService {
       // 35 codes) while another installed package holds the full list: search the full copy unless
       // the caller pinned package_id / version.
       const fuller = await this.conceptSearch.fullerCopy(loc).catch(() => null);
-      if (fuller && (packageId !== null || version !== null)) {
+      if (fuller && pinned) {
         warnings.push(
           `${tgt.system}: ${loc.packageId}@${loc.packageVersion} holds only ${fuller.ownConcepts} codes of this CodeSystem (an excerpt); ` +
             `a fuller copy (${fuller.concepts} codes) is installed in ${fuller.location.packageId}@${fuller.location.packageVersion} — ` +
@@ -1417,20 +1452,22 @@ export class FHIRIGService {
     targets: Array<{ system: string; kind: string }>,
   ): Promise<Array<[string, string, any]>> {
     const targetSystems = new Set(targets.map((t) => t.system));
-    const [pids, pvers] = terminology.closureArrays(pkg);
-    const rows = (
-      await query<{ raw_json: any }>(
-        "SELECT a.raw_json FROM fhir.artifacts a " +
-          "JOIN unnest($1::text[], $2::text[]) AS dep(pid, pver) " +
-          "  ON a.package_id = dep.pid AND a.package_version = dep.pver " +
-          "WHERE a.resource_type = 'ConceptMap'",
-        [pids, pvers],
-      )
-    ).rows;
+    const maps = await conceptMapsMemo.get(terminology.closureKey(pkg), async () => {
+      const [pids, pvers] = terminology.closureArrays(pkg);
+      const rows = (
+        await query<{ raw_json: any }>(
+          "SELECT a.raw_json FROM fhir.artifacts a " +
+            "JOIN unnest($1::text[], $2::text[]) AS dep(pid, pver) " +
+            "  ON a.package_id = dep.pid AND a.package_version = dep.pver " +
+            "WHERE a.resource_type = 'ConceptMap'",
+          [pids, pvers],
+        )
+      ).rows;
+      return rows.map((r) => jsonValue(r.raw_json));
+    });
     const needle = (text || "").trim().toLowerCase();
     const out: Array<[string, string, any]> = [];
-    for (const r of rows) {
-      const cm = jsonValue(r.raw_json);
+    for (const cm of maps) {
       for (const group of cm.group || []) {
         if (!targetSystems.has(group.target)) continue;
         for (const el of group.element || []) {
@@ -1541,6 +1578,11 @@ export class FHIRIGService {
     const profiles: string[] = [];
     let profileId: string | null = null;
     const issues: Record<string, any>[] = [];
+    // FHIR_VALIDATE_PROFILE=1: per-phase wall time + DB round-trips of every validation (stderr).
+    const prof = VALIDATE_PROFILE ? { t0: performance.now(), q0: queryCount(), marks: [] as Array<[string, number, number]> } : null;
+    const mark = (phase: string): void => {
+      if (prof) prof.marks.push([phase, performance.now(), queryCount()]);
+    };
     if (profile) {
       const [canonical, id] = await this.resolveProfileCanonical(pkg, profile);
       profileId = id;
@@ -1562,6 +1604,7 @@ export class FHIRIGService {
         profileId = id;
       }
     }
+    mark("resolve_profile");
     const resolver = new DbValidatorResolver(pkg);
     const engine = new validator.InstanceValidator(resolver);
     // v8: the resolver degrades gracefully on database trouble (a definition that
@@ -1574,12 +1617,31 @@ export class FHIRIGService {
       logError("fhir validation: definition / terminology lookups failed", { failed: tracked.total, first: tracked.failures[0]?.message });
       issues.push(validator.lookupFailureIssue(tracked.total, tracked.failures));
     }
+    mark("validate");
     // Additive `suggestions` / `caused_by` on issues (fhirSuggestions/); never changes the verdict.
     try {
       await attachSuggestions(issues, resource, dbSuggestionDeps(pkg, resolver, this.suggestionHooks(pkg)));
     } catch (e) {
       // Suggestions are decoration: a failure here must not lose the validation result.
       logError("fhir validation: suggestions failed", { error: String((e as Error).message) });
+    }
+    mark("suggest");
+    if (prof) {
+      const phases: Record<string, { ms: number; queries: number }> = {};
+      let t = prof.t0;
+      let q = prof.q0;
+      for (const [phase, at, qc] of prof.marks) {
+        phases[phase] = { ms: Math.round((at - t) * 100) / 100, queries: qc - q };
+        t = at;
+        q = qc;
+      }
+      logInfo("fhir validation profile", {
+        resourceType: String(resource.resourceType),
+        total_ms: Math.round((performance.now() - prof.t0) * 100) / 100,
+        queries: queryCount() - prof.q0,
+        issues: issues.length,
+        phases,
+      });
     }
     return {
       valid: validator.isValid(issues),
@@ -1595,7 +1657,8 @@ export class FHIRIGService {
   /** fhir_normalize_code / near codes for the suggestion layer, bound to one package. */
   private suggestionHooks(pkg: PackageRow): ServiceHooks {
     return {
-      normalize: (text, valueSet, system, limit) => this.normalizeCode(text, valueSet, system, pkg.package_id, pkg.version, limit),
+      // The validation's package, pinned (as normalizeCode(text, …, pkg.package_id, pkg.version) resolves it).
+      normalize: (text, valueSet, system, limit) => this.normalizeCodeIn(pkg, true, text, valueSet, system, limit),
       nearCodes: async (system, code, limit) => {
         const loc = await this.locateIgCodeSystem(system, pkg);
         return loc ? this.conceptSearch.nearCodes(loc, code, limit) : [];

@@ -462,17 +462,19 @@ export async function resolveCanonical(
   packageVersion: string,
 ): Promise<Record<string, unknown> | null> {
   const { closure } = await packageClosureInfo(packageId, packageVersion);
-  for (const [pid, pver] of closure) {
-    const row = (
-      await runQuery("SELECT * FROM fhir.artifacts WHERE package_id = $1 AND package_version = $2 AND canonical_url = $3 LIMIT 1", [
-        pid,
-        pver,
-        url,
-      ])
-    ).rows[0];
-    if (row) return row;
-  }
-  return null;
+  if (!closure.length) return null;
+  // The first package in closure order that holds the canonical — one query over the
+  // closure instead of one per package (the core package, last in the closure, is the
+  // usual holder of an HL7 canonical).
+  const row = (
+    await runQuery(
+      "SELECT a.* FROM fhir.artifacts a " +
+        "JOIN unnest($1::text[], $2::text[]) WITH ORDINALITY AS dep(pid, pver, ord) ON a.package_id = dep.pid AND a.package_version = dep.pver " +
+        "WHERE a.canonical_url = $3 ORDER BY dep.ord LIMIT 1",
+      [closure.map((c) => c[0]), closure.map((c) => c[1]), url],
+    )
+  ).rows[0];
+  return row ?? null;
 }
 
 function rawVersionOf(row: Record<string, any>): string | null {

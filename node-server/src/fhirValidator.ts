@@ -568,6 +568,22 @@ class SdIndex {
   }
 }
 
+/**
+ * One SdIndex per StructureDefinition object: the index is read-only and the resolver
+ * hands out the same (cached) definition object to every validation, so the element
+ * groups are built once per definition instead of once per validation.
+ */
+const sdIndexes = new WeakMap<object, SdIndex>();
+
+function indexOf(sd: Record<string, any>): SdIndex {
+  let idx = sdIndexes.get(sd);
+  if (!idx) {
+    idx = new SdIndex(sd);
+    sdIndexes.set(sd, idx);
+  }
+  return idx;
+}
+
 // --------------------------------------------------------------------------- //
 // Validation context
 // --------------------------------------------------------------------------- //
@@ -763,7 +779,7 @@ export class InstanceValidator {
     const key = String(url || "").trim();
     let p = this.sdCache.get(key);
     if (!p) {
-      p = this.resolver.fetchStructureDefinition(key).then((sd) => (sd && sd.snapshot ? new SdIndex(sd) : null));
+      p = this.resolver.fetchStructureDefinition(key).then((sd) => (sd && sd.snapshot ? indexOf(sd) : null));
       this.sdCache.set(key, p);
     }
     return p;

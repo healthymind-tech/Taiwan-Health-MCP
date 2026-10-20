@@ -54,6 +54,16 @@ export function getPool(): pg.Pool {
   return _pool;
 }
 
+let queriesIssued = 0;
+
+/**
+ * Number of `query()` calls issued by this process so far (monotonic). A cheap
+ * counter for profiling: the delta across a code path is its DB round-trip count.
+ */
+export function queryCount(): number {
+  return queriesIssued;
+}
+
 /**
  * Run a query against the pool.
  *
@@ -67,6 +77,7 @@ export async function query<T extends pg.QueryResultRow = pg.QueryResultRow>(
   params: unknown[] = [],
   _label?: string,
 ): Promise<pg.QueryResult<T>> {
+  queriesIssued++;
   try {
     return await getPool().query<T>(text, params as never[]);
   } catch (err) {
@@ -127,6 +138,25 @@ export async function trackQueryFailures<T>(fn: () => Promise<T>): Promise<{ res
   const store: FailureStore = { failures: [], total: 0 };
   const result = await failureScope.run(store, fn);
   return { result, failures: store.failures, total: store.total };
+}
+
+/**
+ * Run `fn` and say whether any `query()` failed while it ran — for a caller that
+ * wants to memoise a fail-open lookup only when it was answered by the database.
+ * The failures still count towards an enclosing `trackQueryFailures` scope.
+ */
+export async function probeQueryFailures<T>(fn: () => Promise<T>): Promise<{ result: T; failed: number }> {
+  const parent = failureScope.getStore();
+  const store: FailureStore = { failures: [], total: 0 };
+  const result = await failureScope.run(store, fn);
+  if (parent && store.total > 0) {
+    parent.total += store.total;
+    for (const f of store.failures) {
+      if (parent.failures.length >= FAILURES_KEPT) break;
+      parent.failures.push(f);
+    }
+  }
+  return { result, failed: store.total };
 }
 
 /**

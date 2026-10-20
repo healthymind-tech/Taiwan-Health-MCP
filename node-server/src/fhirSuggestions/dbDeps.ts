@@ -54,8 +54,46 @@ function resourceElementPaths(pkg: PackageRow): Promise<Array<{ type: string; pa
   return rows;
 }
 
-export function dbSuggestionDeps(pkg: PackageRow, resolver: ValidatorResolver, hooks: ServiceHooks = {}): SuggestionDeps {
+/**
+ * Per-validation dedupe of collaborator calls: the same question (same collaborator, same
+ * arguments) is asked once and its answer shared — e.g. a profile and its base reporting the
+ * same binding, or a versioned and an unversioned binding of one ValueSet, both normalising
+ * the same label. Answers are read-only for every suggester, a rejected call is forgotten
+ * (asked again next time), and budgets are consumed exactly as before.
+ */
+export function dedupedDeps(deps: SuggestionDeps): SuggestionDeps {
+  const memo = new Map<string, Promise<unknown>>();
+  function once<A extends unknown[], R>(name: string, fn: ((...a: A) => Promise<R>) | undefined): ((...a: A) => Promise<R>) | undefined {
+    if (!fn) return undefined;
+    return (...a: A): Promise<R> => {
+      const key = `${name}\0${JSON.stringify(a)}`;
+      let p = memo.get(key) as Promise<R> | undefined;
+      if (!p) {
+        p = fn(...a);
+        memo.set(key, p);
+        p.catch(() => {
+          if (memo.get(key) === p) memo.delete(key);
+        });
+      }
+      return p;
+    };
+  }
   return {
+    fetchStructureDefinition: once("sd", (u: string) => deps.fetchStructureDefinition(u))!,
+    checkCode: once("code", (s: string, c: string, d: string | null) => deps.checkCode(s, c, d))!,
+    loadValueSet: once("vs", deps.loadValueSet?.bind(deps)),
+    valueSetContains: once("member", deps.valueSetContains?.bind(deps)),
+    expandValueSet: once("expand", deps.expandValueSet?.bind(deps)),
+    normalize: once("normalize", deps.normalize?.bind(deps)),
+    nearCodes: once("near", deps.nearCodes?.bind(deps)),
+    canonicalsUnder: once("canonicals", deps.canonicalsUnder?.bind(deps)),
+    validateAgainst: once("validate", deps.validateAgainst?.bind(deps)),
+    resourceElementPaths: once("paths", deps.resourceElementPaths?.bind(deps)),
+  };
+}
+
+export function dbSuggestionDeps(pkg: PackageRow, resolver: ValidatorResolver, hooks: ServiceHooks = {}): SuggestionDeps {
+  return dedupedDeps({
     fetchStructureDefinition: (url) => resolver.fetchStructureDefinition(url),
     checkCode: (system, code, display) => resolver.checkCode(system, code, display),
     loadValueSet: (url) => terminology.loadValueSet(url, pkg),
@@ -100,5 +138,5 @@ export function dbSuggestionDeps(pkg: PackageRow, resolver: ValidatorResolver, h
     },
     validateAgainst: async (resource, profile) => (await new InstanceValidator(resolver).validate(resource, { profiles: [profile] })) as Array<Record<string, any>>,
     resourceElementPaths: () => resourceElementPaths(pkg),
-  };
+  });
 }
