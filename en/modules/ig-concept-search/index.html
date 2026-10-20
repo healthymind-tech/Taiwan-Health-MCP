@@ -2726,8 +2726,8 @@ direct DB writes:</p>
    rebuilt afterwards.</li>
 </ol>
 <p><strong>Source vocabularies (SAB)</strong>: MRSAB rows with <code>CURVER = Y</code> and <code>SRL = 0</code>, plus <code>SNOMEDCT_US</code> (covered by this
-deployment's SNOMED CT licence), minus non-clinical sources: HGNC, OMIM, GO, NCBI, LCH, LCH_NW, SRC, MTHMST*, UWDA,
-FMA, MTHSPL, USP, USPMG, HL7V2.5, HL7V3.0, CDCREC, MVX, CVX, TKMT, SPN, MCM, QMR, RAM, CCS, CCSR_*, DXP, ICPC. Only
+deployment's SNOMED CT licence), minus non-clinical sources: HGNC, OMIM, GO, NCBI, LCH, LCH_NW, SRC, MTHMST<em>, UWDA,
+FMA, MTHSPL, USP, USPMG, HL7V2.5, HL7V3.0, CDCREC, MVX, CVX, TKMT, SPN, MCM, QMR, RAM, CCS, CCSR_</em>, DXP, ICPC. Only
 <code>LAT = ENG</code>, <code>SUPPRESS = N</code> strings of ≤ 80 characters, and only concepts with at least 2 distinct strings, are kept
 (2024AA: ~2.53 M strings / 0.76 M concepts, <code>fhir.umls_terms</code> ≈ 610 MB). The SAB is recorded internally only
 (<code>fhir.concept_index_terms.source</code>); <strong>no UMLS string is ever returned by a tool</strong>.</p>

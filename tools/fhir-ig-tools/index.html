@@ -2799,7 +2799,7 @@
 </tr>
 </tbody>
 </table>
-<p><code>fhir_validate_resource</code> / <code>fhir_validate_bundle</code> 的 <code>data</code> 另回報驗證是否完整：<code>checked_fully</code>（所有剖面與 ValueSet 都檢查到、且依賴閉包完整時為 <code>true</code>）、<code>profiles_unchecked</code>、<code>valuesets_unchecked</code>。<code>valid</code> 維持 HL7 語意（無法解析的剖面只是 warning），因此 <code>valid: true</code> 但 <code>checked_fully: false</code> 代表有部分內容沒有被檢查。<code>|version</code> canonical（<code>meta.profile</code>、binding、targetProfile、type profile、extension url）的解析方式比照 HL7 validator_cli 7.0.1。</p>
+<p><code>fhir_validate_resource</code> / <code>fhir_validate_bundle</code> 的 <code>data</code> 另回報驗證是否完整：<code>checked_fully</code>（所有剖面與 ValueSet 都檢查到、且依賴閉包完整時為 <code>true</code>）、<code>profiles_unchecked</code>、<code>valuesets_unchecked</code>。<code>valid</code> 維持 HL7 語意（無法解析的剖面只是 warning），因此 <code>valid: true</code> 但 <code>checked_fully: false</code> 代表有部分內容沒有被檢查。驗證期間定義 / 術語查詢因資料庫問題失敗時另附 <code>lookups_failed</code>（失敗次數），此時一定有一則 <code>code: "exception"</code> 的 error issue，<code>valid</code> 為 <code>false</code>（1.6.1）。<code>|version</code> canonical（<code>meta.profile</code>、binding、targetProfile、type profile、extension url）的解析方式比照 HL7 validator_cli 7.0.1。</p>
 <p>內建 validator 另比照 HL7 validator_cli 7.0.1 檢查（1.6.0 同版）：</p>
 <ul>
 <li><strong>Extension 使用位置</strong>：依 extension 定義的 <code>context</code>（element / extension 型別；<code>version-specific-use</code> 限其他 FHIR 版本的 context 略過）與 <code>contextInvariant</code> 判斷能否用在該元素，不符時於宿主元素回報 error <code>The extension &lt;url&gt; v&lt;version&gt; is not allowed to be used at this point (this element is [...]; allowed for this version = e:...)</code> 或 <code>... (based on context invariant '...')</code>；fhirpath 型 context 不在本機評估（不判錯）。</li>
@@ -2808,6 +2808,14 @@
 <li><strong>RxNorm</strong>：依 <code>rxnorm.concepts</code> 檢查碼與 display（tx.fhir.org 接受該 RXCUI 所有 SAB=RXNORM 名稱，不分大小寫），錯誤為 <code>Wrong Display Name '...' for http://www.nlm.nih.gov/research/umls/rxnorm#&lt;code&gt;. Valid display is '...'</code>。未知碼只有在本機 RxNorm 版本不舊於 tx.fhir.org（03022026）時才是 error，否則 warning；本機只有偏好名稱（migration 20261030 前匯入）時 display 不符只給 warning；未載入 RxNorm 時給 warning <code>Display not checked (RxNorm)</code>。</li>
 <li>IG CodeSystem（<code>content = complete</code>）的 <code>Unknown code</code> 維持 error；若另一個已安裝套件有同一 CodeSystem 較完整的版本且含此碼（例如 TW Core 0.3.2 的 <code>medication-nhi-tw</code>），另附 information 指出該套件與版本。</li>
 <li>直接綁定 ValueSet 的 Coding 元素（如 <code>Encounter.class</code>）以 ValueSet URL 當 system 時，只回報綁定 warning，不再報 <code>The Coding references a value set</code> error（與 HL7 相同）。</li>
+</ul>
+<p>1.6.1（validator v8，評估報告 v6）新增：</p>
+<ul>
+<li><strong>無法解析的 CodeSystem URL 一律是 error，不分元素</strong>：HL7 空間（<code>http://hl7.org/fhir…</code>、<code>http://terminology.hl7.org/…</code>）的 <code>Coding.system</code> / <code>Quantity.system</code> 若不是任何已安裝套件的定義，於該 <code>system</code> 元素回報 <code>No definition could be found for URL value '…'</code>（Coding、CodeableConcept、Encounter.class、Identifier.type、Meta.tag、extension 的 value、contained 資源、巢狀 Bundle 皆同）。<code>http://hl7.org/fhir/sid/…</code> 只承認 HL7 validator <code>SIDUtilities</code> 的清單（ndc、icpc-2、icd-9、icd-10、cvx、srt、icd-10-cm、icd-9-cm、dsm5 …）；<code>icd-10-pcs</code>、<code>us-mbi</code> 等不在清單內，因此在任何元素上都會報這個 URL error（1.6.0 把它們視為已知，漏報）。代碼本身維持 warning <code>A definition for CodeSystem '…' could not be found</code>（HL7 <code>UNKNOWN_CODESYSTEM</code>），HL7 空間以外（IG 自有 URL 等）找不到的 system 也只有這個 warning，與 validator_cli 相同。</li>
+<li><strong>參照含空白</strong>（<code>Patient/ 123</code>、尾端空白）：error <code>The reference '…' is not a valid reference</code>（HL7 <code>REFERENCE_REF_INVALID_REF</code>）。</li>
+<li><strong>RxNorm display 指到另一個藥</strong>：display 與該 RXCUI 所有已知名稱（偏好名稱 + alt_names）沒有任何共同的藥名詞（去掉劑量、單位、劑型、途徑、鹽類與功能詞後比對；5 字以上字首相同視為同字），或根本不含拉丁字母（中文商品名）時，即使本機只有偏好名稱也判 <strong>error</strong>，訊息為 <code>Wrong Display Name '…' for …#&lt;code&gt;. Valid display is '…'; the display denotes a different concept: …</code>；只是同一藥的另一種寫法（同義詞、鹽類、劑型）在只有偏好名稱時維持 warning，重跑 <code>rxnorm_import</code> 載入 alt_names 後即與 tx.fhir.org 相同判 error。SNOMED / LOINC / ICD / CVX 的 display 本來就是 error（validator_cli 亦同），不受影響。</li>
+<li><strong>查詢失敗絕不當成通過</strong>：驗證期間任何定義 / 術語查詢因資料庫問題失敗（連線中斷、復原模式、timeout；缺表 / 缺欄位除外）時，結果多一則 error issue（<code>code: "exception"</code>，<code>Validation incomplete: N … lookups failed …</code>），<code>valid: false</code>、<code>checked_fully: false</code> 並附 <code>lookups_failed</code>；validator 本身發生例外時改回傳帶 fatal <code>exception</code> issue 的正常結果，而不是失敗的工具呼叫。</li>
+<li><code>fhir_validate_bundle</code>：沒有可用 resource 的 entry（寫成陣列、缺 <code>resourceType</code>）不會出現在 <code>entries</code>，其 issue（如 <code>must be a simple value, not an Array</code>）改列在 Bundle 層的 <code>issues</code>，不再遺失。</li>
 </ul>
 <h3 id="suggestions-caused_byvalidation-suggestions">修正建議（suggestions / caused_by）{#validation-suggestions}<a class="headerlink" href="#suggestions-caused_byvalidation-suggestions" title="Permanent link">&para;</a></h3>
 <p>驗證結果的 issue 除了指出錯在哪裡，也盡量附上「要改成什麼」：<code>suggestions</code> 是依 <code>confidence</code> 由高到低排序的候選（每個 issue 最多 5 個；小型 ValueSet 的綁定錯誤最多 12 個），參照鏈錯誤另有 <code>caused_by</code>。兩者都是<strong>附加欄位</strong>——issue 的集合、severity、message 與 <code>valid</code> 完全不變；沒有建議時不出現該欄位。</p>
@@ -2836,8 +2844,8 @@
 </tr>
 <tr>
 <td style="text-align: left;"><code>Unrecognized property 'p'</code></td>
-<td style="text-align: left;"><code>rename_property</code> / <code>move_property</code></td>
-<td style="text-align: left;">同一層最接近的元素名（含 datatype 子元素、choice 元素的具型別名稱，如 <code>value</code> → <code>valueQuantity</code>），或該名稱實際所在的層級（<code>timing.periodUnit</code> → <code>timing.repeat.periodUnit</code>）</td>
+<td style="text-align: left;"><code>rename_property</code> / <code>move_property</code> / <code>remove_property</code></td>
+<td style="text-align: left;">依序：同一層最接近的元素名（大小寫、拼字；含 datatype 子元素、choice 元素的具型別名稱，如 <code>value</code> → <code>valueQuantity</code>）；該名稱在本資源實際所在的層級（祖先、三層內的子孫含 datatype 子元素、祖先的同層 backbone / datatype；<code>timing.periodUnit</code> → <code>timing.repeat.periodUnit</code>、<code>dosageInstruction[0].note</code> → <code>MedicationRequest.note</code>、<code>Patient.city</code> → <code>Patient.address[0].city</code>）；語意相同且值形狀相符的同層元素（信心較低，證據來自 FHIR 元素的 <code>alias</code> / <code>short</code> 與一小張 FHIR 通用同義詞表：<code>every: 8</code> 旁有 <code>periodUnit</code> → <code>period</code>、Range 的 <code>upperLimit</code> → <code>high</code>、<code>zip</code> → <code>postalCode</code>、<code>comment</code> → <code>note</code>）；都沒有時才建議移除（<code>patch.op = remove</code>），<code>reason</code> 列出該層的元素名（上限 14 個）與帶有此名稱的其他資源型別（如 <code>reasonCode</code> 放在 Observation → 「是 Encounter、Procedure… 的元素」）</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>The type 'date' is not allowed for Condition.onset[x]</code></td>
@@ -2866,7 +2874,7 @@
 </tr>
 </tbody>
 </table>
-<p><code>patch</code> 以 validator 的點路徑表示（<code>op</code>: <code>replace</code> / <code>move</code>，<code>move</code> 另有 <code>from</code>）。<code>confidence</code> 是啟發式分數，不是機率；建議是輔助，套用後請再驗證一次。建議的排序與內容對同一輸入是固定的（決定性），計算失敗時該 issue 只是沒有建議，不影響驗證結果。評估方式與數據見 <code>node-server/scripts/suggestions-eval/</code>。</p>
+<p><code>patch</code> 以 validator 的點路徑表示（<code>op</code>: <code>replace</code> / <code>move</code> / <code>remove</code>，<code>move</code> 另有 <code>from</code>；移到尚不存在的重複元素時路徑帶 <code>[0]</code>）。<code>confidence</code> 是啟發式分數，不是機率，但各 <code>kind</code> 的區間固定：完全 / 大小寫改名 &gt; 移動 &gt; 語意改名 &gt; 移除；建議是輔助，套用後請再驗證一次。建議的排序與內容對同一輸入是固定的（決定性），計算失敗時該 issue 只是沒有建議，不影響驗證結果。評估方式與數據見 <code>node-server/scripts/suggestions-eval/</code>。</p>
 <blockquote>
 <p>程序內驗證以剖面 snapshot 與術語綁定為基礎，比對基準為 HL7 validator_cli 7.0.1（稽核方式與結果見 <code>node-server/scripts/validator-audit/</code>），但不等同官方 HL7 FHIR Validator 的一致性認證。</p>
 </blockquote>
@@ -2948,7 +2956,7 @@
 <tbody>
 <tr>
 <td style="text-align: left;"><code>fhir_validate_resource</code>、<code>fhir_validate_bundle</code></td>
-<td style="text-align: left;">1.6.0（issue 的 <code>suggestions</code> / <code>caused_by</code>）</td>
+<td style="text-align: left;">1.6.1（validator v8：HL7 空間未知 CodeSystem 一律 error、參照含空白、RxNorm display 指到另一個藥、查詢失敗 / 例外的 <code>exception</code> issue；1.6.0：issue 的 <code>suggestions</code> / <code>caused_by</code>）</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_get_profile_required_elements</code></td>
@@ -2964,7 +2972,7 @@
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_finalize_resource</code></td>
-<td style="text-align: left;">1.3.0（驗證 issue 的 <code>suggestions</code> / <code>caused_by</code>）</td>
+<td style="text-align: left;">1.3.1（驗證規則同 <code>fhir_validate_resource</code> 1.6.1；1.3.0：驗證 issue 的 <code>suggestions</code> / <code>caused_by</code>）</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_lookup_code</code></td>
