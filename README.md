@@ -33,7 +33,10 @@
 
 </div>
 
-<!-- 示範影片放這裡 -->
+
+
+https://github.com/user-attachments/assets/13527dd9-72ac-4e36-9868-7967399d4041
+
 
 以官方 **TypeScript MCP SDK**（`@modelcontextprotocol/sdk`）建構的 Node.js 伺服器，對外提供 **63 個工具**，涵蓋 12 個工具群組。專為高吞吐量的生產級 SaaS 部署設計。
 
