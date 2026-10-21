@@ -8,6 +8,10 @@
 <h1 align="center">Taiwan Health MCP Server</h1>
 
 <p align="center">
+  <b>繁體中文</b> · <a href="README.en.md">English</a>
+</p>
+
+<p align="center">
   台灣醫療健康資料整合 MCP 伺服器<br>
   整合 ICD-10-CM/PCS、SNOMED CT、LOINC、台灣 FDA 藥品 / 健康補充品 / 食品營養，以及 FHIR R4 IG 授權與驗證工具
 </p>
