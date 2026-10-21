@@ -3,11 +3,23 @@
 > 台灣醫療健康資料整合 MCP 伺服器
 > 整合 ICD-10-CM/PCS、SNOMED CT、LOINC、台灣 FDA 藥品 / 健康補充品 / 食品營養，以及 FHIR R4 IG 授權與驗證工具
 
+<p align="center">
+  <a href="https://tw-health-mcp.healthymind-tech.com">官網</a> ·
+  <a href="https://healthymind-tech.github.io/Taiwan-Health-MCP">文件</a> ·
+  <a href="#快速連線">快速連線</a> ·
+  <a href="#快速開始">自行部署</a>
+</p>
+
+[![2026 台灣聯測松](https://img.shields.io/badge/2026%20%E5%8F%B0%E7%81%A3%E8%81%AF%E6%B8%AC%E6%9D%BE-%E5%B7%B2%E9%80%9A%E9%81%8E%20%C2%B7%20%E8%A1%9B%E7%A6%8F%E9%83%A8%E4%B8%BB%E8%BE%A6-0e9ea8)](https://tw-health-mcp.healthymind-tech.com)
+[![MCP tools](https://img.shields.io/badge/MCP%20tools-63-0e9ea8)](#工具群組)
+[![Website](https://img.shields.io/website?url=https%3A%2F%2Ftw-health-mcp.healthymind-tech.com&label=website)](https://tw-health-mcp.healthymind-tech.com)
+[![GitHub stars](https://img.shields.io/github/stars/healthymind-tech/Taiwan-Health-MCP?style=flat)](https://github.com/healthymind-tech/Taiwan-Health-MCP/stargazers)
 [![FHIR](https://img.shields.io/badge/FHIR-R4-blue)](http://hl7.org/fhir/R4/)
 [![Node.js](https://img.shields.io/badge/Node.js-20-green)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-3178c6)](https://www.typescriptlang.org/)
 [![MCP SDK](https://img.shields.io/badge/MCP%20SDK-1.12-orange)](https://modelcontextprotocol.io)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
+
 
 以官方 **TypeScript MCP SDK**（`@modelcontextprotocol/sdk`）建構的 Node.js 伺服器，對外提供 **63 個工具**，涵蓋 12 個工具群組。專為高吞吐量的生產級 SaaS 部署設計。
 
@@ -25,6 +37,23 @@
 - **生產部署設計**：PostgreSQL 16（pgvector）、pgBouncer、Redis、MinIO、Prometheus、背景 worker，前置 nginx 單一入口。
 
 > 工具顯示為 available 只代表來源資料已載入，不代表 embedding 已完整。請在管理後台各模組頁（如「醫療術語」底下的 ICD-10 / LOINC / SNOMED）檢查 Embeddings 計數；未完成時搜尋會退回或混用 keyword/BM25（回應會標 `search_mode: "keyword_only"`）。
+
+## 快速連線
+
+不想自己架設，可以直接連官方端點 `https://tw-health-mcp.healthymind-tech.com/mcp`（MCP streamable-http）。
+
+[![Add to Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/en/install-mcp?name=taiwan-health&config=eyJ1cmwiOiJodHRwczovL3R3LWhlYWx0aC1tY3AuaGVhbHRoeW1pbmQtdGVjaC5jb20vbWNwIn0=)
+[![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_MCP-0098FF?logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect/mcp/install?name=taiwan-health&config=%7B%22type%22%3A%22http%22%2C%22url%22%3A%22https%3A%2F%2Ftw-health-mcp.healthymind-tech.com%2Fmcp%22%7D)
+
+**Claude Code**
+
+```bash
+claude mcp add --transport http taiwan-health https://tw-health-mcp.healthymind-tech.com/mcp
+```
+
+**Claude Desktop / claude.ai**：在「設定 → 連接器」新增自訂連接器，貼上上面的端點網址。
+
+其他支援 MCP streamable-http 的客戶端，填入同一個網址即可。要在自己的環境部署，請看下一節。
 
 ## 快速開始
 
