@@ -1,7 +1,16 @@
-# Taiwan Health MCP Server
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/readme-banner-dark.png">
+    <img src=".github/assets/readme-banner-light.png" alt="Taiwan Health MCP：讓 AI agent 讀懂台灣醫療" width="100%">
+  </picture>
+</p>
 
-> 台灣醫療健康資料整合 MCP 伺服器
-> 整合 ICD-10-CM/PCS、SNOMED CT、LOINC、台灣 FDA 藥品 / 健康補充品 / 食品營養，以及 FHIR R4 IG 授權與驗證工具
+<h1 align="center">Taiwan Health MCP Server</h1>
+
+<p align="center">
+  台灣醫療健康資料整合 MCP 伺服器<br>
+  整合 ICD-10-CM/PCS、SNOMED CT、LOINC、台灣 FDA 藥品 / 健康補充品 / 食品營養，以及 FHIR R4 IG 授權與驗證工具
+</p>
 
 <p align="center">
   <a href="https://tw-health-mcp.healthymind-tech.com">官網</a> ·
@@ -9,6 +18,8 @@
   <a href="#快速連線">快速連線</a> ·
   <a href="#快速開始">自行部署</a>
 </p>
+
+<div align="center">
 
 [![2026 台灣聯測松](https://img.shields.io/badge/2026%20%E5%8F%B0%E7%81%A3%E8%81%AF%E6%B8%AC%E6%9D%BE-%E5%B7%B2%E9%80%9A%E9%81%8E%20%C2%B7%20%E8%A1%9B%E7%A6%8F%E9%83%A8%E4%B8%BB%E8%BE%A6-0e9ea8)](https://tw-health-mcp.healthymind-tech.com)
 [![MCP tools](https://img.shields.io/badge/MCP%20tools-63-0e9ea8)](#工具群組)
@@ -19,6 +30,8 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-3178c6)](https://www.typescriptlang.org/)
 [![MCP SDK](https://img.shields.io/badge/MCP%20SDK-1.12-orange)](https://modelcontextprotocol.io)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
+
+</div>
 
 
 以官方 **TypeScript MCP SDK**（`@modelcontextprotocol/sdk`）建構的 Node.js 伺服器，對外提供 **63 個工具**，涵蓋 12 個工具群組。專為高吞吐量的生產級 SaaS 部署設計。
