@@ -334,3 +334,14 @@ test("bundleRules: core rules plus what the StructureDefinition fixes, nothing I
   assert.equal(none.fixed_type, null);
   assert.match(none.finalize, /fhir_finalize_bundle/);
 });
+
+test("a stray top-level fullUrl / resource beside entry is reported in notes and left untouched", async () => {
+  const b = bundle([{ fullUrl: "urn:uuid:patient-1", resource: patient("patient-1") }]);
+  b.fullUrl = "urn:uuid:4";
+  b.resource = condition("patient-1");
+  const r = await finalizeBundle(b, deps);
+  assert.ok(r.notes.some((n) => n.includes("'fullUrl' / 'resource' at the top level") && n.includes("move it into Bundle.entry")));
+  assert.equal(r.bundle.fullUrl, "urn:uuid:4");
+  assert.deepEqual(r.bundle.resource, b.resource);
+  assert.ok(!r.changes.some((c) => c.path === "Bundle.fullUrl"));
+});

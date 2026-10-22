@@ -178,7 +178,7 @@ Tools whose behaviour is pinned by fixtures carry their own version (`node-serve
 | :--- | :--- |
 | `fhir_validate_bundle` | 1.7.0 (`normalize_ids`, ID-class `suggestions` and `id_map` / `id_changes`; output unchanged from 1.6.1 when there is no ID-class issue) |
 | `fhir_validate_resource` | 1.6.1 (validator v8: unknown HL7-space CodeSystems always errors, whitespace in references, RxNorm displays naming another drug, `exception` issues for failed lookups / crashes; 1.6.0: issue `suggestions` / `caused_by`) |
-| `fhir_finalize_bundle` | 1.0.0 (Bundle finalisation: fullUrl-uuid / reference-rewire / resource-id / bundle-type / document-order) |
+| `fhir_finalize_bundle` | 1.0.1 (Bundle finalisation: fullUrl-uuid / reference-rewire / resource-id / bundle-type / document-order) |
 | `fhir_build_bundle` | 1.2.0 (shares the finalisation engine: deterministic UUIDs, key / urn:uuid:key / Type/key references rewired, invalid fullUrls normalised, `changes`) |
 | `fhir_get_profile_required_elements` | 1.4.0 (`bundle_rules` for Bundle profiles; 1.3.0: derived rows: allowedCodes + derivation rule; `include_mustsupport="defaults"`; `optional`) |
 | `fhir_list_igs`, `fhir_list_artifacts`, `fhir_search_artifacts`, `fhir_list_resource_profiles` (new `compact`) | 1.3.0 |

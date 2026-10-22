@@ -146,7 +146,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.0.0 (ISSUES_v9 R1): deterministic Bundle finalizer — fullUrl-uuid / reference-rewire / resource-id (mandatory),
   // bundle-type / document-order (profile-driven); UUID v5 seeded by (resourceType, original fullUrl, resource.id, entry
   // index) + a content salt; references found through StructureDefinition snapshots; duplicates / ambiguity reported.
-  fhir_finalize_bundle: "1.0.0",
+  // 1.0.1: notes report a stray entry written at Bundle level (fullUrl / resource beside `entry`) — not moved.
+  fhir_finalize_bundle: "1.0.1",
   // ── 2026-10-19 actionable errors (additive fields only; successful outputs unchanged) ──
   // search_medical_codes 1.2.1: IG_UNAVAILABLE adds `hint`.
   // FHIR IG tools above (+.0.1): error envelopes add error.hint; IG_NOT_FOUND / NO_DEFAULT_IG add

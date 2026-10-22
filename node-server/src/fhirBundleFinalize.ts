@@ -541,6 +541,17 @@ export async function finalizeBundle(input: Record<string, any>, deps: FinalizeD
     }
   }
 
+  // A stray entry written at Bundle level (fullUrl / resource beside `entry`) is not an id
+  // problem and is never moved — but it is the most likely reason for a later
+  // "Unrecognized property" error, so say so.
+  const strayEntryKeys = ["fullUrl", "resource", "request", "response", "search"].filter((k) => k in bundle);
+  if (strayEntryKeys.length) {
+    notes.push(
+      `Bundle has ${strayEntryKeys.map((k) => `'${k}'`).join(" / ")} at the top level, which Bundle does not define; ` +
+        "this looks like an entry written outside the entry array — move it into Bundle.entry (not changed here)",
+    );
+  }
+
   // ---- 4.1 fullUrl normalisation.
   const salt = bundleSalt(bundle);
   const rawEntries: unknown[] = Array.isArray(bundle.entry) ? bundle.entry : [];

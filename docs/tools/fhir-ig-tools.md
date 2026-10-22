@@ -178,7 +178,7 @@
 | :--- | :--- |
 | `fhir_validate_bundle` | 1.7.0（`normalize_ids`、ID 類錯誤的 `suggestions` 與 `id_map` / `id_changes`；沒有 ID 類問題時輸出同 1.6.1） |
 | `fhir_validate_resource` | 1.6.1（validator v8：HL7 空間未知 CodeSystem 一律 error、參照含空白、RxNorm display 指到另一個藥、查詢失敗 / 例外的 `exception` issue；1.6.0：issue 的 `suggestions` / `caused_by`） |
-| `fhir_finalize_bundle` | 1.0.0（Bundle 定稿：fullUrl-uuid / reference-rewire / resource-id / bundle-type / document-order） |
+| `fhir_finalize_bundle` | 1.0.1（Bundle 定稿：fullUrl-uuid / reference-rewire / resource-id / bundle-type / document-order） |
 | `fhir_build_bundle` | 1.2.0（共用 Bundle 定稿引擎：確定性 UUID、key / urn:uuid:key / Type/key 引用改寫、不合法 fullUrl 正規化、`changes`） |
 | `fhir_get_profile_required_elements` | 1.4.0（Bundle profile 的 `bundle_rules`；1.3.0：derived 列的 allowedCodes 與推導規則、`include_mustsupport="defaults"`、`optional`） |
 | `fhir_list_igs`、`fhir_list_artifacts`、`fhir_search_artifacts`、`fhir_list_resource_profiles`（新增 `compact`） | 1.3.0 |
