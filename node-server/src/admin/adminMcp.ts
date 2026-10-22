@@ -124,6 +124,8 @@ export interface OverviewInfo {
 export interface McpApiResult {
   status: number;
   body: unknown;
+  /** invoke: the tool's JSON text verbatim — the response writer splices it in as `result` so number spellings survive (losslessJson.ts). */
+  resultText?: string;
 }
 
 // ── Catalog ───────────────────────────────────────────────────────────────────
@@ -357,11 +359,14 @@ export async function invokeTool(
   const started = deps.now();
   let status = 200;
   let payload: Record<string, unknown>;
+  let text = "";
+  let textIsJson = false;
   try {
-    const text = await deps.invoke(name, args);
+    text = await deps.invoke(name, args);
     let result: unknown;
     try {
       result = JSON.parse(text);
+      textIsJson = true;
     } catch {
       result = { result: text };
     }
@@ -374,6 +379,7 @@ export async function invokeTool(
     // Same explanation fields POST /tools/{name} adds (code, message, hint, expected parameters…).
     Object.assign(payload, toolErrorFields(name, exc));
   }
+  const resultText = status === 200 && textIsJson ? text : undefined;
   const elapsed = Math.max(0, Math.round(deps.now() - started));
   deps.log("Admin MCP playground invocation", {
     tool: name,
@@ -385,7 +391,7 @@ export async function invokeTool(
     args_bytes: digest.bytes,
     write: isConfirmedWrite(name, args),
   });
-  return { status: 200, body: { ...payload, http_status: status, elapsed_ms: elapsed, public_path: `/tools/${name}` } };
+  return { status: 200, body: { ...payload, http_status: status, elapsed_ms: elapsed, public_path: `/tools/${name}` }, ...(resultText !== undefined ? { resultText } : {}) };
 }
 
 // ── Router ────────────────────────────────────────────────────────────────────

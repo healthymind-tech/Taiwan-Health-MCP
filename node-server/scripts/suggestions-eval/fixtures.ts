@@ -25,6 +25,7 @@ const SCT = "http://snomed.info/sct";
 const ICD = "http://hl7.org/fhir/sid/icd-10-cm";
 const THO = "http://terminology.hl7.org/CodeSystem/";
 const TW = "https://twcore.mohw.gov.tw/ig/twcore/StructureDefinition/";
+const TWCS = "https://twcore.mohw.gov.tw/ig/twcore/CodeSystem/";
 
 function obs(extra: Record<string, any> = {}): Record<string, any> {
   return {
@@ -209,6 +210,16 @@ export const FIXTURES: Fixture[] = [
   { id: "bind-name-use", category: "binding", resource: { resourceType: "Patient", name: [{ use: "Official", family: "Chen" }] }, expect: ["official"] },
   { id: "bind-contact-system", category: "binding", resource: { resourceType: "Patient", telecom: [{ system: "telephone", value: "02-1234" }] }, expect: ["phone"] },
 
+  // --- Binding-aware repairs (ISSUES_v10 A: bindings.ts) ------------------------
+  // A1: the code is in another CodeSystem the bound ValueSet includes (an IG copy of v2-0203 next to the HL7 one).
+  { id: "xs-tw-v2-0203-MR", category: "unknown_code", kind: "replace_system", resource: { ...pat(), meta: { profile: [TW + "Patient-twcore"] }, identifier: [{ type: { coding: [{ system: TWCS + "v2-0203", code: "MR" }] }, system: "https://hospital.example.tw/mrn", value: "1" }] }, expect: [THO + "v2-0203"] },
+  { id: "xs-tw-v2-0203-PPN", category: "unknown_code", kind: "replace_system", resource: { ...pat(), meta: { profile: [TW + "Patient-twcore"] }, identifier: [{ type: { coding: [{ system: TWCS + "v2-0203", code: "PPN" }] }, system: "urn:oid:2.16.886.101.20003.20001", value: "1" }] }, expect: [THO + "v2-0203"] },
+  // A2: unknown CodeSystem URL on a Coding → a Coding from the element's bound ValueSets (normalised by display).
+  { id: "bc-route-oral", category: "unknown_url", kind: "replace_coding", resource: { ...medReq({ text: "x", route: { coding: [{ system: THO + "route", code: "oral", display: "oral" }] } }), meta: { profile: [TW + "MedicationRequest-twcore"] } }, expect: ["26643006"] },
+  // A3: the value is a valid code of another bound element of the same resource (no semantic ranking offline → the move ranks first).
+  { id: "mv-criticality-severe", category: "binding", kind: "move_value", resource: allergy({ criticality: "severe", reaction: [{ manifestation: [{ text: "rash" }] }] }), expect: ["reaction[0].severity"], suffix: true },
+  { id: "mv-allergy-type-food", category: "binding", kind: "move_value", resource: allergy({ type: "food" }), expect: ["AllergyIntolerance.category[0]"], suffix: true },
+
   // --- Unknown code in other CodeSystems ------------------------------------
   { id: "code-case-clinical", category: "unknown_code", resource: { ...cond({ system: SCT, code: "44054006" }), clinicalStatus: { coding: [{ system: THO + "condition-clinical", code: "Active" }] } }, expect: ["active"] },
   { id: "code-near-vital", category: "unknown_code", resource: coded(THO + "observation-category", "vital-sign", "Vital Signs"), expect: ["vital-signs"] },
@@ -304,6 +315,11 @@ export const HELDOUT: Fixture[] = [
   { id: "h-bind-days", category: "binding", resource: medReq({ text: "x", timing: { repeat: { frequency: 1, period: 1, periodUnit: "days" } } }), expect: ["d"] },
   { id: "h-bind-week", category: "binding", resource: medReq({ text: "x", timing: { repeat: { frequency: 1, period: 1, periodUnit: "week" } } }), expect: ["wk"] },
   { id: "h-bind-allergy-type", category: "binding", resource: { resourceType: "AllergyIntolerance", patient: { reference: "Patient/p1" }, type: "Allergy" }, expect: ["allergy"] },
+  // Binding-aware repairs, held out: base Identifier.type binding (no profile); the base Dosage.route binding only
+  // lists its CodeSystem offline (the SNOMED filter is not expandable here); a swapped Condition status CodeableConcept.
+  { id: "h-xs-base-identifier-DL", category: "unknown_code", kind: "replace_system", resource: pat({ identifier: [{ type: { coding: [{ system: TWCS + "v2-0203", code: "DL" }] }, system: "urn:x", value: "1" }] }), expect: [THO + "v2-0203"] },
+  { id: "h-bc-route-base", category: "unknown_url", kind: "replace_system", resource: medReq({ text: "x", route: { coding: [{ system: THO + "route", code: "oral" }] } }), expect: [SCT] },
+  { id: "h-mv-condition-status-swap", category: "binding", kind: "move_value", resource: { ...cond({ system: SCT, code: "44054006" }), clinicalStatus: { coding: [{ system: THO + "condition-ver-status", code: "confirmed" }] } }, expect: ["Condition.verificationStatus"], suffix: true },
   { id: "h-code-vital-case", category: "unknown_code", resource: coded(THO + "observation-category", "Vital-Signs"), expect: ["vital-signs"] },
   { id: "h-code-resolve", category: "unknown_code", resource: { ...cond({ system: SCT, code: "44054006" }), clinicalStatus: { coding: [{ system: THO + "condition-clinical", code: "resolve", display: "Resolved" }] } }, expect: ["resolved"] },
   { id: "h-code-icd-lower", category: "unknown_code", resource: cond({ system: ICD, code: "j45909" }), expect: ["J45.909"] },

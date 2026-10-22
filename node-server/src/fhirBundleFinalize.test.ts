@@ -5,7 +5,8 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { bundleRules, bundleSalt, finalizeBundle, uuidV5, FINALIZE_UUID_NAMESPACE, type FinalizeDeps } from "./fhirBundleFinalize.js";
+import { BUNDLE_TYPES, bundleRules, bundleSalt, entryOrderOf, finalizeBundle, losslessFinalizedBundle, suggestBundleType, uuidV5, FINALIZE_UUID_NAMESPACE, type FinalizeDeps } from "./fhirBundleFinalize.js";
+import { parseLossless, stringifyLossless } from "./losslessJson.js";
 import { CORE, FakeResolver, SDS, el, sd } from "./fhirTestKit.test.js";
 
 const UUID = /^urn:uuid:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -344,4 +345,144 @@ test("a stray top-level fullUrl / resource beside entry is reported in notes and
   assert.equal(r.bundle.fullUrl, "urn:uuid:4");
   assert.deepEqual(r.bundle.resource, b.resource);
   assert.ok(!r.changes.some((c) => c.path === "Bundle.fullUrl"));
+});
+
+// --------------------------------------------------------------------------- //
+// 1.1.0: bundle_type, document hints, lossless numbers (losslessJson.ts)
+// --------------------------------------------------------------------------- //
+
+test("determinism regression: a fixed synthetic bundle always gets the same UUIDs (pinned from 1.0.1)", async () => {
+  const b = {
+    resourceType: "Bundle",
+    type: "collection",
+    entry: [
+      { fullUrl: "urn:uuid:patient-1", resource: { resourceType: "Patient", id: "patient-1", gender: "male", extension: [{ url: "http://example.tw/w", valueDecimal: 10.0 }] } },
+      { resource: { resourceType: "Condition", subject: { reference: "patient-1" }, code: { text: "x" }, onsetAge: { value: 1e3, unit: "a" } } },
+    ],
+    id: "urn:uuid:3f2a9c1e-7b4d-4e8a-9f1c-2d5e6a7b8c9d",
+  };
+  for (const d of [deps, null]) {
+    const r = await finalizeBundle(b, d);
+    assert.equal(r.bundle.entry[0].fullUrl, "urn:uuid:01d95a68-5856-551f-bbe1-c8fea2cbaa9f");
+    assert.equal(r.bundle.entry[1].fullUrl, "urn:uuid:c43c2139-9ca8-5913-8dfb-c3df3bee8b45");
+    assert.equal(r.bundle.entry[1].resource.subject.reference, "urn:uuid:01d95a68-5856-551f-bbe1-c8fea2cbaa9f");
+    assert.equal(r.bundle.id, "3f2a9c1e-7b4d-4e8a-9f1c-2d5e6a7b8c9d");
+    // bundle_type is not part of the salt: the same UUIDs with a requested type.
+    const r2 = await finalizeBundle(b, d, { bundleType: "transaction" });
+    assert.equal(r2.bundle.entry[0].fullUrl, r.bundle.entry[0].fullUrl);
+    assert.equal(r2.bundle.entry[1].fullUrl, r.bundle.entry[1].fullUrl);
+  }
+});
+
+test("bundle_type: set deterministically as rule bundle-type (requested by caller), never over a profile-fixed type; document moves the Composition first", async () => {
+  const comp = { resourceType: "Composition", id: "comp", status: "final", type: { text: "t" }, date: "2024-01-01", title: "x", author: [{ reference: "patient-1" }], subject: { reference: "patient-1" } };
+  const b = bundle([
+    { fullUrl: "urn:uuid:patient-1", resource: patient("patient-1") },
+    { fullUrl: "urn:uuid:comp", resource: comp },
+  ]);
+  const r = await finalizeBundle(b, deps, { bundleType: "document" });
+  assert.equal(r.bundle.type, "document");
+  assert.deepEqual(r.changes.filter((c) => c.rule === "bundle-type"), [{ path: "Bundle.type", from: "collection", to: "document", rule: "bundle-type", reason: "requested by caller (bundle_type)" }]);
+  assert.equal(r.bundle.entry[0].resource.resourceType, "Composition", "document → Composition first");
+  assert.ok(r.changes.some((c) => c.rule === "document-order"));
+  assert.equal(JSON.stringify(b.entry[0].resource.resourceType), '"Patient"', "input untouched");
+  // Same type as written: no change.
+  const same = await finalizeBundle(b, deps, { bundleType: "collection" });
+  assert.ok(!same.changes.some((c) => c.rule === "bundle-type"));
+  // Missing Bundle.type: from is null.
+  const { type: _t, ...untyped } = b;
+  const r3 = await finalizeBundle(untyped, deps, { bundleType: "collection" });
+  assert.deepEqual(r3.changes.filter((c) => c.rule === "bundle-type"), [{ path: "Bundle.type", from: null, to: "collection", rule: "bundle-type", reason: "requested by caller (bundle_type)" }]);
+  // A profile-fixed type wins; the conflict is a note, not a change.
+  const fixed = await finalizeBundle({ ...b, meta: { profile: [DOC_PROFILE] } }, docDeps, { bundleType: "collection" });
+  assert.equal(fixed.bundle.type, "document");
+  assert.deepEqual(fixed.changes.filter((c) => c.rule === "bundle-type"), [{ path: "Bundle.type", from: "collection", to: "document", rule: "bundle-type" }], "profile-fixed change carries no reason (unchanged from 1.0.1)");
+  assert.ok(fixed.notes.some((n) => n.includes("bundle_type 'collection' was requested but") && n.includes("fixes Bundle.type to 'document'")));
+  // Requesting the fixed type itself: nothing extra.
+  const agree = await finalizeBundle({ ...b, meta: { profile: [DOC_PROFILE] } }, docDeps, { bundleType: "document" });
+  assert.ok(!agree.notes.some((n) => n.includes("was requested")));
+  // Outside the R4 value set: rejected.
+  await assert.rejects(finalizeBundle(b, deps, { bundleType: "documents" }), TypeError);
+  assert.deepEqual([...BUNDLE_TYPES], ["document", "message", "transaction", "transaction-response", "batch", "batch-response", "history", "searchset", "collection"]);
+});
+
+test("document without a Composition: the note names the alternative (bundle_type from the entries' shape) and suggestBundleType derives it from evidence", async () => {
+  const b = bundle([{ fullUrl: "urn:uuid:3f2a9c1e-7b4d-4e8a-9f1c-2d5e6a7b8c9d", resource: patient("p") }], { type: "document" });
+  const r = await finalizeBundle(b, deps);
+  assert.ok(r.notes.some((n) => n.startsWith("Bundle.type is document but no entry holds a Composition (bdl-11): either set bundle_type=collection (") && n.endsWith("or add a Composition as the first entry")));
+  assert.equal(r.bundle.type, "document", "never changed on its own");
+  const fixed = await finalizeBundle({ ...b, meta: { profile: [DOC_PROFILE] } }, docDeps);
+  assert.ok(fixed.notes.some((n) => n.includes("add a Composition as the first entry (Bundle.type is fixed to document by")));
+  const types = (x: Record<string, any>): string[] => suggestBundleType(x).map((c) => c.type);
+  assert.deepEqual(types(b), ["collection"]);
+  assert.deepEqual(types({ entry: [] }), ["collection"]);
+  const req = (res: Record<string, any>, extra: Record<string, unknown> = {}): Record<string, unknown> => ({ resource: res, request: { method: "POST", url: res.resourceType }, ...extra });
+  assert.deepEqual(types({ entry: [req(patient("a")), req(patient("b"))] }), ["transaction", "batch"], "requests and no internal reference");
+  assert.deepEqual(types({ entry: [req(patient("a")), req(condition("Patient/a"))] }), ["transaction"], "requests and an internal reference");
+  assert.deepEqual(types({ entry: [req(patient("a")), { resource: patient("b") }] }), ["transaction", "collection"]);
+  assert.deepEqual(types({ entry: [{ resource: patient("a"), search: { mode: "match" } }] }), ["searchset", "collection"]);
+  assert.deepEqual(types({ entry: [{ resource: patient("a"), response: { status: "201" } }] }), ["transaction-response", "batch-response"]);
+  const c = suggestBundleType({ entry: [req(patient("a")), req(patient("b"))] });
+  assert.ok(c[0].confidence > c[1].confidence);
+});
+
+const LOSSLESS_TEXT =
+  '{"resourceType":"Bundle","id":"urn:uuid:3f2a9c1e-7b4d-4e8a-9f1c-2d5e6a7b8c9d","type":"collection","entry":[' +
+  '{"fullUrl":"urn:uuid:patient-1","resource":{"resourceType":"Patient","id":"patient-1","extension":[{"url":"http://example.tw/w","valueDecimal":10.0},{"url":"http://example.tw/n","extension":[{"url":"a","valueDecimal":1e3}]}],"multipleBirthInteger":2}},' +
+  '{"resource":{"resourceType":"Observation","status":"final","code":{"text":"x"},"subject":{"reference":"Patient/patient-1"},"valueQuantity":{"value":0.50,"unit":"g"},"referenceRange":[{"low":{"value":-0.0},"high":{"value":12345678901234567890}},{"high":{"value":1.50}}],"component":[{"code":{"text":"c"},"valueInteger":007}]}}' +
+  "]}";
+
+test("lossless numbers: the finalized Bundle's text equals the input text except for the rewritten id / fullUrl / reference fields", async () => {
+  const text = LOSSLESS_TEXT.replace("007", "7");
+  const plain = JSON.parse(text);
+  const fin = await finalizeBundle(plain, deps);
+  const lossless = losslessFinalizedBundle(fin.bundle, fin.changes, parseLossless(text));
+  assert.ok(lossless);
+  const out = stringifyLossless(lossless);
+  // Expected: apply the change list textually to the input.
+  let expected = text
+    .replace('"id":"urn:uuid:3f2a9c1e-7b4d-4e8a-9f1c-2d5e6a7b8c9d"', '"id":"3f2a9c1e-7b4d-4e8a-9f1c-2d5e6a7b8c9d"')
+    .replace('"fullUrl":"urn:uuid:patient-1"', `"fullUrl":"${fin.bundle.entry[0].fullUrl}"`)
+    .replace('"reference":"Patient/patient-1"', `"reference":"${fin.bundle.entry[0].fullUrl}"`);
+  // The minted fullUrl of entry[1] is appended (new key last), exactly as the ordinary output does.
+  expected = expected.replace(']}}]}', `]},"fullUrl":"${fin.bundle.entry[1].fullUrl}"}]}`);
+  assert.equal(out, expected);
+  for (const n of ["10.0", "1e3", "0.50", "-0.0", "12345678901234567890", "1.50"]) assert.ok(out.includes(n), n);
+  // Same JSON value as the ordinary tree (compared as JSON text: -0.0 parses to -0, which JSON writes as 0); the
+  // ordinary tree's own text is unchanged from before.
+  assert.equal(JSON.stringify(JSON.parse(out)), JSON.stringify(fin.bundle));
+  assert.ok(!JSON.stringify(fin.bundle).includes("10.0"), "the ordinary tree still loses the spelling (JSON.parse semantics)");
+  // Idempotent: finalizing the lossless output again changes nothing and keeps the spellings.
+  const again = await finalizeBundle(JSON.parse(out), deps);
+  assert.deepEqual(again.changes, []);
+  assert.equal(stringifyLossless(losslessFinalizedBundle(again.bundle, again.changes, parseLossless(out))), out);
+  // Unusable source → null (caller falls back to the ordinary tree).
+  assert.equal(losslessFinalizedBundle(fin.bundle, fin.changes, undefined), null);
+  assert.equal(losslessFinalizedBundle(fin.bundle, fin.changes, "nope"), null);
+  // A mismatching source (another Bundle) never corrupts values.
+  const other = parseLossless(text.replace("10.0", "11.0").replace("0.50", "0.75"));
+  const mixed = stringifyLossless(losslessFinalizedBundle(fin.bundle, fin.changes, other)!);
+  assert.equal(JSON.stringify(JSON.parse(mixed)), JSON.stringify(fin.bundle));
+  assert.ok(mixed.includes('"valueDecimal":10}') && mixed.includes('"value":0.5,'), "differing values come from the output");
+  assert.ok(mixed.includes("1e3"), "matching values keep the source spelling");
+});
+
+test("lossless numbers follow a document reorder (Composition moved first) and the finalizer treats RawNumber as a scalar", async () => {
+  const text =
+    '{"resourceType":"Bundle","type":"document","entry":[' +
+    '{"fullUrl":"urn:uuid:3f2a9c1e-7b4d-4e8a-9f1c-2d5e6a7b8c9d","resource":{"resourceType":"Patient","id":"p","extension":[{"url":"http://example.tw/w","valueDecimal":1.0}]}},' +
+    '{"fullUrl":"urn:uuid:4f2a9c1e-7b4d-4e8a-9f1c-2d5e6a7b8c9d","resource":{"resourceType":"Composition","status":"final","type":{"text":"t"},"date":"2024-01-01","title":"x","author":[{"reference":"urn:uuid:3f2a9c1e-7b4d-4e8a-9f1c-2d5e6a7b8c9d"}],"subject":{"reference":"urn:uuid:3f2a9c1e-7b4d-4e8a-9f1c-2d5e6a7b8c9d"},"extension":[{"url":"http://example.tw/w","valueDecimal":2.00}]}}' +
+    "]}";
+  const fin = await finalizeBundle(JSON.parse(text), deps);
+  assert.deepEqual(fin.changes.map((c) => c.rule), ["document-order"]);
+  assert.deepEqual(entryOrderOf(fin.changes, 2), [1, 0]);
+  assert.deepEqual(entryOrderOf([], 3), [0, 1, 2]);
+  const out = stringifyLossless(losslessFinalizedBundle(fin.bundle, fin.changes, parseLossless(text))!);
+  assert.ok(out.indexOf('"valueDecimal":2.00') < out.indexOf('"valueDecimal":1.0'), "spellings travel with their entries");
+  assert.deepEqual(JSON.parse(out), fin.bundle);
+  // The salt / finalizer never descend into a RawNumber (a lossless tree fed in by mistake still works).
+  const raw = parseLossless(text) as Record<string, any>;
+  assert.equal(bundleSalt(raw), bundleSalt(JSON.parse(text)), "RawNumber hashes as its number");
+  const finRaw = await finalizeBundle(raw, deps);
+  assert.deepEqual(finRaw.changes, fin.changes);
 });

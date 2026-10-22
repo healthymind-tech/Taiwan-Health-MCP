@@ -132,6 +132,7 @@ import * as minioService from "../minioService.js";
 import { buildAdminOverview } from "./adminOverview.js";
 import { searchWithFallback as registrySearchWithFallback } from "../loaders/igRegistry.js";
 import { getDrugService as getDrugServiceForAdmin } from "../mcp.js";
+import { RawJson, stringifyLossless } from "../losslessJson.js";
 import { parseByteRange } from "./drugAssetResponse.js";
 import { reconfigureEmbeddingService } from "../embeddingService.js";
 import { logWarning } from "../logger.js";
@@ -182,7 +183,8 @@ function withProbeExplanations(payload: Record<string, unknown>): Record<string,
 
 /** sendJson without error enrichment — for APIs that attach their own codes (LLM / model endpoints). */
 function sendRawJson(res: Response, status: number, payload: unknown): void {
-  res.status(status).set("content-type", "application/json; charset=utf-8").send(JSON.stringify(payload));
+  // stringifyLossless ≡ JSON.stringify unless the payload carries a RawJson / RawNumber (MCP playground result).
+  res.status(status).set("content-type", "application/json; charset=utf-8").send(stringifyLossless(payload));
 }
 
 const OAUTH_CALLBACK_PATH = "/fhir-oauth/callback";
@@ -574,7 +576,9 @@ export async function adminHandler(req: Request, res: Response, next: NextFuncti
           adminUsername,
         );
         if (out) {
-          sendJson(res, out.status, out.body);
+          // The playground result is the tool's JSON text spliced in verbatim (number spellings kept, as POST /tools/<name>).
+          const body = out.resultText !== undefined && out.body && typeof out.body === "object" ? { ...(out.body as Record<string, unknown>), result: new RawJson(out.resultText) } : out.body;
+          sendJson(res, out.status, body);
           return;
         }
       } catch (exc) {

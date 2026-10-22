@@ -39,7 +39,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.4.0 (ISSUES_v9 R4): a Bundle profile also returns `bundle_rules` (fullUrl format, references = target fullUrl, id
   // format, Bundle.type when the StructureDefinition fixes it, document / message entry order, required Bundle elements and
   // entry slices) generated from the FHIR R4 core rules + the StructureDefinition. Other profiles unchanged.
-  fhir_get_profile_required_elements: "1.4.0",
+  // 1.4.1: bundle_rules.bundle_type names fhir_finalize_bundle's bundle_type argument (sets a free type; cannot override a fixed one).
+  fhir_get_profile_required_elements: "1.4.1",
   // 1.1.0 (lexicon tw-lexicon 0.3.0, issues v1): time-only evidence takes the date in force at its line;
   // whole-label stated-absent concepts (出生地 is not the birth date) and no stated-absent when the record states
   // the patient field; zh/en department / setting aliases with whole-token short forms (ED / ER / OPD / ICU);
@@ -93,8 +94,20 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   bdl-11) carry suggestions (replace_fullurl / replace_reference / replace_id / move_entry / replace_bundle_type) and the
   //   data block gains `id_map` + `id_changes` (every value that must change together) + `id_unresolved`. Bundles without an
   //   ID-class issue are byte-identical to 1.6.1.
-  fhir_validate_bundle: "1.7.0",
-  fhir_validate_resource: "1.6.1",
+  // 1.8.0 (ISSUES_v10 B + document Bundle.type): `normalized_bundle` keeps every number as the caller wrote it (10.0, 1e3,
+  //   0.50, integers beyond 2^53 — losslessJson.ts / requestContext.ts; the request text is re-read losslessly for the
+  //   `bundle` argument on /mcp, POST /tools and the admin playground). bdl-11 / bdl-12 (and the document-only bdl-9 /
+  //   bdl-10) on a Bundle with no Composition / MessageHeader at all carry suggestions (fhirSuggestions/bundleType.ts):
+  //   `replace_value` Bundle.type → a type the entries support (collection; transaction / batch with requests; searchset),
+  //   confidence by that evidence, never a type the profile fixes; `add_resource` the head resource as entry[0] with its
+  //   required elements. Issue set, severities, messages and valid unchanged.
+  //   Same release, binding-aware suggestions (ISSUES_v10 A): replace_system when the code belongs to another
+  //   CodeSystem of the bound ValueSet; replace_coding / replace_system from the bound ValueSets for an unknown
+  //   Coding.system; small ValueSets (≤ 50) always listed, semantic ranking of ≤ 12-code sets, move_value to a
+  //   sibling element that accepts the value; lookup budget 1 call per issue (expansion unbudgeted).
+  fhir_validate_bundle: "1.8.0",
+  // 1.6.2: the binding-aware suggestions above (ISSUES_v10 A) also apply to single-resource validation.
+  fhir_validate_resource: "1.6.2",
   // 1.2.0 (all below): provenance.resolved_by / closure_versions; canonical arguments resolve to their
   // owning package when package_id is omitted; "|version" honoured; list/search: all_packages + zero-hit hint;
   // NO_DEFAULT_IG instead of an arbitrary package when no default IG is set.
@@ -142,12 +155,19 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.3.0: validation issues carry `suggestions` / `caused_by` (as fhir_validate_resource 1.6.0).
   // 1.3.1: validation as fhir_validate_resource 1.6.1 (unknown hl7.org/fhir code systems, reference whitespace,
   //   RxNorm different-drug displays, lookup-failure / crash issues).
-  fhir_finalize_resource: "1.3.1",
+  // 1.3.2 (ISSUES_v10 B): `resource` keeps the draft's number spellings (10.0 stays 10.0; values the tool wraps into a
+  //   single-element array too). Same JSON value as 1.3.1.
+  fhir_finalize_resource: "1.3.2",
   // 1.0.0 (ISSUES_v9 R1): deterministic Bundle finalizer — fullUrl-uuid / reference-rewire / resource-id (mandatory),
   // bundle-type / document-order (profile-driven); UUID v5 seeded by (resourceType, original fullUrl, resource.id, entry
   // index) + a content salt; references found through StructureDefinition snapshots; duplicates / ambiguity reported.
   // 1.0.1: notes report a stray entry written at Bundle level (fullUrl / resource beside `entry`) — not moved.
-  fhir_finalize_bundle: "1.0.1",
+  // 1.1.0 (ISSUES_v10 B): `bundle` is returned with every number spelled as the caller wrote it (10.0 stays 10.0; see
+  //   fhir_validate_bundle 1.8.0) — same JSON value, same UUIDs and changes as 1.0.1. New optional `bundle_type` (R4
+  //   bundle-type code): sets Bundle.type as rule bundle-type with reason "requested by caller (bundle_type)", listed in
+  //   changes; a type fixed by the resolved Bundle profile wins and the conflict is a note; document → Composition first.
+  //   A document without any Composition notes both ways out (bundle_type=<derived> or add a Composition).
+  fhir_finalize_bundle: "1.1.0",
   // ── 2026-10-19 actionable errors (additive fields only; successful outputs unchanged) ──
   // search_medical_codes 1.2.1: IG_UNAVAILABLE adds `hint`.
   // FHIR IG tools above (+.0.1): error envelopes add error.hint; IG_NOT_FOUND / NO_DEFAULT_IG add
@@ -209,7 +229,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.2.0 (ISSUES_v9 R3): shares the Bundle finalizer — invalid fullUrls are normalised, keys become deterministic UUID v5
   // fullUrls (same input → same Bundle), references written as key / urn:uuid:<key> / Type/<key> are rewired instead of
   // listed as unresolved; data adds changes / notes / contextId, unresolved rows carry path + candidates; provenance set.
-  fhir_build_bundle: "1.2.0",
+  // 1.2.1 (ISSUES_v10 B): entry resources keep the caller's number spellings (as fhir_finalize_bundle 1.1.0); same UUIDs.
+  fhir_build_bundle: "1.2.1",
   // 2026-10-19 query-side embedding instructions (Qwen3-Embedding): semantic matches may reorder.
   search_health_supplements: "1.2.0",
   query_food_nutrition: "1.2.0",

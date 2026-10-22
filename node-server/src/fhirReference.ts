@@ -9,7 +9,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { finalizeBundle, type FinalizeChange, type FinalizeDeps, type FinalizeUnresolved } from "./fhirBundleFinalize.js";
+import { finalizeBundle, losslessFinalizedBundle, type FinalizeChange, type FinalizeDeps, type FinalizeUnresolved } from "./fhirBundleFinalize.js";
 
 interface Ctx {
   created_at: number;
@@ -131,6 +131,8 @@ export async function buildBundle(
   bundleType = "transaction",
   contextId: string | null | undefined = null,
   deps: FinalizeDeps | null = null,
+  /** The `entries` argument as the request wrote it (losslessJson.parseLossless): numbers keep their spelling. */
+  losslessEntries: unknown = undefined,
 ): Promise<BuiltBundle> {
   const cid = contextId ? ensure(contextId) : null;
   const ctxMap = cid ? CONTEXTS.get(cid)!.map : null;
@@ -163,5 +165,6 @@ export async function buildBundle(
     referenceMap[key] = fu;
     if (ctxMap) ctxMap[key] = fu;
   });
-  return { bundle: fin.bundle, referenceMap, unresolved: fin.unresolved, changes: fin.changes, notes: fin.notes, contextId: cid };
+  const bundle = (Array.isArray(losslessEntries) && losslessFinalizedBundle(fin.bundle, fin.changes, { entry: losslessEntries })) || fin.bundle;
+  return { bundle, referenceMap, unresolved: fin.unresolved, changes: fin.changes, notes: fin.notes, contextId: cid };
 }

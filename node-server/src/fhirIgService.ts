@@ -51,7 +51,8 @@ import { KEYWORD_ONLY_MODE, KEYWORD_ONLY_NOTE } from "./searchQuality.js";
 import { attachSuggestions } from "./fhirSuggestions/index.js";
 import { dbSuggestionDeps, type ServiceHooks } from "./fhirSuggestions/dbDeps.js";
 import { attachIdSuggestions, isIdClassIssue, normalizationIssues } from "./fhirSuggestions/ids.js";
-import { bundleRules, finalizeBundle as runBundleFinalize, type FinalizeDeps, type FinalizeResult } from "./fhirBundleFinalize.js";
+import { BUNDLE_TYPES, bundleRules, finalizeBundle as runBundleFinalize, losslessFinalizedBundle, type FinalizeDeps, type FinalizeResult } from "./fhirBundleFinalize.js";
+import { restoreNumbers, stringifyLossless } from "./losslessJson.js";
 
 /** fhir_get_profile_required_elements compact view: profile invariants listed in full before the rest are named only. */
 const COMPACT_INVARIANTS = 8;
@@ -162,7 +163,9 @@ export class FHIRIGService {
       warnings: notes.length ? [...notes, ...(warnings || [])] : warnings || [],
       provenance: pkg ? this.provenance(pkg) : null,
     };
-    return JSON.stringify(env);
+    // stringifyLossless ≡ JSON.stringify unless the data holds RawNumbers (a Bundle / resource
+    // returned with the caller's number spellings, losslessJson.ts).
+    return stringifyLossless(env);
   }
 
   /** Add `deps_missing` (declared dependencies not installed) to a data object when the closure is incomplete. */
@@ -1625,7 +1628,7 @@ export class FHIRIGService {
     mark("validate");
     // Additive `suggestions` / `caused_by` on issues (fhirSuggestions/); never changes the verdict.
     try {
-      await attachSuggestions(issues, resource, dbSuggestionDeps(pkg, resolver, this.suggestionHooks(pkg)));
+      await attachSuggestions(issues, resource, dbSuggestionDeps(pkg, resolver, this.suggestionHooks(pkg)), { profiles });
     } catch (e) {
       // Suggestions are decoration: a failure here must not lose the validation result.
       logError("fhir validation: suggestions failed", { error: String((e as Error).message) });
@@ -1668,6 +1671,8 @@ export class FHIRIGService {
         const loc = await this.locateIgCodeSystem(system, pkg);
         return loc ? this.conceptSearch.nearCodes(loc, code, limit) : [];
       },
+      // Semantic ranking of a small ValueSet's codes (binding suggestions); absent = lexical only.
+      ...(this.embeddingSvc ? { embedBatch: (texts: string[]) => this.embeddingSvc!.embedBatch(texts, "document") } : {}),
     };
   }
 
@@ -1724,6 +1729,8 @@ export class FHIRIGService {
     packageId: string | null = null,
     version: string | null = null,
     normalizeIds = false,
+    /** The `bundle` argument as the request wrote it (losslessJson.parseLossless), so normalized_bundle keeps every number's spelling. */
+    losslessBundle: unknown = undefined,
   ): Promise<string> {
     if (!(bundle && typeof bundle === "object" && !Array.isArray(bundle)) || bundle.resourceType !== "Bundle") {
       return this.err("INVALID_ARGUMENT", "bundle must be a FHIR Bundle resource");
@@ -1758,7 +1765,7 @@ export class FHIRIGService {
     const idBlock: Record<string, any> = {};
     if (fin) {
       pushAll(core.issues as Record<string, any>[], normalizationIssues(fin.changes));
-      idBlock.normalized_bundle = fin.bundle;
+      idBlock.normalized_bundle = losslessFinalizedBundle(fin.bundle, fin.changes, losslessBundle) ?? fin.bundle;
       idBlock.id_changes = fin.changes;
       idBlock.id_map = fin.id_map;
       idBlock.id_unresolved = fin.unresolved;
@@ -1881,9 +1888,19 @@ export class FHIRIGService {
     packageId: string | null = null,
     version: string | null = null,
     bundleProfile: string | null = null,
+    opts: {
+      /** Bundle.type to set (R4 value set); a profile-fixed type wins and the conflict is noted (1.1.0). */
+      bundleType?: string | null;
+      /** The `bundle` argument as the request wrote it (losslessJson.parseLossless): the returned Bundle keeps every number's spelling. */
+      lossless?: unknown;
+    } = {},
   ): Promise<string> {
     if (!(bundle && typeof bundle === "object" && !Array.isArray(bundle)) || bundle.resourceType !== "Bundle") {
       return this.err("INVALID_ARGUMENT", "bundle must be a FHIR Bundle resource");
+    }
+    const bundleType = typeof opts.bundleType === "string" && opts.bundleType.trim() ? opts.bundleType.trim() : null;
+    if (bundleType !== null && !(BUNDLE_TYPES as readonly string[]).includes(bundleType)) {
+      return this.err("INVALID_ARGUMENT", `bundle_type must be one of ${BUNDLE_TYPES.join(" | ")}`, { parameter: "bundle_type", allowed: [...BUNDLE_TYPES] });
     }
     const profile = bundleProfile && String(bundleProfile).trim() ? String(bundleProfile).trim() : null;
     let pkg: PackageRow | null = null;
@@ -1909,10 +1926,10 @@ export class FHIRIGService {
       const row = await this.loadArtifact(pkg, profile);
       if (row && row.canonical_url) profileCanonical = String(row.canonical_url);
     }
-    const fin = await runBundleFinalize(bundle, deps, { bundleProfile: profileCanonical });
+    const fin = await runBundleFinalize(bundle, deps, { bundleProfile: profileCanonical, bundleType });
     const count = (rule: string): number => fin.changes.filter((c) => c.rule === rule).length;
     const data: Record<string, any> = {
-      bundle: fin.bundle,
+      bundle: losslessFinalizedBundle(fin.bundle, fin.changes, opts.lossless) ?? fin.bundle,
       changes: fin.changes,
       unresolved: fin.unresolved,
       notes: [...notes, ...fin.notes],
@@ -1937,7 +1954,7 @@ export class FHIRIGService {
       warnings: [...(((pkg?._notes as string[] | undefined) || [])), ...warnings],
       provenance: { ...(pkg ? this.provenance(pkg) : { source: "fhir-r4-core" }), tool: "fhir_finalize_bundle", toolVersion: toolVersion("fhir_finalize_bundle") },
     };
-    return JSON.stringify(env);
+    return stringifyLossless(env);
   }
 
   // --- E. Schema-guided fill (authoring) ----------------------------------- //
@@ -2124,6 +2141,8 @@ export class FHIRIGService {
     packageId: string | null = null,
     version: string | null = null,
     generateNarrative = true,
+    /** The `draft` argument as the request wrote it (losslessJson.parseLossless): the returned resource keeps every number's spelling. */
+    losslessDraft: unknown = undefined,
   ): Promise<string> {
     if (!(draft && typeof draft === "object" && !Array.isArray(draft))) {
       return this.err("INVALID_ARGUMENT", "draft must be a resource object");
@@ -2163,7 +2182,7 @@ export class FHIRIGService {
     const core = await this.validateCore(pkg, resource, row.artifact_id || profile);
 
     const data = {
-      resource,
+      resource: losslessDraft !== undefined ? restoreNumbers(resource, losslessDraft) : resource,
       validation: core,
       coerced,
       narrated,

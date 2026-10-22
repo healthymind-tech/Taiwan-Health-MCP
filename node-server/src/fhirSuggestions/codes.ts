@@ -70,7 +70,8 @@ export function codeVariants(code: string, system: string): string[] {
   return [...out].slice(0, 8);
 }
 
-async function normalized(deps: SuggestionDeps, budget: Budget, text: string, target: { system?: string; valueSet?: string }, limit: number): Promise<NormalizeCandidate[]> {
+/** fhir_normalize_code within the budget (one expensive call); [] when there is none left. */
+export async function normalized(deps: SuggestionDeps, budget: Budget, text: string, target: { system?: string; valueSet?: string }, limit: number): Promise<NormalizeCandidate[]> {
   if (!deps.normalize || budget.left <= 0 || !text.trim()) return [];
   budget.left--;
   try {
@@ -235,7 +236,7 @@ export function parseBindingValueSet(message: string): string | null {
 }
 
 /** Given (system, code, label) values of a bound element instance. */
-function givenValues(node: any): { codings: Array<{ system: string | null; code: string }>; labels: string[]; kind: "code" | "Coding" | "CodeableConcept" | "Quantity" | "other" } {
+export function givenValues(node: any): { codings: Array<{ system: string | null; code: string }>; labels: string[]; kind: "code" | "Coding" | "CodeableConcept" | "Quantity" | "other" } {
   if (typeof node === "string") return { codings: [{ system: null, code: node }], labels: [node], kind: "code" };
   if (!isObject(node)) return { codings: [], labels: [], kind: "other" };
   const labels: string[] = [];
@@ -254,8 +255,10 @@ function givenValues(node: any): { codings: Array<{ system: string | null; code:
   return { codings: typeof node.code === "string" ? [{ system: sys, code: node.code }] : [], labels, kind: "value" in node || "unit" in node ? "Quantity" : "Coding" };
 }
 
-/** Up to this many codes, the whole (small) expansion is offered. */
+/** Up to this many codes a value set counts as small: a synonym lookup replaces a weak lexical match. */
 const SMALL_VS = 12;
+/** Up to this many codes the whole expansion is offered (ranked), whatever the lexical scores. */
+export const LIST_ALL_VS = 50;
 
 export async function suggestBinding(deps: SuggestionDeps, root: any, issuePath: string, message: string, budget: Budget): Promise<Suggestion[]> {
   const vsUrl = parseBindingValueSet(message);
@@ -264,8 +267,9 @@ export async function suggestBinding(deps: SuggestionDeps, root: any, issuePath:
   const given = givenValues(node);
   const out: Suggestion[] = [];
   let exp: { codings: ExpandedCoding[]; total: number; truncated: boolean } | null = null;
-  if (deps.expandValueSet && budget.left > 0) {
-    budget.left--;
+  // The expansion is local (package closure / terminology tables, bounded by the limit) and
+  // shared per ValueSet within a validation: not budgeted, so a small value set is always listed.
+  if (deps.expandValueSet) {
     try {
       exp = await deps.expandValueSet(vsUrl, 500);
     } catch {
@@ -298,15 +302,41 @@ export async function suggestBinding(deps: SuggestionDeps, root: any, issuePath:
   const keyOf = (c: ExpandedCoding): string => `${c.system ?? ""}|${c.code}`;
   const codings = exp ? exp.codings : [];
   const small = !!exp && !exp.truncated && codings.length <= SMALL_VS;
+  const listAll = !!exp && !exp.truncated && codings.length <= LIST_ALL_VS;
   codings.forEach((c) => {
     const s = score(c);
-    if (small || s >= 0.45) scored.set(keyOf(c), { c, s, why: s >= 0.99 ? "same code, written differently" : "closest code of the value set" });
+    if (listAll || s >= 0.45) scored.set(keyOf(c), { c, s, why: s >= 0.99 ? "same code, written differently" : "closest code of the value set" });
   });
   // Semantic / lexical candidates restricted to the value set: large / unexpandable sets, and
   // small ones whose codes do not resemble the given value (a synonym, e.g. a status word).
   const bestLexical = Math.max(0, ...[...scored.values()].map((x) => x.s));
-  if (!small || bestLexical < 0.5) {
-    const label = given.labels[0];
+  const label = given.labels[0];
+  let ranked_semantically = false;
+  // A small set with no lexical match: rank its codes by meaning (embedding similarity of the
+  // given value to each display) — a full ranking, where a cut-off search could return nothing.
+  if (small && bestLexical < 0.5 && label && deps.similarity && budget.left > 0 && codings.length > 1) {
+    budget.left--;
+    let sims: number[] | null = null;
+    try {
+      sims = await deps.similarity(label, codings.map((c) => c.display || c.code));
+    } catch {
+      sims = null;
+    }
+    const vals = sims && sims.length === codings.length ? sims.filter((x) => typeof x === "number" && Number.isFinite(x)) : [];
+    if (sims && vals.length >= 2) {
+      const lo = Math.min(...vals);
+      const hi = Math.max(...vals);
+      codings.forEach((c, i) => {
+        const x = sims![i];
+        if (typeof x !== "number" || !Number.isFinite(x)) return;
+        const s = 0.3 + 0.2 * (hi > lo ? (x - lo) / (hi - lo) : 0.5);
+        const cur = scored.get(keyOf(c));
+        if (!cur || s > cur.s) scored.set(keyOf(c), { c, s, why: `closest in meaning to '${label}' among the value set's codes` });
+      });
+      ranked_semantically = true;
+    }
+  }
+  if (!ranked_semantically && (!small || bestLexical < 0.5)) {
     if (label) {
       const cands = await normalized(deps, budget, label, { valueSet: vsUrl }, 5);
       cands.forEach((n, i) => {
@@ -320,13 +350,13 @@ export async function suggestBinding(deps: SuggestionDeps, root: any, issuePath:
   }
   const total = exp ? exp.total : null;
   const ranked = [...scored.values()].sort((a, b) => b.s - a.s || (a.c.code < b.c.code ? -1 : 1));
-  for (const { c, s, why } of ranked.slice(0, small ? SMALL_VS : 5)) {
+  for (const { c, s, why } of ranked.slice(0, listAll ? LIST_ALL_VS : 5)) {
     // Already in the instance (e.g. member under another system)? Still offered.
     out.push({
       value: c.code,
       kind: "choose_code",
       confidence: small ? 0.35 + 0.6 * s : 0.3 + 0.6 * s,
-      reason: `${why}${total !== null ? ` (${small ? "one of all" : "from"} ${total} code${total === 1 ? "" : "s"} in ${vsUrl})` : ` (in ${vsUrl})`}`,
+      reason: `${why}${total !== null ? ` (${listAll ? "one of all" : "from"} ${total} code${total === 1 ? "" : "s"} in ${vsUrl})` : ` (in ${vsUrl})`}`,
       ...(c.system ? { system: c.system } : {}),
       ...(c.display ? { display: c.display } : {}),
       patch: patchFor(c),

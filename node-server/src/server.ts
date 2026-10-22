@@ -35,6 +35,10 @@ import { getFhirServerJwks, fhirServerSecretKey } from "./admin/adminFhirServers
 import { completeAuthorization, OAuthError } from "./admin/fhirOauthService.js";
 import * as minioService from "./minioService.js";
 import { allowedCorsOrigin, bearerTokenMatches, publicOrigin } from "./publicToolsSecurity.js";
+import { runWithRawRequest } from "./requestContext.js";
+
+/** express.json keeps the raw body bytes here (`verify`), so a tool can re-read an argument losslessly (requestContext.ts). */
+type RawBodyRequest = Request & { rawBody?: Buffer };
 
 const OAUTH_CALLBACK_PATH = "/fhir-oauth/callback";
 
@@ -177,7 +181,14 @@ async function bootstrapResources(): Promise<void> {
 function buildApp(): express.Express {
   const cfg = config();
   const app = express();
-  app.use(express.json({ limit: "4mb" }));
+  app.use(
+    express.json({
+      limit: "4mb",
+      verify: (req, _res, buf) => {
+        (req as RawBodyRequest).rawBody = buf;
+      },
+    }),
+  );
   app.use(express.urlencoded({ extended: false, limit: "4mb" }));
 
   // B1: liveness probe.
@@ -287,14 +298,19 @@ function buildApp(): express.Express {
         return;
       }
       try {
-        const text = await invokeRegisteredTool(req.params.name, (args ?? {}) as Record<string, unknown>);
-        let bodyObj: unknown;
+        const text = await runWithRawRequest("tools", (req as RawBodyRequest).rawBody, () =>
+          invokeRegisteredTool(req.params.name, (args ?? {}) as Record<string, unknown>),
+        );
+        // The tool's JSON text is sent verbatim (not re-serialised), so number spellings the tool
+        // preserved (10.0, 1e3 — losslessJson.ts) reach the client as the tool wrote them.
+        let valid = true;
         try {
-          bodyObj = JSON.parse(text);
+          JSON.parse(text);
         } catch {
-          bodyObj = { result: text };
+          valid = false;
         }
-        res.json(bodyObj);
+        if (valid) res.status(200).set("content-type", "application/json; charset=utf-8").send(text);
+        else res.json({ result: text });
       } catch (exc) {
         // `error` / `tool` / `detail` are unchanged; code / message / hint (+ argument details) tell an LLM client
         // what went wrong and what to do next.
@@ -356,7 +372,7 @@ function buildApp(): express.Express {
 
   // Admin console gate + REST (mirrors the inline /admin dispatcher in server.py).
   app.use((req, res, next) => {
-    void adminHandler(req, res, next);
+    void runWithRawRequest("admin", (req as RawBodyRequest).rawBody, () => adminHandler(req, res, next));
   });
 
   // B2: MCP streamable-http with per-session transports.
@@ -390,7 +406,8 @@ function buildApp(): express.Express {
       return;
     }
 
-    await transport.handleRequest(req, res, req.body);
+    const t = transport;
+    await runWithRawRequest("mcp", (req as RawBodyRequest).rawBody, () => t.handleRequest(req, res, req.body));
   });
 
   const handleSessionRequest = async (req: Request, res: Response) => {

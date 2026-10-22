@@ -14,6 +14,21 @@ export interface ServiceHooks {
   /** fhir_normalize_code (the tool's JSON envelope) for this package. */
   normalize?(text: string, valueSet: string | null, system: string | null, limit: number): Promise<string>;
   nearCodes?(system: string, code: string, limit: number): Promise<Array<{ code: string; display: string | null }>>;
+  /** Embeddings of short texts (the embedding role's route); null entries when unavailable. */
+  embedBatch?(texts: string[]): Promise<Array<number[] | null>>;
+}
+
+function cosine(a: number[], b: number[]): number {
+  let dot = 0;
+  let na = 0;
+  let nb = 0;
+  const n = Math.min(a.length, b.length);
+  for (let i = 0; i < n; i++) {
+    dot += a[i] * b[i];
+    na += a[i] * a[i];
+    nb += b[i] * b[i];
+  }
+  return na && nb ? dot / Math.sqrt(na * nb) : 0;
 }
 
 /** canonical lists per (closure, prefix, types): small, shared across calls, bounded. */
@@ -89,6 +104,7 @@ export function dedupedDeps(deps: SuggestionDeps): SuggestionDeps {
     canonicalsUnder: once("canonicals", deps.canonicalsUnder?.bind(deps)),
     validateAgainst: once("validate", deps.validateAgainst?.bind(deps)),
     resourceElementPaths: once("paths", deps.resourceElementPaths?.bind(deps)),
+    similarity: once("similarity", deps.similarity?.bind(deps)),
   };
 }
 
@@ -113,10 +129,30 @@ export function dbSuggestionDeps(pkg: PackageRow, resolver: ValidatorResolver, h
           const cands: any[] = env && env.ok && env.data && Array.isArray(env.data.candidates) ? env.data.candidates : [];
           return cands
             .filter((c) => c && typeof c.code === "string" && c.code)
-            .map((c): NormalizeCandidate => ({ system: c.system ?? null, code: c.code, display: typeof c.display === "string" ? c.display : null, ...(c.exact ? { exact: true } : {}) }));
+            .map(
+              (c): NormalizeCandidate => ({
+                system: c.system ?? null,
+                code: c.code,
+                display: typeof c.display === "string" ? c.display : null,
+                ...(c.exact ? { exact: true } : {}),
+                ...(typeof c.score === "number" && Number.isFinite(c.score) ? { score: c.score } : {}),
+              }),
+            );
         }
       : undefined,
     nearCodes: hooks.nearCodes,
+    similarity: hooks.embedBatch
+      ? async (text, candidates) => {
+          if (!candidates.length) return [];
+          const vecs = await hooks.embedBatch!([text, ...candidates]);
+          const q = vecs[0];
+          if (!q) return null;
+          return candidates.map((_, i) => {
+            const v = vecs[i + 1];
+            return v ? cosine(q, v) : NaN;
+          });
+        }
+      : undefined,
     canonicalsUnder: (prefix, resourceTypes) => {
       const key = `${terminology.closureKey(pkg)}|${prefix}|${resourceTypes.join(",")}`;
       const hit = canonicalCache.get(key);

@@ -542,9 +542,15 @@ export const MCP_TOOL_EXAMPLES: Record<string, ToolExampleSet> = {
   fhir_finalize_bundle: {
     title: "整理 Bundle 的 fullUrl / reference / id",
     examples: [
-      example("labels", "標籤式 fullUrl 與三種引用寫法 → 確定性 urn:uuid", { bundle: LABELLED_BUNDLE, package_id: TWCORE, version: TWCORE_VERSION, bundle_profile: null }, "fullUrl urn:uuid:patient-1、引用 Patient/patient-1 / 裸 id、Bundle.id 為 urn；changes 列出每一處改動"),
-      example("valid", "已合法的 Bundle：原樣回傳，changes 為空", { bundle: TWCORE_BUNDLE_EXAMPLE, package_id: TWCORE, version: TWCORE_VERSION, bundle_profile: null }),
-      example("profile", "指定 Bundle profile（固定 type 時套用）", { bundle: LABELLED_BUNDLE, package_id: null, version: null, bundle_profile: `${TWCORE_SD}/Bundle-twcore` }),
+      example("labels", "標籤式 fullUrl 與三種引用寫法 → 確定性 urn:uuid", { bundle: LABELLED_BUNDLE, package_id: TWCORE, version: TWCORE_VERSION, bundle_profile: null, bundle_type: null }, "fullUrl urn:uuid:patient-1、引用 Patient/patient-1 / 裸 id、Bundle.id 為 urn；changes 列出每一處改動"),
+      example("valid", "已合法的 Bundle：原樣回傳，changes 為空", { bundle: TWCORE_BUNDLE_EXAMPLE, package_id: TWCORE, version: TWCORE_VERSION, bundle_profile: null, bundle_type: null }),
+      example("profile", "指定 Bundle profile（固定 type 時套用）", { bundle: LABELLED_BUNDLE, package_id: null, version: null, bundle_profile: `${TWCORE_SD}/Bundle-twcore`, bundle_type: null }),
+      example(
+        "bundle_type",
+        "指定 bundle_type：誤寫成 document 的 Bundle 改為 collection",
+        { bundle: { ...LABELLED_BUNDLE, meta: undefined, type: "document" }, package_id: TWCORE, version: TWCORE_VERSION, bundle_profile: null, bundle_type: "collection" },
+        "沒有 Composition 的 document → bundle_type=collection（規則 bundle-type，reason requested by caller）；剖面固定 type 時不覆寫",
+      ),
     ],
   },
 

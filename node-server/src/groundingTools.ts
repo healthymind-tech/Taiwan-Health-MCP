@@ -41,6 +41,7 @@ import {
 } from "./grounding/index.js";
 import { COMPLETENESS_TOOL_VERSION, checkCompleteness, type CompletenessInput } from "./grounding/completeness/index.js";
 import { logDebug, logError } from "./logger.js";
+import { parseLossless, stringifyLossless } from "./losslessJson.js";
 import { toolVersion } from "./toolVersions.js";
 
 type Json = Record<string, unknown>;
@@ -235,7 +236,18 @@ export async function addBundleGrounding(conformanceText: string, bundle: Json, 
       { terminology: deps.terminology, logger: deps.logger },
     );
     const merged = mergeGroundingIntoValidation(env.data as ConformanceData, g);
-    return JSON.stringify({
+    // normalized_bundle (normalize_ids) carries the caller's number spellings in conformanceText; JSON.parse above
+    // normalised them, so take that subtree from a lossless parse of the same text (fail-open: keep the parsed one).
+    const mergedData = merged as Record<string, unknown>;
+    if (mergedData.normalized_bundle !== undefined) {
+      try {
+        const lossless = parseLossless(conformanceText) as { data?: { normalized_bundle?: unknown } };
+        if (lossless?.data?.normalized_bundle !== undefined) mergedData.normalized_bundle = lossless.data.normalized_bundle;
+      } catch {
+        // keep the parsed tree
+      }
+    }
+    return stringifyLossless({
       ...env,
       data: merged,
       provenance: {

@@ -41,6 +41,9 @@ import {
 import { recordToolCall } from "./metrics.js";
 import { getStates as getMaintenanceStates } from "./admin/adminMaintenance.js";
 import { BUILD, SERVER_VERSION, TOOLS_VERSION, toolVersion } from "./toolVersions.js";
+import { losslessToolArgument } from "./requestContext.js";
+import { stringifyLossless } from "./losslessJson.js";
+import { BUNDLE_TYPES } from "./fhirBundleFinalize.js";
 import { LEXICON_SHA256, LEXICON_VERSION, groundingInputShape, validateBundleGroundingShape } from "./grounding/index.js";
 import { completenessInputShape, type CompletenessInput } from "./grounding/completeness/index.js";
 import {
@@ -1346,18 +1349,18 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
         "data.changes lists every rewrite, data.unresolved the references no entry matches.",
       inputSchema: { entries: z.array(z.record(z.any())), bundle_type: z.string().default("transaction"), context_id: z.string().nullish().default(null) },
     },
-    async ({ entries, bundle_type, context_id }) => {
+    async ({ entries, bundle_type, context_id }, extra) => {
       if (!Array.isArray(entries) || !entries.length) {
         return rawResult(JSON.stringify({ ok: false, data: null, warnings: [], error: { code: "INVALID_ARGUMENT", message: "entries must be a non-empty list", hint: "Pass entries as a non-empty array of {resource, key?, fullUrl?, request?} objects, e.g. [{\"resource\":{\"resourceType\":\"Patient\"},\"key\":\"patient-1\"}]." } }));
       }
       const { deps, pkg, note } = await svc.bundleFinalizeDeps(null, null);
-      const result = await fhirReference.buildBundle(entries as any[], bundle_type ?? "transaction", context_id ?? null, deps);
+      const result = await fhirReference.buildBundle(entries as any[], bundle_type ?? "transaction", context_id ?? null, deps, losslessToolArgument("fhir_build_bundle", "entries", extra?.requestId));
       const warnings = result.unresolved.length
         ? [`${result.unresolved.length} reference(s) could not be resolved within the bundle (see data.unresolved)`]
         : [];
       if (note) warnings.push(note);
       const provenance = { ...(pkg ? await svc.packageProvenance(pkg.package_id, pkg.version) : {}), tool: "fhir_build_bundle", toolVersion: toolVersion("fhir_build_bundle") };
-      return rawResult(JSON.stringify({ ok: true, data: result, warnings, provenance }));
+      return rawResult(stringifyLossless({ ok: true, data: result, warnings, provenance }));
     },
   );
 
@@ -1373,15 +1376,26 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
         "entry's final fullUrl; invalid Bundle.id / resource.id are repaired; a Bundle.type fixed by the Bundle profile is set and a document's " +
         "Composition moved first. Duplicate fullUrls (bdl-7) and references with no or several matching entries are reported with candidates, never " +
         "guessed. Returns {bundle, changes[{path, from, to, rule}], unresolved[{path, reference, candidates}], notes, id_map}; a finalized Bundle " +
-        "yields changes = []. Then validate with fhir_validate_bundle (or call it with normalize_ids=true to do both).",
+        "yields changes = []. Numbers keep the spelling you wrote (10.0 stays 10.0). Optional bundle_type sets Bundle.type (a type fixed by the " +
+        "Bundle profile wins). Then validate with fhir_validate_bundle (or call it with normalize_ids=true to do both).",
       inputSchema: {
         bundle: z.record(z.any()).describe("The complete Bundle as written"),
         ...pkg,
         bundle_profile: z.string().nullish().default(null).describe("Canonical URL (or id) of the target Bundle profile; omitted → the Bundle's meta.profile"),
+        bundle_type: z
+          .enum(BUNDLE_TYPES)
+          .nullish()
+          .default(null)
+          .describe("Bundle.type to set (FHIR R4 bundle-type code, e.g. collection when a document has no Composition); never overrides a type the Bundle profile fixes"),
       },
     },
-    async ({ bundle, package_id, version, bundle_profile }) =>
-      rawResult(await svc.finalizeBundle(bundle as Record<string, any>, package_id ?? null, version ?? null, bundle_profile ?? null)),
+    async ({ bundle, package_id, version, bundle_profile, bundle_type }, extra) =>
+      rawResult(
+        await svc.finalizeBundle(bundle as Record<string, any>, package_id ?? null, version ?? null, bundle_profile ?? null, {
+          bundleType: bundle_type ?? null,
+          lossless: losslessToolArgument("fhir_finalize_bundle", "bundle", extra?.requestId),
+        }),
+      ),
   );
 
   // Grounding collaborators: local-DB terminology names + the IG package for provenance.
@@ -1421,8 +1435,14 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
         ...validateBundleGroundingShape,
       },
     },
-    async ({ bundle, package_id, version, normalize_ids, ...g }) => {
-      const conformance = await svc.validateBundle(bundle as Record<string, any>, package_id ?? null, version ?? null, normalize_ids ?? false);
+    async ({ bundle, package_id, version, normalize_ids, ...g }, extra) => {
+      const conformance = await svc.validateBundle(
+        bundle as Record<string, any>,
+        package_id ?? null,
+        version ?? null,
+        normalize_ids ?? false,
+        normalize_ids ? losslessToolArgument("fhir_validate_bundle", "bundle", extra?.requestId) : undefined,
+      );
       return rawResult(await addBundleGrounding(conformance, bundle as Record<string, any>, { ...g, package_id, version } as ValidateGroundingArgs, groundingDeps));
     },
   );
@@ -1464,7 +1484,7 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
         generate_narrative: z.boolean().default(true),
       },
     },
-    async ({ profile, draft, context_id, key, package_id, version, generate_narrative }) =>
+    async ({ profile, draft, context_id, key, package_id, version, generate_narrative }, extra) =>
       rawResult(
         await svc.finalizeResource(
           profile,
@@ -1474,6 +1494,7 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
           package_id ?? null,
           version ?? null,
           generate_narrative ?? true,
+          losslessToolArgument("fhir_finalize_resource", "draft", extra?.requestId),
         ),
       ),
   );

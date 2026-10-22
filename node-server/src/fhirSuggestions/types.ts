@@ -20,7 +20,16 @@ export type SuggestionKind =
   | "replace_reference"
   | "replace_id"
   | "replace_bundle_type"
-  | "move_entry";
+  | "move_entry"
+  // Document / message Bundles without their head resource (fhirSuggestions/bundleType.ts, fhir_validate_bundle 1.8.0):
+  // a Bundle.type the entries' shape supports, or the missing Composition / MessageHeader as a new first entry.
+  | "replace_value"
+  | "add_resource"
+  // Binding-aware repairs (fhirSuggestions/bindings.ts, ISSUES_v10 A): a whole Coding {system, code, display}
+  // from the element's bound ValueSet(s) for an unknown CodeSystem URL; a value that is not in the
+  // element's ValueSet but a valid code of another bound element of the same resource (patch: move).
+  | "replace_coding"
+  | "move_value";
 
 /** A minimal edit, addressed with the validator's dotted instance paths (e.g. `Observation.code.coding[0].code`). */
 export interface SuggestionPatch {
@@ -68,6 +77,8 @@ export interface NormalizeCandidate {
   code: string;
   display: string | null;
   exact?: boolean;
+  /** The engine's relevance score (fhir_normalize_code `score`), when it reports one. */
+  score?: number;
 }
 
 /**
@@ -99,16 +110,25 @@ export interface SuggestionDeps {
    * given name (remove_property reasons). Small and cacheable; null = unavailable.
    */
   resourceElementPaths?(): Promise<Array<{ type: string; paths: string[] }> | null>;
+  /**
+   * Semantic similarity of `text` to each candidate label (embedding cosine, one per candidate;
+   * null = unavailable). Used to rank the codes of a small ValueSet that no lexical match orders.
+   */
+  similarity?(text: string, candidates: string[]): Promise<number[] | null>;
 }
 
 export interface SuggestOptions {
   /** Issues considered per call (in order); the rest get no suggestions. */
   maxIssues?: number;
   /**
-   * Calls to the expensive collaborators (normalize / validateAgainst / expand) per validation (default 20):
-   * the first maxRemoteCalls / 2 issues that need them get 2 calls each, in issue order.
+   * Calls to the expensive collaborators (normalize / similarity / validateAgainst) per validation
+   * (default 20), handed out in issue order: 1 per code / binding / display issue, 2 per unknown
+   * Coding system and reference chain, until the pool is spent. ValueSet expansion is local and
+   * not counted.
    */
   maxRemoteCalls?: number;
   /** Suggestions kept per issue. */
   maxSuggestions?: number;
+  /** Profiles the validation was asked for (besides the instance's meta.profile): element bindings are read from them. */
+  profiles?: string[];
 }

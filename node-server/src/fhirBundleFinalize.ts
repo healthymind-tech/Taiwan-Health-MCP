@@ -10,7 +10,9 @@
  * Guarantees:
  *  - the input is never mutated (deep clone, key order preserved);
  *  - nothing but fullUrl, Reference.reference strings, entry resource.id, Bundle.id,
- *    Bundle.type (profile-fixed) and entry order (document) is ever changed;
+ *    Bundle.type (profile-fixed, or requested through opts.bundleType) and entry order
+ *    (document) is ever changed; numbers keep the caller's spelling when the tool layer hands
+ *    in the lossless tree of the request (losslessFinalizedBundle, losslessJson.ts);
  *  - the same input always yields the same output (UUID v5 over a fixed namespace, seeded
  *    by the entry's resourceType / original fullUrl / resource.id / position plus a
  *    bundle-level salt = SHA-256 of the bundle with the rewritable fields stripped), and a
@@ -26,6 +28,7 @@
  */
 
 import { createHash } from "node:crypto";
+import { isRawNumber, restoreNumbers } from "./losslessJson.js";
 
 // --------------------------------------------------------------------------- //
 // Public types
@@ -39,7 +42,13 @@ export interface FinalizeChange {
   from: unknown;
   to: unknown;
   rule: FinalizeRule;
+  /** Why (only where a rule has several triggers: bundle-type requested by the caller). */
+  reason?: string;
 }
+
+/** FHIR R4 Bundle.type value set (http://hl7.org/fhir/ValueSet/bundle-type), in specification order. */
+export const BUNDLE_TYPES = ["document", "message", "transaction", "transaction-response", "batch", "batch-response", "history", "searchset", "collection"] as const;
+export type BundleType = (typeof BUNDLE_TYPES)[number];
 
 export interface FinalizeUnresolved {
   path: string;
@@ -68,6 +77,20 @@ export interface FinalizeOptions {
   bundleProfile?: string | null;
   /** Extra names an entry may be referenced by (fhir_build_bundle keys): entry index → names. */
   aliases?: Map<number, string[]>;
+  /**
+   * Bundle.type the caller asks for (R4 value set). Applied as rule `bundle-type` ("requested by
+   * caller") unless the resolved Bundle profile fixes the type — then the profile wins and a note
+   * reports the conflict. Never part of the salt, so UUIDs do not depend on it.
+   */
+  bundleType?: string | null;
+}
+
+/** One Bundle.type the entries' shape suggests (fhir_validate_bundle document suggestions, finalize notes). */
+export interface BundleTypeCandidate {
+  type: BundleType;
+  /** Heuristic confidence in [0, 1], by the evidence in `reason`. */
+  confidence: number;
+  reason: string;
 }
 
 /** Bundle-level core rules for fhir_get_profile_required_elements (R4). */
@@ -119,8 +142,9 @@ for (const t of [...PRIMITIVES, ...COMPLEX_TYPES]) KNOWN_TYPE_BY_SUFFIX.set(t[0]
 const MAX_DEPTH = 60;
 const MAX_CANDIDATES = 10;
 
+/** A JSON object — a lossless RawNumber (losslessJson.ts) is a scalar, never walked into. */
 function isObject(v: unknown): v is Record<string, any> {
-  return v !== null && typeof v === "object" && !Array.isArray(v);
+  return v !== null && typeof v === "object" && !Array.isArray(v) && !isRawNumber(v);
 }
 
 function clone<T>(v: T): T {
@@ -519,8 +543,13 @@ export async function finalizeBundle(input: Record<string, any>, deps: FinalizeD
       break;
     }
   }
+  const requested = typeof opts.bundleType === "string" && opts.bundleType.trim() ? opts.bundleType.trim() : null;
+  if (requested !== null && !(BUNDLE_TYPES as readonly string[]).includes(requested)) {
+    throw new TypeError(`bundle_type must be one of ${BUNDLE_TYPES.join(" | ")}`);
+  }
+  let fixed: string | null = null;
   if (bundleSdx) {
-    const fixed = fixedBundleType(bundleSdx);
+    fixed = fixedBundleType(bundleSdx);
     if (fixed && bundle.type !== fixed) {
       changes.push({ path: "Bundle.type", from: bundle.type ?? null, to: fixed, rule: "bundle-type" });
       bundle.type = fixed;
@@ -530,6 +559,14 @@ export async function finalizeBundle(input: Record<string, any>, deps: FinalizeD
       if (!(name in bundle)) notes.push(`Bundle.${name} is required by ${bundleSdx.url} (min ${el.min}) but missing; it needs a real value and is not generated`);
     }
   }
+  if (requested !== null) {
+    if (fixed && requested !== fixed) {
+      notes.push(`bundle_type '${requested}' was requested but ${bundleSdx!.url} fixes Bundle.type to '${fixed}'; the profile's value is kept`);
+    } else if (!fixed && bundle.type !== requested) {
+      changes.push({ path: "Bundle.type", from: bundle.type ?? null, to: requested, rule: "bundle-type", reason: "requested by caller (bundle_type)" });
+      bundle.type = requested;
+    }
+  }
   if (bundle.type === "document" && Array.isArray(bundle.entry)) {
     const k = bundle.entry.findIndex((e: unknown) => isObject(e) && isObject(e.resource) && e.resource.resourceType === "Composition");
     if (k > 0) {
@@ -537,7 +574,13 @@ export async function finalizeBundle(input: Record<string, any>, deps: FinalizeD
       bundle.entry.unshift(comp);
       changes.push({ path: `Bundle.entry[${k}]`, from: `Bundle.entry[${k}]`, to: "Bundle.entry[0]", rule: "document-order" });
     } else if (k < 0 && bundle.entry.length) {
-      notes.push("Bundle.type is document but no entry holds a Composition (bdl-11); add one as the first entry");
+      const alt = fixed ? null : suggestBundleType(bundle)[0];
+      notes.push(
+        "Bundle.type is document but no entry holds a Composition (bdl-11): " +
+          (alt
+            ? `either set bundle_type=${alt.type} (${alt.reason}) or add a Composition as the first entry`
+            : `add a Composition as the first entry (Bundle.type is fixed to document by ${bundleSdx!.url})`),
+      );
     }
   }
 
@@ -740,6 +783,92 @@ export async function finalizeBundle(input: Record<string, any>, deps: FinalizeD
 }
 
 // --------------------------------------------------------------------------- //
+// Bundle.type suggestions (evidence from the entries; FHIR R4 Bundle.type definitions)
+// --------------------------------------------------------------------------- //
+
+/** Does any Reference string inside the entries name another entry (fullUrl, Type/id or bare id)? */
+function hasInternalReferences(bundle: Record<string, any>): boolean {
+  const entries: unknown[] = Array.isArray(bundle.entry) ? bundle.entry : [];
+  const names = new Set<string>();
+  for (const e of entries) {
+    if (!isObject(e)) continue;
+    if (typeof e.fullUrl === "string" && e.fullUrl) names.add(e.fullUrl);
+    if (isObject(e.resource) && (typeof e.resource.id === "string" || typeof e.resource.id === "number")) {
+      names.add(String(e.resource.id));
+      if (typeof e.resource.resourceType === "string") names.add(`${e.resource.resourceType}/${String(e.resource.id)}`);
+    }
+  }
+  if (!names.size) return false;
+  const sites: RefSite[] = [];
+  for (const e of entries) if (isObject(e) && isObject(e.resource)) nameWalk(e.resource, "", 0, sites);
+  return sites.some((s) => typeof s.holder.reference === "string" && names.has(s.holder.reference.trim()));
+}
+
+/**
+ * Bundle.type candidates for a Bundle whose entries show what it is (highest confidence first,
+ * never empty): every entry carries a `request` → transaction (batch when no entry references
+ * another); some do → transaction, then collection; every entry carries `search` → searchset;
+ * otherwise collection. Derived from the entries only — nothing IG-specific.
+ */
+export function suggestBundleType(bundle: Record<string, any>): BundleTypeCandidate[] {
+  const entries = (Array.isArray(bundle.entry) ? bundle.entry : []).filter(isObject);
+  const n = entries.length;
+  const withRequest = entries.filter((e) => isObject(e.request)).length;
+  const withResponse = entries.filter((e) => isObject(e.response)).length;
+  const withSearch = entries.filter((e) => isObject(e.search)).length;
+  const out: BundleTypeCandidate[] = [];
+  if (n && withResponse === n) {
+    out.push({ type: "transaction-response", confidence: 0.6, reason: "every entry carries a response" });
+    out.push({ type: "batch-response", confidence: 0.4, reason: "every entry carries a response" });
+  } else if (n && withRequest === n) {
+    out.push({ type: "transaction", confidence: 0.7, reason: "every entry carries a request" });
+    if (!hasInternalReferences(bundle)) out.push({ type: "batch", confidence: 0.4, reason: "every entry carries a request and none references another entry" });
+  } else if (withRequest) {
+    out.push({ type: "transaction", confidence: 0.5, reason: `${withRequest} of ${n} entries carry a request (the others need one too)` });
+    out.push({ type: "collection", confidence: 0.4, reason: `${withRequest} of ${n} entries carry a request (drop them for a collection)` });
+  } else if (n && withSearch === n) {
+    out.push({ type: "searchset", confidence: 0.6, reason: "every entry carries search" });
+    out.push({ type: "collection", confidence: 0.4, reason: "entries carry no request or response" });
+  } else {
+    out.push({ type: "collection", confidence: 0.8, reason: "entries carry no request, response or search" });
+  }
+  return out;
+}
+
+// --------------------------------------------------------------------------- //
+// Lossless numbers (losslessJson.ts): the finalized Bundle with the caller's number spellings
+// --------------------------------------------------------------------------- //
+
+/** Output position → input position of the entries, from the `document-order` change (identity otherwise). */
+export function entryOrderOf(changes: FinalizeChange[], count: number): number[] {
+  const order = Array.from({ length: count }, (_, i) => i);
+  for (const c of changes) {
+    if (c.rule !== "document-order") continue;
+    const m = /^Bundle\.entry\[(\d+)\]$/.exec(String(c.from));
+    const k = m ? Number(m[1]) : -1;
+    if (k > 0 && k < count) order.splice(0, 0, ...order.splice(k, 1));
+  }
+  return order;
+}
+
+/**
+ * The finalized Bundle (`fin.bundle`, ordinary tree) with each number replaced by the caller's
+ * spelling from `source`, the lossless tree of the Bundle as the request wrote it (parseLossless);
+ * the entry permutation of a document reorder is honoured. Same JSON value as `fin.bundle`;
+ * null when `source` is unusable (then the ordinary tree is the answer).
+ */
+export function losslessFinalizedBundle(out: Record<string, any>, changes: FinalizeChange[], source: unknown): Record<string, any> | null {
+  if (!isObject(source)) return null;
+  let src: Record<string, any> = source;
+  if (Array.isArray(out.entry) && Array.isArray(src.entry) && src.entry.length === out.entry.length) {
+    const order = entryOrderOf(changes, out.entry.length);
+    if (order.some((v, i) => v !== i)) src = { ...src, entry: order.map((i) => src.entry[i]) };
+  }
+  const restored = restoreNumbers(out, src);
+  return isObject(restored) ? restored : null;
+}
+
+// --------------------------------------------------------------------------- //
 // Bundle-level rules for fhir_get_profile_required_elements (R4)
 // --------------------------------------------------------------------------- //
 
@@ -784,8 +913,8 @@ export function bundleRules(sd: Record<string, any> | null): BundleRules {
       "an identifier-only reference needs no reference string.",
     ids: "Bundle.id and resource.id, when present, match [A-Za-z0-9\\-.]{1,64} (never a urn or URL); a resource.id need not equal the fullUrl's UUID.",
     bundle_type: fixed
-      ? `Bundle.type must be '${fixed}' (fixed by ${sdx?.url ?? "the profile"})`
-      : "Bundle.type is not fixed by this profile: choose it per use (collection, document, transaction …)",
+      ? `Bundle.type must be '${fixed}' (fixed by ${sdx?.url ?? "the profile"}); fhir_finalize_bundle sets it, and its bundle_type argument cannot override it`
+      : "Bundle.type is not fixed by this profile: choose it per use (collection, document, transaction …), or pass bundle_type to fhir_finalize_bundle to set it deterministically",
     fixed_type: fixed,
     entry_order:
       fixed === null || fixed === "document" || fixed === "message"

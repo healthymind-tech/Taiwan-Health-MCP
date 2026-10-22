@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { RawJson, stringifyLossless } from "../losslessJson.js";
 import { z } from "zod";
 import type { CatalogTool, ToolGroupInfo } from "../mcp.js";
 import type { ModuleStatus } from "../moduleStatus.js";
@@ -256,4 +257,22 @@ test("GET tools: maintenance state per tool and group (only modules with a toggl
   const failing = fakeDeps({ maintenanceStates: async () => { throw new Error("db down"); } });
   const b2 = (await handleMcpApi(failing, new InvokeRateLimiter(30, () => 0), "GET", "/admin/api/mcp/tools", {}, "a"))!.body as any;
   assert.deepEqual(b2.tools.find((t: any) => t.name === "search_medical_codes").maintenance, { module: "icd", active: false });
+});
+
+test("invoke: the tool's JSON text is returned verbatim as resultText (number spellings survive the playground response), body.result stays the parsed object", async () => {
+  const text = '{"ok":true,"data":{"bundle":{"valueQuantity":{"value":10.0}},"n":1e3}}';
+  const deps = { ...fakeDeps(), invoke: async () => text };
+  const lim = new InvokeRateLimiter(30, () => 0);
+  const out = await handleMcpApi(deps, lim, "POST", "/admin/api/mcp/tools/search_medical_codes/invoke", { arguments: { keyword: "x" } }, "admin");
+  assert.equal(out?.status, 200);
+  assert.equal(out?.resultText, text);
+  assert.deepEqual((out!.body as Record<string, any>).result, JSON.parse(text));
+  // What adminApp sends: the body with result spliced in verbatim.
+  const sent = stringifyLossless({ ...(out!.body as Record<string, unknown>), result: new RawJson(out!.resultText!) });
+  assert.ok(sent.includes('"value":10.0') && sent.includes('"n":1e3'));
+  assert.deepEqual(JSON.parse(sent).result, JSON.parse(text));
+  // A non-JSON tool text is wrapped, no resultText.
+  const plain = await handleMcpApi({ ...fakeDeps(), invoke: async () => "just text" }, lim, "POST", "/admin/api/mcp/tools/search_medical_codes/invoke", { arguments: { keyword: "x" } }, "admin");
+  assert.equal(plain?.resultText, undefined);
+  assert.deepEqual((plain!.body as Record<string, any>).result, { result: "just text" });
 });

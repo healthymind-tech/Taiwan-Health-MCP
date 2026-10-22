@@ -30,6 +30,7 @@ export const EXTERNAL: Record<string, Record<string, string[]>> = {
     "38341003": ["Hypertensive disorder, systemic arterial", "Hypertension"],
     "195967001": ["Asthma"],
     "386661006": ["Fever"],
+    "26643006": ["Oral route"],
   },
   "http://hl7.org/fhir/sid/icd-10-cm": {
     "E11.9": ["Type 2 diabetes mellitus without complications"],

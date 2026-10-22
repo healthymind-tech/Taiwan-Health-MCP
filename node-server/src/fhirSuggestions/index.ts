@@ -10,8 +10,10 @@
  */
 
 import { suggestCanonical, type CanonicalContext } from "./canonicals.js";
-import { codingContext, suggestBinding, suggestDisplay, suggestUnknownCode, type Budget } from "./codes.js";
+import { suggestBoundCoding, suggestCrossSystem, suggestMoveValue, type WalkOptions } from "./bindings.js";
+import { codingContext, LIST_ALL_VS, parseBindingValueSet, suggestBinding, suggestDisplay, suggestUnknownCode, type Budget } from "./codes.js";
 import { suggestChoiceType, suggestProperty } from "./properties.js";
+import { attachBundleTypeSuggestions } from "./bundleType.js";
 import { causedBy } from "./references.js";
 import type { Suggestion, SuggestionDeps, SuggestOptions } from "./types.js";
 import { suggestUcum } from "./ucum.js";
@@ -60,7 +62,22 @@ function canonicalContext(root: any, issuePath: string): CanonicalContext {
   return { expect: "any", path: issuePath };
 }
 
-async function suggestFor(issue: Record<string, any>, all: Array<Record<string, any>>, root: any, deps: SuggestionDeps, budget: Budget): Promise<{ suggestions?: Suggestion[]; caused_by?: any[] }> {
+/** Context of an unknown-URL issue: the URL and where it sits (a CodeSystem-not-found issue is reported on the Coding, not its .system). */
+function urlContext(root: any, msg: string, path: string): { url: string; ctx: CanonicalContext } {
+  const url = (RE_NO_DEFINITION.exec(msg) || RE_CS_NOT_FOUND.exec(msg) || RE_VS_AS_SYSTEM.exec(msg))![1];
+  const systemIssue = RE_CS_NOT_FOUND.test(msg) || RE_VS_AS_SYSTEM.test(msg);
+  const ctx = canonicalContext(root, systemIssue && !path.endsWith(".system") ? `${path}.system` : path);
+  if (systemIssue) ctx.expect = "CodeSystem";
+  return { url, ctx };
+}
+
+/** An unknown-URL issue on a Coding.system whose Coding has a code / display: its bound ValueSets can name the Coding. */
+function codingSystemIssue(root: any, issue: Record<string, any>): boolean {
+  const { ctx } = urlContext(root, String(issue.message || ""), String(issue.path || ""));
+  return ctx.expect === "CodeSystem" && !!(ctx.code || ctx.display);
+}
+
+async function suggestFor(issue: Record<string, any>, all: Array<Record<string, any>>, root: any, deps: SuggestionDeps, budget: Budget, walk: WalkOptions = {}): Promise<{ suggestions?: Suggestion[]; caused_by?: any[] }> {
   const msg = String(issue.message || "");
   const path = String(issue.path || "");
   switch (suggestionCategory(issue)) {
@@ -82,21 +99,22 @@ async function suggestFor(issue: Record<string, any>, all: Array<Record<string, 
     }
     case "unknown_code": {
       const m = RE_UNKNOWN_CODE.exec(msg)!;
-      return { suggestions: await suggestUnknownCode(deps, root, path, m[2], m[1], budget) };
+      // ... plus the code under another CodeSystem of the element's bound ValueSet / of the same name (bindings.ts).
+      return { suggestions: [...(await suggestUnknownCode(deps, root, path, m[2], m[1], budget)), ...(await suggestCrossSystem(deps, root, path, m[2], m[1], walk))] };
     }
     case "unrecognized_property":
       return { suggestions: await suggestProperty(deps, root, path, RE_UNRECOGNIZED.exec(msg)![1]) };
     case "unknown_url": {
-      const url = (RE_NO_DEFINITION.exec(msg) || RE_CS_NOT_FOUND.exec(msg) || RE_VS_AS_SYSTEM.exec(msg))![1];
-      const systemIssue = RE_CS_NOT_FOUND.test(msg) || RE_VS_AS_SYSTEM.test(msg);
-      const ctx = canonicalContext(root, systemIssue && !path.endsWith(".system") ? `${path}.system` : path);
-      if (systemIssue) ctx.expect = "CodeSystem";
-      return { suggestions: await suggestCanonical(deps, url, ctx) };
+      const { url, ctx } = urlContext(root, msg, path);
+      // A Coding's system: also the codes / CodeSystems of the element's bound ValueSets (bindings.ts).
+      const bound = ctx.expect === "CodeSystem" ? await suggestBoundCoding(deps, root, ctx.path, url, budget, walk) : [];
+      return { suggestions: [...(await suggestCanonical(deps, url, ctx)), ...bound] };
     }
     case "wrong_display":
       return { suggestions: await suggestDisplay(deps, root, path, msg, budget) };
     case "binding":
-      return { suggestions: await suggestBinding(deps, root, path, msg, budget) };
+      // ... plus the value as a valid code of another bound element of the same resource (bindings.ts).
+      return { suggestions: [...(await suggestBinding(deps, root, path, msg, budget)), ...(await suggestMoveValue(deps, root, path, parseBindingValueSet(msg), walk))] };
     case "choice_type":
       return { suggestions: suggestChoiceType(root, path, msg) };
     case "reference_chain":
@@ -110,16 +128,20 @@ async function suggestFor(issue: Record<string, any>, all: Array<Record<string, 
  * Add ranked `suggestions` (and `caused_by` for reference-chain errors) to `issues`, in place.
  * Never throws; never removes or changes an existing field.
  */
-/** Categories whose suggester calls the expensive collaborators (normalize / expand / validateAgainst). */
-const REMOTE = new Set(["unknown_code", "binding", "wrong_display", "reference_chain"]);
+/**
+ * Expensive collaborator calls (normalize / similarity / validateAgainst) a category's suggester
+ * makes at most; ValueSet expansion is local and not counted. An unknown URL counts only when it
+ * is a Coding's system with a code / display (the bound ValueSets are searched for the Coding).
+ */
+const REMOTE_CALLS: Record<string, number> = { unknown_code: 1, binding: 1, wrong_display: 1, reference_chain: 2, unknown_url: 2 };
 
 /**
  * Add ranked `suggestions` (and `caused_by` for reference-chain errors) to `issues`, in place.
  * Never throws; never removes or changes an existing field.
  *
- * Cost bound: the expensive collaborators get a per-issue allowance, handed out in issue order
- * to the first `maxRemoteCalls / 2` issues that need them — fixed before anything runs, so the
- * issues can be processed concurrently and the output is still deterministic.
+ * Cost bound: the expensive collaborators get a per-issue allowance (REMOTE_CALLS), handed out
+ * in issue order until `maxRemoteCalls` is spent — fixed before anything runs, so the issues can
+ * be processed concurrently and the output is still deterministic.
  */
 export async function attachSuggestions(
   issues: Array<Record<string, any>>,
@@ -129,8 +151,9 @@ export async function attachSuggestions(
 ): Promise<void> {
   const maxIssues = opts.maxIssues ?? 60;
   const maxSuggestions = opts.maxSuggestions ?? 5;
-  let remoteIssues = Math.floor((opts.maxRemoteCalls ?? 20) / 2);
+  let remoteCalls = opts.maxRemoteCalls ?? 20;
   let displayLookups = 1;
+  const walk: WalkOptions = { profiles: opts.profiles };
   // Plan: which issues, which key (identical questions share one answer), which allowance.
   const jobs = new Map<string, { issue: Record<string, any>; budget: Budget }>();
   const plan: Array<{ issue: Record<string, any>; key: string; category: string }> = [];
@@ -144,11 +167,12 @@ export async function attachSuggestions(
     const key = url ? `url\u0000${String(issue.path).replace(/\.system$/, "")}\u0000${url}` : `${issue.path}\u0000${issue.message}`;
     plan.push({ issue, key, category });
     if (jobs.has(key)) continue;
-    const remote = REMOTE.has(category) && remoteIssues > 0;
-    if (remote) remoteIssues--;
+    const need = category === "unknown_url" ? (codingSystemIssue(root, issue) ? REMOTE_CALLS.unknown_url : 0) : REMOTE_CALLS[category] ?? 0;
+    const grant = need > 0 && remoteCalls >= need ? need : 0;
+    remoteCalls -= grant;
     const display = category === "wrong_display" && displayLookups > 0;
     if (display) displayLookups--;
-    jobs.set(key, { issue, budget: { left: remote ? 2 : 0, displayLeft: display ? 1 : 0 } });
+    jobs.set(key, { issue, budget: { left: grant, displayLeft: display ? 1 : 0 } });
   }
   // Run (bounded concurrency); each job only reads shared caches, so timing cannot change a result.
   const results = new Map<string, { suggestions?: Suggestion[]; caused_by?: any[] } | null>();
@@ -157,7 +181,7 @@ export async function attachSuggestions(
     for (let next = queue.shift(); next; next = queue.shift()) {
       const [key, job] = next;
       try {
-        results.set(key, await suggestFor(job.issue, issues, root, deps, job.budget));
+        results.set(key, await suggestFor(job.issue, issues, root, deps, job.budget, walk));
       } catch {
         results.set(key, null); // fail-open: no suggestions for this issue
       }
@@ -167,8 +191,9 @@ export async function attachSuggestions(
   for (const { issue, key, category } of plan) {
     const r = results.get(key);
     if (!r) continue;
-    const list = r.suggestions ? rankSuggestions(r.suggestions, category === "binding" ? Math.max(maxSuggestions, 12) : maxSuggestions) : [];
+    const list = r.suggestions ? rankSuggestions(r.suggestions, category === "binding" ? Math.max(maxSuggestions, LIST_ALL_VS) : maxSuggestions) : [];
     if (list.length) issue.suggestions = list;
     if (r.caused_by && r.caused_by.length) issue.caused_by = r.caused_by;
   }
+  if (isObject(root) && root.resourceType === "Bundle") await attachBundleTypeSuggestions(issues, root, deps); // document / message without its head resource (bundleType.ts)
 }
