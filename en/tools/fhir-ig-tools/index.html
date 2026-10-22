@@ -1078,6 +1078,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#bundle-finalize" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Bundle finalisation (fhir_finalize_bundle / normalize_ids)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#validation-suggestions" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2531,6 +2542,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#bundle-finalize" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Bundle finalisation (fhir_finalize_bundle / normalize_ids)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#validation-suggestions" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2784,8 +2806,13 @@ If none applies the call fails with <code>NO_DEFAULT_IG</code> (no arbitrary pac
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_build_bundle</code></td>
-<td style="text-align: left;">Assemble several resources into a Bundle</td>
+<td style="text-align: left;">Assemble several resources into a Bundle: a <code>key</code> becomes a deterministic UUID v5 fullUrl (the same input always yields the same Bundle), references written inside resources as <code>key</code>, <code>urn:uuid:&lt;key&gt;</code> or <code>&lt;Type&gt;/&lt;key&gt;</code> are rewired to the generated fullUrl, and an invalid <code>fullUrl</code> is normalised by the <code>fhir_finalize_bundle</code> rules. <code>data.changes</code> lists every rewrite, <code>data.unresolved</code> the references no entry matches (1.2.0)</td>
 <td style="text-align: left;"><code>entries</code>, <code>bundle_type</code> (<code>transaction</code> by default), <code>context_id</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>fhir_finalize_bundle</code></td>
+<td style="text-align: left;"><strong>Call before emitting the final Bundle</strong>: it only normalises <code>fullUrl</code>, <code>reference</code> and <code>id</code> and never touches clinical content (see "Bundle finalisation" below). Returns the finalised <code>bundle</code>, every change as <code>changes[{path, from, to, rule}]</code>, the references it could not decide as <code>unresolved[{path, reference, candidates}]</code>, <code>notes</code> and <code>id_map</code></td>
+<td style="text-align: left;"><code>bundle</code>, <code>package_id</code>, <code>version</code>, <code>bundle_profile</code> (canonical or id of the target Bundle profile; defaults to <code>meta.profile</code>)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_validate_resource</code></td>
@@ -2794,8 +2821,8 @@ If none applies the call fails with <code>NO_DEFAULT_IG</code> (no arbitrary pac
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_validate_bundle</code></td>
-<td style="text-align: left;">Validate an entire Bundle (each entry against its <code>meta.profile</code>, plus reference integrity inside the Bundle). An optional <code>source_text</code> adds a grounding check and merges the results (see below)</td>
-<td style="text-align: left;"><code>bundle</code>, <code>source_text</code>, <code>site_config</code>, <code>evidence_map</code>, <code>grounding</code>, <code>grounding_verbosity</code></td>
+<td style="text-align: left;">Validate an entire Bundle (each entry against its <code>meta.profile</code>, plus reference integrity inside the Bundle). ID-class errors (<code>UUIDs must be valid…</code>, unresolved references, missing fullUrl, bdl-7, invalid id) carry <code>suggestions</code> and a Bundle-level <code>id_map</code> / <code>id_changes</code>; with <code>normalize_ids=true</code> the Bundle is finalised first and validated as <code>normalized_bundle</code> (see "Bundle finalisation" below). An optional <code>source_text</code> adds a grounding check and merges the results (see further below)</td>
+<td style="text-align: left;"><code>bundle</code>, <code>normalize_ids</code> (<code>false</code> by default), <code>source_text</code>, <code>site_config</code>, <code>evidence_map</code>, <code>grounding</code>, <code>grounding_verbosity</code></td>
 </tr>
 </tbody>
 </table>
@@ -2817,6 +2844,40 @@ If none applies the call fails with <code>NO_DEFAULT_IG</code> (no arbitrary pac
 <li><strong>Failed lookups are never a pass</strong>: when any definition / terminology lookup fails during a validation because of database trouble (connection lost, recovery mode, timeouts; missing tables / columns excepted), the result carries an extra error issue (<code>code: "exception"</code>, <code>Validation incomplete: N … lookups failed …</code>), <code>valid: false</code>, <code>checked_fully: false</code> and <code>lookups_failed</code>; an exception inside the validator itself now returns a normal result with a fatal <code>exception</code> issue instead of a failed tool call.</li>
 <li><code>fhir_validate_bundle</code>: an entry without a usable resource (written as an array, no <code>resourceType</code>) has no <code>entries</code> row; its issues (e.g. <code>must be a simple value, not an Array</code>) are now listed in the Bundle-level <code>issues</code> instead of being lost.</li>
 </ul>
+<h3 id="bundle-finalize">Bundle finalisation (fhir_finalize_bundle / normalize_ids)<a class="headerlink" href="#bundle-finalize" title="Permanent link">&para;</a></h3>
+<p>Models — weaker ones especially — write readable but malformed identities: <code>fullUrl: "urn:uuid:patient-1"</code>, references as <code>Patient/patient-1</code> or a bare id, <code>Bundle.id</code> as a urn. None of this is clinical content, yet the official validator rejects the whole Bundle. <code>fhir_finalize_bundle</code> hands that numbering-and-wiring work to the tool. Every rule comes from the FHIR R4 core specification or from the package's StructureDefinitions — <strong>nothing is special-cased per IG</strong>:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Rule</th>
+<th style="text-align: left;">What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>fullUrl-uuid</code> (mandatory)</td>
+<td style="text-align: left;">Valid values are kept (lowercase <code>urn:uuid:&lt;UUID&gt;</code>, <code>urn:oid:</code>, absolute <code>http(s)://</code>); an uppercase UUID is lowercased; anything else (a label, missing, empty) gets a <strong>deterministic UUID v5</strong>: fixed namespace, seeded by (resourceType, original fullUrl, resource.id, entry position) plus a Bundle-level salt (SHA-256 of the Bundle with the rewritable fields stripped), so the same input always yields the same output and different Bundles never collide</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>reference-rewire</code> (mandatory)</td>
+<td style="text-align: left;">Every Reference-typed element is located through the resource's StructureDefinition snapshot (the profile when <code>meta.profile</code> resolves, else the core definition) — including extension <code>valueReference</code> (definition resolved by url / slice), <code>Composition.section.entry</code>, <code>Provenance.target</code>, datatype children such as <code>Identifier.assigner</code>, backbone elements and <code>contained</code> resources. The original fullUrl, a case-different UUID, <code>Type/id</code> (matching <code>resource.id</code>) and a bare id all map to the same entry and are rewritten to its final fullUrl. A bare id / type-less form that matches several entries is disambiguated by the element's <code>targetProfile</code> types; still ambiguous or missing → listed in <code>unresolved</code> with same-type entries as <code>candidates</code>, never guessed. <code>#contained</code>, absolute URLs outside the Bundle and identifier-only logical references are left alone; <code>…/_history/v</code> is resolved with the version kept</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>resource-id</code> (mandatory)</td>
+<td style="text-align: left;">A <code>resource.id</code> / <code>Bundle.id</code> outside <code>[A-Za-z0-9\-.]{1,64}</code> takes its last segment (<code>urn:uuid:…</code> → the UUID); if still invalid, <code>resource.id</code> becomes the entry's UUID and <code>Bundle.id</code> a generated value</td>
+</tr>
+<tr>
+<td style="text-align: left;">bdl-7</td>
+<td style="text-align: left;">Duplicate fullUrls are only reported (<code>notes</code>), never merged or dropped; references to a duplicated label become <code>unresolved</code> with both candidates</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>bundle-type</code> / <code>document-order</code> (profile-driven)</td>
+<td style="text-align: left;">When the StructureDefinition of <code>bundle_profile</code> (or <code>meta.profile</code>) fixes <code>Bundle.type</code> (fixed / pattern) it is set; for <code>type=document</code> the Composition is moved to the first entry. Elements the profile requires with real values (<code>Bundle.identifier</code>, <code>Bundle.timestamp</code> …) are only reported in <code>notes</code>, never generated</td>
+</tr>
+</tbody>
+</table>
+<p>Apart from those fields the output Bundle is identical to the input (deep copy, key order preserved); an already valid Bundle is returned unchanged with <code>changes: []</code>, and finalising a finalised Bundle changes nothing. Without <code>package_id</code> the package is resolved from <code>bundle_profile</code> / <code>meta.profile</code>; when no IG resolves, <code>hl7.fhir.r4.core</code> is used.</p>
+<p><code>fhir_validate_bundle</code> shares the engine: by default (<code>normalize_ids=false</code>) ID-class errors carry <code>suggestions</code> (<code>replace_fullurl</code> / <code>replace_reference</code> / <code>replace_id</code> / <code>move_entry</code> / <code>replace_bundle_type</code>) and <code>data</code> gains the full map <code>id_map</code> (old → new), <code>id_changes</code> (every path that must change together) and <code>id_unresolved</code>; a Bundle without ID-class issues is byte-identical to 1.6.1. With <code>normalize_ids=true</code> the Bundle is finalised first, the <strong>normalised</strong> Bundle is validated and returned as <code>normalized_bundle</code> with <code>id_changes</code>, and each fixed problem is noted as an <code>information</code> issue. <code>fhir_get_profile_required_elements</code> on a Bundle profile additionally returns <code>bundle_rules</code> (fullUrl format, references = the target's fullUrl, id format, a profile-fixed <code>Bundle.type</code>, document / message ordering, required elements and entry slices), likewise generated from the core specification and the StructureDefinition.</p>
 <h3 id="validation-suggestions">Fix suggestions (suggestions / caused_by)<a class="headerlink" href="#validation-suggestions" title="Permanent link">&para;</a></h3>
 <p>Besides saying what is wrong, validation issues carry, where possible, "what to change it to": <code>suggestions</code> is a list of candidates ordered by <code>confidence</code> (at most 5 per issue; up to 12 for a binding error on a small ValueSet), and reference-chain errors get <code>caused_by</code>. Both are <strong>additive</strong> — the set of issues, their severity and message, and <code>valid</code> are unchanged; the field is absent when there is no suggestion.</p>
 <pre><code class="language-json">{&quot;severity&quot;: &quot;error&quot;, &quot;path&quot;: &quot;MedicationRequest.dosageInstruction[0].timing.repeat&quot;, &quot;message&quot;: &quot;Unrecognized property 'periodUnits'&quot;,
@@ -2870,7 +2931,12 @@ If none applies the call fails with <code>NO_DEFAULT_IG</code> (no arbitrary pac
 <tr>
 <td style="text-align: left;"><code>Unable to find a profile match for urn:uuid:X</code></td>
 <td style="text-align: left;"><code>caused_by</code></td>
-<td style="text-align: left;">The referenced resource's own errors (<code>fullUrl</code>, <code>entry</code>, <code>path</code>, <code>message</code>); when it has none, its errors against the profile the reference requires (with <code>profile</code>)</td>
+<td style="text-align: left;">The referenced resource's own errors (<code>fullUrl</code>, <code>entry</code>, <code>path</code>, <code>message</code>); when it has none, its errors against the profile the reference requires (with <code>profile</code>); when X is a label-style reference, also a <code>replace_reference</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>UUIDs must be valid and lowercase</code>, missing fullUrl, <code>URN reference is not locally contained</code>, <code>Entry N matches … by type and id</code>, <code>Relative Reference … missing a fullUrl</code>, <code>Invalid Resource id</code>, bdl-7 / bdl-11</td>
+<td style="text-align: left;"><code>replace_fullurl</code> / <code>replace_reference</code> / <code>replace_id</code> / <code>move_entry</code> / <code>replace_bundle_type</code></td>
+<td style="text-align: left;">The deterministic value <code>fhir_finalize_bundle</code> would apply (always the same for the same input); an unresolvable reference lists the fullUrls of same-type entries as lower-confidence candidates; the whole map is in <code>data.id_map</code> / <code>id_changes</code> (see "Bundle finalisation")</td>
 </tr>
 </tbody>
 </table>
@@ -2955,12 +3021,24 @@ Every issue carries <code>rule</code> and <code>source:"grounding"</code>, and i
 </thead>
 <tbody>
 <tr>
-<td style="text-align: left;"><code>fhir_validate_resource</code>, <code>fhir_validate_bundle</code></td>
+<td style="text-align: left;"><code>fhir_validate_bundle</code></td>
+<td style="text-align: left;">1.7.0 (<code>normalize_ids</code>, ID-class <code>suggestions</code> and <code>id_map</code> / <code>id_changes</code>; output unchanged from 1.6.1 when there is no ID-class issue)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>fhir_validate_resource</code></td>
 <td style="text-align: left;">1.6.1 (validator v8: unknown HL7-space CodeSystems always errors, whitespace in references, RxNorm displays naming another drug, <code>exception</code> issues for failed lookups / crashes; 1.6.0: issue <code>suggestions</code> / <code>caused_by</code>)</td>
 </tr>
 <tr>
+<td style="text-align: left;"><code>fhir_finalize_bundle</code></td>
+<td style="text-align: left;">1.0.0 (Bundle finalisation: fullUrl-uuid / reference-rewire / resource-id / bundle-type / document-order)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>fhir_build_bundle</code></td>
+<td style="text-align: left;">1.2.0 (shares the finalisation engine: deterministic UUIDs, key / urn:uuid:key / Type/key references rewired, invalid fullUrls normalised, <code>changes</code>)</td>
+</tr>
+<tr>
 <td style="text-align: left;"><code>fhir_get_profile_required_elements</code></td>
-<td style="text-align: left;">1.3.0 (derived rows: allowedCodes + derivation rule; <code>include_mustsupport="defaults"</code>; <code>optional</code>)</td>
+<td style="text-align: left;">1.4.0 (<code>bundle_rules</code> for Bundle profiles; 1.3.0: derived rows: allowedCodes + derivation rule; <code>include_mustsupport="defaults"</code>; <code>optional</code>)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_list_igs</code>, <code>fhir_list_artifacts</code>, <code>fhir_search_artifacts</code>, <code>fhir_list_resource_profiles</code> (new <code>compact</code>)</td>
