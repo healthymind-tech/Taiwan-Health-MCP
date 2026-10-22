@@ -2811,8 +2811,8 @@
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_finalize_bundle</code></td>
-<td style="text-align: left;"><strong>在輸出最終 Bundle 前呼叫</strong>：只整理 <code>fullUrl</code>、<code>reference</code> 和 <code>id</code>，不改動臨床內容（見下節「Bundle 定稿」）。回傳整理後的 <code>bundle</code>、每一處改動 <code>changes[{path, from, to, rule}]</code>、無法確定的引用 <code>unresolved[{path, reference, candidates}]</code>、<code>notes</code> 與 <code>id_map</code></td>
-<td style="text-align: left;"><code>bundle</code>, <code>package_id</code>, <code>version</code>, <code>bundle_profile</code>（目標 Bundle profile 的 canonical 或 id；省略時取 <code>meta.profile</code>）</td>
+<td style="text-align: left;"><strong>在輸出最終 Bundle 前呼叫</strong>：只整理 <code>fullUrl</code>、<code>reference</code> 和 <code>id</code>，不改動臨床內容（見下節「Bundle 定稿」）；數字保留呼叫端的原始寫法（<code>10.0</code> 仍是 <code>10.0</code>）。回傳整理後的 <code>bundle</code>、每一處改動 <code>changes[{path, from, to, rule}]</code>、無法確定的引用 <code>unresolved[{path, reference, candidates}]</code>、<code>notes</code> 與 <code>id_map</code>。<code>bundle_type</code> 可指定 <code>Bundle.type</code>（剖面固定的 type 不會被覆寫）</td>
+<td style="text-align: left;"><code>bundle</code>, <code>package_id</code>, <code>version</code>, <code>bundle_profile</code>（目標 Bundle profile 的 canonical 或 id；省略時取 <code>meta.profile</code>）, <code>bundle_type</code>（R4 bundle-type 代碼）</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_validate_resource</code></td>
@@ -2871,13 +2871,13 @@
 <td style="text-align: left;">fullUrl 重複只回報（<code>notes</code>），不合併、不刪除；指向重複標籤的引用列為 <code>unresolved</code>（兩筆 candidates）</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>bundle-type</code> / <code>document-order</code>（剖面驅動）</td>
-<td style="text-align: left;"><code>bundle_profile</code>（或 <code>meta.profile</code>）的 StructureDefinition 以 fixed / pattern 固定 <code>Bundle.type</code> 時照它設定；<code>type=document</code> 時把 Composition 移到第一筆。剖面要求的 <code>Bundle.identifier</code>、<code>Bundle.timestamp</code> 等需要實際值的欄位只在 <code>notes</code> 回報，不自行產生</td>
+<td style="text-align: left;"><code>bundle-type</code> / <code>document-order</code>（剖面驅動，或呼叫端指定）</td>
+<td style="text-align: left;"><code>bundle_profile</code>（或 <code>meta.profile</code>）的 StructureDefinition 以 fixed / pattern 固定 <code>Bundle.type</code> 時照它設定；呼叫端給 <code>bundle_type</code>（R4 bundle-type 代碼）時以規則 <code>bundle-type</code>、<code>reason: "requested by caller (bundle_type)"</code> 設定，但剖面固定的 type 永遠優先（衝突只在 <code>notes</code> 回報）；<code>type=document</code> 時把 Composition 移到第一筆。沒有任何 Composition 的 document 不會被自動改型，<code>notes</code> 寫明兩條路：<code>bundle_type=&lt;依 entry 形狀推得的型別&gt;</code> 或補一筆 Composition。剖面要求的 <code>Bundle.identifier</code>、<code>Bundle.timestamp</code> 等需要實際值的欄位只在 <code>notes</code> 回報，不自行產生</td>
 </tr>
 </tbody>
 </table>
-<p>輸出 Bundle 除上述欄位外與輸入完全相同（深拷貝、保留 key 順序）；已合法的 Bundle 原樣回傳且 <code>changes</code> 為空；整理過的再整理一次結果不變。<code>package_id</code> 省略時依 <code>bundle_profile</code> / <code>meta.profile</code> 解析套件，沒有可解析的 IG 時退回 <code>hl7.fhir.r4.core</code>。</p>
-<p><code>fhir_validate_bundle</code> 整合同一套引擎：預設（<code>normalize_ids=false</code>）ID 類錯誤附 <code>suggestions</code>（<code>replace_fullurl</code> / <code>replace_reference</code> / <code>replace_id</code> / <code>move_entry</code> / <code>replace_bundle_type</code>），<code>data</code> 另附整份對照表 <code>id_map</code>（舊值 → 新值）、<code>id_changes</code>（所有必須一起改的路徑）與 <code>id_unresolved</code>，沒有 ID 類問題的 Bundle 輸出與 1.6.1 完全相同；<code>normalize_ids=true</code> 則先整理再驗證<strong>整理後</strong>的 Bundle，回傳 <code>normalized_bundle</code> 與 <code>id_changes</code>，每一處已整理的問題以 <code>information</code> 等級的 issue 註明。<code>fhir_get_profile_required_elements</code> 查 Bundle profile 時另回傳 <code>bundle_rules</code>（fullUrl 格式、引用須等於目標 fullUrl、id 格式、剖面固定的 <code>Bundle.type</code>、document / message 順序、必填元素與 entry slice），同樣由核心規範與 StructureDefinition 產生。</p>
+<p>輸出 Bundle 除上述欄位外與輸入完全相同（深拷貝、保留 key 順序），<strong>數字也保留原始寫法</strong>：HTTP 層以 JSON.parse 解析請求後 <code>10.0</code> 會變成 <code>10</code>、<code>1e3</code> 變成 <code>1000</code>、超過 2^53 的整數被捨入，而 FHIR <code>decimal</code> 的精度是值的一部分；因此 <code>fhir_finalize_bundle</code>、<code>fhir_validate_bundle(normalize_ids=true)</code> 的 <code>normalized_bundle</code>、<code>fhir_build_bundle</code> 的 entry 資源與 <code>fhir_finalize_resource</code> 的 <code>resource</code> 會把請求原文中的 <code>bundle</code> / <code>entries</code> / <code>draft</code> 參數以無損方式重讀一次，整理照常在一般的樹上計算（UUID、<code>changes</code>、驗證結果完全不變），最後只把每個數字換回呼叫端寫的字串（<code>10.0</code>、<code>1.50</code>、<code>0.50</code>、<code>-0.0</code>、<code>12345678901234567890</code>，extension 與巢狀陣列內亦然；值相同時才換）。三個入口（<code>/mcp</code>、<code>POST /tools/&lt;name&gt;</code>、管理主控台的 playground）回傳的位元組相同。已合法的 Bundle 原樣回傳且 <code>changes</code> 為空；整理過的再整理一次結果不變。<code>package_id</code> 省略時依 <code>bundle_profile</code> / <code>meta.profile</code> 解析套件，沒有可解析的 IG 時退回 <code>hl7.fhir.r4.core</code>。</p>
+<p><code>fhir_validate_bundle</code> 整合同一套引擎：預設（<code>normalize_ids=false</code>）ID 類錯誤附 <code>suggestions</code>（<code>replace_fullurl</code> / <code>replace_reference</code> / <code>replace_id</code> / <code>move_entry</code> / <code>replace_bundle_type</code>），<code>data</code> 另附整份對照表 <code>id_map</code>（舊值 → 新值）、<code>id_changes</code>（所有必須一起改的路徑）與 <code>id_unresolved</code>，沒有 ID 類問題的 Bundle 輸出與 1.6.1 完全相同；<code>normalize_ids=true</code> 則先整理再驗證<strong>整理後</strong>的 Bundle，回傳 <code>normalized_bundle</code> 與 <code>id_changes</code>，每一處已整理的問題以 <code>information</code> 等級的 issue 註明。<code>fhir_get_profile_required_elements</code> 查 Bundle profile 時另回傳 <code>bundle_rules</code>（fullUrl 格式、引用須等於目標 fullUrl、id 格式、剖面固定的 <code>Bundle.type</code>（或提示可用 <code>fhir_finalize_bundle</code> 的 <code>bundle_type</code> 設定）、document / message 順序、必填元素與 entry slice），同樣由核心規範與 StructureDefinition 產生。</p>
 <h3 id="suggestions-caused_byvalidation-suggestions">修正建議（suggestions / caused_by）{#validation-suggestions}<a class="headerlink" href="#suggestions-caused_byvalidation-suggestions" title="Permanent link">&para;</a></h3>
 <p>驗證結果的 issue 除了指出錯在哪裡，也盡量附上「要改成什麼」：<code>suggestions</code> 是依 <code>confidence</code> 由高到低排序的候選（每個 issue 最多 5 個；小型 ValueSet 的綁定錯誤最多 12 個），參照鏈錯誤另有 <code>caused_by</code>。兩者都是<strong>附加欄位</strong>——issue 的集合、severity、message 與 <code>valid</code> 完全不變；沒有建議時不出現該欄位。</p>
 <pre><code class="language-json">{&quot;severity&quot;: &quot;error&quot;, &quot;path&quot;: &quot;MedicationRequest.dosageInstruction[0].timing.repeat&quot;, &quot;message&quot;: &quot;Unrecognized property 'periodUnits'&quot;,
@@ -2916,12 +2916,22 @@
 <tr>
 <td style="text-align: left;">值不在 required / extensible ValueSet 內</td>
 <td style="text-align: left;"><code>choose_code</code></td>
-<td style="text-align: left;">ValueSet 展開後的代碼：小型 ValueSet 全列並依相似度排序，大型者取與原代碼 / display 最接近者（含 <code>fhir_normalize_code</code>）</td>
+<td style="text-align: left;">ValueSet 展開後的代碼：≤ 50 個代碼的 ValueSet 一律全列（展開不占查詢額度），依字串相似度排序；小型 ValueSet（≤ 12）字串都不像時改依語意相似度（embedding 端點；取不到時維持字串順序），大型者取與原代碼 / display 最接近者（含 <code>fhir_normalize_code</code>）</td>
+</tr>
+<tr>
+<td style="text-align: left;">值不在元素的 ValueSet，但它是同一資源另一個有綁定元素的合法代碼（<code>criticality: "severe"</code> → <code>reaction[0].severity</code>）</td>
+<td style="text-align: left;"><code>move_value</code></td>
+<td style="text-align: left;">該值應搬去的元素實例路徑（<code>patch.op = move</code>）：從資源剖面（<code>meta.profile</code> / 驗證指定的剖面）與基底定義的 snapshot 找 required / extensible 綁定且型別相容（code → code、CodeableConcept → CodeableConcept）的元素，以 validator 的成員檢查確認；目標已有值時信心較低</td>
 </tr>
 <tr>
 <td style="text-align: left;">其他 CodeSystem 的 <code>Unknown code</code></td>
 <td style="text-align: left;"><code>replace_code</code> / <code>replace_system</code></td>
-<td style="text-align: left;">validator 會接受的拼寫修正（大小寫、ICD 小數點、LOINC 連字號）、名稱與 display / text 相符的代碼（<code>fhir_normalize_code</code>）、IG CodeSystem 的相近代碼，以及代碼形狀相符的其他術語（LOINC 代碼放在 SNOMED system）</td>
+<td style="text-align: left;">validator 會接受的拼寫修正（大小寫、ICD 小數點、LOINC 連字號）、名稱與 display / text 相符的代碼（<code>fhir_normalize_code</code>）、IG CodeSystem 的相近代碼，以及代碼形狀相符的其他術語（LOINC 代碼放在 SNOMED system）；代碼存在於該元素綁定 ValueSet（含 slice 綁定）所含的<strong>其他</strong> CodeSystem（IG 本地的 <code>CodeSystem/v2-0203</code> 與 HL7 同名 CodeSystem 同在 <code>identifier-type-tw</code>）或其他 base 下同名 CodeSystem 時 → <code>replace_system</code>（0.9；ValueSet 只收錄該 CodeSystem 的部分代碼且不含此代碼時 0.6）</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>No definition could be found for URL value 'U'</code>，U 是 <code>Coding.system</code> 且 Coding 有 code / display</td>
+<td style="text-align: left;"><code>replace_coding</code> / <code>replace_system</code></td>
+<td style="text-align: left;">找出該元素綁定的 ValueSet（剖面與基底定義的 snapshot：含 slice、<code>.coding</code> 子元素、maxValueSet / additional binding），用 Coding 的 display / code 在這些 ValueSet 內做 <code>fhir_normalize_code</code> 檢索 → 整組 <code>{system, code, display}</code>（<code>dosageInstruction.route</code> 的 <code>oral</code> → SNOMED <code>26643006</code> Oral route、TW <code>medication-path-tw</code> <code>PO</code> 口服），<code>value</code> 為代碼、<code>system</code> / <code>display</code> 另附；另列這些 ValueSet 所引用的 CodeSystem（含有該代碼者 0.9，沒有者 0.35）</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>Wrong Display Name</code></td>
@@ -2937,6 +2947,11 @@
 <td style="text-align: left;"><code>UUIDs must be valid and lowercase</code>、缺 fullUrl、<code>URN reference is not locally contained</code>、<code>Entry N matches … by type and id</code>、<code>Relative Reference … missing a fullUrl</code>、<code>Invalid Resource id</code>、bdl-7 / bdl-11</td>
 <td style="text-align: left;"><code>replace_fullurl</code> / <code>replace_reference</code> / <code>replace_id</code> / <code>move_entry</code> / <code>replace_bundle_type</code></td>
 <td style="text-align: left;"><code>fhir_finalize_bundle</code> 會套用的確定性修正值（同一輸入永遠相同）；無法解析的引用列出同型別 entry 的 fullUrl 作候選（信心較低）；整份對照表在 <code>data.id_map</code> / <code>id_changes</code>（見「Bundle 定稿」）</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>Constraint failed: bdl-11</code>（document 卻完全沒有 Composition；bdl-12 的 message / MessageHeader 亦同；隨之而來的 bdl-9 / bdl-10 只附第 1 種）</td>
+<td style="text-align: left;"><code>replace_value</code> / <code>add_resource</code></td>
+<td style="text-align: left;">1. <code>Bundle.type</code> 改成 entry 形狀支持的型別：沒有 request → <code>collection</code>（0.8）；每筆都有 <code>request</code> → <code>transaction</code>（0.7），彼此沒有引用時另列 <code>batch</code>（0.4）；部分有 request → <code>transaction</code> / <code>collection</code>；每筆都有 <code>search</code> → <code>searchset</code>。剖面固定了 <code>Bundle.type</code> 時不建議改型。2. 補一筆 Composition（或 MessageHeader）作第一筆 entry（<code>patch.op = add</code>，<code>Bundle.entry[0]</code>），<code>reason</code> 列出核心 StructureDefinition 要求的元素（status、type、date、author、title …）。Composition 存在但不在第一筆時由上一列的 <code>move_entry</code> 處理</td>
 </tr>
 </tbody>
 </table>
@@ -3022,23 +3037,23 @@
 <tbody>
 <tr>
 <td style="text-align: left;"><code>fhir_validate_bundle</code></td>
-<td style="text-align: left;">1.7.0（<code>normalize_ids</code>、ID 類錯誤的 <code>suggestions</code> 與 <code>id_map</code> / <code>id_changes</code>；沒有 ID 類問題時輸出同 1.6.1）</td>
+<td style="text-align: left;">1.8.0（<code>normalized_bundle</code> 保留數字原始寫法；document / message 缺首筆資源的 bdl-11 / bdl-12 附 <code>replace_value</code> / <code>add_resource</code> 建議；1.7.0：<code>normalize_ids</code>、ID 類錯誤的 <code>suggestions</code> 與 <code>id_map</code> / <code>id_changes</code>）</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_validate_resource</code></td>
-<td style="text-align: left;">1.6.1（validator v8：HL7 空間未知 CodeSystem 一律 error、參照含空白、RxNorm display 指到另一個藥、查詢失敗 / 例外的 <code>exception</code> issue；1.6.0：issue 的 <code>suggestions</code> / <code>caused_by</code>）</td>
+<td style="text-align: left;">1.6.2（validator v8：HL7 空間未知 CodeSystem 一律 error、參照含空白、RxNorm display 指到另一個藥、查詢失敗 / 例外的 <code>exception</code> issue；1.6.0：issue 的 <code>suggestions</code> / <code>caused_by</code>）</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_finalize_bundle</code></td>
-<td style="text-align: left;">1.0.1（Bundle 定稿：fullUrl-uuid / reference-rewire / resource-id / bundle-type / document-order）</td>
+<td style="text-align: left;">1.1.0（數字保留原始寫法、<code>bundle_type</code> 參數、document 缺 Composition 的提示；1.0.1：Bundle 定稿：fullUrl-uuid / reference-rewire / resource-id / bundle-type / document-order）</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_build_bundle</code></td>
-<td style="text-align: left;">1.2.0（共用 Bundle 定稿引擎：確定性 UUID、key / urn:uuid:key / Type/key 引用改寫、不合法 fullUrl 正規化、<code>changes</code>）</td>
+<td style="text-align: left;">1.2.1（entry 資源的數字保留原始寫法；1.2.0：共用 Bundle 定稿引擎：確定性 UUID、key / urn:uuid:key / Type/key 引用改寫、不合法 fullUrl 正規化、<code>changes</code>）</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_get_profile_required_elements</code></td>
-<td style="text-align: left;">1.4.0（Bundle profile 的 <code>bundle_rules</code>；1.3.0：derived 列的 allowedCodes 與推導規則、<code>include_mustsupport="defaults"</code>、<code>optional</code>）</td>
+<td style="text-align: left;">1.4.1（<code>bundle_rules.bundle_type</code> 提及 <code>fhir_finalize_bundle</code> 的 <code>bundle_type</code>；1.4.0：Bundle profile 的 <code>bundle_rules</code>；1.3.0：derived 列的 allowedCodes 與推導規則、<code>include_mustsupport="defaults"</code>、<code>optional</code>）</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_list_igs</code>、<code>fhir_list_artifacts</code>、<code>fhir_search_artifacts</code>、<code>fhir_list_resource_profiles</code>（新增 <code>compact</code>）</td>
@@ -3050,7 +3065,7 @@
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_finalize_resource</code></td>
-<td style="text-align: left;">1.3.1（驗證規則同 <code>fhir_validate_resource</code> 1.6.1；1.3.0：驗證 issue 的 <code>suggestions</code> / <code>caused_by</code>）</td>
+<td style="text-align: left;">1.3.2（<code>resource</code> 保留草稿的數字原始寫法；1.3.1：驗證規則同 <code>fhir_validate_resource</code> 1.6.1；1.3.0：驗證 issue 的 <code>suggestions</code> / <code>caused_by</code>）</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_lookup_code</code></td>

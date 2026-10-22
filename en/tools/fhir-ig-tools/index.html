@@ -2811,8 +2811,8 @@ If none applies the call fails with <code>NO_DEFAULT_IG</code> (no arbitrary pac
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_finalize_bundle</code></td>
-<td style="text-align: left;"><strong>Call before emitting the final Bundle</strong>: it only normalises <code>fullUrl</code>, <code>reference</code> and <code>id</code> and never touches clinical content (see "Bundle finalisation" below). Returns the finalised <code>bundle</code>, every change as <code>changes[{path, from, to, rule}]</code>, the references it could not decide as <code>unresolved[{path, reference, candidates}]</code>, <code>notes</code> and <code>id_map</code></td>
-<td style="text-align: left;"><code>bundle</code>, <code>package_id</code>, <code>version</code>, <code>bundle_profile</code> (canonical or id of the target Bundle profile; defaults to <code>meta.profile</code>)</td>
+<td style="text-align: left;"><strong>Call before emitting the final Bundle</strong>: it only normalises <code>fullUrl</code>, <code>reference</code> and <code>id</code> and never touches clinical content (see "Bundle finalisation" below); numbers keep the caller's spelling (<code>10.0</code> stays <code>10.0</code>). Returns the finalised <code>bundle</code>, every change as <code>changes[{path, from, to, rule}]</code>, the references it could not decide as <code>unresolved[{path, reference, candidates}]</code>, <code>notes</code> and <code>id_map</code>. <code>bundle_type</code> sets <code>Bundle.type</code> (a profile-fixed type is never overridden)</td>
+<td style="text-align: left;"><code>bundle</code>, <code>package_id</code>, <code>version</code>, <code>bundle_profile</code> (canonical or id of the target Bundle profile; defaults to <code>meta.profile</code>), <code>bundle_type</code> (R4 bundle-type code)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_validate_resource</code></td>
@@ -2871,13 +2871,13 @@ If none applies the call fails with <code>NO_DEFAULT_IG</code> (no arbitrary pac
 <td style="text-align: left;">Duplicate fullUrls are only reported (<code>notes</code>), never merged or dropped; references to a duplicated label become <code>unresolved</code> with both candidates</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>bundle-type</code> / <code>document-order</code> (profile-driven)</td>
-<td style="text-align: left;">When the StructureDefinition of <code>bundle_profile</code> (or <code>meta.profile</code>) fixes <code>Bundle.type</code> (fixed / pattern) it is set; for <code>type=document</code> the Composition is moved to the first entry. Elements the profile requires with real values (<code>Bundle.identifier</code>, <code>Bundle.timestamp</code> …) are only reported in <code>notes</code>, never generated</td>
+<td style="text-align: left;"><code>bundle-type</code> / <code>document-order</code> (profile-driven, or requested by the caller)</td>
+<td style="text-align: left;">When the StructureDefinition of <code>bundle_profile</code> (or <code>meta.profile</code>) fixes <code>Bundle.type</code> (fixed / pattern) it is set; a caller-supplied <code>bundle_type</code> (R4 bundle-type code) is applied as rule <code>bundle-type</code> with <code>reason: "requested by caller (bundle_type)"</code>, but a profile-fixed type always wins (the conflict is only noted); for <code>type=document</code> the Composition is moved to the first entry. A document with no Composition at all is never retyped on its own: <code>notes</code> names both ways out — <code>bundle_type=&lt;the type the entries' shape supports&gt;</code> or adding a Composition. Elements the profile requires with real values (<code>Bundle.identifier</code>, <code>Bundle.timestamp</code> …) are only reported in <code>notes</code>, never generated</td>
 </tr>
 </tbody>
 </table>
-<p>Apart from those fields the output Bundle is identical to the input (deep copy, key order preserved); an already valid Bundle is returned unchanged with <code>changes: []</code>, and finalising a finalised Bundle changes nothing. Without <code>package_id</code> the package is resolved from <code>bundle_profile</code> / <code>meta.profile</code>; when no IG resolves, <code>hl7.fhir.r4.core</code> is used.</p>
-<p><code>fhir_validate_bundle</code> shares the engine: by default (<code>normalize_ids=false</code>) ID-class errors carry <code>suggestions</code> (<code>replace_fullurl</code> / <code>replace_reference</code> / <code>replace_id</code> / <code>move_entry</code> / <code>replace_bundle_type</code>) and <code>data</code> gains the full map <code>id_map</code> (old → new), <code>id_changes</code> (every path that must change together) and <code>id_unresolved</code>; a Bundle without ID-class issues is byte-identical to 1.6.1. With <code>normalize_ids=true</code> the Bundle is finalised first, the <strong>normalised</strong> Bundle is validated and returned as <code>normalized_bundle</code> with <code>id_changes</code>, and each fixed problem is noted as an <code>information</code> issue. <code>fhir_get_profile_required_elements</code> on a Bundle profile additionally returns <code>bundle_rules</code> (fullUrl format, references = the target's fullUrl, id format, a profile-fixed <code>Bundle.type</code>, document / message ordering, required elements and entry slices), likewise generated from the core specification and the StructureDefinition.</p>
+<p>Apart from those fields the output Bundle is identical to the input (deep copy, key order preserved), <strong>numbers included</strong>: the HTTP layer parses the request with JSON.parse, which turns <code>10.0</code> into <code>10</code>, <code>1e3</code> into <code>1000</code> and rounds integers beyond 2^53, while a FHIR <code>decimal</code>'s precision is part of its value. So <code>fhir_finalize_bundle</code>, the <code>normalized_bundle</code> of <code>fhir_validate_bundle(normalize_ids=true)</code>, the entry resources of <code>fhir_build_bundle</code> and the <code>resource</code> of <code>fhir_finalize_resource</code> re-read the <code>bundle</code> / <code>entries</code> / <code>draft</code> argument losslessly from the raw request text; the finalisation still runs on the ordinary tree (UUIDs, <code>changes</code> and validation are unchanged) and only at the end is each number swapped back to the caller's spelling (<code>10.0</code>, <code>1.50</code>, <code>0.50</code>, <code>-0.0</code>, <code>12345678901234567890</code>, inside extensions and nested arrays too; only where the value is the same). All three entry points (<code>/mcp</code>, <code>POST /tools/&lt;name&gt;</code>, the admin console playground) return the same bytes. An already valid Bundle is returned unchanged with <code>changes: []</code>, and finalising a finalised Bundle changes nothing. Without <code>package_id</code> the package is resolved from <code>bundle_profile</code> / <code>meta.profile</code>; when no IG resolves, <code>hl7.fhir.r4.core</code> is used.</p>
+<p><code>fhir_validate_bundle</code> shares the engine: by default (<code>normalize_ids=false</code>) ID-class errors carry <code>suggestions</code> (<code>replace_fullurl</code> / <code>replace_reference</code> / <code>replace_id</code> / <code>move_entry</code> / <code>replace_bundle_type</code>) and <code>data</code> gains the full map <code>id_map</code> (old → new), <code>id_changes</code> (every path that must change together) and <code>id_unresolved</code>; a Bundle without ID-class issues is byte-identical to 1.6.1. With <code>normalize_ids=true</code> the Bundle is finalised first, the <strong>normalised</strong> Bundle is validated and returned as <code>normalized_bundle</code> with <code>id_changes</code>, and each fixed problem is noted as an <code>information</code> issue. <code>fhir_get_profile_required_elements</code> on a Bundle profile additionally returns <code>bundle_rules</code> (fullUrl format, references = the target's fullUrl, id format, a profile-fixed <code>Bundle.type</code> — or the hint that <code>fhir_finalize_bundle</code>'s <code>bundle_type</code> sets a free one —, document / message ordering, required elements and entry slices), likewise generated from the core specification and the StructureDefinition.</p>
 <h3 id="validation-suggestions">Fix suggestions (suggestions / caused_by)<a class="headerlink" href="#validation-suggestions" title="Permanent link">&para;</a></h3>
 <p>Besides saying what is wrong, validation issues carry, where possible, "what to change it to": <code>suggestions</code> is a list of candidates ordered by <code>confidence</code> (at most 5 per issue; up to 12 for a binding error on a small ValueSet), and reference-chain errors get <code>caused_by</code>. Both are <strong>additive</strong> — the set of issues, their severity and message, and <code>valid</code> are unchanged; the field is absent when there is no suggestion.</p>
 <pre><code class="language-json">{&quot;severity&quot;: &quot;error&quot;, &quot;path&quot;: &quot;MedicationRequest.dosageInstruction[0].timing.repeat&quot;, &quot;message&quot;: &quot;Unrecognized property 'periodUnits'&quot;,
@@ -2916,12 +2916,22 @@ If none applies the call fails with <code>NO_DEFAULT_IG</code> (no arbitrary pac
 <tr>
 <td style="text-align: left;">Value not in a required / extensible ValueSet</td>
 <td style="text-align: left;"><code>choose_code</code></td>
-<td style="text-align: left;">Codes of the expanded ValueSet: all of them, ranked by similarity, for a small ValueSet; the closest to the given code / display (incl. <code>fhir_normalize_code</code>) for a large one</td>
+<td style="text-align: left;">Codes of the expanded ValueSet: a ValueSet of ≤ 50 codes is always listed whole (the expansion takes no lookup budget), ranked by string similarity; a small one (≤ 12) whose codes resemble nothing is ranked by meaning instead (embedding endpoint; string order when unavailable); for a large one the closest to the given code / display (incl. <code>fhir_normalize_code</code>)</td>
+</tr>
+<tr>
+<td style="text-align: left;">Value not in the element's ValueSet, but a valid code of another bound element of the same resource (<code>criticality: "severe"</code> → <code>reaction[0].severity</code>)</td>
+<td style="text-align: left;"><code>move_value</code></td>
+<td style="text-align: left;">The instance path of the element the value belongs to (<code>patch.op = move</code>): elements with a required / extensible binding and a compatible type (code → code, CodeableConcept → CodeableConcept) are read from the snapshots of the resource's profiles (<code>meta.profile</code> / the validation's profile) and base definition, membership confirmed with the validator's own check; lower confidence when the target already has a value</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>Unknown code</code> in other CodeSystems</td>
 <td style="text-align: left;"><code>replace_code</code> / <code>replace_system</code></td>
-<td style="text-align: left;">Spelling repairs the validator accepts (case, ICD dot, LOINC hyphen), codes whose name matches the display / text (<code>fhir_normalize_code</code>), near codes of an IG CodeSystem, and another terminology whose code shape fits (a LOINC code under the SNOMED system)</td>
+<td style="text-align: left;">Spelling repairs the validator accepts (case, ICD dot, LOINC hyphen), codes whose name matches the display / text (<code>fhir_normalize_code</code>), near codes of an IG CodeSystem, and another terminology whose code shape fits (a LOINC code under the SNOMED system); when the code exists in <strong>another</strong> CodeSystem included by the element's bound ValueSet (slice bindings included — an IG-local <code>CodeSystem/v2-0203</code> next to the HL7 CodeSystem of that name in <code>identifier-type-tw</code>) or in the CodeSystem of the same name under another base → <code>replace_system</code> (0.9; 0.6 when the ValueSet enumerates only some codes of that CodeSystem and not this one)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>No definition could be found for URL value 'U'</code> where U is a <code>Coding.system</code> and the Coding has a code / display</td>
+<td style="text-align: left;"><code>replace_coding</code> / <code>replace_system</code></td>
+<td style="text-align: left;">The element's bound ValueSets are read from the profile / base snapshots (slices, the <code>.coding</code> child, maxValueSet / additional bindings) and the Coding's display / code is normalised within them (<code>fhir_normalize_code</code>) → a whole <code>{system, code, display}</code> (<code>oral</code> in <code>dosageInstruction.route</code> → SNOMED <code>26643006</code> Oral route, TW <code>medication-path-tw</code> <code>PO</code> 口服), <code>value</code> = the code with <code>system</code> / <code>display</code> alongside; plus the CodeSystems those ValueSets draw from (0.9 for one that holds the code, 0.35 otherwise)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>Wrong Display Name</code></td>
@@ -2937,6 +2947,11 @@ If none applies the call fails with <code>NO_DEFAULT_IG</code> (no arbitrary pac
 <td style="text-align: left;"><code>UUIDs must be valid and lowercase</code>, missing fullUrl, <code>URN reference is not locally contained</code>, <code>Entry N matches … by type and id</code>, <code>Relative Reference … missing a fullUrl</code>, <code>Invalid Resource id</code>, bdl-7 / bdl-11</td>
 <td style="text-align: left;"><code>replace_fullurl</code> / <code>replace_reference</code> / <code>replace_id</code> / <code>move_entry</code> / <code>replace_bundle_type</code></td>
 <td style="text-align: left;">The deterministic value <code>fhir_finalize_bundle</code> would apply (always the same for the same input); an unresolvable reference lists the fullUrls of same-type entries as lower-confidence candidates; the whole map is in <code>data.id_map</code> / <code>id_changes</code> (see "Bundle finalisation")</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>Constraint failed: bdl-11</code> (a document with no Composition at all; bdl-12 for message / MessageHeader likewise; the consequent bdl-9 / bdl-10 get only the first kind)</td>
+<td style="text-align: left;"><code>replace_value</code> / <code>add_resource</code></td>
+<td style="text-align: left;">1. <code>Bundle.type</code> → a type the entries' shape supports: no request → <code>collection</code> (0.8); every entry carries <code>request</code> → <code>transaction</code> (0.7), plus <code>batch</code> (0.4) when no entry references another; some carry a request → <code>transaction</code> / <code>collection</code>; every entry carries <code>search</code> → <code>searchset</code>. Never suggested when the profile fixes <code>Bundle.type</code>. 2. Add a Composition (or MessageHeader) as the first entry (<code>patch.op = add</code>, <code>Bundle.entry[0]</code>); <code>reason</code> lists the elements the core StructureDefinition requires (status, type, date, author, title …). A Composition that exists but is not first is handled by <code>move_entry</code> in the row above</td>
 </tr>
 </tbody>
 </table>
@@ -3022,23 +3037,23 @@ Every issue carries <code>rule</code> and <code>source:"grounding"</code>, and i
 <tbody>
 <tr>
 <td style="text-align: left;"><code>fhir_validate_bundle</code></td>
-<td style="text-align: left;">1.7.0 (<code>normalize_ids</code>, ID-class <code>suggestions</code> and <code>id_map</code> / <code>id_changes</code>; output unchanged from 1.6.1 when there is no ID-class issue)</td>
+<td style="text-align: left;">1.8.0 (<code>normalized_bundle</code> keeps number spellings; bdl-11 / bdl-12 on a document / message without its head resource carry <code>replace_value</code> / <code>add_resource</code> suggestions; 1.7.0: <code>normalize_ids</code>, ID-class <code>suggestions</code> and <code>id_map</code> / <code>id_changes</code>)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_validate_resource</code></td>
-<td style="text-align: left;">1.6.1 (validator v8: unknown HL7-space CodeSystems always errors, whitespace in references, RxNorm displays naming another drug, <code>exception</code> issues for failed lookups / crashes; 1.6.0: issue <code>suggestions</code> / <code>caused_by</code>)</td>
+<td style="text-align: left;">1.6.2 (validator v8: unknown HL7-space CodeSystems always errors, whitespace in references, RxNorm displays naming another drug, <code>exception</code> issues for failed lookups / crashes; 1.6.0: issue <code>suggestions</code> / <code>caused_by</code>)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_finalize_bundle</code></td>
-<td style="text-align: left;">1.0.1 (Bundle finalisation: fullUrl-uuid / reference-rewire / resource-id / bundle-type / document-order)</td>
+<td style="text-align: left;">1.1.0 (number spellings kept, <code>bundle_type</code> argument, hint for a document without a Composition; 1.0.1: Bundle finalisation: fullUrl-uuid / reference-rewire / resource-id / bundle-type / document-order)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_build_bundle</code></td>
-<td style="text-align: left;">1.2.0 (shares the finalisation engine: deterministic UUIDs, key / urn:uuid:key / Type/key references rewired, invalid fullUrls normalised, <code>changes</code>)</td>
+<td style="text-align: left;">1.2.1 (entry resources keep number spellings; 1.2.0: shares the finalisation engine: deterministic UUIDs, key / urn:uuid:key / Type/key references rewired, invalid fullUrls normalised, <code>changes</code>)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_get_profile_required_elements</code></td>
-<td style="text-align: left;">1.4.0 (<code>bundle_rules</code> for Bundle profiles; 1.3.0: derived rows: allowedCodes + derivation rule; <code>include_mustsupport="defaults"</code>; <code>optional</code>)</td>
+<td style="text-align: left;">1.4.1 (<code>bundle_rules.bundle_type</code> names <code>fhir_finalize_bundle</code>'s <code>bundle_type</code>; 1.4.0: <code>bundle_rules</code> for Bundle profiles; 1.3.0: derived rows: allowedCodes + derivation rule; <code>include_mustsupport="defaults"</code>; <code>optional</code>)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_list_igs</code>, <code>fhir_list_artifacts</code>, <code>fhir_search_artifacts</code>, <code>fhir_list_resource_profiles</code> (new <code>compact</code>)</td>
@@ -3050,7 +3065,7 @@ Every issue carries <code>rule</code> and <code>source:"grounding"</code>, and i
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_finalize_resource</code></td>
-<td style="text-align: left;">1.3.1 (validation rules as <code>fhir_validate_resource</code> 1.6.1; 1.3.0: validation issue <code>suggestions</code> / <code>caused_by</code>)</td>
+<td style="text-align: left;">1.3.2 (<code>resource</code> keeps the draft's number spellings; 1.3.1: validation rules as <code>fhir_validate_resource</code> 1.6.1; 1.3.0: validation issue <code>suggestions</code> / <code>caused_by</code>)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_lookup_code</code></td>
