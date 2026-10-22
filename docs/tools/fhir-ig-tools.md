@@ -67,9 +67,10 @@
 | `fhir_get_resource_skeleton` | 依剖面產生僅含必填 / mustSupport 結構的空白草稿；`required` 為元素自身 min≥1，`effectiveRequired` 另要求所有父元素皆必填 | `profile`, `candidate_limit`（預設 20，上限 100）, `include_examples`（預設 `true`） |
 | `fhir_finalize_resource` | 將草稿依剖面定稿並回傳完整資源 | `profile`, `draft`, `context_id`, `key`, `generate_narrative`（預設 `true`） |
 | `fhir_resolve_reference` | 以暫時鍵解析資源參照（供 Bundle 內互連） | `key`, `resource_type`, `context_id`, `display` |
-| `fhir_build_bundle` | 將多筆資源組裝為 Bundle | `entries`, `bundle_type`（預設 `transaction`）, `context_id` |
+| `fhir_build_bundle` | 將多筆資源組裝為 Bundle：`key` 變成確定性的 UUID v5 fullUrl（同一輸入永遠得到同一份 Bundle），資源內以 `key`、`urn:uuid:<key>`、`<Type>/<key>` 寫的引用一律改寫成產生的 fullUrl；給了不合法 `fullUrl` 時依 `fhir_finalize_bundle` 的規則正規化。`data.changes` 列出每一處改寫，`data.unresolved` 列出找不到對應 entry 的引用（1.2.0） | `entries`, `bundle_type`（預設 `transaction`）, `context_id` |
+| `fhir_finalize_bundle` | **在輸出最終 Bundle 前呼叫**：只整理 `fullUrl`、`reference` 和 `id`，不改動臨床內容（見下節「Bundle 定稿」）。回傳整理後的 `bundle`、每一處改動 `changes[{path, from, to, rule}]`、無法確定的引用 `unresolved[{path, reference, candidates}]`、`notes` 與 `id_map` | `bundle`, `package_id`, `version`, `bundle_profile`（目標 Bundle profile 的 canonical 或 id；省略時取 `meta.profile`） |
 | `fhir_validate_resource` | 驗證單一資源（結構 + 術語綁定）；未給 `profile` 時取 `meta.profile`。選用的 `source_text` 會另跑 grounding 檢查（見下節） | `resource`, `profile`, `source_text`, `site_config`, `evidence_map`, `grounding`, `grounding_verbosity` |
-| `fhir_validate_bundle` | 驗證整個 Bundle（各 entry 依其 `meta.profile` + Bundle 內參照完整性）。選用的 `source_text` 會另跑 grounding 檢查並合併結果（見下節） | `bundle`, `source_text`, `site_config`, `evidence_map`, `grounding`, `grounding_verbosity` |
+| `fhir_validate_bundle` | 驗證整個 Bundle（各 entry 依其 `meta.profile` + Bundle 內參照完整性）。ID 類錯誤（`UUIDs must be valid…`、引用無法解析、缺 fullUrl、bdl-7、不合法 id）附 `suggestions` 與 Bundle 層級的 `id_map` / `id_changes`；`normalize_ids=true` 時先整理再驗證並回傳 `normalized_bundle`（見下節「Bundle 定稿」）。選用的 `source_text` 會另跑 grounding 檢查並合併結果（見後文） | `bundle`, `normalize_ids`（預設 `false`）, `source_text`, `site_config`, `evidence_map`, `grounding`, `grounding_verbosity` |
 
 `fhir_validate_resource` / `fhir_validate_bundle` 的 `data` 另回報驗證是否完整：`checked_fully`（所有剖面與 ValueSet 都檢查到、且依賴閉包完整時為 `true`）、`profiles_unchecked`、`valuesets_unchecked`。`valid` 維持 HL7 語意（無法解析的剖面只是 warning），因此 `valid: true` 但 `checked_fully: false` 代表有部分內容沒有被檢查。驗證期間定義 / 術語查詢因資料庫問題失敗時另附 `lookups_failed`（失敗次數），此時一定有一則 `code: "exception"` 的 error issue，`valid` 為 `false`（1.6.1）。`|version` canonical（`meta.profile`、binding、targetProfile、type profile、extension url）的解析方式比照 HL7 validator_cli 7.0.1。
 
@@ -90,6 +91,22 @@
 - **查詢失敗絕不當成通過**：驗證期間任何定義 / 術語查詢因資料庫問題失敗（連線中斷、復原模式、timeout；缺表 / 缺欄位除外）時，結果多一則 error issue（`code: "exception"`，`Validation incomplete: N … lookups failed …`），`valid: false`、`checked_fully: false` 並附 `lookups_failed`；validator 本身發生例外時改回傳帶 fatal `exception` issue 的正常結果，而不是失敗的工具呼叫。
 - `fhir_validate_bundle`：沒有可用 resource 的 entry（寫成陣列、缺 `resourceType`）不會出現在 `entries`，其 issue（如 `must be a simple value, not an Array`）改列在 Bundle 層的 `issues`，不再遺失。
 
+### Bundle 定稿（fhir_finalize_bundle / normalize_ids）{#bundle-finalize}
+
+模型（尤其是較弱的模型）常把 `fullUrl` 寫成看得懂但不合格式的標籤（`urn:uuid:patient-1`）、引用寫成 `Patient/patient-1` 或裸 id、`Bundle.id` 寫成 urn；這些都和臨床內容無關，官方驗證器卻會整份拒絕。`fhir_finalize_bundle` 把這類編號與連線工作交給工具，規則全部來自 FHIR R4 核心規範與套件的 StructureDefinition，**不針對任何 IG 寫特例**：
+
+| 規則 | 內容 |
+| :--- | :--- |
+| `fullUrl-uuid`（必做） | 已合法的不動（小寫 `urn:uuid:<UUID>`、`urn:oid:`、絕對 `http(s)://`）；大寫 UUID 轉小寫；其他情況（標籤、缺少、空字串）產生 **確定性的 UUID v5**：固定 namespace，種子為（resourceType、原 fullUrl、resource.id、entry 位置）加上一個 Bundle 層級的 salt（把可改寫欄位去掉後整份 Bundle 的 SHA-256），所以同一輸入永遠得到同一輸出，不同 Bundle 不會撞號 |
+| `reference-rewire`（必做） | 依每個資源的 StructureDefinition snapshot（`meta.profile` 可解析時用剖面，否則用核心定義）找出所有 Reference 型別的元素——含 extension 的 `valueReference`（依 url / slice 解析定義）、`Composition.section.entry`、`Provenance.target`、`Identifier.assigner` 等資料型別子元素、backbone、`contained` 資源；原 fullUrl、大小寫不同的 UUID、`Type/id`（對應 `resource.id`）、裸 id 都對應到同一筆 entry，改寫成目標的最終 fullUrl。裸 id / 缺型別的寫法同時符合多筆時，以元素的 `targetProfile` 型別消歧；仍有多筆或找不到 → 列入 `unresolved` 並附同型別 entry 作 `candidates`，不猜。`#contained`、Bundle 外的絕對網址、只有 `identifier` 的邏輯引用不動；`…/_history/v` 照樣解析但保留版本 |
+| `resource-id`（必做） | `resource.id` / `Bundle.id` 不符合 `[A-Za-z0-9\-.]{1,64}` 時取最後一段（`urn:uuid:…` → UUID）；仍不合法則 `resource.id` 改用該 entry 的 UUID、`Bundle.id` 改用產生值 |
+| bdl-7 | fullUrl 重複只回報（`notes`），不合併、不刪除；指向重複標籤的引用列為 `unresolved`（兩筆 candidates） |
+| `bundle-type` / `document-order`（剖面驅動） | `bundle_profile`（或 `meta.profile`）的 StructureDefinition 以 fixed / pattern 固定 `Bundle.type` 時照它設定；`type=document` 時把 Composition 移到第一筆。剖面要求的 `Bundle.identifier`、`Bundle.timestamp` 等需要實際值的欄位只在 `notes` 回報，不自行產生 |
+
+輸出 Bundle 除上述欄位外與輸入完全相同（深拷貝、保留 key 順序）；已合法的 Bundle 原樣回傳且 `changes` 為空；整理過的再整理一次結果不變。`package_id` 省略時依 `bundle_profile` / `meta.profile` 解析套件，沒有可解析的 IG 時退回 `hl7.fhir.r4.core`。
+
+`fhir_validate_bundle` 整合同一套引擎：預設（`normalize_ids=false`）ID 類錯誤附 `suggestions`（`replace_fullurl` / `replace_reference` / `replace_id` / `move_entry` / `replace_bundle_type`），`data` 另附整份對照表 `id_map`（舊值 → 新值）、`id_changes`（所有必須一起改的路徑）與 `id_unresolved`，沒有 ID 類問題的 Bundle 輸出與 1.6.1 完全相同；`normalize_ids=true` 則先整理再驗證**整理後**的 Bundle，回傳 `normalized_bundle` 與 `id_changes`，每一處已整理的問題以 `information` 等級的 issue 註明。`fhir_get_profile_required_elements` 查 Bundle profile 時另回傳 `bundle_rules`（fullUrl 格式、引用須等於目標 fullUrl、id 格式、剖面固定的 `Bundle.type`、document / message 順序、必填元素與 entry slice），同樣由核心規範與 StructureDefinition 產生。
+
 ### 修正建議（suggestions / caused_by）{#validation-suggestions}
 
 驗證結果的 issue 除了指出錯在哪裡，也盡量附上「要改成什麼」：`suggestions` 是依 `confidence` 由高到低排序的候選（每個 issue 最多 5 個；小型 ValueSet 的綁定錯誤最多 12 個），參照鏈錯誤另有 `caused_by`。兩者都是**附加欄位**——issue 的集合、severity、message 與 `valid` 完全不變；沒有建議時不出現該欄位。
@@ -109,7 +126,8 @@
 | 值不在 required / extensible ValueSet 內 | `choose_code` | ValueSet 展開後的代碼：小型 ValueSet 全列並依相似度排序，大型者取與原代碼 / display 最接近者（含 `fhir_normalize_code`） |
 | 其他 CodeSystem 的 `Unknown code` | `replace_code` / `replace_system` | validator 會接受的拼寫修正（大小寫、ICD 小數點、LOINC 連字號）、名稱與 display / text 相符的代碼（`fhir_normalize_code`）、IG CodeSystem 的相近代碼，以及代碼形狀相符的其他術語（LOINC 代碼放在 SNOMED system） |
 | `Wrong Display Name` | `replace_display`（+ `replace_code`） | validator 列出的有效 display（各術語格式一致），若寫的 display 其實是另一個代碼的名稱，也提示改代碼 |
-| `Unable to find a profile match for urn:uuid:X` | `caused_by` | 被參照資源本身的錯誤（`fullUrl`、`entry`、`path`、`message`）；它本身沒有錯時，改列它對該參照要求的剖面驗證時的錯誤（附 `profile`） |
+| `Unable to find a profile match for urn:uuid:X` | `caused_by` | 被參照資源本身的錯誤（`fullUrl`、`entry`、`path`、`message`）；它本身沒有錯時，改列它對該參照要求的剖面驗證時的錯誤（附 `profile`）；X 是標籤式引用時另附 `replace_reference` |
+| `UUIDs must be valid and lowercase`、缺 fullUrl、`URN reference is not locally contained`、`Entry N matches … by type and id`、`Relative Reference … missing a fullUrl`、`Invalid Resource id`、bdl-7 / bdl-11 | `replace_fullurl` / `replace_reference` / `replace_id` / `move_entry` / `replace_bundle_type` | `fhir_finalize_bundle` 會套用的確定性修正值（同一輸入永遠相同）；無法解析的引用列出同型別 entry 的 fullUrl 作候選（信心較低）；整份對照表在 `data.id_map` / `id_changes`（見「Bundle 定稿」） |
 
 `patch` 以 validator 的點路徑表示（`op`: `replace` / `move` / `remove`，`move` 另有 `from`；移到尚不存在的重複元素時路徑帶 `[0]`）。`confidence` 是啟發式分數，不是機率，但各 `kind` 的區間固定：完全 / 大小寫改名 > 移動 > 語意改名 > 移除；建議是輔助，套用後請再驗證一次。建議的排序與內容對同一輸入是固定的（決定性），計算失敗時該 issue 只是沒有建議，不影響驗證結果。評估方式與數據見 `node-server/scripts/suggestions-eval/`。
 
@@ -158,8 +176,11 @@
 
 | 工具 | 版本 |
 | :--- | :--- |
-| `fhir_validate_resource`、`fhir_validate_bundle` | 1.6.1（validator v8：HL7 空間未知 CodeSystem 一律 error、參照含空白、RxNorm display 指到另一個藥、查詢失敗 / 例外的 `exception` issue；1.6.0：issue 的 `suggestions` / `caused_by`） |
-| `fhir_get_profile_required_elements` | 1.3.0（derived 列的 allowedCodes 與推導規則、`include_mustsupport="defaults"`、`optional`） |
+| `fhir_validate_bundle` | 1.7.0（`normalize_ids`、ID 類錯誤的 `suggestions` 與 `id_map` / `id_changes`；沒有 ID 類問題時輸出同 1.6.1） |
+| `fhir_validate_resource` | 1.6.1（validator v8：HL7 空間未知 CodeSystem 一律 error、參照含空白、RxNorm display 指到另一個藥、查詢失敗 / 例外的 `exception` issue；1.6.0：issue 的 `suggestions` / `caused_by`） |
+| `fhir_finalize_bundle` | 1.0.0（Bundle 定稿：fullUrl-uuid / reference-rewire / resource-id / bundle-type / document-order） |
+| `fhir_build_bundle` | 1.2.0（共用 Bundle 定稿引擎：確定性 UUID、key / urn:uuid:key / Type/key 引用改寫、不合法 fullUrl 正規化、`changes`） |
+| `fhir_get_profile_required_elements` | 1.4.0（Bundle profile 的 `bundle_rules`；1.3.0：derived 列的 allowedCodes 與推導規則、`include_mustsupport="defaults"`、`optional`） |
 | `fhir_list_igs`、`fhir_list_artifacts`、`fhir_search_artifacts`、`fhir_list_resource_profiles`（新增 `compact`） | 1.3.0 |
 | `fhir_get_ig`、`fhir_rank_resource_profiles`、`fhir_get_profile`、`fhir_get_profile_elements`、`fhir_get_valueset`、`fhir_expand_valueset`、`fhir_validate_code`、`fhir_get_resource_skeleton` | 1.2.0 |
 | `fhir_finalize_resource` | 1.3.1（驗證規則同 `fhir_validate_resource` 1.6.1；1.3.0：驗證 issue 的 `suggestions` / `caused_by`） |

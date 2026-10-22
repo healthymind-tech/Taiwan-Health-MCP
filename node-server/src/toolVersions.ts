@@ -36,7 +36,10 @@ export const TOOLS_VERSION: Record<string, string> = {
   // codes' CodeSystem definitions. include_mustsupport="defaults" (only mustSupport elements with a fixed /
   // pattern / workflow-default / derivable value); mustSupport-only rows carry optional:true and an optional hint
   // (also with include_mustsupport=true, which no longer lists max=0 elements). Other rows of the default output unchanged.
-  fhir_get_profile_required_elements: "1.3.0",
+  // 1.4.0 (ISSUES_v9 R4): a Bundle profile also returns `bundle_rules` (fullUrl format, references = target fullUrl, id
+  // format, Bundle.type when the StructureDefinition fixes it, document / message entry order, required Bundle elements and
+  // entry slices) generated from the FHIR R4 core rules + the StructureDefinition. Other profiles unchanged.
+  fhir_get_profile_required_elements: "1.4.0",
   // 1.1.0 (lexicon tw-lexicon 0.3.0, issues v1): time-only evidence takes the date in force at its line;
   // whole-label stated-absent concepts (出生地 is not the birth date) and no stated-absent when the record states
   // the patient field; zh/en department / setting aliases with whole-token short forms (ED / ER / OPD / ICU);
@@ -83,7 +86,14 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   renames from element alias / short text + FHIR-generic synonyms gated by the value shape, and
   //   whole-resource moves (datatype children, present choice values, sibling backbones); move paths into
   //   absent repeating elements now carry `[0]`.
-  fhir_validate_bundle: "1.6.1",
+  // fhir_validate_bundle 1.7.0 (ISSUES_v9 R2, fhirBundleFinalize.ts + fhirSuggestions/ids.ts): new `normalize_ids` (default false).
+  //   true → the Bundle is finalized first (fullUrl / reference / id), the normalised Bundle is validated and returned as
+  //   `normalized_bundle` with `id_changes` / `id_map` / `id_unresolved`; each applied change is an information issue.
+  //   false → ID-class errors (UUIDs must be valid …, unresolved / relative references, missing fullUrl, invalid id, bdl-7 /
+  //   bdl-11) carry suggestions (replace_fullurl / replace_reference / replace_id / move_entry / replace_bundle_type) and the
+  //   data block gains `id_map` + `id_changes` (every value that must change together) + `id_unresolved`. Bundles without an
+  //   ID-class issue are byte-identical to 1.6.1.
+  fhir_validate_bundle: "1.7.0",
   fhir_validate_resource: "1.6.1",
   // 1.2.0 (all below): provenance.resolved_by / closure_versions; canonical arguments resolve to their
   // owning package when package_id is omitted; "|version" honoured; list/search: all_packages + zero-hit hint;
@@ -133,6 +143,10 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.3.1: validation as fhir_validate_resource 1.6.1 (unknown hl7.org/fhir code systems, reference whitespace,
   //   RxNorm different-drug displays, lookup-failure / crash issues).
   fhir_finalize_resource: "1.3.1",
+  // 1.0.0 (ISSUES_v9 R1): deterministic Bundle finalizer — fullUrl-uuid / reference-rewire / resource-id (mandatory),
+  // bundle-type / document-order (profile-driven); UUID v5 seeded by (resourceType, original fullUrl, resource.id, entry
+  // index) + a content salt; references found through StructureDefinition snapshots; duplicates / ambiguity reported.
+  fhir_finalize_bundle: "1.0.0",
   // ── 2026-10-19 actionable errors (additive fields only; successful outputs unchanged) ──
   // search_medical_codes 1.2.1: IG_UNAVAILABLE adds `hint`.
   // FHIR IG tools above (+.0.1): error envelopes add error.hint; IG_NOT_FOUND / NO_DEFAULT_IG add
@@ -191,7 +205,10 @@ export const TOOLS_VERSION: Record<string, string> = {
   crud_fhir_server: "1.1.1",
   // INVALID_ARGUMENT envelopes add error.hint.
   fhir_resolve_reference: "1.1.1",
-  fhir_build_bundle: "1.1.1",
+  // 1.2.0 (ISSUES_v9 R3): shares the Bundle finalizer — invalid fullUrls are normalised, keys become deterministic UUID v5
+  // fullUrls (same input → same Bundle), references written as key / urn:uuid:<key> / Type/<key> are rewired instead of
+  // listed as unresolved; data adds changes / notes / contextId, unresolved rows carry path + candidates; provenance set.
+  fhir_build_bundle: "1.2.0",
   // 2026-10-19 query-side embedding instructions (Qwen3-Embedding): semantic matches may reorder.
   search_health_supplements: "1.2.0",
   query_food_nutrition: "1.2.0",

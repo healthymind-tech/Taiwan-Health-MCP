@@ -26,7 +26,7 @@
 <div align="center">
 
 [![2026 Taiwan Connectathon](https://img.shields.io/badge/2026%20Taiwan%20Connectathon-passed%20%C2%B7%20MOHW-0e9ea8)](https://tw-health-mcp.healthymind-tech.com/en)
-[![MCP tools](https://img.shields.io/badge/MCP%20tools-63-0e9ea8)](#six-areas)
+[![MCP tools](https://img.shields.io/badge/MCP%20tools-64-0e9ea8)](#six-areas)
 [![Website](https://img.shields.io/website?url=https%3A%2F%2Ftw-health-mcp.healthymind-tech.com&label=website)](https://tw-health-mcp.healthymind-tech.com/en)
 [![GitHub stars](https://img.shields.io/github/stars/healthymind-tech/Taiwan-Health-MCP?style=flat)](https://github.com/healthymind-tech/Taiwan-Health-MCP/stargazers)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
@@ -35,7 +35,7 @@
 
 <!-- demo video goes here -->
 
-A Node.js server built on the official **TypeScript MCP SDK** (`@modelcontextprotocol/sdk`), exposing **63 tools** across 12 tool groups. Designed for high-throughput production SaaS deployments.
+A Node.js server built on the official **TypeScript MCP SDK** (`@modelcontextprotocol/sdk`), exposing **64 tools** across 12 tool groups. Designed for high-throughput production SaaS deployments.
 
 ## Quick connect
 
@@ -130,7 +130,7 @@ Hybrid search over ICD-10, LOINC, SNOMED CT and IG CodeSystems with pgvector emb
 </table>
 
 <details>
-<summary><b>All 63 tools</b></summary>
+<summary><b>All 64 tools</b></summary>
 
 | Group | Tools |
 |-------|-------|
@@ -140,14 +140,14 @@ Hybrid search over ICD-10, LOINC, SNOMED CT and IG CodeSystems with pgvector emb
 | SNOMED CT | `search_snomed_concept`, `query_snomed_concept`, `get_snomed_relationships`, `query_snomed_mapping` |
 | FHIR Condition | `query_fhir_condition`, `validate_fhir_condition` |
 | FHIR Medication | `query_fhir_medication`, `validate_fhir_medication` |
-| FHIR IG (authoring / validation) | `fhir_list_igs`, `fhir_get_ig`, `fhir_list_artifacts`, `fhir_search_artifacts`, `fhir_list_resource_profiles`, `fhir_rank_resource_profiles`, `fhir_get_profile`, `fhir_get_profile_elements`, `fhir_get_profile_required_elements`, `fhir_get_valueset`, `fhir_expand_valueset`, `fhir_lookup_code`, `fhir_validate_code`, `fhir_normalize_code`, `fhir_resolve_reference`, `fhir_build_bundle`, `fhir_validate_resource`, `fhir_validate_bundle`, `fhir_get_resource_skeleton`, `fhir_finalize_resource`, `fhir_check_grounding`, `fhir_check_completeness` |
+| FHIR IG (authoring / validation) | `fhir_list_igs`, `fhir_get_ig`, `fhir_list_artifacts`, `fhir_search_artifacts`, `fhir_list_resource_profiles`, `fhir_rank_resource_profiles`, `fhir_get_profile`, `fhir_get_profile_elements`, `fhir_get_profile_required_elements`, `fhir_get_valueset`, `fhir_expand_valueset`, `fhir_lookup_code`, `fhir_validate_code`, `fhir_normalize_code`, `fhir_resolve_reference`, `fhir_build_bundle`, `fhir_validate_resource`, `fhir_validate_bundle`, `fhir_get_resource_skeleton`, `fhir_finalize_resource`, `fhir_finalize_bundle`, `fhir_check_grounding`, `fhir_check_completeness` |
 | Health supplements | `search_health_supplements` |
 | Food nutrition | `query_food_nutrition`, `query_food_ingredient`, `search_foods_by_nutrient`, `analyze_meal_nutrition` |
 | FHIR servers | `list_fhir_servers`, `get_fhir_server_status`, `crud_fhir_server` |
 | Clinical calculators | `calculate_chads2_vasc`, `calculate_wells_pe`, `calculate_wells_dvt`, `calculate_das28`, `calculate_cdai`, `calculate_bmi`, `calculate_egfr`, `calculate_has_bled`, `calculate_curb65`, `calculate_qsofa`, `calculate_gcs` |
 | System | `health_check` |
 
-- Module tools are enabled / disabled automatically by each module's data-load status (for example, with health supplements and food nutrition not loaded, `/openapi.json` lists 58); FHIR server, clinical calculator and system tools are always registered. The admin console's MCP tools page (`/admin/mcp`) lists all 63 tools, why any is not registered, and lets you try a call.
+- Module tools are enabled / disabled automatically by each module's data-load status (for example, with health supplements and food nutrition not loaded, `/openapi.json` lists 58); FHIR server, clinical calculator and system tools are always registered. The admin console's MCP tools page (`/admin/mcp`) lists all 64 tools, why any is not registered, and lets you try a call.
 - Every tool except `crud_fhir_server` is read-only. `crud_fhir_server` can write (create / update / patch / delete) to an external FHIR server **registered by an administrator**, only when that server's allow-list permits it and the caller passes `confirm_write=true`.
 - A tool showing as available only means its source data is loaded, not that its embeddings are complete. Check the Embeddings count on each module page in the admin console (e.g. ICD-10 / LOINC / SNOMED under 醫療術語); until they are complete, search falls back to or mixes in keyword/BM25 (responses carry `search_mode: "keyword_only"`).
 - Terminology coverage: ICD-10-CM (the complete CMS 2026-04-01 code set, incl. 7th characters) / ICD-10-PCS, WHO ICD-10 (optional), SNOMED CT International (incl. inactive content and historical associations), LOINC 2.80 (incl. answer / part / panel), RxNorm, FHIR R4; the built-in validator also supports CVX, ISO 3166 and UCUM. Validator audit: [`node-server/scripts/validator-audit/`](node-server/scripts/validator-audit/).

@@ -354,7 +354,10 @@ export const TOOL_DESCRIPTIONS = {
     "Validate a FHIR Bundle in-process: each entry's resource against its meta.profile plus internal reference integrity. Optional " +
     "source_text/site_config/evidence_map add grounding issues (is each value stated in the record). Without package_id the IG " +
     "owning the meta.profile canonicals is used ('|version' pins a version; provenance.resolved_by). Issues may carry ranked " +
-    "suggestions [{value, kind, confidence, reason, patch}] (what to change the value to) and, for reference-chain errors, caused_by.",
+    "suggestions [{value, kind, confidence, reason, patch}] (what to change the value to) and, for reference-chain errors, caused_by. " +
+    "fullUrl / reference / id errors (UUIDs must be valid, unresolved reference, bdl-7, invalid id) get the deterministic fix as suggestions plus " +
+    "a Bundle-level id_map / id_changes; normalize_ids=true applies that normalisation first (fhir_finalize_bundle) and validates the result " +
+    "(normalized_bundle, id_changes). Clinical content is never changed.",
   fhir_validate_resource:
     "Validate a FHIR resource against an IG profile, in-process (source:builtin). Pre-flight only. Optional source_text/site_config/" +
     "evidence_map add grounding issues for this resource (is each value stated in the record). Without package_id the IG owning " +

@@ -50,6 +50,8 @@ import { IgConceptSearch, type CsLocation } from "./conceptSearch/service.js";
 import { KEYWORD_ONLY_MODE, KEYWORD_ONLY_NOTE } from "./searchQuality.js";
 import { attachSuggestions } from "./fhirSuggestions/index.js";
 import { dbSuggestionDeps, type ServiceHooks } from "./fhirSuggestions/dbDeps.js";
+import { attachIdSuggestions, isIdClassIssue, normalizationIssues } from "./fhirSuggestions/ids.js";
+import { bundleRules, finalizeBundle as runBundleFinalize, type FinalizeDeps, type FinalizeResult } from "./fhirBundleFinalize.js";
 
 /** fhir_get_profile_required_elements compact view: profile invariants listed in full before the rest are named only. */
 const COMPACT_INVARIANTS = 8;
@@ -796,6 +798,9 @@ export class FHIRIGService {
       guide: (full ? READING_GUIDE : READING_GUIDE_COMPACT) + (result.elements.some((r) => r.optional) ? ` ${OPTIONAL_ROWS_NOTE}` : ""),
       elements: full ? result.elements.map(compactRow) : compactView(result.elements, E),
     };
+    // R4 (1.4.0): a Bundle profile also gets the Bundle-level core rules (fullUrl format, references =
+    // target fullUrl, fixed Bundle.type, document order) generated from the core spec + this StructureDefinition.
+    if (sd.type === "Bundle") data.bundle_rules = bundleRules(sd);
     if (result.invariants.length) {
       if (full) data.invariants = result.invariants;
       else {
@@ -1718,6 +1723,7 @@ export class FHIRIGService {
     bundle: Record<string, any>,
     packageId: string | null = null,
     version: string | null = null,
+    normalizeIds = false,
   ): Promise<string> {
     if (!(bundle && typeof bundle === "object" && !Array.isArray(bundle)) || bundle.resourceType !== "Bundle") {
       return this.err("INVALID_ARGUMENT", "bundle must be a FHIR Bundle resource");
@@ -1730,13 +1736,54 @@ export class FHIRIGService {
       const crash = this.validationCrash(e, "fhir_validate_bundle");
       return this.ok({ ...crash, entries: [], referenceIssues: [] }, null);
     }
+    // normalize_ids (1.7.0): finalize first (fullUrl / reference / id, fhirBundleFinalize.ts), validate the
+    // normalised Bundle, and report what was fixed as information issues + normalized_bundle / id_changes.
+    let fin: FinalizeResult | null = null;
+    let target = bundle;
+    if (normalizeIds) {
+      try {
+        fin = await runBundleFinalize(bundle, new DbValidatorResolver(pkg), {});
+        target = fin.bundle;
+      } catch (e) {
+        logError("fhir_validate_bundle: normalize_ids failed; validating the Bundle as given", { error: String((e as Error).message) });
+        fin = null;
+      }
+    }
     let core: Record<string, any>;
     try {
-      core = await this.validateCore(pkg, bundle, null);
+      core = await this.validateCore(pkg, target, null);
     } catch (e) {
       core = this.validationCrash(e, "fhir_validate_bundle");
     }
-    const bundleEntries: any[] = Array.isArray(bundle.entry) ? bundle.entry : [];
+    const idBlock: Record<string, any> = {};
+    if (fin) {
+      pushAll(core.issues as Record<string, any>[], normalizationIssues(fin.changes));
+      idBlock.normalized_bundle = fin.bundle;
+      idBlock.id_changes = fin.changes;
+      idBlock.id_map = fin.id_map;
+      idBlock.id_unresolved = fin.unresolved;
+      idBlock.id_notes = fin.notes;
+    } else if (!normalizeIds && (core.issues as Record<string, any>[]).some(isIdClassIssue)) {
+      // Default mode (1.7.0): ID-class issues carry the finalizer's replacement as suggestions, and the
+      // Bundle-level id_map / id_changes list every value that must change together. Valid Bundles
+      // (no ID-class issue) are untouched, so their output is byte-identical to 1.6.1.
+      try {
+        const f = await runBundleFinalize(bundle, new DbValidatorResolver(pkg), {});
+        if (f.changes.length || f.unresolved.length) {
+          attachIdSuggestions(core.issues as Record<string, any>[], f);
+          idBlock.id_map = f.id_map;
+          idBlock.id_changes = f.changes;
+          idBlock.id_unresolved = f.unresolved;
+          if (f.notes.length) idBlock.id_notes = f.notes;
+          idBlock.id_hint =
+            "Apply every id_changes entry together (fullUrl and all references to it), or call fhir_validate_bundle again with " +
+            "normalize_ids=true / fhir_finalize_bundle to have them applied deterministically.";
+        }
+      } catch (e) {
+        logError("fhir_validate_bundle: id suggestions failed", { error: String((e as Error).message) });
+      }
+    }
+    const bundleEntries: any[] = Array.isArray(target.entry) ? target.entry : [];
     // Split the issues: Bundle-level vs per entry (by instance path prefix).
     const perEntry: Record<string, any>[][] = bundleEntries.map(() => []);
     const bundleIssues: Record<string, any>[] = [];
@@ -1793,12 +1840,104 @@ export class FHIRIGService {
       checked_fully: core.checked_fully,
       profiles_unchecked: core.profiles_unchecked,
       valuesets_unchecked: core.valuesets_unchecked,
+      ...idBlock,
     };
     const warnings: string[] = [];
     if (referenceIssues.length) {
       warnings.push(`${referenceIssues.length} internal reference(s) did not resolve within the bundle`);
     }
+    if (fin && fin.changes.length) warnings.push(`normalize_ids applied ${fin.changes.length} change(s) to fullUrl / reference / id (see id_changes); the verdict is for normalized_bundle`);
+    if (fin && fin.unresolved.length) warnings.push(`${fin.unresolved.length} reference(s) could not be resolved to an entry (see id_unresolved)`);
     return this.ok(this.withDeps(data, pkg), pkg, warnings);
+  }
+
+  /**
+   * StructureDefinition lookup for the Bundle finalizer / fhir_build_bundle: the package the
+   * Bundle resolves to (meta.profile → default IG), else hl7.fhir.r4.core, else null
+   * (property-name fallback). Never throws.
+   */
+  async bundleFinalizeDeps(bundle: Record<string, any> | null = null, bundleProfile: string | null = null): Promise<{ deps: FinalizeDeps | null; pkg: PackageRow | null; note: string | null }> {
+    try {
+      const pkg = await this.resolve(null, null, { canonicals: [bundleProfile], metaProfiles: bundle ? metaProfilesOf(bundle) : [] });
+      return { deps: new DbValidatorResolver(pkg), pkg, note: null };
+    } catch (e) {
+      if (!this.isIGNotFound(e)) throw e;
+    }
+    try {
+      const pkg = await this.resolve("hl7.fhir.r4.core", null, {});
+      return { deps: new DbValidatorResolver(pkg), pkg, note: "no IG resolved for this Bundle; FHIR R4 core definitions used" };
+    } catch (e) {
+      if (!this.isIGNotFound(e)) throw e;
+      return { deps: null, pkg: null, note: "no IG package installed; references located by property name only" };
+    }
+  }
+
+  /**
+   * fhir_finalize_bundle (ISSUES_v9 R1): deterministic fullUrl / reference / id normalisation of a
+   * finished Bundle (fhirBundleFinalize.ts). Clinical content is never changed.
+   */
+  async finalizeBundle(
+    bundle: Record<string, any>,
+    packageId: string | null = null,
+    version: string | null = null,
+    bundleProfile: string | null = null,
+  ): Promise<string> {
+    if (!(bundle && typeof bundle === "object" && !Array.isArray(bundle)) || bundle.resourceType !== "Bundle") {
+      return this.err("INVALID_ARGUMENT", "bundle must be a FHIR Bundle resource");
+    }
+    const profile = bundleProfile && String(bundleProfile).trim() ? String(bundleProfile).trim() : null;
+    let pkg: PackageRow | null = null;
+    let deps: FinalizeDeps | null = null;
+    const notes: string[] = [];
+    if (packageId) {
+      try {
+        pkg = await this.resolve(packageId, version, { canonicals: [profile], metaProfiles: metaProfilesOf(bundle) });
+        deps = new DbValidatorResolver(pkg);
+      } catch (e) {
+        if (this.isIGNotFound(e)) return await this.igErr(e);
+        throw e;
+      }
+    } else {
+      const r = await this.bundleFinalizeDeps(bundle, profile);
+      pkg = r.pkg;
+      deps = r.deps;
+      if (r.note) notes.push(r.note);
+    }
+    let profileCanonical: string | null = profile;
+    if (profile && pkg && !profile.includes("/") && !profile.includes(":")) {
+      // A profile id (Bundle-twcore) → its canonical, so the finalizer can fetch it.
+      const row = await this.loadArtifact(pkg, profile);
+      if (row && row.canonical_url) profileCanonical = String(row.canonical_url);
+    }
+    const fin = await runBundleFinalize(bundle, deps, { bundleProfile: profileCanonical });
+    const count = (rule: string): number => fin.changes.filter((c) => c.rule === rule).length;
+    const data: Record<string, any> = {
+      bundle: fin.bundle,
+      changes: fin.changes,
+      unresolved: fin.unresolved,
+      notes: [...notes, ...fin.notes],
+      id_map: fin.id_map,
+      summary: {
+        entries: Array.isArray(fin.bundle.entry) ? fin.bundle.entry.length : 0,
+        fullUrl: count("fullUrl-uuid"),
+        references: count("reference-rewire"),
+        ids: count("resource-id"),
+        bundle_type: count("bundle-type"),
+        document_order: count("document-order"),
+        unresolved: fin.unresolved.length,
+      },
+    };
+    const warnings: string[] = [];
+    if (fin.unresolved.length) warnings.push(`${fin.unresolved.length} reference(s) could not be resolved to exactly one entry; see data.unresolved (candidates) — not guessed`);
+    if (fin.notes.some((n) => n.startsWith("bdl-7"))) warnings.push("duplicate fullUrl(s) (bdl-7) reported in data.notes; not merged");
+    if (pkg) this.withDeps(data, pkg);
+    const env = {
+      ok: true,
+      data,
+      warnings: [...(((pkg?._notes as string[] | undefined) || [])), ...warnings],
+      provenance: { ...(pkg ? this.provenance(pkg) : { source: "fhir-r4-core" }), tool: "fhir_finalize_bundle", toolVersion: toolVersion("fhir_finalize_bundle") },
+    };
+    return JSON.stringify(env);
   }
 
   // --- E. Schema-guided fill (authoring) ----------------------------------- //

@@ -58,7 +58,7 @@ Besides passwords, sign-in also supports **passkeys / WebAuthn** (`node-server/s
 Backed by `node-server/src/admin/adminMcp.ts` (`GET /admin/api/mcp/overview`, `GET /admin/api/mcp/tools`, `POST /admin/api/mcp/tools/{name}/invoke`), with three tabs:
 
 - **Overview**: public endpoints (`/mcp`, `/openapi.json`, `/tools/{name}`, JWKS, OAuth callback), auth mode, server version and copy-ready client configs.
-- **Catalog**: all 63 tools defined in `mcp.ts` and whether each is registered; an unregistered tool shows why (gating table and row-count threshold); tools and groups whose module is in maintenance carry a 「維護中」 (under maintenance) badge.
+- **Catalog**: all 64 tools defined in `mcp.ts` and whether each is registered; an unregistered tool shows why (gating table and row-count threshold); tools and groups whose module is in maintenance carry a 「維護中」 (under maintenance) badge.
 - **Playground**: runs any registered tool with pre-filled examples, through the same handler as `POST /tools/{name}` (rate-limited); while the tool's module is in maintenance the Run button is disabled with the reason shown.
 
 ## Model endpoints (`/admin/models`)

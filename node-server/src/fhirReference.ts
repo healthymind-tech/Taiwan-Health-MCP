@@ -1,10 +1,15 @@
 /**
- * FHIR reference-context store + Bundle assembly. IG-agnostic, pure (no DB).
- * Faithful port of `src/fhir_reference.py`. The reference context is a urn
- * allocator: `(context_id, key) → urn:uuid`. Process-global, TTL-evicted.
+ * FHIR reference-context store + Bundle assembly. IG-agnostic.
+ *
+ * The reference context is a urn allocator: `(context_id, key) → urn:uuid`,
+ * process-global, TTL-evicted (fhir_resolve_reference / fhir_finalize_resource).
+ * Bundle assembly (fhir_build_bundle) runs the deterministic Bundle finalizer
+ * (fhirBundleFinalize.ts): keys become UUID v5 fullUrls, and every reference written
+ * as `key`, `urn:uuid:key` or `Type/key` is rewired to the generated fullUrl.
  */
 
 import { randomUUID } from "node:crypto";
+import { finalizeBundle, type FinalizeChange, type FinalizeDeps, type FinalizeUnresolved } from "./fhirBundleFinalize.js";
 
 interface Ctx {
   created_at: number;
@@ -103,55 +108,60 @@ export interface BundleEntryInput {
   request?: any;
 }
 
-/** Assemble inline resource entries into a FHIR Bundle. */
-export function buildBundle(
+export interface BuiltBundle {
+  bundle: Record<string, any>;
+  /** key → fullUrl of the entry it names. */
+  referenceMap: Record<string, string>;
+  unresolved: FinalizeUnresolved[];
+  changes: FinalizeChange[];
+  notes: string[];
+  /** The reference context the keys were recorded in (null when none was given). */
+  contextId: string | null;
+}
+
+/**
+ * Assemble inline resource entries into a FHIR Bundle. A given fullUrl is kept when
+ * valid and normalised otherwise (rule fullUrl-uuid); an entry without one gets a
+ * deterministic UUID v5 fullUrl (the key is its label); references to a key in any
+ * form (`key`, `urn:uuid:key`, `Type/key`) are rewired. With a context_id, keys already
+ * minted by fhir_resolve_reference keep their urn and new keys are recorded in it.
+ */
+export async function buildBundle(
   entries: BundleEntryInput[],
   bundleType = "transaction",
   contextId: string | null | undefined = null,
-): { bundle: Record<string, any>; referenceMap: Record<string, string>; unresolved: any[] } {
-  const keyToUrn: Record<string, string> = {};
-  const prepared: Array<{ resource: Record<string, any>; fullUrl: string; request: any }> = [];
-
-  for (const entry of entries || []) {
+  deps: FinalizeDeps | null = null,
+): Promise<BuiltBundle> {
+  const cid = contextId ? ensure(contextId) : null;
+  const ctxMap = cid ? CONTEXTS.get(cid)!.map : null;
+  const aliases = new Map<number, string[]>();
+  const keys: Array<string | null> = [];
+  const built: Array<Record<string, any>> = [];
+  (entries || []).forEach((entry, i) => {
     const resource = entry.resource || {};
-    const key = entry.key;
-    let fullUrl = entry.fullUrl;
-    if (!fullUrl) {
-      if (key !== undefined && key !== null) {
-        [contextId, fullUrl] = mint(contextId, String(key));
-      } else {
-        fullUrl = `urn:uuid:${randomUUID()}`;
-      }
-    }
-    if (key !== undefined && key !== null) {
-      keyToUrn[String(key)] = fullUrl;
-    }
-    prepared.push({ resource, fullUrl, request: entry.request });
-  }
-
-  const fullUrls = new Set(prepared.map((p) => p.fullUrl));
-
-  const bundleEntries: any[] = [];
-  const unresolved: any[] = [];
-  for (const p of prepared) {
-    const resource = p.resource;
-    rewriteReferences(resource, keyToUrn);
-    const refs: string[] = [];
-    collectReferences(resource, refs);
-    for (const ref of refs) {
-      if (ref.startsWith("urn:uuid:") && !fullUrls.has(ref)) {
-        unresolved.push({ resourceType: resource.resourceType, reference: ref });
-      }
-    }
-    const be: Record<string, any> = { fullUrl: p.fullUrl, resource };
-    let request = p.request;
+    const key = entry.key !== undefined && entry.key !== null ? String(entry.key) : null;
+    let fullUrl: unknown = entry.fullUrl;
+    if (!fullUrl && key && ctxMap && key in ctxMap) fullUrl = ctxMap[key];
+    if (!fullUrl && key) fullUrl = key; // label: the finalizer mints its UUID
+    if (key) aliases.set(i, [key]);
+    keys.push(key);
+    const be: Record<string, any> = {};
+    if (fullUrl !== undefined && fullUrl !== null && fullUrl !== "") be.fullUrl = fullUrl;
+    be.resource = resource;
+    let request = entry.request;
     if (bundleType === "transaction" && !request) {
       request = { method: "POST", url: resource.resourceType || "" };
     }
     if (request) be.request = request;
-    bundleEntries.push(be);
-  }
-
-  const bundle = { resourceType: "Bundle", type: bundleType, entry: bundleEntries };
-  return { bundle, referenceMap: keyToUrn, unresolved };
+    built.push(be);
+  });
+  const fin = await finalizeBundle({ resourceType: "Bundle", type: bundleType, entry: built }, deps, { aliases });
+  const referenceMap: Record<string, string> = {};
+  keys.forEach((key, i) => {
+    const fu = fin.bundle.entry[i]?.fullUrl;
+    if (!key || typeof fu !== "string") return;
+    referenceMap[key] = fu;
+    if (ctxMap) ctxMap[key] = fu;
+  });
+  return { bundle: fin.bundle, referenceMap, unresolved: fin.unresolved, changes: fin.changes, notes: fin.notes, contextId: cid };
 }

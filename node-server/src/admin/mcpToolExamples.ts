@@ -103,6 +103,55 @@ const BUILD_BUNDLE_ENTRIES = [
   },
 ];
 
+/**
+ * A Bundle written the way weaker models write it: readable labels as fullUrl / references, an urn as
+ * Bundle.id. fhir_finalize_bundle turns the labels into deterministic urn:uuid fullUrls and rewires
+ * every reference; the clinical content is untouched. Synthetic data.
+ */
+const LABELLED_BUNDLE = {
+  resourceType: "Bundle",
+  id: "urn:uuid:bundle-1",
+  meta: { profile: [`${TWCORE_SD}/Bundle-twcore`] },
+  type: "collection",
+  entry: [
+    {
+      fullUrl: "urn:uuid:patient-1",
+      resource: {
+        resourceType: "Patient",
+        id: "patient-1",
+        meta: { profile: [`${TWCORE_SD}/Patient-twcore`] },
+        identifier: [{ system: "http://www.moi.gov.tw", value: "A123456789" }],
+        name: [{ text: "王大明" }],
+        gender: "male",
+        birthDate: "1968-05-20",
+      },
+    },
+    {
+      fullUrl: "urn:uuid:encounter-1",
+      resource: {
+        resourceType: "Encounter",
+        id: "encounter-1",
+        meta: { profile: [`${TWCORE_SD}/Encounter-twcore`] },
+        status: "finished",
+        class: { system: "http://terminology.hl7.org/CodeSystem/v3-ActCode", code: "AMB" },
+        subject: { reference: "Patient/patient-1" },
+      },
+    },
+    {
+      fullUrl: "urn:uuid:condition-1",
+      resource: {
+        resourceType: "Condition",
+        meta: { profile: [`${TWCORE_SD}/Condition-twcore`] },
+        clinicalStatus: { coding: [{ system: "http://terminology.hl7.org/CodeSystem/condition-clinical", code: "active" }] },
+        category: [{ coding: [{ system: "http://terminology.hl7.org/CodeSystem/condition-category", code: "encounter-diagnosis" }] }],
+        code: { coding: [{ system: "http://hl7.org/fhir/sid/icd-10-cm", code: "E11.9", display: "Type 2 diabetes mellitus without complications" }], text: "第二型糖尿病" },
+        subject: { reference: "urn:uuid:patient-1" },
+        encounter: { reference: "encounter-1" },
+      },
+    },
+  ],
+};
+
 const PATIENT_DRAFT = {
   resourceType: "Patient",
   identifier: [{ system: "http://www.moi.gov.tw", value: "A123456789" }],
@@ -445,6 +494,8 @@ export const MCP_TOOL_EXAMPLES: Record<string, ToolExampleSet> = {
     title: "驗證 FHIR Bundle",
     examples: [
       example("twcore", "TW Core Bundle 範例", { bundle: TWCORE_BUNDLE_EXAMPLE, package_id: TWCORE, version: TWCORE_VERSION }),
+      example("id_suggestions", "標籤式 fullUrl（urn:uuid:patient-1）：ID 錯誤附 suggestions 與 id_map", { bundle: LABELLED_BUNDLE, package_id: TWCORE, version: TWCORE_VERSION, normalize_ids: false }),
+      example("normalize_ids", "同上，normalize_ids=true：先整理再驗證，回傳 normalized_bundle", { bundle: LABELLED_BUNDLE, package_id: TWCORE, version: TWCORE_VERSION, normalize_ids: true }),
       example(
         "grounded",
         "含病歷原文落地檢查",
@@ -486,6 +537,14 @@ export const MCP_TOOL_EXAMPLES: Record<string, ToolExampleSet> = {
     title: "完成並驗證草稿資源",
     examples: [
       example("patient", "Patient 草稿", { profile: "Patient-twcore", draft: PATIENT_DRAFT, context_id: "playground-demo", key: "patient", package_id: TWCORE, version: TWCORE_VERSION, generate_narrative: true }),
+    ],
+  },
+  fhir_finalize_bundle: {
+    title: "整理 Bundle 的 fullUrl / reference / id",
+    examples: [
+      example("labels", "標籤式 fullUrl 與三種引用寫法 → 確定性 urn:uuid", { bundle: LABELLED_BUNDLE, package_id: TWCORE, version: TWCORE_VERSION, bundle_profile: null }, "fullUrl urn:uuid:patient-1、引用 Patient/patient-1 / 裸 id、Bundle.id 為 urn；changes 列出每一處改動"),
+      example("valid", "已合法的 Bundle：原樣回傳，changes 為空", { bundle: TWCORE_BUNDLE_EXAMPLE, package_id: TWCORE, version: TWCORE_VERSION, bundle_profile: null }),
+      example("profile", "指定 Bundle profile（固定 type 時套用）", { bundle: LABELLED_BUNDLE, package_id: null, version: null, bundle_profile: `${TWCORE_SD}/Bundle-twcore` }),
     ],
   },
 

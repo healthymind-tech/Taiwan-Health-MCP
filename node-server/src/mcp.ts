@@ -40,7 +40,7 @@ import {
 } from "./toolErrors.js";
 import { recordToolCall } from "./metrics.js";
 import { getStates as getMaintenanceStates } from "./admin/adminMaintenance.js";
-import { BUILD, SERVER_VERSION, TOOLS_VERSION } from "./toolVersions.js";
+import { BUILD, SERVER_VERSION, TOOLS_VERSION, toolVersion } from "./toolVersions.js";
 import { LEXICON_SHA256, LEXICON_VERSION, groundingInputShape, validateBundleGroundingShape } from "./grounding/index.js";
 import { completenessInputShape, type CompletenessInput } from "./grounding/completeness/index.js";
 import {
@@ -1038,7 +1038,7 @@ async function getFhirIgService(): Promise<FHIRIGService | null> {
   }
 }
 
-/** Register the FHIR IG tool group (22 tools): `_TOOL_GROUPS["FHIR IG"]` + required elements + grounding / completeness checks. */
+/** Register the FHIR IG tool group (23 tools): `_TOOL_GROUPS["FHIR IG"]` + required elements + grounding / completeness checks + Bundle finalizer. */
 function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
   const pkg = {
     package_id: z
@@ -1339,19 +1339,49 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
   server.registerTool(
     "fhir_build_bundle",
     {
-      description: "Assemble inline FHIR resources into a Bundle, wiring urn:uuid references. Each entry is {resource, key?, fullUrl?, request?}.",
+      description:
+        "Assemble inline FHIR resources into a Bundle, wiring urn:uuid references. Each entry is {resource, key?, fullUrl?, request?}. " +
+        "A key becomes a deterministic UUID v5 fullUrl (same input → same Bundle); references written as the key, urn:uuid:<key> or " +
+        "<Type>/<key> are rewired to it; an invalid fullUrl (urn:uuid:patient-1, uppercase UUID) is normalised like fhir_finalize_bundle. " +
+        "data.changes lists every rewrite, data.unresolved the references no entry matches.",
       inputSchema: { entries: z.array(z.record(z.any())), bundle_type: z.string().default("transaction"), context_id: z.string().nullish().default(null) },
     },
     async ({ entries, bundle_type, context_id }) => {
       if (!Array.isArray(entries) || !entries.length) {
         return rawResult(JSON.stringify({ ok: false, data: null, warnings: [], error: { code: "INVALID_ARGUMENT", message: "entries must be a non-empty list", hint: "Pass entries as a non-empty array of {resource, key?, fullUrl?, request?} objects, e.g. [{\"resource\":{\"resourceType\":\"Patient\"},\"key\":\"patient-1\"}]." } }));
       }
-      const result = fhirReference.buildBundle(entries as any[], bundle_type ?? "transaction", context_id ?? null);
+      const { deps, pkg, note } = await svc.bundleFinalizeDeps(null, null);
+      const result = await fhirReference.buildBundle(entries as any[], bundle_type ?? "transaction", context_id ?? null, deps);
       const warnings = result.unresolved.length
-        ? [`${result.unresolved.length} reference(s) could not be resolved within the bundle`]
+        ? [`${result.unresolved.length} reference(s) could not be resolved within the bundle (see data.unresolved)`]
         : [];
-      return rawResult(JSON.stringify({ ok: true, data: result, warnings, provenance: null }));
+      if (note) warnings.push(note);
+      const provenance = { ...(pkg ? await svc.packageProvenance(pkg.package_id, pkg.version) : {}), tool: "fhir_build_bundle", toolVersion: toolVersion("fhir_build_bundle") };
+      return rawResult(JSON.stringify({ ok: true, data: result, warnings, provenance }));
     },
+  );
+
+  server.registerTool(
+    "fhir_finalize_bundle",
+    {
+      description:
+        "Call this on the finished Bundle before you output it (在輸出最終 Bundle 前呼叫；只整理 fullUrl、reference 和 id，不改動臨床內容): " +
+        "it only normalises entry.fullUrl, Reference strings and ids — never clinical content. Rules (FHIR R4 core + the resolved IG's " +
+        "StructureDefinitions): a fullUrl that is not a lowercase urn:uuid / urn:oid / absolute URL (e.g. urn:uuid:patient-1, missing) becomes a " +
+        "deterministic UUID v5 (same input → same output); every Reference element found through the StructureDefinition snapshot (extensions, " +
+        "Composition.section.entry, contained …) that names an entry by its old fullUrl, a case-different UUID, Type/id or bare id is rewired to the " +
+        "entry's final fullUrl; invalid Bundle.id / resource.id are repaired; a Bundle.type fixed by the Bundle profile is set and a document's " +
+        "Composition moved first. Duplicate fullUrls (bdl-7) and references with no or several matching entries are reported with candidates, never " +
+        "guessed. Returns {bundle, changes[{path, from, to, rule}], unresolved[{path, reference, candidates}], notes, id_map}; a finalized Bundle " +
+        "yields changes = []. Then validate with fhir_validate_bundle (or call it with normalize_ids=true to do both).",
+      inputSchema: {
+        bundle: z.record(z.any()).describe("The complete Bundle as written"),
+        ...pkg,
+        bundle_profile: z.string().nullish().default(null).describe("Canonical URL (or id) of the target Bundle profile; omitted → the Bundle's meta.profile"),
+      },
+    },
+    async ({ bundle, package_id, version, bundle_profile }) =>
+      rawResult(await svc.finalizeBundle(bundle as Record<string, any>, package_id ?? null, version ?? null, bundle_profile ?? null)),
   );
 
   // Grounding collaborators: local-DB terminology names + the IG package for provenance.
@@ -1377,10 +1407,22 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
     "fhir_validate_bundle",
     {
       description: TOOL_DESCRIPTIONS.fhir_validate_bundle,
-      inputSchema: { bundle: z.record(z.any()), ...pkg, ...validateBundleGroundingShape },
+      inputSchema: {
+        bundle: z.record(z.any()),
+        ...pkg,
+        normalize_ids: z
+          .boolean()
+          .default(false)
+          .describe(
+            "true: first apply fhir_finalize_bundle's fullUrl / reference / id normalisation, validate the normalised Bundle and return it as " +
+              "normalized_bundle with id_changes (the fixed ID issues become information). false (default): ID errors carry suggestions and " +
+              "data.id_map / id_changes list every fullUrl, reference and id that must change together.",
+          ),
+        ...validateBundleGroundingShape,
+      },
     },
-    async ({ bundle, package_id, version, ...g }) => {
-      const conformance = await svc.validateBundle(bundle as Record<string, any>, package_id ?? null, version ?? null);
+    async ({ bundle, package_id, version, normalize_ids, ...g }) => {
+      const conformance = await svc.validateBundle(bundle as Record<string, any>, package_id ?? null, version ?? null, normalize_ids ?? false);
       return rawResult(await addBundleGrounding(conformance, bundle as Record<string, any>, { ...g, package_id, version } as ValidateGroundingArgs, groundingDeps));
     },
   );

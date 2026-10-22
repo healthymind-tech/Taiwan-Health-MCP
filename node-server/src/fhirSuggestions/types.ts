@@ -14,7 +14,13 @@ export type SuggestionKind =
   | "move_property"
   | "remove_property"
   | "choose_code"
-  | "replace_display";
+  | "replace_display"
+  // Bundle identity (fhirSuggestions/ids.ts, fhir_validate_bundle 1.7.0): the finalizer's deterministic repairs.
+  | "replace_fullurl"
+  | "replace_reference"
+  | "replace_id"
+  | "replace_bundle_type"
+  | "move_entry";
 
 /** A minimal edit, addressed with the validator's dotted instance paths (e.g. `Observation.code.coding[0].code`). */
 export interface SuggestionPatch {
