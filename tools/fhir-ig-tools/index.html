@@ -2858,6 +2858,11 @@
 <li>IG CodeSystem（<code>content = complete</code>）的 <code>Unknown code</code> 維持 error；若另一個已安裝套件有同一 CodeSystem 較完整的版本且含此碼（例如 TW Core 0.3.2 的 <code>medication-nhi-tw</code>），另附 information 指出該套件與版本。</li>
 <li>直接綁定 ValueSet 的 Coding 元素（如 <code>Encounter.class</code>）以 ValueSet URL 當 system 時，只回報綁定 warning，不再報 <code>The Coding references a value set</code> error（與 HL7 相同）。</li>
 </ul>
+<p>1.7.0（validator v13，評估報告 v13）新增：</p>
+<ul>
+<li><strong>ValueSet canonical 寫在 <code>Coding.system</code></strong>：IG 自有的 ValueSet（例如 <code>https://twcore.mohw.gov.tw/ig/twcore/ValueSet/laboratory-code-tw</code>）寫成 CodeableConcept 內 coding（或未直接綁定的 Coding）的 system，而且同一份資源 / Bundle 有元素綁定到該 ValueSet（或綁定到包含它的 ValueSet，例如 <code>laboratory-code-tw</code> 含 <code>loinc-observation-code</code>）時，於 <code>…coding[i].system</code> 回報 error <code>The Coding references a value set, not a code system ('&lt;url&gt;')</code>（HL7 <code>Terminology_TX_System_ValueSet2</code>），取代原本的 warning <code>A definition for CodeSystem … could not be found</code>。1.6.x 只對 HL7 core / THO 的 ValueSet 報錯（HL7 / THO 維持任何情境都報）。依據（validator_cli 7.0.1 與 7.0.3 逐筆確認）：CLI 只有在「本次執行已載入該 ValueSet」時才認得它是 ValueSet——檢查過綁定到它的元素之後就是 error（同一 CodeableConcept 的前一個 coding、資源中其他元素、Bundle 前面的 entry、批次中前面的檔案），同一筆資源在 JVM 裡第一次出現時只有 warning；從未被當成綁定檢查的 ValueSet（<code>medication-path-tw</code>；<code>medication-nhi-tw</code> / <code>medication-fda-tw</code> 只綁在 <code>medication[x].coding</code> 的 slice 上）即使批次執行也只有 warning。我們採用與順序無關的版本：只要驗證的資源 / Bundle 內任何位置檢查了該 ValueSet 的綁定就是 error，否則維持 warning。直接綁定的 Coding 元素（<code>Encounter.class</code>、<code>ImagingStudy.series.modality</code>）維持只有綁定 warning。這類 error 附 <code>suggestions</code>：在該 ValueSet 與它所含的 CodeSystem 中以 code / display 正規化得到的候選（<code>replace_coding</code>），以及它所含的 CodeSystem（<code>replace_system</code>，含此 code 者排前）。</li>
+<li><strong>LOINC 屬性 filter 可判定成員</strong>：ValueSet compose 對 <code>http://loinc.org</code> 的 <code>=</code> / <code>in</code> filter（<code>CLASSTYPE</code>（數字或 <code>Laboratory class</code> 等名稱）、<code>CLASS</code>、<code>STATUS</code>、<code>COMPONENT</code>、<code>PROPERTY</code>、<code>TIME_ASPCT</code>、<code>SYSTEM</code>、<code>SCALE_TYP</code>、<code>METHOD_TYP</code>、<code>concept in</code>）依本機 <code>loinc.concepts</code> 判定；本機沒有的碼、其他運算子（regex、is-a…）仍是「無法判定」。因此 <code>laboratory-code-tw</code> 等 ValueSet 對 LOINC 碼的綁定檢查不再只是「could not be confirmed」。</li>
+</ul>
 <p>1.6.1（validator v8，評估報告 v6）新增：</p>
 <ul>
 <li><strong>無法解析的 CodeSystem URL 一律是 error，不分元素</strong>：HL7 空間（<code>http://hl7.org/fhir…</code>、<code>http://terminology.hl7.org/…</code>）的 <code>Coding.system</code> / <code>Quantity.system</code> 若不是任何已安裝套件的定義，於該 <code>system</code> 元素回報 <code>No definition could be found for URL value '…'</code>（Coding、CodeableConcept、Encounter.class、Identifier.type、Meta.tag、extension 的 value、contained 資源、巢狀 Bundle 皆同）。<code>http://hl7.org/fhir/sid/…</code> 只承認 HL7 validator <code>SIDUtilities</code> 的清單（ndc、icpc-2、icd-9、icd-10、cvx、srt、icd-10-cm、icd-9-cm、dsm5 …）；<code>icd-10-pcs</code>、<code>us-mbi</code> 等不在清單內，因此在任何元素上都會報這個 URL error（1.6.0 把它們視為已知，漏報）。代碼本身維持 warning <code>A definition for CodeSystem '…' could not be found</code>（HL7 <code>UNKNOWN_CODESYSTEM</code>），HL7 空間以外（IG 自有 URL 等）找不到的 system 也只有這個 warning，與 validator_cli 相同。</li>
@@ -3082,7 +3087,7 @@
 <ul>
 <li><strong>display 由代碼決定</strong>：模型寫的 display 若在代碼可解析時被術語規則（與 <code>fhir_validate_resource</code> 相同的檢查）判為錯誤，就換成該代碼的 display（<code>provenance</code> 為 <code>lookup</code>，note <code>display replaced for &lt;field&gt; (was '&lt;舊值&gt;')</code>）；該 CodeableConcept 沒有 <code>text</code> 時，模型原本的字移到 <code>.text</code>（<code>provenance</code> 為 <code>model</code>），不會遺失。大小寫不同視為正確；只差空白時改成正確寫法、不另加 note。此規則<strong>不更動 code</strong>；代碼無法解析時保留模型的 display（由驗證回報未知代碼）。例如 LOINC <code>1988-5</code> 寫成 display <code>CRP</code> → display 換成 <code>C reactive protein [Mass/volume] in Serum or Plasma</code>，<code>text</code> 為 <code>CRP</code>。</li>
 <li><strong>system 修正</strong>（1.2.0）：模型寫的 <code>Coding.system</code> 只在下列兩種情況、且答案唯一時才改（<code>provenance</code> 為 <code>lookup</code>，note <code>system corrected for &lt;field&gt;: …</code>），其餘一律照寫、交給驗證回報（附 v10 的 <code>suggestions</code>），<strong>絕不猜</strong>：</li>
-<li><strong>system 是 ValueSet URL</strong>（任一已安裝套件的 ValueSet，或 <code>/CodeSystem/</code> ↔ <code>/ValueSet/</code> 的同名 twin）：code 在該 ValueSet 內（展開 / <code>valueSetContains</code>）所屬的 CodeSystem 只有一個時改成它，例如 <code>Composition.type</code> 寫成 <code>{system: "https://twcore.mohw.gov.tw/ig/twcore/ValueSet/loinc-type-doc-code", code: "11488-4"}</code> → <code>system: "http://loinc.org"</code>（note <code>'&lt;ValueSet URL&gt;' is a ValueSet; code '11488-4' belongs to http://loinc.org</code>）。ValueSet 以 filter 定義、本地無法判定成員時，只在 ValueSet 唯一含有此 code 的 CodeSystem 上修正（note 註明）。同一 code 在該 ValueSet 中屬於多個 CodeSystem → 回報錯誤並附 <code>candidates</code>；code 不在 ValueSet 內 → 維持原行為。</li>
+<li><strong>system 是 ValueSet URL</strong>（任一已安裝套件的 ValueSet，或 <code>/CodeSystem/</code> ↔ <code>/ValueSet/</code> 的同名 twin）：code 在該 ValueSet 內（展開 / <code>valueSetContains</code>）所屬的 CodeSystem 只有一個時改成它，例如 <code>Composition.type</code> 寫成 <code>{system: "https://twcore.mohw.gov.tw/ig/twcore/ValueSet/loinc-type-doc-code", code: "11488-4"}</code> → <code>system: "http://loinc.org"</code>（note <code>'&lt;ValueSet URL&gt;' is a ValueSet; code '11488-4' belongs to http://loinc.org</code>）。（1.3.0）ValueSet 含 filter 定義的 include（例如 <code>laboratory-code-tw</code> = LOINC <code>CLASSTYPE</code> filter + 健保支付標準代碼的列舉）時，本機展開只是部分內容，不能用來否定成員資格：code 存在於 ValueSet 所含的某個 CodeSystem，且 filter 可判定並成立 → 修正，note 為 <code>… belongs to http://loinc.org (membership confirmed)</code>；filter 無法判定、但 code 只存在於 ValueSet 所含 CodeSystem 中的一個 → 修正，note 為 <code>(membership unverifiable; the code exists only in &lt;CS&gt; among the ValueSet's systems)</code>。<code>code: {system, code}</code> 與原始寫法 <code>code: {coding: [{system, code}]}</code> 相同處理。同一 code 在該 ValueSet 中屬於多個 CodeSystem → 回報錯誤並附 <code>candidates</code>；code 不在 ValueSet 內（<code>laboratory</code>、<code>WBC</code>、<code>hs-Troponin I</code> 這類不是代碼的值）→ 不修正，驗證回報 <code>The Coding references a value set, not a code system</code> error（附候選，見 validator 1.7.0），<code>status</code> 為 <code>invalid</code>，<code>fhir_assemble_bundle</code> 與 <code>fhir_validate_bundle</code> 的判定相同。</li>
 <li><strong>system URL 解析不到任何定義</strong>（依驗證器的 URL 規則：HL7 空間的 URL 只在 HL7 validator 會報「No definition could be found for URL value」時才算；不是 CodeSystem、ValueSet，也不是已知的外部術語）：在該元素綁定的 ValueSet（含 slice 與 additional binding，與 <code>fhirSuggestions/bindings.ts</code> 相同的綁定走訪）中，含有此 code 的 CodeSystem 恰好一個時改成它——先比對完全相同的 code，沒有才比對不分大小寫（唯一時連 code 一起改成正確寫法），最後才比對完全相同且唯一的 display（code 一併換成該 display 的 code）。例如 <code>MedicationRequest.dosageInstruction.route</code> 寫成 <code>{system: "http://terminology.hl7.org/CodeSystem/route", code: "PO"}</code> → <code>https://twcore.mohw.gov.tw/ig/twcore/CodeSystem/medication-path-tw</code>（display 依 display 規則補「口服」）。多個 CodeSystem 都有、或都沒有（例如 <code>oral</code>）→ 不改，驗證錯誤的 <code>suggestions</code> 會提供 <code>replace_coding</code> / <code>replace_system</code>。</li>
 <li>修正後 display 依上一條規則檢查 / 補齊。</li>
 <li><strong>單一值包成陣列</strong>：重複元素（max &gt; 1）收到單一物件 / 純量時包成一個元素的陣列，任何深度都適用，包含模型直接傳入的 FHIR 形狀（<code>code: {coding: {system, code}}</code>、巢狀物件裡的 <code>identifier: {…}</code>、<code>telecom: {…}</code>、帶 <code>url</code> 的 extension 內的 <code>extension</code>、<code>doseAndRate</code>）；note <code>wrapped &lt;path&gt; into an array</code>。頂層欄位只給一個值本來就是合法寫法，不加 note。</li>
@@ -3229,11 +3234,11 @@
 <tbody>
 <tr>
 <td style="text-align: left;"><code>fhir_validate_bundle</code></td>
-<td style="text-align: left;">1.8.0（<code>normalized_bundle</code> 保留數字原始寫法；document / message 缺首筆資源的 bdl-11 / bdl-12 附 <code>replace_value</code> / <code>add_resource</code> 建議；1.7.0：<code>normalize_ids</code>、ID 類錯誤的 <code>suggestions</code> 與 <code>id_map</code> / <code>id_changes</code>）</td>
+<td style="text-align: left;">1.9.0（validator v13：ValueSet canonical 當 <code>Coding.system</code> 為 error、LOINC 屬性 filter 可判定成員）；1.8.0（<code>normalized_bundle</code> 保留數字原始寫法；document / message 缺首筆資源的 bdl-11 / bdl-12 附 <code>replace_value</code> / <code>add_resource</code> 建議；1.7.0：<code>normalize_ids</code>、ID 類錯誤的 <code>suggestions</code> 與 <code>id_map</code> / <code>id_changes</code>）</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_validate_resource</code></td>
-<td style="text-align: left;">1.6.2（validator v8：HL7 空間未知 CodeSystem 一律 error、參照含空白、RxNorm display 指到另一個藥、查詢失敗 / 例外的 <code>exception</code> issue；1.6.0：issue 的 <code>suggestions</code> / <code>caused_by</code>）</td>
+<td style="text-align: left;">1.7.0（validator v13：ValueSet canonical 當 <code>Coding.system</code> 為 error 並附候選、LOINC 屬性 filter 可判定成員）；1.6.2（validator v8：HL7 空間未知 CodeSystem 一律 error、參照含空白、RxNorm display 指到另一個藥、查詢失敗 / 例外的 <code>exception</code> issue；1.6.0：issue 的 <code>suggestions</code> / <code>caused_by</code>）</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_finalize_bundle</code></td>
@@ -3252,12 +3257,16 @@
 <td style="text-align: left;">1.3.0</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>fhir_get_ig</code>、<code>fhir_rank_resource_profiles</code>、<code>fhir_get_profile</code>、<code>fhir_get_profile_elements</code>、<code>fhir_get_valueset</code>、<code>fhir_expand_valueset</code>、<code>fhir_validate_code</code>、<code>fhir_get_resource_skeleton</code></td>
+<td style="text-align: left;"><code>fhir_get_ig</code>、<code>fhir_rank_resource_profiles</code>、<code>fhir_get_profile</code>、<code>fhir_get_profile_elements</code>、<code>fhir_get_valueset</code>、<code>fhir_expand_valueset</code>、<code>fhir_get_resource_skeleton</code></td>
 <td style="text-align: left;">1.2.0</td>
 </tr>
 <tr>
+<td style="text-align: left;"><code>fhir_validate_code</code></td>
+<td style="text-align: left;">1.3.0（ValueSet 對 LOINC 的 <code>=</code> / <code>in</code> 屬性 filter（CLASSTYPE、CLASS、STATUS…）依本機 LOINC 判定，原本為 <code>unverifiable</code> 的結果可能變成 <code>valid</code> / <code>invalid</code>）</td>
+</tr>
+<tr>
 <td style="text-align: left;"><code>fhir_finalize_resource</code></td>
-<td style="text-align: left;">1.4.0（slice 成員依 discriminator 釘上 fixed / pattern、任何深度的 <code>_slice</code> 標記且一律移除；1.3.2：<code>resource</code> 保留草稿的數字原始寫法；1.3.1：驗證規則同 <code>fhir_validate_resource</code> 1.6.1；1.3.0：驗證 issue 的 <code>suggestions</code> / <code>caused_by</code>）</td>
+<td style="text-align: left;">1.5.0（驗證規則同 <code>fhir_validate_resource</code> 1.7.0）；1.4.0（slice 成員依 discriminator 釘上 fixed / pattern、任何深度的 <code>_slice</code> 標記且一律移除；1.3.2：<code>resource</code> 保留草稿的數字原始寫法；1.3.1：驗證規則同 <code>fhir_validate_resource</code> 1.6.1；1.3.0：驗證 issue 的 <code>suggestions</code> / <code>caused_by</code>）</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_lookup_code</code></td>
@@ -3277,11 +3286,11 @@
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_author_resources</code></td>
-<td style="text-align: left;">1.2.0（ValueSet URL / 解析不到的 URL 寫在 <code>Coding.system</code> 時，答案唯一才自動改成正確的 CodeSystem 並加 note）；1.1.0（display 由代碼決定、單一值包成陣列、預設值只補必填欄位與 <code>apply_defaults</code>、<code>site_config</code>、結果的 <code>notes</code> / <code>settings</code>；1.0.0：從欄位值撰寫資源，見「<a href="#authoring">從欄位值撰寫資源</a>」）</td>
+<td style="text-align: left;">1.3.0（含 filter 的 ValueSet 寫在 system 時也能修正並註明成員資格 confirmed / unverifiable；未修正的 ValueSet system 為 error，驗證同 1.7.0）；1.2.0（ValueSet URL / 解析不到的 URL 寫在 <code>Coding.system</code> 時，答案唯一才自動改成正確的 CodeSystem 並加 note）；1.1.0（display 由代碼決定、單一值包成陣列、預設值只補必填欄位與 <code>apply_defaults</code>、<code>site_config</code>、結果的 <code>notes</code> / <code>settings</code>；1.0.0：從欄位值撰寫資源，見「<a href="#authoring">從欄位值撰寫資源</a>」）</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_assemble_bundle</code></td>
-<td style="text-align: left;">1.1.0（<code>site_config</code> 與 context 的合併後交給 grounding；1.0.0：由 key 清單組 Bundle）</td>
+<td style="text-align: left;">1.2.0（資源依 <code>fhir_author_resources</code> 1.3.0、驗證依 <code>fhir_validate_bundle</code> 1.9.0）；1.1.0（<code>site_config</code> 與 context 的合併後交給 grounding；1.0.0：由 key 清單組 Bundle）</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_get_authoring_fields</code></td>
