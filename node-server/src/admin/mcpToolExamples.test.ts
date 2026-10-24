@@ -8,7 +8,7 @@ test("catalog lists every tool once, in a known group", () => {
   const catalog = toolCatalog();
   const names = catalog.map((t) => t.name);
   assert.equal(new Set(names).size, names.length, "duplicate tool names");
-  assert.equal(catalog.length, 64);
+  assert.equal(catalog.length, 68);
   const groupKeys = new Set(TOOL_GROUPS.map((g) => g.key));
   for (const t of catalog) assert.ok(groupKeys.has(t.group), `${t.name}: unknown group ${t.group}`);
   for (const g of TOOL_GROUPS) assert.ok(catalog.some((t) => t.group === g.key), `group ${g.key} is empty`);

@@ -38,7 +38,7 @@ curl -X POST http://localhost:8080/tools/search_medical_codes \
 ```
 
 工具清單會隨各模組的資料載入狀態動態增減（門檻為 `moduleStatus.ts` 的 `REQUIREMENTS`，以 `MODULE_REQUIREMENTS` 匯出），
-因此 `/openapi.json` 的內容會依部署的資料狀態而不同。`mcp.ts` 共定義 **64 個工具**、12 個群組；其中 FHIR Servers、
+因此 `/openapi.json` 的內容會依部署的資料狀態而不同。`mcp.ts` 共定義 **68 個工具**、12 個群組；其中 FHIR Servers、
 Clinical Calculators 與 System 三組（15 個工具）永遠註冊。管理後台的 **MCP 工具**頁（`/admin/mcp`）會列出完整目錄、
 每個未註冊工具缺少的條件，並提供可直接呼叫已註冊工具的 playground。
 

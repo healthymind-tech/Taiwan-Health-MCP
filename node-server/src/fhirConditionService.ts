@@ -69,25 +69,22 @@ function codeableConcept(system: string, code: string, display: string) {
   return { coding: [{ system, code, display }] };
 }
 
-/** Mirror Python `datetime.now().strftime("%Y-%m-%dT%H:%M:%S+08:00")`. */
-function nowStamp(): string {
-  // Render wall-clock in UTC+8 with a fixed +08:00 offset, matching the Python
-  // server which formats local time with a hardcoded +08:00 suffix.
-  const d = new Date(Date.now() + 8 * 3600 * 1000);
-  const p = (n: number) => String(n).padStart(2, "0");
-  return (
-    `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}` +
-    `T${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}+08:00`
-  );
-}
+/** Row-returning query function (the shared pool by default; tests inject a fake). */
+export type ConditionQueryFn = <T extends object>(sql: string, params: unknown[]) => Promise<{ rows: T[] }>;
 
 export class FHIRConditionService {
+  private readonly q: ConditionQueryFn;
+
+  constructor(q: ConditionQueryFn = query as unknown as ConditionQueryFn) {
+    this.q = q;
+  }
+
   async initialize(): Promise<void> {
     logInfo("FHIR Condition Service initialized");
   }
 
   private async getIcdInfo(icdCode: string): Promise<IcdRow | null> {
-    const r = await query<IcdRow>(
+    const r = await this.q<IcdRow>(
       "SELECT code, name_zh, name_en FROM icd.diagnoses WHERE code = $1",
       [icdCode],
     );
@@ -115,13 +112,13 @@ export class FHIRConditionService {
         return { error: `ICD-10 code '${icdCode}' not found in database`, hint: icdNotFoundHint(icdCode) };
       }
 
-      const now = nowStamp();
+      // R3 "never invent data": no element is ever filled with the current time. recordedDate,
+      // meta.lastUpdated and note.time appear only when the caller supplies the value.
       const condition: Record<string, unknown> = {
         resourceType: "Condition",
         id: `condition-${patientId}-${icdCode.replace(/\./g, "-")}-${randomBytes(4).toString("hex")}`,
         meta: {
           profile: ["http://hl7.org/fhir/StructureDefinition/Condition"],
-          lastUpdated: now,
         },
         clinicalStatus: codeableConcept(
           FHIR_CLINICAL_STATUS_SYSTEM,
@@ -153,8 +150,8 @@ export class FHIRConditionService {
           text: icdInfo.name_zh ?? null,
         },
         subject: { reference: `Patient/${patientId}` },
-        recordedDate: recorded_date || now,
       };
+      if (recorded_date) condition.recordedDate = recorded_date;
 
       if (severity) {
         const severityMap: Record<string, [string, string]> = {
@@ -166,7 +163,7 @@ export class FHIRConditionService {
         condition.severity = codeableConcept(FHIR_SEVERITY_SYSTEM, code, display);
       }
       if (onset_date) condition.onsetDateTime = onset_date;
-      if (additional_notes) condition.note = [{ text: additional_notes, time: now }];
+      if (additional_notes) condition.note = [{ text: additional_notes }];
 
       return condition;
     } catch (e) {
@@ -186,7 +183,7 @@ export class FHIRConditionService {
     patientId: string,
     opts: CreateConditionOpts = {},
   ): Promise<Record<string, unknown>> {
-    const r = await query<IcdRow>(
+    const r = await this.q<IcdRow>(
       `SELECT code, name_zh, name_en FROM icd.diagnoses
        WHERE to_tsvector('simple', COALESCE(code,'') || ' ' || COALESCE(name_zh,'') || ' ' || COALESCE(name_en,''))
              @@ plainto_tsquery('simple', $1)

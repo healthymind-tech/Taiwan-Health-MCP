@@ -2168,8 +2168,10 @@ export class FHIRIGService {
       warnings.push("auto-wrapped repeating element(s) into arrays: " + coerced.map((c: any) => c.path).join(", "));
     }
     authoring.ensureMetaProfile(resource, canonical);
-    const pinned = authoring.pinFixedPattern(sd, resource);
+    // Explicit `_slice` tags first (any depth), then members the discriminators identify, then
+    // the unsliced fixed / pattern values (1.4.0: slice members were never pinned before).
     const pinnedSlices = authoring.pinSlices(sd, resource);
+    const pinned = [...authoring.pinSliceMembers(sd, resource), ...authoring.pinFixedPattern(sd, resource)];
     warnings.push(...(await this.inferSystems(pkg, sd, resource)));
     let referenceUrn: string | null = null;
     if (key) {

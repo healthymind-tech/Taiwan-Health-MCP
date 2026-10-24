@@ -44,6 +44,7 @@ import { BUILD, SERVER_VERSION, TOOLS_VERSION, toolVersion } from "./toolVersion
 import { losslessToolArgument } from "./requestContext.js";
 import { stringifyLossless } from "./losslessJson.js";
 import { BUNDLE_TYPES } from "./fhirBundleFinalize.js";
+import { registerAuthoringTools } from "./authoring/index.js";
 import { LEXICON_SHA256, LEXICON_VERSION, groundingInputShape, validateBundleGroundingShape } from "./grounding/index.js";
 import { completenessInputShape, type CompletenessInput } from "./grounding/completeness/index.js";
 import {
@@ -1041,7 +1042,7 @@ async function getFhirIgService(): Promise<FHIRIGService | null> {
   }
 }
 
-/** Register the FHIR IG tool group (23 tools): `_TOOL_GROUPS["FHIR IG"]` + required elements + grounding / completeness checks + Bundle finalizer. */
+/** Register the FHIR IG tool group (27 tools): `_TOOL_GROUPS["FHIR IG"]` + required elements + grounding / completeness checks + Bundle finalizer + the field-value authoring layer (authoring/). */
 function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
   const pkg = {
     package_id: z
@@ -1474,7 +1475,16 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
   server.registerTool(
     "fhir_finalize_resource",
     {
-      description: "Finalize an LLM-filled draft: pin mechanical fields (fixed/pattern/meta.profile), infer single-system codings, wire references, generate narrative, then validate. Does not auto-loop.",
+      description:
+        "Finalize a draft resource you wrote as FHIR JSON against a profile, then validate it. Mechanical only — never invents content: " +
+        "sets meta.profile; pins fixed / pattern values only where the draft already has the parent node, including slice members the " +
+        "slicing discriminators identify (a component whose code is the systolic LOINC gets the slice's unit system / code, an identifier " +
+        "whose type matches gets the slice's system / use) and items tagged `_slice: <name>` at any depth (the tag is always removed, " +
+        "also when it names no slice); fills Coding.system when the bound ValueSet has a single system; rewrites references written as " +
+        "{reference: <key>} to the context's urn:uuid (context_id + key); generates the narrative; validates like fhir_validate_resource " +
+        "(issues carry suggestions). Returns {resource, validation, coerced, narrated, pinned, pinnedSlices, contextId, reference}; numbers keep " +
+        "the spelling you wrote. Does not auto-loop. Prefer fhir_author_resources when you have field VALUES rather than a drafted resource: " +
+        "it composes the resource for you (no raw FHIR JSON) and keeps it in a context for fhir_assemble_bundle.",
       inputSchema: {
         profile: z.string(),
         draft: z.record(z.any()),
@@ -1498,6 +1508,10 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
         ),
       ),
   );
+
+  // Field-value authoring layer (authoring/index.ts): fhir_get_authoring_fields, fhir_author_resources,
+  // fhir_context, fhir_assemble_bundle — same group, same module gate (ig), same wrappers.
+  registerAuthoringTools(server, svc, groundingDeps);
 }
 
 // Lazily-initialized FHIR Condition service singleton.

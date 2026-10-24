@@ -25,6 +25,10 @@ export interface FieldSpec {
   binding?: { strength: string; valueSet: string; codes?: FieldBindingCode[] };
   targets?: string[];
   children?: FieldSpec[];
+  /** Appended by A: the value the MCP supplies for an `auto` field (fixed / pattern / workflow default). */
+  value?: unknown;
+  /** Appended by A: the fragment the profile pins under a field the model still fills (slice system / type, component code, unit), FHIR JSON shape relative to the field. */
+  pins?: Record<string, unknown>;
 }
 
 export interface AuthorInput {
@@ -65,5 +69,6 @@ export interface AuthoringToolSpec {
   description: string;
   // zod raw shape (Record<string, ZodTypeAny>) — typed loosely to keep this file dependency-free.
   inputShape: Record<string, unknown>;
-  handler: (args: Record<string, unknown>) => Promise<unknown>;
+  /** `extra.requestId` is the MCP handler's request id (losslessToolArgument of a JSON-RPC batch). */
+  handler: (args: Record<string, unknown>, extra?: { requestId?: string | number | null }) => Promise<unknown>;
 }

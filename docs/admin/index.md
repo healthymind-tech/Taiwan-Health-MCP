@@ -57,7 +57,7 @@ FHIR_SERVER_SECRET_KEY=
 由 `node-server/src/admin/adminMcp.ts` 提供 API（`GET /admin/api/mcp/overview`、`GET /admin/api/mcp/tools`、`POST /admin/api/mcp/tools/{name}/invoke`），分三個分頁：
 
 - **總覽**：對外端點（`/mcp`、`/openapi.json`、`/tools/{name}`、JWKS、OAuth 回呼）、驗證模式、伺服器版本與用戶端設定範本。
-- **工具目錄**：`mcp.ts` 定義的全部 64 個工具，含是否已註冊；未註冊的工具會標示原因（模組資料表與門檻筆數）；模組維護中的工具與群組會加上「維護中」徽章。
+- **工具目錄**：`mcp.ts` 定義的全部 68 個工具，含是否已註冊；未註冊的工具會標示原因（模組資料表與門檻筆數）；模組維護中的工具與群組會加上「維護中」徽章。
 - **測試台**：以預填範例直接執行任一已註冊工具，與 `POST /tools/{name}` 走同一處理程序（有速率限制）；模組維護中時「執行」按鈕停用並說明原因。
 
 ## 模型端點（`/admin/models`）

@@ -65,7 +65,7 @@ Derived elements without a rule get the CodeSystem definitions of the binding's 
 | Tool | Description | Key parameters |
 | :--- | :--- | :--- |
 | `fhir_get_resource_skeleton` | Generate an empty draft from a profile containing only required / mustSupport structure; `required` is the element's own min≥1, `effectiveRequired` also requires every ancestor to be required | `profile`, `candidate_limit` (20 by default, capped at 100), `include_examples` (`true` by default) |
-| `fhir_finalize_resource` | Finalise a draft against its profile and return the complete resource | `profile`, `draft`, `context_id`, `key`, `generate_narrative` (`true` by default) |
+| `fhir_finalize_resource` | Finalise a draft already written as FHIR JSON against its profile and validate it: pins fixed / pattern values only where the draft has the parent node (slice members and `_slice` tags at any depth included), never adds clinical content; with field values use `fhir_author_resources` (see "[Authoring from field values](#authoring)") | `profile`, `draft`, `context_id`, `key`, `generate_narrative` (`true` by default) |
 | `fhir_resolve_reference` | Resolve resource references by temporary key (for linking inside a Bundle) | `key`, `resource_type`, `context_id`, `display` |
 | `fhir_build_bundle` | Assemble several resources into a Bundle: a `key` becomes a deterministic UUID v5 fullUrl (the same input always yields the same Bundle), references written inside resources as `key`, `urn:uuid:<key>` or `<Type>/<key>` are rewired to the generated fullUrl, and an invalid `fullUrl` is normalised by the `fhir_finalize_bundle` rules. `data.changes` lists every rewrite, `data.unresolved` the references no entry matches (1.2.0) | `entries`, `bundle_type` (`transaction` by default), `context_id` |
 | `fhir_finalize_bundle` | **Call before emitting the final Bundle**: it only normalises `fullUrl`, `reference` and `id` and never touches clinical content (see "Bundle finalisation" below); numbers keep the caller's spelling (`10.0` stays `10.0`). Returns the finalised `bundle`, every change as `changes[{path, from, to, rule}]`, the references it could not decide as `unresolved[{path, reference, candidates}]`, `notes` and `id_map`. `bundle_type` sets `Bundle.type` (a profile-fixed type is never overridden) | `bundle`, `package_id`, `version`, `bundle_profile` (canonical or id of the target Bundle profile; defaults to `meta.profile`), `bundle_type` (R4 bundle-type code) |
@@ -136,6 +136,72 @@ Besides saying what is wrong, validation issues carry, where possible, "what to 
 
 > In-process validation is based on profile snapshots and terminology bindings, benchmarked against HL7 validator_cli 7.0.1 (method and results in `node-server/scripts/validator-audit/`). It is not equivalent to conformance certification by the official HL7 FHIR Validator.
 
+## Authoring from field values {#authoring}
+
+The model no longer writes FHIR JSON: it gives **field values**, the MCP composes the resource for the profile, validates it, keeps it in a per-task **context** and assembles the Bundle from a list of keys. Every rule comes from the resolved package's StructureDefinitions / ValueSets and FHIR R4 core — **no IG-specific special cases** (TW Core, TWPAS or any other installed IG alike).
+
+| Tool | Description | Key parameters |
+| :--- | :--- | :--- |
+| `fhir_get_authoring_fields` | The profile's "writing form": `fields` (required / expected / commonly used in the IG's own examples, reason in `why`), `more` (the remaining mustSupport fields) and `omitted` (dropped for size, never silent). Each field has `kind` + `format` (how to write the value), `source` (record / facility / code / fixed / default / derived), small `binding.codes`, `targets` and `children`; fields with `auto: true` are filled by the MCP (`value` shows what), `pins` shows what the profile fixes inside a field you still fill (identifier system, component code, unit) | `profile`, `package_id`, `version`, `include_more` (`true` by default) |
+| `fhir_author_resources` | Author several resources in one call (8 or more is fine): `{key, profile, fields}`; the MCP adds `meta.profile`, fixed / pattern values, slices, workflow defaults, derivable values (e.g. Condition.category when an encounter is given), displays, UCUM units, ROC → ISO dates, then validates and stores each in the context. Returns `{context_id, storage, results[{key, status, resource, provenance, missing, refs, issues}], summary}` | `context_id` (omit on the first call), `resources`, `timezone` |
+| `fhir_context` | Inspect or trim a context: `list` (status and references per key), `get` (one key's full result), `delete` (one key or the whole context) | `context_id`, `action`, `key` |
+| `fhir_assemble_bundle` | Build the Bundle from a list of keys: each entry's fullUrl is the key's deterministic urn:uuid; the Bundle is finalised by the `fhir_finalize_bundle` rules and validated like `fhir_validate_bundle` (grounding too with `source_text`); every issue carries the `key` and the model's field name | `context_id`, `keys`, `bundle_type`, `bundle_profile`, `identifier`, `timestamp`, `source_text`, `allow_invalid` |
+
+**Flow**
+
+1. Plan one key per resource (`patient-1`, `enc-1`, `cond-1`, `obs-wbc` …).
+2. Call `fhir_get_authoring_fields(profile)` once per profile.
+3. Call `fhir_author_resources` **without** `context_id` for the first batch and keep `data.context_id`; cross references are `{ref: "<key>"}` and may point at a key not authored yet (status `refs_pending`, resolved at assembly); cycles (`Encounter.diagnosis` ↔ `Condition.encounter`) are fine.
+4. Fix a `status: invalid` resource by resending **the same key with `merge: true`** and only the changed fields (`null` removes a field); issues carry `key`, `field` (your field name), `path` (FHIR path) and `suggestions`.
+5. `fhir_assemble_bundle(context_id, keys, bundle_type)`; for a document Bundle, author the Composition first (`section.entry` as `{ref}`) and pass `identifier` / `timestamp` from the record (bdl-9 / bdl-10).
+
+**Value grammar**
+
+| Kind | Accepted forms |
+| :--- | :--- |
+| string / code / boolean / integer / decimal | the JSON scalar; numbers keep their spelling (`12.50` stays `12.50`, `1e2` stays `1e2`) |
+| coding / codeableConcept | `{system, code, display?}`; several codes as an array; `{text}` or a plain string when there is no required binding |
+| quantity | `{value, unit}` (unit text or UCUM; the MCP adds the UCUM system / code) or the string `"95 mg/dL"` |
+| date / dateTime / instant | ISO `2026-06-15`, `2026-06-15T06:00`, or ROC `115/06/15`, `115/06/15 06:00` (precision kept). A time without an offset needs `timezone` (e.g. `"+08:00"`, remembered on the context), otherwise it is an error — **an offset is never guessed** |
+| period | `{start, end?}` with the date forms above |
+| identifier | `{value, system?, type?}`; a slice as `identifier:medicalRecord` |
+| reference | `{ref: "<key>"}` (a resource in the same context) or `{reference: "Patient/123"}` (external) |
+| choice `value[x]` | give `value`; its shape picks the type (quantity → `valueQuantity`, `{system, code}` → `valueCodeableConcept` …), or name it (`valueQuantity`) |
+| component | `[{code, value}]` or `component:<slice>` `{value}` |
+| extension slice | `extension:<slice>` with `{value: …}` or the bare value (`{ref}`, `{system, code}` …); the MCP writes `{url, value[x]}` from the extension's definition; FHIR JSON that already carries `url` is kept as written |
+| dosage | `{text?, route?, dose?, frequency?/timing?, period?, asNeeded?}` |
+
+**Rules**: model values win (only fixed / pattern values override, a conflict is reported as an error); values only the record or the facility knows (dates, numbers, identifiers, names, doses, the time zone, Bundle.identifier / timestamp) are **never invented** — they are listed in `missing`; values the MCP supplies are marked `fixed` / `default` / `derived` / `lookup` in `provenance`.
+
+**Contexts**: a context id is 128 random bits (32 hex), stored in Redis under `authoring:ctx:<id>`, dropped after 60 minutes idle and refreshed by every call; without Redis an in-process memory store is used (`storage: "memory"`, lost on restart). `{ref: key}` maps to `urn:uuid:<UUID v5(context id, key)>` — the same value in single-resource validation and in the final Bundle, so **the same context + the same keys always give a byte-identical Bundle**. Clinical content is never logged (ids, counts and byte sizes only).
+
+**Error codes** (`{ok: false, data: null, error: {code, message, message_zh, hint, hint_zh, retryable}}`)
+
+| code | When | Next step |
+| :--- | :--- | :--- |
+| `CONTEXT_EXPIRED` | the context id does not exist or expired (never partial results) | start over without `context_id` and re-author every resource with the same keys and fields |
+| `KEY_NOT_FOUND` | a key passed to assembly / `get` is not in the context | `fhir_context action=list`, then author or drop it |
+| `UNRESOLVED_REFERENCE` | a resource references a key not in `keys` or not in the context; `error.refused` lists key / field / ref_key | add ref_key to keys, author it, or change the field with merge |
+| `INVALID_RESOURCE` | a stored resource still has validation errors; `error.refused` lists key / field / error | fix with merge and assemble again (`allow_invalid=true` only if the user explicitly accepts it) |
+| `MISSING_COMPOSITION` | a document Bundle without an authored Composition; `error.missing.fields` lists what it needs | author the Composition from the record and put its key first |
+| `CONTEXT_CONFLICT` | the same context kept being written from several places at once | retry once |
+| `INVALID_ARGUMENT` | bad arguments (duplicate key, missing profile, unknown `bundle_type`, `timestamp` not an instant …) | fix as the message says |
+
+**Example**
+
+```json
+{"timezone": "+08:00", "resources": [
+  {"key": "patient-1", "profile": "Patient-twcore", "fields": {"identifier:idCardNumber": {"value": "A123456789"}, "name:official": {"text": "王小明"}, "gender": "male", "birthDate": "80/03/15"}},
+  {"key": "enc-1", "profile": "Encounter-twcore", "fields": {"class": {"system": "http://terminology.hl7.org/CodeSystem/v3-ActCode", "code": "IMP"}, "subject": {"ref": "patient-1"}, "period": {"start": "115/06/10 14:30", "end": "2026-06-15T10:00"}, "diagnosis": [{"condition": {"ref": "cond-1"}, "rank": 1}]}},
+  {"key": "cond-1", "profile": "Condition-twcore", "fields": {"code": {"system": "http://hl7.org/fhir/sid/icd-10-cm", "code": "J18.9"}, "subject": {"ref": "patient-1"}, "encounter": {"ref": "enc-1"}}},
+  {"key": "obs-wbc", "profile": "Observation-laboratoryResult-twcore", "fields": {"code": [{"system": "http://loinc.org", "code": "6690-2"}, {"system": "https://twcore.mohw.gov.tw/ig/twcore/CodeSystem/medical-service-payment-tw", "code": "08011C"}], "subject": {"ref": "patient-1"}, "effectiveDateTime": "2026-06-11T06:00", "value": {"value": 12.50, "unit": "10*3/uL"}}}
+]}
+```
+
+Fix: `{"context_id": "<id>", "resources": [{"key": "obs-wbc", "merge": true, "fields": {"value": "11.8 10*3/uL"}}]}`; assemble: `{"context_id": "<id>", "keys": ["patient-1", "enc-1", "cond-1", "obs-wbc"], "bundle_type": "collection", "bundle_profile": "Bundle-twcore"}`.
+
+`fhir_finalize_resource` (1.4.0) remains for a draft already written as FHIR JSON: it pins fixed / pattern values only where the draft has the parent node (slice members identified by the slicing discriminators and `_slice` tags at any depth included; tags are always removed), fills a single-system `coding.system`, rewrites `{reference: <key>}` to the context's urn, generates the narrative and validates — **it never adds clinical content**; with field values use `fhir_author_resources` instead.
+
 ## Checking against the source record (grounding / completeness)
 
 Conformance-valid is not the same as faithful: a model can fill in a diagnosis code, date or dose the record never states, and the validator still passes.
@@ -186,8 +252,10 @@ Tools whose behaviour is pinned by fixtures carry their own version (`node-serve
 | `fhir_get_profile_required_elements` | 1.4.1 (`bundle_rules.bundle_type` names `fhir_finalize_bundle`'s `bundle_type`; 1.4.0: `bundle_rules` for Bundle profiles; 1.3.0: derived rows: allowedCodes + derivation rule; `include_mustsupport="defaults"`; `optional`) |
 | `fhir_list_igs`, `fhir_list_artifacts`, `fhir_search_artifacts`, `fhir_list_resource_profiles` (new `compact`) | 1.3.0 |
 | `fhir_get_ig`, `fhir_rank_resource_profiles`, `fhir_get_profile`, `fhir_get_profile_elements`, `fhir_get_valueset`, `fhir_expand_valueset`, `fhir_validate_code`, `fhir_get_resource_skeleton` | 1.2.0 |
-| `fhir_finalize_resource` | 1.3.2 (`resource` keeps the draft's number spellings; 1.3.1: validation rules as `fhir_validate_resource` 1.6.1; 1.3.0: validation issue `suggestions` / `caused_by`) |
+| `fhir_finalize_resource` | 1.4.0 (slice members pinned by their discriminators, `_slice` tags at any depth and always removed; 1.3.2: `resource` keeps the draft's number spellings; 1.3.1: validation rules as `fhir_validate_resource` 1.6.1; 1.3.0: validation issue `suggestions` / `caused_by`) |
 | `fhir_lookup_code` | 1.3.2 (RxNorm codes) |
 | `fhir_normalize_code` | 1.8.0 (excerpt CodeSystems → the installed full copy, candidate `linked`, aliases resolved outside the default IG) |
 | `fhir_check_grounding` | 1.1.0 |
 | `fhir_check_completeness` | 1.1.1 |
+| `fhir_get_authoring_fields`, `fhir_author_resources`, `fhir_context`, `fhir_assemble_bundle` | 1.0.0 (authoring from field values, see "[Authoring from field values](#authoring)") |
+| `query_fhir_condition`, `query_fhir_medication` | 1.2.0 (no element is stamped with the current time any more — `recordedDate` / `note.time` / `meta.lastUpdated` appear only when the caller supplies them) |

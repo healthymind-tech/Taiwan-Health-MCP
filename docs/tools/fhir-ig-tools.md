@@ -65,7 +65,7 @@
 | 工具 | 說明 | 主要參數 |
 | :--- | :--- | :--- |
 | `fhir_get_resource_skeleton` | 依剖面產生僅含必填 / mustSupport 結構的空白草稿；`required` 為元素自身 min≥1，`effectiveRequired` 另要求所有父元素皆必填 | `profile`, `candidate_limit`（預設 20，上限 100）, `include_examples`（預設 `true`） |
-| `fhir_finalize_resource` | 將草稿依剖面定稿並回傳完整資源 | `profile`, `draft`, `context_id`, `key`, `generate_narrative`（預設 `true`） |
+| `fhir_finalize_resource` | 將已寫好的 FHIR JSON 草稿依剖面定稿並驗證：只在草稿已有父節點處釘上 fixed / pattern（含 slice 成員與任何深度的 `_slice` 標記），不補臨床內容；有欄位值時改用 `fhir_author_resources`（見「[從欄位值撰寫資源](#authoring)」） | `profile`, `draft`, `context_id`, `key`, `generate_narrative`（預設 `true`） |
 | `fhir_resolve_reference` | 以暫時鍵解析資源參照（供 Bundle 內互連） | `key`, `resource_type`, `context_id`, `display` |
 | `fhir_build_bundle` | 將多筆資源組裝為 Bundle：`key` 變成確定性的 UUID v5 fullUrl（同一輸入永遠得到同一份 Bundle），資源內以 `key`、`urn:uuid:<key>`、`<Type>/<key>` 寫的引用一律改寫成產生的 fullUrl；給了不合法 `fullUrl` 時依 `fhir_finalize_bundle` 的規則正規化。`data.changes` 列出每一處改寫，`data.unresolved` 列出找不到對應 entry 的引用（1.2.0） | `entries`, `bundle_type`（預設 `transaction`）, `context_id` |
 | `fhir_finalize_bundle` | **在輸出最終 Bundle 前呼叫**：只整理 `fullUrl`、`reference` 和 `id`，不改動臨床內容（見下節「Bundle 定稿」）；數字保留呼叫端的原始寫法（`10.0` 仍是 `10.0`）。回傳整理後的 `bundle`、每一處改動 `changes[{path, from, to, rule}]`、無法確定的引用 `unresolved[{path, reference, candidates}]`、`notes` 與 `id_map`。`bundle_type` 可指定 `Bundle.type`（剖面固定的 type 不會被覆寫） | `bundle`, `package_id`, `version`, `bundle_profile`（目標 Bundle profile 的 canonical 或 id；省略時取 `meta.profile`）, `bundle_type`（R4 bundle-type 代碼） |
@@ -136,6 +136,72 @@
 
 > 程序內驗證以剖面 snapshot 與術語綁定為基礎，比對基準為 HL7 validator_cli 7.0.1（稽核方式與結果見 `node-server/scripts/validator-audit/`），但不等同官方 HL7 FHIR Validator 的一致性認證。
 
+## 從欄位值撰寫資源 {#authoring}
+
+模型不再自己寫 FHIR JSON：它只給**欄位值**，MCP 依剖面組出資源、驗證、存在每個任務專屬的 **context**，最後由 key 清單組裝 Bundle。所有規則都來自解析到的套件 StructureDefinition / ValueSet 與 FHIR R4 核心，**不針對任何 IG 寫特例**（TW Core、TWPAS 或其他已安裝 IG 都一樣）。
+
+| 工具 | 說明 | 主要參數 |
+| :--- | :--- | :--- |
+| `fhir_get_authoring_fields` | 剖面的「填寫表」：`fields`（必填 / 預期 / IG 範例中常用，`why` 說明原因）、`more`（其餘 mustSupport 欄位）、`omitted`（因長度省略者，不會默默丟掉）。每個欄位有 `kind` + `format`（值怎麼寫）、`source`（record / facility / code / fixed / default / derived）、小型 `binding.codes`、`targets`、`children`；`auto: true` 的欄位由 MCP 自動補（`value` 顯示補什麼），`pins` 顯示剖面在你要填的欄位裡固定的部分（identifier system、component code、單位） | `profile`, `package_id`, `version`, `include_more`（預設 `true`） |
+| `fhir_author_resources` | 一次撰寫多筆資源（8 筆以上沒問題）：`{key, profile, fields}`；MCP 補 `meta.profile`、fixed / pattern、slice、workflow 預設值、可推導的值（例如有 encounter 的 Condition.category）、display、UCUM 單位、民國日期轉 ISO，然後驗證並存進 context。回傳 `{context_id, storage, results[{key, status, resource, provenance, missing, refs, issues}], summary}` | `context_id`（第一次省略）, `resources`, `timezone` |
+| `fhir_context` | 檢視或清理 context：`list`（每個 key 的狀態與引用）、`get`（單一 key 的完整結果）、`delete`（單一 key 或整個 context） | `context_id`, `action`, `key` |
+| `fhir_assemble_bundle` | 由 key 清單組 Bundle：每個 entry 的 fullUrl 是該 key 的確定性 urn:uuid，經 `fhir_finalize_bundle` 的規則定稿、`fhir_validate_bundle` 驗證（給 `source_text` 時另做 grounding）；issue 都帶 `key` 與模型欄位名 | `context_id`, `keys`, `bundle_type`, `bundle_profile`, `identifier`, `timestamp`, `source_text`, `allow_invalid` |
+
+**流程**
+
+1. 規劃每筆資源一個 key（`patient-1`、`enc-1`、`cond-1`、`obs-wbc` …）。
+2. 每個剖面呼叫一次 `fhir_get_authoring_fields(profile)`。
+3. 第一批呼叫 `fhir_author_resources` **不帶** `context_id`，保留回傳的 `data.context_id`；互相參照寫 `{ref: "<key>"}`，可以指向還沒建立的 key（狀態 `refs_pending`，組裝時再解析），循環引用（`Encounter.diagnosis` ↔ `Condition.encounter`）沒有問題。
+4. `status: invalid` 的資源用**同一 key + `merge: true`** 只重送要改的欄位（`null` 代表刪除該欄位）；issue 帶 `key`、`field`（模型欄位名）、`path`（FHIR 路徑）與 `suggestions`。
+5. `fhir_assemble_bundle(context_id, keys, bundle_type)`；document 型 Bundle 先撰寫 Composition（`section.entry` 用 `{ref}`），並由病歷給 `identifier` / `timestamp`（bdl-9 / bdl-10）。
+
+**值的寫法（value grammar）**
+
+| 類型 | 可接受的寫法 |
+| :--- | :--- |
+| string / code / boolean / integer / decimal | JSON 純量；數字保留原始寫法（`12.50` 仍是 `12.50`，`1e2` 仍是 `1e2`） |
+| coding / codeableConcept | `{system, code, display?}`；多個碼用陣列；沒有 required binding 時可只給 `{text}` 或字串 |
+| quantity | `{value, unit}`（單位文字或 UCUM，MCP 補 UCUM system / code）或字串 `"95 mg/dL"` |
+| date / dateTime / instant | ISO `2026-06-15`、`2026-06-15T06:00`，或民國 `115/06/15`、`115/06/15 06:00`（精度保留）。沒有時區的時間需要 `timezone`（例如 `"+08:00"`，記在 context 上），否則回報錯誤——**不會猜時區** |
+| period | `{start, end?}`，日期寫法同上 |
+| identifier | `{value, system?, type?}`；slice 寫成 `identifier:medicalRecord` |
+| reference | `{ref: "<key>"}`（同一 context 的資源）或 `{reference: "Patient/123"}`（外部） |
+| choice `value[x]` | 給 `value`，由值的形狀決定型別（quantity → `valueQuantity`，`{system, code}` → `valueCodeableConcept` …），也可直接寫 `valueQuantity` |
+| component | `[{code, value}]` 或 `component:<slice>` `{value}` |
+| extension slice | `extension:<slice>` 給 `{value: …}` 或直接給值（`{ref}`、`{system, code}`…），MCP 依 extension 定義寫成 `{url, value[x]}`；已帶 `url` 的 FHIR JSON 原樣保留 |
+| dosage | `{text?, route?, dose?, frequency?/timing?, period?, asNeeded?}` |
+
+**原則**：模型的值優先（只有 fixed / pattern 會覆蓋，衝突時回報錯誤）；病歷或院所才知道的值（日期、數值、識別碼、姓名、劑量、時區、Bundle.identifier / timestamp）**絕不捏造**，缺少時列在 `missing`；MCP 補的值在 `provenance` 標為 `fixed` / `default` / `derived` / `lookup`。
+
+**Context**：context id 為 128 位元亂數（32 位 hex），存在 Redis `authoring:ctx:<id>`，閒置 60 分鐘清除、每次呼叫都會延長；Redis 不可用時退回單一程序記憶體（回應 `storage: "memory"`，重啟即遺失）。`{ref: key}` 對應到 `urn:uuid:<UUID v5(context id, key)>`——單筆驗證與最終 Bundle 用同一個值，因此**同一 context + 同一 keys 永遠得到位元組相同的 Bundle**。病歷內容不寫入 log（只記 id、筆數、位元組數）。
+
+**錯誤碼**（`{ok: false, data: null, error: {code, message, message_zh, hint, hint_zh, retryable}}`）
+
+| code | 何時 | 下一步 |
+| :--- | :--- | :--- |
+| `CONTEXT_EXPIRED` | context id 不存在或已過期（不會回傳部分結果） | 不帶 `context_id` 重新開始，以相同 key 與欄位重建全部資源 |
+| `KEY_NOT_FOUND` | 組裝 / `get` 的 key 不在 context | `fhir_context action=list` 查看，補建或移除 |
+| `UNRESOLVED_REFERENCE` | 某資源引用的 key 不在 `keys` 或不在 context；`error.refused` 列出 key / field / ref_key | 把 ref_key 加入 keys、補建，或以 merge 改欄位 |
+| `INVALID_RESOURCE` | 有資源仍有驗證錯誤；`error.refused` 列出 key / field / 錯誤 | 以 merge 修正後重新組裝（`allow_invalid=true` 僅在使用者明確接受時） |
+| `MISSING_COMPOSITION` | document 型 Bundle 但沒有撰寫 Composition；`error.missing.fields` 列出它需要的欄位 | 依病歷撰寫 Composition，放在 keys 第一個 |
+| `CONTEXT_CONFLICT` | 同一 context 同時被多處寫入且一直衝突 | 重試一次 |
+| `INVALID_ARGUMENT` | 參數錯誤（重複 key、缺 profile、`bundle_type` 不合法、`timestamp` 不是 instant …） | 依訊息修正 |
+
+**範例**
+
+```json
+{"timezone": "+08:00", "resources": [
+  {"key": "patient-1", "profile": "Patient-twcore", "fields": {"identifier:idCardNumber": {"value": "A123456789"}, "name:official": {"text": "王小明"}, "gender": "male", "birthDate": "80/03/15"}},
+  {"key": "enc-1", "profile": "Encounter-twcore", "fields": {"class": {"system": "http://terminology.hl7.org/CodeSystem/v3-ActCode", "code": "IMP"}, "subject": {"ref": "patient-1"}, "period": {"start": "115/06/10 14:30", "end": "2026-06-15T10:00"}, "diagnosis": [{"condition": {"ref": "cond-1"}, "rank": 1}]}},
+  {"key": "cond-1", "profile": "Condition-twcore", "fields": {"code": {"system": "http://hl7.org/fhir/sid/icd-10-cm", "code": "J18.9"}, "subject": {"ref": "patient-1"}, "encounter": {"ref": "enc-1"}}},
+  {"key": "obs-wbc", "profile": "Observation-laboratoryResult-twcore", "fields": {"code": [{"system": "http://loinc.org", "code": "6690-2"}, {"system": "https://twcore.mohw.gov.tw/ig/twcore/CodeSystem/medical-service-payment-tw", "code": "08011C"}], "subject": {"ref": "patient-1"}, "effectiveDateTime": "2026-06-11T06:00", "value": {"value": 12.50, "unit": "10*3/uL"}}}
+]}
+```
+
+修正：`{"context_id": "<id>", "resources": [{"key": "obs-wbc", "merge": true, "fields": {"value": "11.8 10*3/uL"}}]}`；組裝：`{"context_id": "<id>", "keys": ["patient-1", "enc-1", "cond-1", "obs-wbc"], "bundle_type": "collection", "bundle_profile": "Bundle-twcore"}`。
+
+`fhir_finalize_resource`（1.4.0）仍適用於「已經寫好的 FHIR JSON 草稿」：只在草稿已有父節點的地方釘上 fixed / pattern 值（含 slicing discriminator 可判定的 slice 成員，以及任何深度的 `_slice` 標記，標記一律移除）、單一系統的 `coding.system`、把 `{reference: <key>}` 改成 context 的 urn、產生 narrative 並驗證，**不會補任何臨床內容**；有欄位值時請改用 `fhir_author_resources`。
+
 ## 依據原文檢查（grounding / completeness）
 
 符合剖面（conformance-valid）不代表忠於病歷：模型可能填入病歷沒寫的診斷碼、日期或劑量，而 validator 照樣通過。
@@ -186,8 +252,10 @@
 | `fhir_get_profile_required_elements` | 1.4.1（`bundle_rules.bundle_type` 提及 `fhir_finalize_bundle` 的 `bundle_type`；1.4.0：Bundle profile 的 `bundle_rules`；1.3.0：derived 列的 allowedCodes 與推導規則、`include_mustsupport="defaults"`、`optional`） |
 | `fhir_list_igs`、`fhir_list_artifacts`、`fhir_search_artifacts`、`fhir_list_resource_profiles`（新增 `compact`） | 1.3.0 |
 | `fhir_get_ig`、`fhir_rank_resource_profiles`、`fhir_get_profile`、`fhir_get_profile_elements`、`fhir_get_valueset`、`fhir_expand_valueset`、`fhir_validate_code`、`fhir_get_resource_skeleton` | 1.2.0 |
-| `fhir_finalize_resource` | 1.3.2（`resource` 保留草稿的數字原始寫法；1.3.1：驗證規則同 `fhir_validate_resource` 1.6.1；1.3.0：驗證 issue 的 `suggestions` / `caused_by`） |
+| `fhir_finalize_resource` | 1.4.0（slice 成員依 discriminator 釘上 fixed / pattern、任何深度的 `_slice` 標記且一律移除；1.3.2：`resource` 保留草稿的數字原始寫法；1.3.1：驗證規則同 `fhir_validate_resource` 1.6.1；1.3.0：驗證 issue 的 `suggestions` / `caused_by`） |
 | `fhir_lookup_code` | 1.3.2（RxNorm 碼可查） |
 | `fhir_normalize_code` | 1.8.0（節錄版 CodeSystem 改查已安裝的完整版、候選 `linked`、別名解析到預設 IG 以外的 CodeSystem） |
 | `fhir_check_grounding` | 1.1.0 |
 | `fhir_check_completeness` | 1.1.1 |
+| `fhir_get_authoring_fields`、`fhir_author_resources`、`fhir_context`、`fhir_assemble_bundle` | 1.0.0（從欄位值撰寫資源，見「[從欄位值撰寫資源](#authoring)」） |
+| `query_fhir_condition`、`query_fhir_medication` | 1.2.0（不再以目前時間填 `recordedDate` / `note.time` / `meta.lastUpdated`——只在呼叫端提供時出現） |

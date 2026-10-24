@@ -25,16 +25,6 @@ export function normalizeLicenseToken(licenseId: string): string {
   return (licenseId || "").toUpperCase().replace(/[^A-Z0-9]+/g, "");
 }
 
-/** Mirror Python `datetime.now().strftime("%Y-%m-%dT%H:%M:%S+08:00")`. */
-function nowStamp(): string {
-  const d = new Date(Date.now() + 8 * 3600 * 1000);
-  const p = (n: number) => String(n).padStart(2, "0");
-  return (
-    `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}` +
-    `T${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}+08:00`
-  );
-}
-
 function asDict(v: unknown): Json {
   return v !== null && typeof v === "object" && !Array.isArray(v) ? (v as Json) : {};
 }
@@ -72,14 +62,23 @@ interface RawRow {
   normalized_json: unknown;
 }
 
+/** Row-returning query function (the shared pool by default; tests inject a fake). */
+export type MedicationQueryFn = <T extends object>(sql: string, params: unknown[]) => Promise<{ rows: T[] }>;
+
 export class FHIRMedicationService {
+  private readonly q: MedicationQueryFn;
+
+  constructor(q: MedicationQueryFn = query as unknown as MedicationQueryFn) {
+    this.q = q;
+  }
+
   async initialize(): Promise<void> {
     logInfo("FHIR Medication Service initialized");
   }
 
   private async getDrugRecord(licenseId: string): Promise<DrugRecord | null> {
     const token = normalizeLicenseToken(licenseId);
-    const r = await query<RawRow>(
+    const r = await this.q<RawRow>(
       `SELECT l.license_id, l.is_active, l.cancellation_status, n.normalized_json
        FROM drug.normalized_records n
        JOIN drug.licenses l ON l.license_id = n.license_id
@@ -104,7 +103,7 @@ export class FHIRMedicationService {
 
   private async searchDrugRecords(keyword: string, limit = 5): Promise<DrugRecord[]> {
     const like = `%${keyword}%`;
-    const r = await query<RawRow>(
+    const r = await this.q<RawRow>(
       `WITH ranked AS (
           SELECT
               l.license_id,
@@ -240,7 +239,7 @@ export class FHIRMedicationService {
       throw new Error("resource_type must be 'Medication' or 'MedicationKnowledge'");
     }
     const token = normalizeLicenseToken(licenseId) || licenseId;
-    const now = nowStamp();
+    // R3 "never invent data": meta.lastUpdated is server bookkeeping, never stamped with now.
     const drug = asDict(normalized.drug);
     const companies = asDict(normalized.companies);
     const applicant = asDict(companies.applicant);
@@ -262,7 +261,7 @@ export class FHIRMedicationService {
       return {
         resourceType: "Medication",
         id: `medication-${token.toLowerCase()}`,
-        meta: { profile: [FHIR_MEDICATION_PROFILE], lastUpdated: now },
+        meta: { profile: [FHIR_MEDICATION_PROFILE] },
         status: isActive ? "active" : "inactive",
         ...common,
         doseForm: this.textCodeableConcept(String(drug.dosage_form ?? "")),
@@ -273,7 +272,7 @@ export class FHIRMedicationService {
     return {
       resourceType: "MedicationKnowledge",
       id: `medicationknowledge-${token.toLowerCase()}`,
-      meta: { profile: [FHIR_MEDICATION_KNOWLEDGE_PROFILE], lastUpdated: now },
+      meta: { profile: [FHIR_MEDICATION_KNOWLEDGE_PROFILE] },
       status: isActive ? "active" : "inactive",
       ...common,
       associatedMedication: [

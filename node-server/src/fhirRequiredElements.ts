@@ -539,7 +539,7 @@ export function groundingClassOfPath(path: string): GroundingClass {
 }
 
 /** pattern[x] semantics: every property of the pattern is present (arrays: each pattern item matches some item). */
-function patternMatches(actual: unknown, pattern: unknown): boolean {
+export function patternMatches(actual: unknown, pattern: unknown): boolean {
   if (pattern && typeof pattern === "object" && !Array.isArray(pattern)) {
     if (!actual || typeof actual !== "object" || Array.isArray(actual)) return false;
     return Object.entries(pattern as Record<string, unknown>).every(([k, v]) => patternMatches((actual as Record<string, unknown>)[k], v));
@@ -552,7 +552,7 @@ function patternMatches(actual: unknown, pattern: unknown): boolean {
 }
 
 /** Values reached from `node` by a simple dotted FHIRPath (choice stems and `resolve()` are not followed). */
-function valuesAt(node: unknown, rel: string): unknown[] {
+export function valuesAt(node: unknown, rel: string): unknown[] {
   let cur: unknown[] = [node];
   for (const seg of rel.split(".").filter(Boolean)) {
     const next: unknown[] = [];

@@ -25,7 +25,7 @@ import {
   TWCORE_PATIENT_EXAMPLE,
 } from "./mcpToolExampleFixtures.js";
 
-export const MCP_TOOL_EXAMPLES_VERSION = "3";
+export const MCP_TOOL_EXAMPLES_VERSION = "4";
 
 export interface ToolExample {
   /** Stable id within the tool (used by the UI and in tests). */
@@ -537,6 +537,66 @@ export const MCP_TOOL_EXAMPLES: Record<string, ToolExampleSet> = {
     title: "完成並驗證草稿資源",
     examples: [
       example("patient", "Patient 草稿", { profile: "Patient-twcore", draft: PATIENT_DRAFT, context_id: "playground-demo", key: "patient", package_id: TWCORE, version: TWCORE_VERSION, generate_narrative: true }),
+    ],
+  },
+  // ── Authoring from field values (authoring/) ────────────────────────────
+  fhir_get_authoring_fields: {
+    title: "剖面的填寫欄位（供 fhir_author_resources）",
+    examples: [
+      example("lab", "Observation-laboratoryResult-twcore", { profile: "Observation-laboratoryResult-twcore", package_id: TWCORE, version: TWCORE_VERSION, include_more: true }, "必填 / 常用欄位、值的寫法、MCP 自動補的欄位（category、status）"),
+      example("bp", "Observation-bloodPressure-twcore（component slices）", { profile: "Observation-bloodPressure-twcore", package_id: TWCORE, version: TWCORE_VERSION, include_more: false }),
+      example("patient", "Patient-twcore", { profile: "Patient-twcore", package_id: TWCORE, version: TWCORE_VERSION, include_more: true }),
+    ],
+  },
+  fhir_author_resources: {
+    title: "由欄位值撰寫資源（建立 context）",
+    examples: [
+      example(
+        "first-batch",
+        "第一批：Patient + Encounter + Condition + 檢驗 Observation（互相參照）",
+        {
+          context_id: null,
+          timezone: "+08:00",
+          resources: [
+            { key: "patient-1", profile: "Patient-twcore", fields: { "identifier:idCardNumber": { value: "A123456789" }, "identifier:medicalRecord": { value: "MR-00012345", system: "https://hospital.example.tw/mrn" }, "name:official": { text: "王小明" }, gender: "male", birthDate: "80/03/15" }, merge: false },
+            { key: "enc-1", profile: "Encounter-twcore", fields: { status: "finished", class: { system: "http://terminology.hl7.org/CodeSystem/v3-ActCode", code: "AMB" }, subject: { ref: "patient-1" }, period: { start: "115/06/15 09:30", end: "2026-06-15T10:00" }, diagnosis: [{ condition: { ref: "cond-1" }, rank: 1 }] }, merge: false },
+            { key: "cond-1", profile: "Condition-twcore", fields: { code: { system: "http://hl7.org/fhir/sid/icd-10-cm", code: "E11.9" }, subject: { ref: "patient-1" }, encounter: { ref: "enc-1" }, onsetDateTime: "2024-03-15" }, merge: false },
+            { key: "obs-glucose", profile: "Observation-laboratoryResult-twcore", fields: { code: [{ system: "http://loinc.org", code: "2345-7" }, { system: NHI_PAYMENT_CS, code: "09005C" }], subject: { ref: "patient-1" }, encounter: { ref: "enc-1" }, effectiveDateTime: "2026-06-15T06:00", value: "95 mg/dL" }, merge: false },
+          ],
+        },
+        "回傳 data.context_id；{ref} 互相參照（含 Encounter.diagnosis ↔ Condition.encounter 的循環）；ROC 日期、UCUM、display、fixed / default 值由 MCP 補上（provenance）。虛構資料",
+      ),
+      example(
+        "merge-fix",
+        "修正：同一 key 以 merge=true 只重送要改的欄位（需填入上一次的 context_id）",
+        { context_id: "00000000000000000000000000000000", timezone: null, resources: [{ key: "obs-glucose", merge: true, fields: { value: "5.6 mmol/L" } }] },
+        "把 context_id 換成 first-batch 回傳的 data.context_id；全 0 的 id 會回 CONTEXT_EXPIRED",
+      ),
+    ],
+  },
+  fhir_context: {
+    title: "檢視 / 清理撰寫 context",
+    examples: [
+      example("list", "列出 context 內所有 key 與狀態", { context_id: "00000000000000000000000000000000", action: "list", key: null }, "把 context_id 換成 fhir_author_resources 回傳的 data.context_id；全 0 的 id 會回 CONTEXT_EXPIRED"),
+      example("get", "讀取單一 key 的完整結果", { context_id: "00000000000000000000000000000000", action: "get", key: "patient-1" }),
+      example("delete-key", "刪除單一 key", { context_id: "00000000000000000000000000000000", action: "delete", key: "cond-1" }),
+    ],
+  },
+  fhir_assemble_bundle: {
+    title: "由 context 組裝 Bundle",
+    examples: [
+      example(
+        "collection",
+        "collection Bundle（Bundle-twcore）",
+        { context_id: "00000000000000000000000000000000", keys: ["patient-1", "enc-1", "cond-1", "obs-glucose"], bundle_type: "collection", bundle_profile: "Bundle-twcore", package_id: null, version: null, source_text: null, allow_invalid: false, identifier: null, timestamp: null },
+        "把 context_id 換成 fhir_author_resources 回傳的 data.context_id；同一 context + 同一 keys 永遠得到同一份 Bundle",
+      ),
+      example(
+        "document",
+        "document Bundle（Composition 先行；identifier / timestamp 來自病歷）",
+        { context_id: "00000000000000000000000000000000", keys: ["comp-1", "patient-1", "enc-1", "cond-1", "obs-glucose"], bundle_type: "document", bundle_profile: "Bundle-twcore", package_id: null, version: null, source_text: null, allow_invalid: false, identifier: { system: "https://hospital.example.tw/documents", value: "DS-2026-000123" }, timestamp: "2026-06-15T11:05:00+08:00" },
+        "沒有撰寫 Composition 時回 MISSING_COMPOSITION 並列出它需要的欄位（不會自行捏造）",
+      ),
     ],
   },
   fhir_finalize_bundle: {

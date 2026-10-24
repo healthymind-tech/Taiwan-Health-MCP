@@ -157,7 +157,20 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   RxNorm different-drug displays, lookup-failure / crash issues).
   // 1.3.2 (ISSUES_v10 B): `resource` keeps the draft's number spellings (10.0 stays 10.0; values the tool wraps into a
   //   single-element array too). Same JSON value as 1.3.1.
-  fhir_finalize_resource: "1.3.2",
+  // 1.4.0 (authoring layer, A): slice-aware pinning — fixed / pattern values of slice members are pinned where the
+  //   discriminators identify the member (bp component unit system / code, identifier slice system / use), `_slice` tags
+  //   work at any depth and are always removed (unknown names reported, never left in the resource); still only where the
+  //   draft has the parent node — nothing is invented. New description points to fhir_author_resources for values.
+  fhir_finalize_resource: "1.4.0",
+  // 1.0.0 (authoring/, evaluation v11): the model gives field VALUES, the MCP composes the resource for its profile
+  //   (fixed / pattern / defaults / derived / displays / UCUM / ROC dates), validates it, keeps it in a Redis context
+  //   (`authoring:ctx:*`, 60-min idle TTL) and assembles the Bundle from keys with deterministic urn:uuid fullUrls
+  //   (UUID v5 of context id + key, shared by {ref: key} references). Nothing is ever invented: unknown record values
+  //   are reported in `missing`. Number spellings are kept end to end.
+  fhir_get_authoring_fields: "1.0.0",
+  fhir_author_resources: "1.0.0",
+  fhir_context: "1.0.0",
+  fhir_assemble_bundle: "1.0.0",
   // 1.0.0 (ISSUES_v9 R1): deterministic Bundle finalizer — fullUrl-uuid / reference-rewire / resource-id (mandatory),
   // bundle-type / document-order (profile-driven); UUID v5 seeded by (resourceType, original fullUrl, resource.id, entry
   // index) + a content salt; references found through StructureDefinition snapshots; duplicates / ambiguity reported.
@@ -216,8 +229,10 @@ export const TOOLS_VERSION: Record<string, string> = {
   get_drug_details: "1.1.1",
   get_drug_asset_links: "1.1.1",
   // FHIR Condition / Medication: not-found hints; DB errors no longer return the raw message.
-  query_fhir_condition: "1.1.1",
-  query_fhir_medication: "1.1.1",
+  // 1.2.0 (R3 "never invent data"): no element is stamped with the current time — Condition.recordedDate and
+  //   note.time appear only when the caller supplies them, meta.lastUpdated is never written (was: now()+08:00).
+  query_fhir_condition: "1.2.0",
+  query_fhir_medication: "1.2.0",
   // FHIR servers: unknown server_key → code + available_servers + hint; allow-list errors list what is allowed;
   // transport failures are classified (UPSTREAM_TIMEOUT / _DNS_FAILED / _UNREACHABLE / _TLS_ERROR / _AUTH_FAILED);
   // non-2xx responses carry `hint`.
