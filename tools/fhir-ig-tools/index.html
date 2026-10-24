@@ -29,7 +29,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
     
     
       
@@ -37,7 +37,7 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
       
       
 
@@ -2994,13 +2994,13 @@
 <tbody>
 <tr>
 <td style="text-align: left;"><code>fhir_get_authoring_fields</code></td>
-<td style="text-align: left;">剖面的「填寫表」：<code>fields</code>（必填 / 預期 / IG 範例中常用，<code>why</code> 說明原因）、<code>more</code>（其餘 mustSupport 欄位）、<code>omitted</code>（因長度省略者，不會默默丟掉）。每個欄位有 <code>kind</code> + <code>format</code>（值怎麼寫）、<code>source</code>（record / facility / code / fixed / default / derived）、小型 <code>binding.codes</code>、<code>targets</code>、<code>children</code>；<code>auto: true</code> 的欄位由 MCP 自動補（<code>value</code> 顯示補什麼），<code>pins</code> 顯示剖面在你要填的欄位裡固定的部分（identifier system、component code、單位）</td>
+<td style="text-align: left;">剖面的「填寫表」：<code>fields</code>（必填 / 預期 / IG 範例中常用，<code>why</code> 說明原因）、<code>more</code>（其餘 mustSupport 欄位）、<code>omitted</code>（因長度省略者，不會默默丟掉）。每個欄位有 <code>kind</code> + <code>format</code>（值怎麼寫）、<code>source</code>（record / facility / code / fixed / default / derived）、小型 <code>binding.codes</code>、<code>targets</code>、<code>children</code>；<code>auto: true</code> 的欄位由 MCP 自動補（<code>value</code> 顯示補什麼），<code>pins</code> 顯示剖面在你要填的欄位裡固定的部分（identifier system、component code、單位）。慣例預設值只在<strong>必填</strong>欄位上是 <code>auto</code>；選填欄位（<code>Patient.active</code> 等）列為一般選填欄位，<code>format</code> / <code>example</code> 只提示慣例值</td>
 <td style="text-align: left;"><code>profile</code>, <code>package_id</code>, <code>version</code>, <code>include_more</code>（預設 <code>true</code>）</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_author_resources</code></td>
-<td style="text-align: left;">一次撰寫多筆資源（8 筆以上沒問題）：<code>{key, profile, fields}</code>；MCP 補 <code>meta.profile</code>、fixed / pattern、slice、workflow 預設值、可推導的值（例如有 encounter 的 Condition.category）、display、UCUM 單位、民國日期轉 ISO，然後驗證並存進 context。回傳 <code>{context_id, storage, results[{key, status, resource, provenance, missing, refs, issues}], summary}</code></td>
-<td style="text-align: left;"><code>context_id</code>（第一次省略）, <code>resources</code>, <code>timezone</code></td>
+<td style="text-align: left;">一次撰寫多筆資源（8 筆以上沒問題）：<code>{key, profile, fields}</code>；MCP 補 <code>meta.profile</code>、fixed / pattern、slice、必填欄位的 workflow 預設值、可推導的值（例如有 encounter 的 Condition.category）、display、UCUM 單位、民國日期轉 ISO，並做下述「自動修正」，然後驗證並存進 context。回傳 <code>{context_id, storage, results[{key, status, resource, provenance, missing, refs, issues, notes}], summary, settings}</code></td>
+<td style="text-align: left;"><code>context_id</code>（第一次省略）, <code>resources</code>, <code>timezone</code>, <code>apply_defaults</code>（<code>required</code> / <code>none</code>）, <code>site_config</code></td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_context</code></td>
@@ -3010,7 +3010,7 @@
 <tr>
 <td style="text-align: left;"><code>fhir_assemble_bundle</code></td>
 <td style="text-align: left;">由 key 清單組 Bundle：每個 entry 的 fullUrl 是該 key 的確定性 urn:uuid，經 <code>fhir_finalize_bundle</code> 的規則定稿、<code>fhir_validate_bundle</code> 驗證（給 <code>source_text</code> 時另做 grounding）；issue 都帶 <code>key</code> 與模型欄位名</td>
-<td style="text-align: left;"><code>context_id</code>, <code>keys</code>, <code>bundle_type</code>, <code>bundle_profile</code>, <code>identifier</code>, <code>timestamp</code>, <code>source_text</code>, <code>allow_invalid</code></td>
+<td style="text-align: left;"><code>context_id</code>, <code>keys</code>, <code>bundle_type</code>, <code>bundle_profile</code>, <code>identifier</code>, <code>timestamp</code>, <code>source_text</code>, <code>site_config</code>, <code>allow_invalid</code></td>
 </tr>
 </tbody>
 </table>
@@ -3077,7 +3077,18 @@
 </tr>
 </tbody>
 </table>
-<p><strong>原則</strong>：模型的值優先（只有 fixed / pattern 會覆蓋，衝突時回報錯誤）；病歷或院所才知道的值（日期、數值、識別碼、姓名、劑量、時區、Bundle.identifier / timestamp）<strong>絕不捏造</strong>，缺少時列在 <code>missing</code>；MCP 補的值在 <code>provenance</code> 標為 <code>fixed</code> / <code>default</code> / <code>derived</code> / <code>lookup</code>。</p>
+<p><strong>原則</strong>：模型的值優先（只有 fixed / pattern 會覆蓋，衝突時回報錯誤；被術語判為錯誤的 display 依下述「自動修正」換成代碼的 display）；病歷或院所才知道的值（日期、數值、識別碼、姓名、劑量、時區、Bundle.identifier / timestamp）<strong>絕不捏造</strong>，缺少時列在 <code>missing</code>；MCP 補的值在 <code>provenance</code> 標為 <code>fixed</code> / <code>default</code> / <code>derived</code> / <code>lookup</code>。</p>
+<p><strong>自動修正（列在 <code>results[].notes</code>）</strong></p>
+<ul>
+<li><strong>display 由代碼決定</strong>：模型寫的 display 若在代碼可解析時被術語規則（與 <code>fhir_validate_resource</code> 相同的檢查）判為錯誤，就換成該代碼的 display（<code>provenance</code> 為 <code>lookup</code>，note <code>display replaced for &lt;field&gt; (was '&lt;舊值&gt;')</code>）；該 CodeableConcept 沒有 <code>text</code> 時，模型原本的字移到 <code>.text</code>（<code>provenance</code> 為 <code>model</code>），不會遺失。大小寫不同視為正確；只差空白時改成正確寫法、不另加 note。<strong>絕不更動 code 與 system</strong>；代碼無法解析時保留模型的 display（由驗證回報未知代碼）。例如 LOINC <code>1988-5</code> 寫成 display <code>CRP</code> → display 換成 <code>C reactive protein [Mass/volume] in Serum or Plasma</code>，<code>text</code> 為 <code>CRP</code>。</li>
+<li><strong>單一值包成陣列</strong>：重複元素（max &gt; 1）收到單一物件 / 純量時包成一個元素的陣列，任何深度都適用，包含模型直接傳入的 FHIR 形狀（<code>code: {coding: {system, code}}</code>、巢狀物件裡的 <code>identifier: {…}</code>、<code>telecom: {…}</code>、帶 <code>url</code> 的 extension 內的 <code>extension</code>、<code>doseAndRate</code>）；note <code>wrapped &lt;path&gt; into an array</code>。頂層欄位只給一個值本來就是合法寫法，不加 note。</li>
+</ul>
+<p><strong>預設值政策（<code>apply_defaults</code>）</strong>：<code>"required"</code>（預設）只在剖面<strong>必填</strong>（min ≥ 1，含必填 slice）且模型沒給的欄位補 workflow 預設值（<code>Observation.status</code> → <code>final</code>、<code>Encounter.status</code> → <code>finished</code> …）或剖面的 <code>defaultValue[x]</code>；選填欄位（<code>Patient.active</code>、<code>Practitioner.active</code>、<code>Organization.active</code>、<code>Immunization.primarySource</code>、<code>MedicationRequest.dispenseRequest.numberOfRepeatsAllowed</code>、0..1 的 <code>Condition.clinicalStatus</code> …）<strong>一律不自動補</strong>，病歷有寫才給。<code>"none"</code> 完全不補預設值，必填欄位缺值時列在 <code>missing</code>。設定記在 context 上（與 <code>timezone</code> 相同）。可推導的值（Condition.category 等）不受影響。</p>
+<p><strong>院所設定（<code>site_config</code>）</strong>：與 <code>fhir_check_grounding</code> 的 <code>site_config</code> 相同格式的自由文字——其中每個 <code>http(s)</code> URL 都視為院所的 identifier system，各行文字可作為 Organization 值與 Practitioner identifier 的依據。<code>fhir_author_resources</code> 把它存在 context 上（再次傳入時只<strong>附加</strong>尚未存在的行），<code>fhir_assemble_bundle</code> 的 <code>site_config</code> 會與 context 的合併；有 <code>source_text</code> 時一起交給 grounding，院所的 identifier system 與機構資料便以 <code>site_config</code> 為依據，不會被標成未 grounding（<code>G-SYSTEM-NOT-SITE</code>）。不寫入 log、不回傳原文（<code>settings.site_config_lines</code> 只回報行數）。範例：</p>
+<pre><code class="language-json">{&quot;site_config&quot;: &quot;病歷號 system: https://hospital.example.tw/mrn\n機構: 範例醫院 醫事機構代碼 0123456789&quot;, &quot;resources&quot;: [
+  {&quot;key&quot;: &quot;patient-1&quot;, &quot;profile&quot;: &quot;Patient-twcore&quot;, &quot;fields&quot;: {&quot;identifier:medicalRecord&quot;: {&quot;value&quot;: &quot;MR-00012345&quot;, &quot;system&quot;: &quot;https://hospital.example.tw/mrn&quot;}}}
+]}
+</code></pre>
 <p><strong>Context</strong>：context id 為 128 位元亂數（32 位 hex），存在 Redis <code>authoring:ctx:&lt;id&gt;</code>，閒置 60 分鐘清除、每次呼叫都會延長；Redis 不可用時退回單一程序記憶體（回應 <code>storage: "memory"</code>，重啟即遺失）。<code>{ref: key}</code> 對應到 <code>urn:uuid:&lt;UUID v5(context id, key)&gt;</code>——單筆驗證與最終 Bundle 用同一個值，因此<strong>同一 context + 同一 keys 永遠得到位元組相同的 Bundle</strong>。病歷內容不寫入 log（只記 id、筆數、位元組數）。</p>
 <p><strong>錯誤碼</strong>（<code>{ok: false, data: null, error: {code, message, message_zh, hint, hint_zh, retryable}}</code>）</p>
 <table>
@@ -3261,8 +3272,20 @@
 <td style="text-align: left;">1.1.1</td>
 </tr>
 <tr>
-<td style="text-align: left;"><code>fhir_get_authoring_fields</code>、<code>fhir_author_resources</code>、<code>fhir_context</code>、<code>fhir_assemble_bundle</code></td>
-<td style="text-align: left;">1.0.0（從欄位值撰寫資源，見「<a href="#authoring">從欄位值撰寫資源</a>」）</td>
+<td style="text-align: left;"><code>fhir_author_resources</code></td>
+<td style="text-align: left;">1.1.0（display 由代碼決定、單一值包成陣列、預設值只補必填欄位與 <code>apply_defaults</code>、<code>site_config</code>、結果的 <code>notes</code> / <code>settings</code>；1.0.0：從欄位值撰寫資源，見「<a href="#authoring">從欄位值撰寫資源</a>」）</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>fhir_assemble_bundle</code></td>
+<td style="text-align: left;">1.1.0（<code>site_config</code> 與 context 的合併後交給 grounding；1.0.0：由 key 清單組 Bundle）</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>fhir_get_authoring_fields</code></td>
+<td style="text-align: left;">1.1.0（預設值只在必填欄位上是 <code>auto</code>，選填欄位改為提示慣例值；1.0.0：剖面的填寫表）</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>fhir_context</code></td>
+<td style="text-align: left;">1.0.1（<code>get</code> 的結果帶 <code>notes</code>）</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>query_fhir_condition</code>、<code>query_fhir_medication</code></td>
@@ -3323,10 +3346,10 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": [], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "\u5df2\u8907\u88fd", "clipboard.copy": "\u8907\u88fd", "search.result.more.one": "\u6b64\u9801\u5c1a\u6709 1 \u500b\u7b26\u5408\u7684\u9805\u76ee", "search.result.more.other": "\u6b64\u9801\u5c1a\u6709 # \u500b\u7b26\u5408\u7684\u9805\u76ee", "search.result.none": "\u6c92\u6709\u7b26\u5408\u7684\u9805\u76ee", "search.result.one": "\u627e\u5230 1 \u500b\u7b26\u5408\u7684\u9805\u76ee", "search.result.other": "\u627e\u5230 # \u500b\u7b26\u5408\u7684\u9805\u76ee", "search.result.placeholder": "\u6253\u5b57\u9032\u884c\u641c\u5c0b", "search.result.term.missing": "\u7f3a\u5c11\u5b57\u8a5e", "select.version": "\u9078\u64c7\u7248\u672c"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": [], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "\u5df2\u8907\u88fd", "clipboard.copy": "\u8907\u88fd", "search.result.more.one": "\u6b64\u9801\u5c1a\u6709 1 \u500b\u7b26\u5408\u7684\u9805\u76ee", "search.result.more.other": "\u6b64\u9801\u5c1a\u6709 # \u500b\u7b26\u5408\u7684\u9805\u76ee", "search.result.none": "\u6c92\u6709\u7b26\u5408\u7684\u9805\u76ee", "search.result.one": "\u627e\u5230 1 \u500b\u7b26\u5408\u7684\u9805\u76ee", "search.result.other": "\u627e\u5230 # \u500b\u7b26\u5408\u7684\u9805\u76ee", "search.result.placeholder": "\u6253\u5b57\u9032\u884c\u641c\u5c0b", "search.result.term.missing": "\u7f3a\u5c11\u5b57\u8a5e", "select.version": "\u9078\u64c7\u7248\u672c"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../../assets/javascripts/bundle.c21346df.min.js"></script>
       
         <script src="../../javascripts/lang-switch.js"></script>
       
