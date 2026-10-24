@@ -1105,6 +1105,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#authoring" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Authoring from field values
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#checking-against-the-source-record-grounding-completeness" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2569,6 +2580,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#authoring" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Authoring from field values
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#checking-against-the-source-record-grounding-completeness" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2796,7 +2818,7 @@ If none applies the call fails with <code>NO_DEFAULT_IG</code> (no arbitrary pac
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_finalize_resource</code></td>
-<td style="text-align: left;">Finalise a draft against its profile and return the complete resource</td>
+<td style="text-align: left;">Finalise a draft already written as FHIR JSON against its profile and validate it: pins fixed / pattern values only where the draft has the parent node (slice members and <code>_slice</code> tags at any depth included), never adds clinical content; with field values use <code>fhir_author_resources</code> (see "<a href="#authoring">Authoring from field values</a>")</td>
 <td style="text-align: left;"><code>profile</code>, <code>draft</code>, <code>context_id</code>, <code>key</code>, <code>generate_narrative</code> (<code>true</code> by default)</td>
 </tr>
 <tr>
@@ -2959,6 +2981,161 @@ If none applies the call fails with <code>NO_DEFAULT_IG</code> (no arbitrary pac
 <blockquote>
 <p>In-process validation is based on profile snapshots and terminology bindings, benchmarked against HL7 validator_cli 7.0.1 (method and results in <code>node-server/scripts/validator-audit/</code>). It is not equivalent to conformance certification by the official HL7 FHIR Validator.</p>
 </blockquote>
+<h2 id="authoring">Authoring from field values<a class="headerlink" href="#authoring" title="Permanent link">&para;</a></h2>
+<p>The model no longer writes FHIR JSON: it gives <strong>field values</strong>, the MCP composes the resource for the profile, validates it, keeps it in a per-task <strong>context</strong> and assembles the Bundle from a list of keys. Every rule comes from the resolved package's StructureDefinitions / ValueSets and FHIR R4 core — <strong>no IG-specific special cases</strong> (TW Core, TWPAS or any other installed IG alike).</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Tool</th>
+<th style="text-align: left;">Description</th>
+<th style="text-align: left;">Key parameters</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>fhir_get_authoring_fields</code></td>
+<td style="text-align: left;">The profile's "writing form": <code>fields</code> (required / expected / commonly used in the IG's own examples, reason in <code>why</code>), <code>more</code> (the remaining mustSupport fields) and <code>omitted</code> (dropped for size, never silent). Each field has <code>kind</code> + <code>format</code> (how to write the value), <code>source</code> (record / facility / code / fixed / default / derived), small <code>binding.codes</code>, <code>targets</code> and <code>children</code>; fields with <code>auto: true</code> are filled by the MCP (<code>value</code> shows what), <code>pins</code> shows what the profile fixes inside a field you still fill (identifier system, component code, unit)</td>
+<td style="text-align: left;"><code>profile</code>, <code>package_id</code>, <code>version</code>, <code>include_more</code> (<code>true</code> by default)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>fhir_author_resources</code></td>
+<td style="text-align: left;">Author several resources in one call (8 or more is fine): <code>{key, profile, fields}</code>; the MCP adds <code>meta.profile</code>, fixed / pattern values, slices, workflow defaults, derivable values (e.g. Condition.category when an encounter is given), displays, UCUM units, ROC → ISO dates, then validates and stores each in the context. Returns <code>{context_id, storage, results[{key, status, resource, provenance, missing, refs, issues}], summary}</code></td>
+<td style="text-align: left;"><code>context_id</code> (omit on the first call), <code>resources</code>, <code>timezone</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>fhir_context</code></td>
+<td style="text-align: left;">Inspect or trim a context: <code>list</code> (status and references per key), <code>get</code> (one key's full result), <code>delete</code> (one key or the whole context)</td>
+<td style="text-align: left;"><code>context_id</code>, <code>action</code>, <code>key</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>fhir_assemble_bundle</code></td>
+<td style="text-align: left;">Build the Bundle from a list of keys: each entry's fullUrl is the key's deterministic urn:uuid; the Bundle is finalised by the <code>fhir_finalize_bundle</code> rules and validated like <code>fhir_validate_bundle</code> (grounding too with <code>source_text</code>); every issue carries the <code>key</code> and the model's field name</td>
+<td style="text-align: left;"><code>context_id</code>, <code>keys</code>, <code>bundle_type</code>, <code>bundle_profile</code>, <code>identifier</code>, <code>timestamp</code>, <code>source_text</code>, <code>allow_invalid</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Flow</strong></p>
+<ol>
+<li>Plan one key per resource (<code>patient-1</code>, <code>enc-1</code>, <code>cond-1</code>, <code>obs-wbc</code> …).</li>
+<li>Call <code>fhir_get_authoring_fields(profile)</code> once per profile.</li>
+<li>Call <code>fhir_author_resources</code> <strong>without</strong> <code>context_id</code> for the first batch and keep <code>data.context_id</code>; cross references are <code>{ref: "&lt;key&gt;"}</code> and may point at a key not authored yet (status <code>refs_pending</code>, resolved at assembly); cycles (<code>Encounter.diagnosis</code> ↔ <code>Condition.encounter</code>) are fine.</li>
+<li>Fix a <code>status: invalid</code> resource by resending <strong>the same key with <code>merge: true</code></strong> and only the changed fields (<code>null</code> removes a field); issues carry <code>key</code>, <code>field</code> (your field name), <code>path</code> (FHIR path) and <code>suggestions</code>.</li>
+<li><code>fhir_assemble_bundle(context_id, keys, bundle_type)</code>; for a document Bundle, author the Composition first (<code>section.entry</code> as <code>{ref}</code>) and pass <code>identifier</code> / <code>timestamp</code> from the record (bdl-9 / bdl-10).</li>
+</ol>
+<p><strong>Value grammar</strong></p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Kind</th>
+<th style="text-align: left;">Accepted forms</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">string / code / boolean / integer / decimal</td>
+<td style="text-align: left;">the JSON scalar; numbers keep their spelling (<code>12.50</code> stays <code>12.50</code>, <code>1e2</code> stays <code>1e2</code>)</td>
+</tr>
+<tr>
+<td style="text-align: left;">coding / codeableConcept</td>
+<td style="text-align: left;"><code>{system, code, display?}</code>; several codes as an array; <code>{text}</code> or a plain string when there is no required binding</td>
+</tr>
+<tr>
+<td style="text-align: left;">quantity</td>
+<td style="text-align: left;"><code>{value, unit}</code> (unit text or UCUM; the MCP adds the UCUM system / code) or the string <code>"95 mg/dL"</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">date / dateTime / instant</td>
+<td style="text-align: left;">ISO <code>2026-06-15</code>, <code>2026-06-15T06:00</code>, or ROC <code>115/06/15</code>, <code>115/06/15 06:00</code> (precision kept). A time without an offset needs <code>timezone</code> (e.g. <code>"+08:00"</code>, remembered on the context), otherwise it is an error — <strong>an offset is never guessed</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;">period</td>
+<td style="text-align: left;"><code>{start, end?}</code> with the date forms above</td>
+</tr>
+<tr>
+<td style="text-align: left;">identifier</td>
+<td style="text-align: left;"><code>{value, system?, type?}</code>; a slice as <code>identifier:medicalRecord</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">reference</td>
+<td style="text-align: left;"><code>{ref: "&lt;key&gt;"}</code> (a resource in the same context) or <code>{reference: "Patient/123"}</code> (external)</td>
+</tr>
+<tr>
+<td style="text-align: left;">choice <code>value[x]</code></td>
+<td style="text-align: left;">give <code>value</code>; its shape picks the type (quantity → <code>valueQuantity</code>, <code>{system, code}</code> → <code>valueCodeableConcept</code> …), or name it (<code>valueQuantity</code>)</td>
+</tr>
+<tr>
+<td style="text-align: left;">component</td>
+<td style="text-align: left;"><code>[{code, value}]</code> or <code>component:&lt;slice&gt;</code> <code>{value}</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">extension slice</td>
+<td style="text-align: left;"><code>extension:&lt;slice&gt;</code> with <code>{value: …}</code> or the bare value (<code>{ref}</code>, <code>{system, code}</code> …); the MCP writes <code>{url, value[x]}</code> from the extension's definition; FHIR JSON that already carries <code>url</code> is kept as written</td>
+</tr>
+<tr>
+<td style="text-align: left;">dosage</td>
+<td style="text-align: left;"><code>{text?, route?, dose?, frequency?/timing?, period?, asNeeded?}</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Rules</strong>: model values win (only fixed / pattern values override, a conflict is reported as an error); values only the record or the facility knows (dates, numbers, identifiers, names, doses, the time zone, Bundle.identifier / timestamp) are <strong>never invented</strong> — they are listed in <code>missing</code>; values the MCP supplies are marked <code>fixed</code> / <code>default</code> / <code>derived</code> / <code>lookup</code> in <code>provenance</code>.</p>
+<p><strong>Contexts</strong>: a context id is 128 random bits (32 hex), stored in Redis under <code>authoring:ctx:&lt;id&gt;</code>, dropped after 60 minutes idle and refreshed by every call; without Redis an in-process memory store is used (<code>storage: "memory"</code>, lost on restart). <code>{ref: key}</code> maps to <code>urn:uuid:&lt;UUID v5(context id, key)&gt;</code> — the same value in single-resource validation and in the final Bundle, so <strong>the same context + the same keys always give a byte-identical Bundle</strong>. Clinical content is never logged (ids, counts and byte sizes only).</p>
+<p><strong>Error codes</strong> (<code>{ok: false, data: null, error: {code, message, message_zh, hint, hint_zh, retryable}}</code>)</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">code</th>
+<th style="text-align: left;">When</th>
+<th style="text-align: left;">Next step</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>CONTEXT_EXPIRED</code></td>
+<td style="text-align: left;">the context id does not exist or expired (never partial results)</td>
+<td style="text-align: left;">start over without <code>context_id</code> and re-author every resource with the same keys and fields</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>KEY_NOT_FOUND</code></td>
+<td style="text-align: left;">a key passed to assembly / <code>get</code> is not in the context</td>
+<td style="text-align: left;"><code>fhir_context action=list</code>, then author or drop it</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>UNRESOLVED_REFERENCE</code></td>
+<td style="text-align: left;">a resource references a key not in <code>keys</code> or not in the context; <code>error.refused</code> lists key / field / ref_key</td>
+<td style="text-align: left;">add ref_key to keys, author it, or change the field with merge</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>INVALID_RESOURCE</code></td>
+<td style="text-align: left;">a stored resource still has validation errors; <code>error.refused</code> lists key / field / error</td>
+<td style="text-align: left;">fix with merge and assemble again (<code>allow_invalid=true</code> only if the user explicitly accepts it)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>MISSING_COMPOSITION</code></td>
+<td style="text-align: left;">a document Bundle without an authored Composition; <code>error.missing.fields</code> lists what it needs</td>
+<td style="text-align: left;">author the Composition from the record and put its key first</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>CONTEXT_CONFLICT</code></td>
+<td style="text-align: left;">the same context kept being written from several places at once</td>
+<td style="text-align: left;">retry once</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>INVALID_ARGUMENT</code></td>
+<td style="text-align: left;">bad arguments (duplicate key, missing profile, unknown <code>bundle_type</code>, <code>timestamp</code> not an instant …)</td>
+<td style="text-align: left;">fix as the message says</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Example</strong></p>
+<pre><code class="language-json">{&quot;timezone&quot;: &quot;+08:00&quot;, &quot;resources&quot;: [
+  {&quot;key&quot;: &quot;patient-1&quot;, &quot;profile&quot;: &quot;Patient-twcore&quot;, &quot;fields&quot;: {&quot;identifier:idCardNumber&quot;: {&quot;value&quot;: &quot;A123456789&quot;}, &quot;name:official&quot;: {&quot;text&quot;: &quot;王小明&quot;}, &quot;gender&quot;: &quot;male&quot;, &quot;birthDate&quot;: &quot;80/03/15&quot;}},
+  {&quot;key&quot;: &quot;enc-1&quot;, &quot;profile&quot;: &quot;Encounter-twcore&quot;, &quot;fields&quot;: {&quot;class&quot;: {&quot;system&quot;: &quot;http://terminology.hl7.org/CodeSystem/v3-ActCode&quot;, &quot;code&quot;: &quot;IMP&quot;}, &quot;subject&quot;: {&quot;ref&quot;: &quot;patient-1&quot;}, &quot;period&quot;: {&quot;start&quot;: &quot;115/06/10 14:30&quot;, &quot;end&quot;: &quot;2026-06-15T10:00&quot;}, &quot;diagnosis&quot;: [{&quot;condition&quot;: {&quot;ref&quot;: &quot;cond-1&quot;}, &quot;rank&quot;: 1}]}},
+  {&quot;key&quot;: &quot;cond-1&quot;, &quot;profile&quot;: &quot;Condition-twcore&quot;, &quot;fields&quot;: {&quot;code&quot;: {&quot;system&quot;: &quot;http://hl7.org/fhir/sid/icd-10-cm&quot;, &quot;code&quot;: &quot;J18.9&quot;}, &quot;subject&quot;: {&quot;ref&quot;: &quot;patient-1&quot;}, &quot;encounter&quot;: {&quot;ref&quot;: &quot;enc-1&quot;}}},
+  {&quot;key&quot;: &quot;obs-wbc&quot;, &quot;profile&quot;: &quot;Observation-laboratoryResult-twcore&quot;, &quot;fields&quot;: {&quot;code&quot;: [{&quot;system&quot;: &quot;http://loinc.org&quot;, &quot;code&quot;: &quot;6690-2&quot;}, {&quot;system&quot;: &quot;https://twcore.mohw.gov.tw/ig/twcore/CodeSystem/medical-service-payment-tw&quot;, &quot;code&quot;: &quot;08011C&quot;}], &quot;subject&quot;: {&quot;ref&quot;: &quot;patient-1&quot;}, &quot;effectiveDateTime&quot;: &quot;2026-06-11T06:00&quot;, &quot;value&quot;: {&quot;value&quot;: 12.50, &quot;unit&quot;: &quot;10*3/uL&quot;}}}
+]}
+</code></pre>
+<p>Fix: <code>{"context_id": "&lt;id&gt;", "resources": [{"key": "obs-wbc", "merge": true, "fields": {"value": "11.8 10*3/uL"}}]}</code>; assemble: <code>{"context_id": "&lt;id&gt;", "keys": ["patient-1", "enc-1", "cond-1", "obs-wbc"], "bundle_type": "collection", "bundle_profile": "Bundle-twcore"}</code>.</p>
+<p><code>fhir_finalize_resource</code> (1.4.0) remains for a draft already written as FHIR JSON: it pins fixed / pattern values only where the draft has the parent node (slice members identified by the slicing discriminators and <code>_slice</code> tags at any depth included; tags are always removed), fills a single-system <code>coding.system</code>, rewrites <code>{reference: &lt;key&gt;}</code> to the context's urn, generates the narrative and validates — <strong>it never adds clinical content</strong>; with field values use <code>fhir_author_resources</code> instead.</p>
 <h2 id="checking-against-the-source-record-grounding-completeness">Checking against the source record (grounding / completeness)<a class="headerlink" href="#checking-against-the-source-record-grounding-completeness" title="Permanent link">&para;</a></h2>
 <p>Conformance-valid is not the same as faithful: a model can fill in a diagnosis code, date or dose the record never states, and the validator still passes.
 These tools compare a Bundle with the clinical record using <strong>deterministic rules</strong> (no LLM, no embeddings, no randomness). Code names are looked up in the local database only (ICD-10-CM / PCS, LOINC, SNOMED CT, RxNorm, CVX, IG CodeSystems); no external terminology server is called.</p>
@@ -3065,7 +3242,7 @@ Every issue carries <code>rule</code> and <code>source:"grounding"</code>, and i
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_finalize_resource</code></td>
-<td style="text-align: left;">1.3.2 (<code>resource</code> keeps the draft's number spellings; 1.3.1: validation rules as <code>fhir_validate_resource</code> 1.6.1; 1.3.0: validation issue <code>suggestions</code> / <code>caused_by</code>)</td>
+<td style="text-align: left;">1.4.0 (slice members pinned by their discriminators, <code>_slice</code> tags at any depth and always removed; 1.3.2: <code>resource</code> keeps the draft's number spellings; 1.3.1: validation rules as <code>fhir_validate_resource</code> 1.6.1; 1.3.0: validation issue <code>suggestions</code> / <code>caused_by</code>)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_lookup_code</code></td>
@@ -3082,6 +3259,14 @@ Every issue carries <code>rule</code> and <code>source:"grounding"</code>, and i
 <tr>
 <td style="text-align: left;"><code>fhir_check_completeness</code></td>
 <td style="text-align: left;">1.1.1</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>fhir_get_authoring_fields</code>, <code>fhir_author_resources</code>, <code>fhir_context</code>, <code>fhir_assemble_bundle</code></td>
+<td style="text-align: left;">1.0.0 (authoring from field values, see "<a href="#authoring">Authoring from field values</a>")</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>query_fhir_condition</code>, <code>query_fhir_medication</code></td>
+<td style="text-align: left;">1.2.0 (no element is stamped with the current time any more — <code>recordedDate</code> / <code>note.time</code> / <code>meta.lastUpdated</code> appear only when the caller supplies them)</td>
 </tr>
 </tbody>
 </table>

@@ -1105,6 +1105,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#authoring" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        從欄位值撰寫資源
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#grounding-completeness" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2569,6 +2580,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#authoring" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        從欄位值撰寫資源
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#grounding-completeness" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2796,7 +2818,7 @@
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_finalize_resource</code></td>
-<td style="text-align: left;">將草稿依剖面定稿並回傳完整資源</td>
+<td style="text-align: left;">將已寫好的 FHIR JSON 草稿依剖面定稿並驗證：只在草稿已有父節點處釘上 fixed / pattern（含 slice 成員與任何深度的 <code>_slice</code> 標記），不補臨床內容；有欄位值時改用 <code>fhir_author_resources</code>（見「<a href="#authoring">從欄位值撰寫資源</a>」）</td>
 <td style="text-align: left;"><code>profile</code>, <code>draft</code>, <code>context_id</code>, <code>key</code>, <code>generate_narrative</code>（預設 <code>true</code>）</td>
 </tr>
 <tr>
@@ -2959,6 +2981,161 @@
 <blockquote>
 <p>程序內驗證以剖面 snapshot 與術語綁定為基礎，比對基準為 HL7 validator_cli 7.0.1（稽核方式與結果見 <code>node-server/scripts/validator-audit/</code>），但不等同官方 HL7 FHIR Validator 的一致性認證。</p>
 </blockquote>
+<h2 id="authoring">從欄位值撰寫資源<a class="headerlink" href="#authoring" title="Permanent link">&para;</a></h2>
+<p>模型不再自己寫 FHIR JSON：它只給<strong>欄位值</strong>，MCP 依剖面組出資源、驗證、存在每個任務專屬的 <strong>context</strong>，最後由 key 清單組裝 Bundle。所有規則都來自解析到的套件 StructureDefinition / ValueSet 與 FHIR R4 核心，<strong>不針對任何 IG 寫特例</strong>（TW Core、TWPAS 或其他已安裝 IG 都一樣）。</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">工具</th>
+<th style="text-align: left;">說明</th>
+<th style="text-align: left;">主要參數</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>fhir_get_authoring_fields</code></td>
+<td style="text-align: left;">剖面的「填寫表」：<code>fields</code>（必填 / 預期 / IG 範例中常用，<code>why</code> 說明原因）、<code>more</code>（其餘 mustSupport 欄位）、<code>omitted</code>（因長度省略者，不會默默丟掉）。每個欄位有 <code>kind</code> + <code>format</code>（值怎麼寫）、<code>source</code>（record / facility / code / fixed / default / derived）、小型 <code>binding.codes</code>、<code>targets</code>、<code>children</code>；<code>auto: true</code> 的欄位由 MCP 自動補（<code>value</code> 顯示補什麼），<code>pins</code> 顯示剖面在你要填的欄位裡固定的部分（identifier system、component code、單位）</td>
+<td style="text-align: left;"><code>profile</code>, <code>package_id</code>, <code>version</code>, <code>include_more</code>（預設 <code>true</code>）</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>fhir_author_resources</code></td>
+<td style="text-align: left;">一次撰寫多筆資源（8 筆以上沒問題）：<code>{key, profile, fields}</code>；MCP 補 <code>meta.profile</code>、fixed / pattern、slice、workflow 預設值、可推導的值（例如有 encounter 的 Condition.category）、display、UCUM 單位、民國日期轉 ISO，然後驗證並存進 context。回傳 <code>{context_id, storage, results[{key, status, resource, provenance, missing, refs, issues}], summary}</code></td>
+<td style="text-align: left;"><code>context_id</code>（第一次省略）, <code>resources</code>, <code>timezone</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>fhir_context</code></td>
+<td style="text-align: left;">檢視或清理 context：<code>list</code>（每個 key 的狀態與引用）、<code>get</code>（單一 key 的完整結果）、<code>delete</code>（單一 key 或整個 context）</td>
+<td style="text-align: left;"><code>context_id</code>, <code>action</code>, <code>key</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>fhir_assemble_bundle</code></td>
+<td style="text-align: left;">由 key 清單組 Bundle：每個 entry 的 fullUrl 是該 key 的確定性 urn:uuid，經 <code>fhir_finalize_bundle</code> 的規則定稿、<code>fhir_validate_bundle</code> 驗證（給 <code>source_text</code> 時另做 grounding）；issue 都帶 <code>key</code> 與模型欄位名</td>
+<td style="text-align: left;"><code>context_id</code>, <code>keys</code>, <code>bundle_type</code>, <code>bundle_profile</code>, <code>identifier</code>, <code>timestamp</code>, <code>source_text</code>, <code>allow_invalid</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>流程</strong></p>
+<ol>
+<li>規劃每筆資源一個 key（<code>patient-1</code>、<code>enc-1</code>、<code>cond-1</code>、<code>obs-wbc</code> …）。</li>
+<li>每個剖面呼叫一次 <code>fhir_get_authoring_fields(profile)</code>。</li>
+<li>第一批呼叫 <code>fhir_author_resources</code> <strong>不帶</strong> <code>context_id</code>，保留回傳的 <code>data.context_id</code>；互相參照寫 <code>{ref: "&lt;key&gt;"}</code>，可以指向還沒建立的 key（狀態 <code>refs_pending</code>，組裝時再解析），循環引用（<code>Encounter.diagnosis</code> ↔ <code>Condition.encounter</code>）沒有問題。</li>
+<li><code>status: invalid</code> 的資源用<strong>同一 key + <code>merge: true</code></strong> 只重送要改的欄位（<code>null</code> 代表刪除該欄位）；issue 帶 <code>key</code>、<code>field</code>（模型欄位名）、<code>path</code>（FHIR 路徑）與 <code>suggestions</code>。</li>
+<li><code>fhir_assemble_bundle(context_id, keys, bundle_type)</code>；document 型 Bundle 先撰寫 Composition（<code>section.entry</code> 用 <code>{ref}</code>），並由病歷給 <code>identifier</code> / <code>timestamp</code>（bdl-9 / bdl-10）。</li>
+</ol>
+<p><strong>值的寫法（value grammar）</strong></p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">類型</th>
+<th style="text-align: left;">可接受的寫法</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">string / code / boolean / integer / decimal</td>
+<td style="text-align: left;">JSON 純量；數字保留原始寫法（<code>12.50</code> 仍是 <code>12.50</code>，<code>1e2</code> 仍是 <code>1e2</code>）</td>
+</tr>
+<tr>
+<td style="text-align: left;">coding / codeableConcept</td>
+<td style="text-align: left;"><code>{system, code, display?}</code>；多個碼用陣列；沒有 required binding 時可只給 <code>{text}</code> 或字串</td>
+</tr>
+<tr>
+<td style="text-align: left;">quantity</td>
+<td style="text-align: left;"><code>{value, unit}</code>（單位文字或 UCUM，MCP 補 UCUM system / code）或字串 <code>"95 mg/dL"</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">date / dateTime / instant</td>
+<td style="text-align: left;">ISO <code>2026-06-15</code>、<code>2026-06-15T06:00</code>，或民國 <code>115/06/15</code>、<code>115/06/15 06:00</code>（精度保留）。沒有時區的時間需要 <code>timezone</code>（例如 <code>"+08:00"</code>，記在 context 上），否則回報錯誤——<strong>不會猜時區</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;">period</td>
+<td style="text-align: left;"><code>{start, end?}</code>，日期寫法同上</td>
+</tr>
+<tr>
+<td style="text-align: left;">identifier</td>
+<td style="text-align: left;"><code>{value, system?, type?}</code>；slice 寫成 <code>identifier:medicalRecord</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">reference</td>
+<td style="text-align: left;"><code>{ref: "&lt;key&gt;"}</code>（同一 context 的資源）或 <code>{reference: "Patient/123"}</code>（外部）</td>
+</tr>
+<tr>
+<td style="text-align: left;">choice <code>value[x]</code></td>
+<td style="text-align: left;">給 <code>value</code>，由值的形狀決定型別（quantity → <code>valueQuantity</code>，<code>{system, code}</code> → <code>valueCodeableConcept</code> …），也可直接寫 <code>valueQuantity</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">component</td>
+<td style="text-align: left;"><code>[{code, value}]</code> 或 <code>component:&lt;slice&gt;</code> <code>{value}</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">extension slice</td>
+<td style="text-align: left;"><code>extension:&lt;slice&gt;</code> 給 <code>{value: …}</code> 或直接給值（<code>{ref}</code>、<code>{system, code}</code>…），MCP 依 extension 定義寫成 <code>{url, value[x]}</code>；已帶 <code>url</code> 的 FHIR JSON 原樣保留</td>
+</tr>
+<tr>
+<td style="text-align: left;">dosage</td>
+<td style="text-align: left;"><code>{text?, route?, dose?, frequency?/timing?, period?, asNeeded?}</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>原則</strong>：模型的值優先（只有 fixed / pattern 會覆蓋，衝突時回報錯誤）；病歷或院所才知道的值（日期、數值、識別碼、姓名、劑量、時區、Bundle.identifier / timestamp）<strong>絕不捏造</strong>，缺少時列在 <code>missing</code>；MCP 補的值在 <code>provenance</code> 標為 <code>fixed</code> / <code>default</code> / <code>derived</code> / <code>lookup</code>。</p>
+<p><strong>Context</strong>：context id 為 128 位元亂數（32 位 hex），存在 Redis <code>authoring:ctx:&lt;id&gt;</code>，閒置 60 分鐘清除、每次呼叫都會延長；Redis 不可用時退回單一程序記憶體（回應 <code>storage: "memory"</code>，重啟即遺失）。<code>{ref: key}</code> 對應到 <code>urn:uuid:&lt;UUID v5(context id, key)&gt;</code>——單筆驗證與最終 Bundle 用同一個值，因此<strong>同一 context + 同一 keys 永遠得到位元組相同的 Bundle</strong>。病歷內容不寫入 log（只記 id、筆數、位元組數）。</p>
+<p><strong>錯誤碼</strong>（<code>{ok: false, data: null, error: {code, message, message_zh, hint, hint_zh, retryable}}</code>）</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">code</th>
+<th style="text-align: left;">何時</th>
+<th style="text-align: left;">下一步</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>CONTEXT_EXPIRED</code></td>
+<td style="text-align: left;">context id 不存在或已過期（不會回傳部分結果）</td>
+<td style="text-align: left;">不帶 <code>context_id</code> 重新開始，以相同 key 與欄位重建全部資源</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>KEY_NOT_FOUND</code></td>
+<td style="text-align: left;">組裝 / <code>get</code> 的 key 不在 context</td>
+<td style="text-align: left;"><code>fhir_context action=list</code> 查看，補建或移除</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>UNRESOLVED_REFERENCE</code></td>
+<td style="text-align: left;">某資源引用的 key 不在 <code>keys</code> 或不在 context；<code>error.refused</code> 列出 key / field / ref_key</td>
+<td style="text-align: left;">把 ref_key 加入 keys、補建，或以 merge 改欄位</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>INVALID_RESOURCE</code></td>
+<td style="text-align: left;">有資源仍有驗證錯誤；<code>error.refused</code> 列出 key / field / 錯誤</td>
+<td style="text-align: left;">以 merge 修正後重新組裝（<code>allow_invalid=true</code> 僅在使用者明確接受時）</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>MISSING_COMPOSITION</code></td>
+<td style="text-align: left;">document 型 Bundle 但沒有撰寫 Composition；<code>error.missing.fields</code> 列出它需要的欄位</td>
+<td style="text-align: left;">依病歷撰寫 Composition，放在 keys 第一個</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>CONTEXT_CONFLICT</code></td>
+<td style="text-align: left;">同一 context 同時被多處寫入且一直衝突</td>
+<td style="text-align: left;">重試一次</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>INVALID_ARGUMENT</code></td>
+<td style="text-align: left;">參數錯誤（重複 key、缺 profile、<code>bundle_type</code> 不合法、<code>timestamp</code> 不是 instant …）</td>
+<td style="text-align: left;">依訊息修正</td>
+</tr>
+</tbody>
+</table>
+<p><strong>範例</strong></p>
+<pre><code class="language-json">{&quot;timezone&quot;: &quot;+08:00&quot;, &quot;resources&quot;: [
+  {&quot;key&quot;: &quot;patient-1&quot;, &quot;profile&quot;: &quot;Patient-twcore&quot;, &quot;fields&quot;: {&quot;identifier:idCardNumber&quot;: {&quot;value&quot;: &quot;A123456789&quot;}, &quot;name:official&quot;: {&quot;text&quot;: &quot;王小明&quot;}, &quot;gender&quot;: &quot;male&quot;, &quot;birthDate&quot;: &quot;80/03/15&quot;}},
+  {&quot;key&quot;: &quot;enc-1&quot;, &quot;profile&quot;: &quot;Encounter-twcore&quot;, &quot;fields&quot;: {&quot;class&quot;: {&quot;system&quot;: &quot;http://terminology.hl7.org/CodeSystem/v3-ActCode&quot;, &quot;code&quot;: &quot;IMP&quot;}, &quot;subject&quot;: {&quot;ref&quot;: &quot;patient-1&quot;}, &quot;period&quot;: {&quot;start&quot;: &quot;115/06/10 14:30&quot;, &quot;end&quot;: &quot;2026-06-15T10:00&quot;}, &quot;diagnosis&quot;: [{&quot;condition&quot;: {&quot;ref&quot;: &quot;cond-1&quot;}, &quot;rank&quot;: 1}]}},
+  {&quot;key&quot;: &quot;cond-1&quot;, &quot;profile&quot;: &quot;Condition-twcore&quot;, &quot;fields&quot;: {&quot;code&quot;: {&quot;system&quot;: &quot;http://hl7.org/fhir/sid/icd-10-cm&quot;, &quot;code&quot;: &quot;J18.9&quot;}, &quot;subject&quot;: {&quot;ref&quot;: &quot;patient-1&quot;}, &quot;encounter&quot;: {&quot;ref&quot;: &quot;enc-1&quot;}}},
+  {&quot;key&quot;: &quot;obs-wbc&quot;, &quot;profile&quot;: &quot;Observation-laboratoryResult-twcore&quot;, &quot;fields&quot;: {&quot;code&quot;: [{&quot;system&quot;: &quot;http://loinc.org&quot;, &quot;code&quot;: &quot;6690-2&quot;}, {&quot;system&quot;: &quot;https://twcore.mohw.gov.tw/ig/twcore/CodeSystem/medical-service-payment-tw&quot;, &quot;code&quot;: &quot;08011C&quot;}], &quot;subject&quot;: {&quot;ref&quot;: &quot;patient-1&quot;}, &quot;effectiveDateTime&quot;: &quot;2026-06-11T06:00&quot;, &quot;value&quot;: {&quot;value&quot;: 12.50, &quot;unit&quot;: &quot;10*3/uL&quot;}}}
+]}
+</code></pre>
+<p>修正：<code>{"context_id": "&lt;id&gt;", "resources": [{"key": "obs-wbc", "merge": true, "fields": {"value": "11.8 10*3/uL"}}]}</code>；組裝：<code>{"context_id": "&lt;id&gt;", "keys": ["patient-1", "enc-1", "cond-1", "obs-wbc"], "bundle_type": "collection", "bundle_profile": "Bundle-twcore"}</code>。</p>
+<p><code>fhir_finalize_resource</code>（1.4.0）仍適用於「已經寫好的 FHIR JSON 草稿」：只在草稿已有父節點的地方釘上 fixed / pattern 值（含 slicing discriminator 可判定的 slice 成員，以及任何深度的 <code>_slice</code> 標記，標記一律移除）、單一系統的 <code>coding.system</code>、把 <code>{reference: &lt;key&gt;}</code> 改成 context 的 urn、產生 narrative 並驗證，<strong>不會補任何臨床內容</strong>；有欄位值時請改用 <code>fhir_author_resources</code>。</p>
 <h2 id="grounding-completeness">依據原文檢查（grounding / completeness）<a class="headerlink" href="#grounding-completeness" title="Permanent link">&para;</a></h2>
 <p>符合剖面（conformance-valid）不代表忠於病歷：模型可能填入病歷沒寫的診斷碼、日期或劑量，而 validator 照樣通過。
 下列工具以<strong>確定性規則</strong>（不呼叫 LLM、不用 embedding、不用亂數）比對 Bundle 與病歷原文。術語名稱只查本機資料庫（ICD-10-CM / PCS、LOINC、SNOMED CT、RxNorm、CVX、IG CodeSystem），不呼叫外部 terminology server。</p>
@@ -3065,7 +3242,7 @@
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_finalize_resource</code></td>
-<td style="text-align: left;">1.3.2（<code>resource</code> 保留草稿的數字原始寫法；1.3.1：驗證規則同 <code>fhir_validate_resource</code> 1.6.1；1.3.0：驗證 issue 的 <code>suggestions</code> / <code>caused_by</code>）</td>
+<td style="text-align: left;">1.4.0（slice 成員依 discriminator 釘上 fixed / pattern、任何深度的 <code>_slice</code> 標記且一律移除；1.3.2：<code>resource</code> 保留草稿的數字原始寫法；1.3.1：驗證規則同 <code>fhir_validate_resource</code> 1.6.1；1.3.0：驗證 issue 的 <code>suggestions</code> / <code>caused_by</code>）</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_lookup_code</code></td>
@@ -3082,6 +3259,14 @@
 <tr>
 <td style="text-align: left;"><code>fhir_check_completeness</code></td>
 <td style="text-align: left;">1.1.1</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>fhir_get_authoring_fields</code>、<code>fhir_author_resources</code>、<code>fhir_context</code>、<code>fhir_assemble_bundle</code></td>
+<td style="text-align: left;">1.0.0（從欄位值撰寫資源，見「<a href="#authoring">從欄位值撰寫資源</a>」）</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>query_fhir_condition</code>、<code>query_fhir_medication</code></td>
+<td style="text-align: left;">1.2.0（不再以目前時間填 <code>recordedDate</code> / <code>note.time</code> / <code>meta.lastUpdated</code>——只在呼叫端提供時出現）</td>
 </tr>
 </tbody>
 </table>
