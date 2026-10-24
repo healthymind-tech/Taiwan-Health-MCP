@@ -27,6 +27,12 @@ const VS_SELF = `${EX}ValueSet/self`;
 const UNKNOWN = "http://terminology.hl7.org/CodeSystem/route";
 const SELF_URL = `${EX}CodeSystem/self-unknown`;
 const ADDITIONAL = "http://hl7.org/fhir/tools/StructureDefinition/additional-binding";
+// v1.3: a ValueSet with an enumerated include (CS_PAY) and a LOINC property filter — its local
+// expansion holds only the enumerated codes and is flagged incomplete.
+const VS_LAB = `${EX}ValueSet/lab-codes`;
+const CS_PAY = `${EX}CodeSystem/payment`;
+const LAB_FILTER_MEMBERS = new Set(["2160-0"]); // decidable filter: confirmed members
+const LAB_FILTER_UNDECIDABLE = new Set(["33762-6"]); // filter cannot be evaluated for these
 
 const SYS_PROFILE = sd(PROFILE, "Observation", "resource", [
   el("Observation", 0, "*"),
@@ -56,12 +62,18 @@ const EXP: Record<string, ExpandedCoding[]> = {
   ],
   [VS_METHOD_EXTRA]: [{ system: CS_D, code: "SL", display: "Sublingual" }],
   [VS_SELF]: [{ system: CS_A, code: "PO", display: "Oral" }],
+  [VS_LAB]: [
+    { system: CS_PAY, code: "06001C", display: "Payment item" },
+    { system: CS_PAY, code: "06002C", display: "Payment item 2" },
+  ],
 };
+const INCOMPLETE = new Set([VS_LAB]);
 const COMPOSE_SYSTEMS: Record<string, string[]> = {
   [VS_DOC_FILTER]: [LOINC],
   [VS_SELF]: [CS_A, SELF_URL],
+  [VS_LAB]: [LOINC, CS_PAY],
 };
-const CODES: Record<string, string[]> = { [LOINC]: ["11488-4", "18842-5", "8480-6"], [CS_A]: ["PO", "IV", "X1"], [CS_C]: ["X1"], [CS_D]: ["SL"] };
+const CODES: Record<string, string[]> = { [CS_PAY]: ["06001C", "06002C", "33762-6X"], [LOINC]: ["11488-4", "18842-5", "8480-6", "2160-0", "33762-6"], [CS_A]: ["PO", "IV", "X1"], [CS_C]: ["X1"], [CS_D]: ["SL"] };
 
 function deps(): ComposeDeps {
   return {
@@ -70,9 +82,14 @@ function deps(): ComposeDeps {
     },
     async expandValueSet(url, limit) {
       const c = EXP[url.split("|")[0]];
-      return c ? { codings: c.slice(0, limit), total: c.length, truncated: c.length > limit } : null;
+      return c ? { codings: c.slice(0, limit), total: c.length, truncated: c.length > limit, ...(INCOMPLETE.has(url) ? { incomplete: true } : {}) } : null;
     },
     async valueSetContains(url, system, code) {
+      if (url === VS_LAB) {
+        if (system === CS_PAY) return EXP[VS_LAB].some((x) => x.code === code);
+        if (system === LOINC) return LAB_FILTER_MEMBERS.has(code) ? true : LAB_FILTER_UNDECIDABLE.has(code) || CODES[LOINC].includes(code) ? undefined : undefined;
+        return undefined;
+      }
       const c = EXP[url.split("|")[0]];
       if (!c) return undefined; // filter-defined: not decidable locally
       return c.some((x) => x.code === code && (system === null || x.system === system));
@@ -110,7 +127,7 @@ test("R1: a ValueSet URL as system → the code's CodeSystem in that ValueSet (p
   assert.deepEqual(out.errors, []);
   assert.deepEqual(coding(out, "code"), { system: LOINC, code: "11488-4", display: "Consult note" });
   assert.equal(out.provenance["Observation.code.coding[0].system"], "lookup");
-  assert.deepEqual(out.notes, [`system corrected for code (code.coding[0]): '${VS_DOC}' is a ValueSet; code '11488-4' belongs to ${LOINC}`]);
+  assert.deepEqual(out.notes, [`system corrected for code (code.coding[0]): '${VS_DOC}' is a ValueSet; code '11488-4' belongs to ${LOINC} (membership confirmed)`]);
 });
 
 test("R1: the /CodeSystem/ twin of a ValueSet URL is corrected the same way", async () => {
@@ -122,7 +139,7 @@ test("R1: the /CodeSystem/ twin of a ValueSet URL is corrected the same way", as
 test("R1: membership not decidable locally (filter ValueSet) → the only compose CodeSystem holding the code", async () => {
   const out = await compose({ code: { system: VS_DOC_FILTER, code: "11488-4" } });
   assert.equal(coding(out, "code").system, LOINC);
-  assert.match(out.notes[0], /membership not decidable locally/);
+  assert.match(out.notes[0], /membership unverifiable; the code exists only in http:\/\/loinc\.org among the ValueSet's systems/);
   // a code no CodeSystem of the ValueSet holds is left as written
   const miss = await compose({ code: { system: VS_DOC_FILTER, code: "0000-0" } });
   assert.equal(coding(miss, "code").system, VS_DOC_FILTER);
@@ -205,4 +222,58 @@ test("without resolveSystem the composer changes no system", async () => {
   const out = await composeResource({ key: "k1", profile: PROFILE, fields: { status: "final", code: { system: VS_DOC, code: "11488-4" } } }, d, CTX);
   assert.equal(coding(out, "code").system, VS_DOC);
   assert.deepEqual(out.notes, []);
+});
+
+// --------------------------------------------------------------------------- //
+// v1.3: ValueSet with a filter-defined include next to an enumerated one (partial expansion)
+// --------------------------------------------------------------------------- //
+
+for (const form of ["grammar", "raw"] as const) {
+  const value = (code: string): unknown => (form === "grammar" ? { system: VS_LAB, code } : { coding: [{ system: VS_LAB, code }] });
+
+  test(`v1.3 (${form}): filter decidable and satisfied → corrected, note says membership confirmed`, async () => {
+    const out = await compose({ code: value("2160-0") });
+    assert.deepEqual(coding(out, "code"), { system: LOINC, code: "2160-0" });
+    assert.equal(out.provenance["Observation.code.coding[0].system"], "lookup");
+    assert.deepEqual(out.notes, [`system corrected for code (code.coding[0]): '${VS_LAB}' is a ValueSet; code '2160-0' belongs to ${LOINC} (membership confirmed)`]);
+  });
+
+  test(`v1.3 (${form}): filter undecidable, code only in one included CodeSystem → corrected, note says unverifiable`, async () => {
+    const out = await compose({ code: value("33762-6") });
+    assert.equal(coding(out, "code").system, LOINC);
+    assert.deepEqual(out.notes, [
+      `system corrected for code (code.coding[0]): '${VS_LAB}' is a ValueSet; code '33762-6' belongs to ${LOINC} (membership unverifiable; the code exists only in ${LOINC} among the ValueSet's systems)`,
+    ]);
+  });
+
+  test(`v1.3 (${form}): a code of the enumerated part is corrected from the (partial) expansion`, async () => {
+    const out = await compose({ code: value("06001C") });
+    assert.equal(coding(out, "code").system, CS_PAY);
+    assert.match(out.notes[0], /membership confirmed/);
+  });
+
+  test(`v1.3 (${form}): a code in none of the ValueSet's CodeSystems is never guessed`, async () => {
+    for (const code of ["WBC", "hs-Troponin I", "laboratory"]) {
+      const out = await compose({ code: value(code) });
+      assert.deepEqual(coding(out, "code"), { system: VS_LAB, code });
+      assert.deepEqual(out.notes, []);
+      assert.equal(out.provenance["Observation.code.coding[0].system"], undefined);
+    }
+  });
+}
+
+test("v1.3: code held by several of the ValueSet's CodeSystems (membership undecidable) → error with candidates", async () => {
+  const d = deps();
+  const base = d.valueSetContains!;
+  d.valueSetContains = async (url, system, code) => (url === VS_LAB && code === "33762-6" ? undefined : base(url, system, code));
+  CODES[CS_PAY].push("33762-6");
+  try {
+    const out = await composeResource({ key: "k1", profile: PROFILE, fields: { status: "final", code: { system: VS_LAB, code: "33762-6" } } }, d, CTX);
+    assert.equal(coding(out, "code").system, VS_LAB);
+    assert.equal(out.errors.length, 1);
+    assert.match(out.errors[0].message, /several CodeSystems/);
+    assert.deepEqual((out.errors[0].candidates as El[]).map((c) => c.system).sort(), [CS_PAY, LOINC].sort());
+  } finally {
+    CODES[CS_PAY].pop();
+  }
 });

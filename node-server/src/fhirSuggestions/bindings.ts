@@ -432,6 +432,7 @@ export async function suggestBoundCoding(
   url: string,
   budget: Budget,
   opts: WalkOptions = {},
+  systemIsValueSet = false,
 ): Promise<Suggestion[]> {
   const { parent: codingPath } = splitLast(systemPath);
   if (!codingPath) return [];
@@ -440,16 +441,35 @@ export async function suggestBoundCoding(
   const code = typeof coding.code === "string" && coding.code.trim() ? coding.code.trim() : null;
   const display = typeof coding.display === "string" && coding.display.trim() ? coding.display.trim() : null;
   const ctx = await elementBindings(deps, root, codingPath, opts);
-  if (!ctx || !ctx.bindings.length) return [];
+  const bindings = ctx ? ctx.bindings.slice(0, 3) : [];
+  // v13: a ValueSet canonical written as the system — its own CodeSystems / codes are candidates
+  // too (first), whatever the element is bound to.
+  if (systemIsValueSet) {
+    const i = bindings.findIndex((b) => unversioned(b.valueSet) === unversioned(url));
+    const own = i >= 0 ? bindings.splice(i, 1)[0] : { valueSet: unversioned(url), strength: "named as system", element: "the system", profile: "", source: "binding" as const, depth: 0 };
+    bindings.unshift(own);
+  }
+  if (!bindings.length) return [];
+  const what = systemIsValueSet ? `'${url}' is a ValueSet, not a CodeSystem` : `'${url}' is not a known CodeSystem`;
+  const boundTo = (b: BindingRef): string =>
+    b.strength === "named as system" ? `the ValueSet ${canonicalName(b.valueSet)}` : `${b.element} is bound to ${canonicalName(b.valueSet)} (${b.strength}), which`;
   const out: Suggestion[] = [];
-  const bindings = ctx.bindings.slice(0, 3);
   // 1. The Coding's display / code normalised within the bound ValueSets (one lookup per ValueSet, nearest first).
   const label = display || (code && /[a-z]/i.test(code) ? code : null);
   const seen = new Set<string>();
   if (label) {
-    for (const b of bindings) {
+    // Normalisation targets: each bound ValueSet; for a ValueSet written as the system, that
+    // ValueSet first and then each CodeSystem it includes (a filter-defined include is often not
+    // expandable locally, its CodeSystem is), stopping at the first that answers.
+    const targets: Array<{ b: BindingRef; target: { system?: string; valueSet?: string }; via?: string }> = [];
+    for (const [i, b] of bindings.entries()) {
+      targets.push({ b, target: { valueSet: b.valueSet } });
+      if (systemIsValueSet && i === 0) for (const s of (await valueSetSystems(deps, b.valueSet)).slice(0, 3)) targets.push({ b, target: { system: s.system }, via: s.system });
+    }
+    for (const [ti, { b, target, via }] of targets.entries()) {
       if (budget.left <= 0) break;
-      const cands = await normalized(deps, budget, label, { valueSet: b.valueSet }, 5);
+      if (systemIsValueSet && out.length && ti > 0 && targets[ti - 1].b !== b) break;
+      const cands = (await normalized(deps, budget, label, target, 5)).slice(0, systemIsValueSet ? 3 : 5);
       cands.forEach((c, i) => {
         if (!c.code) return;
         const key = `${c.system ?? ""}|${c.code}`;
@@ -463,7 +483,7 @@ export async function suggestBoundCoding(
           value: c.code,
           kind: "replace_coding",
           confidence,
-          reason: `'${url}' is not a known CodeSystem; ${b.element} is bound to ${canonicalName(b.valueSet)} (${b.strength}), where '${label}' ${exact ? "names" : "matches"} ${c.system ?? "?"}#${c.code}${c.display ? ` '${c.display}'` : ""}`,
+          reason: `${what}; ${via ? `in ${via}, which the ValueSet ${canonicalName(b.valueSet)} includes,` : b.strength === "named as system" ? `in the ValueSet ${canonicalName(b.valueSet)},` : `${b.element} is bound to ${canonicalName(b.valueSet)} (${b.strength}), where`} '${label}' ${exact ? "names" : "matches"} ${c.system ?? "?"}#${c.code}${c.display ? ` '${c.display}'` : ""}`,
           ...(c.system ? { system: c.system } : {}),
           ...(c.display ? { display: c.display } : {}),
           patch: { op: "replace", path: codingPath, value: { ...(c.system ? { system: c.system } : {}), code: c.code, ...(c.display ? { display: c.display } : {}) } },
@@ -489,7 +509,7 @@ export async function suggestBoundCoding(
       kind: "replace_system",
       confidence: held === true ? 0.9 : held === false ? 0.35 : 0.5,
       reason:
-        `'${url}' is not a known CodeSystem; ${via.element} is bound to ${canonicalName(via.valueSet)} (${via.strength}), which draws codes from ${system}` +
+        `${what}; ${boundTo(via)} draws codes from ${system}` +
         (held === true ? `; code '${code}' exists in it` : held === false ? `; but code '${code}' is not in it` : ""),
       patch: { op: "replace", path: systemPath, value: system },
     });

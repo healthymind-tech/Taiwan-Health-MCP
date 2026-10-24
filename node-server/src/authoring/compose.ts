@@ -25,7 +25,12 @@
  *                  walker) that holds the code (exact, else case-insensitive, else an exact display),
  *                  when exactly one. Provenance `lookup`, note `system corrected for …`. Several
  *                  CodeSystems for a ValueSet URL → error + candidates; anything else undecided is
- *                  left as written (the validator reports it with the v10 suggestions)
+ *                  left as written (the validator reports it with the v10 suggestions).
+ *                  (v1.3) a partial local expansion (a filter include the engine cannot enumerate
+ *                  next to enumerated ones — deps `incomplete`) counts as cut: membership then comes
+ *                  per system from valueSetContains (LOINC property filters decided) and, when
+ *                  undecidable, from the one system holding the code; the note says "membership
+ *                  confirmed" / "membership unverifiable; the code exists only in <CS> …"
  *   5. defaults    `defaultValue[x]` and the conventional workflow defaults (fhirRequiredElements
  *                  WORKFLOW_DEFAULTS) only on elements the profile REQUIRES (min >= 1, required
  *                  slices included) that the model left empty; optional ones are never filled;
@@ -1315,7 +1320,8 @@ class Composer {
       p = this.deps.expandValueSet
         ? this.deps
             .expandValueSet(valueSet, EXPANSION_LIMIT)
-            .then((r) => (r ? { codings: r.codings, truncated: r.truncated } : null))
+            // a partial expansion (incomplete) is treated like a cut one: it never proves non-membership
+            .then((r) => (r ? { codings: r.codings, truncated: r.truncated || r.incomplete === true } : null))
             .catch(() => null)
         : Promise.resolve(null);
       this.expansions.set(key, p);
@@ -1660,8 +1666,12 @@ class Composer {
     const twin = stripVersion(system) !== stripVersion(valueSet) ? ` (its ValueSet twin ${valueSet})` : "";
     if (hits.size === 1) {
       const [[cs, hit]] = [...hits.entries()];
-      const undecided = hit.uncertain ? ` (the only CodeSystem of the ValueSet holding it; membership not decidable locally)` : "";
-      this.applySystem(coding, path, cs, code, `'${system}' is a ValueSet${twin}; code '${code}' belongs to ${cs}${undecided}`);
+      // v1.3: say whether ValueSet membership itself was confirmed (expansion / decidable compose,
+      // filters included) or only the code's existence (a filter that cannot be evaluated locally).
+      const how = hit.uncertain
+        ? `membership unverifiable; the code exists only in ${cs} among the ValueSet's systems`
+        : "membership confirmed";
+      this.applySystem(coding, path, cs, code, `'${system}' is a ValueSet${twin}; code '${code}' belongs to ${cs} (${how})`);
       return;
     }
     if (hits.size > 1) {

@@ -261,6 +261,12 @@ export interface TerminologyDeps {
   snomedSubsumedBy?(code: string, ancestor: string): Promise<boolean | undefined>;
   snomedDescendants?(code: string, limit: number): Promise<string[]>;
   snomedDisplays?(codes: string[]): Promise<Map<string, string>>;
+  /**
+   * (v13) One compose filter on an externally backed system (LOINC properties such as
+   * CLASSTYPE / CLASS / SCALE_TYP) evaluated for one code. undefined = cannot decide
+   * (unsupported property / op, code not held locally).
+   */
+  externalFilter?(system: string, filter: ComposeFilter, code: string): Promise<boolean | undefined>;
 }
 
 const MAX_DEPTH = 8;
@@ -325,6 +331,8 @@ async function systemPartContains(
         r = sub === undefined ? undefined : sub && (f.op === "is-a" || code !== String(f.value));
       } else if (f.op === "=" && (f.property === "concept" || f.property === "code")) {
         r = code === String(f.value);
+      } else if (deps.externalFilter) {
+        r = await deps.externalFilter(system, f, code);
       } else {
         r = undefined;
       }

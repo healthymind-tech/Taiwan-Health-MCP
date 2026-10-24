@@ -105,9 +105,19 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   CodeSystem of the bound ValueSet; replace_coding / replace_system from the bound ValueSets for an unknown
   //   Coding.system; small ValueSets (≤ 50) always listed, semantic ranking of ≤ 12-code sets, move_value to a
   //   sibling element that accepts the value; lookup budget 1 call per issue (expansion unbudgeted).
-  fhir_validate_bundle: "1.8.0",
+  // 1.9.0 (evaluation v13, validator v13): an IG ValueSet canonical written as Coding.system (CodeableConcept codings and
+  //   Codings that are not directly bound) is the error "The Coding references a value set, not a code system"
+  //   (Terminology_TX_System_ValueSet2) when the validated resource / Bundle checks a binding to that ValueSet or to one
+  //   including it — validator_cli 7.0.1 / 7.0.3 report it once their run has loaded the ValueSet (order-dependent; we
+  //   apply it order-independently); otherwise the UNKNOWN_CODESYSTEM warning stays (as the CLI, also batched). HL7 / THO
+  //   ValueSets unchanged (error everywhere); directly bound Codings unchanged. Its suggestions normalise the code within
+  //   that ValueSet and its CodeSystems (replace_coding) and list its CodeSystems (replace_system). LOINC `=` / `in`
+  //   property filters (CLASSTYPE, CLASS, STATUS, SCALE_TYP … incl. LOINC part codes as values) decide ValueSet membership
+  //   (was: undecidable) — "could not be confirmed" information on LOINC codes disappears for members.
+  fhir_validate_bundle: "1.9.0",
   // 1.6.2: the binding-aware suggestions above (ISSUES_v10 A) also apply to single-resource validation.
-  fhir_validate_resource: "1.6.2",
+  // 1.7.0: the validator v13 rules above (fhir_validate_bundle 1.9.0).
+  fhir_validate_resource: "1.7.0",
   // 1.2.0 (all below): provenance.resolved_by / closure_versions; canonical arguments resolve to their
   // owning package when package_id is omitted; "|version" honoured; list/search: all_packages + zero-hit hint;
   // NO_DEFAULT_IG instead of an arbitrary package when no default IG is set.
@@ -126,7 +136,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.3.0: found:false adds `hint` (use fhir_normalize_code with the system) and `near_codes` (IG CodeSystems).
   // 1.3.2: RxNorm codes (http://www.nlm.nih.gov/research/umls/rxnorm) are looked up in rxnorm.concepts (was: not found).
   fhir_lookup_code: "1.3.2",
-  fhir_validate_code: "1.2.1",
+  // 1.3.0 (v13): LOINC `=` / `in` property filters decided from loinc.concepts (unverifiable → valid / invalid).
+  fhir_validate_code: "1.3.0",
   // 1.3.0: IG CodeSystems use the concept-search engine (designations in any language, supplements, linked
   // names, abbreviation expansion, hybrid lexical + semantic): candidates carry matched_term / matched_language /
   // category / group / siblings; `system` may be a CodeSystem id or alias; search_mode=keyword_only when degraded;
@@ -161,7 +172,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   discriminators identify the member (bp component unit system / code, identifier slice system / use), `_slice` tags
   //   work at any depth and are always removed (unknown names reported, never left in the resource); still only where the
   //   draft has the parent node — nothing is invented. New description points to fhir_author_resources for values.
-  fhir_finalize_resource: "1.4.0",
+  // 1.5.0: validation as fhir_validate_resource 1.7.0 (bound IG ValueSet canonical as Coding.system → error, LOINC filters).
+  fhir_finalize_resource: "1.5.0",
   // 1.0.0 (authoring/, evaluation v11): the model gives field VALUES, the MCP composes the resource for its profile
   //   (fixed / pattern / defaults / derived / displays / UCUM / ROC dates), validates it, keeps it in a Redis context
   //   (`authoring:ctx:*`, 60-min idle TTL) and assembles the Bundle from keys with deterministic urn:uuid fullUrls
@@ -188,12 +200,19 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   candidates; not a member → as before); a URL that resolves to nothing by the validator's URL rules → the one CodeSystem
   //   of the element's bound ValueSets (slices / additional bindings) holding the code (exact, case-insensitive, exact
   //   display — each only when unique); otherwise unchanged (validator error + v10 suggestions).
-  fhir_author_resources: "1.2.0",
+  // 1.3.0 (evaluation v13): a ValueSet with a filter-defined include (laboratory-code-tw: LOINC CLASSTYPE filter + NHI
+  //   payment codes) has a partial local expansion that no longer counts as "not a member": the system is corrected when the
+  //   code is a member under exactly one of its CodeSystems (filter decided → note "membership confirmed") or, filter
+  //   undecidable, exists in exactly one of them (note "membership unverifiable; the code exists only in <CS> among the
+  //   ValueSet's systems"); grammar {system, code} and raw {coding: [...]} alike. An uncorrected ValueSet system is an
+  //   error through validation (fhir_validate_resource 1.7.0), so status is invalid.
+  fhir_author_resources: "1.3.0",
   // 1.0.1: action=get results carry the author result's new `notes` (fhir_author_resources 1.1.0); otherwise unchanged.
   fhir_context: "1.0.1",
   // 1.1.0: new `site_config` (merged with the context's) passed to the grounding engine with source_text, so facility
   //   identifier systems / organisation values are grounded as site_config; resources carry the 1.1.0 composer rules.
-  fhir_assemble_bundle: "1.1.0",
+  // 1.2.0: resources composed as fhir_author_resources 1.3.0, validation as fhir_validate_bundle 1.9.0.
+  fhir_assemble_bundle: "1.2.0",
   // 1.0.0 (ISSUES_v9 R1): deterministic Bundle finalizer — fullUrl-uuid / reference-rewire / resource-id (mandatory),
   // bundle-type / document-order (profile-driven); UUID v5 seeded by (resourceType, original fullUrl, resource.id, entry
   // index) + a content salt; references found through StructureDefinition snapshots; duplicates / ambiguity reported.

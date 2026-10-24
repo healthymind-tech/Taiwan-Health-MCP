@@ -134,3 +134,22 @@ v1.2 (evaluation v12):
 - Context ids: 128-bit random (hex); stored in Redis under `authoring:ctx:<id>` with idle TTL
   60 min (touched on every access). Unknown/expired → error code `CONTEXT_EXPIRED` (never empty
   results). Clinical content is never logged (log sizes/hashes only).
+
+v1.3 (evaluation v13):
+
+- a ValueSet whose compose mixes an enumerated include with a filter the local engine cannot
+  expand (TW Core `laboratory-code-tw` = LOINC `CLASSTYPE` filter + NHI payment codes) has only a
+  partial local expansion: `ComposeDeps.expandValueSet` flags it `incomplete` (fhirCodeSystem
+  `unresolved` parts) and the composer treats it like a truncated one — it never proves
+  non-membership. Before v1.3 the 879 enumerated NHI codes looked like the whole ValueSet, so
+  `codesInValueSet` returned "not a member" for every LOINC code and no system was corrected;
+- membership under each of the ValueSet's systems then comes from `valueSetContains`, which now
+  evaluates LOINC property filters (`=` / `in` on CLASSTYPE, CLASS, STATUS, … — fhirTerminology
+  `externalFilterMatches`). The note says `(membership confirmed)` for an expansion / decidable
+  hit and `(membership unverifiable; the code exists only in <CS> among the ValueSet's systems)`
+  for the `codeInSystem` fallback;
+- a ValueSet canonical left in `Coding.system` (not a code of any of its systems, or ambiguous)
+  is an error from the validator itself (`The Coding references a value set, not a code system`,
+  fhirValidator `settleVsSystems`: an IG ValueSet that the resource / Bundle binds somewhere, as
+  validator_cli once it has loaded the ValueSet), so author / assemble / validate give the same
+  verdict; its suggestions normalise the code within that ValueSet and its CodeSystems.

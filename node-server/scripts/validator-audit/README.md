@@ -30,6 +30,7 @@ validator（經 <https://validator.dicom.tw/app/> 包裝，下稱 oracle 或 dic
 | `harness/gen_v2_mutations.py` | （v2）A–F 各類 mutation（display 互換 / 中文 display / 大小寫 / 空白、LOINC LCN / short name、SNOMED 同義詞與 inactive 描述、偽造 THO / HL7 URL、巢狀 extension、UCUM、OID、ValueSet 當 system、vital-sign 替代碼）。需要 `corpus/v2_terms.json.gz`。 |
 | `harness/gen_v7.py` | （v7）評估報告 v5 的漏報探針：X-* extension context（element / extension 型別、contextInvariant、extension 自身 invariant 如 var-1）、U-* `Unrecognized property`（剖面不允許的 choice 型別、未知 extension 的 value、單值寫成陣列）、A-* HL7 空間 URL（v3-ActEncounterCode）、I-* IG CodeSystem 未知碼、R-* RxNorm 碼 / display。 |
 | `harness/gen_v8.py` | （v8）評估報告 v6 的漏報探針，幾乎全是 Bundle（評估端用 `fhir_validate_bundle` 驗 LLM 產出）：A-* 無法解析的 THO CodeSystem URL 放在每一種元素 / 情境（Encounter.class、CodeableConcept、Observation.category slice、extension value、contained、classHistory、Identifier.type、Meta.tag、Quantity.system、`|version`、無 meta.profile、R5 陣列、巢狀 Bundle）、P-* `http://hl7.org/fhir/sid/icd-10-pcs`、C-* category 寫成 extension、U-* `Unrecognized property`、D-* 無效 id、F-* 參照含空白、X-* `variable`、R-* RxNorm display（另一個藥 / 同義詞 / 中文 / 正確）、S-* entry 沒有可用 resource、V-* 有效對照。 |
+| `harness/gen_v13.py` | （v13）ValueSet canonical 當 `Coding.system` 的情境探針：CodeableConcept 內 coding（綁定的 ValueSet 本身 / 被它 include 的 / 無關的）、同一 ValueSet 在其他元素、第二個 coding、無 meta.profile、直接綁定的 Coding（`ImagingStudy.series.modality`、`Encounter.class`）、只綁在 Coding slice 上的 ValueSet（MedicationRequest）、Bundle（第一次 / 第二次使用）。CLI 判定與「本次執行是否已載入該 ValueSet」有關，須分「一筆一個 JVM」與「全部同一個 JVM」兩種跑法（見 REPORT.md §v13）。 |
 | `requiredElementsAudit.ts` | `fhir_get_profile_required_elements` 的 oracle 稽核：對每個通過驗證的範例（含 Bundle entry），檢查 (a) 回報的必要元素都存在於範例（necessity）、(b) 刪掉回報元素後 validator 必報錯（sufficiency）、(c) 逐一刪除範例中每個元素，validator 報的 required / cardinality / invariant 錯誤都有對應列（under-report）。可疑 mutant 寫到 `required_audit_cli_items.json` 供 `cli_oracle.py` 複核；`CLI_SAMPLE=n` 另抽樣通過的刪除。 |
 | `requiredElementsSizes.ts` | 該 tool 在 TW Core 1.0.0 / PAS 1.2.7 全部 profile 上的輸出大小（compact vs full）。 |
 | `requiredElementsFixtures.ts` | 重新產生 `mcp_proposal/fixtures/required_elements_pas`（單元測試用的 PAS 投影與範例）。`mcp_proposal/` 是私有、未納入版控的目錄；沒有它時 `src/fhirRequiredElements.test.ts` 的相關案例會自動略過。 |
@@ -52,6 +53,7 @@ validator（經 <https://validator.dicom.tw/app/> 包裝，下稱 oracle 或 dic
 | `mut_dis` | 31 | MedicationDispense mutation |
 | `v7_probes` | 48 | （v7）`gen_v7.py`：X-* / U-* / A-* / I-* / R-*（見上） |
 | `v8_probes` | 48 | （v8）`gen_v8.py`：A-* / P-* / C-* / U-* / D-* / F-* / X-* / R-* / S-* / V-*（見上；45 筆為 Bundle） |
+| `v13_probes` | 18 | （v13）`gen_v13.py`（見上） |
 | `perf` | 6 | 大型 PAS bundle（效能 + 正確性） |
 | `refprobe*` | 51 | Bundle reference 解析探針 |
 

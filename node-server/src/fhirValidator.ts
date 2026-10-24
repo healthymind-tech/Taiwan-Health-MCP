@@ -743,11 +743,27 @@ function appliesToR4(node: Record<string, any>): boolean {
 const MAX_DEPTH = 60;
 const ROOT_TOKEN = "\u0001";
 
+/** HL7 core / THO ValueSets: tx.fhir.org knows them server-side, so they are a ValueSet as system in any context. */
+/** Marker on a pending IG-ValueSet-as-system issue (removed by settleVsSystems before validate() returns). */
+const VS_SYSTEM = "__vsSystem";
+
+function isHl7ValueSetUrl(url: string): boolean {
+  return url.startsWith("http://hl7.org/fhir/ValueSet/") || url.startsWith("http://terminology.hl7.org/ValueSet/");
+}
+
 export class InstanceValidator {
   private sdCache = new Map<string, Promise<SdIndex | null>>();
   private conformCache = new WeakMap<object, Map<string, Promise<Issue[]>>>();
   private inProgress = new WeakMap<object, Set<string>>();
   private vsHeaderCache = new Map<string, Promise<Record<string, any> | null>>();
+  /**
+   * (v13) ValueSets validator_cli has loaded while validating this instance: those of element
+   * bindings it checks against the terminology server (any element type but a bare Coding,
+   * required / extensible / preferred, value present), plus the ValueSets they include.
+   */
+  private boundValueSets = new Set<string>();
+  /** (v13) Any IG ValueSet canonical written as a Coding.system (issues carry VS_SYSTEM) — decided at the end of validate(). */
+  private pendingVsSystems = false;
   private memberCache = new Map<string, Promise<boolean | undefined>>();
   private codeCache = new Map<string, Promise<CodeCheck>>();
   /** Values that matched a slice (their url / discriminators are known to the slice definition). */
@@ -766,10 +782,52 @@ export class InstanceValidator {
     const rctx: ResourceCtx = { resource, container: null, root: resource, bundle, entry: null };
     // `|version` is kept: HL7 resolves a versioned canonical to that version only.
     const extra = (opts.profiles || []).map((p) => String(p || "").trim()).filter((p) => p !== "");
+    this.boundValueSets = new Set();
+    this.pendingVsSystems = false;
     await this.validateResource(rctx, resource.resourceType, extra, issues, 0);
     if (bundle) this.validateBundleRules(bundle, resource.resourceType, issues);
     await this.structuralPass(resource, resource.resourceType, issues, 0);
+    await this.settleVsSystems(issues);
     return dedupe(issues);
+  }
+
+  /**
+   * (v13) Terminology_TX_System_ValueSet2 for IG ValueSets. validator_cli 7.0.1 / 7.0.3 knows an
+   * IG ValueSet as such only once it has loaded it, i.e. after checking a binding to it (or to a
+   * ValueSet including it) — the same Observation.code coding with system = …/ValueSet/
+   * laboratory-code-tw is an error when the resource / Bundle / batch checks laboratory-code-tw
+   * as a binding, and only the UNKNOWN_CODESYSTEM warning when nothing does (Coding-level slice
+   * bindings — MedicationRequest.medication[x].coding — never load it). The CLI's order
+   * dependence (first use in a JVM is only a warning) is dropped: a ValueSet bound anywhere in
+   * the validated instance counts, wherever the binding sits.
+   */
+  private async settleVsSystems(issues: Issue[]): Promise<void> {
+    if (!this.pendingVsSystems) return;
+    const marked = issues.filter((i) => typeof (i as any)[VS_SYSTEM] === "string");
+    if (!marked.length) return;
+    const loaded = new Set<string>();
+    const visit = async (url: string, depth: number): Promise<void> => {
+      const u = stripVersion(url);
+      if (loaded.has(u) || depth > 4) return;
+      loaded.add(u);
+      let vs: Record<string, any> | null = null;
+      try {
+        vs = await this.vsHeader(url);
+      } catch {
+        vs = null;
+      }
+      const incs = vs && isObject(vs.compose) && Array.isArray(vs.compose.include) ? vs.compose.include : [];
+      for (const inc of incs) if (isObject(inc) && Array.isArray(inc.valueSet)) for (const v of inc.valueSet) if (typeof v === "string" && v) await visit(v, depth + 1);
+    };
+    for (const u of this.boundValueSets) await visit(u, 0);
+    for (const issue of marked) {
+      const url = String((issue as any)[VS_SYSTEM]);
+      delete (issue as any)[VS_SYSTEM];
+      if (!loaded.has(stripVersion(url))) continue;
+      issue.severity = "error";
+      issue.code = "code-invalid";
+      issue.message = `The Coding references a value set, not a code system ('${url}')`;
+    }
   }
 
   // ------------------------------------------------------------------ helpers
@@ -2081,6 +2139,7 @@ export class InstanceValidator {
     const b = el.binding;
     if (!b || !b.valueSet) return;
     const strength = b.strength;
+    if (typeCode !== "Coding" && (strength === "required" || strength === "extensible" || strength === "preferred")) this.boundValueSets.add(stripVersion(String(b.valueSet)));
     if ((strength === "required" || strength === "extensible" || strength === "preferred") && (typeCode === "Coding" || typeCode === "CodeableConcept")) {
       await this.checkCodingVersions(b.valueSet, v, typeCode, item, issues);
     }
@@ -2210,14 +2269,15 @@ export class InstanceValidator {
   }
 
   /**
-   * Is `url` exactly the canonical of a ValueSet we hold (Coding.system pointing
-   * at a value set)? Only HL7 core / THO value sets count: tx.fhir.org knows
-   * those server-side and rejects them as a system in any context, whereas an
-   * IG-local value set used as a system only yields "unknown CodeSystem"
-   * (confirmed: TW Core ValueSet/medication-path-tw in Observation.method passes).
+   * Is `url` exactly the canonical of a ValueSet of the validation closure (Coding.system
+   * pointing at a value set — Terminology_TX_System_ValueSet2)? `hl7Only`: only HL7 core / THO
+   * ValueSets, which tx.fhir.org rejects as a system in any context (Quantity.system). An IG
+   * ValueSet is an error only when the instance also checks a binding to it (v13,
+   * settleVsSystems); otherwise HL7 only warns "A definition for CodeSystem … could not be found"
+   * (TW Core medication-path-tw / medication-nhi-tw as a system pass validator_cli, also batched).
    */
-  private async isValueSetUrl(url: string): Promise<boolean> {
-    if (!url.startsWith("http://hl7.org/fhir/ValueSet/") && !url.startsWith("http://terminology.hl7.org/ValueSet/")) return false;
+  private async isValueSetUrl(url: string, hl7Only = true): Promise<boolean> {
+    if (hl7Only && !isHl7ValueSetUrl(url)) return false;
     const vs = await this.vsHeader(url);
     return !!vs && stripVersion(String(vs.url || "")) === stripVersion(url);
   }
@@ -2269,20 +2329,33 @@ export class InstanceValidator {
     }
     if (r.status === "unknown-system") {
       // Port of InstanceValidator.checkTerminologyCoding → isValueSet (7.0.1).
-      const isVs = await this.isValueSetUrl(system);
+      const isVs = await this.isValueSetUrl(system, false);
       // A Coding element bound directly (e.g. Encounter.class, extensible) goes through
       // checkCoding → checkCodedElement: the binding check answers (warning
       // "not in the value set") and neither Terminology_TX_System_ValueSet2 nor
       // UNKNOWN_CODESYSTEM is reported (validator_cli, probe v7 A-class-vs).
       const b = el && isObject(el.binding) ? el.binding : null;
       if (isVs && b && b.valueSet && ["required", "extensible", "preferred"].includes(b.strength)) return;
-      if (isVs) {
+      if (isVs && isHl7ValueSetUrl(system)) {
         issues.push({
           severity: "error",
           path: `${item.path}.system`,
           code: "code-invalid",
           message: `The Coding references a value set, not a code system ('${system}')`,
         });
+        return;
+      }
+      if (isVs) {
+        // IG ValueSet: an error when the instance loads it through a binding (settleVsSystems), else this warning.
+        const issue: Issue = {
+          severity: "warning",
+          path: `${item.path}.system`,
+          code: "not-found",
+          message: `A definition for CodeSystem '${system}' could not be found, so the code cannot be validated`,
+        };
+        (issue as any)[VS_SYSTEM] = system;
+        issues.push(issue);
+        this.pendingVsSystems = true;
         return;
       }
       // An unknown system is only this warning (UNKNOWN_CODESYSTEM) — also in the

@@ -64,8 +64,13 @@ export interface ComposeDeps {
   checkDisplay?(system: string, code: string, display: string, version: string | null): Promise<DisplayVerdict>;
   /** Free text → candidate codes of a ValueSet / CodeSystem (fhir_normalize_code). */
   normalize?(text: string, target: { system?: string; valueSet?: string }, limit: number): Promise<NormalizeCandidate[]>;
-  /** Expansion of a ValueSet (null = not expandable locally). */
-  expandValueSet?(url: string, limit: number): Promise<{ codings: ExpandedCoding[]; total: number; truncated: boolean } | null>;
+  /**
+   * Expansion of a ValueSet (null = not expandable locally). `incomplete` (v1.3): some part of the
+   * compose could not be enumerated locally (e.g. a LOINC property filter next to an enumerated
+   * include) — the codings are then only part of the ValueSet and, like a truncated expansion,
+   * never prove that a code is not a member.
+   */
+  expandValueSet?(url: string, limit: number): Promise<{ codings: ExpandedCoding[]; total: number; truncated: boolean; incomplete?: boolean } | null>;
   /** Membership as the validator decides it (undefined = cannot be decided locally). */
   valueSetContains?(url: string, system: string | null, code: string): Promise<boolean | undefined>;
   /**

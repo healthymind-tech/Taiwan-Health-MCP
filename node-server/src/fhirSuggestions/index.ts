@@ -107,7 +107,7 @@ async function suggestFor(issue: Record<string, any>, all: Array<Record<string, 
     case "unknown_url": {
       const { url, ctx } = urlContext(root, msg, path);
       // A Coding's system: also the codes / CodeSystems of the element's bound ValueSets (bindings.ts).
-      const bound = ctx.expect === "CodeSystem" ? await suggestBoundCoding(deps, root, ctx.path, url, budget, walk) : [];
+      const bound = ctx.expect === "CodeSystem" ? await suggestBoundCoding(deps, root, ctx.path, url, budget, walk, RE_VS_AS_SYSTEM.test(msg)) : [];
       return { suggestions: [...(await suggestCanonical(deps, url, ctx)), ...bound] };
     }
     case "wrong_display":

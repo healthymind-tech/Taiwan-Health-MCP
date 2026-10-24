@@ -297,3 +297,24 @@ test("attachSuggestions: an unknown Coding.system gets the bound ValueSets' Codi
   assert.ok(s2.every((x) => x.kind === "replace_system"), JSON.stringify(s2));
   assert.deepEqual([s2[0].value, s2[0].confidence], [CS_ROUTE_X, 0.9]);
 });
+
+test("v13 suggestBoundCoding: a ValueSet canonical as the system → normalised within it / its CodeSystems, then its CodeSystems", async () => {
+  // The route ValueSet written as the system of a Coding under an element with no binding of its own.
+  const pat = { resourceType: "Patient", foo: { system: VS_ROUTE_X, code: "oral" } };
+  const calls: Array<Record<string, unknown>> = [];
+  const deps = fakeDeps({
+    normalize: async (text, target) => {
+      calls.push(target);
+      if (target.system === SCT && text === "oral") return [{ system: SCT, code: "26643006", display: "Oral route", score: 0.8 }];
+      return [];
+    },
+  });
+  const r = rankSuggestions(await suggestBoundCoding(deps, pat, "Patient.foo.system", VS_ROUTE_X, { left: 2 }, {}, true), 8);
+  // the ValueSet itself first (no candidates), then its first CodeSystem — two calls, the budget
+  assert.deepEqual(calls, [{ valueSet: VS_ROUTE_X }, { system: SCT }]);
+  assert.deepEqual(r.map((s) => [s.kind, s.value]), [["replace_coding", "26643006"], ["replace_system", SCT], ["replace_system", CS_ROUTE_X]]);
+  assert.match(r[0].reason, /is a ValueSet, not a CodeSystem; in http:\/\/snomed\.info\/sct, which the ValueSet medication-route-x includes, 'oral' matches/);
+  assert.match(r[1].reason, /is a ValueSet, not a CodeSystem; the ValueSet medication-route-x draws codes from/);
+  // without the flag (an unknown URL) an unbound element gets nothing, as before
+  assert.deepEqual(await suggestBoundCoding(deps, pat, "Patient.foo.system", VS_ROUTE_X, { left: 2 }), []);
+});

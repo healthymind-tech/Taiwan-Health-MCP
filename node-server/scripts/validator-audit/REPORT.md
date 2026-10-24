@@ -547,3 +547,41 @@ vs CLI（verdict）：48 筆 **47 一致、誤收 1、誤拒 0**。唯一不一�
 - 單元測試：`src/fhirValidator.v8.test.ts`（SIDUtilities 對齊、icd-10-pcs 在 Coding / extension value 的 URL error、非 HL7 空間維持 warning、參照空白、`rxDrugWords` / `displayDenotesDifferentDrug` / `judgeRxnorm` 升級、`trackQueryFailures` + `lookupFailureIssue` + `completenessOf`）。`npm test` 956 項：955 通過、1 略過（私有 fixture 不在本機）、0 失敗；`npm run typecheck` 通過。
 - 評估端 harness 注意：`compare_local.py` 把「工具呼叫失敗」算成 invalid（`ours_valid = bool(valid) and not errors`），所以 parity 數字看不到 DB 當機造成的 400；評估端只看 issue，因此看到的是「valid」。修正 #5 後兩種讀法都會看到 error / fatal。
 - `harness/gen_v8.py` 的 V-* 對照把 `Encounter/enc-example` 的 `identifier.system`（`http://healthcare.example.org/…`）拿掉：example.org URL 對 CLI 與本機都是 error（`TYPE_SPECIFIC_CHECKS_DT_URL_EXAMPLE`），不是本輪的對象。
+
+---
+
+# v13：ValueSet canonical 當 `Coding.system`、filter 定義的 ValueSet（評估報告 v13，2026-10-25）
+
+探針 `corpus/v13_probes.json.gz`（`harness/gen_v13.py`，18 筆，全部由 TW Core 1.0.0 範例合成），oracle 為 validator_cli 7.0.1 + tx.fhir.org（`-ig tw.gov.mohw.twcore#1.0.0`），兩種跑法：**一筆一個 JVM**（`CLI_CACHE=… cli_oracle.py` 逐筆呼叫）與**全部同一個 JVM**（一次批次）；L1 / L6 另以 7.0.3（2026-10-21）重跑，結果與 7.0.1 相同。本機以唯讀 session 連 production DB。
+
+## v13.1 validator_cli 什麼時候報 `The Coding references a value set, not a code system`
+
+| 探針 | 情境 | 單筆 JVM | 同一 JVM（批次） | 本機（修正後） |
+|---|---|---|---|---|
+| L1 / L2 / L9 / L10 | `Observation.code`（綁定 `laboratory-code-tw`）的 coding，system = `laboratory-code-tw`，code 為真 LOINC / `WBC` / NHI 碼 / `hs-Troponin I` | warning `UNKNOWN_CODESYSTEM` | **error** | **error** |
+| L3 / L4 | system = 被 `laboratory-code-tw` include 的 `loinc-observation-code` / `laboratory-category-tw` | warning | **error** | **error** |
+| L5 | system = 無關的 `medication-path-tw` | warning | warning | warning |
+| L6 | `Observation.method` 的 coding，system = `laboratory-code-tw`（同資源的 `code` 綁定它） | **error** | **error** | **error** |
+| L7 | 同 L1 但沒有 meta.profile（core 的 example 綁定） | warning | error（批次中其他檔案已載入） | warning |
+| L8 | 第二個 coding（第一個是正確的 LOINC） | **error** | **error** | **error** |
+| E1 / E2 | 直接綁定的 Coding（`ImagingStudy.series.modality`），system = 綁定的 ValueSet / 無關 ValueSet | 只有綁定 warning | 只有綁定 warning | 只有綁定 warning |
+| E3 / E4 | `Encounter.class`（直接綁定）同上 | 只有綁定 warning | 只有綁定 warning | 只有綁定 warning |
+| M1 | `medicationCodeableConcept` 的 coding，system = `medication-nhi-tw`（只綁在 `medication[x].coding` slice 上） | warning | warning | warning |
+| B1 / B2 / B3 | collection Bundle：一筆 / 兩筆 lab-vs Observation / 先正確再 lab-vs | warning（B1） | **error**（每一筆） | **error** |
+
+結論：CLI 的規則是「system 是**它已載入**的 ValueSet → error」。IG 的 ValueSet 是延遲載入的：檢查過綁定到它（或綁定到 include 它的 ValueSet）的元素之後才算已載入，因此同一個 coding 在 JVM 裡第一次出現時只有 warning，之後（同一 CodeableConcept 的下一個 coding、同資源其他元素、Bundle 後面的 entry、批次後面的檔案）就是 error。只綁在 Coding slice 上的 ValueSet（`medication-nhi-tw` / `medication-fda-tw`）與沒有任何綁定的 ValueSet（`medication-path-tw`）即使在批次中、前面先驗過「正確使用該 slice」的資源（primer），也一直只有 warning（`results` 外另以 primer 批次確認：v2 / v4 那 7 筆仍全部 valid）。評估端看到的 error 是批次（或 Bundle 第二筆起）的結果；v4 記錄的 `F2b-nhi-vs-as-system`「批次 error、單筆 valid」是同一機制（該批次中前面的資源綁定過 `medication-nhi-tw`）。
+
+實作（與順序無關的版本）：驗證的資源 / Bundle 內**任何位置**檢查了綁定到該 ValueSet（或 include 它的 ValueSet，遞迴 4 層）的元素（非直接 Coding 的元素、required / extensible / preferred、有值）→ error（HL7 訊息、`…coding[i].system`）；否則維持 warning。HL7 core / THO 的 ValueSet 不變（任何情境都是 error）；直接綁定的 Coding 不變（v7 A-class-vs）。`fhirValidator.ts` `settleVsSystems`（驗證結束時決定，因為 CodeableConcept 的綁定在 coding 之後才檢查）。
+
+## v13.2 根因
+
+| # | 現象 | 根因 | 修正 |
+|---|------|------|------|
+| R1 | `laboratory-code-tw` 當 system、不是代碼的值（`WBC` …）在 author / assemble / `fhir_validate_bundle` 都 valid | `isValueSetUrl` 只承認 HL7 core / THO 的 ValueSet（v2 依單筆 CLI 結果決定），IG ValueSet 一律只有 `UNKNOWN_CODESYSTEM` warning；三個工具都經同一個 validator，pending-ref 過濾等都沒有吃掉 issue | v13.1 的規則；error 附 suggestions：在該 ValueSet 與其 CodeSystem 中正規化 code / display（`replace_coding`）、其 CodeSystem（`replace_system`） |
+| R2 | `2160-0` 等真 LOINC 碼沒有被修正為 `http://loinc.org` | `laboratory-code-tw` = include `loinc-observation-code`（LOINC `CLASSTYPE` filter）+ include `laboratory-category-tw`（879 個健保支付碼）。本機展開只能列出健保碼，LOINC filter 部分記在 `unresolved`，但 `composeDeps.expandValueSet` 只回傳 `truncated: false` → composer 把 879 碼當成完整的 ValueSet，`codesInValueSet` 在「展開完整且非空」時直接回傳「不在 ValueSet 內」，根本沒走到 v12 的 filter / `codeInSystem` 路徑。grammar 與 raw 兩種寫法走同一條路，所以都失敗 | `expandValueSet` 回傳 `incomplete`，composer 視同截斷；另外 LOINC `=` / `in` 屬性 filter 可判定（`externalFilterMatches`：CLASSTYPE 數字或名稱、CLASS、STATUS、COMPONENT、PROPERTY、TIME_ASPCT、SYSTEM、SCALE_TYP、METHOD_TYP；值為 LOINC Part 碼（`SCALE_TYP = LP32888-7`）時以 part 名稱比對，component part 永不判「否」），所以 note 能區分 `membership confirmed` 與 `membership unverifiable; the code exists only in <CS> among the ValueSet's systems` |
+
+## v13.3 回歸（本機 a20a4f7 vs 修正後，同一 DB）
+
+既有 18 個語料（examples、bundles、mutations、user_cases、mut_dis、perf、refprobe×3、v2_probes、mut_v2、icd_v3_probes、icd_v3_mut、v4_probes、v4_mut、v6_probes、v7_probes、v8_probes，共 4,426 筆）：**verdict 改變 0 筆**；error 只有 1 筆文字差異（`M9-bad-code-type.0.coding.0`：`organization-type` 版本 2.0.1 / 3.0.0 與 pattern 錯誤的次數，單獨重跑時 a20a4f7 與修正後輸出完全相同——整批執行時既有的快取順序差異，與本輪無關）；其餘只有 information `could not be confirmed as members …` 對 LOINC 成員消失（LOINC filter 可判定，424 則）與 1 則 `UNKNOWN_CODESYSTEM` warning 去重。因此相對 CLI 快取的一致 / 誤收 / 誤拒與 v8.3 相同，沒有新的誤拒。（第一版把所有 IG ValueSet 都判 error 時，v2 / v4 的 7 筆 `E-method-vs-twcore`、`F2b-nhi-vs-as-system`、`X-*-vs` 會變成誤拒——CLI 單筆、批次、primer 批次都是 valid——因此收斂為 v13.1 的規則。）
+
+v13 探針（18）：本機修正後與 CLI 批次 17/18 一致（L7 例外：批次中由其他檔案載入，單筆 CLI 與本機都是 warning），與 CLI 單筆在 L6 / L8 / E* / M1 / L5 / L7 一致，其餘差異全部是「第一次使用」的順序效應。

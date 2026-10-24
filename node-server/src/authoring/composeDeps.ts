@@ -137,7 +137,9 @@ export function composeDepsFor(svc: FHIRIGService, pkg: fhirIg.PackageRow, field
       const vs = await loadValueSetAnywhere(pkg, url);
       if (!vs) return null;
       const exp = await terminology.expandCompose(vs.compose || {}, pkg, limit);
-      return { codings: exp.codings, total: exp.total, truncated: exp.truncated };
+      // `unresolved` = parts not enumerable locally (filters on external terminologies, missing
+      // imports): the codings are a partial expansion, not the ValueSet.
+      return { codings: exp.codings, total: exp.total, truncated: exp.truncated, ...(exp.unresolved.length ? { incomplete: true } : {}) };
     },
     valueSetContains: (url, system, code) => resolver.valueSetContains(url, system, code),
     // v1.2 system correction: the validator's own resolution rules (DbValidatorResolver + fhirUriRules).

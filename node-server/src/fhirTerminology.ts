@@ -12,6 +12,7 @@ import { query } from "./db.js";
 import type { PackageRow } from "./fhirIg.js";
 import {
   type CodeSystemIndex,
+  type ComposeFilter,
   type ExpandResult,
   type TerminologyDeps,
   expandComposeWith,
@@ -348,6 +349,98 @@ export async function externalSystemHeld(system: string): Promise<boolean> {
   if (kind === "snomed") return tableHasRows("snomed.concepts");
   if (kind === "loinc") return tableHasRows("loinc.concepts");
   return false;
+}
+
+/**
+ * LOINC properties a ValueSet compose filters on (FHIR LOINC CodeSystem property codes) →
+ * loinc.concepts columns. CLASSTYPE is an integer in the table; filters give it as the
+ * number or as its name (LOINC 2.77+ ValueSets write "Laboratory class").
+ */
+const LOINC_FILTER_COLUMNS: Record<string, string> = {
+  STATUS: "status",
+  CLASS: "class",
+  CLASSTYPE: "classtype",
+  COMPONENT: "component",
+  PROPERTY: "property",
+  TIME_ASPCT: "time_aspect",
+  SYSTEM: "system",
+  SCALE_TYP: "scale_type",
+  METHOD_TYP: "method_type",
+};
+const LOINC_CLASSTYPES: Record<string, number> = { "laboratory class": 1, "clinical class": 2, "claims attachments": 3, surveys: 4 };
+
+type LoincFilterRow = Record<string, string | number | null>;
+const loincFilterRows = new Map<string, Promise<LoincFilterRow | null>>();
+
+async function loincFilterRow(code: string): Promise<LoincFilterRow | null> {
+  let p = loincFilterRows.get(code);
+  if (!p) {
+    p = query<LoincFilterRow>(
+      "SELECT status, class, classtype, component, property, time_aspect, system, scale_type, method_type FROM loinc.concepts WHERE loinc_num = $1",
+      [code],
+    ).then((r) => r.rows[0] ?? null);
+    // DB errors are not cached (a transient failure must not decide later checks).
+    p.catch(() => loincFilterRows.delete(code));
+    if (loincFilterRows.size >= 5000) loincFilterRows.clear();
+    loincFilterRows.set(code, p);
+  }
+  return p;
+}
+
+/** One `=` / `in` value against a LOINC column value: true / false, undefined when only the case differs. */
+function loincValueMatches(column: string, actual: string | number, wanted: string): boolean | undefined {
+  if (column === "classtype") {
+    const w = wanted.trim();
+    const n = /^\d+$/.test(w) ? Number(w) : LOINC_CLASSTYPES[w.toLowerCase()];
+    return n === undefined ? undefined : Number(actual) === n;
+  }
+  const a = String(actual);
+  if (a === wanted) return true;
+  return a.toLowerCase() === wanted.toLowerCase() ? undefined : false;
+}
+
+/**
+ * (v13) A compose filter on LOINC evaluated for one code from loinc.concepts: `=` / `in` on the
+ * properties above, `concept in`. undefined for anything else (regex, is-a, parent …), for a
+ * code that is not a LOINC term held locally, and for a NULL column.
+ */
+export async function externalFilterMatches(system: string, f: ComposeFilter, code: string): Promise<boolean | undefined> {
+  if (routeSystem(system) !== "loinc") return undefined;
+  const prop = String(f.property ?? "");
+  const op = String(f.op ?? "");
+  const value = String(f.value ?? "");
+  if (op !== "=" && op !== "in") return undefined;
+  const wanted = op === "in" ? value.split(",").map((v) => v.trim()).filter((v) => v !== "") : [value];
+  if (!wanted.length) return undefined;
+  if (prop === "concept" || prop === "code") return wanted.includes(code);
+  const column = LOINC_FILTER_COLUMNS[prop.toUpperCase()];
+  if (!column || prop !== prop.toUpperCase()) return undefined;
+  let row: LoincFilterRow | null;
+  try {
+    row = await loincFilterRow(code);
+  } catch {
+    return undefined;
+  }
+  const actual = row ? row[column] : null;
+  if (actual === null || actual === undefined) return undefined;
+  let undecided = false;
+  for (const w of wanted) {
+    // A LOINC Part code as the value (SCALE_TYP = LP32888-7 "Doc", as tx.fhir.org accepts): compared by
+    // the part's name. Axis parts (scale, property, time, system, method, class) are named exactly like
+    // the LoincTable axis values; a component part names only the analyte, so it never decides "no".
+    if (/^LP\d+-\d$/.test(w)) {
+      const part = await loincOtherCode(w);
+      const name = part && part.kind === "part" && typeof part.display === "string" && part.display ? part.display : null;
+      const m = name === null ? undefined : loincValueMatches(column, actual, name);
+      if (m === true) return true;
+      if (m === undefined || column === "component" || column === "classtype") undecided = true;
+      continue;
+    }
+    const m = loincValueMatches(column, actual, w);
+    if (m === true) return true;
+    if (m === undefined) undecided = true;
+  }
+  return undecided ? undefined : false;
 }
 
 async function lookupExternalTables(system: string | null | undefined, code: string): Promise<LookupResult | null> {
@@ -841,6 +934,7 @@ export function dbTerminologyDeps(pkg: PackageRow, exactCodeSystems = false): Te
     loadCodeSystem: (url) => loadCodeSystemIndex(url, pkg, exactCodeSystems),
     lookupExternal: (system, code) => lookupExternalTables(system, code),
     externalSystemHeld: (system) => externalSystemHeld(system),
+    externalFilter: (system, f, code) => externalFilterMatches(system, f, code),
     snomedSubsumedBy: (code, ancestor) => snomedSubsumedBy(code, ancestor),
     snomedDescendants: async (code, limit) => (await snomedDescendants(code, limit)).map(String),
     snomedDisplays: async (codes) => {
