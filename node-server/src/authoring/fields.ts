@@ -399,7 +399,8 @@ function buildCandidate(ctx: BuildCtx, el: ProjectedElement, depth: number): Can
     auto = true;
     value = ownPin !== undefined && !isPlainObject(ownPin) ? ownPin : pins;
     format.push("pinned by the profile (MCP fills it)");
-  } else if (dflt && !ownPin) {
+  } else if (dflt && !ownPin && reason.required) {
+    // workflow defaults apply only to elements the profile requires (fhir_author_resources apply_defaults)
     source = "default";
     auto = true;
     value = dflt[0];
@@ -476,6 +477,11 @@ function buildCandidate(ctx: BuildCtx, el: ProjectedElement, depth: number): Can
       names.push(sliceNameOf(cid)!);
     }
     if (names.length) format.push(`coding slices by system: ${names.slice(0, 8).join(" | ")}${names.length > 8 ? ` (+${names.length - 8})` : ""}`);
+  }
+  if (dflt && !ownPin && !auto) {
+    // optional element with a conventional value: a hint only — the MCP never fills an optional default
+    format.push(`optional; conventional value ${JSON.stringify(dflt[0])} — give it only when the record states it (not auto-filled)`);
+    if (example === undefined) example = dflt[0];
   }
   if (depth === 0) format.push(...ruleTexts(el));
 

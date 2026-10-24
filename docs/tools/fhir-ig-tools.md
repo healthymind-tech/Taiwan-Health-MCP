@@ -142,10 +142,10 @@
 
 | 工具 | 說明 | 主要參數 |
 | :--- | :--- | :--- |
-| `fhir_get_authoring_fields` | 剖面的「填寫表」：`fields`（必填 / 預期 / IG 範例中常用，`why` 說明原因）、`more`（其餘 mustSupport 欄位）、`omitted`（因長度省略者，不會默默丟掉）。每個欄位有 `kind` + `format`（值怎麼寫）、`source`（record / facility / code / fixed / default / derived）、小型 `binding.codes`、`targets`、`children`；`auto: true` 的欄位由 MCP 自動補（`value` 顯示補什麼），`pins` 顯示剖面在你要填的欄位裡固定的部分（identifier system、component code、單位） | `profile`, `package_id`, `version`, `include_more`（預設 `true`） |
-| `fhir_author_resources` | 一次撰寫多筆資源（8 筆以上沒問題）：`{key, profile, fields}`；MCP 補 `meta.profile`、fixed / pattern、slice、workflow 預設值、可推導的值（例如有 encounter 的 Condition.category）、display、UCUM 單位、民國日期轉 ISO，然後驗證並存進 context。回傳 `{context_id, storage, results[{key, status, resource, provenance, missing, refs, issues}], summary}` | `context_id`（第一次省略）, `resources`, `timezone` |
+| `fhir_get_authoring_fields` | 剖面的「填寫表」：`fields`（必填 / 預期 / IG 範例中常用，`why` 說明原因）、`more`（其餘 mustSupport 欄位）、`omitted`（因長度省略者，不會默默丟掉）。每個欄位有 `kind` + `format`（值怎麼寫）、`source`（record / facility / code / fixed / default / derived）、小型 `binding.codes`、`targets`、`children`；`auto: true` 的欄位由 MCP 自動補（`value` 顯示補什麼），`pins` 顯示剖面在你要填的欄位裡固定的部分（identifier system、component code、單位）。慣例預設值只在**必填**欄位上是 `auto`；選填欄位（`Patient.active` 等）列為一般選填欄位，`format` / `example` 只提示慣例值 | `profile`, `package_id`, `version`, `include_more`（預設 `true`） |
+| `fhir_author_resources` | 一次撰寫多筆資源（8 筆以上沒問題）：`{key, profile, fields}`；MCP 補 `meta.profile`、fixed / pattern、slice、必填欄位的 workflow 預設值、可推導的值（例如有 encounter 的 Condition.category）、display、UCUM 單位、民國日期轉 ISO，並做下述「自動修正」，然後驗證並存進 context。回傳 `{context_id, storage, results[{key, status, resource, provenance, missing, refs, issues, notes}], summary, settings}` | `context_id`（第一次省略）, `resources`, `timezone`, `apply_defaults`（`required` / `none`）, `site_config` |
 | `fhir_context` | 檢視或清理 context：`list`（每個 key 的狀態與引用）、`get`（單一 key 的完整結果）、`delete`（單一 key 或整個 context） | `context_id`, `action`, `key` |
-| `fhir_assemble_bundle` | 由 key 清單組 Bundle：每個 entry 的 fullUrl 是該 key 的確定性 urn:uuid，經 `fhir_finalize_bundle` 的規則定稿、`fhir_validate_bundle` 驗證（給 `source_text` 時另做 grounding）；issue 都帶 `key` 與模型欄位名 | `context_id`, `keys`, `bundle_type`, `bundle_profile`, `identifier`, `timestamp`, `source_text`, `allow_invalid` |
+| `fhir_assemble_bundle` | 由 key 清單組 Bundle：每個 entry 的 fullUrl 是該 key 的確定性 urn:uuid，經 `fhir_finalize_bundle` 的規則定稿、`fhir_validate_bundle` 驗證（給 `source_text` 時另做 grounding）；issue 都帶 `key` 與模型欄位名 | `context_id`, `keys`, `bundle_type`, `bundle_profile`, `identifier`, `timestamp`, `source_text`, `site_config`, `allow_invalid` |
 
 **流程**
 
@@ -171,7 +171,22 @@
 | extension slice | `extension:<slice>` 給 `{value: …}` 或直接給值（`{ref}`、`{system, code}`…），MCP 依 extension 定義寫成 `{url, value[x]}`；已帶 `url` 的 FHIR JSON 原樣保留 |
 | dosage | `{text?, route?, dose?, frequency?/timing?, period?, asNeeded?}` |
 
-**原則**：模型的值優先（只有 fixed / pattern 會覆蓋，衝突時回報錯誤）；病歷或院所才知道的值（日期、數值、識別碼、姓名、劑量、時區、Bundle.identifier / timestamp）**絕不捏造**，缺少時列在 `missing`；MCP 補的值在 `provenance` 標為 `fixed` / `default` / `derived` / `lookup`。
+**原則**：模型的值優先（只有 fixed / pattern 會覆蓋，衝突時回報錯誤；被術語判為錯誤的 display 依下述「自動修正」換成代碼的 display）；病歷或院所才知道的值（日期、數值、識別碼、姓名、劑量、時區、Bundle.identifier / timestamp）**絕不捏造**，缺少時列在 `missing`；MCP 補的值在 `provenance` 標為 `fixed` / `default` / `derived` / `lookup`。
+
+**自動修正（列在 `results[].notes`）**
+
+- **display 由代碼決定**：模型寫的 display 若在代碼可解析時被術語規則（與 `fhir_validate_resource` 相同的檢查）判為錯誤，就換成該代碼的 display（`provenance` 為 `lookup`，note `display replaced for <field> (was '<舊值>')`）；該 CodeableConcept 沒有 `text` 時，模型原本的字移到 `.text`（`provenance` 為 `model`），不會遺失。大小寫不同視為正確；只差空白時改成正確寫法、不另加 note。**絕不更動 code 與 system**；代碼無法解析時保留模型的 display（由驗證回報未知代碼）。例如 LOINC `1988-5` 寫成 display `CRP` → display 換成 `C reactive protein [Mass/volume] in Serum or Plasma`，`text` 為 `CRP`。
+- **單一值包成陣列**：重複元素（max > 1）收到單一物件 / 純量時包成一個元素的陣列，任何深度都適用，包含模型直接傳入的 FHIR 形狀（`code: {coding: {system, code}}`、巢狀物件裡的 `identifier: {…}`、`telecom: {…}`、帶 `url` 的 extension 內的 `extension`、`doseAndRate`）；note `wrapped <path> into an array`。頂層欄位只給一個值本來就是合法寫法，不加 note。
+
+**預設值政策（`apply_defaults`）**：`"required"`（預設）只在剖面**必填**（min ≥ 1，含必填 slice）且模型沒給的欄位補 workflow 預設值（`Observation.status` → `final`、`Encounter.status` → `finished` …）或剖面的 `defaultValue[x]`；選填欄位（`Patient.active`、`Practitioner.active`、`Organization.active`、`Immunization.primarySource`、`MedicationRequest.dispenseRequest.numberOfRepeatsAllowed`、0..1 的 `Condition.clinicalStatus` …）**一律不自動補**，病歷有寫才給。`"none"` 完全不補預設值，必填欄位缺值時列在 `missing`。設定記在 context 上（與 `timezone` 相同）。可推導的值（Condition.category 等）不受影響。
+
+**院所設定（`site_config`）**：與 `fhir_check_grounding` 的 `site_config` 相同格式的自由文字——其中每個 `http(s)` URL 都視為院所的 identifier system，各行文字可作為 Organization 值與 Practitioner identifier 的依據。`fhir_author_resources` 把它存在 context 上（再次傳入時只**附加**尚未存在的行），`fhir_assemble_bundle` 的 `site_config` 會與 context 的合併；有 `source_text` 時一起交給 grounding，院所的 identifier system 與機構資料便以 `site_config` 為依據，不會被標成未 grounding（`G-SYSTEM-NOT-SITE`）。不寫入 log、不回傳原文（`settings.site_config_lines` 只回報行數）。範例：
+
+```json
+{"site_config": "病歷號 system: https://hospital.example.tw/mrn\n機構: 範例醫院 醫事機構代碼 0123456789", "resources": [
+  {"key": "patient-1", "profile": "Patient-twcore", "fields": {"identifier:medicalRecord": {"value": "MR-00012345", "system": "https://hospital.example.tw/mrn"}}}
+]}
+```
 
 **Context**：context id 為 128 位元亂數（32 位 hex），存在 Redis `authoring:ctx:<id>`，閒置 60 分鐘清除、每次呼叫都會延長；Redis 不可用時退回單一程序記憶體（回應 `storage: "memory"`，重啟即遺失）。`{ref: key}` 對應到 `urn:uuid:<UUID v5(context id, key)>`——單筆驗證與最終 Bundle 用同一個值，因此**同一 context + 同一 keys 永遠得到位元組相同的 Bundle**。病歷內容不寫入 log（只記 id、筆數、位元組數）。
 
@@ -257,5 +272,8 @@
 | `fhir_normalize_code` | 1.8.0（節錄版 CodeSystem 改查已安裝的完整版、候選 `linked`、別名解析到預設 IG 以外的 CodeSystem） |
 | `fhir_check_grounding` | 1.1.0 |
 | `fhir_check_completeness` | 1.1.1 |
-| `fhir_get_authoring_fields`、`fhir_author_resources`、`fhir_context`、`fhir_assemble_bundle` | 1.0.0（從欄位值撰寫資源，見「[從欄位值撰寫資源](#authoring)」） |
+| `fhir_author_resources` | 1.1.0（display 由代碼決定、單一值包成陣列、預設值只補必填欄位與 `apply_defaults`、`site_config`、結果的 `notes` / `settings`；1.0.0：從欄位值撰寫資源，見「[從欄位值撰寫資源](#authoring)」） |
+| `fhir_assemble_bundle` | 1.1.0（`site_config` 與 context 的合併後交給 grounding；1.0.0：由 key 清單組 Bundle） |
+| `fhir_get_authoring_fields` | 1.1.0（預設值只在必填欄位上是 `auto`，選填欄位改為提示慣例值；1.0.0：剖面的填寫表） |
+| `fhir_context` | 1.0.1（`get` 的結果帶 `notes`） |
 | `query_fhir_condition`、`query_fhir_medication` | 1.2.0（不再以目前時間填 `recordedDate` / `note.time` / `meta.lastUpdated`——只在呼叫端提供時出現） |

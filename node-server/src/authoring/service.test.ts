@@ -494,3 +494,123 @@ test("lossless numbers: a RawNumber the composer writes survives the store and t
   assert.ok(stringifyLossless(stored!.resource).includes('"value":12.50'), "stored entry keeps the spelling");
   assert.equal(JSON.stringify(stored!.resource).includes('"value":12.5'), true, "plain JSON gives the ordinary value");
 });
+
+// --------------------------------------------------------------------------- //
+// v1.1: apply_defaults and site_config on the context, composer notes
+// --------------------------------------------------------------------------- //
+
+test("apply_defaults: passed to the composer, remembered on the context, reported in settings; the tool validates the value", async () => {
+  const seen: Array<string | null | undefined> = [];
+  const svc = makeService({
+    compose: async (input, ctx) => {
+      seen.push(ctx.applyDefaults);
+      return fakeComposer()(input, ctx);
+    },
+  });
+  const first = await svc.authorResources(undefined, [patient]);
+  assert.equal(first.settings.apply_defaults, "required", "never given → required");
+  await svc.authorResources(first.context_id, [encounter], { applyDefaults: "none" });
+  const third = await svc.authorResources(first.context_id, [condition]);
+  assert.deepEqual(seen, ["required", "none", "none"]);
+  assert.equal((await svc.store.get(first.context_id)).apply_defaults, "none");
+  assert.equal(third.settings.apply_defaults, "none");
+  await svc.authorResources(first.context_id, [{ ...condition, merge: true, fields: {} }], { applyDefaults: "required" });
+  assert.equal(seen[seen.length - 1], "required");
+  const author = createAuthorTool(svc);
+  const env = (await author.handler({ context_id: first.context_id, resources: [patient], apply_defaults: "none" })) as any;
+  assert.equal(env.ok, true);
+  assert.equal(env.data.settings.apply_defaults, "none");
+  assert.equal(seen[seen.length - 1], "none");
+  const { z } = await import("zod");
+  const schema = z.object(author.inputShape as Record<string, never>);
+  assert.equal(schema.safeParse({ resources: [patient], apply_defaults: "sometimes" }).success, false);
+  assert.equal(schema.safeParse({ resources: [patient], apply_defaults: "required", site_config: "x" }).success, true);
+});
+
+test("notes from the composer reach the author result and the stored entry", async () => {
+  const svc = makeService({
+    compose: async (input, ctx) => ({ ...(await fakeComposer()(input, ctx)), notes: ["display replaced for code (was 'CRP')", "wrapped Observation.code.coding into an array"] }),
+  });
+  const r = await svc.authorResources(undefined, [obs(1)]);
+  assert.deepEqual(r.results[0].notes, ["display replaced for code (was 'CRP')", "wrapped Observation.code.coding into an array"]);
+  assert.deepEqual((await svc.getEntry(r.context_id, "obs-1"))!.notes, r.results[0].notes);
+  const plain = await makeService().authorResources(undefined, [patient]);
+  assert.deepEqual(plain.results[0].notes, []);
+});
+
+test("site_config: stored on the context (merged line by line), merged with the assemble argument, passed to grounding, never logged", async () => {
+  const { configureLogLevel } = await import("../logger.js");
+  const { mergeSiteConfig } = await import("./service.js");
+  assert.equal(mergeSiteConfig(null, "a\nb"), "a\nb");
+  assert.equal(mergeSiteConfig("a\nb", " b \nc"), "a\nb\nc");
+  assert.equal(mergeSiteConfig("a", null), "a");
+  assert.equal(mergeSiteConfig("a", "  "), "a");
+  const SITE1 = "病歷號 system: https://secret-hospital.example.tw/mrn";
+  const SITE2 = "機構: 秘密醫院 醫事機構代碼 0123456789";
+  const seen: Array<{ sourceText: string | null; siteConfig: string | null | undefined }> = [];
+  const svc = makeService({
+    validateBundle: async (bundle, o) => {
+      seen.push({ sourceText: o.sourceText, siteConfig: o.siteConfig });
+      return fakeValidateBundle(bundle, o);
+    },
+  });
+  const captured: string[] = [];
+  const orig = process.stderr.write.bind(process.stderr);
+  configureLogLevel("DEBUG");
+  (process.stderr as unknown as { write: (c: unknown) => boolean }).write = (c: unknown) => {
+    captured.push(String(c));
+    return true;
+  };
+  try {
+    const a = await svc.authorResources(undefined, [patient, encounter, condition], { siteConfig: SITE1 });
+    assert.equal(a.settings.site_config_lines, 1);
+    assert.ok(!JSON.stringify(a).includes("secret-hospital"), "the settings text is never echoed");
+    const b = await svc.authorResources(a.context_id, [{ ...patient, merge: true, fields: {} }], { siteConfig: `${SITE1}\n${SITE2}` });
+    assert.equal(b.settings.site_config_lines, 2);
+    assert.equal((await svc.store.get(a.context_id)).site_config, `${SITE1}\n${SITE2}`);
+    await svc.assembleBundle(a.context_id, ["patient-1", "enc-1", "cond-1"], "collection", { sourceText: "病歷號 M123", siteConfig: "院所: 加註" });
+    assert.deepEqual(seen[0], { sourceText: "病歷號 M123", siteConfig: `${SITE1}\n${SITE2}\n院所: 加註` });
+    await svc.assembleBundle(a.context_id, ["patient-1", "enc-1", "cond-1"], "collection", { sourceText: "x" });
+    assert.equal(seen[1].siteConfig, `${SITE1}\n${SITE2}`, "the context's settings alone");
+    // through the tool handlers too
+    const author = createAuthorTool(svc);
+    const assemble = createAssembleTool(svc);
+    const t = (await author.handler({ resources: [patient, encounter, condition], site_config: SITE1 })) as any;
+    assert.equal(t.data.settings.site_config_lines, 1);
+    await assemble.handler({ context_id: t.data.context_id, keys: ["patient-1", "enc-1", "cond-1"], bundle_type: "collection", source_text: "y", site_config: SITE2 });
+    assert.equal(seen[2].siteConfig, `${SITE1}\n${SITE2}`);
+  } finally {
+    (process.stderr as unknown as { write: typeof orig }).write = orig;
+    configureLogLevel("INFO");
+  }
+  const logs = captured.join("");
+  assert.ok(logs.includes("authoring: bundle assembled"), "debug logs were captured");
+  assert.ok(!logs.includes("secret-hospital") && !logs.includes("秘密醫院") && !logs.includes("0123456789"), "site_config never logged");
+});
+
+test("site_config through the production adapter: grounding accepts an identifier system named in the facility settings", async () => {
+  const { productionDeps } = await import("./service.js");
+  const MRN = "https://hospital.example.tw/mrn";
+  const svcFake = {
+    validateResource: async () => JSON.stringify({ ok: true, data: { valid: true, issues: [], checked_fully: true } }),
+    finalizeBundle: async (bundle: Record<string, unknown>, _p: unknown, _v: unknown, bundleProfile: string | null, o: { bundleType: string }) => {
+      const fin = await finalizeBundle(bundle, null, { bundleType: o.bundleType, bundleProfile });
+      return JSON.stringify({ ok: true, data: { bundle: fin.bundle, changes: fin.changes, unresolved: fin.unresolved, notes: fin.notes } });
+    },
+    validateBundle: async () => JSON.stringify({ ok: true, data: { valid: true, issues: [], checked_fully: true } }),
+  };
+  const grounding = { terminology: { version: () => "test", lookup: async () => new Map() } };
+  const deps = productionDeps(svcFake as never, new MemoryContextStore(), fakeComposer(), grounding as never);
+  const svc = new AuthoringService(deps);
+  const pat: AuthorInput = { key: "patient-1", profile: "Patient-twcore", fields: { identifier: [{ system: MRN, value: "M1234567" }] } };
+  const source = "姓名：王小明\n病歷號：M1234567";
+  const r = await svc.authorResources(undefined, [pat]);
+  const without = await svc.assembleBundle(r.context_id, ["patient-1"], "collection", { sourceText: source });
+  const sysIssue = (v: typeof without) => (v.validation.issues as Array<Record<string, unknown>>).filter((i) => String(i.message ?? "").includes("neither in the site configuration"));
+  assert.equal(sysIssue(without).length, 1, JSON.stringify(without.validation.issues));
+  await svc.authorResources(r.context_id, [{ key: "patient-1", merge: true, fields: {} } as AuthorInput], { siteConfig: `病歷號 system: ${MRN}` });
+  const withSite = await svc.assembleBundle(r.context_id, ["patient-1"], "collection", { sourceText: source });
+  assert.equal(sysIssue(withSite).length, 0, JSON.stringify(withSite.validation.issues));
+  const viaArg = await svc.assembleBundle((await svc.authorResources(undefined, [pat])).context_id, ["patient-1"], "collection", { sourceText: source, siteConfig: `MRN: ${MRN}` });
+  assert.equal(sysIssue(viaArg).length, 0, "the assemble argument alone works too");
+});

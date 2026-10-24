@@ -459,7 +459,7 @@ test("human names, contact points, addresses and backbone objects", async () => 
   assert.ok(out.missing.some((m) => m.field === "telecom.system"), "telecom[1] lacks its system → missing");
 });
 
-test("nested dotted fields create backbones; dispenseRequest defaults apply only once the parent exists", async () => {
+test("nested dotted fields create backbones; an optional default inside them (numberOfRepeatsAllowed) is never filled", async () => {
   const out = await compose(EX + "MedReq", {
     status: "active",
     intent: "order",
@@ -469,8 +469,8 @@ test("nested dotted fields create backbones; dispenseRequest defaults apply only
     "dispenseRequest.quantity": "14 {tablet}",
   });
   assert.deepEqual(errorsOf(out), []);
-  assert.deepEqual(out.resource.dispenseRequest, { validityPeriod: { start: "2026-06-15", end: "2026-06-22" }, quantity: { value: 14, unit: "{tablet}", system: UCUM, code: "{tablet}" }, numberOfRepeatsAllowed: 0 });
-  assert.equal(out.provenance["MedicationRequest.dispenseRequest.numberOfRepeatsAllowed"], "default");
+  assert.deepEqual(out.resource.dispenseRequest, { validityPeriod: { start: "2026-06-15", end: "2026-06-22" }, quantity: { value: 14, unit: "{tablet}", system: UCUM, code: "{tablet}" } });
+  assert.equal(out.provenance["MedicationRequest.dispenseRequest.numberOfRepeatsAllowed"], undefined, "0..1 (mustSupport): no workflow default");
   const without = await compose(EX + "MedReq", { status: "active", intent: "order", medication: { text: "x" }, subject: { ref: "pat1" } });
   assert.equal(without.resource.dispenseRequest, undefined, "no parent → no default inside it");
   assert.deepEqual(without.resource.medicationCodeableConcept, { text: "x" });
@@ -685,7 +685,7 @@ test("references: context keys become deterministic urns, unknown keys are pendi
 // Defaults, derived values, missing, provenance, determinism
 // --------------------------------------------------------------------------- //
 
-test("defaults: workflow defaults fill required / mustSupport elements the model left empty; model values win", async () => {
+test("defaults: workflow defaults fill only REQUIRED elements the model left empty; optional (even mustSupport) ones never; model values win", async () => {
   const out = await compose(EX + "LabObs", { code: { system: LOINC, code: "2345-7" }, subject: { ref: "pat1" }, effective: "2026-06-15", value: 1 });
   assert.equal(out.resource.status, "final");
   assert.equal(out.provenance["Observation.status"], "default");
@@ -693,14 +693,48 @@ test("defaults: workflow defaults fill required / mustSupport elements the model
   assert.equal(given.resource.status, "registered");
   assert.equal(given.provenance["Observation.status"], "model");
   const pat = await compose(EX + "Pat", { identifier: { value: "1", system: "http://x" }, gender: "male", birthDate: "1990-01-01" });
-  assert.equal(pat.resource.active, true, "mustSupport Patient.active takes its workflow default");
-  assert.equal(pat.provenance["Patient.active"], "default");
+  assert.equal(pat.resource.active, undefined, "Patient.active is 0..1 (mustSupport): never auto-filled");
+  assert.equal(pat.provenance["Patient.active"], undefined);
+  assert.ok(!pat.missing.some((m) => m.field === "active"), "an optional element is not missing either");
   const med = await compose(EX + "MedReq", { medication: { text: "x" }, subject: { ref: "pat1" } });
   assert.equal(med.resource.status, "active");
   assert.equal(med.resource.intent, "order");
   const cond = await compose(EX + "Cond", { code: { text: "x" }, subject: { ref: "pat1" } });
-  assert.deepEqual(cond.resource.clinicalStatus, { coding: [{ system: "http://terminology.hl7.org/CodeSystem/condition-clinical", code: "active", display: "Active" }] }, "a CodeableConcept default takes its system from the bound ValueSet");
-  assert.equal(cond.provenance["Condition.clinicalStatus"], "default");
+  assert.equal(cond.resource.clinicalStatus, undefined, "Condition.clinicalStatus 0..1: no default");
+  const condReq = sd(EX + "CondReq", "Condition", "resource", [
+    el("Condition", 0, "*"),
+    ...domain("Condition"),
+    el("Condition.clinicalStatus", 1, "1", ["CodeableConcept"], { binding: { strength: "required", valueSet: `${VS}condition-clinical|4.0.1` } }),
+    el("Condition.code", 0, "1", ["CodeableConcept"]),
+  ]);
+  const reqd = await compose(EX + "CondReq", { code: { text: "x" } }, {}, CTX, makeDeps({ profiles: { ...PROFILES, [EX + "CondReq"]: condReq } }));
+  assert.deepEqual(reqd.resource.clinicalStatus, { coding: [{ system: "http://terminology.hl7.org/CodeSystem/condition-clinical", code: "active", display: "Active" }] }, "required: a CodeableConcept default takes its system from the bound ValueSet");
+  assert.equal(reqd.provenance["Condition.clinicalStatus"], "default");
+  const dv = sd(EX + "Dv", "Patient", "resource", [
+    el("Patient", 0, "*"),
+    ...domain("Patient"),
+    el("Patient.active", 1, "1", ["boolean"], { defaultValueBoolean: false }),
+    el("Patient.gender", 0, "1", ["code"], { defaultValueCode: "unknown" }),
+  ]);
+  const dvOut = await compose(EX + "Dv", {}, {}, CTX, makeDeps({ profiles: { [EX + "Dv"]: dv } }));
+  assert.equal(dvOut.resource.active, false, "required element: its defaultValue[x] applies");
+  assert.equal(dvOut.resource.gender, undefined, "optional element: its defaultValue[x] is never applied");
+});
+
+test("apply_defaults=none: no default at all; the required elements then appear in missing; derived values unchanged", async () => {
+  const none = { ...CTX, applyDefaults: "none" as const };
+  const lab = await compose(EX + "LabObs", { code: { system: LOINC, code: "2345-7" }, subject: { ref: "pat1" }, effective: "2026-06-15", value: 1 }, {}, none);
+  assert.equal(lab.resource.status, undefined);
+  assert.ok(lab.missing.some((m) => m.field === "status" && /^required by profile/.test(m.why)), JSON.stringify(lab.missing));
+  assert.equal(lab.resource.category[0].coding[0].code, "laboratory", "fixed / pattern content is not a default: still created");
+  const med = await compose(EX + "MedReq", { medication: { text: "x" }, subject: { ref: "pat1" } }, {}, none);
+  assert.equal(med.resource.status, undefined);
+  assert.equal(med.resource.intent, undefined);
+  assert.ok(med.missing.some((m) => m.field === "status") && med.missing.some((m) => m.field === "intent"));
+  const cond = await compose(EX + "Cond", { code: { text: "x" }, subject: { ref: "pat1" }, encounter: { ref: "enc1" } }, {}, none);
+  assert.equal(cond.resource.category[0].coding[0].code, "encounter-diagnosis", "derived rules are not defaults");
+  const req = await compose(EX + "LabObs", { code: { system: LOINC, code: "2345-7" }, subject: { ref: "pat1" }, effective: "2026-06-15", value: 1 }, {}, { ...CTX, applyDefaults: "required" });
+  assert.equal(req.resource.status, "final");
 });
 
 test("derived: Condition.category from the encounter reference, Observation.category vital-signs from the R4 vital-sign codes", async () => {
@@ -846,3 +880,144 @@ test("extension slices: {value} / the bare value becomes {url, value[x]} typed b
 function domainEls(t: string): El[] {
   return [el(`${t}.id`, 0, "1", ["string"]), el(`${t}.meta`, 0, "1", ["Meta"]), el(`${t}.text`, 0, "1", ["Narrative"]), el(`${t}.extension`, 0, "*", ["Extension"])];
 }
+
+// --------------------------------------------------------------------------- //
+// v1.1: displays derived from the code, single values wrapped into arrays
+// --------------------------------------------------------------------------- //
+
+const CRP = "C reactive protein [Mass/volume] in Serum or Plasma";
+/** Valid displays per system|code, as the validator's terminology rule would judge them (case-insensitive match). */
+const VALID_DISPLAYS: Record<string, string[]> = {
+  [`${LOINC}|1988-5`]: [CRP, "CRP SerPl-mCnc"],
+  [`${LOINC}|2345-7`]: ["Glucose [Mass/volume] in Serum or Plasma"],
+  [`${V2_0203}|MR`]: ["Medical record number"],
+};
+
+function displayDeps(calls?: string[]): ComposeDeps {
+  const base = makeDeps({ calls });
+  return {
+    ...base,
+    async lookupDisplay(system, code) {
+      if (system === LOINC && code === "1988-5") return CRP;
+      return base.lookupDisplay!(system, code);
+    },
+    async checkDisplay(system, code, display) {
+      calls?.push(`check ${system}|${code}`);
+      const valid = VALID_DISPLAYS[`${system}|${code}`];
+      if (!valid) return { status: "unknown", valid: [] };
+      return valid.some((d) => d.toLowerCase() === display.toLowerCase()) ? { status: "ok", valid: [] } : { status: "invalid-display", valid };
+    },
+  };
+}
+
+const LAB_BASE = { status: "final", subject: { ref: "pat1" }, effective: "2026-06-15", value: "5 mg/L" };
+
+test("display: a model display the terminology rejects is replaced by the code's display; the model text moves to CodeableConcept.text", async () => {
+  const out = await compose(EX + "LabObs", { ...LAB_BASE, code: { system: LOINC, code: "1988-5", display: "CRP" } }, {}, CTX, displayDeps());
+  assert.deepEqual(errorsOf(out), []);
+  assert.deepEqual(out.resource.code, { coding: [{ system: LOINC, code: "1988-5", display: CRP }], text: "CRP" }, "code / system untouched, display canonical, wording kept as text");
+  assert.equal(out.provenance["Observation.code.coding[0].display"], "lookup");
+  assert.equal(out.provenance["Observation.code.text"], "model");
+  assert.deepEqual(out.notes, ["display replaced for code (was 'CRP')"]);
+  // an existing text is never overwritten
+  const withText = await compose(EX + "LabObs", { ...LAB_BASE, code: { coding: [{ system: LOINC, code: "1988-5", display: "CRP" }], text: "C-reactive protein" } }, {}, CTX, displayDeps());
+  assert.deepEqual(withText.resource.code, { coding: [{ system: LOINC, code: "1988-5", display: CRP }], text: "C-reactive protein" });
+  assert.equal(withText.notes.length, 1);
+  // a valid display (case-insensitive) is kept as written, no note
+  const caseOnly = await compose(EX + "LabObs", { ...LAB_BASE, code: { system: LOINC, code: "1988-5", display: "crp serpl-mcnc" } }, {}, CTX, displayDeps());
+  assert.equal(caseOnly.resource.code.coding[0].display, "crp serpl-mcnc");
+  assert.equal(caseOnly.resource.code.text, undefined);
+  assert.deepEqual(caseOnly.notes, []);
+  assert.equal(caseOnly.provenance["Observation.code.coding[0].display"], undefined);
+  // whitespace-only difference: the valid spelling, silently (the same display)
+  const ws = await compose(EX + "LabObs", { ...LAB_BASE, code: { system: LOINC, code: "1988-5", display: " C reactive  protein [Mass/volume] in Serum or Plasma" } }, {}, CTX, displayDeps());
+  assert.equal(ws.resource.code.coding[0].display, CRP);
+  assert.equal(ws.resource.code.text, undefined);
+  assert.deepEqual(ws.notes, []);
+  // an unresolvable code keeps the model display (validation reports the unknown code)
+  const unknown = await compose(EX + "LabObs", { ...LAB_BASE, code: { system: LOINC, code: "99999-9", display: "CRP" } }, {}, CTX, displayDeps());
+  assert.deepEqual(unknown.resource.code, { coding: [{ system: LOINC, code: "99999-9", display: "CRP" }] });
+  assert.deepEqual(unknown.notes, []);
+  // without the collaborator nothing changes
+  const plain = await compose(EX + "LabObs", { ...LAB_BASE, code: { system: LOINC, code: "1988-5", display: "CRP" } });
+  assert.equal(plain.resource.code.coding[0].display, "CRP");
+  assert.deepEqual(plain.notes, []);
+});
+
+test("display: several codings, identifier type codings, looked-up and profile-pinned displays are not re-checked", async () => {
+  const calls: string[] = [];
+  const out = await compose(
+    EX + "LabObs",
+    { ...LAB_BASE, code: [{ system: LOINC, code: "1988-5", display: "CRP" }, { system: LOINC, code: "2345-7" }, { system: "http://h.example/local", code: "CRP", display: "CRP (local)" }] },
+    {},
+    CTX,
+    displayDeps(calls),
+  );
+  assert.equal(out.resource.code.coding[0].display, CRP);
+  assert.equal(out.resource.code.text, "CRP");
+  assert.equal(out.resource.code.coding[1].display, "Glucose [Mass/volume] in Serum or Plasma", "looked up (no model display)");
+  assert.equal(out.resource.code.coding[2].display, "CRP (local)", "unknown local code: kept");
+  assert.ok(!calls.includes(`check ${LOINC}|2345-7`), "a display the MCP looked up is not checked");
+  assert.ok(!calls.some((c) => c.startsWith("check ") && c.includes(OBS_CAT)), "the category pattern created from the profile is not checked");
+  // a display the profile pins (pattern) is the profile's, never replaced
+  const pinned = sd(EX + "CrpObs", "Observation", "resource", [
+    el("Observation", 0, "*"),
+    ...domain("Observation"),
+    el("Observation.status", 1, "1", ["code"]),
+    el("Observation.code", 1, "1", ["CodeableConcept"], { patternCodeableConcept: { coding: [{ system: LOINC, code: "1988-5", display: "CRP" }] } }),
+  ]);
+  const pinCalls: string[] = [];
+  const pinDeps = { ...displayDeps(pinCalls), resolveProfile: makeDeps({ profiles: { [EX + "CrpObs"]: pinned } }).resolveProfile };
+  const pinOut = await compose(EX + "CrpObs", { status: "final" }, {}, CTX, pinDeps);
+  assert.deepEqual(pinOut.resource.code, { coding: [{ system: LOINC, code: "1988-5", display: "CRP" }] });
+  assert.deepEqual(pinOut.notes, []);
+  assert.ok(!pinCalls.some((c) => c.startsWith("check ")), JSON.stringify(pinCalls));
+  const pat = await compose(EX + "Pat", { identifier: { value: "1", system: "http://h.example/mrn", type: { coding: [{ system: V2_0203, code: "MR", display: "chart no" }] } }, gender: "male", birthDate: "1990-01-01" }, {}, CTX, displayDeps());
+  assert.deepEqual(pat.resource.identifier[0].type, { coding: [{ system: V2_0203, code: "MR", display: "Medical record number" }], text: "chart no" });
+  assert.deepEqual(pat.notes, ["display replaced for identifier (was 'chart no')"]);
+});
+
+test("arrays: a single Coding object under CodeableConcept.coding is wrapped (value grammar and nested FHIR shapes), with a note", async () => {
+  const out = await compose(EX + "LabObs", { ...LAB_BASE, code: { coding: { system: LOINC, code: "2345-7" } } });
+  assert.deepEqual(errorsOf(out), []);
+  assert.deepEqual(out.resource.code, { coding: [{ system: LOINC, code: "2345-7", display: "Glucose [Mass/volume] in Serum or Plasma" }] });
+  assert.deepEqual(out.notes, ["wrapped Observation.code.coding into an array"]);
+  assert.equal(out.provenance["Observation.code"], "model");
+  const vit = await compose(EX + "Vitals", { status: "final", code: { coding: { system: LOINC, code: "8867-4" } }, category: { coding: { system: OBS_CAT, code: "vital-signs" } }, subject: { ref: "pat1" }, effective: "2026-06-15", value: "72 /min" });
+  assert.deepEqual(errorsOf(vit), []);
+  assert.ok(Array.isArray(vit.resource.category) && Array.isArray(vit.resource.category[0].coding), JSON.stringify(vit.resource.category));
+  assert.equal(vit.resource.category[0].coding[0].code, "vital-signs");
+  assert.ok(vit.notes.includes("wrapped Observation.category[0].coding into an array") && vit.notes.includes("wrapped Observation.code.coding into an array"), JSON.stringify(vit.notes));
+  // inside an identifier: type {coding: {...}} still selects the identifier slice
+  const pat = await compose(EX + "Pat", { identifier: { value: "M1", system: "http://h.example/mrn", type: { coding: { system: V2_0203, code: "MR" } } }, gender: "male", birthDate: "1990-01-01" });
+  assert.deepEqual(errorsOf(pat), []);
+  assert.equal(pat.resource.identifier[0].type.coding[0].code, "MR");
+  assert.equal(pat.resource.identifier[0].use, "official", "assigned to the mrn slice: its pattern applies");
+  assert.ok(pat.notes.includes("wrapped Patient.identifier[0].type.coding into an array"), JSON.stringify(pat.notes));
+});
+
+test("arrays: a repeating element given one object inside a nested FHIR shape is wrapped at any depth; top-level single values need no note", async () => {
+  const out = await compose(EX + "Pat", {
+    identifier: { value: "1", system: "http://h.example/mrn" },
+    gender: "male",
+    birthDate: "1990-01-01",
+    contact: { telecom: { system: "phone", value: "0912" }, relationship: { coding: { system: "http://terminology.hl7.org/CodeSystem/v2-0131", code: "N" } } },
+  });
+  assert.deepEqual(errorsOf(out), []);
+  assert.deepEqual(out.resource.contact, [{ telecom: [{ system: "phone", value: "0912" }], relationship: [{ coding: [{ system: "http://terminology.hl7.org/CodeSystem/v2-0131", code: "N" }] }] }]);
+  assert.deepEqual(
+    [...out.notes].sort(),
+    ["wrapped Patient.contact[0].relationship into an array", "wrapped Patient.contact[0].relationship[0].coding into an array", "wrapped Patient.contact[0].telecom into an array"],
+  );
+  assert.ok(!out.notes.some((n) => /Patient\.identifier into/.test(n)), "one identifier at the top level is the documented grammar");
+  // raw FHIR JSON kept as written (an extension with its url): nested repeating keys are wrapped too
+  const ext = await compose(EX + "LabObs", { ...LAB_BASE, code: { system: LOINC, code: "2345-7" }, extension: { url: "http://h.example/ext", extension: { url: "part", valueString: "x" } } });
+  assert.deepEqual(errorsOf(ext), []);
+  assert.deepEqual(ext.resource.extension, [{ url: "http://h.example/ext", extension: [{ url: "part", valueString: "x" }] }]);
+  assert.ok(ext.notes.includes("wrapped Observation.extension[0].extension into an array"), JSON.stringify(ext.notes));
+  // dosage doseAndRate written as one object
+  const med = await compose(EX + "MedReq", { status: "active", intent: "order", medication: { text: "x" }, subject: { ref: "pat1" }, dosageInstruction: { text: "1 tab", doseAndRate: { doseQuantity: { value: 1, unit: "tablet" } } } });
+  assert.deepEqual(errorsOf(med), []);
+  assert.deepEqual(med.resource.dosageInstruction[0].doseAndRate, [{ doseQuantity: { value: 1, unit: "tablet" } }]);
+  assert.ok(med.notes.includes("wrapped MedicationRequest.dosageInstruction[0].doseAndRate into an array"), JSON.stringify(med.notes));
+});

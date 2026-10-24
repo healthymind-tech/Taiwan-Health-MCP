@@ -33,12 +33,23 @@ export const authorToolDescription =
   "{\"system\": \"http://loinc.org\", \"code\": \"2345-7\"}, \"subject\": {\"ref\": \"patient-1\"}, \"effectiveDateTime\": " +
   "\"2026-06-15T06:00\", \"value\": \"95 mg/dL\"}}]} → {context_id, storage, results: [{key, status: valid | invalid | refs_pending, " +
   "resource (full), provenance (path → model | fixed | default | derived | lookup), missing: [{field, why}], refs: {resolved, pending}, " +
-  "issues: [{key, field, path, severity, message, suggestions?}]}], summary}. " +
+  "issues: [{key, field, path, severity, message, suggestions?}], notes: [string]}], summary, settings: {timezone, apply_defaults, " +
+  "site_config_lines}}. " +
   "Contexts expire after 60 min idle (every call refreshes); an unknown / expired context_id returns error.code CONTEXT_EXPIRED — then " +
   "start over without context_id and re-author everything. storage=\"memory\" means Redis is unavailable and a server restart loses the " +
   "context. A time without a UTC offset (2026-06-15T06:00) is an error unless `timezone` (e.g. \"+08:00\", the facility's offset — remembered " +
-  "on the context) is given; an offset is never guessed. Numbers keep the spelling you wrote (12.50 stays 12.50). Read-only apart from the " +
-  "context; the profile is resolved like every other fhir_* tool (package_id / version optional).";
+  "on the context) is given; an offset is never guessed. Numbers keep the spelling you wrote (12.50 stays 12.50). " +
+  "CORRECTIONS (listed in results[].notes): a display is derived from the code — a display you wrote that the terminology rejects for " +
+  "a known code is replaced by the code's display (provenance lookup; your wording moves to CodeableConcept.text when that is empty; " +
+  "code and system are never changed); a single object / value given where FHIR repeats (e.g. code: {coding: {system, code}}) is " +
+  "wrapped into an array. DEFAULTS: apply_defaults=\"required\" (default) fills the conventional value (Observation.status final, " +
+  "Encounter.status finished …) or the profile's defaultValue only for elements the profile REQUIRES; optional ones (Patient.active, " +
+  "Immunization.primarySource …) are never auto-filled — give them when the record states them; apply_defaults=\"none\" fills no " +
+  "default (required ones then show in missing). Remembered on the context. site_config: the facility settings text (the same text " +
+  "fhir_check_grounding takes, e.g. \"病歷號 system: https://hospital.example.tw/mrn\\n機構: 範例醫院 醫事機構代碼 0123456789\"): every " +
+  "http(s) URL in it is an accepted identifier system and its lines ground organisation / practitioner identifier values; stored on " +
+  "the context (passing it again adds new lines) and used by fhir_assemble_bundle's grounding (source_text). Never logged, never echoed. " +
+  "Read-only apart from the context; the profile is resolved like every other fhir_* tool (package_id / version optional).";
 
 const fieldValue = z.any();
 
@@ -69,6 +80,17 @@ export const authorInputShape = {
     .nullish()
     .default(null)
     .describe("UTC offset completing dateTimes given without one (e.g. \"+08:00\" for a Taiwan facility). Remembered on the context for later calls. Without it a time lacking an offset is reported as an error — never guessed."),
+  apply_defaults: z
+    .enum(["required", "none"])
+    .nullish()
+    .default(null)
+    .describe("\"required\" (default): workflow defaults / defaultValue only on elements the profile requires (optional ones such as Patient.active are never filled); \"none\": no defaults (required ones are then reported in missing). Remembered on the context."),
+  site_config: z
+    .string()
+    .max(20000)
+    .nullish()
+    .default(null)
+    .describe("Facility settings text, as fhir_check_grounding's site_config (e.g. \"病歷號 system: https://hospital.example.tw/mrn\"): its URLs are accepted identifier systems, its lines ground organisation values at assembly. Stored on the context; passing it again adds new lines. Never logged."),
 };
 
 export function createAuthorTool(service: AuthoringService): AuthoringToolSpec {
@@ -90,9 +112,11 @@ export function createAuthorTool(service: AuthoringService): AuthoringToolSpec {
         }
       }
       const timezone = typeof args.timezone === "string" && args.timezone ? args.timezone : null;
+      const applyDefaults = args.apply_defaults === "required" || args.apply_defaults === "none" ? args.apply_defaults : null;
+      const siteConfig = typeof args.site_config === "string" && args.site_config.trim() ? args.site_config : null;
       try {
-        const r = await service.authorResources(contextId, inputs, { timezone });
-        return okEnvelope(AUTHOR_TOOL_NAME, { context_id: r.context_id, storage: r.storage, results: r.results, summary: r.summary }, r.warnings);
+        const r = await service.authorResources(contextId, inputs, { timezone, applyDefaults, siteConfig });
+        return okEnvelope(AUTHOR_TOOL_NAME, { context_id: r.context_id, storage: r.storage, results: r.results, summary: r.summary, settings: r.settings }, r.warnings);
       } catch (e) {
         const env = authoringErrorEnvelope(e);
         if (env) return env;

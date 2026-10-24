@@ -85,6 +85,18 @@ ever invented (dates, numbers, identifiers, names, doses → `missing`); display
 dates / `meta.profile` / fixed / pattern / defaults / derived codes are supplied by the MCP and
 marked in `provenance`.
 
+v1.1 corrections (reported in `AuthorResult.notes`, append-only field):
+
+- a model display that the validator's terminology rule rejects for a resolvable code is replaced
+  by the code's display (`lookup`); the model wording moves to `CodeableConcept.text` when empty;
+  code / system never change; an unresolvable code keeps the model display (`ComposeDeps.checkDisplay`);
+- an element with max > 1 given a single object / scalar is wrapped into a one-item array at any
+  depth, raw FHIR shapes included (`code: {coding: {…}}`);
+- workflow defaults / `defaultValue[x]` only on required elements (min >= 1); `apply_defaults:
+  "none"` (stored on the context) fills none — required ones then appear in `missing`;
+- `site_config` (facility settings text, fhir_check_grounding format) is stored on the context,
+  merged line by line, and passed to the grounding engine at assembly (with `source_text`).
+
 ## References and the context
 
 - `{ref: key}` becomes `reference: urn:uuid:<v5(contextId, key)>` — deterministic per context, the

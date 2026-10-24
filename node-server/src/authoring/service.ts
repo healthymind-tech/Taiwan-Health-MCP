@@ -18,7 +18,7 @@ import { hasRaw, parseLossless, toPlain } from "../losslessJson.js";
 import { nodeAt } from "../fhirSuggestions/util.js";
 import { fitDate, parseDateValue } from "./values.js";
 import { ContextExpiredError, type ContextEntry, type ContextRecord, type ContextStorageKind, type ContextStore } from "./contextStore.js";
-import type { AuthorInput, AuthorIssue, AuthorResult, AuthorStatus, IssueSeverity, Provenance } from "./types.js";
+import type { ApplyDefaults, AuthorInput, AuthorIssue, AuthorResult, AuthorStatus, IssueSeverity, Provenance } from "./types.js";
 
 // --------------------------------------------------------------------------- //
 // Collaborator contracts
@@ -34,6 +34,8 @@ export interface ComposeOutput {
   fieldMap: Record<string, string>;
   /** Problems with the given values (a conflict with a fixed value, an unparseable date …). */
   errors: Array<{ field: string | null; path?: string; message: string; severity?: IssueSeverity }>;
+  /** Corrections made to the model's values (display replaced, value wrapped into an array). */
+  notes?: string[];
 }
 
 export interface ComposeContext {
@@ -42,6 +44,8 @@ export interface ComposeContext {
   knownKeys: string[];
   /** UTC offset (e.g. "+08:00") completing times given without one — a facility setting, never guessed. */
   timezone?: string | null;
+  /** "required" (default): defaults only on required elements; "none": no defaults at all. */
+  applyDefaults?: ApplyDefaults | null;
 }
 
 export type Composer = (input: AuthorInput, ctx: ComposeContext) => Promise<ComposeOutput>;
@@ -81,7 +85,11 @@ export interface AuthoringDeps {
     bundle: Record<string, unknown>,
     opts: { packageId: string | null; version: string | null; bundleProfile: string | null; bundleType: string },
   ) => Promise<ToolEnvelope<FinalizeData>>;
-  validateBundle: (bundle: Record<string, unknown>, opts: { packageId: string | null; version: string | null; sourceText: string | null }) => Promise<ToolEnvelope<ValidationData>>;
+  /** `siteConfig` (facility settings text) is evidence for identifier systems / organisation values when grounding runs (sourceText given). */
+  validateBundle: (
+    bundle: Record<string, unknown>,
+    opts: { packageId: string | null; version: string | null; sourceText: string | null; siteConfig?: string | null },
+  ) => Promise<ToolEnvelope<ValidationData>>;
   /** Fields a document's Composition needs when none was authored (R3: reported, never invented). */
   compositionRequirements?: (opts: { bundleProfile: string | null; packageId: string | null; version: string | null }) => Promise<{ profile: string; fields: Array<{ field: string; why: string }> }>;
   now?: () => number;
@@ -96,6 +104,8 @@ export interface AuthorBatchResult {
   storage: ContextStorageKind;
   results: AuthorResult[];
   summary: { total: number; valid: number; invalid: number; refs_pending: number; pending_keys: string[] };
+  /** The context's settings after this call (site_config only as a line count — its text is never echoed). */
+  settings: { timezone: string | null; apply_defaults: ApplyDefaults; site_config_lines: number };
   warnings: string[];
 }
 
@@ -249,6 +259,24 @@ function statusFrom(issues: AuthorIssue[], pending: string[]): AuthorStatus {
   return pending.length ? "refs_pending" : "valid";
 }
 
+/**
+ * Merge facility settings texts line by line: the stored lines first, then every new line not
+ * already stored (trim-compared). Grounding treats the whole text as evidence, so passing the
+ * settings again only adds lines; null / empty input leaves the stored text as it is.
+ */
+export function mergeSiteConfig(stored: string | null | undefined, given: string | null | undefined): string | null {
+  const base = typeof stored === "string" && stored.trim() ? stored : null;
+  if (typeof given !== "string" || !given.trim()) return base;
+  if (!base) return given;
+  const have = new Set(base.split(/\r?\n/).map((l) => l.trim()).filter(Boolean));
+  const add = given.split(/\r?\n/).filter((l) => l.trim() && !have.has(l.trim()));
+  return add.length ? `${base.replace(/\s+$/, "")}\n${add.join("\n")}` : base;
+}
+
+function siteConfigLines(text: string | null | undefined): number {
+  return typeof text === "string" ? text.split(/\r?\n/).filter((l) => l.trim()).length : 0;
+}
+
 function mergeFields(base: Record<string, unknown>, patch: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = { ...base };
   for (const [k, v] of Object.entries(patch)) {
@@ -267,6 +295,10 @@ export interface AuthorOptions {
   create?: boolean;
   /** UTC offset for times without one; remembered on the context for later calls (merge) of the task. */
   timezone?: string | null;
+  /** Which defaults the composer applies ("required" when never given); remembered on the context. */
+  applyDefaults?: ApplyDefaults | null;
+  /** Facility settings text (fhir_check_grounding's site_config); merged into the context's, used at assembly. Never logged. */
+  siteConfig?: string | null;
 }
 
 export interface AssembleOptions {
@@ -279,6 +311,8 @@ export interface AssembleOptions {
   identifier?: { system?: string | null; value?: string | null } | null;
   /** Bundle.timestamp (instant; a document needs one, bdl-10) in the value grammar's date forms; never invented. */
   timestamp?: string | null;
+  /** Facility settings text merged with the context's for grounding (only used with sourceText). Never logged. */
+  siteConfig?: string | null;
 }
 
 export class AuthoringService {
@@ -314,11 +348,14 @@ export class AuthoringService {
     const batchKeys = inputs.map((i) => i.key);
     const knownKeys = [...new Set([...Object.keys(ctx.entries), ...batchKeys])];
     const timezone = opts.timezone ?? ctx.timezone ?? null;
+    const applyDefaults: ApplyDefaults = opts.applyDefaults ?? ctx.apply_defaults ?? "required";
     // Compose + validate every input concurrently (independent; the store write is one atomic batch).
-    const entries = await Promise.all(inputs.map((input) => this.authorOne(cid, ctx, input, knownKeys, timezone, warnings)));
-    await this.deps.store.update(cid, (c) => {
+    const entries = await Promise.all(inputs.map((input) => this.authorOne(cid, ctx, input, knownKeys, timezone, applyDefaults, warnings)));
+    const stored = await this.deps.store.update(cid, (c) => {
       for (const e of entries) c.entries[e.key] = e;
       if (opts.timezone) c.timezone = opts.timezone;
+      if (opts.applyDefaults) c.apply_defaults = opts.applyDefaults;
+      if (opts.siteConfig) c.site_config = mergeSiteConfig(c.site_config, opts.siteConfig);
     });
     const results = entries.map((e) => toResult(e));
     const pending = [...new Set(entries.flatMap((e) => e.refs.pending))].sort();
@@ -340,6 +377,7 @@ export class AuthoringService {
         refs_pending: results.filter((r) => r.status === "refs_pending").length,
         pending_keys: pending,
       },
+      settings: { timezone: stored.timezone ?? null, apply_defaults: stored.apply_defaults ?? "required", site_config_lines: siteConfigLines(stored.site_config) },
       warnings,
     };
   }
@@ -361,7 +399,15 @@ export class AuthoringService {
     }
   }
 
-  private async authorOne(cid: string, ctx: ContextRecord, given: AuthorInput, knownKeys: string[], timezone: string | null, warnings: string[]): Promise<ContextEntry> {
+  private async authorOne(
+    cid: string,
+    ctx: ContextRecord,
+    given: AuthorInput,
+    knownKeys: string[],
+    timezone: string | null,
+    applyDefaults: ApplyDefaults,
+    warnings: string[],
+  ): Promise<ContextEntry> {
     const prev = ctx.entries[given.key];
     let input: AuthorInput;
     if (given.merge) {
@@ -386,7 +432,7 @@ export class AuthoringService {
 
     let composed: ComposeOutput;
     try {
-      composed = await this.deps.compose(input, { contextId: cid, knownKeys, timezone });
+      composed = await this.deps.compose(input, { contextId: cid, knownKeys, timezone, applyDefaults });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       // The message may quote a field value: log the error class only.
@@ -444,6 +490,7 @@ export class AuthoringService {
       refs: { resolved: [...composed.refs.resolved].sort(), pending },
       issues,
       fieldMap: composed.fieldMap || {},
+      notes: Array.isArray(composed.notes) ? composed.notes : [],
       updated_at: new Date((this.deps.now ?? Date.now)()).toISOString(),
     };
   }
@@ -600,7 +647,8 @@ export class AuthoringService {
     if (!fin.ok || !fin.data) throw new AuthoringArgumentError(`${fin.error?.code ?? "FINALIZE_FAILED"}: ${fin.error?.message ?? "finalize returned no result"}`, { ...(fin.error ?? {}) });
     const bundle = fin.data.bundle;
     for (const w of fin.warnings ?? []) if (typeof w === "string") warnings.push(w);
-    const val = await this.deps.validateBundle(bundle, { packageId, version, sourceText: opts.sourceText ?? null });
+    const siteConfig = mergeSiteConfig(ctx.site_config, opts.siteConfig);
+    const val = await this.deps.validateBundle(bundle, { packageId, version, sourceText: opts.sourceText ?? null, siteConfig });
     if (!val.ok || !val.data) throw new AuthoringArgumentError(`${val.error?.code ?? "VALIDATION_FAILED"}: ${val.error?.message ?? "validation returned no result"}`, { ...(val.error ?? {}) });
     for (const w of val.warnings ?? []) if (typeof w === "string") warnings.push(w);
 
@@ -662,7 +710,7 @@ export function toResult(e: ContextEntry, ctx?: ContextRecord): AuthorResult {
       if (status === "refs_pending" && !stillPending.length) status = "valid";
     }
   }
-  return { key: e.key, status, resource: e.resource, provenance: e.provenance, missing: e.missing, refs, issues: e.issues };
+  return { key: e.key, status, resource: e.resource, provenance: e.provenance, missing: e.missing, refs, issues: e.issues, notes: e.notes ?? [] };
 }
 
 export { ContextExpiredError };
@@ -705,7 +753,9 @@ export function productionDeps(
       const plain = toPlain(bundle) as Record<string, unknown>;
       const text = await svc.validateBundle(plain as Record<string, any>, o.packageId, o.version, false);
       if (!o.sourceText) return parseEnvelope<ValidationData>(text);
-      return parseEnvelope<ValidationData>(await addBundleGrounding(text, plain, { source_text: o.sourceText, package_id: o.packageId, version: o.version }, grounding));
+      return parseEnvelope<ValidationData>(
+        await addBundleGrounding(text, plain, { source_text: o.sourceText, site_config: o.siteConfig ?? null, package_id: o.packageId, version: o.version }, grounding),
+      );
     },
     compositionRequirements: async ({ bundleProfile, packageId, version }) => compositionRequirementsOf(svc, bundleProfile, packageId, version),
   };

@@ -12,6 +12,12 @@ import type { FieldSpec } from "./types.js";
 
 export type { ExpandedCoding, NormalizeCandidate };
 
+export interface DisplayVerdict {
+  status: "ok" | "invalid-display" | "unknown";
+  /** Valid displays of the code (validator order: the code's own display first), when invalid. */
+  valid: string[];
+}
+
 export interface ResolvedProfile {
   /** The StructureDefinition (with `snapshot.element`). */
   sd: Record<string, any>;
@@ -32,6 +38,13 @@ export interface ComposeDeps {
   fetchStructureDefinition?(url: string): Promise<Record<string, any> | null>;
   /** Display of a code in its CodeSystem (fhir_lookup_code); null when unknown. */
   lookupDisplay?(system: string, code: string): Promise<string | null>;
+  /**
+   * The validator's verdict on a display the model wrote for system|code (the same terminology
+   * check fhir_validate_resource runs): `ok` (a valid display, case-insensitive), `invalid-display`
+   * with the valid displays the validator names, or `unknown` (code not resolvable / no local
+   * terminology — the display is then kept as written).
+   */
+  checkDisplay?(system: string, code: string, display: string, version: string | null): Promise<DisplayVerdict>;
   /** Free text → candidate codes of a ValueSet / CodeSystem (fhir_normalize_code). */
   normalize?(text: string, target: { system?: string; valueSet?: string }, limit: number): Promise<NormalizeCandidate[]>;
   /** Expansion of a ValueSet (null = not expandable locally). */

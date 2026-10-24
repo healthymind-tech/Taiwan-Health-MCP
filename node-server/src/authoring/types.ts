@@ -61,7 +61,12 @@ export interface AuthorResult {
   missing: Array<{ field: string; why: string }>;
   refs: { resolved: string[]; pending: string[] };
   issues: AuthorIssue[];
+  /** Appended (v1.1): corrections the MCP made to the model's values (display replaced, value wrapped into an array). */
+  notes: string[];
 }
+
+/** Appended (v1.1): which defaults the composer applies — "required" (default: only on elements the profile requires) or "none". */
+export type ApplyDefaults = "required" | "none";
 
 /** One tool of the authoring layer; `index.ts` registers them in mcp.ts. */
 export interface AuthoringToolSpec {

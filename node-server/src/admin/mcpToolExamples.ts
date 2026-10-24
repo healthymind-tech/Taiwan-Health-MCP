@@ -557,6 +557,8 @@ export const MCP_TOOL_EXAMPLES: Record<string, ToolExampleSet> = {
         {
           context_id: null,
           timezone: "+08:00",
+          apply_defaults: "required",
+          site_config: "病歷號 system: https://hospital.example.tw/mrn\n機構: 範例醫院 醫事機構代碼 0123456789",
           resources: [
             { key: "patient-1", profile: "Patient-twcore", fields: { "identifier:idCardNumber": { value: "A123456789" }, "identifier:medicalRecord": { value: "MR-00012345", system: "https://hospital.example.tw/mrn" }, "name:official": { text: "王小明" }, gender: "male", birthDate: "80/03/15" }, merge: false },
             { key: "enc-1", profile: "Encounter-twcore", fields: { status: "finished", class: { system: "http://terminology.hl7.org/CodeSystem/v3-ActCode", code: "AMB" }, subject: { ref: "patient-1" }, period: { start: "115/06/15 09:30", end: "2026-06-15T10:00" }, diagnosis: [{ condition: { ref: "cond-1" }, rank: 1 }] }, merge: false },
@@ -564,12 +566,12 @@ export const MCP_TOOL_EXAMPLES: Record<string, ToolExampleSet> = {
             { key: "obs-glucose", profile: "Observation-laboratoryResult-twcore", fields: { code: [{ system: "http://loinc.org", code: "2345-7" }, { system: NHI_PAYMENT_CS, code: "09005C" }], subject: { ref: "patient-1" }, encounter: { ref: "enc-1" }, effectiveDateTime: "2026-06-15T06:00", value: "95 mg/dL" }, merge: false },
           ],
         },
-        "回傳 data.context_id；{ref} 互相參照（含 Encounter.diagnosis ↔ Condition.encounter 的循環）；ROC 日期、UCUM、display、fixed / default 值由 MCP 補上（provenance）。虛構資料",
+        "回傳 data.context_id；{ref} 互相參照（含 Encounter.diagnosis ↔ Condition.encounter 的循環）；ROC 日期、UCUM、display、fixed / default 值由 MCP 補上（provenance）；預設值只補必填欄位（apply_defaults=required），site_config 存在 context 供組裝時 grounding 使用。虛構資料",
       ),
       example(
         "merge-fix",
         "修正：同一 key 以 merge=true 只重送要改的欄位（需填入上一次的 context_id）",
-        { context_id: "00000000000000000000000000000000", timezone: null, resources: [{ key: "obs-glucose", merge: true, fields: { value: "5.6 mmol/L" } }] },
+        { context_id: "00000000000000000000000000000000", timezone: null, apply_defaults: null, site_config: null, resources: [{ key: "obs-glucose", merge: true, fields: { value: "5.6 mmol/L" } }] },
         "把 context_id 換成 first-batch 回傳的 data.context_id；全 0 的 id 會回 CONTEXT_EXPIRED",
       ),
     ],
@@ -588,13 +590,13 @@ export const MCP_TOOL_EXAMPLES: Record<string, ToolExampleSet> = {
       example(
         "collection",
         "collection Bundle（Bundle-twcore）",
-        { context_id: "00000000000000000000000000000000", keys: ["patient-1", "enc-1", "cond-1", "obs-glucose"], bundle_type: "collection", bundle_profile: "Bundle-twcore", package_id: null, version: null, source_text: null, allow_invalid: false, identifier: null, timestamp: null },
+        { context_id: "00000000000000000000000000000000", keys: ["patient-1", "enc-1", "cond-1", "obs-glucose"], bundle_type: "collection", bundle_profile: "Bundle-twcore", package_id: null, version: null, source_text: null, site_config: null, allow_invalid: false, identifier: null, timestamp: null },
         "把 context_id 換成 fhir_author_resources 回傳的 data.context_id；同一 context + 同一 keys 永遠得到同一份 Bundle",
       ),
       example(
         "document",
         "document Bundle（Composition 先行；identifier / timestamp 來自病歷）",
-        { context_id: "00000000000000000000000000000000", keys: ["comp-1", "patient-1", "enc-1", "cond-1", "obs-glucose"], bundle_type: "document", bundle_profile: "Bundle-twcore", package_id: null, version: null, source_text: null, allow_invalid: false, identifier: { system: "https://hospital.example.tw/documents", value: "DS-2026-000123" }, timestamp: "2026-06-15T11:05:00+08:00" },
+        { context_id: "00000000000000000000000000000000", keys: ["comp-1", "patient-1", "enc-1", "cond-1", "obs-glucose"], bundle_type: "document", bundle_profile: "Bundle-twcore", package_id: null, version: null, source_text: null, site_config: null, allow_invalid: false, identifier: { system: "https://hospital.example.tw/documents", value: "DS-2026-000123" }, timestamp: "2026-06-15T11:05:00+08:00" },
         "沒有撰寫 Composition 時回 MISSING_COMPOSITION 並列出它需要的欄位（不會自行捏造）",
       ),
     ],

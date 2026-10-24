@@ -188,9 +188,9 @@ test("TW Core 1.0.0: Patient / lab result / blood pressure / MedicationRequest c
     assert.equal(r.identifier[1].system, "http://www.moi.gov.tw", "the id-card slice's patterned system is supplied");
     assert.equal(r.identifier[1].type.coding[0].code, "NNxxx");
     assert.equal(r.name[0].use, "official");
-    assert.equal(r.active, true);
+    assert.equal(r.active, undefined, "Patient.active is optional: never auto-filled (defaults only on required elements)");
     assert.equal(out.provenance["Patient.identifier[1].system"], "fixed");
-    assert.equal(out.provenance["Patient.active"], "default");
+    assert.equal(out.provenance["Patient.active"], undefined);
     const env = await tool("fhir_validate_resource", { resource: r, profile: `${TW}Patient-twcore`, ...PKG });
     assert.ok(env.ok, JSON.stringify(env).slice(0, 500));
     assert.deepEqual(errorIssues(env.data), [], JSON.stringify(env.data.issues, null, 1));

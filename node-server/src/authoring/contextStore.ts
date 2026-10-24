@@ -25,7 +25,7 @@ import { randomBytes } from "node:crypto";
 import type { RedisClientType } from "redis";
 import { logDebug, logWarning } from "../logger.js";
 import { parseLossless, stringifyLossless } from "../losslessJson.js";
-import type { AuthorInput, AuthorIssue, AuthorStatus, Provenance } from "./types.js";
+import type { ApplyDefaults, AuthorInput, AuthorIssue, AuthorStatus, Provenance } from "./types.js";
 
 /** Idle TTL of a context: refreshed on every access. */
 export const CONTEXT_IDLE_TTL_SECONDS = 60 * 60;
@@ -44,6 +44,8 @@ export interface ContextEntry {
   issues: AuthorIssue[];
   /** FHIR path → model field name, as the composer reported it (issue → field mapping at assembly). */
   fieldMap: Record<string, string>;
+  /** Corrections the composer made to the model's values (display replaced, value wrapped into an array). */
+  notes?: string[];
   updated_at: string;
 }
 
@@ -56,6 +58,10 @@ export interface ContextRecord {
   entries: Record<string, ContextEntry>;
   /** UTC offset (e.g. "+08:00") completing times given without one; set by fhir_author_resources' `timezone`. */
   timezone?: string | null;
+  /** Which defaults the composer applies; set by fhir_author_resources' `apply_defaults` (absent = "required"). */
+  apply_defaults?: ApplyDefaults | null;
+  /** Facility settings text (grounding site_config), merged line by line from fhir_author_resources calls. Never logged. */
+  site_config?: string | null;
 }
 
 export type ContextStorageKind = "redis" | "memory";

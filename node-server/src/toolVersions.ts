@@ -167,10 +167,23 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   (`authoring:ctx:*`, 60-min idle TTL) and assembles the Bundle from keys with deterministic urn:uuid fullUrls
   //   (UUID v5 of context id + key, shared by {ref: key} references). Nothing is ever invented: unknown record values
   //   are reported in `missing`. Number spellings are kept end to end.
-  fhir_get_authoring_fields: "1.0.0",
-  fhir_author_resources: "1.0.0",
-  fhir_context: "1.0.0",
-  fhir_assemble_bundle: "1.0.0",
+  // 1.1.0 (evaluation feedback): workflow defaults are `auto` only on REQUIRED elements; an optional element with a
+  //   conventional value (Patient.active, Immunization.primarySource, Condition.clinicalStatus 0..1 …) is a plain
+  //   optional field whose format / example carry that value as a hint. Description: display replacement, array wrapping.
+  fhir_get_authoring_fields: "1.1.0",
+  // 1.1.0 (evaluation feedback): (1) a model display the validator's terminology rule rejects for a resolvable code is
+  //   replaced by the code's display (provenance lookup; the model wording moves to CodeableConcept.text when empty;
+  //   case-only differences are valid, whitespace-only ones take the valid spelling); (2) a single object / scalar where
+  //   FHIR repeats is wrapped into a one-item array at any depth, incl. raw FHIR shapes (code: {coding: {…}}); (3) workflow
+  //   defaults / defaultValue[x] only on required elements (optional ones never auto-filled), new `apply_defaults`
+  //   ("required" | "none", remembered on the context); (4) new `site_config` (facility settings text, merged on the
+  //   context, used by assembly grounding). Results gain `notes`, data gains `settings`.
+  fhir_author_resources: "1.1.0",
+  // 1.0.1: action=get results carry the author result's new `notes` (fhir_author_resources 1.1.0); otherwise unchanged.
+  fhir_context: "1.0.1",
+  // 1.1.0: new `site_config` (merged with the context's) passed to the grounding engine with source_text, so facility
+  //   identifier systems / organisation values are grounded as site_config; resources carry the 1.1.0 composer rules.
+  fhir_assemble_bundle: "1.1.0",
   // 1.0.0 (ISSUES_v9 R1): deterministic Bundle finalizer — fullUrl-uuid / reference-rewire / resource-id (mandatory),
   // bundle-type / document-order (profile-driven); UUID v5 seeded by (resourceType, original fullUrl, resource.id, entry
   // index) + a content salt; references found through StructureDefinition snapshots; duplicates / ambiguity reported.

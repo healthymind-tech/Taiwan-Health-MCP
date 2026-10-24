@@ -147,7 +147,11 @@ export const FIELDS_TOOL_DESCRIPTION =
   "`binding.codes` lists small code sets (larger ones: fhir_normalize_code / fhir_expand_valueset); `targets` = reference types; " +
   "`children` = sub-fields of components / dosage / names. Fields with `auto: true` (fixed, default, derived) need NOT be filled — the MCP " +
   "supplies them (`value` shows what); `pins` shows the parts the profile fixes inside a field you still fill (identifier system, " +
-  "component code, unit). Never invent values: give only what the record states; a missing required value is reported as `missing`, not " +
+  "component code, unit). Defaults are auto only on REQUIRED elements (e.g. Observation.status → final); an optional element with a " +
+  "conventional value (Patient.active, Immunization.primarySource …) is listed as a normal optional field whose `format` / `example` " +
+  "show that value — give it only when the record states it (fhir_author_resources never fills it; apply_defaults=\"none\" turns the " +
+  "required ones off too). A display you write for a code is checked and replaced by the code's own display when the terminology " +
+  "rejects it; a single object where a field repeats is wrapped into an array (fhir_author_resources results[].notes). Never invent values: give only what the record states; a missing required value is reported as `missing`, not " +
   "guessed. Value grammar (fields object of fhir_author_resources): scalars as JSON; codeableConcept/coding {system, code, display?} or " +
   "[{...}] or {text}; quantity {value, unit} or '95 mg/dL'; date/dateTime ISO (2026-06-15, 2026-06-15T06:00) or ROC (115/06/15); period " +
   "{start, end?}; identifier {value, system?}; reference {ref: '<key of another resource in the context>'} or {reference: 'Type/id'}; " +

@@ -15,12 +15,20 @@
  *                  slices such as a category pattern or a pinned LOINC coding) is created
  *   4. pinning     fixed[x] / pattern[x] of every element are merged where the element exists; a
  *                  model value that contradicts a fixed / pattern value is an error, never overwritten
+ *   1b. arrays     any element with max > 1 holding a single object / scalar (a raw FHIR shape the
+ *                  model passed through, e.g. `code: {coding: {…}}`) is wrapped into a one-item
+ *                  array, at any depth (note `wrapped <path> into an array`)
  *   5. defaults    `defaultValue[x]` and the conventional workflow defaults (fhirRequiredElements
- *                  WORKFLOW_DEFAULTS) on required / mustSupport elements the model left empty
+ *                  WORKFLOW_DEFAULTS) only on elements the profile REQUIRES (min >= 1, required
+ *                  slices included) that the model left empty; optional ones are never filled;
+ *                  `applyDefaults: "none"` fills none (required ones then appear in `missing`)
  *   6. derived     computable derivations (Condition.category from the encounter reference,
  *                  Observation.category vital-signs from the R4 vital-sign code list) — only when the
  *                  element's binding is the one the rule describes and the model gave nothing
- *   7. lookups     display of codings without one, UCUM codes for unit text (values.ts), ROC dates
+ *   7. lookups     display of codings without one, UCUM codes for unit text (values.ts), ROC dates;
+ *                  a model-written display the validator would reject for a resolvable code is
+ *                  replaced by the code's display (the model's text moves to CodeableConcept.text
+ *                  when that is empty; note `display replaced for <field> (was '<old>')`)
  *   8. missing     required / invariant-implied / target-implied elements without a value — reported,
  *                  never invented (no dates, ids, names, numbers)
  *
@@ -44,7 +52,7 @@ import {
 import { textSim } from "../fhirSuggestions/util.js";
 import { UCUM_SYSTEM } from "../fhirUcum.js";
 import type { ComposeDeps, ExpandedCoding, NormalizeCandidate } from "./deps.js";
-import type { AuthorInput, FieldKind, FieldSpec, Provenance } from "./types.js";
+import type { ApplyDefaults, AuthorInput, FieldKind, FieldSpec, Provenance } from "./types.js";
 import * as V from "./values.js";
 
 export type { ComposeDeps } from "./deps.js";
@@ -60,6 +68,8 @@ export interface ComposeContext {
   knownKeys: Iterable<string>;
   /** UTC offset (e.g. "+08:00") completing times given without one — a facility setting, never guessed. */
   timezone?: string | null;
+  /** "required" (default): defaults only on required elements; "none": no defaults at all. */
+  applyDefaults?: ApplyDefaults | null;
 }
 
 export interface ComposeError {
@@ -90,6 +100,8 @@ export interface ComposeOutput {
   fieldMap: Record<string, string>;
   /** Value-grammar / unknown-field / fixed-value conflicts found before validation. */
   errors: ComposeError[];
+  /** Corrections made to the model's values (display replaced, single value wrapped into an array). */
+  notes: string[];
 }
 
 export class ComposeProfileError extends Error {
@@ -408,6 +420,7 @@ class Composer {
   readonly provenance: Record<string, Provenance> = {};
   readonly fieldMap: Record<string, string> = {};
   readonly errors: ComposeError[] = [];
+  readonly notes: string[] = [];
   readonly pending = new Set<string>();
   readonly resolved = new Set<string>();
   readonly pendingPaths: string[] = [];
@@ -693,6 +706,27 @@ class Composer {
     this.provenance[path] = who;
   }
 
+  note(text: string): void {
+    if (!this.notes.includes(text)) this.notes.push(text);
+  }
+
+  /** The model field a path belongs to (for notes), else the path relative to the resource. */
+  private fieldLabel(path: string): string {
+    return fieldForPath(this.fieldMap, path) ?? (path.startsWith(`${this.rt}.`) ? path.slice(this.rt.length + 1) : path);
+  }
+
+  /** A value moved from `p` to `p[0]`: re-key provenance / field-map paths at or under it. */
+  private rekeyWrapped(p: string): void {
+    for (const map of [this.provenance, this.fieldMap] as Array<Record<string, unknown>>) {
+      for (const k of Object.keys(map)) {
+        if (k !== p && !k.startsWith(`${p}.`)) continue;
+        const nk = `${p}[0]${k.slice(p.length)}`;
+        map[nk] = map[k];
+        delete map[k];
+      }
+    }
+  }
+
   // ------------------------------------------------------------------ placement
 
   async placeFields(fields: Record<string, unknown>): Promise<void> {
@@ -823,13 +857,21 @@ class Composer {
     );
   }
 
-  /** Place a parsed value for `node` under `parent[key]` (arrays and choice keys decided here). */
-  async placeValue(node: Node, forcedType: string | null, raw: unknown, field: string, parent: Record<string, any>, parentPath: string): Promise<void> {
+  /**
+   * Place a parsed value for `node` under `parent[key]` (arrays and choice keys decided here).
+   * `nested`: the value is a key of a FHIR-shaped object the model wrote (not a top-level field,
+   * where one value for a repeating field is the documented grammar) — wrapping a single value of
+   * a repeating element into an array is then reported as a note.
+   */
+  async placeValue(node: Node, forcedType: string | null, raw: unknown, field: string, parent: Record<string, any>, parentPath: string, nested = false): Promise<void> {
     const def = node.def;
     const types = forcedType ? [forcedType] : def.types.length ? def.types : def.contentReference ? ["BackboneElement"] : [];
     const choice = def.name.endsWith("[x]");
     let items: unknown[];
-    if (def.isArray) items = Array.isArray(raw) ? raw : [raw];
+    if (def.isArray) {
+      items = Array.isArray(raw) ? raw : [raw];
+      if (nested && !Array.isArray(raw) && raw !== null && raw !== undefined && !choice) this.note(`wrapped ${parentPath}.${def.name} into an array`);
+    }
     else if (Array.isArray(raw)) {
       if (types.length === 1 && types[0] === "CodeableConcept") items = [raw];
       else {
@@ -1236,7 +1278,7 @@ class Composer {
         this.error(`${field}.${k}`, `${path}.${k}`, `${k} is prohibited by the profile (max 0)`);
         continue;
       }
-      await this.placeValue(r.node, r.forcedType ?? null, v, `${field}.${k}`, out, path);
+      await this.placeValue(r.node, r.forcedType ?? null, v, `${field}.${k}`, out, path, true);
     }
     if (this.errors.length > before && !Object.keys(out).length) return V.fail("no usable field in the object (see the errors reported for its fields)");
     if (!Object.keys(out).length) return V.fail(`${node.def.name}: empty object`);
@@ -1443,10 +1485,16 @@ class Composer {
     }
     if (!isObject(item)) return V.fail(`expected {system, code, display?}, {text}, or a list of codings, got ${V.describe(item)}`);
     const out: Record<string, unknown> = {};
-    if (Array.isArray(item.coding)) {
+    let codingList: unknown[] | null = Array.isArray(item.coding) ? item.coding : null;
+    if (!codingList && isObject(item.coding)) {
+      // FHIR shape with a single Coding object where FHIR wants an array (coding is 0..*)
+      codingList = [item.coding];
+      this.note(`wrapped ${path}.coding into an array`);
+    }
+    if (codingList) {
       const codings: unknown[] = [];
-      for (let i = 0; i < item.coding.length; i++) {
-        const c = await this.buildCoding(item.coding[i], binding, `${path}.coding[${i}]`, opts);
+      for (let i = 0; i < codingList.length; i++) {
+        const c = await this.buildCoding(codingList[i], binding, `${path}.coding[${i}]`, opts);
         if (!c.ok) return V.fail(`coding ${i + 1}: ${c.message}`, c.candidates);
         codings.push(c.value);
       }
@@ -1555,7 +1603,10 @@ class Composer {
       if (r.ok) dar.type = r.value;
     }
     const doseAndRate = take("doseAndRate");
-    if (Array.isArray(doseAndRate) && doseAndRate.length) out.doseAndRate = clone(doseAndRate);
+    if (isObject(doseAndRate)) {
+      out.doseAndRate = [clone(doseAndRate)];
+      this.note(`wrapped ${path}.doseAndRate into an array`);
+    } else if (Array.isArray(doseAndRate) && doseAndRate.length) out.doseAndRate = clone(doseAndRate);
     else if (Object.keys(dar).length) out.doseAndRate = [dar];
     // frequency / timing / period
     const timingNode = await this.childNode(node, "Dosage", "timing");
@@ -1712,6 +1763,59 @@ class Composer {
     }
     void field;
     return { ok: true, value: out };
+  }
+
+  // ------------------------------------------------------------------ arrays
+
+  /**
+   * Every element with max > 1 that holds a single object / scalar is wrapped into a one-item
+   * array, at any depth, by the element definitions (profile, then the datatype's own SD). This
+   * catches the raw FHIR shapes the composer keeps as written (an extension given with its url,
+   * Meta, Attachment, doseAndRate …); the value-grammar paths already place arrays themselves.
+   */
+  async wrapArrays(): Promise<void> {
+    const extIndex = async (): Promise<Node | null> => {
+      const idx = await this.datatypeIndex("Extension");
+      return idx ? { index: idx, def: idx.root } : null;
+    };
+    const walk = async (node: Node, type: string | null, obj: Record<string, any>, path: string, depth: number): Promise<void> => {
+      if (depth > 24) return;
+      for (const k of Object.keys(obj)) {
+        const v = obj[k];
+        if (v === undefined || v === null || k === "resourceType") continue;
+        let child: Node | null = null;
+        let childType: string | null = null;
+        let isArray: boolean;
+        const r = await this.resolveSegment(node, k, type);
+        if (r && !r.node.def.name.endsWith("[x]")) {
+          child = r.node;
+          isArray = r.node.def.isArray;
+          childType = r.forcedType ?? (r.node.def.types.length === 1 ? r.node.def.types[0] : r.node.def.contentReference ? "BackboneElement" : null);
+        } else if (r) {
+          child = r.node;
+          isArray = false;
+          childType = r.forcedType ?? null;
+        } else if (k === "extension" || k === "modifierExtension") {
+          child = await extIndex();
+          isArray = true;
+          childType = "Extension";
+        } else continue;
+        const p = `${path}.${k}`;
+        if (isArray && !Array.isArray(v)) {
+          this.rekeyWrapped(p);
+          obj[k] = [v];
+          this.note(`wrapped ${p} into an array`);
+        }
+        if (!child || !childType || PRIMITIVES.has(childType) || childType === "Resource" || childType === "DomainResource") continue;
+        const cur = obj[k];
+        const items: Array<[unknown, string]> = Array.isArray(cur) ? cur.map((x, i): [unknown, string] => [x, `${p}[${i}]`]) : [[cur, p]];
+        for (const [it, ip] of items) {
+          if (!isObject(it)) continue;
+          await walk(child, childType === "BackboneElement" || childType === "Element" ? null : childType, it, ip, depth + 1);
+        }
+      }
+    };
+    await walk({ index: this.index, def: this.index.root }, null, this.resource, this.rt, 0);
   }
 
   // ------------------------------------------------------------------ slices
@@ -1952,10 +2056,17 @@ class Composer {
 
   // ------------------------------------------------------------------ defaults / derived
 
+  /**
+   * defaultValue[x] / workflow defaults, only on elements the profile requires (min >= 1 — a
+   * required slice included) whose parent exists; an optional element (Patient.active,
+   * Immunization.primarySource …) is never filled, whatever its mustSupport flag. Nothing at all
+   * with `applyDefaults: "none"` (the required ones are then reported in `missing`).
+   */
   async applyDefaults(): Promise<void> {
+    if (this.ctx.applyDefaults === "none") return;
     for (const def of this.index.ordered) {
       if (!def.parentId || def.max === "0" || def.name.endsWith("[x]")) continue;
-      if (def.min < 1 && !def.el.mustSupport) continue;
+      if (def.min < 1) continue;
       const gp = stripSlices(def.path);
       let value: unknown;
       const dv = Object.keys(def.el).find((k) => /^defaultValue[A-Z]/.test(k));
@@ -2012,6 +2123,83 @@ class Composer {
   }
 
   // ------------------------------------------------------------------ lookups
+
+  /**
+   * A display is derived from the code, not clinical content: every model-written display of a
+   * Coding whose system|code resolves is checked with the validator's terminology rule; one the
+   * validator would reject is replaced by the code's display (provenance `lookup`, a note). The
+   * model's wording is kept as CodeableConcept.text when that is empty (provenance `model`). A
+   * case-only difference is valid as written; a whitespace-only one takes the valid spelling
+   * without a note. The code / system are never changed; an unresolvable code keeps its display.
+   * Displays the profile pins (fixed / pattern) or the MCP looked up are not touched.
+   */
+  async checkDisplays(): Promise<void> {
+    if (!this.deps.checkDisplay) return;
+    interface Job { coding: Record<string, any>; path: string; cc: Record<string, any> | null; ccPath: string | null }
+    const jobs: Job[] = [];
+    const auto = (p: string): boolean => this.provenance[p] === "fixed" || this.provenance[p] === "lookup";
+    const walk = (node: unknown, path: string, skip: boolean, cc: Record<string, any> | null, ccPath: string | null): void => {
+      if (Array.isArray(node)) {
+        node.forEach((x, i) => walk(x, `${path}[${i}]`, skip, cc, ccPath));
+        return;
+      }
+      if (!isObject(node)) return;
+      const skipHere = skip || auto(path);
+      if (
+        !skipHere &&
+        typeof node.system === "string" && typeof node.code === "string" && typeof node.display === "string" && node.display.trim() &&
+        node.value === undefined && node.unit === undefined && node.system !== UCUM_SYSTEM && !auto(`${path}.display`)
+      ) {
+        jobs.push({ coding: node, path, cc, ccPath });
+      }
+      const isCC = Array.isArray(node.coding);
+      for (const [k, v] of Object.entries(node)) {
+        if (k === "coding" && isCC) walk(v, `${path}.coding`, skipHere, node, path);
+        else walk(v, `${path}.${k}`, skipHere, null, null);
+      }
+    };
+    walk(this.resource, this.rt, false, null, null);
+    const ws = (x: string): string => x.replace(/\s+/g, " ").trim().toLowerCase();
+    let budget = 40;
+    for (const job of jobs) {
+      if (budget-- <= 0) break;
+      const { coding, path } = job;
+      const old: string = coding.display;
+      let verdict: { status: string; valid: string[] };
+      try {
+        verdict = await this.deps.checkDisplay(coding.system, coding.code, old, typeof coding.version === "string" ? coding.version : null);
+      } catch {
+        continue;
+      }
+      if (!verdict || verdict.status !== "invalid-display") continue;
+      const valid = (verdict.valid || []).filter((d) => typeof d === "string" && d.trim());
+      const same = valid.find((d) => ws(d) === ws(old));
+      if (same) {
+        // whitespace-only difference: the same display, spelled as the terminology does
+        coding.display = same;
+        this.mark(`${path}.display`, "lookup");
+        continue;
+      }
+      let canonical: string | null = null;
+      if (this.deps.lookupDisplay) {
+        try {
+          canonical = await this.deps.lookupDisplay(coding.system, coding.code);
+        } catch {
+          canonical = null;
+        }
+      }
+      if (canonical && valid.length && !valid.some((d) => d.toLowerCase() === canonical!.toLowerCase())) canonical = null;
+      canonical = canonical ?? valid[0] ?? null;
+      if (!canonical || ws(canonical) === ws(old)) continue;
+      coding.display = canonical;
+      this.mark(`${path}.display`, "lookup");
+      this.note(`display replaced for ${this.fieldLabel(path)} (was '${old}')`);
+      if (job.cc && job.ccPath && job.cc.text === undefined) {
+        job.cc.text = old;
+        this.mark(`${job.ccPath}.text`, "model");
+      }
+    }
+  }
 
   /** Display of every Coding without one (bounded; a failed lookup leaves the coding as it is). */
   async lookupDisplays(): Promise<void> {
@@ -2130,12 +2318,14 @@ export async function composeResource(input: AuthorInput, deps: ComposeDeps, ctx
   }
   const c = new Composer(resolved.sd, deps, ctx, String(input.key ?? ""));
   await c.placeFields(fields);
+  await c.wrapArrays();
   if (ensureMetaProfile(c.resource, resolved.canonical)) c.mark(`${c.rt}.meta.profile[0]`, "fixed");
   c.assignSlices();
   c.createDetermined();
   c.pinFixedPattern();
   await c.applyDefaults();
   await c.applyDerived();
+  await c.checkDisplays();
   await c.lookupDisplays();
   const profileId = resolved.id || String(resolved.sd.id || resolved.canonical);
   const missing = c.missing(profileId);
@@ -2153,5 +2343,6 @@ export async function composeResource(input: AuthorInput, deps: ComposeDeps, ctx
     },
     fieldMap: c.fieldMap,
     errors: c.errors,
+    notes: c.notes,
   };
 }

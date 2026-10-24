@@ -137,14 +137,18 @@ test("patient profile: extension slice, small required binding, reference target
   assert.deepEqual(f.managingOrganization.example, { ref: "organization" });
 });
 
-test("condition profile: workflow defaults keep the ValueSet but no code list; derived category; coding slices named", async () => {
+test("condition profile: an optional workflow-default field is a hint, not auto; derived category; coding slices named", async () => {
   const ex: Res = { resourceType: "Condition", meta: { profile: [COND_PROFILE] }, clinicalStatus: { coding: [{ code: "active" }] }, subject: { reference: "Patient/1" } };
   const res = await authoringFields({ profile: COND_PROFILE }, deps([ex, ex, ex]));
   const f = byField(res.fields);
-  assert.equal(f.clinicalStatus.source, "default");
-  assert.equal(f.clinicalStatus.value, "active");
+  // clinicalStatus is 0..1: the conventional value is shown, never filled by the MCP
+  assert.equal(f.clinicalStatus.required, false);
+  assert.equal(f.clinicalStatus.auto, undefined);
+  assert.equal(f.clinicalStatus.value, undefined);
+  assert.notEqual(f.clinicalStatus.source, "default");
+  assert.match(f.clinicalStatus.format || "", /optional; conventional value "active" — give it only when the record states it \(not auto-filled\)/);
+  assert.equal(f.clinicalStatus.example, "active");
   assert.equal(f.clinicalStatus.binding?.valueSet, "http://hl7.org/fhir/ValueSet/condition-clinical");
-  assert.ok(!f.clinicalStatus.binding?.codes);
   assert.equal(f.category.source, "derived");
   assert.equal(f.category.auto, true);
   assert.match(f.category.format || "", /^MCP derives it: encounter-diagnosis/);

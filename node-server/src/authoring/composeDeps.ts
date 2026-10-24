@@ -16,6 +16,7 @@ import { splitCanonical } from "../fhirIg.js";
 import * as terminology from "../fhirTerminology.js";
 import { DbValidatorResolver } from "../fhirValidationResolver.js";
 import type { NormalizeCandidate } from "../fhirSuggestions/types.js";
+import { parseValidDisplays } from "../fhirSuggestions/codes.js";
 import type { ComposeDeps, ResolvedProfile } from "./deps.js";
 import { authoringFields, type FieldsDeps } from "./fields.js";
 import { dbFieldsDeps } from "./fieldsTool.js";
@@ -86,6 +87,15 @@ export function composeDepsFor(svc: FHIRIGService, pkg: fhirIg.PackageRow, field
     lookupDisplay: async (system, code) => {
       const found = await terminology.lookup(system, code, pkg);
       return found && typeof found.display === "string" ? found.display : null;
+    },
+    // The validator's own display rule (DbValidatorResolver.checkCode, the call fhir_validate_resource makes).
+    checkDisplay: async (system, code, display, version) => {
+      const r = await resolver.checkCode(system, code, display, version);
+      if (r.status === "ok") return { status: "ok", valid: [] };
+      if (r.status === "invalid-display") {
+        return r.severity === "information" ? { status: "ok", valid: [] } : { status: "invalid-display", valid: parseValidDisplays(r.message) };
+      }
+      return { status: "unknown", valid: [] };
     },
     normalize: async (text, target, limit) => {
       const unversioned = (u: string | undefined): string | null => (u ? u.split("|")[0] : null);
