@@ -41,7 +41,11 @@ export const authorToolDescription =
   "on the context) is given; an offset is never guessed. Numbers keep the spelling you wrote (12.50 stays 12.50). " +
   "CORRECTIONS (listed in results[].notes): a display is derived from the code — a display you wrote that the terminology rejects for " +
   "a known code is replaced by the code's display (provenance lookup; your wording moves to CodeableConcept.text when that is empty; " +
-  "code and system are never changed); a single object / value given where FHIR repeats (e.g. code: {coding: {system, code}}) is " +
+  "the code is kept); a Coding.system that is a ValueSet URL (e.g. …/ValueSet/loinc-type-doc-code, or its /CodeSystem/ twin) gets the " +
+  "CodeSystem the code has in that ValueSet (http://loinc.org) when it is exactly one — several → an error with candidates; a system URL " +
+  "that resolves to nothing (e.g. http://terminology.hl7.org/CodeSystem/route) gets the one CodeSystem of the element's bound ValueSets " +
+  "(slices / additional bindings included) that holds the code (exact, else case-insensitive, else an exact display) — ambiguous or not " +
+  "found → left as written, the validation error carries suggestions; never guessed (provenance lookup, note \"system corrected for …\"); a single object / value given where FHIR repeats (e.g. code: {coding: {system, code}}) is " +
   "wrapped into an array. DEFAULTS: apply_defaults=\"required\" (default) fills the conventional value (Observation.status final, " +
   "Encounter.status finished …) or the profile's defaultValue only for elements the profile REQUIRES; optional ones (Patient.active, " +
   "Immunization.primarySource …) are never auto-filled — give them when the record states them; apply_defaults=\"none\" fills no " +

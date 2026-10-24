@@ -145,7 +145,10 @@ export const FIELDS_TOOL_DESCRIPTION =
   "element path relative to the resource ('identifier:mrn' = slice, 'value[x]' = choice, 'component:SystolicBP' = one component); " +
   "`kind` + `format` say how to write the value; `source` says where it comes from (record / facility / code / fixed / default / derived); " +
   "`binding.codes` lists small code sets (larger ones: fhir_normalize_code / fhir_expand_valueset); `targets` = reference types; " +
-  "`children` = sub-fields of components / dosage / names. Fields with `auto: true` (fixed, default, derived) need NOT be filled — the MCP " +
+  "`children` = sub-fields of components / dosage / names / backbones. Record links are listed too: a backbone that links another " +
+  "resource of the IG (Encounter.diagnosis {condition, use, rank}) is a field with its children and an example such as {condition: " +
+  "{ref: 'dx1'}}; a plain reference to one (Encounter.reasonReference, Condition.encounter) is in `more` with its `targets`. The whole " +
+  "response stays within 6,000 characters (`response_chars`); what does not fit moves to `more` / is counted in `omitted`. Fields with `auto: true` (fixed, default, derived) need NOT be filled — the MCP " +
   "supplies them (`value` shows what); `pins` shows the parts the profile fixes inside a field you still fill (identifier system, " +
   "component code, unit). Defaults are auto only on REQUIRED elements (e.g. Observation.status → final); an optional element with a " +
   "conventional value (Patient.active, Immunization.primarySource …) is listed as a normal optional field whose `format` / `example` " +
@@ -179,12 +182,13 @@ export function makeFieldsTool(deps: FieldsDeps): AuthoringToolSpec {
       const version = typeof args.version === "string" && args.version ? args.version : null;
       const includeMore = args.include_more !== false;
       try {
-        const res = await authoringFields({ profile, package_id: packageId, version, include_more: includeMore }, deps);
+        const envelope = { tool: FIELDS_TOOL_NAME, toolVersion: toolVersion(FIELDS_TOOL_NAME) };
+        const res = await authoringFields({ profile, package_id: packageId, version, include_more: includeMore, envelope_provenance: envelope }, deps);
         return {
           ok: true,
           data: authoringFieldsData(res),
           warnings: res.warnings,
-          provenance: { ...(res.provenance || {}), tool: FIELDS_TOOL_NAME, toolVersion: toolVersion(FIELDS_TOOL_NAME) },
+          provenance: { ...(res.provenance || {}), ...envelope },
         };
       } catch (e) {
         if (e instanceof AuthoringFieldsError) {

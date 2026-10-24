@@ -17,7 +17,8 @@ import * as terminology from "../fhirTerminology.js";
 import { DbValidatorResolver } from "../fhirValidationResolver.js";
 import type { NormalizeCandidate } from "../fhirSuggestions/types.js";
 import { parseValidDisplays } from "../fhirSuggestions/codes.js";
-import type { ComposeDeps, ResolvedProfile } from "./deps.js";
+import { hl7UrlMustResolve, isKnownSpace } from "../fhirUriRules.js";
+import type { ComposeDeps, ResolvedProfile, SystemResolution } from "./deps.js";
 import { authoringFields, type FieldsDeps } from "./fields.js";
 import { dbFieldsDeps } from "./fieldsTool.js";
 import type { ComposeContext, ComposeOutput, Composer } from "./service.js";
@@ -64,6 +65,24 @@ async function loadArtifact(pkg: fhirIg.PackageRow, identifier: string): Promise
     [pids, pvers, identifier],
   );
   return r.rows[0] ?? null;
+}
+
+/** A ValueSet by canonical: the closure's copy, else any installed package's (newest load order). */
+async function loadValueSetAnywhere(pkg: fhirIg.PackageRow, url: string): Promise<Record<string, any> | null> {
+  const u = url.split("|")[0];
+  const own = await terminology.loadValueSet(u, pkg);
+  if (own) return own;
+  const r = await query<{ raw_json: unknown }>(
+    "SELECT raw_json FROM fhir.artifacts WHERE resource_type = 'ValueSet' AND canonical_url = $1 ORDER BY package_id, package_version DESC LIMIT 1",
+    [u],
+  );
+  return r.rows.length ? jsonValue(r.rows[0].raw_json) : null;
+}
+
+/** `/A/` → `/B/` in the last occurrence (canonical twins: …/CodeSystem/x ↔ …/ValueSet/x). */
+function twinUrl(url: string, from: string, to: string): string | null {
+  const i = url.lastIndexOf(from);
+  return i > 0 && i + from.length < url.length ? `${url.slice(0, i)}${to}${url.slice(i + from.length)}` : null;
 }
 
 /**
@@ -115,12 +134,48 @@ export function composeDepsFor(svc: FHIRIGService, pkg: fhirIg.PackageRow, field
         );
     },
     expandValueSet: async (url, limit) => {
-      const vs = await terminology.loadValueSet(url.split("|")[0], pkg);
+      const vs = await loadValueSetAnywhere(pkg, url);
       if (!vs) return null;
       const exp = await terminology.expandCompose(vs.compose || {}, pkg, limit);
       return { codings: exp.codings, total: exp.total, truncated: exp.truncated };
     },
     valueSetContains: (url, system, code) => resolver.valueSetContains(url, system, code),
+    // v1.2 system correction: the validator's own resolution rules (DbValidatorResolver + fhirUriRules).
+    resolveSystem: async (url, code): Promise<SystemResolution> => {
+      const u = url.split("|")[0];
+      if (!/^[a-z][a-z0-9+.-]*:/i.test(u)) return { kind: "other" };
+      if (await terminology.loadArtifactByCanonical("CodeSystem", u, pkg)) return { kind: "codesystem" };
+      if (await loadValueSetAnywhere(pkg, u)) return { kind: "valueset", valueSet: u };
+      const vsTwin = twinUrl(u, "/CodeSystem/", "/ValueSet/");
+      if (vsTwin && (await loadValueSetAnywhere(pkg, vsTwin))) return { kind: "valueset", valueSet: vsTwin };
+      const check = await resolver.checkCode(u, code, null);
+      if (check.status !== "unknown-system") return { kind: "codesystem" };
+      if (await resolver.definitionExists(u)) return { kind: "other" };
+      // HL7 spaces: only what the HL7 validator itself rejects ("No definition could be found for URL value").
+      if (isKnownSpace(u) && !hl7UrlMustResolve(u)) return { kind: "other" };
+      const csTwin = twinUrl(u, "/ValueSet/", "/CodeSystem/");
+      const twinHeld = csTwin ? await terminology.loadArtifactByCanonical("CodeSystem", csTwin, pkg) : null;
+      return { kind: "unknown", codeSystemTwin: twinHeld ? csTwin : null };
+    },
+    valueSetSystems: async (url) => {
+      const out = new Set<string>();
+      const visit = async (u: string, depth: number): Promise<void> => {
+        const vs = await loadValueSetAnywhere(pkg, u);
+        const incs = vs && vs.compose && Array.isArray(vs.compose.include) ? vs.compose.include : [];
+        for (const inc of incs) {
+          if (inc && typeof inc.system === "string" && inc.system) out.add(inc.system.split("|")[0]);
+          else if (inc && depth < 1 && Array.isArray(inc.valueSet)) for (const v of inc.valueSet.slice(0, 3)) if (typeof v === "string") await visit(v, depth + 1);
+        }
+      };
+      await visit(url, 0);
+      return [...out];
+    },
+    codeInSystem: async (system, code) => {
+      const r = await resolver.checkCode(system, code, null);
+      if (r.status === "ok" || r.status === "invalid-display") return true;
+      if (r.status === "invalid-code") return false;
+      return undefined;
+    },
     authoringFields: async (sd: Record<string, any>): Promise<FieldSpec[]> => {
       const profile = typeof sd.url === "string" && sd.url ? sd.url : typeof sd.id === "string" ? sd.id : null;
       if (!profile) return [];

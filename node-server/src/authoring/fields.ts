@@ -11,9 +11,20 @@
  *     elements "commonly expected" = present in >= 50% of the IG package's own examples of
  *     the profile (falling back to every example of the resource type when the package has
  *     fewer than 3 examples for the profile);
- *   - tier 2, `more`: the remaining mustSupport elements as {field, kind};
+ *   - tier 1 also: record links (v1.2) — an optional backbone element with a required
+ *     Reference child whose target profiles include a profile of the same IG (same canonical
+ *     base) of a record resource type (not an actor / master-data entity, ENTITY_TYPES), e.g.
+ *     Encounter.diagnosis {condition → Condition-twcore, use, rank}: such a backbone exists to
+ *     link resources authored together, so it is listed with all its children and an example
+ *     `{condition: {ref: key}}` even when the IG neither marks it mustSupport nor uses it in
+ *     its examples;
+ *   - tier 2, `more`: the remaining mustSupport elements as {field, kind}, plus the direct
+ *     record links (an optional Reference element with such a target, e.g.
+ *     Encounter.reasonReference) as {field, kind: "reference", targets};
  *   - everything else is not listed (optional and unsupported by the IG).
- * Nothing is truncated silently: fields dropped for the budget are counted in `omitted`.
+ * Nothing is truncated silently: fields dropped for the budget are counted in `omitted`. The
+ * budget (SIZE_BUDGET) applies to the WHOLE tool response (envelope, warnings and provenance
+ * included, non-ASCII counted as \uXXXX escapes) minus RESPONSE_MARGIN, as `response_chars`.
  *
  * IG-agnostic: everything is read from the snapshot, the package's ValueSets and examples;
  * the only curated tables are the generic ones of fhirRequiredElements (workflow defaults,
@@ -97,26 +108,57 @@ export interface AuthoringFieldsRequest {
   include_more?: boolean;
   /** "full" (compose engine): every tier-1 and tier-2 field fully described, no size budget. */
   detail?: "budget" | "full";
+  /** Provenance keys the tool envelope adds (tool, toolVersion) — measured into `response_chars`. */
+  envelope_provenance?: Record<string, unknown>;
 }
 
 export interface AuthoringFieldsResult {
   profile: { id: string; canonical: string | null; resourceType: string; package_id: string; version: string };
   fields: FieldSpec[];
   /** Remaining mustSupport fields (absent when include_more=false; `more_count` still says how many). */
-  more?: Array<{ field: string; kind: FieldKind }>;
+  more?: MoreField[];
   more_count: number;
   /** Fields dropped to meet the size budget (never silent). */
   omitted: number;
   examples: { basis: "profile" | "resource_type" | "none"; count: number };
-  /** Characters of the JSON the tool returns in `data` (budget: SIZE_BUDGET). */
+  /** Characters of the JSON the tool returns in `data`. */
   size_chars: number;
+  /**
+   * Characters of the whole tool response (`{ok, data, warnings, provenance}`, the text the MCP
+   * client receives), counting every non-ASCII character as its 6-character \uXXXX escape — the
+   * measure the size budget applies to (SIZE_BUDGET - RESPONSE_MARGIN).
+   */
+  response_chars: number;
   warnings: string[];
   provenance?: Record<string, unknown>;
   deps_missing?: unknown[];
 }
 
-/** Size budget (characters of the serialised `data` block) for the default (tiered) output. */
+/** `more` entry: a field listed compactly (record links carry their reference targets). */
+export interface MoreField {
+  field: string;
+  kind: FieldKind;
+  targets?: string[];
+}
+
+/** Size budget (characters of the whole serialised tool response) for the default (tiered) output. */
 export const SIZE_BUDGET = 6000;
+/**
+ * Head-room kept under SIZE_BUDGET for what a client adds when it measures the response
+ * (its own re-serialisation, a different provenance resolution): the tiers are trimmed until
+ * response_chars <= SIZE_BUDGET - RESPONSE_MARGIN.
+ */
+export const RESPONSE_MARGIN = 150;
+/** Children listed for a record-link backbone (all of them, up to this many). */
+const LINK_CHILDREN = 6;
+/**
+ * Actor / master-data resource types (FHIR R4 Administration — Individuals and Entities):
+ * references to them are who / where, not resources of the record authored together.
+ */
+const ENTITY_TYPES = new Set([
+  "Patient", "Practitioner", "PractitionerRole", "RelatedPerson", "Person", "Group", "Organization", "OrganizationAffiliation",
+  "HealthcareService", "Endpoint", "Location", "Substance", "BiologicallyDerivedProduct", "Device", "DeviceMetric",
+]);
 /** A binding's codes are listed inline only when its expansion has at most this many codes. */
 export const SMALL_BINDING = 20;
 /** An element is "commonly expected" when present in at least this share of the examples. */
@@ -313,6 +355,10 @@ interface Candidate {
   listCodes: boolean;
   targetCanonicals: string[];
   children?: Candidate[];
+  /** Every child of a top-level backbone (record links list them all). */
+  allChildren?: Candidate[];
+  /** Record link (v1.2): "backbone" = tier 1 with all children, "reference" = tier 2 with targets. */
+  link?: { kind: "backbone" | "reference"; child: string | null; targets: string[] };
 }
 
 interface BuildCtx {
@@ -516,6 +562,7 @@ function buildCandidate(ctx: BuildCtx, el: ProjectedElement, depth: number): Can
   // Shallow children for backbone / dosage / humanName fields.
   if (depth === 0 && (types[0] === "BackboneElement" || kind === "dosage" || kind === "humanName")) {
     const kids: Candidate[] = [];
+    const all: Candidate[] = [];
     for (const ce of E.values()) {
       if (!ce.id.startsWith(`${id}.`) || ce.max === "0") continue;
       const rel = ce.id.slice(id.length + 1);
@@ -526,6 +573,7 @@ function buildCandidate(ctx: BuildCtx, el: ProjectedElement, depth: number): Can
       if (!kc) continue;
       // Pinned children are already in the parent's `pins` / `value`.
       if (kc.spec.auto && (pins || auto)) continue;
+      all.push(kc);
       if (kc.required || kc.expected || kc.mustSupport || Boolean(fixedOrPattern(ce)) || (kc.common !== null && kc.common >= COMMON_PERCENT)) {
         if (pins) delete kc.spec.pins;
         kids.push(kc);
@@ -535,8 +583,69 @@ function buildCandidate(ctx: BuildCtx, el: ProjectedElement, depth: number): Can
       cand.children = kids;
       spec.children = kids.map((k) => k.spec);
     }
+    if (types[0] === "BackboneElement") cand.allChildren = all;
   }
   return cand;
+}
+
+/** Canonical base of a profile URL (`https://x/ig/y` of `https://x/ig/y/StructureDefinition/z`), or null. */
+function canonicalBase(url: string | null | undefined): string | null {
+  if (!url) return null;
+  const u = String(url).split("|")[0];
+  const i = u.lastIndexOf("/StructureDefinition/");
+  return i > 0 ? u.slice(0, i) : null;
+}
+
+function referenceTargets(el: ProjectedElement): string[] {
+  return [...new Set((el.types || []).filter((t) => shortType(t.code) === "Reference").flatMap((t) => t.targetProfile || []).map((u) => String(u).split("|")[0]))];
+}
+
+/**
+ * Record links (v1.2, see the header): optional top-level elements not otherwise listed that link
+ * the resource to another resource of the record — a Reference (or a backbone whose required
+ * Reference child is one) whose target profiles include a profile of the same IG (same canonical
+ * base as the profile) of a non-entity resource type. Data-driven: snapshot + target types only.
+ */
+async function markRecordLinks(ctx: BuildCtx, cands: Candidate[], listed: (c: Candidate) => boolean): Promise<void> {
+  const base = canonicalBase(ctx.loaded.canonical);
+  if (!base) return;
+  interface Probe { c: Candidate; kind: "backbone" | "reference"; child: string | null; canonicals: string[] }
+  const probes: Probe[] = [];
+  for (const c of cands) {
+    if (c.required || c.expected || c.spec.auto || listed(c) || sliceNameOf(c.id)) continue;
+    if (c.spec.kind === "reference") {
+      probes.push({ c, kind: "reference", child: null, canonicals: referenceTargets(c.el) });
+      continue;
+    }
+    if (!c.allChildren) continue;
+    for (const k of c.allChildren) {
+      if (k.spec.kind !== "reference" || (k.el.min ?? 0) < 1) continue;
+      probes.push({ c, kind: "backbone", child: lastSeg(k.id), canonicals: referenceTargets(k.el) });
+      break;
+    }
+  }
+  const own = [...new Set(probes.flatMap((p) => p.canonicals).filter((u) => canonicalBase(u) === base))];
+  if (!own.length) return;
+  let types = new Map<string, string>();
+  try {
+    types = await ctx.deps.resourceTypes(ctx.loaded, own);
+  } catch {
+    return;
+  }
+  for (const p of probes) {
+    const targets = [...new Set(p.canonicals.filter((u) => canonicalBase(u) === base).map((u) => types.get(u)).filter((t): t is string => !!t && !ENTITY_TYPES.has(t)))];
+    if (!targets.length) continue;
+    p.c.link = { kind: p.kind, child: p.child, targets };
+    if (p.kind === "backbone") {
+      const kids = (p.c.allChildren || []).slice(0, LINK_CHILDREN);
+      p.c.children = kids;
+      p.c.spec.children = kids.map((k) => k.spec);
+      const key = targets[0].charAt(0).toLowerCase() + targets[0].slice(1);
+      p.c.spec.example = { [p.child!]: { ref: key } };
+      p.c.spec.why = `links to ${targets.join(" / ")} of this IG (record link)`;
+      p.c.spec.format = [p.c.spec.format, `give ${p.child} as {ref: '<key of that resource in the context>'}`].filter(Boolean).join("; ");
+    }
+  }
 }
 
 async function attachBindings(ctx: BuildCtx, cands: Candidate[]): Promise<void> {
@@ -613,7 +722,7 @@ function baseCoveredBySlices(c: Candidate, listedIds: Set<string>, all: Candidat
 // Main                                                                        //
 // --------------------------------------------------------------------------- //
 
-type Core = Omit<AuthoringFieldsResult, "size_chars" | "warnings" | "provenance">;
+type Core = Omit<AuthoringFieldsResult, "size_chars" | "response_chars" | "warnings" | "provenance">;
 
 function dataBlock(res: Core): Record<string, unknown> {
   const d: Record<string, unknown> = { profile: res.profile, fields: res.fields };
@@ -627,6 +736,33 @@ function dataBlock(res: Core): Record<string, unknown> {
 
 function measure(res: Core): number {
   return JSON.stringify(dataBlock(res)).length;
+}
+
+/** JSON length with every non-ASCII UTF-16 unit counted as its 6-character \\uXXXX escape. */
+function escapedLength(v: unknown): number {
+  const s = JSON.stringify(v);
+  let n = s.length;
+  for (let i = 0; i < s.length; i++) if (s.charCodeAt(i) > 0x7e) n += 5;
+  return n;
+}
+
+/** Default envelope provenance keys when the caller does not pass its own (tool name + a version). */
+const DEFAULT_ENVELOPE = { tool: "fhir_get_authoring_fields", toolVersion: "00.00.00" };
+
+/**
+ * Characters of the whole tool response as fieldsTool's handler builds it:
+ * `{ok, data: {...data, size_chars, response_chars}, warnings, provenance: {...provenance, tool, toolVersion}}`.
+ */
+function measureResponse(res: Core, warnings: string[], provenance: Record<string, unknown> | undefined, envelope: Record<string, unknown>): number {
+  const data = { ...dataBlock(res), size_chars: measure(res), response_chars: 0 };
+  const env = (n: number): unknown => ({ ok: true, data: { ...data, response_chars: n }, warnings, provenance: { ...(provenance || {}), ...envelope } });
+  let n = escapedLength(env(0));
+  for (let i = 0; i < 3; i++) {
+    const next = escapedLength(env(n));
+    if (next === n) break;
+    n = next;
+  }
+  return n;
 }
 
 function stripDisplays(fields: FieldSpec[]): void {
@@ -698,12 +834,15 @@ export async function authoringFields(req: string | AuthoringFieldsRequest, deps
     if (c) cands.push(c);
   }
 
-  const isTier1 = (c: Candidate): boolean => c.required || c.expected || (c.common !== null && c.common >= COMMON_PERCENT);
+  const isCommonTier1 = (c: Candidate): boolean => c.required || c.expected || (c.common !== null && c.common >= COMMON_PERCENT);
+  await markRecordLinks(ctx, cands, (c) => isCommonTier1(c) || c.mustSupport);
+  const isTier1 = (c: Candidate): boolean => isCommonTier1(c) || c.link?.kind === "backbone";
+  const isTier2 = (c: Candidate): boolean => c.mustSupport || c.link?.kind === "reference";
   const full = r.detail === "full";
-  const listedIds = new Set(cands.filter((c) => isTier1(c) || (full && c.mustSupport)).map((c) => c.id));
+  const listedIds = new Set(cands.filter((c) => isTier1(c) || (full && isTier2(c))).map((c) => c.id));
   const kept = cands.filter((c) => !baseCoveredBySlices(c, listedIds, cands));
   const tier1 = kept.filter(isTier1);
-  const tier2 = kept.filter((c) => !isTier1(c) && c.mustSupport);
+  const tier2 = kept.filter((c) => !isTier1(c) && isTier2(c));
   const listed = full ? [...tier1, ...tier2] : tier1;
   await attachBindings(ctx, listed);
   await attachTargets(ctx, listed);
@@ -715,43 +854,51 @@ export async function authoringFields(req: string | AuthoringFieldsRequest, deps
     omitted: 0,
     examples: { basis, count: examples.length },
   };
-  if (!full && r.include_more !== false) res.more = tier2.map((c) => ({ field: c.spec.field, kind: c.spec.kind }));
+  if (!full && r.include_more !== false) {
+    res.more = tier2.map((c): MoreField => (c.link?.kind === "reference" ? { field: c.spec.field, kind: c.spec.kind, targets: c.link.targets } : { field: c.spec.field, kind: c.spec.kind }));
+  }
   if (loaded.depsMissing?.length) res.deps_missing = loaded.depsMissing;
 
+  const envelope = r.envelope_provenance ?? DEFAULT_ENVELOPE;
+  const respSize = (x: Core): number => measureResponse(x, warnings, loaded.provenance, envelope);
   if (!full) {
-    // Budget: trim decorations first, then move common-only fields to `more`, then drop from `more`
-    // (only when that gets the output under the budget — otherwise the list stays and a warning says so).
-    let size = measure(res);
-    if (size > SIZE_BUDGET) {
+    // Budget (whole response): trim decorations first, then move common-only fields to `more`
+    // (record links last), then drop from `more` (only when that gets the output under the
+    // budget — otherwise the list stays and a warning says so).
+    const limit = SIZE_BUDGET - RESPONSE_MARGIN;
+    let size = respSize(res);
+    if (size > limit) {
       stripDisplays(res.fields);
-      size = measure(res);
+      size = respSize(res);
     }
-    if (size > SIZE_BUDGET) {
+    if (size > limit) {
       compactChildren(res.fields);
-      size = measure(res);
+      size = respSize(res);
     }
-    while (size > SIZE_BUDGET) {
-      const i = res.fields.map((f, idx) => ({ f, idx })).reverse().find(({ f }) => !f.required && !(f.why || "").startsWith("expected"));
+    const linkIds = new Set(tier1.filter((c) => c.link).map((c) => c.spec.field));
+    while (size > limit) {
+      const order = res.fields.map((f, idx) => ({ f, idx })).reverse().filter(({ f }) => !f.required && !(f.why || "").startsWith("expected"));
+      const i = order.find(({ f }) => !linkIds.has(f.field)) ?? order[0];
       if (!i) break;
       const [moved] = res.fields.splice(i.idx, 1);
       if (res.more) res.more.push({ field: moved.field, kind: moved.kind });
       res.more_count++;
-      size = measure(res);
+      size = respSize(res);
     }
-    if (size > SIZE_BUDGET && res.more && res.more.length) {
-      const without = measure({ ...res, more: [] });
-      if (without <= SIZE_BUDGET) {
-        while (size > SIZE_BUDGET && res.more.length) {
+    if (size > limit && res.more && res.more.length) {
+      const without = respSize({ ...res, more: [] });
+      if (without <= limit) {
+        while (size > limit && res.more.length) {
           res.more.pop();
           res.omitted++;
-          size = measure(res);
+          size = respSize(res);
         }
       }
     }
-    if (size > SIZE_BUDGET) warnings.push(`output exceeds the ${SIZE_BUDGET}-character budget (${size} chars): every listed field is required by the profile`);
+    if (size > limit) warnings.push(`output exceeds the ${limit}-character budget (${size} chars): every listed field is required by the profile`);
   }
 
-  const out: AuthoringFieldsResult = { ...res, size_chars: measure(res), warnings };
+  const out: AuthoringFieldsResult = { ...res, size_chars: measure(res), response_chars: respSize(res), warnings };
   if (loaded.provenance) out.provenance = loaded.provenance;
   return out;
 }
@@ -760,5 +907,6 @@ export async function authoringFields(req: string | AuthoringFieldsRequest, deps
 export function authoringFieldsData(res: AuthoringFieldsResult): Record<string, unknown> {
   const d = dataBlock(res);
   d.size_chars = res.size_chars;
+  d.response_chars = res.response_chars;
   return d;
 }

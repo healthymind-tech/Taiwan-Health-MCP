@@ -18,6 +18,23 @@ export interface DisplayVerdict {
   valid: string[];
 }
 
+/**
+ * How a Coding.system URL resolves (v1.2 system correction, compose.ts `correctSystems`):
+ *   codesystem  a CodeSystem of the closure or a terminology the validator knows — never touched;
+ *   valueset    the URL (or its `/CodeSystem/` → `/ValueSet/` twin) is a ValueSet of an installed
+ *               package — the code's real CodeSystem is taken from that ValueSet when unique;
+ *   unknown     no definition anywhere, by the validator's URL rules (an HL7-space URL only when
+ *               the HL7 validator reports "No definition could be found for URL value");
+ *               `codeSystemTwin` = the `/ValueSet/` → `/CodeSystem/` twin when that is a CodeSystem;
+ *   other       defined somewhere else (another package's CodeSystem, a NamingSystem, an HL7 IG
+ *               the validator cannot judge) — left as written.
+ */
+export type SystemResolution =
+  | { kind: "codesystem" }
+  | { kind: "valueset"; valueSet: string }
+  | { kind: "unknown"; codeSystemTwin?: string | null }
+  | { kind: "other" };
+
 export interface ResolvedProfile {
   /** The StructureDefinition (with `snapshot.element`). */
   sd: Record<string, any>;
@@ -57,4 +74,10 @@ export interface ComposeDeps {
    * composer derives a shallow field list from the snapshot itself.
    */
   authoringFields?(sd: Record<string, any>): FieldSpec[] | Promise<FieldSpec[]>;
+  /** Appended (v1.2): how a Coding.system URL resolves (the code helps decide a known terminology). */
+  resolveSystem?(url: string, code: string): Promise<SystemResolution>;
+  /** Appended (v1.2): CodeSystems a ValueSet's compose draws from (include.system, one level of include.valueSet). */
+  valueSetSystems?(url: string): Promise<string[]>;
+  /** Appended (v1.2): is `code` a code of CodeSystem `system` (the validator's code check; undefined = cannot tell). */
+  codeInSystem?(system: string, code: string): Promise<boolean | undefined>;
 }

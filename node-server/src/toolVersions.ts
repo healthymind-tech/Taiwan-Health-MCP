@@ -170,7 +170,12 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.1.0 (evaluation feedback): workflow defaults are `auto` only on REQUIRED elements; an optional element with a
   //   conventional value (Patient.active, Immunization.primarySource, Condition.clinicalStatus 0..1 …) is a plain
   //   optional field whose format / example carry that value as a hint. Description: display replacement, array wrapping.
-  fhir_get_authoring_fields: "1.1.0",
+  // 1.2.0 (evaluation v12): record links — an optional backbone with a required Reference child targeting a profile of
+  //   the same IG (same canonical base) of a non-entity type is a tier-1 field with all its children and a {child: {ref}}
+  //   example (Encounter.diagnosis); a direct reference to one goes to `more` with `targets` (Encounter.reasonReference,
+  //   Condition.encounter, Observation.hasMember …). The size budget applies to the WHOLE response (envelope, warnings,
+  //   provenance; non-ASCII counted as \uXXXX) minus a 150-char margin; new data.response_chars.
+  fhir_get_authoring_fields: "1.2.0",
   // 1.1.0 (evaluation feedback): (1) a model display the validator's terminology rule rejects for a resolvable code is
   //   replaced by the code's display (provenance lookup; the model wording moves to CodeableConcept.text when empty;
   //   case-only differences are valid, whitespace-only ones take the valid spelling); (2) a single object / scalar where
@@ -178,7 +183,12 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   defaults / defaultValue[x] only on required elements (optional ones never auto-filled), new `apply_defaults`
   //   ("required" | "none", remembered on the context); (4) new `site_config` (facility settings text, merged on the
   //   context, used by assembly grounding). Results gain `notes`, data gains `settings`.
-  fhir_author_resources: "1.1.0",
+  // 1.2.0 (evaluation v12): Coding.system correction (notes "system corrected for …", provenance lookup): a ValueSet URL
+  //   (or its /CodeSystem/ twin) → the CodeSystem the code has in that ValueSet when exactly one (several → error with
+  //   candidates; not a member → as before); a URL that resolves to nothing by the validator's URL rules → the one CodeSystem
+  //   of the element's bound ValueSets (slices / additional bindings) holding the code (exact, case-insensitive, exact
+  //   display — each only when unique); otherwise unchanged (validator error + v10 suggestions).
+  fhir_author_resources: "1.2.0",
   // 1.0.1: action=get results carry the author result's new `notes` (fhir_author_resources 1.1.0); otherwise unchanged.
   fhir_context: "1.0.1",
   // 1.1.0: new `site_config` (merged with the context's) passed to the grounding engine with source_text, so facility

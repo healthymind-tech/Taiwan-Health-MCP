@@ -18,6 +18,14 @@
  *   1b. arrays     any element with max > 1 holding a single object / scalar (a raw FHIR shape the
  *                  model passed through, e.g. `code: {coding: {…}}`) is wrapped into a one-item
  *                  array, at any depth (note `wrapped <path> into an array`)
+ *   1c. systems    (v1.2) a model Coding whose `system` is a ValueSet URL (or its /CodeSystem/ twin)
+ *                  gets the CodeSystem the code has in that ValueSet, when exactly one; a system URL
+ *                  that resolves to nothing (validator URL rules) gets the one CodeSystem of the
+ *                  element's bound ValueSets (slices / additional bindings — fhirSuggestions/bindings
+ *                  walker) that holds the code (exact, else case-insensitive, else an exact display),
+ *                  when exactly one. Provenance `lookup`, note `system corrected for …`. Several
+ *                  CodeSystems for a ValueSet URL → error + candidates; anything else undecided is
+ *                  left as written (the validator reports it with the v10 suggestions)
  *   5. defaults    `defaultValue[x]` and the conventional workflow defaults (fhirRequiredElements
  *                  WORKFLOW_DEFAULTS) only on elements the profile REQUIRES (min >= 1, required
  *                  slices included) that the model left empty; optional ones are never filled;
@@ -50,8 +58,10 @@ import {
   type ProjectedElement,
 } from "../fhirRequiredElements.js";
 import { textSim } from "../fhirSuggestions/util.js";
+import { canonicalName, elementBindings } from "../fhirSuggestions/bindings.js";
+import type { SuggestionDeps } from "../fhirSuggestions/types.js";
 import { UCUM_SYSTEM } from "../fhirUcum.js";
-import type { ComposeDeps, ExpandedCoding, NormalizeCandidate } from "./deps.js";
+import type { ComposeDeps, ExpandedCoding, NormalizeCandidate, SystemResolution } from "./deps.js";
 import type { ApplyDefaults, AuthorInput, FieldKind, FieldSpec, Provenance } from "./types.js";
 import * as V from "./values.js";
 
@@ -1509,6 +1519,245 @@ class Composer {
     return { ok: true, value: out };
   }
 
+  // ------------------------------------------------------------------ system correction (v1.2)
+
+  private readonly systemResolutions = new Map<string, Promise<SystemResolution | null>>();
+  private readonly composeSystems = new Map<string, Promise<string[]>>();
+
+  private resolveSystem(url: string, code: string): Promise<SystemResolution | null> {
+    const key = `${url}\0${code}`;
+    let p = this.systemResolutions.get(key);
+    if (!p) {
+      p = this.deps.resolveSystem ? this.deps.resolveSystem(url, code).catch(() => null) : Promise.resolve(null);
+      this.systemResolutions.set(key, p);
+    }
+    return p;
+  }
+
+  /** CodeSystems a ValueSet draws from: its expansion's systems plus its compose's include systems. */
+  private systemsOfValueSet(valueSet: string): Promise<string[]> {
+    let p = this.composeSystems.get(valueSet);
+    if (!p) {
+      p = (async () => {
+        const out = new Set<string>();
+        const exp = await this.expansion(valueSet);
+        for (const c of exp?.codings ?? []) if (c.system) out.add(c.system);
+        if (this.deps.valueSetSystems) {
+          try {
+            for (const s of await this.deps.valueSetSystems(valueSet)) if (s) out.add(s);
+          } catch {
+            // compose unavailable
+          }
+        }
+        return [...out];
+      })();
+      this.composeSystems.set(valueSet, p);
+    }
+    return p;
+  }
+
+  /**
+   * CodeSystem → the ValueSet's coding with `code` under it: exact codes of the expansion, plus —
+   * when the expansion is cut, empty or unavailable (e.g. a LOINC property filter) — membership
+   * under each of the ValueSet's systems (valueSetContains), and when membership itself cannot be
+   * decided locally, the systems that hold the code (`codeInSystem`), marked `uncertain`. Only
+   * when no system is certain are the uncertain ones returned. `caseInsensitive` matches the
+   * expansion only (never a membership guess).
+   */
+  private async codesInValueSet(valueSet: string, code: string, caseInsensitive = false): Promise<Map<string, ExpandedCoding & { uncertain?: true }>> {
+    const out = new Map<string, ExpandedCoding & { uncertain?: true }>();
+    const exp = await this.expansion(valueSet);
+    const lower = code.toLowerCase();
+    const pairs = new Set<string>();
+    for (const c of exp?.codings ?? []) {
+      if (!c.system) continue;
+      if (caseInsensitive ? c.code.toLowerCase() !== lower : c.code !== code) continue;
+      pairs.add(`${c.system}|${c.code}`);
+      if (!out.has(c.system)) out.set(c.system, c);
+    }
+    // two different spellings under one system (case-insensitive) is not a unique match
+    if (caseInsensitive) {
+      for (const s of [...out.keys()]) if ([...pairs].filter((p) => p.startsWith(`${s}|`)).length > 1) out.set(s, { system: s, code: "", display: null });
+      return out;
+    }
+    if (exp && !exp.truncated && exp.codings.length) return out;
+    const uncertain = new Map<string, ExpandedCoding & { uncertain: true }>();
+    for (const s of (await this.systemsOfValueSet(valueSet)).slice(0, 8)) {
+      if (out.has(s)) continue;
+      let member: boolean | undefined;
+      try {
+        member = this.deps.valueSetContains ? await this.deps.valueSetContains(valueSet, s, code) : undefined;
+      } catch {
+        member = undefined;
+      }
+      if (member === true) out.set(s, { system: s, code, display: null });
+      else if (member === undefined && this.deps.codeInSystem) {
+        let held: boolean | undefined;
+        try {
+          held = await this.deps.codeInSystem(s, code);
+        } catch {
+          held = undefined;
+        }
+        if (held === true) uncertain.set(s, { system: s, code, display: null, uncertain: true });
+      }
+    }
+    return out.size ? out : uncertain;
+  }
+
+  private systemLabel(path: string): string {
+    const label = this.fieldLabel(path);
+    const rel = path.startsWith(`${this.rt}.`) ? path.slice(this.rt.length + 1) : path;
+    return rel === label ? label : `${label} (${rel})`;
+  }
+
+  private applySystem(coding: Record<string, any>, path: string, system: string, code: string, reason: string): void {
+    coding.system = system;
+    this.mark(`${path}.system`, "lookup");
+    if (code && code !== coding.code) {
+      coding.code = code;
+      this.mark(`${path}.code`, "lookup");
+    }
+    this.note(`system corrected for ${this.systemLabel(path)}: ${reason}`);
+  }
+
+  /**
+   * 1c (v1.2): Coding.system written as a ValueSet URL, or as a URL that resolves to nothing — see
+   * the header. Runs after placement (before slices / pinning, so a corrected system is what the
+   * slice discriminators and fixed / pattern values see). Model codings only; bounded.
+   */
+  async correctSystems(): Promise<void> {
+    if (!this.deps.resolveSystem) return;
+    interface Job { coding: Record<string, any>; path: string }
+    const jobs: Job[] = [];
+    const auto = (p: string): boolean => this.provenance[p] === "fixed" || this.provenance[p] === "lookup" || this.provenance[p] === "default" || this.provenance[p] === "derived";
+    const walk = (node: unknown, path: string): void => {
+      if (Array.isArray(node)) {
+        node.forEach((x, i) => walk(x, `${path}[${i}]`));
+        return;
+      }
+      if (!isObject(node)) return;
+      if (
+        typeof node.system === "string" && node.system && typeof node.code === "string" && node.code &&
+        node.value === undefined && node.unit === undefined && node.system !== UCUM_SYSTEM && !auto(path) && !auto(`${path}.system`)
+      ) {
+        jobs.push({ coding: node, path });
+      }
+      for (const [k, v] of Object.entries(node)) walk(v, `${path}.${k}`);
+    };
+    walk(this.resource, this.rt);
+    for (const job of jobs.slice(0, 20)) {
+      const system = String(job.coding.system).trim();
+      const code = String(job.coding.code);
+      const res = await this.resolveSystem(system.split("|")[0], code);
+      if (!res) continue;
+      if (res.kind === "valueset") await this.systemFromValueSet(job.coding, job.path, system, code, res.valueSet);
+      else if (res.kind === "unknown") await this.systemFromBindings(job.coding, job.path, system, code, res.codeSystemTwin ?? null);
+    }
+  }
+
+  private async systemFromValueSet(coding: Record<string, any>, path: string, system: string, code: string, valueSet: string): Promise<void> {
+    const hits = await this.codesInValueSet(valueSet, code);
+    const twin = stripVersion(system) !== stripVersion(valueSet) ? ` (its ValueSet twin ${valueSet})` : "";
+    if (hits.size === 1) {
+      const [[cs, hit]] = [...hits.entries()];
+      const undecided = hit.uncertain ? ` (the only CodeSystem of the ValueSet holding it; membership not decidable locally)` : "";
+      this.applySystem(coding, path, cs, code, `'${system}' is a ValueSet${twin}; code '${code}' belongs to ${cs}${undecided}`);
+      return;
+    }
+    if (hits.size > 1) {
+      const candidates = [...hits.values()].slice(0, 5).map((c) => ({ system: c.system, code: c.code, ...(c.display ? { display: c.display } : {}) }));
+      this.error(
+        fieldForPath(this.fieldMap, path),
+        `${path}.system`,
+        `'${system}' is a ValueSet${twin}, not a CodeSystem, and code '${code}' is in it under several CodeSystems (${[...hits.keys()].join(", ")}); give the CodeSystem as system`,
+        candidates,
+      );
+    }
+    // not in the ValueSet: left as written (the validator reports it, with suggestions)
+  }
+
+  private async systemFromBindings(coding: Record<string, any>, path: string, system: string, code: string, twin: string | null): Promise<void> {
+    if (twin && this.deps.codeInSystem) {
+      let held: boolean | undefined;
+      try {
+        held = await this.deps.codeInSystem(twin, code);
+      } catch {
+        held = undefined;
+      }
+      if (held === true) {
+        this.applySystem(coding, path, twin, code, `'${system}' is not a known CodeSystem or ValueSet; code '${code}' belongs to ${twin}, its CodeSystem twin`);
+        return;
+      }
+    }
+    // The element's bound ValueSets (nearest / strongest first, slices and additional bindings included).
+    const ccPath = /\.coding\[\d+\]$/.test(path) ? path.replace(/\.coding\[\d+\]$/, "") : path;
+    const canonical = typeof this.sd.url === "string" ? this.sd.url : "";
+    const shim: SuggestionDeps = {
+      fetchStructureDefinition: async (u: string) => {
+        if (canonical && stripVersion(u) === canonical) return this.sd;
+        if (!this.deps.fetchStructureDefinition) return null;
+        try {
+          return await this.deps.fetchStructureDefinition(u);
+        } catch {
+          return null;
+        }
+      },
+      checkCode: async () => ({ status: "unknown-system" }),
+    };
+    let valueSets: Array<{ valueSet: string }> = [];
+    try {
+      const ctx = await elementBindings(shim, this.resource, ccPath, { profiles: canonical ? [canonical] : [] });
+      valueSets = ctx ? ctx.bindings.slice(0, 6) : [];
+    } catch {
+      valueSets = [];
+    }
+    if (!valueSets.length) return;
+    const own = stripVersion(system);
+    for (const b of valueSets) if ((await this.systemsOfValueSet(b.valueSet)).includes(own)) return; // the binding draws from this very URL
+    // Systems certain to hold the code in a bound ValueSet win over ones only known to hold it in the CodeSystem.
+    const collect = async (ci: boolean): Promise<Map<string, { coding: ExpandedCoding; valueSet: string }>> => {
+      const certain = new Map<string, { coding: ExpandedCoding; valueSet: string }>();
+      const loose = new Map<string, { coding: ExpandedCoding; valueSet: string }>();
+      for (const b of valueSets) {
+        for (const [s, c] of await this.codesInValueSet(b.valueSet, code, ci)) {
+          const m = c.uncertain ? loose : certain;
+          if (!m.has(s)) m.set(s, { coding: c, valueSet: b.valueSet });
+        }
+      }
+      return certain.size ? certain : loose;
+    };
+    const via = (v: string): string => `the element's bound ValueSet ${canonicalName(v)}`;
+    const exact = await collect(false);
+    if (exact.size === 1) {
+      const [[cs, hit]] = [...exact.entries()];
+      this.applySystem(coding, path, cs, code, `'${system}' is not a known CodeSystem or ValueSet; code '${code}' belongs to ${cs} (${via(hit.valueSet)})`);
+      return;
+    }
+    if (exact.size > 1) return;
+    const ci = await collect(true);
+    if (ci.size === 1) {
+      const [[cs, hit]] = [...ci.entries()];
+      if (!hit.coding.code) return;
+      this.applySystem(coding, path, cs, hit.coding.code, `'${system}' is not a known CodeSystem or ValueSet; code '${code}' is '${hit.coding.code}' of ${cs} (${via(hit.valueSet)})`);
+      return;
+    }
+    if (ci.size > 1) return;
+    const display = typeof coding.display === "string" ? coding.display.trim() : "";
+    if (!display) return;
+    const byDisplay = new Map<string, { coding: ExpandedCoding; valueSet: string }>();
+    for (const b of valueSets) {
+      const exp = await this.expansion(b.valueSet);
+      for (const c of exp?.codings ?? []) {
+        if (!c.system || (c.display ?? "").trim() !== display) continue;
+        const k = `${c.system}|${c.code}`;
+        if (!byDisplay.has(k)) byDisplay.set(k, { coding: c, valueSet: b.valueSet });
+      }
+    }
+    if (byDisplay.size !== 1) return;
+    const [{ coding: hit, valueSet }] = [...byDisplay.values()];
+    this.applySystem(coding, path, hit.system!, hit.code, `'${system}' is not a known CodeSystem or ValueSet; display '${display}' is ${hit.system}#${hit.code} (${via(valueSet)}), code '${code}' replaced`);
+  }
+
   // ------------------------------------------------------------------ dosage / timing
 
   private async buildDosage(node: Node, item: unknown, field: string, path: string): Promise<V.Parsed<unknown>> {
@@ -2319,6 +2568,7 @@ export async function composeResource(input: AuthorInput, deps: ComposeDeps, ctx
   const c = new Composer(resolved.sd, deps, ctx, String(input.key ?? ""));
   await c.placeFields(fields);
   await c.wrapArrays();
+  await c.correctSystems();
   if (ensureMetaProfile(c.resource, resolved.canonical)) c.mark(`${c.rt}.meta.profile[0]`, "fixed");
   c.assignSlices();
   c.createDetermined();

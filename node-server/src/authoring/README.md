@@ -20,7 +20,7 @@ else touches `mcp.ts`, `toolVersions.ts`, docs or `mcpToolExamples.ts` (coordina
 ## Shared types (`types.ts`, owned by the coordinator — extend only by appending)
 
 ```ts
-export type Provenance = "model" | "fixed" | "default" | "derived" | "lookup";
+export type Provenance = "model" | "fixed" | "default" | "derived" | "lookup";  // lookup also marks a corrected Coding.system (v1.2)
 
 export interface FieldSpec {
   field: string;            // dotted FHIR path relative to the resource, slices as `identifier:mrn`, choice as `value[x]`
@@ -96,6 +96,34 @@ v1.1 corrections (reported in `AuthorResult.notes`, append-only field):
   "none"` (stored on the context) fills none — required ones then appear in `missing`;
 - `site_config` (facility settings text, fhir_check_grounding format) is stored on the context,
   merged line by line, and passed to the grounding engine at assembly (with `source_text`).
+
+v1.2 (evaluation v12):
+
+- `Coding.system` correction (compose.ts `correctSystems`, step 1c, before slices / pinning; notes
+  `system corrected for <field>: …`, provenance `lookup` on `…coding[i].system` — and `.code` when
+  the spelling / display match changed it). Only model codings; only when the answer is unique:
+  - the system is a ValueSet URL (any installed package; or the `/CodeSystem/` ↔ `/ValueSet/`
+    twin) → the CodeSystem the code has in that ValueSet (expansion, else `valueSetContains` per
+    compose system, else — membership undecidable, e.g. a LOINC property filter — the one compose
+    system that holds the code). Several → compose error at `…system` with `candidates`; not a
+    member → unchanged;
+  - the system resolves to nothing (`ComposeDeps.resolveSystem`: no closure CodeSystem / ValueSet /
+    twin, the validator's code check says unknown-system, no conformance resource of that URL in
+    any package, and for HL7-space URLs `hl7UrlMustResolve` — the "No definition could be found
+    for URL value" rule) → the one CodeSystem of the element's bound ValueSets (bindings.ts
+    `elementBindings`: slices, `.coding` child, max / additional bindings) holding the code: exact
+    code, else case-insensitive, else an exact display; ambiguous / none / a binding that draws
+    from that very URL → unchanged (validator error + v10 suggestions).
+  New optional deps: `resolveSystem`, `valueSetSystems`, `codeInSystem` (deps.ts).
+- `fhir_get_authoring_fields`: record links (fields.ts `markRecordLinks`) — an optional top-level
+  backbone with a required Reference child whose targets include a profile of the same IG (same
+  canonical base) of a non-entity resource type (`ENTITY_TYPES`: Patient, Practitioner,
+  Organization, Location, Device …) is a tier-1 field with all its children and a
+  `{<child>: {ref: key}}` example (Encounter.diagnosis); a direct Reference of that kind is a
+  `more` entry `{field, kind, targets}`. The size budget applies to the whole tool response
+  (`response_chars`: envelope + warnings + provenance, non-ASCII counted as `\uXXXX`) and keeps a
+  150-character margin under 6,000; record links are moved to `more` only after the common-only
+  fields.
 
 ## References and the context
 

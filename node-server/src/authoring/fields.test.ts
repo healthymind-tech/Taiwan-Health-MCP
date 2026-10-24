@@ -7,7 +7,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { CORE, COND_PROFILE, PAT_PROFILE, SDS, VITAL, el, fakeDeps, sd } from "../fhirTestKit.test.js";
 import { expandComposeWith } from "../fhirCodeSystem.js";
-import { AuthoringFieldsError, SIZE_BUDGET, authoringFields, type FieldsDeps, type LoadedProfile } from "./fields.js";
+import { AuthoringFieldsError, RESPONSE_MARGIN, SIZE_BUDGET, authoringFields, type FieldsDeps, type LoadedProfile } from "./fields.js";
 import { makeFieldsTool } from "./fieldsTool.js";
 import type { FieldSpec } from "./types.js";
 
@@ -262,7 +262,8 @@ test("tool spec: envelope with size_chars + tool provenance; IG errors become er
   const ok = (await tool.handler({ profile: VITAL })) as Res;
   assert.equal(ok.ok, true);
   assert.equal(typeof ok.data.size_chars, "number");
-  assert.equal(ok.data.size_chars, JSON.stringify({ ...ok.data, size_chars: undefined }).length);
+  assert.equal(ok.data.size_chars, JSON.stringify({ ...ok.data, size_chars: undefined, response_chars: undefined }).length);
+  assert.equal(ok.data.response_chars, JSON.stringify(ok).length);
   assert.equal(ok.provenance.tool, "fhir_get_authoring_fields");
   assert.equal(ok.provenance.resolved_by, "package_arg");
   assert.ok(Array.isArray(ok.data.more));
@@ -272,4 +273,75 @@ test("tool spec: envelope with size_chars + tool provenance; IG errors become er
   assert.match(bad.error.hint, /fhir_list_resource_profiles/);
   const empty = (await tool.handler({ profile: "" })) as Res;
   assert.equal(empty.error.code, "INVALID_ARGUMENT");
+});
+
+// --------------------------------------------------------------------------- //
+// v1.2: record links (R3) and the whole-response size budget (R4)
+// --------------------------------------------------------------------------- //
+
+const IGB = "http://example.tw/fhir/StructureDefinition/";
+const ENC_LINK = `${IGB}enc-link`;
+const encLinkSds = (): Record<string, Res> => ({
+  [ENC_LINK]: {
+    ...sd(ENC_LINK, "Encounter", "resource", [
+      el("Encounter", 0, "*"),
+      el("Encounter.id", 0, "1", ["string"]),
+      el("Encounter.status", 1, "1", ["code"], { mustSupport: true }),
+      el("Encounter.subject", 0, "1", [], { type: [{ code: "Reference", targetProfile: [`${IGB}pat-link`] }], mustSupport: true }),
+      el("Encounter.participant", 0, "*", ["BackboneElement"]),
+      el("Encounter.participant.individual", 1, "1", [], { type: [{ code: "Reference", targetProfile: [`${IGB}prac-link`] }] }),
+      el("Encounter.reasonReference", 0, "*", [], { type: [{ code: "Reference", targetProfile: [`${IGB}cond-link`, `${CORE}Observation`] }] }),
+      el("Encounter.diagnosis", 0, "*", ["BackboneElement"]),
+      el("Encounter.diagnosis.id", 0, "1", ["string"]),
+      el("Encounter.diagnosis.condition", 1, "1", [], { type: [{ code: "Reference", targetProfile: [`${IGB}cond-link`, `${CORE}Procedure`] }] }),
+      el("Encounter.diagnosis.use", 0, "1", ["CodeableConcept"]),
+      el("Encounter.diagnosis.rank", 0, "1", ["positiveInt"]),
+      el("Encounter.account", 0, "*", [], { type: [{ code: "Reference", targetProfile: [`${CORE}Account`] }] }),
+    ]),
+    id: "enc-link",
+  },
+  [`${IGB}cond-link`]: sd(`${IGB}cond-link`, "Condition", "resource", [el("Condition", 0, "*")]),
+  [`${IGB}pat-link`]: sd(`${IGB}pat-link`, "Patient", "resource", [el("Patient", 0, "*")]),
+  [`${IGB}prac-link`]: sd(`${IGB}prac-link`, "Practitioner", "resource", [el("Practitioner", 0, "*")]),
+  [`${CORE}Account`]: sd(`${CORE}Account`, "Account", "resource", [el("Account", 0, "*")]),
+});
+
+test("record links: a backbone whose required Reference child targets a record profile of the same IG is a field with children + {ref} example", async () => {
+  const res = await authoringFields({ profile: ENC_LINK }, deps([], encLinkSds()));
+  const f = byField(res.fields);
+  assert.ok(f.diagnosis, "diagnosis listed although neither mustSupport nor in examples");
+  assert.deepEqual(f.diagnosis.children?.map((c) => c.field), ["diagnosis.condition", "diagnosis.use", "diagnosis.rank"]);
+  assert.deepEqual(f.diagnosis.example, { condition: { ref: "condition" } });
+  assert.match(f.diagnosis.why ?? "", /links to Condition of this IG/);
+  assert.deepEqual(byField(f.diagnosis.children!)["diagnosis.condition"].targets, ["Condition", "Procedure"]);
+  // a backbone linking only actors (Practitioner) is not a record link; core-only targets (Account) neither
+  assert.ok(!f.participant && !(res.more ?? []).some((m) => m.field === "participant"));
+  assert.ok(!(res.more ?? []).some((m) => m.field === "account"));
+  // a direct reference to a record profile of the IG is a `more` entry with its targets
+  assert.deepEqual(res.more?.find((m) => m.field === "reasonReference"), { field: "reasonReference", kind: "reference", targets: ["Condition"] });
+  // detail=full (compose engine) lists both fully
+  const full = await authoringFields({ profile: ENC_LINK, detail: "full" }, deps([], encLinkSds()));
+  assert.ok(byField(full.fields).diagnosis && byField(full.fields).reasonReference);
+});
+
+test("size budget: the WHOLE response (envelope, warnings, provenance; non-ASCII as \\uXXXX) stays under the budget", async () => {
+  const ex: Res = { resourceType: "Basic", meta: { profile: [WIDE] }, code: { text: "x" } };
+  for (let i = 1; i <= 70; i++) ex[`f${String(i).padStart(2, "0")}`] = "v";
+  const tool = makeFieldsTool(deps([ex, ex, ex], { [WIDE]: wideSd() }));
+  const out = (await tool.handler({ profile: WIDE })) as Res;
+  const text = JSON.stringify(out);
+  const escaped = text.length + 5 * [...text].filter((ch) => ch.charCodeAt(0) > 0x7e).length;
+  assert.equal(out.data.response_chars, escaped, "response_chars measures the full response");
+  assert.ok(escaped <= SIZE_BUDGET - RESPONSE_MARGIN, `response ${escaped}`);
+  assert.ok(out.data.more_count > 0, "the rest moved to more / omitted");
+  // non-ASCII content (here: resolution warnings in Chinese) counts as 6-char escapes and is budgeted too
+  const d = deps([ex, ex, ex], { [WIDE]: wideSd() });
+  const load = d.loadProfile;
+  d.loadProfile = async (...a) => ({ ...(await load(...a)), warnings: ["套件解析備註：".repeat(40)] });
+  const out2 = (await makeFieldsTool(d).handler({ profile: WIDE })) as Res;
+  const text2 = JSON.stringify(out2);
+  const escaped2 = text2.length + 5 * [...text2].filter((ch) => ch.charCodeAt(0) > 0x7e).length;
+  assert.equal(out2.data.response_chars, escaped2);
+  assert.ok(escaped2 <= SIZE_BUDGET - RESPONSE_MARGIN, `response ${escaped2}`);
+  assert.ok(out2.data.fields.length < out.data.fields.length, "the warnings' size moved more fields out");
 });
