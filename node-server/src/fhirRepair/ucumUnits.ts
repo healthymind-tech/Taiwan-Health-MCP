@@ -8,7 +8,13 @@
  *      words below (English or Chinese: 次/分, 下/分鐘, breaths/min, mg/天): the count word is a
  *      dimensionless count and is dropped (UCUM `/min`), a unit numerator is resolved by 1–2
  *      (`mg/d`) — a grammar over FHIR units-of-time, no list of example strings;
- *   4. the suggestion layer's generic repair (case, brackets, common clinical spellings such as
+ *   4. (v14.1) structural rewrites that keep the unit's meaning: the micro sign / Greek mu written
+ *      for the UCUM prefix `u` (µg, μIU), an atom that is a UCUM bracketed unit written without its
+ *      brackets, alone or after a UCUM prefix (IU → [IU], μIU → u[IU]), and a numeric factor
+ *      glued to a unit in a divisor — a decimal one, which UCUM cannot write as a factor, as the
+ *      annotation `{1.73_m2}` (mL/min/1.73m2 → mL/min/{1.73_m2}, the LOINC convention), an
+ *      integer one as `(24.h)`; the result must be a valid UCUM expression;
+ *   5. the suggestion layer's generic repair (case, brackets, common clinical spellings such as
  *      bpm → /min, tablet → {tablet}) when it is a cheap edit.
  * Null when nothing resolves. Deterministic and cached.
  */
@@ -59,7 +65,58 @@ function rateUnit(t: string): string | null {
 export interface UnitResolution {
   code: string;
   /** How the code was found: a valid UCUM expression as given, a UCUM unit name / synonym / print symbol, or a spelling repair. */
-  source: "ucum" | "name" | "rate" | "spelling";
+  source: "ucum" | "name" | "rate" | "rewrite" | "spelling";
+}
+
+/** UCUM prefixes (longest first so `da` is tried before `d`). */
+const PREFIXES = ["da", "Ki", "Mi", "Gi", "Ti", "Y", "Z", "E", "P", "T", "G", "M", "k", "h", "d", "c", "m", "u", "n", "p", "f", "a", "z", "y"];
+
+function ucumOk(c: string): boolean {
+  return checkUcumCode(c) === "valid";
+}
+
+/** An atom that is a bracketed UCUM unit written without its brackets (IU → [IU], uIU → u[IU]); null unless exactly one reading. */
+function bracketAtom(atom: string): string | null {
+  if (!atom || ucumOk(atom) || /[[\]{}()]/.test(atom)) return null;
+  const hits = new Set<string>();
+  if (ucumOk(`[${atom}]`)) hits.add(`[${atom}]`);
+  for (const p of PREFIXES) {
+    if (!atom.startsWith(p) || atom.length <= p.length) continue;
+    const c = `${p}[${atom.slice(p.length)}]`;
+    if (ucumOk(c)) hits.add(c);
+  }
+  return hits.size === 1 ? [...hits][0] : null;
+}
+
+/** Step 4: structural rewrites (see the module comment); null when none gives a valid UCUM expression. */
+function structuralRewrite(t: string): string | null {
+  const micro = t.replace(/[\u00B5\u03BC]/g, "u");
+  if (micro !== t && ucumOk(micro)) return micro;
+  const segs = micro.split("/");
+  let changed = micro !== t;
+  const out: string[] = [];
+  for (const [i, raw] of segs.entries()) {
+    const seg = raw.trim();
+    if (!seg || ucumOk(seg) || (i === 0 && seg === "1")) {
+      out.push(seg);
+      continue;
+    }
+    // A numeric factor glued to a unit (only as a divisor: "per 1.73 m2", "per 24 h").
+    const f = i > 0 ? /^(\d+)(?:\.(\d+))?\s*([A-Za-z][A-Za-z0-9]*)$/.exec(seg) : null;
+    if (f && ucumOk(f[3])) {
+      out.push(f[2] !== undefined ? `{${f[1]}.${f[2]}_${f[3]}}` : `(${f[1]}.${f[3]})`);
+      changed = true;
+      continue;
+    }
+    // Atoms of a product (a.b) that are bracketed units written without brackets.
+    const atoms = seg.split(".");
+    const fixed = atoms.map((a) => (ucumOk(a) ? a : bracketAtom(a)));
+    if (fixed.some((a) => a === null)) return null;
+    out.push(fixed.join("."));
+    changed = true;
+  }
+  const code = out.join("/");
+  return changed && ucumOk(code) ? code : null;
 }
 
 let nameTable: Map<string, string[]> | null | undefined;
@@ -106,6 +163,45 @@ function pickCode(codes: string[]): string {
 
 const unitCache = new Map<string, UnitResolution | null>();
 
+interface UcumConvert {
+  convertUnitTo(from: string, value: number, to: string): { status: string; toVal?: number };
+}
+
+let converter: UcumConvert | null | undefined;
+const equivCache = new Map<string, boolean>();
+
+/**
+ * Are two valid UCUM expressions the same unit (conversion factor exactly 1, no offset — `1/min` ≡
+ * `/min`, `{beats}/min` ≡ `/min`; `Cel` ≢ `K`)? ucum-lhc conversion; false when it cannot tell.
+ */
+export function ucumEquivalent(a: string, b: string): boolean {
+  if (a === b) return true;
+  if (!ucumOk(a) || !ucumOk(b)) return false;
+  const k = `${a}\u0000${b}`;
+  const hit = equivCache.get(k);
+  if (hit !== undefined) return hit;
+  let out = false;
+  try {
+    if (converter === undefined) {
+      const require = createRequire(import.meta.url);
+      converter = require("@lhncbc/ucum-lhc").UcumLhcUtils.getInstance() as UcumConvert;
+    }
+    if (converter) {
+      const same = (v: number): boolean => {
+        const r = converter!.convertUnitTo(a, v, b);
+        return !!r && r.status === "succeeded" && typeof r.toVal === "number" && Math.abs(r.toVal - v) <= 1e-9 * Math.max(1, Math.abs(v));
+      };
+      out = same(1) && same(7) && same(0);
+    }
+  } catch {
+    converter = null;
+    out = false;
+  }
+  if (equivCache.size > 2000) equivCache.clear();
+  equivCache.set(k, out);
+  return out;
+}
+
 /**
  * Unit text → UCUM code. A valid UCUM expression is itself the code; otherwise the UCUM
  * definitions' own names / synonyms / print symbols ("millimeter of mercury", "mmHg", "°C"),
@@ -131,6 +227,7 @@ function resolveUnitText(text: string, rates: boolean): UnitResolution | null {
   if (hit !== undefined) return hit;
   let out: UnitResolution | null = null;
   if (checkUcumCode(t) === "valid") out = { code: t, source: "ucum" };
+  else if (/[\u00B5\u03BC]/.test(t) && ucumOk(t.replace(/[\u00B5\u03BC]/g, "u"))) out = { code: t.replace(/[\u00B5\u03BC]/g, "u"), source: "rewrite" };
   else {
     const names = unitNames();
     const variants = [t.toLowerCase(), t.toLowerCase().replace(/\s+/g, " "), t.toLowerCase().replace(/s$/, "")];
@@ -144,6 +241,10 @@ function resolveUnitText(text: string, rates: boolean): UnitResolution | null {
     if (!out && rates) {
       const r = rateUnit(t);
       if (r) out = { code: r, source: "rate" };
+    }
+    if (!out) {
+      const r = structuralRewrite(t);
+      if (r) out = { code: r, source: "rewrite" };
     }
     if (!out) {
       const cand = suggestUcum(t, null, 1)[0];

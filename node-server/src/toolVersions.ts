@@ -119,10 +119,21 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   shapes, bound code spellings; each verified not to add an error) and validates the result; data gains `repair`,
   //   `content_changes`, `repair_issues`, and an issue at a declined value carries `repair` {rule, message, candidates}.
   //   Default (repair "ids" / normalize_ids false) output unchanged.
-  fhir_validate_bundle: "1.10.0",
+  // 1.11.0 (ISSUES_v15): record checks (ISSUES_v15, recordChecks/: a post-validation layer, InstanceValidator unchanged) — issues with source "record-checks", a stable code and evidence are appended
+  //   to entries[i].issues / issues and make `valid` false when error: information-absent (R1: a value that describes the
+  //   absence of the information — 未取號 / 不詳 / unknown / pending …) and identifier-format (R2: ROC national ID / resident
+  //   certificate format + check digit by system, site_config `identifier-format` rules, sentence-like identifiers) always;
+  //   with source_text also insufficient-precision / incomplete-value (R3) and unconfirmed-as-confirmed /
+  //   symptom-for-unconfirmed-diagnosis (R4). data.record_checks {ok, errors, warnings, rules, source_text} and provenance
+  //   recordChecksVersion / recordChecksLexicon(Sha256) appear when source_text is given or a finding exists; without
+  //   source_text and without findings the output is byte-identical to 1.10.0.
+  // 1.11.1 (v14.1 (ISSUES_v14_1, fhirRepair/; patch on top of the ISSUES_v15 bump)): with normalize_ids + repair="content" the content repairs follow
+  //   fhir_finalize_bundle 1.3.1 (new rules, Bundle-level verification). Default output unchanged.
+  fhir_validate_bundle: "1.11.1",
   // 1.6.2: the binding-aware suggestions above (ISSUES_v10 A) also apply to single-resource validation.
   // 1.7.0: the validator v13 rules above (fhir_validate_bundle 1.9.0).
-  fhir_validate_resource: "1.7.0",
+  // 1.8.0 (ISSUES_v15): the record checks of fhir_validate_bundle 1.11.0 on the resource (data.issues, data.record_checks).
+  fhir_validate_resource: "1.8.0",
   // 1.2.0 (all below): provenance.resolved_by / closure_versions; canonical arguments resolve to their
   // owning package when package_id is omitted; "|version" honoured; list/search: all_packages + zero-hit hint;
   // NO_DEFAULT_IG instead of an arbitrary package when no default IG is set.
@@ -181,7 +192,16 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.6.0 (ISSUES_v14): new `repair` ("content" default | "ids" = 1.5.0) and `timezone`: the draft first gets the shared
   //   content repairs (fhirRepair, same rules as fhir_finalize_bundle 1.2.0), listed in data.changes; undecidable values in
   //   data.repair_issues (and on the validator issue as `repair`). Numbers keep their spelling (repair runs on the lossless draft).
-  fhir_finalize_resource: "1.6.0",
+  // 1.7.0 (ISSUES_v15): record checks (recordChecks/, as fhir_validate_resource 1.8.0) merged into data.validation
+  //   (issues with source "record-checks"; an error makes validation.valid false); new optional `source_text` adds R3 / R4.
+  //   Without source_text and without findings the output is unchanged. (If ISSUES_v14_1 bumps this tool too, the higher
+  //   version carries both.)
+  // 1.7.1 (v14.1 (ISSUES_v14_1, fhirRepair/; patch on top of the ISSUES_v15 bump)): the content repairs of fhir_finalize_bundle 1.3.1 (site timezone for
+  //   date-times without an offset, rule timezone; UCUM equivalents / annotations / micro sign; quantity-code-not-ucum;
+  //   ValueSet-named and renamed system URLs; wrapped Coding, code as CodeableConcept, choice / up moves; empty
+  //   elements, rule empty; required fixed coding slices, rule fixed-slice). New optional `site_config` (a `timezone:`
+  //   line is the site timezone when `timezone` is not passed); `timezone` also takes an IANA zone.
+  fhir_finalize_resource: "1.7.1",
   // 1.0.0 (authoring/, evaluation v11): the model gives field VALUES, the MCP composes the resource for its profile
   //   (fixed / pattern / defaults / derived / displays / UCUM / ROC dates), validates it, keeps it in a Redis context
   //   (`authoring:ctx:*`, 60-min idle TTL) and assembles the Bundle from keys with deterministic urn:uuid fullUrls
@@ -221,7 +241,12 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   denotes (was: any rejected display replaced). Raw FHIR values also get the UCUM (rate grammar 次/分 → /min, LOINC
   //   code in Quantity.code, profile-fixed / required UCUM), ROC-date, Coding.system name / unknown-URL and lossless
   //   shape repairs; every repair is verified not to add a validation error (else withdrawn and reported).
-  fhir_author_resources: "1.4.0",
+  // 1.5.0 (ISSUES_v15): validation as fhir_validate_resource 1.8.0 — record-check issues (code, source "record-checks",
+  //   rule, evidence) in results[].issues; an error makes the status invalid. New optional `source_text` (not stored, never
+  //   logged) adds the record-dependent checks (R3 / R4) to this call's validation; site_config identifier-format rules apply.
+  // 1.5.1 (v14.1 (ISSUES_v14_1, fhirRepair/; patch on top of the ISSUES_v15 bump)): resources get the content repairs of fhir_finalize_bundle 1.3.1; a
+  //   `timezone:` line of the context's site_config is the site timezone when none is set.
+  fhir_author_resources: "1.5.1",
   // 1.0.1: action=get results carry the author result's new `notes` (fhir_author_resources 1.1.0); otherwise unchanged.
   fhir_context: "1.0.1",
   // 1.1.0: new `site_config` (merged with the context's) passed to the grounding engine with source_text, so facility
@@ -229,7 +254,11 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.2.0: resources composed as fhir_author_resources 1.3.0, validation as fhir_validate_bundle 1.9.0.
   // 1.3.0 (ISSUES_v14): resources composed as fhir_author_resources 1.4.0; finalize always with repair="content" (context
   //   timezone for ROC times); data gains `repair_issues`; changes include the content repairs.
-  fhir_assemble_bundle: "1.3.0",
+  // 1.4.0 (ISSUES_v15): resources as fhir_author_resources 1.5.0; validation as fhir_validate_bundle 1.11.0 (record checks;
+  //   R3 / R4 with source_text; site_config identifier-format rules) — record-check issues are tagged with key / field.
+  // 1.4.1 (v14.1 (ISSUES_v14_1, fhirRepair/; patch on top of the ISSUES_v15 bump)): resources as fhir_author_resources 1.5.1; finalize as
+  //   fhir_finalize_bundle 1.3.1 (site_config timezone line used for date-times without an offset).
+  fhir_assemble_bundle: "1.4.1",
   // 1.0.0 (ISSUES_v9 R1): deterministic Bundle finalizer — fullUrl-uuid / reference-rewire / resource-id (mandatory),
   // bundle-type / document-order (profile-driven); UUID v5 seeded by (resourceType, original fullUrl, resource.id, entry
   // index) + a content salt; references found through StructureDefinition snapshots; duplicates / ambiguity reported.
@@ -243,7 +272,25 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   repairs whose fix is uniquely determined (rules display / ucum / roc-date / system / shape / code, each change listed
   //   with its reason, verified per entry not to add a validation error, else withdrawn and reported); "ids" = 1.1.0
   //   behaviour exactly. New `timezone` (ROC times), data.repair / repair_issues, summary.content. Lossless numbers kept.
-  fhir_finalize_bundle: "1.2.0",
+  // 1.3.0 (ISSUES_v15): report-only record checks on the finalized Bundle — data.record_issues + data.record_checks (R1 / R2
+  //   always; R3 / R4 with the new optional `source_text`; site_config identifier-format rules), a warning when any is an
+  //   error; the Bundle and changes are unchanged (never auto-fixed). (If ISSUES_v14_1 bumps this tool too, the higher
+  //   version carries both.)
+  // 1.3.1 (v14.1 (ISSUES_v14_1, fhirRepair/; patch on top of the ISSUES_v15 bump)): content repairs extended — rule timezone (a date-time without UTC offset,
+  //   ROC or Gregorian, takes the site timezone: `timezone` (UTC offset or IANA zone) > a site_config `timezone:` line >
+  //   that line in source_text's 院所設定 section; else reported, code timezone-required); ucum (code ≡ the profile's
+  //   code at conversion factor 1, `1/min` → `/min`; `1.73m2` divisor → `{1.73_m2}`; µ / μ → u, IU → [IU]; a LOINC code
+  //   as Quantity.code without a unit → error quantity-code-not-ucum, or the profile's single fixed unit); system (HL7
+  //   core ValueSet URL without /ValueSet/, a THO / core ValueSet named by the URL's last segment, a renamed / retired
+  //   CodeSystem by name similarity — unique holder of the code accepted by the element's constraining binding); shape
+  //   (Coding wrapped in {type: …}; a required-bound code given as CodeableConcept / Coding; moves into a present choice
+  //   value and up out of a single array item; a resource property of Bundle.entry such as request moved to the entry;
+  //   numbered entry keys rebuilt as the entry array; a Bundle without resourceType given one — also before the
+  //   INVALID_ARGUMENT check, whose message now names the location; deep-equal duplicate fullUrl entries dropped);
+  //   empty (ele-1: {}, [], "", null removed); fixed-slice (required coding slices the profile fully fixes). New:
+  //   every change is verified against the whole Bundle's validation (errors only the Bundle context shows), else
+  //   withdrawn and reported. New optional `site_config`.
+  fhir_finalize_bundle: "1.3.1",
   // ── 2026-10-19 actionable errors (additive fields only; successful outputs unchanged) ──
   // search_medical_codes 1.2.1: IG_UNAVAILABLE adds `hint`.
   // FHIR IG tools above (+.0.1): error envelopes add error.hint; IG_NOT_FOUND / NO_DEFAULT_IG add

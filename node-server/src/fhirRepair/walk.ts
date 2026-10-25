@@ -41,8 +41,8 @@ export interface View {
 export class Session {
   private readonly views = new Map<string, Promise<View | null>>();
   private readonly memos = new Map<string, Promise<unknown>>();
-  /** fhir_normalize_code calls left (R1 different-meaning test + candidates). */
-  normalizeLeft = 30;
+  /** fhir_normalize_code calls left (R1 different-meaning test + candidates; v14.1: 60, so a large Bundle's displays all get candidates). */
+  normalizeLeft = 60;
   /** Terminology display checks left. */
   displayChecksLeft = 80;
 

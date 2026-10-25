@@ -369,10 +369,18 @@ export const TOOL_DESCRIPTIONS = {
     "suggestions [{value, kind, confidence, reason, patch}] (what to change the value to) and, for reference-chain errors, caused_by. " +
     "fullUrl / reference / id errors (UUIDs must be valid, unresolved reference, bdl-7, invalid id) get the deterministic fix as suggestions plus " +
     "a Bundle-level id_map / id_changes; normalize_ids=true applies that normalisation first (fhir_finalize_bundle) and validates the result " +
-    "(normalized_bundle, id_changes). Clinical content is never changed.",
+    "(normalized_bundle, id_changes). Clinical content is never changed. " +
+    "Record checks (source record-checks, report only): a value that only says the information is absent (未取號 / 不詳 / unknown / pending) " +
+    "is an information-absent error and an identifier with the wrong format for its system (ROC national ID check digit, resident certificate) " +
+    "an identifier-format error; with source_text also event dates coarser than a day, a Quantity without value, a medicine as text only and a " +
+    "diagnosis the record leaves unconfirmed written as confirmed (data.record_checks).",
   fhir_validate_resource:
     "Validate a FHIR resource against an IG profile, in-process (source:builtin). Pre-flight only. Optional source_text/site_config/" +
     "evidence_map add grounding issues for this resource (is each value stated in the record). Without package_id the IG owning " +
     "its meta.profile is used ('|version' pins a version; provenance.resolved_by). Issues may carry ranked suggestions " +
-    "[{value, kind, confidence, reason, patch}] (what to change the value to).",
+    "[{value, kind, confidence, reason, patch}] (what to change the value to). " +
+    "Record checks (source record-checks, report only): a value that only says the information is absent (未取號 / 不詳 / unknown / pending) " +
+    "is an information-absent error and an identifier with the wrong format for its system (ROC national ID check digit, resident certificate) " +
+    "an identifier-format error; with source_text also event dates coarser than a day, a Quantity without value, a medicine as text only and a " +
+    "diagnosis the record leaves unconfirmed written as confirmed (data.record_checks).",
 } as const;

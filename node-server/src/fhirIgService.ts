@@ -53,7 +53,7 @@ import { dbSuggestionDeps, type ServiceHooks } from "./fhirSuggestions/dbDeps.js
 import { attachIdSuggestions, isIdClassIssue, normalizationIssues } from "./fhirSuggestions/ids.js";
 import { BUNDLE_TYPES, bundleRules, finalizeBundle as runBundleFinalize, losslessFinalizedBundle, type FinalizeDeps, type FinalizeResult } from "./fhirBundleFinalize.js";
 import { restoreNumbers, stringifyLossless, toPlain } from "./losslessJson.js";
-import { cloneTree, countByRule, DEFAULT_FINALIZE_REPAIR, repairBundle, repairResource, type RepairIssue, type RepairMode, type RepairResult } from "./fhirRepair/index.js";
+import { bundleEnvelopeProblem, cloneTree, countByRule, DEFAULT_FINALIZE_REPAIR, repairBundle, repairBundleEnvelope, repairResource, siteTimezone, type RepairChange, type RepairIssue, type RepairMode, type RepairResult } from "./fhirRepair/index.js";
 import { repairDepsFor } from "./fhirRepair/dbDeps.js";
 
 /** fhir_get_profile_required_elements compact view: profile invariants listed in full before the rest are named only. */
@@ -1736,12 +1736,13 @@ export class FHIRIGService {
     bundle: Record<string, any>,
     lossless: unknown,
     timezone: string | null,
+    timezoneSource: string | null = null,
   ): Promise<{ bundle: Record<string, any>; lossless: unknown; result: RepairResult } | null> {
     if (!pkg) return null;
     const tree = cloneTree(lossless !== undefined && lossless !== null && typeof lossless === "object" ? lossless : bundle) as Record<string, any>;
     try {
       const deps = repairDepsFor(pkg, (text, valueSet, system, limit) => this.normalizeCodeIn(pkg, true, text, valueSet, system, limit), new DbValidatorResolver(pkg));
-      const result = await repairBundle(tree, deps, { timezone });
+      const result = await repairBundle(tree, deps, { timezone, timezoneSource });
       return { bundle: toPlain(tree) as Record<string, any>, lossless: lossless !== undefined ? tree : undefined, result };
     } catch (e) {
       logError("content repair failed; the Bundle is finalized as given", { error: String((e as Error).message) });
@@ -1932,14 +1933,32 @@ export class FHIRIGService {
       lossless?: unknown;
       /** "ids" (v9: fullUrl / reference / id only) or "content" (ids + the v14 content repairs); default DEFAULT_FINALIZE_REPAIR. */
       repair?: RepairMode | null;
-      /** UTC offset completing ROC (民國) times written without one (R3); never guessed. */
+      /** The site timezone (UTC offset or IANA zone) for date-times written without an offset (R3 / v14.1); never guessed. */
       timezone?: string | null;
+      /** Facility settings text (v14.1): a `timezone: +08:00` line gives the site timezone when `timezone` is not passed. */
+      siteConfig?: string | null;
     } = {},
   ): Promise<string> {
-    if (!(bundle && typeof bundle === "object" && !Array.isArray(bundle)) || bundle.resourceType !== "Bundle") {
-      return this.err("INVALID_ARGUMENT", "bundle must be a FHIR Bundle resource");
-    }
     const repair: RepairMode = opts.repair === "ids" || opts.repair === "content" ? opts.repair : DEFAULT_FINALIZE_REPAIR;
+    // v14.1: the Bundle envelope (missing resourceType, numbered entry keys) is repaired before the Bundle check.
+    let envelope: RepairChange[] = [];
+    if (repair === "content" && bundle && typeof bundle === "object" && !Array.isArray(bundle) && bundle.resourceType === undefined) {
+      const fixed = cloneTree(bundle);
+      const env = repairBundleEnvelope(fixed);
+      if (fixed.resourceType === "Bundle") {
+        bundle = fixed;
+        if (opts.lossless && typeof opts.lossless === "object") {
+          const tree = cloneTree(opts.lossless) as Record<string, any>;
+          repairBundleEnvelope(tree);
+          opts = { ...opts, lossless: tree };
+        }
+        envelope = env.changes;
+      }
+    }
+    if (!(bundle && typeof bundle === "object" && !Array.isArray(bundle)) || bundle.resourceType !== "Bundle") {
+      return this.err("INVALID_ARGUMENT", bundleEnvelopeProblem(bundle) ?? "bundle must be a FHIR Bundle resource");
+    }
+    const tz = siteTimezone({ timezone: opts.timezone, siteConfig: opts.siteConfig, sourceText: (opts as { sourceText?: string | null }).sourceText });
     const bundleType = typeof opts.bundleType === "string" && opts.bundleType.trim() ? opts.bundleType.trim() : null;
     if (bundleType !== null && !(BUNDLE_TYPES as readonly string[]).includes(bundleType)) {
       return this.err("INVALID_ARGUMENT", `bundle_type must be one of ${BUNDLE_TYPES.join(" | ")}`, { parameter: "bundle_type", allowed: [...BUNDLE_TYPES] });
@@ -1969,7 +1988,8 @@ export class FHIRIGService {
       if (row && row.canonical_url) profileCanonical = String(row.canonical_url);
     }
     // v14: content repairs first (fhirRepair; on the lossless tree), then the v9 id normalisation.
-    const content = repair === "content" ? await this.contentRepairBundle(pkg, bundle, opts.lossless, opts.timezone ?? null) : null;
+    const content = repair === "content" ? await this.contentRepairBundle(pkg, bundle, opts.lossless, tz.timezone, tz.source) : null;
+    if (content && envelope.length) content.result.changes.unshift(...envelope);
     const fin = await runBundleFinalize(content ? content.bundle : bundle, deps, { bundleProfile: profileCanonical, bundleType });
     const count = (rule: string): number => fin.changes.filter((c) => c.rule === rule).length;
     const contentChanges = content ? content.result.changes : [];
@@ -1998,6 +2018,7 @@ export class FHIRIGService {
     const warnings: string[] = [];
     if (fin.unresolved.length) warnings.push(`${fin.unresolved.length} reference(s) could not be resolved to exactly one entry; see data.unresolved (candidates) — not guessed`);
     if (fin.notes.some((n) => n.startsWith("bdl-7"))) warnings.push("duplicate fullUrl(s) (bdl-7) reported in data.notes; not merged");
+    if (repair === "content" && tz.problem) warnings.push(`site timezone not used: ${tz.problem}`);
     if (content && content.result.issues.some((i) => i.severity === "error")) {
       warnings.push(`${content.result.issues.filter((i) => i.severity === "error").length} value(s) could not be corrected uniquely (see data.repair_issues, with candidates) — not guessed`);
     }
@@ -2200,6 +2221,8 @@ export class FHIRIGService {
     /** "ids" (1.5.0 behaviour) or "content" (+ the v14 content repairs, fhirRepair); default DEFAULT_FINALIZE_REPAIR. */
     repairMode: RepairMode | null = null,
     timezone: string | null = null,
+    /** Facility settings text (v14.1): a `timezone: +08:00` line gives the site timezone when `timezone` is not passed. */
+    siteConfig: string | null = null,
   ): Promise<string> {
     if (!(draft && typeof draft === "object" && !Array.isArray(draft))) {
       return this.err("INVALID_ARGUMENT", "draft must be a resource object");
@@ -2221,10 +2244,13 @@ export class FHIRIGService {
     const tree = cloneTree(losslessDraft !== undefined && losslessDraft !== null && typeof losslessDraft === "object" ? losslessDraft : draft) as Record<string, any>;
     if (!("resourceType" in tree)) tree.resourceType = sd.type;
     let repaired: RepairResult | null = null;
+    let tzProblem: string | null = null;
     if (repair === "content") {
       try {
         const deps = repairDepsFor(pkg, (text, valueSet, system, limit) => this.normalizeCodeIn(pkg, true, text, valueSet, system, limit), new DbValidatorResolver(pkg));
-        repaired = await repairResource(tree, deps, { profiles: [canonical], timezone });
+        const tz = siteTimezone({ timezone, siteConfig });
+        if (tz.problem) tzProblem = tz.problem;
+        repaired = await repairResource(tree, deps, { profiles: [canonical], timezone: tz.timezone, timezoneSource: tz.source });
       } catch (e) {
         logError("fhir_finalize_resource: content repair failed; the draft is finalized as given", { error: String((e as Error).message) });
         repaired = null;
@@ -2234,6 +2260,7 @@ export class FHIRIGService {
     const resource = repaired ? (toPlain(tree) as Record<string, any>) : JSON.parse(JSON.stringify(draft));
     if (!("resourceType" in resource)) resource.resourceType = sd.type;
     const warnings: string[] = [];
+    if (tzProblem) warnings.push(`site timezone not used: ${tzProblem}`);
 
     const coerced = authoring.coerceArrayCardinality(sd, resource);
     if (coerced.length) {

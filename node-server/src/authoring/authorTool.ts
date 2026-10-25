@@ -100,6 +100,11 @@ export const authorInputShape = {
     .nullish()
     .default(null)
     .describe("Facility settings text, as fhir_check_grounding's site_config (e.g. \"病歷號 system: https://hospital.example.tw/mrn\"): its URLs are accepted identifier systems, its lines ground organisation values at assembly. Stored on the context; passing it again adds new lines. Never logged."),
+  source_text: z
+    .string()
+    .nullish()
+    .default(null)
+    .describe("Optional clinical record text: this call's validation then also runs the record checks that need the record (date precision, Quantity values, free-text-only medicines, unconfirmed diagnoses). Not stored; never logged."),
 };
 
 export function createAuthorTool(service: AuthoringService): AuthoringToolSpec {
@@ -123,8 +128,9 @@ export function createAuthorTool(service: AuthoringService): AuthoringToolSpec {
       const timezone = typeof args.timezone === "string" && args.timezone ? args.timezone : null;
       const applyDefaults = args.apply_defaults === "required" || args.apply_defaults === "none" ? args.apply_defaults : null;
       const siteConfig = typeof args.site_config === "string" && args.site_config.trim() ? args.site_config : null;
+      const sourceText = typeof args.source_text === "string" && args.source_text.trim() ? args.source_text : null;
       try {
-        const r = await service.authorResources(contextId, inputs, { timezone, applyDefaults, siteConfig });
+        const r = await service.authorResources(contextId, inputs, { timezone, applyDefaults, siteConfig, sourceText });
         return okEnvelope(AUTHOR_TOOL_NAME, { context_id: r.context_id, storage: r.storage, results: r.results, summary: r.summary, settings: r.settings }, r.warnings);
       } catch (e) {
         const env = authoringErrorEnvelope(e);

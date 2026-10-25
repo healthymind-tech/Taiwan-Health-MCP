@@ -7,6 +7,7 @@
 import { primitiveOk } from "../fhirValidator.js";
 import { describe, fail, type Parsed } from "./parsed.js";
 import type { RepairChange, RepairIssue } from "./types.js";
+import { offsetFor, parseTimezone } from "./timezone.js";
 import type { Site } from "./walk.js";
 
 // --------------------------------------------------------------------------- //
@@ -122,10 +123,16 @@ export function parseDateValue(raw: unknown): Parsed<ParsedDate> {
   return { ok: true, value: { value, precision, hasOffset, roc } };
 }
 
+/** The UTC offset a timezone setting ("+08:00" or an IANA name) gives a local date-time value (null = none / not decidable). */
+export function offsetOf(timezone: string | null | undefined, local: string): string | null {
+  const spec = timezone ? parseTimezone(timezone) : null;
+  return spec ? offsetFor(spec, local) : null;
+}
+
 /**
- * Fit a parsed date to an element type. `timezone` (an offset such as "+08:00", a facility
- * setting the context may carry) completes a time that has none; without it such a value
- * is an error — an offset is never guessed.
+ * Fit a parsed date to an element type. `timezone` (an offset such as "+08:00" or an IANA zone
+ * name, a facility setting the context may carry) completes a time that has none; without it such
+ * a value is an error — an offset is never guessed.
  */
 export function fitDate(p: ParsedDate, typeCode: "date" | "dateTime" | "instant", timezone?: string | null): Parsed<string> {
   if (typeCode === "date") {
@@ -140,9 +147,10 @@ export function fitDate(p: ParsedDate, typeCode: "date" | "dateTime" | "instant"
     return { ok: true, value: p.value };
   }
   if (p.hasOffset) return { ok: true, value: p.value };
-  const tz = timezone ? normalizeOffset(timezone) : null;
+  const tz = offsetOf(timezone, p.value);
   if (tz) return { ok: true, value: p.value + tz };
-  return fail(`a time needs a UTC offset (e.g. ${p.value}+08:00); give the offset, or set the context timezone`);
+  if (timezone && parseTimezone(timezone)) return fail(`the local time ${p.value} does not exist or is ambiguous in timezone ${timezone} (a daylight-saving change); give the UTC offset`);
+  return fail(`a time needs a UTC offset (e.g. ${p.value}+08:00); give the offset, or set the site timezone`);
 }
 
 export const TIME_RE = /^(\d{1,2}):(\d{2})(?::(\d{2})(\.\d+)?)?$/;
@@ -169,27 +177,60 @@ const DATE_TYPES = new Set(["date", "dateTime", "instant"]);
 const ROC_MARK = /^\s*(民國|ROC)/i;
 const LEAD_YEAR = /^\s*(?:民國|ROC)?\s*(\d{1,4})\s*[/.\-年]/i;
 
+/** How to give the site timezone (one wording for every "no timezone" report). */
+export const TIMEZONE_HINT = "pass `timezone` (a UTC offset such as +08:00, or an IANA zone such as Asia/Taipei) or a site_config line `timezone: +08:00`";
+
 /**
  * R3: a date / dateTime / instant written as a ROC (民國) date → Gregorian (+1911, precision
  * kept). Certain only for a marked year (民國115年10月3日, ROC 115/10/03) or a three-digit year
  * (115-10-03, 115/10/03, 115-10-03T16:05:00); a one- or two-digit unmarked year is ambiguous
  * (ROC 99 or 1999?) and reported. A time keeps the offset written with it, else takes the
- * caller's timezone (context / facility setting); without either it is reported — an offset is
- * never invented. Values that are already valid, and four-digit years, are never touched.
+ * site timezone (`timezone`: the argument / site_config); without one it is reported — an offset
+ * is never invented.
+ * v14.1 (rule `timezone`): a Gregorian dateTime / instant with a time but no UTC offset
+ * ("If a date has a time, it must have a timezone") takes the site timezone the same way; without
+ * one it is reported (code `timezone-required`). Valid values are never touched.
  */
-export function repairDates(sites: Site[], rp: (p: string) => string, skip: (p: string) => boolean, timezone: string | null | undefined): { changes: RepairChange[]; issues: RepairIssue[] } {
+export function repairDates(
+  sites: Site[],
+  rp: (p: string) => string,
+  skip: (p: string, rule?: "roc-date" | "timezone") => boolean,
+  timezone: string | null | undefined,
+  timezoneSource: string | null = null,
+): { changes: RepairChange[]; issues: RepairIssue[] } {
   const changes: RepairChange[] = [];
   const issues: RepairIssue[] = [];
+  const tzLabel = timezoneSource ? ` (${timezoneSource})` : "";
   for (const site of sites) {
-    if (!DATE_TYPES.has(site.type) || typeof site.value !== "string" || skip(site.path)) continue;
+    if (!DATE_TYPES.has(site.type) || typeof site.value !== "string") continue;
     const raw = site.value;
     if (primitiveOk(site.type, raw)) continue;
     const lead = LEAD_YEAR.exec(raw);
-    if (!lead) continue;
-    const digits = lead[1].length;
-    const marked = ROC_MARK.test(raw);
-    if (digits === 4) continue; // Gregorian: not this rule's business
+    const digits = lead ? lead[1].length : 0;
     const path = rp(site.path);
+    const set = (v: string): void => {
+      if (site.index === null) site.holder[site.key] = v;
+      else (site.holder[site.key] as unknown[])[site.index] = v;
+    };
+    if (!lead || digits === 4) {
+      // Gregorian: only the missing UTC offset of a date-time is this layer's business.
+      if (site.type === "date" || skip(site.path, "timezone")) continue;
+      const p = parseDateValue(raw);
+      if (!p.ok || p.value.roc || p.value.precision !== "time" || p.value.hasOffset) continue;
+      const fitted = fitDate(p.value, site.type as "dateTime" | "instant", timezone ?? null);
+      if (!fitted.ok || !primitiveOk(site.type, fitted.value)) {
+        issues.push({
+          path, rule: "timezone", severity: "error", code: "timezone-required",
+          message: `'${raw}' has a time but no UTC offset (FHIR: if a date has a time, it must have a timezone); the site timezone is not known, so none was added — ${TIMEZONE_HINT}${timezone ? ` (${!fitted.ok ? fitted.message : "not applicable"})` : ""}`,
+        });
+        continue;
+      }
+      set(fitted.value);
+      changes.push({ path, from: raw, to: fitted.value, rule: "timezone", reason: `a time needs a UTC offset; the site timezone ${timezone}${tzLabel} gives ${fitted.value.slice(19).replace(/^\.\d+/, "")}` });
+      continue;
+    }
+    if (skip(site.path, "roc-date")) continue;
+    const marked = ROC_MARK.test(raw);
     if (!marked && digits !== 3) {
       issues.push({ path, rule: "roc-date", severity: "error", message: `'${raw}' has a ${digits}-digit year: a ROC (民國) year or a Gregorian one cannot be told apart — write the full year (e.g. ${2026}-…) or 民國YYY` });
       continue;
@@ -201,13 +242,18 @@ export function repairDates(sites: Site[], rp: (p: string) => string, skip: (p: 
     }
     const fitted = fitDate(p.value, site.type as "date" | "dateTime" | "instant", timezone ?? null);
     if (!fitted.ok) {
-      issues.push({ path, rule: "roc-date", severity: "error", message: `'${raw}' is the ROC date ${p.value.value} but cannot be written as a FHIR ${site.type}: ${fitted.message}` });
+      const noTz = p.value.precision === "time" && !p.value.hasOffset && site.type !== "date";
+      issues.push({
+        path, rule: "roc-date", severity: "error", ...(noTz ? { code: "timezone-required" } : {}),
+        message: noTz
+          ? `'${raw}' is the ROC (民國) date-time ${p.value.value} but has no UTC offset and the site timezone is not known, so it was not converted — ${TIMEZONE_HINT}`
+          : `'${raw}' is the ROC date ${p.value.value} but cannot be written as a FHIR ${site.type}: ${fitted.message}`,
+      });
       continue;
     }
     if (!primitiveOk(site.type, fitted.value)) continue;
-    if (site.index === null) site.holder[site.key] = fitted.value;
-    else (site.holder[site.key] as unknown[])[site.index] = fitted.value;
-    const tz = p.value.precision === "time" && !p.value.hasOffset ? ` (UTC offset ${timezone} from the context timezone)` : "";
+    set(fitted.value);
+    const tz = p.value.precision === "time" && !p.value.hasOffset && site.type !== "date" ? ` (UTC offset from the site timezone ${timezone}${tzLabel})` : "";
     changes.push({ path, from: raw, to: fitted.value, rule: "roc-date", reason: `ROC (民國) year ${lead[1]} = ${Number(lead[1]) + 1911}${tz}` });
   }
   return { changes, issues };

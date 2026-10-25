@@ -49,6 +49,13 @@ export interface AuthorIssue {
   severity: IssueSeverity;
   message: string;
   suggestions?: unknown[];
+  /** Validator issue type, or the record-check code (information-absent, identifier-format …). */
+  code?: string;
+  /** "record-checks" for the ISSUES_v15 record checks (with rule / evidence / located_quotes). */
+  source?: string;
+  rule?: string;
+  evidence?: string;
+  located_quotes?: string[];
 }
 
 export type AuthorStatus = "valid" | "invalid" | "refs_pending";

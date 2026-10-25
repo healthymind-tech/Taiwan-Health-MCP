@@ -13,12 +13,19 @@ import type { ExpandedCoding, NormalizeCandidate } from "../fhirSuggestions/type
 
 export type { ExpandedCoding, NormalizeCandidate };
 
-/** Rule names in `changes[].rule` (in the order the phases run). */
-export type RepairRule = "shape" | "system" | "ucum" | "roc-date" | "code" | "display";
+/**
+ * Rule names in `changes[].rule` (in the order the phases run). v14.1: `empty` (ele-1: an empty
+ * element removed, shape phase), `fixed-slice` (a required coding slice fully determined by the
+ * profile's fixed / pattern values added, slices phase), `timezone` (the site timezone added to a
+ * date-time written without a UTC offset, dates phase).
+ */
+export type RepairRule = "shape" | "empty" | "system" | "fixed-slice" | "ucum" | "roc-date" | "timezone" | "code" | "display";
 
-export type RepairPhase = "shape" | "systems" | "units" | "dates" | "codes" | "displays";
+export const ALL_RULES: readonly RepairRule[] = ["shape", "empty", "system", "fixed-slice", "ucum", "roc-date", "timezone", "code", "display"];
 
-export const ALL_PHASES: RepairPhase[] = ["shape", "systems", "units", "dates", "codes", "displays"];
+export type RepairPhase = "shape" | "systems" | "slices" | "units" | "dates" | "codes" | "displays";
+
+export const ALL_PHASES: RepairPhase[] = ["shape", "systems", "slices", "units", "dates", "codes", "displays"];
 
 export interface RepairChange {
   /** Instance path in the validator's dotted form (`Bundle.entry[2].resource.code.coding[0].display`). */
@@ -36,6 +43,8 @@ export interface RepairChange {
 export interface RepairIssue {
   path: string;
   rule: RepairRule;
+  /** Machine-readable kind of a few issues (e.g. `quantity-code-not-ucum`, `timezone-required`). */
+  code?: string;
   severity: "error" | "warning" | "information";
   message: string;
   candidates?: unknown[];
@@ -108,8 +117,16 @@ export interface RepairOptions {
   rootPath?: string;
   /** Profiles the resource is checked against besides its meta.profile (finalize_resource / compose). */
   profiles?: string[];
-  /** UTC offset completing ROC times written without one (a facility / context setting, never guessed). */
+  /**
+   * The site timezone completing date-times written without a UTC offset (ROC or Gregorian): a UTC
+   * offset ("+08:00") or an IANA zone name ("Asia/Taipei", resolved at each value's local time).
+   * A facility / context setting (the `timezone` argument or a site_config line) — never guessed.
+   */
   timezone?: string | null;
+  /** Where `timezone` came from (reported in the change reasons), e.g. "timezone argument", "site_config". */
+  timezoneSource?: string | null;
+  /** Rule / path pairs (blockKey form) not to apply — set by the Bundle-level verification (repairBundle). */
+  blocked?: Set<string>;
   /** Phases to run (default all, in ALL_PHASES order). */
   phases?: RepairPhase[];
   /**

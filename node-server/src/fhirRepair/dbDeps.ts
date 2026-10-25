@@ -126,6 +126,9 @@ export function repairDepsFor(pkg: fhirIg.PackageRow, normalize: NormalizeHook |
       if (await loadValueSetAnywhere(pkg, u)) return { kind: "valueset", valueSet: u };
       const vsTwin = twinUrl(u, "/CodeSystem/", "/ValueSet/");
       if (vsTwin && (await loadValueSetAnywhere(pkg, vsTwin))) return { kind: "valueset", valueSet: vsTwin };
+      // v14.1: an HL7 core ValueSet written without its /ValueSet/ segment (http://hl7.org/fhir/condition-code).
+      const core = /^http:\/\/hl7\.org\/fhir\/([A-Za-z0-9][A-Za-z0-9._-]*)$/.exec(u);
+      if (core && (await loadValueSetAnywhere(pkg, `http://hl7.org/fhir/ValueSet/${core[1]}`))) return { kind: "valueset", valueSet: `http://hl7.org/fhir/ValueSet/${core[1]}` };
       const check = await resolver.checkCode(u, code, null);
       if (check.status !== "unknown-system") return { kind: "codesystem" };
       if (await resolver.definitionExists(u)) return { kind: "other" };

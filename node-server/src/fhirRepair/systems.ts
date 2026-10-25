@@ -15,8 +15,15 @@
  *              c. URL shape: the fragment or last path segment names a known CodeSystem (its name /
  *                 title / id / URL tail / identifier, or an external terminology of the FHIR R4
  *                 list below), or is a THO abstract code (`_ActMedicalServiceCode`) of exactly one
- *                 CodeSystem;
- *              a / b / c must agree; candidates must hold the code.
+ *                 CodeSystem, or (v14.1) names an installed ValueSet (THO / core:
+ *                 …/CodeSystem/v3-ActEncounterCode → ValueSet v3-ActEncounterCode → the CodeSystem
+ *                 the code has in it);
+ *              d. (v14.1) renamed / retired names: the installed CodeSystems whose name is similar
+ *                 to the last segment (equal after dropping a v2- / v3- prefix and punctuation, one
+ *                 a prefix of the other, or ≥ 80% Levenshtein similarity: v3-AdmitSource →
+ *                 admit-source, v3-GTS → v3-GTSAbbreviation) — accepted only when exactly one of
+ *                 them holds the code and the element's binding (when it can decide) accepts it;
+ *              a / b / c / d must agree; candidates must hold the code.
  *   relative   (R4) not an absolute URI (`ICD-10-CM`, `LOINC`, `SNOMED CT`, `loinc.org`, an OID) →
  *              the CodeSystem whose name / title / id / URL tail / identifier is that name (the
  *              external list included; a host/path without scheme as http(s):// URL), else whose
@@ -98,8 +105,36 @@ export interface SystemOutcome {
 /** Directory of known CodeSystems: name key → URLs (closure CodeSystems + the external list). */
 interface Directory {
   byKey: Map<string, Set<string>>;
-  entries: Array<{ url: string; tokens: Set<string> }>;
+  entries: Array<{ url: string; tokens: Set<string>; keys: Set<string> }>;
 }
+
+/** Name key for similarity: nameKey without a leading HL7 v2 / v3 marker. */
+function simKey(s: string): string {
+  return nameKey(s).replace(/^(?:hl7)?v[23](?=[a-z])/, "");
+}
+
+function levenshtein(a: string, b: string): number {
+  const m = a.length;
+  const n = b.length;
+  let prev = Array.from({ length: n + 1 }, (_, j) => j);
+  for (let i = 1; i <= m; i++) {
+    const cur = [i];
+    for (let j = 1; j <= n; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    prev = cur;
+  }
+  return prev[n];
+}
+
+/** Similarity of two name keys (1 = equal; 0.85 = one is a prefix of the other; else the Levenshtein ratio). */
+export function nameSimilarity(a: string, b: string): number {
+  if (!a || !b) return 0;
+  if (a === b) return 1;
+  const [s, l] = a.length <= b.length ? [a, b] : [b, a];
+  if (s.length >= 3 && l.startsWith(s)) return 0.85;
+  return 1 - levenshtein(a, b) / Math.max(a.length, b.length);
+}
+
+const SIMILAR_MIN = 0.8;
 
 export class SystemRepairer {
   private directoryP: Promise<Directory> | null = null;
@@ -295,11 +330,14 @@ export class SystemRepairer {
           if (!url) continue;
           const names = [...e.names, lastSegment(url), url];
           let toks = tokenMap.get(url);
-          if (!toks) {
+          let keys = list.find((x) => x.url === url)?.keys;
+          if (!toks || !keys) {
             toks = new Set<string>();
+            keys = new Set<string>();
             tokenMap.set(url, toks);
-            list.push({ url, tokens: toks });
+            list.push({ url, tokens: toks, keys });
           }
+          for (const n of [...e.names, lastSegment(url)]) if (typeof n === "string" && simKey(n)) keys.add(simKey(n));
           for (const n of names) {
             if (typeof n !== "string" || !n.trim()) continue;
             const k = nameKey(n.replace(/^urn:oid:/i, ""));
@@ -326,6 +364,21 @@ export class SystemRepairer {
     if (!toks.length) return { urls: [], how: "tokens" };
     const urls = dir.entries.filter((e) => toks.every((t) => e.tokens.has(t))).map((e) => e.url);
     return { urls: [...new Set(urls)].sort().slice(0, 40), how: "tokens" };
+  }
+
+  /** Installed CodeSystems whose name is similar to `seg` (renamed / retired names), best first. */
+  async similar(seg: string, exclude: string): Promise<Array<{ url: string; score: number }>> {
+    const k = simKey(seg);
+    if (k.length < 3) return [];
+    const dir = await this.directory();
+    const out: Array<{ url: string; score: number }> = [];
+    for (const e of dir.entries) {
+      if (e.url === exclude || e.url.startsWith("urn:oid:")) continue;
+      let best = 0;
+      for (const x of e.keys) best = Math.max(best, nameSimilarity(k, x));
+      if (best >= SIMILAR_MIN) out.push({ url: e.url, score: best });
+    }
+    return out.sort((a, b) => b.score - a.score || (a.url < b.url ? -1 : 1)).slice(0, 12);
   }
 
   /** Of `urls`, the CodeSystems that hold `code` (validator code check). */
@@ -400,7 +453,65 @@ export class SystemRepairer {
         }
       }
     }
+    // A ValueSet named like the segment (THO / core): the CodeSystem the code has in it.
+    if (!outs.length && last && /[a-z]/i.test(last) && !/^(codesystem|valueset|fhir|sid|r4|r5)$/i.test(last)) {
+      for (const vs of [`http://terminology.hl7.org/ValueSet/${last}`, `http://hl7.org/fhir/ValueSet/${last}`]) {
+        if (vs === u) continue;
+        const r = await this.resolve(vs, code);
+        if (!r || r.kind !== "valueset") continue;
+        const hit = await this.fromValueSet(system, code, r.valueSet);
+        if (hit && !("error" in hit) && !outs.some((o) => o.system === hit.system)) {
+          outs.push({ ...hit, reason: `'${system}' is not a known CodeSystem; '${last}' names the ValueSet ${r.valueSet}, where code '${code}' belongs to ${hit.system}` });
+        }
+      }
+    }
     return outs.length ? outs : null;
+  }
+
+  /** (d) Renamed / retired CodeSystem names: the one similarly named installed CodeSystem holding the code. */
+  async fromSimilarName(system: string, code: string): Promise<SystemOutcome | null> {
+    const u = stripVersion(system);
+    const last = lastSegment(u.split("#")[0]);
+    if (!last || /^(codesystem|valueset|fhir|sid|r4|r5)$/i.test(last)) return null;
+    const cands = await this.similar(last, u);
+    if (!cands.length) return null;
+    const holding = await this.holding(cands.map((c) => c.url), code);
+    if (holding.length !== 1) return null;
+    const hit = cands.find((c) => c.url === holding[0])!;
+    return { system: hit.url, code, reason: `'${system}' is not a known CodeSystem or ValueSet; '${last}' is the name of ${hit.url} written differently (renamed / retired name, similarity ${Math.round(hit.score * 100)}%), the only similarly named CodeSystem holding code '${code}'` };
+  }
+
+  /** Does the element's binding accept system#code? false only when every bound ValueSet decides it does not. */
+  async bindingAccepts(root: Record<string, any>, ccPath: string, profiles: string[], system: string, code: string): Promise<boolean> {
+    const shim: SuggestionDeps = {
+      fetchStructureDefinition: async (x: string) => {
+        try {
+          return await this.deps.fetchStructureDefinition(x);
+        } catch {
+          return null;
+        }
+      },
+      checkCode: async () => ({ status: "unknown-system" }),
+    };
+    let valueSets: Array<{ valueSet: string; strength?: string }> = [];
+    try {
+      const ctx = await elementBindings(shim, root, ccPath, { profiles });
+      // Only bindings that constrain (required / extensible); preferred / example ones accept any code.
+      valueSets = ctx ? ctx.bindings.filter((b) => b.strength === "required" || b.strength === "extensible").slice(0, 6) : [];
+    } catch {
+      valueSets = [];
+    }
+    if (!valueSets.length || !this.deps.valueSetContains) return true;
+    for (const b of valueSets) {
+      let member: boolean | undefined;
+      try {
+        member = await this.deps.valueSetContains(b.valueSet, system, code);
+      } catch {
+        member = undefined;
+      }
+      if (member !== false) return true;
+    }
+    return false;
   }
 }
 
@@ -441,7 +552,9 @@ export async function repairSystems(
         const rooted = String(site.resource.resourceType) + ccPath.slice(site.resourcePath.length);
         const viaBinding = await rep.fromBindings(site.resource, rooted, profiles(site), coding, system, code, res.codeSystemTwin ?? null);
         const viaShape = await rep.fromUrlShape(system, code);
-        const all = [...(viaBinding ? [viaBinding] : []), ...(viaShape ?? [])];
+        let viaSimilar = !viaBinding && !viaShape ? await rep.fromSimilarName(system, code) : null;
+        if (viaSimilar && !(await rep.bindingAccepts(site.resource, rooted, profiles(site), viaSimilar.system, code))) viaSimilar = null;
+        const all = [...(viaBinding ? [viaBinding] : []), ...(viaShape ?? []), ...(viaSimilar ? [viaSimilar] : [])];
         const distinct = [...new Set(all.map((o) => `${o.system}|${o.code}`))];
         if (distinct.length === 1) outcome = all[0];
         else if (distinct.length > 1) {

@@ -60,6 +60,7 @@ import {
   type GroundingToolDeps,
   type ValidateGroundingArgs,
 } from "./groundingTools.js";
+import { addRecordChecksToFinalize, addRecordChecksToFinalizeResource, addRecordChecksToValidation } from "./recordChecks/envelope.js";
 import {
   bmiInputShape,
   calculateBmi,
@@ -1382,13 +1383,19 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
         "its words). If the display names another concept (another code ranks first — the code is probably wrong) it is NOT changed: " +
         "repair_issues + the validator error carry the codes the display denotes; ucum — a Quantity's UCUM code / system from its unit or " +
         "code text (mmHg → mm[Hg], °C/degC → Cel, 次/分 → /min, a LOINC code in Quantity.code replaced), fitted to the profile's fixed code " +
-        "or required UCUM ValueSet ('min' where /min is fixed); roc-date — 民國 dates (115-10-03, 115/10/03, 民國115年10月3日) → +1911, a " +
-        "time keeps its offset or takes `timezone`, never guessed, 1–2-digit years reported; system — a non-absolute Coding.system (ICD-10-CM, " +
-        "LOINC, SNOMED CT) or an unknown / ValueSet URL → the one CodeSystem it names (installed CodeSystems + the FHIR R4 external list, URL " +
-        "fragment / last segment, the element's bound ValueSets) that holds the code; shape — Coding given as {coding:[one]}, CodeableConcept " +
-        "given as a bare Coding, one-item arrays of single elements, a property misplaced one level (Dosage.doseQuantity → " +
-        "doseAndRate[0].doseQuantity, entry.meta → resource.meta), resourceType from meta.profile; code — a required-binding code written as " +
-        "its display or in another case. Returns {bundle, changes[{path, from, to, rule, reason?}], repair_issues[{path, rule, message, " +
+        "or required UCUM ValueSet ('min' / '1/min' where /min is fixed; mL/min/1.73m2 → mL/min/{1.73_m2}; μIU/mL → u[IU]/mL); a LOINC code " +
+        "in Quantity.code with no unit is reported (quantity-code-not-ucum); roc-date — 民國 dates (115-10-03, 115/10/03, 民國115年10月3日) → " +
+        "+1911; timezone — a date-time without UTC offset (ROC or Gregorian) takes the site timezone: `timezone` (+08:00 / Asia/Taipei), else " +
+        "a site_config line `timezone: +08:00`, never guessed (else reported: timezone-required); 1–2-digit years reported; system — a " +
+        "non-absolute Coding.system (ICD-10-CM, LOINC, SNOMED CT) or an unknown / ValueSet URL → the one CodeSystem it names (installed " +
+        "CodeSystems + the FHIR R4 external list, URL fragment / last segment, a THO / core ValueSet of that name, a similarly named renamed " +
+        "CodeSystem, the element's bound ValueSets) that holds the code; shape — Coding given as {coding:[one]} / {type: …}, CodeableConcept " +
+        "given as a bare Coding, a code element given as a CodeableConcept, one-item arrays of single elements, a property misplaced one " +
+        "level (Dosage.doseQuantity → doseAndRate[0].doseQuantity, timing.route → dosage.route, doseAndRate.unit → doseQuantity.unit, " +
+        "entry.meta → resource.meta), resourceType from meta.profile, a Bundle without resourceType or with numbered entry keys " +
+        "(\"entry[1]\"), deep-equal duplicate fullUrl entries dropped; empty — {}, [], \"\", null removed (ele-1); fixed-slice — a required " +
+        "coding slice the profile fully fixes added; code — a required-binding code written as its display or in another case. A change is " +
+        "withdrawn (repair_issues) if the Bundle would get a validation error it did not have. Returns {bundle, changes[{path, from, to, rule, reason?}], repair_issues[{path, rule, message, " +
         "candidates}], unresolved[{path, reference, candidates}], notes, id_map, summary}; a finalized Bundle yields changes = [] (idempotent, " +
         "deterministic). Numbers keep the spelling you wrote (10.0 stays 10.0). Optional bundle_type sets Bundle.type (a profile-fixed type " +
         "wins). Then validate with fhir_validate_bundle (or call it with normalize_ids=true).",
@@ -1406,17 +1413,39 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
           .nullish()
           .default(null)
           .describe(`"content": ids + uniquely-determined content repairs; "ids": only fullUrl / reference / id / Bundle.type / document order (v9). Omitted → "${DEFAULT_FINALIZE_REPAIR}"`),
-        timezone: z.string().nullish().default(null).describe("UTC offset (e.g. +08:00) for ROC (民國) date-times written without one; never guessed"),
+        timezone: z
+          .string()
+          .nullish()
+          .default(null)
+          .describe("The site timezone — a UTC offset (+08:00) or an IANA zone (Asia/Taipei) — for date-times written without an offset (ROC 民國 and Gregorian); never guessed"),
+        site_config: z
+          .string()
+          .nullish()
+          .default(null)
+          .describe("Facility settings text (as fhir_check_grounding's site_config); a line `timezone: +08:00` (or 時區：Asia/Taipei) gives the site timezone when `timezone` is not passed. Never logged."),
+        source_text: z
+          .string()
+          .nullish()
+          .default(null)
+          .describe(
+            "Optional clinical record text the Bundle was written from: the record checks (data.record_issues / record_checks) then also " +
+              "check date precision, Quantity values, free-text-only medicines and unconfirmed diagnoses against it. Never logged, never changes the Bundle.",
+          ),
       },
     },
-    async ({ bundle, package_id, version, bundle_profile, bundle_type, repair, timezone }, extra) =>
+    async ({ bundle, package_id, version, bundle_profile, bundle_type, repair, timezone, site_config, source_text }, extra) =>
       rawResult(
-        await svc.finalizeBundle(bundle as Record<string, any>, package_id ?? null, version ?? null, bundle_profile ?? null, {
-          bundleType: bundle_type ?? null,
-          lossless: losslessToolArgument("fhir_finalize_bundle", "bundle", extra?.requestId),
-          repair: repair ?? DEFAULT_FINALIZE_REPAIR,
-          timezone: timezone ?? null,
-        }),
+        // Record checks (ISSUES_v15, recordChecks/): report-only data.record_issues / record_checks on the finalized Bundle.
+        addRecordChecksToFinalize(
+          await svc.finalizeBundle(bundle as Record<string, any>, package_id ?? null, version ?? null, bundle_profile ?? null, {
+            bundleType: bundle_type ?? null,
+            lossless: losslessToolArgument("fhir_finalize_bundle", "bundle", extra?.requestId),
+            repair: repair ?? DEFAULT_FINALIZE_REPAIR,
+            timezone: timezone ?? null,
+            siteConfig: site_config ?? null,
+          }),
+          { sourceText: source_text ?? null, siteConfig: site_config ?? null },
+        ),
       ),
   );
 
@@ -1435,7 +1464,9 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
     },
     async ({ resource, profile, package_id, version, ...g }) => {
       const conformance = await svc.validateResource(resource as Record<string, any>, profile ?? null, package_id ?? null, version ?? null);
-      return rawResult(await addResourceGrounding(conformance, resource as Record<string, any>, { ...g, package_id, version } as ValidateGroundingArgs, groundingDeps));
+      const grounded = await addResourceGrounding(conformance, resource as Record<string, any>, { ...g, package_id, version } as ValidateGroundingArgs, groundingDeps);
+      // Record checks (ISSUES_v15): R1 / R2 always, R3 / R4 with source_text; appended after the validator + grounding.
+      return rawResult(addRecordChecksToValidation(grounded, resource as Record<string, any>, { sourceText: g.source_text ?? null, siteConfig: g.site_config ?? null }));
     },
   );
 
@@ -1474,7 +1505,9 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
         normalize_ids ? losslessToolArgument("fhir_validate_bundle", "bundle", extra?.requestId) : undefined,
         normalize_ids && repair === "content" ? "content" : "ids",
       );
-      return rawResult(await addBundleGrounding(conformance, bundle as Record<string, any>, { ...g, package_id, version } as ValidateGroundingArgs, groundingDeps));
+      const grounded = await addBundleGrounding(conformance, bundle as Record<string, any>, { ...g, package_id, version } as ValidateGroundingArgs, groundingDeps);
+      // Record checks (ISSUES_v15): R1 / R2 always, R3 / R4 with source_text; appended after the validator + grounding.
+      return rawResult(addRecordChecksToValidation(grounded, bundle as Record<string, any>, { sourceText: g.source_text ?? null, siteConfig: g.site_config ?? null }));
     },
   );
 
@@ -1514,8 +1547,9 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
         "{reference: <key>} to the context's urn:uuid (context_id + key); generates the narrative; validates like fhir_validate_resource " +
         "(issues carry suggestions). repair=\"content\" (default; \"ids\" = off) first applies the same uniquely-determined content repairs " +
         "as fhir_finalize_bundle — display of the SAME concept only (a display naming another concept is kept and reported with the codes it " +
-        "denotes), UCUM codes from unit text fitted to the profile, ROC (民國) dates, Coding.system names / unknown URLs, lossless shape fixes, " +
-        "required-binding code spellings — listed in `changes`, undecidable ones in `repair_issues` (and on the validator issue as `repair`). " +
+        "denotes), UCUM codes from unit text fitted to the profile, ROC (民國) dates, the site timezone (`timezone` / site_config) for " +
+        "date-times without an offset, Coding.system names / unknown URLs, lossless shape fixes, empty elements, required fixed coding " +
+        "slices, required-binding code spellings — listed in `changes`, undecidable ones in `repair_issues` (and on the validator issue as `repair`). " +
         "Returns {resource, validation, changes, repair_issues, coerced, narrated, pinned, pinnedSlices, contextId, reference}; numbers keep " +
         "the spelling you wrote. Does not auto-loop. Prefer fhir_author_resources when you have field VALUES rather than a drafted resource: " +
         "it composes the resource for you (no raw FHIR JSON) and keeps it in a context for fhir_assemble_bundle.",
@@ -1531,22 +1565,41 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
           .nullish()
           .default(null)
           .describe(`"content": + uniquely-determined content repairs (see fhir_finalize_bundle); "ids": pinning / narrative / references only (1.5.0). Omitted → "${DEFAULT_FINALIZE_REPAIR}"`),
-        timezone: z.string().nullish().default(null).describe("UTC offset (e.g. +08:00) for ROC (民國) date-times written without one; never guessed"),
+        timezone: z
+          .string()
+          .nullish()
+          .default(null)
+          .describe("The site timezone — a UTC offset (+08:00) or an IANA zone (Asia/Taipei) — for date-times written without an offset (ROC 民國 and Gregorian); never guessed"),
+        site_config: z
+          .string()
+          .nullish()
+          .default(null)
+          .describe("Facility settings text (as fhir_check_grounding's site_config); a line `timezone: +08:00` (or 時區：Asia/Taipei) gives the site timezone when `timezone` is not passed. Never logged."),
+        source_text: z
+          .string()
+          .nullish()
+          .default(null)
+          .describe("Optional clinical record text the draft was written from: the record checks in validation.issues then also check date precision, Quantity values, free-text-only medicines and unconfirmed diagnoses. Never logged; the draft is never changed by them."),
       },
     },
-    async ({ profile, draft, context_id, key, package_id, version, generate_narrative, repair, timezone }, extra) =>
+    async ({ profile, draft, context_id, key, package_id, version, generate_narrative, repair, timezone, site_config, source_text }, extra) =>
       rawResult(
-        await svc.finalizeResource(
-          profile,
-          draft as Record<string, any>,
-          context_id ?? null,
-          key ?? null,
-          package_id ?? null,
-          version ?? null,
-          generate_narrative ?? true,
-          losslessToolArgument("fhir_finalize_resource", "draft", extra?.requestId),
-          repair ?? DEFAULT_FINALIZE_REPAIR,
-          timezone ?? null,
+        // Record checks (ISSUES_v15, recordChecks/): merged into data.validation as fhir_validate_resource runs them.
+        addRecordChecksToFinalizeResource(
+          await svc.finalizeResource(
+            profile,
+            draft as Record<string, any>,
+            context_id ?? null,
+            key ?? null,
+            package_id ?? null,
+            version ?? null,
+            generate_narrative ?? true,
+            losslessToolArgument("fhir_finalize_resource", "draft", extra?.requestId),
+            repair ?? DEFAULT_FINALIZE_REPAIR,
+            timezone ?? null,
+            site_config ?? null,
+          ),
+          { sourceText: source_text ?? null, siteConfig: site_config ?? null },
         ),
       ),
   );

@@ -13,9 +13,11 @@ import { createHash } from "node:crypto";
 import { BUNDLE_TYPES, FINALIZE_UUID_NAMESPACE, bundleRules, uuidV5, type FinalizeChange, type FinalizeUnresolved } from "../fhirBundleFinalize.js";
 import type { FHIRIGService } from "../fhirIgService.js";
 import { addBundleGrounding, type GroundingToolDeps } from "../groundingTools.js";
+import { addRecordChecksToValidation } from "../recordChecks/envelope.js";
 import { logDebug, logError } from "../logger.js";
 import { hasRaw, parseLossless, toPlain } from "../losslessJson.js";
 import { nodeAt } from "../fhirSuggestions/util.js";
+import { siteConfigTimezone } from "../fhirRepair/timezone.js";
 import type { RepairChange, RepairIssue } from "../fhirRepair/types.js";
 import { fitDate, parseDateValue } from "./values.js";
 import { ContextExpiredError, type ContextEntry, type ContextRecord, type ContextStorageKind, type ContextStore } from "./contextStore.js";
@@ -84,7 +86,14 @@ export interface AuthoringDeps {
   compose: Composer;
   /** `(contextId, key) → urn:uuid:…` — B's mapping; the Bundle's fullUrls use the same one. */
   keyToUrn: (contextId: string, key: string) => string;
-  validate: (resource: Record<string, unknown>, profile: string, packageId: string | null, version: string | null) => Promise<ToolEnvelope<ValidationData>>;
+  /** `record` (ISSUES_v15): the record checks' inputs — the clinical record (R3 / R4) and the facility settings (identifier formats). */
+  validate: (
+    resource: Record<string, unknown>,
+    profile: string,
+    packageId: string | null,
+    version: string | null,
+    record?: { sourceText?: string | null; siteConfig?: string | null },
+  ) => Promise<ToolEnvelope<ValidationData>>;
   finalizeBundle: (
     bundle: Record<string, unknown>,
     /** `timezone` (v1.4): the context's UTC offset for ROC date-times of the content repairs (assemble always repairs content). */
@@ -306,6 +315,8 @@ export interface AuthorOptions {
   applyDefaults?: ApplyDefaults | null;
   /** Facility settings text (fhir_check_grounding's site_config); merged into the context's, used at assembly. Never logged. */
   siteConfig?: string | null;
+  /** The clinical record text (ISSUES_v15 record checks R3 / R4 of this call's validation). Not stored on the context; never logged. */
+  sourceText?: string | null;
 }
 
 export interface AssembleOptions {
@@ -354,10 +365,12 @@ export class AuthoringService {
     const t0 = performance.now();
     const batchKeys = inputs.map((i) => i.key);
     const knownKeys = [...new Set([...Object.keys(ctx.entries), ...batchKeys])];
-    const timezone = opts.timezone ?? ctx.timezone ?? null;
+    // v14.1: a `timezone:` line of the site_config is the site timezone when none was set.
+    const timezone = opts.timezone ?? ctx.timezone ?? siteConfigTimezone(mergeSiteConfig(ctx.site_config, opts.siteConfig)).timezone ?? null;
     const applyDefaults: ApplyDefaults = opts.applyDefaults ?? ctx.apply_defaults ?? "required";
     // Compose + validate every input concurrently (independent; the store write is one atomic batch).
-    const entries = await Promise.all(inputs.map((input) => this.authorOne(cid, ctx, input, knownKeys, timezone, applyDefaults, warnings)));
+    const record = { sourceText: opts.sourceText ?? null, siteConfig: mergeSiteConfig(ctx.site_config, opts.siteConfig) };
+    const entries = await Promise.all(inputs.map((input) => this.authorOne(cid, ctx, input, knownKeys, timezone, applyDefaults, warnings, record)));
     const stored = await this.deps.store.update(cid, (c) => {
       for (const e of entries) c.entries[e.key] = e;
       if (opts.timezone) c.timezone = opts.timezone;
@@ -414,6 +427,7 @@ export class AuthoringService {
     timezone: string | null,
     applyDefaults: ApplyDefaults,
     warnings: string[],
+    record: { sourceText: string | null; siteConfig: string | null } = { sourceText: null, siteConfig: null },
   ): Promise<ContextEntry> {
     const prev = ctx.entries[given.key];
     let input: AuthorInput;
@@ -461,7 +475,7 @@ export class AuthoringService {
     const version = input.version ?? null;
     let env: ToolEnvelope<ValidationData>;
     try {
-      env = await this.deps.validate(resource, input.profile, packageId, version);
+      env = await this.deps.validate(resource, input.profile, packageId, version, record);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       logError("authoring: validation failed", { contextId: cid, error: e instanceof Error ? e.name : "Error", bytes: msg.length });
@@ -479,6 +493,8 @@ export class AuthoringService {
           message: String(raw.message ?? ""),
           ...(Array.isArray(raw.suggestions) ? { suggestions: raw.suggestions } : {}),
           ...(raw.code !== undefined ? { code: raw.code } : {}),
+          // record checks (ISSUES_v15): keep their basis and origin so the model can tell them from format errors
+          ...(raw.source === "record-checks" ? { source: raw.source, rule: raw.rule, evidence: raw.evidence, ...(raw.located_quotes ? { located_quotes: raw.located_quotes } : {}) } : {}),
         } as AuthorIssue);
       }
       if (env.data.checked_fully === false) warnings.push(`key "${input.key}": validation was not complete (checked_fully=false) — see the validator's profiles_unchecked / valuesets_unchecked`);
@@ -641,7 +657,7 @@ export class AuthoringService {
     draft.type = bundleType;
     if (opts.timestamp) {
       const parsed = parseDateValue(opts.timestamp);
-      const fit = parsed.ok ? fitDate(parsed.value, "instant", ctx.timezone ?? null) : parsed;
+      const fit = parsed.ok ? fitDate(parsed.value, "instant", ctx.timezone ?? siteConfigTimezone(mergeSiteConfig(ctx.site_config, opts.siteConfig)).timezone ?? null) : parsed;
       if (!fit.ok) throw new AuthoringArgumentError(`timestamp: ${fit.message}`, { parameter: "timestamp" });
       draft.timestamp = fit.value;
     }
@@ -650,7 +666,7 @@ export class AuthoringService {
     // 6. Finalize (deterministic ids / references / document order / profile-fixed type) + validate (+ grounding).
     const packageId = opts.packageId ?? null;
     const version = opts.version ?? null;
-    const fin = await this.deps.finalizeBundle(draft, { packageId, version, bundleProfile: opts.bundleProfile ?? null, bundleType, timezone: ctx.timezone ?? null });
+    const fin = await this.deps.finalizeBundle(draft, { packageId, version, bundleProfile: opts.bundleProfile ?? null, bundleType, timezone: ctx.timezone ?? siteConfigTimezone(mergeSiteConfig(ctx.site_config, opts.siteConfig)).timezone ?? null });
     if (!fin.ok || !fin.data) throw new AuthoringArgumentError(`${fin.error?.code ?? "FINALIZE_FAILED"}: ${fin.error?.message ?? "finalize returned no result"}`, { ...(fin.error ?? {}) });
     const bundle = fin.data.bundle;
     for (const w of fin.warnings ?? []) if (typeof w === "string") warnings.push(w);
@@ -750,8 +766,13 @@ export function productionDeps(
     // Composed resources may hold RawNumber spellings (losslessJson): the validator and the
     // finalizer run on the plain tree; the finalizer restores the spellings into the Bundle it
     // returns (parsed losslessly here), so the assembled Bundle keeps every number as written.
-    validate: async (resource, profile, packageId, version) =>
-      parseEnvelope<ValidationData>(await svc.validateResource(toPlain(resource) as Record<string, any>, profile, packageId, version)),
+    validate: async (resource, profile, packageId, version, record) => {
+      const plain = toPlain(resource) as Record<string, any>;
+      // record checks (ISSUES_v15) as fhir_validate_resource runs them
+      return parseEnvelope<ValidationData>(
+        addRecordChecksToValidation(await svc.validateResource(plain, profile, packageId, version), plain, { sourceText: record?.sourceText ?? null, siteConfig: record?.siteConfig ?? null }),
+      );
+    },
     finalizeBundle: async (bundle, o) => {
       const raw = hasRaw(bundle);
       // fhir_assemble_bundle always applies the content repairs (ISSUES_v14), whatever the finalize default.
@@ -761,10 +782,11 @@ export function productionDeps(
     validateBundle: async (bundle, o) => {
       const plain = toPlain(bundle) as Record<string, unknown>;
       const text = await svc.validateBundle(plain as Record<string, any>, o.packageId, o.version, false);
-      if (!o.sourceText) return parseEnvelope<ValidationData>(text);
-      return parseEnvelope<ValidationData>(
-        await addBundleGrounding(text, plain, { source_text: o.sourceText, site_config: o.siteConfig ?? null, package_id: o.packageId, version: o.version }, grounding),
-      );
+      const grounded = o.sourceText
+        ? await addBundleGrounding(text, plain, { source_text: o.sourceText, site_config: o.siteConfig ?? null, package_id: o.packageId, version: o.version }, grounding)
+        : text;
+      // record checks (ISSUES_v15) as fhir_validate_bundle runs them
+      return parseEnvelope<ValidationData>(addRecordChecksToValidation(grounded, plain, { sourceText: o.sourceText ?? null, siteConfig: o.siteConfig ?? null }));
     },
     compositionRequirements: async ({ bundleProfile, packageId, version }) => compositionRequirementsOf(svc, bundleProfile, packageId, version),
   };

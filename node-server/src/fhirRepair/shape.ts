@@ -18,12 +18,24 @@
  *              lexical rule; object keys all known to the target type) and not overwrite anything → moved;
  *   resourceType  a resource without resourceType whose meta.profile names StructureDefinitions of one
  *              resource type → that type (index.ts, before the walk).
+ * v14.1:
+ *   empty      (rule `empty`, ele-1) an element whose value is {}, [], "" or null (no `_x` sibling
+ *              carrying its extensions) → removed (repeated passes remove what becomes empty);
+ *   Coding     also a Coding wrapped in one other property (`class: {type: {…}}`, `{valueCoding: {…}}`)
+ *              → that Coding, under the same no-loss conditions;
+ *   code       a `code` element with a required binding given as a CodeableConcept with one coding /
+ *              a Coding (`reaction.severity: {coding: [{code: "moderate"}]}`) → the code, when the
+ *              ValueSet holds it (under that system, if one is written) and no other text is lost
+ *              (display / text absent or the code's own display);
+ *   misplaced  also into the one present choice-type value that defines the property
+ *              (Dosage.doseAndRate.unit → doseAndRate.doseQuantity.unit) and up out of the only
+ *              item of a repeating element (doseAndRate[0].timing → Dosage.timing).
  * Anything ambiguous or lossy is left as written and reported with the correct shape and an example.
  */
 
 import { primitiveOk } from "../fhirValidator.js";
 import type { RepairChange, RepairIssue } from "./types.js";
-import { baseMax, CORE, groupFor, isObject, PRIMITIVES, repeats, replaceKey, type Member, type Session, type Site } from "./walk.js";
+import { baseMax, CORE, groupFor, isObject, PRIMITIVES, QUANTITY_TYPES, repeats, replaceKey, type Member, type Session, type Site } from "./walk.js";
 
 const CODING_KEYS = new Set(["id", "extension", "system", "version", "code", "display", "userSelected"]);
 
@@ -112,13 +124,52 @@ async function wellFormed(session: Session, type: string, value: unknown): Promi
   return true;
 }
 
+function isEmptyValue(v: unknown): boolean {
+  if (v === null || v === "") return true;
+  if (Array.isArray(v)) return v.length === 0;
+  return isObject(v) && Object.keys(v).length === 0;
+}
+
+/** A Coding wrapped in one non-Coding property (`{type: Coding | CodeableConcept}`); null when not that shape. */
+function wrappedCoding(v: Record<string, any>): { key: string; coding: Record<string, any>; note: string } | { error: string } | null {
+  const own = Object.keys(v).filter((k) => !k.startsWith("_"));
+  const foreign = own.filter((k) => !CODING_KEYS.has(k) && k !== "text" && k !== "coding");
+  if (foreign.length !== 1 || own.some((k) => CODING_KEYS.has(k) && k !== "display")) return null;
+  const key = foreign[0];
+  const inner = v[key];
+  if (!isObject(inner)) return null;
+  let c: Record<string, any> | null = null;
+  let note = "";
+  if ("coding" in inner) {
+    const r = singleCoding(inner);
+    if (!r) return null;
+    if ("error" in r) return { error: `its '${key}' is a CodeableConcept and ${r.error}` };
+    c = r.coding;
+    note = r.note;
+  } else if (isCodingShape(inner)) c = { ...inner };
+  if (!c || typeof c.code !== "string") return null;
+  for (const extra of ["display", "text"]) {
+    const t = typeof v[extra] === "string" ? v[extra].trim() : "";
+    if (!t) continue;
+    if (c.display === undefined) c.display = t;
+    else if (norm(c.display) !== norm(t)) return { error: `its ${extra} '${t}' differs from the wrapped coding's display '${c.display}'` };
+  }
+  return { key, coding: c, note };
+}
+
 interface Move {
   where: string;
   apply(): void;
   path: string;
 }
 
-export async function repairShapes(session: Session, sites: Site[], rp: (p: string) => string, skip: (p: string) => boolean): Promise<{ changes: RepairChange[]; issues: RepairIssue[] }> {
+export async function repairShapes(
+  session: Session,
+  sites: Site[],
+  rp: (p: string) => string,
+  skip: (p: string) => boolean,
+  skipEmpty: (p: string) => boolean = skip,
+): Promise<{ changes: RepairChange[]; issues: RepairIssue[] }> {
   const changes: RepairChange[] = [];
   const issues: RepairIssue[] = [];
   const touched: string[] = [];
@@ -126,6 +177,26 @@ export async function repairShapes(session: Session, sites: Site[], rp: (p: stri
   const siteOf = new Map<object, Site>();
   for (const s of sites) if (isObject(s.value)) siteOf.set(s.value, s);
   const arraysSeen = new Set<string>();
+
+  // --- empty elements (ele-1): removed; an array losing items is not reshaped further in this pass.
+  const emptied = new Map<unknown[], number[]>();
+  for (const site of sites) {
+    if (under(site.path) || skipEmpty(site.path) || !isEmptyValue(site.value) || `_${site.key}` in site.holder) continue;
+    const keyPath = `${site.ownerPath}.${site.key}`;
+    const raw = site.holder[site.key];
+    if (site.index === null || (Array.isArray(raw) && raw.length === 1)) {
+      delete site.holder[site.key];
+      changes.push({ path: rp(keyPath), from: raw, to: null, rule: "empty", reason: `${keyPath.split(".").pop()} is empty (${JSON.stringify(raw)}); FHIR elements must have a value or children (ele-1): removed` });
+      touched.push(keyPath);
+      continue;
+    }
+    const list = emptied.get(raw) || [];
+    list.push(site.index);
+    emptied.set(raw, list);
+    changes.push({ path: rp(site.path), from: site.value, to: null, rule: "empty", reason: `${keyPath.split(".").pop()}[${site.index}] is empty (${JSON.stringify(site.value)}); FHIR elements must have a value or children (ele-1): removed` });
+    touched.push(keyPath);
+  }
+  for (const [arr, idx] of emptied) for (const i of idx.sort((a, b) => b - a)) arr.splice(i, 1);
 
   for (const site of sites) {
     if (under(site.path) || skip(site.path)) continue;
@@ -160,7 +231,26 @@ export async function repairShapes(session: Session, sites: Site[], rp: (p: stri
     }
     const v = site.value;
     if (!isObject(v)) continue;
+    // --- a code element given as a CodeableConcept / Coding
+    if (site.type === "code" && !QUANTITY_TYPES.has(site.ownerType) && site.ownerType !== "Coding") {
+      // (Quantity.code / Coding.code objects are the unit and Coding rules' business.)
+      await codeFromCoding(site, v);
+      continue;
+    }
     // --- Coding given as a CodeableConcept / Coding nested in .code
+    if (site.type === "Coding" && !("coding" in v) && !isCodingShape(v)) {
+      const w = wrappedCoding(v);
+      if (w && "coding" in w) {
+        setValue(site, w.coding);
+        changes.push({ path: rp(site.path), from: v, to: w.coding, rule: "shape", reason: `${site.path} is a Coding: the Coding written inside its '${w.key}' is the Coding itself${w.note ? ` (${w.note})` : ""}` });
+        touched.push(site.path);
+        continue;
+      }
+      if (w && "error" in w) {
+        issues.push({ path: rp(site.path), rule: "shape", severity: "error", message: `${site.path} is a Coding (one code), but a wrapped value was given and ${w.error}; write it as ${EXAMPLES.Coding}` });
+        continue;
+      }
+    }
     if (site.type === "Coding") {
       if ("coding" in v) {
         const r = singleCoding(v);
@@ -208,6 +298,57 @@ export async function repairShapes(session: Session, sites: Site[], rp: (p: stri
     }
   }
   return { changes, issues };
+
+  /** A required-bound code element written as a CodeableConcept / Coding → its code (when lossless and in the ValueSet). */
+  async function codeFromCoding(site: Site, v: Record<string, any>): Promise<void> {
+    let coding: Record<string, any> | null = null;
+    let text = "";
+    if ("coding" in v) {
+      const r = singleCoding(v);
+      if (!r || "error" in r) {
+        issues.push({ path: rp(site.path), rule: "shape", severity: "error", message: `${site.path} is a code (a plain string such as "moderate"), not a CodeableConcept${r && "error" in r ? `, and ${r.error}` : ""}; write the code itself` });
+        return;
+      }
+      coding = r.coding;
+      text = typeof v.text === "string" ? v.text.trim() : "";
+    } else if (isCodingShape(v)) coding = v;
+    if (!coding || typeof coding.code !== "string" || !coding.code.trim()) {
+      issues.push({ path: rp(site.path), rule: "shape", severity: "error", message: `${site.path} is a code (a plain string), not an object; write the code itself` });
+      return;
+    }
+    const code = coding.code.trim();
+    const vsUrls = [...new Set(site.defs.map((d) => (isObject(d.binding) && d.binding.strength === "required" && typeof d.binding.valueSet === "string" ? d.binding.valueSet : null)).filter((x): x is string => !!x))];
+    const bad = (why: string): void => {
+      issues.push({ path: rp(site.path), rule: "shape", severity: "error", message: `${site.path} is a code (a plain string), not a ${"coding" in v ? "CodeableConcept" : "Coding"}; '${code}' was not written as the code because ${why} — write "${code}" if that is the code meant` });
+    };
+    if (vsUrls.length !== 1) return bad(vsUrls.length ? "several required ValueSets apply" : "no required ValueSet confirms it");
+    const vs = vsUrls[0];
+    const sys = typeof coding.system === "string" && coding.system.trim() ? coding.system.trim() : null;
+    let display: string | null = null;
+    let member: boolean | undefined;
+    const exp = session.deps.expandValueSet ? await session.memo(`exp\0${vs}`, () => session.deps.expandValueSet!(vs, 500), null) : null;
+    if (exp && exp.codings.length) {
+      const hits = exp.codings.filter((c) => c.code === code && (!sys || !c.system || c.system === sys));
+      if (hits.length) {
+        member = true;
+        display = hits[0].display ?? null;
+      } else if (!exp.truncated && !exp.incomplete) member = false;
+    }
+    if (member === undefined && session.deps.valueSetContains) {
+      try {
+        member = await session.deps.valueSetContains(vs, sys, code);
+      } catch {
+        member = undefined;
+      }
+    }
+    if (member !== true) return bad(member === false ? `it is not in the required ValueSet ${vs.split("|")[0]}${sys ? ` under ${sys}` : ""}` : `its membership in ${vs.split("|")[0]} cannot be decided here`);
+    for (const t of [typeof coding.display === "string" ? coding.display.trim() : "", text]) {
+      if (t && norm(t) !== norm(code) && (!display || norm(t) !== norm(display))) return bad(`its text '${t}' would be lost (it is not the code's display${display ? ` '${display}'` : ""})`);
+    }
+    setValue(site, code);
+    changes.push({ path: rp(site.path), from: v, to: code, rule: "shape", reason: `${site.path} is a code, not a ${"coding" in v ? "CodeableConcept" : "Coding"}: '${code}' is a code of the required ValueSet ${vs.split("|")[0]} (nothing else is lost)` });
+    touched.push(site.path);
+  }
 
   function setValue(site: Site, value: unknown): void {
     if (site.index === null) site.holder[site.key] = value;
@@ -259,17 +400,52 @@ export async function repairShapes(session: Session, sites: Site[], rp: (p: stri
         }
       }
     }
-    // Up: the owner's parent defines `key` and lacks it.
+    // Down into a choice-type value present on the owner (doseAndRate.unit → doseAndRate.doseQuantity.unit).
+    for (const m of site.ownerMembers) {
+      for (const id of m.ids) {
+        const groups = m.view.sdx.childrenOfId(id);
+        if (!groups) continue;
+        for (const grp of groups.values()) {
+          if (!grp.name.endsWith("[x]")) continue;
+          const present = Object.keys(node).map((k) => ({ k, hit: groupFor(groups, k) })).filter((x) => x.hit && x.hit.grp === grp && x.k !== key);
+          if (present.length !== 1) continue;
+          const { k: name, hit } = present[0];
+          const t = hit!.type;
+          const container = node[name];
+          if (!t || PRIMITIVES.has(t) || !isObject(container)) continue;
+          const target = await definesKey(session, [], t, key, container);
+          if (!target || moves.some((x) => x.path === `${site.ownerPath}.${name}.${key}`)) continue;
+          if (key in container) {
+            if (same(container[key], value)) moves.push({ where: `${name}.${key} (already there)`, path: `${site.ownerPath}.${name}`, apply: () => void delete node[key] });
+            continue;
+          }
+          if (!(await wellFormed(session, target.type, value))) continue;
+          moves.push({
+            where: `${name}.${key}`,
+            path: `${site.ownerPath}.${name}.${key}`,
+            apply: () => {
+              container[key] = value;
+              delete node[key];
+            },
+          });
+        }
+      }
+    }
+    // Up: the owner's parent defines `key` and lacks it (the owner a single value or the only item of its array).
     const ownerSite = siteOf.get(node);
-    if (ownerSite && isObject(ownerSite.holder) && ownerSite.index === null && !(key in ownerSite.holder)) {
-      const target = await definesKey(session, ownerSite.ownerMembers, ownerSite.ownerType, key, ownerSite.holder);
-      if (target && (await wellFormed(session, target.type, value))) {
-        const parent = ownerSite.holder;
+    const ownerArr = ownerSite ? ownerSite.holder[ownerSite.key] : undefined;
+    const ownerSingle = !!ownerSite && (ownerSite.index === null || (Array.isArray(ownerArr) && ownerArr.length === 1));
+    if (ownerSite && isObject(ownerSite.holder) && ownerSingle) {
+      const parent = ownerSite.holder;
+      const target = await definesKey(session, ownerSite.ownerMembers, ownerSite.ownerType, key, parent);
+      if (target && key in parent) {
+        if (same(parent[key], value)) moves.push({ where: `${ownerSite.ownerPath}.${key} (already there)`, path: `${ownerSite.ownerPath}.${key}`, apply: () => void delete node[key] });
+      } else if (target && (await wellFormed(session, target.type, value))) {
         moves.push({
           where: `${ownerSite.ownerPath}.${key}`,
           path: `${ownerSite.ownerPath}.${key}`,
           apply: () => {
-            parent[key] = value;
+            parent[key] = target.repeats && !Array.isArray(value) ? [value] : value;
             delete node[key];
           },
         });

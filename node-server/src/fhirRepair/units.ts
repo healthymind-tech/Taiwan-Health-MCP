@@ -10,7 +10,12 @@
  *   profile    fixed / pattern code and system of the element (slices the discriminators decide
  *              included) and required bindings on the Quantity or its code (ucum-bodytemp …):
  *              a derived code must be allowed. A bare time unit read in an element whose allowed
- *              codes are its per-time rate (`min` where the profile fixes `/min`) is that rate.
+ *              codes are its per-time rate (`min` where the profile fixes `/min`) is that rate; a
+ *              code that is the same UCUM unit as exactly one allowed code (conversion factor 1:
+ *              `1/min` where the profile fixes `/min`) is that code (v14.1).
+ *   LOINC      a LOINC code written as Quantity.code with no unit text: when the profile fixes
+ *              exactly one code (fixed / pattern, e.g. `/min`) that is the unit; otherwise an error
+ *              `quantity-code-not-ucum` asks for the unit (v14.1).
  *   unique     every piece of evidence must give the same allowed code; otherwise nothing is
  *              changed and an issue lists the candidates (and the allowed codes).
  * system is set to http://unitsofmeasure.org with the code; a Quantity.system naming another real
@@ -20,7 +25,7 @@
 import { fixedPattern } from "../fhirSnapshot.js";
 import { checkUcumCode, UCUM_SYSTEM } from "../fhirUcum.js";
 import type { RepairChange, RepairIssue } from "./types.js";
-import { resolveUnit } from "./ucumUnits.js";
+import { resolveUnit, ucumEquivalent } from "./ucumUnits.js";
 import { childDefs, isObject, QUANTITY_TYPES, type Session, type Site } from "./walk.js";
 
 const LOINC_SHAPE = /^(LA|LP|LL|LG)?\d{1,7}-\d$/;
@@ -97,9 +102,11 @@ async function allowedCodes(session: Session, c: Constraints): Promise<{ allowed
 }
 
 /** A derived code fitted to the allowed set (null = not allowed). */
-function fit(code: string, allowed: Set<string> | null): { code: string; rate: boolean } | null {
+function fit(code: string, allowed: Set<string> | null): { code: string; rate: boolean; equiv?: boolean } | null {
   if (allowed === null || allowed.has(code)) return { code, rate: false };
   if (TIME_CODES.has(code) && allowed.has(`/${code}`)) return { code: `/${code}`, rate: true };
+  const same = [...allowed].filter((a) => ucumEquivalent(code, a));
+  if (same.length === 1) return { code: same[0], rate: false, equiv: true };
   return null;
 }
 
@@ -172,10 +179,26 @@ export async function repairUnits(session: Session, sites: Site[], rp: (p: strin
       const r = resolveUnit(unit);
       if (r) ev.push({ code: r.code, why: r.code === unit ? `unit '${unit}' is UCUM` : `unit '${unit}' is UCUM '${r.code}'` });
     }
-    const fitted = ev.map((e) => ({ ...e, fit: fit(e.code, allowed) }));
-    const distinct = [...new Set(fitted.map((f) => (f.fit ? f.fit.code : `!${f.code}`)))];
     const path = rp(site.path);
     const allowedList = allowed ? [...(allowed as Set<string>)].slice(0, 10) : [];
+    const loincCodes = (cur !== null ? [cur] : innerCodes(rawCode)).filter((t) => LOINC_SHAPE.test(t));
+    if (!ev.length && loincCodes.length && !unit && c.fixed.size === 1 && allowed && (allowed as Set<string>).size === 1) {
+      // The profile fixes the one unit this element may have: the LOINC code is replaced by it.
+      ev.push({ code: [...(allowed as Set<string>)][0], why: `code '${loincCodes[0]}' is a LOINC code, not a unit; the profile fixes the unit to '${[...(allowed as Set<string>)][0]}'` });
+    }
+    if (!ev.length && loincCodes.length) {
+      const field = site.key === "valueQuantity" || /valueQuantity$/.test(site.path) ? "valueQuantity.code" : `${site.key}.code`;
+      issues.push({
+        path: rp(`${site.path}.code`), rule: "ucum", severity: "error", code: "quantity-code-not-ucum",
+        message:
+          `${field} at ${path} holds a LOINC code ('${loincCodes[0]}'), not a UCUM unit${unit ? ` and unit '${unit}' names no UCUM unit` : ", and no unit is given"}; ` +
+          `give the unit (the LOINC code belongs in Observation.code)${allowedList.length ? ` — allowed here: ${allowedList.join(", ")}` : ""}`,
+        ...(allowedList.length ? { candidates: allowedList } : {}),
+      });
+      continue;
+    }
+    const fitted = ev.map((e) => ({ ...e, fit: fit(e.code, allowed) }));
+    const distinct = [...new Set(fitted.map((f) => (f.fit ? f.fit.code : `!${f.code}`)))];
     if (!ev.length) {
       const what = cur !== null ? `code '${cur}'` : rawCode !== undefined ? "the code given" : "no code";
       issues.push({
@@ -198,8 +221,11 @@ export async function repairUnits(session: Session, sites: Site[], rp: (p: strin
     }
     const target = fitted[0].fit!.code;
     const rate = fitted.some((f) => f.fit?.rate);
+    const equiv = fitted.find((f) => f.fit?.equiv);
     const reason =
-      `${fitted.map((f) => f.why).join("; ")}${rate ? `; read as the rate '${target}' the element allows` : ""}` + `${label.length ? ` (${label.join("; ")})` : ""}`;
+      `${fitted.map((f) => f.why).join("; ")}${rate ? `; read as the rate '${target}' the element allows` : ""}` +
+      `${equiv ? `; '${equiv.code}' is the same UCUM unit as '${target}' (conversion factor 1), written as the element requires` : ""}` +
+      `${label.length ? ` (${label.join("; ")})` : ""}`;
     if (rawCode !== target) {
       changes.push({ path: rp(`${site.path}.code`), from: rawCode === undefined ? null : rawCode, to: target, rule: "ucum", reason });
       q.code = target;
