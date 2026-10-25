@@ -2621,7 +2621,8 @@
 解析出的 IG 只收錄某 CodeSystem 的節錄版、而另一個已安裝套件收錄同一 canonical 的完整版（概念數 ≥ 10 倍且多 1,000 以上，
 例如 TW Core 1.0.0 vs 0.3.2 的 <code>medication-nhi-tw</code>）時，未指定 <code>package_id</code> / <code>version</code> 會改查完整版，並以 <code>warnings</code> 與
 <code>data.codesystem_copies</code> 註明。
-<code>system</code> 可給 canonical、CodeSystem id 或別名字詞（例如 <code>nhi_payment</code>）。<code>fhir_lookup_code</code> 查不到時附 <code>hint</code> 與 <code>near_codes</code>。</p>
+每個候選附 <code>accepted_by_validator</code>（驗證器對解析出的套件是否接受此碼，不接受時附 <code>reason</code>）：完整版才有的碼仍列出但標為 <code>false</code>；最佳候選不被接受時，與它相關且被接受的候選排到前面，<code>data.alternatives</code> 列出驗證器接受的其他系統 coding（例如藥品的 ATC 碼）。「相關」的判定（<code>conceptSearch/related.ts</code>，也用於 Unknown code 建議與 <code>alt-coding</code> 修正）：兩邊都有同系統的 linked 碼時必須相同；否則須共用一個罕見字詞（在最大一份 CodeSystem 中出現於 ≤ 1% 概念的 ≥ 4 字母英文字或中文雙字詞——成分名，而非劑型、鹽類或單位），或名稱幾乎相同；兩邊都寫了劑量而沒有一個相同時一律不相關。
+<code>system</code> 可給 canonical、CodeSystem id 或別名字詞（例如 <code>nhi_payment</code>）。<code>fhir_lookup_code</code> 附 <code>accepted_by_validator</code>；查不到時附 <code>hint</code>，碼只在完整版中時附 <code>defined_in</code> 與 <code>alternatives</code>，任何版本都沒有時附 <code>near_codes</code>。</p>
 <h2 id="ig">管理後台（IG 套件庫 → 術語搜尋索引）<a class="headerlink" href="#ig" title="Permanent link">&para;</a></h2>
 <ul>
 <li>索引 / 向量 / 縮寫表狀態（縮寫表標示來源：內建或上傳的 UMLS 檔）；「補建索引」（未變動者略過）與「全部重建」。

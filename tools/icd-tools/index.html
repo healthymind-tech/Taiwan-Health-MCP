@@ -2800,7 +2800,7 @@
 <td style="text-align: left;"><code>system</code></td>
 <td style="text-align: left;">string</td>
 <td style="text-align: left;">否</td>
-<td style="text-align: left;">省略時為 ICD-10（依 <code>type</code>）。<code>icd10cm</code> / <code>icd10pcs</code>，或任何已安裝 IG 的 CodeSystem：canonical、id 或別名字詞（例如 <code>nhi_payment</code> = 健保醫療服務給付項目代碼）。IG CodeSystem 改走 <a href="../../modules/ig-concept-search/">IG 術語搜尋</a>，回傳 <code>{keyword, system, codesystem, results[], clauses?, search_mode?}</code></td>
+<td style="text-align: left;">省略時為 ICD-10（依 <code>type</code>）。<code>icd10cm</code> / <code>icd10pcs</code>，或任何已安裝 IG 的 CodeSystem：canonical、id 或別名字詞（例如 <code>nhi_payment</code> = 健保醫療服務給付項目代碼）。IG CodeSystem 改走 <a href="../../modules/ig-concept-search/">IG 術語搜尋</a>，回傳 <code>{keyword, system, codesystem, results[], clauses?, search_mode?, alternatives?, searched_copy?}</code>；每筆結果附 <code>accepted_by_validator</code>（驗證器是否接受，同 <code>fhir_normalize_code</code>），節錄版 CodeSystem 會改查已安裝的完整版</td>
 <td style="text-align: left;"><code>"nhi_payment"</code></td>
 </tr>
 </tbody>

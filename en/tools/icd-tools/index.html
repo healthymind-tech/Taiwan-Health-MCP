@@ -2800,7 +2800,7 @@
 <td style="text-align: left;"><code>system</code></td>
 <td style="text-align: left;">string</td>
 <td style="text-align: left;">No</td>
-<td style="text-align: left;">Omit for ICD-10 (by <code>type</code>). <code>icd10cm</code> / <code>icd10pcs</code>, or any CodeSystem of an installed IG: canonical, id or alias words (e.g. <code>nhi_payment</code> = the NHI medical service payment codes). IG CodeSystems go through <a href="../../modules/ig-concept-search/">IG Concept Search</a> and return <code>{keyword, system, codesystem, results[], clauses?, search_mode?}</code></td>
+<td style="text-align: left;">Omit for ICD-10 (by <code>type</code>). <code>icd10cm</code> / <code>icd10pcs</code>, or any CodeSystem of an installed IG: canonical, id or alias words (e.g. <code>nhi_payment</code> = the NHI medical service payment codes). IG CodeSystems go through <a href="../../modules/ig-concept-search/">IG Concept Search</a> and return <code>{keyword, system, codesystem, results[], clauses?, search_mode?, alternatives?, searched_copy?}</code>; every result carries <code>accepted_by_validator</code> (whether the validator accepts it, as <code>fhir_normalize_code</code>), and an excerpt CodeSystem is searched in its installed full copy</td>
 <td style="text-align: left;"><code>"nhi_payment"</code></td>
 </tr>
 </tbody>

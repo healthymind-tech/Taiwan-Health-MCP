@@ -2830,7 +2830,7 @@
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_lookup_code</code></td>
-<td style="text-align: left;">在 CodeSystem 中查詢單一碼的顯示名稱與屬性（RxNorm 查本機 <code>rxnorm.concepts</code>）；查無此碼時附 <code>hint</code>（改用 <code>fhir_normalize_code</code>）與 <code>near_codes</code>（IG CodeSystem 中相近的碼）</td>
+<td style="text-align: left;">1.4.0（v15.2：<code>accepted_by_validator</code>、<code>defined_in</code>、<code>alternatives</code>）；在 CodeSystem 中查詢單一碼的顯示名稱與屬性（RxNorm 查本機 <code>rxnorm.concepts</code>）；回應附 <code>accepted_by_validator</code>（<code>fhir_validate_*</code> 是否接受此碼）；查無此碼時附 <code>hint</code>（改用 <code>fhir_normalize_code</code>）；此碼不在本套件的節錄版 CodeSystem、但已安裝的完整版有收錄時，附 <code>defined_in</code>（套件與名稱）、<code>reason</code>（驗證會報 Unknown code）與 <code>alternatives</code>（概念連到、驗證器接受的其他系統 coding，例如 ATC）；任何版本都沒有此碼時才附 <code>near_codes</code>（拼寫相近的碼）</td>
 <td style="text-align: left;"><code>system</code>, <code>code</code></td>
 </tr>
 <tr>
@@ -2840,7 +2840,7 @@
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_normalize_code</code></td>
-<td style="text-align: left;">自由文字（中英文、縮寫、病歷寫法）轉候選碼：SNOMED CT / LOINC / ICD-10，以及任何已安裝 IG 的 CodeSystem（例如健保支付碼 <code>medical-service-payment-tw</code>，見 <a href="../../modules/ig-concept-search/">IG 術語搜尋</a>）。IG 候選附 <code>matched_term</code>、<code>matched_language</code>、<code>group</code>/<code>siblings</code>、<code>linked</code>（概念連到的其他系統代碼，例如藥品的 ATC 碼）；<code>system</code> 可給 canonical、id 或別名（<code>nhi_payment</code>）。<strong>藥品</strong>：健保藥品代碼可查 —— <code>system="medication-nhi-tw"</code>（TW Core）或 <code>"nhi-medication"</code>（TWPAS），文字可為中英文商品名或成分名（<code>Glucophage 500mg</code>、<code>脈優錠 5mg</code>）；預設 IG 只收錄節錄版 CodeSystem（TW Core 1.0.0 的 <code>medication-nhi-tw</code> 僅 35 碼）而另有安裝的套件收錄完整版（TW Core 0.3.2，44,709 碼）時，未指定 <code>package_id</code> / <code>version</code> 會改查完整版（<code>warnings</code> 與 <code>data.codesystem_copies</code> 會註明）。<strong>ATC</strong>：本機沒有可搜尋的 WHO ATC（TW Core <code>medcation-atc-tw</code> 只有 27 個台灣自訂碼），請先查健保藥品，候選的 <code>linked</code> 即其 ATC 碼（來自內建健保用藥 supplement）</td>
+<td style="text-align: left;">1.9.0（v15.2：<code>accepted_by_validator</code> / <code>reason</code>、相關且被接受的候選優先、<code>alternatives</code>）；自由文字（中英文、縮寫、病歷寫法）轉候選碼：SNOMED CT / LOINC / ICD-10，以及任何已安裝 IG 的 CodeSystem（例如健保支付碼 <code>medical-service-payment-tw</code>，見 <a href="../../modules/ig-concept-search/">IG 術語搜尋</a>）。IG 候選附 <code>matched_term</code>、<code>matched_language</code>、<code>group</code>/<code>siblings</code>、<code>linked</code>（概念連到的其他系統代碼，例如藥品的 ATC 碼）；<code>system</code> 可給 canonical、id 或別名（<code>nhi_payment</code>）。<strong>藥品</strong>：健保藥品代碼可查 —— <code>system="medication-nhi-tw"</code>（TW Core）或 <code>"nhi-medication"</code>（TWPAS），文字可為中英文商品名或成分名（<code>Glucophage 500mg</code>、<code>脈優錠 5mg</code>）；預設 IG 只收錄節錄版 CodeSystem（TW Core 1.0.0 的 <code>medication-nhi-tw</code> 僅 35 碼）而另有安裝的套件收錄完整版（TW Core 0.3.2，44,709 碼）時，未指定 <code>package_id</code> / <code>version</code> 會改查完整版（<code>warnings</code> 與 <code>data.codesystem_copies</code> 會註明）。<strong>ATC</strong>：本機沒有可搜尋的 WHO ATC（TW Core <code>medcation-atc-tw</code> 只有 27 個台灣自訂碼），請先查健保藥品，候選的 <code>linked</code> 即其 ATC 碼（來自內建健保用藥 supplement）。<strong>查詢與驗證一致（v15.2）</strong>：每個候選附 <code>accepted_by_validator</code>（不接受時附 <code>reason</code>），判定規則就是驗證器對解析出的套件所做的代碼檢查；完整版才有的碼仍會列出（可用來辨識藥品）但標為 <code>false</code>。最佳候選不被接受時，與它相關（同一 linked 碼、共用罕見字詞、同劑量）且被接受的候選排到前面（無關的碼不會被提前），並以 <code>data.alternatives</code> 列出這些候選連到、驗證器接受的其他系統 coding（例如 <code>{system: "http://www.whocc.no/atc", code: "C08CA01", display: "amlodipine", accepted_by_validator: true, value_sets: [...medcation-atc-tw]}</code>，對應 MedicationRequest 的 <code>atc-medication-code</code> slice）；藥名請留在 <code>CodeableConcept.text</code></td>
 <td style="text-align: left;"><code>text</code>, <code>value_set</code>, <code>system</code>, <code>limit</code>（預設 10）</td>
 </tr>
 </tbody>
@@ -2862,7 +2862,7 @@
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_finalize_resource</code></td>
-<td style="text-align: left;">將已寫好的 FHIR JSON 草稿依剖面定稿並驗證：只在草稿已有父節點處釘上 fixed / pattern（含 slice 成員與任何深度的 <code>_slice</code> 標記），不補臨床內容；<code>repair="content"</code>（預設）先套用與 <code>fhir_finalize_bundle</code> 相同的內容修正（見「<a href="#content-repair">內容修正</a>」），回傳 <code>changes</code> / <code>repair_issues</code>；有欄位值時改用 <code>fhir_author_resources</code>（見「<a href="#authoring">從欄位值撰寫資源</a>」）</td>
+<td style="text-align: left;">1.9.0（v15.2：<code>alt-coding</code>；驗證同 <code>fhir_validate_resource</code> 1.11.0）；將已寫好的 FHIR JSON 草稿依剖面定稿並驗證：只在草稿已有父節點處釘上 fixed / pattern（含 slice 成員與任何深度的 <code>_slice</code> 標記），不補臨床內容；<code>repair="content"</code>（預設）先套用與 <code>fhir_finalize_bundle</code> 相同的內容修正（見「<a href="#content-repair">內容修正</a>」），回傳 <code>changes</code> / <code>repair_issues</code>；有欄位值時改用 <code>fhir_author_resources</code>（見「<a href="#authoring">從欄位值撰寫資源</a>」）</td>
 <td style="text-align: left;"><code>profile</code>, <code>draft</code>, <code>context_id</code>, <code>key</code>, <code>generate_narrative</code>（預設 <code>true</code>）, <code>repair</code>（<code>content</code> / <code>ids</code>）, <code>timezone</code>, <code>site_config</code></td>
 </tr>
 <tr>
@@ -2877,17 +2877,17 @@
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_finalize_bundle</code></td>
-<td style="text-align: left;"><strong>在輸出最終 Bundle 前呼叫</strong>：整理 <code>fullUrl</code>、<code>reference</code> 和 <code>id</code>（見下節「Bundle 定稿」），<code>repair="content"</code>（預設）另修正可唯一確定的內容錯誤、不能確定的不猜並回報候選（見「<a href="#content-repair">內容修正</a>」；<code>repair="ids"</code> 只整理 id）；數字保留呼叫端的原始寫法（<code>10.0</code> 仍是 <code>10.0</code>）。回傳整理後的 <code>bundle</code>、每一處改動 <code>changes[{path, from, to, rule}]</code>、無法確定的引用 <code>unresolved[{path, reference, candidates}]</code>、<code>notes</code> 與 <code>id_map</code>。<code>bundle_type</code> 可指定 <code>Bundle.type</code>（剖面固定的 type 不會被覆寫）</td>
+<td style="text-align: left;">1.5.0（v15.2：內容修正規則 <code>alt-coding</code>）；<strong>在輸出最終 Bundle 前呼叫</strong>：整理 <code>fullUrl</code>、<code>reference</code> 和 <code>id</code>（見下節「Bundle 定稿」），<code>repair="content"</code>（預設）另修正可唯一確定的內容錯誤、不能確定的不猜並回報候選（見「<a href="#content-repair">內容修正</a>」；<code>repair="ids"</code> 只整理 id）；數字保留呼叫端的原始寫法（<code>10.0</code> 仍是 <code>10.0</code>）。回傳整理後的 <code>bundle</code>、每一處改動 <code>changes[{path, from, to, rule}]</code>、無法確定的引用 <code>unresolved[{path, reference, candidates}]</code>、<code>notes</code> 與 <code>id_map</code>。<code>bundle_type</code> 可指定 <code>Bundle.type</code>（剖面固定的 type 不會被覆寫）</td>
 <td style="text-align: left;"><code>bundle</code>, <code>package_id</code>, <code>version</code>, <code>bundle_profile</code>（目標 Bundle profile 的 canonical 或 id；省略時取 <code>meta.profile</code>）, <code>bundle_type</code>（R4 bundle-type 代碼）, <code>repair</code>（<code>content</code> 預設 / <code>ids</code>）, <code>timezone</code>（site 時區：UTC offset 或 IANA 名稱）, <code>site_config</code>（院所設定文字，<code>timezone:</code> 行可提供時區）</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_validate_resource</code></td>
-<td style="text-align: left;">驗證單一資源（結構 + 術語綁定）；未給 <code>profile</code> 時取 <code>meta.profile</code>。選用的 <code>source_text</code> 會另跑 grounding 檢查（見下節）</td>
+<td style="text-align: left;">1.11.0（v15.2，同 <code>fhir_validate_bundle</code> 1.14.0）；驗證單一資源（結構 + 術語綁定）；未給 <code>profile</code> 時取 <code>meta.profile</code>。選用的 <code>source_text</code> 會另跑 grounding 檢查（見下節）</td>
 <td style="text-align: left;"><code>resource</code>, <code>profile</code>, <code>source_text</code>, <code>site_config</code>, <code>evidence_map</code>, <code>grounding</code>, <code>grounding_verbosity</code></td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_validate_bundle</code></td>
-<td style="text-align: left;">驗證整個 Bundle（各 entry 依其 <code>meta.profile</code> + Bundle 內參照完整性）。ID 類錯誤（<code>UUIDs must be valid…</code>、引用無法解析、缺 fullUrl、bdl-7、不合法 id）附 <code>suggestions</code> 與 Bundle 層級的 <code>id_map</code> / <code>id_changes</code>；<code>normalize_ids=true</code> 時先整理再驗證並回傳 <code>normalized_bundle</code>（見下節「Bundle 定稿」）。選用的 <code>source_text</code> 會另跑 grounding 檢查並合併結果（見後文）</td>
+<td style="text-align: left;">1.14.0（v15.2：Unknown code 建議的相關性門檻、<code>replace_coding</code> / <code>remove_coding</code> 替代 coding、ATC 依內建 tx.fhir.org 判定表檢查）；驗證整個 Bundle（各 entry 依其 <code>meta.profile</code> + Bundle 內參照完整性）。ID 類錯誤（<code>UUIDs must be valid…</code>、引用無法解析、缺 fullUrl、bdl-7、不合法 id）附 <code>suggestions</code> 與 Bundle 層級的 <code>id_map</code> / <code>id_changes</code>；<code>normalize_ids=true</code> 時先整理再驗證並回傳 <code>normalized_bundle</code>（見下節「Bundle 定稿」）。選用的 <code>source_text</code> 會另跑 grounding 檢查並合併結果（見後文）</td>
 <td style="text-align: left;"><code>bundle</code>, <code>normalize_ids</code>（預設 <code>false</code>）, <code>repair</code>（預設 <code>ids</code>；搭配 <code>normalize_ids</code> 可設 <code>content</code>）, <code>source_text</code>, <code>site_config</code>, <code>evidence_map</code>, <code>grounding</code>, <code>grounding_verbosity</code></td>
 </tr>
 </tbody>
@@ -2900,6 +2900,8 @@
 <li><strong><code>Unrecognized property</code></strong> 依 core 定義檢查整份資源（同 HL7 JSON parser），剖面不允許的 choice 型別、未知 extension 的 value 底下也會回報；JSON 形狀錯誤（單值寫成陣列）的元素不再往下檢查，與 HL7 相同。</li>
 <li><strong>RxNorm</strong>：依 <code>rxnorm.concepts</code> 檢查碼與 display（tx.fhir.org 接受該 RXCUI 所有 SAB=RXNORM 名稱，不分大小寫），錯誤為 <code>Wrong Display Name '...' for http://www.nlm.nih.gov/research/umls/rxnorm#&lt;code&gt;. Valid display is '...'</code>。未知碼只有在本機 RxNorm 版本不舊於 tx.fhir.org（03022026）時才是 error，否則 warning；本機只有偏好名稱（migration 20261030 前匯入）時 display 不符只給 warning；未載入 RxNorm 時給 warning <code>Display not checked (RxNorm)</code>。</li>
 <li>IG CodeSystem（<code>content = complete</code>）的 <code>Unknown code</code> 維持 error；若另一個已安裝套件有同一 CodeSystem 較完整的版本且含此碼（例如 TW Core 0.3.2 的 <code>medication-nhi-tw</code>），另附 information 指出該套件與版本。</li>
+<li><strong>Unknown code 的建議（v15.2）</strong>：IG CodeSystem 的替代碼必須與原碼相關 —— 共用 linked 碼（如同一 ATC）、共用罕見字詞（成分名，而非劑型 / 鹽類）或幾乎相同的名稱，且劑量不變；找不到相關的碼就不給（不再出現 Amlodipine → 無關藥品的建議）。原碼若在完整版中有定義，<code>near_codes</code> 式的拼寫建議也不再提供；改以 <code>replace_coding</code> 提供它連到、驗證器接受且元素綁定（含 coding slice）允許的其他系統 coding（patch 取代該 Coding，保留 <code>text</code>），CodeableConcept 已含該 coding 時則為 <code>remove_coding</code>（validator_cli 只要未知碼的 Coding 還在就判定錯誤）。</li>
+<li><strong>WHO ATC（v15.2）</strong>：本機不持有 ATC，改用內建的 tx.fhir.org 判定表（<code>node-server/data/terminology/atc-tx-check.json.gz</code>，只涵蓋 TW Core <code>medcation-atc-tw</code> 與健保用藥 supplement 出現的 ATC 碼、不含名稱）：ATC 2026 沒有的碼回報與 validator_cli 相同的 <code>Unknown code '…' in the CodeSystem 'http://www.whocc.no/atc' version '2026'</code> error；TW Core ValueSet 的 display 經確認與伺服器一致時才檢查 display（不分大小寫）；表外的碼維持不檢查。</li>
 <li>直接綁定 ValueSet 的 Coding 元素（如 <code>Encounter.class</code>）以 ValueSet URL 當 system 時，只回報綁定 warning，不再報 <code>The Coding references a value set</code> error（與 HL7 相同）。</li>
 </ul>
 <p>1.7.0（validator v13，評估報告 v13）新增：</p>
@@ -2999,6 +3001,11 @@
 <td style="text-align: left;"><code>fixed-slice</code></td>
 <td style="text-align: left;">剖面要求（min ≥ 1）、內容完全由 fixed / pattern 決定的 Coding / CodeableConcept slice 沒有出現 → 補上（例：pulse-oximetry 要求 <code>code.coding</code> 同時有兩個固定 coding、vital-signs 的 <code>category:VSCat</code>）；新值須經 discriminator 判定屬於該 slice</td>
 <td style="text-align: left;">slice 的必要子元素不是全部固定、已有屬於該 slice 的項目、超過元素上限</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>alt-coding</code></td>
+<td style="text-align: left;">CodeableConcept 中某 Coding 的碼不在本套件的節錄版 CodeSystem（驗證報 Unknown code，例：TW Core 1.0.0 <code>medication-nhi-tw</code> 只有 35 碼）、但已安裝的完整版有定義，且其概念只連到<strong>一個</strong>驗證器接受、又被 coding 元素或某個 coding slice 綁定的 ValueSet 收錄的其他系統 coding（例：健保藥品 → ATC，TW Core <code>medcation-atc-tw</code>）→ 以該 coding 取代；CodeableConcept 已含該 coding 時移除未知碼的 Coding；<code>text</code> 保留，沒有 <code>text</code> 時以原 display 補上（產品名稱不流失）</td>
+<td style="text-align: left;">連到多個被接受的 coding（回報候選）、沒有被接受或被綁定允許的 coding、原碼在本套件的 CodeSystem 中</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>code</code></td>
@@ -3107,7 +3114,7 @@
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_author_resources</code></td>
-<td style="text-align: left;">一次撰寫多筆資源（8 筆以上沒問題）：<code>{key, profile, fields}</code>；MCP 補 <code>meta.profile</code>、fixed / pattern、slice、必填欄位的 workflow 預設值、可推導的值（例如有 encounter 的 Condition.category）、display、UCUM 單位、民國日期轉 ISO，並做下述「自動修正」，然後驗證並存進 context。回傳 <code>{context_id, storage, results[{key, status, resource, provenance, missing, refs, issues, notes}], summary, settings}</code></td>
+<td style="text-align: left;">1.7.0（v15.2：<code>alt-coding</code> 修正、候選附 <code>accepted_by_validator</code>）；一次撰寫多筆資源（8 筆以上沒問題）：<code>{key, profile, fields}</code>；MCP 補 <code>meta.profile</code>、fixed / pattern、slice、必填欄位的 workflow 預設值、可推導的值（例如有 encounter 的 Condition.category）、display、UCUM 單位、民國日期轉 ISO，並做下述「自動修正」，然後驗證並存進 context。回傳 <code>{context_id, storage, results[{key, status, resource, provenance, missing, refs, issues, notes}], summary, settings}</code></td>
 <td style="text-align: left;"><code>context_id</code>（第一次省略）, <code>resources</code>, <code>timezone</code>, <code>apply_defaults</code>（<code>required</code> / <code>none</code>）, <code>site_config</code></td>
 </tr>
 <tr>
@@ -3117,7 +3124,7 @@
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_assemble_bundle</code></td>
-<td style="text-align: left;">由 key 清單組 Bundle：每個 entry 的 fullUrl 是該 key 的確定性 urn:uuid，經 <code>fhir_finalize_bundle</code> 的規則定稿、<code>fhir_validate_bundle</code> 驗證（給 <code>source_text</code> 時另做 grounding）；issue 都帶 <code>key</code> 與模型欄位名</td>
+<td style="text-align: left;">1.7.0（v15.2：同 <code>fhir_author_resources</code> 1.7.0 / <code>fhir_finalize_bundle</code> 1.5.0 / <code>fhir_validate_bundle</code> 1.14.0）；由 key 清單組 Bundle：每個 entry 的 fullUrl 是該 key 的確定性 urn:uuid，經 <code>fhir_finalize_bundle</code> 的規則定稿、<code>fhir_validate_bundle</code> 驗證（給 <code>source_text</code> 時另做 grounding）；issue 都帶 <code>key</code> 與模型欄位名</td>
 <td style="text-align: left;"><code>context_id</code>, <code>keys</code>, <code>bundle_type</code>, <code>bundle_profile</code>, <code>identifier</code>, <code>timestamp</code>, <code>source_text</code>, <code>site_config</code>, <code>allow_invalid</code></td>
 </tr>
 </tbody>

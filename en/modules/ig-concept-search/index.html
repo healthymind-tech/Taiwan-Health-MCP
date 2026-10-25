@@ -2636,9 +2636,17 @@ UMLS string</strong>), <code>exact</code>, <code>category</code> (from a categor
 reached through Coding properties, at most 3 + <code>linked_more</code>, e.g. an NHI drug's ATC code). When the resolved IG holds
 only an excerpt of a CodeSystem and another installed package holds a full copy of the same canonical (≥ 10× the
 concepts and ≥ 1,000 more, e.g. TW Core 1.0.0 vs 0.3.2 <code>medication-nhi-tw</code>), the full copy is searched unless
-<code>package_id</code> / <code>version</code> is given, noted in <code>warnings</code> and <code>data.codesystem_copies</code>. <code>system</code> may be a canonical, a
-CodeSystem id or alias words (e.g. <code>nhi_payment</code>). <code>fhir_lookup_code</code> adds <code>hint</code> and <code>near_codes</code> when a code is
-not found.</p>
+<code>package_id</code> / <code>version</code> is given, noted in <code>warnings</code> and <code>data.codesystem_copies</code>. Every candidate carries
+<code>accepted_by_validator</code> (whether the validator accepts the code for the resolved package, <code>reason</code> when not): codes only the
+full copy has are still listed but flagged <code>false</code>; when the best candidate is not accepted, accepted candidates related
+to it move to the front and <code>data.alternatives</code> lists accepted codings of other systems (e.g. a drug's ATC code).
+"Related" (<code>conceptSearch/related.ts</code>, also used by the Unknown-code suggestions and the <code>alt-coding</code> repair): when both
+concepts carry linked codes of a system they must share one; otherwise they must share a rare word (a Latin word of ≥ 4
+letters or a CJK bigram held by ≤ 1% of the concepts of the largest copy of the CodeSystem — an ingredient, not a dose
+form, salt or unit) or have near-identical names; when both name a strength and none is shared they are never related.
+<code>system</code> may be a canonical, a CodeSystem id or alias words (e.g. <code>nhi_payment</code>). <code>fhir_lookup_code</code> adds
+<code>accepted_by_validator</code>; when a code is not found, <code>hint</code>, plus <code>defined_in</code> and <code>alternatives</code> when only the full copy
+defines it, or <code>near_codes</code> when no copy does.</p>
 <h2 id="admin-console-ig-packages">Admin console (IG packages → 術語搜尋索引)<a class="headerlink" href="#admin-console-ig-packages" title="Permanent link">&para;</a></h2>
 <ul>
 <li>Index / vector / thesaurus / abbreviation-lexicon status (the lexicon shows its source: bundled or an uploaded UMLS
