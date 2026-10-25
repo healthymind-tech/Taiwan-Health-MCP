@@ -345,7 +345,12 @@ function readMention(line: string, start: number, end: number, section: string):
   if (confirms.length) return { reading: "confirmed", cue: confirms[0].cue, quote, section };
   if (section === "rule_out") return { reading: "explicit", cue: "rule-out section", quote, section };
   const applies: CueHit[] = [];
+  const groups = bracketGroups(t);
   for (const c of cues) {
+    // ISSUES_v15.1 R5: a cue inside a bracket that names another concept qualifies that concept only
+    // (「Elevated PSA（未確立惡性腫瘤）」); a bracket holding only the cue (「肺炎（待排除）」) still qualifies its host.
+    const g = groups.find(([a, b]) => a <= c.start && c.end <= b);
+    if (g && !(g[0] <= start && end <= g[1]) && bracketResidue(t.slice(g[0], g[1]), c).length > 1) continue;
     if (c.position === "prefix" && c.end <= start) {
       const between = t.slice(c.end, start);
       if (!RE_COMMA.test(between) && between.length <= 40) applies.push(c);
@@ -372,6 +377,32 @@ function readMention(line: string, start: number, end: number, section: string):
   if (applies.some((c) => c.strength === "explicit")) return { reading: "explicit", cue: applies.find((c) => c.strength === "explicit")!.cue, quote, section };
   if (applies.length) return { reading: "uncertain", cue: applies[0].cue, quote, section };
   return { reading: "plain", cue: null, quote, section };
+}
+
+const OPEN_B = "(（[【";
+const CLOSE_B = ")）]】";
+
+/** Spans [start, end) of the bracket contents of a text (outermost brackets). */
+function bracketGroups(t: string): Array<[number, number]> {
+  const out: Array<[number, number]> = [];
+  let depth = 0;
+  let s0 = 0;
+  for (let i = 0; i < t.length; i++) {
+    if (OPEN_B.includes(t[i])) {
+      if (depth === 0) s0 = i + 1;
+      depth++;
+    } else if (CLOSE_B.includes(t[i]) && depth > 0) {
+      depth--;
+      if (depth === 0) out.push([s0, i]);
+    }
+  }
+  if (depth > 0) out.push([s0, t.length]);
+  return out;
+}
+
+/** Bracket content minus the cue and punctuation: the concept the cue qualifies there. */
+function bracketResidue(g: string, _c: CueHit): string {
+  return cuesIn(g).reduce((r, h) => r.split(h.cue).join(" "), g).replace(/[\s\p{P}\p{S}]/gu, "").replace(/^(待|中|的|之|仍|尚)$/u, "");
 }
 
 function conditionNames(res: Json): string[] {
@@ -492,7 +523,15 @@ function r4Symptom(res: Json, base: string, rec: RecordIndex, statements: string
 
 // ------------------------------------------------------------------------------------------- driver
 
-export function recordAwareChecks(root: Json, slots: Slot[], sourceText: string, siteConfig: string | null, skipPaths: ReadonlySet<string>): RecordIssue[] {
+export function recordAwareChecks(
+  root: Json,
+  slots: Slot[],
+  sourceText: string,
+  siteConfig: string | null,
+  skipPaths: ReadonlySet<string>,
+  coveredConditions: ReadonlySet<string> = new Set(),
+  establishedConditions: ReadonlySet<string> = new Set(),
+): RecordIssue[] {
   const rec = new RecordIndex(sourceText, siteConfig);
   const out: RecordIssue[] = [];
   for (const s of slots) {
@@ -522,9 +561,12 @@ export function recordAwareChecks(root: Json, slots: Slot[], sourceText: string,
     try {
       const m = r3Medicine(r.resource, r.base, rec, medicines);
       if (m) out.push(m);
+      // a Condition the primary-diagnosis slot check already reported (diagnosisSlot.ts) is not reported twice
+      if (coveredConditions.has(r.base)) continue;
       const c = r4Condition(r.resource, r.base, rec);
       if (c) out.push(c);
-      else if (r.resource.resourceType === "Condition") {
+      else if (r.resource.resourceType === "Condition" && !establishedConditions.has(r.base)) {
+        // a symptom Condition that is the record's own established (final) diagnosis is not a stand-in
         statements ??= unconfirmedDiagnosisStatements(rec);
         const w = r4Symptom(r.resource, r.base, rec, statements, anyProvisional);
         if (w) out.push(w);

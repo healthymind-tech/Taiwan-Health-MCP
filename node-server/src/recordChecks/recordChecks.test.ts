@@ -92,10 +92,13 @@ test("R3 says whether the record has a more complete value", () => {
   const none = runRecordChecks(b, { sourceText: BASE_RECORD.replace("就診日期：2025/03/14 09:20", "就診：三月份") }).issues.find((i) => i.code === "insufficient-precision")!;
   assert.match(none.message_zh, /病歷沒有提供更完整的日期/u);
   assert.match(none.evidence, /found none/u);
-  // history-type times (Condition.onsetDateTime) to the year are not insufficient
+  // history-type times (Condition.onsetDateTime) to the year are not insufficient (R3); the year itself must be in the
+  // record (R5, ISSUES_v15.1): 2019 is not, 2016 is derivable from 「病史 9 年」 and the 2025 visit
   const c = BASE_BUNDLE();
   c.entry[2].resource.onsetDateTime = "2019";
-  assert.deepEqual(codes(c, BASE_RECORD), []);
+  assert.deepEqual(codes(c, BASE_RECORD), ["error:ungrounded-value"]);
+  c.entry[2].resource.onsetDateTime = "2016";
+  assert.deepEqual(codes(c, BASE_RECORD.replace("主訴：咳嗽三天", "主訴：咳嗽三天，氣喘病史 9 年")), []);
 });
 
 test("R4: explicit → error, hedged → warning, confirmed / provisional → nothing", () => {
@@ -134,7 +137,7 @@ test("envelope: issues land on the entry, valid turns false, the validator's own
   // with source_text the summary is always reported
   const withSrc = JSON.parse(addRecordChecksToValidation(cleanText, BASE_BUNDLE(), { sourceText: BASE_RECORD }));
   assert.equal(withSrc.data.valid, true);
-  assert.deepEqual(withSrc.data.record_checks, { ok: true, errors: 0, warnings: 0, rules: ["R1", "R2", "R3", "R4"], source_text: true });
+  assert.deepEqual(withSrc.data.record_checks, { ok: true, errors: 0, warnings: 0, rules: ["R1", "R2", "R3", "R4", "R5"], source_text: true });
   // an error envelope passes through byte-identical
   const err = JSON.stringify({ ok: false, data: null, error: { code: "X", message: "y" } });
   assert.equal(addRecordChecksToValidation(err, b, {}), err);

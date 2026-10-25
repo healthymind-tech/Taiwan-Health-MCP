@@ -225,7 +225,8 @@ export function syntheticCases(): SyntheticCase[] {
   add("C-no-vs-zh", "C", unconf, (b) => delete res(b, 2).verificationStatus, dxRec("診斷：急性支氣管炎？尚未確診"));
   add("C-suspected-zh", "C", hedged, () => undefined, dxRec("診斷：疑似急性支氣管炎"));
   add("C-possible-en", "C", hedged, () => undefined, rec(E, "Dx: acute pharyngitis (J02.9)", "Dx: possible acute pharyngitis"), true);
-  add("C-symptom-code", "C", symptom, (b) => (res(b, 2).code = { coding: [{ system: ICD, code: "R05.9", display: "Cough, unspecified" }], text: "咳嗽" }), dxRec("主診斷：待排除肺炎，尚未確立"));
+  // ISSUES_v15.1 R3: a symptom code standing in for the unestablished main diagnosis is now an error
+  add("C-symptom-code", "C", unconf, (b) => (res(b, 2).code = { coding: [{ system: ICD, code: "R05.9", display: "Cough, unspecified" }], text: "咳嗽" }), dxRec("主診斷：待排除肺炎，尚未確立"));
 
   // ---- complete controls (no finding expected)
   out.push({ id: "complete-zh", type: "complete", expect: null, bundle: BASE_BUNDLE(), source_text: R });

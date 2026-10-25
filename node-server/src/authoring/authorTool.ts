@@ -104,7 +104,7 @@ export const authorInputShape = {
     .string()
     .nullish()
     .default(null)
-    .describe("Optional clinical record text: this call's validation then also runs the record checks that need the record (date precision, Quantity values, free-text-only medicines, unconfirmed diagnoses). Not stored; never logged."),
+    .describe("Optional clinical record text: this call's validation then also runs the record checks that need the record (date precision, Quantity values, free-text-only medicines, unconfirmed diagnoses, and whether every identifier / date / quantity value is in the record). Not stored; never logged."),
 };
 
 export function createAuthorTool(service: AuthoringService): AuthoringToolSpec {

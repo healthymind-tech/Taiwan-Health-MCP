@@ -29,7 +29,10 @@
 import { absenceOf, RECORD_CHECKS_LEXICON_SHA256, RECORD_CHECKS_LEXICON_VERSION } from "./lexicon.js";
 import { identifierRegistry, sentenceLike } from "./identifiers.js";
 import { makeIssue } from "./issue.js";
+import { RecordText } from "../grounding/recordText.js";
+import { diagnosisSlotChecks } from "./diagnosisSlot.js";
 import { recordAwareChecks } from "./recordAware.js";
+import { valueGroundingChecks } from "./valueGrounding.js";
 import { slotsOf, type Slot } from "./slots.js";
 import type { RecordCheckOptions, RecordCheckResult, RecordIssue, RecordRule } from "./types.js";
 
@@ -40,7 +43,9 @@ export { absenceOf, RECORD_CHECKS_LEXICON_SHA256, RECORD_CHECKS_LEXICON_VERSION 
 export { identifierRegistry, BUILTIN_IDENTIFIER_SYSTEMS, BUILTIN_FORMATS } from "./identifiers.js";
 
 /** Engine version (provenance `recordChecksVersion`). */
-export const RECORD_CHECKS_VERSION = "1.0.0";
+// 1.1.0 (ISSUES_v15.1): R5 value grounding (ungrounded-value, value-from-other-event), identifiers with a system but
+//   no value, stated absences (病歷號：申請中 → information-absent), the primary diagnosis slot (R4), bracket-scoped cues.
+export const RECORD_CHECKS_VERSION = "1.1.0";
 
 type Json = Record<string, any>;
 
@@ -188,11 +193,32 @@ export function runRecordChecks(root: Json, opts: RecordCheckOptions = {}): Reco
   const withSource = recordText !== null;
   const rules: RecordRule[] = ["R1", "R2"];
   if (withSource) {
-    rules.push("R3", "R4");
+    rules.push("R3", "R4", "R5");
+    const site = opts.siteConfig ?? null;
+    let covered = new Set<string>();
+    let established = new Set<string>();
     try {
-      issues.push(...recordAwareChecks(root, slots, opts.sourceText as string, opts.siteConfig ?? null, absent));
+      // ISSUES_v15.1 R3: the record's primary diagnosis slot (before the mention-level R4 checks, which skip what it reports)
+      const dx = diagnosisSlotChecks(root, new RecordText(opts.sourceText as string, site));
+      issues.push(...dx.issues);
+      covered = dx.covered;
+      established = dx.established;
+    } catch {
+      notes.push("the primary-diagnosis slot check could not run on this input (internal error)");
+    }
+    const flagged = new Set<string>(absent);
+    try {
+      const aware = recordAwareChecks(root, slots, opts.sourceText as string, site, absent, covered, established);
+      issues.push(...aware);
+      for (const i of aware) flagged.add(i.path);
     } catch {
       notes.push("R3 / R4 could not run on this input (internal error); R1 / R2 results are complete");
+    }
+    try {
+      // ISSUES_v15.1 R1 / R2 / R4: every identifier, date and quantity value must come from the record
+      issues.push(...valueGroundingChecks(root, slots, opts.sourceText as string, site, flagged));
+    } catch {
+      notes.push("R5 (value grounding) could not run on this input (internal error)");
     }
   }
   const errors = issues.filter((i) => i.severity === "error").length;

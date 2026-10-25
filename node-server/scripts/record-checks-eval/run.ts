@@ -6,6 +6,14 @@
  *
  * Sets:
  *   synthetic       synthetic.ts — ≥ 40 A / B / C / R2 variants + complete controls (always present);
+ *   synthetic v15.1 synthetic151.ts — ≥ 80 missing-information variants in the six miss classes (identity, date,
+ *                   quantity, medication, diagnosis, structure) + other-time-point values, and complete controls
+ *                   for the derivations that must stay grounded (always present);
+ *   mutations       private: the recorded single-value mutations of the gold Bundles (date / identifier /
+ *                   quantity / dose mutations must get a record-check error at their entry);
+ *   v9+real-record  private: the v9 model-output Bundles whose case record is available (completeness / grounding
+ *                   fixtures) — real model outputs on complete records, the closest offline stand-in for the
+ *                   evaluator's complete-case set;
  *   complete+record private fixtures (mcp_proposal/, src/grounding/__fixtures__/private/) — gold Bundles
  *                   with their records (R1–R4), plus the 15 TW PAS example Bundles with a generated record;
  *   complete-noRec  private model-output Bundles without a record (v9 valid_bundles, v14 dev_failures): R1 / R2.
@@ -21,6 +29,7 @@ import { loadPasBundles, pasTerminology } from "../../src/grounding/pasEval.js";
 import { renderPasRecord } from "../../src/grounding/pasTestkit.js";
 import { runRecordChecks, type RecordIssue } from "../../src/recordChecks/index.js";
 import { syntheticCases } from "./synthetic.js";
+import { syntheticV151Cases } from "./synthetic151.js";
 
 type Json = Record<string, any>;
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -93,6 +102,73 @@ async function pasComplete(): Promise<Case[]> {
   return out;
 }
 
+/** Real records by case id (TWB-xxx): completeness "a" fixtures and the gold grounding inputs. */
+function recordsByCase(): Map<string, { source_text: string; site_config: string | null }> {
+  const out = new Map<string, { source_text: string; site_config: string | null }>();
+  const comp = join(MP, "fixtures", "completeness");
+  if (existsSync(comp)) {
+    for (const f of readdirSync(comp).filter((x) => /^C\d+a_(TWB-\d+)\.input\.json$/u.test(x))) {
+      const id = /(TWB-\d+)/u.exec(f)![1];
+      const input = readJson(join(comp, f)).input;
+      out.set(id, { source_text: input.source_text, site_config: input.site_config ?? null });
+    }
+  }
+  const golden = join(PRIV, "grounding_golden.json");
+  if (existsSync(golden)) {
+    for (const c of readJson(golden).cases as Json[]) {
+      const m = /^V_(TWB-\d+)_gold_auto$/u.exec(String(c.id));
+      if (!m || out.has(m[1])) continue;
+      const input = asObj(c.input);
+      out.set(m[1], { source_text: input.source_text, site_config: input.site_config ?? null });
+    }
+  }
+  return out;
+}
+
+function v9WithRealRecords(): Case[] {
+  const v9 = join(MP, "issues_v9", "repro_ids", "valid_bundles.json");
+  if (!existsSync(v9)) return [];
+  const recs = recordsByCase();
+  const out: Case[] = [];
+  for (const r of readJson(v9) as Json[]) {
+    const m = /\/(TWB-\d+)\//u.exec(String(r.id));
+    const rec = m ? recs.get(m[1]) : undefined;
+    if (rec) out.push({ set: "v9-model-output+real-record", id: `v9-${r.id}`, bundle: r.bundle, source_text: rec.source_text, site_config: rec.site_config });
+  }
+  return out;
+}
+
+interface MutationCase {
+  id: string;
+  kind: string;
+  ei: number;
+  path: string;
+  bundle: Json;
+  source_text: string;
+  site_config: string | null;
+}
+
+function mutationCases(): MutationCase[] {
+  const mf = join(PRIV, "mutation_golden.json");
+  const golden = join(PRIV, "grounding_golden.json");
+  if (!existsSync(mf) || !existsSync(golden)) return [];
+  const gold = new Map<string, Json>();
+  for (const c of readJson(golden).cases as Json[]) {
+    const m = /^V_(TWB-\d+)_gold_auto$/u.exec(String(c.id));
+    if (m) gold.set(m[1], asObj(c.input));
+  }
+  const out: MutationCase[] = [];
+  for (const [k, m] of (readJson(mf).mutations as Json[]).entries()) {
+    const base = gold.get(String(m.case_id));
+    if (!base) continue;
+    const bundle = structuredClone(base.bundle);
+    const ei = Number(m.ei);
+    bundle.entry[ei].resource = asObj(m.resource);
+    out.push({ id: `mut-${k}-${m.case_id}-${m.kind}`, kind: String(m.kind), ei, path: String(m.path), bundle, source_text: base.source_text, site_config: base.site_config ?? null });
+  }
+  return out;
+}
+
 function privateNoRecord(): Case[] {
   const out: Case[] = [];
   const v9 = join(MP, "issues_v9", "repro_ids", "valid_bundles.json");
@@ -139,6 +215,52 @@ async function main(): Promise<void> {
     if (errs.length) fail = true;
   }
 
+  // ---- synthetic v15.1
+  const v151 = syntheticV151Cases();
+  const vpos = v151.filter((c) => c.expect);
+  const byCls = new Map<string, [number, number]>();
+  let vhit = 0;
+  for (const c of vpos) {
+    const r = runRecordChecks(c.bundle, { sourceText: c.source_text, siteConfig: c.site_config });
+    const ok = r.issues.some((i) => c.expect!.codes.includes(i.code) && (c.expect!.severity === "warning" || i.severity === "error"));
+    const t = byCls.get(c.cls) ?? [0, 0];
+    byCls.set(c.cls, [t[0] + (ok ? 1 : 0), t[1] + 1]);
+    if (ok) vhit++;
+    else console.log(`  MISS v15.1 ${c.id}: expected ${c.expect!.severity} ${c.expect!.codes.join("|")}; got ${r.issues.map((i) => `${i.severity} ${i.code}`).join(", ") || "nothing"}`);
+    if (verbose) for (const i of r.issues) console.log(`  [${c.id}] ${short(i)}`);
+  }
+  console.log(`synthetic v15.1 missing-information cases: ${vhit}/${vpos.length} detected (${((100 * vhit) / vpos.length).toFixed(1)} %)`);
+  for (const [t, [h, n]] of byCls) console.log(`  class ${t}: ${h}/${n}`);
+  if (vhit / vpos.length < 0.9) fail = true;
+  const vctl = v151.filter((c) => !c.expect);
+  let vctlErr = 0;
+  for (const c of vctl) {
+    const r = runRecordChecks(c.bundle, { sourceText: c.source_text, siteConfig: c.site_config });
+    const errs = r.issues.filter((i) => i.severity === "error");
+    if (errs.length) vctlErr++;
+    for (const i of r.issues) if (i.severity === "error" || verbose) console.log(`    control ${c.id}: ${short(i)}`);
+  }
+  console.log(`synthetic v15.1 complete controls: ${vctl.length}, ${vctlErr} with an error`);
+  if (vctlErr) fail = true;
+
+  // ---- recorded single-value mutations of the gold Bundles (positives for value grounding)
+  const muts = mutationCases();
+  if (muts.length) {
+    const VALUE_KINDS = new Set(["date", "identifier", "quantity", "dose"]);
+    const per = new Map<string, [number, number]>();
+    for (const m of muts) {
+      const r = runRecordChecks(m.bundle, { sourceText: m.source_text, siteConfig: m.site_config });
+      const ok = r.issues.some((i) => i.severity === "error" && i.path.startsWith(`Bundle.entry[${m.ei}]`));
+      const t = per.get(m.kind) ?? [0, 0];
+      per.set(m.kind, [t[0] + (ok ? 1 : 0), t[1] + 1]);
+      if (!ok && VALUE_KINDS.has(m.kind)) console.log(`  MISS mutation ${m.id} @ ${m.path}`);
+    }
+    const vk = [...per].filter(([k]) => VALUE_KINDS.has(k));
+    const vh = vk.reduce((a, [, [h]]) => a + h, 0);
+    const vn = vk.reduce((a, [, [, n]]) => a + n, 0);
+    console.log(`gold mutations (value kinds date / identifier / quantity / dose): ${vh}/${vn} detected by the record checks; per kind: ${[...per].map(([k, [h, n]]) => `${k} ${h}/${n}`).join(", ")}`);
+  }
+
   // ---- complete cases
   const noRec = privateNoRecord();
   // the model-output Bundles again, each with a record rendered from its own values (the PAS testkit renderer):
@@ -153,7 +275,7 @@ async function main(): Promise<void> {
       // renderer does not cover this Bundle
     }
   }
-  const sets = [...privateComplete(), ...(await pasComplete()), ...noRec, ...rendered];
+  const sets = [...privateComplete(), ...(await pasComplete()), ...v9WithRealRecords(), ...noRec, ...rendered];
   if (!sets.length) console.log("private fixtures absent: only the synthetic set ran");
   const groups = new Map<string, Case[]>();
   for (const c of sets) groups.set(c.set, [...(groups.get(c.set) ?? []), c]);
@@ -170,7 +292,9 @@ async function main(): Promise<void> {
     }
     console.log(`${name}: ${cases.length} bundle(s), ${withErr} with a new error (${((100 * withErr) / Math.max(cases.length, 1)).toFixed(1)} %), ${warnCount} warning(s)`);
     for (const l of lines) console.log(l);
-    if (!name.startsWith("v14-") && !name.startsWith("v9-") && name !== "twu-info" && withErr) fail = true;
+    // model outputs (v9 / v14) may carry real problems; twu-info records lack a fact by design; rendered records do not
+    // render every element (encounter identifiers, timing bounds): reported for inspection, never a failure
+    if (!name.startsWith("v14-") && !name.startsWith("v9-") && name !== "twu-info" && name !== "pas+record" && withErr) fail = true;
   }
   process.exit(fail ? 1 : 0);
 }

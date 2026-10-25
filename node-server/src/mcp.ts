@@ -1429,7 +1429,7 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
           .default(null)
           .describe(
             "Optional clinical record text the Bundle was written from: the record checks (data.record_issues / record_checks) then also " +
-              "check date precision, Quantity values, free-text-only medicines and unconfirmed diagnoses against it. Never logged, never changes the Bundle.",
+              "check date precision, Quantity values, free-text-only medicines, unconfirmed diagnoses and whether every identifier / date / quantity value is in the record against it. Never logged, never changes the Bundle.",
           ),
       },
     },
@@ -1465,7 +1465,7 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
     async ({ resource, profile, package_id, version, ...g }) => {
       const conformance = await svc.validateResource(resource as Record<string, any>, profile ?? null, package_id ?? null, version ?? null);
       const grounded = await addResourceGrounding(conformance, resource as Record<string, any>, { ...g, package_id, version } as ValidateGroundingArgs, groundingDeps);
-      // Record checks (ISSUES_v15): R1 / R2 always, R3 / R4 with source_text; appended after the validator + grounding.
+      // Record checks (ISSUES_v15 / v15.1): R1 / R2 always, R3 / R4 / R5 with source_text; appended after the validator + grounding.
       return rawResult(addRecordChecksToValidation(grounded, resource as Record<string, any>, { sourceText: g.source_text ?? null, siteConfig: g.site_config ?? null }));
     },
   );
@@ -1506,7 +1506,7 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
         normalize_ids && repair === "content" ? "content" : "ids",
       );
       const grounded = await addBundleGrounding(conformance, bundle as Record<string, any>, { ...g, package_id, version } as ValidateGroundingArgs, groundingDeps);
-      // Record checks (ISSUES_v15): R1 / R2 always, R3 / R4 with source_text; appended after the validator + grounding.
+      // Record checks (ISSUES_v15 / v15.1): R1 / R2 always, R3 / R4 / R5 with source_text; appended after the validator + grounding.
       return rawResult(addRecordChecksToValidation(grounded, bundle as Record<string, any>, { sourceText: g.source_text ?? null, siteConfig: g.site_config ?? null }));
     },
   );
@@ -1579,7 +1579,7 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
           .string()
           .nullish()
           .default(null)
-          .describe("Optional clinical record text the draft was written from: the record checks in validation.issues then also check date precision, Quantity values, free-text-only medicines and unconfirmed diagnoses. Never logged; the draft is never changed by them."),
+          .describe("Optional clinical record text the draft was written from: the record checks in validation.issues then also check date precision, Quantity values, free-text-only medicines, unconfirmed diagnoses and whether every identifier / date / quantity value is in the record. Never logged; the draft is never changed by them."),
       },
     },
     async ({ profile, draft, context_id, key, package_id, version, generate_narrative, repair, timezone, site_config, source_text }, extra) =>

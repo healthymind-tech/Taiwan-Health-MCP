@@ -17,9 +17,22 @@ export type RecordCheckCode =
   /** R4: a diagnosis written as confirmed while the record says it is not established. */
   | "unconfirmed-as-confirmed"
   /** R4: a symptom code where the record's main diagnosis is still to be ruled out. */
-  | "symptom-for-unconfirmed-diagnosis";
+  | "symptom-for-unconfirmed-diagnosis"
+  /**
+   * R5 (ISSUES_v15.1 R1): an identifier / date / dateTime / Quantity value that the record (or
+   * site_config) does not state — neither verbatim, nor normalised (ROC → Gregorian, full-width,
+   * separators, units), nor derivable (入院第3天 + the admission date, POD#2, 3 天前 …).
+   */
+  | "ungrounded-value"
+  /** R5 (ISSUES_v15.1 R4): the value is in the record but belongs to another time point / event. */
+  | "value-from-other-event";
 
-export type RecordRule = "R1" | "R2" | "R3" | "R4";
+/**
+ * R1 information-absent · R2 identifier-format · R3 precision / completeness · R4 unconfirmed
+ * diagnoses (incl. the primary diagnosis slot, ISSUES_v15.1 R3) · R5 value grounding (ISSUES_v15.1
+ * R1 / R4: every identifier, date and quantity value must come from the record).
+ */
+export type RecordRule = "R1" | "R2" | "R3" | "R4" | "R5";
 
 export interface RecordIssue {
   severity: "error" | "warning";
@@ -42,7 +55,7 @@ export interface RecordCheckSummary {
   ok: boolean;
   errors: number;
   warnings: number;
-  /** Rules that ran: R1 and R2 always; R3 and R4 only with source_text. */
+  /** Rules that ran: R1 and R2 always; R3, R4 and R5 only with source_text. */
   rules: RecordRule[];
   source_text: boolean;
   notes?: string[];

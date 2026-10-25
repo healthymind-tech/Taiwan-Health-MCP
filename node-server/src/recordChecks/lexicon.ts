@@ -28,13 +28,15 @@ import { nfkc } from "../grounding/lexicon.js";
 // ------------------------------------------------------------------------------------------- data
 
 /** Prefixes that negate / defer a process verb (尚未取號, 還沒帶來, 無法取得, 待確認). */
-const NEG_PREFIXES_ZH = ["尚未", "還未", "仍未", "迄未", "未", "還沒有", "還沒", "沒有", "沒", "尚無", "仍無", "無法", "未能", "不能", "尚待", "有待", "待", "等待", "等候", "忘記", "忘了"];
+const NEG_PREFIXES_ZH = ["尚未", "還未", "仍未", "迄未", "未", "還沒有", "還沒", "沒有", "沒", "尚無", "仍無", "無法", "未能", "不能", "尚待", "有待", "待", "等待", "等候", "忘記", "忘了", "拒絕", "拒"];
 /** Process verbs a record uses for information that has not been produced yet. */
 const PROCESS_VERBS_ZH = [
   "取號", "取得", "取", "給號", "配號", "編號", "建檔", "建立", "提供", "帶", "帶來", "攜帶", "記載", "記錄", "紀錄", "登錄",
   "登記", "填寫", "填", "輸入", "確認", "確定", "確立", "確診", "核發", "發給", "發放", "申請", "辦理", "告知", "測量", "量測",
   "量", "檢驗", "檢測", "回報", "出來", "得知", "查到", "查詢", "掛號", "報到", "補", "補登", "補上", "補齊", "補充", "決定",
   "安排", "開立", "釐清", "詢問", "問到", "知道", "核對", "核實", "上傳", "完成",
+  // 1.1.0 (ISSUES_v15.1): results that were not obtained / not readable (未得數值, 無法辨識, 未發報告)
+  "得", "得到", "得出", "測得", "測出", "驗出", "發", "發出", "辨識", "辨認", "判讀", "讀出", "看清", "看清楚", "下", "訂", "抽血", "採檢", "採血",
 ];
 /** Verbs that combine with 中 (in progress) / 失敗 (failed) / 尚在 … (still being …). */
 const PROGRESS_VERBS_ZH = ["申請", "辦理", "處理", "確認", "建檔", "取號", "查詢", "審核", "核發", "補辦", "掛號", "登錄", "登記", "讀卡", "讀取", "上傳", "配號"];
@@ -45,6 +47,9 @@ const ABSENCE_WORDS_ZH = [
   "查無資料", "查無此人", "查無", "無資料", "沒資料", "沒有資料", "無此資料", "無紀錄", "無記錄", "無記載", "待補登", "待補", "待查",
   "待定", "再補", "後補", "另補", "稍後補", "不提供", "拒絕提供", "拒提供", "拒答", "未填", "尚無", "暫無", "目前無", "無從得知",
   "無法得知", "無法提供", "無法確認", "沒帶", "未帶",
+  // 1.1.0 (ISSUES_v15.1): failed / unreadable measurements and documents
+  "機器錯誤", "儀器錯誤", "機器故障", "儀器故障", "故障", "失效", "字跡模糊", "字跡不清", "模糊不清", "模糊", "看不清", "看不清楚",
+  "難以辨識", "無法判讀", "無結果", "無數值", "無報告", "未出", "未出來", "尚未出來", "未回", "尚未回", "未回報", "作廢", "退件",
 ];
 /** Nil words: count as absence only in fields that need a structured value (identifier, date, quantity, name, reference). */
 const NIL_WORDS_ZH = ["無", "沒有", "空", "無號"];
@@ -59,6 +64,9 @@ const ABSENCE_WORDS_EN = [
   "undocumented", "pending", "awaiting", "tbd", "tba", "tbc", "missing", "no data", "no record", "no records", "no information",
   "no info", "registration failed", "failed", "declined", "refused", "withheld", "blank", "empty", "not on file", "on order",
   "in progress", "forgot", "forgotten",
+  // 1.1.0 (ISSUES_v15.1)
+  "illegible", "unreadable", "not readable", "machine error", "instrument error", "error", "hemolyzed", "haemolyzed", "no result",
+  "no value", "not resulted", "cancelled", "canceled",
 ];
 const NIL_WORDS_EN = ["none", "nil", "null", "na", "n.a.", "-"];
 
@@ -69,6 +77,9 @@ const FIELD_NOUNS_ZH = [
   "卡號", "號碼", "編號", "證號", "字號", "識別碼", "識別號", "代碼", "代號", "號", "資料", "資訊", "日期", "時間", "時刻", "年月日",
   "數值", "數據", "結果", "報告", "劑量", "姓名", "名字", "欄位", "欄", "電話", "地址", "批號", "診斷", "藥名", "藥品", "證件", "文件",
   "住院號", "就診號", "掛號號碼", "檢驗", "檢查",
+  // 1.1.0 (ISSUES_v15.1)
+  "檢體", "標本", "採檢日期", "採檢時間", "採檢", "字跡", "數字", "值", "日", "時", "第一次", "第二次", "第1次", "第2次", "標籤", "條碼",
+  "藥師", "醫師", "護理師",
 ];
 const FIELD_NOUNS_EN = [
   "id", "identifier", "number", "no", "no.", "#", "mrn", "chart", "record", "medical", "national", "card", "resident", "certificate",
@@ -81,12 +92,16 @@ const FILLERS_ZH = [
   "已", "為", "是", "的", "之", "了", "等", "再", "會", "將", "要", "需要", "需", "請", "於", "在", "時", "此", "該", "本", "其",
   "病人", "病患", "患者", "個案", "系統", "院方", "櫃台", "櫃檯", "掛號處", "之後", "以後", "下次", "回診時", "來院", "來", "今日",
   "今天", "當天", "先", "後", "中", "所", "被", "給", "有", "一下", "一樣", "後續", "另行", "另", "補件", "下來", "完畢", "前", "申請", "辦理", "核發", "辦",
+  // 1.1.0 (ISSUES_v15.1)
+  "溶血", "凝固", "不足", "量不足", "因而", "導致", "致", "故而", "所以未",
 ];
 const FILLERS_EN = [
   "the", "a", "an", "is", "are", "was", "were", "be", "been", "being", "has", "have", "had", "yet", "still", "currently", "at", "this",
   "time", "moment", "present", "as", "of", "for", "by", "per", "patient", "pt", "family", "says", "said", "and", "or", "but", "so",
   "will", "to", "later", "until", "with", "from", "on", "in", "it", "its", "his", "her", "their", "due", "please", "awaits", "pt's",
   "patient's", "hospital", "system", "today",
+  // 1.1.0 (ISSUES_v15.1)
+  "specimen", "sample", "machine", "first", "second", "reading", "measurement", "report", "due",
 ];
 
 /**
@@ -102,9 +117,79 @@ const UNCERTAIN_POSTFIX = ["待確認", "待釐清", "待查", "待追蹤", "可
 const SUSPECTED = new Set(["疑似", "擬診", "暫定診斷", "可能性", "?", "？"]);
 const CONFIRM = ["確診", "確定診斷", "診斷確立", "已確立", "證實", "確認為", "確定為", "confirmed", "proven", "biopsy-proven", "diagnosed with", "diagnosis of"];
 
+/**
+ * 1.1.0 (ISSUES_v15.1 R3): headings of the record's PRIMARY diagnosis slot (the label before ：/: at the
+ * start of a line; SOAP "A:"), headings of a differential-only slot, and headings of secondary slots
+ * (never primary). Matched on the whole label after NFKC + lower case.
+ */
+const PRIMARY_DX_HEADINGS = [
+  "診斷", "主診斷", "主要診斷", "臆斷", "初步診斷", "臨床診斷", "門診診斷", "急診診斷", "入院診斷", "出院診斷", "工作診斷", "暫時診斷",
+  "診斷結果", "醫師診斷", "醫師判定", "病名", "評估", "臆測診斷", "impression", "imp", "clinical impression", "assessment", "a/p",
+  "assessment and plan", "assessment & plan", "dx", "diagnosis", "diagnoses", "working diagnosis", "primary diagnosis",
+  "principal diagnosis", "main diagnosis", "final diagnosis", "admission diagnosis", "discharge diagnosis", "ed diagnosis",
+  "provisional diagnosis", "final dx", "discharge dx", "admission dx", "ed dx", "er dx", "primary dx", "working dx", "main dx",
+  "principal dx", "dx/impression", "impression/dx", "a",
+];
+const DIFFERENTIAL_HEADINGS = ["鑑別診斷", "鑑別", "ddx", "dd", "differential diagnosis", "differential diagnoses", "differentials", "differential", "r/o", "rule out", "待排除"];
+const SECONDARY_DX_HEADINGS = ["次診斷", "副診斷", "其他診斷", "共病", "secondary diagnosis", "secondary diagnoses", "comorbidity", "comorbidities", "other diagnoses", "pmh", "過去病史"];
+/**
+ * Slot-level cues: the slot as a whole says no diagnosis is established yet (未下診斷, diagnosis
+ * pending …) — they qualify the slot, not one listed item. Plus regular patterns for "no diagnosis
+ * before / until <a result>" (快篩結果出來前不下診斷, 待報告後再下診斷, no diagnosis until …).
+ */
+const SLOT_CUES = [
+  "未下診斷", "尚未下診斷", "暫不下診斷", "不下診斷", "先不下診斷", "暫不診斷", "診斷未定", "診斷待定", "診斷未明", "診斷不明", "尚無診斷",
+  "尚無明確診斷", "無明確診斷", "未有明確診斷", "沒有明確診斷", "診斷尚未確立", "診斷未確立", "尚未確立診斷", "未能確立診斷", "診斷待確認",
+  "診斷尚待確認", "待確診", "有待確診", "仍待確診", "鑑別中", "鑑別診斷中", "待鑑別", "仍在鑑別", "尚在鑑別", "待釐清診斷", "原因待查",
+  "no diagnosis", "no definitive diagnosis", "no definite diagnosis", "no final diagnosis", "no firm diagnosis", "no established diagnosis",
+  "diagnosis pending", "diagnosis deferred", "diagnosis not established", "diagnosis not yet established", "diagnosis undetermined",
+  "diagnosis uncertain", "diagnosis unclear", "diagnosis to be determined", "undiagnosed", "not yet diagnosed", "pending diagnosis",
+  "to be determined", "work-up pending", "workup pending", "pending work-up", "pending workup",
+];
+const SLOT_CUE_PATTERNS = [
+  String.raw`(前|之前|以前)[^，,。；;]{0,8}(不|暫不|先不|未|勿|不予)[^，,。；;]{0,3}(下|做|作|定|給)?[^，,。；;]{0,2}診斷`,
+  String.raw`待[^，,。；;]{1,24}(結果|報告|檢查|回報)[^，,。；;]{0,8}(後|再)[^，,。；;]{0,8}(下|做|作|確定|決定|確立)[^，,。；;]{0,2}診斷`,
+  String.raw`\bno\s+(definitive\s+|final\s+|firm\s+|definite\s+)?diagnos\w*\s+(until|before|pending|prior)`,
+  String.raw`\bdiagnos\w*\s+(will\s+be|to\s+be|is\s+to\s+be)\s+(made|determined|confirmed|established|decided)`,
+  String.raw`\b(await|awaiting|pending)\s+[^,.;]{1,40}\bbefore\s+(making\s+)?(a\s+)?diagnos`,
+];
+/** Item separators inside a diagnosis slot (top level, outside brackets). */
+const SLOT_ITEM_SEPARATORS = ["、", "；", ";", "，", ",", "／", "/", " vs. ", " vs ", " versus ", "或", " or ", "及", " and "];
+/** Cues that an item was considered and EXCLUDED (resolved, not pending): such items are neither established nor open. */
+const REFUTED_CUES = ["已排除", "可排除", "予以排除", "排除了", "已除外", "不支持", "不考慮", "ruled out", "excluded", "was excluded", "negative work-up", "negative workup"];
+/** ICD-10 chapter XVIII (R00–R99): symptoms, signs and abnormal findings — never a main diagnosis that is still to be ruled out. */
+const SYMPTOM_ICD = "^R\\d{2}";
+/** SNOMED CT semantic tags (FSN display) of findings that are symptoms rather than disorders. */
+const SYMPTOM_SNOMED_TAGS = ["(finding)", "(symptom)", "(observable entity)", "(situation)"];
+
+/**
+ * 1.1.0 (ISSUES_v15.1 R1 / R4): record field labels whose value can be STATED ABSENT in the record
+ * ("採檢日期：無法辨識", "病歷號：申請中"), keyed by the field family they name. A Bundle value for that
+ * field then does not come from the record. Matched as a substring of the label before ：/: (NFKC, lower case).
+ */
+const STATED_ABSENT_LABELS: Record<string, string[]> = {
+  mrn: ["病歷號", "病歷號碼", "病歷編號", "mrn", "chart no", "chart number", "medical record no", "medical record number"],
+  national_id: ["身分證", "身份證", "統一編號", "national id", "id no", "id number"],
+  resident_id: ["居留證", "統一證號", "arc no", "resident certificate"],
+  passport: ["護照", "passport"],
+  nhi_card: ["健保卡號", "健保卡", "nhi card"],
+  encounter_id: ["住院號", "住院號碼", "就診號", "就診號碼", "急診號", "門診號", "掛號號碼", "批價號", "adm no", "admission no", "admission number", "visit no", "visit number", "encounter no", "encounter number"],
+  birth: ["出生日期", "出生", "生日", "dob", "date of birth", "birth date"],
+  visit: ["就診日期", "就診日", "看診日期", "門診日期", "到院日期", "到院時間", "入院日期", "入院時間", "visit date", "encounter date", "admission date", "arrival time"],
+  discharge: ["出院日期", "出院時間", "離院時間", "discharge date", "discharge time"],
+  collection: ["採檢日期", "採檢時間", "採檢", "採血日期", "採血時間", "採血", "檢體採集", "採集日期", "採集時間", "收檢", "collection date", "collection time", "collected", "specimen date", "specimen collected"],
+  test_date: ["檢查日期", "檢驗日期", "報告日期", "報告時間", "檢查時間", "test date", "report date", "exam date"],
+  onset: ["發病日期", "發病時間", "發病", "發作時間", "起始日期", "onset date", "onset"],
+  order_date: ["開立日期", "處方日期", "開藥日期", "order date", "prescription date"],
+  vaccination_date: ["接種日期", "接種時間", "vaccination date", "immunization date"],
+  procedure_date: ["手術日期", "手術時間", "處置日期", "operation date", "surgery date", "procedure date"],
+  medication: ["處方", "藥物", "用藥", "藥品", "開立藥物", "出院帶藥", "medication", "medications", "rx", "prescription", "discharge medication", "discharge medications"],
+};
+
 export const RECORD_CHECKS_LEXICON = {
   name: "record-checks-lexicon",
-  version: "1.0.0",
+  // 1.1.0 (ISSUES_v15.1): measurement / document failure vocabulary; primary-diagnosis slot headings and cues; stated-absent field labels.
+  version: "1.1.0",
   absence: {
     negPrefixesZh: NEG_PREFIXES_ZH,
     processVerbsZh: PROCESS_VERBS_ZH,
@@ -126,6 +211,18 @@ export const RECORD_CHECKS_LEXICON = {
     suspected: [...SUSPECTED],
     confirm: CONFIRM,
   },
+  diagnosisSlot: {
+    primaryHeadings: PRIMARY_DX_HEADINGS,
+    differentialHeadings: DIFFERENTIAL_HEADINGS,
+    secondaryHeadings: SECONDARY_DX_HEADINGS,
+    slotCues: SLOT_CUES,
+    slotCuePatterns: SLOT_CUE_PATTERNS,
+    itemSeparators: SLOT_ITEM_SEPARATORS,
+    refutedCues: REFUTED_CUES,
+    symptomIcd: SYMPTOM_ICD,
+    symptomSnomedTags: SYMPTOM_SNOMED_TAGS,
+  },
+  statedAbsentLabels: STATED_ABSENT_LABELS,
 } as const;
 
 export const RECORD_CHECKS_LEXICON_VERSION = `${RECORD_CHECKS_LEXICON.name} ${RECORD_CHECKS_LEXICON.version}`;
@@ -310,3 +407,25 @@ export function confirmsIn(t: string, cues: CueHit[]): Array<{ start: number; en
   }
   return out;
 }
+
+// ------------------------------------------------------------------------------------------- v15.1 tables (normalised)
+
+const nf = (xs: readonly string[]): string[] => [...new Set(xs.map((x) => nfkc(x).trim()))].sort((a, b) => b.length - a.length);
+
+/** Diagnosis-slot vocabulary (ISSUES_v15.1 R3), NFKC + lower case, longest first. */
+export const DX_SLOT = {
+  primary: new Set(nf(PRIMARY_DX_HEADINGS)),
+  differential: new Set(nf(DIFFERENTIAL_HEADINGS)),
+  secondary: new Set(nf(SECONDARY_DX_HEADINGS)),
+  slotCues: nf(SLOT_CUES),
+  slotCuePatterns: SLOT_CUE_PATTERNS.map((p) => new RegExp(p, "u")),
+  separators: nf(SLOT_ITEM_SEPARATORS.map((s) => s.replace(/^ | $/gu, "\u0000"))).map((s) => s.replace(/\u0000/gu, " ")),
+  symptomIcd: new RegExp(SYMPTOM_ICD, "u"),
+  symptomSnomedTags: nf(SYMPTOM_SNOMED_TAGS),
+  refuted: nf(REFUTED_CUES),
+} as const;
+
+/** Stated-absent field labels (ISSUES_v15.1 R1 / R4): family → labels (NFKC + lower case, longest first). */
+export const ABSENT_LABELS: ReadonlyArray<readonly [string, string]> = Object.entries(STATED_ABSENT_LABELS)
+  .flatMap(([fam, ls]) => ls.map((l) => [nfkc(l), fam] as const))
+  .sort((a, b) => b[0].length - a[0].length);
