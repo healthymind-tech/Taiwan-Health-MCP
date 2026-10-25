@@ -1138,6 +1138,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#record-checksrecord-checks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        病歷是否真的提供了這項資訊（record checks）{#record-checks}
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#tool-versions" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2624,6 +2635,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#record-checksrecord-checks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        病歷是否真的提供了這項資訊（record checks）{#record-checks}
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#tool-versions" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2841,7 +2863,7 @@
 <tr>
 <td style="text-align: left;"><code>fhir_finalize_resource</code></td>
 <td style="text-align: left;">將已寫好的 FHIR JSON 草稿依剖面定稿並驗證：只在草稿已有父節點處釘上 fixed / pattern（含 slice 成員與任何深度的 <code>_slice</code> 標記），不補臨床內容；<code>repair="content"</code>（預設）先套用與 <code>fhir_finalize_bundle</code> 相同的內容修正（見「<a href="#content-repair">內容修正</a>」），回傳 <code>changes</code> / <code>repair_issues</code>；有欄位值時改用 <code>fhir_author_resources</code>（見「<a href="#authoring">從欄位值撰寫資源</a>」）</td>
-<td style="text-align: left;"><code>profile</code>, <code>draft</code>, <code>context_id</code>, <code>key</code>, <code>generate_narrative</code>（預設 <code>true</code>）, <code>repair</code>（<code>content</code> / <code>ids</code>）, <code>timezone</code></td>
+<td style="text-align: left;"><code>profile</code>, <code>draft</code>, <code>context_id</code>, <code>key</code>, <code>generate_narrative</code>（預設 <code>true</code>）, <code>repair</code>（<code>content</code> / <code>ids</code>）, <code>timezone</code>, <code>site_config</code></td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_resolve_reference</code></td>
@@ -2856,7 +2878,7 @@
 <tr>
 <td style="text-align: left;"><code>fhir_finalize_bundle</code></td>
 <td style="text-align: left;"><strong>在輸出最終 Bundle 前呼叫</strong>：整理 <code>fullUrl</code>、<code>reference</code> 和 <code>id</code>（見下節「Bundle 定稿」），<code>repair="content"</code>（預設）另修正可唯一確定的內容錯誤、不能確定的不猜並回報候選（見「<a href="#content-repair">內容修正</a>」；<code>repair="ids"</code> 只整理 id）；數字保留呼叫端的原始寫法（<code>10.0</code> 仍是 <code>10.0</code>）。回傳整理後的 <code>bundle</code>、每一處改動 <code>changes[{path, from, to, rule}]</code>、無法確定的引用 <code>unresolved[{path, reference, candidates}]</code>、<code>notes</code> 與 <code>id_map</code>。<code>bundle_type</code> 可指定 <code>Bundle.type</code>（剖面固定的 type 不會被覆寫）</td>
-<td style="text-align: left;"><code>bundle</code>, <code>package_id</code>, <code>version</code>, <code>bundle_profile</code>（目標 Bundle profile 的 canonical 或 id；省略時取 <code>meta.profile</code>）, <code>bundle_type</code>（R4 bundle-type 代碼）, <code>repair</code>（<code>content</code> 預設 / <code>ids</code>）, <code>timezone</code>（民國年時間的 UTC offset）</td>
+<td style="text-align: left;"><code>bundle</code>, <code>package_id</code>, <code>version</code>, <code>bundle_profile</code>（目標 Bundle profile 的 canonical 或 id；省略時取 <code>meta.profile</code>）, <code>bundle_type</code>（R4 bundle-type 代碼）, <code>repair</code>（<code>content</code> 預設 / <code>ids</code>）, <code>timezone</code>（site 時區：UTC offset 或 IANA 名稱）, <code>site_config</code>（院所設定文字，<code>timezone:</code> 行可提供時區）</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_validate_resource</code></td>
@@ -2945,23 +2967,38 @@
 </tr>
 <tr>
 <td style="text-align: left;"><code>ucum</code></td>
-<td style="text-align: left;">Quantity（任何 Quantity 型別元素，含 <code>component[].valueQuantity</code>）缺 code、code 不是合法 UCUM、code 是 LOINC 碼（<code>8310-5</code>）時，由 <code>unit</code>／code 文字推得 UCUM 並設 <code>system</code>：UCUM 名稱 / 同義詞 / 符號（<code>mmHg</code> → <code>mm[Hg]</code>、<code>°C</code>/<code>℃</code>/<code>degC</code> → <code>Cel</code>）、<code>&lt;次數詞&gt;/&lt;時間單位&gt;</code> 文法（<code>次/分</code> → <code>/min</code>、<code>mg/天</code> → <code>mg/d</code>）；須符合剖面固定的 code 或 required 的 UCUM ValueSet（剖面固定 <code>/min</code> 時的 <code>min</code> 讀作 <code>/min</code>）</td>
+<td style="text-align: left;">Quantity（任何 Quantity 型別元素，含 <code>component[].valueQuantity</code>）缺 code、code 不是合法 UCUM、code 是 LOINC 碼（<code>8310-5</code>）時，由 <code>unit</code>／code 文字推得 UCUM 並設 <code>system</code>：UCUM 名稱 / 同義詞 / 符號（<code>mmHg</code> → <code>mm[Hg]</code>、<code>°C</code>/<code>℃</code>/<code>degC</code> → <code>Cel</code>）、<code>&lt;次數詞&gt;/&lt;時間單位&gt;</code> 文法（<code>次/分</code> → <code>/min</code>、<code>mg/天</code> → <code>mg/d</code>）、µ / μ 寫成的 UCUM 字首 <code>u</code> 與省略方括號的單位（<code>μIU/mL</code> → <code>u[IU]/mL</code>）、除數中連在單位上的係數（小數寫成 annotation：<code>mL/min/1.73m2</code> → <code>mL/min/{1.73_m2}</code>；整數：<code>mg/24h</code> → <code>mg/(24.h)</code>）；須符合剖面固定的 code 或 required 的 UCUM ValueSet（剖面固定 <code>/min</code> 時的 <code>min</code> 讀作 <code>/min</code>；與唯一一個允許代碼換算係數為 1 的同義寫法改成該代碼：<code>1/min</code> → <code>/min</code>）。<code>code</code> 是 LOINC 碼又沒有 <code>unit</code> 時：剖面只固定一個單位就用它，否則回報 error <code>quantity-code-not-ucum</code>（「valueQuantity.code 放的是 LOINC 碼，不是 UCUM 單位，請給單位」）</td>
 <td style="text-align: left;">不同證據推出不同代碼（code <code>g</code> 與 unit <code>kg</code>）、推得的代碼不在允許清單（體溫寫 <code>K</code>）、推不出來；<code>system</code> 是另一個真正的 CodeSystem 時不碰</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>roc-date</code></td>
-<td style="text-align: left;">date / dateTime / instant 的民國年：有「民國 / ROC」字樣或三位數年份（<code>115-10-03</code>、<code>115/10/03</code>、<code>115-10-03T16:05:00+08:00</code>、<code>民國115年10月3日</code>）→ +1911，保留精度；時間沿用原本的 offset，否則用 <code>timezone</code> 參數</td>
-<td style="text-align: left;">一或兩位數年份（<code>99-10-03</code>）無法判定；有時間卻沒有 offset 又沒給 <code>timezone</code>；四位數年份不處理</td>
+<td style="text-align: left;">date / dateTime / instant 的民國年：有「民國 / ROC」字樣或三位數年份（<code>115-10-03</code>、<code>115/10/03</code>、<code>115-10-03T16:05:00</code>、<code>民國115年10月3日</code>）→ +1911，保留精度；時間沿用原本的 offset，沒有 offset 時補 site 時區（見下方 <code>timezone</code>）</td>
+<td style="text-align: left;">一或兩位數年份（<code>99-10-03</code>）無法判定；有時間卻沒有 offset 又不知道 site 時區（error，<code>code: timezone-required</code>）；四位數年份不處理</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>timezone</code></td>
+<td style="text-align: left;">西元年的 dateTime / instant 有時間但沒有 UTC offset（「If a date has a time, it must have a timezone」）→ 補上 site 時區（秒數一併補齊）。site 時區的來源依序為：<code>timezone</code> 參數（<code>+08:00</code> 或 IANA 名稱 <code>Asia/Taipei</code>，IANA 依該時間點計算 offset、含日光節約）→ <code>site_config</code> 中的時區行（例如 <code>- 時區：+08:00</code>、<code>timezone: Asia/Taipei</code>；標籤可為 時區 / timezone / time zone / tz / UTC offset）→ <code>source_text</code> 的【院所設定】段落中的同一種行</td>
+<td style="text-align: left;">不知道 site 時區（error <code>timezone-required</code>，訊息說明如何提供）；<code>site_config</code> 寫了多個不同時區；該時間在 IANA 時區中不存在或有歧義（日光節約切換）</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>system</code></td>
-<td style="text-align: left;"><code>Coding.system</code> 不是絕對網址（<code>ICD-10-CM</code>、<code>LOINC</code>、<code>SNOMED CT</code>、<code>loinc.org</code>、OID）、是 ValueSet 網址、或是解析不到的網址（<code>…/ns/fhir/CodeSystem#icd-10-cm</code>、<code>…/CodeSystem/_ActMedicalServiceCode</code>）→ 依已安裝 CodeSystem 的 name / title / id / 網址末段 / identifier、FHIR R4 外部代碼系統表、網址 fragment / 末段、THO 抽象碼（<code>_</code> 開頭）、元素綁定的 ValueSet，找出<strong>唯一一個含有該代碼</strong>的 CodeSystem</td>
+<td style="text-align: left;"><code>Coding.system</code> 不是絕對網址（<code>ICD-10-CM</code>、<code>LOINC</code>、<code>SNOMED CT</code>、<code>loinc.org</code>、OID）、是 ValueSet 網址（含省略 <code>/ValueSet/</code> 的 HL7 核心網址 <code>http://hl7.org/fhir/condition-code</code>）、或是解析不到的網址（<code>…/ns/fhir/CodeSystem#icd-10-cm</code>、<code>…/CodeSystem/_ActMedicalServiceCode</code>、<code>…/CodeSystem/v3-ActEncounterCode</code>）→ 依已安裝 CodeSystem 的 name / title / id / 網址末段 / identifier、FHIR R4 外部代碼系統表、網址 fragment / 末段、THO 抽象碼（<code>_</code> 開頭）、以網址末段命名的 THO / 核心 ValueSet（取代碼在其中所屬的 CodeSystem）、元素綁定的 ValueSet，找出<strong>唯一一個含有該代碼</strong>的 CodeSystem；都對不到時，再找名稱相近（去掉 <code>v2-</code> / <code>v3-</code> 與標點後相同、一方為另一方的字首、或 Levenshtein 相似度 ≥ 80%）的已安裝 CodeSystem——更名或退役的名稱（<code>v3-AdmitSource</code> → <code>admit-source</code>、<code>v3-GTS</code> → <code>v3-GTSAbbreviation</code>），只在<strong>恰好一個</strong>含有該代碼、且元素的 required / extensible 綁定（可判定時）接受時才改</td>
 <td style="text-align: left;">對到多個、或代碼不在對到的系統</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>shape</code></td>
-<td style="text-align: left;">無損的結構修正：Coding 寫成 <code>{coding:[一個]}</code>（<code>Encounter.class</code>）、Coding 的 <code>code</code> 裡又包一個 Coding、CodeableConcept 寫成單一 Coding、單值元素給了一個元素的陣列、重複元素給了單值、只有一處鄰近元素定義的錯位屬性（<code>Dosage.doseQuantity</code> → <code>doseAndRate[0].doseQuantity</code>、<code>entry.meta</code> → <code>entry.resource.meta</code>、<code>Timing.route</code> → <code>Dosage.route</code>）、缺 <code>resourceType</code> 但 <code>meta.profile</code> 指向單一資源型別</td>
-<td style="text-align: left;">多個 coding、text 與 display 不同、可能的位置不只一處；訊息附正確形狀與範例</td>
+<td style="text-align: left;">無損的結構修正：Coding 寫成 <code>{coding:[一個]}</code> 或包在另一個屬性裡（<code>Encounter.class: {type: {...}}</code>）、Coding 的 <code>code</code> 裡又包一個 Coding、CodeableConcept 寫成單一 Coding、required 綁定的 <code>code</code> 元素寫成只有一個 coding 的 CodeableConcept / Coding（<code>reaction.severity</code> → <code>"moderate"</code>，代碼須在該 ValueSet 中、display / text 不會遺失）、單值元素給了一個元素的陣列、重複元素給了單值、只有一處鄰近元素定義的錯位屬性（<code>Dosage.doseQuantity</code> → <code>doseAndRate[0].doseQuantity</code>、<code>entry.meta</code> → <code>entry.resource.meta</code>、<code>Timing.route</code> → <code>Dosage.route</code>、<code>doseAndRate.unit</code> → <code>doseAndRate.doseQuantity.unit</code>、<code>doseAndRate[0].timing</code> → <code>Dosage.timing</code>、寫在資源裡的 <code>request</code> → <code>entry.request</code>）、缺 <code>resourceType</code> 但 <code>meta.profile</code> 指向單一資源型別。Bundle 本身：缺 <code>resourceType</code> 但 <code>entry</code> 是正常的 entry 陣列 → 補 <code>"Bundle"</code>（在 INVALID_ARGUMENT 檢查之前；<code>repair="ids"</code> 時錯誤訊息會指出位置）；<code>"entry[1]"</code>、<code>"entry2"</code> 這類鍵名 → 依編號重建 <code>entry</code> 陣列；重複的 fullUrl（bdl-7）且資源完全相同 → 刪除後面的副本</td>
+<td style="text-align: left;">多個 coding、text 與 display 不同、可能的位置不只一處、編號重複或落在既有 <code>entry</code> 陣列內、重複 fullUrl 的資源不同；訊息附正確形狀與範例</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>empty</code></td>
+<td style="text-align: left;">空元素（ele-1）：值為 <code>{}</code>、<code>[]</code>、<code>""</code>、<code>null</code> 的元素直接移除（變空的父元素下一輪一併移除）</td>
+<td style="text-align: left;">帶 <code>_x</code> 擴充的 <code>null</code> 保留</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>fixed-slice</code></td>
+<td style="text-align: left;">剖面要求（min ≥ 1）、內容完全由 fixed / pattern 決定的 Coding / CodeableConcept slice 沒有出現 → 補上（例：pulse-oximetry 要求 <code>code.coding</code> 同時有兩個固定 coding、vital-signs 的 <code>category:VSCat</code>）；新值須經 discriminator 判定屬於該 slice</td>
+<td style="text-align: left;">slice 的必要子元素不是全部固定、已有屬於該 slice 的項目、超過元素上限</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>code</code></td>
@@ -2970,7 +3007,7 @@
 </tr>
 </tbody>
 </table>
-<p><strong>不會新增錯誤</strong>：每份資源修正前後各驗證一次；若修正後出現原本沒有的 error（例如改好 <code>system</code> 後才顯露的 display 錯誤、移入 <code>meta.profile</code> 後才開始檢查的剖面規則），相關修正撤回並以 <code>repair_issues</code>（warning，<code>not applied: …</code>）說明原因。同一輸入永遠得到同一結果，修正過的 Bundle 再修正一次 <code>changes</code> 為空；數字保留原始寫法。</p>
+<p><strong>不會新增錯誤</strong>：每份資源修正前後各驗證一次；若修正後出現原本沒有的 error（例如改好 <code>system</code> 後才顯露的 display 錯誤、移入 <code>meta.profile</code> 後才開始檢查的剖面規則），相關修正撤回並以 <code>repair_issues</code>（warning，<code>not applied: …</code>）說明原因。v14.1 起整份 Bundle 也在修正前後各驗證一次：只有在 Bundle 情境才看得到的 error（參照目標、entry slice、document 規則）同樣會讓造成它的修正撤回（依 error 所在路徑、訊息中提到的 entry / fullUrl 追溯；追溯不到時整批不套用）。Bundle 外殼的修正（補 <code>resourceType</code>、重建 <code>entry</code> 陣列）是讓驗證器能讀取這份 Bundle 的前提，不在此比較之內。同一輸入永遠得到同一結果，修正過的 Bundle 再修正一次 <code>changes</code> 為空；數字保留原始寫法。</p>
 <h3 id="suggestions-caused_byvalidation-suggestions">修正建議（suggestions / caused_by）{#validation-suggestions}<a class="headerlink" href="#suggestions-caused_byvalidation-suggestions" title="Permanent link">&para;</a></h3>
 <p>驗證結果的 issue 除了指出錯在哪裡，也盡量附上「要改成什麼」：<code>suggestions</code> 是依 <code>confidence</code> 由高到低排序的候選（每個 issue 最多 5 個；小型 ValueSet 的綁定錯誤最多 12 個），參照鏈錯誤另有 <code>caused_by</code>。兩者都是<strong>附加欄位</strong>——issue 的集合、severity、message 與 <code>valid</code> 完全不變；沒有建議時不出現該欄位。</p>
 <pre><code class="language-json">{&quot;severity&quot;: &quot;error&quot;, &quot;path&quot;: &quot;MedicationRequest.dosageInstruction[0].timing.repeat&quot;, &quot;message&quot;: &quot;Unrecognized property 'periodUnits'&quot;,
@@ -3288,6 +3325,111 @@
 <blockquote>
 <p>規則與詞彙表（<code>tw-lexicon</code>）以台灣病歷寫法為準；<code>fhir_check_completeness</code> 需要呼叫端讀轉換目標後提供 <code>targets</code>，不解析自然語言目標。檢查結果是輔助，不取代臨床人員審閱。</p>
 </blockquote>
+<h2 id="record-checksrecord-checks">病歷是否真的提供了這項資訊（record checks）{#record-checks}<a class="headerlink" href="#record-checksrecord-checks" title="Permanent link">&para;</a></h2>
+<p>病歷刻意缺少某項資訊時，模型常常仍會「填上東西」：把「尚未取號」寫進病歷號、把只到月份的日期寫進 <code>Encounter.period.start</code>、把「待排除」的診斷寫成確立的 Condition。這些值有時格式合法，甚至字串真的出現在病歷裡，所以 validator 與 grounding 都會通過。<strong>record checks</strong> 是驗證之後的一層（<code>node-server/src/recordChecks/</code>，與 <a href="#validation-suggestions">修正建議</a> 一樣在 validator 之後執行，不改動 InstanceValidator，validator parity 稽核不受影響），專門回報「病歷其實沒有提供這項資訊」。</p>
+<p><strong>只回報、不修正</strong>：不會改寫或刪除任何值，要不要改為回報 <code>insufficient_information</code> 由模型決定。</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">規則</th>
+<th style="text-align: left;"><code>code</code></th>
+<th style="text-align: left;">需要 <code>source_text</code></th>
+<th style="text-align: left;">嚴重度</th>
+<th style="text-align: left;">判斷</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">R1</td>
+<td style="text-align: left;"><code>information-absent</code></td>
+<td style="text-align: left;">否</td>
+<td style="text-align: left;">error</td>
+<td style="text-align: left;">需要結構化值的欄位（<code>Identifier.value</code>、<code>Coding.code</code>、日期、<code>Quantity.value</code>、Reference、姓名、聯絡方式、<code>Observation.valueString</code>、批號、沒有代碼的 CodeableConcept 文字）的<strong>整個值</strong>都是在描述「資訊不存在 / 未知 / 待補 / 尚未取得 / 尚未確立」：例如「尚未取號」「建檔失敗」「尚在申請」「不詳」「待確認」「unknown」「pending」「not yet assigned」。訊息為「病歷沒有提供這項資訊」</td>
+</tr>
+<tr>
+<td style="text-align: left;">R2</td>
+<td style="text-align: left;"><code>identifier-format</code></td>
+<td style="text-align: left;">否</td>
+<td style="text-align: left;">error（見下）</td>
+<td style="text-align: left;">依 <code>Identifier.system</code> 檢查格式：身分證字號（<code>http://www.moi.gov.tw</code>）格式與檢查碼；居留證統一證號（<code>http://www.immigration.gov.tw</code>）新式 / 舊式格式與檢查碼；任何識別碼不能是敘述句；<code>site_config</code> 可為院內系統（病歷號、健保卡號…）指定格式</td>
+</tr>
+<tr>
+<td style="text-align: left;">R3</td>
+<td style="text-align: left;"><code>insufficient-precision</code></td>
+<td style="text-align: left;">是</td>
+<td style="text-align: left;">error</td>
+<td style="text-align: left;">事件時間（<code>Encounter.period</code>、<code>Observation.effective[x]</code> / <code>issued</code>、<code>MedicationRequest.authoredOn</code>、<code>DiagnosticReport</code>、<code>Specimen.collection</code>、<code>Composition.date</code> …，型別 dateTime / instant）只到年或月</td>
+</tr>
+<tr>
+<td style="text-align: left;">R3</td>
+<td style="text-align: left;"><code>incomplete-value</code></td>
+<td style="text-align: left;">是</td>
+<td style="text-align: left;">error</td>
+<td style="text-align: left;">作為值的 Quantity（<code>valueQuantity</code>、<code>doseQuantity</code> …）沒有 <code>value</code>；藥品只有自由文字、沒有任何代碼，也沒有結構化劑量</td>
+</tr>
+<tr>
+<td style="text-align: left;">R4</td>
+<td style="text-align: left;"><code>unconfirmed-as-confirmed</code></td>
+<td style="text-align: left;">是</td>
+<td style="text-align: left;">error / warning</td>
+<td style="text-align: left;">Condition 沒有標成 provisional / differential / unconfirmed，而病歷中關於它的句子明確表示尚未確立（待排除、尚未確立、鑑別診斷、r/o、differential、not established）→ error；只是語氣保留（疑似、可能、possible、suspected）→ warning。病歷同時有「確診 / 證實 / confirmed」或有未加限定的提及時不報 error</td>
+</tr>
+<tr>
+<td style="text-align: left;">R4</td>
+<td style="text-align: left;"><code>symptom-for-unconfirmed-diagnosis</code></td>
+<td style="text-align: left;">是</td>
+<td style="text-align: left;">warning</td>
+<td style="text-align: left;">Condition 用 ICD-10 症狀碼（R00–R99），而病歷的主診斷 / 診斷段落寫著「待排除…」，且 Bundle 中沒有 provisional / differential 的 Condition</td>
+</tr>
+</tbody>
+</table>
+<p><strong>R1 怎麼避免誤報</strong>：值必須「整個」由缺漏述詞（詞彙表 <code>record-checks-lexicon</code>，中英文，含「尚未 / 還沒 / 待 / 無法 × 取號 / 建檔 / 提供 / 帶來 …」與「…中」「…失敗」的組合變化）、欄位名詞（病歷號、身分證、ID、date …）、填充詞（家屬說、目前、yet …）與標點組成，且至少有一個缺漏述詞；只要還有其他內容（另一個字詞、三位以上數字）就不算。因此「家族史不詳」只影響它自己那個欄位（如果模型把它寫成值），「不明原因發燒」「Hypertension, unspecified」「王不明」都不會被當成缺漏。HL7 / FHIR 自己定義的代碼（<code>gender = unknown</code>、v3-NullFlavor <code>UNK</code> …）是合法代碼，不檢查。「無 / none / N/A / -」只在識別碼、日期、數量、姓名、參照這類欄位才算缺漏。</p>
+<p><strong>R2 格式與檢查碼</strong>（系統 URL 取自 TW Core IG v1.0.0 <code>Patient-twcore</code> / <code>Practitioner-twcore</code> 的 identifier slice）</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">格式名</th>
+<th style="text-align: left;">系統</th>
+<th style="text-align: left;">規則</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>tw-national-id</code></td>
+<td style="text-align: left;"><code>http://www.moi.gov.tw</code></td>
+<td style="text-align: left;">1 英文字母 + 1／2 + 8 位數字；檢查碼：字母轉兩位數（A=10 … 依 ABCDEFGHJKLMNPQRSTUVXYWZIO），十位 ×1、個位 ×9，其後 8 位依序 ×8…×1，加檢查碼，總和為 10 的倍數。第二碼為 8／9 時提示應使用居留證系統</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>tw-resident-certificate</code></td>
+<td style="text-align: left;"><code>http://www.immigration.gov.tw</code></td>
+<td style="text-align: left;">新式（2021-01-02 起）：1 英文字母 + 8／9 + 8 位數字，檢查碼同身分證；舊式（2030-12-31 前有效）：2 英文字母（第二碼 A–D）+ 8 位數字，第二碼取字母代碼的個位數（A→0 … D→3），其餘同身分證</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>tw-nhi-card</code></td>
+<td style="text-align: left;">（TW Core 未定義系統 URL，需由 <code>site_config</code> 指定）</td>
+<td style="text-align: left;">12 位數字（組間可有空白 / 連字號）</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>tw-passport</code></td>
+<td style="text-align: left;">（由 <code>site_config</code> 指定）</td>
+<td style="text-align: left;">9 位數字</td>
+</tr>
+</tbody>
+</table>
+<p><code>site_config</code> 語法（每行一條，與其他院所設定寫在同一段文字）：<code>identifier-format &lt;system&gt; &lt;格式&gt;</code>，<code>&lt;格式&gt;</code> 是上表的格式名或 JavaScript 正規表示式（比對整個值），例如 <code>identifier-format https://hospital.example.tw/mrn [0-9]{7,8}</code>、<code>identifier-format https://hospital.example.tw/nhi-card tw-nhi-card</code>。院所規則會取代同一系統的內建規則；不合法的正規表示式會被忽略並寫在 <code>record_checks.notes</code>。只有檢查碼不符、而病歷（或 <code>site_config</code>）中寫的正是這個值時，降為 warning（病歷本身就是這個號碼，請向來源確認）。</p>
+<p><strong>R3 如何搜尋病歷</strong>：日期——在病歷各行（排除轉換目標、院所設定、家族史段落）找同一年／月內、精度到日的日期（西元、民國、年月日、月日寫法）；找到時訊息為「病歷有更完整的值 '&lt;日期&gt;'」並附原文行，找不到則為「病歷沒有提供更完整的日期」。數量——在提到該項目名稱（<code>code.text</code>、display、生命徵象別名）的行中，找名稱之後單位相容的數字。藥品——在提到藥名的行中找劑量（數字 + mg / g / mcg / mL / IU / 錠 …），並檢查藥名文字本身是否含劑量。<code>evidence</code> 說明搜尋範圍與結果。只有歷史性質的時間（<code>Condition.onset</code>、<code>Procedure.performed</code>、<code>Immunization.occurrence</code>、<code>MedicationStatement.effective</code> …）與 <code>date</code> 型別（<code>birthDate</code>）不檢查精度。</p>
+<p><strong>R4 的範圍</strong>：在病歷中定位 Condition 的名稱（<code>code.text</code>、display、ICD-10 碼），以句子（。；;）為範圍判斷限定詞：前置詞（待排除、r/o、鑑別診斷、疑似 …）作用到下一個逗號為止，後置詞（尚未確立、not established、？…）作用在同一子句或緊接的短子句（「A、B、C，尚未確立」）；<code>rule out</code> 段落的整行都算明確。</p>
+<p><strong>輸出</strong></p>
+<ul>
+<li>每個 issue：<code>severity</code>、<code>code</code>（上表）、<code>path</code>、<code>message</code>（中文 / 英文）、<code>message_zh</code>、<code>message_en</code>、<code>rule</code>（R1–R4）、<code>source: "record-checks"</code>、<code>evidence</code>（判斷依據），R3 / R4 另有 <code>located_quotes</code>。</li>
+<li><code>fhir_validate_bundle</code> / <code>fhir_validate_resource</code>：issue 依 entry 併入 <code>entries[i].issues</code>（Bundle 層級併入 <code>issues</code>），<strong>error 會讓 <code>entries[i].valid</code> 與 <code>data.valid</code> 變成 false</strong>（<code>conformanceValid</code> / <code>groundingValid</code> 維持原意）；帶 <code>source_text</code> 或有任何發現時加上 <code>data.record_checks = {ok, errors, warnings, rules, source_text, notes?}</code>。沒有 <code>source_text</code> 時只跑 R1、R2；<strong>沒有 <code>source_text</code> 且沒有任何發現時，輸出與未加這一層前逐位元相同</strong>（沒有 <code>record_checks</code>，也沒有額外的 provenance 欄位）。</li>
+<li><code>fhir_author_resources</code>：同 <code>fhir_validate_resource</code>，出現在 <code>results[].issues</code>（error 使 status 為 <code>invalid</code>）；可選 <code>source_text</code>（不存入 context）加跑 R3 / R4；<code>site_config</code> 的格式規則一併套用。</li>
+<li><code>fhir_assemble_bundle</code>：同 <code>fhir_validate_bundle</code>（帶 <code>source_text</code> 時跑 R3 / R4），issue 帶 key / field。</li>
+<li><code>fhir_finalize_bundle</code>：可選 <code>source_text</code>；結果在 <code>data.record_issues</code> 與 <code>data.record_checks</code>（Bundle 與 <code>changes</code> 不變），有 error 時加一則 warning。</li>
+<li><code>fhir_finalize_resource</code>：可選 <code>source_text</code>；issue 併入 <code>data.validation.issues</code>（error 使 <code>validation.valid</code> 為 false），草稿不會被修改。</li>
+<li>上述各工具都遵守同一條：沒有 <code>source_text</code> 且沒有發現時輸出不變。</li>
+<li>有輸出時，<code>provenance</code> 增加 <code>recordChecksVersion</code>、<code>recordChecksLexicon</code>、<code>recordChecksLexiconSha256</code>。病歷原文不寫入 log。</li>
+</ul>
 <h2 id="tool-versions">工具版本<a class="headerlink" href="#tool-versions" title="Permanent link">&para;</a></h2>
 <p>行為由固定測資鎖定的工具各有自己的版本（<code>node-server/src/toolVersions.ts</code>）；同一輸入的輸出改變時就會升版。<code>health_check</code> 的 <code>tools_version</code> 回報目前值，其餘工具沿用伺服器版本（<code>version</code>，目前 <code>1.1.0</code>）。</p>
 <table>
@@ -3300,15 +3442,15 @@
 <tbody>
 <tr>
 <td style="text-align: left;"><code>fhir_validate_bundle</code></td>
-<td style="text-align: left;">1.10.0（<code>repair="content"</code> 搭配 <code>normalize_ids=true</code>：先做內容修正再驗證，<code>content_changes</code> / <code>repair_issues</code>）；1.9.0（validator v13：ValueSet canonical 當 <code>Coding.system</code> 為 error、LOINC 屬性 filter 可判定成員）；1.8.0（<code>normalized_bundle</code> 保留數字原始寫法；document / message 缺首筆資源的 bdl-11 / bdl-12 附 <code>replace_value</code> / <code>add_resource</code> 建議；1.7.0：<code>normalize_ids</code>、ID 類錯誤的 <code>suggestions</code> 與 <code>id_map</code> / <code>id_changes</code>）</td>
+<td style="text-align: left;">1.11.1（<code>normalize_ids</code> + <code>repair="content"</code> 的內容修正同 <code>fhir_finalize_bundle</code> 1.3.1）；1.11.0（<a href="#record-checks">record checks</a>：information-absent / identifier-format 一律檢查，帶 <code>source_text</code> 另檢查精度、數值、藥品與未確立診斷；<code>data.record_checks</code>）；1.10.0（<code>repair="content"</code> 搭配 <code>normalize_ids=true</code>：先做內容修正再驗證，<code>content_changes</code> / <code>repair_issues</code>）；1.9.0（validator v13：ValueSet canonical 當 <code>Coding.system</code> 為 error、LOINC 屬性 filter 可判定成員）；1.8.0（<code>normalized_bundle</code> 保留數字原始寫法；document / message 缺首筆資源的 bdl-11 / bdl-12 附 <code>replace_value</code> / <code>add_resource</code> 建議；1.7.0：<code>normalize_ids</code>、ID 類錯誤的 <code>suggestions</code> 與 <code>id_map</code> / <code>id_changes</code>）</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_validate_resource</code></td>
-<td style="text-align: left;">1.7.0（validator v13：ValueSet canonical 當 <code>Coding.system</code> 為 error 並附候選、LOINC 屬性 filter 可判定成員）；1.6.2（validator v8：HL7 空間未知 CodeSystem 一律 error、參照含空白、RxNorm display 指到另一個藥、查詢失敗 / 例外的 <code>exception</code> issue；1.6.0：issue 的 <code>suggestions</code> / <code>caused_by</code>）</td>
+<td style="text-align: left;">1.8.0（<a href="#record-checks">record checks</a>，同 <code>fhir_validate_bundle</code> 1.11.0）；1.7.0（validator v13：ValueSet canonical 當 <code>Coding.system</code> 為 error 並附候選、LOINC 屬性 filter 可判定成員）；1.6.2（validator v8：HL7 空間未知 CodeSystem 一律 error、參照含空白、RxNorm display 指到另一個藥、查詢失敗 / 例外的 <code>exception</code> issue；1.6.0：issue 的 <code>suggestions</code> / <code>caused_by</code>）</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_finalize_bundle</code></td>
-<td style="text-align: left;">1.2.0（<code>repair</code> 參數，預設 <code>content</code>：display / ucum / roc-date / system / shape / code 內容修正、驗證不新增錯誤、<code>repair_issues</code>、<code>timezone</code>；<code>repair="ids"</code> 同 1.1.0）；1.1.0（數字保留原始寫法、<code>bundle_type</code> 參數、document 缺 Composition 的提示；1.0.1：Bundle 定稿：fullUrl-uuid / reference-rewire / resource-id / bundle-type / document-order）</td>
+<td style="text-align: left;">1.3.1（v14.1 內容修正：<code>timezone</code> / <code>empty</code> / <code>fixed-slice</code> 規則、UCUM 等價與 annotation、<code>quantity-code-not-ucum</code>、ValueSet 名稱與更名的 system、更多結構修正、Bundle 外殼與重複 fullUrl、整份 Bundle 的修正驗證、<code>site_config</code> 參數）；1.3.0（<a href="#record-checks">record checks</a>：可選 <code>source_text</code>、<code>data.record_issues</code> / <code>record_checks</code>，只回報不修正）；1.2.0（<code>repair</code> 參數，預設 <code>content</code>：display / ucum / roc-date / system / shape / code 內容修正、驗證不新增錯誤、<code>repair_issues</code>、<code>timezone</code>；<code>repair="ids"</code> 同 1.1.0）；1.1.0（數字保留原始寫法、<code>bundle_type</code> 參數、document 缺 Composition 的提示；1.0.1：Bundle 定稿：fullUrl-uuid / reference-rewire / resource-id / bundle-type / document-order）</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_build_bundle</code></td>
@@ -3332,7 +3474,7 @@
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_finalize_resource</code></td>
-<td style="text-align: left;">1.6.0（<code>repair</code> / <code>timezone</code>：與 <code>fhir_finalize_bundle</code> 1.2.0 相同的內容修正，<code>changes</code> / <code>repair_issues</code>）；1.5.0（驗證規則同 <code>fhir_validate_resource</code> 1.7.0）；1.4.0（slice 成員依 discriminator 釘上 fixed / pattern、任何深度的 <code>_slice</code> 標記且一律移除；1.3.2：<code>resource</code> 保留草稿的數字原始寫法；1.3.1：驗證規則同 <code>fhir_validate_resource</code> 1.6.1；1.3.0：驗證 issue 的 <code>suggestions</code> / <code>caused_by</code>）</td>
+<td style="text-align: left;">1.7.1（內容修正同 <code>fhir_finalize_bundle</code> 1.3.1、<code>site_config</code> 參數、<code>timezone</code> 可用 IANA 名稱）；1.7.0（<a href="#record-checks">record checks</a> 併入 <code>validation</code>、可選 <code>source_text</code>）；1.6.0（<code>repair</code> / <code>timezone</code>：與 <code>fhir_finalize_bundle</code> 1.2.0 相同的內容修正，<code>changes</code> / <code>repair_issues</code>）；1.5.0（驗證規則同 <code>fhir_validate_resource</code> 1.7.0）；1.4.0（slice 成員依 discriminator 釘上 fixed / pattern、任何深度的 <code>_slice</code> 標記且一律移除；1.3.2：<code>resource</code> 保留草稿的數字原始寫法；1.3.1：驗證規則同 <code>fhir_validate_resource</code> 1.6.1；1.3.0：驗證 issue 的 <code>suggestions</code> / <code>caused_by</code>）</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_lookup_code</code></td>
@@ -3352,11 +3494,11 @@
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_author_resources</code></td>
-<td style="text-align: left;">1.4.0（system 修正與 display 檢查改用共用修正層：display 只在同一概念時才替換，意思不同則保留並以 warning 附候選；UCUM / 民國年 / system 名稱 / 結構修正與 finalize 工具一致；修正不新增驗證錯誤）；1.3.0（含 filter 的 ValueSet 寫在 system 時也能修正並註明成員資格 confirmed / unverifiable；未修正的 ValueSet system 為 error，驗證同 1.7.0）；1.2.0（ValueSet URL / 解析不到的 URL 寫在 <code>Coding.system</code> 時，答案唯一才自動改成正確的 CodeSystem 並加 note）；1.1.0（display 由代碼決定、單一值包成陣列、預設值只補必填欄位與 <code>apply_defaults</code>、<code>site_config</code>、結果的 <code>notes</code> / <code>settings</code>；1.0.0：從欄位值撰寫資源，見「<a href="#authoring">從欄位值撰寫資源</a>」）</td>
+<td style="text-align: left;">1.5.1（內容修正同 <code>fhir_finalize_bundle</code> 1.3.1；context 的 <code>site_config</code> 時區行可作為 site 時區）；1.5.0（<a href="#record-checks">record checks</a> 的 issue 出現在 <code>results[].issues</code>、可選 <code>source_text</code>）；1.4.0（system 修正與 display 檢查改用共用修正層：display 只在同一概念時才替換，意思不同則保留並以 warning 附候選；UCUM / 民國年 / system 名稱 / 結構修正與 finalize 工具一致；修正不新增驗證錯誤）；1.3.0（含 filter 的 ValueSet 寫在 system 時也能修正並註明成員資格 confirmed / unverifiable；未修正的 ValueSet system 為 error，驗證同 1.7.0）；1.2.0（ValueSet URL / 解析不到的 URL 寫在 <code>Coding.system</code> 時，答案唯一才自動改成正確的 CodeSystem 並加 note）；1.1.0（display 由代碼決定、單一值包成陣列、預設值只補必填欄位與 <code>apply_defaults</code>、<code>site_config</code>、結果的 <code>notes</code> / <code>settings</code>；1.0.0：從欄位值撰寫資源，見「<a href="#authoring">從欄位值撰寫資源</a>」）</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_assemble_bundle</code></td>
-<td style="text-align: left;">1.3.0（定稿一律 <code>repair="content"</code>、<code>repair_issues</code>，資源依 <code>fhir_author_resources</code> 1.4.0）；1.2.0（資源依 <code>fhir_author_resources</code> 1.3.0、驗證依 <code>fhir_validate_bundle</code> 1.9.0）；1.1.0（<code>site_config</code> 與 context 的合併後交給 grounding；1.0.0：由 key 清單組 Bundle）</td>
+<td style="text-align: left;">1.4.1（資源依 <code>fhir_author_resources</code> 1.5.1、定稿依 <code>fhir_finalize_bundle</code> 1.3.1）；1.4.0（驗證依 <code>fhir_validate_bundle</code> 1.11.0，含 <a href="#record-checks">record checks</a>）；1.3.0（定稿一律 <code>repair="content"</code>、<code>repair_issues</code>，資源依 <code>fhir_author_resources</code> 1.4.0）；1.2.0（資源依 <code>fhir_author_resources</code> 1.3.0、驗證依 <code>fhir_validate_bundle</code> 1.9.0）；1.1.0（<code>site_config</code> 與 context 的合併後交給 grounding；1.0.0：由 key 清單組 Bundle）</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_get_authoring_fields</code></td>

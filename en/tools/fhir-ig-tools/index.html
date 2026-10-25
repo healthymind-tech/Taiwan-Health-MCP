@@ -1138,6 +1138,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#record-checks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Does the record actually provide it? (record checks)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#tool-versions" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2624,6 +2635,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#record-checks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Does the record actually provide it? (record checks)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#tool-versions" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2841,7 +2863,7 @@ If none applies the call fails with <code>NO_DEFAULT_IG</code> (no arbitrary pac
 <tr>
 <td style="text-align: left;"><code>fhir_finalize_resource</code></td>
 <td style="text-align: left;">Finalise a draft already written as FHIR JSON against its profile and validate it: pins fixed / pattern values only where the draft has the parent node (slice members and <code>_slice</code> tags at any depth included), never adds clinical content; <code>repair="content"</code> (default) first applies the same content repairs as <code>fhir_finalize_bundle</code> (see "<a href="#content-repair">Content repair</a>") and returns <code>changes</code> / <code>repair_issues</code>; with field values use <code>fhir_author_resources</code> (see "<a href="#authoring">Authoring from field values</a>")</td>
-<td style="text-align: left;"><code>profile</code>, <code>draft</code>, <code>context_id</code>, <code>key</code>, <code>generate_narrative</code> (<code>true</code> by default), <code>repair</code> (<code>content</code> / <code>ids</code>), <code>timezone</code></td>
+<td style="text-align: left;"><code>profile</code>, <code>draft</code>, <code>context_id</code>, <code>key</code>, <code>generate_narrative</code> (<code>true</code> by default), <code>repair</code> (<code>content</code> / <code>ids</code>), <code>timezone</code>, <code>site_config</code></td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_resolve_reference</code></td>
@@ -2856,7 +2878,7 @@ If none applies the call fails with <code>NO_DEFAULT_IG</code> (no arbitrary pac
 <tr>
 <td style="text-align: left;"><code>fhir_finalize_bundle</code></td>
 <td style="text-align: left;"><strong>Call before emitting the final Bundle</strong>: it normalises <code>fullUrl</code>, <code>reference</code> and <code>id</code> (see "Bundle finalisation" below) and, with <code>repair="content"</code> (default), corrects content errors whose fix is uniquely determined — never guessing, undecidable ones reported with candidates (see "<a href="#content-repair">Content repair</a>"; <code>repair="ids"</code> = ids only); numbers keep the caller's spelling (<code>10.0</code> stays <code>10.0</code>). Returns the finalised <code>bundle</code>, every change as <code>changes[{path, from, to, rule}]</code>, the references it could not decide as <code>unresolved[{path, reference, candidates}]</code>, <code>notes</code> and <code>id_map</code>. <code>bundle_type</code> sets <code>Bundle.type</code> (a profile-fixed type is never overridden)</td>
-<td style="text-align: left;"><code>bundle</code>, <code>package_id</code>, <code>version</code>, <code>bundle_profile</code> (canonical or id of the target Bundle profile; defaults to <code>meta.profile</code>), <code>bundle_type</code> (R4 bundle-type code), <code>repair</code> (<code>content</code> default / <code>ids</code>), <code>timezone</code> (UTC offset for ROC date-times)</td>
+<td style="text-align: left;"><code>bundle</code>, <code>package_id</code>, <code>version</code>, <code>bundle_profile</code> (canonical or id of the target Bundle profile; defaults to <code>meta.profile</code>), <code>bundle_type</code> (R4 bundle-type code), <code>repair</code> (<code>content</code> default / <code>ids</code>), <code>timezone</code> (the site timezone: a UTC offset or an IANA name), <code>site_config</code> (facility settings text; a <code>timezone:</code> line gives the timezone)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_validate_resource</code></td>
@@ -2945,23 +2967,38 @@ If none applies the call fails with <code>NO_DEFAULT_IG</code> (no arbitrary pac
 </tr>
 <tr>
 <td style="text-align: left;"><code>ucum</code></td>
-<td style="text-align: left;">a Quantity (any Quantity-typed element, <code>component[].valueQuantity</code> included) with no code, a code that is not valid UCUM, or a LOINC code (<code>8310-5</code>) as code gets the UCUM code its <code>unit</code> / code text determines, plus <code>system</code>: UCUM names / synonyms / symbols (<code>mmHg</code> → <code>mm[Hg]</code>, <code>°C</code>/<code>℃</code>/<code>degC</code> → <code>Cel</code>), the <code>&lt;count word&gt;/&lt;time unit&gt;</code> grammar (<code>次/分</code> → <code>/min</code>, <code>mg/天</code> → <code>mg/d</code>); it must fit the profile's fixed code or required UCUM ValueSet (<code>min</code> where <code>/min</code> is fixed is read as <code>/min</code>)</td>
+<td style="text-align: left;">a Quantity (any Quantity-typed element, <code>component[].valueQuantity</code> included) with no code, a code that is not valid UCUM, or a LOINC code (<code>8310-5</code>) as code gets the UCUM code its <code>unit</code> / code text determines, plus <code>system</code>: UCUM names / synonyms / symbols (<code>mmHg</code> → <code>mm[Hg]</code>, <code>°C</code>/<code>℃</code>/<code>degC</code> → <code>Cel</code>), the <code>&lt;count word&gt;/&lt;time unit&gt;</code> grammar (<code>次/分</code> → <code>/min</code>, <code>mg/天</code> → <code>mg/d</code>), the micro sign / Greek mu for the UCUM prefix <code>u</code> and bracketed units written without brackets (<code>μIU/mL</code> → <code>u[IU]/mL</code>), a factor glued to a unit in a divisor (a decimal one as an annotation: <code>mL/min/1.73m2</code> → <code>mL/min/{1.73_m2}</code>; an integer one: <code>mg/24h</code> → <code>mg/(24.h)</code>); it must fit the profile's fixed code or required UCUM ValueSet (<code>min</code> where <code>/min</code> is fixed is read as <code>/min</code>; a spelling equal to exactly one allowed code at conversion factor 1 becomes that code: <code>1/min</code> → <code>/min</code>). A LOINC code as <code>code</code> with no <code>unit</code>: the profile's single fixed unit when there is one, else error <code>quantity-code-not-ucum</code> ("valueQuantity.code holds a LOINC code, not a UCUM unit; give the unit")</td>
 <td style="text-align: left;">the evidence disagrees (code <code>g</code>, unit <code>kg</code>), the derived code is not allowed (<code>K</code> for a body temperature), nothing derivable; a <code>system</code> naming another real CodeSystem is never touched</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>roc-date</code></td>
-<td style="text-align: left;">ROC (民國) dates in date / dateTime / instant: marked (民國 / ROC) or three-digit years (<code>115-10-03</code>, <code>115/10/03</code>, <code>115-10-03T16:05:00+08:00</code>, <code>民國115年10月3日</code>) → +1911, precision kept; a time keeps its own offset, else takes the <code>timezone</code> argument</td>
-<td style="text-align: left;">one- or two-digit years (<code>99-10-03</code>) are ambiguous; a time without offset and no <code>timezone</code>; four-digit years are not this rule's business</td>
+<td style="text-align: left;">ROC (民國) dates in date / dateTime / instant: marked (民國 / ROC) or three-digit years (<code>115-10-03</code>, <code>115/10/03</code>, <code>115-10-03T16:05:00</code>, <code>民國115年10月3日</code>) → +1911, precision kept; a time keeps its own offset, else takes the site timezone (see <code>timezone</code> below)</td>
+<td style="text-align: left;">one- or two-digit years (<code>99-10-03</code>) are ambiguous; a time without offset while the site timezone is unknown (error, <code>code: timezone-required</code>); four-digit years are not this rule's business</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>timezone</code></td>
+<td style="text-align: left;">a Gregorian dateTime / instant with a time but no UTC offset ("If a date has a time, it must have a timezone") → the site timezone is added (seconds completed). The site timezone comes from, in order: the <code>timezone</code> argument (<code>+08:00</code> or an IANA name such as <code>Asia/Taipei</code>, resolved at that local time, DST aware) → a timezone line of <code>site_config</code> (<code>- 時區：+08:00</code>, <code>timezone: Asia/Taipei</code>; label 時區 / timezone / time zone / tz / UTC offset) → the same line in the 【院所設定】 section of <code>source_text</code></td>
+<td style="text-align: left;">the site timezone is unknown (error <code>timezone-required</code>, saying how to give it); <code>site_config</code> names several timezones; the wall time does not exist or is ambiguous in the IANA zone (a DST change)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>system</code></td>
-<td style="text-align: left;">a <code>Coding.system</code> that is not absolute (<code>ICD-10-CM</code>, <code>LOINC</code>, <code>SNOMED CT</code>, <code>loinc.org</code>, an OID), a ValueSet URL, or a URL that resolves to nothing (<code>…/ns/fhir/CodeSystem#icd-10-cm</code>, <code>…/CodeSystem/_ActMedicalServiceCode</code>) → the <strong>one CodeSystem holding the code</strong> among those it names: installed CodeSystems' name / title / id / URL tail / identifier, the FHIR R4 external code system list, the URL's fragment / last segment, a THO abstract <code>_</code> code, the element's bound ValueSets</td>
+<td style="text-align: left;">a <code>Coding.system</code> that is not absolute (<code>ICD-10-CM</code>, <code>LOINC</code>, <code>SNOMED CT</code>, <code>loinc.org</code>, an OID), a ValueSet URL (the HL7 core URL without <code>/ValueSet/</code>, <code>http://hl7.org/fhir/condition-code</code>, included), or a URL that resolves to nothing (<code>…/ns/fhir/CodeSystem#icd-10-cm</code>, <code>…/CodeSystem/_ActMedicalServiceCode</code>, <code>…/CodeSystem/v3-ActEncounterCode</code>) → the <strong>one CodeSystem holding the code</strong> among those it names: installed CodeSystems' name / title / id / URL tail / identifier, the FHIR R4 external code system list, the URL's fragment / last segment, a THO abstract <code>_</code> code, a THO / core ValueSet named by the URL's last segment (the CodeSystem the code has in it), the element's bound ValueSets; failing all of these, the installed CodeSystems with a similar name (equal after dropping <code>v2-</code> / <code>v3-</code> and punctuation, one a prefix of the other, or ≥ 80% Levenshtein similarity) — renamed / retired names (<code>v3-AdmitSource</code> → <code>admit-source</code>, <code>v3-GTS</code> → <code>v3-GTSAbbreviation</code>) — only when <strong>exactly one</strong> holds the code and the element's required / extensible binding (when decidable) accepts it</td>
 <td style="text-align: left;">several match, or the code is not in the system named</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>shape</code></td>
-<td style="text-align: left;">lossless reshapes: a Coding given as <code>{coding: [one]}</code> (<code>Encounter.class</code>), a Coding nested in a Coding's <code>code</code>, a CodeableConcept given as a bare Coding, a one-item array for a single element, a single value for a repeating one, a property misplaced where exactly one neighbour defines it (<code>Dosage.doseQuantity</code> → <code>doseAndRate[0].doseQuantity</code>, <code>entry.meta</code> → <code>entry.resource.meta</code>, <code>Timing.route</code> → <code>Dosage.route</code>), a missing <code>resourceType</code> when <code>meta.profile</code> names one resource type</td>
-<td style="text-align: left;">several codings, a text that differs from the display, several possible places; the message shows the correct shape with an example</td>
+<td style="text-align: left;">lossless reshapes: a Coding given as <code>{coding: [one]}</code> or wrapped in another property (<code>Encounter.class: {type: {...}}</code>), a Coding nested in a Coding's <code>code</code>, a CodeableConcept given as a bare Coding, a required-bound <code>code</code> element given as a CodeableConcept with one coding / a Coding (<code>reaction.severity</code> → <code>"moderate"</code>; the code must be in the ValueSet and no display / text is lost), a one-item array for a single element, a single value for a repeating one, a property misplaced where exactly one neighbour defines it (<code>Dosage.doseQuantity</code> → <code>doseAndRate[0].doseQuantity</code>, <code>entry.meta</code> → <code>entry.resource.meta</code>, <code>Timing.route</code> → <code>Dosage.route</code>, <code>doseAndRate.unit</code> → <code>doseAndRate.doseQuantity.unit</code>, <code>doseAndRate[0].timing</code> → <code>Dosage.timing</code>, a <code>request</code> written in the resource → <code>entry.request</code>), a missing <code>resourceType</code> when <code>meta.profile</code> names one resource type. The Bundle itself: no <code>resourceType</code> but a proper entry array → <code>"Bundle"</code> (before the INVALID_ARGUMENT check; with <code>repair="ids"</code> the error names the location); keys such as <code>"entry[1]"</code>, <code>"entry2"</code> → the <code>entry</code> array rebuilt in key-number order; duplicate fullUrls (bdl-7) with deep-equal resources → the later copies dropped</td>
+<td style="text-align: left;">several codings, a text that differs from the display, several possible places, duplicate numbers or numbers inside an existing <code>entry</code> array, different resources under one fullUrl; the message shows the correct shape with an example</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>empty</code></td>
+<td style="text-align: left;">empty elements (ele-1): a value <code>{}</code>, <code>[]</code>, <code>""</code> or <code>null</code> is removed (a parent left empty goes in the next pass)</td>
+<td style="text-align: left;">a <code>null</code> carrying <code>_x</code> extensions is kept</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>fixed-slice</code></td>
+<td style="text-align: left;">a required (min ≥ 1) Coding / CodeableConcept slice whose content the profile fully fixes (fixed / pattern) and that is absent → added (a pulse-oximetry profile requiring two fixed codings in <code>code.coding</code>, vital-signs <code>category:VSCat</code>); the new value must belong to the slice by its discriminators</td>
+<td style="text-align: left;">a required child of the slice is not fixed, an item of the slice is already there, the element's max would be exceeded</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>code</code></td>
@@ -2970,7 +3007,7 @@ If none applies the call fails with <code>NO_DEFAULT_IG</code> (no arbitrary pac
 </tr>
 </tbody>
 </table>
-<p><strong>Never adds an error</strong>: each resource is validated before and after; when the repaired resource has an error it did not have (a display error revealed by a corrected <code>system</code>, profile rules that apply once <code>meta.profile</code> is moved in), the responsible changes are withdrawn and explained in <code>repair_issues</code> (warning, <code>not applied: …</code>). The same input always gives the same output, a repaired Bundle repaired again yields <code>changes: []</code>, and numbers keep their spelling.</p>
+<p><strong>Never adds an error</strong>: each resource is validated before and after; when the repaired resource has an error it did not have (a display error revealed by a corrected <code>system</code>, profile rules that apply once <code>meta.profile</code> is moved in), the responsible changes are withdrawn and explained in <code>repair_issues</code> (warning, <code>not applied: …</code>). Since v14.1 the whole Bundle is validated before and after as well: an error only the Bundle context shows (reference targets, entry slices, document rules) also withdraws the change behind it (traced by the error's path and the entries / fullUrls its message names; when it cannot be traced, nothing is applied). The Bundle envelope repairs (resourceType, the rebuilt <code>entry</code> array) make the Bundle readable by the validator at all and are the baseline of that comparison. The same input always gives the same output, a repaired Bundle repaired again yields <code>changes: []</code>, and numbers keep their spelling.</p>
 <h3 id="validation-suggestions">Fix suggestions (suggestions / caused_by)<a class="headerlink" href="#validation-suggestions" title="Permanent link">&para;</a></h3>
 <p>Besides saying what is wrong, validation issues carry, where possible, "what to change it to": <code>suggestions</code> is a list of candidates ordered by <code>confidence</code> (at most 5 per issue; up to 12 for a binding error on a small ValueSet), and reference-chain errors get <code>caused_by</code>. Both are <strong>additive</strong> — the set of issues, their severity and message, and <code>valid</code> are unchanged; the field is absent when there is no suggestion.</p>
 <pre><code class="language-json">{&quot;severity&quot;: &quot;error&quot;, &quot;path&quot;: &quot;MedicationRequest.dosageInstruction[0].timing.repeat&quot;, &quot;message&quot;: &quot;Unrecognized property 'periodUnits'&quot;,
@@ -3288,6 +3325,111 @@ Every issue carries <code>rule</code> and <code>source:"grounding"</code>, and i
 <blockquote>
 <p>The rules and the lexicon (<code>tw-lexicon</code>) follow Taiwanese clinical writing; <code>fhir_check_completeness</code> needs the caller to read the conversion target and pass <code>targets</code> — it does not parse natural-language targets. Results support review; they do not replace a clinician.</p>
 </blockquote>
+<h2 id="record-checks">Does the record actually provide it? (record checks)<a class="headerlink" href="#record-checks" title="Permanent link">&para;</a></h2>
+<p>When a record deliberately lacks a piece of information, models still tend to "fill something in": "number not yet assigned" as the MRN, a month-only date as <code>Encounter.period.start</code>, a "to be ruled out" diagnosis as an established Condition. Such values can be well-formed — the string may even appear in the record — so both the validator and grounding pass them. <strong>Record checks</strong> are a post-validation layer (<code>node-server/src/recordChecks/</code>; like the <a href="#validation-suggestions">fix suggestions</a> it runs after the validator and never touches InstanceValidator, so the validator parity audit is unaffected) that reports "the record does not actually provide this information".</p>
+<p><strong>Report only</strong>: no value is ever rewritten or removed; whether to answer <code>insufficient_information</code> instead is the model's decision.</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Rule</th>
+<th style="text-align: left;"><code>code</code></th>
+<th style="text-align: left;">Needs <code>source_text</code></th>
+<th style="text-align: left;">Severity</th>
+<th style="text-align: left;">What it checks</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">R1</td>
+<td style="text-align: left;"><code>information-absent</code></td>
+<td style="text-align: left;">no</td>
+<td style="text-align: left;">error</td>
+<td style="text-align: left;">The <strong>whole value</strong> of a field that needs a structured value (<code>Identifier.value</code>, <code>Coding.code</code>, dates, <code>Quantity.value</code>, Reference, names, contact values, <code>Observation.valueString</code>, lot numbers, the text of a CodeableConcept without a code) describes that the information is absent / unknown / pending / not yet available / not established — e.g. 尚未取號, 建檔失敗, 尚在申請, 不詳, 待確認, unknown, pending, not yet assigned. Message: "the record does not provide this information"</td>
+</tr>
+<tr>
+<td style="text-align: left;">R2</td>
+<td style="text-align: left;"><code>identifier-format</code></td>
+<td style="text-align: left;">no</td>
+<td style="text-align: left;">error (see below)</td>
+<td style="text-align: left;">Format by <code>Identifier.system</code>: ROC national ID (<code>http://www.moi.gov.tw</code>) shape and check digit; resident certificate / UI number (<code>http://www.immigration.gov.tw</code>) new and old formats with check digits; no identifier may be a sentence; <code>site_config</code> can set formats for facility systems (MRN, NHI card …)</td>
+</tr>
+<tr>
+<td style="text-align: left;">R3</td>
+<td style="text-align: left;"><code>insufficient-precision</code></td>
+<td style="text-align: left;">yes</td>
+<td style="text-align: left;">error</td>
+<td style="text-align: left;">An event time (<code>Encounter.period</code>, <code>Observation.effective[x]</code> / <code>issued</code>, <code>MedicationRequest.authoredOn</code>, <code>DiagnosticReport</code>, <code>Specimen.collection</code>, <code>Composition.date</code> …, type dateTime / instant) has only the year or month</td>
+</tr>
+<tr>
+<td style="text-align: left;">R3</td>
+<td style="text-align: left;"><code>incomplete-value</code></td>
+<td style="text-align: left;">yes</td>
+<td style="text-align: left;">error</td>
+<td style="text-align: left;">A Quantity that is the element's value (<code>valueQuantity</code>, <code>doseQuantity</code> …) has no <code>value</code>; a medicine given only as free text, with no code and no structured dose</td>
+</tr>
+<tr>
+<td style="text-align: left;">R4</td>
+<td style="text-align: left;"><code>unconfirmed-as-confirmed</code></td>
+<td style="text-align: left;">yes</td>
+<td style="text-align: left;">error / warning</td>
+<td style="text-align: left;">A Condition not marked provisional / differential / unconfirmed while the record's sentences about it say it is not established (待排除, 尚未確立, 鑑別診斷, r/o, differential, not established) → error; only hedged (疑似, 可能, possible, suspected) → warning. No error when the record also confirms it (確診 / 證實 / confirmed) or mentions it without a qualifier</td>
+</tr>
+<tr>
+<td style="text-align: left;">R4</td>
+<td style="text-align: left;"><code>symptom-for-unconfirmed-diagnosis</code></td>
+<td style="text-align: left;">yes</td>
+<td style="text-align: left;">warning</td>
+<td style="text-align: left;">A Condition coded with an ICD-10 symptom code (R00–R99) while the record's (main) diagnosis says "to be ruled out …", and no Condition in the input is provisional / differential</td>
+</tr>
+</tbody>
+</table>
+<p><strong>How R1 avoids false positives</strong>: the value must consist ENTIRELY of absence predicates (lexicon <code>record-checks-lexicon</code>, Chinese and English, including the generated variants "尚未 / 還沒 / 待 / 無法 × 取號 / 建檔 / 提供 / 帶來 …" and "…中" / "…失敗"), field nouns (病歷號, 身分證, ID, date …), fillers (家屬說, 目前, yet …) and punctuation, with at least one predicate; any other content (another word, a run of three or more digits) means it is not absent. So 「家族史不詳」 only matters in the one field it is written into, and 「不明原因發燒」, "Hypertension, unspecified" or 「王不明」 are never read as absence. Codes of HL7 / FHIR code systems (<code>gender = unknown</code>, v3-NullFlavor <code>UNK</code> …) are real codes and are not checked. Nil words (無 / none / N/A / -) count only in identifier, date, quantity, name and reference fields.</p>
+<p><strong>R2 formats and check digits</strong> (system URLs from the identifier slices of TW Core IG v1.0.0 <code>Patient-twcore</code> / <code>Practitioner-twcore</code>)</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Format</th>
+<th style="text-align: left;">System</th>
+<th style="text-align: left;">Rule</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>tw-national-id</code></td>
+<td style="text-align: left;"><code>http://www.moi.gov.tw</code></td>
+<td style="text-align: left;">1 letter + 1/2 + 8 digits; check digit: the letter maps to a two-digit number (A=10 … in the order ABCDEFGHJKLMNPQRSTUVXYWZIO), tens ×1 and units ×9, then the 8 digits ×8…×1, plus the check digit; the sum is a multiple of 10. A second character 8/9 points to the resident-certificate system</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>tw-resident-certificate</code></td>
+<td style="text-align: left;"><code>http://www.immigration.gov.tw</code></td>
+<td style="text-align: left;">New format (from 2021-01-02): 1 letter + 8/9 + 8 digits, national-ID check digit; old format (valid until 2030-12-31): 2 letters (second A–D) + 8 digits, the second letter contributes the units digit of its letter value (A→0 … D→3), otherwise as the national ID</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>tw-nhi-card</code></td>
+<td style="text-align: left;">(TW Core defines no system URL; set it in <code>site_config</code>)</td>
+<td style="text-align: left;">12 digits (spaces / hyphens between groups allowed)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>tw-passport</code></td>
+<td style="text-align: left;">(set in <code>site_config</code>)</td>
+<td style="text-align: left;">9 digits</td>
+</tr>
+</tbody>
+</table>
+<p><code>site_config</code> syntax (one rule per line, in the same text as the other facility settings): <code>identifier-format &lt;system&gt; &lt;format&gt;</code>, where <code>&lt;format&gt;</code> is a format name above or a JavaScript regular expression matched against the whole value, e.g. <code>identifier-format https://hospital.example.tw/mrn [0-9]{7,8}</code>, <code>identifier-format https://hospital.example.tw/nhi-card tw-nhi-card</code>. A site rule replaces the built-in rule of the same system; an invalid regular expression is ignored and listed in <code>record_checks.notes</code>. When only the check digit fails and the record (or <code>site_config</code>) states exactly this value, the issue is a warning (the record itself carries that number — verify it at the source).</p>
+<p><strong>How R3 searches the record</strong>: dates — every record line (conversion-target, site-settings and family-history lines excluded) is searched for day-precision dates within the same year / month (western, ROC 民國, 年月日 and month-day forms); found → "the record has a more complete value '<date>'" with the record lines, none → "the record does not provide a more complete date". Quantities — lines mentioning the item's name (<code>code.text</code>, display, vital-sign aliases) are searched for a number with a compatible unit after the name. Medicines — lines mentioning the medicine name are searched for a dose (number + mg / g / mcg / mL / IU / tab …), and the name text itself is checked for a dose. <code>evidence</code> states the search scope and result. History-type times (<code>Condition.onset</code>, <code>Procedure.performed</code>, <code>Immunization.occurrence</code>, <code>MedicationStatement.effective</code> …) and <code>date</code>-typed elements (<code>birthDate</code>) are not precision-checked.</p>
+<p><strong>R4 scope</strong>: the Condition's names (<code>code.text</code>, displays, ICD-10 code) are located in the record and qualified per sentence (。；;): prefix cues (待排除, r/o, 鑑別診斷, 疑似 …) govern up to the next comma, postfix cues (尚未確立, not established, ? …) the same clause or a short clause right after it ("A、B、C，尚未確立"); a whole line of a <code>rule out</code> section counts as explicit.</p>
+<p><strong>Output</strong></p>
+<ul>
+<li>Each issue: <code>severity</code>, <code>code</code> (above), <code>path</code>, <code>message</code> (Chinese / English), <code>message_zh</code>, <code>message_en</code>, <code>rule</code> (R1–R4), <code>source: "record-checks"</code>, <code>evidence</code> (the basis of the verdict), and <code>located_quotes</code> for R3 / R4.</li>
+<li><code>fhir_validate_bundle</code> / <code>fhir_validate_resource</code>: issues go into <code>entries[i].issues</code> (Bundle-level ones into <code>issues</code>); <strong>an error makes <code>entries[i].valid</code> and <code>data.valid</code> false</strong> (<code>conformanceValid</code> / <code>groundingValid</code> keep their meaning); <code>data.record_checks = {ok, errors, warnings, rules, source_text, notes?}</code> is added when <code>source_text</code> is given or anything was found. Without <code>source_text</code> only R1 and R2 run; <strong>without <code>source_text</code> and without any finding the output is byte-identical to the output before this layer</strong> (no <code>record_checks</code>, no extra provenance fields).</li>
+<li><code>fhir_author_resources</code>: as <code>fhir_validate_resource</code>, in <code>results[].issues</code> (an error makes the status <code>invalid</code>); the optional <code>source_text</code> (not stored on the context) adds R3 / R4; <code>site_config</code> format rules apply.</li>
+<li><code>fhir_assemble_bundle</code>: as <code>fhir_validate_bundle</code> (R3 / R4 with <code>source_text</code>), issues tagged with key / field.</li>
+<li><code>fhir_finalize_bundle</code>: optional <code>source_text</code>; results in <code>data.record_issues</code> and <code>data.record_checks</code> (the Bundle and <code>changes</code> are unchanged), plus a warning when any is an error.</li>
+<li><code>fhir_finalize_resource</code>: optional <code>source_text</code>; issues go into <code>data.validation.issues</code> (an error makes <code>validation.valid</code> false); the draft is never changed by them.</li>
+<li>The same rule holds for every tool above: without <code>source_text</code> and without findings the output is unchanged.</li>
+<li>When the layer reports, <code>provenance</code> gains <code>recordChecksVersion</code>, <code>recordChecksLexicon</code>, <code>recordChecksLexiconSha256</code>. The record text is never logged.</li>
+</ul>
 <h2 id="tool-versions">Tool versions<a class="headerlink" href="#tool-versions" title="Permanent link">&para;</a></h2>
 <p>Tools whose behaviour is pinned by fixtures carry their own version (<code>node-server/src/toolVersions.ts</code>), bumped whenever their output for the same input changes. <code>health_check</code> reports the current values under <code>tools_version</code>; every other tool uses the server version (<code>version</code>, currently <code>1.1.0</code>).</p>
 <table>
@@ -3300,15 +3442,15 @@ Every issue carries <code>rule</code> and <code>source:"grounding"</code>, and i
 <tbody>
 <tr>
 <td style="text-align: left;"><code>fhir_validate_bundle</code></td>
-<td style="text-align: left;">1.10.0 (<code>repair="content"</code> with <code>normalize_ids=true</code>: content repairs before validation, <code>content_changes</code> / <code>repair_issues</code>); 1.9.0 (validator v13: a ValueSet canonical as <code>Coding.system</code> is an error, LOINC property filters decide membership); 1.8.0 (<code>normalized_bundle</code> keeps number spellings; bdl-11 / bdl-12 on a document / message without its head resource carry <code>replace_value</code> / <code>add_resource</code> suggestions; 1.7.0: <code>normalize_ids</code>, ID-class <code>suggestions</code> and <code>id_map</code> / <code>id_changes</code>)</td>
+<td style="text-align: left;">1.11.1 (content repairs with <code>normalize_ids</code> + <code>repair="content"</code> as <code>fhir_finalize_bundle</code> 1.3.1); 1.11.0 (<a href="#record-checks">record checks</a>: information-absent / identifier-format always; with <code>source_text</code> also precision, values, free-text medicines and unconfirmed diagnoses; <code>data.record_checks</code>); 1.10.0 (<code>repair="content"</code> with <code>normalize_ids=true</code>: content repairs before validation, <code>content_changes</code> / <code>repair_issues</code>); 1.9.0 (validator v13: a ValueSet canonical as <code>Coding.system</code> is an error, LOINC property filters decide membership); 1.8.0 (<code>normalized_bundle</code> keeps number spellings; bdl-11 / bdl-12 on a document / message without its head resource carry <code>replace_value</code> / <code>add_resource</code> suggestions; 1.7.0: <code>normalize_ids</code>, ID-class <code>suggestions</code> and <code>id_map</code> / <code>id_changes</code>)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_validate_resource</code></td>
-<td style="text-align: left;">1.7.0 (validator v13: a ValueSet canonical as <code>Coding.system</code> is an error with candidates, LOINC property filters decide membership); 1.6.2 (validator v8: unknown HL7-space CodeSystems always errors, whitespace in references, RxNorm displays naming another drug, <code>exception</code> issues for failed lookups / crashes; 1.6.0: issue <code>suggestions</code> / <code>caused_by</code>)</td>
+<td style="text-align: left;">1.8.0 (<a href="#record-checks">record checks</a>, as <code>fhir_validate_bundle</code> 1.11.0); 1.7.0 (validator v13: a ValueSet canonical as <code>Coding.system</code> is an error with candidates, LOINC property filters decide membership); 1.6.2 (validator v8: unknown HL7-space CodeSystems always errors, whitespace in references, RxNorm displays naming another drug, <code>exception</code> issues for failed lookups / crashes; 1.6.0: issue <code>suggestions</code> / <code>caused_by</code>)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_finalize_bundle</code></td>
-<td style="text-align: left;">1.2.0 (<code>repair</code>, default <code>content</code>: display / ucum / roc-date / system / shape / code content repairs, verified to add no error, <code>repair_issues</code>, <code>timezone</code>; <code>repair="ids"</code> = 1.1.0); 1.1.0 (number spellings kept, <code>bundle_type</code> argument, hint for a document without a Composition; 1.0.1: Bundle finalisation: fullUrl-uuid / reference-rewire / resource-id / bundle-type / document-order)</td>
+<td style="text-align: left;">1.3.1 (v14.1 content repairs: rules <code>timezone</code> / <code>empty</code> / <code>fixed-slice</code>, UCUM equivalents and annotations, <code>quantity-code-not-ucum</code>, ValueSet-named and renamed systems, more shapes, the Bundle envelope and duplicate fullUrls, whole-Bundle verification, <code>site_config</code> argument); 1.3.0 (<a href="#record-checks">record checks</a>: optional <code>source_text</code>, <code>data.record_issues</code> / <code>record_checks</code>, report only); 1.2.0 (<code>repair</code>, default <code>content</code>: display / ucum / roc-date / system / shape / code content repairs, verified to add no error, <code>repair_issues</code>, <code>timezone</code>; <code>repair="ids"</code> = 1.1.0); 1.1.0 (number spellings kept, <code>bundle_type</code> argument, hint for a document without a Composition; 1.0.1: Bundle finalisation: fullUrl-uuid / reference-rewire / resource-id / bundle-type / document-order)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_build_bundle</code></td>
@@ -3332,7 +3474,7 @@ Every issue carries <code>rule</code> and <code>source:"grounding"</code>, and i
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_finalize_resource</code></td>
-<td style="text-align: left;">1.6.0 (<code>repair</code> / <code>timezone</code>: the content repairs of <code>fhir_finalize_bundle</code> 1.2.0, <code>changes</code> / <code>repair_issues</code>); 1.5.0 (validation rules as <code>fhir_validate_resource</code> 1.7.0); 1.4.0 (slice members pinned by their discriminators, <code>_slice</code> tags at any depth and always removed; 1.3.2: <code>resource</code> keeps the draft's number spellings; 1.3.1: validation rules as <code>fhir_validate_resource</code> 1.6.1; 1.3.0: validation issue <code>suggestions</code> / <code>caused_by</code>)</td>
+<td style="text-align: left;">1.7.1 (content repairs as <code>fhir_finalize_bundle</code> 1.3.1, <code>site_config</code> argument, <code>timezone</code> takes IANA names); 1.7.0 (<a href="#record-checks">record checks</a> merged into <code>validation</code>, optional <code>source_text</code>); 1.6.0 (<code>repair</code> / <code>timezone</code>: the content repairs of <code>fhir_finalize_bundle</code> 1.2.0, <code>changes</code> / <code>repair_issues</code>); 1.5.0 (validation rules as <code>fhir_validate_resource</code> 1.7.0); 1.4.0 (slice members pinned by their discriminators, <code>_slice</code> tags at any depth and always removed; 1.3.2: <code>resource</code> keeps the draft's number spellings; 1.3.1: validation rules as <code>fhir_validate_resource</code> 1.6.1; 1.3.0: validation issue <code>suggestions</code> / <code>caused_by</code>)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_lookup_code</code></td>
@@ -3352,11 +3494,11 @@ Every issue carries <code>rule</code> and <code>source:"grounding"</code>, and i
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_author_resources</code></td>
-<td style="text-align: left;">1.4.0 (system correction and display check moved to the shared repair layer: a display is replaced only for the same concept, a different meaning is kept with a warning and candidates; UCUM / ROC / system-name / shape repairs as in the finalize tools; repairs never add a validation error); 1.3.0 (a filter-defined ValueSet written as the system is corrected too, the note says whether membership was confirmed or unverifiable; an uncorrected ValueSet system is an error, validation as 1.7.0); 1.2.0 (a ValueSet URL / an unresolvable URL in <code>Coding.system</code> is corrected to the right CodeSystem when unique, with a note); 1.1.0 (the display follows the code, single values wrapped into arrays, defaults only on required elements and <code>apply_defaults</code>, <code>site_config</code>, <code>notes</code> / <code>settings</code> in the result; 1.0.0: authoring from field values, see "<a href="#authoring">Authoring from field values</a>")</td>
+<td style="text-align: left;">1.5.1 (content repairs as <code>fhir_finalize_bundle</code> 1.3.1; a timezone line of the context's <code>site_config</code> is the site timezone); 1.5.0 (<a href="#record-checks">record checks</a> issues in <code>results[].issues</code>, optional <code>source_text</code>); 1.4.0 (system correction and display check moved to the shared repair layer: a display is replaced only for the same concept, a different meaning is kept with a warning and candidates; UCUM / ROC / system-name / shape repairs as in the finalize tools; repairs never add a validation error); 1.3.0 (a filter-defined ValueSet written as the system is corrected too, the note says whether membership was confirmed or unverifiable; an uncorrected ValueSet system is an error, validation as 1.7.0); 1.2.0 (a ValueSet URL / an unresolvable URL in <code>Coding.system</code> is corrected to the right CodeSystem when unique, with a note); 1.1.0 (the display follows the code, single values wrapped into arrays, defaults only on required elements and <code>apply_defaults</code>, <code>site_config</code>, <code>notes</code> / <code>settings</code> in the result; 1.0.0: authoring from field values, see "<a href="#authoring">Authoring from field values</a>")</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_assemble_bundle</code></td>
-<td style="text-align: left;">1.3.0 (finalize always with <code>repair="content"</code>, <code>repair_issues</code>, resources as <code>fhir_author_resources</code> 1.4.0); 1.2.0 (resources as <code>fhir_author_resources</code> 1.3.0, validation as <code>fhir_validate_bundle</code> 1.9.0); 1.1.0 (<code>site_config</code> merged with the context's and passed to grounding; 1.0.0: Bundle from a list of keys)</td>
+<td style="text-align: left;">1.4.1 (resources as <code>fhir_author_resources</code> 1.5.1, finalize as <code>fhir_finalize_bundle</code> 1.3.1); 1.4.0 (validation as <code>fhir_validate_bundle</code> 1.11.0, incl. <a href="#record-checks">record checks</a>); 1.3.0 (finalize always with <code>repair="content"</code>, <code>repair_issues</code>, resources as <code>fhir_author_resources</code> 1.4.0); 1.2.0 (resources as <code>fhir_author_resources</code> 1.3.0, validation as <code>fhir_validate_bundle</code> 1.9.0); 1.1.0 (<code>site_config</code> merged with the context's and passed to grounding; 1.0.0: Bundle from a list of keys)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_get_authoring_fields</code></td>
