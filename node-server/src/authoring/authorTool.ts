@@ -39,9 +39,14 @@ export const authorToolDescription =
   "start over without context_id and re-author everything. storage=\"memory\" means Redis is unavailable and a server restart loses the " +
   "context. A time without a UTC offset (2026-06-15T06:00) is an error unless `timezone` (e.g. \"+08:00\", the facility's offset — remembered " +
   "on the context) is given; an offset is never guessed. Numbers keep the spelling you wrote (12.50 stays 12.50). " +
-  "CORRECTIONS (listed in results[].notes): a display is derived from the code — a display you wrote that the terminology rejects for " +
-  "a known code is replaced by the code's display (provenance lookup; your wording moves to CodeableConcept.text when that is empty; " +
-  "the code is kept); a Coding.system that is a ValueSet URL (e.g. …/ValueSet/loinc-type-doc-code, or its /CodeSystem/ twin) gets the " +
+  "CORRECTIONS (listed in results[].notes; the same shared rules as fhir_finalize_bundle / fhir_finalize_resource repair=content): a " +
+  "display you wrote that the terminology rejects for a known code is replaced by the code's display ONLY when it is the same concept " +
+  "written differently — it equals a valid display / designation after normalising case, punctuation, word order, plural, roman numerals " +
+  "or initialism, or searching your display in the code's system finds that code first (exact, or sharing ≥ half its words); your wording " +
+  "moves to CodeableConcept.text when that is empty; the code is kept. A display that names ANOTHER concept (another code ranks first) is " +
+  "kept: a warning lists the codes it denotes — fix the code or the display. UCUM codes come from unit text (mmHg → mm[Hg], 次/分 → /min) " +
+  "fitted to the profile's fixed code / required UCUM ValueSet; a Coding.system written as a name (ICD-10-CM, LOINC) or an unknown URL " +
+  "gets the one CodeSystem it names that holds the code; a repair that would add a validation error is withdrawn and reported. A Coding.system that is a ValueSet URL (e.g. …/ValueSet/loinc-type-doc-code, or its /CodeSystem/ twin) gets the " +
   "CodeSystem the code has in that ValueSet (http://loinc.org) when it is exactly one — several → an error with candidates; a system URL " +
   "that resolves to nothing (e.g. http://terminology.hl7.org/CodeSystem/route) gets the one CodeSystem of the element's bound ValueSets " +
   "(slices / additional bindings included) that holds the code (exact, else case-insensitive, else an exact display) — ambiguous or not " +

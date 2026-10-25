@@ -114,7 +114,12 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   that ValueSet and its CodeSystems (replace_coding) and list its CodeSystems (replace_system). LOINC `=` / `in`
   //   property filters (CLASSTYPE, CLASS, STATUS, SCALE_TYP … incl. LOINC part codes as values) decide ValueSet membership
   //   (was: undecidable) — "could not be confirmed" information on LOINC codes disappears for members.
-  fhir_validate_bundle: "1.9.0",
+  // 1.10.0 (ISSUES_v14): new `repair` ("ids" default | "content"), used with normalize_ids=true: "content" first applies
+  //   fhir_finalize_bundle's content repairs (fhirRepair: same-concept displays, UCUM, ROC dates, Coding.system, lossless
+  //   shapes, bound code spellings; each verified not to add an error) and validates the result; data gains `repair`,
+  //   `content_changes`, `repair_issues`, and an issue at a declined value carries `repair` {rule, message, candidates}.
+  //   Default (repair "ids" / normalize_ids false) output unchanged.
+  fhir_validate_bundle: "1.10.0",
   // 1.6.2: the binding-aware suggestions above (ISSUES_v10 A) also apply to single-resource validation.
   // 1.7.0: the validator v13 rules above (fhir_validate_bundle 1.9.0).
   fhir_validate_resource: "1.7.0",
@@ -173,7 +178,10 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   work at any depth and are always removed (unknown names reported, never left in the resource); still only where the
   //   draft has the parent node — nothing is invented. New description points to fhir_author_resources for values.
   // 1.5.0: validation as fhir_validate_resource 1.7.0 (bound IG ValueSet canonical as Coding.system → error, LOINC filters).
-  fhir_finalize_resource: "1.5.0",
+  // 1.6.0 (ISSUES_v14): new `repair` ("content" default | "ids" = 1.5.0) and `timezone`: the draft first gets the shared
+  //   content repairs (fhirRepair, same rules as fhir_finalize_bundle 1.2.0), listed in data.changes; undecidable values in
+  //   data.repair_issues (and on the validator issue as `repair`). Numbers keep their spelling (repair runs on the lossless draft).
+  fhir_finalize_resource: "1.6.0",
   // 1.0.0 (authoring/, evaluation v11): the model gives field VALUES, the MCP composes the resource for its profile
   //   (fixed / pattern / defaults / derived / displays / UCUM / ROC dates), validates it, keeps it in a Redis context
   //   (`authoring:ctx:*`, 60-min idle TTL) and assembles the Bundle from keys with deterministic urn:uuid fullUrls
@@ -206,13 +214,22 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   undecidable, exists in exactly one of them (note "membership unverifiable; the code exists only in <CS> among the
   //   ValueSet's systems"); grammar {system, code} and raw {coding: [...]} alike. An uncorrected ValueSet system is an
   //   error through validation (fhir_validate_resource 1.7.0), so status is invalid.
-  fhir_author_resources: "1.3.0",
+  // 1.4.0 (ISSUES_v14): the composer's system correction and display check moved to the shared repair layer
+  //   (fhirRepair, also used by the finalize tools — same verdict, same repair): a model display is replaced ONLY when it
+  //   is the same concept written differently (normalised spelling / designation, or the display searched in the code's
+  //   system finds that code first); a display naming another concept is kept with a warning listing the codes it
+  //   denotes (was: any rejected display replaced). Raw FHIR values also get the UCUM (rate grammar 次/分 → /min, LOINC
+  //   code in Quantity.code, profile-fixed / required UCUM), ROC-date, Coding.system name / unknown-URL and lossless
+  //   shape repairs; every repair is verified not to add a validation error (else withdrawn and reported).
+  fhir_author_resources: "1.4.0",
   // 1.0.1: action=get results carry the author result's new `notes` (fhir_author_resources 1.1.0); otherwise unchanged.
   fhir_context: "1.0.1",
   // 1.1.0: new `site_config` (merged with the context's) passed to the grounding engine with source_text, so facility
   //   identifier systems / organisation values are grounded as site_config; resources carry the 1.1.0 composer rules.
   // 1.2.0: resources composed as fhir_author_resources 1.3.0, validation as fhir_validate_bundle 1.9.0.
-  fhir_assemble_bundle: "1.2.0",
+  // 1.3.0 (ISSUES_v14): resources composed as fhir_author_resources 1.4.0; finalize always with repair="content" (context
+  //   timezone for ROC times); data gains `repair_issues`; changes include the content repairs.
+  fhir_assemble_bundle: "1.3.0",
   // 1.0.0 (ISSUES_v9 R1): deterministic Bundle finalizer — fullUrl-uuid / reference-rewire / resource-id (mandatory),
   // bundle-type / document-order (profile-driven); UUID v5 seeded by (resourceType, original fullUrl, resource.id, entry
   // index) + a content salt; references found through StructureDefinition snapshots; duplicates / ambiguity reported.
@@ -222,7 +239,11 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   bundle-type code): sets Bundle.type as rule bundle-type with reason "requested by caller (bundle_type)", listed in
   //   changes; a type fixed by the resolved Bundle profile wins and the conflict is a note; document → Composition first.
   //   A document without any Composition notes both ways out (bundle_type=<derived> or add a Composition).
-  fhir_finalize_bundle: "1.1.0",
+  // 1.2.0 (ISSUES_v14): new `repair` — "content" (DEFAULT_FINALIZE_REPAIR, fhirRepair/index.ts) = ids + the content
+  //   repairs whose fix is uniquely determined (rules display / ucum / roc-date / system / shape / code, each change listed
+  //   with its reason, verified per entry not to add a validation error, else withdrawn and reported); "ids" = 1.1.0
+  //   behaviour exactly. New `timezone` (ROC times), data.repair / repair_issues, summary.content. Lossless numbers kept.
+  fhir_finalize_bundle: "1.2.0",
   // ── 2026-10-19 actionable errors (additive fields only; successful outputs unchanged) ──
   // search_medical_codes 1.2.1: IG_UNAVAILABLE adds `hint`.
   // FHIR IG tools above (+.0.1): error envelopes add error.hint; IG_NOT_FOUND / NO_DEFAULT_IG add

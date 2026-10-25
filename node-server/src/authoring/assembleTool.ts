@@ -13,7 +13,8 @@ export const ASSEMBLE_TOOL_NAME = "fhir_assemble_bundle";
 export const assembleToolDescription =
   "Build the final Bundle from resources authored with fhir_author_resources: pass the context_id and the keys in the entry order you " +
   "want. Each entry gets fullUrl = the deterministic urn:uuid of its key (the same urn the stored references already use), the Bundle is " +
-  "finalised like fhir_finalize_bundle (ids, references, document → Composition first, a Bundle.type fixed by bundle_profile wins) and " +
+  "finalised like fhir_finalize_bundle with repair=\"content\" (ids, references, document → Composition first, a Bundle.type fixed by " +
+  "bundle_profile wins, plus the uniquely-determined content repairs — listed in changes, undecidable ones in repair_issues) and " +
   "validated like fhir_validate_bundle; with source_text it is also grounded against the record (fhir_check_grounding rules). " +
   "Same context + same keys → byte-identical Bundle. REFUSES (ok=false, no Bundle) when: a key is not stored (KEY_NOT_FOUND); a stored " +
   "resource references a key that is not in keys or not in the context (UNRESOLVED_REFERENCE — error.refused lists key, field, ref_key); " +

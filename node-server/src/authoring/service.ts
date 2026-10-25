@@ -16,6 +16,7 @@ import { addBundleGrounding, type GroundingToolDeps } from "../groundingTools.js
 import { logDebug, logError } from "../logger.js";
 import { hasRaw, parseLossless, toPlain } from "../losslessJson.js";
 import { nodeAt } from "../fhirSuggestions/util.js";
+import type { RepairChange, RepairIssue } from "../fhirRepair/types.js";
 import { fitDate, parseDateValue } from "./values.js";
 import { ContextExpiredError, type ContextEntry, type ContextRecord, type ContextStorageKind, type ContextStore } from "./contextStore.js";
 import type { ApplyDefaults, AuthorInput, AuthorIssue, AuthorResult, AuthorStatus, IssueSeverity, Provenance } from "./types.js";
@@ -69,10 +70,13 @@ export interface ToolEnvelope<T> {
 
 export interface FinalizeData {
   bundle: Record<string, unknown>;
-  changes: FinalizeChange[];
+  /** Content repairs (v1.4, fhirRepair RepairChange) come first, then the id normalisation. */
+  changes: Array<FinalizeChange | RepairChange>;
   unresolved: FinalizeUnresolved[];
   notes: string[];
   id_map?: Record<string, string>;
+  /** Values the content repair could not correct uniquely (v1.4), with candidates. */
+  repair_issues?: RepairIssue[];
 }
 
 export interface AuthoringDeps {
@@ -83,7 +87,8 @@ export interface AuthoringDeps {
   validate: (resource: Record<string, unknown>, profile: string, packageId: string | null, version: string | null) => Promise<ToolEnvelope<ValidationData>>;
   finalizeBundle: (
     bundle: Record<string, unknown>,
-    opts: { packageId: string | null; version: string | null; bundleProfile: string | null; bundleType: string },
+    /** `timezone` (v1.4): the context's UTC offset for ROC date-times of the content repairs (assemble always repairs content). */
+    opts: { packageId: string | null; version: string | null; bundleProfile: string | null; bundleType: string; timezone?: string | null },
   ) => Promise<ToolEnvelope<FinalizeData>>;
   /** `siteConfig` (facility settings text) is evidence for identifier systems / organisation values when grounding runs (sourceText given). */
   validateBundle: (
@@ -129,8 +134,10 @@ export interface AssembleBundleResult {
   /** Entry order of the final Bundle: key per entry. */
   keys: string[];
   validation: ValidationData & { issues: Array<Record<string, unknown> & { key?: string | null; field?: string | null }> };
-  changes: FinalizeChange[];
+  changes: Array<FinalizeChange | RepairChange>;
   unresolved: FinalizeUnresolved[];
+  /** Values the content repair could not correct uniquely (v1.4), with candidates. */
+  repair_issues: RepairIssue[];
   notes: string[];
   /** Keys assembled although their stored status is invalid (allow_invalid). */
   included_invalid: string[];
@@ -643,7 +650,7 @@ export class AuthoringService {
     // 6. Finalize (deterministic ids / references / document order / profile-fixed type) + validate (+ grounding).
     const packageId = opts.packageId ?? null;
     const version = opts.version ?? null;
-    const fin = await this.deps.finalizeBundle(draft, { packageId, version, bundleProfile: opts.bundleProfile ?? null, bundleType });
+    const fin = await this.deps.finalizeBundle(draft, { packageId, version, bundleProfile: opts.bundleProfile ?? null, bundleType, timezone: ctx.timezone ?? null });
     if (!fin.ok || !fin.data) throw new AuthoringArgumentError(`${fin.error?.code ?? "FINALIZE_FAILED"}: ${fin.error?.message ?? "finalize returned no result"}`, { ...(fin.error ?? {}) });
     const bundle = fin.data.bundle;
     for (const w of fin.warnings ?? []) if (typeof w === "string") warnings.push(w);
@@ -687,6 +694,7 @@ export class AuthoringService {
       validation: { ...val.data, issues, ...(entryRows.length ? { entries: entryResults } : {}) },
       changes: fin.data.changes,
       unresolved: fin.data.unresolved,
+      repair_issues: fin.data.repair_issues ?? [],
       notes: fin.data.notes,
       included_invalid: invalid.map((e) => e.key),
       warnings,
@@ -746,7 +754,8 @@ export function productionDeps(
       parseEnvelope<ValidationData>(await svc.validateResource(toPlain(resource) as Record<string, any>, profile, packageId, version)),
     finalizeBundle: async (bundle, o) => {
       const raw = hasRaw(bundle);
-      const text = await svc.finalizeBundle(toPlain(bundle) as Record<string, any>, o.packageId, o.version, o.bundleProfile, { bundleType: o.bundleType, lossless: raw ? bundle : undefined });
+      // fhir_assemble_bundle always applies the content repairs (ISSUES_v14), whatever the finalize default.
+      const text = await svc.finalizeBundle(toPlain(bundle) as Record<string, any>, o.packageId, o.version, o.bundleProfile, { bundleType: o.bundleType, lossless: raw ? bundle : undefined, repair: "content", timezone: o.timezone ?? null });
       return (raw ? parseLossless(text) : JSON.parse(text)) as ToolEnvelope<FinalizeData>;
     },
     validateBundle: async (bundle, o) => {

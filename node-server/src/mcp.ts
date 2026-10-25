@@ -44,6 +44,7 @@ import { BUILD, SERVER_VERSION, TOOLS_VERSION, toolVersion } from "./toolVersion
 import { losslessToolArgument } from "./requestContext.js";
 import { stringifyLossless } from "./losslessJson.js";
 import { BUNDLE_TYPES } from "./fhirBundleFinalize.js";
+import { DEFAULT_FINALIZE_REPAIR, REPAIR_MODES, type RepairMode } from "./fhirRepair/index.js";
 import { registerAuthoringTools } from "./authoring/index.js";
 import { LEXICON_SHA256, LEXICON_VERSION, groundingInputShape, validateBundleGroundingShape } from "./grounding/index.js";
 import { completenessInputShape, type CompletenessInput } from "./grounding/completeness/index.js";
@@ -1369,16 +1370,28 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
     "fhir_finalize_bundle",
     {
       description:
-        "Call this on the finished Bundle before you output it (在輸出最終 Bundle 前呼叫；只整理 fullUrl、reference 和 id，不改動臨床內容): " +
-        "it only normalises entry.fullUrl, Reference strings and ids — never clinical content. Rules (FHIR R4 core + the resolved IG's " +
-        "StructureDefinitions): a fullUrl that is not a lowercase urn:uuid / urn:oid / absolute URL (e.g. urn:uuid:patient-1, missing) becomes a " +
-        "deterministic UUID v5 (same input → same output); every Reference element found through the StructureDefinition snapshot (extensions, " +
-        "Composition.section.entry, contained …) that names an entry by its old fullUrl, a case-different UUID, Type/id or bare id is rewired to the " +
-        "entry's final fullUrl; invalid Bundle.id / resource.id are repaired; a Bundle.type fixed by the Bundle profile is set and a document's " +
-        "Composition moved first. Duplicate fullUrls (bdl-7) and references with no or several matching entries are reported with candidates, never " +
-        "guessed. Returns {bundle, changes[{path, from, to, rule}], unresolved[{path, reference, candidates}], notes, id_map}; a finalized Bundle " +
-        "yields changes = []. Numbers keep the spelling you wrote (10.0 stays 10.0). Optional bundle_type sets Bundle.type (a type fixed by the " +
-        "Bundle profile wins). Then validate with fhir_validate_bundle (or call it with normalize_ids=true to do both).",
+        "Call this on the finished Bundle before you output it (在輸出最終 Bundle 前呼叫；修正可唯一確定的錯誤，不能確定的不猜、回報候選). " +
+        "repair=\"content\" (default) = ids + content repairs; repair=\"ids\" = only fullUrl / reference / id (v9). " +
+        "IDS: a fullUrl that is not a lowercase urn:uuid / urn:oid / absolute URL (e.g. urn:uuid:patient-1, missing) becomes a deterministic " +
+        "UUID v5; every Reference found through the StructureDefinition snapshot that names an entry by its old fullUrl, a case-different UUID, " +
+        "Type/id or bare id is rewired to the entry's final fullUrl; invalid Bundle.id / resource.id are repaired; a Bundle.type fixed by the " +
+        "Bundle profile is set and a document's Composition moved first. CONTENT (only when the fix is unique; every change listed with its " +
+        "reason): display — a Coding display the terminology rejects is replaced by the code's display only when it is the SAME concept " +
+        "written differently: it equals a valid display / designation after normalising case, punctuation, word order, semantic tag or " +
+        "initialism, or searching the display in the code's own system (fhir_normalize_code) finds that code first (exactly, or sharing ≥ half " +
+        "its words). If the display names another concept (another code ranks first — the code is probably wrong) it is NOT changed: " +
+        "repair_issues + the validator error carry the codes the display denotes; ucum — a Quantity's UCUM code / system from its unit or " +
+        "code text (mmHg → mm[Hg], °C/degC → Cel, 次/分 → /min, a LOINC code in Quantity.code replaced), fitted to the profile's fixed code " +
+        "or required UCUM ValueSet ('min' where /min is fixed); roc-date — 民國 dates (115-10-03, 115/10/03, 民國115年10月3日) → +1911, a " +
+        "time keeps its offset or takes `timezone`, never guessed, 1–2-digit years reported; system — a non-absolute Coding.system (ICD-10-CM, " +
+        "LOINC, SNOMED CT) or an unknown / ValueSet URL → the one CodeSystem it names (installed CodeSystems + the FHIR R4 external list, URL " +
+        "fragment / last segment, the element's bound ValueSets) that holds the code; shape — Coding given as {coding:[one]}, CodeableConcept " +
+        "given as a bare Coding, one-item arrays of single elements, a property misplaced one level (Dosage.doseQuantity → " +
+        "doseAndRate[0].doseQuantity, entry.meta → resource.meta), resourceType from meta.profile; code — a required-binding code written as " +
+        "its display or in another case. Returns {bundle, changes[{path, from, to, rule, reason?}], repair_issues[{path, rule, message, " +
+        "candidates}], unresolved[{path, reference, candidates}], notes, id_map, summary}; a finalized Bundle yields changes = [] (idempotent, " +
+        "deterministic). Numbers keep the spelling you wrote (10.0 stays 10.0). Optional bundle_type sets Bundle.type (a profile-fixed type " +
+        "wins). Then validate with fhir_validate_bundle (or call it with normalize_ids=true).",
       inputSchema: {
         bundle: z.record(z.any()).describe("The complete Bundle as written"),
         ...pkg,
@@ -1388,13 +1401,21 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
           .nullish()
           .default(null)
           .describe("Bundle.type to set (FHIR R4 bundle-type code, e.g. collection when a document has no Composition); never overrides a type the Bundle profile fixes"),
+        repair: z
+          .enum(REPAIR_MODES as unknown as [RepairMode, ...RepairMode[]])
+          .nullish()
+          .default(null)
+          .describe(`"content": ids + uniquely-determined content repairs; "ids": only fullUrl / reference / id / Bundle.type / document order (v9). Omitted → "${DEFAULT_FINALIZE_REPAIR}"`),
+        timezone: z.string().nullish().default(null).describe("UTC offset (e.g. +08:00) for ROC (民國) date-times written without one; never guessed"),
       },
     },
-    async ({ bundle, package_id, version, bundle_profile, bundle_type }, extra) =>
+    async ({ bundle, package_id, version, bundle_profile, bundle_type, repair, timezone }, extra) =>
       rawResult(
         await svc.finalizeBundle(bundle as Record<string, any>, package_id ?? null, version ?? null, bundle_profile ?? null, {
           bundleType: bundle_type ?? null,
           lossless: losslessToolArgument("fhir_finalize_bundle", "bundle", extra?.requestId),
+          repair: repair ?? DEFAULT_FINALIZE_REPAIR,
+          timezone: timezone ?? null,
         }),
       ),
   );
@@ -1433,16 +1454,25 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
               "normalized_bundle with id_changes (the fixed ID issues become information). false (default): ID errors carry suggestions and " +
               "data.id_map / id_changes list every fullUrl, reference and id that must change together.",
           ),
+        repair: z
+          .enum(REPAIR_MODES as unknown as [RepairMode, ...RepairMode[]])
+          .default("ids")
+          .describe(
+            'With normalize_ids=true: "ids" (default) normalises fullUrl / reference / id only; "content" also applies fhir_finalize_bundle\'s ' +
+              "uniquely-determined content repairs (display of the same concept, UCUM, ROC dates, Coding.system, shapes) — listed in content_changes, " +
+              "undecidable ones in repair_issues — and validates the result.",
+          ),
         ...validateBundleGroundingShape,
       },
     },
-    async ({ bundle, package_id, version, normalize_ids, ...g }, extra) => {
+    async ({ bundle, package_id, version, normalize_ids, repair, ...g }, extra) => {
       const conformance = await svc.validateBundle(
         bundle as Record<string, any>,
         package_id ?? null,
         version ?? null,
         normalize_ids ?? false,
         normalize_ids ? losslessToolArgument("fhir_validate_bundle", "bundle", extra?.requestId) : undefined,
+        normalize_ids && repair === "content" ? "content" : "ids",
       );
       return rawResult(await addBundleGrounding(conformance, bundle as Record<string, any>, { ...g, package_id, version } as ValidateGroundingArgs, groundingDeps));
     },
@@ -1476,13 +1506,17 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
     "fhir_finalize_resource",
     {
       description:
-        "Finalize a draft resource you wrote as FHIR JSON against a profile, then validate it. Mechanical only — never invents content: " +
+        "Finalize a draft resource you wrote as FHIR JSON against a profile, then validate it. Never invents content: " +
         "sets meta.profile; pins fixed / pattern values only where the draft already has the parent node, including slice members the " +
         "slicing discriminators identify (a component whose code is the systolic LOINC gets the slice's unit system / code, an identifier " +
         "whose type matches gets the slice's system / use) and items tagged `_slice: <name>` at any depth (the tag is always removed, " +
         "also when it names no slice); fills Coding.system when the bound ValueSet has a single system; rewrites references written as " +
         "{reference: <key>} to the context's urn:uuid (context_id + key); generates the narrative; validates like fhir_validate_resource " +
-        "(issues carry suggestions). Returns {resource, validation, coerced, narrated, pinned, pinnedSlices, contextId, reference}; numbers keep " +
+        "(issues carry suggestions). repair=\"content\" (default; \"ids\" = off) first applies the same uniquely-determined content repairs " +
+        "as fhir_finalize_bundle — display of the SAME concept only (a display naming another concept is kept and reported with the codes it " +
+        "denotes), UCUM codes from unit text fitted to the profile, ROC (民國) dates, Coding.system names / unknown URLs, lossless shape fixes, " +
+        "required-binding code spellings — listed in `changes`, undecidable ones in `repair_issues` (and on the validator issue as `repair`). " +
+        "Returns {resource, validation, changes, repair_issues, coerced, narrated, pinned, pinnedSlices, contextId, reference}; numbers keep " +
         "the spelling you wrote. Does not auto-loop. Prefer fhir_author_resources when you have field VALUES rather than a drafted resource: " +
         "it composes the resource for you (no raw FHIR JSON) and keeps it in a context for fhir_assemble_bundle.",
       inputSchema: {
@@ -1492,9 +1526,15 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
         key: z.string().nullish().default(null),
         ...pkg,
         generate_narrative: z.boolean().default(true),
+        repair: z
+          .enum(REPAIR_MODES as unknown as [RepairMode, ...RepairMode[]])
+          .nullish()
+          .default(null)
+          .describe(`"content": + uniquely-determined content repairs (see fhir_finalize_bundle); "ids": pinning / narrative / references only (1.5.0). Omitted → "${DEFAULT_FINALIZE_REPAIR}"`),
+        timezone: z.string().nullish().default(null).describe("UTC offset (e.g. +08:00) for ROC (民國) date-times written without one; never guessed"),
       },
     },
-    async ({ profile, draft, context_id, key, package_id, version, generate_narrative }, extra) =>
+    async ({ profile, draft, context_id, key, package_id, version, generate_narrative, repair, timezone }, extra) =>
       rawResult(
         await svc.finalizeResource(
           profile,
@@ -1505,6 +1545,8 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
           version ?? null,
           generate_narrative ?? true,
           losslessToolArgument("fhir_finalize_resource", "draft", extra?.requestId),
+          repair ?? DEFAULT_FINALIZE_REPAIR,
+          timezone ?? null,
         ),
       ),
   );

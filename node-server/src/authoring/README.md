@@ -153,3 +153,25 @@ v1.3 (evaluation v13):
   fhirValidator `settleVsSystems`: an IG ValueSet that the resource / Bundle binds somewhere, as
   validator_cli once it has loaded the ValueSet), so author / assemble / validate give the same
   verdict; its suggestions normalise the code within that ValueSet and its CodeSystems.
+
+v1.4 (evaluation v14 — shared content repair, `node-server/src/fhirRepair/`):
+
+- the system correction (v1.2 / v1.3) and the display check moved out of compose.ts into the shared repair layer, which
+  fhir_finalize_bundle / fhir_finalize_resource (`repair: "content"`, the default `DEFAULT_FINALIZE_REPAIR`) and
+  fhir_validate_bundle (`normalize_ids` + `repair: "content"`) run too — one input, one verdict, one repair. The composer
+  calls `runRepair(["shape", "systems", "units", "dates", "codes"])` at step 1c and `runRepair(["displays"])` at step 7;
+  changes become notes + provenance `lookup`; values the profile pins (or the composer looked up) are skipped;
+- display (R1): replaced only for the SAME concept — (a) equal to a valid display / designation after normalising case,
+  punctuation, word order, plural, roman numerals, SNOMED semantic tag or initialism, or (b) the display searched in the
+  code's system (`normalize`) finds this code first, exactly or sharing ≥ half its words. Otherwise (another code first,
+  no search) kept, with a warning whose candidates are the codes the display denotes. Was: any rejected display replaced;
+- UCUM (R2, `ucumUnits.ts` + `units.ts`): unit / code text → UCUM (names, `<count>/<time>` rate grammar 次/分 → /min,
+  NFKC ℃ → Cel, spelling repairs), a LOINC code in Quantity.code is not unit evidence, profile fixed / pattern codes and
+  required UCUM ValueSets decide (a bare time unit where the per-time rate is fixed is that rate); disagreeing evidence →
+  error with candidates;
+- ROC dates (R3, `dates.ts`, parsers moved from values.ts): marked or 3-digit years only, offsets from the input or the
+  context timezone; Coding.system names / unknown URLs (R4 / R5, `systems.ts`): CodeSystem directory (closure +
+  FHIR R4 external list), URL fragment / last segment, THO abstract `_` codes, bound ValueSets — the code must exist;
+  lossless shapes (R6, `shape.ts`); bound code spellings (`codes.ts`);
+- verification: with the `validate` collaborator, a change after which the resource has an error it did not have is
+  withdrawn (repaired again without it) and reported — a repair never adds an error.

@@ -126,10 +126,13 @@ test("units: UCUM expressions, UCUM names / synonyms / print symbols, spelling r
     ["°C", "Cel", "name"],
     ["kilogram", "kg", "name"],
     ["bpm", "/min", "spelling"],
-    ["beats/min", "/min", "spelling"],
+    ["beats/min", "/min", "rate"],
     ["mcg", "ug", "name"],
     ["tablet", "{tablet}", "spelling"],
-    ["次/分", null, null],
+    ["次/分", "/min", "rate"],
+    ["次/分鐘", "/min", "rate"],
+    ["mg/天", "mg/d", "rate"],
+    ["顆粒/分", null, null],
     ["", null, null],
   ];
   for (const [text, code, source] of cases) {

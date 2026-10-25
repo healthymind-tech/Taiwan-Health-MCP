@@ -151,7 +151,7 @@ function clone<T>(v: T): T {
   return JSON.parse(JSON.stringify(v)) as T;
 }
 
-function typeCodeOf(t: Record<string, any>): string {
+export function typeCodeOf(t: Record<string, any>): string {
   const code = String(t.code || "");
   for (const ext of t.extension || []) {
     if (isObject(ext) && ext.url === FHIR_TYPE_EXT) return String(ext.valueUrl ?? ext.valueUri ?? ext.valueString ?? code);
@@ -226,13 +226,14 @@ export function bundleSalt(bundle: Record<string, any>): string {
 // StructureDefinition index (children by element id, slices grouped)
 // --------------------------------------------------------------------------- //
 
-interface Group {
+export interface Group {
   name: string;
   base: Record<string, any> | null;
   slices: Array<Record<string, any>>;
 }
 
-class SdIdx {
+/** StructureDefinition snapshot index (children by element id, slices grouped); shared with fhirRepair/walk.ts. */
+export class SdIdx {
   readonly url: string;
   readonly type: string;
   readonly kind: string;
@@ -275,6 +276,11 @@ class SdIdx {
 
   children(el: Record<string, any>): Map<string, Group> | undefined {
     return this.groups.get(String(el.id || el.path || ""));
+  }
+
+  /** Child groups under an element id (slice names included in the id). */
+  childrenOfId(id: string): Map<string, Group> | undefined {
+    return this.groups.get(id);
   }
 
   hasChildren(el: Record<string, any>): boolean {

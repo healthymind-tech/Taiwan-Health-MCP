@@ -339,7 +339,7 @@ test("coding / CodeableConcept forms: object, array, text, {code} with inferred 
 // Quantities, dates, periods
 // --------------------------------------------------------------------------- //
 
-test("quantity grammar: text and object forms, UCUM resolution of unit words, unknown units kept as text", async () => {
+test("quantity grammar: text and object forms, UCUM resolution of unit words and rates, unknown units kept as text", async () => {
   const base = { status: "final", code: { system: LOINC, code: "2345-7" }, subject: { ref: "pat1" }, effective: "2026-06-15" };
   const cases: Array<[unknown, Record<string, unknown>]> = [
     ["95 mg/dL", { value: 95, unit: "mg/dL", system: UCUM, code: "mg/dL" }],
@@ -348,7 +348,9 @@ test("quantity grammar: text and object forms, UCUM resolution of unit words, un
     ["72 bpm", { value: 72, unit: "bpm", system: UCUM, code: "/min" }],
     ["<5 mg/L", { value: 5, comparator: "<", unit: "mg/L", system: UCUM, code: "mg/L" }],
     [{ value: "60", unit: "kilogram" }, { value: 60, unit: "kilogram", system: UCUM, code: "kg" }],
-    [{ value: 3, unit: "次/分" }, { value: 3, unit: "次/分" }],
+    // v1.4: the `<count>/<time>` rate grammar (fhirRepair/ucumUnits.ts)
+    [{ value: 3, unit: "次/分" }, { value: 3, unit: "次/分", system: UCUM, code: "/min" }],
+    [{ value: 3, unit: "顆粒" }, { value: 3, unit: "顆粒" }],
     [{ value: 2, code: "{tablet}" }, { value: 2, system: UCUM, code: "{tablet}" }],
   ];
   for (const [given, want] of cases) {
@@ -901,6 +903,17 @@ function displayDeps(calls?: string[]): ComposeDeps {
       if (system === LOINC && code === "1988-5") return CRP;
       return base.lookupDisplay!(system, code);
     },
+    // v1.4 (ISSUES_v14 R1): the display is searched in the code's system to tell a different spelling
+    // of the same concept from a different concept (fhirRepair/displays.ts).
+    async normalize(text, target) {
+      calls?.push(`normalize ${text}`);
+      const hits: Record<string, Array<{ system: string; code: string; display: string; exact?: boolean }>> = {
+        [`${LOINC}|CRP`]: [{ system: LOINC, code: "1988-5", display: CRP, exact: true }, { system: LOINC, code: "30522-7", display: "C reactive protein [Mass/volume] in Serum or Plasma by High sensitivity method" }],
+        [`${LOINC}|Creatinine`]: [{ system: LOINC, code: "2160-0", display: "Creatinine [Mass/volume] in Serum or Plasma", exact: true }, { system: LOINC, code: "2345-7", display: "Glucose [Mass/volume] in Serum or Plasma" }],
+        [`${V2_0203}|chart no`]: [{ system: V2_0203, code: "MR", display: "Medical record number", exact: true }],
+      };
+      return (hits[`${target.system}|${text}`] ?? []).map((h) => ({ ...h }));
+    },
     async checkDisplay(system, code, display) {
       calls?.push(`check ${system}|${code}`);
       const valid = VALID_DISPLAYS[`${system}|${code}`];
@@ -942,6 +955,23 @@ test("display: a model display the terminology rejects is replaced by the code's
   const plain = await compose(EX + "LabObs", { ...LAB_BASE, code: { system: LOINC, code: "1988-5", display: "CRP" } });
   assert.equal(plain.resource.code.coding[0].display, "CRP");
   assert.deepEqual(plain.notes, []);
+});
+
+test("display (v1.4 R1): a display naming a DIFFERENT concept is kept, with the codes it denotes as candidates (warning)", async () => {
+  const out = await compose(EX + "LabObs", { ...LAB_BASE, code: { system: LOINC, code: "2345-7", display: "Creatinine" } }, {}, CTX, displayDeps());
+  assert.deepEqual(out.resource.code, { coding: [{ system: LOINC, code: "2345-7", display: "Creatinine" }] }, "display, code and text untouched");
+  assert.deepEqual(out.notes, []);
+  const w = out.errors.find((e) => e.path === "Observation.code.coding[0].display");
+  assert.ok(w && w.severity === "warning" && /NOT replaced/.test(w.message), JSON.stringify(out.errors));
+  assert.deepEqual((w!.candidates as any[]).map((c) => c.code), ["2160-0"]);
+  // no terminology search available: undecidable → kept (never replaced on a guess)
+  const d = displayDeps();
+  delete d.normalize;
+  const noSearch = await compose(EX + "LabObs", { ...LAB_BASE, code: { system: LOINC, code: "1988-5", display: "CRP" } }, {}, CTX, d);
+  assert.equal(noSearch.resource.code.coding[0].display, "CRP");
+  // a different spelling of a valid display (word order / punctuation) needs no search
+  const reordered = await compose(EX + "LabObs", { ...LAB_BASE, code: { system: LOINC, code: "1988-5", display: "SerPl-mCnc CRP" } }, {}, CTX, d);
+  assert.equal(reordered.resource.code.coding[0].display, CRP);
 });
 
 test("display: several codings, identifier type codings, looked-up and profile-pinned displays are not re-checked", async () => {

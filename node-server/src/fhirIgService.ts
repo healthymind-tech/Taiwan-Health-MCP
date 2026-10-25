@@ -52,7 +52,9 @@ import { attachSuggestions } from "./fhirSuggestions/index.js";
 import { dbSuggestionDeps, type ServiceHooks } from "./fhirSuggestions/dbDeps.js";
 import { attachIdSuggestions, isIdClassIssue, normalizationIssues } from "./fhirSuggestions/ids.js";
 import { BUNDLE_TYPES, bundleRules, finalizeBundle as runBundleFinalize, losslessFinalizedBundle, type FinalizeDeps, type FinalizeResult } from "./fhirBundleFinalize.js";
-import { restoreNumbers, stringifyLossless } from "./losslessJson.js";
+import { restoreNumbers, stringifyLossless, toPlain } from "./losslessJson.js";
+import { cloneTree, countByRule, DEFAULT_FINALIZE_REPAIR, repairBundle, repairResource, type RepairIssue, type RepairMode, type RepairResult } from "./fhirRepair/index.js";
+import { repairDepsFor } from "./fhirRepair/dbDeps.js";
 
 /** fhir_get_profile_required_elements compact view: profile invariants listed in full before the rest are named only. */
 const COMPACT_INVARIANTS = 8;
@@ -1724,6 +1726,29 @@ export class FHIRIGService {
     return { valid: false, profile: null, source: validator.SOURCE, issues, checked_fully: false, profiles_unchecked: [], valuesets_unchecked: [] };
   }
 
+  /**
+   * Content repair (ISSUES_v14, fhirRepair) of a Bundle for the finalize / validate tools: runs on
+   * a clone of the lossless request tree when there is one (numbers keep their spelling), returns
+   * the repaired plain Bundle, the repaired lossless tree (or undefined) and the result.
+   */
+  private async contentRepairBundle(
+    pkg: PackageRow | null,
+    bundle: Record<string, any>,
+    lossless: unknown,
+    timezone: string | null,
+  ): Promise<{ bundle: Record<string, any>; lossless: unknown; result: RepairResult } | null> {
+    if (!pkg) return null;
+    const tree = cloneTree(lossless !== undefined && lossless !== null && typeof lossless === "object" ? lossless : bundle) as Record<string, any>;
+    try {
+      const deps = repairDepsFor(pkg, (text, valueSet, system, limit) => this.normalizeCodeIn(pkg, true, text, valueSet, system, limit), new DbValidatorResolver(pkg));
+      const result = await repairBundle(tree, deps, { timezone });
+      return { bundle: toPlain(tree) as Record<string, any>, lossless: lossless !== undefined ? tree : undefined, result };
+    } catch (e) {
+      logError("content repair failed; the Bundle is finalized as given", { error: String((e as Error).message) });
+      return null;
+    }
+  }
+
   async validateBundle(
     bundle: Record<string, any>,
     packageId: string | null = null,
@@ -1731,6 +1756,9 @@ export class FHIRIGService {
     normalizeIds = false,
     /** The `bundle` argument as the request wrote it (losslessJson.parseLossless), so normalized_bundle keeps every number's spelling. */
     losslessBundle: unknown = undefined,
+    /** With normalize_ids: "ids" (default, 1.7.0 behaviour) or "content" (ids + the v14 content repairs, fhirRepair). */
+    repair: RepairMode = "ids",
+    timezone: string | null = null,
   ): Promise<string> {
     if (!(bundle && typeof bundle === "object" && !Array.isArray(bundle)) || bundle.resourceType !== "Bundle") {
       return this.err("INVALID_ARGUMENT", "bundle must be a FHIR Bundle resource");
@@ -1747,9 +1775,11 @@ export class FHIRIGService {
     // normalised Bundle, and report what was fixed as information issues + normalized_bundle / id_changes.
     let fin: FinalizeResult | null = null;
     let target = bundle;
+    let content: Awaited<ReturnType<FHIRIGService["contentRepairBundle"]>> = null;
     if (normalizeIds) {
       try {
-        fin = await runBundleFinalize(bundle, new DbValidatorResolver(pkg), {});
+        if (repair === "content") content = await this.contentRepairBundle(pkg, bundle, losslessBundle, timezone);
+        fin = await runBundleFinalize(content ? content.bundle : bundle, new DbValidatorResolver(pkg), {});
         target = fin.bundle;
       } catch (e) {
         logError("fhir_validate_bundle: normalize_ids failed; validating the Bundle as given", { error: String((e as Error).message) });
@@ -1765,8 +1795,14 @@ export class FHIRIGService {
     const idBlock: Record<string, any> = {};
     if (fin) {
       pushAll(core.issues as Record<string, any>[], normalizationIssues(fin.changes));
-      idBlock.normalized_bundle = losslessFinalizedBundle(fin.bundle, fin.changes, losslessBundle) ?? fin.bundle;
+      idBlock.normalized_bundle = losslessFinalizedBundle(fin.bundle, fin.changes, content ? content.lossless : losslessBundle) ?? fin.bundle;
       idBlock.id_changes = fin.changes;
+      if (content) {
+        idBlock.repair = "content";
+        idBlock.content_changes = content.result.changes;
+        idBlock.repair_issues = content.result.issues;
+        attachRepairIssues(core.issues as Record<string, any>[], content.result.issues);
+      }
       idBlock.id_map = fin.id_map;
       idBlock.id_unresolved = fin.unresolved;
       idBlock.id_notes = fin.notes;
@@ -1854,6 +1890,7 @@ export class FHIRIGService {
       warnings.push(`${referenceIssues.length} internal reference(s) did not resolve within the bundle`);
     }
     if (fin && fin.changes.length) warnings.push(`normalize_ids applied ${fin.changes.length} change(s) to fullUrl / reference / id (see id_changes); the verdict is for normalized_bundle`);
+    if (content && content.result.changes.length) warnings.push(`repair=content applied ${content.result.changes.length} content correction(s) (see content_changes); the verdict is for normalized_bundle`);
     if (fin && fin.unresolved.length) warnings.push(`${fin.unresolved.length} reference(s) could not be resolved to an entry (see id_unresolved)`);
     return this.ok(this.withDeps(data, pkg), pkg, warnings);
   }
@@ -1893,11 +1930,16 @@ export class FHIRIGService {
       bundleType?: string | null;
       /** The `bundle` argument as the request wrote it (losslessJson.parseLossless): the returned Bundle keeps every number's spelling. */
       lossless?: unknown;
+      /** "ids" (v9: fullUrl / reference / id only) or "content" (ids + the v14 content repairs); default DEFAULT_FINALIZE_REPAIR. */
+      repair?: RepairMode | null;
+      /** UTC offset completing ROC (民國) times written without one (R3); never guessed. */
+      timezone?: string | null;
     } = {},
   ): Promise<string> {
     if (!(bundle && typeof bundle === "object" && !Array.isArray(bundle)) || bundle.resourceType !== "Bundle") {
       return this.err("INVALID_ARGUMENT", "bundle must be a FHIR Bundle resource");
     }
+    const repair: RepairMode = opts.repair === "ids" || opts.repair === "content" ? opts.repair : DEFAULT_FINALIZE_REPAIR;
     const bundleType = typeof opts.bundleType === "string" && opts.bundleType.trim() ? opts.bundleType.trim() : null;
     if (bundleType !== null && !(BUNDLE_TYPES as readonly string[]).includes(bundleType)) {
       return this.err("INVALID_ARGUMENT", `bundle_type must be one of ${BUNDLE_TYPES.join(" | ")}`, { parameter: "bundle_type", allowed: [...BUNDLE_TYPES] });
@@ -1926,11 +1968,14 @@ export class FHIRIGService {
       const row = await this.loadArtifact(pkg, profile);
       if (row && row.canonical_url) profileCanonical = String(row.canonical_url);
     }
-    const fin = await runBundleFinalize(bundle, deps, { bundleProfile: profileCanonical, bundleType });
+    // v14: content repairs first (fhirRepair; on the lossless tree), then the v9 id normalisation.
+    const content = repair === "content" ? await this.contentRepairBundle(pkg, bundle, opts.lossless, opts.timezone ?? null) : null;
+    const fin = await runBundleFinalize(content ? content.bundle : bundle, deps, { bundleProfile: profileCanonical, bundleType });
     const count = (rule: string): number => fin.changes.filter((c) => c.rule === rule).length;
+    const contentChanges = content ? content.result.changes : [];
     const data: Record<string, any> = {
-      bundle: losslessFinalizedBundle(fin.bundle, fin.changes, opts.lossless) ?? fin.bundle,
-      changes: fin.changes,
+      bundle: losslessFinalizedBundle(fin.bundle, fin.changes, content ? content.lossless : opts.lossless) ?? fin.bundle,
+      changes: [...contentChanges, ...fin.changes],
       unresolved: fin.unresolved,
       notes: [...notes, ...fin.notes],
       id_map: fin.id_map,
@@ -1942,11 +1987,20 @@ export class FHIRIGService {
         bundle_type: count("bundle-type"),
         document_order: count("document-order"),
         unresolved: fin.unresolved.length,
+        ...(repair === "content" ? { content: countByRule(contentChanges), repair_issues: content ? content.result.issues.length : 0 } : {}),
       },
     };
+    if (repair === "content") {
+      data.repair = "content";
+      data.repair_issues = content ? content.result.issues : [];
+      if (!content) data.notes.push(pkg ? "content repair was not available for this call; only fullUrl / reference / id were normalised" : "no IG package resolved: content repair skipped (only fullUrl / reference / id were normalised)");
+    }
     const warnings: string[] = [];
     if (fin.unresolved.length) warnings.push(`${fin.unresolved.length} reference(s) could not be resolved to exactly one entry; see data.unresolved (candidates) — not guessed`);
     if (fin.notes.some((n) => n.startsWith("bdl-7"))) warnings.push("duplicate fullUrl(s) (bdl-7) reported in data.notes; not merged");
+    if (content && content.result.issues.some((i) => i.severity === "error")) {
+      warnings.push(`${content.result.issues.filter((i) => i.severity === "error").length} value(s) could not be corrected uniquely (see data.repair_issues, with candidates) — not guessed`);
+    }
     if (pkg) this.withDeps(data, pkg);
     const env = {
       ok: true,
@@ -2143,10 +2197,14 @@ export class FHIRIGService {
     generateNarrative = true,
     /** The `draft` argument as the request wrote it (losslessJson.parseLossless): the returned resource keeps every number's spelling. */
     losslessDraft: unknown = undefined,
+    /** "ids" (1.5.0 behaviour) or "content" (+ the v14 content repairs, fhirRepair); default DEFAULT_FINALIZE_REPAIR. */
+    repairMode: RepairMode | null = null,
+    timezone: string | null = null,
   ): Promise<string> {
     if (!(draft && typeof draft === "object" && !Array.isArray(draft))) {
       return this.err("INVALID_ARGUMENT", "draft must be a resource object");
     }
+    const repair: RepairMode = repairMode === "ids" || repairMode === "content" ? repairMode : DEFAULT_FINALIZE_REPAIR;
     let pkg: PackageRow;
     try {
       pkg = await this.resolve(packageId, version, { canonicals: [profile] });
@@ -2159,7 +2217,21 @@ export class FHIRIGService {
     const sd = jsonValue(row.raw_json);
     const canonical = sd.url || row.canonical_url;
 
-    const resource = JSON.parse(JSON.stringify(draft));
+    // v14: content repairs run on the lossless draft (numbers keep their spelling) before pinning.
+    const tree = cloneTree(losslessDraft !== undefined && losslessDraft !== null && typeof losslessDraft === "object" ? losslessDraft : draft) as Record<string, any>;
+    if (!("resourceType" in tree)) tree.resourceType = sd.type;
+    let repaired: RepairResult | null = null;
+    if (repair === "content") {
+      try {
+        const deps = repairDepsFor(pkg, (text, valueSet, system, limit) => this.normalizeCodeIn(pkg, true, text, valueSet, system, limit), new DbValidatorResolver(pkg));
+        repaired = await repairResource(tree, deps, { profiles: [canonical], timezone });
+      } catch (e) {
+        logError("fhir_finalize_resource: content repair failed; the draft is finalized as given", { error: String((e as Error).message) });
+        repaired = null;
+      }
+    }
+    if (repaired) losslessDraft = tree;
+    const resource = repaired ? (toPlain(tree) as Record<string, any>) : JSON.parse(JSON.stringify(draft));
     if (!("resourceType" in resource)) resource.resourceType = sd.type;
     const warnings: string[] = [];
 
@@ -2182,10 +2254,12 @@ export class FHIRIGService {
     }
     const narrated = generateNarrative && authoring.ensureNarrative(resource);
     const core = await this.validateCore(pkg, resource, row.artifact_id || profile);
+    if (repaired) attachRepairIssues(core.issues as Record<string, any>[], repaired.issues);
 
     const data = {
       resource: losslessDraft !== undefined ? restoreNumbers(resource, losslessDraft) : resource,
       validation: core,
+      ...(repair === "content" ? { repair: "content", changes: repaired ? repaired.changes : [], repair_issues: repaired ? repaired.issues : [] } : {}),
       coerced,
       narrated,
       pinned,
@@ -2198,6 +2272,20 @@ export class FHIRIGService {
       warnings.push("validation found errors — fix the draft and call finalize again");
     }
     return this.ok(data, pkg, warnings);
+  }
+}
+
+/**
+ * A value the repair layer declined to change (ISSUES_v14: not uniquely decidable, e.g. a display
+ * that names a different concept) explains the validator's issue at the same place: the issue gets
+ * `repair: {message, candidates}` (additive; severity / message / verdict unchanged).
+ */
+export function attachRepairIssues(issues: Array<Record<string, any>>, repairIssues: RepairIssue[]): void {
+  if (!repairIssues.length) return;
+  for (const ri of repairIssues) {
+    const holder = ri.path.replace(/\.(system|code|display)$/, "");
+    const hit = issues.find((i) => i && (i.severity === "error" || i.severity === "fatal" || i.severity === "warning") && (i.path === ri.path || i.path === holder));
+    if (hit && !hit.repair) hit.repair = { rule: ri.rule, message: ri.message, ...(ri.candidates && ri.candidates.length ? { candidates: ri.candidates } : {}) };
   }
 }
 

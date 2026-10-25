@@ -279,6 +279,21 @@ const PRIMITIVES: Record<string, PrimitiveSpec> = {
   time: { json: "string", regex: new RegExp(`^${TIME}$`) },
 };
 
+/**
+ * Does `v` satisfy the JSON type and lexical rule of FHIR R4 primitive `typeCode` (the same
+ * PRIMITIVES table the validator applies)? Unknown types answer true. Used by the repair layer
+ * (fhirRepair) to decide that a moved / rewritten value introduces no new error.
+ */
+export function primitiveOk(typeCode: string, v: unknown): boolean {
+  const spec = PRIMITIVES[typeCode];
+  if (!spec) return true;
+  const raw = v !== null && typeof v === "object" && typeof (v as { valueOf?: unknown }).valueOf === "function" && "text" in (v as object) ? Number((v as { text: string }).text) : v;
+  if (typeof raw !== spec.json) return false;
+  if (spec.regex && !spec.regex.test(String(raw))) return false;
+  if (typeCode === "date" || typeCode === "dateTime" || typeCode === "instant") return validCalendarDate(String(raw));
+  return true;
+}
+
 const COMPLEX_TYPES = [
   "Address", "Age", "Annotation", "Attachment", "CodeableConcept", "Coding", "ContactPoint", "Count",
   "Distance", "Duration", "HumanName", "Identifier", "Money", "MoneyQuantity", "Period", "Quantity", "Range",

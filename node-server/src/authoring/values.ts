@@ -15,16 +15,11 @@
  *   choice     the value's shape picks the type among the element's allowed types (shapeType)
  */
 
-import { createRequire } from "node:module";
 import { isRawNumber, RawNumber } from "../losslessJson.js";
-import { checkUcumCode, UCUM_SYSTEM } from "../fhirUcum.js";
-import { suggestUcum } from "../fhirSuggestions/ucum.js";
+import { UCUM_SYSTEM } from "../fhirUcum.js";
 
-export type Parsed<T> = { ok: true; value: T } | { ok: false; message: string; candidates?: unknown[] };
-
-export function fail<T = never>(message: string, candidates?: unknown[]): Parsed<T> {
-  return candidates && candidates.length ? { ok: false, message, candidates } : { ok: false, message };
-}
+export { describe, fail, type Parsed } from "../fhirRepair/parsed.js";
+import { describe, fail, type Parsed } from "../fhirRepair/parsed.js";
 
 export function isObject(v: unknown): v is Record<string, any> {
   return v !== null && typeof v === "object" && !Array.isArray(v) && !isRawNumber(v);
@@ -74,251 +69,19 @@ export function parseBoolean(raw: unknown): Parsed<boolean> {
   return fail(`expected true or false, got ${describe(raw)}`);
 }
 
-export function describe(v: unknown): string {
-  if (v === null) return "null";
-  if (v === undefined) return "nothing";
-  if (Array.isArray(v)) return "an array";
-  if (isRawNumber(v)) return `a number (${v.text})`;
-  if (typeof v === "object") return `an object with keys ${Object.keys(v as object).join(", ") || "(none)"}`;
-  if (typeof v === "string") return `a string (${JSON.stringify(v.length > 40 ? v.slice(0, 39) + "…" : v)})`;
-  return `${typeof v} ${String(v)}`;
-}
-
 // --------------------------------------------------------------------------- //
-// Dates
+// Dates — moved to the shared repair layer (fhirRepair/dates.ts, ISSUES_v14 R3); re-exported here.
 // --------------------------------------------------------------------------- //
 
-export type DatePrecision = "year" | "month" | "day" | "time";
-
-export interface ParsedDate {
-  /** ISO value at the parsed precision; a time carries seconds and the offset when one was given / supplied. */
-  value: string;
-  precision: DatePrecision;
-  hasOffset: boolean;
-  /** The input was a ROC (民國) date. */
-  roc: boolean;
-}
-
-const ISO_RE = /^(\d{4})(?:-(\d{1,2})(?:-(\d{1,2}))?)?(?:[T\s](\d{1,2}):(\d{2})(?::(\d{2})(\.\d+)?)?\s*(Z|z|[+-]\d{2}:?\d{2})?)?$/;
-/** `YYY/MM/DD`, `YYY-M-D` (1–3 digit year = ROC), `YYYY/MM/DD`, `民國115年6月15日`, optional ` HH:mm[:ss]`. */
-const LOOSE_RE = /^(民國|ROC)?\s*(\d{1,4})\s*[/.\-年]\s*(\d{1,2})(?:\s*[/.\-月]\s*(\d{1,2})\s*日?)?(?:\s*(?:[T\s]|,)?\s*(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(Z|z|[+-]\d{2}:?\d{2})?)?$/;
-const YEAR_MONTH_CN = /^(民國|ROC)?\s*(\d{1,4})\s*年\s*(\d{1,2})\s*月$/;
-
-function daysInMonth(y: number, m: number): number {
-  return new Date(Date.UTC(y, m, 0)).getUTCDate();
-}
-
-function pad2(n: number): string {
-  return n < 10 ? `0${n}` : String(n);
-}
-
-function normalizeOffset(o: string | undefined): string | null {
-  if (!o) return null;
-  if (o === "Z" || o === "z") return "Z";
-  const m = /^([+-])(\d{2}):?(\d{2})$/.exec(o);
-  if (!m) return null;
-  const hh = Number(m[2]);
-  const mm = Number(m[3]);
-  if (hh > 14 || mm > 59) return null;
-  return `${m[1]}${m[2]}:${m[3]}`;
-}
-
-/** Accepts ISO (any precision) and ROC dates; rejects impossible calendar dates and times. */
-export function parseDateValue(raw: unknown): Parsed<ParsedDate> {
-  if (typeof raw !== "string") return fail(`expected a date string, got ${describe(raw)}`);
-  const text = raw.trim();
-  let y: number;
-  let mo: number | null = null;
-  let d: number | null = null;
-  let hh: string | undefined;
-  let mi: string | undefined;
-  let ss: string | undefined;
-  let frac: string | undefined;
-  let off: string | undefined;
-  let roc = false;
-  let m = ISO_RE.exec(text);
-  if (m) {
-    y = Number(m[1]);
-    mo = m[2] !== undefined ? Number(m[2]) : null;
-    d = m[3] !== undefined ? Number(m[3]) : null;
-    [hh, mi, ss, frac, off] = [m[4], m[5], m[6], m[7], m[8]];
-  } else if ((m = LOOSE_RE.exec(text))) {
-    const yearText = m[2];
-    y = Number(yearText);
-    roc = Boolean(m[1]) || yearText.length <= 3;
-    mo = Number(m[3]);
-    d = m[4] !== undefined ? Number(m[4]) : null;
-    [hh, mi, ss, off] = [m[5], m[6], m[7], m[8]];
-    if (roc) {
-      if (y < 1) return fail(`ROC year must be >= 1: ${JSON.stringify(raw)}`);
-      y += 1911;
-    }
-  } else if ((m = YEAR_MONTH_CN.exec(text))) {
-    y = Number(m[2]);
-    roc = Boolean(m[1]) || m[2].length <= 3;
-    if (roc) y += 1911;
-    mo = Number(m[3]);
-  } else if (/^\d{4}$/.test(text) || /^(民國|ROC)?\s*\d{1,3}\s*年$/.test(text)) {
-    const yt = text.replace(/\D/g, "");
-    roc = yt.length <= 3;
-    y = Number(yt) + (roc ? 1911 : 0);
-  } else {
-    return fail(`not a date: ${JSON.stringify(raw)} (use ISO 2026-06-15 / 2026-06-15T06:00+08:00 or ROC 115/06/15)`);
-  }
-  if (y < 1 || y > 9999) return fail(`year out of range: ${JSON.stringify(raw)}`);
-  if (mo !== null && (mo < 1 || mo > 12)) return fail(`month out of range (1-12): ${JSON.stringify(raw)}`);
-  if (d !== null && (mo === null || d < 1 || d > daysInMonth(y, mo))) return fail(`impossible date: ${JSON.stringify(raw)}`);
-  let value = String(y).padStart(4, "0");
-  let precision: DatePrecision = "year";
-  if (mo !== null) {
-    value += `-${pad2(mo)}`;
-    precision = "month";
-  }
-  if (d !== null) {
-    value += `-${pad2(d)}`;
-    precision = "day";
-  }
-  let hasOffset = false;
-  if (hh !== undefined && mi !== undefined) {
-    if (d === null) return fail(`a time needs a full date: ${JSON.stringify(raw)}`);
-    const h = Number(hh);
-    const n = Number(mi);
-    const s = ss !== undefined ? Number(ss) : 0;
-    if (h > 23 || n > 59 || s > 60) return fail(`impossible time: ${JSON.stringify(raw)}`);
-    value += `T${pad2(h)}:${pad2(n)}:${pad2(s)}${frac ?? ""}`;
-    precision = "time";
-    if (off !== undefined) {
-      const o = normalizeOffset(off);
-      if (!o) return fail(`invalid UTC offset: ${JSON.stringify(raw)}`);
-      value += o;
-      hasOffset = true;
-    }
-  }
-  return { ok: true, value: { value, precision, hasOffset, roc } };
-}
-
-/**
- * Fit a parsed date to an element type. `timezone` (an offset such as "+08:00", a facility
- * setting the context may carry) completes a time that has none; without it such a value
- * is an error — an offset is never guessed.
- */
-export function fitDate(p: ParsedDate, typeCode: "date" | "dateTime" | "instant", timezone?: string | null): Parsed<string> {
-  if (typeCode === "date") {
-    if (p.precision !== "time") return { ok: true, value: p.value };
-    const day = p.value.slice(0, 10);
-    const time = p.value.slice(11, 19);
-    if (time === "00:00:00") return { ok: true, value: day };
-    return fail(`this element is a date without a time; give ${day} (the time ${time} cannot be kept)`);
-  }
-  if (p.precision !== "time") {
-    if (typeCode === "instant") return fail("an instant needs a full date, time and UTC offset (e.g. 2026-06-15T06:00:00+08:00)");
-    return { ok: true, value: p.value };
-  }
-  if (p.hasOffset) return { ok: true, value: p.value };
-  const tz = timezone ? normalizeOffset(timezone) : null;
-  if (tz) return { ok: true, value: p.value + tz };
-  return fail(`a time needs a UTC offset (e.g. ${p.value}+08:00); give the offset, or set the context timezone`);
-}
-
-const TIME_RE = /^(\d{1,2}):(\d{2})(?::(\d{2})(\.\d+)?)?$/;
-
-export function parseTimeValue(raw: unknown): Parsed<string> {
-  if (typeof raw !== "string") return fail(`expected a time string (HH:mm[:ss]), got ${describe(raw)}`);
-  const m = TIME_RE.exec(raw.trim());
-  if (!m) return fail(`not a time: ${JSON.stringify(raw)} (use HH:mm or HH:mm:ss)`);
-  const h = Number(m[1]);
-  const n = Number(m[2]);
-  const s = m[3] !== undefined ? Number(m[3]) : 0;
-  if (h > 23 || n > 59 || s > 60) return fail(`impossible time: ${JSON.stringify(raw)}`);
-  return { ok: true, value: `${pad2(h)}:${pad2(n)}:${pad2(s)}${m[4] ?? ""}` };
-}
+export { fitDate, parseDateValue, parseTimeValue, TIME_RE, type DatePrecision, type ParsedDate } from "../fhirRepair/dates.js";
+import { parseDateValue, TIME_RE, type ParsedDate } from "../fhirRepair/dates.js";
 
 // --------------------------------------------------------------------------- //
 // Units (UCUM)
 // --------------------------------------------------------------------------- //
 
-export interface UnitResolution {
-  code: string;
-  /** How the code was found: a valid UCUM expression as given, a UCUM unit name / synonym / print symbol, or a spelling repair. */
-  source: "ucum" | "name" | "spelling";
-}
-
-let nameTable: Map<string, string[]> | null | undefined;
-
-/** UCUM definitions (ucum-lhc): lower-cased unit names, synonyms and print symbols → codes. Exact phrase match only. */
-function unitNames(): Map<string, string[]> | null {
-  if (nameTable !== undefined) return nameTable;
-  try {
-    const require = createRequire(import.meta.url);
-    const pkg = require("@lhncbc/ucum-lhc");
-    pkg.UcumLhcUtils.getInstance();
-    const ut = pkg.UnitTables.getInstance();
-    const table = new Map<string, string[]>();
-    const add = (phrase: unknown, code: string): void => {
-      if (typeof phrase !== "string") return;
-      const k = phrase.trim().toLowerCase();
-      if (!k) return;
-      const list = table.get(k) || [];
-      if (!list.includes(code)) list.push(code);
-      table.set(k, list);
-    };
-    for (const code of ut.getAllUnitCodes() as string[]) {
-      const u = ut.getUnitByCode(code);
-      if (!u || typeof code !== "string") continue;
-      add(u.name_, code);
-      add(u.printSymbol_, code);
-      for (const s of String(u.synonyms_ || "").split(";")) add(s, code);
-    }
-    nameTable = table;
-  } catch {
-    nameTable = null;
-  }
-  return nameTable;
-}
-
-/** Prefer a plain atom over a composed expression, then the shorter code (stable). */
-function pickCode(codes: string[]): string {
-  return [...codes].sort((a, b) => {
-    const ca = /[/.()]/.test(a) ? 1 : 0;
-    const cb = /[/.()]/.test(b) ? 1 : 0;
-    return ca - cb || a.length - b.length || (a < b ? -1 : 1);
-  })[0];
-}
-
-const unitCache = new Map<string, UnitResolution | null>();
-
-/**
- * Unit text → UCUM code. A valid UCUM expression is itself the code; otherwise the UCUM
- * definitions' own names / synonyms / print symbols ("millimeter of mercury", "mmHg", "°C"),
- * then the suggestion layer's generic repair (case, brackets, common clinical spellings such
- * as bpm → /min, tablet → {tablet}) when it is a cheap edit. Null when nothing resolves.
- */
-export function resolveUnit(text: string): UnitResolution | null {
-  const t = String(text ?? "").trim();
-  if (!t) return null;
-  const hit = unitCache.get(t);
-  if (hit !== undefined) return hit;
-  let out: UnitResolution | null = null;
-  if (checkUcumCode(t) === "valid") out = { code: t, source: "ucum" };
-  else {
-    const names = unitNames();
-    const variants = [t.toLowerCase(), t.toLowerCase().replace(/\s+/g, " "), t.toLowerCase().replace(/s$/, "")];
-    for (const v of variants) {
-      const codes = names?.get(v);
-      if (codes && codes.length) {
-        out = { code: pickCode(codes), source: "name" };
-        break;
-      }
-    }
-    if (!out) {
-      const cand = suggestUcum(t, null, 1)[0];
-      if (cand && cand.cost <= 0.6) out = { code: cand.value, source: "spelling" };
-    }
-  }
-  if (unitCache.size > 2000) unitCache.clear();
-  unitCache.set(t, out);
-  return out;
-}
+export { resolveUnit, type UnitResolution } from "../fhirRepair/ucumUnits.js";
+import { resolveUnit } from "../fhirRepair/ucumUnits.js";
 
 // --------------------------------------------------------------------------- //
 // Quantity
@@ -448,21 +211,8 @@ function enNumber(s: string): number | null {
   return s in EN_NUMBERS ? EN_NUMBERS[s] : null;
 }
 
-/** Words for FHIR units-of-time (Timing.repeat.periodUnit / durationUnit / bounds). */
-export const TIME_UNIT_WORDS: Record<string, string> = {
-  s: "s", sec: "s", secs: "s", second: "s", seconds: "s", 秒: "s",
-  min: "min", mins: "min", minute: "min", minutes: "min", 分: "min", 分鐘: "min",
-  h: "h", hr: "h", hrs: "h", hour: "h", hours: "h", hourly: "h", 小時: "h", 時: "h", 鐘頭: "h",
-  d: "d", day: "d", days: "d", daily: "d", 天: "d", 日: "d",
-  wk: "wk", w: "wk", week: "wk", weeks: "wk", weekly: "wk", 週: "wk", 周: "wk", 星期: "wk", 禮拜: "wk",
-  mo: "mo", month: "mo", months: "mo", monthly: "mo", 月: "mo", 個月: "mo",
-  a: "a", y: "a", yr: "a", yrs: "a", year: "a", years: "a", yearly: "a", 年: "a",
-};
-
-export function timeUnitCode(word: string): string | null {
-  const w = String(word ?? "").trim().toLowerCase();
-  return w in TIME_UNIT_WORDS ? TIME_UNIT_WORDS[w] : null;
-}
+export { TIME_UNIT_WORDS, timeUnitCode } from "../fhirRepair/ucumUnits.js";
+import { timeUnitCode } from "../fhirRepair/ucumUnits.js";
 
 /** Event-timing codes (FHIR R4 ValueSet event-timing) for phrases. */
 const WHEN_PHRASES: Array<[RegExp, string]> = [

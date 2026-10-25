@@ -18,7 +18,11 @@
  *   1b. arrays     any element with max > 1 holding a single object / scalar (a raw FHIR shape the
  *                  model passed through, e.g. `code: {coding: {…}}`) is wrapped into a one-item
  *                  array, at any depth (note `wrapped <path> into an array`)
- *   1c. systems    (v1.2) a model Coding whose `system` is a ValueSet URL (or its /CodeSystem/ twin)
+ *   1c. repair     (v1.4, ISSUES_v14) the shared content-repair layer (fhirRepair/, the same code the finalize
+ *                  tools run): shape → systems → UCUM units → ROC dates → bound code spellings; every repair is
+ *                  verified not to add a validation error (else withdrawn, reported). The system rules below
+ *                  (v1.2 / v1.3) now live in fhirRepair/systems.ts:
+ *       systems    (v1.2) a model Coding whose `system` is a ValueSet URL (or its /CodeSystem/ twin)
  *                  gets the CodeSystem the code has in that ValueSet, when exactly one; a system URL
  *                  that resolves to nothing (validator URL rules) gets the one CodeSystem of the
  *                  element's bound ValueSets (slices / additional bindings — fhirSuggestions/bindings
@@ -39,9 +43,12 @@
  *                  Observation.category vital-signs from the R4 vital-sign code list) — only when the
  *                  element's binding is the one the rule describes and the model gave nothing
  *   7. lookups     display of codings without one, UCUM codes for unit text (values.ts), ROC dates;
- *                  a model-written display the validator would reject for a resolvable code is
- *                  replaced by the code's display (the model's text moves to CodeableConcept.text
- *                  when that is empty; note `display replaced for <field> (was '<old>')`)
+ *                  (v1.4) a model-written display the validator rejects is replaced by the code's display
+ *                  only when fhirRepair/displays.ts decides it is the SAME concept (normalised spelling /
+ *                  designation, or the display searched in the code's system finds this code first); the
+ *                  model's text moves to CodeableConcept.text when that is empty (note `display replaced
+ *                  for <field> (was '<old>')`). A display of a DIFFERENT concept is kept: warning with the
+ *                  codes the display denotes
  *   8. missing     required / invariant-implied / target-implied elements without a value — reported,
  *                  never invented (no dates, ids, names, numbers)
  *
@@ -63,10 +70,10 @@ import {
   type ProjectedElement,
 } from "../fhirRequiredElements.js";
 import { textSim } from "../fhirSuggestions/util.js";
-import { canonicalName, elementBindings } from "../fhirSuggestions/bindings.js";
-import type { SuggestionDeps } from "../fhirSuggestions/types.js";
 import { UCUM_SYSTEM } from "../fhirUcum.js";
-import type { ComposeDeps, ExpandedCoding, NormalizeCandidate, SystemResolution } from "./deps.js";
+import type { ComposeDeps, ExpandedCoding, NormalizeCandidate } from "./deps.js";
+import { WHITESPACE_ONLY } from "../fhirRepair/displays.js";
+import { repairResource, Session as RepairSession, type RepairChange, type RepairDeps, type RepairIssue, type RepairPhase, type RepairRule } from "../fhirRepair/index.js";
 import type { ApplyDefaults, AuthorInput, FieldKind, FieldSpec, Provenance } from "./types.js";
 import * as V from "./values.js";
 
@@ -95,6 +102,8 @@ export interface ComposeError {
   message: string;
   /** Candidate codings when a text could not be resolved against a required binding. */
   candidates?: unknown[];
+  /** Absent = error; a repair the layer declined (display of a different concept) is a warning (v1.4). */
+  severity?: "error" | "warning" | "information";
 }
 
 export interface ComposeOutput {
@@ -706,9 +715,10 @@ class Composer {
 
   // ------------------------------------------------------------------ errors / provenance
 
-  error(field: string | null, path: string, message: string, candidates?: unknown[]): void {
+  error(field: string | null, path: string, message: string, candidates?: unknown[], severity?: ComposeError["severity"]): void {
     const e: ComposeError = { field, path, message };
     if (candidates && candidates.length) e.candidates = candidates;
+    if (severity && severity !== "error") e.severity = severity;
     this.errors.push(e);
   }
 
@@ -736,6 +746,18 @@ class Composer {
       for (const k of Object.keys(map)) {
         if (k !== p && !k.startsWith(`${p}.`)) continue;
         const nk = `${p}[0]${k.slice(p.length)}`;
+        map[nk] = map[k];
+        delete map[k];
+      }
+    }
+  }
+
+  /** Re-key provenance / field-map paths at or under `from` to `to`. */
+  private rekey(from: string, to: string): void {
+    for (const map of [this.provenance, this.fieldMap] as Array<Record<string, unknown>>) {
+      for (const k of Object.keys(map)) {
+        if (k !== from && !k.startsWith(`${from}.`) && !k.startsWith(`${from}[`)) continue;
+        const nk = `${to}${k.slice(from.length)}`;
         map[nk] = map[k];
         delete map[k];
       }
@@ -1525,89 +1547,104 @@ class Composer {
     return { ok: true, value: out };
   }
 
-  // ------------------------------------------------------------------ system correction (v1.2)
-
-  private readonly systemResolutions = new Map<string, Promise<SystemResolution | null>>();
-  private readonly composeSystems = new Map<string, Promise<string[]>>();
-
-  private resolveSystem(url: string, code: string): Promise<SystemResolution | null> {
-    const key = `${url}\0${code}`;
-    let p = this.systemResolutions.get(key);
-    if (!p) {
-      p = this.deps.resolveSystem ? this.deps.resolveSystem(url, code).catch(() => null) : Promise.resolve(null);
-      this.systemResolutions.set(key, p);
-    }
-    return p;
-  }
-
-  /** CodeSystems a ValueSet draws from: its expansion's systems plus its compose's include systems. */
-  private systemsOfValueSet(valueSet: string): Promise<string[]> {
-    let p = this.composeSystems.get(valueSet);
-    if (!p) {
-      p = (async () => {
-        const out = new Set<string>();
-        const exp = await this.expansion(valueSet);
-        for (const c of exp?.codings ?? []) if (c.system) out.add(c.system);
-        if (this.deps.valueSetSystems) {
-          try {
-            for (const s of await this.deps.valueSetSystems(valueSet)) if (s) out.add(s);
-          } catch {
-            // compose unavailable
-          }
-        }
-        return [...out];
-      })();
-      this.composeSystems.set(valueSet, p);
-    }
-    return p;
-  }
+  // ------------------------------------------------------------------ shared content repair (v1.4, ISSUES_v14)
 
   /**
-   * CodeSystem → the ValueSet's coding with `code` under it: exact codes of the expansion, plus —
-   * when the expansion is cut, empty or unavailable (e.g. a LOINC property filter) — membership
-   * under each of the ValueSet's systems (valueSetContains), and when membership itself cannot be
-   * decided locally, the systems that hold the code (`codeInSystem`), marked `uncertain`. Only
-   * when no system is certain are the uncertain ones returned. `caseInsensitive` matches the
-   * expansion only (never a membership guess).
+   * The repair layer's collaborators, bound to this composition: the profile resolves to this
+   * StructureDefinition (also before meta.profile is set), core datatypes fall back to the built-in
+   * R4 table when the deps cannot fetch them.
    */
-  private async codesInValueSet(valueSet: string, code: string, caseInsensitive = false): Promise<Map<string, ExpandedCoding & { uncertain?: true }>> {
-    const out = new Map<string, ExpandedCoding & { uncertain?: true }>();
-    const exp = await this.expansion(valueSet);
-    const lower = code.toLowerCase();
-    const pairs = new Set<string>();
-    for (const c of exp?.codings ?? []) {
-      if (!c.system) continue;
-      if (caseInsensitive ? c.code.toLowerCase() !== lower : c.code !== code) continue;
-      pairs.add(`${c.system}|${c.code}`);
-      if (!out.has(c.system)) out.set(c.system, c);
-    }
-    // two different spellings under one system (case-insensitive) is not a unique match
-    if (caseInsensitive) {
-      for (const s of [...out.keys()]) if ([...pairs].filter((p) => p.startsWith(`${s}|`)).length > 1) out.set(s, { system: s, code: "", display: null });
-      return out;
-    }
-    if (exp && !exp.truncated && exp.codings.length) return out;
-    const uncertain = new Map<string, ExpandedCoding & { uncertain: true }>();
-    for (const s of (await this.systemsOfValueSet(valueSet)).slice(0, 8)) {
-      if (out.has(s)) continue;
-      let member: boolean | undefined;
-      try {
-        member = this.deps.valueSetContains ? await this.deps.valueSetContains(valueSet, s, code) : undefined;
-      } catch {
-        member = undefined;
-      }
-      if (member === true) out.set(s, { system: s, code, display: null });
-      else if (member === undefined && this.deps.codeInSystem) {
-        let held: boolean | undefined;
-        try {
-          held = await this.deps.codeInSystem(s, code);
-        } catch {
-          held = undefined;
+  private repairDeps(): RepairDeps | null {
+    if (!this.deps.resolveSystem && !this.deps.checkDisplay && !this.deps.fetchStructureDefinition) return null;
+    const canonical = typeof this.sd.url === "string" ? this.sd.url : "";
+    const own = this.deps;
+    return {
+      ...(own as Partial<RepairDeps>),
+      fetchStructureDefinition: async (u: string) => {
+        const bare = stripVersion(u);
+        if (canonical && bare === canonical) return this.sd;
+        let found: Record<string, any> | null = null;
+        if (own.fetchStructureDefinition) {
+          try {
+            found = await own.fetchStructureDefinition(u);
+          } catch {
+            found = null;
+          }
         }
-        if (held === true) uncertain.set(s, { system: s, code, display: null, uncertain: true });
-      }
+        if (found) return found;
+        if (bare.startsWith(CORE)) return V.syntheticDatatypeSd(bare.slice(CORE.length));
+        return null;
+      },
+    };
+  }
+
+  private repairSession: RepairSession | null = null;
+
+  /**
+   * Run phases of the shared repair layer (fhirRepair) on the composed resource and record what it
+   * did as notes / provenance (`lookup`), so fhir_author_resources gives the verdict and the repair
+   * fhir_finalize_resource / fhir_finalize_bundle give for the same values. Values the profile pins
+   * (and, per rule, values the composer itself looked up / defaulted / derived) are not touched.
+   */
+  async runRepair(phases: RepairPhase[]): Promise<void> {
+    const deps = this.repairDeps();
+    if (!deps) return;
+    this.repairSession ??= new RepairSession(deps);
+    const prov = (p: string): Provenance | undefined => this.provenance[p];
+    // A value under an element the profile pinned (fixed / pattern created or merged) is the profile's.
+    const pinnedAbove = (p: string): boolean => {
+      for (let q = p; q.includes("."); q = q.replace(/(\[\d+\]|\.[^.[\]]+)$/, "")) if (prov(q) === "fixed") return true;
+      return false;
+    };
+    const skip = (p: string, rule: RepairRule): boolean => {
+      const who = prov(p);
+      if (who === "fixed" || pinnedAbove(p)) return true;
+      if (rule === "system" || rule === "code") return who === "lookup" || who === "default" || who === "derived";
+      if (rule === "display") return who === "lookup";
+      return false;
+    };
+    const canonical = typeof this.sd.url === "string" ? this.sd.url : "";
+    let r: { changes: RepairChange[]; issues: RepairIssue[] };
+    try {
+      r = await repairResource(this.resource, deps, { phases, profiles: canonical ? [canonical] : [], timezone: this.ctx.timezone ?? null, skip, session: this.repairSession });
+    } catch {
+      return; // fail-open: the validator reports what is left
     }
-    return out.size ? out : uncertain;
+    const noted = new Set<string>();
+    for (const c of r.changes) {
+      const path = c.path;
+      if (c.rule === "shape") {
+        if (Array.isArray(c.to) && !Array.isArray(c.from)) this.rekeyWrapped(path);
+        else if (Array.isArray(c.from) && !Array.isArray(c.to)) this.rekey(`${path}[0]`, path);
+        else this.mark(path, "lookup");
+        this.note(`reshaped ${this.fieldLabel(path)}: ${c.reason}`);
+        continue;
+      }
+      if (c.rule === "display") {
+        if (path.endsWith(".text")) {
+          this.mark(path, "model");
+          continue;
+        }
+        this.mark(path, "lookup");
+        // a whitespace-only difference is the same display spelled as the terminology does: no note
+        if (c.reason !== WHITESPACE_ONLY) this.note(`display replaced for ${this.fieldLabel(path)} (was '${String(c.from)}')`);
+        continue;
+      }
+      this.mark(path, "lookup");
+      const holder = path.replace(/\.(system|code)$/, "");
+      const key = `${c.rule}\0${holder}`;
+      if (noted.has(key)) continue;
+      noted.add(key);
+      if (c.rule === "system") this.note(`system corrected for ${this.systemLabel(holder)}: ${c.reason}`);
+      else if (c.rule === "ucum") this.note(`UCUM code set for ${this.fieldLabel(holder)}: ${c.reason}`);
+      else if (c.rule === "roc-date") this.note(`ROC date converted for ${this.fieldLabel(path)}: '${String(c.from)}' → '${String(c.to)}'`);
+      else if (c.rule === "code") this.note(`code corrected for ${this.fieldLabel(path)}: ${c.reason}`);
+    }
+    for (const i of r.issues) {
+      const holder = i.path.replace(/\.(system|code|display)$/, "");
+      if (i.rule === "system") this.error(fieldForPath(this.fieldMap, holder), i.path, i.message, i.candidates);
+      else this.error(fieldForPath(this.fieldMap, holder) ?? fieldForPath(this.fieldMap, i.path), i.path, i.message, i.candidates, i.rule === "display" ? "warning" : i.severity);
+    }
   }
 
   private systemLabel(path: string): string {
@@ -1616,156 +1653,13 @@ class Composer {
     return rel === label ? label : `${label} (${rel})`;
   }
 
-  private applySystem(coding: Record<string, any>, path: string, system: string, code: string, reason: string): void {
-    coding.system = system;
-    this.mark(`${path}.system`, "lookup");
-    if (code && code !== coding.code) {
-      coding.code = code;
-      this.mark(`${path}.code`, "lookup");
-    }
-    this.note(`system corrected for ${this.systemLabel(path)}: ${reason}`);
-  }
-
   /**
-   * 1c (v1.2): Coding.system written as a ValueSet URL, or as a URL that resolves to nothing — see
-   * the header. Runs after placement (before slices / pinning, so a corrected system is what the
-   * slice discriminators and fixed / pattern values see). Model codings only; bounded.
+   * 1c (v1.2 → v1.4): Coding.system corrections and the other content repairs (fhirRepair: shape,
+   * systems, UCUM units, ROC dates, bound code spellings). Runs after placement (before slices /
+   * pinning, so a corrected system is what the slice discriminators and fixed / pattern values see).
    */
   async correctSystems(): Promise<void> {
-    if (!this.deps.resolveSystem) return;
-    interface Job { coding: Record<string, any>; path: string }
-    const jobs: Job[] = [];
-    const auto = (p: string): boolean => this.provenance[p] === "fixed" || this.provenance[p] === "lookup" || this.provenance[p] === "default" || this.provenance[p] === "derived";
-    const walk = (node: unknown, path: string): void => {
-      if (Array.isArray(node)) {
-        node.forEach((x, i) => walk(x, `${path}[${i}]`));
-        return;
-      }
-      if (!isObject(node)) return;
-      if (
-        typeof node.system === "string" && node.system && typeof node.code === "string" && node.code &&
-        node.value === undefined && node.unit === undefined && node.system !== UCUM_SYSTEM && !auto(path) && !auto(`${path}.system`)
-      ) {
-        jobs.push({ coding: node, path });
-      }
-      for (const [k, v] of Object.entries(node)) walk(v, `${path}.${k}`);
-    };
-    walk(this.resource, this.rt);
-    for (const job of jobs.slice(0, 20)) {
-      const system = String(job.coding.system).trim();
-      const code = String(job.coding.code);
-      const res = await this.resolveSystem(system.split("|")[0], code);
-      if (!res) continue;
-      if (res.kind === "valueset") await this.systemFromValueSet(job.coding, job.path, system, code, res.valueSet);
-      else if (res.kind === "unknown") await this.systemFromBindings(job.coding, job.path, system, code, res.codeSystemTwin ?? null);
-    }
-  }
-
-  private async systemFromValueSet(coding: Record<string, any>, path: string, system: string, code: string, valueSet: string): Promise<void> {
-    const hits = await this.codesInValueSet(valueSet, code);
-    const twin = stripVersion(system) !== stripVersion(valueSet) ? ` (its ValueSet twin ${valueSet})` : "";
-    if (hits.size === 1) {
-      const [[cs, hit]] = [...hits.entries()];
-      // v1.3: say whether ValueSet membership itself was confirmed (expansion / decidable compose,
-      // filters included) or only the code's existence (a filter that cannot be evaluated locally).
-      const how = hit.uncertain
-        ? `membership unverifiable; the code exists only in ${cs} among the ValueSet's systems`
-        : "membership confirmed";
-      this.applySystem(coding, path, cs, code, `'${system}' is a ValueSet${twin}; code '${code}' belongs to ${cs} (${how})`);
-      return;
-    }
-    if (hits.size > 1) {
-      const candidates = [...hits.values()].slice(0, 5).map((c) => ({ system: c.system, code: c.code, ...(c.display ? { display: c.display } : {}) }));
-      this.error(
-        fieldForPath(this.fieldMap, path),
-        `${path}.system`,
-        `'${system}' is a ValueSet${twin}, not a CodeSystem, and code '${code}' is in it under several CodeSystems (${[...hits.keys()].join(", ")}); give the CodeSystem as system`,
-        candidates,
-      );
-    }
-    // not in the ValueSet: left as written (the validator reports it, with suggestions)
-  }
-
-  private async systemFromBindings(coding: Record<string, any>, path: string, system: string, code: string, twin: string | null): Promise<void> {
-    if (twin && this.deps.codeInSystem) {
-      let held: boolean | undefined;
-      try {
-        held = await this.deps.codeInSystem(twin, code);
-      } catch {
-        held = undefined;
-      }
-      if (held === true) {
-        this.applySystem(coding, path, twin, code, `'${system}' is not a known CodeSystem or ValueSet; code '${code}' belongs to ${twin}, its CodeSystem twin`);
-        return;
-      }
-    }
-    // The element's bound ValueSets (nearest / strongest first, slices and additional bindings included).
-    const ccPath = /\.coding\[\d+\]$/.test(path) ? path.replace(/\.coding\[\d+\]$/, "") : path;
-    const canonical = typeof this.sd.url === "string" ? this.sd.url : "";
-    const shim: SuggestionDeps = {
-      fetchStructureDefinition: async (u: string) => {
-        if (canonical && stripVersion(u) === canonical) return this.sd;
-        if (!this.deps.fetchStructureDefinition) return null;
-        try {
-          return await this.deps.fetchStructureDefinition(u);
-        } catch {
-          return null;
-        }
-      },
-      checkCode: async () => ({ status: "unknown-system" }),
-    };
-    let valueSets: Array<{ valueSet: string }> = [];
-    try {
-      const ctx = await elementBindings(shim, this.resource, ccPath, { profiles: canonical ? [canonical] : [] });
-      valueSets = ctx ? ctx.bindings.slice(0, 6) : [];
-    } catch {
-      valueSets = [];
-    }
-    if (!valueSets.length) return;
-    const own = stripVersion(system);
-    for (const b of valueSets) if ((await this.systemsOfValueSet(b.valueSet)).includes(own)) return; // the binding draws from this very URL
-    // Systems certain to hold the code in a bound ValueSet win over ones only known to hold it in the CodeSystem.
-    const collect = async (ci: boolean): Promise<Map<string, { coding: ExpandedCoding; valueSet: string }>> => {
-      const certain = new Map<string, { coding: ExpandedCoding; valueSet: string }>();
-      const loose = new Map<string, { coding: ExpandedCoding; valueSet: string }>();
-      for (const b of valueSets) {
-        for (const [s, c] of await this.codesInValueSet(b.valueSet, code, ci)) {
-          const m = c.uncertain ? loose : certain;
-          if (!m.has(s)) m.set(s, { coding: c, valueSet: b.valueSet });
-        }
-      }
-      return certain.size ? certain : loose;
-    };
-    const via = (v: string): string => `the element's bound ValueSet ${canonicalName(v)}`;
-    const exact = await collect(false);
-    if (exact.size === 1) {
-      const [[cs, hit]] = [...exact.entries()];
-      this.applySystem(coding, path, cs, code, `'${system}' is not a known CodeSystem or ValueSet; code '${code}' belongs to ${cs} (${via(hit.valueSet)})`);
-      return;
-    }
-    if (exact.size > 1) return;
-    const ci = await collect(true);
-    if (ci.size === 1) {
-      const [[cs, hit]] = [...ci.entries()];
-      if (!hit.coding.code) return;
-      this.applySystem(coding, path, cs, hit.coding.code, `'${system}' is not a known CodeSystem or ValueSet; code '${code}' is '${hit.coding.code}' of ${cs} (${via(hit.valueSet)})`);
-      return;
-    }
-    if (ci.size > 1) return;
-    const display = typeof coding.display === "string" ? coding.display.trim() : "";
-    if (!display) return;
-    const byDisplay = new Map<string, { coding: ExpandedCoding; valueSet: string }>();
-    for (const b of valueSets) {
-      const exp = await this.expansion(b.valueSet);
-      for (const c of exp?.codings ?? []) {
-        if (!c.system || (c.display ?? "").trim() !== display) continue;
-        const k = `${c.system}|${c.code}`;
-        if (!byDisplay.has(k)) byDisplay.set(k, { coding: c, valueSet: b.valueSet });
-      }
-    }
-    if (byDisplay.size !== 1) return;
-    const [{ coding: hit, valueSet }] = [...byDisplay.values()];
-    this.applySystem(coding, path, hit.system!, hit.code, `'${system}' is not a known CodeSystem or ValueSet; display '${display}' is ${hit.system}#${hit.code} (${via(valueSet)}), code '${code}' replaced`);
+    await this.runRepair(["shape", "systems", "units", "dates", "codes"]);
   }
 
   // ------------------------------------------------------------------ dosage / timing
@@ -2384,80 +2278,14 @@ class Composer {
   // ------------------------------------------------------------------ lookups
 
   /**
-   * A display is derived from the code, not clinical content: every model-written display of a
-   * Coding whose system|code resolves is checked with the validator's terminology rule; one the
-   * validator would reject is replaced by the code's display (provenance `lookup`, a note). The
-   * model's wording is kept as CodeableConcept.text when that is empty (provenance `model`). A
-   * case-only difference is valid as written; a whitespace-only one takes the valid spelling
-   * without a note. The code / system are never changed; an unresolvable code keeps its display.
-   * Displays the profile pins (fixed / pattern) or the MCP looked up are not touched.
+   * Step 7 (v1.4, ISSUES_v14 R1): a model-written display the terminology rejects is replaced by
+   * the code's display only when it is the SAME concept written differently (fhirRepair/displays.ts:
+   * normalised spelling / designation, else the display searched in the code's system finds this
+   * code first); a display naming a different concept is kept, with the codes it denotes as
+   * candidates (a warning here; the validator's error stays). Same rule as the finalize tools.
    */
   async checkDisplays(): Promise<void> {
-    if (!this.deps.checkDisplay) return;
-    interface Job { coding: Record<string, any>; path: string; cc: Record<string, any> | null; ccPath: string | null }
-    const jobs: Job[] = [];
-    const auto = (p: string): boolean => this.provenance[p] === "fixed" || this.provenance[p] === "lookup";
-    const walk = (node: unknown, path: string, skip: boolean, cc: Record<string, any> | null, ccPath: string | null): void => {
-      if (Array.isArray(node)) {
-        node.forEach((x, i) => walk(x, `${path}[${i}]`, skip, cc, ccPath));
-        return;
-      }
-      if (!isObject(node)) return;
-      const skipHere = skip || auto(path);
-      if (
-        !skipHere &&
-        typeof node.system === "string" && typeof node.code === "string" && typeof node.display === "string" && node.display.trim() &&
-        node.value === undefined && node.unit === undefined && node.system !== UCUM_SYSTEM && !auto(`${path}.display`)
-      ) {
-        jobs.push({ coding: node, path, cc, ccPath });
-      }
-      const isCC = Array.isArray(node.coding);
-      for (const [k, v] of Object.entries(node)) {
-        if (k === "coding" && isCC) walk(v, `${path}.coding`, skipHere, node, path);
-        else walk(v, `${path}.${k}`, skipHere, null, null);
-      }
-    };
-    walk(this.resource, this.rt, false, null, null);
-    const ws = (x: string): string => x.replace(/\s+/g, " ").trim().toLowerCase();
-    let budget = 40;
-    for (const job of jobs) {
-      if (budget-- <= 0) break;
-      const { coding, path } = job;
-      const old: string = coding.display;
-      let verdict: { status: string; valid: string[] };
-      try {
-        verdict = await this.deps.checkDisplay(coding.system, coding.code, old, typeof coding.version === "string" ? coding.version : null);
-      } catch {
-        continue;
-      }
-      if (!verdict || verdict.status !== "invalid-display") continue;
-      const valid = (verdict.valid || []).filter((d) => typeof d === "string" && d.trim());
-      const same = valid.find((d) => ws(d) === ws(old));
-      if (same) {
-        // whitespace-only difference: the same display, spelled as the terminology does
-        coding.display = same;
-        this.mark(`${path}.display`, "lookup");
-        continue;
-      }
-      let canonical: string | null = null;
-      if (this.deps.lookupDisplay) {
-        try {
-          canonical = await this.deps.lookupDisplay(coding.system, coding.code);
-        } catch {
-          canonical = null;
-        }
-      }
-      if (canonical && valid.length && !valid.some((d) => d.toLowerCase() === canonical!.toLowerCase())) canonical = null;
-      canonical = canonical ?? valid[0] ?? null;
-      if (!canonical || ws(canonical) === ws(old)) continue;
-      coding.display = canonical;
-      this.mark(`${path}.display`, "lookup");
-      this.note(`display replaced for ${this.fieldLabel(path)} (was '${old}')`);
-      if (job.cc && job.ccPath && job.cc.text === undefined) {
-        job.cc.text = old;
-        this.mark(`${job.ccPath}.text`, "model");
-      }
-    }
+    await this.runRepair(["displays"]);
   }
 
   /** Display of every Coding without one (bounded; a failed lookup leaves the coding as it is). */
