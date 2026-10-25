@@ -76,7 +76,7 @@ export async function repairResource(resource: Record<string, any>, deps: Repair
   const withdrawn: RepairIssue[] = [];
   let result = await repairOnce(resource, deps, opts, blocked);
   for (let round = 0; round < 3 && result.changes.length; round++) {
-    const fresh = await newErrors(deps, original, resource, opts);
+    const fresh = (await newErrors(deps, original, resource, opts)).filter((e) => !exposedDisplay(e, result.changes));
     if (!fresh.length) break;
     const blame = attribute(fresh, result.changes, opts, resource);
     if (!blame.length) break;
@@ -98,6 +98,35 @@ export async function repairResource(resource: Record<string, any>, deps: Repair
   const seen = new Set<string>();
   const extra = withdrawn.filter((w) => !seen.has(w.path + w.message) && !!seen.add(w.path + w.message));
   return { changes: result.changes, issues: [...result.issues, ...extra] };
+}
+
+/** Path relative to its resource root (`Bundle.entry[2].resource.code…` / `Condition.code…` → `.code…`), plus the entry index. */
+function relPath(p: string): { entry: number | null; rel: string } {
+  const m = /^Bundle\.entry\[(\d+)\]\.resource(.*)$/.exec(p);
+  if (m) return { entry: Number(m[1]), rel: m[2] };
+  return { entry: null, rel: p.replace(/^[A-Z][A-Za-z]+/, "") };
+}
+
+/**
+ * Evaluator decision (v14.1, 2026-10-25): an error that only becomes visible because a Coding's
+ * system was corrected — the terminology's display check of THAT same Coding ("Wrong Display Name
+ * '…' for <corrected system>#<code>") — existed semantically before (the display never matched the
+ * code); it is not a regression of the repair. The system correction is kept; the display stays
+ * reported by the display rule (with the candidates its wording denotes). Any other new error still
+ * withdraws the change.
+ */
+export function exposedDisplay(e: { path: string; message: string }, changes: RepairChange[]): boolean {
+  const m = /^Wrong (?:Display Name|whitespace in Display) .* for (\S+?)#(\S+?)[.\s]/.exec(e.message) ?? /^Wrong (?:Display Name|whitespace in Display) .* for (\S+?)#(\S+)$/.exec(e.message);
+  if (!m) return false;
+  const system = m[1];
+  const ep = relPath(e.path.replace(/\/\*[^*]*\*\//g, ""));
+  return changes.some((c) => {
+    if (c.rule !== "system" || !/\.system$/.test(c.path) || c.to !== system) return false;
+    const cp = relPath(c.path.replace(/\.system$/, ""));
+    if (ep.entry !== null && cp.entry !== null && ep.entry !== cp.entry) return false;
+    // the error at the Coding itself, its display, or (validator style) at the element holding it
+    return ep.rel === cp.rel || ep.rel.startsWith(`${cp.rel}.`) || cp.rel.startsWith(`${ep.rel}.`) || cp.rel.startsWith(`${ep.rel}[`);
+  });
 }
 
 export function blockKey(rule: RepairRule, path: string): string {
@@ -319,7 +348,7 @@ export async function repairBundle(bundle: Record<string, any>, deps: RepairDeps
   const withdrawn: RepairIssue[] = [];
   let run = await repairBundleOnce(bundle, deps, opts, blocked);
   for (let round = 0; round < 4 && run.result.changes.length; round++) {
-    const fresh = await newBundleErrors(deps, original, bundle, run.removed);
+    const fresh = (await newBundleErrors(deps, original, bundle, run.removed)).filter((e) => !exposedDisplay(e, run.result.changes));
     if (!fresh.length) break;
     const blame = round < 3 ? attributeBundle(fresh, run.result.changes, bundle) : [];
     const restore = (): void => {

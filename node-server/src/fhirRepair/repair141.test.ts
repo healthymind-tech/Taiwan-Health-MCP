@@ -86,6 +86,10 @@ const SDS: Record<string, El> = {
     el("Observation.value[x]:valueQuantity.system", 1, "1", ["uri"], { fixedUri: UCUM }),
     el("Observation.value[x]:valueQuantity.code", 1, "1", ["code"], { fixedCode: "/min" }),
   ]),
+  [EX + "BodyTemp"]: obsCore(EX + "BodyTemp", [
+    el("Observation.value[x]:valueQuantity", 0, "1", ["Quantity"], { sliceName: "valueQuantity" }),
+    el("Observation.value[x]:valueQuantity.code", 1, "1", ["code"], { binding: { strength: "required", valueSet: EX + "ValueSet/bodytemp" } }),
+  ]),
   // Two required codings in code.coding, each fixed by its children (like a pulse-oximetry profile).
   [EX + "PulseOx"]: obsCore(EX + "PulseOx", [
     el("Observation.code.coding", 0, "*", ["Coding"], { slicing: { discriminator: [{ type: "value", path: "code" }, { type: "value", path: "system" }], rules: "open" } }),
@@ -125,6 +129,7 @@ function deps(extra: Partial<RepairDeps> = {}): RepairDeps {
       const u = url.split("|")[0];
       if (u === "http://hl7.org/fhir/ValueSet/reaction-event-severity")
         return { codings: ["mild", "moderate", "severe"].map((c) => ({ system: "http://hl7.org/fhir/reaction-event-severity", code: c, display: c[0].toUpperCase() + c.slice(1) })), total: 3, truncated: false };
+      if (u === EX + "ValueSet/bodytemp") return { codings: [{ system: UCUM, code: "Cel", display: "degree Celsius" }, { system: UCUM, code: "[degF]", display: "degree Fahrenheit" }], total: 2, truncated: false };
       if (u === "http://hl7.org/fhir/ValueSet/condition-code") return { codings: [], total: 0, truncated: true, incomplete: true };
       return null;
     },
@@ -209,8 +214,17 @@ test("R2: UCUM equivalents, body-surface annotation, micro sign, LOINC code with
   assert.match(rl.issues[0].message, /valueQuantity\.code .* holds a LOINC code \('8310-5'\), not a UCUM unit, and no unit is given; give the unit/);
   const fixed = obs({ meta: { profile: [EX + "RespRate"] }, valueQuantity: { value: 18, code: "9279-1" } });
   const rf = await repairResource(fixed, deps());
-  assert.equal(fixed.valueQuantity.code, "/min", "the profile fixes the only unit allowed");
-  assert.match(rf.changes[0].reason, /LOINC code, not a unit; the profile fixes the unit/);
+  assert.equal(fixed.valueQuantity.code, "/min", "the profile allows only one unit");
+  assert.match(rf.changes[0].reason, /LOINC code, not a unit; the profile allows only '\/min'/);
+  // evaluator decision: a value with no code / unit gets the profile's only unit (recorded in changes)
+  const bare = obs({ meta: { profile: [EX + "RespRate"] }, valueQuantity: { value: 18 } });
+  const rb = await repairResource(bare, deps());
+  assert.deepEqual(bare.valueQuantity, { value: 18, system: UCUM, code: "/min" });
+  assert.ok(rb.changes.every((c) => c.rule === "ucum" && /the profile allows only '\/min'/.test(c.reason)), JSON.stringify(rb.changes));
+  const two = obs({ meta: { profile: [EX + "BodyTemp"] }, valueQuantity: { value: 37 } });
+  assert.deepEqual((await repairResource(two, deps())).changes, [], "two allowed units: not decidable");
+  const unconstrained = obs({ valueQuantity: { value: 5 } });
+  assert.deepEqual((await repairResource(unconstrained, deps())).changes, []);
 });
 
 test("R5: ValueSet URLs without /ValueSet/, ValueSet-named and renamed CodeSystem URLs (unique holder only)", async () => {

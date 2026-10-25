@@ -13,9 +13,12 @@
  *              codes are its per-time rate (`min` where the profile fixes `/min`) is that rate; a
  *              code that is the same UCUM unit as exactly one allowed code (conversion factor 1:
  *              `1/min` where the profile fixes `/min`) is that code (v14.1).
- *   LOINC      a LOINC code written as Quantity.code with no unit text: when the profile fixes
- *              exactly one code (fixed / pattern, e.g. `/min`) that is the unit; otherwise an error
+ *   LOINC      a LOINC code written as Quantity.code with no unit text: when the profile allows
+ *              exactly one code (fixed / pattern, or a required ValueSet of one code, e.g. `/min`)
+ *              that is the unit ("the profile allows only …"); otherwise an error
  *              `quantity-code-not-ucum` asks for the unit (v14.1).
+ *   only one   a Quantity with a value but no code and no unit gets the profile's only allowed unit
+ *              (code + system, and the unit text when the profile requires one) — never otherwise.
  *   unique     every piece of evidence must give the same allowed code; otherwise nothing is
  *              changed and an issue lists the candidates (and the allowed codes).
  * system is set to http://unitsofmeasure.org with the code; a Quantity.system naming another real
@@ -141,9 +144,27 @@ export async function repairUnits(session: Session, sites: Site[], rp: (p: strin
     const unit = typeof q.unit === "string" && q.unit.trim() ? q.unit.trim() : null;
     const rawCode = q.code;
     const cur = typeof rawCode === "string" && rawCode.trim() ? rawCode.trim() : null;
-    if (rawCode === undefined && !unit) continue;
+    if (rawCode === undefined && !unit && q.value === undefined) continue;
     const c = constraintsOf(site);
     const { allowed, undecidable, label } = await allowedCodes(session, c);
+    if (rawCode === undefined && !unit) {
+      // A value without code or unit (v14.1, evaluator decision): set directly only when the profile allows exactly one unit.
+      const one = !undecidable && allowed && (allowed as Set<string>).size === 1 ? [...(allowed as Set<string>)][0] : null;
+      if (!one || !ucumValid(one) || (typeof q.system === "string" && q.system !== UCUM_SYSTEM)) continue;
+      const reason = `the profile allows only '${one}' (${label.join("; ")})`;
+      const unitRequired = childDefs(site.members, "unit").some((d) => Number(d.min ?? 0) >= 1);
+      if (unitRequired) {
+        q.unit = one;
+        changes.push({ path: rp(`${site.path}.unit`), from: null, to: one, rule: "ucum", reason: `${reason}; the profile requires a unit text` });
+      }
+      if (q.system !== UCUM_SYSTEM) {
+        q.system = UCUM_SYSTEM;
+        changes.push({ path: rp(`${site.path}.system`), from: null, to: UCUM_SYSTEM, rule: "ucum", reason });
+      }
+      q.code = one;
+      changes.push({ path: rp(`${site.path}.code`), from: null, to: one, rule: "ucum", reason });
+      continue;
+    }
     const sysOk = q.system === UCUM_SYSTEM || ((q.system === undefined || q.system === null) && !cur);
     const curState =
       cur !== null && ucumValid(cur) && !LOINC_SHAPE.test(cur) && (allowed === null || allowed.has(cur)) && (q.system === UCUM_SYSTEM || q.system === undefined);
@@ -182,9 +203,10 @@ export async function repairUnits(session: Session, sites: Site[], rp: (p: strin
     const path = rp(site.path);
     const allowedList = allowed ? [...(allowed as Set<string>)].slice(0, 10) : [];
     const loincCodes = (cur !== null ? [cur] : innerCodes(rawCode)).filter((t) => LOINC_SHAPE.test(t));
-    if (!ev.length && loincCodes.length && !unit && c.fixed.size === 1 && allowed && (allowed as Set<string>).size === 1) {
-      // The profile fixes the one unit this element may have: the LOINC code is replaced by it.
-      ev.push({ code: [...(allowed as Set<string>)][0], why: `code '${loincCodes[0]}' is a LOINC code, not a unit; the profile fixes the unit to '${[...(allowed as Set<string>)][0]}'` });
+    const only = !undecidable && allowed && (allowed as Set<string>).size === 1 ? [...(allowed as Set<string>)][0] : null;
+    if (!ev.length && loincCodes.length && !unit && only) {
+      // Evaluator decision (v14.1): the profile allows exactly one unit — the LOINC code is replaced by it.
+      ev.push({ code: only, why: `code '${loincCodes[0]}' is a LOINC code, not a unit; the profile allows only '${only}'` });
     }
     if (!ev.length && loincCodes.length) {
       const field = site.key === "valueQuantity" || /valueQuantity$/.test(site.path) ? "valueQuantity.code" : `${site.key}.code`;

@@ -264,10 +264,10 @@ test("R6: lossless reshapes only; ambiguous shapes are reported with an example"
 });
 
 test("verification: a change after which the resource has an error it did not have is withdrawn and reported", async () => {
-  // A fake validator: the corrected ICD-10-CM system exposes the display check (as the real one does).
+  // A fake validator: the corrected ICD-10-CM system makes a profile rule fail (an unrelated new error).
   const validate = async (res: El): Promise<Array<{ severity: string; path: string; message: string }>> => {
     const c = res.code?.coding?.[0];
-    if (c && c.system === ICD && c.display === "Stroke") return [{ severity: "error", path: "Condition.code.coding[0].display", message: "Wrong Display Name 'Stroke'" }];
+    if (c && c.system === ICD && c.display === "Stroke") return [{ severity: "error", path: "Condition.code", message: "Constraint failed: some profile rule" }];
     if (c && c.system === "ICD-10-CM") return [{ severity: "error", path: "Condition.code.coding[0].system", message: "Coding.system must be an absolute reference, not a local reference" }];
     return [];
   };
@@ -275,10 +275,34 @@ test("verification: a change after which the resource has an error it did not ha
   const r = await repairResource(c, deps({ validate, checkDisplay: async () => ({ status: "ok", valid: [] }) }));
   assert.equal(c.code.coding[0].system, "ICD-10-CM", "withdrawn: the resource is as written");
   assert.deepEqual(r.changes, []);
-  assert.ok(r.issues.some((i) => /not applied: .*Wrong Display Name 'Stroke'/.test(i.message)), JSON.stringify(r.issues));
+  assert.ok(r.issues.some((i) => /not applied: .*some profile rule/.test(i.message)), JSON.stringify(r.issues));
   const ok: El = { resourceType: "Condition", code: { coding: [{ system: "ICD-10-CM", code: "I10" }] } };
   await repairResource(ok, deps({ validate }));
   assert.equal(ok.code.coding[0].system, ICD);
+});
+
+test("verification (evaluator decision): a display error exposed by the system correction of that same Coding keeps the correction", async () => {
+  // The corrected system lets the terminology check the display — an error that existed semantically before.
+  const validate = async (res: El): Promise<Array<{ severity: string; path: string; message: string }>> => {
+    const c = res.code?.coding?.[0];
+    if (c && c.system === ICD && c.display === "Stroke")
+      return [{ severity: "error", path: "Condition.code.coding[0].display", message: `Wrong Display Name 'Stroke' for ${ICD}#I10. Valid display is 'Essential (primary) hypertension'` }];
+    if (c && c.system === "ICD-10-CM") return [{ severity: "error", path: "Condition.code.coding[0].system", message: "Coding.system must be an absolute reference, not a local reference" }];
+    return [];
+  };
+  const c: El = { resourceType: "Condition", code: { coding: [{ system: "ICD-10-CM", code: "I10", display: "Stroke" }] } };
+  const r = await repairResource(c, deps({ validate }));
+  assert.equal(c.code.coding[0].system, ICD, "kept");
+  assert.equal(c.code.coding[0].display, "Stroke", "a different-meaning display is not replaced");
+  assert.ok(r.changes.some((x) => x.rule === "system" && x.path === "Condition.code.coding[0].system"));
+  assert.ok(r.issues.some((i) => i.rule === "display" && /NOT replaced/.test(i.message)), JSON.stringify(r.issues));
+  assert.ok(!r.issues.some((i) => /not applied/.test(i.message)));
+  // the same exposure inside a Bundle (whole-Bundle verification) is kept too
+  const vb = async (res: El): Promise<Array<{ severity: string; path: string; message: string }>> =>
+    res.resourceType === "Bundle" ? (await validate(res.entry[0].resource)).map((i) => ({ ...i, path: i.path.replace(/^Condition/, "Bundle.entry[0].resource") })) : validate(res);
+  const b: El = { resourceType: "Bundle", type: "collection", entry: [{ fullUrl: "urn:uuid:7c1e7b52-5f0b-4c55-9a41-0d2f6f0e1a09", resource: { resourceType: "Condition", code: { coding: [{ system: "ICD-10-CM", code: "I10", display: "Stroke" }] } } }] };
+  await repairBundle(b, deps({ validate: vb }));
+  assert.equal(b.entry[0].resource.code.coding[0].system, ICD);
 });
 
 test("idempotent, deterministic, lossless: repair(repair(x)) changes nothing and numbers keep their spelling", async () => {

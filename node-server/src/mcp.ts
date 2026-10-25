@@ -1384,7 +1384,7 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
         "repair_issues + the validator error carry the codes the display denotes; ucum — a Quantity's UCUM code / system from its unit or " +
         "code text (mmHg → mm[Hg], °C/degC → Cel, 次/分 → /min, a LOINC code in Quantity.code replaced), fitted to the profile's fixed code " +
         "or required UCUM ValueSet ('min' / '1/min' where /min is fixed; mL/min/1.73m2 → mL/min/{1.73_m2}; μIU/mL → u[IU]/mL); a LOINC code " +
-        "in Quantity.code with no unit is reported (quantity-code-not-ucum); roc-date — 民國 dates (115-10-03, 115/10/03, 民國115年10月3日) → " +
+        "in Quantity.code with no unit is reported (quantity-code-not-ucum) unless the profile allows only one unit (then set); roc-date — 民國 dates (115-10-03, 115/10/03, 民國115年10月3日) → " +
         "+1911; timezone — a date-time without UTC offset (ROC or Gregorian) takes the site timezone: `timezone` (+08:00 / Asia/Taipei), else " +
         "a site_config line `timezone: +08:00`, never guessed (else reported: timezone-required); 1–2-digit years reported; system — a " +
         "non-absolute Coding.system (ICD-10-CM, LOINC, SNOMED CT) or an unknown / ValueSet URL → the one CodeSystem it names (installed " +
@@ -1395,7 +1395,7 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
         "entry.meta → resource.meta), resourceType from meta.profile, a Bundle without resourceType or with numbered entry keys " +
         "(\"entry[1]\"), deep-equal duplicate fullUrl entries dropped; empty — {}, [], \"\", null removed (ele-1); fixed-slice — a required " +
         "coding slice the profile fully fixes added; code — a required-binding code written as its display or in another case. A change is " +
-        "withdrawn (repair_issues) if the Bundle would get a validation error it did not have. Returns {bundle, changes[{path, from, to, rule, reason?}], repair_issues[{path, rule, message, " +
+        "withdrawn (repair_issues) if the Bundle would get a validation error it did not have (a display error exposed on the Coding whose system was corrected does not count: it stays reported with candidates). Returns {bundle, changes[{path, from, to, rule, reason?}], repair_issues[{path, rule, message, " +
         "candidates}], unresolved[{path, reference, candidates}], notes, id_map, summary}; a finalized Bundle yields changes = [] (idempotent, " +
         "deterministic). Numbers keep the spelling you wrote (10.0 stays 10.0). Optional bundle_type sets Bundle.type (a profile-fixed type " +
         "wins). Then validate with fhir_validate_bundle (or call it with normalize_ids=true).",

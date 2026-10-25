@@ -129,7 +129,11 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   source_text and without findings the output is byte-identical to 1.10.0.
   // 1.11.1 (v14.1 (ISSUES_v14_1, fhirRepair/; patch on top of the ISSUES_v15 bump)): with normalize_ids + repair="content" the content repairs follow
   //   fhir_finalize_bundle 1.3.1 (new rules, Bundle-level verification). Default output unchanged.
-  fhir_validate_bundle: "1.11.1",
+  // 1.11.2 (v14.1, evaluator decisions 2026-10-25: (a) a system correction is kept when the only new error is the
+  //   display check of that same Coding (an exposed error; the display stays reported with candidates); (b) a Quantity
+  //   whose profile allows exactly one unit gets it — LOINC code without unit, or a value without code / unit —
+  //   recorded in changes (rule ucum, reason "the profile allows only <unit>").
+  fhir_validate_bundle: "1.11.2",
   // 1.6.2: the binding-aware suggestions above (ISSUES_v10 A) also apply to single-resource validation.
   // 1.7.0: the validator v13 rules above (fhir_validate_bundle 1.9.0).
   // 1.8.0 (ISSUES_v15): the record checks of fhir_validate_bundle 1.11.0 on the resource (data.issues, data.record_checks).
@@ -201,7 +205,11 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   ValueSet-named and renamed system URLs; wrapped Coding, code as CodeableConcept, choice / up moves; empty
   //   elements, rule empty; required fixed coding slices, rule fixed-slice). New optional `site_config` (a `timezone:`
   //   line is the site timezone when `timezone` is not passed); `timezone` also takes an IANA zone.
-  fhir_finalize_resource: "1.7.1",
+  // 1.7.2 (v14.1, evaluator decisions 2026-10-25: (a) a system correction is kept when the only new error is the
+  //   display check of that same Coding (an exposed error; the display stays reported with candidates); (b) a Quantity
+  //   whose profile allows exactly one unit gets it — LOINC code without unit, or a value without code / unit —
+  //   recorded in changes (rule ucum, reason "the profile allows only <unit>").
+  fhir_finalize_resource: "1.7.2",
   // 1.0.0 (authoring/, evaluation v11): the model gives field VALUES, the MCP composes the resource for its profile
   //   (fixed / pattern / defaults / derived / displays / UCUM / ROC dates), validates it, keeps it in a Redis context
   //   (`authoring:ctx:*`, 60-min idle TTL) and assembles the Bundle from keys with deterministic urn:uuid fullUrls
@@ -246,7 +254,11 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   logged) adds the record-dependent checks (R3 / R4) to this call's validation; site_config identifier-format rules apply.
   // 1.5.1 (v14.1 (ISSUES_v14_1, fhirRepair/; patch on top of the ISSUES_v15 bump)): resources get the content repairs of fhir_finalize_bundle 1.3.1; a
   //   `timezone:` line of the context's site_config is the site timezone when none is set.
-  fhir_author_resources: "1.5.1",
+  // 1.5.2 (v14.1, evaluator decisions 2026-10-25: (a) a system correction is kept when the only new error is the
+  //   display check of that same Coding (an exposed error; the display stays reported with candidates); (b) a Quantity
+  //   whose profile allows exactly one unit gets it — LOINC code without unit, or a value without code / unit —
+  //   recorded in changes (rule ucum, reason "the profile allows only <unit>").
+  fhir_author_resources: "1.5.2",
   // 1.0.1: action=get results carry the author result's new `notes` (fhir_author_resources 1.1.0); otherwise unchanged.
   fhir_context: "1.0.1",
   // 1.1.0: new `site_config` (merged with the context's) passed to the grounding engine with source_text, so facility
@@ -258,7 +270,11 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   R3 / R4 with source_text; site_config identifier-format rules) — record-check issues are tagged with key / field.
   // 1.4.1 (v14.1 (ISSUES_v14_1, fhirRepair/; patch on top of the ISSUES_v15 bump)): resources as fhir_author_resources 1.5.1; finalize as
   //   fhir_finalize_bundle 1.3.1 (site_config timezone line used for date-times without an offset).
-  fhir_assemble_bundle: "1.4.1",
+  // 1.4.2 (v14.1, evaluator decisions 2026-10-25: (a) a system correction is kept when the only new error is the
+  //   display check of that same Coding (an exposed error; the display stays reported with candidates); (b) a Quantity
+  //   whose profile allows exactly one unit gets it — LOINC code without unit, or a value without code / unit —
+  //   recorded in changes (rule ucum, reason "the profile allows only <unit>").
+  fhir_assemble_bundle: "1.4.2",
   // 1.0.0 (ISSUES_v9 R1): deterministic Bundle finalizer — fullUrl-uuid / reference-rewire / resource-id (mandatory),
   // bundle-type / document-order (profile-driven); UUID v5 seeded by (resourceType, original fullUrl, resource.id, entry
   // index) + a content salt; references found through StructureDefinition snapshots; duplicates / ambiguity reported.
@@ -290,7 +306,11 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   empty (ele-1: {}, [], "", null removed); fixed-slice (required coding slices the profile fully fixes). New:
   //   every change is verified against the whole Bundle's validation (errors only the Bundle context shows), else
   //   withdrawn and reported. New optional `site_config`.
-  fhir_finalize_bundle: "1.3.1",
+  // 1.3.2 (v14.1, evaluator decisions 2026-10-25: (a) a system correction is kept when the only new error is the
+  //   display check of that same Coding (an exposed error; the display stays reported with candidates); (b) a Quantity
+  //   whose profile allows exactly one unit gets it — LOINC code without unit, or a value without code / unit —
+  //   recorded in changes (rule ucum, reason "the profile allows only <unit>").
+  fhir_finalize_bundle: "1.3.2",
   // ── 2026-10-19 actionable errors (additive fields only; successful outputs unchanged) ──
   // search_medical_codes 1.2.1: IG_UNAVAILABLE adds `hint`.
   // FHIR IG tools above (+.0.1): error envelopes add error.hint; IG_NOT_FOUND / NO_DEFAULT_IG add
