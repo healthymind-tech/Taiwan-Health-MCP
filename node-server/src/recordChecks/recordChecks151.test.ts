@@ -6,6 +6,7 @@ import { test } from "node:test";
 
 import { IN_RECORD, inBundle, syntheticV151Cases } from "../../scripts/record-checks-eval/synthetic151.js";
 import { diagnosisSlots } from "./diagnosisSlot.js";
+import { addRecordChecksToValidation } from "./envelope.js";
 import { runRecordChecks } from "./index.js";
 import { RecordText } from "../grounding/recordText.js";
 import { RecordValues } from "./recordValues.js";
@@ -209,4 +210,62 @@ test("record value index: ROC / 中文 / English dates, Chinese numerals, relati
   assert.ok(rv.numbers.some((n) => n.value === 38));
   assert.ok(rv.numbers.some((n) => n.value === 120) && rv.numbers.some((n) => n.value === 80));
   assert.ok(!rv.numbers.some((n) => n.value === 0 || n.value === 10 || n.value === 6));
+});
+
+test("R6: a wrong ROC ↔ Gregorian conversion gets the record's date as replace_value (single → 0.95; several → all)", () => {
+  const b = inBundle();
+  res(b, 0).birthDate = "1983-08-25";
+  const rec = rep("出生日期：民國60年5月3日", "出生日期：民國92年8月25日");
+  const [i] = at(b, "Bundle.entry[0].resource.birthDate", rec);
+  assert.equal(`${i.severity}:${i.code}`, "error:ungrounded-value");
+  assert.equal(i.suggestions!.length, 1);
+  const s = i.suggestions![0];
+  assert.deepEqual([s.value, s.kind, s.confidence, s.patch], ["2003-08-25", "replace_value", 0.95, { op: "replace", path: "Bundle.entry[0].resource.birthDate", value: "2003-08-25" }]);
+  assert.match(s.reason, /民國92年8月25日/u);
+  assert.match(s.reason, /92\+1911/u);
+  assert.match(i.message_zh, /正確值應為 2003-08-25/u);
+  // 民國47年 written with +1912; the ROC year written as the Gregorian one; a time part is kept
+  const b2 = inBundle();
+  res(b2, 0).birthDate = "1959-06-20";
+  assert.equal(at(b2, "Bundle.entry[0].resource.birthDate", rep("出生日期：民國60年5月3日", "出生日期：民國47年6月20日"))[0].suggestions![0].value, "1958-06-20");
+  const b3 = inBundle();
+  res(b3, 1).period.start = "0114-06-10T14:30:00+08:00";
+  const s3 = at(b3, "Bundle.entry[1].resource.period.start", rep("入院日期：2025/06/10 14:30", "入院日期：114/06/10 14:30"))[0].suggestions![0];
+  assert.equal(s3.value, "2025-06-10T14:30:00+08:00");
+  assert.match(s3.reason, /ROC year 114 was written as the Gregorian year/u);
+  // several record dates with this month / day: all listed, the one under the field's label first
+  const b4 = inBundle();
+  res(b4, 0).birthDate = "1960-05-03";
+  const sg = at(b4, "Bundle.entry[0].resource.birthDate", `${R}\n上次門診：113/05/03 血壓追蹤`)[0].suggestions!;
+  assert.deepEqual(sg.map((x) => [x.value, x.confidence]), [["1971-05-03", 0.7], ["2024-05-03", 0.5]]);
+  // no record date with this month / day → no suggestion
+  const b5 = inBundle();
+  res(b5, 0).birthDate = "1960-01-01";
+  assert.equal(at(b5, "Bundle.entry[0].resource.birthDate")[0].suggestions, undefined);
+});
+
+test("R6 on grounding issues: the validating tools' G-UNGROUNDED dates carry the suggestion; nothing without source_text", () => {
+  const b = inBundle();
+  res(b, 0).birthDate = "1960-05-03";
+  const env = JSON.stringify({
+    ok: true,
+    data: {
+      valid: false,
+      issues: [],
+      entries: b.entry.map((e: Json, k: number) => ({
+        fullUrl: e.fullUrl ?? null,
+        resourceType: e.resource.resourceType,
+        valid: k !== 0,
+        issues: k === 0 ? [{ severity: "error", code: "incomplete", path: "Bundle.entry[0].resource.birthDate", message: "[grounding:G-UNGROUNDED] not stated", rule: "G-UNGROUNDED", source: "grounding" }] : [],
+      })),
+    },
+    warnings: [],
+  });
+  const out = JSON.parse(addRecordChecksToValidation(env, b, { sourceText: R }));
+  const g = out.data.entries[0].issues.find((i: Json) => i.source === "grounding");
+  assert.equal(g.severity, "error");
+  assert.equal(g.message, "[grounding:G-UNGROUNDED] not stated");
+  assert.deepEqual(g.suggestions.map((s: Json) => [s.value, s.kind, s.patch.path]), [["1971-05-03", "replace_value", "Bundle.entry[0].resource.birthDate"]]);
+  const plain = JSON.parse(addRecordChecksToValidation(env, b, {}));
+  assert.equal(plain.data.entries[0].issues.find((i: Json) => i.source === "grounding").suggestions, undefined);
 });

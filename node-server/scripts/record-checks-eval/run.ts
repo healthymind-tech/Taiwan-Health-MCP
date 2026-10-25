@@ -9,6 +9,7 @@
  *   synthetic v15.1 synthetic151.ts — ≥ 80 missing-information variants in the six miss classes (identity, date,
  *                   quantity, medication, diagnosis, structure) + other-time-point values, and complete controls
  *                   for the derivations that must stay grounded (always present);
+ *                   (incl. ≥ 15 R6 cases: a wrong ROC ↔ Gregorian conversion must get the record's date as replace_value);
  *   mutations       private: the recorded single-value mutations of the gold Bundles (date / identifier /
  *                   quantity / dose mutations must get a record-check error at their entry);
  *   v9+real-record  private: the v9 model-output Bundles whose case record is available (completeness / grounding
@@ -222,7 +223,13 @@ async function main(): Promise<void> {
   let vhit = 0;
   for (const c of vpos) {
     const r = runRecordChecks(c.bundle, { sourceText: c.source_text, siteConfig: c.site_config });
-    const ok = r.issues.some((i) => c.expect!.codes.includes(i.code) && (c.expect!.severity === "warning" || i.severity === "error"));
+    const ok = r.issues.some(
+      (i) =>
+        c.expect!.codes.includes(i.code) &&
+        (c.expect!.severity === "warning" || i.severity === "error") &&
+        // R6: the correction the record determines must be offered — all candidates, the best first
+        (!c.suggest || (JSON.stringify((i.suggestions ?? []).map((x) => x.value).sort()) === JSON.stringify([...c.suggest].sort()) && i.suggestions![0].value === c.suggest[0] && i.suggestions!.every((x) => x.kind === "replace_value" && x.patch?.op === "replace" && x.patch.path === i.path))),
+    );
     const t = byCls.get(c.cls) ?? [0, 0];
     byCls.set(c.cls, [t[0] + (ok ? 1 : 0), t[1] + 1]);
     if (ok) vhit++;

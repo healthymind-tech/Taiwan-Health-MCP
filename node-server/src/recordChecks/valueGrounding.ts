@@ -32,7 +32,9 @@ import { CONVERT, canonUnit, HIST_CUES, nfkc, unitsCompatible, VITAL_LABELS } fr
 import { EVENT_TIMES } from "./recordAware.js";
 import { absenceOf, ABSENT_LABELS } from "./lexicon.js";
 import { makeIssue } from "./issue.js";
+import type { Suggestion } from "../fhirSuggestions/types.js";
 import { parseDatesPos } from "../grounding/lexicon.js";
+import { dateCorrections } from "./dateSuggestions.js";
 import { TW_LEXICON_DATA } from "../grounding/twLexiconData.js";
 import { dayKey, idNorm, monthKey, RecordValues, type RecNumber } from "./recordValues.js";
 import { resourcesOf, type Slot } from "./slots.js";
@@ -545,12 +547,13 @@ function checkDate(s: Slot, g: GroundingContext, stated: ReturnType<typeof state
   const formsNote = `normalised forms tried: ${[...new Set(tried)].join(", ")} (record dates read as western, ROC 民國, 年月日, slashes and month-day; relative expressions such as 入院第N天 / POD#N / N天前 / 隔天 resolved on the record's dates)`;
   if (!dateForm) {
     const near = p.m !== null && p.d !== null ? rv.nearestDays(p.y, p.m, p.d) : [...rv.days.keys()].slice(0, 3);
-    return makeIssue(
+    const issue = makeIssue(
       "R5", admin ? "warning" : "error", "ungrounded-value", s.path,
       `病歷中找不到這個值：日期「${s.value}」不在病歷中，也無法由病歷的日期推得（如「入院第3天」+入院日）。${near.length ? `病歷中的日期：${near.join("、")}。` : "病歷沒有任何日期。"}不要自行填日期；若任務需要它而病歷沒有，請回報 insufficient_information`,
       `This value is not in the record: the date "${s.value}" is neither stated in the record nor derivable from its dates (e.g. "hospital day 3" + the admission date).${near.length ? ` Record dates: ${near.join(", ")}.` : " The record states no date."} Do not make up a date; if the record does not give it, report insufficient_information`,
       `R5 date grounding: ${formsNote}; nearest record candidates: ${near.join(", ") || "none"}${admin ? "; record-keeping timestamp, so a warning" : ""}`,
     );
+    return withDateCorrections(issue, s.value, s.path, s.gpath, rv);
   }
   // R4: the date is in the record, but only as a past event (上次 / 曾 / previous …) or as the birth date
   if (!admin && EVENT_TIMES.has(s.gpath) && dateForm.d !== null && dateState(dateForm) === "stated") {
@@ -710,6 +713,29 @@ function otherTimePoint(s: Slot, g: GroundingContext, fails: StatedAbsent[], hit
     `R4 time point: every record clause stating ${v} carries another ${timeKey !== null ? "time" : "date"} stamp; a clause stamped ${key} on a line naming this measurement states ${atEff.raw}`,
     [other],
   );
+}
+
+/**
+ * ISSUES_v15.1 R6: attach the record's own date as a replace_value suggestion when the record states the
+ * value's month / day with another year (a wrong ROC ↔ Gregorian conversion); one candidate is also named in
+ * the message. Severity and code are unchanged.
+ */
+export function withDateCorrections<T extends { message: string; message_zh?: string; message_en?: string; suggestions?: Suggestion[] }>(
+  issue: T,
+  value: string,
+  path: string,
+  gpath: string,
+  rv: RecordValues,
+): T {
+  const sug = dateCorrections(value, path, gpath, rv);
+  if (!sug.length) return issue;
+  const out: T = { ...issue, suggestions: [...(issue.suggestions ?? []), ...sug] };
+  if (sug.length === 1 && out.message_zh !== undefined && out.message_en !== undefined) {
+    out.message_zh = `${out.message_zh}。病歷有同月同日的日期，正確值應為 ${sug[0].value}（見 suggestions：民國 N 年 = 西元 N+1911）`;
+    out.message_en = `${out.message_en}. The record has this month / day: the correct value is ${sug[0].value} (see suggestions: ROC year N = Gregorian N+1911)`;
+    out.message = `${out.message_zh} / ${out.message_en}`;
+  }
+  return out;
 }
 
 const MED_RESOURCES = new Set(["MedicationRequest", "MedicationStatement", "MedicationAdministration", "MedicationDispense"]);

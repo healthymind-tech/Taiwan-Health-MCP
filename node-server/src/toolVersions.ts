@@ -142,12 +142,14 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   diagnosis slot (unestablished / differential / "no diagnosis until …" → unconfirmed-as-confirmed error, incl. symptom
   //   codes and code.text copying the list; no diagnosis at all → information-absent); cues are bracket-scoped
   //   (「Elevated PSA（未確立惡性腫瘤）」 no longer flags Elevated PSA). Without source_text the output is unchanged.
-  fhir_validate_bundle: "1.12.0",
+  // 1.13.0 (ISSUES_v15.1 R6, recordChecks/dateSuggestions.ts): an ungrounded date whose month / day the record states with another year (a wrong ROC ↔ Gregorian conversion: 民國92年8月25日 → 1983-08-25; +1900 / +1910 / +1912 / the ROC year as Gregorian; or a Gregorian record date) gets the record's date as a replace_value suggestion (patch {op: replace, path, value}; reason quotes the record and the rule 民國 N 年 = 西元 N+1911; one candidate 0.95, several all listed); severity unchanged, never applied — on record-check ungrounded-value issues and on the G-UNGROUNDED / G-VALUE-MISMATCH grounding issues this tool returns (fhir_check_grounding itself unchanged).
+  fhir_validate_bundle: "1.13.0",
   // 1.6.2: the binding-aware suggestions above (ISSUES_v10 A) also apply to single-resource validation.
   // 1.7.0: the validator v13 rules above (fhir_validate_bundle 1.9.0).
   // 1.8.0 (ISSUES_v15): the record checks of fhir_validate_bundle 1.11.0 on the resource (data.issues, data.record_checks).
   // 1.9.0 (ISSUES_v15.1): the record checks of fhir_validate_bundle 1.12.0 on the resource (output without source_text unchanged).
-  fhir_validate_resource: "1.9.0",
+  // 1.10.0 (ISSUES_v15.1 R6, recordChecks/dateSuggestions.ts): an ungrounded date whose month / day the record states with another year (a wrong ROC ↔ Gregorian conversion: 民國92年8月25日 → 1983-08-25; +1900 / +1910 / +1912 / the ROC year as Gregorian; or a Gregorian record date) gets the record's date as a replace_value suggestion (patch {op: replace, path, value}; reason quotes the record and the rule 民國 N 年 = 西元 N+1911; one candidate 0.95, several all listed); severity unchanged, never applied — as fhir_validate_bundle 1.13.0.
+  fhir_validate_resource: "1.10.0",
   // 1.2.0 (all below): provenance.resolved_by / closure_versions; canonical arguments resolve to their
   // owning package when package_id is omitted; "|version" honoured; list/search: all_packages + zero-hit hint;
   // NO_DEFAULT_IG instead of an arbitrary package when no default IG is set.
@@ -221,7 +223,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   recorded in changes (rule ucum, reason "the profile allows only <unit>").
   // 1.8.0 (ISSUES_v15.1): data.validation carries the record checks of fhir_validate_resource 1.9.0 when source_text is given
   //   (value grounding, primary diagnosis slot); output without source_text unchanged.
-  fhir_finalize_resource: "1.8.0",
+  // 1.8.1 (ISSUES_v15.1 R6, recordChecks/dateSuggestions.ts): an ungrounded date whose month / day the record states with another year (a wrong ROC ↔ Gregorian conversion: 民國92年8月25日 → 1983-08-25; +1900 / +1910 / +1912 / the ROC year as Gregorian; or a Gregorian record date) gets the record's date as a replace_value suggestion (patch {op: replace, path, value}; reason quotes the record and the rule 民國 N 年 = 西元 N+1911; one candidate 0.95, several all listed); severity unchanged, never applied — on the ungrounded-value date issues in data.validation.
+  fhir_finalize_resource: "1.8.1",
   // 1.0.0 (authoring/, evaluation v11): the model gives field VALUES, the MCP composes the resource for its profile
   //   (fixed / pattern / defaults / derived / displays / UCUM / ROC dates), validates it, keeps it in a Redis context
   //   (`authoring:ctx:*`, 60-min idle TTL) and assembles the Bundle from keys with deterministic urn:uuid fullUrls
@@ -272,7 +275,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   recorded in changes (rule ucum, reason "the profile allows only <unit>").
   // 1.6.0 (ISSUES_v15.1): validation as fhir_validate_resource 1.9.0 — with source_text the record checks of
   //   fhir_validate_bundle 1.12.0 (ungrounded-value, value-from-other-event, primary diagnosis slot); without it unchanged.
-  fhir_author_resources: "1.6.0",
+  // 1.6.1 (ISSUES_v15.1 R6, recordChecks/dateSuggestions.ts): an ungrounded date whose month / day the record states with another year (a wrong ROC ↔ Gregorian conversion: 民國92年8月25日 → 1983-08-25; +1900 / +1910 / +1912 / the ROC year as Gregorian; or a Gregorian record date) gets the record's date as a replace_value suggestion (patch {op: replace, path, value}; reason quotes the record and the rule 民國 N 年 = 西元 N+1911; one candidate 0.95, several all listed); severity unchanged, never applied — on the record-check ungrounded-value date issues of this call's validation.
+  fhir_author_resources: "1.6.1",
   // 1.0.1: action=get results carry the author result's new `notes` (fhir_author_resources 1.1.0); otherwise unchanged.
   fhir_context: "1.0.1",
   // 1.1.0: new `site_config` (merged with the context's) passed to the grounding engine with source_text, so facility
@@ -290,7 +294,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   recorded in changes (rule ucum, reason "the profile allows only <unit>").
   // 1.5.0 (ISSUES_v15.1): resources as fhir_author_resources 1.6.0; validation as fhir_validate_bundle 1.12.0 (with
   //   source_text: value grounding, other-event values, primary diagnosis slot); without source_text unchanged.
-  fhir_assemble_bundle: "1.5.0",
+  // 1.6.0 (ISSUES_v15.1 R6, recordChecks/dateSuggestions.ts): an ungrounded date whose month / day the record states with another year (a wrong ROC ↔ Gregorian conversion: 民國92年8月25日 → 1983-08-25; +1900 / +1910 / +1912 / the ROC year as Gregorian; or a Gregorian record date) gets the record's date as a replace_value suggestion (patch {op: replace, path, value}; reason quotes the record and the rule 民國 N 年 = 西元 N+1911; one candidate 0.95, several all listed); severity unchanged, never applied — validation as fhir_validate_bundle 1.13.0 (record-check and grounding date issues).
+  fhir_assemble_bundle: "1.6.0",
   // 1.0.0 (ISSUES_v9 R1): deterministic Bundle finalizer — fullUrl-uuid / reference-rewire / resource-id (mandatory),
   // bundle-type / document-order (profile-driven); UUID v5 seeded by (resourceType, original fullUrl, resource.id, entry
   // index) + a content salt; references found through StructureDefinition snapshots; duplicates / ambiguity reported.
@@ -329,7 +334,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.4.0 (ISSUES_v15.1): data.record_issues with source_text follow fhir_validate_bundle 1.12.0's record checks (value
   //   grounding, other-event values, stated absences, primary diagnosis slot); report only, the Bundle is never changed;
   //   output without source_text unchanged.
-  fhir_finalize_bundle: "1.4.0",
+  // 1.4.1 (ISSUES_v15.1 R6, recordChecks/dateSuggestions.ts): an ungrounded date whose month / day the record states with another year (a wrong ROC ↔ Gregorian conversion: 民國92年8月25日 → 1983-08-25; +1900 / +1910 / +1912 / the ROC year as Gregorian; or a Gregorian record date) gets the record's date as a replace_value suggestion (patch {op: replace, path, value}; reason quotes the record and the rule 民國 N 年 = 西元 N+1911; one candidate 0.95, several all listed); severity unchanged, never applied — on the ungrounded-value date issues in data.record_issues.
+  fhir_finalize_bundle: "1.4.1",
   // ── 2026-10-19 actionable errors (additive fields only; successful outputs unchanged) ──
   // search_medical_codes 1.2.1: IG_UNAVAILABLE adds `hint`.
   // FHIR IG tools above (+.0.1): error envelopes add error.hint; IG_NOT_FOUND / NO_DEFAULT_IG add

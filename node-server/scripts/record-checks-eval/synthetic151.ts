@@ -13,7 +13,7 @@
 
 type Json = Record<string, any>;
 
-export type V151Class = "identity" | "date" | "quantity" | "medication" | "diagnosis" | "structure" | "other-time-point" | "complete";
+export type V151Class = "identity" | "date" | "quantity" | "medication" | "diagnosis" | "structure" | "other-time-point" | "roc-conversion" | "complete";
 
 export interface V151Case {
   id: string;
@@ -23,6 +23,8 @@ export interface V151Case {
   bundle: Json;
   source_text: string;
   site_config: string | null;
+  /** R6: the corrected values the issue's suggestions must offer (in this order: the first is the best). */
+  suggest?: string[];
 }
 
 const MOI = "http://www.moi.gov.tw";
@@ -301,6 +303,32 @@ export function syntheticV151Cases(): V151Case[] {
   add("en-no-dx-symptom", "diagnosis", ["information-absent", "unconfirmed-as-confirmed"], (b) => cond(b, "R05.9", "Cough, unspecified", "productive cough"), rep(EN, "Dx: community-acquired pneumonia (J18.9)\n", ""));
   add("en-mrn-from-encounter-number", "identity", ["value-from-other-event"], (b) => (res(b, 0).identifier[1].value = "IP115-030417"), rep(EN, "MRN: 00451234", "Admission no: IP115-030417"));
   add("en-lab-date-from-history", "other-time-point", ["value-from-other-event"], (b) => (res(b, 5).effectiveDateTime = "2025-03-02"), rep(EN, "Labs (2025-06-11 07:00): ", "Previous admission 2025-03-02 for asthma.\nLabs: "));
+
+  // ---------------------------------------------------------------- R6: wrong ROC ↔ Gregorian conversions (the record's date is the correction)
+  const roc = (id: string, edit: (b: Json) => void, record: string, suggest: string[]): void => {
+    const b = clone(inBundle());
+    edit(b);
+    out.push({ id, cls: "roc-conversion", expect: { codes: ["ungrounded-value"], severity: "error" }, bundle: b, source_text: record, site_config: null, suggest });
+  };
+  const birth = (v: string) => (b: Json): void => void (res(b, 0).birthDate = v);
+  const bRec = (roc: string): string => rep(R, "出生日期：民國60年5月3日", `出生日期：${roc}`);
+  roc("roc-birth-plus1900", birth("1960-05-03"), R, ["1971-05-03"]);
+  roc("roc-birth-roc-as-gregorian", birth("0060-05-03"), R, ["1971-05-03"]);
+  roc("roc-birth-plus1912", birth("1972-05-03"), R, ["1971-05-03"]);
+  roc("roc-birth-plus1910", birth("1970-05-03"), R, ["1971-05-03"]);
+  roc("roc-birth-year-only", birth("1960"), R, ["1971"]);
+  roc("roc-birth-year-month", birth("1960-05"), R, ["1971-05"]);
+  roc("roc-birth-92", birth("1983-08-25"), bRec("民國92年8月25日"), ["2003-08-25"]);
+  roc("roc-birth-47", birth("1959-06-20"), bRec("民國47年6月20日"), ["1958-06-20"]);
+  roc("roc-birth-slash", birth("1992-08-25"), bRec("92/08/25"), ["2003-08-25"]);
+  roc("roc-onset", (b) => (res(b, 2).onsetDateTime = "2013-03-02"), rep(R, "主訴：發燒三天", "主訴：發燒三天\n發病日期：113年3月2日"), ["2024-03-02"]);
+  roc("roc-effective-with-time", (b) => (res(b, 5).effectiveDateTime = "2014-06-11T07:00:00+08:00"), rep(R, "檢驗（2025/06/11 07:00 採檢）", "檢驗（114/06/11 07:00 採檢）"), ["2025-06-11T07:00:00+08:00"]);
+  roc("roc-period-start", (b) => (res(b, 1).period.start = "2014-06-10T14:30:00+08:00"), rep(R, "入院日期：2025/06/10 14:30", "入院日期：114/06/10 14:30"), ["2025-06-10T14:30:00+08:00"]);
+  roc("roc-period-start-0114", (b) => (res(b, 1).period.start = "0114-06-10"), rep(R, "入院日期：2025/06/10 14:30", "入院日期：114/06/10"), ["2025-06-10"]);
+  roc("gregorian-period-start-year", (b) => (res(b, 1).period.start = "2024-06-10T14:30:00+08:00"), R, ["2025-06-10T14:30:00+08:00"]);
+  roc("gregorian-birth-en", birth("1917-05-03"), rep(R, "出生日期：民國60年5月3日", "DOB: 1971-05-03"), ["1971-05-03"]);
+  roc("roc-birth-multi", birth("1960-05-03"), `${R}\n上次門診：113/05/03 血壓追蹤`, ["1971-05-03", "2024-05-03"]);
+  roc("roc-onset-multi", (b) => (res(b, 2).onsetDateTime = "2010-03-02"), rep(R, "主訴：發燒三天", "主訴：發燒三天\n112年3月2日 曾咳嗽；113年3月2日 再次咳嗽"), ["2023-03-02", "2024-03-02"]);
 
   // ---------------------------------------------------------------- complete controls (no error expected)
   add("ok-base", "complete", null, () => undefined, R);

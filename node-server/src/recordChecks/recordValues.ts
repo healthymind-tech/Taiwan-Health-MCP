@@ -31,6 +31,8 @@ export interface RecDate {
   ci: number;
   /** A birth date (出生日期 / 生日 / DOB written before it): never an anchor for the current events. */
   birth?: boolean;
+  /** The date as written in the record (NFKC), e.g. 民國92年8月25日 / 92/08/25 / 2003-08-25. */
+  raw?: string;
 }
 
 export interface RecTime {
@@ -261,7 +263,7 @@ export class RecordValues {
   private addEnDate(y: number, m: number, d: number, li: number, ci: number, mask: Array<[number, number]>, a: number, b: number, dayEnds: Array<[number, string]>): void {
     if (m < 1 || y < 1900 || y > 2100 || d < 1 || d > 31) return;
     const k = dayKey(y, m, d);
-    this.dates.push({ prec: "day", y, m, d, li, ci });
+    this.dates.push({ prec: "day", y, m, d, li, ci, raw: this.lineText.get(li)?.slice(a, b) });
     if (!this.days.has(k)) this.days.set(k, li);
     this.months.add(monthKey(y, m));
     this.years.add(y);
@@ -280,7 +282,7 @@ export class RecordValues {
     for (const pd of parseDatesPos(t)) {
       const [prec, [y, m, d]] = pd.date;
       const birth = /(生日|出生|生於|dob|birth)[^，,；;。]{0,6}$/u.test(t.slice(Math.max(0, pd.start - 12), pd.start));
-      this.dates.push({ prec, y, m, d, li, ci: ciOf(pd.start), birth });
+      this.dates.push({ prec, y, m, d, li, ci: ciOf(pd.start), birth, raw: t.slice(pd.start, pd.end) });
       if (prec === "day") {
         const k = dayKey(y!, m!, d!);
         if (!this.days.has(k)) this.days.set(k, li);
@@ -465,7 +467,8 @@ export class RecordValues {
       }
     }
     for (const k of this.derivedDays) this.derivedMonths.add(k.slice(0, 7));
-    const anchorYears = new Set(capped.map(([y]) => y));
+    // years count from the current events (a birth date is never an anchor: 「高血壓10年」 is not 10 years before birth)
+    const anchorYears = new Set(dayDates.map((d) => d.y!));
     if (!anchorYears.size) for (const y of this.years) anchorYears.add(y);
     for (const y of anchorYears) {
       for (const o of off.years) this.derivedYears.add(y + o);

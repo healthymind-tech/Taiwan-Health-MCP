@@ -5,6 +5,8 @@
  * output: its issues are appended to the issue lists with `source: "record-checks"`.
  */
 
+import type { Suggestion } from "../fhirSuggestions/types.js";
+
 export type RecordCheckCode =
   /** R1: the value describes the absence of the information (未取號, unknown, pending …). */
   | "information-absent"
@@ -48,6 +50,11 @@ export interface RecordIssue {
   evidence: string;
   /** Record text the verdict rests on (R3 / R4), when there is some. */
   located_quotes?: string[];
+  /**
+   * ISSUES_v15.1 R6: corrections the record itself determines (an ungrounded date whose month / day the record
+   * states with another year — a wrong ROC ↔ Gregorian conversion): kind replace_value with a patch. Never applied.
+   */
+  suggestions?: Suggestion[];
 }
 
 export interface RecordCheckSummary {

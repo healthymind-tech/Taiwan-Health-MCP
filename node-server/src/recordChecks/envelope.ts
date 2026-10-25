@@ -18,6 +18,8 @@
  */
 import { parseLossless, stringifyLossless, toPlain } from "../losslessJson.js";
 import { recordChecksProvenance, runRecordChecks } from "./index.js";
+import { RecordValues } from "./recordValues.js";
+import { withDateCorrections } from "./valueGrounding.js";
 import type { RecordCheckOptions, RecordCheckResult, RecordIssue } from "./types.js";
 
 type Json = Record<string, any>;
@@ -70,6 +72,52 @@ export function mergeRecordIssues(data: Json, target: Json, result: RecordCheckR
   data.record_checks = result.summary;
 }
 
+const RE_TOKEN = /([^.[\]]+)(?:\[(\d+)\])?/gu;
+const RE_FHIR_DATE = /^\d{4}(-\d{2}(-\d{2}(T.*)?)?)?$/u;
+const UNGROUNDED_RULES = new Set(["G-UNGROUNDED", "G-VALUE-MISMATCH"]);
+
+/** Value at an issue path (Bundle.entry[0].resource.birthDate / Patient.birthDate) and its generic path. */
+function valueAt(target: Json, path: string): { value: unknown; gpath: string } | null {
+  const toks = [...path.matchAll(RE_TOKEN)].map((m) => [m[1], m[2] === undefined ? null : Number(m[2])] as const);
+  if (!toks.length || toks[0][0] !== target.resourceType) return null;
+  let node: unknown = target;
+  let rt = String(target.resourceType);
+  let gparts: string[] = [];
+  for (const [k, i] of toks.slice(1)) {
+    if (!isObj(node)) return null;
+    node = node[k];
+    if (i !== null) node = Array.isArray(node) ? node[i] : undefined;
+    if (k === "resource" && isObj(node) && typeof node.resourceType === "string") {
+      rt = node.resourceType;
+      gparts = [];
+    } else if (!(target.resourceType === "Bundle" && gparts.length === 0 && k === "entry")) gparts.push(k);
+  }
+  return { value: node, gpath: [rt, ...gparts].join(".") };
+}
+
+/**
+ * ISSUES_v15.1 R6 on the grounding issues the validating tools return: a G-UNGROUNDED / G-VALUE-MISMATCH date
+ * whose month / day the record states with another year gets the record's date as a replace_value
+ * suggestion. fhir_check_grounding itself is never touched (its output is compared with the reference).
+ */
+function annotateGroundingDates(data: Json, target: Json, opts: RecordCheckOptions): void {
+  if (typeof opts.sourceText !== "string" || !opts.sourceText.trim()) return;
+  let rv: RecordValues | null = null;
+  const fix = (list: unknown): void => {
+    if (!Array.isArray(list)) return;
+    list.forEach((iss, k) => {
+      if (!isObj(iss) || iss.source !== "grounding" || !UNGROUNDED_RULES.has(String(iss.rule)) || typeof iss.path !== "string") return;
+      const at = valueAt(target, iss.path);
+      if (!at || typeof at.value !== "string" || !RE_FHIR_DATE.test(at.value)) return;
+      rv ??= new RecordValues(opts.sourceText as string, opts.siteConfig ?? null);
+      const out = withDateCorrections(iss as { message: string; suggestions?: never[] }, at.value, iss.path, at.gpath, rv);
+      if (out !== iss) list[k] = out;
+    });
+  };
+  fix(data.issues);
+  for (const e of Array.isArray(data.entries) ? data.entries : []) if (isObj(e)) fix(e.issues);
+}
+
 /**
  * fhir_validate_bundle / fhir_validate_resource envelope + record checks. `instance` is the Bundle /
  * resource as given; a Bundle validated after normalize_ids is checked as `data.normalized_bundle`
@@ -84,6 +132,11 @@ export function addRecordChecksToValidation(text: string, instance: Json, opts: 
   const result = runRecordChecks(target, opts);
   if (!emits(result)) return text;
   mergeRecordIssues(data, target, result);
+  try {
+    annotateGroundingDates(data, target, opts);
+  } catch {
+    // fail-open: the suggestions are additive
+  }
   provenance(env);
   return stringifyLossless(env);
 }
