@@ -26,7 +26,11 @@ export const TOOLS_VERSION: Record<string, string> = {
   // ordering / stem forms); ICD-10-CM output unchanged.
   // 1.5.0: `system` = IG CodeSystem follows fhir_normalize_code 1.7.0 (noise stripping, abbreviation lexicon);
   // ICD-10-CM output unchanged.
-  search_medical_codes: "1.5.0",
+  // 1.6.0 (ISSUES_v15.2 R1 / R3): `system` = IG CodeSystem — an excerpt CodeSystem is searched in its fuller installed copy
+  //   (as fhir_normalize_code; data.searched_copy + warning); every result carries `system`, `linked` and
+  //   `accepted_by_validator` (+ `reason`) for the package the CodeSystem resolves in; accepted results related to the best
+  //   match come first; data.alternatives = accepted codings of other systems the best matches link to (e.g. ATC).
+  search_medical_codes: "1.6.0",
   // 1.2.0: version-aware package resolution (fhirIg.resolveTarget): provenance.resolved_by /
   // closure_versions, data.deps_missing, "|version" honoured (no silent fallback to another version).
   // 1.3.0 (2026-10-20, eval v5 R4): `derived` rows carry allowedCodes (binding expansion, extensible / preferred
@@ -143,13 +147,22 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   codes and code.text copying the list; no diagnosis at all → information-absent); cues are bracket-scoped
   //   (「Elevated PSA（未確立惡性腫瘤）」 no longer flags Elevated PSA). Without source_text the output is unchanged.
   // 1.13.0 (ISSUES_v15.1 R6, recordChecks/dateSuggestions.ts): an ungrounded date whose month / day the record states with another year (a wrong ROC ↔ Gregorian conversion: 民國92年8月25日 → 1983-08-25; +1900 / +1910 / +1912 / the ROC year as Gregorian; or a Gregorian record date) gets the record's date as a replace_value suggestion (patch {op: replace, path, value}; reason quotes the record and the rule 民國 N 年 = 西元 N+1911; one candidate 0.95, several all listed); severity unchanged, never applied — on record-check ungrounded-value issues and on the G-UNGROUNDED / G-VALUE-MISMATCH grounding issues this tool returns (fhir_check_grounding itself unchanged).
-  fhir_validate_bundle: "1.13.0",
+  // 1.14.0 (ISSUES_v15.2): (R2) Unknown-code suggestions for IG CodeSystems pass a relatedness gate (same linked code, a
+  //   shared rare word, same strength — conceptSearch/related.ts): unrelated codes of an excerpt are no longer proposed (none
+  //   rather than an unrelated one); near codes only for codes no installed copy defines; (R3) a code defined only in a
+  //   fuller installed copy gets its linked coding of another system that the validator accepts and a bound ValueSet /
+  //   coding slice includes as `replace_coding` (patch replaces the Coding; CodeableConcept.text kept) or `remove_coding`
+  //   when the CodeableConcept already carries it; (parity) WHO ATC codes are checked against the bundled tx.fhir.org
+  //   table — a code ATC 2026 lacks is validator_cli's "Unknown code '…' in the CodeSystem 'http://www.whocc.no/atc'
+  //   version '2026'" error, a display is checked when TW Core's ValueSet display is the server's (else unchanged).
+  fhir_validate_bundle: "1.14.0",
   // 1.6.2: the binding-aware suggestions above (ISSUES_v10 A) also apply to single-resource validation.
   // 1.7.0: the validator v13 rules above (fhir_validate_bundle 1.9.0).
   // 1.8.0 (ISSUES_v15): the record checks of fhir_validate_bundle 1.11.0 on the resource (data.issues, data.record_checks).
   // 1.9.0 (ISSUES_v15.1): the record checks of fhir_validate_bundle 1.12.0 on the resource (output without source_text unchanged).
   // 1.10.0 (ISSUES_v15.1 R6, recordChecks/dateSuggestions.ts): an ungrounded date whose month / day the record states with another year (a wrong ROC ↔ Gregorian conversion: 民國92年8月25日 → 1983-08-25; +1900 / +1910 / +1912 / the ROC year as Gregorian; or a Gregorian record date) gets the record's date as a replace_value suggestion (patch {op: replace, path, value}; reason quotes the record and the rule 民國 N 年 = 西元 N+1911; one candidate 0.95, several all listed); severity unchanged, never applied — as fhir_validate_bundle 1.13.0.
-  fhir_validate_resource: "1.10.0",
+  // 1.11.0 (ISSUES_v15.2): the suggestion and ATC rules of fhir_validate_bundle 1.14.0.
+  fhir_validate_resource: "1.11.0",
   // 1.2.0 (all below): provenance.resolved_by / closure_versions; canonical arguments resolve to their
   // owning package when package_id is omitted; "|version" honoured; list/search: all_packages + zero-hit hint;
   // NO_DEFAULT_IG instead of an arbitrary package when no default IG is set.
@@ -167,7 +180,11 @@ export const TOOLS_VERSION: Record<string, string> = {
   fhir_expand_valueset: "1.2.1",
   // 1.3.0: found:false adds `hint` (use fhir_normalize_code with the system) and `near_codes` (IG CodeSystems).
   // 1.3.2: RxNorm codes (http://www.nlm.nih.gov/research/umls/rxnorm) are looked up in rxnorm.concepts (was: not found).
-  fhir_lookup_code: "1.3.2",
+  // 1.4.0 (ISSUES_v15.2 R1 / R3): `accepted_by_validator` (+ `reason`); a code missing from the package's excerpt but defined in a
+  //   fuller installed copy gets `defined_in` {package, display}, the reason (fhir_validate_* reports Unknown code) and
+  //   `alternatives` (its linked codings the validator accepts, e.g. ATC, with value_sets) instead of spelling-based near_codes;
+  //   near_codes (only for codes no copy defines) carry accepted_by_validator.
+  fhir_lookup_code: "1.4.0",
   // 1.3.0 (v13): LOINC `=` / `in` property filters decided from loinc.concepts (unverifiable → valid / invalid).
   fhir_validate_code: "1.3.0",
   // 1.3.0: IG CodeSystems use the concept-search engine (designations in any language, supplements, linked
@@ -193,7 +210,14 @@ export const TOOLS_VERSION: Record<string, string> = {
   // only get the warning); IG candidates carry `linked` codings of other systems (≤3, + linked_more), e.g. an NHI
   // drug's ATC code; a CodeSystem resolved from an id / alias outside the default IG's closure (TWPAS
   // nhi-medication) is searched where it was found (was: no candidates).
-  fhir_normalize_code: "1.8.0",
+  // 1.9.0 (ISSUES_v15.2 R1 / R3): every candidate carries `accepted_by_validator` (+ `reason` when false), decided by the
+  //   validator's own code check for the resolved package (codeAcceptance.ts) — fuller-copy codes outside the package's
+  //   excerpt stay (they identify the concept) but are flagged false; when the best candidate is not accepted, accepted
+  //   candidates related to it (same linked code / rare word / strength — conceptSearch/related.ts) move to the front
+  //   (unrelated ones never), and data.alternatives lists the codings of other systems the best matches link to that the
+  //   validator accepts ({system, code, display?, accepted_by_validator: true, reason, value_sets}; WHO ATC checked against
+  //   the bundled tx.fhir.org table data/terminology/atc-tx-check.json.gz), with a warning naming them.
+  fhir_normalize_code: "1.9.0",
   fhir_get_resource_skeleton: "1.2.1",
   // 1.3.0: validation issues carry `suggestions` / `caused_by` (as fhir_validate_resource 1.6.0).
   // 1.3.1: validation as fhir_validate_resource 1.6.1 (unknown hl7.org/fhir code systems, reference whitespace,
@@ -224,7 +248,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.8.0 (ISSUES_v15.1): data.validation carries the record checks of fhir_validate_resource 1.9.0 when source_text is given
   //   (value grounding, primary diagnosis slot); output without source_text unchanged.
   // 1.8.1 (ISSUES_v15.1 R6, recordChecks/dateSuggestions.ts): an ungrounded date whose month / day the record states with another year (a wrong ROC ↔ Gregorian conversion: 民國92年8月25日 → 1983-08-25; +1900 / +1910 / +1912 / the ROC year as Gregorian; or a Gregorian record date) gets the record's date as a replace_value suggestion (patch {op: replace, path, value}; reason quotes the record and the rule 民國 N 年 = 西元 N+1911; one candidate 0.95, several all listed); severity unchanged, never applied — on the ungrounded-value date issues in data.validation.
-  fhir_finalize_resource: "1.8.1",
+  // 1.9.0 (ISSUES_v15.2 R4): content repair rule alt-coding (fhir_finalize_bundle 1.5.0); validation as fhir_validate_resource 1.11.0.
+  fhir_finalize_resource: "1.9.0",
   // 1.0.0 (authoring/, evaluation v11): the model gives field VALUES, the MCP composes the resource for its profile
   //   (fixed / pattern / defaults / derived / displays / UCUM / ROC dates), validates it, keeps it in a Redis context
   //   (`authoring:ctx:*`, 60-min idle TTL) and assembles the Bundle from keys with deterministic urn:uuid fullUrls
@@ -276,7 +301,9 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.6.0 (ISSUES_v15.1): validation as fhir_validate_resource 1.9.0 — with source_text the record checks of
   //   fhir_validate_bundle 1.12.0 (ungrounded-value, value-from-other-event, primary diagnosis slot); without it unchanged.
   // 1.6.1 (ISSUES_v15.1 R6, recordChecks/dateSuggestions.ts): an ungrounded date whose month / day the record states with another year (a wrong ROC ↔ Gregorian conversion: 民國92年8月25日 → 1983-08-25; +1900 / +1910 / +1912 / the ROC year as Gregorian; or a Gregorian record date) gets the record's date as a replace_value suggestion (patch {op: replace, path, value}; reason quotes the record and the rule 民國 N 年 = 西元 N+1911; one candidate 0.95, several all listed); severity unchanged, never applied — on the record-check ungrounded-value date issues of this call's validation.
-  fhir_author_resources: "1.6.1",
+  // 1.7.0 (ISSUES_v15.2): repairs include rule alt-coding (fhir_finalize_bundle 1.5.0); validation as fhir_validate_resource
+  //   1.11.0; lookup candidates in errors carry accepted_by_validator and an exact hit the validator rejects is not taken.
+  fhir_author_resources: "1.7.0",
   // 1.0.1: action=get results carry the author result's new `notes` (fhir_author_resources 1.1.0); otherwise unchanged.
   fhir_context: "1.0.1",
   // 1.1.0: new `site_config` (merged with the context's) passed to the grounding engine with source_text, so facility
@@ -295,7 +322,9 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.5.0 (ISSUES_v15.1): resources as fhir_author_resources 1.6.0; validation as fhir_validate_bundle 1.12.0 (with
   //   source_text: value grounding, other-event values, primary diagnosis slot); without source_text unchanged.
   // 1.6.0 (ISSUES_v15.1 R6, recordChecks/dateSuggestions.ts): an ungrounded date whose month / day the record states with another year (a wrong ROC ↔ Gregorian conversion: 民國92年8月25日 → 1983-08-25; +1900 / +1910 / +1912 / the ROC year as Gregorian; or a Gregorian record date) gets the record's date as a replace_value suggestion (patch {op: replace, path, value}; reason quotes the record and the rule 民國 N 年 = 西元 N+1911; one candidate 0.95, several all listed); severity unchanged, never applied — validation as fhir_validate_bundle 1.13.0 (record-check and grounding date issues).
-  fhir_assemble_bundle: "1.6.0",
+  // 1.7.0 (ISSUES_v15.2): resources as fhir_author_resources 1.7.0; finalize as fhir_finalize_bundle 1.5.0; validation as
+  //   fhir_validate_bundle 1.14.0.
+  fhir_assemble_bundle: "1.7.0",
   // 1.0.0 (ISSUES_v9 R1): deterministic Bundle finalizer — fullUrl-uuid / reference-rewire / resource-id (mandatory),
   // bundle-type / document-order (profile-driven); UUID v5 seeded by (resourceType, original fullUrl, resource.id, entry
   // index) + a content salt; references found through StructureDefinition snapshots; duplicates / ambiguity reported.
@@ -335,7 +364,13 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   grounding, other-event values, stated absences, primary diagnosis slot); report only, the Bundle is never changed;
   //   output without source_text unchanged.
   // 1.4.1 (ISSUES_v15.1 R6, recordChecks/dateSuggestions.ts): an ungrounded date whose month / day the record states with another year (a wrong ROC ↔ Gregorian conversion: 民國92年8月25日 → 1983-08-25; +1900 / +1910 / +1912 / the ROC year as Gregorian; or a Gregorian record date) gets the record's date as a replace_value suggestion (patch {op: replace, path, value}; reason quotes the record and the rule 民國 N 年 = 西元 N+1911; one candidate 0.95, several all listed); severity unchanged, never applied — on the ungrounded-value date issues in data.record_issues.
-  fhir_finalize_bundle: "1.4.1",
+  // 1.5.0 (ISSUES_v15.2 R4): content repair rule alt-coding (fhirRepair/alternatives.ts, phase alternatives): a Coding whose
+  //   code is missing from the package's excerpt CodeSystem but defined in a fuller installed copy, whose concept links to
+  //   exactly ONE coding of another system the validator accepts and a ValueSet bound to the coding element / a coding slice
+  //   contains (e.g. NHI drug → its ATC code, TW Core medcation-atc-tw), is replaced by it — or dropped when the
+  //   CodeableConcept already carries it (validator_cli rejects the CodeableConcept while the unknown Coding is present);
+  //   CodeableConcept.text is kept, and set to the original display when absent; several → repair_issues with candidates.
+  fhir_finalize_bundle: "1.5.0",
   // ── 2026-10-19 actionable errors (additive fields only; successful outputs unchanged) ──
   // search_medical_codes 1.2.1: IG_UNAVAILABLE adds `hint`.
   // FHIR IG tools above (+.0.1): error envelopes add error.hint; IG_NOT_FOUND / NO_DEFAULT_IG add

@@ -79,9 +79,17 @@ UMLS string**), `exact`, `category` (from a categorical property or the hierarch
 reached through Coding properties, at most 3 + `linked_more`, e.g. an NHI drug's ATC code). When the resolved IG holds
 only an excerpt of a CodeSystem and another installed package holds a full copy of the same canonical (≥ 10× the
 concepts and ≥ 1,000 more, e.g. TW Core 1.0.0 vs 0.3.2 `medication-nhi-tw`), the full copy is searched unless
-`package_id` / `version` is given, noted in `warnings` and `data.codesystem_copies`. `system` may be a canonical, a
-CodeSystem id or alias words (e.g. `nhi_payment`). `fhir_lookup_code` adds `hint` and `near_codes` when a code is
-not found.
+`package_id` / `version` is given, noted in `warnings` and `data.codesystem_copies`. Every candidate carries
+`accepted_by_validator` (whether the validator accepts the code for the resolved package, `reason` when not): codes only the
+full copy has are still listed but flagged `false`; when the best candidate is not accepted, accepted candidates related
+to it move to the front and `data.alternatives` lists accepted codings of other systems (e.g. a drug's ATC code).
+"Related" (`conceptSearch/related.ts`, also used by the Unknown-code suggestions and the `alt-coding` repair): when both
+concepts carry linked codes of a system they must share one; otherwise they must share a rare word (a Latin word of ≥ 4
+letters or a CJK bigram held by ≤ 1% of the concepts of the largest copy of the CodeSystem — an ingredient, not a dose
+form, salt or unit) or have near-identical names; when both name a strength and none is shared they are never related.
+`system` may be a canonical, a CodeSystem id or alias words (e.g. `nhi_payment`). `fhir_lookup_code` adds
+`accepted_by_validator`; when a code is not found, `hint`, plus `defined_in` and `alternatives` when only the full copy
+defines it, or `near_codes` when no copy does.
 
 ## Admin console (IG packages → 術語搜尋索引)
 

@@ -10,7 +10,7 @@
  *     expansion is small, otherwise the closest to the given code / display.
  */
 
-import type { ExpandedCoding, NormalizeCandidate, Suggestion, SuggestionDeps } from "./types.js";
+import type { CodeAlternatives, CodeRelatedness, ExpandedCoding, NormalizeCandidate, Suggestion, SuggestionDeps } from "./types.js";
 import { isObject, nodeAt, splitLast, textSim } from "./util.js";
 
 export const LOINC = "http://loinc.org";
@@ -113,30 +113,61 @@ export async function suggestUnknownCode(
     });
   });
   const repaired = out.some((s) => s.confidence >= 0.9);
+  // v15.2 R2: the code's concept when another installed copy of the CodeSystem defines it (an
+  // excerpt CodeSystem): then it is no typo, and a replacement must be the same concept.
+  let known: CodeAlternatives | null = null;
+  if (deps.codeAlternatives) {
+    try {
+      known = await deps.codeAlternatives(system, code);
+    } catch {
+      known = null;
+    }
+  }
+  const definedElsewhere = !!known && !!known.definedIn && !known.inValidatedCopy;
+  /**
+   * Relatedness gate (v15.2 R2) for IG CodeSystems: a replacement must share a linked code, a rare
+   * word (an ingredient, not a dose form) or a near-identical name with the original code's concept /
+   * display / text, and not change its strength. Unrelated candidates are dropped — no suggestion
+   * beats an unrelated one. Not an IG CodeSystem (null) → no gate.
+   */
+  const gate = async <T extends { code: string; display: string | null }>(list: T[], lbl: string | null): Promise<Array<{ c: T; why: string | null }>> => {
+    if (!deps.relatedCodes || !list.length) return list.map((c) => ({ c, why: null }));
+    let rel: CodeRelatedness[] | null = null;
+    try {
+      rel = await deps.relatedCodes(system, { code, label: lbl }, list.map((c) => ({ code: c.code, display: c.display })));
+    } catch {
+      rel = null;
+    }
+    if (!rel) return list.map((c) => ({ c, why: null }));
+    return list.flatMap((c, i) => (rel![i]?.related ? [{ c, why: rel![i].why }] : []));
+  };
   // 2. Codes named like the display / text.
   const label = display || text;
   // A repair that matches the display already is the answer: no name lookup needed.
   if (label && !repaired) {
-    const cands = await normalized(deps, budget, label, { system }, 5);
-    cands.forEach((c, i) => {
-      if (!c.code || c.code === code) return;
+    const cands = (await normalized(deps, budget, label, { system }, 5)).filter((c) => c.code && c.code !== code && c.accepted !== false);
+    const kept = await gate(cands, label);
+    kept.forEach(({ c, why }, i) => {
       const sim = c.display ? textSim(label, c.display) : 0;
       const exact = c.exact || sim >= 0.98;
       out.push({
         value: c.code,
         kind: "replace_code",
         confidence: exact ? 0.88 : Math.max(0.3, 0.72 - 0.08 * i) * (0.6 + 0.4 * sim),
-        reason: `${exact ? "named exactly" : "closest name to"} '${label}' in ${c.system || system}${c.display ? `: '${c.display}'` : ""}`,
+        reason: `${exact ? "named exactly" : "closest name to"} '${label}' in ${c.system || system}${c.display ? `: '${c.display}'` : ""}${why ? ` (${why})` : ""}`,
         system: c.system || system,
         ...(c.display ? { display: c.display } : {}),
         patch: codingPatch(codingPath, c.system || system, c.code, c.display),
       });
     });
   }
-  // 3. Near codes of an IG CodeSystem (no name to go by).
+  // 3. Near codes of an IG CodeSystem (no name to go by): spelling hypotheses — kept as such only
+  // when nothing says what the code means; a code defined in another copy, or a Coding with a
+  // display / text, needs a related concept (v15.2 R2).
   if (!out.length && deps.nearCodes) {
     try {
-      const near = await deps.nearCodes(system, code, 3);
+      const raw = await deps.nearCodes(system, code, 3);
+      const near = definedElsewhere || label ? (await gate(raw, label)).map((x) => x.c) : raw;
       near.forEach((n, i) =>
         out.push({
           value: n.code,

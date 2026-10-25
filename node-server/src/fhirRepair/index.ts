@@ -8,6 +8,7 @@
  *   shape     R6 lossless reshapes + empty elements (shape.ts), repeated until stable (≤ 4 passes)
  *   systems   R4 / R5 Coding.system corrections, v12 ValueSet / binding rules included (systems.ts)
  *   slices    required coding slices the profile fully determines (slices.ts, v14.1)
+ *   alternatives  an excerpt CodeSystem's unknown code → its one accepted linked coding (alternatives.ts, v15.2)
  *   units     R2 Quantity UCUM code / system (units.ts)
  *   dates     R3 ROC (民國) dates; the site timezone for date-times without an offset (dates.ts, timezone.ts)
  *   codes     required-binding code spellings (codes.ts)
@@ -20,6 +21,7 @@
  */
 
 import { impliedVitalSignProfile } from "../fhirValidator.js";
+import { repairAlternativeCodings } from "./alternatives.js";
 import { repairCodes } from "./codes.js";
 import { repairDates } from "./dates.js";
 import { repairDisplays } from "./displays.js";
@@ -288,6 +290,12 @@ async function repairOnce(resource: Record<string, any>, deps: RepairDeps, opts:
   }
   if (phases.has("slices")) {
     const r = await repairSlices(session, sites, rp, skipRule("fixed-slice"));
+    changes.push(...r.changes);
+    issues.push(...r.issues);
+    if (r.changes.length) sites = await walk();
+  }
+  if (phases.has("alternatives")) {
+    const r = await repairAlternativeCodings(session, sites, rp, skipRule("alt-coding"));
     changes.push(...r.changes);
     issues.push(...r.issues);
     if (r.changes.length) sites = await walk();

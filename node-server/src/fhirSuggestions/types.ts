@@ -29,7 +29,11 @@ export type SuggestionKind =
   // from the element's bound ValueSet(s) for an unknown CodeSystem URL; a value that is not in the
   // element's ValueSet but a valid code of another bound element of the same resource (patch: move).
   | "replace_coding"
-  | "move_value";
+  | "move_value"
+  // ISSUES_v15.2 R3: an unknown code whose concept links to a coding of another system the element's
+  // bound ValueSets accept (a drug's ATC code) — replace the Coding with it (replace_coding), or drop the
+  // unknown Coding when the CodeableConcept already carries that coding (remove_coding).
+  | "remove_coding";
 
 /** A minimal edit, addressed with the validator's dotted instance paths (e.g. `Observation.code.coding[0].code`). */
 export interface SuggestionPatch {
@@ -79,6 +83,24 @@ export interface NormalizeCandidate {
   exact?: boolean;
   /** The engine's relevance score (fhir_normalize_code `score`), when it reports one. */
   score?: number;
+  /** fhir_normalize_code `accepted_by_validator` (v15.2), when it reports one. */
+  accepted?: boolean;
+}
+
+/** Relatedness of a candidate code to the code / label it would replace (conceptSearch/related.ts). */
+export interface CodeRelatedness {
+  related: boolean;
+  why: string;
+}
+
+/** A code's concept found in an installed copy of its CodeSystem, and the codings of other systems it links to. */
+export interface CodeAlternatives {
+  display: string | null;
+  /** `package#version` of the copy that defines the code (null = none does). */
+  definedIn: string | null;
+  /** The copy that defines it is the one the validation uses (the code is not unknown there). */
+  inValidatedCopy: boolean;
+  alternatives: Array<{ system: string; code: string; display: string | null; accepted: boolean | null }>;
 }
 
 /**
@@ -115,6 +137,14 @@ export interface SuggestionDeps {
    * null = unavailable). Used to rank the codes of a small ValueSet that no lexical match orders.
    */
   similarity?(text: string, candidates: string[]): Promise<number[] | null>;
+  /**
+   * v15.2 R2: which candidate codes of an IG CodeSystem are related to the original code / label
+   * (same linked code, a shared rare word, same strength — conceptSearch/related.ts); null = not
+   * an IG CodeSystem (no gate).
+   */
+  relatedCodes?(system: string, original: { code: string | null; label: string | null }, candidates: Array<{ code: string; display: string | null }>): Promise<CodeRelatedness[] | null>;
+  /** v15.2 R3: the code's concept in any installed copy of its IG CodeSystem and its linked codings (null = not found / not an IG CodeSystem). */
+  codeAlternatives?(system: string, code: string): Promise<CodeAlternatives | null>;
 }
 
 export interface SuggestOptions {

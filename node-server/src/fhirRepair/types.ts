@@ -9,9 +9,9 @@
  * reported (`issues`, with candidates); the validator's own error stays.
  */
 
-import type { ExpandedCoding, NormalizeCandidate } from "../fhirSuggestions/types.js";
+import type { CodeAlternatives, ExpandedCoding, NormalizeCandidate } from "../fhirSuggestions/types.js";
 
-export type { ExpandedCoding, NormalizeCandidate };
+export type { CodeAlternatives, ExpandedCoding, NormalizeCandidate };
 
 /**
  * Rule names in `changes[].rule` (in the order the phases run). v14.1: `empty` (ele-1: an empty
@@ -19,13 +19,14 @@ export type { ExpandedCoding, NormalizeCandidate };
  * profile's fixed / pattern values added, slices phase), `timezone` (the site timezone added to a
  * date-time written without a UTC offset, dates phase).
  */
-export type RepairRule = "shape" | "empty" | "system" | "fixed-slice" | "ucum" | "roc-date" | "timezone" | "code" | "display";
+export type RepairRule = "shape" | "empty" | "system" | "fixed-slice" | "alt-coding" | "ucum" | "roc-date" | "timezone" | "code" | "display";
 
-export const ALL_RULES: readonly RepairRule[] = ["shape", "empty", "system", "fixed-slice", "ucum", "roc-date", "timezone", "code", "display"];
+/** v15.2: `alt-coding` (an excerpt CodeSystem's unknown code → the one accepted coding of another system it links to, alternatives phase). */
+export const ALL_RULES: readonly RepairRule[] = ["shape", "empty", "system", "fixed-slice", "alt-coding", "ucum", "roc-date", "timezone", "code", "display"];
 
-export type RepairPhase = "shape" | "systems" | "slices" | "units" | "dates" | "codes" | "displays";
+export type RepairPhase = "shape" | "systems" | "slices" | "alternatives" | "units" | "dates" | "codes" | "displays";
 
-export const ALL_PHASES: RepairPhase[] = ["shape", "systems", "slices", "units", "dates", "codes", "displays"];
+export const ALL_PHASES: RepairPhase[] = ["shape", "systems", "slices", "alternatives", "units", "dates", "codes", "displays"];
 
 export interface RepairChange {
   /** Instance path in the validator's dotted form (`Bundle.entry[2].resource.code.coding[0].display`). */
@@ -110,6 +111,11 @@ export interface RepairDeps {
    * before (a new error, or one the old shape hid) is not applied (repairResource: verify).
    */
   validate?(resource: Record<string, any>, profiles: string[]): Promise<Array<{ severity?: string; path?: string; message?: string }>>;
+  /**
+   * v15.2: a code's concept in any installed copy of its IG CodeSystem, with the codings of other
+   * systems it links to and the validator's verdict on each (null = no copy defines it).
+   */
+  codeAlternatives?(system: string, code: string): Promise<CodeAlternatives | null>;
 }
 
 export interface RepairOptions {

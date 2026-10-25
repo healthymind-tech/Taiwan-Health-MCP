@@ -422,6 +422,104 @@ export async function suggestCrossSystem(
 }
 
 // --------------------------------------------------------------------------- //
+// v15.2 R3: unknown code of an excerpt CodeSystem → an accepted coding of another system it links to
+// --------------------------------------------------------------------------- //
+
+/**
+ * "Unknown code X in CodeSystem S" where X is defined in another installed copy of S (an excerpt
+ * CodeSystem — TW Core 1.0.0 ships 35 of the NHI drug codes) and its concept links to codings of
+ * other systems (a drug's ATC code from the NHI supplement): each linked coding that
+ *   - the validator accepts (codeAlternatives: the validator's code check / the bundled terminology
+ *     server verdicts — never a guess), and
+ *   - a ValueSet bound to the element or one of its coding slices includes (membership as the
+ *     validator decides it, e.g. TW Core's medcation-atc-tw for slice atc-medication-code)
+ * is offered as the replacement Coding (`replace_coding`; CodeableConcept.text is kept). When the
+ * CodeableConcept already carries that coding, the unknown Coding is to be dropped (`remove_coding`):
+ * validator_cli rejects the CodeableConcept while the unknown Coding is present, whatever else it holds.
+ * The original's display is kept in the reason, so the product-level name is not lost silently.
+ */
+export async function suggestAlternativeCoding(
+  deps: SuggestionDeps,
+  root: any,
+  issuePath: string,
+  system: string,
+  code: string,
+  opts: WalkOptions = {},
+): Promise<Suggestion[]> {
+  if (!deps.codeAlternatives) return [];
+  let known: Awaited<ReturnType<NonNullable<SuggestionDeps["codeAlternatives"]>>> = null;
+  try {
+    known = await deps.codeAlternatives(system, code);
+  } catch {
+    known = null;
+  }
+  if (!known || !known.definedIn || known.inValidatedCopy) return [];
+  const accepted = known.alternatives.filter((a) => a.accepted === true && a.system !== system);
+  if (!accepted.length) return [];
+  const { coding, codingPath } = codingContext(root, issuePath);
+  if (!coding) return [];
+  const ctx = await elementBindings(deps, root, codingPath, opts);
+  if (!ctx) return [];
+  const allowed: Array<{ alt: (typeof accepted)[number]; binding: BindingRef }> = [];
+  for (const alt of accepted) {
+    let via: BindingRef | null = null;
+    for (const b of ctx.bindings.slice(0, 8)) {
+      const systems = await valueSetSystems(deps, b.valueSet);
+      const vss = systems.find((x) => x.system === alt.system);
+      if (!vss) continue;
+      let member: boolean | undefined = vss.codes ? vss.codes.has(alt.code) : undefined;
+      if (member === undefined && deps.valueSetContains) {
+        try {
+          member = await deps.valueSetContains(b.valueSet, alt.system, alt.code);
+        } catch {
+          member = undefined;
+        }
+      }
+      if (member === true) {
+        via = b;
+        break;
+      }
+    }
+    if (via) allowed.push({ alt, binding: via });
+  }
+  if (!allowed.length) return [];
+  const m = /^(.*)\.coding\[\d+\]$/.exec(codingPath);
+  const cc = m ? nodeAt(root, m[1]) : null;
+  const present = (a: { system: string; code: string }): boolean =>
+    isObject(cc) && Array.isArray(cc.coding) && cc.coding.some((c: any) => isObject(c) && c.system === a.system && c.code === a.code);
+  const unique = allowed.length === 1;
+  const name = known.display ? ` ('${known.display}')` : "";
+  return allowed.map(({ alt, binding }) => {
+    const coding2 = { system: alt.system, code: alt.code, ...(alt.display ? { display: alt.display } : {}) };
+    const where = `${canonicalName(binding.valueSet)} (${binding.strength}${binding.element.includes(":") ? `, slice ${binding.element.split(":").pop()}` : ""})`;
+    if (present(alt)) {
+      return {
+        value: code,
+        kind: "remove_coding" as const,
+        confidence: 0.85,
+        reason:
+          `'${code}'${name} is defined in ${known!.definedIn} but not in the copy of ${system} this package validates against; the CodeableConcept already ` +
+          `carries ${alt.system}#${alt.code}, which ${where} accepts — drop the unknown Coding (the validator rejects the CodeableConcept while it is present)`,
+        system: alt.system,
+        patch: { op: "remove" as const, path: codingPath },
+      };
+    }
+    return {
+      value: alt.code,
+      kind: "replace_coding" as const,
+      confidence: unique ? 0.85 : 0.7,
+      reason:
+        `'${code}'${name} is defined in ${known!.definedIn} but not in the copy of ${system} this package validates against; its concept links to ` +
+        `${alt.system}#${alt.code}${alt.display ? ` '${alt.display}'` : ""}, which the validator accepts and ${where} includes — replace the Coding ` +
+        "(keep the name in CodeableConcept.text; a product-level code becomes the substance-level one)",
+      system: alt.system,
+      ...(alt.display ? { display: alt.display } : {}),
+      patch: { op: "replace" as const, path: codingPath, value: coding2 },
+    };
+  });
+}
+
+// --------------------------------------------------------------------------- //
 // A2: unknown CodeSystem URL on a Coding → the bound ValueSets' codes / systems
 // --------------------------------------------------------------------------- //
 

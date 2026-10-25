@@ -11,6 +11,7 @@ writes. Both Docker images copy this directory (`node-server/Dockerfile` → `/a
 |------|----------|
 | `supplements/CodeSystem-*.json.gz` | FHIR R4 CodeSystem supplements (`content = supplement`), merged into the IG concept-search index |
 | `abbreviations/lrabr-<release>.tsv.gz` | Abbreviation lexicon (`fhir.abbreviation_lexicon`) for IG concept search query expansion |
+| `terminology/atc-tx-check.json.gz` | Verdicts of the validator's reference terminology server (tx.fhir.org) on WHO ATC codes, read by `src/txCodeTables.ts` (not loaded into the DB): validation (ATC codes ATC 2026 lacks → validator_cli's Unknown-code error) and the search / suggestion / repair rule that offers an ATC coding only when the validator accepts it (ISSUES_v15.2) |
 
 ## How they are applied
 
@@ -36,6 +37,8 @@ writes. Both Docker images copy this directory (`node-server/Dockerfile` → `/a
 | `CodeSystem-nhi-medication-supplement.json.gz` | NHI Administration open data 「健保用藥品項查詢項目檔」, [data.gov.tw 23715](https://data.gov.tw/dataset/23715), `…?rId=A21030000I-E41001-001` (sha256 `e2a8160d…a8c1c7`); code list: TW Core 0.3.2 `medication-nhi-tw` (44,709 codes) | 2026-09-28 | 衛生福利部中央健康保險署, Open Government Data License v1.0 |
 | `CodeSystem-nhi-payment-usage-supplement.json.gz` | NHI Administration open data 「診療項目醫令申報量(年)」, [data.gov.tw 175960](https://data.gov.tw/dataset/175960), `…?rId=A21030000I-D20022-002` (sha256 `0b511b4d…eda7e29`) | 2025 (latest fee year) | 衛生福利部中央健康保險署, Open Government Data License v1.0 |
 | `lrabr-2024AA.tsv.gz` | SPECIALIST Lexicon `LEX/LRABR` (NLM Lexical Systems Group), as shipped with UMLS 2024AA (file dated 2023-07-14, sha256 `43311352…eb10b233`); 115,233 rows after the loader's filter | 2024AA | SPECIALIST Lexicon and tools: open source, freely available from the National Library of Medicine (https://lhncbc.nlm.nih.gov/LSG/Projects/lexicon/) — no UMLS licence is needed for the lexicon. Courtesy of the U.S. National Library of Medicine. |
+
+| `terminology/atc-tx-check.json.gz` | tx.fhir.org (r4) `ValueSet/$expand` of `http://www.whocc.no/atc` (one expansion per anatomical group A … V, `count` 3000), fetched 2026-10-26, edition `2026`; code scope: TW Core 1.0.0 ValueSet `medcation-atc-tw` ∪ the `atc` property of `CodeSystem-nhi-medication-supplement` (3,434 known, 171 unknown; 3,191 TW Core displays verified equal to the server's, case-insensitive) | ATC 2026 | Derived facts only — per code "known / unknown to the server" and "TW Core's display = the server's"; **no ATC names or structure are bundled** (the codes are those TW Core / NHI open data already publish). WHO ATC © WHO Collaborating Centre for Drug Statistics Methodology. |
 
 Full sha256 of the inputs used for the files in this directory:
 
@@ -76,6 +79,13 @@ npx tsx scripts/supplements/build-medication-supplement.mts --drug-csv $D/drug.c
   --twcore-tgz $D/twcore-0.3.2.tgz
 npx tsx scripts/supplements/build-usage-supplement.mts --volume-csv $D/vol.csv --twcore-tgz $D/twcore-1.0.0.tgz
 npx tsx scripts/supplements/build-lrabr.mts --lrabr LEX/LRABR --release <release>
+# ATC verdict table: one $expand per ATC anatomical group from tx.fhir.org (≤ 3000 codes each), saved as $D/tx/g_<A..V>.json:
+mkdir -p $D/tx; for g in A B C D G H J L M N P R S V; do curl -sS -X POST -H 'Content-Type: application/fhir+json' \
+  https://tx.fhir.org/r4/ValueSet/\$expand -o $D/tx/g_$g.json -d '{"resourceType":"Parameters","parameter":[{"name":"valueSet","resource":
+  {"resourceType":"ValueSet","status":"active","compose":{"include":[{"system":"http://www.whocc.no/atc","filter":[{"property":"concept",
+  "op":"is-a","value":"'$g'"}]}]}}},{"name":"count","valueInteger":3000}]}'; sleep 1; done
+npx tsx scripts/supplements/build-tx-atc.mts --tx-dir $D/tx --twcore-tgz $D/twcore-1.0.0.tgz \
+  --supplement data/supplements/CodeSystem-nhi-medication-supplement.json.gz --fetched <date>
 npx tsx scripts/supplements/validate-supplements.mts --twcore-tgz $D/twcore-1.0.0.tgz data/supplements/CodeSystem-nhi-payment-*.json.gz
 npx tsx scripts/supplements/validate-supplements.mts --twcore-tgz $D/twcore-0.3.2.tgz data/supplements/CodeSystem-nhi-medication-supplement.json.gz
 ```

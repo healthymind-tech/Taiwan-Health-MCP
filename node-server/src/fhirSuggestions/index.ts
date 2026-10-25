@@ -10,7 +10,7 @@
  */
 
 import { suggestCanonical, type CanonicalContext } from "./canonicals.js";
-import { suggestBoundCoding, suggestCrossSystem, suggestMoveValue, type WalkOptions } from "./bindings.js";
+import { suggestAlternativeCoding, suggestBoundCoding, suggestCrossSystem, suggestMoveValue, type WalkOptions } from "./bindings.js";
 import { codingContext, LIST_ALL_VS, parseBindingValueSet, suggestBinding, suggestDisplay, suggestUnknownCode, type Budget } from "./codes.js";
 import { suggestChoiceType, suggestProperty } from "./properties.js";
 import { attachBundleTypeSuggestions } from "./bundleType.js";
@@ -100,7 +100,14 @@ async function suggestFor(issue: Record<string, any>, all: Array<Record<string, 
     case "unknown_code": {
       const m = RE_UNKNOWN_CODE.exec(msg)!;
       // ... plus the code under another CodeSystem of the element's bound ValueSet / of the same name (bindings.ts).
-      return { suggestions: [...(await suggestUnknownCode(deps, root, path, m[2], m[1], budget)), ...(await suggestCrossSystem(deps, root, path, m[2], m[1], walk))] };
+      // ... plus (v15.2 R3) an accepted coding of another system the code's concept links to (bindings.ts).
+      return {
+        suggestions: [
+          ...(await suggestUnknownCode(deps, root, path, m[2], m[1], budget)),
+          ...(await suggestCrossSystem(deps, root, path, m[2], m[1], walk)),
+          ...(await suggestAlternativeCoding(deps, root, path, m[2], m[1], walk)),
+        ],
+      };
     }
     case "unrecognized_property":
       return { suggestions: await suggestProperty(deps, root, path, RE_UNRECOGNIZED.exec(msg)![1]) };

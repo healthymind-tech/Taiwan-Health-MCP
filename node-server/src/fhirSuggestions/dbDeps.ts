@@ -16,6 +16,10 @@ export interface ServiceHooks {
   nearCodes?(system: string, code: string, limit: number): Promise<Array<{ code: string; display: string | null }>>;
   /** Embeddings of short texts (the embedding role's route); null entries when unavailable. */
   embedBatch?(texts: string[]): Promise<Array<number[] | null>>;
+  /** v15.2: relatedness of candidate codes to an original code / label (IG CodeSystems; null = no gate). */
+  relatedCodes?: SuggestionDeps["relatedCodes"];
+  /** v15.2: a code's concept in any installed copy of its IG CodeSystem and its accepted linked codings. */
+  codeAlternatives?: SuggestionDeps["codeAlternatives"];
 }
 
 function cosine(a: number[], b: number[]): number {
@@ -105,6 +109,8 @@ export function dedupedDeps(deps: SuggestionDeps): SuggestionDeps {
     validateAgainst: once("validate", deps.validateAgainst?.bind(deps)),
     resourceElementPaths: once("paths", deps.resourceElementPaths?.bind(deps)),
     similarity: once("similarity", deps.similarity?.bind(deps)),
+    relatedCodes: once("related", deps.relatedCodes?.bind(deps)),
+    codeAlternatives: once("alternatives", deps.codeAlternatives?.bind(deps)),
   };
 }
 
@@ -136,11 +142,14 @@ export function dbSuggestionDeps(pkg: PackageRow, resolver: ValidatorResolver, h
                 display: typeof c.display === "string" ? c.display : null,
                 ...(c.exact ? { exact: true } : {}),
                 ...(typeof c.score === "number" && Number.isFinite(c.score) ? { score: c.score } : {}),
+                ...(typeof c.accepted_by_validator === "boolean" ? { accepted: c.accepted_by_validator } : {}),
               }),
             );
         }
       : undefined,
     nearCodes: hooks.nearCodes,
+    relatedCodes: hooks.relatedCodes,
+    codeAlternatives: hooks.codeAlternatives,
     similarity: hooks.embedBatch
       ? async (text, candidates) => {
           if (!candidates.length) return [];

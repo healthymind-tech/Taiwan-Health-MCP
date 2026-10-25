@@ -64,7 +64,8 @@
 解析出的 IG 只收錄某 CodeSystem 的節錄版、而另一個已安裝套件收錄同一 canonical 的完整版（概念數 ≥ 10 倍且多 1,000 以上，
 例如 TW Core 1.0.0 vs 0.3.2 的 `medication-nhi-tw`）時，未指定 `package_id` / `version` 會改查完整版，並以 `warnings` 與
 `data.codesystem_copies` 註明。
-`system` 可給 canonical、CodeSystem id 或別名字詞（例如 `nhi_payment`）。`fhir_lookup_code` 查不到時附 `hint` 與 `near_codes`。
+每個候選附 `accepted_by_validator`（驗證器對解析出的套件是否接受此碼，不接受時附 `reason`）：完整版才有的碼仍列出但標為 `false`；最佳候選不被接受時，與它相關且被接受的候選排到前面，`data.alternatives` 列出驗證器接受的其他系統 coding（例如藥品的 ATC 碼）。「相關」的判定（`conceptSearch/related.ts`，也用於 Unknown code 建議與 `alt-coding` 修正）：兩邊都有同系統的 linked 碼時必須相同；否則須共用一個罕見字詞（在最大一份 CodeSystem 中出現於 ≤ 1% 概念的 ≥ 4 字母英文字或中文雙字詞——成分名，而非劑型、鹽類或單位），或名稱幾乎相同；兩邊都寫了劑量而沒有一個相同時一律不相關。
+`system` 可給 canonical、CodeSystem id 或別名字詞（例如 `nhi_payment`）。`fhir_lookup_code` 附 `accepted_by_validator`；查不到時附 `hint`，碼只在完整版中時附 `defined_in` 與 `alternatives`，任何版本都沒有時附 `near_codes`。
 
 ## 管理後台（IG 套件庫 → 術語搜尋索引）
 

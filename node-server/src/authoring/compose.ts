@@ -1413,12 +1413,13 @@ class Composer {
       }
       // An exact hit is taken only when it is a member of this ValueSet (normalize may answer from a
       // sibling CodeSystem of the same IG); without any local way to decide, the exact hit stands.
-      for (const c of candidates.filter((x) => x.exact)) {
+      for (const c of candidates.filter((x) => x.exact && x.accepted !== false)) {
         const member = c.system ? await this.inValueSet(valueSet, c.system, c.code) : undefined;
         if (member !== false) return { ok: true, value: { system: c.system, code: c.code, display: c.display } };
       }
     }
-    const shown = candidates.slice(0, 5).map((c) => ({ system: c.system, code: c.code, display: c.display }));
+    // v15.2 R1: each candidate says whether the validator accepts it (fhir_normalize_code accepted_by_validator).
+    const shown = candidates.slice(0, 5).map((c) => ({ system: c.system, code: c.code, display: c.display, ...(typeof c.accepted === "boolean" ? { accepted_by_validator: c.accepted } : {}) }));
     const vsName = stripVersion(valueSet).split("/").pop();
     return {
       ok: false,

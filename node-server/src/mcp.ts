@@ -601,7 +601,9 @@ function registerIcdTools(server: McpServer, svc: IcdService): void {
         "Optional system: icd10cm | icd10pcs, or any CodeSystem of an installed FHIR IG (canonical URL, id, or name " +
         "words, e.g. nhi_payment = TW Core medical-service-payment-tw, the Taiwan NHI payment / fee-schedule codes for " +
         "lab tests and procedures). For an IG CodeSystem the keyword may be Chinese or English free text, an abbreviation " +
-        "or chart wording; results carry code, display, matched_term and same-group siblings. " +
+        "or chart wording; results carry code, display, matched_term and same-group siblings, and accepted_by_validator (whether " +
+        "fhir_validate_* accepts the code — an excerpt CodeSystem is searched in its fuller installed copy, whose extra codes are flagged " +
+        "false; then use `alternatives`, accepted codings of another system such as ATC). " +
         "fhir_normalize_code(text, system) does the same within an IG; fhir_lookup_code gives the display of a known code.",
       inputSchema: {
         keyword: z.string(),
@@ -1281,7 +1283,13 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
 
   server.registerTool(
     "fhir_lookup_code",
-    { description: "Look up the display/definition of a (system, code) pair from locally held terminology.", inputSchema: { system: z.string(), code: z.string(), ...pkg } },
+    {
+      description:
+        "Look up the display/definition of a (system, code) pair from locally held terminology. accepted_by_validator says whether " +
+        "fhir_validate_* accepts the code for the package; a code defined only in a fuller installed copy of an excerpt CodeSystem " +
+        "returns defined_in and alternatives (accepted codings of another system, e.g. ATC).",
+      inputSchema: { system: z.string(), code: z.string(), ...pkg },
+    },
     async ({ system, code, package_id, version }) =>
       rawResult(await svc.lookupCode(system, code, package_id ?? null, version ?? null)),
   );
@@ -1313,6 +1321,9 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
         "when the default IG ships only an excerpt of a CodeSystem the full installed copy is searched (see warnings / codesystem_copies). " +
         "ATC: WHO ATC (http://www.whocc.no/atc) is not held as a searchable CodeSystem (TW Core medcation-atc-tw has only 27 Taiwan-specific codes); " +
         "find the NHI drug instead — its candidate's `linked` lists the drug's ATC code (e.g. {system:'http://www.whocc.no/atc', code:'A10BA02'}). " +
+        "Every candidate carries accepted_by_validator (+ reason): whether fhir_validate_* accepts the code for the resolved package — codes found " +
+        "only in a fuller copy are flagged false (Unknown code under an excerpt); then use data.alternatives (codings of another system the " +
+        "validator accepts, e.g. the drug's ATC coding for the MedicationRequest atc slice) and keep the name in CodeableConcept.text. " +
         "TFDA licence numbers: system='medication-fda-tw'. Taiwan FDA product details (ingredients, inserts): search_drug / get_drug_details.",
       inputSchema: { text: z.string(), value_set: z.string().nullish().default(null), system: z.string().nullish().default(null), ...pkg, limit: z.number().int().default(10) },
     },
@@ -1394,7 +1405,10 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
         "level (Dosage.doseQuantity → doseAndRate[0].doseQuantity, timing.route → dosage.route, doseAndRate.unit → doseQuantity.unit, " +
         "entry.meta → resource.meta), resourceType from meta.profile, a Bundle without resourceType or with numbered entry keys " +
         "(\"entry[1]\"), deep-equal duplicate fullUrl entries dropped; empty — {}, [], \"\", null removed (ele-1); fixed-slice — a required " +
-        "coding slice the profile fully fixes added; code — a required-binding code written as its display or in another case. A change is " +
+        "coding slice the profile fully fixes added; alt-coding — a code missing from the package's excerpt CodeSystem (e.g. an NHI drug code " +
+        "outside TW Core 1.0.0's 35-code medication-nhi-tw) but defined in a fuller installed copy, whose concept links to exactly one coding " +
+        "of another system the validator accepts and a bound ValueSet / coding slice contains (its ATC code), is replaced by that coding (or " +
+        "dropped when already present); CodeableConcept.text kept (set to the original display when absent); code — a required-binding code written as its display or in another case. A change is " +
         "withdrawn (repair_issues) if the Bundle would get a validation error it did not have (a display error exposed on the Coding whose system was corrected does not count: it stays reported with candidates). Returns {bundle, changes[{path, from, to, rule, reason?}], repair_issues[{path, rule, message, " +
         "candidates}], unresolved[{path, reference, candidates}], notes, id_map, summary}; a finalized Bundle yields changes = [] (idempotent, " +
         "deterministic). Numbers keep the spelling you wrote (10.0 stays 10.0). Optional bundle_type sets Bundle.type (a profile-fixed type " +

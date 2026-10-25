@@ -44,6 +44,8 @@ import {
 } from "./fhirExternalTerminology.js";
 import { probeQueryFailures, query } from "./db.js";
 import { TtlMemo } from "./ttlMemo.js";
+import { txCodeVerdict, type TxCodeVerdict } from "./txCodeTables.js";
+import { enumeratedCodes } from "./codeAcceptance.js";
 
 const SD_TTL_MS = 30 * 60 * 1000;
 const SD_CACHE_MAX = 1500;
@@ -416,7 +418,14 @@ export class DbValidatorResolver implements ValidatorResolver {
     if (system === CVX) return judgeCvx(code, display);
     if (system === ICD10_WHO) return this.checkIcd10Who(code, display);
     if (system === RXNORM) return this.checkRxnorm(code, display);
-    if (SILENT_SYSTEMS.includes(system) || system.startsWith("urn:oid:") || system.startsWith("urn:uuid:")) {
+    if (SILENT_SYSTEMS.includes(system)) {
+      // A terminology not held locally (WHO ATC): the bundled verdicts of the validator's
+      // reference server (txCodeTables.ts, ISSUES_v15.2) for the codes the installed data carries.
+      const tx = txCodeVerdict(system, code);
+      if (tx) return this.checkTxTable(system, code, display, tx);
+      return noLocalDisplay(system, display);
+    }
+    if (system.startsWith("urn:oid:") || system.startsWith("urn:uuid:")) {
       return noLocalDisplay(system, display);
     }
     let idx = await terminology.loadCodeSystemIndex(system, this.pkg, true);
@@ -575,6 +584,27 @@ export class DbValidatorResolver implements ValidatorResolver {
     } catch {
       return null;
     }
+  }
+
+  /**
+   * A code covered by a bundled terminology-server table (txCodeTables.ts): unknown to the server
+   * → validator_cli's error ("Unknown code 'X' in the CodeSystem 'S' version 'E'"); known → the
+   * display is judged only against a ValueSet display the table verified as the server's (case-
+   * insensitive, like the server); otherwise it stays unchecked, as for any terminology not held.
+   */
+  private async checkTxTable(system: string, code: string, display: string | null, tx: TxCodeVerdict): Promise<CodeCheck> {
+    if (!tx.known) return { status: "invalid-code", severity: "error", message: `Unknown code '${code}' in the CodeSystem '${system}' version '${tx.edition}'` };
+    if (display === null) return { status: "ok" };
+    if (tx.displayVerified) {
+      let listed: string | null = null;
+      try {
+        listed = (await enumeratedCodes(system, this.pkg)).get(code)?.display ?? null;
+      } catch {
+        listed = null;
+      }
+      if (listed) return judgeCodeSystemDisplay(system, code, display, { display: listed, designationList: [] }, null) ?? { status: "ok" };
+    }
+    return noLocalDisplay(system, display);
   }
 
   /** RxNorm from rxnorm.concepts (concept-only reference terminology); a warning when not loaded. */

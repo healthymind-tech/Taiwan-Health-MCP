@@ -73,7 +73,13 @@ export function composeDepsFor(svc: FHIRIGService, pkg: fhirIg.PackageRow, field
   const resolver = new DbValidatorResolver(pkg);
   // The shared repair layer's collaborators (fhirRepair/dbDeps.ts): the composer and the finalize
   // tools ask the same questions of the same data, so their verdicts agree (ISSUES_v14).
-  const repair = repairDepsFor(pkg, (text, valueSet, system, limit) => svc.normalizeCode(text, valueSet, system, pkg.package_id, pkg.version, limit), resolver);
+  const repair = repairDepsFor(
+    pkg,
+    (text, valueSet, system, limit) => svc.normalizeCode(text, valueSet, system, pkg.package_id, pkg.version, limit),
+    resolver,
+    // v15.2 R4: the same alt-coding repair as the finalize tools.
+    (system, code) => svc.codeAlternativesFor(pkg, system, code),
+  );
   return {
     ...repair,
     async resolveProfile(identifier: string): Promise<ResolvedProfile | null> {

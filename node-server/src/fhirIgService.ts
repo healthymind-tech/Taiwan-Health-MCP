@@ -47,9 +47,11 @@ import {
 } from "./fhirRequiredElements.js";
 import { toolVersion } from "./toolVersions.js";
 import { IgConceptSearch, type CsLocation } from "./conceptSearch/service.js";
+import { acceptanceOf, confirmCoding } from "./codeAcceptance.js";
 import { KEYWORD_ONLY_MODE, KEYWORD_ONLY_NOTE } from "./searchQuality.js";
 import { attachSuggestions } from "./fhirSuggestions/index.js";
 import { dbSuggestionDeps, type ServiceHooks } from "./fhirSuggestions/dbDeps.js";
+import type { CodeAlternatives } from "./fhirSuggestions/types.js";
 import { attachIdSuggestions, isIdClassIssue, normalizationIssues } from "./fhirSuggestions/ids.js";
 import { BUNDLE_TYPES, bundleRules, finalizeBundle as runBundleFinalize, losslessFinalizedBundle, type FinalizeDeps, type FinalizeResult } from "./fhirBundleFinalize.js";
 import { restoreNumbers, stringifyLossless, toPlain } from "./losslessJson.js";
@@ -1142,19 +1144,51 @@ export class FHIRIGService {
       display: found ? found.display : null,
       definition: found ? found.definition : null,
     };
+    const where = `${pkg.package_id}#${pkg.version}`;
+    const resolver = new DbValidatorResolver(pkg);
+    if (found !== null) {
+      // v15.2 R1: the validator's verdict on the code for this package (no display given).
+      const acc = acceptanceOf(await resolver.checkCode(system, code, null).catch(() => null), where);
+      data.accepted_by_validator = acc.accepted !== false;
+      if (acc.accepted === false && acc.reason) data.reason = acc.reason;
+    }
     if (found === null) {
       const loc = terminology.routeSystem(system) === "ig" || !system.includes("/") ? await this.locateIgCodeSystem(system, pkg) : null;
-      if (loc) {
+      data.accepted_by_validator = false;
+      let elsewhere: Awaited<ReturnType<IgConceptSearch["describe"]>> = null;
+      if (loc) elsewhere = await this.conceptSearch.describe(loc, code).catch(() => null);
+      if (loc && elsewhere && !elsewhere.inOwn) {
+        // v15.2: the code exists — in a fuller installed copy of an excerpt CodeSystem — but the
+        // validator for this package rejects it. Say so, and offer the linked codings it accepts.
+        data.defined_in = { package: `${elsewhere.foundIn.packageId}#${elsewhere.foundIn.packageVersion}`, display: elsewhere.display };
+        data.reason =
+          `'${code}' is defined in ${elsewhere.foundIn.packageId}#${elsewhere.foundIn.packageVersion}'s copy of ${loc.url}, but ${where} ships an excerpt without it — ` +
+          `fhir_validate_* for ${where} reports Unknown code`;
+        // Not "an external system": the generic not-found warning is replaced by the finding.
+        warnings.splice(0, warnings.length, String(data.reason));
+        const check = (s2: string, c2: string, d2: string | null) => resolver.checkCode(s2, c2, d2);
+        const alts = (await Promise.all(elsewhere.links.slice(0, 5).map((l) => confirmCoding(check, pkg, l.system, l.code, where).catch(() => null)))).filter((v) => v && v.accepted === true);
+        if (alts.length) {
+          data.alternatives = alts.map((v) => ({ system: v!.system, code: v!.code, ...(v!.display ? { display: v!.display } : {}), accepted_by_validator: true, ...(v!.valueSets?.length ? { value_sets: v!.valueSets } : {}) }));
+        }
+      } else if (loc) {
+        // Not defined anywhere: existing codes that look like it (typos), all of this package's copy.
         const near = await this.conceptSearch.nearCodes(loc, code, 5).catch(() => []);
-        if (near.length) data.near_codes = near;
+        if (near.length) data.near_codes = near.map((n) => ({ ...n, accepted_by_validator: true }));
       }
       data.hint =
         "To find the code for a name or free text (Chinese or English), call fhir_normalize_code with " +
         `text=<the name> and system=${loc ? loc.url : system}` +
         (loc ? "" : " (an IG CodeSystem canonical or id)") +
-        (data.near_codes ? "; near_codes lists existing codes that look like this one." : ".");
+        (data.near_codes ? "; near_codes lists existing codes that look like this one." : data.alternatives ? "; alternatives lists codings of another system the validator accepts for this concept." : ".");
     }
     return this.ok(data, pkg, warnings);
+  }
+
+  /** Is the package of a located CodeSystem part of `pkg`'s dependency closure? */
+  private inClosure(pkg: PackageRow, loc: CsLocation): boolean {
+    const [pids, pvers] = terminology.closureArrays(pkg);
+    return pids.some((p, i) => p === loc.packageId && pvers[i] === loc.packageVersion);
   }
 
   /** The IG CodeSystem a canonical / id / alias names (closure first, then any installed IG). */
@@ -1272,10 +1306,13 @@ export class FHIRIGService {
     let keywordOnly = false;
     const engineSystems = new Set<string>();
     const fullerCopies: Array<Record<string, unknown>> = [];
+    // IG CodeSystems searched (system → the copy searched, and the excerpt the validator holds).
+    const searched = new Map<string, { loc: CsLocation; excerpt: CsLocation | null; ownConcepts: number | null }>();
     for (const tgt of targets) {
       if (tgt.kind !== "ig") continue;
       let loc = locations.get(tgt.system) ?? (await this.locateIgCodeSystem(tgt.system, pkg));
       if (!loc) continue;
+      const located = loc;
       // The resolved IG ships only an excerpt of this CodeSystem (e.g. TW Core 1.0.0 medication-nhi-tw:
       // 35 codes) while another installed package holds the full list: search the full copy unless
       // the caller pinned package_id / version.
@@ -1295,6 +1332,7 @@ export class FHIRIGService {
         fullerCopies.push({ system: tgt.system, packageId: fuller.location.packageId, version: fuller.location.packageVersion, concepts: fuller.concepts, excerpt: { packageId: loc.packageId, version: loc.packageVersion, concepts: fuller.ownConcepts } });
         loc = fuller.location;
       }
+      searched.set(tgt.system, { loc, excerpt: loc === located ? null : located, ownConcepts: fuller ? fuller.ownConcepts : null });
       engineSystems.add(tgt.system);
       const res = await this.conceptSearch.search(loc, text, limit, { links: true });
       if (res.keywordOnly) keywordOnly = true;
@@ -1345,11 +1383,17 @@ export class FHIRIGService {
     const rest = candidates.filter((c) => c.source !== "conceptmap");
     const merged = [...conceptmapHits, ...engine, ...hybrid, ...rest];
     if (this.embeddingSvc === null) warnings.push("semantic search unavailable (no embedding service)");
+    // v15.2 R1 / R3: every candidate says whether fhir_validate_* (for this package) accepts it;
+    // accepted ones related to the best match come first, and when the best match is not accepted
+    // the codings of other systems it links to that the validator accepts are offered.
+    const annotated = await this.annotateAcceptance(pkg, merged.slice(0, limit), text, searched);
+    for (const w of annotated.warnings) warnings.push(w);
     const data: Record<string, unknown> = {
       text,
       targets: targets.map((t) => t.system),
-      candidates: merged.slice(0, limit),
-      note: "candidates are suggestions — confirm with fhir_validate_code",
+      candidates: annotated.candidates,
+      ...(annotated.alternatives.length ? { alternatives: annotated.alternatives } : {}),
+      note: "candidates are suggestions — confirm with fhir_validate_code; accepted_by_validator tells whether fhir_validate_* accepts the code for this package",
     };
     if (clauses.length) data.clauses = clauses;
     if (fullerCopies.length) data.codesystem_copies = fullerCopies;
@@ -1358,6 +1402,100 @@ export class FHIRIGService {
       data.search_note = KEYWORD_ONLY_NOTE;
     }
     return this.ok(data, pkg, warnings);
+  }
+
+  /**
+   * ISSUES_v15.2 R1 / R3 — search and validation agree. Each candidate gets
+   * `accepted_by_validator` (+ `reason` when false), decided by the validator's own code check for
+   * `pkg` (DbValidatorResolver.checkCode — what fhir_validate_* runs; codeAcceptance.ts). A code
+   * found only in a fuller installed copy of an excerpt CodeSystem (TW Core 1.0.0 medication-nhi-tw:
+   * 35 codes) is kept — it identifies the concept — but flagged false. Ordering: when the best
+   * candidate is not accepted, the accepted candidates related to it (conceptSearch/related.ts: same
+   * linked code, a shared rare word, same strength) move to the front; unrelated accepted codes are
+   * never promoted. Alternatives: the codings of other systems the best candidate and its related
+   * candidates link to (e.g. a drug's ATC code from the NHI supplement) that the validator accepts
+   * (codeAcceptance.confirmCoding), most supported first.
+   */
+  private async annotateAcceptance(
+    pkg: PackageRow,
+    candidates: any[],
+    text: string,
+    searched: Map<string, { loc: CsLocation; excerpt: CsLocation | null; ownConcepts: number | null }>,
+  ): Promise<{ candidates: any[]; alternatives: Array<Record<string, unknown>>; warnings: string[] }> {
+    const warnings: string[] = [];
+    if (!candidates.length) return { candidates, alternatives: [], warnings };
+    const resolver = new DbValidatorResolver(pkg);
+    const where = `${pkg.package_id}#${pkg.version}`;
+    const check = (system: string, code: string, display: string | null) => resolver.checkCode(system, code, display);
+    await Promise.all(
+      candidates.map(async (c) => {
+        if (!c || !c.system || !c.code) return;
+        // The validator's code check decides held terminologies (no extra lookups); only an undecided one
+        // (a terminology not held locally) needs the evidence confirmCoding gathers.
+        const first = acceptanceOf(await check(String(c.system), String(c.code), null).catch(() => null), where);
+        const v = first.accepted !== null ? first : await confirmCoding(check, pkg, String(c.system), String(c.code), where).catch(() => null);
+        const s = searched.get(String(c.system));
+        const accepted = v?.accepted === true;
+        c.accepted_by_validator = accepted;
+        if (!accepted) {
+          c.reason =
+            s?.excerpt && v?.accepted === false
+              ? `not in ${where}'s ${s.excerpt.csId ?? "CodeSystem"} (an excerpt of ${s.ownConcepts ?? "?"} codes); defined in ${s.loc.packageId}#${s.loc.packageVersion} — fhir_validate_* for ${where} rejects it (Unknown code)` +
+                "; use an alternatives coding, or validate with that package"
+              : (v?.reason ?? "the validator cannot confirm this code");
+        }
+      }),
+    );
+    let list = candidates;
+    const top = list[0];
+    const alternatives: Array<Record<string, unknown>> = [];
+    if (top && top.accepted_by_validator === false && top.system && searched.has(String(top.system))) {
+      const loc = searched.get(String(top.system))!.loc;
+      const same = list.filter((c) => c !== top && c.system === top.system);
+      let rel: Array<{ related: boolean; why: string }> = [];
+      try {
+        rel = await this.conceptSearch.related(loc, { code: String(top.code), label: text }, same.map((c) => ({ code: String(c.code), display: c.display ?? null })));
+      } catch {
+        rel = [];
+      }
+      const related = new Set(same.filter((_, i) => rel[i]?.related));
+      const promoted = list.filter((c) => related.has(c) && c.accepted_by_validator === true);
+      if (promoted.length) list = [...promoted, ...list.filter((c) => !promoted.includes(c))];
+      // Alternatives from the linked codings of the best match and the candidates related to it.
+      const support = new Map<string, { system: string; code: string; from: string[] }>();
+      for (const c of [top, ...same.filter((x) => related.has(x) && x.accepted_by_validator === false)]) {
+        for (const l of Array.isArray(c.linked) ? c.linked : []) {
+          if (!l || typeof l.system !== "string" || typeof l.code !== "string") continue;
+          const k = `${l.system}|${l.code}`;
+          const cur: { system: string; code: string; from: string[] } = support.get(k) ?? { system: l.system, code: l.code, from: [] };
+          if (!cur.from.includes(String(c.code))) cur.from.push(String(c.code));
+          support.set(k, cur);
+        }
+      }
+      const ranked = [...support.values()].sort((a, b) => b.from.length - a.from.length).slice(0, 5);
+      const confirmed = await Promise.all(ranked.map((a) => confirmCoding(check, pkg, a.system, a.code, where).catch(() => null)));
+      ranked.forEach((a, i) => {
+        const v = confirmed[i];
+        if (!v || v.accepted !== true) return;
+        alternatives.push({
+          system: a.system,
+          code: a.code,
+          ...(v.display ? { display: v.display } : {}),
+          accepted_by_validator: true,
+          reason: `linked from ${a.from.slice(0, 3).join(", ")}${a.from.length > 3 ? ` (+${a.from.length - 3})` : ""} (${top.system})${v.reason ? `; ${v.reason}` : ""}`,
+          ...(v.valueSets?.length ? { value_sets: v.valueSets } : {}),
+        });
+      });
+      if (!list.some((c) => c.accepted_by_validator === true && (c === top || related.has(c)))) {
+        warnings.push(
+          `${top.system}: the best matches are not codes the validator accepts for ${where}` +
+            (alternatives.length
+              ? `; alternatives lists ${alternatives.length === 1 ? "a coding" : "codings"} of another system it accepts (keep the name in CodeableConcept.text)`
+              : "; no accepted coding is known — record the name as CodeableConcept.text, or use a coding of another system the profile allows"),
+        );
+      }
+    }
+    return { candidates: list, alternatives, warnings };
   }
 
   /**
@@ -1389,16 +1527,47 @@ export class FHIRIGService {
         results: [],
       };
     }
-    const res = await this.conceptSearch.search(loc, keyword, Math.min(Math.max(1, limit), 50));
+    // v15.2: the same rules as fhir_normalize_code — an excerpt CodeSystem is searched in its fuller
+    // installed copy, and every result says whether fhir_validate_* accepts it for the package the
+    // CodeSystem was resolved in (the default IG's closure, else the package that defines it).
+    const extraWarnings: string[] = [];
+    let validationPkg: PackageRow | null = pkg;
+    if (!pkg || !this.inClosure(pkg, loc)) {
+      try {
+        validationPkg = await this.resolve(loc.packageId, loc.packageVersion);
+      } catch {
+        validationPkg = pkg;
+      }
+    }
+    let searchLoc = loc;
+    const fuller = await this.conceptSearch.fullerCopy(loc).catch(() => null);
+    if (fuller) {
+      extraWarnings.push(
+        `${loc.url}: ${loc.packageId}@${loc.packageVersion} holds only ${fuller.ownConcepts} codes of this CodeSystem (an excerpt); ` +
+          `searched the fuller copy in ${fuller.location.packageId}@${fuller.location.packageVersion} (${fuller.concepts} codes) — see accepted_by_validator.`,
+      );
+      searchLoc = fuller.location;
+    }
+    const res = await this.conceptSearch.search(searchLoc, keyword, Math.min(Math.max(1, limit), 50), { links: true });
+    let results: any[] = res.candidates.map((c) => ({ system: loc!.url, ...c }));
+    let altCodings: Array<Record<string, unknown>> = [];
+    if (validationPkg) {
+      const annotated = await this.annotateAcceptance(validationPkg, results, keyword, new Map([[loc.url, { loc: searchLoc, excerpt: fuller ? loc : null, ownConcepts: fuller ? fuller.ownConcepts : null }]]));
+      results = annotated.candidates;
+      altCodings = annotated.alternatives;
+      extraWarnings.push(...annotated.warnings);
+    }
     const out: Record<string, unknown> = {
       keyword,
       system: loc.url,
       codesystem: { id: res.codesystem.id, title: res.codesystem.title, version: res.codesystem.version, package: `${loc.packageId}@${loc.packageVersion}` },
-      results: res.candidates,
+      results,
     };
+    if (fuller) out.searched_copy = `${fuller.location.packageId}@${fuller.location.packageVersion}`;
+    if (altCodings.length) out.alternatives = altCodings;
     if (res.clauses) out.clauses = res.clauses;
     if (alternatives.length) out.other_matching_systems = alternatives;
-    if (res.warnings.length) out.warnings = res.warnings;
+    if (res.warnings.length || extraWarnings.length) out.warnings = [...res.warnings, ...extraWarnings];
     if (res.keywordOnly) {
       out.search_mode = KEYWORD_ONLY_MODE;
       out.search_note = KEYWORD_ONLY_NOTE;
@@ -1675,6 +1844,36 @@ export class FHIRIGService {
       },
       // Semantic ranking of a small ValueSet's codes (binding suggestions); absent = lexical only.
       ...(this.embeddingSvc ? { embedBatch: (texts: string[]) => this.embeddingSvc!.embedBatch(texts, "document") } : {}),
+      // v15.2 R2 / R3: relatedness gate of replacement codes, and the accepted linked codings of a code
+      // defined only in a fuller installed copy of an excerpt CodeSystem.
+      relatedCodes: async (system, original, candidates) => {
+        const loc = await this.locateIgCodeSystem(system, pkg);
+        return loc ? this.conceptSearch.related(loc, original, candidates) : null;
+      },
+      codeAlternatives: (system, code) => this.codeAlternativesFor(pkg, system, code),
+    };
+  }
+
+  /**
+   * v15.2: a code of an IG CodeSystem looked up in the copy `pkg` validates against and in the
+   * fuller installed copy (conceptSearch.describe), with the codings of other systems its concept
+   * links to and the validator's verdict on each (codeAcceptance.confirmCoding). Null when no
+   * installed copy defines the code or `system` is not an IG CodeSystem.
+   */
+  async codeAlternativesFor(pkg: PackageRow, system: string, code: string): Promise<CodeAlternatives | null> {
+    const loc = await this.locateIgCodeSystem(system, pkg);
+    if (!loc) return null;
+    const d = await this.conceptSearch.describe(loc, code).catch(() => null);
+    if (!d) return null;
+    const resolver = new DbValidatorResolver(pkg);
+    const where = `${pkg.package_id}#${pkg.version}`;
+    const check = (s2: string, c2: string, d2: string | null) => resolver.checkCode(s2, c2, d2);
+    const alts = await Promise.all(d.links.slice(0, 5).map((l) => confirmCoding(check, pkg, l.system, l.code, where).catch(() => null)));
+    return {
+      display: d.display,
+      definedIn: `${d.foundIn.packageId}#${d.foundIn.packageVersion}`,
+      inValidatedCopy: d.inOwn,
+      alternatives: alts.filter((v): v is NonNullable<typeof v> => !!v).map((v) => ({ system: v.system, code: v.code, display: v.display, accepted: v.accepted })),
     };
   }
 
@@ -1741,7 +1940,7 @@ export class FHIRIGService {
     if (!pkg) return null;
     const tree = cloneTree(lossless !== undefined && lossless !== null && typeof lossless === "object" ? lossless : bundle) as Record<string, any>;
     try {
-      const deps = repairDepsFor(pkg, (text, valueSet, system, limit) => this.normalizeCodeIn(pkg, true, text, valueSet, system, limit), new DbValidatorResolver(pkg));
+      const deps = repairDepsFor(pkg, (text, valueSet, system, limit) => this.normalizeCodeIn(pkg, true, text, valueSet, system, limit), new DbValidatorResolver(pkg), (system, code) => this.codeAlternativesFor(pkg, system, code));
       const result = await repairBundle(tree, deps, { timezone, timezoneSource });
       return { bundle: toPlain(tree) as Record<string, any>, lossless: lossless !== undefined ? tree : undefined, result };
     } catch (e) {
@@ -2247,7 +2446,7 @@ export class FHIRIGService {
     let tzProblem: string | null = null;
     if (repair === "content") {
       try {
-        const deps = repairDepsFor(pkg, (text, valueSet, system, limit) => this.normalizeCodeIn(pkg, true, text, valueSet, system, limit), new DbValidatorResolver(pkg));
+        const deps = repairDepsFor(pkg, (text, valueSet, system, limit) => this.normalizeCodeIn(pkg, true, text, valueSet, system, limit), new DbValidatorResolver(pkg), (system, code) => this.codeAlternativesFor(pkg, system, code));
         const tz = siteTimezone({ timezone, siteConfig });
         if (tz.problem) tzProblem = tz.problem;
         repaired = await repairResource(tree, deps, { profiles: [canonical], timezone: tz.timezone, timezoneSource: tz.source });

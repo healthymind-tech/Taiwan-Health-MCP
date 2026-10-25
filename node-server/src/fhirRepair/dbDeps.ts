@@ -77,8 +77,15 @@ function codeSystemDirectory(pkg: fhirIg.PackageRow): Promise<CodeSystemEntry[]>
   return rows;
 }
 
-export function repairDepsFor(pkg: fhirIg.PackageRow, normalize: NormalizeHook | null, resolver: DbValidatorResolver = new DbValidatorResolver(pkg)): RepairDeps {
+export function repairDepsFor(
+  pkg: fhirIg.PackageRow,
+  normalize: NormalizeHook | null,
+  resolver: DbValidatorResolver = new DbValidatorResolver(pkg),
+  /** v15.2: FHIRIGService.codeAlternativesFor bound to this package (rule alt-coding). */
+  codeAlternatives: RepairDeps["codeAlternatives"] = undefined,
+): RepairDeps {
   return {
+    ...(codeAlternatives ? { codeAlternatives } : {}),
     fetchStructureDefinition: (url) => resolver.fetchStructureDefinition(url),
     lookupDisplay: async (system, code) => {
       const found = await terminology.lookup(system, code, pkg);
@@ -107,6 +114,7 @@ export function repairDepsFor(pkg: fhirIg.PackageRow, normalize: NormalizeHook |
                 display: typeof c.display === "string" ? c.display : null,
                 ...(c.exact ? { exact: true } : {}),
                 ...(typeof c.score === "number" && Number.isFinite(c.score) ? { score: c.score } : {}),
+                ...(typeof c.accepted_by_validator === "boolean" ? { accepted: c.accepted_by_validator } : {}),
               }),
             );
         }

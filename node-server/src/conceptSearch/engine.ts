@@ -333,6 +333,10 @@ export class ConceptIndex {
   private readonly idf = new Map<string, number>();
   private readonly byCode = new Map<string, number>();
   private readonly groups = new Map<string, number[]>();
+  /** Per concept: [first, end) of its terms in `terms` (terms are added concept by concept). */
+  private readonly termRange: Array<[number, number]> = [];
+  /** Concepts having a term with the token key (relatedness rarity), computed on demand. */
+  private readonly conceptDf = new Map<string, number>();
   private maxIdf = 1;
   private maxPopularity = 0;
   readonly termCount: number;
@@ -351,6 +355,7 @@ export class ConceptIndex {
         else this.groups.set(group, [ci]);
       }
       const seen = new Set<string>();
+      const firstTerm = this.terms.length;
       const all: TermInput[] = [{ text: c.code, lang: null, kind: "code" }, ...c.terms];
       for (const t of all) {
         const norm = normalizeText(t.text);
@@ -368,6 +373,7 @@ export class ConceptIndex {
           else this.postings.set(k, [ti]);
         }
       }
+      this.termRange.push([firstTerm, this.terms.length]);
     }
     const n = this.terms.length || 1;
     for (const [k, p] of this.postings) {
@@ -446,6 +452,37 @@ export class ConceptIndex {
 
   codes(): IterableIterator<string> {
     return this.byCode.keys();
+  }
+
+  /** The indexed terms of a concept (its code first, then display, designations, property / linked names …). */
+  termsOf(ci: number): Array<{ text: string; lang: string | null; kind: TermKind }> {
+    const r = this.termRange[ci];
+    if (!r) return [];
+    const out: Array<{ text: string; lang: string | null; kind: TermKind }> = [];
+    for (let i = r[0]; i < r[1]; i += 1) out.push(this.termAt(i));
+    return out;
+  }
+
+  /** How many concepts have a term containing the token key (0 = unknown to the CodeSystem). */
+  conceptFrequency(key: string): number {
+    const hit = this.conceptDf.get(key);
+    if (hit !== undefined) return hit;
+    const p = this.postings.get(key);
+    let n = 0;
+    if (p) {
+      let last = -1;
+      // Postings are in term order, and terms are grouped by concept: count concept changes.
+      for (const ti of p) {
+        const ci = this.terms[ti].concept;
+        if (ci !== last) {
+          n += 1;
+          last = ci;
+        }
+      }
+    }
+    if (this.conceptDf.size > 50000) this.conceptDf.clear();
+    this.conceptDf.set(key, n);
+    return n;
   }
 
   termAt(i: number): { text: string; lang: string | null; kind: TermKind } {

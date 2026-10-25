@@ -19,6 +19,7 @@ import { abbreviationWords, ConceptIndex, SENSES, fuse, nearCodes, querySegments
 import { abbreviationKey, applicableExpansions } from "./abbreviations.js";
 import { clinicalCore, compact, LATIN_STOP, normalizeText, tokenize, umlsNorm } from "./text.js";
 import { Thesaurus, type ThesaurusEntry } from "./thesaurus.js";
+import { conceptProfile, relatedness, textProfile, type ConceptProfile, type Relatedness } from "./related.js";
 import { KEYWORD_ONLY_MODE, KEYWORD_ONLY_NOTE } from "../searchQuality.js";
 import { TtlMemo } from "../ttlMemo.js";
 
@@ -624,6 +625,60 @@ export class IgConceptSearch {
       }
     }
     return out;
+  }
+
+  /**
+   * A code of the CodeSystem at `loc`, looked up in `loc`'s own index and — when `loc` is an
+   * excerpt — in the fuller installed copy (fullerCopy). `inOwn` = defined by `loc`'s package
+   * (the validator accepts it there); `ref` = the largest index of the CodeSystem (word rarity).
+   */
+  async describe(loc: CsLocation, code: string): Promise<{ code: string; display: string | null; profile: ConceptProfile; links: Array<{ system: string; code: string }>; inOwn: boolean; foundIn: CsLocation } | null> {
+    const own = (await this.index(loc)).index;
+    let idx = own;
+    let at = loc;
+    if (own.indexOf(code) === undefined) {
+      const fuller = await this.fullerCopy(loc).catch(() => null);
+      if (!fuller) return null;
+      const f = (await this.index(fuller.location)).index;
+      if (f.indexOf(code) === undefined) return null;
+      idx = f;
+      at = fuller.location;
+    }
+    const profile = conceptProfile(idx, code)!;
+    const c = idx.conceptAt(idx.indexOf(code)!);
+    const links = profile.links
+      .map((l) => ({ system: l.slice(0, l.lastIndexOf("|")), code: l.slice(l.lastIndexOf("|") + 1) }))
+      .filter((l) => l.system && l.code && l.system !== loc.url);
+    return { code, display: c.display, profile, links, inOwn: at === loc, foundIn: at };
+  }
+
+  /** The index word rarity is judged against: the fuller copy's when `loc` is an excerpt. */
+  async referenceIndex(loc: CsLocation): Promise<ConceptIndex> {
+    const fuller = await this.fullerCopy(loc).catch(() => null);
+    return (await this.index(fuller ? fuller.location : loc)).index;
+  }
+
+  /**
+   * Which candidate codes of `loc`'s CodeSystem are related to an original code / label
+   * (related.ts): the original's profile is its own concept (in `loc` or the fuller copy) plus
+   * the caller's display / text; a candidate's is its concept in `loc` (or the fuller copy).
+   */
+  async related(
+    loc: CsLocation,
+    original: { code: string | null; label: string | null },
+    candidates: Array<{ code: string; display: string | null }>,
+  ): Promise<Relatedness[]> {
+    const ref = await this.referenceIndex(loc);
+    const own = (await this.index(loc)).index;
+    const orig = original.code ? await this.describe(loc, original.code).catch(() => null) : null;
+    const a: ConceptProfile = orig
+      ? { texts: [...orig.profile.texts, ...(original.label ? [original.label] : [])], links: orig.profile.links }
+      : textProfile(original.label);
+    if (!a.texts.length && !a.links.length) return candidates.map(() => ({ related: false, why: "nothing to compare with" }));
+    return candidates.map((c) => {
+      const b = conceptProfile(own, c.code) ?? conceptProfile(ref, c.code) ?? textProfile(c.display);
+      return relatedness(a, b, ref);
+    });
   }
 
   /** Near codes for a code not found in an IG CodeSystem (typos, missing suffix …). */
