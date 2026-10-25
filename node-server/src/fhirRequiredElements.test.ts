@@ -36,19 +36,14 @@ const FX = join(HERE, "../../mcp_proposal/fixtures/required_elements");
 type Triple = [string, string, string];
 
 /**
- * Rows the reference emits that this implementation intentionally drops.
- * Observation-bloodPressure-twcore: vs-2 is guarded by
- * `(component.empty() and hasMember.empty())`, and the profile makes
- * `component` 1..*, so the guard can never hold — value[x] is never required
- * (the systolic/diastolic component values are, via vs-3). Listing it would
- * steer an LLM into inventing a top-level value for a BP panel.
+ * Rows the reference emits that this implementation intentionally drops — none now.
+ * (Observation-bloodPressure-twcore used to differ on value[x] / invariant:vs-2: vs-2 is guarded by
+ * `(component.empty() and hasMember.empty())` and the profile makes `component` 1..*, so value[x] is
+ * never required. The reference fixture adopted that reading — its notes: "removed Observation.value[x]
+ * (invariant:vs-2) — BP requires component" — so the deviation entry was retired; the dedicated
+ * blood-pressure test below still asserts that no top-level value[x] is listed.)
  */
-const KNOWN_DEVIATIONS: Record<string, { missing: Triple[]; extra: Triple[] }> = {
-  "Observation-bloodPressure-twcore": {
-    missing: [["Observation.value[x]", "invariant:vs-2", "source_fact"]],
-    extra: [],
-  },
-};
+const KNOWN_DEVIATIONS: Record<string, { missing: Triple[]; extra: Triple[] }> = {};
 
 function triples(rows: Array<{ id: string; required_by: string; grounding_class: string }>): Triple[] {
   return rows

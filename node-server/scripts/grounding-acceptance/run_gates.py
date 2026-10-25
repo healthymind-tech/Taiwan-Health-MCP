@@ -178,7 +178,9 @@ def t4():
 # Documented deviation of fhir_get_profile_required_elements from the reference (fhirRequiredElements.ts header,
 # KNOWN_DEVIATIONS in fhirRequiredElements.test.ts): vs-2's guard can never hold on the blood-pressure profile
 # (component 1..*), so neither the invariant row nor a target-implied value[x] row is emitted.
-T5_KNOWN = {"Observation-bloodPressure-twcore": {"missing": [["Observation.value[x]", "invariant:vs-2", "source_fact"]], "extra": []}}
+# Documented deviations from the reference fixtures — none now: the blood-pressure fixture dropped
+# Observation.value[x] (invariant:vs-2) itself ("BP requires component"), matching this implementation.
+T5_KNOWN: dict = {}
 
 
 def t5():

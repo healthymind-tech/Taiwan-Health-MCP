@@ -105,9 +105,9 @@ def _run_batch(items, ig, ver=None, overlay=None):
             for i, sd in enumerate(overlay):
                 json.dump(sd, open(os.path.join(work, "sd", f"sd{i}.json"), "w"), ensure_ascii=False)
                 extra += ["-ig", f"work/sd/sd{i}.json"]
-        cmd = ["docker", "run", "--rm", "--memory=3500m", "--cpus=2", "-v", f"{CLI_DIR}:/w",
+        cmd = ["docker", "run", "--rm", "--memory=2500m", "--cpus=2", "-v", f"{CLI_DIR}:/w",
                "-v", f"{CLI_DIR}/fhircache:/root/.fhir", "-w", "/w", "eclipse-temurin:21-jre",
-               "java", "-Xmx2800m", "-jar", "validator_cli.jar", "work/in", "-version", "4.0.1",
+               "java", "-Xmx2000m", "-jar", "validator_cli.jar", "work/in", "-version", "4.0.1",
                "-ig", ig_spec(ig, ver), *extra, "-tx", TX, "-output", "work/out.json"]
         print(f"[cli] {ig}: validating {len(chunk)} resources", file=sys.stderr, flush=True)
         log = open(os.path.join(CLI_DIR, "work.log"), "a")
