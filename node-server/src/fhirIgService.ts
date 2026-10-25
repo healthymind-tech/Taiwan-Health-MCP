@@ -51,7 +51,7 @@ import { acceptanceOf, confirmCoding } from "./codeAcceptance.js";
 import { KEYWORD_ONLY_MODE, KEYWORD_ONLY_NOTE } from "./searchQuality.js";
 import { attachSuggestions } from "./fhirSuggestions/index.js";
 import { dbSuggestionDeps, type ServiceHooks } from "./fhirSuggestions/dbDeps.js";
-import type { CodeAlternatives } from "./fhirSuggestions/types.js";
+import type { CodeAlternatives, ImplicitProfiles } from "./fhirSuggestions/types.js";
 import { attachIdSuggestions, isIdClassIssue, normalizationIssues } from "./fhirSuggestions/ids.js";
 import { BUNDLE_TYPES, bundleRules, finalizeBundle as runBundleFinalize, losslessFinalizedBundle, type FinalizeDeps, type FinalizeResult } from "./fhirBundleFinalize.js";
 import { restoreNumbers, stringifyLossless, toPlain } from "./losslessJson.js";
@@ -1851,7 +1851,34 @@ export class FHIRIGService {
         return loc ? this.conceptSearch.related(loc, original, candidates) : null;
       },
       codeAlternatives: (system, code) => this.codeAlternativesFor(pkg, system, code),
+      implicitProfiles: (resourceType, system) => this.implicitProfilesFor(pkg, resourceType, system),
     };
+  }
+
+  /**
+   * v15.2.1: the profiles an IG defines for `resourceType` (StructureDefinitions of kind resource,
+   * derivation constraint, type = the resource type, not abstract — fhir_list_resource_profiles with
+   * base_type), for a resource that declares no profile: the IG is the closure package that owns
+   * `system` (an IG CodeSystem), else `pkg` itself (the resolved / default IG). Read only for the
+   * alternative-coding binding (suggestions R3 / repair alt-coding) — never to validate. Null when
+   * `system` is not an IG CodeSystem.
+   */
+  async implicitProfilesFor(pkg: PackageRow, resourceType: string, system: string): Promise<ImplicitProfiles | null> {
+    if (!resourceType || !system) return null;
+    const loc = await this.locateIgCodeSystem(system, pkg);
+    if (!loc) return null;
+    const [pid, pver] = this.inClosure(pkg, loc) ? [loc.packageId, loc.packageVersion] : [pkg.package_id, pkg.version];
+    const rows = (
+      await query<{ canonical_url: string }>(
+        `SELECT DISTINCT canonical_url FROM fhir.artifacts
+         WHERE package_id = $1 AND package_version = $2 AND resource_type = 'StructureDefinition'
+           AND derivation = 'constraint' AND kind = 'resource' AND base_type = $3 AND canonical_url IS NOT NULL
+           AND COALESCE(raw_json ->> 'abstract', 'false') <> 'true'
+         ORDER BY canonical_url LIMIT 20`,
+        [pid, pver, resourceType],
+      )
+    ).rows;
+    return { ig: `${pid}#${pver}`, profiles: rows.map((r) => r.canonical_url) };
   }
 
   /**
@@ -1940,7 +1967,7 @@ export class FHIRIGService {
     if (!pkg) return null;
     const tree = cloneTree(lossless !== undefined && lossless !== null && typeof lossless === "object" ? lossless : bundle) as Record<string, any>;
     try {
-      const deps = repairDepsFor(pkg, (text, valueSet, system, limit) => this.normalizeCodeIn(pkg, true, text, valueSet, system, limit), new DbValidatorResolver(pkg), (system, code) => this.codeAlternativesFor(pkg, system, code));
+      const deps = repairDepsFor(pkg, (text, valueSet, system, limit) => this.normalizeCodeIn(pkg, true, text, valueSet, system, limit), new DbValidatorResolver(pkg), (system, code) => this.codeAlternativesFor(pkg, system, code), (resourceType, system) => this.implicitProfilesFor(pkg, resourceType, system));
       const result = await repairBundle(tree, deps, { timezone, timezoneSource });
       return { bundle: toPlain(tree) as Record<string, any>, lossless: lossless !== undefined ? tree : undefined, result };
     } catch (e) {
@@ -2446,7 +2473,7 @@ export class FHIRIGService {
     let tzProblem: string | null = null;
     if (repair === "content") {
       try {
-        const deps = repairDepsFor(pkg, (text, valueSet, system, limit) => this.normalizeCodeIn(pkg, true, text, valueSet, system, limit), new DbValidatorResolver(pkg), (system, code) => this.codeAlternativesFor(pkg, system, code));
+        const deps = repairDepsFor(pkg, (text, valueSet, system, limit) => this.normalizeCodeIn(pkg, true, text, valueSet, system, limit), new DbValidatorResolver(pkg), (system, code) => this.codeAlternativesFor(pkg, system, code), (resourceType, system) => this.implicitProfilesFor(pkg, resourceType, system));
         const tz = siteTimezone({ timezone, siteConfig });
         if (tz.problem) tzProblem = tz.problem;
         repaired = await repairResource(tree, deps, { profiles: [canonical], timezone: tz.timezone, timezoneSource: tz.source });

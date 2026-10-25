@@ -104,6 +104,20 @@ export interface CodeAlternatives {
 }
 
 /**
+ * v15.2.1: the profiles an IG defines for a resource type (StructureDefinitions, derivation
+ * constraint, kind resource, type = the resource type), looked up for a resource that declares no
+ * profile: the IG is the closure package owning the Coding's CodeSystem, else the validated
+ * (resolved / default) package. Used only to read an element's binding for the alternative-coding
+ * suggestion / repair — never to validate.
+ */
+export interface ImplicitProfiles {
+  /** `package#version` of the IG the profiles come from. */
+  ig: string;
+  /** Profile canonicals (sorted); empty = the IG defines none for the type. */
+  profiles: string[];
+}
+
+/**
  * Collaborators. Every member is optional except the structure / code lookups; a missing
  * collaborator just means fewer candidates. All of them must be read-only.
  */
@@ -145,6 +159,8 @@ export interface SuggestionDeps {
   relatedCodes?(system: string, original: { code: string | null; label: string | null }, candidates: Array<{ code: string; display: string | null }>): Promise<CodeRelatedness[] | null>;
   /** v15.2 R3: the code's concept in any installed copy of its IG CodeSystem and its linked codings (null = not found / not an IG CodeSystem). */
   codeAlternatives?(system: string, code: string): Promise<CodeAlternatives | null>;
+  /** v15.2.1: the IG profiles of `resourceType` for a resource that declares none (null = unavailable / `system` is not an IG CodeSystem). */
+  implicitProfiles?(resourceType: string, system: string): Promise<ImplicitProfiles | null>;
 }
 
 export interface SuggestOptions {

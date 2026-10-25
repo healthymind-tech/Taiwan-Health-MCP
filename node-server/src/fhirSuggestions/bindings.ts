@@ -22,7 +22,8 @@
  */
 
 import { codingContext, givenValues, normalized, type Budget } from "./codes.js";
-import type { Suggestion, SuggestionDeps } from "./types.js";
+import { bindingsAgree, declaresProfile, implicitCandidates, implicitNote } from "./implicitProfiles.js";
+import type { ImplicitProfiles, Suggestion, SuggestionDeps } from "./types.js";
 import { isObject, nodeAt, parsePath, splitLast, textSim } from "./util.js";
 
 const CORE = "http://hl7.org/fhir/StructureDefinition/";
@@ -61,6 +62,11 @@ export interface ElementBindings {
 export interface WalkOptions {
   /** Profiles the validation was asked for (apply to the root resource; `meta.profile` is read from the instance). */
   profiles?: string[];
+  /**
+   * v15.2.1: profiles of the resource holding the path, used instead of its meta.profile / the
+   * validation's profiles (the implicit-profile binding lookup, implicitProfiles.ts).
+   */
+  resourceProfiles?: string[];
 }
 
 function elements(sd: Record<string, any> | null): Array<Record<string, any>> {
@@ -222,6 +228,7 @@ function bindingsOf(el: Record<string, any>): Array<{ valueSet: string; strength
 
 /** Profiles of a resource instance (`meta.profile`), plus the validation's profiles for the root resource. */
 function profilesOf(res: ResourceAt, root: any, opts: WalkOptions): string[] {
+  if (opts.resourceProfiles) return opts.resourceProfiles.filter((p) => typeof p === "string" && p !== "").slice(0, 3);
   const out: string[] = [];
   const metas = isObject(res.node.meta) && Array.isArray(res.node.meta.profile) ? res.node.meta.profile : [];
   for (const p of metas) if (typeof p === "string" && p && !out.includes(p)) out.push(p);
@@ -426,6 +433,33 @@ export async function suggestCrossSystem(
 // --------------------------------------------------------------------------- //
 
 /**
+ * v15.2.1: the element's bindings from the IG profiles of a resource that declares none
+ * (implicitProfiles.ts): the bindings a profile itself puts on the element and its coding slices
+ * (the core definition's are left out, as they are the same for every profile); one profile
+ * → its bindings; several → only when they all agree; a profile that cannot be read, or profiles
+ * that disagree → null (no alternative — never assumed).
+ */
+async function implicitBindings(deps: SuggestionDeps, root: any, codingPath: string, resourceType: string, system: string): Promise<{ imp: ImplicitProfiles; bindings: BindingRef[] } | null> {
+  if (!deps.implicitProfiles) return null;
+  let imp: ImplicitProfiles | null = null;
+  try {
+    imp = implicitCandidates(await deps.implicitProfiles(resourceType, system));
+  } catch {
+    imp = null;
+  }
+  if (!imp) return null;
+  const per: BindingRef[][] = [];
+  for (const p of imp.profiles) {
+    const c = await elementBindings(deps, root, codingPath, { resourceProfiles: [p] });
+    const sd = c ? c.definitions.find((d) => unversioned(String(d.url || "")) === unversioned(p) && d.type === resourceType) : undefined;
+    if (!c || !sd) return null;
+    per.push(c.bindings.filter((b) => unversioned(b.profile) === unversioned(p)));
+  }
+  if (!bindingsAgree(per)) return null;
+  return { imp, bindings: per[0] };
+}
+
+/**
  * "Unknown code X in CodeSystem S" where X is defined in another installed copy of S (an excerpt
  * CodeSystem — TW Core 1.0.0 ships 35 of the NHI drug codes) and its concept links to codings of
  * other systems (a drug's ATC code from the NHI supplement): each linked coding that
@@ -460,27 +494,40 @@ export async function suggestAlternativeCoding(
   if (!coding) return [];
   const ctx = await elementBindings(deps, root, codingPath, opts);
   if (!ctx) return [];
-  const allowed: Array<{ alt: (typeof accepted)[number]; binding: BindingRef }> = [];
-  for (const alt of accepted) {
-    let via: BindingRef | null = null;
-    for (const b of ctx.bindings.slice(0, 8)) {
-      const systems = await valueSetSystems(deps, b.valueSet);
-      const vss = systems.find((x) => x.system === alt.system);
-      if (!vss) continue;
-      let member: boolean | undefined = vss.codes ? vss.codes.has(alt.code) : undefined;
-      if (member === undefined && deps.valueSetContains) {
-        try {
-          member = await deps.valueSetContains(b.valueSet, alt.system, alt.code);
-        } catch {
-          member = undefined;
+  const allowedBy = async (bindings: BindingRef[]): Promise<Array<{ alt: (typeof accepted)[number]; binding: BindingRef }>> => {
+    const allowed: Array<{ alt: (typeof accepted)[number]; binding: BindingRef }> = [];
+    for (const alt of accepted) {
+      let via: BindingRef | null = null;
+      for (const b of bindings.slice(0, 8)) {
+        const systems = await valueSetSystems(deps, b.valueSet);
+        const vss = systems.find((x) => x.system === alt.system);
+        if (!vss) continue;
+        let member: boolean | undefined = vss.codes ? vss.codes.has(alt.code) : undefined;
+        if (member === undefined && deps.valueSetContains) {
+          try {
+            member = await deps.valueSetContains(b.valueSet, alt.system, alt.code);
+          } catch {
+            member = undefined;
+          }
+        }
+        if (member === true) {
+          via = b;
+          break;
         }
       }
-      if (member === true) {
-        via = b;
-        break;
-      }
+      if (via) allowed.push({ alt, binding: via });
     }
-    if (via) allowed.push({ alt, binding: via });
+    return allowed;
+  };
+  let allowed = await allowedBy(ctx.bindings);
+  // v15.2.1: no declared profile → the binding of the IG's profile(s) of this resource type.
+  let implicit: ImplicitProfiles | null = null;
+  if (!allowed.length && !declaresProfile(ctx.resource, ctx.resource === root ? opts.profiles || [] : [])) {
+    const bindings = await implicitBindings(deps, root, codingPath, ctx.resourceType, system);
+    if (bindings) {
+      allowed = await allowedBy(bindings.bindings);
+      implicit = bindings.imp;
+    }
   }
   if (!allowed.length) return [];
   const m = /^(.*)\.coding\[\d+\]$/.exec(codingPath);
@@ -489,6 +536,7 @@ export async function suggestAlternativeCoding(
     isObject(cc) && Array.isArray(cc.coding) && cc.coding.some((c: any) => isObject(c) && c.system === a.system && c.code === a.code);
   const unique = allowed.length === 1;
   const name = known.display ? ` ('${known.display}')` : "";
+  const bindingNote = implicit ? `; ${implicitNote(implicit)}` : "";
   return allowed.map(({ alt, binding }) => {
     const coding2 = { system: alt.system, code: alt.code, ...(alt.display ? { display: alt.display } : {}) };
     const where = `${canonicalName(binding.valueSet)} (${binding.strength}${binding.element.includes(":") ? `, slice ${binding.element.split(":").pop()}` : ""})`;
@@ -499,7 +547,7 @@ export async function suggestAlternativeCoding(
         confidence: 0.85,
         reason:
           `'${code}'${name} is defined in ${known!.definedIn} but not in the copy of ${system} this package validates against; the CodeableConcept already ` +
-          `carries ${alt.system}#${alt.code}, which ${where} accepts — drop the unknown Coding (the validator rejects the CodeableConcept while it is present)`,
+          `carries ${alt.system}#${alt.code}, which ${where} accepts — drop the unknown Coding (the validator rejects the CodeableConcept while it is present)${bindingNote}`,
         system: alt.system,
         patch: { op: "remove" as const, path: codingPath },
       };
@@ -511,7 +559,7 @@ export async function suggestAlternativeCoding(
       reason:
         `'${code}'${name} is defined in ${known!.definedIn} but not in the copy of ${system} this package validates against; its concept links to ` +
         `${alt.system}#${alt.code}${alt.display ? ` '${alt.display}'` : ""}, which the validator accepts and ${where} includes — replace the Coding ` +
-        "(keep the name in CodeableConcept.text; a product-level code becomes the substance-level one)",
+        `(keep the name in CodeableConcept.text; a product-level code becomes the substance-level one)${bindingNote}`,
       system: alt.system,
       ...(alt.display ? { display: alt.display } : {}),
       patch: { op: "replace" as const, path: codingPath, value: coding2 },

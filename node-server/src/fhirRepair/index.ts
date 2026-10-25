@@ -295,7 +295,7 @@ async function repairOnce(resource: Record<string, any>, deps: RepairDeps, opts:
     if (r.changes.length) sites = await walk();
   }
   if (phases.has("alternatives")) {
-    const r = await repairAlternativeCodings(session, sites, rp, skipRule("alt-coding"));
+    const r = await repairAlternativeCodings(session, sites, rp, skipRule("alt-coding"), profilesFor);
     changes.push(...r.changes);
     issues.push(...r.issues);
     if (r.changes.length) sites = await walk();

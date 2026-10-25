@@ -9,9 +9,9 @@
  * reported (`issues`, with candidates); the validator's own error stays.
  */
 
-import type { CodeAlternatives, ExpandedCoding, NormalizeCandidate } from "../fhirSuggestions/types.js";
+import type { CodeAlternatives, ExpandedCoding, ImplicitProfiles, NormalizeCandidate } from "../fhirSuggestions/types.js";
 
-export type { CodeAlternatives, ExpandedCoding, NormalizeCandidate };
+export type { CodeAlternatives, ExpandedCoding, ImplicitProfiles, NormalizeCandidate };
 
 /**
  * Rule names in `changes[].rule` (in the order the phases run). v14.1: `empty` (ele-1: an empty
@@ -116,6 +116,12 @@ export interface RepairDeps {
    * systems it links to and the validator's verdict on each (null = no copy defines it).
    */
   codeAlternatives?(system: string, code: string): Promise<CodeAlternatives | null>;
+  /**
+   * v15.2.1: the IG profiles of `resourceType` for a resource that declares no profile (the closure
+   * package owning `system`, else the validated one) — read for the alt-coding binding only, never
+   * to validate (null = unavailable / not an IG CodeSystem).
+   */
+  implicitProfiles?(resourceType: string, system: string): Promise<ImplicitProfiles | null>;
 }
 
 export interface RepairOptions {

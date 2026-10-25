@@ -155,14 +155,20 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   when the CodeableConcept already carries it; (parity) WHO ATC codes are checked against the bundled tx.fhir.org
   //   table — a code ATC 2026 lacks is validator_cli's "Unknown code '…' in the CodeSystem 'http://www.whocc.no/atc'
   //   version '2026'" error, a display is checked when TW Core's ValueSet display is the server's (else unchanged).
-  fhir_validate_bundle: "1.14.0",
+  // 1.14.1 (ISSUES_v15.2.1): the R3 alternative coding also for a resource that declares no profile (no meta.profile): the
+  //   element's binding is read from the IG's profile(s) of that resource type (the closure package owning the Coding's
+  //   CodeSystem, else the validated / default IG; one profile, or several that bind the element the same way — else none);
+  //   the reason names the profile ("… because the resource declares no profile"). Validation itself is unchanged.
+  fhir_validate_bundle: "1.14.1",
   // 1.6.2: the binding-aware suggestions above (ISSUES_v10 A) also apply to single-resource validation.
   // 1.7.0: the validator v13 rules above (fhir_validate_bundle 1.9.0).
   // 1.8.0 (ISSUES_v15): the record checks of fhir_validate_bundle 1.11.0 on the resource (data.issues, data.record_checks).
   // 1.9.0 (ISSUES_v15.1): the record checks of fhir_validate_bundle 1.12.0 on the resource (output without source_text unchanged).
   // 1.10.0 (ISSUES_v15.1 R6, recordChecks/dateSuggestions.ts): an ungrounded date whose month / day the record states with another year (a wrong ROC ↔ Gregorian conversion: 民國92年8月25日 → 1983-08-25; +1900 / +1910 / +1912 / the ROC year as Gregorian; or a Gregorian record date) gets the record's date as a replace_value suggestion (patch {op: replace, path, value}; reason quotes the record and the rule 民國 N 年 = 西元 N+1911; one candidate 0.95, several all listed); severity unchanged, never applied — as fhir_validate_bundle 1.13.0.
   // 1.11.0 (ISSUES_v15.2): the suggestion and ATC rules of fhir_validate_bundle 1.14.0.
-  fhir_validate_resource: "1.11.0",
+  // 1.11.1 (ISSUES_v15.2.1): the implicit-profile alternative-coding suggestions of fhir_validate_bundle 1.14.1 (a resource
+  //   validated with neither meta.profile nor `profile`); validation unchanged.
+  fhir_validate_resource: "1.11.1",
   // 1.2.0 (all below): provenance.resolved_by / closure_versions; canonical arguments resolve to their
   // owning package when package_id is omitted; "|version" honoured; list/search: all_packages + zero-hit hint;
   // NO_DEFAULT_IG instead of an arbitrary package when no default IG is set.
@@ -249,7 +255,9 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   (value grounding, primary diagnosis slot); output without source_text unchanged.
   // 1.8.1 (ISSUES_v15.1 R6, recordChecks/dateSuggestions.ts): an ungrounded date whose month / day the record states with another year (a wrong ROC ↔ Gregorian conversion: 民國92年8月25日 → 1983-08-25; +1900 / +1910 / +1912 / the ROC year as Gregorian; or a Gregorian record date) gets the record's date as a replace_value suggestion (patch {op: replace, path, value}; reason quotes the record and the rule 民國 N 年 = 西元 N+1911; one candidate 0.95, several all listed); severity unchanged, never applied — on the ungrounded-value date issues in data.validation.
   // 1.9.0 (ISSUES_v15.2 R4): content repair rule alt-coding (fhir_finalize_bundle 1.5.0); validation as fhir_validate_resource 1.11.0.
-  fhir_finalize_resource: "1.9.0",
+  // 1.9.1 (ISSUES_v15.2.1): repairs and validation as fhir_finalize_bundle 1.5.1 / fhir_validate_resource 1.11.1 (the
+  //   implicit-profile binding never applies here in practice: the `profile` argument is a declared profile).
+  fhir_finalize_resource: "1.9.1",
   // 1.0.0 (authoring/, evaluation v11): the model gives field VALUES, the MCP composes the resource for its profile
   //   (fixed / pattern / defaults / derived / displays / UCUM / ROC dates), validates it, keeps it in a Redis context
   //   (`authoring:ctx:*`, 60-min idle TTL) and assembles the Bundle from keys with deterministic urn:uuid fullUrls
@@ -370,7 +378,11 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   contains (e.g. NHI drug → its ATC code, TW Core medcation-atc-tw), is replaced by it — or dropped when the
   //   CodeableConcept already carries it (validator_cli rejects the CodeableConcept while the unknown Coding is present);
   //   CodeableConcept.text is kept, and set to the original display when absent; several → repair_issues with candidates.
-  fhir_finalize_bundle: "1.5.0",
+  // 1.5.1 (ISSUES_v15.2.1): alt-coding also for an entry resource without meta.profile — the coding element's binding is
+  //   read from the IG's profile(s) of the resource type (the closure package owning the Coding's CodeSystem, else the
+  //   validated / default IG; one profile, or several that agree — else nothing); the change reason names the profile
+  //   ("… because the resource declares no profile"). No meta.profile is added; the verification validates as before.
+  fhir_finalize_bundle: "1.5.1",
   // ── 2026-10-19 actionable errors (additive fields only; successful outputs unchanged) ──
   // search_medical_codes 1.2.1: IG_UNAVAILABLE adds `hint`.
   // FHIR IG tools above (+.0.1): error envelopes add error.hint; IG_NOT_FOUND / NO_DEFAULT_IG add

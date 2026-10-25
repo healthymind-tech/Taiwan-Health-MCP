@@ -83,9 +83,12 @@ export function repairDepsFor(
   resolver: DbValidatorResolver = new DbValidatorResolver(pkg),
   /** v15.2: FHIRIGService.codeAlternativesFor bound to this package (rule alt-coding). */
   codeAlternatives: RepairDeps["codeAlternatives"] = undefined,
+  /** v15.2.1: FHIRIGService.implicitProfilesFor bound to this package (alt-coding bindings of a resource without a profile). */
+  implicitProfiles: RepairDeps["implicitProfiles"] = undefined,
 ): RepairDeps {
   return {
     ...(codeAlternatives ? { codeAlternatives } : {}),
+    ...(implicitProfiles ? { implicitProfiles } : {}),
     fetchStructureDefinition: (url) => resolver.fetchStructureDefinition(url),
     lookupDisplay: async (system, code) => {
       const found = await terminology.lookup(system, code, pkg);

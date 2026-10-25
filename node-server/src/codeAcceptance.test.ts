@@ -268,3 +268,94 @@ test("repair alt-coding: unique accepted alternative replaces the unknown coding
   const inExcerpt = order({ system: CS, code: "D003" });
   assert.deepEqual((await repairResource(inExcerpt, rdeps({ codeAlternatives: async () => ({ display: null, definedIn: "ex#1", inValidatedCopy: true, alternatives: [] }) }))).changes, []);
 });
+
+// --------------------------------------------------------------------------- v15.2.1 implicit profile
+
+const PROFILE2 = "http://example.org/fhir/StructureDefinition/DrugOrderOutpatient";
+const PROFILE3 = "http://example.org/fhir/StructureDefinition/DrugOrderOther";
+const VS_OTHER = "http://example.org/fhir/ValueSet/other-substance";
+// PROFILE2 binds the coding slices exactly as PROFILE; PROFILE3 binds the substance slice to another ValueSet.
+SDS[PROFILE2] = { ...SDS[PROFILE], url: PROFILE2 };
+SDS[PROFILE3] = {
+  ...SDS[PROFILE],
+  url: PROFILE3,
+  snapshot: {
+    element: SDS[PROFILE].snapshot.element.map((e: El) =>
+      e.id === "MedicationRequest.medication[x]:medicationCodeableConcept.coding:substance" ? { ...e, binding: { strength: "required", valueSet: VS_OTHER } } : e,
+    ),
+  },
+};
+
+/** A resource without meta.profile; implicitProfiles answers `profiles` (and counts its calls). */
+function implicitDeps(profiles: string[] | null): { calls: Array<[string, string]>; fn: NonNullable<SuggestionDeps["implicitProfiles"]> } {
+  const calls: Array<[string, string]> = [];
+  return {
+    calls,
+    fn: async (resourceType, system) => {
+      calls.push([resourceType, system]);
+      return profiles && system === CS && resourceType === "MedicationRequest" ? { ig: "ex.ig#1.0.0", profiles } : null;
+    },
+  };
+}
+
+const bare = (coding: El, text: string | null = null): El => ({ resourceType: "MedicationRequest", status: "active", medicationCodeableConcept: { coding: [coding], ...(text ? { text } : {}) } });
+const ALT_PATH = "MedicationRequest.medicationCodeableConcept.coding[0].code";
+
+test("implicit profile: no meta.profile + one IG profile → the alternative coding is suggested and repaired, the profile named", async () => {
+  // Without the collaborator: the core definition's bindings only → nothing (the v15.2 behaviour).
+  assert.deepEqual(await suggestAlternativeCoding(sdeps(), bare({ system: CS, code: "D001" }), ALT_PATH, CS, "D001"), []);
+  const none = bare({ system: CS, code: "D001" });
+  assert.deepEqual((await repairResource(none, rdeps())).changes, []);
+  assert.deepEqual(none.medicationCodeableConcept.coding, [{ system: CS, code: "D001" }]);
+
+  const imp = implicitDeps([PROFILE]);
+  const s = await suggestAlternativeCoding(sdeps({ implicitProfiles: imp.fn }), bare({ system: CS, code: "D001" }), ALT_PATH, CS, "D001");
+  assert.equal(s.length, 1);
+  assert.equal(s[0].kind, "replace_coding");
+  assert.equal(s[0].value, "S01");
+  assert.ok(s[0].reason.includes(`the binding is from ex.ig#1.0.0's profile "${PROFILE}" because the resource declares no profile`), s[0].reason);
+  assert.deepEqual(imp.calls, [["MedicationRequest", CS]]);
+
+  const mr = bare({ system: CS, code: "D001", display: "Zorvanil Tablets 5mg" });
+  const r = await repairResource(mr, rdeps({ implicitProfiles: implicitDeps([PROFILE]).fn }));
+  assert.deepEqual(mr.medicationCodeableConcept, { coding: [{ system: ALT, code: "S01", display: "zorvanil" }], text: "Zorvanil Tablets 5mg" });
+  assert.equal(r.changes[0].rule, "alt-coding");
+  assert.ok(r.changes[0].reason.includes(`profile "${PROFILE}" because the resource declares no profile`), r.changes[0].reason);
+  assert.equal(mr.meta, undefined, "no profile is added to the resource");
+});
+
+test("implicit profile: several profiles that bind the element the same way → used; disagreeing / unreadable → nothing", async () => {
+  const agree = await suggestAlternativeCoding(sdeps({ implicitProfiles: implicitDeps([PROFILE, PROFILE2]).fn }), bare({ system: CS, code: "D001" }), ALT_PATH, CS, "D001");
+  assert.equal(agree.length, 1);
+  assert.match(agree[0].reason, /profiles ".*DrugOrder", ".*DrugOrderOutpatient" \(all 2 bind this element the same way\)/);
+  const mr = bare({ system: CS, code: "D001" });
+  const ra = await repairResource(mr, rdeps({ implicitProfiles: implicitDeps([PROFILE, PROFILE2]).fn }));
+  assert.equal(mr.medicationCodeableConcept.coding[0].system, ALT);
+  assert.match(ra.changes[0].reason, /all 2 bind this element the same way/);
+
+  for (const profiles of [[PROFILE, PROFILE3], [PROFILE, "http://example.org/fhir/StructureDefinition/Missing"], []]) {
+    assert.deepEqual(await suggestAlternativeCoding(sdeps({ implicitProfiles: implicitDeps(profiles).fn }), bare({ system: CS, code: "D001" }), ALT_PATH, CS, "D001"), [], profiles.join());
+    const x = bare({ system: CS, code: "D001" });
+    const rx = await repairResource(x, rdeps({ implicitProfiles: implicitDeps(profiles).fn }));
+    assert.deepEqual(rx.changes, [], profiles.join());
+    assert.deepEqual(x.medicationCodeableConcept.coding, [{ system: CS, code: "D001" }]);
+  }
+});
+
+test("implicit profile: a declared profile (meta.profile / caller profile) keeps the v15.2 behaviour, the lookup is not made", async () => {
+  const imp = implicitDeps([PROFILE3]);
+  const s = await suggestAlternativeCoding(sdeps({ implicitProfiles: imp.fn }), order({ system: CS, code: "D001" }), ALT_PATH, CS, "D001");
+  assert.equal(s.length, 1);
+  assert.doesNotMatch(s[0].reason, /declares no profile/);
+  const mr = order({ system: CS, code: "D001" });
+  const r = await repairResource(mr, rdeps({ implicitProfiles: imp.fn }));
+  assert.equal(mr.medicationCodeableConcept.coding[0].system, ALT);
+  assert.doesNotMatch(r.changes[0].reason, /declares no profile/);
+  // A caller profile counts as declared too (fhir_finalize_resource): its binding, no implicit lookup.
+  const viaCaller = bare({ system: CS, code: "D001" });
+  await repairResource(viaCaller, rdeps({ implicitProfiles: imp.fn }), { profiles: [PROFILE] });
+  assert.equal(viaCaller.medicationCodeableConcept.coding[0].system, ALT);
+  const sc = await suggestAlternativeCoding(sdeps({ implicitProfiles: imp.fn }), bare({ system: CS, code: "D001" }), ALT_PATH, CS, "D001", { profiles: [PROFILE] });
+  assert.equal(sc.length, 1);
+  assert.deepEqual(imp.calls, [], "implicitProfiles never consulted for a declared profile");
+});

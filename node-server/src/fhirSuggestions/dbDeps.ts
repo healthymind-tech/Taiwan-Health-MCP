@@ -20,6 +20,8 @@ export interface ServiceHooks {
   relatedCodes?: SuggestionDeps["relatedCodes"];
   /** v15.2: a code's concept in any installed copy of its IG CodeSystem and its accepted linked codings. */
   codeAlternatives?: SuggestionDeps["codeAlternatives"];
+  /** v15.2.1: the IG profiles of a resource type, for a resource that declares none (alternative-coding bindings only). */
+  implicitProfiles?: SuggestionDeps["implicitProfiles"];
 }
 
 function cosine(a: number[], b: number[]): number {
@@ -111,6 +113,7 @@ export function dedupedDeps(deps: SuggestionDeps): SuggestionDeps {
     similarity: once("similarity", deps.similarity?.bind(deps)),
     relatedCodes: once("related", deps.relatedCodes?.bind(deps)),
     codeAlternatives: once("alternatives", deps.codeAlternatives?.bind(deps)),
+    implicitProfiles: once("implicit", deps.implicitProfiles?.bind(deps)),
   };
 }
 
@@ -150,6 +153,7 @@ export function dbSuggestionDeps(pkg: PackageRow, resolver: ValidatorResolver, h
     nearCodes: hooks.nearCodes,
     relatedCodes: hooks.relatedCodes,
     codeAlternatives: hooks.codeAlternatives,
+    implicitProfiles: hooks.implicitProfiles,
     similarity: hooks.embedBatch
       ? async (text, candidates) => {
           if (!candidates.length) return [];
