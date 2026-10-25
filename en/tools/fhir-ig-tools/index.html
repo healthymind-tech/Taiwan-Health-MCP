@@ -1089,6 +1089,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#content-repair" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Content repair (repair="content")
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#validation-suggestions" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2564,6 +2575,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#content-repair" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Content repair (repair="content")
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#validation-suggestions" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2818,8 +2840,8 @@ If none applies the call fails with <code>NO_DEFAULT_IG</code> (no arbitrary pac
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_finalize_resource</code></td>
-<td style="text-align: left;">Finalise a draft already written as FHIR JSON against its profile and validate it: pins fixed / pattern values only where the draft has the parent node (slice members and <code>_slice</code> tags at any depth included), never adds clinical content; with field values use <code>fhir_author_resources</code> (see "<a href="#authoring">Authoring from field values</a>")</td>
-<td style="text-align: left;"><code>profile</code>, <code>draft</code>, <code>context_id</code>, <code>key</code>, <code>generate_narrative</code> (<code>true</code> by default)</td>
+<td style="text-align: left;">Finalise a draft already written as FHIR JSON against its profile and validate it: pins fixed / pattern values only where the draft has the parent node (slice members and <code>_slice</code> tags at any depth included), never adds clinical content; <code>repair="content"</code> (default) first applies the same content repairs as <code>fhir_finalize_bundle</code> (see "<a href="#content-repair">Content repair</a>") and returns <code>changes</code> / <code>repair_issues</code>; with field values use <code>fhir_author_resources</code> (see "<a href="#authoring">Authoring from field values</a>")</td>
+<td style="text-align: left;"><code>profile</code>, <code>draft</code>, <code>context_id</code>, <code>key</code>, <code>generate_narrative</code> (<code>true</code> by default), <code>repair</code> (<code>content</code> / <code>ids</code>), <code>timezone</code></td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_resolve_reference</code></td>
@@ -2833,8 +2855,8 @@ If none applies the call fails with <code>NO_DEFAULT_IG</code> (no arbitrary pac
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_finalize_bundle</code></td>
-<td style="text-align: left;"><strong>Call before emitting the final Bundle</strong>: it only normalises <code>fullUrl</code>, <code>reference</code> and <code>id</code> and never touches clinical content (see "Bundle finalisation" below); numbers keep the caller's spelling (<code>10.0</code> stays <code>10.0</code>). Returns the finalised <code>bundle</code>, every change as <code>changes[{path, from, to, rule}]</code>, the references it could not decide as <code>unresolved[{path, reference, candidates}]</code>, <code>notes</code> and <code>id_map</code>. <code>bundle_type</code> sets <code>Bundle.type</code> (a profile-fixed type is never overridden)</td>
-<td style="text-align: left;"><code>bundle</code>, <code>package_id</code>, <code>version</code>, <code>bundle_profile</code> (canonical or id of the target Bundle profile; defaults to <code>meta.profile</code>), <code>bundle_type</code> (R4 bundle-type code)</td>
+<td style="text-align: left;"><strong>Call before emitting the final Bundle</strong>: it normalises <code>fullUrl</code>, <code>reference</code> and <code>id</code> (see "Bundle finalisation" below) and, with <code>repair="content"</code> (default), corrects content errors whose fix is uniquely determined — never guessing, undecidable ones reported with candidates (see "<a href="#content-repair">Content repair</a>"; <code>repair="ids"</code> = ids only); numbers keep the caller's spelling (<code>10.0</code> stays <code>10.0</code>). Returns the finalised <code>bundle</code>, every change as <code>changes[{path, from, to, rule}]</code>, the references it could not decide as <code>unresolved[{path, reference, candidates}]</code>, <code>notes</code> and <code>id_map</code>. <code>bundle_type</code> sets <code>Bundle.type</code> (a profile-fixed type is never overridden)</td>
+<td style="text-align: left;"><code>bundle</code>, <code>package_id</code>, <code>version</code>, <code>bundle_profile</code> (canonical or id of the target Bundle profile; defaults to <code>meta.profile</code>), <code>bundle_type</code> (R4 bundle-type code), <code>repair</code> (<code>content</code> default / <code>ids</code>), <code>timezone</code> (UTC offset for ROC date-times)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_validate_resource</code></td>
@@ -2844,7 +2866,7 @@ If none applies the call fails with <code>NO_DEFAULT_IG</code> (no arbitrary pac
 <tr>
 <td style="text-align: left;"><code>fhir_validate_bundle</code></td>
 <td style="text-align: left;">Validate an entire Bundle (each entry against its <code>meta.profile</code>, plus reference integrity inside the Bundle). ID-class errors (<code>UUIDs must be valid…</code>, unresolved references, missing fullUrl, bdl-7, invalid id) carry <code>suggestions</code> and a Bundle-level <code>id_map</code> / <code>id_changes</code>; with <code>normalize_ids=true</code> the Bundle is finalised first and validated as <code>normalized_bundle</code> (see "Bundle finalisation" below). An optional <code>source_text</code> adds a grounding check and merges the results (see further below)</td>
-<td style="text-align: left;"><code>bundle</code>, <code>normalize_ids</code> (<code>false</code> by default), <code>source_text</code>, <code>site_config</code>, <code>evidence_map</code>, <code>grounding</code>, <code>grounding_verbosity</code></td>
+<td style="text-align: left;"><code>bundle</code>, <code>normalize_ids</code> (<code>false</code> by default), <code>repair</code> (<code>ids</code> default / <code>content</code>, with <code>normalize_ids</code>), <code>source_text</code>, <code>site_config</code>, <code>evidence_map</code>, <code>grounding</code>, <code>grounding_verbosity</code></td>
 </tr>
 </tbody>
 </table>
@@ -2905,6 +2927,50 @@ If none applies the call fails with <code>NO_DEFAULT_IG</code> (no arbitrary pac
 </table>
 <p>Apart from those fields the output Bundle is identical to the input (deep copy, key order preserved), <strong>numbers included</strong>: the HTTP layer parses the request with JSON.parse, which turns <code>10.0</code> into <code>10</code>, <code>1e3</code> into <code>1000</code> and rounds integers beyond 2^53, while a FHIR <code>decimal</code>'s precision is part of its value. So <code>fhir_finalize_bundle</code>, the <code>normalized_bundle</code> of <code>fhir_validate_bundle(normalize_ids=true)</code>, the entry resources of <code>fhir_build_bundle</code> and the <code>resource</code> of <code>fhir_finalize_resource</code> re-read the <code>bundle</code> / <code>entries</code> / <code>draft</code> argument losslessly from the raw request text; the finalisation still runs on the ordinary tree (UUIDs, <code>changes</code> and validation are unchanged) and only at the end is each number swapped back to the caller's spelling (<code>10.0</code>, <code>1.50</code>, <code>0.50</code>, <code>-0.0</code>, <code>12345678901234567890</code>, inside extensions and nested arrays too; only where the value is the same). All three entry points (<code>/mcp</code>, <code>POST /tools/&lt;name&gt;</code>, the admin console playground) return the same bytes. An already valid Bundle is returned unchanged with <code>changes: []</code>, and finalising a finalised Bundle changes nothing. Without <code>package_id</code> the package is resolved from <code>bundle_profile</code> / <code>meta.profile</code>; when no IG resolves, <code>hl7.fhir.r4.core</code> is used.</p>
 <p><code>fhir_validate_bundle</code> shares the engine: by default (<code>normalize_ids=false</code>) ID-class errors carry <code>suggestions</code> (<code>replace_fullurl</code> / <code>replace_reference</code> / <code>replace_id</code> / <code>move_entry</code> / <code>replace_bundle_type</code>) and <code>data</code> gains the full map <code>id_map</code> (old → new), <code>id_changes</code> (every path that must change together) and <code>id_unresolved</code>; a Bundle without ID-class issues is byte-identical to 1.6.1. With <code>normalize_ids=true</code> the Bundle is finalised first, the <strong>normalised</strong> Bundle is validated and returned as <code>normalized_bundle</code> with <code>id_changes</code>, and each fixed problem is noted as an <code>information</code> issue. <code>fhir_get_profile_required_elements</code> on a Bundle profile additionally returns <code>bundle_rules</code> (fullUrl format, references = the target's fullUrl, id format, a profile-fixed <code>Bundle.type</code> — or the hint that <code>fhir_finalize_bundle</code>'s <code>bundle_type</code> sets a free one —, document / message ordering, required elements and entry slices), likewise generated from the core specification and the StructureDefinition.</p>
+<h3 id="content-repair">Content repair (repair="content")<a class="headerlink" href="#content-repair" title="Permanent link">&para;</a></h3>
+<p><code>fhir_finalize_bundle</code> / <code>fhir_finalize_resource</code> take <code>repair</code>, default <code>"content"</code>: besides the id normalisation above they correct content errors whose fix is <strong>uniquely determined</strong>; <code>repair="ids"</code> is exactly 1.1.0 / 1.5.0 (ids only). <code>fhir_validate_bundle</code> accepts <code>repair="content"</code> with <code>normalize_ids=true</code>. <code>fhir_author_resources</code> / <code>fhir_assemble_bundle</code> always apply the same rules (<code>node-server/src/fhirRepair/</code> — one input, one verdict, one repair in every tool). Every correction is listed in <code>changes[{path, from, to, rule, reason}]</code>; a value that cannot be decided uniquely is <strong>left as written</strong> and listed in <code>repair_issues[{path, rule, message, candidates}]</code>, the validator's error stays (and carries <code>repair</code>).</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">rule</th>
+<th style="text-align: left;">Corrects</th>
+<th style="text-align: left;">Left as written and reported</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>display</code></td>
+<td style="text-align: left;">the code exists and the display is the <strong>same concept written differently</strong> → the official display; the original wording moves to an empty <code>CodeableConcept.text</code>. Method: (a) equal to one of the valid displays / designations the validator lists (other languages, LOINC long / short names) after normalisation — NFKC, case, punctuation, word order, plural, roman numerals (Type II ↔ Type 2), SNOMED semantic tag, initialism; (b) otherwise the display is searched in the code's own system (<code>fhir_normalize_code</code>): <strong>this code ranks first</strong>, exactly or sharing at least half its words with a valid display</td>
+<td style="text-align: left;">another code ranks first (SNOMED <code>428921007</code> with "Pneumonia" → <code>233604007</code>), the code ranks only lower, no search available — a different meaning: not changed, the candidates are the codes the display denotes; ancestors / descendants count as different</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ucum</code></td>
+<td style="text-align: left;">a Quantity (any Quantity-typed element, <code>component[].valueQuantity</code> included) with no code, a code that is not valid UCUM, or a LOINC code (<code>8310-5</code>) as code gets the UCUM code its <code>unit</code> / code text determines, plus <code>system</code>: UCUM names / synonyms / symbols (<code>mmHg</code> → <code>mm[Hg]</code>, <code>°C</code>/<code>℃</code>/<code>degC</code> → <code>Cel</code>), the <code>&lt;count word&gt;/&lt;time unit&gt;</code> grammar (<code>次/分</code> → <code>/min</code>, <code>mg/天</code> → <code>mg/d</code>); it must fit the profile's fixed code or required UCUM ValueSet (<code>min</code> where <code>/min</code> is fixed is read as <code>/min</code>)</td>
+<td style="text-align: left;">the evidence disagrees (code <code>g</code>, unit <code>kg</code>), the derived code is not allowed (<code>K</code> for a body temperature), nothing derivable; a <code>system</code> naming another real CodeSystem is never touched</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>roc-date</code></td>
+<td style="text-align: left;">ROC (民國) dates in date / dateTime / instant: marked (民國 / ROC) or three-digit years (<code>115-10-03</code>, <code>115/10/03</code>, <code>115-10-03T16:05:00+08:00</code>, <code>民國115年10月3日</code>) → +1911, precision kept; a time keeps its own offset, else takes the <code>timezone</code> argument</td>
+<td style="text-align: left;">one- or two-digit years (<code>99-10-03</code>) are ambiguous; a time without offset and no <code>timezone</code>; four-digit years are not this rule's business</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>system</code></td>
+<td style="text-align: left;">a <code>Coding.system</code> that is not absolute (<code>ICD-10-CM</code>, <code>LOINC</code>, <code>SNOMED CT</code>, <code>loinc.org</code>, an OID), a ValueSet URL, or a URL that resolves to nothing (<code>…/ns/fhir/CodeSystem#icd-10-cm</code>, <code>…/CodeSystem/_ActMedicalServiceCode</code>) → the <strong>one CodeSystem holding the code</strong> among those it names: installed CodeSystems' name / title / id / URL tail / identifier, the FHIR R4 external code system list, the URL's fragment / last segment, a THO abstract <code>_</code> code, the element's bound ValueSets</td>
+<td style="text-align: left;">several match, or the code is not in the system named</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>shape</code></td>
+<td style="text-align: left;">lossless reshapes: a Coding given as <code>{coding: [one]}</code> (<code>Encounter.class</code>), a Coding nested in a Coding's <code>code</code>, a CodeableConcept given as a bare Coding, a one-item array for a single element, a single value for a repeating one, a property misplaced where exactly one neighbour defines it (<code>Dosage.doseQuantity</code> → <code>doseAndRate[0].doseQuantity</code>, <code>entry.meta</code> → <code>entry.resource.meta</code>, <code>Timing.route</code> → <code>Dosage.route</code>), a missing <code>resourceType</code> when <code>meta.profile</code> names one resource type</td>
+<td style="text-align: left;">several codings, a text that differs from the display, several possible places; the message shows the correct shape with an example</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>code</code></td>
+<td style="text-align: left;">a required-bound <code>code</code> written as one code's display or in another case (<code>periodUnit: "hour"</code> → <code>h</code>), complete local expansions of ≤ 200 codes only</td>
+<td style="text-align: left;">several or none match</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Never adds an error</strong>: each resource is validated before and after; when the repaired resource has an error it did not have (a display error revealed by a corrected <code>system</code>, profile rules that apply once <code>meta.profile</code> is moved in), the responsible changes are withdrawn and explained in <code>repair_issues</code> (warning, <code>not applied: …</code>). The same input always gives the same output, a repaired Bundle repaired again yields <code>changes: []</code>, and numbers keep their spelling.</p>
 <h3 id="validation-suggestions">Fix suggestions (suggestions / caused_by)<a class="headerlink" href="#validation-suggestions" title="Permanent link">&para;</a></h3>
 <p>Besides saying what is wrong, validation issues carry, where possible, "what to change it to": <code>suggestions</code> is a list of candidates ordered by <code>confidence</code> (at most 5 per issue; up to 12 for a binding error on a small ValueSet), and reference-chain errors get <code>caused_by</code>. Both are <strong>additive</strong> — the set of issues, their severity and message, and <code>valid</code> are unchanged; the field is absent when there is no suggestion.</p>
 <pre><code class="language-json">{&quot;severity&quot;: &quot;error&quot;, &quot;path&quot;: &quot;MedicationRequest.dosageInstruction[0].timing.repeat&quot;, &quot;message&quot;: &quot;Unrecognized property 'periodUnits'&quot;,
@@ -3234,7 +3300,7 @@ Every issue carries <code>rule</code> and <code>source:"grounding"</code>, and i
 <tbody>
 <tr>
 <td style="text-align: left;"><code>fhir_validate_bundle</code></td>
-<td style="text-align: left;">1.9.0 (validator v13: a ValueSet canonical as <code>Coding.system</code> is an error, LOINC property filters decide membership); 1.8.0 (<code>normalized_bundle</code> keeps number spellings; bdl-11 / bdl-12 on a document / message without its head resource carry <code>replace_value</code> / <code>add_resource</code> suggestions; 1.7.0: <code>normalize_ids</code>, ID-class <code>suggestions</code> and <code>id_map</code> / <code>id_changes</code>)</td>
+<td style="text-align: left;">1.10.0 (<code>repair="content"</code> with <code>normalize_ids=true</code>: content repairs before validation, <code>content_changes</code> / <code>repair_issues</code>); 1.9.0 (validator v13: a ValueSet canonical as <code>Coding.system</code> is an error, LOINC property filters decide membership); 1.8.0 (<code>normalized_bundle</code> keeps number spellings; bdl-11 / bdl-12 on a document / message without its head resource carry <code>replace_value</code> / <code>add_resource</code> suggestions; 1.7.0: <code>normalize_ids</code>, ID-class <code>suggestions</code> and <code>id_map</code> / <code>id_changes</code>)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_validate_resource</code></td>
@@ -3242,7 +3308,7 @@ Every issue carries <code>rule</code> and <code>source:"grounding"</code>, and i
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_finalize_bundle</code></td>
-<td style="text-align: left;">1.1.0 (number spellings kept, <code>bundle_type</code> argument, hint for a document without a Composition; 1.0.1: Bundle finalisation: fullUrl-uuid / reference-rewire / resource-id / bundle-type / document-order)</td>
+<td style="text-align: left;">1.2.0 (<code>repair</code>, default <code>content</code>: display / ucum / roc-date / system / shape / code content repairs, verified to add no error, <code>repair_issues</code>, <code>timezone</code>; <code>repair="ids"</code> = 1.1.0); 1.1.0 (number spellings kept, <code>bundle_type</code> argument, hint for a document without a Composition; 1.0.1: Bundle finalisation: fullUrl-uuid / reference-rewire / resource-id / bundle-type / document-order)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_build_bundle</code></td>
@@ -3266,7 +3332,7 @@ Every issue carries <code>rule</code> and <code>source:"grounding"</code>, and i
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_finalize_resource</code></td>
-<td style="text-align: left;">1.5.0 (validation rules as <code>fhir_validate_resource</code> 1.7.0); 1.4.0 (slice members pinned by their discriminators, <code>_slice</code> tags at any depth and always removed; 1.3.2: <code>resource</code> keeps the draft's number spellings; 1.3.1: validation rules as <code>fhir_validate_resource</code> 1.6.1; 1.3.0: validation issue <code>suggestions</code> / <code>caused_by</code>)</td>
+<td style="text-align: left;">1.6.0 (<code>repair</code> / <code>timezone</code>: the content repairs of <code>fhir_finalize_bundle</code> 1.2.0, <code>changes</code> / <code>repair_issues</code>); 1.5.0 (validation rules as <code>fhir_validate_resource</code> 1.7.0); 1.4.0 (slice members pinned by their discriminators, <code>_slice</code> tags at any depth and always removed; 1.3.2: <code>resource</code> keeps the draft's number spellings; 1.3.1: validation rules as <code>fhir_validate_resource</code> 1.6.1; 1.3.0: validation issue <code>suggestions</code> / <code>caused_by</code>)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_lookup_code</code></td>
@@ -3286,11 +3352,11 @@ Every issue carries <code>rule</code> and <code>source:"grounding"</code>, and i
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_author_resources</code></td>
-<td style="text-align: left;">1.3.0 (a filter-defined ValueSet written as the system is corrected too, the note says whether membership was confirmed or unverifiable; an uncorrected ValueSet system is an error, validation as 1.7.0); 1.2.0 (a ValueSet URL / an unresolvable URL in <code>Coding.system</code> is corrected to the right CodeSystem when unique, with a note); 1.1.0 (the display follows the code, single values wrapped into arrays, defaults only on required elements and <code>apply_defaults</code>, <code>site_config</code>, <code>notes</code> / <code>settings</code> in the result; 1.0.0: authoring from field values, see "<a href="#authoring">Authoring from field values</a>")</td>
+<td style="text-align: left;">1.4.0 (system correction and display check moved to the shared repair layer: a display is replaced only for the same concept, a different meaning is kept with a warning and candidates; UCUM / ROC / system-name / shape repairs as in the finalize tools; repairs never add a validation error); 1.3.0 (a filter-defined ValueSet written as the system is corrected too, the note says whether membership was confirmed or unverifiable; an uncorrected ValueSet system is an error, validation as 1.7.0); 1.2.0 (a ValueSet URL / an unresolvable URL in <code>Coding.system</code> is corrected to the right CodeSystem when unique, with a note); 1.1.0 (the display follows the code, single values wrapped into arrays, defaults only on required elements and <code>apply_defaults</code>, <code>site_config</code>, <code>notes</code> / <code>settings</code> in the result; 1.0.0: authoring from field values, see "<a href="#authoring">Authoring from field values</a>")</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_assemble_bundle</code></td>
-<td style="text-align: left;">1.2.0 (resources as <code>fhir_author_resources</code> 1.3.0, validation as <code>fhir_validate_bundle</code> 1.9.0); 1.1.0 (<code>site_config</code> merged with the context's and passed to grounding; 1.0.0: Bundle from a list of keys)</td>
+<td style="text-align: left;">1.3.0 (finalize always with <code>repair="content"</code>, <code>repair_issues</code>, resources as <code>fhir_author_resources</code> 1.4.0); 1.2.0 (resources as <code>fhir_author_resources</code> 1.3.0, validation as <code>fhir_validate_bundle</code> 1.9.0); 1.1.0 (<code>site_config</code> merged with the context's and passed to grounding; 1.0.0: Bundle from a list of keys)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_get_authoring_fields</code></td>
