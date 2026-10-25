@@ -2862,7 +2862,7 @@
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_finalize_resource</code></td>
-<td style="text-align: left;">1.9.0（v15.2：<code>alt-coding</code>；驗證同 <code>fhir_validate_resource</code> 1.11.0）；將已寫好的 FHIR JSON 草稿依剖面定稿並驗證：只在草稿已有父節點處釘上 fixed / pattern（含 slice 成員與任何深度的 <code>_slice</code> 標記），不補臨床內容；<code>repair="content"</code>（預設）先套用與 <code>fhir_finalize_bundle</code> 相同的內容修正（見「<a href="#content-repair">內容修正</a>」），回傳 <code>changes</code> / <code>repair_issues</code>；有欄位值時改用 <code>fhir_author_resources</code>（見「<a href="#authoring">從欄位值撰寫資源</a>」）</td>
+<td style="text-align: left;">1.9.1（v15.2.1：同 <code>fhir_finalize_bundle</code> 1.5.1）；1.9.0（v15.2：<code>alt-coding</code>；驗證同 <code>fhir_validate_resource</code> 1.11.0）；將已寫好的 FHIR JSON 草稿依剖面定稿並驗證：只在草稿已有父節點處釘上 fixed / pattern（含 slice 成員與任何深度的 <code>_slice</code> 標記），不補臨床內容；<code>repair="content"</code>（預設）先套用與 <code>fhir_finalize_bundle</code> 相同的內容修正（見「<a href="#content-repair">內容修正</a>」），回傳 <code>changes</code> / <code>repair_issues</code>；有欄位值時改用 <code>fhir_author_resources</code>（見「<a href="#authoring">從欄位值撰寫資源</a>」）</td>
 <td style="text-align: left;"><code>profile</code>, <code>draft</code>, <code>context_id</code>, <code>key</code>, <code>generate_narrative</code>（預設 <code>true</code>）, <code>repair</code>（<code>content</code> / <code>ids</code>）, <code>timezone</code>, <code>site_config</code></td>
 </tr>
 <tr>
@@ -2877,17 +2877,17 @@
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_finalize_bundle</code></td>
-<td style="text-align: left;">1.5.0（v15.2：內容修正規則 <code>alt-coding</code>）；<strong>在輸出最終 Bundle 前呼叫</strong>：整理 <code>fullUrl</code>、<code>reference</code> 和 <code>id</code>（見下節「Bundle 定稿」），<code>repair="content"</code>（預設）另修正可唯一確定的內容錯誤、不能確定的不猜並回報候選（見「<a href="#content-repair">內容修正</a>」；<code>repair="ids"</code> 只整理 id）；數字保留呼叫端的原始寫法（<code>10.0</code> 仍是 <code>10.0</code>）。回傳整理後的 <code>bundle</code>、每一處改動 <code>changes[{path, from, to, rule}]</code>、無法確定的引用 <code>unresolved[{path, reference, candidates}]</code>、<code>notes</code> 與 <code>id_map</code>。<code>bundle_type</code> 可指定 <code>Bundle.type</code>（剖面固定的 type 不會被覆寫）</td>
+<td style="text-align: left;">1.5.1（v15.2.1：<code>alt-coding</code> 也適用於未宣告 <code>meta.profile</code> 的資源）；1.5.0（v15.2：內容修正規則 <code>alt-coding</code>）；<strong>在輸出最終 Bundle 前呼叫</strong>：整理 <code>fullUrl</code>、<code>reference</code> 和 <code>id</code>（見下節「Bundle 定稿」），<code>repair="content"</code>（預設）另修正可唯一確定的內容錯誤、不能確定的不猜並回報候選（見「<a href="#content-repair">內容修正</a>」；<code>repair="ids"</code> 只整理 id）；數字保留呼叫端的原始寫法（<code>10.0</code> 仍是 <code>10.0</code>）。回傳整理後的 <code>bundle</code>、每一處改動 <code>changes[{path, from, to, rule}]</code>、無法確定的引用 <code>unresolved[{path, reference, candidates}]</code>、<code>notes</code> 與 <code>id_map</code>。<code>bundle_type</code> 可指定 <code>Bundle.type</code>（剖面固定的 type 不會被覆寫）</td>
 <td style="text-align: left;"><code>bundle</code>, <code>package_id</code>, <code>version</code>, <code>bundle_profile</code>（目標 Bundle profile 的 canonical 或 id；省略時取 <code>meta.profile</code>）, <code>bundle_type</code>（R4 bundle-type 代碼）, <code>repair</code>（<code>content</code> 預設 / <code>ids</code>）, <code>timezone</code>（site 時區：UTC offset 或 IANA 名稱）, <code>site_config</code>（院所設定文字，<code>timezone:</code> 行可提供時區）</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_validate_resource</code></td>
-<td style="text-align: left;">1.11.0（v15.2，同 <code>fhir_validate_bundle</code> 1.14.0）；驗證單一資源（結構 + 術語綁定）；未給 <code>profile</code> 時取 <code>meta.profile</code>。選用的 <code>source_text</code> 會另跑 grounding 檢查（見下節）</td>
+<td style="text-align: left;">1.11.1（v15.2.1，同 <code>fhir_validate_bundle</code> 1.14.1）；1.11.0（v15.2，同 <code>fhir_validate_bundle</code> 1.14.0）；驗證單一資源（結構 + 術語綁定）；未給 <code>profile</code> 時取 <code>meta.profile</code>。選用的 <code>source_text</code> 會另跑 grounding 檢查（見下節）</td>
 <td style="text-align: left;"><code>resource</code>, <code>profile</code>, <code>source_text</code>, <code>site_config</code>, <code>evidence_map</code>, <code>grounding</code>, <code>grounding_verbosity</code></td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_validate_bundle</code></td>
-<td style="text-align: left;">1.14.0（v15.2：Unknown code 建議的相關性門檻、<code>replace_coding</code> / <code>remove_coding</code> 替代 coding、ATC 依內建 tx.fhir.org 判定表檢查）；驗證整個 Bundle（各 entry 依其 <code>meta.profile</code> + Bundle 內參照完整性）。ID 類錯誤（<code>UUIDs must be valid…</code>、引用無法解析、缺 fullUrl、bdl-7、不合法 id）附 <code>suggestions</code> 與 Bundle 層級的 <code>id_map</code> / <code>id_changes</code>；<code>normalize_ids=true</code> 時先整理再驗證並回傳 <code>normalized_bundle</code>（見下節「Bundle 定稿」）。選用的 <code>source_text</code> 會另跑 grounding 檢查並合併結果（見後文）</td>
+<td style="text-align: left;">1.14.1（v15.2.1：未宣告 profile 的資源也提供替代 coding 建議）；1.14.0（v15.2：Unknown code 建議的相關性門檻、<code>replace_coding</code> / <code>remove_coding</code> 替代 coding、ATC 依內建 tx.fhir.org 判定表檢查）；驗證整個 Bundle（各 entry 依其 <code>meta.profile</code> + Bundle 內參照完整性）。ID 類錯誤（<code>UUIDs must be valid…</code>、引用無法解析、缺 fullUrl、bdl-7、不合法 id）附 <code>suggestions</code> 與 Bundle 層級的 <code>id_map</code> / <code>id_changes</code>；<code>normalize_ids=true</code> 時先整理再驗證並回傳 <code>normalized_bundle</code>（見下節「Bundle 定稿」）。選用的 <code>source_text</code> 會另跑 grounding 檢查並合併結果（見後文）</td>
 <td style="text-align: left;"><code>bundle</code>, <code>normalize_ids</code>（預設 <code>false</code>）, <code>repair</code>（預設 <code>ids</code>；搭配 <code>normalize_ids</code> 可設 <code>content</code>）, <code>source_text</code>, <code>site_config</code>, <code>evidence_map</code>, <code>grounding</code>, <code>grounding_verbosity</code></td>
 </tr>
 </tbody>
@@ -3004,7 +3004,7 @@
 </tr>
 <tr>
 <td style="text-align: left;"><code>alt-coding</code></td>
-<td style="text-align: left;">CodeableConcept 中某 Coding 的碼不在本套件的節錄版 CodeSystem（驗證報 Unknown code，例：TW Core 1.0.0 <code>medication-nhi-tw</code> 只有 35 碼）、但已安裝的完整版有定義，且其概念只連到<strong>一個</strong>驗證器接受、又被 coding 元素或某個 coding slice 綁定的 ValueSet 收錄的其他系統 coding（例：健保藥品 → ATC，TW Core <code>medcation-atc-tw</code>）→ 以該 coding 取代；CodeableConcept 已含該 coding 時移除未知碼的 Coding；<code>text</code> 保留，沒有 <code>text</code> 時以原 display 補上（產品名稱不流失）</td>
+<td style="text-align: left;">CodeableConcept 中某 Coding 的碼不在本套件的節錄版 CodeSystem（驗證報 Unknown code，例：TW Core 1.0.0 <code>medication-nhi-tw</code> 只有 35 碼）、但已安裝的完整版有定義，且其概念只連到<strong>一個</strong>驗證器接受、又被 coding 元素或某個 coding slice 綁定的 ValueSet 收錄的其他系統 coding（例：健保藥品 → ATC，TW Core <code>medcation-atc-tw</code>）→ 以該 coding 取代；CodeableConcept 已含該 coding 時移除未知碼的 Coding；<code>text</code> 保留，沒有 <code>text</code> 時以原 display 補上（產品名稱不流失）。資源未宣告 profile（無 <code>meta.profile</code>）時，改讀該 IG（擁有此 CodeSystem 的套件，否則為解析出的 / 預設 IG）中此資源型別的 profile 綁定：只有一個 profile，或多個 profile 對此元素的綁定一致時才採用，否則不修正，原因中會註明綁定來自哪個 profile；驗證本身仍只依資源宣告的 profile</td>
 <td style="text-align: left;">連到多個被接受的 coding（回報候選）、沒有被接受或被綁定允許的 coding、原碼在本套件的 CodeSystem 中</td>
 </tr>
 <tr>
