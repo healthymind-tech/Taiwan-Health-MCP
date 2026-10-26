@@ -1110,8 +1110,30 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#slice-match" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Slice / profile mismatch explanations (slice_match / profile_match)
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ig-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        IG structure: Bundle blueprint and minimal skeleton
+      
+    </span>
+  </a>
   
 </li>
       
@@ -1123,6 +1145,23 @@
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="Authoring from field values">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#assemble-slices" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Entry slices of the Bundle profile (bundle_slices)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -2607,8 +2646,30 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#slice-match" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Slice / profile mismatch explanations (slice_match / profile_match)
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ig-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        IG structure: Bundle blueprint and minimal skeleton
+      
+    </span>
+  </a>
   
 </li>
       
@@ -2620,6 +2681,23 @@
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="Authoring from field values">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#assemble-slices" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Entry slices of the Bundle profile (bundle_slices)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -2862,7 +2940,7 @@ If none applies the call fails with <code>NO_DEFAULT_IG</code> (no arbitrary pac
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_finalize_resource</code></td>
-<td style="text-align: left;">1.11.0 (v15.4: record checks in <code>validation</code> as <code>fhir_validate_resource</code> 1.13.0 — empty shells); 1.10.0 (v15.3: record checks in <code>validation</code> as <code>fhir_validate_resource</code> 1.12.0); 1.9.1 (v15.2.1: as <code>fhir_finalize_bundle</code> 1.5.1); 1.9.0 (v15.2: <code>alt-coding</code>; validation as <code>fhir_validate_resource</code> 1.11.0); Finalise a draft already written as FHIR JSON against its profile and validate it: pins fixed / pattern values only where the draft has the parent node (slice members and <code>_slice</code> tags at any depth included), never adds clinical content; <code>repair="content"</code> (default) first applies the same content repairs as <code>fhir_finalize_bundle</code> (see "<a href="#content-repair">Content repair</a>") and returns <code>changes</code> / <code>repair_issues</code>; with field values use <code>fhir_author_resources</code> (see "<a href="#authoring">Authoring from field values</a>")</td>
+<td style="text-align: left;">1.12.0 (v16 R4: <a href="#content-repair">structure repairs</a> — empty arrays removed, <code>resourceType</code> inferred from a <code>meta.profile</code> string, a lossless reshape that only exposes existing errors is no longer withdrawn; validation as <code>fhir_validate_resource</code> 1.14.0); 1.11.0 (v15.4: record checks in <code>validation</code> as <code>fhir_validate_resource</code> 1.13.0 — empty shells); 1.10.0 (v15.3: record checks in <code>validation</code> as <code>fhir_validate_resource</code> 1.12.0); 1.9.1 (v15.2.1: as <code>fhir_finalize_bundle</code> 1.5.1); 1.9.0 (v15.2: <code>alt-coding</code>; validation as <code>fhir_validate_resource</code> 1.11.0); Finalise a draft already written as FHIR JSON against its profile and validate it: pins fixed / pattern values only where the draft has the parent node (slice members and <code>_slice</code> tags at any depth included), never adds clinical content; <code>repair="content"</code> (default) first applies the same content repairs as <code>fhir_finalize_bundle</code> (see "<a href="#content-repair">Content repair</a>") and returns <code>changes</code> / <code>repair_issues</code>; with field values use <code>fhir_author_resources</code> (see "<a href="#authoring">Authoring from field values</a>")</td>
 <td style="text-align: left;"><code>profile</code>, <code>draft</code>, <code>context_id</code>, <code>key</code>, <code>generate_narrative</code> (<code>true</code> by default), <code>repair</code> (<code>content</code> / <code>ids</code>), <code>timezone</code>, <code>site_config</code></td>
 </tr>
 <tr>
@@ -2877,17 +2955,17 @@ If none applies the call fails with <code>NO_DEFAULT_IG</code> (no arbitrary pac
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_finalize_bundle</code></td>
-<td style="text-align: left;">1.7.0 (v15.4: <code>record_issues</code> as the record checks of <code>fhir_validate_bundle</code> 1.16.0 — empty shells); 1.6.0 (v15.3: <code>record_issues</code> as the record checks of <code>fhir_validate_bundle</code> 1.15.0 — absence statements in text fields, text results where a number is needed, a provisional primary diagnosis); 1.5.1 (v15.2.1: <code>alt-coding</code> also for resources without <code>meta.profile</code>); 1.5.0 (v15.2: content repair rule <code>alt-coding</code>); <strong>Call before emitting the final Bundle</strong>: it normalises <code>fullUrl</code>, <code>reference</code> and <code>id</code> (see "Bundle finalisation" below) and, with <code>repair="content"</code> (default), corrects content errors whose fix is uniquely determined — never guessing, undecidable ones reported with candidates (see "<a href="#content-repair">Content repair</a>"; <code>repair="ids"</code> = ids only); numbers keep the caller's spelling (<code>10.0</code> stays <code>10.0</code>). Returns the finalised <code>bundle</code>, every change as <code>changes[{path, from, to, rule}]</code>, the references it could not decide as <code>unresolved[{path, reference, candidates}]</code>, <code>notes</code> and <code>id_map</code>. <code>bundle_type</code> sets <code>Bundle.type</code> (a profile-fixed type is never overridden)</td>
+<td style="text-align: left;">1.8.0 (v16 R4: <a href="#content-repair">structure repairs</a> completed — empty arrays (ele-1) removed, a missing <code>resourceType</code> inferred also from a <code>meta.profile</code> string, lossless reshapes (string → array, single ↔ array, one level up / down) no longer withdrawn when they only expose errors the bad shape hid; an inferred <code>resourceType</code> is withdrawn only by an unknown top-level property); 1.7.0 (v15.4: <code>record_issues</code> as the record checks of <code>fhir_validate_bundle</code> 1.16.0 — empty shells); 1.6.0 (v15.3: <code>record_issues</code> as the record checks of <code>fhir_validate_bundle</code> 1.15.0 — absence statements in text fields, text results where a number is needed, a provisional primary diagnosis); 1.5.1 (v15.2.1: <code>alt-coding</code> also for resources without <code>meta.profile</code>); 1.5.0 (v15.2: content repair rule <code>alt-coding</code>); <strong>Call before emitting the final Bundle</strong>: it normalises <code>fullUrl</code>, <code>reference</code> and <code>id</code> (see "Bundle finalisation" below) and, with <code>repair="content"</code> (default), corrects content errors whose fix is uniquely determined — never guessing, undecidable ones reported with candidates (see "<a href="#content-repair">Content repair</a>"; <code>repair="ids"</code> = ids only); numbers keep the caller's spelling (<code>10.0</code> stays <code>10.0</code>). Returns the finalised <code>bundle</code>, every change as <code>changes[{path, from, to, rule}]</code>, the references it could not decide as <code>unresolved[{path, reference, candidates}]</code>, <code>notes</code> and <code>id_map</code>. <code>bundle_type</code> sets <code>Bundle.type</code> (a profile-fixed type is never overridden)</td>
 <td style="text-align: left;"><code>bundle</code>, <code>package_id</code>, <code>version</code>, <code>bundle_profile</code> (canonical or id of the target Bundle profile; defaults to <code>meta.profile</code>), <code>bundle_type</code> (R4 bundle-type code), <code>repair</code> (<code>content</code> default / <code>ids</code>), <code>timezone</code> (the site timezone: a UTC offset or an IANA name), <code>site_config</code> (facility settings text; a <code>timezone:</code> line gives the timezone)</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_validate_resource</code></td>
-<td style="text-align: left;">1.13.0 (v15.4, as <code>fhir_validate_bundle</code> 1.16.0); 1.12.0 (v15.3, as <code>fhir_validate_bundle</code> 1.15.0); 1.11.1 (v15.2.1, as <code>fhir_validate_bundle</code> 1.14.1); 1.11.0 (v15.2, as <code>fhir_validate_bundle</code> 1.14.0); Validate a single resource (structure + terminology bindings); falls back to <code>meta.profile</code> when <code>profile</code> is omitted. An optional <code>source_text</code> adds a grounding check (see below)</td>
+<td style="text-align: left;">1.14.0 (v16 R3, the <a href="#slice-match">slice / profile mismatch explanations</a> of <code>fhir_validate_bundle</code> 1.17.0); 1.13.1 (v15.4 verification fixes, as <code>fhir_validate_bundle</code> 1.16.1); 1.13.0 (v15.4, as <code>fhir_validate_bundle</code> 1.16.0); 1.12.0 (v15.3, as <code>fhir_validate_bundle</code> 1.15.0); 1.11.1 (v15.2.1, as <code>fhir_validate_bundle</code> 1.14.1); 1.11.0 (v15.2, as <code>fhir_validate_bundle</code> 1.14.0); Validate a single resource (structure + terminology bindings); falls back to <code>meta.profile</code> when <code>profile</code> is omitted. An optional <code>source_text</code> adds a grounding check (see below)</td>
 <td style="text-align: left;"><code>resource</code>, <code>profile</code>, <code>source_text</code>, <code>site_config</code>, <code>evidence_map</code>, <code>grounding</code>, <code>grounding_verbosity</code></td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_validate_bundle</code></td>
-<td style="text-align: left;">1.16.0 (v15.4 <a href="#record-checks">record checks</a>: empty shells — an Observation without value, a medication without structured dose / timing, a Condition without a code, whose side fields say not out / undecided / rejected / cannot tell apart: <code>information-absent</code> error when the record confirms it, else warning); 1.15.1 (v15.3 R3 follow-up: SNOMED codes compared with a Chinese diagnosis slot through data-derived Chinese names, see <a href="#record-checks">record checks</a>); 1.15.0 (v15.3 <a href="#record-checks">record checks</a>: <code>information-absent</code> also for text fields — <code>CodeableConcept.text</code> without / with placeholder codings, <code>Dosage.text</code>, <code>valueString</code> / <code>note</code> where the code needs a quantitative result; a provisional / differential / text-only primary Condition standing in for the primary diagnosis the record leaves unestablished → error "the record has no established primary diagnosis"; coded-element <code>G-UNGROUNDED</code> / <code>G-VALUE-MISMATCH</code> say what was compared, carry <code>closest_record_phrase</code> and become warnings without clear counter-evidence); 1.14.1 (v15.2.1: alternative-coding suggestions also for resources that declare no profile); 1.14.0 (v15.2: relatedness gate on Unknown-code suggestions, <code>replace_coding</code> / <code>remove_coding</code> alternative codings, ATC checked against the bundled tx.fhir.org table); Validate an entire Bundle (each entry against its <code>meta.profile</code>, plus reference integrity inside the Bundle). ID-class errors (<code>UUIDs must be valid…</code>, unresolved references, missing fullUrl, bdl-7, invalid id) carry <code>suggestions</code> and a Bundle-level <code>id_map</code> / <code>id_changes</code>; with <code>normalize_ids=true</code> the Bundle is finalised first and validated as <code>normalized_bundle</code> (see "Bundle finalisation" below). An optional <code>source_text</code> adds a grounding check and merges the results (see further below)</td>
+<td style="text-align: left;">1.17.0 (v16 R3: <a href="#slice-match">slice / profile mismatch explanations</a> — <code>slice_match</code> / <code>profile_match</code>: the closest slice / profile, the discriminator that failed and how, <code>blocking</code> (the first 5 errors that stop the match), plus <code>set_profile</code> / <code>add_resource</code> suggestions); 1.16.1 (v15.4 verification fixes: SNOMED Chinese-name comparison uses complete noun phrases only, a diagnosis that is an ancestor / descendant of the coded concept is never "something else" (a Chinese name with no exact ICD name relates through its head-final tail, e.g. 社區型肺炎 → 肺炎, to broader concepts only), the IG Chinese-name table loads in the background at startup; without <code>source_text</code> the "result-slot note says no result" rule is a warning); 1.16.0 (v15.4 <a href="#record-checks">record checks</a>: empty shells — an Observation without value, a medication without structured dose / timing, a Condition without a code, whose side fields say not out / undecided / rejected / cannot tell apart: <code>information-absent</code> error when the record confirms it, else warning); 1.15.1 (v15.3 R3 follow-up: SNOMED codes compared with a Chinese diagnosis slot through data-derived Chinese names, see <a href="#record-checks">record checks</a>); 1.15.0 (v15.3 <a href="#record-checks">record checks</a>: <code>information-absent</code> also for text fields — <code>CodeableConcept.text</code> without / with placeholder codings, <code>Dosage.text</code>, <code>valueString</code> / <code>note</code> where the code needs a quantitative result; a provisional / differential / text-only primary Condition standing in for the primary diagnosis the record leaves unestablished → error "the record has no established primary diagnosis"; coded-element <code>G-UNGROUNDED</code> / <code>G-VALUE-MISMATCH</code> say what was compared, carry <code>closest_record_phrase</code> and become warnings without clear counter-evidence); 1.14.1 (v15.2.1: alternative-coding suggestions also for resources that declare no profile); 1.14.0 (v15.2: relatedness gate on Unknown-code suggestions, <code>replace_coding</code> / <code>remove_coding</code> alternative codings, ATC checked against the bundled tx.fhir.org table); Validate an entire Bundle (each entry against its <code>meta.profile</code>, plus reference integrity inside the Bundle). ID-class errors (<code>UUIDs must be valid…</code>, unresolved references, missing fullUrl, bdl-7, invalid id) carry <code>suggestions</code> and a Bundle-level <code>id_map</code> / <code>id_changes</code>; with <code>normalize_ids=true</code> the Bundle is finalised first and validated as <code>normalized_bundle</code> (see "Bundle finalisation" below). An optional <code>source_text</code> adds a grounding check and merges the results (see further below)</td>
 <td style="text-align: left;"><code>bundle</code>, <code>normalize_ids</code> (<code>false</code> by default), <code>repair</code> (<code>ids</code> default / <code>content</code>, with <code>normalize_ids</code>), <code>source_text</code>, <code>site_config</code>, <code>evidence_map</code>, <code>grounding</code>, <code>grounding_verbosity</code></td>
 </tr>
 </tbody>
@@ -3015,6 +3093,7 @@ If none applies the call fails with <code>NO_DEFAULT_IG</code> (no arbitrary pac
 </tbody>
 </table>
 <p><strong>Never adds an error</strong>: each resource is validated before and after; when the repaired resource has an error it did not have (a display error revealed by a corrected <code>system</code>, profile rules that apply once <code>meta.profile</code> is moved in), the responsible changes are withdrawn and explained in <code>repair_issues</code> (warning, <code>not applied: …</code>). Exception (evaluator decision): when the only new error after a <code>system</code> correction is the display check of <strong>that same Coding</strong> (<code>Wrong Display Name … for &lt;new system&gt;#&lt;code&gt;</code>), the error existed semantically before — the <code>system</code> correction is kept and listed in <code>changes</code>, and the display error stays reported by the <code>display</code> rule with the candidates the model's display denotes; any other new error still withdraws the change. Since v14.1 the whole Bundle is validated before and after as well: an error only the Bundle context shows (reference targets, entry slices, document rules) also withdraws the change behind it (traced by the error's path and the entries / fullUrls its message names; when it cannot be traced, nothing is applied). The Bundle envelope repairs (resourceType, the rebuilt <code>entry</code> array) make the Bundle readable by the validator at all and are the baseline of that comparison. The same input always gives the same output, a repaired Bundle repaired again yields <code>changes: []</code>, and numbers keep their spelling.</p>
+<p><strong>v16 structure repairs (any IG, any depth)</strong>: the max of every element is read from the declared profile's StructureDefinition (else core) — a repeating element given a single value → a one-item array, a max-1 element given a one-item array → the item, a <code>meta.profile</code> string → an array; an entry without <code>resourceType</code> whose <code>meta.profile</code> (array or string) names profiles of one resource type → that type; empty elements (<code>{}</code>, <code>[]</code>, <code>""</code>, <code>null</code>, ele-1) removed; an <code>Unrecognized property</code> moved only when exactly one level up / down defines it. These are lossless reshapes: an error that appears after the repair only because the value can now be read (under the reshaped element, or the resource now validated against the <code>meta.profile</code> it declares, and profile-match errors of references to it) was hidden, not added, so the repair is kept; an inferred <code>resourceType</code> is withdrawn only by an unknown top-level property (a wrong type). On the example Bundles of the TWPAS 1.2.7 and TW Core 1.0.0 packages with these corruptions applied to every entry, the repaired Bundles are back to the examples' own error counts (<code>node-server/scripts/v16-structure-eval/evalRepairs.ts</code>).</p>
 <h3 id="validation-suggestions">Fix suggestions (suggestions / caused_by)<a class="headerlink" href="#validation-suggestions" title="Permanent link">&para;</a></h3>
 <p>Besides saying what is wrong, validation issues carry, where possible, "what to change it to": <code>suggestions</code> is a list of candidates ordered by <code>confidence</code> (at most 5 per issue; up to 12 for a binding error on a small ValueSet), and reference-chain errors get <code>caused_by</code>. Both are <strong>additive</strong> — the set of issues, their severity and message, and <code>valid</code> are unchanged; the field is absent when there is no suggestion.</p>
 <pre><code class="language-json">{&quot;severity&quot;: &quot;error&quot;, &quot;path&quot;: &quot;MedicationRequest.dosageInstruction[0].timing.repeat&quot;, &quot;message&quot;: &quot;Unrecognized property 'periodUnits'&quot;,
@@ -3096,6 +3175,90 @@ If none applies the call fails with <code>NO_DEFAULT_IG</code> (no arbitrary pac
 <blockquote>
 <p>In-process validation is based on profile snapshots and terminology bindings, benchmarked against HL7 validator_cli 7.0.1 (method and results in <code>node-server/scripts/validator-audit/</code>). It is not equivalent to conformance certification by the official HL7 FHIR Validator.</p>
 </blockquote>
+<h3 id="slice-match">Slice / profile mismatch explanations (slice_match / profile_match)<a class="headerlink" href="#slice-match" title="Permanent link">&para;</a></h3>
+<p>Three errors (messages as HL7 validator_cli words them, unchanged) get an explanation field (v16 R3, <code>fhirSuggestions/slices.ts</code>, any IG):</p>
+<table>
+<thead>
+<tr>
+<th>Error</th>
+<th>Field</th>
+<th>Content</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>This element does not match any known slice defined in the profile P and slicing is CLOSED</code></td>
+<td><code>slice_match</code></td>
+<td><code>closest</code>: the closest slice (scored by discriminator agreement: resourceType, meta.profile relation, fixed / pattern values, required bindings) and its profile; <code>others</code>; <code>failed</code>: the discriminators that failed and why (<code>meta-profile-missing</code> / <code>-misspelled</code> / <code>-other-version</code> / <code>-not-array</code> / <code>-other</code>, <code>resource-type-differs</code>, <code>pattern-differs</code>, <code>value-missing</code>, <code>not-in-valueset</code>, <code>reference-unresolved</code>); <code>blocking</code>: the first 5 errors of the resource against the closest profile (<code>blocking_total</code> = all); <code>hint</code></td>
+</tr>
+<tr>
+<td><code>Slice 'S': a matching slice is required, but not found (from P)</code></td>
+<td><code>slice_match</code></td>
+<td><code>closest.item</code>: the item most likely meant for the slice (unmatched ones first), why it fails, <code>blocking</code>; with no item of the slice's type <code>closest: null</code>, and <code>hint</code> plus an <code>add_resource</code> suggestion say which profile to author (never invented)</td>
+</tr>
+<tr>
+<td><code>Unable to find a profile match for R among choices: …</code></td>
+<td><code>profile_match</code></td>
+<td><code>target</code> (the referenced resource, its declared meta.profile), the <code>closest</code> profile, <code>failed</code>, <code>blocking</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>blocking</code> comes from the resource's own reported errors when it declares that profile, otherwise from one stand-alone validation against the closest profile (at most 12 per call, planned in issue order before anything runs — reproducible). When meta.profile gives no signal and several same-type slices score alike, each is validated and the one with the fewest errors (differing fixed / pattern values weigh extra) wins. When the closest profile is unique and the resource does not declare it correctly, a <code>set_profile</code> suggestion is added (<code>patch</code> sets <code>meta.profile</code>; <code>confidence</code> 0.9 = no other error, 0.6 = <code>blocking</code> still to fix). Evaluated on the TWPAS example Bundles with one entry corrupted (a required element dropped, optionally meta.profile removed or misspelled): all 1,752 related errors explained; of the 426 about that entry, 421 (98.8%) name the right closest profile and all 426 have <code>blocking</code> naming the dropped element (<code>node-server/scripts/v16-structure-eval/evalSlices.ts</code>).</p>
+<h2 id="ig-structure">IG structure: Bundle blueprint and minimal skeleton<a class="headerlink" href="#ig-structure" title="Permanent link">&para;</a></h2>
+<p>Before writing a Bundle that must conform to a Bundle profile (a prior-authorization request, a document Bundle …), get the IG's <strong>structural knowledge</strong> from these two tools, then write the resources. Both read only StructureDefinition snapshots, the IG's ValueSets and the IG's own examples, and work for any installed IG (no IG-specific rules).</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Tool</th>
+<th style="text-align: left;">Returns</th>
+<th style="text-align: left;">Parameters</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>fhir_get_bundle_blueprint</code></td>
+<td style="text-align: left;">The Bundle profile's blueprint (whole response ≤ 4,000 characters): <code>slices</code> (every entry slice: name, <code>min..max</code>, the resource profile it requires; profile names follow <code>profile_base</code>, otherwise a full URL; no <code>min..max</code> means <code>0..*</code>), <code>entry.slicing</code> (discriminator, whether slicing is <strong>closed</strong> — then an entry matching no slice is an error — and ordered), <code>type</code> (Bundle.type when fixed), <code>references</code> (the references between slices that the slice profiles require, also inside extensions and sliced backbones, target profiles matched through derived profiles too; e.g. <code>claim: extension:encounter.valueReference -&gt; encounter</code>, <code>coverage: payor -&gt; organizationOrg</code>; no suffix = required, <code>if X used</code> = required when X is present), <code>recipe</code> (how to write it: each entry's <code>resource.meta.profile</code> = its slice's profile, every required slice, fullUrl = urn:uuid, references = the target entry's fullUrl; the first entry of a document / message). <code>omitted</code> counts references and slices dropped for size; <code>view="references"</code> lists every reference</td>
+<td style="text-align: left;"><code>bundle_profile</code>, <code>package_id</code>, <code>version</code>, <code>view</code> (<code>summary</code> default / <code>references</code>)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>fhir_get_minimal_skeleton</code></td>
+<td style="text-align: left;">A profile's <strong>minimal legal instance</strong> and <strong>where each required value comes from</strong> (whole response ≤ 6,000 characters): <code>skeleton</code> (every required element recursively: required slices, extensions expanded from their definitions (url + value), fixed / pattern values filled in, <code>meta.profile</code>; replace each <code>&lt;...&gt;</code>) and <code>table</code> rows <code>[path, value_source, how]</code>; <code>conditional</code> (required when a profile invariant <code>&lt;guard&gt; implies (a.exists() and …)</code> applies; the rule texts in <code>conditions</code>), <code>rules</code> / <code>more_rules</code> (other invariants), <code>examples</code> (example instances / distinct), <code>omitted</code></td>
+<td style="text-align: left;"><code>profile</code>, <code>package_id</code>, <code>version</code></td>
+</tr>
+</tbody>
+</table>
+<p>How <code>value_source</code> is decided (all data-driven):</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Value</th>
+<th style="text-align: left;">Meaning and rule</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>ig-constant</code></td>
+<td style="text-align: left;">A fixed / pattern value of the profile (incl. extension urls; already in the skeleton), or a value <strong>identical</strong> in <strong>every</strong> one of the IG's own example instances (at least 2; a value that varies never counts). Eligible elements depend on the resource kind: an administrative entity (Organization, Location, HealthcareService, Endpoint, OrganizationAffiliation — not persons) that the IG reuses in every example — any element (e.g. the payer agency's identifier; its optional identifier / name go into the skeleton too); any other resource — only workflow / derived codes (status-like elements with a required / extensible binding, booleans) over at least 2 <strong>distinct</strong> instances; record facts (dates, values, names, identifiers, gender) and primary clinical codes never</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>code-lookup</code></td>
+<td style="text-align: left;">A coded element with a required binding (or a required coding): small bindings list their codes with displays, larger ones name the ValueSet to search with <code>fhir_normalize_code</code> / <code>fhir_expand_valueset</code>; codes of a preferred / example binding are illustrations and are not listed</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>text-allowed</code></td>
+<td style="text-align: left;">A CodeableConcept whose binding is not required and whose coding is optional: <code>{text}</code> alone is valid (add a coding when a code fits)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>derivable</code></td>
+<td style="text-align: left;">Computable without a record fact: references (the target entry's fullUrl), <code>sequence</code> / <code>rank</code> numbering, workflow defaults, the curated derivation rules, the system of a bound Quantity, <code>insurance.focal</code>, writing dates (<code>Claim.created</code>, <code>authoredOn</code>, <code>recordedDate</code>, extensions named like a recorded date …: the record's date for it, else the visit / document date)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>record</code></td>
+<td style="text-align: left;">Everything else: a clinical or administrative fact the record must state</td>
+</tr>
+</tbody>
+</table>
+<p>Only <code>record</code> rows need the record; a missing <code>ig-constant</code>, <code>code-lookup</code>, <code>text-allowed</code> or <code>derivable</code> value is never a reason to refuse. Elements outside the skeleton are optional. Suggested flow: <code>fhir_get_bundle_blueprint</code> → <code>fhir_get_minimal_skeleton(profile, package_id)</code> per slice profile → write the resources (your own JSON, or <code>fhir_author_resources</code> + <code>fhir_assemble_bundle</code>) → <code>fhir_finalize_bundle</code> / <code>fhir_validate_bundle</code> with <code>bundle_profile</code>. Pass the <code>package_id</code> of the IG you write for — example constants come from its examples (from the profile's owning package only when that IG has no example of the profile).</p>
 <h2 id="authoring">Authoring from field values<a class="headerlink" href="#authoring" title="Permanent link">&para;</a></h2>
 <p>The model no longer writes FHIR JSON: it gives <strong>field values</strong>, the MCP composes the resource for the profile, validates it, keeps it in a per-task <strong>context</strong> and assembles the Bundle from a list of keys. Every rule comes from the resolved package's StructureDefinitions / ValueSets and FHIR R4 core — <strong>no IG-specific special cases</strong> (TW Core, TWPAS or any other installed IG alike).</p>
 <table>
@@ -3114,7 +3277,7 @@ If none applies the call fails with <code>NO_DEFAULT_IG</code> (no arbitrary pac
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_author_resources</code></td>
-<td style="text-align: left;">1.9.0 (v15.4: validation as <code>fhir_validate_resource</code> 1.13.0); 1.8.0 (v15.3: validation as <code>fhir_validate_resource</code> 1.12.0); 1.7.0 (v15.2: <code>alt-coding</code> repair, candidates carry <code>accepted_by_validator</code>); Author several resources in one call (8 or more is fine): <code>{key, profile, fields}</code>; the MCP adds <code>meta.profile</code>, fixed / pattern values, slices, workflow defaults of required elements, derivable values (e.g. Condition.category when an encounter is given), displays, UCUM units, ROC → ISO dates and applies the corrections below, then validates and stores each in the context. Returns <code>{context_id, storage, results[{key, status, resource, provenance, missing, refs, issues, notes}], summary, settings}</code></td>
+<td style="text-align: left;">1.10.0 (v16: validation as <code>fhir_validate_resource</code> 1.14.0); 1.9.0 (v15.4: validation as <code>fhir_validate_resource</code> 1.13.0); 1.8.0 (v15.3: validation as <code>fhir_validate_resource</code> 1.12.0); 1.7.0 (v15.2: <code>alt-coding</code> repair, candidates carry <code>accepted_by_validator</code>); Author several resources in one call (8 or more is fine): <code>{key, profile, fields}</code>; the MCP adds <code>meta.profile</code>, fixed / pattern values, slices, workflow defaults of required elements, derivable values (e.g. Condition.category when an encounter is given), displays, UCUM units, ROC → ISO dates and applies the corrections below, then validates and stores each in the context. Returns <code>{context_id, storage, results[{key, status, resource, provenance, missing, refs, issues, notes}], summary, settings}</code></td>
 <td style="text-align: left;"><code>context_id</code> (omit on the first call), <code>resources</code>, <code>timezone</code>, <code>apply_defaults</code> (<code>required</code> / <code>none</code>), <code>site_config</code></td>
 </tr>
 <tr>
@@ -3124,7 +3287,7 @@ If none applies the call fails with <code>NO_DEFAULT_IG</code> (no arbitrary pac
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_assemble_bundle</code></td>
-<td style="text-align: left;">1.9.0 (v15.4: resources as <code>fhir_author_resources</code> 1.9.0, validation as <code>fhir_validate_bundle</code> 1.16.0); 1.8.0 (v15.3: resources as <code>fhir_author_resources</code> 1.8.0, validation as <code>fhir_validate_bundle</code> 1.15.0); 1.7.0 (v15.2: as <code>fhir_author_resources</code> 1.7.0 / <code>fhir_finalize_bundle</code> 1.5.0 / <code>fhir_validate_bundle</code> 1.14.0); Build the Bundle from a list of keys: each entry's fullUrl is the key's deterministic urn:uuid; the Bundle is finalised by the <code>fhir_finalize_bundle</code> rules and validated like <code>fhir_validate_bundle</code> (grounding too with <code>source_text</code>); every issue carries the <code>key</code> and the model's field name</td>
+<td style="text-align: left;">1.10.0 (v16 R5: with <code>bundle_profile</code>, every resource is placed into its entry slice before validation and <a href="#assemble-slices"><code>bundle_slices</code></a> is reported; repairs as <code>fhir_finalize_bundle</code> 1.8.0, validation as <code>fhir_validate_bundle</code> 1.17.0); 1.9.0 (v15.4: resources as <code>fhir_author_resources</code> 1.9.0, validation as <code>fhir_validate_bundle</code> 1.16.0); 1.8.0 (v15.3: resources as <code>fhir_author_resources</code> 1.8.0, validation as <code>fhir_validate_bundle</code> 1.15.0); 1.7.0 (v15.2: as <code>fhir_author_resources</code> 1.7.0 / <code>fhir_finalize_bundle</code> 1.5.0 / <code>fhir_validate_bundle</code> 1.14.0); Build the Bundle from a list of keys: each entry's fullUrl is the key's deterministic urn:uuid; the Bundle is finalised by the <code>fhir_finalize_bundle</code> rules and validated like <code>fhir_validate_bundle</code> (grounding too with <code>source_text</code>); every issue carries the <code>key</code> and the model's field name</td>
 <td style="text-align: left;"><code>context_id</code>, <code>keys</code>, <code>bundle_type</code>, <code>bundle_profile</code>, <code>identifier</code>, <code>timestamp</code>, <code>source_text</code>, <code>site_config</code>, <code>allow_invalid</code></td>
 </tr>
 </tbody>
@@ -3266,6 +3429,8 @@ If none applies the call fails with <code>NO_DEFAULT_IG</code> (no arbitrary pac
 </code></pre>
 <p>Fix: <code>{"context_id": "&lt;id&gt;", "resources": [{"key": "obs-wbc", "merge": true, "fields": {"value": "11.8 10*3/uL"}}]}</code>; assemble: <code>{"context_id": "&lt;id&gt;", "keys": ["patient-1", "enc-1", "cond-1", "obs-wbc"], "bundle_type": "collection", "bundle_profile": "Bundle-twcore"}</code>.</p>
 <p><code>fhir_finalize_resource</code> (1.4.0) remains for a draft already written as FHIR JSON: it pins fixed / pattern values only where the draft has the parent node (slice members identified by the slicing discriminators and <code>_slice</code> tags at any depth included; tags are always removed), fills a single-system <code>coding.system</code>, rewrites <code>{reference: &lt;key&gt;}</code> to the context's urn, generates the narrative and validates — <strong>it never adds clinical content</strong>; with field values use <code>fhir_author_resources</code> instead.</p>
+<h3 id="assemble-slices">Entry slices of the Bundle profile (bundle_slices)<a class="headerlink" href="#assemble-slices" title="Permanent link">&para;</a></h3>
+<p>With <code>bundle_profile</code>, <code>fhir_assemble_bundle</code> (v16 R5, <code>authoring/bundleSlices.ts</code>, any IG) places every resource into the Bundle profile's entry slices <strong>before</strong> validation: the resource's declared meta.profile or the profile it was authored for decides the slice, else the only / clearly closest slice of its type; a resource authored for its slice's profile gets that profile in meta.profile when missing; entries follow the slice order when the slicing is <code>ordered</code>. <code>bundle_slices</code> reports <code>entries</code> (each key's slice and how it was decided), <code>missing</code> (slices below their min, with "author a … for profile …" guidance — resources are never invented), <code>excess</code> (over max) and <code>unmatched</code> (resources no slice takes under closed slicing), summarised in <code>warnings</code>. Decomposing the TWPAS / TW Core example Bundles into one key per entry (meta.profile removed, order reversed) and re-assembling puts every entry back into its slice with meta.profile restored and no more validation errors than the example; dropping a required slice's key is listed in <code>missing</code> (<code>authoring/bundleSlices.ig.test.ts</code>).</p>
 <h2 id="checking-against-the-source-record-grounding-completeness">Checking against the source record (grounding / completeness)<a class="headerlink" href="#checking-against-the-source-record-grounding-completeness" title="Permanent link">&para;</a></h2>
 <p>Conformance-valid is not the same as faithful: a model can fill in a diagnosis code, date or dose the record never states, and the validator still passes.
 These tools compare a Bundle with the clinical record using <strong>deterministic rules</strong> (no LLM, no embeddings, no randomness). Code names are looked up in the local database only (ICD-10-CM / PCS, LOINC, SNOMED CT, RxNorm, CVX, IG CodeSystems); no external terminology server is called.</p>
@@ -3365,7 +3530,7 @@ Every issue carries <code>rule</code> and <code>source:"grounding"</code>, and i
 <td style="text-align: left;"><code>information-absent</code> (empty shell, v15.4)</td>
 <td style="text-align: left;">no (error needs it)</td>
 <td style="text-align: left;">error / warning</td>
-<td style="text-align: left;">The resource <strong>lacks the primary value it should carry</strong> and explains the absence next to it: an Observation without <code>value[x]</code> and without component values (panels with <code>hasMember</code> excluded; also a lone <code>valueString</code> that is itself an absence statement — a bracketed reference range / detection limit such as "(&lt; 14)" is not a result); a MedicationRequest / MedicationStatement without structured dose or timing (no <code>doseAndRate</code>, <code>timing.repeat</code>, <code>timing.code</code>); a Condition without a real coding, text only. The side fields — <code>dataAbsentReason</code> (code and text), <code>note</code>, narrative <code>text</code>, <code>valueString</code>, <code>dosageInstruction.text</code> / <code>patientInstruction</code> / <code>additionalInstruction</code>, <code>statusReason</code>, <code>code.text</code> — are read <strong>clause by clause</strong> (dominance rule: a clause dominated by an absence predicate, and no clause of that field states a result — "陰性，檢體輕微溶血" is not absent). Predicate classes: pending-result (not out / not back), rejected-specimen (退件, 不予發報, QNS), machine-error (incl. Err-3), undecided (未定, 待確認, TBD), indistinguishable (尚難區分, 鑑別中, cannot differentiate), conditional-on-future-result (要看 Cr 報告, 依…結果調整, depending on the level), not-done. <strong>Severity</strong>: with <code>source_text</code>, when the record's statement about <strong>this item</strong> (found by code text / displays / vital-sign labels / terminology names incl. Chinese / medicine names — the mention's clause and the following clauses of its sentence up to a stated value; a Condition also by the diagnosis slot; or by the side text itself, a record clause it copies or paraphrases) says not out / not decided / rejected → error, message 「這筆資源沒有提供病歷中應有的值；病歷寫的是「…」」 with the hint "report insufficient_information instead of creating an empty resource"; the record says not done (本次未做 X 光, patient declined) → warning; the record does not say so / does not mention the item → warning; without <code>source_text</code> → warning only when the side text itself is an absence statement (a <code>dataAbsentReason</code> code alone or "not done" → nothing, so clean calls stay unchanged); <code>entered-in-error</code> never, <code>cancelled</code> / <code>not-taken</code> warning at most and nothing with a not-done reason. A resource another rule already reported is not reported again</td>
+<td style="text-align: left;">The resource <strong>lacks the primary value it should carry</strong> and explains the absence next to it: an Observation without <code>value[x]</code> and without component values (panels with <code>hasMember</code> excluded; also a lone <code>valueString</code> that is itself an absence statement — a bracketed reference range / detection limit such as "(&lt; 14)" is not a result); a MedicationRequest / MedicationStatement without structured dose or timing (no <code>doseAndRate</code>, <code>timing.repeat</code>, <code>timing.code</code>); a Condition without a real coding, text only. The side fields — <code>dataAbsentReason</code> (code and text), <code>note</code>, narrative <code>text</code>, <code>valueString</code>, <code>dosageInstruction.text</code> / <code>patientInstruction</code> / <code>additionalInstruction</code>, <code>statusReason</code>, <code>code.text</code> — are read <strong>clause by clause</strong> (dominance rule: a clause dominated by an absence predicate, and no clause of that field states a result — "陰性，檢體輕微溶血" is not absent). Predicate classes: pending-result (not out / not back), rejected-specimen (退件, 不予發報, QNS), machine-error (incl. Err-3), undecided (未定, 待確認, TBD), indistinguishable (尚難區分, 鑑別中, cannot differentiate), conditional-on-future-result (要看 Cr 報告, 依…結果調整, depending on the level), not-done. <strong>Severity</strong>: with <code>source_text</code>, when the record's statement about <strong>this item</strong> (found by code text / displays / vital-sign labels / terminology names incl. Chinese / medicine names — the mention's clause and the following clauses of its sentence up to a stated value; a Condition also by the diagnosis slot; or by the side text itself, a record clause it copies or paraphrases) says not out / not decided / rejected → error, message 「這筆資源沒有提供病歷中應有的值；病歷寫的是「…」」 with the hint "report insufficient_information instead of creating an empty resource"; the record says not done (本次未做 X 光, patient declined) → warning; the record does not say so / does not mention the item → warning; without <code>source_text</code> → warning only when the side text itself is an absence statement (a <code>dataAbsentReason</code> code alone or "not done" → nothing, so clean calls stay unchanged); <code>entered-in-error</code> never, <code>cancelled</code> / <code>not-taken</code> warning at most and nothing with a not-done reason. A resource another rule already reported is not reported again. The v15.3 result-slot note rule (an Observation without <code>value[x]</code> whose note says there is no result while its code needs a quantitative one) is likewise a warning without <code>source_text</code> (1.17.1; still an error with it)</td>
 </tr>
 <tr>
 <td style="text-align: left;">R2</td>
@@ -3490,7 +3655,7 @@ Every issue carries <code>rule</code> and <code>source:"grounding"</code>, and i
 - Quantities: every number outside dates and times (so a 0 or a 14 is never grounded by "08:00" or "2025/03/14"), with its unit, Chinese numerals, 半, fractions; it must have a compatible unit (when both units are known), or convert (mass / volume / length / time, °F ↔ °C, glucose mg/dL ↔ mmol/L, 10^3/uL ↔ /uL), BMI from height and weight, an explicit product (500 mg x 2). Derived quantities (<code>dispenseRequest.quantity</code>, <code>expectedSupplyDuration</code>, Claim item quantities) also accept a product of numbers on one line and only warn when not found; reference ranges warn; denominators are not checked.</p>
 <p><strong>How the primary Condition is decided (v15.3 R2, <code>diagnosisSlot.ts</code> <code>primaryCondition</code>)</strong>: in order — (1) among the <code>Encounter.diagnosis</code> entries that reference a Condition of the instance and whose use is not CM (comorbidity), the lowest <code>rank</code>, else the first listed; only comorbidities → no primary; (2) otherwise the Conditions with category encounter-diagnosis (not problem-list-item): one → it; several → the first whose names match an item of the record's diagnosis slot, else the first listed; (3) otherwise the only Condition that is neither a problem-list item nor a comorbidity the record states outside its diagnosis slot (past history / plan / lab lines); (4) otherwise none and nothing is reported. Refuted / entered-in-error Conditions never count. Only that one Condition is examined.</p>
 <p><strong>Grounding messages on codes (v15.3 R3, <code>recordChecks/codeGrounding.ts</code>)</strong>: with <code>source_text</code>, the <code>G-UNGROUNDED</code> / <code>G-VALUE-MISMATCH</code> issues that grounding reports on a <strong>coded element</strong> (CodeableConcept / Coding, e.g. <code>Condition.code = 'sct#…'</code>) in <code>fhir_validate_bundle</code> / <code>fhir_validate_resource</code> (and behind them <code>fhir_author_resources</code> / <code>fhir_assemble_bundle</code>) are rewritten: the message says that the code's meaning — <code>text</code>, displays, the terminology names the tool looked up (English + Chinese) and the ICD-10 code — was compared with the record lines (conversion target, site settings and family history excluded), since a record never writes the code itself; the issue carries <code>closest_record_phrase = {text, similarity, section}</code> (the closest record clause; similarity = grounding's weighted name containment with abbreviation and zh↔en bridge expansion, and for Chinese vs Chinese also the character-bigram Dice after concept-search normalisation, whichever is larger; null below 0.1), <code>compared</code> and <code>grounding_code_check</code>. <strong>It stays an error only with clear counter-evidence</strong> (<code>contradicted</code>): it is the code of the encounter's primary Condition, unrelated to every record clause (similarity &lt; 0.25), and the record has a diagnosis slot whose every item is comparable with it (same language, both with ICD-10 codes, or a zh→en bridge translating ≥ 80 % of the Chinese; abbreviation-only items never) and dissimilar — the record states a different diagnosis. Everything else becomes a warning with <code>downgraded_from: "error"</code>: a related phrase exists (<code>related</code>, similarity ≥ 0.25 — the code may name it in other words) or nothing can be concluded (<code>uncertain</code>: another language, no diagnosis slot, comorbidities, medicines, lab codes). When a downgrade leaves an entry / the grounding result without errors, <code>entries[i].valid</code>, <code>groundingValid</code>, <code>valid</code> and the <code>grounding</code> error / warning counts are recomputed from the remaining issues; <code>data.record_checks.grounding_codes = {examined, warnings, errors}</code>. <code>fhir_check_grounding</code>'s own output is unchanged (it is compared byte for byte with the reference implementation).</p>
-<p><strong>Chinese names of SNOMED codes (v15.3 R3 follow-up, <code>grounding/snomedChinese.ts</code>, <code>fhir_validate_bundle</code> 1.15.1 / <code>fhir_validate_resource</code> 1.12.1)</strong>: SNOMED CT has English names only, so a Chinese diagnosis slot was never comparable and a wrong SNOMED primary diagnosis stayed <code>uncertain</code>. The comparison now also uses Chinese names derived from data (no hand-written translation list), each with a source and a confidence: IG zh designations / Chinese ValueSet displays (0.9 / 0.85); the SNOMED → ICD-10 map (<code>snomed.icd10_map</code>, map group 1, the highest-priority <strong>unconditional</strong> rule TRUE / OTHERWISE TRUE) → the ICD-10-CM Chinese name (target 0.75; 0.65 after conditional rules or when an ICD-10-CM child names it; 3-character category 0.6), without classification segments such as 未明示 / 無併發症 / 部位未明示; and the mined bilingual word pairs (<code>fhir.term_thesaurus</code>, source bilingual) applied word by word to the English names (only when ≥ 80 % of the content words translate; confidence 0.8 × coverage × the weakest word's Dice). Decision: Chinese names with confidence ≥ 0.5 join the closest-phrase comparison (<code>related</code>); only ≥ 0.6 make a Chinese slot item comparable; a comparable item names "something else" only when it is unrelated (&lt; 0.25) to <strong>every</strong> English / Chinese name of the code and to every Chinese name of the mapped ICD 3-character category (0.3 — they can only prevent an error), and below 0.15 when only ICD-derived names make it comparable (the map is many-to-one and coarse); a slot ICD code in the mapped target's category is never different. Then it is an error (<code>contradicted</code>, the message names the Chinese name and its source), otherwise still a warning. The names used are listed in <code>compared.chinese_names = [{name, source, confidence}]</code>; neither <code>fhir_check_grounding</code> nor any other tool output contains them.</p>
+<p><strong>Chinese names of SNOMED codes (v15.3 R3 follow-up, <code>grounding/snomedChinese.ts</code>, <code>fhir_validate_bundle</code> 1.15.1 / <code>fhir_validate_resource</code> 1.12.1)</strong>: SNOMED CT has English names only, so a Chinese diagnosis slot was never comparable and a wrong SNOMED primary diagnosis stayed <code>uncertain</code>. The comparison now also uses Chinese names derived from data (no hand-written translation list), each with a source and a confidence: IG zh designations / Chinese ValueSet displays (0.9 / 0.85); the SNOMED → ICD-10 map (<code>snomed.icd10_map</code>, map group 1, the highest-priority <strong>unconditional</strong> rule TRUE / OTHERWISE TRUE) → the ICD-10-CM Chinese name (target 0.75; 0.65 after conditional rules or when an ICD-10-CM child names it; 3-character category 0.6), without classification segments such as 未明示 / 無併發症 / 部位未明示; and the mined bilingual word pairs (<code>fhir.term_thesaurus</code>, source bilingual) applied word by word to the English names (only when ≥ 80 % of the content words translate; confidence 0.8 × coverage × the weakest word's Dice). Decision: Chinese names with confidence ≥ 0.5 join the closest-phrase comparison (<code>related</code>); only ≥ 0.6 make a Chinese slot item comparable; a comparable item names "something else" only when it is unrelated (&lt; 0.25) to <strong>every</strong> English / Chinese name of the code and to every Chinese name of the mapped ICD 3-character category (0.3 — they can only prevent an error), and below 0.15 when only ICD-derived names make it comparable (the map is many-to-one and coarse); a slot ICD code in the mapped target's category is never different. Then it is an error (<code>contradicted</code>, the message names the Chinese name and its source), otherwise still a warning. The names used are listed in <code>compared.chinese_names = [{name, source, confidence}]</code>; neither <code>fhir_check_grounding</code> nor any other tool output contains them. <strong>1.17.1 hardening</strong>: ICD Chinese names keep complete noun phrases only (qualifier prefixes such as 其他或未明示之 are removed whole; names starting with a function word / bound morpheme — 或氣喘, 性氣喘 — and tails one character short of another name are rejected); a mined-pair rendering that no ICD Chinese name of the concept corroborates is capped at 0.55 (related evidence only, never makes the slot comparable). <strong>Hierarchy guard</strong>: a diagnosis-slot item whose SNOMED concept (its ICD-10 code through the reverse <code>snomed.icd10_map</code>, or an identical ICD Chinese name) is the coded concept, an ancestor or a descendant of it (<code>snomed.concept_ancestors</code>) is never "something else" — lower respiratory tract infection vs 社區型肺炎 (J18.9) is a warning at most. Abbreviation-only slot items are judged on the record's own casing. The IG designation table loads in one cheap query (Chinese-language packages only, ~0.6 s on production), single-flight, refreshed in the background and warmed at startup; while the first load is running a request waits at most 2 s and then proceeds without IG names, with every Chinese name capped below the comparability threshold — results in that window may be warnings where later identical calls give errors, never the reverse.</p>
 <p><strong>Empty shells (v15.4, <code>recordChecks/emptyShell.ts</code>, <code>fhir_validate_bundle</code> 1.16.0)</strong>: instead of writing 「報告未出」 as the value, the model creates a resource without a value and writes the reason in <code>note</code> / <code>dataAbsentReason</code> / <code>dosageInstruction.text</code>. Such resources follow the "empty shell" row above. The absence predicates are <strong>classes of patterns</strong> (<code>ABSENCE_CLASSES</code> in <code>lexicon.ts</code>, matched after NFKC + lower case), not a flat word list, so 報告尚未回傳 / 結果還沒出來 / 待 CT 正式報告 / "result not back yet" share one pattern; negations (無溶血, no hemolysis), clauses that state a result (negative, normal, a number with a unit) and clauses that only say 追蹤中 / 原因不明 are not absences. 溶血 / 凝固 / hemolyzed count only for an Observation whose code needs a quantitative result (a serum-appearance result can be 「溶血」). A named diagnosis with 「待確認」 written as provisional is the correct encoding of a suspected diagnosis and is not reported. A diagnosis slot that says "A 與 B 尚難區分 / cannot differentiate" is unestablished (A written as established gets <code>unconfirmed-as-confirmed</code>). <code>dataAbsentReason</code> is no longer an R1 value slot (it is FHIR's way to say the value is absent); it is side-field evidence.</p>
 <p><strong>Output</strong></p>
 <ul>
@@ -3576,6 +3741,10 @@ Every issue carries <code>rule</code> and <code>source:"grounding"</code>, and i
 <tr>
 <td style="text-align: left;"><code>fhir_get_authoring_fields</code></td>
 <td style="text-align: left;">1.2.0 (record links: a backbone linking another record resource of the same IG (<code>Encounter.diagnosis</code>) is a field with its children and a <code>{condition: {ref}}</code> example, a direct reference to one is in <code>more</code> with <code>targets</code>; the size budget covers the whole response, new <code>response_chars</code>); 1.1.0 (defaults are <code>auto</code> only on required elements; optional ones show the conventional value as a hint; 1.0.0: the profile's writing form)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>fhir_get_bundle_blueprint</code>, <code>fhir_get_minimal_skeleton</code></td>
+<td style="text-align: left;">1.0.0 (v16: Bundle blueprint and minimal skeleton with value sources, see "<a href="#ig-structure">IG structure</a>")</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_context</code></td>

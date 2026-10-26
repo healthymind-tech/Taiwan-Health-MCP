@@ -2739,7 +2739,7 @@ FHIR_SERVER_SECRET_KEY=
 <p>Backed by <code>node-server/src/admin/adminMcp.ts</code> (<code>GET /admin/api/mcp/overview</code>, <code>GET /admin/api/mcp/tools</code>, <code>POST /admin/api/mcp/tools/{name}/invoke</code>), with three tabs:</p>
 <ul>
 <li><strong>Overview</strong>: public endpoints (<code>/mcp</code>, <code>/openapi.json</code>, <code>/tools/{name}</code>, JWKS, OAuth callback), auth mode, server version and copy-ready client configs.</li>
-<li><strong>Catalog</strong>: all 68 tools defined in <code>mcp.ts</code> and whether each is registered; an unregistered tool shows why (gating table and row-count threshold); tools and groups whose module is in maintenance carry a 「維護中」 (under maintenance) badge.</li>
+<li><strong>Catalog</strong>: all 70 tools defined in <code>mcp.ts</code> and whether each is registered; an unregistered tool shows why (gating table and row-count threshold); tools and groups whose module is in maintenance carry a 「維護中」 (under maintenance) badge.</li>
 <li><strong>Playground</strong>: runs any registered tool with pre-filled examples, through the same handler as <code>POST /tools/{name}</code> (rate-limited); while the tool's module is in maintenance the Run button is disabled with the reason shown.</li>
 </ul>
 <h2 id="model-endpoints-adminmodels">Model endpoints (<code>/admin/models</code>)<a class="headerlink" href="#model-endpoints-adminmodels" title="Permanent link">&para;</a></h2>
