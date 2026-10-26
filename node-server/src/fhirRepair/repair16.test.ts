@@ -23,6 +23,9 @@ test("exposedByShape: errors inside a reshaped value / a re-declared profile's r
   // meta.profile repaired: the resource is now checked against its profile; references to it too
   assert.equal(exposedByShape({ path: "Bundle.entry[4].resource.status", message: "x: minimum required = 1" }, changes, bundle), true);
   assert.equal(exposedByShape({ path: "Bundle.entry[0].resource.subject", message: "Unable to find a profile match for urn:uuid:4 among choices: P" }, changes, bundle), true);
+  // the entry resource validated stand-alone (root-relative paths) after its meta.profile was repaired
+  assert.equal(exposedByShape({ path: "Condition.code.coding[0]", message: "This element does not match any known slice defined in the profile P and slicing is CLOSED" }, changes, bundle), true);
+  assert.equal(exposedByShape({ path: "Bundle.type", message: "e" }, changes, bundle), false);
   // elsewhere: a real regression
   assert.equal(exposedByShape({ path: "Bundle.entry[2].resource.status", message: "Unknown code 'x'" }, changes, bundle), false);
   assert.equal(exposedByShape({ path: "Bundle.entry[3].resource", message: "Unrecognized property 'y'" }, changes, bundle), false);

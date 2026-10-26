@@ -153,7 +153,8 @@ export function exposedByShape(e: { path: string; message: string }, changes: Re
       const sameResource = ep.entry === cp.entry || ep.entry === null || cp.entry === null;
       if (/^\.(meta(\.profile)?|resourceType)$/.test(cp.rel) || /^Bundle\.entry\[\d+\]\.meta$/.test(t)) {
         const ci = cp.entry ?? (/^Bundle\.entry\[(\d+)\]/.exec(t) ? Number(/^Bundle\.entry\[(\d+)\]/.exec(t)![1]) : null);
-        if (sameResource && (ci === null || ep.entry === ci)) return true;
+        // a stand-alone validation of the entry resource reports root-relative paths (no entry index)
+        if (sameResource && (ci === null || ep.entry === ci || (ep.entry === null && !/^Bundle\b/.test(e.path)))) return true;
         if (ci !== null && bundle && Array.isArray(bundle.entry)) {
           const url = isObject(bundle.entry[ci]) ? bundle.entry[ci].fullUrl : undefined;
           if (typeof url === "string" && url && e.message.includes(url)) return true;

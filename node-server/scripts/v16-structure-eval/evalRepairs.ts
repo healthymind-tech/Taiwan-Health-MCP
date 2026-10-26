@@ -2,7 +2,8 @@
  * R4 evaluation: apply typical structural corruptions generically to every entry resource of the
  * IG example Bundles (rules read from the core StructureDefinitions: max 1 vs repeating), run the
  * shared content repair (repairBundle, as fhir_finalize_bundle repair="content"), and count the
- * validator's errors: as published (base), corrupted (broken), repaired (fixed).
+ * validator's errors: as published (base), corrupted (broken), repaired (fixed); `differ` = repaired Bundles whose
+ * errors (path + message) are not exactly those of the published one.
  *
  *   node --import tsx scripts/v16-structure-eval/evalRepairs.ts [pas|twcore] [--only=<corruption>] [-v] [--out=<dir>]
  *
@@ -91,10 +92,13 @@ const CORRUPTIONS: Record<string, Corruption> = {
     return true;
   },
 };
-const rows: Record<string, { corrupted: number; base: number; broken: number; fixed: number }> = {};
+const rows: Record<string, { corrupted: number; base: number; broken: number; fixed: number; differ: number }> = {};
+// errors compared as a multiset of (path, message), not only by count
+const sig = (es: any[]): string => es.map((x) => `${x.path}\u0000${x.message}`).sort().join("\n");
 if (out) mkdirSync(out, { recursive: true });
 for (const [f, b0] of exampleBundles(ig)) {
-  const base = (await errors(b0)).length;
+  const baseErrs = await errors(b0);
+  const base = baseErrs.length;
   for (const [name, fn] of Object.entries(CORRUPTIONS)) {
     if (only && name !== only) continue;
     const b = clone(b0);
@@ -106,11 +110,12 @@ for (const [f, b0] of exampleBundles(ig)) {
     const rep = await repairBundle(b, deps, {});
     const after = await errors(b);
     if (out) writeFileSync(join(out, `${f.replace(/\.json$/, "")}.${name}.fixed.json`), JSON.stringify(b, null, 1));
-    const row = (rows[name] ??= { corrupted: 0, base: 0, broken: 0, fixed: 0 });
+    const row = (rows[name] ??= { corrupted: 0, base: 0, broken: 0, fixed: 0, differ: 0 });
     row.corrupted += n;
     row.base += base;
     row.broken += broken;
     row.fixed += after.length;
+    if (sig(after) !== sig(baseErrs)) row.differ++;
     if (verbose && after.length > base) {
       const pre = new Set((await errors(b0)).map((x) => x.message));
       console.log(f, name, base, broken, after.length, after.filter((x) => !pre.has(x.message)).slice(0, 5).map((x) => `${x.path} | ${String(x.message).slice(0, 160)}`), rep.issues.slice(0, 3).map((x) => x.message.slice(0, 160)));
