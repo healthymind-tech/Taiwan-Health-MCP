@@ -262,6 +262,11 @@ export function diagnosisSlots(rt: RecordText): DxSlot[] {
       for (const part of parts) {
         let its = splitItems(part).map(readItem);
         its = its.filter((it) => !(slotLevelCue(it.text) && residue(it.text).length <= 1));
+        // ISSUES_v15.4: an item that itself carries a slot-level cue (「A 與 B 尚難區分」) is not established
+        for (const it of its) {
+          const sc = it.strength === null && !it.confirmed ? slotLevelCue(nfkc(it.text)) : null;
+          if (sc) Object.assign(it, { strength: "explicit", cue: sc });
+        }
         if (DX_SLOT.refuted.some((c) => part.includes(c))) {
           // 「r/o ACS → … 已排除」: considered and excluded — not open, not established
           for (const it of its) Object.assign(it, { strength: null, refuted: true });
@@ -527,7 +532,9 @@ export function diagnosisSlotChecks(
   const slots = all.filter((s) => !s.empty);
   // a Condition whose code.text R1 already reports as an absence statement (暫不下診斷) is not reported again
   const skip = new Set<string>();
-  for (const r of resourcesOf(root)) if (r.resource.resourceType === "Condition" && absentPaths.has(`${r.base}.code.text`)) skip.add(r.base);
+  // (ISSUES_v15.4: also a text-only Condition the empty-shell check reports through its note)
+  const shellNote = (base: string): boolean => [...absentPaths].some((p) => p.startsWith(`${base}.note[`));
+  for (const r of resourcesOf(root)) if (r.resource.resourceType === "Condition" && (absentPaths.has(`${r.base}.code.text`) || shellNote(r.base))) skip.add(r.base);
   for (const b of skip) covered.add(b);
   const standIn = (): void => {
     try {

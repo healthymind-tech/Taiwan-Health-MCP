@@ -89,6 +89,11 @@ export interface RecordCheckOptions {
    * of coded-element G-UNGROUNDED issues compares them with the record too (codeGrounding.ts). Optional.
    */
   codeNames?: ReadonlyMap<string, readonly string[]> | null;
+  /**
+   * ISSUES_v15.3 R3 follow-up: Chinese names of SNOMED codings by `system|code` with source and confidence
+   * (grounding/snomedChinese.ts) — read only by the coded-element grounding comparison (codeGrounding.ts). Optional.
+   */
+  codeNamesZh?: ReadonlyMap<string, readonly { name: string; source: string; confidence: number; icd?: string }[]> | null;
 }
 
 export interface RecordCheckResult {

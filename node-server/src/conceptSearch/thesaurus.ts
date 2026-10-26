@@ -217,7 +217,7 @@ export function mineBilingual(
   return out;
 }
 
-const BI_STOP = new Set(["the", "and", "with", "without", "for", "from", "other", "unspecified", "specified", "not", "elsewhere", "classified", "due", "use", "using", "approach", "open", "percutaneous"]);
+export const BI_STOP = new Set(["the", "and", "with", "without", "for", "from", "other", "unspecified", "specified", "not", "elsewhere", "classified", "due", "use", "using", "approach", "open", "percutaneous"]);
 
 
 // ---------------------------------------------------------------------------- runtime thesaurus

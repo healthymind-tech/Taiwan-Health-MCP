@@ -160,7 +160,32 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   CodeSystem, else the validated / default IG; one profile, or several that bind the element the same way — else none);
   //   the reason names the profile ("… because the resource declares no profile"). Validation itself is unchanged.
   // 1.15.0 (ISSUES_v15.3, recordChecks 1.2.0 / lexicon 1.2.0): (R1) information-absent also for text fields — CodeableConcept.text without coding or with placeholder codings only (no code, NullFlavor / data-absent-reason, an absence word as the code), Dosage.text of medication resources, Observation.valueString / note when the code needs a quantitative result (recordChecks/quantitative.ts: LOINC SCALE_TYP Qn / quantity PROPERTY from loinc.concepts via the terminology provider, the LOINC name, vital-sign codes, a vital-signs profile / category, a referenceRange, a sibling valueQuantity) — the whole value must be an absence / pending / not-determined / not-established / being-redrawn statement (暫不下診斷, 待 CT 報告, 未定, 重抽中, 報告未出, pending, to be determined; specimen problems 溶血 / QNS / see report count only in such a result slot); (R2) the primary Condition (Encounter.diagnosis rank / first non-comorbidity entry → category encounter-diagnosis → the only non-comorbidity Condition) written as provisional / differential / unconfirmed or text-only while no primary slot of the record is established and the record says so explicitly → information-absent 「病歷沒有確立的主診斷」 (hedged slots and secondary r/o differentials never); (R3) the G-UNGROUNDED / G-VALUE-MISMATCH grounding issues this tool returns on a coded element say what was compared (the code's text / displays / terminology names vs the record lines), carry closest_record_phrase {text, similarity, section} and grounding_code_check, and are warnings (downgraded_from: "error") unless the primary Condition's code is unrelated to every record phrase (< 0.25) while the record's diagnosis slot names something else comparable (recordChecks/codeGrounding.ts); entries[i].valid / groundingValid / valid / grounding counts recomputed after a downgrade; fhir_check_grounding itself unchanged; data.record_checks.grounding_codes. Without source_text and without findings the output is unchanged.
-  fhir_validate_bundle: "1.15.0",
+  // 1.15.1 (ISSUES_v15.3 R3 follow-up, grounding/snomedChinese.ts): the coded-element grounding annotation (R3) also compares a SNOMED code's Chinese names —
+  //   IG designations / Chinese ValueSet displays (0.9 / 0.85), the SNOMED → ICD-10 map (group 1, highest-priority
+  //   unconditional rule) → ICD-10-CM Chinese name (0.75 / 0.65 child or after conditional rules / 0.6 category), the mined
+  //   bilingual thesaurus over the English names (0.8 × coverage × weakest Dice, ≥ 80 % of the words) — so a SNOMED
+  //   primary diagnosis unrelated to every name while a Chinese diagnosis slot names something else is "contradicted"
+  //   (error) instead of "uncertain": names ≥ 0.6 make the slot comparable; unrelated = < 0.25 to every English / Chinese
+  //   name and to every Chinese name of the mapped ICD 3-character category (< 0.15 when only ICD-derived names make it
+  //   comparable); a slot ICD code of the mapped category is never different. compared.chinese_names lists them.
+  //   fhir_check_grounding unchanged.
+  // 1.16.0 (ISSUES_v15.4, recordChecks 1.3.0 / lexicon 1.3.0): (R1) information-absent for EMPTY SHELLS — an Observation
+  //   without value[x] / component values (panels with hasMember excluded; or only a valueString that is an absence
+  //   statement, a bracketed reference range / detection limit not counting as a result: 「檢體溶血，未發報 (< 14)」), a
+  //   MedicationRequest / MedicationStatement without structured dose or timing (doseAndRate / timing.repeat / timing.code),
+  //   a Condition without a real coding — whose side fields (dataAbsentReason code + text, note, narrative, valueString,
+  //   dosage text / patientInstruction / additionalInstruction, statusReason, code.text) carry an absence clause (dominance
+  //   rule, clause by clause; (R2) predicate classes pending-result / rejected-specimen / machine-error / undecided /
+  //   indistinguishable / conditional-on-future-result / not-done, lexicon ABSENCE_CLASSES). (R3) error only with
+  //   source_text when the record's statement about THIS item (located by its names, the diagnosis slot, or the side text
+  //   itself) says the information is absent — message 「這筆資源沒有提供病歷中應有的值；病歷寫的是「…」」 + 「…不要建立空的資源」;
+  //   the record says not done → warning; not confirmed → warning; no source_text → warning only when the side text is
+  //   itself an absence statement (a dataAbsentReason code alone / not-done → nothing); entered-in-error never, cancelled /
+  //   not-taken warning at most. dataAbsentReason is no longer a value slot of R1 (its text is a side field). The v15.3
+  //   result-slot note rule skips cancelled / entered-in-error Observations and not-done notes. Diagnosis slots whose
+  //   candidates cannot be told apart (尚難區分, cannot differentiate) are unestablished. Without source_text and without
+  //   findings the output is unchanged.
+  fhir_validate_bundle: "1.16.0",
   // 1.6.2: the binding-aware suggestions above (ISSUES_v10 A) also apply to single-resource validation.
   // 1.7.0: the validator v13 rules above (fhir_validate_bundle 1.9.0).
   // 1.8.0 (ISSUES_v15): the record checks of fhir_validate_bundle 1.11.0 on the resource (data.issues, data.record_checks).
@@ -170,7 +195,9 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.11.1 (ISSUES_v15.2.1): the implicit-profile alternative-coding suggestions of fhir_validate_bundle 1.14.1 (a resource
   //   validated with neither meta.profile nor `profile`); validation unchanged.
   // 1.12.0 (ISSUES_v15.3): the record checks and the coded-element grounding annotation of fhir_validate_bundle 1.15.0.
-  fhir_validate_resource: "1.12.0",
+  // 1.12.1 (ISSUES_v15.3 R3 follow-up, grounding/snomedChinese.ts): the Chinese-name comparison of fhir_validate_bundle 1.15.1 in the coded-element grounding annotation.
+  // 1.13.0 (ISSUES_v15.4): the record checks of fhir_validate_bundle 1.16.0 (empty shells, absence predicate classes).
+  fhir_validate_resource: "1.13.0",
   // 1.2.0 (all below): provenance.resolved_by / closure_versions; canonical arguments resolve to their
   // owning package when package_id is omitted; "|version" honoured; list/search: all_packages + zero-hit hint;
   // NO_DEFAULT_IG instead of an arbitrary package when no default IG is set.
@@ -261,7 +288,10 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   implicit-profile binding never applies here in practice: the `profile` argument is a declared profile).
   // 1.10.0 (ISSUES_v15.3): data.validation carries the record checks of fhir_validate_resource 1.12.0 (R1 text fields /
   //   quantitative result slots always; R2 provisional primary diagnosis with source_text); output otherwise unchanged.
-  fhir_finalize_resource: "1.10.0",
+  // 1.10.1 (ISSUES_v15.3 R3 follow-up, grounding/snomedChinese.ts): version aligned with fhir_validate_resource 1.12.1 — its validation block has no grounding issues
+  //   (no grounding run here), so the output is unchanged.
+  // 1.11.0 (ISSUES_v15.4): data.validation carries the record checks of fhir_validate_resource 1.13.0 (empty shells).
+  fhir_finalize_resource: "1.11.0",
   // 1.0.0 (authoring/, evaluation v11): the model gives field VALUES, the MCP composes the resource for its profile
   //   (fixed / pattern / defaults / derived / displays / UCUM / ROC dates), validates it, keeps it in a Redis context
   //   (`authoring:ctx:*`, 60-min idle TTL) and assembles the Bundle from keys with deterministic urn:uuid fullUrls
@@ -317,7 +347,10 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   1.11.0; lookup candidates in errors carry accepted_by_validator and an exact hit the validator rejects is not taken.
   // 1.8.0 (ISSUES_v15.3): validation as fhir_validate_resource 1.12.0 (record checks R1 text fields / quantitative result
   //   slots, R2 provisional primary diagnosis with source_text).
-  fhir_author_resources: "1.8.0",
+  // 1.8.1 (ISSUES_v15.3 R3 follow-up, grounding/snomedChinese.ts): version aligned with fhir_validate_resource 1.12.1 —
+  //   the per-resource validation here runs no grounding, so the output is unchanged (fhir_assemble_bundle 1.8.1 carries it).
+  // 1.9.0 (ISSUES_v15.4): validation as fhir_validate_resource 1.13.0 (record checks: empty shells, absence predicate classes).
+  fhir_author_resources: "1.9.0",
   // 1.0.1: action=get results carry the author result's new `notes` (fhir_author_resources 1.1.0); otherwise unchanged.
   fhir_context: "1.0.1",
   // 1.1.0: new `site_config` (merged with the context's) passed to the grounding engine with source_text, so facility
@@ -340,7 +373,10 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   fhir_validate_bundle 1.14.0.
   // 1.8.0 (ISSUES_v15.3): resources as fhir_author_resources 1.8.0; validation as fhir_validate_bundle 1.15.0 (record
   //   checks R1 / R2 and, with source_text, the coded-element grounding annotation R3).
-  fhir_assemble_bundle: "1.8.0",
+  // 1.8.1 (ISSUES_v15.3 R3 follow-up, grounding/snomedChinese.ts): validation as fhir_validate_bundle 1.15.1 (with source_text, the R3 grounding annotation compares
+  //   SNOMED codes' Chinese names: a wrong SNOMED primary diagnosis vs a Chinese diagnosis slot can be an error).
+  // 1.9.0 (ISSUES_v15.4): resources as fhir_author_resources 1.9.0; validation as fhir_validate_bundle 1.16.0 (empty shells).
+  fhir_assemble_bundle: "1.9.0",
   // 1.0.0 (ISSUES_v9 R1): deterministic Bundle finalizer — fullUrl-uuid / reference-rewire / resource-id (mandatory),
   // bundle-type / document-order (profile-driven); UUID v5 seeded by (resourceType, original fullUrl, resource.id, entry
   // index) + a content salt; references found through StructureDefinition snapshots; duplicates / ambiguity reported.
@@ -392,7 +428,11 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   ("… because the resource declares no profile"). No meta.profile is added; the verification validates as before.
   // 1.6.0 (ISSUES_v15.3): data.record_issues follow fhir_validate_bundle 1.15.0's record checks (R1 text fields /
   //   quantitative result slots, R2 provisional primary diagnosis); the Bundle and changes are unchanged.
-  fhir_finalize_bundle: "1.6.0",
+  // 1.6.1 (ISSUES_v15.3 R3 follow-up, grounding/snomedChinese.ts): version aligned with fhir_validate_bundle 1.15.1 — data.record_issues carry no grounding issues, so
+  //   the output is unchanged.
+  // 1.7.0 (ISSUES_v15.4): data.record_issues follow fhir_validate_bundle 1.16.0's record checks (empty shells); the Bundle
+  //   and changes are unchanged.
+  fhir_finalize_bundle: "1.7.0",
   // ── 2026-10-19 actionable errors (additive fields only; successful outputs unchanged) ──
   // search_medical_codes 1.2.1: IG_UNAVAILABLE adds `hint`.
   // FHIR IG tools above (+.0.1): error envelopes add error.hint; IG_NOT_FOUND / NO_DEFAULT_IG add

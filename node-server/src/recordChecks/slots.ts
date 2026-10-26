@@ -93,6 +93,9 @@ function walkResource(resource: Json, base: string, entry: number | null, out: S
         const url = typeof node.url === "string" ? node.url : "";
         if (url.endsWith("StructureDefinition/data-absent-reason")) return;
       }
+      // 1.3.0 (ISSUES_v15.4 R1): dataAbsentReason is the FHIR way to say the value is absent — a side field the empty-shell
+      // check reads (emptyShell.ts), never a value slot
+      if (key === "dataAbsentReason") return;
       if (key === "identifier") {
         push("identifier", `${path}.value`, [...gparts, "value"], node.value, node);
         return;

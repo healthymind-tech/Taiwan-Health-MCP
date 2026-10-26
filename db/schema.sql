@@ -1754,6 +1754,7 @@ CREATE INDEX IF NOT EXISTS idx_snomed_rel_src      ON snomed.relationships (sour
 CREATE INDEX IF NOT EXISTS idx_snomed_rel_dest     ON snomed.relationships (destination_id);
 CREATE INDEX IF NOT EXISTS idx_snomed_rel_type     ON snomed.relationships (type_id);
 CREATE INDEX IF NOT EXISTS idx_snomed_map_target   ON snomed.icd10_map (map_target);
+CREATE INDEX IF NOT EXISTS idx_snomed_map_source   ON snomed.icd10_map (referenced_component_id);  -- 20261031
 CREATE INDEX IF NOT EXISTS idx_snomed_desc_fts     ON snomed.descriptions
     USING GIN (to_tsvector('english', COALESCE(term,'')));
 

@@ -14,6 +14,14 @@
  *                   dose text; B: text results where the code needs a number; C: provisional / differential / text-only
  *                   primary diagnosis while the record's slot is unestablished) and ≥ 20 complete controls (correct
  *                   differential r/o secondaries, text-only codes in complete records, qualitative text results);
+ *   synthetic R3-zh syntheticR3zh.ts — ≥ 20 SNOMED-coded primary diagnoses with English-only terminology names against a
+ *                   Chinese slot, Chinese names from fake map / ICD / thesaurus / IG tables (grounding/snomedChinese.ts):
+ *                   wrong codes → error, right / near codes (pneumonia vs viral pneumonia) → no error;
+ *   synthetic v15.4 synthetic154.ts — ≥ 40 empty shells (Observation without value + note / dataAbsentReason / narrative /
+ *                   valueString with a bracketed limit; MedicationRequest / -Statement without structured dose or timing +
+ *                   dosage text / note / statusReason; text-only Condition "cannot tell apart" / pending) with records (error
+ *                   expected) and without (warning expected), plus ≥ 25 complete controls (panels, not-done tests, cancelled
+ *                   orders, structured doses with text, sliding scales, text-only Conditions, qualitative text results);
  *   grounding codes (R3) every set with a record: fhir_check_grounding run on it (offline terminology snapshots), merged
  *                   into a validation envelope and passed through the record-check envelope — counts how many
  *                   coded-element G-UNGROUNDED / G-VALUE-MISMATCH errors stay errors vs become warnings;
@@ -39,6 +47,8 @@ import { runRecordChecks, type RecordIssue } from "../../src/recordChecks/index.
 import { syntheticCases } from "./synthetic.js";
 import { syntheticV151Cases } from "./synthetic151.js";
 import { syntheticV153Cases, syntheticV153CodeCases } from "./synthetic153.js";
+import { syntheticV154Cases } from "./synthetic154.js";
+import { syntheticR3ZhCases, withChineseNames } from "./syntheticR3zh.js";
 import { checkGroundingSync } from "../../src/grounding/checkGrounding.js";
 import { mergeGroundingIntoValidation } from "../../src/grounding/merge.js";
 import { addRecordChecksToValidation } from "../../src/recordChecks/envelope.js";
@@ -342,6 +352,54 @@ async function main(): Promise<void> {
   }
   console.log(`synthetic v15.3 R3 coded grounding cases: ${r3ok}/${r3.length} as expected (${r3.filter((c) => c.expect === "warning").length} reworded / plausible → warning, ${r3.filter((c) => c.expect === "error").length} contradicted → error)`);
   if (r3ok !== r3.length) fail = true;
+  // R3 with Chinese names of SNOMED codes (syntheticR3zh.ts: fake map / ICD Chinese names / thesaurus / IG display
+  // through grounding/snomedChinese.ts)
+  let zhOk = 0;
+  const r3zh = await withChineseNames(syntheticR3ZhCases());
+  for (const c of r3zh) {
+    const g = checkGroundingSync({ bundle: c.bundle, source_text: c.source_text, site_config: null, mode: "auto" } as never, c.terms as never);
+    const entries = c.bundle.entry.map((e: Json) => ({ fullUrl: e.fullUrl, resourceType: e.resource.resourceType, valid: true, issues: [] }));
+    const env = JSON.stringify({ ok: true, data: mergeGroundingIntoValidation({ valid: true, issues: [], entries }, g), warnings: [] });
+    const out = JSON.parse(addRecordChecksToValidation(env, c.bundle, { sourceText: c.source_text, codeNames: new Map([...c.terms].map(([k, v]) => [k, v.names])), codeNamesZh: c.zh ?? null }));
+    const path = `Bundle.entry[${c.entry}].resource.${c.element}`;
+    const iss = (out.data.entries[c.entry]?.issues ?? []).filter((i: Json) => i.source === "grounding" && i.path === path && /G-UNGROUNDED|G-VALUE-MISMATCH/u.test(i.rule));
+    const ok = c.expect === "error" ? iss.some((i: Json) => i.severity === "error" && i.grounding_code_check === "contradicted") : iss.every((i: Json) => i.severity !== "error");
+    if (ok) zhOk++;
+    else console.log(`  MISS R3-zh ${c.id}: expected ${c.expect}; got ${iss.map((i: Json) => `${i.severity} ${i.grounding_code_check ?? ""}`).join(", ") || "no grounding issue"}`);
+  }
+  console.log(`synthetic R3 Chinese-name cases: ${zhOk}/${r3zh.length} as expected (${r3zh.filter((c) => c.expect === "error").length} contradicted → error, ${r3zh.filter((c) => c.expect === "warning").length} right / near → no error)`);
+  if (zhOk !== r3zh.length) fail = true;
+
+  // ---- synthetic v15.4 (empty shells)
+  const v154 = syntheticV154Cases();
+  const spos = v154.filter((c) => c.expect);
+  const byShell = new Map<string, [number, number]>();
+  let shit = 0;
+  for (const c of spos) {
+    const r = runRecordChecks(c.bundle, { sourceText: c.source_text, siteConfig: c.site_config });
+    const on = r.issues.filter((i) => i.path.startsWith(`Bundle.entry[${c.entry}]`));
+    const ok = on.some((i) => (i.code === "information-absent" || i.code === "unconfirmed-as-confirmed") && (c.expect === "warning" || i.severity === "error")) && !(c.expect === "warning" && on.some((i) => i.severity === "error"));
+    const t = byShell.get(c.form) ?? [0, 0];
+    byShell.set(c.form, [t[0] + (ok ? 1 : 0), t[1] + 1]);
+    if (ok) shit++;
+    else console.log(`  MISS v15.4 ${c.id}: expected ${c.expect} information-absent; got ${r.issues.map((i) => `${i.severity} ${i.code} @ ${i.path}`).join(", ") || "nothing"}`);
+    if (verbose) for (const i of r.issues) console.log(`  [${c.id}] ${short(i)}`);
+  }
+  console.log(`synthetic v15.4 empty-shell cases: ${shit}/${spos.length} detected (${((100 * shit) / spos.length).toFixed(1)} %)`);
+  for (const [t, [h, n]] of byShell) console.log(`  form ${t}: ${h}/${n}`);
+  if (shit / spos.length < 0.9) fail = true;
+  const sctl = v154.filter((c) => !c.expect);
+  let sctlErr = 0;
+  let sctlWarn = 0;
+  for (const c of sctl) {
+    const r = runRecordChecks(c.bundle, { sourceText: c.source_text, siteConfig: c.site_config });
+    const errs = r.issues.filter((i) => i.severity === "error");
+    if (errs.length) sctlErr++;
+    sctlWarn += r.issues.length - errs.length;
+    for (const i of r.issues) if (i.severity === "error" || verbose) console.log(`    control v15.4 ${c.id}: ${short(i)}`);
+  }
+  console.log(`synthetic v15.4 complete controls: ${sctl.length}, ${sctlErr} with an error, ${sctlWarn} warning(s) (not-done tests: warning at most)`);
+  if (sctlErr) fail = true;
 
   // ---- recorded single-value mutations of the gold Bundles (positives for value grounding)
   const muts = mutationCases();

@@ -13,6 +13,10 @@
  *                                          only placeholder codings, Dosage.text, Observation.valueString /
  *                                          note when the code needs a quantitative result (quantitative.ts;
  *                                          specimen problems 溶血 / QNS and "see report" count there too).
+ *                                          ISSUES_v15.4: EMPTY SHELLS (emptyShell.ts) — an Observation / MedicationRequest /
+ *                                          MedicationStatement / Condition without its primary value whose side fields
+ *                                          (note, dataAbsentReason, dosage text …) explain the absence clause by clause;
+ *                                          error only when the record's statement about the item confirms it.
  *   R2 identifier-format   (always)        identifier format by Identifier.system (registry,
  *                                          identifiers.ts; site_config `identifier-format` lines) and
  *                                          "not a sentence" for every identifier — error.
@@ -32,7 +36,7 @@
  * Errors make the tool's `valid` false; `record_checks: {ok, errors, warnings, rules, source_text}`
  * summarises. Deterministic, no LLM, no network; the record text is never logged.
  */
-import { absenceOf, RECORD_CHECKS_LEXICON_SHA256, RECORD_CHECKS_LEXICON_VERSION } from "./lexicon.js";
+import { absenceClauses, absenceOf, RECORD_CHECKS_LEXICON_SHA256, RECORD_CHECKS_LEXICON_VERSION } from "./lexicon.js";
 import { identifierRegistry, sentenceLike } from "./identifiers.js";
 import { makeIssue } from "./issue.js";
 import { RecordText } from "../grounding/recordText.js";
@@ -40,6 +44,7 @@ import { diagnosisSlotChecks } from "./diagnosisSlot.js";
 import { recordAwareChecks } from "./recordAware.js";
 import { valueGroundingChecks } from "./valueGrounding.js";
 import { quantitativeBasis } from "./quantitative.js";
+import { emptyShellChecks } from "./emptyShell.js";
 import { resourcesOf, slotsOf, type Slot } from "./slots.js";
 import type { RecordCheckOptions, RecordCheckResult, RecordIssue, RecordRule } from "./types.js";
 
@@ -56,7 +61,11 @@ export { identifierRegistry, BUILTIN_IDENTIFIER_SYSTEMS, BUILTIN_FORMATS } from 
 //   Observation.valueString / note in quantitative result slots — quantitative.ts), R2 provisional / differential / text-only
 //   primary Condition vs an unestablished diagnosis slot (diagnosisSlot.ts primaryStandIn), R3 coded-element grounding
 //   annotation in the validating tools (codeGrounding.ts, envelope only).
-export const RECORD_CHECKS_VERSION = "1.2.0";
+// 1.3.0 (ISSUES_v15.4): R1 empty shells (emptyShell.ts: no primary value, the absence explained in a side field; error only
+//   when the record's statement about the item confirms it), absence predicate classes + the clause-level dominance rule
+//   (lexicon absenceClauses), bracketed limits in result values, dataAbsentReason as a side field, not-done / cancelled
+//   Observations out of the v15.3 note rule, indistinguishable diagnosis slots.
+export const RECORD_CHECKS_VERSION = "1.3.0";
 
 type Json = Record<string, any>;
 const isObj = (x: unknown): x is Json => !!x && typeof x === "object" && !Array.isArray(x);
@@ -136,7 +145,8 @@ function r1(s: Slot, ctx: R1Context): RecordIssue | null {
   const t = r1Target(s);
   if (!t) return null;
   const quant = resultBasis(s, ctx);
-  const m = absenceOf(t.value, t.allowNil, { result: quant !== null });
+  // 1.3.0 (ISSUES_v15.4 R1): a result value's reference-range / detection-limit brackets are not content (「未發報 (< 14)」)
+  const m = absenceOf(t.value, t.allowNil, { result: quant !== null, limits: s.kind === "value-string" });
   if (!m) return null;
   const main = MAIN_FIELDS.find(([rx]) => rx.test(s.gpath));
   const [fzh, fen] = main ? [main[1], main[2]] : FIELD_LABELS[s.kind] ?? ["欄位", "field"];
@@ -165,6 +175,8 @@ function noteAbsence(root: Json, ctx: R1Context, done: ReadonlySet<string>): Rec
   for (const r of resourcesOf(root)) {
     const o = r.resource;
     if (o.resourceType !== "Observation" || Object.keys(o).some((k) => k.startsWith("value")) || o.dataAbsentReason !== undefined) continue;
+    // 1.3.0 (ISSUES_v15.4 R3): a cancelled / entered-in-error Observation legitimately has no result
+    if (o.status === "cancelled" || o.status === "entered-in-error") continue;
     if (Array.isArray(o.component) && o.component.some((c: unknown) => isObj(c) && Object.keys(c).some((k) => k.startsWith("value")))) continue;
     const quant = quantitativeBasis(o, null, ctx.axes, ctx.resources);
     if (!quant) continue;
@@ -173,6 +185,9 @@ function noteAbsence(root: Json, ctx: R1Context, done: ReadonlySet<string>): Rec
       if (!isObj(n) || typeof n.text !== "string" || done.has(path)) return;
       const m = absenceOf(n.text, false, { result: true });
       if (!m) return;
+      // 1.3.0 (ISSUES_v15.4 R3): "not done / declined" is no missing result (the empty-shell check gives it a warning at most)
+      const cls = absenceClauses(n.text, { result: true });
+      if (cls.length && cls.every((h) => h.cls === "not-done")) return;
       const v = clip(n.text.trim());
       out.push(makeIssue(
         "R1", "error", "information-absent", path,
@@ -260,13 +275,27 @@ export function runRecordChecks(root: Json, opts: RecordCheckOptions = {}): Reco
       // fail-open per slot
     }
   }
+  // ISSUES_v15.4 R1: empty shells — no primary value, the absence explained in a side field (emptyShell.ts). Before the
+  // v15.3 result-slot note rule and the diagnosis-slot checks, so a shell the record confirms is reported once, with
+  // the record's statement; a v15.3 result-slot error outranks a shell warning on the same resource.
+  let shells: RecordIssue[] = [];
   try {
-    const notes2 = noteAbsence(root, ctx, absent);
-    issues.push(...notes2);
-    for (const i of notes2) absent.add(i.path);
+    shells = emptyShellChecks(root, opts, issues);
+  } catch {
+    notes.push("the empty-shell check could not run on this input (internal error)");
+  }
+  const shellErrors = shells.filter((i) => i.severity === "error").map((i) => i.path);
+  let notes2: RecordIssue[] = [];
+  try {
+    notes2 = noteAbsence(root, ctx, new Set([...absent, ...shellErrors]));
   } catch {
     // fail-open
   }
+  const resourceOf = (p: string): string => /^(Bundle\.entry\[\d+\]\.resource|[A-Za-z]+)/u.exec(p)?.[1] ?? p;
+  const noteResources = new Set(notes2.map((i) => resourceOf(i.path)));
+  shells = shells.filter((i) => i.severity === "error" || !noteResources.has(resourceOf(i.path)));
+  issues.push(...notes2, ...shells);
+  for (const i of [...notes2, ...shells]) if (i.severity === "error") absent.add(i.path);
   const withSource = recordText !== null;
   const rules: RecordRule[] = ["R1", "R2"];
   if (withSource) {

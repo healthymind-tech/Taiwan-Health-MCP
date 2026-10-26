@@ -2,9 +2,11 @@
  * Terminology lookups of the record checks (ISSUES_v15.3), done once per tool call by the tools through the grounding
  * terminology provider (local tables, LRU-cached — the grounding run of the same call has already fetched the same
  * keys): LOINC axes of text-result Observations (quantitative.ts, R1) and, with source_text, the names of every coding
- * (codeGrounding.ts, R3 — the names grounding compared). Fail-open: any failure gives empty maps.
+ * (codeGrounding.ts, R3 — the names grounding compared) and, ISSUES_v15.3 R3 follow-up, the Chinese names of SNOMED codings
+ * (grounding/snomedChinese.ts; only the R3 comparison reads them). Fail-open: any failure gives empty maps.
  */
 import { collectCodingKeys } from "../grounding/checkGrounding.js";
+import { snomedIdsOf, type ZhName } from "../grounding/snomedChinese.js";
 import { loincCodesNeedingAxes, type CodeAxes } from "./quantitative.js";
 
 type Json = Record<string, any>;
@@ -12,11 +14,15 @@ type Json = Record<string, any>;
 /** The part of the grounding terminology provider the lookups need. */
 export interface TermLookup {
   lookup(keys: readonly string[]): Promise<ReadonlyMap<string, { names?: readonly string[]; axes?: CodeAxes | null }>>;
+  /** Chinese names of SNOMED concepts (grounding/snomedChinese.ts) — the DB provider has it; optional. */
+  snomedChineseNamesBatch?(conceptIds: readonly string[]): Promise<ReadonlyMap<string, readonly ZhName[]>>;
 }
 
 export interface RecordCheckLookups {
   codeAxes: Map<string, CodeAxes>;
   codeNames: Map<string, string[]>;
+  /** ISSUES_v15.3 R3 follow-up: Chinese names of the SNOMED codings, keyed `http://snomed.info/sct|<id>` (only when any exist). */
+  codeNamesZh?: Map<string, ZhName[]>;
 }
 
 export async function recordCheckLookups(root: Json, terminology: TermLookup | null | undefined, sourceText: string | null | undefined): Promise<RecordCheckLookups> {
@@ -45,6 +51,17 @@ export async function recordCheckLookups(root: Json, terminology: TermLookup | n
     }
   } catch {
     // fail-open
+  }
+  if (nameKeys.length && typeof terminology.snomedChineseNamesBatch === "function") {
+    try {
+      const ids = snomedIdsOf(nameKeys);
+      const zh = ids.length ? await terminology.snomedChineseNamesBatch(ids) : new Map();
+      const m = new Map<string, ZhName[]>();
+      for (const [id, names] of zh) if (names.length) m.set(`http://snomed.info/sct|${id}`, [...names]);
+      if (m.size) out.codeNamesZh = m;
+    } catch {
+      // fail-open: the comparison runs on the other names
+    }
   }
   return out;
 }

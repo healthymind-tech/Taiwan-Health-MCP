@@ -17,6 +17,7 @@
  */
 import { CVX_CODES } from "../fhirCvx.js";
 import type { TermRecord, TerminologyNames } from "./terminologyNames.js";
+import { createSnomedChineseNames, type ZhName } from "./snomedChinese.js";
 
 export type QueryFn = (sql: string, params: unknown[]) => Promise<{ rows: Array<Record<string, unknown>> }>;
 
@@ -30,6 +31,13 @@ export interface DbTerminologyOptions {
 }
 
 export interface DbTerminologyNames extends TerminologyNames {
+  /**
+   * Chinese names of SNOMED CT concepts (snomedChinese.ts: IG designations, SNOMED → ICD-10 map → ICD-10-CM Chinese
+   * names, the mined bilingual thesaurus over the English names). Only the record checks' code-grounding comparison
+   * uses them (recordChecks/codeGrounding.ts); `lookup` (what grounding compares) never includes them.
+   */
+  snomedChineseNames(conceptId: string): Promise<ZhName[]>;
+  snomedChineseNamesBatch(conceptIds: readonly string[]): Promise<ReadonlyMap<string, ZhName[]>>;
   clear(): void;
   stats(): { cached: number; hits: number; misses: number; queries: number };
 }
@@ -248,6 +256,35 @@ export function createDbTerminologyNames(opts: DbTerminologyOptions): DbTerminol
     return result;
   }
 
+  const lookupNames = async (keys: readonly string[]): Promise<Map<string, TermRecord>> => {
+    const out = new Map<string, TermRecord>();
+    const todo: string[] = [];
+    for (const k of new Set(keys)) {
+      const r = cache.get(k);
+      if (r) {
+        hits++;
+        cache.delete(k);
+        cache.set(k, r);
+        out.set(k, r);
+      } else {
+        misses++;
+        todo.push(k);
+      }
+    }
+    if (todo.length) for (const [k, r] of await lookupUncached(todo)) out.set(k, r);
+    return out;
+  };
+
+  const zh = createSnomedChineseNames({
+    query,
+    logger: opts.logger,
+    // English names for the thesaurus: the same (LRU-cached) SNOMED descriptions grounding compares
+    englishNames: async (ids) => {
+      const m = await lookupNames(ids.map((id) => `http://snomed.info/sct|${id}`));
+      return new Map(ids.map((id) => [id, m.get(`http://snomed.info/sct|${id}`)?.names ?? []]));
+    },
+  });
+
   return {
     async version() {
       if (versionStr) return versionStr;
@@ -263,26 +300,12 @@ export function createDbTerminologyNames(opts: DbTerminologyOptions): DbTerminol
       versionStr = parts.length ? `db: ${parts.join("; ")}` : "db";
       return versionStr;
     },
-    async lookup(keys) {
-      const out = new Map<string, TermRecord>();
-      const todo: string[] = [];
-      for (const k of new Set(keys)) {
-        const r = cache.get(k);
-        if (r) {
-          hits++;
-          cache.delete(k);
-          cache.set(k, r);
-          out.set(k, r);
-        } else {
-          misses++;
-          todo.push(k);
-        }
-      }
-      if (todo.length) for (const [k, r] of await lookupUncached(todo)) out.set(k, r);
-      return out;
-    },
+    lookup: lookupNames,
+    snomedChineseNames: (id) => zh.snomedChineseNames(id),
+    snomedChineseNamesBatch: (ids) => zh.lookup(ids),
     clear() {
       cache.clear();
+      zh.clear();
       versionStr = null;
     },
     stats: () => ({ cached: cache.size, hits, misses, queries }),

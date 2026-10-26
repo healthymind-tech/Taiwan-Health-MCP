@@ -31,6 +31,19 @@
  *    record has no such slot — it becomes a warning (`downgraded_from: "error"`, verdict "related" or
  *    "uncertain"). `grounding_code_check` names the verdict ("related" / "uncertain" / "contradicted").
  *
+ * Chinese names of SNOMED codes (ISSUES_v15.3 R3 follow-up; grounding/snomedChinese.ts: IG designations, the SNOMED →
+ * ICD-10 map's ICD-10-CM Chinese names, the mined bilingual thesaurus) — SNOMED CT itself has English names only, so a
+ * Chinese diagnosis slot was never comparable and a wrong SNOMED code stayed "uncertain". With them:
+ *  - names with confidence ≥ 0.5 join the names compared with the record (closest phrase, "related");
+ *  - names with confidence ≥ 0.6 (ZH_CONFIDENCE_MIN) also make a Chinese slot item comparable with the code;
+ *  - an item made comparable only through them is "something else" when it is unrelated (< 0.25) to EVERY name of the
+ *    code — English, Chinese, and every Chinese name of the mapped ICD-10 code's 3-character category (confidence 0.3:
+ *    a slot naming a diagnosis of the same ICD category is never "different") — and, when the only such names are
+ *    ICD-derived (the map is many-to-one and coarse), even below 0.15 (ICD_ONLY_UNRELATED); an item carrying an ICD-10
+ *    code of the mapped target's category is never "different";
+ *  - otherwise the verdict is as before (related → warning; not comparable → uncertain warning).
+ * The names used are listed in `compared.chinese_names` {name, source, confidence}; fhir_check_grounding never sees them.
+ *
  * When a downgrade removes the last error of an entry / of the grounding result, `entries[i].valid`,
  * `groundingValid`, `valid` and the grounding summary counts are recomputed from the remaining issues.
  * Report only: nothing in the instance changes. Deterministic; the record text is never logged.
@@ -54,6 +67,12 @@ const RE_ICD_IN = /\b[A-Z]\d{2}(?:\.[0-9A-Z]{1,4})?\b/gu;
 const RE_TAG = /\s*\((disorder|finding|symptom|situation|observable entity|morphologic abnormality|procedure|substance|product|regime\/therapy)\)\s*$/iu;
 /** Below this the closest record phrase is unrelated. */
 export const RELATED_SIMILARITY = 0.25;
+/** Chinese names (snomedChinese.ts) at or above this make a Chinese slot item comparable with the code. */
+export const ZH_CONFIDENCE_MIN = 0.6;
+/** Chinese names at or above this are compared with the whole record (lower ones only with the slot, to block an error). */
+export const ZH_RECORD_MIN = 0.5;
+/** Unrelated threshold when only ICD-derived Chinese names make the slot comparable (the ICD map is coarse). */
+export const ICD_ONLY_UNRELATED = 0.15;
 
 
 export interface Phrase {
@@ -66,6 +85,26 @@ export type CodeVerdict = "related" | "uncertain" | "contradicted";
 
 /** Terminology names by `system|code` (the grounding provider's names: English + Chinese designations). */
 export type CodeNames = ReadonlyMap<string, readonly string[]>;
+
+/** A Chinese name of a code with its source and confidence (grounding/snomedChinese.ts ZhName). */
+export interface ChineseName {
+  name: string;
+  source: string;
+  confidence: number;
+  icd?: string;
+}
+
+/** Chinese names by `system|code` (SNOMED codings only). */
+export type ChineseCodeNames = ReadonlyMap<string, readonly ChineseName[]>;
+
+/** Chinese names of the codings of a CodeableConcept / Coding. */
+export function chineseNamesOf(v: Json, zh: ChineseCodeNames | null): ChineseName[] {
+  if (!zh) return [];
+  const codings: Json[] = Array.isArray(v.coding) ? v.coding.filter(isObj) : typeof v.code === "string" ? [v] : [];
+  const out: ChineseName[] = [];
+  for (const c of codings) for (const n of zh.get(`${c.system ?? "None"}|${c.code ?? "None"}`) ?? []) if (n && typeof n.name === "string" && n.name.trim()) out.push(n);
+  return out;
+}
 
 /**
  * Names of a CodeableConcept / Coding: text, displays (semantic tag removed), the terminology names of each coding
@@ -155,10 +194,32 @@ function comparable(names: readonly string[], item: string): boolean {
   return false;
 }
 
-/** A slot of the same kind that names something else: every item comparable and unrelated. */
-function namesSomethingElse(items: readonly string[], names: readonly string[]): boolean {
+/**
+ * A slot of the same kind that names something else: every item comparable and unrelated. `names`: the code's names
+ * compared with the record; `zh`: its Chinese names (see the module comment); `base`: the names without them. Returns the Chinese name that made an
+ * item comparable (null when the other names did), or false.
+ */
+function namesSomethingElse(items: readonly string[], names: readonly string[], zh: readonly ChineseName[] = [], base: readonly string[] = names): ChineseName | null | false {
   if (!items.length) return false;
-  return items.every((it) => comparable(names, it) && names.every((n) => phraseSimilarity(n, it) < RELATED_SIMILARITY));
+  const strong = zh.filter((z) => z.confidence >= ZH_CONFIDENCE_MIN);
+  const strongNames = strong.map((z) => z.name);
+  const all = [...new Set([...names, ...zh.map((z) => z.name)])];
+  const icdOnly = strong.length > 0 && strong.every((z) => z.source.startsWith("icd_"));
+  const cats = new Set(zh.filter((z) => z.icd && z.source !== "icd_category_member").map((z) => z.icd!.slice(0, 3)));
+  let via: ChineseName | null = null;
+  for (const it of items) {
+    // the item states an ICD-10 code of the mapped category (slot items are lower-cased): the same diagnosis group, never "different"
+    if (cats.size && (nfkc(it).toUpperCase().match(RE_ICD_IN) ?? []).some((c) => cats.has(c.slice(0, 3)))) return false;
+    if (comparable(base, it)) {
+      if (!all.every((n) => phraseSimilarity(n, it) < RELATED_SIMILARITY)) return false;
+      continue;
+    }
+    if (!strong.length || !comparable(strongNames, it)) return false;
+    const limit = icdOnly ? ICD_ONLY_UNRELATED : RELATED_SIMILARITY;
+    if (!all.every((n) => phraseSimilarity(n, it) < limit)) return false;
+    via ??= strong.find((z) => comparable([z.name], it)) ?? strong[0];
+  }
+  return via;
 }
 
 export interface CodeJudgement {
@@ -167,6 +228,10 @@ export interface CodeJudgement {
   closest: Phrase | null;
   /** The slot that names something else (for "contradicted"). */
   other: string | null;
+  /** Chinese names compared (confidence ≥ ZH_RECORD_MIN), when the code has any. */
+  chinese?: ChineseName[];
+  /** The Chinese name through which the slot was compared (for "contradicted"). */
+  via?: ChineseName | null;
 }
 
 /**
@@ -175,18 +240,52 @@ export interface CodeJudgement {
  * (diagnosisSlot.primaryCondition) — only then can the diagnosis slot contradict it (a comorbidity from the past
  * history is not in the slot).
  */
-export function judgeCode(value: Json, gpath: string, rt: RecordText, slots: readonly DxSlot[], primary: boolean, codeNames: CodeNames | null = null): CodeJudgement {
-  const names = conceptNames(value, codeNames);
+export function judgeCode(
+  value: Json,
+  gpath: string,
+  rt: RecordText,
+  slots: readonly DxSlot[],
+  primary: boolean,
+  codeNames: CodeNames | null = null,
+  zhNames: ChineseCodeNames | null = null,
+): CodeJudgement {
+  const zh = chineseNamesOf(value, zhNames);
+  const shown = zh.filter((z) => z.confidence >= ZH_RECORD_MIN);
+  const base = conceptNames(value, codeNames);
+  const names = [...new Set([...base, ...shown.map((z) => z.name)])];
+  const extra = shown.length ? { chinese: shown } : {};
   const closest = names.length ? closestPhrase(names, rt) : null;
-  if (closest && closest.similarity >= RELATED_SIMILARITY) return { verdict: "related", names, closest, other: null };
+  if (closest && closest.similarity >= RELATED_SIMILARITY) return { verdict: "related", names, closest, other: null, ...extra };
   let other: string | null = null;
+  let via: ChineseName | null = null;
   if (names.length && gpath === "Condition.code" && primary) {
     const dx = slots.filter((s) => !s.empty && s.items.length);
     const items = dx.flatMap((s) => s.items.map((it) => it.text));
-    if (namesSomethingElse(items, names)) other = dx.map((s) => s.quote).join(" / ");
+    const r = namesSomethingElse(items, names, zh, base);
+    if (r !== false) {
+      other = dx.map((s) => s.quote).join(" / ");
+      via = r;
+    }
   }
-  return { verdict: other ? "contradicted" : "uncertain", names, closest, other };
+  return { verdict: other ? "contradicted" : "uncertain", names, closest, other, ...extra, ...(via ? { via } : {}) };
 }
+
+const SOURCE_EN: Record<string, string> = {
+  ig_designation: "an IG designation",
+  ig_display: "an IG ValueSet display",
+  icd_map: "its SNOMED → ICD-10 map",
+  icd_map_child: "its SNOMED → ICD-10 map",
+  icd_category: "its SNOMED → ICD-10 map category",
+  thesaurus: "the bilingual thesaurus",
+};
+const SOURCE_ZH: Record<string, string> = {
+  ig_designation: "IG 的中文 designation",
+  ig_display: "IG ValueSet 的中文 display",
+  icd_map: "SNOMED → ICD-10 對應",
+  icd_map_child: "SNOMED → ICD-10 對應",
+  icd_category: "SNOMED → ICD-10 對應的類目",
+  thesaurus: "中英對照詞庫",
+};
 
 const RE_TOKEN = /([^.[\]]+)(?:\[(\d+)\])?/gu;
 
@@ -233,8 +332,10 @@ function rewrite(iss: Json, j: CodeJudgement): Json {
     tail = "Uncertain: no clearly related phrase, but nothing in the record names something else in its place (or the wording cannot be compared, e.g. another language) — verify the code; do not read this as \"the record lacks this information\".";
     tailZh = "無法確定：病歷沒有明顯相關的敘述，但也沒有記載別的內容取而代之（或用語無法直接比較，例如不同語言）——請確認代碼；不要把它解讀為「病歷沒有這項資訊」。";
   } else {
-    tail = `The record states nothing related, and its diagnosis slot names something else (「${clip(j.other ?? "", 80)}」): this code is not the diagnosis the record states.`;
-    tailZh = `病歷沒有任何相關的敘述，而且病歷的診斷欄記載的是別的內容（「${clip(j.other ?? "", 80)}」）：這個代碼不是病歷所寫的診斷。`;
+    const via = j.via ? ` (compared through the code's Chinese name '${clip(j.via.name, 40)}' from ${SOURCE_EN[j.via.source] ?? j.via.source}${j.via.icd ? ` ${j.via.icd}` : ""})` : "";
+    const viaZh = j.via ? `（以代碼的中文名稱「${clip(j.via.name, 40)}」比對，來源：${SOURCE_ZH[j.via.source] ?? j.via.source}${j.via.icd ? ` ${j.via.icd}` : ""}）` : "";
+    tail = `The record states nothing related, and its diagnosis slot names something else (「${clip(j.other ?? "", 80)}」)${via}: this code is not the diagnosis the record states.`;
+    tailZh = `病歷沒有任何相關的敘述，而且病歷的診斷欄記載的是別的內容（「${clip(j.other ?? "", 80)}」）${viaZh}：這個代碼不是病歷所寫的診斷。`;
   }
   const downgrade = iss.severity === "error" && j.verdict !== "contradicted";
   return {
@@ -243,7 +344,11 @@ function rewrite(iss: Json, j: CodeJudgement): Json {
     message: `${prefix} ${head} ${tail}`,
     message_zh: `${prefix} ${headZh}${tailZh}`,
     grounding_code_check: j.verdict,
-    compared: { names: j.names, against: "record lines (instruction / site-config / family-history lines excluded)" },
+    compared: {
+      names: j.names,
+      against: "record lines (instruction / site-config / family-history lines excluded)",
+      ...(j.chinese?.length ? { chinese_names: j.chinese.map((z) => ({ name: z.name, source: z.source, confidence: z.confidence })) } : {}),
+    },
     closest_record_phrase: j.closest,
     ...(downgrade ? { downgraded_from: "error" } : {}),
   };
@@ -259,7 +364,14 @@ export interface CodeGroundingStats {
  * Annotate the coded-element G-UNGROUNDED / G-VALUE-MISMATCH grounding issues of a validation data block in place
  * (see the module comment). Returns the counts, or null when there were none.
  */
-export function annotateGroundingCodes(data: Json, target: Json, sourceText: string, siteConfig: string | null, codeNames: CodeNames | null = null): CodeGroundingStats | null {
+export function annotateGroundingCodes(
+  data: Json,
+  target: Json,
+  sourceText: string,
+  siteConfig: string | null,
+  codeNames: CodeNames | null = null,
+  zhNames: ChineseCodeNames | null = null,
+): CodeGroundingStats | null {
   let rt: RecordText | null = null;
   let slots: DxSlot[] = [];
   let primaryBase: string | null = null;
@@ -278,7 +390,7 @@ export function annotateGroundingCodes(data: Json, target: Json, sourceText: str
         primaryBase = primaryCondition(target, rt, slots.filter((x) => !x.empty))?.base ?? null;
       }
       const primary = primaryBase !== null && iss.path === `${primaryBase}.code`;
-      const j = judgeCode(at.value, at.gpath, rt, slots, primary, codeNames);
+      const j = judgeCode(at.value, at.gpath, rt, slots, primary, codeNames, zhNames);
       const out = rewrite(iss, j);
       list[k] = out;
       stats.examined++;

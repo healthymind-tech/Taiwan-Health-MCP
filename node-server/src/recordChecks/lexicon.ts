@@ -23,7 +23,7 @@
  */
 import { createHash } from "node:crypto";
 
-import { nfkc } from "../grounding/lexicon.js";
+import { nfkc, numbersWithUnits } from "../grounding/lexicon.js";
 
 // ------------------------------------------------------------------------------------------- data
 
@@ -39,6 +39,8 @@ const PROCESS_VERBS_ZH = [
   "得", "得到", "得出", "測得", "測出", "驗出", "發", "發出", "辨識", "辨認", "判讀", "讀出", "看清", "看清楚", "下", "訂", "抽血", "採檢", "採血",
   // 1.2.0 (ISSUES_v15.3 R1): diagnoses / results still to come (待排除, 尚未診斷, 待重抽, 未出報告)
   "排除", "診斷", "判定", "重抽", "重驗", "重測", "重做", "重新抽血", "重新採檢", "出報告", "發報告", "出爐", "測", "驗", "做",
+  // 1.3.0 (ISSUES_v15.4 R2): results not returned / not issued, items not told apart (尚未回傳, 未發報, 無法區分)
+  "回傳", "回覆", "發報", "區分", "區別", "分辨",
 ];
 /** Verbs that combine with 中 (in progress) / 失敗 (failed) / 尚在 … (still being …). */
 const PROGRESS_VERBS_ZH = [
@@ -58,6 +60,8 @@ const ABSENCE_WORDS_ZH = [
   "難以辨識", "無法判讀", "無結果", "無數值", "無報告", "未出", "未出來", "尚未出來", "未回", "尚未回", "未回報", "作廢", "退件",
   // 1.2.0 (ISSUES_v15.3 R1): not determined / not established / pending (the diagnosis-slot cues are added as well, see SLOT_CUES)
   "待", "未明", "原因未明", "原因不明", "不下", "暫不下", "未確定", "尚未確定", "無定論", "尚無定論", "未定論",
+  // 1.3.0 (ISSUES_v15.4 R2): not issued / undecided / indistinguishable (see ABSENCE_CLASSES for the clause-level patterns)
+  "未發報", "不予發報", "不發報", "無法發報", "未得", "再議", "尚難區分", "難以區分", "不易區分", "難區分", "仍難區分", "尚無法區分",
 ];
 /** Nil words: count as absence only in fields that need a structured value (identifier, date, quantity, name, reference). */
 const NIL_WORDS_ZH = ["無", "沒有", "空", "無號"];
@@ -68,6 +72,8 @@ const NOT_VERBS_EN = [
   "generated", "filed", "verified", "collected", "done", "received",
   // 1.2.0 (ISSUES_v15.3 R1)
   "performed", "drawn", "resulted", "diagnosed", "finalized", "finalised", "released", "back", "out", "available yet", "ruled out",
+  // 1.3.0 (ISSUES_v15.4 R2)
+  "decided", "returned", "distinguished", "differentiated",
 ];
 const ABSENCE_WORDS_EN = [
   "unknown", "unk", "n/a", "not applicable", "unavailable", "unspecified", "unassigned", "undetermined", "unconfirmed", "unrecorded",
@@ -80,6 +86,8 @@ const ABSENCE_WORDS_EN = [
   // 1.2.0 (ISSUES_v15.3 R1)
   "result pending", "results pending", "pending result", "pending results", "awaiting result", "awaiting results", "redraw", "redrawn",
   "being redrawn", "to be redrawn", "recollect", "recollection", "repeat pending", "to follow", "tbd", "inconclusive", "indeterminate",
+  // 1.3.0 (ISSUES_v15.4 R2)
+  "rejected", "specimen rejected", "sample rejected", "indistinguishable", "no report",
 ];
 const NIL_WORDS_EN = ["none", "nil", "null", "na", "n.a.", "-"];
 
@@ -175,6 +183,9 @@ const SLOT_CUE_PATTERNS = [
   String.raw`\bno\s+(definitive\s+|final\s+|firm\s+|definite\s+)?diagnos\w*\s+(until|before|pending|prior)`,
   String.raw`\bdiagnos\w*\s+(will\s+be|to\s+be|is\s+to\s+be)\s+(made|determined|confirmed|established|decided)`,
   String.raw`\b(await|awaiting|pending)\s+[^,.;]{1,40}\bbefore\s+(making\s+)?(a\s+)?diagnos`,
+  // 1.3.0 (ISSUES_v15.4): the slot says its candidates cannot be told apart yet (支氣管炎與早期肺炎尚難區分)
+  String.raw`(尚難|難以|無法|不易|仍難|尚無法|仍無法|未能)(區分|區別|鑑別|分辨|判別)`,
+  String.raw`\bindistinguishable\b|\b(cannot|can't|unable\s+to|could\s+not|not\s+able\s+to|difficult\s+to)\s+(be\s+)?(distinguish|differentiate|tell\s+apart|distinguished|differentiated)\b`,
 ];
 /** Item separators inside a diagnosis slot (top level, outside brackets). */
 const SLOT_ITEM_SEPARATORS = ["、", "；", ";", "，", ",", "／", "/", " vs. ", " vs ", " versus ", "或", " or ", "及", " and "];
@@ -218,12 +229,138 @@ const STATED_ABSENT_LABELS: Record<string, string[]> = {
 const RESULT_ABSENCE_ZH = ["溶血", "凝固", "檢體溶血", "檢體凝固", "檢體不足", "量不足", "檢體量不足", "見報告", "詳見報告", "另見報告", "參見報告", "外送", "送外院", "拒收"];
 const RESULT_ABSENCE_EN = ["hemolyzed", "haemolyzed", "hemolysis", "clotted", "qns", "quantity not sufficient", "insufficient", "insufficient sample", "see report", "see attached", "see below", "sent out", "send out", "send-out"];
 
+/**
+ * 1.3.0 (ISSUES_v15.4 R2): absence PREDICATE CLASSES for side texts (note / dataAbsentReason.text / dosage text /
+ * a text-only code / valueString) — read clause by clause (absenceClauses()). Each class is a set of regular patterns
+ * (NFKC + lower case; matched anywhere in a clause) rather than a word list, so the variants a record writes
+ * (報告尚未回傳 / 結果還沒出來 / 待 CT 正式報告 / result not back yet) share one pattern:
+ *
+ *   pending-result        the result exists or will exist but is not out / not back / not issued yet
+ *   rejected-specimen     the specimen was rejected / unusable (溶血, 凝固, 量不足, 退件, 不予發報, QNS, recollect)
+ *   machine-error         the instrument failed (機器錯誤, Err-3, analyzer error) — no value was obtained
+ *   undecided             a decision still to be made (未定, 待定, 待確認, undecided, to be determined)
+ *   indistinguishable     items not yet told apart (尚難區分, 無法鑑別, 鑑別中, cannot differentiate)
+ *   conditional-on-future-result  the value depends on a result still to come (要看 Cr 報告, 依血糖結果調整,
+ *                         視報告而定, depending on the culture result, once the level is back)
+ *   not-done              the test / item was simply not done (本次未做 X 光, 拒絕抽血, not performed, cancelled) —
+ *                         a weaker tier: legitimate when the conversion target does not need the item (warning at most)
+ *
+ * `negatable` classes ignore a match preceded by a negation (無溶血, no hemolysis, non-hemolyzed).
+ */
+const ABSENCE_CLASSES: Record<string, { negatable: boolean; patterns: string[]; resultOnly?: string[] }> = {
+  "pending-result": {
+    negatable: true,
+    patterns: [
+      String.raw`(尚未|還未|仍未|迄未|還沒有|還沒|沒有|沒|未)(出|回|回傳|回報|回覆|出來|出爐|發報告|出報告|報告|得|驗出|測出|測得)(?![現院生血門席國去入外版名])`,
+      String.raw`(報告|結果|數值|數據|檢驗值|讀值)[^，,。；;]{0,6}(尚未|還未|仍未|還沒有|還沒|沒有|未)(出|回|發|得|知|好)`,
+      String.raw`(待|等待|等候|等|尚待|仍待)[^，,。；;]{0,16}(報告|結果|回報|數值|檢驗值)`,
+      String.raw`(送驗|外送|送檢|檢驗|化驗|培養|判讀|分析|重抽|重驗|處理)中`,
+      String.raw`(尚無|仍無|暫無|無)(報告|結果|數值|讀值|檢驗值)`,
+      String.raw`\b(result|results|report|reports|level|levels|value)\s+(is\s+|are\s+)?(still\s+)?(pending|outstanding|awaited|not\s+(yet\s+)?(back|out|available|reported|resulted|released))\b`,
+      String.raw`\bpending\b`,
+      String.raw`\bawait(s|ing|ed)?\b`,
+      String.raw`\bnot\s+(yet\s+)?(been\s+)?(back|reported|resulted|released|finali[sz]ed)\b`,
+      String.raw`\bnot\s+yet\s+(available|collected|drawn|done|performed|measured|obtained)\b`,
+      String.raw`\bno\s+(result|results|value|values|report|reading)\b`,
+      String.raw`\bto\s+follow\b`,
+    ],
+  },
+  "rejected-specimen": {
+    negatable: true,
+    patterns: [
+      String.raw`退件|拒收|退回`,
+      String.raw`(不予|不能|無法|未|不)發報`,
+      String.raw`(檢體|標本|血液|尿液|樣本)[^，,。；;]{0,4}(不足|污染|汙染|錯誤|不合格|不符|破損|遺失)`,
+      String.raw`(尿量|血量|檢體量|採檢量|樣本量|量)不足`,
+      String.raw`(待|需|須|要|將|需要)重(新)?(抽|採|驗|送|測)|重(新)?(抽|採|驗|送)(血|檢)?中`,
+      String.raw`\b(rejected|qns)\b`,
+      String.raw`\bquantity\s+not\s+sufficient\b|\binsufficient\s+(sample|specimen|volume|quantity|urine|blood)\b`,
+      String.raw`\b(recollect(ion|ed)?|re-?draw(n|ing)?|re-?collect(ion|ed)?)\b`,
+      String.raw`\b(specimen|sample)\s+(lost|leaked|mislabel(l)?ed|unlabel(l)?ed|contaminated|insufficient)\b|\bunable\s+to\s+(obtain|collect|draw)\b`,
+    ],
+    // specimen conditions that are a real result of an appearance / quality test (血清外觀：溶血): absence only where the
+    // code needs a quantitative result (AbsenceOptions.result), like RESULT_ABSENCE_*
+    resultOnly: [
+      String.raw`溶血|凝固|凝集`,
+      String.raw`\b(hemoly[sz]ed|haemoly[sz]ed|hemolysis|haemolysis|clotted)\b`,
+    ],
+  },
+  "machine-error": {
+    negatable: true,
+    patterns: [
+      String.raw`(機器|儀器|機台|分析儀|血糖機|血壓計|血糖計|機|計)[^，,。；;]{0,6}(錯誤|故障|異常|當機|失敗)`,
+      String.raw`錯誤(碼|代碼|訊息)|讀值錯誤|無法(讀值|讀取|判讀|測得|測出|量測|測量)`,
+      String.raw`\berr(or)?\s*[-#:]?\s*\d{1,4}\b`,
+      String.raw`\b(machine|instrument|analy[sz]er|device|meter|glucometer)\s+(error|fault|failure|malfunction)\b|\berror\s+code\b`,
+    ],
+  },
+  undecided: {
+    negatable: false,
+    patterns: [
+      String.raw`(尚未|還未|仍未|還沒|沒有|未|待|有待|仍待|尚待)(決定|確定|確認|定案|敲定)`,
+      String.raw`(待定|未定|再議|另議|未決)(?![期時義])`,
+      String.raw`(待|等待|尚待|有待|仍待)[^，,。；;]{0,12}(決定|確認|確定|討論|定奪)`,
+      String.raw`(劑量|頻次|頻率|用法|用量|療程|藥物|藥名|處方)[^，,。；;]{0,8}(未定|待定|未決|待確認|未確定|再議|再定)`,
+      String.raw`\bundecided\b|\bnot\s+(yet\s+)?(decided|determined|confirmed)\b|\bto\s+be\s+(decided|determined|confirmed|discussed)\b|\btb[dc]\b|\bundetermined\b`,
+    ],
+  },
+  indistinguishable: {
+    negatable: false,
+    patterns: [
+      String.raw`(尚難|難以|無法|不易|未能|仍難|很難|不能|尚無法|仍無法|難)(區分|區別|鑑別|分辨|判別|判斷是|確定是)`,
+      String.raw`(鑑別|鑑別診斷)中|(待|仍待|尚待|需)鑑別`,
+      String.raw`(還是|或是)[^，,。；;]{1,16}(不確定|未確定|待確認|待釐清|不清楚|未明)`,
+      String.raw`\bindistinguishable\b|\b(cannot|can't|unable\s+to|could\s+not|not\s+able\s+to|difficult\s+to|hard\s+to)\s+(be\s+)?(distinguish|differentiate|tell\s+apart|distinguished|differentiated)\b`,
+    ],
+  },
+  "conditional-on-future-result": {
+    negatable: false,
+    patterns: [
+      String.raw`(要|需|須|得|需要)?(看|視)[^，,。；;]{1,20}(結果|報告|數值|檢驗值|回報)`,
+      String.raw`(依|根據|按|依照|視)[^，,。；;]{1,16}(結果|報告|數值|檢驗值|回報)[^，,。；;]{0,6}(再|後|而定|決定|調整|定)`,
+      String.raw`(待|等)[^，,。；;]{1,20}(後|再)[^，,。；;]{0,8}(決定|調整|開立|給藥|確定|定)`,
+      String.raw`\b(depending|depends|dependent|based)\s+on\b[^,.;]{0,40}\b(result|results|report|level|levels|value|values)\b`,
+      String.raw`\b(once|after|when|until)\b[^,.;]{0,30}\b(result|results|report|level|levels)\b[^,.;]{0,12}\b(back|available|known|in|out)\b`,
+    ],
+  },
+  "not-done": {
+    negatable: false,
+    patterns: [
+      String.raw`(?<![尚仍還待])(未|沒有|沒|不)(做|執行|施行|安排|開立|檢查|照|拍|實施|進行|抽血|採檢|檢驗|測量|量)(?![完好])`,
+      String.raw`拒(絕|做|抽|驗|檢|測)|取消|免(做|驗)`,
+      String.raw`\bnot\s+(done|performed|ordered|indicated|requested|obtained|collected|measured|tested|checked|assessed)\b`,
+      String.raw`\b(declined|refused|cancel{1,2}ed|omitted|deferred|not\s+applicable)\b`,
+    ],
+  },
+};
+
+/** dataAbsentReason codes (http://terminology.hl7.org/CodeSystem/data-absent-reason): the value was not obtained / is unknown vs a legitimate not-done. */
+const DAR_ABSENT = ["unknown", "asked-unknown", "temp-unknown", "not-asked", "error", "not-a-number", "negative-infinity", "positive-infinity"];
+const DAR_NOT_DONE = ["not-performed", "asked-declined", "not-permitted", "not-applicable", "masked", "unsupported", "as-text"];
+/** Qualitative result words: a clause carrying one states a result (陰性，檢體輕微溶血) — never an absence clause. */
+const RESULT_WORDS = [
+  "陰性", "陽性", "弱陽性", "正常", "異常", "未見異常", "無異常", "偏高", "偏低", "微量", "可疑", "negative", "positive", "normal", "abnormal",
+  "not detected", "detected", "reactive", "non-reactive", "nonreactive", "trace", "within normal limits", "wnl",
+];
+
+/**
+ * Generic predicates that, alone in a clause, qualify the item rather than say it is absent (clause mode): it is being
+ * followed / treated (慢性腎病，追蹤中), or only its CAUSE is unknown (腹痛，原因不明 — an established symptom diagnosis).
+ */
+const MONITORING_WORDS = [
+  "追蹤中", "觀察中", "評估中", "處理中", "治療中", "控制中", "追蹤", "觀察", "仍在追蹤", "仍在觀察", "持續追蹤", "尚在觀察", "尚在追蹤",
+  "原因不明", "原因未明", "不明原因", "不明", "未明", "unknown etiology", "unknown cause", "unknown origin", "unspecified",
+];
+
 export const RECORD_CHECKS_LEXICON = {
   name: "record-checks-lexicon",
   // 1.1.0 (ISSUES_v15.1): measurement / document failure vocabulary; primary-diagnosis slot headings and cues; stated-absent field labels.
   // 1.2.0 (ISSUES_v15.3 R1): pending / not-determined / not-established / being-redrawn vocabulary for text fields (the
   //   diagnosis-slot cues count as absence predicates too), test / report nouns, and the result-slot-only "no result" words.
-  version: "1.2.0",
+  // 1.3.0 (ISSUES_v15.4 R2): absence predicate classes for side texts (pending-result, rejected-specimen, machine-error, undecided,
+  //   indistinguishable, conditional-on-future-result, not-done), dataAbsentReason code tiers, qualitative result words; new
+  //   words / verbs (未發報, 不予發報, 未得, 尚難區分, 回傳, undecided, rejected …).
+  version: "1.3.0",
   absence: {
     negPrefixesZh: NEG_PREFIXES_ZH,
     processVerbsZh: PROCESS_VERBS_ZH,
@@ -258,6 +395,10 @@ export const RECORD_CHECKS_LEXICON = {
     symptomSnomedTags: SYMPTOM_SNOMED_TAGS,
   },
   statedAbsentLabels: STATED_ABSENT_LABELS,
+  absenceClasses: ABSENCE_CLASSES,
+  dataAbsentReason: { absent: DAR_ABSENT, notDone: DAR_NOT_DONE },
+  resultWords: RESULT_WORDS,
+  monitoring: MONITORING_WORDS,
 } as const;
 
 export const RECORD_CHECKS_LEXICON_VERSION = `${RECORD_CHECKS_LEXICON.name} ${RECORD_CHECKS_LEXICON.version}`;
@@ -328,6 +469,8 @@ for (const term of TERMS) {
 const RE_SKIP = /[\s\p{P}\p{S}]/u;
 const RE_LATIN = /[a-z0-9]/u;
 const RE_DIGIT_RUN = /\d{3,}/u;
+/** Instrument error codes (Err-3, err 12, error-7), sticky at a position. */
+const RE_ERR_CODE = /err(?:or)?\s*[-#:]?\s*\d{1,2}(?![0-9a-z])/uy;
 /** A value made only of placeholder marks (--, ??, xxx, ***, ___). */
 const RE_PLACEHOLDER = /^(?:x{2,}|[?？]+|[-_*.。·—–]+|○+|＊+)$/u;
 /** Longest value examined: absence phrases are short; a long text is narrative, not a field value. */
@@ -343,6 +486,11 @@ export interface AbsenceOptions {
    * measurement-time qualifiers (3 h, 07:00) are skipped.
    */
   result?: boolean;
+  /**
+   * 1.3.0 (ISSUES_v15.4 R1): drop reference-range / detection-limit brackets first (「檢體溶血，未發報 (< 14)」: the number
+   * is a limit, not a result) — for result values (valueString).
+   */
+  limits?: boolean;
 }
 
 export interface AbsenceMatch {
@@ -361,6 +509,7 @@ export function absenceOf(value: unknown, allowNil: boolean, opts: AbsenceOption
   if (typeof value !== "string") return null;
   let t = nfkc(value).trim();
   if (opts.result) t = t.replace(RE_RESULT_TIME, (m) => " ".repeat(m.length)).trim();
+  if (opts.limits) t = stripLimits(t).trim();
   if (!t || t.length > MAX_VALUE_LENGTH) return null;
   if (RE_PLACEHOLDER.test(t)) return allowNil ? { predicates: [value.trim()], placeholder: true } : null;
   if (RE_DIGIT_RUN.test(t)) return null; // still carries real content (a number / an id)
@@ -377,6 +526,12 @@ export function absenceOf(value: unknown, allowNil: boolean, opts: AbsenceOption
       if (!old || next[0] > old[0]) best[j] = next;
     };
     if (RE_SKIP.test(t[i])) relax(i + 1, null);
+    // 1.3.0: instrument error codes (Err-3, error 12) are absence predicates
+    if (t[i] === "e" && (i === 0 || !RE_LATIN.test(t[i - 1]))) {
+      RE_ERR_CODE.lastIndex = i;
+      const em = RE_ERR_CODE.exec(t);
+      if (em) relax(i + em[0].length, em[0]);
+    }
     for (const term of TERMS_BY_FIRST.get(t[i]) ?? []) {
       if (!t.startsWith(term.text, i)) continue;
       const j = i + term.text.length;
@@ -480,3 +635,148 @@ export const DX_SLOT = {
 export const ABSENT_LABELS: ReadonlyArray<readonly [string, string]> = Object.entries(STATED_ABSENT_LABELS)
   .flatMap(([fam, ls]) => ls.map((l) => [nfkc(l), fam] as const))
   .sort((a, b) => b[0].length - a[0].length);
+
+// ------------------------------------------------------------------------------------------- v15.4 clause-level absence
+
+/** Predicate class of an absence clause; "not-obtained" = the whole clause is covered by the generic absence recogniser. */
+export type AbsenceClass =
+  | "pending-result"
+  | "rejected-specimen"
+  | "machine-error"
+  | "undecided"
+  | "indistinguishable"
+  | "conditional-on-future-result"
+  | "not-done"
+  | "not-obtained";
+
+/** Classes that say the information is ABSENT (not out / not decided / unusable) — as opposed to "not-done". */
+export const ABSENT_TIER: ReadonlySet<AbsenceClass> = new Set<AbsenceClass>([
+  "pending-result", "rejected-specimen", "machine-error", "undecided", "indistinguishable", "conditional-on-future-result", "not-obtained",
+]);
+
+/** zh labels of the classes (messages). */
+export const CLASS_ZH: Record<AbsenceClass, string> = {
+  "pending-result": "結果未出／未回",
+  "rejected-specimen": "檢體退件／不予發報",
+  "machine-error": "儀器錯誤、未得數值",
+  undecided: "未定／待確認",
+  indistinguishable: "尚難區分／鑑別中",
+  "conditional-on-future-result": "要看之後的結果才能決定",
+  "not-done": "未做",
+  "not-obtained": "資訊不存在／尚未取得",
+};
+
+const CLASS_RX: Array<{ cls: AbsenceClass; negatable: boolean; resultOnly: boolean; rx: RegExp }> = Object.entries(ABSENCE_CLASSES).flatMap(([cls, c]) => [
+  ...c.patterns.map((p) => ({ cls: cls as AbsenceClass, negatable: c.negatable, resultOnly: false, rx: new RegExp(p, "gu") })),
+  ...(c.resultOnly ?? []).map((p) => ({ cls: cls as AbsenceClass, negatable: c.negatable, resultOnly: true, rx: new RegExp(p, "gu") })),
+]);
+const RE_NEG_BEFORE_ZH = /(無|未見|沒有|沒|非|不|未|並無)\s*$/u;
+const RE_NEG_BEFORE_EN = /\b(no|not|non|without|nor|negative\s+for)[\s-]*$/u;
+/** A bracket that holds only a reference range / detection limit (< 14, 3.5-5.0 mmol/L, 參考值 70-100): the number is not a result. */
+const RE_LIMIT_BRACKET = /[(（[]\s*(?:參考值|參考範圍|正常值|正常範圍|ref(?:erence)?(?:\s+range)?|rr|normal|limit|檢測下限|偵測極限)?\s*[:：]?\s*(?:[<>≤≥＜＞]=?\s*)?\d+(?:\.\d+)?\s*(?:(?:-|~|～|至|to)\s*\d+(?:\.\d+)?)?\s*[a-zµμ%/*^0-9.]{0,12}\s*[)）\]]/gu;
+const RE_CLAUSE_SPLIT = /[，,。；;！!？?\n]+|\s[-–—]\s/u;
+const TIME_UNITS = new Set(["h", "min", "s", "d", "wk", "mo", "a"]);
+const MONITORING = new Set(MONITORING_WORDS.map((x) => nfkc(x)));
+const RESULT_WORDS_N = RESULT_WORDS.map((w) => nfkc(w)).sort((a, b) => b.length - a.length);
+
+/** Strip reference-range / detection-limit brackets (the numbers in them are limits, not results). */
+export function stripLimits(t: string): string {
+  return t.replace(RE_LIMIT_BRACKET, (m) => " ".repeat(m.length));
+}
+
+/** Whether a clause states a result: a qualitative result word, or a number with a (non-time) unit. */
+function statesResult(c: string): boolean {
+  for (const w of RESULT_WORDS_N) {
+    const i = c.indexOf(w);
+    if (i < 0) continue;
+    if (!latinBoundaryOk(c, i, i + w.length, w)) continue;
+    // 「未見異常」/「無異常」 are results; a negated qualitative word (非陽性) is still a result
+    return true;
+  }
+  return numbersWithUnits(c).some(([, , u]) => u !== null && !TIME_UNITS.has(u));
+}
+
+export interface ClauseHit {
+  /** The clause as written (NFKC). */
+  clause: string;
+  cls: AbsenceClass;
+  /** The text that matched the predicate. */
+  predicate: string;
+}
+
+/** Classify one clause (NFKC + lower case, limits stripped) or null. */
+function classifyClause(c: string, result: boolean): ClauseHit | null {
+  if (!c.trim() || statesResult(c)) return null;
+  let notDone: ClauseHit | null = null;
+  for (const { cls, negatable, resultOnly, rx } of CLASS_RX) {
+    if (resultOnly && !result) continue;
+    rx.lastIndex = 0;
+    for (let m = rx.exec(c); m; m = rx.exec(c)) {
+      if (m[0].length === 0) {
+        rx.lastIndex++;
+        continue;
+      }
+      const before = c.slice(Math.max(0, m.index - 6), m.index);
+      if (negatable && (RE_NEG_BEFORE_ZH.test(before) || RE_NEG_BEFORE_EN.test(before))) continue;
+      if (cls === "not-done") {
+        notDone ??= { clause: c.trim(), cls, predicate: m[0] };
+        break;
+      }
+      return { clause: c.trim(), cls, predicate: m[0] };
+    }
+  }
+  if (notDone) return notDone;
+  const whole = absenceOf(c, false, { result });
+  // a clause that only says the item is being followed / watched (慢性腎病，追蹤中) is not an absence statement
+  if (!whole || whole.predicates.every((p) => MONITORING.has(p)) || MONITORING.has(c.trim().replace(/[\s\p{P}]+$/u, ""))) return null;
+  return { clause: c.trim(), cls: "not-obtained", predicate: whole.predicates.join(", ") };
+}
+
+/** One clause of a text: its classification and whether it states a result. */
+export interface ClauseReading {
+  clause: string;
+  hit: ClauseHit | null;
+  result: boolean;
+}
+
+/**
+ * Clauses of a text (，。；; ！？ newline, " - "), NFKC + lower case, reference-range / detection-limit brackets dropped
+ * and (result mode) measurement-time qualifiers skipped; each with its absence class (or null) and whether it states a
+ * result (a qualitative result word, a number with a non-time unit — such a clause is never an absence clause).
+ */
+export function clausesOf(text: unknown, opts: AbsenceOptions = {}): ClauseReading[] {
+  if (typeof text !== "string") return [];
+  let t = nfkc(text);
+  if (!t.trim() || t.length > 600) return [];
+  t = stripLimits(t);
+  if (opts.result) t = t.replace(RE_RESULT_TIME, (m) => " ".repeat(m.length));
+  const out: ClauseReading[] = [];
+  for (const c of t.split(RE_CLAUSE_SPLIT)) {
+    if (!c.trim()) continue;
+    const result = statesResult(c);
+    out.push({ clause: c.trim(), hit: result ? null : classifyClause(c, !!opts.result), result });
+  }
+  return out;
+}
+
+/**
+ * ISSUES_v15.4 R1 — the DOMINANCE rule for side texts: a clause is DOMINATED by an absence predicate when it matches a
+ * predicate class (ABSENCE_CLASSES; negated specimen / machine words — 無溶血, no hemolysis — excluded) or is wholly
+ * covered by the generic recogniser (absenceOf), and states no result itself. Unlike absenceOf, other clauses may carry
+ * other content (外送檢驗所，報告尚未回傳) — but a text with any clause that states a result (陰性，檢體輕微溶血) is not
+ * an absence statement at all. Used only where the resource has no primary value (an empty shell), so a clause of
+ * absence is the only information there.
+ */
+export function absenceClauses(text: unknown, opts: AbsenceOptions = {}): ClauseHit[] {
+  const cs = clausesOf(text, opts);
+  if (cs.some((c) => c.result)) return [];
+  return cs.flatMap((c) => (c.hit ? [c.hit] : []));
+}
+
+/** Tier of a dataAbsentReason code: "absent" (unknown, error …), "not-done" (not-performed, asked-declined …) or null. */
+export function dataAbsentTier(code: unknown): "absent" | "not-done" | null {
+  if (typeof code !== "string") return null;
+  if (DAR_ABSENT.includes(code)) return "absent";
+  if (DAR_NOT_DONE.includes(code)) return "not-done";
+  return null;
+}
