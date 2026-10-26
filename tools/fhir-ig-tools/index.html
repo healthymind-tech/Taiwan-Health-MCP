@@ -2862,7 +2862,7 @@
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_finalize_resource</code></td>
-<td style="text-align: left;">1.9.1（v15.2.1：同 <code>fhir_finalize_bundle</code> 1.5.1）；1.9.0（v15.2：<code>alt-coding</code>；驗證同 <code>fhir_validate_resource</code> 1.11.0）；將已寫好的 FHIR JSON 草稿依剖面定稿並驗證：只在草稿已有父節點處釘上 fixed / pattern（含 slice 成員與任何深度的 <code>_slice</code> 標記），不補臨床內容；<code>repair="content"</code>（預設）先套用與 <code>fhir_finalize_bundle</code> 相同的內容修正（見「<a href="#content-repair">內容修正</a>」），回傳 <code>changes</code> / <code>repair_issues</code>；有欄位值時改用 <code>fhir_author_resources</code>（見「<a href="#authoring">從欄位值撰寫資源</a>」）</td>
+<td style="text-align: left;">1.10.0（v15.3：<code>validation</code> 的 record checks 同 <code>fhir_validate_resource</code> 1.12.0）；1.9.1（v15.2.1：同 <code>fhir_finalize_bundle</code> 1.5.1）；1.9.0（v15.2：<code>alt-coding</code>；驗證同 <code>fhir_validate_resource</code> 1.11.0）；將已寫好的 FHIR JSON 草稿依剖面定稿並驗證：只在草稿已有父節點處釘上 fixed / pattern（含 slice 成員與任何深度的 <code>_slice</code> 標記），不補臨床內容；<code>repair="content"</code>（預設）先套用與 <code>fhir_finalize_bundle</code> 相同的內容修正（見「<a href="#content-repair">內容修正</a>」），回傳 <code>changes</code> / <code>repair_issues</code>；有欄位值時改用 <code>fhir_author_resources</code>（見「<a href="#authoring">從欄位值撰寫資源</a>」）</td>
 <td style="text-align: left;"><code>profile</code>, <code>draft</code>, <code>context_id</code>, <code>key</code>, <code>generate_narrative</code>（預設 <code>true</code>）, <code>repair</code>（<code>content</code> / <code>ids</code>）, <code>timezone</code>, <code>site_config</code></td>
 </tr>
 <tr>
@@ -2877,17 +2877,17 @@
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_finalize_bundle</code></td>
-<td style="text-align: left;">1.5.1（v15.2.1：<code>alt-coding</code> 也適用於未宣告 <code>meta.profile</code> 的資源）；1.5.0（v15.2：內容修正規則 <code>alt-coding</code>）；<strong>在輸出最終 Bundle 前呼叫</strong>：整理 <code>fullUrl</code>、<code>reference</code> 和 <code>id</code>（見下節「Bundle 定稿」），<code>repair="content"</code>（預設）另修正可唯一確定的內容錯誤、不能確定的不猜並回報候選（見「<a href="#content-repair">內容修正</a>」；<code>repair="ids"</code> 只整理 id）；數字保留呼叫端的原始寫法（<code>10.0</code> 仍是 <code>10.0</code>）。回傳整理後的 <code>bundle</code>、每一處改動 <code>changes[{path, from, to, rule}]</code>、無法確定的引用 <code>unresolved[{path, reference, candidates}]</code>、<code>notes</code> 與 <code>id_map</code>。<code>bundle_type</code> 可指定 <code>Bundle.type</code>（剖面固定的 type 不會被覆寫）</td>
+<td style="text-align: left;">1.6.0（v15.3：<code>record_issues</code> 同 <code>fhir_validate_bundle</code> 1.15.0 的 record checks：文字欄位的缺漏敘述、需數值結果的 valueString / note、主診斷以 provisional 代替）；1.5.1（v15.2.1：<code>alt-coding</code> 也適用於未宣告 <code>meta.profile</code> 的資源）；1.5.0（v15.2：內容修正規則 <code>alt-coding</code>）；<strong>在輸出最終 Bundle 前呼叫</strong>：整理 <code>fullUrl</code>、<code>reference</code> 和 <code>id</code>（見下節「Bundle 定稿」），<code>repair="content"</code>（預設）另修正可唯一確定的內容錯誤、不能確定的不猜並回報候選（見「<a href="#content-repair">內容修正</a>」；<code>repair="ids"</code> 只整理 id）；數字保留呼叫端的原始寫法（<code>10.0</code> 仍是 <code>10.0</code>）。回傳整理後的 <code>bundle</code>、每一處改動 <code>changes[{path, from, to, rule}]</code>、無法確定的引用 <code>unresolved[{path, reference, candidates}]</code>、<code>notes</code> 與 <code>id_map</code>。<code>bundle_type</code> 可指定 <code>Bundle.type</code>（剖面固定的 type 不會被覆寫）</td>
 <td style="text-align: left;"><code>bundle</code>, <code>package_id</code>, <code>version</code>, <code>bundle_profile</code>（目標 Bundle profile 的 canonical 或 id；省略時取 <code>meta.profile</code>）, <code>bundle_type</code>（R4 bundle-type 代碼）, <code>repair</code>（<code>content</code> 預設 / <code>ids</code>）, <code>timezone</code>（site 時區：UTC offset 或 IANA 名稱）, <code>site_config</code>（院所設定文字，<code>timezone:</code> 行可提供時區）</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_validate_resource</code></td>
-<td style="text-align: left;">1.11.1（v15.2.1，同 <code>fhir_validate_bundle</code> 1.14.1）；1.11.0（v15.2，同 <code>fhir_validate_bundle</code> 1.14.0）；驗證單一資源（結構 + 術語綁定）；未給 <code>profile</code> 時取 <code>meta.profile</code>。選用的 <code>source_text</code> 會另跑 grounding 檢查（見下節）</td>
+<td style="text-align: left;">1.12.0（v15.3，同 <code>fhir_validate_bundle</code> 1.15.0）；1.11.1（v15.2.1，同 <code>fhir_validate_bundle</code> 1.14.1）；1.11.0（v15.2，同 <code>fhir_validate_bundle</code> 1.14.0）；驗證單一資源（結構 + 術語綁定）；未給 <code>profile</code> 時取 <code>meta.profile</code>。選用的 <code>source_text</code> 會另跑 grounding 檢查（見下節）</td>
 <td style="text-align: left;"><code>resource</code>, <code>profile</code>, <code>source_text</code>, <code>site_config</code>, <code>evidence_map</code>, <code>grounding</code>, <code>grounding_verbosity</code></td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_validate_bundle</code></td>
-<td style="text-align: left;">1.14.1（v15.2.1：未宣告 profile 的資源也提供替代 coding 建議）；1.14.0（v15.2：Unknown code 建議的相關性門檻、<code>replace_coding</code> / <code>remove_coding</code> 替代 coding、ATC 依內建 tx.fhir.org 判定表檢查）；驗證整個 Bundle（各 entry 依其 <code>meta.profile</code> + Bundle 內參照完整性）。ID 類錯誤（<code>UUIDs must be valid…</code>、引用無法解析、缺 fullUrl、bdl-7、不合法 id）附 <code>suggestions</code> 與 Bundle 層級的 <code>id_map</code> / <code>id_changes</code>；<code>normalize_ids=true</code> 時先整理再驗證並回傳 <code>normalized_bundle</code>（見下節「Bundle 定稿」）。選用的 <code>source_text</code> 會另跑 grounding 檢查並合併結果（見後文）</td>
+<td style="text-align: left;">1.15.0（v15.3 <a href="#record-checks">record checks</a>：<code>information-absent</code> 也適用於文字欄位——沒有代碼 / 只有佔位代碼的 <code>CodeableConcept.text</code>、<code>Dosage.text</code>、代碼需要數值結果的 <code>valueString</code> / <code>note</code>；主診斷 Condition 以 provisional / differential / 純文字代替病歷未確立的主診斷 → error「病歷沒有確立的主診斷」；有代碼元素的 <code>G-UNGROUNDED</code> / <code>G-VALUE-MISMATCH</code> 說明比對內容、附 <code>closest_record_phrase</code>，沒有明確反證時降為 warning）；1.14.1（v15.2.1：未宣告 profile 的資源也提供替代 coding 建議）；1.14.0（v15.2：Unknown code 建議的相關性門檻、<code>replace_coding</code> / <code>remove_coding</code> 替代 coding、ATC 依內建 tx.fhir.org 判定表檢查）；驗證整個 Bundle（各 entry 依其 <code>meta.profile</code> + Bundle 內參照完整性）。ID 類錯誤（<code>UUIDs must be valid…</code>、引用無法解析、缺 fullUrl、bdl-7、不合法 id）附 <code>suggestions</code> 與 Bundle 層級的 <code>id_map</code> / <code>id_changes</code>；<code>normalize_ids=true</code> 時先整理再驗證並回傳 <code>normalized_bundle</code>（見下節「Bundle 定稿」）。選用的 <code>source_text</code> 會另跑 grounding 檢查並合併結果（見後文）</td>
 <td style="text-align: left;"><code>bundle</code>, <code>normalize_ids</code>（預設 <code>false</code>）, <code>repair</code>（預設 <code>ids</code>；搭配 <code>normalize_ids</code> 可設 <code>content</code>）, <code>source_text</code>, <code>site_config</code>, <code>evidence_map</code>, <code>grounding</code>, <code>grounding_verbosity</code></td>
 </tr>
 </tbody>
@@ -3114,7 +3114,7 @@
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_author_resources</code></td>
-<td style="text-align: left;">1.7.0（v15.2：<code>alt-coding</code> 修正、候選附 <code>accepted_by_validator</code>）；一次撰寫多筆資源（8 筆以上沒問題）：<code>{key, profile, fields}</code>；MCP 補 <code>meta.profile</code>、fixed / pattern、slice、必填欄位的 workflow 預設值、可推導的值（例如有 encounter 的 Condition.category）、display、UCUM 單位、民國日期轉 ISO，並做下述「自動修正」，然後驗證並存進 context。回傳 <code>{context_id, storage, results[{key, status, resource, provenance, missing, refs, issues, notes}], summary, settings}</code></td>
+<td style="text-align: left;">1.8.0（v15.3：驗證同 <code>fhir_validate_resource</code> 1.12.0）；1.7.0（v15.2：<code>alt-coding</code> 修正、候選附 <code>accepted_by_validator</code>）；一次撰寫多筆資源（8 筆以上沒問題）：<code>{key, profile, fields}</code>；MCP 補 <code>meta.profile</code>、fixed / pattern、slice、必填欄位的 workflow 預設值、可推導的值（例如有 encounter 的 Condition.category）、display、UCUM 單位、民國日期轉 ISO，並做下述「自動修正」，然後驗證並存進 context。回傳 <code>{context_id, storage, results[{key, status, resource, provenance, missing, refs, issues, notes}], summary, settings}</code></td>
 <td style="text-align: left;"><code>context_id</code>（第一次省略）, <code>resources</code>, <code>timezone</code>, <code>apply_defaults</code>（<code>required</code> / <code>none</code>）, <code>site_config</code></td>
 </tr>
 <tr>
@@ -3124,7 +3124,7 @@
 </tr>
 <tr>
 <td style="text-align: left;"><code>fhir_assemble_bundle</code></td>
-<td style="text-align: left;">1.7.0（v15.2：同 <code>fhir_author_resources</code> 1.7.0 / <code>fhir_finalize_bundle</code> 1.5.0 / <code>fhir_validate_bundle</code> 1.14.0）；由 key 清單組 Bundle：每個 entry 的 fullUrl 是該 key 的確定性 urn:uuid，經 <code>fhir_finalize_bundle</code> 的規則定稿、<code>fhir_validate_bundle</code> 驗證（給 <code>source_text</code> 時另做 grounding）；issue 都帶 <code>key</code> 與模型欄位名</td>
+<td style="text-align: left;">1.8.0（v15.3：資源同 <code>fhir_author_resources</code> 1.8.0、驗證同 <code>fhir_validate_bundle</code> 1.15.0）；1.7.0（v15.2：同 <code>fhir_author_resources</code> 1.7.0 / <code>fhir_finalize_bundle</code> 1.5.0 / <code>fhir_validate_bundle</code> 1.14.0）；由 key 清單組 Bundle：每個 entry 的 fullUrl 是該 key 的確定性 urn:uuid，經 <code>fhir_finalize_bundle</code> 的規則定稿、<code>fhir_validate_bundle</code> 驗證（給 <code>source_text</code> 時另做 grounding）；issue 都帶 <code>key</code> 與模型欄位名</td>
 <td style="text-align: left;"><code>context_id</code>, <code>keys</code>, <code>bundle_type</code>, <code>bundle_profile</code>, <code>identifier</code>, <code>timestamp</code>, <code>source_text</code>, <code>site_config</code>, <code>allow_invalid</code></td>
 </tr>
 </tbody>
@@ -3354,6 +3354,13 @@
 <td style="text-align: left;">需要結構化值的欄位（<code>Identifier.value</code>、<code>Coding.code</code>、日期、<code>Quantity.value</code>、Reference、姓名、聯絡方式、<code>Observation.valueString</code>、批號、沒有代碼的 CodeableConcept 文字）的<strong>整個值</strong>都是在描述「資訊不存在 / 未知 / 待補 / 尚未取得 / 尚未確立」：例如「尚未取號」「建檔失敗」「尚在申請」「不詳」「待確認」「unknown」「pending」「not yet assigned」。訊息為「病歷沒有提供這項資訊」</td>
 </tr>
 <tr>
+<td style="text-align: left;">R1</td>
+<td style="text-align: left;"><code>information-absent</code>（文字欄位，v15.3）</td>
+<td style="text-align: left;">否</td>
+<td style="text-align: left;">error</td>
+<td style="text-align: left;">文字型欄位的<strong>整個值</strong>是「不存在 / 未定 / 未出 / 未確立 / 待補 / 待排除 / 重抽中 / pending / not yet …」的敘述：<code>CodeableConcept.text</code>（沒有 coding，或 coding 都是佔位——沒有 code、v3-NullFlavor / data-absent-reason、代碼本身是 unknown / TBD / --）、藥品資源的 <code>Dosage.text</code>，以及代碼需要<strong>數值結果</strong>的 Observation 的 <code>valueString</code>（沒有 value[x] 時其 <code>note</code>）。是否需要數值結果依序看：LOINC <code>SCALE_TYP</code> = Qn 或數量型 <code>PROPERTY</code>（MCnc、SCnc、NCnc、CCnc …，由工具從 <code>loinc.concepts</code> 查得）、Coding 上的 LOINC 名稱（「[Mass/volume]」「-mCnc」）、生命徵象代碼、vital-signs profile / category、有 low / high 的 referenceRange、同代碼的其他 Observation 有 valueQuantity；只有在這種結果欄位裡，「溶血、凝固、檢體不足、QNS、詳見報告」也算沒有結果，「3 h」「07:00」這類測量時間不算內容。例：<code>Condition.code = {"text": "暫不下診斷"}</code>、<code>valueString = "檢體溶血，重抽中（報告未出）"</code>。訊息指出是哪一個主要臨床欄位（診斷、檢驗結果、藥品、劑量）</td>
+</tr>
+<tr>
 <td style="text-align: left;">R2</td>
 <td style="text-align: left;"><code>identifier-format</code></td>
 <td style="text-align: left;">否</td>
@@ -3401,6 +3408,13 @@
 <td style="text-align: left;">是</td>
 <td style="text-align: left;">error</td>
 <td style="text-align: left;">有段落結構的病歷完全沒有診斷欄（或診斷欄是空的「診斷：」），而 Condition（不是 provisional / differential、不是 problem-list-item）只出現在主訴 / 現病史 / 檢查，或病歷中找不到</td>
+</tr>
+<tr>
+<td style="text-align: left;">R4</td>
+<td style="text-align: left;"><code>information-absent</code>（主診斷以 provisional / differential 代替，v15.3）</td>
+<td style="text-align: left;">是</td>
+<td style="text-align: left;">error</td>
+<td style="text-align: left;">病歷<strong>沒有任何已確立的主診斷欄</strong>，且明確寫出未確立（只有鑑別診斷、「未下診斷 / 暫不下診斷 / diagnosis pending」等欄位層級限定、每一項都是待排除 / r/o，或「診斷：」是空的），而本次的<strong>主診斷 Condition</strong> 標成 provisional / differential / unconfirmed，或 code 只有文字 → 訊息「病歷沒有確立的主診斷」。主診斷的判定見下；只有語氣保留（疑似 / possible）的診斷欄不報（provisional 本來就是疑似診斷的正確寫法）；病歷主診斷已確立時，次要的 r/o 項目標成 differential 是正確寫法，一律不報</td>
 </tr>
 <tr>
 <td style="text-align: left;">R1</td>
@@ -3467,10 +3481,12 @@
 - 識別碼：NFKC、不分大小寫、去掉 - _ . / 空白，比對完整 token、分隔片段的連續組合、去掉前導 0、黏在一起的英文標籤前綴（MRN00775310）。系統產生的識別碼（<code>urn:uuid</code>、Bundle / Composition / Claim identifier）不檢查。
 - 日期：西元、民國（114/06/10、民國114年6月10日）、年月日、斜線、月日（以病歷中的年份補年）、英文月份；時間含 HH:MM(:SS)、上午 / 下午 N 點 M 分、am / pm、日期後緊接的 HHMM；site 時區（<code>site_config</code> 的 <code>timezone:</code>，預設 +08:00）換算後也比對。推導：入院第 N 天 / hospital day N / HD#N（入院日 + N−1）、術後第 N 天 / POD#N（手術日 + N）、第 N 天、N 天前 / N 天後、昨天 / 前天 / 今天 / 隔天 / 次日、N 週前 / 後、N 個月前 / 後、主訴的病程（咳嗽 3 天 → 3 或 2 天前）、療程行的天數（處方 … 7 天 → 起日 + 6 或 7）、N 年前 / N 年（年份）、年齡（54 歲 → 出生年）、「N 分鐘 / 小時 後 / 前」。中文數字可讀（入院第三天）。錨點是病歷自己的日期：入院類用入院日、術後類用手術日、其他用同一行的日期，否則最近的上一個日期行（出生日期不算）；<code>Encounter.period.start</code> 與 <code>Patient.birthDate</code> 必須是病歷寫出的日期。紀錄性時間（<code>authoredOn</code>、<code>recordedDate</code>、<code>issued</code> …）日期找不到只給 warning、不檢查時間；工具或文件自己產生的時間（<code>Bundle.timestamp</code>、<code>Composition.date</code>、<code>Provenance.recorded</code> …）不檢查。
 - 數量：日期與時間以外的每個數字（所以 0 或 14 不會被「08:00」「2025/03/14」撐腰），含單位、中文數字、「半」、分數；單位相容才算（兩邊都是已知單位時），可換算單位（質量 / 體積 / 長度 / 時間、°F ↔ °C、葡萄糖 mg/dL ↔ mmol/L、10^3/uL ↔ /uL）、身高體重算 BMI、明寫的乘積（500 mg x 2）。衍生數量（<code>dispenseRequest.quantity</code>、<code>expectedSupplyDuration</code>、Claim item 數量）另接受同一行數字的乘積，找不到時只給 warning；參考範圍找不到為 warning；分母不檢查。</p>
+<p><strong>主診斷 Condition 怎麼判定（v15.3 R2，<code>diagnosisSlot.ts</code> <code>primaryCondition</code>）</strong>：依序——(1) <code>Encounter.diagnosis</code> 指向 Bundle 內 Condition 的項目中，排除 use 為 CM（共病）者，取 <code>rank</code> 最小者，沒有 rank 時取第一筆；全部都是共病時視為沒有主診斷；(2) 否則 category 為 encounter-diagnosis（且不是 problem-list-item）的 Condition：只有一筆就是它，多筆時取第一筆名稱對得上病歷診斷欄項目者，否則取第一筆；(3) 否則唯一一筆不是 problem-list-item、也不是病歷在診斷欄以外（過去病史 / 計畫 / 檢驗）寫明的共病的 Condition；(4) 都不成立時不判定、不報。refuted / entered-in-error 的 Condition 一律不算。只檢查主診斷這一筆，其他 Condition 不受此規則影響。</p>
+<p><strong>代碼的 grounding 訊息（v15.3 R3，<code>recordChecks/codeGrounding.ts</code>）</strong>：<code>fhir_validate_bundle</code> / <code>fhir_validate_resource</code>（以及背後的 <code>fhir_author_resources</code> / <code>fhir_assemble_bundle</code>）帶 <code>source_text</code> 時，grounding 對<strong>有代碼的元素</strong>（CodeableConcept / Coding，例如 <code>Condition.code = 'sct#…'</code>）回報的 <code>G-UNGROUNDED</code> / <code>G-VALUE-MISMATCH</code> 會被改寫：訊息說明比對的是「代碼的意思」——<code>text</code>、display、工具從術語表查到的名稱（英文 + 中文）與 ICD-10 碼——和病歷各行（轉換目標、院所設定、家族史除外），因為病歷不會寫代碼本身；issue 附 <code>closest_record_phrase = {text, similarity, section}</code>（病歷各子句中最相近者；相似度為 grounding 的加權名稱涵蓋率（含縮寫與中英對照展開），中文對中文另取 concept-search 正規化後的字元 bigram Dice，取較大者；低於 0.1 時為 null）、<code>compared</code> 與 <code>grounding_code_check</code>。<strong>只有在有明確反證時才維持 error</strong>（<code>contradicted</code>）：這是本次主診斷 Condition 的代碼、與病歷所有子句都不相關（相似度 &lt; 0.25），而且病歷有診斷欄、其每一項都能與這個代碼比較（同一語言、兩邊都有 ICD-10 碼，或中英對照能翻譯 ≥ 80% 的中文；只有縮寫的項目不算）且都不相似——也就是病歷寫的是別的診斷。其他情況都降為 warning 並加 <code>downgraded_from: "error"</code>：有相關敘述（<code>related</code>，相似度 ≥ 0.25，代碼可能只是換了說法）、或無法確定（<code>uncertain</code>：不同語言無法比較、病歷沒有診斷欄、共病、藥品、檢驗代碼）。降級後若該 entry / grounding 已無 error，<code>entries[i].valid</code>、<code>groundingValid</code>、<code>valid</code> 與 <code>grounding</code> 的 errors / warnings 計數會依剩下的 issue 重算；<code>data.record_checks.grounding_codes = {examined, warnings, errors}</code>。<code>fhir_check_grounding</code> 本身的輸出完全不變（它與參考實作逐位元比對）。</p>
 <p><strong>輸出</strong></p>
 <ul>
 <li>每個 issue：<code>severity</code>、<code>code</code>（上表）、<code>path</code>、<code>message</code>（中文 / 英文）、<code>message_zh</code>、<code>message_en</code>、<code>rule</code>（R1–R5）、<code>source: "record-checks"</code>、<code>evidence</code>（判斷依據），需要病歷的規則另有 <code>located_quotes</code>。</li>
-<li><code>fhir_validate_bundle</code> / <code>fhir_validate_resource</code>：issue 依 entry 併入 <code>entries[i].issues</code>（Bundle 層級併入 <code>issues</code>），<strong>error 會讓 <code>entries[i].valid</code> 與 <code>data.valid</code> 變成 false</strong>（<code>conformanceValid</code> / <code>groundingValid</code> 維持原意）；帶 <code>source_text</code> 或有任何發現時加上 <code>data.record_checks = {ok, errors, warnings, rules, source_text, notes?}</code>。沒有 <code>source_text</code> 時只跑 R1、R2（R1 的陳述缺漏與無值識別碼、R3–R5 都需要病歷）；<strong>沒有 <code>source_text</code> 且沒有任何發現時，輸出與未加這一層前逐位元相同</strong>（沒有 <code>record_checks</code>，也沒有額外的 provenance 欄位）。</li>
+<li><code>fhir_validate_bundle</code> / <code>fhir_validate_resource</code>：issue 依 entry 併入 <code>entries[i].issues</code>（Bundle 層級併入 <code>issues</code>），<strong>error 會讓 <code>entries[i].valid</code> 與 <code>data.valid</code> 變成 false</strong>（<code>conformanceValid</code> / <code>groundingValid</code> 維持原意）；帶 <code>source_text</code> 或有任何發現時加上 <code>data.record_checks = {ok, errors, warnings, rules, source_text, notes?, grounding_codes?}</code>。沒有 <code>source_text</code> 時只跑 R1、R2（R1 的陳述缺漏與無值識別碼、R3–R5 都需要病歷）；<strong>沒有 <code>source_text</code> 且沒有任何發現時，輸出與未加這一層前逐位元相同</strong>（沒有 <code>record_checks</code>，也沒有額外的 provenance 欄位）。</li>
 <li><code>fhir_author_resources</code>：同 <code>fhir_validate_resource</code>，出現在 <code>results[].issues</code>（error 使 status 為 <code>invalid</code>）；可選 <code>source_text</code>（不存入 context）加跑 R3 / R4；<code>site_config</code> 的格式規則一併套用。</li>
 <li><code>fhir_assemble_bundle</code>：同 <code>fhir_validate_bundle</code>（帶 <code>source_text</code> 時跑 R3 / R4），issue 帶 key / field。</li>
 <li><code>fhir_finalize_bundle</code>：可選 <code>source_text</code>；結果在 <code>data.record_issues</code> 與 <code>data.record_checks</code>（Bundle 與 <code>changes</code> 不變），有 error 時加一則 warning。</li>
