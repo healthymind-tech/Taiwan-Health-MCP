@@ -176,10 +176,11 @@ test("R4 primary diagnosis slot: differential / pending slots make an establishe
   assert.deepEqual(err(cond("J10.1", "Influenza", "流感"), dx("診斷：快篩結果出來前不下診斷")), ["error:unconfirmed-as-confirmed"]);
   // the comorbidity from the past history (entry 3) is never reported
   assert.deepEqual(at(cond("J10.1", "Influenza", "流感"), "Bundle.entry[3]", ddx), []);
-  // provisional / differential Conditions are fine
+  // ISSUES_v15.3 R2: a differential PRIMARY Condition cannot stand in for the missing primary diagnosis (the comorbidity, entry 3, is not reported)
   const prov = cond("J10.1", "Influenza", "流感");
   res(prov, 2).verificationStatus.coding[0].code = "differential";
-  assert.deepEqual(err(prov, ddx), []);
+  assert.deepEqual(err(prov, ddx), ["error:information-absent"]);
+  assert.deepEqual(at(prov, "Bundle.entry[3]", ddx), []);
 });
 
 test("R5 (false positive): a cue inside a bracket that names another concept scopes over that concept only", () => {

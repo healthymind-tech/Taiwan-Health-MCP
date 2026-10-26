@@ -1,13 +1,15 @@
 /**
  * Value slots of a FHIR resource for the record checks: the places where a field needs a structured
  * value (Identifier.value, Coding.code, date / dateTime / instant, Quantity, Reference, HumanName
- * parts, ContactPoint.value, Observation.valueString, lotNumber, and the text of a CodeableConcept
- * that has no code). Narrative (Narrative.div, Annotation, *.note / description / conclusion,
- * Dosage.text, *String choice types other than Observation.valueString) is never a slot.
+ * parts, ContactPoint.value, Observation.valueString, lotNumber, the text of a CodeableConcept that
+ * has no code — or only placeholder codes (ISSUES_v15.3) — and the Dosage.text of a medication
+ * resource (ISSUES_v15.3)). Narrative (Narrative.div, Annotation, *.note / description / conclusion,
+ * *String choice types other than Observation.valueString) is never a slot.
  *
  * Datatypes are recognised from the JSON shape and the element name (no StructureDefinition needed),
  * so the walk is pure and the same in every tool.
  */
+import { absenceOf } from "./lexicon.js";
 
 type Json = Record<string, any>;
 
@@ -22,7 +24,9 @@ export type SlotKind =
   | "name-part"
   | "telecom"
   | "value-string"
-  | "lot";
+  | "lot"
+  /** 1.2.0 (ISSUES_v15.3 R1): Dosage.text of a medication resource (the dose written as text). */
+  | "dosage-text";
 
 export interface Slot {
   kind: SlotKind;
@@ -40,6 +44,24 @@ export interface Slot {
 }
 
 const isObj = (x: unknown): x is Json => !!x && typeof x === "object" && !Array.isArray(x);
+
+const NULL_FLAVOR_SYSTEMS = /^https?:\/\/terminology\.hl7\.org\/CodeSystem\/(v3-NullFlavor|data-absent-reason)$/u;
+
+/**
+ * ISSUES_v15.3 R1: a Coding that carries no concept — no code, an empty code, a NullFlavor / data-absent-reason
+ * code (UNK, ASKU, NI …), or a code that is itself an absence word / placeholder (unknown, TBD, --, xxx). A
+ * CodeableConcept whose codings are all placeholders is read by its text, like one without coding.
+ */
+export function placeholderCoding(c: unknown): boolean {
+  if (!isObj(c)) return true;
+  const code = typeof c.code === "string" ? c.code.trim() : "";
+  if (!code) return true;
+  if (typeof c.system === "string" && NULL_FLAVOR_SYSTEMS.test(c.system)) return true;
+  return absenceOf(code, true) !== null;
+}
+
+const DOSAGE_KEYS = new Set(["dosageInstruction", "dosage"]);
+const MED_RESOURCES = new Set(["MedicationRequest", "MedicationStatement", "MedicationAdministration", "MedicationDispense"]);
 
 const PERSON_TYPES = new Set(["Patient", "Practitioner", "RelatedPerson", "Person"]);
 const SKIP_KEYS = new Set(["meta", "id", "implicitRules", "language", "resourceType", "fullUrl", "request", "response", "search", "link"]);
@@ -97,7 +119,7 @@ function walkResource(resource: Json, base: string, entry: number | null, out: S
         codings.forEach((c, i) => {
           if (!isObj(c)) return;
           if ("code" in c) {
-            coded = true;
+            if (!placeholderCoding(c)) coded = true;
             push("coding", `${path}.coding[${i}].code`, [...gparts, "coding", "code"], c.code, c);
           }
         });
@@ -113,6 +135,7 @@ function walkResource(resource: Json, base: string, entry: number | null, out: S
         return;
       }
       if (gparts.length > 0 && NARRATIVE_KEYS.has(key) && key !== "dosageInstruction" && key !== "dosage") return;
+      if (DOSAGE_KEYS.has(key) && MED_RESOURCES.has(rt) && typeof node.text === "string") push("dosage-text", `${path}.text`, [...gparts, "text"], node.text, node);
       for (const [k, v] of Object.entries(node)) {
         if (k.startsWith("_")) continue;
         if (gparts.length === 0 && (SKIP_KEYS.has(k) || k === "text")) continue;

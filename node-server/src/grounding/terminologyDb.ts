@@ -180,7 +180,8 @@ export function createDbTerminologyNames(opts: DbTerminologyOptions): DbTerminol
       } else if (route === "loinc") {
         const codes = [...new Set(items.map(([, , c]) => c))];
         const rows = await run(
-          "SELECT loinc_num, long_common_name, shortname, name_zh, common_name_zh, consumer_name, component FROM loinc.concepts WHERE loinc_num = ANY($1::text[])",
+          // property / scale_type: LOINC axes for the record checks (TermRecord.axes); the names are unchanged
+          "SELECT loinc_num, long_common_name, shortname, name_zh, common_name_zh, consumer_name, component, property, scale_type FROM loinc.concepts WHERE loinc_num = ANY($1::text[])",
           [codes],
         );
         if (rows === null) items.forEach(([k]) => failed.add(k));
@@ -191,6 +192,9 @@ export function createDbTerminologyNames(opts: DbTerminologyOptions): DbTerminol
             if (!r) continue;
             const display = r.consumer_name || r.common_name_zh || r.shortname || r.long_common_name;
             put(k, uniq([r.long_common_name, r.shortname, r.name_zh, r.common_name_zh, r.consumer_name, r.component, display]), "loinc.concepts");
+            const prop = typeof r.property === "string" && r.property.trim() ? r.property.trim() : null;
+            const scale = typeof r.scale_type === "string" && r.scale_type.trim() ? r.scale_type.trim() : null;
+            if ((prop || scale) && result.has(k)) result.set(k, { ...result.get(k)!, axes: { property: prop, scale } });
           }
         }
       } else if (route === "snomed") {

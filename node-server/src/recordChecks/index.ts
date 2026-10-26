@@ -9,6 +9,10 @@
  *   R1 information-absent  (always)        a value that describes the ABSENCE of the information
  *                                          (未取號 / 建檔失敗 / 不詳 / unknown / pending …) in a field
  *                                          that needs a structured value — error.
+ *                                          ISSUES_v15.3: also text fields — CodeableConcept.text with no /
+ *                                          only placeholder codings, Dosage.text, Observation.valueString /
+ *                                          note when the code needs a quantitative result (quantitative.ts;
+ *                                          specimen problems 溶血 / QNS and "see report" count there too).
  *   R2 identifier-format   (always)        identifier format by Identifier.system (registry,
  *                                          identifiers.ts; site_config `identifier-format` lines) and
  *                                          "not a sentence" for every identifier — error.
@@ -21,7 +25,9 @@
  *                                          sentences about it say it is not established — error when
  *                                          explicit (待排除, r/o, 尚未確立), warning when hedged (疑似,
  *                                          possible); a symptom code standing in for a main diagnosis
- *                                          still to be ruled out — warning.
+ *                                          still to be ruled out — warning. ISSUES_v15.3 R2: the PRIMARY
+ *                                          Condition written as provisional / differential / text-only while the
+ *                                          record has no established primary diagnosis → information-absent.
  *
  * Errors make the tool's `valid` false; `record_checks: {ok, errors, warnings, rules, source_text}`
  * summarises. Deterministic, no LLM, no network; the record text is never logged.
@@ -33,7 +39,8 @@ import { RecordText } from "../grounding/recordText.js";
 import { diagnosisSlotChecks } from "./diagnosisSlot.js";
 import { recordAwareChecks } from "./recordAware.js";
 import { valueGroundingChecks } from "./valueGrounding.js";
-import { slotsOf, type Slot } from "./slots.js";
+import { quantitativeBasis } from "./quantitative.js";
+import { resourcesOf, slotsOf, type Slot } from "./slots.js";
 import type { RecordCheckOptions, RecordCheckResult, RecordIssue, RecordRule } from "./types.js";
 
 export { makeIssue } from "./issue.js";
@@ -45,9 +52,14 @@ export { identifierRegistry, BUILTIN_IDENTIFIER_SYSTEMS, BUILTIN_FORMATS } from 
 /** Engine version (provenance `recordChecksVersion`). */
 // 1.1.0 (ISSUES_v15.1): R5 value grounding (ungrounded-value, value-from-other-event), identifiers with a system but
 //   no value, stated absences (病歷號：申請中 → information-absent), the primary diagnosis slot (R4), bracket-scoped cues.
-export const RECORD_CHECKS_VERSION = "1.1.0";
+// 1.2.0 (ISSUES_v15.3): R1 for text fields (CodeableConcept.text without / with placeholder codings, Dosage.text,
+//   Observation.valueString / note in quantitative result slots — quantitative.ts), R2 provisional / differential / text-only
+//   primary Condition vs an unestablished diagnosis slot (diagnosisSlot.ts primaryStandIn), R3 coded-element grounding
+//   annotation in the validating tools (codeGrounding.ts, envelope only).
+export const RECORD_CHECKS_VERSION = "1.2.0";
 
 type Json = Record<string, any>;
+const isObj = (x: unknown): x is Json => !!x && typeof x === "object" && !Array.isArray(x);
 
 /** Code systems defined by HL7 / FHIR (their codes include real "unknown" / "UNK" concepts); hl7.org/fhir/sid/* are external systems (ICD, NDC, CVX …). */
 const HL7_SYSTEM = /^https?:\/\/(hl7\.org\/fhir\/(?!sid\/)|terminology\.hl7\.org\/)/u;
@@ -65,7 +77,17 @@ const FIELD_LABELS: Record<string, [string, string]> = {
   telecom: ["聯絡方式", "contact value"],
   "value-string": ["結果值", "result value"],
   lot: ["批號", "lot number"],
+  "dosage-text": ["劑量用法", "dosage"],
 };
+
+/** Main clinical value fields (ISSUES_v15.3 R1): named in the message so the caller sees which clinical fact is missing. */
+const MAIN_FIELDS: Array<[RegExp, string, string]> = [
+  [/^Condition\.code\.text$/u, "診斷（Condition.code）", "diagnosis (Condition.code)"],
+  [/^Observation\.(component\.)?value(String|CodeableConcept\.text)$/u, "檢驗／觀察結果（Observation.value[x]）", "result (Observation.value[x])"],
+  [/^Medication(Request|Statement|Administration|Dispense)\.medicationCodeableConcept\.text$/u, "藥品（medication[x]）", "medicine (medication[x])"],
+  [/^Medication\.code\.text$/u, "藥品（Medication.code）", "medicine (Medication.code)"],
+  [/^Medication(Request|Statement|Administration|Dispense)\.(dosageInstruction|dosage)\.(text|doseAndRate\..*)$/u, "劑量（dosage / doseAndRate）", "dose (dosage / doseAndRate)"],
+];
 
 const clip = (s: string, n = 60): string => (s.length > n ? `${s.slice(0, n)}…` : s);
 
@@ -91,29 +113,76 @@ function r1Target(s: Slot): { value: string; allowNil: boolean } | null {
     }
     case "cc-text":
     case "value-string":
+    case "dosage-text":
       return typeof s.value === "string" ? { value: s.value, allowNil: false } : null;
     default:
       return null;
   }
 }
 
-function r1(s: Slot): RecordIssue | null {
+interface R1Context {
+  axes: RecordCheckOptions["codeAxes"];
+  resources: Json[];
+}
+
+/** The quantitative-result basis of a value-string slot's Observation (component-aware), or null. */
+function resultBasis(s: Slot, ctx: R1Context): string | null {
+  if (s.kind !== "value-string") return null;
+  const m = /\.component\[(\d+)\]\.valueString$/u.exec(s.path);
+  return quantitativeBasis(s.resource, m ? Number(m[1]) : null, ctx.axes, ctx.resources);
+}
+
+function r1(s: Slot, ctx: R1Context): RecordIssue | null {
   const t = r1Target(s);
   if (!t) return null;
-  const m = absenceOf(t.value, t.allowNil);
+  const quant = resultBasis(s, ctx);
+  const m = absenceOf(t.value, t.allowNil, { result: quant !== null });
   if (!m) return null;
-  const [fzh, fen] = FIELD_LABELS[s.kind] ?? ["欄位", "field"];
+  const main = MAIN_FIELDS.find(([rx]) => rx.test(s.gpath));
+  const [fzh, fen] = main ? [main[1], main[2]] : FIELD_LABELS[s.kind] ?? ["欄位", "field"];
   const v = clip(t.value.trim());
   const preds = m.placeholder ? "placeholder" : m.predicates.join(", ");
+  const qzh = quant ? `；這個 Observation 的代碼需要數值結果（${quant}），文字並沒有給出結果` : "";
+  const qen = quant ? `; this Observation's code needs a quantitative result (${quant}) and the text gives none` : "";
   return makeIssue(
     "R1",
     "error",
     "information-absent",
     s.path,
-    `病歷沒有提供這項資訊：${fzh}的值「${v}」是在描述資訊不存在或尚未取得（${preds}），不是資訊本身。不要把它當作值；若任務需要這項資訊，請回報 insufficient_information`,
-    `The record does not provide this information: the ${fen} value "${v}" describes that the information is absent / not yet available (${preds}), not the information itself. Do not use it as the value; if the task needs it, report insufficient_information`,
-    `R1 absence recogniser (${RECORD_CHECKS_LEXICON_VERSION}): the whole value is covered by absence predicate(s) [${preds}] plus field nouns / fillers / punctuation, with no other content (no other word, no run of 3+ digits); only this field's own value was examined`,
+    `病歷沒有提供這項資訊：${fzh}的值「${v}」是在描述資訊不存在、未定或尚未取得（${preds}），不是資訊本身${qzh}。不要把它當作值；若任務需要這項資訊，請回報 insufficient_information`,
+    `The record does not provide this information: the ${fen} value "${v}" describes that the information is absent / not determined / not yet available (${preds}), not the information itself${qen}. Do not use it as the value; if the task needs it, report insufficient_information`,
+    `R1 absence recogniser (${RECORD_CHECKS_LEXICON_VERSION}): the whole value is covered by absence predicate(s) [${preds}] plus field nouns / fillers / punctuation, with no other content (no other word, no run of 3+ digits); only this field's own value was examined` +
+      (quant ? `; result slot (${quant}): specimen-problem / see-report words and measurement-time qualifiers also count` : ""),
   );
+}
+
+/**
+ * ISSUES_v15.3 R1: an Observation whose code needs a quantitative result, with no value[x] and no dataAbsentReason, whose
+ * note says there is no result (檢體溶血，重抽中 / result pending) — the result is absent, written as a note.
+ */
+function noteAbsence(root: Json, ctx: R1Context, done: ReadonlySet<string>): RecordIssue[] {
+  const out: RecordIssue[] = [];
+  for (const r of resourcesOf(root)) {
+    const o = r.resource;
+    if (o.resourceType !== "Observation" || Object.keys(o).some((k) => k.startsWith("value")) || o.dataAbsentReason !== undefined) continue;
+    if (Array.isArray(o.component) && o.component.some((c: unknown) => isObj(c) && Object.keys(c).some((k) => k.startsWith("value")))) continue;
+    const quant = quantitativeBasis(o, null, ctx.axes, ctx.resources);
+    if (!quant) continue;
+    (Array.isArray(o.note) ? o.note : []).forEach((n: unknown, i: number) => {
+      const path = `${r.base}.note[${i}].text`;
+      if (!isObj(n) || typeof n.text !== "string" || done.has(path)) return;
+      const m = absenceOf(n.text, false, { result: true });
+      if (!m) return;
+      const v = clip(n.text.trim());
+      out.push(makeIssue(
+        "R1", "error", "information-absent", path,
+        `病歷沒有提供這項資訊：這個 Observation 沒有結果值（value[x]），note「${v}」說的是沒有結果（${m.predicates.join(", ")}），而它的代碼需要數值結果（${quant}）。若任務需要這項結果，請回報 insufficient_information`,
+        `The record does not provide this information: this Observation has no value[x] and its note "${v}" says there is no result (${m.predicates.join(", ")}), while its code needs a quantitative result (${quant}). If the task needs the result, report insufficient_information`,
+        `R1 absence recogniser (${RECORD_CHECKS_LEXICON_VERSION}) in result mode on Observation.note (the Observation has no value[x] and no dataAbsentReason); the whole note is covered by absence predicates plus nouns / fillers`,
+      ));
+    });
+  }
+  return out;
 }
 
 function r2(s: Slot, registry: ReturnType<typeof identifierRegistry>, recordText: string | null): RecordIssue | null {
@@ -176,9 +245,10 @@ export function runRecordChecks(root: Json, opts: RecordCheckOptions = {}): Reco
   const slots = slotsOf(root);
   const recordText = typeof opts.sourceText === "string" && opts.sourceText.trim() ? opts.sourceText : null;
   const absent = new Set<string>();
+  const ctx: R1Context = { axes: opts.codeAxes ?? null, resources: resourcesOf(root).map((r) => r.resource) };
   for (const s of slots) {
     try {
-      const a = r1(s);
+      const a = r1(s, ctx);
       if (a) {
         issues.push(a);
         absent.add(s.path);
@@ -190,6 +260,13 @@ export function runRecordChecks(root: Json, opts: RecordCheckOptions = {}): Reco
       // fail-open per slot
     }
   }
+  try {
+    const notes2 = noteAbsence(root, ctx, absent);
+    issues.push(...notes2);
+    for (const i of notes2) absent.add(i.path);
+  } catch {
+    // fail-open
+  }
   const withSource = recordText !== null;
   const rules: RecordRule[] = ["R1", "R2"];
   if (withSource) {
@@ -199,7 +276,7 @@ export function runRecordChecks(root: Json, opts: RecordCheckOptions = {}): Reco
     let established = new Set<string>();
     try {
       // ISSUES_v15.1 R3: the record's primary diagnosis slot (before the mention-level R4 checks, which skip what it reports)
-      const dx = diagnosisSlotChecks(root, new RecordText(opts.sourceText as string, site));
+      const dx = diagnosisSlotChecks(root, new RecordText(opts.sourceText as string, site), absent);
       issues.push(...dx.issues);
       covered = dx.covered;
       established = dx.established;

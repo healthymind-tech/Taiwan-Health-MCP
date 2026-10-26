@@ -14,6 +14,7 @@ import { BUNDLE_TYPES, FINALIZE_UUID_NAMESPACE, bundleRules, uuidV5, type Finali
 import type { FHIRIGService } from "../fhirIgService.js";
 import { addBundleGrounding, type GroundingToolDeps } from "../groundingTools.js";
 import { addRecordChecksToValidation } from "../recordChecks/envelope.js";
+import { recordCheckLookups } from "../recordChecks/lookups.js";
 import { logDebug, logError } from "../logger.js";
 import { hasRaw, parseLossless, toPlain } from "../losslessJson.js";
 import { nodeAt } from "../fhirSuggestions/util.js";
@@ -770,7 +771,11 @@ export function productionDeps(
       const plain = toPlain(resource) as Record<string, any>;
       // record checks (ISSUES_v15) as fhir_validate_resource runs them
       return parseEnvelope<ValidationData>(
-        addRecordChecksToValidation(await svc.validateResource(plain, profile, packageId, version), plain, { sourceText: record?.sourceText ?? null, siteConfig: record?.siteConfig ?? null }),
+        addRecordChecksToValidation(await svc.validateResource(plain, profile, packageId, version), plain, {
+          sourceText: record?.sourceText ?? null,
+          siteConfig: record?.siteConfig ?? null,
+          codeAxes: (await recordCheckLookups(plain, grounding.terminology, null)).codeAxes,
+        }),
       );
     },
     finalizeBundle: async (bundle, o) => {
@@ -786,7 +791,8 @@ export function productionDeps(
         ? await addBundleGrounding(text, plain, { source_text: o.sourceText, site_config: o.siteConfig ?? null, package_id: o.packageId, version: o.version }, grounding)
         : text;
       // record checks (ISSUES_v15) as fhir_validate_bundle runs them
-      return parseEnvelope<ValidationData>(addRecordChecksToValidation(grounded, plain, { sourceText: o.sourceText ?? null, siteConfig: o.siteConfig ?? null }));
+      const looked = await recordCheckLookups(plain as Record<string, any>, grounding.terminology, o.sourceText);
+      return parseEnvelope<ValidationData>(addRecordChecksToValidation(grounded, plain, { sourceText: o.sourceText ?? null, siteConfig: o.siteConfig ?? null, ...looked }));
     },
     compositionRequirements: async ({ bundleProfile, packageId, version }) => compositionRequirementsOf(svc, bundleProfile, packageId, version),
   };

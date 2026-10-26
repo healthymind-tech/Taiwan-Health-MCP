@@ -12,6 +12,10 @@
  * Finalize envelopes (fhir_finalize_bundle): `record_issues` + `record_checks` (the Bundle itself is
  * never changed — report only); fhir_finalize_resource: into its `validation` block, as fhir_validate_resource.
  *
+ * Grounding issues the validating tools return are annotated, never re-run: R6 date corrections, and (ISSUES_v15.3 R3)
+ * coded-element G-UNGROUNDED / G-VALUE-MISMATCH rewritten to say what was compared, with the closest record phrase
+ * and a warning instead of an error unless the record clearly states something else (codeGrounding.ts).
+ *
  * Byte-identity: without source_text and without any finding the envelope is returned UNCHANGED (no
  * `record_checks`, no provenance fields), so a clean call's output is exactly what it was before the
  * layer existed. `record_checks` appears when source_text is given or at least one issue was found.
@@ -20,6 +24,7 @@ import { parseLossless, stringifyLossless, toPlain } from "../losslessJson.js";
 import { recordChecksProvenance, runRecordChecks } from "./index.js";
 import { RecordValues } from "./recordValues.js";
 import { withDateCorrections } from "./valueGrounding.js";
+import { annotateGroundingCodes } from "./codeGrounding.js";
 import type { RecordCheckOptions, RecordCheckResult, RecordIssue } from "./types.js";
 
 type Json = Record<string, any>;
@@ -136,6 +141,16 @@ export function addRecordChecksToValidation(text: string, instance: Json, opts: 
     annotateGroundingDates(data, target, opts);
   } catch {
     // fail-open: the suggestions are additive
+  }
+  try {
+    // ISSUES_v15.3 R3: coded-element G-UNGROUNDED / G-VALUE-MISMATCH — what was compared, the closest record phrase, and
+    // a warning instead of an error unless the record clearly names something else (codeGrounding.ts)
+    if (typeof opts.sourceText === "string" && opts.sourceText.trim()) {
+      const st = annotateGroundingCodes(data, target, opts.sourceText, opts.siteConfig ?? null, opts.codeNames ?? null);
+      if (st && isObj(data.record_checks)) data.record_checks = { ...data.record_checks, grounding_codes: st };
+    }
+  } catch {
+    // fail-open: the grounding issues keep their original form
   }
   provenance(env);
   return stringifyLossless(env);

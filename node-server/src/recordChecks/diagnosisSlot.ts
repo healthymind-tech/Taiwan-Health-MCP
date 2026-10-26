@@ -24,12 +24,22 @@
  * record does not establish — unless the record establishes it elsewhere (a plain item of another
  * primary slot, a past-history / secondary-diagnosis line: a comorbidity). Hedged slots (疑似 /
  * possible only) give a warning. An established item of any primary slot always wins.
+ *
+ * ISSUES_v15.3 R2 — provisional / differential is no stand-in for an established PRIMARY diagnosis. When
+ * no primary slot of the record is established and the record says so explicitly (a differential-only
+ * slot, a slot-level cue such as 未下診斷 / 暫不下診斷 / diagnosis pending, every item under an explicit
+ * cue such as 待排除 / r/o, or an empty 「診斷：」), the Bundle's primary Condition (primaryCondition())
+ * written as provisional / differential / unconfirmed, or with a text-only code, is an
+ * `information-absent` error: 「病歷沒有確立的主診斷」. Hedged slots (疑似 / possible) are not reported
+ * (provisional is the right encoding of a suspected diagnosis). Only the primary Condition is examined:
+ * a secondary Condition marked differential for an explicit "r/o X" of the record is correct and never
+ * reported, and when the record has an established primary item the rule does not apply at all.
  */
 import { nameSimilarity, nfkc, norm } from "../grounding/lexicon.js";
 import { RecordText } from "../grounding/recordText.js";
 import { confirmsIn, cuesIn, DX_SLOT } from "./lexicon.js";
 import { makeIssue } from "./issue.js";
-import { resourcesOf } from "./slots.js";
+import { placeholderCoding, resourcesOf } from "./slots.js";
 import type { RecordIssue } from "./types.js";
 
 type Json = Record<string, any>;
@@ -380,20 +390,158 @@ function noDiagnosisChecks(root: Json, rt: RecordText, empty: DxSlot | null, iss
 }
 const COMORBIDITY_SECTIONS = new Set(["history", "plan", "lab"]);
 
+/** The Bundle's primary Condition and how it was decided (ISSUES_v15.3 R2). */
+export interface PrimaryCondition {
+  base: string;
+  resource: Json;
+  why: string;
+}
+
+const RE_UUID_REF = /^(urn:uuid:|urn:oid:)/u;
+
+function categoryText(res: Json): string {
+  return JSON.stringify(res.category ?? []);
+}
+
+/**
+ * The encounter's PRIMARY diagnosis among the instance's Conditions (refuted / entered-in-error never count):
+ *
+ *   1. Encounter.diagnosis: the entries that reference a Condition of the instance, without the comorbidity
+ *      role (use CM): the one with the lowest `rank` (rank 1 = primary), else the first listed. Entries that
+ *      are all comorbidities → no primary.
+ *   2. Otherwise the Conditions with category encounter-diagnosis (never problem-list-item): one → it;
+ *      several → the first that names an item of the record's diagnosis slot, else the first listed.
+ *   3. Otherwise the only Condition that is not a problem-list item and not a comorbidity the record states
+ *      outside its diagnosis slot (past history / plan / lab lines).
+ *   4. Otherwise none (the rule does not apply).
+ */
+export function primaryCondition(root: Json, rt: RecordText, slots: readonly DxSlot[]): PrimaryCondition | null {
+  const all = resourcesOf(root);
+  const conds = all.filter((r) => r.resource.resourceType === "Condition" && !["refuted", "entered-in-error"].includes(verificationOf(r.resource) ?? ""));
+  if (!conds.length) return null;
+  const byRef = new Map<string, (typeof conds)[number]>();
+  for (const c of conds) {
+    if (c.fullUrl) byRef.set(c.fullUrl, c);
+    if (typeof c.resource.id === "string") byRef.set(`Condition/${c.resource.id}`, c);
+  }
+  const resolve = (ref: unknown): (typeof conds)[number] | undefined => {
+    if (typeof ref !== "string") return undefined;
+    return byRef.get(ref) ?? (RE_UUID_REF.test(ref) ? undefined : byRef.get(ref.replace(/^.*\/(Condition\/[^/]+)$/u, "$1")));
+  };
+  // 1. Encounter.diagnosis
+  const dx: Array<{ c: (typeof conds)[number]; rank: number | null; uses: string[]; enc: string }> = [];
+  for (const e of all) {
+    if (e.resource.resourceType !== "Encounter" || !Array.isArray(e.resource.diagnosis)) continue;
+    for (const d of e.resource.diagnosis) {
+      if (!isObj(d) || !isObj(d.condition)) continue;
+      const c = resolve(d.condition.reference);
+      if (!c) continue;
+      const uses = (isObj(d.use) && Array.isArray(d.use.coding) ? d.use.coding : []).map((u: unknown) => (isObj(u) ? String(u.code ?? "") : "")).filter(Boolean);
+      dx.push({ c, rank: typeof d.rank === "number" ? d.rank : null, uses, enc: e.base });
+    }
+  }
+  if (dx.length) {
+    const pool = dx.filter((d) => !d.uses.includes("CM"));
+    if (!pool.length) return null;
+    const ranked = pool.filter((d) => d.rank !== null).sort((a, b) => a.rank! - b.rank!);
+    const pick = ranked[0] ?? pool[0];
+    return { base: pick.c.base, resource: pick.c.resource, why: `${pick.enc}.diagnosis references it${pick.rank !== null ? ` with rank ${pick.rank}` : " (first listed)"}${pick.uses.length ? ` (use ${pick.uses.join(", ")})` : ""}` };
+  }
+  // 2. category encounter-diagnosis
+  const encDx = conds.filter((c) => categoryText(c.resource).includes("encounter-diagnosis") && !categoryText(c.resource).includes("problem-list-item"));
+  if (encDx.length === 1) return { base: encDx[0].base, resource: encDx[0].resource, why: "the only Condition with category encounter-diagnosis" };
+  if (encDx.length > 1) {
+    const items = slots.flatMap((s) => s.items);
+    const named = encDx.find((c) => items.some((it) => itemMatches(it, conditionNames(c.resource))));
+    const pick = named ?? encDx[0];
+    return { base: pick.base, resource: pick.resource, why: `${encDx.length} Conditions with category encounter-diagnosis; ${named ? "the first that names an item of the record's diagnosis slot" : "the first listed"}` };
+  }
+  // 3. the only Condition that is not a problem-list item / a comorbidity stated outside the diagnosis slot
+  const slotLines = new Set(slots.flatMap((s) => s.lines));
+  const cand = conds.filter((c) => {
+    if (categoryText(c.resource).includes("problem-list-item")) return false;
+    const names = conditionNames(c.resource);
+    const occ = names.flatMap((n) => (n.length >= 2 ? rt.find(n) : [])).filter((o) => o.origin === "record" && o.li !== null && !slotLines.has(o.li));
+    return !occ.some((o) => COMORBIDITY_SECTIONS.has(o.section));
+  });
+  if (cand.length === 1) return { base: cand[0].base, resource: cand[0].resource, why: conds.length === 1 ? "the only Condition" : "the only Condition that is not a problem-list item or a comorbidity the record states outside its diagnosis slot" };
+  return null;
+}
+
+/** Whether a CodeableConcept carries a real code (not only text / placeholder codings). */
+function hasRealCode(cc: unknown): boolean {
+  return isObj(cc) && Array.isArray(cc.coding) && cc.coding.some((c: unknown) => !placeholderCoding(c));
+}
+
+/**
+ * ISSUES_v15.3 R2: the record has no established primary diagnosis (explicitly), and the primary Condition stands in for
+ * one as provisional / differential / unconfirmed or as text only → information-absent.
+ */
+function primaryStandIn(root: Json, rt: RecordText, all: readonly DxSlot[], covered: Set<string>, skip: ReadonlySet<string>): RecordIssue | null {
+  const slots = all.filter((s) => !s.empty);
+  if (slots.some((s) => s.kind === "primary" && !s.unestablished)) return null;
+  const basis = slots.find((s) => s.unestablished && s.strength === "explicit") ?? all.find((s) => s.empty && s.kind === "primary");
+  if (!basis) return null;
+  const p = primaryCondition(root, rt, slots);
+  if (!p || covered.has(p.base) || skip.has(p.base)) return null;
+  const vs = verificationOf(p.resource);
+  const textOnly = !hasRealCode(p.resource.code);
+  const standIn = vs !== null && ["provisional", "differential", "unconfirmed"].includes(vs);
+  if (!standIn && !textOnly) return null;
+  const names = conditionNames(p.resource);
+  const name = clip(names[0] ?? "", 40);
+  const how = standIn ? `verificationStatus 是 ${vs}` : "code 只有文字、沒有代碼";
+  const howEn = standIn ? `has verificationStatus ${vs}` : "has a text-only code (no coding)";
+  const state = basis.empty
+    ? "診斷欄是空的"
+    : basis.slotCue
+      ? `診斷欄寫「${basis.slotCue}」`
+      : basis.kind === "differential"
+        ? "只有鑑別診斷"
+        : "每一項都是待排除／鑑別";
+  const stateEn = basis.empty ? "the diagnosis slot is empty" : basis.slotCue ? `the slot says '${basis.slotCue}'` : basis.kind === "differential" ? "it lists differentials only" : "every item is to be ruled out / a differential";
+  covered.add(p.base);
+  return makeIssue(
+    "R4", "error", "information-absent", isObj(p.resource.verificationStatus) && standIn ? `${p.base}.verificationStatus` : `${p.base}.code`,
+    `病歷沒有確立的主診斷：病歷的診斷欄是「${basis.quote}」（${state}），而本次的主診斷 Condition「${name}」${how}。provisional / differential 或只有文字的 Condition 不能代替確立的主診斷；若任務需要主診斷，請回報 insufficient_information`,
+    `The record has no established primary diagnosis: its diagnosis slot is "${basis.quote}" (${stateEn}), and the encounter's primary Condition '${name}' ${howEn}. A provisional / differential or text-only Condition cannot stand in for an established primary diagnosis; if the task needs one, report insufficient_information`,
+    `R4 primary diagnosis (ISSUES_v15.3 R2): no primary slot of the record is established; slot '${basis.heading}' (${basis.kind}) — ${basis.empty ? "empty" : basis.slotCue ? `slot-level cue '${basis.slotCue}'` : basis.kind === "differential" ? "differential-only heading" : "every item under an explicit cue"}; ` +
+      `primary Condition decided by: ${p.why} (order: Encounter.diagnosis rank / first non-comorbidity entry → category encounter-diagnosis → the only non-comorbidity Condition); secondary Conditions are not examined`,
+    [basis.quote],
+  );
+}
+
 /**
  * R3 primary diagnosis slot checks. Returns the issues and the Conditions (by base path) they cover,
  * so the mention-level R4 checks do not report them twice.
  */
-export function diagnosisSlotChecks(root: Json, rt: RecordText): { issues: RecordIssue[]; covered: Set<string>; established: Set<string> } {
+export function diagnosisSlotChecks(
+  root: Json,
+  rt: RecordText,
+  absentPaths: ReadonlySet<string> = new Set(),
+): { issues: RecordIssue[]; covered: Set<string>; established: Set<string> } {
   const issues: RecordIssue[] = [];
   const covered = new Set<string>();
   const established = new Set<string>();
   const all = diagnosisSlots(rt);
   const slots = all.filter((s) => !s.empty);
+  // a Condition whose code.text R1 already reports as an absence statement (暫不下診斷) is not reported again
+  const skip = new Set<string>();
+  for (const r of resourcesOf(root)) if (r.resource.resourceType === "Condition" && absentPaths.has(`${r.base}.code.text`)) skip.add(r.base);
+  for (const b of skip) covered.add(b);
+  const standIn = (): void => {
+    try {
+      const i = primaryStandIn(root, rt, all, covered, skip);
+      if (i) issues.push(i);
+    } catch {
+      // fail-open
+    }
+  };
   if (!slots.length) {
     // ISSUES_v15.1 R3: the record states no diagnosis at all (no diagnosis slot, or an empty one) — only with a structured record
     if (all.length || (rt.structured && !rt.lines.some((l) => l.section === "diagnosis" && !l.header && l.line.trim())))
       noDiagnosisChecks(root, rt, all[0] ?? null, issues, covered);
+    if (all.length) standIn();
     return { issues, covered, established };
   }
   const slotLines = new Set(slots.flatMap((s) => s.lines));
@@ -401,7 +549,7 @@ export function diagnosisSlotChecks(root: Json, rt: RecordText): { issues: Recor
   const primaryEstablished = slots.some((s) => s.kind === "primary" && !s.unestablished);
   for (const r of resourcesOf(root)) {
     const res = r.resource;
-    if (res.resourceType !== "Condition") continue;
+    if (res.resourceType !== "Condition" || skip.has(r.base)) continue;
     const vs = verificationOf(res);
     if (vs !== null && NOT_CONFIRMED.has(vs)) continue;
     const names = conditionNames(res);
@@ -487,5 +635,6 @@ export function diagnosisSlotChecks(root: Json, rt: RecordText): { issues: Recor
       ));
     }
   }
+  standIn();
   return { issues, covered, established };
 }

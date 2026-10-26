@@ -37,9 +37,15 @@ const PROCESS_VERBS_ZH = [
   "安排", "開立", "釐清", "詢問", "問到", "知道", "核對", "核實", "上傳", "完成",
   // 1.1.0 (ISSUES_v15.1): results that were not obtained / not readable (未得數值, 無法辨識, 未發報告)
   "得", "得到", "得出", "測得", "測出", "驗出", "發", "發出", "辨識", "辨認", "判讀", "讀出", "看清", "看清楚", "下", "訂", "抽血", "採檢", "採血",
+  // 1.2.0 (ISSUES_v15.3 R1): diagnoses / results still to come (待排除, 尚未診斷, 待重抽, 未出報告)
+  "排除", "診斷", "判定", "重抽", "重驗", "重測", "重做", "重新抽血", "重新採檢", "出報告", "發報告", "出爐", "測", "驗", "做",
 ];
 /** Verbs that combine with 中 (in progress) / 失敗 (failed) / 尚在 … (still being …). */
-const PROGRESS_VERBS_ZH = ["申請", "辦理", "處理", "確認", "建檔", "取號", "查詢", "審核", "核發", "補辦", "掛號", "登錄", "登記", "讀卡", "讀取", "上傳", "配號"];
+const PROGRESS_VERBS_ZH = [
+  "申請", "辦理", "處理", "確認", "建檔", "取號", "查詢", "審核", "核發", "補辦", "掛號", "登錄", "登記", "讀卡", "讀取", "上傳", "配號",
+  // 1.2.0 (ISSUES_v15.3 R1): results / diagnoses in progress (重抽中, 送驗中, 培養中, 鑑別中, 觀察中)
+  "重抽", "重驗", "重測", "重做", "送驗", "檢驗", "化驗", "培養", "判讀", "分析", "鑑別", "評估", "觀察", "追蹤", "排除", "外送",
+];
 const PROGRESS_PREFIXES_ZH = ["尚在", "仍在", "正在", "還在", "目前在"];
 /** Standalone absence predicates. */
 const ABSENCE_WORDS_ZH = [
@@ -50,6 +56,8 @@ const ABSENCE_WORDS_ZH = [
   // 1.1.0 (ISSUES_v15.1): failed / unreadable measurements and documents
   "機器錯誤", "儀器錯誤", "機器故障", "儀器故障", "故障", "失效", "字跡模糊", "字跡不清", "模糊不清", "模糊", "看不清", "看不清楚",
   "難以辨識", "無法判讀", "無結果", "無數值", "無報告", "未出", "未出來", "尚未出來", "未回", "尚未回", "未回報", "作廢", "退件",
+  // 1.2.0 (ISSUES_v15.3 R1): not determined / not established / pending (the diagnosis-slot cues are added as well, see SLOT_CUES)
+  "待", "未明", "原因未明", "原因不明", "不下", "暫不下", "未確定", "尚未確定", "無定論", "尚無定論", "未定論",
 ];
 /** Nil words: count as absence only in fields that need a structured value (identifier, date, quantity, name, reference). */
 const NIL_WORDS_ZH = ["無", "沒有", "空", "無號"];
@@ -58,6 +66,8 @@ const NOT_VERBS_EN = [
   "assigned", "available", "provided", "recorded", "documented", "known", "stated", "specified", "given", "issued", "obtained",
   "confirmed", "determined", "registered", "created", "entered", "measured", "reported", "brought", "established", "allocated",
   "generated", "filed", "verified", "collected", "done", "received",
+  // 1.2.0 (ISSUES_v15.3 R1)
+  "performed", "drawn", "resulted", "diagnosed", "finalized", "finalised", "released", "back", "out", "available yet", "ruled out",
 ];
 const ABSENCE_WORDS_EN = [
   "unknown", "unk", "n/a", "not applicable", "unavailable", "unspecified", "unassigned", "undetermined", "unconfirmed", "unrecorded",
@@ -67,6 +77,9 @@ const ABSENCE_WORDS_EN = [
   // 1.1.0 (ISSUES_v15.1)
   "illegible", "unreadable", "not readable", "machine error", "instrument error", "error", "hemolyzed", "haemolyzed", "no result",
   "no value", "not resulted", "cancelled", "canceled",
+  // 1.2.0 (ISSUES_v15.3 R1)
+  "result pending", "results pending", "pending result", "pending results", "awaiting result", "awaiting results", "redraw", "redrawn",
+  "being redrawn", "to be redrawn", "recollect", "recollection", "repeat pending", "to follow", "tbd", "inconclusive", "indeterminate",
 ];
 const NIL_WORDS_EN = ["none", "nil", "null", "na", "n.a.", "-"];
 
@@ -80,11 +93,17 @@ const FIELD_NOUNS_ZH = [
   // 1.1.0 (ISSUES_v15.1)
   "檢體", "標本", "採檢日期", "採檢時間", "採檢", "字跡", "數字", "值", "日", "時", "第一次", "第二次", "第1次", "第2次", "標籤", "條碼",
   "藥師", "醫師", "護理師",
+  // 1.2.0 (ISSUES_v15.3 R1): tests / reports a pending statement names (待 CT 正式報告, 待病理報告, 快篩結果未出)
+  "CT", "MRI", "X光", "X-ray", "電腦斷層", "核磁共振", "超音波", "心電圖", "切片", "病理", "病理報告", "培養", "細菌培養", "快篩", "篩檢",
+  "影像", "影像報告", "正式報告", "檢驗報告", "檢查報告", "抽血", "血液", "尿液", "痰液", "鑑別診斷", "主診斷", "臆斷", "病因", "原因",
 ];
 const FIELD_NOUNS_EN = [
   "id", "identifier", "number", "no", "no.", "#", "mrn", "chart", "record", "medical", "national", "card", "resident", "certificate",
   "passport", "nhi", "insurance", "date", "time", "datetime", "value", "result", "results", "code", "name", "dose", "field",
   "information", "info", "data", "registration", "assignment", "confirmation", "details", "documents", "document", "test", "lab",
+  // 1.2.0 (ISSUES_v15.3 R1)
+  "ct", "mri", "x-ray", "xray", "cxr", "ultrasound", "echo", "ecg", "ekg", "biopsy", "pathology", "culture", "cultures", "imaging",
+  "scan", "workup", "work-up", "rapid", "report", "reports", "diagnosis", "dx", "impression", "cause", "etiology", "level", "levels",
 ];
 const FILLERS_ZH = [
   "新病人", "新患者", "新個案", "初診", "家屬說", "家屬表示", "家屬稱", "家屬", "病人說", "病人表示", "病人稱", "病患表示", "患者表示", "個案表示", "據稱", "據家屬", "表示", "說",
@@ -94,6 +113,8 @@ const FILLERS_ZH = [
   "今天", "當天", "先", "後", "中", "所", "被", "給", "有", "一下", "一樣", "後續", "另行", "另", "補件", "下來", "完畢", "前", "申請", "辦理", "核發", "辦",
   // 1.1.0 (ISSUES_v15.1)
   "溶血", "凝固", "不足", "量不足", "因而", "導致", "致", "故而", "所以未",
+  // 1.2.0 (ISSUES_v15.3 R1)
+  "正式", "最終", "初步", "進一步", "暫不", "暫且", "先行", "再行", "行", "做", "作", "等", "結果後", "之前", "以前", "出來後", "後再",
 ];
 const FILLERS_EN = [
   "the", "a", "an", "is", "are", "was", "were", "be", "been", "being", "has", "have", "had", "yet", "still", "currently", "at", "this",
@@ -102,6 +123,8 @@ const FILLERS_EN = [
   "patient's", "hospital", "system", "today",
   // 1.1.0 (ISSUES_v15.1)
   "specimen", "sample", "machine", "first", "second", "reading", "measurement", "report", "due",
+  // 1.2.0 (ISSUES_v15.3 R1)
+  "official", "formal", "final", "further", "repeat", "result", "results", "after", "before", "need", "needs", "needed",
 ];
 
 /**
@@ -186,10 +209,21 @@ const STATED_ABSENT_LABELS: Record<string, string[]> = {
   medication: ["處方", "藥物", "用藥", "藥品", "開立藥物", "出院帶藥", "medication", "medications", "rx", "prescription", "discharge medication", "discharge medications"],
 };
 
+/**
+ * 1.2.0 (ISSUES_v15.3 R1): "no result" vocabulary that counts as an absence predicate ONLY in a result slot — an
+ * Observation whose code needs a quantitative result (its valueString / note): specimen problems (溶血, 凝固,
+ * 檢體不足, hemolyzed, clotted, QNS) and pointers elsewhere (詳見報告, see report, sent out). Elsewhere they are fillers
+ * ("hemolyzed" is a real result of a serum-appearance test, 溶血 a Condition name).
+ */
+const RESULT_ABSENCE_ZH = ["溶血", "凝固", "檢體溶血", "檢體凝固", "檢體不足", "量不足", "檢體量不足", "見報告", "詳見報告", "另見報告", "參見報告", "外送", "送外院", "拒收"];
+const RESULT_ABSENCE_EN = ["hemolyzed", "haemolyzed", "hemolysis", "clotted", "qns", "quantity not sufficient", "insufficient", "insufficient sample", "see report", "see attached", "see below", "sent out", "send out", "send-out"];
+
 export const RECORD_CHECKS_LEXICON = {
   name: "record-checks-lexicon",
   // 1.1.0 (ISSUES_v15.1): measurement / document failure vocabulary; primary-diagnosis slot headings and cues; stated-absent field labels.
-  version: "1.1.0",
+  // 1.2.0 (ISSUES_v15.3 R1): pending / not-determined / not-established / being-redrawn vocabulary for text fields (the
+  //   diagnosis-slot cues count as absence predicates too), test / report nouns, and the result-slot-only "no result" words.
+  version: "1.2.0",
   absence: {
     negPrefixesZh: NEG_PREFIXES_ZH,
     processVerbsZh: PROCESS_VERBS_ZH,
@@ -201,6 +235,7 @@ export const RECORD_CHECKS_LEXICON = {
     wordsEn: ABSENCE_WORDS_EN,
     nilEn: NIL_WORDS_EN,
   },
+  resultOnly: { zh: RESULT_ABSENCE_ZH, en: RESULT_ABSENCE_EN },
   fieldNouns: { zh: FIELD_NOUNS_ZH, en: FIELD_NOUNS_EN },
   fillers: { zh: FILLERS_ZH, en: FILLERS_EN },
   diagnosis: {
@@ -230,10 +265,11 @@ export const RECORD_CHECKS_LEXICON_SHA256 = createHash("sha256").update(JSON.str
 
 // ------------------------------------------------------------------------------------------- term table
 
-type TermClass = "absence" | "nil" | "noun" | "filler";
+type TermClass = "absence" | "nil" | "noun" | "filler" | "result";
 
 function absenceTermsZh(): string[] {
-  const out = new Set<string>(ABSENCE_WORDS_ZH);
+  // 1.2.0: the slot-level diagnosis cues (未下診斷, 暫不下診斷, 診斷未定 …) are absence statements of a diagnosis field too
+  const out = new Set<string>([...ABSENCE_WORDS_ZH, ...SLOT_CUES.filter((c) => !/^[a-z]/u.test(c))]);
   for (const p of NEG_PREFIXES_ZH) for (const v of PROCESS_VERBS_ZH) out.add(p + v);
   for (const v of PROGRESS_VERBS_ZH) {
     out.add(`${v}中`);
@@ -244,7 +280,7 @@ function absenceTermsZh(): string[] {
 }
 
 function absenceTermsEn(): string[] {
-  const out = new Set<string>(ABSENCE_WORDS_EN);
+  const out = new Set<string>([...ABSENCE_WORDS_EN, ...SLOT_CUES.filter((c) => /^[a-z]/u.test(c))]);
   for (const v of NOT_VERBS_EN) {
     for (const pre of ["not", "not yet", "not been", "not yet been", "never", "never been", "yet to be", "to be", "still to be", "not being"]) out.add(`${pre} ${v}`);
     out.add(`un${v}`);
@@ -274,6 +310,8 @@ function buildTerms(): Term[] {
   add(FIELD_NOUNS_EN, "noun");
   add(FILLERS_ZH, "filler");
   add(FILLERS_EN, "filler");
+  add(RESULT_ABSENCE_ZH, "result");
+  add(RESULT_ABSENCE_EN, "result");
   // Longest first: the cover prefers whole predicates; ties keep insertion order (absence before noun / filler).
   return t.sort((a, b) => b.text.length - a.text.length);
 }
@@ -295,6 +333,18 @@ const RE_PLACEHOLDER = /^(?:x{2,}|[?？]+|[-_*.。·—–]+|○+|＊+)$/u;
 /** Longest value examined: absence phrases are short; a long text is narrative, not a field value. */
 const MAX_VALUE_LENGTH = 160;
 
+/** Measurement-time qualifiers a result slot may carry (3 h, 2hr, 07:00, 第2次): skipped in result mode. */
+const RE_RESULT_TIME = /(?<![\d.])\d{1,2}\s*(?:h|hr|hrs|小時|分鐘|分|min|mins)(?![a-z])|(?<!\d)\d{1,2}:\d{2}(?!\d)/gu;
+
+export interface AbsenceOptions {
+  /**
+   * 1.2.0 (ISSUES_v15.3 R1): the value is the result of an Observation whose code needs a quantitative result
+   * (valueString / note): the result-only vocabulary (溶血, 檢體不足, see report …) counts as absence predicates and
+   * measurement-time qualifiers (3 h, 07:00) are skipped.
+   */
+  result?: boolean;
+}
+
 export interface AbsenceMatch {
   /** The absence predicates that cover the value, in order (e.g. ["建檔失敗", "尚未取號"]). */
   predicates: string[];
@@ -307,9 +357,10 @@ export interface AbsenceMatch {
  * (無 / none / N/A / -) as predicates — for fields that need a structured value, where "none" cannot
  * be the value itself.
  */
-export function absenceOf(value: unknown, allowNil: boolean): AbsenceMatch | null {
+export function absenceOf(value: unknown, allowNil: boolean, opts: AbsenceOptions = {}): AbsenceMatch | null {
   if (typeof value !== "string") return null;
-  const t = nfkc(value).trim();
+  let t = nfkc(value).trim();
+  if (opts.result) t = t.replace(RE_RESULT_TIME, (m) => " ".repeat(m.length)).trim();
   if (!t || t.length > MAX_VALUE_LENGTH) return null;
   if (RE_PLACEHOLDER.test(t)) return allowNil ? { predicates: [value.trim()], placeholder: true } : null;
   if (RE_DIGIT_RUN.test(t)) return null; // still carries real content (a number / an id)
@@ -331,7 +382,7 @@ export function absenceOf(value: unknown, allowNil: boolean): AbsenceMatch | nul
       const j = i + term.text.length;
       // Latin terms are whole words: no letter / digit glued to either side.
       if (term.latin && ((i > 0 && RE_LATIN.test(t[i - 1]) && RE_LATIN.test(term.text[0])) || (j < n && RE_LATIN.test(t[j]) && RE_LATIN.test(term.text[term.text.length - 1])))) continue;
-      const isPred = term.cls === "absence" || (term.cls === "nil" && allowNil);
+      const isPred = term.cls === "absence" || (term.cls === "nil" && allowNil) || (term.cls === "result" && !!opts.result);
       if (term.cls === "nil" && !allowNil) continue;
       relax(j, isPred ? term.text : null);
     }

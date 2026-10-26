@@ -10,6 +10,13 @@
  *                   quantity, medication, diagnosis, structure) + other-time-point values, and complete controls
  *                   for the derivations that must stay grounded (always present);
  *                   (incl. ≥ 15 R6 cases: a wrong ROC ↔ Gregorian conversion must get the record's date as replace_value);
+ *   synthetic v15.3 synthetic153.ts — ≥ 40 cases of the three v15.3 forms (A: absence statements in CodeableConcept.text /
+ *                   dose text; B: text results where the code needs a number; C: provisional / differential / text-only
+ *                   primary diagnosis while the record's slot is unestablished) and ≥ 20 complete controls (correct
+ *                   differential r/o secondaries, text-only codes in complete records, qualitative text results);
+ *   grounding codes (R3) every set with a record: fhir_check_grounding run on it (offline terminology snapshots), merged
+ *                   into a validation envelope and passed through the record-check envelope — counts how many
+ *                   coded-element G-UNGROUNDED / G-VALUE-MISMATCH errors stay errors vs become warnings;
  *   mutations       private: the recorded single-value mutations of the gold Bundles (date / identifier /
  *                   quantity / dose mutations must get a record-check error at their entry);
  *   v9+real-record  private: the v9 model-output Bundles whose case record is available (completeness / grounding
@@ -31,6 +38,11 @@ import { renderPasRecord } from "../../src/grounding/pasTestkit.js";
 import { runRecordChecks, type RecordIssue } from "../../src/recordChecks/index.js";
 import { syntheticCases } from "./synthetic.js";
 import { syntheticV151Cases } from "./synthetic151.js";
+import { syntheticV153Cases, syntheticV153CodeCases } from "./synthetic153.js";
+import { checkGroundingSync } from "../../src/grounding/checkGrounding.js";
+import { mergeGroundingIntoValidation } from "../../src/grounding/merge.js";
+import { addRecordChecksToValidation } from "../../src/recordChecks/envelope.js";
+import type { TermRecord } from "../../src/grounding/terminologyNames.js";
 
 type Json = Record<string, any>;
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -184,6 +196,42 @@ function privateNoRecord(): Case[] {
   return out;
 }
 
+/** Offline terminology: the reference terminology cache + the PAS snapshot (fixtures; absent → empty). */
+function groundingTerms(): Map<string, TermRecord> {
+  const out = new Map<string, TermRecord>();
+  const tc = join(PRIV, "terminology_cache.json");
+  if (existsSync(tc)) for (const [k, v] of Object.entries(readJson(tc).codes as Record<string, Json>)) out.set(k, { found: !!v.found, names: v.names ?? [] });
+  const pt = join(REPO, "node-server", "src", "grounding", "__fixtures__", "pas_terminology.json");
+  if (existsSync(pt)) {
+    const j = readJson(pt);
+    for (const [k, v] of Object.entries((j.codes ?? j) as Record<string, Json>)) if (v && typeof v === "object" && !out.has(k)) out.set(k, { found: !!v.found, names: v.names ?? [] });
+  }
+  return out;
+}
+
+/** Grounding (auto mode) → validation envelope → record-check envelope; counts of coded-element grounding issues. */
+function codeGrounding(c: Case, terms: Map<string, TermRecord>): { examined: number; warnings: number; errors: number; kept: string[] } {
+  const none = { examined: 0, warnings: 0, errors: 0, kept: [] as string[] };
+  let g;
+  try {
+    g = checkGroundingSync({ bundle: c.bundle, source_text: c.source_text as string, site_config: c.site_config, mode: "auto" } as never, terms);
+  } catch {
+    return none;
+  }
+  const entries = (Array.isArray(c.bundle.entry) ? c.bundle.entry : []).filter((e: Json) => e && e.resource).map((e: Json) => ({ fullUrl: e.fullUrl ?? null, resourceType: e.resource.resourceType, valid: true, issues: [] }));
+  const merged = mergeGroundingIntoValidation({ valid: true, issues: [], entries }, g);
+  const text = JSON.stringify({ ok: true, data: merged, warnings: [], provenance: {} });
+  const codeNames = new Map<string, string[]>();
+  for (const k of collectCodingKeys(c.bundle)) if (terms.get(k)?.names.length) codeNames.set(k, terms.get(k)!.names);
+  const out = JSON.parse(addRecordChecksToValidation(text, c.bundle, { sourceText: c.source_text, siteConfig: c.site_config, codeNames }));
+  const st = out.data?.record_checks?.grounding_codes;
+  if (!st) return none;
+  const kept: string[] = [];
+  for (const e of [{ issues: out.data.issues }, ...(out.data.entries ?? [])])
+    for (const i of e.issues ?? []) if (i.source === "grounding" && i.grounding_code_check === "contradicted") kept.push(`${i.path} (closest ${i.closest_record_phrase?.similarity ?? "-"})`);
+  return { ...st, kept };
+}
+
 const short = (i: RecordIssue): string => `${i.severity} ${i.code} @ ${i.path}: ${i.message_en.slice(0, 150)}`;
 
 async function main(): Promise<void> {
@@ -250,6 +298,51 @@ async function main(): Promise<void> {
   console.log(`synthetic v15.1 complete controls: ${vctl.length}, ${vctlErr} with an error`);
   if (vctlErr) fail = true;
 
+  // ---- synthetic v15.3
+  const v153 = syntheticV153Cases();
+  const tpos = v153.filter((c) => c.expect);
+  const byForm = new Map<string, [number, number]>();
+  let thit = 0;
+  for (const c of tpos) {
+    const r = runRecordChecks(c.bundle, { sourceText: c.source_text, siteConfig: c.site_config, codeAxes: c.codeAxes ?? null });
+    const ok = r.issues.some((i) => c.expect!.includes(i.code) && i.severity === "error");
+    const t = byForm.get(c.form) ?? [0, 0];
+    byForm.set(c.form, [t[0] + (ok ? 1 : 0), t[1] + 1]);
+    if (ok) thit++;
+    else console.log(`  MISS v15.3 ${c.id}: expected error ${c.expect!.join("|")}; got ${r.issues.map((i) => `${i.severity} ${i.code}`).join(", ") || "nothing"}`);
+    if (verbose) for (const i of r.issues) console.log(`  [${c.id}] ${short(i)}`);
+  }
+  console.log(`synthetic v15.3 missing-information cases: ${thit}/${tpos.length} detected (${((100 * thit) / tpos.length).toFixed(1)} %)`);
+  for (const [t, [h, n]] of byForm) console.log(`  form ${t}: ${h}/${n}`);
+  if (thit / tpos.length < 0.9) fail = true;
+  const tctl = v153.filter((c) => !c.expect);
+  let tctlErr = 0;
+  for (const c of tctl) {
+    const r = runRecordChecks(c.bundle, { sourceText: c.source_text, siteConfig: c.site_config, codeAxes: c.codeAxes ?? null });
+    const errs = r.issues.filter((i) => i.severity === "error");
+    if (errs.length) tctlErr++;
+    for (const i of r.issues) if (i.severity === "error" || verbose) console.log(`    control v15.3 ${c.id}: ${short(i)}`);
+  }
+  console.log(`synthetic v15.3 complete controls: ${tctl.length}, ${tctlErr} with an error`);
+  if (tctlErr) fail = true;
+  // R3: coded-element grounding issues through the envelope
+  let r3ok = 0;
+  const r3 = syntheticV153CodeCases();
+  for (const c of r3) {
+    const g = checkGroundingSync({ bundle: c.bundle, source_text: c.source_text, site_config: null, mode: "auto" } as never, c.terms as never);
+    const entries = c.bundle.entry.map((e: Json) => ({ fullUrl: e.fullUrl, resourceType: e.resource.resourceType, valid: true, issues: [] }));
+    const env = JSON.stringify({ ok: true, data: mergeGroundingIntoValidation({ valid: true, issues: [], entries }, g), warnings: [] });
+    const out = JSON.parse(addRecordChecksToValidation(env, c.bundle, { sourceText: c.source_text, codeNames: new Map([...c.terms].map(([k, v]) => [k, v.names])) }));
+    const path = `Bundle.entry[${c.entry}].resource.${c.element}`;
+    const iss = (out.data.entries[c.entry]?.issues ?? []).filter((i: Json) => i.source === "grounding" && i.path === path && /G-UNGROUNDED|G-VALUE-MISMATCH/u.test(i.rule));
+    const ok = c.expect === "error" ? iss.some((i: Json) => i.severity === "error" && i.closest_record_phrase !== undefined) : iss.every((i: Json) => i.severity !== "error");
+    if (ok) r3ok++;
+    else console.log(`  MISS R3 ${c.id}: expected ${c.expect}; got ${iss.map((i: Json) => `${i.severity} ${i.rule} ${i.grounding_code_check ?? ""}`).join(", ") || "no grounding issue"}`);
+    if (verbose) for (const i of iss) console.log(`  [${c.id}] ${i.severity} ${i.grounding_code_check}: ${String(i.message).slice(0, 220)}`);
+  }
+  console.log(`synthetic v15.3 R3 coded grounding cases: ${r3ok}/${r3.length} as expected (${r3.filter((c) => c.expect === "warning").length} reworded / plausible → warning, ${r3.filter((c) => c.expect === "error").length} contradicted → error)`);
+  if (r3ok !== r3.length) fail = true;
+
   // ---- recorded single-value mutations of the gold Bundles (positives for value grounding)
   const muts = mutationCases();
   if (muts.length) {
@@ -286,6 +379,8 @@ async function main(): Promise<void> {
   if (!sets.length) console.log("private fixtures absent: only the synthetic set ran");
   const groups = new Map<string, Case[]>();
   for (const c of sets) groups.set(c.set, [...(groups.get(c.set) ?? []), c]);
+  const terms = groundingTerms();
+  const codeTotals = { examined: 0, warnings: 0, errors: 0 };
   for (const [name, cases] of groups) {
     let withErr = 0;
     let warnCount = 0;
@@ -299,10 +394,31 @@ async function main(): Promise<void> {
     }
     console.log(`${name}: ${cases.length} bundle(s), ${withErr} with a new error (${((100 * withErr) / Math.max(cases.length, 1)).toFixed(1)} %), ${warnCount} warning(s)`);
     for (const l of lines) console.log(l);
+    // R3: coded-element grounding issues after the envelope (only sets with a record)
+    const g = { examined: 0, warnings: 0, errors: 0 };
+    const gl: string[] = [];
+    for (const c of cases) {
+      if (!c.source_text) continue;
+      const st = codeGrounding(c, terms);
+      g.examined += st.examined;
+      g.warnings += st.warnings;
+      g.errors += st.errors;
+      for (const l of st.kept) gl.push(`    ${c.id}: kept error ${l}`);
+    }
+    if (g.examined) {
+      console.log(`  grounding codes (R3): ${g.examined} coded G-UNGROUNDED / G-VALUE-MISMATCH issue(s): ${g.warnings} warning(s), ${g.errors} error(s) after the envelope`);
+      for (const l of gl) console.log(l);
+      if (!name.startsWith("twu-")) {
+        codeTotals.examined += g.examined;
+        codeTotals.warnings += g.warnings;
+        codeTotals.errors += g.errors;
+      }
+    }
     // model outputs (v9 / v14) may carry real problems; twu-info records lack a fact by design; rendered records do not
     // render every element (encounter identifiers, timing bounds): reported for inspection, never a failure
     if (!name.startsWith("v14-") && !name.startsWith("v9-") && name !== "twu-info" && name !== "pas+record" && withErr) fail = true;
   }
+  if (codeTotals.examined) console.log(`grounding codes (R3), complete sets: ${codeTotals.examined} coded issue(s) → ${codeTotals.warnings} warning(s), ${codeTotals.errors} error(s)`);
   process.exit(fail ? 1 : 0);
 }
 

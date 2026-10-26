@@ -357,11 +357,13 @@ export function syntheticV151Cases(): V151Case[] {
   add("ok-psa-bracket", "complete", null, (b) => cond(b, "R97.20", "Elevated prostate specific antigen [PSA]", "Elevated PSA"), dx("A：Elevated PSA（未確立惡性腫瘤）"));
   add("ok-psa-bracket-zh", "complete", null, (b) => cond(b, "R97.20", "Elevated prostate specific antigen [PSA]", "PSA 升高"), dx("診斷：PSA 升高（惡性腫瘤待排除）"));
   add("ok-dx-with-ro", "complete", null, () => undefined, dx("診斷：社區型肺炎 (J18.9)；r/o 肺結核"));
-  add("ok-comorbidity-when-unestablished", "complete", null, (b) => {
+  // ISSUES_v15.3 R2 supersedes these three v15.1 controls: a provisional / differential PRIMARY Condition cannot stand in for the
+  // primary diagnosis the record says is not established — information-absent (the comorbidity, entry 3, stays unreported)
+  add("dx-primary-provisional-unestablished", "diagnosis", ["information-absent"], (b) => {
     res(b, 2).verificationStatus.coding[0].code = "provisional";
   }, dx("Dx：鑑別 社區型肺炎／肺結核，未下診斷"));
-  add("ok-provisional-ddx", "complete", null, (b) => (res(b, 2).verificationStatus.coding[0].code = "differential"), dx("鑑別診斷：社區型肺炎、肺結核"));
-  add("ok-host-cue-bracket-provisional", "complete", null, (b) => (res(b, 2).verificationStatus.coding[0].code = "provisional"), dx("診斷：社區型肺炎（待排除）"));
+  add("dx-primary-differential-ddx", "diagnosis", ["information-absent"], (b) => (res(b, 2).verificationStatus.coding[0].code = "differential"), dx("鑑別診斷：社區型肺炎、肺結核"));
+  add("dx-primary-provisional-host-cue", "diagnosis", ["information-absent"], (b) => (res(b, 2).verificationStatus.coding[0].code = "provisional"), dx("診斷：社區型肺炎（待排除）"));
   add("ok-birth-year-from-age", "complete", null, (b) => (res(b, 0).birthDate = "1971"), rep(R, "出生日期：民國60年5月3日", "年齡：54歲"));
   add("ok-onset-years", "complete", null, () => undefined, R);
   add("ok-family-history-unknown", "complete", null, () => undefined, `${R}\n家族史：不詳`);

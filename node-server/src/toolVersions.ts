@@ -159,7 +159,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   element's binding is read from the IG's profile(s) of that resource type (the closure package owning the Coding's
   //   CodeSystem, else the validated / default IG; one profile, or several that bind the element the same way — else none);
   //   the reason names the profile ("… because the resource declares no profile"). Validation itself is unchanged.
-  fhir_validate_bundle: "1.14.1",
+  // 1.15.0 (ISSUES_v15.3, recordChecks 1.2.0 / lexicon 1.2.0): (R1) information-absent also for text fields — CodeableConcept.text without coding or with placeholder codings only (no code, NullFlavor / data-absent-reason, an absence word as the code), Dosage.text of medication resources, Observation.valueString / note when the code needs a quantitative result (recordChecks/quantitative.ts: LOINC SCALE_TYP Qn / quantity PROPERTY from loinc.concepts via the terminology provider, the LOINC name, vital-sign codes, a vital-signs profile / category, a referenceRange, a sibling valueQuantity) — the whole value must be an absence / pending / not-determined / not-established / being-redrawn statement (暫不下診斷, 待 CT 報告, 未定, 重抽中, 報告未出, pending, to be determined; specimen problems 溶血 / QNS / see report count only in such a result slot); (R2) the primary Condition (Encounter.diagnosis rank / first non-comorbidity entry → category encounter-diagnosis → the only non-comorbidity Condition) written as provisional / differential / unconfirmed or text-only while no primary slot of the record is established and the record says so explicitly → information-absent 「病歷沒有確立的主診斷」 (hedged slots and secondary r/o differentials never); (R3) the G-UNGROUNDED / G-VALUE-MISMATCH grounding issues this tool returns on a coded element say what was compared (the code's text / displays / terminology names vs the record lines), carry closest_record_phrase {text, similarity, section} and grounding_code_check, and are warnings (downgraded_from: "error") unless the primary Condition's code is unrelated to every record phrase (< 0.25) while the record's diagnosis slot names something else comparable (recordChecks/codeGrounding.ts); entries[i].valid / groundingValid / valid / grounding counts recomputed after a downgrade; fhir_check_grounding itself unchanged; data.record_checks.grounding_codes. Without source_text and without findings the output is unchanged.
+  fhir_validate_bundle: "1.15.0",
   // 1.6.2: the binding-aware suggestions above (ISSUES_v10 A) also apply to single-resource validation.
   // 1.7.0: the validator v13 rules above (fhir_validate_bundle 1.9.0).
   // 1.8.0 (ISSUES_v15): the record checks of fhir_validate_bundle 1.11.0 on the resource (data.issues, data.record_checks).
@@ -168,7 +169,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.11.0 (ISSUES_v15.2): the suggestion and ATC rules of fhir_validate_bundle 1.14.0.
   // 1.11.1 (ISSUES_v15.2.1): the implicit-profile alternative-coding suggestions of fhir_validate_bundle 1.14.1 (a resource
   //   validated with neither meta.profile nor `profile`); validation unchanged.
-  fhir_validate_resource: "1.11.1",
+  // 1.12.0 (ISSUES_v15.3): the record checks and the coded-element grounding annotation of fhir_validate_bundle 1.15.0.
+  fhir_validate_resource: "1.12.0",
   // 1.2.0 (all below): provenance.resolved_by / closure_versions; canonical arguments resolve to their
   // owning package when package_id is omitted; "|version" honoured; list/search: all_packages + zero-hit hint;
   // NO_DEFAULT_IG instead of an arbitrary package when no default IG is set.
@@ -257,7 +259,9 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.9.0 (ISSUES_v15.2 R4): content repair rule alt-coding (fhir_finalize_bundle 1.5.0); validation as fhir_validate_resource 1.11.0.
   // 1.9.1 (ISSUES_v15.2.1): repairs and validation as fhir_finalize_bundle 1.5.1 / fhir_validate_resource 1.11.1 (the
   //   implicit-profile binding never applies here in practice: the `profile` argument is a declared profile).
-  fhir_finalize_resource: "1.9.1",
+  // 1.10.0 (ISSUES_v15.3): data.validation carries the record checks of fhir_validate_resource 1.12.0 (R1 text fields /
+  //   quantitative result slots always; R2 provisional primary diagnosis with source_text); output otherwise unchanged.
+  fhir_finalize_resource: "1.10.0",
   // 1.0.0 (authoring/, evaluation v11): the model gives field VALUES, the MCP composes the resource for its profile
   //   (fixed / pattern / defaults / derived / displays / UCUM / ROC dates), validates it, keeps it in a Redis context
   //   (`authoring:ctx:*`, 60-min idle TTL) and assembles the Bundle from keys with deterministic urn:uuid fullUrls
@@ -311,7 +315,9 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.6.1 (ISSUES_v15.1 R6, recordChecks/dateSuggestions.ts): an ungrounded date whose month / day the record states with another year (a wrong ROC ↔ Gregorian conversion: 民國92年8月25日 → 1983-08-25; +1900 / +1910 / +1912 / the ROC year as Gregorian; or a Gregorian record date) gets the record's date as a replace_value suggestion (patch {op: replace, path, value}; reason quotes the record and the rule 民國 N 年 = 西元 N+1911; one candidate 0.95, several all listed); severity unchanged, never applied — on the record-check ungrounded-value date issues of this call's validation.
   // 1.7.0 (ISSUES_v15.2): repairs include rule alt-coding (fhir_finalize_bundle 1.5.0); validation as fhir_validate_resource
   //   1.11.0; lookup candidates in errors carry accepted_by_validator and an exact hit the validator rejects is not taken.
-  fhir_author_resources: "1.7.0",
+  // 1.8.0 (ISSUES_v15.3): validation as fhir_validate_resource 1.12.0 (record checks R1 text fields / quantitative result
+  //   slots, R2 provisional primary diagnosis with source_text).
+  fhir_author_resources: "1.8.0",
   // 1.0.1: action=get results carry the author result's new `notes` (fhir_author_resources 1.1.0); otherwise unchanged.
   fhir_context: "1.0.1",
   // 1.1.0: new `site_config` (merged with the context's) passed to the grounding engine with source_text, so facility
@@ -332,7 +338,9 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.6.0 (ISSUES_v15.1 R6, recordChecks/dateSuggestions.ts): an ungrounded date whose month / day the record states with another year (a wrong ROC ↔ Gregorian conversion: 民國92年8月25日 → 1983-08-25; +1900 / +1910 / +1912 / the ROC year as Gregorian; or a Gregorian record date) gets the record's date as a replace_value suggestion (patch {op: replace, path, value}; reason quotes the record and the rule 民國 N 年 = 西元 N+1911; one candidate 0.95, several all listed); severity unchanged, never applied — validation as fhir_validate_bundle 1.13.0 (record-check and grounding date issues).
   // 1.7.0 (ISSUES_v15.2): resources as fhir_author_resources 1.7.0; finalize as fhir_finalize_bundle 1.5.0; validation as
   //   fhir_validate_bundle 1.14.0.
-  fhir_assemble_bundle: "1.7.0",
+  // 1.8.0 (ISSUES_v15.3): resources as fhir_author_resources 1.8.0; validation as fhir_validate_bundle 1.15.0 (record
+  //   checks R1 / R2 and, with source_text, the coded-element grounding annotation R3).
+  fhir_assemble_bundle: "1.8.0",
   // 1.0.0 (ISSUES_v9 R1): deterministic Bundle finalizer — fullUrl-uuid / reference-rewire / resource-id (mandatory),
   // bundle-type / document-order (profile-driven); UUID v5 seeded by (resourceType, original fullUrl, resource.id, entry
   // index) + a content salt; references found through StructureDefinition snapshots; duplicates / ambiguity reported.
@@ -382,7 +390,9 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   read from the IG's profile(s) of the resource type (the closure package owning the Coding's CodeSystem, else the
   //   validated / default IG; one profile, or several that agree — else nothing); the change reason names the profile
   //   ("… because the resource declares no profile"). No meta.profile is added; the verification validates as before.
-  fhir_finalize_bundle: "1.5.1",
+  // 1.6.0 (ISSUES_v15.3): data.record_issues follow fhir_validate_bundle 1.15.0's record checks (R1 text fields /
+  //   quantitative result slots, R2 provisional primary diagnosis); the Bundle and changes are unchanged.
+  fhir_finalize_bundle: "1.6.0",
   // ── 2026-10-19 actionable errors (additive fields only; successful outputs unchanged) ──
   // search_medical_codes 1.2.1: IG_UNAVAILABLE adds `hint`.
   // FHIR IG tools above (+.0.1): error envelopes add error.hint; IG_NOT_FOUND / NO_DEFAULT_IG add

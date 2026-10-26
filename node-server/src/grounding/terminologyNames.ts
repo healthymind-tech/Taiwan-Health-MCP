@@ -19,6 +19,11 @@ export interface TermRecord {
   names: string[];
   /** Where the names came from (diagnostic only). */
   source?: string[];
+  /**
+   * LOINC axes of the code (loinc.concepts PROPERTY / SCALE_TYP), when the provider has them. Not used by the
+   * grounding engine; the record checks read them (ISSUES_v15.3 R1: does an Observation need a quantitative result).
+   */
+  axes?: { property: string | null; scale: string | null };
 }
 
 export interface CodingRef {

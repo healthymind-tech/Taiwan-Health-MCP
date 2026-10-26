@@ -101,7 +101,7 @@ test("R3 says whether the record has a more complete value", () => {
   assert.deepEqual(codes(c, BASE_RECORD.replace("主訴：咳嗽三天", "主訴：咳嗽三天，氣喘病史 9 年")), []);
 });
 
-test("R4: explicit → error, hedged → warning, confirmed / provisional → nothing", () => {
+test("R4: explicit → error, hedged → warning, confirmed → nothing; a provisional primary for a to-be-ruled-out slot → information-absent (v15.3 R2)", () => {
   const dx = (line: string): string => BASE_RECORD.replace("診斷：急性支氣管炎 (J20.9)", line);
   assert.deepEqual(codes(BASE_BUNDLE(), dx("診斷：急性支氣管炎待排除，尚未確立")), ["error:unconfirmed-as-confirmed"]);
   assert.deepEqual(codes(BASE_BUNDLE(), dx("診斷：疑似急性支氣管炎")), ["warning:unconfirmed-as-confirmed"]);
@@ -109,7 +109,10 @@ test("R4: explicit → error, hedged → warning, confirmed / provisional → no
   assert.deepEqual(codes(BASE_BUNDLE(), dx("診斷：急性支氣管炎；r/o 肺炎")), []);
   const p = BASE_BUNDLE();
   p.entry[2].resource.verificationStatus.coding[0].code = "provisional";
-  assert.deepEqual(codes(p, dx("診斷：急性支氣管炎待排除")), []);
+  // ISSUES_v15.3 R2: the provisional PRIMARY Condition cannot stand in for the diagnosis the record leaves to be ruled out
+  assert.deepEqual(codes(p, dx("診斷：急性支氣管炎待排除")), ["error:information-absent"]);
+  // hedged slots: provisional is the right encoding of a suspected diagnosis
+  assert.deepEqual(codes(p, dx("診斷：疑似急性支氣管炎")), []);
 });
 
 function validationEnvelope(bundle: Record<string, any>): string {

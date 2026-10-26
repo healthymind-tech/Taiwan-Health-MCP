@@ -66,6 +66,11 @@ export interface RecordCheckSummary {
   rules: RecordRule[];
   source_text: boolean;
   notes?: string[];
+  /**
+   * ISSUES_v15.3 R3 (validating tools only): coded-element G-UNGROUNDED / G-VALUE-MISMATCH grounding issues annotated —
+   * how many, and how many are warnings / errors after the rule (codeGrounding.ts).
+   */
+  grounding_codes?: { examined: number; warnings: number; errors: number };
 }
 
 export interface RecordCheckOptions {
@@ -73,6 +78,17 @@ export interface RecordCheckOptions {
   sourceText?: string | null;
   /** Facility settings text: `identifier-format <system> <format>` lines (R2). Never logged. */
   siteConfig?: string | null;
+  /**
+   * ISSUES_v15.3 R1: LOINC axes (PROPERTY / SCALE_TYP) of the instance's Observation codes, keyed
+   * `http://loinc.org|<code>` — whether an Observation needs a quantitative result (quantitative.ts).
+   * Optional: without it the decision falls back to the LOINC name, vital-sign codes and the resource.
+   */
+  codeAxes?: ReadonlyMap<string, { property?: string | null; scale?: string | null }> | null;
+  /**
+   * ISSUES_v15.3 R3: terminology names by `system|code` (the names grounding compared) — the validating tools' rewrite
+   * of coded-element G-UNGROUNDED issues compares them with the record too (codeGrounding.ts). Optional.
+   */
+  codeNames?: ReadonlyMap<string, readonly string[]> | null;
 }
 
 export interface RecordCheckResult {

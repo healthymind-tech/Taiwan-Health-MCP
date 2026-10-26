@@ -61,6 +61,7 @@ import {
   type ValidateGroundingArgs,
 } from "./groundingTools.js";
 import { addRecordChecksToFinalize, addRecordChecksToFinalizeResource, addRecordChecksToValidation } from "./recordChecks/envelope.js";
+import { recordCheckLookups } from "./recordChecks/lookups.js";
 import {
   bmiInputShape,
   calculateBmi,
@@ -1458,7 +1459,8 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
             timezone: timezone ?? null,
             siteConfig: site_config ?? null,
           }),
-          { sourceText: source_text ?? null, siteConfig: site_config ?? null },
+          // ISSUES_v15.3 R1: LOINC axes of text-result Observations (quantitative.ts), from the local terminology tables
+          { sourceText: source_text ?? null, siteConfig: site_config ?? null, codeAxes: (await recordCheckLookups(bundle as Record<string, any>, dbTerminologyNames(), null)).codeAxes },
         ),
       ),
   );
@@ -1480,7 +1482,9 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
       const conformance = await svc.validateResource(resource as Record<string, any>, profile ?? null, package_id ?? null, version ?? null);
       const grounded = await addResourceGrounding(conformance, resource as Record<string, any>, { ...g, package_id, version } as ValidateGroundingArgs, groundingDeps);
       // Record checks (ISSUES_v15 / v15.1): R1 / R2 always, R3 / R4 / R5 with source_text; appended after the validator + grounding.
-      return rawResult(addRecordChecksToValidation(grounded, resource as Record<string, any>, { sourceText: g.source_text ?? null, siteConfig: g.site_config ?? null }));
+      // ISSUES_v15.3: LOINC axes (R1) and, with source_text, coding names (R3) — local tables, LRU-cached
+      const looked = await recordCheckLookups(resource as Record<string, any>, groundingDeps.terminology, g.source_text);
+      return rawResult(addRecordChecksToValidation(grounded, resource as Record<string, any>, { sourceText: g.source_text ?? null, siteConfig: g.site_config ?? null, ...looked }));
     },
   );
 
@@ -1521,7 +1525,9 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
       );
       const grounded = await addBundleGrounding(conformance, bundle as Record<string, any>, { ...g, package_id, version } as ValidateGroundingArgs, groundingDeps);
       // Record checks (ISSUES_v15 / v15.1): R1 / R2 always, R3 / R4 / R5 with source_text; appended after the validator + grounding.
-      return rawResult(addRecordChecksToValidation(grounded, bundle as Record<string, any>, { sourceText: g.source_text ?? null, siteConfig: g.site_config ?? null }));
+      // ISSUES_v15.3: LOINC axes (R1) and, with source_text, coding names (R3) — local tables, LRU-cached
+      const looked = await recordCheckLookups(bundle as Record<string, any>, groundingDeps.terminology, g.source_text);
+      return rawResult(addRecordChecksToValidation(grounded, bundle as Record<string, any>, { sourceText: g.source_text ?? null, siteConfig: g.site_config ?? null, ...looked }));
     },
   );
 
@@ -1613,7 +1619,7 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
             timezone ?? null,
             site_config ?? null,
           ),
-          { sourceText: source_text ?? null, siteConfig: site_config ?? null },
+          { sourceText: source_text ?? null, siteConfig: site_config ?? null, codeAxes: (await recordCheckLookups(draft as Record<string, any>, groundingDeps.terminology, null)).codeAxes },
         ),
       ),
   );

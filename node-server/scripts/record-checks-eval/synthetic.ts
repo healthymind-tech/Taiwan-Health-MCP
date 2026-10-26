@@ -234,7 +234,8 @@ export function syntheticCases(): SyntheticCase[] {
   out.push({ id: "complete-zh-nosource", type: "complete", expect: null, bundle: BASE_BUNDLE(), source_text: null });
   const prov = clone(BASE_BUNDLE());
   res(prov, 2).verificationStatus.coding[0].code = "provisional";
-  out.push({ id: "complete-provisional", type: "complete", expect: null, bundle: prov, source_text: dxRec("診斷：急性支氣管炎待排除") });
+  // ISSUES_v15.3 R2: the provisional PRIMARY Condition cannot stand in for a primary diagnosis the record leaves to be ruled out
+  out.push({ id: "C-primary-provisional", type: "C", expect: { code: "information-absent", severity: "error" }, bundle: prov, source_text: dxRec("診斷：急性支氣管炎待排除") });
   out.push({ id: "complete-confirmed-later", type: "complete", expect: null, bundle: BASE_BUNDLE(), source_text: dxRec("主訴懷疑急性支氣管炎；診斷：經胸部 X 光證實為急性支氣管炎") });
   out.push({ id: "complete-other-ro", type: "complete", expect: null, bundle: BASE_BUNDLE(), source_text: dxRec("診斷：急性支氣管炎；r/o 肺炎") });
   return out;
