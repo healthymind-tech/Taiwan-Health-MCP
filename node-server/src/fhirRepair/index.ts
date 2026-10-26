@@ -78,7 +78,7 @@ export async function repairResource(resource: Record<string, any>, deps: Repair
   const withdrawn: RepairIssue[] = [];
   let result = await repairOnce(resource, deps, opts, blocked);
   for (let round = 0; round < 3 && result.changes.length; round++) {
-    const fresh = (await newErrors(deps, original, resource, opts)).filter((e) => !exposedDisplay(e, result.changes));
+    const fresh = (await newErrors(deps, original, resource, opts)).filter((e) => !exposedDisplay(e, result.changes) && !exposedByShape(e, result.changes));
     if (!fresh.length) break;
     const blame = attribute(fresh, result.changes, opts, resource);
     if (!blame.length) break;
@@ -129,6 +129,50 @@ export function exposedDisplay(e: { path: string; message: string }, changes: Re
     // the error at the Coding itself, its display, or (validator style) at the element holding it
     return ep.rel === cp.rel || ep.rel.startsWith(`${cp.rel}.`) || cp.rel.startsWith(`${ep.rel}.`) || cp.rel.startsWith(`${ep.rel}[`);
   });
+}
+
+/**
+ * v16 R4: an error that only becomes visible because a lossless shape repair made a value readable
+ * is not a regression of the repair: the value was structurally invalid before (a string meta.profile,
+ * a single value for a repeating element, an array for a single one, a property one level off), so
+ * the validator could not check it at all.
+ *   - meta / meta.profile / resourceType repaired → the resource is now checked against its declared
+ *     profile: every error inside that resource, and (in a Bundle) the reference-chain / slice errors
+ *     about that entry (its fullUrl, or the entry itself), were hidden, not added;
+ *   - any other reshaped element → errors at / under it, or on its parent naming it (a minimum
+ *     cardinality of that element), were hidden.
+ */
+export function exposedByShape(e: { path: string; message: string }, changes: RepairChange[], bundle?: Record<string, any>): boolean {
+  const ep = relPath(e.path.replace(/\/\*[^*]*\*\//g, ""));
+  for (const c of changes) {
+    if (c.rule !== "shape") continue;
+    const targets = [c.path];
+    if (c.from && typeof c.from === "object" && typeof (c.from as any).path === "string") targets.push((c.from as any).path);
+    for (const t of targets) {
+      const cp = relPath(t);
+      const sameResource = ep.entry === cp.entry || ep.entry === null || cp.entry === null;
+      if (/^\.(meta(\.profile)?|resourceType)$/.test(cp.rel) || /^Bundle\.entry\[\d+\]\.meta$/.test(t)) {
+        const ci = cp.entry ?? (/^Bundle\.entry\[(\d+)\]/.exec(t) ? Number(/^Bundle\.entry\[(\d+)\]/.exec(t)![1]) : null);
+        if (sameResource && (ci === null || ep.entry === ci)) return true;
+        if (ci !== null && bundle && Array.isArray(bundle.entry)) {
+          const url = isObject(bundle.entry[ci]) ? bundle.entry[ci].fullUrl : undefined;
+          if (typeof url === "string" && url && e.message.includes(url)) return true;
+          if (e.path === `Bundle.entry[${ci}]`) return true;
+        }
+        continue;
+      }
+      if (!sameResource) continue;
+      const rel = cp.rel.replace(/\[\d+\]$/, "");
+      if (ep.rel === cp.rel || ep.rel === rel || ep.rel.startsWith(`${rel}.`) || ep.rel.startsWith(`${rel}[`)) return true;
+      const dot = rel.lastIndexOf(".");
+      if (dot >= 0) {
+        const parent = rel.slice(0, dot);
+        const name = rel.slice(dot + 1);
+        if ((ep.rel === parent || ep.rel.replace(/\[\d+\]$/, "") === parent.replace(/\[\d+\]$/, "")) && new RegExp(`\\.${name}\\b`).test(e.message)) return true;
+      }
+    }
+  }
+  return false;
 }
 
 export function blockKey(rule: RepairRule, path: string): string {
@@ -356,7 +400,8 @@ export async function repairBundle(bundle: Record<string, any>, deps: RepairDeps
   const withdrawn: RepairIssue[] = [];
   let run = await repairBundleOnce(bundle, deps, opts, blocked);
   for (let round = 0; round < 4 && run.result.changes.length; round++) {
-    const fresh = (await newBundleErrors(deps, original, bundle, run.removed)).filter((e) => !exposedDisplay(e, run.result.changes));
+    const typed = inferredEntries(run.result.changes);
+    const fresh = (await newBundleErrors(deps, original, bundle, run.removed)).filter((e) => !exposedDisplay(e, run.result.changes) && !exposedByType(e, typed) && !exposedByShape(e, run.result.changes, bundle));
     if (!fresh.length) break;
     const blame = round < 3 ? attributeBundle(fresh, run.result.changes, bundle) : [];
     const restore = (): void => {
@@ -387,6 +432,32 @@ export async function repairBundle(bundle: Record<string, any>, deps: RepairDeps
   const seen = new Set<string>();
   const extra = withdrawn.filter((w) => !seen.has(w.path + w.message) && !!seen.add(w.path + w.message));
   return withEnv({ changes: run.result.changes, issues: [...run.result.issues, ...extra] });
+}
+
+/** An error that says the inferred resource type is wrong: an unknown property at the resource root. */
+function contradictsType(e: { path: string; message: string }, rt: string): boolean {
+  return /^Unrecognized property '/.test(e.message) && (e.path === rt || /^Bundle\.entry\[\d+\]\.resource$/.test(e.path));
+}
+
+/** Entries whose resourceType this repair inferred (shape rule, from meta.profile). */
+function inferredEntries(changes: RepairChange[]): Set<number> {
+  const out = new Set<number>();
+  for (const c of changes) {
+    const m = /^Bundle\.entry\[(\d+)\]\.resource\.resourceType$/.exec(c.path);
+    if (m && c.rule === "shape" && c.from === null) out.add(Number(m[1]));
+  }
+  return out;
+}
+
+/**
+ * v16 R4: an entry resource written without resourceType is not validated at all (one "no
+ * resourceType" error), so once its type is inferred every error inside it was hidden, not added —
+ * except one contradicting the inferred type.
+ */
+function exposedByType(e: { path: string; message: string }, typed: Set<number>): boolean {
+  const i = entryIndex(e.path);
+  if (i === null || !typed.has(i) || !/^Bundle\.entry\[\d+\]\.resource/.test(e.path)) return false;
+  return !contradictsType(e, "");
 }
 
 /** Entry index of a reported path (`Bundle.entry[3].resource…`), else null. */
@@ -527,7 +598,10 @@ async function repairBundleOnce(bundle: Record<string, any>, deps: RepairDeps, o
     if (mine.length && deps.validate && isObject(before[i])) {
       const orig = isObject(before[i].resource) ? before[i].resource : null;
       // Written without resourceType the resource was not validated at all: every error it has now is new.
-      const fresh = orig && typeof orig.resourceType === "string" ? await newErrors(deps, orig, e.resource, {}) : await allErrors(deps, e.resource);
+      // Written without resourceType the resource was not validated at all: its errors now were hidden, not
+      // introduced (v16 R4) — only an error that contradicts the inferred type (an unknown top-level property)
+      // withdraws the inference.
+      const fresh = orig && typeof orig.resourceType === "string" ? (await newErrors(deps, orig, e.resource, {})).filter((x) => !exposedByShape(x, mine)) : (await allErrors(deps, e.resource)).filter((x) => contradictsType(x, String(e.resource.resourceType || "")));
       if (fresh.length) {
         const restored = cloneTree(before[i]) as Record<string, any>;
         entries[i] = restored;

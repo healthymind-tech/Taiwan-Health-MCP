@@ -186,7 +186,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   candidates cannot be told apart (尚難區分, cannot differentiate) are unestablished. Without source_text and without
   //   findings the output is unchanged.
   // 1.16.1 (SNOMED Chinese-name verification fixes): (R3, grounding/snomedChinese.ts + codeGrounding.ts) the SNOMED Chinese-name comparison is hardened: ICD Chinese names keep complete noun phrases only (qualifier prefixes such as 其他或未明示之 removed whole, names starting with a function word / bound morpheme and one-character-truncated tails rejected; mined thesaurus pieces trimmed and, unless every piece occurs in an ICD Chinese name of the concept, capped at 0.55 — never comparable); a hierarchy guard: a diagnosis-slot item whose SNOMED concept (from its ICD-10 code via the reverse snomed.icd10_map, or its exact ICD Chinese name) is the coded concept, an ancestor or a descendant of it (snomed.concept_ancestors) is never "something else" (LRTI vs 社區型肺炎 (J18.9): warning); a Chinese item name with no exact ICD name relates through its head-final tail (社區型肺炎 → 肺炎), only to that concept or its ancestors; abbreviation-only slot items are judged on the record's casing; the IG designation table loads in one cheap query (Chinese-language packages only, ~0.6 s), single-flight, refreshed in the background, warmed at startup — a call during the first load waits ≤ 2 s, then runs without IG names with every Chinese name capped below comparability (warning, never a new error); the v15.3 result-slot note rule (an Observation with no value[x] whose note says there is no result while its code needs a quantitative one) is a WARNING without source_text (was an error; consistent with the v15.4 empty-shell rule), still an error with it.
-  fhir_validate_bundle: "1.16.1",
+  // 1.17.0 (ISSUES_v16 R3): slice / profile-match explanations (fhirSuggestions/slices.ts, fhirSliceMatch.ts): "does not match any known slice … CLOSED", "Slice 'X': a matching slice is required" and "Unable to find a profile match" issues carry slice_match / profile_match {closest slice / profile, failed discriminators (meta.profile missing / misspelled / other version / a string / another profile, resourceType, fixed / pattern value, required binding), blocking: the ≤ 5 errors of the target against the closest profile (own errors, else a budgeted stand-alone validation, ≤ 12 per call), hint} and set_profile / add_resource suggestions; additive only (issue set, severities, messages, valid unchanged).
+  fhir_validate_bundle: "1.17.0",
   // 1.6.2: the binding-aware suggestions above (ISSUES_v10 A) also apply to single-resource validation.
   // 1.7.0: the validator v13 rules above (fhir_validate_bundle 1.9.0).
   // 1.8.0 (ISSUES_v15): the record checks of fhir_validate_bundle 1.11.0 on the resource (data.issues, data.record_checks).
@@ -199,7 +200,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.12.1 (ISSUES_v15.3 R3 follow-up, grounding/snomedChinese.ts): the Chinese-name comparison of fhir_validate_bundle 1.15.1 in the coded-element grounding annotation.
   // 1.13.0 (ISSUES_v15.4): the record checks of fhir_validate_bundle 1.16.0 (empty shells, absence predicate classes).
   // 1.13.1: the R3 and result-slot note changes of fhir_validate_bundle 1.16.1.
-  fhir_validate_resource: "1.13.1",
+  // 1.14.0 (ISSUES_v16 R3): the slice / profile-match explanations of fhir_validate_bundle 1.17.0 (slice_match / profile_match, set_profile / add_resource).
+  fhir_validate_resource: "1.14.0",
   // 1.2.0 (all below): provenance.resolved_by / closure_versions; canonical arguments resolve to their
   // owning package when package_id is omitted; "|version" honoured; list/search: all_packages + zero-hit hint;
   // NO_DEFAULT_IG instead of an arbitrary package when no default IG is set.
@@ -294,7 +296,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   (no grounding run here), so the output is unchanged.
   // 1.11.0 (ISSUES_v15.4): data.validation carries the record checks of fhir_validate_resource 1.13.0 (empty shells).
   // 1.11.1: data.validation's record checks as fhir_validate_resource 1.13.1 — the v15.3 result-slot note rule (an Observation with no value[x] whose note says there is no result while its code needs a quantitative one) is a WARNING without source_text (was an error; consistent with the v15.4 empty-shell rule), still an error with it.
-  fhir_finalize_resource: "1.11.1",
+  // 1.12.0 (ISSUES_v16): R4 content repair: empty arrays removed (ele-1), resourceType inferred from a meta.profile string, errors a lossless reshape only makes visible (a now-readable value / a resource now checked against its declared profile) no longer withdraw the reshape; validation as fhir_validate_resource 1.14.0.
+  fhir_finalize_resource: "1.12.0",
   // 1.0.0 (authoring/, evaluation v11): the model gives field VALUES, the MCP composes the resource for its profile
   //   (fixed / pattern / defaults / derived / displays / UCUM / ROC dates), validates it, keeps it in a Redis context
   //   (`authoring:ctx:*`, 60-min idle TTL) and assembles the Bundle from keys with deterministic urn:uuid fullUrls
@@ -309,6 +312,17 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   Condition.encounter, Observation.hasMember …). The size budget applies to the WHOLE response (envelope, warnings,
   //   provenance; non-ASCII counted as \uXXXX) minus a 150-char margin; new data.response_chars.
   fhir_get_authoring_fields: "1.2.0",
+  // 1.0.0 (ISSUES_v16 R1, igBlueprint/blueprint.ts): a Bundle profile's blueprint — entry slices (min..max, profile), slicing
+  //   discriminator / closed / ordered, Bundle.type, the references between slices that the slice profiles require (also in
+  //   extensions and sliced backbones, targets matched through profile derivation) and a recipe; <= 4,000 characters
+  //   (`omitted`), view='references' for every reference line. IG-agnostic.
+  fhir_get_bundle_blueprint: "1.0.0",
+  // 1.0.0 (ISSUES_v16 R2, igBlueprint/skeleton.ts): a profile's minimal legal instance (every required element recursively,
+  //   required slices, extensions expanded from their definitions, fixed / pattern filled in) and a value_source per required
+  //   element (ig-constant: fixed / pattern or identical in >= 2 of the IG's example instances, eligibility by resource kind;
+  //   code-lookup; text-allowed; derivable; record) plus conditional rows from `guard implies (x.exists() and …)` invariants;
+  //   <= 6,000 characters (`omitted`). IG-agnostic.
+  fhir_get_minimal_skeleton: "1.0.0",
   // 1.1.0 (evaluation feedback): (1) a model display the validator's terminology rule rejects for a resolvable code is
   //   replaced by the code's display (provenance lookup; the model wording moves to CodeableConcept.text when empty;
   //   case-only differences are valid, whitespace-only ones take the valid spelling); (2) a single object / scalar where
@@ -354,7 +368,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   the per-resource validation here runs no grounding, so the output is unchanged (fhir_assemble_bundle 1.8.1 carries it).
   // 1.9.0 (ISSUES_v15.4): validation as fhir_validate_resource 1.13.0 (record checks: empty shells, absence predicate classes).
   // 1.9.1: validation as fhir_validate_resource 1.13.1 — the v15.3 result-slot note rule (an Observation with no value[x] whose note says there is no result while its code needs a quantitative one) is a WARNING without source_text (was an error; consistent with the v15.4 empty-shell rule), still an error with it.
-  fhir_author_resources: "1.9.1",
+  // 1.10.0 (ISSUES_v16): validation issues as fhir_validate_resource 1.14.0 (slice_match / profile_match).
+  fhir_author_resources: "1.10.0",
   // 1.0.1: action=get results carry the author result's new `notes` (fhir_author_resources 1.1.0); otherwise unchanged.
   fhir_context: "1.0.1",
   // 1.1.0: new `site_config` (merged with the context's) passed to the grounding engine with source_text, so facility
@@ -382,7 +397,12 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.9.0 (ISSUES_v15.4): resources as fhir_author_resources 1.9.0; validation as fhir_validate_bundle 1.16.0 (empty shells).
   // 1.9.1: validation as fhir_validate_bundle 1.16.1 (R3 SNOMED Chinese-name fixes and hierarchy guard; result-slot note
   //   rule a warning without source_text).
-  fhir_assemble_bundle: "1.9.1",
+  // 1.10.0 (ISSUES_v16 R5, authoring/bundleSlices.ts): with bundle_profile, every stored resource is placed in its entry slice before
+  //   validation (declared / authored profile, else the only or clearly closest slice of its type), meta.profile completed for a
+  //   resource authored for its slice's profile, entries in slice order when the slicing is ordered; bundle_slices reports the
+  //   placement, `missing` required slices (what to author — never invented), `excess` (max) and `unmatched` (closed slicing);
+  //   content repairs as fhir_finalize_bundle 1.8.0, validation as fhir_validate_bundle 1.17.0.
+  fhir_assemble_bundle: "1.10.0",
   // 1.0.0 (ISSUES_v9 R1): deterministic Bundle finalizer — fullUrl-uuid / reference-rewire / resource-id (mandatory),
   // bundle-type / document-order (profile-driven); UUID v5 seeded by (resourceType, original fullUrl, resource.id, entry
   // index) + a content salt; references found through StructureDefinition snapshots; duplicates / ambiguity reported.
@@ -439,7 +459,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.7.0 (ISSUES_v15.4): data.record_issues follow fhir_validate_bundle 1.16.0's record checks (empty shells); the Bundle
   //   and changes are unchanged.
   // 1.7.1: data.record_issues — the v15.3 result-slot note rule (an Observation with no value[x] whose note says there is no result while its code needs a quantitative one) is a WARNING without source_text (was an error; consistent with the v15.4 empty-shell rule), still an error with it.
-  fhir_finalize_bundle: "1.7.1",
+  // 1.8.0 (ISSUES_v16 R4): content repair: empty arrays removed (ele-1), resourceType inferred from a meta.profile string, errors a lossless reshape only makes visible (a now-readable value / a resource now checked against its declared profile) no longer withdraw the reshape (an inferred resourceType is withdrawn only by an unknown top-level property).
+  fhir_finalize_bundle: "1.8.0",
   // ── 2026-10-19 actionable errors (additive fields only; successful outputs unchanged) ──
   // search_medical_codes 1.2.1: IG_UNAVAILABLE adds `hint`.
   // FHIR IG tools above (+.0.1): error envelopes add error.hint; IG_NOT_FOUND / NO_DEFAULT_IG add

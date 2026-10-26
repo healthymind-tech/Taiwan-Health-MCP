@@ -16,6 +16,9 @@ export const assembleToolDescription =
   "finalised like fhir_finalize_bundle with repair=\"content\" (ids, references, document → Composition first, a Bundle.type fixed by " +
   "bundle_profile wins, plus the uniquely-determined content repairs — listed in changes, undecidable ones in repair_issues) and " +
   "validated like fhir_validate_bundle; with source_text it is also grounded against the record (fhir_check_grounding rules). " +
+  "With bundle_profile, entries are placed into the profile's entry slices BEFORE validation (meta.profile completed for a resource " +
+  "authored for its slice's profile; slice order when the slicing is ordered) and bundle_slices reports the placement, `missing` required " +
+  "slices (author them — never invented), `excess` and `unmatched` (closed slicing). " +
   "Same context + same keys → byte-identical Bundle. REFUSES (ok=false, no Bundle) when: a key is not stored (KEY_NOT_FOUND); a stored " +
   "resource references a key that is not in keys or not in the context (UNRESOLVED_REFERENCE — error.refused lists key, field, ref_key); " +
   "a stored resource is invalid (INVALID_RESOURCE — error.refused lists key + field + error; fix with fhir_author_resources merge=true, " +
@@ -25,7 +28,7 @@ export const assembleToolDescription =
   "site_config (facility settings text, as fhir_check_grounding / fhir_author_resources take it) is merged with the context's and used by " +
   "the grounding (with source_text): identifier systems named in it (e.g. \"病歷號 system: https://hospital.example.tw/mrn\") and organisation " +
   "values stated in it are grounded as site_config instead of being flagged. Never logged. " +
-  "Returns {context_id, bundle, keys (final entry order), validation: {valid, issues: [{key, field, path, severity, message, " +
+  "Returns {context_id, bundle, keys (final entry order), bundle_slices?, validation: {valid, issues: [{key, field, path, severity, message, " +
   "suggestions?}], checked_fully …}, changes, unresolved, notes, included_invalid}. Example: {\"context_id\": \"<id>\", \"keys\": " +
   "[\"composition-1\", \"patient-1\", \"enc-1\", \"cond-1\"], \"bundle_type\": \"document\", \"bundle_profile\": \"Bundle-twcore\"}. " +
   "Fix validation issues by resending only the changed fields of the named key with fhir_author_resources(merge=true), then assemble " +

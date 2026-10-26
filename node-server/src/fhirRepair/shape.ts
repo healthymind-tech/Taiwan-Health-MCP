@@ -468,7 +468,9 @@ export async function repairShapes(
 /** A resource without resourceType: the one type its meta.profile StructureDefinitions constrain. */
 export async function inferResourceType(session: Session, res: Record<string, any>): Promise<{ type: string; reason: string } | null> {
   if (typeof res.resourceType === "string" && res.resourceType) return null;
-  const profiles = isObject(res.meta) && Array.isArray(res.meta.profile) ? res.meta.profile.filter((p: unknown) => typeof p === "string") : [];
+  // meta.profile written as one string (v16 R4) names the profile too; the shape rule makes it an array.
+  const raw = isObject(res.meta) ? res.meta.profile : undefined;
+  const profiles: string[] = (Array.isArray(raw) ? raw : typeof raw === "string" ? [raw] : []).filter((p: unknown): p is string => typeof p === "string");
   const types = new Set<string>();
   for (const p of profiles.slice(0, 3)) {
     const v = (await session.view(p)) ?? (p.includes("|") ? await session.view(p.split("|")[0]) : null);

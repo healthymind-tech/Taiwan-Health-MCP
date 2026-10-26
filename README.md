@@ -26,7 +26,7 @@
 <div align="center">
 
 [![2026 台灣聯測松](https://img.shields.io/badge/2026%20%E5%8F%B0%E7%81%A3%E8%81%AF%E6%B8%AC%E6%9D%BE-%E5%B7%B2%E9%80%9A%E9%81%8E%20%C2%B7%20%E8%A1%9B%E7%A6%8F%E9%83%A8%E4%B8%BB%E8%BE%A6-0e9ea8)](https://tw-health-mcp.healthymind-tech.com)
-[![MCP tools](https://img.shields.io/badge/MCP%20tools-68-0e9ea8)](#六大面向)
+[![MCP tools](https://img.shields.io/badge/MCP%20tools-70-0e9ea8)](#六大面向)
 [![Website](https://img.shields.io/website?url=https%3A%2F%2Ftw-health-mcp.healthymind-tech.com&label=website)](https://tw-health-mcp.healthymind-tech.com)
 [![GitHub stars](https://img.shields.io/github/stars/healthymind-tech/Taiwan-Health-MCP?style=flat)](https://github.com/healthymind-tech/Taiwan-Health-MCP/stargazers)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
@@ -38,7 +38,7 @@
 https://github.com/user-attachments/assets/13527dd9-72ac-4e36-9868-7967399d4041
 
 
-以官方 **TypeScript MCP SDK**（`@modelcontextprotocol/sdk`）建構的 Node.js 伺服器，對外提供 **68 個工具**，涵蓋 12 個工具群組。專為高吞吐量的生產級 SaaS 部署設計。
+以官方 **TypeScript MCP SDK**（`@modelcontextprotocol/sdk`）建構的 Node.js 伺服器，對外提供 **70 個工具**，涵蓋 12 個工具群組。專為高吞吐量的生產級 SaaS 部署設計。
 
 ## 快速連線
 
@@ -133,7 +133,7 @@ ICD-10、LOINC、SNOMED CT 與 IG CodeSystem 以 pgvector 嵌入（預設 Ollama
 </table>
 
 <details>
-<summary><b>全部 68 個工具</b></summary>
+<summary><b>全部 70 個工具</b></summary>
 
 | 群組 | 工具 |
 |------|------|
@@ -143,14 +143,14 @@ ICD-10、LOINC、SNOMED CT 與 IG CodeSystem 以 pgvector 嵌入（預設 Ollama
 | SNOMED CT | `search_snomed_concept`、`query_snomed_concept`、`get_snomed_relationships`、`query_snomed_mapping` |
 | FHIR Condition | `query_fhir_condition`、`validate_fhir_condition` |
 | FHIR Medication | `query_fhir_medication`、`validate_fhir_medication` |
-| FHIR IG（授權 / 驗證） | `fhir_list_igs`、`fhir_get_ig`、`fhir_list_artifacts`、`fhir_search_artifacts`、`fhir_list_resource_profiles`、`fhir_rank_resource_profiles`、`fhir_get_profile`、`fhir_get_profile_elements`、`fhir_get_profile_required_elements`、`fhir_get_valueset`、`fhir_expand_valueset`、`fhir_lookup_code`、`fhir_validate_code`、`fhir_normalize_code`、`fhir_resolve_reference`、`fhir_build_bundle`、`fhir_validate_resource`、`fhir_validate_bundle`、`fhir_get_resource_skeleton`、`fhir_finalize_resource`、`fhir_finalize_bundle`、`fhir_check_grounding`、`fhir_check_completeness`、`fhir_get_authoring_fields`、`fhir_author_resources`、`fhir_context`、`fhir_assemble_bundle` |
+| FHIR IG（授權 / 驗證） | `fhir_list_igs`、`fhir_get_ig`、`fhir_list_artifacts`、`fhir_search_artifacts`、`fhir_list_resource_profiles`、`fhir_rank_resource_profiles`、`fhir_get_profile`、`fhir_get_profile_elements`、`fhir_get_profile_required_elements`、`fhir_get_valueset`、`fhir_expand_valueset`、`fhir_lookup_code`、`fhir_validate_code`、`fhir_normalize_code`、`fhir_resolve_reference`、`fhir_build_bundle`、`fhir_validate_resource`、`fhir_validate_bundle`、`fhir_get_resource_skeleton`、`fhir_finalize_resource`、`fhir_finalize_bundle`、`fhir_check_grounding`、`fhir_check_completeness`、`fhir_get_authoring_fields`、`fhir_author_resources`、`fhir_context`、`fhir_assemble_bundle`、`fhir_get_bundle_blueprint`、`fhir_get_minimal_skeleton` |
 | 健康補充品 | `search_health_supplements` |
 | 食品營養 | `query_food_nutrition`、`query_food_ingredient`、`search_foods_by_nutrient`、`analyze_meal_nutrition` |
 | FHIR 伺服器 | `list_fhir_servers`、`get_fhir_server_status`、`crud_fhir_server` |
 | 臨床計算器 | `calculate_chads2_vasc`、`calculate_wells_pe`、`calculate_wells_dvt`、`calculate_das28`、`calculate_cdai`、`calculate_bmi`、`calculate_egfr`、`calculate_has_bled`、`calculate_curb65`、`calculate_qsofa`、`calculate_gcs` |
 | 系統 | `health_check` |
 
-- 模組相關工具會依資料載入狀態自動啟用 / 停用（例如健康補充品、食品營養未載入時，`/openapi.json` 只會列出 58 個）；FHIR 伺服器、臨床計算器與系統工具則永遠註冊。管理後台「MCP 工具」頁（`/admin/mcp`）列出全部 68 個工具、未註冊的原因，並可線上試呼叫。
+- 模組相關工具會依資料載入狀態自動啟用 / 停用（例如健康補充品、食品營養未載入時，`/openapi.json` 只會列出 58 個）；FHIR 伺服器、臨床計算器與系統工具則永遠註冊。管理後台「MCP 工具」頁（`/admin/mcp`）列出全部 70 個工具、未註冊的原因，並可線上試呼叫。
 - 除 `crud_fhir_server` 外，所有工具皆為唯讀。`crud_fhir_server` 可對**已由管理者登錄**的外部 FHIR 伺服器執行寫入（create / update / patch / delete），且必須該伺服器的 allow-list 允許、呼叫端並帶入 `confirm_write=true`。
 - 工具顯示為 available 只代表來源資料已載入，不代表 embedding 已完整。請在管理後台各模組頁（如「醫療術語」底下的 ICD-10 / LOINC / SNOMED）檢查 Embeddings 計數；未完成時搜尋會退回或混用 keyword/BM25（回應會標 `search_mode: "keyword_only"`）。
 - 術語範圍：ICD-10-CM（CMS 2026-04-01 完整碼表，含第 7 碼）/ ICD-10-PCS、WHO ICD-10（選用）、SNOMED CT International（含 inactive 內容與歷史關聯）、LOINC 2.80（含 answer / part / panel）、RxNorm、FHIR R4；內建 validator 另支援 CVX、ISO 3166、UCUM。Validator 稽核見 [`node-server/scripts/validator-audit/`](node-server/scripts/validator-audit/)。

@@ -333,7 +333,7 @@ test("attachSuggestions: additive only, deterministic, fail-open", async () => {
   const b = mk();
   await attachSuggestions(b, res, fakeDeps());
   assert.deepEqual(a, b, "deterministic");
-  const strip = (xs: any[]) => xs.map(({ suggestions, caused_by, ...r }) => r);
+  const strip = (xs: any[]) => xs.map(({ suggestions, caused_by, slice_match, profile_match, ...r }) => r);
   assert.deepEqual(strip(a), mk(), "existing fields unchanged");
   assert.equal(a[0].suggestions[0].value, "periodUnit");
   assert.equal(a[1].suggestions[0].value, "{tablet}");

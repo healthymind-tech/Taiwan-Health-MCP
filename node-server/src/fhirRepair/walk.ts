@@ -269,7 +269,8 @@ async function walkNode(ctx: Ctx, view: View, ids: string[], node: Record<string
       if (hit) break;
     }
     const raw = node[key];
-    const items: Array<[unknown, number | null]> = Array.isArray(raw) ? raw.map((v, i) => [v, i]) : [[raw, null]];
+    // An empty array is one site (value []), so the ele-1 rule (shape.ts `empty`) can remove it (v16 R4).
+    const items: Array<[unknown, number | null]> = Array.isArray(raw) ? (raw.length ? raw.map((v, i) => [v, i]) : [[raw, null]]) : [[raw, null]];
     if (!hit) {
       if (!ctx.isCore) continue;
       for (const [v, i] of items) {

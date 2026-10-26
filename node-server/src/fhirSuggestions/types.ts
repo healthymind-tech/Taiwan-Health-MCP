@@ -33,7 +33,10 @@ export type SuggestionKind =
   // ISSUES_v15.2 R3: an unknown code whose concept links to a coding of another system the element's
   // bound ValueSets accept (a drug's ATC code) — replace the Coding with it (replace_coding), or drop the
   // unknown Coding when the CodeableConcept already carries that coding (remove_coding).
-  | "remove_coding";
+  | "remove_coding"
+  // ISSUES_v16 R3: an entry / referenced resource whose closest slice / profile is unique and which does not
+  // declare it (missing, misspelled, another version, a string, another profile) — patch meta.profile.
+  | "set_profile";
 
 /** A minimal edit, addressed with the validator's dotted instance paths (e.g. `Observation.code.coding[0].code`). */
 export interface SuggestionPatch {
@@ -177,4 +180,9 @@ export interface SuggestOptions {
   maxSuggestions?: number;
   /** Profiles the validation was asked for (besides the instance's meta.profile): element bindings are read from them. */
   profiles?: string[];
+  /**
+   * ISSUES_v16 R3: stand-alone validations (distinct resource + profile) the slice / profile-match
+   * explanations may run per call (default 12); a target that declares the profile reuses its own errors.
+   */
+  maxSliceValidations?: number;
 }

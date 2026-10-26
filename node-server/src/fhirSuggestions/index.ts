@@ -15,10 +15,12 @@ import { codingContext, LIST_ALL_VS, parseBindingValueSet, suggestBinding, sugge
 import { suggestChoiceType, suggestProperty } from "./properties.js";
 import { attachBundleTypeSuggestions } from "./bundleType.js";
 import { causedBy } from "./references.js";
+import { attachSliceExplanations, RE_CLOSED_SLICE, RE_MISSING_SLICE } from "./slices.js";
 import type { Suggestion, SuggestionDeps, SuggestOptions } from "./types.js";
 import { suggestUcum } from "./ucum.js";
 import { isObject, nodeAt, rankSuggestions, splitLast } from "./util.js";
 
+export type { ProfileMatchInfo, SliceMatchInfo } from "./slices.js";
 export type { CausedBy, Suggestion, SuggestionDeps, SuggestOptions, SuggestionKind, SuggestionPatch } from "./types.js";
 
 const UCUM = "http://unitsofmeasure.org";
@@ -45,6 +47,9 @@ export function suggestionCategory(issue: Record<string, any>): string | null {
   if (RE_BINDING.test(m)) return "binding";
   if (RE_PROFILE_MATCH.test(m)) return "reference_chain";
   if (RE_TYPE_NOT_ALLOWED.test(m)) return "choice_type";
+  // ISSUES_v16 R3: explained by slices.ts after the per-issue suggesters (slice_match / profile_match).
+  if (RE_CLOSED_SLICE.test(m)) return "closed_slice";
+  if (RE_MISSING_SLICE.test(m)) return "missing_slice";
   return null;
 }
 
@@ -167,7 +172,7 @@ export async function attachSuggestions(
   for (const issue of issues) {
     if (plan.length >= maxIssues) break;
     const category = isObject(issue) ? suggestionCategory(issue) : null;
-    if (category === null) continue;
+    if (category === null || category === "closed_slice" || category === "missing_slice") continue; // slices.ts
     // Identical (path, message) issues — e.g. a profile and its base reporting the same thing — share one answer;
     // unknown-URL issues about the same value (No definition … / A definition for CodeSystem …) too.
     const url = category === "unknown_url" ? /'([^']+)'/.exec(String(issue.message))?.[1] : undefined;
@@ -202,5 +207,7 @@ export async function attachSuggestions(
     if (list.length) issue.suggestions = list;
     if (r.caused_by && r.caused_by.length) issue.caused_by = r.caused_by;
   }
+  // ISSUES_v16 R3: closest slice / profile, failed discriminator, blocking errors (budgeted, after caused_by).
+  if (isObject(root)) await attachSliceExplanations(issues, root, deps, { maxValidations: opts.maxSliceValidations });
   if (isObject(root) && root.resourceType === "Bundle") await attachBundleTypeSuggestions(issues, root, deps); // document / message without its head resource (bundleType.ts)
 }

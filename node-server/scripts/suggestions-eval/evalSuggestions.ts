@@ -27,7 +27,7 @@ function candidatesDir(): string | null {
 }
 
 function strip(issues: Array<Record<string, any>>): string {
-  return JSON.stringify(issues.map(({ suggestions, caused_by, ...rest }) => rest));
+  return JSON.stringify(issues.map(({ suggestions, caused_by, slice_match, profile_match, ...rest }) => rest));
 }
 
 function pct(n: number, d: number): string {

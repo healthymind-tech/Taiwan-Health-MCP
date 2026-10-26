@@ -8,7 +8,7 @@
 import type { CausedBy, SuggestionDeps } from "./types.js";
 import { isObject } from "./util.js";
 
-interface Target {
+export interface Target {
   resource: Record<string, any>;
   fullUrl: string | null;
   entry?: number;
@@ -22,7 +22,7 @@ export function parseProfileMatch(message: string): { ref: string; profiles: str
   return { ref: m[1], profiles: m[2].split(/,\s*/).filter((p) => p !== "") };
 }
 
-function findTarget(root: Record<string, any>, issuePath: string, ref: string): Target | null {
+export function findTarget(root: Record<string, any>, issuePath: string, ref: string): Target | null {
   const rootType = String(root.resourceType || "");
   if (ref.startsWith("#")) {
     // Contained in the resource that holds the reference (bundle entry or root).

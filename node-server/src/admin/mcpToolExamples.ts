@@ -540,6 +540,23 @@ export const MCP_TOOL_EXAMPLES: Record<string, ToolExampleSet> = {
     ],
   },
   // ── Authoring from field values (authoring/) ────────────────────────────
+  // ── IG structure (igBlueprint/) ─────────────────────────────────────────
+  fhir_get_bundle_blueprint: {
+    title: "Bundle 剖面的藍圖（entry slices、判別方式、slice 間引用）",
+    examples: [
+      example("document", "Bundle-document-twcore", { bundle_profile: "Bundle-document-twcore", package_id: TWCORE, version: TWCORE_VERSION, view: "summary" }, "每個 entry slice 的 min..max 與 profile、slicing 是否 closed、Bundle.type、寫法"),
+      example("pas", "Bundle-twpas（需安裝 TWPAS IG）", { bundle_profile: "Bundle-twpas", package_id: "tw.gov.mohw.nhi.pas", version: null, view: "summary" }, "closed slicing、29 個 slice、Claim → Encounter / Coverage → 政府機構等必要引用"),
+      example("pas-refs", "Bundle-twpas 全部引用", { bundle_profile: "Bundle-twpas", package_id: "tw.gov.mohw.nhi.pas", version: null, view: "references" }),
+    ],
+  },
+  fhir_get_minimal_skeleton: {
+    title: "剖面的最小合法骨架與每個必填值的來源",
+    examples: [
+      example("bp", "Observation-bloodPressure-twcore", { profile: "Observation-bloodPressure-twcore", package_id: TWCORE, version: TWCORE_VERSION }, "pattern 已填入骨架；只有 record 列需要病歷"),
+      example("encounter", "Encounter-twcore", { profile: "Encounter-twcore", package_id: TWCORE, version: TWCORE_VERSION }),
+      example("claim", "Claim-twpas（需安裝 TWPAS IG）", { profile: "Claim-twpas", package_id: "tw.gov.mohw.nhi.pas", version: null }, "ig-constant / code-lookup / text-allowed / derivable / record 與條件必填（invariant）"),
+    ],
+  },
   fhir_get_authoring_fields: {
     title: "剖面的填寫欄位（供 fhir_author_resources）",
     examples: [

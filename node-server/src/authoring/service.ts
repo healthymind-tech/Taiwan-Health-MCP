@@ -18,6 +18,8 @@ import { recordCheckLookups } from "../recordChecks/lookups.js";
 import { logDebug, logError } from "../logger.js";
 import { hasRaw, parseLossless, toPlain } from "../losslessJson.js";
 import { nodeAt } from "../fhirSuggestions/util.js";
+import { cloneTree } from "../fhirRepair/walk.js";
+import { placeEntrySlices, type BundleSliceReport } from "./bundleSlices.js";
 import { siteConfigTimezone } from "../fhirRepair/timezone.js";
 import type { RepairChange, RepairIssue } from "../fhirRepair/types.js";
 import { fitDate, parseDateValue } from "./values.js";
@@ -107,6 +109,11 @@ export interface AuthoringDeps {
   ) => Promise<ToolEnvelope<ValidationData>>;
   /** Fields a document's Composition needs when none was authored (R3: reported, never invented). */
   compositionRequirements?: (opts: { bundleProfile: string | null; packageId: string | null; version: string | null }) => Promise<{ profile: string; fields: Array<{ field: string; why: string }> }>;
+  /**
+   * ISSUES_v16 R5: the Bundle profile's StructureDefinition and a StructureDefinition lookup of its
+   * closure (entry-slice placement before validation). Absent / null = no slice placement.
+   */
+  bundleSlicing?: (opts: { bundleProfile: string; packageId: string | null; version: string | null }) => Promise<{ sd: Record<string, any>; fetchStructureDefinition: (url: string) => Promise<Record<string, any> | null> } | null>;
   now?: () => number;
 }
 
@@ -151,6 +158,8 @@ export interface AssembleBundleResult {
   notes: string[];
   /** Keys assembled although their stored status is invalid (allow_invalid). */
   included_invalid: string[];
+  /** ISSUES_v16 R5: entry-slice placement against bundle_profile (checked before validation); absent without one. */
+  bundle_slices?: BundleSliceReport;
   warnings: string[];
   provenance: Record<string, unknown> | null;
 }
@@ -641,9 +650,34 @@ export class AuthoringService {
       });
     }
 
+    // 4b. (v16 R5) Entry slices of bundle_profile: place each resource, complete meta.profile for a
+    // resource authored for its slice's profile, order per slicing.ordered, and check slice min / max
+    // and closed slicing before validation — missing slices are reported, never invented.
+    let sliceReport: BundleSliceReport | undefined;
+    let ordered = entries.map((e) => ({ key: e.key, resource: e.resource as Record<string, unknown> }));
+    if (opts.bundleProfile && this.deps.bundleSlicing) {
+      try {
+        const bs = await this.deps.bundleSlicing({ bundleProfile: opts.bundleProfile, packageId: opts.packageId ?? null, version: opts.version ?? null });
+        if (bs) {
+          const copies = entries.map((e) => ({ key: e.key, resource: cloneTree(e.resource), authoredProfile: typeof e.input.profile === "string" ? e.input.profile : null }));
+          const placed = await placeEntrySlices(copies, bs.sd, bs.fetchStructureDefinition);
+          if (placed) {
+            sliceReport = placed.report;
+            const byKey = new Map(copies.map((c) => [c.key, c.resource]));
+            ordered = placed.order.map((k) => ({ key: k, resource: byKey.get(k)! }));
+            if (placed.report.missing.length) warnings.push(`bundle_profile slices not filled: ${placed.report.missing.map((m) => `${m.slice} (${m.found}/${m.min})`).join(", ")} — see bundle_slices.missing`);
+            if (placed.report.unmatched.length) warnings.push(`entries no slice takes${placed.report.rules === "closed" ? " (closed slicing)" : ""}: ${placed.report.unmatched.map((u) => u.key).join(", ")} — see bundle_slices.unmatched`);
+            if (placed.report.excess.length) warnings.push(`slices over their max: ${placed.report.excess.map((x) => `${x.slice} (max ${x.max})`).join(", ")}`);
+          }
+        }
+      } catch (e) {
+        logError("authoring: bundle slice placement failed", { error: e instanceof Error ? e.name : "Error" });
+      }
+    }
+
     // 5. Build: fullUrl = keyToUrn(contextId, key) — the same urn the composer wrote into references.
     const urnToKey = new Map<string, string>();
-    const entryList = entries.map((e) => {
+    const entryList = ordered.map((e) => {
       const fullUrl = this.deps.keyToUrn(contextId, e.key);
       urnToKey.set(fullUrl, e.key);
       const be: Record<string, unknown> = { fullUrl, resource: e.resource };
@@ -714,6 +748,7 @@ export class AuthoringService {
       repair_issues: fin.data.repair_issues ?? [],
       notes: fin.data.notes,
       included_invalid: invalid.map((e) => e.key),
+      ...(sliceReport ? { bundle_slices: sliceReport } : {}),
       warnings,
       provenance: val.provenance ?? fin.provenance ?? null,
     };
@@ -795,6 +830,32 @@ export function productionDeps(
       return parseEnvelope<ValidationData>(addRecordChecksToValidation(grounded, plain, { sourceText: o.sourceText ?? null, siteConfig: o.siteConfig ?? null, ...looked }));
     },
     compositionRequirements: async ({ bundleProfile, packageId, version }) => compositionRequirementsOf(svc, bundleProfile, packageId, version),
+    bundleSlicing: async ({ bundleProfile, packageId, version }) => bundleSlicingOf(svc, bundleProfile, packageId, version),
+  };
+}
+
+/**
+ * v16 R5: the Bundle profile's StructureDefinition (an id resolved to its canonical first) and the
+ * StructureDefinition lookup of the package that owns it — read-only, one profile fetch per slice.
+ */
+async function bundleSlicingOf(svc: FHIRIGService, bundleProfile: string, packageId: string | null, version: string | null): Promise<{ sd: Record<string, any>; fetchStructureDefinition: (url: string) => Promise<Record<string, any> | null> } | null> {
+  let canonical = bundleProfile;
+  if (!bundleProfile.includes("/") && !bundleProfile.includes(":")) {
+    const prof = parseEnvelope<{ canonical?: string | null }>(await svc.getProfile(bundleProfile, packageId, version));
+    if (!prof.ok || !prof.data?.canonical) return null;
+    canonical = prof.data.canonical;
+  }
+  const { deps } = await svc.bundleFinalizeDeps(null, canonical);
+  if (!deps) return null;
+  const sd = await deps.fetchStructureDefinition(canonical);
+  if (!sd || sd.type !== "Bundle") return null;
+  const memo = new Map<string, Promise<Record<string, any> | null>>();
+  return {
+    sd,
+    fetchStructureDefinition: (url) => {
+      if (!memo.has(url)) memo.set(url, deps.fetchStructureDefinition(url).catch(() => null));
+      return memo.get(url)!;
+    },
   };
 }
 

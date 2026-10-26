@@ -33,7 +33,7 @@ curl -X POST http://localhost:8080/tools/search_medical_codes \
   -d '{"keyword": "diabetes", "limit": 3}'
 ```
 
-The tool list grows and shrinks with each module's data-load status (row-count thresholds in `REQUIREMENTS`, exported as `MODULE_REQUIREMENTS`, in `moduleStatus.ts`), so the content of `/openapi.json` differs according to the deployment's data state. `mcp.ts` defines **68 tools** in 12 groups; the FHIR Servers, Clinical Calculators and System groups (15 tools) are always registered. The admin console's **MCP tools** page (`/admin/mcp`) shows the full catalog, why each unregistered tool is missing, and a playground for calling registered tools.
+The tool list grows and shrinks with each module's data-load status (row-count thresholds in `REQUIREMENTS`, exported as `MODULE_REQUIREMENTS`, in `moduleStatus.ts`), so the content of `/openapi.json` differs according to the deployment's data state. `mcp.ts` defines **70 tools** in 12 groups; the FHIR Servers, Clinical Calculators and System groups (15 tools) are always registered. The admin console's **MCP tools** page (`/admin/mcp`) shows the full catalog, why each unregistered tool is missing, and a playground for calling registered tools.
 
 A registered tool only means the required source data exists — it does **not** mean semantic embeddings have been fully backfilled. When vectors are incomplete, the related search falls back to, or mixes in, keyword/BM25. Check each module's embedding count on its page in the admin console and run or schedule the corresponding `*_embed` job.
 
