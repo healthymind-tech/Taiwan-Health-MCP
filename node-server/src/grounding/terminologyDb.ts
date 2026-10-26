@@ -17,7 +17,7 @@
  */
 import { CVX_CODES } from "../fhirCvx.js";
 import type { TermRecord, TerminologyNames } from "./terminologyNames.js";
-import { createSnomedChineseNames, type ZhName } from "./snomedChinese.js";
+import { createSnomedChineseNames, createSnomedHierarchy, type SlotItemRef, type ZhName } from "./snomedChinese.js";
 
 export type QueryFn = (sql: string, params: unknown[]) => Promise<{ rows: Array<Record<string, unknown>> }>;
 
@@ -38,6 +38,10 @@ export interface DbTerminologyNames extends TerminologyNames {
    */
   snomedChineseNames(conceptId: string): Promise<ZhName[]>;
   snomedChineseNamesBatch(conceptIds: readonly string[]): Promise<ReadonlyMap<string, ZhName[]>>;
+  /** Start loading the SNOMED Chinese-name IG designation table in the background (app startup). Never rejects. */
+  warmSnomedChinese(): Promise<void>;
+  /** Hierarchy guard of the code-grounding comparison (snomedChinese.ts createSnomedHierarchy). */
+  snomedRelatedSlotItems(conceptIds: readonly string[], items: readonly SlotItemRef[]): Promise<ReadonlyMap<string, ReadonlySet<string>>>;
   clear(): void;
   stats(): { cached: number; hits: number; misses: number; queries: number };
 }
@@ -285,6 +289,8 @@ export function createDbTerminologyNames(opts: DbTerminologyOptions): DbTerminol
     },
   });
 
+  const hierarchy = createSnomedHierarchy({ query, logger: opts.logger });
+
   return {
     async version() {
       if (versionStr) return versionStr;
@@ -303,6 +309,8 @@ export function createDbTerminologyNames(opts: DbTerminologyOptions): DbTerminol
     lookup: lookupNames,
     snomedChineseNames: (id) => zh.snomedChineseNames(id),
     snomedChineseNamesBatch: (ids) => zh.lookup(ids),
+    warmSnomedChinese: () => zh.warm(),
+    snomedRelatedSlotItems: (ids, items) => hierarchy.relatedSlotItems(ids, items),
     clear() {
       cache.clear();
       zh.clear();

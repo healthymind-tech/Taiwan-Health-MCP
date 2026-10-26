@@ -27,7 +27,7 @@ function envelope(c: R3ZhCase, withZh = true): Json {
     addRecordChecksToValidation(text, c.bundle, {
       sourceText: c.source_text,
       codeNames: new Map([...c.terms].map(([k, v]) => [k, v.names])),
-      ...(withZh ? { codeNamesZh: c.zh ?? null } : {}),
+      ...(withZh ? { codeNamesZh: c.zh ?? null, codeSlotRelations: c.relations ?? null } : {}),
     }),
   );
 }
@@ -71,11 +71,11 @@ test("snomedChineseNames: sources, confidences, ICD qualifier stripping, conditi
   const p = fakeChineseNames(log);
   const asthma = await p.snomedChineseNames("195967001");
   const by = (src: string): string[] => asthma.filter((z) => z.source === src).map((z) => z.name);
-  // WHO J45.9 is a header in ICD-10-CM: named by its unspecified child J45.909, core without 未明示 / 無併發症
-  // (the core 氣喘 is also the thesaurus rendering: one entry per name, the higher confidence kept)
-  assert.deepEqual(by("icd_map_child"), ["未明示氣喘，無併發症"], JSON.stringify(asthma));
-  assert.equal(asthma.find((z) => z.source === "icd_map_child")!.icd, "J45.909");
-  assert.deepEqual(asthma.find((z) => z.name === "氣喘"), { name: "氣喘", source: "thesaurus", confidence: 0.72 });
+  // the WHO target J45.9 is named 其他或未明示之氣喘: full name + core 氣喘 (the qualifier PREFIX removed whole — never
+  // the fragment 或氣喘); the thesaurus rendering 性氣喘 (a mined n-gram) is trimmed to 氣喘 and merged
+  assert.deepEqual(by("icd_map").sort(), ["其他或未明示之氣喘", "氣喘"], JSON.stringify(asthma));
+  assert.ok(asthma.every((z) => !/^[或及與和之的伴併性型]/u.test(z.name)), "no fragment");
+  assert.equal(asthma.find((z) => z.name === "氣喘")!.icd, "J45.9");
   assert.ok(asthma.some((z) => z.source === "icd_category_member" && z.confidence < 0.5), "category members are below every threshold");
   // an IG ValueSet with a Chinese display
   const htn = await p.snomedChineseNames("38341003");
@@ -88,7 +88,9 @@ test("snomedChineseNames: sources, confidences, ICD qualifier stripping, conditi
   // a WHO-only target (I64) has no ICD Chinese name; the thesaurus still renders 'Stroke'
   const cva = await p.snomedChineseNames("230690007");
   assert.ok(!cva.some((z) => z.source.startsWith("icd_")));
-  assert.ok(cva.some((z) => z.source === "thesaurus" && z.name === "中風"));
+  // … uncorroborated by any ICD Chinese name: at most 0.55 (related evidence only, never comparable)
+  const stroke = cva.find((z) => z.source === "thesaurus" && z.name === "中風")!;
+  assert.ok(stroke && stroke.confidence <= 0.55, JSON.stringify(cva));
   // cached: no new query for a known concept
   const n = log.length;
   await p.snomedChineseNames("195967001");
@@ -167,4 +169,94 @@ test("createDbTerminologyNames: snomedChineseNames uses the cached SNOMED descri
   const rec = (await t.lookup([`${SCT}|230690007`])).get(`${SCT}|230690007`)!;
   assert.ok(rec.names.every((n) => !/[一-鿿]/u.test(n)), "grounding's names stay the SNOMED descriptions");
   assert.ok((await t.snomedChineseNamesBatch(["195967001"])).get("195967001")?.length);
+});
+
+test("ICD Chinese names: qualifier prefixes removed whole, qualifier / negation segments dropped, fragments rejected", async () => {
+  const { icdChineseNames, isCompleteZhName, dropFragments, translateEnglish } = await import("../grounding/snomedChinese.js");
+  assert.deepEqual(icdChineseNames("其他或未明示之氣喘"), ["其他或未明示之氣喘", "氣喘"]);
+  assert.deepEqual(icdChineseNames("未明示部位之泌尿道感染症"), ["未明示部位之泌尿道感染症", "泌尿道感染症"]);
+  assert.deepEqual(icdChineseNames("其他特定之尿失禁"), ["其他特定之尿失禁", "尿失禁"]);
+  assert.deepEqual(icdChineseNames("氣喘,無併發症"), ["氣喘,無併發症", "氣喘"]);
+  assert.deepEqual(icdChineseNames("胃食道逆流疾病，未伴有食道炎"), ["胃食道逆流疾病，未伴有食道炎", "胃食道逆流疾病"]);
+  assert.deepEqual(icdChineseNames("第二型糖尿病，伴有高滲透壓"), ["第二型糖尿病，伴有高滲透壓", "第二型糖尿病"]);
+  assert.deepEqual(icdChineseNames("咳嗽變異性氣喘"), ["咳嗽變異性氣喘"]);
+  for (const f of ["或氣喘", "性氣喘", "之心肌梗塞", "及支氣管炎", "喘"]) assert.equal(isCompleteZhName(f), false, f);
+  for (const ok of ["氣喘", "其他氣喘", "急性下呼吸道感染"]) assert.equal(isCompleteZhName(ok), true, ok);
+  assert.deepEqual(dropFragments([{ name: "尿道感染" }, { name: "道感染" }, { name: "性氣喘" }, { name: "氣喘" }]).map((x) => x.name), ["尿道感染", "氣喘"]);
+  const pairs = new Map([["asthma", { zh: "性氣喘", dice: 0.9 }], ["type", { zh: "型開放", dice: 0.83 }]]);
+  assert.equal(translateEnglish("Asthma", pairs)!.zh, "氣喘");
+  assert.equal(translateEnglish("Type", pairs)!.zh, "開放", "noise survives the trim — corroboration caps it (see the provider test)");
+});
+
+test("IG designation table: one query, single flight, ≤ 2 s wait on the first load, stale-while-revalidate, warm()", async () => {
+  const { createSnomedChineseNames } = await import("../grounding/snomedChinese.js");
+  let loads = 0;
+  let release: (() => void) | null = null;
+  let t = 0;
+  const query = async (sql: string): Promise<{ rows: Array<Record<string, unknown>> }> => {
+    if (sql.includes("WITH pk AS")) {
+      loads++;
+      await new Promise<void>((r) => (release = r));
+      return { rows: [{ code: "38341003", display: "高血壓", lang: null, value: null }] };
+    }
+    if (sql.includes("snomed.icd10_map")) return { rows: [{ id: "38341003", map_target: "I10", map_rule: "TRUE", map_priority: 1, map_group: 1, active: true }] };
+    if (sql.includes("WHERE code = ANY")) return { rows: [{ code: "I10", name_zh: "本態性（原發性）高血壓" }] };
+    return { rows: [] };
+  };
+  const p = createSnomedChineseNames({ query, designationWaitMs: 50, designationTtlMs: 1000, now: () => t });
+  // concurrent first callers share ONE load; it is slow, so after 50 ms they go on without IG names, capped below 0.6
+  const [a, b] = await Promise.all([p.snomedChineseNames("38341003"), p.snomedChineseNames("38341003")]);
+  assert.equal(loads, 1, "single flight");
+  for (const r of [a, b]) {
+    assert.ok(!r.some((z) => z.source === "ig_display"));
+    assert.ok(r.every((z) => z.confidence <= 0.55), JSON.stringify(r));
+  }
+  assert.equal(p.stats().designations, "loading");
+  release!();
+  await p.warm();
+  assert.equal(p.stats().designations, "loaded");
+  // the partial result was not cached: now the IG name is there at full confidence
+  const c = await p.snomedChineseNames("38341003");
+  assert.deepEqual(c.find((z) => z.source === "ig_display"), { name: "高血壓", source: "ig_display", confidence: 0.85 });
+  // after the lifetime: the stale table answers at once and ONE background refresh starts
+  t = 5000;
+  p.clear();
+  const warmAgain = p.warm(); // the table was cleared: a fresh load (as at startup)
+  release!();
+  await warmAgain;
+  t = 10_000;
+  const before = loads;
+  const d = await p.lookup(["99999999"]); // unknown concept, uncached: reads the (stale) table without waiting
+  assert.deepEqual(d, new Map());
+  assert.equal(loads, before + 1, "refresh started in the background");
+  release!();
+});
+
+test("hierarchy guard: LRTI (50417007) vs 社區型肺炎 (J18.9) is a broader concept, not contradicted; asthma / UTI still are", async () => {
+  const cases = await withChineseNames(syntheticR3ZhCases());
+  const get = (id: string): R3ZhCase => cases.find((c) => c.id === id)!;
+  const lrti = get("ok-lrti-vs-cap-coded");
+  assert.ok(lrti.relations?.get(`${SCT}|50417007`)?.has("社區型肺炎 (j18.9)"), JSON.stringify([...(lrti.relations ?? [])]));
+  const iss = codeIssues(envelope(lrti), lrti);
+  for (const i of iss) assert.notEqual(i.severity, "error");
+  // without the relations the same case would be contradicted (the ICD names alone say "different")
+  const bare = codeIssues(envelope({ ...lrti, relations: new Map() }), lrti);
+  assert.equal(bare[0]?.grounding_code_check, "contradicted");
+  for (const id of ["zh-asthma-vs-cap", "zh-uti-vs-cap"]) {
+    const c = get(id);
+    assert.equal(c.relations?.size ?? 0, 0, id);
+    assert.equal(codeIssues(envelope(c), c)[0].severity, "error", id);
+  }
+  // by name: 「肺炎」 is the ICD name of J18 → J18 / J18.9 map targets → pneumonia concepts below LRTI
+  assert.ok(get("ok-lrti-vs-pneumonia-name").relations?.get(`${SCT}|50417007`)?.size);
+  // narrower Condition vs broader slot concept (pneumonia vs 急性下呼吸道感染 (J22))
+  assert.ok(get("ok-pneumonia-vs-lrti-coded").relations?.get(`${SCT}|233604007`)?.size);
+});
+
+test("abbreviation-only slot items are judged on the record's casing (slot items are lower-cased)", async () => {
+  const rt = new RecordText(IN_RECORD.replace("診斷：社區型肺炎 (J18.9)", "Dx: CAP"), null);
+  const code = { coding: [{ system: SCT, code: "195967001", display: "Asthma" }] };
+  assert.equal(judgeCode(code, "Condition.code", rt, diagnosisSlots(rt), true, new Map([[`${SCT}|195967001`, ["Asthma"]]])).verdict, "uncertain");
+  const rt2 = new RecordText(IN_RECORD.replace("診斷：社區型肺炎 (J18.9)", "Dx: community-acquired pneumonia"), null);
+  assert.equal(judgeCode(code, "Condition.code", rt2, diagnosisSlots(rt2), true, new Map([[`${SCT}|195967001`, ["Asthma"]]])).verdict, "contradicted");
 });

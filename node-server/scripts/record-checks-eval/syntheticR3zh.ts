@@ -9,7 +9,8 @@
  *   expect "warning"  the code is right / near (pneumonia vs viral pneumonia, same ICD category, English record):
  *                     no error.
  */
-import { createSnomedChineseNames, type QueryFn, type ZhName } from "../../src/grounding/snomedChinese.js";
+import { createSnomedChineseNames, createSnomedHierarchy, type QueryFn, type ZhName } from "../../src/grounding/snomedChinese.js";
+import { recordCheckLookups } from "../../src/recordChecks/lookups.js";
 import { IN_RECORD, inBundle } from "./synthetic151.js";
 
 type Json = Record<string, any>;
@@ -19,6 +20,7 @@ const ICD = "http://hl7.org/fhir/sid/icd-10-cm";
 /** Fake snomed.icd10_map rows: [concept, target, rule, priority, group]. */
 export const FAKE_MAP: Array<[string, string, string, number, number]> = [
   ["195967001", "J45.9", "TRUE", 1, 1],
+  ["50417007", "J22", "TRUE", 1, 1],
   ["68566005", "N39.0", "TRUE", 1, 1],
   ["233604007", "J18.9", "TRUE", 1, 1],
   ["75570004", "J12.9", "TRUE", 1, 1],
@@ -38,12 +40,17 @@ export const FAKE_MAP: Array<[string, string, string, number, number]> = [
 
 /** Fake icd.diagnoses Chinese names (invented renderings in the ICD-10-CM Chinese style). */
 export const FAKE_ICD_ZH: Record<string, string> = {
-  "J45.909": "未明示氣喘，無併發症",
-  "J45.901": "未明示氣喘，伴有急性發作",
+  J45: "氣喘",
+  "J45.9": "其他或未明示之氣喘",
+  "J45.909": "氣喘,無併發症",
+  "J45.901": "氣喘併(急性)發作",
+  "J45.991": "咳嗽變異性氣喘",
+  J18: "肺炎",
   "J18.9": "肺炎，未明示病原體",
+  J22: "急性下呼吸道感染",
   "J18.0": "支氣管肺炎，未明示病原體",
   "J12.9": "病毒性肺炎，未明示",
-  "N39.0": "泌尿道感染，部位未明示",
+  "N39.0": "未明示部位之泌尿道感染症",
   "N39.3": "應力性尿失禁",
   I10: "本態性（原發性）高血壓",
   "E11.9": "第二型糖尿病，無併發症",
@@ -59,7 +66,10 @@ export const FAKE_ICD_ZH: Record<string, string> = {
 
 /** Fake mined bilingual pairs (fhir.term_thesaurus source 'bilingual': stem → Chinese word, freq = Dice × 1000). */
 export const FAKE_BILINGUAL: Array<[string, string, number]> = [
-  ["asthma", "氣喘", 900],
+  ["asthma", "性氣喘", 900], // mined n-grams carry a neighbour's bound morpheme (as on production)
+  ["type", "型開放", 830], // noise, as mined
+  ["lower", "下", 700],
+  ["respiratory", "呼吸", 880],
   ["pneumonia", "肺炎", 950],
   ["viral", "病毒性", 800],
   ["urinary", "泌尿", 820],
@@ -73,6 +83,17 @@ export const FAKE_BILINGUAL: Array<[string, string, number]> = [
   ["gastroesophageal", "胃食道", 800],
   ["reflux", "逆流", 820],
 ];
+
+/** Fake snomed.concept_ancestors (is-a ancestors): the pneumonias are below lower respiratory tract infection. */
+export const FAKE_ANCESTORS: Record<string, string[]> = {
+  "50417007": ["275498002", "404684003"],
+  "233604007": ["50417007", "275498002", "404684003"],
+  "385093006": ["233604007", "50417007", "404684003"],
+  "396285007": ["233604007", "50417007", "404684003"],
+  "75570004": ["233604007", "50417007", "404684003"],
+  "195967001": ["41427001", "404684003"],
+  "68566005": ["128606002", "404684003"],
+};
 
 /** Fake IG ValueSet concept with a Chinese display. */
 export const FAKE_IG_DISPLAY: Array<[string, string]> = [["38341003", "高血壓"]];
@@ -90,6 +111,7 @@ export const FAKE_EN: Record<string, string[]> = {
   "22298006": ["Myocardial infarction", "Myocardial infarction (disorder)", "Heart attack"],
   "422504002": ["Ischemic stroke", "Ischemic stroke (disorder)", "Cerebral infarction"],
   "230690007": ["Cerebrovascular accident", "Cerebrovascular accident (disorder)", "Stroke", "CVA"],
+  "50417007": ["Lower respiratory tract infection", "Lower respiratory tract infection (disorder)", "LRTI - Lower respiratory tract infection"],
   "13645005": ["Chronic obstructive lung disease", "Chronic obstructive lung disease (disorder)", "COPD"],
   "235595009": ["Gastroesophageal reflux disease", "Gastroesophageal reflux disease (disorder)", "GERD"],
   "36971009": ["Sinusitis", "Sinusitis (disorder)"],
@@ -100,10 +122,22 @@ export const FAKE_EN: Record<string, string[]> = {
 export function fakeChineseQuery(log: string[] = []): QueryFn {
   return async (sql, params) => {
     log.push(sql);
-    if (sql.includes("FROM fhir.artifacts a CROSS JOIN LATERAL") && sql.includes("compose")) {
+    if (sql.includes("WITH pk AS")) {
       return { rows: FAKE_IG_DISPLAY.map(([code, display]) => ({ code, display, lang: null, value: null })) };
     }
     if (sql.includes("fhir.artifacts") || sql.includes("fhir.codesystem_supplements")) return { rows: [] };
+    if (sql.includes("FROM snomed.icd10_map WHERE map_target = ANY")) {
+      const targets = new Set(params[0] as string[]);
+      return { rows: [...new Set(FAKE_MAP.filter(([, t]) => targets.has(t)).map(([id]) => id))].map((id) => ({ id })) };
+    }
+    if (sql.includes("FROM snomed.concept_ancestors")) {
+      const ids = (params[0] as string[]).map(String);
+      return { rows: ids.filter((id) => FAKE_ANCESTORS[id]).map((id) => ({ id, anc: FAKE_ANCESTORS[id] })) };
+    }
+    if (sql.includes("FROM icd.diagnoses WHERE name_zh = ANY")) {
+      const names = new Set(params[0] as string[]);
+      return { rows: Object.entries(FAKE_ICD_ZH).filter(([, n]) => names.has(n)).map(([code, name_zh]) => ({ code, name_zh })) };
+    }
     if (sql.includes("FROM snomed.icd10_map")) {
       const ids = new Set((params[0] as string[]).map(String));
       return { rows: FAKE_MAP.filter(([c]) => ids.has(c)).map(([id, map_target, map_rule, map_priority, map_group]) => ({ id, map_target, map_rule, map_advice: "", map_priority, map_group, active: true })) };
@@ -140,6 +174,8 @@ export interface R3ZhCase {
   terms: Map<string, { found: boolean; names: string[] }>;
   /** Chinese names by `system|code`, filled by `withChineseNames`. */
   zh?: Map<string, ZhName[]>;
+  /** Hierarchy guard relations (lookups.ts codeSlotRelations), filled by `withChineseNames`. */
+  relations?: Map<string, Set<string>>;
 }
 
 const DX = "診斷：社區型肺炎 (J18.9)";
@@ -185,15 +221,30 @@ export function syntheticR3ZhCases(): R3ZhCase[] {
   add("ok-anemia-conditional-map", "warning", "271737000", "診斷：缺鐵性貧血");
   add("ok-sinusitis-chronic", "warning", "36971009", "診斷：慢性鼻竇炎");
   add("ok-gerd-zh", "warning", "235595009", "診斷：胃食道逆流");
+  // hierarchy guard: a broader parent concept is not a different diagnosis
+  add("ok-lrti-vs-cap-coded", "warning", "50417007", null);
+  add("ok-lrti-vs-pneumonia-name", "warning", "50417007", "診斷：肺炎");
+  add("ok-pneumonia-vs-lrti-coded", "warning", "233604007", "診斷：急性下呼吸道感染 (J22)");
+  // abbreviation-only slot (record casing) is never comparable
+  add("ok-asthma-vs-abbreviation-slot", "warning", "195967001", "Dx: CAP");
   return out;
 }
 
-/** Fill each case's Chinese names through the provider (as recordCheckLookups does in the tools). */
+/**
+ * Fill each case's Chinese names and hierarchy relations through recordCheckLookups over the fake tables (as the tools
+ * do with the DB provider).
+ */
 export async function withChineseNames(cases: R3ZhCase[], provider = fakeChineseNames()): Promise<R3ZhCase[]> {
+  const hierarchy = createSnomedHierarchy({ query: fakeChineseQuery() });
   for (const c of cases) {
-    const ids = [...c.terms.keys()].filter((k) => k.startsWith(`${SCT}|`)).map((k) => k.slice(SCT.length + 1));
-    const m = await provider.lookup(ids);
-    c.zh = new Map([...m].map(([id, v]) => [`${SCT}|${id}`, v]));
+    const t = {
+      lookup: async (keys: readonly string[]) => new Map(keys.filter((k) => c.terms.has(k)).map((k) => [k, { names: c.terms.get(k)!.names }])),
+      snomedChineseNamesBatch: (ids: readonly string[]) => provider.lookup(ids),
+      snomedRelatedSlotItems: hierarchy.relatedSlotItems,
+    };
+    const looked = await recordCheckLookups(c.bundle, t, c.source_text);
+    c.zh = looked.codeNamesZh ?? new Map();
+    c.relations = looked.codeSlotRelations ?? new Map();
   }
   return cases;
 }

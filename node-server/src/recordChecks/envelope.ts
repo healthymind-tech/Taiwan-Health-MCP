@@ -146,7 +146,7 @@ export function addRecordChecksToValidation(text: string, instance: Json, opts: 
     // ISSUES_v15.3 R3: coded-element G-UNGROUNDED / G-VALUE-MISMATCH — what was compared, the closest record phrase, and
     // a warning instead of an error unless the record clearly names something else (codeGrounding.ts)
     if (typeof opts.sourceText === "string" && opts.sourceText.trim()) {
-      const st = annotateGroundingCodes(data, target, opts.sourceText, opts.siteConfig ?? null, opts.codeNames ?? null, opts.codeNamesZh ?? null);
+      const st = annotateGroundingCodes(data, target, opts.sourceText, opts.siteConfig ?? null, opts.codeNames ?? null, opts.codeNamesZh ?? null, opts.codeSlotRelations ?? null);
       if (st && isObj(data.record_checks)) data.record_checks = { ...data.record_checks, grounding_codes: st };
     }
   } catch {

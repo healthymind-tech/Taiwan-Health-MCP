@@ -360,7 +360,7 @@ async function main(): Promise<void> {
     const g = checkGroundingSync({ bundle: c.bundle, source_text: c.source_text, site_config: null, mode: "auto" } as never, c.terms as never);
     const entries = c.bundle.entry.map((e: Json) => ({ fullUrl: e.fullUrl, resourceType: e.resource.resourceType, valid: true, issues: [] }));
     const env = JSON.stringify({ ok: true, data: mergeGroundingIntoValidation({ valid: true, issues: [], entries }, g), warnings: [] });
-    const out = JSON.parse(addRecordChecksToValidation(env, c.bundle, { sourceText: c.source_text, codeNames: new Map([...c.terms].map(([k, v]) => [k, v.names])), codeNamesZh: c.zh ?? null }));
+    const out = JSON.parse(addRecordChecksToValidation(env, c.bundle, { sourceText: c.source_text, codeNames: new Map([...c.terms].map(([k, v]) => [k, v.names])), codeNamesZh: c.zh ?? null, codeSlotRelations: c.relations ?? null }));
     const path = `Bundle.entry[${c.entry}].resource.${c.element}`;
     const iss = (out.data.entries[c.entry]?.issues ?? []).filter((i: Json) => i.source === "grounding" && i.path === path && /G-UNGROUNDED|G-VALUE-MISMATCH/u.test(i.rule));
     const ok = c.expect === "error" ? iss.some((i: Json) => i.severity === "error" && i.grounding_code_check === "contradicted") : iss.every((i: Json) => i.severity !== "error");
@@ -376,7 +376,7 @@ async function main(): Promise<void> {
   const byShell = new Map<string, [number, number]>();
   let shit = 0;
   for (const c of spos) {
-    const r = runRecordChecks(c.bundle, { sourceText: c.source_text, siteConfig: c.site_config });
+    const r = runRecordChecks(c.bundle, { sourceText: c.source_text, siteConfig: c.site_config, codeAxes: c.codeAxes ?? null });
     const on = r.issues.filter((i) => i.path.startsWith(`Bundle.entry[${c.entry}]`));
     const ok = on.some((i) => (i.code === "information-absent" || i.code === "unconfirmed-as-confirmed") && (c.expect === "warning" || i.severity === "error")) && !(c.expect === "warning" && on.some((i) => i.severity === "error"));
     const t = byShell.get(c.form) ?? [0, 0];

@@ -28,6 +28,8 @@ export interface V154Case {
   bundle: Json;
   source_text: string | null;
   site_config: string | null;
+  /** LOINC axes the tools would look up from loinc.concepts (http://loinc.org|code → property / scale). */
+  codeAxes?: Map<string, { property: string | null; scale: string | null }>;
 }
 
 const LOINC = "http://loinc.org";
@@ -188,6 +190,12 @@ export function syntheticV154Cases(): V154Case[] {
   add("nosrc-dose-undecided", "nosrc", "warning", medReq(84, "Insulin glargine", { note: [{ text: "Dose undecided, pending morning blood glucose" }] }), null);
   add("nosrc-dx-indistinguishable", "nosrc", "warning", replaceDx("支氣管炎與早期肺炎尚難區分"), null);
   add("nosrc-a1c-sent-out", "nosrc", "warning", lab(85, "4548-4", "Hemoglobin A1c/Hemoglobin.total in Blood", "HbA1c", { note: [{ text: "外送檢驗所，報告尚未回傳" }] }), null);
+  // the same with the LOINC axes the production terminology provides (4548-4 is Qn): the v15.3 result-slot note rule
+  // must also stay a warning without source_text
+  add("nosrc-a1c-sent-out-qn-axes", "nosrc", "warning", lab(89, "4548-4", "Hemoglobin A1c/Hemoglobin.total in Blood", "HbA1c", { note: [{ text: "外送檢驗所，報告尚未回傳" }] }), null);
+  out[out.length - 1].codeAxes = new Map([[`${LOINC}|4548-4`, { property: "MFr", scale: "Qn" }]]);
+  add("nosrc-k-hemolysis-qn-axes", "nosrc", "warning", lab(104, K[0], K[1], "鉀", { note: [{ text: "檢體溶血，不予發報；當日未再重抽" }] }), null);
+  out[out.length - 1].codeAxes = new Map([[`${LOINC}|${K[0]}`, { property: "SCnc", scale: "Qn" }]]);
   add("src-not-located-warning", "nosrc", "warning", lab(86, "630-4", "Bacteria identified in Urine by Culture", "尿液培養", { note: [{ text: "報告尚未回傳" }] }), R);
 
   // ------------------------------------------------------------------ complete controls

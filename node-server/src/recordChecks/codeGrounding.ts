@@ -43,6 +43,10 @@
  *    code of the mapped target's category is never "different";
  *  - otherwise the verdict is as before (related → warning; not comparable → uncertain warning).
  * The names used are listed in `compared.chinese_names` {name, source, confidence}; fhir_check_grounding never sees them.
+ * Hierarchy guard (all codes): a slot item whose SNOMED concept (lookups.ts codeSlotRelations: its ICD-10 code via the
+ * reverse SNOMED → ICD-10 map, or an identical ICD Chinese name) is the coded concept, an ancestor or a descendant of it is
+ * never "something else" — a broader / narrower concept (lower respiratory tract infection vs 社區型肺炎 (J18.9)) is at most
+ * a warning. Abbreviation-only items are recognised on the record's own casing (slot items are lower-cased).
  *
  * When a downgrade removes the last error of an entry / of the grounding result, `entries[i].valid`,
  * `groundingValid`, `valid` and the grounding summary counts are recomputed from the remaining issues.
@@ -176,10 +180,14 @@ const latin3 = (s: string): boolean => /[a-z]{3,}/iu.test(s.replace(RE_ICD_IN, "
  * (Chinese / Chinese, English / English); or across languages when the grounding lexicon's zh→en bridge translates
  * at least 80 % of the Chinese side. Otherwise the wording cannot be compared and nothing is concluded.
  */
-function comparable(names: readonly string[], item: string): boolean {
-  if ((item.match(RE_ICD_IN) ?? []).length && names.some((n) => RE_ICD.test(n))) return true;
-  // an item written as abbreviations only (CAP, AGE, s/p PCI) cannot be compared word for word
-  if (!hasCjk(item) && item.replace(RE_ICD_IN, "").split(/[^A-Za-z]+/u).filter(Boolean).every((w) => w.length <= 5 && (w === w.toUpperCase() || w.length <= 2))) return false;
+/** ICD-10 codes an item states. Diagnosis-slot items are NFKC lower-cased ("社區型肺炎 (j18.9)"), so match upper-cased. */
+const icdCodesIn = (item: string): string[] => nfkc(item).toUpperCase().match(RE_ICD_IN) ?? [];
+
+function comparable(names: readonly string[], item: string, orig: string = item): boolean {
+  if (icdCodesIn(item).length && names.some((n) => RE_ICD.test(n))) return true;
+  // an item written as abbreviations only (CAP, AGE, s/p PCI) cannot be compared word for word — judged on the record's
+  // own casing (`orig`): slot items are lower-cased, so "cap" never looked upper-case
+  if (!hasCjk(orig) && orig.normalize("NFKC").replace(/\b[A-Za-z]\d{2}(?:\.[0-9A-Za-z]{1,4})?\b/gu, "").split(/[^A-Za-z]+/u).filter(Boolean).every((w) => w.length <= 5 && (w === w.toUpperCase() || w.length <= 2))) return false;
   const ic = hasCjk(item);
   const il = latin3(item);
   for (const n of names) {
@@ -199,25 +207,55 @@ function comparable(names: readonly string[], item: string): boolean {
  * compared with the record; `zh`: its Chinese names (see the module comment); `base`: the names without them. Returns the Chinese name that made an
  * item comparable (null when the other names did), or false.
  */
-function namesSomethingElse(items: readonly string[], names: readonly string[], zh: readonly ChineseName[] = [], base: readonly string[] = names): ChineseName | null | false {
+/** A diagnosis-slot item: the slot parser's lower-cased text and the record's own spelling of it. */
+interface ItemText {
+  text: string;
+  orig: string;
+}
+
+/** The item in the record's casing (slot items are NFKC lower-cased; the slot quote keeps the record's spelling). */
+function originalCase(item: string, quote: string): string {
+  const q = quote.normalize("NFKC"); // not lexicon.nfkc: that one also lower-cases
+  const i = q.toLowerCase().indexOf(item);
+  return i >= 0 && q.length === q.toLowerCase().length ? q.slice(i, i + item.length) : item;
+}
+
+function namesSomethingElse(
+  items: readonly ItemText[],
+  names: readonly string[],
+  zh: readonly ChineseName[] = [],
+  base: readonly string[] = names,
+  related: ReadonlySet<string> = new Set(),
+): ChineseName | null | false {
   if (!items.length) return false;
   const strong = zh.filter((z) => z.confidence >= ZH_CONFIDENCE_MIN);
   const strongNames = strong.map((z) => z.name);
   const all = [...new Set([...names, ...zh.map((z) => z.name)])];
+  // names of other codes of the mapped ICD category: they show a same-category diagnosis only when clearly related
+  // (≥ 0.25) — a shared generic word (急性) must not block
+  const members = new Set(zh.filter((z) => z.source === "icd_category_member").map((z) => z.name));
+  const main = all.filter((n) => !members.has(n));
   const icdOnly = strong.length > 0 && strong.every((z) => z.source.startsWith("icd_"));
   const cats = new Set(zh.filter((z) => z.icd && z.source !== "icd_category_member").map((z) => z.icd!.slice(0, 3)));
   let via: ChineseName | null = null;
-  for (const it of items) {
+  for (const { text: it, orig } of items) {
+    // hierarchy guard: the item's SNOMED concept is this concept, a broader or a narrower one (lookups.ts
+    // codeSlotRelations, snomed.concept_ancestors) — a parent / child concept is not a different diagnosis
+    if (related.has(it)) return false;
     // the item states an ICD-10 code of the mapped category (slot items are lower-cased): the same diagnosis group, never "different"
-    if (cats.size && (nfkc(it).toUpperCase().match(RE_ICD_IN) ?? []).some((c) => cats.has(c.slice(0, 3)))) return false;
-    if (comparable(base, it)) {
+    if (cats.size && icdCodesIn(it).some((c) => cats.has(c.slice(0, 3)))) return false;
+    // the item states the concept's own ICD-10 code (or one of its category): the same diagnosis, never "something else"
+    const own = names.filter((n) => RE_ICD.test(n)).map((n) => n.slice(0, 3));
+    if (own.length && icdCodesIn(it).some((c) => own.includes(c.slice(0, 3)))) return false;
+    if (comparable(base, it, orig)) {
       if (!all.every((n) => phraseSimilarity(n, it) < RELATED_SIMILARITY)) return false;
       continue;
     }
-    if (!strong.length || !comparable(strongNames, it)) return false;
+    if (!strong.length || !comparable(strongNames, it, orig)) return false;
     const limit = icdOnly ? ICD_ONLY_UNRELATED : RELATED_SIMILARITY;
-    if (!all.every((n) => phraseSimilarity(n, it) < limit)) return false;
-    via ??= strong.find((z) => comparable([z.name], it)) ?? strong[0];
+    if (!main.every((n) => phraseSimilarity(n, it) < limit)) return false;
+    if (![...members].every((n) => phraseSimilarity(n, it) < RELATED_SIMILARITY)) return false;
+    via ??= strong.find((z) => comparable([z.name], it, orig)) ?? strong[0];
   }
   return via;
 }
@@ -248,6 +286,7 @@ export function judgeCode(
   primary: boolean,
   codeNames: CodeNames | null = null,
   zhNames: ChineseCodeNames | null = null,
+  slotRelations: ReadonlyMap<string, ReadonlySet<string>> | null = null,
 ): CodeJudgement {
   const zh = chineseNamesOf(value, zhNames);
   const shown = zh.filter((z) => z.confidence >= ZH_RECORD_MIN);
@@ -260,8 +299,10 @@ export function judgeCode(
   let via: ChineseName | null = null;
   if (names.length && gpath === "Condition.code" && primary) {
     const dx = slots.filter((s) => !s.empty && s.items.length);
-    const items = dx.flatMap((s) => s.items.map((it) => it.text));
-    const r = namesSomethingElse(items, names, zh, base);
+    const items = dx.flatMap((s) => s.items.map((it) => ({ text: it.text, orig: originalCase(it.text, s.quote) })));
+    const codings: Json[] = Array.isArray(value.coding) ? value.coding.filter(isObj) : typeof value.code === "string" ? [value] : [];
+    const related = new Set(codings.flatMap((c) => [...(slotRelations?.get(`${c.system ?? "None"}|${c.code ?? "None"}`) ?? [])]));
+    const r = namesSomethingElse(items, names, zh, base, related);
     if (r !== false) {
       other = dx.map((s) => s.quote).join(" / ");
       via = r;
@@ -371,6 +412,7 @@ export function annotateGroundingCodes(
   siteConfig: string | null,
   codeNames: CodeNames | null = null,
   zhNames: ChineseCodeNames | null = null,
+  slotRelations: ReadonlyMap<string, ReadonlySet<string>> | null = null,
 ): CodeGroundingStats | null {
   let rt: RecordText | null = null;
   let slots: DxSlot[] = [];
@@ -390,7 +432,7 @@ export function annotateGroundingCodes(
         primaryBase = primaryCondition(target, rt, slots.filter((x) => !x.empty))?.base ?? null;
       }
       const primary = primaryBase !== null && iss.path === `${primaryBase}.code`;
-      const j = judgeCode(at.value, at.gpath, rt, slots, primary, codeNames, zhNames);
+      const j = judgeCode(at.value, at.gpath, rt, slots, primary, codeNames, zhNames, slotRelations);
       const out = rewrite(iss, j);
       list[k] = out;
       stats.examined++;

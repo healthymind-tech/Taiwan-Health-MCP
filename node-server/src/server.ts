@@ -8,6 +8,8 @@
  * failing DB or Redis does not abort boot — services simply report unavailable.
  */
 
+import { dbTerminologyNames } from "./groundingTools.js";
+import type { DbTerminologyNames } from "./grounding/terminologyDb.js";
 import express, { type Request, type Response } from "express";
 import { randomUUID } from "node:crypto";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
@@ -168,6 +170,14 @@ async function bootstrapResources(): Promise<void> {
   }
 
   startMetricsServer();
+
+  // Background (never awaited): load the IG designation table of the SNOMED Chinese names used by the validating tools'
+  // code-grounding comparison (grounding/snomedChinese.ts), so the first validate call rarely waits for it. Fail-open.
+  try {
+    void (dbTerminologyNames() as Partial<DbTerminologyNames>).warmSnomedChinese?.();
+  } catch (err) {
+    logError("SNOMED Chinese-name warm-up skipped", { error: String((err as Error).message) });
+  }
 
   // Warm the OpenAPI tool registry (mirrors Python registering tools at startup),
   // so GET /openapi.json + POST /tools/<name> work before the first MCP session.

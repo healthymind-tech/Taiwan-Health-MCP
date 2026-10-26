@@ -3,8 +3,12 @@
  * recordChecks/codeGrounding.ts) — data-driven, no hand-written translation list:
  *
  *   1. IG designations: ValueSet compose / expansion concepts and SNOMED CodeSystem supplements (installed IG artifacts
- *      and uploaded fhir.codesystem_supplements) whose designation language is zh* or whose display is Chinese
- *      (TW Core ValueSets often carry Chinese displays). Confidence 0.9 (designation) / 0.85 (Chinese display).
+ *      of Chinese-language packages and uploaded fhir.codesystem_supplements) whose designation language is zh* or whose
+ *      display is Chinese. Confidence 0.9 (designation) / 0.85 (Chinese display). Loaded once per process in the
+ *      background (see igDesignations: single flight, stale-while-revalidate, ≤ 2 s wait on the first load — the first
+ *      calls of a process may therefore run without IG names; then every name is capped at PARTIAL_MAX (0.55, below the
+ *      comparability threshold), so such a call can give "uncertain" (warning) where a later one gives "contradicted"
+ *      (error), never the reverse).
  *   2. The SNOMED → ICD-10 extended map (snomed.icd10_map): map group 1, the highest-priority (lowest map_priority)
  *      UNCONDITIONAL rule (TRUE / OTHERWISE TRUE / empty) → the Chinese name (icd.diagnoses.name_zh) of the target;
  *      the map targets WHO ICD-10, so a target ICD-10-CM holds only as a header without a Chinese name is named by its
@@ -51,6 +55,12 @@ export const ZH_SOURCE_CONFIDENCE = {
   icd_category: 0.6,
   icd_category_member: 0.3,
 } as const;
+
+/** Highest confidence of a thesaurus rendering no ICD Chinese name of the concept corroborates (below 0.6: never comparable). */
+export const THESAURUS_UNCORROBORATED_MAX = 0.55;
+
+/** Confidence cap of every name while the IG designation table is not available (first load running / failed). */
+export const PARTIAL_MAX = 0.55;
 
 /** Share of an English name's content words the thesaurus must translate. */
 export const THESAURUS_MIN_COVERAGE = 0.8;
@@ -109,24 +119,50 @@ export function icdCandidates(code: string): { exact: string; children: string[]
   return { exact: c, children, category };
 }
 
-const ICD_QUALIFIER = /(?:部位|病原體|原因|類型|側性|型態|位置)?(?:未明示|未特定|未明確|未特指|未明)(?:者|之|的)?|其他(?:特定)?(?:的|之)?/gu;
+/**
+ * Qualifier PREFIX of an ICD Chinese head segment (其他或未明示之氣喘, 未明示部位之泌尿道感染症, 其他特定之尿失禁): removed as a
+ * whole, only at the start — removing qualifier words anywhere leaves fragments (「或氣喘」).
+ */
+const ICD_QUALIFIER_PREFIX = /^(?:其他(?:特定)?(?:或|及)?(?:未明示|未特定|未明確|未特指)?|未明示|未特定|未明確|未特指)(?:部位|病原體|原因|類型|側性|型態|位置)?(?:之|的)?/u;
 /** A segment after the head that is a qualifier / negation (「，未明示病原體」「，未伴有食道炎」「，無併發症」): dropped whole. */
 const ICD_QUALIFIER_SEGMENT = /未明示|未特定|未明確|未特指|未明|其他|未伴有|無|不伴|伴有|併有|初期照護|後續照護|後遺症/u;
+/** A Chinese name never starts with a function word / bound suffix morpheme (「或氣喘」「性氣喘」「之心肌梗塞」 are fragments). */
+const RE_FRAGMENT_START = /^[或及與和之的伴併并性型症者等以於而且]/u;
 const cjkCount = (x: string): number => [...x].filter((ch) => hasCjk(ch)).length;
 
+/** A complete Chinese name: ≥ 2 Chinese characters and not starting with a function word / bound morpheme. */
+export function isCompleteZhName(name: string): boolean {
+  const t = name.trim();
+  return cjkCount(t) >= 2 && !RE_FRAGMENT_START.test(t);
+}
+
 /**
- * The full ICD Chinese name and its core: the head segment with qualifier words removed (未明示氣喘 → 氣喘) plus the
+ * Drop candidates that are fragments: incomplete names (isCompleteZhName), and a name that is another complete candidate
+ * minus its first character (「道感染」 next to 「尿道感染」: the tail of a longer word, not a name of its own).
+ */
+export function dropFragments<T extends { name: string }>(names: readonly T[]): T[] {
+  const complete = names.filter((n) => isCompleteZhName(n.name));
+  const all = complete.map((n) => n.name.trim());
+  return complete.filter((n) => {
+    const t = n.name.trim();
+    return !all.some((o) => o.length === t.length + 1 && o.endsWith(t) && hasCjk(o[0]));
+  });
+}
+
+/**
+ * The full ICD Chinese name and its core: the head segment without its qualifier prefix (其他或未明示之氣喘 → 氣喘) plus the
  * following segments that are not qualifiers / negations (「，未伴有食道炎」 is dropped whole — removing only the
- * qualifier word would invert its meaning). Each ≥ 2 Chinese characters.
+ * qualifier word would invert its meaning). Only complete names (isCompleteZhName) are returned.
  */
 export function icdChineseNames(nameZh: string | null | undefined): string[] {
   const full = String(nameZh ?? "").trim();
   if (!hasCjk(full)) return [];
   const [head, ...rest] = full.split(/[，,；;、]/u).map((x) => x.trim());
-  const core = [head.replace(ICD_QUALIFIER, "").trim(), ...rest.filter((seg) => !ICD_QUALIFIER_SEGMENT.test(seg))]
+  const h = head.replace(ICD_QUALIFIER_PREFIX, "").trim();
+  const core = [isCompleteZhName(h) ? h : head, ...rest.filter((seg) => !ICD_QUALIFIER_SEGMENT.test(seg))]
     .filter((seg) => cjkCount(seg) >= 2)
     .join("，");
-  return [...new Set([full, core].filter((x) => cjkCount(x) >= 2))];
+  return [...new Set([full, core].filter(isCompleteZhName))];
 }
 
 /** Content-word stems of an English name (semantic tag removed), as the bilingual miner stemmed them. */
@@ -158,16 +194,18 @@ function joinZh(parts: readonly string[]): string {
  * Word-by-word Chinese rendering of an English name through the mined bilingual pairs (stem → {zh, dice}). Null when
  * fewer than 80 % of the content words translate (SNOMED head words disorder / disease / finding may stay untranslated).
  */
-export function translateEnglish(name: string, pairs: ReadonlyMap<string, { zh: string; dice: number }>): { zh: string; coverage: number; minDice: number } | null {
+export function translateEnglish(name: string, pairs: ReadonlyMap<string, { zh: string; dice: number }>): { zh: string; parts: string[]; coverage: number; minDice: number } | null {
   const stems = englishStems(name);
   const required = stems.filter((s) => !OPTIONAL_WORDS.has(s) || pairs.has(s));
   if (!required.length) return null;
   const hits = required.map((s) => pairs.get(s)).filter((x): x is { zh: string; dice: number } => !!x);
   const coverage = hits.length / required.length;
   if (!hits.length || coverage < THESAURUS_MIN_COVERAGE) return null;
-  const zh = joinZh(hits.map((h) => h.zh));
-  if ([...zh].filter((ch) => hasCjk(ch)).length < 2) return null;
-  return { zh, coverage, minDice: Math.min(...hits.map((h) => h.dice)) };
+  // mined n-grams can carry a neighbour's bound morpheme (asthma ↔ 「性氣喘」): trim it
+  const parts = hits.map((h) => h.zh.replace(/^[或及與和之的伴併并性型症者等以於而且]+/u, "")).filter((x) => x.length);
+  const zh = joinZh(parts);
+  if (!isCompleteZhName(zh)) return null;
+  return { zh, parts, coverage, minDice: Math.min(...hits.map((h) => h.dice)) };
 }
 
 /** Merge names: one entry per name (highest confidence wins), sorted by confidence. */
@@ -179,7 +217,7 @@ export function mergeZhNames(names: Iterable<ZhName>, maxMain = 8, maxMembers = 
     const prev = by.get(k);
     if (!prev || n.confidence > prev.confidence) by.set(k, n);
   }
-  const all = [...by.values()].sort((a, b) => b.confidence - a.confidence || a.name.length - b.name.length);
+  const all = dropFragments([...by.values()]).sort((a, b) => b.confidence - a.confidence || a.name.length - b.name.length);
   const main = all.filter((n) => n.source !== "icd_category_member").slice(0, maxMain);
   const members = all.filter((n) => n.source === "icd_category_member").slice(0, maxMembers);
   return [...main, ...members];
@@ -193,8 +231,10 @@ export interface SnomedChineseOptions {
   englishNames?: (ids: readonly string[]) => Promise<ReadonlyMap<string, readonly string[]>>;
   /** Max cached concepts (default 5000). */
   cacheSize?: number;
-  /** IG designation table lifetime (default 1 h). */
+  /** IG designation table lifetime (default 1 h; refreshed in the background after it). */
   designationTtlMs?: number;
+  /** How long a request waits for the FIRST designation load before going on without it (default 2000 ms). */
+  designationWaitMs?: number;
   now?: () => number;
   logger?: { warn?(msg: string, meta?: Record<string, unknown>): void };
 }
@@ -204,43 +244,56 @@ export interface SnomedChineseNames {
   snomedChineseNames(conceptId: string): Promise<ZhName[]>;
   /** Batch form; concepts without a Chinese name are omitted. */
   lookup(conceptIds: readonly string[]): Promise<ReadonlyMap<string, ZhName[]>>;
+  /** Start loading the IG designation table in the background (app startup); resolves when loaded. Never rejects. */
+  warm(): Promise<void>;
   clear(): void;
-  stats(): { cached: number; queries: number };
+  stats(): { cached: number; queries: number; designations: "none" | "loading" | "loaded" | "failed" };
 }
 
 const CJK_RE = "[㐀-䶿一-鿿豈-﫿]";
 
-/** Concepts of a JSON concept array with their zh designations / Chinese displays (SQL fragment over `arr`). */
-function conceptRowsSql(from: string, arr: string, where: string): string {
-  return (
-    `SELECT c->>'code' AS code, c->>'display' AS display, d->>'language' AS lang, d->>'value' AS value FROM ${from} ` +
-    `CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(${arr}) = 'array' THEN ${arr} ELSE '[]'::jsonb END) c ` +
-    `LEFT JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(c->'designation') = 'array' THEN c->'designation' ELSE '[]'::jsonb END) d ON TRUE ` +
-    `WHERE ${where} AND (d->>'language' ILIKE 'zh%' OR c->>'display' ~ $1)`
-  );
-}
-
-const DESIGNATION_QUERIES: string[] = [
-  // ValueSet compose.include[system = SNOMED].concept[]
-  conceptRowsSql(
-    "fhir.artifacts a CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(a.raw_json->'compose'->'include') = 'array' THEN a.raw_json->'compose'->'include' ELSE '[]'::jsonb END) inc",
-    "inc->'concept'",
-    "a.resource_type = 'ValueSet' AND inc->>'system' LIKE 'http://snomed.info/sct%'",
-  ),
-  // ValueSet expansion.contains[] (top level)
-  conceptRowsSql("fhir.artifacts a", "a.raw_json->'expansion'->'contains'", "a.resource_type = 'ValueSet' AND c->>'system' LIKE 'http://snomed.info/sct%'"),
-  // SNOMED CodeSystem supplements shipped in packages
-  conceptRowsSql("fhir.artifacts a", "a.raw_json->'concept'", "a.resource_type = 'CodeSystem' AND a.raw_json->>'supplements' LIKE 'http://snomed.info/sct%'"),
-  // SNOMED CodeSystem supplements uploaded in the admin console
-  conceptRowsSql("fhir.codesystem_supplements a", "a.raw_json->'concept'", "a.supplements LIKE 'http://snomed.info/sct%'"),
-];
+/**
+ * The IG designation table in ONE query, restricted before any jsonb is read: only packages that hold Chinese text in an
+ * artifact's title / name / description (plain columns — data-driven "Chinese-language packages"; on production TW Core
+ * and TW PAS, 4 package versions instead of 94 696 ValueSets / 420 MB of jsonb), their ValueSet / CodeSystem rows via the
+ * primary key, plus the uploaded SNOMED supplements. EXPLAIN ANALYZE on production: ~0.63 s (was 13.8 s + 11.4 s).
+ */
+export const DESIGNATION_SQL = `
+WITH pk AS MATERIALIZED (
+  SELECT DISTINCT package_id, package_version FROM fhir.artifacts
+   WHERE title ~ $1 OR name ~ $1 OR description ~ $1),
+art AS MATERIALIZED (
+  SELECT a.resource_type, a.raw_json FROM pk JOIN fhir.artifacts a USING (package_id, package_version)
+   WHERE a.resource_type IN ('ValueSet', 'CodeSystem')),
+con AS (
+  SELECT c FROM art,
+       jsonb_array_elements(CASE WHEN jsonb_typeof(art.raw_json->'compose'->'include') = 'array' THEN art.raw_json->'compose'->'include' ELSE '[]'::jsonb END) inc,
+       jsonb_array_elements(CASE WHEN jsonb_typeof(inc->'concept') = 'array' THEN inc->'concept' ELSE '[]'::jsonb END) c
+   WHERE art.resource_type = 'ValueSet' AND inc->>'system' LIKE 'http://snomed.info/sct%'
+  UNION ALL
+  SELECT c FROM art,
+       jsonb_array_elements(CASE WHEN jsonb_typeof(art.raw_json->'expansion'->'contains') = 'array' THEN art.raw_json->'expansion'->'contains' ELSE '[]'::jsonb END) c
+   WHERE art.resource_type = 'ValueSet' AND c->>'system' LIKE 'http://snomed.info/sct%'
+  UNION ALL
+  SELECT c FROM art,
+       jsonb_array_elements(CASE WHEN jsonb_typeof(art.raw_json->'concept') = 'array' THEN art.raw_json->'concept' ELSE '[]'::jsonb END) c
+   WHERE art.resource_type = 'CodeSystem' AND art.raw_json->>'supplements' LIKE 'http://snomed.info/sct%'
+  UNION ALL
+  SELECT c FROM fhir.codesystem_supplements s,
+       jsonb_array_elements(CASE WHEN jsonb_typeof(s.raw_json->'concept') = 'array' THEN s.raw_json->'concept' ELSE '[]'::jsonb END) c
+   WHERE s.supplements LIKE 'http://snomed.info/sct%')
+SELECT c->>'code' AS code, c->>'display' AS display, d->>'language' AS lang, d->>'value' AS value
+  FROM con LEFT JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(c->'designation') = 'array' THEN c->'designation' ELSE '[]'::jsonb END) d ON TRUE
+ WHERE d->>'language' ILIKE 'zh%' OR c->>'display' ~ $1`;
 
 export function createSnomedChineseNames(opts: SnomedChineseOptions): SnomedChineseNames {
   const cap = opts.cacheSize ?? 5000;
   const ttl = opts.designationTtlMs ?? 3_600_000;
   const now = opts.now ?? Date.now;
   const cache = new Map<string, ZhName[]>();
-  let designations: { at: number; ttl: number; map: Map<string, ZhName[]> } | null = null;
+  const waitMs = opts.designationWaitMs ?? 2000;
+  let designations: { at: number; ttl: number; map: Map<string, ZhName[]>; ok: boolean } | null = null;
+  let inflight: Promise<void> | null = null;
   let queries = 0;
 
   const run = async (sql: string, params: unknown[]): Promise<Array<Record<string, unknown>> | null> => {
@@ -258,16 +311,22 @@ export function createSnomedChineseNames(opts: SnomedChineseOptions): SnomedChin
     while (cache.size > cap) cache.delete(cache.keys().next().value as string);
   };
 
-  async function igDesignations(): Promise<Map<string, ZhName[]>> {
-    if (designations && now() - designations.at < designations.ttl) return designations.map;
-    const map = new Map<string, ZhName[]>();
-    let failed = false;
-    for (const sql of DESIGNATION_QUERIES) {
-      const rows = await run(sql, [CJK_RE]);
+  /**
+   * The IG designation table: loaded once (single flight — concurrent callers share one in-flight load), refreshed in
+   * the background after its lifetime (stale-while-revalidate — a request never waits for a refresh), started early by
+   * `warm()` (app startup). While the FIRST load is still running a request waits at most `designationWaitMs` (2 s) and
+   * then proceeds without IG designations (returns null; the ICD-map and thesaurus names still apply, and that call's
+   * concept results are not cached).
+   */
+  const startLoad = (): Promise<void> => {
+    inflight ??= (async () => {
+      const rows = await run(DESIGNATION_SQL, [CJK_RE]);
       if (rows === null) {
-        failed = true;
-        continue;
+        // keep the previous table; retry after 5 minutes
+        designations = designations ? { ...designations, at: now(), ttl: Math.min(ttl, 300_000) } : { at: now(), ttl: Math.min(ttl, 300_000), map: new Map(), ok: false };
+        return;
       }
+      const map = new Map<string, ZhName[]>();
       for (const r of rows) {
         const code = String(r.code ?? "").trim();
         if (!/^\d{6,18}$/u.test(code)) continue;
@@ -278,10 +337,27 @@ export function createSnomedChineseNames(opts: SnomedChineseOptions): SnomedChin
         if (display && hasCjk(display)) list.push({ name: display, source: "ig_display", confidence: ZH_SOURCE_CONFIDENCE.ig_display });
         if (list.length) map.set(code, list);
       }
+      designations = { at: now(), ttl, map, ok: true };
+    })().finally(() => {
+      inflight = null;
+    });
+    return inflight;
+  };
+
+  async function igDesignations(): Promise<{ map: Map<string, ZhName[]>; ok: boolean } | null> {
+    if (designations) {
+      if (now() - designations.at >= designations.ttl) void startLoad(); // stale-while-revalidate
+      return designations;
     }
-    // a failed source is retried after 5 minutes rather than an hour
-    designations = { at: now(), ttl: failed ? Math.min(ttl, 300_000) : ttl, map };
-    return map;
+    const load = startLoad().then(() => true);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<boolean>((resolve) => {
+      timer = setTimeout(() => resolve(false), waitMs);
+      (timer as { unref?: () => void }).unref?.();
+    });
+    const done = await Promise.race([load, timeout]);
+    if (timer) clearTimeout(timer);
+    return done && designations ? designations : null;
   }
 
   async function lookupUncached(ids: string[]): Promise<Map<string, ZhName[]>> {
@@ -289,8 +365,10 @@ export function createSnomedChineseNames(opts: SnomedChineseOptions): SnomedChin
     const failed = new Set<string>();
     const add = (id: string, n: ZhName): void => void out.get(id)?.push(n);
 
-    // 1. IG designations / Chinese displays
-    for (const id of ids) for (const n of (await igDesignations()).get(id) ?? []) add(id, n);
+    // 1. IG designations / Chinese displays (null: the first load is still running — go on without, do not cache)
+    const ig = await igDesignations();
+    if (!ig || !ig.ok) ids.forEach((id) => failed.add(id));
+    for (const id of ids) for (const n of ig?.map.get(id) ?? []) add(id, n);
 
     // 2. SNOMED → ICD-10 map → ICD-10-CM Chinese names
     const mapRows = await run(
@@ -389,7 +467,14 @@ export function createSnomedChineseNames(opts: SnomedChineseOptions): SnomedChin
             for (const [id, ns] of names) {
               for (const n of ns) {
                 const t = translateEnglish(n, pairs);
-                if (t) add(id, { name: t.zh, source: "thesaurus", confidence: round2(0.8 * t.coverage * t.minDice) });
+                if (!t) continue;
+                // mined pairs are noisy (type ↔ 「型開放」): a rendering whose every word also occurs in an ICD Chinese name of
+                // the concept's map target / category is corroborated; otherwise it stays below ZH_CONFIDENCE_MIN-level use
+                // (≤ THESAURUS_UNCORROBORATED_MAX: related evidence only, it never makes a slot comparable)
+                const icdText = (out.get(id) ?? []).filter((z) => z.source.startsWith("icd_")).map((z) => z.name).join("|");
+                const corroborated = t.parts.every((p) => icdText.includes(p));
+                const conf = round2(0.8 * t.coverage * t.minDice);
+                add(id, { name: t.zh, source: "thesaurus", confidence: corroborated ? conf : Math.min(conf, THESAURUS_UNCORROBORATED_MAX) });
               }
             }
           }
@@ -399,7 +484,10 @@ export function createSnomedChineseNames(opts: SnomedChineseOptions): SnomedChin
 
     const result = new Map<string, ZhName[]>();
     for (const id of ids) {
-      const merged = mergeZhNames(out.get(id) ?? []);
+      let merged = mergeZhNames(out.get(id) ?? []);
+      // without the IG table an IG name that matches the record could be missing: no name may make a slot comparable
+      // (confidence capped below ZH_CONFIDENCE_MIN) — this call can be "uncertain" (warning), never a new "contradicted"
+      if (!ig || !ig.ok) merged = merged.map((z) => (z.confidence > PARTIAL_MAX ? { ...z, confidence: PARTIAL_MAX } : z));
       result.set(id, merged);
       if (!failed.has(id)) remember(id, merged);
     }
@@ -427,15 +515,157 @@ export function createSnomedChineseNames(opts: SnomedChineseOptions): SnomedChin
     async snomedChineseNames(conceptId) {
       return (await lookup([conceptId])).get(String(conceptId).trim()) ?? [];
     },
+    warm: () => startLoad().catch(() => undefined),
     clear() {
       cache.clear();
       designations = null;
     },
-    stats: () => ({ cached: cache.size, queries }),
+    stats: () => ({ cached: cache.size, queries, designations: inflight && !designations ? "loading" : !designations ? "none" : designations.ok ? "loaded" : "failed" }),
   };
 }
 
 /** `system|code` keys of SNOMED codings → concept ids. */
 export function snomedIdsOf(keys: readonly string[]): string[] {
   return [...new Set(keys.filter((k) => k.startsWith(`${SCT}|`)).map((k) => k.slice(SCT.length + 1)).filter((c) => /^\d{6,18}$/u.test(c)))];
+}
+
+// ------------------------------------------------------------------------------------------- hierarchy guard
+
+/** A diagnosis-slot item as the hierarchy guard reads it: its text (the slot parser's lower-cased form), ICD codes, names. */
+export interface SlotItemRef {
+  key: string;
+  icd: readonly string[];
+  /** Chinese / English names of the item (text without codes, its core). */
+  names: readonly string[];
+}
+
+export interface SnomedHierarchy {
+  /**
+   * Per SNOMED concept, the slot items whose own SNOMED concept(s) are the same concept, an ancestor or a descendant of it
+   * (snomed.concept_ancestors): a broader / narrower concept, never "a different diagnosis". An item's concepts come from
+   * its ICD-10 codes (reverse snomed.icd10_map: map group 1 targets equal to the code, its 4-character WHO form or its
+   * category) and from its names (icd.diagnoses.name_zh equal to the name → that ICD code). A Chinese name with no exact ICD
+   * name also tries its Chinese tails (Chinese compounds are head-final: 社區型肺炎 → 肺炎): a tail is a broader concept than
+   * the item, so it only relates a coded concept that is the tail's concept or an ancestor of it — never a narrower one.
+   */
+  relatedSlotItems(conceptIds: readonly string[], items: readonly SlotItemRef[]): Promise<ReadonlyMap<string, ReadonlySet<string>>>;
+}
+
+/**
+ * WHO-style map targets for an ICD-10(-CM) code: the code, its first 5 characters (X99.9), its category, and for a
+ * category its unspecified subcategory (J18 → J18.9: map targets are mostly 4-character codes).
+ */
+export function mapTargetsFor(code: string): string[] {
+  const c = code.toUpperCase();
+  return [...new Set([c, c.slice(0, 5), c.slice(0, 3), `${c.slice(0, 3)}.9`].filter((x) => RE_ICD.test(x)))];
+}
+
+export function createSnomedHierarchy(opts: { query: QueryFn; cacheSize?: number; logger?: SnomedChineseOptions["logger"] }): SnomedHierarchy {
+  const cap = opts.cacheSize ?? 2000;
+  const byCodes = new Map<string, string[]>(); // sorted ICD code list → SNOMED concepts
+  const ancestors = new Map<string, Set<string>>();
+  const run = async (sql: string, params: unknown[]): Promise<Array<Record<string, unknown>> | null> => {
+    try {
+      return (await opts.query(sql, params)).rows;
+    } catch (e) {
+      opts.logger?.warn?.("snomed hierarchy query failed", { error: e instanceof Error ? e.message : String(e) });
+      return null;
+    }
+  };
+  const trim = <K, V>(m: Map<K, V>): void => {
+    while (m.size > cap) m.delete(m.keys().next().value as K);
+  };
+
+  return {
+    async relatedSlotItems(conceptIds, items) {
+      const out = new Map<string, Set<string>>();
+      const ids = [...new Set(conceptIds.filter((x) => /^\d{6,18}$/u.test(x)))];
+      if (!ids.length || !items.length) return out;
+      // 1. item names → ICD codes (exact Chinese ICD names)
+      const names = [...new Set(items.flatMap((i) => i.names).map((n) => n.trim()).filter((n) => hasCjk(n) && n.length <= 40))];
+      const tails = new Map<string, string[]>(); // name → its Chinese tails, longest first
+      for (const n of names) {
+        const m = /[\p{Script=Han}]+$/u.exec(n)?.[0] ?? "";
+        const ts: string[] = [];
+        for (let i = n.length - m.length + (m.length === n.length ? 1 : 0); i <= n.length - 2; i++) ts.push(n.slice(i));
+        if (ts.length) tails.set(n, ts);
+      }
+      const nameCodes = new Map<string, string[]>();
+      const lookup = [...new Set([...names, ...[...tails.values()].flat()])];
+      if (lookup.length) {
+        const rows = await run("SELECT code, name_zh FROM icd.diagnoses WHERE name_zh = ANY($1::text[])", [lookup]);
+        for (const r of rows ?? []) {
+          const n = String(r.name_zh);
+          nameCodes.set(n, [...(nameCodes.get(n) ?? []), String(r.code)]);
+        }
+      }
+      // the longest tail with an ICD name, for names without an exact one
+      const headCodes = new Map<string, string[]>();
+      for (const it of items) {
+        const codes = it.names.flatMap((n) => {
+          const t = n.trim();
+          if (nameCodes.has(t)) return [];
+          const hit = (tails.get(t) ?? []).find((x) => nameCodes.has(x));
+          return hit ? nameCodes.get(hit)! : [];
+        });
+        if (codes.length) headCodes.set(it.key, [...new Set(codes.map((c) => c.toUpperCase()))]);
+      }
+      // 2. ICD codes → SNOMED concepts (reverse map)
+      const itemCodes = new Map<string, string[]>();
+      for (const it of items) itemCodes.set(it.key, [...new Set([...it.icd.map((c) => c.toUpperCase()), ...it.names.flatMap((n) => nameCodes.get(n.trim()) ?? [])])]);
+      const conceptsOf = async (codes: readonly string[]): Promise<string[] | null> => {
+        const k = [...codes].sort().join(",");
+        let cs = byCodes.get(k);
+        if (!cs) {
+          const rows = await run(
+            "SELECT DISTINCT referenced_component_id::text AS id FROM snomed.icd10_map WHERE map_target = ANY($1::text[]) AND active = TRUE AND COALESCE(map_group, 1) = 1 LIMIT 2000",
+            [[...new Set(codes.flatMap(mapTargetsFor))]],
+          );
+          if (rows === null) return null;
+          cs = rows.map((r) => String(r.id));
+          byCodes.set(k, cs);
+          trim(byCodes);
+        }
+        return cs;
+      };
+      const itemConcepts = new Map<string, string[]>();
+      for (const [key, codes] of itemCodes) {
+        if (!codes.length) continue;
+        const cs = await conceptsOf(codes);
+        if (cs) itemConcepts.set(key, cs);
+      }
+      const headConcepts = new Map<string, string[]>();
+      for (const [key, codes] of headCodes) {
+        const cs = await conceptsOf(codes);
+        if (cs) headConcepts.set(key, cs);
+      }
+      if (!itemConcepts.size && !headConcepts.size) return out;
+      // 3. ancestors of the codes' concepts and of the items' concepts
+      const need = [...new Set([...ids, ...[...itemConcepts.values(), ...headConcepts.values()].flat()])].filter((x) => !ancestors.has(x));
+      if (need.length) {
+        const rows = await run("SELECT concept_id::text AS id, ancestor_ids::text[] AS anc FROM snomed.concept_ancestors WHERE concept_id = ANY($1::bigint[])", [need]);
+        if (rows === null) return out;
+        for (const x of need) ancestors.set(x, new Set());
+        for (const r of rows) ancestors.set(String(r.id), new Set((Array.isArray(r.anc) ? r.anc : []).map(String)));
+      }
+      for (const x of ids) {
+        const ax = ancestors.get(x) ?? new Set<string>();
+        for (const [key, cs] of itemConcepts) {
+          if (cs.some((c) => c === x || ax.has(c) || (ancestors.get(c)?.has(x) ?? false))) {
+            if (!out.has(x)) out.set(x, new Set());
+            out.get(x)!.add(key);
+          }
+        }
+        // a tail concept is broader than its item: only the same concept or an ancestor of it is related
+        for (const [key, cs] of headConcepts) {
+          if (cs.some((c) => c === x || (ancestors.get(c)?.has(x) ?? false))) {
+            if (!out.has(x)) out.set(x, new Set());
+            out.get(x)!.add(key);
+          }
+        }
+      }
+      while (ancestors.size > cap * 10) ancestors.delete(ancestors.keys().next().value as string);
+      return out;
+    },
+  };
 }

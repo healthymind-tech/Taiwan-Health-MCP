@@ -94,6 +94,11 @@ export interface RecordCheckOptions {
    * (grounding/snomedChinese.ts) — read only by the coded-element grounding comparison (codeGrounding.ts). Optional.
    */
   codeNamesZh?: ReadonlyMap<string, readonly { name: string; source: string; confidence: number; icd?: string }[]> | null;
+  /**
+   * ISSUES_v15.3 R3 follow-up (hierarchy guard): per SNOMED coding key, the diagnosis-slot item texts naming the same, a
+   * broader or a narrower SNOMED concept (snomed.concept_ancestors) — such an item is never "something else". Optional.
+   */
+  codeSlotRelations?: ReadonlyMap<string, ReadonlySet<string>> | null;
 }
 
 export interface RecordCheckResult {

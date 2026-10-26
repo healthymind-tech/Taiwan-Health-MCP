@@ -83,7 +83,10 @@ test("R1 note of an Observation without a value; Dosage.text", () => {
   const b = inBundle();
   delete res(b, 5).valueQuantity;
   res(b, 5).note = [{ text: "檢體溶血，重抽中" }];
-  assert.ok(codes(b, null).includes("error:information-absent@5.note[0].text"));
+  // without source_text a warning (ISSUES_v15.4 consistency: the note is the only evidence); with the record an error
+  assert.ok(codes(b, null).includes("warning:information-absent@5.note[0].text"));
+  assert.ok(!codes(b, null).some((c) => c.startsWith("error:")));
+  assert.ok(codes(b, R.replace("白血球 12.3 x10^3/uL，", "白血球 檢體溶血，重抽中，")).includes("error:information-absent@5.note[0].text"));
   // with a value the note is commentary
   const c = inBundle();
   res(c, 5).note = [{ text: "檢體溶血，重抽中" }];
@@ -174,6 +177,22 @@ test("R3 helpers: closest phrase skips instruction lines; nothing comparable →
   const code = { coding: [{ system: "http://snomed.info/sct", code: "195967001", display: "Asthma" }], text: "氣喘" };
   assert.equal(judgeCode(code, "Condition.code", rt, slots, true).verdict, "contradicted");
   assert.equal(judgeCode(code, "Condition.code", rt, slots, false).verdict, "uncertain");
+});
+
+test("R3 comparable(): ICD-10 codes in a (lower-cased) diagnosis-slot item make it comparable with an ICD-coded Condition", () => {
+  // English-only names, Chinese slot item with an ICD code: comparable only through the ICD branch
+  const rt = new RecordText(R, null);
+  const slots = diagnosisSlots(rt);
+  assert.match(slots[0].items[0].text, /j18\.9/u, "slot items are lower-cased");
+  const icd = (code: string, display: string): Json => ({ coding: [{ system: "http://hl7.org/fhir/sid/icd-10-cm", code, display }] });
+  // another ICD code, nothing related in the record → contradicted (before the fix: uncertain, the branch never matched)
+  assert.equal(judgeCode(icd("N39.0", "Urinary tract infection, site not specified"), "Condition.code", rt, slots, true).verdict, "contradicted");
+  // the slot's own ICD category (J18.0 vs j18.9) is the same diagnosis group → never contradicted
+  assert.notEqual(judgeCode(icd("J18.0", "Bronchopneumonia, unspecified organism"), "Condition.code", rt, slots, true).verdict, "contradicted");
+  // the slot's exact code → related
+  assert.equal(judgeCode(icd("J18.9", "Pneumonia, unspecified organism"), "Condition.code", rt, slots, true).verdict, "related");
+  // a comorbidity (not the primary Condition) is never contradicted
+  assert.equal(judgeCode(icd("N39.0", "Urinary tract infection, site not specified"), "Condition.code", rt, slots, false).verdict, "uncertain");
 });
 
 test("lookups: axes only for text-result Observations, names only with source_text; fail-open", async () => {

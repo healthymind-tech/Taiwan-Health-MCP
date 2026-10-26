@@ -65,7 +65,9 @@ export { identifierRegistry, BUILTIN_IDENTIFIER_SYSTEMS, BUILTIN_FORMATS } from 
 //   when the record's statement about the item confirms it), absence predicate classes + the clause-level dominance rule
 //   (lexicon absenceClauses), bracketed limits in result values, dataAbsentReason as a side field, not-done / cancelled
 //   Observations out of the v15.3 note rule, indistinguishable diagnosis slots.
-export const RECORD_CHECKS_VERSION = "1.3.0";
+// 1.3.1: the v15.3 result-slot note rule is a warning without source_text (as the empty-shell rule); R3 Chinese-name
+//   hardening + hierarchy guard + record-casing abbreviation check (codeGrounding.ts, grounding/snomedChinese.ts).
+export const RECORD_CHECKS_VERSION = "1.3.1";
 
 type Json = Record<string, any>;
 const isObj = (x: unknown): x is Json => !!x && typeof x === "object" && !Array.isArray(x);
@@ -170,7 +172,7 @@ function r1(s: Slot, ctx: R1Context): RecordIssue | null {
  * ISSUES_v15.3 R1: an Observation whose code needs a quantitative result, with no value[x] and no dataAbsentReason, whose
  * note says there is no result (檢體溶血，重抽中 / result pending) — the result is absent, written as a note.
  */
-function noteAbsence(root: Json, ctx: R1Context, done: ReadonlySet<string>): RecordIssue[] {
+function noteAbsence(root: Json, ctx: R1Context, done: ReadonlySet<string>, withSource = true): RecordIssue[] {
   const out: RecordIssue[] = [];
   for (const r of resourcesOf(root)) {
     const o = r.resource;
@@ -189,10 +191,15 @@ function noteAbsence(root: Json, ctx: R1Context, done: ReadonlySet<string>): Rec
       const cls = absenceClauses(n.text, { result: true });
       if (cls.length && cls.every((h) => h.cls === "not-done")) return;
       const v = clip(n.text.trim());
+      // 1.3.1: without source_text the note is the only evidence — a warning, as the empty-shell rule (emptyShell.ts) gives
+      // a shell whose side text states an absence; with source_text it stays an error (v15.3)
+      const sev = withSource ? "error" : "warning";
+      const unconfirmedZh = withSource ? "" : "（未提供病歷，無法確認病歷是否也這樣記載）";
+      const unconfirmedEn = withSource ? "" : " (no record was given, so this is not confirmed against it)";
       out.push(makeIssue(
-        "R1", "error", "information-absent", path,
-        `病歷沒有提供這項資訊：這個 Observation 沒有結果值（value[x]），note「${v}」說的是沒有結果（${m.predicates.join(", ")}），而它的代碼需要數值結果（${quant}）。若任務需要這項結果，請回報 insufficient_information`,
-        `The record does not provide this information: this Observation has no value[x] and its note "${v}" says there is no result (${m.predicates.join(", ")}), while its code needs a quantitative result (${quant}). If the task needs the result, report insufficient_information`,
+        "R1", sev, "information-absent", path,
+        `病歷沒有提供這項資訊：這個 Observation 沒有結果值（value[x]），note「${v}」說的是沒有結果（${m.predicates.join(", ")}），而它的代碼需要數值結果（${quant}）${unconfirmedZh}。若任務需要這項結果，請回報 insufficient_information`,
+        `The record does not provide this information: this Observation has no value[x] and its note "${v}" says there is no result (${m.predicates.join(", ")}), while its code needs a quantitative result (${quant})${unconfirmedEn}. If the task needs the result, report insufficient_information`,
         `R1 absence recogniser (${RECORD_CHECKS_LEXICON_VERSION}) in result mode on Observation.note (the Observation has no value[x] and no dataAbsentReason); the whole note is covered by absence predicates plus nouns / fillers`,
       ));
     });
@@ -287,7 +294,7 @@ export function runRecordChecks(root: Json, opts: RecordCheckOptions = {}): Reco
   const shellErrors = shells.filter((i) => i.severity === "error").map((i) => i.path);
   let notes2: RecordIssue[] = [];
   try {
-    notes2 = noteAbsence(root, ctx, new Set([...absent, ...shellErrors]));
+    notes2 = noteAbsence(root, ctx, new Set([...absent, ...shellErrors]), recordText !== null);
   } catch {
     // fail-open
   }
