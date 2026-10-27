@@ -187,7 +187,11 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   findings the output is unchanged.
   // 1.16.1 (SNOMED Chinese-name verification fixes): (R3, grounding/snomedChinese.ts + codeGrounding.ts) the SNOMED Chinese-name comparison is hardened: ICD Chinese names keep complete noun phrases only (qualifier prefixes such as 其他或未明示之 removed whole, names starting with a function word / bound morpheme and one-character-truncated tails rejected; mined thesaurus pieces trimmed and, unless every piece occurs in an ICD Chinese name of the concept, capped at 0.55 — never comparable); a hierarchy guard: a diagnosis-slot item whose SNOMED concept (from its ICD-10 code via the reverse snomed.icd10_map, or its exact ICD Chinese name) is the coded concept, an ancestor or a descendant of it (snomed.concept_ancestors) is never "something else" (LRTI vs 社區型肺炎 (J18.9): warning); a Chinese item name with no exact ICD name relates through its head-final tail (社區型肺炎 → 肺炎), only to that concept or its ancestors; abbreviation-only slot items are judged on the record's casing; the IG designation table loads in one cheap query (Chinese-language packages only, ~0.6 s), single-flight, refreshed in the background, warmed at startup — a call during the first load waits ≤ 2 s, then runs without IG names with every Chinese name capped below comparability (warning, never a new error); the v15.3 result-slot note rule (an Observation with no value[x] whose note says there is no result while its code needs a quantitative one) is a WARNING without source_text (was an error; consistent with the v15.4 empty-shell rule), still an error with it.
   // 1.17.0 (ISSUES_v16 R3): slice / profile-match explanations (fhirSuggestions/slices.ts, fhirSliceMatch.ts): "does not match any known slice … CLOSED", "Slice 'X': a matching slice is required" and "Unable to find a profile match" issues carry slice_match / profile_match {closest slice / profile, failed discriminators (meta.profile missing / misspelled / other version / a string / another profile, resourceType, fixed / pattern value, required binding), blocking: the ≤ 5 errors of the target against the closest profile (own errors, else a budgeted stand-alone validation, ≤ 12 per call), hint} and set_profile / add_resource suggestions; additive only (issue set, severities, messages, valid unchanged).
-  fhir_validate_bundle: "1.17.0",
+  // 1.18.0 (ISSUES_v16.1 R2 / R3): slice_match carries `options` (every allowed slice — max ≠ 0 — with what its
+  //   discriminators require) when no slice is close or several are about as close, and `literals`; a fixed / pattern
+  //   value that looks like a placeholder (NNxxx, *, <…>) is marked "literal value required by the IG; copy as is" in
+  //   failure details and hints. Issue set, severities, messages, valid unchanged.
+  fhir_validate_bundle: "1.18.0",
   // 1.6.2: the binding-aware suggestions above (ISSUES_v10 A) also apply to single-resource validation.
   // 1.7.0: the validator v13 rules above (fhir_validate_bundle 1.9.0).
   // 1.8.0 (ISSUES_v15): the record checks of fhir_validate_bundle 1.11.0 on the resource (data.issues, data.record_checks).
@@ -201,7 +205,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.13.0 (ISSUES_v15.4): the record checks of fhir_validate_bundle 1.16.0 (empty shells, absence predicate classes).
   // 1.13.1: the R3 and result-slot note changes of fhir_validate_bundle 1.16.1.
   // 1.14.0 (ISSUES_v16 R3): the slice / profile-match explanations of fhir_validate_bundle 1.17.0 (slice_match / profile_match, set_profile / add_resource).
-  fhir_validate_resource: "1.14.0",
+  // 1.15.0: the slice_match options / literals of fhir_validate_bundle 1.18.0.
+  fhir_validate_resource: "1.15.0",
   // 1.2.0 (all below): provenance.resolved_by / closure_versions; canonical arguments resolve to their
   // owning package when package_id is omitted; "|version" honoured; list/search: all_packages + zero-hit hint;
   // NO_DEFAULT_IG instead of an arbitrary package when no default IG is set.
@@ -256,7 +261,10 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   (unrelated ones never), and data.alternatives lists the codings of other systems the best matches link to that the
   //   validator accepts ({system, code, display?, accepted_by_validator: true, reason, value_sets}; WHO ATC checked against
   //   the bundled tx.fhir.org table data/terminology/atc-tx-check.json.gz), with a warning naming them.
-  fhir_normalize_code: "1.9.0",
+  // 1.10.0 (ISSUES_v16.1 R4): with value_set, SNOMED CT candidates are limited to the ValueSet's enumerated
+  //   concepts as well as its is-a / descendent-of filters (an enumerated-only ValueSet such as a department list was
+  //   searched over all of SNOMED CT); an include naming the whole system, or a filter that cannot be scoped, lifts it.
+  fhir_normalize_code: "1.10.0",
   fhir_get_resource_skeleton: "1.2.1",
   // 1.3.0: validation issues carry `suggestions` / `caused_by` (as fhir_validate_resource 1.6.0).
   // 1.3.1: validation as fhir_validate_resource 1.6.1 (unknown hl7.org/fhir code systems, reference whitespace,
@@ -297,7 +305,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.11.0 (ISSUES_v15.4): data.validation carries the record checks of fhir_validate_resource 1.13.0 (empty shells).
   // 1.11.1: data.validation's record checks as fhir_validate_resource 1.13.1 — the v15.3 result-slot note rule (an Observation with no value[x] whose note says there is no result while its code needs a quantitative one) is a WARNING without source_text (was an error; consistent with the v15.4 empty-shell rule), still an error with it.
   // 1.12.0 (ISSUES_v16): R4 content repair: empty arrays removed (ele-1), resourceType inferred from a meta.profile string, errors a lossless reshape only makes visible (a now-readable value / a resource now checked against its declared profile) no longer withdraw the reshape; validation as fhir_validate_resource 1.14.0.
-  fhir_finalize_resource: "1.12.0",
+  // 1.13.0: data.validation as fhir_validate_resource 1.15.0 (slice_match options / literals).
+  fhir_finalize_resource: "1.13.0",
   // 1.0.0 (authoring/, evaluation v11): the model gives field VALUES, the MCP composes the resource for its profile
   //   (fixed / pattern / defaults / derived / displays / UCUM / ROC dates), validates it, keeps it in a Redis context
   //   (`authoring:ctx:*`, 60-min idle TTL) and assembles the Bundle from keys with deterministic urn:uuid fullUrls
@@ -322,7 +331,14 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   element (ig-constant: fixed / pattern or identical in >= 2 of the IG's example instances, eligibility by resource kind;
   //   code-lookup; text-allowed; derivable; record) plus conditional rows from `guard implies (x.exists() and …)` invariants;
   //   <= 6,000 characters (`omitted`). IG-agnostic.
-  fhir_get_minimal_skeleton: "1.0.0",
+  // 1.1.0 (ISSUES_v16.1): (R1) `slices`: every sliced element of the skeleton (CLOSED slicing; OPEN slicing with a
+  //   required slice; not Bundle.entry — the blueprint's) with its discriminators and each allowed slice (min..max, a
+  //   template item: the slice's fixed / pattern values plus <…> for its required / mustSupport children); a required
+  //   CLOSED element without a required slice holds the first slice's template instead of a generic item (which matches
+  //   no slice); (R2) `literals`: placeholder-looking IG values (NNxxx) to copy verbatim; (R4) a CodeableConcept with a
+  //   required coding slice, and a large required binding, name fhir_normalize_code(text, value_set=<canonical>); compact
+  //   levels merge rows with the same source / how (paths joined by ", ") and shorten `slices` (requirements, then names).
+  fhir_get_minimal_skeleton: "1.1.0",
   // 1.1.0 (evaluation feedback): (1) a model display the validator's terminology rule rejects for a resolvable code is
   //   replaced by the code's display (provenance lookup; the model wording moves to CodeableConcept.text when empty;
   //   case-only differences are valid, whitespace-only ones take the valid spelling); (2) a single object / scalar where
@@ -369,7 +385,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.9.0 (ISSUES_v15.4): validation as fhir_validate_resource 1.13.0 (record checks: empty shells, absence predicate classes).
   // 1.9.1: validation as fhir_validate_resource 1.13.1 — the v15.3 result-slot note rule (an Observation with no value[x] whose note says there is no result while its code needs a quantitative one) is a WARNING without source_text (was an error; consistent with the v15.4 empty-shell rule), still an error with it.
   // 1.10.0 (ISSUES_v16): validation issues as fhir_validate_resource 1.14.0 (slice_match / profile_match).
-  fhir_author_resources: "1.10.0",
+  // 1.11.0: validation issues as fhir_validate_resource 1.15.0 (slice_match options / literals).
+  fhir_author_resources: "1.11.0",
   // 1.0.1: action=get results carry the author result's new `notes` (fhir_author_resources 1.1.0); otherwise unchanged.
   fhir_context: "1.0.1",
   // 1.1.0: new `site_config` (merged with the context's) passed to the grounding engine with source_text, so facility
@@ -402,7 +419,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   resource authored for its slice's profile, entries in slice order when the slicing is ordered; bundle_slices reports the
   //   placement, `missing` required slices (what to author — never invented), `excess` (max) and `unmatched` (closed slicing);
   //   content repairs as fhir_finalize_bundle 1.8.0, validation as fhir_validate_bundle 1.17.0.
-  fhir_assemble_bundle: "1.10.0",
+  // 1.11.0: validation as fhir_validate_bundle 1.18.0 (slice_match options / literals).
+  fhir_assemble_bundle: "1.11.0",
   // 1.0.0 (ISSUES_v9 R1): deterministic Bundle finalizer — fullUrl-uuid / reference-rewire / resource-id (mandatory),
   // bundle-type / document-order (profile-driven); UUID v5 seeded by (resourceType, original fullUrl, resource.id, entry
   // index) + a content salt; references found through StructureDefinition snapshots; duplicates / ambiguity reported.

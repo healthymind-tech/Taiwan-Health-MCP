@@ -147,3 +147,38 @@ for (const ig of ["pas"]) {
     assert.ok(checked > 0, "at least one entry checked");
   });
 }
+
+test("ISSUES_v16.1 R2 / R3: closest null lists every allowed slice with what it requires; placeholder-like IG literals are marked", async () => {
+  const P = `${X}Patient-y`;
+  SDS[P] = {
+    url: P, type: "Patient",
+    snapshot: { element: [
+      el("Patient", 0, "*"),
+      el("Patient.identifier", 1, "2", { slicing: { discriminator: [{ type: "value", path: "type.coding.code" }], rules: "closed" } }),
+      el("Patient.identifier:idCard", 0, "1"),
+      el("Patient.identifier:idCard.type", 1, "1"),
+      el("Patient.identifier:idCard.type.coding", 1, "*"),
+      el("Patient.identifier:idCard.type.coding.code", 1, "1", { patternCode: "NNxxx" }),
+      el("Patient.identifier:mr", 0, "1"),
+      el("Patient.identifier:mr.type", 1, "1"),
+      el("Patient.identifier:mr.type.coding", 1, "*"),
+      el("Patient.identifier:mr.type.coding.code", 1, "1", { patternCode: "MR" }),
+      el("Patient.identifier:passport", 0, "0"),
+      el("Patient.identifier:passport.type", 1, "1"),
+      el("Patient.identifier:passport.type.coding", 1, "*"),
+      el("Patient.identifier:passport.type.coding.code", 1, "1", { patternCode: "PPN" }),
+    ] },
+  };
+  const res = { resourceType: "Patient", meta: { profile: [P] }, identifier: [{ type: { coding: [{ code: "NN101" }] }, value: "A1" }] };
+  const issues: Array<Record<string, any>> = [{ severity: "error", path: "Patient.identifier[0]", code: "structure", message: `This element does not match any known slice defined in the profile ${P} and slicing is CLOSED`, element: "Patient.identifier", profile: P }];
+  await attachSuggestions(issues, res, deps());
+  const sm = issues[0].slice_match;
+  assert.equal(sm.closest, null);
+  assert.deepEqual(sm.options, [
+    { slice: "idCard", card: "0..1", requires: { "type.coding.code": "NNxxx" } },
+    { slice: "mr", card: "0..1", requires: { "type.coding.code": "MR" } },
+  ]);
+  assert.deepEqual(sm.literals, ["NNxxx"]);
+  assert.match(sm.hint, /NNxxx: literal value required by the IG; copy as is/);
+  assert.match(sm.failed[0].detail, /the slice requires NNxxx \(literal value required by the IG; copy as is\)/);
+});

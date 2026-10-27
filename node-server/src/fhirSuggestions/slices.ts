@@ -25,7 +25,10 @@ import {
   declaredProfiles,
   elementsById,
   isObj,
+  LITERAL_NOTE,
+  placeholderLiterals,
   profileAffinity,
+  sliceRequirements,
   slicingOf,
   stripVersion,
   type DiscriminatorFailure,
@@ -56,6 +59,13 @@ export interface SliceMatchInfo {
   /** Next candidates (≤ 2). */
   others?: Array<{ slice: string; profile: string | null; score: number; item?: string }>;
   failed: DiscriminatorFailure[];
+  /**
+   * ISSUES_v16.1 R3: the slices this element may take and what each requires (discriminator → value),
+   * when no slice is close (closest null) or several are about as close — the writer picks one.
+   */
+  options?: Array<{ slice: string; card: string; requires: Record<string, unknown> }>;
+  /** Placeholder-looking IG literals among the requirements (`NNxxx`): to be copied verbatim. */
+  literals?: string[];
   /** Errors of the item's resource against the closest profile (≤ 5), re-rooted at the item. */
   blocking?: Array<{ path: string; message: string }>;
   blocking_total?: number;
@@ -153,6 +163,18 @@ function slicedIdOf(E: Map<string, any>, issue: Record<string, any>, type: strin
   for (const [id, e] of E) if (e.path === ep && isObj(e.slicing) && !id.includes(":")) return id;
   for (const [id, e] of E) if (e.path === ep && isObj(e.slicing)) return id;
   return null;
+}
+
+/** ISSUES_v16.1 R3: every allowed slice (max ≠ 0) with its discriminator requirements, plus placeholder-like literals. */
+function sliceOptions(E: Map<string, any>, slicing: Slicing): { options?: SliceMatchInfo["options"]; literals?: string[] } {
+  const options = slicing.slices
+    .filter((s) => s.max !== "0")
+    .slice(0, 12)
+    .map((s) => ({ slice: s.name, card: `${s.min}..${s.max}`, requires: sliceRequirements(E, slicing, s) }))
+    .filter((o) => Object.keys(o.requires).length);
+  if (!options.length) return {};
+  const literals = [...new Set(options.flatMap((o) => placeholderLiterals(o.requires)))];
+  return { options, ...(literals.length ? { literals } : {}) };
 }
 
 function rankChecks(checks: SliceCheck[]): SliceCheck[] {
@@ -339,8 +361,9 @@ async function planClosed(
     rules: slicing.rules,
     discriminators: slicing.discriminators.map((d) => `${d.type}:${d.path}`),
   };
+  const options = sliceOptions(E, slicing);
   if (!best || best.score <= 0 || !typed.length) {
-    const kinds = [...new Set(slicing.slices.map((s) => s.name))];
+    const kinds = [...new Set(slicing.slices.filter((s) => s.max !== "0").map((s) => s.name))];
     const rtNow = isObj(item) && isObj(item.resource) ? item.resource.resourceType : isObj(item) ? item.resourceType : undefined;
     return {
       needs: [],
@@ -349,7 +372,11 @@ async function planClosed(
           ...base,
           closest: null,
           failed: best ? best.failed.slice(0, 3) : [],
-          hint: `no slice of ${stripVersion(profile)} takes this ${rtNow ? `${rtNow} ` : ""}element (slices: ${kinds.slice(0, 12).join(", ")}${kinds.length > 12 ? ", …" : ""}); with CLOSED slicing it must be removed or changed to match one of them`,
+          ...options,
+          hint:
+            `no slice of ${stripVersion(profile)} takes this ${rtNow ? `${rtNow} ` : ""}element (slices: ${kinds.slice(0, 12).join(", ")}${kinds.length > 12 ? ", …" : ""}); with CLOSED slicing it must be removed or changed to match one of them` +
+            (options.options ? ": pick the slice whose `requires` fits and give it exactly those values" : "") +
+            (options.literals ? `; ${options.literals.join(", ")}: ${LITERAL_NOTE}` : ""),
         },
         suggestions: [],
       }),
@@ -381,12 +408,13 @@ async function planClosed(
           closest: { slice: top.slice.name, profile: top.profiles[0] ?? null, score: top.score },
           ...(rest.length ? { others: rest.slice(0, 2).map((c) => ({ slice: c.slice.name, profile: c.profiles[0] ?? null, score: c.score })) } : {}),
           failed: top.failed,
+          ...(unique ? {} : options),
           hint:
             `closest slice is '${top.slice.name}'${top.profiles[0] ? ` (${stripVersion(top.profiles[0])})` : ""}` +
             (top.failed.length ? `: ${describeFailed(top.failed)}` : "") +
             (total > 0 ? `; ${total} error(s) against that profile block the match (see blocking)` : total === 0 && conf ? "; the resource has no error against that profile" : "") +
             (decisive ? `; chosen among ${cands.map((c) => `'${c.slice.name}'`).join(", ")} by the fewest errors and differing fixed / pattern values` : "") +
-            (unique ? "" : `; '${second.slice.name}' is about as close`),
+            (unique ? "" : `; '${second.slice.name}' is about as close${options.options ? " — pick by `options` (what each slice requires)" : ""}`),
         } as SliceMatchInfo,
         blocking,
         total,

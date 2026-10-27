@@ -69,7 +69,8 @@ test("TWPAS: every resource profile's skeleton fits 6,000 characters; example co
 test("TWPAS: the refusal cases of ISSUES_v16 get a non-record value source", { skip: !pasDeps }, async () => {
   const t = async (profile: string): Promise<Map<string, [string, string]>> => {
     const { data } = await minimalSkeleton({ profile }, pasDeps!);
-    return new Map((data.table as Array<[string, string, string]>).map(([p, s, h]) => [p, [s, h]]));
+    // compact levels list rows with the same source / how once, paths joined by ", "
+    return new Map((data.table as Array<[string, string, string]>).flatMap(([p, s, h]) => p.split(", ").map((x): [string, [string, string]] => [x, [s, h]])));
   };
   const claim = await t("Claim-twpas");
   assert.equal(claim.get("item.programCode")?.[0], "text-allowed");
@@ -78,6 +79,18 @@ test("TWPAS: the refusal cases of ISSUES_v16 get a non-record value source", { s
   assert.equal(claim.get("priority")?.[0], "code-lookup");
   const enc = await t("Encounter-twpas");
   assert.ok(![...enc.values()].some(([s]) => s === "record"), "Encounter-twpas needs no record fact (class + serviceType are codes)");
+  // ISSUES_v16.1 R1 / R2: closed identifier slicing expanded, its type codes listed, NNxxx marked as an IG literal
+  for (const [profile, codes] of [["Patient-twpas", ["NNxxx", "PRC", "MR"]], ["Practitioner-twpas", ["NNxxx", "PRC", "MD"]]] as const) {
+    const { data } = await minimalSkeleton({ profile }, pasDeps!);
+    const g = (data.slices as R).identifier as R;
+    assert.equal(g.rules, "closed", profile);
+    const text = JSON.stringify(g.options);
+    for (const c of codes) assert.ok(text.includes(`"${c}"`), `${profile}: ${c} in ${text.slice(0, 300)}`);
+    assert.ok(!text.includes("passportNumber"), `${profile}: a max-0 slice is not offered`);
+    const id0 = ((data.skeleton as R).identifier as R[])[0];
+    assert.equal(id0.type.coding[0].code, "NNxxx", `${profile}: the skeleton's identifier is a slice template`);
+    assert.ok((data.literals as string[]).some((l) => l.startsWith('"NNxxx"')), profile);
+  }
   const govt = await minimalSkeleton({ profile: "https://twcore.mohw.gov.tw/ig/twcore/StructureDefinition/Organization-govt-twcore" }, pasDeps!);
   const ids = ((govt.data.skeleton as R).identifier ?? []) as R[];
   assert.equal(ids.length, 1, "the payer agency the IG uses in every example");

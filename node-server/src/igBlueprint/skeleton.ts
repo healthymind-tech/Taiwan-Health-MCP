@@ -32,6 +32,7 @@
  */
 
 import { pinnedFragment } from "../fhirAuthoring.js";
+import { elementsById, LITERAL_NOTE, placeholderLiterals, sliceRequirements, slicingOf, type Slicing } from "../fhirSliceMatch.js";
 import { projectElement } from "../fhirSnapshot.js";
 import {
   classifyElement,
@@ -578,6 +579,10 @@ async function classify(ctx: ClassifyCtx, row: RequiredElementRow, inheritedBind
     if (!binds) delete item.codes, delete item.codesMore;
     const vsSystem = b && !b.truncated && new Set(b.codes.map((c) => c.system)).size === 1 ? b.codes[0]?.system ?? null : null;
     const system = pinnedSystems.length === 1 ? pinnedSystems[0] : vsSystem;
+    // ISSUES_v16.1 R4: a coding slice with a required binding (a coding of that system must be in the ValueSet)
+    const codingSlice = [...E.entries()].find(
+      ([k, e]) => k.startsWith(`${row.id}.coding:`) && !k.slice(row.id.length + 8).includes(".") && e.max !== "0" && e.binding?.strength === "required" && !!e.binding.valueSet,
+    );
     const lookup = !binding?.valueSet
       ? system
         ? `a code of ${system}: fhir_normalize_code(text, system)`
@@ -585,8 +590,10 @@ async function classify(ctx: ClassifyCtx, row: RequiredElementRow, inheritedBind
       : item.codes
         ? `${strength ?? ""} ValueSet ${tail(binding.valueSet)}`
         : binds
-          ? `${strength} ValueSet ${tail(binding.valueSet)}: fhir_normalize_code(text, system) / fhir_expand_valueset`
-          : `a code${system ? ` of ${system}` : ""} (${strength ?? ""} ValueSet ${tail(binding.valueSet)} is only illustrative): fhir_normalize_code(text, system)`;
+          ? `${strength} ValueSet ${tail(binding.valueSet)}: fhir_normalize_code(text, value_set=${stripVersion(binding.valueSet)}) returns only its codes`
+          : codingSlice
+            ? `coding slice ${codingSlice[0].split(":").pop()}: required ValueSet; fhir_normalize_code(text, value_set=${stripVersion(codingSlice[1].binding!.valueSet!)})`
+            : `a code${system ? ` of ${system}` : ""} (${strength ?? ""} ValueSet ${tail(binding.valueSet)} is only illustrative): fhir_normalize_code(text, system)`;
     const shape = (code: string): unknown => (cc ? { coding: [{ ...(system ? { system } : { system: "<system>" }), code }] } : types.includes("Coding") ? { ...(system ? { system } : { system: "<system>" }), code } : code);
     if (rule) {
       item.source = "derivable";
@@ -743,12 +750,117 @@ function renumber(node: unknown, _ids: Set<string>): void {
 }
 
 // --------------------------------------------------------------------------- //
+// Slicing in the skeleton (ISSUES_v16.1 R1 / R2)                              //
+// --------------------------------------------------------------------------- //
+
+/** One slice a sliced skeleton element may take. */
+interface SliceOption {
+  name: string;
+  card: string;
+  /** Discriminator → required value (fhirSliceMatch.sliceRequirements). */
+  requires: Record<string, unknown>;
+  /** Template item: the slice's fixed / pattern values plus <…> for what the author fills. */
+  item: unknown;
+}
+
+/** A sliced element of the skeleton: its slicing and every allowed slice. */
+interface SliceGroup {
+  id: string;
+  path: string;
+  rules: string;
+  by: string[];
+  options: SliceOption[];
+  /** Ids of the slices listed as required rows (min >= 1). */
+  required: string[];
+}
+
+const NO_FILL = new Set(["id", "extension", "modifierExtension"]);
+
+/** Template of one slice: pinned values, then a <…> for each child the author fills (min >= 1 or mustSupport). */
+function sliceTemplate(sliceId: string, E: Map<string, ProjectedElement>): unknown {
+  const frag = pinnedFragment(sliceId, E);
+  const types = (E.get(sliceId)?.types || []).map((t) => shortType(t.code));
+  const item: Record<string, any> = isObject(frag) ? clone(frag) : {};
+  if (!isObject(frag) && frag !== undefined) return clone(frag);
+  for (const [id, el] of E) {
+    if (!id.startsWith(`${sliceId}.`) || id.slice(sliceId.length + 1).includes(".")) continue;
+    const seg = id.slice(sliceId.length + 1);
+    if (NO_FILL.has(seg.split(":")[0]) || el.max === "0") continue;
+    if (!((el.min ?? 0) >= 1 || el.mustSupport)) continue;
+    const key = jsonKey(seg, id, E);
+    if (item[key] !== undefined) continue;
+    const ct = (el.types || []).map((t) => shortType(t.code));
+    if (ct.includes("CodeableConcept")) item[key] = { coding: [{ system: "<system>", code: "<code>" }] };
+    else if (ct.includes("Coding")) item[key] = { system: "<system>", code: "<code>" };
+    else if (ct.includes("Reference")) item[key] = { reference: "<fullUrl of target>" };
+    else if (seg === "system" && ct.includes("uri")) item[key] = "<system>";
+    else item[key] = recordPlaceholder(ct);
+    if (repeats(id, E) && !Array.isArray(item[key])) item[key] = [item[key]];
+  }
+  return Object.keys(item).length ? item : types.length === 1 ? recordPlaceholder(types) : {};
+}
+
+/**
+ * Sliced elements of the skeleton (the element is required, or one of its slices is): CLOSED slicing
+ * always (every item must match a slice), OPEN slicing when the IG makes one of its slices required.
+ * Extension slicing by url only is the implicit one (left to the extension rows); Bundle.entry is
+ * the blueprint's (fhir_get_bundle_blueprint).
+ */
+function sliceGroups(rt: string, sd: Record<string, any>, E: Map<string, ProjectedElement>, rows: RequiredElementRow[], requiredIds: Set<string>): SliceGroup[] {
+  const raw = elementsById(sd);
+  const out: SliceGroup[] = [];
+  for (const [id, el] of E) {
+    if (!el.slicing || el.max === "0") continue;
+    if (rt === "Bundle" && id === "Bundle.entry") continue;
+    // inside the skeleton: the element itself is required, or a slice of it is
+    const sliceRows = rows.filter((r) => r.id.startsWith(`${id}:`) && !r.id.slice(id.length + 1).includes("."));
+    if (!requiredIds.has(id) && !sliceRows.length) continue;
+    const slicing: Slicing | null = slicingOf(raw, id);
+    if (!slicing) continue;
+    const closed = slicing.rules === "closed";
+    if (!closed && !slicing.slices.some((x) => x.min >= 1)) continue;
+    if (!closed && slicing.discriminators.every((d) => d.path === "url")) continue;
+    const options: SliceOption[] = [];
+    for (const sl of slicing.slices) {
+      if (sl.max === "0") continue;
+      options.push({ name: sl.name, card: `${sl.min}..${sl.max}`, requires: sliceRequirements(raw, slicing, sl), item: sliceTemplate(sl.id, E) });
+    }
+    if (!options.length) continue;
+    out.push({
+      id,
+      path: displayPath(id, rt, E),
+      rules: slicing.rules,
+      by: slicing.discriminators.map((d) => (d.type === "value" || d.type === "pattern" ? d.path : `${d.type}:${d.path}`)),
+      options,
+      required: sliceRows.map((r) => r.id),
+    });
+  }
+  return out;
+}
+
+/** Placeholder-like IG literals (`NNxxx`) of the pinned values and slice requirements, as notes. */
+function literalNotes(items: SkeletonItem[], groups: SliceGroup[]): string[] {
+  const notes: string[] = [];
+  const add = (v: unknown, where: string): void => {
+    for (const lit of placeholderLiterals(v)) {
+      const n = `"${lit}" (${where}): ${LITERAL_NOTE}`;
+      if (!notes.includes(n)) notes.push(n);
+    }
+  };
+  for (const i of items) if (i.source === "ig-constant") add(i.placeholder, i.path);
+  for (const g of groups) for (const o of g.options) add(o.requires, `${g.path}:${o.name}`);
+  return notes;
+}
+
+// --------------------------------------------------------------------------- //
 // Main                                                                        //
 // --------------------------------------------------------------------------- //
 
 const LEGEND =
   "copy `skeleton`, replace each <...>. table [path, value_source, how]: only `record` rows need the record; ig-constant (already filled), " +
   "code-lookup, text-allowed and derivable values are never a reason to refuse. `conditional` rows apply only when their condition holds.";
+const LEGEND_SLICES = " `slices`: every item of a sliced element matches one listed slice (copy its values).";
+const LEGEND_LITERALS = " `literals`: IG values to copy verbatim even if they look like placeholders.";
 
 export async function minimalSkeleton(req: SkeletonRequest, deps: BlueprintDeps): Promise<SkeletonResult> {
   const ident = String(req.profile ?? "").trim();
@@ -781,6 +893,8 @@ export async function minimalSkeleton(req: SkeletonRequest, deps: BlueprintDeps)
   }
   const distinct = new Set(instances.map((x) => normalizedInstance(x.resource))).size;
   const cctx: ClassifyCtx = { rt, E, rowsById, codeFixed: profileFixesCode(rt, els), instances, distinct, deps, loaded, vsCache: new Map() };
+  const groups = sliceGroups(rt, sd, E, rows, requiredIds);
+  const groupById = new Map(groups.map((g) => [g.id, g]));
 
   // Rows that are not their own value: folded into an atomic ancestor, or the unsliced base of a sliced array.
   const atomicIds = new Set<string>();
@@ -822,6 +936,15 @@ export async function minimalSkeleton(req: SkeletonRequest, deps: BlueprintDeps)
     const pRow = rowsById.get(parent);
     const inherited = pRow?.binding?.valueSet ? pRow.binding : null;
     const item = await classify(cctx, row, inherited);
+    const group = groupById.get(row.id);
+    if (group && group.rules === "closed" && !group.required.length) {
+      // closed slicing and no required slice: a generic item matches no slice — template the first one
+      const first = group.options[0];
+      item.placeholder = clone(first.item);
+      item.how = `closed slicing (by ${group.by.join(", ")}): every item must be one of slices.${group.path} — the skeleton holds '${first.name}'; another kind of ${tail(group.path)} takes that slice's item`;
+    } else if (group && group.rules === "closed") {
+      item.how = `${item.how}; closed slicing: every item must be one of slices.${group.path}`;
+    }
     if (row.grounding_class === "auto" && pinnedValue === undefined) {
       // pinned through its children: assemble them (placed as they come)
       item.placeholder = undefined;
@@ -940,7 +1063,12 @@ export async function minimalSkeleton(req: SkeletonRequest, deps: BlueprintDeps)
     ruleLen: number;
     howLen: number;
     rows: number;
+    /** Slice detail: 2 = template items, 1 = discriminator requirements, 0 = names only. */
+    slices: number;
+    /** List the keys of the rules not shown (`more_rules`). */
+    moreRules?: boolean;
   }
+  const literals = literalNotes(items, groups);
   const build = (lv: Level): Record<string, unknown> => {
     const pinnedPaths = items.filter((i) => i.pinned).map((i) => i.path);
     const tableRows: Array<[string, ValueSource, string]> = [];
@@ -961,7 +1089,21 @@ export async function minimalSkeleton(req: SkeletonRequest, deps: BlueprintDeps)
       if (i.condition) how = `${how} (when rule ${i.condition} applies)`;
       return [i.path, i.source, how];
     };
-    for (const i of items) if (!i.pinned) tableRows.push(rowOf(i));
+    if (lv.pinnedList) {
+      for (const i of items) if (!i.pinned) tableRows.push(rowOf(i));
+    } else {
+      // compact levels: rows with the same source and how share one row (paths joined)
+      const merged = new Map<string, [string, ValueSource, string]>();
+      for (const i of items) {
+        if (i.pinned) continue;
+        const r = rowOf(i);
+        const k = `${r[1]}\u0000${r[2]}`;
+        const m = merged.get(k);
+        if (m) m[0] = `${m[0]}, ${r[0]}`;
+        else merged.set(k, r);
+      }
+      tableRows.push(...merged.values());
+    }
     const shown = tableRows.slice(0, lv.rows);
     const data: Record<string, unknown> = {
       profile: { id: loaded.profileId, canonical, resourceType: rt },
@@ -970,33 +1112,60 @@ export async function minimalSkeleton(req: SkeletonRequest, deps: BlueprintDeps)
       table: shown,
       summary,
     };
+    if (groups.length) {
+      data.slices = Object.fromEntries(
+        groups.map((g) => [
+          g.path,
+          {
+            rules: g.rules,
+            by: g.by,
+            ...(lv.slices >= 2
+              ? {
+                  note:
+                    g.rules === "closed"
+                      ? `every ${tail(g.path)} must match one of these slices: copy its item exactly and replace <...> from the record`
+                      : "the listed slices are the IG's; required ones are in the skeleton",
+                }
+              : {}),
+            options:
+              lv.slices >= 1
+                ? g.options.map((o) => (lv.slices >= 2 ? [o.name, o.card, o.item] : [o.name, o.card, o.requires]))
+                : g.options.map((o) => (o.card.startsWith("0..") ? o.name : `${o.name} ${o.card}`)).join(", "),
+          },
+        ]),
+      );
+    }
+    if (literals.length) data.literals = literals;
     if (conditional.length) {
       data.conditional = conditional.map(rowOf);
       data.conditions = Object.fromEntries(Object.entries(conditionText).map(([k, t]) => [k, clip(t, lv.ruleLen || 60)]));
     }
     if (lv.rules > 0 && rules.length) {
       data.rules = rules.slice(0, lv.rules).map((r) => `${r.key}: ${clip(r.human || r.expression, lv.ruleLen)}`);
-      if (rules.length > lv.rules) data.more_rules = rules.slice(lv.rules).map((r) => r.key);
-    } else if (rules.length) data.more_rules = rules.map((r) => r.key);
+      if (rules.length > lv.rules && lv.moreRules !== false) data.more_rules = rules.slice(lv.rules).map((r) => r.key);
+    } else if (rules.length && lv.moreRules !== false) data.more_rules = rules.map((r) => r.key);
     data.examples = { instances: instances.length, distinct };
-    data.legend = LEGEND;
+    data.legend = LEGEND + (groups.length && lv.slices > 0 ? LEGEND_SLICES : "") + (literals.length ? LEGEND_LITERALS : "");
     data.omitted = tableRows.length - shown.length;
     if ((loaded.depsMissing || []).length) data.deps_missing = loaded.depsMissing;
     return data;
   };
   const limit = SKELETON_BUDGET - RESPONSE_MARGIN;
   const levels: Level[] = [
-    { pinnedList: true, displayLen: 24, codesCap: CODES_CAP, rules: 8, ruleLen: 140, howLen: 200, rows: Infinity },
-    { pinnedList: true, displayLen: 14, codesCap: CODES_CAP, rules: 6, ruleLen: 100, howLen: 160, rows: Infinity },
-    { pinnedList: false, displayLen: 14, codesCap: CODES_CAP, rules: 4, ruleLen: 90, howLen: 140, rows: Infinity },
-    { pinnedList: false, displayLen: 10, codesCap: CODES_CAP, rules: 2, ruleLen: 80, howLen: 120, rows: Infinity },
-    { pinnedList: false, displayLen: 8, codesCap: 10, rules: 0, ruleLen: 70, howLen: 100, rows: Infinity },
-    { pinnedList: false, displayLen: 6, codesCap: 8, rules: 0, ruleLen: 60, howLen: 90, rows: Infinity },
-    { pinnedList: false, displayLen: 0, codesCap: 8, rules: 0, ruleLen: 60, howLen: 80, rows: Infinity },
-    { pinnedList: false, displayLen: 0, codesCap: 6, rules: 0, ruleLen: 50, howLen: 70, rows: Infinity },
+    { pinnedList: true, displayLen: 24, codesCap: CODES_CAP, rules: 8, ruleLen: 140, howLen: 200, rows: Infinity, slices: 2 },
+    { pinnedList: true, displayLen: 14, codesCap: CODES_CAP, rules: 6, ruleLen: 100, howLen: 160, rows: Infinity, slices: 2 },
+    { pinnedList: false, displayLen: 14, codesCap: CODES_CAP, rules: 4, ruleLen: 90, howLen: 140, rows: Infinity, slices: 2 },
+    { pinnedList: false, displayLen: 10, codesCap: CODES_CAP, rules: 2, ruleLen: 80, howLen: 120, rows: Infinity, slices: 2 },
+    { pinnedList: false, displayLen: 8, codesCap: 10, rules: 0, ruleLen: 70, howLen: 100, rows: Infinity, slices: 2 },
+    { pinnedList: false, displayLen: 8, codesCap: 10, rules: 0, ruleLen: 70, howLen: 100, rows: Infinity, slices: 1 },
+    { pinnedList: false, displayLen: 6, codesCap: 8, rules: 0, ruleLen: 60, howLen: 90, rows: Infinity, slices: 1 },
+    { pinnedList: false, displayLen: 0, codesCap: 8, rules: 0, ruleLen: 60, howLen: 80, rows: Infinity, slices: 1 },
+    { pinnedList: false, displayLen: 0, codesCap: 6, rules: 0, ruleLen: 50, howLen: 70, rows: Infinity, slices: 1 },
+    { pinnedList: false, displayLen: 0, codesCap: 6, rules: 0, ruleLen: 50, howLen: 70, rows: Infinity, slices: 0 },
+    { pinnedList: false, displayLen: 0, codesCap: 6, rules: 0, ruleLen: 50, howLen: 70, rows: Infinity, slices: 0, moreRules: false },
   ];
   const total = items.filter((i) => !i.pinned).length + 1;
-  for (let n = total - 1; n >= 1; n--) levels.push({ pinnedList: false, displayLen: 0, codesCap: 4, rules: 0, ruleLen: 0, howLen: 70, rows: n });
+  for (let n = total - 1; n >= 1; n--) levels.push({ pinnedList: false, displayLen: 0, codesCap: 4, rules: 0, ruleLen: 0, howLen: 70, rows: n, slices: 0, moreRules: false });
   let data = build(levels[0]);
   let fitted = false;
   for (const lv of levels) {

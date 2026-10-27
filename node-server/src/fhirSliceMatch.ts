@@ -283,6 +283,38 @@ function short(v: unknown, n = 120): string {
   return s === undefined ? "undefined" : s.length > n ? `${s.slice(0, n - 1)}…` : s;
 }
 
+/** An expected (IG) value as shown in a detail: placeholder-like literals are marked as such. */
+function required(v: unknown, n = 120): string {
+  const out = short(v, n);
+  return placeholderLiterals(v).length ? `${out} (${LITERAL_NOTE})` : out;
+}
+
+// --------------------------------------------------------------------------- //
+// IG literals that look like placeholders (ISSUES_v16.1 R2)
+// --------------------------------------------------------------------------- //
+
+/** Said wherever a fixed / pattern value looks like a placeholder (`NNxxx`, `*`, `<…>`). */
+export const LITERAL_NOTE = "literal value required by the IG; copy as is";
+const RE_PLACEHOLDER_LIKE = /[xX]{2,}|\*|<[^<>]+>|\?{2,}|_{3,}/;
+
+/** True for a string a reader may take for a placeholder to replace (but which the IG requires verbatim). */
+export function looksLikePlaceholder(s: string): boolean {
+  return RE_PLACEHOLDER_LIKE.test(s);
+}
+
+/** The placeholder-like strings inside a fixed / pattern value (any depth; urls excluded). */
+export function placeholderLiterals(v: unknown): string[] {
+  const out: string[] = [];
+  const walk = (x: unknown): void => {
+    if (typeof x === "string") {
+      if (!/^[a-z][a-z0-9+.-]*:/i.test(x) && looksLikePlaceholder(x) && !out.includes(x)) out.push(x);
+    } else if (Array.isArray(x)) x.forEach(walk);
+    else if (isObj(x)) Object.values(x).forEach(walk);
+  };
+  walk(v);
+  return out;
+}
+
 // --------------------------------------------------------------------------- //
 // Profile affinity (cheap; no validation)
 // --------------------------------------------------------------------------- //
@@ -438,6 +470,31 @@ function expectationAt(E: Map<string, El>, sliceId: string, path: string): { kin
 }
 
 /**
+ * What an item must carry to match `slice` (ISSUES_v16.1 R3): per discriminator, the fixed / pattern
+ * value, the required ValueSet, or the allowed types / profiles — the list a writer picks from.
+ */
+export function sliceRequirements(E: Map<string, El>, slicing: Slicing, slice: SliceDef): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const d of slicing.discriminators) {
+    if (d.type === "profile" || d.type === "type") {
+      const info = typeInfo(elementAtPath(E, slice.id, d.path) ?? E.get(slice.id) ?? null);
+      const v = d.type === "type" ? info.types : info.profiles.map(stripVersion);
+      if (v.length) out[`${d.type}:${d.path}`] = v.length === 1 ? v[0] : v;
+      continue;
+    }
+    if (d.type === "exists") {
+      const el = elementAtPath(E, slice.id, d.path);
+      if (el) out[`exists:${d.path}`] = (el.min ?? 0) >= 1 ? true : String(el.max) === "0" ? false : "either";
+      continue;
+    }
+    const exp = expectationAt(E, slice.id, d.path);
+    if (!exp) continue;
+    out[d.path] = exp.kind === "binding" ? { valueSet: stripVersion(exp.valueSet) } : exp.values.length === 1 ? exp.values[0] : exp.values;
+  }
+  return out;
+}
+
+/**
  * Evaluate every discriminator of `slicing` for `item` against `slice`. `bundle` resolves
  * references (resolve()). Profile discriminators are scored with profileAffinity (cheap) and
  * returned in `needsConformance` — conformance itself is the caller's (validation) decision.
@@ -511,7 +568,7 @@ export async function checkItemAgainstSlice(
       for (const c of aff.checks.filter((x) => !x.ok).slice(0, 4)) {
         const at = `${d.path === "$this" ? "" : `${d.path.replace(/\.?resolve\(\)$/, "")}.`}${c.path}`;
         if (c.kind === "required") failed.push({ discriminator: label, reason: "value-missing", detail: `${c.path} is required by ${stripVersion(profile)} and absent`, path: at });
-        else failed.push({ discriminator: label, reason: c.actual === undefined ? "value-missing" : "pattern-differs", detail: c.actual === undefined ? `${c.path} must be ${short(c.expected)} (${c.kind} in ${stripVersion(profile)}) and is absent` : `${c.path} must match ${short(c.expected)} (${c.kind} in ${stripVersion(profile)}); found ${short(c.actual)}`, path: at, expected: c.expected, ...(c.actual !== undefined ? { actual: c.actual } : {}) });
+        else failed.push({ discriminator: label, reason: c.actual === undefined ? "value-missing" : "pattern-differs", detail: c.actual === undefined ? `${c.path} must be ${required(c.expected)} (${c.kind} in ${stripVersion(profile)}) and is absent` : `${c.path} must match ${required(c.expected)} (${c.kind} in ${stripVersion(profile)}); found ${short(c.actual)}`, path: at, expected: c.expected, ...(c.actual !== undefined ? { actual: c.actual } : {}) });
       }
       needs.push({ profile, target, relPath: d.path.replace(/\.?resolve\(\)$/, "") });
       continue;
@@ -550,7 +607,7 @@ export async function checkItemAgainstSlice(
     }
     const ok = values.some((v) => exp.values.some((e) => (exp.kind === "fixed" ? JSON.stringify(v) === JSON.stringify(e) : patternMatches(v, e))));
     if (ok) got++;
-    else failed.push({ discriminator: label, reason: values.length ? "pattern-differs" : "value-missing", detail: values.length ? `${d.path} is ${short(values.length === 1 ? values[0] : values)}; the slice requires ${short(exp.values.length === 1 ? exp.values[0] : exp.values)}` : `${d.path} is absent; the slice requires ${short(exp.values.length === 1 ? exp.values[0] : exp.values)}`, path: d.path, expected: exp.values.length === 1 ? exp.values[0] : exp.values, ...(values.length ? { actual: values.length === 1 ? values[0] : values } : {}) });
+    else failed.push({ discriminator: label, reason: values.length ? "pattern-differs" : "value-missing", detail: values.length ? `${d.path} is ${short(values.length === 1 ? values[0] : values)}; the slice requires ${required(exp.values.length === 1 ? exp.values[0] : exp.values)}` : `${d.path} is absent; the slice requires ${required(exp.values.length === 1 ? exp.values[0] : exp.values)}`, path: d.path, expected: exp.values.length === 1 ? exp.values[0] : exp.values, ...(values.length ? { actual: values.length === 1 ? values[0] : values } : {}) });
   }
   const score = total > 0 ? Math.round((got / total) * 1000) / 1000 : 0;
   return { slice, profiles: [...new Set(profiles)], score, failed, needsConformance: needs };

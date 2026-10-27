@@ -1579,10 +1579,10 @@ export class FHIRIGService {
     pkg: PackageRow,
     valueSet: string | null,
     system: string | null,
-  ): Promise<{ targets: Array<{ system: string; kind: string }>; scopeIds: Record<string, number[]>; warnings: string[]; locations: Map<string, CsLocation> }> {
+  ): Promise<{ targets: Array<{ system: string; kind: string }>; scopeIds: Record<string, Array<string | number>>; warnings: string[]; locations: Map<string, CsLocation> }> {
     const warnings: string[] = [];
     const targets: Array<{ system: string; kind: string }> = [];
-    const scopeIds: Record<string, number[]> = {};
+    const scopeIds: Record<string, Array<string | number>> = {};
     // IG CodeSystems resolved from an id / alias (possibly outside pkg's closure, e.g. a PAS
     // CodeSystem named while TW Core is the default IG): searched where they were found.
     const locations = new Map<string, CsLocation>();
@@ -1609,17 +1609,32 @@ export class FHIRIGService {
       if (vs === null) {
         warnings.push(`ValueSet not found: ${valueSet}`);
       } else {
+        // SNOMED CT is searched within the ValueSet: is-a / descendent-of filters and enumerated
+        // concepts (ISSUES_v16.1 R4). An include that names the whole system (or a filter this cannot
+        // scope) lifts the restriction — the search then covers the system.
+        let snomedUnscoped = false;
         for (const inc of (vs.compose || {}).include || []) {
           const sys_ = inc.system;
           addTarget(sys_);
-          for (const f of inc.filter || []) {
-            if (sys_ === terminology.SNOMED_SYSTEM && ["is-a", "descendent-of"].includes(f.op)) {
-              const ids = await terminology.snomedDescendants(f.value, 5000);
+          if (sys_ !== terminology.SNOMED_SYSTEM) continue;
+          const filters: Array<{ op?: string; value?: string }> = inc.filter || [];
+          const concepts: Array<{ code?: string }> = inc.concept || [];
+          if (!filters.length && !concepts.length) snomedUnscoped = true;
+          for (const f of filters) {
+            if (["is-a", "descendent-of"].includes(String(f.op))) {
+              const ids = await terminology.snomedDescendants(String(f.value), 5000);
               if (!scopeIds[sys_]) scopeIds[sys_] = [];
               pushAll(scopeIds[sys_], ids);
-            }
+            } else snomedUnscoped = true;
+          }
+          // ids kept as strings (18-digit SNOMED ids exceed a JS number; the SQL takes text)
+          const listed = concepts.map((c) => String(c.code ?? "")).filter((c) => /^\d+$/.test(c));
+          if (listed.length) {
+            if (!scopeIds[sys_]) scopeIds[sys_] = [];
+            pushAll(scopeIds[sys_], listed);
           }
         }
+        if (snomedUnscoped) delete scopeIds[terminology.SNOMED_SYSTEM];
       }
     }
     return { targets, scopeIds, warnings, locations };
@@ -1667,7 +1682,7 @@ export class FHIRIGService {
     pkg: PackageRow,
     target: { system: string; kind: string },
     text: string,
-    scopeIds: number[] | undefined,
+    scopeIds: Array<string | number> | undefined,
     limit: number,
   ): Promise<Array<[string, string, any]>> {
     const kind = target.kind;
@@ -1702,7 +1717,7 @@ export class FHIRIGService {
   private async normalizeHybrid(
     target: { system: string; kind: string },
     text: string,
-    scopeIds: number[] | undefined,
+    scopeIds: Array<string | number> | undefined,
     limit: number,
   ): Promise<Array<Record<string, unknown>>> {
     const kind = target.kind;
