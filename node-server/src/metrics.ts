@@ -13,9 +13,13 @@
  */
 
 import http from "node:http";
-import { Counter, Gauge, Histogram, register } from "prom-client";
+import { collectDefaultMetrics, Counter, Gauge, Histogram, register } from "prom-client";
 import { config } from "./config.js";
 import { logError, logInfo } from "./logger.js";
+import { heavyToolGate } from "./toolConcurrency.js";
+
+// ops-v1 O6: process memory / CPU / event-loop lag / GC (nodejs_heap_size_used_bytes, process_resident_memory_bytes, …)
+collectDefaultMetrics();
 
 export const toolRequests = new Counter({
   name: "mcp_tool_requests_total",
@@ -27,7 +31,25 @@ export const toolDuration = new Histogram({
   name: "mcp_tool_duration_seconds",
   help: "MCP tool execution latency",
   labelNames: ["tool"] as const,
-  buckets: [0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0],
+  // ops-v1 O6: up to 2 min — Bundle validation / finalisation under load runs past 10 s
+  buckets: [0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 20.0, 30.0, 60.0, 120.0],
+});
+
+/** ops-v1 O4 / O6: the heavy-tool gate (toolConcurrency.ts), read at scrape time. */
+export const heavyToolsRunning = new Gauge({
+  name: "mcp_heavy_tools_running",
+  help: "Heavy tool calls holding a concurrency slot",
+  collect() {
+    this.set(heavyToolGate().stats().running);
+  },
+});
+
+export const heavyToolsQueued = new Gauge({
+  name: "mcp_heavy_tools_queued",
+  help: "Heavy tool calls waiting for a concurrency slot",
+  collect() {
+    this.set(heavyToolGate().stats().queued);
+  },
 });
 
 export const cacheOps = new Counter({

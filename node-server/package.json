@@ -12,7 +12,8 @@
     "start": "node dist/server.js",
     "dev": "tsx watch src/server.ts",
     "typecheck": "tsc -p tsconfig.dev.json --noEmit",
-    "test": "node --import tsx --test 'src/**/*.test.ts'"
+    "test": "node --import tsx --test 'src/**/*.test.ts'",
+    "test:safe": "sh scripts/dev/run-limited.sh node --import tsx --test --test-concurrency=1 'src/**/*.test.ts'"
   },
   "dependencies": {
     "@lhncbc/ucum-lhc": "7.1.9",

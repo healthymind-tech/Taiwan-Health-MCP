@@ -9,6 +9,7 @@
  * As L1 tools are ported they get registered here alongside `health_check`.
  */
 
+import { withConcurrencyLimit } from "./toolConcurrency.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
@@ -336,7 +337,8 @@ export function captureToolRegistrations(server: McpServer, into: Map<string, Re
   (server as any).registerTool = (name: string, config: any, handler: any) => {
     const instrumented = withToolMetrics(
       name,
-      withToolErrorBoundary(name, withMaintenanceGate(name, handler as (...a: unknown[]) => Promise<unknown>)),
+      // ops-v1 O4: heavy tools wait for a slot of the process-wide gate (or answer BUSY) — counted by the metrics
+      withConcurrencyLimit(name, withToolErrorBoundary(name, withMaintenanceGate(name, handler as (...a: unknown[]) => Promise<unknown>))),
     );
     into.set(name, {
       name,

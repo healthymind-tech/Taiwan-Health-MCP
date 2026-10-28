@@ -2,10 +2,25 @@ services:
   postgres:
     image: pgvector/pgvector:pg16
     container_name: taiwanHealthMcp_postgres
+    # ops-v1 O3: per-container memory cap (an OOM restarts this container only); no swap use.
+    mem_limit: ${PG_MEM_LIMIT:-6g}
+    memswap_limit: ${PG_MEM_LIMIT:-6g}
     # Docker's 64 MB default is too small for parallel HNSW builds / parallel queries.
     shm_size: 1gb
     # autoprewarm: restore the buffer cache (SNOMED HNSW index etc.) after a restart.
-    command: ["postgres", "-c", "shared_preload_libraries=pg_prewarm", "-c", "pg_prewarm.autoprewarm=true"]
+    # ops-v1 O2: memory set here (command line wins over postgresql.auto.conf); sized for a host without swap.
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=pg_prewarm
+      - -c
+      - pg_prewarm.autoprewarm=true
+      - -c
+      - shared_buffers=${PG_SHARED_BUFFERS:-2560MB}
+      - -c
+      - maintenance_work_mem=${PG_MAINTENANCE_WORK_MEM:-512MB}
+      - -c
+      - effective_cache_size=${PG_EFFECTIVE_CACHE_SIZE:-6GB}
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-taiwan_health}
       POSTGRES_USER: ${POSTGRES_USER:-mcp}
@@ -25,6 +40,9 @@ services:
   pgbouncer:
     image: edoburu/pgbouncer:latest
     container_name: taiwanHealthMcp_pgbouncer
+    # ops-v1 O3: per-container memory cap (an OOM restarts this container only); no swap use.
+    mem_limit: ${PGBOUNCER_MEM_LIMIT:-256m}
+    memswap_limit: ${PGBOUNCER_MEM_LIMIT:-256m}
     environment:
       DB_USER: ${POSTGRES_USER:-mcp}
       DB_PASSWORD: ${POSTGRES_PASSWORD}
@@ -56,6 +74,9 @@ services:
   redis:
     image: redis:7-alpine
     container_name: taiwanHealthMcp_redis
+    # ops-v1 O3: per-container memory cap (an OOM restarts this container only); no swap use.
+    mem_limit: ${REDIS_MEM_LIMIT:-768m}
+    memswap_limit: ${REDIS_MEM_LIMIT:-768m}
     command: redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru --save ""
     volumes:
       - redis_data:/data
@@ -71,6 +92,9 @@ services:
   minio:
     image: minio/minio:RELEASE.2025-04-22T22-12-26Z
     container_name: taiwanHealthMcp_minio
+    # ops-v1 O3: per-container memory cap (an OOM restarts this container only); no swap use.
+    mem_limit: ${MINIO_MEM_LIMIT:-1g}
+    memswap_limit: ${MINIO_MEM_LIMIT:-1g}
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
@@ -97,6 +121,9 @@ services:
       args:
         BUILD_SHA: ${BUILD_SHA:-dev}
     container_name: taiwanHealthMcp
+    # ops-v1 O3: per-container memory cap (an OOM restarts this container only); no swap use.
+    mem_limit: ${APP_MEM_LIMIT:-5g}
+    memswap_limit: ${APP_MEM_LIMIT:-5g}
     # `ocr`: internal network shared with ocr-indra only.
     networks:
       - default
@@ -151,6 +178,12 @@ services:
       - DRUG_TFDA_BASE_URL=${DRUG_TFDA_BASE_URL:-https://mcp.fda.gov.tw}
       - DRUG_HTTP_TIMEOUT=${DRUG_HTTP_TIMEOUT:-30}
       - DRUG_CRAWLER_CONCURRENCY=${DRUG_CRAWLER_CONCURRENCY:-4}
+      # ops-v1 O3: V8 heap below the container cap (APP_MEM_LIMIT) so Node fails before the cgroup OOMs.
+      - NODE_OPTIONS=--max-old-space-size=${APP_MAX_OLD_SPACE_MB:-3584}
+      # ops-v1 O4: concurrent heavy calls (validate / finalize / author / assemble / grounding); excess wait, then BUSY.
+      - MCP_HEAVY_TOOL_CONCURRENCY=${MCP_HEAVY_TOOL_CONCURRENCY:-4}
+      - MCP_HEAVY_TOOL_QUEUE_TIMEOUT_MS=${MCP_HEAVY_TOOL_QUEUE_TIMEOUT_MS:-60000}
+      - MCP_HEAVY_TOOL_MAX_QUEUE=${MCP_HEAVY_TOOL_MAX_QUEUE:-32}
     depends_on:
       pgbouncer:
         condition: service_healthy
@@ -189,6 +222,9 @@ services:
       args:
         BUILD_SHA: ${BUILD_SHA:-dev}
     container_name: taiwanHealthMcp_admin_worker
+    # ops-v1 O3: per-container memory cap (an OOM restarts this container only); no swap use.
+    mem_limit: ${WORKER_MEM_LIMIT:-9g}
+    memswap_limit: ${WORKER_MEM_LIMIT:-9g}
     # CMD in Dockerfile.worker runs `node dist/admin/adminWorker.js`.
     networks:
       - default
@@ -217,8 +253,8 @@ services:
       - MINIO_PRESIGN_TTL_SECONDS=${MINIO_PRESIGN_TTL_SECONDS:-3600}
       # Headroom for the big imports: the drug index is a 44 MB / ~66k-row CSV, and
       # an IG import pulls in dependency packages as large as hl7.fhir.r4.examples.
-      # Node's own default (~4 GB) is not enough for the latter.
-      - NODE_OPTIONS=--max-old-space-size=8192
+      # Node's own default (~4 GB) is not enough for the latter. ops-v1 O3: kept below WORKER_MEM_LIMIT.
+      - NODE_OPTIONS=--max-old-space-size=${WORKER_MAX_OLD_SPACE_MB:-8192}
     depends_on:
       pgbouncer:
         condition: service_healthy
@@ -275,6 +311,9 @@ services:
       context: ./web-v2
     image: taiwan-health-mcp-web-v2:latest
     container_name: taiwanHealthMcp_web_v2
+    # ops-v1 O3: per-container memory cap (an OOM restarts this container only); no swap use.
+    mem_limit: ${WEB_MEM_LIMIT:-256m}
+    memswap_limit: ${WEB_MEM_LIMIT:-256m}
     restart: unless-stopped
     environment:
       - BACKEND_UPSTREAM=app:${MCP_PORT:-8000}
@@ -304,6 +343,9 @@ services:
   nginx:
     image: nginx:1.27-alpine
     container_name: taiwanHealthMcp_nginx
+    # ops-v1 O3: per-container memory cap (an OOM restarts this container only); no swap use.
+    mem_limit: ${NGINX_MEM_LIMIT:-256m}
+    memswap_limit: ${NGINX_MEM_LIMIT:-256m}
     restart: unless-stopped
     ports:
       - "${WEB_PORT:-8080}:80"
