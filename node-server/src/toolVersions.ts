@@ -194,8 +194,9 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   failure details and hints. Issue set, severities, messages, valid unchanged.
   // 1.19.0 (ISSUES_v16.2 R3, fhirSuggestions/invariants.ts): a failed profile invariant (`Constraint failed: <key>`)
   //   carries `invariant`: {key, need all | one_of, applies_because (the guard of `guard implies …`), failed: the false
-  //   parts with the missing path and — for an extension test — its url, value type and the JSON to write, hint}.
-  //   Issue set, severities, messages, valid unchanged.
+  //   parts with the missing path and — for an extension test — its url, value type and the JSON to write, hint}; also
+  //   on the failed-invariant `blocking` errors of slice_match / profile_match (in a Bundle a broken rule of an entry is
+  //   often reported only there). Issue set, severities, messages, valid unchanged.
   fhir_validate_bundle: "1.19.0",
   // 1.6.2: the binding-aware suggestions above (ISSUES_v10 A) also apply to single-resource validation.
   // 1.7.0: the validator v13 rules above (fhir_validate_bundle 1.9.0).

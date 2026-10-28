@@ -72,3 +72,25 @@ for (const ig of ["pas"]) {
     assert.ok(checked >= 1, "at least one example Claim checked");
   });
 }
+
+for (const ig of ["pas"]) {
+  test(`R3 ${ig}: in a Bundle the broken rule is a blocking error of slice_match — it is explained there too`, { skip: !available(ig), timeout: 600_000 }, async () => {
+    const pk = packages(ig);
+    let checked = 0;
+    for (const [, b0] of exampleBundles(ig, 2)) {
+      const b = JSON.parse(JSON.stringify(b0));
+      const claim = (b.entry as any[]).map((e) => e.resource).find((r) => r?.resourceType === "Claim" && Array.isArray(r.diagnosis));
+      const d1 = claim?.diagnosis?.find((d: any) => d.sequence === 1 && Array.isArray(d.extension));
+      if (!d1) continue;
+      delete d1.extension;
+      const issues = (await new InstanceValidator(pk.resolver()).validate(b, {})) as any[];
+      await attachSuggestions(issues, b, pk.suggestionDeps());
+      const blocking = issues.flatMap((i) => (i.slice_match?.blocking ?? []) as any[]).filter((x) => /^Constraint failed: diagnosis:/.test(x.message));
+      if (!blocking.length) continue;
+      assert.ok(blocking[0].invariant?.failed?.some((p: any) => /diagnosisRecordedDate$/.test(p.extension?.url ?? "")), JSON.stringify(blocking[0]));
+      checked++;
+      break;
+    }
+    assert.ok(checked >= 1, "a Bundle whose Claim's diagnosis rule shows up as a blocking error");
+  });
+}
