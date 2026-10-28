@@ -72,6 +72,16 @@ export function dbFieldsDeps(): FieldsDeps {
             )
           ).rows[0] ?? null;
         if (!row) row = (await fhirIg.resolveCanonical(profile, pkg.package_id, pkg.version)) as Record<string, any> | null;
+        if (!row) {
+          // a short id of a dependency package's profile (ISSUES_v16.2 R1)
+          const hit = await fhirIg.resolveIdInClosure(profile, pkg.package_id, pkg.version, "StructureDefinition");
+          if (hit.row) row = hit.row as Record<string, any>;
+          else if (hit.candidates.length) {
+            throw new AuthoringFieldsError("AMBIGUOUS_ARTIFACT", `profile id '${profile}' names ${hit.candidates.length} profiles in ${pkg.package_id}#${pkg.version} and its dependencies: pass one canonical`, {
+              candidates: hit.candidates,
+            });
+          }
+        }
       }
       if (!row) throw new AuthoringFieldsError("ARTIFACT_NOT_FOUND", `profile not found: ${profile}`);
       const sd = jsonValue(row.raw_json);

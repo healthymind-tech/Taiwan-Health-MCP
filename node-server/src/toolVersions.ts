@@ -44,7 +44,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // format, Bundle.type when the StructureDefinition fixes it, document / message entry order, required Bundle elements and
   // entry slices) generated from the FHIR R4 core rules + the StructureDefinition. Other profiles unchanged.
   // 1.4.1: bundle_rules.bundle_type names fhir_finalize_bundle's bundle_type argument (sets a free type; cannot override a fixed one).
-  fhir_get_profile_required_elements: "1.4.1",
+  // 1.4.2 (ISSUES_v16.2 R1): a short artifact id that is not in the IG itself resolves in its dependency packages (one distinct canonical; otherwise not found / AMBIGUOUS_ARTIFACT with the candidates) — previously ARTIFACT_NOT_FOUND.
+  fhir_get_profile_required_elements: "1.4.2",
   // 1.1.0 (lexicon tw-lexicon 0.3.0, issues v1): time-only evidence takes the date in force at its line;
   // whole-label stated-absent concepts (出生地 is not the birth date) and no stated-absent when the record states
   // the patient field; zh/en department / setting aliases with whole-token short forms (ED / ER / OPD / ICU);
@@ -191,7 +192,11 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   discriminators require) when no slice is close or several are about as close, and `literals`; a fixed / pattern
   //   value that looks like a placeholder (NNxxx, *, <…>) is marked "literal value required by the IG; copy as is" in
   //   failure details and hints. Issue set, severities, messages, valid unchanged.
-  fhir_validate_bundle: "1.18.0",
+  // 1.19.0 (ISSUES_v16.2 R3, fhirSuggestions/invariants.ts): a failed profile invariant (`Constraint failed: <key>`)
+  //   carries `invariant`: {key, need all | one_of, applies_because (the guard of `guard implies …`), failed: the false
+  //   parts with the missing path and — for an extension test — its url, value type and the JSON to write, hint}.
+  //   Issue set, severities, messages, valid unchanged.
+  fhir_validate_bundle: "1.19.0",
   // 1.6.2: the binding-aware suggestions above (ISSUES_v10 A) also apply to single-resource validation.
   // 1.7.0: the validator v13 rules above (fhir_validate_bundle 1.9.0).
   // 1.8.0 (ISSUES_v15): the record checks of fhir_validate_bundle 1.11.0 on the resource (data.issues, data.record_checks).
@@ -206,7 +211,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.13.1: the R3 and result-slot note changes of fhir_validate_bundle 1.16.1.
   // 1.14.0 (ISSUES_v16 R3): the slice / profile-match explanations of fhir_validate_bundle 1.17.0 (slice_match / profile_match, set_profile / add_resource).
   // 1.15.0: the slice_match options / literals of fhir_validate_bundle 1.18.0.
-  fhir_validate_resource: "1.15.0",
+  // 1.16.0: the invariant explanations of fhir_validate_bundle 1.19.0.
+  fhir_validate_resource: "1.16.0",
   // 1.2.0 (all below): provenance.resolved_by / closure_versions; canonical arguments resolve to their
   // owning package when package_id is omitted; "|version" honoured; list/search: all_packages + zero-hit hint;
   // NO_DEFAULT_IG instead of an arbitrary package when no default IG is set.
@@ -218,10 +224,14 @@ export const TOOLS_VERSION: Record<string, string> = {
   fhir_search_artifacts: "1.3.0",
   fhir_list_resource_profiles: "1.3.0",
   fhir_rank_resource_profiles: "1.2.1",
-  fhir_get_profile: "1.2.1",
-  fhir_get_profile_elements: "1.2.1",
-  fhir_get_valueset: "1.2.1",
-  fhir_expand_valueset: "1.2.1",
+  // 1.2.2 (ISSUES_v16.2 R1): a short artifact id that is not in the IG itself resolves in its dependency packages (one distinct canonical; otherwise not found / AMBIGUOUS_ARTIFACT with the candidates) — previously ARTIFACT_NOT_FOUND.
+  fhir_get_profile: "1.2.2",
+  // 1.2.2 (ISSUES_v16.2 R1): a short artifact id that is not in the IG itself resolves in its dependency packages (one distinct canonical; otherwise not found / AMBIGUOUS_ARTIFACT with the candidates) — previously ARTIFACT_NOT_FOUND.
+  fhir_get_profile_elements: "1.2.2",
+  // 1.2.2 (ISSUES_v16.2 R1): a short artifact id that is not in the IG itself resolves in its dependency packages (one distinct canonical; otherwise not found / AMBIGUOUS_ARTIFACT with the candidates) — previously ARTIFACT_NOT_FOUND.
+  fhir_get_valueset: "1.2.2",
+  // 1.2.2 (ISSUES_v16.2 R1): a short artifact id that is not in the IG itself resolves in its dependency packages (one distinct canonical; otherwise not found / AMBIGUOUS_ARTIFACT with the candidates) — previously ARTIFACT_NOT_FOUND.
+  fhir_expand_valueset: "1.2.2",
   // 1.3.0: found:false adds `hint` (use fhir_normalize_code with the system) and `near_codes` (IG CodeSystems).
   // 1.3.2: RxNorm codes (http://www.nlm.nih.gov/research/umls/rxnorm) are looked up in rxnorm.concepts (was: not found).
   // 1.4.0 (ISSUES_v15.2 R1 / R3): `accepted_by_validator` (+ `reason`); a code missing from the package's excerpt but defined in a
@@ -265,7 +275,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   concepts as well as its is-a / descendent-of filters (an enumerated-only ValueSet such as a department list was
   //   searched over all of SNOMED CT); an include naming the whole system, or a filter that cannot be scoped, lifts it.
   fhir_normalize_code: "1.10.0",
-  fhir_get_resource_skeleton: "1.2.1",
+  // 1.2.2 (ISSUES_v16.2 R1): a short artifact id that is not in the IG itself resolves in its dependency packages (one distinct canonical; otherwise not found / AMBIGUOUS_ARTIFACT with the candidates) — previously ARTIFACT_NOT_FOUND.
+  fhir_get_resource_skeleton: "1.2.2",
   // 1.3.0: validation issues carry `suggestions` / `caused_by` (as fhir_validate_resource 1.6.0).
   // 1.3.1: validation as fhir_validate_resource 1.6.1 (unknown hl7.org/fhir code systems, reference whitespace,
   //   RxNorm different-drug displays, lookup-failure / crash issues).
@@ -306,7 +317,9 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.11.1: data.validation's record checks as fhir_validate_resource 1.13.1 — the v15.3 result-slot note rule (an Observation with no value[x] whose note says there is no result while its code needs a quantitative one) is a WARNING without source_text (was an error; consistent with the v15.4 empty-shell rule), still an error with it.
   // 1.12.0 (ISSUES_v16): R4 content repair: empty arrays removed (ele-1), resourceType inferred from a meta.profile string, errors a lossless reshape only makes visible (a now-readable value / a resource now checked against its declared profile) no longer withdraw the reshape; validation as fhir_validate_resource 1.14.0.
   // 1.13.0: data.validation as fhir_validate_resource 1.15.0 (slice_match options / literals).
-  fhir_finalize_resource: "1.13.0",
+  // 1.14.0: data.validation as fhir_validate_resource 1.16.0 (invariant explanations); a short profile id
+  //   resolves in the dependency packages (fhir_get_profile 1.2.2).
+  fhir_finalize_resource: "1.14.0",
   // 1.0.0 (authoring/, evaluation v11): the model gives field VALUES, the MCP composes the resource for its profile
   //   (fixed / pattern / defaults / derived / displays / UCUM / ROC dates), validates it, keeps it in a Redis context
   //   (`authoring:ctx:*`, 60-min idle TTL) and assembles the Bundle from keys with deterministic urn:uuid fullUrls
@@ -320,12 +333,14 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   example (Encounter.diagnosis); a direct reference to one goes to `more` with `targets` (Encounter.reasonReference,
   //   Condition.encounter, Observation.hasMember …). The size budget applies to the WHOLE response (envelope, warnings,
   //   provenance; non-ASCII counted as \uXXXX) minus a 150-char margin; new data.response_chars.
-  fhir_get_authoring_fields: "1.2.0",
+  // 1.2.1 (ISSUES_v16.2 R1): a short artifact id that is not in the IG itself resolves in its dependency packages (one distinct canonical; otherwise not found / AMBIGUOUS_ARTIFACT with the candidates) — previously ARTIFACT_NOT_FOUND.
+  fhir_get_authoring_fields: "1.2.1",
   // 1.0.0 (ISSUES_v16 R1, igBlueprint/blueprint.ts): a Bundle profile's blueprint — entry slices (min..max, profile), slicing
   //   discriminator / closed / ordered, Bundle.type, the references between slices that the slice profiles require (also in
   //   extensions and sliced backbones, targets matched through profile derivation) and a recipe; <= 4,000 characters
   //   (`omitted`), view='references' for every reference line. IG-agnostic.
-  fhir_get_bundle_blueprint: "1.0.0",
+  // 1.0.1 (ISSUES_v16.2 R1): a short artifact id that is not in the IG itself resolves in its dependency packages (one distinct canonical; otherwise not found / AMBIGUOUS_ARTIFACT with the candidates) — previously ARTIFACT_NOT_FOUND.
+  fhir_get_bundle_blueprint: "1.0.1",
   // 1.0.0 (ISSUES_v16 R2, igBlueprint/skeleton.ts): a profile's minimal legal instance (every required element recursively,
   //   required slices, extensions expanded from their definitions, fixed / pattern filled in) and a value_source per required
   //   element (ig-constant: fixed / pattern or identical in >= 2 of the IG's example instances, eligibility by resource kind;
@@ -338,7 +353,11 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   no slice); (R2) `literals`: placeholder-looking IG values (NNxxx) to copy verbatim; (R4) a CodeableConcept with a
   //   required coding slice, and a large required binding, name fhir_normalize_code(text, value_set=<canonical>); compact
   //   levels merge rows with the same source / how (paths joined by ", ") and shorten `slices` (requirements, then names).
-  fhir_get_minimal_skeleton: "1.1.0",
+  // 1.2.0 (ISSUES_v16.2): (R1) a short profile id resolves in the IG's dependency packages (AMBIGUOUS_ARTIFACT
+  //   with candidates when it names several); (R2) the codes of a small binding always carry their display
+  //   (`code=display`, clipped to >= 8 characters — never dropped at compact levels); compact levels fold the
+  //   reference rows into one ("fullUrl of the target entry (named in the skeleton)").
+  fhir_get_minimal_skeleton: "1.2.0",
   // 1.1.0 (evaluation feedback): (1) a model display the validator's terminology rule rejects for a resolvable code is
   //   replaced by the code's display (provenance lookup; the model wording moves to CodeableConcept.text when empty;
   //   case-only differences are valid, whitespace-only ones take the valid spelling); (2) a single object / scalar where
@@ -386,7 +405,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.9.1: validation as fhir_validate_resource 1.13.1 — the v15.3 result-slot note rule (an Observation with no value[x] whose note says there is no result while its code needs a quantitative one) is a WARNING without source_text (was an error; consistent with the v15.4 empty-shell rule), still an error with it.
   // 1.10.0 (ISSUES_v16): validation issues as fhir_validate_resource 1.14.0 (slice_match / profile_match).
   // 1.11.0: validation issues as fhir_validate_resource 1.15.0 (slice_match options / literals).
-  fhir_author_resources: "1.11.0",
+  // 1.12.0: validation issues as fhir_validate_resource 1.16.0 (invariant explanations).
+  fhir_author_resources: "1.12.0",
   // 1.0.1: action=get results carry the author result's new `notes` (fhir_author_resources 1.1.0); otherwise unchanged.
   fhir_context: "1.0.1",
   // 1.1.0: new `site_config` (merged with the context's) passed to the grounding engine with source_text, so facility
@@ -420,7 +440,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   placement, `missing` required slices (what to author — never invented), `excess` (max) and `unmatched` (closed slicing);
   //   content repairs as fhir_finalize_bundle 1.8.0, validation as fhir_validate_bundle 1.17.0.
   // 1.11.0: validation as fhir_validate_bundle 1.18.0 (slice_match options / literals).
-  fhir_assemble_bundle: "1.11.0",
+  // 1.12.0: validation as fhir_validate_bundle 1.19.0 (invariant explanations).
+  fhir_assemble_bundle: "1.12.0",
   // 1.0.0 (ISSUES_v9 R1): deterministic Bundle finalizer — fullUrl-uuid / reference-rewire / resource-id (mandatory),
   // bundle-type / document-order (profile-driven); UUID v5 seeded by (resourceType, original fullUrl, resource.id, entry
   // index) + a content salt; references found through StructureDefinition snapshots; duplicates / ambiguity reported.

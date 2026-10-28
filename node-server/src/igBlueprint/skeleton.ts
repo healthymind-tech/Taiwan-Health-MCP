@@ -98,6 +98,8 @@ export interface SkeletonItem {
   placeholder?: unknown;
   /** Example-derived constant: value + basis. */
   exampleBasis?: string;
+  /** Shorter how for the compact levels (shared by similar rows, which then merge into one). */
+  compactHow?: string;
 }
 
 /** Administrative entities (FHIR R4 "Entities"), not persons: their example instances may be IG-level constants. */
@@ -506,6 +508,7 @@ async function classify(ctx: ClassifyCtx, row: RequiredElementRow, inheritedBind
     const targets = referenceTargets(el);
     item.source = "derivable";
     item.how = `fullUrl of the ${targets.length ? targets.slice(0, 3).join(" | ") : "target"} entry`;
+    item.compactHow = "fullUrl of the target entry (named in the skeleton)";
     item.placeholder = { reference: `<fullUrl of ${targets[0] ?? "target"}>` };
     return item;
   }
@@ -1080,7 +1083,7 @@ export async function minimalSkeleton(req: SkeletonRequest, deps: BlueprintDeps)
       );
     }
     const rowOf = (i: SkeletonItem): [string, ValueSource, string] => {
-      let how = clip(i.how, lv.howLen);
+      let how = clip(!lv.pinnedList && i.compactHow ? i.compactHow : i.how, lv.howLen);
       if (i.codes && i.codes.length) {
         const shown = i.codes.slice(0, lv.codesCap);
         const more = i.codes.length - shown.length + (i.codesMore ?? 0);
@@ -1158,14 +1161,14 @@ export async function minimalSkeleton(req: SkeletonRequest, deps: BlueprintDeps)
     { pinnedList: false, displayLen: 10, codesCap: CODES_CAP, rules: 2, ruleLen: 80, howLen: 120, rows: Infinity, slices: 2 },
     { pinnedList: false, displayLen: 8, codesCap: 10, rules: 0, ruleLen: 70, howLen: 100, rows: Infinity, slices: 2 },
     { pinnedList: false, displayLen: 8, codesCap: 10, rules: 0, ruleLen: 70, howLen: 100, rows: Infinity, slices: 1 },
-    { pinnedList: false, displayLen: 6, codesCap: 8, rules: 0, ruleLen: 60, howLen: 90, rows: Infinity, slices: 1 },
-    { pinnedList: false, displayLen: 0, codesCap: 8, rules: 0, ruleLen: 60, howLen: 80, rows: Infinity, slices: 1 },
-    { pinnedList: false, displayLen: 0, codesCap: 6, rules: 0, ruleLen: 50, howLen: 70, rows: Infinity, slices: 1 },
-    { pinnedList: false, displayLen: 0, codesCap: 6, rules: 0, ruleLen: 50, howLen: 70, rows: Infinity, slices: 0 },
-    { pinnedList: false, displayLen: 0, codesCap: 6, rules: 0, ruleLen: 50, howLen: 70, rows: Infinity, slices: 0, moreRules: false },
+    { pinnedList: false, displayLen: 8, codesCap: 8, rules: 0, ruleLen: 60, howLen: 90, rows: Infinity, slices: 1 },
+    { pinnedList: false, displayLen: 8, codesCap: 8, rules: 0, ruleLen: 60, howLen: 80, rows: Infinity, slices: 1 },
+    { pinnedList: false, displayLen: 8, codesCap: 6, rules: 0, ruleLen: 50, howLen: 70, rows: Infinity, slices: 1 },
+    { pinnedList: false, displayLen: 8, codesCap: 6, rules: 0, ruleLen: 50, howLen: 70, rows: Infinity, slices: 0 },
+    { pinnedList: false, displayLen: 8, codesCap: 6, rules: 0, ruleLen: 50, howLen: 70, rows: Infinity, slices: 0, moreRules: false },
   ];
   const total = items.filter((i) => !i.pinned).length + 1;
-  for (let n = total - 1; n >= 1; n--) levels.push({ pinnedList: false, displayLen: 0, codesCap: 4, rules: 0, ruleLen: 0, howLen: 70, rows: n, slices: 0, moreRules: false });
+  for (let n = total - 1; n >= 1; n--) levels.push({ pinnedList: false, displayLen: 8, codesCap: 4, rules: 0, ruleLen: 0, howLen: 70, rows: n, slices: 0, moreRules: false });
   let data = build(levels[0]);
   let fitted = false;
   for (const lv of levels) {

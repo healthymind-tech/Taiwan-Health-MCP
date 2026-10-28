@@ -477,6 +477,40 @@ export async function resolveCanonical(
   return row ?? null;
 }
 
+/**
+ * ISSUES_v16.2 R1: an artifact named by its short id (or artifact key) anywhere in the closure of
+ * (packageId, packageVersion) — the IG itself first, then its dependencies. One distinct canonical
+ * → `row`; several (the same id in two packages for different canonicals) → `candidates` (closure
+ * order), never an arbitrary pick. Optionally restricted to one resource type.
+ */
+export async function resolveIdInClosure(
+  identifier: string,
+  packageId: string,
+  packageVersion: string,
+  resourceType: string | null = null,
+): Promise<{ row: Record<string, unknown> | null; candidates: Array<{ canonical: string; package: string }> }> {
+  const { closure } = await packageClosureInfo(packageId, packageVersion);
+  if (!closure.length || !identifier || identifier.includes("/")) return { row: null, candidates: [] };
+  const rows = (
+    await runQuery(
+      "SELECT a.*, dep.ord FROM fhir.artifacts a " +
+        "JOIN unnest($1::text[], $2::text[]) WITH ORDINALITY AS dep(pid, pver, ord) ON a.package_id = dep.pid AND a.package_version = dep.pver " +
+        "WHERE (a.artifact_id = $3 OR a.artifact_key = $3) AND ($4::text IS NULL OR a.resource_type = $4) ORDER BY dep.ord LIMIT 20",
+      [closure.map((c) => c[0]), closure.map((c) => c[1]), identifier, resourceType],
+    )
+  ).rows as Array<Record<string, any>>;
+  const byCanonical = new Map<string, Record<string, any>>();
+  for (const r of rows) {
+    const key = String(r.canonical_url || `${r.package_id}#${r.package_version}/${r.artifact_id}`);
+    if (!byCanonical.has(key)) byCanonical.set(key, r);
+  }
+  if (byCanonical.size === 1) return { row: [...byCanonical.values()][0], candidates: [] };
+  return {
+    row: null,
+    candidates: [...byCanonical.entries()].map(([canonical, r]) => ({ canonical, package: `${r.package_id}#${r.package_version}` })),
+  };
+}
+
 function rawVersionOf(row: Record<string, any>): string | null {
   let raw = row.raw_json;
   if (typeof raw === "string") {

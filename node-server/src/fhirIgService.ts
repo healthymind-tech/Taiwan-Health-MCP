@@ -120,6 +120,9 @@ export const IG_ERROR_HINTS: Readonly<Record<string, string>> = {
   VALUESET_NOT_FOUND:
     "Find the ValueSet canonical with fhir_search_artifacts (keyword, resource_type=ValueSet) or read the element binding " +
     "with fhir_get_profile_elements(view=binding); if it belongs to another installed IG, pass its package_id.",
+  AMBIGUOUS_ARTIFACT:
+    "The short id names several profiles of the IG and its dependency packages (error.candidates): call again with the " +
+    "canonical URL of the one you mean.",
   INVALID_ARGUMENT: "Check the arguments against this tool's description and input schema, then call again.",
 };
 
@@ -264,7 +267,10 @@ export class FHIRIGService {
       )
     ).rows[0];
     if (row) return row;
-    return fhirIg.resolveCanonical(identifier, pid, ver);
+    const viaCanonical = await fhirIg.resolveCanonical(identifier, pid, ver);
+    if (viaCanonical) return viaCanonical;
+    // ISSUES_v16.2 R1: a short id of a dependency package's artifact (only when it is unambiguous)
+    return (await fhirIg.resolveIdInClosure(identifier, pid, ver)).row;
   }
 
   /** ARTIFACT_NOT_FOUND message; for a versioned canonical, list the versions that are installed. */

@@ -9,6 +9,7 @@
  * any error leaves the issue without suggestions.
  */
 
+import { attachInvariantExplanations } from "./invariants.js";
 import { suggestCanonical, type CanonicalContext } from "./canonicals.js";
 import { suggestAlternativeCoding, suggestBoundCoding, suggestCrossSystem, suggestMoveValue, type WalkOptions } from "./bindings.js";
 import { codingContext, LIST_ALL_VS, parseBindingValueSet, suggestBinding, suggestDisplay, suggestUnknownCode, type Budget } from "./codes.js";
@@ -210,4 +211,6 @@ export async function attachSuggestions(
   // ISSUES_v16 R3: closest slice / profile, failed discriminator, blocking errors (budgeted, after caused_by).
   if (isObject(root)) await attachSliceExplanations(issues, root, deps, { maxValidations: opts.maxSliceValidations });
   if (isObject(root) && root.resourceType === "Bundle") await attachBundleTypeSuggestions(issues, root, deps); // document / message without its head resource (bundleType.ts)
+  // ISSUES_v16.2 R3: which part of a failed profile invariant is missing (invariants.ts).
+  if (isObject(root)) await attachInvariantExplanations(issues, root, deps);
 }
