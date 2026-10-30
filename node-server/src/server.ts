@@ -8,6 +8,7 @@
  * failing DB or Redis does not abort boot — services simply report unavailable.
  */
 
+import { startEventLoopWatchdog } from "./eventLoopWatchdog.js";
 import { dbTerminologyNames } from "./groundingTools.js";
 import type { DbTerminologyNames } from "./grounding/terminologyDb.js";
 import express, { type Request, type Response } from "express";
@@ -442,6 +443,8 @@ function buildApp(): express.Express {
 async function main(): Promise<void> {
   const cfg = config();
   await bootstrapResources();
+  // A request that blocks the event loop must not leave the service hung (2026-10-30): exit so the container restarts.
+  startEventLoopWatchdog();
 
   const app = buildApp();
   const server = app.listen(cfg.port, cfg.host, () => {

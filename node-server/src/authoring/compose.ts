@@ -77,6 +77,24 @@ import { repairResource, Session as RepairSession, type RepairChange, type Repai
 import type { ApplyDefaults, AuthorInput, FieldKind, FieldSpec, Provenance } from "./types.js";
 import * as V from "./values.js";
 
+/**
+ * A path and its ancestors that still contain a "." (`A.b[0].c` → `A.b[0].c`, `A.b[0]`, `A.b`), one segment (an index or a
+ * dotted name) removed at a time. Always terminates: a last segment that cannot be removed (a key such as `dose[x]` written
+ * literally used to leave the path unchanged — an endless loop that blocked the event loop, 2026-10-30 outage) ends the walk.
+ */
+export function selfAndAncestorPaths(p: string): string[] {
+  const out: string[] = [];
+  for (let q = p; q.includes(".") && out.length < 256; ) {
+    out.push(q);
+    // an index or a plain name first (as before); a segment those cannot strip (`dose[x]`) goes whole; neither → stop
+    let up = q.replace(/(\[\d+\]|\.[^.[\]]+)$/, "");
+    if (up === q) up = q.replace(/\.[^.]+$/, "");
+    if (up === q) break;
+    q = up;
+  }
+  return out;
+}
+
 export type { ComposeDeps } from "./deps.js";
 
 // --------------------------------------------------------------------------- //
@@ -1594,7 +1612,7 @@ class Composer {
     const prov = (p: string): Provenance | undefined => this.provenance[p];
     // A value under an element the profile pinned (fixed / pattern created or merged) is the profile's.
     const pinnedAbove = (p: string): boolean => {
-      for (let q = p; q.includes("."); q = q.replace(/(\[\d+\]|\.[^.[\]]+)$/, "")) if (prov(q) === "fixed") return true;
+      for (const q of selfAndAncestorPaths(p)) if (prov(q) === "fixed") return true;
       return false;
     };
     const skip = (p: string, rule: RepairRule): boolean => {
