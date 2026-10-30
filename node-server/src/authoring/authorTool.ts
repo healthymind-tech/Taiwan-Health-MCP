@@ -101,7 +101,7 @@ export const authorInputShape = {
     .default(null)
     .describe("Facility settings text, as fhir_check_grounding's site_config (e.g. \"病歷號 system: https://hospital.example.tw/mrn\"): its URLs are accepted identifier systems, its lines ground organisation values at assembly. Stored on the context; passing it again adds new lines. Never logged."),
   source_text: z
-    .string()
+    .string().max(200000, "source_text is limited to 200,000 characters (a clinical record is far shorter); send the record of this case only")
     .nullish()
     .default(null)
     .describe("Optional clinical record text: this call's validation then also runs the record checks that need the record (date precision, Quantity values, free-text-only medicines, unconfirmed diagnoses, and whether every identifier / date / quantity value is in the record). Not stored; never logged."),

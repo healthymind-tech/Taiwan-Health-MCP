@@ -63,6 +63,15 @@ export class RecordText {
   }
 
   lineOf(pos: number): number {
+    // binary search over the line starts (lines are in order): linear per occurrence made find() quadratic on long records
+    let lo = 0;
+    let hi = this.lines.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (this.lines[mid].start <= pos) lo = mid;
+      else hi = mid - 1;
+    }
+    if (lo >= 0 && lo < this.lines.length && this.lines[lo].start <= pos && pos <= this.lines[lo].end) return lo;
     for (let i = 0; i < this.lines.length; i++) if (this.lines[i].start <= pos && pos <= this.lines[i].end) return i;
     return this.lines.length - 1;
   }

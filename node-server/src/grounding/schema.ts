@@ -27,7 +27,7 @@ export const groundingPolicySchema = z
 
 export const groundingInputShape = {
   bundle: z.record(z.any()).describe("FHIR Bundle to check"),
-  source_text: z.string().describe("Full clinical record text (instruction lines such as 【轉換目標】 are recognised and never count as evidence)"),
+  source_text: z.string().max(200000, "source_text is limited to 200,000 characters (a clinical record is far shorter); send the record of this case only").describe("Full clinical record text (instruction lines such as 【轉換目標】 are recognised and never count as evidence)"),
   site_config: z.string().nullish().default(null).describe("Site configuration text (only evidence for identifier.system)"),
   evidence_map: evidenceMapSchema.nullish().default(null).describe("Optional evidence map: array of {path, quote|quotes} or {path: quote}"),
   mode: z.enum(["auto", "strict"]).nullish().describe("Default: strict when evidence_map is given, else auto (the tool locates supporting text itself)"),
@@ -42,7 +42,7 @@ export const groundingInputSchema = z.object(groundingInputShape);
 
 /** Optional parameters `fhir_validate_bundle` accepts to run grounding in the same call (spec §2.4). */
 export const validateBundleGroundingShape = {
-  source_text: z.string().nullish().default(null),
+  source_text: z.string().max(200000, "source_text is limited to 200,000 characters (a clinical record is far shorter); send the record of this case only").nullish().default(null),
   site_config: z.string().nullish().default(null),
   evidence_map: evidenceMapSchema.nullish().default(null),
   grounding: z.enum(["off", "auto", "strict"]).nullish().describe("Default: off without source_text; else auto (strict with evidence_map)"),

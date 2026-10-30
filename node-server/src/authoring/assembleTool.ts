@@ -41,7 +41,7 @@ export const assembleInputShape = {
   bundle_profile: z.string().nullish().default(null).describe("Canonical URL or id of the target Bundle profile (e.g. Bundle-twcore); its fixed type / entry rules apply."),
   package_id: z.string().nullish().default(null).describe("IG package id for validation (omit to auto-resolve from the profiles)."),
   version: z.string().nullish().default(null).describe("IG package version (with package_id)."),
-  source_text: z.string().nullish().default(null).describe("The clinical record text the resources were authored from: adds grounding checks to the validation. Never logged."),
+  source_text: z.string().max(200000, "source_text is limited to 200,000 characters (a clinical record is far shorter); send the record of this case only").nullish().default(null).describe("The clinical record text the resources were authored from: adds grounding checks to the validation. Never logged."),
   site_config: z
     .string()
     .max(20000)

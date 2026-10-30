@@ -239,7 +239,14 @@ const ABSENCE_WORDS_LONGEST = [...D.context.absenceWords].sort((a, b) => b.lengt
 
 /** Characters a field label may consist of (labels end at ':' and other punctuation; '、' '/' '&' separate list items). */
 const LABEL_CHARS = String.raw`\p{Script=Han}a-z0-9#.&'\-、/ `;
-const RE_LABEL_TAIL = new RegExp(`[${LABEL_CHARS}]+$`, "u");
+const RE_LABEL_CHAR = new RegExp(`^[${LABEL_CHARS}]$`, "u");
+/** The trailing run of label characters (same as RE_LABEL_TAIL) by a backward walk — the unanchored regex is quadratic on long runs. */
+function labelTail(s: string): string {
+  const cps = Array.from(s);
+  let k = cps.length;
+  while (k > 0 && RE_LABEL_CHAR.test(cps[k - 1])) k--;
+  return cps.slice(k).join("");
+}
 const RE_LABEL_HEAD = new RegExp(`^[${LABEL_CHARS}]+`, "u");
 const RE_LIST_SEP = /、|\/|&|及|與|和|\band\b|\bor\b|或/u;
 const HAN_RE = /\p{Script=Han}/u;
@@ -357,7 +364,7 @@ export function absenceConceptsIn(clause: string): string[] {
     const e = i + a.length;
     let pre = cl.slice(0, i).replace(/[\s:=]+$/u, "");
     pre = stripFillers(pre, ABSENCE_VALUE_FILLERS, true).replace(/[\s:=]+$/u, "");
-    const run = RE_LABEL_TAIL.exec(pre)?.[0]?.trim() ?? "";
+    const run = labelTail(pre).trim();
     // '未提供病歷號' (absence word directly followed by the concept) or 'unknown DOB' with no label before it
     const prefixUse = HAN_RE.test(a) ? isHan(cl[e]) : !run;
     if (prefixUse) {

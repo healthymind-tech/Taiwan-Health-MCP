@@ -140,7 +140,8 @@ function regexFormat(system: string, src: string): IdentifierFormat {
   };
 }
 
-const RE_SITE_RULE = /^\s*(?:[-*•]\s*)?identifier-format\s+(\S+)\s+(.+?)\s*$/iu;
+// Applied to the trimmed line: no \\s*$ after a lazy group (polynomial backtracking on long whitespace runs).
+const RE_SITE_RULE = /^(?:[-*•]\s*)?identifier-format\s+(\S+)\s+(\S.*)$/iu;
 
 export interface IdentifierRegistry {
   formatFor(system: string | null | undefined): IdentifierFormat | null;
@@ -151,9 +152,11 @@ export function identifierRegistry(siteConfig: string | null | undefined): Ident
   const site = new Map<string, IdentifierFormat>();
   const notes: string[] = [];
   for (const line of String(siteConfig ?? "").split(/\r?\n/u)) {
-    const m = RE_SITE_RULE.exec(line);
+    const t = line.trim();
+    const m = t && !/[\r\u2028\u2029]/u.test(t) ? RE_SITE_RULE.exec(t) : null;
     if (!m) continue;
-    const [, system, fmt] = m;
+    const system = m[1];
+    const fmt = m[2].trimEnd();
     const builtin = BUILTIN_FORMATS[fmt.toLowerCase()];
     if (builtin) {
       site.set(system, builtin);

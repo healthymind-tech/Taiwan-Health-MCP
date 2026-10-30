@@ -201,6 +201,7 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.20.0 also: (v17 R3) invariant explanations recurse into a failing nested rule (`guard implies (a or b)` inside an and-chain: pat-ast-value) and name required values / codes (`x = 'v'`, `x.exists(coding.code = 'v')`).
   // 1.20.0 also: (v17 R2-2) record-fact-missing (warning; content_checks_severity="error" makes it an error) — a fact the record states clearly (department → Encounter.serviceType, a stated / hedged diagnosis → verificationStatus, H / L flags or a stated reference range → interpretation, a discharge-medication header → MedicationRequest.category, 共 28 天 → expectedSupplyDuration, dose / frequency / route on the drug's line, the patient's name) for an element the declared profile marks mustSupport / required or its examples commonly carry (H / L flags: wherever the profile allows interpretation), left empty.
   // 1.20.0 also: (v17 R1 IG self-check) validator — a `type` discriminator with a path (Bundle.entry sliced by type:resource) is matched on the type of the element the path names (entry:x.resource; through resolve(): the target profiles' types), not the sliced element's BackboneElement (every entry was "missing" its slice); an embedded resource whose element lists several type profiles conforms when it meets one of them (the closest one's issues otherwise).
+  // 1.20.0 also: (robustness audit) source_text limited to 200,000 characters; site_config timezone / identifier-format lines and the absence-label scan no longer backtrack on long whitespace / label runs; record line lookup by binary search.
   fhir_validate_bundle: "1.20.0",
   // 1.6.2: the binding-aware suggestions above (ISSUES_v10 A) also apply to single-resource validation.
   // 1.7.0: the validator v13 rules above (fhir_validate_bundle 1.9.0).
@@ -420,6 +421,7 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.11.0: validation issues as fhir_validate_resource 1.15.0 (slice_match options / literals).
   // 1.12.0: validation issues as fhir_validate_resource 1.16.0 (invariant explanations).
   // 1.13.0: validation with source_text carries the R6 content coverage of fhir_validate_resource 1.17.0.
+  // also (v17 robustness audit): a quantity text with a long whitespace run before a line break no longer backtracks cubically (QUANTITY_TEXT on the trimmed value); source_text is limited to 200,000 characters.
   fhir_author_resources: "1.13.0",
   // 1.0.1: action=get results carry the author result's new `notes` (fhir_author_resources 1.1.0); otherwise unchanged.
   fhir_context: "1.0.1",

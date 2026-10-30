@@ -93,7 +93,17 @@ export function offsetFor(spec: TimezoneSpec, local: string): string | null {
 }
 
 const LABEL = String.raw`(?:時區|时区|時區設定|timezone|time\s*zone|tz|utc\s*offset|時差)`;
-const LINE_RE = new RegExp(String.raw`^[\s\-*•·・>]*${LABEL}\s*(?:[:：=]|\s)\s*(.+?)\s*$`, "i");
+// Matched against a trimmed single line (lineMatch): the untrimmed form with several adjacent \s* around a lazy (.+?) and \s*$
+// backtracked polynomially on long whitespace runs (a site_config line could block the event loop).
+const LINE_RE = new RegExp(String.raw`^[\-*•·・>\s]*?${LABEL}(?:\s*[:：=]\s*|\s+)(\S.*)$`, "i");
+
+function lineMatch(line: string): RegExpExecArray | null {
+  const t = line.trim();
+  if (!t || /[\r\u2028\u2029]/u.test(t)) return null;
+  const m = LINE_RE.exec(t);
+  if (m) m[1] = m[1].trimEnd();
+  return m;
+}
 
 /** The site-config section of a source text (after the 【院所設定】 marker, up to the next 【…】 heading). */
 function siteSection(sourceText: string): string | null {
@@ -117,7 +127,7 @@ export function siteConfigTimezone(text: string | null | undefined, label = "sit
   const found = new Map<string, string>();
   const bad: string[] = [];
   for (const line of text.normalize("NFKC").split(/\r?\n/)) {
-    const m = LINE_RE.exec(line);
+    const m = lineMatch(line);
     if (!m) continue;
     // The value may carry a note: "+08:00（台灣）", "Asia/Taipei (UTC+8)" — the first token that parses.
     const tokens = m[1].split(/[\s,;，；()（）]+/).filter(Boolean);

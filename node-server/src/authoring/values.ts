@@ -97,13 +97,24 @@ export interface QuantityShape {
   codeResolved?: boolean;
 }
 
-const QUANTITY_TEXT = /^\s*(<=|>=|<|>)?\s*([+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)\s*(.*?)\s*$/;
+// Applied to the TRIMMED text only (quantityMatch): the old form with \s* … (.*?) \s*$ backtracked cubically on long whitespace
+// runs followed by a line break (5 s for 2 000 spaces — a hang on model-written values).
+const QUANTITY_TEXT = /^(<=|>=|<|>)?\s*([+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)(?:\s+|(?=\D)|$)(.*)$/;
+
+/** QUANTITY_TEXT on a trimmed, single-line value (a line break inside never matched before either). */
+function quantityMatch(raw: string): RegExpExecArray | null {
+  const t = raw.trim();
+  if (/[\n\r\u2028\u2029]/u.test(t)) return null;
+  const m = QUANTITY_TEXT.exec(t);
+  if (m) m[3] = m[3].trimEnd();
+  return m;
+}
 
 /** `{value, unit?, code?, system?, comparator?}`, a number, or `"95 mg/dL"`; the unit text is kept and its UCUM code resolved. */
 export function parseQuantityValue(raw: unknown): Parsed<QuantityShape> {
   if (isNumberLike(raw)) return { ok: true, value: { value: raw as number | RawNumber } };
   if (typeof raw === "string") {
-    const m = QUANTITY_TEXT.exec(raw);
+    const m = quantityMatch(raw);
     if (!m) return fail(`not a quantity: ${JSON.stringify(raw)} (use "95 mg/dL" or {value, unit})`);
     const n = parseNumber(m[2]);
     if (!n.ok) return n;
@@ -535,7 +546,7 @@ function looksLikeDate(s: string): boolean {
 }
 
 function looksLikeQuantity(s: string): boolean {
-  const m = QUANTITY_TEXT.exec(s);
+  const m = quantityMatch(s);
   return !!m && m[3] !== "" && !looksLikeDate(s);
 }
 

@@ -135,3 +135,18 @@ test("dependency-only fetch: requested packages + their missing deps, failures c
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("parseJsonPy: malformed package JSON throws instead of looping (truncated string / array / object, trailing comma)", async () => {
+  const { parseJsonPy } = await import("./ig.js");
+  for (const bad of ['{"a":"abc', '{"a":[1,2', '{"a":1,}', '[1,', '{"a":1', '{"a" 1}', "[1 2]", "{", "[", '"x']) {
+    const t = Date.now();
+    assert.throws(() => parseJsonPy(bad), SyntaxError, bad);
+    assert.ok(Date.now() - t < 100, bad);
+  }
+  const ok = parseJsonPy('{"a":[1,"x",{"b":null}],"c":true,"d":-2.5e3}');
+  assert.equal(ok.a.length, 3);
+  assert.equal(ok.a[1], "x");
+  assert.deepEqual(ok.a[2], { b: null });
+  assert.equal(ok.c, true);
+  assert.equal(ok.a[0].repr, "1");
+});

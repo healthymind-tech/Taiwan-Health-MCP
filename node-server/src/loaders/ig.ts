@@ -108,9 +108,14 @@ function pyFloatRepr(x: number): string {
 }
 
 /** JSON parser that tags every number with its exact Python serialization. */
-function parseJsonPy(text: string): any {
+export function parseJsonPy(text: string): any {
   let i = 0;
   const n = text.length;
+  // Malformed input (a truncated file, a trailing comma) must fail, never loop: past the end text[i] is undefined, and the
+  // string / array / object loops below used to append "undefined" forever (worker heap exhaustion).
+  const eof = (what: string): never => {
+    throw new SyntaxError(`invalid JSON: unexpected end of input in ${what} at offset ${i}`);
+  };
   const ws = (): void => {
     while (i < n) {
       const c = text.charCodeAt(i);
@@ -122,6 +127,7 @@ function parseJsonPy(text: string): any {
     i += 1; // opening quote
     let s = "";
     for (;;) {
+      if (i >= n) eof("string");
       const c = text[i++];
       if (c === '"') break;
       if (c === "\\") {
@@ -165,13 +171,17 @@ function parseJsonPy(text: string): any {
       }
       for (;;) {
         ws();
+        if (i >= n) eof("object");
+        if (text[i] !== '"') throw new SyntaxError(`invalid JSON: expected a property name at offset ${i}`);
         const k = str();
         ws();
         i += 1; // colon
         o[k] = value();
         ws();
+        if (i >= n) eof("object");
         const ch = text[i++];
         if (ch === "}") break;
+        if (ch !== ",") throw new SyntaxError(`invalid JSON: expected , or } at offset ${i - 1}`);
       }
       return o;
     }
@@ -184,10 +194,15 @@ function parseJsonPy(text: string): any {
         return arr;
       }
       for (;;) {
+        if (i >= n) eof("array");
+        const at = i;
         arr.push(value());
+        if (i === at) throw new SyntaxError(`invalid JSON: unexpected character at offset ${i}`);
         ws();
+        if (i >= n) eof("array");
         const ch = text[i++];
         if (ch === "]") break;
+        if (ch !== ",") throw new SyntaxError(`invalid JSON: expected , or ] at offset ${i - 1}`);
       }
       return arr;
     }
@@ -204,7 +219,11 @@ function parseJsonPy(text: string): any {
       i += 4;
       return null;
     }
-    return num();
+    if (i >= n) eof("value");
+    const at = i;
+    const v = num();
+    if (i === at) throw new SyntaxError(`invalid JSON: unexpected character ${JSON.stringify(text[i])} at offset ${i}`);
+    return v;
   };
   return value();
 }
