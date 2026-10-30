@@ -1261,6 +1261,23 @@ export class InstanceValidator {
         bundle: rctx.bundle,
         entry: this.entryFor(v, rctx, true),
       };
+      if (profiles.length > 1) {
+        // Several type profiles on one element (Bundle.entry:organization.resource → hospid | sendhospid): the resource
+        // must conform to ONE of them. Each is tried alone; the first without errors wins, else the closest one's issues.
+        let best: Issue[] | null = null;
+        for (const p of profiles) {
+          const trial: Issue[] = [];
+          await this.validateResource({ ...child }, item.path, [p], trial, depth);
+          const errs = trial.filter((i) => i.severity === "error" || i.severity === "fatal").length;
+          if (errs === 0) {
+            best = trial;
+            break;
+          }
+          if (best === null || errs < best.filter((i) => i.severity === "error" || i.severity === "fatal").length) best = trial;
+        }
+        issues.push(...(best ?? []));
+        return;
+      }
       await this.validateResource(child, item.path, profiles, issues, depth);
       return;
     }
@@ -1767,7 +1784,28 @@ export class InstanceValidator {
       const dtype = d.type || "value";
       const dpath = String(d.path || "$this");
       if (dtype === "type") {
-        const sliceTypes: string[] = (slice.type || []).map(typeCodeOf);
+        // the types of the element the discriminator path names (Bundle.entry:x + "resource" → entry:x.resource), not of the
+        // sliced element itself; through resolve(): the resource types of the reference's target profiles
+        let sliceTypes: string[] = (slice.type || []).map(typeCodeOf);
+        if (dpath !== "$this") {
+          const viaResolve = /\.?resolve\(\)$/.test(dpath);
+          const el = this.elementAt(sdx, slice, dpath.replace(/\.?resolve\(\)$/, ""));
+          if (el) {
+            if (viaResolve) {
+              const targets: string[] = [];
+              for (const t of el.type || []) {
+                for (const p of t.targetProfile || []) {
+                  const psdx = await this.sdx(String(p));
+                  if (psdx?.type) targets.push(String(psdx.type));
+                }
+              }
+              if (targets.length) sliceTypes = targets;
+            } else {
+              const ts = (el.type || []).map(typeCodeOf);
+              if (ts.length) sliceTypes = ts;
+            }
+          }
+        }
         let actual: string[];
         if (dpath === "$this") actual = [itemType === "Resource" && isObject(it.value) ? it.value.resourceType : itemType];
         else {
