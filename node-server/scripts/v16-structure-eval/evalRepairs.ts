@@ -36,7 +36,8 @@ const deps: RepairDeps = {
     const vs = pk.get(u, "ValueSet");
     if (!vs) return null;
     const e = await expandComposeWith(vs.compose || {}, pk.termDeps(), limit);
-    return { codings: e.codings, total: e.total, truncated: e.truncated };
+    const whole = e.unresolved.filter((u: any) => u?.reason === "TOO_BROAD").map((u: any) => String(u.system));
+    return { codings: e.codings, total: e.total, truncated: e.truncated, ...(e.unresolved.length ? { incomplete: true } : {}), ...(whole.length ? { wholeSystems: whole } : {}) };
   },
   validate: async (res, profiles) => (await new InstanceValidator(r).validate(clone(res), { profiles })) as any[],
 };

@@ -25,6 +25,10 @@ export interface InvariantPart {
   /** An extension test: its url, value type and the JSON to add under `extension`. */
   extension?: { url: string; value_type: string | null };
   write?: Record<string, unknown>;
+  /** The value / code the term requires (`code = 'x'`, `exists(coding.code = 'x')`), when it names one. */
+  expected?: string;
+  /** A nested rule (`guard implies …`) this part is: what it needs. */
+  nested?: { applies_because: string; need: "all" | "one_of"; failed: InvariantPart[] };
 }
 
 export interface InvariantInfo {
@@ -92,7 +96,23 @@ const cap = (t: string): string => t.charAt(0).toUpperCase() + t.slice(1);
 /** What an exists()-style term needs: a plain path, or an extension (url + value type). */
 export function describeTerm(term: string): InvariantPart {
   const part: InvariantPart = { term: clip(term, TERM_LEN) };
-  const m = /^(.+?)\.exists\(\)$/.exec(term.trim());
+  const t = unwrap(term.trim());
+  // path = 'literal' (value.ofType(string) = 'class1', code = 'x')
+  const eq = /^([A-Za-z][\w.()]*?)\s*=\s*'([^']*)'$/.exec(t);
+  if (eq) {
+    part.missing = eq[1].replace(/\.ofType\((\w+)\)/gu, (_m, ty) => cap(String(ty)));
+    part.expected = eq[2];
+    return part;
+  }
+  // X.exists(<condition>): an X matching the condition (category.exists(coding.code = 'tests'))
+  const ex = /^([A-Za-z][\w.]*)\.exists\((.+)\)$/.exec(t);
+  if (ex && ex[2].trim()) {
+    part.missing = ex[1];
+    const code = /code\s*=\s*'([^']+)'/.exec(ex[2]);
+    if (code) part.expected = code[1];
+    return part;
+  }
+  const m = /^(.+?)\.exists\(\)$/.exec(t);
   const inner = m ? m[1].trim() : null;
   if (!inner) return part;
   const ext = /^(?:(.+)\.)?extension\.where\(\s*url\s*=\s*'([^']+)'\s*\)(?:\.value(?:\.ofType\((\w+)\))?)?$/.exec(inner);
@@ -146,10 +166,29 @@ export function explainInvariant(key: string, expression: string, node: unknown,
       if (!h) bad.push(t);
     }
     if (!bad.length) return null;
+    // a single false part that is itself a rule (`guard implies …`): explain that rule
+    if (bad.length === 1 && !because && splitTop(bad[0], "implies").length === 2) {
+      const inner = explainInvariant(key, bad[0], node, base, env);
+      if (inner) return inner;
+    }
     need = "all";
-    failed = bad.map(describeTerm);
+    failed = bad.map((t) => {
+      const p = describeTerm(t);
+      if (splitTop(t, "implies").length === 2) {
+        const inner = explainInvariant(key, t, node, base, env);
+        if (inner) p.nested = { applies_because: inner.applies_because ?? "", need: inner.need, failed: inner.failed };
+      }
+      return p;
+    });
   }
-  const say = (p: InvariantPart): string => (p.extension ? `extension ${p.extension.url}${p.extension.value_type ? ` (value${cap(p.extension.value_type)})` : ""}` : p.missing ?? p.term);
+  const say = (p: InvariantPart): string =>
+    p.extension
+      ? `extension ${p.extension.url}${p.extension.value_type ? ` (value${cap(p.extension.value_type)})` : ""}`
+      : p.nested
+        ? `when ${p.nested.applies_because}: ${p.nested.need === "one_of" ? "one of " : ""}${p.nested.failed.map((q) => (q.missing ? `${q.missing}${q.expected !== undefined ? ` = '${q.expected}'` : ""}` : q.term)).join(" | ")}`
+        : p.missing
+          ? `${p.missing}${p.expected !== undefined ? ` = '${p.expected}'` : ""}`
+          : p.term;
   const hint =
     `${because ? `the rule applies because ${because}; ` : ""}` +
     (need === "one_of" ? `add one of: ${failed.map(say).join(" | ")}` : `missing: ${failed.map(say).join("; ")}`) +

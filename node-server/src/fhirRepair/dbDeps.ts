@@ -127,7 +127,8 @@ export function repairDepsFor(
       if (!vs) return null;
       const exp = await terminology.expandCompose(vs.compose || {}, pkg, limit);
       // `unresolved` = parts not enumerable locally (filters on external terminologies, missing imports).
-      return { codings: exp.codings, total: exp.total, truncated: exp.truncated, ...(exp.unresolved.length ? { incomplete: true } : {}) };
+      const whole = exp.unresolved.filter((u: any) => u?.reason === "TOO_BROAD" && typeof u.system === "string").map((u: any) => String(u.system));
+      return { codings: exp.codings, total: exp.total, truncated: exp.truncated, ...(exp.unresolved.length ? { incomplete: true } : {}), ...(whole.length ? { wholeSystems: whole } : {}) };
     },
     valueSetContains: (url, system, code) => resolver.valueSetContains(url, system, code),
     resolveSystem: async (url, code): Promise<SystemResolution> => {

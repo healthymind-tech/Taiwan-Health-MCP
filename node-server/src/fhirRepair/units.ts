@@ -93,6 +93,12 @@ async function allowedCodes(session: Session, c: Constraints): Promise<{ allowed
   let undecidable = false;
   for (const vs of c.valueSets) {
     const exp = session.deps.expandValueSet ? await session.memo(`exp\0${vs}`, () => session.deps.expandValueSet!(vs, 500), null) : null;
+    // (v17 R3) the ValueSet includes UCUM as a whole system (e.g. two SNOMED unit concepts + all of UCUM): every valid UCUM
+    // code is a member — no constraint from it (the validator decides membership the same way)
+    if (exp && (exp.wholeSystems ?? []).includes(UCUM_SYSTEM)) {
+      label.push(`required ValueSet ${vs.split("|")[0]}: any UCUM code`);
+      continue;
+    }
     if (!exp || exp.truncated || exp.incomplete || !exp.codings.length) {
       undecidable = true;
       continue;

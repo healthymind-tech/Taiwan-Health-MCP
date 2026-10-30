@@ -92,7 +92,11 @@ export interface RepairDeps {
   /** Free text → candidate codes of a ValueSet / CodeSystem (fhir_normalize_code). */
   normalize?(text: string, target: { system?: string; valueSet?: string }, limit: number): Promise<NormalizeCandidate[]>;
   /** Expansion of a ValueSet (null = not expandable locally); `incomplete` = a part could not be enumerated. */
-  expandValueSet?(url: string, limit: number): Promise<{ codings: ExpandedCoding[]; total: number; truncated: boolean; incomplete?: boolean } | null>;
+  /**
+   * `wholeSystems` (v17 R3): systems the ValueSet includes as a whole without enumerating them (UCUM, SNOMED CT …) —
+   * any valid code of such a system is a member.
+   */
+  expandValueSet?(url: string, limit: number): Promise<{ codings: ExpandedCoding[]; total: number; truncated: boolean; incomplete?: boolean; wholeSystems?: string[] } | null>;
   /** Membership as the validator decides it (undefined = cannot be decided locally). */
   valueSetContains?(url: string, system: string | null, code: string): Promise<boolean | undefined>;
   /** How a Coding.system URL resolves (the code helps decide a known terminology). */

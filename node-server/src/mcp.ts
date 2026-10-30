@@ -1091,10 +1091,12 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
       description:
         "List the FHIR Implementation Guide (IG) packages installed on this server (isDefault, installOrigin manual|dependency, dependencies). " +
         "Tools that omit package_id use the package owning the canonical / meta.profile involved, else the default IG. " +
-        "compact=true: just packageId#version → title by install origin, plus the default IG.",
-      inputSchema: { ...compact },
+        "compact=true: just packageId#version → title by install origin, plus the default IG. " +
+        "query: a conversion target or IG name in any language / short name (e.g. '轉為健保事前審查 Bundle', 'TWCM', 'IPS') → the matching installed IGs, " +
+        "ranked, each with its Bundle profiles (bundle_profiles) — use it when you do not know which package_id / bundle_profile a task means.",
+      inputSchema: { ...compact, query: z.string().nullish().default(null).describe("Conversion target / IG name (Chinese or English, short names allowed); returns matches with Bundle profiles") },
     },
-    async ({ compact }) => rawResult(await svc.listIgs(compact ?? false)),
+    async ({ compact, query }) => rawResult(await svc.listIgs(compact ?? false, query ?? null)),
   );
 
   server.registerTool(

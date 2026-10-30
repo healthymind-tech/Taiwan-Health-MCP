@@ -94,3 +94,17 @@ for (const ig of ["pas"]) {
     assert.ok(checked >= 1, "a Bundle whose Claim's diagnosis rule shows up as a blocking error");
   });
 }
+
+test("explainInvariant: an and-chain of rules explains the rule that fails; or-alternatives with values / codes", () => {
+  const env = { resource: {}, rootResource: {} };
+  const chain = "((code.coding.exists(code='A1')) implies (value.ofType(string) = 'class1' or value.ofType(string) = 'class2')) and ((code.coding.exists(code='B2')) implies (value.ofType(string) = 'A' or value.ofType(string) = 'B'))";
+  const info = explainInvariant("pat-ast-value", chain, { resourceType: "Observation", code: { coding: [{ code: "A1" }] }, valueString: "Class 1" }, "Observation", env)!;
+  assert.equal(info.need, "one_of");
+  assert.match(info.applies_because ?? "", /A1/);
+  assert.deepEqual(info.failed.map((p) => [p.missing, p.expected]), [["valueString", "class1"], ["valueString", "class2"]]);
+  const si = "(priority.coding.code.matches('1|3')) implies (supportingInfo.category.exists(coding.code = 'examinationReport') or supportingInfo.category.exists(coding.code = 'imagingReport'))";
+  const s2 = explainInvariant("supportingInfo", si, { resourceType: "Claim", priority: { coding: [{ code: "1" }] }, supportingInfo: [] }, "Claim", env)!;
+  assert.equal(s2.need, "one_of");
+  assert.deepEqual(s2.failed.map((p) => [p.missing, p.expected]), [["supportingInfo.category", "examinationReport"], ["supportingInfo.category", "imagingReport"]]);
+  assert.match(s2.hint, /supportingInfo\.category = 'examinationReport'/);
+});

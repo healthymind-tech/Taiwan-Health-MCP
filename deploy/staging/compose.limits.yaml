@@ -1,0 +1,48 @@
+# ops-v1 O5 / ISSUES_v17 R1: staging shares the production host — every staging container is capped
+# (memory without swap, CPU) so an IG import or a self-check can only hurt itself. Use with:
+#   docker compose -p twh-staging -f deploy/staging/compose.yaml -f deploy/staging/compose.limits.yaml up -d --no-build …
+# Peak ≈ 4.5 GB (postgres 1.25g + admin-worker 2.25g + app 768m + redis / minio 384m).
+services:
+  postgres:
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=pg_prewarm
+      - -c
+      - pg_prewarm.autoprewarm=false
+      - -c
+      - shared_buffers=384MB
+      - -c
+      - maintenance_work_mem=256MB
+      - -c
+      - effective_cache_size=1GB
+      - -c
+      - max_parallel_workers_per_gather=0
+    mem_limit: 1280m
+    memswap_limit: 1280m
+    cpus: 1.5
+    cpu_shares: 256
+  redis:
+    mem_limit: 192m
+    memswap_limit: 192m
+    cpus: 0.25
+  minio:
+    mem_limit: 192m
+    memswap_limit: 192m
+    cpus: 0.25
+  app:
+    environment:
+      NODE_OPTIONS: --max-old-space-size=640
+      MCP_HEAVY_TOOL_CONCURRENCY: "1"
+    mem_limit: 768m
+    memswap_limit: 768m
+    cpus: 1
+    cpu_shares: 256
+  admin-worker:
+    environment:
+      ADMIN_MAX_CONCURRENT_JOBS: "1"
+      NODE_OPTIONS: --max-old-space-size=1920
+    mem_limit: 2304m
+    memswap_limit: 2304m
+    cpus: 1.5
+    cpu_shares: 256

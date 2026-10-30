@@ -47,6 +47,9 @@ export function timeUnitCode(word: string): string | null {
  */
 const COUNT_WORDS = new Set(["次", "下", "回", "拍", "跳", "times", "time", "x", "count", "beats", "beat", "breaths", "breath", "events", "event", "counts"]);
 
+/** A unit written as just a count (no dose form): UCUM {count}. */
+const BARE_COUNT_WORDS = new Set(["count", "counts", "cnt", "個", "number", "no.", "#"]);
+
 /** `<count word | unit>/<time word>` → UCUM (null when the text is not such a rate). */
 function rateUnit(t: string): string | null {
   const m = /^\s*([^/]*?)\s*\/\s*(?:每)?\s*(?:1\s*)?([^/\s\d][^/]*?)\s*$/.exec(t);
@@ -246,6 +249,9 @@ function resolveUnitText(text: string, rates: boolean): UnitResolution | null {
       const r = structuralRewrite(t);
       if (r) out = { code: r, source: "rewrite" };
     }
+    // (v17 R3) a bare count word — a dimensionless count, UCUM's annotation {count} (not "count", which is no UCUM unit);
+    // measure words naming a dose form (顆, 粒, 錠 …) are not unique and stay unresolved
+    if (!out && BARE_COUNT_WORDS.has(t.toLowerCase())) out = { code: "{count}", source: "rewrite" };
     if (!out) {
       const cand = suggestUcum(t, null, 1)[0];
       if (cand && cand.cost <= 0.6) out = { code: cand.value, source: "spelling" };

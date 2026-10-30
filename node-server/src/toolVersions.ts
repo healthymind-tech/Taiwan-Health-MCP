@@ -198,6 +198,7 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   on the failed-invariant `blocking` errors of slice_match / profile_match (in a Bundle a broken rule of an entry is
   //   often reported only there). Issue set, severities, messages, valid unchanged.
   // 1.20.0: R6 content coverage (ISSUES_v17 R2, recordChecks/coverage.ts; with source_text): negated-item-present (error — an item the record says was not prescribed / not done / cancelled / stopped / denied / is to be scheduled, or the conversion target excludes, present as done / active), duplicate-entry (error — same content apart from ids, or the same thing), text-only-fact (warning, content_checks_severity="error" makes it an error — dose / frequency / route / supply duration only in Dosage.text); new argument content_checks_severity.
+  // 1.20.0 also: (v17 R3) invariant explanations recurse into a failing nested rule (`guard implies (a or b)` inside an and-chain: pat-ast-value) and name required values / codes (`x = 'v'`, `x.exists(coding.code = 'v')`).
   fhir_validate_bundle: "1.20.0",
   // 1.6.2: the binding-aware suggestions above (ISSUES_v10 A) also apply to single-resource validation.
   // 1.7.0: the validator v13 rules above (fhir_validate_bundle 1.9.0).
@@ -221,7 +222,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // NO_DEFAULT_IG instead of an arbitrary package when no default IG is set.
   // 1.3.0 (fhir_list_igs / fhir_list_artifacts / fhir_search_artifacts / fhir_list_resource_profiles): opt-in
   // compact=true (id → title per type, canonical base once, only exceptional canonicals). Default output unchanged.
-  fhir_list_igs: "1.3.0",
+  // 1.4.0 (ISSUES_v17 R1-4, igDiscovery.ts): new `query` — a conversion target / IG name in any language or a short name → the matching installed IGs (title, bracketed short names, package-id segments, ImplementationGuide name / title / description; generic request words ignored), ranked, each with its Bundle profiles.
+  fhir_list_igs: "1.4.0",
   fhir_get_ig: "1.2.1",
   fhir_list_artifacts: "1.3.0",
   fhir_search_artifacts: "1.3.0",
@@ -323,6 +325,7 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.14.0: data.validation as fhir_validate_resource 1.16.0 (invariant explanations); a short profile id
   //   resolves in the dependency packages (fhir_get_profile 1.2.2).
   // 1.15.0: data.validation with source_text carries the R6 content coverage of fhir_validate_resource 1.17.0.
+  // 1.15.0 also: the UCUM repairs of fhir_finalize_bundle 1.9.0.
   fhir_finalize_resource: "1.15.0",
   // 1.0.0 (authoring/, evaluation v11): the model gives field VALUES, the MCP composes the resource for its profile
   //   (fixed / pattern / defaults / derived / displays / UCUM / ROC dates), validates it, keeps it in a Redis context
@@ -506,6 +509,7 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.7.1: data.record_issues — the v15.3 result-slot note rule (an Observation with no value[x] whose note says there is no result while its code needs a quantitative one) is a WARNING without source_text (was an error; consistent with the v15.4 empty-shell rule), still an error with it.
   // 1.8.0 (ISSUES_v16 R4): content repair: empty arrays removed (ele-1), resourceType inferred from a meta.profile string, errors a lossless reshape only makes visible (a now-readable value / a resource now checked against its declared profile) no longer withdraw the reshape (an inferred resourceType is withdrawn only by an unknown top-level property).
   // 1.9.0: data.record_issues with source_text carry the R6 content coverage of fhir_validate_bundle 1.20.0.
+  // 1.9.0 also: (v17 R3) UCUM repair — a bare count unit (count / counts / 個) → {count}; a required ValueSet that includes UCUM as a whole system (no enumerated UCUM codes) allows every valid UCUM code instead of none.
   fhir_finalize_bundle: "1.9.0",
   // ── 2026-10-19 actionable errors (additive fields only; successful outputs unchanged) ──
   // search_medical_codes 1.2.1: IG_UNAVAILABLE adds `hint`.

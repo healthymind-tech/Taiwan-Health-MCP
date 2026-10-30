@@ -46,6 +46,7 @@ import {
   type RequiredElementsResult,
 } from "./fhirRequiredElements.js";
 import { toolVersion } from "./toolVersions.js";
+import { matchIgs, type IgText } from "./igDiscovery.js";
 import { IgConceptSearch, type CsLocation } from "./conceptSearch/service.js";
 import { acceptanceOf, confirmCoding } from "./codeAcceptance.js";
 import { KEYWORD_ONLY_MODE, KEYWORD_ONLY_NOTE } from "./searchQuality.js";
@@ -295,8 +296,9 @@ export class FHIRIGService {
 
   // --- A. IG discovery ----------------------------------------------------- //
 
-  async listIgs(compact = false): Promise<string> {
+  async listIgs(compact = false, queryText: string | null = null): Promise<string> {
     const packages = await fhirIg.listPackages();
+    if (queryText && queryText.trim()) return this.ok(await this.discoverIgs(packages, queryText.trim()), null);
     if (compact) return this.ok(compactIgList(packages), null);
     const data = {
       count: packages.length,
@@ -313,6 +315,55 @@ export class FHIRIGService {
       })),
     };
     return this.ok(data, null);
+  }
+
+  /**
+   * ISSUES_v17 R1-4: the installed IGs a conversion target / name points to (igDiscovery.ts), each with its
+   * Bundle profiles — so a model told "轉為 XXX Bundle" finds the package_id and the bundle_profile to use.
+   */
+  private async discoverIgs(packages: PackageRow[], queryText: string): Promise<Record<string, unknown>> {
+    const rows = (
+      await query<{ package_id: string; package_version: string; raw_json: unknown }>(
+        "SELECT package_id, package_version, raw_json FROM fhir.artifacts WHERE resource_type = 'ImplementationGuide'",
+        [],
+      )
+    ).rows;
+    const igRes = new Map(rows.map((r) => [`${r.package_id}#${r.package_version}`, jsonValue(r.raw_json)]));
+    const texts: IgText[] = packages.map((p) => {
+      const ig = igRes.get(`${p.package_id}#${p.version}`) ?? {};
+      return {
+        packageId: p.package_id,
+        version: p.version,
+        title: p.title ?? null,
+        installOrigin: p.install_origin ?? null,
+        isDefault: Boolean(p.is_default),
+        igName: typeof ig.name === "string" ? ig.name : null,
+        igTitle: typeof ig.title === "string" ? ig.title : null,
+        igDescription: typeof ig.description === "string" ? ig.description.slice(0, 600) : null,
+      };
+    });
+    const matches = matchIgs(queryText, texts);
+    const out: Array<Record<string, unknown>> = [];
+    for (const m of matches) {
+      const bundles = (
+        await query<{ artifact_id: string; canonical_url: string | null; raw_json: unknown }>(
+          "SELECT artifact_id, canonical_url, raw_json FROM fhir.artifacts WHERE package_id = $1 AND package_version = $2 AND resource_type = 'StructureDefinition' " +
+            "AND raw_json->>'type' = 'Bundle' AND raw_json->>'derivation' = 'constraint' ORDER BY artifact_id LIMIT 12",
+          [m.packageId, m.version],
+        )
+      ).rows.map((r) => {
+        const sd = jsonValue(r.raw_json);
+        return { id: r.artifact_id, url: r.canonical_url ?? sd.url ?? null, title: sd.title ?? sd.name ?? null };
+      });
+      out.push({ ...m, bundle_profiles: bundles });
+    }
+    return {
+      query: queryText,
+      matches: out,
+      note: matches.length
+        ? "ranked by the IG's own title / short names / ImplementationGuide text; pass package_id (and a bundle_profile) to fhir_get_bundle_blueprint / fhir_validate_bundle"
+        : "no installed IG matches; call fhir_list_igs without query for the full list",
+    };
   }
 
   async getIg(packageId: string | null = null, version: string | null = null): Promise<string> {
