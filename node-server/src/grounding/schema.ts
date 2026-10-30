@@ -47,4 +47,9 @@ export const validateBundleGroundingShape = {
   evidence_map: evidenceMapSchema.nullish().default(null),
   grounding: z.enum(["off", "auto", "strict"]).nullish().describe("Default: off without source_text; else auto (strict with evidence_map)"),
   grounding_verbosity: z.enum(["errors", "warnings", "all"]).nullish().default("warnings"),
+  content_checks_severity: z
+    .enum(["warning", "error"])
+    .nullish()
+    .default(null)
+    .describe("With source_text: severity of the content-coverage findings text-only-fact (a dose / frequency / route / duration only in Dosage.text) — warning (default) or error. Negated items written as done and duplicate entries are always errors."),
 };

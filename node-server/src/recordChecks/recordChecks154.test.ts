@@ -11,6 +11,9 @@ import { addRecordChecksToValidation } from "./envelope.js";
 import { runRecordChecks } from "./index.js";
 import { absenceClauses, absenceOf, dataAbsentTier } from "./lexicon.js";
 
+// R6 (content coverage, ISSUES_v17) has its own tests (coverage.test.ts); these cases exercise R1–R5
+const notR6 = (i: { rule: string }): boolean => i.rule !== "R6";
+
 type Json = Record<string, any>;
 const R = IN_RECORD;
 const LOINC = "http://loinc.org";
@@ -25,7 +28,7 @@ function withObs(extra: Json, code = ["2823-3", "Potassium [Moles/volume] in Ser
   return b;
 }
 const onShell = (b: Json, sourceText: string | null): string[] =>
-  runRecordChecks(b, { sourceText }).issues.filter((i) => i.path.startsWith(`Bundle.entry[${b.entry.length - 1}]`)).map((i) => `${i.severity}:${i.code}`);
+  runRecordChecks(b, { sourceText }).issues.filter(notR6).filter((i) => i.path.startsWith(`Bundle.entry[${b.entry.length - 1}]`)).map((i) => `${i.severity}:${i.code}`);
 const recordWith = (line: string): string => R.replace("血糖：", `${line}\n血糖：`);
 
 test("v15.4 synthetic dev set: ≥ 40 shells detected (error with a record, warning without); ≥ 25 complete controls get no error", () => {
@@ -33,7 +36,7 @@ test("v15.4 synthetic dev set: ≥ 40 shells detected (error with a record, warn
   const pos = cases.filter((c) => c.expect);
   assert.ok(pos.length >= 40, `dev set has ${pos.length} shells`);
   for (const c of pos) {
-    const on = runRecordChecks(c.bundle, { sourceText: c.source_text }).issues.filter((i) => i.path.startsWith(`Bundle.entry[${c.entry}]`));
+    const on = runRecordChecks(c.bundle, { sourceText: c.source_text }).issues.filter(notR6).filter((i) => i.path.startsWith(`Bundle.entry[${c.entry}]`));
     const hit = on.some((i) => (i.code === "information-absent" || i.code === "unconfirmed-as-confirmed") && (c.expect === "warning" || i.severity === "error"));
     assert.ok(hit, `${c.id}: ${on.map((i) => `${i.severity} ${i.code}`).join(", ")}`);
     if (c.expect === "warning") assert.ok(!on.some((i) => i.severity === "error"), `${c.id}: warning expected`);
@@ -41,7 +44,7 @@ test("v15.4 synthetic dev set: ≥ 40 shells detected (error with a record, warn
   const ctl = cases.filter((c) => !c.expect);
   assert.ok(ctl.length >= 25);
   for (const c of ctl) {
-    const errs = runRecordChecks(c.bundle, { sourceText: c.source_text }).issues.filter((i) => i.severity === "error");
+    const errs = runRecordChecks(c.bundle, { sourceText: c.source_text }).issues.filter(notR6).filter((i) => i.severity === "error");
     assert.equal(errs.length, 0, `${c.id}: ${errs.map((i) => i.message_en).join(" | ")}`);
   }
 });
@@ -82,7 +85,7 @@ test("dominance rule: negations, results, monitoring and unknown-cause clauses a
 test("Observation shell: error when the record says the item is not out; warning without a record or when the record is silent", () => {
   const b = withObs({ note: [{ text: "檢體溶血，不予發報" }] });
   assert.deepEqual(onShell(b, recordWith("鉀：檢體溶血，不予發報")), ["error:information-absent"]);
-  const iss = runRecordChecks(b, { sourceText: recordWith("鉀：檢體溶血，不予發報") }).issues.find((i) => i.path.endsWith("note[0].text"))!;
+  const iss = runRecordChecks(b, { sourceText: recordWith("鉀：檢體溶血，不予發報") }).issues.filter(notR6).find((i) => i.path.endsWith("note[0].text"))!;
   assert.match(iss.message_zh, /這筆資源沒有提供病歷中應有的值；病歷寫的是「鉀：檢體溶血，不予發報」/u);
   assert.match(iss.message_zh, /請回報 insufficient_information，不要建立空的資源/u);
   assert.deepEqual(iss.located_quotes, ["鉀：檢體溶血，不予發報"]);
@@ -124,7 +127,7 @@ test("medication shells: no structured dose / timing + an undecided / conditiona
     return b;
   };
   const rx = (line: string): string => R.replace("處方：Ceftriaxone 2 g 靜脈注射 每日一次 7 天", line);
-  const at8 = (b: Json, st: string | null): string[] => runRecordChecks(b, { sourceText: st }).issues.filter((i) => i.path.startsWith("Bundle.entry[8]")).map((i) => `${i.severity}:${i.code}`);
+  const at8 = (b: Json, st: string | null): string[] => runRecordChecks(b, { sourceText: st }).issues.filter(notR6).filter((i) => i.path.startsWith("Bundle.entry[8]")).map((i) => `${i.severity}:${i.code}`);
   assert.deepEqual(at8(med([{ text: "每次劑量與頻次要看 Cr 報告（已抽，未回）" }]), rx("處方：Ceftriaxone，每次劑量與頻次要看 Cr 報告（已抽，未回）")), ["error:information-absent"]);
   assert.deepEqual(at8(med([{ text: "依腎功能調整", doseAndRate: [{ doseQuantity: { value: 2, unit: "g" } }] }]), R), []);
   assert.deepEqual(at8(med([{ text: "依醫囑", timing: { repeat: { frequency: 1, period: 1, periodUnit: "d" } } }]), R), []);
@@ -141,7 +144,7 @@ test("Condition shells: text-only 'cannot tell apart' → error; named hedge wri
     return b;
   };
   const slot = (line: string): string => R.replace("診斷：社區型肺炎 (J18.9)", line);
-  const at2 = (b: Json, st: string | null): string[] => runRecordChecks(b, { sourceText: st }).issues.filter((i) => i.path.startsWith("Bundle.entry[2]")).map((i) => `${i.severity}:${i.code}`);
+  const at2 = (b: Json, st: string | null): string[] => runRecordChecks(b, { sourceText: st }).issues.filter(notR6).filter((i) => i.path.startsWith("Bundle.entry[2]")).map((i) => `${i.severity}:${i.code}`);
   assert.deepEqual(at2(dxText("支氣管炎與早期肺炎尚難區分"), slot("Dx：支氣管炎與早期肺炎尚難區分")), ["error:information-absent"]);
   assert.deepEqual(at2(dxText("社區型肺炎（待確認）", "provisional"), slot("診斷：社區型肺炎（待確認）")), []);
   assert.deepEqual(at2(dxText("腹痛，原因不明"), slot("診斷：腹痛，原因不明")), []);

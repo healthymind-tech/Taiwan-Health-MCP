@@ -45,6 +45,7 @@ import { recordAwareChecks } from "./recordAware.js";
 import { valueGroundingChecks } from "./valueGrounding.js";
 import { quantitativeBasis } from "./quantitative.js";
 import { emptyShellChecks } from "./emptyShell.js";
+import { coverageChecks } from "./coverage.js";
 import { resourcesOf, slotsOf, type Slot } from "./slots.js";
 import type { RecordCheckOptions, RecordCheckResult, RecordIssue, RecordRule } from "./types.js";
 
@@ -67,7 +68,8 @@ export { identifierRegistry, BUILTIN_IDENTIFIER_SYSTEMS, BUILTIN_FORMATS } from 
 //   Observations out of the v15.3 note rule, indistinguishable diagnosis slots.
 // 1.3.1: the v15.3 result-slot note rule is a warning without source_text (as the empty-shell rule); R3 Chinese-name
 //   hardening + hierarchy guard + record-casing abbreviation check (codeGrounding.ts, grounding/snomedChinese.ts).
-export const RECORD_CHECKS_VERSION = "1.3.1";
+// 1.4.0 (ISSUES_v17 R2): R6 content coverage (coverage.ts) — negated-item-present, duplicate-entry, text-only-fact.
+export const RECORD_CHECKS_VERSION = "1.4.0";
 
 type Json = Record<string, any>;
 const isObj = (x: unknown): x is Json => !!x && typeof x === "object" && !Array.isArray(x);
@@ -332,6 +334,17 @@ export function runRecordChecks(root: Json, opts: RecordCheckOptions = {}): Reco
       issues.push(...valueGroundingChecks(root, slots, opts.sourceText as string, site, flagged));
     } catch {
       notes.push("R5 (value grounding) could not run on this input (internal error)");
+    }
+    // ISSUES_v17 R2: content coverage (coverage.ts) — negated / excluded items written as done, duplicate entries,
+    // facts only in Dosage.text; one issue per path (an earlier rule's issue on the same path wins)
+    rules.push("R6");
+    try {
+      const taken = new Set(issues.map((i) => `${i.code}\u0000${i.path}`));
+      for (const i of coverageChecks(root, opts.sourceText as string, site, opts.coverageSeverity === "error" ? "error" : "warning", opts.codeNames ?? null)) {
+        if (!taken.has(`${i.code}\u0000${i.path}`)) issues.push(i);
+      }
+    } catch {
+      notes.push("R6 (content coverage) could not run on this input (internal error)");
     }
   }
   const errors = issues.filter((i) => i.severity === "error").length;

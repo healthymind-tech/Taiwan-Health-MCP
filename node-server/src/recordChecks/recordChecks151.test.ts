@@ -11,9 +11,12 @@ import { runRecordChecks } from "./index.js";
 import { RecordText } from "../grounding/recordText.js";
 import { RecordValues } from "./recordValues.js";
 
+// R6 (content coverage, ISSUES_v17) has its own tests (coverage.test.ts); these cases exercise R1–R5
+const notR6 = (i: { rule: string }): boolean => i.rule !== "R6";
+
 type Json = Record<string, any>;
 const R = IN_RECORD;
-const run = (b: Json, sourceText: string = R, siteConfig: string | null = null) => runRecordChecks(b, { sourceText, siteConfig }).issues;
+const run = (b: Json, sourceText: string = R, siteConfig: string | null = null) => runRecordChecks(b, { sourceText, siteConfig }).issues.filter(notR6);
 const codes = (b: Json, sourceText: string = R, siteConfig: string | null = null): string[] => run(b, sourceText, siteConfig).map((i) => `${i.severity}:${i.code}`);
 const at = (b: Json, path: string, sourceText: string = R) => run(b, sourceText).filter((i) => i.path.startsWith(path));
 const res = (b: Json, i: number): Json => b.entry[i].resource;
@@ -72,7 +75,7 @@ test("R1 identifier with a system but no value: information-absent, or incomplet
   assert.equal(has[0].code, "incomplete-value");
   assert.match(has[0].message_zh, /B120345673/u);
   // without source_text nothing new (byte identity of the conformance-only output)
-  assert.deepEqual(runRecordChecks(b, {}).issues, []);
+  assert.deepEqual(runRecordChecks(b, {}).issues.filter(notR6), []);
 });
 
 test("R5 dates: fabricated dates and filled-in T00:00:00 are ungrounded; date-only values and derivations are grounded", () => {

@@ -1487,7 +1487,7 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
       // Record checks (ISSUES_v15 / v15.1): R1 / R2 always, R3 / R4 / R5 with source_text; appended after the validator + grounding.
       // ISSUES_v15.3: LOINC axes (R1) and, with source_text, coding names (R3) — local tables, LRU-cached
       const looked = await recordCheckLookups(resource as Record<string, any>, groundingDeps.terminology, g.source_text);
-      return rawResult(addRecordChecksToValidation(grounded, resource as Record<string, any>, { sourceText: g.source_text ?? null, siteConfig: g.site_config ?? null, ...looked }));
+      return rawResult(addRecordChecksToValidation(grounded, resource as Record<string, any>, { sourceText: g.source_text ?? null, siteConfig: g.site_config ?? null, coverageSeverity: (g as { content_checks_severity?: "warning" | "error" | null }).content_checks_severity ?? null, ...looked }));
     },
   );
 
@@ -1530,7 +1530,7 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
       // Record checks (ISSUES_v15 / v15.1): R1 / R2 always, R3 / R4 / R5 with source_text; appended after the validator + grounding.
       // ISSUES_v15.3: LOINC axes (R1) and, with source_text, coding names (R3) — local tables, LRU-cached
       const looked = await recordCheckLookups(bundle as Record<string, any>, groundingDeps.terminology, g.source_text);
-      return rawResult(addRecordChecksToValidation(grounded, bundle as Record<string, any>, { sourceText: g.source_text ?? null, siteConfig: g.site_config ?? null, ...looked }));
+      return rawResult(addRecordChecksToValidation(grounded, bundle as Record<string, any>, { sourceText: g.source_text ?? null, siteConfig: g.site_config ?? null, coverageSeverity: (g as { content_checks_severity?: "warning" | "error" | null }).content_checks_severity ?? null, ...looked }));
     },
   );
 

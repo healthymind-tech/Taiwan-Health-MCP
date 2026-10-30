@@ -9,8 +9,11 @@ import { syntheticCases, BASE_BUNDLE, BASE_RECORD } from "../../scripts/record-c
 import { addRecordChecksToFinalize, addRecordChecksToFinalizeResource, addRecordChecksToValidation } from "./envelope.js";
 import { absenceOf, identifierRegistry, runRecordChecks } from "./index.js";
 
+// R6 (content coverage, ISSUES_v17) has its own tests (coverage.test.ts); these cases exercise R1–R5
+const notR6 = (i: { rule: string }): boolean => i.rule !== "R6";
+
 const codes = (b: object, sourceText: string | null = null, siteConfig: string | null = null): string[] =>
-  runRecordChecks(b as Record<string, any>, { sourceText, siteConfig }).issues.map((i) => `${i.severity}:${i.code}`);
+  runRecordChecks(b as Record<string, any>, { sourceText, siteConfig }).issues.filter(notR6).map((i) => `${i.severity}:${i.code}`);
 
 test("absence recogniser: the whole value must describe absence (zh / en, morphological variants)", () => {
   for (const v of ["尚未取號", "還沒取號", "取號中", "取號失敗", "建檔失敗，尚未給號", "家屬說證件還沒帶來", "不詳", "待補", "尚在申請", "目前無法提供", "unknown", "Not yet assigned", "pending", "N/A", "to be confirmed"]) {
@@ -87,9 +90,9 @@ test("R1 runs without source_text; real HL7 'unknown' codes are not flagged", ()
 test("R3 says whether the record has a more complete value", () => {
   const b = BASE_BUNDLE();
   b.entry[1].resource.period.start = "2025-03";
-  const has = runRecordChecks(b, { sourceText: BASE_RECORD }).issues.find((i) => i.code === "insufficient-precision")!;
+  const has = runRecordChecks(b, { sourceText: BASE_RECORD }).issues.filter(notR6).find((i) => i.code === "insufficient-precision")!;
   assert.match(has.message_zh, /病歷有更完整的值 '2025-03-14'/u);
-  const none = runRecordChecks(b, { sourceText: BASE_RECORD.replace("就診日期：2025/03/14 09:20", "就診：三月份") }).issues.find((i) => i.code === "insufficient-precision")!;
+  const none = runRecordChecks(b, { sourceText: BASE_RECORD.replace("就診日期：2025/03/14 09:20", "就診：三月份") }).issues.filter(notR6).find((i) => i.code === "insufficient-precision")!;
   assert.match(none.message_zh, /病歷沒有提供更完整的日期/u);
   assert.match(none.evidence, /found none/u);
   // history-type times (Condition.onsetDateTime) to the year are not insufficient (R3); the year itself must be in the
@@ -140,7 +143,7 @@ test("envelope: issues land on the entry, valid turns false, the validator's own
   // with source_text the summary is always reported
   const withSrc = JSON.parse(addRecordChecksToValidation(cleanText, BASE_BUNDLE(), { sourceText: BASE_RECORD }));
   assert.equal(withSrc.data.valid, true);
-  assert.deepEqual(withSrc.data.record_checks, { ok: true, errors: 0, warnings: 0, rules: ["R1", "R2", "R3", "R4", "R5"], source_text: true });
+  assert.deepEqual(withSrc.data.record_checks, { ok: true, errors: 0, warnings: 0, rules: ["R1", "R2", "R3", "R4", "R5", "R6"], source_text: true });
   // an error envelope passes through byte-identical
   const err = JSON.stringify({ ok: false, data: null, error: { code: "X", message: "y" } });
   assert.equal(addRecordChecksToValidation(err, b, {}), err);

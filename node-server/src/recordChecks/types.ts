@@ -27,14 +27,20 @@ export type RecordCheckCode =
    */
   | "ungrounded-value"
   /** R5 (ISSUES_v15.1 R4): the value is in the record but belongs to another time point / event. */
-  | "value-from-other-event";
+  | "value-from-other-event"
+  /** R6 (ISSUES_v17 R2-3): an item the record negates / cancels / defers (or the conversion target excludes) written as done or active. */
+  | "negated-item-present"
+  /** R6 (ISSUES_v17 R2-4): an entry that repeats another (same content apart from ids, or the same thing). */
+  | "duplicate-entry"
+  /** R6 (ISSUES_v17 R2-1): a fact (dose, frequency, route, duration …) written only in a text field while its structured element is empty. */
+  | "text-only-fact";
 
 /**
  * R1 information-absent · R2 identifier-format · R3 precision / completeness · R4 unconfirmed
  * diagnoses (incl. the primary diagnosis slot, ISSUES_v15.1 R3) · R5 value grounding (ISSUES_v15.1
  * R1 / R4: every identifier, date and quantity value must come from the record).
  */
-export type RecordRule = "R1" | "R2" | "R3" | "R4" | "R5";
+export type RecordRule = "R1" | "R2" | "R3" | "R4" | "R5" | "R6";
 
 export interface RecordIssue {
   severity: "error" | "warning";
@@ -99,6 +105,12 @@ export interface RecordCheckOptions {
    * broader or a narrower SNOMED concept (snomed.concept_ancestors) — such an item is never "something else". Optional.
    */
   codeSlotRelations?: ReadonlyMap<string, ReadonlySet<string>> | null;
+  /**
+   * ISSUES_v17 R2: severity of the content-coverage findings that are not safety issues (text-only facts; facts the record
+   * states but the instance leaves out) — "warning" (default) or "error" (an evaluator feeds them back as errors).
+   * Negated items written as done and duplicate entries are always errors.
+   */
+  coverageSeverity?: "warning" | "error" | null;
 }
 
 export interface RecordCheckResult {

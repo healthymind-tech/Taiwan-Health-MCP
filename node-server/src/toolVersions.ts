@@ -197,7 +197,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   parts with the missing path and — for an extension test — its url, value type and the JSON to write, hint}; also
   //   on the failed-invariant `blocking` errors of slice_match / profile_match (in a Bundle a broken rule of an entry is
   //   often reported only there). Issue set, severities, messages, valid unchanged.
-  fhir_validate_bundle: "1.19.0",
+  // 1.20.0: R6 content coverage (ISSUES_v17 R2, recordChecks/coverage.ts; with source_text): negated-item-present (error — an item the record says was not prescribed / not done / cancelled / stopped / denied / is to be scheduled, or the conversion target excludes, present as done / active), duplicate-entry (error — same content apart from ids, or the same thing), text-only-fact (warning, content_checks_severity="error" makes it an error — dose / frequency / route / supply duration only in Dosage.text); new argument content_checks_severity.
+  fhir_validate_bundle: "1.20.0",
   // 1.6.2: the binding-aware suggestions above (ISSUES_v10 A) also apply to single-resource validation.
   // 1.7.0: the validator v13 rules above (fhir_validate_bundle 1.9.0).
   // 1.8.0 (ISSUES_v15): the record checks of fhir_validate_bundle 1.11.0 on the resource (data.issues, data.record_checks).
@@ -213,7 +214,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.14.0 (ISSUES_v16 R3): the slice / profile-match explanations of fhir_validate_bundle 1.17.0 (slice_match / profile_match, set_profile / add_resource).
   // 1.15.0: the slice_match options / literals of fhir_validate_bundle 1.18.0.
   // 1.16.0: the invariant explanations of fhir_validate_bundle 1.19.0.
-  fhir_validate_resource: "1.16.0",
+  // 1.17.0: the R6 content coverage of fhir_validate_bundle 1.20.0 (content_checks_severity).
+  fhir_validate_resource: "1.17.0",
   // 1.2.0 (all below): provenance.resolved_by / closure_versions; canonical arguments resolve to their
   // owning package when package_id is omitted; "|version" honoured; list/search: all_packages + zero-hit hint;
   // NO_DEFAULT_IG instead of an arbitrary package when no default IG is set.
@@ -320,7 +322,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.13.0: data.validation as fhir_validate_resource 1.15.0 (slice_match options / literals).
   // 1.14.0: data.validation as fhir_validate_resource 1.16.0 (invariant explanations); a short profile id
   //   resolves in the dependency packages (fhir_get_profile 1.2.2).
-  fhir_finalize_resource: "1.14.0",
+  // 1.15.0: data.validation with source_text carries the R6 content coverage of fhir_validate_resource 1.17.0.
+  fhir_finalize_resource: "1.15.0",
   // 1.0.0 (authoring/, evaluation v11): the model gives field VALUES, the MCP composes the resource for its profile
   //   (fixed / pattern / defaults / derived / displays / UCUM / ROC dates), validates it, keeps it in a Redis context
   //   (`authoring:ctx:*`, 60-min idle TTL) and assembles the Bundle from keys with deterministic urn:uuid fullUrls
@@ -407,7 +410,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.10.0 (ISSUES_v16): validation issues as fhir_validate_resource 1.14.0 (slice_match / profile_match).
   // 1.11.0: validation issues as fhir_validate_resource 1.15.0 (slice_match options / literals).
   // 1.12.0: validation issues as fhir_validate_resource 1.16.0 (invariant explanations).
-  fhir_author_resources: "1.12.0",
+  // 1.13.0: validation with source_text carries the R6 content coverage of fhir_validate_resource 1.17.0.
+  fhir_author_resources: "1.13.0",
   // 1.0.1: action=get results carry the author result's new `notes` (fhir_author_resources 1.1.0); otherwise unchanged.
   fhir_context: "1.0.1",
   // 1.1.0: new `site_config` (merged with the context's) passed to the grounding engine with source_text, so facility
@@ -442,7 +446,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   content repairs as fhir_finalize_bundle 1.8.0, validation as fhir_validate_bundle 1.17.0.
   // 1.11.0: validation as fhir_validate_bundle 1.18.0 (slice_match options / literals).
   // 1.12.0: validation as fhir_validate_bundle 1.19.0 (invariant explanations).
-  fhir_assemble_bundle: "1.12.0",
+  // 1.13.0: validation with source_text carries the R6 content coverage of fhir_validate_bundle 1.20.0 (duplicates, negated / excluded items, text-only facts).
+  fhir_assemble_bundle: "1.13.0",
   // 1.0.0 (ISSUES_v9 R1): deterministic Bundle finalizer — fullUrl-uuid / reference-rewire / resource-id (mandatory),
   // bundle-type / document-order (profile-driven); UUID v5 seeded by (resourceType, original fullUrl, resource.id, entry
   // index) + a content salt; references found through StructureDefinition snapshots; duplicates / ambiguity reported.
@@ -500,7 +505,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   and changes are unchanged.
   // 1.7.1: data.record_issues — the v15.3 result-slot note rule (an Observation with no value[x] whose note says there is no result while its code needs a quantitative one) is a WARNING without source_text (was an error; consistent with the v15.4 empty-shell rule), still an error with it.
   // 1.8.0 (ISSUES_v16 R4): content repair: empty arrays removed (ele-1), resourceType inferred from a meta.profile string, errors a lossless reshape only makes visible (a now-readable value / a resource now checked against its declared profile) no longer withdraw the reshape (an inferred resourceType is withdrawn only by an unknown top-level property).
-  fhir_finalize_bundle: "1.8.0",
+  // 1.9.0: data.record_issues with source_text carry the R6 content coverage of fhir_validate_bundle 1.20.0.
+  fhir_finalize_bundle: "1.9.0",
   // ── 2026-10-19 actionable errors (additive fields only; successful outputs unchanged) ──
   // search_medical_codes 1.2.1: IG_UNAVAILABLE adds `hint`.
   // FHIR IG tools above (+.0.1): error envelopes add error.hint; IG_NOT_FOUND / NO_DEFAULT_IG add

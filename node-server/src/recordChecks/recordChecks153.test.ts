@@ -18,12 +18,15 @@ import { absenceOf } from "./lexicon.js";
 import { recordCheckLookups } from "./lookups.js";
 import { quantitativeBasis } from "./quantitative.js";
 
+// R6 (content coverage, ISSUES_v17) has its own tests (coverage.test.ts); these cases exercise R1–R5
+const notR6 = (i: { rule: string }): boolean => i.rule !== "R6";
+
 type Json = Record<string, any>;
 const R = IN_RECORD;
 const res = (b: Json, i: number): Json => b.entry[i].resource;
 const DX = "診斷：社區型肺炎 (J18.9)";
 const codes = (b: Json, sourceText: string | null = R, axes: Json | null = null): string[] =>
-  runRecordChecks(b, { sourceText, codeAxes: axes as never }).issues.map((i) => `${i.severity}:${i.code}@${i.path.replace(/^Bundle\.entry\[(\d+)\]\.resource\./u, "$1.")}`);
+  runRecordChecks(b, { sourceText, codeAxes: axes as never }).issues.filter(notR6).map((i) => `${i.severity}:${i.code}@${i.path.replace(/^Bundle\.entry\[(\d+)\]\.resource\./u, "$1.")}`);
 
 test("v15.3 synthetic dev set: ≥ 40 cases of the three forms all detected; ≥ 20 complete controls get no error", () => {
   const cases = syntheticV153Cases();
@@ -120,18 +123,18 @@ test("R2: provisional / differential / text-only primary vs an unestablished slo
   const p = inBundle();
   res(p, 2).verificationStatus.coding[0].code = "provisional";
   res(p, 2).code = { text: "社區型肺炎／肺結核／肺癌" };
-  const out = runRecordChecks(p, { sourceText: unest }).issues;
+  const out = runRecordChecks(p, { sourceText: unest }).issues.filter(notR6);
   assert.deepEqual(out.map((i) => `${i.severity}:${i.code}`), ["error:information-absent"]);
   assert.match(out[0].message_zh, /病歷沒有確立的主診斷/u);
   assert.match(out[0].evidence, /primary Condition decided by: the only Condition with category encounter-diagnosis/u);
   // established primary + a differential secondary for the record's r/o: nothing
   const s = inBundle();
   s.entry.push({ fullUrl: "urn:uuid:7c1e0d52-0000-4000-8000-000000000099", resource: { resourceType: "Condition", verificationStatus: { coding: [{ code: "differential" }] }, category: [{ coding: [{ code: "encounter-diagnosis" }] }], code: { text: "肺結核" } } });
-  assert.deepEqual(runRecordChecks(s, { sourceText: R.replace(DX, "診斷：社區型肺炎 (J18.9)；r/o 肺結核") }).issues, []);
+  assert.deepEqual(runRecordChecks(s, { sourceText: R.replace(DX, "診斷：社區型肺炎 (J18.9)；r/o 肺結核") }).issues.filter(notR6), []);
   // text-only primary in a complete record: nothing
   const t = inBundle();
   res(t, 2).code = { text: "社區型肺炎" };
-  assert.deepEqual(runRecordChecks(t, { sourceText: R }).issues, []);
+  assert.deepEqual(runRecordChecks(t, { sourceText: R }).issues.filter(notR6), []);
 });
 
 function groundedEnvelope(b: Json, record: string, terms: Map<string, { found: boolean; names: string[] }>): Json {

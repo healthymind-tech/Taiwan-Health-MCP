@@ -36,7 +36,11 @@ export type SuggestionKind =
   | "remove_coding"
   // ISSUES_v16 R3: an entry / referenced resource whose closest slice / profile is unique and which does not
   // declare it (missing, misspelled, another version, a string, another profile) — patch meta.profile.
-  | "set_profile";
+  | "set_profile"
+  // ISSUES_v17 R2 (recordChecks/coverage.ts): content coverage — an entry the record negates / excludes or that
+  // repeats another (remove_entry), and a structured value the text of the same element already states (add_value).
+  | "remove_entry"
+  | "add_value";
 
 /** A minimal edit, addressed with the validator's dotted instance paths (e.g. `Observation.code.coding[0].code`). */
 export interface SuggestionPatch {
