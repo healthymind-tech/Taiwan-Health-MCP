@@ -764,6 +764,8 @@ interface SliceOption {
   requires: Record<string, unknown>;
   /** Template item: the slice's fixed / pattern values plus <…> for what the author fills. */
   item: unknown;
+  /** How to find the code of a slice told apart by a binding. */
+  lookup?: string;
 }
 
 /** A sliced element of the skeleton: its slicing and every allowed slice. */
@@ -801,6 +803,26 @@ function sliceTemplate(sliceId: string, E: Map<string, ProjectedElement>): unkno
     if (repeats(id, E) && !Array.isArray(item[key])) item[key] = [item[key]];
   }
   return Object.keys(item).length ? item : types.length === 1 ? recordPlaceholder(types) : {};
+}
+
+/**
+ * (v17 R3) Slices told apart by a required binding (Condition.code.coding:icd10-cm-2023 — no fixed value): their
+ * template is a Coding of the bound ValueSet's system with the code to look up, not a bare "<record>".
+ */
+async function bindSliceTemplates(groups: SliceGroup[], E: Map<string, ProjectedElement>, ctx: ClassifyCtx): Promise<void> {
+  for (const g of groups) {
+    for (const o of g.options) {
+      const vs = Object.values(o.requires).find((v) => isObject(v) && typeof (v as Record<string, unknown>).valueSet === "string") as { valueSet: string } | undefined;
+      if (!vs || (isObject(o.item) && Object.keys(o.item as object).some((k) => k !== "code" && k !== "system"))) continue;
+      const sliceId = `${g.id}:${o.name}`;
+      const types = (E.get(sliceId)?.types || E.get(g.id)?.types || []).map((t) => shortType(t.code));
+      const b = await bindingCodes(ctx, vs.valueSet);
+      const systems = b ? [...new Set(b.codes.map((c) => c.system).filter(Boolean))] : [];
+      const coding = { system: systems.length === 1 ? systems[0] : "<system>", code: `<code from ${tail(vs.valueSet)}>` };
+      o.item = types.includes("CodeableConcept") ? { coding: [coding] } : types.includes("Coding") || g.path.endsWith("coding") ? coding : `<code from ${tail(vs.valueSet)}>`;
+      o.lookup = `fhir_normalize_code(text, value_set=${stripVersion(vs.valueSet)})`;
+    }
+  }
 }
 
 /**
@@ -897,6 +919,7 @@ export async function minimalSkeleton(req: SkeletonRequest, deps: BlueprintDeps)
   const distinct = new Set(instances.map((x) => normalizedInstance(x.resource))).size;
   const cctx: ClassifyCtx = { rt, E, rowsById, codeFixed: profileFixesCode(rt, els), instances, distinct, deps, loaded, vsCache: new Map() };
   const groups = sliceGroups(rt, sd, E, rows, requiredIds);
+  await bindSliceTemplates(groups, E, cctx);
   const groupById = new Map(groups.map((g) => [g.id, g]));
 
   // Rows that are not their own value: folded into an atomic ancestor, or the unsliced base of a sliced array.
@@ -947,6 +970,16 @@ export async function minimalSkeleton(req: SkeletonRequest, deps: BlueprintDeps)
       item.how = `closed slicing (by ${group.by.join(", ")}): every item must be one of slices.${group.path} — the skeleton holds '${first.name}'; another kind of ${tail(group.path)} takes that slice's item`;
     } else if (group && group.rules === "closed") {
       item.how = `${item.how}; closed slicing: every item must be one of slices.${group.path}`;
+    }
+    // (v17 R3) a closed slicing INSIDE this value (Condition.code → code.coding): the value's own template must use an
+    // allowed slice (a coding of a max-0 slice's system matches nothing) — the first allowed slice's item
+    for (const g of groups) {
+      if (g.rules !== "closed" || g.required.length || !g.id.startsWith(`${row.id}.`) || !isObject(item.placeholder)) continue;
+      const rel = g.id.slice(row.id.length + 1);
+      if (rel.includes(".") || rel.includes(":")) continue;
+      const first = g.options[0];
+      (item.placeholder as Record<string, unknown>)[rel] = repeats(g.id, E) ? [clone(first.item)] : clone(first.item);
+      item.how = `${first.lookup ? `slice ${first.name}: ${first.lookup}` : item.how}; ${rel}: closed slicing, one of slices.${g.path}`;
     }
     if (row.grounding_class === "auto" && pinnedValue === undefined) {
       // pinned through its children: assemble them (placed as they come)
@@ -1132,7 +1165,7 @@ export async function minimalSkeleton(req: SkeletonRequest, deps: BlueprintDeps)
               : {}),
             options:
               lv.slices >= 1
-                ? g.options.map((o) => (lv.slices >= 2 ? [o.name, o.card, o.item] : [o.name, o.card, o.requires]))
+                ? g.options.map((o) => (lv.slices >= 2 ? [o.name, o.card, o.item, ...(o.lookup ? [o.lookup] : [])] : [o.name, o.card, o.requires]))
                 : g.options.map((o) => (o.card.startsWith("0..") ? o.name : `${o.name} ${o.card}`)).join(", "),
           },
         ]),

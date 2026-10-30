@@ -365,7 +365,11 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   with candidates when it names several); (R2) the codes of a small binding always carry their display
   //   (`code=display`, clipped to >= 8 characters — never dropped at compact levels); compact levels fold the
   //   reference rows into one ("fullUrl of the target entry (named in the skeleton)").
-  fhir_get_minimal_skeleton: "1.2.0",
+  // 1.3.0 (ISSUES_v17 R3): a slice told apart by a required binding (no fixed value: Condition.code.coding:icd10-cm-2023)
+  //   gets a Coding of the bound ValueSet's system + the lookup (fhir_normalize_code value_set=…) instead of "<record>"; a closed
+  //   slicing inside a value (Condition.code → code.coding) templates that value with its first allowed slice (not the base
+  //   binding's system, which may belong to a max-0 slice).
+  fhir_get_minimal_skeleton: "1.3.0",
   // 1.1.0 (evaluation feedback): (1) a model display the validator's terminology rule rejects for a resolvable code is
   //   replaced by the code's display (provenance lookup; the model wording moves to CodeableConcept.text when empty;
   //   case-only differences are valid, whitespace-only ones take the valid spelling); (2) a single object / scalar where
