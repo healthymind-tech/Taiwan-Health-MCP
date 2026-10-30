@@ -20,7 +20,7 @@ FHIR IG 服務模組是一套通用、以 IG 為範圍（IG-scoped）的工具�
 ## 工具分組
 
 ### 1. IG 探索
-- **`fhir_list_igs`**：列出已安裝的 IG 套件，含 `packageId`、`version`、`title`、`canonical`、`fhirVersion`、`status`、`isDefault` 與宣告的相依套件。多個 IG 並存時先用此工具挑選。
+- **`fhir_list_igs`**：列出已安裝的 IG 套件，含 `packageId`、`version`、`title`、`canonical`、`fhirVersion`、`status`、`isDefault` 與宣告的相依套件。多個 IG 並存時先用此工具挑選。帶 `query`（v17）時，以轉換目標或 IG 名稱（中文、英文或簡稱，例如「轉為健保事前審查 Bundle」「TWCM」「IPS」）比對已安裝 IG 的標題、標題括號內的簡稱、package id 各段與 ImplementationGuide 的 name / title / description，回傳排序後的 `matches`，每個附上它的 Bundle profiles（`bundle_profiles`）——不知道任務指的是哪個 `package_id` / `bundle_profile` 時用它。
 - **`fhir_get_ig`**：單一 IG 的詳情，含身分、相依與各資源型別的 artifact 數量。
 - **`fhir_list_artifacts`**：以摘要列出 IG 的 conformance artifacts（StructureDefinition / ValueSet / CodeSystem / examples…），可依 `resource_type` 或 `grouping_id` 過濾。
 - **`fhir_search_artifacts`**：以 id / canonical URL / name / title / description 全文搜尋 artifacts。
@@ -69,6 +69,27 @@ FHIR IG 服務模組是一套通用、以 IG 為範圍（IG-scoped）的工具�
 4. `fhir_get_profile_required_elements` → 確認必填元素；`fhir_get_resource_skeleton` → 取得骨架，逐步填入欄位（必要時用 `fhir_normalize_code` / `fhir_validate_code` 處理編碼）。
 5. `fhir_finalize_resource` → 定稿；多筆資源以 `fhir_resolve_reference` + `fhir_build_bundle` 組裝。
 6. `fhir_validate_resource` / `fhir_validate_bundle` → 驗證（有來源病歷時加 `source_text`，或另呼叫 `fhir_check_grounding` / `fhir_check_completeness`）。
+
+## 新增 IG：從安裝到可用（v17）
+
+1. **安裝**：管理介面 → IG 套件庫 → 新增。兩種來源：
+   - FHIR package registry 的 `package id` + `version`（例如 `tw.gov.mohw.nhi.empd` `0.2.1`）；
+   - IG 發布的 `package.tgz`（registry 沒有的版本或 ci-build，例如 build.fhir.org 上的 `…/package.tgz`）。
+   相依套件會自動從 registry 下載；匯入完成後自動重建術語搜尋索引（含內建的 CodeSystem 補充）並排入向量化工作。
+2. **可用**：不需要修改程式碼，所有工具都以 `package_id`（或資源的 `meta.profile`）自動找到新 IG：`fhir_get_bundle_blueprint`、`fhir_get_minimal_skeleton`、`fhir_get_authoring_fields`、`fhir_finalize_*`、`fhir_validate_*`、grounding / completeness、`fhir_author_resources` / `fhir_assemble_bundle`。簡短 profile id 會在 IG 與其相依套件中解析。若要讓不帶 `package_id` 的呼叫預設使用它，在 IG 套件庫把它設為預設。
+3. **找到它**：`fhir_list_igs(query="<轉換目標或 IG 名稱>")` 回傳符合的 IG 與 Bundle profiles。
+4. **自我檢查**：`node-server/scripts/ig-selfcheck/selfcheck.ts <package#version>` 以 IG 自己的範例逐一跑 `fhir_validate_bundle` / `fhir_validate_resource`，並對每個 profile 呼叫 `fhir_get_minimal_skeleton`、`fhir_get_authoring_fields`、Bundle profile 再呼叫 `fhir_get_bundle_blueprint`；`--out` 另輸出 validator_cli 比對用的 corpus（`compare_cli.py`）。在與正式環境共用的主機上請以 `scripts/dev/run-limited.sh` 執行。
+5. **時間**：實測（2026-10-30，限 1.5 CPU 的 staging）單一 IG 匯入約 2–7 分鐘（索引重建占多數時間）；見下表。
+
+| IG | 來源 | 匯入時間 |
+|---|---|---|
+| `tw.gov.mohw.nhi.base 1.0.0` | registry | 250 s |
+| `tw.gov.mohw.emr 0.2.0` | registry | 130 s |
+| `tw.gov.mohw.cdc.twidir 0.1.1` | registry | 420 s |
+| `tw.gov.mohw.nhi.ci 1.0.2` | registry | 340 s |
+| `tw.gov.mohw.nhi.ngs 1.0.0` | registry | 170 s |
+| `tw.gov.mohw.nhi.empd 0.2.1` | registry | 200 s |
+| `hl7.fhir.uv.ips 2.0.1` | registry | 240 s |
 
 ## 關鍵限制
 - 程序內驗證以剖面 snapshot 與術語綁定為基礎，雖以 HL7 validator_cli 7.0.1 為對照基準，仍**不**等同官方 HL7 FHIR Validator 的一致性認證。

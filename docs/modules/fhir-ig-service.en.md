@@ -20,7 +20,7 @@ If none applies the error code is `NO_DEFAULT_IG` (no arbitrary package is picke
 ## Tool groups
 
 ### 1. IG discovery
-- **`fhir_list_igs`**: lists installed IG packages with `packageId`, `version`, `title`, `canonical`, `fhirVersion`, `status`, `isDefault`, and declared dependencies. Use this first to pick an IG when several coexist.
+- **`fhir_list_igs`**: lists installed IG packages with `packageId`, `version`, `title`, `canonical`, `fhirVersion`, `status`, `isDefault`, and declared dependencies. Use this first to pick an IG when several coexist. With `query` (v17), a conversion target or IG name (Chinese, English or a short name, e.g. "轉為健保事前審查 Bundle", "TWCM", "IPS") is matched against the installed IGs' titles, the short names in their brackets, package-id segments and the ImplementationGuide name / title / description: ranked `matches`, each with its Bundle profiles (`bundle_profiles`) — use it when you do not know which `package_id` / `bundle_profile` a task means.
 - **`fhir_get_ig`**: details for a single IG, including identity, dependencies, and artifact counts per resource type.
 - **`fhir_list_artifacts`**: lists an IG's conformance artifacts in summary form (StructureDefinition / ValueSet / CodeSystem / examples…), filterable by `resource_type` or `grouping_id`.
 - **`fhir_search_artifacts`**: full-text search over artifacts by id, canonical URL, name, title, or description.
@@ -68,6 +68,27 @@ If none applies the error code is `NO_DEFAULT_IG` (no arbitrary package is picke
 4. `fhir_get_profile_required_elements` → confirm the required elements; `fhir_get_resource_skeleton` → get the skeleton and fill fields in step by step (use `fhir_normalize_code` / `fhir_validate_code` for coding as needed).
 5. `fhir_finalize_resource` → finalise; assemble multiple resources with `fhir_resolve_reference` + `fhir_build_bundle`.
 6. `fhir_validate_resource` / `fhir_validate_bundle` → validate (pass `source_text` when the source record is available, or call `fhir_check_grounding` / `fhir_check_completeness`).
+
+## Adding an IG: from install to use (v17)
+
+1. **Install**: admin console → IG 套件庫 (IG gallery) → add. Two sources:
+   - a FHIR package registry `package id` + `version` (e.g. `tw.gov.mohw.nhi.empd` `0.2.1`);
+   - the IG's published `package.tgz` (a version the registry lacks, or a ci-build such as `…/package.tgz` on build.fhir.org).
+   Dependencies are downloaded from the registry automatically; after the import the concept-search index (incl. the bundled CodeSystem supplements) is rebuilt and vectorisation is queued.
+2. **Use**: no code change — every tool finds the new IG by `package_id` (or the resources' `meta.profile`): `fhir_get_bundle_blueprint`, `fhir_get_minimal_skeleton`, `fhir_get_authoring_fields`, `fhir_finalize_*`, `fhir_validate_*`, grounding / completeness, `fhir_author_resources` / `fhir_assemble_bundle`. Short profile ids resolve in the IG and its dependencies. To make calls without `package_id` use it, set it as the default IG in the gallery.
+3. **Find it**: `fhir_list_igs(query="<conversion target or IG name>")` returns the matching IGs and their Bundle profiles.
+4. **Self-check**: `node-server/scripts/ig-selfcheck/selfcheck.ts <package#version>` runs `fhir_validate_bundle` / `fhir_validate_resource` on each of the IG's own examples and calls `fhir_get_minimal_skeleton`, `fhir_get_authoring_fields` (and `fhir_get_bundle_blueprint` for Bundle profiles) for every profile; `--out` also writes the corpus for the validator_cli comparison (`compare_cli.py`). On a host shared with production run it inside `scripts/dev/run-limited.sh`.
+5. **Time**: measured 2026-10-30 on a staging stack capped at 1.5 CPU — one IG imports in about 2–7 minutes (index rebuilds take most of it); see the table.
+
+| IG | Source | Import time |
+|---|---|---|
+| `tw.gov.mohw.nhi.base 1.0.0` | registry | 250 s |
+| `tw.gov.mohw.emr 0.2.0` | registry | 130 s |
+| `tw.gov.mohw.cdc.twidir 0.1.1` | registry | 420 s |
+| `tw.gov.mohw.nhi.ci 1.0.2` | registry | 340 s |
+| `tw.gov.mohw.nhi.ngs 1.0.0` | registry | 170 s |
+| `tw.gov.mohw.nhi.empd 0.2.1` | registry | 200 s |
+| `hl7.fhir.uv.ips 2.0.1` | registry | 240 s |
 
 ## Key limitations
 - In-process validation is based on profile snapshots and terminology bindings. Although it is benchmarked against HL7 validator_cli 7.0.1, it is **not** equivalent to conformance certification by the official HL7 FHIR Validator.
