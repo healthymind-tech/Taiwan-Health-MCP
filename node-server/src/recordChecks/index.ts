@@ -340,7 +340,7 @@ export function runRecordChecks(root: Json, opts: RecordCheckOptions = {}): Reco
     rules.push("R6");
     try {
       const taken = new Set(issues.map((i) => `${i.code}\u0000${i.path}`));
-      for (const i of coverageChecks(root, opts.sourceText as string, site, opts.coverageSeverity === "error" ? "error" : "warning", opts.codeNames ?? null)) {
+      for (const i of coverageChecks(root, opts.sourceText as string, site, opts.coverageSeverity === "error" ? "error" : "warning", opts.codeNames ?? null, opts.profileElements ?? null)) {
         if (!taken.has(`${i.code}\u0000${i.path}`)) issues.push(i);
       }
     } catch {

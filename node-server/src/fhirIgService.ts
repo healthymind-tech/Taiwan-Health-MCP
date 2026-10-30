@@ -318,6 +318,74 @@ export class FHIRIGService {
   }
 
   /**
+   * ISSUES_v17 R2-2: for each profile the instance declares (meta.profile), the element paths (base form, slices
+   * folded: `Encounter.serviceType`, `MedicationRequest.dispenseRequest.expectedSupplyDuration`) the profile marks
+   * mustSupport or requires (min >= 1) — the IG's "commonly used" fields the content-coverage check looks at.
+   * Fail-open: an unresolvable profile is left out.
+   */
+  async profileElementUse(root: Record<string, any>, packageId: string | null = null, version: string | null = null): Promise<Map<string, { mustSupport: Set<string>; required: Set<string>; common: Set<string>; prohibited: Set<string> }>> {
+    const out = new Map<string, { mustSupport: Set<string>; required: Set<string>; common: Set<string>; prohibited: Set<string> }>();
+    const resources = root?.resourceType === "Bundle" ? (Array.isArray(root.entry) ? root.entry.map((e: any) => e?.resource).filter(Boolean) : []) : [root];
+    const urls = [...new Set(resources.flatMap((r: any) => (Array.isArray(r?.meta?.profile) ? r.meta.profile : []).filter((u: unknown) => typeof u === "string")))] as string[];
+    if (!urls.length) return out;
+    let pkg: PackageRow;
+    try {
+      pkg = await this.resolve(packageId, version, { metaProfiles: urls });
+    } catch {
+      return out;
+    }
+    const resolver = new DbValidatorResolver(pkg);
+    for (const url of urls.slice(0, 40)) {
+      try {
+        const sd = await resolver.fetchStructureDefinition(url);
+        const els: Array<Record<string, any>> = sd?.snapshot?.element || [];
+        if (!els.length) continue;
+        const ms = new Set<string>();
+        const req = new Set<string>();
+        const prohibited = new Set<string>();
+        for (const e of els) {
+          const path = String(e.path || "").replace(/\[x\]/gu, "");
+          if (path.includes(".") && e.max === "0" && !String(e.id || "").includes(":")) prohibited.add(path);
+          if (!path.includes(".") || e.max === "0") continue;
+          if (e.mustSupport === true) ms.add(path);
+          if (typeof e.min === "number" && e.min >= 1) req.add(path);
+        }
+        // the elements the IG's own examples of this profile commonly carry (in at least half of them, >= 2 examples)
+        const common = new Set<string>();
+        try {
+          const ex = (
+            await query<{ raw_json: unknown }>(
+              "SELECT raw_json FROM fhir.artifacts WHERE grouping_id = 'examples' AND resource_type = $1 AND raw_json->'meta'->'profile' ? $2 LIMIT 50",
+              [String(sd?.type || ""), url.split("|")[0]],
+            )
+          ).rows.map((r) => jsonValue(r.raw_json));
+          if (ex.length >= 2) {
+            const counts = new Map<string, number>();
+            for (const r of ex) {
+              const seen = new Set<string>();
+              for (const [k, v] of Object.entries(r)) {
+                if (["resourceType", "id", "meta", "text"].includes(k)) continue;
+                const base = `${sd?.type}.${k.replace(/^(value|effective|onset|abatement|occurrence|performed|deceased|multipleBirth|medication|reported|timing|serviced|location)[A-Z].*$/u, "$1")}`;
+                seen.add(base);
+                const items = Array.isArray(v) ? v : [v];
+                for (const it of items) if (it && typeof it === "object" && !Array.isArray(it)) for (const k2 of Object.keys(it)) seen.add(`${base}.${k2.replace(/^(value|dose|rate|as)[A-Z].*$/u, "$1")}`);
+              }
+              for (const p2 of seen) counts.set(p2, (counts.get(p2) ?? 0) + 1);
+            }
+            for (const [p2, n] of counts) if (n * 2 >= ex.length) common.add(p2);
+          }
+        } catch {
+          // examples are optional
+        }
+        out.set(url.split("|")[0], { mustSupport: ms, required: req, common, prohibited });
+      } catch {
+        // fail-open per profile
+      }
+    }
+    return out;
+  }
+
+  /**
    * ISSUES_v17 R1-4: the installed IGs a conversion target / name points to (igDiscovery.ts), each with its
    * Bundle profiles — so a model told "轉為 XXX Bundle" finds the package_id and the bundle_profile to use.
    */

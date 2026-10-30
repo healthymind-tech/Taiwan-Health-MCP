@@ -544,13 +544,182 @@ export function textOnlyFactChecks(root: Json, severity: "warning" | "error", re
   return out;
 }
 
+// ------------------------------------------------------------------------------------------------ record facts left out
+
+export type ProfileElements = ReadonlyMap<string, { mustSupport: ReadonlySet<string>; required: ReadonlySet<string>; common?: ReadonlySet<string>; prohibited?: ReadonlySet<string> }>;
+
+/** Clinical departments (shared phrase table; longest first so 心臟內科 wins over 內科). */
+const DEPARTMENTS = [
+  "家庭醫學科", "家醫科", "一般內科", "心臟血管內科", "心臟內科", "心臟外科", "胃腸肝膽科", "腸胃內科", "腸胃科", "消化內科", "胸腔內科", "胸腔外科", "胸腔科",
+  "腎臟內科", "腎臟科", "新陳代謝科", "內分泌科", "風濕免疫科", "過敏免疫風濕科", "感染科", "血液腫瘤科", "腫瘤內科", "放射腫瘤科", "神經內科", "神經外科",
+  "精神科", "身心科", "小兒科", "兒科", "婦產科", "婦科", "產科", "骨科", "眼科", "耳鼻喉科", "皮膚科", "泌尿科", "一般外科", "整形外科", "大腸直腸外科",
+  "急診醫學科", "急診科", "復健科", "牙科", "口腔外科", "中醫科", "老年醫學科", "疼痛科", "麻醉科", "職業醫學科", "內科", "外科",
+].sort((a, b) => b.length - a.length);
+const HEDGE = /疑似|可能|待排除|排除|鑑別|r\/o|rule out|possible|probable|suspected|\?/iu;
+const FLAG_HIGH = /(?:\b[HＨ]\b|\bHH\b|↑|偏高|過高|高於|上升|elevated|\bhigh\b)/iu;
+const FLAG_LOW = /(?:\b[LＬ]\b|\bLL\b|↓|偏低|過低|低於|下降|\blow\b)/iu;
+const DISCHARGE = /出院帶藥|出院用藥|出院處方|discharge medication|discharge prescription/iu;
+
+/** Whether the declared profile of `res` marks `path` (base form) mustSupport or required. */
+function profileUses(res: Json, path: string, pe: ProfileElements | null | undefined): boolean {
+  if (!pe || !pe.size) return false;
+  const urls: string[] = Array.isArray(res?.meta?.profile) ? res.meta.profile.map((u: unknown) => String(u).split("|")[0]) : [];
+  const sets = urls.map((u) => pe.get(u)).filter(Boolean) as Array<{ mustSupport: ReadonlySet<string>; required: ReadonlySet<string>; common?: ReadonlySet<string>; prohibited?: ReadonlySet<string> }>;
+  if (!sets.length && pe.size === 1) sets.push([...pe.values()][0]);
+  return sets.some((x) => x.mustSupport.has(path) || x.required.has(path) || (x.common?.has(path) ?? false));
+}
+
+/** Whether the declared profile allows `path` at all (not max 0) — for facts the record states explicitly (H / L flags). */
+function profileAllows(res: Json, path: string, pe: ProfileElements | null | undefined): boolean {
+  if (!pe || !pe.size) return false;
+  const urls: string[] = Array.isArray(res?.meta?.profile) ? res.meta.profile.map((u: unknown) => String(u).split("|")[0]) : [];
+  const sets = urls.map((u) => pe.get(u)).filter(Boolean) as Array<{ prohibited?: ReadonlySet<string> }>;
+  if (!sets.length && pe.size === 1) sets.push([...pe.values()][0]);
+  return sets.length > 0 && sets.every((x) => !(x.prohibited?.has(path) ?? false));
+}
+
+/** The record lines (not instruction text) that mention one of `names`. */
+function linesNaming(rt: RecordText, names: readonly string[]): string[] {
+  const out: string[] = [];
+  for (const n of names) for (const o of rt.find(n)) if (o.origin === "record" && o.section !== "instruction" && !out.includes(o.line)) out.push(o.line);
+  return out;
+}
+
+export function recordFactChecks(root: Json, recordText: string, siteConfig: string | null, severity: "warning" | "error", pe: ProfileElements | null | undefined, lookups?: ReadonlyMap<string, readonly string[]> | null): RecordIssue[] {
+  if (!pe || !pe.size) return [];
+  const rt = new RecordText(recordText, siteConfig);
+  const body = rt.lines.filter((l) => l.section !== "instruction" && l.section !== "site_config");
+  const out: RecordIssue[] = [];
+  const add = (path: string, zh: string, en: string, quote: string, value: unknown, field: string): void => {
+    out.push(withSuggestion(makeIssue(
+      "R6", severity, "record-fact-missing", path,
+      `病歷有寫但沒有轉換：${zh}（病歷：「${clip(quote.trim(), 80)}」）。這個欄位是 profile 的 mustSupport / 必填欄位，請寫入`,
+      `Stated in the record but not converted: ${en} (record: "${clip(quote.trim(), 80)}"). The profile marks this element mustSupport / required — write it`,
+      "R6 record fact: shared phrase tables (departments, confirmation / hedge words, H / L flags and reference ranges, discharge-medication headers, durations, dose / frequency / route) on the record lines; only elements the declared profile marks mustSupport or requires, and only when empty",
+      [quote.trim()],
+    ), { value: typeof value === "string" ? value : JSON.stringify(value), kind: "add_value", confidence: 0.5, reason: `write ${field} (codes from the element's binding: fhir_normalize_code(text, value_set=…))`, patch: { op: "add", path, value } }));
+  };
+  for (const r of resourcesOf(root)) {
+    const res = r.resource;
+    const rtype = String(res.resourceType);
+    // 1. Encounter.serviceType ← the department the record names
+    if (rtype === "Encounter" && !res.serviceType && profileUses(res, "Encounter.serviceType", pe)) {
+      const line = body.find((l) => /科別|門診|就診|掛號|department|clinic/iu.test(l.line) && DEPARTMENTS.some((d) => l.line.includes(d))) ?? body.find((l) => DEPARTMENTS.some((d) => l.line.includes(d)));
+      const dept = line ? DEPARTMENTS.find((d) => line.line.includes(d)) : undefined;
+      if (line && dept) add(`${r.base}.serviceType`, `就診科別「${dept}」→ Encounter.serviceType`, `the department "${dept}" → Encounter.serviceType`, line.line, { text: dept }, "Encounter.serviceType");
+    }
+    // 2. Condition.verificationStatus ← the record states the diagnosis (confirmed) or hedges it (provisional)
+    if (rtype === "Condition" && !res.verificationStatus && profileUses(res, "Condition.verificationStatus", pe)) {
+      const lines = linesNaming(rt, itemNames(res, root, lookups));
+      if (lines.length) {
+        const hedged = lines.every((l) => HEDGE.test(l));
+        const code = hedged ? "provisional" : "confirmed";
+        add(`${r.base}.verificationStatus`, `診斷的確認狀態（病歷${hedged ? "表示尚未確立" : "寫為確立的診斷"}）→ verificationStatus = ${code}`, `the diagnosis's verification status (the record ${hedged ? "hedges it" : "states it"}) → verificationStatus = ${code}`, lines[0], { coding: [{ system: "http://terminology.hl7.org/CodeSystem/condition-ver-status", code }] }, "Condition.verificationStatus");
+      }
+    }
+    // 3. Observation.interpretation ← H / L flags on the record line, or the value outside the resource's reference range
+    // (an explicit H / L flag in the record is reported wherever the profile allows interpretation; a reference-range
+    // comparison only where the profile uses it — mustSupport / required / common in its examples)
+    if (rtype === "Observation" && !res.interpretation && isObj(res.valueQuantity) && typeof res.valueQuantity.value === "number" && profileAllows(res, "Observation.interpretation", pe)) {
+      const used = profileUses(res, "Observation.interpretation", pe);
+      const v = res.valueQuantity.value as number;
+      const rr = Array.isArray(res.referenceRange) ? res.referenceRange[0] : null;
+      let code: "H" | "L" | null = null;
+      let quote = "";
+      if (used && isObj(rr) && (typeof rr.high?.value === "number" || typeof rr.low?.value === "number")) {
+        if (typeof rr.high?.value === "number" && v > rr.high.value) code = "H";
+        else if (typeof rr.low?.value === "number" && v < rr.low.value) code = "L";
+        quote = `${v} (reference ${rr.low?.value ?? ""}–${rr.high?.value ?? ""})`;
+      }
+      if (!code) {
+        // the record line naming the test, else any record line stating this value (2.10 = 2.1): the flag right after the number
+        const named = linesNaming(rt, itemNames(res, root, lookups));
+        const cand = [...named, ...body.map((l) => l.line).filter((l) => !named.includes(l))];
+        for (const l of cand) {
+          for (const m of l.matchAll(/(?<![\d.])(\d+(?:\.\d+)?)(?![\d.])/gu)) {
+            if (Number(m[1]) !== v) continue;
+            // after the number: skip its unit (U/L, mmol/L, uIU/mL — an "L" inside a unit is no flag), then the flag
+            const rest = l.slice(m.index! + m[1].length).replace(/^\s*(?!(?:HH|LL|H|L|high|low|↑|↓)(?:\s|[,，;；)）]|$))[^\s（(，,;；]+(?=\s|[（(，,;；]|$)/iu, "");
+            // a reference range right after the value (「(ref 4.0-6.0)」「（參考值 70-99）」): stated in the record — compare with it
+            const rng = /^\s*[（(]\s*(?:ref(?:erence)?|參考值|參考範圍|正常值|normal)?\s*[:：]?\s*(\d+(?:\.\d+)?)\s*[-~～–]\s*(\d+(?:\.\d+)?)\s*[^）)]*[）)]/iu.exec(rest);
+            const after = rng ? rest.slice(rng[0].length) : rest;
+            const near = after.slice(0, 12).split(/[,，;；]/u)[0];
+            if (FLAG_HIGH.test(near)) code = "H";
+            else if (FLAG_LOW.test(near)) code = "L";
+            else if (rng && v > Number(rng[2])) code = "H";
+            else if (rng && v < Number(rng[1])) code = "L";
+            if (code) {
+              quote = l;
+              break;
+            }
+          }
+          if (code) break;
+        }
+      }
+      if (code) add(`${r.base}.interpretation`, `檢驗值的判讀 → interpretation = ${code}`, `the result interpretation → interpretation = ${code}`, quote, [{ coding: [{ system: "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation", code }] }], "Observation.interpretation");
+    }
+    if (rtype !== "MedicationRequest") continue;
+    const names = itemNames(res, root, lookups);
+    const lines = linesNaming(rt, names);
+    if (!lines.length) continue;
+    // 4. MedicationRequest.category ← a discharge-medication header / line
+    if (!res.category && profileUses(res, "MedicationRequest.category", pe)) {
+      const li = rt.lines.findIndex((l) => l.line === lines[0]);
+      let hdr: string | null = DISCHARGE.test(lines[0]) ? lines[0] : null;
+      for (let i = li - 1; !hdr && i >= 0 && i >= li - 15; i--) {
+        if (DISCHARGE.test(rt.lines[i].line)) hdr = rt.lines[i].line;
+        else if (rt.lines[i].header) break;
+      }
+      if (hdr) add(`${r.base}.category`, "處方類別「出院帶藥」→ category = discharge", 'the prescription category "discharge medication" → category = discharge', hdr, [{ coding: [{ system: "http://terminology.hl7.org/CodeSystem/medicationrequest-category", code: "discharge" }] }], "MedicationRequest.category");
+    }
+    // 5. structured dosage / supply duration ← the drug's own line (when nothing, not even Dosage.text, carries them)
+    const d0 = Array.isArray(res.dosageInstruction) && isObj(res.dosageInstruction[0]) ? res.dosageInstruction[0] : null;
+    const hasText = !!(d0 && typeof d0.text === "string" && d0.text.trim());
+    if (hasText) continue; // text-only-fact covers what the text says
+    const line = lines[0];
+    const supply = isObj(res.dispenseRequest) && isObj(res.dispenseRequest.expectedSupplyDuration);
+    const dur = DURATION.exec(line);
+    if (dur && !supply && (profileUses(res, "MedicationRequest.dispenseRequest.expectedSupplyDuration", pe) || profileUses(res, "MedicationRequest.dispenseRequest", pe))) {
+      const n = Number(dur[1] ?? dur[3]);
+      const weeks = /週|week|wk/u.test(String(dur[2] ?? dur[4] ?? ""));
+      if (n > 0) add(`${r.base}.dispenseRequest.expectedSupplyDuration`, `給藥天數「${dur[0].trim()}」`, `the supply duration "${dur[0].trim()}"`, line, { value: weeks ? n * 7 : n, unit: "days", system: "http://unitsofmeasure.org", code: "d" }, "dispenseRequest.expectedSupplyDuration");
+    }
+    const dosageUsed = profileUses(res, "MedicationRequest.dosageInstruction", pe);
+    if (!dosageUsed) continue;
+    const dose = RE_DOSE.exec(line);
+    const freq = FREQ.find(([re]) => re.test(line));
+    const route = ROUTE.exec(line);
+    const hasDose = !!(d0 && Array.isArray(d0.doseAndRate) && d0.doseAndRate.length);
+    const base = `${r.base}.dosageInstruction[0]`;
+    if (dose && !hasDose) add(`${base}.doseAndRate[0].doseQuantity`, `單次劑量「${dose[0]}」`, `the dose "${dose[0]}"`, line, { value: Number(dose[1]), unit: dose[2], ...(UCUM_UNITS[dose[2].toLowerCase()] ? { system: "http://unitsofmeasure.org", code: UCUM_UNITS[dose[2].toLowerCase()] } : {}) }, "doseAndRate.doseQuantity");
+    if (freq && !(d0 && hasTiming(d0))) {
+      const m = freq[0].exec(line)!;
+      const code = freq[1] === "Q#H" ? `Q${m[1] ?? m[2]}H` : freq[1];
+      if (code !== "PRN") add(`${base}.timing.code`, `頻次「${m[0]}」`, `the frequency "${m[0]}"`, line, { coding: [{ system: "http://terminology.hl7.org/CodeSystem/v3-GTSAbbreviation", code }] }, "timing.code");
+    }
+    if (route && !(d0 && isObj(d0.route))) add(`${base}.route`, `給藥途徑「${route[0]}」`, `the route "${route[0]}"`, line, { text: route[0] }, "route");
+  }
+  // 6. Patient.name ← 姓名：…
+  for (const r of resourcesOf(root)) {
+    const res = r.resource;
+    if (res.resourceType !== "Patient" || (Array.isArray(res.name) && res.name.length) || !profileUses(res, "Patient.name", pe)) continue;
+    const LABEL = /(?:病人姓名|患者姓名|病患姓名|姓名|病人|患者|病患|patient name|name)\s*[:：]\s*([^\s，,；;（(]{2,20})|(?:^|\s)(?:病人|患者|病患|姓名)\s+(\p{Script=Han}{2,4})(?=\s|$)/iu;
+    const l = body.find((x) => LABEL.test(x.line));
+    const m = l ? LABEL.exec(l.line) : null;
+    const nm = m ? m[1] ?? m[2] : null;
+    if (l && nm) add(`${r.base}.name`, `病人姓名「${nm}」`, `the patient's name "${nm}"`, l.line, [{ text: nm }], "Patient.name");
+  }
+  return out;
+}
+
 /** All R6 checks (with source_text). */
-export function coverageChecks(root: Json, recordText: string, siteConfig: string | null, severity: "warning" | "error", lookups?: ReadonlyMap<string, readonly string[]> | null): RecordIssue[] {
+export function coverageChecks(root: Json, recordText: string, siteConfig: string | null, severity: "warning" | "error", lookups?: ReadonlyMap<string, readonly string[]> | null, pe?: ProfileElements | null): RecordIssue[] {
   const out: RecordIssue[] = [];
   for (const run of [
     () => negatedItemChecks(root, recordText, siteConfig, lookups),
     () => duplicateEntryChecks(root),
     () => textOnlyFactChecks(root, severity, recordText),
+    () => recordFactChecks(root, recordText, siteConfig, severity, pe, lookups),
   ]) {
     try {
       out.push(...run());

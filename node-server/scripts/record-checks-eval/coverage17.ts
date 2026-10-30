@@ -20,6 +20,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runRecordChecks } from "../../src/recordChecks/index.js";
+import { available, packages } from "../v16-structure-eval/packages.js";
 
 type Json = Record<string, any>;
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -68,8 +69,73 @@ function goldCases(): Case[] {
 }
 
 const ENTITY = new Set(["Patient", "Practitioner", "Organization", "Composition", "Encounter", "Location", "PractitionerRole"]);
+// the declared profiles' mustSupport / required elements (as the validating tools compute them), from the local TW Core package
+const pkTw = available("twcore") ? packages("twcore") : null;
+const twcore = pkTw ? pkTw.resolver() : null;
+const peCache = new Map<string, { mustSupport: Set<string>; required: Set<string> } | null>();
+async function profileElements(b: Json): Promise<Map<string, { mustSupport: Set<string>; required: Set<string> }>> {
+  const out = new Map<string, { mustSupport: Set<string>; required: Set<string> }>();
+  if (!twcore) return out;
+  const urls = new Set<string>();
+  for (const e of b.entry || []) for (const u of e?.resource?.meta?.profile ?? []) urls.add(String(u).split("|")[0]);
+  for (const u of urls) {
+    if (!peCache.has(u)) {
+      const sd = await twcore.fetchStructureDefinition(u).catch(() => null);
+      const els: Json[] = sd?.snapshot?.element || [];
+      const ms = new Set<string>(), req = new Set<string>(), prohibited = new Set<string>();
+      for (const e of els) {
+        const p = String(e.path || "").replace(/\[x\]/gu, "");
+        if (p.includes(".") && e.max === "0" && !String(e.id || "").includes(":")) prohibited.add(p);
+        if (!p.includes(".") || e.max === "0") continue;
+        if (e.mustSupport) ms.add(p);
+        if (typeof e.min === "number" && e.min >= 1) req.add(p);
+      }
+      // common in the IG's examples of this profile (as the validating tools compute it)
+      const common = new Set<string>();
+      const ex = examplesOf(u);
+      if (ex.length >= 2) {
+        const counts = new Map<string, number>();
+        for (const r of ex) {
+          const seen = new Set<string>();
+          for (const [k, v] of Object.entries(r)) {
+            if (["resourceType", "id", "meta", "text"].includes(k)) continue;
+            const base = `${sd.type}.${k.replace(/^(value|effective|onset|abatement|occurrence|performed|deceased|multipleBirth|medication|reported|timing|serviced|location)[A-Z].*$/u, "$1")}`;
+            seen.add(base);
+            for (const it of Array.isArray(v) ? v : [v]) if (it && typeof it === "object" && !Array.isArray(it)) for (const k2 of Object.keys(it)) seen.add(`${base}.${k2.replace(/^(value|dose|rate|as)[A-Z].*$/u, "$1")}`);
+          }
+          for (const p2 of seen) counts.set(p2, (counts.get(p2) ?? 0) + 1);
+        }
+        for (const [p2, n] of counts) if (n * 2 >= ex.length) common.add(p2);
+      }
+      peCache.set(u, els.length ? { mustSupport: ms, required: req, common, prohibited } as any : null);
+    }
+    const v = peCache.get(u);
+    if (v) out.set(u, v);
+  }
+  return out;
+}
+let EX: Json[] | null = null;
+/** The TW Core package's example instances (and Bundle entries) declaring `url`. */
+function examplesOf(url: string): Json[] {
+  if (EX === null) {
+    EX = [];
+    const dir = join(process.env.FHIR_PACKAGE_CACHE ?? join(process.env.HOME ?? "", ".fhir", "packages"), "tw.gov.mohw.twcore#1.0.0", "package");
+    const exDir = existsSync(join(dir, "example")) ? join(dir, "example") : dir;
+    for (const f of existsSync(exDir) ? readdirSync(exDir).filter((x) => x.endsWith(".json")) : []) {
+      try {
+        const r = readJson(join(exDir, f));
+        if (r.resourceType === "Bundle") for (const e of r.entry ?? []) e?.resource && EX.push(e.resource);
+        else if (r.resourceType && r.resourceType !== "StructureDefinition") EX.push(r);
+      } catch {
+        // skip unreadable files
+      }
+    }
+  }
+  return EX.filter((r) => (r.meta?.profile ?? []).some((p: string) => String(p).split("|")[0] === url));
+}
+let PE: Map<string, { mustSupport: Set<string>; required: Set<string> }> = new Map();
 const r6 = (b: Json, text: string, site: string | null, sev?: "error"): Json[] =>
-  (runRecordChecks(b, { sourceText: text, siteConfig: site, coverageSeverity: sev ?? null }).issues as Json[]).filter((i) => i.rule === "R6");
+  (runRecordChecks(b, { sourceText: text, siteConfig: site, coverageSeverity: sev ?? null, profileElements: PE }).issues as Json[]).filter((i) => i.rule === "R6");
 const subjectRef = (b: Json): Json => {
   const p = (b.entry || []).find((e: Json) => e?.resource?.resourceType === "Patient");
   return p?.fullUrl ? { reference: p.fullUrl } : { reference: "Patient/p" };
@@ -103,6 +169,7 @@ let fpBundles = 0;
 let fpErrors = 0;
 let warnBundles = 0;
 for (const c of cases) {
+  PE = await profileElements(c.bundle);
   // control
   const base = r6(c.bundle, c.source_text, c.site_config);
   const errs = base.filter((i) => i.severity === "error");
@@ -111,7 +178,10 @@ for (const c of cases) {
     fpErrors += errs.length;
     if (verbose) for (const e of errs) console.log(`  FP ${c.id}: ${e.code} @ ${e.path}`);
   }
-  if (base.length > errs.length) warnBundles++;
+  if (base.length > errs.length) {
+    warnBundles++;
+    if (verbose) for (const w of base.filter((i) => i.severity !== "error")) console.log(`  W ${c.id}: ${w.code} @ ${w.path} :: ${String(w.message_en).slice(0, 160)}`);
+  }
   const entries: Json[] = c.bundle.entry || [];
   // duplicate: the first item entry copied
   const ei = entries.findIndex((e) => e?.resource && !ENTITY.has(e.resource.resourceType));
@@ -163,6 +233,24 @@ for (const c of cases) {
     const text = insertSentence(c.source_text, n.sentence(name));
     const at = `Bundle.entry[${b.entry.length - 1}].resource`;
     count(`negated:${n.cls}`, r6(b, text, c.site_config).some((i) => i.code === "negated-item-present" && i.path.startsWith(at) && i.severity === "error"), c.id);
+  }
+  // record facts left out: one structured field removed at a time (only fields the gold Bundle has and its profile uses)
+  const FIELDS: Array<[string, string, (r: Json) => boolean]> = [
+    ["serviceType", "Encounter", (r) => (r.serviceType ? (delete r.serviceType, true) : false)],
+    ["verificationStatus", "Condition", (r) => (r.verificationStatus ? (delete r.verificationStatus, true) : false)],
+    ["interpretation", "Observation", (r) => (r.interpretation ? (delete r.interpretation, true) : false)],
+    ["category", "MedicationRequest", (r) => (r.category && JSON.stringify(r.category).includes("discharge") ? (delete r.category, true) : false)],
+    ["expectedSupplyDuration", "MedicationRequest", (r) => (r.dispenseRequest?.expectedSupplyDuration && !r.dosageInstruction?.[0]?.text ? (delete r.dispenseRequest.expectedSupplyDuration, true) : false)],
+    ["name", "Patient", (r) => (Array.isArray(r.name) && r.name.length ? (delete r.name, true) : false)],
+  ];
+  for (const [field, type, strip] of FIELDS) {
+    entries.forEach((e, i) => {
+      if (e?.resource?.resourceType !== type) return;
+      const b = clone(c.bundle);
+      if (!strip(b.entry[i].resource)) return;
+      const found = r6(b, c.source_text, c.site_config, "error").some((x) => x.code === "record-fact-missing" && x.path.startsWith(`Bundle.entry[${i}].resource`));
+      count(`missing:${field}`, found, c.id);
+    });
   }
   // excluded by the conversion target
   if (/【轉換目標】/u.test(c.source_text)) {

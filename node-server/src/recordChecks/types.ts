@@ -33,7 +33,9 @@ export type RecordCheckCode =
   /** R6 (ISSUES_v17 R2-4): an entry that repeats another (same content apart from ids, or the same thing). */
   | "duplicate-entry"
   /** R6 (ISSUES_v17 R2-1): a fact (dose, frequency, route, duration …) written only in a text field while its structured element is empty. */
-  | "text-only-fact";
+  | "text-only-fact"
+  /** R6 (ISSUES_v17 R2-2): a fact the record states clearly, for a field the profile marks mustSupport / required, left empty. */
+  | "record-fact-missing";
 
 /**
  * R1 information-absent · R2 identifier-format · R3 precision / completeness · R4 unconfirmed
@@ -111,6 +113,11 @@ export interface RecordCheckOptions {
    * Negated items written as done and duplicate entries are always errors.
    */
   coverageSeverity?: "warning" | "error" | null;
+  /**
+   * ISSUES_v17 R2-2: per declared profile (meta.profile, unversioned), the element paths it marks mustSupport / requires
+   * (base form) — the IG's commonly used fields (record-fact-missing looks only at those). Optional.
+   */
+  profileElements?: ReadonlyMap<string, { mustSupport: ReadonlySet<string>; required: ReadonlySet<string>; common?: ReadonlySet<string>; prohibited?: ReadonlySet<string> }> | null;
 }
 
 export interface RecordCheckResult {

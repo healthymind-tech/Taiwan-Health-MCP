@@ -116,3 +116,19 @@ test("R6 runs only with source_text", () => {
   assert.ok(!r.summary.rules.includes("R6"));
   assert.deepEqual(r.issues.filter((i) => i.rule === "R6"), []);
 });
+
+test("record-fact-missing: H / L flags after the unit (not inside it), reference ranges in the record; mustSupport fields from the profile", () => {
+  const pe = new Map([["http://x/Observation-lab", { mustSupport: new Set<string>(), required: new Set<string>(), common: new Set<string>(), prohibited: new Set<string>() }],
+    ["http://x/Encounter", { mustSupport: new Set(["Encounter.serviceType"]), required: new Set<string>() }]]);
+  const obs = (name: string, value: number, unit: string): Json => ({ resourceType: "Observation", meta: { profile: ["http://x/Observation-lab"] }, status: "final", subject, code: { text: name }, valueQuantity: { value, unit } });
+  const rec = "Lab: TSH 0.02 uIU/mL (L)，Platelet 192 ×10³/μL，HbA1c 7.2 %  (ref 4.0-6.0)，Na 140 mmol/L\n科別：家醫科";
+  const b = bundle(patient, obs("TSH", 0.02, "uIU/mL"), obs("Platelet", 192, "10*3/uL"), obs("HbA1c", 7.2, "%"), obs("Na", 140, "mmol/L"),
+    { resourceType: "Encounter", meta: { profile: ["http://x/Encounter"] }, status: "finished", class: { code: "AMB" }, subject });
+  const hits = runRecordChecks(b, { sourceText: rec, profileElements: pe as never }).issues.filter((i) => i.code === "record-fact-missing");
+  const by = (i: number): string | undefined => hits.find((h) => h.path.startsWith(`Bundle.entry[${i}]`))?.suggestions?.[0]?.value;
+  assert.match(by(1) ?? "", /"L"/);
+  assert.equal(by(2), undefined, "×10³/μL is a unit, not a flag");
+  assert.match(by(3) ?? "", /"H"/, "7.2 above the stated range 4.0-6.0");
+  assert.equal(by(4), undefined, "no flag, no range");
+  assert.match(by(5) ?? "", /家醫科/);
+});

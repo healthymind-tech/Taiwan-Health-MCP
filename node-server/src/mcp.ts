@@ -1489,7 +1489,10 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
       // Record checks (ISSUES_v15 / v15.1): R1 / R2 always, R3 / R4 / R5 with source_text; appended after the validator + grounding.
       // ISSUES_v15.3: LOINC axes (R1) and, with source_text, coding names (R3) — local tables, LRU-cached
       const looked = await recordCheckLookups(resource as Record<string, any>, groundingDeps.terminology, g.source_text);
-      return rawResult(addRecordChecksToValidation(grounded, resource as Record<string, any>, { sourceText: g.source_text ?? null, siteConfig: g.site_config ?? null, coverageSeverity: (g as { content_checks_severity?: "warning" | "error" | null }).content_checks_severity ?? null, ...looked }));
+      // ISSUES_v17 R2-2: the declared profiles' mustSupport / required elements (content coverage; only with source_text)
+      const withProfile = profile && !(resource as Record<string, any>)?.meta?.profile ? { ...(resource as Record<string, any>), meta: { ...((resource as Record<string, any>).meta ?? {}), profile: [profile] } } : (resource as Record<string, any>);
+      const profileElements = g.source_text ? await svc.profileElementUse(withProfile, package_id ?? null, version ?? null).catch(() => null) : null;
+      return rawResult(addRecordChecksToValidation(grounded, resource as Record<string, any>, { sourceText: g.source_text ?? null, siteConfig: g.site_config ?? null, coverageSeverity: (g as { content_checks_severity?: "warning" | "error" | null }).content_checks_severity ?? null, profileElements, ...looked }));
     },
   );
 
@@ -1532,7 +1535,9 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
       // Record checks (ISSUES_v15 / v15.1): R1 / R2 always, R3 / R4 / R5 with source_text; appended after the validator + grounding.
       // ISSUES_v15.3: LOINC axes (R1) and, with source_text, coding names (R3) — local tables, LRU-cached
       const looked = await recordCheckLookups(bundle as Record<string, any>, groundingDeps.terminology, g.source_text);
-      return rawResult(addRecordChecksToValidation(grounded, bundle as Record<string, any>, { sourceText: g.source_text ?? null, siteConfig: g.site_config ?? null, coverageSeverity: (g as { content_checks_severity?: "warning" | "error" | null }).content_checks_severity ?? null, ...looked }));
+      // ISSUES_v17 R2-2: the declared profiles' mustSupport / required elements (content coverage; only with source_text)
+      const profileElements = g.source_text ? await svc.profileElementUse(bundle as Record<string, any>, package_id ?? null, version ?? null).catch(() => null) : null;
+      return rawResult(addRecordChecksToValidation(grounded, bundle as Record<string, any>, { sourceText: g.source_text ?? null, siteConfig: g.site_config ?? null, coverageSeverity: (g as { content_checks_severity?: "warning" | "error" | null }).content_checks_severity ?? null, profileElements, ...looked }));
     },
   );
 
