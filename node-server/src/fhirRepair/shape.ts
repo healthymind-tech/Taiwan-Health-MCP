@@ -124,6 +124,33 @@ async function wellFormed(session: Session, type: string, value: unknown): Promi
   return true;
 }
 
+const XHTML_NS = "http://www.w3.org/1999/xhtml";
+
+function escapeXhtml(t: string): string {
+  return t.replace(/&/gu, "&amp;").replace(/</gu, "&lt;").replace(/>/gu, "&gt;").replace(/"/gu, "&quot;");
+}
+
+/**
+ * (v17.3) A plain string written for a complex element whose datatype carries the string as one element, the only
+ * lossless reading: Narrative → {status: generated, div: <div xmlns=XHTML>escaped</div>} (a string that already is a
+ * <div> keeps its markup and gains the namespace); a datatype with a string / markdown `text` child (Dosage,
+ * Annotation, CodeableConcept, HumanName, Address …) → {text}. null when the type has no such reading.
+ */
+async function stringAsComplex(session: Session, type: string, value: string): Promise<Record<string, any> | null> {
+  const t = value.trim();
+  if (!t || !type || PRIMITIVES.has(type)) return null;
+  if (type === "Narrative") {
+    const div = /^<div[\s>]/u.test(t) ? (/\bxmlns\s*=/u.test(t.slice(0, t.indexOf(">") + 1)) ? t : t.replace(/^<div/u, `<div xmlns="${XHTML_NS}"`)) : `<div xmlns="${XHTML_NS}">${escapeXhtml(t)}</div>`;
+    return { status: "generated", div };
+  }
+  if (["Reference", "Extension", "Meta", "Resource", "DomainResource", "BackboneElement", "Element", "Quantity", "Coding"].includes(type)) return null;
+  const dt = await session.view(CORE + type);
+  if (!dt) return null;
+  const groups = dt.sdx.childrenOfId(String(dt.sdx.root.id || type));
+  const hit = groups ? groupFor(groups, "text") : null;
+  return hit && (hit.type === "string" || hit.type === "markdown") ? { text: value } : null;
+}
+
 function isEmptyValue(v: unknown): boolean {
   if (v === null || v === "") return true;
   if (Array.isArray(v)) return v.length === 0;
@@ -206,6 +233,21 @@ export async function repairShapes(
       continue;
     }
     const core = site.defs[0];
+    // --- (v17.3) a string for a complex element (dosageInstruction: "500 mg BID", text: "…", note: "…")
+    if (typeof site.value === "string" && site.type && !PRIMITIVES.has(site.type)) {
+      const coerced = await stringAsComplex(session, site.type, site.value);
+      if (coerced) {
+        const from = site.holder[site.key];
+        setValue(site, coerced);
+        if (site.index === null && repeats(core) && !Array.isArray(site.holder[site.key])) site.holder[site.key] = [site.holder[site.key]];
+        changes.push({
+          path: rp(site.index === null ? keyPath : site.path), from, to: site.holder[site.key], rule: "shape",
+          reason: `${keyPath.split(".").pop()} is a ${site.type}, not a string: the text was written as its ${site.type === "Narrative" ? "generated XHTML div (status generated, XHTML namespace)" : "text"}${site.index === null && repeats(core) ? " (in an array: it repeats)" : ""}`,
+        });
+        touched.push(keyPath);
+        continue;
+      }
+    }
     // --- arrays vs single values
     const raw = site.holder[site.key];
     if (Array.isArray(raw) && !arraysSeen.has(keyPath)) {
@@ -355,6 +397,20 @@ export async function repairShapes(
     else (site.holder[site.key] as unknown[])[site.index] = value;
   }
 
+  /** The value as it would be written at a target of `type`: as is when well-formed, a string as its complex reading (v17.3); undefined otherwise. */
+  async function movable(type: string, value: unknown): Promise<unknown> {
+    if (await wellFormed(session, type, value)) return value;
+    const items = Array.isArray(value) ? value : [value];
+    if (!items.length || !items.every((x) => typeof x === "string")) return undefined;
+    const out: unknown[] = [];
+    for (const x of items) {
+      const c = await stringAsComplex(session, type, x as string);
+      if (!c) return undefined;
+      out.push(c);
+    }
+    return Array.isArray(value) ? out : out[0];
+  }
+
   async function misplaced(site: Site): Promise<void> {
     if (site.index !== null && site.index > 0) return; // the whole property moves once (at its first item)
     const node = site.holder;
@@ -385,15 +441,17 @@ export async function repairShapes(
             if (same(container[key], value)) moves.push({ where: `${name}.${key} (already there)`, path: `${site.ownerPath}.${name}`, apply: () => void delete node[key] });
             continue;
           }
-          if (!(await wellFormed(session, target.type, value))) continue;
+          const v1 = await movable(target.type, value);
+          if (v1 === undefined) continue;
           if (moves.some((x) => x.where.startsWith(`${name}.`))) continue;
           const rep = repeats(def);
           moves.push({
             where: `${name}${rep ? "[0]" : ""}.${key}`,
             path: `${site.ownerPath}.${name}${rep ? "[0]" : ""}.${key}`,
             apply: () => {
-              if (isObject(container)) container[key] = value;
-              else node[name] = rep ? [{ [key]: value }] : { [key]: value };
+              const w = target.repeats && !Array.isArray(v1) ? [v1] : v1;
+              if (isObject(container)) container[key] = w;
+              else node[name] = rep ? [{ [key]: w }] : { [key]: w };
               delete node[key];
             },
           });
@@ -419,12 +477,13 @@ export async function repairShapes(
             if (same(container[key], value)) moves.push({ where: `${name}.${key} (already there)`, path: `${site.ownerPath}.${name}`, apply: () => void delete node[key] });
             continue;
           }
-          if (!(await wellFormed(session, target.type, value))) continue;
+          const v2 = await movable(target.type, value);
+          if (v2 === undefined) continue;
           moves.push({
             where: `${name}.${key}`,
             path: `${site.ownerPath}.${name}.${key}`,
             apply: () => {
-              container[key] = value;
+              container[key] = target.repeats && !Array.isArray(v2) ? [v2] : v2;
               delete node[key];
             },
           });
@@ -440,15 +499,17 @@ export async function repairShapes(
       const target = await definesKey(session, ownerSite.ownerMembers, ownerSite.ownerType, key, parent);
       if (target && key in parent) {
         if (same(parent[key], value)) moves.push({ where: `${ownerSite.ownerPath}.${key} (already there)`, path: `${ownerSite.ownerPath}.${key}`, apply: () => void delete node[key] });
-      } else if (target && (await wellFormed(session, target.type, value))) {
-        moves.push({
-          where: `${ownerSite.ownerPath}.${key}`,
-          path: `${ownerSite.ownerPath}.${key}`,
-          apply: () => {
-            parent[key] = target.repeats && !Array.isArray(value) ? [value] : value;
-            delete node[key];
-          },
-        });
+      } else if (target) {
+        const v3 = await movable(target.type, value);
+        if (v3 !== undefined)
+          moves.push({
+            where: `${ownerSite.ownerPath}.${key}`,
+            path: `${ownerSite.ownerPath}.${key}`,
+            apply: () => {
+              parent[key] = target.repeats && !Array.isArray(v3) ? [v3] : v3;
+              delete node[key];
+            },
+          });
       }
     }
     const from = `${site.ownerPath}.${key}`;

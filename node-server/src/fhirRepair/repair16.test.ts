@@ -53,6 +53,16 @@ const CORRUPT: Record<string, (res: any, entry: any, maxOf: (t: string, k: strin
     return true;
   },
   "meta one level up": (res, entry) => (res.meta ? ((entry.meta = res.meta), delete res.meta, true) : false),
+  // v17.3: strings for complex elements
+  "narrative as a string": (res) => (typeof res.text?.div === "string" ? ((res.text = res.text.div.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() || "narrative"), true) : false),
+  "text-only datatype as a string": (res) => {
+    let hit = false;
+    for (const k of ["note", "dosageInstruction"]) {
+      const v = res[k];
+      if (Array.isArray(v) && v.length === 1 && v[0] && Object.keys(v[0]).length === 1 && typeof v[0].text === "string") (res[k] = v[0].text), (hit = true);
+    }
+    return hit;
+  },
 };
 
 for (const ig of ["pas", "twcore"]) {

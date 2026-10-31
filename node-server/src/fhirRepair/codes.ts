@@ -49,3 +49,39 @@ export async function repairCodes(session: Session, sites: Site[], rp: (p: strin
   }
   return { changes, issues };
 }
+
+/**
+ * (v17.3) Coding.code that is not a code of its CodeSystem (the validator's "Unknown code" — a wrong check digit
+ * 4548-5, a retired / mistyped code) while its display names EXACTLY one code of that system (same words after
+ * normalisation, the terminology's own name): the code is replaced by that one (rule `code`). No display, several
+ * exact names or only near ones → left as written (the validator's error and its replace_code suggestions stand).
+ */
+export async function repairUnknownCodings(session: Session, sites: Site[], rp: (p: string) => string, skip: (p: string) => boolean): Promise<{ changes: RepairChange[]; issues: RepairIssue[] }> {
+  const changes: RepairChange[] = [];
+  const issues: RepairIssue[] = [];
+  const { codeInSystem, normalize } = session.deps;
+  if (!codeInSystem || !normalize) return { changes, issues };
+  for (const site of sites) {
+    if (site.type !== "Coding" || !isObject(site.value) || skip(site.path)) continue;
+    const c = site.value;
+    const system = typeof c.system === "string" ? c.system.trim() : "";
+    const code = typeof c.code === "string" ? c.code.trim() : "";
+    const display = typeof c.display === "string" ? c.display.trim() : "";
+    if (!system || !code || !display || system === "http://unitsofmeasure.org") continue;
+    const known = await session.memo(`cis\0${system}\0${code}`, () => codeInSystem(system, code), undefined);
+    if (known !== false) continue;
+    const cands = await session.memo(`norm\0${system}\0${display}`, () => normalize(display, { system }, 5), [] as Awaited<ReturnType<typeof normalize>>);
+    const want = bag(display);
+    const exact = [...new Map(cands.filter((x) => x.code && x.code !== code && (!x.system || x.system === system) && x.display && bag(x.display) === want && x.accepted !== false).map((x) => [x.code, x])).values()];
+    if (exact.length !== 1) continue;
+    const to = exact[0];
+    const from = { ...c };
+    c.code = to.code;
+    if (to.display && to.display !== display) c.display = to.display;
+    changes.push({
+      path: rp(`${site.path}.code`), from: from.code, to: to.code, rule: "code",
+      reason: `'${from.code}' is not a code of ${system}; its display '${display}' is exactly the name of one code there, '${to.code}' — the code was corrected (the display is kept)`,
+    });
+  }
+  return { changes, issues };
+}

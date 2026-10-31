@@ -22,7 +22,7 @@
 
 import { impliedVitalSignProfile } from "../fhirValidator.js";
 import { repairAlternativeCodings } from "./alternatives.js";
-import { repairCodes } from "./codes.js";
+import { repairCodes, repairUnknownCodings } from "./codes.js";
 import { repairDates } from "./dates.js";
 import { repairDisplays } from "./displays.js";
 import { repairBundleEnvelope, repairBundleEntries } from "./envelope.js";
@@ -359,6 +359,9 @@ async function repairOnce(resource: Record<string, any>, deps: RepairDeps, opts:
     const r = await repairCodes(session, sites, rp, skipRule("code"));
     changes.push(...r.changes);
     issues.push(...r.issues);
+    const u = await repairUnknownCodings(session, sites, rp, skipRule("code"));
+    changes.push(...u.changes);
+    issues.push(...u.issues);
   }
   if (phases.has("displays")) {
     const r = await repairDisplays(session, sites, rp, skipRule("display"));
