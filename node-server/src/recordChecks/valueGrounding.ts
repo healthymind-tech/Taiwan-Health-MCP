@@ -436,6 +436,35 @@ function numberGrounded(rv: RecordValues, v: number, vu: string | null, allowPro
   return null;
 }
 
+/**
+ * ISSUES_v17.4: cues that a number in the same clause is not this time's value — old, previous, before a past event,
+ * no longer applicable, still to be supplied, not measured, cancelled. A clause is cut at ，,；;。 and brackets, so
+ * "體重 65 kg（前次 63 kg）" keeps 65 current and only 63 stale.
+ */
+const RE_STALE = /已不適用|不再適用|不適用|已失效|失效|舊值|前次|上次|先前|移植前|待補|待測|本次未測|未測量|未量|已停用|作廢|outdated|no longer (?:valid|applicable)|not applicable|\bold (?:value|result|reading|weight|measurement)|\bprevious(?:ly)?\b|\bprior\b(?! to)|\bformer\b|\bpending\b|not measured|cancell?ed/iu;
+const RE_CLAUSE_CUT = /[，,；;。（）()［］\[\]【】]/u;
+
+function staleOccurrences(rv: RecordValues, v: number, vu: string | null): { clause: string; cue: string; line: string } | null {
+  const occ = rv.numbers.filter((n) => same(n.value, v) && unitFits(n.unit, vu));
+  if (!occ.length) return null;
+  let first: { clause: string; cue: string; line: string } | null = null;
+  for (const n of occ) {
+    const line = rv.rt.lines[n.li]?.line ?? "";
+    const at = line.indexOf(n.raw);
+    if (at < 0) return null;
+    // the clause holding the number
+    let a = at;
+    while (a > 0 && !RE_CLAUSE_CUT.test(line[a - 1])) a--;
+    let b = at + n.raw.length;
+    while (b < line.length && !RE_CLAUSE_CUT.test(line[b])) b++;
+    const clause = line.slice(a, b).trim();
+    const m = RE_STALE.exec(clause);
+    if (!m) return null; // one current occurrence grounds it
+    first ??= { clause: clip(clause, 60), cue: m[0], line: clip(line.trim()) };
+  }
+  return first;
+}
+
 function checkIdentifier(s: Slot, g: GroundingContext, stated: ReturnType<typeof statedAbsences>): RecordIssue | null {
   if (s.kind !== "identifier" || RE_SYSTEM_ID.test(s.gpath)) return null;
   const holder = s.holder;
@@ -628,6 +657,17 @@ function checkQuantity(s: Slot, g: GroundingContext, stated: ReturnType<typeof s
     }
   }
   if (hit) {
+    // ISSUES_v17.4: every occurrence of the value stands in a clause that says it is not this time's value
+    const stale = hit.n ? staleOccurrences(g.rv, v, vu) : null;
+    if (stale) {
+      return makeIssue(
+        "R5", "error", "stale-value", path,
+        `這個值不是本次的值：數值 ${v}${vu ? ` ${vu}` : ""} 在病歷中只出現在「${stale.clause}」，病歷說明它是${stale.cue}的值（「${stale.line}」）。不要用舊值或失效的值代替；若必要資訊缺漏，請回報 insufficient_information`,
+        `This value is not the current one: ${v}${vu ? ` ${vu}` : ""} appears in the record only in "${stale.clause}", which marks it as not this time's value ("${stale.cue}": "${stale.line}"). Do not substitute an old or no-longer-valid value; if the required information is missing, report insufficient_information`,
+        `R5 stale value (v17.4): every record occurrence of ${v} is in a clause / bracket with an old / not-applicable / pending cue ('${stale.cue}')`,
+        [stale.line],
+      );
+    }
     if (isObs && !range) return otherTimePoint(s, g, [], hit);
     return null;
   }

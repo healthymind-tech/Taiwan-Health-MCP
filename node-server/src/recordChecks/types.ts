@@ -30,6 +30,8 @@ export type RecordCheckCode =
   | "ungrounded-value"
   /** R5 (ISSUES_v15.1 R4): the value is in the record but belongs to another time point / event. */
   | "value-from-other-event"
+  /** R5 (ISSUES_v17.4): the value is in the record only as an old / no-longer-valid / pending value (已不適用, 前次, 待補). */
+  | "stale-value"
   /** R6 (ISSUES_v17 R2-3): an item the record negates / cancels / defers (or the conversion target excludes) written as done or active. */
   | "negated-item-present"
   /** R6 (ISSUES_v17 R2-4): an entry that repeats another (same content apart from ids, or the same thing). */

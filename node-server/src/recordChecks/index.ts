@@ -37,6 +37,7 @@
  * summarises. Deterministic, no LLM, no network; the record text is never logged.
  */
 import { isIgDefined } from "../grounding/igDefined.js";
+import { unconfirmedTextChecks } from "./unconfirmedText.js";
 import { absenceClauses, absenceOf, RECORD_CHECKS_LEXICON_SHA256, RECORD_CHECKS_LEXICON_VERSION } from "./lexicon.js";
 import { identifierRegistry, sentenceLike } from "./identifiers.js";
 import { makeIssue } from "./issue.js";
@@ -70,7 +71,9 @@ export { identifierRegistry, BUILTIN_IDENTIFIER_SYSTEMS, BUILTIN_FORMATS } from 
 // 1.3.1: the v15.3 result-slot note rule is a warning without source_text (as the empty-shell rule); R3 Chinese-name
 //   hardening + hierarchy guard + record-casing abbreviation check (codeGrounding.ts, grounding/snomedChinese.ts).
 // 1.4.0 (ISSUES_v17 R2): R6 content coverage (coverage.ts) — negated-item-present, duplicate-entry, text-only-fact.
-export const RECORD_CHECKS_VERSION = "1.4.1";
+// 1.4.1 (ISSUES_v17.2): IG-defined values exempt. 1.5.0 (ISSUES_v17.4): stale-value (a value the record states only as old /
+// not applicable / pending), unconfirmed-as-confirmed for not-established text in diagnosis / required elements.
+export const RECORD_CHECKS_VERSION = "1.5.0";
 
 type Json = Record<string, any>;
 const isObj = (x: unknown): x is Json => !!x && typeof x === "object" && !Array.isArray(x);
@@ -371,6 +374,13 @@ export function runRecordChecks(root: Json, opts: RecordCheckOptions = {}): Reco
     } catch {
       notes.push("R6 (content coverage) could not run on this input (internal error)");
     }
+  }
+  // ISSUES_v17.4: an unestablished fact written as text into a diagnosis / required element (no record needed)
+  try {
+    const taken = new Set(issues.map((i) => `${i.code}\u0000${i.path}`));
+    for (const i of unconfirmedTextChecks(root, opts.profileElements ?? null)) if (!taken.has(`${i.code}\u0000${i.path}`)) issues.push(i);
+  } catch {
+    notes.push("the unconfirmed-text check could not run on this input (internal error)");
   }
   if (opts.igDefined) {
     // any other value issue (empty shells, record-aware checks) on an IG-defined value
