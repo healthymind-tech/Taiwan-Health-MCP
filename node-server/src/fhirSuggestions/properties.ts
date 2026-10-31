@@ -21,6 +21,7 @@
  * Profiles only constrain base elements, so names come from the base definitions.
  */
 
+import { r3Rename } from "../fhirR3Renames.js";
 import type { Suggestion, SuggestionDeps } from "./types.js";
 import { editSim, isObject, jaccard, parsePath, textSim, tokens } from "./util.js";
 
@@ -424,6 +425,19 @@ export async function suggestProperty(
     const takes = (k: Child): boolean => (vc === "object" ? !!k.type && st.includes(k.type) : typeClass(k.type) === vc || (vc === "date" && typeClass(k.type) === "string"));
     return kids.some((k) => !STRUCTURAL.has(k.name) && takes(k)) ? "soft" : "hard";
   };
+  // (0) v17.1 R4: an STU3 element R4 renamed / removed (fhirR3Renames.ts: FHIR core version changes)
+  const r3 = level.prefix ? r3Rename(level.prefix, bare) : null;
+  if (r3?.to && !present.has(r3.to)) {
+    out.push({
+      value: pre + r3.to,
+      kind: "rename_property",
+      confidence: 0.97,
+      reason: `'${bare}' is the STU3 name; R4 calls it '${r3.to}'${r3.inner ? ` (inside: ${Object.entries(r3.inner).map(([a, b]) => (b ? `${a} → ${b}` : `${a} removed`)).join(", ")})` : ""}${r3.annotation ? " (an Annotation: {text})" : ""}`,
+      patch: { op: "move", from: `${issuePath}.${key}`, path: `${issuePath}.${pre}${r3.to}` },
+    });
+  } else if (r3?.removed) {
+    out.push({ value: key, kind: "remove_property", confidence: 0.9, reason: `'${bare}' is STU3 and does not exist in R4: ${r3.removed}`, patch: { op: "remove", path: `${issuePath}.${key}` } });
+  }
   // (1) Same level: case, choice stem, edit distance.
   const shapes = shapeTypes(value);
   const strongTargets = new Set<string>();

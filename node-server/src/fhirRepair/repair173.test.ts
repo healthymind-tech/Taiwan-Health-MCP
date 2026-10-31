@@ -63,3 +63,21 @@ test("an unknown code whose display names exactly one code is corrected; several
   await repairBundle(g, deps, {});
   assert.equal(g.entry[1].resource.code.coding[0].code, "2345-0", "two codes are named exactly 'Glucose': not decidable");
 });
+
+test("v17.1 R4: STU3 elements R4 renamed are renamed (vaccineProtocol → protocolApplied with its children, date → occurrenceDateTime, comment → note); removed ones are reported, kept", { skip: !available("twcore") }, async () => {
+  const b = bundleOf({
+    resourceType: "Immunization", status: "completed", patient: subj, vaccineCode: { text: "Influenza" },
+    date: "2024-10-01", notGiven: false,
+    vaccineProtocol: [{ doseSequence: 1, seriesDoses: 2, targetDisease: [{ text: "Influenza" }] }],
+  });
+  const r = await repairBundle(b, depsFor(), {});
+  const imm = b.entry[1].resource;
+  assert.equal(imm.occurrenceDateTime, "2024-10-01");
+  assert.equal(imm.date, undefined);
+  assert.deepEqual(imm.protocolApplied, [{ doseNumberPositiveInt: 1, seriesDosesPositiveInt: 2, targetDisease: [{ text: "Influenza" }] }]);
+  assert.equal(imm.notGiven, false, "removed in R4: reported, not deleted");
+  assert.ok(r.issues.some((i) => /notGiven/.test(i.message) && /not-done/.test(i.message)));
+  const o = bundleOf({ resourceType: "Observation", status: "final", subject: subj, code: { text: "BP" }, comment: "坐姿量測" });
+  await repairBundle(o, depsFor(), {});
+  assert.deepEqual(o.entry[1].resource.note, [{ text: "坐姿量測" }]);
+});

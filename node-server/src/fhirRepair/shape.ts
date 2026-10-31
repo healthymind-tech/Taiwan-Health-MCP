@@ -33,6 +33,7 @@
  * Anything ambiguous or lossy is left as written and reported with the correct shape and an example.
  */
 
+import { r3Rename } from "../fhirR3Renames.js";
 import { primitiveOk } from "../fhirValidator.js";
 import type { RepairChange, RepairIssue } from "./types.js";
 import { baseMax, CORE, groupFor, isObject, PRIMITIVES, QUANTITY_TYPES, repeats, replaceKey, type Member, type Session, type Site } from "./walk.js";
@@ -416,6 +417,33 @@ export async function repairShapes(
     const node = site.holder;
     const key = site.key;
     const value = node[key];
+    // v17.1 R4: an STU3 element R4 renamed (fhirR3Renames.ts) → renamed in place; one R4 removed → reported, kept
+    const owner = site.ownerPath.replace(/^Bundle\.entry\[\d+\]\.resource/u, String(node.resourceType ?? site.ownerType)).replace(/\[\d+\]/gu, "");
+    const r3 = r3Rename(owner.includes(".") ? owner : String(node.resourceType ?? site.ownerType), key);
+    if (r3?.removed) {
+      issues.push({ path: rp(`${site.ownerPath}.${key}`), rule: "shape", severity: "error", message: `'${key}' is STU3 and does not exist in R4: ${r3.removed} (not removed here)` });
+      return;
+    }
+    if (r3?.to && !(r3.to in node)) {
+      const target = await definesKey(session, site.ownerMembers, site.ownerType, r3.to, node);
+      if (target) {
+        const conv = (x: unknown): unknown => {
+          if (r3.annotation && typeof x === "string") return { text: x };
+          if (r3.inner && isObject(x)) {
+            const o: Record<string, any> = {};
+            for (const [k, v] of Object.entries(x)) o[r3.inner[k] ?? k] = v; // children R4 removed stay (reported by the validator)
+            return o;
+          }
+          return x;
+        };
+        const v = Array.isArray(value) ? value.map(conv) : conv(value);
+        node[r3.to] = target.repeats && !Array.isArray(v) ? [v] : !target.repeats && Array.isArray(v) && v.length === 1 ? v[0] : v;
+        delete node[key];
+        changes.push({ path: rp(`${site.ownerPath}.${r3.to}`), from: { path: rp(`${site.ownerPath}.${key}`), value }, to: node[r3.to], rule: "shape", reason: `'${key}' is the STU3 name of R4 '${r3.to}' (FHIR R4 version change): renamed` });
+        touched.push(site.ownerPath);
+        return;
+      }
+    }
     const moves: Move[] = [];
     // Down: a child container of the owner that defines `key`.
     for (const m of site.ownerMembers) {

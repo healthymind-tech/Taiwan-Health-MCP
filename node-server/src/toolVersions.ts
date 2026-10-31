@@ -209,7 +209,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.20.0 also: (v17 R1 IG self-check) validator — a `type` discriminator with a path (Bundle.entry sliced by type:resource) is matched on the type of the element the path names (entry:x.resource; through resolve(): the target profiles' types), not the sliced element's BackboneElement (every entry was "missing" its slice); an embedded resource whose element lists several type profiles conforms when it meets one of them (the closest one's issues otherwise).
   // 1.20.0 also: (robustness audit) source_text limited to 200,000 characters; site_config timezone / identifier-format lines and the absence-label scan no longer backtrack on long whitespace / label runs; record line lookup by binary search.
   // 1.21.0 (ISSUES_v17.2, with source_text): grounding (fhir_check_grounding 1.3.0) and the record checks (1.4.1: ungrounded-value, information-absent, value-from-other-event, incomplete-value, insufficient-precision) exempt the values the IG defines — fixed / pattern, skeleton ig-constants (the payer agency's name / OID), invariant answer literals for value[x]; medication evidence quotes from several-medicine lines are no longer G-CONTEXT-LABEL.
-  fhir_validate_bundle: "1.21.0",
+  // 1.22.0: IG known defects (v17.3, igKnownDefects.ts): an error the IG's own examples of the profile also have (every example fails the same structural rule — ig_selfcheck job) gets `ig_known_defect` {profile, element, examples, failing, total, advice} and a message note naming the optional entry and where its information goes (a CodeableConcept of another entry's profile bound to the same ValueSet); severity / issue set / valid unchanged; suggestions: STU3 renames (rename_property 0.97 / remove_property with the R4 way).
+  fhir_validate_bundle: "1.22.0",
   // 1.6.2: the binding-aware suggestions above (ISSUES_v10 A) also apply to single-resource validation.
   // 1.7.0: the validator v13 rules above (fhir_validate_bundle 1.9.0).
   // 1.8.0 (ISSUES_v15): the record checks of fhir_validate_bundle 1.11.0 on the resource (data.issues, data.record_checks).
@@ -227,7 +228,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.16.0: the invariant explanations of fhir_validate_bundle 1.19.0.
   // 1.17.0: the R6 content coverage of fhir_validate_bundle 1.20.0 (content_checks_severity).
   // 1.18.0 (ISSUES_v17.2, with source_text): grounding (fhir_check_grounding 1.3.0) and the record checks (1.4.1: ungrounded-value, information-absent, value-from-other-event, incomplete-value, insufficient-precision) exempt the values the IG defines — fixed / pattern, skeleton ig-constants (the payer agency's name / OID), invariant answer literals for value[x]; medication evidence quotes from several-medicine lines are no longer G-CONTEXT-LABEL.
-  fhir_validate_resource: "1.18.0",
+  // 1.19.0: as fhir_validate_bundle 1.22.0 (IG known defects (v17.3, igKnownDefects.ts); STU3 rename suggestions).
+  fhir_validate_resource: "1.19.0",
   // 1.2.0 (all below): provenance.resolved_by / closure_versions; canonical arguments resolve to their
   // owning package when package_id is omitted; "|version" honoured; list/search: all_packages + zero-hit hint;
   // NO_DEFAULT_IG instead of an arbitrary package when no default IG is set.
@@ -338,7 +340,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.15.0: data.validation with source_text carries the R6 content coverage of fhir_validate_resource 1.17.0.
   // 1.15.0 also: the UCUM repairs of fhir_finalize_bundle 1.9.0.
   // 1.16.0 (ISSUES_v17.2, with source_text): grounding (fhir_check_grounding 1.3.0) and the record checks (1.4.1: ungrounded-value, information-absent, value-from-other-event, incomplete-value, insufficient-precision) exempt the values the IG defines — fixed / pattern, skeleton ig-constants (the payer agency's name / OID), invariant answer literals for value[x]; medication evidence quotes from several-medicine lines are no longer G-CONTEXT-LABEL.
-  fhir_finalize_resource: "1.16.0",
+  // 1.17.0: content repairs (v17.3 / v17.1): a string for a complex element (Dosage / Annotation / CodeableConcept … → {text}, Narrative → generated XHTML div), a misplaced string moved as an Annotation, an unknown code whose display names exactly one code of its system → that code, STU3 elements R4 renamed (vaccineProtocol → protocolApplied …, fhirR3Renames.ts) renamed and removed ones reported.
+  fhir_finalize_resource: "1.17.0",
   // 1.0.0 (authoring/, evaluation v11): the model gives field VALUES, the MCP composes the resource for its profile
   //   (fixed / pattern / defaults / derived / displays / UCUM / ROC dates), validates it, keeps it in a Redis context
   //   (`authoring:ctx:*`, 60-min idle TTL) and assembles the Bundle from keys with deterministic urn:uuid fullUrls
@@ -353,13 +356,15 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   Condition.encounter, Observation.hasMember …). The size budget applies to the WHOLE response (envelope, warnings,
   //   provenance; non-ASCII counted as \uXXXX) minus a 150-char margin; new data.response_chars.
   // 1.2.1 (ISSUES_v16.2 R1): a short artifact id that is not in the IG itself resolves in its dependency packages (one distinct canonical; otherwise not found / AMBIGUOUS_ARTIFACT with the candidates) — previously ARTIFACT_NOT_FOUND.
-  fhir_get_authoring_fields: "1.2.1",
+  // 1.3.0: warnings carry the IG known defects of the profile (its own examples fail validation: do not create it unless the conversion target requires it).
+  fhir_get_authoring_fields: "1.3.0",
   // 1.0.0 (ISSUES_v16 R1, igBlueprint/blueprint.ts): a Bundle profile's blueprint — entry slices (min..max, profile), slicing
   //   discriminator / closed / ordered, Bundle.type, the references between slices that the slice profiles require (also in
   //   extensions and sliced backbones, targets matched through profile derivation) and a recipe; <= 4,000 characters
   //   (`omitted`), view='references' for every reference line. IG-agnostic.
   // 1.0.1 (ISSUES_v16.2 R1): a short artifact id that is not in the IG itself resolves in its dependency packages (one distinct canonical; otherwise not found / AMBIGUOUS_ARTIFACT with the candidates) — previously ARTIFACT_NOT_FOUND.
-  fhir_get_bundle_blueprint: "1.0.1",
+  // 1.1.0: `known_invalid` (v17.3): slices whose profile the IG's own examples cannot pass, with the reason, examples and where the information goes instead.
+  fhir_get_bundle_blueprint: "1.1.0",
   // 1.0.0 (ISSUES_v16 R2, igBlueprint/skeleton.ts): a profile's minimal legal instance (every required element recursively,
   //   required slices, extensions expanded from their definitions, fixed / pattern filled in) and a value_source per required
   //   element (ig-constant: fixed / pattern or identical in >= 2 of the IG's example instances, eligibility by resource kind;
@@ -380,7 +385,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   gets a Coding of the bound ValueSet's system + the lookup (fhir_normalize_code value_set=…) instead of "<record>"; a closed
   //   slicing inside a value (Condition.code → code.coding) templates that value with its first allowed slice (not the base
   //   binding's system, which may belong to a max-0 slice).
-  fhir_get_minimal_skeleton: "1.3.0",
+  // 1.4.0: warnings carry the IG known defects of the profile (v17.3).
+  fhir_get_minimal_skeleton: "1.4.0",
   // 1.1.0 (evaluation feedback): (1) a model display the validator's terminology rule rejects for a resolvable code is
   //   replaced by the code's display (provenance lookup; the model wording moves to CodeableConcept.text when empty;
   //   case-only differences are valid, whitespace-only ones take the valid spelling); (2) a single object / scalar where
@@ -432,7 +438,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.13.0: validation with source_text carries the R6 content coverage of fhir_validate_resource 1.17.0.
   // also (v17 robustness audit): a quantity text with a long whitespace run before a line break no longer backtracks cubically (QUANTITY_TEXT on the trimmed value); source_text is limited to 200,000 characters.
   // 1.14.0 (ISSUES_v17.2, with source_text): grounding (fhir_check_grounding 1.3.0) and the record checks (1.4.1: ungrounded-value, information-absent, value-from-other-event, incomplete-value, insufficient-precision) exempt the values the IG defines — fixed / pattern, skeleton ig-constants (the payer agency's name / OID), invariant answer literals for value[x]; medication evidence quotes from several-medicine lines are no longer G-CONTEXT-LABEL.
-  fhir_author_resources: "1.14.0",
+  // 1.15.0: validation as fhir_validate_resource 1.19.0; content repairs as fhir_finalize_resource 1.17.0.
+  fhir_author_resources: "1.15.0",
   // 1.0.1: action=get results carry the author result's new `notes` (fhir_author_resources 1.1.0); otherwise unchanged.
   fhir_context: "1.0.1",
   // 1.1.0: new `site_config` (merged with the context's) passed to the grounding engine with source_text, so facility
@@ -469,7 +476,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.12.0: validation as fhir_validate_bundle 1.19.0 (invariant explanations).
   // 1.13.0: validation with source_text carries the R6 content coverage of fhir_validate_bundle 1.20.0 (duplicates, negated / excluded items, text-only facts).
   // 1.14.0 (ISSUES_v17.2, with source_text): grounding (fhir_check_grounding 1.3.0) and the record checks (1.4.1: ungrounded-value, information-absent, value-from-other-event, incomplete-value, insufficient-precision) exempt the values the IG defines — fixed / pattern, skeleton ig-constants (the payer agency's name / OID), invariant answer literals for value[x]; medication evidence quotes from several-medicine lines are no longer G-CONTEXT-LABEL.
-  fhir_assemble_bundle: "1.14.0",
+  // 1.15.0: finalize as fhir_finalize_bundle 1.11.0 (document completion); validation as fhir_validate_bundle 1.22.0.
+  fhir_assemble_bundle: "1.15.0",
   // 1.0.0 (ISSUES_v9 R1): deterministic Bundle finalizer — fullUrl-uuid / reference-rewire / resource-id (mandatory),
   // bundle-type / document-order (profile-driven); UUID v5 seeded by (resourceType, original fullUrl, resource.id, entry
   // index) + a content salt; references found through StructureDefinition snapshots; duplicates / ambiguity reported.
@@ -530,7 +538,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.9.0: data.record_issues with source_text carry the R6 content coverage of fhir_validate_bundle 1.20.0.
   // 1.9.0 also: (v17 R3) UCUM repair — a bare count unit (count / counts / 個) → {count}; a required ValueSet that includes UCUM as a whole system (no enumerated UCUM codes) allows every valid UCUM code instead of none.
   // 1.10.0 (ISSUES_v17.2, with source_text): grounding (fhir_check_grounding 1.3.0) and the record checks (1.4.1: ungrounded-value, information-absent, value-from-other-event, incomplete-value, insufficient-precision) exempt the values the IG defines — fixed / pattern, skeleton ig-constants (the payer agency's name / OID), invariant answer literals for value[x]; medication evidence quotes from several-medicine lines are no longer G-CONTEXT-LABEL.
-  fhir_finalize_bundle: "1.10.0",
+  // 1.11.0: content repairs (v17.3 / v17.1): a string for a complex element (Dosage / Annotation / CodeableConcept … → {text}, Narrative → generated XHTML div), a misplaced string moved as an Annotation, an unknown code whose display names exactly one code of its system → that code, STU3 elements R4 renamed (vaccineProtocol → protocolApplied …, fhirR3Renames.ts) renamed and removed ones reported; document Bundles (v17.1 R1 / R2, fhirRepair/document.ts): identifier (UUID v5 of the Composition), timestamp (Composition.date when an instant), Composition.subject / author (the one candidate), meta.profile from the Bundle profile's composition slice, entries unreachable from the Composition placed into the one fitting section slice (profile > pinned codes / required code binding > type; a required empty section first) with the section's code display, title and generated text; required missing sections and ambiguous entries reported; narratives: missing div / XHTML namespace / invalid status repaired.
+  fhir_finalize_bundle: "1.11.0",
   // ── 2026-10-19 actionable errors (additive fields only; successful outputs unchanged) ──
   // search_medical_codes 1.2.1: IG_UNAVAILABLE adds `hint`.
   // FHIR IG tools above (+.0.1): error envelopes add error.hint; IG_NOT_FOUND / NO_DEFAULT_IG add
