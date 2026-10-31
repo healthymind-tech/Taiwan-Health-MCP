@@ -8,6 +8,7 @@
  * membership `undefined`) — never fabricate a display or a verdict.
  */
 
+import { txDisplays } from "./txCodeTables.js";
 import { query } from "./db.js";
 import type { PackageRow } from "./fhirIg.js";
 import {
@@ -467,7 +468,10 @@ async function lookupExternalTables(system: string | null | undefined, code: str
         [code],
       )
     ).rows[0];
-    if (row) return { display: row.long_common_name, definition: row.shortname };
+    if (row) {
+      const tx = txDisplays("http://loinc.org", code, (await loincEdition())?.version ?? null);
+      return { display: tx ? tx.displays[0] : row.long_common_name, definition: row.shortname };
+    }
     // LA / LP / LL codes (not LG: tx.fhir.org does not serve LOINC groups).
     if (/^L[APL]\d+-\d$/.test(code)) {
       const other = await loincOtherCode(code);
@@ -529,6 +533,9 @@ export async function externalDisplays(
       )
     ).rows[0];
     if (!row) return null;
+    // ISSUES_v17.5: the reference server's displays when the local release is older (renamed codes, DisplayName)
+    const tx = txDisplays(system, code, (await loincEdition())?.version ?? null);
+    if (tx) return { displays: tx.displays };
     const out: string[] = [];
     for (const v of [row.long_common_name, row.shortname]) if (typeof v === "string" && v) out.push(v);
     return { displays: out };

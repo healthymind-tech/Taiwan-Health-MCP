@@ -97,3 +97,27 @@ test("narratives: string-less / namespace-less / wrong status / text in another 
   const ch = repairNarratives(b);
   assert.deepEqual(ch.map((c) => c.path), ["Bundle.entry[0].resource.section[0].text"]);
 });
+
+test("v17.5: dead local links unwrapped, system|version split, pinned section display corrected, emptyReason sections take no entries", async () => {
+  const { unwrapDeadLinks, repairSystemVersions } = await import("./document.js");
+  assert.deepEqual(unwrapDeadLinks('<div><p><a href="#gone">See above</a> and <a href="#here">x</a></p></div>', new Set(["here"])), {
+    div: '<div><p>See above and <a href="#here">x</a></p></div>',
+    removed: ["#gone"],
+  });
+  const sv: Json = { resourceType: "Bundle", entry: [{ resource: { resourceType: "Practitioner", qualification: [{ code: { coding: [{ system: "http://terminology.hl7.org/CodeSystem/v2-0360|2.7", code: "MD" }] } }] } }] };
+  const ch = repairSystemVersions(sv);
+  assert.equal(ch.length, 1);
+  assert.deepEqual(sv.entry[0].resource.qualification[0].code.coding[0], { system: "http://terminology.hl7.org/CodeSystem/v2-0360", code: "MD", version: "2.7" });
+  // a pinned section code with a wrong display → the terminology's display
+  const b = doc(
+    { resourceType: "Composition", status: "final", date: "2024-05-01T10:30+08:00", title: "S", section: [{ title: "Meds", code: { coding: [{ system: LOINC, code: "10160-0", display: "Some section" }] }, entry: [{ reference: u(2) }], text: { status: "generated", div: '<div xmlns="http://www.w3.org/1999/xhtml">x</div>' } }, { title: "Allergies", code: { coding: [{ system: LOINC, code: "48765-2" }] }, emptyReason: { text: "none" } }] },
+    { resourceType: "Patient" },
+    { resourceType: "MedicationStatement", status: "active", subject: { reference: u(1) }, medicationCodeableConcept: { text: "Metformin" } },
+    { resourceType: "AllergyIntolerance", patient: { reference: u(1) }, code: { text: "Penicillin" } },
+  );
+  const r = await completeDocument(b, { ...deps, lookupDisplay: async (_s: string, c: string) => (c === "10160-0" ? "History of Medication use Narrative" : null) });
+  const comp = b.entry[0].resource;
+  assert.equal(comp.section[0].code.coding[0].display, "History of Medication use Narrative");
+  assert.equal(comp.section[1].entry, undefined, "an emptyReason section takes no entry");
+  assert.ok(r.issues.some((i) => i.path === "Bundle.entry[3]" && /not reachable/.test(i.message)));
+});

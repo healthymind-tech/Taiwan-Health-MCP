@@ -9,7 +9,7 @@
  * service for semantic normalize_code.
  */
 
-import { completeDocument, repairNarratives } from "./fhirRepair/document.js";
+import { completeDocument, repairNarratives, repairSystemVersions } from "./fhirRepair/document.js";
 import { annotateKnownDefects, boundAlternatives, knownDefects, type KnownDefect } from "./igKnownDefects.js";
 import { performance } from "node:perf_hooks";
 import { query, queryCount, trackQueryFailures } from "./db.js";
@@ -2146,7 +2146,7 @@ export class FHIRIGService {
       const result = await repairBundle(tree, deps, { timezone, timezoneSource });
       // v17.1 R1 / R2: narratives and document completion (fhirRepair/document.ts), after the value repairs
       try {
-        result.changes.push(...repairNarratives(tree));
+        result.changes.push(...repairNarratives(tree), ...repairSystemVersions(tree));
         const d = await completeDocument(tree, { fetchStructureDefinition: (u) => deps.fetchStructureDefinition(u), lookupDisplay: deps.lookupDisplay, valueSetContains: deps.valueSetContains }, doc);
         result.changes.push(...d.changes);
         result.issues.push(...d.issues);

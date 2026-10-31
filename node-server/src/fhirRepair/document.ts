@@ -83,12 +83,49 @@ export function repairNarrative(holder: Json, key: string): string | null {
 }
 
 /** Narratives of every entry resource (text, contained resources' text) and of Composition sections. */
+/** Anchors a local narrative link may point at in this Bundle (id / name attributes of every div, resource ids). */
+function bundleAnchors(bundle: Json): Set<string> {
+  const out = new Set<string>();
+  const walk = (n: unknown, d: number): void => {
+    if (d > 30 || !n || typeof n !== "object") return;
+    if (Array.isArray(n)) return void n.forEach((x) => walk(x, d + 1));
+    const o = n as Json;
+    if (typeof o.div === "string") for (const m of o.div.matchAll(/\s(?:id|name)\s*=\s*["']([^"']+)["']/gu)) out.add(m[1]);
+    if (typeof o.resourceType === "string" && typeof o.id === "string") out.add(o.id);
+    for (const v of Object.values(o)) if (v && typeof v === "object") walk(v, d + 1);
+  };
+  walk(bundle, 0);
+  return out;
+}
+
+/** `<a href="#x">text</a>` whose x resolves to no anchor → its text (the link goes, nothing else changes). */
+export function unwrapDeadLinks(div: string, anchors: ReadonlySet<string>): { div: string; removed: string[] } {
+  const removed: string[] = [];
+  const out = div.replace(/<a\b([^>]*?)>([\s\S]*?)<\/a>/giu, (all, attrs: string, inner: string) => {
+    const h = /\shref\s*=\s*["']#([^"']+)["']/u.exec(` ${attrs}`);
+    if (!h || anchors.has(h[1])) return all;
+    removed.push(`#${h[1]}`);
+    return inner;
+  });
+  return { div: out, removed };
+}
+
 export function repairNarratives(bundle: Json, rp: (p: string) => string = (p) => p): RepairChange[] {
   const changes: RepairChange[] = [];
+  const anchors = bundleAnchors(bundle);
   const visit = (holder: Json, key: string, path: string): void => {
     const before = holder[key] === undefined ? undefined : JSON.parse(JSON.stringify(holder[key]));
-    const why = repairNarrative(holder, key);
-    if (why) changes.push({ path: rp(path), from: before, to: holder[key] ?? null, rule: "narrative", reason: why });
+    const why = [repairNarrative(holder, key)];
+    const n = holder[key];
+    if (isObj(n) && typeof n.div === "string") {
+      const u = unwrapDeadLinks(n.div, anchors);
+      if (u.removed.length) {
+        n.div = u.div;
+        why.push(`local link(s) ${u.removed.slice(0, 3).join(", ")} point at no anchor in the Bundle (the validator rejects them): the link was removed, its text kept`);
+      }
+    }
+    const w = why.filter(Boolean).join("; ");
+    if (w) changes.push({ path: rp(path), from: before, to: holder[key] ?? null, rule: "narrative", reason: w });
   };
   const entries: Json[] = Array.isArray(bundle.entry) ? bundle.entry : [];
   entries.forEach((e, i) => {
@@ -381,9 +418,12 @@ export async function completeDocument(bundle: Json, deps: DocumentDeps, opts: D
         continue;
       }
       const declared = ((r.meta?.profile as unknown[]) ?? []).map((u) => strip(String(u)));
-      let fit = slices.filter((s) => s.targets.some((t) => declared.includes(t)));
+      // a section the record says is empty (emptyReason) never takes entries
+      const open = (sl: SectionSlice): boolean => !isObj(sectionFor(sl)?.emptyReason);
+      let fit = slices.filter((s) => s.targets.some((t) => declared.includes(t)) && open(s));
       if (!fit.length) {
         for (const s of slices) {
+          if (!open(s)) continue;
           const types = await Promise.all(s.targets.map(typeOf));
           if (types.includes(String(r.resourceType))) fit.push(s);
         }
@@ -457,8 +497,18 @@ export async function completeDocument(bundle: Json, deps: DocumentDeps, opts: D
       }
       continue;
     }
-    // the section code's display (pattern / terminology)
+    // the section code's display (pattern / terminology); a code the profile pins carries its official display —
+    // a different one is no record fact, so it is corrected
     for (const c of codingsOf(sec.code)) {
+      const pinned = codingsOf(s.code).some((p) => p.code === c.code && (!p.system || p.system === c.system));
+      if (pinned && typeof c.display === "string" && c.display && deps.lookupDisplay && c.system && c.code) {
+        const off = await deps.lookupDisplay(String(c.system), String(c.code)).catch(() => null);
+        if (off && off.trim().toLowerCase() !== c.display.trim().toLowerCase()) {
+          change(`${spath}.code`, c.display, off, `section '${s.name}': the code ${c.code} is pinned by the profile; its display is the terminology's '${off}'`);
+          c.display = off;
+        }
+        continue;
+      }
       if (typeof c.display === "string" && c.display) continue;
       const pat = codingsOf(s.code).find((p) => p.code === c.code && typeof p.display === "string");
       const disp = pat?.display ?? (deps.lookupDisplay && c.system && c.code ? await deps.lookupDisplay(String(c.system), String(c.code)).catch(() => null) : null);
@@ -485,4 +535,26 @@ export async function completeDocument(bundle: Json, deps: DocumentDeps, opts: D
   }
   if (!(comp.section as Json[]).length) delete comp.section;
   return { changes, issues };
+}
+
+/**
+ * Coding.system written as `url|version` (`http://terminology.hl7.org/CodeSystem/v2-0360|2.7`): the version goes to
+ * Coding.version (rule `system`) when that is empty — a system URL never carries a version.
+ */
+export function repairSystemVersions(bundle: Json, rp: (p: string) => string = (p) => p): RepairChange[] {
+  const changes: RepairChange[] = [];
+  const walk = (n: unknown, path: string, d: number): void => {
+    if (d > 30 || !n || typeof n !== "object") return;
+    if (Array.isArray(n)) return void n.forEach((x, i) => walk(x, `${path}[${i}]`, d + 1));
+    const o = n as Json;
+    if (typeof o.system === "string" && typeof o.code === "string" && /^[a-z][a-z0-9+.-]*:[^|\s]+\|[^|\s]+$/iu.test(o.system) && (o.version === undefined || o.version === "")) {
+      const [url, ver] = [o.system.slice(0, o.system.lastIndexOf("|")), o.system.slice(o.system.lastIndexOf("|") + 1)];
+      changes.push({ path: rp(`${path}.system`), from: o.system, to: url, rule: "system", reason: `a Coding.system is a URL without version; '|${ver}' moved to Coding.version` });
+      o.system = url;
+      o.version = ver;
+    }
+    for (const [k, v] of Object.entries(o)) if (v && typeof v === "object") walk(v, `${path}.${k}`, d + 1);
+  };
+  walk(bundle, "Bundle", 0);
+  return changes;
 }

@@ -34,6 +34,7 @@ function overlayResolver(base: ValidatorResolver, sds: Array<Record<string, any>
     codeSystemResolvable: base.codeSystemResolvable?.bind(base),
     codeSystemLocal: base.codeSystemLocal?.bind(base),
     definitionExists: async (url) => byUrl.has(url.split("|")[0]) || (base.definitionExists ? base.definitionExists(url) : true),
+    definitionVersionExists: base.definitionVersionExists?.bind(base),
   };
 }
 

@@ -388,6 +388,15 @@ export class DbValidatorResolver implements ValidatorResolver {
   }
 
   /** Does any loaded package (any version) define a conformance resource with this canonical URL? */
+  /** (v17.5) A definition of `url` with exactly `version` installed (any package); fail-open on DB trouble. */
+  async definitionVersionExists(url: string, version: string): Promise<boolean> {
+    try {
+      return (await query("SELECT 1 FROM fhir.artifacts WHERE canonical_url = $1 AND raw_json->>'version' = $2 LIMIT 1", [url, version])).rows.length > 0;
+    } catch {
+      return true;
+    }
+  }
+
   async definitionExists(url: string): Promise<boolean> {
     const canonical = url.split("|")[0];
     const hit = defCache.get(canonical);

@@ -229,6 +229,8 @@ export interface ValidatorResolver {
    * check. Optional: without it URL resolution is not checked.
    */
   definitionExists?(url: string): Promise<boolean>;
+  /** (v17.5) Is `version` an installed version of the definition `url`? Absent = not checked (fail-open). */
+  definitionVersionExists?(url: string, version: string): Promise<boolean>;
 }
 
 export interface ValidateOptions {
@@ -908,6 +910,30 @@ export class InstanceValidator {
     return { bundle, type: typeof bundle.type === "string" ? bundle.type : "", entries, byFullUrl, entryOf };
   }
 
+  private anchorCache = new WeakMap<object, Set<string>>();
+
+  /**
+   * Anchors a narrative link may point at: id / name attributes of every narrative in the Bundle (or of the
+   * resource outside a Bundle) and the ids of contained resources. Whole-Bundle scope is the lenient reading.
+   */
+  private narrativeAnchors(rctx: ResourceCtx): Set<string> {
+    const scope: Record<string, any> = rctx.bundle?.bundle ?? rctx.root ?? rctx.resource;
+    const hit = this.anchorCache.get(scope);
+    if (hit) return hit;
+    const out = new Set<string>();
+    const walk = (n: unknown, d: number): void => {
+      if (d > 30 || !n || typeof n !== "object") return;
+      if (Array.isArray(n)) return void n.forEach((x) => walk(x, d + 1));
+      const o = n as Record<string, any>;
+      if (typeof o.div === "string") for (const m of o.div.matchAll(/\s(?:id|name)\s*=\s*["']([^"']+)["']/gu)) out.add(m[1]);
+      if (typeof o.resourceType === "string" && typeof o.id === "string") out.add(o.id);
+      for (const v of Object.values(o)) if (v && typeof v === "object") walk(v, d + 1);
+    };
+    walk(scope, 0);
+    this.anchorCache.set(scope, out);
+    return out;
+  }
+
   /** Bundle entry a (possibly contained / nested) resource belongs to. */
   private entryFor(r: Record<string, any>, rctx: ResourceCtx, inherit: boolean): BundleEntryCtx | null {
     return rctx.bundle?.entryOf.get(r) ?? (inherit ? rctx.entry ?? null : null);
@@ -1070,6 +1096,30 @@ export class InstanceValidator {
       }
     }
     const what = type === "document" ? "Composition" : "MessageHeader";
+    // (v17.5, BundleValidator.checkAllInterlinked) every relative reference of the other entries must resolve inside a
+    // document / message Bundle: an unresolved one is an error, reported on the Bundle
+    // with its source (choice elements named as the validator names them: medication[x]); a resource of the
+    // same type and id whose fullUrl does not match the relative-reference rule is named in a note.
+    for (const e of b.entries) {
+      if (e === first) continue;
+      const refs: Array<{ ref: string; path: string }> = [];
+      collectRefPaths(e.resource, `${path}.entry[${e.index}].resource`, refs);
+      for (const r of refs) {
+        // relative references only: an unresolved urn: / absolute one is the element-level warning (validator_cli)
+        if (r.ref.startsWith("#") || ABSOLUTE_URL.test(r.ref)) continue;
+        if (this.resolveInBundle(r.ref, b, e)) continue;
+        const near = this.typeIdNearMiss(r.ref, b);
+        const source = r.path.replace(/\.([a-z][A-Za-z]*?)Reference(?=$|[.[])/gu, ".$1[x]");
+        issues.push({
+          severity: "error",
+          path,
+          code: "not-found",
+          message:
+            `Can't find '${r.ref}' in the bundle (${source})` +
+            (near ? `. Note that there is a resource in the bundle with the same type and id, but it does not match because of the fullUrl based rules around matching relative references. Must be \`${near.fullUrl ?? ""}\`` : ""),
+        });
+      }
+    }
     for (const e of b.entries) {
       const label = e.fullUrl ?? `${e.resource.resourceType}/${e.resource.id}`;
       if (!reached.has(e)) {
@@ -1181,6 +1231,14 @@ export class InstanceValidator {
         const sdx = await this.sdx(url);
         const out: Issue[] = [];
         if (!sdx) return out;
+        // (v17.5) local hyperlinks of the narrative must resolve (the HL7 validator's XHTML check) — part of every
+        // conformance check of the resource, so a profile match (slice by resolve() profile) sees it too
+        const res0 = rctx.resource;
+        if (isObject(res0.text) && typeof res0.text.div === "string") {
+          for (const m of narrativeLinkProblems(res0.text.div, this.narrativeAnchors(rctx))) {
+            out.push({ severity: "error", path: `${ROOT_TOKEN}.text.div`, code: "invalid", message: `Hyperlink '${m.href}' at '${m.at}' for '${m.text}' does not resolve` });
+          }
+        }
         await this.validateItemAgainst(
           sdx,
           sdx.root,
@@ -1345,6 +1403,7 @@ export class InstanceValidator {
 
     if (!isResourceRoot) this.checkFixedPattern(el, v, item, sdx, issues);
     await this.checkBinding(el, v, typeCode, item, issues, null);
+    await this.checkLanguageDisplay(el, v, typeCode, item, rctx, issues);
     if (typeCode === "Coding") await this.checkCoding(v, item, issues, el);
     if (QUANTITY_TYPES.includes(typeCode)) await this.checkQuantity(v, item, issues);
     if (typeCode === "Reference") await this.checkReference(el, v, item, rctx, issues, depth);
@@ -2181,6 +2240,48 @@ export class InstanceValidator {
     }
   }
 
+  /**
+   * (v17.5) tx.fhir.org validates a coding against a bound ValueSet in the resource's language: when that language is
+   * not English and the terminology has no designation in it (SNOMED CT International, LOINC here), the only valid
+   * display is the one the ValueSet itself lists for the code (an enumerated include.concept display — e.g. IPS
+   * target-diseases-uv-ips 'Pertussis (disorder)'); validator_cli then reports any other display as an error
+   * (probed: language zh-TW / fr-LU → error, en-US / none → no error; intensional ValueSets are not affected).
+   */
+  private async checkLanguageDisplay(el: Record<string, any>, v: any, typeCode: string, item: Item, rctx: ResourceCtx, issues: Issue[]): Promise<void> {
+    const lang = typeof rctx.resource?.language === "string" ? rctx.resource.language.trim() : "";
+    if (!lang || /^en(?:-|$)/iu.test(lang)) return;
+    const b = el.binding;
+    if (!b || !b.valueSet || !["required", "extensible", "preferred"].includes(b.strength)) return;
+    if (typeCode !== "Coding" && typeCode !== "CodeableConcept") return;
+    const vs = await this.vsHeader(String(b.valueSet));
+    if (!vs) return;
+    const list: any[] = typeCode === "Coding" ? [v] : isObject(v) && Array.isArray(v.coding) ? v.coding : [];
+    const primary = lang.split("-")[0].toLowerCase();
+    list.forEach((c, k) => {
+      if (!isObject(c) || typeof c.display !== "string" || !c.display || typeof c.code !== "string") return;
+      if (c.system !== "http://snomed.info/sct" && c.system !== "http://loinc.org") return;
+      let listed: string | null = null;
+      let inLanguage = false;
+      for (const inc of (isObject(vs.compose) && Array.isArray(vs.compose.include) ? vs.compose.include : []) as any[]) {
+        if (!isObject(inc) || inc.system !== c.system) continue;
+        for (const cc of Array.isArray(inc.concept) ? inc.concept : []) {
+          if (!isObject(cc) || cc.code !== c.code) continue;
+          if (typeof cc.display === "string" && cc.display) listed = cc.display;
+          for (const d of Array.isArray(cc.designation) ? cc.designation : []) {
+            if (isObject(d) && typeof d.language === "string" && d.language.split("-")[0].toLowerCase() === primary) inLanguage = true;
+          }
+        }
+      }
+      if (!listed || inLanguage || c.display.trim().toLowerCase() === listed.trim().toLowerCase()) return;
+      issues.push({
+        severity: "error",
+        path: typeCode === "Coding" ? `${item.path}.display` : `${item.path}.coding[${k}].display`,
+        code: "invalid",
+        message: `Wrong Display Name '${c.display}' for ${c.system}#${c.code}. Valid display is '${listed}' (for the language(s) '${lang}')`,
+      });
+    });
+  }
+
   private async checkBinding(
     el: Record<string, any>,
     v: any,
@@ -2352,7 +2453,12 @@ export class InstanceValidator {
     if (uriResolutionExempt(basePath)) return;
     if (!this.resolver.definitionExists || !hl7UrlMustResolve(v)) return;
     const u = v.includes("|") ? v.slice(0, v.lastIndexOf("|")) : v;
-    if (await this.defExists(u)) return;
+    if (await this.defExists(u)) {
+      // (v17.5) `url|version`: the HL7 validator resolves that version (Coding.system 'http://…/v2-0360|2.7' → not found)
+      if (!v.includes("|") || !this.resolver.definitionVersionExists) return;
+      const ver = v.slice(v.lastIndexOf("|") + 1);
+      if (!ver || (await this.resolver.definitionVersionExists(u, ver).catch(() => true))) return;
+    }
     issues.push({ severity: "error", path: item.path, code: "invalid", message: urlResolveMessage(v) });
   }
 
@@ -2864,6 +2970,39 @@ export function codingsOf(node: any): Array<[string | null, string | null]> {
 }
 
 /** All `reference` strings below `node`, with their instance paths. */
+/**
+ * Local hyperlinks (`<a href="#x">`) of an XHTML div that resolve to no anchor: href, the element path of the
+ * link (div/p/a) and its text, as the HL7 validator reports them.
+ */
+export function narrativeLinkProblems(div: string, anchors: ReadonlySet<string>): Array<{ href: string; at: string; text: string }> {
+  const out: Array<{ href: string; at: string; text: string }> = [];
+  const stack: string[] = [];
+  const re = /<(\/?)([a-zA-Z][\w:-]*)([^>]*?)(\/?)>/gu;
+  let m: RegExpExecArray | null;
+  let open: { href: string; at: string; start: number } | null = null;
+  while ((m = re.exec(div))) {
+    const [all, close, tag0, attrs, selfClose] = m;
+    const tag = tag0.toLowerCase();
+    if (close) {
+      const i = stack.lastIndexOf(tag);
+      if (i >= 0) stack.length = i;
+      if (tag === "a" && open) {
+        const text = div.slice(open.start, m.index).replace(/<[^>]*>/gu, "").replace(/\s+/gu, " ").trim();
+        if (!anchors.has(open.href.slice(1))) out.push({ href: open.href, at: open.at, text });
+        open = null;
+      }
+      continue;
+    }
+    if (selfClose) continue;
+    stack.push(tag);
+    if (tag === "a") {
+      const h = /\shref\s*=\s*["']([^"']*)["']/u.exec(attrs);
+      if (h && h[1].startsWith("#") && h[1].length > 1) open = { href: h[1], at: stack.join("/"), start: m.index + all.length };
+    }
+  }
+  return out;
+}
+
 function collectRefPaths(node: any, path: string, out: Array<{ ref: string; path: string }>): void {
   if (Array.isArray(node)) {
     node.forEach((x, i) => collectRefPaths(x, `${path}[${i}]`, out));

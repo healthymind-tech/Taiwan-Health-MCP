@@ -84,3 +84,57 @@ export function txCodeVerdict(system: string, code: string): TxCodeVerdict | nul
   if (t.unknown.has(code)) return { known: false, edition: t.edition, displayVerified: false };
   return null;
 }
+
+// ------------------------------------------------------------------------------------------------ displays
+
+/**
+ * ISSUES_v17.5 — the English displays the reference server accepts for codes whose names changed after the
+ * locally held release (data/terminology/<name>-tx-display.json.gz, scripts/supplements/build-tx-loinc.mts): LOINC
+ * 2.81+ renamed e.g. 30954-2 '… Narrative' → '… note', and the server also accepts LOINC's DisplayName. Used only
+ * while the local release is older than the table's edition — an imported newer LOINC is the source again.
+ */
+const DISPLAY_FILES: Record<string, string> = { "http://loinc.org": "loinc-tx-display.json.gz" };
+let displayTables: Map<string, { edition: string; codes: Map<string, string[]> } | null> | null = null;
+
+function loadDisplays(file: string): { edition: string; codes: Map<string, string[]> } | null {
+  try {
+    const raw = JSON.parse(zlib.gunzipSync(fs.readFileSync(path.join(dataDir(), "terminology", file))).toString("utf8"));
+    if (!raw || typeof raw.edition !== "string" || !raw.codes || typeof raw.codes !== "object") return null;
+    return { edition: raw.edition, codes: new Map(Object.entries(raw.codes as Record<string, string[]>).filter(([, v]) => Array.isArray(v) && v.length)) };
+  } catch (e) {
+    logWarning("bundled terminology-server display table not readable", { file, error: String((e as Error).message) });
+    return null;
+  }
+}
+
+/** Numeric comparison of dotted versions ('2.80' < '2.83'); null when either is not dotted digits. */
+function olderVersion(a: string, b: string): boolean | null {
+  const pa = a.split(".").map(Number);
+  const pb = b.split(".").map(Number);
+  if (pa.some((x) => !Number.isFinite(x)) || pb.some((x) => !Number.isFinite(x))) return null;
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const x = pa[i] ?? 0;
+    const y = pb[i] ?? 0;
+    if (x !== y) return x < y;
+  }
+  return false;
+}
+
+/** The server's displays of `code` (preferred first) when the local release `localEdition` is older; else null. */
+export function txDisplays(system: string, code: string, localEdition: string | null): { edition: string; displays: string[] } | null {
+  if (!displayTables) displayTables = new Map();
+  if (!displayTables.has(system)) {
+    const file = DISPLAY_FILES[system];
+    displayTables.set(system, file ? loadDisplays(file) : null);
+  }
+  const t = displayTables.get(system);
+  if (!t) return null;
+  if (localEdition && olderVersion(localEdition, t.edition) !== true) return null;
+  const d = t.codes.get(code);
+  return d ? { edition: t.edition, displays: d } : null;
+}
+
+/** Override the display tables (tests): system → {edition, codes}; null = reload from disk. */
+export function setTxDisplayTablesForTest(t: Record<string, { edition: string; codes: Record<string, string[]> }> | null): void {
+  displayTables = t === null ? null : new Map(Object.entries(t).map(([s, v]) => [s, { edition: v.edition, codes: new Map(Object.entries(v.codes)) }]));
+}
