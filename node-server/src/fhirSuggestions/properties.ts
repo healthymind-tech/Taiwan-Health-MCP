@@ -432,7 +432,7 @@ export async function suggestProperty(
       value: pre + r3.to,
       kind: "rename_property",
       confidence: 0.97,
-      reason: `'${bare}' is the STU3 name; R4 calls it '${r3.to}'${r3.inner ? ` (inside: ${Object.entries(r3.inner).map(([a, b]) => (b ? `${a} → ${b}` : `${a} removed`)).join(", ")})` : ""}${r3.annotation ? " (an Annotation: {text})" : ""}`,
+      reason: `'${bare}' is the STU3 name; R4 calls it '${r3.to}'${r3.inner ? ` (inside: ${Object.entries(r3.inner).map(([a, b]) => (b ? `${a} → ${b}` : `${a} removed`)).join(", ")})` : ""}${r3.annotation ? " (a string value is restructured as Annotation {text})" : ""}`,
       patch: { op: "move", from: `${issuePath}.${key}`, path: `${issuePath}.${pre}${r3.to}` },
     });
   } else if (r3?.removed) {
