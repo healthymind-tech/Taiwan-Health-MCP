@@ -7,6 +7,8 @@
 
 import type { Suggestion } from "../fhirSuggestions/types.js";
 
+import type { IgDefinedValues } from "../grounding/igDefined.js";
+
 export type RecordCheckCode =
   /** R1: the value describes the absence of the information (未取號, unknown, pending …). */
   | "information-absent"
@@ -118,6 +120,11 @@ export interface RecordCheckOptions {
    * (base form) — the IG's commonly used fields (record-fact-missing looks only at those). Optional.
    */
   profileElements?: ReadonlyMap<string, { mustSupport: ReadonlySet<string>; required: ReadonlySet<string>; common?: ReadonlySet<string>; prohibited?: ReadonlySet<string> }> | null;
+  /**
+   * ISSUES_v17.2: values the IG defines (grounding/igDefined.ts: fixed / pattern, skeleton ig-constants, invariant
+   * literals) — never record facts: their slots are not checked and no value issue is reported on them. Optional.
+   */
+  igDefined?: IgDefinedValues | null;
 }
 
 export interface RecordCheckResult {

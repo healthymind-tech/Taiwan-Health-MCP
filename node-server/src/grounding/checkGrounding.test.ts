@@ -61,10 +61,21 @@ const LEXICON_030_DEVIATIONS: ReadonlySet<string> = skip
       ...["gold_strict", "gold_auto", "altpaths", "flattened_auto"].map((kind) => goldVariantId(4, kind)),
     ]);
 
+/**
+ * ISSUES_v17.2 R3: a few golden cases carry a reference G-CONTEXT-LABEL false positive on a medication element — an
+ * elided evidence quote ("500…PRN") cut from the line of the resource's own (only) medicine. The engine now judges the
+ * quote's record line, so that error is gone. Such a case passes when its error set equals the reference's minus those
+ * errors exactly (no other difference allowed in the error set); at most V172_MAX of them.
+ */
+const V172_MAX = 3;
+const v172Fixed = (k: string): boolean => k.startsWith("G-CONTEXT-LABEL@") && /\.dosageInstruction\[/u.test(k);
+
 test("full-output parity with the reference on every golden case (fixtures, gold Bundles, variants, synthetic)", { skip }, async () => {
   const diffs: string[] = [];
+  let v172 = 0;
   for (const c of CASES) {
     const out = await run(c.input);
+
     if (LEXICON_030_DEVIATIONS.has(c.id)) {
       if (out.valid !== c.expected.data.valid || JSON.stringify(errorSet(out)) !== JSON.stringify(errorSet(c.expected.data)))
         diffs.push(`${c.id}: valid/error set differs from the reference`);
@@ -74,8 +85,17 @@ test("full-output parity with the reference on every golden case (fixtures, gold
     }
     // entries of resource types extended for PAS (Claim) are compared in pas.test.ts instead
     const d = firstDiff(withoutExtendedEntries(comparable(out)), withoutExtendedEntries(c.expected.data));
-    if (d) diffs.push(`${c.id}: ${d}`);
+    if (d) {
+      const ref = errorSet(c.expected.data);
+      const want = ref.filter((k) => !v172Fixed(k));
+      if (want.length < ref.length && JSON.stringify(errorSet(out)) === JSON.stringify(want)) {
+        v172++;
+        continue;
+      }
+      diffs.push(`${c.id}: ${d}`);
+    }
   }
+  assert.ok(v172 <= V172_MAX, `${v172} cases differ only by the v17.2 G-CONTEXT-LABEL fix (expected <= ${V172_MAX})`);
   assert.equal(diffs.length, 0, diffs.slice(0, 10).join("\n"));
   assert.ok(CASES.length >= 80);
 });

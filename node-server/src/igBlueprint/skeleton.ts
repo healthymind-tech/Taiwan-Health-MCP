@@ -79,6 +79,8 @@ export interface SkeletonResult {
   data: Record<string, unknown>;
   warnings: string[];
   provenance: Record<string, unknown>;
+  /** (v17.2) Every ig-constant value of the profile (path + value), not on the wire: grounding exempts them (igValues.ts). */
+  igConstants?: Array<{ path: string; value: unknown }>;
 }
 
 /** One table row (before serialisation). */
@@ -1221,7 +1223,8 @@ export async function minimalSkeleton(req: SkeletonRequest, deps: BlueprintDeps)
     data.skeleton_omitted = "the skeleton exceeds the size budget: build it from `table` (every row is a required element)";
   }
   data.response_chars = measureResponse(data, warnings, prov);
-  return { data, warnings, provenance: prov };
+  const igConstants = [...items, ...conditional].filter((i) => i.source === "ig-constant" && i.placeholder !== undefined).map((i) => ({ path: i.path, value: i.placeholder }));
+  return { data, warnings, provenance: prov, igConstants };
 }
 
 export const _internal = { normalizedInstance, displayPath, SkeletonBuilder };

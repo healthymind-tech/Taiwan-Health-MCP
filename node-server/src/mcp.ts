@@ -48,6 +48,7 @@ import { BUNDLE_TYPES } from "./fhirBundleFinalize.js";
 import { DEFAULT_FINALIZE_REPAIR, REPAIR_MODES, type RepairMode } from "./fhirRepair/index.js";
 import { registerAuthoringTools } from "./authoring/index.js";
 import { registerBlueprintTools } from "./igBlueprint/index.js";
+import { dbIgDefinedValues } from "./igBlueprint/tools.js";
 import { LEXICON_SHA256, LEXICON_VERSION, groundingInputShape, validateBundleGroundingShape } from "./grounding/index.js";
 import { completenessInputShape, type CompletenessInput } from "./grounding/completeness/index.js";
 import {
@@ -1465,7 +1466,12 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
             siteConfig: site_config ?? null,
           }),
           // ISSUES_v15.3 R1: LOINC axes of text-result Observations (quantitative.ts), from the local terminology tables
-          { sourceText: source_text ?? null, siteConfig: site_config ?? null, codeAxes: (await recordCheckLookups(bundle as Record<string, any>, dbTerminologyNames(), null)).codeAxes },
+          {
+            sourceText: source_text ?? null,
+            siteConfig: site_config ?? null,
+            codeAxes: (await recordCheckLookups(bundle as Record<string, any>, dbTerminologyNames(), null)).codeAxes,
+            igDefined: source_text ? await dbIgDefinedValues(bundle as Record<string, any>, package_id ?? null, version ?? null).catch(() => null) : null,
+          },
         ),
       ),
   );
@@ -1475,6 +1481,8 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
     terminology: dbTerminologyNames(),
     packageProvenance: (pid, ver) => svc.packageProvenance(pid, ver),
     logger: groundingLogger,
+    // ISSUES_v17.2: values the IG defines are exempt from grounding / record checks
+    igDefined: (root, pid, ver) => dbIgDefinedValues(root, pid, ver).catch(() => null),
   };
 
   server.registerTool(
@@ -1485,14 +1493,16 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
     },
     async ({ resource, profile, package_id, version, ...g }) => {
       const conformance = await svc.validateResource(resource as Record<string, any>, profile ?? null, package_id ?? null, version ?? null);
-      const grounded = await addResourceGrounding(conformance, resource as Record<string, any>, { ...g, package_id, version } as ValidateGroundingArgs, groundingDeps);
+      const withProfile0 = profile && !(resource as Record<string, any>)?.meta?.profile ? { ...(resource as Record<string, any>), meta: { ...((resource as Record<string, any>).meta ?? {}), profile: [profile] } } : (resource as Record<string, any>);
+      const igDefined = g.source_text ? await groundingDeps.igDefined!(withProfile0, package_id ?? null, version ?? null) : null;
+      const grounded = await addResourceGrounding(conformance, resource as Record<string, any>, { ...g, package_id, version, ig_defined: igDefined } as ValidateGroundingArgs, groundingDeps);
       // Record checks (ISSUES_v15 / v15.1): R1 / R2 always, R3 / R4 / R5 with source_text; appended after the validator + grounding.
       // ISSUES_v15.3: LOINC axes (R1) and, with source_text, coding names (R3) — local tables, LRU-cached
       const looked = await recordCheckLookups(resource as Record<string, any>, groundingDeps.terminology, g.source_text);
       // ISSUES_v17 R2-2: the declared profiles' mustSupport / required elements (content coverage; only with source_text)
-      const withProfile = profile && !(resource as Record<string, any>)?.meta?.profile ? { ...(resource as Record<string, any>), meta: { ...((resource as Record<string, any>).meta ?? {}), profile: [profile] } } : (resource as Record<string, any>);
+      const withProfile = withProfile0;
       const profileElements = g.source_text ? await svc.profileElementUse(withProfile, package_id ?? null, version ?? null).catch(() => null) : null;
-      return rawResult(addRecordChecksToValidation(grounded, resource as Record<string, any>, { sourceText: g.source_text ?? null, siteConfig: g.site_config ?? null, coverageSeverity: (g as { content_checks_severity?: "warning" | "error" | null }).content_checks_severity ?? null, profileElements, ...looked }));
+      return rawResult(addRecordChecksToValidation(grounded, resource as Record<string, any>, { sourceText: g.source_text ?? null, siteConfig: g.site_config ?? null, coverageSeverity: (g as { content_checks_severity?: "warning" | "error" | null }).content_checks_severity ?? null, profileElements, igDefined, ...looked }));
     },
   );
 
@@ -1531,13 +1541,14 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
         normalize_ids ? losslessToolArgument("fhir_validate_bundle", "bundle", extra?.requestId) : undefined,
         normalize_ids && repair === "content" ? "content" : "ids",
       );
-      const grounded = await addBundleGrounding(conformance, bundle as Record<string, any>, { ...g, package_id, version } as ValidateGroundingArgs, groundingDeps);
+      const igDefined = g.source_text ? await groundingDeps.igDefined!(bundle as Record<string, any>, package_id ?? null, version ?? null) : null;
+      const grounded = await addBundleGrounding(conformance, bundle as Record<string, any>, { ...g, package_id, version, ig_defined: igDefined } as ValidateGroundingArgs, groundingDeps);
       // Record checks (ISSUES_v15 / v15.1): R1 / R2 always, R3 / R4 / R5 with source_text; appended after the validator + grounding.
       // ISSUES_v15.3: LOINC axes (R1) and, with source_text, coding names (R3) — local tables, LRU-cached
       const looked = await recordCheckLookups(bundle as Record<string, any>, groundingDeps.terminology, g.source_text);
       // ISSUES_v17 R2-2: the declared profiles' mustSupport / required elements (content coverage; only with source_text)
       const profileElements = g.source_text ? await svc.profileElementUse(bundle as Record<string, any>, package_id ?? null, version ?? null).catch(() => null) : null;
-      return rawResult(addRecordChecksToValidation(grounded, bundle as Record<string, any>, { sourceText: g.source_text ?? null, siteConfig: g.site_config ?? null, coverageSeverity: (g as { content_checks_severity?: "warning" | "error" | null }).content_checks_severity ?? null, profileElements, ...looked }));
+      return rawResult(addRecordChecksToValidation(grounded, bundle as Record<string, any>, { sourceText: g.source_text ?? null, siteConfig: g.site_config ?? null, coverageSeverity: (g as { content_checks_severity?: "warning" | "error" | null }).content_checks_severity ?? null, profileElements, igDefined, ...looked }));
     },
   );
 
@@ -1629,7 +1640,14 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
             timezone ?? null,
             site_config ?? null,
           ),
-          { sourceText: source_text ?? null, siteConfig: site_config ?? null, codeAxes: (await recordCheckLookups(draft as Record<string, any>, groundingDeps.terminology, null)).codeAxes },
+          {
+            sourceText: source_text ?? null,
+            siteConfig: site_config ?? null,
+            codeAxes: (await recordCheckLookups(draft as Record<string, any>, groundingDeps.terminology, null)).codeAxes,
+            igDefined: source_text
+              ? await dbIgDefinedValues((draft as Record<string, any>)?.meta?.profile ? (draft as Record<string, any>) : { ...(draft as Record<string, any>), meta: { ...((draft as Record<string, any>)?.meta ?? {}), profile: [profile] } }, package_id ?? null, version ?? null).catch(() => null)
+              : null,
+          },
         ),
       ),
   );

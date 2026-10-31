@@ -18,6 +18,8 @@ import { dbFieldsDeps } from "../authoring/fieldsTool.js";
 import type { AuthoringToolSpec } from "../authoring/types.js";
 import { bundleBlueprint } from "./blueprint.js";
 import { minimalSkeleton } from "./skeleton.js";
+import { igDefinedValues } from "./igValues.js";
+import type { IgDefinedValues } from "../grounding/igDefined.js";
 import { BlueprintError, isObject, stripVersion, type BlueprintDeps, type ExampleInstance, type LoadedProfile } from "./common.js";
 
 export const BLUEPRINT_TOOL_NAME = "fhir_get_bundle_blueprint";
@@ -203,6 +205,34 @@ export function makeBlueprintTools(deps: BlueprintDeps): AuthoringToolSpec[] {
       },
     },
   ];
+}
+
+let dbDeps: BlueprintDeps | null = null;
+
+/**
+ * ISSUES_v17.2: IG-defined values (igValues.ts) of an instance over the live store — the package resolved as the
+ * validator resolves it (package_id / meta.profile owner / default IG). null when nothing resolves (fail-open).
+ */
+export async function dbIgDefinedValues(root: Record<string, any>, packageId: string | null, version: string | null): Promise<IgDefinedValues | null> {
+  const resources: Array<Record<string, any>> = root?.resourceType === "Bundle" ? (Array.isArray(root.entry) ? root.entry.map((e: any) => e?.resource).filter(isObject) : []) : [root];
+  const metaProfiles = [...new Set([root, ...resources].flatMap((r) => (Array.isArray(r?.meta?.profile) ? r.meta.profile : []).filter((u: unknown) => typeof u === "string")))] as string[];
+  if (!metaProfiles.length) return null;
+  let pkg: PackageRow;
+  try {
+    pkg = (await fhirIg.resolveTarget({ packageId: packageId || null, version: packageId ? version ?? null : null, metaProfiles })).pkg;
+  } catch {
+    return null;
+  }
+  const exampleProfiles = async (types: string[]): Promise<string[]> => {
+    const want = new Set(types);
+    const out = new Set<string>();
+    for (const x of await packageExamples(pkg.package_id, pkg.version)) {
+      if (!want.has(String(x.resource.resourceType ?? ""))) continue;
+      for (const u of ((x.resource.meta as Record<string, unknown> | undefined)?.profile as unknown[]) || []) if (typeof u === "string") out.add(u);
+    }
+    return [...out];
+  };
+  return igDefinedValues(root, (dbDeps ??= dbBlueprintDeps()), { packageId: pkg.package_id, version: pkg.version, exampleProfiles, cacheKey: `${pkg.package_id}#${pkg.version}` });
 }
 
 let dbTools: AuthoringToolSpec[] | null = null;

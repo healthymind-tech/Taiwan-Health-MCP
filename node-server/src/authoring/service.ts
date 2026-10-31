@@ -804,11 +804,14 @@ export function productionDeps(
     // returns (parsed losslessly here), so the assembled Bundle keeps every number as written.
     validate: async (resource, profile, packageId, version, record) => {
       const plain = toPlain(resource) as Record<string, any>;
+      const withProfile = profile && !plain?.meta?.profile ? { ...plain, meta: { ...(plain.meta ?? {}), profile: [profile] } } : plain;
+      const igDefined = record?.sourceText && grounding.igDefined ? await grounding.igDefined(withProfile, packageId, version).catch(() => null) : null;
       // record checks (ISSUES_v15) as fhir_validate_resource runs them
       return parseEnvelope<ValidationData>(
         addRecordChecksToValidation(await svc.validateResource(plain, profile, packageId, version), plain, {
           sourceText: record?.sourceText ?? null,
           siteConfig: record?.siteConfig ?? null,
+          igDefined,
           codeAxes: (await recordCheckLookups(plain, grounding.terminology, null)).codeAxes,
         }),
       );
@@ -822,12 +825,13 @@ export function productionDeps(
     validateBundle: async (bundle, o) => {
       const plain = toPlain(bundle) as Record<string, unknown>;
       const text = await svc.validateBundle(plain as Record<string, any>, o.packageId, o.version, false);
+      const igDefined = o.sourceText && grounding.igDefined ? await grounding.igDefined(plain as Record<string, any>, o.packageId, o.version).catch(() => null) : null;
       const grounded = o.sourceText
-        ? await addBundleGrounding(text, plain, { source_text: o.sourceText, site_config: o.siteConfig ?? null, package_id: o.packageId, version: o.version }, grounding)
+        ? await addBundleGrounding(text, plain, { source_text: o.sourceText, site_config: o.siteConfig ?? null, package_id: o.packageId, version: o.version, ig_defined: igDefined }, grounding)
         : text;
       // record checks (ISSUES_v15) as fhir_validate_bundle runs them
       const looked = await recordCheckLookups(plain as Record<string, any>, grounding.terminology, o.sourceText);
-      return parseEnvelope<ValidationData>(addRecordChecksToValidation(grounded, plain, { sourceText: o.sourceText ?? null, siteConfig: o.siteConfig ?? null, ...looked }));
+      return parseEnvelope<ValidationData>(addRecordChecksToValidation(grounded, plain, { sourceText: o.sourceText ?? null, siteConfig: o.siteConfig ?? null, igDefined, ...looked }));
     },
     compositionRequirements: async ({ bundleProfile, packageId, version }) => compositionRequirementsOf(svc, bundleProfile, packageId, version),
     bundleSlicing: async ({ bundleProfile, packageId, version }) => bundleSlicingOf(svc, bundleProfile, packageId, version),

@@ -53,7 +53,13 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.2.0 (lexicon tw-lexicon 0.4.0, issues v2): an as-needed Timing (code PRN, or text such as 'as needed' /
   // 需要時使用) is grounded by any PRN phrasing in the record ('PO PRN', '視需要'); a frequency written with it must
   // still match. New PRN phrasings 視需要 / 發作時 / as required / when needed / on demand (asNeededBoolean too).
-  fhir_check_grounding: "1.2.0",
+  // 1.3.0 (ISSUES_v17.2): values the IG defines are never record facts — fixed / pattern of the declared profiles, every
+  // ig-constant fhir_get_minimal_skeleton lists (also those of the profiles the IG's examples use for an administrative
+  // entity in the Bundle: the payer agency's name / OID) and the answer literals the profiles' invariants allow for value[x]
+  // (pat-ast-value 'class1') are exempt from G-UNGROUNDED / G-CONTEXT-* / G-STATED-ABSENT wherever they appear (summary.exempt);
+  // a dose / frequency evidence quote cut from a record line listing several medicines is judged on the segment from the
+  // medicine named before it (no G-CONTEXT-LABEL when that is this resource's medicine).
+  fhir_check_grounding: "1.3.0",
   // 1.1.0: stated absences by whole-label matching (shared with fhir_check_grounding, lexicon 0.3.0).
   // 1.1.1: instruction / site-config lines never join a value or duration window, even when no blank line
   // separates them from the item line (a value on the 【轉換目標】 line was reported as found).
@@ -202,7 +208,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.20.0 also: (v17 R2-2) record-fact-missing (warning; content_checks_severity="error" makes it an error) — a fact the record states clearly (department → Encounter.serviceType, a stated / hedged diagnosis → verificationStatus, H / L flags or a stated reference range → interpretation, a discharge-medication header → MedicationRequest.category, 共 28 天 → expectedSupplyDuration, dose / frequency / route on the drug's line, the patient's name) for an element the declared profile marks mustSupport / required or its examples commonly carry (H / L flags: wherever the profile allows interpretation), left empty.
   // 1.20.0 also: (v17 R1 IG self-check) validator — a `type` discriminator with a path (Bundle.entry sliced by type:resource) is matched on the type of the element the path names (entry:x.resource; through resolve(): the target profiles' types), not the sliced element's BackboneElement (every entry was "missing" its slice); an embedded resource whose element lists several type profiles conforms when it meets one of them (the closest one's issues otherwise).
   // 1.20.0 also: (robustness audit) source_text limited to 200,000 characters; site_config timezone / identifier-format lines and the absence-label scan no longer backtrack on long whitespace / label runs; record line lookup by binary search.
-  fhir_validate_bundle: "1.20.0",
+  // 1.21.0 (ISSUES_v17.2, with source_text): grounding (fhir_check_grounding 1.3.0) and the record checks (1.4.1: ungrounded-value, information-absent, value-from-other-event, incomplete-value, insufficient-precision) exempt the values the IG defines — fixed / pattern, skeleton ig-constants (the payer agency's name / OID), invariant answer literals for value[x]; medication evidence quotes from several-medicine lines are no longer G-CONTEXT-LABEL.
+  fhir_validate_bundle: "1.21.0",
   // 1.6.2: the binding-aware suggestions above (ISSUES_v10 A) also apply to single-resource validation.
   // 1.7.0: the validator v13 rules above (fhir_validate_bundle 1.9.0).
   // 1.8.0 (ISSUES_v15): the record checks of fhir_validate_bundle 1.11.0 on the resource (data.issues, data.record_checks).
@@ -219,7 +226,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.15.0: the slice_match options / literals of fhir_validate_bundle 1.18.0.
   // 1.16.0: the invariant explanations of fhir_validate_bundle 1.19.0.
   // 1.17.0: the R6 content coverage of fhir_validate_bundle 1.20.0 (content_checks_severity).
-  fhir_validate_resource: "1.17.0",
+  // 1.18.0 (ISSUES_v17.2, with source_text): grounding (fhir_check_grounding 1.3.0) and the record checks (1.4.1: ungrounded-value, information-absent, value-from-other-event, incomplete-value, insufficient-precision) exempt the values the IG defines — fixed / pattern, skeleton ig-constants (the payer agency's name / OID), invariant answer literals for value[x]; medication evidence quotes from several-medicine lines are no longer G-CONTEXT-LABEL.
+  fhir_validate_resource: "1.18.0",
   // 1.2.0 (all below): provenance.resolved_by / closure_versions; canonical arguments resolve to their
   // owning package when package_id is omitted; "|version" honoured; list/search: all_packages + zero-hit hint;
   // NO_DEFAULT_IG instead of an arbitrary package when no default IG is set.
@@ -329,7 +337,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   resolves in the dependency packages (fhir_get_profile 1.2.2).
   // 1.15.0: data.validation with source_text carries the R6 content coverage of fhir_validate_resource 1.17.0.
   // 1.15.0 also: the UCUM repairs of fhir_finalize_bundle 1.9.0.
-  fhir_finalize_resource: "1.15.0",
+  // 1.16.0 (ISSUES_v17.2, with source_text): grounding (fhir_check_grounding 1.3.0) and the record checks (1.4.1: ungrounded-value, information-absent, value-from-other-event, incomplete-value, insufficient-precision) exempt the values the IG defines — fixed / pattern, skeleton ig-constants (the payer agency's name / OID), invariant answer literals for value[x]; medication evidence quotes from several-medicine lines are no longer G-CONTEXT-LABEL.
+  fhir_finalize_resource: "1.16.0",
   // 1.0.0 (authoring/, evaluation v11): the model gives field VALUES, the MCP composes the resource for its profile
   //   (fixed / pattern / defaults / derived / displays / UCUM / ROC dates), validates it, keeps it in a Redis context
   //   (`authoring:ctx:*`, 60-min idle TTL) and assembles the Bundle from keys with deterministic urn:uuid fullUrls
@@ -422,7 +431,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.12.0: validation issues as fhir_validate_resource 1.16.0 (invariant explanations).
   // 1.13.0: validation with source_text carries the R6 content coverage of fhir_validate_resource 1.17.0.
   // also (v17 robustness audit): a quantity text with a long whitespace run before a line break no longer backtracks cubically (QUANTITY_TEXT on the trimmed value); source_text is limited to 200,000 characters.
-  fhir_author_resources: "1.13.0",
+  // 1.14.0 (ISSUES_v17.2, with source_text): grounding (fhir_check_grounding 1.3.0) and the record checks (1.4.1: ungrounded-value, information-absent, value-from-other-event, incomplete-value, insufficient-precision) exempt the values the IG defines — fixed / pattern, skeleton ig-constants (the payer agency's name / OID), invariant answer literals for value[x]; medication evidence quotes from several-medicine lines are no longer G-CONTEXT-LABEL.
+  fhir_author_resources: "1.14.0",
   // 1.0.1: action=get results carry the author result's new `notes` (fhir_author_resources 1.1.0); otherwise unchanged.
   fhir_context: "1.0.1",
   // 1.1.0: new `site_config` (merged with the context's) passed to the grounding engine with source_text, so facility
@@ -458,7 +468,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.11.0: validation as fhir_validate_bundle 1.18.0 (slice_match options / literals).
   // 1.12.0: validation as fhir_validate_bundle 1.19.0 (invariant explanations).
   // 1.13.0: validation with source_text carries the R6 content coverage of fhir_validate_bundle 1.20.0 (duplicates, negated / excluded items, text-only facts).
-  fhir_assemble_bundle: "1.13.0",
+  // 1.14.0 (ISSUES_v17.2, with source_text): grounding (fhir_check_grounding 1.3.0) and the record checks (1.4.1: ungrounded-value, information-absent, value-from-other-event, incomplete-value, insufficient-precision) exempt the values the IG defines — fixed / pattern, skeleton ig-constants (the payer agency's name / OID), invariant answer literals for value[x]; medication evidence quotes from several-medicine lines are no longer G-CONTEXT-LABEL.
+  fhir_assemble_bundle: "1.14.0",
   // 1.0.0 (ISSUES_v9 R1): deterministic Bundle finalizer — fullUrl-uuid / reference-rewire / resource-id (mandatory),
   // bundle-type / document-order (profile-driven); UUID v5 seeded by (resourceType, original fullUrl, resource.id, entry
   // index) + a content salt; references found through StructureDefinition snapshots; duplicates / ambiguity reported.
@@ -518,7 +529,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.8.0 (ISSUES_v16 R4): content repair: empty arrays removed (ele-1), resourceType inferred from a meta.profile string, errors a lossless reshape only makes visible (a now-readable value / a resource now checked against its declared profile) no longer withdraw the reshape (an inferred resourceType is withdrawn only by an unknown top-level property).
   // 1.9.0: data.record_issues with source_text carry the R6 content coverage of fhir_validate_bundle 1.20.0.
   // 1.9.0 also: (v17 R3) UCUM repair — a bare count unit (count / counts / 個) → {count}; a required ValueSet that includes UCUM as a whole system (no enumerated UCUM codes) allows every valid UCUM code instead of none.
-  fhir_finalize_bundle: "1.9.0",
+  // 1.10.0 (ISSUES_v17.2, with source_text): grounding (fhir_check_grounding 1.3.0) and the record checks (1.4.1: ungrounded-value, information-absent, value-from-other-event, incomplete-value, insufficient-precision) exempt the values the IG defines — fixed / pattern, skeleton ig-constants (the payer agency's name / OID), invariant answer literals for value[x]; medication evidence quotes from several-medicine lines are no longer G-CONTEXT-LABEL.
+  fhir_finalize_bundle: "1.10.0",
   // ── 2026-10-19 actionable errors (additive fields only; successful outputs unchanged) ──
   // search_medical_codes 1.2.1: IG_UNAVAILABLE adds `hint`.
   // FHIR IG tools above (+.0.1): error envelopes add error.hint; IG_NOT_FOUND / NO_DEFAULT_IG add

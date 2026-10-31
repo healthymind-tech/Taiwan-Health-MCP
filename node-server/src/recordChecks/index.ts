@@ -36,6 +36,7 @@
  * Errors make the tool's `valid` false; `record_checks: {ok, errors, warnings, rules, source_text}`
  * summarises. Deterministic, no LLM, no network; the record text is never logged.
  */
+import { isIgDefined } from "../grounding/igDefined.js";
 import { absenceClauses, absenceOf, RECORD_CHECKS_LEXICON_SHA256, RECORD_CHECKS_LEXICON_VERSION } from "./lexicon.js";
 import { identifierRegistry, sentenceLike } from "./identifiers.js";
 import { makeIssue } from "./issue.js";
@@ -69,7 +70,7 @@ export { identifierRegistry, BUILTIN_IDENTIFIER_SYSTEMS, BUILTIN_FORMATS } from 
 // 1.3.1: the v15.3 result-slot note rule is a warning without source_text (as the empty-shell rule); R3 Chinese-name
 //   hardening + hierarchy guard + record-casing abbreviation check (codeGrounding.ts, grounding/snomedChinese.ts).
 // 1.4.0 (ISSUES_v17 R2): R6 content coverage (coverage.ts) — negated-item-present, duplicate-entry, text-only-fact.
-export const RECORD_CHECKS_VERSION = "1.4.0";
+export const RECORD_CHECKS_VERSION = "1.4.1";
 
 type Json = Record<string, any>;
 const isObj = (x: unknown): x is Json => !!x && typeof x === "object" && !Array.isArray(x);
@@ -261,12 +262,36 @@ function r2(s: Slot, registry: ReturnType<typeof identifierRegistry>, recordText
  * follow the validator's: `Bundle.entry[i].resource.…` for a Bundle, `<ResourceType>.…` for a
  * resource. Never throws for any JSON input (a failure inside a rule drops that rule's issues).
  */
+const IG_EXEMPT_CODES = new Set<string>(["ungrounded-value", "information-absent", "value-from-other-event", "incomplete-value", "insufficient-precision"]);
+
+/** Node at an instance path (`Bundle.entry[2].resource.identifier[0].value`, `Organization.name`); undefined when absent. */
+export function valueAt(root: Json, path: string): unknown {
+  const segs = path.split(".");
+  let node: unknown = root;
+  for (let k = 0; k < segs.length; k++) {
+    const m = /^([^[\]]+)((?:\[\d+\])*)$/u.exec(segs[k]);
+    if (!m) return undefined;
+    if (k === 0 && m[1] === root?.resourceType) {
+      node = root;
+    } else {
+      if (!node || typeof node !== "object" || Array.isArray(node)) return undefined;
+      node = (node as Json)[m[1]];
+    }
+    for (const ix of m[2].matchAll(/\[(\d+)\]/gu)) {
+      if (!Array.isArray(node)) return undefined;
+      node = node[Number(ix[1])];
+    }
+  }
+  return node;
+}
+
 export function runRecordChecks(root: Json, opts: RecordCheckOptions = {}): RecordCheckResult {
   const issues: RecordIssue[] = [];
   const notes: string[] = [];
   const registry = identifierRegistry(opts.siteConfig ?? null);
   notes.push(...registry.notes);
-  const slots = slotsOf(root);
+  // ISSUES_v17.2: values the IG defines are not record facts (neither absent nor ungrounded)
+  const slots = slotsOf(root).filter((s) => !isIgDefined(s.value, opts.igDefined, s.path));
   const recordText = typeof opts.sourceText === "string" && opts.sourceText.trim() ? opts.sourceText : null;
   const absent = new Set<string>();
   const ctx: R1Context = { axes: opts.codeAxes ?? null, resources: resourcesOf(root).map((r) => r.resource) };
@@ -345,6 +370,12 @@ export function runRecordChecks(root: Json, opts: RecordCheckOptions = {}): Reco
       }
     } catch {
       notes.push("R6 (content coverage) could not run on this input (internal error)");
+    }
+  }
+  if (opts.igDefined) {
+    // any other value issue (empty shells, record-aware checks) on an IG-defined value
+    for (let k = issues.length - 1; k >= 0; k--) {
+      if (IG_EXEMPT_CODES.has(issues[k].code) && isIgDefined(valueAt(root, issues[k].path), opts.igDefined, issues[k].path)) issues.splice(k, 1);
     }
   }
   const errors = issues.filter((i) => i.severity === "error").length;

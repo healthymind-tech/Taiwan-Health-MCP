@@ -21,6 +21,7 @@
  * DB-backed terminology provider.
  */
 import { query as dbQuery } from "./db.js";
+import type { IgDefinedValues } from "./grounding/igDefined.js";
 import {
   GROUNDING_REFERENCE_VERSION,
   LEXICON_SHA256,
@@ -54,6 +55,8 @@ export interface GroundingToolDeps {
    */
   packageProvenance?: (packageId: string | null, version: string | null) => Promise<Json | null>;
   logger?: GroundingLogger;
+  /** ISSUES_v17.2: values the IG defines for an instance (igBlueprint/igValues.ts) — exempt from grounding. Fail-open. */
+  igDefined?: (root: Json, packageId: string | null, version: string | null) => Promise<IgDefinedValues | null>;
 }
 
 let dbTerminology: TerminologyNames | null = null;
@@ -155,7 +158,7 @@ export async function runCheckGroundingTool(args: CheckGroundingArgs, deps: Grou
         package_id: args.package_id ?? null,
         version: args.version ?? null,
       },
-      { terminology: deps.terminology, logger: deps.logger },
+      { terminology: deps.terminology, logger: deps.logger, igDefined: deps.igDefined },
     );
     const pkg = await packageBlock(deps, args.package_id, args.version);
     const g = await groundingFields(deps, args.source_text);
@@ -207,6 +210,8 @@ export interface ValidateGroundingArgs {
   grounding_verbosity?: GroundingVerbosity | null;
   package_id?: string | null;
   version?: string | null;
+  /** ISSUES_v17.2: precomputed IG-defined values (else deps.igDefined is asked). */
+  ig_defined?: IgDefinedValues | null;
 }
 
 /**
@@ -232,8 +237,11 @@ export async function addBundleGrounding(conformanceText: string, bundle: Json, 
         evidence_map: args.evidence_map ?? null,
         mode,
         verbosity: args.grounding_verbosity ?? "warnings",
+        package_id: args.package_id ?? null,
+        version: args.version ?? null,
+        ...(args.ig_defined !== undefined ? { ig_defined: args.ig_defined } : {}),
       },
-      { terminology: deps.terminology, logger: deps.logger },
+      { terminology: deps.terminology, logger: deps.logger, igDefined: deps.igDefined },
     );
     const merged = mergeGroundingIntoValidation(env.data as ConformanceData, g);
     // normalized_bundle (normalize_ids) carries the caller's number spellings in conformanceText; JSON.parse above
@@ -313,8 +321,11 @@ export async function addResourceGrounding(conformanceText: string, resource: Js
         evidence_map: mapped,
         mode,
         verbosity: args.grounding_verbosity ?? "warnings",
+        package_id: args.package_id ?? null,
+        version: args.version ?? null,
+        ...(args.ig_defined !== undefined ? { ig_defined: args.ig_defined } : {}),
       },
-      { terminology: deps.terminology, logger: deps.logger },
+      { terminology: deps.terminology, logger: deps.logger, igDefined: deps.igDefined },
     );
     const fix = (i: GroundingIssue): GroundingIssue => ({ ...i, path: resourcePath(i.path, rt, back) });
     const gIssues = [...(g.entries[0]?.issues ?? []), ...g.issues].map(fix);
