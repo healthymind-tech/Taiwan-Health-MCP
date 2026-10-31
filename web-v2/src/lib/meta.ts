@@ -77,6 +77,7 @@ export const JOB_TYPE_LABELS: Record<string, string> = {
   rxnorm_import: "RxNorm 匯入",
   ig_import: "FHIR IG 匯入",
   ig_concept_index: "IG 術語搜尋索引",
+  ig_selfcheck: "IG 範例自我檢查",
   health_supplements_sync: "健康食品同步",
   food_nutrition_sync: "食品營養同步",
   drug_index_import: "藥品許可證索引匯入",

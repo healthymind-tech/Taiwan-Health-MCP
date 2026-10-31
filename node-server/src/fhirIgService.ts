@@ -9,6 +9,7 @@
  * service for semantic normalize_code.
  */
 
+import { annotateKnownDefects, boundAlternatives, knownDefects, type KnownDefect } from "./igKnownDefects.js";
 import { performance } from "node:perf_hooks";
 import { query, queryCount, trackQueryFailures } from "./db.js";
 import { TtlMemo } from "./ttlMemo.js";
@@ -129,6 +130,8 @@ export const IG_ERROR_HINTS: Readonly<Record<string, string>> = {
 
 export class FHIRIGService {
   private embeddingSvc: EmbeddingService | null;
+  /** ISSUES_v17.3: mark validation issues that are IG known defects (off for the self-check itself). */
+  annotateKnownDefects = true;
   /** Free-text search over IG CodeSystems (fhir_normalize_code, search_medical_codes system=…). */
   readonly conceptSearch: IgConceptSearch;
 
@@ -1893,6 +1896,25 @@ export class FHIRIGService {
    * Validate one resource (a Bundle validates its entries too) with the
    * in-process instance validator: base definition + meta.profile + `profile`.
    */
+  /**
+   * ISSUES_v17.3: for each known_invalid defect of a profile declared in this Bundle, the CodeableConcept elements of
+   * the Bundle's other entries' profiles bound to the same ValueSet (igKnownDefects.boundAlternatives).
+   */
+  private async defectAlternatives(resolver: DbValidatorResolver, root: Record<string, any>, defects: readonly KnownDefect[]): Promise<Map<string, string[]>> {
+    const out = new Map<string, string[]>();
+    if (root?.resourceType !== "Bundle" || !Array.isArray(root.entry)) return out;
+    const declared = new Map<string, string>(); // profile -> resourceType
+    for (const e of root.entry) for (const u of e?.resource?.meta?.profile ?? []) declared.set(String(u).split("|")[0], String(e.resource.resourceType));
+    const sd = async (u: string): Promise<Record<string, any> | null> => (await resolver.fetchStructureDefinition(u).catch(() => null)) as Record<string, any> | null;
+    for (const d of defects) {
+      if (!d.knownInvalid || !declared.has(d.profile) || out.has(`${d.profile}\u0000${d.element}`)) continue;
+      const others: Array<{ label: string; sd: Record<string, any> | null }> = [];
+      for (const [u, rt] of declared) if (u !== d.profile) others.push({ label: rt, sd: await sd(u) });
+      out.set(`${d.profile}\u0000${d.element}`, boundAlternatives(d.element, await sd(d.profile), others));
+    }
+    return out;
+  }
+
   private async validateCore(pkg: PackageRow, resource: Record<string, any>, profile: string | null): Promise<Record<string, any>> {
     const profiles: string[] = [];
     let profileId: string | null = null;
@@ -1945,6 +1967,16 @@ export class FHIRIGService {
       logError("fhir validation: suggestions failed", { error: String((e as Error).message) });
     }
     mark("suggest");
+    // ISSUES_v17.3: issues the IG's own examples of the profile also have (igKnownDefects.ts) — note + advice, fail-open
+    if (this.annotateKnownDefects) {
+      try {
+        const closure = pkg._closure ?? [[pkg.package_id, pkg.version]];
+        const defects = await knownDefects(closure.map(([id, v]) => ({ package_id: id, version: v })));
+        if (defects.some((d) => d.knownInvalid)) annotateKnownDefects(issues, resource, profiles[0] ?? null, defects, await this.defectAlternatives(resolver, resource, defects));
+      } catch (e) {
+        logError("fhir validation: known-defect notes failed", { error: String((e as Error).message) });
+      }
+    }
     if (prof) {
       const phases: Record<string, { ms: number; queries: number }> = {};
       let t = prof.t0;

@@ -1797,3 +1797,29 @@ CREATE TABLE IF NOT EXISTS rxnorm.editions (
 CREATE INDEX IF NOT EXISTS idx_rxnorm_concepts_tty ON rxnorm.concepts (tty);
 CREATE INDEX IF NOT EXISTS idx_rxnorm_concepts_name_fts ON rxnorm.concepts
     USING GIN (to_tsvector('english', COALESCE(name, '')));
+
+-- ISSUES_v17.3 (migration 20261101_ig_known_defects): IG self-check results (ig_selfcheck job, igKnownDefects.ts)
+CREATE TABLE IF NOT EXISTS fhir.ig_selfcheck_runs (
+    package_id TEXT NOT NULL,
+    package_version TEXT NOT NULL,
+    selfcheck_version TEXT NOT NULL,
+    examples_total INTEGER NOT NULL,
+    examples_valid INTEGER NOT NULL,
+    defects INTEGER NOT NULL,
+    computed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (package_id, package_version)
+);
+
+CREATE TABLE IF NOT EXISTS fhir.ig_known_defects (
+    package_id TEXT NOT NULL,
+    package_version TEXT NOT NULL,
+    profile TEXT NOT NULL,
+    element TEXT NOT NULL,
+    rule TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    examples JSONB NOT NULL DEFAULT '[]'::jsonb,
+    failing INTEGER NOT NULL,
+    total INTEGER NOT NULL,
+    known_invalid BOOLEAN NOT NULL,
+    PRIMARY KEY (package_id, package_version, profile, element, rule)
+);

@@ -22,6 +22,7 @@ export const SINGLETON_JOB_TYPES: ReadonlySet<string> = new Set([
   "rxnorm_import",
   "umls_import",
   "ig_concept_index",
+  "ig_selfcheck",
   "health_supplements_sync",
   "food_nutrition_sync",
   "icd_embed",

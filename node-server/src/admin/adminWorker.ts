@@ -351,6 +351,20 @@ export async function runWorker(): Promise<void> {
   // Warm the SNOMED search path in the background (cold HDD reads otherwise make the first searches slow).
   void prewarmSnomedOnStartup(getPool());
 
+  // ISSUES_v17.3: installed IG packages without a current self-check (IG known defects) — queue one ig_selfcheck job.
+  void (async () => {
+    try {
+      const { packagesWithoutSelfcheck } = await import("../igKnownDefects.js");
+      const todo = await packagesWithoutSelfcheck();
+      if (!todo.length) return;
+      const { createJob } = await import("./adminJobs.js");
+      const j = await createJob({ moduleKey: "ig", jobType: "ig_selfcheck", requestedBy: "system", jobOptions: { reason: "startup" } });
+      logInfo("Queued ig_selfcheck for installed IG packages", { job_id: String(j.job_id), packages: todo.length });
+    } catch (err) {
+      logWarning("ig_selfcheck not queued on startup (non-fatal)", { error: String((err as Error).message) });
+    }
+  })();
+
   logInfo("Admin worker started (resource-aware parallel mode)", {
     worker_name: workerName,
     process_id: processId,

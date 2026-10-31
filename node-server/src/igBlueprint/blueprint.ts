@@ -9,6 +9,7 @@
  * fit is counted in `omitted`.
  */
 
+import { boundAlternatives } from "../igKnownDefects.js";
 import { bundleRules } from "../fhirBundleFinalize.js";
 import {
   BLUEPRINT_BUDGET,
@@ -298,6 +299,34 @@ export async function bundleBlueprint(req: BlueprintRequest, deps: BlueprintDeps
     }
   }
   if (missingProfiles) warnings.push(`${missingProfiles} slice profile(s) are not installed in the closure: their references are not listed`);
+  // ISSUES_v17.3: slices whose profile the IG's own examples cannot pass (IG known defects, igKnownDefects.ts)
+  const knownInvalid: Array<Record<string, unknown>> = [];
+  if (deps.knownDefects) {
+    const defects = (await deps.knownDefects(loaded).catch(() => [])).filter((d) => d.knownInvalid);
+    for (const s of slices) {
+      const d = defects.find((x) => s.profiles.some((p) => stripVersion(p) === x.profile));
+      if (!d) continue;
+      // where its information goes instead: a CodeableConcept of another slice's profile bound to a ValueSet the defective
+      // element is bound to (Condition.code ↔ Claim.diagnosis.diagnosisCodeableConcept); references to it are left out with it
+      const others: Array<{ label: string; sd: El | null }> = [];
+      for (const o of slices) if (o.name !== s.name) for (const op of o.profiles) others.push({ label: o.name, sd: await sdOf(op) });
+      const via = boundAlternatives(d.element, await sdOf(s.profiles.find((p) => stripVersion(p) === d.profile) ?? d.profile), others);
+      const dangling = [...new Set(refs.filter((r) => r.to.includes(s.name) && r.from !== s.name).map((r) => `${r.from}: ${r.path}`))];
+      knownInvalid.push({
+        slice: s.name,
+        known_invalid: true,
+        card: `${s.min}..${s.max}`,
+        element: d.element,
+        reason: clip(d.reason, 160),
+        examples: d.examples.slice(0, 2),
+        note:
+          "the IG's own examples of this profile fail official validation too" +
+          (s.min === 0 ? "; do not create this entry unless the conversion target requires it" : "; the slice is required — expect this error and report it") +
+          (via.length ? `; its information goes in ${[...new Set(via)].slice(0, 2).join(" / ")}` : "") +
+          (dangling.length ? `; leave out the references to it too (${dangling.slice(0, 3).join(", ")})` : ""),
+      });
+    }
+  }
   // Targets a required reference makes mandatory although their own slice is optional.
   const sliceMin = new Map(slices.map((s) => [s.name, s.min]));
   const impliedRequired = [
@@ -397,6 +426,7 @@ export async function bundleBlueprint(req: BlueprintRequest, deps: BlueprintDeps
     };
     if (profileBase) data.profile_base = profileBase;
     data.slices = slices.slice(0, opts.slicesShown).map(sliceRow);
+    if (knownInvalid.length) data.known_invalid = knownInvalid;
     data.references = sortedRefs.filter((_, i) => opts.refs.has(i)).map(refRow);
     if (opts.unsliced && unsliced.length) data.required_targets_without_slice = unsliced.slice(0, 8);
     data.recipe = recipe;

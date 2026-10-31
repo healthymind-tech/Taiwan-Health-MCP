@@ -617,7 +617,7 @@ export class JobValueError extends Error {}
 
 const PHASE2_JOB_TYPES = ["noop", "system_backup"];
 const SIMPLE_LOADER_JOB_TYPES = ["health_supplements_sync", "food_nutrition_sync"];
-const HEAVY_LOADER_JOB_TYPES = ["icd_import", "loinc_import", "ig_import", "snomed_import", "rxnorm_import", "ig_concept_index", "umls_import"];
+const HEAVY_LOADER_JOB_TYPES = ["icd_import", "loinc_import", "ig_import", "snomed_import", "rxnorm_import", "ig_concept_index", "umls_import", "ig_selfcheck"];
 // drug_index_import/drug_enrichment/drug_analysis are kept fully functional
 // (dispatchable, restartable) for backward compatibility with any job rows
 // already in history, but nothing creates new ones any more — the admin UI
@@ -653,6 +653,7 @@ const JOB_TYPE_MODULE_KEYS: Record<string, string> = {
   ig_import: "ig",
   ig_concept_index: "ig",
   umls_import: "ig",
+  ig_selfcheck: "ig",
   snomed_import: "snomed",
   rxnorm_import: "rxnorm",
   drug_index_import: "drug",
@@ -1162,7 +1163,7 @@ export const JOB_RESOURCES: Record<string, ReadonlySet<string>> = {
   system_backup: new Set(["system_backup"]),
   db_write_icd: new Set(["icd_import"]),
   db_write_loinc: new Set(["loinc_import"]),
-  db_write_ig: new Set(["ig_import", "ig_concept_index", "umls_import"]),
+  db_write_ig: new Set(["ig_import", "ig_concept_index", "umls_import", "ig_selfcheck"]),
   db_write_snomed: new Set(["snomed_import"]),
   db_write_rxnorm: new Set(["rxnorm_import"]),
   db_write_health_supplements: new Set(["health_supplements_sync"]),
@@ -3343,6 +3344,16 @@ export async function runIgImportJob(opts: {
       jobId, stepKey: "cleanup_staging", status: "success",
       progressCurrent: 1, progressTotal: 1, checkpoint: { phase: "cleaned" },
     });
+    // ISSUES_v17.3: self-check the installed packages against their own examples (IG known defects)
+    try {
+      const sc = await createJob({
+        moduleKey: "ig", jobType: "ig_selfcheck", requestedBy: String(job.requested_by ?? "system"), parentJobId: jobId,
+        jobOptions: { packages: identities.map((i) => ({ package_id: i.package_id, version: i.version })), reason: "ig_import" },
+      });
+      await appendJobLog({ jobId, level: "info", message: `Queued ig_selfcheck ${String(sc.job_id)} (IG examples self-check)` });
+    } catch (exc) {
+      await appendJobLog({ jobId, level: "warn", message: `ig_selfcheck not queued: ${(exc as Error).message}` });
+    }
     await markJobStatus({
       jobId, status: requestedFailedCount > 0 ? "partial_success" : "success", currentStep: "completed",
       progressCurrent: 5, progressTotal: total, controlState: "idle",
@@ -3447,6 +3458,59 @@ export async function queueIgEmbed(opts: { parentJobId: string | null; requested
  * force?: boolean, embed_max_concepts?: number, thesaurus?: boolean (default true),
  * queue_embed?: boolean (default true).
  */
+/**
+ * ISSUES_v17.3 (v17 R1.3): validate every example of the packages against the package's own profiles and store
+ * the IG known defects (igKnownDefects.ts). Packages: job_options.packages, else every installed package without a
+ * current self-check. Read-mostly: one short transaction per package.
+ */
+export async function runIgSelfcheckJob(opts: { workerName: string; job: Record<string, unknown> }): Promise<void> {
+  const { workerName, job } = opts;
+  const jobId = String(job.job_id);
+  const jobOpts = parseJsonb(job.job_options);
+  const kd = await import("../igKnownDefects.js");
+  const { FHIRIGService } = await import("../fhirIgService.js");
+  const pool = getPool();
+  const svc = new FHIRIGService(null);
+  svc.annotateKnownDefects = false;
+  const packages = Array.isArray(jobOpts.packages) ? parseDependencyTargets(jobOpts.packages) : await kd.packagesWithoutSelfcheck();
+  await markJobStatus({ jobId, status: "running", currentStep: "validating_examples", progressCurrent: 0, progressTotal: packages.length });
+  let lastCheck = 0;
+  let stopRequested = false;
+  const summary: Array<Record<string, unknown>> = [];
+  for (let k = 0; k < packages.length; k++) {
+    const p = packages[k];
+    const t0 = Date.now();
+    const run = await kd.runSelfcheck({
+      ...kd.dbSelfcheckDeps(svc, p.package_id, p.version),
+      shouldStop: async () => {
+        if (stopRequested) return true;
+        if (Date.now() - lastCheck < 2000) return false;
+        lastCheck = Date.now();
+        const r = await pool.query<{ control_state: string | null }>("SELECT control_state FROM admin.import_jobs WHERE job_id = $1", [jobId]);
+        stopRequested = ["pause_requested", "stop_requested", "restart_requested"].includes(String(r.rows[0]?.control_state ?? ""));
+        return stopRequested;
+      },
+    });
+    if (run.stopped) break;
+    await kd.storeKnownDefects(p.package_id, p.version, run.defects, run.examplesTotal, run.examplesValid);
+    const invalid = run.defects.filter((d) => d.knownInvalid);
+    summary.push({ package: `${p.package_id}#${p.version}`, examples: run.examplesTotal, valid: run.examplesValid, known_invalid: invalid.length });
+    await appendJobLog({
+      jobId, level: invalid.length ? "warn" : "info",
+      message:
+        `${p.package_id}#${p.version}: ${fmt(run.examplesValid)}/${fmt(run.examplesTotal)} examples valid (${Math.round((Date.now() - t0) / 1000)} s)` +
+        (invalid.length ? `; IG known defects: ${invalid.map((d) => `${d.profile.split("/").pop()} ${d.element}`).join(", ")}` : ""),
+    });
+    await markJobStatus({ jobId, status: "running", currentStep: "validating_examples", progressCurrent: k + 1, progressTotal: packages.length });
+  }
+  await recordJobStep({ jobId, stepKey: "selfcheck", status: stopRequested ? "stopped" : "success", progressCurrent: 1, progressTotal: 1, checkpoint: { phase: "checked", packages: summary } });
+  if (stopRequested && (await applyControlCheckpoint({ jobId, workerName }))) return;
+  await markJobStatus({
+    jobId, status: "success", currentStep: "completed", progressCurrent: packages.length, progressTotal: packages.length, controlState: "idle",
+    resultSummary: { job_type: "ig_selfcheck", packages: summary },
+  });
+}
+
 export async function runIgConceptIndexJob(opts: { workerName: string; job: Record<string, unknown> }): Promise<void> {
   const { workerName, job } = opts;
   const jobId = String(job.job_id);
@@ -4973,6 +5037,10 @@ export async function executeAdminJob(opts: {
     }
     if (jobType === "ig_concept_index") {
       await runIgConceptIndexJob({ workerName, job });
+      return;
+    }
+    if (jobType === "ig_selfcheck") {
+      await runIgSelfcheckJob({ workerName, job });
       return;
     }
     if (jobType === "umls_import") {

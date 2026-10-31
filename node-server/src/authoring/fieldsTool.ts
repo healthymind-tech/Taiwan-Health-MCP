@@ -3,6 +3,7 @@
  * (workstream A). The spec is registered by `index.ts`; nothing here touches mcp.ts.
  */
 
+import { invalidDefectsOf, knownDefectNote, knownDefects } from "../igKnownDefects.js";
 import { z } from "zod";
 import { query } from "../db.js";
 import * as fhirIg from "../fhirIg.js";
@@ -104,7 +105,7 @@ export function dbFieldsDeps(): FieldsDeps {
         packageVersion: String(row.package_version),
         handle: pkg,
         provenance,
-        warnings: target.notes,
+        warnings: [...target.notes, ...(await knownDefectWarnings(target.closure, String(row.canonical_url ?? sd.url ?? "")))],
         depsMissing: target.depsMissing.length ? target.depsMissing : undefined,
       };
     },
@@ -215,4 +216,15 @@ let dbTool: AuthoringToolSpec | null = null;
 /** The production tool spec (lazy: builds the DB deps on first use). */
 export function fieldsTool(): AuthoringToolSpec {
   return (dbTool ??= makeFieldsTool(dbFieldsDeps()));
+}
+
+/** ISSUES_v17.3: a warning per element of the profile its own IG examples cannot pass (IG known defect); fail-open. */
+export async function knownDefectWarnings(closure: Array<[string, string]>, canonical: string): Promise<string[]> {
+  if (!canonical) return [];
+  try {
+    const defects = invalidDefectsOf(await knownDefects(closure.map(([id, v]) => ({ package_id: id, version: v }))), canonical);
+    return defects.slice(0, 2).map((d) => `IG known defect: ${knownDefectNote(d)}`);
+  } catch {
+    return [];
+  }
 }

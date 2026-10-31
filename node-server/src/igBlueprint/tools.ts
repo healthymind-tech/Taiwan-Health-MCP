@@ -19,6 +19,7 @@ import type { AuthoringToolSpec } from "../authoring/types.js";
 import { bundleBlueprint } from "./blueprint.js";
 import { minimalSkeleton } from "./skeleton.js";
 import { igDefinedValues } from "./igValues.js";
+import { knownDefects } from "../igKnownDefects.js";
 import type { IgDefinedValues } from "../grounding/igDefined.js";
 import { BlueprintError, isObject, stripVersion, type BlueprintDeps, type ExampleInstance, type LoadedProfile } from "./common.js";
 
@@ -96,6 +97,11 @@ export function dbBlueprintDeps(): BlueprintDeps {
       const target = (await packageExamples(pkg.package_id, pkg.version)).filter(has);
       if (target.length || (pkg.package_id === p.packageId && pkg.version === p.packageVersion)) return target;
       return (await packageExamples(p.packageId, p.packageVersion)).filter(has);
+    },
+
+    knownDefects(p) {
+      const pkg = pkgOf(p);
+      return knownDefects((pkg._closure ?? [[pkg.package_id, pkg.version]]).map(([id, v]) => ({ package_id: id, version: v })));
     },
 
     async expandValueSet(p, valueSet, limit) {

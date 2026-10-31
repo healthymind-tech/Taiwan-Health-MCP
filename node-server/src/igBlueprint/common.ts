@@ -11,6 +11,8 @@ import type { ExpandedCodes, LoadedProfile } from "../authoring/fields.js";
 
 export type { ExpandedCodes, LoadedProfile };
 
+import type { KnownDefect } from "../igKnownDefects.js";
+
 export interface BlueprintDeps {
   /** Resolve + load a profile (throws AuthoringFieldsError IG_NOT_FOUND / ARTIFACT_NOT_FOUND / INVALID_ARGUMENT). */
   loadProfile(profile: string, packageId: string | null, version: string | null): Promise<LoadedProfile>;
@@ -25,6 +27,8 @@ export interface BlueprintDeps {
   exampleInstances(p: LoadedProfile, canonical: string): Promise<ExampleInstance[]>;
   /** Expansion of a ValueSet canonical within the profile's closure; null when not held. */
   expandValueSet(p: LoadedProfile, valueSet: string, limit: number): Promise<ExpandedCodes | null>;
+  /** ISSUES_v17.3: IG known defects of the profile's closure (igKnownDefects.ts); absent / [] = none known. */
+  knownDefects?(p: LoadedProfile): Promise<KnownDefect[]>;
 }
 
 export interface ExampleInstance {
