@@ -9,6 +9,7 @@
  * service for semantic normalize_code.
  */
 
+import { completeDocument, repairNarratives } from "./fhirRepair/document.js";
 import { annotateKnownDefects, boundAlternatives, knownDefects, type KnownDefect } from "./igKnownDefects.js";
 import { performance } from "node:perf_hooks";
 import { query, queryCount, trackQueryFailures } from "./db.js";
@@ -2135,12 +2136,23 @@ export class FHIRIGService {
     lossless: unknown,
     timezone: string | null,
     timezoneSource: string | null = null,
+    /** v17.1: the Bundle profile / requested Bundle.type (document completion). */
+    doc: { bundleProfile?: string | null; bundleType?: string | null } = {},
   ): Promise<{ bundle: Record<string, any>; lossless: unknown; result: RepairResult } | null> {
     if (!pkg) return null;
     const tree = cloneTree(lossless !== undefined && lossless !== null && typeof lossless === "object" ? lossless : bundle) as Record<string, any>;
     try {
       const deps = repairDepsFor(pkg, (text, valueSet, system, limit) => this.normalizeCodeIn(pkg, true, text, valueSet, system, limit), new DbValidatorResolver(pkg), (system, code) => this.codeAlternativesFor(pkg, system, code), (resourceType, system) => this.implicitProfilesFor(pkg, resourceType, system));
       const result = await repairBundle(tree, deps, { timezone, timezoneSource });
+      // v17.1 R1 / R2: narratives and document completion (fhirRepair/document.ts), after the value repairs
+      try {
+        result.changes.push(...repairNarratives(tree));
+        const d = await completeDocument(tree, { fetchStructureDefinition: (u) => deps.fetchStructureDefinition(u), lookupDisplay: deps.lookupDisplay, valueSetContains: deps.valueSetContains }, doc);
+        result.changes.push(...d.changes);
+        result.issues.push(...d.issues);
+      } catch (e) {
+        logError("document completion failed; the Bundle is finalized without it", { error: String((e as Error).message) });
+      }
       return { bundle: toPlain(tree) as Record<string, any>, lossless: lossless !== undefined ? tree : undefined, result };
     } catch (e) {
       logError("content repair failed; the Bundle is finalized as given", { error: String((e as Error).message) });
@@ -2386,7 +2398,7 @@ export class FHIRIGService {
       if (row && row.canonical_url) profileCanonical = String(row.canonical_url);
     }
     // v14: content repairs first (fhirRepair; on the lossless tree), then the v9 id normalisation.
-    const content = repair === "content" ? await this.contentRepairBundle(pkg, bundle, opts.lossless, tz.timezone, tz.source) : null;
+    const content = repair === "content" ? await this.contentRepairBundle(pkg, bundle, opts.lossless, tz.timezone, tz.source, { bundleProfile: profileCanonical, bundleType }) : null;
     if (content && envelope.length) content.result.changes.unshift(...envelope);
     const fin = await runBundleFinalize(content ? content.bundle : bundle, deps, { bundleProfile: profileCanonical, bundleType });
     const count = (rule: string): number => fin.changes.filter((c) => c.rule === rule).length;
