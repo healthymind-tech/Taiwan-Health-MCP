@@ -376,6 +376,8 @@ export interface BundleRepairOptions {
   timezone?: string | null;
   timezoneSource?: string | null;
   phases?: RepairOptions["phases"];
+  /** v19 R1: rule / path pairs (blockKey) not to apply — fhir_finalize_bundle's no-new-error rollback. */
+  blocked?: ReadonlySet<string>;
 }
 
 /**
@@ -398,9 +400,9 @@ export async function repairBundle(bundle: Record<string, any>, deps: RepairDeps
   const env = new Set(opts.phases ?? ALL_PHASES).has("shape") ? repairBundleEnvelope(bundle) : { changes: [], issues: [] };
   const withEnv = (r: RepairResult): RepairResult => ({ changes: [...env.changes, ...r.changes], issues: [...env.issues, ...r.issues] });
   if (bundle.resourceType !== "Bundle") return withEnv({ changes: [], issues: [] });
-  if (!deps.validate) return withEnv((await repairBundleOnce(bundle, deps, opts, new Set())).result);
+  if (!deps.validate) return withEnv((await repairBundleOnce(bundle, deps, opts, new Set<string>(opts.blocked ?? []))).result);
   const original = cloneTree(bundle);
-  const blocked = new Set<string>();
+  const blocked = new Set<string>(opts.blocked ?? []);
   const withdrawn: RepairIssue[] = [];
   let run = await repairBundleOnce(bundle, deps, opts, blocked);
   for (let round = 0; round < 4 && run.result.changes.length; round++) {

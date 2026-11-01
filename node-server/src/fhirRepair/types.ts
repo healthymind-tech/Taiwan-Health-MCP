@@ -19,11 +19,12 @@ export type { CodeAlternatives, ExpandedCoding, ImplicitProfiles, NormalizeCandi
  * profile's fixed / pattern values added, slices phase), `timezone` (the site timezone added to a
  * date-time written without a UTC offset, dates phase).
  */
-export type RepairRule = "shape" | "empty" | "system" | "fixed-slice" | "alt-coding" | "ucum" | "roc-date" | "timezone" | "code" | "display" | "narrative" | "document";
+export type RepairRule = "shape" | "empty" | "system" | "fixed-slice" | "alt-coding" | "ucum" | "roc-date" | "timezone" | "code" | "display" | "narrative" | "document" | "fixed-value";
 
 /** v17.1: `narrative` (Narrative div / namespace / status, fhirRepair/document.ts) and `document` (document Bundle completion). */
+/** v19 R1: `fixed-value` (a value the profile fixes, set from the validator's "is fixed to" error — fhirRepair/autoFix.ts). */
 /** v15.2: `alt-coding` (an excerpt CodeSystem's unknown code → the one accepted coding of another system it links to, alternatives phase). */
-export const ALL_RULES: readonly RepairRule[] = ["shape", "empty", "system", "fixed-slice", "alt-coding", "ucum", "roc-date", "timezone", "code", "display", "narrative", "document"];
+export const ALL_RULES: readonly RepairRule[] = ["shape", "empty", "system", "fixed-slice", "alt-coding", "ucum", "roc-date", "timezone", "code", "display", "narrative", "document", "fixed-value"];
 
 export type RepairPhase = "shape" | "systems" | "slices" | "alternatives" | "units" | "dates" | "codes" | "displays";
 

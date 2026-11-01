@@ -46,9 +46,26 @@ export const R3_RENAMES: Readonly<Record<string, R3Rename>> = {
   "MedicationAdministration.notGiven": { removed: "R4 has no notGiven: write status = 'not-done' (and statusReason)" },
   "MedicationAdministration.reasonNotGiven": { to: "statusReason" },
   "Patient.animal": { removed: "R4 Patient has no animal element (use the patient-animal extension)" },
+  // v19 R1: the MedicationRequest name of the R4 MedicationStatement / MedicationAdministration Dosage element (R4
+  // MedicationStatement.dosage and MedicationRequest.dosageInstruction are both 0..* Dosage).
+  "MedicationStatement.dosageInstruction": { to: "dosage" },
 };
 
-/** The R3 rename of `<owner type>.<key>`, if any. */
+/**
+ * The R3 rename of `<owner type>.<key>`, if any. v19 R1: also the STU3 child names inside the R4 element an STU3
+ * backbone was renamed to (`Immunization.protocolApplied` + `doseSequence` → `doseNumberPositiveInt`): a model that
+ * already writes the R4 backbone name often keeps its STU3 children.
+ */
 export function r3Rename(ownerType: string, key: string): R3Rename | null {
-  return R3_RENAMES[`${ownerType}.${key}`] ?? null;
+  const direct = R3_RENAMES[`${ownerType}.${key}`];
+  if (direct) return direct;
+  const dot = ownerType.lastIndexOf(".");
+  if (dot < 0) return null;
+  const [rt, el] = [ownerType.slice(0, dot), ownerType.slice(dot + 1)];
+  for (const [k, r] of Object.entries(R3_RENAMES)) {
+    if (!k.startsWith(`${rt}.`) || r.to !== el || !r.inner || !(key in r.inner)) continue;
+    const to = r.inner[key];
+    return to ? { to } : { removed: `R4 removed ${rt}.${k.slice(rt.length + 1)}.${key} (STU3) when it renamed ${k.slice(rt.length + 1)} to ${el}; leave it out` };
+  }
+  return null;
 }

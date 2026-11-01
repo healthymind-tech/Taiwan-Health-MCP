@@ -186,7 +186,7 @@ const codingsOf = (cc: unknown): Json[] => (isObj(cc) && Array.isArray(cc.coding
 const sameCode = (a: unknown, b: unknown): boolean => codingsOf(a).some((x) => codingsOf(b).some((y) => x.code === y.code && (!x.system || !y.system || x.system === y.system)));
 
 /** A short name of a resource for a generated section text. */
-function nameOf(r: Json): string {
+export function nameOf(r: Json): string {
   for (const k of ["code", "medicationCodeableConcept", "vaccineCode", "type", "class"]) {
     const v = r[k];
     if (isObj(v)) {

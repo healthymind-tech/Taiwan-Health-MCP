@@ -94,6 +94,24 @@ export async function repairBundleEntries(session: Session, bundle: Record<strin
   const changes: RepairChange[] = [];
   const issues: RepairIssue[] = [];
   const removed: number[] = [];
+  // v19 R1: an entry written at Bundle level (`resource` with a resourceType, its `fullUrl` / request / search /
+  // response beside it — Bundle defines none of them) → one more entry at the end (the one place that defines them).
+  if (isObject(bundle.resource) && typeof bundle.resource.resourceType === "string" && (bundle.entry === undefined || Array.isArray(bundle.entry))) {
+    const keys = ["fullUrl", "resource", "request", "response", "search"].filter((k) => k in bundle);
+    const url = bundle.fullUrl;
+    const okUrl = url === undefined || (typeof url === "string" && !(Array.isArray(bundle.entry) ? bundle.entry : []).some((e: unknown) => isObject(e) && e.fullUrl === url));
+    const at = Array.isArray(bundle.entry) ? bundle.entry.length : 0;
+    if (okUrl && keys.every((k) => k === "fullUrl" || k === "resource" || isObject(bundle[k])) && allow("shape", `Bundle.entry[${at}]`)) {
+      const entry: Record<string, any> = {};
+      for (const k of keys) {
+        entry[k] = bundle[k];
+        delete bundle[k];
+      }
+      if (!Array.isArray(bundle.entry)) bundle.entry = [];
+      bundle.entry.push(entry);
+      changes.push({ path: `Bundle.entry[${at}]`, from: { path: `Bundle.${keys.includes("resource") ? "resource" : keys[0]}`, value: cloneTree(entry), keys: keys.map((k) => `Bundle.${k}`) }, to: cloneTree(entry), rule: "shape", reason: `${keys.map((k) => `'${k}'`).join(" / ")} written at Bundle level are properties of Bundle.entry (Bundle defines none of them): moved into a new entry` });
+    }
+  }
   const entries: unknown[] = Array.isArray(bundle.entry) ? bundle.entry : [];
   // bdl-7 duplicates.
   const byUrl = new Map<string, number[]>();

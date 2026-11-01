@@ -184,6 +184,28 @@
 
 **v16 結構修正（任何 IG、任何深度）**：以宣告剖面（無則 core）的 StructureDefinition 判斷每個元素的 max —— 重複元素寫成單值 → 一項陣列、max 1 寫成一項陣列 → 取出、`meta.profile` 字串 → 陣列；entry 缺 `resourceType` 而 `meta.profile`（陣列或字串）只指向一種資源型別 → 補上；空的元素（`{}`、`[]`、`""`、`null`，ele-1）移除；`Unrecognized property` 的值只在唯一的上一層 / 下一層有定義時才移過去。這些都是無損改形：若修正後才出現的錯誤只是因為值終於能被讀到（改形後的元素底下、或補好 `meta.profile` 後該資源開始依其剖面驗證、引用它的 profile-match 錯誤），視為原本被遮住的錯誤而不撤回修正；推得的 `resourceType` 只有在出現未知的頂層屬性（型別不對）時撤回。以 TWPAS 1.2.7 與 TW Core 1.0.0 套件內的範例 Bundle 套用上述破壞（每份每筆資源）後修正，錯誤數都回到範例原本的數量（`node-server/scripts/v16-structure-eval/evalRepairs.ts`）。
 
+### 自動修正、ambiguous 與「不新增錯誤」（v19 R1）{#auto-fix}
+
+`fhir_finalize_bundle` 1.14.0 起（`repair="content"`，預設）把**只有一種正確修法**的結構錯誤全部自己修好，其餘標為 `ambiguous`，並保證**finalize 後的 error 是 finalize 前的子集合**。規則全部由 StructureDefinition / snapshot、FHIR R4 規格與驗證器本身的訊息推得，不針對任何 IG：
+
+- **屬性改名**（只在唯一一個合法元素對得上、值可無損讀成該型別時）：choice 型別後綴不合（`doseNumberPositiveInteger` → `doseNumberPositiveInt`，`"1"` 讀成 `1`）、choice 缺後綴（`item` → 值的形狀唯一符合的 `itemCodeableConcept`）、單複數（`periodUnits` → `periodUnit`）、`MedicationStatement.dosageInstruction` → `dosage`、R4 `protocolApplied` 內的 STU3 子元素（`doseSequence` → `doseNumberPositiveInt`）；有多個候選時不改，列為 ambiguous；
+- **Bundle 層的 entry**：寫在 Bundle 頂層的 `fullUrl` / `resource`（Bundle 沒有這些元素）→ 移進新的最後一個 entry；
+- **fixed / pattern**：驗證器回報 `Value is 'A' but is fixed to 'B'` → 依剖面定義改成 B；
+- **display**：剖面以 fixed / pattern 釘住的代碼（例如 `Composition.type`、section slice 的 code）→ 驗證器列出的正確 display；代碼未被釘住且 display 指的是別的概念時不改（代碼或 display 哪個錯無法判斷），列為 ambiguous 並附兩種 patch；
+- **choice 型別**：剖面只允許一種型別、值可無損讀成該型別（`valueString: "true"` → `valueBoolean: true`）→ 改名；
+- **section narrative**：剖面要求 `Composition.section.text` 而 section 有 entry → 由這些 entry 在 Bundle 內的名稱產生（不新增病歷內容）；
+- 既有的陣列 / 單值、narrative、system / code、id / reference（v9）與 document 補全照常適用。
+
+**回應欄位**：
+
+- `changes[]` 保留原有 `path` / `from` / `to` / `rule` / `reason`，另加 `pointer`（RFC 6901，以**送出的 Bundle** 為根——document 重排、移除的重複 entry、從 Bundle 層移入的 entry 都換回送出時的位置）、`before`、`after`、`category`（`shape` / `narrative` / `display` / `unrecognized_property` / `system_code` / `ids_references` / `document_structure` / `fixed_pattern`）；搬移 / 改名另有 `moved_to`（值的新位置）；
+- `ambiguous[{pointer, message, category, candidates[{description, patch?}]}]`：有多種修法、或需要病歷決定的項目——被撤回的修正（附原修正的 patch）、無法唯一判定的 repair issue（display / code 候選、改名候選）、找不到或對到多個 entry 的引用、以及修正後仍存在的 R1 類別 error；`patch` 是 RFC 6902 操作，**直接套用在送出的 Bundle** 上（已驗證可套用）；
+- `summary` 另加 `categories`（各類別修正數）、`ambiguous`、`withdrawn`、`errors_before` / `errors_after`（驗證器的 error 數）。
+
+**不新增錯誤**：finalize 先驗證送出的 Bundle，修正後再驗證一次（以 Bundle profile；訊息比對，忽略 entry 順序與產生的 UUID）。修正後多出的 error 會找出造成它的那一項修正（同一位置 / 同一 entry / Bundle 層），撤回後重跑（最多 3 輪；無法歸因時整份不改），被撤回的修正列在 `ambiguous`。因此一項修正若讓原本讀不到的內容開始被驗證而出現新 error（例如 `dosageInstruction` 改成 `dosage` 後才看得到的 Dosage 錯誤），該修正不套用，交給模型以 patch 處理。
+
+**實測**（`node-server/scripts/parity/finalize-eval.ts`，parity_v1 repro 92 份，結構性 error、不含內容檢查）：1384 → 1104（-20.2%），**新增 0**；fixed_pattern 10 → 0、unrecognized_property 198 → 114、display 76 → 59、shape 60 → 40；document_structure（42：多為沒有 Composition、或沒有 section 收得下的 entry）、ids_references（37：引用的 entry 不在 Bundle 內）與 system_code（84）沒有唯一修法，全部列在 `ambiguous`。
+
 ### 修正建議（suggestions / caused_by）{#validation-suggestions}
 
 驗證結果的 issue 除了指出錯在哪裡，也盡量附上「要改成什麼」：`suggestions` 是依 `confidence` 由高到低排序的候選（每個 issue 最多 5 個；小型 ValueSet 的綁定錯誤最多 12 個），參照鏈錯誤另有 `caused_by`。兩者都是**附加欄位**——issue 的集合、severity、message 與 `valid` 完全不變；沒有建議時不出現該欄位。

@@ -83,6 +83,10 @@ export interface FinalizeOptions {
    * reports the conflict. Never part of the salt, so UUIDs do not depend on it.
    */
   bundleType?: string | null;
+  /** v19 R1 (fhir_finalize_bundle no-new-error rollback): leave Bundle.type and the document entry order as written. */
+  skipDocument?: boolean;
+  /** v19 R1: leave fullUrl / reference / id as written (only the Bundle.type / document order rules run). */
+  skipIds?: boolean;
 }
 
 /** One Bundle.type the entries' shape suggests (fhir_validate_bundle document suggestions, finalize notes). */
@@ -556,7 +560,7 @@ export async function finalizeBundle(input: Record<string, any>, deps: FinalizeD
   let fixed: string | null = null;
   if (bundleSdx) {
     fixed = fixedBundleType(bundleSdx);
-    if (fixed && bundle.type !== fixed) {
+    if (fixed && bundle.type !== fixed && !opts.skipDocument) {
       changes.push({ path: "Bundle.type", from: bundle.type ?? null, to: fixed, rule: "bundle-type" });
       bundle.type = fixed;
     }
@@ -568,12 +572,12 @@ export async function finalizeBundle(input: Record<string, any>, deps: FinalizeD
   if (requested !== null) {
     if (fixed && requested !== fixed) {
       notes.push(`bundle_type '${requested}' was requested but ${bundleSdx!.url} fixes Bundle.type to '${fixed}'; the profile's value is kept`);
-    } else if (!fixed && bundle.type !== requested) {
+    } else if (!fixed && bundle.type !== requested && !opts.skipDocument) {
       changes.push({ path: "Bundle.type", from: bundle.type ?? null, to: requested, rule: "bundle-type", reason: "requested by caller (bundle_type)" });
       bundle.type = requested;
     }
   }
-  if (bundle.type === "document" && Array.isArray(bundle.entry)) {
+  if (bundle.type === "document" && Array.isArray(bundle.entry) && !opts.skipDocument) {
     const k = bundle.entry.findIndex((e: unknown) => isObject(e) && isObject(e.resource) && e.resource.resourceType === "Composition");
     if (k > 0) {
       const [comp] = bundle.entry.splice(k, 1);
@@ -600,6 +604,8 @@ export async function finalizeBundle(input: Record<string, any>, deps: FinalizeD
         "this looks like an entry written outside the entry array — move it into Bundle.entry (not changed here)",
     );
   }
+
+  if (opts.skipIds) return { bundle, changes, unresolved, notes, id_map: idMap };
 
   // ---- 4.1 fullUrl normalisation.
   const salt = bundleSalt(bundle);

@@ -10,6 +10,7 @@
  */
 
 import { completeDocument, repairNarratives, repairSystemVersions } from "./fhirRepair/document.js";
+import { annotateChanges, autoFixBundle, buildAmbiguous, countByCategory, EntryMap, guardNoNewErrors, noneDisabled, type Disabled, type PipelineResult } from "./fhirRepair/autoFix.js";
 import { annotateKnownDefects, boundAlternatives, knownDefects, type KnownDefect } from "./igKnownDefects.js";
 import { performance } from "node:perf_hooks";
 import { query, queryCount, trackQueryFailures } from "./db.js";
@@ -2138,20 +2139,36 @@ export class FHIRIGService {
     timezoneSource: string | null = null,
     /** v17.1: the Bundle profile / requested Bundle.type (document completion). */
     doc: { bundleProfile?: string | null; bundleType?: string | null } = {},
+    /** v19 R1 (fhir_finalize_bundle only): the guard's rollback state, and whether the validator-driven layer-1 fixes run. */
+    v19: { disabled?: Disabled; autoFix?: boolean } = {},
   ): Promise<{ bundle: Record<string, any>; lossless: unknown; result: RepairResult } | null> {
     if (!pkg) return null;
     const tree = cloneTree(lossless !== undefined && lossless !== null && typeof lossless === "object" ? lossless : bundle) as Record<string, any>;
+    const off = v19.disabled ?? noneDisabled();
     try {
       const deps = repairDepsFor(pkg, (text, valueSet, system, limit) => this.normalizeCodeIn(pkg, true, text, valueSet, system, limit), new DbValidatorResolver(pkg), (system, code) => this.codeAlternativesFor(pkg, system, code), (resourceType, system) => this.implicitProfilesFor(pkg, resourceType, system));
-      const result = await repairBundle(tree, deps, { timezone, timezoneSource });
+      const result = await repairBundle(tree, deps, { timezone, timezoneSource, blocked: off.blocked });
       // v17.1 R1 / R2: narratives and document completion (fhirRepair/document.ts), after the value repairs
       try {
-        result.changes.push(...repairNarratives(tree), ...repairSystemVersions(tree));
-        const d = await completeDocument(tree, { fetchStructureDefinition: (u) => deps.fetchStructureDefinition(u), lookupDisplay: deps.lookupDisplay, valueSetContains: deps.valueSetContains }, doc);
-        result.changes.push(...d.changes);
-        result.issues.push(...d.issues);
+        if (!off.steps.has("narrative")) result.changes.push(...repairNarratives(tree));
+        if (!off.steps.has("system_versions")) result.changes.push(...repairSystemVersions(tree));
+        if (!off.steps.has("document")) {
+          const d = await completeDocument(tree, { fetchStructureDefinition: (u) => deps.fetchStructureDefinition(u), lookupDisplay: deps.lookupDisplay, valueSetContains: deps.valueSetContains }, doc);
+          result.changes.push(...d.changes);
+          result.issues.push(...d.issues);
+        }
       } catch (e) {
         logError("document completion failed; the Bundle is finalized without it", { error: String((e as Error).message) });
+      }
+      // v19 R1: validator-driven fixes the profile / the Bundle determine (fhirRepair/autoFix.ts)
+      if (v19.autoFix && !off.steps.has("autofix")) {
+        try {
+          const a = await autoFixBundle(tree, { fetchStructureDefinition: (u) => deps.fetchStructureDefinition(u), validate: async (b) => (await this.bundleErrorsFor(pkg, b, doc.bundleProfile ?? null)) ?? [] }, off.blocked);
+          result.changes.push(...a.changes);
+          result.issues.push(...a.issues);
+        } catch (e) {
+          logError("v19 auto-fix failed; the Bundle is finalized without it", { error: String((e as Error).message) });
+        }
       }
       return { bundle: toPlain(tree) as Record<string, any>, lossless: lossless !== undefined ? tree : undefined, result };
     } catch (e) {
@@ -2310,6 +2327,27 @@ export class FHIRIGService {
   }
 
   /**
+   * v19 R1: the validator's issues for a whole Bundle against the finalize target profile (no suggestions /
+   * known-defect notes — only the verdict); null when the validator fails (the no-new-error guard then does not run).
+   */
+  private async bundleErrorsFor(pkg: PackageRow, bundle: Record<string, any>, profile: string | null): Promise<Record<string, any>[] | null> {
+    try {
+      const profiles: string[] = [];
+      if (profile && profile.trim()) {
+        const [canonical] = await this.resolveProfileCanonical(pkg, profile.trim());
+        if (canonical) profiles.push(canonical);
+      }
+      const engine = new validator.InstanceValidator(new DbValidatorResolver(pkg));
+      const tracked = await trackQueryFailures(() => engine.validate(toPlain(bundle) as Record<string, any>, { profiles }));
+      if (tracked.total > 0) return null;
+      return tracked.result as Record<string, any>[];
+    } catch (e) {
+      logError("v19 finalize guard: validation failed", { error: String((e as Error).message) });
+      return null;
+    }
+  }
+
+  /**
    * StructureDefinition lookup for the Bundle finalizer / fhir_build_bundle: the package the
    * Bundle resolves to (meta.profile → default IG), else hl7.fhir.r4.core, else null
    * (property-name fallback). Never throws.
@@ -2401,14 +2439,41 @@ export class FHIRIGService {
       if (row && row.canonical_url) profileCanonical = String(row.canonical_url);
     }
     // v14: content repairs first (fhirRepair; on the lossless tree), then the v9 id normalisation.
-    const content = repair === "content" ? await this.contentRepairBundle(pkg, bundle, opts.lossless, tz.timezone, tz.source, { bundleProfile: profileCanonical, bundleType }) : null;
-    if (content && envelope.length) content.result.changes.unshift(...envelope);
-    const fin = await runBundleFinalize(content ? content.bundle : bundle, deps, { bundleProfile: profileCanonical, bundleType });
+    // v19 R1: the pipeline (content repair + layer-1 fixes → id / document normalisation) under the no-new-error guard
+    const sent = bundle;
+    const sentLength = Array.isArray(sent.entry) ? sent.entry.length : 0;
+    type Run = PipelineResult & { content: Awaited<ReturnType<FHIRIGService["contentRepairBundle"]>>; fin: FinalizeResult };
+    const runOnce = async (off: Disabled): Promise<Run> => {
+      if (off.all) {
+        const fin0 = await runBundleFinalize(bundle, deps, { bundleProfile: profileCanonical, bundleType, skipIds: true, skipDocument: true });
+        return { bundle: fin0.bundle, changes: [], map: new EntryMap(sentLength, [], [], sentLength), content: null, fin: fin0 };
+      }
+      const c = repair === "content" ? await this.contentRepairBundle(pkg, bundle, opts.lossless, tz.timezone, tz.source, { bundleProfile: profileCanonical, bundleType }, { disabled: off, autoFix: true }) : null;
+      const f = await runBundleFinalize(c ? c.bundle : bundle, deps, { bundleProfile: profileCanonical, bundleType, skipIds: off.steps.has("ids"), skipDocument: off.steps.has("document_order") });
+      const contentCh = c ? c.result.changes : [];
+      const map = new EntryMap(sentLength, contentCh, f.changes, Array.isArray(f.bundle.entry) ? f.bundle.entry.length : 0);
+      return { bundle: f.bundle, changes: annotateChanges(contentCh, f.changes, map, sent), map, content: c, fin: f };
+    };
+    const guard = await guardNoNewErrors(sent, runOnce, (b) => (pkg ? this.bundleErrorsFor(pkg, b, profileCanonical) : Promise.resolve(null)));
+    const { content, fin } = guard.result;
+    const envelopeAnnotated = annotateChanges(envelope, [], new EntryMap(sentLength, [], [], sentLength), sent);
+    const annotated = [...envelopeAnnotated, ...guard.result.changes];
     const count = (rule: string): number => fin.changes.filter((c) => c.rule === rule).length;
     const contentChanges = content ? content.result.changes : [];
+    const ambiguous = buildAmbiguous({
+      sent,
+      map: guard.result.map,
+      withdrawn: guard.withdrawn,
+      repairIssues: content ? content.result.issues : [],
+      unresolved: fin.unresolved,
+      idMap: fin.id_map,
+      remaining: guard.after,
+    });
     const data: Record<string, any> = {
       bundle: losslessFinalizedBundle(fin.bundle, fin.changes, content ? content.lossless : opts.lossless) ?? fin.bundle,
-      changes: [...contentChanges, ...fin.changes],
+      // v19 R1: each change also carries pointer (RFC 6901, the Bundle as sent), before, after, category (+ moved_to)
+      changes: annotated,
+      ambiguous,
       unresolved: fin.unresolved,
       notes: [...notes, ...fin.notes],
       id_map: fin.id_map,
@@ -2420,9 +2485,16 @@ export class FHIRIGService {
         bundle_type: count("bundle-type"),
         document_order: count("document-order"),
         unresolved: fin.unresolved.length,
-        ...(repair === "content" ? { content: countByRule(contentChanges), repair_issues: content ? content.result.issues.length : 0 } : {}),
+        ...(repair === "content" ? { content: countByRule([...envelope, ...contentChanges]), repair_issues: content ? content.result.issues.length : 0 } : {}),
+        // v19 R1
+        categories: countByCategory(annotated),
+        ambiguous: ambiguous.length,
+        withdrawn: guard.withdrawn.length,
+        ...(guard.checked ? { errors_before: guard.before.length, errors_after: guard.after.length } : {}),
       },
     };
+    if (!guard.checked) data.notes.push("the no-new-error check could not run (validator unavailable); changes were not verified against the whole Bundle");
+    if (guard.gaveUp) data.notes.push("an error the finalized Bundle would add could not be traced to one change: no change was applied (see ambiguous)");
     if (repair === "content") {
       data.repair = "content";
       data.repair_issues = content ? content.result.issues : [];

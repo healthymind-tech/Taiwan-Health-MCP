@@ -36,7 +36,8 @@
 import { r3Rename } from "../fhirR3Renames.js";
 import { primitiveOk } from "../fhirValidator.js";
 import type { RepairChange, RepairIssue } from "./types.js";
-import { baseMax, CORE, groupFor, isObject, PRIMITIVES, QUANTITY_TYPES, repeats, replaceKey, type Member, type Session, type Site } from "./walk.js";
+import type { Group } from "../fhirBundleFinalize.js";
+import { baseMax, CORE, groupFor, isObject, PRIMITIVES, QUANTITY_TYPES, repeats, replaceKey, typeCodes, type Member, type Session, type Site } from "./walk.js";
 
 const CODING_KEYS = new Set(["id", "extension", "system", "version", "code", "display", "userSelected"]);
 
@@ -418,8 +419,10 @@ export async function repairShapes(
     const key = site.key;
     const value = node[key];
     // v17.1 R4: an STU3 element R4 renamed (fhirR3Renames.ts) → renamed in place; one R4 removed → reported, kept
-    const owner = site.ownerPath.replace(/^Bundle\.entry\[\d+\]\.resource/u, String(node.resourceType ?? site.ownerType)).replace(/\[\d+\]/gu, "");
-    const r3 = r3Rename(owner.includes(".") ? owner : String(node.resourceType ?? site.ownerType), key);
+    // v19 R1: the owner's path from its resource root (a nested backbone too: Immunization.protocolApplied)
+    const rtype = String((isObject(site.resource) && site.resource.resourceType) || node.resourceType || site.ownerType);
+    const owner = (site.ownerPath.startsWith(site.resourcePath) ? rtype + site.ownerPath.slice(site.resourcePath.length) : site.ownerPath.replace(/^Bundle\.entry\[\d+\]\.resource/u, rtype)).replace(/\[\d+\]/gu, "");
+    const r3 = r3Rename(owner.includes(".") ? owner : rtype, key);
     if (r3?.removed) {
       issues.push({ path: rp(`${site.ownerPath}.${key}`), rule: "shape", severity: "error", message: `'${key}' is STU3 and does not exist in R4: ${r3.removed} (not removed here)` });
       return;
@@ -436,11 +439,31 @@ export async function repairShapes(
           }
           return x;
         };
-        const v = Array.isArray(value) ? value.map(conv) : conv(value);
+        let v = Array.isArray(value) ? value.map(conv) : conv(value);
+        // v19 R1: a primitive written in another JSON form of the same lexical value ("1" for a positiveInt)
+        if (PRIMITIVES.has(target.type) && !Array.isArray(v)) {
+          const fit = fitPrimitive(target.type, v);
+          if (fit !== undefined) v = fit;
+        }
         node[r3.to] = target.repeats && !Array.isArray(v) ? [v] : !target.repeats && Array.isArray(v) && v.length === 1 ? v[0] : v;
         delete node[key];
         changes.push({ path: rp(`${site.ownerPath}.${r3.to}`), from: { path: rp(`${site.ownerPath}.${key}`), value }, to: node[r3.to], rule: "shape", reason: `'${key}' is the STU3 name of R4 '${r3.to}' (FHIR R4 version change): renamed` });
         touched.push(site.ownerPath);
+        return;
+      }
+    }
+    // v19 R1: a name one legal element away (choice-type suffix, bare choice stem, singular / plural, STU3 base + suffix)
+    if (!(`_${key}` in node)) {
+      const near = await nearNames(session, site, node, key, value, owner.includes(".") ? owner : rtype);
+      if (near.length === 1) {
+        const n = near[0];
+        replaceKey(node, key, n.name, n.value);
+        changes.push({ path: rp(`${site.ownerPath}.${n.name}`), from: { path: rp(`${site.ownerPath}.${key}`), value }, to: n.value, rule: "shape", reason: `'${key}' is not an element here; ${n.why}: renamed to '${n.name}'` });
+        touched.push(site.ownerPath);
+        return;
+      }
+      if (near.length > 1) {
+        issues.push({ path: rp(`${site.ownerPath}.${key}`), rule: "shape", severity: "error", message: `'${key}' is not an element here; it could be ${near.map((n) => `'${n.name}'`).join(" or ")} — not renamed (ambiguous)`, candidates: near.map((n) => ({ name: n.name, value: n.value, reason: n.why })) });
         return;
       }
     }
@@ -552,6 +575,141 @@ export async function repairShapes(
       issues.push({ path: rp(from), rule: "shape", severity: "error", message: `'${key}' is not a property here; it could belong to ${moves.map((m) => m.where).join(" or ")} — not moved (ambiguous)` });
     }
   }
+}
+
+const INTEGER_TYPES = new Set(["integer", "positiveInt", "unsignedInt"]);
+
+/**
+ * v19 R1: a primitive value written in another JSON form of the same lexical value, as the element's type wants it
+ * ("1" → 1 for a positiveInt, "true" → true for a boolean); the value itself when already well-formed; undefined when
+ * there is no lossless reading.
+ */
+export function fitPrimitive(type: string, v: unknown): unknown {
+  if (primitiveOk(type, v)) return v;
+  if (typeof v !== "string") return undefined;
+  const t = v.trim();
+  if (INTEGER_TYPES.has(type) && /^[+-]?\d{1,15}$/u.test(t) && String(Number(t)) === t.replace(/^\+/u, "")) {
+    const n = Number(t);
+    return primitiveOk(type, n) ? n : undefined;
+  }
+  if (type === "boolean" && (t === "true" || t === "false")) return t === "true";
+  return undefined;
+}
+
+const jsonSuffix = (t: string): string => (t === "SimpleQuantity" || t === "MoneyQuantity" ? "Quantity" : t[0].toUpperCase() + t.slice(1));
+
+/** Child groups of the object holding a site (inline children of every member, else its datatype's / resource's root). */
+async function ownerGroups(session: Session, site: Site, node: Record<string, any>): Promise<Map<string, Group>[]> {
+  const out: Map<string, Group>[] = [];
+  for (const m of site.ownerMembers) {
+    for (const id of m.ids) {
+      const g = m.view.sdx.childrenOfId(id);
+      if (g && g.size) out.push(g);
+    }
+  }
+  if (out.length) return out;
+  let t = site.ownerType;
+  if (t === "Resource" || t === "DomainResource") t = typeof node.resourceType === "string" ? node.resourceType : "";
+  if (!t || PRIMITIVES.has(t) || t === "BackboneElement" || t === "Element") return out;
+  const dt = await session.view(CORE + t);
+  const g = dt ? dt.sdx.childrenOfId(String(dt.sdx.root.id || t)) : null;
+  if (g && g.size) out.push(g);
+  return out;
+}
+
+/**
+ * v19 R1: legal element names an unknown property `key` is one step away from, with the value as that element takes
+ * it — only lossless readings, never a value change:
+ *   choice suffix   `<stem><Suffix>` where `<stem>[x]` exists but Suffix is not an allowed type: the ONE allowed type
+ *                   whose JSON suffix Suffix starts with / is a prefix of (doseNumberPositiveInteger → doseNumberPositiveInt,
+ *                   effectiveDate → effectiveDateTime), the value fitting it;
+ *   bare stem       `<stem>` of a choice element (`item` for item[x]): the ONE allowed type the value's JSON shape fits
+ *                   (primitive lexical rule / object keys all known to the type);
+ *   STU3 base       `<STU3 name><Suffix>` whose STU3 name R4 renamed to a choice element (fhirR3Renames.ts), then as above;
+ *   singular/plural `<name>s` / `<name>` minus a trailing s naming a defined element (periodUnits → periodUnit).
+ * Allowed types are those every view (core + profiles) permits. Targets already present are never overwritten.
+ */
+export async function nearNames(session: Session, site: Site, node: Record<string, any>, key: string, value: unknown, owner: string): Promise<Array<{ name: string; value: unknown; why: string }>> {
+  const groupsList = await ownerGroups(session, site, node);
+  if (!groupsList.length) return [];
+  const out = new Map<string, { name: string; value: unknown; why: string }>();
+  const fits = async (type: string, v: unknown, coerce: boolean): Promise<{ v: unknown } | null> => {
+    if (Array.isArray(v)) return null;
+    if (PRIMITIVES.has(type)) {
+      const f = coerce ? fitPrimitive(type, v) : primitiveOk(type, v) ? v : undefined;
+      return f === undefined ? null : { v: f };
+    }
+    return isObject(v) && Object.keys(v).length && (await wellFormed(session, type, v)) ? { v } : null;
+  };
+  const choiceStems = new Map<string, string[]>(); // stem → types every view allows
+  for (const groups of groupsList) {
+    for (const grp of groups.values()) {
+      if (!grp.name.endsWith("[x]")) continue;
+      const stem = grp.name.slice(0, -3);
+      const types = typeCodes(grp.base || grp.slices[0]);
+      const prev = choiceStems.get(stem);
+      choiceStems.set(stem, prev ? prev.filter((t) => types.includes(t)) : types);
+    }
+  }
+  const defined = (name: string): boolean => groupsList.some((g) => !!groupFor(g, name));
+  const bySuffix = async (stem: string, suffix: string, why: string): Promise<void> => {
+    const types = choiceStems.get(stem) ?? [];
+    const s = suffix.toLowerCase();
+    const hits = types.filter((t) => {
+      const j = jsonSuffix(t).toLowerCase();
+      return s.startsWith(j) || j.startsWith(s);
+    });
+    const uniq = [...new Set(hits.map(jsonSuffix))];
+    if (uniq.length !== 1) return;
+    const t = hits[0];
+    const name = stem + jsonSuffix(t);
+    if (name === key || name in node) return;
+    const f = await fits(t, value, true);
+    if (f) out.set(name, { name, value: f.v, why: `${stem}[x] allows ${types.join(" | ")}; '${suffix}' can only be ${t}${why}` });
+  };
+  for (const [stem, types] of choiceStems) {
+    if (key === stem) {
+      const ok: Array<{ t: string; v: unknown }> = [];
+      for (const t of types) {
+        const f = await fits(t, value, false);
+        if (f) ok.push({ t, v: f.v });
+      }
+      const names = [...new Set(ok.map((x) => stem + jsonSuffix(x.t)))];
+      if (names.length === 1 && !(names[0] in node)) out.set(names[0], { name: names[0], value: ok[0].v, why: `${stem}[x] needs its type in the name; of ${types.join(" | ")} only ${ok[0].t} fits the value` });
+    } else if (key.startsWith(stem) && key.length > stem.length && /[A-Z]/u.test(key[stem.length]) && !defined(key)) {
+      await bySuffix(stem, key.slice(stem.length), "");
+    }
+  }
+  for (let i = 1; i < key.length; i++) {
+    if (!/[A-Z]/u.test(key[i])) continue;
+    const r3 = r3Rename(owner, key.slice(0, i));
+    const to = r3?.to;
+    if (!to) continue;
+    const stem = [...choiceStems.keys()].find((st) => to === st || (to.startsWith(st) && /[A-Z]/u.test(to[st.length] ?? "")));
+    if (stem) await bySuffix(stem, key.slice(i), ` ('${key.slice(0, i)}' is the STU3 name of R4 ${stem}[x])`);
+  }
+  for (const name of [`${key}s`, key.endsWith("s") ? key.slice(0, -1) : ""]) {
+    if (!name || name in node || choiceStems.has(name)) continue;
+    for (const groups of groupsList) {
+      const grp = groups.get(name);
+      if (!grp || grp.name.endsWith("[x]")) continue;
+      const def = grp.base || grp.slices[0];
+      const t = typeCodes(def)[0] || "";
+      const many = repeats(def);
+      const items = Array.isArray(value) ? value : [value];
+      if (!many && items.length !== 1) break;
+      const conv: unknown[] = [];
+      for (const it of items) {
+        const f = t ? await fits(t, it, true) : null;
+        if (!f) break;
+        conv.push(f.v);
+      }
+      if (conv.length !== items.length) break;
+      out.set(name, { name, value: many ? conv : conv[0], why: `'${name}' is the defined element (${key.endsWith("s") ? "singular" : "plural"} of '${key}')` });
+      break;
+    }
+  }
+  return [...out.values()];
 }
 
 /** A resource without resourceType: the one type its meta.profile StructureDefinitions constrain. */
