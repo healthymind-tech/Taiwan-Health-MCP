@@ -1,4 +1,4 @@
-import { Alert, Anchor, Badge, Button, SimpleGrid, Stack, Tabs, Text } from "@mantine/core";
+import { Alert, Anchor, Badge, Button, Group, SimpleGrid, Stack, Tabs, Text } from "@mantine/core";
 import {
   IconAlertTriangle,
   IconArrowLeft,
@@ -6,6 +6,7 @@ import {
   IconCalendarTime,
   IconClockHour4,
   IconDatabase,
+  IconDatabaseImport,
   IconHistory,
   IconPlugConnected,
   IconRoute,
@@ -25,7 +26,7 @@ import { fmtCompact, fmtNumber, fmtPercent, fmtRelative } from "@/lib/format";
 import { MODULE_BY_KEY, type ModuleMeta } from "@/lib/meta";
 import type { ModulesPayload } from "@/lib/types";
 import { findEmbeddingModule, isEmbeddingStale, pct, TOOL_THRESHOLDS, useEmbeddingStatus, useModuleJobs } from "./moduleData";
-import { SourcesSection, sourceReadiness } from "./SourcesSection";
+import { pendingSources, roleLabel, SourcesSection, sourceReadiness } from "./SourcesSection";
 import { ImportSection } from "./ImportSection";
 import { EmbeddingSection } from "./EmbeddingSection";
 import { TerminologyExplorer } from "@/pages/terminology/explorer/TerminologyExplorer";
@@ -136,6 +137,8 @@ function ModuleBody({ meta, catalog }: { meta: ModuleMeta; catalog: ModulesPaylo
   const catalogLast = entries.map((e) => e.last_imported_at).filter(Boolean).sort().pop() ?? null;
   const lastImportAt = lastSuccess?.finished_at ?? lastSuccess?.updated_at ?? catalogLast;
 
+  // source files activated after the last successful import: uploaded, but the data is still the previous version
+  const pending = isUpload ? pendingSources(entries, lastSuccess?.started_at ?? lastSuccess?.created_at ?? null, rows > 0) : [];
   const busyReason = activeImport ? "匯入工作進行中，完成後才能變更來源檔" : null;
   const minioDetail = catalog.storage.minio_enabled ? null : catalog.storage.detail || "未初始化";
 
@@ -145,6 +148,21 @@ function ModuleBody({ meta, catalog }: { meta: ModuleMeta; catalog: ModulesPaylo
   return (
     <Stack gap="lg">
       <StatusStrip meta={meta} rows={rows} maintenance={maintenance} lastImportAt={lastImportAt} />
+      {pending.length > 0 && !activeImport && (
+        <Alert color="orange" icon={<IconAlertTriangle size={18} />} title="新版本已上傳，尚未匯入">
+          <Stack gap="xs">
+            <Text fz="sm">
+              {pending.map((p) => `${roleLabel(p.entry)}「${p.file.original_filename}」`).join("、")}已上傳並設為使用中，但系統目前的資料與 MCP 工具仍是上次匯入的版本
+              {lastImportAt ? `（${fmtRelative(lastImportAt)}匯入）` : ""}。要套用新版本，請執行匯入。
+            </Text>
+            <Group>
+              <Button size="xs" color="orange" leftSection={<IconDatabaseImport size={14} />} onClick={() => setTab("lifecycle")}>
+                前往匯入
+              </Button>
+            </Group>
+          </Stack>
+        </Alert>
+      )}
 
       <Tabs value={tab} onChange={setTab} keepMounted={false}>
         <Tabs.List mb="lg">
@@ -204,6 +222,7 @@ function ModuleBody({ meta, catalog }: { meta: ModuleMeta; catalog: ModulesPaylo
               activeOther={activeImport ? null : anyActive}
               lastImport={lastImport}
               stepNumber={isUpload ? step(2) : step(1)}
+              pending={pending}
             />
             {meta.embedJobType && (
               <EmbeddingSection

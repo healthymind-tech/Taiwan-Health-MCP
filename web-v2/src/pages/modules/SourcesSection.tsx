@@ -40,6 +40,31 @@ export function sourceReadiness(moduleKey: string, entries: CatalogEntry[]): Sou
   return { ready: missing.length === 0, missing, inactiveOnly };
 }
 
+/** A source file activated after the last successful import: uploaded, but not yet in the data. */
+export interface PendingSource {
+  entry: CatalogEntry;
+  file: UploadedFile;
+}
+
+/**
+ * Active source files newer than the last successful import (its start time; the entry's last_imported_at when the
+ * job history no longer has it). Nothing is pending while the module has no data (the first import is the next step
+ * anyway) or no import ever finished.
+ */
+export function pendingSources(entries: CatalogEntry[], lastImportStart: string | null, hasData: boolean): PendingSource[] {
+  if (!hasData) return [];
+  const out: PendingSource[] = [];
+  for (const e of entries) {
+    const since = lastImportStart ?? e.last_imported_at ?? null;
+    if (!since) continue;
+    for (const f of e.active_sources?.length ? e.active_sources : e.active_source ? [e.active_source] : []) {
+      const at = f.activated_at ?? f.uploaded_at;
+      if (at && Date.parse(at) > Date.parse(since)) out.push({ entry: e, file: f });
+    }
+  }
+  return out;
+}
+
 export function roleLabel(e: Pick<CatalogEntry, "source_role" | "label">): string {
   return ROLE_COPY[e.source_role]?.label ?? e.label;
 }
@@ -123,7 +148,7 @@ function RoleCard({
     if (res.duplicate) {
       notify.info(`伺服器已有內容相同的檔案（${res.uploaded_file.original_filename}），沿用既有版本，未重複儲存。`, "重複上傳");
     } else {
-      notify.success(`${file.name} 已上傳並設為使用中。下一步：執行匯入。`, "上傳完成");
+      notify.success(`${file.name} 已上傳並設為使用中，但還沒套用：系統仍使用上次匯入的資料。請按下方「匯入新版本」把它寫入系統。`, "上傳完成，尚未匯入");
     }
   };
 

@@ -11,7 +11,7 @@ import { fmtNumber } from "@/lib/format";
 import { jobTypeLabel, type ModuleMeta } from "@/lib/meta";
 import type { JobSummary } from "@/lib/types";
 import { InlineJobProgress } from "./JobProgress";
-import { roleLabel, type SourceReadiness } from "./SourcesSection";
+import { roleLabel, type PendingSource, type SourceReadiness } from "./SourcesSection";
 
 /** Toast with a link to the new job. */
 export function notifyJobStarted(job: JobSummary | undefined, what: string): void {
@@ -36,6 +36,7 @@ export function ImportSection({
   activeOther,
   lastImport,
   stepNumber,
+  pending = [],
 }: {
   meta: ModuleMeta;
   rows: number;
@@ -46,11 +47,15 @@ export function ImportSection({
   activeOther: JobSummary | null;
   lastImport: JobSummary | null;
   stepNumber: string;
+  /** Active source files newer than the last successful import (uploaded, not yet applied). */
+  pending?: PendingSource[];
 }) {
   const start = useStartJob();
   const isSync = meta.kind === "sync";
   const jobType = meta.importJobType;
   const hasData = rows > 0;
+  const hasPending = !isSync && pending.length > 0;
+  const buttonLabel = isSync ? "立即同步" : hasPending ? "匯入新版本" : hasData ? "重新匯入" : "開始匯入";
 
   let blockReason: string | null = null;
   if (!jobType) blockReason = "此模組沒有匯入工作";
@@ -107,14 +112,22 @@ export function ImportSection({
             onClick={onClick}
             loading={start.isPending}
             disabled={Boolean(blockReason)}
+            color={hasPending ? "orange" : undefined}
           >
-            {isSync ? "立即同步" : hasData ? "重新匯入" : "開始匯入"}
+            {buttonLabel}
           </Button>
         </Tooltip>
       }
     >
       <Stack gap="sm">
         {activeImport && <InlineJobProgress job={activeImport} />}
+        {!activeImport && hasPending && (
+          <Alert color="orange" icon={<IconAlertTriangle size={16} />} p="sm" title="有新上傳的來源檔尚未匯入">
+            <Text fz="sm">
+              {pending.map((p) => `${roleLabel(p.entry)}：${p.file.original_filename}`).join("、")} 已上傳並設為使用中，但系統的資料與 MCP 工具仍是上次匯入的版本。按「匯入新版本」才會套用。
+            </Text>
+          </Alert>
+        )}
         {!activeImport && activeOther && <InlineJobProgress job={activeOther} />}
         {readiness && readiness.inactiveOnly.length > 0 && (
           <Alert color="amber" icon={<IconInfoCircle size={16} />} p="sm">
@@ -150,7 +163,7 @@ export function ImportSection({
                 </Text>
                 {lastImport.last_error_hint_zh && <Text fz="sm">{lastImport.last_error_hint_zh}</Text>}
                 <Text fz="xs" c="dimmed">
-                  舊資料不受影響。修正後按「{isSync ? "立即同步" : hasData ? "重新匯入" : "開始匯入"}」即可重試。
+                  舊資料不受影響。修正後按「{buttonLabel}」即可重試。
                 </Text>
               </Stack>
             </Alert>
