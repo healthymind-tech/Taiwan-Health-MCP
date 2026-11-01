@@ -22,7 +22,7 @@
 
 import type { PackageRow } from "./fhirIg.js";
 import { pickCanonicalVersion, splitCanonicalVersion, type CodeCheck, type ValidatorResolver } from "./fhirValidator.js";
-import { findConcept, type CodeSystemIndex, loincCheckDigitValid, snomedCheckDigitValid, valueSetContains } from "./fhirCodeSystem.js";
+import { conceptInactive, conceptStatus, findConcept, type CodeSystemIndex, loincCheckDigitValid, snomedCheckDigitValid, valueSetContains } from "./fhirCodeSystem.js";
 import * as terminology from "./fhirTerminology.js";
 import { ISO3166_DISPLAY, ISO3166_VERSION, iso3166UserAssigned } from "./fhirIso3166.js";
 import {
@@ -148,8 +148,11 @@ export function judgeCodeSystemDisplay(
   display: string,
   concept: { display: string | null; designationList: Array<{ language: string | null; value: string }> },
   csLanguage: string | null,
+  langs: string[] = ["en"],
 ): CodeCheck | null {
-  const okLang = (l: string | null): boolean => l === null || /^en(-|$)/i.test(l); // isOkLanguage with langs = en
+  // isOkLanguage: no language, or one of the requested languages (prefix match, en ⊇ en-US)
+  const okLang = (l: string | null): boolean => l === null || langs.some((x) => l.toLowerCase() === x.toLowerCase() || l.toLowerCase().startsWith(x.toLowerCase() + "-"));
+  const langList = langs.join(",");
   const want = display.toLowerCase();
   const choices: string[] = [];
   let ws = false;
@@ -173,18 +176,18 @@ export function judgeCodeSystemDisplay(
     return {
       status: "invalid-display",
       severity: "error",
-      message: `${ws ? "Wrong whitespace in Display Name" : "Wrong Display Name"} '${display}' for ${system}#${code}. Valid display is ${list} (for the language(s) 'en')`,
+      message: `${ws ? "Wrong whitespace in Display Name" : "Wrong Display Name"} '${display}' for ${system}#${code}. Valid display is ${list} (for the language(s) '${langList}')`,
     };
   }
   if (isDefaultLang) {
-    return { status: "invalid-display", severity: "information", message: `There are no valid display names found for language(s) 'en' for ${system}#${code}; '${display}' is the default display` };
+    return { status: "invalid-display", severity: "information", message: `There are no valid display names found for language(s) '${langList}' for ${system}#${code}; '${display}' is the default display` };
   }
   if (concept.display !== null && display !== concept.display) {
     // NO_VALID_DISPLAY_FOUND_NONE_FOR_LANG_ERR
     return {
       status: "invalid-display",
       severity: "error",
-      message: `Wrong Display Name '${display}' for ${system}#${code}. There are no valid display names found for language(s) 'en'. Default display is '${concept.display}'`,
+      message: `Wrong Display Name '${display}' for ${system}#${code}. There are no valid display names found for language(s) '${langList}'. Default display is '${concept.display}'`,
     };
   }
   return null;
@@ -196,7 +199,7 @@ export function judgeCodeSystemDisplay(
  * example → warning, a known concept → its display judged (judgeCodeSystemDisplay). null when
  * the CodeSystem carries no content (not-present / supplement): the caller falls through.
  */
-export function judgeHeldCodeSystem(idx: CodeSystemIndex, system: string, code: string, display: string | null): CodeCheck | null {
+export function judgeHeldCodeSystem(idx: CodeSystemIndex, system: string, code: string, display: string | null, langs: string[] = ["en"]): CodeCheck | null {
   const c = findConcept(idx, code);
   const ver = idx.version ? ` version '${idx.version}'` : "";
   if (!c) {
@@ -209,11 +212,25 @@ export function judgeHeldCodeSystem(idx: CodeSystemIndex, system: string, code: 
     }
     return null;
   }
-  if (display !== null) {
-    const bad = judgeCodeSystemDisplay(system, code, display, c, idx.language);
-    if (bad) return bad;
+  // ValueSetValidator.validateCode (7.0.1): an inactive concept → INACTIVE_CONCEPT_FOUND(_ADD),
+  // a deprecated one → DEPRECATED_CONCEPT_FOUND (warnings; the code stays valid).
+  const extra: Array<{ severity: "warning"; message: string }> = [];
+  const status = conceptStatus(c);
+  if (conceptInactive(c)) {
+    extra.push({
+      severity: "warning",
+      message: status === "retired" ? `The concept '${c.code}' has a status of retired and inactive and its use should be reviewed` : `The concept '${c.code}' has a status of inactive and its use should be reviewed`,
+    });
+  } else if (status !== null && status.toLowerCase() === "deprecated") {
+    extra.push({ severity: "warning", message: `The concept '${c.code}' is deprecated and its use should be reviewed` });
   }
-  return { status: "ok" };
+  let out: CodeCheck = { status: "ok" };
+  if (display !== null) {
+    const bad = judgeCodeSystemDisplay(system, code, display, c, idx.language, langs);
+    if (bad) out = bad;
+  }
+  if (extra.length) out.extra = [...extra, ...(out.extra ?? [])];
+  return out;
 }
 
 function noLocalDisplay(system: string, display: string | null): CodeCheck {

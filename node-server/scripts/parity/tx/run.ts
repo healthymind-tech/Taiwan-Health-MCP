@@ -165,7 +165,8 @@ function paramsToRequest(req: Json, op: string): TxValidateRequest {
     else if (p.name === "version") r.version = String(v);
     else if (p.name === "display") r.display = String(v);
     else if (p.name === "valueSetVersion") r.valueSetVersion = String(v);
-    else if (p.name === "system-version" || p.name === "systemVersion" || p.name === "check-system-version" || p.name === "force-system-version") {
+    else if (p.name === "systemVersion") r.version = String(v);
+    else if (p.name === "system-version" || p.name === "check-system-version" || p.name === "force-system-version") {
       (r.systemVersions ??= []).push({ kind: p.name, value: String(v) });
     } else r.params[p.name] = v;
   }
@@ -209,6 +210,12 @@ async function main(): Promise<void> {
       }
       const req = readJson(t.request);
       const resp = readJson(t.response);
+      // the test's expansion profile (version rules …) is part of the request
+      if (t.profile) req.parameter = [...(req.parameter ?? []), ...(readJson(t.profile).parameter ?? [])];
+      if (op === "expand" && (req.parameter ?? []).some((p: Json) => p.name === "filter")) {
+        rows.push({ suite: suite.name, test: t.name, op, status: "skip", detail: "text filter (not used by the validator)" });
+        continue;
+      }
       const store = base.clone();
       for (const p of req.parameter ?? []) if (p.name === "tx-resource" && p.resource) store.add(p.resource);
       const deps = depsFor(store);

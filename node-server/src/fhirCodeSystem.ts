@@ -135,6 +135,29 @@ export function findConcept(idx: CodeSystemIndex, code: string): CsConcept | nul
   return null;
 }
 
+/**
+ * CodeSystemUtilities.isInactive (7.0.1): the first `status` property (inactive / retired) or
+ * `inactive` property (boolean, or code 'true') decides.
+ */
+export function conceptInactive(c: CsConcept): boolean {
+  for (const [k, vals] of c.properties) {
+    if (k === "status" && typeof vals[0] === "string") return vals[0] === "inactive" || vals[0] === "retired";
+    if (k === "inactive" && (typeof vals[0] === "boolean" || typeof vals[0] === "string")) return vals[0] === true || vals[0] === "true";
+  }
+  return false;
+}
+
+/** CodeSystemUtilities.getStatus: the concept's `status` property value (null when absent). */
+export function conceptStatus(c: CsConcept): string | null {
+  const v = c.properties.get("status")?.[0];
+  return v === undefined || v === null || typeof v === "object" ? null : String(v);
+}
+
+/** The CodeSystem a compose include / exclude names: `system|version` when the part pins a version. */
+function partSystemUrl(part: Record<string, any>, system: string): string {
+  return typeof part.version === "string" && part.version ? `${system}|${part.version}` : system;
+}
+
 function walk(idx: CodeSystemIndex, start: string, dir: "parents" | "children"): Set<string> {
   const out = new Set<string>();
   const stack = [start];
@@ -321,12 +344,13 @@ async function partContains(
   deps: TerminologyDeps,
   depth: number,
   seen: Set<string>,
+  activeOnly = false,
 ): Promise<boolean | undefined> {
   const results: Array<boolean | undefined> = [];
   const partSystem: string | undefined = part.system;
   if (partSystem) {
     if (system !== null && system !== partSystem) return false;
-    results.push(await systemPartContains(part, partSystem, code, deps));
+    results.push(await systemPartContains(part, partSystem, code, deps, activeOnly));
   }
   for (const vs of part.valueSet || []) {
     results.push(await valueSetContainsInner(stripVersion(vs), system ?? partSystem ?? null, code, deps, depth + 1, seen));
@@ -342,8 +366,15 @@ async function systemPartContains(
   system: string,
   code: string,
   deps: TerminologyDeps,
+  activeOnly = false,
 ): Promise<boolean | undefined> {
-  const cs = await deps.loadCodeSystem(system);
+  const cs = await deps.loadCodeSystem(partSystemUrl(part, system));
+  // ValueSetValidator.inComponent (7.0.1): compose.inactive = false (or activeOnly) → an inactive
+  // concept is not a member (STATUS_CODE_WARNING_CODE).
+  if (activeOnly && cs) {
+    const c = findConcept(cs, code);
+    if (c && conceptInactive(c)) return false;
+  }
   if (Array.isArray(part.concept) && part.concept.length) {
     const caseSensitive = cs ? cs.caseSensitive : true;
     return part.concept.some((c: any) =>
@@ -382,6 +413,9 @@ async function systemPartContains(
   // Whole-system include.
   if (cs) {
     if (findConcept(cs, code)) return true;
+    // A fragment: ValueSetValidator marks the result "from fragment" and reports no
+    // not-in-value-set issue (only UNKNOWN_CODE_IN_FRAGMENT, a warning) — the code is accepted.
+    if (cs.content === "fragment") return true;
     return cs.content === "complete" ? false : undefined;
   }
   if (await deps.externalSystemHeld(system)) {
@@ -431,8 +465,9 @@ export async function composeContains(
   }
   let anyUnknown = false;
   let member = false;
+  const activeOnly = compose.inactive === false;
   for (const inc of includes) {
-    const r = await partContains(inc, system, code, deps, depth, seen);
+    const r = await partContains(inc, system, code, deps, depth, seen, activeOnly);
     if (r === true) {
       member = true;
       break;
@@ -483,11 +518,16 @@ async function expandSystemPart(
   limit: number,
   warnings: string[],
   unresolved: any[],
+  activeOnly = false,
 ): Promise<PartExpansion> {
-  const cs = await deps.loadCodeSystem(system);
+  const cs = await deps.loadCodeSystem(partSystemUrl(part, system));
   const out: Coding[] = [];
   let truncated = false;
   const push = (code: string, display: string | null): boolean => {
+    if (activeOnly && cs) {
+      const c = cs.concepts.get(code);
+      if (c && conceptInactive(c)) return true;
+    }
     if (out.length >= limit) {
       truncated = true;
       return false;
@@ -561,9 +601,10 @@ async function expandPart(
   seen: Set<string>,
   warnings: string[],
   unresolved: any[],
+  activeOnly = false,
 ): Promise<PartExpansion> {
   const pieces: PartExpansion[] = [];
-  if (part.system) pieces.push(await expandSystemPart(part, part.system, deps, limit, warnings, unresolved));
+  if (part.system) pieces.push(await expandSystemPart(part, part.system, deps, limit, warnings, unresolved, activeOnly));
   for (const raw of part.valueSet || []) {
     const url = stripVersion(raw);
     if (depth >= MAX_DEPTH || seen.has(url)) {
@@ -579,7 +620,7 @@ async function expandPart(
     }
     const next = new Set(seen);
     next.add(url);
-    const sub = await expandComposeWith(vs.compose || {}, deps, limit, depth + 1, next);
+    const sub = await expandComposeWith(vs.compose || {}, deps, limit, depth + 1, next, activeOnly);
     pushEach(warnings, sub.warnings);
     pushEach(unresolved, sub.unresolved);
     pieces.push({ codings: sub.codings, complete: !sub.truncated && sub.unresolved.length === 0, truncated: sub.truncated });
@@ -606,14 +647,16 @@ export async function expandComposeWith(
   limit: number,
   depth = 0,
   seenVs: Set<string> = new Set(),
+  activeOnlyParam = false,
 ): Promise<ExpandResult> {
   const warnings: string[] = [];
   const unresolved: any[] = [];
   const codings: Coding[] = [];
   const seen = new Set<string>();
   let truncated = false;
+  const activeOnly = activeOnlyParam || (compose || {}).inactive === false;
   for (const inc of (compose || {}).include || []) {
-    const part = await expandPart(inc, deps, limit, depth, seenVs, warnings, unresolved);
+    const part = await expandPart(inc, deps, limit, depth, seenVs, warnings, unresolved, activeOnly);
     truncated = truncated || part.truncated;
     for (const c of part.codings) {
       const k = `${c.system} ${c.code}`;

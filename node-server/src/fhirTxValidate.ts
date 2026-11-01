@@ -1,13 +1,17 @@
 /**
  * $validate-code / $expand over the local terminology layer, in tx.fhir.org's answer shape
- * (result + issues with HL7 message ids and tx-issue-type codes). Used by the terminology parity
- * runner (scripts/parity/tx/run.ts) against the official tx ecosystem test cases, so that what the
- * InstanceValidator asks the terminology layer (code existence / display, ValueSet membership,
- * expansion) is measured against validator_cli + tx.fhir.org.
+ * (result + issues with HL7 message ids and tx-issue-type codes) — a port of the parts of
+ * ValueSetValidator.validateCode (org.hl7.fhir.r5 terminologies/validation, validator 7.0.1) that
+ * local CodeSystems / ValueSets can answer: determineVersion / getCodeSystemVersionFromValueSet,
+ * the code-system check (unknown code, display by language, inactive / deprecated concepts),
+ * value set membership (fhirCodeSystem.valueSetContains — the engine the InstanceValidator uses)
+ * and the CodeableConcept roll-up.
  *
- * Pure: every lookup goes through the injected TerminologyDeps.
+ * Used by the terminology parity runner (scripts/parity/tx/run.ts) against the official tx
+ * ecosystem test cases. Anything the local data cannot decide comes back as result undefined
+ * ("cannot be validated"), never as a pass. Pure: every lookup goes through TerminologyDeps.
  */
-import { expandComposeWith, valueSetContains, type CodeSystemIndex, type TerminologyDeps } from "./fhirCodeSystem.js";
+import { conceptInactive, expandComposeWith, findConcept, valueSetContains, type CodeSystemIndex, type TerminologyDeps } from "./fhirCodeSystem.js";
 import { judgeHeldCodeSystem } from "./fhirValidationResolver.js";
 import type { CodeCheck } from "./fhirValidator.js";
 
@@ -22,6 +26,7 @@ export interface TxValidateRequest {
   display?: string;
   coding?: Record<string, any>;
   codeableConcept?: Record<string, any>;
+  /** Expansion-profile rules: system-version / check-system-version / force-system-version = `system|version`. */
   systemVersions?: Array<{ kind: string; value: string }>;
   params: Record<string, any>;
 }
@@ -42,15 +47,44 @@ export interface TxValidateResult {
   /** "error" = the server answers with an OperationOutcome (request cannot be processed). */
   outcome?: "error";
   issues: TxIssue[];
-  display?: string | null;
 }
 
-function checkIssue(r: CodeCheck, path: string): TxIssue | null {
+/** Version algorithm: semver wildcards (1.x, 1.0.x) or a plain prefix (VersionUtilities / versionIsMoreDetailed). */
+export function versionMatches(criteria: string, candidate: string): boolean {
+  if (criteria === candidate) return true;
+  if (/(^|\.)[x*](\.|$)/u.test(criteria)) {
+    const c = criteria.split(".");
+    const v = candidate.split(".");
+    for (let i = 0; i < c.length; i++) {
+      if (c[i] === "x" || c[i] === "*") continue;
+      if (c[i] !== v[i]) return false;
+    }
+    return true;
+  }
+  return false;
+}
+
+/** versionIsMoreDetailed(criteria, candidate): the candidate refines the criteria. */
+function moreDetailed(criteria: string | null, candidate: string | null): boolean {
+  if (!criteria || !candidate) return false;
+  // VersionAlgorithm.guessFormat: a semver candidate → SemVer rules (criteria must be semver, wildcards allowed)
+  if (/^\d+\.\d+\.\d+([-+].*)?$/u.test(candidate)) {
+    return /^(\d+|[x*])\.(\d+|[x*])(\.(\d+|[x*]))?([-+].*)?$/u.test(criteria) && versionMatches(criteria, candidate);
+  }
+  return candidate.startsWith(criteria);
+}
+
+function checkIssue(r: CodeCheck, path: string, lenient: boolean): TxIssue[] {
+  const out: TxIssue[] = [];
+  const at = (s: string): string => (path ? `${path}.${s}` : s);
+  for (const x of r.extra ?? []) {
+    const id = /is deprecated/u.test(x.message) ? "DEPRECATED_CONCEPT_FOUND" : /has a status of/u.test(x.message) ? "INACTIVE_CONCEPT_FOUND" : "";
+    if (id) out.push({ severity: x.severity, type: "code-comment", id, path, message: x.message });
+  }
   if (r.status === "invalid-code") {
     const id = /\(the CodeSystem is a fragment\)/u.test(r.message) ? "UNKNOWN_CODE_IN_FRAGMENT" : / version '/u.test(r.message) ? "Unknown_Code_in_Version" : "Unknown_Code_in";
-    return { severity: r.severity, type: "invalid-code", id, path: `${path}.code`, message: r.message };
-  }
-  if (r.status === "invalid-display") {
+    out.push({ severity: r.severity, type: "invalid-code", id, path: at("code"), message: r.message });
+  } else if (r.status === "invalid-display") {
     const id = /^Wrong whitespace/u.test(r.message)
       ? "Display_Name_WS_for__should_be_one_of__instead_of"
       : /Default display is/u.test(r.message)
@@ -58,84 +92,298 @@ function checkIssue(r: CodeCheck, path: string): TxIssue | null {
         : /is the default display/u.test(r.message)
           ? "NO_VALID_DISPLAY_FOUND_NONE_FOR_LANG_OK"
           : "Display_Name_for__should_be_one_of__instead_of";
-    return { severity: r.severity, type: "invalid-display", id, path: `${path}.display`, message: r.message };
+    const severity = lenient && r.severity === "error" ? "warning" : r.severity;
+    out.push({ severity, type: "invalid-display", id, path: at("display"), message: r.message });
   }
-  return null;
+  return out;
 }
 
-/** $validate-code (CodeSystem or ValueSet) composed from the validator's terminology pieces. */
-export async function txValidateCode(req: TxValidateRequest, deps: TerminologyDeps): Promise<TxValidateResult> {
+function splitCanonical(v: string): [string, string] {
+  const k = v.indexOf("|");
+  return k < 0 ? [v, ""] : [v.slice(0, k), v.slice(k + 1)];
+}
+
+/** $validate-code (CodeSystem or ValueSet). */
+export async function txValidateCode(req: TxValidateRequest, deps: TerminologyDeps & { codeSystemVersions?(url: string): string[] }): Promise<TxValidateResult> {
   const issues: TxIssue[] = [];
+  const lenient = req.params["lenient-display-validation"] === true;
+  const langs = typeof req.params.displayLanguage === "string" && req.params.displayLanguage ? String(req.params.displayLanguage).split(",").map((s) => s.trim().split(";")[0]) : ["en"];
+  const activeOnlyParam = req.params.activeOnly === true;
+  const rules = req.systemVersions ?? [];
   let codings: Array<{ c: Record<string, any>; path: string }>;
   if (req.codeableConcept) codings = (req.codeableConcept.coding ?? []).map((c: any, i: number) => ({ c, path: `CodeableConcept.coding[${i}]` }));
   else if (req.coding) codings = [{ c: req.coding, path: "Coding" }];
-  else if (req.code !== undefined) codings = [{ c: { system: req.system, code: req.code, version: req.version, display: req.display }, path: "" }];
-  else return { result: undefined, outcome: "error", issues };
+  else if (req.code !== undefined) {
+    if (req.mode === "valueset" && !req.system && req.params.inferSystem !== true) return { result: undefined, outcome: "error", issues };
+    if (req.mode === "codesystem" && !req.system && !req.url) return { result: undefined, outcome: "error", issues };
+    codings = [{ c: { system: req.system ?? req.url, code: req.code, version: req.version, display: req.display }, path: "" }];
+  } else return { result: undefined, outcome: "error", issues };
+  let vs: Record<string, any> | null = null;
   let vsUrl: string | null = null;
-  let vdeps = deps;
+  let vdeps: TerminologyDeps = deps;
   if (req.mode === "valueset") {
     if (req.valueSet) {
-      const inline = req.valueSet;
-      vsUrl = String(inline.url ?? "urn:inline-valueset");
+      vs = req.valueSet;
+      vsUrl = String(vs.url ?? "urn:inline-valueset");
+      const inline = vs;
       vdeps = { ...deps, loadValueSet: (u: string) => (u.split("|")[0] === vsUrl ? Promise.resolve(inline) : deps.loadValueSet(u)) };
     } else if (req.url) {
       vsUrl = req.valueSetVersion ? `${req.url}|${req.valueSetVersion}` : req.url;
-      if (!(await deps.loadValueSet(vsUrl))) {
+      vs = await deps.loadValueSet(vsUrl);
+      if (!vs) {
         issues.push({ severity: "error", type: "not-found", id: "Unable_to_resolve_value_Set_", path: "", message: `Unable to resolve value set ${vsUrl}` });
         return { result: undefined, outcome: "error", issues };
       }
+      // pin the resolved version for nested lookups
+      const pinned = vs;
+      vdeps = { ...deps, loadValueSet: (u: string) => (u.split("|")[0] === req.url ? Promise.resolve(pinned) : deps.loadValueSet(u)) };
     } else return { result: undefined, outcome: "error", issues };
   }
+  const includes: any[] = Array.isArray(vs?.compose?.include) ? vs!.compose.include : [];
+
+  /** getCodeSystemVersionFromValueSet (7.0.1). */
+  const versionFromVs = async (system: string, cv: string | null, code: string, display: string | null): Promise<string | null> => {
+    if (!vs) return null;
+    if (cv && includes.some((i) => i && i.version === cv)) return cv;
+    let v: string | null = null;
+    const list: string[] = [];
+    for (const inc of includes) {
+      if (!inc || inc.system !== system || typeof inc.version !== "string" || !inc.version) continue;
+      if (v === null || cmpVersions(inc.version, v) > 0) v = inc.version;
+      const cs = await deps.loadCodeSystem(`${system}|${inc.version}`);
+      let ok = false;
+      const cd = cs ? findConcept(cs, code) : null;
+      if (cd) ok = display === null || display === cd.display || cd.designations.includes(display);
+      if (ok && Array.isArray(inc.concept) && inc.concept.length) ok = inc.concept.some((c: any) => c && c.code === code);
+      if (ok) list.push(inc.version);
+    }
+    if (!list.length) return v;
+    return list.sort((a, b) => cmpVersions(b, a))[0];
+  };
+
+  /** determineVersion (7.0.1): VS-implied version, expansion-profile rules, then the Coding's own version. */
+  const determineVersion = async (system: string, path: string, versionVS: string | null, cv: string | null): Promise<string | null> => {
+    let result: string | null = versionVS;
+    const mine = rules.filter((r) => r.value.startsWith(system + "|"));
+    const force = mine.find((r) => r.kind === "force-system-version");
+    if (force) result = splitCanonical(force.value)[1];
+    if (!result) {
+      const def = mine.find((r) => r.kind === "system-version");
+      if (def) result = splitCanonical(def.value)[1];
+    }
+    if (!result) {
+      const chk = mine.find((r) => r.kind === "check-system-version");
+      if (chk) result = splitCanonical(chk.value)[1];
+    }
+    if (!result && vs) {
+      const implied = new Set(includes.filter((i) => i && i.system === system && typeof i.version === "string" && i.version).map((i) => String(i.version)));
+      if (implied.size === 1) result = [...implied][0];
+    }
+    const vp = path ? `${path}.version` : "version";
+    if (cv) {
+      let source: "vs" | "coding" = "vs";
+      if (moreDetailed(result, cv)) {
+        result = cv;
+        source = "coding";
+      }
+      const cs = await deps.loadCodeSystem(result ? `${system}|${result}` : system);
+      if (cs && cs.version) checkVersion(system, cs.version, path);
+      const csv = cs?.version ?? null;
+      if (cs && !(cv === csv || moreDetailed(cv, csv))) {
+        if (result === null) {
+          if (csv !== null) {
+            issues.push({ severity: "warning", type: "vs-invalid", id: "VALUESET_VALUE_MISMATCH_DEFAULT", path: vp, message: `The code system '${system}' version '${csv}' for the versionless include in the ValueSet include is different to the one in the value ('${cv}')` });
+          }
+        } else if (result !== versionVS) {
+          issues.push({ severity: "error", type: "vs-invalid", id: "VALUESET_VALUE_MISMATCH_CHANGED", path: vp, message: `The code system '${system}' version '${result}' resulting from the version '${versionVS ?? ""}' in the ValueSet include is different to the one in the value ('${cv}')` });
+        } else if ((versionVS ?? "") !== cv) {
+          issues.push({ severity: "error", type: "vs-invalid", id: "VALUESET_VALUE_MISMATCH", path: vp, message: `The code system '${system}' version '${versionVS ?? ""}' in the ValueSet include is different to the one in the value ('${cv}')` });
+        }
+        if (!(await deps.loadCodeSystem(`${system}|${cv}`))) unknownVersion(system, cv, path);
+      } else if (!cs && result !== null && cv !== result) {
+        issues.push({ severity: "error", type: "vs-invalid", id: "VALUESET_VALUE_MISMATCH", path: vp, message: `The code system '${system}' version '${result}' in the ValueSet include is different to the one in the value ('${cv}')` });
+      }
+      void source;
+    }
+    return result;
+  };
+  const reportedUnknown = new Set<string>();
+  const unknownVersion = (system: string, v: string, path: string): void => {
+    if (reportedUnknown.has(`${system}|${v}`)) return;
+    reportedUnknown.add(`${system}|${v}`);
+    const known = deps.codeSystemVersions ? deps.codeSystemVersions(system) : [];
+    issues.push({
+      severity: "error",
+      type: "not-found",
+      id: known.length ? "UNKNOWN_CODESYSTEM_VERSION" : "UNKNOWN_CODESYSTEM_VERSION_NONE",
+      path: path ? `${path}.system` : "system",
+      message: `A definition for CodeSystem '${system}' version '${v}' could not be found, so the code cannot be validated. Valid versions: ${known.join(",")}`,
+    });
+  };
+  const checkVersion = (system: string, version: string, path: string): void => {
+    for (const r of rules) {
+      if (r.kind !== "check-system-version" || !r.value.startsWith(system + "|")) continue;
+      const tv = splitCanonical(r.value)[1];
+      if (versionMatches(tv, version)) continue;
+      const msg = `The version '${version}' is not allowed for system '${system}': required to be '${tv}' by a version-check parameter`;
+      if (!issues.some((i) => i.message === msg)) issues.push({ severity: "error", type: "version-error", id: "VALUESET_VERSION_CHECK", path: path ? `${path}.version` : "version", message: msg });
+    }
+  };
+
   let anyOk = false;
   let anyUnknown = false;
-  let anyError = false;
+  let anyCodingError = false;
+  let anyInVs = false;
+  const notInVs: TxIssue[] = [];
   for (const { c, path } of codings) {
     const p = path || "";
-    const system: string | null = typeof c.system === "string" ? c.system : null;
+    let system: string | null = typeof c.system === "string" && c.system ? c.system : null;
     const code: string | null = c.code !== undefined && c.code !== null ? String(c.code) : null;
-    if (code === null) continue;
     const display = typeof c.display === "string" ? c.display : null;
+    const cv: string | null = typeof c.version === "string" && c.version ? c.version : null;
+    if (code === null) {
+      const id = system ? "Coding_has_no_code__cannot_validate" : "Coding_has_no_system_or_code__cannot_validate";
+      issues.push({ severity: "warning", type: "invalid-data", id, path: p, message: "Coding has no code, cannot validate" });
+      continue;
+    }
+    if (!system && req.mode === "valueset" && req.params.inferSystem === true) system = await inferSystem(includes, code, deps);
+    if (!system) {
+      // ValueSetValidator: Coding_has_no_system__cannot_validate (warning); the code cannot be in the value set
+      issues.push({ severity: "warning", type: "invalid-data", id: "Coding_has_no_system__cannot_validate", path: p, message: "Coding has no system. A code with no system has no defined meaning, and it cannot be validated. A system should be provided" });
+      anyCodingError = req.mode === "codesystem" ? true : anyCodingError;
+      if (req.mode === "valueset") notInVs.push(notInVsIssue(p, null, code, vsUrl!, !!req.codeableConcept));
+      continue;
+    }
+    if (!/^[a-z][a-z0-9+.-]*:/iu.test(system)) {
+      issues.push({ severity: "error", type: "invalid-data", id: "Terminology_TX_System_Relative", path: p ? `${p}.system` : "system", message: "Coding.system must be an absolute reference, not a local reference" });
+      anyCodingError = true;
+      continue;
+    }
+    // version: implied by the value set, the expansion-profile rules and the Coding
+    const versionVS = vs ? await versionFromVs(system, cv, code, display) : cv;
+    const wv = vs ? await determineVersion(system, p, versionVS, cv) : await determineVersion(system, p, null, cv);
+    let cs: CodeSystemIndex | null = await deps.loadCodeSystem(wv ? `${system}|${wv}` : system);
     let csOk = true;
-    if (system) {
-      const cs: CodeSystemIndex | null = await deps.loadCodeSystem(c.version ? `${system}|${c.version}` : system);
-      if (!cs) {
-        issues.push({ severity: "error", type: "not-found", id: c.version ? "UNKNOWN_CODESYSTEM_VERSION" : "UNKNOWN_CODESYSTEM", path: `${p}.system`, message: `A definition for CodeSystem '${system}' could not be found` });
+    if (!cs) {
+      const anyVersion = await deps.loadCodeSystem(system);
+      if (anyVersion && wv) {
+        unknownVersion(system, wv, p);
         csOk = false;
-        anyError = true;
+        anyCodingError = true;
+        cs = null;
       } else {
-        const r = judgeHeldCodeSystem(cs, system, code, display) ?? { status: "silent" as const };
-        const i = checkIssue(r, p);
-        if (i) {
-          issues.push(i);
-          if (i.severity === "error") {
-            csOk = false;
-            anyError = true;
-          }
-        }
+        const isVs = !!(await deps.loadValueSet(system));
+        issues.push(
+          isVs
+            ? { severity: "error", type: "invalid-data", id: "Terminology_TX_System_ValueSet2", path: p ? `${p}.system` : "system", message: `The Coding references a value set, not a code system ('${system}')` }
+            : { severity: "error", type: "not-found", id: "UNKNOWN_CODESYSTEM", path: p ? `${p}.system` : "system", message: `A definition for CodeSystem '${system}' could not be found, so the code cannot be validated` },
+        );
+        csOk = false;
+        anyCodingError = true;
+        if (!isVs) anyUnknown = true;
       }
+    } else {
+      const r = judgeHeldCodeSystem(cs, system, code, display, langs) ?? ({ status: "silent" } as CodeCheck);
+      const found = checkIssue(r, p, lenient);
+      for (const i of found) issues.push(i);
+      if (found.some((i) => i.severity === "error")) {
+        csOk = false;
+        anyCodingError = true;
+      }
+      const concept = findConcept(cs, code);
+      if (concept && concept.code !== code) {
+        issues.push({ severity: "information", type: "code-rule", id: "CODE_CASE_DIFFERENCE", path: p ? `${p}.code` : "code", message: `The code '${code}' differs from the correct code '${concept.code}' by case` });
+      }
+    }
+    if (issues.some((i) => i.severity === "error" && (i.id.startsWith("VALUESET_VALUE_MISMATCH") || i.id === "VALUESET_VERSION_CHECK" || i.id.startsWith("UNKNOWN_CODESYSTEM_VERSION")) && i.path.startsWith(p))) {
+      csOk = false;
+      anyCodingError = true;
     }
     if (req.mode === "codesystem") {
       if (csOk) anyOk = true;
       continue;
     }
-    const m = await valueSetContains(vsUrl!, system, code, vdeps);
-    if (m === true && csOk) anyOk = true;
-    else if (m === undefined) anyUnknown = true;
-    else if (m === false) {
-      issues.push({
-        severity: req.codeableConcept ? "information" : "error",
-        type: req.codeableConcept ? "this-code-not-in-vs" : "not-in-vs",
-        id: "None_of_the_provided_codes_are_in_the_value_set_one",
-        path: `${p}.code`,
-        message: `The provided code '${system ?? ""}#${code}' was not found in the value set '${vsUrl}'`,
-      });
+    if (!cs && !csOk) {
+      // an unknown CodeSystem version is the only finding (tx reports no not-in-value-set for it)
+      if (!reportedUnknown.size) notInVs.push(notInVsIssue(p, system, code, vsUrl!, !!req.codeableConcept));
+      continue;
+    }
+    const m = await membership(vsUrl!, system, code, wv, vdeps, activeOnlyParam);
+    if (m === true) {
+      anyInVs = true;
+      if (csOk) anyOk = true;
+    } else if (m === undefined) anyUnknown = true;
+    else {
+      const concept = cs ? findConcept(cs, code) : null;
+      if (concept && conceptInactive(concept) && (vs?.compose?.inactive === false || activeOnlyParam)) {
+        issues.push({ severity: "error", type: "code-rule", id: "STATUS_CODE_WARNING_CODE", path: p ? `${p}.code` : "code", message: `The concept '${code}' is valid but is not active` });
+      }
+      notInVs.push(notInVsIssue(p, system, code, vsUrl!, !!req.codeableConcept));
     }
   }
-  if (req.mode === "codesystem") return { result: anyOk && !anyError, issues };
-  if (anyOk) return { result: true, issues };
-  if (anyUnknown) return { result: undefined, issues };
-  if (req.codeableConcept) issues.push({ severity: "error", type: "not-in-vs", id: "TX_GENERAL_CC_ERROR_MESSAGE", path: "", message: `No valid coding was found for the value set '${vsUrl}'` });
+  if (req.mode === "codesystem") return { result: anyOk && !anyCodingError, issues };
+  // CodeableConcept: any coding in the value set and no coding with an error → valid
+  if (anyInVs) {
+    if (req.codeableConcept) for (const i of notInVs) issues.push(i);
+    return { result: anyOk && !anyCodingError, issues };
+  }
+  if (anyUnknown && !anyCodingError) return { result: undefined, issues };
+  for (const i of notInVs) issues.push(i);
+  if (req.codeableConcept && notInVs.length) issues.push({ severity: "error", type: "not-in-vs", id: "TX_GENERAL_CC_ERROR_MESSAGE", path: "", message: `No valid coding was found for the value set '${vsUrl}'` });
   return { result: false, issues };
+}
+
+function notInVsIssue(p: string, system: string | null, code: string, vsUrl: string, inCC: boolean): TxIssue {
+  return {
+    severity: inCC ? "information" : "error",
+    type: inCC ? "this-code-not-in-vs" : "not-in-vs",
+    id: "None_of_the_provided_codes_are_in_the_value_set_one",
+    path: p ? `${p}.code` : "code",
+    message: `The provided code '${system ?? ""}#${code}' was not found in the value set '${vsUrl}'`,
+  };
+}
+
+/** Membership at the determined CodeSystem version: includes that pin another version do not hold the code. */
+async function membership(vsUrl: string, system: string, code: string, wv: string | null, deps: TerminologyDeps, activeOnly: boolean): Promise<boolean | undefined> {
+  const vs = await deps.loadValueSet(vsUrl);
+  if (!vs) return undefined;
+  let compose = vs.compose ?? {};
+  if (wv || activeOnly) {
+    const keep = (inc: any): boolean => !wv || !inc || inc.system !== system || !inc.version || inc.version === wv || versionMatches(inc.version, wv);
+    compose = { ...compose, include: (compose.include ?? []).filter(keep).map((inc: any) => (wv && inc && inc.system === system && !inc.version ? { ...inc, version: wv } : inc)) };
+    if (activeOnly) compose.inactive = false;
+  }
+  const copy = { ...vs, compose };
+  return valueSetContains(vsUrl, system, code, { ...deps, loadValueSet: (u: string) => (u.split("|")[0] === vsUrl.split("|")[0] ? Promise.resolve(copy) : deps.loadValueSet(u)) });
+}
+
+/** systemForCodeInValueSet (simplified): the single include system whose CodeSystem defines the code. */
+async function inferSystem(includes: any[], code: string, deps: TerminologyDeps): Promise<string | null> {
+  const found = new Set<string>();
+  for (const inc of includes) {
+    if (!inc || typeof inc.system !== "string") continue;
+    if (Array.isArray(inc.concept) && inc.concept.length) {
+      if (inc.concept.some((c: any) => c && c.code === code)) found.add(inc.system);
+      continue;
+    }
+    const cs = await deps.loadCodeSystem(inc.system);
+    if (cs && findConcept(cs, code)) found.add(inc.system);
+  }
+  return found.size === 1 ? [...found][0] : null;
+}
+
+function cmpVersions(a: string, b: string): number {
+  const pa = a.split(/[.-]/u);
+  const pb = b.split(/[.-]/u);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const x = pa[i] ?? "";
+    const y = pb[i] ?? "";
+    const nx = Number(x);
+    const ny = Number(y);
+    const c = x !== "" && y !== "" && !Number.isNaN(nx) && !Number.isNaN(ny) ? nx - ny : x.localeCompare(y);
+    if (c) return c;
+  }
+  return 0;
 }
 
 export interface TxExpandRequest {
@@ -154,7 +402,8 @@ export interface TxExpandResult {
 export async function txExpand(req: TxExpandRequest, deps: TerminologyDeps): Promise<TxExpandResult> {
   const vs = req.valueSet ?? (req.url ? await deps.loadValueSet(req.url) : null);
   if (!vs) return { error: "Unable_to_resolve_value_Set_" };
-  const r = await expandComposeWith(vs.compose ?? {}, deps, 100000);
+  const activeOnly = (req.params.activeOnly ?? []).some((v: any) => v === true);
+  const r = await expandComposeWith(vs.compose ?? {}, deps, 100000, 0, new Set(), activeOnly);
   if (r.unresolved.length) return { error: `cannot expand: ${JSON.stringify(r.unresolved.slice(0, 3))}`, cannotValidate: true };
   return { contains: r.codings.map((c) => ({ system: c.system, code: c.code, display: c.display })) };
 }
