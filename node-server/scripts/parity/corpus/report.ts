@@ -2,7 +2,9 @@
  * Acceptance metrics + failure buckets over corpus/run.ts result files (one or more shards).
  *
  * Per IG, over the compared items (validator_cli did not crash, and the instance reached the TS validator):
- *  - verdict differences: items whose error presence differs (official invalid ⇄ ours valid, and the reverse);
+ *  - verdict differences: items whose error presence differs (official invalid ⇄ ours valid, and the reverse); the
+ *    miss is also reported restricted to items our tool marked checked_fully=true (REVIEW_port_1 §6: only those are
+ *    true misses — checked_fully=false is "could not be verified", not a pass);
  *  - missing: official error keys (normalised path + classify.errorClass of the official text) without a counterpart in
  *    ours (multiset), and the items that have one;
  *  - extra rate: our error keys without an official counterpart / all official error keys (acceptance target < 0.1%);
@@ -67,7 +69,11 @@ interface IgStats {
   rawUnparseableOfficialInvalid: number;
   crash: number;
   offInvalidOursValid: number;
+  /** REVIEW_port_1 §6: a true miss = official error AND ours valid AND checked_fully (not "could not be checked"). */
+  offInvalidOursValidCheckedFully: number;
   offValidOursInvalid: number;
+  /** items our tool reported checked_fully=false (whatever the verdict). */
+  notCheckedFully: number;
   officialKeys: number;
   missing: number;
   missingItems: number;
@@ -94,7 +100,7 @@ const buckets = new Map<string, Bucket>();
 const st = (ig: string): IgStats => {
   let s = stats.get(ig);
   if (!s) {
-    s = { ig, items: 0, compared: 0, officialCrash: 0, rawUnparseable: 0, rawUnparseableOfficialInvalid: 0, crash: 0, offInvalidOursValid: 0, offValidOursInvalid: 0, officialKeys: 0, missing: 0, missingItems: 0, extra: 0, extraItems: 0, strict: 0, lenient: 0, classAgree: 0 };
+    s = { ig, items: 0, compared: 0, officialCrash: 0, rawUnparseable: 0, rawUnparseableOfficialInvalid: 0, crash: 0, offInvalidOursValid: 0, offInvalidOursValidCheckedFully: 0, offValidOursInvalid: 0, notCheckedFully: 0, officialKeys: 0, missing: 0, missingItems: 0, extra: 0, extraItems: 0, strict: 0, lenient: 0, classAgree: 0 };
     stats.set(ig, s);
   }
   return s;
@@ -133,7 +139,10 @@ for (const it of items) {
   s.compared++;
   const off: ErrKey[] = it.officialErrors ?? [];
   const ours: ErrKey[] = it.ourErrors ?? [];
+  const checkedFully = !(it.flags ?? []).includes("not-checked-fully");
+  if (!checkedFully) s.notCheckedFully++;
   if (off.length && !ours.length) s.offInvalidOursValid++;
+  if (off.length && !ours.length && checkedFully) s.offInvalidOursValidCheckedFully++;
   if (!off.length && ours.length) s.offValidOursInvalid++;
   s.officialKeys += off.length;
   const miss = multisetDiff(off, ours);
@@ -156,12 +165,12 @@ lines.push("# Differential corpus — TS validator vs validator_cli 7.0.1 (evalu
 if (cmd) lines.push("Re-run:", "", "```bash", cmd, "```", "");
 lines.push(`Generated ${new Date().toISOString()} from ${files.length} result file(s), ${items.length} items.`, "");
 lines.push("## Per-IG acceptance metrics", "");
-lines.push("| IG | items | compared | official crash | raw unparseable (official invalid) | harness crash | verdict: official invalid, ours valid | verdict: official valid, ours invalid | official error keys | missing keys (items) | extra keys (items) | extra rate | strict agree | lenient agree | class agree |");
-lines.push("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|");
+lines.push("| IG | items | compared | official crash | raw unparseable (official invalid) | harness crash | verdict miss (all): official invalid, ours valid | true miss: … and checked_fully | verdict: official valid, ours invalid | ours checked_fully=false | official error keys | missing keys (items) | extra keys (items) | extra rate | strict agree | lenient agree | class agree |");
+lines.push("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|");
 const all = [...stats.values()].sort((a, b) => a.ig.localeCompare(b.ig));
 const sum = (f: (s: IgStats) => number): number => all.reduce((a, s) => a + f(s), 0);
 const row = (s: IgStats): string =>
-  `| ${s.ig} | ${s.items} | ${s.compared} | ${s.officialCrash} | ${s.rawUnparseable} (${s.rawUnparseableOfficialInvalid}) | ${s.crash} | ${s.offInvalidOursValid} | ${s.offValidOursInvalid} | ${s.officialKeys} | ${s.missing} (${s.missingItems}) | ${s.extra} (${s.extraItems}) | ${pct(s.extra, s.officialKeys)} | ${s.strict}/${s.compared} (${pct(s.strict, s.compared)}) | ${s.lenient}/${s.compared} (${pct(s.lenient, s.compared)}) | ${s.classAgree}/${s.compared} (${pct(s.classAgree, s.compared)}) |`;
+  `| ${s.ig} | ${s.items} | ${s.compared} | ${s.officialCrash} | ${s.rawUnparseable} (${s.rawUnparseableOfficialInvalid}) | ${s.crash} | ${s.offInvalidOursValid} | ${s.offInvalidOursValidCheckedFully} | ${s.offValidOursInvalid} | ${s.notCheckedFully} | ${s.officialKeys} | ${s.missing} (${s.missingItems}) | ${s.extra} (${s.extraItems}) | ${pct(s.extra, s.officialKeys)} | ${s.strict}/${s.compared} (${pct(s.strict, s.compared)}) | ${s.lenient}/${s.compared} (${pct(s.lenient, s.compared)}) | ${s.classAgree}/${s.compared} (${pct(s.classAgree, s.compared)}) |`;
 for (const s of all) lines.push(row(s));
 if (all.length > 1) {
   const t = Object.fromEntries(Object.keys(all[0]).map((key) => [key, key === "ig" ? "**all**" : sum((s) => (s as any)[key])])) as unknown as IgStats;
