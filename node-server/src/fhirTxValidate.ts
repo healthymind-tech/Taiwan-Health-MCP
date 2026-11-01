@@ -139,6 +139,18 @@ export async function txValidateCode(req: TxValidateRequest, deps: TerminologyDe
       vdeps = { ...deps, loadValueSet: (u: string) => (u.split("|")[0] === req.url ? Promise.resolve(pinned) : deps.loadValueSet(u)) };
     } else return { result: undefined, outcome: "error", issues };
   }
+  // ValueSet supplements (valueset-supplement extension / useSupplement): one that is not available → the
+  // request cannot be processed (VALUESET_SUPPLEMENT_MISSING)
+  const supplements: string[] = [
+    ...((vs?.extension ?? []) as any[]).filter((e) => e && e.url === "http://hl7.org/fhir/StructureDefinition/valueset-supplement").map((e) => String(e.valueCanonical ?? e.valueUri ?? "")),
+    ...(typeof req.params.useSupplement === "string" ? [req.params.useSupplement] : []),
+  ].filter(Boolean);
+  for (const sup of supplements) {
+    if (!(await deps.loadCodeSystem(sup))) {
+      issues.push({ severity: "error", type: "not-found", id: "VALUESET_SUPPLEMENT_MISSING", path: "", message: `Required supplement not found: ${sup}` });
+      return { result: undefined, outcome: "error", issues };
+    }
+  }
   // default-valueset-version: an unversioned reference to that ValueSet resolves to the pinned version
   const dvv = req.params["default-valueset-version"];
   if (typeof dvv === "string" && dvv.includes("|")) {
@@ -337,7 +349,8 @@ export async function txValidateCode(req: TxValidateRequest, deps: TerminologyDe
       if (!reportedUnknown.size) notInVs.push(notInVsIssue(p, system, code, vsUrl!, !!req.codeableConcept));
       continue;
     }
-    const m = await membership(vsUrl!, system, code, wv, vdeps, activeOnlyParam);
+    const forced = rules.some((r) => r.kind === "force-system-version" && r.value.startsWith(system + "|"));
+    const m = await membership(vsUrl!, system, code, wv, vdeps, activeOnlyParam, forced);
     if (m === true) {
       anyInVs = true;
       if (csOk) anyOk = true;
@@ -373,13 +386,15 @@ function notInVsIssue(p: string, system: string | null, code: string, vsUrl: str
 }
 
 /** Membership at the determined CodeSystem version: includes that pin another version do not hold the code. */
-async function membership(vsUrl: string, system: string, code: string, wv: string | null, deps: TerminologyDeps, activeOnly: boolean): Promise<boolean | undefined> {
+async function membership(vsUrl: string, system: string, code: string, wv: string | null, deps: TerminologyDeps, activeOnly: boolean, forced = false): Promise<boolean | undefined> {
   const vs = await deps.loadValueSet(vsUrl);
   if (!vs) return undefined;
   let compose = vs.compose ?? {};
   if (wv || activeOnly) {
-    const keep = (inc: any): boolean => !wv || !inc || inc.system !== system || !inc.version || inc.version === wv || versionMatches(inc.version, wv);
-    compose = { ...compose, include: (compose.include ?? []).filter(keep).map((inc: any) => (wv && inc && inc.system === system && !inc.version ? { ...inc, version: wv } : inc)) };
+    // force-system-version re-pins every include of the system; otherwise includes pinned to another version do not apply
+    const keep = (inc: any): boolean => forced || !wv || !inc || inc.system !== system || !inc.version || inc.version === wv || versionMatches(inc.version, wv) || versionMatches(wv, inc.version);
+    const pin = (inc: any): any => (wv && inc && inc.system === system && (forced || !inc.version) ? { ...inc, version: wv } : inc);
+    compose = { ...compose, include: (compose.include ?? []).filter(keep).map(pin) };
     if (activeOnly) compose.inactive = false;
   }
   const copy = { ...vs, compose };
