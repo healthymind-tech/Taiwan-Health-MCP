@@ -3,13 +3,15 @@
  *
  * The HL7 validator sends UCUM codes to its terminology server; an unparseable code is an error: "Unknown code
  * '<c>' in the CodeSystem 'http://unitsofmeasure.org' version '2.2'". That server parses with the ucum-java grammar
- * (org.fhir.ucum.Lexer + ExpressionParser, the library validator_cli 7.0.1 bundles with ucum-essence 2.2), which
+ * (org.fhir.ucum.Lexer + ExpressionParser of ucum-java 1.0.10 — the version hl7-core 7.0.1's pom pins — with
+ * ucum-essence 2.2; ported from the 1.0.10 sources), which
  * differs from the NLM ucum-lhc parser this module used before (review G8: `k[in_i]` / `{` / `()` / `m{中}` accepted,
  * `m{a}{b}` / `{a}{b}` / `m//s` / `{a b}` / `M` rejected). This is a port of that grammar:
  *
  *  - Lexer.consume: `/` SOLIDUS, `.` PERIOD, `(` OPEN, `)` CLOSE, `{…}` ANNOTATION (printable ASCII only, must be
  *    terminated; spaces allowed), `+n` / `-n` NUMBER (a sign needs a digit), else a run of symbol characters
- *    [A-Za-z0-9[]%*^'"_] (digits only before the first non-digit or inside `[…]`; no nested `[`, no `]` without `[`)
+ *    [A-Za-z0-9[]%*^'"_] (digits only before the first non-digit or inside `[…]`, `.` only inside `[…]`; no nested `[`,
+ *    no `]` without `[`)
  *    — a run of digits is a NUMBER, anything else a SYMBOL; any other character is an error;
  *  - ExpressionParser.parseTerm: `/` term | (ANNOTATION | comp) [(`/` | `.` | ANNOTATION (implicit `.`)) term];
  *    parseComp: NUMBER | SYMBOL [NUMBER exponent] | `(` term `)`; the whole input must be consumed;
@@ -111,8 +113,9 @@ class Lexer {
     return true;
   }
 
-  private static symbolChar(ch: string, allowDigits: boolean): boolean {
-    return (allowDigits && ch >= "0" && ch <= "9") || (ch >= "a" && ch <= "z") || (ch >= "A" && ch <= "Z") || "[]%*^'\"_".includes(ch) && ch !== "";
+  /** Lexer.isValidSymbolChar (ucum-java 1.0.10): `.` only inside `[…]`. */
+  private static symbolChar(ch: string, allowDigits: boolean, inBrackets: boolean): boolean {
+    return (allowDigits && ch >= "0" && ch <= "9") || (ch >= "a" && ch <= "z") || (ch >= "A" && ch <= "Z") || (ch !== "" && "[]%*^'\"_".includes(ch)) || (inBrackets && ch === ".");
   }
 
   private brackets(ch: string, inBrackets: boolean): boolean {
@@ -128,13 +131,13 @@ class Lexer {
   }
 
   private numberOrSymbol(ch: string): boolean {
-    if (!Lexer.symbolChar(ch, true)) return false;
+    if (!Lexer.symbolChar(ch, true, false)) return false;
     let t = ch;
     let isSymbol = !(ch >= "0" && ch <= "9");
     let inBrackets = this.brackets(ch, false);
     let c = this.peekChar();
     inBrackets = this.brackets(c, inBrackets);
-    while (c !== "\0" && Lexer.symbolChar(c, !isSymbol || inBrackets)) {
+    while (c !== "\0" && Lexer.symbolChar(c, !isSymbol || inBrackets, inBrackets)) {
       t += c;
       isSymbol = isSymbol || !(c >= "0" && c <= "9");
       this.index++;
@@ -154,14 +157,14 @@ class Lexer {
     return n;
   }
 
-  /** Lexer.finished: the source is used up (the current token may still be unread, e.g. a trailing `)`). */
   /** The current token type (a method: consume() changes it). */
   cur(): Tok {
     return this.type;
   }
 
+  /** Lexer.finished: `index == source.length()` — the current token may still be unread (e.g. a trailing `)`). */
   finished(): boolean {
-    return this.index >= this.source.length;
+    return this.index === this.source.length;
   }
 }
 
@@ -275,16 +278,20 @@ export function checkUcumCode(code: string): UcumVerdict {
   return parsed(code) ? "valid" : "invalid";
 }
 
-/** FormalStructureComposer: `(milligram)`, `(meter ^ 2)`, `(milligram) / (deciliter)`; null when not composable. */
+/**
+ * FormalStructureComposer (ucum-java 1.0.10): `(milligram)`, `(meter ^ 2)`, `(milligram) / (deciliter)`, an annotation
+ * as the factor `1` (`{a}/d` → `1 / (day)`), a bracketed sub-term unbracketed; null only for the bare-prefix quirk.
+ */
 function formal(t: Term): string | null {
   let out = "";
   if (t.comp) {
     const c = t.comp;
     if (c.kind === "factor") out += String(c.value);
     else if (c.kind === "term") {
+      // composeComp → composeTerm: a bracketed sub-term is written without brackets
       const inner = formal(c.term);
       if (inner === null) return null;
-      out += `(${inner})`;
+      out += inner;
     } else {
       if (!c.unit) return null; // bare-prefix quirk: no unit name
       out += `(${c.prefix ? c.prefix.name : ""}${c.unit.name}${c.exponent !== 1 ? ` ^ ${c.exponent}` : ""})`;
@@ -313,8 +320,6 @@ export function ucumDisplays(code: string): string[] | null {
  * also accepted without its parentheses (`milligram`).
  */
 export function ucumDisplayIssue(code: string, display: string): string | null {
-  // annotations and empty terms compose to `1` factors / doubled spaces — not something to judge a display by
-  if (code.includes("{") || code.includes("//")) return null;
   const valid = ucumDisplays(code);
   if (!valid) return null;
   const norm = (s: string): string => s.replace(/[()]/g, "").replace(/\s+/g, " ").trim().toLowerCase();

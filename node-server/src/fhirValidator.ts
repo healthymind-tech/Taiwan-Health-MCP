@@ -3185,11 +3185,15 @@ export class InstanceValidator {
         }
       }
 
+      // A choice element with type slices but no slicer: every item ends up on the last slice (see choiceSlicesWithoutSlicer)
+      const choiceNoSlicer = grp.slices.length > 0 && !!grp.base && !grp.base.slicing && grp.name.endsWith("[x]");
       // Cardinality (per parent instance) against the base definition of this group.
-      if (grp.base) this.checkCardinality(grp.base, items.length, item, gsdx, issues);
+      if (grp.base) this.checkCardinality(grp.base, choiceNoSlicer ? 0 : items.length, item, gsdx, issues);
 
       if (grp.slices.length && grp.base && grp.base.slicing) {
         await this.validateSliced(gsdx, grp, typedItems, item, rctx, issues, depth);
+      } else if (choiceNoSlicer) {
+        await this.choiceSlicesWithoutSlicer(gsdx, grp, typedItems, item, rctx, issues, depth);
       } else {
         for (const { item: it, type } of typedItems) {
           await this.validateItemAgainst(gsdx, def, it, type, rctx, issues, depth + 1);
@@ -3499,6 +3503,55 @@ export class InstanceValidator {
           ? `Slice '${id}': a matching slice is required, but not found (from ${vurl}). Note that other slices are allowed in addition to this required slice`
           : `Slice '${id}': minimum required = ${min}, but only found 0 (from ${vurl})`;
       issues.push({ severity: "error", path: parent.path, code: "structure", message, element: s.id, profile: sdx.url });
+    }
+  }
+
+  /**
+   * The `[x]` case of slices without a slicer. matchSlice (IV:8642-8673) matches every slice element by name
+   * (nameMatches: `value[x]` takes any `value*`), and because the element already assigned is a `[x]` element whose
+   * path the slice continues, the match is accepted and replaces the assignment — so each item ends on the LAST slice
+   * element of the group, whatever its own type, and is validated against it; checkCardinalities (IV:8334-8380) then
+   * counts the base element 0, that slice n, the other slices 0.
+   */
+  private async choiceSlicesWithoutSlicer(
+    sdx: SdIndex,
+    grp: ChildGroup,
+    typedItems: Array<{ item: Item; type: string }>,
+    parent: Item,
+    rctx: ResourceCtx,
+    issues: Issue[],
+    depth: number,
+  ): Promise<void> {
+    const last = grp.slices[grp.slices.length - 1];
+    const allowed = (last.type || []).map((t: Record<string, any>) => typeCodeOf(t));
+    const vurl = this.versionedUrl(sdx);
+    for (const { item: it, type } of typedItems) {
+      if (allowed.length && !allowed.includes(type)) {
+        // checkChildByDefinition: the value's type is not one of the assigned element's types
+        issues.push(
+          allowed.length === 1
+            ? { severity: "error", path: it.path, code: "structure", message: `The Profile '${vurl}' definition allows for the type ${allowed[0]} but found type ${type}`, element: last.id }
+            : { severity: "error", path: it.path, code: "structure", message: `The type of element ${it.key} is not known - it could not be determined from the information available. Valid types at this point are ${allowed.join(", ")}`, element: last.id },
+        );
+        continue;
+      }
+      await this.validateItemAgainst(sdx, last, it, type, rctx, issues, depth + 1);
+    }
+    for (const s of grp.slices) {
+      const n = s === last ? typedItems.length : 0;
+      const min = typeof s.min === "number" ? s.min : 0;
+      const max = s.max === undefined ? "*" : String(s.max);
+      const id = String(s.id ?? s.path);
+      if (n < min) {
+        const message =
+          min === 1
+            ? `Slice '${id}': a matching slice is required, but not found (from ${vurl}). Note that other slices are allowed in addition to this required slice`
+            : `Slice '${id}': minimum required = ${min}, but only found ${n} (from ${vurl})`;
+        issues.push({ severity: "error", path: parent.path, code: "structure", message, element: s.id, profile: sdx.url });
+      }
+      if (max !== "*" && /^\d+$/.test(max) && n > Number(max)) {
+        issues.push({ severity: "error", path: parent.path, code: "structure", message: `${id}: max allowed = ${max}, but found ${n} (from ${vurl})`, element: s.id, profile: sdx.url });
+      }
     }
   }
 

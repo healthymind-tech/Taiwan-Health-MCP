@@ -205,6 +205,29 @@ test("G31 PU:1100-1103 + IV:8642-8673 / 8370: slices without a slicer are still 
   assert.ok(one.some((i) => i.message === `Profile ${P}, Element matches more than one slice - , x`), JSON.stringify(one));
 });
 
+test("G31 [x]: type slices without a slicer — every item lands on the last slice (IV:8642-8673 + checkCardinalities)", async () => {
+  const P = "http://ex.org/StructureDefinition/choice-sliceless";
+  const base = SDS[CORE + "Observation"].snapshot.element as Json[];
+  const prof = sd(P, "Observation", "resource", [
+    ...base.filter((x) => !String(x.path).startsWith("Observation.value")),
+    el("Observation.value[x]", 0, "1", ["Quantity", "string"]),
+    el("Observation.value[x]:valueQuantity", 1, "1", ["Quantity"], { sliceName: "valueQuantity" }),
+    el("Observation.value[x]:valueString", 0, "1", ["string"], { sliceName: "valueString" }),
+  ]);
+  class R extends FakeResolver {
+    async fetchStructureDefinition(url: string): Promise<Json | null> {
+      return url.split("|")[0] === P ? prof : super.fetchStructureDefinition(url);
+    }
+  }
+  const obs = (v: Json): Json => ({ resourceType: "Observation", meta: { profile: [P] }, status: "final", code: { text: "x" }, ...v });
+  const q = errors(await new InstanceValidator(new R()).validate(obs({ valueQuantity: { value: 1 } })));
+  assert.ok(q.some((i) => i.message === `The Profile '${P}' definition allows for the type string but found type Quantity`), JSON.stringify(q));
+  assert.ok(q.some((i) => /Slice 'Observation.value\[x\]:valueQuantity': a matching slice is required/.test(i.message)), JSON.stringify(q));
+  const str = errors(await new InstanceValidator(new R()).validate(obs({ valueString: "a" })));
+  assert.ok(!str.some((i) => /allows for the type/.test(i.message)), JSON.stringify(str));
+  assert.ok(str.some((i) => /valueQuantity': a matching slice is required/.test(i.message)), JSON.stringify(str));
+});
+
 // ------------------------------------------------------------------------------------------- G32 logical model on Base
 
 test("G32 CTU:268-270 + PU:5025: a differential-only logical model on Base gets a snapshot", async () => {
@@ -275,7 +298,27 @@ test("G9 UCUM Coding display: the code or its formal structure", () => {
   assert.deepEqual(ucumDisplays("kg/m2"), ["kg/m2", "(kilogram) / (meter ^ 2)"]);
   for (const ok of ["mg", "MG", "(milligram)", "milligram"]) assert.equal(ucumDisplayIssue("mg", ok), null, ok);
   assert.equal(ucumDisplayIssue("mg", "totally wrong"), "Wrong Display Name 'totally wrong' for http://unitsofmeasure.org#mg. Valid display is one of 2 choices: 'mg', '(milligram)'");
-  assert.equal(ucumDisplayIssue("{a}/d", "whatever"), null, "annotated codes are not judged");
+  // compound / annotated / bracketed units: FormalStructureComposer (ucum-java 1.0.10) — annotations compose to the
+  // factor 1, a bracketed sub-term is written without brackets, an empty term after '/' leaves a doubled space
+  assert.deepEqual(ucumDisplays("{a}/d"), ["{a}/d", "1 / (day)"]);
+  assert.deepEqual(ucumDisplays("ug/(kg.h)"), ["ug/(kg.h)", "(microgram) / (kilogram) * (hour)"]);
+  assert.deepEqual(ucumDisplays("m{a}{b}"), ["m{a}{b}", "(meter) * 1 * 1"]);
+  assert.deepEqual(ucumDisplays("10*3/uL"), ["10*3/uL", "(the number ten for arbitrary powers ^ 3) / (microliter)"]);
+  assert.equal(ucumDisplays("M"), null, "bare prefix (tx.fhir.org quirk): no formal structure, display not judged");
+  assert.equal(ucumDisplayIssue("{a}/d", "1 / (day)"), null);
+  assert.match(ucumDisplayIssue("{a}/d", "per day")!, /Valid display is one of 2 choices: '\{a\}\/d', '1 \/ \(day\)'/);
+  assert.equal(ucumDisplayIssue("mg/dL", "(milligram) / (deciliter)"), null);
+  assert.ok(ucumDisplayIssue("mg/dL", "milligram per deciliter"));
+});
+
+test("UCUM lexer = ucum-java 1.0.10 Lexer: '.' only inside brackets, finished() = index == length", () => {
+  assert.equal(checkUcumCode("[ft_i].[lbf_av]"), "valid");
+  assert.equal(checkUcumCode("m)"), "valid", "Lexer.finished() is true once the trailing ')' is read (ucum-java quirk)");
+  assert.equal(checkUcumCode("(m"), "invalid");
+  assert.equal(checkUcumCode("m."), "invalid");
+  assert.equal(checkUcumCode("m2.s-1"), "valid");
+  assert.equal(checkUcumCode("10*99999999999"), "invalid", "Integer.parseInt overflow");
+  assert.equal(checkUcumCode("{\u0001}"), "invalid", "annotation characters must be printable ASCII");
 });
 
 test("G9 end to end: Coding display is checked, Quantity.unit is not", async () => {
