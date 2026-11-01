@@ -4225,8 +4225,11 @@ export class InstanceValidator {
   }
 
   private inExampleExemptContext(path: string): boolean {
-    // The HL7 validator exempts canonical references to definitions (meta.profile etc.).
-    return /\.meta\.profile\[\d+\]$/.test(path) || /\.(implicitRules)$/.test(path);
+    // (parity v3 round 5) meta.profile is NOT exempt: InstanceValidator.checkPrimitive (l. 3412-3418) sends every
+    // canonical but Bundle.entry.fullUrl / a defining url to validateReference, whose canonical branch (l. 3986-3998)
+    // reports TYPE_SPECIFIC_CHECKS_DT_URL_EXAMPLE for an unresolved example URL (evaluator corpus: meta.profile[n]
+    // 'http://example.org/fhir/StructureDefinition/unknown' → error in validator_cli 7.0.1)
+    return /\.(implicitRules)$/.test(path);
   }
 
   /**

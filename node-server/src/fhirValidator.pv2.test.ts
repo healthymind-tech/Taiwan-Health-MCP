@@ -37,3 +37,22 @@ test("wrong JSON type: the parse error plus the type's value error (validation g
   const s = await errs(obs({ code: { text: 5 } }));
   assert.deepEqual(s.filter(([p]) => p === "Observation.code.text").map(([, m]) => m), ["Error parsing JSON: the primitive value must be a string"]);
 });
+
+test("meta.profile with an unresolved example URL: TYPE_SPECIFIC_CHECKS_DT_URL_EXAMPLE (validateReference canonical branch)", async () => {
+  // InstanceValidator.checkPrimitive l. 3412-3418 → validateReference l. 3986-3998; the profile is also unknown (warning)
+  // the kit has no Meta datatype: a minimal one (Meta.profile: canonical)
+  class WithMeta extends FakeResolver {
+    override async fetchStructureDefinition(url: string): Promise<Record<string, any> | null> {
+      if (url.split("|")[0] !== "http://hl7.org/fhir/StructureDefinition/Meta") return super.fetchStructureDefinition(url);
+      const el = (path: string, max: string, type?: string): Record<string, any> => ({ id: path, path, min: 0, max, base: { path, min: 0, max }, ...(type ? { type: [{ code: type }] } : {}) });
+      return { resourceType: "StructureDefinition", url, name: "Meta", type: "Meta", kind: "complex-type", derivation: "specialization", snapshot: { element: [el("Meta", "*"), el("Meta.profile", "*", "canonical")] } };
+    }
+  }
+  const errsMeta = async (r: Record<string, any>): Promise<Array<[string, string]>> =>
+    (await new InstanceValidator(new WithMeta()).validate(r, { profiles: [] })).filter((i: Issue) => i.severity === "error").map((i: Issue) => [i.path, i.message]);
+  const e = await errsMeta(obs({ meta: { profile: ["http://example.org/fhir/StructureDefinition/unknown"] } }));
+  assert.ok(e.some(([p, m]) => p === "Observation.meta.profile[0]" && m === "Example URLs are not allowed in this context (http://example.org/fhir/StructureDefinition/unknown)"), JSON.stringify(e));
+  // a non-example unknown profile stays a warning only
+  const f = await errsMeta(obs({ meta: { profile: ["http://other.org/fhir/StructureDefinition/unknown"] } }));
+  assert.ok(!f.some(([p]) => p === "Observation.meta.profile[0]"), JSON.stringify(f));
+});
