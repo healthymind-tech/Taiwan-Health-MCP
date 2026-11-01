@@ -2927,7 +2927,8 @@ export class InstanceValidator {
     const ext = item.ext;
     const path = item.path;
     if (!isObject(ext)) {
-      issues.push({ severity: "error", path, code: "structure", message: `The property _${item.key} must be a JSON object` });
+      // JsonParser (parse time): "This property must be an object, not an Array (value at …)"
+      issues.push({ severity: "error", path, code: "structure", message: `This property must be an object, not ${describeJson(ext)} (${item.key} at ${path})` });
       return;
     }
     for (const k of Object.keys(ext)) {
@@ -5862,7 +5863,7 @@ export function narrativeLinkProblems(div: string, anchors: ReadonlySet<string>)
  * (InstanceValidator.conformsToProfile, a fresh validateResource on the parsed tree) never sees them, so profile
  * matching — slices by profile, reference target profiles — ignores them here too.
  */
-const PARSE_ISSUE = /^Error parsing XHTML: |^Invalid entity in the XHTML \(|^Unrecognized property '|^The property \S+ must be (?:a JSON Array|an Array|an Object), not |^This property must be a simple value, not |^Error parsing JSON: |^Array cannot be empty|^Array entries cannot be null/u;
+const PARSE_ISSUE = /^Error parsing XHTML: |^Invalid entity in the XHTML \(|^Unrecognized property '|^The property \S+ must be (?:a JSON Array|an Array|an Object), not |^This property must be (?:a simple value|an object), not |^Error parsing JSON: |^Array cannot be empty|^Array entries cannot be null/u;
 function isParseIssue(i: { message?: string }): boolean {
   return PARSE_ISSUE.test(String(i.message ?? ""));
 }
