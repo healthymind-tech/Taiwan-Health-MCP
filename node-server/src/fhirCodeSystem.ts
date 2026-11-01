@@ -4,6 +4,7 @@
  * ValueSet membership and expansion. No DB access — every lookup goes through
  * the injected `TerminologyDeps`, so the logic is unit-testable with fakes.
  */
+import { specialSystemMember } from "./fhirSpecialSystems.js";
 
 export const SNOMED_SYSTEM = "http://snomed.info/sct";
 export const LOINC_SYSTEM = "http://loinc.org";
@@ -120,7 +121,8 @@ export function indexCodeSystem(cs: Record<string, any>): CodeSystemIndex {
     version: cs.version ?? null,
     content: String(cs.content || "complete"),
     language: typeof cs.language === "string" ? cs.language : null,
-    caseSensitive: cs.caseSensitive !== false,
+    // CodeSystem.getCaseSensitive(): false when not stated (REVIEW_port_2 G5)
+    caseSensitive: cs.caseSensitive === true,
     supplements: typeof cs.supplements === "string" && cs.supplements ? cs.supplements : null,
     concepts,
     lower,
@@ -379,10 +381,8 @@ async function systemPartContains(
     if (c && conceptInactive(c)) return false;
   }
   if (Array.isArray(part.concept) && part.concept.length) {
-    const caseSensitive = cs ? cs.caseSensitive : true;
-    return part.concept.some((c: any) =>
-      caseSensitive ? String(c.code) === code : String(c.code).toLowerCase() === code.toLowerCase(),
-    );
+    // ValueSetValidator.inComponent: an enumerated concept matches exactly (cc.getCode().equals(code))
+    return part.concept.some((c: any) => String(c.code) === code);
   }
   const filters: ComposeFilter[] = part.filter || [];
   if (filters.length) {
@@ -421,6 +421,9 @@ async function systemPartContains(
     if (cs.content === "fragment") return true;
     return cs.content === "complete" ? false : undefined;
   }
+  // BCP-47 / BCP-13: decided by the code's validity (fhirSpecialSystems.ts)
+  const special = specialSystemMember(system, code);
+  if (special !== undefined) return special;
   if (await deps.externalSystemHeld(system)) {
     const hit = await deps.lookupExternal(system, code);
     return hit ? true : undefined;

@@ -248,7 +248,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.39.0 (parity v3 terminology): compose.inactive=false / include.version / versioned imports / fragment includes in membership, INACTIVE_CONCEPT_FOUND / DEPRECATED_CONCEPT_FOUND warnings, ReDoS-safe filter regex
   // 1.43.0 (REVIEW_port_1 F22): as() is not singleton-checked in R4 (InstanceValidator setDoNotEnforceAsSingletonRule) — no more spurious invariant errors
   // 1.44.0 (parity v3 review-structure, REVIEW_port_1 F1/F3/F7/F8/F11-F17/F19/F24/F25): blank primitive + required binding, duplicate element / contained ids, primitive inline children, Quantity coded / min-max checks, unresolvable type / target profiles, resource type restrictions, internal # urls, re-slices, type profile + inline children, imposeProfile, fhirpath / profile# extension contexts, HumanName / Address / Timing fixed rules, cross-version extensions, NOTYPE choice fallback.
-  fhir_validate_bundle: "1.44.0",
+  // 1.45.0 (parity v3 tx-validator-wiring; REVIEW_port_1 F1/F5/F6/F20, REVIEW_port_2 G1/G2/G4/G5/G7/G10/G11/G22): required binding without a value, BCP-47 / BCP-13 / RFC-3986 codes checked locally, undecidable codes / slices → checked_fully false (codes_unchecked / slices_unchecked), binding to a CodeSystem URL, display language = Resource.language, caseSensitive default false, v2-0203 NN<country>, held urn:oid CodeSystems, DICOM unknown code error, supplement as Coding.system, concept without display.
+  fhir_validate_bundle: "1.45.0",
   // 1.40.0 (parity v3 snapshot): a differential-only StructureDefinition gets its snapshot generated (fhirSnapshotGenerator.ts, ProfileUtilities port) instead of being ignored.
   // 1.37.0 (parity v3 fhirpath-2): an invariant whose evaluation raises an exception the Java engine raises too fails (message + log); unknown functions → Problem processing expression; dom-3 enforced in code (CONTAINED_ORPHAN_DOM3); Java boolean / comparison / date-arithmetic semantics.
   // 1.36.1 (parity v3 xml): base64Binary checked linearly — a multi-MB attachment no longer overflows the regex stack (was a validator crash / fatal exception issue).
@@ -291,7 +292,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.36.0: terminology as fhir_validate_bundle 1.39.0
   // 1.40.0 (REVIEW_port_1 F22): as() is not singleton-checked in R4 (InstanceValidator setDoNotEnforceAsSingletonRule) — no more spurious invariant errors
   // 1.41.0: validation as fhir_validate_bundle 1.44.0 (parity v3 review-structure).
-  fhir_validate_resource: "1.41.0",
+  // 1.42.0: terminology as fhir_validate_bundle 1.45.0 (parity v3 tx-validator-wiring).
+  fhir_validate_resource: "1.42.0",
   // 1.37.0 (parity v3 snapshot): differential-only profiles validated through a generated snapshot, as fhir_validate_bundle 1.40.0.
   // 1.34.0 (parity v3 fhirpath-2): invariant evaluation as fhir_validate_bundle 1.37.0.
   // 1.33.1 (parity v3 xml): base64Binary as fhir_validate_bundle 1.36.1.

@@ -15,7 +15,7 @@
  */
 import { indexCodeSystem, valueSetContains, type CodeSystemIndex, type TerminologyDeps } from "../../../src/fhirCodeSystem.js";
 import { rankHl7Current } from "../../../src/fhirTerminology.js";
-import { judgeHeldCodeSystem } from "../../../src/fhirValidationResolver.js";
+import { judgeHeldCodeSystem, judgeSpecialSystem, serverSideSystem } from "../../../src/fhirValidationResolver.js";
 import { SnapshotGenerator } from "../../../src/fhirSnapshotGenerator.js";
 import { pickCanonicalVersion, splitCanonicalVersion, type CodeCheck, type ValidatorResolver } from "../../../src/fhirValidator.js";
 import { packageResources, type PackageRef, type Res } from "./packages.js";
@@ -184,11 +184,17 @@ export class FileValidatorResolver implements ValidatorResolver {
       const r = judgeHeldCodeSystem(idx, system, code, display, langs && langs.length ? langs : undefined);
       if (r) return r;
     }
-    if (txServedSystem(system)) {
+    const special = judgeSpecialSystem(system, code, display);
+    if (special) return special;
+    if (txServedSystem(system) || serverSideSystem(system)) {
       this.txLookups++;
-      return display === null ? { status: "silent" } : { status: "display-unchecked", message: `Display not checked: no local terminology for ${system}` };
+      return display === null ? { status: "silent", undecided: true } : { status: "display-unchecked", message: `Display not checked: no local terminology for ${system}`, undecided: true };
     }
     return { status: "unknown-system" };
+  }
+
+  async codeSystemExists(url: string): Promise<boolean> {
+    return this.store.resolve("CodeSystem", url) !== null;
   }
 
   async codeSystemResolvable(system: string): Promise<boolean> {

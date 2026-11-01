@@ -85,7 +85,7 @@ function cmpVer(a: string, b: string): number {
   return 0;
 }
 
-function depsFor(store: Store): TerminologyDeps & { codeSystemVersions(url: string): string[]; loadValueSetVersions(url: string): Json[] } {
+function depsFor(store: Store): TerminologyDeps & { codeSystemVersions(url: string): string[]; loadValueSetVersions(url: string): Json[]; supplementsOf(system: string): Promise<Json[]> } {
   const idxCache = new Map<Json, CodeSystemIndex>();
   const index = (r: Json | null): CodeSystemIndex | null => {
     if (!r) return null;
@@ -115,6 +115,14 @@ function depsFor(store: Store): TerminologyDeps & { codeSystemVersions(url: stri
     },
     async externalSystemHeld() {
       return false;
+    },
+    async supplementsOf(system: string) {
+      const out: Json[] = [];
+      for (const list of store.cs.values()) {
+        const r = latest(list);
+        if (r && r.content === "supplement" && typeof r.supplements === "string" && split(r.supplements)[0] === system) out.push(r);
+      }
+      return out;
     },
     codeSystemVersions(url: string) {
       return (store.cs.get(url) ?? []).map((r) => r.version).filter((v): v is string => typeof v === "string");

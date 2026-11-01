@@ -89,7 +89,7 @@ function checkIssue(r: CodeCheck, path: string, lenient: boolean): TxIssue[] {
       ? "Display_Name_WS_for__should_be_one_of__instead_of"
       : /Default display is/u.test(r.message)
         ? "NO_VALID_DISPLAY_FOUND_NONE_FOR_LANG_ERR"
-        : /is the default display/u.test(r.message)
+        : /is the default display|which is a valid display for the default language/u.test(r.message)
           ? "NO_VALID_DISPLAY_FOUND_NONE_FOR_LANG_OK"
           : "Display_Name_for__should_be_one_of__instead_of";
     const severity = lenient && r.severity === "error" ? "warning" : r.severity;
@@ -104,7 +104,45 @@ function splitCanonical(v: string): [string, string] {
 }
 
 /** $validate-code (CodeSystem or ValueSet). */
-export async function txValidateCode(req: TxValidateRequest, deps: TerminologyDeps & { codeSystemVersions?(url: string): string[] }): Promise<TxValidateResult> {
+const SUPPLEMENT_TYPE_EXT = "http://hl7.org/fhir/StructureDefinition/codesystem-supplement-type";
+const SUPPLEMENT_GLOBAL_EXT = "http://hl7.org/fhir/StructureDefinition/codesystem-supplement-global";
+
+/**
+ * Designations a CodeSystem gets from its supplements for display checks: a global language pack
+ * (codesystem-supplement-type = lang-pack + codesystem-supplement-global = true) applies whether or not it is
+ * referenced; any other supplement only when referenced (ValueSet valueset-supplement extension / useSupplement).
+ * A supplement concept's display counts as a designation in the supplement's language. Returns a copy of the index.
+ */
+export function withSupplementDesignations(cs: CodeSystemIndex, supplements: Array<Record<string, any>>, referenced: string[]): CodeSystemIndex {
+  const refs = new Set(referenced.map((r) => splitCanonical(r)[0]));
+  const used = supplements.filter((s) => {
+    const ext: any[] = Array.isArray(s.extension) ? s.extension : [];
+    const global = ext.some((e) => e && e.url === SUPPLEMENT_TYPE_EXT && e.valueCode === "lang-pack") && ext.some((e) => e && e.url === SUPPLEMENT_GLOBAL_EXT && e.valueBoolean === true);
+    return global || refs.has(String(s.url ?? ""));
+  });
+  if (!used.length) return cs;
+  const concepts = new Map(cs.concepts);
+  const visit = (list: any[], lang: string | null): void => {
+    for (const c of list ?? []) {
+      if (!c || c.code === undefined) continue;
+      const base = concepts.get(String(c.code));
+      if (base) {
+        const add: Array<{ language: string | null; value: string }> = [];
+        if (typeof c.display === "string" && c.display) add.push({ language: lang, value: c.display });
+        for (const d of c.designation ?? []) if (d && typeof d.value === "string") add.push({ language: typeof d.language === "string" ? d.language : lang, value: d.value });
+        if (add.length) concepts.set(base.code, { ...base, designationList: [...base.designationList, ...add], designations: [...base.designations, ...add.map((a) => a.value)] });
+      }
+      if (Array.isArray(c.concept)) visit(c.concept, lang);
+    }
+  };
+  for (const s of used) visit(s.concept, typeof s.language === "string" ? s.language : null);
+  return { ...cs, concepts };
+}
+
+export async function txValidateCode(
+  req: TxValidateRequest,
+  deps: TerminologyDeps & { codeSystemVersions?(url: string): string[]; supplementsOf?(system: string): Promise<Array<Record<string, any>>> },
+): Promise<TxValidateResult> {
   const issues: TxIssue[] = [];
   const lenient = req.params["lenient-display-validation"] === true;
   const langs = typeof req.params.displayLanguage === "string" && req.params.displayLanguage ? String(req.params.displayLanguage).split(",").map((s) => s.trim().split(";")[0]) : ["en"];
@@ -310,7 +348,8 @@ export async function txValidateCode(req: TxValidateRequest, deps: TerminologyDe
         if (req.mode === "valueset") notInVs.push(notInVsIssue(p, system, code, vsUrl!, !!req.codeableConcept));
         continue;
       }
-      const r: CodeCheck | null = judgeHeldCodeSystem(cs, system, code, display, langs);
+      const held = deps.supplementsOf ? withSupplementDesignations(cs, await deps.supplementsOf(system), supplements) : cs;
+      const r: CodeCheck | null = judgeHeldCodeSystem(held, system, code, display, langs);
       if (r === null) {
         // content not-present: nothing local to check the code against — cannot be validated
         anyUnknown = true;

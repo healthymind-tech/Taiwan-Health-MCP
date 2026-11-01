@@ -60,8 +60,10 @@ export interface Issue {
    * Set on the issue that reports a definition the validator could not check
    * (profile / required-binding ValueSet not resolvable, e.g. a `|version`
    * that is not installed). Feeds `completenessOf()`; never changes severity.
+   * `code`: a code / binding membership local terminology cannot decide (canonical = ValueSet or system);
+   * `slice`: slice membership / cardinality that could not be decided (canonical = profile#element id).
    */
-  unchecked?: { kind: "profile" | "valueSet"; canonical: string };
+  unchecked?: { kind: "profile" | "valueSet" | "code" | "slice"; canonical: string };
 }
 
 export function issue(severity: string, path: string, code: string, message: string, extra: Partial<Issue> = {}): Record<string, any> {
@@ -86,6 +88,13 @@ export interface Completeness {
    * an error issue with code `exception` and `checked_fully` is false.
    */
   lookups_failed?: number;
+  /**
+   * (parity v3, REVIEW F5) ValueSets / code systems whose membership or codes local terminology could not decide
+   * (the HL7 validator asks its terminology server). Present only when non-empty; `checked_fully` is then false.
+   */
+  codes_unchecked?: string[];
+  /** (parity v3, REVIEW F5) Slicings (profile#element) whose membership / cardinality could not be decided. */
+  slices_unchecked?: string[];
 }
 
 /** Issue code of the "validation incomplete: lookups failed" error (v8). */
@@ -124,6 +133,8 @@ export function lookupFailureIssue(total: number, samples: Array<{ code: string 
 export function completenessOf(issues: Array<Record<string, any>>, depsMissing: unknown[] = []): Completeness {
   const profiles = new Set<string>();
   const valueSets = new Set<string>();
+  const codes = new Set<string>();
+  const slices = new Set<string>();
   let lookupsFailed = 0;
   for (const i of issues) {
     if (i && i.code === LOOKUP_FAILURE_CODE) {
@@ -132,13 +143,15 @@ export function completenessOf(issues: Array<Record<string, any>>, depsMissing: 
     }
     const u = i && i.unchecked;
     if (!u || typeof u.canonical !== "string") continue;
-    (u.kind === "valueSet" ? valueSets : profiles).add(u.canonical);
+    (u.kind === "valueSet" ? valueSets : u.kind === "code" ? codes : u.kind === "slice" ? slices : profiles).add(u.canonical);
   }
   return {
-    checked_fully: profiles.size === 0 && valueSets.size === 0 && lookupsFailed === 0 && !(Array.isArray(depsMissing) && depsMissing.length),
+    checked_fully: profiles.size === 0 && valueSets.size === 0 && codes.size === 0 && slices.size === 0 && lookupsFailed === 0 && !(Array.isArray(depsMissing) && depsMissing.length),
     profiles_unchecked: [...profiles],
     valuesets_unchecked: [...valueSets],
     ...(lookupsFailed > 0 ? { lookups_failed: lookupsFailed } : {}),
+    ...(codes.size ? { codes_unchecked: [...codes] } : {}),
+    ...(slices.size ? { slices_unchecked: [...slices] } : {}),
   };
 }
 
@@ -184,6 +197,8 @@ export function getAtPath(node: any, rel: string): any[] {
 /** Extra issues a code check reports alongside its verdict (e.g. HL7 INACTIVE_CONCEPT_FOUND). */
 export interface CodeCheckExtra {
   extra?: Array<{ severity: "warning" | "information"; message: string }>;
+  /** The code could not be checked with local data although the HL7 validator's terminology server would (REVIEW F5). */
+  undecided?: boolean;
 }
 
 export type CodeCheck = (
@@ -236,6 +251,8 @@ export interface ValidatorResolver {
    * check. Optional: without it URL resolution is not checked.
    */
   definitionExists?(url: string): Promise<boolean>;
+  /** Is there a CodeSystem with exactly this canonical (Terminology_TX_ValueSet_NotFound_CS)? Optional. */
+  codeSystemExists?(url: string): Promise<boolean>;
   /** (v17.5) Is `version` an installed version of the definition `url`? Absent = not checked (fail-open). */
   definitionVersionExists?(url: string, version: string): Promise<boolean>;
 }
@@ -1270,6 +1287,8 @@ export class InstanceValidator {
 
   /** ValidateOptions.languages of the running validation. */
   private languages: string[] = ["en"];
+  /** Working language of the resource being validated (its `language`), null = ValidateOptions.languages. */
+  private workingLang: string[] | null = null;
   /** ValidateOptions.allowExamples of the running validation. */
   private allowExamples = false;
   /** ValidateOptions.displayWarnings of the running validation. */
@@ -1290,6 +1309,7 @@ export class InstanceValidator {
     this.languages = langs.length ? langs : ["en"];
     this.allowExamples = opts.allowExamples === true;
     this.displayWarnings = opts.displayWarnings === true;
+    this.workingLang = null;
     this.boundValueSets = new Set();
     this.pendingVsSystems = false;
     this.bundleErrorFlag = new WeakSet();
@@ -1374,11 +1394,12 @@ export class InstanceValidator {
   }
 
   private codeCheck(system: string, code: string, display: string | null, version: string | null = null): Promise<CodeCheck> {
-    const key = `${system}|${code}|${display}|${version}|${this.languages.join(",")}|${this.displayWarnings}`;
+    const eff = this.workingLang ?? this.languages;
+    const key = `${system}|${code}|${display}|${version}|${eff.join(",")}|${this.displayWarnings}`;
     let p = this.codeCache.get(key);
     if (!p) {
       // the default languages are not passed, so resolvers without the parameter keep their behaviour
-      const langs = this.languages.length === 1 && this.languages[0] === "en" ? undefined : this.languages;
+      const langs = eff.length === 1 && eff[0] === "en" ? undefined : eff;
       p = langs ? this.resolver.checkCode(system, code, display, version, langs) : this.resolver.checkCode(system, code, display, version);
       // InstanceValidator.processTxIssues (7.0.1): displayWarningMode turns an invalid-display error into a warning
       if (this.displayWarnings) p = p.then((r) => (r.status === "invalid-display" && r.severity === "error" ? { ...r, severity: "warning" } : r));
@@ -2062,7 +2083,23 @@ export class InstanceValidator {
 
   // ------------------------------------------------------------------ resources
 
-  private async validateResource(
+  /**
+   * InstanceValidator.checkLang (IV:7380) + getValidationOptionsLanguage (IV:9296, tag 7.0.1): a resource's `language`
+   * becomes the working language of its subtree (contained resources / Bundle entries inherit it unless they state
+   * their own); it is the display language of code checks, ahead of ValidateOptions.languages (REVIEW_port_2 G4).
+   */
+  private async validateResource(rctx: ResourceCtx, path: string, extraProfiles: string[], issues: Issue[], depth: number): Promise<void> {
+    const saved = this.workingLang;
+    const lang = typeof rctx.resource?.language === "string" ? rctx.resource.language.trim() : "";
+    if (lang) this.workingLang = [lang];
+    try {
+      await this.validateResourceBody(rctx, path, extraProfiles, issues, depth);
+    } finally {
+      this.workingLang = saved;
+    }
+  }
+
+  private async validateResourceBody(
     rctx: ResourceCtx,
     path: string,
     extraProfiles: string[],
@@ -3207,6 +3244,16 @@ export class InstanceValidator {
               path: it.path,
               code: "informational",
               message: `Slice membership could not be decided with local terminology (slicing is CLOSED in ${sdx.url})`,
+              unchecked: { kind: "slice", canonical: `${sdx.url}#${base.id ?? base.path}` },
+            });
+          } else if (undecided) {
+            // REVIEW F5: the element may belong to a slice whose constraints were not applied
+            issues.push({
+              severity: "information",
+              path: it.path,
+              code: "informational",
+              message: `Slice membership could not be decided with local terminology (${sdx.url}#${base.id ?? base.path})`,
+              unchecked: { kind: "slice", canonical: `${sdx.url}#${base.id ?? base.path}` },
             });
           } else if (rules === "closed") {
             issues.push({
@@ -3233,7 +3280,25 @@ export class InstanceValidator {
       }
     }
     for (const s of grp.slices) {
-      if (indeterminate.has(s)) continue;
+      if (indeterminate.has(s)) {
+        // REVIEW F5: the cardinality cannot be checked when undecided elements may be members
+        const n0 = counts.get(s) || 0;
+        const min0 = typeof s.min === "number" ? s.min : 0;
+        const max0 = s.max === undefined || s.max === "*" ? Infinity : Number(s.max);
+        // the decided members alone already exceed the maximum: that error is certain (checked below)
+        if (!(n0 > max0)) {
+          if (n0 < min0 || Number.isFinite(max0)) {
+            issues.push({
+              severity: "information",
+              path: parent.path,
+              code: "informational",
+              message: `Cardinality of slice ${String(s.id ?? s.path)} could not be checked: slice membership undecidable with local terminology (from ${vurl})`,
+              unchecked: { kind: "slice", canonical: `${sdx.url}#${String(s.id ?? s.path)}` },
+            });
+          }
+          continue;
+        }
+      }
       // checkCardinalities l. 8334-8350: a slice that re-slices (has its own slicing) also counts the members of its
       // re-slices (ProfileUtilities.getSliceList)
       let n = counts.get(s) || 0;
@@ -4307,8 +4372,18 @@ export class InstanceValidator {
     if ((strength === "required" || strength === "extensible" || strength === "preferred") && (typeCode === "Coding" || typeCode === "CodeableConcept")) {
       await this.checkCodingVersions(b.valueSet, v, typeCode, item, issues);
     }
+    // checkPrimitiveBinding / checkBindings (7.0.1): a binding whose ValueSet cannot be resolved but names a CodeSystem
+    // is Terminology_TX_ValueSet_NotFound_CS (error), whatever the strength
+    if (strength && ["code", "Coding", "CodeableConcept", "Quantity", "string", "uri", "url", "canonical", "CodeableReference"].includes(typeCode) && this.resolver.codeSystemExists) {
+      const ref = String(b.valueSet);
+      if (!(await this.vsHeader(ref)) && (await this.resolver.codeSystemExists(ref).catch(() => false))) {
+        issues.push({ severity: "error", path: item.path, code: "code-invalid", message: `Found a reference to a CodeSystem '${ref}' where a ValueSet belongs` });
+        return;
+      }
+    }
     if (strength !== "required" && strength !== "extensible") return;
-    if (!["code", "Coding", "CodeableConcept", "Quantity", "string", "uri", "CodeableReference"].includes(typeCode)) return;
+    // checkPrimitiveBinding: code, string, uri, url, canonical
+    if (!["code", "Coding", "CodeableConcept", "Quantity", "string", "uri", "url", "canonical", "CodeableReference"].includes(typeCode)) return;
     // UCUM quantities are judged by UCUM unit semantics in the HL7 validator
     // (e.g. L/min accepted against ucum-vitals-common); we cannot reproduce that
     // offline, so only non-UCUM coded quantities are checked against the binding.
@@ -4332,7 +4407,7 @@ export class InstanceValidator {
       return;
     }
     let codings: Array<[string | null, string | null]>;
-    if (typeCode === "code" || typeCode === "string" || typeCode === "uri") codings = [[null, String(v)]];
+    if (typeCode === "code" || typeCode === "string" || typeCode === "uri" || typeCode === "url" || typeCode === "canonical") codings = [[null, String(v)]];
     else if (typeCode === "Quantity") codings = [[typeof v.system === "string" ? v.system : null, String(v.code)]];
     else if (typeCode === "CodeableReference") codings = isObject(v) && isObject(v.concept) ? codingsOf(v.concept) : [];
     else codings = codingsOf(v);
@@ -4350,7 +4425,9 @@ export class InstanceValidator {
     let wrongDisplay: { system: string; code: string; message: string; index: number } | null = null;
     const list: any[] = typeCode === "Coding" ? [v] : isObject(v) && Array.isArray(v.coding) ? v.coding : [];
     for (const [system, code] of codings) {
-      const m = await this.member(url, system, code!);
+      // ValueSetValidator: a Coding without a system cannot be validated (Coding_has_no_system__cannot_validate) and is
+      // never a member — only bare primitive codes infer their system from the value set
+      const m = system === null && typeCode !== "code" && typeCode !== "string" && typeCode !== "uri" && typeCode !== "url" && typeCode !== "canonical" ? false : await this.member(url, system, code!);
       if (m === true) {
         const idx = list.findIndex((c) => isObject(c) && c.code === code && (c.system ?? null) === system);
         const c = idx >= 0 ? list[idx] : null;
@@ -4381,6 +4458,7 @@ export class InstanceValidator {
         path: item.path,
         code: "code-invalid",
         message: `The code(s) ${shown} could not be confirmed as members of the value set ${label} (not fully expandable locally)`,
+        unchecked: { kind: "code", canonical: url },
       });
       return;
     }
@@ -4540,6 +4618,12 @@ export class InstanceValidator {
   private async checkCoding(v: Record<string, any>, item: Item, issues: Issue[], el: Record<string, any> | null = null): Promise<void> {
     const system = v.system;
     const code = v.code;
+    // InstanceValidator.checkCoding (7.0.1): outside a CodeableConcept, or with a binding of its own, a code without a
+    // system is TERMINOLOGY_TX_SYSTEM_NO_CODE (warning)
+    const inCC = !!el && ((isObject(el.base) && el.base.path === "CodeableConcept.coding") || el.path === "CodeableConcept.coding");
+    if (typeof code === "string" && code && (system === undefined || system === null) && (!inCC || (el && isObject(el.binding)))) {
+      issues.push({ severity: "warning", path: item.path, code: "code-invalid", message: "A code with no system has no defined meaning, and it cannot be validated. A system should be provided" });
+    }
     if (typeof system === "string" && system) {
       if (!/^[a-z][a-z0-9+.-]*:/i.test(system)) {
         issues.push({ severity: "error", path: `${item.path}.system`, code: "code-invalid", message: "Coding.system must be an absolute reference, not a local reference" });
@@ -4607,7 +4691,9 @@ export class InstanceValidator {
     } else if (r.status === "invalid-display") {
       issues.push({ severity: r.severity, path: `${item.path}.display`, code: "code-invalid", message: r.message });
     } else if (r.status === "display-unchecked") {
-      issues.push({ severity: r.severity ?? "information", path: `${item.path}.display`, code: "informational", message: r.message });
+      issues.push({ severity: r.severity ?? "information", path: `${item.path}.display`, code: "informational", message: r.message, ...(r.undecided ? { unchecked: { kind: "code" as const, canonical: system } } : {}) });
+    } else if (r.status === "silent" && r.undecided) {
+      issues.push({ severity: "information", path: `${item.path}.code`, code: "informational", message: `Code '${code}' not checked: no local terminology for ${system}`, unchecked: { kind: "code", canonical: system } });
     }
   }
 

@@ -24,6 +24,7 @@ import type { PackageRow } from "./fhirIg.js";
 import { pickCanonicalVersion, splitCanonicalVersion, type CodeCheck, type ValidatorResolver } from "./fhirValidator.js";
 import { conceptInactive, conceptStatus, findConcept, type CodeSystemIndex, type CsConcept, loincCheckDigitValid, snomedCheckDigitValid, valueSetContains } from "./fhirCodeSystem.js";
 import * as terminology from "./fhirTerminology.js";
+import { BCP13, BCP47, RFC3986, isAbsoluteUrl, judgeLanguageTag, mimeTypeShapeOk } from "./fhirSpecialSystems.js";
 import { ISO3166_DISPLAY, ISO3166_VERSION, iso3166UserAssigned } from "./fhirIso3166.js";
 import {
   CVX,
@@ -77,7 +78,6 @@ const SILENT_SYSTEMS = [
  * live edition (tx.fhir.org) may be newer: displays are checked, an unknown
  * code is only a warning.
  */
-const EXTERNAL_EDITION_SYSTEMS = ["http://dicom.nema.org/resources/ontology/DCM"];
 
 const ICD10CM = "http://hl7.org/fhir/sid/icd-10-cm";
 const ISO3166 = "urn:iso:std:iso:3166";
@@ -181,7 +181,7 @@ export function judgeCodeSystemDisplay(
   for (const ds of concept.designationList) {
     if (!okLang(ds.language) && (ds.language === null || ds.language === csLanguage) && ds.value.toLowerCase() === want) isDefaultLang = true;
     if (!okLang(ds.language)) continue;
-    choices.push(`'${ds.value}'${ds.language ? ` (${ds.language})` : ""}`);
+    choices.push(`'${ds.value}' (${ds.language})`);
     if (ds.value.toLowerCase() === want) return null;
     if (hl7Normalize(display).toLowerCase() === hl7Normalize(ds.value).toLowerCase()) ws = true;
   }
@@ -194,22 +194,42 @@ export function judgeCodeSystemDisplay(
     };
   }
   if (isDefaultLang) {
-    return { status: "invalid-display", severity: "information", message: `There are no valid display names found for language(s) '${langList}' for ${system}#${code}; '${display}' is the default display` };
+    // NO_VALID_DISPLAY_FOUND_NONE_FOR_LANG_OK (Messages.properties 7.0.1:563)
+    return {
+      status: "invalid-display",
+      severity: "information",
+      message: `There are no valid display names found for the code ${system}#${code} for language(s) '${langList}'. The display is '${display}' which is a valid display for the default language`,
+    };
   }
-  if (concept.display !== null && display !== concept.display) {
-    // NO_VALID_DISPLAY_FOUND_NONE_FOR_LANG_ERR
+  // standalone ValueSetValidator.java:1413 (tag 7.0.1): vc.getDisplay() = getPreferredDisplay(cc, cs) — null when the
+  // concept has no display, so any display is then NO_VALID_DISPLAY_FOUND_NONE_FOR_LANG_ERR ("Default display is 'null'")
+  const preferred = preferredDisplay(concept, csLanguage, langs);
+  if (display !== preferred) {
     return {
       status: "invalid-display",
       severity: "error",
-      message: `Wrong Display Name '${display}' for ${system}#${code}. There are no valid display names found for language(s) '${langList}'. Default display is '${concept.display}'`,
+      message: `Wrong Display Name '${display}' for ${system}#${code}. There are no valid display names found for language(s) '${langList}'. Default display is '${preferred}'`,
     };
   }
-  return null;
+  // ValueSetValidator.java:1417: NO_VALID_DISPLAY_FOUND (warning; the template's {4} is not filled by the caller)
+  return { status: "invalid-display", severity: "warning", message: `No valid Display Names found for ${code}#${display} in the language${langs.length === 1 ? "" : "s"} {4}` };
+}
+
+/** ValueSetValidator.getPreferredDisplay(ConceptDefinitionComponent, CodeSystem) (standalone, tag 7.0.1:2520-2542). */
+function preferredDisplay(concept: { display: string | null; designationList: Array<{ language: string | null; value: string }> }, csLanguage: string | null, langs: string[]): string | null {
+  if (!langs.length) return concept.display;
+  const match = (l: string | null): boolean => langs.some((x) => x === "*" || (l === null ? x === "en" || x.startsWith("en-") : x.startsWith(l) || l === "*"));
+  if (csLanguage !== null && match(csLanguage)) return concept.display;
+  const summary = langs.join(",");
+  if (csLanguage === null && (summary.includes("en") || summary.includes("en-US"))) return concept.display;
+  // designations: without use first (use is not indexed — the first matching one), then any
+  for (const d of concept.designationList) if (match(d.language)) return d.value;
+  return concept.display;
 }
 
 /**
  * Verdict for a code of a CodeSystem held locally (IG / THO package copy), without DB hints:
- * content complete → Unknown code (error; warning for EXTERNAL_EDITION_SYSTEMS), fragment /
+ * content complete → Unknown code (error), fragment /
  * example → warning, a known concept → its display judged (judgeCodeSystemDisplay). null when
  * the CodeSystem carries no content (not-present / supplement): the caller falls through.
  */
@@ -223,8 +243,8 @@ export function judgeHeldCodeSystem(idx: CodeSystemIndex, system: string, code: 
   const ver = idx.version ? ` version '${idx.version}'` : "";
   if (!c) {
     if (idx.content === "complete") {
-      const sev = EXTERNAL_EDITION_SYSTEMS.includes(system) ? "warning" : "error";
-      return { status: "invalid-code", severity: sev, message: `Unknown code '${code}' in the CodeSystem '${system}'${ver}` };
+      // REVIEW_port_2 G11: the validator judges a held complete CodeSystem (DICOM included) locally — an error
+      return { status: "invalid-code", severity: "error", message: `Unknown code '${code}' in the CodeSystem '${system}'${ver}` };
     }
     if (idx.content === "fragment" || idx.content === "example") {
       return { status: "invalid-code", severity: "warning", message: `Unknown code '${code}' in the CodeSystem '${system}'${ver} (the CodeSystem is a ${idx.content})` };
@@ -248,8 +268,65 @@ export function judgeHeldCodeSystem(idx: CodeSystemIndex, system: string, code: 
     const bad = judgeCodeSystemDisplay(system, code, display, c, idx.language, langs);
     if (bad) out = bad;
   }
-  if (extra.length) out.extra = [...extra, ...(out.extra ?? [])];
+  const notes: Array<{ severity: "warning" | "information"; message: string }> = [...extra];
+  if (c.code !== code) {
+    // ValueSetValidator.java validateCode: CODE_CASE_DIFFERENCE (information) for a case-insensitive match
+    const vurl = idx.version ? `${idx.url}|${idx.version}` : idx.url;
+    notes.push({ severity: "information", message: `The code '${code}' differs from the correct code '${c.code}' by case. Although the code system '${vurl}' is case insensitive, implementers are strongly encouraged to use the correct case anyway` });
+  }
+  if (notes.length) out.extra = [...notes, ...(out.extra ?? [])];
   return out;
+}
+
+/**
+ * standalone ValueSetValidator.SERVER_SIDE_LIST (tag 7.0.1:1131) — systems validated on the terminology server even
+ * without a local CodeSystem — plus CPT (tx.fhir.org reports unknown CPT codes as errors; licensed, never held here).
+ */
+export const SERVER_SIDE_SYSTEMS = new Set([
+  "http://fdasis.nlm.nih.gov",
+  "http://hl7.org/fhir/sid/ndc",
+  "http://loinc.org",
+  "http://snomed.info/sct",
+  "http://unitsofmeasure.org",
+  "http://unstats.un.org/unsd/methods/m49/m49.htm",
+  "http://varnomen.hgvs.org",
+  "http://www.nlm.nih.gov/research/umls/rxnorm",
+  "https://www.usps.com/",
+  "urn:ietf:bcp:13",
+  "urn:ietf:bcp:47",
+  "urn:ietf:rfc:3986",
+  "urn:iso:std:iso:3166",
+  "urn:iso:std:iso:4217",
+  "urn:oid:1.2.36.1.2001.1005.17",
+  "http://www.ama-assn.org/go/cpt",
+]);
+
+export function serverSideSystem(system: string): boolean {
+  return SERVER_SIDE_SYSTEMS.has(system);
+}
+
+/**
+ * Code checks for the systems fhirSpecialSystems.ts decides locally (BCP-47 language tags, BCP-13 MIME types):
+ * an invalid code is Unknown_Code_in (error) with the reason as information; a valid one is ok (a display is not
+ * checked — the server's display rules for these systems are not reproduced). null = not decidable here.
+ */
+export function judgeSpecialSystem(system: string, code: string, display: string | null): CodeCheck | null {
+  let reason: string | null = null;
+  if (system === BCP47) {
+    const r = judgeLanguageTag(code);
+    if (r === null) return null;
+    if (!r.valid) reason = r.reason;
+  } else if (system === BCP13) {
+    if (["xml", "json", "ttl"].includes(code)) return null; // R4 mimetypes value set quirk: decided by the binding
+    if (!mimeTypeShapeOk(code)) reason = `The code '${code}' is not a valid MIME type (type/subtype)`;
+  } else if (system === RFC3986) {
+    // URICodeSystem: the display is the Coding's own display → never a display issue
+    return isAbsoluteUrl(code) ? { status: "silent" } : { status: "invalid-code", severity: "error", message: `Unknown code '${code}' in the CodeSystem '${system}'` };
+  } else return null;
+  if (reason !== null) {
+    return { status: "invalid-code", severity: "error", message: `Unknown code '${code}' in the CodeSystem '${system}'`, extra: [{ severity: "information", message: reason }] };
+  }
+  return noLocalDisplay(system, display);
 }
 
 /**
@@ -463,6 +540,15 @@ export class DbValidatorResolver implements ValidatorResolver {
     }
   }
 
+  /** A CodeSystem with this canonical in the closure (binding → CodeSystem URL); false on DB trouble (no invented error). */
+  async codeSystemExists(url: string): Promise<boolean> {
+    try {
+      return await terminology.codeSystemInClosure(url.split("|")[0], this.pkg);
+    } catch {
+      return false;
+    }
+  }
+
   async codeSystemLocal(system: string): Promise<boolean> {
     if (txKnownSystem(system)) return false; // validated server-side by the HL7 validator
     try {
@@ -515,16 +601,19 @@ export class DbValidatorResolver implements ValidatorResolver {
     if (system === ICD10_WHO) return this.checkIcd10Who(code, display);
     if (system === RXNORM) return this.checkRxnorm(code, display);
     if (SILENT_SYSTEMS.includes(system)) {
+      const special = judgeSpecialSystem(system, code, display);
+      if (special) return special;
       // A terminology not held locally (WHO ATC): the bundled verdicts of the validator's
       // reference server (txCodeTables.ts, ISSUES_v15.2) for the codes the installed data carries.
       const tx = txCodeVerdict(system, code);
       if (tx) return this.checkTxTable(system, code, display, tx);
-      return noLocalDisplay(system, display);
-    }
-    if (system.startsWith("urn:oid:") || system.startsWith("urn:uuid:")) {
-      return noLocalDisplay(system, display);
+      return { ...noLocalDisplay(system, display), undecided: true };
     }
     let idx = await terminology.loadCodeSystemIndex(system, this.pkg, true);
+    // REVIEW_port_2 G10: a urn:oid / urn:uuid CodeSystem in the closure is judged like any other (ValueSetValidator.java:654)
+    if ((system.startsWith("urn:oid:") || system.startsWith("urn:uuid:")) && !(idx && idx.url && idx.url.split("|")[0] === system)) {
+      return noLocalDisplay(system, display);
+    }
     // The terminology loader falls back to a CodeSystem with the same id (for
     // bare ids from tool callers); a Coding.system must match the canonical
     // exactly — e.g. a ValueSet URL is not its CodeSystem (HL7:
@@ -556,13 +645,13 @@ export class DbValidatorResolver implements ValidatorResolver {
       if (code.startsWith("LG") || !loincNonTermCheckDigitValid(code) || (await terminology.loincOtherCodesHeld())) {
         return judgeLoincOther(code, display, await terminology.loincOtherCode(code), strict);
       }
-      return noLocalDisplay(system, display);
+      return { ...noLocalDisplay(system, display), undecided: true };
     }
     if (kind === "snomed") {
       if (!snomedCheckDigitValid(code)) {
         return { status: "invalid-code", severity: "error", message: `Unknown code '${code}' in the CodeSystem '${system}' (invalid SCTID format / check digit)` };
       }
-      if (!(await terminology.externalSystemHeld(system))) return noLocalDisplay(system, display);
+      if (!(await terminology.externalSystemHeld(system))) return { ...noLocalDisplay(system, display), undecided: true };
       const strict = snomedStrict(await terminology.snomedEdition(), version);
       // A Coding.version naming another edition (US, NL, …) only relaxes the
       // unknown-code verdict (snomedStrict); displays of International concepts
@@ -573,7 +662,7 @@ export class DbValidatorResolver implements ValidatorResolver {
       if (!loincCheckDigitValid(code)) {
         return { status: "invalid-code", severity: "error", message: `Unknown code '${code}' in the CodeSystem '${system}' (invalid LOINC format / check digit)` };
       }
-      if (!(await terminology.externalSystemHeld(system))) return noLocalDisplay(system, display);
+      if (!(await terminology.externalSystemHeld(system))) return { ...noLocalDisplay(system, display), undecided: true };
       const held = await terminology.externalDisplays(system, code);
       if (!held) {
         // tx.fhir.org: Unknown_Code_in_Version. Only an error when the local
@@ -589,7 +678,7 @@ export class DbValidatorResolver implements ValidatorResolver {
       return { status: "ok" };
     }
     if (system === ICD10CM) {
-      if (!(await terminology.icd10cmHeld())) return noLocalDisplay(system, display);
+      if (!(await terminology.icd10cmHeld())) return { ...noLocalDisplay(system, display), undecided: true };
       const held = await terminology.externalDisplays(system, code);
       if (!held) {
         const edition = await terminology.icd10cmEdition();
@@ -624,7 +713,10 @@ export class DbValidatorResolver implements ValidatorResolver {
       }
       return { status: "ok" };
     }
-    if (idx) return noLocalDisplay(system, display);
+    if (idx) return { ...noLocalDisplay(system, display), undecided: true };
+    // REVIEW_port_2 G1: a system the validator's terminology server answers but that is not held here is undecided
+    // (an error there for a bad code), not UNKNOWN_CODESYSTEM
+    if (serverSideSystem(system)) return { ...noLocalDisplay(system, display), undecided: true };
     return { status: "unknown-system" };
   }
 
