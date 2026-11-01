@@ -244,7 +244,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.35.0 (v20.2, with source_text): advisory content findings inform only — severity warning with advisory_from, valid / entries[].valid only from validator + blocking errors, no remove suggestions / patches; G-UNGROUNDED blocking only on structured numbers / dates / identifiers; unconfirmed-as-confirmed advisory. Official requests carry validationTimeout (a timed-out validation → unverified, checked_fully false).
   // 1.36.0 (parity v3 fhirpath): invariants evaluated as validator_cli does — FHIRPathExpressionFixer rewrites (txt-2 → htmlChecks2, ref-1 / bld-8 guards …), Java string functions / ofType / as / htmlChecks, %sct / %`vs-…` constants.
   // 1.37.0 (parity v3 slicing): InstanceValidator sliceMatches / matchSlice / checkCardinalities port (max 0 → empty, type / profile / exists / position clauses, unsupported patterns → SLICING_CANNOT_BE_EVALUATED, NotSlice with reasons, open-slicing hint, ordered slices, slice cardinality wording, versioned profile urls), multiple type profiles (NoMatch / MultipleMatches), entry multiple profiles (NO_MATCH / MULTIPLE_MATCHES), reference target choice (REF_MultipleMatches), unresolved entry profile errors.
-  fhir_validate_bundle: "1.37.0",
+  // 1.38.0 (parity v3 msgids-structure): InstanceValidator.checkPrimitive / checkIdentifier / checkAttachment / extension url + modifier rules ported (HL7 wording; type regex check).
+  fhir_validate_bundle: "1.38.0",
   // 1.6.2: the binding-aware suggestions above (ISSUES_v10 A) also apply to single-resource validation.
   // 1.7.0: the validator v13 rules above (fhir_validate_bundle 1.9.0).
   // 1.8.0 (ISSUES_v15): the record checks of fhir_validate_bundle 1.11.0 on the resource (data.issues, data.record_checks).
@@ -280,7 +281,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.32.0 (v20.2): as fhir_validate_bundle 1.35.0.
   // 1.33.0 (parity v3 fhirpath): invariant evaluation as fhir_validate_bundle 1.36.0.
   // 1.34.0 (parity v3 slicing): as fhir_validate_bundle 1.37.0.
-  fhir_validate_resource: "1.34.0",
+  // 1.35.0: validation as fhir_validate_bundle 1.38.0 (parity v3 msgids-structure).
+  fhir_validate_resource: "1.35.0",
   // 1.2.0 (all below): provenance.resolved_by / closure_versions; canonical arguments resolve to their
   // owning package when package_id is omitted; "|version" honoured; list/search: all_packages + zero-hit hint;
   // NO_DEFAULT_IG instead of an arbitrary package when no default IG is set.

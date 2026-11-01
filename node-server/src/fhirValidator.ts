@@ -609,6 +609,74 @@ function javaIsAbsoluteUrl(ref: string): boolean {
 function allowUnknownExtension(url: string): boolean {
   return url.includes("nema.org") || url.startsWith("http://hl7.org/fhir/tools/StructureDefinition/") || url === "http://hl7.org/fhir/StructureDefinition/structuredefinition-expression";
 }
+/**
+ * Utilities.decodeBase64(value, false) = ASCII whitespace dropped, then java.util.Base64.getDecoder().decode — ported
+ * with the JDK decoder's exception messages (TYPE_SPECIFIC_CHECKS_DT_ATT_B64_DECODE_FAIL shows them).
+ */
+function javaDecodeBase64(value: string): { bytes: Buffer } | { error: string } {
+  const src: number[] = [];
+  for (const ch of value) {
+    const c = ch.codePointAt(0)!;
+    if (c === 0x20 || (c >= 0x09 && c <= 0x0d)) continue;
+    src.push(c < 0x80 ? c : 0x3f);
+  }
+  const sl = src.length;
+  if (sl === 0) return { bytes: Buffer.alloc(0) };
+  if (sl < 2) return { error: "Input byte[] should at least have 2 bytes for base64 bytes" };
+  const A = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  const val = (b: number): number => (b === 0x3d ? -2 : A.indexOf(String.fromCharCode(b)));
+  const out: number[] = [];
+  let sp = 0;
+  let bits = 0;
+  let shiftto = 18;
+  while (sp < sl) {
+    const raw = src[sp++];
+    const b = val(raw);
+    if (b < 0) {
+      if (b === -2) {
+        if ((shiftto === 6 && (sp === sl || src[sp++] !== 0x3d)) || shiftto === 18) return { error: "Input byte array has wrong 4-byte ending unit" };
+        break;
+      }
+      return { error: `Illegal base64 character ${raw.toString(16)}` };
+    }
+    bits |= b << shiftto;
+    shiftto -= 6;
+    if (shiftto < 0) {
+      out.push((bits >> 16) & 0xff, (bits >> 8) & 0xff, bits & 0xff);
+      shiftto = 18;
+      bits = 0;
+    }
+  }
+  if (shiftto === 6) out.push((bits >> 16) & 0xff);
+  else if (shiftto === 0) out.push((bits >> 16) & 0xff, (bits >> 8) & 0xff);
+  else if (shiftto === 12) return { error: "Last unit does not have enough valid bits" };
+  if (sp < sl) return { error: `Input byte array has incorrect ending byte at ${sp}` };
+  return { bytes: Buffer.from(out) };
+}
+/** minValueDate / minValueDateTime / minValueInstant of an element definition (checkMinMaxValueDate[Time]). */
+function dateMin(el: Record<string, any>): string | null {
+  for (const k of ["minValueDateTime", "minValueDate", "minValueInstant"]) if (typeof el[k] === "string") return el[k];
+  return null;
+}
+/** The instant a FHIR date / dateTime starts at (DateTimeType value), for before / after comparisons. */
+function dateStartMs(v: string): number {
+  const m = /^(-?\d{4})(?:-(\d{2}))?(?:-(\d{2}))?(T.*)?$/.exec(v);
+  if (!m) return NaN;
+  const base = `${m[1]}-${m[2] ?? "01"}-${m[3] ?? "01"}`;
+  const t = m[4] ? (/(Z|[+-]\d{2}:\d{2})$/.test(m[4]) ? m[4] : m[4] + "Z") : "T00:00:00Z";
+  return Date.parse(base + t);
+}
+/**
+ * checkMinMaxValueDate / checkMinMaxValueDateTime: the min rule (min.after(v) → TYPE_SPECIFIC_CHECKS_DT_DT_LT). Their
+ * max rules test `max.hasValue() || !max.before(v)`, which always passes for a stated max — ported as such (no check).
+ */
+function dateMinOk(el: Record<string, any>, v: string): boolean {
+  const min = dateMin(el);
+  if (min === null) return true;
+  const a = dateStartMs(min);
+  const b = dateStartMs(v);
+  return Number.isNaN(a) || Number.isNaN(b) || !(a > b);
+}
 /** InstanceValidator.isAbsolute (Identifier value for urn:ietf:rfc:3986) */
 function javaIsAbsolute(uri: string): boolean {
   if (!uri.includes(":")) return false;
@@ -3442,6 +3510,7 @@ export class InstanceValidator {
       }
       // checkMinMaxValueDateTime: an unreadable date/time is TYPE_SPECIFIC_CHECKS_DT_DATETIME_VALID
       if (dok) dok = rule(validCalendarDate(s), `Not a valid date/time format: '${s}'`) && dok;
+      if (dok) dok = rule(dateMinOk(el, s), `date/time value is less than permitted minimum value of ${dateMin(el)}`) && dok;
       dok = lengthOk() && dok;
       if (dok && (coreProfile || dateRules === null || dateRules.includes("year-valid"))) {
         warning(yearIsValid(s), `The value '${s}' is outside the range of reasonable years - check for data entry error`);
@@ -3450,11 +3519,17 @@ export class InstanceValidator {
     }
     if (typeCode === "time") {
       ok = rule(/^([01][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)$/.test(s), `The time '${s}' is not a valid time`) && ok;
+      if (ok) {
+        // TYPE_SPECIFIC_CHECKS_DT_DT_GT / _LT (maxValueTime / minValueTime)
+        if (typeof el.maxValueTime === "string") ok = rule(!(el.maxValueTime < s), `date/time value is greater than permitted maximum value of ${el.maxValueTime}`) && ok;
+        if (typeof el.minValueTime === "string") ok = rule(!(el.minValueTime > s), `date/time value is less than permitted minimum value of ${el.minValueTime}`) && ok;
+      }
     }
     if (typeCode === "date") {
       let dok = rule(new RegExp(`^${YEAR}(-${MONTH}(-${DAY})?)?$`).test(s), `Not a valid date format: '${s}'`);
       // checkMinMaxValueDate: an unreadable date is TYPE_SPECIFIC_CHECKS_DT_DATE_VALID
       if (dok) dok = rule(validCalendarDate(s), `Not a valid date format: '${s}'`) && dok;
+      if (dok) dok = rule(dateMinOk(el, s), `date/time value is less than permitted minimum value of ${dateMin(el)}`) && dok;
       dok = lengthOk() && dok;
       if (dok && (coreProfile || (dateRules ?? "").includes("year-valid"))) {
         warning(yearIsValid(s), `The value '${s}' is outside the range of reasonable years - check for data entry error`);
@@ -3489,6 +3564,7 @@ export class InstanceValidator {
     if (typeCode === "instant") {
       let dok = rule(INSTANT_JAVA_RE.test(s), `Not a valid instant format: '${s}'`);
       if (dok) dok = rule(validCalendarDate(s.replace(/^-/, "")), `Not a valid date/time format: '${s}'`) && dok;
+      if (dok) dok = rule(dateMinOk(el, s), `date/time value is less than permitted minimum value of ${dateMin(el)}`) && dok;
       if (dok && (coreProfile || (dateRules ?? "").includes("year-valid"))) {
         warning(yearIsValid(s), `The value '${s}' is outside the range of reasonable years - check for data entry error`);
       }
@@ -4069,11 +4145,22 @@ export class InstanceValidator {
         if (size < 0) err(`Stated Attachment Size ${sz} is not valid`);
       } else err(`Stated Attachment Size ${sz} is not valid`);
     }
-    if (hash64 !== null) hash = Buffer.from(hash64, "base64");
+    if (hash64 !== null) {
+      const h = javaDecodeBase64(hash64);
+      if ("error" in h) err(`The base64 content in the hash element is not valid base64: ${h.error}`);
+      else hash = h.bytes;
+    }
     const maxExt = extString(el, "http://hl7.org/fhir/StructureDefinition/maxSize");
     if (maxExt !== null && /^-?\d+$/.test(maxExt)) max = Number(maxExt);
     const data = typeof v.data === "string" ? v.data : null;
-    const bytes = data !== null && (size >= 0 || max >= 0 || hash !== null) && isBase64Valid(data) ? Buffer.from(data, "base64") : null;
+    // getAttachmentContent: data that passes Base64Util.isValidBase64 is decoded (its own base64Binary check reports
+    // the rest); a decoder failure is TYPE_SPECIFIC_CHECKS_DT_ATT_B64_DECODE_FAIL and leaves no content to compare
+    let bytes: Buffer | null = null;
+    if (data !== null && isBase64Valid(data)) {
+      const d = javaDecodeBase64(data);
+      if ("error" in d) err(`The base64 content in the data element is not valid base64: ${d.error}`);
+      else bytes = d.bytes;
+    }
     if (!(v.data !== undefined || v.url !== undefined || v.contentType !== undefined || v.language !== undefined)) {
       issues.push({ severity: "warning", path, code: "structure", message: "Attachments have data and/or url, or else SHOULD have either contentType and/or language" });
     }

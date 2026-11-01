@@ -78,21 +78,21 @@
  "summary": {
   "all": {
    "total": 1368,
-   "implemented": 139,
-   "partial": 21,
-   "missing": 1208
+   "implemented": 179,
+   "partial": 20,
+   "missing": 1169
   },
   "reportable": {
    "total": 1265,
-   "implemented": 138,
-   "partial": 20,
-   "missing": 1107
+   "implemented": 178,
+   "partial": 19,
+   "missing": 1068
   },
   "emittedAsError": {
    "total": 737,
-   "implemented": 90,
-   "partial": 11,
-   "missing": 636
+   "implemented": 121,
+   "partial": 10,
+   "missing": 606
   },
   "byArea": {
    "bundle": {
@@ -121,9 +121,9 @@
    },
    "structure": {
     "total": 374,
-    "implemented": 70,
-    "partial": 6,
-    "missing": 298
+    "implemented": 110,
+    "partial": 5,
+    "missing": 259
    },
    "terminology": {
     "total": 170,
@@ -195,9 +195,9 @@
    },
    "InstanceValidator": {
     "total": 415,
-    "implemented": 79,
-    "partial": 5,
-    "missing": 331
+    "implemented": 119,
+    "partial": 4,
+    "missing": 292
    },
    "JsonParser": {
     "total": 38,
@@ -5998,9 +5998,11 @@
      "severity": "error"
     }
    ],
-   "status": "missing",
+   "status": "implemented",
    "kind": "issue",
-   "ts": [],
+   "ts": [
+    "src/fhirValidator.ts#validateItemAgainst"
+   ],
    "freq": 3,
    "freqErrors": 3
   },
@@ -6016,9 +6018,11 @@
      "severity": "error"
     }
    ],
-   "status": "missing",
+   "status": "implemented",
    "kind": "issue",
-   "ts": [],
+   "ts": [
+    "src/fhirValidator.ts#validateItemAgainst"
+   ],
    "freq": 1,
    "freqErrors": 1
   },
@@ -6110,9 +6114,11 @@
      "severity": "error"
     }
    ],
-   "status": "missing",
+   "status": "implemented",
    "kind": "issue",
-   "ts": [],
+   "ts": [
+    "src/fhirValidator.ts#extensionDefinition"
+   ],
    "freq": 1,
    "freqErrors": 1
   },
@@ -6166,9 +6172,11 @@
      "severity": "error"
     }
    ],
-   "status": "missing",
+   "status": "implemented",
    "kind": "issue",
-   "ts": [],
+   "ts": [
+    "src/fhirValidator.ts#extensionDefinition"
+   ],
    "freq": 3,
    "freqErrors": 3
   },
@@ -6989,7 +6997,8 @@
    "kind": "exception",
    "ts": [
     "src/admin/adminApp.ts#adminHandler",
-    "src/fhirValidator.ts#checkPrimitive",
+    "src/fhirValidator.ts#checkAttachment",
+    "src/fhirValidator.ts#checkPrimitiveValue",
     "src/igBlueprint/form.ts#bundleForm"
    ],
    "freq": 0,
@@ -11177,9 +11186,11 @@
      "severity": "error"
     }
    ],
-   "status": "missing",
+   "status": "implemented",
    "kind": "issue",
-   "ts": [],
+   "ts": [
+    "src/fhirValidator.ts#checkPrimitiveValue"
+   ],
    "freq": 1,
    "freqErrors": 1
   },
@@ -11195,9 +11206,11 @@
      "severity": "error"
     }
    ],
-   "status": "missing",
+   "status": "implemented",
    "kind": "issue",
-   "ts": [],
+   "ts": [
+    "src/fhirValidator.ts#checkPrimitiveValue"
+   ],
    "freq": 1,
    "freqErrors": 1
   },
@@ -14374,7 +14387,7 @@
    "status": "implemented",
    "kind": "issue",
    "ts": [
-    "src/fhirValidator.ts#checkPrimitive"
+    "src/fhirValidator.ts#checkPrimitiveValue"
    ],
    "freq": 12,
    "freqErrors": 12
@@ -14391,9 +14404,11 @@
      "severity": "error"
     }
    ],
-   "status": "missing",
+   "status": "implemented",
    "kind": "issue",
-   "ts": [],
+   "ts": [
+    "src/fhirValidator.ts#checkPrimitiveValue"
+   ],
    "freq": 6,
    "freqErrors": 6
   },
@@ -14611,7 +14626,8 @@
    "kind": "issue",
    "ts": [
     "src/admin/adminApp.ts#adminHandler",
-    "src/fhirValidator.ts#checkPrimitive",
+    "src/fhirValidator.ts#checkAttachment",
+    "src/fhirValidator.ts#checkPrimitiveValue",
     "src/igBlueprint/form.ts#bundleForm"
    ],
    "freq": 2,
@@ -16803,7 +16819,8 @@
    "kind": "issue",
    "ts": [
     "src/admin/adminApp.ts#adminHandler",
-    "src/fhirValidator.ts#checkPrimitive",
+    "src/fhirValidator.ts#checkAttachment",
+    "src/fhirValidator.ts#checkPrimitiveValue",
     "src/igBlueprint/form.ts#bundleForm"
    ],
    "freq": 0,
@@ -18286,9 +18303,11 @@
      "severity": "error"
     }
    ],
-   "status": "missing",
+   "status": "implemented",
    "kind": "issue",
-   "ts": [],
+   "ts": [
+    "src/fhirValidator.ts#checkPrimitiveValue"
+   ],
    "freq": 4,
    "freqErrors": 4
   },
@@ -18327,9 +18346,11 @@
      "severity": "error"
     }
    ],
-   "status": "missing",
+   "status": "implemented",
    "kind": "issue",
-   "ts": [],
+   "ts": [
+    "src/fhirValidator.ts#checkAttachment"
+   ],
    "freq": 5,
    "freqErrors": 5
   },
@@ -18363,9 +18384,11 @@
      "severity": "error"
     }
    ],
-   "status": "missing",
+   "status": "implemented",
    "kind": "issue",
-   "ts": [],
+   "ts": [
+    "src/fhirValidator.ts#checkAttachment"
+   ],
    "freq": 3,
    "freqErrors": 3
   },
@@ -18381,9 +18404,11 @@
      "severity": "warning"
     }
    ],
-   "status": "missing",
+   "status": "implemented",
    "kind": "issue",
-   "ts": [],
+   "ts": [
+    "src/fhirValidator.ts#checkAttachment"
+   ],
    "freq": 6,
    "freqErrors": 0
   },
@@ -18417,9 +18442,11 @@
      "severity": "error"
     }
    ],
-   "status": "missing",
+   "status": "implemented",
    "kind": "issue",
-   "ts": [],
+   "ts": [
+    "src/fhirValidator.ts#checkAttachment"
+   ],
    "freq": 7,
    "freqErrors": 7
   },
@@ -18435,9 +18462,11 @@
      "severity": "error"
     }
    ],
-   "status": "missing",
+   "status": "implemented",
    "kind": "issue",
-   "ts": [],
+   "ts": [
+    "src/fhirValidator.ts#checkAttachment"
+   ],
    "freq": 0,
    "freqErrors": 0
   },
@@ -18453,9 +18482,11 @@
      "severity": "error"
     }
    ],
-   "status": "missing",
+   "status": "implemented",
    "kind": "issue",
-   "ts": [],
+   "ts": [
+    "src/fhirValidator.ts#checkAttachment"
+   ],
    "freq": 1,
    "freqErrors": 1
   },
@@ -18543,9 +18574,11 @@
      "severity": "warning"
     }
    ],
-   "status": "missing",
+   "status": "implemented",
    "kind": "issue",
-   "ts": [],
+   "ts": [
+    "src/fhirValidator.ts#checkPrimitiveValue"
+   ],
    "freq": 10,
    "freqErrors": 0
   },
@@ -18561,9 +18594,11 @@
      "severity": "error"
     }
    ],
-   "status": "missing",
+   "status": "partial",
    "kind": "issue",
-   "ts": [],
+   "ts": [
+    "src/fhirValidator.ts#checkAttachment"
+   ],
    "freq": 0,
    "freqErrors": 0
   },
@@ -18709,9 +18744,12 @@
      "severity": "warning"
     }
    ],
-   "status": "missing",
+   "status": "implemented",
    "kind": "issue",
-   "ts": [],
+   "ts": [
+    "src/fhirValidator.ts#checkMinMaxValue",
+    "src/fhirValidator.ts#checkPrimitiveValue"
+   ],
    "freq": 1,
    "freqErrors": 1
   },
@@ -18737,9 +18775,12 @@
      "severity": "error"
     }
    ],
-   "status": "missing",
+   "status": "implemented",
    "kind": "issue",
-   "ts": [],
+   "ts": [
+    "src/fhirValidator.ts#checkMinMaxValue",
+    "src/fhirValidator.ts#checkPrimitiveValue"
+   ],
    "freq": 2,
    "freqErrors": 2
   },
@@ -18755,9 +18796,11 @@
      "severity": "error"
     }
    ],
-   "status": "missing",
+   "status": "implemented",
    "kind": "issue",
-   "ts": [],
+   "ts": [
+    "src/fhirValidator.ts#checkIdentifier"
+   ],
    "freq": 1,
    "freqErrors": 1
   },
@@ -18773,9 +18816,11 @@
      "severity": "error"
     }
    ],
-   "status": "missing",
+   "status": "implemented",
    "kind": "issue",
-   "ts": [],
+   "ts": [
+    "src/fhirValidator.ts#checkIdentifier"
+   ],
    "freq": 0,
    "freqErrors": 0
   },
@@ -18791,9 +18836,11 @@
      "severity": "warning"
     }
    ],
-   "status": "missing",
+   "status": "implemented",
    "kind": "issue",
-   "ts": [],
+   "ts": [
+    "src/fhirValidator.ts#checkIdentifier"
+   ],
    "freq": 5,
    "freqErrors": 0
   },
@@ -18809,9 +18856,11 @@
      "severity": "warning"
     }
    ],
-   "status": "missing",
+   "status": "implemented",
    "kind": "issue",
-   "ts": [],
+   "ts": [
+    "src/fhirValidator.ts#checkIdentifier"
+   ],
    "freq": 0,
    "freqErrors": 0
   },
@@ -19498,7 +19547,7 @@
    "status": "implemented",
    "kind": "issue",
    "ts": [
-    "src/fhirValidator.ts#checkPrimitive"
+    "src/fhirValidator.ts#checkPrimitiveValue"
    ],
    "freq": 2,
    "freqErrors": 2
@@ -20914,7 +20963,7 @@
    "status": "implemented",
    "kind": "issue",
    "ts": [
-    "src/fhirValidator.ts#checkPrimitive"
+    "src/fhirValidator.ts#checkPrimitiveValue"
    ],
    "freq": 5,
    "freqErrors": 5
@@ -20934,7 +20983,8 @@
    "status": "implemented",
    "kind": "issue",
    "ts": [
-    "src/fhirValidator.ts#checkPrimitive"
+    "src/fhirValidator.ts#checkPrimitive",
+    "src/fhirValidator.ts#checkPrimitiveValue"
    ],
    "freq": 5,
    "freqErrors": 5
@@ -20954,7 +21004,7 @@
    "status": "implemented",
    "kind": "issue",
    "ts": [
-    "src/fhirValidator.ts#checkPrimitive"
+    "src/fhirValidator.ts#checkPrimitiveValue"
    ],
    "freq": 4,
    "freqErrors": 4
@@ -20971,9 +21021,11 @@
      "severity": "warning"
     }
    ],
-   "status": "missing",
+   "status": "implemented",
    "kind": "issue",
-   "ts": [],
+   "ts": [
+    "src/fhirValidator.ts#checkPrimitiveValue"
+   ],
    "freq": 4,
    "freqErrors": 0
   },
@@ -20992,7 +21044,7 @@
    "status": "implemented",
    "kind": "issue",
    "ts": [
-    "src/fhirValidator.ts#checkPrimitive"
+    "src/fhirValidator.ts#checkPrimitiveValue"
    ],
    "freq": 5,
    "freqErrors": 5
@@ -21012,7 +21064,7 @@
    "status": "implemented",
    "kind": "issue",
    "ts": [
-    "src/fhirValidator.ts#checkPrimitive"
+    "src/fhirValidator.ts#checkPrimitiveValue"
    ],
    "freq": 3,
    "freqErrors": 3
@@ -21037,7 +21089,7 @@
    "status": "implemented",
    "kind": "issue",
    "ts": [
-    "src/fhirValidator.ts#checkPrimitive"
+    "src/fhirValidator.ts#checkPrimitiveValue"
    ],
    "freq": 2,
    "freqErrors": 2
@@ -21062,7 +21114,7 @@
    "status": "implemented",
    "kind": "issue",
    "ts": [
-    "src/fhirValidator.ts#checkPrimitive"
+    "src/fhirValidator.ts#checkPrimitiveValue"
    ],
    "freq": 5,
    "freqErrors": 5
@@ -21079,9 +21131,11 @@
      "severity": "error"
     }
    ],
-   "status": "missing",
+   "status": "implemented",
    "kind": "issue",
-   "ts": [],
+   "ts": [
+    "src/fhirValidator.ts#checkMinMaxValue"
+   ],
    "freq": 1,
    "freqErrors": 1
   },
@@ -21097,9 +21151,11 @@
      "severity": "error"
     }
    ],
-   "status": "missing",
+   "status": "implemented",
    "kind": "issue",
-   "ts": [],
+   "ts": [
+    "src/fhirValidator.ts#checkMinMaxValue"
+   ],
    "freq": 0,
    "freqErrors": 0
   },
@@ -21115,9 +21171,11 @@
      "severity": "warning"
     }
    ],
-   "status": "missing",
+   "status": "implemented",
    "kind": "issue",
-   "ts": [],
+   "ts": [
+    "src/fhirValidator.ts#checkPrimitiveValue"
+   ],
    "freq": 7,
    "freqErrors": 0
   },
@@ -21136,7 +21194,7 @@
    "status": "implemented",
    "kind": "issue",
    "ts": [
-    "src/fhirValidator.ts#checkPrimitive"
+    "src/fhirValidator.ts#checkPrimitiveValue"
    ],
    "freq": 2,
    "freqErrors": 2
@@ -21153,10 +21211,10 @@
      "severity": "error"
     }
    ],
-   "status": "partial",
+   "status": "implemented",
    "kind": "issue",
    "ts": [
-    "src/fhirValidator.ts#checkPrimitive"
+    "src/fhirValidator.ts#checkPrimitiveValue"
    ],
    "freq": 9,
    "freqErrors": 9
@@ -21173,9 +21231,11 @@
      "severity": "error"
     }
    ],
-   "status": "missing",
+   "status": "implemented",
    "kind": "issue",
-   "ts": [],
+   "ts": [
+    "src/fhirValidator.ts#checkIdentifier"
+   ],
    "freq": 1,
    "freqErrors": 1
   },
@@ -21212,7 +21272,7 @@
    "status": "implemented",
    "kind": "issue",
    "ts": [
-    "src/fhirValidator.ts#checkPrimitive"
+    "src/fhirValidator.ts#checkPrimitiveValue"
    ],
    "freq": 0,
    "freqErrors": 0
@@ -21229,9 +21289,11 @@
      "severity": "error"
     }
    ],
-   "status": "missing",
+   "status": "implemented",
    "kind": "issue",
-   "ts": [],
+   "ts": [
+    "src/fhirValidator.ts#checkMinMaxValue"
+   ],
    "freq": 0,
    "freqErrors": 0
   },
@@ -21247,9 +21309,11 @@
      "severity": "error"
     }
    ],
-   "status": "missing",
+   "status": "implemented",
    "kind": "issue",
-   "ts": [],
+   "ts": [
+    "src/fhirValidator.ts#checkMinMaxValue"
+   ],
    "freq": 0,
    "freqErrors": 0
   },
@@ -21265,9 +21329,11 @@
      "severity": "error"
     }
    ],
-   "status": "missing",
+   "status": "implemented",
    "kind": "issue",
-   "ts": [],
+   "ts": [
+    "src/fhirValidator.ts#checkPrimitiveValue"
+   ],
    "freq": 1,
    "freqErrors": 1
   },
@@ -21283,9 +21349,11 @@
      "severity": "error"
     }
    ],
-   "status": "missing",
+   "status": "implemented",
    "kind": "issue",
-   "ts": [],
+   "ts": [
+    "src/fhirValidator.ts#checkPrimitiveValue"
+   ],
    "freq": 1,
    "freqErrors": 1
   },
@@ -21304,7 +21372,7 @@
    "status": "implemented",
    "kind": "issue",
    "ts": [
-    "src/fhirValidator.ts#checkPrimitive"
+    "src/fhirValidator.ts#checkPrimitiveValue"
    ],
    "freq": 3,
    "freqErrors": 3
@@ -21321,9 +21389,11 @@
      "severity": "error"
     }
    ],
-   "status": "missing",
+   "status": "implemented",
    "kind": "issue",
-   "ts": [],
+   "ts": [
+    "src/fhirValidator.ts#checkPrimitiveValue"
+   ],
    "freq": 2,
    "freqErrors": 2
   },
@@ -21362,7 +21432,8 @@
    "status": "implemented",
    "kind": "issue",
    "ts": [
-    "src/fhirValidator.ts#checkPrimitive"
+    "src/fhirValidator.ts#checkPrimitiveValue",
+    "src/fhirValidator.ts#lengthOk"
    ],
    "freq": 3,
    "freqErrors": 3
@@ -21379,10 +21450,10 @@
      "severity": "error"
     }
    ],
-   "status": "partial",
+   "status": "implemented",
    "kind": "issue",
    "ts": [
-    "src/fhirValidator.ts#checkPrimitive"
+    "src/fhirValidator.ts#checkPrimitiveValue"
    ],
    "freq": 5,
    "freqErrors": 5
@@ -21399,9 +21470,11 @@
      "severity": "error"
     }
    ],
-   "status": "missing",
+   "status": "implemented",
    "kind": "issue",
-   "ts": [],
+   "ts": [
+    "src/fhirValidator.ts#checkPrimitiveValue"
+   ],
    "freq": 2,
    "freqErrors": 2
   },
@@ -21417,9 +21490,11 @@
      "severity": "error"
     }
    ],
-   "status": "missing",
+   "status": "implemented",
    "kind": "issue",
-   "ts": [],
+   "ts": [
+    "src/fhirValidator.ts#checkPrimitiveValue"
+   ],
    "freq": 9,
    "freqErrors": 9
   },
@@ -21453,9 +21528,11 @@
      "severity": "warning"
     }
    ],
-   "status": "missing",
+   "status": "implemented",
    "kind": "issue",
-   "ts": [],
+   "ts": [
+    "src/fhirValidator.ts#checkPrimitiveValue"
+   ],
    "freq": 0,
    "freqErrors": 0
   },
@@ -21474,7 +21551,8 @@
    "status": "implemented",
    "kind": "issue",
    "ts": [
-    "src/fhirValidator.ts#checkPrimitive"
+    "src/fhirValidator.ts#checkPrimitiveValue",
+    "src/fhirValidator.ts#lengthOk"
    ],
    "freq": 1,
    "freqErrors": 1
@@ -21494,7 +21572,7 @@
    "status": "implemented",
    "kind": "issue",
    "ts": [
-    "src/fhirValidator.ts#checkPrimitive"
+    "src/fhirValidator.ts#checkPrimitiveValue"
    ],
    "freq": 1,
    "freqErrors": 0
@@ -21511,9 +21589,11 @@
      "severity": "warning"
     }
    ],
-   "status": "missing",
+   "status": "implemented",
    "kind": "issue",
-   "ts": [],
+   "ts": [
+    "src/fhirValidator.ts#checkPrimitiveValue"
+   ],
    "freq": 1,
    "freqErrors": 0
   },
@@ -21529,9 +21609,11 @@
      "severity": "error"
     }
    ],
-   "status": "missing",
+   "status": "implemented",
    "kind": "issue",
-   "ts": [],
+   "ts": [
+    "src/fhirValidator.ts#checkPrimitiveValue"
+   ],
    "freq": 2,
    "freqErrors": 2
   },
@@ -21568,7 +21650,8 @@
    "status": "implemented",
    "kind": "issue",
    "ts": [
-    "src/fhirUriRules.ts#urnSyntaxIssue"
+    "src/fhirUriRules.ts#urnSyntaxIssue",
+    "src/fhirValidator.ts#checkPrimitiveValue"
    ],
    "freq": 1,
    "freqErrors": 1
@@ -21588,7 +21671,8 @@
    "status": "implemented",
    "kind": "issue",
    "ts": [
-    "src/fhirUriRules.ts#urnSyntaxIssue"
+    "src/fhirUriRules.ts#urnSyntaxIssue",
+    "src/fhirValidator.ts#checkPrimitiveValue"
    ],
    "freq": 0,
    "freqErrors": 0
@@ -21608,7 +21692,7 @@
    "status": "implemented",
    "kind": "issue",
    "ts": [
-    "src/fhirValidator.ts#checkPrimitive"
+    "src/fhirValidator.ts#checkPrimitiveValue"
    ],
    "freq": 2,
    "freqErrors": 2
@@ -21655,9 +21739,11 @@
      "severity": "error"
     }
    ],
-   "status": "missing",
+   "status": "implemented",
    "kind": "issue",
-   "ts": [],
+   "ts": [
+    "src/fhirValidator.ts#checkPrimitiveValue"
+   ],
    "freq": 0,
    "freqErrors": 0
   },
@@ -21882,9 +21968,11 @@
      "severity": "warning"
     }
    ],
-   "status": "missing",
+   "status": "implemented",
    "kind": "issue",
-   "ts": [],
+   "ts": [
+    "src/fhirValidator.ts#checkPrimitiveValue"
+   ],
    "freq": 3,
    "freqErrors": 0
   },
@@ -25488,7 +25576,7 @@
    "status": "partial",
    "kind": "issue",
    "ts": [
-    "src/fhirValidator.ts#checkPrimitive"
+    "src/fhirValidator.ts#checkPrimitiveValue"
    ],
    "freq": 0,
    "freqErrors": 0
