@@ -42,12 +42,13 @@ services:
     environment:
       OFFICIAL_VALIDATOR_URLS: "tw.gov.mohw.twcore#1.0.0=http://hl7-validator-twcore:8080,tw.gov.mohw.nhi.pas#1.2.7=http://hl7-validator-pas:8080,hl7.fhir.uv.ips#1.1.0=http://hl7-validator-ips:8080,tw.gov.mohw.nhi.empd#0.2.1=http://hl7-validator-empd:8080"
       OFFICIAL_VALIDATOR_MODE: prefer
-      # validation of large Bundles (suggestions, finalize) needs more than the 640 MB of compose.limits.yaml
-      NODE_OPTIONS: --max-old-space-size=2048
+      # validation of large Bundles (suggestions, finalize) needs more than the 640 MB of compose.limits.yaml; PAS finalize
+      # steadies at ~1.7 GB heap (2 GB OOM-crashed on 2026-11-01)
+      NODE_OPTIONS: --max-old-space-size=3072
       MCP_HEAVY_TOOL_CONCURRENCY: "2"
       MCP_HEAVY_TOOL_QUEUE_TIMEOUT_MS: "240000"
-    mem_limit: 2560m
-    memswap_limit: 2560m
+    mem_limit: 3584m
+    memswap_limit: 3584m
   admin-worker:
     environment:
       OFFICIAL_VALIDATOR_URLS: ""
