@@ -230,3 +230,17 @@ test("tool layer: envelope, provenance, INVALID_ARGUMENT, entrySlicesOf", async 
   };
   assert.deepEqual(entrySlicesOf(sd), [{ name: "composition", min: 1, types: ["Composition"], profiles: ["https://example.org/StructureDefinition/Composition-x"] }]);
 });
+
+test("evaluator decision: a missing target that no fact names is a model omission → missing-target, next fix", async () => {
+  const r = await releaseCheck(
+    base(ONLY_CONDITION, {
+      facts: [{ item: "診斷", attribute: "名稱", value: "糖尿病", quote: "糖尿病" }],
+      targets: [{ resourceType: "Condition" }, { resourceType: "Encounter", what: "就診" }],
+    }),
+    deps(officialOk()),
+  );
+  assert.equal(r.release, false);
+  assert.equal(r.next, "fix");
+  assert.ok(r.reasons.some((x) => x.code === "missing-target" && /Encounter/u.test(x.message)));
+  assert.ok(!r.reasons.some((x) => x.code === "insufficient-information"));
+});

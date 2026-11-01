@@ -11,8 +11,9 @@
  *   4. completeness (v20 R1) — every `targets` item is in the Bundle (count ≥ min), else `missing-target`; without
  *      targets: the Bundle profile's required entry slices are present, and a single-entry Bundle is not accepted when
  *      the facts name several resource types (`suspected-empty-bundle`).
- * `next`: "send" (released) | "insufficient_information" (a target's needed facts are absent from the record or
- * unusable — the case cannot be converted automatically) | "fix" (everything else). Pure over injected deps; never
+ * `next`: "send" (released) | "insufficient_information" (the facts a missing target needs exist but the record makes
+ * all of them unusable — the case cannot be converted automatically) | "fix" (everything else, incl. a missing target no
+ * fact names: a model omission). A case that is not released in the end is reported as not convertible automatically. Pure over injected deps; never
  * logs source_text.
  */
 import { checkFactCoverage, type Fact, type FactCoverageDeps, type FactCoverageResult } from "../factCoverage/coverage.js";
@@ -264,13 +265,15 @@ export async function releaseCheck(input: ReleaseInput, deps: ReleaseDeps): Prom
           needed = Array.isArray(t.facts) && t.facts.length
             ? t.facts.filter((i) => Number.isInteger(i) && i >= 0 && i < cov!.facts.length)
             : cov.facts.filter((f) => t.resourceType && f.resource_types.includes(t.resourceType)).map((f) => f.index);
-          const usable = needed.filter((i) => cov!.facts[i].status === "covered" || cov!.facts[i].status === "missing");
-          if (!usable.length) {
+          // evaluator decision (2026-11-01): a target no fact names is a model omission, not an absent record fact → fix;
+          // insufficient_information only when the facts that name it exist and the record makes all of them unusable
+          const unusable = needed.filter((i) => cov!.facts[i].status === "not_usable");
+          if (needed.length && unusable.length === needed.length) {
             insufficient = true;
             row.insufficient_information = true;
             reasons.push({
               code: "insufficient-information",
-              message: `${targetName(t)}: the record gives no usable fact for it (${needed.length ? `facts ${needed.join(", ")} are unusable or have no record basis` : "no fact names it"}) — the case cannot be converted automatically.`,
+              message: `${targetName(t)}: the record makes every fact for it unusable (facts ${needed.join(", ")}: negated / not established / pending / not applicable) — the case cannot be converted automatically.`,
               count: min - found,
               check: "completeness",
             });
