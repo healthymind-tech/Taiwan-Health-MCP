@@ -15,6 +15,9 @@ Families (all prefixed v3-; deterministic — seeded by source file + family + i
                     value / object member)
   v3-dup-prim-ext   (F7) the same extension twice on a primitive (`_x.extension`): an existing primitive extension
                     duplicated, or data-absent-reason twice beside the value
+  v3-terminology    (REVIEW_port_2 §9) display on a concept without one (G2; "-unverified" when no CodeSystem from
+                    --package-dirs confirms it has none), Coding.version that does not exist (G3), language zh-TW + a zh
+                    designation as display (G4), code lower-cased (G5)
   v3-code-system    (F6) invalid Attachment.contentType (pdf / text / x-nonsense), invalid BCP-47 codes (language
                     elements, bcp:47 codings, Resource.language)
 
@@ -22,6 +25,7 @@ usage:
   python3 -I mutate_v3.py <out_dir> --from-corpus ~/ref/parity_corpus/<ig>   # sources = the corpus' __orig items
   python3 -I mutate_v3.py <out_dir> --examples <dir> --ig <name> --package id#ver [--manifest <existing manifest.jsonl>]
   options: --n <mutants per source and family, default 3> --families v3-narrative,v3-dup-id,...
+           --package-dirs <dir[:dir]> (FHIR package dirs with CodeSystem-*.json; e.g. ~/.fhir/packages)
 Only the standard library is used.
 """
 import argparse, copy, json, os, pathlib, random, sys
@@ -270,7 +274,88 @@ def code_system(root, r, variant):
     return "bcp47-resource-language", fhir_path(pre + ("language",))
 
 
+# ---------------------------------------------------------------- REVIEW_port_2 section 9 (G2 / G3 / G4 / G5)
+# Optional terminology knowledge from FHIR package directories (--package-dirs): CodeSystem concepts with / without a
+# display and their zh designations, so G2 targets concepts that really have no display and G4 uses real designations.
+CS = {}  # system -> {code: (display or None, zh designation or None)}
+
+
+def load_codesystems(dirs):
+    for d in dirs:
+        for f in pathlib.Path(os.path.expanduser(d)).rglob("CodeSystem-*.json"):
+            try:
+                cs = json.loads(f.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            if not isinstance(cs, dict) or cs.get("resourceType") != "CodeSystem" or not cs.get("url"):
+                continue
+            m = CS.setdefault(cs["url"], {})
+
+            def rec(concepts):
+                for c in concepts or []:
+                    if not isinstance(c, dict) or "code" not in c:
+                        continue
+                    zh = next((x.get("value") for x in c.get("designation") or [] if str(x.get("language", "")).lower().startswith("zh")), None)
+                    m.setdefault(c["code"], (c.get("display"), zh))
+                    rec(c.get("concept"))
+
+            rec(cs.get("concept"))
+
+
+def codings(root):
+    return [(p, v) for p, _, _, v in walk(root) if isinstance(v, dict) and isinstance(v.get("system"), str) and isinstance(v.get("code"), str) and not p[-1:] == ("meta",)]
+
+
+def g_terminology(root, r, variant):
+    cods = codings(root)
+    if not cods:
+        return None
+    if variant == "display-on-displayless":  # G2
+        known = [(p, c) for p, c in cods if c["system"] in CS and c["code"] in CS[c["system"]] and not CS[c["system"]][c["code"]][0]]
+        pool = known or [(p, c) for p, c in cods if "display" not in c]
+        if not pool:
+            return None
+        p, c = r.choice(pool)
+        c["display"] = c["code"] if r.random() < 0.5 else "Some display text"
+        return variant + ("" if known else "-unverified"), fhir_path(p + ("display",))
+    if variant == "version-nonexistent":  # G3
+        p, c = r.choice(cods)
+        c["version"] = "999.999.999-nonexistent"
+        return variant, fhir_path(p + ("version",))
+    if variant == "lang-zh-TW-designation":  # G4
+        pre, res = pick_resource(root, r, lambda x: "resourceType" in x)
+        if res is None:
+            return None
+        res["language"] = "zh-TW"
+        inres = [(p, c) for p, c in codings(res)]
+        zh = [(p, c) for p, c in inres if CS.get(c["system"], {}).get(c["code"], (None, None))[1]]
+        if zh:
+            p, c = r.choice(zh)
+            c["display"] = CS[c["system"]][c["code"]][1]
+            return variant, fhir_path(pre + p + ("display",))
+        # no designation known: a CodeableConcept.text in Chinese as the display (or only the language set)
+        cc = [(p, v) for p, _, _, v in in_resource(res) if isinstance(v, dict) and isinstance(v.get("text"), str) and re_cjk(v["text"]) and isinstance(v.get("coding"), list) and v["coding"] and isinstance(v["coding"][0], dict)]
+        if cc:
+            p, v = r.choice(cc)
+            v["coding"][0]["display"] = v["text"]
+            return "lang-zh-TW-text-as-display", fhir_path(pre + p + ("coding", 0, "display"))
+        return "lang-zh-TW-only", fhir_path(pre + ("language",))
+    if variant == "code-lowercase":  # G5
+        pool = [(p, c) for p, c in cods if c["code"] != c["code"].lower()]
+        if not pool:
+            return None
+        p, c = r.choice(pool)
+        c["code"] = c["code"].lower()
+        return variant, fhir_path(p + ("code",))
+    return None
+
+
+def re_cjk(t):
+    return any("\u4e00" <= ch <= "\u9fff" for ch in t)
+
+
 FAMILIES = {
+    "v3-terminology": (g_terminology, ["display-on-displayless", "version-nonexistent", "lang-zh-TW-designation", "code-lowercase"]),
     "v3-absent-value": (absent_value, ["dar-code-like", "dar-any", "dar-with-value"]),
     "v3-narrative": (narrative, list(NARR)),
     "v3-dup-id": (dup_id, ["element-id", "contained-copy", "contained-new"]),
@@ -333,9 +418,11 @@ def main():
     ap.add_argument("--manifest")
     ap.add_argument("--n", type=int, default=3)
     ap.add_argument("--families", default=",".join(FAMILIES))
+    ap.add_argument("--package-dirs", default="", help="colon-separated FHIR package dirs (CodeSystems for v3-terminology)")
     a = ap.parse_args()
     out = pathlib.Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
+    load_codesystems([d for d in a.package_dirs.split(":") if d])
     if a.from_corpus:
         srcs = list(sources_from_corpus(pathlib.Path(os.path.expanduser(a.from_corpus))))
     elif a.examples and a.ig and a.package:
