@@ -332,7 +332,8 @@ services:
     security_opt:
       - no-new-privileges:true
     healthcheck:
-      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8080"]
+      # any HTTP answer means up (bash: the image's sh has no /dev/tcp)
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080"]
       interval: 30s
       timeout: 5s
       start_period: 240s
