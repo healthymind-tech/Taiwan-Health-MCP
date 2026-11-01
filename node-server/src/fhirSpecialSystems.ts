@@ -164,3 +164,28 @@ export function specialSystemMember(system: string, code: string): boolean | und
   if (system === RFC3986) return isAbsoluteUrl(code);
   return undefined;
 }
+
+/**
+ * Code systems the validator's terminology server answers (standalone ValueSetValidator SERVER_SIDE_LIST, tag
+ * 7.0.1:1131, plus the HL7 / THO / SNOMED / DICOM spaces, CPT, ATC and the urn:ietf / urn:iso systems). A system
+ * outside this set that no package holds is unknown to it as well (REVIEW_port_2 G21).
+ */
+export function terminologyServerKnows(system: string): boolean {
+  const listed = [
+    "http://fdasis.nlm.nih.gov",
+    "http://hl7.org/fhir/sid/ndc",
+    "http://loinc.org",
+    "http://snomed.info/sct",
+    "http://unitsofmeasure.org",
+    "http://unstats.un.org/unsd/methods/m49/m49.htm",
+    "http://varnomen.hgvs.org",
+    "http://www.nlm.nih.gov/research/umls/rxnorm",
+    "https://www.usps.com/",
+    "urn:oid:1.2.36.1.2001.1005.17",
+    "http://www.ama-assn.org/go/cpt",
+    "http://www.whocc.no/atc",
+  ];
+  if (listed.includes(system)) return true;
+  if (system.startsWith("urn:ietf:") || system.startsWith("urn:iso:")) return true;
+  return /^https?:\/\/(terminology\.)?hl7\.org\//.test(system) || system.startsWith("http://snomed.info/") || system.startsWith("http://dicom.nema.org/");
+}

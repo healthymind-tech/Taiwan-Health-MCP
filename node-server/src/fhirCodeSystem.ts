@@ -6,6 +6,8 @@
  */
 import { specialSystemMember } from "./fhirSpecialSystems.js";
 
+const STANDARDS_STATUS_EXT = "http://hl7.org/fhir/StructureDefinition/structuredefinition-standards-status";
+
 export const SNOMED_SYSTEM = "http://snomed.info/sct";
 export const LOINC_SYSTEM = "http://loinc.org";
 
@@ -14,8 +16,8 @@ export interface CsConcept {
   display: string | null;
   /** display + every designation value (all languages). */
   designations: string[];
-  /** Designations with their language (for HL7's language-aware display check). */
-  designationList: Array<{ language: string | null; value: string }>;
+  /** Designations with their language (for HL7's language-aware display check); `status` = standards-status extension. */
+  designationList: Array<{ language: string | null; value: string; status?: string }>;
   parents: Set<string>;
   children: Set<string>;
   properties: Map<string, any[]>;
@@ -68,7 +70,8 @@ export function indexCodeSystem(cs: Record<string, any>): CodeSystemIndex {
       for (const d of raw.designation || []) {
         if (d && d.value !== undefined && d.value !== null) {
           c.designations.push(String(d.value));
-          c.designationList.push({ language: typeof d.language === "string" ? d.language : null, value: String(d.value) });
+          const st = Array.isArray(d.extension) ? d.extension.find((e: any) => e && e.url === STANDARDS_STATUS_EXT) : null;
+          c.designationList.push({ language: typeof d.language === "string" ? d.language : null, value: String(d.value), ...(st && typeof st.valueCode === "string" ? { status: st.valueCode } : {}) });
         }
       }
       for (const p of raw.property || []) {
@@ -85,16 +88,18 @@ export function indexCodeSystem(cs: Record<string, any>): CodeSystemIndex {
     }
   };
   visit(cs.concept || [], null);
-  // Hierarchy expressed through properties: `parent` / `child`, or any property
-  // declared with the standard concept-properties#parent / #child URI (THO v3
-  // code systems use `subsumedBy`).
-  const parentProps = new Set(["parent", "subsumedBy"]);
-  const childProps = new Set(["child"]);
+  // Hierarchy expressed through a property: only the first one declared with the URI
+  // http://hl7.org/fhir/concept-properties#parent (CodeSystemUtilities.crossLinkCodeSystem /
+  // getPropertyByUrl, org.hl7.fhir.model tag 7.0.1:688; REVIEW_port_2 G25 — `child` and URI-less
+  // `parent` / `subsumedBy` properties are not hierarchy).
+  const parentProps = new Set<string>();
+  const childProps = new Set<string>();
   for (const pd of cs.property || []) {
     if (!pd || !pd.code) continue;
-    const uri = String(pd.uri || "");
-    if (/concept-properties#parent$/.test(uri)) parentProps.add(pd.code);
-    if (/concept-properties#child$/.test(uri)) childProps.add(pd.code);
+    if (String(pd.uri || "") === "http://hl7.org/fhir/concept-properties#parent") {
+      parentProps.add(pd.code);
+      break;
+    }
   }
   for (const c of [...concepts.values()]) {
     const parents: any[] = [];
@@ -102,9 +107,10 @@ export function indexCodeSystem(cs: Record<string, any>): CodeSystemIndex {
     const kids: any[] = [];
     for (const k of childProps) pushEach(kids, c.properties.get(k) || []);
     for (const p of parents) {
-      if (typeof p === "string" && p !== c.code) {
+      // crossLinkConcepts links to existing concepts only (no stub concept for an undefined parent)
+      if (typeof p === "string" && p !== c.code && concepts.has(p)) {
         c.parents.add(p);
-        ensure(p).children.add(c.code);
+        concepts.get(p)!.children.add(c.code);
       }
     }
     for (const ch of kids) {
@@ -137,8 +143,18 @@ export function findConcept(idx: CodeSystemIndex, code: string): CsConcept | nul
     const k = idx.lower.get(code.toLowerCase());
     if (k) return idx.concepts.get(k) || null;
   }
-  return null;
+  // ValueSetValidator.findCodeInConcept with allAltCodes (standalone tag 7.0.1:1561) /
+  // CodeSystemUtilities.findCodeOrAltCode: an `alternateCode` property value names the concept (REVIEW_port_2 G27)
+  let alt = altCodeIndex.get(idx);
+  if (!alt) {
+    alt = new Map();
+    for (const c of idx.concepts.values()) for (const a of c.properties.get("alternateCode") ?? []) if (typeof a === "string" && !alt.has(a)) alt.set(a, c);
+    altCodeIndex.set(idx, alt);
+  }
+  return alt.get(code) ?? null;
 }
+
+const altCodeIndex = new WeakMap<CodeSystemIndex, Map<string, CsConcept>>();
 
 /**
  * CodeSystemUtilities.isInactive (7.0.1): the first `status` property (inactive / retired) or
@@ -268,7 +284,8 @@ export function applyFilter(idx: CodeSystemIndex, f: ComposeFilter): Set<string>
       }
       return out;
     }
-    if (!root) return new Set();
+    // REVIEW_port_2 G28 (ValueSetExpander 7.0.1:1770 throws): an unknown root concept is not an empty set
+    if (!root) return null;
     if (op === "is-a") return new Set([root.code, ...descendantsOf(idx, root.code)]);
     if (op === "descendent-of") return descendantsOf(idx, root.code);
     if (op === "generalizes") return new Set([root.code, ...ancestorsOf(idx, root.code)]);
@@ -333,6 +350,8 @@ export interface TerminologyDeps {
    * (unsupported property / op, code not held locally).
    */
   externalFilter?(system: string, filter: ComposeFilter, code: string): Promise<boolean | undefined>;
+  /** Neither held here nor answered by the terminology server (G21: membership then undecidable). Optional. */
+  systemUnknown?(system: string): Promise<boolean>;
 }
 
 const MAX_DEPTH = 8;
@@ -382,7 +401,13 @@ async function systemPartContains(
   }
   if (Array.isArray(part.concept) && part.concept.length) {
     // ValueSetValidator.inComponent: an enumerated concept matches exactly (cc.getCode().equals(code))
-    return part.concept.some((c: any) => String(c.code) === code);
+    const listed = part.concept.some((c: any) => String(c.code) === code);
+    // REVIEW_port_2 G19 (VSV:2211 validateCodeInConceptList before the include's concept list): a listed code the
+    // complete CodeSystem does not define is not a member
+    if (listed && cs && cs.content === "complete" && !findConcept(cs, code)) return false;
+    // G21 (VSV:2136-2150): no CodeSystem here nor at the terminology server → not decidable (only a warning there)
+    if (!listed && !cs && system !== null && deps.systemUnknown && (await deps.systemUnknown(system))) return undefined;
+    return listed;
   }
   const filters: ComposeFilter[] = part.filter || [];
   if (filters.length) {
@@ -458,7 +483,8 @@ export async function composeContains(
   expansion?: Record<string, any>,
 ): Promise<boolean | undefined> {
   const includes: any[] = compose.include || [];
-  if (!includes.length && expansion && Array.isArray(expansion.contains)) {
+  // REVIEW_port_2 G26 (VSV:1804): a value set that carries an expansion is checked against it alone
+  if (expansion && Array.isArray(expansion.contains)) {
     const flat: any[] = [];
     const visit = (list: any[]): void => {
       for (const c of list || []) {
@@ -543,6 +569,8 @@ async function expandSystemPart(
   };
   if (Array.isArray(part.concept) && part.concept.length) {
     for (const c of part.concept) {
+      // ValueSetExpander (7.0.1:1714-1723): an enumerated code the complete CodeSystem does not define is not added
+      if (cs && cs.content === "complete" && !findConcept(cs, String(c.code))) continue;
       let display = c.display ?? null;
       if (display === null) {
         if (cs) display = findConcept(cs, String(c.code))?.display ?? null;
@@ -677,8 +705,11 @@ export async function expandComposeWith(
   }
   const excluded = new Set<string>();
   for (const exc of (compose || {}).exclude || []) {
-    const part = await expandPart(exc, deps, Number.MAX_SAFE_INTEGER, depth, seenVs, [], []);
+    const excUnresolved: any[] = [];
+    const part = await expandPart(exc, deps, Number.MAX_SAFE_INTEGER, depth, seenVs, warnings, excUnresolved);
     for (const c of part.codings) excluded.add(`${c.system} ${c.code}`);
+    // G28 (ValueSetExpander 7.0.1:712-726): an exclude that cannot be expanded leaves the expansion incomplete
+    if (!part.complete || excUnresolved.length) unresolved.push(...(excUnresolved.length ? excUnresolved : [{ exclude: exc.system ?? exc.valueSet ?? null, reason: "EXCLUDE_NOT_EXPANDABLE" }]));
   }
   const finalCodings = excluded.size ? codings.filter((c) => !excluded.has(`${c.system} ${c.code}`)) : codings;
   return { codings: finalCodings, total: finalCodings.length, truncated, warnings, unresolved };

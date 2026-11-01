@@ -10,6 +10,8 @@
 
 import { txDisplays } from "./txCodeTables.js";
 import { query } from "./db.js";
+import { pickCanonicalVersion } from "./fhirValidator.js";
+import { terminologyServerKnows } from "./fhirSpecialSystems.js";
 import type { PackageRow } from "./fhirIg.js";
 import {
   type CodeSystemIndex,
@@ -320,14 +322,55 @@ async function loadByCanonical(
  * Coding.system / include.system by its exact canonical only.
  */
 export async function loadCodeSystemIndex(url: string, pkg: PackageRow, exact = false): Promise<CodeSystemIndex | null> {
-  const key = closureKey(pkg) + "|" + url.split("|")[0] + (exact ? "|exact" : "");
+  const bar = url.indexOf("|");
+  const version = bar >= 0 ? url.slice(bar + 1) : "";
+  const key = closureKey(pkg) + "|" + url.split("|")[0] + (version ? `|v=${version}` : "") + (exact ? "|exact" : "");
   const cached = csCache.get(key);
   if (cached !== undefined) return cached;
-  const cs = await loadByCanonical("CodeSystem", url, pkg, exact);
+  // REVIEW_port_2 G3 (ValueSetValidator.resolveCodeSystem(system, version), tag 7.0.1:654): `url|version` is that
+  // version of the CodeSystem — never the closure's other copy
+  const cs = version ? await loadCodeSystemVersion(url.slice(0, bar), version, pkg) : await loadByCanonical("CodeSystem", url, pkg, exact);
   // `not-present` stubs (e.g. SNOMED / LOINC in core) carry no concepts: treat as not held.
   const idx = cs && cs.content !== "supplement" && cs.content !== "not-present" ? indexCodeSystem(cs) : null;
   csCache.set(key, idx, 1 + (idx ? idx.concepts.size : 0));
   return idx;
+}
+
+/**
+ * A CodeSystem of exactly `version` (CanonicalResourceManager version rules, fhirValidator.pickCanonicalVersion):
+ * the closure's copies first, then any installed package (the validator's terminology server serves the other
+ * published versions of HL7 / IG code systems). null when no installed package holds that version.
+ */
+async function loadCodeSystemVersion(canonical: string, version: string, pkg: PackageRow): Promise<Record<string, any> | null> {
+  const [pids, pvers] = closureArrays(pkg);
+  const rows = (
+    await query<{ raw_json: any; in_closure: boolean }>(
+      "SELECT a.raw_json, (dep.pid IS NOT NULL) AS in_closure FROM fhir.artifacts a " +
+        "LEFT JOIN unnest($1::text[], $2::text[]) AS dep(pid, pver) ON a.package_id = dep.pid AND a.package_version = dep.pver " +
+        "WHERE a.resource_type = 'CodeSystem' AND a.canonical_url = $3",
+      [pids, pvers, canonical],
+    )
+  ).rows;
+  const cands = rows
+    .map((r) => ({ json: jsonOf(r.raw_json), inClosure: r.in_closure }))
+    .filter((r): r is { json: Record<string, any>; inClosure: boolean } => !!r.json)
+    .map((r) => ({ ...r, version: typeof r.json.version === "string" ? (r.json.version as string) : null }));
+  const pick = pickCanonicalVersion(cands.filter((c) => c.inClosure), version) ?? pickCanonicalVersion(cands, version);
+  return pick ? pick.json : null;
+}
+
+/** Versions of the CodeSystem `canonical` held in the package closure (UNKNOWN_CODESYSTEM_VERSION's "Valid versions"). */
+export async function codeSystemVersionsInClosure(canonical: string, pkg: PackageRow): Promise<string[]> {
+  const [pids, pvers] = closureArrays(pkg);
+  const rows = (
+    await query<{ v: string | null }>(
+      "SELECT DISTINCT a.raw_json->>'version' AS v FROM fhir.artifacts a " +
+        "JOIN unnest($1::text[], $2::text[]) AS dep(pid, pver) ON a.package_id = dep.pid AND a.package_version = dep.pver " +
+        "WHERE a.resource_type = 'CodeSystem' AND a.canonical_url = $3",
+      [pids, pvers, canonical],
+    )
+  ).rows;
+  return rows.map((r) => r.v).filter((v): v is string => typeof v === "string" && v !== "");
 }
 
 export async function loadValueSet(url: string, pkg: PackageRow): Promise<Record<string, any> | null> {
@@ -967,6 +1010,7 @@ export function dbTerminologyDeps(pkg: PackageRow, exactCodeSystems = false): Te
     lookupExternal: (system, code) => lookupExternalTables(system, code),
     externalSystemHeld: (system) => externalSystemHeld(system),
     externalFilter: (system, f, code) => externalFilterMatches(system, f, code),
+    systemUnknown: async (system) => !terminologyServerKnows(system) && !(await externalSystemHeld(system)),
     snomedSubsumedBy: (code, ancestor) => snomedSubsumedBy(code, ancestor),
     snomedDescendants: async (code, limit) => (await snomedDescendants(code, limit)).map(String),
     snomedDisplays: async (codes) => {

@@ -14,6 +14,7 @@
 import { conceptInactive, expandComposeWith, findConcept, valueSetContains, type CodeSystemIndex, type TerminologyDeps } from "./fhirCodeSystem.js";
 import { judgeHeldCodeSystem } from "./fhirValidationResolver.js";
 import type { CodeCheck } from "./fhirValidator.js";
+import { cmpVersions, versionIsMoreDetailed, versionMatches } from "./fhirCsVersion.js";
 
 export interface TxValidateRequest {
   mode: "valueset" | "codesystem";
@@ -49,30 +50,8 @@ export interface TxValidateResult {
   issues: TxIssue[];
 }
 
-/** Version algorithm: semver wildcards (1.x, 1.0.x) or a plain prefix (VersionUtilities / versionIsMoreDetailed). */
-export function versionMatches(criteria: string, candidate: string): boolean {
-  if (criteria === candidate) return true;
-  if (/(^|\.)[x*](\.|$)/u.test(criteria)) {
-    const c = criteria.split(".");
-    const v = candidate.split(".");
-    for (let i = 0; i < c.length; i++) {
-      if (c[i] === "x" || c[i] === "*") continue;
-      if (c[i] !== v[i]) return false;
-    }
-    return true;
-  }
-  return false;
-}
-
-/** versionIsMoreDetailed(criteria, candidate): the candidate refines the criteria. */
-function moreDetailed(criteria: string | null, candidate: string | null): boolean {
-  if (!criteria || !candidate) return false;
-  // VersionAlgorithm.guessFormat: a semver candidate → SemVer rules (criteria must be semver, wildcards allowed)
-  if (/^\d+\.\d+\.\d+([-+].*)?$/u.test(candidate)) {
-    return /^(\d+|[x*])\.(\d+|[x*])(\.(\d+|[x*]))?([-+].*)?$/u.test(criteria) && versionMatches(criteria, candidate);
-  }
-  return candidate.startsWith(criteria);
-}
+export { versionMatches } from "./fhirCsVersion.js";
+const moreDetailed = versionIsMoreDetailed;
 
 function checkIssue(r: CodeCheck, path: string, lenient: boolean): TxIssue[] {
   const out: TxIssue[] = [];
@@ -453,20 +432,6 @@ async function inferSystem(includes: any[], code: string, deps: TerminologyDeps)
     if (cs && findConcept(cs, code)) found.add(inc.system);
   }
   return found.size === 1 ? [...found][0] : null;
-}
-
-function cmpVersions(a: string, b: string): number {
-  const pa = a.split(/[.-]/u);
-  const pb = b.split(/[.-]/u);
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-    const x = pa[i] ?? "";
-    const y = pb[i] ?? "";
-    const nx = Number(x);
-    const ny = Number(y);
-    const c = x !== "" && y !== "" && !Number.isNaN(nx) && !Number.isNaN(ny) ? nx - ny : x.localeCompare(y);
-    if (c) return c;
-  }
-  return 0;
 }
 
 export interface TxExpandRequest {

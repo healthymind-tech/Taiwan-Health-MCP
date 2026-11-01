@@ -43,6 +43,7 @@ import { UCUM_SYSTEM, checkUcumCode, convertUcum, ucumDisplayIssue, ucumUnknownC
 import { XVER_SOURCE, xverDefinition, xverElementId, xverMatchingUrl, xverStatus, xverVersion } from "./fhirXver.js";
 import { hl7UrlMustResolve, uriResolutionExempt, urlResolveMessage, urnSyntaxIssue } from "./fhirUriRules.js";
 import { codingVersionIssue } from "./fhirExternalTerminology.js";
+import { codingVersionIssues } from "./fhirCsVersion.js";
 import { narrativeControlIssues, parseXhtml, validateXhtml, xhtmlHrefIssues } from "./fhirXhtml.js";
 import { duplicateKeys, numberText } from "./fhirJsonLiterals.js";
 import { dropUnprocessed, JsonSyntaxError, jsonSyntaxIssues, parseFhirJsonText, toPlain, type JObject } from "./fhirJsonParser.js";
@@ -254,6 +255,8 @@ export interface ValidatorResolver {
    * check. Optional: without it URL resolution is not checked.
    */
   definitionExists?(url: string): Promise<boolean>;
+  /** Versions of the CodeSystem `system` held in the closure ([] = not held). Optional (G3 version checks). */
+  codeSystemVersions?(system: string): Promise<string[]>;
   /** Is there a CodeSystem with exactly this canonical (Terminology_TX_ValueSet_NotFound_CS)? Optional. */
   codeSystemExists?(url: string): Promise<boolean>;
   /** (v17.5) Is `version` an installed version of the definition `url`? Absent = not checked (fail-open). */
@@ -300,6 +303,7 @@ const PRIMITIVE_VALUEEXT_MESSAGE = "Primitive types must have a value or must ha
 const CORE = "http://hl7.org/fhir/StructureDefinition/";
 const FHIR_TYPE_EXT = "http://hl7.org/fhir/StructureDefinition/structuredefinition-fhir-type";
 const BEST_PRACTICE_EXT = "http://hl7.org/fhir/StructureDefinition/elementdefinition-bestpractice";
+const MAX_VALUESET_EXT = "http://hl7.org/fhir/StructureDefinition/elementdefinition-maxValueSet";
 
 const YEAR = "([0-9]([0-9]([0-9][1-9]|[1-9]0)|[1-9]00)|[1-9]000)";
 const MONTH = "(0[1-9]|1[0-2])";
@@ -3885,10 +3889,20 @@ export class InstanceValidator {
         hit = true;
         continue;
       }
+      const list: any[] = isObject(a) ? (Array.isArray(a.coding) ? a.coding : [a]) : [];
       for (const [system, code] of codingsOf(a)) {
         if (!code) continue;
         const m = await this.member(valueSet, system, code);
-        if (m === true) hit = true;
+        if (m === true) {
+          // FHIRPathEngine.opMemberOf (services, tag 7.0.1:2792): validateCode(…).isOk() — a wrong display (error) of
+          // the member coding makes it not ok (REVIEW_port_1 F9; the operator form is "any value", not size == 1)
+          const c = list.find((x) => isObject(x) && x.code === code && (x.system ?? null) === system);
+          if (system && c && typeof c.display === "string" && c.display) {
+            const r = await this.codeCheck(system, code, c.display, typeof c.version === "string" ? c.version : null);
+            if (r.status === "invalid-display" && r.severity === "error") continue;
+          }
+          hit = true;
+        }
         // Port of InstanceValidator.sliceMatches → evaluateSlicingExpression
         // (7.0.1): a required-binding discriminator becomes
         // `memberOf('<vs>')`, answered by the terminology layer; a code system
@@ -4579,9 +4593,10 @@ export class InstanceValidator {
    * includes by their concept list, whole-system includes by the CodeSystem. null when undecidable here (imports,
    * filters, an unknown CodeSystem: the HL7 validator reports other messages for those, which are not reproduced).
    */
-  private async inferCodeSystems(vs: Record<string, any>, code: string): Promise<number | null> {
+  private async inferCodeSystems(vs: Record<string, any>, code: string): Promise<Set<string> | null> {
     const includes = isObject(vs.compose) && Array.isArray(vs.compose.include) ? vs.compose.include : [];
     if (!includes.length) return null;
+    // SystemWithVersion: system|version when the include pins one
     const found = new Set<string>();
     for (const inc of includes) {
       if (!isObject(inc)) continue;
@@ -4589,15 +4604,16 @@ export class InstanceValidator {
       const system = typeof inc.system === "string" ? inc.system : null;
       if (!system) return null;
       if (Array.isArray(inc.filter) && inc.filter.length) return null;
+      const key = typeof inc.version === "string" && inc.version ? `${system}|${inc.version}` : system;
       if (Array.isArray(inc.concept) && inc.concept.length) {
-        if (inc.concept.some((c: any) => isObject(c) && c.code === code)) found.add(system);
+        if (inc.concept.some((c: any) => isObject(c) && c.code === code)) found.add(key);
         continue;
       }
       const r = await this.codeCheck(system, code, null, null);
       if (r.status === "unknown-system") return null;
-      if (r.status !== "invalid-code") found.add(system);
+      if (r.status !== "invalid-code") found.add(key);
     }
-    return found.size;
+    return found;
   }
 
   private async checkBinding(
@@ -4661,6 +4677,27 @@ export class InstanceValidator {
       }
       return;
     }
+    if ((strength === "required" || strength === "extensible") && ["code", "string", "uri", "url", "canonical"].includes(typeCode)) {
+      // REVIEW_port_2 G20 — ValueSetValidator.systemForCodeInValueSet (standalone, tag 7.0.1:1603): a bare code that
+      // more than one include defines cannot be given a system (UNABLE_TO_RESOLVE_SYSTEM__VALUE_SET_HAS_MULTIPLE_MATCHES)
+      const inferred = await this.inferCodeSystems(vs, String(codings[0][1]));
+      if (inferred !== null && inferred.size > 1) {
+        const vsv = `${vs.url}${vs.version ? `|${vs.version}` : ""}`;
+        const multi = `The System URI could not be determined for the code '${codings[0][1]}' in the ValueSet '${vsv}': value set expansion has multiple matches: ${[...inferred].sort().join(",")}`;
+        const sev = strength === "required" ? "error" : "warning";
+        issues.push({ severity: sev, path: item.path, code: "code-invalid", message: multi });
+        issues.push({
+          severity: sev,
+          path: item.path,
+          code: "code-invalid",
+          message:
+            strength === "required"
+              ? `The value provided ('${codings[0][1]}') was not found in the value set ${label}, and a code is required from this value set  (error message = ${multi})`
+              : `The value provided ('${codings[0][1]}') was not found in the value set ${label}, and a code should come from this value set unless it has no suitable code (note that the validator cannot judge what is suitable)  (error message = ${multi})`,
+        });
+        return;
+      }
+    }
     let anyMember = false;
     let anyUnknown = false;
     // (parity v1) tx $validate-code checks the display too (ValueSetValidator: a wrong display makes the result not ok):
@@ -4710,7 +4747,7 @@ export class InstanceValidator {
       // system from the ValueSet; when no include's CodeSystem has the code, UNABLE_TO_INFER_CODESYSTEM is reported
       // (an error, besides the not-in-value-set one below).
       const inferred = await this.inferCodeSystems(vs, String(codings[0][1]));
-      if (inferred === 0) {
+      if (inferred !== null && inferred.size === 0) {
         const vsv = `${vs.url}${vs.version ? `|${vs.version}` : ""}`;
         const infer = `The System URI could not be determined for the code '${codings[0][1]}' in the ValueSet '${vsv}'`;
         issues.push({ severity: "error", path: item.path, code: "code-invalid", message: infer });
@@ -4735,13 +4772,60 @@ export class InstanceValidator {
             : `The value provided ('${shown}') was not found in the value set ${label}, and a code is required from this value set`,
       });
     } else {
-      issues.push({
-        severity: "warning",
-        path: item.path,
-        code: "code-invalid",
-        message: `None of the codings provided are in the value set ${label}, and a coding should come from this value set unless it has no suitable code (codes = ${shown})`,
-      });
+      const maxExt = Array.isArray(b.extension) ? b.extension.find((e: any) => isObject(e) && e.url === MAX_VALUESET_EXT) : null;
+      const maxUrl = maxExt ? String(maxExt.valueCanonical ?? maxExt.valueUri ?? maxExt.valueUrl ?? "") : "";
+      // checkBindings / checkPrimitiveBinding (7.0.1): with a maxValueSet a Coding / code is judged against it instead
+      // of the extensible warning; a CodeableConcept gets both
+      if (!maxUrl || typeCode === "CodeableConcept") {
+        issues.push({
+          severity: "warning",
+          path: item.path,
+          code: "code-invalid",
+          message: `None of the codings provided are in the value set ${label}, and a coding should come from this value set unless it has no suitable code (codes = ${shown})`,
+        });
+      }
+      if (maxUrl) await this.checkMaxValueSet(maxUrl, codings, typeCode, item, issues);
     }
+  }
+
+  /**
+   * InstanceValidator.checkMaxValueSet (IV:2267 / 2306 / 2337, tag 7.0.1; REVIEW_port_1 F20): an extensible binding's
+   * elementdefinition-maxValueSet must hold the code — Terminology_TX_NoValid_8 (CodeableConcept) / _10 (Coding) /
+   * _11 (code), errors; an unresolvable max value set is Terminology_TX_ValueSet_NotFound(_CS); undecidable membership
+   * is unchecked, never a pass.
+   */
+  private async checkMaxValueSet(maxUrl: string, codings: Array<[string | null, string | null]>, typeCode: string, item: Item, issues: Issue[]): Promise<void> {
+    const mvs = await this.vsHeader(maxUrl);
+    if (!mvs) {
+      if (this.resolver.codeSystemExists && (await this.resolver.codeSystemExists(maxUrl).catch(() => false))) {
+        issues.push({ severity: "error", path: item.path, code: "code-invalid", message: `Found a reference to a CodeSystem '${maxUrl}' where a ValueSet belongs` });
+      } else {
+        issues.push({ severity: "warning", path: item.path, code: "code-invalid", message: `ValueSet '${maxUrl}' not found`, unchecked: { kind: "valueSet", canonical: maxUrl } });
+      }
+      return;
+    }
+    let unknown = false;
+    for (const [system, code] of codings) {
+      if (system === null && typeCode !== "code" && typeCode !== "string" && typeCode !== "uri" && typeCode !== "url" && typeCode !== "canonical") continue;
+      const m = await this.member(maxUrl, system, code!);
+      if (m === true) return;
+      if (m === undefined) unknown = true;
+    }
+    if (unknown) {
+      issues.push({ severity: "information", path: item.path, code: "informational", message: `Membership in the maximum value set ${maxUrl} could not be decided with local terminology`, unchecked: { kind: "code", canonical: maxUrl } });
+      return;
+    }
+    const desc = `'${mvs.title || mvs.name || maxUrl}' (${mvs.url}${mvs.version ? `|${mvs.version}` : ""})`;
+    const shown = codings.map(([s, c]) => `${s ?? "null"}#${c}`).join(", ");
+    let message: string;
+    if (typeCode === "CodeableConcept" || typeCode === "CodeableReference") {
+      message = `None of the codes provided are in the maximum value set ${desc} specified in the max binding, and a code from this value set is required) (codes = ${shown})`;
+    } else if (typeCode === "Coding" || typeCode === "Quantity") {
+      message = `The code provided is not in the maximum value set ${desc} specified in the max binding, and a code from this value set is required) (code = ${shown})`;
+    } else {
+      message = `The code provided is not in the maximum value set ${desc}, and a code from this value set is required) (code = null#${codings[0]?.[1] ?? ""}), error = null)`;
+    }
+    issues.push({ severity: "error", path: item.path, code: "code-invalid", message });
   }
 
   /**
@@ -4763,6 +4847,24 @@ export class InstanceValidator {
     if (!relevant.length) return;
     const vs = await this.vsHeader(vsUrl);
     for (const [c, path] of relevant) {
+      if (c.system !== "http://snomed.info/sct" && this.resolver.codeSystemVersions) {
+        // REVIEW_port_2 G3: determineVersion (standalone ValueSetValidator.java:1878, tag 7.0.1) for every held CodeSystem
+        const held = await this.resolver.codeSystemVersions(c.system).catch(() => [] as string[]);
+        if (!held.length || !vs) continue;
+        const includes: any[] = Array.isArray(vs.compose?.include) ? vs.compose.include : [];
+        // the terminology server holds the other published versions of HL7 / THO code systems: an unknown one there is undecided here
+        const hl7 = /^https?:\/\/(terminology\.)?hl7\.org\//.test(c.system);
+        const { issues: vi, unknownVersion } = codingVersionIssues(includes, c.system, c.version, held, { reportUnknownVersion: !hl7 });
+        for (const x of vi) {
+          const at = `${path}.${x.at}`;
+          if (issues.some((i) => i.path === at && i.message === x.message)) continue;
+          issues.push({ severity: x.severity, path: at, code: x.at === "system" ? "not-found" : "invalid", message: x.message });
+        }
+        if (unknownVersion && hl7) {
+          issues.push({ severity: "information", path: `${path}.version`, code: "informational", message: `CodeSystem '${c.system}' version '${c.version}' is not held locally; the code was not checked against it`, unchecked: { kind: "code", canonical: `${c.system}|${c.version}` } });
+        }
+        continue;
+      }
       const msg = codingVersionIssue(vs, c.system, c.version);
       if (!msg) continue;
       const at = `${path}.version`;

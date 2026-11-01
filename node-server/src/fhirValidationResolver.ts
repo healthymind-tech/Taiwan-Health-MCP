@@ -162,7 +162,7 @@ export function judgeCodeSystemDisplay(
   system: string,
   code: string,
   display: string,
-  concept: { display: string | null; designationList: Array<{ language: string | null; value: string }> },
+  concept: { display: string | null; designationList: Array<{ language: string | null; value: string; status?: string }> },
   csLanguage: string | null,
   langs: string[] = ["en"],
 ): CodeCheck | null {
@@ -183,7 +183,18 @@ export function judgeCodeSystemDisplay(
     if (!okLang(ds.language) && (ds.language === null || ds.language === csLanguage) && ds.value.toLowerCase() === want) isDefaultLang = true;
     if (!okLang(ds.language)) continue;
     choices.push(`'${ds.value}' (${ds.language})`);
-    if (ds.value.toLowerCase() === want) return null;
+    if (ds.value.toLowerCase() === want) {
+      if (ds.status) {
+        // INACTIVE_DISPLAY_FOUND (standalone ValueSetValidator.java:1347, tag 7.0.1; REVIEW_port_2 G27): the Java loop
+        // tests the matched designation, so the "correct" list is the concept display only
+        return {
+          status: "invalid-display",
+          severity: "error",
+          message: `'${display}' is no longer considered a correct display for code '${code}' (status = ${ds.status}). The correct display is '${concept.display}'`,
+        };
+      }
+      return null;
+    }
     if (hl7Normalize(display).toLowerCase() === hl7Normalize(ds.value).toLowerCase()) ws = true;
   }
   if (choices.length) {
@@ -277,6 +288,21 @@ export function judgeHeldCodeSystem(idx: CodeSystemIndex, system: string, code: 
   }
   if (notes.length) out.extra = [...notes, ...(out.extra ?? [])];
   return out;
+}
+
+/**
+ * A Coding.version that no installed package holds (ValueSetValidator.getUnknownCodeSystemMessage, tag 7.0.1:543):
+ * the code is not checked. validator_cli relays the terminology server's answer as a warning — for an IG code system
+ * the server knows no version of (UNKNOWN_CODESYSTEM_VERSION_NONE); HL7 / THO systems, whose other versions the server
+ * holds, stay undecided.
+ */
+export function unknownCodeSystemVersion(system: string, version: string, display: string | null): CodeCheck {
+  const base = { ...noLocalDisplay(system, display), undecided: true as const };
+  if (/^https?:\/\/(terminology\.)?hl7\.org\//.test(system)) return base;
+  return {
+    ...base,
+    extra: [{ severity: "warning", message: `A definition for CodeSystem '${system}' version '${version}' could not be found, so the code cannot be validated. No versions of this code system are known` }],
+  };
 }
 
 /**
@@ -543,6 +569,15 @@ export class DbValidatorResolver implements ValidatorResolver {
     }
   }
 
+  /** Versions of the CodeSystem in the closure (G3 determineVersion); [] on DB trouble (no version issue invented). */
+  async codeSystemVersions(system: string): Promise<string[]> {
+    try {
+      return await terminology.codeSystemVersionsInClosure(system, this.pkg);
+    } catch {
+      return [];
+    }
+  }
+
   /** A CodeSystem with this canonical in the closure (binding → CodeSystem URL); false on DB trouble (no invented error). */
   async codeSystemExists(url: string): Promise<boolean> {
     try {
@@ -625,6 +660,12 @@ export class DbValidatorResolver implements ValidatorResolver {
     // ValueSet URL: validator_cli 7.0.1 does not resolve it either and only warns
     // "A definition for CodeSystem ... could not be found".)
     if (idx && idx.url && idx.url.split("|")[0] !== system) idx = null;
+    if (idx && version && idx.version !== version) {
+      // REVIEW_port_2 G3: Coding.version names the CodeSystem version to check against (resolveCodeSystem(system, version))
+      const vidx = await terminology.loadCodeSystemIndex(`${system}|${version}`, this.pkg, true);
+      if (vidx) idx = vidx;
+      else return unknownCodeSystemVersion(system, version, display);
+    }
     if (idx) {
       const base = judgeHeldCodeSystem(idx, system, code, display, langs && langs.length ? langs : undefined);
       if (base && base.status === "invalid-code" && idx.content === "complete") {

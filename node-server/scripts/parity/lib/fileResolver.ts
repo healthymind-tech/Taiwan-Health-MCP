@@ -14,8 +14,9 @@
  * harness can flag results that depend on the terminology server.
  */
 import { indexCodeSystem, valueSetContains, type CodeSystemIndex, type TerminologyDeps } from "../../../src/fhirCodeSystem.js";
+import { terminologyServerKnows } from "../../../src/fhirSpecialSystems.js";
 import { rankHl7Current } from "../../../src/fhirTerminology.js";
-import { judgeHeldCodeSystem, judgeSpecialSystem, serverSideSystem } from "../../../src/fhirValidationResolver.js";
+import { judgeHeldCodeSystem, judgeSpecialSystem, serverSideSystem, unknownCodeSystemVersion } from "../../../src/fhirValidationResolver.js";
 import { SnapshotGenerator } from "../../../src/fhirSnapshotGenerator.js";
 import { fixPackageResource } from "../../../src/fhirPackageHacker.js";
 import { pickCanonicalVersion, splitCanonicalVersion, type CodeCheck, type ValidatorResolver } from "../../../src/fhirValidator.js";
@@ -135,6 +136,7 @@ export class FileValidatorResolver implements ValidatorResolver {
       loadCodeSystem: async (u) => this.codeSystem(u),
       lookupExternal: async () => null,
       externalSystemHeld: async () => false,
+      systemUnknown: async (s) => !txServedSystem(s) && !terminologyServerKnows(s) && this.store.candidates(s, "CodeSystem").length === 0,
     };
   }
 
@@ -181,8 +183,13 @@ export class FileValidatorResolver implements ValidatorResolver {
    * picks that version of the CodeSystem when the store holds it (else the current one, as the DB resolver).
    */
   async checkCode(system: string, code: string, display: string | null, version?: string | null, langs?: string[]): Promise<CodeCheck> {
-    let idx = (version ? this.codeSystem(`${system}|${version}`) : null) ?? this.codeSystem(system);
+    let idx = this.codeSystem(system);
     if (idx && idx.url && idx.url.split("|")[0] !== system) idx = null;
+    if (idx && version && idx.version !== version) {
+      const vidx = this.codeSystem(`${system}|${version}`);
+      if (vidx) idx = vidx;
+      else return unknownCodeSystemVersion(system, version, display);
+    }
     if (idx) {
       const r = judgeHeldCodeSystem(idx, system, code, display, langs && langs.length ? langs : undefined);
       if (r) return r;
@@ -194,6 +201,10 @@ export class FileValidatorResolver implements ValidatorResolver {
       return display === null ? { status: "silent", undecided: true } : { status: "display-unchecked", message: `Display not checked: no local terminology for ${system}`, undecided: true };
     }
     return { status: "unknown-system" };
+  }
+
+  async codeSystemVersions(system: string): Promise<string[]> {
+    return this.store.candidates(system, "CodeSystem").map((e) => e.version).filter((v): v is string => !!v);
   }
 
   async codeSystemExists(url: string): Promise<boolean> {
