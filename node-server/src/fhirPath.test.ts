@@ -70,8 +70,11 @@ test("%resource / %rootResource and dom-3 (as() read as ofType())", () => {
   assert.deepEqual(evaluateConstraint(ok, "Patient", expr, env(ok)), { status: "pass" });
   const orphan = { resourceType: "Patient", contained: [{ resourceType: "Organization", id: "o1" }] };
   assert.deepEqual(evaluateConstraint(orphan, "Patient", expr, env(orphan)), { status: "fail" });
-  // the raw expression hits the Java singleton rule of as()
-  assert.equal(evaluateConstraint(ok, "Patient", dom3, env(ok)).status, "unevaluable");
+  // the raw expression hits the Java singleton rule of as(): an exception Java raises too, so the invariant FAILS
+  // with that message (InstanceValidator.checkInvariant l. 8896-8898)
+  const raw = evaluateConstraint(ok, "Patient", dom3, env(ok));
+  assert.equal(raw.status, "fail");
+  assert.match(raw.status === "fail" ? raw.error ?? "" : "", /^Attempt to use 'as\(\)' on more than one item/);
 });
 
 // Java 7.0.1 string functions return EMPTY on an empty focus (FHIRPathEngine.funcStartsWith l. 6216-6236);
@@ -145,6 +148,54 @@ test("unsupported functions are unevaluable, not failures", () => {
     evaluateConstraint({ coding: [{ code: "a" }] }, "CodeableConcept", "memberOf('http://vs')", env(r, { memberOf: () => true })).status,
     "pass",
   );
+});
+
+// InstanceValidator.checkInvariant l. 8896-8898: an evaluation exception FAILS the invariant — only for exceptions the
+// Java FHIRPathEngine raises too (asBool on a collection l. 7346-7356, funcIif l. 5436-5440, unknown function names at
+// parse l. 1256-1265); where Java evaluates (short-circuit preOperate l. 1661-1676, comparisons of collections → empty
+// l. 2590ff, unknown %constants → empty via ValidatorHostServices.resolveConstant l. 213-226) there is no exception.
+test("Java exception semantics of invariant evaluation", () => {
+  const r = { resourceType: "Patient", name: [{ family: "a" }, { family: "b" }], active: true };
+  const st = (e: string) => evaluateConstraint(r, "Patient", e, env(r));
+  assert.deepEqual(st("false and name.family"), { status: "fail" });
+  assert.deepEqual(st("true or name.family"), { status: "pass" });
+  assert.deepEqual(st("name.empty() implies name.family"), { status: "pass" });
+  assert.equal((st("true and name.family") as any).error, "Unable to evaluate as a boolean: a,b");
+  assert.equal((st("name.family.not()") as any).error, "Unable to evaluate as a boolean: a,b");
+  assert.equal(st("name.where(family).exists()").status, "pass");
+  assert.equal(st("name.family.iif(true, 1, 2) = 1").status, "fail");
+  assert.match((st("name.family.iif(true, 1, 2) = 1") as any).error, /iif/);
+  assert.deepEqual(st("name.family < 'z'"), { status: "fail" }); // empty, not an exception
+  assert.deepEqual(st("%undefinedThing.empty()"), { status: "pass" });
+  const unknown = st("name.frobnicate()") as any;
+  assert.equal(unknown.status, "fail");
+  assert.equal(unknown.parse, true);
+  // convertToBoolean: a non-empty collection is true, whatever its items
+  assert.deepEqual(st("name.family.select($this = 'zz')"), { status: "pass" });
+});
+
+test("numeric root nodes (integer / decimal elements) evaluate", () => {
+  const r = { resourceType: "RiskAssessment", prediction: [{ probabilityDecimal: 150 }] };
+  assert.deepEqual(evaluateConstraint(150, "RiskAssessment.prediction.probabilityDecimal", "$this <= 100", env(r)), { status: "fail" });
+  assert.deepEqual(evaluateConstraint(50, "RiskAssessment.prediction.probabilityDecimal", "low.empty()", env(r)), { status: "pass" });
+});
+
+// FHIRPathEngine.dateAdd l. 2929-2986 (the value's own zone and precision), BaseDateTimeType.equalsUsingFhirPathRules
+// l. 1102-1143 (one side without a zone), opEquivalent l. 2544-2563 (order-insensitive)
+test("date arithmetic keeps the zone and precision; mixed-zone equality; ~ on collections", () => {
+  const r = { resourceType: "Patient" };
+  const ev = (e: string): any[] => evaluateExpression(r, "Patient", e, env(r));
+  assert.deepEqual(ev("(@1973-12-25T00:00:00.000+10:00 + 7 days).toString()"), ["1974-01-01T00:00:00.000+10:00"]);
+  assert.deepEqual(ev("(@1973-12-25T00:00:00.000+10:00 + 1 'h').toString()"), ["1973-12-25T01:00:00.000+10:00"]);
+  assert.deepEqual(ev("(@2014-01-31 + 1 month).toString()"), ["2014-02-28"]);
+  assert.deepEqual(ev("(@1974-12-25 - 1 'month').toString()"), ["1974-11-25"]);
+  assert.throws(() => ev("@1974-12-25 + 1 'mo'"), /definite quantity duration/);
+  assert.deepEqual(ev("@2012-04-15T15:00:00Z = @2012-04-15T10:00:00"), []);
+  assert.deepEqual(ev("@2012-04-15T15:00:00Z = @2012-04-18T10:00:00"), [false]);
+  assert.deepEqual(ev("@2012-04-15T15:00:00Z != @2012-04-15T10:00:00"), []);
+  assert.deepEqual(ev("(1 | 2 | 3) ~ (3 | 2 | 1)"), [true]);
+  assert.deepEqual(ev("(1 | 2 | 3) !~ (3 | 2 | 1)"), [false]);
+  assert.deepEqual(ev("'abc'.replaceMatches('', 'x')"), ["abc"]);
 });
 
 // htmlChecks() = FHIRPathEngine.funcHtmlChecks1 → checkHtmlNames (l. 5032-5079): element / attribute names only;
