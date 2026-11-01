@@ -56,6 +56,37 @@ test("v1.1: EMPD Bundle-EMPD / Bundle-DS — no example clinic / identifier pref
   }
 });
 
+test("v1.2: EMPD Bundle-EMPD — pat-id-1 choose_one, empd-ord-1 / enc-nhi-1 required_if, empd-medreq-3 format", { skip: !EMPD }, async () => {
+  const deps = fileBlueprintDeps(EMPD!)!;
+  const { data } = await bundleForm({ bundle_profile: "Bundle-EMPD" }, deps);
+  check(data, 8);
+  const entries = (data.bundle as R).entry as R[];
+  const ph = data.placeholders as FormPlaceholder[];
+  const idx = (rt: string): number => entries.findIndex((e) => e.resource.resourceType === rt);
+  const rules = (key: string): FormPlaceholder[] => ph.filter((p) => p.choose_one?.rule.key === key || p.required_if?.rule.key === key || p.format_rule?.key === key);
+  // pat-id-1: one identifier slice of the three the rule admits
+  const pat = entries[idx("Patient")].resource;
+  const typed = (pat.identifier as R[]).filter((x) => ["NNxxx", "PPN", "PRC"].includes(x.type?.coding?.[0]?.code));
+  assert.equal(typed.length, 1, "exactly one option placed");
+  const co = rules("pat-id-1").find((p) => p.choose_one)!;
+  assert.ok(co, "choose_one on the option's placeholder");
+  assert.equal(co.choose_one!.options.length, 3);
+  // empd-ord-1: dose / timing / route / supply duration, required only unless the order type is 3
+  const ord = rules("empd-ord-1");
+  assert.ok(ord.length >= 5, `${ord.length} empd-ord-1 placeholders`);
+  for (const p of ord) assert.equal(p.required, false);
+  // enc-nhi-1: the Encounter's visit sequence number, decided on the Bundle by the Coverage type
+  const enc = rules("enc-nhi-1");
+  assert.equal(enc.length, 1);
+  assert.match(enc[0].pointer, new RegExp(`^/entry/${idx("Encounter")}/resource/identifier/\\d+/value$`));
+  const when = typeof enc[0].required_if!.when === "string" ? (data.conditions as R)[enc[0].required_if!.when as unknown as string] : enc[0].required_if!.when;
+  assert.equal(when.context, "");
+  // empd-medreq-3: the material code's format
+  assert.ok(rules("empd-medreq-3").some((p) => p.format && new RegExp(p.format).test("FBZ012345001")));
+  assert.deepEqual(data.self_check, { ok: true });
+  assert.ok((data.response_chars as number) <= FORM_BUDGET);
+});
+
 test("TWPAS Bundle-twpas / Bundle-immunologic-agent-twpas forms hold every required slice", { skip: !PAS }, async () => {
   const deps = fileBlueprintDeps(PAS!)!;
   for (const b of ["Bundle-twpas", "Bundle-immunologic-agent-twpas"]) {

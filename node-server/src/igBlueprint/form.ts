@@ -25,6 +25,11 @@
  * (cpt-2, age-1 …), complex placeholders expanded; every entry linked to the root / the others
  * (linkOrphans); `self_check` (formSelfCheck) on the result.
  *
+ * v1.2: profile invariants become form structure + hints, from their FHIRPath alone (formRules.ts):
+ * `choose_one` (one option of a one-of rule placed), `required_if` (a condition read from a
+ * placeholder, evaluated on the filled form), `format` / `format_rule`, Bundle-level rules placed in
+ * the entry they name; unparsed rules attached raw under `rules`.
+ *
  * Every value the record (or a code lookup) must provide is a placeholder token
  * `<<P<n>:<value_source>>>` (a JSON string) at its JSON Pointer; `placeholders[n]` says its FHIR
  * type, what to put, the value source (minimal-skeleton classes), whether it is required, the
@@ -36,6 +41,7 @@
 import { FINALIZE_UUID_NAMESPACE, uuidV5 } from "../fhirBundleFinalize.js";
 import { evaluateConstraint } from "../fhirPath.js";
 import { nodesAt } from "../fhirRequiredElements.js";
+import { applyProfileRules, type ChooseOne, type RequiredIf, type RuleRef, type RuleResult, type RuleTarget } from "./formRules.js";
 import { CODES_CAP, exampleValueAllowed, skeletonModel, type SkeletonItem, type SkeletonModel, type ValueSource } from "./skeleton.js";
 import {
   BlueprintError,
@@ -122,6 +128,8 @@ interface DatatypeRules {
   time: boolean;
 }
 const UCUM = "http://unitsofmeasure.org";
+/** Any-of rules of two direct elements the emit step places (v1.1: org-1 …). */
+const ANY_OF = [/^\(([a-z][A-Za-z]*)\.count\(\) \+ ([a-z][A-Za-z]*)\.count\(\)\) > 0$/, /^([a-z][A-Za-z]*)\.exists\(\) or ([a-z][A-Za-z]*)\.exists\(\)$/];
 
 export interface FormEntryPlan {
   profile: string;
@@ -164,6 +172,12 @@ export interface FormPlaceholder {
   value_set?: string;
   /** Profile rules (invariants) whose condition tests this value: the value decides what else the Bundle must hold. */
   rules?: string[];
+  /** (v1.2) The rule a `format` comes from. */
+  format_rule?: RuleRef;
+  /** (v1.2) This placeholder is ONE option of a rule that needs one of several: the alternatives. */
+  choose_one?: ChooseOne;
+  /** (v1.2) Required only when a rule's condition holds (`when`, evaluated on the filled form); else delete `element`. */
+  required_if?: RequiredIf & { placeholders?: number[] };
 }
 
 interface Slice {
@@ -724,7 +738,7 @@ export async function bundleForm(req: FormRequest, deps: BlueprintDeps): Promise
     const el = ((dsd?.snapshot?.element || []) as R[]).find((x) => x.id === k);
     const code = el?.type?.[0]?.code;
     if (typeof code === "string") t = code.startsWith("http://hl7.org/fhirpath/System.") ? "string" : shortType(code);
-    t = t ?? DATATYPE_FALLBACK[k] ?? null;
+    t = t ?? DATATYPE_FALLBACK[k] ?? (QUANTITY_LIKE.has(base) ? DATATYPE_FALLBACK[`Quantity.${seg}`] : undefined) ?? null;
     typeTypes.set(k, t);
     typeBindings.set(k, el?.binding?.strength === "required" && typeof el.binding.valueSet === "string" ? stripVersion(el.binding.valueSet) : null);
     return t;
@@ -892,6 +906,59 @@ export async function bundleForm(req: FormRequest, deps: BlueprintDeps): Promise
     }
   };
 
+  // --- (v1.2) profile invariants: choose-one / conditional required / format / Bundle-level rules ---
+  let ruleRes: RuleResult | null = null;
+  try {
+    const targets: RuleTarget[] = entries.map((e, i) => {
+      const els = (e.model.loaded.sd?.snapshot?.element || []) as R[];
+      const skip = new Set<string>(e.model.conditional.map((c) => String(c.condition ?? "")).filter(Boolean));
+      // simple any-of rules of two direct elements stay with the emit step (v1.1 behaviour)
+      for (const c of (els[0]?.constraint || []) as R[]) if (ANY_OF.some((re) => re.test(String(c.expression ?? "").trim()))) skip.add(String(c.key));
+      return { root: `/entry/${i}/resource`, rt: e.rt, resource: e.resource, els, skip };
+    });
+    const view: R = { resourceType: "Bundle", type: bundleType, entry: entries.map((e) => ({ fullUrl: e.fullUrl, resource: e.resource })) };
+    ruleRes = await applyProfileRules(targets, { resource: view, els }, {
+      sd: (u) => sdOf(u),
+      // the enumerated codes of a small ValueSet, also when the expansion is flagged incomplete (a fragment CodeSystem)
+      codes: async (vs) => {
+        const exp = await deps.expandValueSet(loaded, vs, 40).catch(() => null);
+        return exp && exp.codings.length && exp.codings.length <= CODES_CAP
+          ? exp.codings.map((c) => ({ ...(c.system ? { system: c.system } : {}), code: String(c.code), ...(c.display ? { display: clip(c.display, 40) } : {}) }))
+          : null;
+      },
+    });
+    for (const n of ruleRes.notes) notes.push(n);
+  } catch (err) {
+    warnings.push(`profile rules not applied: ${err instanceof Error ? err.message : String(err)}`);
+    ruleRes = null;
+  }
+  /** (v1.2) Rule annotations of a placeholder (choose_one / required_if of the innermost element holding it; format; raw rules). */
+  const annotate = (p: FormPlaceholder): void => {
+    if (!ruleRes) return;
+    const within = (k: string): boolean => p.pointer === k || p.pointer.startsWith(`${k}/`);
+    let ri: [string, RequiredIf] | null = null;
+    for (const kv of ruleRes.requiredIf) if (within(kv[0]) && (!ri || kv[0].length > ri[0].length)) ri = kv;
+    if (ri) {
+      p.required = false;
+      p.required_if = { ...ri[1], when: { ...ri[1].when, depends_on: [...ri[1].when.depends_on] } };
+      p.if_empty = "see required_if: delete its element when its condition is false";
+    }
+    let co: [string, ChooseOne] | null = null;
+    for (const kv of ruleRes.chooseOne) if (within(kv[0]) && (!co || kv[0].length > co[0].length)) co = kv;
+    if (co) p.choose_one = co[1];
+    const fm = ruleRes.formats.get(p.pointer);
+    if (fm) {
+      p.format = fm.format;
+      p.format_rule = fm.rule;
+    }
+    const raw = ruleRes.rawRules.get(p.pointer);
+    if (raw) {
+      const have = new Set((p.rules || []).map((r) => r.split(":")[0]));
+      const add = raw.filter((r) => !have.has(r.split(":")[0]));
+      if (add.length) p.rules = [...(p.rules || []), ...add];
+    }
+  };
+
   const placeholders: FormPlaceholder[] = [];
   const references: string[] = [];
   const tokenFor = (n: number, src: ValueSource): string => `<<P${n}:${src}>>`;
@@ -903,7 +970,8 @@ export async function bundleForm(req: FormRequest, deps: BlueprintDeps): Promise
     for (const inst of model.instances.slice(0, 6)) {
       for (const v of nodesAt(inst.resource, item.id, model.E)) {
         const x = sub ? getAt(v, sub.replace(/\/\d+(?=\/|$)/g, "/0")) : v;
-        if (typeof x === "string" && x && !x.startsWith("urn:") && !/^[A-Z][A-Za-z]+\//.test(x)) return clip(x, 60);
+        // (v1.2) a URI example is never clipped (a clipped namespace is not a usable value)
+        if (typeof x === "string" && x && !x.startsWith("urn:") && !/^[A-Z][A-Za-z]+\//.test(x)) return /^https?:\/\//.test(x) ? clip(x, 200) : clip(x, 60);
         if (typeof x === "number" || typeof x === "boolean") return x;
       }
     }
@@ -974,11 +1042,13 @@ export async function bundleForm(req: FormRequest, deps: BlueprintDeps): Promise
       const node = getAt(resource, item.pointer);
       const dec = e ? decisions.find((d) => d.entry === e && d.item === item) : undefined;
       const forced = forcedOf(e, item);
-      const required = !forced && !item.condition;
+      // (v1.2) a conditional row of a pure one-of rule (`a.exists() or b.exists() …`): the one option placed
+      const one = item.condition && !forced ? oneOfRule(model, item) : null;
+      const required = !forced && (!item.condition || Boolean(one));
       const ifEmpty = item.condition
         ? `required only when rule ${item.condition} applies (${clip(model.conditionText[item.condition] ?? "", 80)}); delete the element if it does not`
         : "optional section added for a planned entry: delete the section (and the entry) if not filled";
-      const base: Omit<FormPlaceholder, "pointer" | "type" | "what" | "value_source"> = { required, ...(required ? {} : { if_empty: ifEmpty }) };
+      const base: Omit<FormPlaceholder, "pointer" | "type" | "what" | "value_source"> = { required, ...(required ? {} : { if_empty: ifEmpty }), ...(one ? { choose_one: one } : {}) };
       if (dec) {
         const n = placeholders.length;
         setAt(resource, item.pointer, tokenFor(n, "derivable"));
@@ -1120,6 +1190,7 @@ export async function bundleForm(req: FormRequest, deps: BlueprintDeps): Promise
           if (triggering.length && ok.length) p.allowed = [...ok, ...triggering];
           else if (triggering.length) p.allowed = triggering;
         }
+        annotate(p);
         placeholders.push(p);
         setAt(resource, `${item.pointer}${sub}`, tokenFor(n, p.value_source));
       }
@@ -1155,9 +1226,18 @@ export async function bundleForm(req: FormRequest, deps: BlueprintDeps): Promise
       prefilled.push({ pointer: `/entry/${i}/request`, value_source: "derivable", how: "POST <resourceType> (create); PUT <type>/<id> to update" });
     }
     bundleEntries.push(entry);
-    await emit(`/entry/${i}/resource`, e.resource, e.rt, e.model, allItems(e.model), e);
+    await emit(`/entry/${i}/resource`, e.resource, e.rt, e.model, [...(ruleRes?.extra.get(`/entry/${i}/resource`) ?? []), ...allItems(e.model)], e);
   }
   bundle.entry = bundleEntries;
+  // (v1.2) required_if: the placeholders its condition reads
+  {
+    const at = new Map(placeholders.map((p, i) => [p.pointer, i]));
+    for (const p of placeholders) {
+      if (!p.required_if) continue;
+      const idx = p.required_if.when.depends_on.map((d) => at.get(d)).filter((x): x is number => x !== undefined);
+      if (idx.length) p.required_if.placeholders = idx;
+    }
+  }
   // order: resourceType, meta, … entry last
   const ordered: R = { resourceType: "Bundle" };
   for (const k of ["meta", "identifier", "type", "timestamp"]) if (bundle[k] !== undefined) ordered[k] = bundle[k];
@@ -1181,12 +1261,36 @@ export async function bundleForm(req: FormRequest, deps: BlueprintDeps): Promise
     allowedDisplay: boolean;
     prefilled: boolean;
     references: boolean;
+    /** (v1.2) Rule citations by key, their texts once in `rule_text`. */
+    ruleKeys: boolean;
+  }
+  // (v1.2) the text of every rule a placeholder cites (listed once when the placeholders cite keys only)
+  const ruleText: Record<string, string> = {};
+  for (const p of placeholders) {
+    for (const r of [p.required_if?.rule, p.choose_one?.rule, p.format_rule]) if (r && !(r.key in ruleText)) ruleText[r.key] = r.human;
+    for (const r of p.rules || []) {
+      const k = r.split(":")[0];
+      if (!(k in ruleText)) ruleText[k] = r.slice(k.length + 1).trim();
+    }
   }
   const build = (lv: Level): R => {
+    const conditions: Record<string, R> = {};
     const ph = placeholders.map((p) => {
       const o: R = { ...p, what: clip(p.what, lv.whatLen) };
       if (!lv.examples) delete o.example;
       if (!lv.allowedDisplay && Array.isArray(o.allowed)) o.allowed = o.allowed.map((a: unknown) => (isObject(a) ? { ...(a.system ? { system: a.system } : {}), code: a.code } : a));
+      if (lv.ruleKeys) {
+        if (p.required_if) {
+          const { rule, when, element, placeholders: idx } = p.required_if;
+          // the condition once in `conditions` (several placeholders share it)
+          const ck = `${rule.key}@${when.context}`;
+          if (!conditions[ck]) conditions[ck] = { expression: when.expression, context: when.context, ...(idx?.length ? { placeholders: idx } : { depends_on: when.depends_on }) };
+          o.required_if = { rule: { key: rule.key }, when: ck, element };
+        }
+        if (p.choose_one) o.choose_one = { rule: { key: p.choose_one.rule.key }, options: p.choose_one.options.map((x) => ({ path: x.path, ...(x.chosen ? { chosen: true } : {}) })) };
+        if (p.format_rule) o.format_rule = { key: p.format_rule.key };
+        if (p.rules) o.rules = p.rules.map((r) => r.split(":")[0]);
+      }
       return o;
     });
     const data: R = {
@@ -1205,6 +1309,8 @@ export async function bundleForm(req: FormRequest, deps: BlueprintDeps): Promise
     else if (prefilled.length) data.prefilled = prefilled.map((x) => ({ pointer: x.pointer, value_source: x.value_source }));
     if (lv.references && references.length) data.references = references;
     if (notes.length) data.notes = notes;
+    if (lv.ruleKeys && Object.keys(ruleText).length) data.rule_text = ruleText;
+    if (Object.keys(conditions).length) data.conditions = conditions;
     data.self_check = selfCheck.length ? { ok: false, problems: selfCheck.slice(0, 20) } : { ok: true };
     data.legend =
       "value_source: record = a fact the record states; code-lookup = pick a code (allowed / the ValueSet: fhir_normalize_code); text-allowed = free text is valid; " +
@@ -1214,11 +1320,15 @@ export async function bundleForm(req: FormRequest, deps: BlueprintDeps): Promise
     return data;
   };
   const levels: Level[] = [
-    { whatLen: 220, examples: true, allowedDisplay: true, prefilled: true, references: true },
-    { whatLen: 160, examples: true, allowedDisplay: true, prefilled: true, references: false },
-    { whatLen: 120, examples: true, allowedDisplay: false, prefilled: false, references: false },
-    { whatLen: 90, examples: false, allowedDisplay: false, prefilled: false, references: false },
-    { whatLen: 60, examples: false, allowedDisplay: false, prefilled: false, references: false },
+    { whatLen: 220, examples: true, allowedDisplay: true, prefilled: true, references: true, ruleKeys: false },
+    { whatLen: 160, examples: true, allowedDisplay: true, prefilled: true, references: false, ruleKeys: true },
+    { whatLen: 120, examples: true, allowedDisplay: false, prefilled: false, references: false, ruleKeys: true },
+    { whatLen: 90, examples: true, allowedDisplay: false, prefilled: false, references: false, ruleKeys: true },
+    // (v1.2) examples are values a model can copy: they go after `what` is short
+    { whatLen: 60, examples: true, allowedDisplay: false, prefilled: false, references: false, ruleKeys: true },
+    { whatLen: 40, examples: true, allowedDisplay: false, prefilled: false, references: false, ruleKeys: true },
+    { whatLen: 60, examples: false, allowedDisplay: false, prefilled: false, references: false, ruleKeys: true },
+    { whatLen: 40, examples: false, allowedDisplay: false, prefilled: false, references: false, ruleKeys: true },
   ];
   const limit = FORM_BUDGET - RESPONSE_MARGIN;
   let data = build(levels[0]);
@@ -1234,6 +1344,51 @@ export async function bundleForm(req: FormRequest, deps: BlueprintDeps): Promise
   };
   data.response_chars = measureResponse(data, warnings, prov);
   return { data, warnings, provenance: prov };
+}
+
+/**
+ * (v1.2) The choose_one of a skeleton conditional row whose rule is a pure disjunction of exists()
+ * tests (`telecom.exists() or address.exists() …`): the row is the option the form placed.
+ */
+function oneOfRule(model: SkeletonModel, item: SkeletonItem): ChooseOne | null {
+  const key = String(item.condition ?? "");
+  const root = ((model.loaded.sd?.snapshot?.element || []) as R[]).flatMap((e) => (e.constraint || []) as R[]);
+  const inv = model.invariants.find((i) => i.key === key) ?? (root.find((c) => c.key === key) as { key: string; human?: string; expression?: string } | undefined);
+  const expr = String(inv?.expression ?? "").replace(/\s+/g, " ").trim();
+  if (!expr || expr.includes(" implies ")) return null;
+  const parts = splitOrTop(expr);
+  const paths = parts.map((x) => /^\(?([A-Za-z][A-Za-z0-9]*(?:\.[A-Za-z][A-Za-z0-9]*)*)\.exists\(\)\)?$/.exec(x)?.[1] ?? null);
+  if (parts.length < 2 || paths.some((x) => x === null)) return null;
+  const own = stripSlices(item.id).split(".").slice(1).join(".").replace(/\[x\]/g, "");
+  const chosen = paths.find((x) => own === x || own.startsWith(`${x}.`)) ?? null;
+  if (!chosen) return null;
+  return {
+    rule: { key, human: clip(String(inv?.human ?? expr), 200) },
+    options: (paths as string[]).map((x) => ({ path: x, what: `${x}.exists()`, ...(x === chosen ? { chosen: true } : {}) })),
+    note: "the rule needs ONE of the options: the form holds the chosen one — to use another, delete this element and add that option instead; never several",
+  };
+}
+
+/** Top-level ` or ` operands (parentheses / quotes respected). */
+function splitOrTop(expr: string): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let quote = false;
+  let start = 0;
+  for (let i = 0; i < expr.length; i++) {
+    const ch = expr[i];
+    if (ch === "'") quote = !quote;
+    if (quote) continue;
+    if (ch === "(") depth++;
+    else if (ch === ")") depth--;
+    else if (depth === 0 && expr.startsWith(" or ", i)) {
+      out.push(expr.slice(start, i).trim());
+      start = i + 4;
+      i += 3;
+    }
+  }
+  out.push(expr.slice(start).trim());
+  return out;
 }
 
 /** Keys of Quantity-like datatypes whose rules need system + code with a value (valueAge, onsetAge, expectedSupplyDuration …). */

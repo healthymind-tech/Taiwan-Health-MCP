@@ -7,6 +7,8 @@
  * resolving to its token, no unlisted token), fill every placeholder with a type-correct FAKE value
  * (allowed[0] when listed, else the placeholder's `example` (an IG example value / a code of the binding), else a generic value of `type`; `--strict` skips the examples) and
  * validate the filled Bundle with the in-process InstanceValidator against the Bundle profile.
+ * (v1.2) The fill honors the rule hints: `format` -> a matching value, `choose_one` -> only the given option,
+ * `required_if` -> `when` evaluated on the filled form, `element` deleted when it does not hold.
  * Errors are split into terminology (ValueSet / CodeSystem / code / display) and the rest; the
  * acceptance gate is 0 non-terminology errors per profile.
  *
@@ -17,7 +19,8 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { InstanceValidator } from "../../src/fhirValidator.js";
-import { bundleForm, formSelfCheck, getAt, PLACEHOLDER_TOKEN, type FormPlaceholder } from "../../src/igBlueprint/form.js";
+import { evaluateConstraint } from "../../src/fhirPath.js";
+import { bundleForm, formSelfCheck, getAt, PLACEHOLDER_TOKEN, pruneEmptyArrays, type FormPlaceholder } from "../../src/igBlueprint/form.js";
 import { exampleValueAllowed } from "../../src/igBlueprint/skeleton.js";
 import { CACHE, fileBlueprintDeps } from "../../src/igBlueprint/fileDeps.test.js";
 import { FilePackages } from "../suggestions-eval/fileDeps.js";
@@ -99,39 +102,68 @@ const FAKE: Record<string, unknown> = {
   Reference: { display: "fake" },
 };
 
-/** A string matching a simple `format` regex (anchors, literals, [classes], \d, {n} / {n,m}); null when it uses more. */
+/**
+ * A string matching a `format` regex: anchors, literals, [classes], \d / \w, `.`, groups with
+ * alternation (the first branch), quantifiers ? * + {n} {n,m} (their minimum, at least 1 for +);
+ * null when the sample does not match (a construct it does not know).
+ */
 export function sampleOf(re: string): string | null {
-  let out = "";
   const src = re.replace(/^\^/, "").replace(/\$$/, "");
-  for (let i = 0; i < src.length; ) {
-    let atom: string;
-    if (src[i] === "[") {
-      const j = src.indexOf("]", i);
-      if (j < 0) return null;
-      const body = src.slice(i + 1, j);
-      atom = body.startsWith("^") ? "A" : body[0] === "\\" && body[1] === "d" ? "1" : body[0];
-      i = j + 1;
-    } else if (src[i] === "\\") {
-      const c = src[i + 1];
-      atom = c === "d" ? "1" : c === "w" ? "a" : c;
-      i += 2;
-    } else if ("()|*+?.".includes(src[i])) return null;
-    else atom = src[i++];
-    let n = 1;
-    const q = /^\{(\d+)(?:,\d*)?\}/.exec(src.slice(i));
-    if (q) {
-      n = Number(q[1]);
-      i += q[0].length;
+  let i = 0;
+  const seq = (): string | null => {
+    let out = "";
+    while (i < src.length && src[i] !== ")" && src[i] !== "|") {
+      let atom: string | null;
+      if (src[i] === "(") {
+        i++;
+        if (src.startsWith("?:", i)) i += 2;
+        atom = seq();
+        while (src[i] === "|") {
+          i++;
+          seq();
+        }
+        if (src[i] !== ")" || atom === null) return null;
+        i++;
+      } else if (src[i] === "[") {
+        const j = src.indexOf("]", i + 1);
+        if (j < 0) return null;
+        const body = src.slice(i + 1, j);
+        atom = body.startsWith("^") ? "A" : body[0] === "\\" ? (body[1] === "d" ? "1" : body[1]) : body[0];
+        i = j + 1;
+      } else if (src[i] === "\\") {
+        const c = src[i + 1];
+        atom = c === "d" ? "1" : c === "w" ? "a" : c === "s" ? " " : c;
+        i += 2;
+      } else if (src[i] === ".") {
+        atom = "A";
+        i++;
+      } else if ("*+?{".includes(src[i])) return null;
+      else atom = src[i++];
+      let n = 1;
+      const q = /^(?:\{(\d+)(?:,\d*)?\}|([?*+]))/.exec(src.slice(i));
+      if (q) {
+        n = q[1] !== undefined ? Number(q[1]) : q[2] === "+" ? 1 : 0;
+        i += q[0].length;
+      }
+      out += atom.repeat(n);
     }
-    out += atom.repeat(n);
+    return out;
+  };
+  const out = seq();
+  if (out === null) return null;
+  try {
+    return new RegExp(re).test(out) ? out : null;
+  } catch {
+    return null;
   }
-  return new RegExp(re).test(out) ? out : null;
 }
+
+const NUMERIC = new Set(["decimal", "integer", "positiveInt", "unsignedInt"]);
 
 function fakeValue(p: FormPlaceholder): unknown {
   if (p.format && !(Array.isArray(p.allowed) && p.allowed.length)) {
     const s = sampleOf(p.format);
-    if (s !== null) return s;
+    if (s !== null) return NUMERIC.has(p.type) && s !== "" && !Number.isNaN(Number(s)) ? Math.max(Number(s), 1) : s;
   }
   if (Array.isArray(p.allowed) && p.allowed.length) {
     const a = p.allowed[0];
@@ -151,6 +183,14 @@ function setPtr(root: unknown, ptr: string, v: unknown): void {
   const k = segs[segs.length - 1];
   if (Array.isArray(parent)) parent[Number(k)] = v;
   else (parent as R)[k] = v;
+}
+
+function deletePtr(root: unknown, ptr: string): void {
+  const segs = ptr.slice(1).split("/");
+  const parent = getAt(root, segs.length > 1 ? `/${segs.slice(0, -1).join("/")}` : "");
+  const k = segs[segs.length - 1].replace(/~1/g, "/").replace(/~0/g, "~");
+  if (Array.isArray(parent)) parent.splice(Number(k), 1);
+  else if (parent && typeof parent === "object") delete (parent as R)[k];
 }
 
 function stringLeaves(node: unknown, out: string[] = []): string[] {
@@ -229,6 +269,28 @@ for (const c of CASES) {
     const parent = getAt(bundle, p.pointer.slice(0, -"/code".length)) as R | undefined;
     if (sys && parent && typeof parent === "object" && (parent.system === undefined || /fake/.test(String(parent.system)))) parent.system = sys;
   }
+  // (v1.2) required_if: decided by the filled condition values — an element whose rule does not apply is deleted
+  const dropped: string[] = [];
+  for (let round = 0; round < 3; round++) {
+    const del = new Set<string>();
+    for (const p of ph) {
+      const ri = p.required_if;
+      if (!ri || dropped.includes(ri.element)) continue;
+      // compact forms list the condition once under data.conditions
+      const when = (typeof ri.when === "string" ? (data.conditions as R)[ri.when] : ri.when) as { expression: string; context: string };
+      const ctxNode = getAt(bundle, when.context) as R | undefined;
+      if (!ctxNode || typeof ctxNode !== "object") continue;
+      const r = evaluateConstraint(ctxNode, String(ctxNode.resourceType), when.expression, { resource: ctxNode, rootResource: bundle });
+      if (r.status !== "pass") del.add(ri.element);
+    }
+    if (!del.size) break;
+    for (const ptr of [...del].sort((a, b) => b.localeCompare(a, undefined, { numeric: true }))) {
+      if (getAt(bundle, ptr) === undefined) continue;
+      deletePtr(bundle, ptr);
+      dropped.push(ptr);
+    }
+    pruneEmptyArrays(bundle);
+  }
   const remaining = stringLeaves(bundle).filter((s) => /^<<P\d+:|^<[^<>]*>$/.test(s)).length;
   const pk = pkOf(c.ig);
   const canonical = String((data.bundle_profile as R).canonical);
@@ -257,6 +319,11 @@ for (const c of CASES) {
     self_check_problems: selfCheck.length,
     prefilled: prefilledList.length,
     prefilled_example_identity: exampleIdentity.length,
+    choose_one: ph.filter((p) => p.choose_one).length,
+    required_if: ph.filter((p) => p.required_if).length,
+    required_if_dropped: dropped.length,
+    format: ph.filter((p) => p.format).length,
+    raw_rules: ph.filter((p) => (p.rules || []).length).length,
   };
   const pass =
     entries.length >= c.minEntries &&

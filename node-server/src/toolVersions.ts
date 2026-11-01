@@ -465,7 +465,15 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   reference to the form's hub, else the one element that can reference it, else it is left out with a note;
   //   (4) `self_check` (no empty value, references resolve, entries linked, ContactPoint / Quantity-like rules);
   //   the `prefilled` list is never dropped by compaction.
-  fhir_get_bundle_form: "1.1.0",
+  fhir_get_bundle_form: "1.2.0",
+  // 1.2.0: profile invariants (resource-level constraints of the entries' profiles and of the Bundle profile) turned into
+  //   form structure from their FHIRPath alone (formRules.ts): choose-one (`a or b …` none present / one `x.where(p)` several
+  //   slices satisfy -> ONE option placed, `choose_one` lists all), conditional required (`G implies …`, `A or (…)`,
+  //   `X.where(C).all(y.exists())`: a condition that reads a placeholder -> `required_if` {rule, condition, when, element};
+  //   decided by prefilled values -> required / not placed), `format` (+ `format_rule`) from `matches()` / `all(matches())`,
+  //   Bundle-level rules relating entries (element added to the target entry, `when` on the Bundle); unparsed rules attached
+  //   raw to the placeholder they read (`rules`). Pure one-of conditional rows of the skeleton become `choose_one`
+  //   (required). Compaction cites rules by key (`rule_text`, `conditions`) and keeps examples longer; URI examples unclipped.
   // 1.1.0 (evaluation feedback): (1) a model display the validator's terminology rule rejects for a resolvable code is
   //   replaced by the code's display (provenance lookup; the model wording moves to CodeableConcept.text when empty;
   //   case-only differences are valid, whitespace-only ones take the valid spelling); (2) a single object / scalar where
