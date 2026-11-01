@@ -3807,6 +3807,28 @@ export class InstanceValidator {
     return out;
   }
 
+  /**
+   * Does the resource conform to `url`, as the sub-validations of InstanceValidator decide it — checkReference's
+   * target-profile choice (IV:5376-5385) and FHIRPath conformsTo() in slice discriminators (conformsToProfile,
+   * IV:431-471) both call validateResource(…, sd, …) and count every error / fatal message (hasErrors /
+   * isError()). validateResource → start (IV:6872-7010) runs startInner for `url` AND for every resolvable meta.profile
+   * of the resource other than `url` (startInner hands back a profile's cached outcomes, IV:7157-7165), so an error
+   * against one of the resource's own declared profiles also makes the match fail. Parse-time issues are not part of
+   * it (the parser reported them once).
+   */
+  private async resourceConforms(ctx: ResourceCtx, url: string, path: string, depth: number): Promise<boolean> {
+    const res = await this.conformance(ctx, url, path, depth);
+    if (!isValid(res.filter((i) => !isParseIssue(i)))) return false;
+    const meta = isObject(ctx.resource.meta) && Array.isArray(ctx.resource.meta.profile) ? ctx.resource.meta.profile : [];
+    for (const mp of meta) {
+      if (typeof mp !== "string" || !mp || mp === url) continue;
+      if (!(await this.sdx(mp))) continue; // Validation_VAL_Profile_Unknown: a warning
+      const r2 = await this.conformance(ctx, mp, path, depth);
+      if (!isValid(r2.filter((i) => !isParseIssue(i)))) return false;
+    }
+    return true;
+  }
+
   /** `<path>.conformsTo(p1) or …`: the value at the path validates against one of the profiles without errors. */
   private async conformsToAny(it: Item, dpath: string, profs: string[], rctx: ResourceCtx, depth: number): Promise<boolean> {
     const target = dpath === "$this" ? [it.value] : this.discriminatorValues(it.value, dpath, rctx);
@@ -3831,8 +3853,7 @@ export class InstanceValidator {
       if (!psdx) continue;
       if (psdx.type !== r.resourceType && !["Resource", "DomainResource"].includes(psdx.type)) continue;
       const ctx: ResourceCtx = { resource: r, container: null, root: rctx.root, bundle: rctx.bundle, entry: this.entryFor(r, rctx, false) };
-      const res = await this.conformance(ctx, p, this.pathOf(it, dpath), depth + 1);
-      if (isValid(res.filter((i) => !isParseIssue(i)))) return true;
+      if (await this.resourceConforms(ctx, p, this.pathOf(it, dpath), depth + 1)) return true;
     }
     return false;
   }
@@ -5240,8 +5261,7 @@ export class InstanceValidator {
     // Reference_REF_MultipleMatches (warning, versioned urls sorted)
     const good: SdIndex[] = [];
     for (const c of candidates) {
-      const res = await this.conformance(tctx, c.url, `${item.path}.resolve()`, depth + 1);
-      if (isValid(res.filter((i) => !isParseIssue(i)))) good.push(c);
+      if (await this.resourceConforms(tctx, c.url, `${item.path}.resolve()`, depth + 1)) good.push(c);
     }
     if (good.length > 1) {
       issues.push({

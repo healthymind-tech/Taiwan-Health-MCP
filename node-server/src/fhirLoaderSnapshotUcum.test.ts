@@ -329,3 +329,37 @@ test("G9 end to end: Coding display is checked, Quantity.unit is not", async () 
   assert.equal(disp.length, 1, JSON.stringify(issues));
   assert.equal(disp[0].path, "Observation.code.coding[0].display");
 });
+
+// ------------------------------------------------------------------------------------------- reference target match
+
+test("checkReference target match = validateResource (IV:5376-5385, start IV:6872-7010): the target's own meta.profile errors count", async () => {
+  const LOOSE = "http://ex.org/StructureDefinition/patient-loose";
+  const OBS_P = "http://ex.org/StructureDefinition/obs-ref";
+  const loose = { ...SDS[CORE + "Patient"], url: LOOSE, derivation: "constraint" };
+  const obsBase = SDS[CORE + "Observation"].snapshot.element as Json[];
+  const obsP = sd(OBS_P, "Observation", "resource", [
+    ...obsBase.filter((x) => x.path !== "Observation.subject"),
+    el("Observation.subject", 0, "1", [], { type: [{ code: "Reference", targetProfile: [LOOSE, CORE + "Group"] }] }),
+  ]);
+  class R extends FakeResolver {
+    async fetchStructureDefinition(url: string): Promise<Json | null> {
+      const u = url.split("|")[0];
+      return u === LOOSE ? loose : u === OBS_P ? obsP : super.fetchStructureDefinition(url);
+    }
+  }
+  const bundle = (patMeta: Json): Json => ({
+    resourceType: "Bundle",
+    type: "collection",
+    entry: [
+      { fullUrl: "http://ex.org/fhir/Observation/o1", resource: { resourceType: "Observation", id: "o1", meta: { profile: [OBS_P] }, status: "final", code: { text: "x" }, subject: { reference: "Patient/p1" } } },
+      { fullUrl: "http://ex.org/fhir/Patient/p1", resource: { resourceType: "Patient", id: "p1", ...patMeta } },
+    ],
+  });
+  const msg = `Unable to find a profile match for Patient/p1 among choices: ${LOOSE}, ${CORE}Group`;
+  // no own profile: the loose profile matches
+  const ok = errors(await new InstanceValidator(new R()).validate(bundle({})));
+  assert.ok(!ok.some((i) => /Unable to find a profile match/.test(i.message)), JSON.stringify(ok));
+  // the declared PAT_PROFILE requires an identifier: its error fails the match; the choices are every target profile, sorted
+  const bad = errors(await new InstanceValidator(new R()).validate(bundle({ meta: { profile: ["http://example.tw/fhir/StructureDefinition/pat"] } })));
+  assert.ok(bad.some((i) => i.message === msg && i.path === "Bundle.entry[0].resource.subject"), JSON.stringify(bad));
+});
