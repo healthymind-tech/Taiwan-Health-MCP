@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { TOOLS_VERSION } from "../toolVersions.js";
 import { releaseCheck, type ReleaseDeps, type ReleaseInput } from "./release.js";
 
 // Synthetic record / Bundles; the validation envelope is injected (no DB, no validator).
@@ -99,7 +100,7 @@ test("MCP fallback / no official engine / unchecked → not-officially-verified 
   assert.ok(none.reasons.some((x) => x.code === "not-officially-verified" && /no official validator/.test(x.message)));
   const unchecked = await releaseCheck(base(FULL), deps(officialOk({ checked_fully: false, unverified: [{ system: "x", code: "y" }] })));
   assert.ok(unchecked.reasons.some((x) => x.code === "not-officially-verified"));
-  const optOut = await releaseCheck(base(FULL, { require_official: false }), deps({ valid: true, source: "builtin", issues: [], entries: [] }));
+  const optOut = await releaseCheck(base(FULL, { require_official: false, targets: [{ resourceType: "Patient" }] }), deps({ valid: true, source: "builtin", issues: [], entries: [] }));
   assert.equal(optOut.release, true);
   assert.match(String(optOut.validation.note), /require_official=false/);
 });
@@ -118,17 +119,59 @@ test("grounding and record-check errors → grounding-error / record-check-error
       {
         resourceType: "Condition",
         issues: [
-          { severity: "error", source: "grounding", rule: "G-UNGROUNDED", message: "not in record", pointer: "/entry/0/resource/onsetDateTime" },
-          { severity: "error", source: "record-checks", code: "unconfirmed-as-confirmed", message: "unconfirmed" },
+          { severity: "error", source: "grounding", rule: "G-UNGROUNDED", message: "not in record", pointer: "/entry/0/resource/onsetDateTime", path: "Bundle.entry[0].resource.onsetDateTime", gate: "blocking" },
+          { severity: "error", source: "record-checks", code: "unconfirmed-as-confirmed", message: "unconfirmed", gate: "blocking" },
         ],
       },
     ],
   });
-  const r = await releaseCheck(base(ONLY_CONDITION), deps(data));
+  const r = await releaseCheck(base(ONLY_CONDITION, { targets: [{ resourceType: "Condition" }] }), deps(data));
   assert.deepEqual(r.reasons.map((x) => x.code).sort(), ["grounding-error", "record-check-error"]);
   assert.equal(r.content.grounding_errors, 1);
   assert.equal(r.content.record_check_errors, 1);
   assert.equal(r.content.warnings, 1);
+});
+
+test("v20.1: only BLOCKING content errors stop the release; advisory errors are counted and returned", async () => {
+  const data = officialOk({
+    entries: [
+      {
+        resourceType: "Condition",
+        issues: [
+          { severity: "error", source: "grounding", rule: "G-CONTEXT-LABEL", message: "label", path: "Bundle.entry[0].resource.code", gate: "advisory" },
+          { severity: "error", source: "record-checks", code: "stale-value", message: "stale", gate: "advisory" },
+          // no stamped gate (older pipeline) → the registry decides: a heuristic rule is advisory
+          { severity: "error", source: "record-checks", code: "negated-item-present", message: "negated" },
+        ],
+      },
+    ],
+  });
+  const r = await releaseCheck(base(ONLY_CONDITION, { targets: [{ resourceType: "Condition" }] }), deps(data));
+  assert.equal(r.release, true, JSON.stringify(r.reasons));
+  assert.equal(r.content.grounding_errors, 0);
+  assert.equal(r.content.record_check_errors, 0);
+  assert.equal(r.content.advisory_errors, 3);
+  assert.deepEqual(r.content.advisory_rules, ["G-CONTEXT-LABEL", "negated-item-present", "stale-value"]);
+  // an unstamped unconfirmed-as-confirmed error is blocking by the registry
+  const blocking = officialOk({ entries: [{ resourceType: "Condition", issues: [{ severity: "error", source: "record-checks", code: "unconfirmed-as-confirmed", message: "r/o" }] }] });
+  const b = await releaseCheck(base(ONLY_CONDITION, { targets: [{ resourceType: "Condition" }] }), deps(blocking));
+  assert.equal(b.release, false);
+  assert.deepEqual(b.reasons.map((x) => x.code), ["record-check-error"]);
+});
+
+test("v20.1: neither targets nor facts → incomplete-input, never released", async () => {
+  const r = await releaseCheck(base(FULL), deps(officialOk()));
+  assert.equal(r.release, false);
+  assert.equal(r.next, "fix");
+  assert.deepEqual(r.reasons.map((x) => x.code), ["incomplete-input"]);
+  assert.equal(r.reasons[0].check, "completeness");
+  assert.equal(r.completeness.incomplete_input, true);
+  // empty targets / facts arrays count as not given
+  const e = await releaseCheck(base(FULL, { targets: [], facts: [] }), deps(officialOk()));
+  assert.deepEqual(e.reasons.map((x) => x.code), ["incomplete-input"]);
+  // targets alone are enough to judge completeness
+  const t = await releaseCheck(base(FULL, { targets: [{ resourceType: "Patient" }] }), deps(officialOk()));
+  assert.equal(t.release, true, JSON.stringify(t.reasons));
 });
 
 test("facts: missing, quote-not-in-record, unusable fact written", async () => {
@@ -209,7 +252,7 @@ test("tool layer: envelope, provenance, INVALID_ARGUMENT, entrySlicesOf", async 
   assert.equal(env.ok, true);
   assert.equal(env.data.release, true);
   assert.equal(env.provenance.tool, "fhir_release_check");
-  assert.equal(env.provenance.toolVersion, "1.0.0");
+  assert.equal(env.provenance.toolVersion, TOOLS_VERSION.fhir_release_check);
   const bad = (await runFactCoverageTool({ bundle: { resourceType: "Patient" }, source_text: RECORD, facts: [] }, d)) as Record<string, any>;
   assert.equal(bad.ok, false);
   assert.equal(bad.error.code, "INVALID_ARGUMENT");

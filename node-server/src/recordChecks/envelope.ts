@@ -25,6 +25,7 @@ import { recordChecksProvenance, runRecordChecks } from "./index.js";
 import { RecordValues } from "./recordValues.js";
 import { withDateCorrections } from "./valueGrounding.js";
 import { annotateGroundingCodes } from "./codeGrounding.js";
+import { stampGates, stampValidationGates } from "./contentGates.js";
 import type { RecordCheckOptions, RecordCheckResult, RecordIssue } from "./types.js";
 
 type Json = Record<string, any>;
@@ -38,6 +39,8 @@ function parse(text: string): Json | null {
     return null;
   }
 }
+
+const hasSource = (opts: RecordCheckOptions): boolean => typeof opts.sourceText === "string" && !!opts.sourceText.trim();
 
 /** Whether the layer leaves its trace on the envelope (see "Byte-identity" above). */
 function emits(result: RecordCheckResult): boolean {
@@ -152,6 +155,9 @@ export function addRecordChecksToValidation(text: string, instance: Json, opts: 
   } catch {
     // fail-open: the grounding issues keep their original form
   }
+  // ISSUES_v20.1 item 2: every content finding (grounding + record checks) carries its gate — with source_text only, last
+  // (after the severity annotations above), so the output without source_text stays unchanged
+  if (hasSource(opts)) stampValidationGates(data);
   provenance(env);
   return stringifyLossless(env);
 }
@@ -165,6 +171,7 @@ export function addRecordChecksToFinalize(text: string, opts: RecordCheckOptions
   if (!isObj(bundle)) return text;
   const result = runRecordChecks(bundle, opts);
   if (!emits(result)) return text;
+  if (hasSource(opts)) stampGates(result.issues);
   data.record_issues = result.issues;
   data.record_checks = result.summary;
   if (result.summary.errors) {
@@ -188,6 +195,7 @@ export function addRecordChecksToFinalizeResource(text: string, opts: RecordChec
   if (!emits(result)) return text;
   const wasValid = data.validation.valid === true;
   mergeRecordIssues(data.validation, resource, result);
+  if (hasSource(opts)) stampValidationGates(data.validation);
   if (wasValid && data.validation.valid === false) {
     env.warnings = [...(Array.isArray(env.warnings) ? env.warnings : []), "validation found errors — fix the draft and call finalize again"];
   }

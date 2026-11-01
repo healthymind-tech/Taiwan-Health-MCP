@@ -473,6 +473,13 @@ const DATES_POS_CACHE = new Map<string, PositionedDate[]>();
 /** A full date, a dash, and an ROC range end (group 4); applied to nfkc text. */
 const RE_RANGE_END = /(?<![\d./-])(\d{2,4})[/.-](\d{1,2})[/.-](\d{1,2})(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?\s*-\s*(\d{2,3}[/.-]\d{1,2}[/.-]\d{1,2})(?![\d/])/gu;
 
+/**
+ * v20.1: ROC year-month — 113/08, 113.08 (a 3-digit ROC year 100–200 only, so a 2-digit fraction or a blood pressure
+ * such as 120/80 is never read as a date: its "month" is out of range) and 民國113年8月 / 113年8月 (no day after it).
+ */
+const RE_ROC_YM_SLASH = /(?<![\d./\-:])(1\d{2}|200)\s*[/.]\s*(\d{1,2})(?![\d/.\-:])(?!\s*(?:mmHg|mm\s*Hg|%|kg|cm|mg|ml|mL|bpm|次|下))/gu;
+const RE_ROC_YM_CN = /(?:民國\s*)?(?<!\d)(\d{2,3})\s*年\s*(\d{1,2})\s*月(?!\s*\d)/gu;
+
 /** parseDates with the span of each date (same dates, same order). */
 export function parseDatesPos(text: string): PositionedDate[] {
   const hit = DATES_POS_CACHE.get(text);
@@ -528,6 +535,20 @@ export function parseDatesPos(text: string): PositionedDate[] {
     if (Number(g[1]) >= 1 && Number(g[1]) <= 200 && validDate(y, Number(g[2]), Number(g[3]))) {
       found.push({ date: ["day", [y, Number(g[2]), Number(g[3])]], start: st, end: st + m[4].length });
       spans.push([st, st + m[4].length]);
+    }
+  }
+  // v20.1: ROC year-month (113/08, 民國113年8月) — after every pattern above, so a full date / range keeps its reading
+  for (const rx of [RE_ROC_YM_SLASH, RE_ROC_YM_CN]) {
+    for (const m of findAll(rx, t)) {
+      const st = m.index;
+      const en = st + m[0].length;
+      if (spans.some(([a, b]) => st < b && a < en)) continue;
+      const ry = Number(m[1]);
+      const mo = Number(m[2]);
+      if (ry >= 1 && ry <= 200 && mo >= 1 && mo <= 12) {
+        found.push({ date: ["month", [ry + 1911, mo, null]], start: st, end: en });
+        spans.push([st, en]);
+      }
     }
   }
   if (DATES_POS_CACHE.size > 5000) DATES_POS_CACHE.clear();
@@ -605,6 +626,12 @@ const NUM_RE = pyRe(D.numbers.number, "g");
 const UNIT_ALIASES = D.numbers.unitAliases as Record<string, string[]>;
 const UNIT_INDEX = new Map<string, string>();
 for (const [canon, al] of Object.entries(UNIT_ALIASES)) for (const a of al) if (!UNIT_INDEX.has(a)) UNIT_INDEX.set(a, canon);
+// v20.1: a UCUM bracket unit is the unit inside the brackets when that unit is itself canonical — [IU]/mL is IU/mL, not
+// uIU/mL (the lexicon lists "[iu]/ml" under both; first-wins picked the wrong one)
+for (const a of [...UNIT_INDEX.keys()]) {
+  const plain = a.replace(/[[\]]/gu, "");
+  if (plain !== a && Object.prototype.hasOwnProperty.call(UNIT_ALIASES, plain)) UNIT_INDEX.set(a, plain);
+}
 const UNIT_TOKENS = [...UNIT_INDEX.keys()].sort((a, b) => cpLen(b) - cpLen(a));
 const RE_COMPOUND_UNIT = /^[a-zµμ%[\]{}0-9.*^_]+\/[a-zµμ0-9.[\]{}_²]+/u;
 const DOSE_UNIT_CLASS = D.numbers.doseUnitClass as Record<string, string>;

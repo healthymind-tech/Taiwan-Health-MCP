@@ -79,6 +79,8 @@ const SKIP = new Set(["instruction", "site_config", "family_history"]);
 const RE_PREFIX = /^\s*(?:[#*•●・\-]+|\(?\d{1,2}[.)、]|[(（]\d{1,2}[)）]|【|\[)?\s*/u;
 const RE_LIST_LINE = /^\s*(?:[#*•●・\-]+|\(?\d{1,2}[.)、]|[(（]\d{1,2}[)）])\s*/u;
 const RE_LABEL = /^([^:：]{1,32}?)\s*[】\]]?\s*[:：]\s*/u;
+/** v20.1: a bracketed section heading without a colon (「【診斷】」, its items on the next lines); RE_PREFIX already took 【. */
+const RE_BRACKET_HEADING = /^([^】:：\s]{1,16})\s*】\s*/u;
 const RE_NEXT_HEADING = /(?:^|[\s；;。|])(p|plan|處置|計畫|計劃|治療計畫|治療|tx|rx|處方|醫囑|s|o|主訴|cc|檢查|lab)\s*[:：]/u;
 const OPEN = "(（[【";
 const CLOSE = ")）]】";
@@ -230,8 +232,10 @@ export function diagnosisSlots(rt: RecordText): DxSlot[] {
     const segs = [t, ...t.split(/[；;。|，,]\s*|\s*(?:→|->|=>)\s*/u).slice(1)];
     for (const seg of segs) {
       const s0 = seg.replace(RE_PREFIX, "");
-      const m = RE_LABEL.exec(s0);
+      const labelled = RE_LABEL.exec(s0);
+      const m = labelled ?? (seg === t && /^\s*【/u.test(t) ? RE_BRACKET_HEADING.exec(s0) : null);
       if (!m) continue;
+      const bracket = !labelled;
       const kind = headingKind(m[1]);
       if (kind === null || kind === "secondary") continue;
       let content = s0.slice(m[0].length);
@@ -245,7 +249,9 @@ export function diagnosisSlots(rt: RecordText): DxSlot[] {
         const nt = nfkc(nl.line);
         const lm = RE_LABEL.exec(nt.replace(RE_PREFIX, ""));
         if (lm && !RE_LIST_LINE.test(nt)) break;
-        if (!RE_LIST_LINE.test(nt) && nl.section !== "diagnosis" && nl.section !== "rule_out") break;
+        // a 【診斷】 section holds its items on the following lines, listed or not, up to the next heading / label / blank line
+        if (!bracket && !RE_LIST_LINE.test(nt) && nl.section !== "diagnosis" && nl.section !== "rule_out") break;
+        if (bracket && /^\s*【/u.test(nt)) break;
         parts.push(nt.replace(RE_LIST_LINE, ""));
         lines.push(j);
         used.add(j);
@@ -299,7 +305,17 @@ export function diagnosisSlots(rt: RecordText): DxSlot[] {
   return out;
 }
 
-function conditionNames(res: Json): string[] {
+/**
+ * Terminology names of codings (v20.1 item 3): the official names (incl. Chinese ones) of a Condition's codes, so a CODED
+ * Condition (an ICD / SNOMED code with an English display) is matched with the record's Chinese diagnosis items — an
+ * r/o item written as an established code is then found. `system|code` → names; optional.
+ */
+export interface DxNameLookups {
+  codeNames?: ReadonlyMap<string, readonly string[]> | null;
+  codeNamesZh?: ReadonlyMap<string, readonly { name: string }[]> | null;
+}
+
+function conditionNames(res: Json, lookups: DxNameLookups | null = null): string[] {
   const out: string[] = [];
   const cc = res.code;
   if (isObj(cc)) {
@@ -308,9 +324,26 @@ function conditionNames(res: Json): string[] {
       if (!isObj(c)) continue;
       if (typeof c.display === "string") out.push(c.display.replace(/\s*\((disorder|finding|symptom|situation|observable entity|morphologic abnormality)\)\s*$/iu, ""));
       if (typeof c.code === "string" && /^[A-Z]\d{2}(\.[0-9A-Z]{1,4})?$/u.test(c.code)) out.push(c.code);
+      if (lookups && typeof c.system === "string" && typeof c.code === "string") {
+        const k = `${c.system}|${c.code}`;
+        for (const n of (lookups.codeNames?.get(k) ?? []).slice(0, 8)) out.push(String(n).replace(/\s*\((disorder|finding|symptom|situation)\)\s*$/iu, ""));
+        for (const z of (lookups.codeNamesZh?.get(k) ?? []).slice(0, 4)) out.push(z.name);
+      }
     }
   }
   return [...new Set(out.map((x) => x.trim()).filter((x) => x.length >= 2))];
+}
+
+/**
+ * v20.1: diagnosis wording normalised for comparison — cancer / carcinoma / malignancy / CA ↔ malignant neoplasm,
+ * 癌 ↔ 惡性腫瘤 — so 「r/o lung cancer」 meets "Malignant neoplasm of … lung".
+ */
+function dxCanon(s: string): string {
+  return nfkc(s)
+    .toLowerCase()
+    .replace(/\b(?:cancer|carcinoma|malignancy|ca)\b/gu, "malignant neoplasm")
+    .replace(/(?<!惡性腫)癌/gu, "惡性腫瘤")
+    .replace(/\bneoplasm malignant\b/gu, "malignant neoplasm");
 }
 
 function verificationOf(res: Json): string | null {
@@ -329,8 +362,23 @@ function itemMatches(item: SlotItem, names: string[]): boolean {
     if (/^[a-z]\d{2}/u.test(n) && (it.includes(n) || it.includes(n.replace(".", "")))) return true;
     if (ic.length >= 2 && (ic.includes(n) || n.includes(ic))) return true;
     if (nameSimilarity(item.core, n0) >= 0.6) return true;
+    const a = dxCanon(item.core);
+    const b = dxCanon(n0);
+    if ((a !== nfkc(item.core).toLowerCase() || b !== nfkc(n0).toLowerCase()) && (b.includes(a) || nameSimilarity(a, b) >= 0.6 || latinTokensIn(a, b))) return true;
   }
   return false;
+}
+
+/** v20.1: hedges that state the diagnosis is not established yet (not merely probable). */
+const RE_STRONG_HEDGE = /疑|待確認|待證實|待釐清|未確定|suspect|provisional|presum|\bimpression\?|\?\s*$/iu;
+
+/** Every Latin content word (≥ 3 letters, not a cue word) of `a` is a word of `b`, and there are at least two. */
+function latinTokensIn(a: string, b: string): boolean {
+  const stop = new Set(["r/o", "rule", "out", "the", "and", "with", "without", "suspected", "possible", "probable", "of", "or"]);
+  const ta = (a.match(/[a-z]{3,}/gu) ?? []).filter((t) => !stop.has(t));
+  if (ta.length < 2) return false;
+  const tb = new Set(b.match(/[a-z]{3,}/gu) ?? []);
+  return ta.every((t) => tb.has(t));
 }
 
 function symptomCoded(res: Json): string | null {
@@ -524,6 +572,7 @@ export function diagnosisSlotChecks(
   root: Json,
   rt: RecordText,
   absentPaths: ReadonlySet<string> = new Set(),
+  lookups: DxNameLookups | null = null,
 ): { issues: RecordIssue[]; covered: Set<string>; established: Set<string> } {
   const issues: RecordIssue[] = [];
   const covered = new Set<string>();
@@ -559,7 +608,7 @@ export function diagnosisSlotChecks(
     if (res.resourceType !== "Condition" || skip.has(r.base)) continue;
     const vs = verificationOf(res);
     if (vs !== null && NOT_CONFIRMED.has(vs)) continue;
-    const names = conditionNames(res);
+    const names = conditionNames(res, lookups);
     if (!names.length) continue;
     // an established (plain / confirmed) item of any slot establishes the Condition
     if (slots.some((s) => s.items.some((it) => it.strength === null && !it.refuted && itemMatches(it, names)))) {
@@ -577,6 +626,20 @@ export function diagnosisSlotChecks(
         strength = q.strength!;
         reason = `the record qualifies this concept as not established ('${q.cue}' in 「${clip(q.text, 40)}」)`;
         break;
+      }
+    }
+    // v20.1 item 3: an r/o / differential ITEM written as this Condition counts even when another item of the slot is
+    // established (「lung mass, r/o lung cancer」 written as an established lung-cancer code); with an unestablished slot
+    // the code.text / item branches below decide as before
+    if (!reason && !unest.length) {
+      for (const s of slots) {
+        const it = s.items.find((x) => x.strength !== null && !x.refuted && itemMatches(x, names));
+        if (it) {
+          slot = s;
+          strength = it.strength!;
+          reason = `it is an item of the record's ${s.kind === "differential" ? "differential" : "diagnosis"} slot under the cue '${it.cue}'`;
+          break;
+        }
       }
     }
     if (!reason && !unest.length) continue;
@@ -626,7 +689,10 @@ export function diagnosisSlotChecks(
       `R4 primary diagnosis slot: heading '${slot.heading}' (${slot.kind}) — ${slot.slotCue ? `slot-level cue '${slot.slotCue}'` : slot.kind === "differential" ? "differential-only heading" : slot.unestablished ? "every item under a cue" : "established items, this concept qualified in a bracket"}; ` +
       `${slot.items.length} item(s) read with bracket-scoped cues (a cue inside a bracket that names another concept qualifies only that concept); ${reason}; no item matching this Condition is established`;
     covered.add(r.base);
-    if (strength === "explicit") {
+    // v20.1 item 3: 疑 / 疑似 / 待確認 / suspected / provisional in the diagnosis slot is "not established" for an
+    // established Condition as much as r/o is (only 可能 / possible / probable stay a warning)
+    const strongHedge = strength !== "explicit" && RE_STRONG_HEDGE.test(nfkc(slot.quote));
+    if (strength === "explicit" || strongHedge) {
       issues.push(makeIssue(
         "R4", "error", "unconfirmed-as-confirmed", path,
         `病歷的主診斷尚未確立，卻寫成確立的診斷：病歷的診斷欄是「${slot.quote}」，但 Condition「${name}」${written}（${reason.startsWith("a symptom") ? "以症狀碼代替主診斷" : reason.startsWith("Condition.code.text") ? "code.text 抄錄了鑑別診斷清單" : reason.startsWith("it is an item") ? "它是鑑別／待排除的項目之一" : reason.startsWith("the record qualifies") ? "病歷在括號中註明它未確立" : "病歷沒有確立這個診斷"}）。請標成 provisional 或 differential；若任務需要確立的診斷而病歷沒有，請回報 insufficient_information`,

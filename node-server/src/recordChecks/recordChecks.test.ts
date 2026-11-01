@@ -108,7 +108,9 @@ test("R3 says whether the record has a more complete value", () => {
 test("R4: explicit → error, hedged → warning, confirmed → nothing; a provisional primary for a to-be-ruled-out slot → information-absent (v15.3 R2)", () => {
   const dx = (line: string): string => BASE_RECORD.replace("診斷：急性支氣管炎 (J20.9)", line);
   assert.deepEqual(codes(BASE_BUNDLE(), dx("診斷：急性支氣管炎待排除，尚未確立")), ["error:unconfirmed-as-confirmed"]);
-  assert.deepEqual(codes(BASE_BUNDLE(), dx("診斷：疑似急性支氣管炎")), ["warning:unconfirmed-as-confirmed"]);
+  // v20.1 item 3: 疑似 / 待確認 is "not established" for an established Condition (error); only 可能 / possible stays a warning
+  assert.deepEqual(codes(BASE_BUNDLE(), dx("診斷：疑似急性支氣管炎")), ["error:unconfirmed-as-confirmed"]);
+  assert.deepEqual(codes(BASE_BUNDLE(), dx("診斷：可能為急性支氣管炎")), ["warning:unconfirmed-as-confirmed"]);
   assert.deepEqual(codes(BASE_BUNDLE(), dx("診斷：急性支氣管炎，已確診")), []);
   assert.deepEqual(codes(BASE_BUNDLE(), dx("診斷：急性支氣管炎；r/o 肺炎")), []);
   const p = BASE_BUNDLE();

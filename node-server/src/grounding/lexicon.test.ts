@@ -83,7 +83,10 @@ test("per-string lexicon functions match the reference", { skip }, () => {
     cmp("nfkc", s, nfkc(s), r.nfkc);
     cmp("header", s, headerOf(s), r.header);
     cmp("genders", s, sorted(gendersIn(s)), r.genders);
-    cmp("dates", s, parseDates(s), r.dates);
+    // v20.1: ROC year-months (113/08, 115年3月) are read as dates; the reference read none — compare without those
+    const dates = parseDates(s);
+    const extraYm = (d: unknown): boolean => Array.isArray(d) && d[0] === "month" && !(r.dates as unknown[]).some((x) => JSON.stringify(x) === JSON.stringify(d));
+    cmp("dates", s, dates.filter((d) => !extraYm(d)), r.dates);
     cmp("times", s, parseTimes(s), r.times);
     cmp("rel", s, relativeOffsets(s), r.rel);
     cmp("nums", s, numbersWithUnits(s), r.nums);

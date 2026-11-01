@@ -20,6 +20,7 @@
  * testable without Postgres; `defaultGroundingDeps()` wires the production
  * DB-backed terminology provider.
  */
+import { stampValidationGates } from "./recordChecks/contentGates.js";
 import { query as dbQuery } from "./db.js";
 import type { IgDefinedValues } from "./grounding/igDefined.js";
 import {
@@ -160,6 +161,9 @@ export async function runCheckGroundingTool(args: CheckGroundingArgs, deps: Grou
       },
       { terminology: deps.terminology, logger: deps.logger, igDefined: deps.igDefined },
     );
+    // ISSUES_v20.1 item 2: each finding's release gate (blocking | advisory, recordChecks/contentGates.ts) — tool layer
+    // only, the engine output stays comparable with the reference
+    stampValidationGates(data as unknown as Record<string, unknown>);
     const pkg = await packageBlock(deps, args.package_id, args.version);
     const g = await groundingFields(deps, args.source_text);
     const { groundingVersion: _gv, ...rest } = g;

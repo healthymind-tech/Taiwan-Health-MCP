@@ -82,13 +82,15 @@ export const FACT_COVERAGE_DESCRIPTION =
 export const RELEASE_CHECK_DESCRIPTION =
   "The final release gate for a converted Bundle. release=true only if ALL hold: the official validator reports 0 errors (the " +
   "fhir_validate_bundle pipeline; an MCP fallback, unverified codes or no official engine → not-officially-verified); grounding + record " +
-  "checks against source_text report 0 errors; fact coverage is complete when facts are given (fhir_check_fact_coverage); completeness: " +
+  "checks against source_text report 0 BLOCKING errors (each content finding has gate blocking|advisory; advisory errors are returned in " +
+  "content.advisory_errors but do not stop the release); fact coverage is complete when facts are given (fhir_check_fact_coverage); completeness: " +
   "every `targets` item is present (count ≥ min, else missing-target), or without targets the Bundle profile's required entry slices are " +
-  "present and a single-entry Bundle is not accepted when the facts name several resource types (suspected-empty-bundle). Returns " +
+  "present and a single-entry Bundle is not accepted when the facts name several resource types (suspected-empty-bundle); with neither " +
+  "targets nor facts → incomplete-input (never released). Returns " +
   "{release, next: send|fix|insufficient_information, reasons: [{code, message, pointer?, count, check}], validation, content, facts, " +
   "completeness}. Reason codes: validation-failed, validation-error, not-officially-verified, grounding-error, record-check-error, " +
   "no-source-text, fact-missing, fact-in-other-resource, quote-not-in-record, unusable-fact-written, missing-target, insufficient-information, " +
-  "missing-entry-slice, suspected-empty-bundle. next=insufficient_information when a missing target's facts are absent from the record " +
+  "missing-entry-slice, suspected-empty-bundle, incomplete-input. next=insufficient_information when a missing target's facts are absent from the record " +
   "or unusable: do not send — the case cannot be converted automatically. Never send a Bundle with release=false.";
 
 function provenance(): Record<string, unknown> {

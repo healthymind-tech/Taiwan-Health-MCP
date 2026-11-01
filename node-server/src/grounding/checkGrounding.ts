@@ -1375,6 +1375,12 @@ function medOwnerSegments(ctx: Ctx, found: Array<[string, Occurrence[]]>): strin
   return segs.length ? joinQ(segs) : null;
 }
 
+/**
+ * v20.1: an identity line written as name + sex without a label — 「張淑芬，女」「王大明 男 65歲」: a 2–4 character Chinese
+ * name, a separator, 男 / 女 (性), then the end or a separator.
+ */
+const RE_NAME_SEX = /(?:^|[\s：:])\p{Script=Han}{2,4}\s*[，,、\s]\s*[男女]性?(?=$|[\s，,、。；;（(\d])/u;
+
 /** Element-specific anchoring: the evidence must be about THIS element, not just contain an equal value somewhere. */
 function anchorCheck(ctx: Ctx, unit: Unit, text: string, res: JsonObject, lineIndex: number | null): [string, string] | null {
   const gp = unit.gpath;
@@ -1384,7 +1390,7 @@ function anchorCheck(ctx: Ctx, unit: Unit, text: string, res: JsonObject, lineIn
       return ["G-CONTEXT-LABEL", "the quoted date is not labelled as the visit / admission / discharge date"];
   }
   if (gp === "Patient.gender") {
-    if (!IDENTITY_RE.test(t) && !(lineIndex !== null && lineIndex < 4)) return ["G-CONTEXT-LABEL", "the quoted sex is not on the patient-identity line"];
+    if (!IDENTITY_RE.test(t) && !RE_NAME_SEX.test(t) && !(lineIndex !== null && lineIndex < 4)) return ["G-CONTEXT-LABEL", "the quoted sex is not on the patient-identity line"];
   }
   // PAS: facts of a Claim.item (quantity, modifiers, program code, service date) must be stated with the item's
   // requested drug (extension-requestedService -> MedicationRequest), not on another item's line.

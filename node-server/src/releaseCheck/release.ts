@@ -5,12 +5,15 @@
  *      (official engine when configured, officialValidator.ts) must carry `official_verdict: true` and not
  *      `checked_fully: false`; an MCP fallback / unverified codes / no official engine → `not-officially-verified`
  *      (unless the caller opts out with require_official=false);
- *   2. content — grounding + record checks (the same pipeline with source_text) report 0 errors;
+ *   2. content — grounding + record checks (the same pipeline with source_text) report 0 BLOCKING errors (v20.1 item 2:
+ *      each content finding carries `gate`, recordChecks/contentGates.ts; advisory errors are counted and returned in
+ *      `content.advisory_errors` but never stop the release);
  *   3. facts — when `facts` are given, fact coverage is complete (factCoverage/coverage.ts): no missing fact, no fact
  *      without a record basis, no unusable fact written into the Bundle;
  *   4. completeness (v20 R1) — every `targets` item is in the Bundle (count ≥ min), else `missing-target`; without
  *      targets: the Bundle profile's required entry slices are present, and a single-entry Bundle is not accepted when
- *      the facts name several resource types (`suspected-empty-bundle`).
+ *      the facts name several resource types (`suspected-empty-bundle`); with neither targets nor facts completeness cannot
+ *      be judged → `incomplete-input` (v20.1), never released.
  * `next`: "send" (released) | "insufficient_information" (the facts a missing target needs exist but the record makes
  * all of them unusable — the case cannot be converted automatically) | "fix" (everything else, incl. a missing target no
  * fact names: a model omission). A case that is not released in the end is reported as not convertible automatically. Pure over injected deps; never
@@ -18,11 +21,12 @@
  */
 import { checkFactCoverage, type Fact, type FactCoverageDeps, type FactCoverageResult } from "../factCoverage/coverage.js";
 import { impliedTypes } from "../factCoverage/infer.js";
+import { contentGateOf } from "../recordChecks/contentGates.js";
 
 type Json = Record<string, any>;
 const isObj = (x: unknown): x is Json => !!x && typeof x === "object" && !Array.isArray(x);
 
-export const RELEASE_CHECK_VERSION = "1.0.0";
+export const RELEASE_CHECK_VERSION = "1.1.0";
 
 export interface ReleaseTarget {
   /** Resource type the Bundle must contain (Patient, Encounter, Observation …). */
@@ -89,6 +93,8 @@ export interface ReleaseResult {
 
 const MAX_ISSUE_REASONS = 25;
 const isError = (i: Json): boolean => i.severity === "error" || i.severity === "fatal";
+/** A content error that may stop the release (its stamped gate, else the registry's). */
+const isBlocking = (i: Json): boolean => isError(i) && (i.gate === "blocking" || (i.gate === undefined && contentGateOf(i) === "blocking"));
 const unver = (p: string): string => p.split("|")[0];
 const tail = (p: string): string => unver(p).split("/").pop() ?? p;
 
@@ -186,8 +192,9 @@ export async function releaseCheck(input: ReleaseInput, deps: ReleaseDeps): Prom
     const issues = allIssues(data);
     const by = (b: Bucket): Json[] => issues.filter((i) => bucketOf(i) === b);
     const vErr = by("validator").filter(isError);
-    const gErr = by("grounding").filter(isError);
-    const rErr = by("record").filter(isError);
+    const gErr = by("grounding").filter(isBlocking);
+    const rErr = by("record").filter(isBlocking);
+    const advisory = [...by("grounding"), ...by("record")].filter((i) => isError(i) && !isBlocking(i));
     const official = data.official_verdict === true && data.checked_fully !== false;
     validation = {
       completed: true,
@@ -221,6 +228,8 @@ export async function releaseCheck(input: ReleaseInput, deps: ReleaseDeps): Prom
       source_text: !!(input.source_text && input.source_text.trim()),
       grounding_errors: gErr.length,
       record_check_errors: rErr.length,
+      advisory_errors: advisory.length,
+      ...(advisory.length ? { advisory_rules: [...new Set(advisory.map((i) => String(i.source === "record-checks" ? i.code : i.rule)))].sort() } : {}),
       warnings: [...by("grounding"), ...by("record")].filter((i) => i.severity === "warning").length,
     };
     reasons.push(...issueReasons(gErr, "grounding-error", "content"));
@@ -252,6 +261,16 @@ export async function releaseCheck(input: ReleaseInput, deps: ReleaseDeps): Prom
   const completeness: Json = { entries: entries.length };
   let insufficient = false;
   const targets = Array.isArray(input.targets) ? input.targets.filter(isObj) : [];
+  if (!targets.length && !(facts && facts.length)) {
+    // v20.1: neither the conversion target nor the facts — whether the Bundle is complete cannot be judged
+    completeness.incomplete_input = true;
+    reasons.push({
+      code: "incomplete-input",
+      message: "Neither `targets` nor `facts` were given: completeness cannot be judged, so the Bundle is not released. Pass the conversion target's required items as `targets` (and the facts with their record quotes as `facts`).",
+      count: 1,
+      check: "completeness",
+    });
+  }
   if (targets.length) {
     const rows: Json[] = [];
     for (const t of targets as ReleaseTarget[]) {

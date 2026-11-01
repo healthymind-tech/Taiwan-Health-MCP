@@ -15,6 +15,13 @@
  * in-memory LRU. Any query failure degrades to "not found" for the affected keys (codes become unverifiable —
  * never an error) and is not cached. DB access is injected (`query`), so this module has no pool dependency.
  */
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import zlib from "node:zlib";
+
+import { abbreviationKey } from "../conceptSearch/abbreviations.js";
+import { parseBundledLexicon } from "../conceptSearch/bundled.js";
 import { CVX_CODES } from "../fhirCvx.js";
 import type { TermRecord, TerminologyNames } from "./terminologyNames.js";
 import { createSnomedChineseNames, createSnomedHierarchy, type SlotItemRef, type ZhName } from "./snomedChinese.js";
@@ -295,6 +302,8 @@ export function createDbTerminologyNames(opts: DbTerminologyOptions): DbTerminol
 
   // ISSUES_v20 R6: abbreviation expansions per lower-cased token (an empty list is cached too)
   const abbrCache = new Map<string, string[]>();
+  let lexiconTableMissing = false;
+  let lexiconEmpty: boolean | null = null;
   const ABBR_MAX = 30;
   const abbreviations = async (tokens: readonly string[]): Promise<Map<string, string[]>> => {
     const out = new Map<string, string[]>();
@@ -307,12 +316,19 @@ export function createDbTerminologyNames(opts: DbTerminologyOptions): DbTerminol
       } else todo.push(t);
     }
     if (!todo.length) return out;
-    const rows = await run(
-      "SELECT lower(abbr) AS k, expansion FROM fhir.term_thesaurus WHERE lower(abbr) = ANY($1::text[]) " +
-        "UNION ALL SELECT key AS k, expansion FROM fhir.abbreviation_lexicon WHERE key = ANY($1::text[])",
-      [todo],
-    );
-    if (rows === null) return out; // failure: not cached, retried next call
+    // v20.1: two queries, so a database without the lexicon table (migration 20261027 not applied) still returns the
+    // thesaurus; the lexicon then comes from the bundled LRABR file (data/abbreviations, the same source umls_import loads)
+    const thesaurus = await run("SELECT lower(abbr) AS k, expansion FROM fhir.term_thesaurus WHERE lower(abbr) = ANY($1::text[])", [todo]);
+    let lexicon = lexiconTableMissing ? null : await run("SELECT key AS k, expansion FROM fhir.abbreviation_lexicon WHERE key = ANY($1::text[])", [todo]);
+    if (lexicon === null) lexiconTableMissing = true;
+    if (lexicon === null || (!lexicon.length && lexiconEmpty === true)) lexicon = bundledLexiconRows(todo);
+    else if (!lexicon.length && lexiconEmpty === null) {
+      const any = await run("SELECT 1 FROM fhir.abbreviation_lexicon LIMIT 1", []);
+      lexiconEmpty = !!any && !any.length;
+      if (lexiconEmpty) lexicon = bundledLexiconRows(todo);
+    }
+    if (thesaurus === null && lexicon === null) return out; // failure: not cached, retried next call
+    const rows = [...(thesaurus ?? []), ...(lexicon ?? [])];
     const got = new Map<string, string[]>();
     for (const r of rows) {
       const k = String(r.k ?? "");
@@ -360,4 +376,47 @@ export function createDbTerminologyNames(opts: DbTerminologyOptions): DbTerminol
     },
     stats: () => ({ cached: cache.size, hits, misses, queries }),
   };
+}
+
+// ------------------------------------------------------------------------------------------ bundled LRABR fallback
+
+let bundled: Map<string, string[]> | null | undefined;
+
+function bundledDir(): string {
+  const env = process.env.BUNDLED_DATA_DIR;
+  if (env && env.trim()) return path.resolve(env.trim());
+  return fileURLToPath(new URL("../../data/", import.meta.url));
+}
+
+/**
+ * v20.1: the SPECIALIST LRABR lexicon from the bundled data file (node-server/data/abbreviations/lrabr-*.tsv.gz), read
+ * once, for a database whose fhir.abbreviation_lexicon is missing or empty. null when the file is absent.
+ */
+export function bundledLexicon(): Map<string, string[]> | null {
+  if (bundled !== undefined) return bundled;
+  bundled = null;
+  try {
+    const dir = path.join(bundledDir(), "abbreviations");
+    const file = fs.readdirSync(dir).filter((f) => /^lrabr-.*\.tsv\.gz$/u.test(f)).sort().pop();
+    if (!file) return null;
+    const text = zlib.gunzipSync(fs.readFileSync(path.join(dir, file))).toString("utf8");
+    const m = new Map<string, string[]>();
+    for (const r of parseBundledLexicon(text, file).rows) {
+      const l = m.get(r.key) ?? [];
+      if (l.length < 30) l.push(r.expansion);
+      m.set(r.key, l);
+    }
+    bundled = m;
+  } catch {
+    bundled = null;
+  }
+  return bundled;
+}
+
+function bundledLexiconRows(tokens: readonly string[]): Array<Record<string, unknown>> | null {
+  const lex = bundledLexicon();
+  if (!lex) return null;
+  const out: Array<Record<string, unknown>> = [];
+  for (const t of tokens) for (const e of lex.get(abbreviationKey(t)) ?? []) out.push({ k: t, expansion: e });
+  return out;
 }

@@ -194,8 +194,19 @@ interface Mention {
   sentence: string;
 }
 
+/** Resource types a medication-stop cue (停藥 / 停用 / discontinued / on hold) can be about (v20.1). */
+const MEDICATION_TYPES = new Set(["MedicationRequest", "MedicationStatement", "MedicationAdministration", "MedicationDispense", "Medication"]);
+
+/**
+ * v20.1: whether a cue class applies to a resource type. A stop cue is about a medicine: 「體重 58 kg，Aspirin 停藥」 says
+ * nothing about the body-weight Observation (it never gets a status change suggestion from it).
+ */
+function cueApplies(cls: CueClass, rtype: string | null): boolean {
+  return cls !== "stopped" || rtype === null || MEDICATION_TYPES.has(rtype);
+}
+
 /** The sentence around an occurrence and the record's cue about the item in it (null when none). */
-function cueAt(rt: RecordText, occ: Occurrence, otherNames: readonly string[]): Mention | null {
+function cueAt(rt: RecordText, occ: Occurrence, otherNames: readonly string[], rtype: string | null = null): Mention | null {
   const text = rt.text;
   let s = occ.start;
   while (s > 0 && !SENTENCE_END.test(text[s - 1])) s--;
@@ -217,15 +228,31 @@ function cueAt(rt: RecordText, occ: Occurrence, otherNames: readonly string[]): 
   }
   after = after.slice(0, 80);
   for (const [cls, re] of AFTER_CUES) {
+    if (!cueApplies(cls, rtype)) continue;
     const m = re.exec(after);
     if (m) return { occ, cue: cls, cueText: m[0], sentence };
   }
   const before = text.slice(Math.max(s, occ.start - 12), occ.start);
   for (const [cls, re] of BEFORE_CUES) {
+    if (!cueApplies(cls, rtype)) continue;
     const m = re.exec(before);
     if (m) return { occ, cue: cls, cueText: m[1] ?? m[0], sentence };
   }
   return null;
+}
+
+/**
+ * v20.1: what the conversion target names as INCLUDED — every instruction line (【轉換目標】 …) with its exclusion clauses
+ * removed. An item named here is never "excluded by the target", whichever line the exclusion is on.
+ */
+export function targetIncludedText(rt: RecordText): string {
+  const out: string[] = [];
+  for (const l of rt.lines) {
+    if (l.section !== "instruction") continue;
+    const line = l.line.replace(/【[^】]*】/gu, " ");
+    out.push(line.split(/[，,；;。]/u).filter((c) => !EXCLUDE_CUE.test(c)).join(" "));
+  }
+  return out.join(" ");
 }
 
 /** Item names the conversion target excludes (【轉換目標】 lines with 不需轉換 / 排除 …): only the clause that carries the cue. */
@@ -286,6 +313,7 @@ export function negatedItemChecks(root: Json, recordText: string, siteConfig: st
   const items = resourcesOf(root).filter((r) => !NOT_ITEMS.has(String(r.resource.resourceType)));
   const named = items.map((r) => ({ ...r, names: itemNames(r.resource, root, lookups) }));
   const excluded = excludedByTarget(rt);
+  const targetIncl = excluded.length ? norm(targetIncludedText(rt)) : "";
   const out: RecordIssue[] = [];
   for (const it of named) {
     if (!it.names.length && !excluded.length) continue;
@@ -294,7 +322,8 @@ export function negatedItemChecks(root: Json, recordText: string, siteConfig: st
     const others = named.filter((o) => o !== it).flatMap((o) => o.names).filter((n) => !it.names.some((m) => norm(m).includes(norm(n)) || norm(n).includes(norm(m))));
     const statePath = state.path ? `${it.base}.${state.path}` : it.base;
     // 1. the conversion target says not to convert it
-    const namedInTarget = (x: { included: string }): boolean => it.names.some((n) => norm(n).length >= 2 && norm(x.included).includes(norm(n)));
+    // v20.1: named in ANY include clause of the target (not only the exclusion's own line) → never excluded
+    const namedInTarget = (x: { included: string }): boolean => it.names.some((n) => norm(n).length >= 2 && (norm(x.included).includes(norm(n)) || targetIncl.includes(norm(n))));
     const ex = excluded.find(
       (x) =>
         !namedInTarget(x) &&
@@ -324,7 +353,7 @@ export function negatedItemChecks(root: Json, recordText: string, siteConfig: st
     for (const n of it.names) {
       for (const occ of rt.find(n)) {
         if (occ.origin !== "record" || occ.section === "instruction") continue;
-        const m = cueAt(rt, occ, others);
+        const m = cueAt(rt, occ, others, rtype);
         if (!m) positive = true;
         else if (!hit) hit = m;
       }

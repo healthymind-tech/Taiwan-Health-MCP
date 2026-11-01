@@ -46,7 +46,9 @@ export type RecordCheckCode =
    * R7 (ISSUES_v20 R2): a coding whose syntax and ValueSet membership are fine but whose meaning differs from the record
    * phrase it stands for (a LOINC code of another test, an ICD code of another diagnosis, another medicine / procedure).
    */
-  | "code-meaning-mismatch";
+  | "code-meaning-mismatch"
+  /** R7 (ISSUES_v20.1 item 3): a generic class code (Hormone therapy, Chemotherapy) for an item the record does not name. */
+  | "generic-code-for-unknown-item";
 
 /**
  * R1 information-absent · R2 identifier-format · R3 precision / completeness · R4 unconfirmed

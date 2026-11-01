@@ -36,6 +36,7 @@
  * Errors make the tool's `valid` false; `record_checks: {ok, errors, warnings, rules, source_text}`
  * summarises. Deterministic, no LLM, no network; the record text is never logged.
  */
+import { genericCodeChecks } from "./genericCode.js";
 import { isIgDefined } from "../grounding/igDefined.js";
 import { unconfirmedTextChecks } from "./unconfirmedText.js";
 import { absenceClauses, absenceOf, RECORD_CHECKS_LEXICON_SHA256, RECORD_CHECKS_LEXICON_VERSION } from "./lexicon.js";
@@ -366,7 +367,7 @@ export function runRecordChecks(root: Json, opts: RecordCheckOptions = {}): Reco
     let established = new Set<string>();
     try {
       // ISSUES_v15.1 R3: the record's primary diagnosis slot (before the mention-level R4 checks, which skip what it reports)
-      const dx = diagnosisSlotChecks(root, new RecordText(opts.sourceText as string, site), absent);
+      const dx = diagnosisSlotChecks(root, new RecordText(opts.sourceText as string, site), absent, { codeNames: opts.codeNames ?? null, codeNamesZh: opts.codeNamesZh ?? null });
       issues.push(...dx.issues);
       covered = dx.covered;
       established = dx.established;
@@ -396,6 +397,12 @@ export function runRecordChecks(root: Json, opts: RecordCheckOptions = {}): Reco
     }
     // ISSUES_v20 R2: code meaning — a valid code that means something else than the record phrase it stands for
     rules.push("R7");
+    try {
+      // ISSUES_v20.1 item 3: a generic class code standing in for an item the record does not name
+      issues.push(...genericCodeChecks(root, opts.sourceText as string, opts.codeNames ?? null));
+    } catch {
+      notes.push("the generic-code check could not run on this input (internal error)");
+    }
     try {
       issues.push(...codeMeaningChecks(root, opts.sourceText as string, site, opts.codeNames ?? null, opts.codeNamesZh ?? null, opts.abbreviations ?? null, opts.meaningCandidates ?? null, flagged));
     } catch {

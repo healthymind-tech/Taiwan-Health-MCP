@@ -188,7 +188,9 @@ function collectOffsets(t: string, o: Offsets, course: boolean, li: number): voi
 
 // ------------------------------------------------------------------------------------------- times
 
-const RE_TIME = new RegExp(TIME_RE.source, "gu");
+// v20.1: not a time of day when the "hour" ends a hyphenated analyte name (CA 15-3：12.4, IL-6: 8.5) or the "minutes" are
+// the integer part of a decimal (3:12.4) — the value after the colon is a result, not 03:12
+const RE_TIME = new RegExp(`(?<![A-Za-z]{1,8}\\s*\\d{0,3}\\s*-\\s*)(?:${TIME_RE.source})(?![.,]\\d)`, "gu");
 const RE_CN_TIME = /(上午|早上|清晨|凌晨|中午|下午|傍晚|晚上|夜間|半夜)?\s*(\d{1,2})\s*(?:點|時)\s*(?:(\d{1,2})\s*分|半|整)?/gu;
 const RE_AMPM = /(\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)/gu;
 const RE_COMPACT_AFTER_DATE = /^\s*(?:t|,)?\s*([01]\d|2[0-3])([0-5]\d)(?![\d:])/u;
