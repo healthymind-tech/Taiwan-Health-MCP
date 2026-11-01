@@ -15,7 +15,7 @@ const dir = process.argv[2];
 async function main(): Promise<void> {
   initPool({ maxSize: 2 });
   const svc = new FHIRIGService(null);
-  let errs = 0, ptr = 0, withPatch = 0, cands = 0, applies = 0;
+  let errs = 0, ptr = 0, withPatch = 0, cands = 0, applies = 0, quoted = 0, wrong = 0;
   const engines = new Map<string, number>();
   for (const f of readdirSync(dir).filter((x) => x.endsWith(".bundle.json")).sort()) {
     const bundle = JSON.parse(readFileSync(join(dir, f), "utf8"));
@@ -29,7 +29,19 @@ async function main(): Promise<void> {
       if (i.severity !== "error" && i.severity !== "fatal") continue;
       errs++;
       if (typeof i.pointer === "string") {
-        if (resolvePointer(bundle, i.pointer).found) ptr++;
+        const at = resolvePointer(bundle, i.pointer);
+        if (at.found) ptr++;
+        // the entry / reference a Bundle message quotes must be the one the pointer names
+        const q = /^Entry '([^']+)' isn't reachable/u.exec(i.message) ?? /^Can't find '([^']+)' in the bundle/u.exec(i.message);
+        if (q) {
+          quoted++;
+          const v: any = at.value;
+          const ok = /isn't reachable/u.test(i.message) ? v?.fullUrl === q[1] : v?.reference === q[1];
+          if (!ok) {
+            wrong++;
+            if (process.env.SHOW_WRONG) console.log("WRONG", f, i.pointer, i.location_path ?? "-", i.path, i.message.slice(0, 140));
+          }
+        }
       }
       if (Array.isArray(i.patches) && i.patches.length) {
         withPatch++;
@@ -40,7 +52,7 @@ async function main(): Promise<void> {
       }
     }
   }
-  console.log(`engines ${JSON.stringify([...engines])}; errors ${errs}; pointer resolvable ${((100 * ptr) / errs).toFixed(1)}%; with patch ${((100 * withPatch) / errs).toFixed(1)}%; candidates ${cands}, applicable ${((100 * applies) / Math.max(cands, 1)).toFixed(1)}%`);
+  console.log(`engines ${JSON.stringify([...engines])}; errors ${errs}; pointer resolvable ${((100 * ptr) / errs).toFixed(1)}%; with patch ${((100 * withPatch) / errs).toFixed(1)}%; quoted-entry messages ${quoted}, pointer at the wrong entry ${wrong}; candidates ${cands}, applicable ${((100 * applies) / Math.max(cands, 1)).toFixed(1)}%`);
   await closePool();
 }
 main().catch((e) => { console.error(e); process.exit(2); });

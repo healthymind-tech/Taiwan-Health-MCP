@@ -385,7 +385,8 @@ const ERRORS = new Set(["error", "fatal"]);
 export function decorateIssue(issue: Json, ctx: PointerContext): void {
   try {
     if (!isObj(issue)) return;
-    const w = walkFhirPath(ctx.validated, String(issue.path ?? ""));
+    // location_path: the element an official Bundle message is about, when its own path names the wrong entry
+    const w = walkFhirPath(ctx.validated, String(issue.location_path ?? issue.path ?? ""));
     const mapped = toSent(w.tokens, ctx);
     if (!mapped) return;
     const sentTokens = existingPrefix(ctx.sent, mapped);

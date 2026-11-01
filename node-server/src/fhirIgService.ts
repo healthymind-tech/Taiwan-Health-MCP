@@ -25,7 +25,7 @@ import type { PackageRow } from "./fhirIg.js";
 import * as snapshot from "./fhirSnapshot.js";
 import * as terminology from "./fhirTerminology.js";
 import * as validator from "./fhirValidator.js";
-import { OFFICIAL_SOURCE, officialValidator } from "./officialValidator.js";
+import { OFFICIAL_SOURCE, officialValidator, relocateBundleIssues } from "./officialValidator.js";
 import { DbValidatorResolver, icd10cmStrict } from "./fhirValidationResolver.js";
 import { composeContains } from "./fhirCodeSystem.js";
 import * as reference from "./fhirReference.js";
@@ -1959,20 +1959,27 @@ export class FHIRIGService {
     // judge when one serves this package; the built-in TS validator is only the fallback (mode `prefer`).
     let engineSource: string = validator.SOURCE;
     let judged = false;
+    let fallbackReason: string | null = null;
+    let unverified: Record<string, any>[] = [];
     const official = officialValidator();
     const officialBase = official.endpointFor(pkg.package_id, pkg.version);
     if (officialBase) {
       try {
-        pushAll(issues, (await official.validate(officialBase, resource, profiles[0] ?? null)) as unknown as Record<string, any>[]);
+        const r = await official.validate(officialBase, resource, profiles[0] ?? null);
+        relocateBundleIssues(resource, r.issues as unknown as Record<string, any>[]);
+        pushAll(issues, r.issues as unknown as Record<string, any>[]);
+        // release v1: terminology-server failures are not findings — reported apart, the result marked incomplete
+        unverified = r.unverified.map((i) => ({ ...i, reason: "terminology server unavailable — not verified; validate again later" }));
         engineSource = OFFICIAL_SOURCE;
         judged = true;
       } catch (e) {
+        fallbackReason = String((e as Error).message);
         if (official.mode === "require") {
-          issues.push(validator.issue("error", "", "exception", `The official HL7 validator for ${pkg.package_id}#${pkg.version} is unavailable (${String((e as Error).message)}); the resource could not be validated`));
+          issues.push(validator.issue("error", "", "exception", `The official HL7 validator for ${pkg.package_id}#${pkg.version} is unavailable (${fallbackReason}); the resource could not be validated`));
           engineSource = OFFICIAL_SOURCE;
           judged = true;
         } else {
-          issues.push(validator.issue("warning", "", "informational", `The official HL7 validator for ${pkg.package_id}#${pkg.version} is unavailable; this result comes from the MCP built-in validator (fallback) and may differ from validator_cli`));
+          issues.push(validator.issue("warning", "", "informational", `The official HL7 validator for ${pkg.package_id}#${pkg.version} is unavailable (${fallbackReason}); this result comes from the MCP built-in validator (fallback), is not the official verdict and may differ from validator_cli`));
         }
       }
     }
@@ -2030,6 +2037,13 @@ export class FHIRIGService {
       // checked_fully / profiles_unchecked / valuesets_unchecked: `valid` keeps HL7
       // semantics (an unresolvable profile is only a warning), so incompleteness is explicit.
       ...validator.completenessOf(issues, (pkg._depsMissing as unknown[] | undefined) || []),
+      // release v1: a fallback or an unverified code is never a complete official check
+      ...(officialBase && (engineSource === validator.SOURCE || fallbackReason || unverified.length)
+        ? { checked_fully: false, official_verdict: engineSource !== validator.SOURCE && !fallbackReason, ...(fallbackReason ? { fallback_reason: fallbackReason } : {}) }
+        : officialBase
+          ? { official_verdict: true }
+          : {}),
+      ...(unverified.length ? { unverified } : {}),
     };
   }
 
@@ -2301,7 +2315,8 @@ export class FHIRIGService {
     const perEntry: Record<string, any>[][] = bundleEntries.map(() => []);
     const bundleIssues: Record<string, any>[] = [];
     for (const i of core.issues as Record<string, any>[]) {
-      const m = /^Bundle\.entry\[(\d+)\]/.exec(String(i.path || ""));
+      // location_path (officialValidator.relocateBundleIssues) corrects validator_cli's off-by-one entry index
+      const m = /^Bundle\.entry\[(\d+)\]/.exec(String(i.location_path || i.path || ""));
       if (m && perEntry[Number(m[1])]) perEntry[Number(m[1])].push(i);
       else bundleIssues.push(i);
     }
@@ -2354,6 +2369,9 @@ export class FHIRIGService {
       checked_fully: core.checked_fully,
       profiles_unchecked: core.profiles_unchecked,
       valuesets_unchecked: core.valuesets_unchecked,
+      ...(core.official_verdict !== undefined ? { official_verdict: core.official_verdict } : {}),
+      ...(core.fallback_reason ? { fallback_reason: core.fallback_reason } : {}),
+      ...(core.unverified ? { unverified: core.unverified } : {}),
       ...idBlock,
     };
     const warnings: string[] = [];

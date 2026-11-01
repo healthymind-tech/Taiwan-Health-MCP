@@ -10,8 +10,15 @@
  *   OFFICIAL_VALIDATOR_URLS        comma list of `<package_id>[#<version>]=<base url>`
  *   OFFICIAL_VALIDATOR_MODE        off | prefer (official, TS fallback when unavailable) | require (no fallback)
  *                                  default: prefer when URLs are set, else off
- *   OFFICIAL_VALIDATOR_TIMEOUT_MS  per request, default 180000
- *   OFFICIAL_VALIDATOR_CONCURRENCY in-flight requests per validator, default 2 (it queues internally anyway)
+ *   OFFICIAL_VALIDATOR_TIMEOUT_MS  per request once sent (queueing in MCP excluded), default 120000
+ *   OFFICIAL_VALIDATOR_CONCURRENCY in-flight requests per validator, default 1 — its HTTP server handles one request at
+ *                                  a time, so more only queue inside it where the timeout cannot see them
+ *
+ * Terminology-server trouble inside an official result (a tx.fhir.org timeout, an unreachable server) is not a finding
+ * about the instance: those issues are returned apart as `unverified` (the caller marks the result incomplete), and
+ * because validator_cli keeps such failures in its in-memory terminology cache for the life of the process
+ * (TerminologyCache.store: transient failures are not persisted but stay in memory), the validator is restarted
+ * (POST /stop; the container's restart policy brings it back) at most once per 10 minutes, and calls wait for it.
  */
 
 import { logError, logWarning } from "./logger.js";
@@ -45,7 +52,7 @@ export function parseOfficialConfig(env: Record<string, string | undefined>): Of
   const raw = String(env.OFFICIAL_VALIDATOR_MODE ?? "").trim();
   const mode: OfficialMode = raw === "off" || raw === "prefer" || raw === "require" ? raw : endpoints.length ? "prefer" : "off";
   const num = (v: string | undefined, d: number): number => (v && Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : d);
-  return { mode, endpoints, timeoutMs: num(env.OFFICIAL_VALIDATOR_TIMEOUT_MS, 180_000), concurrency: num(env.OFFICIAL_VALIDATOR_CONCURRENCY, 2) };
+  return { mode, endpoints, timeoutMs: num(env.OFFICIAL_VALIDATOR_TIMEOUT_MS, 120_000), concurrency: num(env.OFFICIAL_VALIDATOR_CONCURRENCY, 1) };
 }
 
 /** OperationOutcome → issues in the MCP issue shape (path = the first expression, as validator_cli reports it). */
@@ -69,6 +76,20 @@ export function issuesFromOutcome(oo: unknown): OfficialIssue[] {
   return out;
 }
 
+/** An issue that reports terminology-server trouble (timeout, unreachable, 5xx), not a property of the instance. */
+const TX_TRANSIENT =
+  /SocketTimeoutException|SocketException|ConnectException|UnknownHostException|SSLException|NoRouteToHostException|timed out|Read timeout|Connection (?:refused|reset)|Error contacting|Unable to connect|could not connect|Too Many Requests|HTTP(?: status)?[: ]+(?:5\d\d|429)\b|terminology server[^.]{0,80}(?:unavailable|not available|error|could not be reached|did not respond)/iu;
+
+export function isTransientTxIssue(i: { message: string }): boolean {
+  return TX_TRANSIENT.test(i.message);
+}
+
+export interface OfficialResult {
+  issues: OfficialIssue[];
+  /** terminology-server failures: the codes concerned could not be verified this time */
+  unverified: OfficialIssue[];
+}
+
 type Fetch = (url: string, init: { method: string; headers: Record<string, string>; body: string; signal: AbortSignal }) => Promise<{ ok: boolean; status: number; json(): Promise<unknown> }>;
 
 /** A resident validator is unavailable (down, timed out, not configured for the package). */
@@ -78,8 +99,15 @@ export class OfficialValidator {
   private inflight = new Map<string, number>();
   private waiters = new Map<string, Array<() => void>>();
   private downUntil = new Map<string, number>();
+  private restarting = new Map<string, Promise<void>>();
+  private lastRestart = new Map<string, number>();
 
-  constructor(readonly config: OfficialConfig, private readonly fetchImpl: Fetch = fetch as unknown as Fetch, private readonly now: () => number = Date.now) {}
+  constructor(
+    readonly config: OfficialConfig,
+    private readonly fetchImpl: Fetch = fetch as unknown as Fetch,
+    private readonly now: () => number = Date.now,
+    private readonly sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
+  ) {}
 
   get mode(): OfficialMode {
     return this.config.mode;
@@ -92,8 +120,10 @@ export class OfficialValidator {
     return e ? e.url : null;
   }
 
-  async validate(base: string, resource: unknown, profile: string | null): Promise<OfficialIssue[]> {
-    if ((this.downUntil.get(base) ?? 0) > this.now()) throw new OfficialUnavailable(`official validator ${base} marked down`);
+  async validate(base: string, resource: unknown, profile: string | null): Promise<OfficialResult> {
+    if ((this.downUntil.get(base) ?? 0) > this.now()) throw new OfficialUnavailable(`official validator ${base} is not reachable (retry shortly)`);
+    const restarting = this.restarting.get(base);
+    if (restarting) await restarting;
     await this.acquire(base);
     const ctl = new AbortController();
     const timer = setTimeout(() => ctl.abort(), this.config.timeoutMs);
@@ -106,16 +136,52 @@ export class OfficialValidator {
         signal: ctl.signal,
       });
       if (!res.ok) throw new OfficialUnavailable(`official validator ${base} answered HTTP ${res.status}`);
-      return issuesFromOutcome(await res.json());
+      const all = issuesFromOutcome(await res.json());
+      const unverified = all.filter(isTransientTxIssue);
+      if (unverified.length) this.scheduleRestart(base);
+      return { issues: all.filter((i) => !isTransientTxIssue(i)), unverified };
     } catch (e) {
-      // a dead / hung validator is skipped for 30 s so callers fall back quickly instead of each waiting the timeout
-      this.downUntil.set(base, this.now() + 30_000);
-      logError("official validator call failed", { endpoint: base, error: String((e as Error).message) });
+      const timedOut = ctl.signal.aborted;
+      // a refused / reset connection marks the validator down briefly so callers fall back at once; a timeout does
+      // not (the validator is alive, the request was slow)
+      if (!timedOut && !(e instanceof OfficialUnavailable)) this.downUntil.set(base, this.now() + 15_000);
+      logError("official validator call failed", { endpoint: base, error: timedOut ? `timed out after ${this.config.timeoutMs} ms` : String((e as Error).message) });
+      if (timedOut) throw new OfficialUnavailable(`official validator ${base} did not answer within ${Math.round(this.config.timeoutMs / 1000)} s`);
       throw e instanceof OfficialUnavailable ? e : new OfficialUnavailable(String((e as Error).message));
     } finally {
       clearTimeout(timer);
       this.release(base);
     }
+  }
+
+  /**
+   * Restart a validator whose terminology cache holds a transient failure (POST /stop → the container restarts), at
+   * most once per 10 minutes; later calls wait (≤ 3 min) until it answers again.
+   */
+  private scheduleRestart(base: string): void {
+    const last = this.lastRestart.get(base) ?? -Infinity;
+    if (this.now() - last < 600_000 || this.restarting.has(base)) return;
+    this.lastRestart.set(base, this.now());
+    logWarning("official validator: terminology failure cached in the validator; restarting it", { endpoint: base });
+    const p = (async (): Promise<void> => {
+      try {
+        await this.fetchImpl(`${base}/stop`, { method: "POST", headers: {}, body: "", signal: AbortSignal.timeout(10_000) });
+      } catch {
+        // already gone
+      }
+      const until = this.now() + 180_000;
+      await this.sleep(5_000);
+      while (this.now() < until) {
+        try {
+          // any HTTP answer (405 for GET) means the server is back
+          await this.fetchImpl(`${base}/version`, { method: "GET", headers: {}, body: undefined as unknown as string, signal: AbortSignal.timeout(3_000) });
+          return;
+        } catch {
+          await this.sleep(3_000);
+        }
+      }
+    })().finally(() => this.restarting.delete(base));
+    this.restarting.set(base, p);
   }
 
   private async acquire(base: string): Promise<void> {
@@ -147,4 +213,90 @@ export function officialValidator(): OfficialValidator {
     if (shared.mode !== "off") logWarning("official validator enabled", { mode: shared.mode, endpoints: shared.config.endpoints.map((e) => `${e.packageId}${e.version ? `#${e.version}` : ""}`) });
   }
   return shared;
+}
+
+type JsonObj = Record<string, any>;
+
+/** The references (`reference` strings) under a resource element path like `subject` / `medication[x]` / `section.entry`. */
+function refsAt(resource: unknown, sub: string): Array<{ path: string; ref: string }> {
+  const out: Array<{ path: string; ref: string }> = [];
+  const walk = (node: unknown, parts: string[], at: string): void => {
+    if (Array.isArray(node)) {
+      node.forEach((n, k) => walk(n, parts, `${at}[${k}]`));
+      return;
+    }
+    if (!node || typeof node !== "object") return;
+    const o = node as JsonObj;
+    if (!parts.length) {
+      if (typeof o.reference === "string") out.push({ path: at, ref: o.reference });
+      return;
+    }
+    const [head, ...rest] = parts;
+    const name = head.replace(/\[\d+\]$/u, "");
+    const keys = name.endsWith("[x]") ? Object.keys(o).filter((k) => k.startsWith(name.slice(0, -3)) && /^[A-Z]/u.test(k.slice(name.length - 3))) : [name];
+    for (const k of keys) if (k in o) walk(o[k], rest, `${at}.${k}`);
+  };
+  walk(resource, sub.split(".").filter(Boolean), "");
+  return out;
+}
+
+function allRefs(node: unknown, at = ""): Array<{ path: string; ref: string }> {
+  const out: Array<{ path: string; ref: string }> = [];
+  if (Array.isArray(node)) node.forEach((n, k) => out.push(...allRefs(n, `${at}[${k}]`)));
+  else if (node && typeof node === "object") {
+    const o = node as JsonObj;
+    if (typeof o.reference === "string") out.push({ path: at, ref: o.reference });
+    for (const [k, v] of Object.entries(o)) if (k !== "reference" && typeof v === "object") out.push(...allRefs(v, `${at}.${k}`));
+  }
+  return out;
+}
+
+/**
+ * validator_cli 7.0.1 names the wrong entry in two Bundle messages (the index is one too high): `Entry 'u' isn't
+ * reachable …` (issue path `Bundle.entry[k]`) and `Can't find 'r' in the bundle (Bundle.entry[k].resource.x)`. The
+ * official path / message are kept; `location_path` names the element the message is about, found by the fullUrl /
+ * reference the message quotes (the pointer layer and the per-entry split use it).
+ */
+export function relocateBundleIssues(bundle: unknown, issues: Array<JsonObj>): void {
+  const b = bundle as JsonObj;
+  if (!b || b.resourceType !== "Bundle" || !Array.isArray(b.entry)) return;
+  const entries: JsonObj[] = b.entry;
+  for (const i of issues) {
+    const msg = String(i.message ?? "");
+    const reach = /^Entry '([^']+)' isn't reachable by traversing links/u.exec(msg);
+    if (reach) {
+      const j = entries.findIndex((e) => e && e.fullUrl === reach[1]);
+      if (j >= 0) i.location_path = `Bundle.entry[${j}]`;
+      continue;
+    }
+    const cf = /^Can't find '([^']+)' in the bundle(?: \(([^)]*)\))?/u.exec(msg);
+    if (!cf) continue;
+    const ref = cf[1];
+    // where the message / path says the reference is: (entry index, element path below the resource)
+    const hints: Array<[number, string]> = [];
+    const inMsg = /^Bundle\.entry\[(\d+)\]\.resource\.(.+)$/u.exec(cf[2] ?? "");
+    if (inMsg) hints.push([Number(inMsg[1]), inMsg[2]]);
+    const inPath = /^Bundle\.entry\[(\d+)\]\.resource\.(.+)$/u.exec(String(i.path ?? ""));
+    if (inPath) hints.push([Number(inPath[1]), inPath[2].replace(/\[\d+\]/gu, "")]);
+    let found: string | null = null;
+    for (const [k, sub] of hints) {
+      for (const j of [k, k - 1, k + 1]) {
+        if (j < 0 || j >= entries.length) continue;
+        const hit = refsAt(entries[j]?.resource, sub).find((r) => r.ref === ref);
+        if (hit) {
+          found = `Bundle.entry[${j}].resource${hit.path}`;
+          break;
+        }
+      }
+      if (found) break;
+    }
+    if (!found) {
+      // anywhere in the Bundle: the first Reference with this value
+      for (let j = 0; j < entries.length && !found; j++) {
+        const hit = allRefs(entries[j]?.resource).find((r) => r.ref === ref);
+        if (hit) found = `Bundle.entry[${j}].resource${hit.path}`;
+      }
+    }
+    if (found) i.location_path = found;
+  }
 }
