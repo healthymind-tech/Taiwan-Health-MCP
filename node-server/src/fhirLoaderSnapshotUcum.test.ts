@@ -363,3 +363,13 @@ test("checkReference target match = validateResource (IV:5376-5385, start IV:687
   const bad = errors(await new InstanceValidator(new R()).validate(bundle({ meta: { profile: ["http://example.tw/fhir/StructureDefinition/pat"] } })));
   assert.ok(bad.some((i) => i.message === msg && i.path === "Bundle.entry[0].resource.subject"), JSON.stringify(bad));
 });
+
+test("NotSlice details: each failed conformsTo() adds 'Details for <parent> matching against profile <url|ver>' (IV:6518-6527)", async () => {
+  const B = "http://example.tw/fhir/StructureDefinition/bundle";
+  const P = "http://example.tw/fhir/StructureDefinition/pat";
+  const b = { resourceType: "Bundle", meta: { profile: [B] }, type: "collection", entry: [{ fullUrl: "http://ex.org/fhir/Patient/p1", resource: { resourceType: "Patient", id: "p1" } }] };
+  const issues = errors(await new InstanceValidator(new FakeResolver()).validate(b));
+  const ns = issues.find((i) => /does not match any known slice/.test(i.message));
+  assert.ok(ns, JSON.stringify(issues));
+  assert.match(ns!.message, new RegExp(`Bundle\\.entry\\[0\\]: Does not match slice 'patient' \\(discriminator: resource\\.conformsTo\\('${P.replace(/[.]/g, "\\.")}'\\)\\), Bundle\\.entry\\[0\\]: Details for Bundle matching against profile ${P.replace(/[.]/g, "\\.")}$`));
+});

@@ -1108,6 +1108,11 @@ function javaStringHash(s: string): number {
 
 /** HashSet<String>.toString() iteration order (default capacity 16, load factor 0.75, insertion order within a bucket). */
 function javaHashSetToString(values: string[]): string {
+  return `[${javaHashOrder(values).join(", ")}]`;
+}
+
+/** Iteration order of a java.util.HashSet / HashMap keyed by these strings (default capacity, insertion order per bucket). */
+function javaHashOrder(values: string[]): string[] {
   const uniq: string[] = [];
   for (const v of values) if (!uniq.includes(v)) uniq.push(v);
   let cap = 16;
@@ -1116,8 +1121,7 @@ function javaHashSetToString(values: string[]): string {
     const h = javaStringHash(s);
     return (h ^ (h >>> 16)) & (cap - 1);
   };
-  const sorted = uniq.map((v, i) => ({ v, i, b: bucket(v) })).sort((a, b) => a.b - b.b || a.i - b.i);
-  return `[${sorted.map((x) => x.v).join(", ")}]`;
+  return uniq.map((v, i) => ({ v, i, b: bucket(v) })).sort((a, b) => a.b - b.b || a.i - b.i).map((x) => x.v);
 }
 
 /** Java String.split(regex) on a literal one-char separator: trailing empty strings removed. */
@@ -3315,6 +3319,11 @@ export class InstanceValidator {
         }
         if (!r.match) {
           sliceInfo.push(`${it.path}: Does not match slice '${sliceNameOf(s)}' (discriminator: ${r.expression})`);
+          // IV:6518-6527: a DETAILS_FOR__MATCHING_AGAINST_PROFILE_ hint per failed conformsTo() profile (HashMap order)
+          for (const u of javaHashOrder(r.notes ?? [])) {
+            const nsdx = await this.sdx(u);
+            sliceInfo.push(`${it.path}: Details for ${parent.path} matching against profile ${nsdx ? this.versionedUrl(nsdx) : u}`);
+          }
           continue;
         }
         if (!matched) {
@@ -3627,6 +3636,7 @@ export class InstanceValidator {
     if (!discs.length) return { match: false, expression: "" };
     const vurl = this.versionedUrl(sdx);
     const clauses: string[] = [];
+    const notes: string[] = [];
     let result: boolean | undefined = true;
     let anyFound = false;
     let anyUnlocated = false;
@@ -3673,7 +3683,8 @@ export class InstanceValidator {
             // "we don't have to find something": no clause
           } else {
             clauses.push(profs.length > 1 ? `(${profs.map((p) => `${rawPath}.conformsTo('${p}')`).join(" or ")})` : `${rawPath}.conformsTo('${profs[0]}')`);
-            and(await this.conformsToAny(it, dpath, profs, rctx, depth));
+            // FHIRPath `and` short-circuits on false: a conformsTo() after a failed clause is never evaluated
+            if ((result as boolean | undefined) !== false) and(await this.conformsToAny(it, dpath, profs, rctx, depth, notes));
           }
         } else if (dtype === "exists") {
           if (typeof c.min === "number" && c.min >= 1) {
@@ -3729,7 +3740,7 @@ export class InstanceValidator {
       if (anyUnlocated) return { match: undefined, expression: clauses.join(" and ") };
       throw new SlicingDefinitionError(couldNotMatch(discs.length, discNames, slice.id, vurl));
     }
-    return { match: result, expression: clauses.join(" and ") };
+    return { match: result, expression: clauses.join(" and "), ...(notes.length ? { notes } : {}) };
   }
 
   /** The type clause of InstanceValidator.sliceMatches (`<path> is <type>`, or any of several types). */
@@ -3830,7 +3841,7 @@ export class InstanceValidator {
   }
 
   /** `<path>.conformsTo(p1) or …`: the value at the path validates against one of the profiles without errors. */
-  private async conformsToAny(it: Item, dpath: string, profs: string[], rctx: ResourceCtx, depth: number): Promise<boolean> {
+  private async conformsToAny(it: Item, dpath: string, profs: string[], rctx: ResourceCtx, depth: number, notes: string[] = []): Promise<boolean> {
     const target = dpath === "$this" ? [it.value] : this.discriminatorValues(it.value, dpath, rctx);
     if (target.length !== 1) return false;
     const r = target[0];
@@ -3845,15 +3856,21 @@ export class InstanceValidator {
         // FHIRPath conformsTo (InstanceValidator.conformsToProfile): a new NodeStack, so a fresh id scope
         await this.validateItemAgainst(psdx, psdx.root, sub, psdx.type, { ...rctx, ids: new Map() }, trial, depth + 1);
         if (isValid(trial.filter((i) => !isParseIssue(i)))) return true;
+        notes.push(p);
       }
       return false;
     }
+    // FHIRPath `or` short-circuits on true; each conformsTo() that fails records its errors (IV:460-470, sliceNotes)
     for (const p of profs) {
       const psdx = await this.sdx(p);
       if (!psdx) continue;
-      if (psdx.type !== r.resourceType && !["Resource", "DomainResource"].includes(psdx.type)) continue;
+      if (psdx.type !== r.resourceType && !["Resource", "DomainResource"].includes(psdx.type)) {
+        notes.push(p); // validateResource: Validation_VAL_Profile_WrongType
+        continue;
+      }
       const ctx: ResourceCtx = { resource: r, container: null, root: rctx.root, bundle: rctx.bundle, entry: this.entryFor(r, rctx, false) };
       if (await this.resourceConforms(ctx, p, this.pathOf(it, dpath), depth + 1)) return true;
+      notes.push(p);
     }
     return false;
   }
@@ -5652,6 +5669,8 @@ interface SliceMatch {
   match: boolean | undefined;
   /** the discriminator expression (Does_not_match_slice_ detail) */
   expression: string;
+  /** conformsTo() profiles that failed with errors (ValidationContext.sliceNotes → DETAILS_FOR__MATCHING_AGAINST_PROFILE_) */
+  notes?: string[];
 }
 
 /** Could_not_match_discriminator_for_slice_in_profile (one / other). */
