@@ -233,7 +233,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   (a required coding slice is not added next to a coding of its system with another code: reported instead).
   //   Default output unchanged.
   // 1.29.0 (ISSUES_v17.4, with source_text): grounding (fhir_check_grounding 1.4.0) and the record checks — the IG-defined exemption (igBlueprint/igValues.ts) is narrowed: profile fixed / pattern values, invariant answer literals and the example identity (name / identifier …) of a national payer / authority organization (igBlueprint/nationalOrgs.ts: an Organization profile whose type is pinned to govt / pay / ins, or the only target of the IG's payor / insurer / payer / authority references — TWPAS Coverage.payor / ClaimResponse.insurer -> Organization-govt-twcore); an example hospital / clinic / lab / practitioner / patient value is no longer exempt (reported when the record names another), as fhir_get_minimal_skeleton 1.6.0. Output without source_text unchanged.
-  fhir_validate_bundle: "1.29.0",
+  // 1.30.0 (release v1): a failed invariant (official or built-in) carries `invariant.expression` / `human` / `literals` (systems, code candidates with displays, values, formats) and, for a coding the rule is about, replace_code / replace_system suggestions → JSON patches; cascades (profile match, entry / reference slices) carry caused_by and `root_causes`.
+  fhir_validate_bundle: "1.30.0",
   // 1.6.2: the binding-aware suggestions above (ISSUES_v10 A) also apply to single-resource validation.
   // 1.7.0: the validator v13 rules above (fhir_validate_bundle 1.9.0).
   // 1.8.0 (ISSUES_v15): the record checks of fhir_validate_bundle 1.11.0 on the resource (data.issues, data.record_checks).
@@ -261,7 +262,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.24.0 (v18 R1 / parity v2, officialValidator.ts): when a resident official HL7 validator serves the package (OFFICIAL_VALIDATOR_URLS), structure / slicing / profile / invariant / document / terminology issues are its OperationOutcome (data.source "hl7-validator_cli-7.0.1", data.engine "hl7-official"; "mcp-fallback" + a warning when it is unavailable); MCP adds suggestions, slice_match, pointers / patches and content checks only. Without one, output unchanged. Record checks without source_text are warnings only (content errors need the record).
   // 1.25.0 (release v1): official engine — terminology-server failures in data.unverified (not errors; checked_fully false; the validator is restarted to drop the cached failure), official_verdict / fallback_reason, a fallback is never checked_fully; reachable / Can't find issues carry location_path (validator_cli's off-by-one entry index) and their pointer / entry follow it.
   // 1.26.0 (ISSUES_v17.4, with source_text): as fhir_validate_bundle 1.29.0 (narrowed IG-defined exemption).
-  fhir_validate_resource: "1.26.0",
+  // 1.27.0 (release v1): a failed invariant (official or built-in) carries `invariant.expression` / `human` / `literals` (systems, code candidates with displays, values, formats) and, for a coding the rule is about, replace_code / replace_system suggestions → JSON patches; cascades (profile match, entry / reference slices) carry caused_by and `root_causes`.
+  fhir_validate_resource: "1.27.0",
   // 1.2.0 (all below): provenance.resolved_by / closure_versions; canonical arguments resolve to their
   // owning package when package_id is omitted; "|version" honoured; list/search: all_packages + zero-hit hint;
   // NO_DEFAULT_IG instead of an arbitrary package when no default IG is set.

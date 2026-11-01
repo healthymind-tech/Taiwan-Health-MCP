@@ -201,6 +201,16 @@ Production runs one resident official validator_cli 7.0.1 per main IG (TW Core 1
 
 The official HTTP service handles one request at a time: MCP sends one at a time per validator (queueing on its side) and falls back, saying why, when no answer comes within 120 s of sending. validator_cli keeps terminology-server failures in its in-memory cache; MCP restarts that validator when it sees one (at most every 10 minutes) to clear it. `OFFICIAL_VALIDATOR_MODE`: `prefer` (default; falls back to the built-in validator when the official one is unavailable), `require` (no fallback: an error "could not be validated"), `off`. IGs without a resident validator are still judged by the built-in validator, with unchanged output (no `engine` field). Terminology is judged by tx.fhir.org by default (codes and displays only, no patient data).
 
+#### Failed invariants: literal values and root causes (release v1) {#invariant-literals}
+
+Every `Constraint failed: <key>` issue (official or built-in validator) carries `invariant`:
+- `expression`: the invariant's FHIRPath in the profile; `human`: its text as written (often Chinese).
+- `literals`: the literal values the expression names — `systems`, `codes` (with their system and the CodeSystem's display, telling which situation each code is for), `values`, `formats` (`matches()` regexes).
+- `hint`: the accepted values and the rule.
+- When the instance has a coding of that system with a code the rule does not accept, `replace_code` (or `replace_system`) suggestions become JSON patches; several candidates are ranked by how close their display is to the current code's meaning, and only the coding the rule is about gets them (e.g. the national-ID identifier, not the medical-record number). A coding the instance lacks is never invented.
+
+Cascades (`Unable to find a profile match`, an entry / reference slice not found) carry `caused_by` and `root_causes`: the errors at the end of the chain that are not cascades themselves (e.g. Composition → Encounter → Patient → `pat-id-1`).
+
 ### Auto-fix, ambiguous and "no new errors" (v19 R1) {#auto-fix}
 
 From `fhir_finalize_bundle` 1.14.0 (`repair="content"`, the default) every structural error with **exactly one correct fix** is fixed by the tool itself, the rest is reported as `ambiguous`, and **the errors after finalize are a subset of the errors before**. Every rule comes from the StructureDefinitions / snapshots, the FHIR R4 specification and the validator's own messages — nothing IG-specific:

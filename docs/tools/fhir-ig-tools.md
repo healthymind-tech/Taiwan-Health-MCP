@@ -201,6 +201,16 @@
 
 官方 HTTP 服務一次處理一個請求，MCP 對每個 validator 一次只送一個（排隊在 MCP 端），送出後 120 秒內沒有回應就降級並說明。術語伺服器的暫時失敗會被 validator_cli 留在記憶體快取中，MCP 偵測到時會重啟該 validator（最多每 10 分鐘一次）以清除。`OFFICIAL_VALIDATOR_MODE`：`prefer`（預設，官方不可用時降級為內建）、`require`（不降級：官方不可用時回 error「無法驗證」）、`off`。沒有常駐服務的 IG 仍由內建驗證器判定，輸出不變（沒有 `engine` 欄位）。術語預設由 tx.fhir.org 判定（只送代碼與 display，不含病人資料）。
 
+#### 失敗的 invariant 說明值與根因（release v1）{#invariant-literals}
+
+每個 `Constraint failed: <key>`（官方或內建驗證器皆同）的 issue 都附 `invariant`：
+- `expression`：profile 中該 invariant 的 FHIRPath；`human`：原始說明文字（常為中文）。
+- `literals`：從 expression 抽出的字面值——`systems`、`codes`（含其 system 與該 CodeSystem 的 display，說明各代碼適用情境）、`values`、`formats`（`matches()` 的正規表示式）。
+- `hint`：可接受的值與規則全文。
+- 若實例中有該 system 的 coding 但代碼不被接受，附 `replace_code`（或 `replace_system`）建議並轉成 JSON Patch；多個候選時依 display 與目前代碼的語意相近程度排序，只針對規則所指的那個 coding（例如身分證類識別碼，而不是病歷號）。不會憑空新增實例沒有的 coding。
+
+連鎖錯誤（`Unable to find a profile match`、entry / reference slice 找不到）附 `caused_by`，並附 `root_causes`：沿連鎖追到最底層、不是連鎖錯誤的根因（例如 Composition → Encounter → Patient → `pat-id-1`）。
+
 ### 自動修正、ambiguous 與「不新增錯誤」（v19 R1）{#auto-fix}
 
 `fhir_finalize_bundle` 1.14.0 起（`repair="content"`，預設）把**只有一種正確修法**的結構錯誤全部自己修好，其餘標為 `ambiguous`，並保證**finalize 後的 error 是 finalize 前的子集合**。規則全部由 StructureDefinition / snapshot、FHIR R4 規格與驗證器本身的訊息推得，不針對任何 IG：
