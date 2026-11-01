@@ -192,7 +192,8 @@ export type CodeCheck = (
   | { status: "unknown-system" }
   /** Known-but-unchecked system (e.g. UCUM, BCP-47): say nothing. */
   | { status: "silent" }
-  | { status: "invalid-code"; severity: "error" | "warning"; message: string }
+  /** `at: "system"`: the finding is about Coding.system (e.g. CODESYSTEM_CS_NO_SUPPLEMENT), not the code. */
+  | { status: "invalid-code"; severity: "error" | "warning"; message: string; at?: "system" }
   | { status: "invalid-display"; severity: "error" | "warning" | "information"; message: string }
   /** A display was given but there is no local terminology to check it against (default severity information). */
   | { status: "display-unchecked"; message: string; severity?: "warning" | "information" }
@@ -211,8 +212,11 @@ export interface ValidatorResolver {
   fetchValueSet(url: string): Promise<Record<string, any> | null>;
   /** Membership; system null for bare `code` values. undefined = cannot decide locally. `|version` honoured. */
   valueSetContains(url: string, system: string | null, code: string): Promise<boolean | undefined>;
-  /** Existence / display check of a code in its CodeSystem (Coding.version when given). */
-  checkCode(system: string, code: string, display: string | null, version?: string | null): Promise<CodeCheck>;
+  /**
+   * Existence / display check of a code in its CodeSystem (Coding.version when given). `langs`: the requested
+   * display languages (ValidationOptions languages; default ['en']).
+   */
+  checkCode(system: string, code: string, display: string | null, version?: string | null, langs?: string[]): Promise<CodeCheck>;
   /**
    * Can the HL7 validator resolve this code system at all (a CodeSystem with
    * this exact canonical in the package closure, or one tx.fhir.org serves)?
@@ -245,6 +249,22 @@ export interface ValidateOptions {
    * InstanceValidator reports the corresponding XML element model (ele-1, Type_Specific_Checks_DT_Primitive_ValueExt).
    */
   format?: "json" | "xml";
+  /**
+   * Display languages for code checks (InstanceValidator.getValidationOptionsLanguage → ValidationOptions
+   * languages; the "for the language(s) '…'" of the display messages). Default ['en'] — what validator_cli
+   * reports in production; the HL7 test runner's locale gives 'en-US'.
+   */
+  languages?: string[];
+  /**
+   * ValidatorSettings.allowExamples (validator_cli -allow-example-urls; default false): example.org / acme.com
+   * URLs are accepted (no TYPE_SPECIFIC_CHECKS_DT_URL_EXAMPLE, references / canonicals / extensions there pass).
+   */
+  allowExamples?: boolean;
+  /**
+   * ValidatorSettings.displayWarningMode (validator_cli -display-issues-are-warnings; default false): a wrong
+   * display (tx-issue-type invalid-display) is a warning instead of an error, and does not fail a binding.
+   */
+  displayWarnings?: boolean;
 }
 
 const ELE1_MESSAGE = "Constraint failed: ele-1: 'All FHIR elements must have a @value or children'";
@@ -388,6 +408,12 @@ export function impliedVitalSignProfile(code: any): string | null {
 const QUANTITY_TYPES = ["Quantity"];
 
 const EXAMPLE_HOST = /(^|\.)(example\.(org|com|net)|acme\.(com|org))$/i;
+
+/** BaseValidator.isExampleUrl (7.0.1). */
+export function isExampleUrl(url: string): boolean {
+  const hosts = ["example.org", "acme.com", "acme.org", "example.com", "example.net"];
+  return hosts.some((h) => url.includes(`${h}/`) || url.endsWith(h)) || url.startsWith("urn:oid:1.3.6.1.4.1.32473.") || url.startsWith("urn:oid:2.999.");
+}
 
 function isPrimitive(t: string): boolean {
   return t in PRIMITIVES;
@@ -639,8 +665,8 @@ function javaIsAbsoluteUrl(ref: string): boolean {
  * InstanceValidator.allowUnknownExtension (7.0.1, settings.allowExamples off, no extension domains): extensions the
  * validator accepts without a definition (no Extension_EXT_Unknown_NotHere).
  */
-function allowUnknownExtension(url: string): boolean {
-  return url.includes("nema.org") || url.startsWith("http://hl7.org/fhir/tools/StructureDefinition/") || url === "http://hl7.org/fhir/StructureDefinition/structuredefinition-expression";
+function allowUnknownExtension(url: string, allowExamples = false): boolean {
+  return (allowExamples && (url.includes("example.org") || url.includes("acme.com"))) || url.includes("nema.org") || url.startsWith("http://hl7.org/fhir/tools/StructureDefinition/") || url === "http://hl7.org/fhir/StructureDefinition/structuredefinition-expression";
 }
 /**
  * Utilities.decodeBase64(value, false) = ASCII whitespace dropped, then java.util.Base64.getDecoder().decode — ported
@@ -1242,6 +1268,13 @@ export class InstanceValidator {
 
   constructor(private readonly resolver: ValidatorResolver) {}
 
+  /** ValidateOptions.languages of the running validation. */
+  private languages: string[] = ["en"];
+  /** ValidateOptions.allowExamples of the running validation. */
+  private allowExamples = false;
+  /** ValidateOptions.displayWarnings of the running validation. */
+  private displayWarnings = false;
+
   // ------------------------------------------------------------------ public
 
   async validate(resource: Record<string, any>, opts: ValidateOptions = {}): Promise<Issue[]> {
@@ -1253,6 +1286,10 @@ export class InstanceValidator {
     const rctx: ResourceCtx = { resource, container: null, root: resource, bundle, entry: null };
     // `|version` is kept: HL7 resolves a versioned canonical to that version only.
     const extra = (opts.profiles || []).map((p) => String(p || "").trim()).filter((p) => p !== "");
+    const langs = (opts.languages ?? []).map((l) => String(l || "").trim()).filter((l) => l !== "");
+    this.languages = langs.length ? langs : ["en"];
+    this.allowExamples = opts.allowExamples === true;
+    this.displayWarnings = opts.displayWarnings === true;
     this.boundValueSets = new Set();
     this.pendingVsSystems = false;
     this.bundleErrorFlag = new WeakSet();
@@ -1337,10 +1374,14 @@ export class InstanceValidator {
   }
 
   private codeCheck(system: string, code: string, display: string | null, version: string | null = null): Promise<CodeCheck> {
-    const key = `${system}|${code}|${display}|${version}`;
+    const key = `${system}|${code}|${display}|${version}|${this.languages.join(",")}|${this.displayWarnings}`;
     let p = this.codeCache.get(key);
     if (!p) {
-      p = this.resolver.checkCode(system, code, display, version);
+      // the default languages are not passed, so resolvers without the parameter keep their behaviour
+      const langs = this.languages.length === 1 && this.languages[0] === "en" ? undefined : this.languages;
+      p = langs ? this.resolver.checkCode(system, code, display, version, langs) : this.resolver.checkCode(system, code, display, version);
+      // InstanceValidator.processTxIssues (7.0.1): displayWarningMode turns an invalid-display error into a warning
+      if (this.displayWarnings) p = p.then((r) => (r.status === "invalid-display" && r.severity === "error" ? { ...r, severity: "warning" } : r));
       this.codeCache.set(key, p);
     }
     return p;
@@ -2710,7 +2751,7 @@ export class InstanceValidator {
         code: "structure",
         message: `Sub-extension url '${url}' is not defined by the Extension ${parentSdx.url}`,
       });
-    } else if (allowUnknownExtension(url)) {
+    } else if (allowUnknownExtension(url, this.allowExamples)) {
       // InstanceValidator.allowUnknownExtension: tools / nema.org / structuredefinition-expression need no definition
     } else if (!insideDefinedExtension || absolute) {
       issues.push({
@@ -3896,7 +3937,8 @@ export class InstanceValidator {
       const syn = urnSyntaxIssue(url, typeCode);
       if (syn && !/^URI values cannot start with/.test(syn)) ok = false;
       const host = /^https?:\/\/([^/:?#]+)/i.exec(url)?.[1];
-      if (host && EXAMPLE_HOST.test(host) && !this.inExampleExemptContext(path)) {
+      // settings.isAllowExamples() && isExampleUrl(url): "nothing - these do need to resolve"
+      if (host && EXAMPLE_HOST.test(host) && !this.inExampleExemptContext(path) && !(this.allowExamples && isExampleUrl(url))) {
         ok = rule(false, `Example URLs are not allowed in this context (${short(url)})`) && ok; // TYPE_SPECIFIC_CHECKS_DT_URL_EXAMPLE
       }
     }
@@ -4561,7 +4603,7 @@ export class InstanceValidator {
         message: `A definition for CodeSystem '${system}' could not be found, so the code cannot be validated`,
       });
     } else if (r.status === "invalid-code") {
-      issues.push({ severity: r.severity, path: `${item.path}.code`, code: "code-invalid", message: r.message });
+      issues.push({ severity: r.severity, path: `${item.path}.${r.at ?? "code"}`, code: "code-invalid", message: r.message });
     } else if (r.status === "invalid-display") {
       issues.push({ severity: r.severity, path: `${item.path}.display`, code: "code-invalid", message: r.message });
     } else if (r.status === "display-unchecked") {

@@ -27,6 +27,8 @@ export interface CodeSystemIndex {
   /** CodeSystem.language (null when absent). */
   language: string | null;
   caseSensitive: boolean;
+  /** CodeSystem.supplements (a supplement's base CodeSystem canonical), when stated. */
+  supplements?: string | null;
   concepts: Map<string, CsConcept>;
   /** lower-cased code → code, for case-insensitive systems. */
   lower: Map<string, string>;
@@ -119,6 +121,7 @@ export function indexCodeSystem(cs: Record<string, any>): CodeSystemIndex {
     content: String(cs.content || "complete"),
     language: typeof cs.language === "string" ? cs.language : null,
     caseSensitive: cs.caseSensitive !== false,
+    supplements: typeof cs.supplements === "string" && cs.supplements ? cs.supplements : null,
     concepts,
     lower,
   };

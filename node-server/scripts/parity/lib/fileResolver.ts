@@ -13,9 +13,9 @@
  * UCUM, THO, urn:…) are not decidable offline and stay silent — every such lookup is counted in `txLookups` so a
  * harness can flag results that depend on the terminology server.
  */
-import { findConcept, indexCodeSystem, valueSetContains, type CodeSystemIndex, type TerminologyDeps } from "../../../src/fhirCodeSystem.js";
+import { indexCodeSystem, valueSetContains, type CodeSystemIndex, type TerminologyDeps } from "../../../src/fhirCodeSystem.js";
 import { rankHl7Current } from "../../../src/fhirTerminology.js";
-import { judgeCodeSystemDisplay } from "../../../src/fhirValidationResolver.js";
+import { judgeHeldCodeSystem } from "../../../src/fhirValidationResolver.js";
 import { SnapshotGenerator } from "../../../src/fhirSnapshotGenerator.js";
 import { pickCanonicalVersion, splitCanonicalVersion, type CodeCheck, type ValidatorResolver } from "../../../src/fhirValidator.js";
 import { packageResources, type PackageRef, type Res } from "./packages.js";
@@ -171,24 +171,18 @@ export class FileValidatorResolver implements ValidatorResolver {
     return r;
   }
 
-  async checkCode(system: string, code: string, display: string | null, _version?: string | null): Promise<CodeCheck> {
-    let idx = this.codeSystem(system);
+  /**
+   * The code check DbValidatorResolver.checkCodeUncached makes for a CodeSystem held in the closure:
+   * fhirValidationResolver.judgeHeldCodeSystem (unknown code by content, inactive / deprecated concepts,
+   * displays by language, supplements as Coding.system, v2-0203 NN<country>). `version` (Coding.version)
+   * picks that version of the CodeSystem when the store holds it (else the current one, as the DB resolver).
+   */
+  async checkCode(system: string, code: string, display: string | null, version?: string | null, langs?: string[]): Promise<CodeCheck> {
+    let idx = (version ? this.codeSystem(`${system}|${version}`) : null) ?? this.codeSystem(system);
     if (idx && idx.url && idx.url.split("|")[0] !== system) idx = null;
-    if (idx && idx.content !== "not-present") {
-      const c = findConcept(idx, code);
-      const ver = idx.version ? ` version '${idx.version}'` : "";
-      if (!c) {
-        if (idx.content === "complete") return { status: "invalid-code", severity: "error", message: `Unknown code '${code}' in the CodeSystem '${system}'${ver}` };
-        if (idx.content === "fragment" || idx.content === "example") {
-          return { status: "invalid-code", severity: "warning", message: `Unknown code '${code}' in the CodeSystem '${system}'${ver} (the CodeSystem is a ${idx.content})` };
-        }
-      } else {
-        if (display !== null) {
-          const bad = judgeCodeSystemDisplay(system, code, display, c, idx.language);
-          if (bad) return bad;
-        }
-        return { status: "ok" };
-      }
+    if (idx) {
+      const r = judgeHeldCodeSystem(idx, system, code, display, langs && langs.length ? langs : undefined);
+      if (r) return r;
     }
     if (txServedSystem(system)) {
       this.txLookups++;

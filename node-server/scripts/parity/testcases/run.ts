@@ -178,16 +178,15 @@ export async function executeRun(run: TestRun, base: { store: ResourceStore; ids
   }
   if (resource) {
     try {
-      const issues = [...parseIssues, ...(await withTimeout(new InstanceValidator(resolver).validate(resource, { profiles, format: /\.xml$/i.test(run.file) ? "xml" : "json" }), timeoutMs))];
-      actual = issues.map((i) => ({ severity: i.severity, path: i.path, message: i.message, code: i.code }));
+      // ValidationTests: the test locale is en-US (display messages "for the language(s) 'en-US'"); "language" sets
+      // the validation language; "wrong-displays": "warning" → displayWarningMode; allowExamples unless "examples": false
+      const languages = typeof run.raw.language === "string" && run.raw.language ? [run.raw.language] : ["en-US"];
+      const displayWarnings = run.raw["wrong-displays"] === "warning";
       // ValidationTests runs with allowExamples = true unless the case says "examples": false (manifest: dr-example-org
-      // / pat-example-extensions are the only R4 outputs with TYPE_SPECIFIC_CHECKS_DT_URL_EXAMPLE); the TS validator
-      // has no such switch (validator_cli default false), so the harness drops that message.
-      if (run.raw.examples !== false) {
-        const n = actual.length;
-        actual = actual.filter((i) => !/^Example URLs are not allowed in this context/.test(i.message));
-        if (actual.length !== n) r.flags.push("harness:allowExamples");
-      }
+      // / pat-example-extensions are the only R4 outputs with TYPE_SPECIFIC_CHECKS_DT_URL_EXAMPLE)
+      const allowExamples = run.raw.examples !== false;
+      const issues = [...parseIssues, ...(await withTimeout(new InstanceValidator(resolver).validate(resource, { profiles, format: /\.xml$/i.test(run.file) ? "xml" : "json", languages, displayWarnings, allowExamples }), timeoutMs))];
+      actual = issues.map((i) => ({ severity: i.severity, path: i.path, message: i.message, code: i.code }));
     } catch (e) {
       r.ms = Date.now() - t0;
       r.status = /timeout/.test(String((e as Error).message)) ? "timeout" : "crash";

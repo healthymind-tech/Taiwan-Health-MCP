@@ -22,7 +22,7 @@
 
 import type { PackageRow } from "./fhirIg.js";
 import { pickCanonicalVersion, splitCanonicalVersion, type CodeCheck, type ValidatorResolver } from "./fhirValidator.js";
-import { conceptInactive, conceptStatus, findConcept, type CodeSystemIndex, loincCheckDigitValid, snomedCheckDigitValid, valueSetContains } from "./fhirCodeSystem.js";
+import { conceptInactive, conceptStatus, findConcept, type CodeSystemIndex, type CsConcept, loincCheckDigitValid, snomedCheckDigitValid, valueSetContains } from "./fhirCodeSystem.js";
 import * as terminology from "./fhirTerminology.js";
 import { ISO3166_DISPLAY, ISO3166_VERSION, iso3166UserAssigned } from "./fhirIso3166.js";
 import {
@@ -136,6 +136,17 @@ function hl7Normalize(x: string): string {
 }
 
 /**
+ * ValueSetValidator.isOkLanguage (7.0.1) with englishOk (the default): a display / designation
+ * without a language is always acceptable; otherwise LanguageUtils.langsMatch(requested, language),
+ * i.e. a requested language starts with the designation's language ("en-US" accepts "en", "en"
+ * does not accept "en-US"), or the requested language is "*".
+ */
+export function isOkLanguage(langs: readonly string[], language: string | null): boolean {
+  if (!langs.length || language === null) return true;
+  return langs.some((x) => x === "*" || x.startsWith(language));
+}
+
+/**
  * Port of ValueSetValidator.validateCode display section (org.hl7.fhir.core
  * 7.0.1, standalone terminology validator) for CodeSystems held locally.
  * Requested languages = 'en' (the CLI default when the resource has no
@@ -154,8 +165,7 @@ export function judgeCodeSystemDisplay(
   csLanguage: string | null,
   langs: string[] = ["en"],
 ): CodeCheck | null {
-  // isOkLanguage: no language, or one of the requested languages (prefix match, en ⊇ en-US)
-  const okLang = (l: string | null): boolean => l === null || langs.some((x) => l.toLowerCase() === x.toLowerCase() || l.toLowerCase().startsWith(x.toLowerCase() + "-"));
+  const okLang = (l: string | null): boolean => isOkLanguage(langs, l);
   const langList = langs.join(",");
   const want = display.toLowerCase();
   const choices: string[] = [];
@@ -204,7 +214,12 @@ export function judgeCodeSystemDisplay(
  * the CodeSystem carries no content (not-present / supplement): the caller falls through.
  */
 export function judgeHeldCodeSystem(idx: CodeSystemIndex, system: string, code: string, display: string | null, langs: string[] = ["en"]): CodeCheck | null {
-  const c = findConcept(idx, code);
+  // ValueSetValidator.validateCode(path, Coding): a supplement cannot be a Coding.system (CODESYSTEM_CS_NO_SUPPLEMENT)
+  if (idx.content === "supplement" || idx.supplements) {
+    const vurl = idx.version ? `${idx.url}|${idx.version}` : idx.url;
+    return { status: "invalid-code", severity: "error", at: "system", message: `CodeSystem ${vurl} is a supplement, so can't be used as a value in Coding.system` };
+  }
+  const c = findConcept(idx, code) ?? findSpecialConcept(system, code);
   const ver = idx.version ? ` version '${idx.version}'` : "";
   if (!c) {
     if (idx.content === "complete") {
@@ -235,6 +250,18 @@ export function judgeHeldCodeSystem(idx: CodeSystemIndex, system: string, code: 
   }
   if (extra.length) out.extra = [...extra, ...(out.extra ?? [])];
   return out;
+}
+
+/**
+ * ValueSetValidator.findSpecialConcept (7.0.1): v2-0203 national identifier types NN<country> (ISO 3166 code,
+ * alpha-2 or alpha-3) are valid codes with the display "National Identifier for <country>".
+ */
+export function findSpecialConcept(system: string, code: string): CsConcept | null {
+  if (system !== "http://terminology.hl7.org/CodeSystem/v2-0203" || !code.startsWith("NN") || code.length <= 3) return null;
+  const country = ISO3166_DISPLAY[code.slice(2)];
+  if (!country) return null;
+  const display = `National Identifier for ${country}`;
+  return { code, display, designations: [display], designationList: [], parents: new Set(), children: new Set(), properties: new Map() };
 }
 
 function noLocalDisplay(system: string, display: string | null): CodeCheck {
@@ -476,11 +503,12 @@ export class DbValidatorResolver implements ValidatorResolver {
     return ok;
   }
 
-  checkCode(system: string, code: string, display: string | null, version: string | null = null): Promise<CodeCheck> {
-    return memoised(codeCheckMemo, `${this.closure}\0${system}\0${code}\0${display}\0${version}`, () => this.checkCodeUncached(system, code, display, version));
+  checkCode(system: string, code: string, display: string | null, version: string | null = null, langs?: string[]): Promise<CodeCheck> {
+    const lk = langs && langs.length ? langs.join(",") : "";
+    return memoised(codeCheckMemo, `${this.closure}\0${system}\0${code}\0${display}\0${version}\0${lk}`, () => this.checkCodeUncached(system, code, display, version, langs));
   }
 
-  private async checkCodeUncached(system: string, code: string, display: string | null, version: string | null = null): Promise<CodeCheck> {
+  private async checkCodeUncached(system: string, code: string, display: string | null, version: string | null = null, langs?: string[]): Promise<CodeCheck> {
     if (system === ISO3166) return this.checkIso3166(code, display);
     // CVX: bundled tx.fhir.org table (fhirCvx.ts).
     if (system === CVX) return judgeCvx(code, display);
@@ -506,7 +534,7 @@ export class DbValidatorResolver implements ValidatorResolver {
     // "A definition for CodeSystem ... could not be found".)
     if (idx && idx.url && idx.url.split("|")[0] !== system) idx = null;
     if (idx) {
-      const base = judgeHeldCodeSystem(idx, system, code, display);
+      const base = judgeHeldCodeSystem(idx, system, code, display, langs && langs.length ? langs : undefined);
       if (base && base.status === "invalid-code" && idx.content === "complete") {
         // Verdict as HL7 (content = complete → Unknown code); add a hint when the
         // CodeSystem itself says it is a partial list, and when another installed
