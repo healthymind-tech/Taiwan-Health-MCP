@@ -438,7 +438,19 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   rules); <= 30,000 characters (compaction levels; placeholders never dropped).
   // 1.0.1 (release v1): never an empty array in the form's Bundle (ele-1) — without entries `entry` is omitted and a
   //   note says to pass `entries` (was `entry: []`, itself an official error).
-  fhir_get_bundle_form: "1.0.1",
+  // 1.1.0 (evaluation feedback): (1) no value taken from the IG's example instances for identity resources
+  //   (Organization / Location / Practitioner(Role) / Patient / RelatedPerson / Person / Group) or identity elements
+  //   (name / telecom / address / identifier / contact …, any resource) — neither prefilled nor as `example`; only
+  //   fixed / pattern values of the profiles (skeletonModel strictExamples; fhir_get_minimal_skeleton unchanged);
+  //   (2) datatype rules: ContactPoint.system with a value (cpt-2, allowed codes), Age / Duration / Distance / Count
+  //   code + the system the rule fixes (age-1 …; time units listed), complex placeholders expanded (Ratio numerator +
+  //   denominator, Quantity, Period …), required children of a coded item (form.text), any-of rules (org-1), maxLength
+  //   and the ValueSet of a bound string as `max_length` / `value_set`; (3) every entry linked (forward or backward)
+  //   to the root / the other entries: an unlinked entry takes a repeating open reference that lists it, else its own
+  //   reference to the form's hub, else the one element that can reference it, else it is left out with a note;
+  //   (4) `self_check` (no empty value, references resolve, entries linked, ContactPoint / Quantity-like rules);
+  //   the `prefilled` list is never dropped by compaction.
+  fhir_get_bundle_form: "1.1.0",
   // 1.1.0 (evaluation feedback): (1) a model display the validator's terminology rule rejects for a resolvable code is
   //   replaced by the code's display (provenance lookup; the model wording moves to CodeableConcept.text when empty;
   //   case-only differences are valid, whitespace-only ones take the valid spelling); (2) a single object / scalar where

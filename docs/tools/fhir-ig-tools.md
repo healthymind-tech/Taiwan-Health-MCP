@@ -338,11 +338,20 @@
 | `required` | `false` 表示選填（條件必填的元素、為計畫 entry 加入的選填 section）：`if_empty` 說明不填時刪除 |
 | `allowed` | 選填：小型綁定的代碼（`{system, code, display}`，選代碼時同時設定其 system）或 reference 的候選 fullUrl |
 | `target` | 選填：reference 的目標型別 |
-| `example` | 選填：IG 範例中的值或該綁定中的一個代碼（只示範格式，不可當成病歷事實） |
+| `example` | 選填：IG 範例中的值或該綁定中的一個代碼（只示範格式，不可當成病歷事實）；身分類資源與身分類元素一律不給（見下） |
 | `format` | 選填：profile `matches('…')` invariant 要求的正規表示式 |
+| `max_length` | 選填：該值的 `maxLength`（1.1.0） |
+| `value_set` | 選填：代碼太多無法列出的必要綁定（如以 ValueSet 綁定的機構代碼）：從此 ValueSet 選一個代碼（1.1.0） |
 | `rules` | 選填：條件會檢查這個值的 profile 規則；`allowed` 中帶 `triggers` 的代碼會讓該規則要求 Bundle 再包含其他內容（排在最後） |
 
-另有 `entries`（每個 entry 的 index、fullUrl、resourceType、profile、slice、加入原因）、`prefilled`（已填入的預設值，病歷另有記載時才改）、`references`（已接好的 reference）、`summary`、`notes`、`omitted`（回應 ≤ 30,000 字元；超過時依序縮短 `what`、省略 example / display / prefilled / references，placeholder 一律不省略）。填完後交給 `fhir_finalize_bundle` / `fhir_validate_bundle`（帶 `bundle_profile`）。
+另有 `entries`（每個 entry 的 index、fullUrl、resourceType、profile、slice、加入原因）、`prefilled`（已填入的預設值，病歷另有記載時才改）、`references`（已接好的 reference）、`summary`、`notes`、`self_check`、`omitted`（回應 ≤ 30,000 字元；超過時依序縮短 `what`、省略 example / display / references，`prefilled` 只縮成 pointer + value_source、不省略，placeholder 一律不省略）。填完後交給 `fhir_finalize_bundle` / `fhir_validate_bundle`（帶 `bundle_profile`）。
+
+**1.1.0（評測回饋）**：
+
+- **不從 IG 範例帶入身分資料**：身分類資源（Organization、Location、Practitioner、PractitionerRole、Patient、RelatedPerson、Person、Group）的任何值，以及任何資源中的身分 / 聯絡元素（name、telecom、address、identifier、contact、alias、photo），只要值**只來自 IG 範例**，就不預填、也不放進 `example`——一律是 `record` placeholder（範例診所的名稱、電話、地址、範例中的外國機構識別碼都會被模型照抄，等同捏造）。只有 profile 以 fixed / pattern 釘住的值會預填；因此「全國唯一的機構」的定義是：其身分（識別碼 system + value，或 reference）由 profile 本身以 fixed / pattern 指定，而非由範例推得。其他資源的工作流程代碼（status / intent 等，`fhir_get_minimal_skeleton` 的規則）照舊。`fhir_get_minimal_skeleton` 本身不變（其 ig-constant 仍是 grounding 豁免的依據）。
+- **資料型別規則**：有 `value` 的 ContactPoint 一定帶 `system` placeholder（cpt-2，`allowed` 為 phone / fax / email …）；Age / Duration / Distance / Count 依其資料型別 StructureDefinition 的約束（age-1、drt-1、dis-1、cnt-3）補上 `code` placeholder 與規則固定的 `system`（`http://unitsofmeasure.org`，列在 `prefilled`），時間單位列在 `allowed`（Age：age-units）；複合型別的 placeholder 展開成最小內容（Ratio → numerator + denominator，rat-1；Quantity、Period、Identifier …）；編碼元素的必要子元素（如 `Medication.form.text`）也有 placeholder；「至少一個」規則（org-1：name 或 identifier）在都沒有時補上其中一個。
+- **每個 entry 都有連結**：每個 entry 都必須經由 reference（正向或反向，同 validator_cli 的 document 規則）連到根 entry（document / message）或其他 entry（collection 等）。沒有連結的 entry 依序：放進列有它、且可重複的未決 reference（例如 Composition.author 在 Patient / Practitioner / Organization 間未決時，放入沒有人引用的 Practitioner）；或用它自己的選填 reference 指向表單的中心 entry（其他 entry 都引用的那一個，例如 Encounter.subject → 唯一的 Patient）；或由表單中唯一能引用它的元素引用；否則不放進表單並在 `notes` 說明（必要 slice 或非 document 的計畫 entry 則保留並附 warning）。絕不在多個位置之間猜測。
+- **`self_check`**：建好後檢查表單本身（placeholder 視為有值）：沒有空陣列 / 空物件 / 空字串、每個 reference 都指向 entry 的 fullUrl、每個 entry 都有連結、ContactPoint 有 system、Quantity 類有 system + code。乾淨時為 `{ok: true}`，否則 `{ok: false, problems}` 並附 warning。
 
 驗收（ISSUES_v19 (b)，離線以本機套件快取執行 `node-server/scripts/ig-blueprint/form-eval.mts`）：TW Core `Bundle-twcore`（計畫 5 個 entry）、TWPAS `Bundle-twpas`、`Bundle-immunologic-agent-twpas`、IPS `Bundle-uv-ips`（計畫 6 個 entry）四個 profile 的骨架，依 placeholder 的 `type` 填入假值（有 `allowed` 取第一個、有 `example` 用 example）後，以內建 validator 驗證皆為 0 error。
 
@@ -586,7 +595,7 @@ IG 本身規定的值不需要、也不會出現在病歷中。grounding（`G-UN
 | `fhir_assemble_bundle` | 1.6.0（R6，驗證同 `fhir_validate_bundle` 1.13.0）；1.5.0（資源同 `fhir_author_resources` 1.6.0、驗證同 `fhir_validate_bundle` 1.12.0）；1.4.2（同 `fhir_finalize_bundle` 1.3.2）；1.4.1（資源依 `fhir_author_resources` 1.5.1、定稿依 `fhir_finalize_bundle` 1.3.1）；1.4.0（驗證依 `fhir_validate_bundle` 1.11.0，含 [record checks](#record-checks)）；1.3.0（定稿一律 `repair="content"`、`repair_issues`，資源依 `fhir_author_resources` 1.4.0）；1.2.0（資源依 `fhir_author_resources` 1.3.0、驗證依 `fhir_validate_bundle` 1.9.0）；1.1.0（`site_config` 與 context 的合併後交給 grounding；1.0.0：由 key 清單組 Bundle） |
 | `fhir_get_authoring_fields` | 1.2.0（record link：連到同一 IG 其他紀錄資源的 backbone（`Encounter.diagnosis`）列為欄位並附子欄位與 `{condition: {ref}}` 範例，直接 reference 列在 `more` 並附 `targets`；長度上限改以整個回應計算，新增 `response_chars`）；1.1.0（預設值只在必填欄位上是 `auto`，選填欄位改為提示慣例值；1.0.0：剖面的填寫表） |
 | `fhir_get_minimal_skeleton` | 1.5.0（v19：必填 slice 的判別元素（例如 section code）即使 profile 設為選填也放入骨架；未切片元素為必填時 slice 的子元素也必填；Narrative 為 `{status, div}`；choice 允許代碼型別時以該型別撰寫；必填 coding slice 自己的 required 綁定決定代碼 / system；slice 的 pinned 值補進原本的 coding，不另增一筆）；1.2.0（v16.2：簡短 profile id 也在 IG 的依賴套件中解析（有歧義時回 `AMBIGUOUS_ARTIFACT` 並列出候選）；小型值集的代碼一律附 display（`code=display`），精簡層級也不省略）；1.1.0（v16.1：`slices` 展開骨架中的 slicing、`literals`、值集受限代碼的查詢方式，見「[IG 結構](#ig-structure)」）|
-| `fhir_get_bundle_form` | 1.0.1（release v1：不輸出空陣列，沒有 entry 時省略 `entry` 並提示帶入 `entries`）；1.0.0（v19 R2：Bundle 剖面的預填表單，見「[預填表單](#bundle-form)」） |
+| `fhir_get_bundle_form` | 1.1.0（評測回饋：不從 IG 範例帶入身分資料、資料型別規則、每個 entry 都有連結、`self_check`，見「[預填表單](#bundle-form)」）；1.0.1（release v1：不輸出空陣列，沒有 entry 時省略 `entry` 並提示帶入 `entries`）；1.0.0（v19 R2：Bundle 剖面的預填表單，見「[預填表單](#bundle-form)」） |
 | `fhir_get_bundle_blueprint`、`fhir_get_minimal_skeleton` | 1.0.0（v16：Bundle 藍圖與最小骨架 + 值的來源，見「[IG 結構](#ig-structure)」） |
 | `fhir_context` | 1.0.1（`get` 的結果帶 `notes`） |
 | `query_fhir_condition`、`query_fhir_medication` | 1.2.0（不再以目前時間填 `recordedDate` / `note.time` / `meta.lastUpdated`——只在呼叫端提供時出現） |

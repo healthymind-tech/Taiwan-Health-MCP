@@ -114,6 +114,24 @@ export interface SkeletonItem {
 
 /** Administrative entities (FHIR R4 "Entities"), not persons: their example instances may be IG-level constants. */
 export const CONSTANT_ENTITY_TYPES = new Set(["Organization", "Location", "HealthcareService", "Endpoint", "OrganizationAffiliation"]);
+/**
+ * (form v1.1) Resources that identify a person, a place or a site: with `strictExamples` NO value of
+ * theirs is taken from the IG's example instances (an example clinic / patient / doctor is one of
+ * many — copying it is fabrication). Only fixed / pattern values of the profiles stay prefilled; a
+ * nationally unique organization is therefore one whose identity the profiles themselves pin.
+ */
+export const IDENTITY_TYPES = new Set(["Organization", "Location", "Practitioner", "PractitionerRole", "Patient", "RelatedPerson", "Person", "Group"]);
+/** Identity / contact elements (any resource, any depth): never prefilled from examples under `strictExamples`. */
+export const IDENTITY_ELEMENTS = new Set(["name", "telecom", "address", "identifier", "contact", "alias", "photo"]);
+/** True when an example-derived value of `path` (element id / path, `Type.a.b`) of a resource of type `rt` may be prefilled. */
+export function exampleValueAllowed(rt: string, path: string, strict: boolean): boolean {
+  if (!strict) return true;
+  if (IDENTITY_TYPES.has(rt)) return false;
+  return !path
+    .split(".")
+    .slice(1)
+    .some((seg) => IDENTITY_ELEMENTS.has(seg.split(":")[0]));
+}
 /** Grounding classes whose coded value may be an example constant (workflow conventions, derived codes). */
 const CONSTANT_CODE_CLASSES = new Set(["workflow_default", "derived"]);
 /** Codes listed inline for a binding with at most this many codes. */
@@ -490,6 +508,8 @@ interface ClassifyCtx {
   deps: BlueprintDeps;
   loaded: LoadedProfile;
   vsCache: Map<string, { codes: Array<{ code: string; display: string | null; system: string | null }>; total: number; truncated: boolean } | null>;
+  /** SkeletonModelOptions.strictExamples. */
+  strictExamples?: boolean;
 }
 
 async function bindingCodes(ctx: ClassifyCtx, vs: string): Promise<{ codes: Array<{ code: string; display: string | null; system: string | null }>; total: number; truncated: boolean } | null> {
@@ -567,7 +587,7 @@ async function classify(ctx: ClassifyCtx, row: RequiredElementRow, inheritedBind
   const cls = classifyElement(rt, el ?? { id: row.id, path: row.path, min: row.min, max: row.max }, ctx.codeFixed);
 
   // Example constants (>= 2 instances, identical values; eligibility per resource kind).
-  if (!isRef) {
+  if (!isRef && exampleValueAllowed(rt, gp, Boolean(ctx.strictExamples))) {
     const entity = CONSTANT_ENTITY_TYPES.has(rt);
     const strength = binding?.strength;
     const codeEligible =
@@ -1037,6 +1057,13 @@ export interface SkeletonModelOptions {
   closedSlices?: boolean;
   /** Place the conditional rows into the skeleton too (with a pointer each). */
   placeConditional?: boolean;
+  /**
+   * (fhir_get_bundle_form v1.1) Never take a value from the IG's example instances for identity
+   * resources (IDENTITY_TYPES) or identity / contact elements (IDENTITY_ELEMENTS) — only fixed /
+   * pattern values of the profiles. fhir_get_minimal_skeleton keeps the v17 rule (its ig-constants
+   * feed the grounding exemption of example values).
+   */
+  strictExamples?: boolean;
 }
 
 /** The skeleton before serialisation (shared by fhir_get_minimal_skeleton and fhir_get_bundle_form). */
@@ -1199,7 +1226,7 @@ export async function skeletonModel(req: SkeletonRequest, deps: BlueprintDeps, o
   if (ectx.missing.length) warnings.push(`extension definition(s) not installed: ${[...new Set(ectx.missing)].slice(0, 4).join(", ")} — only their url is listed`);
 
   const distinct = new Set(instances.map((x) => normalizedInstance(x.resource))).size;
-  const cctx: ClassifyCtx = { rt, E, rowsById, codeFixed: profileFixesCode(rt, els), instances, distinct, deps, loaded, vsCache: new Map() };
+  const cctx: ClassifyCtx = { rt, E, rowsById, codeFixed: profileFixesCode(rt, els), instances, distinct, deps, loaded, vsCache: new Map(), strictExamples: Boolean(opts.strictExamples) };
   const groups = sliceGroups(rt, sd, E, rows, requiredIds);
   await bindSliceTemplates(groups, E, cctx);
   const groupById = new Map(groups.map((g) => [g.id, g]));
@@ -1291,7 +1318,7 @@ export async function skeletonModel(req: SkeletonRequest, deps: BlueprintDeps, o
     for (const [k, v] of Object.entries(first)) {
       if (["resourceType", "id", "meta", "text", "contained", "implicitRules", "language"].includes(k) || k in builder.root || hasRef(v)) continue;
       const elId = `${rt}.${k}`;
-      if (E.get(elId)?.max === "0") continue;
+      if (E.get(elId)?.max === "0" || !exampleValueAllowed(rt, elId, Boolean(opts.strictExamples))) continue;
       const key = stable(v);
       if (!instances.every((x) => stable(x.resource[k]) === key)) continue;
       builder.root[k] = clone(v);
@@ -1315,7 +1342,7 @@ export async function skeletonModel(req: SkeletonRequest, deps: BlueprintDeps, o
       const segs = e.id.split(".");
       if (segs.length !== 2 || e.max === "0" || listed.has(e.id) || requiredIds.has(e.id)) continue;
       if (["id", "meta", "text", "implicitRules", "language", "contained", "extension", "modifierExtension"].includes(segs[1])) continue;
-      if ((e.types || []).some((t) => shortType(t.code) === "Reference")) continue;
+      if ((e.types || []).some((t) => shortType(t.code) === "Reference") || !exampleValueAllowed(rt, e.id, Boolean(opts.strictExamples))) continue;
       const c = exampleConstant(cctx, e.id);
       if (c === undefined) continue;
       const basis = `identical in ${c.n}/${c.n} IG example instances (${distinct} distinct)`;

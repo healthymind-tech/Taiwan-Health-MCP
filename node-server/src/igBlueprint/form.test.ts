@@ -127,8 +127,11 @@ test("form: required slices + planned entries + reference targets, all reference
   const lab = (b.entry as R[])[3].resource;
   assert.equal(lab.subject.reference, url("patient"));
   const ph = checkPlaceholders(data);
-  // performer: Practitioner | Organization — two Organization entries exist: left open with the candidates
-  const perf = ph.find((p) => p.pointer === "/entry/3/resource/performer/0")!;
+  // performer: Practitioner | Organization — two Organization entries exist. v1.1: the `org` entry
+  // (added as the performer target, referenced by nothing else) takes the first lab's performer slot
+  // (a repeating element); the second lab's performer is left open with the candidates
+  assert.equal(lab.performer[0].reference, url("org"));
+  const perf = ph.find((p) => p.pointer === "/entry/4/resource/performer/0")!;
   assert.equal(perf.type, "Reference");
   assert.equal(perf.allowed!.length, 2);
   assert.deepEqual(perf.target, ["Practitioner", "Organization"]);

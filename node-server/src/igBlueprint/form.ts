@@ -20,6 +20,11 @@
  *     plus the (optional) section a planned entry belongs to so every entry is reachable;
  *     transaction / batch: entry.request (POST <type>).
  *
+ * v1.1: no value of an identity resource / identity element comes from the IG's examples (only
+ * fixed / pattern values of the profiles: skeletonModel strictExamples); datatype rules completed
+ * (cpt-2, age-1 …), complex placeholders expanded; every entry linked to the root / the others
+ * (linkOrphans); `self_check` (formSelfCheck) on the result.
+ *
  * Every value the record (or a code lookup) must provide is a placeholder token
  * `<<P<n>:<value_source>>>` (a JSON string) at its JSON Pointer; `placeholders[n]` says its FHIR
  * type, what to put, the value source (minimal-skeleton classes), whether it is required, the
@@ -31,7 +36,7 @@
 import { FINALIZE_UUID_NAMESPACE, uuidV5 } from "../fhirBundleFinalize.js";
 import { evaluateConstraint } from "../fhirPath.js";
 import { nodesAt } from "../fhirRequiredElements.js";
-import { CODES_CAP, skeletonModel, type SkeletonItem, type SkeletonModel, type ValueSource } from "./skeleton.js";
+import { CODES_CAP, exampleValueAllowed, skeletonModel, type SkeletonItem, type SkeletonModel, type ValueSource } from "./skeleton.js";
 import {
   BlueprintError,
   clip,
@@ -75,6 +80,48 @@ const DATATYPE_FALLBACK: Record<string, string> = {
   "Address.text": "string", "Narrative.status": "code", "Narrative.div": "xhtml", "Reference.reference": "string",
 };
 const QUANTITY_LIKE = new Set(["Quantity", "SimpleQuantity", "Age", "Duration", "Count", "Distance", "MoneyQuantity"]);
+/**
+ * (v1.1) Minimal content of a complex datatype a placeholder of that type expands into, so that no
+ * value is an opaque object a model may leave empty ({} is invalid FHIR, ele-1) and the datatype's
+ * own rules hold (rat-1: numerator AND denominator; cpt-2: system with value). Core FHIR datatypes
+ * only; the Quantity-like ones get code / system from their datatype constraints (age-1 …) after.
+ */
+const DATATYPE_SHAPES: Record<string, R> = {
+  Quantity: { value: "<record>", unit: "<record>" },
+  SimpleQuantity: { value: "<record>", unit: "<record>" },
+  Age: { value: "<record>", unit: "<record>" },
+  Duration: { value: "<record>", unit: "<record>" },
+  Distance: { value: "<record>", unit: "<record>" },
+  Count: { value: "<record>" },
+  MoneyQuantity: { value: "<record>", currency: "<code>" },
+  Money: { value: "<record>", currency: "<code>" },
+  Ratio: { numerator: { value: "<record>", unit: "<record>" }, denominator: { value: "<record>", unit: "<record>" } },
+  Range: { low: { value: "<record>", unit: "<record>" }, high: { value: "<record>", unit: "<record>" } },
+  Period: { start: "<record>" },
+  CodeableConcept: { text: "<record>" },
+  Coding: { system: "<system>", code: "<code>" },
+  Identifier: { system: "<system>", value: "<record>" },
+  HumanName: { text: "<record>" },
+  Address: { text: "<record>" },
+  ContactPoint: { system: "<code>", value: "<record>" },
+  Annotation: { text: "<record>" },
+  Attachment: { contentType: "<code>", data: "<record>" },
+  Dosage: { text: "<record>" },
+  Timing: { repeat: { frequency: "<record>", period: "<record>", periodUnit: "<code>" } },
+};
+/** Datatype constraint rules (root constraints of the core datatype SD) that the form satisfies with placeholders. */
+interface DatatypeRules {
+  /** A code is required when a value is (age-1 / dis-1 / cnt-3 / mqty-1 `code.exists() or value.empty()`, cpt-2 for system). */
+  codeWithValue: boolean;
+  systemWithValue: boolean;
+  /** The system the constraint fixes (`system = %ucum` / `system = '…'`). */
+  system: string | null;
+  /** The code the constraint fixes (`code = '1'`). */
+  code: string | null;
+  /** The code must be a unit of time (human text "expression of time"). */
+  time: boolean;
+}
+const UCUM = "http://unitsofmeasure.org";
 
 export interface FormEntryPlan {
   profile: string;
@@ -111,6 +158,10 @@ export interface FormPlaceholder {
   if_empty?: string;
   /** Regular expression the value must match (a `matches('…')` invariant of the profile). */
   format?: string;
+  /** ElementDefinition.maxLength of the value (characters). */
+  max_length?: number;
+  /** Required binding of a value whose codes are not listed (too many): pick a code of this ValueSet. */
+  value_set?: string;
   /** Profile rules (invariants) whose condition tests this value: the value decides what else the Bundle must hold. */
   rules?: string[];
 }
@@ -301,7 +352,7 @@ export async function bundleForm(req: FormRequest, deps: BlueprintDeps): Promise
   const modelCache = new Map<string, SkeletonModel>();
   const modelOf = async (lp: LoadedProfile, forced: string[]): Promise<SkeletonModel> => {
     const k = `${lp.canonical ?? lp.profileId}\u0000${forced.join(",")}`;
-    if (!modelCache.has(k)) modelCache.set(k, await skeletonModel({ profile: lp.canonical ?? lp.profileId, package_id: pkgId, version: ver }, deps, { loaded: lp, forceRequired: forced, closedSlices: true, placeConditional: true }));
+    if (!modelCache.has(k)) modelCache.set(k, await skeletonModel({ profile: lp.canonical ?? lp.profileId, package_id: pkgId, version: ver }, deps, { loaded: lp, forceRequired: forced, closedSlices: true, placeConditional: true, strictExamples: true }));
     return modelCache.get(k)!;
   };
 
@@ -382,7 +433,7 @@ export async function bundleForm(req: FormRequest, deps: BlueprintDeps): Promise
   }
 
   // --- Bundle level ---------------------------------------------------------------------------------
-  const bundleModel = await skeletonModel({ profile: ident, package_id: pkgId, version: ver }, deps, { loaded });
+  const bundleModel = await skeletonModel({ profile: ident, package_id: pkgId, version: ver }, deps, { loaded, strictExamples: true });
   const bundle: R = {};
   for (const [k, v] of Object.entries(bundleModel.skeleton)) if (k !== "entry") bundle[k] = clone(v);
   const bundleItems = bundleModel.items.filter((i) => !i.id.startsWith("Bundle.entry") && i.pointer !== undefined && !i.pointer.startsWith("/entry"));
@@ -496,6 +547,92 @@ export async function bundleForm(req: FormRequest, deps: BlueprintDeps): Promise
     }
   };
 
+  /**
+   * (v1.1) Every entry is linked to the root (document / message) or to the other entries
+   * (collection …) by a reference, forward or backward (connectedTo). An unlinked entry is (a) put into an open reference that repeats and lists it (Composition.author
+   * among Patient | Practitioner | Organization: the Practitioner entry), else (b) referenced from the
+   * ONE optional top-level Reference element of the form that accepts its profile, else (c) left out
+   * with a note (kept, with a warning, only when a required entry slice / a planned entry of a
+   * non-document Bundle needs it). Never a guess between several slots.
+   */
+  const orphanKept = new Set<Entry>();
+  async function linkOrphans(): Promise<void> {
+    for (let round = 0; round < MAX_ENTRIES * 2; round++) {
+      const linked = connectedTo(entries);
+      const orphan = entries.find((e, i) => !linked.has(i) && !orphanKept.has(e));
+      if (!orphan) return;
+      const label = orphan.slice ?? tail(orphan.profile);
+      const d = decisions.find((x) => x.candidates.includes(orphan) && maxNum(x.entry.model.E.get(x.item.id)?.max) > 1);
+      if (d) {
+        (getAt(d.entry.resource, d.item.pointer!) as R).reference = orphan.fullUrl;
+        decisions.splice(decisions.indexOf(d), 1);
+        const others = d.candidates.filter((c) => c !== orphan).map((c) => c.slice ?? tail(c.profile));
+        notes.push(`${tail(d.entry.profile)}.${d.item.path} -> ${label}: otherwise nothing references that entry${others.length ? ` (add ${others.join(" / ")} as further items when the record names them)` : ""}`);
+        continue;
+      }
+      // its OWN optional reference whose only candidate is the form's hub (the entry most others
+      // reference — the record's subject): Encounter.subject -> the one Patient
+      {
+        const counts = new Map<string, number>();
+        for (const x of entries) for (const r of new Set(referencesIn(x.resource))) counts.set(r, (counts.get(r) ?? 0) + 1);
+        const hub = entries.reduce<Entry | null>((best, x) => ((counts.get(x.fullUrl) ?? 0) >= 2 && (counts.get(x.fullUrl) ?? 0) > (best ? counts.get(best.fullUrl) ?? 0 : 0) ? x : best), null);
+        let own: { key: string; repeats: boolean } | null = null;
+        if (hub && hub !== orphan) {
+          for (const el of (orphan.model.loaded.sd?.snapshot?.element || []) as R[]) {
+            const id = String(el.id || "");
+            const segs = id.split(".");
+            const types = (el.type || []) as R[];
+            if (segs.length !== 2 || id.includes(":") || el.max === "0" || orphan.resource[segs[1]] !== undefined) continue;
+            if (!types.length || !types.every((t) => shortType(t.code) === "Reference")) continue;
+            const tps = types.flatMap((t) => (t.targetProfile || []).map((u: string) => stripVersion(u)));
+            const cands = candidatesFor(orphan, tps);
+            if (cands.length === 1 && cands[0] === hub) {
+              own = { key: segs[1], repeats: maxNum(el.max) > 1 };
+              break;
+            }
+          }
+        }
+        if (hub && own) {
+          orphan.resource[own.key] = own.repeats ? [{ reference: hub.fullUrl }] : { reference: hub.fullUrl };
+          notes.push(`${label}.${own.key} -> ${hub.slice ?? tail(hub.profile)}: the only candidate, which the other entries reference too (delete it if the record says otherwise)`);
+          continue;
+        }
+      }
+      const slots: Array<{ e: Entry; key: string; repeats: boolean }> = [];
+      for (const x of entries) {
+        if (x === orphan) continue;
+        for (const el of (x.model.loaded.sd?.snapshot?.element || []) as R[]) {
+          const id = String(el.id || "");
+          const segs = id.split(".");
+          if (segs.length !== 2 || id.includes(":") || el.max === "0") continue;
+          const types = (el.type || []) as R[];
+          if (!types.length || !types.every((t) => shortType(t.code) === "Reference")) continue;
+          const tps = types.flatMap((t) => (t.targetProfile || []).map((u: string) => stripVersion(u)));
+          if (!tps.some((t) => orphan.chain.has(t))) continue;
+          if (x.resource[segs[1]] !== undefined) continue;
+          slots.push({ e: x, key: segs[1], repeats: maxNum(el.max) > 1 });
+        }
+      }
+      if (slots.length === 1) {
+        const s = slots[0];
+        s.e.resource[s.key] = s.repeats ? [{ reference: orphan.fullUrl }] : { reference: orphan.fullUrl };
+        notes.push(`${tail(s.e.profile)}.${s.key} -> ${label}: the only element of the form that can reference that entry`);
+        continue;
+      }
+      const sl = orphan.slice ? slices.find((x) => x.name === orphan.slice) : null;
+      const needed = Boolean(sl && sliceCount(sl.name) <= sl.min) || (orphan.why === "planned" && bundleType !== "document" && bundleType !== "message");
+      const could = slots.slice(0, 4).map((s) => `${tail(s.e.profile)}.${s.key}`).join(", ");
+      if (!needed) {
+        entries.splice(entries.indexOf(orphan), 1);
+        for (const x of decisions) x.candidates = x.candidates.filter((c) => c !== orphan);
+        notes.push(`entry ${label} (${orphan.why}) left out: nothing in the form references it${could ? ` — add it with a reference from one of ${could} when the record links it` : ""}`);
+        continue;
+      }
+      orphanKept.add(orphan);
+      warnings.push(`entry ${label} is not referenced by any other entry${could ? `: reference it from one of ${could}` : ""}`);
+    }
+  }
+
   const document = bundleType === "document";
   const head = entries.find((e) => e.rt === (document ? "Composition" : bundleType === "message" ? "MessageHeader" : "\u0000"));
   if (head && document) {
@@ -517,7 +654,10 @@ export async function bundleForm(req: FormRequest, deps: BlueprintDeps): Promise
     const force = new Set<string>();
     for (const u of unreachable) {
       const fits = sectionTargets.filter((s) => s.targets.some((t) => u.chain.has(t)));
-      const pick = fits.find((s) => s.required) ?? fits[0];
+      // a required section first; within it the entry SLICE that names the profile (forcing the
+      // section's unsliced entry element adds nothing to the skeleton)
+      const rank = (s: (typeof fits)[number]): number => (s.required ? 0 : 2) + (s.entryId.includes(".entry:") ? 0 : 1);
+      const pick = [...fits].sort((a, b) => rank(a) - rank(b))[0];
       if (!pick) {
         notes.push(`entry ${u.slice ?? tail(u.profile)} is not reachable from the Composition: no section of ${tail(head.profile)} accepts ${tail(u.profile)}`);
         continue;
@@ -565,6 +705,7 @@ export async function bundleForm(req: FormRequest, deps: BlueprintDeps): Promise
     }
   }
   for (const e of entries) wire(e);
+  await linkOrphans();
   if (document && head) {
     const r = reachableFrom(head);
     const lost = entries.filter((e) => !r.has(e));
@@ -642,11 +783,123 @@ export async function bundleForm(req: FormRequest, deps: BlueprintDeps): Promise
     return t;
   };
 
+  const rulesCache = new Map<string, DatatypeRules | null>();
+  /** Root constraints of a core datatype that need placeholders (age-1, cpt-2, …), parsed from its SD. */
+  const datatypeRules = async (t: string): Promise<DatatypeRules | null> => {
+    if (rulesCache.has(t)) return rulesCache.get(t)!;
+    const dsd = await sdOf(`${BASE_SD}${t}`);
+    const root = ((dsd?.snapshot?.element || []) as R[])[0];
+    let r: DatatypeRules | null = null;
+    for (const c of (root?.constraint || []) as R[]) {
+      if ((c.severity && c.severity !== "error") || /^(ele|ext)-/.test(String(c.key ?? ""))) continue;
+      const ex = String(c.expression ?? "");
+      const human = String(c.human ?? "");
+      r ??= { codeWithValue: false, systemWithValue: false, system: null, code: null, time: false };
+      if (/code\.exists\(\) or value\.empty\(\)/.test(ex) || /SHALL be a code if there is a value/i.test(human)) r.codeWithValue = true;
+      if (/value\.empty\(\) or system\.exists\(\)/.test(ex)) r.systemWithValue = true;
+      if (/system = %ucum/.test(ex)) r.system = UCUM;
+      const sm = /system = '([^']+)'/.exec(ex);
+      if (sm) r.system = sm[1];
+      const cm = /\bcode = '([^']+)'/.exec(ex);
+      if (cm) r.code = cm[1];
+      if (/expression of time/i.test(human)) r.time = true;
+    }
+    rulesCache.set(t, r);
+    return r;
+  };
+  const unitCache = new Map<string, Array<{ system?: string; code: string; display?: string }> | null>();
+  /** Unit codes of a time-valued datatype: the core `<type>-units` ValueSet (Age: age-units), else units-of-time. */
+  const timeUnits = async (t: string): Promise<Array<{ system?: string; code: string; display?: string }> | null> => {
+    if (unitCache.has(t)) return unitCache.get(t)!;
+    let out: Array<{ system?: string; code: string; display?: string }> | null = null;
+    for (const vs of [`http://hl7.org/fhir/ValueSet/${t.toLowerCase()}-units`, "http://hl7.org/fhir/ValueSet/units-of-time"]) {
+      try {
+        const exp = await deps.expandValueSet(loaded, vs, 40);
+        // enumerated UCUM codes: usable although UCUM itself is not held (truncated / unresolved)
+        if (exp && exp.codings.length && exp.codings.length <= CODES_CAP) {
+          out = exp.codings.map((c) => ({ system: c.system || UCUM, code: String(c.code), ...(c.display ? { display: clip(c.display, 40) } : {}) }));
+          break;
+        }
+      } catch {
+        /* not held */
+      }
+    }
+    unitCache.set(t, out);
+    return out;
+  };
+  const CHOICE_KEY = /^[a-z][A-Za-z]*?([A-Z][A-Za-z]+)$/;
+  /**
+   * (v1.1) Complete the value of FHIR type `t` at `ptr`: a placeholder of a complex datatype becomes
+   * its DATATYPE_SHAPES content, and the datatype's own rules get their elements (ContactPoint.system
+   * with a value — cpt-2; Age / Duration / Distance / Count: code with a value and the system the rule
+   * fixes — age-1 / drt-1 / dis-1 / cnt-3). Time units listed in `units` (pointer -> allowed codes);
+   * literals the rules fix in `fixedAdded`.
+   */
+  const completeValue = async (resource: R, ptr: string, t: string, units: Map<string, unknown[]>, fixedAdded: Array<[string, string]>, depth = 0): Promise<void> => {
+    if (depth > 6 || t === "Reference" || PRIMITIVES.has(t)) return;
+    let node = getAt(resource, ptr);
+    if (typeof node === "string" && SKELETON_TOKEN.test(node) && DATATYPE_SHAPES[t]) {
+      setAt(resource, ptr, clone(DATATYPE_SHAPES[t]));
+      node = getAt(resource, ptr);
+    }
+    if (Array.isArray(node)) {
+      for (let i = 0; i < node.length; i++) await completeValue(resource, `${ptr}/${i}`, t, units, fixedAdded, depth + 1);
+      return;
+    }
+    if (!isObject(node)) return;
+    const rules = QUANTITY_LIKE.has(t) || t === "ContactPoint" ? await datatypeRules(t) : null;
+    if (rules) {
+      const hasValue = node.value !== undefined;
+      if (hasValue && rules.systemWithValue && node.system === undefined) {
+        const rest = { ...node };
+        for (const k of Object.keys(node)) delete node[k];
+        Object.assign(node, { system: "<code>" }, rest);
+      }
+      if (hasValue && rules.codeWithValue && node.code === undefined) node.code = rules.code ?? "<code>";
+      if (node.code !== undefined && rules.system && node.system === undefined) {
+        node.system = rules.system;
+        fixedAdded.push([`${ptr}/system`, `fixed by the ${t} datatype rule (system ${rules.system})`]);
+      }
+      if (rules.time && typeof node.code === "string" && SKELETON_TOKEN.test(node.code)) {
+        const cs = await timeUnits(t);
+        if (cs) units.set(`${ptr}/code`, cs);
+      }
+    }
+    for (const [k, v] of Object.entries(node)) {
+      if (!(isObject(v) || Array.isArray(v) || (typeof v === "string" && SKELETON_TOKEN.test(v)))) continue;
+      let ct = await subType(t, k);
+      if (!ct) {
+        const m = CHOICE_KEY.exec(k);
+        if (m && (DATATYPE_SHAPES[m[1]] || m[1] === "Reference")) ct = m[1];
+      }
+      if (ct) await completeValue(resource, `${ptr}/${escapePtr(k)}`, ct, units, fixedAdded, depth + 1);
+    }
+  };
+  /** (v1.1) Required direct children (profile snapshot) missing from an item's value (Medication.form.text in a coded item). */
+  const addRequiredChildren = (model: SkeletonModel, item: SkeletonItem, resource: R): void => {
+    const node = getAt(resource, item.pointer!);
+    const objs = (Array.isArray(node) ? node : [node]).filter(isObject);
+    if (!objs.length) return;
+    for (const [id, el] of model.E) {
+      if (!id.startsWith(`${item.id}.`)) continue;
+      const rest = id.slice(item.id.length + 1);
+      if (rest.includes(".") || rest.includes(":") || rest.endsWith("[x]") || (el.min ?? 0) < 1 || el.max === "0" || el.fixed || el.pattern) continue;
+      if (["id", "extension", "modifierExtension"].includes(rest)) continue;
+      const t = shortType(el.types?.[0]?.code ?? "");
+      const v = PRIMITIVES.has(t) || !t ? "<record>" : DATATYPE_SHAPES[t] ? clone(DATATYPE_SHAPES[t]) : null;
+      if (v === null) continue;
+      for (const o of objs) if (o[rest] === undefined) o[rest] = maxNum(el.max) > 1 ? [clone(v)] : clone(v);
+    }
+  };
+
   const placeholders: FormPlaceholder[] = [];
   const references: string[] = [];
   const tokenFor = (n: number, src: ValueSource): string => `<<P${n}:${src}>>`;
   const forcedOf = (e: Entry | null, item: SkeletonItem): boolean => Boolean(e && e.forced.some((f) => !f.includes(".entry") && (item.id === f || item.id.startsWith(`${f}.`))));
   const exampleAt = (model: SkeletonModel, item: SkeletonItem, sub: string): unknown => {
+    // never an example value of an identity resource / identity element (a model would copy it)
+    const subPath = ptrSegs(sub).filter((s) => !/^\d+$/.test(s)).join(".");
+    if (!exampleValueAllowed(model.rt, subPath ? `${item.id}.${subPath}` : item.id, true)) return undefined;
     for (const inst of model.instances.slice(0, 6)) {
       for (const v of nodesAt(inst.resource, item.id, model.E)) {
         const x = sub ? getAt(v, sub.replace(/\/\d+(?=\/|$)/g, "/0")) : v;
@@ -665,7 +918,51 @@ export async function bundleForm(req: FormRequest, deps: BlueprintDeps): Promise
     return "";
   };
 
-  const emit = async (rootPtr: string, resource: R, rt: string, model: SkeletonModel, items: SkeletonItem[], e: Entry | null): Promise<void> => {
+  const emit = async (rootPtr: string, resource: R, rt: string, model: SkeletonModel, items0: SkeletonItem[], e: Entry | null): Promise<void> => {
+    const units = new Map<string, unknown[]>();
+    // (v1.1) a row that is a CHILD of a ContactPoint / Quantity-like value (telecom.value, valueAge.value):
+    // the parent value is completed by its datatype rules (cpt-2 system, age-1 code + system) and every
+    // element that adds becomes a row of its own
+    const synth: SkeletonItem[] = [];
+    const covered = (ptr: string): boolean => [...items0, ...synth].some((i) => i.pointer !== undefined && i.pointer !== "" && (ptr === i.pointer || ptr.startsWith(`${i.pointer}/`)));
+    for (const item of items0) {
+      if (!item.pointer || e?.converted.has(item)) continue;
+      const segs = ptrSegs(item.pointer);
+      if (segs.length < 2 || /^\d+$/.test(segs[segs.length - 1]) || !item.id.includes(".")) continue;
+      const parentPtr = `/${segs.slice(0, -1).map(escapePtr).join("/")}`;
+      const parentId = item.id.slice(0, item.id.lastIndexOf("."));
+      const pt = shortType(model.E.get(parentId)?.types?.[0]?.code ?? "");
+      if (!(pt === "ContactPoint" || QUANTITY_LIKE.has(pt)) || items0.some((i) => i.pointer === parentPtr)) continue;
+      const fixedAdded: Array<[string, string]> = [];
+      await completeValue(resource, parentPtr, pt, units, fixedAdded);
+      for (const [ptr, how] of fixedAdded) prefilled.push({ pointer: `${rootPtr}${ptr}`, value_source: "ig-constant", how });
+      for (const [sub] of tokenLeaves(getAt(resource, parentPtr))) {
+        const p = `${parentPtr}${sub}`;
+        if (covered(p)) continue;
+        const seg = ptrSegs(sub).filter((s) => !/^\d+$/.test(s)).join(".");
+        const parentPath = item.path.includes(".") ? item.path.slice(0, item.path.lastIndexOf(".")) : item.path;
+        synth.push({ id: `${parentId}.${seg}`, path: `${parentPath}.${seg}`, source: "record", how: `${pt}.${seg}: required by the ${pt} datatype rule when a value is given`, pointer: p, types: [] });
+      }
+    }
+    // (v1.1) an any-of rule on the resource (org-1 `(identifier.count() + name.count()) > 0`,
+    // `a.exists() or b.exists()`) none of whose elements is in the form: the first primitive one
+    // becomes a row (the other alternatives are named in its `what`)
+    if (e) {
+      for (const c of model.E.get(rt)?.constraints || []) {
+        if (c.severity && c.severity !== "error") continue;
+        const ex = String(c.expression ?? "").trim();
+        const m = /^\(([a-z][A-Za-z]*)\.count\(\) \+ ([a-z][A-Za-z]*)\.count\(\)\) > 0$/.exec(ex) ?? /^([a-z][A-Za-z]*)\.exists\(\) or ([a-z][A-Za-z]*)\.exists\(\)$/.exec(ex);
+        if (!m || resource[m[1]] !== undefined || resource[m[2]] !== undefined) continue;
+        const alts = [m[1], m[2]].filter((k) => model.E.get(`${rt}.${k}`)?.max !== "0");
+        const pick = alts.find((k) => PRIMITIVES.has(shortType(model.E.get(`${rt}.${k}`)?.types?.[0]?.code ?? "")));
+        if (!pick) continue;
+        const el = model.E.get(`${rt}.${pick}`)!;
+        resource[pick] = maxNum(el.max) > 1 ? ["<record>"] : "<record>";
+        const t = shortType(el.types?.[0]?.code ?? "string");
+        synth.push({ id: `${rt}.${pick}`, path: pick, source: "record", how: `${c.key}: ${alts.join(" or ")} is required — the record's ${pick}${alts.length > 1 ? ` (or give ${alts.filter((k) => k !== pick).join(" / ")} instead)` : ""}`, pointer: maxNum(el.max) > 1 ? `/${pick}/0` : `/${pick}`, types: [t] });
+      }
+    }
+    const items = [...items0, ...synth];
     for (const item of items) {
       if (item.pointer === undefined) continue;
       const conv = e?.converted.get(item);
@@ -712,16 +1009,22 @@ export async function bundleForm(req: FormRequest, deps: BlueprintDeps): Promise
         }
         continue;
       }
-      const leaves = tokenLeaves(node);
+      let bt = itemType(item);
+      let ownBinding: string | null = null;
+      if (!(item.types || []).length) ({ type: bt, binding: ownBinding } = await derivedItemType(model, item));
+      // (v1.1) complete the value: datatype shapes, datatype rules (cpt-2, age-1 …), required children
+      const fixedAdded: Array<[string, string]> = [];
+      await completeValue(resource, item.pointer, bt, units, fixedAdded);
+      addRequiredChildren(model, item, resource);
+      await completeValue(resource, item.pointer, bt, units, fixedAdded);
+      for (const [ptr, how] of fixedAdded) prefilled.push({ pointer: `${rootPtr}${ptr}`, value_source: "ig-constant", how });
+      const leaves = tokenLeaves(getAt(resource, item.pointer));
       if (!leaves.length) {
         if (!item.pinned && (item.source === "derivable" || item.exampleBasis)) {
           prefilled.push({ pointer: `${rootPtr}${item.pointer}`, value_source: item.source, how: clip(item.how, 110), ...(item.how.startsWith("optional") ? { optional: true } : {}) });
         }
         continue;
       }
-      let bt = itemType(item);
-      let ownBinding: string | null = null;
-      if (!(item.types || []).length) ({ type: bt, binding: ownBinding } = await derivedItemType(model, item));
       for (const [sub, tok] of leaves) {
         const type = await leafType(bt, sub);
         const dtBinding = sub ? leafBinding : ownBinding;
@@ -753,6 +1056,12 @@ export async function bundleForm(req: FormRequest, deps: BlueprintDeps): Promise
             p.what = clip(`${label} (code): one of the codes of ${tail(dtBinding)}`, 220);
           }
         }
+        const unitList = units.get(`${item.pointer}${sub}`);
+        if (!p.allowed && unitList) {
+          p.allowed = unitList;
+          p.value_source = "code-lookup";
+          p.what = clip(`${label} (code): UCUM unit of time (the ${bt} datatype rule) — one of allowed`, 220);
+        }
         let ex = exampleAt(model, item, sub);
         if (ex === undefined && item.exampleCode && (type === "code" || last === "code") && !QUANTITY_LIKE.has(bt)) ex = item.exampleCode.code;
         if (ex === undefined && item.exampleCode?.system && last === "system" && !QUANTITY_LIKE.has(bt)) ex = item.exampleCode.system;
@@ -771,6 +1080,19 @@ export async function bundleForm(req: FormRequest, deps: BlueprintDeps): Promise
               const m = /^(?:\$this\.)?(?:([A-Za-z][A-Za-z0-9.]*)\.)?matches\('((?:[^'\\]|\\.)+)'\)$/.exec(String(c.expression ?? "").trim());
               if (m && (m[1] ?? "") === rel && !p.format) p.format = m[2].replace(/\\\\/g, "\\");
             }
+          }
+        }
+        {
+          // (v1.1) ElementDefinition.maxLength of the leaf (an NHI 2-character code …)
+          const leafId = subPath ? `${item.id}.${subPath}` : item.id;
+          const raw = (((model.loaded.sd?.snapshot?.element || []) as R[]).find((x) => x.id === leafId) ?? null) as R | null;
+          if (raw && Number.isInteger(raw.maxLength) && raw.maxLength > 0) p.max_length = raw.maxLength;
+          // a string / identifier value bound (required) to a ValueSet: a code of it (no example code)
+          const b = raw?.binding;
+          if (!p.allowed && !p.value_set && b?.strength === "required" && typeof b.valueSet === "string" && (type === "string" || type === "code")) {
+            p.value_set = stripVersion(b.valueSet);
+            if (p.value_source === "record") p.value_source = "code-lookup";
+            p.what = clip(`${p.what} — a code of ValueSet ${p.value_set} (fhir_expand_valueset / fhir_normalize_code)`, 260);
           }
         }
         const name = (item.id.split(".").pop() || "").split(":")[0].replace("[x]", "");
@@ -844,6 +1166,8 @@ export async function bundleForm(req: FormRequest, deps: BlueprintDeps): Promise
   if (bundleEntries.length) ordered.entry = bundle.entry;
   else notes.push("the Bundle has no entries (its profile requires none and no `entries` were passed): `entry` is omitted — an empty array is not valid FHIR; pass `entries` (the resources the record holds) to get their entries in the form");
   pruneEmptyArrays(ordered);
+  const selfCheck = formSelfCheck(ordered);
+  if (selfCheck.length) warnings.push(`form self-check: ${selfCheck.length} problem(s): ${selfCheck.slice(0, 3).join("; ")}`);
 
   const bySource: Record<string, number> = {};
   for (const p of placeholders) bySource[p.value_source] = (bySource[p.value_source] ?? 0) + 1;
@@ -876,10 +1200,12 @@ export async function bundleForm(req: FormRequest, deps: BlueprintDeps): Promise
         "required=false -> delete the element (with its section) when the record has no value. Every other value is final.",
       summary: { entries: entries.length, placeholders: placeholders.length, by_value_source: bySource, references_wired: references.length, references_open: decisions.length },
     };
+    // (v1.1) the prefilled list is never dropped (what the form filled in must stay visible): compact = no `how`
     if (lv.prefilled && prefilled.length) data.prefilled = prefilled;
-    else if (prefilled.length) data.prefilled_count = prefilled.length;
+    else if (prefilled.length) data.prefilled = prefilled.map((x) => ({ pointer: x.pointer, value_source: x.value_source }));
     if (lv.references && references.length) data.references = references;
     if (notes.length) data.notes = notes;
+    data.self_check = selfCheck.length ? { ok: false, problems: selfCheck.slice(0, 20) } : { ok: true };
     data.legend =
       "value_source: record = a fact the record states; code-lookup = pick a code (allowed / the ValueSet: fhir_normalize_code); text-allowed = free text is valid; " +
       "derivable = computed without a record fact (dates of writing = the record's date for it, references = an entry fullUrl). Only `record` needs the record. " +
@@ -908,6 +1234,78 @@ export async function bundleForm(req: FormRequest, deps: BlueprintDeps): Promise
   };
   data.response_chars = measureResponse(data, warnings, prov);
   return { data, warnings, provenance: prov };
+}
+
+/** Keys of Quantity-like datatypes whose rules need system + code with a value (valueAge, onsetAge, expectedSupplyDuration …). */
+const QTY_RULE_KEY = /(^|[a-z])(Age|Duration|Distance|Count)$/;
+
+/**
+ * (v1.1) Structural self-check of a form Bundle (placeholder tokens count as values): no empty
+ * array / object / string anywhere; every literal reference is an entry fullUrl; every entry but the
+ * root of a document / message is referenced by another entry; every ContactPoint with a value has a
+ * system (cpt-2); every Age / Duration / Distance / Count with a value has system + code (age-1 …).
+ * Returns the problems (empty = clean).
+ */
+export function formSelfCheck(bundle: R): string[] {
+  const out: string[] = [];
+  const entries: R[] = Array.isArray(bundle.entry) ? bundle.entry : [];
+  const urls = new Set(entries.map((e) => e?.fullUrl).filter((u): u is string => typeof u === "string"));
+  const walk = (node: unknown, ptr: string, key: string): void => {
+    if (typeof node === "string") {
+      if (node === "") out.push(`${ptr}: empty string`);
+      return;
+    }
+    if (Array.isArray(node)) {
+      if (!node.length) out.push(`${ptr}: empty array`);
+      node.forEach((x, i) => walk(x, `${ptr}/${i}`, key));
+      return;
+    }
+    if (!isObject(node)) return;
+    if (!Object.keys(node).length) {
+      out.push(`${ptr}: empty object`);
+      return;
+    }
+    if (typeof node.reference === "string" && !PLACEHOLDER_TOKEN.test(node.reference) && !urls.has(node.reference)) out.push(`${ptr}/reference: ${node.reference} is not an entry fullUrl`);
+    if ((key === "telecom" || key === "valueContactPoint") && node.value !== undefined && node.system === undefined) out.push(`${ptr}: ContactPoint value without system (cpt-2)`);
+    if (QTY_RULE_KEY.test(key) && node.value !== undefined && (node.system === undefined || node.code === undefined)) out.push(`${ptr}: ${key} value without system + code`);
+    for (const [k, v] of Object.entries(node)) walk(v, `${ptr}/${escapePtr(k)}`, k);
+  };
+  walk(bundle, "", "");
+  const linked = connectedTo(entries.map((e) => ({ fullUrl: String(e?.fullUrl), resource: e?.resource })));
+  entries.forEach((e, i) => {
+    if (!linked.has(i)) out.push(`/entry/${i}: not linked to ${bundle.type === "document" || bundle.type === "message" ? "the root entry" : "the other entries"} by any reference`);
+  });
+  return out;
+}
+
+/**
+ * Indexes of the entries connected to entry 0 (the document / message root, else the first entry)
+ * by references followed forward OR backward — validator_cli's document reachability rule; in a
+ * collection it means the entries form one linked graph (no orphan). A single entry is connected.
+ */
+export function connectedTo(entries: Array<{ fullUrl: string; resource: unknown }>): Set<number> {
+  const byUrl = new Map(entries.map((e, i) => [e.fullUrl, i]));
+  const adj = entries.map(() => new Set<number>());
+  entries.forEach((e, i) => {
+    for (const ref of referencesIn(e.resource)) {
+      const j = byUrl.get(ref);
+      if (j !== undefined && j !== i) {
+        adj[i].add(j);
+        adj[j].add(i);
+      }
+    }
+  });
+  const seen = new Set<number>(entries.length ? [0] : []);
+  const queue = [...seen];
+  while (queue.length) {
+    for (const j of adj[queue.shift()!]) {
+      if (!seen.has(j)) {
+        seen.add(j);
+        queue.push(j);
+      }
+    }
+  }
+  return seen;
 }
 
 /**

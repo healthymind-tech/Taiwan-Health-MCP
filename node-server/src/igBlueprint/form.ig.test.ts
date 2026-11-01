@@ -43,6 +43,19 @@ test("TW Core Bundle-twcore form with 5 planned entries", { skip: !TWC }, async 
   for (const e of withSubject) assert.equal(e.resource.subject.reference, patient, `${e.resource.resourceType}.subject -> the Patient entry`);
 });
 
+const EMPD = availableClosure(["tw.gov.mohw.nhi.empd#0.2.1", "tw.gov.mohw.twcore#0.3.2", "hl7.fhir.uv.extensions.r4#5.3.0", "hl7.terminology.r4#7.4.0", "hl7.fhir.r4.core#4.0.1"]);
+
+test("v1.1: EMPD Bundle-EMPD / Bundle-DS — no example clinic / identifier prefilled, self-check clean", { skip: !EMPD }, async () => {
+  const deps = fileBlueprintDeps(EMPD!)!;
+  for (const b of ["Bundle-EMPD", "Bundle-DS"]) {
+    const { data } = await bundleForm({ bundle_profile: b }, deps);
+    check(data, 8);
+    const text = JSON.stringify(data);
+    for (const v of ["洪文武診所", "02-29765731", "集美街", "http://ns.electronichealth.net.au/id/hi/hpio/1.0", "3531020884"]) assert.ok(!text.includes(v), `${b}: ${v} not in the form`);
+    assert.deepEqual(data.self_check, { ok: true }, `${b}: ${JSON.stringify(data.self_check)}`);
+  }
+});
+
 test("TWPAS Bundle-twpas / Bundle-immunologic-agent-twpas forms hold every required slice", { skip: !PAS }, async () => {
   const deps = fileBlueprintDeps(PAS!)!;
   for (const b of ["Bundle-twpas", "Bundle-immunologic-agent-twpas"]) {
