@@ -41,7 +41,7 @@ export interface CorpusItem {
   /** evaluator layout: validator_cli crashed on this item (no official issues) — excluded from the metrics. */
   officialCrash?: boolean;
   /** evaluator layout, raw items: how the file text became the instance (see the evaluator loader). */
-  raw?: { parse: "json" | "bom-stripped" | "unparseable"; error?: string };
+  raw?: { parse: "json" | "bom-stripped" | "unparseable"; error?: string; text?: string };
 }
 
 export interface CorpusLoader {
@@ -174,7 +174,7 @@ function* evaluatorDir(dir: string): Generator<CorpusItem> {
       source: `${m.ig ?? ""}/${id}`,
       meta: m,
       officialCrash: !!off.crash || m.status === "official_crash",
-      ...(raw ? { raw } : {}),
+      ...(raw ? { raw: { ...raw, text } } : {}),
     };
   }
 }

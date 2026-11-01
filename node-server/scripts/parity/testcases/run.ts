@@ -169,14 +169,16 @@ export async function executeRun(run: TestRun, base: { store: ResourceStore; ids
     r.flags.push("xml");
     if (!resource) actual = parseIssues.map((i) => ({ severity: i.severity, path: i.path, message: i.message, code: i.code }));
   } else {
+    // JSON: the file text through validateText (validator_cli's JSON reader: syntax errors, comments, commas, quotes,
+    // duplicate names); "allow-comments" cases accept comments (elementmodel JsonParser.allowComments)
     try {
-      resource = JSON.parse(text) as Res;
-    } catch (e) {
-      actual = [{ severity: "fatal", path: "", message: `JSON parse error: ${(e as Error).message}` }];
+      JSON.parse(text);
+    } catch {
       r.flags.push("json-parse");
     }
   }
-  if (resource) {
+  const isXml = /\.xml$/i.test(run.file);
+  if (resource || !isXml) {
     try {
       // ValidationTests: the test locale is en-US (display messages "for the language(s) 'en-US'"); "language" sets
       // the validation language; "wrong-displays": "warning" → displayWarningMode; allowExamples unless "examples": false
@@ -185,7 +187,11 @@ export async function executeRun(run: TestRun, base: { store: ResourceStore; ids
       // ValidationTests runs with allowExamples = true unless the case says "examples": false (manifest: dr-example-org
       // / pat-example-extensions are the only R4 outputs with TYPE_SPECIFIC_CHECKS_DT_URL_EXAMPLE)
       const allowExamples = run.raw.examples !== false;
-      const issues = [...parseIssues, ...(await withTimeout(new InstanceValidator(resolver).validate(resource, { profiles, format: /\.xml$/i.test(run.file) ? "xml" : "json", languages, displayWarnings, allowExamples }), timeoutMs))];
+      const opts = { profiles, languages, displayWarnings, allowExamples };
+      const v = new InstanceValidator(resolver);
+      const issues = isXml
+        ? [...parseIssues, ...(await withTimeout(v.validate(resource!, { ...opts, format: "xml" }), timeoutMs))]
+        : await withTimeout(v.validateText(text, { ...opts, allowJsonComments: run.raw["allow-comments"] === true }), timeoutMs);
       actual = issues.map((i) => ({ severity: i.severity, path: i.path, message: i.message, code: i.code }));
     } catch (e) {
       r.ms = Date.now() - t0;

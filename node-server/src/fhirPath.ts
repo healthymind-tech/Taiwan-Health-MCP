@@ -22,6 +22,7 @@
  */
 
 import { readFileSync } from "node:fs";
+import { htmlChecks1, htmlChecks2 } from "./fhirXhtml.js";
 import { createRequire } from "node:module";
 import { dirname } from "node:path";
 
@@ -527,56 +528,7 @@ function javaWhere(this: any, coll: any[], expr: (d: any) => any[]): any[] {
 
 // ----------------------------------------------------------------- htmlChecks
 
-const HTML_ELEMENTS = new Set([
-  "p", "br", "div", "h1", "h2", "h3", "h4", "h5", "h6", "a", "span", "b", "em", "i", "strong", "small", "big", "tt", "dfn", "q",
-  "var", "abbr", "acronym", "cite", "blockquote", "hr", "address", "bdo", "kbd", "sub", "sup", "ul", "ol", "li", "dl", "dt", "dd",
-  "pre", "table", "caption", "colgroup", "col", "thead", "tr", "tfoot", "tbody", "th", "td", "code", "samp", "img", "map", "area",
-]);
-const HTML_ATTRS = new Set([
-  "title", "style", "class", "id", "lang", "xml:lang", "xml:space", "dir", "accesskey", "tabindex", "span", "width", "align", "valign",
-  "char", "charoff", "abbr", "axis", "headers", "scope", "rowspan", "colspan",
-]);
-const HTML_ELEMENT_ATTRS = new Set([
-  "a.href", "a.name", "img.src", "img.border", "div.xmlns", "blockquote.cite", "q.cite", "a.charset", "a.type", "a.hreflang", "a.rel",
-  "a.rev", "a.shape", "a.coords", "img.alt", "img.longdesc", "img.height", "img.width", "img.usemap", "img.ismap", "map.name",
-  "area.shape", "area.coords", "area.href", "area.nohref", "area.alt", "table.summary", "table.width", "table.border", "table.frame",
-  "table.rules", "table.cellspacing", "table.cellpadding", "pre.space", "td.nowrap",
-]);
-
-/**
- * One pass over an XHTML fragment: FHIRPathEngine.checkHtmlNames (`names`; block = true at every depth — the Java
- * recursion compares "p" with a node, so it never switches to the inline list) and checkForContent (`content`:
- * non-blank text or an img).
- */
-function scanXhtml(src: string): { names: boolean; content: boolean } {
-  let names = true;
-  let content = false;
-  const blank = (t: string): boolean => !t.replace(/[\u0000- ]+/g, "");
-  const re = /<!--([\s\S]*?)-->|<!\[CDATA\[([\s\S]*?)\]\]>|<(\/?)([A-Za-z_][\w:.-]*)((?:\s+[^\s=/>]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+))?)*)\s*\/?>|([^<]+)/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(src))) {
-    if (m[1] !== undefined) {
-      if (m[1].startsWith("DOCTYPE")) names = false;
-    } else if (m[2] !== undefined) {
-      if (!blank(m[2])) content = true;
-    } else if (m[4] !== undefined) {
-      if (m[3]) continue;
-      const name = m[4].includes(":") ? m[4].slice(m[4].indexOf(":") + 1) : m[4];
-      if (name === "img") content = true;
-      if (!HTML_ELEMENTS.has(name)) names = false;
-      const attrRe = /([^\s=/>]+)(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+))?/g;
-      let a: RegExpExecArray | null;
-      while ((a = attrRe.exec(m[5] ?? ""))) {
-        const an = a[1];
-        if (!(an.startsWith("xmlns") || HTML_ATTRS.has(an) || HTML_ELEMENT_ATTRS.has(`${name}.${an}`))) names = false;
-      }
-    } else if (m[6] !== undefined) {
-      // entities decode to characters > U+0020 (Java trim() keeps U+00A0), so any entity is content
-      if (!blank(m[6].replace(/&[^;\s]+;/g, "x"))) content = true;
-    }
-  }
-  return { names, content };
-}
+// (parity v3) the xhtml tree checks live in fhirXhtml.ts (XhtmlParser + checkHtmlNames / checkForContent)
 
 // ------------------------------------------------------------- expression fixer
 
@@ -738,13 +690,14 @@ function typedNode(resource: any): any[] {
 /** Narrative check of the R4 txt-1 invariant: `htmlChecks()` = FHIRPathEngine.funcHtmlChecks1 (checkHtmlNames). */
 export function narrativeHtmlOk(div: unknown): boolean {
   if (typeof div !== "string") return false;
-  return scanXhtml(div).names;
+  // (parity v3) the element model's xhtml node: XhtmlParser (xml mode); unparseable -> no node -> false
+  return htmlChecks1(div);
 }
 
 /** txt-2 after FHIRPathExpressionFixer: `htmlChecks2()` = FHIRPathEngine.funcHtmlChecks2 (checkForContent). */
 export function narrativeHasContent(div: unknown): boolean {
   if (typeof div !== "string") return false;
-  return scanXhtml(div).content;
+  return htmlChecks2(div);
 }
 
 /** The xhtml of a focus item: an xhtml node as is; a string wrapped in a div (funcHtmlChecks1). */

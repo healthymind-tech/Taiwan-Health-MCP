@@ -24,6 +24,7 @@
  *     node --max-old-space-size=2500 --import tsx scripts/parity/corpus/run.ts [<corpus dir> (default ~/ref/parity_corpus)] \
  *       [--format evaluator|repro|dirs|jsonl] [--engine db|file] [--only id[,id]] [--json out.json] [--start n] [--count n] [--shard k/n]
  *       [--repro <dir>] [--repro-plan plan.json] [--limit n] [-v] [--package id#ver[,id#ver]] [--profile url]
+ *       [--raw-text]   (file engine: raw items validated from their text with InstanceValidator.validateText)
  */
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -46,6 +47,8 @@ const dir = positional[0] ?? join(homedir(), "ref", "parity_corpus");
 const outFile = opt("--json") ?? join(HERE, "results.json");
 const reproDir = opt("--repro");
 const reproPlanFile = opt("--repro-plan");
+/** --raw-text (file engine): raw items (family raw-json) are validated from their file text with validateText. */
+const rawText = args.includes("--raw-text");
 const limit = Number(opt("--limit") ?? Infinity);
 const start = Number(opt("--start") ?? 0);
 const count = Number(opt("--count") ?? Infinity);
@@ -88,7 +91,11 @@ function fileEngine(): Validate {
   return async (item, instance) => {
     const { store, missing } = storeFor(item.packages);
     const resolver = new FileValidatorResolver(store);
-    const issues = await new InstanceValidator(resolver).validate(instance, { profiles: item.profile ? [item.profile] : [] });
+    const opts = { profiles: item.profile ? [item.profile] : [] };
+    // --raw-text: a raw item's file text through validateText (validator_cli's JSON reader), unless minimise() hands
+    // over a reduced tree
+    const v = new InstanceValidator(resolver);
+    const issues = rawText && item.raw?.text !== undefined && instance === item.instance ? await v.validateText(item.raw.text, opts) : await v.validate(instance, opts);
     const flags: string[] = [];
     if (missing.length) flags.push("missing-package");
     if (resolver.txLookups) flags.push("tx-dependent");
@@ -178,7 +185,7 @@ async function main(): Promise<void> {
     if (item.officialCrash) {
       r.status = "skipped";
       r.skip = "official-crash";
-    } else if (!item.instance) {
+    } else if (!item.instance && !(rawText && item.raw?.text !== undefined)) {
       r.status = "skipped";
       r.skip = "raw-unparseable";
       if (item.raw?.error) r.error = item.raw.error;

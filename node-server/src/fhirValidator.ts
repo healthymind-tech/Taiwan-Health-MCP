@@ -43,6 +43,8 @@ import { UCUM_SYSTEM, checkUcumCode, convertUcum, ucumDisplayIssue, ucumUnknownC
 import { XVER_SOURCE, xverDefinition, xverElementId, xverMatchingUrl, xverStatus, xverVersion } from "./fhirXver.js";
 import { hl7UrlMustResolve, uriResolutionExempt, urlResolveMessage, urnSyntaxIssue } from "./fhirUriRules.js";
 import { codingVersionIssue } from "./fhirExternalTerminology.js";
+import { parseXhtml, validateXhtml, xhtmlHrefIssues } from "./fhirXhtml.js";
+import { dropUnprocessed, JsonSyntaxError, jsonSyntaxIssues, parseFhirJsonText, toPlain, type JObject } from "./fhirJsonParser.js";
 
 export const SOURCE = "builtin";
 
@@ -282,6 +284,8 @@ export interface ValidateOptions {
    * display (tx-issue-type invalid-display) is a warning instead of an error, and does not fail a binding.
    */
   displayWarnings?: boolean;
+  /** validateText only: JSON `//` comments are accepted (validator_cli -allow-json-comments; default false). */
+  allowJsonComments?: boolean;
 }
 
 const ELE1_MESSAGE = "Constraint failed: ele-1: 'All FHIR elements must have a @value or children'";
@@ -1322,6 +1326,41 @@ export class InstanceValidator {
   }
 
   /**
+   * (parity v3) Validates JSON source text the way validator_cli reads a .json file: the Java JSON5-mode lexer /
+   * parser (fhirJsonParser.ts) — a syntax error is the single fatal "Error parsing JSON: …"; comments, unquoted
+   * names / values, missing / extra commas and duplicate names are error issues next to the instance's own issues
+   * (elementmodel.JsonParser). validate() on an already-parsed value is unchanged.
+   */
+  async validateText(text: string, opts: ValidateOptions = {}): Promise<Issue[]> {
+    let root: JObject;
+    try {
+      root = parseFhirJsonText(text);
+    } catch (e) {
+      if (!(e instanceof JsonSyntaxError)) throw e;
+      return [{ severity: "fatal", path: "", code: "invalid", message: `Error parsing JSON: ${e.message}` }];
+    }
+    // JsonObject.get(): the last of duplicated names (propMap); the element model binds the first (getJsonPropertyByName)
+    const rtProps = root.props.filter((p) => p.name === "resourceType");
+    const rt = rtProps[rtProps.length - 1]?.value;
+    if (!rt) return [{ severity: "fatal", path: "$", code: "invalid", message: "Unable to find resourceType property" }];
+    if (rt.kind !== "string") {
+      const name = { object: "Object", array: "Array", number: "Number", boolean: "Boolean", null: "Null" }[rt.kind];
+      return [{ severity: "fatal", path: "$", code: "invalid", message: `The JSON element 'resourceType' has the wrong JSON type: ${name}` }];
+    }
+    const resource = toPlain(root) as Record<string, any>;
+    resource.resourceType = rt.value;
+    const issues = await this.validate(resource, opts);
+    const unrecognised: Array<{ path: string; name: string }> = [];
+    for (const i of issues) {
+      const m = /^Unrecognized property '(.*)'$/su.exec(i.message);
+      if (m) unrecognised.push({ path: i.path, name: m[1] });
+    }
+    const syntax = dropUnprocessed(jsonSyntaxIssues(root, rt.value, !!opts.allowJsonComments), unrecognised).map((s): Issue => ({ severity: s.severity, path: s.path, code: s.code, message: s.message }));
+    // the parser logs every mark (ParserBase.logError appends, no hasMessage de-duplication)
+    return [...syntax, ...issues];
+  }
+
+  /**
    * (v13) Terminology_TX_System_ValueSet2 for IG ValueSets. validator_cli 7.0.1 / 7.0.3 knows an
    * IG ValueSet as such only once it has loaded it, i.e. after checking a binding to it (or to a
    * ValueSet including it) — the same Observation.code coding with system = …/ValueSet/
@@ -2236,8 +2275,18 @@ export class InstanceValidator {
         // conformance check of the resource, so a profile match (slice by resolve() profile) sees it too
         const res0 = rctx.resource;
         if (isObject(res0.text) && typeof res0.text.div === "string") {
-          for (const m of narrativeLinkProblems(res0.text.div, this.narrativeAnchors(rctx))) {
-            out.push({ severity: "error", path: `${ROOT_TOKEN}.text.div`, code: "invalid", message: `Hyperlink '${m.href}' at '${m.at}' for '${m.text}' does not resolve` });
+          // (parity v3) JsonParser.parseChildPrimitiveInstance reads the div with XhtmlParser (xml mode): a parse
+          // failure is ERROR_PARSING_XHTML_ and leaves no xhtml node (no XhtmlValidator / link checks); then
+          // InstanceValidator.checkXhtml: XhtmlValidator.validate + checkReferences
+          const divPath = `${ROOT_TOKEN}.text.div`;
+          const px = parseXhtml(res0.text.div);
+          if (px.error !== null) out.push({ severity: "error", path: divPath, code: "invalid", message: `Error parsing XHTML: ${px.error}` });
+          for (const m of px.issues) out.push({ severity: "error", path: divPath, code: "invalid", message: m });
+          if (px.div) {
+            for (const x of [...validateXhtml(px.div), ...xhtmlHrefIssues(px.div)]) out.push({ severity: x.severity, path: divPath, code: "invalid", message: x.message });
+            for (const m of narrativeLinkProblems(res0.text.div, this.narrativeAnchors(rctx))) {
+              out.push({ severity: "error", path: divPath, code: "invalid", message: `Hyperlink '${m.href}' at '${m.at}' for '${m.text}' does not resolve` });
+            }
           }
         }
         await this.validateItemAgainst(
@@ -2829,7 +2878,7 @@ export class InstanceValidator {
       return;
     }
     for (const k of Object.keys(ext)) {
-      if (k !== "id" && k !== "extension" && k !== "fhir_comments") {
+      if (k !== "id" && k !== "extension") {
         issues.push({ severity: "error", path, code: "structure", message: `Unrecognized property '${k}'` });
       }
     }
@@ -2911,7 +2960,7 @@ export class InstanceValidator {
     };
     const used = new Set<string>();
     if (isResourceRoot) used.add("resourceType");
-    used.add("fhir_comments");
+    // (parity v3) fhir_comments is a property only in DSTU2 (elementmodel JsonParser.checkNotProcessed: R2 / R2B)
 
     for (const [gsdx, grp] of groupList) {
       const def = grp.base || grp.slices[0];
@@ -5283,7 +5332,7 @@ export class InstanceValidator {
     // values of the wrong JSON shape were dropped — an element holding only those (or only an id) has no children
     let kept = 0;
     for (const key of Object.keys(node)) {
-      if (key === "fhir_comments" || (isRoot && key === "resourceType")) continue;
+      if (isRoot && key === "resourceType") continue;
       const primExt = key.startsWith("_");
       const name = primExt ? key.slice(1) : key;
       let def: Record<string, any> | null = null;
@@ -5341,7 +5390,7 @@ export class InstanceValidator {
           if (!isObject(pe)) continue;
           const pp = Array.isArray(raw) ? `${childPath}[${i}]` : childPath;
           for (const k of Object.keys(pe)) {
-            if (k !== "id" && k !== "extension" && k !== "fhir_comments") {
+            if (k !== "id" && k !== "extension") {
               issues.push({ severity: "error", path: pp, code: "structure", message: `Unrecognized property '${k}'` });
             }
           }
@@ -5375,7 +5424,7 @@ export class InstanceValidator {
         }
       }
     }
-    if (!isRoot && kept === 0 && Object.keys(node).some((k) => k !== "fhir_comments")) {
+    if (!isRoot && kept === 0 && Object.keys(node).length > 0) {
       issues.push({ severity: "error", path, code: "invariant", message: "Constraint failed: ele-1: 'All FHIR elements must have a @value or children'" });
     }
   }
@@ -5651,7 +5700,7 @@ export function narrativeLinkProblems(div: string, anchors: ReadonlySet<string>)
  * (InstanceValidator.conformsToProfile, a fresh validateResource on the parsed tree) never sees them, so profile
  * matching — slices by profile, reference target profiles — ignores them here too.
  */
-const PARSE_ISSUE = /^Unrecognized property '|^The property \S+ must be (?:a JSON Array|an Array|an Object), not |^This property must be a simple value, not |^Error parsing JSON: |^Array cannot be empty|^Array entries cannot be null/u;
+const PARSE_ISSUE = /^Error parsing XHTML: |^Invalid entity in the XHTML \(|^Unrecognized property '|^The property \S+ must be (?:a JSON Array|an Array|an Object), not |^This property must be a simple value, not |^Error parsing JSON: |^Array cannot be empty|^Array entries cannot be null/u;
 function isParseIssue(i: { message?: string }): boolean {
   return PARSE_ISSUE.test(String(i.message ?? ""));
 }
