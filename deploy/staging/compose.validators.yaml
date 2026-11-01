@@ -1,0 +1,55 @@
+# v18 R1 on staging: the official HL7 validators (services/hl7-validator, one per IG) as the judge of fhir_validate_*.
+# Use together with compose.limits.yaml:
+#   docker compose -p twh-staging -f deploy/staging/compose.yaml -f deploy/staging/compose.limits.yaml \
+#     -f deploy/staging/compose.validators.yaml up -d --no-build
+# Each validator: 3 GB / 2 CPU, low CPU priority, no host port; outbound HTTPS for packages.fhir.org / tx.fhir.org.
+x-validator: &validator
+  image: taiwan-health-mcp-hl7-validator:latest
+  restart: unless-stopped
+  expose:
+    - "8080"
+  volumes:
+    - validator_fhircache:/root/.fhir
+  cpus: 2
+  cpu_shares: 256
+  mem_limit: 3g
+  memswap_limit: 3g
+  pids_limit: 512
+  security_opt:
+    - no-new-privileges:true
+  healthcheck:
+    test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8080"]
+    interval: 30s
+    timeout: 5s
+    start_period: 240s
+    retries: 3
+
+services:
+  hl7-validator-twcore:
+    <<: *validator
+    environment: { VALIDATOR_IG: "tw.gov.mohw.twcore#1.0.0", JAVA_XMX: 2400m }
+  hl7-validator-pas:
+    <<: *validator
+    environment: { VALIDATOR_IG: "tw.gov.mohw.nhi.pas#1.2.7", JAVA_XMX: 2400m }
+  hl7-validator-ips:
+    <<: *validator
+    environment: { VALIDATOR_IG: "hl7.fhir.uv.ips#1.1.0", JAVA_XMX: 2400m }
+  hl7-validator-empd:
+    <<: *validator
+    environment: { VALIDATOR_IG: "tw.gov.mohw.nhi.empd#0.2.1", JAVA_XMX: 2400m }
+  app:
+    environment:
+      OFFICIAL_VALIDATOR_URLS: "tw.gov.mohw.twcore#1.0.0=http://hl7-validator-twcore:8080,tw.gov.mohw.nhi.pas#1.2.7=http://hl7-validator-pas:8080,hl7.fhir.uv.ips#1.1.0=http://hl7-validator-ips:8080,tw.gov.mohw.nhi.empd#0.2.1=http://hl7-validator-empd:8080"
+      OFFICIAL_VALIDATOR_MODE: prefer
+      # validation of large Bundles (suggestions, finalize) needs more than the 640 MB of compose.limits.yaml
+      NODE_OPTIONS: --max-old-space-size=2048
+      MCP_HEAVY_TOOL_CONCURRENCY: "2"
+      MCP_HEAVY_TOOL_QUEUE_TIMEOUT_MS: "240000"
+    mem_limit: 2560m
+    memswap_limit: 2560m
+  admin-worker:
+    environment:
+      OFFICIAL_VALIDATOR_URLS: ""
+
+volumes:
+  validator_fhircache:

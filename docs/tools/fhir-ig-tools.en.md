@@ -479,6 +479,8 @@ Quantities and bare numbers are never exempt. When one record line lists several
 
 ## Does the record actually provide it? (record checks) {#record-checks}
 
+> **parity v2 (2026-11-01)**: a content error needs `source_text`. A call without `source_text` is a pure validation: every record-check finding is kept, but always as a warning (its evidence says `no source_text`), so it never changes the verdict the official validator gives.
+
 When a record deliberately lacks a piece of information, models still tend to "fill something in": "number not yet assigned" as the MRN, a month-only date as `Encounter.period.start`, a "to be ruled out" diagnosis as an established Condition. Such values can be well-formed — the string may even appear in the record — so both the validator and grounding pass them. **Record checks** are a post-validation layer (`node-server/src/recordChecks/`; like the [fix suggestions](#validation-suggestions) it runs after the validator and never touches InstanceValidator, so the validator parity audit is unaffected) that reports "the record does not actually provide this information".
 
 **Report only**: no value is ever rewritten or removed; whether to answer `insufficient_information` instead is the model's decision.

@@ -226,7 +226,7 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   messages, path, suggestions and valid unchanged.
   // --- end v19 R3 ---
   // 1.26.0 (ISSUES_v19 R1 round 2): the shared content repairs of fhir_finalize_bundle 1.15.0 (Composition.class → category, performer.reference → performer.actor.reference, STU3 duplicates of a value the R4 element holds removed, a code element written as a CodeableConcept whose system is the THO / core twin of the ValueSet's CodeSystem) (normalize_ids + repair="content"); suggestions as fhir_validate_resource 1.23.0 (Composition.class → category).
-  // 1.27.0 (v18 R1 / parity v2, officialValidator.ts): when a resident official HL7 validator serves the package (OFFICIAL_VALIDATOR_URLS), structure / slicing / profile / invariant / document / terminology issues are its OperationOutcome (data.source "hl7-validator_cli-7.0.1", data.engine "hl7-official"; "mcp-fallback" + a warning when it is unavailable); MCP adds suggestions, slice_match, pointers / patches and content checks only. Without one, output unchanged.
+  // 1.27.0 (v18 R1 / parity v2, officialValidator.ts): when a resident official HL7 validator serves the package (OFFICIAL_VALIDATOR_URLS), structure / slicing / profile / invariant / document / terminology issues are its OperationOutcome (data.source "hl7-validator_cli-7.0.1", data.engine "hl7-official"; "mcp-fallback" + a warning when it is unavailable); MCP adds suggestions, slice_match, pointers / patches and content checks only. Without one, output unchanged. Record checks without source_text are warnings only (content errors need the record).
   fhir_validate_bundle: "1.27.0",
   // 1.6.2: the binding-aware suggestions above (ISSUES_v10 A) also apply to single-resource validation.
   // 1.7.0: the validator v13 rules above (fhir_validate_bundle 1.9.0).
@@ -252,7 +252,7 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.22.0 (ISSUES_v19 R3): `pointer` / `pointer_kind` / `patches` on the issues as fhir_validate_bundle 1.25.0 (pointers into the resource as sent).
   // --- end v19 R3 ---
   // 1.23.0 (ISSUES_v19 R1 round 2): the STU3 rename table (fhirR3Renames.ts) knows Composition.class → category: an "Unrecognized property 'class'" on a Composition gets that rename suggestion.
-  // 1.24.0 (v18 R1 / parity v2, officialValidator.ts): when a resident official HL7 validator serves the package (OFFICIAL_VALIDATOR_URLS), structure / slicing / profile / invariant / document / terminology issues are its OperationOutcome (data.source "hl7-validator_cli-7.0.1", data.engine "hl7-official"; "mcp-fallback" + a warning when it is unavailable); MCP adds suggestions, slice_match, pointers / patches and content checks only. Without one, output unchanged.
+  // 1.24.0 (v18 R1 / parity v2, officialValidator.ts): when a resident official HL7 validator serves the package (OFFICIAL_VALIDATOR_URLS), structure / slicing / profile / invariant / document / terminology issues are its OperationOutcome (data.source "hl7-validator_cli-7.0.1", data.engine "hl7-official"; "mcp-fallback" + a warning when it is unavailable); MCP adds suggestions, slice_match, pointers / patches and content checks only. Without one, output unchanged. Record checks without source_text are warnings only (content errors need the record).
   fhir_validate_resource: "1.24.0",
   // 1.2.0 (all below): provenance.resolved_by / closure_versions; canonical arguments resolve to their
   // owning package when package_id is omitted; "|version" honoured; list/search: all_packages + zero-hit hint;

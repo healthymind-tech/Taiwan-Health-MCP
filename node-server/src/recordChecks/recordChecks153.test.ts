@@ -59,7 +59,7 @@ test("R1 text fields: whole-value absence statements only (substrings in real va
 test("R1 CodeableConcept.text with placeholder codings is read by its text; without source_text too", () => {
   const b = inBundle();
   res(b, 2).code = { coding: [{ system: "http://terminology.hl7.org/CodeSystem/v3-NullFlavor", code: "UNK" }], text: "暫不下診斷" };
-  assert.deepEqual(codes(b, null), ["error:information-absent@2.code.text"]);
+  assert.deepEqual(codes(b, null), ["warning:information-absent@2.code.text"]); // parity v2: warning without source_text
   // a real name next to the placeholder is fine
   res(b, 2).code.text = "社區型肺炎";
   assert.deepEqual(codes(b, null), []);
@@ -79,7 +79,7 @@ test("R1 quantitative result: LOINC axes / LOINC name / vital sign / the resourc
   b.entry.push({ resource: { resourceType: "Observation", status: "final", code: { text: "血清外觀" }, valueString: "溶血" } });
   assert.deepEqual(codes(b, null), []);
   b.entry[b.entry.length - 1].resource = { resourceType: "Observation", status: "final", code: { coding: [{ system: "http://loinc.org", code: "6690-2", display: "Leukocytes [#/volume] in Blood by Automated count" }] }, valueString: "溶血" };
-  assert.deepEqual(codes(b, null), [`error:information-absent@${b.entry.length - 1}.valueString`]);
+  assert.deepEqual(codes(b, null), [`warning:information-absent@${b.entry.length - 1}.valueString`]);
 });
 
 test("R1 note of an Observation without a value; Dosage.text", () => {
@@ -96,7 +96,7 @@ test("R1 note of an Observation without a value; Dosage.text", () => {
   assert.deepEqual(codes(c, null), []);
   const d = inBundle();
   res(d, 8).dosageInstruction = [{ text: "劑量待確認" }];
-  assert.ok(codes(d, null).includes("error:information-absent@8.dosageInstruction[0].text"));
+  assert.ok(codes(d, null).includes("warning:information-absent@8.dosageInstruction[0].text"));
 });
 
 test("R2 primary Condition: Encounter.diagnosis rank → encounter-diagnosis category → the only non-comorbidity Condition", () => {

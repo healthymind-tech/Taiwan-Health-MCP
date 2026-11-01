@@ -479,6 +479,8 @@ IG 本身規定的值不需要、也不會出現在病歷中。grounding（`G-UN
 
 ## 病歷是否真的提供了這項資訊（record checks）{#record-checks}
 
+> **parity v2（2026-11-01）**：內容類 error 一律要有 `source_text` 才成立。沒有 `source_text` 的呼叫是純驗證，所有 record checks 的發現都保留，但嚴重度一律為 warning（evidence 註明 `no source_text`），不會改變官方 validator 給的判定。
+
 病歷刻意缺少某項資訊時，模型常常仍會「填上東西」：把「尚未取號」寫進病歷號、把只到月份的日期寫進 `Encounter.period.start`、把「待排除」的診斷寫成確立的 Condition。這些值有時格式合法，甚至字串真的出現在病歷裡，所以 validator 與 grounding 都會通過。**record checks** 是驗證之後的一層（`node-server/src/recordChecks/`，與 [修正建議](#validation-suggestions) 一樣在 validator 之後執行，不改動 InstanceValidator，validator parity 稽核不受影響），專門回報「病歷其實沒有提供這項資訊」。
 
 **只回報、不修正**：不會改寫或刪除任何值，要不要改為回報 `insufficient_information` 由模型決定。

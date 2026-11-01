@@ -390,6 +390,16 @@ export function runRecordChecks(root: Json, opts: RecordCheckOptions = {}): Reco
       if (IG_EXEMPT_CODES.has(issues[k].code) && isIgDefined(valueAt(root, issues[k].path), opts.igDefined, issues[k].path)) issues.splice(k, 1);
     }
   }
+  // parity v2 (evaluator decision 2026-11-01): a content finding is an error only against a record. Without source_text
+  // the call is a pure validation — every record-check finding stays, as a warning, so it never changes the verdict the
+  // official validator gives.
+  if (!withSource) {
+    for (const i of issues) {
+      if (i.severity !== "error") continue;
+      i.severity = "warning";
+      i.evidence = `${i.evidence}; no source_text (pure validation), so the severity is warning`;
+    }
+  }
   const errors = issues.filter((i) => i.severity === "error").length;
   const warnings = issues.length - errors;
   return { issues, summary: { ok: errors === 0, errors, warnings, rules, source_text: withSource, ...(notes.length ? { notes } : {}) } };

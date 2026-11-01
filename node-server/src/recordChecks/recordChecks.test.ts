@@ -84,7 +84,8 @@ test("R1 runs without source_text; real HL7 'unknown' codes are not flagged", ()
   const r = runRecordChecks(b, {});
   assert.deepEqual(r.issues.map((i) => [i.code, i.path, i.rule, i.source]), [["information-absent", "Bundle.entry[0].resource.identifier[1].value", "R1", "record-checks"]]);
   assert.match(r.issues[0].message, /病歷沒有提供這項資訊/u);
-  assert.deepEqual(r.summary, { ok: false, errors: 1, warnings: 0, rules: ["R1", "R2"], source_text: false });
+  assert.deepEqual(r.summary, { ok: true, errors: 0, warnings: 1, rules: ["R1", "R2"], source_text: false }); // parity v2: warning without source_text
+  assert.equal(r.issues[0].severity, "warning");
 });
 
 test("R3 says whether the record has a more complete value", () => {
@@ -129,9 +130,12 @@ test("envelope: issues land on the entry, valid turns false, the validator's own
   b.entry[0].resource.identifier[0].value = "家屬說身分證還沒帶來";
   const text = validationEnvelope(b);
   const before = JSON.parse(text);
-  const out = JSON.parse(addRecordChecksToValidation(text, b, {}));
+  const out = JSON.parse(addRecordChecksToValidation(text, b, { sourceText: "身分證：家屬說身分證還沒帶來" }));
   assert.equal(out.data.valid, false);
   assert.equal(out.data.entries[0].valid, false);
+  // parity v2: without source_text the finding is a warning and the verdict stays the validator's
+  const bare = JSON.parse(addRecordChecksToValidation(text, b, {}));
+  assert.equal(bare.data.valid, true);
   assert.deepEqual(out.data.entries[0].issues[0], before.data.entries[0].issues[0]);
   assert.equal(out.data.entries[0].issues[1].code, "information-absent");
   assert.equal(out.data.record_checks.ok, false);
@@ -173,10 +177,11 @@ test("finalize envelopes: clean without source_text → unchanged; fhir_finalize
   assert.equal(addRecordChecksToFinalizeResource(env(patient), {}), env(patient));
   const bad = structuredClone(patient);
   bad.identifier[1].value = "尚未取號";
-  const out = JSON.parse(addRecordChecksToFinalizeResource(env(bad), {}));
+  const out = JSON.parse(addRecordChecksToFinalizeResource(env(bad), { sourceText: "病歷號：尚未取號" }));
   assert.equal(out.data.validation.valid, false);
-  assert.deepEqual(out.data.validation.issues.map((i: any) => [i.code, i.path]), [["information-absent", "Patient.identifier[1].value"]]);
-  assert.equal(out.data.validation.record_checks.errors, 1);
+  assert.deepEqual(out.data.validation.issues.filter((i: any) => i.code === "information-absent").map((i: any) => [i.code, i.path, i.severity]), [["information-absent", "Patient.identifier[1].value", "error"]]);
+  const bareRes = JSON.parse(addRecordChecksToFinalizeResource(env(bad), {}));
+  assert.equal(bareRes.data.validation.valid, true, "parity v2: a warning without source_text");
   assert.deepEqual(out.data.resource, bad);
   assert.equal(out.warnings.length, 1);
 });
