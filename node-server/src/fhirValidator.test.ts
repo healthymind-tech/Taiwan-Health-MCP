@@ -417,6 +417,29 @@ test("resource id syntax is checked even when the base snapshot types Resource.i
   assert.deepEqual(errors(await run({ resourceType: "Patient", id: "pat-1.A" })), []);
 });
 
+// InstanceValidator.checkContainedReferences / isReferencedFromBase (7.0.1 l. 9062-9113): dom-3 is never evaluated as
+// FHIRPath (checkInvariant l. 8868-8872); the rule is enforced in code with CONTAINED_ORPHAN_DOM3 at the contained resource
+test("dom-3: orphan contained resources (checkContainedReferences)", async () => {
+  const O = (id: string, extra: Record<string, any> = {}): Record<string, any> => ({ resourceType: "Organization", id, name: id, ...extra });
+  const orphan = await run({ resourceType: "Patient", contained: [O("o1")] });
+  const dom3 = errors(orphan).filter((i) => /\(dom-3\)$/.test(i.message));
+  assert.equal(dom3.length, 1, JSON.stringify(orphan));
+  assert.equal(dom3[0].path, "Patient.contained[0]");
+  assert.equal(dom3[0].message, "The contained resource 'o1' is not referenced to from elsewhere in the containing resource nor does it refer to the containing resource (dom-3)");
+  assert.ok(!errors(orphan).some((i) => /Constraint failed: dom-3/.test(i.message)));
+  // referenced through another contained resource that the container references
+  // (a narrative link counts as a reference)
+  const div = (id: string): Record<string, any> => ({ status: "generated", div: `<div xmlns="http://www.w3.org/1999/xhtml"><a href="#${id}">x</a></div>` });
+  const narr = await run({ resourceType: "Patient", text: div("o1"), contained: [O("o1")] });
+  assert.deepEqual(errors(narr).filter((i) => /dom-3/.test(i.message)), []);
+  const P = (id: string, ref: string): Record<string, any> => ({ resourceType: "Patient", id, managingOrganization: { reference: ref } });
+  const chain = await run({ resourceType: "Patient", text: div("p2"), contained: [O("o1"), P("p2", "#o1")] });
+  assert.deepEqual(errors(chain).filter((i) => /dom-3/.test(i.message)), []);
+  // a contained resource that refers to its container ('#')
+  const back = await run({ resourceType: "Patient", contained: [P("p2", "#")] });
+  assert.deepEqual(errors(back).filter((i) => /dom-3/.test(i.message)), []);
+});
+
 test("isValid ignores warnings and information", () => {
   assert.equal(isValid([{ severity: "warning" }, { severity: "information" }]), true);
   assert.equal(isValid([{ severity: "error" }]), false);

@@ -1151,6 +1151,8 @@ export class InstanceValidator {
   private sdCache = new Map<string, Promise<SdIndex | null>>();
   private conformCache = new WeakMap<object, Map<string, Promise<Issue[]>>>();
   private inProgress = new WeakMap<object, Set<string>>();
+  /** ValidationContext.INTERNAL_REFERENCES_NAME: the '#…' references met while validating each resource (dom-3). */
+  private internalRefs = new WeakMap<object, Set<string>>();
   private vsHeaderCache = new Map<string, Promise<Record<string, any> | null>>();
   /**
    * (v13) ValueSets validator_cli has loaded while validating this instance: those of element
@@ -2061,6 +2063,7 @@ export class InstanceValidator {
           depth + 1,
           true,
         );
+        if (url === CORE + rctx.resource.resourceType && rctx.container === null) this.checkContainedReferences(rctx.resource, out);
         return out;
       })().finally(() => done.delete(url));
       byUrl.set(url, p);
@@ -2074,6 +2077,65 @@ export class InstanceValidator {
         return i.path.startsWith(ROOT_TOKEN) ? { ...i, path: path + i.path.slice(ROOT_TOKEN.length), message } : message === i.message ? i : { ...i, message };
       }),
     );
+  }
+
+  /** Records a '#…' reference made from `rctx.resource` (its INTERNAL_REFERENCES_NAME set). */
+  private noteInternalRef(rctx: ResourceCtx, ref: string): void {
+    if (!ref.startsWith("#")) return;
+    let set = this.internalRefs.get(rctx.resource);
+    if (!set) {
+      set = new Set();
+      this.internalRefs.set(rctx.resource, set);
+    }
+    set.add(ref.slice(1));
+  }
+
+  /**
+   * The internal references of a resource: those met by the walk, plus the narrative's a/@href (not '#') and
+   * img/@src (InstanceValidator.checkReferences / checkImageSources, l. 4307-4315 / 5240-5251).
+   */
+  private internalRefsOf(resource: Record<string, any>): Set<string> {
+    const out = new Set(this.internalRefs.get(resource) ?? []);
+    const div = isObject(resource.text) && typeof resource.text.div === "string" ? resource.text.div : "";
+    for (const m of div.matchAll(/<(a|img)\b[^>]*?\s(href|src)\s*=\s*("([^"]*)"|'([^']*)')/gi)) {
+      const v = m[4] ?? m[5] ?? "";
+      if (!v.startsWith("#")) continue;
+      if (m[1].toLowerCase() === "a" && v === "#") continue;
+      out.add(v.slice(1));
+    }
+    return out;
+  }
+
+  /**
+   * InstanceValidator.checkContainedReferences (7.0.1, l. 9062-9113): the validator never evaluates dom-3
+   * (checkInvariant l. 8868-8872) but enforces it in code once the resource is validated — every contained
+   * resource must be referenced from the container (directly, or through other contained resources that are), or
+   * itself refer to the container ('#'). CONTAINED_ORPHAN_DOM3, at the contained resource.
+   */
+  private checkContainedReferences(resource: Record<string, any>, out: Issue[]): void {
+    const contained: any[] = Array.isArray(resource.contained) ? resource.contained : [];
+    if (!contained.length || !contained.every((c) => isObject(c) && typeof c.resourceType === "string")) return; // allDone
+    const baseRefs = this.internalRefsOf(resource);
+    const refs = contained.map((c) => this.internalRefsOf(c));
+    const referenced = (i: number, ignore: Set<number>): boolean => {
+      const id = contained[i].id;
+      if (typeof id === "string" && baseRefs.has(id)) return true;
+      if (refs[i].has("")) return true;
+      for (let j = 0; j < contained.length; j++) {
+        if (j === i || ignore.has(j)) continue;
+        if (typeof id === "string" && refs[j].has(id) && referenced(j, new Set([...ignore, j]))) return true;
+      }
+      return false;
+    };
+    for (let i = 0; i < contained.length; i++) {
+      if (referenced(i, new Set())) continue;
+      out.push({
+        severity: "error",
+        path: `${ROOT_TOKEN}.contained[${i}]`,
+        code: "invalid",
+        message: `The contained resource '${contained[i].id ?? "null"}' is not referenced to from elsewhere in the containing resource nor does it refer to the containing resource (dom-3)`,
+      });
+    }
   }
 
   // ------------------------------------------------------------------ elements
@@ -2105,7 +2167,15 @@ export class InstanceValidator {
         await this.checkConstraints(sdx, el, item, typeCode, rctx, issues);
         return;
       }
-      if (typeof v === "string") await this.checkUri(v, item, typeCode, el, issues);
+      if (typeof v === "string") {
+        // InstanceValidator.checkPrimitive l. 3369-3418 → validateReference l. 3946-3947: a '#…' uri / url / canonical
+        // / oid / uuid (not a defining canonical url, not Bundle.entry.fullUrl) is an internal reference
+        const p = String(el.path || "");
+        if (["uri", "url", "canonical", "oid", "uuid"].includes(typeCode) && p !== "Bundle.entry.fullUrl" && !/^[A-Z][A-Za-z]*\.url$/.test(p)) {
+          this.noteInternalRef(rctx, v);
+        }
+        await this.checkUri(v, item, typeCode, el, issues);
+      }
       this.checkFixedPattern(el, v, item, sdx, issues);
       await this.checkBinding(el, v, typeCode, item, issues, null);
       await this.checkConstraints(sdx, el, item, typeCode, rctx, issues);
@@ -4213,6 +4283,7 @@ export class InstanceValidator {
       }
       return;
     }
+    this.noteInternalRef(rctx, ref); // InstanceValidator.checkReference l. 5250-5251
     if (ref === "http://tools.ietf.org/html/bcp47") return;
     // Port of InstanceValidator.checkReference (7.0.1): a reference containing
     // whitespace is REFERENCE_REF_INVALID_REF (error, rule 2025-05-07) — the JSON
@@ -4625,7 +4696,8 @@ export class InstanceValidator {
     };
     const base = fhirPathBase(String(el.path || sdx.type), typeCode);
     for (const c of constraints) {
-      if (!c.expression || c.key === "ele-1") continue;
+      // ele-1: structural pass; dom-3: never evaluated (checkInvariant l. 8868-8872) — checkContainedReferences
+      if (!c.expression || c.key === "ele-1" || c.key === "dom-3") continue;
       // InstanceValidator.checkInvariant evaluates FHIRPathExpressionFixer.fixExpr(expression, key)
       const fixed = invariantExpression(String(c.expression), c.key);
       const expr = isPrimitive(typeCode) ? primitiveValueAlias(fixed) : fixed;
@@ -4643,12 +4715,26 @@ export class InstanceValidator {
         });
         continue;
       }
+      if (outcome.parse) {
+        // InstanceValidator.checkInvariant l. 8876-8881: fpe.parse failed — always an error
+        issues.push({
+          severity: "error",
+          path: item.path,
+          code: "invariant",
+          message: `Problem processing expression '${c.expression}' in profile '${sdx.url}${sdx.sd?.version ? `|${sdx.sd.version}` : ""}' at path '${item.path}': ${outcome.error}`,
+          element: el.id,
+          profile: sdx.url,
+        });
+        continue;
+      }
       const severity = bestPractice || c.severity === "warning" ? "warning" : "error";
+      // checkInvariant l. 8896-8909: an evaluation exception fails the invariant; its message follows the text
+      const log = outcome.error ? `${outcome.error} (log: ${outcome.error})` : "";
       issues.push({
         severity,
         path: item.path,
         code: "invariant",
-        message: `Constraint failed: ${c.key}: '${c.human || c.expression}'${c.source ? ` (defined in ${stripVersion(c.source)})` : ""}`,
+        message: `Constraint failed: ${c.key}: '${c.human || c.expression}'${c.source ? ` (defined in ${stripVersion(c.source)})` : ""}${log}`,
         element: el.id,
         profile: sdx.url,
       });
