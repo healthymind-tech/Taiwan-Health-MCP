@@ -612,8 +612,7 @@ export function fixInvariantExpression(expr: string, key: string | null | undefi
 /**
  * The expression the validator evaluates for an invariant: fixInvariantExpression, except dom-3. InstanceValidator
  * .checkInvariant never runs dom-3 (it enforces the rule in code, checkContainedReferences); we still evaluate it,
- * with `as(T)` read as `ofType(T)` — the published expression applies as() to descendants(), which the Java
- * singleton rule (funcAs → FHIRPATH_AS_COLLECTION) would turn into an exception.
+ * with `as(T)` read as `ofType(T)` (equivalent for R4, where as() does not enforce the singleton rule).
  */
 export function invariantExpression(expr: string, key: string | null | undefined, fhirVersion = "4.0.1"): string {
   if (key === "dom-3") return expr.replace(/\.as\(/g, ".ofType(");
@@ -805,12 +804,12 @@ const USER_FUNCTIONS: Record<string, any> = {
       return [typeof v === "string" && narrativeHasContent(v)];
     },
   },
-  // FHIRPathEngine.funcAs: singleton rule (doNotEnforceAsSingletonRule is never set by the validator)
+  // FHIRPathEngine.funcAs: the singleton rule is NOT enforced for R4 — InstanceValidator (IV:602) sets
+  // fpe.setDoNotEnforceAsSingletonRule(!VersionUtilities.isR5Plus(…)), so as() filters like ofType() (REVIEW_port_1 F22)
   as: {
     internalStructures: true,
     arity: { 1: ["TypeSpecifier"] },
     fn: function (coll: any[], typeInfo: any): any[] {
-      if (coll && coll.length > 1) throw new JavaFhirPathError(`Attempt to use 'as()' on more than one item ('${coll.length}', 'as(${typeInfo})')`);
       return (coll || []).filter((v) => javaTypeMatch(v, typeInfo));
     },
   },

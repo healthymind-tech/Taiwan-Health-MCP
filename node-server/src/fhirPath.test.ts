@@ -70,11 +70,11 @@ test("%resource / %rootResource and dom-3 (as() read as ofType())", () => {
   assert.deepEqual(evaluateConstraint(ok, "Patient", expr, env(ok)), { status: "pass" });
   const orphan = { resourceType: "Patient", contained: [{ resourceType: "Organization", id: "o1" }] };
   assert.deepEqual(evaluateConstraint(orphan, "Patient", expr, env(orphan)), { status: "fail" });
-  // the raw expression hits the Java singleton rule of as(): an exception Java raises too, so the invariant FAILS
-  // with that message (InstanceValidator.checkInvariant l. 8896-8898)
-  const raw = evaluateConstraint(ok, "Patient", dom3, env(ok));
-  assert.equal(raw.status, "fail");
-  assert.match(raw.status === "fail" ? raw.error ?? "" : "", /^Attempt to use 'as\(\)' on more than one item/);
+  // R4: as() does not enforce the singleton rule (InstanceValidator IV:602 setDoNotEnforceAsSingletonRule(!isR5Plus)),
+  // so the raw expression evaluates like the rewritten one (REVIEW_port_1 F22)
+  assert.deepEqual(evaluateConstraint(ok, "Patient", dom3, env(ok)), { status: "pass" });
+  const two = { resourceType: "Patient", name: [{ family: "a" }, { family: "b" }] };
+  assert.deepEqual(evaluateConstraint(two, "Patient", "name.as(HumanName).exists()", env(two)), { status: "pass" });
 });
 
 // Java 7.0.1 string functions return EMPTY on an empty focus (FHIRPathEngine.funcStartsWith l. 6216-6236);
@@ -130,14 +130,14 @@ test("Java constants: %sct %loinc %ucum %`vs-…` %`ext-…`", () => {
   assert.deepEqual(ev("%`ext-patient-birthTime`"), ["http://hl7.org/fhir/StructureDefinition/patient-birthTime"]);
 });
 
-test("Java ofType()/as(): primitives have no supertype, as() is singleton", () => {
+test("Java ofType()/as(): primitives have no supertype; as() is not singleton-checked in R4 (IV:602)", () => {
   const r = { resourceType: "Patient", gender: "male", name: [{ family: "a" }, { family: "b" }] };
   const ev = (e: string): any[] => evaluateExpression(r, "Patient", e, env(r));
   assert.deepEqual(ev("gender.ofType(string)"), []);
   assert.deepEqual(ev("gender.ofType(code)"), ["male"]);
   assert.deepEqual(ev("gender.as(code)"), ["male"]);
   assert.equal(ev("$this.ofType(DomainResource)").length, 1);
-  assert.throws(() => ev("name.as(HumanName)"));
+  assert.equal(ev("name.as(HumanName)").length, 2);
 });
 
 test("unsupported functions are unevaluable, not failures", () => {

@@ -246,7 +246,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.37.0 (parity v3 slicing): InstanceValidator sliceMatches / matchSlice / checkCardinalities port (max 0 → empty, type / profile / exists / position clauses, unsupported patterns → SLICING_CANNOT_BE_EVALUATED, NotSlice with reasons, open-slicing hint, ordered slices, slice cardinality wording, versioned profile urls), multiple type profiles (NoMatch / MultipleMatches), entry multiple profiles (NO_MATCH / MULTIPLE_MATCHES), reference target choice (REF_MultipleMatches), unresolved entry profile errors.
   // 1.38.0 (parity v3 msgids-structure): InstanceValidator.checkPrimitive / checkIdentifier / checkAttachment / extension url + modifier rules ported (HL7 wording; type regex check).
   // 1.39.0 (parity v3 terminology): compose.inactive=false / include.version / versioned imports / fragment includes in membership, INACTIVE_CONCEPT_FOUND / DEPRECATED_CONCEPT_FOUND warnings, ReDoS-safe filter regex
-  fhir_validate_bundle: "1.42.0",
+  // 1.43.0 (REVIEW_port_1 F22): as() is not singleton-checked in R4 (InstanceValidator setDoNotEnforceAsSingletonRule) — no more spurious invariant errors
+  fhir_validate_bundle: "1.43.0",
   // 1.40.0 (parity v3 snapshot): a differential-only StructureDefinition gets its snapshot generated (fhirSnapshotGenerator.ts, ProfileUtilities port) instead of being ignored.
   // 1.37.0 (parity v3 fhirpath-2): an invariant whose evaluation raises an exception the Java engine raises too fails (message + log); unknown functions → Problem processing expression; dom-3 enforced in code (CONTAINED_ORPHAN_DOM3); Java boolean / comparison / date-arithmetic semantics.
   // 1.36.1 (parity v3 xml): base64Binary checked linearly — a multi-MB attachment no longer overflows the regex stack (was a validator crash / fatal exception issue).
@@ -287,7 +288,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.34.0 (parity v3 slicing): as fhir_validate_bundle 1.37.0.
   // 1.35.0: validation as fhir_validate_bundle 1.38.0 (parity v3 msgids-structure).
   // 1.36.0: terminology as fhir_validate_bundle 1.39.0
-  fhir_validate_resource: "1.39.0",
+  // 1.40.0 (REVIEW_port_1 F22): as() is not singleton-checked in R4 (InstanceValidator setDoNotEnforceAsSingletonRule) — no more spurious invariant errors
+  fhir_validate_resource: "1.40.0",
   // 1.37.0 (parity v3 snapshot): differential-only profiles validated through a generated snapshot, as fhir_validate_bundle 1.40.0.
   // 1.34.0 (parity v3 fhirpath-2): invariant evaluation as fhir_validate_bundle 1.37.0.
   // 1.33.1 (parity v3 xml): base64Binary as fhir_validate_bundle 1.36.1.
