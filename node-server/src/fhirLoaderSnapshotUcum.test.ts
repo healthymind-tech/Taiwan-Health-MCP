@@ -151,6 +151,12 @@ test("G12 checkTypeDerivation: abstract base types and conforming target profile
   const ok2 = profile("http://ex.org/b", "Bundle", [{ id: "Bundle", path: "Bundle" }, { id: "Bundle.entry.resource", path: "Bundle.entry.resource", type: [{ code: "Patient" }] }]);
   const g2 = new SnapshotGenerator({ fetch: fetchMini() });
   assert.ok(g2.ensure(ok2), JSON.stringify(g2.messages));
+  // CoreVersionPinner: a pinned base target (Patient|4.0.1) accepts a profile whose base is the unversioned Patient
+  const pinned = profile("http://ex.org/p-pinned", "Patient", [{ id: "Patient", path: "Patient" }, { id: "Patient.link.other", path: "Patient.link.other", type: [{ code: "Reference", targetProfile: ["http://ex.org/my-patient"] }] }]);
+  const pinnedBase = JSON.parse(JSON.stringify(MINI.find((s) => s.type === "Patient")));
+  pinnedBase.snapshot.element[3].type[0].targetProfile = [C + "Patient|4.0.1"];
+  const g4 = new SnapshotGenerator({ fetch: (u) => (u.split("|")[0] === C + "Patient" ? pinnedBase : fetchMini([myPat])(u)) });
+  assert.ok(g4.ensure(pinned), JSON.stringify(g4.messages));
   // a target profile that does not derive from a base target: an error message, and the type throws (ok stays false)
   const bad = profile("http://ex.org/p-badtarget", "Patient", [{ id: "Patient", path: "Patient" }, { id: "Patient.link.other", path: "Patient.link.other", type: [{ code: "Reference", targetProfile: [C + "Bundle"] }] }]);
   const g3 = new SnapshotGenerator({ fetch: fetchMini() });
