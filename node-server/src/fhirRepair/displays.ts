@@ -52,7 +52,7 @@ function stem(w: string): string {
 }
 
 /** Bag of words (order-free, stemmed) of a display. */
-function bag(s: string): string {
+export function bag(s: string): string {
   return words(s).map(stem).sort().join(" ");
 }
 
@@ -76,7 +76,8 @@ export function sameSpelling(given: string, valid: string[], system: string): st
   return null;
 }
 
-function overlap(a: string, b: string): number {
+/** Share of content words two displays have in common (0 = none). */
+export function overlap(a: string, b: string): number {
   const A = new Set(words(a).filter((w) => !STOP.has(w)));
   const B = new Set(words(b).filter((w) => !STOP.has(w)));
   if (!A.size || !B.size) return 0;

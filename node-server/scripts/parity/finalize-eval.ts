@@ -6,6 +6,7 @@
  * (mcp_proposal/, untracked) — never commit it or this script's output.
  *
  *   DATABASE_URL=… node --import tsx scripts/parity/finalize-eval.ts <repro dir> [--json out.json] [-v] [--only <name>] [--batch 15]
+ *     [--exposed strict|allow_under_moved]   (fhir_finalize_bundle exposed_errors)
  * The Bundles run in child processes of --batch Bundles each (the service's caches grow per Bundle). Exit 1 when
  * finalize added an error to any Bundle.
  */
@@ -19,7 +20,7 @@ import { errorCategory, errorKey, R1_CATEGORIES } from "../../src/fhirRepair/aut
 type Json = Record<string, any>;
 const args = process.argv.slice(2);
 const flag = (k: string): string | null => (args.includes(k) ? args[args.indexOf(k) + 1] : null);
-const VALUED = new Set(["--json", "--only", "--batch", "--worker", "--start", "--count"]);
+const VALUED = new Set(["--json", "--only", "--batch", "--worker", "--start", "--count", "--exposed"]);
 const dir = args.find((a, i) => !a.startsWith("-") && !VALUED.has(args[i - 1] ?? ""))!;
 const verbose = args.includes("-v");
 const pkgFor = (name: string, b: Json): [string, string] => {
@@ -54,11 +55,12 @@ async function worker(out: string, start: number, count: number): Promise<void> 
     const bp = named ?? (pid === "hl7.fhir.uv.ips" ? "http://hl7.org/fhir/uv/ips/StructureDefinition/Bundle-uv-ips" : pid === "tw.gov.mohw.nhi.pas" ? "https://nhicore.nhi.gov.tw/pas/StructureDefinition/Bundle-twpas" : null);
     const t0 = Date.now();
     const before = structuralErrors(JSON.parse(await svc.validateBundle(bundle, pid, ver, false, undefined, "ids", null, bp)));
-    const fin = JSON.parse(await svc.finalizeBundle(bundle, pid, ver, bp, {}));
+    const fin = JSON.parse(await svc.finalizeBundle(bundle, pid, ver, bp, { exposedErrors: (flag("--exposed") as "strict" | "allow_under_moved" | null) ?? "strict" }));
     const after = fin.ok ? structuralErrors(JSON.parse(await svc.validateBundle(fin.data.bundle, pid, ver, false, undefined, "ids", null, bp))) : before;
     const row = {
       name: n,
       ms: Date.now() - t0,
+      heap_mb: Math.round(process.memoryUsage().heapUsed / 1048576),
       ok: !!fin.ok,
       before: before.map((i) => ({ path: i.path, message: i.message })),
       after: after.map((i) => ({ path: i.path, message: i.message })),

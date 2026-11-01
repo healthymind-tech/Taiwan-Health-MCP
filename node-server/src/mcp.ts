@@ -46,6 +46,7 @@ import { losslessToolArgument } from "./requestContext.js";
 import { stringifyLossless } from "./losslessJson.js";
 import { BUNDLE_TYPES } from "./fhirBundleFinalize.js";
 import { DEFAULT_FINALIZE_REPAIR, REPAIR_MODES, type RepairMode } from "./fhirRepair/index.js";
+import { EXPOSED_ERRORS_MODES, type ExposedErrorsMode } from "./fhirRepair/autoFix.js";
 import { registerAuthoringTools } from "./authoring/index.js";
 import { registerBlueprintTools } from "./igBlueprint/index.js";
 import { dbIgDefinedValues } from "./igBlueprint/tools.js";
@@ -1417,7 +1418,7 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
         "outside TW Core 1.0.0's 35-code medication-nhi-tw) but defined in a fuller installed copy, whose concept links to exactly one coding " +
         "of another system the validator accepts and a bound ValueSet / coding slice contains (its ATC code), is replaced by that coding (or " +
         "dropped when already present); CodeableConcept.text kept (set to the original display when absent); code — a required-binding code written as its display or in another case. A change is " +
-        "withdrawn (repair_issues) if the Bundle would get a validation error it did not have (a display error exposed on the Coding whose system was corrected does not count: it stays reported with candidates). v19: the whole result is checked — the finalized Bundle never has a validation error the Bundle as sent does not have (a change that would add one is withdrawn and listed in ambiguous). Returns {bundle, changes[{path, from, to, rule, reason?, pointer (RFC 6901 into the Bundle AS SENT), before, after, category, moved_to?}], ambiguous[{pointer, message, category, candidates[{description, patch? (RFC 6902 on the Bundle as sent)}]}] (several fixes possible, or the record must decide), repair_issues[{path, rule, message, " +
+        "withdrawn (repair_issues) if the Bundle would get a validation error it did not have (a display error exposed on the Coding whose system was corrected does not count: it stays reported with candidates). v19: the whole result is checked — the finalized Bundle never has a validation error the Bundle as sent does not have (a change that would add one is withdrawn and listed in ambiguous; exposed_errors=allow_under_moved keeps a rename whose new location only shows errors the unknown property hid). v19 round 2 (validator-driven, only one correct fix): a code's display when the code is determined (no other code of its system is named so, the display shares a word with the code's names, no required binding rejects the code; the wording kept as CodeableConcept.text); a Coding's system when the bound ValueSet holds the code with exactly that display under one other system; a code written in the wrong element moved to the one sibling whose required ValueSet holds it (AllergyIntolerance.type 'medication' → category); a string element written as {text}; section entries of a type their section does not take moved to the one section that does. Returns {bundle, changes[{path, from, to, rule, reason?, pointer (RFC 6901 into the Bundle AS SENT), before, after, category, moved_to?}], ambiguous[{pointer, message, category, candidates[{description, patch? (RFC 6902 on the Bundle as sent)}]}] (several fixes possible, or the record must decide), repair_issues[{path, rule, message, " +
         "candidates}], unresolved[{path, reference, candidates}], notes, id_map, summary}; a finalized Bundle yields changes = [] (idempotent, " +
         "deterministic). Numbers keep the spelling you wrote (10.0 stays 10.0). Optional bundle_type sets Bundle.type (a profile-fixed type " +
         "wins). Then validate with fhir_validate_bundle (or call it with normalize_ids=true).",
@@ -1453,9 +1454,17 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
             "Optional clinical record text the Bundle was written from: the record checks (data.record_issues / record_checks) then also " +
               "check date precision, Quantity values, free-text-only medicines, unconfirmed diagnoses and whether every identifier / date / quantity value is in the record against it. Never logged, never changes the Bundle.",
           ),
+        exposed_errors: z
+          .enum(EXPOSED_ERRORS_MODES as unknown as [ExposedErrorsMode, ...ExposedErrorsMode[]])
+          .nullish()
+          .default("strict")
+          .describe(
+            'How the no-new-error check counts an error that appears at / under a property finalize renamed or moved (it was an unrecognized property before, so the validator could not check it): ' +
+              '"strict" (default) — it counts as new and the rename is withdrawn (listed in ambiguous); "allow_under_moved" — it was hidden, not added: the rename is kept and the error reported.',
+          ),
       },
     },
-    async ({ bundle, package_id, version, bundle_profile, bundle_type, repair, timezone, site_config, source_text }, extra) =>
+    async ({ bundle, package_id, version, bundle_profile, bundle_type, repair, timezone, site_config, source_text, exposed_errors }, extra) =>
       rawResult(
         // Record checks (ISSUES_v15, recordChecks/): report-only data.record_issues / record_checks on the finalized Bundle.
         addRecordChecksToFinalize(
@@ -1465,6 +1474,7 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
             repair: repair ?? DEFAULT_FINALIZE_REPAIR,
             timezone: timezone ?? null,
             siteConfig: site_config ?? null,
+            exposedErrors: exposed_errors ?? "strict",
           }),
           // ISSUES_v15.3 R1: LOINC axes of text-result Observations (quantitative.ts), from the local terminology tables
           {

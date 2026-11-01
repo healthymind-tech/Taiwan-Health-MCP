@@ -372,7 +372,10 @@ export async function repairShapes(
     let member: boolean | undefined;
     const exp = session.deps.expandValueSet ? await session.memo(`exp\0${vs}`, () => session.deps.expandValueSet!(vs, 500), null) : null;
     if (exp && exp.codings.length) {
-      const hits = exp.codings.filter((c) => c.code === code && (!sys || !c.system || c.system === sys));
+      // v19 R1 round 2: the code element carries no system — one written as the THO / core twin of the ValueSet's
+      // CodeSystem (…/CodeSystem/allergy-intolerance-category for http://hl7.org/fhir/allergy-intolerance-category) names it
+      const twin = (a: string, b: string): boolean => /^http:\/\/(?:terminology\.)?hl7\.org\//u.test(a) && /^http:\/\/(?:terminology\.)?hl7\.org\//u.test(b) && a.split("/").pop() === b.split("/").pop();
+      const hits = exp.codings.filter((c) => c.code === code && (!sys || !c.system || c.system === sys || twin(c.system, sys)));
       if (hits.length) {
         member = true;
         display = hits[0].display ?? null;
@@ -455,6 +458,13 @@ export async function repairShapes(
     // v19 R1: a name one legal element away (choice-type suffix, bare choice stem, singular / plural, STU3 base + suffix)
     if (!(`_${key}` in node)) {
       const near = await nearNames(session, site, node, key, value, owner.includes(".") ? owner : rtype);
+      if (near.length === 1 && near[0].duplicate) {
+        const n = near[0];
+        delete node[key];
+        changes.push({ path: rp(`${site.ownerPath}.${n.name}`), from: { path: rp(`${site.ownerPath}.${key}`), value }, to: node[n.name], rule: "shape", reason: `'${key}' is not an element here; ${n.why}: the duplicate is removed` });
+        touched.push(site.ownerPath);
+        return;
+      }
       if (near.length === 1) {
         const n = near[0];
         replaceKey(node, key, n.name, n.value);
@@ -478,7 +488,8 @@ export async function repairShapes(
           if (!def || grp.name.endsWith("[x]")) continue;
           const types = (def.type || []).map((t: any) => String(t.code || ""));
           const t = types[0] || (def.contentReference ? "BackboneElement" : "");
-          if (!t || PRIMITIVES.has(t) || t === "Reference" || t === "Extension" || t === "Narrative" || t === "Meta" || types.length > 1) continue;
+          // v19 R1 round 2: a Reference child takes only a `reference` string (performer.reference → performer.actor.reference)
+          if (!t || PRIMITIVES.has(t) || (t === "Reference" && key !== "reference") || t === "Extension" || t === "Narrative" || t === "Meta" || types.length > 1) continue;
           const name = grp.name;
           if (name === key) continue;
           const cur = node[name];
@@ -629,10 +640,10 @@ async function ownerGroups(session: Session, site: Site, node: Record<string, an
  *   singular/plural `<name>s` / `<name>` minus a trailing s naming a defined element (periodUnits → periodUnit).
  * Allowed types are those every view (core + profiles) permits. Targets already present are never overwritten.
  */
-export async function nearNames(session: Session, site: Site, node: Record<string, any>, key: string, value: unknown, owner: string): Promise<Array<{ name: string; value: unknown; why: string }>> {
+export async function nearNames(session: Session, site: Site, node: Record<string, any>, key: string, value: unknown, owner: string): Promise<Array<{ name: string; value: unknown; why: string; duplicate?: boolean }>> {
   const groupsList = await ownerGroups(session, site, node);
   if (!groupsList.length) return [];
-  const out = new Map<string, { name: string; value: unknown; why: string }>();
+  const out = new Map<string, { name: string; value: unknown; why: string; duplicate?: boolean }>();
   const fits = async (type: string, v: unknown, coerce: boolean): Promise<{ v: unknown } | null> => {
     if (Array.isArray(v)) return null;
     if (PRIMITIVES.has(type)) {
@@ -663,9 +674,16 @@ export async function nearNames(session: Session, site: Site, node: Record<strin
     if (uniq.length !== 1) return;
     const t = hits[0];
     const name = stem + jsonSuffix(t);
-    if (name === key || name in node) return;
+    if (name === key) return;
     const f = await fits(t, value, true);
-    if (f) out.set(name, { name, value: f.v, why: `${stem}[x] allows ${types.join(" | ")}; '${suffix}' can only be ${t}${why}` });
+    if (!f) return;
+    // v19 R1 round 2: the one legal element already holds exactly this value (doseNumberPositiveInteger and the STU3
+    // doseSequencePositiveInteger both written as 1) → the misplaced copy is a duplicate
+    if (name in node) {
+      if (same(node[name], f.v)) out.set(name, { name, value: f.v, why: `${stem}[x] allows ${types.join(" | ")}; '${suffix}' can only be ${t}${why}, and ${name} already holds the same value`, duplicate: true });
+      return;
+    }
+    out.set(name, { name, value: f.v, why: `${stem}[x] allows ${types.join(" | ")}; '${suffix}' can only be ${t}${why}` });
   };
   for (const [stem, types] of choiceStems) {
     if (key === stem) {

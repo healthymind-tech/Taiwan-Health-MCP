@@ -399,6 +399,56 @@ export async function completeDocument(bundle: Json, deps: DocumentDeps, opts: D
     }
     return seen;
   };
+  // v19 R1 round 2: a section entry whose resource type the section slice does not take (a MedicationStatement listed
+  // under Results, the Medication itself under Medications): moved to the ONE existing section whose slice takes that
+  // type; a type no section takes is dropped from the section only when another entry of the Bundle references it (it
+  // stays reachable). The last entry of a section never moves (an empty section needs an emptyReason — a record fact).
+  // the resource types each slice's entry takes (empty when a target profile cannot be read: then nothing is decided)
+  const sliceTypes = new Map<SectionSlice, Set<string> | "any" | null>();
+  for (const s of slices) {
+    const ts = await Promise.all(s.targets.map(typeOf));
+    sliceTypes.set(s, !s.targets.length ? "any" : ts.every((t) => !!t) ? new Set(ts as string[]) : null);
+  }
+  const takes = (o: SectionSlice, rt: string): boolean => {
+    const t = sliceTypes.get(o);
+    return t === "any" || (t instanceof Set && t.has(rt));
+  };
+  const referencedBy = (ref: string, except: number): boolean =>
+    entries.some((e, k) => {
+      if (k === except || k === ci || !isObj(e?.resource)) return false;
+      let hit = false;
+      const walk = (n: unknown, d: number): void => {
+        if (hit || d > 20 || !n || typeof n !== "object") return;
+        if (Array.isArray(n)) return void n.forEach((x) => walk(x, d + 1));
+        if (typeof (n as Json).reference === "string" && (n as Json).reference === ref) hit = true;
+        for (const v of Object.values(n as Json)) if (v && typeof v === "object") walk(v, d + 1);
+      };
+      walk(e.resource, 0);
+      return hit;
+    });
+  for (const s of slices) {
+    const sec = sectionFor(s);
+    const allowed = sliceTypes.get(s);
+    if (!sec || !Array.isArray(sec.entry) || !(allowed instanceof Set) || [...sliceTypes.values()].some((x) => x === null)) continue;
+    for (let k = sec.entry.length - 1; k >= 0; k--) {
+      const ref = isObj(sec.entry[k]) ? sec.entry[k].reference : undefined;
+      const j = typeof ref === "string" ? index.get(ref) : undefined;
+      const rt = j !== undefined ? entries[j]?.resource?.resourceType : undefined;
+      if (typeof rt !== "string" || allowed.has(rt) || sec.entry.length <= 1) continue;
+      const si = (comp.section as Json[]).indexOf(sec);
+      const others = slices.filter((o) => o !== s && takes(o, rt) && !isObj(sectionFor(o)?.emptyReason));
+      if (others.length === 1 && sectionFor(others[0])) {
+        const dest = sectionFor(others[0])!;
+        if (!Array.isArray(dest.entry)) dest.entry = [];
+        const moved = sec.entry.splice(k, 1)[0];
+        if (!(dest.entry as Json[]).some((x) => isObj(x) && x.reference === ref)) dest.entry.push(moved);
+        change(`${cpath}.section[${si}].entry[${k}]`, { reference: ref }, { section: others[0].name, entry: ref }, `section '${s.name}' takes ${[...allowed].join(" / ")}, not ${rt}; '${others[0].name}' is the one section that takes a ${rt}: moved there`);
+      } else if (!others.length && referencedBy(ref as string, j!)) {
+        sec.entry.splice(k, 1);
+        change(`${cpath}.section[${si}].entry[${k}]`, { reference: ref }, null, `section '${s.name}' takes ${[...allowed].join(" / ")}, not ${rt}, and no section takes a ${rt}; another entry references it, so it stays reachable: removed from the section`);
+      }
+    }
+  }
   const created = new Set<Json>();
   const addedTo = new Set<Json>();
   const pending = new Map<number, string>(); // entry index -> issue message (reported if still unreachable at the end)

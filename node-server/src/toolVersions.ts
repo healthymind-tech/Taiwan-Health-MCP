@@ -225,7 +225,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   reordered document name the sent entry positions (were the finalizer's output positions). Issue set, severities,
   //   messages, path, suggestions and valid unchanged.
   // --- end v19 R3 ---
-  fhir_validate_bundle: "1.25.0",
+  // 1.26.0 (ISSUES_v19 R1 round 2): the shared content repairs of fhir_finalize_bundle 1.15.0 (Composition.class → category, performer.reference → performer.actor.reference, STU3 duplicates of a value the R4 element holds removed, a code element written as a CodeableConcept whose system is the THO / core twin of the ValueSet's CodeSystem) (normalize_ids + repair="content"); suggestions as fhir_validate_resource 1.23.0 (Composition.class → category).
+  fhir_validate_bundle: "1.26.0",
   // 1.6.2: the binding-aware suggestions above (ISSUES_v10 A) also apply to single-resource validation.
   // 1.7.0: the validator v13 rules above (fhir_validate_bundle 1.9.0).
   // 1.8.0 (ISSUES_v15): the record checks of fhir_validate_bundle 1.11.0 on the resource (data.issues, data.record_checks).
@@ -249,7 +250,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // --- v19 R3 ---
   // 1.22.0 (ISSUES_v19 R3): `pointer` / `pointer_kind` / `patches` on the issues as fhir_validate_bundle 1.25.0 (pointers into the resource as sent).
   // --- end v19 R3 ---
-  fhir_validate_resource: "1.22.0",
+  // 1.23.0 (ISSUES_v19 R1 round 2): the STU3 rename table (fhirR3Renames.ts) knows Composition.class → category: an "Unrecognized property 'class'" on a Composition gets that rename suggestion.
+  fhir_validate_resource: "1.23.0",
   // 1.2.0 (all below): provenance.resolved_by / closure_versions; canonical arguments resolve to their
   // owning package when package_id is omitted; "|version" honoured; list/search: all_packages + zero-hit hint;
   // NO_DEFAULT_IG instead of an arbitrary package when no default IG is set.
@@ -364,7 +366,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.18.0: validation as fhir_validate_resource 1.20.0; LOINC display repair to the reference server's release.
   // 1.19.0: validation as fhir_validate_bundle 1.24.0 (validator parity v1).
   // 1.20.0 (ISSUES_v19 R1): content repairs as fhir_finalize_bundle 1.14.0 (near-name renames, MedicationStatement.dosageInstruction → dosage, STU3 children inside protocolApplied).
-  fhir_finalize_resource: "1.20.0",
+  // 1.21.0 (ISSUES_v19 R1 round 2): the shared content repairs of fhir_finalize_bundle 1.15.0 (Composition.class → category, performer.reference → performer.actor.reference, STU3 duplicates of a value the R4 element holds removed, a code element written as a CodeableConcept whose system is the THO / core twin of the ValueSet's CodeSystem).
+  fhir_finalize_resource: "1.21.0",
   // 1.0.0 (authoring/, evaluation v11): the model gives field VALUES, the MCP composes the resource for its profile
   //   (fixed / pattern / defaults / derived / displays / UCUM / ROC dates), validates it, keeps it in a Redis context
   //   (`authoring:ctx:*`, 60-min idle TTL) and assembles the Bundle from keys with deterministic urn:uuid fullUrls
@@ -479,7 +482,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.15.0: validation as fhir_validate_resource 1.19.0; content repairs as fhir_finalize_resource 1.17.0.
   // 1.16.0: validation as fhir_validate_resource 1.20.0.
   // 1.17.0: validation as fhir_validate_bundle 1.24.0 (validator parity v1).
-  fhir_author_resources: "1.17.0",
+  // 1.18.0 (ISSUES_v19 R1 round 2): the shared content repairs of fhir_finalize_bundle 1.15.0 (Composition.class → category, performer.reference → performer.actor.reference, STU3 duplicates of a value the R4 element holds removed, a code element written as a CodeableConcept whose system is the THO / core twin of the ValueSet's CodeSystem).
+  fhir_author_resources: "1.18.0",
   // 1.0.1: action=get results carry the author result's new `notes` (fhir_author_resources 1.1.0); otherwise unchanged.
   fhir_context: "1.0.1",
   // 1.1.0: new `site_config` (merged with the context's) passed to the grounding engine with source_text, so facility
@@ -519,7 +523,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.15.0: finalize as fhir_finalize_bundle 1.11.0 (document completion); validation as fhir_validate_bundle 1.22.0.
   // 1.16.0: finalize as fhir_finalize_bundle 1.12.0; validation as fhir_validate_bundle 1.23.0.
   // 1.17.0: validation as fhir_validate_bundle 1.24.0 (validator parity v1).
-  fhir_assemble_bundle: "1.17.0",
+  // 1.18.0 (ISSUES_v19 R1 round 2): the shared content repairs of fhir_finalize_bundle 1.15.0 (Composition.class → category, performer.reference → performer.actor.reference, STU3 duplicates of a value the R4 element holds removed, a code element written as a CodeableConcept whose system is the THO / core twin of the ValueSet's CodeSystem) and its document completion (section entries of a type the section slice does not take moved to the one section that takes them).
+  fhir_assemble_bundle: "1.18.0",
   // 1.0.0 (ISSUES_v9 R1): deterministic Bundle finalizer — fullUrl-uuid / reference-rewire / resource-id (mandatory),
   // bundle-type / document-order (profile-driven); UUID v5 seeded by (resourceType, original fullUrl, resource.id, entry
   // index) + a content salt; references found through StructureDefinition snapshots; duplicates / ambiguity reported.
@@ -584,7 +589,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.12.0: finalize (ISSUES_v17.5): dead local narrative links unwrapped (text kept), Coding.system `url|version` → system + version, section codes pinned by the Composition profile get their terminology display, sections with an emptyReason take no entries; LOINC displays repaired to the reference server's release.
   // 1.13.0: validation as fhir_validate_bundle 1.24.0 (validator parity v1).
   // 1.14.0 (ISSUES_v19 R1, layer 1 auto-fix): every change carries pointer (RFC 6901, the Bundle as sent: document reorder / dropped duplicates / entries moved in from Bundle level mapped back), before, after, category (shape / narrative / display / unrecognized_property / system_code / ids_references / document_structure / fixed_pattern) and moved_to for moves; new data.ambiguous [{pointer, message, category, candidates [{description, patch? (RFC 6902 on the sent Bundle)}]}]; no-new-error guard (validate as sent vs finalized, the change an added error is owed to withdrawn and listed in ambiguous); new fixes: near-name renames (choice suffix, bare choice stem, singular / plural, MedicationStatement.dosageInstruction → dosage, STU3 children inside protocolApplied, "1" → 1 for integer types), an entry written at Bundle level moved into entry, profile-fixed values set, displays of profile-pinned codes, a profile-narrowed choice type renamed, required section narratives from their entries; summary.categories / ambiguous / withdrawn / errors_before / errors_after.
-  fhir_finalize_bundle: "1.14.0",
+  // 1.15.0 (ISSUES_v19 R1 round 2): new layer-1 fixes — the display of a determined code (no other code of its system is named so, the display shares a word with the code's names, no required binding rejects the code; the written wording kept as CodeableConcept.text), a Coding's system from the bound ValueSet that holds the code with exactly the written display under one other system (v3-ActCode#L 'Low' → v3-ObservationInterpretation), a code written in the wrong element moved to the one sibling whose required ValueSet holds it (AllergyIntolerance.type 'medication' → category, criticality 'unconfirmed' → verificationStatus; the copy removed when the sibling already carries it), a string element given as {text: …} → the text, a code element given as a CodeableConcept whose system is the THO / core twin of the ValueSet's CodeSystem, STU3 Composition.class → category, performer.reference → performer.actor.reference, an STU3 / mis-suffixed duplicate of a value its R4 element already holds removed, document section entries of a type the section slice does not take moved to the one section that takes them (or dropped from the section when another entry references them); new argument exposed_errors ("strict" default | "allow_under_moved": errors at / under a renamed or moved property's new location do not withdraw the rename); summary.exposed_errors.
+  fhir_finalize_bundle: "1.15.0",
   // ── 2026-10-19 actionable errors (additive fields only; successful outputs unchanged) ──
   // search_medical_codes 1.2.1: IG_UNAVAILABLE adds `hint`.
   // FHIR IG tools above (+.0.1): error envelopes add error.hint; IG_NOT_FOUND / NO_DEFAULT_IG add

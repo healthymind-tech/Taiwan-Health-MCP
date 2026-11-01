@@ -10,7 +10,7 @@
  */
 
 import { completeDocument, repairNarratives, repairSystemVersions } from "./fhirRepair/document.js";
-import { annotateChanges, autoFixBundle, buildAmbiguous, countByCategory, EntryMap, guardNoNewErrors, noneDisabled, type Disabled, type PipelineResult } from "./fhirRepair/autoFix.js";
+import { annotateChanges, autoFixBundle, buildAmbiguous, countByCategory, EntryMap, guardNoNewErrors, noneDisabled, type Disabled, type ExposedErrorsMode, type PipelineResult } from "./fhirRepair/autoFix.js";
 import { annotateKnownDefects, boundAlternatives, knownDefects, type KnownDefect } from "./igKnownDefects.js";
 import { performance } from "node:perf_hooks";
 import { query, queryCount, trackQueryFailures } from "./db.js";
@@ -2163,7 +2163,20 @@ export class FHIRIGService {
       // v19 R1: validator-driven fixes the profile / the Bundle determine (fhirRepair/autoFix.ts)
       if (v19.autoFix && !off.steps.has("autofix")) {
         try {
-          const a = await autoFixBundle(tree, { fetchStructureDefinition: (u) => deps.fetchStructureDefinition(u), validate: async (b) => (await this.bundleErrorsFor(pkg, b, doc.bundleProfile ?? null)) ?? [] }, off.blocked);
+          const a = await autoFixBundle(
+            tree,
+            {
+              fetchStructureDefinition: (u) => deps.fetchStructureDefinition(u),
+              validate: async (b) => (await this.bundleErrorsFor(pkg, b, doc.bundleProfile ?? null)) ?? [],
+              lookupDisplay: deps.lookupDisplay ? (s, c) => deps.lookupDisplay!(s, c) : undefined,
+              normalize: deps.normalize ? (t, g, l) => deps.normalize!(t, g, l) : undefined,
+              expandValueSet: deps.expandValueSet ? (u, l) => deps.expandValueSet!(u, l) : undefined,
+            },
+            off.blocked,
+          );
+          // a value the layer-1 fixes corrected is no longer an undecided repair issue
+          const fixed = new Set(a.changes.map((c) => c.path.replace(/\.(?:display|system)$/u, "")));
+          result.issues = result.issues.filter((i) => !fixed.has(i.path.replace(/\.(?:display|system)$/u, "")));
           result.changes.push(...a.changes);
           result.issues.push(...a.issues);
         } catch (e) {
@@ -2388,6 +2401,8 @@ export class FHIRIGService {
       timezone?: string | null;
       /** Facility settings text (v14.1): a `timezone: +08:00` line gives the site timezone when `timezone` is not passed. */
       siteConfig?: string | null;
+      /** v19 R1: how the no-new-error guard counts an error exposed under a renamed / moved property (default "strict"). */
+      exposedErrors?: ExposedErrorsMode | null;
     } = {},
   ): Promise<string> {
     const repair: RepairMode = opts.repair === "ids" || opts.repair === "content" ? opts.repair : DEFAULT_FINALIZE_REPAIR;
@@ -2454,7 +2469,8 @@ export class FHIRIGService {
       const map = new EntryMap(sentLength, contentCh, f.changes, Array.isArray(f.bundle.entry) ? f.bundle.entry.length : 0);
       return { bundle: f.bundle, changes: annotateChanges(contentCh, f.changes, map, sent), map, content: c, fin: f };
     };
-    const guard = await guardNoNewErrors(sent, runOnce, (b) => (pkg ? this.bundleErrorsFor(pkg, b, profileCanonical) : Promise.resolve(null)));
+    const exposedMode: ExposedErrorsMode = opts.exposedErrors === "allow_under_moved" ? "allow_under_moved" : "strict";
+    const guard = await guardNoNewErrors(sent, runOnce, (b) => (pkg ? this.bundleErrorsFor(pkg, b, profileCanonical) : Promise.resolve(null)), 3, exposedMode);
     const { content, fin } = guard.result;
     const envelopeAnnotated = annotateChanges(envelope, [], new EntryMap(sentLength, [], [], sentLength), sent);
     const annotated = [...envelopeAnnotated, ...guard.result.changes];
@@ -2491,6 +2507,7 @@ export class FHIRIGService {
         ambiguous: ambiguous.length,
         withdrawn: guard.withdrawn.length,
         ...(guard.checked ? { errors_before: guard.before.length, errors_after: guard.after.length } : {}),
+        exposed_errors: exposedMode,
       },
     };
     if (!guard.checked) data.notes.push("the no-new-error check could not run (validator unavailable); changes were not verified against the whole Bundle");

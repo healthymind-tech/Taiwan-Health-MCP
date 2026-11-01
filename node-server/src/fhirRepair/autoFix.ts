@@ -7,14 +7,19 @@
  *                                    system_code, ids_references, document_structure, fixed_pattern);
  *   autoFixBundle                    validator-driven fixes on the content-repaired Bundle (a value the profile
  *                                    fixes, the display of a code the profile pins, a choice type the profile
- *                                    narrows to one, a required section narrative from the section's entries);
+ *                                    narrows to one, a required section narrative from the section's entries;
+ *                                    round 2: the display of a determined code, a Coding's system from the bound
+ *                                    ValueSet, a code moved to the one sibling element whose required ValueSet
+ *                                    holds it, a string element written as {text});
  *   EntryMap / annotateChanges       RFC 6901 pointers relative to the Bundle as sent (entries the finalizer
  *                                    reordered, dropped duplicates and entries moved in from Bundle level mapped
  *                                    back), with before / after / category;
  *   guardNoNewErrors                 validates the Bundle as sent and as finalized; an error the finalized Bundle
  *                                    has that the sent one does not (multiset by message, entry order and minted
  *                                    UUIDs ignored) withdraws the change(s) it is owed to and the pipeline runs
- *                                    again without them (≤ 3 rounds, then nothing is applied);
+ *                                    again without them (≤ 3 rounds, then nothing is applied); exposed_errors
+ *                                    "allow_under_moved" does not count errors under a renamed / moved value's new
+ *                                    location (they were hidden as an unknown property, not added);
  *   buildAmbiguous                   the not-uniquely-fixable items (withdrawn changes, repair issues with
  *                                    candidates, unresolved references, remaining R1-category errors).
  * Everything is read from StructureDefinitions / the validator's own messages (validator_cli wording) — no IG strings.
@@ -26,7 +31,8 @@ import { entryOrderOf, type FinalizeChange, type FinalizeUnresolved } from "../f
 import { toPlain } from "../losslessJson.js";
 import { nameOf } from "./document.js";
 import { fitPrimitive } from "./shape.js";
-import type { RepairChange, RepairIssue, RepairRule } from "./types.js";
+import { bag, overlap } from "./displays.js";
+import type { ExpandedCoding, NormalizeCandidate, RepairChange, RepairIssue, RepairRule } from "./types.js";
 
 type Json = Record<string, any>;
 
@@ -495,11 +501,28 @@ export interface GuardOutcome<R extends PipelineResult> {
  * Run the pipeline, validate, and withdraw what adds an error (see the module comment). `run` must honour the
  * Disabled state; `validate` returns the validator's issues of a Bundle (null = unavailable).
  */
+/**
+ * How the guard counts an error the finalized Bundle has and the sent one does not:
+ *   strict             every such error withdraws the change it is owed to (default);
+ *   allow_under_moved  an error located at / under the NEW location of a renamed / moved property is not new — the value
+ *                      was an unknown property before (the validator could not check it), so the error was hidden, not
+ *                      added. The rename stays; the error is reported (ambiguous).
+ */
+export type ExposedErrorsMode = "strict" | "allow_under_moved";
+export const EXPOSED_ERRORS_MODES: readonly ExposedErrorsMode[] = ["strict", "allow_under_moved"];
+
+/** Is the error (pointer relative to the sent Bundle) at / under where a move / rename put a value? */
+export function underMoved(pointer: string, changes: AnnotatedChange[]): boolean {
+  const et = tokensOf(pointer);
+  return changes.some((c) => c.moved_to !== undefined && c.rule !== "document-order" && c.moved_to !== c.pointer && prefixOf(tokensOf(c.moved_to), et));
+}
+
 export async function guardNoNewErrors<R extends PipelineResult>(
   sent: Json,
   run: (d: Disabled) => Promise<R>,
   validate: (bundle: Json) => Promise<ValidatorIssue[] | null>,
   rounds = 3,
+  exposed: ExposedErrorsMode = "strict",
 ): Promise<GuardOutcome<R>> {
   const disabled = noneDisabled();
   let result = await run(disabled);
@@ -518,7 +541,11 @@ export async function guardNoNewErrors<R extends PipelineResult>(
       break;
     }
     after = post;
-    const fresh = newErrors(before, post);
+    let fresh = newErrors(before, post);
+    if (exposed === "allow_under_moved") {
+      const r = result;
+      fresh = fresh.filter((e) => !underMoved(r.map.pointer(String(e.path ?? "Bundle"), "final", sent), r.changes));
+    }
     if (!fresh.length) break;
     const located = fresh.map((e) => {
       const urls: number[] = [];
@@ -647,7 +674,9 @@ export function buildAmbiguous(args: {
     const category = errorCategory(String(e.message));
     if (!category) continue;
     const pointer = args.map.pointer(String(e.path ?? "Bundle"), "final", args.sent);
-    if (out.some((x) => x.pointer === pointer || (x.pointer.startsWith(`${pointer}/`) && x.category === category))) continue;
+    // already covered: an item of the same category at / under the error's location (one of another category at the
+    // same place — a withdrawn rename next to a value error — does not cover it)
+    if (out.some((x) => x.category === category && (x.pointer === pointer || x.pointer.startsWith(`${pointer}/`)))) continue;
     push({ pointer, message: `${String(e.message).slice(0, 400)} — more than one fix is possible (or the record must say which); not changed`, category, candidates: [] });
   }
   return out;
@@ -659,6 +688,19 @@ export interface AutoFixDeps {
   fetchStructureDefinition(url: string): Promise<Json | null>;
   /** The validator's issues for the whole Bundle (the finalize target profile included). */
   validate(bundle: Json): Promise<ValidatorIssue[]>;
+  /** Display of a code in its CodeSystem (the official one among the valid displays). */
+  lookupDisplay?(system: string, code: string): Promise<string | null>;
+  /** Free text → codes of a CodeSystem (fhir_normalize_code): does another code of the system have exactly this display? */
+  normalize?(text: string, target: { system?: string; valueSet?: string }, limit: number): Promise<NormalizeCandidate[]>;
+  /** Expansion of a ValueSet (null = not expandable locally). */
+  expandValueSet?(url: string, limit: number): Promise<{ codings: ExpandedCoding[]; total: number; truncated: boolean; incomplete?: boolean } | null>;
+}
+
+/** The displays a "Wrong Display Name" message lists as valid (one, or "one of N choices: 'a', 'b' …"). */
+export function validDisplaysOf(message: string): string[] {
+  const m = /Valid display is (?:one of \d+ choices: )?((?:'[^']*'(?: \([a-z-]+\))?(?:, )?)+)/u.exec(message);
+  if (!m) return [];
+  return [...m[1].matchAll(/'([^']*)'/gu)].map((x) => x[1]).filter((x) => x.trim());
 }
 
 /** Node holder / key at a dotted validator path (in the given tree; single-item arrays without an index stepped into). */
@@ -714,6 +756,137 @@ async function profilesOf(deps: AutoFixDeps, resource: Json): Promise<Json[]> {
 const elementPath = (resourceType: string, rel: string): string => (resourceType + rel.replace(/\[\d+\]/gu, "")).replace(/\.ofType\([A-Za-z]+\)/gu, "");
 
 /**
+ * The system a wrongly-systemed Coding belongs to: the ValueSet bound to its element (a declared profile, else the core
+ * definition) does not hold system#code but holds `code` with exactly the written display under ONE other system.
+ */
+async function systemByDisplay(deps: AutoFixDeps, resource: Json, elPath: string, system: string, code: string, given: string, sd: (u: string) => Promise<Json | null>): Promise<{ system: string; valueSet: string } | null> {
+  if (!deps.expandValueSet) return null;
+  const sds: Json[] = await profilesOf(deps, resource);
+  const core = await sd(`http://hl7.org/fhir/StructureDefinition/${String(resource.resourceType)}`);
+  if (core?.snapshot?.element) sds.push(core);
+  const vss = new Set<string>();
+  for (const p of sds) for (const el of p.snapshot.element as Json[]) if (el.path === elPath && isObj(el.binding) && typeof el.binding.valueSet === "string") vss.add(el.binding.valueSet);
+  const hits = new Map<string, string>();
+  for (const vs of vss) {
+    const exp = await deps.expandValueSet(vs, 2000).catch(() => null);
+    if (!exp || !exp.codings.length) continue;
+    if (exp.codings.some((c) => c.code === code && c.system === system)) return null;
+    for (const c of exp.codings) if (c.code === code && c.system && c.system !== system && typeof c.display === "string" && c.display.trim().toLowerCase() === given.trim().toLowerCase()) hits.set(c.system, vs);
+  }
+  if (hits.size !== 1) return null;
+  const [[sys, vs]] = [...hits];
+  return { system: sys, valueSet: vs };
+}
+
+/** Properties a model wraps a plain string in. */
+const STRING_HOLDERS = new Set(["text", "display", "value", "valueString"]);
+
+/** The type codes of an element (declared profiles, else the core definition of the resource). */
+async function elementTypes(deps: AutoFixDeps, resource: Json, elPath: string, sd: (u: string) => Promise<Json | null>): Promise<string[]> {
+  const sds: Json[] = await profilesOf(deps, resource);
+  const core = await sd(`http://hl7.org/fhir/StructureDefinition/${String(resource.resourceType)}`);
+  if (core?.snapshot?.element) sds.push(core);
+  for (const p of sds) {
+    const el = (p.snapshot.element as Json[]).find((x) => x.path === elPath && !String(x.id ?? "").includes(":"));
+    if (el && Array.isArray(el.type)) return el.type.map((t: Json) => String(t.code));
+  }
+  return [];
+}
+
+/** Does a value (code / Coding / CodeableConcept, or an array of them) carry `code` (under `system`, when it has one)? */
+function carries(v: unknown, system: string | null, code: string): boolean {
+  if (typeof v === "string") return v === code;
+  if (Array.isArray(v)) return v.some((x) => carries(x, system, code));
+  return codingsOf(v).some((c) => c.code === code && (!system || !c.system || c.system === system));
+}
+
+/**
+ * A code written in the wrong element (AllergyIntolerance.type = 'medication', criticality = 'unconfirmed'): its own
+ * required ValueSet does not hold it, and among the sibling elements (same parent, from the resource's declared
+ * profiles + its core definition) exactly ONE has a required binding whose ValueSet holds it (under one system). The
+ * value moves there — as a code, Coding or CodeableConcept (system + the ValueSet's display), an array when the target
+ * repeats — when the target is absent; when the target already carries that code the misplaced copy is removed.
+ * A target holding something else, several / no fitting siblings → left as written.
+ */
+async function codeToSibling(
+  tree: Json,
+  path: string,
+  code: string,
+  deps: AutoFixDeps,
+  sd: (u: string) => Promise<Json | null>,
+  allow: (rule: RepairRule, path: string) => boolean,
+): Promise<RepairChange | null> {
+  if (!deps.expandValueSet) return null;
+  const loc = locate(tree, path);
+  const at = resourceAt(tree, path);
+  if (!loc || !at || loc.value !== code) return null;
+  const pm = /^(.*)\.([A-Za-z]+)(?:\[\d+\])?$/u.exec(path);
+  if (!pm || pm[2] !== loc.key) return null;
+  const elPath = elementPath(String(at.resource.resourceType), at.rel);
+  const parent = elPath.slice(0, elPath.lastIndexOf("."));
+  const sds: Json[] = await profilesOf(deps, at.resource);
+  const core = await sd(`http://hl7.org/fhir/StructureDefinition/${String(at.resource.resourceType)}`);
+  if (core?.snapshot?.element) sds.push(core);
+  const fits = new Map<string, { type: string; max: string; system: string | null; display: string | null; valueSet: string }>();
+  const own = new Set<string>();
+  for (const p of sds) {
+    for (const el of p.snapshot.element as Json[]) {
+      const ep = String(el.path ?? "");
+      if (ep === elPath && isObj(el.binding) && typeof el.binding.valueSet === "string") own.add(el.binding.valueSet);
+      if (!ep.startsWith(`${parent}.`) || ep.slice(parent.length + 1).includes(".") || String(el.id ?? "").includes(":")) continue;
+      const name = ep.slice(parent.length + 1);
+      if (name === loc.key || !isObj(el.binding) || el.binding.strength !== "required" || typeof el.binding.valueSet !== "string") continue;
+      const type = (Array.isArray(el.type) ? el.type : []).map((t: Json) => String(t.code))[0];
+      if (!["code", "Coding", "CodeableConcept"].includes(type) || el.max === "0") continue;
+      const exp = await deps.expandValueSet(el.binding.valueSet, 500).catch(() => null);
+      if (!exp || !exp.codings.length) continue;
+      const hits = exp.codings.filter((c) => c.code === code);
+      const systems = new Set(hits.map((c) => c.system ?? ""));
+      if (!hits.length) continue;
+      if (systems.size !== 1) return null;
+      const prev = fits.get(name);
+      if (prev && prev.valueSet !== el.binding.valueSet) continue;
+      fits.set(name, { type, max: String(el.max ?? "1"), system: hits[0].system ?? null, display: hits[0].display ?? null, valueSet: el.binding.valueSet });
+    }
+  }
+  // the element's own required ValueSet must not hold the code (the validator said so; double-check what we can expand)
+  for (const vs of own) {
+    const exp = await deps.expandValueSet(vs, 500).catch(() => null);
+    if (exp && exp.codings.some((c) => c.code === code)) return null;
+  }
+  if (fits.size !== 1) return null;
+  const [[name, t]] = [...fits];
+  const holder = loc.holder;
+  const targetPath = `${pm[1]}.${name}`;
+  if (!allow("code", targetPath) || !allow("code", path)) return null;
+  const removeSource = (): void => {
+    if (loc.index === null) delete holder[loc.key];
+    else {
+      (holder[loc.key] as unknown[]).splice(loc.index, 1);
+      if (!(holder[loc.key] as unknown[]).length) delete holder[loc.key];
+    }
+  };
+  if (holder[name] !== undefined) {
+    if (!carries(holder[name], t.system, code)) return null;
+    removeSource();
+    return { path: targetPath, from: { path, value: code }, to: toPlain(holder[name]), rule: "code", reason: `'${code}' is not a code of ${loc.key} (required ${[...own][0]?.split("|")[0] ?? "ValueSet"}); it is a code of ${name}, which already carries it: the misplaced copy is removed` };
+  }
+  const coding: Json = { ...(t.system ? { system: t.system } : {}), code, ...(t.display ? { display: t.display } : {}) };
+  const one: unknown = t.type === "code" ? code : t.type === "Coding" ? coding : { coding: [coding] };
+  const value = t.max === "1" ? one : [one];
+  // keep the property order: the moved value takes the place of the misplaced one
+  const entries = Object.entries(holder);
+  for (const k of Object.keys(holder)) delete holder[k];
+  for (const [k, x] of entries) {
+    if (k === loc.key) {
+      if (loc.index !== null && Array.isArray(x) && x.length > 1) holder[k] = x.filter((_, i) => i !== loc.index);
+      holder[name] = value;
+    } else holder[k] = x;
+  }
+  return { path: targetPath, from: { path, value: code }, to: value, rule: "code", reason: `'${code}' is not a code of ${loc.key}; ${name} is the one sibling element whose required ValueSet ${t.valueSet.split("|")[0]} holds it${t.system ? ` (${t.system})` : ""}: moved` };
+}
+
+/**
  * The validator-driven layer-1 fixes, in place on `tree` (content space). One validation of the Bundle; each error
  * whose fix the profile or the Bundle determines is fixed (rule / message):
  *   fixed-value  "Value is 'A' but is fixed to 'B' in the profile <url>#<id>" → B (the definition's fixed / pattern
@@ -724,6 +897,16 @@ const elementPath = (resourceType: string, rel: string): string => (resourceType
  *                is T and whose value has a lossless T reading ("true" → true) → renamed `<stem>T`;
  *   document     "Composition.section.text: minimum required = 1" for a section with entries → a generated narrative
  *                listing its entries (their names in the Bundle).
+ * Round 2 (v19 R1):
+ *   system       "Wrong Display Name" where the bound ValueSet holds the code with exactly that display under one
+ *                other system (systemByDisplay) → that system;
+ *   display      "Wrong Display Name" of an unpinned code: no other code of the system named so (search: display or
+ *                exact designation), ≥ half the words shared with one of its names (or some and the search ranks it
+ *                first), no required binding rejecting the code → its display (the wording kept as CC.text);
+ *   code         "The System URI could not be determined for the code" of a code element → the one sibling element
+ *                whose required ValueSet holds it (codeToSibling);
+ *   shape        "This property must be a simple value, not an Object" for a string / markdown element holding one
+ *                string property → that string.
  * `blocked` (changeBlockKey) withdraws single fixes (the guard).
  */
 export async function autoFixBundle(tree: Json, deps: AutoFixDeps, blocked: ReadonlySet<string> = new Set()): Promise<{ changes: RepairChange[]; issues: RepairIssue[] }> {
@@ -741,6 +924,19 @@ export async function autoFixBundle(tree: Json, deps: AutoFixDeps, blocked: Read
   const sd = (u: string): Promise<Json | null> => {
     if (!sdCache.has(u)) sdCache.set(u, deps.fetchStructureDefinition(u).catch(() => null));
     return sdCache.get(u)!;
+  };
+  // Codings a required binding rejects ("The code provided (s#c) was not found in the value set … is required")
+  const requiredMiss = new Set<string>();
+  for (const e of found) {
+    if (/^The code provided \(.*\) was not found in the value set .* and a code from this value set is required/su.test(String(e.message ?? ""))) {
+      requiredMiss.add(String(e.path ?? "").replace(/\/\*[^*]*\*\//gu, "").replace(/\.display$/u, ""));
+    }
+  }
+  const norms = new Map<string, Promise<NormalizeCandidate[] | null>>();
+  const memoNorm = (text: string, system: string): Promise<NormalizeCandidate[] | null> => {
+    const k = `${system}\u0000${text}`;
+    if (!norms.has(k)) norms.set(k, deps.normalize ? deps.normalize(text, { system }, 8).catch(() => null) : Promise.resolve(null));
+    return norms.get(k)!;
   };
   for (const e of found) {
     const path = String(e.path ?? "").replace(/\/\*[^*]*\*\//gu, "");
@@ -782,10 +978,52 @@ export async function autoFixBundle(tree: Json, deps: AutoFixDeps, blocked: Read
           if (el.path === `${elPath}.code` && el.fixedCode === code) pinned = true;
         }
       }
-      if (!pinned) continue;
-      target.display = valid;
+      if (pinned) {
+        target.display = valid;
+        done.add(path);
+        changes.push({ path: `${codingPath}.display`, from: given, to: valid, rule: "display", reason: `the profile pins ${system}#${code} at ${parentPath}: the code is determined, its display is '${valid}'` });
+        continue;
+      }
+      // v19 R1 round 2: a code the bound ValueSet holds under ANOTHER system with exactly this display → that system
+      const sw = await systemByDisplay(deps, at.resource, parentPath, system, code, given, sd);
+      if (sw && allow("system", `${codingPath}.system`)) {
+        target.system = sw.system;
+        done.add(path);
+        changes.push({ path: `${codingPath}.system`, from: system, to: sw.system, rule: "system", reason: `${system}#${code} is not '${given}'; the bound ValueSet ${sw.valueSet.split("|")[0]} holds ${code} '${given}' only under ${sw.system}` });
+        continue;
+      }
+      // v19 R1 round 2: the code is determined (it exists — the validator knows its displays) and no other code of its
+      // system has exactly this display (then the display, not the code, is what is wrong) → the code's display
+      const all = validDisplaysOf(msg);
+      if (!all.length || !deps.normalize || !allow("display", `${codingPath}.display`)) continue;
+      const siblings = loc && loc.index !== null && Array.isArray(loc.holder[loc.key]) ? (loc.holder[loc.key] as unknown[]).filter((c) => isObj(c) && c !== target && c.system === system) : [];
+      if (siblings.length) continue;
+      const cands = await memoNorm(given, system);
+      if (cands === null) continue;
+      // another code of the system named exactly so (its display, or a designation the search matched exactly)
+      const named = cands.filter((c) => c.code !== code && (c.system ?? system) === system && (c.exact === true || (typeof c.display === "string" && bag(c.display) === bag(given) && bag(given) !== "")));
+      if (named.length) continue;
+      // a code the required ValueSet rejects is itself wrong: its display is the evidence of what was meant — kept
+      if (requiredMiss.has(codingPath)) continue;
+      // a display that shares too little with the code's names names another concept (ECOG written on an NYHA code,
+      // 'Cancer staging' on a Gleason grade finding): the code, not the display, is in doubt — kept (ambiguous). Enough:
+      // half of the words shared with one of its names, or some shared and the terminology search ranks this code first.
+      const best = Math.max(0, ...all.map((v) => overlap(given, v)));
+      if (!(best >= 0.5 || (best > 0 && cands[0]?.code === code))) continue;
+      let official = deps.lookupDisplay ? await deps.lookupDisplay(system, code).catch(() => null) : null;
+      if (official && !all.some((d) => d.toLowerCase() === official!.toLowerCase())) official = null;
+      const to = official ?? all[0];
+      target.display = to;
       done.add(path);
-      changes.push({ path: `${codingPath}.display`, from: given, to: valid, rule: "display", reason: `the profile pins ${system}#${code} at ${parentPath}: the code is determined, its display is '${valid}'` });
+      changes.push({ path: `${codingPath}.display`, from: given, to, rule: "display", reason: `${system}#${code} is a code of its system and no other code of it is named '${given}': the code is determined, its display is '${to}'` });
+      const ccPath = codingPath.replace(/\.coding(?:\[\d+\])?$/u, "");
+      if (ccPath !== codingPath && loc && loc.key === "coding") {
+        const cc = locate(tree, ccPath);
+        if (cc && isObj(cc.value) && cc.value.text === undefined) {
+          cc.value.text = given;
+          changes.push({ path: `${ccPath}.text`, from: null, to: given, rule: "display", reason: "the original wording is kept as CodeableConcept.text" });
+        }
+      }
       continue;
     }
     // ---- a choice type the profile narrows to one type
@@ -808,6 +1046,32 @@ export async function autoFixBundle(tree: Json, deps: AutoFixDeps, blocked: Read
       for (const [k, x] of entries) holder[k === key ? newKey : k] = k === key ? v : x;
       done.add(path);
       changes.push({ path: `${pm[1]}.${newKey}`, from: { path: `${pm[1]}.${key}`, value: entries.find(([k]) => k === key)![1] }, to: v, rule: "shape", reason: `the profile allows only ${allowed} for ${stem}[x] and the value reads as ${allowed}` });
+      continue;
+    }
+    // ---- a string element written as an object holding just that string ({text: 'Tdap'} for protocolApplied.series)
+    if (/^This property must be a simple value, not an Object \(/u.test(msg)) {
+      const loc = locate(tree, path);
+      const at = resourceAt(tree, path);
+      const v = loc?.value;
+      const keys = isObj(v) ? Object.keys(v) : [];
+      if (!loc || !at || !isObj(v) || keys.length !== 1 || !STRING_HOLDERS.has(keys[0]) || typeof v[keys[0]] !== "string" || !String(v[keys[0]]).trim() || !allow("shape", path)) continue;
+      const types = await elementTypes(deps, at.resource, elementPath(String(at.resource.resourceType), at.rel), sd);
+      if (types.length !== 1 || !["string", "markdown"].includes(types[0])) continue;
+      const text = String(v[keys[0]]);
+      if (loc.index === null) loc.holder[loc.key] = text;
+      else (loc.holder[loc.key] as unknown[])[loc.index] = text;
+      done.add(path);
+      changes.push({ path, from: toPlain(v), to: text, rule: "shape", reason: `${loc.key} is a ${types[0]}; the object holds nothing but that text (${keys[0]})` });
+      continue;
+    }
+    // ---- a code its element's required ValueSet lacks, held by exactly ONE sibling element's required ValueSet
+    m = /^The System URI could not be determined for the code '([^']*)' in the ValueSet '([^']*)'/u.exec(msg);
+    if (m) {
+      const moved = await codeToSibling(tree, path, m[1], deps, sd, allow);
+      if (moved) {
+        done.add(path);
+        changes.push(moved);
+      }
       continue;
     }
     // ---- a required section narrative from the section's own entries

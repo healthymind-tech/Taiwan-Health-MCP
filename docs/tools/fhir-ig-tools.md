@@ -196,6 +196,20 @@
 - **section narrative**：剖面要求 `Composition.section.text` 而 section 有 entry → 由這些 entry 在 Bundle 內的名稱產生（不新增病歷內容）；
 - 既有的陣列 / 單值、narrative、system / code、id / reference（v9）與 document 補全照常適用。
 
+1.15.0（v19 R1 第二輪）另加下列規則，同樣只在修法唯一時套用：
+
+- **display（代碼已確定）**：代碼存在於其 CodeSystem（驗證器列得出它的有效 display），且同一 CodeSystem 沒有其他代碼正好叫這個名字（display 或 `fhir_normalize_code` 精確命中的 designation）、寫的 display 與該代碼的名稱有一半以上的字相同（或有共同字且檢索把這個代碼排第一）、required 綁定沒有拒絕這個代碼 → 改成該代碼的 display，原本的寫法保留在 `CodeableConcept.text`（沒有 text 時）。字幾乎不重疊（`ECOG performance status` 寫在 NYHA 的代碼上）代表代碼本身可疑，不改，列為 ambiguous；
+- **system（依綁定的 ValueSet）**：元素綁定的 ValueSet 不含 `system#code`，但在**另一個** CodeSystem 下正好有同一個代碼、且 display 完全相同（`v3-ActCode#L 'Low'` → `v3-ObservationInterpretation`）→ 改 system；
+- **代碼放錯元素**：code 不在自身元素的 required ValueSet，而同一層只有一個兄弟元素的 required ValueSet 含有它（`AllergyIntolerance.type = 'medication'` → `category`、`criticality = 'unconfirmed'` → `verificationStatus`）→ 搬過去（依目標型別寫成 code / Coding / CodeableConcept，system 與 display 取自 ValueSet；目標可重複時包成陣列）；目標已有同一代碼時只刪除放錯的那份；目標有其他值、或有多個兄弟元素可收時不改；
+- **字串元素寫成物件**：`string` / `markdown` 元素寫成只有一個字串屬性的物件（`series: {text: "Tdap"}`）→ 該字串；
+- **code 元素寫成 CodeableConcept**：Coding 的 system 是 ValueSet CodeSystem 的 THO / core 對應網址（`terminology.hl7.org/CodeSystem/allergy-intolerance-category` ↔ `hl7.org/fhir/allergy-intolerance-category`）時也視為同一個 CodeSystem；
+- **Reference 往下一層**：backbone 上的 `reference` 只有一個 Reference 子元素可收時（`Immunization.performer.reference` → `performer.actor.reference`）→ 搬入；有兩個（`Procedure.performer` 的 `actor` / `onBehalfOf`）不改；
+- **STU3 改名**：另加 `Composition.class` → `category`；
+- **重複值**：STU3 名稱或錯誤後綴（`doseSequencePositiveInteger`）唯一對應的 R4 元素已經是同一個值 → 刪除重複的那份；值不同時不改；
+- **section entry 型別不符**：section slice 不收的資源型別（Results 底下的 MedicationStatement）→ 移到唯一收這個型別、且已存在的 section；沒有 section 收（Medications 底下的 Medication 本身）但 Bundle 內另有 entry 引用它（仍可達）→ 從 section 移除；section 的最後一筆 entry 不動（空 section 需要 emptyReason，屬病歷事實）。
+
+**`exposed_errors`**（finalize 參數，預設 `"strict"`）：改名 / 搬移後，原本因為是未知屬性而沒被驗證的內容開始被驗證，可能出現新的 error。`"strict"` 把這些當成新增 error，撤回該改名；`"allow_under_moved"` 則認為位置在改名 / 搬移後新位置之下的 error 本來就存在（只是被藏住），保留改名、把這些 error 列在 `ambiguous`。`summary.exposed_errors` 回報採用的模式。
+
 **回應欄位**：
 
 - `changes[]` 保留原有 `path` / `from` / `to` / `rule` / `reason`，另加 `pointer`（RFC 6901，以**送出的 Bundle** 為根——document 重排、移除的重複 entry、從 Bundle 層移入的 entry 都換回送出時的位置）、`before`、`after`、`category`（`shape` / `narrative` / `display` / `unrecognized_property` / `system_code` / `ids_references` / `document_structure` / `fixed_pattern`）；搬移 / 改名另有 `moved_to`（值的新位置）；
@@ -204,7 +218,7 @@
 
 **不新增錯誤**：finalize 先驗證送出的 Bundle，修正後再驗證一次（以 Bundle profile；訊息比對，忽略 entry 順序與產生的 UUID）。修正後多出的 error 會找出造成它的那一項修正（同一位置 / 同一 entry / Bundle 層），撤回後重跑（最多 3 輪；無法歸因時整份不改），被撤回的修正列在 `ambiguous`。因此一項修正若讓原本讀不到的內容開始被驗證而出現新 error（例如 `dosageInstruction` 改成 `dosage` 後才看得到的 Dosage 錯誤），該修正不套用，交給模型以 patch 處理。
 
-**實測**（`node-server/scripts/parity/finalize-eval.ts`，parity_v1 repro 92 份，結構性 error、不含內容檢查）：1384 → 1104（-20.2%），**新增 0**；fixed_pattern 10 → 0、unrecognized_property 198 → 114、display 76 → 59、shape 60 → 40；document_structure（42：多為沒有 Composition、或沒有 section 收得下的 entry）、ids_references（37：引用的 entry 不在 Bundle 內）與 system_code（84）沒有唯一修法，全部列在 `ambiguous`。
+**實測**（`node-server/scripts/parity/finalize-eval.ts`，parity_v1 repro 92 份，結構性 error、不含內容檢查）：1.14.0 為 1384 → 1104（-20.2%）；1.15.0（`exposed_errors="strict"`）為 1384 → 945（**-31.7%，新增 0**）：fixed_pattern 10 → 0、system_code 84 → 18、unrecognized_property 198 → 105、display 76 → 48、shape 60 → 35、ids_references 37 → 30、document_structure 42 → 42。剩下的都沒有唯一修法並列在 `ambiguous`：document_structure 多為根本沒有 Composition、或沒有 section 收得下的 entry；ids_references 是引用了 Bundle 內不存在的 entry；display 是寫的名稱指向另一個概念（代碼本身可疑）；unrecognized_property 是有多個可能位置或 R4 已移除的 STU3 元素（`vaccineProtocol`、`doseStatus`）。`exposed_errors="allow_under_moved"` 為 1384 → 965（-30.3%），其中 45 筆是改名後才看得到、位於新位置之下的 error（以 strict 的定義算是「新增」）。
 
 ### 修正建議（suggestions / caused_by）{#validation-suggestions}
 

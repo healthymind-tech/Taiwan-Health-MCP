@@ -39,6 +39,8 @@ export const R3_RENAMES: Readonly<Record<string, R3Rename>> = {
   "ServiceRequest.context": { to: "encounter" },
   "DocumentReference.indexed": { to: "date" },
   "DocumentReference.class": { to: "category" },
+  // v19 R1 round 2: STU3 Composition.class (0..1 CodeableConcept) is R4 Composition.category (0..*)
+  "Composition.class": { to: "category" },
   "Procedure.notDone": { removed: "R4 has no notDone: write status = 'not-done' (and statusReason)" },
   "Procedure.notDoneReason": { to: "statusReason" },
   "MedicationStatement.taken": { removed: "R4 has no taken: write status (e.g. 'not-taken', 'active', 'completed')" },

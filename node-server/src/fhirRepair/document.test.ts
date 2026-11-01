@@ -121,3 +121,33 @@ test("v17.5: dead local links unwrapped, system|version split, pinned section di
   assert.equal(comp.section[1].entry, undefined, "an emptyReason section takes no entry");
   assert.ok(r.issues.some((i) => i.path === "Bundle.entry[3]" && /not reachable/.test(i.message)));
 });
+
+test("v19 R1 round 2: a section entry of a type its slice does not take → the one section that takes it; untaken but referenced → dropped", async () => {
+  const pat = { resourceType: "Patient", name: [{ text: "王小明" }] };
+  const med = { resourceType: "Medication", code: { text: "Metformin" } };
+  const ms1 = { resourceType: "MedicationStatement", status: "active", subject: { reference: u(1) }, medicationReference: { reference: u(2) } };
+  const ai = { resourceType: "AllergyIntolerance", patient: { reference: u(1) }, code: { text: "penicillin" } };
+  const ms2 = { resourceType: "MedicationStatement", status: "active", subject: { reference: u(1) }, medicationCodeableConcept: { text: "Aspirin" } };
+  const comp = {
+    resourceType: "Composition", meta: { profile: [CP] }, status: "final", date: "2024-05-01T10:30+08:00", title: "S", subject: { reference: u(1) }, author: [{ reference: u(1) }],
+    section: [
+      { title: "Meds", code: { coding: [{ system: LOINC, code: "10160-0" }] }, entry: [{ reference: u(2) }, { reference: u(3) }] },
+      { title: "Allergies", code: { coding: [{ system: LOINC, code: "48765-2" }] }, entry: [{ reference: u(4) }, { reference: u(5) }] },
+    ],
+  };
+  const b = doc(clone(comp), pat, med, ms1, ai, ms2);
+  const r = await completeDocument(b, deps);
+  const [meds, allergies] = b.entry[0].resource.section;
+  assert.deepEqual(meds.entry, [{ reference: u(3) }, { reference: u(5) }], "Medication dropped (ms1 references it), ms2 moved in");
+  assert.deepEqual(allergies.entry, [{ reference: u(4) }]);
+  assert.equal(r.changes.filter((c) => /^section '/.test(c.reason) && /\.entry\[\d+\]$/.test(c.path)).length, 2);
+  // the last entry of a section never moves; an untaken type nothing references stays
+  const c2 = clone(comp);
+  c2.section[1].entry = [{ reference: u(5) }];
+  const lone = doc(c2, pat, med, { ...ms1, medicationReference: undefined, medicationCodeableConcept: { text: "x" } }, ai, ms2);
+  await completeDocument(lone, deps);
+  assert.deepEqual(lone.entry[0].resource.section[1].entry[0], { reference: u(5) }, "the section's only entry stays (the unreachable allergy is placed after it)");
+  assert.deepEqual(lone.entry[0].resource.section[0].entry.slice(0, 2), [{ reference: u(2) }, { reference: u(3) }]);
+});
+
+const clone = <T>(x: T): T => JSON.parse(JSON.stringify(x));
