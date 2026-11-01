@@ -1529,10 +1529,18 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
               "uniquely-determined content repairs (display of the same concept, UCUM, ROC dates, Coding.system, shapes) — listed in content_changes, " +
               "undecidable ones in repair_issues — and validates the result.",
           ),
+        bundle_profile: z
+          .string()
+          .nullish()
+          .default(null)
+          .describe(
+            "The Bundle profile (canonical or id) the Bundle must conform to, besides its meta.profile — as validator_cli -profile. " +
+              "Pass the conversion target's Bundle profile: without it only meta.profile is checked.",
+          ),
         ...validateBundleGroundingShape,
       },
     },
-    async ({ bundle, package_id, version, normalize_ids, repair, ...g }, extra) => {
+    async ({ bundle, package_id, version, normalize_ids, repair, bundle_profile, ...g }, extra) => {
       const conformance = await svc.validateBundle(
         bundle as Record<string, any>,
         package_id ?? null,
@@ -1540,6 +1548,8 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
         normalize_ids ?? false,
         normalize_ids ? losslessToolArgument("fhir_validate_bundle", "bundle", extra?.requestId) : undefined,
         normalize_ids && repair === "content" ? "content" : "ids",
+        null,
+        bundle_profile ?? null,
       );
       const igDefined = g.source_text ? await groundingDeps.igDefined!(bundle as Record<string, any>, package_id ?? null, version ?? null) : null;
       const grounded = await addBundleGrounding(conformance, bundle as Record<string, any>, { ...g, package_id, version, ig_defined: igDefined } as ValidateGroundingArgs, groundingDeps);

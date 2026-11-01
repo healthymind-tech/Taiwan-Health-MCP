@@ -639,6 +639,10 @@ const RESTFUL_REF = /^([A-Z][A-Za-z]+)\/([A-Za-z0-9\-.]{1,64})(?:\/_history\/([A
 interface Item {
   value: any;
   ext: any;
+  /** (parity v1) An item of a repeating element (its JSON shape errors say "must be an Array"). */
+  inList?: boolean;
+  /** (parity v1) Validated as the profile's single type although written as another (Extension_PROF_Type). */
+  profileType?: boolean;
   /** JSON property the item came from (choice elements: e.g. valueQuantity). */
   key: string;
   path: string;
@@ -1059,8 +1063,12 @@ export class InstanceValidator {
       sections(head.section, `${hpath}.section`);
     } else if (type === "message" && head.resourceType === "MessageHeader") {
       list(head.focus).forEach((f, i) => checkRef(f, `${hpath}.focus[${i}]`, "MessageHeader Data"));
+    } else if (type === "document") {
+      // (parity v1) BundleValidator.validateDocument (Bundle_BUNDLE_Entry_Document): the first resource is not a
+      // Composition — reported, and checkAllInterlinked still runs from entry 0 (BundleValidator.validateBundle)
+      issues.push({ severity: "error", path: hpath, code: "invalid", message: "The first entry in a document must be a composition" });
     } else {
-      return; // bdl-11 / bdl-12 report the wrong first resource
+      return; // bdl-12 reports the wrong first resource of a message
     }
     // Orphans: every entry must be reachable from the first one, following
     // references forwards (and, failing that, backwards).
@@ -1341,11 +1349,13 @@ export class InstanceValidator {
     }
 
     if (!isObject(v)) {
+      // a value the parser accepted as its own (base) type, validated as the profile's type: no JSON shape error here
+      if (item.profileType) return;
       issues.push({
         severity: "error",
         path: item.path,
         code: "structure",
-        message: `The property ${item.key} must be a JSON Object, not ${Array.isArray(v) ? "an Array" : "a primitive property"}`,
+        message: `The property ${item.key} must be ${item.inList ? "an Array" : "an Object"}, not ${describeJson(v)} (at ${item.path})`,
       });
       return;
     }
@@ -1399,7 +1409,14 @@ export class InstanceValidator {
       if (tsdx) typeRootConstraints.push([tsdx, tsdx.root]);
     }
 
-    await this.walkChildren(childSdx, childEl, item, rctx, issues, depth, isResourceRoot);
+    // InstanceValidator.validateElement (7.0.1): a choice element whose profile constrains its children (e.g. only an
+    // extension of effective[x]) while several types stay open — the actual type's children are merged in
+    let merge: { sdx: SdIndex; el: Record<string, any> } | null = null;
+    if (childEl === el && sdx.hasChildren(el) && (el.type || []).length > 1 && /^[A-Z]/.test(typeCode) && !isResourceRoot) {
+      const tsdx = await this.sdx(CORE + typeCode);
+      if (tsdx) merge = { sdx: tsdx, el: tsdx.root };
+    }
+    await this.walkChildren(childSdx, childEl, item, rctx, issues, depth, isResourceRoot, merge);
 
     if (!isResourceRoot) this.checkFixedPattern(el, v, item, sdx, issues);
     await this.checkBinding(el, v, typeCode, item, issues, null);
@@ -1530,10 +1547,18 @@ export class InstanceValidator {
     issues: Issue[],
     depth: number,
     isResourceRoot: boolean,
+    /** (parity v1) Children of the actual type merged in (InstanceValidator.mergeChildLists). */
+    merge: { sdx: SdIndex; el: Record<string, any> } | null = null,
   ): Promise<void> {
     const node = item.value as Record<string, any>;
     const groups = sdx.children(el);
     if (!groups || groups.size === 0) return; // nothing known about the children
+    // profile-defined children first; the actual type's children the profile does not define are added
+    const groupList: Array<[SdIndex, ReturnType<SdIndex["children"]> extends Map<string, infer G> | null | undefined ? G : never]> = [...groups.values()].map((g) => [sdx, g]);
+    if (merge) {
+      const extra = merge.sdx.children(merge.el);
+      if (extra) for (const g of extra.values()) if (!groups.has(g.name)) groupList.push([merge.sdx, g]);
+    }
     // Context of extensions held by this element (InstanceValidator.checkExtensionContext).
     let hostCache: Omit<ExtensionHost, "modifier"> | null = null;
     const hostOf = (modifier: boolean): ExtensionHost => {
@@ -1557,13 +1582,14 @@ export class InstanceValidator {
     if (isResourceRoot) used.add("resourceType");
     used.add("fhir_comments");
 
-    for (const grp of groups.values()) {
+    for (const [gsdx, grp] of groupList) {
       const def = grp.base || grp.slices[0];
       if (!def) continue;
       const name = grp.name;
       const items: Item[] = [];
       const allowedTypes: string[] = (def.type || []).map(typeCodeOf);
       const typedItems: Array<{ item: Item; type: string }> = [];
+      const profileTypeKeys = new Set<string>();
 
       const collect = (key: string, typeCode: string): void => {
         used.add(key);
@@ -1571,21 +1597,31 @@ export class InstanceValidator {
         const lp = childLogicalPaths(item.lp, def, key, typeCode);
         const parentExtUrl = item.typeCode === "Extension" && key.startsWith("value") && typeof node.url === "string" ? node.url : undefined;
         const host = name === "extension" || name === "modifierExtension" ? hostOf(name === "modifierExtension") : undefined;
-        const mk = (value: any, ext: any, p: string): Item => ({ value, ext, key, path: p, typeCode, lp, parentExtUrl, host });
+        const baseMax0 = String((def.base && def.base.max) ?? def.max ?? "*");
+        const mk = (value: any, ext: any, p: string): Item => ({ value, ext, key, path: p, typeCode, lp, parentExtUrl, host, inList: baseMax0 !== "1" && baseMax0 !== "0", profileType: profileTypeKeys.has(key) });
         const raw = node[key];
         const rawExt = node["_" + key];
         const baseMax = String((def.base && def.base.max) ?? def.max ?? "*");
         const expectArray = baseMax !== "1" && baseMax !== "0";
         const path = `${item.path}.${key}`;
+        // (parity v1) JsonParser.parseChildPrimitive / parseChildComplex (7.0.1, r5 elementmodel): shape errors judged by
+        // the base property; a primitive of the wrong shape is dropped, a complex value is still parsed
+        const primitiveType = isPrimitive(typeCode);
         if (raw !== undefined && expectArray && !Array.isArray(raw)) {
-          issues.push({ severity: "error", path, code: "structure", message: `The property ${key} must be a JSON Array, not ${isObject(raw) ? "an Object" : "a primitive property"} (at ${item.path})` });
+          issues.push({ severity: "error", path, code: "structure", message: `The property ${key} must be a JSON Array, not ${describeJson(raw)} (at ${item.path})` });
+          if (primitiveType) return;
           const it = mk(raw, Array.isArray(rawExt) ? rawExt[0] : rawExt, path);
           items.push(it);
           typedItems.push({ item: it, type: typeCode });
           return;
         }
         if (raw !== undefined && !expectArray && Array.isArray(raw)) {
-          issues.push({ severity: "error", path, code: "structure", message: `This property must be a simple value, not an Array (${key} at ${path})` });
+          issues.push({
+            severity: "error",
+            path,
+            code: "structure",
+            message: primitiveType ? `This property must be a simple value, not an Array (${key} at ${path})` : `The property ${key} must be an Object, not an Array (at ${path})`,
+          });
           return;
         }
         if (Array.isArray(raw) || (raw === undefined && Array.isArray(rawExt))) {
@@ -1630,6 +1666,43 @@ export class InstanceValidator {
         for (const key of keys) {
           const suffix = key.slice(stem.length);
           const t = allowedTypes.find((a) => a[0].toUpperCase() + a.slice(1) === suffix);
+          if (!t && KNOWN_TYPE_SUFFIX.has(suffix)) {
+            // (parity v1) InstanceValidator.checkChildByDefinition (7.0.1): a type the BASE element does not allow was
+            // dropped by the parser (Unrecognized property, structural pass); a type the base allows but a profile that
+            // fixes ONE type does not → Extension_PROF_Type, and the value is validated as the profile's type
+            const baseTypes = await this.baseElementTypes(def);
+            const actual = KNOWN_TYPE_SUFFIX.get(suffix)!;
+            if (baseTypes && !baseTypes.includes(actual)) {
+              used.add(key);
+              used.add("_" + key);
+              continue;
+            }
+            if (allowedTypes.length === 1 && !["Element", "BackboneElement", "*"].includes(allowedTypes[0])) {
+              accepted++;
+              if (accepted > 1) continue;
+              issues.push(
+                gsdx.type === "Extension" && def.path === "Extension.value[x]"
+                  ? {
+                      // InstanceValidator.checkExtension (Extension_EXT_Type): an extension's value of a type its definition does not allow
+                      severity: "error",
+                      path: `${item.path}.${stem}.ofType(${actual})`,
+                      code: "structure",
+                      message: `The Extension '${gsdx.url}' definition allows for the types ${allowedTypes.join(", ")} but found type ${actual}`,
+                      element: def.id,
+                    }
+                  : {
+                      severity: "error",
+                      path: `${item.path}.${stem}.ofType(${actual})`,
+                      code: "structure",
+                      message: `The Profile '${gsdx.url}${gsdx.sd?.version ? `|${gsdx.sd.version}` : ""}' definition allows for the type ${allowedTypes[0]} but found type ${actual}`,
+                      element: def.id,
+                    },
+              );
+              profileTypeKeys.add(key);
+              collect(key, allowedTypes[0]);
+              continue;
+            }
+          }
           if (!t) {
             if (KNOWN_TYPE_SUFFIX.has(suffix)) {
               used.add(key);
@@ -1638,7 +1711,7 @@ export class InstanceValidator {
                 severity: "error",
                 path: `${item.path}.${key}`,
                 code: "structure",
-                message: `The type '${KNOWN_TYPE_SUFFIX.get(suffix)}' is not allowed for ${def.path} (allowed: ${allowedTypes.join(", ")})${sdx.url !== CORE + sdx.type ? ` by profile ${sdx.url}` : ""}`,
+                message: `The type '${KNOWN_TYPE_SUFFIX.get(suffix)}' is not allowed for ${def.path} (allowed: ${allowedTypes.join(", ")})${gsdx.url !== CORE + gsdx.type ? ` by profile ${gsdx.url}` : ""}`,
                 element: def.id,
               });
             }
@@ -1661,21 +1734,39 @@ export class InstanceValidator {
       }
 
       // Cardinality (per parent instance) against the base definition of this group.
-      if (grp.base) this.checkCardinality(grp.base, items.length, item, sdx, issues);
+      if (grp.base) this.checkCardinality(grp.base, items.length, item, gsdx, issues);
 
       if (grp.slices.length && grp.base && grp.base.slicing) {
-        await this.validateSliced(sdx, grp, typedItems, item, rctx, issues, depth);
+        await this.validateSliced(gsdx, grp, typedItems, item, rctx, issues, depth);
       } else {
         for (const { item: it, type } of typedItems) {
-          await this.validateItemAgainst(sdx, def, it, type, rctx, issues, depth + 1);
+          await this.validateItemAgainst(gsdx, def, it, type, rctx, issues, depth + 1);
         }
       }
     }
 
     for (const key of Object.keys(node)) {
       if (used.has(key)) continue;
+      if (item.profileType && item.typeCode) {
+        // a value written as another type, validated as the profile's: its children are not in that type
+        // (Validation_VAL_Profile_NotAllowed against the type's definition)
+        const tsdx = await this.sdx(CORE + item.typeCode);
+        issues.push({ severity: "error", path: `${item.path}.${key}`, code: "structure", message: `This element is not allowed by the profile ${CORE}${item.typeCode}${tsdx?.sd?.version ? `|${tsdx.sd.version}` : ""}` });
+        continue;
+      }
       issues.push({ severity: "error", path: item.path, code: "structure", message: `Unrecognized property '${key}'` });
     }
+  }
+
+  /** Types of the base (core) element of a profile element (null when unknown). */
+  private async baseElementTypes(def: Record<string, any>): Promise<string[] | null> {
+    const bp = isObject(def.base) && typeof def.base.path === "string" ? def.base.path : null;
+    if (!bp) return null;
+    const rt = bp.split(".")[0];
+    const core = await this.sdx(CORE + rt);
+    const el = core?.byId.get(bp);
+    if (!el) return null;
+    return ((el.type || []) as any[]).map(typeCodeOf);
   }
 
   private checkCardinality(def: Record<string, any>, count: number, parent: Item, sdx: SdIndex, issues: Issue[]): void {
@@ -1892,7 +1983,7 @@ export class InstanceValidator {
             if (psdx.type !== r.resourceType) continue;
             const ctx: ResourceCtx = { resource: r, container: null, root: rctx.root, bundle: rctx.bundle, entry: this.entryFor(r, rctx, false) };
             const res = await this.conformance(ctx, p, this.pathOf(it, dpath), depth + 1);
-            if (isValid(res)) {
+            if (isValid(res.filter((i) => !isParseIssue(i)))) {
               ok = true;
               break;
             }
@@ -2133,6 +2224,18 @@ export class InstanceValidator {
       }
       return;
     }
+    if (isObject(v) || Array.isArray(v)) {
+      issues.push({ severity: "error", path, code: "structure", message: `This property must be a simple value, not ${describeJson(v)} (${item.key} at ${path})` });
+      return;
+    }
+    if (item.profileType) {
+      // (parity v1) validated as the profile's type, not its own (Extension_PROF_Type was reported): only the
+      // InstanceValidator's value checks of that type apply, the parser checked the JSON shape against the base type
+      if (typeCode === "boolean" && String(v) !== "true" && String(v) !== "false") {
+        issues.push({ severity: "error", path, code: "invalid", message: "Boolean values must be 'true' or 'false'" });
+      }
+      return;
+    }
     if (typeof v !== spec.json) {
       issues.push({ severity: "error", path, code: "structure", message: `Error parsing JSON: the primitive value must be a ${spec.json}` });
       return;
@@ -2213,32 +2316,125 @@ export class InstanceValidator {
     }
   }
 
+  /**
+   * Port of InstanceValidator.checkFixedValue (7.0.1) for an element's fixed[x] / pattern[x]: primitives compared by
+   * their string value (_DT_Fixed_Wrong, context = <profile|version>#<element id>); complex types field by field
+   * (Profile_VAL_MissingElement / Profile_VAL_NotAllowed — the latter for a fixed value only); a CodeableConcept pattern
+   * needs each pattern coding matched by one coding of the instance (TYPE_CHECKS_PATTERN_CC), a fixed one the same
+   * codings in order; a fixed value without extensions bans extensions on the instance (Extension_EXT_Fixed_Banned).
+   */
   private checkFixedPattern(el: Record<string, any>, v: any, item: Item, sdx: SdIndex, issues: Issue[]): void {
     const [fixed, pattern] = fixedPattern(el);
+    const source = `${sdx.url}${sdx.sd?.version ? `|${sdx.sd.version}` : ""}`;
+    const context = `${source}#${el.id ?? el.path}`;
+    const tag = (list: Issue[]): void => {
+      for (const i of list) issues.push({ ...i, element: el.id, profile: sdx.url });
+    };
     if (fixed) {
-      const ok = isObject(fixed.value) ? patternMatches(v, fixed.value) : deepEqual(v, fixed.value);
-      if (!ok) {
-        issues.push({
-          severity: "error",
-          path: item.path,
-          code: "value",
-          message: `Value is '${short(v)}' but must be '${short(fixed.value)}' (fixed by ${sdx.url})`,
-          element: el.id,
-          profile: sdx.url,
-        });
-      }
+      const out: Issue[] = [];
+      this.fixedValuePort(out, item.path, v, fixed.value, fixed.field.replace(/^fixed/u, ""), source, String(el.sliceName ?? ""), false, context);
+      tag(out);
     }
-    if (pattern && !patternMatches(v, pattern.value)) {
-      issues.push({
-        severity: "error",
-        path: item.path,
-        code: "value",
-        message: `The value does not match the required pattern ${short(pattern.value)} (from ${sdx.url})`,
-        element: el.id,
-        profile: sdx.url,
-      });
+    if (pattern) {
+      const out: Issue[] = [];
+      this.fixedValuePort(out, item.path, v, pattern.value, pattern.field.replace(/^pattern/u, ""), source, String(el.sliceName ?? ""), true, context);
+      tag(out);
     }
   }
+
+  private fixedValuePort(issues: Issue[], path: string, focus: any, fixed: any, type: string, source: string, propName: string, pattern: boolean, context: string): void {
+    const empty = (x: any): boolean => x === undefined || x === null || (isObject(x) && Object.keys(x).length === 0) || (Array.isArray(x) && x.length === 0);
+    if (empty(fixed) && (focus === undefined || focus === null)) return;
+    if (empty(fixed)) {
+      if (!pattern) issues.push({ severity: "error", path, code: "value", message: `The element ${propName} is present in the instance but not allowed in the applicable fixed value specified in profile` });
+      return;
+    }
+    if (focus === undefined || focus === null) {
+      issues.push({ severity: "error", path, code: "value", message: `Missing element '${propName}' - required by fixed value assigned in profile ${source}` });
+      return;
+    }
+    if (!isObject(fixed)) {
+      const value = isObject(focus) || Array.isArray(focus) ? null : String(focus);
+      if (value !== String(fixed)) issues.push({ severity: "error", path, code: "value", message: `Value is '${value ?? ""}' but is fixed to '${String(fixed)}' in the profile ${context}` });
+      return;
+    }
+    if (!isObject(focus)) {
+      issues.push({ severity: "error", path, code: "value", message: `Missing element '${propName}' - required by fixed value assigned in profile ${source}` });
+      return;
+    }
+    if (type === "CodeableConcept") {
+      this.fixedValuePort(issues, `${path}.text`, focus.text, fixed.text, "string", source, "text", pattern, context);
+      const codings: any[] = Array.isArray(focus.coding) ? focus.coding : [];
+      const fixedCodings: any[] = Array.isArray(fixed.coding) ? fixed.coding : [];
+      if (pattern) {
+        if (codings.length < fixedCodings.length) {
+          issues.push({ severity: "error", path, code: "value", message: `Expected ${fixedCodings.length} but found ${codings.length} coding elements` });
+        } else {
+          for (const fc of fixedCodings) {
+            const all: Issue[] = [];
+            let found = false;
+            for (const c of codings) {
+              const e: Issue[] = [];
+              this.fixedValuePort(e, `${path}.coding`, c, fc, "Coding", source, "coding", true, context);
+              if (!e.some((x) => x.severity === "error")) {
+                found = true;
+                break;
+              }
+              all.push(...e.filter((x) => x.severity === "error"));
+            }
+            if (!found) {
+              const us = isObject(fc) && fc.userSelected !== undefined;
+              const list = `[${all.map((x) => x.message).join(", ")}]`;
+              issues.push({
+                severity: "error",
+                path,
+                code: "value",
+                message: us
+                  ? `The pattern [system ${fc.system ?? null}, code ${fc.code ?? null}, display '${fc.display ?? null}' and userSelected ${fc.userSelected}] defined in the profile ${source} not found. Issues: ${list}`
+                  : `The pattern [system ${fc.system ?? null}, code ${fc.code ?? null}, and display '${fc.display ?? null}'] defined in the profile ${source} not found. Issues: ${list}`,
+              });
+            }
+          }
+        }
+      } else if (codings.length !== fixedCodings.length) {
+        issues.push({ severity: "error", path, code: "value", message: `Expected ${fixedCodings.length} but found ${codings.length} coding elements` });
+      } else {
+        codings.forEach((c, i) => this.fixedValuePort(issues, `${path}.coding`, c, fixedCodings[i], "Coding", source, "coding", false, context));
+      }
+    } else {
+      // every other datatype: its fields one by one (lists: each fixed item matched — by any item for a pattern, in order
+      // for a fixed value)
+      const keys = new Set([...Object.keys(fixed), ...(pattern ? [] : Object.keys(focus))]);
+      for (const k of keys) {
+        if (k === "extension" || k === "id" || k.startsWith("_")) continue;
+        const fv = fixed[k];
+        const iv = focus[k];
+        if (Array.isArray(fv) || Array.isArray(iv)) {
+          const fl: any[] = Array.isArray(fv) ? fv : fv === undefined ? [] : [fv];
+          const il: any[] = Array.isArray(iv) ? iv : iv === undefined ? [] : [iv];
+          if (pattern) {
+            for (const f of fl) {
+              const ok = il.some((x) => {
+                const e: Issue[] = [];
+                this.fixedValuePort(e, `${path}.${k}`, x, f, "", source, k, true, context);
+                return !e.length;
+              });
+              if (!ok) this.fixedValuePort(issues, `${path}.${k}`, il[0], f, "", source, k, true, context);
+            }
+          } else {
+            const n = Math.max(fl.length, il.length);
+            for (let i = 0; i < n; i++) this.fixedValuePort(issues, `${path}.${k}`, il[i], fl[i], "", source, k, false, context);
+          }
+          continue;
+        }
+        this.fixedValuePort(issues, `${path}.${k}`, iv, fv, k === "coding" ? "Coding" : "", source, k, pattern, context);
+      }
+    }
+    const fixedExt = Array.isArray(fixed.extension) ? fixed.extension : [];
+    const ext = Array.isArray(focus.extension) ? focus.extension : [];
+    if (!fixedExt.length && ext.length && !pattern) issues.push({ severity: "error", path, code: "value", message: "No extensions allowed, as the specified fixed value doesn't contain any extensions" });
+  }
+
 
   /**
    * (v17.5) tx.fhir.org validates a coding against a bound ValueSet in the resource's language: when that language is
@@ -2280,6 +2476,32 @@ export class InstanceValidator {
         message: `Wrong Display Name '${c.display}' for ${c.system}#${c.code}. Valid display is '${listed}' (for the language(s) '${lang}')`,
       });
     });
+  }
+
+  /**
+   * ValueSetValidator.scanForCodeInValueSet (7.0.1): the number of include systems that define `code` — enumerated
+   * includes by their concept list, whole-system includes by the CodeSystem. null when undecidable here (imports,
+   * filters, an unknown CodeSystem: the HL7 validator reports other messages for those, which are not reproduced).
+   */
+  private async inferCodeSystems(vs: Record<string, any>, code: string): Promise<number | null> {
+    const includes = isObject(vs.compose) && Array.isArray(vs.compose.include) ? vs.compose.include : [];
+    if (!includes.length) return null;
+    const found = new Set<string>();
+    for (const inc of includes) {
+      if (!isObject(inc)) continue;
+      if (Array.isArray(inc.valueSet) && inc.valueSet.length) return null;
+      const system = typeof inc.system === "string" ? inc.system : null;
+      if (!system) return null;
+      if (Array.isArray(inc.filter) && inc.filter.length) return null;
+      if (Array.isArray(inc.concept) && inc.concept.length) {
+        if (inc.concept.some((c: any) => isObject(c) && c.code === code)) found.add(system);
+        continue;
+      }
+      const r = await this.codeCheck(system, code, null, null);
+      if (r.status === "unknown-system") return null;
+      if (r.status !== "invalid-code") found.add(system);
+    }
+    return found.size;
   }
 
   private async checkBinding(
@@ -2335,12 +2557,35 @@ export class InstanceValidator {
     }
     let anyMember = false;
     let anyUnknown = false;
+    // (parity v1) tx $validate-code checks the display too (ValueSetValidator: a wrong display makes the result not ok):
+    // a member whose display the terminology rejects does not satisfy the binding
+    let wrongDisplay: { system: string; code: string; message: string; index: number } | null = null;
+    const list: any[] = typeCode === "Coding" ? [v] : isObject(v) && Array.isArray(v.coding) ? v.coding : [];
     for (const [system, code] of codings) {
       const m = await this.member(url, system, code!);
-      if (m === true) anyMember = true;
-      else if (m === undefined) anyUnknown = true;
+      if (m === true) {
+        const idx = list.findIndex((c) => isObject(c) && c.code === code && (c.system ?? null) === system);
+        const c = idx >= 0 ? list[idx] : null;
+        if (system && c && typeof c.display === "string" && c.display && (typeCode === "Coding" || typeCode === "CodeableConcept")) {
+          const r = await this.codeCheck(system, code!, c.display, typeof c.version === "string" ? c.version : null);
+          if (r.status === "invalid-display" && r.severity === "error") {
+            wrongDisplay ??= { system, code: code!, message: r.message, index: idx };
+            continue;
+          }
+        }
+        anyMember = true;
+      } else if (m === undefined) anyUnknown = true;
     }
     if (anyMember) return;
+    if (wrongDisplay && strength === "required") {
+      const vsDesc = `'${vs.title || vs.name || url}' (${vs.url}${vs.version ? `|${vs.version}` : ""})`;
+      issues.push(
+        typeCode === "Coding"
+          ? { severity: "error", path: item.path, code: "code-invalid", message: `The code provided (${wrongDisplay.system}#${wrongDisplay.code}) was not found in the value set ${vsDesc}, and a code from this value set is required: ${wrongDisplay.message}` }
+          : { severity: "error", path: item.path, code: "code-invalid", message: `None of the codings provided are in the value set ${vsDesc}, and a coding from this value set is required) (codes = ${codings.map(([s2, c2]) => (s2 ? `${s2}#${c2}` : c2)).join(", ")})` },
+      );
+      return;
+    }
     const shown = codings.map(([s, c]) => (s ? `${s}#${c}` : c)).join(", ");
     if (anyUnknown) {
       issues.push({
@@ -2350,6 +2595,25 @@ export class InstanceValidator {
         message: `The code(s) ${shown} could not be confirmed as members of the value set ${label} (not fully expandable locally)`,
       });
       return;
+    }
+    if (strength === "required" && typeCode === "code") {
+      // Port of ValueSetValidator.systemForCodeInValueSet (7.0.1, r5): a bare code is validated by first inferring its
+      // system from the ValueSet; when no include's CodeSystem has the code, UNABLE_TO_INFER_CODESYSTEM is reported
+      // (an error, besides the not-in-value-set one below).
+      const inferred = await this.inferCodeSystems(vs, String(codings[0][1]));
+      if (inferred === 0) {
+        const vsv = `${vs.url}${vs.version ? `|${vs.version}` : ""}`;
+        const infer = `The System URI could not be determined for the code '${codings[0][1]}' in the ValueSet '${vsv}'`;
+        issues.push({ severity: "error", path: item.path, code: "code-invalid", message: infer });
+        // Terminology_TX_NoValid_16 carries the server's messages as its {2}
+        issues.push({
+          severity: "error",
+          path: item.path,
+          code: "code-invalid",
+          message: `The value provided ('${shown}') was not found in the value set ${label}, and a code is required from this value set  (error message = ${infer}; The provided code '#${codings[0][1]}' was not found in the value set '${vsv}')`,
+        });
+        return;
+      }
     }
     if (strength === "required") {
       issues.push({
@@ -2663,7 +2927,7 @@ export class InstanceValidator {
     };
     for (const c of candidates) {
       const res = await this.conformance(tctx, c.url, `${item.path}.resolve()`, depth + 1);
-      if (isValid(res)) return;
+      if (isValid(res.filter((i) => !isParseIssue(i)))) return;
     }
     issues.push({
       severity: "error",
@@ -2816,12 +3080,16 @@ export class InstanceValidator {
       issues.push({ severity: "error", path, code: "structure", message: `Unrecognized property '${key}'` });
     };
     const choiceSeen = new Map<string, string>();
+    // (parity v1) children the parser keeps: ele-1 is evaluated on the element model after unknown properties and
+    // values of the wrong JSON shape were dropped — an element holding only those (or only an id) has no children
+    let kept = 0;
     for (const key of Object.keys(node)) {
       if (key === "fhir_comments" || (isRoot && key === "resourceType")) continue;
       const primExt = key.startsWith("_");
       const name = primExt ? key.slice(1) : key;
       let def: Record<string, any> | null = null;
       let typeCode = "";
+      let baseRejects = false;
       const direct = groups.get(name);
       if (direct && !name.endsWith("[x]")) {
         def = direct.base || direct.slices[0] || null;
@@ -2837,6 +3105,7 @@ export class InstanceValidator {
           const d = g.base || g.slices[0];
           const suffix = name.slice(stem.length);
           const t = ((d?.type || []) as any[]).map(typeCodeOf).find((a: string) => a[0].toUpperCase() + a.slice(1) === suffix);
+          if (d && !t) baseRejects = true; // the base element does not have this type: the parser drops it (Unrecognized)
           if (d && t) {
             const prev = choiceSeen.get(stem);
             if (prev !== undefined && prev !== name) {
@@ -2850,7 +3119,7 @@ export class InstanceValidator {
           }
           break;
         }
-        if (stemHit && !def) continue; // type not allowed / second choice value: reported by the profile walk
+        if (stemHit && !def && !baseRejects) continue; // second choice value: reported by the profile walk
       }
       if (!def) {
         unknown(key);
@@ -2858,6 +3127,14 @@ export class InstanceValidator {
       }
       const raw = node[key];
       const childPath = `${path}.${name}`;
+      {
+        const bm = String((def.base && def.base.max) ?? def.max ?? "*");
+        const arr = bm !== "1" && bm !== "0";
+        // a primitive is kept only as a JSON primitive (an object / array there is dropped: "must be a simple value")
+        const primOk = (x: unknown): boolean => x === null || typeof x !== "object";
+        const shapeOk = isPrimitive(typeCode) ? (arr ? Array.isArray(raw) && raw.some(primOk) : primOk(raw)) : arr === Array.isArray(raw);
+        if (name !== "id" && (primExt || shapeOk)) kept++;
+      }
       if (primExt) {
         const list = Array.isArray(raw) ? raw : [raw];
         for (let i = 0; i < list.length; i++) {
@@ -2898,6 +3175,9 @@ export class InstanceValidator {
           if (tsdx) await this.structObject(tsdx, tsdx.root, v, p, issues, depth + 1, false);
         }
       }
+    }
+    if (!isRoot && kept === 0 && Object.keys(node).some((k) => k !== "fhir_comments")) {
+      issues.push({ severity: "error", path, code: "invariant", message: "Constraint failed: ele-1: 'All FHIR elements must have a @value or children'" });
     }
   }
 
@@ -3003,6 +3283,24 @@ export function narrativeLinkProblems(div: string, anchors: ReadonlySet<string>)
   return out;
 }
 
+/**
+ * (parity v1) Errors the HL7 JSON parser reports before validation (unknown properties, JSON shape): its conformsTo
+ * (InstanceValidator.conformsToProfile, a fresh validateResource on the parsed tree) never sees them, so profile
+ * matching — slices by profile, reference target profiles — ignores them here too.
+ */
+const PARSE_ISSUE = /^Unrecognized property '|^The property \S+ must be (?:a JSON Array|an Array|an Object), not |^This property must be a simple value, not |^Error parsing JSON: |^Array cannot be empty|^Array entries cannot be null/u;
+function isParseIssue(i: { message?: string }): boolean {
+  return PARSE_ISSUE.test(String(i.message ?? ""));
+}
+
+/** JsonParser.describe (7.0.1): how the HL7 parser names a JSON value in shape errors. */
+function describeJson(v: unknown): string {
+  if (Array.isArray(v)) return "an Array";
+  if (v === null) return "a Null";
+  if (isObject(v)) return "an Object";
+  return "a Primitive property";
+}
+
 function collectRefPaths(node: any, path: string, out: Array<{ ref: string; path: string }>): void {
   if (Array.isArray(node)) {
     node.forEach((x, i) => collectRefPaths(x, `${path}[${i}]`, out));
@@ -3020,7 +3318,9 @@ function dedupe(issues: Issue[]): Issue[] {
   const seen = new Set<string>();
   const out: Issue[] = [];
   for (const i of issues) {
-    const msgKey = i.code === "invariant" ? i.message.replace(/ \(defined in [^)]*\)$/, "") : i.message.replace(/ \(from [^)]*\)$/, "");
+    // (parity v1) BaseValidator.hasMessage / preciseMatch: the same rule from another profile ("(from X)") is another
+    // message; an invariant is evaluated once per element and expression (its "(defined in …)" is not part of the key)
+    const msgKey = i.code === "invariant" ? i.message.replace(/ \(defined in [^)]*\)$/, "") : i.message;
     const k = `${i.severity}|${i.path}|${i.code}|${msgKey}`;
     if (seen.has(k)) continue;
     seen.add(k);

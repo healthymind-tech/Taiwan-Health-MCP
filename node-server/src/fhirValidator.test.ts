@@ -71,7 +71,9 @@ test("ext-1: an extension with value[x] and child extensions fails; value only p
 
 test("choice type not allowed by the profile is an error; a second choice value is unrecognized", async () => {
   const wrongType = await run(vital({ valueString: "36.5" }));
-  assert.ok(has(wrongType, /type 'string' is not allowed/), JSON.stringify(wrongType));
+  // InstanceValidator.checkChildByDefinition (7.0.1): Extension_PROF_Type, and the value is validated as the profile's type
+  assert.ok(has(wrongType, /definition allows for the type Quantity but found type string/), JSON.stringify(wrongType));
+  assert.ok(!has(wrongType, /must be an Object/), JSON.stringify(wrongType));
   const two = await run({ resourceType: "Observation", status: "final", code: { text: "x" }, valueString: "a", valueBoolean: true });
   assert.ok(has(two, /Unrecognized property 'valueBoolean'/), JSON.stringify(two));
 });
@@ -155,7 +157,7 @@ test("required pattern slice: present → ok, missing → slice error", async ()
 
 test("type-sliced value[x]: slice children (fixed system) apply", async () => {
   const issues = await run(vital({ valueQuantity: { value: 1, system: "http://other.org", code: "Cel" } }));
-  assert.ok(has(issues, /must be 'http:\/\/unitsofmeasure.org'/), JSON.stringify(issues));
+  assert.ok(has(issues, /but is fixed to 'http:\/\/unitsofmeasure.org' in the profile/), JSON.stringify(issues));
 });
 
 test("closed slicing by required binding: member matches; non-member is rejected", async () => {
@@ -229,7 +231,8 @@ test("unknown properties, bad primitives and empty strings", async () => {
 test("extensions: unknown URL and wrong value type are errors", async () => {
   assert.ok(has(await run({ resourceType: "Patient", extension: [{ url: "http://foo.org/ext", valueString: "a" }] }), /could not be found/));
   const wrong = await run({ resourceType: "Patient", extension: [{ url: CORE + "patient-birthPlace", valueString: "a" }] });
-  assert.ok(has(wrong, /type 'string' is not allowed/), JSON.stringify(wrong));
+  // InstanceValidator.checkExtension (Extension_EXT_Type)
+  assert.ok(has(wrong, /The Extension '.*patient-birthPlace' definition allows for the types Address but found type string/), JSON.stringify(wrong));
 });
 
 test("example URLs in Identifier.system are rejected like the HL7 validator", async () => {

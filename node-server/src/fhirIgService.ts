@@ -2170,13 +2170,15 @@ export class FHIRIGService {
     /** With normalize_ids: "ids" (default, 1.7.0 behaviour) or "content" (ids + the v14 content repairs, fhirRepair). */
     repair: RepairMode = "ids",
     timezone: string | null = null,
+    /** (parity v1) The Bundle profile to validate against besides meta.profile (validator_cli `-profile`). */
+    bundleProfile: string | null = null,
   ): Promise<string> {
     if (!(bundle && typeof bundle === "object" && !Array.isArray(bundle)) || bundle.resourceType !== "Bundle") {
       return this.err("INVALID_ARGUMENT", "bundle must be a FHIR Bundle resource");
     }
     let pkg: PackageRow;
     try {
-      pkg = await this.resolve(packageId, version, { metaProfiles: metaProfilesOf(bundle) });
+      pkg = await this.resolve(packageId, version, { canonicals: [bundleProfile], metaProfiles: metaProfilesOf(bundle) });
     } catch (e) {
       if (this.isIGNotFound(e)) return await this.igErr(e);
       const crash = this.validationCrash(e, "fhir_validate_bundle");
@@ -2199,7 +2201,7 @@ export class FHIRIGService {
     }
     let core: Record<string, any>;
     try {
-      core = await this.validateCore(pkg, target, null);
+      core = await this.validateCore(pkg, target, bundleProfile && bundleProfile.trim() ? bundleProfile.trim() : null);
     } catch (e) {
       core = this.validationCrash(e, "fhir_validate_bundle");
     }

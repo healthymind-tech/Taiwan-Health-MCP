@@ -212,7 +212,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.22.0: IG known defects (v17.3, igKnownDefects.ts): an error the IG's own examples of the profile also have (every example fails the same structural rule — ig_selfcheck job) gets `ig_known_defect` {profile, element, examples, failing, total, advice} and a message note naming the optional entry and where its information goes (a CodeableConcept of another entry's profile bound to the same ValueSet); severity / issue set / valid unchanged; suggestions: STU3 renames (rename_property 0.97 / remove_property with the R4 way).
   // 1.22.0 also (ISSUES_v17.4, record checks 1.5.0): stale-value (a value the record states only in clauses marking it old / not applicable / pending) and unconfirmed-as-confirmed for not-established text in diagnosis / required CodeableConcepts.
   // 1.23.0: validator_cli parity on document Bundles (ISSUES_v17.5, IPS): every unresolved reference of a document / message entry is an error on the Bundle ('Can't find … in the bundle (<path>)', with the fullUrl near-miss note); local narrative links that resolve to no anchor are errors (and so fail profile / slice matching); a uri written `url|version` must resolve that version; a coding bound to an enumerated ValueSet in a non-English resource (language zh-TW …) needs the ValueSet's display (SNOMED CT / LOINC); LOINC displays follow the reference server's release (bundled loinc-tx-display, LOINC 2.83) while the local LOINC is older.
-  fhir_validate_bundle: "1.23.0",
+  // 1.24.0: validator parity v1 (ported from validator_cli 7.0.1 source): new argument bundle_profile (as -profile); parser stage rules (ele-1 after unknown / wrong-shaped properties are dropped, a choice type the base does not allow is an Unrecognized property, HL7 JSON shape messages); Extension_PROF_Type / Extension_EXT_Type with the value validated as the profile's type; UNABLE_TO_INFER_CODESYSTEM + NoValid_16 for required code bindings; checkFixedValue (_DT_Fixed_Wrong, TYPE_CHECKS_PATTERN_CC …); a member with a wrong display fails a required binding (Confirm_4a / NoValid_1_CC); a multi-type choice merges the actual type's children; profile matching ignores parser errors; the same rule from another profile is kept (dedupe by full message); a document whose first entry is not a Composition reports it and still checks reachability.
+  fhir_validate_bundle: "1.24.0",
   // 1.6.2: the binding-aware suggestions above (ISSUES_v10 A) also apply to single-resource validation.
   // 1.7.0: the validator v13 rules above (fhir_validate_bundle 1.9.0).
   // 1.8.0 (ISSUES_v15): the record checks of fhir_validate_bundle 1.11.0 on the resource (data.issues, data.record_checks).
@@ -232,7 +233,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.18.0 (ISSUES_v17.2, with source_text): grounding (fhir_check_grounding 1.3.0) and the record checks (1.4.1: ungrounded-value, information-absent, value-from-other-event, incomplete-value, insufficient-precision) exempt the values the IG defines — fixed / pattern, skeleton ig-constants (the payer agency's name / OID), invariant answer literals for value[x]; medication evidence quotes from several-medicine lines are no longer G-CONTEXT-LABEL.
   // 1.19.0: as fhir_validate_bundle 1.22.0 (IG known defects (v17.3, igKnownDefects.ts); STU3 rename suggestions).
   // 1.20.0: validator_cli parity on document Bundles (ISSUES_v17.5, IPS): every unresolved reference of a document / message entry is an error on the Bundle ('Can't find … in the bundle (<path>)', with the fullUrl near-miss note); local narrative links that resolve to no anchor are errors (and so fail profile / slice matching); a uri written `url|version` must resolve that version; a coding bound to an enumerated ValueSet in a non-English resource (language zh-TW …) needs the ValueSet's display (SNOMED CT / LOINC); LOINC displays follow the reference server's release (bundled loinc-tx-display, LOINC 2.83) while the local LOINC is older.
-  fhir_validate_resource: "1.20.0",
+  // 1.21.0: validation as fhir_validate_bundle 1.24.0 (all but bundle_profile: validator parity v1).
+  fhir_validate_resource: "1.21.0",
   // 1.2.0 (all below): provenance.resolved_by / closure_versions; canonical arguments resolve to their
   // owning package when package_id is omitted; "|version" honoured; list/search: all_packages + zero-hit hint;
   // NO_DEFAULT_IG instead of an arbitrary package when no default IG is set.
@@ -345,7 +347,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.16.0 (ISSUES_v17.2, with source_text): grounding (fhir_check_grounding 1.3.0) and the record checks (1.4.1: ungrounded-value, information-absent, value-from-other-event, incomplete-value, insufficient-precision) exempt the values the IG defines — fixed / pattern, skeleton ig-constants (the payer agency's name / OID), invariant answer literals for value[x]; medication evidence quotes from several-medicine lines are no longer G-CONTEXT-LABEL.
   // 1.17.0: content repairs (v17.3 / v17.1): a string for a complex element (Dosage / Annotation / CodeableConcept … → {text}, Narrative → generated XHTML div), a misplaced string moved as an Annotation, an unknown code whose display names exactly one code of its system → that code, STU3 elements R4 renamed (vaccineProtocol → protocolApplied …, fhirR3Renames.ts) renamed and removed ones reported.
   // 1.18.0: validation as fhir_validate_resource 1.20.0; LOINC display repair to the reference server's release.
-  fhir_finalize_resource: "1.18.0",
+  // 1.19.0: validation as fhir_validate_bundle 1.24.0 (validator parity v1).
+  fhir_finalize_resource: "1.19.0",
   // 1.0.0 (authoring/, evaluation v11): the model gives field VALUES, the MCP composes the resource for its profile
   //   (fixed / pattern / defaults / derived / displays / UCUM / ROC dates), validates it, keeps it in a Redis context
   //   (`authoring:ctx:*`, 60-min idle TTL) and assembles the Bundle from keys with deterministic urn:uuid fullUrls
@@ -444,7 +447,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.14.0 (ISSUES_v17.2, with source_text): grounding (fhir_check_grounding 1.3.0) and the record checks (1.4.1: ungrounded-value, information-absent, value-from-other-event, incomplete-value, insufficient-precision) exempt the values the IG defines — fixed / pattern, skeleton ig-constants (the payer agency's name / OID), invariant answer literals for value[x]; medication evidence quotes from several-medicine lines are no longer G-CONTEXT-LABEL.
   // 1.15.0: validation as fhir_validate_resource 1.19.0; content repairs as fhir_finalize_resource 1.17.0.
   // 1.16.0: validation as fhir_validate_resource 1.20.0.
-  fhir_author_resources: "1.16.0",
+  // 1.17.0: validation as fhir_validate_bundle 1.24.0 (validator parity v1).
+  fhir_author_resources: "1.17.0",
   // 1.0.1: action=get results carry the author result's new `notes` (fhir_author_resources 1.1.0); otherwise unchanged.
   fhir_context: "1.0.1",
   // 1.1.0: new `site_config` (merged with the context's) passed to the grounding engine with source_text, so facility
@@ -483,7 +487,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.14.0 (ISSUES_v17.2, with source_text): grounding (fhir_check_grounding 1.3.0) and the record checks (1.4.1: ungrounded-value, information-absent, value-from-other-event, incomplete-value, insufficient-precision) exempt the values the IG defines — fixed / pattern, skeleton ig-constants (the payer agency's name / OID), invariant answer literals for value[x]; medication evidence quotes from several-medicine lines are no longer G-CONTEXT-LABEL.
   // 1.15.0: finalize as fhir_finalize_bundle 1.11.0 (document completion); validation as fhir_validate_bundle 1.22.0.
   // 1.16.0: finalize as fhir_finalize_bundle 1.12.0; validation as fhir_validate_bundle 1.23.0.
-  fhir_assemble_bundle: "1.16.0",
+  // 1.17.0: validation as fhir_validate_bundle 1.24.0 (validator parity v1).
+  fhir_assemble_bundle: "1.17.0",
   // 1.0.0 (ISSUES_v9 R1): deterministic Bundle finalizer — fullUrl-uuid / reference-rewire / resource-id (mandatory),
   // bundle-type / document-order (profile-driven); UUID v5 seeded by (resourceType, original fullUrl, resource.id, entry
   // index) + a content salt; references found through StructureDefinition snapshots; duplicates / ambiguity reported.
@@ -546,7 +551,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.10.0 (ISSUES_v17.2, with source_text): grounding (fhir_check_grounding 1.3.0) and the record checks (1.4.1: ungrounded-value, information-absent, value-from-other-event, incomplete-value, insufficient-precision) exempt the values the IG defines — fixed / pattern, skeleton ig-constants (the payer agency's name / OID), invariant answer literals for value[x]; medication evidence quotes from several-medicine lines are no longer G-CONTEXT-LABEL.
   // 1.11.0: content repairs (v17.3 / v17.1): a string for a complex element (Dosage / Annotation / CodeableConcept … → {text}, Narrative → generated XHTML div), a misplaced string moved as an Annotation, an unknown code whose display names exactly one code of its system → that code, STU3 elements R4 renamed (vaccineProtocol → protocolApplied …, fhirR3Renames.ts) renamed and removed ones reported; document Bundles (v17.1 R1 / R2, fhirRepair/document.ts): identifier (UUID v5 of the Composition), timestamp (Composition.date when an instant), Composition.subject / author (the one candidate), meta.profile from the Bundle profile's composition slice, entries unreachable from the Composition placed into the one fitting section slice (profile > pinned codes / required code binding > type; a required empty section first) with the section's code display, title and generated text; required missing sections and ambiguous entries reported; narratives: missing div / XHTML namespace / invalid status repaired.
   // 1.12.0: finalize (ISSUES_v17.5): dead local narrative links unwrapped (text kept), Coding.system `url|version` → system + version, section codes pinned by the Composition profile get their terminology display, sections with an emptyReason take no entries; LOINC displays repaired to the reference server's release.
-  fhir_finalize_bundle: "1.12.0",
+  // 1.13.0: validation as fhir_validate_bundle 1.24.0 (validator parity v1).
+  fhir_finalize_bundle: "1.13.0",
   // ── 2026-10-19 actionable errors (additive fields only; successful outputs unchanged) ──
   // search_medical_codes 1.2.1: IG_UNAVAILABLE adds `hint`.
   // FHIR IG tools above (+.0.1): error envelopes add error.hint; IG_NOT_FOUND / NO_DEFAULT_IG add
