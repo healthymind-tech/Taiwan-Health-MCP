@@ -1367,8 +1367,8 @@ export class InstanceValidator {
       if (m) unrecognised.push({ path: i.path, name: m[1] });
     }
     const syntax = dropUnprocessed(jsonSyntaxIssues(root, rt.value, !!opts.allowJsonComments), unrecognised).map((s): Issue => ({ severity: s.severity, path: s.path, code: s.code, message: s.message }));
-    // the parser logs every mark (ParserBase.logError appends, no hasMessage de-duplication)
-    return [...syntax, ...issues];
+    // one issue per (path, message): the official outcome lists a repeated mark once (three "id" names → one duplicate)
+    return dedupe([...syntax, ...issues]);
   }
 
   /**
