@@ -260,7 +260,8 @@ test("reference target type is checked when the target resolves inside a Bundle"
       { fullUrl: "urn:uuid:0000000b-0000-4000-8000-000000000000", resource: { resourceType: "Patient" } },
     ],
   };
-  assert.ok(has(await run(bundle), /is not a valid Target/));
+  // InstanceValidator.checkReference (7.0.1, InstanceValidator.java:5447): Reference_REF_BadTargetType
+  assert.ok(has(await run(bundle), /Invalid Resource target type\. Found Patient, but expected one of \(\[Organization\]\)/));
 });
 
 // ---- Bundle reference resolution (HL7 resolveInBundle semantics) ---------------
@@ -306,7 +307,8 @@ test("relative reference resolves against the entry's RESTful fullUrl (and is th
       { fullUrl: fu + "Patient/p2", resource: P("p2") },
     ]);
   // Resolves → Patient is not a valid Organization target.
-  assert.ok(has(await run(bundle("http://ex.org/fhir/")), /is not a valid Target/));
+  // InstanceValidator.java:5447 Reference_REF_BadTargetType (was the BadTargetType2 wording)
+  assert.ok(has(await run(bundle("http://ex.org/fhir/")), /Invalid Resource target type\. Found Patient/));
 });
 
 test("relative reference does NOT resolve by type/id when fullUrls are urn:uuid (HL7: warning hint only)", async () => {
@@ -386,7 +388,9 @@ test("document: Composition references must resolve inside the bundle", async ()
 
 test("document: orphan entries are errors; backward-only links warn; Provenance is fine", async () => {
   const orphan = await run(B("document", [{ fullUrl: U(3), resource: comp() }, { fullUrl: U(1), resource: P() }, { fullUrl: U(4), resource: O("o4") }]));
-  assert.ok(errors(orphan).some((i) => i.path === "Bundle.entry[2]" && /isn't reachable by traversing links \(forward or backward\) from the Composition/.test(i.message)));
+  // BundleValidator.checkAllInterlinked (7.0.1, BundleValidator.java:782) names entry[i + 1] — validator_cli's
+  // off-by-one, kept so the builtin path equals the official one (officialValidator.relocateBundleIssues fixes it)
+  assert.ok(errors(orphan).some((i) => i.path === "Bundle.entry[3]" && /isn't reachable by traversing links \(forward or backward\) from the Composition/.test(i.message)));
   const backLinked = await run(
     B("document", [{ fullUrl: U(3), resource: comp() }, { fullUrl: U(1), resource: O("o1") }, { fullUrl: U(4), resource: P("p4", { managingOrganization: { reference: U(1) } }) }]),
   );

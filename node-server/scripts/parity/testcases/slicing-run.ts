@@ -16,7 +16,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { InstanceValidator, type CodeCheck, type ValidatorResolver } from "../../../src/fhirValidator.js";
 import { composeContains, findConcept, indexCodeSystem, type CodeSystemIndex, type TerminologyDeps } from "../../../src/fhirCodeSystem.js";
-import { parseXml, XmlToJson } from "./fhirXml.js";
+import { parseXml, XmlToJson } from "./fhirXmlSlicing.js";
 import { SnapshotGenerator } from "./snapshotGen.js";
 
 type Json = Record<string, any>;

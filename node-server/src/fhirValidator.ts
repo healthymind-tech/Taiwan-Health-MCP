@@ -629,12 +629,105 @@ interface BundleCtx {
   entries: BundleEntryCtx[];
   byFullUrl: Map<string, BundleEntryCtx[]>;
   entryOf: Map<object, BundleEntryCtx>;
+  /** Every Bundle.entry (also those without a resource), in order — what BundleValidator iterates. */
+  raw: RawBundleEntry[];
+  /** BaseValidator.resolveInBundle maps: fullUrl (null for none; `/_history/v` added for meta.versionId) → entries, Type/id → entries. */
+  map: Map<string | null, RawBundleEntry[]>;
+  relMap: Map<string, RawBundleEntry[]>;
+  /** Path of the Bundle (the root, or a nested Bundle inside an entry / contained). */
+  path: string;
+}
+
+interface RawBundleEntry {
+  index: number;
+  entry: Record<string, any>;
+  fullUrl: string | null;
+  resource: Record<string, any> | null;
 }
 
 /** Bundle types whose entries may omit fullUrl (HL7: "Except for transactions and batches"). */
 const FULLURL_OPTIONAL_BUNDLE_TYPES = ["transaction", "batch", "transaction-response", "batch-response"];
 const ABSOLUTE_URL = /^[A-Za-z][A-Za-z0-9+.-]*:/;
 const RESTFUL_REF = /^([A-Z][A-Za-z]+)\/([A-Za-z0-9\-.]{1,64})(?:\/_history\/([A-Za-z0-9\-.]{1,64}))?$/;
+
+/** R4 resource type names (IWorkerContext.getResourceNames for hl7.fhir.r4.core 4.0.1). */
+const R4_RESOURCE_NAMES = new Set(
+  (
+    "Account ActivityDefinition AdverseEvent AllergyIntolerance Appointment AppointmentResponse AuditEvent Basic Binary " +
+    "BiologicallyDerivedProduct BodyStructure Bundle CapabilityStatement CarePlan CareTeam CatalogEntry ChargeItem " +
+    "ChargeItemDefinition Claim ClaimResponse ClinicalImpression CodeSystem Communication CommunicationRequest " +
+    "CompartmentDefinition Composition ConceptMap Condition Consent Contract Coverage CoverageEligibilityRequest " +
+    "CoverageEligibilityResponse DetectedIssue Device DeviceDefinition DeviceMetric DeviceRequest DeviceUseStatement " +
+    "DiagnosticReport DocumentManifest DocumentReference EffectEvidenceSynthesis Encounter Endpoint EnrollmentRequest " +
+    "EnrollmentResponse EpisodeOfCare EventDefinition Evidence EvidenceVariable ExampleScenario ExplanationOfBenefit " +
+    "FamilyMemberHistory Flag Goal GraphDefinition Group GuidanceResponse HealthcareService ImagingStudy Immunization " +
+    "ImmunizationEvaluation ImmunizationRecommendation ImplementationGuide InsurancePlan Invoice Library Linkage List " +
+    "Location Measure MeasureReport Media Medication MedicationAdministration MedicationDispense MedicationKnowledge " +
+    "MedicationRequest MedicationStatement MedicinalProduct MedicinalProductAuthorization MedicinalProductContraindication " +
+    "MedicinalProductIndication MedicinalProductIngredient MedicinalProductInteraction MedicinalProductManufactured " +
+    "MedicinalProductPackaged MedicinalProductPharmaceutical MedicinalProductUndesirableEffect MessageDefinition " +
+    "MessageHeader MolecularSequence NamingSystem NutritionOrder Observation ObservationDefinition OperationDefinition " +
+    "OperationOutcome Organization OrganizationAffiliation Parameters Patient PaymentNotice PaymentReconciliation Person " +
+    "PlanDefinition Practitioner PractitionerRole Procedure Provenance Questionnaire QuestionnaireResponse RelatedPerson " +
+    "RequestGroup ResearchDefinition ResearchElementDefinition ResearchStudy ResearchSubject RiskAssessment " +
+    "RiskEvidenceSynthesis Schedule SearchParameter ServiceRequest Slot Specimen SpecimenDefinition StructureDefinition " +
+    "StructureMap Subscription Substance SubstanceNucleicAcid SubstancePolymer SubstanceProtein " +
+    "SubstanceReferenceInformation SubstanceSourceMaterial SubstanceSpecification SupplyDelivery SupplyRequest Task " +
+    "TerminologyCapabilities TestReport TestScript ValueSet VerificationResult VisionPrescription"
+  ).split(" "),
+);
+
+/** BaseValidator.urlRegex (URI_REGEX_XVER with the R4 resource names), matched as a whole (String.matches). */
+const BUNDLE_URL_REGEX = new RegExp(
+  `^((http|https):\\/\\/([A-Za-z0-9\\\\.:%$\\-_]*\\/)*?)?(${[...R4_RESOURCE_NAMES].join("|")})\\/[A-Za-z0-9\\-.]{1,64}(\\/_history\\/[A-Za-z0-9\\-.]{1,64})?$`,
+  "u",
+);
+
+/** Utilities.isAbsoluteUrl (7.0.1). */
+function isAbsoluteUrlJava(ref: string | null | undefined): boolean {
+  if (typeof ref !== "string" || !ref.includes(":")) return false;
+  const scheme = ref.slice(0, ref.indexOf(":"));
+  const details = ref.slice(ref.indexOf(":") + 1);
+  const token = /^[A-Za-z][A-Za-z0-9_[\]]*$/u.test(scheme);
+  return (
+    (["http", "https", "urn", "file:"].includes(scheme) || (token && scheme === scheme.toLowerCase()) || /^urn:(iso|iso-iec|iso-cie|iso-astm|iso-ieee|iec):/u.test(ref)) &&
+    details.length > 0 &&
+    !details.includes(" ")
+  );
+}
+
+/** Utilities.isValidId. */
+function isValidIdJava(id: string | undefined): boolean {
+  return typeof id === "string" && /^[A-Za-z0-9\-.]{1,64}$/u.test(id);
+}
+
+/** java.lang.String.hashCode. */
+function javaStringHash(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
+  return h;
+}
+
+/** HashSet<String>.toString() iteration order (default capacity 16, load factor 0.75, insertion order within a bucket). */
+function javaHashSetToString(values: string[]): string {
+  const uniq: string[] = [];
+  for (const v of values) if (!uniq.includes(v)) uniq.push(v);
+  let cap = 16;
+  while (uniq.length > cap * 0.75) cap *= 2;
+  const bucket = (s: string): number => {
+    const h = javaStringHash(s);
+    return (h ^ (h >>> 16)) & (cap - 1);
+  };
+  const sorted = uniq.map((v, i) => ({ v, i, b: bucket(v) })).sort((a, b) => a.b - b.b || a.i - b.i);
+  return `[${sorted.map((x) => x.v).join(", ")}]`;
+}
+
+/** Java String.split(regex) on a literal one-char separator: trailing empty strings removed. */
+function javaSplit(s: string, sep: string): string[] {
+  const parts = s.split(sep);
+  while (parts.length > 1 && parts[parts.length - 1] === "") parts.pop();
+  return parts;
+}
 
 interface Item {
   value: any;
@@ -789,6 +882,8 @@ export class InstanceValidator {
   private codeCache = new Map<string, Promise<CodeCheck>>();
   /** Values that matched a slice (their url / discriminators are known to the slice definition). */
   private sliceMatched = new WeakSet<object>();
+  /** Reference elements a Bundle resolution message was already reported for (UserDataNames.validation_bundle_error). */
+  private bundleErrorFlag = new WeakSet<object>();
 
   constructor(private readonly resolver: ValidatorResolver) {}
 
@@ -805,8 +900,9 @@ export class InstanceValidator {
     const extra = (opts.profiles || []).map((p) => String(p || "").trim()).filter((p) => p !== "");
     this.boundValueSets = new Set();
     this.pendingVsSystems = false;
+    this.bundleErrorFlag = new WeakSet();
     await this.validateResource(rctx, resource.resourceType, extra, issues, 0);
-    if (bundle) this.validateBundleRules(bundle, resource.resourceType, issues);
+    if (bundle) await this.validateBundleRules(bundle, resource.resourceType, issues);
     await this.structuralPass(resource, resource.resourceType, issues, 0);
     await this.settleVsSystems(issues);
     return dedupe(issues);
@@ -894,10 +990,36 @@ export class InstanceValidator {
     return p;
   }
 
-  private bundleCtx(bundle: Record<string, any>): BundleCtx {
+  private bundleCtx(bundle: Record<string, any>, path = "Bundle"): BundleCtx {
     const entries: BundleEntryCtx[] = [];
     const byFullUrl = new Map<string, BundleEntryCtx[]>();
     const entryOf = new Map<object, BundleEntryCtx>();
+    const raw: RawBundleEntry[] = [];
+    const map = new Map<string | null, RawBundleEntry[]>();
+    const relMap = new Map<string, RawBundleEntry[]>();
+    const add = <K,>(m: Map<K, RawBundleEntry[]>, k: K, v: RawBundleEntry): void => {
+      const l = m.get(k);
+      if (l) l.push(v);
+      else m.set(k, [v]);
+    };
+    (Array.isArray(bundle.entry) ? bundle.entry : []).forEach((e: any, index: number) => {
+      if (!isObject(e)) return;
+      // BaseValidator.resolveInBundle: fullUrl → entries, Type/id → entries, plus `/_history/<meta.versionId>` keys
+      const fu = typeof e.fullUrl === "string" ? e.fullUrl : null;
+      const res = isObject(e.resource) ? e.resource : null;
+      const re: RawBundleEntry = { index, entry: e, fullUrl: fu, resource: res };
+      raw.push(re);
+      add(map, fu, re);
+      if (res) {
+        const rl = typeof res.id === "string" ? `${res.resourceType}/${res.id}` : null;
+        if (rl) add(relMap, rl, re);
+        const vid = isObject(res.meta) && (typeof res.meta.versionId === "string" || typeof res.meta.versionId === "number") ? String(res.meta.versionId) : null;
+        if (vid) {
+          add(map, `${fu}/_history/${vid}`, re);
+          if (rl) add(relMap, `${rl}/_history/${vid}`, re);
+        }
+      }
+    });
     (Array.isArray(bundle.entry) ? bundle.entry : []).forEach((e: any, index: number) => {
       const r = isObject(e) ? e.resource : null;
       if (!isObject(r)) return;
@@ -911,7 +1033,7 @@ export class InstanceValidator {
         byFullUrl.set(fullUrl, list);
       }
     });
-    return { bundle, type: typeof bundle.type === "string" ? bundle.type : "", entries, byFullUrl, entryOf };
+    return { bundle, type: typeof bundle.type === "string" ? bundle.type : "", entries, byFullUrl, entryOf, raw, map, relMap, path };
   }
 
   private anchorCache = new WeakMap<object, Set<string>>();
@@ -944,39 +1066,225 @@ export class InstanceValidator {
   }
 
   /**
-   * Resolve a reference inside a Bundle the way the HL7 validator does
-   * (resolveInBundle): absolute references (urn:uuid:, http(s)://...) match an
-   * entry's fullUrl exactly; relative references (`Type/id[/_history/v]`) are
-   * made absolute against the referring entry's RESTful fullUrl and then matched
-   * the same way. There is no type/id fallback: an entry whose fullUrl does not
-   * match is NOT the target (the HL7 validator only hints at the near-miss).
+   * Port of BaseValidator.resolveInBundle(bundle, entries, ref, fullUrl, type, id, stack, errors, name, source,
+   * isWarning, isNLLink) (7.0.1) — the resolution BundleValidator uses (document / message references,
+   * checkAllInterlinked): absolute references match a fullUrl exactly; relative ones are made absolute against the
+   * source entry's RESTful fullUrl (urlRegex + ends with type/id); otherwise the fullUrl-less entries are the
+   * candidates (map key null, as in Java). Messages are reported once per source element (validation_bundle_error).
    */
-  private resolveInBundle(ref: string, b: BundleCtx, from: BundleEntryCtx | null): BundleEntryCtx | null {
-    let url: string | null = null;
-    if (ABSOLUTE_URL.test(ref)) url = ref;
-    else {
-      const m = RESTFUL_REF.exec(ref);
-      const fu = from?.fullUrl;
-      const self = from ? `${from.resource.resourceType}/${from.resource.id}` : null;
-      if (m && fu && self && /^https?:\/\//.test(fu) && fu.endsWith("/" + self)) {
-        url = fu.slice(0, fu.length - self.length) + ref;
+  private async resolveInBundle(
+    b: BundleCtx,
+    ref: string,
+    fullUrl: string | null,
+    type: string,
+    id: string | null,
+    path: string | null,
+    issues: Issue[] | null,
+    name: string,
+    source: object | null,
+    isWarning: boolean,
+    isNLLink: boolean,
+  ): Promise<RawBundleEntry | null> {
+    const canReport = (): boolean => path !== null && issues !== null && !(source && this.bundleErrorFlag.has(source));
+    const flag = (): void => {
+      if (source) this.bundleErrorFlag.add(source);
+    };
+    const report = (severity: Issue["severity"], code: string, message: string): void => {
+      issues!.push({ severity, path: path!, code, message });
+    };
+    let fragment: string | null = null;
+    if (ref.includes("#")) {
+      fragment = ref.slice(ref.indexOf("#") + 1);
+      ref = ref.slice(0, ref.indexOf("#"));
+    }
+    if (isAbsoluteUrlJava(ref)) {
+      const el = b.map.get(ref);
+      if (!el) {
+        // not a complaint when the URL is a known conformance resource, or a RESTful URL of a canonical resource type
+        let ok = !!this.resolver.definitionExists && (await this.resolver.definitionExists(ref).catch(() => false));
+        if (!ok && BUNDLE_URL_REGEX.test(ref)) {
+          const p = javaSplit(ref, "/");
+          ok = CANONICAL_RESOURCE_TYPES.has(p[p.length - 2]);
+        }
+        if (!ok && canReport()) {
+          flag();
+          report(isWarning ? "information" : "error", "not-found", `Can't find '${ref}' in the bundle (${name})`);
+        }
+        return null;
+      } else if (el.length === 1) {
+        if (fragment !== null && issues && path !== null) {
+          const n = countFragmentMatches(el[0].entry, fragment);
+          if (n === 0) {
+            flag();
+            report(isNLLink ? "information" : "error", "not-found", `Can't find '${ref}' in the bundle (${fragment})`);
+          } else if (n > 1) {
+            flag();
+            report("error", "invalid", `Found ${n} matches for fragment ${fragment} in resource '${ref}' in the bundle (${name})`);
+          }
+        }
+        return el[0];
+      } else {
+        if (canReport()) {
+          flag();
+          report("error", "invalid", `Found ${el.length} matches for '${ref}' in the bundle (${name})`);
+        }
+        return null;
       }
     }
-    if (!url) return null;
-    const hit = b.byFullUrl.get(url);
-    if (hit && hit.length) return hit[0];
-    // Version-specific reference: fullUrl without the version + matching meta.versionId.
-    const v = /^(.*)\/_history\/([^/]+)$/.exec(url);
-    if (v) {
-      for (const e of b.byFullUrl.get(v[1]) || []) {
-        if (isObject(e.resource.meta) && String(e.resource.meta.versionId) === v[2]) return e;
+    let u: string | null = null;
+    if (fullUrl !== null && BUNDLE_URL_REGEX.test(fullUrl) && fullUrl.endsWith(`${type}/${id}`)) {
+      u = fullUrl.slice(0, fullUrl.length - `${type}/${id}`.length) + ref;
+    }
+    let el = b.map.get(u);
+    if (el && el.length > 0) {
+      if (el.length === 1) return el[0];
+      if (canReport()) {
+        flag();
+        report("error", "invalid", `Found ${el.length} matches for '${ref}' in the bundle (${name})`);
+      }
+      return null;
+    }
+    const parts = javaSplit(ref, "/");
+    if (parts.length >= 2 && R4_RESOURCE_NAMES.has(parts[0])) {
+      el = b.relMap.get(`${parts[0]}/${parts[1]}`);
+      if (el) {
+        if (canReport()) {
+          // (ALLOW_TRANSIENT_BASE_REFERENCES is false in 7.0.1)
+          flag();
+          const tl = [...new Set(el.map((e) => e.fullUrl ?? "<missing>"))].sort().join(",");
+          const one = el.length === 1;
+          const msg =
+            u === null
+              ? one
+                ? `Can't find '${ref}' in the bundle (${name}). Note that there is a resource in the bundle with the same type and id, but it does not match because of the fullUrl based rules around matching relative references. Found '${tl}', but it doesn't match because of the source fullUrl '${fullUrl}'`
+                : `Can't find '${ref}' in the bundle (${name}). Note that there are ${el.length} resources in the bundle with the same type and id, but they do not match because of the fullUrl based rules around matching relative references. Found '${tl}', but none of them match because of the source fullUrl '${fullUrl}'`
+              : one
+                ? `Can't find '${ref}' in the bundle (${name}). Note that there is a resource in the bundle with the same type and id, but it does not match because of the fullUrl based rules around matching relative references (must be '${u}', but found '${tl}')`
+                : `Can't find '${ref}' in the bundle (${name}). Note that there are ${el.length} resources in the bundle with the same type and id, but they do not match because of the fullUrl based rules around matching relative references (must be '${u}', but found these: ${tl})`;
+          report("error", "invalid", msg);
+        }
+      } else if (canReport()) {
+        flag();
+        report(isWarning ? "information" : "error", "not-found", `Can't find '${ref}' in the bundle (${name})`);
       }
     }
     return null;
   }
 
-  /** Resolve a reference string from `from` (contained siblings, then the Bundle). */
-  private resolveRef(ref: string, rctx: ResourceCtx): Record<string, any> | null {
+  /**
+   * Port of BaseValidator.getFromBundle (7.0.1) — the resolution InstanceValidator.checkReference uses (via
+   * localResolve) for a reference inside a Bundle entry: the target URL is the reference itself when absolute, else
+   * the source fullUrl's base (all but its last two `/` segments, or a `urn:…:` prefix) + the reference; an entry
+   * matches on fullUrl (and meta.versionId for `/_history/`). Messages only when `issues` is given.
+   */
+  private getFromBundle(
+    b: BundleCtx,
+    ref: string,
+    fullUrl: string | null,
+    issues: Issue[] | null,
+    path: string,
+  ): RawBundleEntry | null {
+    const type = b.type;
+    const isTransaction = type === "transaction" || type === "batch";
+    const push = (severity: Issue["severity"], code: string, message: string): void => {
+      if (issues) issues.push({ severity, path, code, message });
+    };
+    let targetUrl: string;
+    let version = "";
+    let resourceType: string | null = null;
+    if (ref.startsWith("http:") || ref.startsWith("urn:") || isAbsoluteUrlJava(ref)) {
+      if (ref.includes("/_history/")) {
+        // (sic) Java takes one character less than the base URL here, so a versioned absolute reference never matches
+        targetUrl = ref.slice(0, ref.indexOf("/_history/") - 1);
+        version = ref.slice(ref.indexOf("/_history/") + 10);
+      } else targetUrl = ref;
+    } else if (fullUrl === null) {
+      if (!(type === "batch-response" || type === "transaction-response" || path.startsWith("Bundle.signature") || (b.path === "Bundle" && path.startsWith(`${ROOT_TOKEN}.signature`)))) {
+        push("error", "required", "Relative Reference appears inside Bundle whose entry is missing a fullUrl");
+      }
+      return null;
+    } else if ((ref.match(/\//gu)?.length ?? 0) !== 1 && (ref.match(/\//gu)?.length ?? 0) !== 3) {
+      if (isTransaction) {
+        if (!isSearchUrl(ref)) push("error", "invalid", `Relative URLs must be of the format [ResourceName]/[id], or a search URL is allowed ([type]?parameters. Encountered ${ref})`);
+      } else {
+        push("error", "invalid", `Relative URLs must be of the format [ResourceName]/[id]. Encountered ${ref}`);
+      }
+      return null;
+    } else {
+      let base = "";
+      if (fullUrl.startsWith("urn")) {
+        const parts = javaSplit(fullUrl, ":");
+        for (let i = 0; i < parts.length - 1; i++) base = base + parts[i] + ":";
+      } else {
+        const parts = javaSplit(fullUrl, "/");
+        for (let i = 0; i < parts.length - 2; i++) base = base + parts[i] + "/";
+      }
+      if (ref.includes("/_history/")) {
+        version = ref.slice(ref.indexOf("/_history/") + 10);
+        const rb = javaSplit(ref.slice(0, ref.indexOf("/_history/")), "/");
+        resourceType = rb[0];
+        targetUrl = base + rb[0] + "/" + rb[1];
+      } else if (base.startsWith("urn")) {
+        const rp = javaSplit(ref, "/");
+        resourceType = rp[0];
+        targetUrl = base + rp[1];
+      } else {
+        targetUrl = base + ref;
+      }
+    }
+    let match: RawBundleEntry | null = null;
+    for (const we of b.raw) {
+      if (targetUrl !== we.fullUrl) continue;
+      const r = we.resource;
+      if (version === "") {
+        if (match !== null) push("error", "forbidden", `Multiple matches in bundle for reference ${ref}`);
+        match = we;
+      } else if (r) {
+        const meta = isObject(r.meta) ? r.meta : null;
+        if (!meta) {
+          // getChildren(META).get(0) throws: the catch reports the missing versionId
+          push("warning", "required", `Entries matching fullURL ${targetUrl} should declare meta/versionId because there are version-specific references`);
+        } else if (meta.versionId !== undefined && version === String(meta.versionId)) {
+          if (match !== null) push("error", "forbidden", `Multiple matches in bundle for reference ${ref}`);
+          match = we;
+        }
+      }
+    }
+    if (match && resourceType !== null && match.resource && match.resource.resourceType !== resourceType) {
+      push("error", "required", `Matching reference for reference ${ref} has resourceType ${match.resource.resourceType}`);
+    }
+    if (match === null) {
+      if (ref.startsWith("urn")) push("warning", "required", `URN reference is not locally contained within the bundle ${ref}`);
+      if (!isAbsoluteUrlJava(ref)) {
+        const p = javaSplit(ref, "/");
+        const ml: RawBundleEntry[] = [];
+        if (p.length >= 2 && R4_RESOURCE_NAMES.has(p[0]) && isValidIdJava(p[1])) {
+          for (const we of b.raw) if (we.resource && we.resource.resourceType === p[0] && we.resource.id === p[1]) ml.push(we);
+        }
+        if (ml.length > 1) {
+          push("warning", "required", `The bundle contains no match for ${targetUrl} by the rules of Bundle reference resolution, but it has multiple resources that match ${ref} by resource type and id`);
+        }
+        for (const e of ml) {
+          push(
+            "warning",
+            "required",
+            e.fullUrl === null
+              ? `Entry ${e.index} matches the reference ${ref} by type and id but it does not match the full target URL ${targetUrl} by Bundle resolution rules`
+              : `Entry ${e.index} matches the reference ${ref} by type and id but its fullUrl ${e.fullUrl} does not match the full target URL ${targetUrl} by Bundle resolution rules`,
+          );
+        }
+      }
+    }
+    return match;
+  }
+
+  /**
+   * Port of InstanceValidator.localResolve (7.0.1, R4: no R5 relative-reference policy): `#id` against the
+   * container's contained resources; anything else through the enclosing Bundle (getFromBundle with the entry's
+   * fullUrl; an entry without fullUrl reports Bundle_BUNDLE_Entry_NoFullUrl outside batch / transaction responses).
+   * Messages only when `issues` / `path` are given.
+   */
+  private localResolve(ref: string, rctx: ResourceCtx, path: string | null, issues: Issue[] | null): Record<string, any> | null {
     if (ref.startsWith("#")) {
       const container = rctx.container || rctx.resource;
       if (ref === "#") return container;
@@ -988,7 +1296,17 @@ export class InstanceValidator {
     }
     const b = rctx.bundle;
     if (!b) return null;
-    return this.resolveInBundle(ref, b, rctx.entry ?? null)?.resource ?? null;
+    const entry = rctx.entry ?? null;
+    const fullUrl = entry ? entry.fullUrl : null;
+    if (entry && fullUrl === null && issues && path !== null && b.type !== "batch-response" && b.type !== "transaction-response") {
+      issues.push({ severity: "error", path: `${b.path}.entry[${entry.index}]`, code: "required", message: "Bundle entry missing fullUrl" });
+    }
+    return this.getFromBundle(b, ref, fullUrl, issues, path ?? "")?.resource ?? null;
+  }
+
+  /** Resolve a reference string from `rctx` without reporting (contained siblings, then the Bundle). */
+  private resolveRef(ref: string, rctx: ResourceCtx): Record<string, any> | null {
+    return this.localResolve(ref, rctx, null, null);
   }
 
   /**
@@ -1016,166 +1334,333 @@ export class InstanceValidator {
     return null;
   }
 
-  /** Entry whose fullUrl/type/id match a relative reference by type and id only (near-miss hint). */
-  private typeIdNearMiss(ref: string, b: BundleCtx): BundleEntryCtx | null {
-    const m = RESTFUL_REF.exec(ref);
-    if (!m) return null;
-    return b.entries.find((e) => e.resource.resourceType === m[1] && e.resource.id === m[2]) ?? null;
-  }
-
   /**
-   * Bundle-level rules of the HL7 BundleValidator that are not expressed as
-   * FHIRPath invariants: entry fullUrl presence, document / message reference
-   * closure, and orphan entries.
+   * Port of BundleValidator.validateBundle (7.0.1, R4; signatures and -bundle rules not ported): Bundle.link rules
+   * per Bundle type, document / message first entry and references (validateDocument / validateMessage →
+   * resolveInBundle), checkAllInterlinked, searchset rules, and per entry the fullUrl rules (BUNDLE_ENTRY_URL_*,
+   * canonical url vs fullUrl, fullUrl required). Paths are the official ones, including validator_cli's quirks
+   * (the first entry is pushed with index 1, `entry[0]` for the fullUrl rules, `entry[i+1]` for reachability);
+   * officialValidator.relocateBundleIssues names the real element for the MCP output.
    */
-  private validateBundleRules(b: BundleCtx, path: string, issues: Issue[]): void {
+  private async validateBundleRules(b: BundleCtx, path: string, issues: Issue[]): Promise<void> {
     const type = b.type;
-    for (const e of b.entries) {
-      const epath = `${path}.entry[${e.index}]`;
-      if (e.fullUrl) {
-        const m = /^https?:\/\/.+\/([A-Z][A-Za-z]+)\/([A-Za-z0-9\-.]{1,64})(?:\/_history\/[^/]+)?$/.exec(e.fullUrl);
-        const rt = e.resource.resourceType;
-        const id = e.resource.id;
-        if (m && typeof id === "string" && id && (m[1] !== rt || m[2] !== id)) {
-          issues.push({
-            severity: "error",
-            path: epath,
-            code: "invalid",
-            message: `The fullUrl '${e.fullUrl}' looks like a RESTful server URL, so it must end with the correct type and id (/${rt}/${id})`,
-          });
-        }
-        continue;
+    const entries = b.raw;
+    const links: any[] = Array.isArray(b.bundle.link) ? b.bundle.link : [];
+    links.forEach((l, i) => {
+      if (isObject(l)) this.validateBundleLink(b, links, l, `${path}.link[${i}]`, type, issues);
+    });
+    if (entries.length === 0) {
+      if (type === "document" || type === "message") {
+        issues.push({ severity: "error", path, code: "invalid", message: "Documents or Messages must contain at least one entry" });
       }
-      if (!FULLURL_OPTIONAL_BUNDLE_TYPES.includes(type)) {
+    } else {
+      const first = entries[0];
+      const firstPath = `${path}.entry[1]`; // (sic) stack.push(firstEntry, 1, …)
+      const fullUrl = first.fullUrl;
+      if (type === "document") {
+        if (!first.resource) issues.push({ severity: "error", path: `${path}.entry[0]`, code: "invalid", message: "No resource on first entry" });
+        else await this.validateDocument(b, first.resource, `${firstPath}.resource`, fullUrl, issues);
+        await this.checkAllInterlinked(b, path, false, issues);
+      } else if (type === "message") {
+        if (!first.resource) issues.push({ severity: "error", path: `${path}.entry[0]`, code: "invalid", message: "No resource on first entry" });
+        else {
+          await this.validateMessage(b, first.resource, `${firstPath}.resource`, fullUrl, issues);
+          await this.checkAllInterlinked(b, path, true, issues);
+        }
+      } else if (type === "searchset") {
+        this.checkSearchSet(b, path, links, issues);
+      }
+    }
+    const fullUrlOptional = FULLURL_OPTIONAL_BUNDLE_TYPES.includes(type);
+    for (const e of entries) {
+      const fullUrl = e.fullUrl;
+      const res = e.resource;
+      const url = res && typeof res.url === "string" ? res.url : null;
+      const id = res && typeof res.id === "string" ? res.id : null;
+      const rtype = res ? String(res.resourceType) : null;
+      const p0 = `${path}.entry[0]`; // (sic) stack.addToLiteralPath(ENTRY, PATH_ARG)
+      if (fullUrl) {
+        if (isAbsoluteUrlJava(fullUrl)) {
+          if (rtype !== null && BUNDLE_URL_REGEX.test(fullUrl)) {
+            if (id === null) {
+              issues.push({ severity: "error", path: p0, code: "invalid", message: `The fullUrl '${fullUrl}' looks like a RESTful server URL, but the resource has no id` });
+            } else if (!fullUrl.endsWith(`/${rtype}/${id}`)) {
+              issues.push({ severity: "error", path: p0, code: "invalid", message: `The fullUrl '${fullUrl}' looks like a RESTful server URL, so it must end with the correct type and id (/${rtype}/${id})` });
+            }
+          }
+        } else {
+          issues.push({ severity: "error", path: p0, code: "invalid", message: `The fullUrl must be an absolute URL (not '${fullUrl}')` });
+        }
+      }
+      if (url !== null) {
+        const v2v3 = url.startsWith("http://hl7.org/fhir/v3/") || url.startsWith("http://hl7.org/fhir/v2/");
+        if (url === fullUrl && !(BUNDLE_URL_REGEX.test(url) && url.endsWith(`/${id}`)) && !v2v3) {
+          issues.push({ severity: "error", path: p0, code: "invalid", message: `The canonical URL (${url}) cannot match the fullUrl (${fullUrl}) unless the resource id (${id}) also matches` });
+        }
+        // Bundle_BUNDLE_Entry_Canonical needs a server base (none configured)
+      }
+      if (!fullUrlOptional && fullUrl === null) {
         issues.push({
           severity: "error",
-          path: epath,
-          code: "structure",
+          path: `${path}.entry[${e.index}]`,
+          code: "invalid",
           message: "Except for transactions and batches, each entry in a Bundle must have a fullUrl which is the identity of the resource in the entry",
         });
       }
-      const refs: Array<{ ref: string; path: string }> = [];
-      collectRefPaths(e.resource, `${epath}.resource`, refs);
-      if (refs.some((r) => !r.ref.startsWith("#"))) {
-        issues.push({ severity: "error", path: epath, code: "structure", message: "Bundle entry missing fullUrl" });
+    }
+  }
+
+  /** Port of BundleValidator.validateLink and its per-type variants (7.0.1). */
+  private validateBundleLink(b: BundleCtx, links: any[], link: Record<string, any>, lpath: string, type: string, issues: Issue[]): void {
+    const unique = (rel: string): boolean => {
+      for (const l of links) {
+        if (l === link) return true; // only complain once: look above this one
+        if (isObject(l) && l.relation === rel) return false;
+      }
+      return true;
+    };
+    if (type === "history" || type === "searchset") {
+      const rel = typeof link.relation === "string" ? link.relation : "";
+      if (["first", "previous", "next", "last", "self"].includes(rel) && !unique(rel)) {
+        issues.push({ severity: "error", path: lpath, code: "invalid", message: `The link relationship type '${rel}' can only occur once` });
+      }
+      return;
+    }
+    if (!["document", "message", "collection", "subscription-notification", "transaction", "transaction-response", "batch", "batch-response"].includes(type)) return;
+    if (link.relation === undefined) return;
+    const rel = typeof link.relation === "string" ? link.relation : "";
+    const rpath = `${lpath}.relation`;
+    if (["first", "previous", "next", "last"].includes(rel)) {
+      issues.push({ severity: "error", path: rpath, code: "invalid", message: `The link relationship type '${rel}' used in search sets is prohibited in this context` });
+    }
+    if (rel === "self" && !unique(rel)) {
+      issues.push({ severity: "error", path: rpath, code: "invalid", message: `The link relationship type '${rel}' can only occur once` });
+    }
+    if (type === "document" && rel === "stylesheet" && typeof link.url === "string") {
+      const url = link.url;
+      const upath = `${lpath}.url`;
+      if (isAbsoluteUrlJava(url)) {
+        if (url !== "https://hl7.org/fhir/fhir.css") {
+          issues.push({ severity: "warning", path: upath, code: "business-rule", message: "External Stylesheets other than https://hl7.org/fhir/fhir.css SHOULD not be used" });
+          if (url.startsWith("http://")) issues.push({ severity: "warning", path: upath, code: "business-rule", message: "The stylesheet reference is not secure" });
+          const scheme = url.slice(0, url.indexOf(":"));
+          const details = url.slice(url.indexOf(":") + 1);
+          if (!(["http", "https", "ftp"].includes(scheme) && details.length > 0 && !details.includes(" "))) {
+            issues.push({ severity: "warning", path: upath, code: "business-rule", message: "The stylesheet reference is not a resolvable link" });
+          }
+        }
+      } else if (!b.raw.some((e) => e.resource && `${e.resource.resourceType}/${e.resource.id}` === url)) {
+        issues.push({ severity: "error", path: upath, code: "not-found", message: "The stylesheet reference could not be resolved in this bundle" });
       }
     }
-    if (type !== "document" && type !== "message") return;
-    const first = b.entries.find((e) => e.index === 0);
-    if (!first) return;
-    const head = first.resource;
-    const hpath = `${path}.entry[0].resource`;
-    const checkRef = (v: any, p: string, name: string): void => {
-      const ref = isObject(v) ? v.reference : null;
-      if (typeof ref !== "string" || !ref || ref.startsWith("#")) return;
-      if (this.resolveInBundle(ref, b, first)) return;
-      issues.push({ severity: "error", path: p, code: "not-found", message: `Can't find '${ref}' in the bundle (${name})` });
-    };
-    const list = (v: any): any[] => (Array.isArray(v) ? v : v === undefined || v === null ? [] : [v]);
-    if (type === "document" && head.resourceType === "Composition") {
-      checkRef(head.subject, `${hpath}.subject`, "Composition.subject");
-      list(head.author).forEach((a, i) => checkRef(a, `${hpath}.author[${i}]`, "Composition.author"));
-      checkRef(head.encounter, `${hpath}.encounter`, "Composition.encounter");
-      checkRef(head.custodian, `${hpath}.custodian`, "Composition.custodian");
-      list(head.attester).forEach((a, i) => checkRef(isObject(a) ? a.party : null, `${hpath}.attester[${i}].party`, "Composition.attester.party"));
-      const sections = (secs: any, p: string): void => {
-        list(secs).forEach((s, i) => {
-          if (!isObject(s)) return;
-          list(s.entry).forEach((x, j) => checkRef(x, `${p}[${i}].entry[${j}]`, "Section Entry"));
-          sections(s.section, `${p}[${i}].section`);
-        });
-      };
-      sections(head.section, `${hpath}.section`);
-    } else if (type === "message" && head.resourceType === "MessageHeader") {
-      list(head.focus).forEach((f, i) => checkRef(f, `${hpath}.focus[${i}]`, "MessageHeader Data"));
-    } else if (type === "document") {
-      // (parity v1) BundleValidator.validateDocument (Bundle_BUNDLE_Entry_Document): the first resource is not a
-      // Composition — reported, and checkAllInterlinked still runs from entry 0 (BundleValidator.validateBundle)
-      issues.push({ severity: "error", path: hpath, code: "invalid", message: "The first entry in a document must be a composition" });
+  }
+
+  /** Port of BundleValidator.checkSearchSet (7.0.1). */
+  private checkSearchSet(b: BundleCtx, path: string, links: any[], issues: Issue[]): void {
+    const self = links.find((l) => isObject(l) && l.relation === "self");
+    const types: string[] = [];
+    if (!self) {
+      issues.push({ severity: "warning", path, code: "invalid", message: "SearchSet Bundles should have a self link that specifies what the search was" });
     } else {
-      return; // bdl-12 reports the wrong first resource of a message
-    }
-    // Orphans: every entry must be reachable from the first one, following
-    // references forwards (and, failing that, backwards).
-    const targets = new Map<BundleEntryCtx, BundleEntryCtx[]>();
-    for (const e of b.entries) {
-      const refs: Array<{ ref: string; path: string }> = [];
-      collectRefPaths(e.resource, "", refs);
-      const out: BundleEntryCtx[] = [];
-      for (const r of refs) {
-        if (r.ref.startsWith("#")) continue;
-        const t = this.resolveInBundle(r.ref, b, e);
-        if (t && t !== e) out.push(t);
+      const ref = typeof self.url === "string" ? self.url : null;
+      if (ref !== null) {
+        const q = ref.indexOf("?");
+        const head = javaSplit(q >= 0 ? ref.slice(0, q) : ref, "/");
+        const tail = q >= 0 ? javaSplit(ref.slice(q + 1), "&") : null;
+        if (head.length && R4_RESOURCE_NAMES.has(head[head.length - 1])) types.push(head[head.length - 1]);
+        else if (tail) for (const s of tail) if (s.startsWith("_type=")) types.push(...javaSplit(s.slice(6), ","));
       }
-      targets.set(e, out);
+      if (!types.length) {
+        issues.push({ severity: "information", path, code: "invalid", message: "No types could be determined from the search string, so the types can't be checked" });
+      }
     }
-    const forward = new Set<BundleEntryCtx>();
-    const visit = (e: BundleEntryCtx, set: Set<BundleEntryCtx>): void => {
-      if (set.has(e)) return;
-      set.add(e);
-      for (const t of targets.get(e) || []) visit(t, set);
-    };
-    visit(first, forward);
-    const reached = new Set(forward);
-    let grew = true;
-    while (grew) {
-      grew = false;
-      for (const e of b.entries) {
-        if (reached.has(e)) continue;
-        if ((targets.get(e) || []).some((t) => reached.has(t))) {
-          visit(e, reached);
-          grew = true;
+    const typesStr = `[${types.join(", ")}]`;
+    const check = (rt: string): boolean | null => (types.length === 0 ? null : types.includes(rt));
+    const modeOf = (e: RawBundleEntry): string | null => (isObject(e.entry.search) && typeof e.entry.search.mode === "string" ? e.entry.search.mode : null);
+    const all = b.raw.every((e) => modeOf(e) !== null);
+    const any = b.raw.some((e) => modeOf(e) !== null);
+    const searchMode: boolean | null = all ? true : any ? null : false;
+    if (searchMode === false) {
+      let typeProblem = false;
+      let rtype: string | null = null;
+      for (const e of b.raw) {
+        const epath = `${path}.entry[${e.index}]`;
+        const res = e.resource;
+        if (!res) {
+          issues.push({ severity: "error", path: epath, code: "invalid", message: "SearchSet Bundle Entries must have resources" });
+          continue;
+        }
+        const rpath = `${epath}.resource`;
+        const rt = String(res.resourceType);
+        const ok = check(rt);
+        if (ok === null) {
+          typeProblem = true;
+          if (!self) issues.push({ severity: "information", path: rpath, code: "invalid", message: "Unable to determine if this resource is a valid resource type for this search" });
+          if (!(typeof res.id === "string" || rt === "OperationOutcome")) issues.push({ severity: "warning", path: rpath, code: "invalid", message: "Search results must have ids" });
+        } else if (ok) {
+          if (rt !== "OperationOutcome") {
+            if (typeof res.id !== "string") issues.push({ severity: "warning", path: rpath, code: "invalid", message: "Search results must have ids" });
+            if (rtype !== null && rt !== rtype) typeProblem = true;
+            else if (rtype === null) rtype = rt;
+          }
+        } else {
+          typeProblem = true;
+          issues.push({ severity: "warning", path: epath, code: "invalid", message: `This is not a matching resource type for the specified search (is a search mode needed?) (${rt} expecting ${typesStr})` });
+        }
+      }
+      issues.push({ severity: typeProblem ? "warning" : "information", path, code: "invalid", message: "SearchSet bundles should have search modes on the entries" });
+    } else {
+      for (const e of b.raw) {
+        const epath = `${path}.entry[${e.index}]`;
+        const sm = modeOf(e);
+        if (sm === null) issues.push({ severity: "warning", path: epath, code: "invalid", message: "SearchSet bundles should have search modes on the entries" });
+        const res = e.resource;
+        if (!res) {
+          issues.push({ severity: "error", path: epath, code: "invalid", message: "SearchSet Bundle Entries must have resources" });
+          continue;
+        }
+        const rpath = `${epath}.resource`;
+        const rt = String(res.resourceType);
+        const hasId = typeof res.id === "string";
+        if (sm === "match") {
+          if (!hasId) issues.push({ severity: "error", path: rpath, code: "invalid", message: "Search results must have ids" });
+          if (!(types.length === 0 || check(rt))) issues.push({ severity: "error", path: rpath, code: "invalid", message: `This is not a matching resource type for the specified search (${rt} expecting ${typesStr})` });
+        } else if (sm === "include") {
+          if (!hasId) issues.push({ severity: "error", path: rpath, code: "invalid", message: "Search results must have ids" });
+        } else if (sm !== null) {
+          if (rt !== "OperationOutcome") issues.push({ severity: "error", path: rpath, code: "invalid", message: `This is not an OperationOutcome (${rt})` });
         }
       }
     }
-    const what = type === "document" ? "Composition" : "MessageHeader";
-    // (v17.5, BundleValidator.checkAllInterlinked) relative references of the other entries resolved inside a
-    // document / message Bundle: a near miss is an error, reported on the Bundle
-    // with its source (choice elements named as the validator names them: medication[x]); a resource of the
-    // same type and id whose fullUrl does not match the relative-reference rule is named in a note.
-    for (const e of b.entries) {
-      if (e === first) continue;
-      const refs: Array<{ ref: string; path: string }> = [];
-      collectRefPaths(e.resource, `${path}.entry[${e.index}].resource`, refs);
+  }
+
+  /** Port of BundleValidator.validateDocument / validateSections / validateDocumentReference (7.0.1). */
+  private async validateDocument(b: BundleCtx, comp: Record<string, any>, cpath: string, fullUrl: string | null, issues: Issue[]): Promise<void> {
+    if (comp.resourceType !== "Composition") {
+      issues.push({ severity: "error", path: cpath, code: "invalid", message: "The first entry in a document must be a composition" });
+      return;
+    }
+    const id = typeof comp.id === "string" ? comp.id : null;
+    const ref = async (elem: any, p: string, name: string): Promise<void> => {
+      const r = isObject(elem) ? elem.reference : null;
+      if (typeof r !== "string" || !r || r.startsWith("#")) return;
+      await this.resolveInBundle(b, r, fullUrl, "Composition", id, p, issues, name, elem, false, false);
+    };
+    const list = (v: any): any[] => (Array.isArray(v) ? v : v === undefined || v === null ? [] : [v]);
+    // validateDocumentReference: a repeating element is pushed with 1-based indexes, a single one without
+    const docRef = async (focus: Record<string, any>, stack: string, prop: string, repeats: boolean, title: string): Promise<void> => {
+      const l = list(focus[prop]);
+      if (repeats) {
+        for (let i = 0; i < l.length; i++) await ref(l[i], `${stack}.${prop}[${i + 1}]`, `${title}.${prop}`);
+      } else if (l.length) {
+        await ref(l[0], `${stack}.${prop}`, `${title}.${prop}`);
+      }
+    };
+    await docRef(comp, cpath, "subject", false, "Composition");
+    await docRef(comp, cpath, "author", true, "Composition");
+    await docRef(comp, cpath, "encounter", false, "Composition");
+    await docRef(comp, cpath, "custodian", false, "Composition");
+    const sub = async (parent: string, repeats: boolean, prop: string): Promise<void> => {
+      const l = list(comp[parent]);
+      for (let i = 0; i < l.length; i++) if (isObject(l[i])) await docRef(l[i], `${cpath}.${parent}[${i + 1}]`, prop, repeats, `Composition.${parent}`);
+    };
+    await sub("attester", false, "party");
+    await sub("event", true, "detail");
+    const sections = async (focus: Record<string, any>, stack: string): Promise<void> => {
+      const l = list(focus.section);
+      for (let i = 0; i < l.length; i++) {
+        const s = l[i];
+        if (!isObject(s)) continue;
+        const local = `${stack}.section[${i + 1}]`;
+        // (sic) the section's author / focus are reported against the parent's stack
+        await docRef(s, stack, "author", true, "Section");
+        await docRef(s, stack, "focus", false, "Section");
+        const se = list(s.entry);
+        for (let j = 0; j < se.length; j++) await ref(se[j], `${local}.entry[${j + 1}]`, "Section Entry");
+        await sections(s, local);
+      }
+    };
+    await sections(comp, cpath);
+  }
+
+  /** Port of BundleValidator.validateMessage (7.0.1). */
+  private async validateMessage(b: BundleCtx, mh: Record<string, any>, mpath: string, fullUrl: string | null, issues: Issue[]): Promise<void> {
+    if (mh.resourceType !== "MessageHeader") {
+      issues.push({ severity: "error", path: mpath, code: "invalid", message: "The first entry in a message must be a MessageHeader" });
+      return;
+    }
+    const id = typeof mh.id === "string" ? mh.id : null;
+    for (const f of Array.isArray(mh.focus) ? mh.focus : mh.focus !== undefined ? [mh.focus] : []) {
+      const r = isObject(f) ? f.reference : null;
+      if (typeof r !== "string" || !r || r.startsWith("#")) continue;
+      // push(elem, -1) on a list element: always `focus[0]`
+      await this.resolveInBundle(b, r, fullUrl, "MessageHeader", id, `${mpath}.focus[0]`, issues, "MessageHeader Data", f, false, false);
+    }
+  }
+
+  /**
+   * Port of BundleValidator.checkAllInterlinked (7.0.1, R4): every entry's references (Reference.reference, and
+   * url / uri values — here extension value[x] url / uri) resolved with resolveInBundle as warnings-only, then
+   * reachability from the first entry (forwards, stylesheet links, then backwards). Paths are validator_cli's
+   * (`entry[N+1]` after the scan for reverse links, `entry[i+1]` for orphans).
+   */
+  private async checkAllInterlinked(b: BundleCtx, path: string, isMessage: boolean, issues: Issue[]): Promise<void> {
+    const list = b.raw.filter((e) => e.resource !== null);
+    const targets = new Map<RawBundleEntry, RawBundleEntry[]>();
+    for (const e of list) {
+      const refs: Array<{ ref: string; path: string; source: object; nl: boolean }> = [];
+      collectBundleRefs(e.entry, `${path}.entry[${e.index}]`, refs, null);
+      const seen = new Set<string>();
+      const out: RawBundleEntry[] = [];
       for (const r of refs) {
-        // relative references only: an unresolved urn: / absolute one is the element-level warning (validator_cli)
-        if (r.ref.startsWith("#") || ABSOLUTE_URL.test(r.ref)) continue;
-        if (this.resolveInBundle(r.ref, b, e)) continue;
-        const near = this.typeIdNearMiss(r.ref, b);
-        // (parity v2) checkAllInterlinked passes isWarning=true: a reference that matches no entry at all is only a
-        // hint there (BaseValidator.resolveInBundle → hintOrError(!isWarning, BUNDLE_BUNDLE_ENTRY_NOTFOUND)); the
-        // error is the near miss — an entry of the same type and id whose fullUrl breaks the relative-reference rule
-        // (rulePlural BUNDLE_BUNDLE_ENTRY_NOTFOUND_APPARENT / _CANNOT)
-        if (!near) continue;
-        const source = r.path.replace(/\.([a-z][A-Za-z]*?)Reference(?=$|[.[])/gu, ".$1[x]");
-        issues.push({
-          severity: "error",
-          path,
-          code: "not-found",
-          message:
-            `Can't find '${r.ref}' in the bundle (${source})` +
-            (near ? `. Note that there is a resource in the bundle with the same type and id, but it does not match because of the fullUrl based rules around matching relative references. Must be \`${near.fullUrl ?? ""}\`` : ""),
-        });
+        if (r.ref.startsWith("#") || seen.has(r.ref)) continue;
+        seen.add(r.ref);
+        const name = r.path.replace(/\.([a-z][A-Za-z]*?)Reference(?=$|[.[])/gu, ".$1[x]");
+        const res = e.resource!;
+        const tgt = await this.resolveInBundle(b, r.ref, e.fullUrl, String(res.resourceType), typeof res.id === "string" ? res.id : null, path, issues, name, r.source, true, r.nl);
+        if (tgt && tgt.resource && tgt !== e && list.includes(tgt)) out.push(tgt);
       }
+      targets.set(e, out);
     }
-    for (const e of b.entries) {
-      const label = e.fullUrl ?? `${e.resource.resourceType}/${e.resource.id}`;
-      if (!reached.has(e)) {
-        issues.push({
-          severity: type === "document" ? "error" : "warning",
-          path: `${path}.entry[${e.index}]`,
-          code: "informational",
-          message: `Entry '${label}' isn't reachable by traversing links (forward or backward) from the ${what}`,
-        });
-      } else if (type === "document" && !forward.has(e) && e.resource.resourceType !== "Provenance") {
-        issues.push({
-          severity: "warning",
-          path: `${path}.entry[${e.index}]`,
-          code: "informational",
-          message: `Entry '${label}' isn't reachable by traversing forwards from the Composition. Only Provenance is approved to be used this way (R4 rule)`,
-        });
+    const visited = new Set<RawBundleEntry>();
+    const visit = (t: RawBundleEntry): void => {
+      if (visited.has(t)) return;
+      visited.add(t);
+      for (const x of targets.get(t) || []) visit(x);
+    };
+    if (list.length) visit(list[0]);
+    for (const l of Array.isArray(b.bundle.link) ? b.bundle.link : []) {
+      if (!isObject(l) || l.relation !== "stylesheet" || typeof l.url !== "string") continue;
+      const hit = list.find((e) => `${e.resource!.resourceType}/${e.resource!.id}` === l.url);
+      if (hit) visited.add(hit);
+    }
+    const label = (e: RawBundleEntry): string => (e.fullUrl !== null ? `'${e.fullUrl}'` : "");
+    const afterScan = `${path}.entry[${b.raw.length + 1}]`; // (sic) i is the entry count here
+    let found: boolean;
+    do {
+      found = false;
+      for (const e of list) {
+        if (visited.has(e) || !(targets.get(e) || []).some((t) => visited.has(t))) continue;
+        if (e.resource!.resourceType !== "Provenance") {
+          if (isMessage) {
+            issues.push({ severity: "information", path: afterScan, code: "informational", message: `Entry ${label(e)} isn't reachable by traversing forwards from the MessageHeader. Check that this is meant to be included (needed to process the message)` });
+          } else {
+            issues.push({ severity: "warning", path: afterScan, code: "invalid", message: `Entry ${label(e)} isn't reachable by traversing forwards from the Composition. Only Provenance is approved to be used this way (R4 section 3.3.1)` });
+          }
+        }
+        found = true;
+        visit(e);
       }
-    }
+    } while (found);
+    list.forEach((e, i) => {
+      if (visited.has(e)) return;
+      const p = `${path}.entry[${i + 1}]`; // (sic)
+      if (isMessage) {
+        issues.push({ severity: "warning", path: p, code: "informational", message: `Entry ${label(e)} isn't reachable by traversing links (forward or backward) from the MessageHeader, so its presence should be reviewed (is it needed to process the message?)` });
+      } else {
+        issues.push({ severity: "error", path: p, code: "informational", message: `Entry ${label(e)} isn't reachable by traversing links (forward or backward) from the Composition` });
+      }
+    });
   }
 
   // ------------------------------------------------------------------ resources
@@ -1354,13 +1839,21 @@ export class InstanceValidator {
       const profiles: string[] = [];
       for (const t of el.type || []) for (const p of t.profile || []) if (typeof p === "string" && p) profiles.push(p);
       const isContained = /\.contained$/.test(String(el.path || ""));
+      // a nested Bundle (entry / contained / parameter) resolves its own entries' references and gets the
+      // BundleValidator rules at its path (InstanceValidator.checkSpecials → BundleValidator.validateBundle)
+      const nested = v.resourceType === "Bundle" ? this.bundleCtx(v, item.path) : null;
       const child: ResourceCtx = {
         resource: v,
         container: isContained ? rctx.resource : null,
         root: rctx.root,
-        bundle: rctx.bundle,
-        entry: this.entryFor(v, rctx, true),
+        bundle: nested ?? rctx.bundle,
+        entry: nested ? null : this.entryFor(v, rctx, true),
       };
+      if (nested) {
+        await this.validateResource(child, item.path, profiles, issues, depth);
+        await this.validateBundleRules(nested, item.path, issues);
+        return;
+      }
       if (profiles.length > 1) {
         // Port of InstanceValidator.validateContains (7.0.1), several type profiles: the resource has to conform to
         // one of them. Each is validated alone; the per-profile issues are not reported — none matching is
@@ -3219,47 +3712,86 @@ export class InstanceValidator {
     depth: number,
   ): Promise<void> {
     const ref = v.reference;
-    if (typeof ref !== "string" || !ref) return;
+    if (typeof ref !== "string" || !ref) {
+      // InstanceValidator.checkReference: REFERENCE_REF_NODISPLAY (not for patterns)
+      const ident = isObject(v.identifier) ? v.identifier : {};
+      if (ref === undefined && !ident.system && !ident.value && !(typeof v.display === "string" && v.display) && !String(item.path || "").includes("element.pattern")) {
+        issues.push({ severity: "warning", path: item.path, code: "structure", message: "A Reference without an actual reference or identifier should have a display" });
+      }
+      return;
+    }
+    if (ref === "http://tools.ietf.org/html/bcp47") return;
     // Port of InstanceValidator.checkReference (7.0.1): a reference containing
     // whitespace is REFERENCE_REF_INVALID_REF (error, rule 2025-05-07) — the JSON
     // parser keeps it, so "Patient/ 123" or "Patient/p1 " is not just unresolved.
     if (!/^\S+$/.test(ref)) {
       issues.push({ severity: "error", path: item.path, code: "invalid", message: `The reference '${ref}' is not a valid reference` });
     }
-    const target = this.resolveRef(ref, rctx);
-    if (!target) {
-      if (ref.startsWith("#")) {
-        issues.push({ severity: "error", path: item.path, code: "structure", message: `Unable to resolve resource with reference '${ref}'` });
-      } else if (rctx.bundle) {
-        // Unresolved references inside a Bundle are not errors by themselves
-        // (the target may live on a server); the HL7 validator reports
-        // urn: references as warnings and relative references from an entry
-        // without fullUrl as errors. Document/message closure is checked in
-        // validateBundleRules.
-        const absolute = ABSOLUTE_URL.test(ref);
-        if (!absolute && rctx.entry && !rctx.entry.fullUrl) {
-          issues.push({ severity: "error", path: item.path, code: "structure", message: "Relative Reference appears inside Bundle whose entry is missing a fullUrl" });
-        } else if (ref.startsWith("urn:")) {
-          issues.push({ severity: "warning", path: item.path, code: "not-found", message: `URN reference is not locally contained within the bundle ${ref}` });
-        } else if (!absolute) {
-          const near = this.typeIdNearMiss(ref, rctx.bundle);
-          if (near) {
-            issues.push({
-              severity: "warning",
-              path: item.path,
-              code: "not-found",
-              message: `Entry ${near.index} matches the reference ${ref} by type and id but its fullUrl ${near.fullUrl ?? "(none)"} does not match the full target URL`,
-            });
+    // localResolve → getFromBundle (BaseValidator, 7.0.1) reports the Bundle resolution messages at this element
+    const target = this.localResolve(ref, rctx, item.path, issues);
+    const refType = ref.startsWith("#") ? "contained" : target ? "internal" : "external";
+    const conditional = ref.includes("?") && R4_RESOURCE_NAMES.has(ref.slice(0, ref.indexOf("?")));
+    if (conditional) {
+      if (!isSearchUrl(ref)) issues.push({ severity: "error", path: item.path, code: "invalid", message: `The query part of the conditional reference is not a valid query string (${ref})` });
+      const grouping = rctx.bundle?.bundle ?? (rctx.root.resourceType === "Bundle" ? rctx.root : null);
+      if (!(grouping && grouping.type === "transaction")) {
+        issues.push({ severity: "error", path: item.path, code: "invalid", message: `The reference '${ref}' is a conditional reference, and conditional references are only valid inside a transaction Bundle` });
+      }
+    } else if (!target && ref.startsWith("#")) {
+      issues.push({ severity: "error", path: item.path, code: "structure", message: `Unable to resolve resource with reference '${ref}'` });
+    }
+    const refTypeDef = (el.type || []).find((t: any) => typeCodeOf(t) === "Reference") ?? null;
+    const aggregation: string[] = refTypeDef && Array.isArray(refTypeDef.aggregation) ? refTypeDef.aggregation.map(String) : [];
+    // Reference.type (R4): must be a target of the element and agree with the reference's own type
+    if (typeof v.type === "string" && v.type) {
+      const ft = target ? String(target.resourceType) : conditional ? ref.slice(0, ref.indexOf("?")) : tryParseRefType(ref);
+      const tu = /^[a-z][a-z0-9+.-]*:/iu.test(v.type) ? v.type : CORE + v.type;
+      const tps: string[] = refTypeDef ? (refTypeDef.targetProfile || []).filter((p: any) => typeof p === "string") : [];
+      if (tps.length && !tps.includes(tu) && !tps.includes(CORE + "Resource")) {
+        let matching = false;
+        for (const tp of tps) {
+          const psdx = await this.sdx(tp);
+          if (!psdx) {
+            issues.push({ severity: "error", path: item.path, code: "not-found", message: `Unable to resolve the profile reference '${tp}'` });
+            continue;
+          }
+          if (CORE + psdx.type === tu) {
+            matching = true;
+            break;
           }
         }
+        if (!matching) {
+          const listed = tps.map((tp) => `CanonicalType[${tp.startsWith(CORE) && !tp.includes("|") ? `${tp}|4.0.1` : tp}]`).join(", ");
+          issues.push({ severity: "error", path: item.path, code: "structure", message: `The type '${v.type}' is not a valid Target for this element (must be one of [${listed}])` });
+        }
+      }
+      if (!(ft === null || ft === v.type)) {
+        issues.push({ severity: "error", path: item.path, code: "structure", message: `Invalid Resource target type. Found ${v.type}, but expected one of (${ft})` });
+      }
+    }
+    if (!target) {
+      if (aggregation.length && !aggregation.includes("referenced")) {
+        issues.push({ severity: "error", path: item.path, code: "required", message: `Bundled or contained reference not found within the bundle/resource ${ref}` });
       }
       return;
+    }
+    if (aggregation.length) {
+      let modeOk = false;
+      for (const m of aggregation) {
+        if (m === "contained" && refType === "contained") modeOk = true;
+        else if (m === "bundled" && refType === "internal") modeOk = true; // R4: aggregation enforced (enforceAggregationOutsideBundles defaults to !R5)
+        else if (m === "referenced" && refType !== "contained") modeOk = true;
+      }
+      if (!modeOk) {
+        issues.push({ severity: "error", path: item.path, code: "structure", message: `Reference is ${refType} which isn't supported by the specified aggregation mode(s) for the reference (${aggregation.join(", ")})` });
+      }
     }
     const targetProfiles: string[] = [];
     for (const t of el.type || []) if (typeCodeOf(t) === "Reference") for (const p of t.targetProfile || []) if (typeof p === "string" && p) targetProfiles.push(p);
     if (!targetProfiles.length) return;
     const rt = target.resourceType;
     const candidates: SdIndex[] = [];
+    const types: string[] = [];
     let anyType = false;
     for (const p of targetProfiles) {
       const psdx = await this.sdx(p);
@@ -3289,15 +3821,17 @@ export class InstanceValidator {
         continue;
       }
       if (psdx.type === "Resource" || psdx.type === "DomainResource") anyType = true;
+      types.push(String(psdx.type));
       if (psdx.type === rt) candidates.push(psdx);
     }
     if (!candidates.length) {
       if (anyType) return;
+      // InstanceValidator.checkReference (7.0.1): Reference_REF_BadTargetType with the target types as a HashSet
       issues.push({
         severity: "error",
         path: item.path,
         code: "structure",
-        message: `The type '${rt}' implied by the reference URL ${ref} is not a valid Target for this element (must be one of [${targetProfiles.map((p) => stripVersion(p).split("/").pop()).join(", ")}])`,
+        message: `Invalid Resource target type. Found ${rt}, but expected one of (${javaHashSetToString(types)})`,
       });
       return;
     }
@@ -3860,6 +4394,78 @@ function collectRefPaths(node: any, path: string, out: Array<{ ref: string; path
     if (k === "reference" || k.startsWith("_")) continue;
     collectRefPaths(v, path ? `${path}.${k}` : k, out);
   }
+}
+
+/**
+ * BundleValidator.findReferences (7.0.1) over a Bundle entry: every Reference.reference, plus url / uri values that
+ * are not systems / profiles / Extension.url (here: extension value[x] url / uri, the type-free reading); a nested
+ * Bundle is not entered. `nl` marks a narrativeLink extension value (isNLLink).
+ */
+function collectBundleRefs(node: any, path: string, out: Array<{ ref: string; path: string; source: object; nl: boolean }>, parent: Record<string, any> | null): void {
+  if (Array.isArray(node)) {
+    node.forEach((x, i) => collectBundleRefs(x, `${path}[${i}]`, out, parent));
+    return;
+  }
+  if (!isObject(node)) return;
+  if (typeof node.reference === "string" && node.reference) out.push({ ref: node.reference, path, source: node, nl: false });
+  for (const [k, v] of Object.entries(node)) {
+    if (k === "reference" || k.startsWith("_")) continue;
+    if ((k === "valueUrl" || k === "valueUri") && typeof v === "string" && typeof node.url === "string") {
+      out.push({ ref: v, path: `${path}.value[x]`, source: node, nl: node.url === "http://hl7.org/fhir/StructureDefinition/narrativeLink" });
+      continue;
+    }
+    if (isObject(v) && v.resourceType === "Bundle") continue; // don't walk into a sub-bundle
+    collectBundleRefs(v, path ? `${path}.${k}` : k, out, node);
+  }
+}
+
+/** InstanceValidator.tryParse (7.0.1): the resource type a reference URL names (a known type only). */
+function tryParseRefType(ref: string): string | null {
+  const parts = javaSplit(ref, "/");
+  const known = (t: string | undefined): string | null => (t && t !== "" && R4_RESOURCE_NAMES.has(t) ? t : null);
+  if (parts.length === 1) return null;
+  if (parts.length === 2) return known(parts[0]);
+  if (parts[parts.length - 2] === "_history" && parts.length >= 4) return known(parts[parts.length - 4]);
+  return known(parts[parts.length - 2]);
+}
+
+/** BaseValidator.countFragmentMatches: element ids and xhtml id attributes inside an entry equal to the fragment. */
+function countFragmentMatches(node: any, fragment: string): number {
+  let n = 0;
+  const walk = (x: any, d: number): void => {
+    if (d > 40 || !x || typeof x !== "object") return;
+    if (Array.isArray(x)) return void x.forEach((y) => walk(y, d + 1));
+    if (x.id === fragment) n++;
+    if (typeof x.div === "string") for (const m of x.div.matchAll(/\sid\s*=\s*["']([^"']+)["']/gu)) if (m[1] === fragment) n++;
+    for (const v of Object.values(x)) if (v && typeof v === "object") walk(v, d + 1);
+  };
+  walk(node, 0);
+  return n;
+}
+
+/** BaseValidator.isSearchUrl (7.0.1): `[type]?name=value(&name=value)*`. */
+function isSearchUrl(ref: string): boolean {
+  const q = ref.indexOf("?");
+  if (q < 0 || !R4_RESOURCE_NAMES.has(ref.slice(0, q))) return false;
+  const pairs = ref
+    .slice(q + 1)
+    .split(/[&;]/u)
+    .filter((s) => s !== "");
+  if (!pairs.length) return false;
+  for (const p of pairs) {
+    const eq = p.indexOf("=");
+    const name = eq < 0 ? p : p.slice(0, eq);
+    if (!/^[_a-zA-Z][_a-zA-Z0-9.:-]*$/u.test(name)) return false;
+    if (eq < 0) return false;
+    let value = p.slice(eq + 1);
+    try {
+      value = decodeURIComponent(value.replace(/\+/gu, " "));
+    } catch {
+      /* keep raw */
+    }
+    if (!/^[^=&]*$/u.test(value)) return false;
+  }
+  return true;
 }
 
 function dedupe(issues: Issue[]): Issue[] {

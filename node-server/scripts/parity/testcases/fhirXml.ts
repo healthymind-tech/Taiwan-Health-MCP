@@ -1,220 +1,251 @@
 /**
- * Minimal FHIR R4 XML → JSON reader for the offline test-case runners (scripts only, never the
- * server). The XML is parsed by a small non-validating parser (elements, attributes, text,
- * comments, CDATA, processing instructions, the five XML entities + numeric references); the
- * JSON shape (arrays, primitive JSON types, `_name` primitive siblings, contained / Bundle
- * resources, xhtml div) is decided from the R4 core StructureDefinition snapshots supplied by
- * `sdOf`.
+ * Minimal FHIR R4 XML → JSON converter for the offline parity runners (fhir-test-cases inputs are partly XML; the
+ * builtin validator reads JSON only). Dependency-free: a small XML tokenizer plus the StructureDefinitions of the
+ * package cache for cardinality (array or not), primitive JSON types and choice / contentReference elements. Not a
+ * conformance parser — unknown elements are kept as best as possible so the validator can report them.
  */
 
 type Json = Record<string, any>;
 
 export interface XNode {
-  tag: string;
+  name: string;
   attrs: Record<string, string>;
   children: XNode[];
-  /** raw source of the element (for xhtml) */
-  raw: string;
+  /** raw inner XML (only kept for xhtml div) */
+  raw?: string;
+  start: number;
 }
 
+const ENT: Record<string, string> = { lt: "<", gt: ">", amp: "&", quot: '"', apos: "'" };
+
 function decode(s: string): string {
-  return s.replace(/&(#x[0-9a-fA-F]+|#[0-9]+|amp|lt|gt|quot|apos);/g, (_m, e: string) => {
-    if (e[0] === "#") return String.fromCodePoint(e[1] === "x" ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10));
-    return ({ amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" } as Record<string, string>)[e];
+  return s.replace(/&(#x[0-9a-fA-F]+|#[0-9]+|[a-z]+);/gu, (m, e: string) => {
+    if (e.startsWith("#x")) return String.fromCodePoint(parseInt(e.slice(2), 16));
+    if (e.startsWith("#")) return String.fromCodePoint(parseInt(e.slice(1), 10));
+    return ENT[e] ?? m;
   });
 }
 
+/** Parse an XML document into an element tree (comments / PIs / text outside div dropped). */
 export function parseXml(src: string): XNode {
-  src = src.replace(/^﻿/, "");
   let i = 0;
   const stack: XNode[] = [];
-  const starts: number[] = [];
   let root: XNode | null = null;
-  while (i < src.length) {
+  const n = src.length;
+  while (i < n) {
     const lt = src.indexOf("<", i);
     if (lt < 0) break;
-    if (src.startsWith("<!--", lt)) {
-      i = src.indexOf("-->", lt) + 3;
+    i = lt;
+    if (src.startsWith("<!--", i)) {
+      const e = src.indexOf("-->", i);
+      i = e < 0 ? n : e + 3;
       continue;
     }
-    if (src.startsWith("<?", lt)) {
-      i = src.indexOf("?>", lt) + 2;
+    if (src.startsWith("<?", i)) {
+      const e = src.indexOf("?>", i);
+      i = e < 0 ? n : e + 2;
       continue;
     }
-    if (src.startsWith("<![CDATA[", lt)) {
-      i = src.indexOf("]]>", lt) + 3;
+    if (src.startsWith("<!", i)) {
+      const e = src.indexOf(">", i);
+      i = e < 0 ? n : e + 1;
       continue;
     }
-    if (src.startsWith("<!", lt)) {
-      i = src.indexOf(">", lt) + 1;
-      continue;
-    }
-    if (src[lt + 1] === "/") {
-      const gt = src.indexOf(">", lt);
-      const node = stack.pop()!;
-      node.raw = src.slice(starts.pop()!, gt + 1);
-      i = gt + 1;
+    if (src[i + 1] === "/") {
+      const e = src.indexOf(">", i);
+      stack.pop();
+      i = e + 1;
       continue;
     }
     // start tag
-    let j = lt + 1;
-    while (j < src.length && !/[\s/>]/.test(src[j])) j++;
-    const tag = src.slice(lt + 1, j);
+    const m = /^<([A-Za-z_][\w.:-]*)/u.exec(src.slice(i, i + 200));
+    if (!m) {
+      i++;
+      continue;
+    }
+    let j = i + m[0].length;
     const attrs: Record<string, string> = {};
+    const attrRe = /\s*([A-Za-z_][\w.:-]*)\s*=\s*("([^"]*)"|'([^']*)')/uy;
     for (;;) {
-      while (/\s/.test(src[j])) j++;
-      if (src[j] === "/" || src[j] === ">") break;
-      let k = j;
-      while (!/[\s=]/.test(src[k])) k++;
-      const name = src.slice(j, k);
-      while (src[k] !== '"' && src[k] !== "'") k++;
-      const q = src[k];
-      const end = src.indexOf(q, k + 1);
-      attrs[name] = decode(src.slice(k + 1, end));
-      j = end + 1;
+      attrRe.lastIndex = j;
+      const a = attrRe.exec(src);
+      if (!a) break;
+      attrs[a[1]] = decode(a[3] ?? a[4] ?? "");
+      j = attrRe.lastIndex;
     }
-    const node: XNode = { tag: tag.includes(":") ? tag.split(":")[1] : tag, attrs, children: [], raw: "" };
+    while (j < n && /\s/u.test(src[j])) j++;
+    const selfClose = src[j] === "/";
+    const gt = src.indexOf(">", j);
+    const local = m[1].includes(":") ? m[1].slice(m[1].indexOf(":") + 1) : m[1];
+    const node: XNode = { name: local, attrs, children: [], start: i };
     if (stack.length) stack[stack.length - 1].children.push(node);
-    else root ??= node;
-    if (src[j] === "/") {
-      node.raw = src.slice(lt, j + 2);
-      i = j + 2;
-    } else {
-      stack.push(node);
-      starts.push(lt);
-      i = j + 1;
+    else root = node;
+    i = gt + 1;
+    if (selfClose) continue;
+    if (local === "div" && (attrs.xmlns === "http://www.w3.org/1999/xhtml" || stack.length)) {
+      // raw xhtml: find the matching </div> (nested divs counted)
+      let depth = 1;
+      let k = i;
+      const re = /<(\/?)(?:[A-Za-z_][\w.-]*:)?div\b[^>]*?(\/?)>/gu;
+      re.lastIndex = i;
+      let mm: RegExpExecArray | null;
+      while ((mm = re.exec(src))) {
+        if (mm[1]) depth--;
+        else if (!mm[2]) depth++;
+        if (depth === 0) {
+          k = mm.index;
+          break;
+        }
+      }
+      node.raw = src.slice(i, k);
+      i = k + src.slice(k).indexOf(">") + 1;
+      continue;
     }
+    stack.push(node);
   }
-  if (!root) throw new Error("no XML root element");
+  if (!root) throw new Error("no root element");
   return root;
 }
 
-export type SdLookup = (type: string) => Json | null;
-
-const SYSTEM_TYPES: Record<string, string> = {
-  "http://hl7.org/fhirpath/System.String": "string",
-  "http://hl7.org/fhirpath/System.Boolean": "boolean",
-  "http://hl7.org/fhirpath/System.Integer": "integer",
-  "http://hl7.org/fhirpath/System.Decimal": "decimal",
-  "http://hl7.org/fhirpath/System.Date": "date",
-  "http://hl7.org/fhirpath/System.DateTime": "dateTime",
-  "http://hl7.org/fhirpath/System.Time": "time",
-};
-
-function typeCode(t: Json): string {
-  const ext = (t.extension || []).find((e: Json) => e.url === "http://hl7.org/fhir/StructureDefinition/structuredefinition-fhir-type");
-  if (ext) return ext.valueUrl ?? ext.valueUri;
-  return SYSTEM_TYPES[t.code] ?? t.code;
+export interface SdSource {
+  sd(type: string): Json | null;
 }
 
-const isPrimitive = (t: string): boolean => /^[a-z]/.test(t) && t !== "xhtml";
+const NUMERIC = new Set(["integer", "decimal", "positiveInt", "unsignedInt"]);
 
-function primitiveValue(t: string, v: string): unknown {
+function isPrimitiveType(t: string): boolean {
+  return /^[a-z]/u.test(t) || t.startsWith("http://hl7.org/fhirpath/System.");
+}
+
+function primitiveJson(t: string, v: string): unknown {
   if (t === "boolean") return v === "true" ? true : v === "false" ? false : v;
-  if (t === "integer" || t === "unsignedInt" || t === "positiveInt" || t === "decimal") {
-    const n = Number(v);
-    return v.trim() !== "" && Number.isFinite(n) ? n : v;
-  }
+  if (NUMERIC.has(t) && /^-?\d+(\.\d+)?([eE][+-]?\d+)?$/u.test(v)) return Number(v);
   return v;
 }
 
-export class XmlToJson {
-  private idx = new Map<string, Map<string, Json>>();
-  constructor(private readonly sdOf: SdLookup) {}
+interface Located {
+  ed: Json | null;
+  type: string;
+  /** SD + path to resolve the children with */
+  sd: Json | null;
+  path: string;
+}
 
-  private elements(type: string): Map<string, Json> | null {
-    if (!this.idx.has(type)) {
-      const sd = this.sdOf(type);
-      const m = new Map<string, Json>();
-      for (const e of sd?.snapshot?.element || []) if (!e.sliceName && !String(e.id ?? "").includes(":")) m.set(e.path, e);
-      this.idx.set(type, sd ? m : (null as any));
+export class FhirXmlConverter {
+  private idx = new Map<Json, Map<string, Json>>();
+  constructor(private readonly src: SdSource) {}
+
+  private index(sd: Json): Map<string, Json> {
+    let m = this.idx.get(sd);
+    if (!m) {
+      m = new Map();
+      for (const e of sd.snapshot?.element ?? []) if (!e.sliceName && !m.has(e.path)) m.set(e.path, e);
+      this.idx.set(sd, m);
     }
-    return this.idx.get(type) ?? null;
+    return m;
   }
 
-  resource(node: XNode): Json {
-    const out: Json = { resourceType: node.tag };
-    this.complex(node, node.tag, node.tag, out);
+  private locate(sd: Json | null, path: string, name: string): Located {
+    if (!sd) return { ed: null, type: "", sd: null, path: name };
+    const m = this.index(sd);
+    let ed = m.get(`${path}.${name}`) ?? null;
+    let type = "";
+    if (ed) {
+      type = ed.type?.length === 1 ? String(ed.type[0].code) : "";
+    } else {
+      for (const [p, e] of m) {
+        if (!p.endsWith("[x]")) continue;
+        const stem = p.slice(path.length + 1, -3);
+        if (p.slice(0, path.length + 1) !== `${path}.` || stem.includes(".") || !name.startsWith(stem) || name.length === stem.length) continue;
+        const suffix = name.slice(stem.length);
+        const t = (e.type ?? []).map((x: Json) => String(x.code)).find((c: string) => c.toLowerCase() === suffix.toLowerCase());
+        if (t) {
+          ed = e;
+          type = t;
+          break;
+        }
+      }
+    }
+    if (!ed) return { ed: null, type: "", sd: null, path: `${path}.${name}` };
+    if (ed.contentReference) {
+      const target = String(ed.contentReference).replace(/^.*#/u, "");
+      const ted = m.get(target);
+      return { ed, type: ted?.type?.[0]?.code ?? "BackboneElement", sd, path: target };
+    }
+    if (type === "BackboneElement" || type === "Element" || (!type && ed.type?.length !== 1)) {
+      return { ed, type: type || "Element", sd, path: ed.path };
+    }
+    if (type.startsWith("http://hl7.org/fhirpath/System.")) return { ed, type: "string", sd: null, path: "" };
+    if (isPrimitiveType(type)) return { ed, type, sd: null, path: "" };
+    return { ed, type, sd: this.src.sd(type), path: type };
+  }
+
+  resource(x: XNode): Json {
+    const sd = this.src.sd(x.name);
+    const out: Json = { resourceType: x.name };
+    this.fill(out, x, sd, x.name);
     return out;
   }
 
-  private complex(node: XNode, type: string, path: string, out: Json): void {
-    const els = this.elements(type);
-    for (const c of node.children) {
-      const name = c.tag;
-      let ed = els?.get(`${path}.${name}`);
-      let t: string | null = null;
-      if (!ed && els) {
-        for (const [p, e] of els) {
-          if (!p.endsWith("[x]") || p.lastIndexOf(".") !== path.length || !p.startsWith(path + ".")) continue;
-          const base = p.slice(path.length + 1, -3);
-          if (!name.startsWith(base)) continue;
-          const suffix = name.slice(base.length);
-          const tt = (e.type || []).map(typeCode).find((x: string) => x.toLowerCase() === suffix.toLowerCase());
-          if (tt) {
-            ed = e;
-            t = tt;
-            break;
-          }
-        }
-      }
-      if (name === "extension" || name === "modifierExtension") t = "Extension";
-      let ownType = type;
-      let ownPath = `${path}.${name}`;
-      if (ed?.contentReference) {
-        ownPath = String(ed.contentReference).replace(/^.*#/, "");
-        ed = els?.get(ownPath) ?? ed;
-      }
-      if (!t) t = ed?.type?.length ? typeCode(ed.type[0]) : "string";
-      const array = name === "extension" || name === "modifierExtension" ? true : ed ? ed.max !== "1" && ed.max !== "0" : false;
-      let value: unknown;
-      let prim: Json | null = null;
-      if (t === "xhtml") {
-        value = c.raw;
-      } else if (isPrimitive(t!)) {
-        value = c.attrs.value !== undefined ? primitiveValue(t!, c.attrs.value) : null;
-        const ext: Json = {};
-        if (c.attrs.id) ext.id = c.attrs.id;
-        if (c.children.length) this.complex(c, "Element", "Element", ext);
-        if (Object.keys(ext).length) prim = ext;
-      } else if (t === "Resource" || t === "DomainResource" || (ed && /^[A-Z]/.test(t!) && this.isResourceType(t!) && c.children.length === 1 && c.children[0].tag === t)) {
-        value = c.children[0] ? this.resource(c.children[0]) : {};
-      } else {
-        const obj: Json = {};
-        if (c.attrs.id) obj.id = c.attrs.id;
-        if (c.attrs.url) obj.url = c.attrs.url;
-        if (t === "BackboneElement" || t === "Element") this.complex(c, ownType, ownPath, obj);
-        else this.complex(c, t!, t!, obj);
-        value = obj;
-      }
-      const key = t && ed && String(ed.path).endsWith("[x]") ? name : name;
-      if (array) {
-        const arr: unknown[] = (out[key] ??= []);
-        arr.push(value);
-        if (prim || (isPrimitive(t!) && out[`_${key}`])) {
-          const parr: unknown[] = (out[`_${key}`] ??= []);
-          while (parr.length < arr.length - 1) parr.push(null);
-          parr.push(prim);
-        }
-      } else {
-        if (value !== null) out[key] = value;
-        if (prim) out[`_${key}`] = prim;
-      }
+  private fill(out: Json, x: XNode, sd: Json | null, path: string): void {
+    const groups = new Map<string, XNode[]>();
+    for (const c of x.children) {
+      const g = groups.get(c.name) ?? [];
+      g.push(c);
+      groups.set(c.name, g);
     }
-    for (const k of Object.keys(out)) {
-      if (k.startsWith("_") && Array.isArray(out[k])) {
-        const base = out[k.slice(1)] as unknown[];
-        while ((out[k] as unknown[]).length < base.length) (out[k] as unknown[]).push(null);
+    for (const [name, nodes] of groups) {
+      const loc = this.locate(sd, path, name);
+      const max = loc.ed ? String(loc.ed.base?.max ?? loc.ed.max ?? "*") : nodes.length > 1 ? "*" : "1";
+      const isArray = max !== "1" && max !== "0";
+      if (name === "div" && nodes[0].raw !== undefined) {
+        out.div = this.div(nodes[0]);
+        continue;
       }
-      if (Array.isArray(out[k]) && !k.startsWith("_") && out[`_${k}`] === undefined) {
-        // primitive arrays without any value-less entry are fine; strip nulls only when no `_` sibling
-        if ((out[k] as unknown[]).some((v) => v === null)) out[k] = (out[k] as unknown[]).filter((v) => v !== null);
+      if (loc.type && isPrimitiveType(loc.type)) {
+        const vals: unknown[] = [];
+        const exts: Array<Json | null> = [];
+        for (const nd of nodes) {
+          vals.push(nd.attrs.value !== undefined ? primitiveJson(loc.type, nd.attrs.value) : null);
+          const e: Json = {};
+          if (nd.attrs.id !== undefined) e.id = nd.attrs.id;
+          if (nd.children.length) this.fill(e, nd, this.src.sd("Element"), "Element");
+          exts.push(Object.keys(e).length ? e : null);
+        }
+        if (isArray) {
+          if (vals.some((v) => v !== null)) out[name] = vals;
+          if (exts.some((e) => e !== null)) out[`_${name}`] = exts;
+        } else {
+          if (vals[0] !== null) out[name] = vals[0];
+          if (exts[0] !== null) out[`_${name}`] = exts[0];
+        }
+        continue;
       }
+      const items = nodes.map((nd) => this.complex(nd, loc));
+      out[name] = isArray ? items : items[0];
     }
   }
 
-  private isResourceType(t: string): boolean {
-    const sd = this.sdOf(t);
-    return !!sd && sd.kind === "resource";
+  private complex(nd: XNode, loc: Located): Json {
+    if (loc.type === "Resource" || (!loc.ed && nd.children.length === 1 && /^[A-Z]/u.test(nd.children[0].name))) {
+      const inner = nd.children.find((c) => /^[A-Z]/u.test(c.name));
+      return inner ? this.resource(inner) : {};
+    }
+    const o: Json = {};
+    if (nd.attrs.id !== undefined) o.id = nd.attrs.id;
+    if (nd.attrs.url !== undefined) o.url = nd.attrs.url;
+    this.fill(o, nd, loc.sd, loc.path);
+    return o;
   }
+
+  private div(nd: XNode): string {
+    const attrs = Object.entries(nd.attrs)
+      .map(([k, v]) => ` ${k}="${v.replace(/&/gu, "&amp;").replace(/"/gu, "&quot;").replace(/</gu, "&lt;")}"`)
+      .join("");
+    return `<div${attrs}>${nd.raw ?? ""}</div>`;
+  }
+}
+
+export function xmlToFhirJson(src: string, sds: SdSource): Json {
+  return new FhirXmlConverter(sds).resource(parseXml(src));
 }
