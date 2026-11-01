@@ -34,6 +34,7 @@
  * through the injected `ValidatorResolver`.
  */
 
+import { createHash } from "node:crypto";
 import { evaluateConstraint, fhirPathBase, invariantExpression, primitiveValueAlias, type FhirPathEnv } from "./fhirPath.js";
 import { fixedPattern } from "./fhirSnapshot.js";
 import { pushAll } from "./arrayUtils.js";
@@ -507,6 +508,219 @@ function validCalendarDate(v: string): boolean {
   const d = Number(m[3]);
   const days = [31, (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0 ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
   return mo >= 1 && mo <= 12 && d >= 1 && d <= days[mo - 1];
+}
+
+// ---- helpers of the InstanceValidator.checkPrimitive port (validator 7.0.1; Utilities / FormatUtilities / Base64Util)
+const REGEX_EXT = "http://hl7.org/fhir/StructureDefinition/regex";
+const DATE_RULES_EXT = "http://hl7.org/fhir/StructureDefinition/elementdefinition-date-rules";
+/** RegexConstants.ID_REGEX */
+const ID_RE = /^[A-Za-z0-9\-.]{1,64}$/;
+/** The dateTime / instant patterns InstanceValidator.checkPrimitive matches before the type regex (time zone optional). */
+const DATETIME_JAVA_RE = new RegExp(`^${YEAR}(-${MONTH}(-${DAY}(T${TIME}${TZ}?)?)?)?$`);
+const INSTANT_JAVA_RE = new RegExp(`^-?[0-9]{4}-${MONTH}-${DAY}T${TIME}${TZ}$`);
+/**
+ * The `regex` extension of each R4 primitive type's `.value` element (hl7.fhir.r4.core 4.0.1), after
+ * FHIRPathExpressionFixer.fixRegex (`[ \r\n\t\S]+` → `^[\s\S]+$`) — InstanceValidator.getRegexFromType.
+ */
+const R4_TYPE_REGEX: Record<string, string> = {
+  boolean: "true|false",
+  integer: "-?([0]|([1-9][0-9]*))",
+  string: "^[\\s\\S]+$",
+  decimal: "-?(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]+)?",
+  uri: "\\S*",
+  url: "\\S*",
+  canonical: "\\S*",
+  instant: "([0-9]([0-9]([0-9][1-9]|[1-9]0)|[1-9]00)|[1-9]000)-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])T([01][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)(\\.[0-9]+)?(Z|(\\+|-)((0[0-9]|1[0-3]):[0-5][0-9]|14:00))",
+  date: "([0-9]([0-9]([0-9][1-9]|[1-9]0)|[1-9]00)|[1-9]000)(-(0[1-9]|1[0-2])(-(0[1-9]|[1-2][0-9]|3[0-1]))?)?",
+  dateTime: "([0-9]([0-9]([0-9][1-9]|[1-9]0)|[1-9]00)|[1-9]000)(-(0[1-9]|1[0-2])(-(0[1-9]|[1-2][0-9]|3[0-1])(T([01][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)(\\.[0-9]+)?(Z|(\\+|-)((0[0-9]|1[0-3]):[0-5][0-9]|14:00)))?)?)?",
+  time: "([01][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)(\\.[0-9]+)?",
+  code: "[^\\s]+(\\s[^\\s]+)*",
+  oid: "urn:oid:[0-2](\\.(0|[1-9][0-9]*))+",
+  unsignedInt: "[0]|([1-9][0-9]*)",
+  positiveInt: "[1-9][0-9]*",
+  uuid: "urn:uuid:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
+};
+const javaRegexCache = new Map<string, RegExp | null>();
+/** A Java regex as String.matches applies it (whole value); null when JavaScript cannot compile it. */
+function javaFullRegex(regex: string): RegExp | null {
+  if (!javaRegexCache.has(regex)) {
+    let re: RegExp | null = null;
+    try {
+      re = new RegExp(`^(?:${regex})$`, "u");
+    } catch {
+      try {
+        re = new RegExp(`^(?:${regex})$`);
+      } catch {
+        re = null;
+      }
+    }
+    javaRegexCache.set(regex, re);
+  }
+  return javaRegexCache.get(regex)!;
+}
+function extOf(node: any, url: string): Record<string, any> | null {
+  for (const e of Array.isArray(node?.extension) ? node.extension : []) if (isObject(e) && e.url === url) return e;
+  return null;
+}
+function extString(node: any, url: string): string | null {
+  const e = extOf(node, url);
+  if (!e) return null;
+  for (const [k, v] of Object.entries(e)) if (k.startsWith("value") && (typeof v === "string" || typeof v === "number")) return String(v);
+  return null;
+}
+function extInt(node: any, url: string): number | null {
+  const v = extString(node, url);
+  return v !== null && /^-?\d+$/.test(v) ? Number(v) : null;
+}
+/** Utilities.isWhitespace */
+const javaWs = (c: string): boolean => /\s/u.test(c);
+/** StringUtils.isBlank */
+function isJavaBlank(s: string): boolean {
+  return [...s].every(javaWs);
+}
+function isJavaAllWhitespace(s: string): boolean {
+  return s === "" || [...s].every(javaWs);
+}
+/** Utilities.trimWS */
+function javaTrimWS(s: string): string {
+  let a = 0;
+  let b = s.length;
+  while (a < b && javaWs(s[a])) a++;
+  while (b > a && javaWs(s[b - 1])) b--;
+  return s.slice(a, b);
+}
+/** Utilities.isAbsoluteUrl */
+function javaIsAbsoluteUrl(ref: string): boolean {
+  if (!ref.includes(":")) return false;
+  const scheme = ref.slice(0, ref.indexOf(":"));
+  const details = ref.slice(ref.indexOf(":") + 1);
+  const token = /^[\p{L}][\p{L}\p{Nd}_[\]]*$/u.test(scheme);
+  return (
+    (["http", "https", "urn", "file:"].includes(scheme) || (token && scheme === scheme.toLowerCase()) ||
+      ["urn:iso:", "urn:iso-iec:", "urn:iso-cie:", "urn:iso-astm:", "urn:iso-ieee:", "urn:iec:"].some((p) => ref.startsWith(p))) &&
+    details.length > 0 &&
+    !details.includes(" ")
+  );
+}
+/**
+ * InstanceValidator.allowUnknownExtension (7.0.1, settings.allowExamples off, no extension domains): extensions the
+ * validator accepts without a definition (no Extension_EXT_Unknown_NotHere).
+ */
+function allowUnknownExtension(url: string): boolean {
+  return url.includes("nema.org") || url.startsWith("http://hl7.org/fhir/tools/StructureDefinition/") || url === "http://hl7.org/fhir/StructureDefinition/structuredefinition-expression";
+}
+/** InstanceValidator.isAbsolute (Identifier value for urn:ietf:rfc:3986) */
+function javaIsAbsolute(uri: string): boolean {
+  if (!uri.includes(":")) return false;
+  const protocol = uri.slice(0, uri.indexOf(":"));
+  const tail = uri.slice(uri.indexOf(":") + 1);
+  if (!/^[\p{L}][\p{L}\p{Nd}_[\]]*$/u.test(protocol)) return false;
+  return protocol === "file" ? tail.startsWith("/") || tail.includes(":") : true;
+}
+/** InstanceValidator.prepWSPresentation = Utilities.escapeJson */
+function prepWSPresentation(s: string): string {
+  let out = "";
+  for (const c of s) {
+    if (c === "\r") out += "\\r";
+    else if (c === "\n") out += "\\n";
+    else if (c === "\t") out += "\\t";
+    else if (c === '"') out += '\\"';
+    else if (c === "\\") out += "\\\\";
+    else if (c === " ") out += " ";
+    else if (javaWs(c) || c.charCodeAt(0) < 32) out += "\\u" + c.charCodeAt(0).toString(16).padStart(4, "0");
+    else out += c;
+  }
+  return out;
+}
+/** InstanceValidator.yearIsValid (1800 .. this year + 80) */
+function yearIsValid(v: string): boolean {
+  const y = Number.parseInt(v.slice(0, 4), 10);
+  return /^[+-]?\d+$/.test(v.slice(0, 4)) && y >= 1800 && y <= new Date().getFullYear() + 80;
+}
+/** Base64Util.isValidBase64: the base64 characters (whitespace skipped) must come in groups of four */
+function isBase64Valid(s: string): boolean {
+  let n = 0;
+  for (const c of s) {
+    if (javaWs(c)) continue;
+    if (/[\p{L}\p{Nd}]/u.test(c) || c === "/" || c === "=" || c === "+") n++;
+  }
+  return !(n > 0 && n % 4 !== 0);
+}
+/** Utilities.isInteger (32-bit; the sign-less bound comparison of the Java source kept as is) */
+function isJavaInteger(s: string): boolean {
+  if (isJavaBlank(s)) return false;
+  const value = s.startsWith("-") ? s.slice(1) : s;
+  if (value === "" || !/^\p{Nd}+$/u.test(value) || value.length > 10) return false;
+  if (s.startsWith("-")) return !(value.length === 10 && s > "2147483648");
+  return !(value.length === 10 && s > "2147483647");
+}
+/** Utilities.isLong */
+function isJavaLong(s: string): boolean {
+  if (isJavaBlank(s)) return false;
+  const value = s.startsWith("-") ? s.slice(1) : s;
+  if (!/^\p{Nd}*$/u.test(value) || value.length > 20) return false;
+  if (s.startsWith("-")) return !(value.length === 20 && s > "9223372036854775808");
+  return !(value.length === 20 && s > "9223372036854775807");
+}
+/** Utilities.checkDecimal(value, allowExponent = true, allowLeadingZero = false) */
+function javaCheckDecimal(value: string): "ok" | "range" | "syntax" | "blank" {
+  if (isJavaBlank(value)) return "blank";
+  for (const sign of ["", "-", "+"]) {
+    if (value.startsWith(sign + "0") && value !== sign + "0" && !value.startsWith(sign + "0.")) return "syntax";
+  }
+  if (value.endsWith(".")) return "syntax";
+  let havePeriod = false;
+  let haveExponent = false;
+  let haveSign = false;
+  let haveDigits = false;
+  let pre = 0;
+  let post = 0;
+  let exp = 0;
+  let length = 0;
+  for (const c of value) {
+    if (c === ".") {
+      if (!haveDigits || havePeriod || haveExponent) return "syntax";
+      havePeriod = true;
+      pre = length;
+      length = 0;
+    } else if (c === "-" || c === "+") {
+      if (haveDigits || haveSign) return "syntax";
+      haveSign = true;
+    } else if (c === "e" || c === "E") {
+      if (!haveDigits || haveExponent) return "syntax";
+      haveExponent = true;
+      haveSign = false;
+      haveDigits = false;
+      if (havePeriod) post = length;
+      else pre = length;
+      length = 0;
+    } else if (!/\p{Nd}/u.test(c)) {
+      return "syntax";
+    } else {
+      haveDigits = true;
+      length++;
+    }
+  }
+  if (haveExponent && !haveDigits) return "syntax";
+  if (haveExponent) exp = length;
+  else if (havePeriod) post = length;
+  else pre = length;
+  if (exp > 4) return "range";
+  if (pre + post > 18) return "range";
+  return "ok";
+}
+/** InstanceValidator.passesCodeWhitespaceRules */
+function passesCodeWhitespaceRules(v: string): boolean {
+  if (javaTrimWS(v) !== v) return false;
+  let lastWasSpace = true;
+  for (const c of v) {
+    if (c === " ") {
+      if (lastWasSpace) return false;
+      lastWasSpace = true;
+    } else if (javaWs(c)) return false;
+    else lastWasSpace = false;
+  }
+  return true;
 }
 
 function short(v: any): string {
@@ -1817,7 +2031,7 @@ export class InstanceValidator {
     const v = item.value;
 
     if (isPrimitive(typeCode)) {
-      this.checkPrimitive(v, item, typeCode, el, issues);
+      this.checkPrimitive(v, item, typeCode, el, issues, sdx.sd);
       if (item.ext !== undefined && item.ext !== null) await this.validatePrimitiveExtensions(item, rctx, issues, depth);
       if (v === null || v === undefined) {
         await this.checkConstraints(sdx, el, item, typeCode, rctx, issues);
@@ -2001,6 +2215,15 @@ export class InstanceValidator {
           typeRootConstraints.push([tsdx, tsdx.root]);
           if (typeCode === "Extension" && item.host && tsdx.type === "Extension" && tsdx.url !== CORE + "Extension") {
             await this.checkExtensionContext(tsdx, item.host, rctx, issues, item.value);
+            // InstanceValidator.checkExtension: EXTENSION_EXT_MODIFIER_Y / _N (the extension definition's root isModifier)
+            const asModifier = /(^|\.)modifierExtension(\[\d+\])?$/.test(item.path);
+            const defModifier = tsdx.root?.isModifier === true;
+            const url = isObject(item.value) ? String(item.value.url) : "";
+            if (asModifier && !defModifier) {
+              issues.push({ severity: "error", path: `${item.path}[url='${url}']`, code: "structure", message: `The Extension '${url}' must not be used as a modifierExtension (it's a regular extension)` });
+            } else if (!asModifier && defModifier) {
+              issues.push({ severity: "error", path: `${item.path}[url='${url}']`, code: "structure", message: `The Extension '${url}' must not be used as an extension (it's a modifierExtension)` });
+            }
           }
         }
       }
@@ -2024,6 +2247,8 @@ export class InstanceValidator {
     await this.checkLanguageDisplay(el, v, typeCode, item, rctx, issues);
     if (typeCode === "Coding") await this.checkCoding(v, item, issues, el);
     if (QUANTITY_TYPES.includes(typeCode)) await this.checkQuantity(v, item, issues);
+    if (typeCode === "Identifier") this.checkIdentifier(v, item, issues);
+    if (typeCode === "Attachment") this.checkAttachment(v, el, item, issues);
     if (typeCode === "Reference") await this.checkReference(el, v, item, rctx, issues, depth);
     await this.checkConstraints(sdx, el, item, typeCode, rctx, issues);
     for (const [tsdx, troot] of typeRootConstraints) {
@@ -2058,10 +2283,16 @@ export class InstanceValidator {
   private async extensionDefinition(parentSdx: SdIndex, item: Item, issues: Issue[]): Promise<SdIndex | null> {
     const url = isObject(item.value) ? item.value.url : undefined;
     if (typeof url !== "string" || !url) {
-      issues.push({ severity: "error", path: item.path, code: "required", message: "Extension.url is required" });
+      // InstanceValidator.validateElement: EXTENSION_EXT_URL_NOTFOUND
+      issues.push({ severity: "error", path: item.path, code: "invalid", message: "Extension.url is required in order to identify, use and validate the extension" });
       return this.sdx(CORE + "Extension");
     }
     const absolute = /^[a-z][a-z0-9+.-]*:/i.test(url);
+    if (!(parentSdx.type === "Extension" && parentSdx.url !== CORE + "Extension") && !javaIsAbsoluteUrl(url)) {
+      // EXTENSION_EXT_URL_ABSOLUTE (outside a complex extension); checkExtension is then not run
+      issues.push({ severity: "error", path: item.path, code: "invalid", message: "Extension.url must be an absolute URL" });
+      return this.sdx(CORE + "Extension");
+    }
     if (absolute) {
       const ext = await this.sdx(url);
       if (ext) return ext;
@@ -2083,6 +2314,8 @@ export class InstanceValidator {
         code: "structure",
         message: `Sub-extension url '${url}' is not defined by the Extension ${parentSdx.url}`,
       });
+    } else if (allowUnknownExtension(url)) {
+      // InstanceValidator.allowUnknownExtension: tools / nema.org / structuredefinition-expression need no definition
     } else if (!insideDefinedExtension || absolute) {
       issues.push({
         severity: "error",
@@ -3073,7 +3306,7 @@ export class InstanceValidator {
 
   // ------------------------------------------------------------------ value checks
 
-  private checkPrimitive(v: any, item: Item, typeCode: string, el: Record<string, any>, issues: Issue[]): void {
+  private checkPrimitive(v: any, item: Item, typeCode: string, el: Record<string, any>, issues: Issue[], profile: Record<string, any> | null = null): void {
     // R4 core snapshots type Resource.id as System.String with fhir-type
     // "string"; the HL7 validator still checks a resource id against the `id`
     // syntax (Resource_RES_ID_Malformed), with or without a profile.
@@ -3102,79 +3335,175 @@ export class InstanceValidator {
       issues.push({ severity: "error", path, code: "structure", message: `Error parsing JSON: the primitive value must be a ${spec.json}` });
       // (parity v2) JsonParser.parseChildPrimitiveInstance keeps the value (as its string) and the InstanceValidator then
       // checks it as the element's type — those value errors take part in slice / profile matching like any other
-      const sv = String(v);
-      if (spec.json === "boolean") {
-        if (sv !== "true" && sv !== "false") issues.push({ severity: "error", path, code: "invalid", message: "Boolean values must be 'true' or 'false'" });
-        return;
-      }
-      if (spec.json === "number") {
-        if (typeCode === "decimal") {
-          if (!/^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?$/u.test(sv)) issues.push({ severity: "error", path, code: "invalid", message: `The value '${sv}' is not a valid decimal` });
-        } else if (!/^[+-]?[0-9]+$/u.test(sv)) {
-          issues.push({ severity: "error", path, code: "invalid", message: `The value '${sv}' is not a valid integer` });
+    } else if (spec.json === "boolean") return;
+    this.checkPrimitiveValue(String(v), item, typeCode, el, profile, issues);
+  }
+
+  /**
+   * Port of InstanceValidator.checkPrimitive (validator 7.0.1) for a primitive written as a JSON string: the checks
+   * in Java's order, each with its message id's wording. The binding, fixed / pattern, URL-resolution and xhtml
+   * checks of that method run elsewhere (checkBinding, checkFixedPattern, checkUri, the narrative checks); `ok`
+   * mirrors Java's flag that gates the final type-regex check (TYPE_SPECIFIC_CHECKS_DT_PRIMITIVE_REGEX_TYPE).
+   * `profile` is the StructureDefinition the element definition comes from (isCoreDefinition).
+   */
+  private checkPrimitiveValue(s: string, item: Item, typeCode: string, el: Record<string, any>, profile: Record<string, any> | null, issues: Issue[]): void {
+    const path = item.path;
+    const hasChildren = item.ext !== undefined && item.ext !== null;
+    const rule = (pass: boolean, message: string, code = "invalid"): boolean => {
+      if (!pass) issues.push({ severity: "error", path, code, message });
+      return pass;
+    };
+    const warning = (pass: boolean, message: string, code = "invalid"): boolean => {
+      if (!pass) issues.push({ severity: "warning", path, code, message });
+      return pass;
+    };
+    const maxLen = typeof el.maxLength === "number" && el.maxLength > 0 ? (el.maxLength as number) : null;
+    // TYPE_SPECIFIC_CHECKS_DT_PRIMITIVE_LENGTH
+    const lengthOk = (): boolean => rule(maxLen === null || s.length <= maxLen, `value is longer than permitted maximum length of ${maxLen}`);
+    // isCoreDefinition(profile)
+    const coreProfile = !!profile && String(profile.url ?? "").startsWith(CORE) && profile.kind !== "logical";
+    const dateRules = extString(el, DATE_RULES_EXT);
+    const versioned = profile ? (profile.version ? `${profile.url}|${profile.version}` : String(profile.url ?? "")) : "";
+
+    // Resource.id is checked by InstanceValidator.validateResource (RESOURCE_RES_ID_MALFORMED_LENGTH / _CHARS) and
+    // not as an `id` here (checkPrimitive: type == id && base path != Resource.id)
+    const isResourceId = isObject(el.base) && el.base.path === "Resource.id";
+    if (isResourceId && s !== "") {
+      if (s.length > 64) rule(false, `Invalid Resource id: Too long (${s.length} chars)`);
+      else rule(ID_RE.test(s), `Invalid Resource id: Invalid Characters ('${s}')`);
+      if (typeCode === "id") typeCode = "string";
+    }
+
+    if (isJavaBlank(s)) {
+      if (s.length === 0) rule(hasChildren, "value cannot be empty"); // TYPE_SPECIFIC_CHECKS_DT_PRIMITIVE_NOTEMPTY
+      else warning(hasChildren, "Primitive types should not only be whitespace"); // TYPE_SPECIFIC_CHECKS_DT_PRIMITIVE_WS
+      // PRIMITIVE_MUSTHAVEVALUE_MESSAGE
+      if (el.mustHaveValue === true) rule(false, `The element definition \`\`${el.id}\`\` in the profile '${versioned}' requires that a value be present in this element`);
+      return;
+    }
+    // UNICODE_XML_BAD_CHARS (plural)
+    const badChars = new Set<string>();
+    for (const ch of s) {
+      const c = ch.charCodeAt(0);
+      if (c < 32 && !(ch === "\r" || ch === "\n" || ch === "\t")) badChars.add(c.toString(16));
+    }
+    if (badChars.size === 1) warning(false, `This content includes the character [${[...badChars].join(", ")}] (hex value). This character is illegal in the XML version of FHIR, and there is generally no valid use for such characters`);
+    else if (badChars.size > 1) warning(false, `This content includes the characters [${[...badChars].join(", ")}] (hex values). These characters are illegal in the XML version of FHIR, and there is generally no valid use for such characters`);
+
+    let ok = true;
+    const minLen = extInt(el, "http://hl7.org/fhir/StructureDefinition/minLength");
+    if (minLen !== null) ok = rule(s.length >= minLen, `Value '${s.length}' is shorter than permitted minimum length of ${minLen}`) && ok; // PRIMITIVE_TOO_SHORT
+    let regex = extString(el, REGEX_EXT);
+    if (regex !== null) {
+      for (const tr of Array.isArray(el.type) ? el.type : []) {
+        const r = extString(tr, REGEX_EXT);
+        if (r !== null) {
+          regex = r;
+          break;
         }
-        return;
       }
-      // a number / boolean where a string-like type is expected: its text is checked as that type below
-      v = sv;
+      const re = javaFullRegex(regex);
+      if (re) ok = rule(re.test(s), `Element value '${s}' does not meet regex '${regex}'`) && ok; // TYPE_SPECIFIC_CHECKS_DT_PRIMITIVE_REGEX
     }
-    if (spec.json === "number") {
-      if (!Number.isFinite(v)) {
-        issues.push({ severity: "error", path, code: "value", message: `The value '${v}' is not a valid ${typeCode}` });
-        return;
-      }
-      if (typeCode === "integer" || typeCode === "unsignedInt" || typeCode === "positiveInt") {
-        if (!Number.isInteger(v)) {
-          issues.push({ severity: "error", path, code: "value", message: `The value '${v}' is not a valid integer` });
-          return;
-        }
-        if (v > 2147483647 || v < -2147483648) {
-          issues.push({ severity: "error", path, code: "value", message: `The value '${v}' is outside the range of an integer` });
-        }
-        if (typeCode === "unsignedInt" && v < 0) issues.push({ severity: "error", path, code: "value", message: `The value '${v}' must be >= 0` });
-        if (typeCode === "positiveInt" && v < 1) issues.push({ severity: "error", path, code: "value", message: `The value '${v}' must be >= 1` });
-      }
-      this.checkMinMaxValue(el, v, path, issues);
-      return;
-    }
-    if (spec.json === "boolean") return;
-    const s = v as string;
-    if (s.length === 0) {
-      issues.push({ severity: "error", path, code: "invalid", message: "@value cannot be empty" });
-      return;
-    }
-    if (typeCode === "string" || typeCode === "markdown") {
-      if (/^\s|\s$/.test(s) && typeCode === "string") {
-        issues.push({ severity: "warning", path, code: "invalid", message: `value should not start or finish with whitespace '${short(s)}'` });
-      }
-      if (s.length > 1048576) issues.push({ severity: "error", path, code: "invalid", message: "value is longer than permitted maximum length of 1 MB" });
-    } else if (spec.regex && !spec.regex.test(s)) {
-      if (typeCode === "id" && /\.id$/.test(path) && path.split(".").length <= 3) {
-        issues.push({ severity: "error", path, code: "invalid", message: `Invalid Resource id: Invalid Characters ('${short(s)}')` });
-      } else if (typeCode === "code") {
-        issues.push({ severity: "error", path, code: "invalid", message: `The code '${short(s)}' is not valid (whitespace rules)` });
-      } else if (typeCode === "uri" || typeCode === "url" || typeCode === "canonical") {
-        issues.push({ severity: "error", path, code: "invalid", message: `URI values cannot have whitespace('${short(s)}')` });
-      } else if (typeCode === "dateTime" && /T/.test(s) && !new RegExp(`${TZ}$`).test(s) && new RegExp(`^${YEAR}-${MONTH}-${DAY}T${TIME}$`).test(s)) {
-        issues.push({ severity: "error", path, code: "invalid", message: "If a date has a time, it must have a timezone" });
-      } else {
-        issues.push({ severity: "error", path, code: "invalid", message: `Not a valid ${typeCode} format: '${short(s)}'` });
-      }
-      return;
-    }
-    if ((typeCode === "date" || typeCode === "dateTime" || typeCode === "instant") && !validCalendarDate(s)) {
-      issues.push({ severity: "error", path, code: "invalid", message: `Not a valid date format: '${short(s)}'` });
-      return;
-    }
-    if (typeCode === "uri" || typeCode === "url" || typeCode === "canonical") {
-      const host = /^https?:\/\/([^/:?#]+)/i.exec(s)?.[1];
+
+    if (typeCode === "boolean") ok = rule(s === "true" || s === "false", "Boolean values must be 'true' or 'false'") && ok;
+    if (typeCode === "uri" || typeCode === "oid" || typeCode === "uuid" || typeCode === "url" || typeCode === "canonical") {
+      const url = s;
+      ok = rule(!url.startsWith("oid:"), "URI values cannot start with oid:") && ok;
+      ok = rule(!url.startsWith("uuid:"), "URI values cannot start with uuid:") && ok;
+      ok = rule(url === javaTrimWS(url).replace(/ /g, "") || url === "http://www.acme.com/identifiers/patient or urn:ietf:rfc:3986 if the Identifier.value itself is a full uri", `URI values cannot have whitespace('${url}')`) && ok;
+      ok = lengthOk() && ok;
+      if (typeCode === "oid") ok = rule(url.startsWith("urn:oid:"), "OIDs must start with urn:oid:") && ok;
+      if (typeCode === "uuid") ok = rule(url.startsWith("urn:uuid:"), "UUIDs must start with urn:uuid:") && ok;
+      if (typeCode === "canonical") ok = rule(url.startsWith("#") || javaIsAbsoluteUrl(url), `Canonical URLs must be absolute URLs if they are not fragment references (${url})`) && ok;
+      // TYPE_SPECIFIC_CHECKS_DT_UUID_VALID / _OID_VALID and URL resolution (validateReference) are reported by checkUri;
+      // they still clear Java's `ok`
+      const syn = urnSyntaxIssue(url, typeCode);
+      if (syn && !/^URI values cannot start with/.test(syn)) ok = false;
+      const host = /^https?:\/\/([^/:?#]+)/i.exec(url)?.[1];
       if (host && EXAMPLE_HOST.test(host) && !this.inExampleExemptContext(path)) {
-        issues.push({ severity: "error", path, code: "invalid", message: `Example URLs are not allowed in this context (${short(s)})` });
+        ok = rule(false, `Example URLs are not allowed in this context (${short(url)})`) && ok; // TYPE_SPECIFIC_CHECKS_DT_URL_EXAMPLE
       }
     }
-    const maxLen = el.maxLength;
-    if (typeof maxLen === "number" && s.length > maxLen) {
-      issues.push({ severity: "error", path, code: "invalid", message: `value is longer than permitted maximum length of ${maxLen}` });
+    if (typeCode === "id" && el.path !== "ElementDefinition.id") ok = rule(ID_RE.test(s), `id value '${s}' is not valid`) && ok;
+    if (typeCode === "string") {
+      if (rule(s.length > 0, "value cannot be empty")) {
+        if (warning(!isJavaAllWhitespace(s), `value should not be all whitespace '${prepWSPresentation(s)}'`)) {
+          warning(javaTrimWS(s) === s, `value should not start or finish with whitespace '${prepWSPresentation(s)}'`);
+        }
+        if (rule(s.length <= 1048576, "value is longer than permitted maximum length of 1 MB (1048576 bytes)")) ok = lengthOk() && ok;
+        else ok = false;
+      } else ok = false;
+    }
+    if (typeCode === "dateTime") {
+      let dok = (ok = rule(DATETIME_JAVA_RE.test(s), `Not a valid date/time format: '${s}'`) && ok);
+      if (coreProfile || (dateRules ?? "").includes("tz-for-time")) {
+        dok = rule(!s.includes("T") || (s.length > 10 && /[-+Z]/.test(s.slice(10))), "If a date has a time, it must have a timezone") && dok;
+      }
+      // checkMinMaxValueDateTime: an unreadable date/time is TYPE_SPECIFIC_CHECKS_DT_DATETIME_VALID
+      if (dok) dok = rule(validCalendarDate(s), `Not a valid date/time format: '${s}'`) && dok;
+      dok = lengthOk() && dok;
+      if (dok && (coreProfile || dateRules === null || dateRules.includes("year-valid"))) {
+        warning(yearIsValid(s), `The value '${s}' is outside the range of reasonable years - check for data entry error`);
+      }
+      ok = ok && dok;
+    }
+    if (typeCode === "time") {
+      ok = rule(/^([01][0-9]|2[0-3]):[0-5][0-9]:([0-5][0-9]|60)$/.test(s), `The time '${s}' is not a valid time`) && ok;
+    }
+    if (typeCode === "date") {
+      let dok = rule(new RegExp(`^${YEAR}(-${MONTH}(-${DAY})?)?$`).test(s), `Not a valid date format: '${s}'`);
+      // checkMinMaxValueDate: an unreadable date is TYPE_SPECIFIC_CHECKS_DT_DATE_VALID
+      if (dok) dok = rule(validCalendarDate(s), `Not a valid date format: '${s}'`) && dok;
+      dok = lengthOk() && dok;
+      if (dok && (coreProfile || (dateRules ?? "").includes("year-valid"))) {
+        warning(yearIsValid(s), `The value '${s}' is outside the range of reasonable years - check for data entry error`);
+      }
+      ok = ok && dok;
+    }
+    if (typeCode === "base64Binary") {
+      if (!isBase64Valid(s)) {
+        ok = rule(false, `The value '${s.length < 100 ? s : "(snip)"}' is not a valid Base64 value`) && ok;
+      } else {
+        warning(!/\s/.test(s), "Base64 encoded values SHOULD not contain any whitespace (per RFC 4648). Note that non-validating readers are encouraged to accept whitespace anyway");
+      }
+    }
+    if (typeCode === "integer" || typeCode === "unsignedInt" || typeCode === "positiveInt") {
+      if (rule(isJavaInteger(s), `The value '${s}' is not a valid integer`)) {
+        const n = Number(s);
+        this.checkMinMaxValue(el, n, path, issues);
+        if (typeCode === "unsignedInt") ok = rule(n >= 0, "value is less than permitted minimum value of 0") && ok;
+        if (typeCode === "positiveInt") ok = rule(n > 0, "value is less than permitted minimum value of 1") && ok;
+      } else ok = false;
+    }
+    if (typeCode === "integer64") {
+      if (!rule(isJavaLong(s), `The value '${s}' is not a valid integer64`)) ok = false;
+    }
+    if (typeCode === "decimal") {
+      const ds = javaCheckDecimal(s);
+      if (rule(ds === "ok" || ds === "range", `The value '${s}' is not a valid decimal`)) {
+        warning(ds !== "range", `The value '${s}' is outside the range of commonly/reasonably supported decimals`, "value");
+        this.checkMinMaxValue(el, Number(s), path, issues, "decimal");
+      } else ok = false;
+    }
+    if (typeCode === "instant") {
+      let dok = rule(INSTANT_JAVA_RE.test(s), `Not a valid instant format: '${s}'`);
+      if (dok) dok = rule(validCalendarDate(s.replace(/^-/, "")), `Not a valid date/time format: '${s}'`) && dok;
+      if (dok && (coreProfile || (dateRules ?? "").includes("year-valid"))) {
+        warning(yearIsValid(s), `The value '${s}' is outside the range of reasonable years - check for data entry error`);
+      }
+      ok = ok && dok;
+    }
+    if (typeCode === "code") {
+      ok = rule(passesCodeWhitespaceRules(s), `The code '${s}' is not valid (whitespace rules)`) && ok;
+      ok = lengthOk() && ok;
+    }
+    // ID_EXEMPT_LIST = id, base64Binary, markdown; regex from the type's StructureDefinition (FHIRPathExpressionFixer.fixRegex)
+    if (ok && !["id", "base64Binary", "markdown"].includes(typeCode)) {
+      const regext = R4_TYPE_REGEX[typeCode];
+      if (regext && !javaFullRegex(regext)!.test(s)) {
+        rule(false, `Element value '${s}' does not meet ${typeCode} regex '${regext}'`);
+      }
     }
   }
 
@@ -3183,15 +3512,27 @@ export class InstanceValidator {
     return /\.meta\.profile\[\d+\]$/.test(path) || /\.(implicitRules)$/.test(path);
   }
 
-  private checkMinMaxValue(el: Record<string, any>, v: number, path: string, issues: Issue[]): void {
-    for (const [k, lim] of Object.entries(el)) {
-      if (k.startsWith("minValue") && typeof lim === "number" && v < lim) {
-        issues.push({ severity: "error", path, code: "value", message: `The value ${v} is below the minimum of ${lim}` });
-      }
-      if (k.startsWith("maxValue") && typeof lim === "number" && v > lim) {
-        issues.push({ severity: "error", path, code: "value", message: `The value ${v} is above the maximum of ${lim}` });
-      }
-    }
+  /**
+   * InstanceValidator.checkPrimitive min / max value rules: TYPE_SPECIFIC_CHECKS_DT_INTEGER_GT / _LT (integer types:
+   * maxValueInteger / minValueInteger) and TYPE_SPECIFIC_CHECKS_DT_DECIMAL_GT / _LT (decimal: maxValueDecimal, else
+   * maxValueInteger).
+   */
+  private checkMinMaxValue(el: Record<string, any>, v: number, path: string, issues: Issue[], typeCode = "integer"): void {
+    const dec = typeCode === "decimal";
+    const lim = (kind: "max" | "min"): number | null => {
+      const d = el[`${kind}ValueDecimal`];
+      const i = el[`${kind}ValueInteger`];
+      if (dec && typeof d === "number") return d;
+      return typeof i === "number" ? i : null;
+    };
+    const label = dec ? "decimal" : "integer";
+    const max = lim("max");
+    const min = lim("min");
+    // the decimal branch passes the DecimalType / IntegerType itself, so the message shows PrimitiveType.toString()
+    const show = (kind: "max" | "min", n: number): string =>
+      !dec ? String(n) : typeof el[`${kind}ValueDecimal`] === "number" ? `DecimalType[${n}]` : `IntegerType[${n}]`;
+    if (max !== null && v > max) issues.push({ severity: "error", path, code: "invalid", message: `${label} value is greater than permitted maximum value of ${show("max", max)}` });
+    if (min !== null && v < min) issues.push({ severity: "error", path, code: "invalid", message: `${label} value is less than permitted minimum value of ${show("min", min)}` });
   }
 
   /**
@@ -3683,6 +4024,71 @@ export class InstanceValidator {
    * code is validated against its system (UCUM via the terminology server, here
    * ucum-lhc); a ValueSet URL as system is Terminology_TX_System_ValueSet2.
    */
+  /** Port of InstanceValidator.checkIdentifier (validator 7.0.1). */
+  private checkIdentifier(v: any, item: Item, issues: Issue[]): void {
+    if (!isObject(v)) return;
+    const path = item.path;
+    const system = typeof v.system === "string" ? v.system : null;
+    const value = typeof v.value === "string" ? v.value : null;
+    // isIdentifierSystemReferenceValid
+    if (system !== null && !(system.startsWith("http:") || system.startsWith("https:") || system.startsWith("urn:") || system.startsWith("ldap:"))) {
+      issues.push({ severity: "error", path, code: "code-invalid", message: "Identifier.system must be an absolute reference, not a local reference" });
+    }
+    if (system === "urn:ietf:rfc:3986" && value !== null && !javaIsAbsolute(value)) {
+      issues.push({ severity: "error", path, code: "code-invalid", message: `if identifier.system is 'urn:ietf:rfc:3986', then the identifier.value must be a full URI (e.g. start with a scheme), not '${value}'` });
+    }
+    if (system === "https://tools.ietf.org/html/rfc4122" && value !== null) {
+      const u = "The URL 'https://tools.ietf.org/html/rfc4122'";
+      if (value.startsWith("urn:uuid:")) {
+        issues.push({ severity: "warning", path, code: "code-invalid", message: `${u} should not be used with the UUID '${value}'. Use the system value 'urn:ietf:rfc:3986' instead` });
+      } else if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(value)) {
+        issues.push({ severity: "warning", path, code: "code-invalid", message: `${u} should not be used with the UUID '${value}'. Prefix the value with 'urn:uuid:' and use the system value 'urn:ietf:rfc:3986' instead` });
+      } else {
+        issues.push({ severity: "error", path, code: "code-invalid", message: `${u} is not correct for the identifier '${value}'` });
+      }
+    }
+  }
+
+  /**
+   * Port of InstanceValidator.checkAttachment (validator 7.0.1) for inline data (Attachment.url content is not
+   * fetched — the HL7 validator only fetches with a configured fetcher): stated size (TYPE_SPECIFIC_CHECKS_DT_ATT_SIZE_*),
+   * maxSize extension, SHA-1 hash, and the no-content warning.
+   */
+  private checkAttachment(v: any, el: Record<string, any>, item: Item, issues: Issue[]): void {
+    if (!isObject(v)) return;
+    const path = item.path;
+    const err = (message: string): void => void issues.push({ severity: "error", path, code: "structure", message });
+    let size = -1;
+    let max = -1;
+    let hash: Buffer | null = null;
+    const hash64 = typeof v.hash === "string" ? v.hash : null;
+    if (v.size !== undefined && v.size !== null) {
+      const sz = String(v.size);
+      if (isJavaLong(sz)) {
+        size = Number(sz);
+        if (size < 0) err(`Stated Attachment Size ${sz} is not valid`);
+      } else err(`Stated Attachment Size ${sz} is not valid`);
+    }
+    if (hash64 !== null) hash = Buffer.from(hash64, "base64");
+    const maxExt = extString(el, "http://hl7.org/fhir/StructureDefinition/maxSize");
+    if (maxExt !== null && /^-?\d+$/.test(maxExt)) max = Number(maxExt);
+    const data = typeof v.data === "string" ? v.data : null;
+    const bytes = data !== null && (size >= 0 || max >= 0 || hash !== null) && isBase64Valid(data) ? Buffer.from(data, "base64") : null;
+    if (!(v.data !== undefined || v.url !== undefined || v.contentType !== undefined || v.language !== undefined)) {
+      issues.push({ severity: "warning", path, code: "structure", message: "Attachments have data and/or url, or else SHOULD have either contentType and/or language" });
+    }
+    if (max > -1 && bytes) {
+      if (bytes.length > max) err(`Attachment size is ${bytes.length} bytes which exceeds the stated limit of ${max} bytes`);
+    }
+    if (size > -1 && bytes) {
+      if (bytes.length !== size) err(`Stated Attachment Size ${size} does not match actual attachment size ${bytes.length}`);
+    }
+    if (hash !== null && bytes) {
+      const sha1 = createHash("sha1").update(bytes).digest();
+      if (!sha1.equals(hash)) err(`The hash of the data did not match the data (stated: '${hash64}', actual: '${sha1.toString("base64")}')`);
+    }
+  }
+
   private async checkQuantity(v: Record<string, any>, item: Item, issues: Issue[]): Promise<void> {
     const system = v.system;
     const code = v.code;

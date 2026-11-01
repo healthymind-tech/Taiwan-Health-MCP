@@ -308,7 +308,7 @@ function messageCandidates(issue: Json, root: unknown, w: WalkResult): Candidate
   if (/^Constraint failed: ele-1:/.test(msg) && ((isObj(v) && !Object.keys(v).length) || (Array.isArray(v) && !v.length) || v === "")) {
     out.push({ ops: [{ op: "remove", path: ptr }], reason: "an element must have a value or children (ele-1): remove the empty element", kind: "remove_empty", confidence: 0.9 });
   }
-  if (/^@value cannot be empty$/.test(msg) && v === "") {
+  if (/^@?value cannot be empty$/.test(msg) && v === "") {
     out.push({ ops: [{ op: "remove", path: ptr }], reason: "an empty string is not a FHIR value: remove it (or write the real value)", kind: "remove_empty", confidence: 0.6 });
   }
   const fixed = /^Value is '[\s\S]*' but must be '([\s\S]*)' \(fixed by [^()]*\)$/.exec(msg);
