@@ -76,27 +76,51 @@ function isDigits(s: any): boolean {
 const CACHE_TTL_MS = 30 * 60 * 1000;
 const CACHE_MAX = 400;
 
-class TtlCache<V> {
-  private map = new Map<string, { at: number; value: V }>();
+export class TtlCache<V> {
+  private map = new Map<string, { at: number; value: V; weight: number }>();
+  private total = 0;
+  /**
+   * `maxWeight` bounds the summed weight of the held values (e.g. the concepts of the CodeSystem indexes): a few
+   * large CodeSystems (tens of thousands of codes, hundreds of MB once indexed) must not pin the heap — release v1,
+   * the staging OOM of 2026-11-01. Eviction is FIFO, by count (CACHE_MAX) and by weight.
+   */
+  constructor(private readonly maxWeight = Infinity) {}
   get(key: string): V | undefined {
     const hit = this.map.get(key);
     if (!hit) return undefined;
     if (Date.now() - hit.at > CACHE_TTL_MS) {
-      this.map.delete(key);
+      this.drop(key);
       return undefined;
     }
     return hit.value;
   }
-  set(key: string, value: V): void {
-    if (this.map.size >= CACHE_MAX) {
+  set(key: string, value: V, weight = 1): void {
+    this.drop(key);
+    if (weight > this.maxWeight) return; // larger than the whole budget: not held
+    while (this.map.size && (this.map.size >= CACHE_MAX || this.total + weight > this.maxWeight)) {
       const first = this.map.keys().next().value;
-      if (first !== undefined) this.map.delete(first);
+      if (first === undefined) break;
+      this.drop(first);
     }
-    this.map.set(key, { at: Date.now(), value });
+    this.map.set(key, { at: Date.now(), value, weight });
+    this.total += weight;
+  }
+  get size(): number {
+    return this.map.size;
+  }
+  get weight(): number {
+    return this.total;
+  }
+  private drop(key: string): void {
+    const hit = this.map.get(key);
+    if (!hit) return;
+    this.total -= hit.weight;
+    this.map.delete(key);
   }
 }
 
-const csCache = new TtlCache<CodeSystemIndex | null>();
+// CodeSystem indexes, bounded by their summed concept count (CS_CACHE_CONCEPTS, default 150k)
+const csCache = new TtlCache<CodeSystemIndex | null>(Number(process.env.CS_CACHE_CONCEPTS) > 0 ? Number(process.env.CS_CACHE_CONCEPTS) : 150_000);
 const vsCache = new TtlCache<Record<string, any> | null>();
 const heldCache = new TtlCache<boolean>();
 
@@ -301,7 +325,7 @@ export async function loadCodeSystemIndex(url: string, pkg: PackageRow, exact = 
   const cs = await loadByCanonical("CodeSystem", url, pkg, exact);
   // `not-present` stubs (e.g. SNOMED / LOINC in core) carry no concepts: treat as not held.
   const idx = cs && cs.content !== "supplement" && cs.content !== "not-present" ? indexCodeSystem(cs) : null;
-  csCache.set(key, idx);
+  csCache.set(key, idx, 1 + (idx ? idx.concepts.size : 0));
   return idx;
 }
 
