@@ -26,7 +26,9 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { createRequire } from "node:module";
 import { evaluateExpression, fhirPathBase, resultTypes, type FhirPathEnv } from "../../../src/fhirPath.js";
-import { FhirXmlConverter, parseXml, type XmlEl } from "./xml.js";
+import { parseFhirXml, parseXmlDocument, type XElement } from "../../../src/fhirXml.js";
+import { FileValidatorResolver, ResourceStore } from "../lib/fileResolver.js";
+import { findPackage } from "../lib/packages.js";
 
 const require = createRequire(import.meta.url);
 const fpUtil: any = require("fhirpath/src/utilities");
@@ -44,15 +46,38 @@ const jsonOut = opt("--json");
 const TC = process.env.FHIR_TEST_CASES || join(homedir(), "ref", "fhir-test-cases");
 const CACHE = process.env.FHIR_PACKAGE_CACHE || join(homedir(), ".fhir", "packages");
 const R4 = join(TC, "r4");
-const conv = new FhirXmlConverter(join(CACHE, "hl7.fhir.r4.core#4.0.1", "package"));
+// XML inputs are read with the validator's XML reader (src/fhirXml.ts) over the R4 core definitions
+const coreStore = new ResourceStore();
+const corePkg = findPackage("hl7.fhir.r4.core#4.0.1");
+if (!corePkg) throw new Error(`hl7.fhir.r4.core#4.0.1 not found (package caches incl. ${CACHE})`);
+coreStore.addPackage(corePkg);
+const xmlResolver = new FileValidatorResolver(coreStore);
+
+/** Generic view of an XML element (the test-suite file itself). */
+interface XmlEl {
+  name: string;
+  attrs: Record<string, string>;
+  children: XmlEl[];
+  text: string;
+}
+function xmlEl(el: XElement): XmlEl {
+  const text = (e: XElement): string => e.children.map((c) => (c.type === "text" || c.type === "cdata" ? c.text : c.type === "element" ? text(c) : "")).join("");
+  return {
+    name: el.local,
+    attrs: Object.fromEntries(el.attrs.map((a) => [a.local, a.value])),
+    children: el.children.filter((c): c is XElement => c.type === "element").map(xmlEl),
+    text: text(el),
+  };
+}
 
 const inputs = new Map<string, string>();
+async function preloadInput(name: string): Promise<void> {
+  if (inputs.has(name)) return;
+  const src = readFileSync(join(R4, name), "utf8");
+  const res = name.endsWith(".xml") ? (await parseFhirXml(src, xmlResolver)).resource : JSON.parse(src);
+  inputs.set(name, JSON.stringify(res));
+}
 function loadInput(name: string): Json {
-  if (!inputs.has(name)) {
-    const src = readFileSync(join(R4, name), "utf8");
-    const res = name.endsWith(".xml") ? conv.convertResource(parseXml(src)) : JSON.parse(src);
-    inputs.set(name, JSON.stringify(res));
-  }
   return JSON.parse(inputs.get(name)!); // fresh copy per test (fhirpath.js annotates its input)
 }
 
@@ -117,7 +142,8 @@ function convertToBoolean(items: any[]): boolean {
 interface Row { group: string; name: string; outcome: "pass" | "fail" | "error" | "skip" | "na"; why?: string; expr: string }
 const rows: Row[] = [];
 
-const suite = parseXml(readFileSync(join(R4, "fhirpath", "tests-fhir-r4.xml"), "utf8"));
+const suite = xmlEl(parseXmlDocument(readFileSync(join(R4, "fhirpath", "tests-fhir-r4.xml"), "utf8")).root);
+for (const g of suite.children) for (const t of g.children) if (t.attrs.inputfile) await preloadInput(t.attrs.inputfile);
 for (const g of suite.children.filter((c) => c.name === "group")) {
   const group = g.attrs.name;
   if (onlyGroup && group !== onlyGroup) continue;

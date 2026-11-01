@@ -104,20 +104,32 @@ export function parseXmlDocument(src: string): XDocument {
     const [l, c] = pos(at);
     throw new XmlSyntaxError(msg, l, c);
   };
-  const decode = (s: string, at: number, attr: boolean): string => {
-    if (attr) s = s.replace(/\r\n|[\t\n\r]/gu, " ");
+  // XML 1.0 Char production
+  const xmlChar = (cp: number): boolean => cp === 0x9 || cp === 0xa || cp === 0xd || (cp >= 0x20 && cp <= 0xd7ff) || (cp >= 0xe000 && cp <= 0xfffd) || (cp >= 0x10000 && cp <= 0x10ffff);
+  const decode = (s: string, at: number, attr: string | null, element: string): string => {
+    for (const ch of s) {
+      const cp = ch.codePointAt(0)!;
+      if (xmlChar(cp)) continue;
+      const hex = cp.toString(16);
+      if (attr !== null) fail(`An invalid XML character (Unicode: 0x${hex}) was found in the value of attribute "${attr}" and element is "${element}".`, at);
+      fail(`An invalid XML character (Unicode: 0x${hex}) was found in the element content of the document.`, at);
+    }
+    if (attr !== null) s = s.replace(/\r\n|[\t\n\r]/gu, " ");
     else s = s.replace(/\r\n?/gu, "\n");
     if (!s.includes("&")) return s;
     return s.replace(/&([^;&\s<]*)(;?)/gu, (_m, e: string, semi: string) => {
       if (!semi) fail(`The reference to entity "${e}" must end with the ';' delimiter.`, at);
+      let cp: number | null = null;
       if (e.startsWith("#x")) {
-        const cp = parseInt(e.slice(2), 16);
+        cp = parseInt(e.slice(2), 16);
         if (!/^[0-9a-fA-F]+$/u.test(e.slice(2)) || cp > 0x10ffff) fail(`A hexadecimal representation must immediately follow the "&#x" in a character reference.`, at);
-        return String.fromCodePoint(cp);
+      } else if (e.startsWith("#")) {
+        cp = Number(e.slice(1));
+        if (!/^\d+$/u.test(e.slice(1)) || cp > 0x10ffff) fail(`A decimal representation must immediately follow the "&#" in a character reference.`, at);
       }
-      if (e.startsWith("#")) {
-        if (!/^\d+$/u.test(e.slice(1)) || Number(e.slice(1)) > 0x10ffff) fail(`A decimal representation must immediately follow the "&#" in a character reference.`, at);
-        return String.fromCodePoint(Number(e.slice(1)));
+      if (cp !== null) {
+        if (!xmlChar(cp)) fail(`Character reference "&${e}" is an invalid XML character.`, at);
+        return String.fromCodePoint(cp);
       }
       if (e in PREDEF) return PREDEF[e];
       if (!e) fail("The entity name must immediately follow the '&' in the entity reference.", at);
@@ -176,7 +188,7 @@ export function parseXmlDocument(src: string): XDocument {
       if (stack.length) {
         if (raw.includes("]]>")) fail("The character sequence \"]]>\" must not appear in content unless used to mark the end of a CDATA section.", i);
         const [l, c] = pos(i);
-        append({ type: "text", text: decode(raw, i, false), line: l, col: c });
+        append({ type: "text", text: decode(raw, i, null, stack[stack.length - 1].el.qname), line: l, col: c });
       } else if (/\S/u.test(raw)) {
         fail(root ? "Content is not allowed in trailing section." : "Content is not allowed in prolog.", i);
       }
@@ -250,7 +262,7 @@ export function parseXmlDocument(src: string): XDocument {
       const rawVal = src.slice(i + 1, e);
       if (rawVal.includes("<")) fail(`The value of attribute "${an}" associated with an element type "${qname}" must not contain the '<' character.`);
       if (rawAttrs.some((a) => a.qname === an)) fail(`Attribute "${an}" was already specified for element "${qname}".`);
-      rawAttrs.push({ qname: an, value: decode(rawVal, i, true), at });
+      rawAttrs.push({ qname: an, value: decode(rawVal, i, an, qname), at });
       i = e + 1;
     }
     const selfClose = src[i] === "/";
@@ -641,7 +653,7 @@ export class FhirXmlParser {
     const primitive = isPrimitiveTypeName(ctx.type);
     // attributes
     for (const a of node.attrs) {
-      if (!this.validAttrValue(a.value)) this.issue("error", path, "structure", `The XML attribute '${a.qname}' has an illegal character`, node.line, node.col);
+      if (!this.validAttrValue(a.value)) this.issue("error", path, "structure", `The XML Attribute ${a.qname} has an invalid character`, node.line, node.col);
       if (a.qname === "xmlns" || a.qname.startsWith("xmlns:")) continue;
       const p = this.attrProp(properties, a.local, a.ns);
       if (p) {
