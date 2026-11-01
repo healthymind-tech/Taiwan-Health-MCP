@@ -9,6 +9,7 @@
  * As L1 tools are ported they get registered here alongside `health_check`.
  */
 
+import { registerLosslessLiterals } from "./fhirJsonLiterals.js";
 import { withConcurrencyLimit } from "./toolConcurrency.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
@@ -1505,7 +1506,9 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
       description: TOOL_DESCRIPTIONS.fhir_validate_resource,
       inputSchema: { resource: z.record(z.any()), profile: z.string().nullish().default(null), ...pkg, ...validateBundleGroundingShape },
     },
-    async ({ resource, profile, package_id, version, ...g }) => {
+    async ({ resource, profile, package_id, version, ...g }, extra?: { requestId?: string | number }) => {
+      // (parity v3, F4) number spellings / repeated names of the request text, beside the parsed tree
+      registerLosslessLiterals(resource, losslessToolArgument("fhir_validate_resource", "resource", extra?.requestId));
       const conformance = await svc.validateResource(resource as Record<string, any>, profile ?? null, package_id ?? null, version ?? null);
       const withProfile0 = profile && !(resource as Record<string, any>)?.meta?.profile ? { ...(resource as Record<string, any>), meta: { ...((resource as Record<string, any>).meta ?? {}), profile: [profile] } } : (resource as Record<string, any>);
       const igDefined = g.source_text ? await groundingDeps.igDefined!(withProfile0, package_id ?? null, version ?? null) : null;
@@ -1605,6 +1608,8 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
     },
     extra?: { requestId?: string | number },
   ): Promise<string> {
+      // (parity v3, F4) number spellings / repeated names of the request text, beside the parsed tree
+      registerLosslessLiterals(bundle, losslessToolArgument("fhir_validate_bundle", "bundle", extra?.requestId));
       const conformance = await svc.validateBundle(
         bundle as Record<string, any>,
         package_id ?? null,

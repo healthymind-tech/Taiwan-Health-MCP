@@ -763,6 +763,81 @@ export function xhtmlHrefIssues(div: XNode): XhtmlIssue[] {
   return out;
 }
 
+/** Iteration order of a small java.util.HashSet<String> (capacity 16, no resize below 13 entries). */
+export function javaHashSetOrder(values: Iterable<string>): string[] {
+  const uniq = [...new Set(values)];
+  const hash = (s: string): number => {
+    let h = 0;
+    for (let i = 0; i < s.length; i++) h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
+    return h ^ (h >>> 16);
+  };
+  let cap = 16;
+  while (uniq.length > cap * 0.75) cap *= 2;
+  // a bucket keeps insertion order
+  return uniq.map((v, i) => ({ v, i, b: hash(v) & (cap - 1) })).sort((a, b) => a.b - b.b || a.i - b.i).map((x) => x.v);
+}
+
+const EXT_NARRATIVE_SOURCE_CONTROL = "http://hl7.org/fhir/StructureDefinition/narrative-source-control";
+const EXT_NARRATIVE_LANGUAGE_CONTROL = "http://hl7.org/fhir/StructureDefinition/narrative-language-control";
+
+/**
+ * InstanceValidator.checkNarrative (the narrative-source-control / narrative-language-control parts): `definition`
+ * is the Narrative element's definition, `profile` its StructureDefinition url (printed as StructureDefinition[url]).
+ */
+export function narrativeControlIssues(
+  narrative: Record<string, any>,
+  definition: Record<string, any>,
+  resourceLanguage: string | null,
+  profileUrl: string,
+): XhtmlIssue[] {
+  const out: XhtmlIssue[] = [];
+  const exts: Array<Record<string, any>> = Array.isArray(definition.extension) ? definition.extension : [];
+  const profile = `StructureDefinition[${profileUrl}]`;
+  const div = typeof narrative.div === "string" ? parseXhtml(narrative.div).div : null;
+  const src = exts.find((e) => e?.url === EXT_NARRATIVE_SOURCE_CONTROL);
+  if (src) {
+    const level = String(src.valueCode ?? src.valueString ?? "");
+    for (const x of div?.children ?? []) {
+      if (!hasContent(x)) continue;
+      const clss = x.attributes.get("class");
+      // (sic) hasClass: Utilities.existsInList(clss, clss.split(" ")) — any single-token class passes
+      if (clss != null && clss.split(" ").includes(clss)) continue;
+      let t = javaTrim(allText(x));
+      if (t.length > 30) t = t.slice(0, 29) + "...";
+      const message = `The xhtml node at '${t}' does not have a class attribute to indicate its source (boilerplate, generated, or original) and this is required by the profile ${profile}`;
+      // (sic) the Java switch falls through: hint → warning → error
+      const levels: Array<XhtmlIssue["severity"]> = level === "hint" || level === "information" ? ["information", "warning", "error"] : level === "warning" ? ["warning", "error"] : level === "error" ? ["error"] : [];
+      for (const severity of levels) out.push({ severity, id: "XHTML_CONTROL_NO_SOURCE", message });
+    }
+  }
+  const langExts = exts.filter((e) => e?.url === EXT_NARRATIVE_LANGUAGE_CONTROL);
+  if (langExts.length) {
+    const found: string[] = [];
+    for (const n of div?.children ?? []) if (n.type === "Element" && n.name === "div" && n.attributes.has("xml:lang")) found.push(String(n.attributes.get("xml:lang")));
+    const langs = javaHashSetOrder(found);
+    const list = langs.join(", ");
+    const add = (severity: XhtmlIssue["severity"], ok: boolean, id: string, message: string): void => {
+      if (!ok) out.push({ severity, id, message });
+    };
+    for (const ext of langExts) {
+      const code = ext.valueCode ?? ext.valueString;
+      if (typeof code !== "string") continue;
+      if (code === "_no") add("error", !langs.length, "XHTML_CONTROL_NO_LANGS", `The xhtml has some language sections (${list}), but language sections are prohibited in this context by the profile ${profile}`);
+      else if (code === "_yes") add("error", langs.length > 0, "XHTML_CONTROL_LANGS_REQUIRED", `The xhtml has no language sections, but language sections are required in this context by the profile ${profile}`);
+      else if (code === "_resource") {
+        const rl = resourceLanguage;
+        if (!langs.length) {
+          if (rl === null) add("warning", false, "XHTML_CONTROL_LANGS_NONE_NO_DEFAULT", `The profile ${profile} requires a section in the narrative for the resource language, but there is no sections and no resource language`);
+          else add("warning", false, "XHTML_CONTROL_LANGS_NONE", `The profile ${profile} requires a section in the narrative for the resource language ${rl}, but there is no sections`);
+        } else if (rl === null) add("warning", false, "XHTML_CONTROL_LANGS_NO_DEFAULT", `The profile ${profile} requires a section in the narrative for the resource language, but there is no language`);
+        else add("error", langs.includes(rl), "XHTML_CONTROL_LANGS_REQUIRED_DEF", `The profile ${profile} requires a section in the narrative for the resource language (${rl}), but it was not found (found ${list})`);
+      } else if (!langs.length) add("warning", false, "XHTML_CONTROL_LANGS_NONE2", `The profile ${profile} requires a section in the narrative for the language ${code}, but there is no sections`);
+      else add("error", langs.includes(code), "XHTML_CONTROL_LANGS_REQUIRED_LANG", `The profile ${profile} requires a section in the narrative for the language '${code}', but it was not found (found ${list})`);
+    }
+  }
+  return out;
+}
+
 /** FHIRPathEngine.funcHtmlChecks1 on an xhtml-typed value: false when the source does not parse. */
 export function htmlChecks1(source: string): boolean {
   const p = parseXhtml(source);

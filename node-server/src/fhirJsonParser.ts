@@ -19,6 +19,8 @@
  * element model holds: the first of duplicated names, numbers as numbers, unquoted tokens as strings.
  */
 
+import { setNumberText } from "./fhirJsonLiterals.js";
+
 export interface JsonLoc {
   line: number;
   col: number;
@@ -575,11 +577,20 @@ export function toPlain(n: JNode): unknown {
   switch (n.kind) {
     case "object": {
       const o: Record<string, unknown> = {};
-      for (const p of n.props) if (!Object.prototype.hasOwnProperty.call(o, p.name)) o[p.name] = toPlain(p.value);
+      for (const p of n.props) {
+        if (Object.prototype.hasOwnProperty.call(o, p.name)) continue;
+        o[p.name] = toPlain(p.value);
+        if (p.value.kind === "number" && typeof o[p.name] === "number") setNumberText(o, p.name, p.value.value, o[p.name] as number);
+      }
       return o;
     }
-    case "array":
-      return n.items.map(toPlain);
+    case "array": {
+      const a = n.items.map(toPlain);
+      n.items.forEach((x, i) => {
+        if (x.kind === "number" && typeof a[i] === "number") setNumberText(a, i, x.value, a[i] as number);
+      });
+      return a;
+    }
     case "string":
       return n.value;
     case "boolean":

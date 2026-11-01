@@ -43,7 +43,8 @@ import { UCUM_SYSTEM, checkUcumCode, convertUcum, ucumDisplayIssue, ucumUnknownC
 import { XVER_SOURCE, xverDefinition, xverElementId, xverMatchingUrl, xverStatus, xverVersion } from "./fhirXver.js";
 import { hl7UrlMustResolve, uriResolutionExempt, urlResolveMessage, urnSyntaxIssue } from "./fhirUriRules.js";
 import { codingVersionIssue } from "./fhirExternalTerminology.js";
-import { parseXhtml, validateXhtml, xhtmlHrefIssues } from "./fhirXhtml.js";
+import { narrativeControlIssues, parseXhtml, validateXhtml, xhtmlHrefIssues } from "./fhirXhtml.js";
+import { duplicateKeys, numberText } from "./fhirJsonLiterals.js";
 import { dropUnprocessed, JsonSyntaxError, jsonSyntaxIssues, parseFhirJsonText, toPlain, type JObject } from "./fhirJsonParser.js";
 
 export const SOURCE = "builtin";
@@ -428,7 +429,15 @@ export function impliedVitalSignProfile(code: any): string | null {
  */
 const QUANTITY_TYPES = ["Quantity"];
 
-const EXAMPLE_HOST = /(^|\.)(example\.(org|com|net)|acme\.(com|org))$/i;
+/** BaseValidator.isExampleUrl. */
+function isExampleUrl(url: string): boolean {
+  return (
+    ["example.org/", "acme.com/", "acme.org/", "example.com/", "example.net/"].some((x) => url.includes(x)) ||
+    ["example.org", "acme.com", "acme.org", "example.com", "example.net"].some((x) => url.endsWith(x)) ||
+    url.startsWith("urn:oid:1.3.6.1.4.1.32473.") ||
+    url.startsWith("urn:oid:2.999.")
+  );
+}
 
 /** BaseValidator.isExampleUrl (7.0.1). */
 export function isExampleUrl(url: string): boolean {
@@ -1149,6 +1158,8 @@ interface Item {
   parentExtUrl?: string;
   /** For an extension item: the element that holds it (its context). */
   host?: ExtensionHost;
+  /** (parity v3) Source spelling of a JSON number value when it differs from String(value) (fhirJsonLiterals). */
+  numText?: string;
 }
 
 /** The element an extension sits on, as InstanceValidator.checkExtensionContext sees it. */
@@ -2162,6 +2173,16 @@ export class InstanceValidator {
       issues.push({ severity: "error", path, code: "structure", message: `Unknown resource type '${rt}'` });
       return;
     }
+    // (parity v3, F18) InstanceValidator.validateResourceRules: security labels are a set (system#code); (sic) Java
+    // reports at `.meta.profile[i]`
+    if (isObject(resource.meta) && Array.isArray(resource.meta.security)) {
+      const tags = new Set<string>();
+      resource.meta.security.forEach((e: any, i: number) => {
+        const s = `${isObject(e) && typeof e.system === "string" ? e.system : null}#${isObject(e) && typeof e.code === "string" ? e.code : null}`;
+        if (tags.has(s)) issues.push({ severity: "error", path: `${path}.meta.profile[${i}]`, code: "business-rule", message: `Duplicate Security Label ${s}` });
+        tags.add(s);
+      });
+    }
     const profiles: string[] = [];
     const metaProfiles = isObject(resource.meta) && Array.isArray(resource.meta.profile) ? resource.meta.profile : [];
     for (const p of extraProfiles) if (p && !profiles.includes(p)) profiles.push(p);
@@ -2278,12 +2299,10 @@ export class InstanceValidator {
           // (parity v3) JsonParser.parseChildPrimitiveInstance reads the div with XhtmlParser (xml mode): a parse
           // failure is ERROR_PARSING_XHTML_ and leaves no xhtml node (no XhtmlValidator / link checks); then
           // InstanceValidator.checkXhtml: XhtmlValidator.validate + checkReferences
+          // (the parse / XhtmlValidator issues are reported for every Narrative by the Narrative type check)
           const divPath = `${ROOT_TOKEN}.text.div`;
           const px = parseXhtml(res0.text.div);
-          if (px.error !== null) out.push({ severity: "error", path: divPath, code: "invalid", message: `Error parsing XHTML: ${px.error}` });
-          for (const m of px.issues) out.push({ severity: "error", path: divPath, code: "invalid", message: m });
           if (px.div) {
-            for (const x of [...validateXhtml(px.div), ...xhtmlHrefIssues(px.div)]) out.push({ severity: x.severity, path: divPath, code: "invalid", message: x.message });
             for (const m of narrativeLinkProblems(res0.text.div, this.narrativeAnchors(rctx))) {
               out.push({ severity: "error", path: divPath, code: "invalid", message: `Hyperlink '${m.href}' at '${m.at}' for '${m.text}' does not resolve` });
             }
@@ -2729,6 +2748,20 @@ export class InstanceValidator {
     if (QUANTITY_TYPES.includes(typeCode)) await this.checkQuantity(v, item, issues, el, sdx);
     if (typeCode === "Identifier") this.checkIdentifier(v, item, issues);
     if (typeCode === "Attachment") this.checkAttachment(v, el, item, issues);
+    if (typeCode === "Narrative" && isObject(v) && typeof v.div === "string") {
+      // JsonParser.parseChildPrimitiveInstance (XhtmlParser, xml mode) + InstanceValidator.checkXhtml (XhtmlValidator,
+      // checkReferences schemes) for the div of every Narrative (resource text, Composition.section.text …)
+      const divPath = `${item.path}.div`;
+      const px = parseXhtml(v.div);
+      if (px.error !== null) issues.push({ severity: "error", path: divPath, code: "invalid", message: `Error parsing XHTML: ${px.error}` });
+      for (const m of px.issues) issues.push({ severity: "error", path: divPath, code: "invalid", message: m });
+      if (px.div) for (const x of [...validateXhtml(px.div), ...xhtmlHrefIssues(px.div)]) issues.push({ severity: x.severity, path: divPath, code: "invalid", message: x.message });
+    }
+    if (typeCode === "Narrative" && isObject(v)) {
+      // InstanceValidator.checkNarrative: narrative-source-control / narrative-language-control of the definition
+      const lang = typeof rctx.resource?.language === "string" ? rctx.resource.language : null;
+      for (const x of narrativeControlIssues(v, el, lang, sdx.url)) issues.push({ severity: x.severity, path: item.path, code: "business-rule", message: x.message });
+    }
     if (typeCode === "Reference") await this.checkReference(el, v, item, rctx, issues, depth);
     await this.checkConstraints(sdx, el, item, typeCode, rctx, issues);
     for (const [tsdx, troot] of typeRootConstraints) {
@@ -3025,6 +3058,8 @@ export class InstanceValidator {
               continue;
             }
             const it = mk(val, ex ?? undefined, `${path}[${i}]`);
+            const nt = numberText(arr, i);
+            if (nt !== undefined) it.numText = nt;
             items.push(it);
             typedItems.push({ item: it, type: typeCode });
           }
@@ -3040,6 +3075,8 @@ export class InstanceValidator {
           return;
         }
         const it = mk(raw === undefined ? null : raw, rawExt, path);
+        const nt = numberText(node, key);
+        if (nt !== undefined) it.numText = nt;
         items.push(it);
         typedItems.push({ item: it, type: typeCode });
       };
@@ -3967,7 +4004,8 @@ export class InstanceValidator {
       // (parity v2) JsonParser.parseChildPrimitiveInstance keeps the value (as its string) and the InstanceValidator then
       // checks it as the element's type — those value errors take part in slice / profile matching like any other
     } else if (spec.json === "boolean") return;
-    this.checkPrimitiveValue(String(v), item, typeCode, el, profile, issues);
+    // (parity v3, F4) the element model keeps a JSON number's source text (JsonNumber.asString)
+    this.checkPrimitiveValue(item.numText ?? String(v), item, typeCode, el, profile, issues);
   }
 
   /**
@@ -4098,11 +4136,7 @@ export class InstanceValidator {
       // they still clear Java's `ok`
       const syn = urnSyntaxIssue(url, typeCode);
       if (syn && !/^URI values cannot start with/.test(syn)) ok = false;
-      const host = /^https?:\/\/([^/:?#]+)/i.exec(url)?.[1];
-      // settings.isAllowExamples() && isExampleUrl(url): "nothing - these do need to resolve"
-      if (host && EXAMPLE_HOST.test(host) && !this.inExampleExemptContext(path) && !(this.allowExamples && isExampleUrl(url))) {
-        ok = rule(false, `Example URLs are not allowed in this context (${short(url)})`) && ok; // TYPE_SPECIFIC_CHECKS_DT_URL_EXAMPLE
-      }
+      // TYPE_SPECIFIC_CHECKS_DT_URL_EXAMPLE: reported by checkUri, only for a URL that does not resolve (review F23)
     }
     if (typeCode === "id" && el.path !== "ElementDefinition.id") ok = rule(ID_RE.test(s), `id value '${s}' is not valid`) && ok;
     if (typeCode === "string") {
@@ -4697,6 +4731,14 @@ export class InstanceValidator {
     if (!["uri", "url", "canonical", "oid", "uuid"].includes(typeCode)) return;
     const syn = urnSyntaxIssue(v, typeCode);
     if (syn) issues.push({ severity: "error", path: item.path, code: "invalid", message: syn });
+    // (parity v3, F23) InstanceValidator.validateReference (IV:3986-4011): an example URL is an error only when it
+    // does not resolve (a definition loaded from an example.org namespace is fine) and the path is not exempt
+    if (typeCode !== "oid" && typeCode !== "uuid" && !v.startsWith("#") && isExampleUrl(v) && !this.inExampleExemptContext(item.path)) {
+      const u = v.includes("|") ? v.slice(0, v.lastIndexOf("|")) : v;
+      const found = !!this.resolver.definitionExists && (await this.defExists(u));
+      // settings.isAllowExamples(): "nothing - these do need to resolve"
+      if (!found && !this.allowExamples) issues.push({ severity: "error", path: item.path, code: "invalid", message: `Example URLs are not allowed in this context (${short(v)})` });
+    }
     // canonical: the HL7 validator only hints when a canonical does not resolve.
     if (typeCode !== "uri" && typeCode !== "url") return;
     const basePath = isObject(el.base) && typeof el.base.path === "string" ? el.base.path : String(el.path || "");
@@ -5331,6 +5373,11 @@ export class InstanceValidator {
     // (parity v1) children the parser keeps: ele-1 is evaluated on the element model after unknown properties and
     // values of the wrong JSON shape were dropped — an element holding only those (or only an id) has no children
     let kept = 0;
+    // (parity v3, F4) JsonParser.checkNotProcessed: a repeated property name (first one bound, the rest ignored)
+    for (const k of duplicateKeys(node)) {
+      if (isRoot && k === "resourceType") continue;
+      issues.push({ severity: "error", path, code: "invalid", message: `The JSON property '${k}' is a duplicate and will be ignored` });
+    }
     for (const key of Object.keys(node)) {
       if (isRoot && key === "resourceType") continue;
       const primExt = key.startsWith("_");

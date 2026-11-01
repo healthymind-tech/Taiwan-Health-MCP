@@ -69,6 +69,13 @@ export class RawJson {
   }
 }
 
+const DUPLICATE_KEYS = new WeakMap<object, string[]>();
+
+/** Names an object of a parseLossless tree repeated in its source text (one entry per extra occurrence). */
+export function losslessDuplicateKeys(obj: object): string[] {
+  return DUPLICATE_KEYS.get(obj) ?? [];
+}
+
 export function isRawNumber(v: unknown): v is RawNumber {
   return v instanceof RawNumber;
 }
@@ -218,7 +225,12 @@ class Parser {
       this.ws();
       const v = this.value();
       // JSON.parse semantics: an own data property even for "__proto__"; a repeated key keeps
-      // its first position and takes the last value.
+      // its first position and takes the last value (the repetition is noted: losslessDuplicateKeys).
+      if (Object.prototype.hasOwnProperty.call(out, key)) {
+        const d = DUPLICATE_KEYS.get(out);
+        if (d) d.push(key);
+        else DUPLICATE_KEYS.set(out, [key]);
+      }
       if (key === "__proto__") Object.defineProperty(out, key, { value: v, writable: true, enumerable: true, configurable: true });
       else out[key] = v;
       this.ws();
