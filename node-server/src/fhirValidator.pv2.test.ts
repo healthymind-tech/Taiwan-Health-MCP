@@ -15,12 +15,18 @@ const errs = async (r: Record<string, any>): Promise<Array<[string, string]>> =>
     .map((i: Issue) => [i.path, i.message]);
 const obs = (extra: Record<string, any>): Record<string, any> => ({ resourceType: "Observation", status: "final", code: { text: "x" }, subject: { reference: "Patient/p" }, ...extra });
 
-test("empty object: 'Object must have some content', no ele-1, and its required children are still checked", async () => {
+test("empty object: 'Object must have some content' + ele-1 (not on a choice element), and its required children are still checked", async () => {
+  // fhir-test-cases validator/outcomes/java/R5.list-empty1-json-base.json (List.entry[0] = {}): OBJECT_MUST_HAVE_SOME_CONTENT,
+  // ele-1 and List.entry.item min 1 on the same element; a choice element `{}` (JsonParser.parseChildItem l. 400-408,
+  // FHIRPathEngine.funcHasValue l. 6208) has no ele-1 in validator_cli 7.0.1 (evaluator corpus, value[x] / dose[x] / effective[x])
   const e = await errs(obs({ valueQuantity: {}, component: [{}] }));
   assert.ok(e.some(([p, m]) => p === "Observation.valueQuantity" && m === "Object must have some content"), JSON.stringify(e));
   assert.ok(e.some(([p, m]) => p === "Observation.component[0]" && m === "Object must have some content"));
   assert.ok(e.some(([p, m]) => p === "Observation.component[0]" && /component\.code: minimum required = 1/u.test(m)), "validation continues into the empty element");
-  assert.ok(!e.some(([, m]) => /ele-1/u.test(m)), "no ele-1 on top");
+  assert.ok(e.some(([p, m]) => p === "Observation.component[0]" && /^Constraint failed: ele-1/u.test(m)), "ele-1 on the empty component");
+  assert.ok(!e.some(([p, m]) => p === "Observation.valueQuantity" && /ele-1/u.test(m)), "no ele-1 on the empty choice element");
+  // one ele-1 per element, not one per profile pass
+  assert.equal(e.filter(([p, m]) => p === "Observation.component[0]" && /ele-1/u.test(m)).length, 1);
 });
 
 test("wrong JSON type: the parse error plus the type's value error (validation goes on)", async () => {

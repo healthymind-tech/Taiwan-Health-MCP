@@ -2605,10 +2605,15 @@ export class InstanceValidator {
     }
     if (Object.keys(v).length === 0 && !isResourceRoot) {
       // (parity v2) JsonParser.checkObject (7.0.1): OBJECT_MUST_HAVE_SOME_CONTENT, and the (empty) element is kept —
-      // validation goes on, so its required children are reported as missing; no ele-1 on top.
+      // validation goes on, so its required children are reported as missing.
       // XML: XmlParser keeps the empty element (its parse error, if any, comes from fhirXml.ts) and ele-1 fails.
-      if (this.xmlSource) issues.push({ severity: "error", path: item.path, code: "invariant", message: ELE1_MESSAGE });
-      else issues.push({ severity: "error", path: item.path, code: "invalid", message: "Object must have some content" });
+      // (parity v3 round 5) JSON: ele-1 (`hasValue() or (children().count() > id.count())`) fails on the kept empty
+      // element as well — except for a choice element: JsonParser.parseChildItem (l. 400-408) builds it on the [x]
+      // property, and FHIRPathEngine.funcHasValue (l. 6208) reads such an element as having a value. Evaluator
+      // corpus: every non-choice `{}` (extension, meta, text, code, subject, category[n] …) carries ele-1 in
+      // validator_cli 7.0.1, no `value[x]` / `dose[x]` / `effective[x]` `{}` does.
+      if (!this.xmlSource) issues.push({ severity: "error", path: item.path, code: "invalid", message: "Object must have some content" });
+      if (this.xmlSource || !/\[x\]$/u.test(String(el.path ?? ""))) issues.push({ severity: "error", path: item.path, code: "invariant", message: ELE1_MESSAGE });
     }
 
     // Port of InstanceValidator.checkChildByDefinition (7.0.1), several profiles on the element's one type: the
@@ -4080,8 +4085,9 @@ export class InstanceValidator {
     if (isJavaBlank(s)) {
       if (s.length === 0) {
         rule(hasChildren, "value cannot be empty"); // TYPE_SPECIFIC_CHECKS_DT_PRIMITIVE_NOTEMPTY
-        // XML value="": hasValue() is false → ele-1 as well (XmlParser element model)
-        if (this.xmlSource && !hasChildren) issues.push({ severity: "error", path: item.path, code: "invariant", message: ELE1_MESSAGE });
+        // value "" (XML value="", JSON ""): FHIRPathEngine.funcHasValue (l. 6208) — Utilities.noString("") — is false,
+        // so ele-1 fails too (parity v3 round 5: the evaluator corpus shows ele-1 with every JSON "" without children)
+        if (!hasChildren) issues.push({ severity: "error", path: item.path, code: "invariant", message: ELE1_MESSAGE });
       }
       else warning(hasChildren, "Primitive types should not only be whitespace"); // TYPE_SPECIFIC_CHECKS_DT_PRIMITIVE_WS
       this.checkBlankPrimitive(item, el, profile, issues);
