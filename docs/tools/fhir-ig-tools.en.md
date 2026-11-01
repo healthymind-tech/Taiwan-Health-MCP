@@ -184,6 +184,18 @@ Apart from those fields the output Bundle is identical to the input (deep copy, 
 
 **v16 structure repairs (any IG, any depth)**: the max of every element is read from the declared profile's StructureDefinition (else core) — a repeating element given a single value → a one-item array, a max-1 element given a one-item array → the item, a `meta.profile` string → an array; an entry without `resourceType` whose `meta.profile` (array or string) names profiles of one resource type → that type; empty elements (`{}`, `[]`, `""`, `null`, ele-1) removed; an `Unrecognized property` moved only when exactly one level up / down defines it. These are lossless reshapes: an error that appears after the repair only because the value can now be read (under the reshaped element, or the resource now validated against the `meta.profile` it declares, and profile-match errors of references to it) was hidden, not added, so the repair is kept; an inferred `resourceType` is withdrawn only by an unknown top-level property (a wrong type). On the example Bundles of the TWPAS 1.2.7 and TW Core 1.0.0 packages with these corruptions applied to every entry, the repaired Bundles are back to the examples' own error counts (`node-server/scripts/v16-structure-eval/evalRepairs.ts`).
 
+### The official HL7 validator as the judge (v18 R1) {#official-engine}
+
+Production runs one resident official validator_cli 7.0.1 per main IG (TW Core 1.0.0, TWPAS 1.2.7, IPS 1.1.0, EMPD 0.2.1; compose services `hl7-validator-*`, `services/hl7-validator/`). With `OFFICIAL_VALIDATOR_URLS` set, the structure, slicing, profile, invariant / FHIRPath, document and terminology errors of `fhir_validate_bundle` / `fhir_validate_resource` (and the "no new errors" guard of `fhir_finalize_*`) **come straight from the official engine's OperationOutcome**; MCP only adds `suggestions`, `slice_match`, `pointer` / `patches` and the content checks (grounding, record checks).
+
+| Field | Value |
+|---|---|
+| `data.source` | `hl7-validator_cli-7.0.1` (official) or `builtin` |
+| `data.engine` | `hl7-official`; `mcp-fallback` while the official service is unavailable, with a warning that the result comes from the built-in validator and may differ from validator_cli |
+| issue `message_id` | the official message id (e.g. `Unrecognized_property`) |
+
+`OFFICIAL_VALIDATOR_MODE`: `prefer` (default; falls back to the built-in validator when the official one is unavailable), `require` (no fallback: an error "could not be validated"), `off`. IGs without a resident validator are still judged by the built-in validator, with unchanged output (no `engine` field). Terminology is judged by tx.fhir.org by default (codes and displays only, no patient data).
+
 ### Auto-fix, ambiguous and "no new errors" (v19 R1) {#auto-fix}
 
 From `fhir_finalize_bundle` 1.14.0 (`repair="content"`, the default) every structural error with **exactly one correct fix** is fixed by the tool itself, the rest is reported as `ambiguous`, and **the errors after finalize are a subset of the errors before**. Every rule comes from the StructureDefinitions / snapshots, the FHIR R4 specification and the validator's own messages — nothing IG-specific:

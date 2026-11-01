@@ -184,6 +184,18 @@
 
 **v16 結構修正（任何 IG、任何深度）**：以宣告剖面（無則 core）的 StructureDefinition 判斷每個元素的 max —— 重複元素寫成單值 → 一項陣列、max 1 寫成一項陣列 → 取出、`meta.profile` 字串 → 陣列；entry 缺 `resourceType` 而 `meta.profile`（陣列或字串）只指向一種資源型別 → 補上；空的元素（`{}`、`[]`、`""`、`null`，ele-1）移除；`Unrecognized property` 的值只在唯一的上一層 / 下一層有定義時才移過去。這些都是無損改形：若修正後才出現的錯誤只是因為值終於能被讀到（改形後的元素底下、或補好 `meta.profile` 後該資源開始依其剖面驗證、引用它的 profile-match 錯誤），視為原本被遮住的錯誤而不撤回修正；推得的 `resourceType` 只有在出現未知的頂層屬性（型別不對）時撤回。以 TWPAS 1.2.7 與 TW Core 1.0.0 套件內的範例 Bundle 套用上述破壞（每份每筆資源）後修正，錯誤數都回到範例原本的數量（`node-server/scripts/v16-structure-eval/evalRepairs.ts`）。
 
+### 官方 HL7 validator 作為判準（v18 R1）{#official-engine}
+
+正式環境為每個主要 IG（TW Core 1.0.0、TWPAS 1.2.7、IPS 1.1.0、EMPD 0.2.1）各跑一個常駐的官方 validator_cli 7.0.1（compose 服務 `hl7-validator-*`，`services/hl7-validator/`）。設定 `OFFICIAL_VALIDATOR_URLS` 後，`fhir_validate_bundle` / `fhir_validate_resource`（以及 `fhir_finalize_*` 的「不新增錯誤」檢查）的結構、slicing、profile、invariant / FHIRPath、document 與術語 error **直接來自官方引擎的 OperationOutcome**；MCP 只在上面加 `suggestions`、`slice_match`、`pointer` / `patches` 與內容檢查（grounding、record checks）。
+
+| 欄位 | 值 |
+|---|---|
+| `data.source` | `hl7-validator_cli-7.0.1`（官方）或 `builtin`（內建） |
+| `data.engine` | `hl7-official`；官方服務暫時不可用時為 `mcp-fallback`，並附一筆 warning 說明結果來自內建驗證器、可能與 validator_cli 不同 |
+| issue `message_id` | 官方的訊息 id（例如 `Unrecognized_property`） |
+
+`OFFICIAL_VALIDATOR_MODE`：`prefer`（預設，官方不可用時降級為內建）、`require`（不降級：官方不可用時回 error「無法驗證」）、`off`。沒有常駐服務的 IG 仍由內建驗證器判定，輸出不變（沒有 `engine` 欄位）。術語預設由 tx.fhir.org 判定（只送代碼與 display，不含病人資料）。
+
 ### 自動修正、ambiguous 與「不新增錯誤」（v19 R1）{#auto-fix}
 
 `fhir_finalize_bundle` 1.14.0 起（`repair="content"`，預設）把**只有一種正確修法**的結構錯誤全部自己修好，其餘標為 `ambiguous`，並保證**finalize 後的 error 是 finalize 前的子集合**。規則全部由 StructureDefinition / snapshot、FHIR R4 規格與驗證器本身的訊息推得，不針對任何 IG：

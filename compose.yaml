@@ -184,6 +184,10 @@ services:
       - MCP_HEAVY_TOOL_CONCURRENCY=${MCP_HEAVY_TOOL_CONCURRENCY:-4}
       - MCP_HEAVY_TOOL_QUEUE_TIMEOUT_MS=${MCP_HEAVY_TOOL_QUEUE_TIMEOUT_MS:-60000}
       - MCP_HEAVY_TOOL_MAX_QUEUE=${MCP_HEAVY_TOOL_MAX_QUEUE:-32}
+      # v18 R1: the official HL7 validator per IG (hl7-validator-* below) judges fhir_validate_*; empty = built-in only
+      - OFFICIAL_VALIDATOR_URLS=${OFFICIAL_VALIDATOR_URLS:-}
+      - OFFICIAL_VALIDATOR_MODE=${OFFICIAL_VALIDATOR_MODE:-}
+      - OFFICIAL_VALIDATOR_TIMEOUT_MS=${OFFICIAL_VALIDATOR_TIMEOUT_MS:-180000}
     depends_on:
       pgbouncer:
         condition: service_healthy
@@ -302,6 +306,62 @@ services:
       start_period: 60s
       retries: 3
 
+  # ── Official HL7 validator, one per IG (services/hl7-validator) ─────────────
+  # Resident validator_cli 7.0.1; the judge of fhir_validate_bundle / _resource when
+  # OFFICIAL_VALIDATOR_URLS names it (e.g. tw.gov.mohw.nhi.pas#1.2.7=http://hl7-validator-pas:8080).
+  # No host port. Needs outbound HTTPS (packages.fhir.org on first start; tx.fhir.org for
+  # terminology — codes / displays only). 1.2–2.4 GB each (staging, 2026-11-01).
+  hl7-validator-twcore: &hl7validator
+    build:
+      context: ./services/hl7-validator
+    image: taiwan-health-mcp-hl7-validator:latest
+    container_name: taiwanHealthMcp_hl7_validator_twcore
+    restart: unless-stopped
+    expose:
+      - "8080"
+    environment:
+      - VALIDATOR_IG=tw.gov.mohw.twcore#1.0.0
+      - VALIDATOR_TX=${VALIDATOR_TX:-https://tx.fhir.org}
+      - JAVA_XMX=${VALIDATOR_JAVA_XMX:-2400m}
+    volumes:
+      - validator_fhircache:/root/.fhir
+    cpus: 2
+    cpu_shares: 256
+    mem_limit: 3g
+    pids_limit: 512
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8080"]
+      interval: 30s
+      timeout: 5s
+      start_period: 240s
+      retries: 3
+
+  hl7-validator-pas:
+    <<: *hl7validator
+    container_name: taiwanHealthMcp_hl7_validator_pas
+    environment:
+      - VALIDATOR_IG=tw.gov.mohw.nhi.pas#1.2.7
+      - VALIDATOR_TX=${VALIDATOR_TX:-https://tx.fhir.org}
+      - JAVA_XMX=${VALIDATOR_JAVA_XMX:-2400m}
+
+  hl7-validator-ips:
+    <<: *hl7validator
+    container_name: taiwanHealthMcp_hl7_validator_ips
+    environment:
+      - VALIDATOR_IG=hl7.fhir.uv.ips#1.1.0
+      - VALIDATOR_TX=${VALIDATOR_TX:-https://tx.fhir.org}
+      - JAVA_XMX=${VALIDATOR_JAVA_XMX:-2400m}
+
+  hl7-validator-empd:
+    <<: *hl7validator
+    container_name: taiwanHealthMcp_hl7_validator_empd
+    environment:
+      - VALIDATOR_IG=tw.gov.mohw.nhi.empd#0.2.1
+      - VALIDATOR_TX=${VALIDATOR_TX:-https://tx.fhir.org}
+      - JAVA_XMX=${VALIDATOR_JAVA_XMX:-2400m}
+
   # ── Admin console v2 (static Vite SPA served by its own nginx) ────────────────
   # nginx (below) routes /admin pages here; API / MCP / WS still go straight to
   # `app`. web-v2's own nginx can also proxy the backend (BACKEND_UPSTREAM), so it
@@ -363,5 +423,6 @@ networks:
 
 volumes:
   postgres_data:
+  validator_fhircache:
   redis_data:
   minio_data:

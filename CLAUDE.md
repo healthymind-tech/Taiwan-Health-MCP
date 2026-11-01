@@ -164,6 +164,7 @@ lint commands to a task's "done" checklist expecting one to exist.
 | Embedding endpoint (external) | Semantic / hybrid search vectors (default Ollama `qwen3-embedding`). Configured as the **embedding** role's route (provider accounts + routes, admin → 模型端點), **not** env. Unavailable → keyword-only fallback |
 | MinerU (external) | Default OCR provider for drug insert PDFs (`POST /file_parse`). Configured in admin → 外部服務 → OCR (`admin.app_settings` group `ocr`) |
 | ocr-indra | Optional CPU OCR provider (`services/ocr-indra/`, Indra OCR, `POST /ocr`, `GET /health`) at `http://ocr-indra:8000`. On the compose network `ocr` (`internal: true` — no route out; `app` + `admin-worker` also join it), no host port, 2 CPU / 2 GB. Used only when the `ocr` group's `provider` or `fallback_provider` is `indra`. Model weights are modified-OpenRAIL-M (commercial restrictions) — see its README |
+| hl7-validator-* | Official HL7 validator_cli 7.0.1, resident HTTP mode, one container per IG (`services/hl7-validator/`; twcore / pas / ips / empd). The judge of `fhir_validate_*` when `OFFICIAL_VALIDATOR_URLS` names it (`node-server/src/officialValidator.ts`; mode `prefer` falls back to the built-in TS validator and says so via `engine: "mcp-fallback"`). No host port; needs outbound HTTPS (packages.fhir.org on first start, tx.fhir.org for terminology). 3 GB / 2 CPU each |
 | Analysis LM (external) | Drug insert extraction. Configured as the **analysis** role's route (admin → 模型端點) |
 | Prometheus | Metrics on `METRICS_PORT` (default 9090, bound to localhost) |
 

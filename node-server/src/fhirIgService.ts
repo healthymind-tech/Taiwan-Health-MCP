@@ -25,6 +25,7 @@ import type { PackageRow } from "./fhirIg.js";
 import * as snapshot from "./fhirSnapshot.js";
 import * as terminology from "./fhirTerminology.js";
 import * as validator from "./fhirValidator.js";
+import { OFFICIAL_SOURCE, officialValidator } from "./officialValidator.js";
 import { DbValidatorResolver, icd10cmStrict } from "./fhirValidationResolver.js";
 import { composeContains } from "./fhirCodeSystem.js";
 import * as reference from "./fhirReference.js";
@@ -1954,11 +1955,34 @@ export class FHIRIGService {
     // cannot be fetched counts as absent, a code system as unknown …), which must
     // not read as a clean pass: every failed lookup is tracked and reported as an
     // error issue (`exception`) that makes the verdict invalid and incomplete.
-    const tracked = await trackQueryFailures(() => engine.validate(resource, { profiles }));
-    pushAll(issues, tracked.result as Record<string, any>[]);
-    if (tracked.total > 0) {
-      logError("fhir validation: definition / terminology lookups failed", { failed: tracked.total, first: tracked.failures[0]?.message });
-      issues.push(validator.lookupFailureIssue(tracked.total, tracked.failures));
+    // v18 R1 / parity v2: the official HL7 validator (resident validator_cli per IG, officialValidator.ts) is the
+    // judge when one serves this package; the built-in TS validator is only the fallback (mode `prefer`).
+    let engineSource: string = validator.SOURCE;
+    let judged = false;
+    const official = officialValidator();
+    const officialBase = official.endpointFor(pkg.package_id, pkg.version);
+    if (officialBase) {
+      try {
+        pushAll(issues, (await official.validate(officialBase, resource, profiles[0] ?? null)) as unknown as Record<string, any>[]);
+        engineSource = OFFICIAL_SOURCE;
+        judged = true;
+      } catch (e) {
+        if (official.mode === "require") {
+          issues.push(validator.issue("error", "", "exception", `The official HL7 validator for ${pkg.package_id}#${pkg.version} is unavailable (${String((e as Error).message)}); the resource could not be validated`));
+          engineSource = OFFICIAL_SOURCE;
+          judged = true;
+        } else {
+          issues.push(validator.issue("warning", "", "informational", `The official HL7 validator for ${pkg.package_id}#${pkg.version} is unavailable; this result comes from the MCP built-in validator (fallback) and may differ from validator_cli`));
+        }
+      }
+    }
+    if (!judged) {
+      const tracked = await trackQueryFailures(() => engine.validate(resource, { profiles }));
+      pushAll(issues, tracked.result as Record<string, any>[]);
+      if (tracked.total > 0) {
+        logError("fhir validation: definition / terminology lookups failed", { failed: tracked.total, first: tracked.failures[0]?.message });
+        issues.push(validator.lookupFailureIssue(tracked.total, tracked.failures));
+      }
     }
     mark("validate");
     // Additive `suggestions` / `caused_by` on issues (fhirSuggestions/); never changes the verdict.
@@ -1999,7 +2023,9 @@ export class FHIRIGService {
     return {
       valid: validator.isValid(issues),
       profile: profileId,
-      source: validator.SOURCE,
+      source: engineSource,
+      // only when an official validator serves the package: "hl7-official" or "mcp-fallback"
+      ...(officialBase ? { engine: engineSource === validator.SOURCE ? "mcp-fallback" : "hl7-official" } : {}),
       issues,
       // checked_fully / profiles_unchecked / valuesets_unchecked: `valid` keeps HL7
       // semantics (an unresolvable profile is only a warning), so incompleteness is explicit.
@@ -2319,7 +2345,8 @@ export class FHIRIGService {
       // warning) but, like the HL7 validator, do not by themselves make a
       // collection/transaction Bundle invalid.
       valid: core.valid,
-      source: validator.SOURCE,
+      source: core.source ?? validator.SOURCE,
+      ...(core.engine ? { engine: core.engine } : {}),
       profile: core.profile,
       issues: bundleIssues,
       entries: entryResults,
