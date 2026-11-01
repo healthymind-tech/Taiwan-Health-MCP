@@ -139,6 +139,13 @@ export async function txValidateCode(req: TxValidateRequest, deps: TerminologyDe
       vdeps = { ...deps, loadValueSet: (u: string) => (u.split("|")[0] === req.url ? Promise.resolve(pinned) : deps.loadValueSet(u)) };
     } else return { result: undefined, outcome: "error", issues };
   }
+  // default-valueset-version: an unversioned reference to that ValueSet resolves to the pinned version
+  const dvv = req.params["default-valueset-version"];
+  if (typeof dvv === "string" && dvv.includes("|")) {
+    const [du, dv] = splitCanonical(dvv);
+    const inner = vdeps;
+    vdeps = { ...inner, loadValueSet: (u: string) => inner.loadValueSet(u === du ? `${du}|${dv}` : u) };
+  }
   const includes: any[] = Array.isArray(vs?.compose?.include) ? vs!.compose.include : [];
 
   /** getCodeSystemVersionFromValueSet (7.0.1). */
@@ -246,7 +253,7 @@ export async function txValidateCode(req: TxValidateRequest, deps: TerminologyDe
       issues.push({ severity: "warning", type: "invalid-data", id, path: p, message: "Coding has no code, cannot validate" });
       continue;
     }
-    if (!system && req.mode === "valueset" && req.params.inferSystem === true) system = await inferSystem(includes, code, deps);
+    if (!system && !path && req.mode === "valueset" && req.params.inferSystem === true) system = await inferSystem(includes, code, deps);
     if (!system) {
       // ValueSetValidator: Coding_has_no_system__cannot_validate (warning); the code cannot be in the value set
       issues.push({ severity: "warning", type: "invalid-data", id: "Coding_has_no_system__cannot_validate", path: p, message: "Coding has no system. A code with no system has no defined meaning, and it cannot be validated. A system should be provided" });
@@ -283,7 +290,20 @@ export async function txValidateCode(req: TxValidateRequest, deps: TerminologyDe
         if (!isVs) anyUnknown = true;
       }
     } else {
-      const r = judgeHeldCodeSystem(cs, system, code, display, langs) ?? ({ status: "silent" } as CodeCheck);
+      if (cs.version) checkVersion(system, cs.version, p);
+      if (cs.content === "supplement") {
+        issues.push({ severity: "error", type: "invalid-data", id: "CODESYSTEM_CS_NO_SUPPLEMENT", path: p ? `${p}.system` : "system", message: `CodeSystem ${system} is a supplement, so can't be used as a value in Coding.system` });
+        csOk = false;
+        anyCodingError = true;
+        if (req.mode === "valueset") notInVs.push(notInVsIssue(p, system, code, vsUrl!, !!req.codeableConcept));
+        continue;
+      }
+      const r: CodeCheck | null = judgeHeldCodeSystem(cs, system, code, display, langs);
+      if (r === null) {
+        // content not-present: nothing local to check the code against — cannot be validated
+        anyUnknown = true;
+        continue;
+      }
       const found = checkIssue(r, p, lenient);
       for (const i of found) issues.push(i);
       if (found.some((i) => i.severity === "error")) {
@@ -291,6 +311,15 @@ export async function txValidateCode(req: TxValidateRequest, deps: TerminologyDe
         anyCodingError = true;
       }
       const concept = findConcept(cs, code);
+      // abstract = false: a notSelectable concept is not allowed (ABSTRACT_CODE_NOT_ALLOWED)
+      const ns = concept?.properties.get("notSelectable")?.[0];
+      if (concept && req.params.abstract === false && (ns === true || ns === "true")) {
+        issues.push({ severity: "error", type: "code-rule", id: "ABSTRACT_CODE_NOT_ALLOWED", path: p ? `${p}.code` : "code", message: `Code '${system}#${code}' is abstract, and not allowed in this context` });
+        csOk = false;
+        anyCodingError = true;
+        if (req.mode === "valueset") notInVs.push(notInVsIssue(p, system, code, vsUrl!, !!req.codeableConcept));
+        continue;
+      }
       if (concept && concept.code !== code) {
         issues.push({ severity: "information", type: "code-rule", id: "CODE_CASE_DIFFERENCE", path: p ? `${p}.code` : "code", message: `The code '${code}' differs from the correct code '${concept.code}' by case` });
       }

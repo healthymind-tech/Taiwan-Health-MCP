@@ -353,7 +353,7 @@ async function partContains(
     results.push(await systemPartContains(part, partSystem, code, deps, activeOnly));
   }
   for (const vs of part.valueSet || []) {
-    results.push(await valueSetContainsInner(stripVersion(vs), system ?? partSystem ?? null, code, deps, depth + 1, seen));
+    results.push(await valueSetContainsInner(String(vs), system ?? partSystem ?? null, code, deps, depth + 1, seen));
   }
   if (!results.length) return false;
   if (results.some((r) => r === false)) return false;
@@ -606,7 +606,7 @@ async function expandPart(
   const pieces: PartExpansion[] = [];
   if (part.system) pieces.push(await expandSystemPart(part, part.system, deps, limit, warnings, unresolved, activeOnly));
   for (const raw of part.valueSet || []) {
-    const url = stripVersion(raw);
+    const url = String(raw); // `|version` kept: an import pins that ValueSet version (deps decide)
     if (depth >= MAX_DEPTH || seen.has(url)) {
       warnings.push(`valueSet import not expanded (depth/cycle): ${url}`);
       pieces.push({ codings: [], complete: false, truncated: false });
