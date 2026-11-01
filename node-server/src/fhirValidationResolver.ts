@@ -44,12 +44,16 @@ import {
 } from "./fhirExternalTerminology.js";
 import { probeQueryFailures, query } from "./db.js";
 import { TtlMemo } from "./ttlMemo.js";
+import { generateSnapshotAsync } from "./fhirSnapshotGenerator.js";
+import { logWarning } from "./logger.js";
 import { txCodeVerdict, type TxCodeVerdict } from "./txCodeTables.js";
 import { enumeratedCodes } from "./codeAcceptance.js";
 
 const SD_TTL_MS = 30 * 60 * 1000;
 const SD_CACHE_MAX = 1500;
 const sdCache = new Map<string, { at: number; sd: Record<string, any> | null }>();
+/** SD cache keys whose snapshot is being generated (a base cycle must not recurse). */
+const snapshotInFlight = new Set<string>();
 const defCache = new Map<string, { at: number; ok: boolean }>();
 
 /**
@@ -372,12 +376,24 @@ export class DbValidatorResolver implements ValidatorResolver {
     const key = this.closure + "|" + canonical + (version !== null ? "|" + version : "");
     const hit = sdCache.get(key);
     if (hit && Date.now() - hit.at < SD_TTL_MS) return hit.sd;
-    const sd =
+    let sd =
       version !== null
         ? await this.loadVersioned("StructureDefinition", canonical, version)
         : // Unversioned: the closure's "current" copy as HL7 picks it (highest
           // major.minor, e.g. the hl7.fhir.uv.extensions.r4 copy of a core extension).
           await terminology.loadArtifactByCanonical("StructureDefinition", canonical, this.pkg, { hl7Current: true });
+    // A differential-only definition gets its snapshot generated, as the HL7 context does when it loads one
+    // (ContextUtilities.generateSnapshot → ProfileUtilities); a cycle or a failure leaves it as stored.
+    if (sd && !(Array.isArray(sd.snapshot?.element) && sd.snapshot.element.length) && !snapshotInFlight.has(key)) {
+      snapshotInFlight.add(key);
+      try {
+        sd = (await generateSnapshotAsync(sd, (u) => this.fetchStructureDefinition(u))) ?? sd;
+      } catch (e) {
+        logWarning("snapshot generation failed", { url: canonical, error: (e as Error).message });
+      } finally {
+        snapshotInFlight.delete(key);
+      }
+    }
     if (sdCache.size >= SD_CACHE_MAX) {
       const first = sdCache.keys().next().value;
       if (first !== undefined) sdCache.delete(first);

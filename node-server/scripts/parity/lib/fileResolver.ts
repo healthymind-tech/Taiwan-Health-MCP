@@ -137,7 +137,7 @@ export class FileValidatorResolver implements ValidatorResolver {
 
   async fetchStructureDefinition(url: string): Promise<Res | null> {
     const sd = this.store.resolve("StructureDefinition", url);
-    if (sd && !(sd.snapshot && Array.isArray(sd.snapshot.element) && sd.snapshot.element.length)) {
+    if (sd && !(sd.snapshot && Array.isArray(sd.snapshot.element) && sd.snapshot.element.length) && !process.env.PARITY_NO_SNAPSHOT_GEN) {
       let gen = this.generatedFor.get(sd);
       if (gen === undefined) {
         gen = this.snapshots.ensure(sd);
@@ -148,7 +148,7 @@ export class FileValidatorResolver implements ValidatorResolver {
         return gen;
       }
       this.snapshotless.add(String(sd.url));
-    }
+    } else if (sd && !(sd.snapshot && Array.isArray(sd.snapshot.element) && sd.snapshot.element.length)) this.snapshotless.add(String(sd.url));
     return sd;
   }
 
