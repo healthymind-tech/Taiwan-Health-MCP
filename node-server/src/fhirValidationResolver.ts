@@ -22,7 +22,7 @@
 
 import type { PackageRow } from "./fhirIg.js";
 import { pickCanonicalVersion, splitCanonicalVersion, type CodeCheck, type ValidatorResolver } from "./fhirValidator.js";
-import { findConcept, loincCheckDigitValid, snomedCheckDigitValid, valueSetContains } from "./fhirCodeSystem.js";
+import { findConcept, type CodeSystemIndex, loincCheckDigitValid, snomedCheckDigitValid, valueSetContains } from "./fhirCodeSystem.js";
 import * as terminology from "./fhirTerminology.js";
 import { ISO3166_DISPLAY, ISO3166_VERSION, iso3166UserAssigned } from "./fhirIso3166.js";
 import {
@@ -188,6 +188,32 @@ export function judgeCodeSystemDisplay(
     };
   }
   return null;
+}
+
+/**
+ * Verdict for a code of a CodeSystem held locally (IG / THO package copy), without DB hints:
+ * content complete → Unknown code (error; warning for EXTERNAL_EDITION_SYSTEMS), fragment /
+ * example → warning, a known concept → its display judged (judgeCodeSystemDisplay). null when
+ * the CodeSystem carries no content (not-present / supplement): the caller falls through.
+ */
+export function judgeHeldCodeSystem(idx: CodeSystemIndex, system: string, code: string, display: string | null): CodeCheck | null {
+  const c = findConcept(idx, code);
+  const ver = idx.version ? ` version '${idx.version}'` : "";
+  if (!c) {
+    if (idx.content === "complete") {
+      const sev = EXTERNAL_EDITION_SYSTEMS.includes(system) ? "warning" : "error";
+      return { status: "invalid-code", severity: sev, message: `Unknown code '${code}' in the CodeSystem '${system}'${ver}` };
+    }
+    if (idx.content === "fragment" || idx.content === "example") {
+      return { status: "invalid-code", severity: "warning", message: `Unknown code '${code}' in the CodeSystem '${system}'${ver} (the CodeSystem is a ${idx.content})` };
+    }
+    return null;
+  }
+  if (display !== null) {
+    const bad = judgeCodeSystemDisplay(system, code, display, c, idx.language);
+    if (bad) return bad;
+  }
+  return { status: "ok" };
 }
 
 function noLocalDisplay(system: string, display: string | null): CodeCheck {
@@ -447,34 +473,20 @@ export class DbValidatorResolver implements ValidatorResolver {
     // "A definition for CodeSystem ... could not be found".)
     if (idx && idx.url && idx.url.split("|")[0] !== system) idx = null;
     if (idx) {
-      const c = findConcept(idx, code);
-      const ver = idx.version ? ` version '${idx.version}'` : "";
-      if (!c) {
-        if (idx.content === "complete") {
-          const sev = EXTERNAL_EDITION_SYSTEMS.includes(system) ? "warning" : "error";
-          const out: CodeCheck = { status: "invalid-code", severity: sev, message: `Unknown code '${code}' in the CodeSystem '${system}'${ver}` };
-          // Verdict as HL7 (content = complete → Unknown code); add a hint when the
-          // CodeSystem itself says it is a partial list, and when another installed
-          // package holds a fuller copy of the same CodeSystem that has the code.
-          const hints: Array<{ severity: "information"; message: string }> = [];
-          const hint = await this.partialHint(system);
-          if (hint) hints.push({ severity: "information", message: hint });
-          const fuller = await this.fullerCopyHint(system, code, idx.concepts.size);
-          if (fuller) hints.push({ severity: "information", message: fuller });
-          if (hints.length) out.extra = hints;
-          return out;
-        }
-        if (idx.content === "fragment" || idx.content === "example") {
-          return { status: "invalid-code", severity: "warning", message: `Unknown code '${code}' in the CodeSystem '${system}'${ver} (the CodeSystem is a ${idx.content})` };
-        }
-        // content = not-present: fall through to external tables / silent.
-      } else {
-        if (display !== null) {
-          const bad = judgeCodeSystemDisplay(system, code, display, c, idx.language);
-          if (bad) return bad;
-        }
-        return { status: "ok" };
+      const base = judgeHeldCodeSystem(idx, system, code, display);
+      if (base && base.status === "invalid-code" && idx.content === "complete") {
+        // Verdict as HL7 (content = complete → Unknown code); add a hint when the
+        // CodeSystem itself says it is a partial list, and when another installed
+        // package holds a fuller copy of the same CodeSystem that has the code.
+        const hints: Array<{ severity: "information"; message: string }> = [];
+        const hint = await this.partialHint(system);
+        if (hint) hints.push({ severity: "information", message: hint });
+        const fuller = await this.fullerCopyHint(system, code, idx.concepts.size);
+        if (fuller) hints.push({ severity: "information", message: fuller });
+        if (hints.length) base.extra = hints;
       }
+      if (base) return base;
+      // content = not-present: fall through to external tables / silent.
     }
     const kind = terminology.routeSystem(system);
     // LOINC answer / part / answer-list / group codes (loinc.other_codes).

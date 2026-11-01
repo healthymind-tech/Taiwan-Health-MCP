@@ -178,6 +178,48 @@ function conceptPropertyMatches(c: CsConcept, property: string, test: (v: string
 }
 
 /**
+ * A ValueSet filter regex compiled for whole-value matching, or null when it is invalid or
+ * open to catastrophic backtracking (a quantified group that itself contains a quantifier,
+ * e.g. `(a+)+` — tx ecosystem test suite "regex-bad"): the filter is then undecidable
+ * ("cannot be validated"), never a hang of the validator.
+ */
+export function safeRegex(pattern: string): RegExp | null {
+  if (pattern.length > 1000) return null;
+  // Nested quantifier: ')' closing a group whose body has an unescaped quantifier, followed by a quantifier.
+  const stack: boolean[] = [];
+  for (let i = 0; i < pattern.length; i++) {
+    const ch = pattern[i];
+    if (ch === "\\") {
+      i++;
+      continue;
+    }
+    if (ch === "[") {
+      // skip a character class
+      i++;
+      while (i < pattern.length && pattern[i] !== "]") i += pattern[i] === "\\" ? 2 : 1;
+      continue;
+    }
+    if (ch === "(") stack.push(false);
+    else if (ch === ")") {
+      const inner = stack.pop() ?? false;
+      const next = pattern[i + 1];
+      const quantified = next === "*" || next === "+" || next === "{" || next === "?";
+      if (inner && quantified && next !== "?") return null;
+      if (stack.length && (inner || quantified)) stack[stack.length - 1] = true;
+    } else if ((ch === "*" || ch === "+" || ch === "{") && stack.length) stack[stack.length - 1] = true;
+  }
+  try {
+    return new RegExp("^(?:" + pattern + ")$", "u");
+  } catch {
+    try {
+      return new RegExp("^(?:" + pattern + ")$");
+    } catch {
+      return null;
+    }
+  }
+}
+
+/**
  * Codes of `idx` selected by one compose filter. Returns null for an
  * operator/property this engine cannot evaluate (callers must then treat the
  * result as unknown, never as "empty").
@@ -220,12 +262,8 @@ export function applyFilter(idx: CodeSystemIndex, f: ComposeFilter): Set<string>
     return out;
   }
   if (op === "regex") {
-    let re: RegExp;
-    try {
-      re = new RegExp("^(?:" + value + ")$");
-    } catch {
-      return null;
-    }
+    const re = safeRegex(value);
+    if (!re) return null;
     for (const c of idx.concepts.values()) if (conceptPropertyMatches(c, prop, (v) => re.test(v))) out.add(c.code);
     return out;
   }
