@@ -54,7 +54,8 @@ test("request: POST /validateResource?profile=… with the resource as FHIR JSON
   const r = await v.validate("http://v:1", { resourceType: "Bundle" }, "http://x/StructureDefinition/B");
   assert.equal(r.issues.length, 2);
   assert.deepEqual(r.unverified, []);
-  assert.equal(seen[0].url, "http://v:1/validateResource?profile=http%3A%2F%2Fx%2FStructureDefinition%2FB");
+  // v20.2: validator_cli's own per-request time limit (request timeout − 30 s by default)
+  assert.equal(seen[0].url, "http://v:1/validateResource?validationTimeout=90000&profile=http%3A%2F%2Fx%2FStructureDefinition%2FB");
   assert.equal(seen[0].body, '{"resourceType":"Bundle"}');
   assert.equal(seen[0].headers["Content-Type"], "application/fhir+json");
 });
@@ -89,6 +90,7 @@ test("an unreachable validator is marked down for 15 s (fast fallback); a timeou
 
 test("terminology-server failures are returned apart as unverified, and the validator is restarted once (cached failure)", async () => {
   assert.ok(isTransientTxIssue({ message: "Error from https://tx.fhir.org/r4: java.net.SocketTimeoutException: Read timed out" }));
+  assert.ok(isTransientTxIssue({ message: "Validation process exceeded maximum allowed time of 90000ms, set by http-query. Returned validation messages may be incomplete or inaccurate." }));
   assert.ok(!isTransientTxIssue({ message: "Unknown code 'ZZZ-9' in the CodeSystem 'http://loinc.org' version '2.81'" }));
   const seen: string[] = [];
   const oo = { resourceType: "OperationOutcome", issue: [...OO.issue, { severity: "error", code: "exception", details: { text: "java.net.SocketTimeoutException: Connect timed out" }, expression: ["Bundle.entry[1].resource.code"] }] };

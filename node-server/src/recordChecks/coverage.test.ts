@@ -47,7 +47,7 @@ test("negated-item-present: not prescribed this time / stopped / cancelled / den
   assert.ok(at(4), "denied allergy written as an active AllergyIntolerance");
   assert.ok(at(5), "colonoscopy to be scheduled written as completed");
   for (const h of hits) {
-    assert.equal(h.severity, "error");
+    assert.equal((h.advisory_from ?? h.severity), "error");
     assert.ok(h.located_quotes?.length, "quotes the record");
     assert.ok(h.suggestions?.length, "suggests a fix");
   }
@@ -75,7 +75,9 @@ test("negated-item-present: the conversion target excludes an item or a category
   );
   const hits = codes(run(b, rec), "negated-item-present");
   assert.equal(hits.length, 2, JSON.stringify(hits.map((h) => h.path)));
-  assert.ok(hits.every((h) => h.suggestions?.[0]?.kind === "remove_entry"));
+  // v20.2: never tells the model to delete content — no remove suggestion, the message asks to verify
+  assert.ok(hits.every((h) => !h.suggestions?.some((s: { kind?: string }) => /^remove/u.test(String(s.kind)))));
+  assert.ok(hits.every((h) => /確認|Verify/u.test(String(h.message))));
 });
 
 test("duplicate-entry: same content apart from ids, and the same thing; different items stay silent", () => {
@@ -83,7 +85,7 @@ test("duplicate-entry: same content apart from ids, and the same thing; differen
   const b = bundle(patient, dx("a", "E11.9"), dx("b", "E11.9"), dx("c", "I10"), med("Metformin", { id: "m1" }), med("Metformin", { id: "m2", note: [{ text: "x" }] }));
   const hits = codes(run(b, "Dx: E11.9 第二型糖尿病；I10 高血壓。Metformin 500mg BID。"), "duplicate-entry");
   assert.deepEqual(hits.map((h) => h.path), ["Bundle.entry[2].resource", "Bundle.entry[5].resource"]);
-  assert.ok(hits.every((h) => h.severity === "error"));
+  assert.ok(hits.every((h) => (h.advisory_from ?? h.severity) === "error"));
 });
 
 test("text-only-fact: dose, frequency, route and duration only in Dosage.text; configurable severity; structured ones stay silent", () => {
@@ -92,12 +94,12 @@ test("text-only-fact: dose, frequency, route and duration only in Dosage.text; c
   const w = codes(run(b, rec), "text-only-fact");
   const fields = w.map((h) => h.path.replace(/^Bundle\.entry\[1\]\.resource\./u, ""));
   assert.deepEqual(fields.sort(), ["dispenseRequest.expectedSupplyDuration", "dosageInstruction[0].doseAndRate[0].doseQuantity", "dosageInstruction[0].route", "dosageInstruction[0].timing.code"].sort());
-  assert.ok(w.every((h) => h.severity === "warning"));
+  assert.ok(w.every((h) => (h.advisory_from ?? h.severity) === "warning"));
   const timing = w.find((h) => h.path.endsWith("timing.code"))!;
   assert.match(String(timing.suggestions[0].value), /BID/);
   const dur = w.find((h) => h.path.endsWith("expectedSupplyDuration"))!;
   assert.deepEqual(dur.suggestions[0].patch.value, { value: 28, unit: "days", system: "http://unitsofmeasure.org", code: "d" });
-  assert.ok(codes(run(b, rec, { coverageSeverity: "error" }), "text-only-fact").every((h) => h.severity === "error"));
+  assert.ok(codes(run(b, rec, { coverageSeverity: "error" }), "text-only-fact").every((h) => (h.advisory_from ?? h.severity) === "error"));
   const full = bundle(patient, med("Metformin", {
     dosageInstruction: [{
       text: "500 mg 1# PO BID，28 天",
@@ -153,7 +155,7 @@ test("R5 verificationStatus: the diagnosis field states it → confirmed; hedged
   assert.match(at(2) ?? "", /"code":"provisional"/);
   assert.match(at(3) ?? "", /"code":"differential"/);
   assert.equal(at(4), undefined, "a past-history mention is not the diagnosis field: not derivable");
-  assert.ok(hits.every((h) => h.severity === "warning"), "severity follows content_checks_severity (default warning)");
+  assert.ok(hits.every((h) => (h.advisory_from ?? h.severity) === "warning"), "severity follows content_checks_severity (default warning)");
   assert.match(hits[0].message, /可由病歷推得/);
   // already written, or the profile prohibits the element: silent
   const written = bundle(patient, { ...cond("第二型糖尿病"), verificationStatus: { coding: [{ code: "confirmed" }] } });
@@ -161,7 +163,7 @@ test("R5 verificationStatus: the diagnosis field states it → confirmed; hedged
   const prohibited = new Map([prof("http://x/Condition", { prohibited: new Set(["Condition.verificationStatus"]) })]);
   assert.deepEqual(derivable(bundle(patient, cond("第二型糖尿病")), rec, prohibited), []);
   // with content_checks_severity=error the finding is an error
-  assert.ok(derivable(bundle(patient, cond("第二型糖尿病")), rec, PE, "error").every((h) => h.severity === "error"));
+  assert.ok(derivable(bundle(patient, cond("第二型糖尿病")), rec, PE, "error").every((h) => (h.advisory_from ?? h.severity) === "error"));
 });
 
 test("R5 interpretation: H / L / HH / LL / ↑ / ↓ / * flags and reference ranges (N inside); no cue → nothing", () => {

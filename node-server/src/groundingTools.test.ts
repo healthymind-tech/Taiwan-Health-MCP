@@ -169,7 +169,10 @@ test("fhir_check_grounding envelope: data shape, provenance (§2.0), argument er
   const fx = { input: FAB };
   const out = JSON.parse(await runCheckGroundingTool({ bundle: fx.input.bundle, source_text: fx.input.source_text, site_config: fx.input.site_config }, deps));
   assert.equal(out.ok, true);
-  assert.equal(out.data.valid, false);
+  // v20.2: only blocking findings (structured numbers / dates / identifiers not in the record) make it invalid
+  const allIssues = [...out.data.issues, ...out.data.entries.flatMap((e: any) => e.issues)];
+  assert.equal(out.data.valid, !allIssues.some((i: any) => i.severity === "error"));
+  assert.ok(allIssues.some((i: any) => i.gate === "advisory" && i.advisory_from === "error"), "the fabricated values are still reported");
   assert.equal(out.data.source, "grounding");
   assert.equal(out.data.mode, "auto");
   assert.ok(Array.isArray(out.data.entries) && out.data.entries.length === 4);
@@ -182,7 +185,7 @@ test("fhir_check_grounding envelope: data shape, provenance (§2.0), argument er
   assert.equal(p.sourceSha256, sourceSha256Prefix(fx.input.source_text));
   assert.equal(typeof p.terminologyVersion, "string");
   // verbosity=warnings (default) never returns information issues
-  for (const e of out.data.entries) for (const i of e.issues) assert.notEqual(i.severity, "information");
+  for (const e of out.data.entries) for (const i of e.issues) assert.notEqual((i.advisory_from ?? i.severity), "information");
   assert.equal(JSON.parse(await runCheckGroundingTool({ bundle: { resourceType: "Patient" }, source_text: "x" }, deps)).error.code, "INVALID_ARGUMENT");
   // Unknown IG: grounding still runs, the provenance keeps the requested ids and a warning says so.
   const noIg = JSON.parse(

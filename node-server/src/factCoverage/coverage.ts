@@ -207,6 +207,26 @@ export async function checkFactCoverage(input: FactCoverageInput, deps: FactCove
       });
       continue;
     }
+    // v20.2 (evaluator decision): a value present in another VALUE element of the fact's own resource is not a missing
+    // fact — counts / sequence numbers / reference ranges never stand for a clinical value (the v20.1 false covered)
+    // (an element the attribute itself names — e.g. `Observation.referenceRange.high.value` — is never excluded)
+    const named = attribute.replace(/\[\d+\]/gu, "");
+    const otherValue = otherElement.filter((x) => {
+      const m = /\.(sequence|rank|priority|frequency|frequencyMax|period|periodMax|count|countMax|referenceRange)(?=\.|$)/u.exec(x.path);
+      return !m || named.includes(m[1]);
+    });
+    if (otherValue.length) {
+      out.push({
+        index,
+        status: "covered",
+        reason_code: "found-in-other-element",
+        reason: `In ${[...new Set(otherValue.map((x) => x.path))].join(", ")} of the fact's resource (not the element the attribute names; counted as covered).`,
+        resource_types: types,
+        found_at: otherValue.slice(0, 5),
+        quote_match: hit.match,
+      });
+      continue;
+    }
     const elsewhere = otherElement.length ? [] : types.length ? findValue(nodes.filter((n) => !inTypes(n)), value, ctx).filter((x) => !/\.referenceRange(?:\.|$)/u.test(x.path)) : [];
     // suggested paths: the profile fields of the entries of the fact's type, else base element names
     const suggestions: string[] = [];

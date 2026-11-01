@@ -152,14 +152,17 @@ test("v20.1: only BLOCKING content errors stop the release; advisory errors are 
   assert.equal(r.content.record_check_errors, 0);
   assert.equal(r.content.advisory_errors, 3);
   assert.deepEqual(r.content.advisory_rules, ["G-CONTEXT-LABEL", "negated-item-present", "stale-value"]);
-  // an unstamped unconfirmed-as-confirmed error is blocking by the registry
-  const blocking = officialOk({ entries: [{ resourceType: "Condition", issues: [{ severity: "error", source: "record-checks", code: "unconfirmed-as-confirmed", message: "r/o" }] }] });
+  // v20.2: unconfirmed-as-confirmed is semantic → advisory, released; an unstamped G-UNGROUNDED on a structured
+  // identifier value is blocking by the registry
+  const semantic = officialOk({ entries: [{ resourceType: "Condition", issues: [{ severity: "error", source: "record-checks", code: "unconfirmed-as-confirmed", message: "r/o" }] }] });
+  assert.equal((await releaseCheck(base(ONLY_CONDITION, { targets: [{ resourceType: "Condition" }] }), deps(semantic))).release, true);
+  const blocking = officialOk({ entries: [{ resourceType: "Condition", issues: [{ severity: "error", source: "grounding", rule: "G-UNGROUNDED", path: "Bundle.entry[0].resource.identifier[0].value", message: "not in the record" }] }] });
   const b = await releaseCheck(base(ONLY_CONDITION, { targets: [{ resourceType: "Condition" }] }), deps(blocking));
   assert.equal(b.release, false);
-  assert.deepEqual(b.reasons.map((x) => x.code), ["record-check-error"]);
+  assert.deepEqual(b.reasons.map((x) => x.code), ["grounding-error"]);
 });
 
-test("v20.1: neither targets nor facts → incomplete-input, never released", async () => {
+test("v20.2: no targets → incomplete-input, never released (facts alone are advice)", async () => {
   const r = await releaseCheck(base(FULL), deps(officialOk()));
   assert.equal(r.release, false);
   assert.equal(r.next, "fix");
@@ -186,10 +189,12 @@ test("facts: missing, quote-not-in-record, unusable fact written", async () => {
     }),
     deps(officialOk()),
   );
-  const codes = r.reasons.map((x) => x.code);
+  // v20.2: fact coverage is advisory — in `advisories`, never in `reasons`
+  const codes = r.advisories.map((x) => x.code);
   assert.ok(codes.includes("fact-missing"), codes.join());
   assert.ok(codes.includes("quote-not-in-record"));
   assert.ok(codes.includes("unusable-fact-written"));
+  assert.ok(!r.reasons.some((x) => x.check === "facts"));
   assert.equal(r.next, "fix");
 });
 
@@ -229,7 +234,8 @@ test("without targets: required entry slices of the Bundle profile and the suspe
   );
   const codes = r.reasons.map((x) => x.code);
   assert.ok(codes.includes("missing-entry-slice"));
-  assert.ok(codes.includes("suspected-empty-bundle"));
+  assert.ok(codes.includes("incomplete-input"));
+  assert.ok(r.advisories.some((x) => x.code === "suspected-empty-bundle"), "v20.2: heuristic → advisory");
   assert.equal(r.completeness.suspected_empty, true);
   assert.deepEqual(r.completeness.fact_resource_types, ["Condition", "Observation", "Encounter"]);
 });

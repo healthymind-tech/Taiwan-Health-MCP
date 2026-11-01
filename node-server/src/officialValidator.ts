@@ -14,6 +14,10 @@
  *   OFFICIAL_VALIDATOR_CONCURRENCY in-flight requests per validator, default 1 — its HTTP server handles one request at
  *                                  a time, so more only queue inside it where the timeout cannot see them
  *
+ * Every request carries validator_cli's own `validationTimeout` (OFFICIAL_VALIDATOR_VALIDATION_TIMEOUT_MS, default the
+ * request timeout − 30 s): a validation that runs too long stops inside the validator with a partial result (reported as
+ * `unverified`, the result incomplete) instead of holding the validator's single request thread.
+ *
  * Terminology-server trouble inside an official result (a tx.fhir.org timeout, an unreachable server) is not a finding
  * about the instance: those issues are returned apart as `unverified` (the caller marks the result incomplete), and
  * because validator_cli keeps such failures in its in-memory terminology cache for the life of the process
@@ -43,6 +47,9 @@ export interface OfficialConfig {
   endpoints: Array<{ packageId: string; version: string | null; url: string }>;
   timeoutMs: number;
   concurrency: number;
+  /** validator_cli's per-request time limit (`validationTimeout`, ms): it stops and returns a partial result instead of
+   *  holding its single request thread (v20.2 — one slow ValueSet check must not take the service down) */
+  validationTimeoutMs: number;
 }
 
 export function parseOfficialConfig(env: Record<string, string | undefined>): OfficialConfig {
@@ -54,7 +61,14 @@ export function parseOfficialConfig(env: Record<string, string | undefined>): Of
   const raw = String(env.OFFICIAL_VALIDATOR_MODE ?? "").trim();
   const mode: OfficialMode = raw === "off" || raw === "prefer" || raw === "require" ? raw : endpoints.length ? "prefer" : "off";
   const num = (v: string | undefined, d: number): number => (v && Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : d);
-  return { mode, endpoints, timeoutMs: num(env.OFFICIAL_VALIDATOR_TIMEOUT_MS, 120_000), concurrency: num(env.OFFICIAL_VALIDATOR_CONCURRENCY, 1) };
+  const timeoutMs = num(env.OFFICIAL_VALIDATOR_TIMEOUT_MS, 120_000);
+  return {
+    mode,
+    endpoints,
+    timeoutMs,
+    concurrency: num(env.OFFICIAL_VALIDATOR_CONCURRENCY, 1),
+    validationTimeoutMs: num(env.OFFICIAL_VALIDATOR_VALIDATION_TIMEOUT_MS, Math.max(10_000, timeoutMs - 30_000)),
+  };
 }
 
 /** OperationOutcome → issues in the MCP issue shape (path = the first expression, as validator_cli reports it). */
@@ -86,8 +100,11 @@ export function issuesFromOutcome(oo: unknown): OfficialIssue[] {
 const TX_TRANSIENT =
   /SocketTimeoutException|SocketException|ConnectException|UnknownHostException|SSLException|NoRouteToHostException|timed out|Read timeout|Connection (?:refused|reset)|Error contacting|Unable to connect|could not connect|Too Many Requests|HTTP(?: status)?[: ]+(?:5\d\d|429)\b|terminology server[^.]{0,80}(?:unavailable|not available|error|could not be reached|did not respond)/iu;
 
+// v20.2: validator_cli's own per-request time limit (`validationTimeout`): the result is incomplete, not a finding
+const VALIDATION_TIMED_OUT = /^Validation process exceeded maximum allowed time of \d+ms/u;
+
 export function isTransientTxIssue(i: { message: string }): boolean {
-  return TX_TRANSIENT.test(i.message);
+  return TX_TRANSIENT.test(i.message) || VALIDATION_TIMED_OUT.test(i.message);
 }
 
 export interface OfficialResult {
@@ -134,7 +151,7 @@ export class OfficialValidator {
     const ctl = new AbortController();
     const timer = setTimeout(() => ctl.abort(), this.config.timeoutMs);
     try {
-      const q = profile ? `?profile=${encodeURIComponent(profile)}` : "";
+      const q = `?validationTimeout=${this.config.validationTimeoutMs}${profile ? `&profile=${encodeURIComponent(profile)}` : ""}`;
       const res = await this.fetchImpl(`${base}/validateResource${q}`, {
         method: "POST",
         headers: { "Content-Type": "application/fhir+json", Accept: "application/fhir+json" },
@@ -144,7 +161,8 @@ export class OfficialValidator {
       if (!res.ok) throw new OfficialUnavailable(`official validator ${base} answered HTTP ${res.status}`);
       const all = issuesFromOutcome(await res.json());
       const unverified = all.filter(isTransientTxIssue);
-      if (unverified.length) this.scheduleRestart(base);
+      // only a terminology-server failure is cached inside the validator (restart to drop it); its own time limit is not
+      if (unverified.some((i) => TX_TRANSIENT.test(i.message))) this.scheduleRestart(base);
       return { issues: all.filter((i) => !isTransientTxIssue(i)), unverified };
     } catch (e) {
       const timedOut = ctl.signal.aborted;

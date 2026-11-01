@@ -213,3 +213,12 @@ test("attributeClass: FHIR element names are exact, Chinese attribute words map 
   assert.ok(!st("Encounter.class"), "serviceType is not `type`");
   assert.equal(attributeClass("顏色", "其他"), null);
 });
+
+test("v20.2: attributes written as FHIR paths (with or without the resource type / indexes) are matched", async () => {
+  const r = await run([
+    fact("醫師", "Practitioner.name.text", "王小明", "王小明"),
+    fact("心跳", "Observation.valueQuantity.value", "82", "82"),
+    fact("Ferritin", "Observation.referenceRange[0].high.value", "5.6", "5.6"),
+  ]);
+  assert.deepEqual(r.facts.map((f) => f.status), ["covered", "covered", "covered"], JSON.stringify(r.facts.map((f) => [f.status, f.reason_code])));
+});

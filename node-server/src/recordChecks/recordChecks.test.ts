@@ -60,7 +60,7 @@ test("synthetic dev set: ≥ 90 % of missing-information variants detected; comp
   assert.ok(missed.length / pos.length <= 0.1, `missed: ${missed.join(", ")}`);
   for (const c of cases.filter((x) => !x.expect)) {
     const r = runRecordChecks(c.bundle, { sourceText: c.source_text, siteConfig: c.site_config ?? null });
-    assert.deepEqual(r.issues.filter((i) => i.severity === "error"), [], c.id);
+    assert.deepEqual(r.issues.filter((i) => (i.advisory_from ?? i.severity) === "error"), [], c.id);
     assert.equal(r.summary.ok, true);
   }
 });
@@ -85,7 +85,7 @@ test("R1 runs without source_text; real HL7 'unknown' codes are not flagged", ()
   assert.deepEqual(r.issues.map((i) => [i.code, i.path, i.rule, i.source]), [["information-absent", "Bundle.entry[0].resource.identifier[1].value", "R1", "record-checks"]]);
   assert.match(r.issues[0].message, /病歷沒有提供這項資訊/u);
   assert.deepEqual(r.summary, { ok: true, errors: 0, warnings: 1, rules: ["R1", "R2"], source_text: false }); // parity v2: warning without source_text
-  assert.equal(r.issues[0].severity, "warning");
+  assert.equal((r.issues[0].advisory_from ?? r.issues[0].severity), "warning");
 });
 
 test("R3 says whether the record has a more complete value", () => {
@@ -133,8 +133,10 @@ test("envelope: issues land on the entry, valid turns false, the validator's own
   const text = validationEnvelope(b);
   const before = JSON.parse(text);
   const out = JSON.parse(addRecordChecksToValidation(text, b, { sourceText: "身分證：家屬說身分證還沒帶來" }));
-  assert.equal(out.data.valid, false);
-  assert.equal(out.data.entries[0].valid, false);
+  // v20.2: information-absent is advisory — reported (pre-gate severity error), the verdict stays the validator's
+  assert.equal(out.data.valid, true);
+  assert.equal(out.data.entries[0].valid, true);
+  assert.ok(out.data.entries[0].issues.some((i: any) => i.code === "information-absent" && i.gate === "advisory" && i.advisory_from === "error"));
   // parity v2: without source_text the finding is a warning and the verdict stays the validator's
   const bare = JSON.parse(addRecordChecksToValidation(text, b, {}));
   assert.equal(bare.data.valid, true);
@@ -180,12 +182,12 @@ test("finalize envelopes: clean without source_text → unchanged; fhir_finalize
   const bad = structuredClone(patient);
   bad.identifier[1].value = "尚未取號";
   const out = JSON.parse(addRecordChecksToFinalizeResource(env(bad), { sourceText: "病歷號：尚未取號" }));
-  assert.equal(out.data.validation.valid, false);
-  assert.deepEqual(out.data.validation.issues.filter((i: any) => i.code === "information-absent").map((i: any) => [i.code, i.path, i.severity]), [["information-absent", "Patient.identifier[1].value", "error"]]);
+  assert.equal(out.data.validation.valid, true, "v20.2: advisory");
+  assert.deepEqual(out.data.validation.issues.filter((i: any) => i.code === "information-absent").map((i: any) => [i.code, i.path, (i.advisory_from ?? i.severity)]), [["information-absent", "Patient.identifier[1].value", "error"]]);
   const bareRes = JSON.parse(addRecordChecksToFinalizeResource(env(bad), {}));
   assert.equal(bareRes.data.validation.valid, true, "parity v2: a warning without source_text");
   assert.deepEqual(out.data.resource, bad);
-  assert.equal(out.warnings.length, 1);
+  assert.equal(out.warnings.length, 0, "v20.2: an advisory finding does not turn the validation invalid");
 });
 
 test("parity v2: an identifier format finding without source_text (pure validation) is a warning, with source_text an error", () => {
@@ -194,8 +196,8 @@ test("parity v2: an identifier format finding without source_text (pure validati
   assert.ok(nid, "BASE_BUNDLE has a national-ID identifier");
   nid!.value = "A01";
   const bare = runRecordChecks(b, {}).issues.filter((i) => i.code === "identifier-format");
-  assert.deepEqual(bare.map((i) => i.severity), ["warning"]);
+  assert.deepEqual(bare.map((i) => (i.advisory_from ?? i.severity)), ["warning"]);
   assert.match(bare[0].evidence, /no source_text/u);
   const withSrc = runRecordChecks(b, { sourceText: BASE_RECORD }).issues.filter((i) => i.code === "identifier-format");
-  assert.deepEqual(withSrc.map((i) => i.severity), ["error"]);
+  assert.deepEqual(withSrc.map((i) => (i.advisory_from ?? i.severity)), ["error"]);
 });

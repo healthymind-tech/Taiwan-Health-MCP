@@ -627,6 +627,15 @@ gold Bundle 被內容 error 擋下：未分閘門時 1/17，分閘門後（只�
 
 兩個工具都在 FHIR IG 群組（模組閘門 `ig`、與 `fhir_validate_bundle` 相同的 metrics / 錯誤邊界 / 重量級工具併發上限），完全決定性（不呼叫 LLM），對所有 IG 通用，不寫入病歷原文、quote 或事實值到 log。
 
+#### v20.2：只由可決定的條件擋放行（評測方決定）{#content-gates-v202}
+
+- **不再以詞彙規則判斷語意**。語意核對（r/o、否定、舊值、代碼語意、事實涵蓋）改由評測方用模型核對；MCP 的這些發現一律 **advisory**。
+- `fhir_release_check` 只由可決定的條件擋下：官方 validator 0 error（且是完整的官方判定）、`targets` 到齊、`G-UNGROUNDED` 落在**結構化**數值 / 日期 / 識別碼（`*.identifier.value`、Quantity / integer / decimal 的值、range / ratio 的上下限、日期與期間）。自由文字（`valueString`、`text`、`note`、`conclusion`、名稱）不算。沒有 `targets` 時回 `incomplete-input`（事實清單只作建議）。
+- **advisory 只提示、不下指令**：advisory 的 error 改為 `severity: "warning"`、`advisory_from: "error"`，不再讓 `valid` / `groundingValid` 為 false；不附刪除類建議或 patch，訊息不叫模型刪除內容（改為「請對照病歷確認」）。
+- `fhir_release_check` 新欄位 `advisories`：事實涵蓋（`fact-missing`、`quote-not-in-record`、`unusable-fact-written`）與 `suspected-empty-bundle`，只回報、不擋。
+- `fhir_check_fact_coverage` 1.2.0：值出現在該事實所屬 resource 的其他值元素時算 covered（`reason_code: "found-in-other-element"`）；計數 / 序號 / 參考範圍（sequence、rank、frequency、period、count、referenceRange）除非 `attribute` 就是指它，否則不算；`attribute` 可寫 FHIR path（含 resource type、索引）。
+- 官方 validator 每次請求都帶 `validationTimeout`（請求逾時 − 30 秒），超時由官方中止並回部分結果，列為 `unverified`、`checked_fully: false`，不佔住它唯一的請求執行緒。
+
 ### fhir_check_fact_coverage（v18 R3 = v20 R4）{#fact-coverage}
 
 輸入 `bundle`、`source_text`、`facts: [{item, attribute, value, quote, resource_type?}]`、`package_id?`、`version?`。每個事實依序判斷：

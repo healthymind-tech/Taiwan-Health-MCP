@@ -187,7 +187,7 @@ services:
       # v18 R1: the official HL7 validator per IG (hl7-validator-* below) judges fhir_validate_*; empty = built-in only
       - OFFICIAL_VALIDATOR_URLS=${OFFICIAL_VALIDATOR_URLS:-}
       - OFFICIAL_VALIDATOR_MODE=${OFFICIAL_VALIDATOR_MODE:-}
-      - OFFICIAL_VALIDATOR_TIMEOUT_MS=${OFFICIAL_VALIDATOR_TIMEOUT_MS:-180000}
+      - OFFICIAL_VALIDATOR_TIMEOUT_MS=${OFFICIAL_VALIDATOR_TIMEOUT_MS:-120000}
     depends_on:
       pgbouncer:
         condition: service_healthy

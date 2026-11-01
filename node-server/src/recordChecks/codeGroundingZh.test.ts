@@ -43,9 +43,9 @@ test("R3 Chinese names: ≥ 20 synthetic cases — wrong SNOMED codes vs a Chine
     const iss = codeIssues(envelope(c), c);
     if (c.expect === "error") {
       assert.equal(iss.length, 1, c.id);
-      assert.equal(iss[0].severity, "error", `${c.id}: ${iss[0].grounding_code_check}`);
+      assert.equal((iss[0].advisory_from ?? iss[0].severity), "error", `${c.id}: ${iss[0].grounding_code_check}`);
       assert.equal(iss[0].grounding_code_check, "contradicted", c.id);
-    } else for (const i of iss) assert.notEqual(i.severity, "error", `${c.id}: ${i.grounding_code_check} ${JSON.stringify(i.closest_record_phrase)}`);
+    } else for (const i of iss) assert.notEqual((i.advisory_from ?? i.severity), "error", `${c.id}: ${i.grounding_code_check} ${JSON.stringify(i.closest_record_phrase)}`);
   }
 });
 
@@ -54,10 +54,10 @@ test("R3 Chinese names: the two cases of the last verification (asthma / UTI vs 
   for (const id of ["zh-asthma-vs-cap", "zh-uti-vs-cap"]) {
     const c = cases.find((x) => x.id === id)!;
     const before = codeIssues(envelope(c, false), c);
-    assert.equal(before[0].severity, "warning", id);
+    assert.equal((before[0].advisory_from ?? before[0].severity), "warning", id);
     assert.equal(before[0].grounding_code_check, "uncertain", id);
     const after = codeIssues(envelope(c), c);
-    assert.equal(after[0].severity, "error", id);
+    assert.equal((after[0].advisory_from ?? after[0].severity), "error", id);
     assert.equal(after[0].grounding_code_check, "contradicted", id);
     assert.match(after[0].message, /compared through the code's Chinese name/u, id);
     assert.match(after[0].message_zh, /以代碼的中文名稱/u, id);
@@ -238,14 +238,15 @@ test("hierarchy guard: LRTI (50417007) vs 社區型肺炎 (J18.9) is a broader c
   const lrti = get("ok-lrti-vs-cap-coded");
   assert.ok(lrti.relations?.get(`${SCT}|50417007`)?.has("社區型肺炎 (j18.9)"), JSON.stringify([...(lrti.relations ?? [])]));
   const iss = codeIssues(envelope(lrti), lrti);
-  for (const i of iss) assert.notEqual(i.severity, "error");
+  for (const i of iss) assert.notEqual((i.advisory_from ?? i.severity), "error");
   // without the relations the same case would be contradicted (the ICD names alone say "different")
   const bare = codeIssues(envelope({ ...lrti, relations: new Map() }), lrti);
   assert.equal(bare[0]?.grounding_code_check, "contradicted");
   for (const id of ["zh-asthma-vs-cap", "zh-uti-vs-cap"]) {
     const c = get(id);
     assert.equal(c.relations?.size ?? 0, 0, id);
-    assert.equal(codeIssues(envelope(c), c)[0].severity, "error", id);
+    const ci = codeIssues(envelope(c), c)[0];
+    assert.equal(ci.advisory_from ?? ci.severity, "error", id);
   }
   // by name: 「肺炎」 is the ICD name of J18 → J18 / J18.9 map targets → pneumonia concepts below LRTI
   assert.ok(get("ok-lrti-vs-pneumonia-name").relations?.get(`${SCT}|50417007`)?.size);

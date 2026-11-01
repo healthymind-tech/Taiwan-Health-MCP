@@ -12,8 +12,11 @@
  *      without a record basis, no unusable fact written into the Bundle;
  *   4. completeness (v20 R1) — every `targets` item is in the Bundle (count ≥ min), else `missing-target`; without
  *      targets: the Bundle profile's required entry slices are present, and a single-entry Bundle is not accepted when
- *      the facts name several resource types (`suspected-empty-bundle`); with neither targets nor facts completeness cannot
- *      be judged → `incomplete-input` (v20.1), never released.
+ *      the facts name several resource types (`suspected-empty-bundle`, advisory); without targets completeness cannot be
+ *      judged → `incomplete-input`, never released.
+ * v20.2 (evaluator decision): only decidable conditions stop a release — the official verdict, the targets, and the
+ * blocking content findings (structured numbers / dates / identifiers not in the record). Fact coverage and every
+ * semantic content finding are returned in `advisories` / as advisory issues and never stop it.
  * `next`: "send" (released) | "insufficient_information" (the facts a missing target needs exist but the record makes
  * all of them unusable — the case cannot be converted automatically) | "fix" (everything else, incl. a missing target no
  * fact names: a model omission). A case that is not released in the end is reported as not convertible automatically. Pure over injected deps; never
@@ -85,6 +88,8 @@ export interface ReleaseResult {
   release: boolean;
   next: NextStep;
   reasons: ReleaseReason[];
+  /** v20.2: semantic findings (fact coverage, suspected empty Bundle) — returned for the model, never stop a release */
+  advisories: ReleaseReason[];
   validation: Json;
   content: Json;
   facts: Json | null;
@@ -239,7 +244,8 @@ export async function releaseCheck(input: ReleaseInput, deps: ReleaseDeps): Prom
     reasons.push({ code: "no-source-text", message: "source_text is required: without the record, grounding and record checks cannot run.", count: 1, check: "content" });
   }
 
-  // ---- 3: fact coverage
+  // ---- 3: fact coverage — v20.2 (evaluator decision): semantic, advisory only (reported in `advisories`, never stops a release)
+  const advisories: ReleaseReason[] = [];
   const facts = Array.isArray(input.facts) ? input.facts : null;
   let cov: FactCoverageResult | null = null;
   if (facts && facts.length) {
@@ -247,11 +253,11 @@ export async function releaseCheck(input: ReleaseInput, deps: ReleaseDeps): Prom
     for (const f of cov.facts) {
       const ptr = f.found_at?.[0]?.pointer;
       if (f.status === "missing") {
-        reasons.push({ code: f.reason_code === "found-in-other-resource" ? "fact-in-other-resource" : "fact-missing", message: `fact ${f.index}: ${f.reason}${f.suggested_paths?.length ? ` Suggested: ${f.suggested_paths.join(", ")}.` : ""}`, count: 1, check: "facts", ...(f.found_elsewhere?.[0] ? { pointer: f.found_elsewhere[0].pointer } : {}) });
+        advisories.push({ code: f.reason_code === "found-in-other-resource" ? "fact-in-other-resource" : "fact-missing", message: `fact ${f.index}: ${f.reason}${f.suggested_paths?.length ? ` Suggested: ${f.suggested_paths.join(", ")}.` : ""}`, count: 1, check: "facts", ...(f.found_elsewhere?.[0] ? { pointer: f.found_elsewhere[0].pointer } : {}) });
       } else if (f.status === "quote_not_in_record") {
-        reasons.push({ code: "quote-not-in-record", message: `fact ${f.index}: ${f.reason}`, count: 1, check: "facts" });
+        advisories.push({ code: "quote-not-in-record", message: `fact ${f.index}: ${f.reason}`, count: 1, check: "facts" });
       } else if (f.status === "not_usable" && f.found_at?.length) {
-        reasons.push({ code: "unusable-fact-written", message: `fact ${f.index}: ${f.reason}`, count: 1, check: "facts", ...(ptr ? { pointer: ptr } : {}) });
+        advisories.push({ code: "unusable-fact-written", message: `fact ${f.index}: ${f.reason}`, count: 1, check: "facts", ...(ptr ? { pointer: ptr } : {}) });
       }
     }
   }
@@ -261,12 +267,12 @@ export async function releaseCheck(input: ReleaseInput, deps: ReleaseDeps): Prom
   const completeness: Json = { entries: entries.length };
   let insufficient = false;
   const targets = Array.isArray(input.targets) ? input.targets.filter(isObj) : [];
-  if (!targets.length && !(facts && facts.length)) {
-    // v20.1: neither the conversion target nor the facts — whether the Bundle is complete cannot be judged
+  if (!targets.length) {
+    // v20.2: completeness is decided by the conversion target only (facts are advisory) — without targets it cannot be judged
     completeness.incomplete_input = true;
     reasons.push({
       code: "incomplete-input",
-      message: "Neither `targets` nor `facts` were given: completeness cannot be judged, so the Bundle is not released. Pass the conversion target's required items as `targets` (and the facts with their record quotes as `facts`).",
+      message: "No `targets` were given: completeness cannot be judged, so the Bundle is not released. Pass the conversion target's required items as `targets` (facts are checked as advice only).",
       count: 1,
       check: "completeness",
     });
@@ -334,7 +340,7 @@ export async function releaseCheck(input: ReleaseInput, deps: ReleaseDeps): Prom
     const nonComposition = entries.filter((r) => r.resourceType !== "Composition" && r.resourceType !== "MessageHeader");
     if (nonComposition.length <= 1 && factTypes.size >= 2) {
       completeness.suspected_empty = true;
-      reasons.push({
+      advisories.push({
         code: "suspected-empty-bundle",
         message: `The Bundle has ${nonComposition.length} content entr${nonComposition.length === 1 ? "y" : "ies"} but the facts name ${factTypes.size} resource types (${[...factTypes].join(", ")}): entries were dropped. Pass the conversion target as \`targets\` for an exact check.`,
         count: factTypes.size - nonComposition.length,
@@ -344,11 +350,13 @@ export async function releaseCheck(input: ReleaseInput, deps: ReleaseDeps): Prom
   }
 
   const release = reasons.length === 0;
+  // (the advisories are returned with the result; they do not stop a release)
   const next: NextStep = release ? "send" : insufficient ? "insufficient_information" : "fix";
   return {
     release,
     next,
     reasons,
+    advisories,
     validation,
     content,
     facts: cov ? { ...cov.summary, results: cov.facts } : null,

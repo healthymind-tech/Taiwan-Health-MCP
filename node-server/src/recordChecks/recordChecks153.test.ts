@@ -35,13 +35,13 @@ test("v15.3 synthetic dev set: ≥ 40 cases of the three forms all detected; ≥
   for (const f of ["A-text", "B-result", "C-primary"]) assert.ok(pos.filter((c) => c.form === f).length >= 10, f);
   for (const c of pos) {
     const r = runRecordChecks(c.bundle, { sourceText: c.source_text, codeAxes: c.codeAxes ?? null });
-    assert.ok(r.issues.some((i) => c.expect!.includes(i.code) && i.severity === "error"), `${c.id}: ${r.issues.map((i) => i.code).join(", ")}`);
+    assert.ok(r.issues.some((i) => c.expect!.includes(i.code) && (i.advisory_from ?? i.severity) === "error"), `${c.id}: ${r.issues.map((i) => i.code).join(", ")}`);
   }
   const ctl = cases.filter((c) => !c.expect);
   assert.ok(ctl.length >= 20);
   for (const c of ctl) {
     const r = runRecordChecks(c.bundle, { sourceText: c.source_text, codeAxes: c.codeAxes ?? null });
-    assert.deepEqual(r.issues.filter((i) => i.severity === "error").map((i) => `${i.code} ${i.path}`), [], c.id);
+    assert.deepEqual(r.issues.filter((i) => (i.advisory_from ?? i.severity) === "error").map((i) => `${i.code} ${i.path}`), [], c.id);
   }
 });
 
@@ -124,7 +124,7 @@ test("R2: provisional / differential / text-only primary vs an unestablished slo
   res(p, 2).verificationStatus.coding[0].code = "provisional";
   res(p, 2).code = { text: "社區型肺炎／肺結核／肺癌" };
   const out = runRecordChecks(p, { sourceText: unest }).issues.filter(notR6);
-  assert.deepEqual(out.map((i) => `${i.severity}:${i.code}`), ["error:information-absent"]);
+  assert.deepEqual(out.map((i) => `${(i.advisory_from ?? i.severity)}:${i.code}`), ["error:information-absent"]);
   assert.match(out[0].message_zh, /病歷沒有確立的主診斷/u);
   assert.match(out[0].evidence, /primary Condition decided by: the only Condition with category encounter-diagnosis/u);
   // established primary + a differential secondary for the record's r/o: nothing
@@ -150,10 +150,10 @@ test("R3: coded G-UNGROUNDED — what was compared, the closest record phrase, w
     const iss = (out.data.entries[c.entry].issues as Json[]).filter((i) => i.source === "grounding" && /G-UNGROUNDED|G-VALUE-MISMATCH/u.test(i.rule));
     if (c.expect === "error") {
       assert.equal(iss.length, 1, c.id);
-      assert.equal(iss[0].severity, "error", c.id);
+      assert.equal((iss[0].advisory_from ?? iss[0].severity), "error", c.id);
       assert.equal(iss[0].grounding_code_check, "contradicted", c.id);
       assert.match(iss[0].message, /the code's meaning .* was compared with the record text/u, c.id);
-    } else for (const i of iss) assert.notEqual(i.severity, "error", c.id);
+    } else for (const i of iss) assert.notEqual((i.advisory_from ?? i.severity), "error", c.id);
   }
   // a downgrade that removes the only grounding error makes the entry / the result valid again, counts adjusted
   const b = inBundle();
@@ -165,7 +165,7 @@ test("R3: coded G-UNGROUNDED — what was compared, the closest record phrase, w
   ]);
   const out = groundedEnvelope(b, R, terms);
   const i = (out.data.entries[2].issues as Json[]).find((x) => x.rule === "G-UNGROUNDED")!;
-  assert.equal(i.severity, "warning");
+  assert.equal((i.advisory_from ?? i.severity), "warning");
   assert.equal(i.downgraded_from, "error");
   assert.equal(i.grounding_code_check, "related");
   assert.deepEqual(i.closest_record_phrase.text, "社區型肺炎 (J18.9)");

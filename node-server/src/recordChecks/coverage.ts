@@ -335,13 +335,13 @@ export function negatedItemChecks(root: Json, recordText: string, siteConfig: st
         })),
     );
     if (ex) {
-      out.push(withSuggestion(makeIssue(
+      out.push(makeIssue(
         "R6", "error", "negated-item-present", it.base,
-        `轉換目標排除了這個項目：${rtype}（${clip(it.names[0] ?? rtype, 40)}）不應出現在 Bundle 中（轉換目標：「${clip(ex.line, 80)}」）。請刪除這個 entry`,
-        `The conversion target excludes this item: ${rtype} (${clip(it.names[0] ?? rtype, 40)}) must not be in the Bundle (target: "${clip(ex.line, 80)}"). Remove this entry`,
+        `轉換目標排除了這個項目：${rtype}（${clip(it.names[0] ?? rtype, 40)}）不應出現在 Bundle 中（轉換目標：「${clip(ex.line, 80)}」）。請對照病歷與轉換目標確認`,
+        `The conversion target excludes this item: ${rtype} (${clip(it.names[0] ?? rtype, 40)}) must not be in the Bundle (target: "${clip(ex.line, 80)}"). Verify against the record and the target`,
         `R6 conversion-target exclusion: an 【轉換目標】 line with an exclusion cue names '${clip(ex.phrase, 40)}', which matches the item's name`,
         [ex.line],
-      ), { value: "remove entry", kind: "remove_entry", confidence: 0.8, reason: "the conversion target excludes this item", patch: { op: "remove", path: it.base.replace(/\.resource$/u, "") } }));
+      ));
       continue;
     }
     if (!it.names.length) continue;

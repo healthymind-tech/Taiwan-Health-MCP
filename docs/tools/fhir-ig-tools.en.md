@@ -627,6 +627,15 @@ Gold Bundles stopped by a content error: 1/17 without gates, 0/17 with gates (bl
 
 Both tools are in the FHIR IG group (module gate `ig`, the same metrics / error boundary / heavy-tool concurrency cap as `fhir_validate_bundle`), fully deterministic (no LLM call), generic for every IG, and never log the record text, quotes or fact values.
 
+#### v20.2: only decidable conditions stop a release (evaluator decision) {#content-gates-v202}
+
+- **No more lexical rules for meaning.** Semantic checks (r/o, negation, stale values, code meaning, fact coverage) are the evaluator's model verifier's job; MCP reports these findings as **advisory** only.
+- `fhir_release_check` stops only on decidable conditions: the official validator's 0 errors (a complete official verdict), `targets` present, and `G-UNGROUNDED` on **structured** numbers / dates / identifiers (`*.identifier.value`, Quantity / integer / decimal values, range / ratio bounds, dates and periods). Free text (`valueString`, `text`, `note`, `conclusion`, names) does not count. Without `targets`: `incomplete-input` (facts are advice only).
+- **Advisory informs, never instructs**: an advisory error becomes `severity: "warning"` with `advisory_from: "error"` and no longer makes `valid` / `groundingValid` false; no remove suggestions or patches, and no message tells the model to delete content ("verify against the record" instead).
+- New `fhir_release_check` field `advisories`: fact coverage (`fact-missing`, `quote-not-in-record`, `unusable-fact-written`) and `suspected-empty-bundle`, reported, never stopping a release.
+- `fhir_check_fact_coverage` 1.2.0: a value in another value element of the fact's own resource is covered (`reason_code: "found-in-other-element"`); counts / sequence numbers / reference ranges (sequence, rank, frequency, period, count, referenceRange) only when the `attribute` names them; `attribute` may be a FHIR path (with resource type and indexes).
+- Every official-validator request carries `validationTimeout` (request timeout − 30 s): a validation that runs too long is stopped by the validator with a partial result, reported as `unverified` with `checked_fully: false`, instead of holding its single request thread.
+
 ### fhir_check_fact_coverage (v18 R3 = v20 R4) {#fact-coverage}
 
 Input `bundle`, `source_text`, `facts: [{item, attribute, value, quote, resource_type?}]`, `package_id?`, `version?`. Each fact is judged in order:

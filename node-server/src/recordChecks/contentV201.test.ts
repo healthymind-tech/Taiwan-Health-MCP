@@ -57,7 +57,12 @@ test("gate registry: value grounding on value paths and unconfirmed-as-confirmed
   assert.equal(contentGateOf(e({ source: "grounding", rule: "G-UNGROUNDED", path: "Bundle.entry[1].resource.effectiveDateTime" })), "blocking");
   assert.equal(contentGateOf(e({ source: "grounding", rule: "G-UNGROUNDED", path: "Bundle.entry[1].resource.code" })), "advisory", "a coded element is a lexical name match");
   assert.equal(contentGateOf(e({ source: "grounding", rule: "G-CONTEXT-LABEL", path: "Bundle.entry[1].resource.valueQuantity" })), "advisory");
-  assert.equal(contentGateOf(e({ source: "record-checks", code: "unconfirmed-as-confirmed" })), "blocking");
+  // v20.2 (evaluator decision): semantic → advisory; G-UNGROUNDED blocks only structured numbers / dates / identifiers
+  assert.equal(contentGateOf(e({ source: "record-checks", code: "unconfirmed-as-confirmed" })), "advisory");
+  assert.equal(contentGateOf(e({ source: "grounding", rule: "G-UNGROUNDED", path: "Bundle.entry[1].resource.valueString" })), "advisory", "free text");
+  assert.equal(contentGateOf(e({ source: "grounding", rule: "G-UNGROUNDED", path: "Bundle.entry[1].resource.note[0].text" })), "advisory", "free text");
+  assert.equal(contentGateOf(e({ source: "grounding", rule: "G-UNGROUNDED", path: "Bundle.entry[0].resource.identifier[0].value" })), "blocking");
+  assert.equal(contentGateOf(e({ source: "grounding", rule: "G-UNGROUNDED", path: "Bundle.entry[2].resource.dosageInstruction[0].doseAndRate[0].doseQuantity.value" })), "blocking");
   for (const c of ["ungrounded-value", "negated-item-present", "code-meaning-mismatch", "stale-value", "information-absent", "generic-code-for-unknown-item"]) {
     assert.equal(contentGateOf(e({ source: "record-checks", code: c })), "advisory", c);
   }
@@ -82,7 +87,9 @@ test("gate field: stamped on every content issue with source_text; output withou
   assert.ok(issues.length > 0);
   for (const i of issues) assert.ok(i.gate === "blocking" || i.gate === "advisory", JSON.stringify(i));
   const u = issues.find((i: Json) => i.code === "unconfirmed-as-confirmed");
-  assert.equal(u?.gate, "blocking");
+  assert.equal(u?.gate, "advisory");
+  assert.equal(u?.severity, "warning", "an advisory finding informs, it does not make the Bundle invalid");
+  assert.equal(u?.advisory_from, "error");
   // without source_text: byte-identical
   assert.equal(addRecordChecksToValidation(env, b, {}), env);
 });
@@ -107,7 +114,7 @@ test("item 3: the record's primary diagnosis r/o / 尚未確立 / 疑似 / 待�
       const u = r.issues.find((i) => i.code === "unconfirmed-as-confirmed");
       assert.ok(u, `${src.split("\n")[1]} / ${ver}: ${JSON.stringify(r.issues.map((i) => i.code))}`);
       assert.equal(u!.severity, "error");
-      assert.equal(contentGateOf(u as unknown as Json), "blocking");
+      assert.equal(contentGateOf(u as unknown as Json), "advisory", "v20.2: semantic → advisory (the evaluator's model verifier decides)");
     }
   }
   // provisional is the right way to write it → nothing
@@ -118,7 +125,7 @@ test("item 3: the record's primary diagnosis r/o / 尚未確立 / 疑似 / 待�
   assert.ok(!runRecordChecks(bundle(cond("C34.11", "Malignant neoplasm of upper lobe, right bronchus or lung")), { sourceText: ok, codeNames: names }).issues.some((i) => i.code === "unconfirmed-as-confirmed"));
   // 可能 / possible stays a warning (advisory)
   const maybe = runRecordChecks(bundle(cond("C34.11", "Malignant neoplasm of upper lobe, right bronchus or lung")), { sourceText: "病人：林美華 女\n診斷：可能為肺癌", codeNames: names }).issues.find((i) => i.code === "unconfirmed-as-confirmed");
-  if (maybe) assert.equal(maybe.severity, "warning");
+  if (maybe) assert.equal((maybe.advisory_from ?? maybe.severity), "warning");
 });
 
 test("item 3: a generic class code (Hormone therapy) for a medicine the record does not name → generic-code-for-unknown-item (advisory)", () => {
@@ -174,7 +181,7 @@ test("FP: ROC range with a full-width ～ and spaces, ROC year-month 113/08 (blo
   const issues = rec(b, src);
   assert.ok(!issues.some(([, c, p]) => c === "ungrounded-value" && /onsetDateTime|validityPeriod/u.test(p)), JSON.stringify(issues));
   const g = checkGroundingSync({ bundle: b, source_text: src } as any, new Map(), {});
-  assert.ok(!g.entries.flatMap((e) => e.issues).some((i) => i.severity === "error" && /onsetDateTime|validityPeriod/u.test(i.path)));
+  assert.ok(!g.entries.flatMap((e) => e.issues).some((i) => (i.advisory_from ?? i.severity) === "error" && /onsetDateTime|validityPeriod/u.test(i.path)));
 });
 
 test("FP: CA 15-3：12.4 (hyphenated analyte + full-width colon), thousands separator 28,640, UCUM [IU]/mL", () => {
