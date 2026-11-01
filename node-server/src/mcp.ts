@@ -1512,12 +1512,17 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
       const grounded = await addResourceGrounding(conformance, resource as Record<string, any>, { ...g, package_id, version, ig_defined: igDefined } as ValidateGroundingArgs, groundingDeps);
       // Record checks (ISSUES_v15 / v15.1): R1 / R2 always, R3 / R4 / R5 with source_text; appended after the validator + grounding.
       // ISSUES_v15.3: LOINC axes (R1) and, with source_text, coding names (R3) — local tables, LRU-cached
-      const looked = await recordCheckLookups(resource as Record<string, any>, groundingDeps.terminology, g.source_text);
+      // ISSUES_v20 R2: fhir_normalize_code candidates for the code-meaning check (the validation's package, by system)
+      const looked = await recordCheckLookups(resource as Record<string, any>, groundingDeps.terminology, g.source_text, g.site_config ?? null, {
+        normalize: g.source_text ? (text, system, limit) => svc.meaningCandidates(text, system, package_id ?? null, version ?? null, limit) : null,
+      });
+      // ISSUES_v20 R3: profile constraints on identifier values (digits-only slices)
+      const identifierRules = g.source_text ? await svc.identifierValueRules(withProfile0, package_id ?? null, version ?? null).catch(() => null) : null;
       // ISSUES_v17 R2-2: the declared profiles' mustSupport / required elements (content coverage; only with source_text)
       const withProfile = withProfile0;
       const profileElements = g.source_text ? await svc.profileElementUse(withProfile, package_id ?? null, version ?? null).catch(() => null) : null;
       // ISSUES_v19 R3: JSON Pointers into the resource as sent + verified JSON Patch candidates (fhirSuggestions/pointers.ts), last.
-      return rawResult(addValidationPointers(addRecordChecksToValidation(grounded, resource as Record<string, any>, { sourceText: g.source_text ?? null, siteConfig: g.site_config ?? null, coverageSeverity: (g as { content_checks_severity?: "warning" | "error" | null }).content_checks_severity ?? null, profileElements, igDefined, ...looked }), resource));
+      return rawResult(addValidationPointers(addRecordChecksToValidation(grounded, resource as Record<string, any>, { sourceText: g.source_text ?? null, siteConfig: g.site_config ?? null, coverageSeverity: (g as { content_checks_severity?: "warning" | "error" | null }).content_checks_severity ?? null, profileElements, igDefined, identifierRules, ...looked }), resource));
     },
   );
 
@@ -1614,11 +1619,16 @@ function registerFhirIgTools(server: McpServer, svc: FHIRIGService): void {
       const grounded = await addBundleGrounding(conformance, bundle as Record<string, any>, { ...g, package_id, version, ig_defined: igDefined } as ValidateGroundingArgs, groundingDeps);
       // Record checks (ISSUES_v15 / v15.1): R1 / R2 always, R3 / R4 / R5 with source_text; appended after the validator + grounding.
       // ISSUES_v15.3: LOINC axes (R1) and, with source_text, coding names (R3) — local tables, LRU-cached
-      const looked = await recordCheckLookups(bundle as Record<string, any>, groundingDeps.terminology, g.source_text);
+      // ISSUES_v20 R2: fhir_normalize_code candidates for the code-meaning check (the validation's package, by system)
+      const looked = await recordCheckLookups(bundle as Record<string, any>, groundingDeps.terminology, g.source_text, g.site_config ?? null, {
+        normalize: g.source_text ? (text, system, limit) => svc.meaningCandidates(text, system, package_id ?? null, version ?? null, limit) : null,
+      });
       // ISSUES_v17 R2-2: the declared profiles' mustSupport / required elements (content coverage; only with source_text)
       const profileElements = g.source_text ? await svc.profileElementUse(bundle as Record<string, any>, package_id ?? null, version ?? null).catch(() => null) : null;
+      // ISSUES_v20 R3: profile constraints on identifier values (digits-only slices)
+      const identifierRules = g.source_text ? await svc.identifierValueRules(bundle as Record<string, any>, package_id ?? null, version ?? null).catch(() => null) : null;
       // ISSUES_v19 R3: JSON Pointers into the Bundle as sent + verified JSON Patch candidates (fhirSuggestions/pointers.ts), last.
-      return addValidationPointers(addRecordChecksToValidation(grounded, bundle as Record<string, any>, { sourceText: g.source_text ?? null, siteConfig: g.site_config ?? null, coverageSeverity: (g as { content_checks_severity?: "warning" | "error" | null }).content_checks_severity ?? null, profileElements, igDefined, ...looked }), bundle);
+      return addValidationPointers(addRecordChecksToValidation(grounded, bundle as Record<string, any>, { sourceText: g.source_text ?? null, siteConfig: g.site_config ?? null, coverageSeverity: (g as { content_checks_severity?: "warning" | "error" | null }).content_checks_severity ?? null, profileElements, igDefined, identifierRules, ...looked }), bundle);
   }
 
   server.registerTool(

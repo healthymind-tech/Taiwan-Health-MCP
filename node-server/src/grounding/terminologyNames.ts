@@ -40,6 +40,34 @@ export interface TerminologyNames {
   version(): Promise<string> | string;
   /** Batch lookup; keys are `system|code`. Unknown keys may be omitted from the map (treated as not found). */
   lookup(keys: readonly string[]): Promise<ReadonlyMap<string, TermRecord>>;
+  /**
+   * ISSUES_v20 R6 (optional): expansions of abbreviation tokens (lower-cased keys) from the data-derived thesaurus
+   * (fhir.term_thesaurus: SNOMED / LOINC / IG acronyms, bilingual pairs) and the abbreviation lexicon
+   * (fhir.abbreviation_lexicon). Used to match a record label (PEFR) with a code name (PEF Airway PFM) when both
+   * abbreviate the same term. A provider without it gives no expansions (behaviour unchanged).
+   */
+  abbreviations?(tokens: readonly string[]): Promise<ReadonlyMap<string, readonly string[]>>;
+}
+
+/** Abbreviation expansions by lower-cased token (TerminologyNames.abbreviations). */
+export type AbbreviationMap = ReadonlyMap<string, readonly string[]>;
+
+const RE_ABBR_TOKEN = /[A-Za-z][A-Za-z0-9]{1,9}/gu;
+
+/**
+ * Tokens worth an abbreviation lookup: Latin words of 2–10 characters written with at least one upper-case letter or
+ * at most 5 characters (PEFR, Hb, HbA1c, eGFR). Lower-cased, de-duplicated, capped.
+ */
+export function abbreviationTokens(texts: readonly string[], cap = 400): string[] {
+  const out = new Set<string>();
+  for (const t of texts) {
+    for (const m of String(t ?? "").normalize("NFKC").matchAll(RE_ABBR_TOKEN)) {
+      const w = m[0];
+      if (w.length <= 5 || /[A-Z]/u.test(w.slice(1)) || w === w.toUpperCase()) out.add(w.toLowerCase());
+      if (out.size >= cap) return [...out];
+    }
+  }
+  return [...out];
 }
 
 /** Convenience adapter (used by the completeness module): flat list of names for a list of codings. */

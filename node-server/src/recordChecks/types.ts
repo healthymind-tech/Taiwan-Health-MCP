@@ -39,14 +39,40 @@ export type RecordCheckCode =
   /** R6 (ISSUES_v17 R2-1): a fact (dose, frequency, route, duration …) written only in a text field while its structured element is empty. */
   | "text-only-fact"
   /** R6 (ISSUES_v17 R2-2): a fact the record states clearly, for a field the profile marks mustSupport / required, left empty. */
-  | "record-fact-missing";
+  | "record-fact-missing"
+  /** R5 (ISSUES_v20 R3): an identifier value that is only a fragment of the identifier the record states (醫字第035190號 → 035190). */
+  | "identifier-truncated"
+  /**
+   * R7 (ISSUES_v20 R2): a coding whose syntax and ValueSet membership are fine but whose meaning differs from the record
+   * phrase it stands for (a LOINC code of another test, an ICD code of another diagnosis, another medicine / procedure).
+   */
+  | "code-meaning-mismatch";
 
 /**
  * R1 information-absent · R2 identifier-format · R3 precision / completeness · R4 unconfirmed
  * diagnoses (incl. the primary diagnosis slot, ISSUES_v15.1 R3) · R5 value grounding (ISSUES_v15.1
  * R1 / R4: every identifier, date and quantity value must come from the record).
  */
-export type RecordRule = "R1" | "R2" | "R3" | "R4" | "R5" | "R6";
+export type RecordRule = "R1" | "R2" | "R3" | "R4" | "R5" | "R6" | "R7";
+
+/** ISSUES_v20 R3: a profile's constraint on an identifier value (read from the StructureDefinition). */
+export interface IdentifierRule {
+  /** Unversioned profile canonical (null = any). */
+  profile: string | null;
+  resourceType: string | null;
+  /** The identifier slice's fixed / pattern system (null = every identifier of the profile). */
+  system: string | null;
+  /** The value element is constrained to digits only (regex / pattern / a matches('^[0-9]+$')-like invariant). */
+  digitsOnly: boolean;
+}
+
+/** ISSUES_v20 R2: a candidate code of the element's system / bound ValueSet for a record phrase (fhir_normalize_code). */
+export interface MeaningCandidate {
+  system: string | null;
+  code: string;
+  display: string | null;
+  score?: number;
+}
 
 export interface RecordIssue {
   severity: "error" | "warning";
@@ -67,6 +93,10 @@ export interface RecordIssue {
    * states with another year — a wrong ROC ↔ Gregorian conversion): kind replace_value with a patch. Never applied.
    */
   suggestions?: Suggestion[];
+  /** ISSUES_v20 R2 (code-meaning-mismatch): the record phrase the coding stands for. */
+  record_phrase?: string;
+  /** ISSUES_v20 R2 (code-meaning-mismatch): the coding's official name (terminology table, not the model's display). */
+  code_display?: string;
 }
 
 export interface RecordCheckSummary {
@@ -127,6 +157,19 @@ export interface RecordCheckOptions {
    * literals) — never record facts: their slots are not checked and no value issue is reported on them. Optional.
    */
   igDefined?: IgDefinedValues | null;
+  /**
+   * ISSUES_v20 R6 / R2: abbreviation expansions by lower-cased token (grounding/abbreviations.ts; fhir.term_thesaurus +
+   * fhir.abbreviation_lexicon) — a record label written as an abbreviation still names its code. Optional.
+   */
+  abbreviations?: ReadonlyMap<string, readonly string[]> | null;
+  /** ISSUES_v20 R3: profile constraints on identifier values (digits only). Optional. */
+  identifierRules?: readonly IdentifierRule[] | null;
+  /**
+   * ISSUES_v20 R2: fhir_normalize_code candidates for the record phrases of suspect codings (codeMeaning.ts
+   * meaningTargets), keyed `<instance path>\u0000<record phrase>`. A coding is reported only when its candidates confirm
+   * that the phrase names another code; without them there is no finding (never a guess). Optional.
+   */
+  meaningCandidates?: ReadonlyMap<string, readonly MeaningCandidate[]> | null;
 }
 
 export interface RecordCheckResult {

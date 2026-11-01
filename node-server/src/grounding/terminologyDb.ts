@@ -42,6 +42,8 @@ export interface DbTerminologyNames extends TerminologyNames {
   warmSnomedChinese(): Promise<void>;
   /** Hierarchy guard of the code-grounding comparison (snomedChinese.ts createSnomedHierarchy). */
   snomedRelatedSlotItems(conceptIds: readonly string[], items: readonly SlotItemRef[]): Promise<ReadonlyMap<string, ReadonlySet<string>>>;
+  /** ISSUES_v20 R6: abbreviation expansions (fhir.term_thesaurus + fhir.abbreviation_lexicon), LRU-cached per token. */
+  abbreviations(tokens: readonly string[]): Promise<ReadonlyMap<string, readonly string[]>>;
   clear(): void;
   stats(): { cached: number; hits: number; misses: number; queries: number };
 }
@@ -291,6 +293,44 @@ export function createDbTerminologyNames(opts: DbTerminologyOptions): DbTerminol
 
   const hierarchy = createSnomedHierarchy({ query, logger: opts.logger });
 
+  // ISSUES_v20 R6: abbreviation expansions per lower-cased token (an empty list is cached too)
+  const abbrCache = new Map<string, string[]>();
+  const ABBR_MAX = 30;
+  const abbreviations = async (tokens: readonly string[]): Promise<Map<string, string[]>> => {
+    const out = new Map<string, string[]>();
+    const todo: string[] = [];
+    for (const t0 of new Set(tokens)) {
+      const t = t0.toLowerCase();
+      const hit = abbrCache.get(t);
+      if (hit) {
+        if (hit.length) out.set(t, hit);
+      } else todo.push(t);
+    }
+    if (!todo.length) return out;
+    const rows = await run(
+      "SELECT lower(abbr) AS k, expansion FROM fhir.term_thesaurus WHERE lower(abbr) = ANY($1::text[]) " +
+        "UNION ALL SELECT key AS k, expansion FROM fhir.abbreviation_lexicon WHERE key = ANY($1::text[])",
+      [todo],
+    );
+    if (rows === null) return out; // failure: not cached, retried next call
+    const got = new Map<string, string[]>();
+    for (const r of rows) {
+      const k = String(r.k ?? "");
+      const e = String(r.expansion ?? "").trim();
+      if (!k || !e) continue;
+      const l = got.get(k) ?? [];
+      if (l.length < ABBR_MAX && !l.some((x) => x.toLowerCase() === e.toLowerCase())) l.push(e);
+      got.set(k, l);
+    }
+    for (const t of todo) {
+      const l = got.get(t) ?? [];
+      abbrCache.set(t, l);
+      if (l.length) out.set(t, l);
+    }
+    while (abbrCache.size > cap) abbrCache.delete(abbrCache.keys().next().value as string);
+    return out;
+  };
+
   return {
     async version() {
       if (versionStr) return versionStr;
@@ -311,8 +351,10 @@ export function createDbTerminologyNames(opts: DbTerminologyOptions): DbTerminol
     snomedChineseNamesBatch: (ids) => zh.lookup(ids),
     warmSnomedChinese: () => zh.warm(),
     snomedRelatedSlotItems: (ids, items) => hierarchy.relatedSlotItems(ids, items),
+    abbreviations,
     clear() {
       cache.clear();
+      abbrCache.clear();
       zh.clear();
       versionStr = null;
     },

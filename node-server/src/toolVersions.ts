@@ -60,7 +60,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // a dose / frequency evidence quote cut from a record line listing several medicines is judged on the segment from the
   // medicine named before it (no G-CONTEXT-LABEL when that is this resource's medicine).
   // 1.4.0 (ISSUES_v17.4): the IG-defined exemption (igBlueprint/igValues.ts) is narrowed: profile fixed / pattern values, invariant answer literals and the example identity (name / identifier …) of a national payer / authority organization (igBlueprint/nationalOrgs.ts: an Organization profile whose type is pinned to govt / pay / ins, or the only target of the IG's payor / insurer / payer / authority references — TWPAS Coverage.payor / ClaimResponse.insurer -> Organization-govt-twcore); an example hospital / clinic / lab / practitioner / patient value is no longer exempt (reported when the record names another), as fhir_get_minimal_skeleton 1.6.0.
-  fhir_check_grounding: "1.4.0",
+  // 1.5.0 (ISSUES_v20 R6): record labels and coded names matched through the data-derived abbreviation thesaurus (fhir.term_thesaurus + fhir.abbreviation_lexicon via the terminology provider: PEFR ↔ LOINC short name PEF — no G-CONTEXT-LABEL / weak coding when both abbreviate the same term); the end of a date range written with a dash after a full date (114/06/02–115/08/31, 114/06/02 08:00-115/08/31) is read as a date. Output for inputs without such abbreviations / ranges unchanged.
+  fhir_check_grounding: "1.5.0",
   // 1.1.0: stated absences by whole-label matching (shared with fhir_check_grounding, lexicon 0.3.0).
   // 1.1.1: instruction / site-config lines never join a value or duration window, even when no blank line
   // separates them from the item line (a value on the 【轉換目標】 line was reported as found).
@@ -235,7 +236,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.29.0 (ISSUES_v17.4, with source_text): grounding (fhir_check_grounding 1.4.0) and the record checks — the IG-defined exemption (igBlueprint/igValues.ts) is narrowed: profile fixed / pattern values, invariant answer literals and the example identity (name / identifier …) of a national payer / authority organization (igBlueprint/nationalOrgs.ts: an Organization profile whose type is pinned to govt / pay / ins, or the only target of the IG's payor / insurer / payer / authority references — TWPAS Coverage.payor / ClaimResponse.insurer -> Organization-govt-twcore); an example hospital / clinic / lab / practitioner / patient value is no longer exempt (reported when the record names another), as fhir_get_minimal_skeleton 1.6.0. Output without source_text unchanged.
   // 1.30.0 (release v1): a failed invariant (official or built-in) carries `invariant.expression` / `human` / `literals` (systems, code candidates with displays, values, formats) and, for a coding the rule is about, replace_code / replace_system suggestions → JSON patches; cascades (profile match, entry / reference slices) carry caused_by and `root_causes`.
   // 1.31.0 (ISSUES_v20 R5, with source_text only): content coverage (recordChecks/coverage.ts) counts the record-derivable facts (recordDerivable.ts) as record facts — a missing Condition.verificationStatus (the diagnosis field: plain → confirmed, hedged → provisional, r/o → differential, via the diagnosis-slot parser), Observation.interpretation (H / L / HH / LL / ↑ / ↓ / * flag after the value, or the record's / resource's reference range: outside → H / L, inside → N, * alone → A) and MedicationRequest.category (出院帶藥 / 門診處方 / 住院醫囑 heading, else the record's single visit setting) is a record-fact-missing finding (severity per content_checks_severity) wherever the declared profile has the element (any cardinality, before: mustSupport only) and its binding holds the code (an IG ValueSet: the code whose display names the meaning; profileElementUse now carries those bindings). Output without source_text unchanged.
-  fhir_validate_bundle: "1.31.0",
+  // 1.32.0 (ISSUES_v20, with source_text): R2 code meaning — a coding whose official names (terminology tables, never the model's display) are unrelated to the record phrase it stands for (CodeableConcept.text / model display stated in the record, the label before an Observation value) is `code-meaning-mismatch` (error, rule R7, record_phrase / code_display, replace_code suggestions) only when fhir_normalize_code for the phrase (the coding's system) does not return the code and returns one naming the phrase; R3 `identifier-truncated` (error, replace_value with the full record fragment: 醫字第035190號, not 035190) unless the profile restricts the value to digits; R6 false positives — record labels matched to code names through the data-derived abbreviation thesaurus (PEFR ↔ PEF), both ends of ROC date ranges (114/06/02–115/08/31, with times), no AllergyIntolerance inactive suggestion from medication-stop words (停藥). Output without source_text unchanged.
+  fhir_validate_bundle: "1.32.0",
   // 1.6.2: the binding-aware suggestions above (ISSUES_v10 A) also apply to single-resource validation.
   // 1.7.0: the validator v13 rules above (fhir_validate_bundle 1.9.0).
   // 1.8.0 (ISSUES_v15): the record checks of fhir_validate_bundle 1.11.0 on the resource (data.issues, data.record_checks).
@@ -265,7 +267,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.26.0 (ISSUES_v17.4, with source_text): as fhir_validate_bundle 1.29.0 (narrowed IG-defined exemption).
   // 1.27.0 (release v1): a failed invariant (official or built-in) carries `invariant.expression` / `human` / `literals` (systems, code candidates with displays, values, formats) and, for a coding the rule is about, replace_code / replace_system suggestions → JSON patches; cascades (profile match, entry / reference slices) carry caused_by and `root_causes`.
   // 1.28.0 (ISSUES_v20 R5, with source_text only): the record-derivable content coverage of fhir_validate_bundle 1.31.0.
-  fhir_validate_resource: "1.28.0",
+  // 1.29.0 (ISSUES_v20, with source_text): R2 code meaning — a coding whose official names (terminology tables, never the model's display) are unrelated to the record phrase it stands for (CodeableConcept.text / model display stated in the record, the label before an Observation value) is `code-meaning-mismatch` (error, rule R7, record_phrase / code_display, replace_code suggestions) only when fhir_normalize_code for the phrase (the coding's system) does not return the code and returns one naming the phrase; R3 `identifier-truncated` (error, replace_value with the full record fragment: 醫字第035190號, not 035190) unless the profile restricts the value to digits; R6 false positives — record labels matched to code names through the data-derived abbreviation thesaurus (PEFR ↔ PEF), both ends of ROC date ranges (114/06/02–115/08/31, with times), no AllergyIntolerance inactive suggestion from medication-stop words (停藥). Output without source_text unchanged.
+  fhir_validate_resource: "1.29.0",
   // 1.2.0 (all below): provenance.resolved_by / closure_versions; canonical arguments resolve to their
   // owning package when package_id is omitted; "|version" honoured; list/search: all_packages + zero-hit hint;
   // NO_DEFAULT_IG instead of an arbitrary package when no default IG is set.
@@ -384,7 +387,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.22.0 (v18 R1): the no-new-error guard and the reported errors use the official validator when one serves the package (as fhir_validate_bundle 1.27.0).
   // 1.22.1 (release v1): content repairs as fhir_finalize_bundle 1.17.0 (fixed-slice conflict reported, never added).
   // 1.23.0 (ISSUES_v17.4, with source_text): validation as fhir_validate_resource 1.26.0 (narrowed IG-defined exemption).
-  fhir_finalize_resource: "1.23.0",
+  // 1.24.0 (ISSUES_v20, with source_text): the record checks of fhir_validate_resource 1.28.0 (as fhir_finalize_bundle 1.19.0).
+  fhir_finalize_resource: "1.24.0",
   // 1.0.0 (authoring/, evaluation v11): the model gives field VALUES, the MCP composes the resource for its profile
   //   (fixed / pattern / defaults / derived / displays / UCUM / ROC dates), validates it, keeps it in a Redis context
   //   (`authoring:ctx:*`, 60-min idle TTL) and assembles the Bundle from keys with deterministic urn:uuid fullUrls
@@ -546,7 +550,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.18.0 (ISSUES_v19 R1 round 2): the shared content repairs of fhir_finalize_bundle 1.15.0 (Composition.class → category, performer.reference → performer.actor.reference, STU3 duplicates of a value the R4 element holds removed, a code element written as a CodeableConcept whose system is the THO / core twin of the ValueSet's CodeSystem).
   // 1.18.1 (release v1): shared content repairs as fhir_finalize_bundle 1.17.0 (fixed-slice conflict reported, never added).
   // 1.19.0 (ISSUES_v17.4, with source_text): validation as fhir_validate_resource 1.26.0 (narrowed IG-defined exemption).
-  fhir_author_resources: "1.19.0",
+  // 1.20.0 (ISSUES_v20, with source_text): the content checks of its validation follow fhir_validate_resource 1.28.0 (abbreviations, ROC range ends, identifier-truncated, allergy; code-meaning-mismatch only where normalize candidates are fetched).
+  fhir_author_resources: "1.20.0",
   // 1.0.1: action=get results carry the author result's new `notes` (fhir_author_resources 1.1.0); otherwise unchanged.
   fhir_context: "1.0.1",
   // 1.1.0: new `site_config` (merged with the context's) passed to the grounding engine with source_text, so facility
@@ -589,7 +594,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.18.0 (ISSUES_v19 R1 round 2): the shared content repairs of fhir_finalize_bundle 1.15.0 (Composition.class → category, performer.reference → performer.actor.reference, STU3 duplicates of a value the R4 element holds removed, a code element written as a CodeableConcept whose system is the THO / core twin of the ValueSet's CodeSystem) and its document completion (section entries of a type the section slice does not take moved to the one section that takes them).
   // 1.18.1 (release v1): finalize as fhir_finalize_bundle 1.17.0 content repairs (fixed-slice conflict reported, never added).
   // 1.19.0 (ISSUES_v17.4, with source_text): grounding / validation as fhir_validate_bundle 1.29.0 (narrowed IG-defined exemption).
-  fhir_assemble_bundle: "1.19.0",
+  // 1.20.0 (ISSUES_v20, with source_text): the content checks follow fhir_validate_bundle 1.31.0 (as fhir_author_resources 1.20.0).
+  fhir_assemble_bundle: "1.20.0",
   // 1.0.0 (ISSUES_v9 R1): deterministic Bundle finalizer — fullUrl-uuid / reference-rewire / resource-id (mandatory),
   // bundle-type / document-order (profile-driven); UUID v5 seeded by (resourceType, original fullUrl, resource.id, entry
   // index) + a content salt; references found through StructureDefinition snapshots; duplicates / ambiguity reported.
@@ -666,7 +672,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   existing ancestor + `pointer_note`), new `pointer_out` (the returned Bundle, when different) and candidate
   //   `patch_out` (the returned Bundle, verified to apply, when paths / values differ).
   // 1.18.0 (ISSUES_v17.4, with source_text): data.record_issues as fhir_validate_bundle 1.29.0 (narrowed IG-defined exemption).
-  fhir_finalize_bundle: "1.18.0",
+  // 1.19.0 (ISSUES_v20, with source_text): the record checks of fhir_validate_bundle 1.31.0 in data.record_issues (identifier-truncated, ROC range ends, no allergy resolution from 停藥; code-meaning-mismatch needs normalize candidates, which finalize does not fetch). Output without source_text unchanged.
+  fhir_finalize_bundle: "1.19.0",
   // ── 2026-10-19 actionable errors (additive fields only; successful outputs unchanged) ──
   // search_medical_codes 1.2.1: IG_UNAVAILABLE adds `hint`.
   // FHIR IG tools above (+.0.1): error envelopes add error.hint; IG_NOT_FOUND / NO_DEFAULT_IG add

@@ -11,6 +11,15 @@ import { RecordText } from "../grounding/recordText.js";
 import { snomedIdsOf, type SlotItemRef, type ZhName } from "../grounding/snomedChinese.js";
 import { diagnosisSlots } from "./diagnosisSlot.js";
 import { loincCodesNeedingAxes, type CodeAxes } from "./quantitative.js";
+import { abbreviationTokens } from "../grounding/terminologyNames.js";
+import { meaningKey, meaningTargets } from "./codeMeaning.js";
+import type { MeaningCandidate } from "./types.js";
+
+/** ISSUES_v20 R2: fhir_normalize_code restricted to a system (the validation's package), as candidates. */
+export type MeaningNormalize = (text: string, system: string, limit: number) => Promise<MeaningCandidate[]>;
+
+/** Normalize calls per tool call for the code-meaning check (each target phrase once). */
+export const MEANING_NORMALIZE_MAX = 12;
 
 type Json = Record<string, any>;
 
@@ -21,6 +30,8 @@ export interface TermLookup {
   snomedChineseNamesBatch?(conceptIds: readonly string[]): Promise<ReadonlyMap<string, readonly ZhName[]>>;
   /** Hierarchy guard: per SNOMED concept, the diagnosis-slot items naming the same / a broader / a narrower concept. */
   snomedRelatedSlotItems?(conceptIds: readonly string[], items: readonly SlotItemRef[]): Promise<ReadonlyMap<string, ReadonlySet<string>>>;
+  /** ISSUES_v20 R6 / R2: abbreviation expansions (grounding TerminologyNames.abbreviations); optional. */
+  abbreviations?(tokens: readonly string[]): Promise<ReadonlyMap<string, readonly string[]>>;
 }
 
 export interface RecordCheckLookups {
@@ -33,6 +44,10 @@ export interface RecordCheckLookups {
    * SNOMED concept is the same, an ancestor or a descendant of the coding's — never "a different diagnosis". Only when any.
    */
   codeSlotRelations?: Map<string, Set<string>>;
+  /** ISSUES_v20 R6 / R2: abbreviation expansions of the record's and the code names' tokens (only when any). */
+  abbreviations?: Map<string, readonly string[]>;
+  /** ISSUES_v20 R2: fhir_normalize_code candidates of the code-meaning targets (codeMeaning.ts), only when any. */
+  meaningCandidates?: Map<string, MeaningCandidate[]>;
 }
 
 const RE_ICD_IN = /\b[A-Z]\d{2}(?:\.[0-9A-Z]{1,4})?\b/gu;
@@ -53,7 +68,13 @@ export function slotItemRefs(sourceText: string, siteConfig: string | null = nul
   return out;
 }
 
-export async function recordCheckLookups(root: Json, terminology: TermLookup | null | undefined, sourceText: string | null | undefined, siteConfig: string | null = null): Promise<RecordCheckLookups> {
+export async function recordCheckLookups(
+  root: Json,
+  terminology: TermLookup | null | undefined,
+  sourceText: string | null | undefined,
+  siteConfig: string | null = null,
+  extra: { normalize?: MeaningNormalize | null } = {},
+): Promise<RecordCheckLookups> {
   const out: RecordCheckLookups = { codeAxes: new Map(), codeNames: new Map() };
   if (!terminology) return out;
   const axesKeys = loincCodesNeedingAxes(root);
@@ -103,6 +124,34 @@ export async function recordCheckLookups(root: Json, terminology: TermLookup | n
       }
     } catch {
       // fail-open: without the guard the comparison is as before
+    }
+  }
+  if (typeof sourceText === "string" && sourceText.trim() && typeof terminology.abbreviations === "function") {
+    try {
+      const toks = abbreviationTokens([sourceText, ...[...out.codeNames.values()].flat()], 600);
+      const m = toks.length ? await terminology.abbreviations(toks) : new Map();
+      if (m.size) out.abbreviations = new Map(m);
+    } catch {
+      // fail-open: literal matching only
+    }
+  }
+  if (typeof sourceText === "string" && sourceText.trim() && extra.normalize && out.codeNames.size) {
+    try {
+      const targets = meaningTargets(root, sourceText, siteConfig, out.codeNames, out.codeNamesZh ?? null, out.abbreviations ?? null);
+      const m = new Map<string, MeaningCandidate[]>();
+      const byQuery = new Map<string, Promise<MeaningCandidate[]>>();
+      for (const t of targets) {
+        const q = `${t.system}\u0000${t.phrase}`;
+        if (!byQuery.has(q)) {
+          if (byQuery.size >= MEANING_NORMALIZE_MAX) break;
+          byQuery.set(q, extra.normalize(t.phrase, t.system, 10).catch(() => []));
+        }
+        const c = await byQuery.get(q)!;
+        if (c.length) m.set(meaningKey(t.path, t.phrase), c);
+      }
+      if (m.size) out.meaningCandidates = m;
+    } catch {
+      // fail-open: no candidates, no code-meaning finding
     }
   }
   return out;

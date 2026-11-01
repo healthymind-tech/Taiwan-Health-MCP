@@ -470,6 +470,8 @@ export interface PositionedDate {
 }
 
 const DATES_POS_CACHE = new Map<string, PositionedDate[]>();
+/** A full date, a dash, and an ROC range end (group 4); applied to nfkc text. */
+const RE_RANGE_END = /(?<![\d./-])(\d{2,4})[/.-](\d{1,2})[/.-](\d{1,2})(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?\s*-\s*(\d{2,3}[/.-]\d{1,2}[/.-]\d{1,2})(?![\d/])/gu;
 
 /** parseDates with the span of each date (same dates, same order). */
 export function parseDatesPos(text: string): PositionedDate[] {
@@ -512,6 +514,20 @@ export function parseDatesPos(text: string): PositionedDate[] {
           spans.push(span);
         }
       }
+    }
+  }
+  // ISSUES_v20 R6: the END of a date range written with a dash (114/06/02–115/08/31; nfkc unifies the dashes to "-"):
+  // the ROC pattern refuses a "-" before the year (it guards against fragments of longer numbers), so a range end
+  // directly after a full date is read here — both ends of 114/06/02-115/08/31, 114.06.02 - 115.08.31, 2025/06/02-115/08/31.
+  for (const m of findAll(RE_RANGE_END, t)) {
+    const st = m.index + m[0].length - m[4].length;
+    if (spans.some(([a, b]) => a <= st && st < b)) continue;
+    const g = /^(\d{2,3})[/.\-](\d{1,2})[/.\-](\d{1,2})$/u.exec(m[4]);
+    if (!g) continue;
+    const y = Number(g[1]) + 1911;
+    if (Number(g[1]) >= 1 && Number(g[1]) <= 200 && validDate(y, Number(g[2]), Number(g[3]))) {
+      found.push({ date: ["day", [y, Number(g[2]), Number(g[3])]], start: st, end: st + m[4].length });
+      spans.push([st, st + m[4].length]);
     }
   }
   if (DATES_POS_CACHE.size > 5000) DATES_POS_CACHE.clear();

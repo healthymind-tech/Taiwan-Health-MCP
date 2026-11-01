@@ -48,6 +48,8 @@ import { valueGroundingChecks } from "./valueGrounding.js";
 import { quantitativeBasis } from "./quantitative.js";
 import { emptyShellChecks } from "./emptyShell.js";
 import { coverageChecks } from "./coverage.js";
+import { identifierVerbatimChecks } from "./identifierVerbatim.js";
+import { codeMeaningChecks } from "./codeMeaning.js";
 import { resourcesOf, slotsOf, type Slot } from "./slots.js";
 import type { RecordCheckOptions, RecordCheckResult, RecordIssue, RecordRule } from "./types.js";
 
@@ -73,7 +75,10 @@ export { identifierRegistry, BUILTIN_IDENTIFIER_SYSTEMS, BUILTIN_FORMATS } from 
 // 1.4.0 (ISSUES_v17 R2): R6 content coverage (coverage.ts) — negated-item-present, duplicate-entry, text-only-fact.
 // 1.4.1 (ISSUES_v17.2): IG-defined values exempt. 1.5.0 (ISSUES_v17.4): stale-value (a value the record states only as old /
 // not applicable / pending), unconfirmed-as-confirmed for not-established text in diagnosis / required elements.
-export const RECORD_CHECKS_VERSION = "1.5.0";
+// 1.6.0 (ISSUES_v20): R7 code meaning (codeMeaning.ts, code-meaning-mismatch, confirmed by fhir_normalize_code candidates),
+//   identifiers verbatim (identifierVerbatim.ts, identifier-truncated), abbreviation-aware label matching, ROC date-range
+//   ends, no allergy resolution inferred from medication-stop words.
+export const RECORD_CHECKS_VERSION = "1.6.0";
 
 type Json = Record<string, any>;
 const isObj = (x: unknown): x is Json => !!x && typeof x === "object" && !Array.isArray(x);
@@ -290,6 +295,23 @@ export function valueAt(root: Json, path: string): unknown {
   return node;
 }
 
+/** Explicit resolution / tolerance wording — the only record text that makes an allergy inactive / resolved. */
+const RE_ALLERGY_RESOLVED = /已不過敏|不再過敏|過敏已(?:解除|緩解|消失|痊癒)|已(?:可)?耐受|耐受(?:良好|測試)|減敏(?:成功|治療完成)|激發試驗(?:陰性|通過)|(?:allergy|allergic reaction)\s+(?:has\s+)?resolved|no longer allergic|(?:tolerated|tolerates|tolerance test)|(?:oral\s+)?challenge\s+(?:negative|passed|tolerated)|desensiti[sz]ed|de-?labell?ed/iu;
+
+/**
+ * ISSUES_v20 R6: a content-coverage "negated-item-present" finding on an AllergyIntolerance whose only cue is a
+ * medication-stop word (停藥 / 已停用 / discontinued): the drug was stopped, the allergy stays — no finding unless the
+ * record's sentence states the allergy itself resolved (已不過敏 / tolerance test / challenge negative …).
+ */
+function allergyStopOnly(root: Json, i: RecordIssue): boolean {
+  if (i.code !== "negated-item-present") return false;
+  const base = /^(Bundle\.entry\[\d+\]\.resource|AllergyIntolerance)/u.exec(i.path)?.[1];
+  const res = base ? (base === "AllergyIntolerance" ? root : valueAt(root, base)) : null;
+  if (!isObj(res) || res.resourceType !== "AllergyIntolerance") return false;
+  if (!/was stopped/u.test(i.message_en)) return false;
+  return !(i.located_quotes ?? []).some((q) => RE_ALLERGY_RESOLVED.test(q));
+}
+
 export function runRecordChecks(root: Json, opts: RecordCheckOptions = {}): RecordCheckResult {
   const issues: RecordIssue[] = [];
   const notes: string[] = [];
@@ -365,12 +387,28 @@ export function runRecordChecks(root: Json, opts: RecordCheckOptions = {}): Reco
     } catch {
       notes.push("R5 (value grounding) could not run on this input (internal error)");
     }
+    try {
+      // ISSUES_v20 R3: identifiers verbatim — a value that is only a fragment of the record's identifier
+      const taken = new Set(issues.map((i) => i.path));
+      issues.push(...identifierVerbatimChecks(slots, opts.sourceText as string, site, registry, opts.identifierRules ?? null, new Set([...flagged, ...taken])));
+    } catch {
+      notes.push("the identifier-verbatim check could not run on this input (internal error)");
+    }
+    // ISSUES_v20 R2: code meaning — a valid code that means something else than the record phrase it stands for
+    rules.push("R7");
+    try {
+      issues.push(...codeMeaningChecks(root, opts.sourceText as string, site, opts.codeNames ?? null, opts.codeNamesZh ?? null, opts.abbreviations ?? null, opts.meaningCandidates ?? null, flagged));
+    } catch {
+      notes.push("R7 (code meaning) could not run on this input (internal error)");
+    }
     // ISSUES_v17 R2: content coverage (coverage.ts) — negated / excluded items written as done, duplicate entries,
     // facts only in Dosage.text; one issue per path (an earlier rule's issue on the same path wins)
     rules.push("R6");
     try {
       const taken = new Set(issues.map((i) => `${i.code}\u0000${i.path}`));
       for (const i of coverageChecks(root, opts.sourceText as string, site, opts.coverageSeverity === "error" ? "error" : "warning", opts.codeNames ?? null, opts.profileElements ?? null)) {
+        // ISSUES_v20 R6: stopping a medicine does not resolve an allergy to it (停藥 / discontinued)
+        if (allergyStopOnly(root, i)) continue;
         if (!taken.has(`${i.code}\u0000${i.path}`)) issues.push(i);
       }
     } catch {
@@ -400,6 +438,7 @@ export function runRecordChecks(root: Json, opts: RecordCheckOptions = {}): Reco
       i.evidence = `${i.evidence}; no source_text (pure validation), so the severity is warning`;
     }
   }
+  rules.sort();
   const errors = issues.filter((i) => i.severity === "error").length;
   const warnings = issues.length - errors;
   return { issues, summary: { ok: errors === 0, errors, warnings, rules, source_text: withSource, ...(notes.length ? { notes } : {}) } };

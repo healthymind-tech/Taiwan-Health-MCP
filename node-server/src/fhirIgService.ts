@@ -1392,6 +1392,85 @@ export class FHIRIGService {
     return this.ok(data, pkg, warnings);
   }
 
+  /**
+   * ISSUES_v20 R2 (record checks, code meaning): fhir_normalize_code candidates for a record phrase, restricted to a
+   * code system, in the validation's package. Fail-open: any failure gives no candidates.
+   */
+  async meaningCandidates(text: string, system: string, packageId: string | null, version: string | null, limit = 10): Promise<Array<{ system: string | null; code: string; display: string | null; score?: number }>> {
+    try {
+      const env = JSON.parse(await this.normalizeCode(text, null, system, packageId, version, limit));
+      const cands: any[] = env && env.ok && env.data && Array.isArray(env.data.candidates) ? env.data.candidates : [];
+      return cands
+        .filter((c) => c && typeof c.code === "string" && c.code)
+        .map((c) => ({ system: typeof c.system === "string" ? c.system : null, code: c.code, display: typeof c.display === "string" ? c.display : null, ...(typeof c.score === "number" ? { score: c.score } : {}) }));
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * ISSUES_v20 R3 (record checks, identifiers verbatim): per declared profile, the identifier slices whose value the
+   * profile constrains to digits only — a regex extension / patternString / an invariant on the value (or on the
+   * identifier) whose `matches('…')` regex accepts digits and nothing else. The slice's fixed / pattern system scopes the
+   * rule (null = every identifier of the profile). Fail-open: an unresolvable profile is left out.
+   */
+  async identifierValueRules(root: Record<string, any>, packageId: string | null = null, version: string | null = null): Promise<Array<{ profile: string | null; resourceType: string | null; system: string | null; digitsOnly: boolean }>> {
+    const out: Array<{ profile: string | null; resourceType: string | null; system: string | null; digitsOnly: boolean }> = [];
+    const resources = root?.resourceType === "Bundle" ? (Array.isArray(root.entry) ? root.entry.map((e: any) => e?.resource).filter(Boolean) : []) : [root];
+    const urls = [...new Set(resources.flatMap((r: any) => (Array.isArray(r?.meta?.profile) ? r.meta.profile : []).filter((u: unknown) => typeof u === "string")))] as string[];
+    if (!urls.length) return out;
+    let pkg: PackageRow;
+    try {
+      pkg = await this.resolve(packageId, version, { metaProfiles: urls });
+    } catch {
+      return out;
+    }
+    const digitRegex = (src: string): boolean => {
+      try {
+        const rx = new RegExp(`^(?:${src.replace(/^\^/u, "").replace(/\$$/u, "")})$`, "u");
+        // digits only: some all-digit value of length 1-16 matches, and no value of that length with a letter / CJK / hyphen does
+        for (let n = 1; n <= 16; n++) {
+          const d = "0123456789012345".slice(0, n);
+          if (!rx.test(d)) continue;
+          const bad = [`A${d.slice(1)}`, `${d.slice(0, -1)}A`, `字${d.slice(1)}`, n > 2 ? `${d[0]}-${d.slice(2)}` : "-"];
+          return !bad.some((b) => rx.test(b));
+        }
+        return false;
+      } catch {
+        return false;
+      }
+    };
+    const matchesDigits = (expr: string): boolean => [...expr.matchAll(/matches\(\s*'((?:[^'\\]|\\.)*)'\s*\)/gu)].some((m) => digitRegex(m[1].replace(/\\\\/gu, "\\")));
+    const resolver = new DbValidatorResolver(pkg);
+    for (const url of urls.slice(0, 40)) {
+      try {
+        const sd = await resolver.fetchStructureDefinition(url);
+        const els: Array<Record<string, any>> = sd?.snapshot?.element || [];
+        const byId = new Map(els.map((e) => [String(e.id || ""), e]));
+        for (const e of els) {
+          const id = String(e.id || "");
+          if (!/\.identifier(:[^.]+)?\.value$/u.test(id) && !/\.identifier(:[^.]+)?$/u.test(id)) continue;
+          const own = String(e.path || "").endsWith(".value");
+          const regexExt = (Array.isArray(e.extension) ? e.extension : []).find((x: any) => x?.url === "http://hl7.org/fhir/StructureDefinition/regex")?.valueString;
+          const typeRegex = (Array.isArray(e.type) ? e.type : []).flatMap((t: any) => (Array.isArray(t?.extension) ? t.extension : [])).find((x: any) => x?.url === "http://hl7.org/fhir/StructureDefinition/regex")?.valueString;
+          const digits =
+            (own && typeof regexExt === "string" && digitRegex(regexExt)) ||
+            (own && typeof typeRegex === "string" && typeRegex !== "^[\\s\\S]+$" && digitRegex(typeRegex)) ||
+            (own && typeof e.patternString === "string" && /^\d+$/u.test(e.patternString)) ||
+            (Array.isArray(e.constraint) && e.constraint.some((c: any) => typeof c?.expression === "string" && (own || /\bvalue\b/u.test(c.expression)) && matchesDigits(c.expression)));
+          if (!digits) continue;
+          const sliceBase = own ? id.replace(/\.value$/u, "") : id;
+          const sys = byId.get(`${sliceBase}.system`);
+          const system = typeof sys?.fixedUri === "string" ? sys.fixedUri : typeof sys?.patternUri === "string" ? sys.patternUri : null;
+          out.push({ profile: url.split("|")[0], resourceType: typeof sd?.type === "string" ? sd.type : null, system, digitsOnly: true });
+        }
+      } catch {
+        // fail-open per profile
+      }
+    }
+    return out;
+  }
+
   async normalizeCode(
     text: string,
     valueSet: string | null = null,

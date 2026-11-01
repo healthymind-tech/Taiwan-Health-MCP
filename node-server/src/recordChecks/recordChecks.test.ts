@@ -147,7 +147,7 @@ test("envelope: issues land on the entry, valid turns false, the validator's own
   // with source_text the summary is always reported
   const withSrc = JSON.parse(addRecordChecksToValidation(cleanText, BASE_BUNDLE(), { sourceText: BASE_RECORD }));
   assert.equal(withSrc.data.valid, true);
-  assert.deepEqual(withSrc.data.record_checks, { ok: true, errors: 0, warnings: 0, rules: ["R1", "R2", "R3", "R4", "R5", "R6"], source_text: true });
+  assert.deepEqual(withSrc.data.record_checks, { ok: true, errors: 0, warnings: 0, rules: ["R1", "R2", "R3", "R4", "R5", "R6", "R7"], source_text: true });
   // an error envelope passes through byte-identical
   const err = JSON.stringify({ ok: false, data: null, error: { code: "X", message: "y" } });
   assert.equal(addRecordChecksToValidation(err, b, {}), err);
