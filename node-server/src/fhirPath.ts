@@ -197,6 +197,37 @@ function compile(base: string, expression: string): (data: any, env: any) => any
   return fn;
 }
 
+/**
+ * Evaluate an expression against one node with the invariant engine (same
+ * model, options, user functions and variables as evaluateConstraint) and
+ * return the raw result collection. Throws on syntax / evaluation errors and
+ * on `Unevaluable` host functions. `internal: true` keeps fhirpath.js typed
+ * nodes (for `fhirpath.types()`), otherwise plain JS values.
+ */
+export function evaluateExpression(
+  node: any,
+  base: string,
+  expression: string,
+  env: FhirPathEnv,
+  extraVars: Record<string, any> = {},
+  opts: { internal?: boolean } = {},
+): any[] {
+  const prev = current;
+  current = env;
+  try {
+    const fn = compile(base, expression) as (data: any, env: any, o?: any) => any[];
+    const vars = { ...extraVars, resource: typedNode(env.resource)[0], rootResource: typedNode(env.rootResource)[0] };
+    return opts.internal ? fn(node, vars, { resolveInternalTypes: false }) : fn(node, vars);
+  } finally {
+    current = prev;
+  }
+}
+
+/** Exposes fhirpath.js `types()` for results of evaluateExpression(…, { internal: true }). */
+export function resultTypes(result: any[]): string[] {
+  return fhirpath.types(result) as string[];
+}
+
 /** Evaluate an invariant expression against one node. */
 export function evaluateConstraint(
   node: any,
@@ -205,12 +236,8 @@ export function evaluateConstraint(
   env: FhirPathEnv,
   extraVars: Record<string, any> = {},
 ): ConstraintOutcome {
-  const prev = current;
-  current = env;
   try {
-    const fn = compile(base, expression);
-    const vars = { ...extraVars, resource: typedNode(env.resource)[0], rootResource: typedNode(env.rootResource)[0] };
-    const result = fn(node, vars);
+    const result = evaluateExpression(node, base, expression, env, extraVars);
     if (!Array.isArray(result) || result.length === 0) {
       // Same as the HL7 Java engine (convertToBoolean): an empty result is false.
       return { status: "fail" };
@@ -223,8 +250,6 @@ export function evaluateConstraint(
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return { status: "unevaluable", reason: msg };
-  } finally {
-    current = prev;
   }
 }
 
