@@ -5188,8 +5188,10 @@ export class InstanceValidator {
         issues.push({ severity: "error", path: item.path, code: "structure", message: `Reference is ${refType} which isn't supported by the specified aggregation mode(s) for the reference (${aggregation.join(", ")})` });
       }
     }
+    // getReferenceTypeRef (IV:5597): the first Reference type of the element
+    const refTypeRef = (el.type || []).find((t: Record<string, any>) => typeCodeOf(t) === "Reference");
     const targetProfiles: string[] = [];
-    for (const t of el.type || []) if (typeCodeOf(t) === "Reference") for (const p of t.targetProfile || []) if (typeof p === "string" && p) targetProfiles.push(p);
+    for (const p of refTypeRef?.targetProfile || []) if (typeof p === "string" && p) targetProfiles.push(p);
     if (!targetProfiles.length) return;
     const rt = target.resourceType;
     const candidates: SdIndex[] = [];
@@ -5255,7 +5257,8 @@ export class InstanceValidator {
       severity: "error",
       path: item.path,
       code: "structure",
-      message: `Unable to find a profile match for ${ref} among choices: ${candidates.map((c) => c.url).join(", ")}`,
+      // asList(type.getTargetProfileList()) (IV:5406, 5546): every target profile as written, CanonicalTypeSorter order
+      message: `Unable to find a profile match for ${ref} among choices: ${[...targetProfiles].sort().join(", ")}`,
     });
   }
 

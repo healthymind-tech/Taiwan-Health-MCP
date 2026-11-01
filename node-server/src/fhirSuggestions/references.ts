@@ -73,7 +73,15 @@ export async function causedBy(
   if (!deps.validateAgainst) return [];
   const out: CausedBy[] = [];
   const rt = String(t.resource.resourceType || "");
-  for (const p of pm.profiles.slice(0, 2)) {
+  // The message lists every target profile of the element (sorted, validator_cli asList), also those for other
+  // resource types: only profiles of the target's type explain why it does not match.
+  const sameType: string[] = [];
+  for (const p of pm.profiles) {
+    if (sameType.length >= 2) break;
+    const sd = await deps.fetchStructureDefinition(p).catch(() => null);
+    if (!sd || sd.type === rt) sameType.push(p);
+  }
+  for (const p of sameType) {
     if (budget.left <= 0) break;
     budget.left--;
     let issues: Array<Record<string, any>> = [];
