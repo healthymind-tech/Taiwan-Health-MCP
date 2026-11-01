@@ -32,7 +32,13 @@
  *                 sequence / rank numbering, workflow defaults (fhirRequiredElements
  *                 WORKFLOW_DEFAULTS), curated derivation rules (DERIVATION_RULES), the system of a
  *                 bound unit, and workflow dates (the date a request / record was written — the
- *                 record's own date for it, else the visit / document date);
+ *                 record's own date for it, else the visit / document date); and (ISSUES_v20 R5)
+ *                 the record-derivable elements of recordDerivable.ts (Condition.verificationStatus
+ *                 from the diagnosis field, Observation.interpretation from the value's flag /
+ *                 reference range, MedicationRequest.category from the order's setting) — a record
+ *                 fact the record determines without writing the code: `how` = "derive from the
+ *                 record: <rule>; record cue: <cue>" and `derive` = {rule, cue}; checked like any
+ *                 record fact by the content coverage (with source_text);
  *   record        everything else: a clinical / administrative fact the record must state.
  */
 
@@ -52,6 +58,7 @@ import {
   type ProjectedElement,
   type RequiredElementRow,
 } from "../fhirRequiredElements.js";
+import { derivableCodes, derivableText, recordDerivableRule } from "../recordDerivable.js";
 import { nationalOrganizationBasis } from "./nationalOrgs.js";
 import {
   BlueprintError,
@@ -116,6 +123,8 @@ export interface SkeletonItem {
   exampleCode?: { code: string; display: string | null; system: string | null };
   /** Conditional extension rows: the extension slice id + url (placed with the value). */
   extSlice?: { id: string; url: string };
+  /** (ISSUES_v20 R5) A record-derivable element: the derivation rule and the record cue (recordDerivable.ts). */
+  derive?: { rule: string; cue: string };
 }
 
 /** Administrative entities (FHIR R4 "Entities"), not persons: their example instances may be IG-level constants. */
@@ -594,6 +603,28 @@ async function classify(ctx: ClassifyCtx, row: RequiredElementRow, inheritedBind
   const coded = types.some((t) => CODED.has(t)) && !isRef;
   const cls = classifyElement(rt, el ?? { id: row.id, path: row.path, min: row.min, max: row.max }, ctx.codeFixed);
 
+  // ISSUES_v20 R5: record-derivable elements (before example constants and workflow defaults: the record
+  // decides them — an IG that writes "confirmed" in every example does not make a hedged diagnosis confirmed)
+  const rd = coded ? recordDerivableRule(gp) : null;
+  if (rd) {
+    const vs = binding?.valueSet ?? null;
+    const b = vs ? await bindingCodes(ctx, vs) : null;
+    const dc = derivableCodes(rd, vs, b && b.codes.length ? b.codes : null);
+    if (dc) {
+      const cc = types.includes("CodeableConcept");
+      const first = [...dc.values()][0];
+      item.source = "derivable";
+      item.how = derivableText(rd, dc, 240);
+      item.compactHow = `derive from the record (${rd.cue})`;
+      item.derive = { rule: rd.rule, cue: rd.cue };
+      if (vs) item.valueSet = tail(vs);
+      if (b && !b.truncated && b.total > 0 && b.total <= CODES_CAP) item.codes = b.codes;
+      const coding = { system: first.system ?? "<system>", code: "<code>" };
+      item.placeholder = cc ? { coding: [coding] } : types.includes("Coding") ? coding : "<code>";
+      return item;
+    }
+  }
+
   // Example constants (>= 2 instances, identical values; eligibility per resource kind).
   if (!isRef && exampleValueAllowed(rt, gp, Boolean(ctx.strictExamples))) {
     const entity = CONSTANT_ENTITY_TYPES.has(rt);
@@ -1048,7 +1079,8 @@ function literalNotes(items: SkeletonItem[], groups: SliceGroup[]): string[] {
 
 const LEGEND =
   "copy `skeleton`, replace each <...>. table [path, value_source, how]: only `record` rows need the record; ig-constant (already filled), " +
-  "code-lookup, text-allowed and derivable values are never a reason to refuse. `conditional` rows apply only when their condition holds.";
+  "code-lookup, text-allowed and derivable values are never a reason to refuse ('derive from the record' rows: take the value from the " +
+  "record cue named). `conditional` rows apply only when their condition holds.";
 const LEGEND_SLICES = " `slices`: every item of a sliced element matches one listed slice (copy its values).";
 const LEGEND_LITERALS = " `literals`: IG values to copy verbatim even if they look like placeholders.";
 

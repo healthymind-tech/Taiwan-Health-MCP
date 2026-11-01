@@ -50,6 +50,7 @@ import {
   type RequiredElementsResult,
 } from "./fhirRequiredElements.js";
 import { toolVersion } from "./toolVersions.js";
+import { RECORD_DERIVABLE } from "./recordDerivable.js";
 import { matchIgs, type IgText } from "./igDiscovery.js";
 import { IgConceptSearch, type CsLocation } from "./conceptSearch/service.js";
 import { acceptanceOf, confirmCoding } from "./codeAcceptance.js";
@@ -329,8 +330,8 @@ export class FHIRIGService {
    * mustSupport or requires (min >= 1) — the IG's "commonly used" fields the content-coverage check looks at.
    * Fail-open: an unresolvable profile is left out.
    */
-  async profileElementUse(root: Record<string, any>, packageId: string | null = null, version: string | null = null): Promise<Map<string, { mustSupport: Set<string>; required: Set<string>; common: Set<string>; prohibited: Set<string> }>> {
-    const out = new Map<string, { mustSupport: Set<string>; required: Set<string>; common: Set<string>; prohibited: Set<string> }>();
+  async profileElementUse(root: Record<string, any>, packageId: string | null = null, version: string | null = null): Promise<Map<string, { mustSupport: Set<string>; required: Set<string>; common: Set<string>; prohibited: Set<string>; bindings?: Map<string, { valueSet: string | null; codes: Array<{ system: string | null; code: string; display: string | null }> | null }> }>> {
+    const out = new Map<string, { mustSupport: Set<string>; required: Set<string>; common: Set<string>; prohibited: Set<string>; bindings?: Map<string, { valueSet: string | null; codes: Array<{ system: string | null; code: string; display: string | null }> | null }> }>();
     const resources = root?.resourceType === "Bundle" ? (Array.isArray(root.entry) ? root.entry.map((e: any) => e?.resource).filter(Boolean) : []) : [root];
     const urls = [...new Set(resources.flatMap((r: any) => (Array.isArray(r?.meta?.profile) ? r.meta.profile : []).filter((u: unknown) => typeof u === "string")))] as string[];
     if (!urls.length) return out;
@@ -383,7 +384,25 @@ export class FHIRIGService {
         } catch {
           // examples are optional
         }
-        out.set(url.split("|")[0], { mustSupport: ms, required: req, common, prohibited });
+        // ISSUES_v20 R5: the binding of each record-derivable element (its expansion when it is not the base ValueSet)
+        const bindings = new Map<string, { valueSet: string | null; codes: Array<{ system: string | null; code: string; display: string | null }> | null }>();
+        for (const e of els) {
+          const path = String(e.path || "");
+          const rd = RECORD_DERIVABLE[path];
+          if (!rd || String(e.id || "").includes(":") || e.max === "0") continue;
+          const vs = e.binding?.valueSet ? String(e.binding.valueSet).split("|")[0] : null;
+          let codes: Array<{ system: string | null; code: string; display: string | null }> | null = null;
+          if (vs && !rd.valueSets.includes(vs)) {
+            try {
+              const v = await this.loadValueset(pkg, vs);
+              if (v) codes = (await terminology.expandCompose(v.compose || {}, pkg, 200)).codings.map((c) => ({ system: c.system ?? null, code: String(c.code), display: c.display ?? null }));
+            } catch {
+              codes = null;
+            }
+          }
+          bindings.set(path, { valueSet: vs, codes });
+        }
+        out.set(url.split("|")[0], { mustSupport: ms, required: req, common, prohibited, bindings });
       } catch {
         // fail-open per profile
       }

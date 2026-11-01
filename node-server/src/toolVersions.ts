@@ -234,7 +234,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   Default output unchanged.
   // 1.29.0 (ISSUES_v17.4, with source_text): grounding (fhir_check_grounding 1.4.0) and the record checks — the IG-defined exemption (igBlueprint/igValues.ts) is narrowed: profile fixed / pattern values, invariant answer literals and the example identity (name / identifier …) of a national payer / authority organization (igBlueprint/nationalOrgs.ts: an Organization profile whose type is pinned to govt / pay / ins, or the only target of the IG's payor / insurer / payer / authority references — TWPAS Coverage.payor / ClaimResponse.insurer -> Organization-govt-twcore); an example hospital / clinic / lab / practitioner / patient value is no longer exempt (reported when the record names another), as fhir_get_minimal_skeleton 1.6.0. Output without source_text unchanged.
   // 1.30.0 (release v1): a failed invariant (official or built-in) carries `invariant.expression` / `human` / `literals` (systems, code candidates with displays, values, formats) and, for a coding the rule is about, replace_code / replace_system suggestions → JSON patches; cascades (profile match, entry / reference slices) carry caused_by and `root_causes`.
-  fhir_validate_bundle: "1.30.0",
+  // 1.31.0 (ISSUES_v20 R5, with source_text only): content coverage (recordChecks/coverage.ts) counts the record-derivable facts (recordDerivable.ts) as record facts — a missing Condition.verificationStatus (the diagnosis field: plain → confirmed, hedged → provisional, r/o → differential, via the diagnosis-slot parser), Observation.interpretation (H / L / HH / LL / ↑ / ↓ / * flag after the value, or the record's / resource's reference range: outside → H / L, inside → N, * alone → A) and MedicationRequest.category (出院帶藥 / 門診處方 / 住院醫囑 heading, else the record's single visit setting) is a record-fact-missing finding (severity per content_checks_severity) wherever the declared profile has the element (any cardinality, before: mustSupport only) and its binding holds the code (an IG ValueSet: the code whose display names the meaning; profileElementUse now carries those bindings). Output without source_text unchanged.
+  fhir_validate_bundle: "1.31.0",
   // 1.6.2: the binding-aware suggestions above (ISSUES_v10 A) also apply to single-resource validation.
   // 1.7.0: the validator v13 rules above (fhir_validate_bundle 1.9.0).
   // 1.8.0 (ISSUES_v15): the record checks of fhir_validate_bundle 1.11.0 on the resource (data.issues, data.record_checks).
@@ -263,7 +264,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   // 1.25.0 (release v1): official engine — terminology-server failures in data.unverified (not errors; checked_fully false; the validator is restarted to drop the cached failure), official_verdict / fallback_reason, a fallback is never checked_fully; reachable / Can't find issues carry location_path (validator_cli's off-by-one entry index) and their pointer / entry follow it.
   // 1.26.0 (ISSUES_v17.4, with source_text): as fhir_validate_bundle 1.29.0 (narrowed IG-defined exemption).
   // 1.27.0 (release v1): a failed invariant (official or built-in) carries `invariant.expression` / `human` / `literals` (systems, code candidates with displays, values, formats) and, for a coding the rule is about, replace_code / replace_system suggestions → JSON patches; cascades (profile match, entry / reference slices) carry caused_by and `root_causes`.
-  fhir_validate_resource: "1.27.0",
+  // 1.28.0 (ISSUES_v20 R5, with source_text only): the record-derivable content coverage of fhir_validate_bundle 1.31.0.
+  fhir_validate_resource: "1.28.0",
   // 1.2.0 (all below): provenance.resolved_by / closure_versions; canonical arguments resolve to their
   // owning package when package_id is omitted; "|version" honoured; list/search: all_packages + zero-hit hint;
   // NO_DEFAULT_IG instead of an arbitrary package when no default IG is set.
@@ -398,7 +400,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   provenance; non-ASCII counted as \uXXXX) minus a 150-char margin; new data.response_chars.
   // 1.2.1 (ISSUES_v16.2 R1): a short artifact id that is not in the IG itself resolves in its dependency packages (one distinct canonical; otherwise not found / AMBIGUOUS_ARTIFACT with the candidates) — previously ARTIFACT_NOT_FOUND.
   // 1.3.0: warnings carry the IG known defects of the profile (its own examples fail validation: do not create it unless the conversion target requires it).
-  fhir_get_authoring_fields: "1.3.0",
+  // 1.4.0 (ISSUES_v20 R5, recordDerivable.ts): Condition.verificationStatus, Observation.interpretation and MedicationRequest.category are record-derivable — source "derived" WITHOUT auto (before: interpretation / category were auto "MCP derives it" although the composer never derived them, and an optional verificationStatus said "give it only when the record states it"), `format` = "derive from the record: <rule> (record cue: <cue>)", listed in tier 1 wherever the profile allows them (any cardinality) and the binding holds the rule's codes (an IG ValueSet: its codes matched by display, named in the rule; none → a plain coded field); a required one keeps its workflow default as the fallback. Tool description updated.
+  fhir_get_authoring_fields: "1.4.0",
   // 1.0.0 (ISSUES_v16 R1, igBlueprint/blueprint.ts): a Bundle profile's blueprint — entry slices (min..max, profile), slicing
   //   discriminator / closed / ordered, Bundle.type, the references between slices that the slice profiles require (also in
   //   extensions and sliced backbones, targets matched through profile derivation) and a recipe; <= 4,000 characters
@@ -443,7 +446,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   one; its `how` names the basis). Before: TWPAS Organization-twpas name / type / identifier.value and TW Core
   //   Organization-hosp-twcore identifier / type / name / telecom were ig-constant (the example hospital). The IG-defined
   //   grounding exemption follows (fhir_check_grounding 1.4.0).
-  fhir_get_minimal_skeleton: "1.6.0",
+  // 1.7.0 (ISSUES_v20 R5, recordDerivable.ts): a required Condition.verificationStatus / Observation.interpretation / MedicationRequest.category whose binding holds the rule's codes is value_source "derivable" with how = "derive from the record: <rule> (record cue: <cue>)" (skeletonModel items carry `derive` {rule, cue}); it wins over an example constant / workflow default (an IG that writes "confirmed" in every example does not make a hedged diagnosis confirmed). Legend / description name these rows.
+  fhir_get_minimal_skeleton: "1.7.0",
   // 1.0.0 (ISSUES_v19 R2, igBlueprint/form.ts): a prefilled form of a Bundle profile — every required entry slice plus
   //   the planned `entries`, each a complete resource skeleton (skeletonModel + closed-slice choice by the IG examples,
   //   conditional rows placed as required=false), entries required references need, deterministic urn:uuid fullUrls,
@@ -465,7 +469,8 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   reference to the form's hub, else the one element that can reference it, else it is left out with a note;
   //   (4) `self_check` (no empty value, references resolve, entries linked, ContactPoint / Quantity-like rules);
   //   the `prefilled` list is never dropped by compaction.
-  fhir_get_bundle_form: "1.2.0",
+  // 1.2.1 (v20 R5): record-derivable elements carry the skeleton's `derive from the record: …` how text.
+  fhir_get_bundle_form: "1.2.1",
   // 1.2.0: profile invariants (resource-level constraints of the entries' profiles and of the Bundle profile) turned into
   //   form structure from their FHIRPath alone (formRules.ts): choose-one (`a or b …` none present / one `x.where(p)` several
   //   slices satisfy -> ONE option placed, `choose_one` lists all), conditional required (`G implies …`, `A or (…)`,

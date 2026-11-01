@@ -157,7 +157,9 @@ export const SKELETON_TOOL_DESCRIPTION =
   "code-lookup = pick a code (small bindings list their codes, larger ones name the ValueSet: fhir_normalize_code / fhir_expand_valueset); " +
   "text-allowed = {text} alone is valid (the binding is not required and coding is optional); derivable = computed without a record fact " +
   "(a reference = the target entry's fullUrl, 1-2-3 numbering, a workflow default, a derivation rule, the date a request was written = " +
-  "the record's date for it, else the visit / document date); record = a fact the record must state. ONLY `record` rows need the record: " +
+  "the record's date for it, else the visit / document date) — or a value the record determines without writing it ('derive from the " +
+  "record: …' rows: Condition.verificationStatus from the diagnosis field, Observation.interpretation from the value's H / L flag or " +
+  "reference range, MedicationRequest.category from 出院帶藥 / 門診 / 住院: write it from that cue); record = a fact the record must state. ONLY `record` rows need the record: " +
   "a missing ig-constant / code-lookup / text-allowed / derivable value is never a reason to refuse. `conditional` rows are required when " +
   "the profile rule in `conditions` applies (e.g. 'sequence=1 implies ...'); `rules` / `more_rules` are the profile's other invariants. " +
   "Elements not in the skeleton are optional. <= 6,000 characters (`omitted` counts rows dropped for size). FLOW: fhir_get_bundle_blueprint " +

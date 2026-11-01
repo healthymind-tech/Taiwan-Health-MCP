@@ -26,6 +26,13 @@
  * budget (SIZE_BUDGET) applies to the WHOLE tool response (envelope, warnings and provenance
  * included, non-ASCII counted as \uXXXX escapes) minus RESPONSE_MARGIN, as `response_chars`.
  *
+ * Record-derivable fields (ISSUES_v20 R5, recordDerivable.ts — Condition.verificationStatus,
+ * Observation.interpretation, MedicationRequest.category): source "derived" WITHOUT auto and a
+ * `format` that starts "derive from the record: <rule>; record cue: <cue>" — the record determines
+ * them, the model writes them (a mustSupport one is listed in tier 1); a required one keeps its
+ * workflow default (auto) as the fallback; a binding with none of the rule's codes makes it a plain
+ * coded field.
+ *
  * IG-agnostic: everything is read from the snapshot, the package's ValueSets and examples;
  * the only curated tables are the generic ones of fhirRequiredElements (workflow defaults,
  * derivation rules), keyed on base FHIR paths. Pure apart from the injected `deps`.
@@ -51,6 +58,7 @@ import {
   type ProjectedElement,
   type RequiredElementRow,
 } from "../fhirRequiredElements.js";
+import { derivableCodes, derivableText, recordDerivableRule, type RecordDerivableRule } from "../recordDerivable.js";
 import type { FieldBindingCode, FieldKind, FieldSource, FieldSpec } from "./types.js";
 
 // --------------------------------------------------------------------------- //
@@ -359,6 +367,8 @@ interface Candidate {
   allChildren?: Candidate[];
   /** Record link (v1.2): "backbone" = tier 1 with all children, "reference" = tier 2 with targets. */
   link?: { kind: "backbone" | "reference"; child: string | null; targets: string[] };
+  /** (ISSUES_v20 R5) Record-derivable element: its rule (the derive text is completed once the binding is expanded). */
+  derivable?: RecordDerivableRule;
 }
 
 interface BuildCtx {
@@ -438,7 +448,11 @@ function buildCandidate(ctx: BuildCtx, el: ProjectedElement, depth: number): Can
   if (types.length > 1) format.push(`choice: ${[...new Set(types.map((t) => (kindOfType(t) === "other" ? t : kindOfType(t))))].join(" | ")}`);
 
   const dflt = WORKFLOW_DEFAULTS[gp];
-  const rule = cls === "derived" ? derivationRuleFor(el.path || id, el.binding) : null;
+  // ISSUES_v20 R5: a record-derivable element is a record fact the model derives (never auto-filled
+  // when optional), unless the profile pins it; a required one keeps its workflow default as fallback
+  const codedKind = kind === "code" || kind === "coding" || kind === "codeableConcept";
+  const rd = !slice && codedKind && !fullyPinned && cls !== "auto" ? recordDerivableRule(gp) : null;
+  const rule = cls === "derived" && !rd ? derivationRuleFor(el.path || id, el.binding) : null;
   const unitCode = isPlainObject(pins) && typeof pins.code === "string" && typeof pins.system === "string" ? String(pins.code) : null;
   if (fullyPinned || cls === "auto") {
     source = "fixed";
@@ -451,6 +465,8 @@ function buildCandidate(ctx: BuildCtx, el: ProjectedElement, depth: number): Can
     auto = true;
     value = dflt[0];
     format.push(`default ${JSON.stringify(dflt[0])} (MCP fills it unless the record says otherwise)`);
+  } else if (rd) {
+    source = "derived"; // the model writes it from the record cue (format completed in attachBindings)
   } else if (rule) {
     source = "derived";
     auto = true;
@@ -524,7 +540,7 @@ function buildCandidate(ctx: BuildCtx, el: ProjectedElement, depth: number): Can
     }
     if (names.length) format.push(`coding slices by system: ${names.slice(0, 8).join(" | ")}${names.length > 8 ? ` (+${names.length - 8})` : ""}`);
   }
-  if (dflt && !ownPin && !auto) {
+  if (dflt && !ownPin && !auto && !rd) {
     // optional element with a conventional value: a hint only — the MCP never fills an optional default
     format.push(`optional; conventional value ${JSON.stringify(dflt[0])} — give it only when the record states it (not auto-filled)`);
     if (example === undefined) example = dflt[0];
@@ -551,6 +567,10 @@ function buildCandidate(ctx: BuildCtx, el: ProjectedElement, depth: number): Can
     listCodes: Boolean(binding) && source !== "default" && (kind === "code" || kind === "coding" || kind === "codeableConcept") && (depth === 0 || reason.required),
     targetCanonicals,
   };
+  if (rd) {
+    cand.derivable = rd;
+    if (spec.example === undefined && dflt && !auto) spec.example = dflt[0];
+  }
   const whyParts: string[] = [];
   if (reason.why) whyParts.push(reason.why);
   const pct = presencePercent(ctx, id);
@@ -680,6 +700,41 @@ async function attachBindings(ctx: BuildCtx, cands: Candidate[]): Promise<void> 
       const hint = `${c.binding.strength} binding, ${n} codes: pick with fhir_normalize_code(text, value_set) or fhir_expand_valueset`;
       c.spec.format = [c.spec.format, hint].filter(Boolean).join("; ");
     }
+  }
+}
+
+/**
+ * ISSUES_v20 R5: the derive text of record-derivable fields, against the codes their binding holds
+ * (an IG ValueSet without such a code makes the field a plain coded one again).
+ */
+async function attachDerivable(ctx: BuildCtx, cands: Candidate[]): Promise<void> {
+  for (const c of cands.flatMap((x) => [x, ...(x.children || [])])) {
+    const rd = c.derivable;
+    if (!rd) continue;
+    const vs = c.el.binding?.valueSet ? String(c.el.binding.valueSet).split("|")[0] : null;
+    let codes: ExpandedCodes | null = null;
+    if (vs && !rd.valueSets.includes(vs)) {
+      try {
+        codes = await ctx.deps.expandValueSet(ctx.loaded, vs, 200);
+      } catch {
+        codes = null;
+      }
+    }
+    const dc = derivableCodes(rd, vs, codes ? codes.codings : null);
+    if (!dc) {
+      delete c.derivable;
+      if (c.spec.source === "derived") {
+        c.spec.source = "code";
+        c.spec.format = [c.spec.format, "pick the code that fits the record"].filter(Boolean).join("; ");
+      }
+      continue;
+    }
+    const text =
+      c.spec.source === "default"
+        ? `${derivableText(rd, dc, 300)} (the default applies only when you give nothing)`
+        : `${derivableText(rd, dc, 300)} — give it whenever the record carries the cue (not auto-filled)`;
+    c.spec.format = [text, c.spec.format].filter(Boolean).join("; ");
+    if (!c.spec.why) c.spec.why = "record-derivable (a record fact the content checks count)";
   }
 }
 
@@ -834,7 +889,10 @@ export async function authoringFields(req: string | AuthoringFieldsRequest, deps
     if (c) cands.push(c);
   }
 
-  const isCommonTier1 = (c: Candidate): boolean => c.required || c.expected || (c.common !== null && c.common >= COMMON_PERCENT);
+  // (ISSUES_v20 R5) a record-derivable field the profile allows (any cardinality) whose binding holds the rule's
+  // codes is fully described in tier 1 — a record fact the content checks count; its derive rule is the point
+  await attachDerivable(ctx, cands);
+  const isCommonTier1 = (c: Candidate): boolean => c.required || c.expected || (c.common !== null && c.common >= COMMON_PERCENT) || Boolean(c.derivable);
   await markRecordLinks(ctx, cands, (c) => isCommonTier1(c) || c.mustSupport);
   const isTier1 = (c: Candidate): boolean => isCommonTier1(c) || c.link?.kind === "backbone";
   const isTier2 = (c: Candidate): boolean => c.mustSupport || c.link?.kind === "reference";

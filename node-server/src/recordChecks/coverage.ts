@@ -13,6 +13,17 @@
  *   text-only-fact        (warning; coverageSeverity="error" makes it an error)  Dosage.text (or a medication
  *                                    request's note) states a dose, frequency, route or duration while the
  *                                    corresponding structured element is empty.
+ *   record-fact-missing   (warning; coverageSeverity="error" makes it an error)  a fact the record states is
+ *                                    absent from the instance: the department, durations, dose / frequency / route,
+ *                                    the patient's name (elements the profile marks mustSupport / required), and
+ *                                    (ISSUES_v20 R5) the record-derivable facts of recordDerivable.ts wherever the
+ *                                    profile has the element and its binding holds the code: Condition.verificationStatus
+ *                                    from the diagnosis field (diagnosis-slot parser: plain → confirmed, hedged →
+ *                                    provisional, r/o → differential), Observation.interpretation from the value's flag /
+ *                                    reference range (H / L / HH / LL / N / A), MedicationRequest.category from the
+ *                                    order's setting heading (discharge / outpatient / inpatient).
+ *
+ * Every R6 rule needs source_text (runRecordChecks runs them only with it).
  *
  * IG-agnostic: item names come from the instance's own codings / texts (and the terminology names the
  * tools looked up); statuses and Dosage elements are those of base FHIR R4, which every IG profiles.
@@ -22,6 +33,8 @@
 
 import { norm } from "../grounding/lexicon.js";
 import { RecordText, type Occurrence } from "../grounding/recordText.js";
+import { derivableCodes, RECORD_DERIVABLE, type DerivableCode, type RecordDerivableRule } from "../recordDerivable.js";
+import { diagnosisSlots, type DxSlot } from "./diagnosisSlot.js";
 import { makeIssue } from "./issue.js";
 import { resourcesOf } from "./slots.js";
 import type { RecordIssue } from "./types.js";
@@ -546,7 +559,12 @@ export function textOnlyFactChecks(root: Json, severity: "warning" | "error", re
 
 // ------------------------------------------------------------------------------------------------ record facts left out
 
-export type ProfileElements = ReadonlyMap<string, { mustSupport: ReadonlySet<string>; required: ReadonlySet<string>; common?: ReadonlySet<string>; prohibited?: ReadonlySet<string> }>;
+/**
+ * Per declared profile: the element paths it marks mustSupport / requires / its examples commonly carry / prohibits,
+ * and (ISSUES_v20 R5, optional) the binding of each record-derivable element (recordDerivable.ts): its ValueSet and,
+ * for a ValueSet other than the base one, its expansion (null = not expandable). Absent → the base binding.
+ */
+export type ProfileElements = ReadonlyMap<string, { mustSupport: ReadonlySet<string>; required: ReadonlySet<string>; common?: ReadonlySet<string>; prohibited?: ReadonlySet<string>; bindings?: ReadonlyMap<string, { valueSet: string | null; codes: readonly DerivableCode[] | null }> }>;
 
 /** Clinical departments (shared phrase table; longest first so 心臟內科 wins over 內科). */
 const DEPARTMENTS = [
@@ -555,10 +573,21 @@ const DEPARTMENTS = [
   "精神科", "身心科", "小兒科", "兒科", "婦產科", "婦科", "產科", "骨科", "眼科", "耳鼻喉科", "皮膚科", "泌尿科", "一般外科", "整形外科", "大腸直腸外科",
   "急診醫學科", "急診科", "復健科", "牙科", "口腔外科", "中醫科", "老年醫學科", "疼痛科", "麻醉科", "職業醫學科", "內科", "外科",
 ].sort((a, b) => b.length - a.length);
-const HEDGE = /疑似|可能|待排除|排除|鑑別|r\/o|rule out|possible|probable|suspected|\?/iu;
-const FLAG_HIGH = /(?:\b[HＨ]\b|\bHH\b|↑|偏高|過高|高於|上升|elevated|\bhigh\b)/iu;
-const FLAG_LOW = /(?:\b[LＬ]\b|\bLL\b|↓|偏低|過低|低於|下降|\blow\b)/iu;
-const DISCHARGE = /出院帶藥|出院用藥|出院處方|discharge medication|discharge prescription/iu;
+const FLAG_HH = /(?:\bHH\b|↑↑|critical(?:ly)? high|panic high|危急值?偏高)/iu;
+const FLAG_LL = /(?:\bLL\b|↓↓|critical(?:ly)? low|panic low|危急值?偏低)/iu;
+const FLAG_HIGH = /(?:\b[HＨ]\b|↑|偏高|過高|高於|上升|elevated|\bhigh\b)/iu;
+const FLAG_LOW = /(?:\b[LＬ]\b|↓|偏低|過低|低於|下降|\blow\b)/iu;
+/** An abnormal mark without a direction (「12.5*」「12.5 (*)」). */
+const FLAG_STAR = /^\s*[（(]?\s*[*＊]/u;
+const DISCHARGE = /出院帶藥|出院用藥|出院處方|discharge medication|discharge prescription|discharge rx/iu;
+/** Headings / lines that put an order in the inpatient / outpatient setting (the drug listed under them). */
+const INPATIENT_HDR = /住院醫囑|住院用藥|住院處方|住院中用藥|院內用藥|住院期間用藥|inpatient (?:order|medication|prescription)s?|admission orders?/iu;
+const OUTPATIENT_HDR = /門診處方|門診用藥|門診藥物|門診醫囑|門診開立|outpatient (?:prescription|medication|order)s?|\bOPD\s+(?:rx|prescription|medication)s?\b/iu;
+/** The record's visit setting (record level, used only when it is the record's only setting and no discharge heading exists). */
+const OUTPATIENT_VISIT = /門診(?:病歷|紀錄|記錄|就診|日期|看診)|(?:就診|就醫|看診)(?:類別|類型|方式)?\s*[:：]\s*門診|\bOPD\b(?!\s*(?:f\/u|follow))|outpatient (?:visit|clinic|note)/iu;
+const INPATIENT_VISIT = /住院(?:病歷|紀錄|記錄|日期|期間|醫囑|中)|入院(?:日期|紀錄|記錄)|admission (?:note|date)|\binpatient\b/iu;
+const SETTING_ZH: Record<"discharge" | "outpatient" | "inpatient", string> = { discharge: "出院帶藥", outpatient: "門診", inpatient: "住院" };
+type Interp = "H" | "L" | "HH" | "LL" | "N" | "A";
 
 /** Whether the declared profile of `res` marks `path` (base form) mustSupport or required. */
 function profileUses(res: Json, path: string, pe: ProfileElements | null | undefined): boolean {
@@ -585,20 +614,161 @@ function linesNaming(rt: RecordText, names: readonly string[]): string[] {
   return out;
 }
 
+// ---- record-derivable facts (ISSUES_v20 R5) ----
+
+/** Meaning → code of the declared profile's binding for a record-derivable element (null: the binding holds none). */
+function codesFor(res: Json, rule: RecordDerivableRule, pe: ProfileElements | null | undefined): Map<string, DerivableCode> | null {
+  const urls: string[] = Array.isArray(res?.meta?.profile) ? res.meta.profile.map((u: unknown) => String(u).split("|")[0]) : [];
+  const sets = pe ? (urls.map((u) => pe.get(u)).filter(Boolean) as Array<NonNullable<ReturnType<NonNullable<ProfileElements>["get"]>>>) : [];
+  if (!sets.length && pe && pe.size === 1) sets.push([...pe.values()][0]);
+  const b = sets.map((s) => s.bindings?.get(rule.path)).find(Boolean);
+  // no binding information (older callers, tests): the base FHIR binding
+  return b ? derivableCodes(rule, b.valueSet, b.codes) : derivableCodes(rule, null, null);
+}
+
+const codingOf = (c: DerivableCode): Json => ({ ...(c.system ? { system: c.system } : {}), code: c.code, ...(c.display ? { display: c.display } : {}) });
+
+function safeSlots(rt: RecordText): DxSlot[] {
+  try {
+    return diagnosisSlots(rt);
+  } catch {
+    return [];
+  }
+}
+
+/** The names a Condition is called by (codings' displays / texts, looked-up names, an ICD-10 code). */
+function conditionNamesOf(res: Json, root: Json, lookups?: ReadonlyMap<string, readonly string[]> | null): string[] {
+  const out = new Set(itemNames(res, root, lookups));
+  for (const c of isObj(res.code) && Array.isArray(res.code.coding) ? res.code.coding : []) {
+    if (isObj(c) && typeof c.code === "string" && /^[A-Z]\d{2}(\.[0-9A-Z]{1,4})?$/u.test(c.code)) out.add(c.code);
+    if (isObj(c) && typeof c.display === "string") out.add(c.display.replace(/\s*\((disorder|finding|symptom|situation)\)\s*$/iu, ""));
+  }
+  return [...out];
+}
+
+const RULE_OUT_CUE = /r\/o|rule[ -]?out|待排除|排除|鑑別|ddx|\bvs\.?\b|differential/iu;
+
+/**
+ * The verification status the record's diagnosis field gives a Condition named `names`: a plain item (no
+ * uncertainty cue over it, the slot not under a slot-level cue) → confirmed; under a rule-out / differential
+ * cue or in a differential slot → differential; any other hedge (疑似 / possible / ?) → provisional. A refuted
+ * item (已排除) gives nothing. A plain item of any primary slot wins over a hedged mention elsewhere.
+ */
+function slotVerification(slots: readonly DxSlot[], names: readonly string[]): { meaning: "confirmed" | "provisional" | "differential"; quote: string } | null {
+  const keys = names.map((n) => norm(n)).filter((n) => n.length >= 2);
+  if (!keys.length) return null;
+  const matches = (text: string, core: string): boolean => {
+    const it = norm(text);
+    const ic = norm(core);
+    return keys.some((n) => (/^[a-z]\d{2}/u.test(n) ? it.includes(n) || it.includes(n.replace(".", "")) : ic.length >= 2 && (ic.includes(n) || (n.includes(ic) && ic.length >= Math.min(4, n.length)))));
+  };
+  let hedged: { meaning: "provisional" | "differential"; quote: string } | null = null;
+  for (const s of slots) {
+    for (const it of s.items) {
+      if (it.refuted || !matches(it.text, it.core)) continue;
+      if (it.strength === null && !s.slotCue && s.kind === "primary") return { meaning: "confirmed", quote: s.quote };
+      const diff = s.kind === "differential" || RULE_OUT_CUE.test(it.cue ?? "") || RULE_OUT_CUE.test(s.slotCue ?? "");
+      if (!hedged || (diff && hedged.meaning === "provisional")) hedged = { meaning: diff ? "differential" : "provisional", quote: s.quote };
+    }
+  }
+  return hedged;
+}
+
+function numericValue(res: Json): number | null {
+  if (isObj(res.valueQuantity) && typeof res.valueQuantity.value === "number") return res.valueQuantity.value;
+  if (typeof res.valueInteger === "number") return res.valueInteger;
+  return null;
+}
+
+/**
+ * The interpretation the record gives an Observation's value: the flag right after the value on the record line
+ * naming the test (else any record line stating the value), HH / LL before H / L; else the value against the
+ * record's reference range right after it, else against the resource's own referenceRange: outside → H / L,
+ * inside → N. A direction-less mark (*) → H / L by the range, else A.
+ */
+function interpretationOf(res: Json, v: number, rt: RecordText, body: ReadonlyArray<{ line: string }>, names: readonly string[]): { code: Interp; quote: string; zh: string; en: string } | null {
+  const named = linesNaming(rt, names);
+  const cand = [...named, ...body.map((l) => l.line).filter((l) => !named.includes(l))];
+  const rr = Array.isArray(res.referenceRange) ? res.referenceRange[0] : null;
+  const lo = isObj(rr) && typeof rr.low?.value === "number" ? (rr.low.value as number) : null;
+  const hi = isObj(rr) && typeof rr.high?.value === "number" ? (rr.high.value as number) : null;
+  const byRange = (low: number | null, high: number | null): Interp | null => (high !== null && v > high ? "H" : low !== null && v < low ? "L" : low !== null && high !== null ? "N" : null);
+  let seen = false;
+  for (const l of cand) {
+    for (const m of l.matchAll(/(?<![\d.])(\d+(?:\.\d+)?)(?![\d.])/gu)) {
+      if (Number(m[1]) !== v) continue;
+      // after the number: skip its unit (U/L, mmol/L, uIU/mL — an "L" inside a unit is no flag), then the flag
+      const rest = l.slice(m.index! + m[1].length).replace(/^\s*(?!(?:HH|LL|H|L|high|low|↑|↓|\*)(?:\s|[,，;；)）]|$))[^\s（(，,;；*＊]+(?=\s|[（(，,;；*＊]|$)/iu, "");
+      // a reference range right after the value (「(ref 4.0-6.0)」「（參考值 70-99）」): stated in the record — compare with it
+      const rng = /^\s*[（(]\s*(?:ref(?:erence)?|參考值|參考範圍|正常值|normal)?\s*[:：]?\s*(\d+(?:\.\d+)?)\s*[-~～–]\s*(\d+(?:\.\d+)?)\s*[^）)]*[）)]/iu.exec(rest);
+      const after = rng ? rest.slice(rng[0].length) : rest;
+      const near = after.slice(0, 12).split(/[,，;；]/u)[0];
+      const flag: Interp | null = FLAG_HH.test(near) ? "HH" : FLAG_LL.test(near) ? "LL" : FLAG_HIGH.test(near) ? "H" : FLAG_LOW.test(near) ? "L" : null;
+      if (flag) return { code: flag, quote: l, zh: `病歷標記「${near.trim()}」`, en: `the record flags the value "${near.trim()}"` };
+      const star = FLAG_STAR.test(after) || FLAG_STAR.test(rest);
+      const rc = rng ? byRange(Number(rng[1]), Number(rng[2])) : null;
+      if (rc && (rc !== "N" || !star)) return { code: rc, quote: l, zh: rc === "N" ? "數值在病歷的參考範圍內" : "數值超出病歷的參考範圍", en: rc === "N" ? "the value is inside the record's reference range" : "the value is outside the record's reference range" };
+      if (star) {
+        const d = byRange(lo, hi);
+        return { code: d && d !== "N" ? d : "A", quote: l, zh: "病歷以 * 標記異常", en: "the record marks the value abnormal (*)" };
+      }
+      seen = true;
+      if (named.includes(l)) break; // the test's own line states the value without a flag: look at the resource's range
+    }
+  }
+  // the resource's own range, when the record states the value at all (the result is the record's)
+  const rc = byRange(lo, hi);
+  if (rc && seen) return { code: rc, quote: `${v} (reference ${lo ?? ""}–${hi ?? ""})`, zh: rc === "N" ? "數值在參考範圍內" : "數值超出參考範圍", en: rc === "N" ? "the value is inside the reference range" : "the value is outside the reference range" };
+  return null;
+}
+
+/**
+ * The setting of a medication order: the heading / line it is listed under (up to 15 lines above, stopping at
+ * another heading): discharge / inpatient / outpatient; else the record's visit setting when the record names
+ * exactly one (outpatient or inpatient) and has no discharge-medication heading at all.
+ */
+function settingOf(rt: RecordText, line: string): { setting: "discharge" | "outpatient" | "inpatient"; quote: string } | null {
+  const li = rt.lines.findIndex((l) => l.line === line);
+  const test = (t: string): "discharge" | "outpatient" | "inpatient" | null => (DISCHARGE.test(t) ? "discharge" : INPATIENT_HDR.test(t) ? "inpatient" : OUTPATIENT_HDR.test(t) ? "outpatient" : null);
+  const own = test(line);
+  if (own) return { setting: own, quote: line };
+  for (let i = li - 1; i >= 0 && i >= li - 15; i--) {
+    const l = rt.lines[i];
+    if (l.section === "instruction" || l.section === "site_config") break;
+    const s = test(l.line);
+    if (s) return { setting: s, quote: l.line };
+    if (l.header) break;
+  }
+  const body = rt.lines.filter((l) => l.section !== "instruction" && l.section !== "site_config");
+  if (body.some((l) => DISCHARGE.test(l.line))) return null;
+  const out = body.find((l) => OUTPATIENT_VISIT.test(l.line));
+  const inp = body.find((l) => INPATIENT_VISIT.test(l.line));
+  if (out && !inp) return { setting: "outpatient", quote: out.line };
+  if (inp && !out) return { setting: "inpatient", quote: inp.line };
+  return null;
+}
+
 export function recordFactChecks(root: Json, recordText: string, siteConfig: string | null, severity: "warning" | "error", pe: ProfileElements | null | undefined, lookups?: ReadonlyMap<string, readonly string[]> | null): RecordIssue[] {
   if (!pe || !pe.size) return [];
   const rt = new RecordText(recordText, siteConfig);
   const body = rt.lines.filter((l) => l.section !== "instruction" && l.section !== "site_config");
   const out: RecordIssue[] = [];
-  const add = (path: string, zh: string, en: string, quote: string, value: unknown, field: string): void => {
+  const add = (path: string, zh: string, en: string, quote: string, value: unknown, field: string, derivable = false): void => {
     out.push(withSuggestion(makeIssue(
       "R6", severity, "record-fact-missing", path,
-      `病歷有寫但沒有轉換：${zh}（病歷：「${clip(quote.trim(), 80)}」）。這個欄位是 profile 的 mustSupport / 必填欄位，請寫入`,
-      `Stated in the record but not converted: ${en} (record: "${clip(quote.trim(), 80)}"). The profile marks this element mustSupport / required — write it`,
-      "R6 record fact: shared phrase tables (departments, confirmation / hedge words, H / L flags and reference ranges, discharge-medication headers, durations, dose / frequency / route) on the record lines; only elements the declared profile marks mustSupport or requires, and only when empty",
+      derivable
+        ? `病歷有寫但沒有轉換：${zh}（病歷：「${clip(quote.trim(), 80)}」）。病歷雖未逐字寫出代碼，但已決定這個值（可由病歷推得），屬於病歷事實，請寫入`
+        : `病歷有寫但沒有轉換：${zh}（病歷：「${clip(quote.trim(), 80)}」）。這個欄位是 profile 的 mustSupport / 必填欄位，請寫入`,
+      derivable
+        ? `Stated in the record but not converted: ${en} (record: "${clip(quote.trim(), 80)}"). The record determines this value without writing the code (record-derivable) — it is a record fact, write it`
+        : `Stated in the record but not converted: ${en} (record: "${clip(quote.trim(), 80)}"). The profile marks this element mustSupport / required — write it`,
+      derivable
+        ? "R6 record fact, record-derivable (ISSUES_v20 R5, recordDerivable.ts): the diagnosis field's hedging (diagnosis-slot parser), the value's flag / reference range, the order's setting heading; wherever the declared profile has the element and its binding holds the code, and only when empty"
+        : "R6 record fact: shared phrase tables (departments, durations, dose / frequency / route, the patient's name) on the record lines; only elements the declared profile marks mustSupport or requires, and only when empty",
       [quote.trim()],
-    ), { value: typeof value === "string" ? value : JSON.stringify(value), kind: "add_value", confidence: 0.5, reason: `write ${field} (codes from the element's binding: fhir_normalize_code(text, value_set=…))`, patch: { op: "add", path, value } }));
+    ), { value: typeof value === "string" ? value : JSON.stringify(value), kind: "add_value", confidence: derivable ? 0.7 : 0.5, reason: `write ${field} (codes from the element's binding: fhir_normalize_code(text, value_set=…))`, patch: { op: "add", path, value } }));
   };
+  let slots: DxSlot[] | null = null;
   for (const r of resourcesOf(root)) {
     const res = r.resource;
     const rtype = String(res.resourceType);
@@ -608,69 +778,42 @@ export function recordFactChecks(root: Json, recordText: string, siteConfig: str
       const dept = line ? DEPARTMENTS.find((d) => line.line.includes(d)) : undefined;
       if (line && dept) add(`${r.base}.serviceType`, `就診科別「${dept}」→ Encounter.serviceType`, `the department "${dept}" → Encounter.serviceType`, line.line, { text: dept }, "Encounter.serviceType");
     }
-    // 2. Condition.verificationStatus ← the record states the diagnosis (confirmed) or hedges it (provisional)
-    if (rtype === "Condition" && !res.verificationStatus && profileUses(res, "Condition.verificationStatus", pe)) {
-      const lines = linesNaming(rt, itemNames(res, root, lookups));
-      if (lines.length) {
-        const hedged = lines.every((l) => HEDGE.test(l));
-        const code = hedged ? "provisional" : "confirmed";
-        add(`${r.base}.verificationStatus`, `診斷的確認狀態（病歷${hedged ? "表示尚未確立" : "寫為確立的診斷"}）→ verificationStatus = ${code}`, `the diagnosis's verification status (the record ${hedged ? "hedges it" : "states it"}) → verificationStatus = ${code}`, lines[0], { coding: [{ system: "http://terminology.hl7.org/CodeSystem/condition-ver-status", code }] }, "Condition.verificationStatus");
+    // 2. Condition.verificationStatus ← the record's diagnosis field (ISSUES_v20 R5, recordDerivable.ts): an item the
+    // field states without hedging → confirmed; hedged (疑似) → provisional; r/o / 待排除 / a differential slot →
+    // differential — read by the v15.3 diagnosis-slot parser (diagnosisSlots). Only where the profile has the element.
+    if (rtype === "Condition" && !res.verificationStatus && profileAllows(res, "Condition.verificationStatus", pe)) {
+      const rule = RECORD_DERIVABLE["Condition.verificationStatus"];
+      const dc = codesFor(res, rule, pe);
+      slots ??= safeSlots(rt);
+      const hit = dc ? slotVerification(slots, conditionNamesOf(res, root, lookups)) : null;
+      const c = hit ? dc!.get(hit.meaning) : undefined;
+      if (hit && c) {
+        const zhState = hit.meaning === "confirmed" ? "寫明（未加保留）" : hit.meaning === "provisional" ? "以保留語氣寫（疑似）" : "列為待排除 / 鑑別";
+        const enState = hit.meaning === "confirmed" ? "states it without hedging" : hit.meaning === "provisional" ? "hedges it" : "lists it as rule-out / differential";
+        add(`${r.base}.verificationStatus`, `診斷的確認狀態（病歷的診斷欄${zhState}）→ verificationStatus = ${c.code}`, `the diagnosis's verification status (the record's diagnosis field ${enState}) → verificationStatus = ${c.code}`, hit.quote, { coding: [codingOf(c)] }, "Condition.verificationStatus", true);
       }
     }
-    // 3. Observation.interpretation ← H / L flags on the record line, or the value outside the resource's reference range
-    // (an explicit H / L flag in the record is reported wherever the profile allows interpretation; a reference-range
-    // comparison only where the profile uses it — mustSupport / required / common in its examples)
-    if (rtype === "Observation" && !res.interpretation && isObj(res.valueQuantity) && typeof res.valueQuantity.value === "number" && profileAllows(res, "Observation.interpretation", pe)) {
-      const used = profileUses(res, "Observation.interpretation", pe);
-      const v = res.valueQuantity.value as number;
-      const rr = Array.isArray(res.referenceRange) ? res.referenceRange[0] : null;
-      let code: "H" | "L" | null = null;
-      let quote = "";
-      if (used && isObj(rr) && (typeof rr.high?.value === "number" || typeof rr.low?.value === "number")) {
-        if (typeof rr.high?.value === "number" && v > rr.high.value) code = "H";
-        else if (typeof rr.low?.value === "number" && v < rr.low.value) code = "L";
-        quote = `${v} (reference ${rr.low?.value ?? ""}–${rr.high?.value ?? ""})`;
-      }
-      if (!code) {
-        // the record line naming the test, else any record line stating this value (2.10 = 2.1): the flag right after the number
-        const named = linesNaming(rt, itemNames(res, root, lookups));
-        const cand = [...named, ...body.map((l) => l.line).filter((l) => !named.includes(l))];
-        for (const l of cand) {
-          for (const m of l.matchAll(/(?<![\d.])(\d+(?:\.\d+)?)(?![\d.])/gu)) {
-            if (Number(m[1]) !== v) continue;
-            // after the number: skip its unit (U/L, mmol/L, uIU/mL — an "L" inside a unit is no flag), then the flag
-            const rest = l.slice(m.index! + m[1].length).replace(/^\s*(?!(?:HH|LL|H|L|high|low|↑|↓)(?:\s|[,，;；)）]|$))[^\s（(，,;；]+(?=\s|[（(，,;；]|$)/iu, "");
-            // a reference range right after the value (「(ref 4.0-6.0)」「（參考值 70-99）」): stated in the record — compare with it
-            const rng = /^\s*[（(]\s*(?:ref(?:erence)?|參考值|參考範圍|正常值|normal)?\s*[:：]?\s*(\d+(?:\.\d+)?)\s*[-~～–]\s*(\d+(?:\.\d+)?)\s*[^）)]*[）)]/iu.exec(rest);
-            const after = rng ? rest.slice(rng[0].length) : rest;
-            const near = after.slice(0, 12).split(/[,，;；]/u)[0];
-            if (FLAG_HIGH.test(near)) code = "H";
-            else if (FLAG_LOW.test(near)) code = "L";
-            else if (rng && v > Number(rng[2])) code = "H";
-            else if (rng && v < Number(rng[1])) code = "L";
-            if (code) {
-              quote = l;
-              break;
-            }
-          }
-          if (code) break;
-        }
-      }
-      if (code) add(`${r.base}.interpretation`, `檢驗值的判讀 → interpretation = ${code}`, `the result interpretation → interpretation = ${code}`, quote, [{ coding: [{ system: "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation", code }] }], "Observation.interpretation");
+    // 3. Observation.interpretation ← the record's flag after the value (H / L / HH / LL / ↑ / ↓ / * / (H)), or the value
+    // compared with a reference range (the record's, else the resource's): outside → H / L, inside → N (ISSUES_v20 R5:
+    // wherever the profile has interpretation, any cardinality, and its binding holds the code)
+    const qv = rtype === "Observation" ? numericValue(res) : null;
+    if (rtype === "Observation" && !res.interpretation && qv !== null && profileAllows(res, "Observation.interpretation", pe)) {
+      const dc = codesFor(res, RECORD_DERIVABLE["Observation.interpretation"], pe);
+      const hit = dc ? interpretationOf(res, qv, rt, body, itemNames(res, root, lookups)) : null;
+      const c = hit ? dc!.get(hit.code) : undefined;
+      if (hit && c) add(`${r.base}.interpretation`, `檢驗值的判讀（${hit.zh}）→ interpretation = ${c.code}`, `the result interpretation (${hit.en}) → interpretation = ${c.code}`, hit.quote, [{ coding: [codingOf(c)] }], "Observation.interpretation", true);
     }
     if (rtype !== "MedicationRequest") continue;
     const names = itemNames(res, root, lookups);
     const lines = linesNaming(rt, names);
     if (!lines.length) continue;
-    // 4. MedicationRequest.category ← a discharge-medication header / line
-    if (!res.category && profileUses(res, "MedicationRequest.category", pe)) {
-      const li = rt.lines.findIndex((l) => l.line === lines[0]);
-      let hdr: string | null = DISCHARGE.test(lines[0]) ? lines[0] : null;
-      for (let i = li - 1; !hdr && i >= 0 && i >= li - 15; i--) {
-        if (DISCHARGE.test(rt.lines[i].line)) hdr = rt.lines[i].line;
-        else if (rt.lines[i].header) break;
-      }
-      if (hdr) add(`${r.base}.category`, "處方類別「出院帶藥」→ category = discharge", 'the prescription category "discharge medication" → category = discharge', hdr, [{ coding: [{ system: "http://terminology.hl7.org/CodeSystem/medicationrequest-category", code: "discharge" }] }], "MedicationRequest.category");
+    // 4. MedicationRequest.category ← the order's setting (ISSUES_v20 R5): the heading the drug is listed under
+    // (出院帶藥 / 門診處方 / 住院醫囑 …), else the record's single visit setting; only codes the binding holds
+    if (!res.category && profileAllows(res, "MedicationRequest.category", pe)) {
+      const dc = codesFor(res, RECORD_DERIVABLE["MedicationRequest.category"], pe);
+      const hit = dc ? settingOf(rt, lines[0]) : null;
+      const c = hit ? dc!.get(hit.setting) : undefined;
+      if (hit && c) add(`${r.base}.category`, `處方類別（${SETTING_ZH[hit.setting]}）→ category = ${c.code}`, `the prescription category (${hit.setting}) → category = ${c.code}`, hit.quote, [{ coding: [codingOf(c)] }], "MedicationRequest.category", true);
     }
     // 5. structured dosage / supply duration ← the drug's own line (when nothing, not even Dosage.text, carries them)
     const d0 = Array.isArray(res.dosageInstruction) && isObj(res.dosageInstruction[0]) ? res.dosageInstruction[0] : null;

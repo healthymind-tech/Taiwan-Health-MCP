@@ -30,7 +30,8 @@ export interface FieldSpec {
         "identifier" | "reference" | "boolean" | "integer" | "decimal" | "component" | "dosage" | "annotation" | "humanName" | "other";
   multiple: boolean;        // max > 1 → the model may give an array
   source: "record" | "facility" | "code" | "fixed" | "default" | "derived";  // where the value comes from
-  auto?: true;              // set by the MCP (fixed / default / derived) — the model need not fill it
+  auto?: true;              // set by the MCP (fixed / default / derived) — the model need not fill it; a "derived" field
+                            // WITHOUT auto is record-derivable (ISSUES_v20 R5, ../recordDerivable.ts): the model writes it from the record cue
   format?: string;          // e.g. "YYYY-MM-DD or 民國 YYY/MM/DD", "number + unit", "{system, code} or [{...}]"
   example?: unknown;        // a filled example value in the value grammar below
   binding?: { strength: string; valueSet: string; codes?: Array<{ code: string; display?: string; system?: string }> }; // codes only when the set is small
