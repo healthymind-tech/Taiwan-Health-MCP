@@ -372,7 +372,9 @@ export class SnapshotGenerator {
   generate(derived0: Json): Json {
     const baseUrl = String(derived0.baseDefinition || "");
     if (!baseUrl) throw new SnapshotError(`Profile ${derived0.url} has no base and no snapshot`);
-    const base = this.fetchWithSnapshot(baseUrl);
+    let base = this.fetchWithSnapshot(baseUrl);
+    // CTU:268-270: a logical model on Base gets the built-in Base definition when no package defines it
+    if (!base && baseUrl.split("|")[0] === CORE + "Base") base = makeBaseDefinition(String(derived0.fhirVersion ?? "4.0.1"));
     if (!base) throw new SnapshotError(`Profile ${derived0.url} base ${baseUrl} could not be resolved`);
     if (!derived0.type) throw new SnapshotError(`Derived profile ${derived0.url} has no type`);
     if (!derived0.derivation) throw new SnapshotError(`Derived profile ${derived0.url} has no derivation value and so can't be processed`);
@@ -382,13 +384,13 @@ export class SnapshotGenerator {
     try {
       const derived: Json = { ...derived0, snapshot: { element: [] as ED[] } };
       const diffEls: ED[] = clone(derived0.differential?.element || []);
-      this.checkDifferential(diffEls, String(derived.type), String(derived.url));
+      this.checkDifferential(diffEls, typeName(derived), String(derived.url));
       let baseSnapshot: ED[] = base.snapshot.element;
       if (derived.derivation === "specialization") {
         baseSnapshot = baseSnapshot.map((e: ED) => {
           const t = clone(e);
-          t.id = String(t.id).replace(String(base.type), String(derived.type));
-          t.path = String(t.path).replace(String(base.type), String(derived.type));
+          t.id = String(t.id).replace(typeName(base), typeName(derived));
+          t.path = String(t.path).replace(typeName(base), typeName(derived));
           return t;
         });
       }
@@ -441,7 +443,7 @@ export class SnapshotGenerator {
       if (derived.kind !== "logical" && snap.length && hasType(snap[0])) {
         throw new SnapshotError(`type on first snapshot element for ${snap[0].path} in ${derived.url} from ${base.url}`);
       }
-      this.generateIds(snap, String(derived.type), derived);
+      this.generateIds(snap, typeName(derived), derived);
       // fixTypeOfResourceId (R4+ resources): Resource.id is typed System.String with fhir-type 'id'
       if (derived.kind === "resource") {
         for (const ed of snap) {
@@ -1952,7 +1954,7 @@ export class SnapshotGenerator {
     }
     if (hasType(derived)) {
       if (!deepEqual(derived.type, base.type)) {
-        if (hasType(base)) for (const ts of types(derived)) this.checkTypeDerivation(base, derived, ts);
+        if (hasType(base)) for (const ts of types(derived)) this.checkTypeDerivation(purl, srcSD, base, derived, ts, derivedSrc?.derivation === "specialization");
         base.type = clone(derived.type);
       }
     }
@@ -2000,19 +2002,104 @@ export class SnapshotGenerator {
     return parseInt(derived, 10) > parseInt(base, 10);
   }
 
-  /** checkTypeDerivation's snapshot effect: the type keeps the base type's type-must-support / pattern extensions. */
-  private checkTypeDerivation(base: ED, _derived: ED, ts: Json): void {
+  /**
+   * ProfileUtilities.checkTypeDerivation (PU:3473-3526): a derived type must be one of the base types, or a type
+   * specialising an abstract / logical base type; it keeps the base type's type-must-support extension; target
+   * profiles must conform to a base target (sdConformsToTargets; an error message only). A type that matches none
+   * throws "invalid constrained type" (PU:3523-3525) — the snapshot is then not generated (PU:995-1000) and the
+   * validator reports Validation_VAL_Profile_NoSnapshot for the profile.
+   */
+  private checkTypeDerivation(purl: string, srcSD: Json, base: ED, derived: ED, ts: Json, specialising: boolean): void {
+    let ok = false;
+    const b: string[] = [];
     const t = workingCode(ts);
     for (const td of types(base)) {
-      if (td.code && workingCode(td) === t) {
-        for (const ext of td.extension || []) {
-          if (ext.url === "http://hl7.org/fhir/StructureDefinition/elementdefinition-type-must-support" && !(ts.extension || []).some((x: Json) => x.url === ext.url)) {
-            ts.extension = [...(ts.extension || []), clone(ext)];
+      const tt = workingCode(td);
+      b.push(typeRefString(td));
+      let matchType = !!td.code && tt === t;
+      if (!matchType) {
+        const sdt = this.rawTypeDefinition(tt);
+        if (sdt && (sdt.abstract === true || sdt.kind === "logical")) {
+          let sdb = this.rawTypeDefinition(t);
+          const seen = new Set<Json>();
+          while (sdb && !matchType && !seen.has(sdb)) {
+            seen.add(sdb);
+            matchType = sdb.type === sdt.type;
+            sdb = sdb.baseDefinition ? this.opts.fetch(String(sdb.baseDefinition)) : null;
           }
         }
       }
+      if (!matchType) continue;
+      for (const ext of td.extension || []) {
+        if (ext.url === "http://hl7.org/fhir/StructureDefinition/elementdefinition-type-must-support" && !(ts.extension || []).some((x: Json) => x.url === ext.url)) {
+          ts.extension = [...(ts.extension || []), clone(ext)];
+        }
+      }
+      if (Array.isArray(ts.targetProfile) && ts.targetProfile.length) {
+        for (const u of ts.targetProfile) {
+          const tgtOk = !(Array.isArray(td.targetProfile) && td.targetProfile.length) || this.sdConformsToTargets(String(derived.path), String(u), td, new Set());
+          if (tgtOk || specialising) ok = true;
+          else this.addMessage("error", String(derived.path), `Error at ${purl}#${derived.path}: The target profile ${u} is not a valid constraint on the base (${JSON.stringify(td.targetProfile)})`);
+        }
+      } else ok = true;
     }
+    if (!ok) throw new SnapshotError(`StructureDefinition ${purl} at ${derived.path}: invalid constrained type ${typeRefString(ts)} from ${b.join(", ")} in ${srcSD.url}`);
   }
+
+  /** context.fetchTypeDefinition without snapshot generation (only kind / abstract / type / baseDefinition are read). */
+  private rawTypeDefinition(type: string): Json | null {
+    if (!type) return null;
+    return this.opts.fetch(type.includes(":") ? type : CORE + type);
+  }
+
+  /** ProfileUtilities.sdConformsToTargets (PU:3529-3551). */
+  private sdConformsToTargets(dPath: string, url: string, td: Json, seen: Set<string>): boolean {
+    const tps: string[] = (td.targetProfile || []).map(String);
+    if (tps.includes(url)) return true;
+    if (url.includes("|") && tps.includes(url.slice(0, url.indexOf("|")))) return true;
+    if (seen.has(url)) return false;
+    seen.add(url);
+    const sd = this.opts.fetch(url);
+    if (!sd) {
+      this.addMessage("warning", dPath, `Cannot check whether the target profile ${url} on ${dPath} is valid constraint on the base because it is not known`);
+      return true;
+    }
+    if (sd.baseDefinition && this.sdConformsToTargets(dPath, String(sd.baseDefinition), td, seen)) return true;
+    for (const ext of sd.extension || []) {
+      if (ext?.url === "http://hl7.org/fhir/StructureDefinition/structuredefinition-imposeProfile" && typeof ext.valueCanonical === "string" && this.sdConformsToTargets(dPath, ext.valueCanonical, td, seen)) return true;
+    }
+    return false;
+  }
+}
+
+/** StructureDefinition.getTypeName: the type, or the tail of a logical model's type URL (paths use the tail). */
+function typeName(sd: Json): string {
+  const t = String(sd.type ?? "");
+  return t.includes("/") ? t.slice(t.lastIndexOf("/") + 1) : t;
+}
+
+/** ProfileUtilities.makeBaseDefinition (PU:5025-5053): the abstract root of every type, for logical models. */
+export function makeBaseDefinition(fhirVersion: string): Json {
+  return {
+    resourceType: "StructureDefinition",
+    id: "Base",
+    url: CORE + "Base",
+    version: fhirVersion,
+    name: "Base",
+    status: "active",
+    fhirVersion,
+    kind: "complex-type",
+    abstract: true,
+    type: "Base",
+    snapshot: { element: [{ id: "Base", path: "Base", min: 0, max: "*", base: { path: "Base", min: 0, max: "*" }, isModifier: false }] },
+    differential: { element: [{ id: "Base", path: "Base", min: 0, max: "*" }] },
+  };
+}
+
+/** TypeRefComponent label for messages: code(profiles). */
+function typeRefString(t: Json): string {
+  const p = Array.isArray(t?.profile) && t.profile.length ? `(${t.profile.join(" | ")})` : "";
+  return String(t?.code ?? "") + p;
 }
 
 /** Generate (or return) a snapshot over an async resolver: reruns the synchronous generator after loading misses. */

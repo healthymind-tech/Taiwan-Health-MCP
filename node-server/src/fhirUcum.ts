@@ -21,6 +21,7 @@
  * (FormalStructureComposer: `(milligram)`, `(milligram) / (deciliter)`); `milligram` is accepted too.
  */
 
+import { createRequire } from "node:module";
 import { UCUM_PREFIXES, UCUM_UNITS, UCUM_ESSENCE_VERSION } from "./fhirUcumEssence.js";
 
 export const UCUM_SYSTEM = "http://unitsofmeasure.org";
@@ -323,12 +324,31 @@ export function ucumDisplayIssue(code: string, display: string): string | null {
   return `Wrong Display Name '${display}' for ${UCUM_SYSTEM}#${code}. Valid display is ${choices}`;
 }
 
+interface UcumUtils {
+  convertUnitTo?(f: string, v: number, t: string): { status: string; toVal?: number };
+}
+
+let utils: UcumUtils | null | undefined;
+
+/** NLM ucum-lhc, used for unit conversion only (validation is the ucum-java port above). */
+function ucum(): UcumUtils | null {
+  if (utils !== undefined) return utils;
+  try {
+    const require = createRequire(import.meta.url);
+    const pkg = require("@lhncbc/ucum-lhc");
+    utils = pkg.UcumLhcUtils.getInstance() as UcumUtils;
+  } catch {
+    utils = null;
+  }
+  return utils;
+}
+
 /**
  * UcumService.convert (InstanceValidator.convertUcumValue): `value` in unit `from` expressed in unit `to`, or null
  * when the units cannot be converted (either invalid, or not commensurable).
  */
 export function convertUcum(value: number, from: string, to: string): number | null {
-  const u = ucum() as (UcumUtils & { convertUnitTo?(f: string, v: number, t: string): { status: string; toVal?: number } }) | null;
+  const u = ucum();
   if (!u || typeof u.convertUnitTo !== "function") return null;
   try {
     const r = u.convertUnitTo(from, value, to);

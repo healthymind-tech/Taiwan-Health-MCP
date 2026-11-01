@@ -39,7 +39,7 @@ import { evaluateConstraint, evaluateExpression, fhirPathBase, invariantExpressi
 import { fixedPattern } from "./fhirSnapshot.js";
 import { generateSnapshotAsync } from "./fhirSnapshotGenerator.js";
 import { pushAll } from "./arrayUtils.js";
-import { UCUM_SYSTEM, checkUcumCode, convertUcum, ucumUnknownCodeMessage } from "./fhirUcum.js";
+import { UCUM_SYSTEM, checkUcumCode, convertUcum, ucumDisplayIssue, ucumUnknownCodeMessage } from "./fhirUcum.js";
 import { XVER_SOURCE, xverDefinition, xverElementId, xverMatchingUrl, xverStatus, xverVersion } from "./fhirXver.js";
 import { hl7UrlMustResolve, uriResolutionExempt, urlResolveMessage, urnSyntaxIssue } from "./fhirUriRules.js";
 import { codingVersionIssue } from "./fhirExternalTerminology.js";
@@ -1373,6 +1373,12 @@ export class InstanceValidator {
     return p;
   }
 
+  /** The installed StructureDefinition for `url` when it exists but has no (generated) snapshot, else null. */
+  private async snapshotless(url: string): Promise<Record<string, any> | null> {
+    const sd = await this.resolver.fetchStructureDefinition(String(url || "").trim());
+    return sd && typeof sd.url === "string" && !(Array.isArray(sd.snapshot?.element) && sd.snapshot.element.length) ? sd : null;
+  }
+
   private vsHeader(url: string): Promise<Record<string, any> | null> {
     const key = String(url || "").trim();
     let p = this.vsHeaderCache.get(key);
@@ -2135,6 +2141,20 @@ export class InstanceValidator {
     for (const p of profiles) {
       if (p === CORE + rt) continue;
       const sdx = await this.sdx(p);
+      const noSnap = sdx ? null : await this.snapshotless(p);
+      if (noSnap) {
+        // The profile is installed but has no snapshot — differential only and the snapshot generation failed
+        // (ContextUtilities.generateSnapshot throws, CTU:265-311, so the SD stays without one). startInner then
+        // reports Validation_VAL_Profile_NoSnapshot as an error and does not validate against it (IV:7164-7180).
+        issues.push({
+          severity: "error",
+          path,
+          code: "structure",
+          message: `StructureDefinition ${typeof noSnap.version === "string" && noSnap.version ? `${noSnap.url}|${noSnap.version}` : noSnap.url} has no snapshot - validation is against the snapshot, so it must be provided`,
+          unchecked: { kind: "profile", canonical: p },
+        });
+        continue;
+      }
       if (!sdx) {
         // Validation_VAL_Profile_Unknown (warning): the profile — or that version of
         // it — is not installed in the closure, so it is not checked. Marked
@@ -3072,6 +3092,7 @@ export class InstanceValidator {
         for (const { item: it, type } of typedItems) {
           await this.validateItemAgainst(gsdx, def, it, type, rctx, issues, depth + 1);
         }
+        if (grp.slices.length && grp.base && !grp.name.endsWith("[x]")) this.slicesWithoutSlicer(gsdx, grp, typedItems.map((t) => t.item), item, issues);
       }
     }
 
@@ -3349,6 +3370,33 @@ export class InstanceValidator {
           profile: sdx.url,
         });
       }
+    }
+  }
+
+  /**
+   * Slices whose element has no slicer (a profile that "launches straight into slicing": ProfileUtilities only adds
+   * an ignorable error, PU:1100-1103, and keeps the slice in the snapshot). InstanceValidator.assignChildren then
+   * has no slicer (IV:8458-8486), so matchSlice matches every slice element by name alone (IV:8642-8649): an item
+   * already assigned to the unsliced base element fails Validation_VAL_Profile_MatchMultiple (IV:8673) and stays on
+   * the base; the slices count nothing, so checkCardinalities reports each required slice
+   * (Validation_VAL_Profile_Minimum_SLICE, IV:8370).
+   */
+  private slicesWithoutSlicer(sdx: SdIndex, grp: ChildGroup, items: Item[], parent: Item, issues: Issue[]): void {
+    const vurl = this.versionedUrl(sdx);
+    for (const it of items) {
+      for (const s of grp.slices) {
+        issues.push({ severity: "error", path: it.path, code: "invalid", message: `Profile ${vurl}, Element matches more than one slice - , ${sliceNameOf(s)}` });
+      }
+    }
+    for (const s of grp.slices) {
+      const min = typeof s.min === "number" ? s.min : 0;
+      if (min <= 0) continue;
+      const id = String(s.id ?? s.path);
+      const message =
+        min === 1
+          ? `Slice '${id}': a matching slice is required, but not found (from ${vurl}). Note that other slices are allowed in addition to this required slice`
+          : `Slice '${id}': minimum required = ${min}, but only found 0 (from ${vurl})`;
+      issues.push({ severity: "error", path: parent.path, code: "structure", message, element: s.id, profile: sdx.url });
     }
   }
 
@@ -4631,10 +4679,14 @@ export class InstanceValidator {
       }
     }
     if (typeof system !== "string" || typeof code !== "string" || !code) return;
-    // UCUM: tx.fhir.org parses the expression (Unknown_Code_in_Version on failure).
+    // UCUM: tx.fhir.org parses the expression (Unknown_Code_in_Version on failure) and checks the display against
+    // the code and its formal structure (Display_Name_for__should_be_one_of__instead_of; review G9).
     if (system === UCUM_SYSTEM) {
       if (checkUcumCode(code) === "invalid") {
         issues.push({ severity: "error", path: `${item.path}.code`, code: "code-invalid", message: ucumUnknownCodeMessage(code) });
+      } else if (typeof v.display === "string" && v.display) {
+        const msg = ucumDisplayIssue(code, v.display);
+        if (msg) issues.push({ severity: "error", path: `${item.path}.display`, code: "code-invalid", message: msg });
       }
       return;
     }
