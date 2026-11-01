@@ -232,7 +232,7 @@ test("extensions: unknown URL and wrong value type are errors", async () => {
   assert.ok(has(await run({ resourceType: "Patient", extension: [{ url: "http://foo.org/ext", valueString: "a" }] }), /could not be found/));
   const wrong = await run({ resourceType: "Patient", extension: [{ url: CORE + "patient-birthPlace", valueString: "a" }] });
   // InstanceValidator.checkExtension (Extension_EXT_Type)
-  assert.ok(has(wrong, /The Extension '.*patient-birthPlace' definition allows for the types Address but found type string/), JSON.stringify(wrong));
+  assert.ok(has(wrong, /The Extension '.*patient-birthPlace' definition allows for the types \[Address\] but found type string/), JSON.stringify(wrong));
 });
 
 test("example URLs in Identifier.system are rejected like the HL7 validator", async () => {

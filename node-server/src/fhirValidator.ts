@@ -261,6 +261,11 @@ export interface ValidatorResolver {
   codeSystemExists?(url: string): Promise<boolean>;
   /** (v17.5) Is `version` an installed version of the definition `url`? Absent = not checked (fail-open). */
   definitionVersionExists?(url: string, version: string): Promise<boolean>;
+  /**
+   * IValidatorResourceFetcher.fetch: the resource an external reference points at (used only with
+   * ValidateOptions.validateReference). Absent = external references are never fetched.
+   */
+  fetchReference?(ref: string): Promise<Record<string, any> | null>;
 }
 
 export interface ValidateOptions {
@@ -290,6 +295,20 @@ export interface ValidateOptions {
   displayWarnings?: boolean;
   /** validateText only: JSON `//` comments are accepted (validator_cli -allow-json-comments; default false). */
   allowJsonComments?: boolean;
+  /** ValidatorSettings.isAssumeValidRestReferences (-assumeValidRestReferences): the type in an unresolved RESTful reference is trusted. */
+  assumeValidRestReferences?: boolean;
+  /**
+   * ValidatorSettings.getBundleValidationRules (-bundle <rule> <profile>): entries matching `rule` (`Type`, `Type:n` —
+   * the n-th entry of that type, from 0 — or `n`, the n-th entry) are also validated against `profile`.
+   */
+  bundleRules?: Array<{ rule: string; profile: string }>;
+  /** ImplementationGuides the validator knows (InstanceValidator.igs): their `global` profiles apply to every resource of that type. */
+  implementationGuides?: Array<Record<string, any>>;
+  /**
+   * IValidationPolicyAdvisor.policyForReference for external references (validator_cli default IGNORE): fetch the
+   * target through ValidatorResolver.fetchReference and check that it exists / its type / that it is valid.
+   */
+  validateReference?: "CHECK_EXISTS" | "CHECK_EXISTS_AND_TYPE" | "CHECK_VALID";
 }
 
 // validator_cli 7.0.1 wording: the invariant's source is appended (checkInvariant, "(defined in <source>)")
@@ -1061,6 +1080,21 @@ function vitalsUnitsHack(sdx: SdIndex | null, el: Record<string, any>): boolean 
   return el.path === "Observation.component.value[x]" && isObject(el.binding) && el.binding.valueSet === "http://hl7.org/fhir/ValueSet/ucum-vitals-common|4.0.1";
 }
 
+/** The fields InstanceValidator.checkFixedValue compares per complex datatype (7.0.1), with their types. */
+const FIXED_TYPE_FIELDS: Record<string, Array<[string, string]>> = {
+  ContactPoint: [["system", ""], ["value", ""], ["use", ""], ["period", "Period"]],
+  Identifier: [["use", ""], ["type", "CodeableConcept"], ["system", ""], ["value", ""], ["period", "Period"], ["assigner", "Reference"]],
+  Attachment: [["contentType", ""], ["language", ""], ["data", ""], ["url", ""], ["size", ""], ["hash", ""], ["title", ""]],
+  Reference: [["reference", ""], ["type", ""], ["identifier", "Identifier"], ["display", ""]],
+  Range: [["low", "Quantity"], ["high", "Quantity"]],
+  Ratio: [["numerator", "Quantity"], ["denominator", "Quantity"]],
+  Period: [["start", ""], ["end", ""]],
+  SampledData: [["origin", "Quantity"], ["period", ""], ["factor", ""], ["lowerLimit", ""], ["upperLimit", ""], ["dimensions", ""], ["data", ""]],
+  Coding: [["system", ""], ["version", ""], ["code", ""], ["display", ""], ["userSelected", ""]],
+  Quantity: [["value", ""], ["comparator", ""], ["unit", ""], ["system", ""], ["code", ""]],
+};
+for (const t of ["Age", "Count", "Distance", "Duration", "MoneyQuantity", "SimpleQuantity"]) FIXED_TYPE_FIELDS[t] = FIXED_TYPE_FIELDS.Quantity;
+
 /**
  * The UCUM codes a ValueSet enumerates, when its compose is only `include`s of http://unitsofmeasure.org with a
  * concept list (no filter, no imported value set, no exclude) — membership is then a plain lookup. Null otherwise
@@ -1074,6 +1108,54 @@ function ucumEnumeration(vs: Record<string, any>): Set<string> | null {
     if (!isObject(inc) || inc.system !== UCUM_SYSTEM || inc.valueSet || inc.filter || !Array.isArray(inc.concept) || !inc.concept.length) return null;
     for (const cc of inc.concept) if (isObject(cc) && typeof cc.code === "string") out.add(cc.code);
   }
+  return out;
+}
+
+/** JsonParser's JSON type names (JsonElementType.toName) for RESOURCETYPE_PROPERTY_WRONG_TYPE. */
+function describeJsonType(v: unknown): string {
+  if (v === null) return "Null";
+  if (Array.isArray(v)) return "Array";
+  if (typeof v === "object") return "Object";
+  if (typeof v === "number") return "Number";
+  if (typeof v === "boolean") return "Boolean";
+  return "String";
+}
+
+/** Embedded resources (contained / Bundle entry resource and response outcome / Parameters resource) JsonParser cannot parse. */
+function unparsedResources(root: Record<string, any>): Set<object> {
+  const out = new Set<object>();
+  // context.fetchResource(StructureDefinition, sdNs(name)): any core type name parses (a datatype name too — not ported,
+  // it stays "Unknown resource type"); only names without a definition are unparsed
+  const known = (rt: unknown): boolean =>
+    typeof rt === "string" && (R4_RESOURCE_NAMES.has(rt) || rt === "Resource" || rt === "DomainResource" || COMPLEX_TYPES.includes(rt) || rt in PRIMITIVES);
+  const visit = (r: any, depth: number): void => {
+    if (!isObject(r) || depth > 30) return;
+    const embedded: any[] = [];
+    if (Array.isArray(r.contained)) embedded.push(...r.contained);
+    if (r.resourceType === "Bundle" && Array.isArray(r.entry)) {
+      for (const e of r.entry) {
+        if (!isObject(e)) continue;
+        if (e.resource !== undefined) embedded.push(e.resource);
+        if (isObject(e.response) && e.response.outcome !== undefined) embedded.push(e.response.outcome);
+      }
+    }
+    if (r.resourceType === "Parameters") {
+      const params = (list: any): void => {
+        for (const p of Array.isArray(list) ? list : []) {
+          if (!isObject(p)) continue;
+          if (p.resource !== undefined) embedded.push(p.resource);
+          params(p.part);
+        }
+      };
+      params(r.parameter);
+    }
+    for (const x of embedded) {
+      if (!isObject(x)) continue;
+      if (known(x.resourceType)) visit(x, depth + 1);
+      else out.add(x);
+    }
+  };
+  visit(root, 0);
   return out;
 }
 
@@ -1165,6 +1247,8 @@ interface Item {
 interface ExtensionHost {
   path: string;
   value: any;
+  /** For a primitive host: its `_x` object (the element's identity in a FHIRPath result). */
+  primitiveExt?: Record<string, any>;
   /** Literal path (indexes stripped) + logical paths, sorted, de-duplicated. */
   plist: string[];
   isResource: boolean;
@@ -1296,6 +1380,82 @@ export class InstanceValidator {
   private bundleErrorFlag = new WeakSet<object>();
   /** The instance came from an XML document (ValidateOptions.format). */
   private xmlSource = false;
+  private assumeValidRestReferences = false;
+  private bundleRules: Array<{ rule: string; profile: string }> = [];
+  private igs: Array<Record<string, any>> = [];
+  private referencePolicy: ValidateOptions["validateReference"] | null = null;
+  /**
+   * Embedded resources (entry.resource, contained, parameter.resource, response.outcome) whose resourceType is
+   * missing or not a resource: JsonParser.parseResource (7.0.1, l. 770-786) reports them and keeps an empty element of
+   * type Resource — no id, no children (FHIRPath sees nothing there; a reference to it finds a `Resource`).
+   */
+  private unparsed = new Set<object>();
+  private strippedCache = new WeakMap<object, any>();
+
+  /** The FHIRPath view of a value: unparsed embedded resources removed (they have no content in the element model). */
+  private fhirPathView(v: any): any {
+    if (!this.unparsed.size || v === null || typeof v !== "object") return v;
+    const hit = this.strippedCache.get(v);
+    if (hit !== undefined) return hit;
+    let out: any;
+    if (Array.isArray(v)) {
+      const mapped = v.map((x) => this.fhirPathView(x));
+      out = mapped.some((x, i) => x !== v[i]) ? mapped : v;
+    } else {
+      let changed = false;
+      const o: Record<string, any> = {};
+      for (const [k, x] of Object.entries(v)) {
+        if (isObject(x) && this.unparsed.has(x)) {
+          changed = true;
+          continue;
+        }
+        if (Array.isArray(x) && x.some((y) => isObject(y) && this.unparsed.has(y))) {
+          changed = true;
+          const kept = x.filter((y) => !(isObject(y) && this.unparsed.has(y))).map((y) => this.fhirPathView(y));
+          if (kept.length) o[k] = kept;
+          continue;
+        }
+        const y = this.fhirPathView(x);
+        if (y !== x) changed = true;
+        o[k] = y;
+      }
+      out = changed ? o : v;
+    }
+    this.strippedCache.set(v, out);
+    return out;
+  }
+
+  /** The type a resource object has in the element model (`Resource` for an unparsed one). */
+  private typeOfResource(r: Record<string, any>): string {
+    return this.unparsed.has(r) ? "Resource" : String(r.resourceType);
+  }
+
+  /**
+   * InstanceValidator.idStatusForEntry (7.0.1, l. 8730-8768) for an unparsed embedded resource (its element has no
+   * `special`, so validateContains keeps this status): is an id required?
+   */
+  private idRequiredForUnparsed(el: Record<string, any>, v: Record<string, any>, rctx: ResourceCtx): boolean {
+    const exp = extString(el, "http://hl7.org/fhir/StructureDefinition/structuredefinition-id-expectation");
+    if (exp !== null) return exp === "required";
+    const p = String(el.path || "");
+    if (/(^|\.)entry\.resource$/.test(p) && rctx.resource.resourceType === "Bundle") {
+      const entries: any[] = Array.isArray(rctx.resource.entry) ? rctx.resource.entry : [];
+      const ep = entries.find((e) => isObject(e) && e.resource === v);
+      if (!ep) return true;
+      if (ep.response !== undefined) return false;
+      const method = isObject(ep.request) ? ep.request.method : undefined;
+      const url = isObject(ep.request) ? ep.request.url : undefined;
+      if (method === undefined || method === null) {
+        if (typeof ep.fullUrl !== "string") return true;
+        return !(ep.fullUrl.startsWith("urn:uuid:") || ep.fullUrl.startsWith("urn:oid:"));
+      }
+      if (method === "PUT") return url === undefined || url === null;
+      return false;
+    }
+    if (/(^|\.)parameter\.resource$/.test(p) || /(^|\.)response\.outcome$/.test(p)) return false;
+    return true;
+  }
+
 
   constructor(private readonly resolver: ValidatorResolver) {}
 
@@ -1328,6 +1488,12 @@ export class InstanceValidator {
     this.pendingVsSystems = false;
     this.bundleErrorFlag = new WeakSet();
     this.xmlSource = opts.format === "xml";
+    this.assumeValidRestReferences = opts.assumeValidRestReferences === true;
+    this.bundleRules = Array.isArray(opts.bundleRules) ? opts.bundleRules : [];
+    this.igs = Array.isArray(opts.implementationGuides) ? opts.implementationGuides.filter(isObject) : [];
+    this.referencePolicy = opts.validateReference ?? null;
+    this.unparsed = unparsedResources(resource);
+    this.strippedCache = new WeakMap();
     await this.validateResource(rctx, resource.resourceType, extra, issues, 0);
     if (bundle) await this.validateBundleRules(bundle, resource.resourceType, issues);
     await this.structuralPass(resource, resource.resourceType, issues, 0);
@@ -1735,8 +1901,8 @@ export class InstanceValidator {
         }
       }
     }
-    if (match && resourceType !== null && match.resource && match.resource.resourceType !== resourceType) {
-      push("error", "required", `Matching reference for reference ${ref} has resourceType ${match.resource.resourceType}`);
+    if (match && resourceType !== null && match.resource && this.typeOfResource(match.resource) !== resourceType) {
+      push("error", "required", `Matching reference for reference ${ref} has resourceType ${this.typeOfResource(match.resource)}`);
     }
     if (match === null) {
       if (ref.startsWith("urn")) push("warning", "required", `URN reference is not locally contained within the bundle ${ref}`);
@@ -1857,12 +2023,14 @@ export class InstanceValidator {
       }
     }
     const fullUrlOptional = FULLURL_OPTIONAL_BUNDLE_TYPES.includes(type);
+    const counter = new Map<string, number>();
+    let count = 0;
     for (const e of entries) {
       const fullUrl = e.fullUrl;
       const res = e.resource;
       const url = res && typeof res.url === "string" ? res.url : null;
-      const id = res && typeof res.id === "string" ? res.id : null;
-      const rtype = res ? String(res.resourceType) : null;
+      const id = res && typeof res.id === "string" && !this.unparsed.has(res) ? res.id : null;
+      const rtype = res ? this.typeOfResource(res) : null;
       const p0 = `${path}.entry[0]`; // (sic) stack.addToLiteralPath(ENTRY, PATH_ARG)
       if (fullUrl) {
         if (isAbsoluteUrlJava(fullUrl)) {
@@ -1892,6 +2060,21 @@ export class InstanceValidator {
           message: "Except for transactions and batches, each entry in a Bundle must have a fullUrl which is the identity of the resource in the entry",
         });
       }
+      // BundleValidator.validateBundle l. 217-240 + meetsRule l. 959-985: bundle validation rules
+      if (rtype !== null && isObject(res)) {
+        const rcount = counter.has(rtype) ? counter.get(rtype)! + 1 : 0;
+        counter.set(rtype, rcount);
+        for (const bvr of this.bundleRules) {
+          const rule = bvr.rule;
+          const t = rule.includes(":") ? rule.slice(0, rule.indexOf(":")) : /^-?\d+$/.test(rule) ? null : rule;
+          const index = rule.includes(":") ? rule.slice(rule.indexOf(":") + 1) : /^-?\d+$/.test(rule) ? rule : null;
+          const meets = t === null ? String(count) === index : index === null ? t === rtype : t === rtype && String(rcount) === index;
+          if (!meets || !(await this.sdx(bvr.profile))) continue;
+          const ectx: ResourceCtx = { resource: res, container: null, root: b.bundle, bundle: b, entry: b.entryOf.get(res) ?? null };
+          pushAll(issues, await this.conformance(ectx, bvr.profile, `${path}.entry[${e.index}].resource`, 0));
+        }
+      }
+      count++;
     }
   }
 
@@ -2094,7 +2277,14 @@ export class InstanceValidator {
     const targets = new Map<RawBundleEntry, RawBundleEntry[]>();
     for (const e of list) {
       const refs: Array<{ ref: string; path: string; source: object; nl: boolean }> = [];
-      collectBundleRefs(e.entry, `${path}.entry[${e.index}]`, refs, null);
+      // the references the element model has: the resource's own type's properties only (JsonParser dropped the rest)
+      let entryView: any = this.fhirPathView(e.entry);
+      const er = e.resource;
+      if (isObject(er) && !this.unparsed.has(er) && isObject(entryView) && entryView.resource === er) {
+        const eb = await this.sdx(CORE + String(er.resourceType));
+        if (eb) entryView = { ...entryView, resource: await this.parsedView(er, eb) };
+      }
+      collectBundleRefs(entryView, `${path}.entry[${e.index}]`, refs, null);
       const seen = new Set<string>();
       const out: RawBundleEntry[] = [];
       for (const r of refs) {
@@ -2102,7 +2292,7 @@ export class InstanceValidator {
         seen.add(r.ref);
         const name = r.path.replace(/\.([a-z][A-Za-z]*?)Reference(?=$|[.[])/gu, ".$1[x]");
         const res = e.resource!;
-        const tgt = await this.resolveInBundle(b, r.ref, e.fullUrl, String(res.resourceType), typeof res.id === "string" ? res.id : null, path, issues, name, r.source, true, r.nl);
+        const tgt = await this.resolveInBundle(b, r.ref, e.fullUrl, this.typeOfResource(res), typeof res.id === "string" && !this.unparsed.has(res) ? res.id : null, path, issues, name, r.source, true, r.nl);
         if (tgt && tgt.resource && tgt !== e && list.includes(tgt)) out.push(tgt);
       }
       targets.set(e, out);
@@ -2195,7 +2385,7 @@ export class InstanceValidator {
       });
     }
     const profiles: string[] = [];
-    const metaProfiles = isObject(resource.meta) && Array.isArray(resource.meta.profile) ? resource.meta.profile : [];
+    const metaProfiles = base.sd.kind === "resource" && isObject(resource.meta) && Array.isArray(resource.meta.profile) ? resource.meta.profile : [];
     for (const p of extraProfiles) if (p && !profiles.includes(p)) profiles.push(p);
     // Port of InstanceValidator.validateResource / startInner (meta.profile loop, 7.0.1):
     // each meta.profile is fetched as written — `url|version` resolves to that version
@@ -2208,9 +2398,14 @@ export class InstanceValidator {
       const url = impliedVitalSignProfile(resource.code);
       if (url && !profiles.includes(url)) profiles.push(url);
     }
-    pushAll(issues, await this.conformance(rctx, CORE + rt, path, depth));
+    // InstanceValidator.validateResource(…, defn, …) (7.0.1, l. 6880-6910): the resource is validated against `defn` —
+    // the requested profile (-profile / the element's type profile) when there is one, otherwise the core definition —
+    // then against each meta.profile; the core definition is not a separate pass when a profile is requested
+    const requested = extraProfiles.length ? await this.sdx(extraProfiles[0]) : null;
+    const defn = requested && requested.type === rt ? extraProfiles[0] : CORE + rt;
+    pushAll(issues, await this.conformance(rctx, defn, path, depth));
     for (const p of profiles) {
-      if (p === CORE + rt) continue;
+      if (p === CORE + rt || p === defn) continue;
       const sdx = await this.sdx(p);
       const noSnap = sdx ? null : await this.snapshotless(p);
       if (noSnap) {
@@ -2243,12 +2438,10 @@ export class InstanceValidator {
       // `Patient|4.0.1` is the base definition again (already checked above).
       if (sdx.sd === base.sd || (sdx.url === CORE + rt && sdx.sd.version === base.sd.version)) continue;
       if (sdx.type !== rt) {
-        issues.push({
-          severity: "error",
-          path,
-          code: "structure",
-          message: `Profile '${p}' is for type ${sdx.type}, but the resource is a ${rt}`,
-        });
+        // validateResource / startInner (7.0.1) do not compare the profile's type with the resource's: the element model
+        // (the properties the resource's own type defines — the parser dropped the others as unrecognized) is walked
+        // against the profile
+        pushAll(issues, await this.conformance({ ...rctx, resource: await this.parsedView(resource, base) }, p, path, depth));
         continue;
       }
       pushAll(issues, await this.conformance(rctx, p, path, depth));
@@ -2275,6 +2468,42 @@ export class InstanceValidator {
         pushAll(issues, await this.conformance(rctx, ip, path, depth));
       }
     }
+    // validateResource l. 7022-7040: the `global` profiles of the known ImplementationGuides for this resource type
+    for (const ig of this.igs) {
+      const vig = `${ig.url}${typeof ig.version === "string" && ig.version ? `|${ig.version}` : ""}`;
+      for (const gl of Array.isArray(ig.global) ? ig.global : []) {
+        if (!isObject(gl) || gl.type !== rt || typeof gl.profile !== "string") continue;
+        if (!(await this.sdx(gl.profile))) {
+          issues.push({ severity: "warning", path, code: "structure", message: `Global Profile reference '${gl.profile}' from IG ${vig} could not be resolved, so has not been checked` });
+          continue;
+        }
+        pushAll(issues, await this.conformance(rctx, gl.profile, path, depth));
+      }
+    }
+  }
+
+  private parsedViews = new WeakMap<object, Record<string, any>>();
+
+  /** The properties of `resource` its own core definition knows (JsonParser keeps only those). */
+  private async parsedView(resource: Record<string, any>, base: SdIndex): Promise<Record<string, any>> {
+    const hit = this.parsedViews.get(resource);
+    if (hit) return hit;
+    const groups = base.children(base.root);
+    const list = groups ? [...groups.values()] : [];
+    // JsonParser: an unknown property is dropped, and so is an array where the (base) element is single
+    const keep = (k: string, v: unknown): boolean => {
+      const n = k.startsWith("_") ? k.slice(1) : k;
+      if (n === "resourceType") return true;
+      const g = list.find((x) => (x.name.endsWith("[x]") ? n.startsWith(x.name.slice(0, -3)) && n.length > x.name.length - 3 : x.name === n));
+      if (!g) return false;
+      const d = g.base || g.slices[0];
+      const max = String((d?.base && d.base.max) ?? d?.max ?? "*");
+      return !(Array.isArray(v) && (max === "1" || max === "0"));
+    };
+    const out: Record<string, any> = {};
+    for (const [k, v] of Object.entries(resource)) if (keep(k, v)) out[k] = v;
+    this.parsedViews.set(resource, out);
+    return out;
   }
 
   /** Issues of `rctx.resource` against one StructureDefinition (memoised per resource object). */
@@ -2336,7 +2565,7 @@ export class InstanceValidator {
           depth + 1,
           true,
         );
-        if (url === CORE + rctx.resource.resourceType && rctx.container === null) this.checkContainedReferences(rctx.resource, out);
+        if (rctx.container === null) this.checkContainedReferences(rctx.resource, out); // once per validateResource, whatever defn is
         return out;
       })().finally(() => done.delete(url));
       byUrl.set(url, p);
@@ -2438,7 +2667,7 @@ export class InstanceValidator {
     // starts a new id scope (ids are duplicated in snapshot and differential)
     // An embedded resource (contained, Bundle.entry.resource …) is validated on a reset stack (validateContains
     // l. 7547 / checkChildByDefinition l. 8169: stack.resetIds()): its own id is neither checked nor recorded.
-    const idHolder = isObject(v) ? (typeof v.resourceType === "string" ? null : v) : isPrimitive(typeCode) && isObject(item.ext) ? item.ext : null;
+    const idHolder = isObject(v) ? (typeof v.resourceType === "string" || this.unparsed.has(v) ? null : v) : isPrimitive(typeCode) && isObject(item.ext) ? item.ext : null;
     if (idHolder && typeof idHolder.id === "string" && idHolder.id !== "" && rctx.ids) {
       const seen = rctx.ids.get(idHolder.id);
       if (seen !== undefined && seen !== idHolder) {
@@ -2490,6 +2719,24 @@ export class InstanceValidator {
     if (!isResourceRoot && (typeCode === "Resource" || typeCode === "DomainResource" || /^[A-Z]/.test(typeCode) && !COMPLEX_TYPES.includes(typeCode) && !(await this.isDatatype(typeCode)))) {
       if (!isObject(v)) {
         issues.push({ severity: "error", path: item.path, code: "structure", message: "The value must be a JSON object (a resource)" });
+        return;
+      }
+      if (this.unparsed.has(v)) {
+        // JsonParser.parseResource l. 770-786 (fatal), then validateContains / validateResource of an empty `Resource`
+        // element: Resource_RES_ID_Missing when the entry's id status is REQUIRED; nothing else (no children)
+        const rtv = v.resourceType;
+        issues.push({
+          severity: "fatal",
+          path: item.path,
+          code: "invalid",
+          message:
+            rtv === undefined
+              ? "Unable to find resourceType property"
+              : typeof rtv !== "string"
+                ? `The JSON element 'resourceType' has the wrong JSON type: ${describeJsonType(rtv)}`
+                : `Contained resource does not appear to be a FHIR resource (unknown name '${rtv}')`,
+        });
+        if (this.idRequiredForUnparsed(el, v, rctx)) issues.push({ severity: "error", path: item.path, code: "invalid", message: "Resource requires an id, but none is present" });
         return;
       }
       // Port of InstanceValidator.validateContains l. 7502-7519 / 7633-7648 (+ checkChildByDefinition l. 7876-7895):
@@ -2870,8 +3117,11 @@ export class InstanceValidator {
       return this.sdx(CORE + "Extension");
     }
     const absolute = /^[a-z][a-z0-9+.-]*:/i.test(url);
-    if (!(parentSdx.type === "Extension" && parentSdx.url !== CORE + "Extension") && !javaIsAbsoluteUrl(url)) {
-      // EXTENSION_EXT_URL_ABSOLUTE (outside a complex extension); checkExtension is then not run
+    // checkChildByDefinition l. 8045-8051: `extensionUrl` is the url of any enclosing extension (known or not), so a
+    // relative url is accepted anywhere inside an extension
+    const inExtension = (parentSdx.type === "Extension" && parentSdx.url !== CORE + "Extension") || !!item.host?.extUrl;
+    if (!inExtension && !javaIsAbsoluteUrl(url)) {
+      // EXTENSION_EXT_URL_ABSOLUTE (outside an extension); checkExtension is then not run
       issues.push({ severity: "error", path: item.path, code: "invalid", message: "Extension.url must be an absolute URL" });
       return this.sdx(CORE + "Extension");
     }
@@ -2912,11 +3162,12 @@ export class InstanceValidator {
         severity: "error",
         path: `${item.path}[url='${url}']`,
         code: "structure",
-        message: `Sub-extension url '${url}' is not defined by the Extension ${parentSdx.url}`,
+        message: `Sub-extension url '${url}' is not defined by the Extension ${this.versionedUrl(parentSdx)}` /* EXTENSION_EXT_SUBEXTENSION_INVALID: profile.getVersionedUrl() */,
       });
     } else if (allowUnknownExtension(url, this.allowExamples)) {
       // InstanceValidator.allowUnknownExtension: tools / nema.org / structuredefinition-expression need no definition
-    } else if (!insideDefinedExtension || absolute) {
+    } else if (!inExtension || absolute) {
+      // (checkExtension l. 2619-2623: a relative url inside an extension other than the defining one is not reported)
       issues.push({
         severity: "error",
         path: item.path,
@@ -2956,6 +3207,7 @@ export class InstanceValidator {
       isResource: false,
       // checkExtensionContext l. 2838-2846: the value[x] of an extension is that extension for an `extension` context
       extUrl: item.parentExtUrl ?? null,
+      primitiveExt: isObject(ext) ? ext : undefined,
       typeCode: item.typeCode || "",
       defPath: "",
       modifier: false,
@@ -3136,9 +3388,9 @@ export class InstanceValidator {
                   ? {
                       // InstanceValidator.checkExtension (Extension_EXT_Type): an extension's value of a type its definition does not allow
                       severity: "error",
-                      path: `${item.path}.${stem}.ofType(${actual})`,
+                      path: item.path, // checkExtension reports at the extension, the allowed types as a Java Set
                       code: "structure",
-                      message: `The Extension '${gsdx.url}' definition allows for the types ${allowedTypes.join(", ")} but found type ${actual}`,
+                      message: `The Extension '${gsdx.url}' definition allows for the types ${javaHashSetToString(allowedTypes)} but found type ${actual}`,
                       element: def.id,
                     }
                   : {
@@ -3239,12 +3491,14 @@ export class InstanceValidator {
     const min = typeof def.min === "number" ? def.min : 0;
     const max = def.max === undefined || def.max === null ? "*" : String(def.max);
     const from = sdx.url;
+    // VALIDATION_VAL_PROFILE_MINIMUM / _MAXIMUM: (from profile.getVersionedUrl())
+    const vfrom = this.versionedUrl(sdx);
     if (count < min) {
       issues.push({
         severity: "error",
         path: parent.path,
         code: "required",
-        message: `${def.id || def.path}: minimum required = ${min}, but only found ${count} (from ${from})`,
+        message: `${def.id || def.path}: minimum required = ${min}, but only found ${count} (from ${vfrom})`,
         element: def.id,
         profile: from,
       });
@@ -3254,7 +3508,7 @@ export class InstanceValidator {
         severity: "error",
         path: parent.path,
         code: "cardinality",
-        message: `${def.id || def.path}: max allowed = ${max}, but found ${count} (from ${from})`,
+        message: `${def.id || def.path}: max allowed = ${max}, but found ${count} (from ${vfrom})`,
         element: def.id,
         profile: from,
       });
@@ -3323,11 +3577,13 @@ export class InstanceValidator {
           continue;
         }
         if (!r.match) {
-          sliceInfo.push(`${it.path}: Does not match slice '${sliceNameOf(s)}' (discriminator: ${r.expression})`);
+          // NodeStack literal path: a choice element is `<stem>.ofType(<type>)`
+          const lit = String(base.path).endsWith("[x]") && it.path.endsWith(`.${it.key}`) ? `${it.path.slice(0, -it.key.length - 1)}.${String(base.path).split(".").pop()!.slice(0, -3)}.ofType(${type})` : it.path;
+          sliceInfo.push(`${lit}: Does not match slice '${sliceNameOf(s)}' (discriminator: ${r.expression})`);
           // IV:6518-6527: a DETAILS_FOR__MATCHING_AGAINST_PROFILE_ hint per failed conformsTo() profile (HashMap order)
           for (const u of javaHashOrder(r.notes ?? [])) {
-            const nsdx = await this.sdx(u);
-            sliceInfo.push(`${it.path}: Details for ${parent.path} matching against profile ${nsdx ? this.versionedUrl(nsdx) : u}`);
+            const sdt = await this.sdx(u);
+            sliceInfo.push(`${lit}: Details for ${parent.path} matching against profile ${sdt ? this.versionedUrl(sdt) : u}`);
           }
           continue;
         }
@@ -4160,19 +4416,28 @@ export class InstanceValidator {
       }
     }
     const versioned = profile ? (profile.version ? `${profile.url}|${profile.version}` : String(profile.url ?? "")) : "";
-    if (el.mustHaveValue === true) {
+    // R4 carries the R5 ElementDefinition.mustHaveValue / valueAlternatives as cross-version extensions
+    // (VersionConvertor_40_50 reads them into the R5 model the validator works on)
+    const edExt = (name: string): any[] =>
+      (Array.isArray(el.extension) ? el.extension : []).filter((x: any) => isObject(x) && x.url === `http://hl7.org/fhir/5.0/StructureDefinition/extension-ElementDefinition.${name}`);
+    const mustHaveValue = el.mustHaveValue === true || edExt("mustHaveValue").some((x) => x.valueBoolean === true);
+    if (mustHaveValue) {
       issues.push({ severity: "error", path, code: "invalid", message: `The element definition \`\`${el.id}\`\` in the profile '${versioned}' requires that a value be present in this element` });
     }
-    const alts: string[] = Array.isArray(el.valueAlternatives) ? el.valueAlternatives.map(String) : [];
+    const alts: string[] = Array.isArray(el.valueAlternatives)
+      ? el.valueAlternatives.map(String)
+      : edExt("valueAlternatives").map((x) => x.valueCanonical ?? x.valueUri).filter((x): x is string => typeof x === "string");
     if (alts.length && !alts.some((u) => exts.some((x) => isObject(x) && x.url === u))) {
+      // rulePlural prepends the count, so the template's {0} / {1} / {2} are (count, element id, profile) — the
+      // ValueSet list argument is not shown (PRIMITIVE_VALUE_ALTERNATIVES_MESSAGE as validator_cli prints it)
       issues.push({
         severity: "error",
         path,
         code: "invalid",
         message:
           alts.length === 1
-            ? `The element definition \`\`${el.id}\`\` in the profile '${versioned}' requires that if a value is not present, the extension '${alts[0]}' must be present`
-            : `The element definition \`\`${el.id}\`\` in the profile '${versioned}' requires that if a value is not present, one of the extensions '${alts.join(", ")}' must be present`,
+            ? `The element definition \`\`${alts.length}\`\` in the profile '${el.id}' requires that if a value is not present, the extension '${versioned}' must be present`
+            : `The element definition \`\`${alts.length}\`\` in the profile '${el.id}' requires that if a value is not present, one of the extensions '${versioned}' must be present`,
       });
     }
   }
@@ -4474,7 +4739,7 @@ export class InstanceValidator {
       // InstanceValidator.checkHumanName (7.0.1, l. 3139-3195): use / text / period, then family / given / prefix / suffix
       // counted into ONE list (Element.getNamedChildren appends — the counts include the earlier parts) and compared
       // with the fixed list's length, items pairwise
-      const sub = (k: string): void => this.fixedValuePort(issues, `${path}.${k}`, focus[k], fixed[k], "", source, k, pattern, context);
+      const sub = (k: string): void => this.fixedValuePort(issues, `${path}.${k}`, focus[k], fixed[k], k === "period" ? "Period" : "", source, k, pattern, context);
       sub("use");
       sub("text");
       sub("period");
@@ -4514,6 +4779,14 @@ export class InstanceValidator {
       if (pattern ? lines.length >= fl.length : lines.length === fl.length) {
         if (!pattern) lines.forEach((x, i) => this.fixedValuePort(issues, `${path}.line`, x, fl[i], "", source, "line", false, context));
       } else issues.push({ severity: "error", path, code: "value", message: `Expected ${fl.length} but found ${lines.length} line elements` });
+    } else if (FIXED_TYPE_FIELDS[type]) {
+      // InstanceValidator.checkContactPoint / checkIdentifier / checkAttachment / checkReference / checkRange /
+      // checkRatio / checkPeriod / checkSampledData / checkCoding / checkQuantity (fixed) (7.0.1): exactly these fields,
+      // each through checkFixedValue with the field's own type; getNamedChild → the first value of a list
+      const first = (x: any): any => (Array.isArray(x) ? x[0] : x);
+      for (const [k, sub] of FIXED_TYPE_FIELDS[type]) {
+        this.fixedValuePort(issues, `${path}.${k}`, first(focus[k]), first(fixed[k]), sub, source, k, pattern, context);
+      }
     } else {
       // every other datatype: its fields one by one (lists: each fixed item matched — by any item for a pattern, in order
       // for a fixed value)
@@ -5183,12 +5456,17 @@ export class InstanceValidator {
         const vs = await this.vsHeader(b.valueSet);
         if (vs && b.strength !== "example") {
           checked = true;
-          if (system === UCUM_SYSTEM && b.strength === "required" && !vitalsUnitsHack(sdx, el!)) {
-            const listed = ucumEnumeration(vs);
-            if (listed && !listed.has(code)) {
-              const vsv = `${vs.url}${vs.version ? `|${vs.version}` : ""}`;
-              const desc = `'${vs.title || vs.name || b.valueSet}' (${vsv})`;
+          // validateBindingCodedElement l. 2486-2516: the effective strength (PackageHackerR5 backs the R4 vital-signs units
+          // binding off to extensible); required → TERMINOLOGY_TX_CONFIRM_4a, extensible → TERMINOLOGY_TX_CONFIRM_5 (warning)
+          const strength = b.strength === "required" && vitalsUnitsHack(sdx, el!) ? "extensible" : b.strength;
+          const listed = system === UCUM_SYSTEM && (strength === "required" || strength === "extensible") ? ucumEnumeration(vs) : null;
+          if (listed && !listed.has(code)) {
+            const vsv = `${vs.url}${vs.version ? `|${vs.version}` : ""}`;
+            const desc = `'${vs.title || vs.name || b.valueSet}' (${vsv})`;
+            if (strength === "required") {
               err(`The code provided (${system}#${code}) was not found in the value set ${desc}, and a code from this value set is required: The provided code '${system}#${code}' was not found in the value set '${vsv}'`, "code-invalid");
+            } else {
+              issues.push({ severity: "warning", path, code: "code-invalid", message: `The code provided (${system}#${code}) is not in the value set ${desc}, and a code should come from this value set unless it has no suitable code (the validator cannot judge what is suitable)` });
             }
           }
         }
@@ -5286,8 +5564,19 @@ export class InstanceValidator {
       issues.push({ severity: "error", path: item.path, code: "invalid", message: `The reference '${ref}' is not a valid reference` });
     }
     // localResolve → getFromBundle (BaseValidator, 7.0.1) reports the Bundle resolution messages at this element
-    const target = this.localResolve(ref, rctx, item.path, issues);
+    let target = this.localResolve(ref, rctx, item.path, issues);
     const refType = ref.startsWith("#") ? "contained" : target ? "internal" : "external";
+    // checkReference l. 5261-5300: an external reference is fetched when the policy checks existence
+    // (internal / contained ones are always CHECK_VALID)
+    const policy = refType === "external" ? this.referencePolicy : "CHECK_VALID";
+    let fetched = false;
+    if (!target && refType === "external" && policy && this.resolver.fetchReference && !(ref.includes("?") && R4_RESOURCE_NAMES.has(ref.slice(0, ref.indexOf("?"))))) {
+      const f = await this.resolver.fetchReference(ref).catch(() => null);
+      if (isObject(f) && typeof f.resourceType === "string") {
+        target = f;
+        fetched = true;
+      }
+    }
     const conditional = ref.includes("?") && R4_RESOURCE_NAMES.has(ref.slice(0, ref.indexOf("?")));
     if (conditional) {
       if (!isSearchUrl(ref)) issues.push({ severity: "error", path: item.path, code: "invalid", message: `The query part of the conditional reference is not a valid query string (${ref})` });
@@ -5302,7 +5591,7 @@ export class InstanceValidator {
     const aggregation: string[] = refTypeDef && Array.isArray(refTypeDef.aggregation) ? refTypeDef.aggregation.map(String) : [];
     // Reference.type (R4): must be a target of the element and agree with the reference's own type
     if (typeof v.type === "string" && v.type) {
-      const ft = target ? String(target.resourceType) : conditional ? ref.slice(0, ref.indexOf("?")) : tryParseRefType(ref);
+      const ft = target ? this.typeOfResource(target) : conditional ? ref.slice(0, ref.indexOf("?")) : tryParseRefType(ref);
       const tu = /^[a-z][a-z0-9+.-]*:/iu.test(v.type) ? v.type : CORE + v.type;
       const tps: string[] = refTypeDef ? (refTypeDef.targetProfile || []).filter((p: any) => typeof p === "string") : [];
       if (tps.length && !tps.includes(tu) && !tps.includes(CORE + "Resource")) {
@@ -5331,8 +5620,33 @@ export class InstanceValidator {
       if (aggregation.length && !aggregation.includes("referenced")) {
         issues.push({ severity: "error", path: item.path, code: "required", message: `Bundled or contained reference not found within the bundle/resource ${ref}` });
       }
+      // InstanceValidator.checkReference l. 5478-5500: with assumeValidRestReferences the type in the url is checked
+      // against the target profiles (its type or a base type) — REFERENCE_REF_BADTARGETTYPE2
+      const fti = conditional ? null : tryParseRefType(ref);
+      if (this.assumeValidRestReferences && fti) {
+        const tps: string[] = refTypeDef ? (refTypeDef.targetProfile || []).filter((p: any) => typeof p === "string") : [];
+        const types: string[] = [];
+        let rok = false;
+        const ftSd = await this.sdx(CORE + fti);
+        for (const tp of tps) {
+          const tsd = await this.sdx(tp);
+          if (!tsd) continue;
+          if (!types.includes(tsd.type)) types.push(tsd.type);
+          for (let cur: SdIndex | null = ftSd, g = 0; cur && g < 20; g++) {
+            if (cur.type === tsd.type) {
+              rok = true;
+              break;
+            }
+            cur = typeof cur.sd.baseDefinition === "string" ? await this.sdx(cur.sd.baseDefinition) : null;
+          }
+        }
+        if (types.length && !rok) {
+          issues.push({ severity: "error", path: item.path, code: "structure", message: `The type '${fti}' implied by the reference URL ${ref} is not a valid Target for this element (must be one of ${javaHashSetToString(types)})` });
+        }
+      }
       return;
     }
+    if (fetched && policy === "CHECK_EXISTS") return; // pol.checkType() false
     if (aggregation.length) {
       let modeOk = false;
       for (const m of aggregation) {
@@ -5349,7 +5663,7 @@ export class InstanceValidator {
     const targetProfiles: string[] = [];
     for (const p of refTypeRef?.targetProfile || []) if (typeof p === "string" && p) targetProfiles.push(p);
     if (!targetProfiles.length) return;
-    const rt = target.resourceType;
+    const rt = this.typeOfResource(target);
     const candidates: SdIndex[] = [];
     const types: string[] = [];
     let anyType = false;
@@ -5384,6 +5698,7 @@ export class InstanceValidator {
     }
     if (anyType) return;
     if (target === rctx.resource || target === rctx.root) return;
+    if (fetched && policy !== "CHECK_VALID") return; // pol.checkValid() false
     const tctx: ResourceCtx = {
       resource: target,
       container: ref.startsWith("#") ? rctx.container || rctx.resource : null,
@@ -5472,8 +5787,15 @@ export class InstanceValidator {
         // l. 2852-2858: the context is every element the expression selects from the resource
         try {
           const env: FhirPathEnv = { resource: rctx.resource, rootResource: rctx.container || rctx.resource, resolveReference: (ref: string) => this.resolveRefForFhirPath(ref, rctx) };
-          const res = evaluateExpression(rctx.resource, String(rctx.resource.resourceType), expr, env);
-          if (res.some((r) => r === host.value)) ok = true;
+          // res.contains(container): element identity — fhirpath.js nodes carry the JSON value (`data`) and, for a
+          // primitive, its `_x` object (`_data`), which identifies the host primitive
+          const res = evaluateExpression(rctx.resource, String(rctx.resource.resourceType), expr, env, {}, { internal: true });
+          const isHost = (r: any): boolean => {
+            const d = isObject(r) && "data" in r ? r.data : r;
+            if (host.primitiveExt) return d === host.value && isObject(r) && r._data === host.primitiveExt;
+            return d === host.value;
+          };
+          if (res.some(isHost)) ok = true;
         } catch {
           ok = true; // not evaluable locally: not judged
         }
@@ -5702,7 +6024,7 @@ export class InstanceValidator {
         }
       }
     }
-    if (!isRoot && kept === 0 && Object.keys(node).length > 0) {
+    if (!isRoot && kept === 0 && Object.keys(node).some((k) => k !== "fhir_comments")) {
       issues.push({ severity: "error", path, code: "invariant", message: ELE1_MESSAGE });
     }
   }
@@ -5730,7 +6052,7 @@ export class InstanceValidator {
       // InstanceValidator.checkInvariant evaluates FHIRPathExpressionFixer.fixExpr(expression, key)
       const fixed = invariantExpression(String(c.expression), c.key);
       const expr = isPrimitive(typeCode) ? primitiveValueAlias(fixed) : fixed;
-      const outcome = evaluateConstraint(item.value, base, expr, env);
+      const outcome = evaluateConstraint(this.fhirPathView(item.value), base, expr, env);
       if (outcome.status === "pass") continue;
       const bestPractice = (c.extension || []).some((e: any) => e.url === BEST_PRACTICE_EXT && e.valueBoolean === true);
       if (outcome.status === "unevaluable") {

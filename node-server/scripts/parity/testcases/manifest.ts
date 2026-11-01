@@ -125,6 +125,8 @@ export function loadRuns(suite = SUITE_DIR): TestRun[] {
         ...common,
         id: `${t.name}#profile`,
         step: "profile",
+        // ValidationTests: the profile step's own settings (assumeValidRestReferences …) are added to the case's
+        options: [...new Set([...options, ...OPTION_KEYS.filter((k) => p[k] !== undefined && p[k] !== false)])],
         packages: [...packages, ...asList(p.packages)],
         supporting: [...supporting, ...asList(p.supporting)],
         profileSource: src,

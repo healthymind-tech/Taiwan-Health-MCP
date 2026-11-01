@@ -50,7 +50,8 @@ test("F1 checkPrimitive: no value + mustHaveValue / valueAlternatives", async ()
   const issues = await run({ resourceType: "Patient", _birthDate: { id: "a" }, _active: { extension: [{ url: other, valueString: "x" }] } }, [P]);
   const m = errs(issues).map(([p, x]) => `${p}: ${x}`);
   assert.ok(m.includes(`Patient.birthDate: The element definition \`\`Patient.birthDate\`\` in the profile '${P}|1.0' requires that a value be present in this element`), JSON.stringify(m));
-  assert.ok(m.includes(`Patient.active: The element definition \`\`Patient.active\`\` in the profile '${P}|1.0' requires that if a value is not present, the extension '${DAR}' must be present`), JSON.stringify(m));
+  // rulePlural shifts the arguments: (count, element id, profile) — validator_cli prints it this way (fhir-test-cases R4.patient-value-alternative-bad-profile)
+  assert.ok(m.includes(`Patient.active: The element definition \`\`1\`\` in the profile 'Patient.active' requires that if a value is not present, the extension '${P}|1.0' must be present`), JSON.stringify(m));
 });
 
 test("F7 inline children of a primitive (`_x.extension`) are validated against the profile's slices (IV l. 8164-8176)", async () => {
@@ -359,4 +360,76 @@ test("F19 fixed Timing: event count (Bundle_MSG_Event_Count), code not compared 
   const codeless = errs(await run(obs({ event: ["2020-01-01"] }), [P])).map(([, m]) => m);
   assert.ok(!codeless.some((m) => m.includes("code")), JSON.stringify(codeless));
   delete EXTRA[CORE + "Timing"];
+});
+
+test("F19 fixed ContactPoint / Attachment compare only Java's fields (IV checkContactPoint l. 2572, checkAttachment l. 1223)", async () => {
+  const P = "http://example.org/fhir/StructureDefinition/pat-fixed-cp";
+  EXTRA[CORE + "ContactPoint"] ??= sd(CORE + "ContactPoint", "ContactPoint", "complex-type", [
+    el("ContactPoint", 0, "*"),
+    el("ContactPoint.system", 0, "1", ["code"]),
+    el("ContactPoint.value", 0, "1", ["string"]),
+    el("ContactPoint.rank", 0, "1", ["positiveInt"]),
+  ]);
+  EXTRA[P] = sd(P, "Patient", "resource", [
+    ...SDS[CORE + "Patient"].snapshot.element,
+    el("Patient.telecom", 0, "*", ["ContactPoint"], { fixedContactPoint: { system: "phone" } }),
+  ], { baseDefinition: CORE + "Patient", derivation: "constraint" });
+  // rank is not compared by checkContactPoint; value is (absent in the fixed value → not allowed)
+  const m = errs(await run({ resourceType: "Patient", telecom: [{ system: "phone", rank: 1, value: "1" }] }, [P])).map(([p, x]) => `${p}: ${x}`);
+  assert.ok(!m.some((x) => x.includes("rank")), JSON.stringify(m));
+  assert.ok(m.some((x) => x.startsWith("Patient.telecom[0].value: The element value is present in the instance but not allowed")), JSON.stringify(m));
+  delete EXTRA[CORE + "ContactPoint"];
+});
+
+test("F17 fhirpath context on a primitive host: element identity, not value equality (IV l. 2852-2858)", async () => {
+  const FP = "http://acme-test.fhir.test/StructureDefinition/ctx-fhirpath-family";
+  EXTRA[FP] = sd(FP, "Extension", "complex-type", [
+    el("Extension", 0, "*"),
+    el("Extension.extension", 0, "0", ["Extension"]),
+    el("Extension.url", 1, "1", ["uri"], { fixedUri: FP }),
+    el("Extension.value[x]", 1, "1", ["string"]),
+  ], { context: [{ type: "fhirpath", expression: "name.family" }] });
+  const ext = { extension: [{ url: FP, valueString: "x" }] };
+  const onFamily = errs(await run({ resourceType: "Patient", name: [{ family: "A", _family: ext }] }));
+  assert.ok(!onFamily.some(([, m]) => m.includes("not allowed to be used at this point")), JSON.stringify(onFamily));
+  // gender has the same string value as the selected family, but is another element
+  const onGender = errs(await run({ resourceType: "Patient", name: [{ family: "male" }], gender: "male", _gender: ext }));
+  assert.ok(onGender.some(([, m]) => m.startsWith(`The extension ${FP} is not allowed to be used at this point`)), JSON.stringify(onGender));
+});
+
+test("unparsed embedded resource: JsonParser.parseResource fatal, empty Resource element (RES_ID_MISSING), references find a Resource", async () => {
+  const issues = await run({
+    resourceType: "Patient",
+    contained: [{ resourceType: "coverage", id: "c" }],
+    managingOrganization: { reference: "#c" },
+  });
+  const e = issues.filter((i) => i.severity === "fatal" || i.severity === "error").map((i) => `${i.path} | ${i.message}`);
+  assert.ok(e.includes("Patient.contained[0] | Contained resource does not appear to be a FHIR resource (unknown name 'coverage')"), JSON.stringify(e));
+  assert.ok(e.includes("Patient.contained[0] | Resource requires an id, but none is present"), JSON.stringify(e));
+  assert.ok(!e.some((x) => x.includes("Unknown resource type")), JSON.stringify(e));
+});
+
+test("VALIDATION_VAL_PROFILE_MINIMUM / _MAXIMUM name the versioned profile; options: assumeValidRestReferences, bundle rules, IG globals, external references", async () => {
+  const P = "http://example.org/fhir/StructureDefinition/pat-name-required";
+  EXTRA[P] = sd(P, "Patient", "resource", [
+    ...SDS[CORE + "Patient"].snapshot.element.filter((e: Json) => e.path !== "Patient.birthDate"),
+    el("Patient.birthDate", 1, "1", ["date"]),
+  ], { baseDefinition: CORE + "Patient", derivation: "constraint", version: "3.1" });
+  const m = errs(await run({ resourceType: "Patient" }, [P])).map(([, x]) => x);
+  assert.ok(m.includes(`Patient.birthDate: minimum required = 1, but only found 0 (from ${P}|3.1)`), JSON.stringify(m));
+  // IG global profile
+  const ig = { resourceType: "ImplementationGuide", url: "http://example.org/ig", version: "1", global: [{ type: "Patient", profile: P }] };
+  const g = await new InstanceValidator(new Resolver()).validate({ resourceType: "Patient" }, { implementationGuides: [ig] });
+  assert.ok(g.some((i) => i.message === `Patient.birthDate: minimum required = 1, but only found 0 (from ${P}|3.1)`), JSON.stringify(g));
+  // assumeValidRestReferences: the type in an unresolved reference must be a target type
+  const r = await new InstanceValidator(new Resolver()).validate({ resourceType: "Patient", managingOrganization: { reference: "Patient/1" } }, { assumeValidRestReferences: true });
+  assert.ok(r.some((i) => i.message === "The type 'Patient' implied by the reference URL Patient/1 is not a valid Target for this element (must be one of [Organization])"), JSON.stringify(r));
+  // validateReference: an external target fetched and checked
+  class R3 extends Resolver {
+    async fetchReference(ref: string): Promise<Json | null> {
+      return ref === "Organization/o1" ? { resourceType: "Organization", id: "o1", name: 7 } : null;
+    }
+  }
+  const f = await new InstanceValidator(new R3()).validate({ resourceType: "Patient", managingOrganization: { reference: "Organization/o1" } }, { validateReference: "CHECK_VALID" });
+  assert.ok(!f.some((i) => i.severity === "error" && i.path === "Patient.managingOrganization" && /not found/.test(i.message)), JSON.stringify(f));
 });

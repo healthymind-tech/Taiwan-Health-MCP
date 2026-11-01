@@ -132,6 +132,7 @@ export async function executeRun(run: TestRun, base: { store: ResourceStore; ids
     }
     return loadJsonFile(p);
   };
+  const igs: Res[] = []; // loose ImplementationGuides (validator_cli: the loaded IGs, whose `global` profiles apply)
   for (const f of run.supporting) {
     const p = join(suite, f);
     if (!/\.(json|xml)$/i.test(f)) {
@@ -140,7 +141,10 @@ export async function executeRun(run: TestRun, base: { store: ResourceStore; ids
     }
     const res = await loadFile(p);
     if (!res) r.flags.push(`supporting-missing:${f}`);
-    else store.addResource(res, `supporting:${f}`);
+    else {
+      store.addResource(res, `supporting:${f}`);
+      if (res.resourceType === "ImplementationGuide") igs.push(res);
+    }
   }
   const profiles: string[] = [];
   if (run.profileSource && /^https?:\/\//i.test(run.profileSource)) {
@@ -156,6 +160,27 @@ export async function executeRun(run: TestRun, base: { store: ResourceStore; ids
     profiles.push(sd.url);
   }
   const resolver = new FileValidatorResolver(store);
+  // ValidationTests' fetcher for `validateReference` cases: `Type/id` → the suite file <id>.json / <id>.xml of that type
+  // (one object per reference, so reference cycles are recognised)
+  const fetched = new Map<string, Promise<Res | null>>();
+  resolver.fetchReference = (ref: string): Promise<Res | null> => {
+    let p = fetched.get(ref);
+    if (!p) {
+      p = (async () => {
+        const m = /^(?:.*\/)?([A-Z][A-Za-z]+)\/([A-Za-z0-9\-.]{1,64})$/.exec(ref);
+        if (!m) return null;
+        // the instance under validation is the same element (ResourceValidationTracker: a cycle back to it is valid)
+        if (resource && resource.resourceType === m[1] && resource.id === m[2]) return resource;
+        for (const f of [`${m[2]}.json`, `${m[2]}.xml`]) {
+          const res = await loadFile(join(suite, f));
+          if (res && res.resourceType === m[1] && res.id === m[2]) return res;
+        }
+        return null;
+      })();
+      fetched.set(ref, p);
+    }
+    return p;
+  };
   let actual: SimpleIssue[];
   const t0 = Date.now();
   const text = readFileSync(join(suite, run.file), "utf8");
@@ -187,7 +212,7 @@ export async function executeRun(run: TestRun, base: { store: ResourceStore; ids
       // ValidationTests runs with allowExamples = true unless the case says "examples": false (manifest: dr-example-org
       // / pat-example-extensions are the only R4 outputs with TYPE_SPECIFIC_CHECKS_DT_URL_EXAMPLE)
       const allowExamples = run.raw.examples !== false;
-      const opts = { profiles, languages, displayWarnings, allowExamples };
+      const opts = { profiles, languages, displayWarnings, allowExamples, assumeValidRestReferences: run.options.includes("assumeValidRestReferences"), bundleRules: bundleRulesOf(run.raw), implementationGuides: igs, validateReference: referencePolicyOf(run.raw) };
       const v = new InstanceValidator(resolver);
       const issues = isXml
         ? [...parseIssues, ...(await withTimeout(v.validate(resource!, { ...opts, format: "xml" }), timeoutMs))]
@@ -306,4 +331,18 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     console.error(e);
     process.exit(2);
   });
+}
+
+/** The manifest's `bundle-param` ({rule, profile}, or a list of them) — validator_cli `-bundle <rule> <profile>`. */
+function bundleRulesOf(raw: Record<string, any>): Array<{ rule: string; profile: string }> {
+  const v = raw["bundle-param"];
+  const list = Array.isArray(v) ? v : v ? [v] : [];
+  return list.filter((x: any) => x && typeof x.rule === "string" && typeof x.profile === "string").map((x: any) => ({ rule: x.rule, profile: x.profile }));
+}
+
+/** The manifest's `validateReference` (true = CHECK_VALID, or a ReferenceValidationPolicy name). */
+function referencePolicyOf(raw: Record<string, any>): "CHECK_EXISTS" | "CHECK_EXISTS_AND_TYPE" | "CHECK_VALID" | undefined {
+  const v = raw.validateReference;
+  if (v === true) return "CHECK_VALID";
+  return v === "CHECK_EXISTS" || v === "CHECK_EXISTS_AND_TYPE" || v === "CHECK_VALID" ? v : undefined;
 }
