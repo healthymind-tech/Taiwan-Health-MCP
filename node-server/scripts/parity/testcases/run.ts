@@ -51,6 +51,9 @@ export interface RunResult {
   flags: string[];
   missingPackages?: string[];
   snapshotless?: string[];
+  /** Differential-only profiles whose snapshot was generated (src/fhirSnapshotGenerator.ts) + its error messages. */
+  snapshotGenerated?: string[];
+  snapshotMessages?: string[];
   txLookups?: number;
   ms?: number;
   error?: string;
@@ -170,6 +173,12 @@ export async function executeRun(run: TestRun, base: { store: ResourceStore; ids
   if (resolver.snapshotless.size) {
     r.snapshotless = [...resolver.snapshotless];
     r.flags.push("no-snapshot");
+  }
+  if (resolver.snapshotGenerated.size) {
+    r.snapshotGenerated = [...resolver.snapshotGenerated];
+    r.flags.push("snapshot-generated");
+    const errs = resolver.snapshots.messages.filter((m) => m.level === "error");
+    if (errs.length) r.snapshotMessages = errs.slice(0, 10).map((m) => `${m.path}: ${m.message}`);
   }
   const exp = run.expectation!;
   r.expectedSource = exp.source;

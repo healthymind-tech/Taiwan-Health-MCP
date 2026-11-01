@@ -16,6 +16,7 @@
 import { findConcept, indexCodeSystem, valueSetContains, type CodeSystemIndex, type TerminologyDeps } from "../../../src/fhirCodeSystem.js";
 import { rankHl7Current } from "../../../src/fhirTerminology.js";
 import { judgeCodeSystemDisplay } from "../../../src/fhirValidationResolver.js";
+import { SnapshotGenerator } from "../../../src/fhirSnapshotGenerator.js";
 import { pickCanonicalVersion, splitCanonicalVersion, type CodeCheck, type ValidatorResolver } from "../../../src/fhirValidator.js";
 import { packageResources, type PackageRef, type Res } from "./packages.js";
 
@@ -105,8 +106,13 @@ export function txServedSystem(system: string): boolean {
 export class FileValidatorResolver implements ValidatorResolver {
   /** Lookups an offline run cannot decide the way validator_cli does (it asks tx.fhir.org). */
   txLookups = 0;
-  /** StructureDefinitions handed to the validator without a snapshot (the HL7 validator generates one). */
+  /** StructureDefinitions handed to the validator without a snapshot (generation failed; the HL7 validator generates one). */
   readonly snapshotless = new Set<string>();
+  /** Differential-only StructureDefinitions whose snapshot was generated (ContextUtilities.generateSnapshot). */
+  readonly snapshotGenerated = new Set<string>();
+  /** Snapshot generation (ProfileUtilities port) for differential-only definitions, as the HL7 context does on load. */
+  readonly snapshots = new SnapshotGenerator({ fetch: (u) => this.store.resolve("StructureDefinition", u) });
+  private generatedFor = new Map<object, Res | null>();
   private csIndex = new Map<string, CodeSystemIndex | null>();
 
   constructor(readonly store: ResourceStore) {}
@@ -131,7 +137,18 @@ export class FileValidatorResolver implements ValidatorResolver {
 
   async fetchStructureDefinition(url: string): Promise<Res | null> {
     const sd = this.store.resolve("StructureDefinition", url);
-    if (sd && !(sd.snapshot && Array.isArray(sd.snapshot.element) && sd.snapshot.element.length)) this.snapshotless.add(String(sd.url));
+    if (sd && !(sd.snapshot && Array.isArray(sd.snapshot.element) && sd.snapshot.element.length)) {
+      let gen = this.generatedFor.get(sd);
+      if (gen === undefined) {
+        gen = this.snapshots.ensure(sd);
+        this.generatedFor.set(sd, gen);
+      }
+      if (gen) {
+        this.snapshotGenerated.add(String(sd.url));
+        return gen;
+      }
+      this.snapshotless.add(String(sd.url));
+    }
     return sd;
   }
 
