@@ -43,7 +43,8 @@ const files = args.filter((a, i) => !a.startsWith("-") && !valued.has(args[i - 1
 const top = Number(opt("--top") ?? 30);
 
 const byId = new Map<string, Res>();
-for (const f of files) for (const r of (JSON.parse(readFileSync(f, "utf8")) as Res).results as Res[]) byId.set(String(r.id), r);
+// the same id can exist in several IGs (corpus ids are per IG): key by ig + id
+for (const f of files) for (const r of (JSON.parse(readFileSync(f, "utf8")) as Res).results as Res[]) byId.set(`${r.ig ?? ""}/${r.id}`, r);
 const items: Res[] = [...byId.values()];
 /** profile-typo, also inside a combo mutation ("profile-typo/…+…"): validator_cli fetched the typo'd profile online */
 const isNetwork = (it: Res): boolean => it.family === "profile-typo" || /(?:^|\+)profile-typo\//u.test(String(it.mutation ?? ""));
