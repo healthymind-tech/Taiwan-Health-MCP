@@ -45,7 +45,8 @@ const top = Number(opt("--top") ?? 30);
 const byId = new Map<string, Res>();
 for (const f of files) for (const r of (JSON.parse(readFileSync(f, "utf8")) as Res).results as Res[]) byId.set(String(r.id), r);
 const items: Res[] = [...byId.values()];
-const isNetwork = (it: Res): boolean => it.family === "profile-typo";
+/** profile-typo, also inside a combo mutation ("profile-typo/…+…"): validator_cli fetched the typo'd profile online */
+const isNetwork = (it: Res): boolean => it.family === "profile-typo" || /(?:^|\+)profile-typo\//u.test(String(it.mutation ?? ""));
 const isScalar = (it: Res): boolean => /meta-profile-scalar/u.test(String(it.mutation ?? ""));
 const isOfficialCrash = (it: Res): boolean => !!it.officialCrash || it.skip === "official-crash";
 const k = (e: ErrKey): string => `${e.path} | ${e.cls}`;
