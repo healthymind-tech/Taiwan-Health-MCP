@@ -1271,7 +1271,11 @@ export class InstanceValidator {
     // Results are cached with a root token so the same resource reached by
     // another route (e.g. through a reference) reports at its real location.
     return p.then((list) =>
-      list.map((i) => (i.path.startsWith(ROOT_TOKEN) ? { ...i, path: path + i.path.slice(ROOT_TOKEN.length) } : i)),
+      list.map((i) => {
+        // Messages that quote their location (parser-stage "(at …)" / "(key at …)") carry the token too.
+        const message = i.message.includes(ROOT_TOKEN) ? i.message.split(ROOT_TOKEN).join(path) : i.message;
+        return i.path.startsWith(ROOT_TOKEN) ? { ...i, path: path + i.path.slice(ROOT_TOKEN.length), message } : message === i.message ? i : { ...i, message };
+      }),
     );
   }
 

@@ -182,7 +182,8 @@ test("Unrecognized property inside an unknown extension's value and inside a pri
 test("like the HL7 parser, no descent into a wrong-shaped value (array for a single element) or a second choice value", async () => {
   const arr = await run(obs({ code: [{ coding: [{ system: "http://loinc.org", code: "1-8", slice: "x" }] }] }));
   // JsonParser.parseChildComplex (7.0.1): a single complex element given an array — "must be an Object, not an Array"
-  assert.ok(errs(arr).some((i) => /must be an Object, not an Array/.test(i.message)), JSON.stringify(errs(arr)));
+  assert.ok(errs(arr).some((i) => i.message === "The property code must be an Object, not an Array (at Observation.code)"), JSON.stringify(errs(arr)));
+  assert.ok(arr.every((i) => !i.message.includes("\u0001")), "no internal root token in messages");
   assert.deepEqual(unknownAt(arr), []);
   const two = await run(obs({ valueString: "a", valueQuantity: { value: 1, slice: "x" } }));
   assert.deepEqual(unknownAt(two), ["Observation: Unrecognized property 'valueQuantity'"]);
