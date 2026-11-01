@@ -9,8 +9,11 @@
  * enumerators). Markers reuse the v17.x vocabularies — grounding negation cues (NEG_CUES), observation-history cues
  * (OBS_HIST_CUES), the record checks' diagnosis-uncertainty cues (recordChecks/lexicon `cuesIn`) and clause-level
  * absence classes (`clausesOf`: pending result, undecided, not done, not obtained …) — plus the v17.4 stale-value cue
- * set (mirrors recordChecks/valueGrounding.ts RE_STALE, which is module-private). Prefix cues count only before the
- * quote (or inside it), postfix cues only after it (or inside it); stale cues anywhere in the clause.
+ * set (mirrors recordChecks/valueGrounding.ts RE_STALE, which is module-private). Cues are scoped (v20.1
+ * item 4): a prefix cue governs the fact value after it, a postfix cue the value before it, within a short reach and
+ * never across a field label (`X：` / `X:`); a cue inside a label, an abbreviation (Chart No., Lot No.) or a word
+ * (處方疑義) is no cue, and a cue mid-phrase in an unlocated value's quote ("DM without complications") qualifies
+ * another finding, not the fact.
  *
  * A marker the fact itself carries is not a reason to drop the fact: when the value / attribute states the negation,
  * the uncertainty or the old / stopped state (無, negative, provisional, 疑似, inactive …), the fact is ABOUT that
@@ -114,15 +117,25 @@ const STALE: Array<[RegExp, MarkerClass]> = [
 ];
 
 const LATIN = /[a-z0-9]/u;
-/** Characters between a negation cue and the quote within which the cue still governs it. */
+/** Characters between a negation cue and the value within which the cue still governs it. */
 const NEG_REACH = 10;
+/** Characters between an uncertainty / stale cue and the value within which the cue still governs it. */
+const CUE_REACH = 24;
 const NOT_NEG = /^(?:無法|無誤|無礙|未來|未滿)/u;
 /** NEG_CUES entries that rule an item out (not established) rather than negate it. */
 const RULE_OUT = new Set(["r/o", "rule out", "rule-out", "排除", "不考慮", "不支持", "ruled out"]);
+/** A field-label separator: a cue on the far side of one governs another field, never the fact's value. */
+const LABEL_SEP = /[:：]/u;
+/** Words that contain an uncertainty / negation character without being a cue (處方疑義, 疑問, 無疑). */
+const NOT_CUE_WORD = /疑義|疑問|質疑|無疑|疑慮|釋疑/u;
+/** Words before "no" that make it the abbreviation of "number" (Chart No., Lot No 123, ID No.). */
+const NUMBER_ABBR_BEFORE =
+  /(?:^|[^a-z])(?:chart|lot|id|adm|admission|bed|case|ref|reference|serial|room|order|tel|phone|account|claim|receipt|batch|item|seq|model|part|file|record|policy|member|patient|pt|mr|visit|reg|registration|license|licence|rx|doc|document|report|sample|specimen|tube|accession|ward|insurance)\.?\s*$/u;
 
 function occurrences(t: string, cue: string): number[] {
   const out: number[] = [];
   const c = cue.trimEnd() === cue ? cue : cue.trimEnd();
+  if (!c) return out;
   for (let i = t.indexOf(c); i >= 0; i = t.indexOf(c, i + 1)) {
     const j = i + c.length;
     if (LATIN.test(c[0]) && i > 0 && LATIN.test(t[i - 1])) continue;
@@ -132,9 +145,54 @@ function occurrences(t: string, cue: string): number[] {
   return out;
 }
 
+/** The cue at [i, j) of t is a word part, an abbreviation or a label word, not a cue (No. = number, 處方疑義, neg. as a value). */
+function notACue(t: string, i: number, j: number): boolean {
+  const cue = t.slice(i, j).trim();
+  if (NOT_CUE_WORD.test(t.slice(Math.max(0, i - 2), Math.min(t.length, j + 2)))) return true;
+  if (cue === "no") {
+    // "No." / "No:" / "No#" / "No 123": the abbreviation of number
+    if (/^\s*[.#:：]/u.test(t.slice(j)) || /^\s*[a-z]?\d/u.test(t.slice(j))) return true;
+    if (NUMBER_ABBR_BEFORE.test(t.slice(Math.max(0, i - 16), i))) return true;
+  }
+  return false;
+}
+
+/**
+ * Scope of a cue at [cs, ce) over the value at [vs, ve) of the clause text t (ISSUES_v20.1 item 4): a prefix cue
+ * governs only what follows it, a postfix cue only what precedes it, within `reach` characters, and never across a
+ * field label (`X：` / `X:`) — a cue in a label or in another field does not mark the fact. One exception: the cue IS
+ * the content of the field whose label is the value (`HbA1c：待補`). A cue inside an unlocated value's quote must open
+ * the quote's content ("no chest pain"); mid-phrase it qualifies another finding ("DM without complications").
+ */
+function governs(t: string, cs: number, ce: number, vs: number, ve: number, position: "prefix" | "postfix" | "any", reach: number, valueLocated: boolean): boolean {
+  if (notACue(t, cs, ce)) return false;
+  if (cs >= vs && ce <= ve) {
+    if (valueLocated) return true; // the value spells it: `own` decides
+    const afterLabel = t.slice(vs, cs).split(LABEL_SEP).pop() ?? "";
+    if (position === "postfix") return !/[\p{L}\p{N}]/u.test(t.slice(ce, ve).split(LABEL_SEP)[0] ?? "");
+    return !/[\p{L}\p{N}]/u.test(afterLabel);
+  }
+  if (ce <= vs) {
+    if (position === "postfix") return false;
+    const gap = t.slice(ce, vs);
+    if (LABEL_SEP.test(gap) || gap.length > reach) return false;
+    // `Label：無　value`: the cue is the content of another field, not a qualifier of the value
+    if (LABEL_SEP.test(t.slice(Math.max(0, cs - 2), cs)) && /^(?:　|\s{2,}|\t)/u.test(gap)) return false;
+    return true;
+  }
+  if (cs >= ve) {
+    if (position === "prefix") return false;
+    const gap = t.slice(ve, cs);
+    if (gap.length > reach) return false;
+    if (LABEL_SEP.test(gap)) return /^\s*[:：]\s*$/u.test(gap); // `HbA1c：待補`
+    return true;
+  }
+  return true; // straddles the value boundary
+}
+
 /** Words in the value / attribute that say the fact is about the marked state itself. */
 const REFLECTS: Record<MarkerClass, RegExp> = {
-  negated: /^(?:無|否|沒有|未|陰性|none|no|negative|denied|denies|absent|false|refuted|nkda|nka)$|否認|negative|absent|refuted|排除|ruled out|not present/iu,
+  negated: /^(?:無|否|沒有|未|陰性|none|no|neg\.?|\(-\)|negative|denied|denies|absent|false|refuted|nkda|nka)$|否認|negative|absent|refuted|排除|ruled out|not present/iu,
   unconfirmed: /疑似|可能|待排除|待確認|未確立|provisional|suspected|differential|unconfirmed|possible|probable|rule out|r\/o/iu,
   stale: /過去|曾|舊|前次|上次|先前|history|previous|prior|inactive|resolved|stopped|completed|已停用|停用|entered-in-error/iu,
   pending: /待補|待測|pending|unknown|未知|registered|preliminary|not-done|未做/iu,
@@ -149,45 +207,54 @@ export function clauseMarkers(source: string, hit: QuoteHit, value: string, attr
   const inside = nfkc(source.slice(hit.start, hit.end));
   const after = nfkc(source.slice(hit.end, cl.end));
   const clause = nfkc(source.slice(cl.start, cl.end)).trim();
-  const found: Marker[] = [];
-  const add = (cls: MarkerClass, cue: string): void => {
-    if (!found.some((m) => m.cls === cls && m.cue === cue)) found.push({ cls, cue: cue.trim() });
-  };
-  // negation (grounding NEG_CUES): a prefix cue — before the quote or inside it
-  // A cue governs only a short stretch before the quote (無法進食，體重 50 kg: 無 does not negate the weight), and
-  // 無法 / 無誤 / 未來 are not negations.
-  const near = (c: string): boolean =>
-    occurrences(before, c).some((i) => before.length - (i + c.length) <= NEG_REACH && !NOT_NEG.test(before.slice(i, i + c.length + 1))) ||
-    occurrences(inside, c).some((i) => !NOT_NEG.test(inside.slice(i, i + c.length + 1)));
-  for (const cue of NEG_CUES) {
-    const c = nfkc(cue);
-    if (RULE_OUT.has(c)) {
-      if (near(c)) add("unconfirmed", c);
-      continue;
-    }
-    if (near(c)) add("negated", c);
-  }
-  // diagnosis uncertainty (record checks cue table): prefix cues before / inside, postfix cues after / inside
   const whole = before + inside + after;
   const qs = before.length;
   const qe = before.length + inside.length;
+  // the value's span in the clause: where the quote spells it, else the whole quote
+  const v = nfkc(value).trim();
+  const vi = v ? inside.indexOf(v) : -1;
+  const located = vi >= 0;
+  const vs = located ? qs + vi : qs;
+  const ve = located ? vs + v.length : qe;
+  const found: Marker[] = [];
+  const add = (cls: MarkerClass, cue: string): void => {
+    if (!found.some((m) => m.cls === cls && m.cue === cue.trim())) found.push({ cls, cue: cue.trim() });
+  };
+  const scoped = (cue: string, position: "prefix" | "postfix" | "any", reach: number, guard?: RegExp): boolean =>
+    occurrences(whole, cue).some((i) => !(guard && guard.test(whole.slice(i, i + cue.length + 1))) && governs(whole, i, i + cue.length, vs, ve, position, reach, located));
+  // negation (grounding NEG_CUES), prefix cues: before the value within NEG_REACH (無法進食，體重 50 kg: 無 does not
+  // negate the weight), never across a label; 無法 / 無誤 / 未來 are not negations, "No." is the abbreviation of number.
+  for (const cue of NEG_CUES) {
+    const c = nfkc(cue).trimEnd();
+    if (c && scoped(c, "prefix", NEG_REACH, NOT_NEG)) add(RULE_OUT.has(c) ? "unconfirmed" : "negated", c);
+  }
+  // diagnosis uncertainty (record checks cue table): prefix cues before the value, postfix cues after it
   for (const h of cuesIn(whole)) {
     // both strengths (explicit r/o, 待排除 · vague 疑似, possible) leave the item not established
-    if (h.position === "prefix" ? h.start < qe : h.end > qs) add("unconfirmed", h.cue);
+    if (governs(whole, h.start, h.end, vs, ve, h.position, CUE_REACH, located)) add("unconfirmed", h.cue);
   }
-  // observation history / stale / pending / not applicable: anywhere in the clause
-  for (const cue of OBS_HIST_CUES) if (occurrences(whole, nfkc(cue)).length) add("stale", nfkc(cue));
+  // observation history / stale / pending / not applicable: on either side of the value, never across a label
+  for (const cue of OBS_HIST_CUES) if (scoped(nfkc(cue), "any", CUE_REACH)) add("stale", nfkc(cue));
   for (const [rx, cls] of STALE) {
-    const m = rx.exec(whole);
-    if (m) add(cls, m[0]);
+    const g = new RegExp(rx.source, rx.flags.includes("g") ? rx.flags : `${rx.flags}g`);
+    for (let m = g.exec(whole); m; m = g.exec(whole)) {
+      if (governs(whole, m.index, m.index + m[0].length, vs, ve, "any", CUE_REACH, located)) {
+        add(cls, m[0]);
+        break;
+      }
+    }
   }
-  // clause-level absence classes (pending result, undecided, not done, not obtained …)
+  // clause-level absence classes (pending result, undecided, not done, not obtained …): not when the predicate sits in
+  // another field of the clause
   for (const c of clausesOf(clause)) {
     if (!c.hit) continue;
+    const pred = c.hit.predicate.split(", ")[0];
+    const at = pred ? whole.indexOf(pred) : -1;
+    if (at >= 0 && !governs(whole, at, at + pred.length, vs, ve, "any", whole.length, located)) continue;
     const cls: MarkerClass = c.hit.cls === "not-done" ? "not-done" : c.hit.cls === "undecided" || c.hit.cls === "indistinguishable" ? "unconfirmed" : "pending";
     add(cls, c.hit.predicate);
   }
-  const own = [nfkc(value).trim(), nfkc(attribute).trim()].filter(Boolean);
+  const own = [v, nfkc(attribute).trim()].filter(Boolean);
   const markers = found.filter((m) => !own.some((o) => o.includes(m.cue) || REFLECTS[m.cls].test(o)));
   return { markers, clause };
 }

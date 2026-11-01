@@ -133,7 +133,7 @@ test("unit conversion: 0.5 g is covered by 500 mg; 38.5°C by 38.5 Cel", async (
   assert.equal(r.facts[1].status, "covered");
 });
 
-test("codes: by code, by display, by terminology synonym; CodeableConcept.text and narrative do not count", async () => {
+test("codes: by code, by display, by terminology synonym; the text of an uncoded concept and narrative do not count", async () => {
   const terminology: TerminologyNames = {
     version: () => "test",
     lookup: async (keys) => new Map(keys.filter((k) => k === "http://hl7.org/fhir/sid/icd-10-cm|I10").map((k) => [k, { found: true, names: ["Essential hypertension", "原發性高血壓"] }])),
@@ -141,9 +141,14 @@ test("codes: by code, by display, by terminology synonym; CodeableConcept.text a
   const byCode = await run([fact("診斷", "代碼", "I10", "高血壓")]);
   assert.equal(byCode.facts[0].status, "covered");
   assert.equal(byCode.facts[0].found_at![0].how, "code");
-  const noNames = await run([fact("診斷", "名稱", "高血壓", "高血壓")]);
-  assert.equal(noNames.facts[0].status, "missing", "CodeableConcept.text / narrative are not structured");
-  const withNames = await run([fact("診斷", "名稱", "高血壓", "高血壓")], { terminology });
+  // v20.1: CodeableConcept.text of a coded concept (I10 + text 高血壓) is the record wording of that concept
+  const codedText = await run([fact("診斷", "名稱", "高血壓", "高血壓")]);
+  assert.equal(codedText.facts[0].status, "covered");
+  assert.ok(codedText.facts[0].found_at!.some((f) => f.how === "coded concept text" && f.path === "Condition.code.text"));
+  // an uncoded concept's text (medicationCodeableConcept {text: Metformin}) is free text
+  const uncoded = await run([fact("用藥", "藥名", "Metformin", "Metformin 0.5 g")]);
+  assert.equal(uncoded.facts[0].status, "missing", "text of an uncoded CodeableConcept is not structured");
+  const withNames = await run([fact("診斷", "名稱", "原發性高血壓", "高血壓")], { terminology });
   assert.equal(withNames.facts[0].status, "covered");
   assert.equal(withNames.facts[0].found_at![0].how, "coding display / terminology name");
   const byDisplay = await run([fact("檢驗", "項目", "body temperature", "體溫")]);

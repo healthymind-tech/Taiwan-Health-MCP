@@ -488,7 +488,17 @@ export const TOOLS_VERSION: Record<string, string> = {
   //   not done → not_usable), value in a structured element of the fact's resource type under terminology equivalence
   //   (route codes, Timing, ROC dates, unit conversion, coding names) → covered | missing (+ found_elsewhere), and
   //   suggested_paths from the entry profile's authoring fields.
-  fhir_check_fact_coverage: "1.0.0",
+  // 1.1.0 (ISSUES_v20.1 item 4, agreement 86.3% → target ≥ 95%): HumanName.text / Address.text count whatever the name
+  //   parts (a name / address of text only), CodeableConcept.text of a coded concept counts, phrase elements
+  //   (DiagnosticReport.conclusion, valueString) contain the value, ContactPoint phone values compare by digits;
+  //   Quantity value and unit compared separately (record unit vs UCUM code AND human unit, unit-only facts); numbers and
+  //   dates only in elements of the class the attribute names (a dose never matches Dosage.sequence, count / rank /
+  //   Timing numbers and reference ranges are never the value → found-in-other-element); negation / uncertainty / stale
+  //   cues scoped to the value (prefix before it, postfix after it, never across a field label, never inside a label word
+  //   or the "No." abbreviation, mid-phrase "without complications" not a negation of the fact); suggested child paths no
+  //   longer double the parent (Practitioner.name.text, not name.name.text); encounter class / department coding
+  //   equivalences.
+  fhir_check_fact_coverage: "1.1.0",
   // 1.0.0 (ISSUES_v18 R4 + v20 R1, releaseCheck/): release gate — official validator 0 errors (else not-officially-verified),
   //   grounding + record checks 0 errors, complete fact coverage, completeness (targets → missing-target; without targets the
   //   Bundle profile's required entry slices and suspected-empty-bundle); release / next / reasons / per-check summaries.
