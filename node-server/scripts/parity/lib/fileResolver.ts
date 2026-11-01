@@ -17,6 +17,7 @@ import { indexCodeSystem, valueSetContains, type CodeSystemIndex, type Terminolo
 import { rankHl7Current } from "../../../src/fhirTerminology.js";
 import { judgeHeldCodeSystem, judgeSpecialSystem, serverSideSystem } from "../../../src/fhirValidationResolver.js";
 import { SnapshotGenerator } from "../../../src/fhirSnapshotGenerator.js";
+import { fixPackageResource } from "../../../src/fhirPackageHacker.js";
 import { pickCanonicalVersion, splitCanonicalVersion, type CodeCheck, type ValidatorResolver } from "../../../src/fhirValidator.js";
 import { packageResources, type PackageRef, type Res } from "./packages.js";
 
@@ -54,9 +55,11 @@ export class ResourceStore {
     this.packages.push(`${ref.id}#${ref.version}`);
     const fv = ref.fhirVersions[0] ?? null;
     for (const r of packageResources(ref)) {
-      this.put(r, { id: ref.id, version: ref.version, fhirVersion: fv }, false);
+      // PackageHackerRN.fixRegisteredResource on registration from a package (BaseWorkerContext:424); idempotent
+      this.put(fixPackageResource(r, ref.id), { id: ref.id, version: ref.version, fhirVersion: fv }, false);
       // Bundles of definitions (rare in packages) are unpacked
-      if (r.resourceType === "Bundle" && Array.isArray(r.entry)) for (const en of r.entry) if (en?.resource) this.put(en.resource, { id: ref.id, version: ref.version, fhirVersion: fv }, false);
+      if (r.resourceType === "Bundle" && Array.isArray(r.entry))
+        for (const en of r.entry) if (en?.resource) this.put(fixPackageResource(en.resource, ref.id), { id: ref.id, version: ref.version, fhirVersion: fv }, false);
     }
   }
 

@@ -250,7 +250,7 @@ export async function loadArtifactByCanonical(
   resourceType: string,
   url: string,
   pkg: PackageRow,
-  opts: { hl7Current?: boolean } = {},
+  opts: { hl7Current?: boolean; packageFix?: (json: Record<string, any>, packageId: string) => Record<string, any> } = {},
 ): Promise<Record<string, any> | null> {
   const [pids, pvers] = closureArrays(pkg);
   const canonical = url.split("|")[0];
@@ -270,12 +270,13 @@ export async function loadArtifactByCanonical(
       .map((r) => ({ ...r, json: jsonOf(r.raw_json) }))
       .filter((r) => r.json)
       .map((r) => ({ ...r, version: typeof r.json!.version === "string" ? (r.json!.version as string) : null }));
-    return rankHl7Current(canonical, parsed)[0]?.json ?? null;
+    const best = rankHl7Current(canonical, parsed)[0];
+    return best ? (opts.packageFix ? opts.packageFix(best.json!, best.package_id) : best.json!) : null;
   }
   const ranked = rankCandidates(canonical, cands);
   for (const r of ranked) {
     const json = jsonOf(r.raw_json);
-    if (json) return json;
+    if (json) return opts.packageFix ? opts.packageFix(json, r.package_id) : json;
   }
   return null;
 }

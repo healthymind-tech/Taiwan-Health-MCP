@@ -46,6 +46,7 @@ import {
 import { probeQueryFailures, query } from "./db.js";
 import { TtlMemo } from "./ttlMemo.js";
 import { generateSnapshotAsync } from "./fhirSnapshotGenerator.js";
+import { fixPackageResource } from "./fhirPackageHacker.js";
 import { logWarning } from "./logger.js";
 import { txCodeVerdict, type TxCodeVerdict } from "./txCodeTables.js";
 import { enumeratedCodes } from "./codeAcceptance.js";
@@ -468,6 +469,8 @@ export class DbValidatorResolver implements ValidatorResolver {
       const cands = ranked
         .map((r) => {
           const json = typeof r.raw_json === "string" ? safeJson(r.raw_json) : r.raw_json;
+          // PackageHackerRN.fixRegisteredResource runs when a package resource is registered (BaseWorkerContext:424)
+          if (json && typeof json === "object") fixPackageResource(json, r.package_id);
           return json && typeof json === "object" ? { json, version: typeof json.version === "string" ? json.version : null } : null;
         })
         .filter((c): c is { json: Record<string, any>; version: string | null } => c !== null);
@@ -485,7 +488,7 @@ export class DbValidatorResolver implements ValidatorResolver {
         ? await this.loadVersioned("StructureDefinition", canonical, version)
         : // Unversioned: the closure's "current" copy as HL7 picks it (highest
           // major.minor, e.g. the hl7.fhir.uv.extensions.r4 copy of a core extension).
-          await terminology.loadArtifactByCanonical("StructureDefinition", canonical, this.pkg, { hl7Current: true });
+          await terminology.loadArtifactByCanonical("StructureDefinition", canonical, this.pkg, { hl7Current: true, packageFix: fixPackageResource });
     // A differential-only definition gets its snapshot generated, as the HL7 context does when it loads one
     // (ContextUtilities.generateSnapshot → ProfileUtilities); a cycle or a failure leaves it as stored.
     if (sd && !(Array.isArray(sd.snapshot?.element) && sd.snapshot.element.length) && !snapshotInFlight.has(key)) {
