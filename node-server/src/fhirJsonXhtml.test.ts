@@ -149,6 +149,8 @@ const PATIENT2 = sd(CORE + "Patient", "Patient", "resource", [
   el("Patient", 0, "*"),
   el("Patient.meta", 0, "1", ["Meta"]),
   el("Patient.identifier", 0, "*", ["Identifier"]),
+  // validateContains (IV:7533) checks contained ids only for an element typed Resource
+  el("Patient.contained", 0, "*", ["Resource"]),
 ]);
 const IDENTIFIER = sd(CORE + "Identifier", "Identifier", "complex-type", [el("Identifier", 0, "*"), el("Identifier.system", 0, "1", ["uri"]), el("Identifier.value", 0, "1", ["string"])]);
 const META = sd(CORE + "Meta", "Meta", "complex-type", [el("Meta", 0, "*"), el("Meta.security", 0, "*", ["Coding"])]);
