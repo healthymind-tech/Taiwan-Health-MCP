@@ -3892,6 +3892,9 @@ export class InstanceValidator {
       const list: any[] = isObject(a) ? (Array.isArray(a.coding) ? a.coding : [a]) : [];
       for (const [system, code] of codingsOf(a)) {
         if (!code) continue;
+        // a Coding without a system is never valid in a value set (ValueSetValidator: Coding_has_no_system__cannot_validate);
+        // only a bare code (code / string / uri) infers its system
+        if (system === null && isObject(a)) continue;
         const m = await this.member(valueSet, system, code);
         if (m === true) {
           // FHIRPathEngine.opMemberOf (services, tag 7.0.1:2792): validateCode(…).isOk() — a wrong display (error) of
@@ -4677,6 +4680,8 @@ export class InstanceValidator {
       }
       return;
     }
+    // checkCodedElement (IV:2405, tag 7.0.1): a Coding is checked against its binding only with both system and code
+    if ((typeCode === "Coding" || typeCode === "Quantity") && codings[0][0] === null) return;
     if ((strength === "required" || strength === "extensible") && ["code", "string", "uri", "url", "canonical"].includes(typeCode)) {
       // REVIEW_port_2 G20 — ValueSetValidator.systemForCodeInValueSet (standalone, tag 7.0.1:1603): a bare code that
       // more than one include defines cannot be given a system (UNABLE_TO_RESOLVE_SYSTEM__VALUE_SET_HAS_MULTIPLE_MATCHES)
@@ -4732,6 +4737,12 @@ export class InstanceValidator {
       return;
     }
     const shown = codings.map(([s, c]) => (s ? `${s}#${c}` : c)).join(", ");
+    // InstanceValidator.describeReference(vsRef, valueset) / ccSummary (IV:5698 / 2368, tag 7.0.1)
+    const vsRef = `'${vs.title || vs.name || url}' (${vs.url}${vs.version ? `|${vs.version}` : ""})`;
+    const ccSummary = (typeCode === "CodeableConcept" && isObject(v) && Array.isArray(v.coding) ? v.coding : [])
+      .filter((c: any) => isObject(c))
+      .map((c: any) => `${typeof c.system === "string" ? c.system : "null"}#${typeof c.code === "string" ? c.code : "null"}`)
+      .join(", ");
     if (anyUnknown) {
       issues.push({
         severity: strength === "required" ? "warning" : "information",
@@ -4768,7 +4779,8 @@ export class InstanceValidator {
         code: "code-invalid",
         message:
           typeCode === "CodeableConcept"
-            ? `None of the codings provided are in the value set ${label}, and a coding from this value set is required (codes = ${shown})`
+            ? // Terminology_TX_NoValid_1_CC: describeReference (versioned url) + ccSummary (every coding as system#code)
+              `None of the codings provided are in the value set ${vsRef}, and a coding from this value set is required) (codes = ${ccSummary})`
             : `The value provided ('${shown}') was not found in the value set ${label}, and a code is required from this value set`,
       });
     } else {
@@ -4781,7 +4793,10 @@ export class InstanceValidator {
           severity: "warning",
           path: item.path,
           code: "code-invalid",
-          message: `None of the codings provided are in the value set ${label}, and a coding should come from this value set unless it has no suitable code (codes = ${shown})`,
+          message:
+            typeCode === "CodeableConcept"
+              ? `None of the codings provided are in the value set ${vsRef}, and a coding should come from this value set unless it has no suitable code (note that the validator cannot judge what is suitable) (codes = ${ccSummary})`
+              : `None of the codings provided are in the value set ${label}, and a coding should come from this value set unless it has no suitable code (codes = ${shown})`,
         });
       }
       if (maxUrl) await this.checkMaxValueSet(maxUrl, codings, typeCode, item, issues);
