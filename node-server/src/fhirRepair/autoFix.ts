@@ -28,9 +28,11 @@
  */
 
 import { entryOrderOf, type FinalizeChange, type FinalizeUnresolved } from "../fhirBundleFinalize.js";
+import { patchApplies, type JsonPatchOp } from "../jsonPatch.js";
 import { toPlain } from "../losslessJson.js";
 import { nameOf } from "./document.js";
 import { fitPrimitive } from "./shape.js";
+import { conflictCandidates, conflictMessage, isStatusElement, sameValue } from "./fixedGuard.js";
 import { bag, overlap } from "./displays.js";
 import type { ExpandedCoding, NormalizeCandidate, RepairChange, RepairIssue, RepairRule } from "./types.js";
 
@@ -328,6 +330,44 @@ export class EntryMap {
     }
     return tokensToPointer(toks);
   }
+
+  /** Content index → final index (the finalizer's document order). */
+  contentToFinal(i: number): number {
+    const k = this.order.indexOf(i);
+    return k >= 0 ? k : i;
+  }
+
+  /** A dotted path (content or final space) → RFC 6901 pointer into the RETURNED (finalized) Bundle `out`. */
+  outPointer(path: string, space: "content" | "final", out?: unknown): string {
+    const segs = pathSegments(path);
+    const toks: Array<string | number> = [];
+    let node: unknown = out;
+    for (let i = 0; i < segs.length; i++) {
+      const { key } = segs[i];
+      let index = segs[i].index;
+      if (i === 0 && key === "entry" && index !== null && space === "content") index = this.contentToFinal(index);
+      toks.push(key);
+      node = isObj(node) ? node[key] : undefined;
+      if (index !== null) {
+        toks.push(index);
+        node = Array.isArray(node) ? node[index] : undefined;
+      } else if (Array.isArray(node) && node.length === 1 && i < segs.length - 1) {
+        toks.push(0);
+        node = node[0];
+      }
+    }
+    return tokensToPointer(toks);
+  }
+}
+
+/** The pointer itself when it resolves in `doc`, else its nearest ancestor that does (exact = false). */
+export function nearestExisting(doc: unknown, ptr: string): { pointer: string; exact: boolean } {
+  const toks = pointerTokens(ptr);
+  for (let n = toks.length; n >= 0; n--) {
+    const p = tokensToPointer(toks.slice(0, n));
+    if (resolvePointer(doc, p).found) return { pointer: p, exact: n === toks.length };
+  }
+  return { pointer: "", exact: false };
 }
 
 // ------------------------------------------------------------------------------------------------ annotated changes
@@ -369,8 +409,11 @@ export function annotateChanges(contentChanges: RepairChange[], finChanges: Fina
       out.push({ ...c, pointer: `/entry/${s}`, moved_to: "/entry/0", before: { entry_index: s }, after: { entry_index: 0 }, category });
     } else out.push({ ...c, pointer: map.pointer(c.path, "final", sent), before: c.from ?? null, after: c.to ?? null, category });
   }
-  return out;
+  // release v1: never a no-op — the same value at the same place is no change
+  return out.filter((c) => !((c.moved_to === undefined || c.moved_to === c.pointer) && c.rule !== "document-order" && samePlain(c.before, c.after)));
 }
+
+const samePlain = (a: unknown, b: unknown): boolean => JSON.stringify(toPlain(a ?? null)) === JSON.stringify(toPlain(b ?? null));
 
 /** RFC 6902 ops that apply one change to the sent Bundle (null when it cannot be written against it). */
 export function changePatch(c: AnnotatedChange, sent: unknown): PatchOp[] | null {
@@ -581,10 +624,17 @@ export interface AmbiguousCandidate {
   description: string;
   /** RFC 6902 operations relative to the Bundle as sent (verified to apply). */
   patch?: PatchOp[];
+  /** The same fix as RFC 6902 operations on the RETURNED Bundle, when its paths / values differ (verified to apply). */
+  patch_out?: PatchOp[];
 }
 
 export interface AmbiguousItem {
+  /** RFC 6901 pointer into the Bundle as sent (resolves there). */
   pointer: string;
+  /** RFC 6901 pointer into the returned (finalized) Bundle, when it differs from `pointer` (resolves there). */
+  pointer_out?: string;
+  /** Set when a pointer had to name the nearest existing ancestor of the element (it does not exist in that Bundle). */
+  pointer_note?: string;
   message: string;
   category: R1Category | null;
   candidates: AmbiguousCandidate[];
@@ -631,44 +681,56 @@ export function buildAmbiguous(args: {
   unresolved: FinalizeUnresolved[];
   idMap: Record<string, string>;
   remaining: ValidatorIssue[];
+  /** The returned (finalized) Bundle: items gain pointer_out / patch_out into it (release v1). */
+  out?: unknown;
 }): AmbiguousItem[] {
   const out: AmbiguousItem[] = [];
   const seen = new Set<string>();
-  const push = (it: AmbiguousItem): void => {
+  /** Where each item is in the returned Bundle (dotted path + its space), and per candidate the out-side patch override. */
+  const where = new Map<AmbiguousItem, ItemSite>();
+  const push = (it: AmbiguousItem, path: string, space: "content" | "final", outPatches?: Map<AmbiguousCandidate, PatchOp[]>): void => {
     const k = `${it.pointer}\u0000${it.message}`;
     if (seen.has(k)) return;
     seen.add(k);
     out.push(it);
+    where.set(it, { path, space, outPatches });
   };
   for (const w of args.withdrawn) {
     const patch = changePatch(w.change, args.sent);
-    push({
-      pointer: w.change.pointer,
-      message: `not applied: ${w.change.reason ?? w.change.rule} — with it the Bundle has an error it does not have now (${w.error.slice(0, 200)})`,
-      category: w.change.category,
-      candidates: [{ description: "apply this change, then fix the error it exposes", ...(patch ? { patch } : {}) }, { description: "leave as written" }],
-    });
+    const fin = FINALIZER_RULES.has(w.change.rule);
+    const at = isMove(w.change) ? String((w.change.from as Json).path) : w.change.path;
+    push(
+      {
+        pointer: w.change.pointer,
+        message: `not applied: ${w.change.reason ?? w.change.rule} — with it the Bundle has an error it does not have now (${w.error.slice(0, 200)})`,
+        category: w.change.category,
+        candidates: [{ description: "apply this change, then fix the error it exposes", ...(patch ? { patch } : {}) }, { description: "leave as written" }],
+      },
+      at,
+      fin ? "final" : "content",
+    );
   }
   for (const i of args.repairIssues) {
     if (i.severity !== "error") continue;
     const pointer = args.map.pointer(i.path, "content", args.sent);
-    push({ pointer, message: i.message, category: changeCategory({ rule: i.rule, path: i.path }), candidates: issueCandidates(i, pointer, args.sent) });
+    push({ pointer, message: i.message, category: changeCategory({ rule: i.rule, path: i.path }), candidates: issueCandidates(i, pointer, args.sent) }, i.path, "content");
   }
   const back = new Map<string, string>();
   for (const [o, n] of Object.entries(args.idMap)) back.set(n, o);
   for (const u of args.unresolved) {
     const pointer = args.map.pointer(u.path, "final", args.sent);
     const target = resolvePointer(args.sent, pointer).found ? pointer : null;
-    push({
-      pointer,
-      message: `reference '${u.reference}': ${u.reason}`,
-      category: "ids_references",
-      candidates: u.candidates.slice(0, 6).map((f) => {
-        const sentUrl = back.get(f) ?? f;
-        const ops: PatchOp[] = [{ op: "replace", path: target ?? pointer, value: sentUrl }];
-        return { description: `point it at ${sentUrl}`, ...(target && applyPatch(args.sent, ops) !== null ? { patch: ops } : {}) };
-      }),
+    const outPtr = args.out !== undefined ? args.map.outPointer(u.path, "final", args.out) : null;
+    const outPatches = new Map<AmbiguousCandidate, PatchOp[]>();
+    const candidates = u.candidates.slice(0, 6).map((f) => {
+      const sentUrl = back.get(f) ?? f;
+      const ops: PatchOp[] = [{ op: "replace", path: target ?? pointer, value: sentUrl }];
+      const c: AmbiguousCandidate = { description: `point it at ${sentUrl}`, ...(target && applyPatch(args.sent, ops) !== null ? { patch: ops } : {}) };
+      // in the returned Bundle the entry has its finalized fullUrl
+      if (outPtr !== null) outPatches.set(c, [{ op: "replace", path: outPtr, value: f }]);
+      return c;
     });
+    push({ pointer, message: `reference '${u.reference}': ${u.reason}`, category: "ids_references", candidates }, u.path, "final", outPatches);
   }
   for (const e of errorsOf(args.remaining)) {
     const category = errorCategory(String(e.message));
@@ -677,9 +739,65 @@ export function buildAmbiguous(args: {
     // already covered: an item of the same category at / under the error's location (one of another category at the
     // same place — a withdrawn rename next to a value error — does not cover it)
     if (out.some((x) => x.category === category && (x.pointer === pointer || x.pointer.startsWith(`${pointer}/`)))) continue;
-    push({ pointer, message: `${String(e.message).slice(0, 400)} — more than one fix is possible (or the record must say which); not changed`, category, candidates: [] });
+    push({ pointer, message: `${String(e.message).slice(0, 400)} — more than one fix is possible (or the record must say which); not changed`, category, candidates: [] }, String(e.path ?? "Bundle"), "final");
   }
-  return out;
+  return out.map((it) => locateItem(it, where.get(it)!, args));
+}
+
+interface ItemSite {
+  path: string;
+  space: "content" | "final";
+  outPatches?: Map<AmbiguousCandidate, PatchOp[]>;
+}
+
+/** Changes of the id / document normaliser (their paths are in final space). */
+const FINALIZER_RULES = new Set<string>(["fullUrl-uuid", "reference-rewire", "resource-id", "bundle-type", "document-order"]);
+
+/** Rewrite the pointer prefix `from` → `to` in a patch's paths (null when an op is outside `from`). */
+function rebase(ops: PatchOp[], from: string, to: string): PatchOp[] | null {
+  const re = (p: string): string | null => (p === from || p.startsWith(`${from}/`) ? to + p.slice(from.length) : null);
+  const outOps: PatchOp[] = [];
+  for (const op of ops) {
+    const path = re(op.path);
+    const fromP = op.from !== undefined ? re(op.from) : undefined;
+    if (path === null || fromP === null) return null;
+    outOps.push({ ...op, path, ...(fromP !== undefined ? { from: fromP } : {}) });
+  }
+  return outOps;
+}
+
+/**
+ * Both pointers of an item resolve: `pointer` in the sent Bundle, `pointer_out` (when different) in the returned one —
+ * an element that does not exist there is named by its nearest existing ancestor (pointer_note says so). Candidate
+ * patches stay on the sent Bundle; `patch_out` is added when the returned Bundle needs other paths / values.
+ */
+function locateItem(it: AmbiguousItem, w: ItemSite, args: { sent: unknown; map: EntryMap; out?: unknown }): AmbiguousItem {
+  const notes: string[] = [];
+  const exactSent = it.pointer;
+  const s = nearestExisting(args.sent, exactSent);
+  if (!s.exact) notes.push(`${exactSent} does not exist in the sent Bundle: pointer names its nearest existing ancestor`);
+  let pointerOut: string | undefined;
+  let candidates = it.candidates;
+  if (args.out !== undefined) {
+    const exactOut = args.map.outPointer(w.path, w.space, args.out);
+    const o = nearestExisting(args.out, exactOut);
+    if (!o.exact) notes.push(`${exactOut} does not exist in the returned Bundle: pointer_out names its nearest existing ancestor`);
+    if (o.pointer !== s.pointer) pointerOut = o.pointer;
+    candidates = it.candidates.map((c) => {
+      const given = w.outPatches?.get(c);
+      const ops = given ?? (c.patch ? rebase(c.patch, exactSent, exactOut) : null);
+      if (!ops || (c.patch && JSON.stringify(ops) === JSON.stringify(c.patch)) || !patchApplies(args.out, ops as unknown as JsonPatchOp[])) return c;
+      return { ...c, patch_out: ops };
+    });
+  }
+  return {
+    pointer: s.pointer,
+    ...(pointerOut !== undefined ? { pointer_out: pointerOut } : {}),
+    ...(notes.length ? { pointer_note: notes.join("; ") } : {}),
+    message: it.message,
+    category: it.category,
+    candidates,
+  };
 }
 
 // ------------------------------------------------------------------------------------------------ validator-driven fixes
@@ -776,6 +894,20 @@ async function systemByDisplay(deps: AutoFixDeps, resource: Json, elPath: string
   if (hits.size !== 1) return null;
   const [[sys, vs]] = [...hits];
   return { system: sys, valueSet: vs };
+}
+
+const clonePlain = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
+
+/**
+ * A fixed / pattern value that is a complete value of its element (filled when the element is absent): a primitive,
+ * a Coding with system + code, a CodeableConcept whose codings all have system + code; else undefined.
+ */
+function filledValue(v: unknown): unknown {
+  if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") return v;
+  const coded = (c: unknown): boolean => isObj(c) && typeof c.system === "string" && typeof c.code === "string";
+  if (coded(v)) return v;
+  if (isObj(v) && Array.isArray(v.coding) && v.coding.length && v.coding.every(coded)) return v;
+  return undefined;
 }
 
 /** Properties a model wraps a plain string in. */
@@ -952,9 +1084,45 @@ export async function autoFixBundle(tree: Json, deps: AutoFixDeps, blocked: Read
       const key = def ? Object.keys(def).find((k) => /^(fixed|pattern)[A-Z]/u.test(k)) : undefined;
       const value = key !== undefined ? def![key] : fixedText;
       if (value === null || typeof value === "object" || String(value) !== fixedText) continue;
-      loc.holder[loc.key] = value;
       done.add(path);
-      changes.push({ path, from: was, to: value, rule: "fixed-value", reason: `the profile fixes ${id} to '${fixedText}' (${profile.split("|")[0]})` });
+      // release v1: an existing value that differs from the fixed one is the record's — never overwritten; only the
+      // same value in another representation (whitespace, a URI alias of the same system) is rewritten
+      if (!sameValue(was, value)) {
+        const status = isStatusElement(loc.key, def);
+        issues.push({
+          path,
+          rule: "fixed-value",
+          code: status ? "fixed-status-conflict" : "fixed-value-conflict",
+          severity: "error",
+          message: conflictMessage({ path, written: was, required: value, where: `the profile (${profile.split("|")[0]}#${id})`, status }),
+          candidates: conflictCandidates(value, status),
+        });
+        continue;
+      }
+      loc.holder[loc.key] = value;
+      changes.push({ path, from: was, to: value, rule: "fixed-value", reason: `the profile fixes ${id} to '${fixedText}' (${profile.split("|")[0]}); '${was}' is the same value written differently` });
+      continue;
+    }
+    // ---- a required element the profile fixes / patterns, absent → filled with that value (release v1: a MISSING
+    // fixed value may be filled; an existing one is never overwritten)
+    m = /^([A-Z][A-Za-z]+(?:\.[a-z][A-Za-z]*)+): minimum required = \d+, but only found 0 \(from (\S+?)\)$/u.exec(msg);
+    if (m && !/\.section\.text$/u.test(m[1])) {
+      const [, elPath, profile] = m;
+      const holderLoc = path === "Bundle" ? { value: tree } : locate(tree, path);
+      const holder = holderLoc && isObj(holderLoc.value) ? holderLoc.value : null;
+      const at = resourceAt(tree, path);
+      const name = elPath.slice(elPath.lastIndexOf(".") + 1);
+      if (!holder || !at || holder[name] !== undefined || holder[`_${name}`] !== undefined) continue;
+      if (elementPath(String(at.resource.resourceType), at.rel) !== elPath.slice(0, elPath.lastIndexOf("."))) continue;
+      const def = ((await sd(profile))?.snapshot?.element as Json[] | undefined)?.find((x) => x.path === elPath && !String(x.id ?? "").includes(":"));
+      const key = def ? Object.keys(def).find((k) => /^(fixed|pattern)[A-Z]/u.test(k)) : undefined;
+      if (!def || key === undefined) continue;
+      const value = def[key];
+      const filled = filledValue(value);
+      if (filled === undefined || !allow("fixed-value", `${path}.${name}`)) continue;
+      const one = clonePlain(filled);
+      holder[name] = String(def.max ?? "1") === "1" ? one : [one];
+      changes.push({ path: `${path}.${name}`, from: null, to: holder[name], rule: "fixed-value", reason: `${elPath} is required and absent; the profile ${key.startsWith("fixed") ? "fixes" : "patterns"} it to ${JSON.stringify(value)} (${profile.split("|")[0]}): filled` });
       continue;
     }
     // ---- display of a code the profile pins

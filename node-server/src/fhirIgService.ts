@@ -2529,6 +2529,8 @@ export class FHIRIGService {
       unresolved: fin.unresolved,
       idMap: fin.id_map,
       remaining: guard.after,
+      // release v1: pointer_out / patch_out into the returned Bundle
+      out: fin.bundle,
     });
     const data: Record<string, any> = {
       bundle: losslessFinalizedBundle(fin.bundle, fin.changes, content ? content.lossless : opts.lossless) ?? fin.bundle,

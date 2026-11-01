@@ -223,6 +223,24 @@ test("form: document Bundle — Composition first, sections with their codes, se
   assert.ok(!warnings.some((w) => /not reachable/.test(w)), warnings.join("; "));
 });
 
+test("form: a Bundle without required slices and without `entries` has no `entry: []` (an empty array is invalid) and a note to pass entries", async () => {
+  const open = bundle("Bundle-open", "collection", [entrySlice("lab", 0, "*", "Observation", B + "Obs-lab")], "open");
+  const { data } = await bundleForm({ bundle_profile: "Bundle-open" }, fakeDeps([open, ...ALL]));
+  const b = data.bundle as R;
+  assert.ok(!("entry" in b), JSON.stringify(b));
+  assert.ok((data.notes as string[]).some((n) => /pass `entries`/.test(n)), JSON.stringify(data.notes));
+  const empty: string[] = [];
+  const walk = (n: unknown, p: string): void => {
+    if (Array.isArray(n)) {
+      if (!n.length) empty.push(p);
+      n.forEach((x, i) => walk(x, `${p}/${i}`));
+    } else if (n && typeof n === "object") for (const [k, v] of Object.entries(n)) walk(v, `${p}/${k}`);
+  };
+  walk(b, "");
+  assert.deepEqual(empty, [], "no empty array anywhere in the form's Bundle");
+  checkPlaceholders(data);
+});
+
 test("form: errors — not a Bundle profile, empty bundle_profile", async () => {
   await assert.rejects(bundleForm({ bundle_profile: "Pat" }, fakeDeps([pat])), /not a Bundle profile/);
   await assert.rejects(bundleForm({ bundle_profile: "" }, fakeDeps([pat])), /bundle_profile is required/);

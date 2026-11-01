@@ -239,11 +239,12 @@ export async function repairShapes(
     if (typeof site.value === "string" && site.type && !PRIMITIVES.has(site.type)) {
       const coerced = await stringAsComplex(session, site.type, site.value);
       if (coerced) {
-        const from = site.holder[site.key];
+        // release v1: an item of an array reports that item (was: the whole live array, the same before and after)
+        const from = site.index === null ? site.holder[site.key] : site.value;
         setValue(site, coerced);
         if (site.index === null && repeats(core) && !Array.isArray(site.holder[site.key])) site.holder[site.key] = [site.holder[site.key]];
         changes.push({
-          path: rp(site.index === null ? keyPath : site.path), from, to: site.holder[site.key], rule: "shape",
+          path: rp(site.index === null ? keyPath : site.path), from, to: site.index === null ? site.holder[site.key] : (site.holder[site.key] as unknown[])[site.index], rule: "shape",
           reason: `${keyPath.split(".").pop()} is a ${site.type}, not a string: the text was written as its ${site.type === "Narrative" ? "generated XHTML div (status generated, XHTML namespace)" : "text"}${site.index === null && repeats(core) ? " (in an array: it repeats)" : ""}`,
         });
         touched.push(keyPath);

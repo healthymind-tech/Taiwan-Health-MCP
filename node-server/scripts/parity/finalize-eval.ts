@@ -15,7 +15,7 @@ import { appendFileSync, existsSync, readdirSync, readFileSync, rmSync, writeFil
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { isContentCheck } from "./classify.js";
-import { errorCategory, errorKey, R1_CATEGORIES } from "../../src/fhirRepair/autoFix.js";
+import { applyPatch, errorCategory, errorKey, R1_CATEGORIES, resolvePointer } from "../../src/fhirRepair/autoFix.js";
 
 type Json = Record<string, any>;
 const args = process.argv.slice(2);
@@ -64,8 +64,18 @@ async function worker(out: string, start: number, count: number): Promise<void> 
       ok: !!fin.ok,
       before: before.map((i) => ({ path: i.path, message: i.message })),
       after: after.map((i) => ({ path: i.path, message: i.message })),
-      changes: (fin.data?.changes ?? []).map((c: Json) => ({ category: c.category, rule: c.rule, pointer: c.pointer })),
-      ambiguous: (fin.data?.ambiguous ?? []).map((a: Json) => ({ pointer: a.pointer, category: a.category, candidates: (a.candidates ?? []).length, patches: (a.candidates ?? []).filter((c: Json) => c.patch).length, message: String(a.message).slice(0, 160) })),
+      changes: (fin.data?.changes ?? []).map((c: Json) => ({ category: c.category, rule: c.rule, pointer: c.pointer, moved_to: c.moved_to, before: c.before, after: c.after, reason: String(c.reason ?? "").slice(0, 200) })),
+      ambiguous: (fin.data?.ambiguous ?? []).map((a: Json) => ({
+        pointer: a.pointer,
+        pointer_out: a.pointer_out,
+        resolves: resolvePointer(bundle, a.pointer).found,
+        resolves_out: fin.ok ? resolvePointer(fin.data.bundle, a.pointer_out ?? a.pointer).found : null,
+        patches_out_ok: fin.ok ? (a.candidates ?? []).filter((c: Json) => c.patch_out).every((c: Json) => applyPatch(fin.data.bundle, c.patch_out) !== null) : null,
+        category: a.category,
+        candidates: (a.candidates ?? []).length,
+        patches: (a.candidates ?? []).filter((c: Json) => c.patch).length,
+        message: String(a.message).slice(0, 160),
+      })),
     };
     appendFileSync(out, JSON.stringify(row) + "\n");
     process.stderr.write(`${n} ${before.length} → ${after.length} (${row.ms} ms)\n`);
@@ -107,6 +117,19 @@ function report(rows: Json[]): number {
     ambPatched += r.ambiguous.filter((a: Json) => a.patches > 0).length;
     if (!r.before.length) zeroB++;
     if (!r.after.length) zeroA++;
+  }
+  // v19 release: no-op changes, existing values a fixed / pattern change overwrote, ambiguous pointers that do not resolve
+  const same = (a: unknown, b: unknown): boolean => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+  const all = rows.flatMap((r) => r.changes.map((c: Json) => ({ ...c, bundle: r.name })));
+  const noops = all.filter((c) => (c.moved_to === undefined || c.moved_to === c.pointer) && same(c.before, c.after));
+  const overwrites = all.filter((c) => (c.category === "fixed_pattern" || /\b(?:fixe[sd]|pattern)\b/u.test(c.reason)) && c.before !== null && c.after !== null && c.moved_to === undefined && !same(c.before, c.after) && c.rule !== "bundle-type");
+  const bundleType = all.filter((c) => c.rule === "bundle-type" && c.before !== null);
+  const ambs = rows.flatMap((r) => r.ambiguous.map((a: Json) => ({ ...a, bundle: r.name })));
+  console.log(`changes ${all.length}; no-op ${noops.length}; fixed/pattern overwrites of an existing value ${overwrites.length}; Bundle.type set over an existing type ${bundleType.length}`);
+  console.log(`ambiguous ${ambs.length}: pointer unresolved ${ambs.filter((a) => !a.resolves).length}; pointer_out ${ambs.filter((a) => a.pointer_out !== undefined).length} (unresolved in the result ${ambs.filter((a) => a.resolves_out === false).length}); patch_out not applicable ${ambs.filter((a) => a.patches_out_ok === false).length}`);
+  if (verbose || noops.length || overwrites.length) {
+    for (const c of [...noops, ...overwrites].slice(0, 30)) console.log(`  ${noops.includes(c) ? "no-op" : "overwrite"} ${c.bundle} ${c.rule} ${c.pointer} ${JSON.stringify(c.before).slice(0, 80)} → ${JSON.stringify(c.after).slice(0, 80)} | ${c.reason.slice(0, 120)}`);
+    for (const a of ambs.filter((x) => !x.resolves || x.resolves_out === false).slice(0, 20)) console.log(`  unresolved ${a.bundle} ${a.pointer} / ${a.pointer_out ?? "-"} | ${a.message.slice(0, 100)}`);
   }
   const sum = (k: "before" | "after" | "added"): number => cats.reduce((s, c) => s + tot[c][k], 0);
   console.log(`bundles ${rows.length}; structural errors ${sum("before")} → ${sum("after")} (${(100 * (1 - sum("after") / Math.max(1, sum("before")))).toFixed(1)}% fewer); ADDED ${sum("added")}; 0-error bundles ${zeroB} → ${zeroA}; ambiguous items ${amb} (${ambPatched} with a patch)`);

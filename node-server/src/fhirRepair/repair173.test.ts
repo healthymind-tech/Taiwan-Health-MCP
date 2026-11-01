@@ -37,6 +37,20 @@ test("a string for Dosage / Annotation / Narrative becomes the datatype's text /
   assert.deepEqual(r.text, { status: "generated", div: '<div xmlns="http://www.w3.org/1999/xhtml">Metformin &lt;500 mg&gt; BID</div>' });
 });
 
+test("release v1: a string ITEM of a Dosage array is reported as that item (string → {text}), never as a no-op of the whole array", { skip: !available("twcore") }, async () => {
+  const b = bundleOf({
+    resourceType: "MedicationRequest", status: "active", intent: "order", subject: subj, medicationCodeableConcept: { text: "Metformin" },
+    dosageInstruction: [{ text: "500 mg PO BID" }, "1 tab at bedtime"],
+  });
+  const r = await repairBundle(b, depsFor(), {});
+  assert.deepEqual(b.entry[1].resource.dosageInstruction, [{ text: "500 mg PO BID" }, { text: "1 tab at bedtime" }]);
+  const c = r.changes.find((x) => x.path === "Bundle.entry[1].resource.dosageInstruction[1]")!;
+  assert.ok(c, JSON.stringify(r.changes));
+  assert.equal(c.from, "1 tab at bedtime");
+  assert.deepEqual(c.to, { text: "1 tab at bedtime" });
+  for (const x of r.changes) assert.notDeepEqual(x.from, x.to, `no-op change ${JSON.stringify(x)}`);
+});
+
 test("a string note inside Dosage moves up to MedicationRequest.note as an Annotation", { skip: !available("twcore") }, async () => {
   const b = bundleOf({ resourceType: "MedicationRequest", status: "active", intent: "order", subject: subj, medicationCodeableConcept: { text: "Metformin" }, dosageInstruction: [{ text: "500 mg BID", note: "飯後服用" }] });
   await repairBundle(b, depsFor(), {});

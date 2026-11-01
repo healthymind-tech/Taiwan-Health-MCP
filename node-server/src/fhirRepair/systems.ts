@@ -570,7 +570,10 @@ export async function repairSystems(
       continue;
     }
     if (!outcome) continue;
-    changes.push({ path: rp(`${site.path}.system`), from: coding.system, to: outcome.system, rule: "system", reason: outcome.reason });
+    // release v1: never a no-op — a system that already is the outcome (a CodeSystem URL whose ValueSet twin was
+    // resolved) is no change, and its "is a ValueSet" reason would be wrong
+    if (outcome.system === coding.system && (!outcome.code || outcome.code === coding.code)) continue;
+    if (outcome.system !== coding.system) changes.push({ path: rp(`${site.path}.system`), from: coding.system, to: outcome.system, rule: "system", reason: outcome.reason });
     coding.system = outcome.system;
     if (outcome.code && outcome.code !== coding.code) {
       changes.push({ path: rp(`${site.path}.code`), from: coding.code, to: outcome.code, rule: "system", reason: outcome.reason });

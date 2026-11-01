@@ -246,8 +246,19 @@ test("R5: ValueSet URLs without /ValueSet/, ValueSet-named and renamed CodeSyste
   const rt = await repairResource(two, d);
   assert.equal(two.type[0].coding[0].system, THO + "clinical");
   assert.deepEqual(rt.changes, []);
+  // release v1: a CodeSystem URL resolved through its ValueSet twin back to itself is no change (no no-op, no wrong
+  // "is a ValueSet" reason)
+  const CS = EX + "CodeSystem/icd-x";
+  const self: El = { resourceType: "Observation", status: "final", code: { coding: [{ system: CS, code: "B18.1" }] } };
+  const ds = deps({
+    resolveSystem: async (url) => (url === CS ? { kind: "valueset", valueSet: EX + "ValueSet/icd-x" } : { kind: "other" }),
+    expandValueSet: async (url) => (url.split("|")[0] === EX + "ValueSet/icd-x" ? { codings: [{ system: CS, code: "B18.1", display: "x" }], total: 1, truncated: false } : null),
+  });
+  const rs = await repairResource(self, ds);
+  assert.equal(self.code.coding[0].system, CS);
+  assert.deepEqual(rs.changes.filter((c) => c.rule === "system"), []);
   // the code is not in the similarly named CodeSystem: not changed
-  const miss: El = { resourceType: "Encounter", status: "finished", class: { system: THO + "v3-ActCode", code: "AMB" }, type: [{ coding: [{ system: THO + "v3-AdmitSource", code: "zzz" }] }] };
+  const miss: El ={ resourceType: "Encounter", status: "finished", class: { system: THO + "v3-ActCode", code: "AMB" }, type: [{ coding: [{ system: THO + "v3-AdmitSource", code: "zzz" }] }] };
   assert.deepEqual((await repairResource(miss, deps())).changes, []);
 });
 
@@ -284,6 +295,16 @@ test("fixed-slice: a required coding slice the profile fully fixes is added; und
   assert.equal(r.changes[0].path, "Observation.code.coding[1]");
   const again = await repairResource(o, deps());
   assert.deepEqual(again.changes, [], "idempotent");
+});
+
+test("fixed-slice (release v1): a coding of the slice's system with ANOTHER code (no slice of the element takes it) is the record's concept — nothing added, reported", async () => {
+  const o = obs({ meta: { profile: [EX + "PulseOx"] }, code: { coding: [{ system: LOINC, code: "8310-5" }] } });
+  const r = await repairResource(o, deps());
+  assert.deepEqual(o.code.coding, [{ system: LOINC, code: "8310-5" }], "the record's code is never joined by a contradicting profile code");
+  assert.equal(r.changes.filter((c) => c.rule === "fixed-slice").length, 0);
+  const conflicts = r.issues.filter((i) => i.rule === "fixed-slice" && i.code === "fixed-value-conflict");
+  assert.equal(conflicts.length, 2, JSON.stringify(r.issues));
+  assert.ok(conflicts.every((i) => i.severity === "error" && /never overwritten/.test(i.message)));
 });
 
 test("Bundle envelope: missing resourceType, numbered entry keys, duplicate fullUrls, entry properties", async () => {

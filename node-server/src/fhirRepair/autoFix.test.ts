@@ -214,17 +214,31 @@ test("autoFixBundle: fixed value, display of a pinned code, profile-narrowed cho
     { severity: "error", path: "Bundle.entry[0].resource.section[0]", message: `Composition.section.text: minimum required = 1, but only found 0 (from ${C})` },
   ];
   const r = await autoFixBundle(tree, { fetchStructureDefinition: async (u) => sds[u.split("|")[0]] ?? null, validate: async () => issues });
-  assert.equal(tree.entry[1].resource.status, "final");
+  // release v1: an existing value that differs from the fixed one is never overwritten — reported instead
+  assert.equal(tree.entry[1].resource.status, "preliminary");
+  assert.equal(r.issues.length, 1);
+  assert.equal(r.issues[0].rule, "fixed-value");
+  assert.equal(r.issues[0].code, "fixed-status-conflict");
+  assert.match(r.issues[0].message, /never overwritten/u);
+  assert.match(r.issues[0].message, /insufficient_information/u);
   assert.equal(tree.entry[0].resource.type.coding[0].display, "Patient summary Document");
   assert.equal(tree.entry[2].resource.code.coding[0].display, "Other", "an unpinned code's display is not decided here");
   assert.deepEqual(tree.entry[2].resource.supportingInfo[0], { valueBoolean: true });
   assert.match(tree.entry[0].resource.section[0].text.div, /<li>Glucose<\/li>/u);
-  assert.deepEqual(r.changes.map((c) => c.rule).sort(), ["display", "document", "fixed-value", "shape"]);
+  assert.deepEqual(r.changes.map((c) => c.rule).sort(), ["display", "document", "shape"]);
+  // the same value written differently (surrounding whitespace) is a representation: rewritten
+  const t3: Json = clone({ ...tree, entry: [tree.entry[0], { ...tree.entry[1], resource: { ...tree.entry[1].resource, status: " final" } }] });
+  const fixedIssue: ValidatorIssue = { ...issues[0], message: `Value is ' final' but is fixed to 'final' in the profile ${P}|1.0#Observation.status` };
+  const r3 = await autoFixBundle(t3, { fetchStructureDefinition: async (u) => sds[u.split("|")[0]] ?? null, validate: async () => [fixedIssue] });
+  assert.equal(t3.entry[1].resource.status, "final");
+  assert.deepEqual(r3.changes.map((c) => [c.rule, c.from, c.to]), [["fixed-value", " final", "final"]]);
+  assert.equal(r3.issues.length, 0);
   // blocked → not applied
-  const t2: Json = clone({ ...tree, entry: [tree.entry[0], { ...tree.entry[1], resource: { ...tree.entry[1].resource, status: "preliminary" } }] });
-  const r2 = await autoFixBundle(t2, { fetchStructureDefinition: async (u) => sds[u.split("|")[0]] ?? null, validate: async () => [issues[0]] }, new Set(["fixed-value\u0000Bundle.entry[1].resource.status"]));
+  const t2: Json = clone(t3);
+  t2.entry[1].resource.status = " final";
+  const r2 = await autoFixBundle(t2, { fetchStructureDefinition: async (u) => sds[u.split("|")[0]] ?? null, validate: async () => [fixedIssue] }, new Set(["fixed-value\u0000Bundle.entry[1].resource.status"]));
   assert.equal(r2.changes.length, 0);
-  assert.equal(t2.entry[1].resource.status, "preliminary");
+  assert.equal(t2.entry[1].resource.status, " final");
 });
 
 // ---------------------------------------------------------------------------------------------- R4 core (package cache)

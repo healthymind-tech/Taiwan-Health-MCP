@@ -13,6 +13,7 @@
 
 import { decidedSliceMatch } from "../fhirAuthoring.js";
 import { fixedPattern } from "../fhirSnapshot.js";
+import { conflictCandidates, conflictMessage, sameValue } from "./fixedGuard.js";
 import type { RepairChange, RepairIssue } from "./types.js";
 import { baseMax, cloneTree, isObject, typeCodes, type Member, type Session, type Site } from "./walk.js";
 
@@ -114,6 +115,30 @@ export async function repairSlices(_session: Session, sites: Site[], rp: (p: str
             const elMax = grp.base && grp.base.max !== undefined ? String(grp.base.max) : max;
             if (elMax !== "*" && Number(elMax) <= items.length) continue;
             if (max === "1" && items.length) continue;
+            // release v1 (fixedGuard.ts): the codings of one CodeableConcept are one concept — an existing coding of
+            // the slice's system with another code is the record's concept, which the profile's code would contradict
+            // (a coding another slice of the element takes — pulse oximetry's second LOINC code — is no conflict)
+            if (grp.name === "coding" && typeof value.system === "string") {
+              const inSlice = (it: unknown): boolean => {
+                try {
+                  return grp.slices.some((o) => o !== slice && decidedSliceMatch(it, grp.name, String(o.id), m.view.E));
+                } catch {
+                  return true;
+                }
+              };
+              const other = items.find((it) => isObject(it) && typeof it.system === "string" && sameValue(it.system, value.system) && typeof it.code === "string" && it.code !== value.code && !inSlice(it)) as Record<string, any> | undefined;
+              if (other) {
+                issues.push({
+                  path: rp(elPath),
+                  rule: "fixed-slice",
+                  code: "fixed-value-conflict",
+                  severity: "error",
+                  message: conflictMessage({ path: rp(elPath), written: `${other.system}|${other.code}`, required: `${value.system}|${value.code}`, where: `slice '${slice.sliceName ?? String(slice.id).split(":").pop()}' of ${m.view.url}`, status: false }),
+                  candidates: conflictCandidates(`${value.system}|${value.code}`, false),
+                });
+                continue;
+              }
+            }
             const given = items.length;
             if (Array.isArray(raw)) raw.push(value);
             else if (raw === undefined) node[grp.name] = max === "1" ? value : [value];

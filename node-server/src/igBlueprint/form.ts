@@ -840,7 +840,10 @@ export async function bundleForm(req: FormRequest, deps: BlueprintDeps): Promise
   const ordered: R = { resourceType: "Bundle" };
   for (const k of ["meta", "identifier", "type", "timestamp"]) if (bundle[k] !== undefined) ordered[k] = bundle[k];
   for (const [k, v] of Object.entries(bundle)) if (!(k in ordered) && k !== "entry") ordered[k] = v;
-  ordered.entry = bundle.entry;
+  // release v1: an empty array is itself invalid FHIR (ele-1) — never in the form; no entries → no `entry`
+  if (bundleEntries.length) ordered.entry = bundle.entry;
+  else notes.push("the Bundle has no entries (its profile requires none and no `entries` were passed): `entry` is omitted — an empty array is not valid FHIR; pass `entries` (the resources the record holds) to get their entries in the form");
+  pruneEmptyArrays(ordered);
 
   const bySource: Record<string, number> = {};
   for (const p of placeholders) bySource[p.value_source] = (bySource[p.value_source] ?? 0) + 1;
@@ -905,6 +908,24 @@ export async function bundleForm(req: FormRequest, deps: BlueprintDeps): Promise
   };
   data.response_chars = measureResponse(data, warnings, prov);
   return { data, warnings, provenance: prov };
+}
+
+/**
+ * Remove every property whose value is an empty array (and an object property left empty by that), in place. Array
+ * items are never removed (placeholder pointers index them).
+ */
+export function pruneEmptyArrays(node: unknown): void {
+  if (Array.isArray(node)) {
+    for (const x of node) pruneEmptyArrays(x);
+    return;
+  }
+  if (!isObject(node)) return;
+  for (const [k, v] of Object.entries(node)) {
+    const had = isObject(v) ? Object.keys(v).length : 0;
+    pruneEmptyArrays(v);
+    if (Array.isArray(v) && !v.length) delete node[k];
+    else if (isObject(v) && had > 0 && !Object.keys(v).length) delete node[k];
+  }
 }
 
 export const _internal = { getAt, setAt, tokenLeaves, isSectionEntry };
