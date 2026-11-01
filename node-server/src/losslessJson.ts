@@ -70,10 +70,16 @@ export class RawJson {
 }
 
 const DUPLICATE_KEYS = new WeakMap<object, string[]>();
+const DUPLICATE_FIRST = new WeakMap<object, Map<string, unknown>>();
 
 /** Names an object of a parseLossless tree repeated in its source text (one entry per extra occurrence). */
 export function losslessDuplicateKeys(obj: object): string[] {
   return DUPLICATE_KEYS.get(obj) ?? [];
+}
+
+/** The FIRST value of each repeated name of a parseLossless object (the tree itself holds the last, as JSON.parse). */
+export function losslessDuplicateFirst(obj: object): ReadonlyMap<string, unknown> {
+  return DUPLICATE_FIRST.get(obj) ?? new Map();
 }
 
 export function isRawNumber(v: unknown): v is RawNumber {
@@ -230,6 +236,9 @@ class Parser {
         const d = DUPLICATE_KEYS.get(out);
         if (d) d.push(key);
         else DUPLICATE_KEYS.set(out, [key]);
+        let f = DUPLICATE_FIRST.get(out);
+        if (!f) DUPLICATE_FIRST.set(out, (f = new Map()));
+        if (!f.has(key)) f.set(key, out[key]);
       }
       if (key === "__proto__") Object.defineProperty(out, key, { value: v, writable: true, enumerable: true, configurable: true });
       else out[key] = v;

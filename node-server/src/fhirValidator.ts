@@ -44,7 +44,7 @@ import { XVER_SOURCE, xverDefinition, xverElementId, xverMatchingUrl, xverStatus
 import { hl7UrlMustResolve, uriResolutionExempt, urlResolveMessage, urnSyntaxIssue } from "./fhirUriRules.js";
 import { codingVersionIssue } from "./fhirExternalTerminology.js";
 import { codingVersionIssues } from "./fhirCsVersion.js";
-import { narrativeControlIssues, parseXhtml, validateXhtml, xhtmlHrefIssues } from "./fhirXhtml.js";
+import { languageXhtmlIssues, narrativeControlIssues, parseXhtml, textLinkIssues, validateXhtml, xhtmlHrefIssues } from "./fhirXhtml.js";
 import { duplicateKeys, numberText } from "./fhirJsonLiterals.js";
 import { dropUnprocessed, JsonSyntaxError, jsonSyntaxIssues, parseFhirJsonText, toPlain, type JObject } from "./fhirJsonParser.js";
 
@@ -309,6 +309,11 @@ export interface ValidateOptions {
    * target through ValidatorResolver.fetchReference and check that it exists / its type / that it is valid.
    */
   validateReference?: "CHECK_EXISTS" | "CHECK_EXISTS_AND_TYPE" | "CHECK_VALID";
+  /**
+   * InstanceValidatorParameters.htmlInMarkdownCheck (validator_cli -html-in-markdown; default "warning"): what an
+   * unescaped HTML tag in a markdown value is (TYPE_SPECIFIC_CHECKS_DT_MARKDOWN_HTML).
+   */
+  htmlInMarkdown?: "none" | "warning" | "error";
 }
 
 // validator_cli 7.0.1 wording: the invariant's source is appended (checkInvariant, "(defined in <source>)")
@@ -1467,6 +1472,8 @@ export class InstanceValidator {
   private allowExamples = false;
   /** ValidateOptions.displayWarnings of the running validation. */
   private displayWarnings = false;
+  /** ValidateOptions.htmlInMarkdown of the running validation. */
+  private htmlInMarkdown: "none" | "warning" | "error" = "warning";
 
   // ------------------------------------------------------------------ public
 
@@ -1483,6 +1490,7 @@ export class InstanceValidator {
     this.languages = langs.length ? langs : ["en"];
     this.allowExamples = opts.allowExamples === true;
     this.displayWarnings = opts.displayWarnings === true;
+    this.htmlInMarkdown = opts.htmlInMarkdown ?? "warning";
     this.workingLang = null;
     this.boundValueSets = new Set();
     this.pendingVsSystems = false;
@@ -2374,6 +2382,10 @@ export class InstanceValidator {
       issues.push({ severity: "error", path, code: "structure", message: `Unknown resource type '${rt}'` });
       return;
     }
+    // (parity v3) InstanceValidator.validateResourceRules: Language_XHTML_* warnings (resource language vs text.div)
+    if (typeof resource.language === "string" && isObject(resource.text)) {
+      for (const x of languageXhtmlIssues(resource.language, resource.text.div)) issues.push({ severity: x.severity, path, code: "business-rule", message: x.message });
+    }
     // (parity v3, F18) InstanceValidator.validateResourceRules: security labels are a set (system#code); (sic) Java
     // reports at `.meta.profile[i]`
     if (isObject(resource.meta) && Array.isArray(resource.meta.security)) {
@@ -3032,6 +3044,9 @@ export class InstanceValidator {
       // InstanceValidator.checkNarrative: narrative-source-control / narrative-language-control of the definition
       const lang = typeof rctx.resource?.language === "string" ? rctx.resource.language : null;
       for (const x of narrativeControlIssues(v, el, lang, sdx.url)) issues.push({ severity: x.severity, path: item.path, code: "business-rule", message: x.message });
+      // textLink extensions (TEXT_LINK_*): the Bundle the resource sits in (getElementBundle), when it is an entry
+      const inBundle = rctx.root !== rctx.resource && rctx.root?.resourceType === "Bundle" && Array.isArray(rctx.root.entry) && !rctx.container;
+      for (const x of textLinkIssues(v, rctx.resource, inBundle ? rctx.root.entry : null)) issues.push({ severity: x.severity, path: item.path, code: "structure", message: x.message });
     }
     if (typeCode === "Reference") await this.checkReference(el, v, item, rctx, issues, depth);
     await this.checkConstraints(sdx, el, item, typeCode, rctx, issues);
@@ -4538,6 +4553,19 @@ export class InstanceValidator {
         if (rule(s.length <= 1048576, "value is longer than permitted maximum length of 1 MB (1048576 bytes)")) ok = lengthOk() && ok;
         else ok = false;
       } else ok = false;
+    }
+    if (typeCode === "markdown" && this.htmlInMarkdown !== "none") {
+      // TYPE_SPECIFIC_CHECKS_DT_MARKDOWN_HTML: MarkDownProcessor.preProcess escapes the HTML-looking tags; the first
+      // changed position is quoted (two characters). (The ElementDefinition.comment-of-a-text.div exemption is not ported.)
+      const processed = s.replace(/(?<!\\)<(\/)?([A-Za-z][A-Za-z0-9-]*[\s>])/g, "\\<$1$2").replace(/<(!|\?)/g, "\\<$1");
+      if (processed !== s) {
+        let i = 0;
+        while (i < s.length && s.charAt(i) === processed.charAt(i)) i++;
+        const at = i < s.length - 1 ? s.slice(i, i + 2) : s;
+        const message = `The markdown contains content that appears to be an embedded HTML tag starting at '${at}'. This will (or SHOULD) be escaped by the presentation layer. The content should be checked to confirm that this is the desired behaviour`;
+        if (this.htmlInMarkdown === "error") ok = rule(false, message) && ok;
+        else warning(false, message);
+      }
     }
     if (typeCode === "dateTime") {
       let dok = (ok = rule(DATETIME_JAVA_RE.test(s), `Not a valid date/time format: '${s}'`) && ok);

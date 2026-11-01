@@ -472,7 +472,7 @@ export interface XhtmlIssue {
 const hasContent = (n: XNode): boolean =>
   n.type === "Text" ? n.content !== null && javaTrim(n.content).length > 0 : n.type === "Element" ? n.children.some(hasContent) : false;
 
-/** UrlUtil.checkValidUrl (the data: mime-type check of MimeTypeUtil is not ported: any mime type passes). */
+/** UrlUtil.checkValidUrl (with MimeTypeUtil.checkValidMimeType for data: URLs). */
 export function checkValidUrl(value: string | null | undefined): string | null {
   if (value === null || value === undefined) return null;
   if (value === "") return "URL is empty";
@@ -482,6 +482,13 @@ export function checkValidUrl(value: string | null | undefined): string | null {
     if (p.length < 2) return "No data found in data: URL";
     if (p.length > 2) return `Comma found in data portion of data URL: ${value}`;
     if (p[0].endsWith(";base64") && !/^[A-Za-z0-9+/\s]*={0,2}\s*$/.test(p[1])) return `The data should be valid base64 content for a data: URL: ${value}`;
+    let head = p[0];
+    if (head.startsWith(" ")) head = head.trim();
+    const mimetype = head.endsWith(";base64") ? head.slice(0, head.lastIndexOf(";")) : head;
+    // MimeTypeUtil.checkValidMimeType
+    if (mimetype.trim() !== "" && !/^(\w+|\*)\/([\w\-+]+|\*)((;\s*(\w+)=\s*(\S+))?)$/.test(mimetype)) {
+      return `The mimetype portion of the data: URL is not valid (Mime type invalid) in URL: ${value}`;
+    }
     return null;
   }
   const invalid = new Set<string>();
@@ -833,6 +840,122 @@ export function narrativeControlIssues(
         else add("error", langs.includes(rl), "XHTML_CONTROL_LANGS_REQUIRED_DEF", `The profile ${profile} requires a section in the narrative for the resource language (${rl}), but it was not found (found ${list})`);
       } else if (!langs.length) add("warning", false, "XHTML_CONTROL_LANGS_NONE2", `The profile ${profile} requires a section in the narrative for the language ${code}, but there is no sections`);
       else add("error", langs.includes(code), "XHTML_CONTROL_LANGS_REQUIRED_LANG", `The profile ${profile} requires a section in the narrative for the language '${code}', but it was not found (found ${list})`);
+    }
+  }
+  return out;
+}
+
+/**
+ * InstanceValidator.validateResourceRules, Language_XHTML_* warnings: a resource with a language whose text.div
+ * (or, when every content child is a language div, the first of them) carries no / another lang / xml:lang.
+ */
+export function languageXhtmlIssues(language: string | null, divSource: unknown): XhtmlIssue[] {
+  if (language === null || typeof divSource !== "string") return [];
+  const x = parseXhtml(divSource).div;
+  if (!x) return [];
+  const isLangDiv = (n: XNode): boolean => n.attributes.has("xml:lang");
+  let l = x.attributes.get("lang") ?? null;
+  let xl = x.attributes.get("xml:lang") ?? null;
+  if (l === null && xl === null && x.children.length > 0 && x.children.every((n) => isLangDiv(n) || !hasContent(n))) {
+    const ld = x.children.find(isLangDiv);
+    if (ld) {
+      l = ld.attributes.get("lang") ?? null;
+      xl = ld.attributes.get("xml:lang") ?? null;
+    }
+  }
+  const w = (id: string, message: string): XhtmlIssue => ({ severity: "warning", id, message });
+  const tail = "see https://www.w3.org/TR/i18n-html-tech-lang/#langvalues)";
+  if (l === null && xl === null) return [w("Language_XHTML_Lang_Missing1", `Resource has a language, but the XHTML does not have an lang or an xml:lang tag (needs both - ${tail}`)];
+  const out: XhtmlIssue[] = [];
+  if (l === null) out.push(w("Language_XHTML_Lang_Missing2", `Resource has a language, but the XHTML does not have a lang tag (needs both lang and xml:lang - ${tail}`));
+  else if (l !== language) out.push(w("Language_XHTML_Lang_Different1", `Resource has a language (${language}), and the XHTML has a lang (${l}), but they differ`));
+  if (xl === null) out.push(w("Language_XHTML_Lang_Missing3", `Resource has a language, but the XHTML does not have an xml:lang tag (needs both lang and xml:lang - ${tail}`));
+  else if (xl !== language && xl !== l) out.push(w("Language_XHTML_Lang_Different2", `Resource has a language (${language}), and the XHTML has an xml:lang (${xl}), but they differ`));
+  return out;
+}
+
+const EXT_TEXT_LINK ="http://hl7.org/fhir/StructureDefinition/textLink";
+
+/** Elements (objects) with `id` === fragment below `node` (BaseValidator.getFragmentMatches, ELEMENT_ID kind). */
+function elementIdMatches(node: unknown, fragment: string, out: unknown[], depth = 0): void {
+  if (depth > 60 || node === null || typeof node !== "object") return;
+  if (Array.isArray(node)) {
+    for (const x of node) elementIdMatches(x, fragment, out, depth + 1);
+    return;
+  }
+  const o = node as Record<string, unknown>;
+  if (depth > 0 && o.id === fragment) out.push(o);
+  for (const [k, v] of Object.entries(o)) if (k !== "id") elementIdMatches(v, fragment, out, depth + 1);
+}
+
+function divHasId(n: XNode, id: string): boolean {
+  if (n.attributes.get("id") === id) return true;
+  return n.children.some((c) => divHasId(c, id));
+}
+
+/**
+ * InstanceValidator.checkNarrative, textLink part (TEXT_LINK_*): `narrative` has textLink extensions; `resource` is
+ * the resource holding it; `bundleEntries` the entries of the Bundle it sits in (getElementBundle), or null.
+ * (sic) the "no div / no id / no data" rules test Narrative.display, which does not exist, so they always fire.
+ * The selector's FHIRPath syntax check (TEXT_LINK_SELECTOR_INVALID) is not ported.
+ */
+export function textLinkIssues(
+  narrative: Record<string, any>,
+  resource: Record<string, any>,
+  bundleEntries: Array<Record<string, any>> | null,
+): XhtmlIssue[] {
+  const exts = (Array.isArray(narrative.extension) ? narrative.extension : []).filter((e: any) => e?.url === EXT_TEXT_LINK);
+  if (!exts.length) return [];
+  const out: XhtmlIssue[] = [];
+  const err = (id: string, message: string): void => {
+    out.push({ severity: "error", id, message });
+  };
+  const div = typeof narrative.div === "string" ? parseXhtml(narrative.div).div : null;
+  if (!div) {
+    err("TEXT_LINK_NO_DIV", "A textLink extension was found, but there was no xhtml element present for that targets of the html references");
+    return out;
+  }
+  const sub = (ex: any, url: string): any[] => (Array.isArray(ex?.extension) ? ex.extension : []).filter((e: any) => e?.url === url);
+  const str = (e: any): string | null => {
+    if (!e) return null;
+    for (const [k, v] of Object.entries(e)) if (k.startsWith("value") && (typeof v === "string" || typeof v === "number" || typeof v === "boolean")) return String(v);
+    return null;
+  };
+  const entryResources = (bundleEntries ?? []).filter((e) => e && typeof e.resource === "object" && e.resource);
+  const fragmentMatches = (target: Record<string, any>, fragment: string, withBundle: boolean): number => {
+    const found: unknown[] = [];
+    elementIdMatches(target, fragment, found);
+    let n = found.length;
+    if (withBundle) for (const e of entryResources) if (e.resource.id === fragment) n++;
+    return n;
+  };
+  for (const ex of exts) {
+    for (const h of sub(ex, "htmlid")) {
+      const id = str(h);
+      if (id !== null && !divHasId(div, id)) err("TEXT_LINK_NO_ID", `The html id '${id}' was not found in the xhtml`);
+    }
+    const data = str(sub(ex, "data")[0]);
+    const notFound = (): void => err("TEXT_LINK_DATA_NOT_FOUND", `The target of the textLink data reference '${data}' was not found in the resource`);
+    const multiple = (): void => err("TEXT_LINK_DATA_MULTIPLE_MATCHES", `Multiple matching targets for the textLink data reference '${data}' were found in the resource`);
+    if (data === null) err("TEXT_LINK_NO_DATA", "No data element was found in the textLink extension");
+    else if (data.startsWith("#")) {
+      const n = fragmentMatches(resource, data.slice(1), bundleEntries !== null);
+      if (n === 0) notFound();
+      else if (n > 1) multiple();
+    } else {
+      const hash = data.indexOf("#");
+      const url = hash >= 0 ? data.slice(0, hash) : data;
+      const fragment = hash >= 0 ? data.slice(hash + 1) : null;
+      const matches = entryResources.filter((e) => `${e.resource.resourceType}/${e.resource.id}` === url || e.fullUrl === url).map((e) => e.resource);
+      if (!matches.length) notFound();
+      else {
+        if (matches.length > 1) multiple();
+        if (fragment !== null) {
+          const n = fragmentMatches(matches[0], fragment, false);
+          if (n === 0) notFound();
+          else if (n > 1) multiple();
+        }
+      }
     }
   }
   return out;

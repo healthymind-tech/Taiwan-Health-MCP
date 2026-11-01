@@ -10,7 +10,7 @@
  * Filled from a lossless tree (losslessJson.parseLossless of the request text: registerLosslessLiterals) or by the
  * raw-text reader (fhirJsonParser.toPlain).
  */
-import { isRawNumber, losslessDuplicateKeys } from "./losslessJson.js";
+import { isRawNumber, losslessDuplicateFirst, losslessDuplicateKeys, toPlain as losslessToPlain } from "./losslessJson.js";
 
 const NUMBERS = new WeakMap<object, Map<string, string>>();
 const DUPLICATES = new WeakMap<object, string[]>();
@@ -38,7 +38,8 @@ export function duplicateKeys(obj: unknown): string[] {
 
 /**
  * Walks the parsed tree and the lossless tree of the same text in parallel and records the number spellings and
- * duplicated names on the parsed containers. Shapes that differ are skipped (never throws).
+ * duplicated names on the parsed containers; a repeated name takes its FIRST value in the parsed tree (the tree is
+ * changed in place, as validator_cli's element model reads it). Shapes that differ are skipped (never throws).
  */
 export function registerLosslessLiterals(plain: unknown, lossless: unknown, depth = 0): void {
   if (depth > 200 || plain === null || typeof plain !== "object" || lossless === null || typeof lossless !== "object") return;
@@ -54,10 +55,19 @@ export function registerLosslessLiterals(plain: unknown, lossless: unknown, dept
   if (Array.isArray(lossless) || isRawNumber(lossless)) return;
   const lo = lossless as Record<string, unknown>;
   const dups = losslessDuplicateKeys(lo);
+  const firsts = losslessDuplicateFirst(lo);
   if (dups.length) setDuplicateKeys(plain, dups);
-  for (const [k, v] of Object.entries(plain as Record<string, unknown>)) {
+  const po = plain as Record<string, unknown>;
+  for (const [k, v0] of Object.entries(po)) {
     if (!Object.prototype.hasOwnProperty.call(lo, k)) continue;
-    const l = lo[k];
+    let v = v0;
+    let l = lo[k];
+    // JsonParser.getJsonPropertyByName binds the FIRST of repeated names (JSON.parse kept the last); resourceType is
+    // read with JsonObject.get (last wins) and stays as is
+    if (firsts.has(k) && k !== "resourceType" && k !== "__proto__") {
+      l = firsts.get(k);
+      po[k] = v = losslessToPlain(l);
+    }
     if (typeof v === "number" && isRawNumber(l)) setNumberText(plain, k, l.text, v);
     else registerLosslessLiterals(v, l, depth + 1);
   }

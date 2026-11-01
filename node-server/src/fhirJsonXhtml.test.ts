@@ -12,7 +12,7 @@ import { CORE, FakeResolver, el, sd } from "./fhirTestKit.test.js";
 import { jsonSyntaxIssues, parseFhirJsonText, JsonSyntaxError, toPlain } from "./fhirJsonParser.js";
 import { duplicateKeys, numberText, registerLosslessLiterals } from "./fhirJsonLiterals.js";
 import { parseLossless } from "./losslessJson.js";
-import { checkHtmlNames, javaHashSetOrder, narrativeControlIssues, parseXhtml, validateXhtml, xhtmlHrefIssues } from "./fhirXhtml.js";
+import { checkHtmlNames, checkValidUrl, javaHashSetOrder, languageXhtmlIssues, narrativeControlIssues, parseXhtml, textLinkIssues, validateXhtml, xhtmlHrefIssues } from "./fhirXhtml.js";
 
 const syntax = (text: string, allowComments = false): string[] => {
   const root = parseFhirJsonText(text);
@@ -95,6 +95,8 @@ test("F4: a number's source spelling is validated (1.0 is not an integer) — ra
   registerLosslessLiterals(plain, parseLossless(text));
   assert.equal(numberText(plain, "multipleBirthInteger"), "1.0");
   assert.deepEqual(duplicateKeys(plain), ["gender"]);
+  // the element model binds the first of repeated names (JSON.parse kept the last)
+  assert.equal(plain.gender, "male");
   assert.deepEqual(errs(await new InstanceValidator(new Resolver()).validate(plain)), [...expected, "Patient | The JSON property 'gender' is a duplicate and will be ignored"].sort());
   // without the side channel the parsed value is all the validator sees
   assert.deepEqual(errs(await new InstanceValidator(new Resolver()).validate(JSON.parse('{ "resourceType": "Patient", "multipleBirthInteger": 1.0 }'))), []);
@@ -188,4 +190,40 @@ test("DUPLICATE_ID / RESOURCE_DUPLICATE_CONTAINED_ID: ids unique per resource sc
     contained: [{ resourceType: "Patient", id: "c", identifier: [{ id: "x" }] }, { resourceType: "Patient", id: "c" }],
   });
   assert.deepEqual(errs(issues).filter((m) => /Duplicate/.test(m)), ["Patient.contained[1] | Duplicate ID for contained resource: c", "Patient.identifier[1] | Duplicate id value 'x'"]);
+});
+
+test("textLink (TEXT_LINK_*), Language_XHTML_*, data: URL mime types", () => {
+  const tl = (data: string | null, htmlid: string): Record<string, any> => ({
+    url: "http://hl7.org/fhir/StructureDefinition/textLink",
+    extension: [{ url: "htmlid", valueString: htmlid }, ...(data === null ? [] : [{ url: "data", valueUri: data }])],
+  });
+  const res = { resourceType: "Patient", name: [{ id: "n1", family: "x" }] };
+  const narr = (ext: Record<string, any>[]): Record<string, any> => ({ div: `<div ${NS}><p id="h1">x</p></div>`, extension: ext });
+  assert.deepEqual(textLinkIssues(narr([tl("#n1", "h1")]), res, null), []);
+  assert.deepEqual(textLinkIssues(narr([tl("#n2", "h2"), tl(null, "h1")]), res, null).map((i) => i.message), [
+    "The html id 'h2' was not found in the xhtml",
+    "The target of the textLink data reference '#n2' was not found in the resource",
+    "No data element was found in the textLink extension",
+  ]);
+  assert.deepEqual(languageXhtmlIssues("en", `<div ${NS} lang="de" xml:lang="de">x</div>`).map((i) => i.message), [
+    // (sic) Java: no Different2 when xml:lang equals lang
+    "Resource has a language (en), and the XHTML has a lang (de), but they differ",
+  ]);
+  assert.deepEqual(languageXhtmlIssues("en", `<div ${NS}><div lang="en" xml:lang="en">x</div></div>`), []);
+  assert.equal(checkValidUrl("data:text/plain;base64,SGk="), null);
+  assert.equal(checkValidUrl("data:bad mime;base64,SGk="), "The mimetype portion of the data: URL is not valid (Mime type invalid) in URL: data:bad mime;base64,SGk=");
+});
+
+test("markdown with an unescaped HTML tag: warning by default, error with htmlInMarkdown error (bad-markdown-no-html)", async () => {
+  const MD = sd(CORE + "Basic", "Basic", "resource", [el("Basic", 0, "*"), el("Basic.text2", 0, "1", ["markdown"])]);
+  class R extends FakeResolver {
+    override async fetchStructureDefinition(url: string): Promise<Record<string, any> | null> {
+      return url.split("|")[0] === CORE + "Basic" ? MD : super.fetchStructureDefinition(url);
+    }
+  }
+  const msg = "Basic.text2 | The markdown contains content that appears to be an embedded HTML tag starting at '<r'. This will (or SHOULD) be escaped by the presentation layer. The content should be checked to confirm that this is the desired behaviour";
+  const res = { resourceType: "Basic", text2: "a <rule> here" };
+  const w = (await new InstanceValidator(new R()).validate(res)).filter((i) => i.severity === "warning").map((i) => `${i.path} | ${i.message}`);
+  assert.ok(w.includes(msg), JSON.stringify(w));
+  assert.deepEqual(errs(await new InstanceValidator(new R()).validate(res, { htmlInMarkdown: "error" })), [msg]);
 });
