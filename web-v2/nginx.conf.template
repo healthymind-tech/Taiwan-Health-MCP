@@ -48,7 +48,11 @@ server {
     proxy_read_timeout 3600s;
   }
   location = /openapi.json { proxy_pass http://$backend; }
-  location /tools/         { proxy_pass http://$backend; }
+  # heavy tools (validate / finalize / release check) can run past the 60 s default on a cold terminology cache
+  location /tools/ {
+    proxy_pass http://$backend;
+    proxy_read_timeout 600s;
+  }
   location /fhir-client/   { proxy_pass http://$backend; }
   location /fhir-oauth/    { proxy_pass http://$backend; }
 
