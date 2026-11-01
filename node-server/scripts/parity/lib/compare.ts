@@ -18,6 +18,8 @@ export interface SimpleIssue {
   path: string;
   message: string;
   code?: string;
+  /** validator_cli's Java message id (I18nConstants), when the source names it. */
+  messageId?: string | null;
 }
 
 /** validator_cli expression → instance path: drops the `/*Type/id*\/` comments and a leading `$`/`Bundle` noise. */

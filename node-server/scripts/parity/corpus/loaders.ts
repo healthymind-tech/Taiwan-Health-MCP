@@ -8,7 +8,17 @@
  *               package "id#ver", profile?} — the parity v1 repro layout (scripts/parity/run.ts);
  *  - `dirs`:    <id>/ with instance.json (or *.instance.json) + outcome.json (an OperationOutcome or {issues}) +
  *               meta.json {package|packages, profile?};
- *  - `jsonl`:   *.jsonl lines {id, instance, package|packages, profile?, official: OperationOutcome | issue[]}.
+ *  - `jsonl`:   *.jsonl lines {id, instance, package|packages, profile?, official: OperationOutcome | issue[]};
+ *  - `evaluator`: the evaluator's differential corpus (~/ref/parity_corpus/<ig>/): manifest.jsonl rows {id, ig, package,
+ *               profile, kind, family, mutation, mutation_path, raw, status, …} + <id>.json (the file validator_cli
+ *               was given) + <id>.official.json {id, ig, package, profile, validator, tx, crash?, issues: [{severity,
+ *               code, message_id, expression[], location[], text, line, col, source}]}. `raw: true` marks a file
+ *               that is NOT valid JSON (family raw-json: comments, NaN, trailing commas, BOM, duplicate keys …):
+ *               validator_cli parsed the bytes with its own lenient JSON parser, while an MCP tool only ever receives
+ *               a JSON value (z.record) from the JSON-RPC request. So a raw file reaches the TS validator only when a
+ *               client could have sent it: JSON.parse of the text (a leading BOM — an encoding mark, not content — is
+ *               stripped first); otherwise the item is `unparseable` (instance null) and reported apart.
+ *               A directory of IG sub-directories (~/ref/parity_corpus itself) loads every IG.
  */
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -17,7 +27,8 @@ import type { Res } from "../lib/packages.js";
 
 export interface CorpusItem {
   id: string;
-  instance: Res;
+  /** The instance as the MCP tool would receive it; null when the item cannot be expressed as JSON (raw unparseable). */
+  instance: Res | null;
   /** Packages to load (id#version), the IG first. */
   packages: string[];
   /** Profile validated against (validator_cli -profile), or null. */
@@ -25,6 +36,12 @@ export interface CorpusItem {
   official: SimpleIssue[];
   /** Free-form source info (file names), for reports. */
   source: string;
+  /** evaluator layout: the manifest row (ig, kind, family, mutation, mutation_path, raw, …). */
+  meta?: Res;
+  /** evaluator layout: validator_cli crashed on this item (no official issues) — excluded from the metrics. */
+  officialCrash?: boolean;
+  /** evaluator layout, raw items: how the file text became the instance (see the evaluator loader). */
+  raw?: { parse: "json" | "bom-stripped" | "unparseable"; error?: string };
 }
 
 export interface CorpusLoader {
@@ -112,7 +129,69 @@ const jsonl: CorpusLoader = {
   },
 };
 
-export const LOADERS: CorpusLoader[] = [repro, dirs, jsonl];
+/** One evaluator official issue → SimpleIssue (expression[0], else location[0]; message_id kept). */
+function evaluatorIssue(i: Res): SimpleIssue {
+  const path = (Array.isArray(i.expression) && i.expression[0]) || (Array.isArray(i.location) && i.location[0]) || "";
+  return { severity: String(i.severity ?? "").toLowerCase(), path: String(path), message: String(i.text ?? ""), code: i.code, messageId: i.message_id ?? null };
+}
+
+function* evaluatorDir(dir: string): Generator<CorpusItem> {
+  for (const line of readFileSync(join(dir, "manifest.jsonl"), "utf8").split("\n")) {
+    if (!line.trim()) continue;
+    const m = JSON.parse(line) as Res;
+    const id = String(m.id);
+    const off = readJson(join(dir, `${id}.official.json`));
+    const instPath = join(dir, `${id}.json`);
+    if (!off || !existsSync(instPath)) continue;
+    let instance: Res | null = null;
+    let raw: CorpusItem["raw"];
+    const text = readFileSync(instPath, "utf8");
+    try {
+      instance = JSON.parse(text) as Res;
+      if (m.raw) raw = { parse: "json" };
+    } catch (e) {
+      if (text.startsWith("\uFEFF")) {
+        try {
+          instance = JSON.parse(text.slice(1)) as Res;
+          raw = { parse: "bom-stripped" };
+        } catch (e2) {
+          raw = { parse: "unparseable", error: String((e2 as Error).message) };
+        }
+      } else raw = { parse: "unparseable", error: String((e as Error).message) };
+    }
+    // a parsed non-object (array root, number …) cannot be a tool argument (z.record) either
+    if (instance !== null && (typeof instance !== "object" || Array.isArray(instance))) {
+      raw = { parse: "unparseable", error: `JSON root is ${Array.isArray(instance) ? "an array" : typeof instance}` };
+      instance = null;
+    }
+    const pkg = String(off.package ?? m.package ?? "");
+    yield {
+      id,
+      instance,
+      packages: pkg ? [pkg] : [],
+      profile: (off.profile ?? m.profile ?? null) as string | null,
+      official: (Array.isArray(off.issues) ? off.issues : []).map(evaluatorIssue),
+      source: `${m.ig ?? ""}/${id}`,
+      meta: m,
+      officialCrash: !!off.crash || m.status === "official_crash",
+      ...(raw ? { raw } : {}),
+    };
+  }
+}
+
+const evaluator: CorpusLoader = {
+  name: "evaluator",
+  detect: (dir) => existsSync(join(dir, "manifest.jsonl")) || readdirSync(dir).some((d) => existsSync(join(dir, d, "manifest.jsonl"))),
+  *load(dir) {
+    if (existsSync(join(dir, "manifest.jsonl"))) {
+      yield* evaluatorDir(dir);
+      return;
+    }
+    for (const d of readdirSync(dir).sort()) if (existsSync(join(dir, d, "manifest.jsonl"))) yield* evaluatorDir(join(dir, d));
+  },
+};
+
+export const LOADERS: CorpusLoader[] = [evaluator, repro, dirs, jsonl];
 
 export function pickLoader(dir: string, name?: string | null): CorpusLoader | null {
   if (name) return LOADERS.find((l) => l.name === name) ?? null;
