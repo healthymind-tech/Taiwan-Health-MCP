@@ -4,6 +4,9 @@
  *
  * Levels (per run):
  *  - strict: same error count AND the same multiset of (normalised location, normalised message);
+ *  - lenient: same error count AND the same multiset of (normalised location, lenient message) — the message without
+ *             the definition-version suffix "(from <url>|<version>)", the "(defined in …)" invariant source and the
+ *             " Note that …" tail: wording differences that are not verdict differences;
  *  - class:  same error count AND the same multiset of (normalised location, classify.errorClass(message));
  *  - count:  same error count only.
  */
@@ -33,6 +36,17 @@ export function normMessage(m: string): string {
     .replace(/\s+/g, " ")
     .trim()
     .replace(/\.$/, "");
+}
+
+/** normMessage without definition-version / invariant-source suffixes and the " Note that" tail. */
+export function lenientMessage(m: string): string {
+  return normMessage(
+    normMessage(m)
+      .split(" Note that ")[0]
+      .replace(/ \(defined in [^)]*\)/g, "")
+      .replace(/(\(from \S+?)\|[^)\s]+\)/g, "$1)")
+      .replace(/(https?:\/\/\S+?)\|\d[\w.-]*/g, "$1"),
+  );
 }
 
 export function isError(i: { severity: string }): boolean {
@@ -78,7 +92,11 @@ export interface Comparison {
   actualErrors: number;
   count: boolean;
   class: boolean;
+  lenient: boolean;
   strict: boolean;
+  /** Official errors without a lenient counterpart (verdict differences, not wording). */
+  lenientMissing: string[];
+  lenientExtra: string[];
   /** Official errors without a strict counterpart ("path | message"). */
   missing: string[];
   /** Our errors without a strict counterpart. */
@@ -100,12 +118,20 @@ export function compareIssues(expected: SimpleIssue[], actual: SimpleIssue[]): C
   const ce = multiset(ee.map(ck));
   const ca = multiset(ae.map(ck));
   const classOk = diff(ce, ca).length === 0 && diff(ca, ce).length === 0;
+  const lk = (i: SimpleIssue): string => `${normPath(i.path)} | ${lenientMessage(i.message)}`;
+  const le = multiset(ee.map(lk));
+  const la = multiset(ae.map(lk));
+  const lenientMissing = diff(le, la);
+  const lenientExtra = diff(la, le);
   const cls = (k: string): string => errorClass(k.split(" | ").slice(1).join(" | "));
   return {
     expectedErrors: ee.length,
     actualErrors: ae.length,
     count: ee.length === ae.length,
     class: ee.length === ae.length && classOk,
+    lenient: ee.length === ae.length && lenientMissing.length === 0 && lenientExtra.length === 0,
+    lenientMissing,
+    lenientExtra,
     strict: ee.length === ae.length && missing.length === 0 && extra.length === 0,
     missing,
     extra,

@@ -21,6 +21,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { InstanceValidator } from "../../../src/fhirValidator.js";
+import { errorClass } from "../classify.js";
 import { compareIssues, type Comparison, type SimpleIssue } from "../lib/compare.js";
 import { FileValidatorResolver, ResourceStore } from "../lib/fileResolver.js";
 import { findPackage, packageClosure, type Res } from "../lib/packages.js";
@@ -175,7 +176,7 @@ export async function executeRun(run: TestRun, base: { store: ResourceStore; ids
   r.comparison = compareIssues(exp.issues, actual!);
   if (exp.source === "inline-count" && exp.errorCount !== null) {
     // only a count to compare
-    r.comparison.count = r.comparison.class = r.comparison.strict = r.comparison.actualErrors === exp.errorCount;
+    r.comparison.count = r.comparison.class = r.comparison.lenient = r.comparison.strict = r.comparison.actualErrors === exp.errorCount;
     r.comparison.expectedErrors = exp.errorCount;
   }
   r.actual = actual!;
@@ -191,15 +192,16 @@ export function summarise(results: RunResult[]): string {
   const lines: string[] = [];
   const ran = results.filter((r) => r.status !== "skipped");
   const mods = [...new Set(results.map((r) => r.module))].sort();
-  lines.push(`module                 runs  strict        class         count         crash/timeout  skipped`);
+  lines.push(`module                 runs  strict        lenient       class         count         crash/timeout  skipped`);
   const row = (label: string, rs: RunResult[]): string => {
     const x = rs.filter((r) => r.status !== "skipped");
     const st = x.filter((r) => r.comparison?.strict).length;
     const cl = x.filter((r) => r.comparison?.class).length;
+    const le = x.filter((r) => r.comparison?.lenient).length;
     const co = x.filter((r) => r.comparison?.count).length;
     const cr = x.filter((r) => r.status === "crash" || r.status === "timeout").length;
     const f = (n: number): string => `${n} (${pct(n, x.length)})`.padEnd(14);
-    return `${label.padEnd(22)} ${String(x.length).padStart(4)}  ${f(st)}${f(cl)}${f(co)}${String(cr).padEnd(15)}${rs.length - x.length}`;
+    return `${label.padEnd(22)} ${String(x.length).padStart(4)}  ${f(st)}${f(le)}${f(cl)}${f(co)}${String(cr).padEnd(15)}${rs.length - x.length}`;
   };
   for (const m of mods) lines.push(row(m, results.filter((r) => r.module === m)));
   lines.push(row("TOTAL", results));
@@ -212,10 +214,12 @@ export function summarise(results: RunResult[]): string {
   const miss = new Map<string, number>();
   const extra = new Map<string, number>();
   for (const r of ran) {
-    for (const c of r.comparison?.missingClasses ?? []) miss.set(c, (miss.get(c) ?? 0) + 1);
-    for (const c of r.comparison?.extraClasses ?? []) extra.set(c, (extra.get(c) ?? 0) + 1);
+    // tallied over lenient differences (verdicts), not wording-only twins
+    const cls = (k: string): string => errorClass(k.split(" | ").slice(1).join(" | "));
+    for (const k of r.comparison?.lenientMissing ?? []) miss.set(cls(k), (miss.get(cls(k)) ?? 0) + 1);
+    for (const k of r.comparison?.lenientExtra ?? []) extra.set(cls(k), (extra.get(cls(k)) ?? 0) + 1);
   }
-  lines.push("", "top MISSING error classes (official has, we don't):");
+  lines.push("", "top MISSING error classes (official has, we don't; lenient differences):");
   for (const [k, v] of [...miss].sort((a, b) => b[1] - a[1]).slice(0, 25)) lines.push(`  ${String(v).padStart(4)}  ${k}`);
   lines.push("", "top EXTRA error classes (we report, official doesn't):");
   for (const [k, v] of [...extra].sort((a, b) => b[1] - a[1]).slice(0, 25)) lines.push(`  ${String(v).padStart(4)}  ${k}`);
@@ -245,6 +249,7 @@ async function main(): Promise<void> {
       if (c && (verbose || only)) {
         for (const m of c.missing) console.log(`   - MISSING ${m}`);
         for (const m of c.extra) console.log(`   + EXTRA   ${m}`);
+        if (!c.strict && c.lenient) console.log("   (lenient match: wording-only differences)");
       }
     } else if (i % 50 === 0) console.error(`… ${i}/${runs.length}`);
   }

@@ -8,14 +8,15 @@
  *   systemd-run --user --scope -q -p MemoryMax=2G -p CPUQuota=80% nice -n 15 \
  *     node --max-old-space-size=1800 --import tsx scripts/parity/corpus/run.ts [<corpus dir> (default ~/ref/parity_corpus)] \
  *       [--format repro|dirs|jsonl] [--only id[,id]] [--json out.json] [--repro <dir>] [--limit n] [-v]
+ *       [--package id#ver[,id#ver]] [--profile url]   (defaults for items that do not name them)
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { InstanceValidator } from "../../../src/fhirValidator.js";
-import { isContentCheck } from "../classify.js";
-import { compareIssues, isError, type Comparison, type SimpleIssue } from "../lib/compare.js";
+import { errorClass, isContentCheck } from "../classify.js";
+import { compareIssues, isError, lenientMessage, type Comparison, type SimpleIssue } from "../lib/compare.js";
 import { FileValidatorResolver, ResourceStore } from "../lib/fileResolver.js";
 import { minimize } from "../lib/minimize.js";
 import { findPackage, packageClosure, type Res } from "../lib/packages.js";
@@ -24,7 +25,7 @@ import { pickLoader, type CorpusItem } from "./loaders.js";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
 const opt = (k: string): string | null => (args.includes(k) ? args[args.indexOf(k) + 1] ?? null : null);
-const valued = new Set(["--format", "--only", "--json", "--repro", "--limit"]);
+const valued = new Set(["--format", "--only", "--json", "--repro", "--limit", "--package", "--profile"]);
 const positional = args.filter((a, i) => !a.startsWith("-") && !valued.has(args[i - 1] ?? ""));
 const dir = positional[0] ?? join(homedir(), "ref", "parity_corpus");
 const only = opt("--only")?.split(",") ?? null;
@@ -32,6 +33,9 @@ const outFile = opt("--json") ?? join(HERE, "results.json");
 const reproDir = opt("--repro");
 const limit = Number(opt("--limit") ?? Infinity);
 const verbose = args.includes("-v");
+/** Defaults for items whose layout does not name them (comma-separated package list; one profile). */
+const defaultPackages = opt("--package")?.split(",").filter(Boolean) ?? [];
+const defaultProfile = opt("--profile");
 
 const CORE = "hl7.fhir.r4.core#4.0.1";
 
@@ -83,6 +87,8 @@ async function main(): Promise<void> {
   for (const item of loader.load(dir)) {
     if (only && !only.includes(item.id)) continue;
     if (n++ >= limit) break;
+    if (!item.packages.length) item.packages = defaultPackages;
+    if (!item.profile && defaultProfile) item.profile = defaultProfile;
     const { store, missing } = storeFor(item.packages);
     const r: ItemResult = { id: item.id, source: item.source, status: "fail", flags: [] };
     if (missing.length) {
@@ -96,7 +102,12 @@ async function main(): Promise<void> {
       r.comparison = compareIssues(item.official.filter((i) => !isContentCheck(i)), issues);
       r.status = r.comparison.strict ? "pass" : "fail";
       if (reproDir && !r.comparison.strict) {
-        const [kind, key] = r.comparison.extra.length ? (["extra", r.comparison.extra[0]] as const) : (["missing", r.comparison.missing[0]] as const);
+        // target a verdict difference (lenient level) when there is one, else the first wording difference
+        const c = r.comparison;
+        const [kind, lkey] = c.lenientExtra.length ? (["extra", c.lenientExtra[0]] as const) : c.lenientMissing.length ? (["missing", c.lenientMissing[0]] as const) : c.extra.length ? (["extra", c.extra[0]] as const) : (["missing", c.missing[0]] as const);
+        // map a lenient key back to the full (strict) key of the same side
+        const pool = kind === "extra" ? c.extra : c.missing;
+        const key = pool.find((k) => k.split(" | ")[0] === lkey?.split(" | ")[0] && lenientMessage(k.split(" | ").slice(1).join(" | ")) === lkey?.split(" | ").slice(1).join(" | ")) ?? lkey;
         if (key) {
           const [path, ...msg] = key.split(" | ");
           const target = { kind, path, message: msg.join(" | ") };
@@ -125,14 +136,15 @@ async function main(): Promise<void> {
   }
   const tot = results.length;
   const cnt = (f: (r: ItemResult) => boolean): string => `${results.filter(f).length}/${tot}`;
-  console.log(`items ${tot}: strict ${cnt((r) => !!r.comparison?.strict)}, class ${cnt((r) => !!r.comparison?.class)}, count ${cnt((r) => !!r.comparison?.count)}, crash ${cnt((r) => r.status === "crash")}`);
+  console.log(`items ${tot}: strict ${cnt((r) => !!r.comparison?.strict)}, lenient ${cnt((r) => !!r.comparison?.lenient)}, class ${cnt((r) => !!r.comparison?.class)}, count ${cnt((r) => !!r.comparison?.count)}, crash ${cnt((r) => r.status === "crash")}`);
+  const cls = (k: string): string => errorClass(k.split(" | ").slice(1).join(" | "));
   const tally = (pick: (c: Comparison) => string[]): Array<[string, number]> => {
     const m = new Map<string, number>();
     for (const r of results) for (const k of r.comparison ? pick(r.comparison) : []) m.set(k, (m.get(k) ?? 0) + 1);
     return [...m].sort((a, b) => b[1] - a[1]).slice(0, 20);
   };
-  console.log("top missing classes:\n" + tally((c) => c.missingClasses).map(([k, v]) => `  ${String(v).padStart(4)}  ${k}`).join("\n"));
-  console.log("top extra classes:\n" + tally((c) => c.extraClasses).map(([k, v]) => `  ${String(v).padStart(4)}  ${k}`).join("\n"));
+  console.log("top missing classes:\n" + tally((c) => c.lenientMissing.map(cls)).map(([k, v]) => `  ${String(v).padStart(4)}  ${k}`).join("\n"));
+  console.log("top extra classes:\n" + tally((c) => c.lenientExtra.map(cls)).map(([k, v]) => `  ${String(v).padStart(4)}  ${k}`).join("\n"));
   writeFileSync(outFile, JSON.stringify({ generated: new Date().toISOString(), corpus: dir, format: loader.name, results }, null, 1));
   console.log(`per-item JSON: ${outFile}`);
 }
