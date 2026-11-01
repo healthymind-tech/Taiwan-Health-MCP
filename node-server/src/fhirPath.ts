@@ -10,9 +10,12 @@
  *                    (contained resources, Bundle entries) — never the network.
  *  - `memberOf()`  — answered from ValueSet expansions the caller pre-computed;
  *                    an unknown ValueSet makes the invariant "unevaluable".
- *  - `htmlChecks()`— a basic XHTML narrative safety check.
- *  - `as(T)`       — the function form is lenient over collections (like the
- *                    HL7 Java engine), which the R4 dom-3 invariant relies on.
+ *  - `htmlChecks()` / `htmlChecks2()` — FHIRPathEngine.funcHtmlChecks1 / 2.
+ *  - `as()` / `ofType()`, `startsWith` / `endsWith` / `contains` / `matches` /
+ *    `matchesFull` / `length`, %sct / %loinc / %`vs-…` / %`ext-…` — ported
+ *    from the HL7 Java FHIRPathEngine (7.0.1) where fhirpath.js differs.
+ *  - fixInvariantExpression — FHIRPathExpressionFixer.fixExpr, applied by the
+ *    validator before evaluating an invariant (invariantExpression()).
  *
  * Evaluation is synchronous; per-call context is held in a module-level slot
  * for the duration of one evaluation (JS is single-threaded, so this is safe).
